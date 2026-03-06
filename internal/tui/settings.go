@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"os/exec"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -8,6 +10,13 @@ import (
 
 	"github.com/artaeon/granit/internal/config"
 )
+
+// ollamaSetupMsg carries the result of the Ollama setup wizard
+type ollamaSetupMsg struct {
+	step    string // "check", "install", "pull", "done"
+	success bool
+	message string
+}
 
 type settingItem struct {
 	label   string
@@ -27,6 +36,10 @@ type Settings struct {
 	active  bool
 	editing bool
 	editBuf string
+
+	// Ollama setup wizard
+	setupRunning bool
+	setupStatus  string
 }
 
 func NewSettings(cfg config.Config) Settings {
@@ -64,6 +77,15 @@ func (s *Settings) buildItems() {
 		{label: "Daily Notes Folder", key: "daily_notes_folder", kind: "string", value: s.config.DailyNotesFolder},
 		{label: "Search Content by Default", key: "search_content", kind: "bool", value: s.config.SearchContentByDefault},
 
+		// AI / Bots
+		{label: "AI Provider", key: "ai_provider", kind: "string", value: s.config.AIProvider, options: []string{"local", "ollama", "openai"}},
+		{label: "Ollama Model", key: "ollama_model", kind: "string", value: s.config.OllamaModel, options: []string{"qwen2.5:0.5b", "qwen2.5:1.5b", "qwen2.5:3b", "phi3:mini", "phi3.5:3.8b", "gemma2:2b", "tinyllama", "llama3.2", "llama3.2:1b", "mistral", "gemma2"}},
+		{label: "Ollama URL", key: "ollama_url", kind: "string", value: s.config.OllamaURL},
+		{label: ">> Setup Ollama (install + model)", key: "setup_ollama", kind: "action", value: "run"},
+		{label: "OpenAI API Key", key: "openai_key", kind: "string", value: s.config.OpenAIKey},
+		{label: "OpenAI Model", key: "openai_model", kind: "string", value: s.config.OpenAIModel, options: []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1-nano"}},
+		{label: "Background Bots (auto-analyze)", key: "background_bots", kind: "bool", value: s.config.BackgroundBots},
+
 		// Behavior
 		{label: "Confirm Delete", key: "confirm_delete", kind: "bool", value: s.config.ConfirmDelete},
 		{label: "Auto Refresh Vault", key: "auto_refresh", kind: "bool", value: s.config.AutoRefresh},
@@ -96,6 +118,20 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case ollamaSetupMsg:
+		if msg.step == "done" {
+			s.setupRunning = false
+			if msg.success {
+				s.setupStatus = "Setup complete! Ollama is ready."
+				s.config.AIProvider = "ollama"
+				s.buildItems()
+			} else {
+				s.setupStatus = "Setup failed: " + msg.message
+			}
+		} else {
+			s.setupStatus = msg.message
+		}
+		return s, nil
 	case tea.KeyMsg:
 		if s.editing {
 			switch msg.String() {
@@ -158,12 +194,54 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 				}
 			case "int":
 				s.editing = true
-				// Simple: just start editing
 				s.editBuf = ""
+			case "action":
+				if item.key == "setup_ollama" && !s.setupRunning {
+					s.setupRunning = true
+					s.setupStatus = "Checking for Ollama..."
+					return s, s.runOllamaSetup()
+				}
 			}
 		}
 	}
 	return s, nil
+}
+
+func (s *Settings) runOllamaSetup() tea.Cmd {
+	model := s.config.OllamaModel
+	if model == "" {
+		model = "qwen2.5:0.5b"
+	}
+	return func() tea.Msg {
+		// Check if ollama is installed
+		if _, err := exec.LookPath("ollama"); err != nil {
+			// Try to install
+			cmd := exec.Command("bash", "-c", "curl -fsSL https://ollama.com/install.sh | sh")
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return ollamaSetupMsg{
+					step:    "done",
+					success: false,
+					message: fmt.Sprintf("Failed to install Ollama: %v\n%s", err, string(out)),
+				}
+			}
+		}
+
+		// Pull the model
+		cmd := exec.Command("ollama", "pull", model)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return ollamaSetupMsg{
+				step:    "done",
+				success: false,
+				message: fmt.Sprintf("Failed to pull model %s: %v\n%s", model, err, string(out)),
+			}
+		}
+
+		return ollamaSetupMsg{
+			step:    "done",
+			success: true,
+			message: "Ollama installed with model " + model,
+		}
+	}
 }
 
 func (s *Settings) applyValue(key string, value interface{}) {
@@ -211,6 +289,18 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.ConfirmDelete = value.(bool)
 	case "auto_refresh":
 		s.config.AutoRefresh = value.(bool)
+	case "ai_provider":
+		s.config.AIProvider = value.(string)
+	case "ollama_model":
+		s.config.OllamaModel = value.(string)
+	case "ollama_url":
+		s.config.OllamaURL = value.(string)
+	case "openai_key":
+		s.config.OpenAIKey = value.(string)
+	case "openai_model":
+		s.config.OpenAIModel = value.(string)
+	case "background_bots":
+		s.config.BackgroundBots = value.(bool)
 	}
 }
 
@@ -251,7 +341,7 @@ func (s Settings) View() string {
 	title := lipgloss.NewStyle().
 		Foreground(mauve).
 		Bold(true).
-		Render("  Settings")
+		Render("  " + IconSettingsChar + " Settings")
 	b.WriteString(title)
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
@@ -302,6 +392,12 @@ func (s Settings) View() string {
 			} else {
 				valueStr = lipgloss.NewStyle().Foreground(peach).Render(intToStr(item.value))
 			}
+		case "action":
+			if s.setupRunning && item.key == "setup_ollama" {
+				valueStr = lipgloss.NewStyle().Foreground(yellow).Render("running...")
+			} else {
+				valueStr = lipgloss.NewStyle().Foreground(sapphire).Render("[run]")
+			}
 		}
 
 		// Calculate padding
@@ -330,6 +426,18 @@ func (s Settings) View() string {
 			b.WriteString(NormalItemStyle.Render(line))
 		}
 		b.WriteString("\n")
+	}
+
+	// Setup status
+	if s.setupStatus != "" {
+		b.WriteString("\n")
+		statusColor := green
+		if strings.Contains(s.setupStatus, "failed") || strings.Contains(s.setupStatus, "Failed") {
+			statusColor = red
+		} else if s.setupRunning {
+			statusColor = yellow
+		}
+		b.WriteString(lipgloss.NewStyle().Foreground(statusColor).Render("  " + s.setupStatus))
 	}
 
 	// Footer
