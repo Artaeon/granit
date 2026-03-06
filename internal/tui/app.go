@@ -1115,6 +1115,19 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.statusbar.SetMessage("Spell check unavailable (install aspell or hunspell)")
 			return m, m.clearMessageAfter(3 * time.Second)
 		}
+	case CmdImportObsidian:
+		imported := config.ImportObsidianConfig(m.vault.Root)
+		if imported != nil {
+			m.config = *imported
+			m.config.Save()
+			ApplyTheme(m.config.Theme)
+			m.syncConfigToComponents()
+			report := config.ImportReport(m.vault.Root)
+			m.statusbar.SetMessage(report)
+		} else {
+			m.statusbar.SetMessage("No .obsidian/ directory found")
+		}
+		return m, m.clearMessageAfter(5 * time.Second)
 	case CmdQuit:
 		m.quitting = true
 		return m, tea.Quit
