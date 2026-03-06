@@ -258,7 +258,7 @@ func (t TagBrowser) View() string {
 				count := DimStyle.Render(" (" + smallNum(tag.count) + ")")
 
 				tagPill := lipgloss.NewStyle().
-					Foreground(lipgloss.Color("#11111B")).
+					Foreground(crust).
 					Background(blue).
 					Render(" #" + tag.name + " ")
 
