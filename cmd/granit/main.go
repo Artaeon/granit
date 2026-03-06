@@ -87,15 +87,22 @@ Keyboard Shortcuts (TUI):
   F1              Focus file sidebar
   F2              Focus editor
   F3              Focus backlinks panel
+  F4              Rename current note
+  F5              Show keyboard shortcuts
   Ctrl+P          Quick open (fuzzy search)
   Ctrl+N          Create new note
   Ctrl+S          Save current note
+  Ctrl+E          Toggle view/edit mode
+  Ctrl+G          Show note graph
+  Ctrl+T          Browse tags
+  Ctrl+X          Command palette
+  Ctrl+,          Settings
   Ctrl+Q / Ctrl+C Quit
-  Esc             Return to sidebar
+  Esc             Return to sidebar / close overlay
   j/k or arrows   Navigate
   Enter           Open selected file/link
   Type to search  Fuzzy filter in sidebar
-  PgUp / PgDown   Scroll editor
+  PgUp / PgDown   Scroll
 `)
 }
 
