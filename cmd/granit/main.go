@@ -83,15 +83,19 @@ Usage:
   granit help             Show this help
 
 Keyboard Shortcuts (TUI):
-  Ctrl+1          Focus file sidebar
-  Ctrl+2          Focus editor
-  Ctrl+3          Focus backlinks panel
+  Tab / Shift+Tab Cycle between panels
+  F1              Focus file sidebar
+  F2              Focus editor
+  F3              Focus backlinks panel
+  Ctrl+P          Quick open (fuzzy search)
+  Ctrl+N          Create new note
   Ctrl+S          Save current note
   Ctrl+Q / Ctrl+C Quit
-  Tab             Toggle backlinks/outgoing (in links panel)
+  Esc             Return to sidebar
   j/k or arrows   Navigate
   Enter           Open selected file/link
   Type to search  Fuzzy filter in sidebar
+  PgUp / PgDown   Scroll editor
 `)
 }
 
