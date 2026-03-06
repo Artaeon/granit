@@ -64,7 +64,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`
+	fmt.Print(`
    ██████╗ ██████╗  █████╗ ███╗   ██╗██╗████████╗
   ██╔════╝ ██╔══██╗██╔══██╗████╗  ██║██║╚══██╔══╝
   ██║  ███╗██████╔╝███████║██╔██╗ ██║██║   ██║
@@ -102,8 +102,8 @@ Keyboard Shortcuts (TUI):
   Ctrl+G          Show note graph
   Ctrl+T          Browse tags
   Ctrl+W          Canvas / whiteboard
-  Ctrl+L          Calendar view
-  Ctrl+R          Local AI bots
+  Ctrl+L          Calendar (month/week/agenda)
+  Ctrl+R          AI bots (Ollama / local)
   Ctrl+X          Command palette
   Ctrl+,          Settings
   Ctrl+Q / Ctrl+C Quit
