@@ -39,6 +39,7 @@ func NewSettings(cfg config.Config) Settings {
 
 func (s *Settings) buildItems() {
 	s.items = []settingItem{
+		// Editor settings
 		{label: "Show Splash Screen", key: "show_splash", kind: "bool", value: s.config.ShowSplash},
 		{label: "Show Help Bar", key: "show_help", kind: "bool", value: s.config.ShowHelp},
 		{label: "Line Numbers", key: "line_numbers", kind: "bool", value: s.config.LineNumbers},
@@ -47,10 +48,23 @@ func (s *Settings) buildItems() {
 		{label: "Default View Mode", key: "default_view_mode", kind: "bool", value: s.config.DefaultViewMode},
 		{label: "Vim Mode", key: "vim_mode", kind: "bool", value: s.config.VimMode},
 		{label: "Tab Size", key: "tab_size", kind: "int", value: s.config.Editor.TabSize},
+		{label: "Auto Close Brackets", key: "auto_close_brackets", kind: "bool", value: s.config.AutoCloseBrackets},
+		{label: "Highlight Current Line", key: "highlight_current_line", kind: "bool", value: s.config.HighlightCurrentLine},
+
+		// Appearance settings
+		{label: "Theme", key: "theme", kind: "string", value: s.config.Theme, options: ThemeNames()},
+		{label: "Sidebar Position", key: "sidebar_position", kind: "string", value: s.config.SidebarPosition, options: []string{"left", "right"}},
+		{label: "Show Icons", key: "show_icons", kind: "bool", value: s.config.ShowIcons},
+		{label: "Compact Mode", key: "compact_mode", kind: "bool", value: s.config.CompactMode},
+
+		// Sidebar & Search
 		{label: "Sort Files By", key: "sort_by", kind: "string", value: s.config.SortBy, options: []string{"name", "modified", "created"}},
 		{label: "Daily Notes Folder", key: "daily_notes_folder", kind: "string", value: s.config.DailyNotesFolder},
-		{label: "Theme", key: "theme", kind: "string", value: s.config.Theme, options: ThemeNames()},
 		{label: "Search Content by Default", key: "search_content", kind: "bool", value: s.config.SearchContentByDefault},
+
+		// Behavior
+		{label: "Confirm Delete", key: "confirm_delete", kind: "bool", value: s.config.ConfirmDelete},
+		{label: "Auto Refresh Vault", key: "auto_refresh", kind: "bool", value: s.config.AutoRefresh},
 	}
 }
 
@@ -175,6 +189,20 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		ApplyTheme(s.config.Theme)
 	case "search_content":
 		s.config.SearchContentByDefault = value.(bool)
+	case "auto_close_brackets":
+		s.config.AutoCloseBrackets = value.(bool)
+	case "highlight_current_line":
+		s.config.HighlightCurrentLine = value.(bool)
+	case "sidebar_position":
+		s.config.SidebarPosition = value.(string)
+	case "show_icons":
+		s.config.ShowIcons = value.(bool)
+	case "compact_mode":
+		s.config.CompactMode = value.(bool)
+	case "confirm_delete":
+		s.config.ConfirmDelete = value.(bool)
+	case "auto_refresh":
+		s.config.AutoRefresh = value.(bool)
 	}
 }
 
