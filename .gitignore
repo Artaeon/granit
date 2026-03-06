@@ -22,6 +22,12 @@
 # Runtime config/data
 .granit.json
 .granit-bookmarks.json
+.granit/
+
+# Stray test files in project root
+/Thisisatest.md
+/testtest.md
+/testtetbdgfb.md
 
 # OS
 .DS_Store
