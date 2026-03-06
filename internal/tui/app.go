@@ -91,6 +91,8 @@ type Model struct {
 	spellcheck     SpellChecker
 	snippets       *SnippetEngine
 	autoSync       AutoSync
+	publisher      Publisher
+	splitPane      SplitPane
 
 	// View mode scroll
 	viewScroll int
@@ -160,6 +162,8 @@ func NewModel(vaultPath string) (Model, error) {
 		spellcheck:     NewSpellChecker(),
 		snippets:       NewSnippetEngine(),
 		autoSync:       NewAutoSync(vaultPath),
+		publisher:      NewPublisher(),
+		splitPane:      NewSplitPane(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -170,6 +174,7 @@ func NewModel(vaultPath string) (Model, error) {
 	m.autocomplete.SetNotes(paths)
 	m.plugins.SetVaultPath(vaultPath)
 	m.canvas.SetVaultPath(vaultPath)
+	m.publisher.SetVaultPath(vaultPath)
 	m.renderer.SetVaultNotes(m.vault.Notes)
 
 	// Set up renderer note lookup for transclusion
@@ -305,6 +310,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.action != "" {
 			return m, m.clearMessageAfter(3 * time.Second)
+		}
+		return m, nil
+
+	case publishResultMsg, publishProgressMsg:
+		if m.publisher.IsActive() {
+			var cmd tea.Cmd
+			m.publisher, cmd = m.publisher.Update(msg)
+			return m, cmd
 		}
 		return m, nil
 
@@ -605,6 +618,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+		}
+
+		if m.publisher.IsActive() {
+			var cmd tea.Cmd
+			m.publisher, cmd = m.publisher.Update(msg)
+			return m, cmd
+		}
+
+		if m.splitPane.IsActive() {
+			var cmd tea.Cmd
+			m.splitPane, cmd = m.splitPane.Update(msg)
+			return m, cmd
 		}
 
 		if m.confirmDelete {
@@ -1149,6 +1174,17 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.statusbar.SetMessage("Spell check unavailable (install aspell or hunspell)")
 			return m, m.clearMessageAfter(3 * time.Second)
 		}
+	case CmdPublishSite:
+		m.publisher.SetSize(m.width, m.height)
+		m.publisher.Open()
+	case CmdSplitPane:
+		m.splitPane.SetSize(m.width, m.height)
+		m.splitPane.Open()
+		// Load current note and let user pick second note
+		if m.activeNote != "" {
+			content := strings.Split(m.editor.GetContent(), "\n")
+			m.splitPane.SetLeftContent(m.activeNote, content)
+		}
 	case CmdImportObsidian:
 		imported := config.ImportObsidianConfig(m.vault.Root)
 		if imported != nil {
@@ -1412,6 +1448,8 @@ func (m *Model) updateLayout() {
 	m.renderer.SetSize(editorWidth, contentHeight)
 	m.backlinks.SetSize(backlinksWidth, contentHeight)
 	m.statusbar.SetWidth(m.width)
+	m.publisher.SetSize(m.width, m.height)
+	m.splitPane.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -1875,6 +1913,13 @@ func (m Model) View() string {
 	if m.spellcheck.IsActive() {
 		overlay := m.spellcheck.View()
 		view = m.overlayCenter(view, overlay)
+	}
+	if m.publisher.IsActive() {
+		overlay := m.publisher.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.splitPane.IsActive() {
+		view = m.splitPane.View()
 	}
 	if m.confirmDelete {
 		overlay := m.renderConfirmDeleteOverlay()
