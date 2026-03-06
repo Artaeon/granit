@@ -34,6 +34,9 @@ const (
 	CmdFindInFile
 	CmdReplaceInFile
 	CmdShowStats
+	CmdNewFromTemplate
+	CmdFocusMode
+	CmdQuickSwitch
 	CmdQuit
 )
 
@@ -66,6 +69,9 @@ var AllCommands = []Command{
 	{Label: "Find", Desc: "Search within current file", Shortcut: "Ctrl+F", Action: CmdFindInFile},
 	{Label: "Find & Replace", Desc: "Find and replace in file", Shortcut: "Ctrl+H", Action: CmdReplaceInFile},
 	{Label: "Vault Statistics", Desc: "Show vault stats & charts", Shortcut: "", Action: CmdShowStats},
+	{Label: "New from Template", Desc: "Create note from template", Shortcut: "", Action: CmdNewFromTemplate},
+	{Label: "Focus Mode", Desc: "Distraction-free writing", Shortcut: "Ctrl+Z", Action: CmdFocusMode},
+	{Label: "Quick Switch", Desc: "Switch between recent files", Shortcut: "Ctrl+J", Action: CmdQuickSwitch},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
