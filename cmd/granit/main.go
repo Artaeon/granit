@@ -17,8 +17,9 @@ const version = "0.1.0"
 
 func main() {
 	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(1)
+		// No arguments: open current directory as vault
+		runTUI(".")
+		return
 	}
 
 	command := os.Args[1]
