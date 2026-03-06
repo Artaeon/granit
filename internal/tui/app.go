@@ -90,6 +90,7 @@ type Model struct {
 	contentSearch  ContentSearch
 	spellcheck     SpellChecker
 	snippets       *SnippetEngine
+	autoSync       AutoSync
 
 	// View mode scroll
 	viewScroll int
@@ -158,6 +159,7 @@ func NewModel(vaultPath string) (Model, error) {
 		contentSearch:  NewContentSearch(),
 		spellcheck:     NewSpellChecker(),
 		snippets:       NewSnippetEngine(),
+		autoSync:       NewAutoSync(vaultPath),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -198,6 +200,9 @@ func NewModel(vaultPath string) (Model, error) {
 	// Apply config to components
 	m.syncConfigToComponents()
 
+	// Configure auto git sync
+	m.autoSync.SetEnabled(cfg.GitAutoSync)
+
 	if len(paths) > 0 {
 		m.loadNote(paths[0])
 	}
@@ -224,10 +229,18 @@ func (m *Model) loadNote(relPath string) {
 }
 
 func (m Model) Init() tea.Cmd {
+	var cmds []tea.Cmd
 	if m.showSplash {
-		return m.splash.Init()
+		cmds = append(cmds, m.splash.Init())
 	}
-	return nil
+	// Auto git sync: pull on open
+	if pullCmd := m.autoSync.PullOnOpen(); pullCmd != nil {
+		cmds = append(cmds, pullCmd)
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -272,6 +285,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.git, cmd = m.git.Update(msg)
 			return m, cmd
+		}
+		return m, nil
+
+	case autoSyncResultMsg:
+		if msg.err != nil {
+			m.statusbar.SetMessage("Git sync error: " + msg.err.Error())
+		} else if msg.action == "pull" && msg.output != "" {
+			trimmed := strings.TrimSpace(msg.output)
+			if trimmed != "" && trimmed != "Already up to date." {
+				// Rescan vault after pull brought changes
+				m.vault.Scan()
+				m.index.Build()
+				m.sidebar.SetFiles(m.vault.SortedPaths())
+				m.statusbar.SetMessage("Git: pulled latest changes")
+			}
+		} else if msg.output == "synced" {
+			m.statusbar.SetMessage("Git: auto-synced")
+		}
+		if msg.action != "" {
+			return m, m.clearMessageAfter(3 * time.Second)
 		}
 		return m, nil
 
@@ -903,8 +936,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdSaveNote:
 		cmd := m.saveCurrentNote()
 		hookCmd := m.runPluginSaveHooks()
+		syncCmd := m.autoSync.CommitAndPush()
 		m.statusbar.SetMessage("Saved " + m.activeNote)
-		return m, tea.Batch(cmd, hookCmd, m.clearMessageAfter(2*time.Second))
+		return m, tea.Batch(cmd, hookCmd, syncCmd, m.clearMessageAfter(2*time.Second))
 	case CmdDailyNote:
 		today := time.Now().Format("2006-01-02")
 		name := today + ".md"
@@ -1399,6 +1433,7 @@ func (m *Model) syncConfigToComponents() {
 		aiModel = m.config.OpenAIModel
 	}
 	m.statusbar.SetAIStatus(m.config.AIProvider, aiModel)
+	m.autoSync.SetEnabled(m.config.GitAutoSync)
 }
 
 func (m *Model) applyTagsToNote(tags []string) {
