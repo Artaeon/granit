@@ -19,6 +19,10 @@
 *.swo
 *~
 
+# Runtime config/data
+.granit.json
+.granit-bookmarks.json
+
 # OS
 .DS_Store
 Thumbs.db
