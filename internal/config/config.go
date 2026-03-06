@@ -40,6 +40,7 @@ type Config struct {
 	ConfirmDelete   bool `json:"confirm_delete"`
 	AutoRefresh     bool `json:"auto_refresh"`
 	SpellCheck      bool `json:"spell_check"`
+	GitAutoSync     bool `json:"git_auto_sync"`
 
 	// AI / Bots
 	AIProvider  string `json:"ai_provider"`  // "local", "ollama", "openai"
