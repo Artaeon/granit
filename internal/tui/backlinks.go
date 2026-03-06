@@ -97,14 +97,14 @@ func (bl Backlinks) View() string {
 	outCount := len(bl.outgoing)
 
 	activeTabStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#1E1E2E")).
-		Background(lipgloss.Color("#CBA6F7")).
+		Foreground(base).
+		Background(mauve).
 		Bold(true).
 		Padding(0, 1)
 
 	inactiveTabStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#6C7086")).
-		Background(lipgloss.Color("#313244")).
+		Foreground(overlay0).
+		Background(surface0).
 		Padding(0, 1)
 
 	var inTab, outTab string
@@ -153,7 +153,7 @@ func (bl Backlinks) View() string {
 			displayName = displayName[:maxLen-3] + "..."
 		}
 
-		icon := lipgloss.NewStyle().Foreground(lipgloss.Color("#89B4FA")).Render(" ")
+		icon := lipgloss.NewStyle().Foreground(blue).Render(" ")
 
 		if i == bl.cursor && bl.focused {
 			line := "  " + icon + " " + displayName
@@ -162,8 +162,8 @@ func (bl Backlinks) View() string {
 				padLen = 0
 			}
 			highlighted := lipgloss.NewStyle().
-				Background(lipgloss.Color("#313244")).
-				Foreground(lipgloss.Color("#FAB387")).
+				Background(surface0).
+				Foreground(peach).
 				Bold(true).
 				Width(contentWidth).
 				Render("  " + icon + " " + displayName + strings.Repeat(" ", padLen))
