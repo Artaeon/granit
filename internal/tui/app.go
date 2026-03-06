@@ -3242,7 +3242,8 @@ func (m Model) overlayTopRight(bg, overlay string) string {
 		if y >= len(result) {
 			break
 		}
-		result[y] = pad + overlayLine
+		right := ansiSkipCols(result[y], startX+lipgloss.Width(overlayLine))
+		result[y] = pad + overlayLine + right
 	}
 
 	return strings.Join(result, "\n")
@@ -3677,10 +3678,42 @@ func (m Model) overlayCenter(bg, overlay string) string {
 		if y >= len(result) {
 			break
 		}
-		result[y] = pad + overlayLine
+		right := ansiSkipCols(result[y], startX+lipgloss.Width(overlayLine))
+		result[y] = pad + overlayLine + right
 	}
 
 	return strings.Join(result, "\n")
+}
+
+// ansiSkipCols returns the suffix of s after skipping n visual columns.
+// ANSI escape sequences are correctly skipped without counting as width.
+// A reset sequence is prepended to prevent color bleed from the skipped portion.
+func ansiSkipCols(s string, n int) string {
+	width := 0
+	i := 0
+	for i < len(s) && width < n {
+		if s[i] == '\x1b' {
+			// Skip entire ANSI escape sequence
+			j := i + 1
+			if j < len(s) && s[j] == '[' {
+				j++
+				for j < len(s) && s[j] != 'm' && s[j] != 'H' && s[j] != 'J' && s[j] != 'K' {
+					j++
+				}
+				if j < len(s) {
+					j++
+				}
+			}
+			i = j
+		} else {
+			width++
+			i++
+		}
+	}
+	if i >= len(s) {
+		return ""
+	}
+	return "\x1b[0m" + s[i:]
 }
 
 // overlayAtCursor places an overlay near the editor cursor position (below it).
@@ -3740,7 +3773,8 @@ func (m Model) overlayAtCursor(bg, overlay string) string {
 		if y >= len(result) {
 			break
 		}
-		result[y] = pad + overlayLine
+		right := ansiSkipCols(result[y], startX+lipgloss.Width(overlayLine))
+		result[y] = pad + overlayLine + right
 	}
 
 	return strings.Join(result, "\n")
