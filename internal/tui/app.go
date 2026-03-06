@@ -93,6 +93,8 @@ type Model struct {
 	autoSync       AutoSync
 	publisher      Publisher
 	splitPane      SplitPane
+	luaEngine      *LuaEngine
+	luaOverlay     LuaOverlay
 
 	// View mode scroll
 	viewScroll int
@@ -164,6 +166,8 @@ func NewModel(vaultPath string) (Model, error) {
 		autoSync:       NewAutoSync(vaultPath),
 		publisher:      NewPublisher(),
 		splitPane:      NewSplitPane(),
+		luaEngine:      NewLuaEngine(vaultPath),
+		luaOverlay:     NewLuaOverlay(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -175,6 +179,7 @@ func NewModel(vaultPath string) (Model, error) {
 	m.plugins.SetVaultPath(vaultPath)
 	m.canvas.SetVaultPath(vaultPath)
 	m.publisher.SetVaultPath(vaultPath)
+	m.luaOverlay.SetEngine(m.luaEngine)
 	m.renderer.SetVaultNotes(m.vault.Notes)
 
 	// Set up renderer note lookup for transclusion
@@ -310,6 +315,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.action != "" {
 			return m, m.clearMessageAfter(3 * time.Second)
+		}
+		return m, nil
+
+	case luaRunResultMsg:
+		if m.luaOverlay.IsActive() {
+			r := msg.result
+			// Apply content/insert if provided
+			if r.Content != "" {
+				m.editor.SetContent(r.Content)
+			}
+			if r.Insert != "" {
+				m.editor.InsertText(r.Insert)
+			}
+			var cmd tea.Cmd
+			m.luaOverlay, cmd = m.luaOverlay.Update(msg)
+			return m, cmd
 		}
 		return m, nil
 
@@ -618,6 +639,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+		}
+
+		if m.luaOverlay.IsActive() {
+			var cmd tea.Cmd
+			m.luaOverlay, cmd = m.luaOverlay.Update(msg)
+			return m, cmd
 		}
 
 		if m.publisher.IsActive() {
@@ -1185,6 +1212,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			content := strings.Split(m.editor.GetContent(), "\n")
 			m.splitPane.SetLeftContent(m.activeNote, content)
 		}
+	case CmdRunLuaScript:
+		m.luaOverlay.SetSize(m.width, m.height)
+		m.luaOverlay.Open(m.activeNote, m.editor.GetContent(), nil)
 	case CmdImportObsidian:
 		imported := config.ImportObsidianConfig(m.vault.Root)
 		if imported != nil {
@@ -1450,6 +1480,7 @@ func (m *Model) updateLayout() {
 	m.statusbar.SetWidth(m.width)
 	m.publisher.SetSize(m.width, m.height)
 	m.splitPane.SetSize(m.width, m.height)
+	m.luaOverlay.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -1916,6 +1947,10 @@ func (m Model) View() string {
 	}
 	if m.publisher.IsActive() {
 		overlay := m.publisher.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.luaOverlay.IsActive() {
+		overlay := m.luaOverlay.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.splitPane.IsActive() {
