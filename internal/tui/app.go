@@ -122,6 +122,9 @@ type Model struct {
 	tabBar        *TabBar
 	zettelkasten  *ZettelkastenGenerator
 
+	// Slash command menu
+	slashMenu *SlashMenu
+
 	// Auto-save debounce
 	lastEditTime time.Time
 
@@ -224,6 +227,7 @@ func NewModel(vaultPath string) (Model, error) {
 		kanban:         NewKanban(),
 		tabBar:         NewTabBar(),
 		zettelkasten:   NewZettelkastenGenerator(),
+		slashMenu:      NewSlashMenu(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -369,8 +373,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.splash.width = msg.Width
 			m.splash.height = msg.Height
 			m.updateLayout()
+			return m, nil
 		case tea.KeyMsg:
-			m.splash.done = true
+			// Any key press immediately dismisses the splash
+			m.showSplash = false
+			return m, nil
 		case splashTickMsg:
 			var cmd tea.Cmd
 			m.splash, cmd = m.splash.Update(msg)
@@ -380,15 +387,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, cmd
 		}
-
-		if m.splash.IsDone() {
-			m.showSplash = false
-			return m, nil
-		}
-
-		var cmd tea.Cmd
-		m.splash, cmd = m.splash.Update(msg)
-		return m, cmd
+		return m, nil
 	}
 
 	// Exit splash handling
@@ -585,6 +584,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ghostSuggestionMsg, ghostDebounceMsg:
 		if m.ghostWriter != nil {
 			cmd := m.ghostWriter.HandleMsg(msg)
+			m.editor.SetGhostText(m.ghostWriter.GetSuggestion())
 			return m, cmd
 		}
 		return m, nil
@@ -1523,6 +1523,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 
+				// Slash menu intercepts keys when active
+				if m.slashMenu != nil && m.slashMenu.IsActive() {
+					queryLen := m.slashMenu.QueryLen()
+					insertText, consumed, closed := m.slashMenu.HandleKey(k)
+					if insertText != "" {
+						// Delete the "/" and query chars that triggered the menu
+						if m.editor.cursor < len(m.editor.content) {
+							line := m.editor.content[m.editor.cursor]
+							// Remove "/" + query chars (slash is at col - queryLen - 1)
+							slashCol := m.editor.col - queryLen - 1
+							if slashCol < 0 {
+								slashCol = 0
+							}
+							if slashCol < len(line) {
+								m.editor.content[m.editor.cursor] = line[:slashCol] + line[m.editor.col:]
+								m.editor.col = slashCol
+							}
+						}
+						// Expand placeholders
+						expanded := m.snippets.ExpandPlaceholders(insertText)
+						m.editor.InsertText(expanded)
+						m.editor.modified = true
+						line, col := m.editor.GetCursor()
+						m.statusbar.SetCursor(line, col)
+						m.statusbar.SetWordCount(m.editor.GetWordCount())
+						return m, nil
+					}
+					if closed {
+						return m, nil
+					}
+					if consumed {
+						return m, nil
+					}
+				}
+
 				// Clipboard: Ctrl+C copies selection, Ctrl+V pastes
 				if k == "ctrl+v" {
 					if text, err := ClipboardPaste(); err == nil && text != "" {
@@ -1539,11 +1574,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.ghostWriter != nil && m.ghostWriter.GetSuggestion() != "" {
 						suggestion := m.ghostWriter.Accept()
 						m.editor.InsertText(suggestion)
+						m.editor.SetGhostText("")
 						line, col := m.editor.GetCursor()
 						m.statusbar.SetCursor(line, col)
 						m.statusbar.SetWordCount(m.editor.GetWordCount())
 						return m, nil
 					}
+				}
+
+				// Escape dismisses ghost text
+				if k == "esc" && m.ghostWriter != nil && m.ghostWriter.GetSuggestion() != "" {
+					m.ghostWriter.Dismiss()
+					m.editor.SetGhostText("")
+					return m, nil
 				}
 
 				// Vim mode handling
@@ -1582,6 +1625,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
+			// Detect "/" at start of line or after space for slash menu
+			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "/" {
+				if m.slashMenu != nil && !m.slashMenu.IsActive() {
+					curLine := m.editor.content[m.editor.cursor]
+					c := m.editor.col
+					// "/" is valid if at col 1 (just typed at start) or after a space
+					if c == 1 || (c >= 2 && curLine[c-2] == ' ') {
+						m.slashMenu.Activate(m.editor.cursor, m.editor.col)
+					}
+				}
+			}
+
 			// Ghost writer: trigger completion on edits
 			if m.ghostWriter != nil && m.ghostWriter.IsEnabled() {
 				if keyMsg, ok := msg.(tea.KeyMsg); ok {
@@ -1589,6 +1644,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Only trigger on actual text input, not navigation
 					if len(k) == 1 || k == "space" || k == "backspace" || k == "enter" {
 						m.ghostWriter.Dismiss()
+						m.editor.SetGhostText("")
 						ghostCmd := m.ghostWriter.OnEdit(m.editor.content, m.editor.cursor, m.editor.col)
 						if ghostCmd != nil {
 							cmd = tea.Batch(cmd, ghostCmd)
@@ -3096,6 +3152,12 @@ func (m Model) View() string {
 			view = m.overlayCenter(view, overlay)
 		}
 	}
+	if m.slashMenu != nil && m.slashMenu.IsActive() {
+		overlay := m.slashMenu.View()
+		if overlay != "" {
+			view = m.overlayAtCursor(view, overlay)
+		}
+	}
 	if m.splitPane.IsActive() {
 		view = m.splitPane.View()
 	}
@@ -3547,6 +3609,79 @@ func (m Model) overlayCenter(bg, overlay string) string {
 	}
 	if startX < 0 {
 		startX = 0
+	}
+
+	result := make([]string, len(bgLines))
+	copy(result, bgLines)
+
+	for i, overlayLine := range overlayLines {
+		y := startY + i
+		if y >= len(result) {
+			break
+		}
+		bgLine := result[y]
+		bgRunes := []rune(bgLine)
+
+		for len(bgRunes) < startX+lipgloss.Width(overlayLine) {
+			bgRunes = append(bgRunes, ' ')
+		}
+
+		newLine := string(bgRunes[:startX]) + overlayLine
+		if startX+lipgloss.Width(overlayLine) < len(bgRunes) {
+			newLine += string(bgRunes[startX+lipgloss.Width(overlayLine):])
+		}
+		result[y] = newLine
+	}
+
+	return strings.Join(result, "\n")
+}
+
+// overlayAtCursor places an overlay near the editor cursor position (below it).
+func (m Model) overlayAtCursor(bg, overlay string) string {
+	bgLines := strings.Split(bg, "\n")
+	overlayLines := strings.Split(overlay, "\n")
+
+	overlayHeight := len(overlayLines)
+	overlayWidth := 0
+	for _, line := range overlayLines {
+		w := lipgloss.Width(line)
+		if w > overlayWidth {
+			overlayWidth = w
+		}
+	}
+
+	// Approximate cursor screen position
+	// Editor starts after sidebar, cursor line offset by scroll
+	sidebarWidth := 0
+	if m.config.Layout == "" || m.config.Layout == "default" || m.config.Layout == "writer" {
+		sidebarWidth = m.width / 5
+		if sidebarWidth < 22 {
+			sidebarWidth = 22
+		}
+		if sidebarWidth > 35 {
+			sidebarWidth = 35
+		}
+	}
+	// Add border + gutter
+	gutterWidth := 0
+	if m.config.LineNumbers {
+		gutterWidth = 7
+	}
+	startX := sidebarWidth + 3 + gutterWidth + m.editor.col
+	startY := m.editor.cursor - m.editor.scroll + 3 // +3 for header/separator
+
+	// Make sure it fits on screen
+	if startX+overlayWidth > m.width {
+		startX = m.width - overlayWidth - 1
+	}
+	if startX < 1 {
+		startX = 1
+	}
+	if startY+overlayHeight > m.height-2 {
+		startY = m.editor.cursor - m.editor.scroll - overlayHeight
+	}
+	if startY < 1 {
+		startY = 1
 	}
 
 	result := make([]string, len(bgLines))
