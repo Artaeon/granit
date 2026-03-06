@@ -95,8 +95,10 @@ Keyboard Shortcuts (TUI):
   Ctrl+E          Toggle view/edit mode
   Ctrl+F          Find in file
   Ctrl+H          Find & replace
+  Ctrl+J          Quick switch files
   Ctrl+O          Note outline
   Ctrl+B          Bookmarks & recent
+  Ctrl+Z          Focus / zen mode
   Ctrl+G          Show note graph
   Ctrl+T          Browse tags
   Ctrl+X          Command palette
