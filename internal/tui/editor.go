@@ -3,22 +3,32 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
+type editorSnapshot struct {
+	content []string
+	cursor  int
+	col     int
+}
+
 type Editor struct {
-	content   []string
-	cursor    int
-	col       int
-	scroll    int
-	focused   bool
-	height    int
-	width     int
-	filePath  string
-	modified  bool
-	wordCount int
+	content      []string
+	cursor       int
+	col          int
+	scroll       int
+	focused      bool
+	height       int
+	width        int
+	filePath     string
+	modified     bool
+	wordCount    int
+	undoStack    []editorSnapshot
+	redoStack    []editorSnapshot
+	lastSnapshot time.Time
 }
 
 func NewEditor() Editor {
@@ -68,6 +78,79 @@ func (e *Editor) countWords() {
 		total += len(words)
 	}
 	e.wordCount = total
+}
+
+func (e *Editor) saveSnapshot() {
+	now := time.Now()
+	if now.Sub(e.lastSnapshot) < 500*time.Millisecond {
+		return
+	}
+	contentCopy := make([]string, len(e.content))
+	copy(contentCopy, e.content)
+	snap := editorSnapshot{
+		content: contentCopy,
+		cursor:  e.cursor,
+		col:     e.col,
+	}
+	e.undoStack = append(e.undoStack, snap)
+	if len(e.undoStack) > 100 {
+		e.undoStack = e.undoStack[len(e.undoStack)-100:]
+	}
+	e.lastSnapshot = now
+}
+
+func (e *Editor) Undo() {
+	if len(e.undoStack) == 0 {
+		return
+	}
+	// Push current state to redo stack
+	contentCopy := make([]string, len(e.content))
+	copy(contentCopy, e.content)
+	current := editorSnapshot{
+		content: contentCopy,
+		cursor:  e.cursor,
+		col:     e.col,
+	}
+	e.redoStack = append(e.redoStack, current)
+	if len(e.redoStack) > 100 {
+		e.redoStack = e.redoStack[len(e.redoStack)-100:]
+	}
+
+	// Pop from undo stack and restore
+	snap := e.undoStack[len(e.undoStack)-1]
+	e.undoStack = e.undoStack[:len(e.undoStack)-1]
+	e.content = snap.content
+	e.cursor = snap.cursor
+	e.col = snap.col
+	e.modified = true
+	e.countWords()
+}
+
+func (e *Editor) Redo() {
+	if len(e.redoStack) == 0 {
+		return
+	}
+	// Push current state to undo stack
+	contentCopy := make([]string, len(e.content))
+	copy(contentCopy, e.content)
+	current := editorSnapshot{
+		content: contentCopy,
+		cursor:  e.cursor,
+		col:     e.col,
+	}
+	e.undoStack = append(e.undoStack, current)
+	if len(e.undoStack) > 100 {
+		e.undoStack = e.undoStack[len(e.undoStack)-100:]
+	}
+
+	// Pop from redo stack and restore
+	snap := e.redoStack[len(e.redoStack)-1]
+	e.redoStack = e.redoStack[:len(e.redoStack)-1]
+	e.content = snap.content
+	e.cursor = snap.cursor
+	e.col = snap.col
+	e.modified = true
+	e.countWords()
 }
 
 func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
@@ -153,7 +236,15 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			if e.col > len(e.content[e.cursor]) {
 				e.col = len(e.content[e.cursor])
 			}
+		case "ctrl+u":
+			e.Undo()
+			return e, nil
+		case "ctrl+y":
+			e.Redo()
+			return e, nil
 		case "enter":
+			e.saveSnapshot()
+			e.redoStack = nil
 			line := e.content[e.cursor]
 			before := line[:e.col]
 			after := line[e.col:]
@@ -168,6 +259,8 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			e.modified = true
 			e.countWords()
 		case "backspace":
+			e.saveSnapshot()
+			e.redoStack = nil
 			if e.col > 0 {
 				line := e.content[e.cursor]
 				e.content[e.cursor] = line[:e.col-1] + line[e.col:]
@@ -184,6 +277,8 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				e.countWords()
 			}
 		case "delete", "ctrl+d":
+			e.saveSnapshot()
+			e.redoStack = nil
 			line := e.content[e.cursor]
 			if e.col < len(line) {
 				e.content[e.cursor] = line[:e.col] + line[e.col+1:]
@@ -197,6 +292,8 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			}
 		case "ctrl+k":
 			// Kill to end of line
+			e.saveSnapshot()
+			e.redoStack = nil
 			line := e.content[e.cursor]
 			if e.col < len(line) {
 				e.content[e.cursor] = line[:e.col]
@@ -205,6 +302,8 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			}
 		case "tab":
 			// Insert tab as spaces
+			e.saveSnapshot()
+			e.redoStack = nil
 			line := e.content[e.cursor]
 			e.content[e.cursor] = line[:e.col] + "    " + line[e.col:]
 			e.col += 4
@@ -212,6 +311,8 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 		default:
 			char := msg.String()
 			if len(char) == 1 && char[0] >= 32 {
+				e.saveSnapshot()
+				e.redoStack = nil
 				line := e.content[e.cursor]
 				e.content[e.cursor] = line[:e.col] + char + line[e.col:]
 				e.col++
