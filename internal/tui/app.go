@@ -61,6 +61,10 @@ type Model struct {
 	graphView      GraphView
 	tagBrowser     TagBrowser
 	helpOverlay    HelpOverlay
+	outline        Outline
+	bookmarks      Bookmarks
+	findReplace    FindReplace
+	vaultStats     VaultStats
 
 	// View mode scroll
 	viewScroll int
@@ -68,6 +72,7 @@ type Model struct {
 
 func NewModel(vaultPath string) (Model, error) {
 	cfg := config.LoadForVault(vaultPath)
+	ApplyTheme(cfg.Theme)
 
 	v, err := vault.NewVault(vaultPath)
 	if err != nil {
@@ -98,6 +103,10 @@ func NewModel(vaultPath string) (Model, error) {
 		graphView:      NewGraphView(v, idx),
 		tagBrowser:     NewTagBrowser(v),
 		helpOverlay:    NewHelpOverlay(),
+		outline:        NewOutline(),
+		bookmarks:      NewBookmarks(vaultPath),
+		findReplace:    NewFindReplace(),
+		vaultStats:     NewVaultStats(v, idx),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -127,6 +136,8 @@ func (m *Model) loadNote(relPath string) {
 	incoming := m.index.GetBacklinks(relPath)
 	outgoing := m.index.GetOutgoingLinks(relPath)
 	m.backlinks.SetLinks(incoming, outgoing)
+
+	m.bookmarks.AddRecent(relPath)
 }
 
 func (m Model) Init() tea.Cmd {
@@ -195,6 +206,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.vaultStats.IsActive() {
+			m.vaultStats, _ = m.vaultStats.Update(msg)
+			return m, nil
+		}
+
 		if m.graphView.IsActive() {
 			m.graphView, _ = m.graphView.Update(msg)
 			if nav := m.graphView.SelectedNote(); nav != "" {
@@ -211,6 +227,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.loadNote(nav)
 				m.sidebar.cursor = m.findFileIndex(nav)
 				m.setFocus(focusEditor)
+			}
+			return m, nil
+		}
+
+		if m.outline.IsActive() {
+			m.outline, _ = m.outline.Update(msg)
+			if jumpLine := m.outline.JumpToLine(); jumpLine >= 0 {
+				m.editor.cursor = jumpLine
+				m.editor.col = 0
+				if jumpLine < m.editor.scroll || jumpLine >= m.editor.scroll+m.editor.height-4 {
+					m.editor.scroll = jumpLine
+				}
+				m.setFocus(focusEditor)
+			}
+			return m, nil
+		}
+
+		if m.bookmarks.IsActive() {
+			m.bookmarks, _ = m.bookmarks.Update(msg)
+			if nav := m.bookmarks.SelectedNote(); nav != "" {
+				m.loadNote(nav)
+				m.sidebar.cursor = m.findFileIndex(nav)
+				m.setFocus(focusEditor)
+			}
+			return m, nil
+		}
+
+		if m.findReplace.IsActive() {
+			m.findReplace, _ = m.findReplace.Update(msg)
+			m.findReplace.UpdateMatches(m.editor.content)
+			if jumpLine := m.findReplace.GetJumpLine(); jumpLine >= 0 {
+				m.editor.cursor = jumpLine
+				m.editor.col = 0
+				if jumpLine < m.editor.scroll || jumpLine >= m.editor.scroll+m.editor.height-4 {
+					m.editor.scroll = jumpLine
+				}
+			}
+			if m.findReplace.ShouldReplace() {
+				m.doReplace()
+			}
+			if m.findReplace.ShouldReplaceAll() {
+				m.doReplaceAll()
 			}
 			return m, nil
 		}
@@ -317,6 +375,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+x":
 			m.commandPalette.SetSize(m.width, m.height)
 			m.commandPalette.Open()
+			return m, nil
+
+		case "ctrl+o":
+			m.outline.SetSize(m.width, m.height)
+			m.outline.Open(m.editor.GetContent())
+			return m, nil
+
+		case "ctrl+b":
+			m.bookmarks.SetSize(m.width, m.height)
+			m.bookmarks.Open()
+			return m, nil
+
+		case "ctrl+f":
+			m.findReplace.SetSize(m.width, m.height)
+			m.findReplace.OpenFind()
+			m.findReplace.UpdateMatches(m.editor.content)
+			return m, nil
+
+		case "ctrl+h":
+			m.findReplace.SetSize(m.width, m.height)
+			m.findReplace.OpenReplace()
+			m.findReplace.UpdateMatches(m.editor.content)
 			return m, nil
 
 		case "esc":
@@ -486,6 +566,33 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdShowHelp:
 		m.helpOverlay.SetSize(m.width, m.height)
 		m.helpOverlay.Toggle()
+	case CmdShowOutline:
+		m.outline.SetSize(m.width, m.height)
+		m.outline.Open(m.editor.GetContent())
+	case CmdShowBookmarks:
+		m.bookmarks.SetSize(m.width, m.height)
+		m.bookmarks.Open()
+	case CmdToggleBookmark:
+		if m.activeNote != "" {
+			m.bookmarks.ToggleStar(m.activeNote)
+			if m.bookmarks.IsStarred(m.activeNote) {
+				m.statusbar.SetMessage("Starred " + m.activeNote)
+			} else {
+				m.statusbar.SetMessage("Unstarred " + m.activeNote)
+			}
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
+	case CmdFindInFile:
+		m.findReplace.SetSize(m.width, m.height)
+		m.findReplace.OpenFind()
+		m.findReplace.UpdateMatches(m.editor.content)
+	case CmdReplaceInFile:
+		m.findReplace.SetSize(m.width, m.height)
+		m.findReplace.OpenReplace()
+		m.findReplace.UpdateMatches(m.editor.content)
+	case CmdShowStats:
+		m.vaultStats.SetSize(m.width, m.height)
+		m.vaultStats.Open()
 	case CmdQuit:
 		m.quitting = true
 		return m, tea.Quit
@@ -795,12 +902,28 @@ func (m Model) View() string {
 		overlay := m.settings.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.vaultStats.IsActive() {
+		overlay := m.vaultStats.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.graphView.IsActive() {
 		overlay := m.graphView.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.tagBrowser.IsActive() {
 		overlay := m.tagBrowser.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.outline.IsActive() {
+		overlay := m.outline.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.bookmarks.IsActive() {
+		overlay := m.bookmarks.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.findReplace.IsActive() {
+		overlay := m.findReplace.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.commandPalette.IsActive() {
@@ -934,6 +1057,53 @@ func (m Model) renderNewNoteOverlay() string {
 		Background(mantle)
 
 	return border.Render(b.String())
+}
+
+func (m *Model) doReplace() {
+	query := m.findReplace.GetFindQuery()
+	replacement := m.findReplace.GetReplaceText()
+	if query == "" {
+		return
+	}
+	// Replace first occurrence from current position
+	for i := m.editor.cursor; i < len(m.editor.content); i++ {
+		lower := strings.ToLower(m.editor.content[i])
+		idx := strings.Index(lower, strings.ToLower(query))
+		if idx >= 0 {
+			line := m.editor.content[i]
+			m.editor.content[i] = line[:idx] + replacement + line[idx+len(query):]
+			m.editor.modified = true
+			m.editor.countWords()
+			m.findReplace.UpdateMatches(m.editor.content)
+			return
+		}
+	}
+}
+
+func (m *Model) doReplaceAll() {
+	query := m.findReplace.GetFindQuery()
+	replacement := m.findReplace.GetReplaceText()
+	if query == "" {
+		return
+	}
+	count := 0
+	for i := range m.editor.content {
+		lower := strings.ToLower(m.editor.content[i])
+		lowerQuery := strings.ToLower(query)
+		for strings.Contains(lower, lowerQuery) {
+			idx := strings.Index(lower, lowerQuery)
+			line := m.editor.content[i]
+			m.editor.content[i] = line[:idx] + replacement + line[idx+len(query):]
+			lower = strings.ToLower(m.editor.content[i])
+			count++
+		}
+	}
+	if count > 0 {
+		m.editor.modified = true
+		m.editor.countWords()
+		m.findReplace.UpdateMatches(m.editor.content)
+		m.statusbar.SetMessage(fmt.Sprintf("Replaced %d occurrences", count))
+	}
 }
 
 func (m Model) overlayCenter(bg, overlay string) string {
