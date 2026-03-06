@@ -235,7 +235,7 @@ func (kb Kanban) View() string {
 
 	numCols := len(kb.columns)
 	// Column widths — divide inner width evenly, accounting for dividers
-	dividerWidth := 3 // " │ "
+	dividerWidth := 1 // "│" with padding handled by columns
 	totalDividers := (numCols - 1) * dividerWidth
 	colWidth := (innerWidth - totalDividers) / numCols
 	if colWidth < 18 {
@@ -252,28 +252,43 @@ func (kb Kanban) View() string {
 	colColors := []lipgloss.Color{blue, yellow, green}
 	colIcons := []string{"○", "◉", "●"}
 
-	// Render each column
-	renderedCols := make([]string, numCols)
-	for ci, col := range kb.columns {
-		renderedCols[ci] = kb.kbRenderColumn(ci, col, colWidth, visibleCards, colColors[ci], colIcons[ci])
+	// Render each column to a slice of lines
+	type colLines struct {
+		lines []string
 	}
-
-	// Join columns with dividers
-	var colStrings []string
-	for ci, rs := range renderedCols {
-		colStrings = append(colStrings, rs)
-		if ci < numCols-1 {
-			// Vertical divider matching column height
-			lines := strings.Split(rs, "\n")
-			divLines := make([]string, len(lines))
-			divStyle := lipgloss.NewStyle().Foreground(surface1)
-			for i := range divLines {
-				divLines[i] = divStyle.Render(" │ ")
-			}
-			colStrings = append(colStrings, strings.Join(divLines, "\n"))
+	allCols := make([]colLines, numCols)
+	maxHeight := 0
+	for ci, col := range kb.columns {
+		rendered := kb.kbRenderColumn(ci, col, colWidth, visibleCards, colColors[ci], colIcons[ci])
+		lines := strings.Split(rendered, "\n")
+		allCols[ci] = colLines{lines: lines}
+		if len(lines) > maxHeight {
+			maxHeight = len(lines)
 		}
 	}
-	board := lipgloss.JoinHorizontal(lipgloss.Top, colStrings...)
+
+	// Normalize all columns to the same height
+	colStyle := lipgloss.NewStyle().Width(colWidth)
+	for ci := range allCols {
+		for len(allCols[ci].lines) < maxHeight {
+			allCols[ci].lines = append(allCols[ci].lines, colStyle.Render(""))
+		}
+	}
+
+	// Build the board line by line for precise alignment
+	divStyle := lipgloss.NewStyle().Foreground(surface1)
+	var boardLines []string
+	for row := 0; row < maxHeight; row++ {
+		var line strings.Builder
+		for ci := 0; ci < numCols; ci++ {
+			if ci > 0 {
+				line.WriteString(divStyle.Render("│"))
+			}
+			line.WriteString(allCols[ci].lines[row])
+		}
+		boardLines = append(boardLines, line.String())
+	}
+	board := strings.Join(boardLines, "\n")
 
 	// Build final content
 	var b strings.Builder
@@ -318,7 +333,7 @@ func (kb Kanban) View() string {
 	footerStyle := lipgloss.NewStyle().Foreground(overlay0)
 	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
 	sepStyle := lipgloss.NewStyle().Foreground(surface1)
-	sep := sepStyle.Render(" │ ")
+	sep := sepStyle.Render(" | ")
 
 	b.WriteString("  ")
 	b.WriteString(keyStyle.Render("←→") + footerStyle.Render(" column") + sep)
@@ -332,8 +347,7 @@ func (kb Kanban) View() string {
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(mauve).
 		Padding(1, 2).
-		Width(boardWidth).
-		Background(mantle)
+		Width(boardWidth)
 
 	return border.Render(b.String())
 }
@@ -342,11 +356,12 @@ func (kb Kanban) View() string {
 // Internal helpers (kb-prefixed to avoid collisions)
 // ---------------------------------------------------------------------------
 
-// kbRenderColumn renders a single Kanban column as a string block.
+// kbRenderColumn renders a single Kanban column as a slice of fixed-width lines.
 func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCards int, colColor lipgloss.Color, icon string) string {
-	var b strings.Builder
-
+	lineStyle := lipgloss.NewStyle().Width(width)
 	isActiveCol := colIdx == kb.colCursor
+
+	var lines []string
 
 	// Column header
 	titleStyle := lipgloss.NewStyle().Foreground(colColor).Bold(true)
@@ -354,36 +369,31 @@ func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCard
 
 	indicator := "  "
 	if isActiveCol {
-		indicator = lipgloss.NewStyle().Foreground(colColor).Bold(true).Render("▸ ")
+		indicator = lipgloss.NewStyle().Foreground(colColor).Bold(true).Render("> ")
 	}
 
-	b.WriteString(indicator)
-	b.WriteString(lipgloss.NewStyle().Foreground(colColor).Render(icon))
-	b.WriteString(" ")
-	b.WriteString(titleStyle.Render(col.Title))
-	b.WriteString(countStyle.Render(" " + kbItoa(len(col.Cards))))
-	b.WriteString("\n")
+	headerContent := indicator +
+		lipgloss.NewStyle().Foreground(colColor).Render(icon) + " " +
+		titleStyle.Render(col.Title) +
+		countStyle.Render(" "+kbItoa(len(col.Cards)))
+	lines = append(lines, lineStyle.Render(headerContent))
 
 	// Column underline
 	underColor := surface1
 	if isActiveCol {
 		underColor = colColor
 	}
-	b.WriteString("  ")
-	b.WriteString(lipgloss.NewStyle().Foreground(underColor).Render(strings.Repeat("─", width-4)))
-	b.WriteString("\n")
+	underline := "  " + lipgloss.NewStyle().Foreground(underColor).Render(strings.Repeat("-", width-4))
+	lines = append(lines, lineStyle.Render(underline))
 
 	if len(col.Cards) == 0 {
 		emptyStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
-		b.WriteString("  ")
-		b.WriteString(emptyStyle.Render("No tasks"))
-		b.WriteString("\n")
-		// Pad remaining lines
+		lines = append(lines, lineStyle.Render("  "+emptyStyle.Render("No tasks")))
+		// Pad remaining
 		for i := 1; i < visibleCards*2; i++ {
-			b.WriteString("\n")
+			lines = append(lines, lineStyle.Render(""))
 		}
 	} else {
-		// Compute scroll offset for the active column
 		scrollOffset := 0
 		if isActiveCol && kb.cardCursor >= visibleCards {
 			scrollOffset = kb.cardCursor - visibleCards + 1
@@ -404,46 +414,28 @@ func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCard
 			sourceStr := kbTruncate(sourceName, width-8)
 
 			if isSelected {
-				// Selected card — highlighted background
-				checkIcon := "○"
+				checkIcon := "o"
 				checkColor := colColor
 				if card.Done {
-					checkIcon = "●"
+					checkIcon = "x"
 					checkColor = green
 				}
 
-				selBg := lipgloss.NewStyle().
-					Background(surface0).
-					Width(width - 2)
+				checkSt := lipgloss.NewStyle().Background(surface0).Foreground(checkColor).Bold(true)
+				textSt := lipgloss.NewStyle().Background(surface0).Foreground(text).Bold(true)
+				srcSt := lipgloss.NewStyle().Background(surface0).Foreground(overlay0)
+				bgStyle := lipgloss.NewStyle().Background(surface0).Width(width)
 
-				checkSt := lipgloss.NewStyle().
-					Background(surface0).
-					Foreground(checkColor).
-					Bold(true)
+				line1 := " " + checkSt.Render(checkIcon) + " " + textSt.Render(cardText)
+				line2 := "   " + srcSt.Render(sourceStr)
 
-				textSt := lipgloss.NewStyle().
-					Background(surface0).
-					Foreground(text).
-					Bold(true)
-
-				srcSt := lipgloss.NewStyle().
-					Background(surface0).
-					Foreground(overlay0)
-
-				_ = selBg
-				line1 := "  " + checkSt.Render(checkIcon) + " " + textSt.Render(cardText)
-				line2 := "    " + srcSt.Render(sourceStr)
-
-				b.WriteString(lipgloss.NewStyle().Background(surface0).Width(width-2).Render(line1))
-				b.WriteString("\n")
-				b.WriteString(lipgloss.NewStyle().Background(surface0).Width(width-2).Render(line2))
-				b.WriteString("\n")
+				lines = append(lines, bgStyle.Render(line1))
+				lines = append(lines, bgStyle.Render(line2))
 			} else {
-				// Normal card
-				checkIcon := "○"
+				checkIcon := "o"
 				checkColor := surface2
 				if card.Done {
-					checkIcon = "●"
+					checkIcon = "x"
 					checkColor = green
 				}
 
@@ -451,10 +443,11 @@ func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCard
 				textSt := lipgloss.NewStyle().Foreground(text)
 				srcSt := lipgloss.NewStyle().Foreground(surface2)
 
-				b.WriteString("  " + checkSt.Render(checkIcon) + " " + textSt.Render(cardText))
-				b.WriteString("\n")
-				b.WriteString("    " + srcSt.Render(sourceStr))
-				b.WriteString("\n")
+				line1 := " " + checkSt.Render(checkIcon) + " " + textSt.Render(cardText)
+				line2 := "   " + srcSt.Render(sourceStr)
+
+				lines = append(lines, lineStyle.Render(line1))
+				lines = append(lines, lineStyle.Render(line2))
 			}
 			linesUsed += 2
 		}
@@ -464,20 +457,19 @@ func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCard
 			remaining := len(col.Cards) - end
 			if remaining > 0 {
 				moreStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
-				b.WriteString("  " + moreStyle.Render("+" + kbItoa(remaining) + " more"))
-				b.WriteString("\n")
+				lines = append(lines, lineStyle.Render(" "+moreStyle.Render("+"+kbItoa(remaining)+" more")))
 				linesUsed++
 			}
 		}
 
 		// Pad remaining vertical space
 		for linesUsed < visibleCards*2 {
-			b.WriteString("\n")
+			lines = append(lines, lineStyle.Render(""))
 			linesUsed++
 		}
 	}
 
-	return lipgloss.NewStyle().Width(width).Render(b.String())
+	return strings.Join(lines, "\n")
 }
 
 // kbHasWipTag checks whether a task text contains a #wip or #doing tag.
