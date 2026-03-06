@@ -89,6 +89,7 @@ type Model struct {
 	plugins        PluginManager
 	contentSearch  ContentSearch
 	spellcheck     SpellChecker
+	snippets       *SnippetEngine
 
 	// View mode scroll
 	viewScroll int
@@ -156,6 +157,7 @@ func NewModel(vaultPath string) (Model, error) {
 		plugins:        NewPluginManager(),
 		contentSearch:  NewContentSearch(),
 		spellcheck:     NewSpellChecker(),
+		snippets:       NewSnippetEngine(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -873,6 +875,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case focusEditor:
 		if !m.viewMode {
 			m.editor, cmd = m.editor.Update(msg)
+			// Snippet expansion: when space is typed, check if word before cursor is a snippet trigger
+			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == " " {
+				m.tryExpandSnippet()
+			}
 			line, col := m.editor.GetCursor()
 			m.statusbar.SetCursor(line, col)
 			m.statusbar.SetWordCount(m.editor.GetWordCount())
@@ -1488,6 +1494,57 @@ func (m Model) saveCurrentNote() tea.Cmd {
 		path := filepath.Join(m.vault.Root, m.activeNote)
 		os.WriteFile(path, []byte(content), 0644)
 		return nil
+	}
+}
+
+// tryExpandSnippet checks if the word before the cursor (before the space just typed)
+// matches a snippet trigger and replaces it with the expanded content.
+func (m *Model) tryExpandSnippet() {
+	if m.snippets == nil {
+		return
+	}
+	line := m.editor.content[m.editor.cursor]
+	col := m.editor.col
+	// col points after the space. The word is before the space.
+	if col < 2 {
+		return
+	}
+	// Find the word before the space (col-1 is the space)
+	end := col - 1
+	start := end
+	for start > 0 && line[start-1] != ' ' && line[start-1] != '\t' {
+		start--
+	}
+	word := line[start:end]
+	if expanded, ok := m.snippets.TryExpand(word); ok {
+		m.editor.saveSnapshot()
+		// Remove the trigger word and the trailing space
+		before := line[:start]
+		after := line[col:]
+		// Handle multi-line expansion
+		expandedLines := strings.Split(expanded, "\n")
+		if len(expandedLines) == 1 {
+			m.editor.content[m.editor.cursor] = before + expandedLines[0] + after
+			m.editor.col = start + len(expandedLines[0])
+		} else {
+			// First line
+			m.editor.content[m.editor.cursor] = before + expandedLines[0]
+			// Middle lines
+			newContent := make([]string, 0, len(m.editor.content)+len(expandedLines)-1)
+			newContent = append(newContent, m.editor.content[:m.editor.cursor+1]...)
+			for i := 1; i < len(expandedLines)-1; i++ {
+				newContent = append(newContent, expandedLines[i])
+			}
+			// Last line
+			lastExp := expandedLines[len(expandedLines)-1]
+			newContent = append(newContent, lastExp+after)
+			newContent = append(newContent, m.editor.content[m.editor.cursor+1:]...)
+			m.editor.content = newContent
+			m.editor.cursor += len(expandedLines) - 1
+			m.editor.col = len(lastExp)
+		}
+		m.editor.modified = true
+		m.editor.countWords()
 	}
 }
 
