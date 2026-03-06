@@ -23,7 +23,7 @@ type splashDoneMsg struct{}
 type SplashModel struct {
 	width     int
 	height    int
-	progress  int // animation progress (0 to len(splashLogo)+extra)
+	tick      int
 	done      bool
 	vaultPath string
 	noteCount int
@@ -39,7 +39,7 @@ func NewSplashModel(vaultPath string, noteCount int) SplashModel {
 }
 
 func (s SplashModel) Init() tea.Cmd {
-	return tea.Tick(150*time.Millisecond, func(t time.Time) tea.Msg {
+	return tea.Tick(60*time.Millisecond, func(t time.Time) tea.Msg {
 		return splashTickMsg{}
 	})
 }
@@ -52,13 +52,12 @@ func (s SplashModel) Update(msg tea.Msg) (SplashModel, tea.Cmd) {
 		return s, nil
 
 	case splashTickMsg:
-		s.progress++
-		maxProgress := len(splashLogo) + 5 // logo lines + extra for subtitle
-		if s.progress >= maxProgress {
+		s.tick++
+		if s.tick >= 60 {
 			s.done = true
 			return s, nil
 		}
-		return s, tea.Tick(150*time.Millisecond, func(t time.Time) tea.Msg {
+		return s, tea.Tick(60*time.Millisecond, func(t time.Time) tea.Msg {
 			return splashTickMsg{}
 		})
 
@@ -82,93 +81,181 @@ func (s SplashModel) View() string {
 
 	var content strings.Builder
 
-	// Animated logo
-	logoStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	glowStyle := lipgloss.NewStyle().Foreground(lavender)
+	// ── Phase 1 (ticks 0-15): Logo typing effect ──────────────────────
+	logoCompleteStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	logoCursorStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+	logoDimStyle := lipgloss.NewStyle().Foreground(surface1)
 
-	for i, line := range splashLogo {
-		if i < s.progress {
-			if i == s.progress-1 {
-				content.WriteString(glowStyle.Render(line))
-			} else {
-				content.WriteString(logoStyle.Render(line))
+	if s.tick <= 15 {
+		// Each logo line gets ~2.5 ticks to type out.
+		// We distribute 16 ticks across 6 lines.
+		for i, line := range splashLogo {
+			runes := []rune(line)
+			lineLen := len(runes)
+
+			// Determine how many chars of this line are revealed.
+			// Line i starts revealing at tick = i*2.6 (approx).
+			lineStartTick := i * 16 / len(splashLogo)
+			ticksIntoLine := s.tick - lineStartTick
+			if ticksIntoLine < 0 {
+				// Line not started yet: render blank placeholder
+				content.WriteString(logoDimStyle.Render(strings.Repeat(" ", lineLen)))
+				content.WriteString("\n")
+				continue
 			}
+
+			// How far through the line are we?
+			ticksPerLine := 16/len(splashLogo) + 1
+			charsRevealed := ticksIntoLine * lineLen / ticksPerLine
+			if charsRevealed > lineLen {
+				charsRevealed = lineLen
+			}
+
+			if charsRevealed >= lineLen {
+				// Line fully typed
+				content.WriteString(logoCompleteStyle.Render(line))
+			} else if charsRevealed > 0 {
+				// Partially typed: completed portion + cursor char + dim remainder
+				completed := string(runes[:charsRevealed-1])
+				cursor := string(runes[charsRevealed-1 : charsRevealed])
+				rest := string(runes[charsRevealed:])
+				content.WriteString(logoCompleteStyle.Render(completed))
+				content.WriteString(logoCursorStyle.Render(cursor))
+				content.WriteString(logoDimStyle.Render(rest))
+			} else {
+				content.WriteString(logoDimStyle.Render(string(runes)))
+			}
+			content.WriteString("\n")
+		}
+	} else {
+		// After phase 1 the full logo is always shown
+		for _, line := range splashLogo {
+			content.WriteString(logoCompleteStyle.Render(line))
 			content.WriteString("\n")
 		}
 	}
 
-	// Tagline (appears after logo)
-	if s.progress > len(splashLogo) {
-		content.WriteString("\n")
-		tagline := lipgloss.NewStyle().
-			Foreground(overlay0).
-			Italic(true).
-			Render("  Terminal Knowledge Manager — Obsidian Compatible")
-		content.WriteString(tagline)
-		content.WriteString("\n")
-	}
-
-	// Version + vault info (appears after tagline)
-	if s.progress > len(splashLogo)+1 {
-		content.WriteString("\n")
-		version := lipgloss.NewStyle().
-			Foreground(blue).
-			Render("  v0.1.0")
-		content.WriteString(version)
-		content.WriteString("\n")
-	}
-
-	if s.progress > len(splashLogo)+2 {
-		vaultInfo := lipgloss.NewStyle().
-			Foreground(overlay0).
-			Render("  Vault: " + s.vaultPath)
-		content.WriteString(vaultInfo)
+	// ── Phase 2 (ticks 16-25): Horizontal rule + tagline ─────────────
+	if s.tick >= 16 {
 		content.WriteString("\n")
 
-		noteInfo := lipgloss.NewStyle().
-			Foreground(overlay0).
-			Render("  Notes: " + itoa(s.noteCount))
-		content.WriteString(noteInfo)
-		content.WriteString("\n")
-	}
-
-	// Loading / ready message
-	if s.progress > len(splashLogo)+3 {
-		content.WriteString("\n")
-		if s.done {
-			ready := lipgloss.NewStyle().
-				Foreground(green).
-				Bold(true).
-				Render("  Ready!")
-			content.WriteString(ready)
-		} else {
-			loading := lipgloss.NewStyle().
-				Foreground(yellow).
-				Render("  Loading...")
-			content.WriteString(loading)
+		// Horizontal rule drawing itself
+		maxRuleLen := 50
+		ruleProgress := s.tick - 16
+		ruleLen := ruleProgress * maxRuleLen / 5
+		if ruleLen > maxRuleLen {
+			ruleLen = maxRuleLen
 		}
+		rule := strings.Repeat("\u2500", ruleLen)
+		ruleStyle := lipgloss.NewStyle().Foreground(surface2)
+		content.WriteString(ruleStyle.Render(rule))
+		content.WriteString("\n")
+
+		// Tagline fading in word by word
+		if s.tick >= 19 {
+			taglineWords := []string{"Terminal", "Knowledge", "Manager", "\u2014", "Obsidian", "Compatible"}
+			wordsToShow := (s.tick - 19) + 1
+			if wordsToShow > len(taglineWords) {
+				wordsToShow = len(taglineWords)
+			}
+			visibleWords := strings.Join(taglineWords[:wordsToShow], " ")
+
+			taglineStyle := lipgloss.NewStyle().Foreground(overlay0).Italic(true)
+			content.WriteString(taglineStyle.Render("  " + visibleWords))
+			content.WriteString("\n")
+		}
+	}
+
+	// ── Phase 3 (ticks 26-35): Progress bar ──────────────────────────
+	if s.tick >= 26 {
+		content.WriteString("\n")
+
+		initStyle := lipgloss.NewStyle().Foreground(yellow)
+		content.WriteString(initStyle.Render("  Initializing vault..."))
+		content.WriteString("\n")
+
+		barWidth := 40
+		progress := s.tick - 26
+		filled := progress * barWidth / 10
+		if filled > barWidth {
+			filled = barWidth
+		}
+
+		// Cycle through colors for the filled portion
+		barColors := []lipgloss.Color{mauve, blue, green, mauve, blue, green}
+		var bar strings.Builder
+		bar.WriteString("  ")
+		for j := 0; j < barWidth; j++ {
+			if j < filled {
+				colorIdx := j * len(barColors) / barWidth
+				blockStyle := lipgloss.NewStyle().Foreground(barColors[colorIdx])
+				bar.WriteString(blockStyle.Render("\u2588"))
+			} else {
+				dimBlock := lipgloss.NewStyle().Foreground(surface1)
+				bar.WriteString(dimBlock.Render("\u2591"))
+			}
+		}
+
+		// Percentage
+		pct := filled * 100 / barWidth
+		pctStr := " " + itoa(pct) + "%"
+		pctStyle := lipgloss.NewStyle().Foreground(surface2)
+		bar.WriteString(pctStyle.Render(pctStr))
+
+		content.WriteString(bar.String())
 		content.WriteString("\n")
 	}
 
-	// Press any key hint
-	if s.progress > len(splashLogo)+4 {
+	// ── Phase 4 (ticks 36-45): Vault info ────────────────────────────
+	if s.tick >= 36 {
 		content.WriteString("\n")
-		hint := lipgloss.NewStyle().
-			Foreground(surface2).
-			Render("  Press any key to continue")
-		content.WriteString(hint)
+
+		labelStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+		valueStyle := lipgloss.NewStyle().Foreground(overlay0)
+		prefixStyle := lipgloss.NewStyle().Foreground(green)
+
+		type infoLine struct {
+			label string
+			value string
+		}
+		lines := []infoLine{
+			{"Vault", s.vaultPath},
+			{"Notes", itoa(s.noteCount)},
+			{"Version", "v0.1.0"},
+		}
+
+		linesRevealed := s.tick - 36 + 1
+		if linesRevealed > len(lines) {
+			linesRevealed = len(lines)
+		}
+
+		for i := 0; i < linesRevealed; i++ {
+			content.WriteString(prefixStyle.Render("  > "))
+			content.WriteString(labelStyle.Render(lines[i].label + ": "))
+			content.WriteString(valueStyle.Render(lines[i].value))
+			content.WriteString("\n")
+		}
 	}
 
-	// Center the entire block vertically
+	// ── Phase 5 (ticks 46-55): Ready + press any key ─────────────────
+	if s.tick >= 46 {
+		content.WriteString("\n")
+		readyStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+		content.WriteString(readyStyle.Render("  \u2714 Ready!"))
+		content.WriteString("\n")
+
+		if s.tick >= 50 {
+			hintStyle := lipgloss.NewStyle().Foreground(surface2)
+			content.WriteString("\n")
+			content.WriteString(hintStyle.Render("  Press any key to continue"))
+		}
+	}
+
+	// ── Phase 6 (tick 55+): Auto-dismiss ─────────────────────────────
+	// Handled in Update; any keypress also dismisses at any time.
+
 	contentStr := content.String()
-	contentLines := strings.Split(contentStr, "\n")
-	totalLines := len(contentLines)
-	topPadding := (s.height - totalLines) / 3
-	if topPadding < 1 {
-		topPadding = 1
-	}
 
-	// Center horizontally by using lipgloss Place
 	centered := lipgloss.Place(
 		s.width,
 		s.height,
