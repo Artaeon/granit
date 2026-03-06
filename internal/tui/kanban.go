@@ -44,10 +44,10 @@ type Kanban struct {
 	dragCard *KanbanCard
 
 	// Toggle result — consumed by the host after Update
-	pendingToggle    bool
-	toggleNotePath   string
-	toggleLine       int
-	toggleNewDone    bool
+	pendingToggle  bool
+	toggleNotePath string
+	toggleLine     int
+	toggleNewDone  bool
 }
 
 // NewKanban creates a new Kanban overlay with the three default columns.
@@ -216,55 +216,73 @@ func (kb Kanban) Update(msg tea.Msg) (Kanban, tea.Cmd) {
 func (kb Kanban) View() string {
 	// Determine board dimensions.
 	boardWidth := kb.width * 3 / 4
-	if boardWidth < 60 {
-		boardWidth = 60
+	if boardWidth < 70 {
+		boardWidth = 70
 	}
-	if boardWidth > 120 {
-		boardWidth = 120
+	if boardWidth > 130 {
+		boardWidth = 130
 	}
 	boardHeight := kb.height * 3 / 4
 	if boardHeight < 16 {
 		boardHeight = 16
 	}
 
-	// Column width: divide evenly, minus padding/dividers.
+	// Inner content width (subtract border + padding: 2 border + 4 padding = 6)
+	innerWidth := boardWidth - 6
+	if innerWidth < 60 {
+		innerWidth = 60
+	}
+
 	numCols := len(kb.columns)
-	colWidth := (boardWidth - 6 - (numCols - 1)) / numCols // 6 = border+padding
-	if colWidth < 16 {
-		colWidth = 16
+	// Column widths — divide inner width evenly, accounting for dividers
+	dividerWidth := 3 // " │ "
+	totalDividers := (numCols - 1) * dividerWidth
+	colWidth := (innerWidth - totalDividers) / numCols
+	if colWidth < 18 {
+		colWidth = 18
 	}
 
-	// Visible card slots per column (subtract header, footer, border space).
-	visibleCards := boardHeight - 10
-	if visibleCards < 3 {
-		visibleCards = 3
+	// Visible card slots per column
+	visibleCards := (boardHeight - 10) / 2 // each card takes 2 lines
+	if visibleCards < 2 {
+		visibleCards = 2
 	}
 
-	// Render each column.
+	// Column colors
+	colColors := []lipgloss.Color{blue, yellow, green}
+	colIcons := []string{"○", "◉", "●"}
+
+	// Render each column
 	renderedCols := make([]string, numCols)
 	for ci, col := range kb.columns {
-		renderedCols[ci] = kb.kbRenderColumn(ci, col, colWidth, visibleCards)
+		renderedCols[ci] = kb.kbRenderColumn(ci, col, colWidth, visibleCards, colColors[ci], colIcons[ci])
 	}
 
-	// Build the columns joined with thin vertical dividers.
+	// Join columns with dividers
 	var colStrings []string
 	for ci, rs := range renderedCols {
 		colStrings = append(colStrings, rs)
 		if ci < numCols-1 {
-			// Build a vertical divider as tall as the column.
+			// Vertical divider matching column height
 			lines := strings.Split(rs, "\n")
 			divLines := make([]string, len(lines))
+			divStyle := lipgloss.NewStyle().Foreground(surface1)
 			for i := range divLines {
-				divLines[i] = lipgloss.NewStyle().Foreground(surface1).Render(" │ ")
+				divLines[i] = divStyle.Render(" │ ")
 			}
 			colStrings = append(colStrings, strings.Join(divLines, "\n"))
 		}
 	}
 	board := lipgloss.JoinHorizontal(lipgloss.Top, colStrings...)
 
-	// Title
+	// Build final content
 	var b strings.Builder
-	titleText := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("Kanban Board")
+
+	// Title bar
+	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	b.WriteString(titleStyle.Render("  Kanban Board"))
+
+	// Stats
 	totalCards := len(kb.allCards)
 	doneCount := 0
 	for _, c := range kb.allCards {
@@ -272,26 +290,43 @@ func (kb Kanban) View() string {
 			doneCount++
 		}
 	}
-	statsText := lipgloss.NewStyle().Foreground(overlay0).Render(
-		" (" + kbItoa(totalCards) + " tasks, " + kbItoa(doneCount) + " done)")
-	b.WriteString(titleText + statsText)
-	b.WriteString("\n")
-	ruleWidth := boardWidth - 6
-	if ruleWidth < 10 {
-		ruleWidth = 10
+	statsStyle := lipgloss.NewStyle().Foreground(overlay0)
+	b.WriteString(statsStyle.Render("  " + kbItoa(totalCards) + " tasks, " + kbItoa(doneCount) + " done"))
+
+	// Progress indicator
+	if totalCards > 0 {
+		pct := doneCount * 100 / totalCards
+		pctStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+		b.WriteString(pctStyle.Render("  " + kbItoa(pct) + "%"))
 	}
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(
-		strings.Repeat("─", ruleWidth)))
+	b.WriteString("\n")
+
+	// Top rule
+	ruleStyle := lipgloss.NewStyle().Foreground(surface1)
+	b.WriteString(ruleStyle.Render("  " + strings.Repeat("─", innerWidth-4)))
 	b.WriteString("\n\n")
 
+	// Board
 	b.WriteString(board)
+	b.WriteString("\n\n")
 
+	// Bottom rule
+	b.WriteString(ruleStyle.Render("  " + strings.Repeat("─", innerWidth-4)))
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(
-		strings.Repeat("─", ruleWidth)))
-	b.WriteString("\n")
-	footer := "←→: column  ↑↓: card  Enter/m: move →  M: move ←  x: toggle  Esc: close"
-	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(footer))
+
+	// Footer with keybinds
+	footerStyle := lipgloss.NewStyle().Foreground(overlay0)
+	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+	sepStyle := lipgloss.NewStyle().Foreground(surface1)
+	sep := sepStyle.Render(" │ ")
+
+	b.WriteString("  ")
+	b.WriteString(keyStyle.Render("←→") + footerStyle.Render(" column") + sep)
+	b.WriteString(keyStyle.Render("↑↓") + footerStyle.Render(" card") + sep)
+	b.WriteString(keyStyle.Render("m") + footerStyle.Render(" move →") + sep)
+	b.WriteString(keyStyle.Render("M") + footerStyle.Render(" move ←") + sep)
+	b.WriteString(keyStyle.Render("x") + footerStyle.Render(" toggle") + sep)
+	b.WriteString(keyStyle.Render("Esc") + footerStyle.Render(" close"))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -308,47 +343,47 @@ func (kb Kanban) View() string {
 // ---------------------------------------------------------------------------
 
 // kbRenderColumn renders a single Kanban column as a string block.
-func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCards int) string {
+func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCards int, colColor lipgloss.Color, icon string) string {
 	var b strings.Builder
 
-	// Column header with colored title.
-	headerColor := blue
-	switch colIdx {
-	case 0:
-		headerColor = blue
-	case 1:
-		headerColor = yellow
-	case 2:
-		headerColor = green
-	}
-
 	isActiveCol := colIdx == kb.colCursor
-	titleStyle := lipgloss.NewStyle().Foreground(headerColor).Bold(true)
-	countStr := lipgloss.NewStyle().Foreground(overlay0).Render(
-		" [" + kbItoa(len(col.Cards)) + "]")
 
-	colIndicator := "  "
+	// Column header
+	titleStyle := lipgloss.NewStyle().Foreground(colColor).Bold(true)
+	countStyle := lipgloss.NewStyle().Foreground(surface2)
+
+	indicator := "  "
 	if isActiveCol {
-		colIndicator = lipgloss.NewStyle().Foreground(headerColor).Render("▸ ")
+		indicator = lipgloss.NewStyle().Foreground(colColor).Bold(true).Render("▸ ")
 	}
 
-	b.WriteString(colIndicator + titleStyle.Render(col.Title) + countStr)
+	b.WriteString(indicator)
+	b.WriteString(lipgloss.NewStyle().Foreground(colColor).Render(icon))
+	b.WriteString(" ")
+	b.WriteString(titleStyle.Render(col.Title))
+	b.WriteString(countStyle.Render(" " + kbItoa(len(col.Cards))))
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(
-		"  " + strings.Repeat("─", width-4)))
+
+	// Column underline
+	underColor := surface1
+	if isActiveCol {
+		underColor = colColor
+	}
+	b.WriteString("  ")
+	b.WriteString(lipgloss.NewStyle().Foreground(underColor).Render(strings.Repeat("─", width-4)))
 	b.WriteString("\n")
 
 	if len(col.Cards) == 0 {
-		emptyMsg := lipgloss.NewStyle().Foreground(overlay0).Render("  (empty)")
-		b.WriteString(emptyMsg)
+		emptyStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
+		b.WriteString("  ")
+		b.WriteString(emptyStyle.Render("No tasks"))
 		b.WriteString("\n")
-		// Pad remaining lines.
-		for i := 1; i < visibleCards; i++ {
-			b.WriteString(strings.Repeat(" ", width))
+		// Pad remaining lines
+		for i := 1; i < visibleCards*2; i++ {
 			b.WriteString("\n")
 		}
 	} else {
-		// Compute scroll offset for the active column.
+		// Compute scroll offset for the active column
 		scrollOffset := 0
 		if isActiveCol && kb.cardCursor >= visibleCards {
 			scrollOffset = kb.cardCursor - visibleCards + 1
@@ -364,55 +399,79 @@ func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCard
 			card := col.Cards[i]
 			isSelected := isActiveCol && i == kb.cardCursor
 
-			// Card text.
 			cardText := kbTruncate(card.Text, width-6)
-
-			// Source note (show just the file name).
 			sourceName := kbBaseName(card.Source)
-			sourceStr := kbTruncate(sourceName, width-6)
+			sourceStr := kbTruncate(sourceName, width-8)
 
 			if isSelected {
-				selectedStyle := lipgloss.NewStyle().
+				// Selected card — highlighted background
+				checkIcon := "○"
+				checkColor := colColor
+				if card.Done {
+					checkIcon = "●"
+					checkColor = green
+				}
+
+				selBg := lipgloss.NewStyle().
 					Background(surface0).
-					Foreground(peach).
-					Bold(true).
 					Width(width - 2)
 
-				// Checkbox prefix.
-				check := "○ "
-				if card.Done {
-					check = "● "
-				}
-
-				b.WriteString(selectedStyle.Render("  " + check + cardText))
-				b.WriteString("\n")
-				b.WriteString(lipgloss.NewStyle().
+				checkSt := lipgloss.NewStyle().
 					Background(surface0).
-					Foreground(overlay0).
-					Width(width - 2).
-					Render("    " + sourceStr))
+					Foreground(checkColor).
+					Bold(true)
+
+				textSt := lipgloss.NewStyle().
+					Background(surface0).
+					Foreground(text).
+					Bold(true)
+
+				srcSt := lipgloss.NewStyle().
+					Background(surface0).
+					Foreground(overlay0)
+
+				_ = selBg
+				line1 := "  " + checkSt.Render(checkIcon) + " " + textSt.Render(cardText)
+				line2 := "    " + srcSt.Render(sourceStr)
+
+				b.WriteString(lipgloss.NewStyle().Background(surface0).Width(width-2).Render(line1))
+				b.WriteString("\n")
+				b.WriteString(lipgloss.NewStyle().Background(surface0).Width(width-2).Render(line2))
 				b.WriteString("\n")
 			} else {
-				checkStyle := lipgloss.NewStyle().Foreground(yellow)
+				// Normal card
+				checkIcon := "○"
+				checkColor := surface2
 				if card.Done {
-					checkStyle = lipgloss.NewStyle().Foreground(green)
-				}
-				check := checkStyle.Render("○")
-				if card.Done {
-					check = checkStyle.Render("●")
+					checkIcon = "●"
+					checkColor = green
 				}
 
-				b.WriteString("  " + check + " " + lipgloss.NewStyle().Foreground(text).Render(cardText))
+				checkSt := lipgloss.NewStyle().Foreground(checkColor)
+				textSt := lipgloss.NewStyle().Foreground(text)
+				srcSt := lipgloss.NewStyle().Foreground(surface2)
+
+				b.WriteString("  " + checkSt.Render(checkIcon) + " " + textSt.Render(cardText))
 				b.WriteString("\n")
-				b.WriteString("    " + lipgloss.NewStyle().Foreground(overlay0).Render(sourceStr))
+				b.WriteString("    " + srcSt.Render(sourceStr))
 				b.WriteString("\n")
 			}
 			linesUsed += 2
 		}
 
-		// Pad any remaining vertical space.
+		// Scroll indicator
+		if len(col.Cards) > visibleCards {
+			remaining := len(col.Cards) - end
+			if remaining > 0 {
+				moreStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
+				b.WriteString("  " + moreStyle.Render("+" + kbItoa(remaining) + " more"))
+				b.WriteString("\n")
+				linesUsed++
+			}
+		}
+
+		// Pad remaining vertical space
 		for linesUsed < visibleCards*2 {
-			b.WriteString(strings.Repeat(" ", width))
 			b.WriteString("\n")
 			linesUsed++
 		}
@@ -455,18 +514,15 @@ func kbTruncate(s string, maxLen int) string {
 
 // kbBaseName returns the file name from a path, without the .md extension.
 func kbBaseName(path string) string {
-	// Find last slash.
 	idx := strings.LastIndex(path, "/")
 	name := path
 	if idx >= 0 {
 		name = path[idx+1:]
 	}
-	// Also handle backslash for Windows-style paths.
 	idx = strings.LastIndex(name, "\\")
 	if idx >= 0 {
 		name = name[idx+1:]
 	}
-	// Strip .md extension.
 	if strings.HasSuffix(strings.ToLower(name), ".md") {
 		name = name[:len(name)-3]
 	}
@@ -488,7 +544,6 @@ func kbItoa(n int) string {
 		digits = append(digits, byte('0'+n%10))
 		n /= 10
 	}
-	// Reverse.
 	for i, j := 0, len(digits)-1; i < j; i, j = i+1, j-1 {
 		digits[i], digits[j] = digits[j], digits[i]
 	}
@@ -526,21 +581,15 @@ func (kb *Kanban) kbMoveCardForward() {
 		return
 	}
 	col := &kb.columns[kb.colCursor]
-	if len(col.Cards) == 0 {
-		return
-	}
-	if kb.cardCursor >= len(col.Cards) {
+	if len(col.Cards) == 0 || kb.cardCursor >= len(col.Cards) {
 		return
 	}
 
 	card := col.Cards[kb.cardCursor]
-	// Remove from current column.
 	col.Cards = append(col.Cards[:kb.cardCursor], col.Cards[kb.cardCursor+1:]...)
-	// Add to next column.
 	next := &kb.columns[kb.colCursor+1]
 	next.Cards = append(next.Cards, card)
 
-	// Clamp cursor in current column.
 	if kb.cardCursor >= len(col.Cards) && kb.cardCursor > 0 {
 		kb.cardCursor--
 	}
@@ -552,21 +601,15 @@ func (kb *Kanban) kbMoveCardBackward() {
 		return
 	}
 	col := &kb.columns[kb.colCursor]
-	if len(col.Cards) == 0 {
-		return
-	}
-	if kb.cardCursor >= len(col.Cards) {
+	if len(col.Cards) == 0 || kb.cardCursor >= len(col.Cards) {
 		return
 	}
 
 	card := col.Cards[kb.cardCursor]
-	// Remove from current column.
 	col.Cards = append(col.Cards[:kb.cardCursor], col.Cards[kb.cardCursor+1:]...)
-	// Add to previous column.
 	prev := &kb.columns[kb.colCursor-1]
 	prev.Cards = append(prev.Cards, card)
 
-	// Clamp cursor in current column.
 	if kb.cardCursor >= len(col.Cards) && kb.cardCursor > 0 {
 		kb.cardCursor--
 	}
@@ -583,7 +626,6 @@ func (kb *Kanban) kbToggleDone() {
 	card := &col.Cards[kb.cardCursor]
 	card.Done = !card.Done
 
-	// Record toggle for the host to pick up.
 	kb.pendingToggle = true
 	kb.toggleNotePath = card.Source
 	kb.toggleLine = card.Line
