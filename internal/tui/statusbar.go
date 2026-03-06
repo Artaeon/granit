@@ -63,6 +63,7 @@ func (sb StatusBar) View() string {
 	modeColors := map[string]lipgloss.Color{
 		"FILES":   green,
 		"EDIT":    mauve,
+		"VIEW":    green,
 		"LINKS":   blue,
 		"SEARCH":  yellow,
 		"COMMAND": peach,
@@ -116,12 +117,12 @@ func (sb StatusBar) View() string {
 	// Help bar
 	helpItems := []struct{ key, desc string }{
 		{"Tab", "panel"},
-		{"F1", "files"},
-		{"F2", "edit"},
-		{"F3", "links"},
 		{"Ctrl+P", "search"},
 		{"Ctrl+N", "new"},
 		{"Ctrl+S", "save"},
+		{"Ctrl+F", "find"},
+		{"Ctrl+X", "cmds"},
+		{"F5", "help"},
 		{"Ctrl+Q", "quit"},
 	}
 
