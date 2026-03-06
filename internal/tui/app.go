@@ -95,6 +95,14 @@ type Model struct {
 	splitPane      SplitPane
 	luaEngine      *LuaEngine
 	luaOverlay     LuaOverlay
+	flashcards     Flashcards
+	quizMode       QuizMode
+	learnDash      LearnDashboard
+	aiChat         AIChat
+	composer       Composer
+	knowledgeGraph KnowledgeGraph
+	autoLinker     *AutoLinker
+	tfidfIndex     *TFIDFIndex
 
 	// View mode scroll
 	viewScroll int
@@ -168,6 +176,13 @@ func NewModel(vaultPath string) (Model, error) {
 		splitPane:      NewSplitPane(),
 		luaEngine:      NewLuaEngine(vaultPath),
 		luaOverlay:     NewLuaOverlay(),
+		flashcards:     NewFlashcards(vaultPath),
+		quizMode:       NewQuizMode(),
+		learnDash:      NewLearnDashboard(vaultPath),
+		aiChat:         NewAIChat(),
+		composer:       NewComposer(),
+		knowledgeGraph: NewKnowledgeGraph(),
+		autoLinker:     NewAutoLinker(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -338,6 +353,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.publisher.IsActive() {
 			var cmd tea.Cmd
 			m.publisher, cmd = m.publisher.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case aiChatResultMsg, aiChatTickMsg:
+		if m.aiChat.IsActive() {
+			var cmd tea.Cmd
+			m.aiChat, cmd = m.aiChat.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case composerResultMsg, composerTickMsg:
+		if m.composer.IsActive() {
+			var cmd tea.Cmd
+			m.composer, cmd = m.composer.Update(msg)
+			// Check if user accepted a generated note
+			if !m.composer.IsActive() {
+				if title, content, ok := m.composer.GetResult(); ok {
+					name := title
+					if !strings.HasSuffix(name, ".md") {
+						name += ".md"
+					}
+					path := filepath.Join(m.vault.Root, name)
+					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
+						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+							m.vault.Scan()
+							m.index = vault.NewIndex(m.vault)
+							m.index.Build()
+							paths := m.vault.SortedPaths()
+							m.sidebar.SetFiles(paths)
+							m.autocomplete.SetNotes(paths)
+							m.statusbar.SetNoteCount(m.vault.NoteCount())
+							m.loadNote(name)
+							m.sidebar.cursor = m.findFileIndex(name)
+							m.setFocus(focusEditor)
+							m.statusbar.SetMessage("AI note created: " + name)
+						}
+					}
+					return m, m.clearMessageAfter(3 * time.Second)
+				}
+			}
 			return m, cmd
 		}
 		return m, nil
@@ -656,6 +713,74 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.splitPane.IsActive() {
 			var cmd tea.Cmd
 			m.splitPane, cmd = m.splitPane.Update(msg)
+			return m, cmd
+		}
+
+		if m.flashcards.IsActive() {
+			var cmd tea.Cmd
+			m.flashcards, cmd = m.flashcards.Update(msg)
+			if !m.flashcards.IsActive() {
+				// Record review activity
+				m.learnDash.RecordReview(time.Now().Format("2006-01-02"))
+			}
+			return m, cmd
+		}
+
+		if m.quizMode.IsActive() {
+			var cmd tea.Cmd
+			m.quizMode, cmd = m.quizMode.Update(msg)
+			if !m.quizMode.IsActive() {
+				m.learnDash.RecordReview(time.Now().Format("2006-01-02"))
+			}
+			return m, cmd
+		}
+
+		if m.learnDash.IsActive() {
+			var cmd tea.Cmd
+			m.learnDash, cmd = m.learnDash.Update(msg)
+			return m, cmd
+		}
+
+		if m.aiChat.IsActive() {
+			var cmd tea.Cmd
+			m.aiChat, cmd = m.aiChat.Update(msg)
+			return m, cmd
+		}
+
+		if m.composer.IsActive() {
+			var cmd tea.Cmd
+			m.composer, cmd = m.composer.Update(msg)
+			if !m.composer.IsActive() {
+				if title, content, ok := m.composer.GetResult(); ok {
+					name := title
+					if !strings.HasSuffix(name, ".md") {
+						name += ".md"
+					}
+					path := filepath.Join(m.vault.Root, name)
+					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
+						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+							m.vault.Scan()
+							m.index = vault.NewIndex(m.vault)
+							m.index.Build()
+							paths := m.vault.SortedPaths()
+							m.sidebar.SetFiles(paths)
+							m.autocomplete.SetNotes(paths)
+							m.statusbar.SetNoteCount(m.vault.NoteCount())
+							m.loadNote(name)
+							m.sidebar.cursor = m.findFileIndex(name)
+							m.setFocus(focusEditor)
+							m.statusbar.SetMessage("AI note created: " + name)
+							return m, m.clearMessageAfter(3 * time.Second)
+						}
+					}
+				}
+			}
+			return m, cmd
+		}
+
+		if m.knowledgeGraph.IsActive() {
+			var cmd tea.Cmd
+			m.knowledgeGraph, cmd = m.knowledgeGraph.Update(msg)
 			return m, cmd
 		}
 
@@ -1215,6 +1340,96 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdRunLuaScript:
 		m.luaOverlay.SetSize(m.width, m.height)
 		m.luaOverlay.Open(m.activeNote, m.editor.GetContent(), nil)
+	case CmdFlashcards:
+		m.flashcards.SetSize(m.width, m.height)
+		noteContents := make(map[string]string)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				noteContents[p] = note.Content
+			}
+		}
+		m.flashcards.LoadCards(noteContents)
+		m.flashcards.Open()
+	case CmdQuizMode:
+		m.quizMode.SetSize(m.width, m.height)
+		noteContents := make(map[string]string)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				noteContents[p] = note.Content
+			}
+		}
+		m.quizMode.SetNoteContents(noteContents)
+		m.quizMode.Open()
+	case CmdLearnDashboard:
+		m.learnDash.SetSize(m.width, m.height)
+		// Update mastery stats from flashcards
+		fc := &m.flashcards
+		total, due, newC, mastered := fc.GetStats()
+		m.learnDash.SetCardStats(total, due, newC, mastered)
+		m.learnDash.Open()
+	case CmdAIChat:
+		m.aiChat.SetSize(m.width, m.height)
+		m.aiChat.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+		noteContents := make(map[string]string)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				noteContents[p] = note.Content
+			}
+		}
+		m.aiChat.SetNotes(noteContents)
+		m.aiChat.Open()
+	case CmdComposer:
+		m.composer.SetSize(m.width, m.height)
+		m.composer.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+		m.composer.SetExistingNotes(m.vault.SortedPaths())
+		m.composer.Open()
+	case CmdKnowledgeGraph:
+		m.knowledgeGraph.SetSize(m.width, m.height)
+		allNotes := m.vault.SortedPaths()
+		noteLinks := make(map[string][]string)
+		backlinks := make(map[string][]string)
+		for _, p := range allNotes {
+			noteLinks[p] = m.index.GetOutgoingLinks(p)
+			backlinks[p] = m.index.GetBacklinks(p)
+		}
+		m.knowledgeGraph.SetGraphData(allNotes, noteLinks, backlinks)
+		m.knowledgeGraph.Open()
+	case CmdAutoLink:
+		if m.activeNote != "" {
+			m.autoLinker.SetNotes(m.vault.SortedPaths())
+			suggestions := m.autoLinker.FindUnlinkedMentions(m.editor.GetContent(), m.activeNote)
+			if len(suggestions) > 0 {
+				m.statusbar.SetMessage(fmt.Sprintf("Found %d unlinked mentions", len(suggestions)))
+				// Apply first suggestion as demo, or show count
+			} else {
+				m.statusbar.SetMessage("No unlinked mentions found")
+			}
+			return m, m.clearMessageAfter(3 * time.Second)
+		}
+	case CmdSimilarNotes:
+		if m.activeNote != "" {
+			// Build TF-IDF index if needed
+			if m.tfidfIndex == nil {
+				noteContents := make(map[string]string)
+				for _, p := range m.vault.SortedPaths() {
+					if note := m.vault.GetNote(p); note != nil {
+						noteContents[p] = note.Content
+					}
+				}
+				m.tfidfIndex = BuildTFIDF(noteContents)
+			}
+			similar := FindSimilar(m.tfidfIndex, m.activeNote, 5)
+			if len(similar) > 0 {
+				names := make([]string, len(similar))
+				for i, s := range similar {
+					names[i] = fmt.Sprintf("%s (%.0f%%)", strings.TrimSuffix(filepath.Base(s.Path), ".md"), s.Score*100)
+				}
+				m.statusbar.SetMessage("Similar: " + strings.Join(names, ", "))
+			} else {
+				m.statusbar.SetMessage("No similar notes found")
+			}
+			return m, m.clearMessageAfter(5 * time.Second)
+		}
 	case CmdImportObsidian:
 		imported := config.ImportObsidianConfig(m.vault.Root)
 		if imported != nil {
@@ -1481,6 +1696,12 @@ func (m *Model) updateLayout() {
 	m.publisher.SetSize(m.width, m.height)
 	m.splitPane.SetSize(m.width, m.height)
 	m.luaOverlay.SetSize(m.width, m.height)
+	m.flashcards.SetSize(m.width, m.height)
+	m.quizMode.SetSize(m.width, m.height)
+	m.learnDash.SetSize(m.width, m.height)
+	m.aiChat.SetSize(m.width, m.height)
+	m.composer.SetSize(m.width, m.height)
+	m.knowledgeGraph.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -1662,6 +1883,17 @@ func (m *Model) tryExpandSnippet() {
 		}
 		m.editor.modified = true
 		m.editor.countWords()
+	}
+}
+
+func (m *Model) getAIModel() string {
+	switch m.config.AIProvider {
+	case "ollama":
+		return m.config.OllamaModel
+	case "openai":
+		return m.config.OpenAIModel
+	default:
+		return m.config.OllamaModel
 	}
 }
 
@@ -1951,6 +2183,30 @@ func (m Model) View() string {
 	}
 	if m.luaOverlay.IsActive() {
 		overlay := m.luaOverlay.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.flashcards.IsActive() {
+		overlay := m.flashcards.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.quizMode.IsActive() {
+		overlay := m.quizMode.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.learnDash.IsActive() {
+		overlay := m.learnDash.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.aiChat.IsActive() {
+		overlay := m.aiChat.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.composer.IsActive() {
+		overlay := m.composer.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.knowledgeGraph.IsActive() {
+		overlay := m.knowledgeGraph.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.splitPane.IsActive() {

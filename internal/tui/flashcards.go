@@ -308,6 +308,23 @@ func (fc *Flashcards) SetSize(width, height int) {
 	fc.height = height
 }
 
+// GetStats returns total, due, new, and mastered card counts.
+func (fc *Flashcards) GetStats() (total, due, newCards, mastered int) {
+	now := time.Now()
+	total = len(fc.cards)
+	for _, c := range fc.cards {
+		if c.Reps == 0 {
+			newCards++
+		} else if c.Interval > 21 && c.EaseFactor >= 2.5 {
+			mastered++
+		}
+		if c.Due.IsZero() || c.Due.Before(now) {
+			due++
+		}
+	}
+	return
+}
+
 // LoadCards merges extracted cards with persisted progress.
 func (fc *Flashcards) LoadCards(notes map[string]string) {
 	extracted := ExtractAllCards(notes)
