@@ -90,6 +90,7 @@ func (vs VaultSelector) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Update last-used info and persist.
 			vs.vaults.AddVault(entry.Path)
 			config.SaveVaultList(vs.vaults)
+			return vs, tea.Quit
 		}
 
 	case "n":
@@ -147,6 +148,7 @@ func (vs VaultSelector) updatePathInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			vs.done = true
 			vs.vaults.AddVault(absPath)
 			config.SaveVaultList(vs.vaults)
+			return vs, tea.Quit
 		} else {
 			// Path doesn't exist -- switch to name input for new vault creation.
 			vs.newPath = absPath
@@ -209,6 +211,7 @@ func (vs VaultSelector) updateNameInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		config.SaveVaultList(vs.vaults)
+		return vs, tea.Quit
 
 	case "backspace":
 		if len(vs.input) > 0 {
