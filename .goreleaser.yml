@@ -1,0 +1,44 @@
+version: 2
+
+project_name: granit
+
+builds:
+  - main: ./cmd/granit/
+    binary: granit
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+release:
+  github:
+    owner: artaeon
+    name: granit
+  header: |
+    ## Granit {{ .Version }}
+
+    Granit is a terminal-based knowledge manager for people who think in text.
+    Capture, link, and navigate your notes without ever leaving the terminal.
+  footer: |
+    **Full Changelog**: https://github.com/artaeon/granit/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+    Released under the MIT License.
