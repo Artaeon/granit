@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type Sidebar struct {
@@ -49,7 +51,7 @@ func (s *Sidebar) applyFilter() {
 		}
 	}
 	if s.cursor >= len(s.filtered) {
-		s.cursor = max(0, len(s.filtered)-1)
+		s.cursor = maxInt(0, len(s.filtered)-1)
 	}
 }
 
@@ -88,7 +90,10 @@ func (s Sidebar) Update(msg tea.Msg) (Sidebar, tea.Cmd) {
 		case "down", "j":
 			if s.cursor < len(s.filtered)-1 {
 				s.cursor++
-				visibleHeight := s.height - 4 // account for header, search, borders
+				visibleHeight := s.height - 6
+				if visibleHeight < 1 {
+					visibleHeight = 1
+				}
 				if s.cursor >= s.scroll+visibleHeight {
 					s.scroll = s.cursor - visibleHeight + 1
 				}
@@ -96,6 +101,11 @@ func (s Sidebar) Update(msg tea.Msg) (Sidebar, tea.Cmd) {
 		case "backspace":
 			if len(s.search) > 0 {
 				s.search = s.search[:len(s.search)-1]
+				s.applyFilter()
+			}
+		case "esc":
+			if s.search != "" {
+				s.search = ""
 				s.applyFilter()
 			}
 		default:
@@ -110,23 +120,50 @@ func (s Sidebar) Update(msg tea.Msg) (Sidebar, tea.Cmd) {
 
 func (s Sidebar) View() string {
 	var b strings.Builder
+	contentWidth := s.width - 4
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
 
-	header := HeaderStyle.Render("Files")
+	// Header with icon
+	header := HeaderStyle.Render("  Explorer")
 	b.WriteString(header)
 	b.WriteString("\n")
 
-	searchLine := DimStyle.Render("> ") + s.search
-	if s.focused {
-		searchLine += "_"
+	// Search bar
+	if s.search != "" || s.focused {
+		searchIcon := SearchPromptStyle.Render("  ")
+		searchText := s.search
+		if s.focused {
+			searchText += DimStyle.Render("_")
+		}
+		searchBg := SearchInputStyle.Width(contentWidth - 4)
+		b.WriteString(searchIcon + searchBg.Render(searchText))
+	} else {
+		b.WriteString(DimStyle.Render("  search..."))
 	}
-	b.WriteString(searchLine)
-	b.WriteString("\n")
-	b.WriteString(DimStyle.Render(strings.Repeat("─", s.width-4)))
 	b.WriteString("\n")
 
-	visibleHeight := s.height - 4
+	// Separator
+	b.WriteString(DimStyle.Render(strings.Repeat("─", contentWidth)))
+	b.WriteString("\n")
+
+	// File count
+	countStr := DimStyle.Render(strings.Repeat(" ", 1) +
+		formatCount(len(s.filtered), len(s.files)))
+	b.WriteString(countStr)
+	b.WriteString("\n")
+
+	// File list
+	visibleHeight := s.height - 6
 	if visibleHeight < 1 {
 		visibleHeight = 1
+	}
+
+	if len(s.filtered) == 0 {
+		b.WriteString("\n")
+		b.WriteString(DimStyle.Render("  No files found"))
+		return b.String()
 	}
 
 	end := s.scroll + visibleHeight
@@ -134,25 +171,96 @@ func (s Sidebar) View() string {
 		end = len(s.filtered)
 	}
 
+	lastDir := ""
 	for i := s.scroll; i < end; i++ {
-		name := s.filtered[i]
-		if len(name) > s.width-6 {
-			name = name[:s.width-9] + "..."
+		filePath := s.filtered[i]
+		dir := filepath.Dir(filePath)
+		name := filepath.Base(filePath)
+
+		// Show directory header if changed
+		if dir != "." && dir != lastDir {
+			dirDisplay := "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("#FAB387")).Render("  " + dir + "/")
+			b.WriteString(dirDisplay)
+			b.WriteString("\n")
+			lastDir = dir
 		}
+
+		// Strip .md extension for cleaner display
+		displayName := strings.TrimSuffix(name, ".md")
+
+		// File icon
+		icon := lipgloss.NewStyle().Foreground(lipgloss.Color("#89B4FA")).Render(" ")
+
+		// Check if it's a daily note
+		if len(displayName) >= 10 && displayName[4] == '-' && displayName[7] == '-' {
+			icon = lipgloss.NewStyle().Foreground(lipgloss.Color("#A6E3A1")).Render(" ")
+		}
+
+		indent := "  "
+		if dir != "." {
+			indent = "    "
+		}
+
+		maxNameLen := contentWidth - len(indent) - 4
+		if maxNameLen < 5 {
+			maxNameLen = 5
+		}
+		if len(displayName) > maxNameLen {
+			displayName = displayName[:maxNameLen-3] + "..."
+		}
+
 		if i == s.cursor && s.focused {
-			b.WriteString(SelectedStyle.Render("▸ " + name))
+			// Full-width highlight for selected item
+			line := indent + icon + " " + displayName
+			padLen := contentWidth - lipgloss.Width(line)
+			if padLen < 0 {
+				padLen = 0
+			}
+			highlighted := lipgloss.NewStyle().
+				Background(lipgloss.Color("#313244")).
+				Foreground(lipgloss.Color("#FAB387")).
+				Bold(true).
+				Width(contentWidth).
+				Render(indent + icon + " " + displayName + strings.Repeat(" ", padLen))
+			b.WriteString(highlighted)
 		} else {
-			b.WriteString("  " + name)
+			b.WriteString(indent + icon + " " + NormalItemStyle.Render(displayName))
 		}
 		if i < end-1 {
 			b.WriteString("\n")
 		}
 	}
 
+	// Scroll indicator
+	if len(s.filtered) > visibleHeight {
+		pct := float64(s.scroll) / float64(len(s.filtered)-visibleHeight)
+		indicator := DimStyle.Render(scrollIndicator(pct))
+		b.WriteString("\n" + indicator)
+	}
+
 	return b.String()
 }
 
-func max(a, b int) int {
+func formatCount(filtered, total int) string {
+	if filtered == total {
+		return DimStyle.Render(strings.Repeat(" ", 0) + string(rune('0'+filtered%10)))
+	}
+	// Show "N/M files"
+	return ""
+}
+
+func scrollIndicator(pct float64) string {
+	if pct <= 0 {
+		return "  TOP"
+	}
+	if pct >= 1 {
+		return "  BOT"
+	}
+	p := int(pct * 100)
+	return "  " + string(rune('0'+p/10)) + string(rune('0'+p%10)) + "%"
+}
+
+func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}
