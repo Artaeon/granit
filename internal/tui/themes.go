@@ -28,6 +28,12 @@ type Theme struct {
 	Base     lipgloss.Color // main bg
 	Mantle   lipgloss.Color // status bar bg
 	Crust    lipgloss.Color // help bar bg
+	// Style properties (beyond colors)
+	Border        string // "rounded", "double", "thick", "normal", "hidden"
+	Density       string // "compact", "normal", "spacious"
+	AccentBar     string // sidebar selection indicator character
+	Separator     string // horizontal separator character
+	LinkUnderline bool   // whether links are underlined
 }
 
 // builtinThemes maps theme name to its definition.
@@ -50,6 +56,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#1E1E2E"),
 		Mantle:   lipgloss.Color("#181825"),
 		Crust:    lipgloss.Color("#11111B"),
+		Border: "rounded", Density: "normal", AccentBar: "┃", Separator: "─", LinkUnderline: true,
 	},
 	"catppuccin-latte": {
 		Name:     "catppuccin-latte",
@@ -69,6 +76,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#EFF1F5"),
 		Mantle:   lipgloss.Color("#E6E9EF"),
 		Crust:    lipgloss.Color("#DCE0E8"),
+		Border: "rounded", Density: "normal", AccentBar: "┃", Separator: "─", LinkUnderline: true,
 	},
 	"catppuccin-frappe": {
 		Name:     "catppuccin-frappe",
@@ -88,6 +96,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#303446"),
 		Mantle:   lipgloss.Color("#292C3C"),
 		Crust:    lipgloss.Color("#232634"),
+		Border: "rounded", Density: "normal", AccentBar: "┃", Separator: "─", LinkUnderline: true,
 	},
 	"catppuccin-macchiato": {
 		Name:     "catppuccin-macchiato",
@@ -107,6 +116,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#24273A"),
 		Mantle:   lipgloss.Color("#1E2030"),
 		Crust:    lipgloss.Color("#181926"),
+		Border: "rounded", Density: "normal", AccentBar: "┃", Separator: "─", LinkUnderline: true,
 	},
 	"tokyo-night": {
 		Name:     "tokyo-night",
@@ -126,6 +136,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#1A1B26"),
 		Mantle:   lipgloss.Color("#16161E"),
 		Crust:    lipgloss.Color("#13131A"),
+		Border: "rounded", Density: "normal", AccentBar: "▎", Separator: "─", LinkUnderline: true,
 	},
 	"gruvbox-dark": {
 		Name:     "gruvbox-dark",
@@ -145,6 +156,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#282828"),
 		Mantle:   lipgloss.Color("#1D2021"),
 		Crust:    lipgloss.Color("#141617"),
+		Border: "normal", Density: "normal", AccentBar: "█", Separator: "━", LinkUnderline: false,
 	},
 	"nord": {
 		Name:     "nord",
@@ -164,6 +176,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#242933"),
 		Mantle:   lipgloss.Color("#1E222A"),
 		Crust:    lipgloss.Color("#191D24"),
+		Border: "rounded", Density: "spacious", AccentBar: "│", Separator: "─", LinkUnderline: true,
 	},
 	"dracula": {
 		Name:     "dracula",
@@ -183,6 +196,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#282A36"),
 		Mantle:   lipgloss.Color("#21222C"),
 		Crust:    lipgloss.Color("#191A21"),
+		Border: "thick", Density: "normal", AccentBar: "▌", Separator: "━", LinkUnderline: true,
 	},
 	"solarized-dark": {
 		Name:     "solarized-dark",
@@ -202,6 +216,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#002B36"),
 		Mantle:   lipgloss.Color("#001E26"),
 		Crust:    lipgloss.Color("#00141A"),
+		Border: "normal", Density: "compact", AccentBar: "│", Separator: "─", LinkUnderline: false,
 	},
 	"solarized-light": {
 		Name:     "solarized-light",
@@ -221,6 +236,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#FDF6E3"),
 		Mantle:   lipgloss.Color("#F5EFDC"),
 		Crust:    lipgloss.Color("#EEE8D5"),
+		Border: "normal", Density: "compact", AccentBar: "│", Separator: "─", LinkUnderline: false,
 	},
 	"rose-pine": {
 		Name:     "rose-pine",
@@ -240,6 +256,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#191724"),
 		Mantle:   lipgloss.Color("#1F1D2E"),
 		Crust:    lipgloss.Color("#16141F"),
+		Border: "rounded", Density: "spacious", AccentBar: "┃", Separator: "╌", LinkUnderline: true,
 	},
 	"rose-pine-dawn": {
 		Name:     "rose-pine-dawn",
@@ -259,6 +276,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#FAF4ED"),
 		Mantle:   lipgloss.Color("#FFFAF3"),
 		Crust:    lipgloss.Color("#F2E9E1"),
+		Border: "rounded", Density: "spacious", AccentBar: "┃", Separator: "╌", LinkUnderline: true,
 	},
 	"everforest-dark": {
 		Name:     "everforest-dark",
@@ -278,6 +296,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#2D353B"),
 		Mantle:   lipgloss.Color("#272E33"),
 		Crust:    lipgloss.Color("#232A2E"),
+		Border: "rounded", Density: "spacious", AccentBar: "│", Separator: "─", LinkUnderline: true,
 	},
 	"kanagawa": {
 		Name:     "kanagawa",
@@ -297,6 +316,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#1F1F28"),
 		Mantle:   lipgloss.Color("#1A1A22"),
 		Crust:    lipgloss.Color("#16161D"),
+		Border: "normal", Density: "normal", AccentBar: "▎", Separator: "━", LinkUnderline: true,
 	},
 	"one-dark": {
 		Name:     "one-dark",
@@ -316,6 +336,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#282C34"),
 		Mantle:   lipgloss.Color("#21252B"),
 		Crust:    lipgloss.Color("#1B1F27"),
+		Border: "rounded", Density: "normal", AccentBar: "┃", Separator: "─", LinkUnderline: true,
 	},
 	"github-dark": {
 		Name:     "github-dark",
@@ -335,6 +356,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#0D1117"),
 		Mantle:   lipgloss.Color("#090C10"),
 		Crust:    lipgloss.Color("#060809"),
+		Border: "rounded", Density: "normal", AccentBar: "┃", Separator: "─", LinkUnderline: true,
 	},
 	"github-light": {
 		Name:     "github-light",
@@ -354,6 +376,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#FFFFFF"),
 		Mantle:   lipgloss.Color("#F6F8FA"),
 		Crust:    lipgloss.Color("#EAEEF2"),
+		Border: "rounded", Density: "normal", AccentBar: "┃", Separator: "─", LinkUnderline: true,
 	},
 	"ayu-dark": {
 		Name:     "ayu-dark",
@@ -373,6 +396,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#0B0E14"),
 		Mantle:   lipgloss.Color("#080A0F"),
 		Crust:    lipgloss.Color("#05070A"),
+		Border: "rounded", Density: "normal", AccentBar: "▎", Separator: "─", LinkUnderline: true,
 	},
 	"ayu-light": {
 		Name:     "ayu-light",
@@ -392,6 +416,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#FCFCFC"),
 		Mantle:   lipgloss.Color("#F3F3F3"),
 		Crust:    lipgloss.Color("#E8E8E8"),
+		Border: "rounded", Density: "normal", AccentBar: "┃", Separator: "─", LinkUnderline: true,
 	},
 	"palenight": {
 		Name:     "palenight",
@@ -411,6 +436,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#292D3E"),
 		Mantle:   lipgloss.Color("#232738"),
 		Crust:    lipgloss.Color("#1B1E2E"),
+		Border: "rounded", Density: "normal", AccentBar: "┃", Separator: "─", LinkUnderline: true,
 	},
 	"synthwave-84": {
 		Name:     "synthwave-84",
@@ -430,6 +456,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#262335"),
 		Mantle:   lipgloss.Color("#1E1A31"),
 		Crust:    lipgloss.Color("#16122B"),
+		Border: "double", Density: "spacious", AccentBar: "▌", Separator: "═", LinkUnderline: true,
 	},
 	"nightfox": {
 		Name:     "nightfox",
@@ -449,6 +476,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#192330"),
 		Mantle:   lipgloss.Color("#131A24"),
 		Crust:    lipgloss.Color("#0D1219"),
+		Border: "rounded", Density: "normal", AccentBar: "┃", Separator: "─", LinkUnderline: true,
 	},
 	"vesper": {
 		Name:     "vesper",
@@ -468,6 +496,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#101010"),
 		Mantle:   lipgloss.Color("#0A0A0A"),
 		Crust:    lipgloss.Color("#050505"),
+		Border: "normal", Density: "compact", AccentBar: "│", Separator: "─", LinkUnderline: false,
 	},
 	"poimandres": {
 		Name:     "poimandres",
@@ -487,6 +516,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#1B1E28"),
 		Mantle:   lipgloss.Color("#171922"),
 		Crust:    lipgloss.Color("#12141C"),
+		Border: "rounded", Density: "normal", AccentBar: "▎", Separator: "╌", LinkUnderline: true,
 	},
 	"moonlight": {
 		Name:     "moonlight",
@@ -506,6 +536,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#222436"),
 		Mantle:   lipgloss.Color("#1E2030"),
 		Crust:    lipgloss.Color("#191A2A"),
+		Border: "rounded", Density: "normal", AccentBar: "┃", Separator: "─", LinkUnderline: true,
 	},
 	"vitesse-dark": {
 		Name:     "vitesse-dark",
@@ -525,6 +556,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#121212"),
 		Mantle:   lipgloss.Color("#0E0E0E"),
 		Crust:    lipgloss.Color("#080808"),
+		Border: "normal", Density: "compact", AccentBar: "│", Separator: "─", LinkUnderline: false,
 	},
 	"min-light": {
 		Name:     "min-light",
@@ -544,6 +576,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#FAFAFA"),
 		Mantle:   lipgloss.Color("#F0F0F0"),
 		Crust:    lipgloss.Color("#E0E0E0"),
+		Border: "hidden", Density: "compact", AccentBar: ">", Separator: "·", LinkUnderline: false,
 	},
 	"oxocarbon": {
 		Name:     "oxocarbon",
@@ -563,6 +596,7 @@ var builtinThemes = map[string]Theme{
 		Base:     lipgloss.Color("#161616"),
 		Mantle:   lipgloss.Color("#0F0F0F"),
 		Crust:    lipgloss.Color("#080808"),
+		Border: "thick", Density: "normal", AccentBar: "▌", Separator: "━", LinkUnderline: true,
 	},
 }
 
@@ -621,26 +655,51 @@ func ApplyTheme(name string) {
 	overlay1 = t.Dim        // dim family
 	overlay2 = t.Dim        // dim family
 
+	// ---- Update style properties ----
+	if t.Border != "" {
+		ThemeBorder = t.Border
+	} else {
+		ThemeBorder = "rounded"
+	}
+	if t.Density != "" {
+		ThemeDensity = t.Density
+	} else {
+		ThemeDensity = "normal"
+	}
+	if t.AccentBar != "" {
+		ThemeAccentBar = t.AccentBar
+	} else {
+		ThemeAccentBar = "┃"
+	}
+	if t.Separator != "" {
+		ThemeSeparator = t.Separator
+	} else {
+		ThemeSeparator = "─"
+	}
+	ThemeLinkUL = t.LinkUnderline
+
 	// ---- Rebuild every style variable ----
+	PanelBorder = ResolveBorder()
+	padV, padH := PanelPadding()
 
 	// Panel styles
 	SidebarStyle = lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(surface1).
 		Background(base).
-		Padding(0, 1)
+		Padding(padV, padH)
 
 	EditorStyle = lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(surface1).
 		Background(base).
-		Padding(0, 1)
+		Padding(padV, padH)
 
 	BacklinksStyle = lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(surface1).
 		Background(base).
-		Padding(0, 1)
+		Padding(padV, padH)
 
 	FocusedBorderColor = mauve
 
@@ -716,7 +775,7 @@ func ApplyTheme(name string) {
 
 	LinkStyle = lipgloss.NewStyle().
 		Foreground(blue).
-		Underline(true).
+		Underline(ThemeLinkUL).
 		Background(base)
 
 	HeaderStyle = lipgloss.NewStyle().

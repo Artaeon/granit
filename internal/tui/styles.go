@@ -33,6 +33,43 @@ var (
 	crust     = lipgloss.Color("#11111B")
 )
 
+// Theme style properties — updated by ApplyTheme().
+var (
+	ThemeBorder    = "rounded"
+	ThemeDensity   = "normal"
+	ThemeAccentBar = "┃"
+	ThemeSeparator = "─"
+	ThemeLinkUL    = true
+)
+
+// PanelPadding returns padding values based on current density.
+func PanelPadding() (int, int) {
+	switch ThemeDensity {
+	case "compact":
+		return 0, 0
+	case "spacious":
+		return 1, 2
+	default:
+		return 0, 1
+	}
+}
+
+// ResolveBorder returns the lipgloss border for the current theme.
+func ResolveBorder() lipgloss.Border {
+	switch ThemeBorder {
+	case "double":
+		return lipgloss.DoubleBorder()
+	case "thick":
+		return lipgloss.ThickBorder()
+	case "normal":
+		return lipgloss.NormalBorder()
+	case "hidden":
+		return lipgloss.HiddenBorder()
+	default:
+		return lipgloss.RoundedBorder()
+	}
+}
+
 // Style variables -- defaults built from the Catppuccin Mocha colours above.
 // ApplyTheme() rebuilds every one of these when the user switches themes.
 var (

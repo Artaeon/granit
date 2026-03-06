@@ -342,7 +342,7 @@ func (cp CommandPalette) View() string {
 
 			if i == cp.cursor {
 				// Selected: accent bar + highlighted
-				accentBar := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("┃")
+				accentBar := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(ThemeAccentBar)
 				nameStyle := lipgloss.NewStyle().
 					Background(surface0).
 					Foreground(mauve).
