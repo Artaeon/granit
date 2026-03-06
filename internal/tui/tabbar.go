@@ -188,50 +188,67 @@ func tbTruncName(name string, maxLen int) string {
 
 // tbRenderTab renders a single tab label with the appropriate styling.
 func tbRenderTab(entry TabEntry, isActive bool) string {
-	name := tbTruncName(tbBaseName(entry.Path), 15)
+	name := tbTruncName(tbBaseName(entry.Path), 14)
 
-	var label string
+	var parts []string
 
-	// Pin indicator before the name.
+	// Pin indicator
 	if entry.Pinned {
-		pinStyle := lipgloss.NewStyle().Foreground(peach)
-		label += pinStyle.Render("\u2503") + " "
+		pinIcon := lipgloss.NewStyle().Foreground(peach).Render("*")
+		parts = append(parts, pinIcon)
 	}
 
-	// Tab name with active/inactive styling.
+	// Tab name with active/inactive styling
 	if isActive {
-		activeStyle := lipgloss.NewStyle().
+		// Active tab: bright text with accent underline effect
+		nameStyled := lipgloss.NewStyle().
 			Foreground(mauve).
 			Background(surface0).
 			Bold(true).
-			Padding(0, 1)
-		label += activeStyle.Render(name)
+			Render(name)
+		parts = append(parts, nameStyled)
 	} else {
-		inactiveStyle := lipgloss.NewStyle().
+		nameStyled := lipgloss.NewStyle().
 			Foreground(overlay0).
-			Background(mantle).
-			Padding(0, 1)
-		label += inactiveStyle.Render(name)
+			Render(name)
+		parts = append(parts, nameStyled)
 	}
 
-	// Modified indicator after the name.
+	// Modified indicator (dot)
 	if entry.Modified {
-		dotStyle := lipgloss.NewStyle().Foreground(yellow)
-		label += dotStyle.Render(" \u25cf")
+		dotStyle := lipgloss.NewStyle().Foreground(yellow).Bold(true)
+		parts = append(parts, dotStyle.Render("*"))
 	}
 
-	return label
+	// Close indicator for non-pinned tabs
+	if !entry.Pinned {
+		closeStyle := lipgloss.NewStyle().Foreground(surface2)
+		parts = append(parts, closeStyle.Render("x"))
+	}
+
+	content := strings.Join(parts, " ")
+
+	// Wrap in padding
+	if isActive {
+		return lipgloss.NewStyle().
+			Background(surface0).
+			Padding(0, 1).
+			Render(content)
+	}
+	return lipgloss.NewStyle().
+		Padding(0, 1).
+		Render(content)
 }
 
-// Render renders the tab bar as a single-line styled string that fits within
-// the given width. activeNote is used to highlight the currently open note.
+// Render renders the tab bar as a two-line styled string: tabs on top,
+// accent underline on bottom. activeNote highlights the currently open note.
 func (tb *TabBar) Render(width int, activeNote string) string {
 	barBg := lipgloss.NewStyle().Background(crust).Foreground(overlay0)
-	dividerStyle := lipgloss.NewStyle().Foreground(surface1)
-	divider := dividerStyle.Render("\u2502")
 
 	if len(tb.tabs) == 0 {
-		return barBg.Width(width).Render(strings.Repeat(" ", width))
+		emptyLine := barBg.Width(width).Render("")
+		underline := lipgloss.NewStyle().Foreground(surface0).Width(width).Render(strings.Repeat("─", width))
+		return emptyLine + "\n" + underline
 	}
 
 	// Ensure activeIdx is consistent with activeNote.
@@ -242,60 +259,71 @@ func (tb *TabBar) Render(width int, activeNote string) string {
 	}
 
 	// Render tabs one by one, tracking total width.
-	var rendered []string
+	type tabInfo struct {
+		rendered string
+		width    int
+		isActive bool
+	}
+	var tabs []tabInfo
 	totalWidth := 0
 	hiddenCount := 0
-
-	// Pre-compute the overflow indicator so we know how much space to reserve.
-	// We will use a placeholder like "... +3" which we compute once we know
-	// the hidden count, but we need at least a rough budget.
-	overflowBudget := 8 // enough for " ... +NN"
+	overflowBudget := 8
 
 	for i, entry := range tb.tabs {
 		isActive := i == tb.activeIdx
 		tabStr := tbRenderTab(entry, isActive)
 		tabWidth := lipgloss.Width(tabStr)
 
-		// Account for divider before this tab (except the first).
-		extraWidth := 0
-		if len(rendered) > 0 {
-			extraWidth = lipgloss.Width(divider)
-		}
-
-		needed := tabWidth + extraWidth
-		// Check whether this tab fits. Always include the active tab.
-		if totalWidth+needed > width-overflowBudget && !isActive && len(rendered) > 0 {
+		needed := tabWidth
+		if totalWidth+needed > width-overflowBudget && !isActive && len(tabs) > 0 {
 			hiddenCount++
 			continue
 		}
 
-		if len(rendered) > 0 {
-			rendered = append(rendered, divider)
-			totalWidth += extraWidth
-		}
-		rendered = append(rendered, tabStr)
+		tabs = append(tabs, tabInfo{rendered: tabStr, width: tabWidth, isActive: isActive})
 		totalWidth += tabWidth
 	}
 
-	content := strings.Join(rendered, "")
+	// Build tab line
+	var tabLine strings.Builder
+	for _, t := range tabs {
+		tabLine.WriteString(t.rendered)
+	}
 
-	// Append overflow indicator if any tabs were hidden.
+	// Overflow indicator
 	if hiddenCount > 0 {
-		overflowStyle := lipgloss.NewStyle().Foreground(overlay0).Background(crust)
-		overflow := overflowStyle.Render(" \u2026 +" + tbItoa(hiddenCount))
-		content += overflow
+		overflowStyle := lipgloss.NewStyle().Foreground(surface2)
+		overflow := overflowStyle.Render(" +" + tbItoa(hiddenCount))
+		tabLine.WriteString(overflow)
 		totalWidth += lipgloss.Width(overflow)
 	}
 
+	// Pad to fill width
+	content := tabLine.String()
 	contentWidth := lipgloss.Width(content)
-
-	// Pad to fill the full width.
 	if contentWidth < width {
 		gap := width - contentWidth
 		content += barBg.Render(strings.Repeat(" ", gap))
 	}
 
-	return barBg.Width(width).Render(content)
+	// Build underline: accent color under active tab, dim elsewhere
+	var underLine strings.Builder
+	accentStyle := lipgloss.NewStyle().Foreground(mauve)
+	dimLineStyle := lipgloss.NewStyle().Foreground(surface0)
+
+	for _, t := range tabs {
+		if t.isActive {
+			underLine.WriteString(accentStyle.Render(strings.Repeat("━", t.width)))
+		} else {
+			underLine.WriteString(dimLineStyle.Render(strings.Repeat("─", t.width)))
+		}
+	}
+	ulWidth := lipgloss.Width(underLine.String())
+	if ulWidth < width {
+		underLine.WriteString(dimLineStyle.Render(strings.Repeat("─", width-ulWidth)))
+	}
+
+	return barBg.Width(width).Render(content) + "\n" + underLine.String()
 }
 
 // tbItoa is a minimal int-to-string without importing strconv.
