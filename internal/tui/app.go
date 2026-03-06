@@ -2239,26 +2239,42 @@ func (m *Model) filterSearch() {
 	}
 	query := strings.ToLower(m.searchQuery)
 	m.searchResults = nil
+
+	// Rank results: exact filename > prefix > fuzzy filename > content match
+	var exactMatches, prefixMatches, fuzzyMatches, contentMatches []string
+	seen := make(map[string]bool)
+
 	for _, path := range m.vault.SortedPaths() {
-		if fuzzyMatch(strings.ToLower(path), query) {
-			m.searchResults = append(m.searchResults, path)
+		lowerPath := strings.ToLower(path)
+		baseName := strings.ToLower(strings.TrimSuffix(filepath.Base(path), ".md"))
+
+		if baseName == query {
+			exactMatches = append(exactMatches, path)
+			seen[path] = true
+		} else if strings.HasPrefix(baseName, query) {
+			prefixMatches = append(prefixMatches, path)
+			seen[path] = true
+		} else if fuzzyMatch(lowerPath, query) {
+			fuzzyMatches = append(fuzzyMatches, path)
+			seen[path] = true
 		}
 	}
+
 	for _, path := range m.vault.SortedPaths() {
+		if seen[path] {
+			continue
+		}
 		note := m.vault.GetNote(path)
 		if note != nil && strings.Contains(strings.ToLower(note.Content), query) {
-			found := false
-			for _, r := range m.searchResults {
-				if r == path {
-					found = true
-					break
-				}
-			}
-			if !found {
-				m.searchResults = append(m.searchResults, path)
-			}
+			contentMatches = append(contentMatches, path)
 		}
 	}
+
+	m.searchResults = append(m.searchResults, exactMatches...)
+	m.searchResults = append(m.searchResults, prefixMatches...)
+	m.searchResults = append(m.searchResults, fuzzyMatches...)
+	m.searchResults = append(m.searchResults, contentMatches...)
+
 	if m.searchCursor >= len(m.searchResults) {
 		m.searchCursor = maxInt(0, len(m.searchResults)-1)
 	}
@@ -3298,7 +3314,21 @@ func (m Model) renderSearchOverlay() string {
 	input := m.searchQuery + DimStyle.Render("_")
 	b.WriteString(prompt + input)
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render(strings.Repeat("─", width-4)))
+
+	// Result count
+	innerWidth := width - 4
+	countStr := ""
+	if m.searchQuery != "" {
+		countStr = fmt.Sprintf("  %d result", len(m.searchResults))
+		if len(m.searchResults) != 1 {
+			countStr += "s"
+		}
+	}
+	sepLine := DimStyle.Render(strings.Repeat("─", innerWidth))
+	if countStr != "" {
+		sepLine = DimStyle.Render(strings.Repeat("─", innerWidth-lipgloss.Width(countStr))) + DimStyle.Render(countStr)
+	}
+	b.WriteString(sepLine)
 	b.WriteString("\n")
 
 	maxResults := 10
@@ -3309,19 +3339,24 @@ func (m Model) renderSearchOverlay() string {
 			name := strings.TrimSuffix(m.searchResults[i], ".md")
 			icon := lipgloss.NewStyle().Foreground(blue).Render(IconFileChar)
 			if i == m.searchCursor {
-				line := lipgloss.NewStyle().
+				selectedBase := lipgloss.NewStyle().
 					Background(surface0).
 					Foreground(peach).
+					Bold(true)
+				matchOnSelected := lipgloss.NewStyle().
+					Background(surface0).
+					Foreground(yellow).
 					Bold(true).
-					Width(width - 4).
-					Render("  " + icon + " " + name)
+					Underline(true)
+				highlighted := fuzzyHighlight(name, m.searchQuery, selectedBase, matchOnSelected)
+				line := selectedBase.MaxWidth(innerWidth).Render("  " + icon + " " + highlighted)
 				b.WriteString(line)
 			} else {
-				b.WriteString("  " + icon + " " + NormalItemStyle.Render(name))
+				matchStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
+				highlighted := fuzzyHighlight(name, m.searchQuery, NormalItemStyle, matchStyle)
+				b.WriteString("  " + icon + " " + highlighted)
 			}
-			if i < len(m.searchResults)-1 && i < maxResults-1 {
-				b.WriteString("\n")
-			}
+			b.WriteString("\n")
 		}
 	}
 
