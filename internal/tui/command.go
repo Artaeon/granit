@@ -65,6 +65,13 @@ const (
 	CmdThreadWeaver
 	CmdNoteChat
 	CmdToggleGhostWriter
+	CmdPomodoro
+	CmdWebClip
+	CmdToggleVim
+	CmdPinNote
+	CmdUnpinNote
+	CmdNavBack
+	CmdNavForward
 	CmdQuit
 )
 
@@ -129,6 +136,13 @@ var AllCommands = []Command{
 	{Label: "Thread Weaver", Desc: "Synthesize multiple notes into a new essay", Shortcut: "", Action: CmdThreadWeaver, Icon: &IconNewChar},
 	{Label: "Chat with Note", Desc: "AI Q&A focused on current note", Shortcut: "", Action: CmdNoteChat, Icon: &IconBotChar},
 	{Label: "Ghost Writer", Desc: "Toggle inline AI writing suggestions", Shortcut: "", Action: CmdToggleGhostWriter, Icon: &IconEditChar},
+	{Label: "Pomodoro Timer", Desc: "Focus timer with writing stats", Shortcut: "", Action: CmdPomodoro, Icon: &IconDailyChar},
+	{Label: "Web Clipper", Desc: "Save a web page as a markdown note", Shortcut: "", Action: CmdWebClip, Icon: &IconSaveChar},
+	{Label: "Toggle Vim Mode", Desc: "Enable/disable Vim keybindings", Shortcut: "", Action: CmdToggleVim, Icon: &IconEditChar},
+	{Label: "Pin Note", Desc: "Pin current note as a tab", Shortcut: "", Action: CmdPinNote, Icon: &IconBookmarkChar},
+	{Label: "Unpin Note", Desc: "Unpin current note", Shortcut: "", Action: CmdUnpinNote, Icon: &IconBookmarkChar},
+	{Label: "Navigate Back", Desc: "Go to previous note in history", Shortcut: "Alt+Left", Action: CmdNavBack, Icon: &IconFolderChar},
+	{Label: "Navigate Forward", Desc: "Go to next note in history", Shortcut: "Alt+Right", Action: CmdNavForward, Icon: &IconFolderChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 

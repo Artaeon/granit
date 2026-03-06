@@ -110,6 +110,14 @@ type Model struct {
 	noteChat       NoteChat
 	autoTagger     *AutoTagger
 
+	// Batch 2 features
+	vimState      *VimState
+	fileWatcher   *FileWatcher
+	breadcrumb    *Breadcrumb
+	linkCompleter *LinkCompleter
+	pomodoro      Pomodoro
+	webClipper    WebClipper
+
 	// View mode scroll
 	viewScroll int
 
@@ -195,6 +203,12 @@ func NewModel(vaultPath string) (Model, error) {
 		threadWeaver:   NewThreadWeaver(),
 		noteChat:       NewNoteChat(),
 		autoTagger:     NewAutoTagger(),
+		vimState:       NewVimState(),
+		fileWatcher:    NewFileWatcher(vaultPath),
+		breadcrumb:     NewBreadcrumb(),
+		linkCompleter:  NewLinkCompleter(),
+		pomodoro:       NewPomodoro(),
+		webClipper:     NewWebClipper(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -237,6 +251,23 @@ func NewModel(vaultPath string) (Model, error) {
 	// Semantic search setup
 	m.semanticSearch.SetVaultPath(vaultPath)
 
+	// Link completer setup
+	snippets := make(map[string]string)
+	for _, p := range paths {
+		if note := v.GetNote(p); note != nil {
+			preview := note.Content
+			if len(preview) > 80 {
+				preview = preview[:80]
+			}
+			preview = strings.ReplaceAll(preview, "\n", " ")
+			snippets[p] = preview
+		}
+	}
+	m.linkCompleter.SetNotes(paths, snippets)
+
+	// Vim mode setup
+	m.vimState.SetEnabled(cfg.VimMode)
+
 	// Ghost writer setup
 	m.ghostWriter.SetEnabled(cfg.GhostWriter)
 
@@ -269,6 +300,12 @@ func (m *Model) loadNote(relPath string) {
 	m.backlinks.SetLinks(incoming, outgoing)
 
 	m.bookmarks.AddRecent(relPath)
+	if m.breadcrumb != nil {
+		m.breadcrumb.Push(relPath)
+	}
+	if m.pomodoro.IsRunning() {
+		m.pomodoro.NoteEdited(relPath)
+	}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -279,6 +316,10 @@ func (m Model) Init() tea.Cmd {
 	// Auto git sync: pull on open
 	if pullCmd := m.autoSync.PullOnOpen(); pullCmd != nil {
 		cmds = append(cmds, pullCmd)
+	}
+	// File watcher
+	if m.fileWatcher != nil && m.fileWatcher.IsEnabled() {
+		cmds = append(cmds, m.fileWatcher.Start())
 	}
 	if len(cmds) == 0 {
 		return nil
@@ -477,6 +518,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ghostSuggestionMsg, ghostDebounceMsg:
 		if m.ghostWriter != nil {
 			cmd := m.ghostWriter.HandleMsg(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case fileWatchTickMsg:
+		if m.fileWatcher != nil && m.fileWatcher.IsEnabled() {
+			if changeMsg, changed := m.fileWatcher.Check(); changed {
+				// Rescan vault
+				m.vault.Scan()
+				m.index = vault.NewIndex(m.vault)
+				m.index.Build()
+				paths := m.vault.SortedPaths()
+				m.sidebar.SetFiles(paths)
+				m.autocomplete.SetNotes(paths)
+				m.statusbar.SetNoteCount(m.vault.NoteCount())
+				// Reload current note if it changed
+				for _, p := range changeMsg.paths {
+					rel, _ := filepath.Rel(m.vault.Root, p)
+					if rel == m.activeNote {
+						if note := m.vault.GetNote(m.activeNote); note != nil && !m.editor.modified {
+							m.editor.LoadContent(note.Content, m.activeNote)
+						}
+						break
+					}
+				}
+				_ = changeMsg
+			}
+			return m, m.fileWatcher.Tick()
+		}
+		return m, nil
+
+	case pomodoroTickMsg:
+		var cmd tea.Cmd
+		m.pomodoro, cmd = m.pomodoro.Update(msg)
+		return m, cmd
+
+	case webClipResult, webClipTickMsg:
+		if m.webClipper.IsActive() {
+			var cmd tea.Cmd
+			m.webClipper, cmd = m.webClipper.Update(msg)
 			return m, cmd
 		}
 		return m, nil
@@ -933,6 +1014,43 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		if m.pomodoro.IsActive() {
+			var cmd tea.Cmd
+			m.pomodoro, cmd = m.pomodoro.Update(msg)
+			return m, cmd
+		}
+
+		if m.webClipper.IsActive() {
+			var cmd tea.Cmd
+			m.webClipper, cmd = m.webClipper.Update(msg)
+			if !m.webClipper.IsActive() {
+				if title, content, ok := m.webClipper.GetResult(); ok {
+					name := title
+					if !strings.HasSuffix(name, ".md") {
+						name += ".md"
+					}
+					path := filepath.Join(m.vault.Root, name)
+					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
+						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+							m.vault.Scan()
+							m.index = vault.NewIndex(m.vault)
+							m.index.Build()
+							paths := m.vault.SortedPaths()
+							m.sidebar.SetFiles(paths)
+							m.autocomplete.SetNotes(paths)
+							m.statusbar.SetNoteCount(m.vault.NoteCount())
+							m.loadNote(name)
+							m.sidebar.cursor = m.findFileIndex(name)
+							m.setFocus(focusEditor)
+							m.statusbar.SetMessage("Web clip saved: " + name)
+							return m, m.clearMessageAfter(3 * time.Second)
+						}
+					}
+				}
+			}
+			return m, cmd
+		}
+
 		if m.confirmDelete {
 			switch msg.String() {
 			case "y", "Y", "enter":
@@ -1164,6 +1282,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "alt+left":
+			if m.breadcrumb != nil {
+				if nav := m.breadcrumb.Back(); nav != "" {
+					m.loadNoteWithoutBreadcrumb(nav)
+					m.sidebar.cursor = m.findFileIndex(nav)
+				}
+			}
+			return m, nil
+
+		case "alt+right":
+			if m.breadcrumb != nil {
+				if nav := m.breadcrumb.Forward(); nav != "" {
+					m.loadNoteWithoutBreadcrumb(nav)
+					m.sidebar.cursor = m.findFileIndex(nav)
+				}
+			}
+			return m, nil
+
 		case "esc":
 			// If multi-cursors are active, clear them first
 			if m.focus == focusEditor && !m.viewMode && m.editor.HasMultiCursors() {
@@ -1233,17 +1369,98 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sidebar, cmd = m.sidebar.Update(msg)
 	case focusEditor:
 		if !m.viewMode {
-			// Ghost writer: accept suggestion with Tab
-			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "tab" {
-				if m.ghostWriter != nil && m.ghostWriter.GetSuggestion() != "" {
-					suggestion := m.ghostWriter.Accept()
-					m.editor.InsertText(suggestion)
-					line, col := m.editor.GetCursor()
-					m.statusbar.SetCursor(line, col)
-					m.statusbar.SetWordCount(m.editor.GetWordCount())
-					return m, nil
+			if keyMsg, ok := msg.(tea.KeyMsg); ok {
+				k := keyMsg.String()
+
+				// Link completer intercepts keys when active
+				if m.linkCompleter != nil && m.linkCompleter.IsActive() {
+					switch k {
+					case "esc":
+						m.linkCompleter.Deactivate()
+						return m, nil
+					case "tab", "enter":
+						result := m.linkCompleter.Confirm()
+						if result != "" {
+							// Remove the query text typed after [[ and insert the completed link
+							q := m.linkCompleter.GetQuery()
+							// Remove query chars already typed
+							for range q {
+								m.editor.col--
+								if m.editor.col >= 0 && m.editor.cursor < len(m.editor.content) {
+									line := m.editor.content[m.editor.cursor]
+									if m.editor.col < len(line) {
+										m.editor.content[m.editor.cursor] = line[:m.editor.col] + line[m.editor.col+1:]
+									}
+								}
+							}
+							m.editor.InsertText(result + "]]")
+							m.editor.modified = true
+						}
+						m.linkCompleter.Deactivate()
+						return m, nil
+					case "up":
+						m.linkCompleter.MoveUp()
+						return m, nil
+					case "down":
+						m.linkCompleter.MoveDown()
+						return m, nil
+					case "backspace":
+						if m.linkCompleter.GetQuery() == "" {
+							m.linkCompleter.Deactivate()
+						} else {
+							m.linkCompleter.RemoveChar()
+						}
+						// Also pass through to editor
+						m.editor, cmd = m.editor.Update(msg)
+						return m, cmd
+					default:
+						if len(k) == 1 && k[0] >= 32 {
+							m.linkCompleter.AddChar(k)
+						}
+						// Pass through to editor
+						m.editor, cmd = m.editor.Update(msg)
+						return m, cmd
+					}
+				}
+
+				// Clipboard: Ctrl+C copies selection, Ctrl+V pastes
+				if k == "ctrl+v" {
+					if text, err := ClipboardPaste(); err == nil && text != "" {
+						m.editor.InsertText(text)
+						line, col := m.editor.GetCursor()
+						m.statusbar.SetCursor(line, col)
+						m.statusbar.SetWordCount(m.editor.GetWordCount())
+						return m, nil
+					}
+				}
+
+				// Ghost writer: accept suggestion with Tab
+				if k == "tab" {
+					if m.ghostWriter != nil && m.ghostWriter.GetSuggestion() != "" {
+						suggestion := m.ghostWriter.Accept()
+						m.editor.InsertText(suggestion)
+						line, col := m.editor.GetCursor()
+						m.statusbar.SetCursor(line, col)
+						m.statusbar.SetWordCount(m.editor.GetWordCount())
+						return m, nil
+					}
+				}
+
+				// Vim mode handling
+				if m.vimState != nil && m.vimState.IsEnabled() {
+					result := m.vimState.HandleKey(k, m.editor.content, m.editor.cursor, m.editor.col, m.editor.height)
+					cmd = m.applyVimResult(result)
+					if !result.PassThrough {
+						line, col := m.editor.GetCursor()
+						m.statusbar.SetCursor(line, col)
+						if m.vimState.IsEnabled() {
+							m.statusbar.SetMode("VIM:" + m.vimState.ModeString())
+						}
+						return m, cmd
+					}
 				}
 			}
+
 			m.editor, cmd = m.editor.Update(msg)
 			// Snippet expansion: when space is typed, check if word before cursor is a snippet trigger
 			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == " " {
@@ -1252,6 +1469,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			line, col := m.editor.GetCursor()
 			m.statusbar.SetCursor(line, col)
 			m.statusbar.SetWordCount(m.editor.GetWordCount())
+
+			// Detect [[ for link completion
+			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "[" {
+				if m.linkCompleter != nil && !m.linkCompleter.IsActive() {
+					// Check if the char before cursor is also [
+					curLine := m.editor.content[m.editor.cursor]
+					c := m.editor.col
+					if c >= 2 && curLine[c-2:c] == "[[" {
+						m.linkCompleter.Activate(m.editor.cursor, m.editor.col)
+					}
+				}
+			}
+
 			// Ghost writer: trigger completion on edits
 			if m.ghostWriter != nil && m.ghostWriter.IsEnabled() {
 				if keyMsg, ok := msg.(tea.KeyMsg); ok {
@@ -1265,6 +1495,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 				}
+			}
+
+			// Pomodoro: track word count during work sessions
+			if m.pomodoro.IsRunning() {
+				m.pomodoro.UpdateWordCount(m.editor.GetWordCount())
 			}
 		}
 	case focusBacklinks:
@@ -1672,6 +1907,56 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
+	case CmdPomodoro:
+		m.pomodoro.SetSize(m.width, m.height)
+		m.pomodoro.Open()
+	case CmdWebClip:
+		m.webClipper.SetSize(m.width, m.height)
+		// Prompt user for URL — for now open with empty URL (they type in overlay)
+		m.webClipper.Open("")
+		return m, tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg {
+			return webClipTickMsg{}
+		})
+	case CmdToggleVim:
+		if m.vimState != nil {
+			m.vimState.SetEnabled(!m.vimState.IsEnabled())
+			m.config.VimMode = m.vimState.IsEnabled()
+			m.config.Save()
+			if m.vimState.IsEnabled() {
+				m.statusbar.SetMode("VIM:NORMAL")
+				m.statusbar.SetMessage("Vim mode enabled")
+			} else {
+				m.statusbar.SetMode("EDIT")
+				m.statusbar.SetMessage("Vim mode disabled")
+			}
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
+	case CmdPinNote:
+		if m.activeNote != "" && m.breadcrumb != nil {
+			m.breadcrumb.Pin(m.activeNote)
+			m.statusbar.SetMessage("Pinned: " + m.activeNote)
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
+	case CmdUnpinNote:
+		if m.activeNote != "" && m.breadcrumb != nil {
+			m.breadcrumb.Unpin(m.activeNote)
+			m.statusbar.SetMessage("Unpinned: " + m.activeNote)
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
+	case CmdNavBack:
+		if m.breadcrumb != nil {
+			if nav := m.breadcrumb.Back(); nav != "" {
+				m.loadNoteWithoutBreadcrumb(nav)
+				m.sidebar.cursor = m.findFileIndex(nav)
+			}
+		}
+	case CmdNavForward:
+		if m.breadcrumb != nil {
+			if nav := m.breadcrumb.Forward(); nav != "" {
+				m.loadNoteWithoutBreadcrumb(nav)
+				m.sidebar.cursor = m.findFileIndex(nav)
+			}
+		}
 	case CmdImportObsidian:
 		imported := config.ImportObsidianConfig(m.vault.Root)
 		if imported != nil {
@@ -1858,6 +2143,8 @@ func (m *Model) setFocus(f focus) {
 	case focusEditor:
 		if m.viewMode {
 			m.statusbar.SetMode("VIEW")
+		} else if m.vimState != nil && m.vimState.IsEnabled() {
+			m.statusbar.SetMode("VIM:" + m.vimState.ModeString())
 		} else {
 			m.statusbar.SetMode("EDIT")
 		}
@@ -1948,6 +2235,8 @@ func (m *Model) updateLayout() {
 	m.semanticSearch.SetSize(m.width, m.height)
 	m.threadWeaver.SetSize(m.width, m.height)
 	m.noteChat.SetSize(m.width, m.height)
+	m.pomodoro.SetSize(m.width, m.height)
+	m.webClipper.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -1976,6 +2265,9 @@ func (m *Model) syncConfigToComponents() {
 	}
 	if m.autoTagger != nil {
 		m.autoTagger.SetEnabled(m.config.AutoTag)
+	}
+	if m.vimState != nil {
+		m.vimState.SetEnabled(m.config.VimMode)
 	}
 }
 
@@ -2137,6 +2429,133 @@ func (m *Model) tryExpandSnippet() {
 		m.editor.modified = true
 		m.editor.countWords()
 	}
+}
+
+// loadNoteWithoutBreadcrumb loads a note without pushing to breadcrumb history.
+// Used by back/forward navigation to avoid corrupting the navigation stack.
+func (m *Model) loadNoteWithoutBreadcrumb(relPath string) {
+	note := m.vault.GetNote(relPath)
+	if note == nil {
+		return
+	}
+	m.activeNote = relPath
+	m.editor.LoadContent(note.Content, relPath)
+	m.statusbar.SetActiveNote(relPath)
+	m.statusbar.SetWordCount(m.editor.GetWordCount())
+	m.viewScroll = 0
+
+	incoming := m.buildBacklinkItems(m.index.GetBacklinks(relPath), relPath)
+	outgoing := m.buildOutgoingItems(m.index.GetOutgoingLinks(relPath))
+	m.backlinks.SetLinks(incoming, outgoing)
+
+	m.bookmarks.AddRecent(relPath)
+}
+
+func (m *Model) applyVimResult(r VimResult) tea.Cmd {
+	if r.CursorSet {
+		m.editor.cursor = r.NewCursor
+		m.editor.col = r.NewCol
+		// Clamp
+		if m.editor.cursor < 0 {
+			m.editor.cursor = 0
+		}
+		if m.editor.cursor >= len(m.editor.content) {
+			m.editor.cursor = len(m.editor.content) - 1
+		}
+		if m.editor.col < 0 {
+			m.editor.col = 0
+		}
+		if m.editor.cursor >= 0 && m.editor.cursor < len(m.editor.content) {
+			if m.editor.col > len(m.editor.content[m.editor.cursor]) {
+				m.editor.col = len(m.editor.content[m.editor.cursor])
+			}
+		}
+	}
+	if r.ScrollSet {
+		m.editor.scroll = r.ScrollTo
+	}
+	if r.DeleteLine {
+		if len(m.editor.content) > 1 {
+			m.editor.saveSnapshot()
+			m.vimState.register = m.editor.content[m.editor.cursor]
+			m.editor.content = append(m.editor.content[:m.editor.cursor], m.editor.content[m.editor.cursor+1:]...)
+			if m.editor.cursor >= len(m.editor.content) {
+				m.editor.cursor = len(m.editor.content) - 1
+			}
+			m.editor.col = 0
+			m.editor.modified = true
+		}
+	}
+	if r.JoinLine {
+		if m.editor.cursor < len(m.editor.content)-1 {
+			m.editor.saveSnapshot()
+			m.editor.content[m.editor.cursor] += " " + strings.TrimSpace(m.editor.content[m.editor.cursor+1])
+			m.editor.content = append(m.editor.content[:m.editor.cursor+1], m.editor.content[m.editor.cursor+2:]...)
+			m.editor.modified = true
+		}
+	}
+	if r.PasteBelow && m.vimState.register != "" {
+		m.editor.saveSnapshot()
+		newContent := make([]string, 0, len(m.editor.content)+1)
+		newContent = append(newContent, m.editor.content[:m.editor.cursor+1]...)
+		newContent = append(newContent, m.vimState.register)
+		newContent = append(newContent, m.editor.content[m.editor.cursor+1:]...)
+		m.editor.content = newContent
+		m.editor.cursor++
+		m.editor.col = 0
+		m.editor.modified = true
+	}
+	if r.PasteAbove && m.vimState.register != "" {
+		m.editor.saveSnapshot()
+		newContent := make([]string, 0, len(m.editor.content)+1)
+		newContent = append(newContent, m.editor.content[:m.editor.cursor]...)
+		newContent = append(newContent, m.vimState.register)
+		newContent = append(newContent, m.editor.content[m.editor.cursor:]...)
+		m.editor.col = 0
+		m.editor.modified = true
+	}
+	if r.Undo {
+		m.editor.Undo()
+	}
+	if r.Redo {
+		m.editor.Redo()
+	}
+	if r.InsertLine != "" {
+		m.editor.saveSnapshot()
+		newContent := make([]string, 0, len(m.editor.content)+1)
+		newContent = append(newContent, m.editor.content[:m.editor.cursor+1]...)
+		newContent = append(newContent, r.InsertLine)
+		newContent = append(newContent, m.editor.content[m.editor.cursor+1:]...)
+		m.editor.content = newContent
+		m.editor.cursor++
+		m.editor.col = 0
+		m.editor.modified = true
+	}
+	if r.StatusMsg != "" {
+		switch r.StatusMsg {
+		case "save":
+			return m.saveCurrentNote()
+		case "quit":
+			m.quitting = true
+			return tea.Quit
+		case "save_quit":
+			m.saveCurrentNote()()
+			m.quitting = true
+			return tea.Quit
+		default:
+			m.statusbar.SetMessage(r.StatusMsg)
+		}
+	}
+	if r.EnterInsert {
+		m.statusbar.SetMode("VIM:INSERT")
+	}
+	if r.EnterNormal {
+		m.statusbar.SetMode("VIM:NORMAL")
+	}
+	if r.EnterVisual {
+		m.statusbar.SetMode("VIM:VISUAL")
+	}
+	return nil
 }
 
 func (m *Model) getAIModel() string {
@@ -2349,8 +2768,21 @@ func (m Model) View() string {
 				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor, backlinks)
 			}
 		}
+		// Breadcrumb bar (between content and status)
+		var breadcrumbBar string
+		if m.breadcrumb != nil && (len(m.breadcrumb.Pinned()) > 0 || m.breadcrumb.CanGoBack()) {
+			breadcrumbBar = m.breadcrumb.RenderBar(m.width, m.activeNote)
+		}
+		// Pomodoro status in status bar
+		if pomoStatus := m.pomodoro.StatusString(); pomoStatus != "" {
+			m.statusbar.SetMessage(pomoStatus)
+		}
 		status := m.statusbar.View()
-		view = lipgloss.JoinVertical(lipgloss.Left, content, status)
+		if breadcrumbBar != "" {
+			view = lipgloss.JoinVertical(lipgloss.Left, content, breadcrumbBar, status)
+		} else {
+			view = lipgloss.JoinVertical(lipgloss.Left, content, status)
+		}
 	}
 
 	// Render overlays (in priority order)
@@ -2477,6 +2909,20 @@ func (m Model) View() string {
 	if m.noteChat.IsActive() {
 		overlay := m.noteChat.View()
 		view = m.overlayCenter(view, overlay)
+	}
+	if m.pomodoro.IsActive() {
+		overlay := m.pomodoro.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.webClipper.IsActive() {
+		overlay := m.webClipper.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.linkCompleter != nil && m.linkCompleter.IsActive() {
+		overlay := m.linkCompleter.Render(m.width/2, m.height/2)
+		if overlay != "" {
+			view = m.overlayCenter(view, overlay)
+		}
 	}
 	if m.splitPane.IsActive() {
 		view = m.splitPane.View()

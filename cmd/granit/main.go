@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/artaeon/granit/internal/config"
 	"github.com/artaeon/granit/internal/tui"
 	"github.com/artaeon/granit/internal/vault"
 )
@@ -17,8 +18,35 @@ const version = "0.1.0"
 
 func main() {
 	if len(os.Args) < 2 {
-		// No arguments: open current directory as vault
-		runTUI(".")
+		// No arguments: show vault selector or open last-used vault
+		vl := config.LoadVaultList()
+		if len(vl.Vaults) == 0 {
+			// No known vaults: use current directory
+			runTUI(".")
+		} else {
+			// Show vault selector
+			vs := tui.NewVaultSelector()
+			p := tea.NewProgram(vs, tea.WithAltScreen())
+			finalModel, err := p.Run()
+			if err != nil {
+				fmt.Printf("Error: %v\n", err)
+				os.Exit(1)
+			}
+			vsModel, ok := finalModel.(tui.VaultSelector)
+			if !ok {
+				return
+			}
+			vsPtr := &vsModel
+			if !vsPtr.IsDone() {
+				// User quit without selecting
+				return
+			}
+			selected := vsPtr.SelectedVault()
+			if selected == "" {
+				return
+			}
+			runTUI(selected)
+		}
 		return
 	}
 
@@ -117,6 +145,11 @@ Keyboard Shortcuts (TUI):
 }
 
 func runTUI(vaultPath string) {
+	// Register this vault in the vault list
+	vl := config.LoadVaultList()
+	vl.AddVault(vaultPath)
+	config.SaveVaultList(vl)
+
 	model, err := tui.NewModel(vaultPath)
 	if err != nil {
 		fmt.Printf("Error opening vault: %v\n", err)
