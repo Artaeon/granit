@@ -42,16 +42,19 @@ var (
 	SidebarStyle = lipgloss.NewStyle().
 			BorderStyle(PanelBorder).
 			BorderForeground(surface1).
+			Background(base).
 			Padding(0, 1)
 
 	EditorStyle = lipgloss.NewStyle().
 			BorderStyle(PanelBorder).
 			BorderForeground(surface1).
+			Background(base).
 			Padding(0, 1)
 
 	BacklinksStyle = lipgloss.NewStyle().
 			BorderStyle(PanelBorder).
 			BorderForeground(surface1).
+			Background(base).
 			Padding(0, 1)
 
 	// Focused panel gets bright primary border
@@ -96,15 +99,18 @@ var (
 	// Text styles
 	TitleStyle = lipgloss.NewStyle().
 			Foreground(mauve).
-			Bold(true)
+			Bold(true).
+			Background(base)
 
 	H2Style = lipgloss.NewStyle().
 		Foreground(blue).
-		Bold(true)
+		Bold(true).
+		Background(base)
 
 	H3Style = lipgloss.NewStyle().
 		Foreground(sapphire).
-		Bold(true)
+		Bold(true).
+		Background(base)
 
 	SelectedStyle = lipgloss.NewStyle().
 			Foreground(crust).
@@ -117,27 +123,33 @@ var (
 				Bold(true)
 
 	NormalItemStyle = lipgloss.NewStyle().
-			Foreground(text)
+			Foreground(text).
+			Background(base)
 
 	DimStyle = lipgloss.NewStyle().
-			Foreground(overlay0)
+			Foreground(overlay0).
+			Background(base)
 
 	LinkStyle = lipgloss.NewStyle().
 			Foreground(blue).
-			Underline(true)
+			Underline(true).
+			Background(base)
 
 	HeaderStyle = lipgloss.NewStyle().
 			Foreground(mauve).
-			Bold(true)
+			Bold(true).
+			Background(base)
 
 	// Markdown-specific
 	BoldTextStyle = lipgloss.NewStyle().
 			Foreground(text).
-			Bold(true)
+			Bold(true).
+			Background(base)
 
 	ItalicTextStyle = lipgloss.NewStyle().
 			Foreground(subtext1).
-			Italic(true)
+			Italic(true).
+			Background(base)
 
 	CodeStyle = lipgloss.NewStyle().
 			Foreground(green)
@@ -147,21 +159,26 @@ var (
 			Background(surface0)
 
 	FrontmatterStyle = lipgloss.NewStyle().
-				Foreground(overlay1)
+				Foreground(overlay1).
+				Background(base)
 
 	ListMarkerStyle = lipgloss.NewStyle().
 			Foreground(peach).
-			Bold(true)
+			Bold(true).
+			Background(base)
 
 	CheckboxDone = lipgloss.NewStyle().
-			Foreground(green)
+			Foreground(green).
+			Background(base)
 
 	CheckboxTodo = lipgloss.NewStyle().
-			Foreground(yellow)
+			Foreground(yellow).
+			Background(base)
 
 	BlockquoteStyle = lipgloss.NewStyle().
 			Foreground(overlay1).
-			Italic(true)
+			Italic(true).
+			Background(base)
 
 	TagStyle = lipgloss.NewStyle().
 			Foreground(crust).
@@ -172,13 +189,15 @@ var (
 	LineNumStyle = lipgloss.NewStyle().
 			Foreground(surface2).
 			Width(5).
-			Align(lipgloss.Right)
+			Align(lipgloss.Right).
+			Background(base)
 
 	ActiveLineNumStyle = lipgloss.NewStyle().
 				Foreground(peach).
 				Width(5).
 				Align(lipgloss.Right).
-				Bold(true)
+				Bold(true).
+				Background(base)
 
 	// Cursor
 	CursorStyle = lipgloss.NewStyle().
