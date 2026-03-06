@@ -69,6 +69,8 @@ type Model struct {
 	templates      Templates
 	focusMode      FocusMode
 	quickSwitch    QuickSwitch
+	autocomplete   Autocomplete
+	trash          Trash
 
 	// View mode scroll
 	viewScroll int
@@ -114,6 +116,8 @@ func NewModel(vaultPath string) (Model, error) {
 		templates:      NewTemplates(),
 		focusMode:      NewFocusMode(),
 		quickSwitch:    NewQuickSwitch(),
+		autocomplete:   NewAutocomplete(),
+		trash:          NewTrash(vaultPath),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -121,6 +125,7 @@ func NewModel(vaultPath string) (Model, error) {
 
 	m.statusbar.SetVaultPath(vaultPath)
 	m.statusbar.SetNoteCount(v.NoteCount())
+	m.autocomplete.SetNotes(paths)
 
 	if len(paths) > 0 {
 		m.loadNote(paths[0])
@@ -297,6 +302,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.loadNote(nav)
 				m.sidebar.cursor = m.findFileIndex(nav)
 				m.setFocus(focusEditor)
+			}
+			return m, nil
+		}
+
+		if m.trash.IsActive() {
+			m.trash, _ = m.trash.Update(msg)
+			if m.trash.ShouldRestore() {
+				restored := m.trash.RestoreFile()
+				if restored != "" {
+					m.vault.Scan()
+					m.index = vault.NewIndex(m.vault)
+					m.index.Build()
+					paths := m.vault.SortedPaths()
+					m.sidebar.SetFiles(paths)
+					m.autocomplete.SetNotes(paths)
+					m.statusbar.SetNoteCount(m.vault.NoteCount())
+					m.loadNote(restored)
+					m.sidebar.cursor = m.findFileIndex(restored)
+					m.statusbar.SetMessage("Restored: " + restored)
+				}
 			}
 			return m, nil
 		}
@@ -585,26 +610,32 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.vault.Scan()
 		m.index = vault.NewIndex(m.vault)
 		m.index.Build()
-		m.sidebar.SetFiles(m.vault.SortedPaths())
+		paths := m.vault.SortedPaths()
+		m.sidebar.SetFiles(paths)
+		m.autocomplete.SetNotes(paths)
 		m.statusbar.SetNoteCount(m.vault.NoteCount())
 		m.statusbar.SetMessage("Vault refreshed")
 		return m, m.clearMessageAfter(2 * time.Second)
 	case CmdDeleteNote:
 		if m.activeNote != "" {
-			path := filepath.Join(m.vault.Root, m.activeNote)
-			os.Remove(path)
-			m.vault.Scan()
-			m.index = vault.NewIndex(m.vault)
-			m.index.Build()
-			paths := m.vault.SortedPaths()
-			m.sidebar.SetFiles(paths)
-			m.statusbar.SetNoteCount(m.vault.NoteCount())
-			m.statusbar.SetMessage("Deleted " + m.activeNote)
-			if len(paths) > 0 {
-				m.loadNote(paths[0])
+			if err := m.trash.MoveToTrash(m.activeNote); err == nil {
+				m.vault.Scan()
+				m.index = vault.NewIndex(m.vault)
+				m.index.Build()
+				paths := m.vault.SortedPaths()
+				m.sidebar.SetFiles(paths)
+				m.autocomplete.SetNotes(paths)
+				m.statusbar.SetNoteCount(m.vault.NoteCount())
+				m.statusbar.SetMessage("Moved to trash: " + m.activeNote)
+				if len(paths) > 0 {
+					m.loadNote(paths[0])
+				}
 			}
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
+	case CmdShowTrash:
+		m.trash.SetSize(m.width, m.height)
+		m.trash.Open()
 	case CmdRenameNote:
 		if m.activeNote != "" {
 			m.newNoteMode = true
@@ -1020,6 +1051,10 @@ func (m Model) View() string {
 	}
 	if m.quickSwitch.IsActive() {
 		overlay := m.quickSwitch.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.trash.IsActive() {
+		overlay := m.trash.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.commandPalette.IsActive() {
