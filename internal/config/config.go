@@ -18,6 +18,16 @@ type Config struct {
 	DailyNotesFolder  string `json:"daily_notes_folder"`
 	DailyNoteTemplate string `json:"daily_note_template"`
 
+	// Editor enhancements
+	AutoCloseBrackets    bool `json:"auto_close_brackets"`
+	HighlightCurrentLine bool `json:"highlight_current_line"`
+	ShowMinimap          bool `json:"show_minimap"`
+
+	// Appearance
+	SidebarPosition string `json:"sidebar_position"` // "left" or "right"
+	ShowIcons       bool   `json:"show_icons"`
+	CompactMode     bool   `json:"compact_mode"`
+
 	// Behavior
 	AutoSave        bool `json:"auto_save"`
 	ShowSplash      bool `json:"show_splash"`
@@ -25,6 +35,9 @@ type Config struct {
 	LineNumbers     bool `json:"line_numbers"`
 	WordWrap        bool `json:"word_wrap"`
 	DefaultViewMode bool `json:"default_view_mode"`
+	ConfirmDelete   bool `json:"confirm_delete"`
+	AutoRefresh     bool `json:"auto_refresh"`
+	SpellCheck      bool `json:"spell_check"`
 
 	// Sidebar
 	ShowHiddenFiles bool   `json:"show_hidden_files"`
@@ -55,12 +68,21 @@ func DefaultConfig() Config {
 		ShowHelp:               true,
 		DailyNotesFolder:       "",
 		DailyNoteTemplate:      "",
+		AutoCloseBrackets:      true,
+		HighlightCurrentLine:   true,
+		ShowMinimap:            false,
+		SidebarPosition:        "left",
+		ShowIcons:              true,
+		CompactMode:            false,
 		AutoSave:               false,
 		ShowSplash:             true,
 		VimMode:                false,
 		LineNumbers:            true,
 		WordWrap:               false,
 		DefaultViewMode:        false,
+		ConfirmDelete:          true,
+		AutoRefresh:            true,
+		SpellCheck:             false,
 		ShowHiddenFiles:        false,
 		SortBy:                 "name",
 		SearchContentByDefault: true,
