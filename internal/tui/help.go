@@ -91,8 +91,8 @@ var helpSections = []helpSection{
 			{"Ctrl+H", "Find & replace in file"},
 			{"Ctrl+J", "Quick switch files"},
 			{"Ctrl+W", "Visual canvas / whiteboard"},
-			{"Ctrl+L", "Calendar view"},
-			{"Ctrl+R", "Local AI bots"},
+			{"Ctrl+L", "Calendar (month/week/agenda)"},
+			{"Ctrl+R", "AI bots (Ollama / local)"},
 			{"Ctrl+Z", "Focus / zen mode"},
 			{"Ctrl+,", "Open settings"},
 			{"F5", "Show this help"},
@@ -157,7 +157,7 @@ func (h HelpOverlay) View() string {
 	logo := lipgloss.NewStyle().
 		Foreground(mauve).
 		Bold(true).
-		Render("  Granit — Keyboard Shortcuts")
+		Render("  " + IconHelpChar + " Granit — Keyboard Shortcuts")
 	b.WriteString(logo)
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
