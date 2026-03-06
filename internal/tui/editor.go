@@ -48,6 +48,9 @@ type Editor struct {
 	highlightCurrentLine bool
 	autoCloseBrackets    bool
 	tabSize              int
+
+	// Ghost text (AI inline completion)
+	ghostText string // dimmed suggestion shown after cursor
 }
 
 func NewEditor() Editor {
@@ -88,6 +91,16 @@ func (e *Editor) GetCursor() (int, int) {
 
 func (e *Editor) GetWordCount() int {
 	return e.wordCount
+}
+
+// SetGhostText sets the dimmed AI suggestion text to show after the cursor.
+func (e *Editor) SetGhostText(text string) {
+	e.ghostText = text
+}
+
+// GetGhostText returns the current ghost text suggestion.
+func (e *Editor) GetGhostText() string {
+	return e.ghostText
 }
 
 func (e *Editor) SetContent(content string) {
@@ -1020,6 +1033,12 @@ func (e Editor) View() string {
 
 		if isActiveLine && !hasMultiCursor {
 			// Render with main cursor only (original behavior)
+			ghostStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
+			ghostSuffix := ""
+			if e.ghostText != "" {
+				// Only show ghost text on the cursor line, after the cursor
+				ghostSuffix = ghostStyle.Render(e.ghostText)
+			}
 			if e.col <= len(displayLine) {
 				before := displayLine[:e.col]
 				cursorChar := " "
@@ -1032,13 +1051,13 @@ func (e Editor) View() string {
 				}
 				styledBefore := highlightLine(before, i, fmStart, fmEnd, codeBlockLines)
 				styledAfter := highlightLine(after, i, fmStart, fmEnd, codeBlockLines)
-				lineContent := styledBefore + CursorStyle.Render(cursorChar) + styledAfter
+				lineContent := styledBefore + CursorStyle.Render(cursorChar) + styledAfter + ghostSuffix
 				if e.highlightCurrentLine {
 					lineContent = lipgloss.NewStyle().Background(surface0).Width(maxWidth).Render(lineContent)
 				}
 				b.WriteString(lineContent)
 			} else {
-				lineContent := highlightLine(displayLine, i, fmStart, fmEnd, codeBlockLines) + CursorStyle.Render(" ")
+				lineContent := highlightLine(displayLine, i, fmStart, fmEnd, codeBlockLines) + CursorStyle.Render(" ") + ghostSuffix
 				if e.highlightCurrentLine {
 					lineContent = lipgloss.NewStyle().Background(surface0).Width(maxWidth).Render(lineContent)
 				}
