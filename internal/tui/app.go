@@ -130,6 +130,11 @@ type Model struct {
 	encryption      Encryption
 	backlinkPreview BacklinkPreview
 
+	// History, workspaces, timeline
+	gitHistory GitHistory
+	workspace  Workspace
+	timeline   Timeline
+
 	// Slash command menu
 	slashMenu *SlashMenu
 
@@ -242,6 +247,9 @@ func NewModel(vaultPath string) (Model, error) {
 		dailyBriefing:  NewDailyBriefing(),
 		encryption:      NewEncryption(),
 		backlinkPreview: NewBacklinkPreview(),
+		gitHistory:      NewGitHistory(),
+		workspace:       NewWorkspace(config.ConfigDir()),
+		timeline:        NewTimeline(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
 		showSplash:     cfg.ShowSplash,
@@ -602,6 +610,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.vaultRefactor.IsActive() {
 				if plan, ok := m.vaultRefactor.GetResult(); ok {
 					m.applyVaultRefactor(plan)
+				}
+			}
+			return m, cmd
+		}
+		return m, nil
+
+	case gitHistoryResultMsg:
+		if m.gitHistory.IsActive() {
+			var cmd tea.Cmd
+			m.gitHistory, cmd = m.gitHistory.Update(msg)
+			if !m.gitHistory.IsActive() {
+				if hash, ok := m.gitHistory.GetRestoreResult(); ok {
+					// Restore file content from git
+					_ = hash
+					content := msg.output
+					if content != "" && m.activeNote != "" {
+						path := filepath.Join(m.vault.Root, m.activeNote)
+						os.WriteFile(path, []byte(content), 0644)
+						m.vault.Scan()
+						m.index = vault.NewIndex(m.vault)
+						m.index.Build()
+						m.loadNote(m.activeNote)
+						m.statusbar.SetMessage("Restored from git history")
+						return m, m.clearMessageAfter(3 * time.Second)
+					}
 				}
 			}
 			return m, cmd
@@ -1157,6 +1190,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.encryption.IsActive() {
 				if result, ok := m.encryption.GetResult(); ok {
 					m.applyEncryptionResult(result)
+				}
+			}
+			return m, cmd
+		}
+
+		if m.gitHistory.IsActive() {
+			var cmd tea.Cmd
+			m.gitHistory, cmd = m.gitHistory.Update(msg)
+			if !m.gitHistory.IsActive() {
+				if _, ok := m.gitHistory.GetRestoreResult(); ok {
+					m.statusbar.SetMessage("Restoring from git...")
+				}
+			}
+			return m, cmd
+		}
+
+		if m.workspace.IsActive() {
+			var cmd tea.Cmd
+			m.workspace, cmd = m.workspace.Update(msg)
+			if !m.workspace.IsActive() {
+				if layout, ok := m.workspace.GetLoadResult(); ok {
+					m.applyWorkspaceLayout(layout)
+				}
+				if m.workspace.IsSaveRequested() {
+					name := m.workspace.SaveName()
+					layout := m.captureWorkspaceLayout(name)
+					m.workspace.SaveLayout(layout)
+					m.statusbar.SetMessage("Workspace saved: " + name)
+				}
+			}
+			return m, cmd
+		}
+
+		if m.timeline.IsActive() {
+			var cmd tea.Cmd
+			m.timeline, cmd = m.timeline.Update(msg)
+			if !m.timeline.IsActive() {
+				if notePath, ok := m.timeline.GetSelectedNote(); ok {
+					m.loadNote(notePath)
+					m.sidebar.cursor = m.findFileIndex(notePath)
+					m.setFocus(focusEditor)
 				}
 			}
 			return m, cmd
@@ -2318,6 +2392,56 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.encryption.Open()
 		}
 
+	case CmdGitHistory:
+		if m.activeNote != "" {
+			m.gitHistory.SetSize(m.width, m.height)
+			cmd := m.gitHistory.Open(m.activeNote, m.vault.Root)
+			return m, cmd
+		}
+
+	case CmdWorkspaces:
+		m.workspace.SetSize(m.width, m.height)
+		m.workspace.Open()
+
+	case CmdTimeline:
+		m.timeline.SetSize(m.width, m.height)
+		notes := make(map[string]TimelineEntry)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				title := strings.TrimSuffix(filepath.Base(p), ".md")
+				var tags []string
+				if t, ok := note.Frontmatter["tags"]; ok {
+					if tagList, ok := t.([]interface{}); ok {
+						for _, tg := range tagList {
+							if s, ok := tg.(string); ok {
+								tags = append(tags, s)
+							}
+						}
+					}
+				}
+				preview := note.Content
+				// Strip frontmatter for preview
+				if strings.HasPrefix(preview, "---") {
+					if idx := strings.Index(preview[3:], "---"); idx >= 0 {
+						preview = strings.TrimSpace(preview[3+idx+3:])
+					}
+				}
+				if len(preview) > 80 {
+					preview = preview[:80]
+				}
+				// Remove newlines from preview
+				preview = strings.ReplaceAll(preview, "\n", " ")
+				notes[p] = TimelineEntry{
+					Path:    p,
+					Title:   title,
+					Date:    note.ModTime,
+					Tags:    tags,
+					Preview: preview,
+				}
+			}
+		}
+		m.timeline.Open(notes)
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}
@@ -2606,6 +2730,9 @@ func (m *Model) updateLayout() {
 	m.kanban.SetSize(m.width, m.height)
 	m.encryption.SetSize(m.width, m.height)
 	m.backlinkPreview.SetSize(m.width, m.height)
+	m.gitHistory.SetSize(m.width, m.height)
+	m.workspace.SetSize(m.width, m.height)
+	m.timeline.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -3322,6 +3449,18 @@ func (m Model) View() string {
 		if popup != "" {
 			view = m.overlayCenter(view, popup)
 		}
+	}
+	if m.gitHistory.IsActive() {
+		overlay := m.gitHistory.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.workspace.IsActive() {
+		overlay := m.workspace.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.timeline.IsActive() {
+		overlay := m.timeline.View()
+		view = m.overlayCenter(view, overlay)
 	}
 	if m.pomodoro.IsActive() {
 		overlay := m.pomodoro.View()
@@ -4141,6 +4280,72 @@ func (m *Model) applyEncryptionResult(result EncryptionResult) {
 		m.sidebar.cursor = m.findFileIndex(newName)
 		m.statusbar.SetMessage("Decrypted: " + m.activeNote + " -> " + newName)
 	}
+}
+
+// captureWorkspaceLayout snapshots the current TUI state into a WorkspaceLayout.
+func (m *Model) captureWorkspaceLayout(name string) WorkspaceLayout {
+	var openNotes []string
+	if m.tabBar != nil {
+		for _, tab := range m.tabBar.Tabs() {
+			openNotes = append(openNotes, tab.Path)
+		}
+	}
+	layoutName := m.config.Layout
+	if layoutName == "" {
+		layoutName = "default"
+	}
+	return WorkspaceLayout{
+		Name:         name,
+		ActiveNote:   m.activeNote,
+		OpenNotes:    openNotes,
+		SidebarFocus: m.focus == focusSidebar,
+		ViewMode:     m.viewMode,
+		Layout:       layoutName,
+		CreatedAt:    time.Now().Format("2006-01-02 15:04:05"),
+	}
+}
+
+// applyWorkspaceLayout restores a saved workspace layout.
+func (m *Model) applyWorkspaceLayout(layout *WorkspaceLayout) {
+	if layout == nil {
+		return
+	}
+	// Restore layout mode
+	if layout.Layout != "" {
+		m.config.Layout = layout.Layout
+		m.updateLayout()
+	}
+	// Restore open notes in tabs
+	if m.tabBar != nil && len(layout.OpenNotes) > 0 {
+		// Reset tabs by removing all then re-adding
+		for _, tab := range m.tabBar.Tabs() {
+			m.tabBar.RemoveTab(tab.Path)
+		}
+		for _, note := range layout.OpenNotes {
+			if m.vault.GetNote(note) != nil {
+				m.tabBar.AddTab(note)
+			}
+		}
+	}
+	// Restore active note
+	if layout.ActiveNote != "" && m.vault.GetNote(layout.ActiveNote) != nil {
+		m.loadNote(layout.ActiveNote)
+		m.sidebar.cursor = m.findFileIndex(layout.ActiveNote)
+	}
+	// Restore view mode
+	m.viewMode = layout.ViewMode
+	if m.viewMode {
+		m.statusbar.SetMode("VIEW")
+	} else {
+		m.statusbar.SetMode("EDIT")
+	}
+	// Restore focus
+	if layout.SidebarFocus {
+		m.setFocus(focusSidebar)
+	} else {
+		m.setFocus(focusEditor)
+	}
+	m.statusbar.SetMessage("Loaded workspace: " + layout.Name)
 }
 
 func (m *Model) writeBriefingToDailyNote(briefingContent string) {

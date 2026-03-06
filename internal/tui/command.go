@@ -77,6 +77,9 @@ const (
 	CmdVaultRefactor
 	CmdDailyBriefing
 	CmdEncryptNote
+	CmdGitHistory
+	CmdWorkspaces
+	CmdTimeline
 	CmdQuit
 )
 
@@ -153,6 +156,9 @@ var AllCommands = []Command{
 	{Label: "AI Vault Refactor", Desc: "AI reorganizes folders, names, tags, and links", Shortcut: "", Action: CmdVaultRefactor, Icon: &IconBotChar},
 	{Label: "Daily Briefing", Desc: "DeepCoven morning briefing with today's focus", Shortcut: "", Action: CmdDailyBriefing, Icon: &IconDailyChar},
 	{Label: "Encrypt/Decrypt Note", Desc: "AES-256-GCM encryption for secure GitHub sync", Shortcut: "", Action: CmdEncryptNote, Icon: &IconSaveChar},
+	{Label: "Git History", Desc: "View commit history and diffs for current note", Shortcut: "", Action: CmdGitHistory, Icon: &IconEditChar},
+	{Label: "Workspaces", Desc: "Save and restore named workspace layouts", Shortcut: "", Action: CmdWorkspaces, Icon: &IconViewChar},
+	{Label: "Timeline", Desc: "Chronological view of all notes", Shortcut: "", Action: CmdTimeline, Icon: &IconDailyChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
