@@ -49,6 +49,8 @@ const (
 	CmdContentSearch
 	CmdSpellCheck
 	CmdImportObsidian
+	CmdPublishSite
+	CmdSplitPane
 	CmdQuit
 )
 
@@ -97,6 +99,8 @@ var AllCommands = []Command{
 	{Label: "Search Vault Contents", Desc: "Full-text search across all notes", Shortcut: "", Action: CmdContentSearch, Icon: &IconSearchChar},
 	{Label: "Spell Check", Desc: "Check spelling in current note", Shortcut: "", Action: CmdSpellCheck, Icon: &IconEditChar},
 	{Label: "Import Obsidian Config", Desc: "Import settings from .obsidian/ directory", Shortcut: "", Action: CmdImportObsidian, Icon: &IconSettingsChar},
+	{Label: "Publish Site", Desc: "Export vault as static HTML site", Shortcut: "", Action: CmdPublishSite, Icon: &IconSaveChar},
+	{Label: "Split View", Desc: "View two notes side by side", Shortcut: "", Action: CmdSplitPane, Icon: &IconViewChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
