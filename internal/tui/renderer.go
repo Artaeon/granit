@@ -146,27 +146,41 @@ func (r Renderer) renderEmbed(noteName string, heading string, contentWidth int)
 			}
 
 			noteLines := strings.Split(noteContent, "\n")
-			maxLines := 5
-			if len(noteLines) > maxLines {
+			// Strip frontmatter from embedded content
+			if len(noteLines) > 0 && strings.TrimSpace(noteLines[0]) == "---" {
+				for fi := 1; fi < len(noteLines); fi++ {
+					if strings.TrimSpace(noteLines[fi]) == "---" {
+						noteLines = noteLines[fi+1:]
+						break
+					}
+				}
+			}
+			// Trim leading blank lines
+			for len(noteLines) > 0 && strings.TrimSpace(noteLines[0]) == "" {
+				noteLines = noteLines[1:]
+			}
+			maxLines := 12
+			truncated := len(noteLines) > maxLines
+			if truncated {
 				noteLines = noteLines[:maxLines]
+			}
+			maxChars := boxWidth - 6
+			if maxChars < 10 {
+				maxChars = 10
 			}
 			for _, nl := range noteLines {
 				nl = strings.TrimSpace(nl)
 				if nl == "" {
 					nl = " "
 				}
-				// Truncate long lines
-				runes := []rune(nl)
-				maxChars := boxWidth - 6
-				if maxChars < 10 {
-					maxChars = 10
-				}
-				if len(runes) > maxChars {
-					runes = runes[:maxChars]
-					nl = string(runes) + "..."
-				}
-				contentLine := "  " + embedBorderStyle.Render("\u2502") + "  " + lipgloss.NewStyle().Foreground(text).Render(nl)
+				// Render basic markdown in embedded content
+				styled := r.renderEmbedLine(nl, maxChars)
+				contentLine := "  " + embedBorderStyle.Render("\u2502") + "  " + styled
 				out = append(out, contentLine)
+			}
+			if truncated {
+				moreMsg := dimStyle.Render("... more lines omitted")
+				out = append(out, "  "+embedBorderStyle.Render("\u2502")+"  "+moreMsg)
 			}
 		}
 	}
@@ -175,6 +189,40 @@ func (r Renderer) renderEmbed(noteName string, heading string, contentWidth int)
 	out = append(out, embedBorderStyle.Render(bottomLine))
 
 	return out
+}
+
+// renderEmbedLine renders a single line within an embedded note with basic markdown formatting.
+func (r Renderer) renderEmbedLine(line string, maxChars int) string {
+	// Truncate
+	runes := []rune(line)
+	if len(runes) > maxChars {
+		line = string(runes[:maxChars]) + "..."
+	}
+
+	// Headings
+	if strings.HasPrefix(line, "# ") {
+		return lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(line)
+	}
+	if strings.HasPrefix(line, "## ") || strings.HasPrefix(line, "### ") {
+		return lipgloss.NewStyle().Foreground(mauve).Render(line)
+	}
+
+	// List items
+	if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") {
+		return lipgloss.NewStyle().Foreground(text).Render(line)
+	}
+
+	// Checkboxes
+	if strings.HasPrefix(line, "- [ ] ") {
+		return lipgloss.NewStyle().Foreground(overlay0).Render("[ ] ") +
+			lipgloss.NewStyle().Foreground(text).Render(line[6:])
+	}
+	if strings.HasPrefix(line, "- [x] ") {
+		return lipgloss.NewStyle().Foreground(green).Render("[x] ") +
+			lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true).Render(line[6:])
+	}
+
+	return lipgloss.NewStyle().Foreground(text).Render(line)
 }
 
 // extractHeadingSection returns the content under a given heading until the next heading of same or higher level.
