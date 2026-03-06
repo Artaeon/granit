@@ -184,6 +184,120 @@ var builtinThemes = map[string]Theme{
 		Mantle:   lipgloss.Color("#21222C"),
 		Crust:    lipgloss.Color("#191A21"),
 	},
+	"solarized-dark": {
+		Name:     "solarized-dark",
+		Primary:  lipgloss.Color("#B58900"),
+		Secondary: lipgloss.Color("#268BD2"),
+		Accent:   lipgloss.Color("#CB4B16"),
+		Warning:  lipgloss.Color("#B58900"),
+		Success:  lipgloss.Color("#859900"),
+		Error:    lipgloss.Color("#DC322F"),
+		Info:     lipgloss.Color("#2AA198"),
+		Text:     lipgloss.Color("#839496"),
+		Subtext:  lipgloss.Color("#657B83"),
+		Dim:      lipgloss.Color("#586E75"),
+		Surface2: lipgloss.Color("#073642"),
+		Surface1: lipgloss.Color("#073642"),
+		Surface0: lipgloss.Color("#002B36"),
+		Base:     lipgloss.Color("#002B36"),
+		Mantle:   lipgloss.Color("#001E26"),
+		Crust:    lipgloss.Color("#00141A"),
+	},
+	"solarized-light": {
+		Name:     "solarized-light",
+		Primary:  lipgloss.Color("#B58900"),
+		Secondary: lipgloss.Color("#268BD2"),
+		Accent:   lipgloss.Color("#CB4B16"),
+		Warning:  lipgloss.Color("#B58900"),
+		Success:  lipgloss.Color("#859900"),
+		Error:    lipgloss.Color("#DC322F"),
+		Info:     lipgloss.Color("#2AA198"),
+		Text:     lipgloss.Color("#657B83"),
+		Subtext:  lipgloss.Color("#839496"),
+		Dim:      lipgloss.Color("#93A1A1"),
+		Surface2: lipgloss.Color("#EEE8D5"),
+		Surface1: lipgloss.Color("#EEE8D5"),
+		Surface0: lipgloss.Color("#FDF6E3"),
+		Base:     lipgloss.Color("#FDF6E3"),
+		Mantle:   lipgloss.Color("#F5EFDC"),
+		Crust:    lipgloss.Color("#EEE8D5"),
+	},
+	"rose-pine": {
+		Name:     "rose-pine",
+		Primary:  lipgloss.Color("#C4A7E7"),
+		Secondary: lipgloss.Color("#9CCFD8"),
+		Accent:   lipgloss.Color("#F6C177"),
+		Warning:  lipgloss.Color("#F6C177"),
+		Success:  lipgloss.Color("#31748F"),
+		Error:    lipgloss.Color("#EB6F92"),
+		Info:     lipgloss.Color("#9CCFD8"),
+		Text:     lipgloss.Color("#E0DEF4"),
+		Subtext:  lipgloss.Color("#908CAA"),
+		Dim:      lipgloss.Color("#6E6A86"),
+		Surface2: lipgloss.Color("#403D52"),
+		Surface1: lipgloss.Color("#2A2837"),
+		Surface0: lipgloss.Color("#26233A"),
+		Base:     lipgloss.Color("#191724"),
+		Mantle:   lipgloss.Color("#1F1D2E"),
+		Crust:    lipgloss.Color("#16141F"),
+	},
+	"rose-pine-dawn": {
+		Name:     "rose-pine-dawn",
+		Primary:  lipgloss.Color("#907AA9"),
+		Secondary: lipgloss.Color("#56949F"),
+		Accent:   lipgloss.Color("#EA9D34"),
+		Warning:  lipgloss.Color("#EA9D34"),
+		Success:  lipgloss.Color("#286983"),
+		Error:    lipgloss.Color("#B4637A"),
+		Info:     lipgloss.Color("#56949F"),
+		Text:     lipgloss.Color("#575279"),
+		Subtext:  lipgloss.Color("#797593"),
+		Dim:      lipgloss.Color("#9893A5"),
+		Surface2: lipgloss.Color("#DFDAD9"),
+		Surface1: lipgloss.Color("#F2E9E1"),
+		Surface0: lipgloss.Color("#F4EDE8"),
+		Base:     lipgloss.Color("#FAF4ED"),
+		Mantle:   lipgloss.Color("#FFFAF3"),
+		Crust:    lipgloss.Color("#F2E9E1"),
+	},
+	"everforest-dark": {
+		Name:     "everforest-dark",
+		Primary:  lipgloss.Color("#D699B6"),
+		Secondary: lipgloss.Color("#7FBBB3"),
+		Accent:   lipgloss.Color("#E69875"),
+		Warning:  lipgloss.Color("#DBBC7F"),
+		Success:  lipgloss.Color("#A7C080"),
+		Error:    lipgloss.Color("#E67E80"),
+		Info:     lipgloss.Color("#83C092"),
+		Text:     lipgloss.Color("#D3C6AA"),
+		Subtext:  lipgloss.Color("#9DA9A0"),
+		Dim:      lipgloss.Color("#859289"),
+		Surface2: lipgloss.Color("#543A48"),
+		Surface1: lipgloss.Color("#374145"),
+		Surface0: lipgloss.Color("#323D43"),
+		Base:     lipgloss.Color("#2D353B"),
+		Mantle:   lipgloss.Color("#272E33"),
+		Crust:    lipgloss.Color("#232A2E"),
+	},
+	"kanagawa": {
+		Name:     "kanagawa",
+		Primary:  lipgloss.Color("#957FB8"),
+		Secondary: lipgloss.Color("#7E9CD8"),
+		Accent:   lipgloss.Color("#FFA066"),
+		Warning:  lipgloss.Color("#DCA561"),
+		Success:  lipgloss.Color("#98BB6C"),
+		Error:    lipgloss.Color("#E82424"),
+		Info:     lipgloss.Color("#7FB4CA"),
+		Text:     lipgloss.Color("#DCD7BA"),
+		Subtext:  lipgloss.Color("#C8C093"),
+		Dim:      lipgloss.Color("#727169"),
+		Surface2: lipgloss.Color("#363646"),
+		Surface1: lipgloss.Color("#2A2A37"),
+		Surface0: lipgloss.Color("#223249"),
+		Base:     lipgloss.Color("#1F1F28"),
+		Mantle:   lipgloss.Color("#1A1A22"),
+		Crust:    lipgloss.Color("#16161D"),
+	},
 }
 
 // ThemeNames returns the sorted list of available built-in theme names.
@@ -247,16 +361,19 @@ func ApplyTheme(name string) {
 	SidebarStyle = lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(surface1).
+		Background(base).
 		Padding(0, 1)
 
 	EditorStyle = lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(surface1).
+		Background(base).
 		Padding(0, 1)
 
 	BacklinksStyle = lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(surface1).
+		Background(base).
 		Padding(0, 1)
 
 	FocusedBorderColor = mauve
@@ -300,15 +417,18 @@ func ApplyTheme(name string) {
 	// Text styles
 	TitleStyle = lipgloss.NewStyle().
 		Foreground(mauve).
-		Bold(true)
+		Bold(true).
+		Background(base)
 
 	H2Style = lipgloss.NewStyle().
 		Foreground(blue).
-		Bold(true)
+		Bold(true).
+		Background(base)
 
 	H3Style = lipgloss.NewStyle().
 		Foreground(sapphire).
-		Bold(true)
+		Bold(true).
+		Background(base)
 
 	SelectedStyle = lipgloss.NewStyle().
 		Foreground(crust).
@@ -321,27 +441,33 @@ func ApplyTheme(name string) {
 		Bold(true)
 
 	NormalItemStyle = lipgloss.NewStyle().
-		Foreground(text)
+		Foreground(text).
+		Background(base)
 
 	DimStyle = lipgloss.NewStyle().
-		Foreground(overlay0)
+		Foreground(overlay0).
+		Background(base)
 
 	LinkStyle = lipgloss.NewStyle().
 		Foreground(blue).
-		Underline(true)
+		Underline(true).
+		Background(base)
 
 	HeaderStyle = lipgloss.NewStyle().
 		Foreground(mauve).
-		Bold(true)
+		Bold(true).
+		Background(base)
 
 	// Markdown-specific
 	BoldTextStyle = lipgloss.NewStyle().
 		Foreground(text).
-		Bold(true)
+		Bold(true).
+		Background(base)
 
 	ItalicTextStyle = lipgloss.NewStyle().
 		Foreground(subtext1).
-		Italic(true)
+		Italic(true).
+		Background(base)
 
 	CodeStyle = lipgloss.NewStyle().
 		Foreground(green)
@@ -351,21 +477,26 @@ func ApplyTheme(name string) {
 		Background(surface0)
 
 	FrontmatterStyle = lipgloss.NewStyle().
-		Foreground(overlay1)
+		Foreground(overlay1).
+		Background(base)
 
 	ListMarkerStyle = lipgloss.NewStyle().
 		Foreground(peach).
-		Bold(true)
+		Bold(true).
+		Background(base)
 
 	CheckboxDone = lipgloss.NewStyle().
-		Foreground(green)
+		Foreground(green).
+		Background(base)
 
 	CheckboxTodo = lipgloss.NewStyle().
-		Foreground(yellow)
+		Foreground(yellow).
+		Background(base)
 
 	BlockquoteStyle = lipgloss.NewStyle().
 		Foreground(overlay1).
-		Italic(true)
+		Italic(true).
+		Background(base)
 
 	TagStyle = lipgloss.NewStyle().
 		Foreground(crust).
@@ -376,13 +507,15 @@ func ApplyTheme(name string) {
 	LineNumStyle = lipgloss.NewStyle().
 		Foreground(surface2).
 		Width(5).
-		Align(lipgloss.Right)
+		Align(lipgloss.Right).
+		Background(base)
 
 	ActiveLineNumStyle = lipgloss.NewStyle().
 		Foreground(peach).
 		Width(5).
 		Align(lipgloss.Right).
-		Bold(true)
+		Bold(true).
+		Background(base)
 
 	// Cursor
 	CursorStyle = lipgloss.NewStyle().
