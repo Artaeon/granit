@@ -246,17 +246,7 @@ func (kb Kanban) View() string {
 		renderedCols[ci] = kb.kbRenderColumn(ci, col, colWidth, visibleCards)
 	}
 
-	// Join columns side by side with vertical dividers.
-	divider := lipgloss.NewStyle().Foreground(surface1).Render(
-		strings.Repeat("│\n", visibleCards+4))
-	dividerLines := strings.Split(divider, "\n")
-	_ = dividerLines
-
-	// Use lipgloss.JoinHorizontal to combine columns.
-	dividerStr := lipgloss.NewStyle().Foreground(surface1).Render("│")
-	_ = dividerStr
-
-	// Build the columns joined with a thin divider.
+	// Build the columns joined with thin vertical dividers.
 	var colStrings []string
 	for ci, rs := range renderedCols {
 		colStrings = append(colStrings, rs)
@@ -284,19 +274,23 @@ func (kb Kanban) View() string {
 	}
 	statsText := lipgloss.NewStyle().Foreground(overlay0).Render(
 		" (" + kbItoa(totalCards) + " tasks, " + kbItoa(doneCount) + " done)")
-	b.WriteString("  " + titleText + statsText)
+	b.WriteString(titleText + statsText)
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(
-		"  " + strings.Repeat("─", boardWidth-8)))
+	ruleWidth := boardWidth - 6
+	if ruleWidth < 10 {
+		ruleWidth = 10
+	}
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(
+		strings.Repeat("─", ruleWidth)))
 	b.WriteString("\n\n")
 
 	b.WriteString(board)
 
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(
-		"  " + strings.Repeat("─", boardWidth-8)))
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(
+		strings.Repeat("─", ruleWidth)))
 	b.WriteString("\n")
-	footer := "  ←→: column  ↑↓: card  Enter/m: move →  M: move ←  x: toggle  Esc: close"
+	footer := "←→: column  ↑↓: card  Enter/m: move →  M: move ←  x: toggle  Esc: close"
 	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(footer))
 
 	border := lipgloss.NewStyle().
