@@ -126,6 +126,10 @@ type Model struct {
 	vaultRefactor  VaultRefactor
 	dailyBriefing  DailyBriefing
 
+	// Encryption & preview
+	encryption      Encryption
+	backlinkPreview BacklinkPreview
+
 	// Slash command menu
 	slashMenu *SlashMenu
 
@@ -236,6 +240,8 @@ func NewModel(vaultPath string) (Model, error) {
 		zettelkasten:   NewZettelkastenGenerator(),
 		vaultRefactor:  NewVaultRefactor(),
 		dailyBriefing:  NewDailyBriefing(),
+		encryption:      NewEncryption(),
+		backlinkPreview: NewBacklinkPreview(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
 		showSplash:     cfg.ShowSplash,
@@ -1145,6 +1151,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		if m.encryption.IsActive() {
+			var cmd tea.Cmd
+			m.encryption, cmd = m.encryption.Update(msg)
+			if !m.encryption.IsActive() {
+				if result, ok := m.encryption.GetResult(); ok {
+					m.applyEncryptionResult(result)
+				}
+			}
+			return m, cmd
+		}
+
 		if m.kanban.IsActive() {
 			var cmd tea.Cmd
 			m.kanban, cmd = m.kanban.Update(msg)
@@ -1680,6 +1697,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			line, col := m.editor.GetCursor()
 			m.statusbar.SetCursor(line, col)
 			m.statusbar.SetWordCount(m.editor.GetWordCount())
+
+			// Live backlink preview: update on every cursor move
+			m.backlinkPreview.Update(m.editor.content, m.editor.cursor, m.editor.col, func(name string) string {
+				// Try with and without .md extension
+				if note := m.vault.GetNote(name + ".md"); note != nil {
+					return note.Content
+				}
+				if note := m.vault.GetNote(name); note != nil {
+					return note.Content
+				}
+				return ""
+			})
 
 			// Detect [[ for link completion
 			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "[" {
@@ -2283,6 +2312,12 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.dailyBriefing.SetVaultData(noteContents, m.vault.SortedPaths(), todayPath)
 		m.dailyBriefing.Open()
 
+	case CmdEncryptNote:
+		if m.activeNote != "" {
+			m.encryption.SetSize(m.width, m.height)
+			m.encryption.Open()
+		}
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}
@@ -2569,6 +2604,8 @@ func (m *Model) updateLayout() {
 		m.toast.SetWidth(m.width)
 	}
 	m.kanban.SetSize(m.width, m.height)
+	m.encryption.SetSize(m.width, m.height)
+	m.backlinkPreview.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -3275,6 +3312,16 @@ func (m Model) View() string {
 	if m.dailyBriefing.IsActive() {
 		overlay := m.dailyBriefing.View()
 		view = m.overlayCenter(view, overlay)
+	}
+	if m.encryption.IsActive() {
+		overlay := m.encryption.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.backlinkPreview.IsActive() && !m.viewMode {
+		popup := m.backlinkPreview.View()
+		if popup != "" {
+			view = m.overlayCenter(view, popup)
+		}
 	}
 	if m.pomodoro.IsActive() {
 		overlay := m.pomodoro.View()
@@ -4027,6 +4074,73 @@ func (m *Model) addTagsToFile(path string, tags []string) {
 
 	fm := "---\ntags: [" + strings.Join(tags, ", ") + "]\n---\n\n"
 	os.WriteFile(path, []byte(fm+content), 0644)
+}
+
+// applyEncryptionResult handles the result of an encrypt/decrypt operation.
+func (m *Model) applyEncryptionResult(result EncryptionResult) {
+	if m.activeNote == "" {
+		return
+	}
+
+	content := m.editor.GetContent()
+	oldPath := filepath.Join(m.vault.Root, m.activeNote)
+
+	switch result.Action {
+	case encActionEncrypt:
+		encrypted, err := m.encryption.EncryptContent(content)
+		if err != nil {
+			m.statusbar.SetMessage("Encryption failed: " + err.Error())
+			return
+		}
+		newName := m.encryption.EncryptedName(m.activeNote)
+		newPath := filepath.Join(m.vault.Root, newName)
+		if err := os.WriteFile(newPath, []byte(encrypted), 0644); err != nil {
+			m.statusbar.SetMessage("Failed to write encrypted file")
+			return
+		}
+		// Remove the original unencrypted file
+		os.Remove(oldPath)
+		m.vault.Scan()
+		m.index = vault.NewIndex(m.vault)
+		m.index.Build()
+		paths := m.vault.SortedPaths()
+		m.sidebar.SetFiles(paths)
+		m.autocomplete.SetNotes(paths)
+		m.statusbar.SetNoteCount(m.vault.NoteCount())
+		m.statusbar.SetMessage("Encrypted: " + m.activeNote + " -> " + newName)
+		// Load the encrypted file (shows base64)
+		m.loadNote(newName)
+		m.sidebar.cursor = m.findFileIndex(newName)
+
+	case encActionDecrypt:
+		if !m.encryption.IsEncrypted(m.activeNote) {
+			m.statusbar.SetMessage("Note is not encrypted")
+			return
+		}
+		decrypted, err := m.encryption.DecryptContent(content)
+		if err != nil {
+			m.statusbar.SetMessage("Decryption failed - wrong passphrase?")
+			return
+		}
+		newName := m.encryption.DecryptedName(m.activeNote)
+		newPath := filepath.Join(m.vault.Root, newName)
+		if err := os.WriteFile(newPath, []byte(decrypted), 0644); err != nil {
+			m.statusbar.SetMessage("Failed to write decrypted file")
+			return
+		}
+		// Remove the encrypted file
+		os.Remove(oldPath)
+		m.vault.Scan()
+		m.index = vault.NewIndex(m.vault)
+		m.index.Build()
+		paths := m.vault.SortedPaths()
+		m.sidebar.SetFiles(paths)
+		m.autocomplete.SetNotes(paths)
+		m.statusbar.SetNoteCount(m.vault.NoteCount())
+		m.loadNote(newName)
+		m.sidebar.cursor = m.findFileIndex(newName)
+		m.statusbar.SetMessage("Decrypted: " + m.activeNote + " -> " + newName)
+	}
 }
 
 func (m *Model) writeBriefingToDailyNote(briefingContent string) {
