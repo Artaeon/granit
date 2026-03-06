@@ -1,6 +1,13 @@
 package tui
 
 import (
+	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -14,6 +21,7 @@ type Renderer struct {
 	height     int
 	noteLookup func(name string) string // returns content for a note name
 	vaultNotes map[string]*vault.Note   // for dataview queries
+	vaultRoot  string                   // root path of the vault for resolving images
 }
 
 // calloutInfo maps callout type keywords to their color and icon.
@@ -44,6 +52,101 @@ func (r *Renderer) SetNoteLookup(fn func(string) string) {
 
 func (r *Renderer) SetVaultNotes(notes map[string]*vault.Note) {
 	r.vaultNotes = notes
+}
+
+func (r *Renderer) SetVaultRoot(root string) {
+	r.vaultRoot = root
+}
+
+// imgMarkdownImageRe matches standard markdown images: ![alt text](path/to/image.png)
+var imgMarkdownImageRe = regexp.MustCompile(`^!\[([^\]]*)\]\(([^)]+)\)$`)
+
+// imgExtensions is the set of file extensions recognized as images.
+var imgExtensions = map[string]bool{
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true,
+	".svg": true, ".webp": true, ".bmp": true,
+}
+
+// imgIsImageFile returns true if the filename has an image extension.
+func imgIsImageFile(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	return imgExtensions[ext]
+}
+
+// imgGetDimensions tries to read image dimensions from disk.
+// Returns width, height, ok.
+func imgGetDimensions(vaultRoot, filename string) (int, int, bool) {
+	if vaultRoot == "" {
+		return 0, 0, false
+	}
+	// Try the filename as-is (relative to vault root), then common subdirectories.
+	candidates := []string{
+		filepath.Join(vaultRoot, filename),
+		filepath.Join(vaultRoot, "attachments", filename),
+		filepath.Join(vaultRoot, "assets", filename),
+		filepath.Join(vaultRoot, "images", filename),
+	}
+	for _, path := range candidates {
+		f, err := os.Open(path)
+		if err != nil {
+			continue
+		}
+		cfg, _, err := image.DecodeConfig(f)
+		f.Close()
+		if err != nil {
+			continue
+		}
+		return cfg.Width, cfg.Height, true
+	}
+	return 0, 0, false
+}
+
+// imgRenderPlaceholder renders a styled image placeholder box and returns the lines.
+func imgRenderPlaceholder(filename, altText, vaultRoot string, contentWidth int) []string {
+	var out []string
+
+	boxWidth := contentWidth - 4
+	if boxWidth < 20 {
+		boxWidth = 20
+	}
+
+	borderStyle := lipgloss.NewStyle().Foreground(surface1)
+	bgStyle := lipgloss.NewStyle().Background(surface0)
+	fileStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+	dimStyle := lipgloss.NewStyle().Foreground(overlay0)
+
+	// Top border
+	topLine := "  " + borderStyle.Render("\u256D"+strings.Repeat("\u2500", boxWidth)+"\u256E")
+	out = append(out, topLine)
+
+	// Icon + filename line
+	iconAndName := "  IMG  " + fileStyle.Render(filename)
+	padded := bgStyle.Render(iconAndName)
+	line1 := "  " + borderStyle.Render("\u2502") + " " + padded
+	out = append(out, line1)
+
+	// Alt text line (if provided)
+	if altText != "" {
+		altLine := "  " + borderStyle.Render("\u2502") + "  " + bgStyle.Render(dimStyle.Render("Alt: "+altText))
+		out = append(out, altLine)
+	}
+
+	// Dimensions line
+	w, h, ok := imgGetDimensions(vaultRoot, filename)
+	var dimText string
+	if ok {
+		dimText = fmt.Sprintf("[Image: %dx%d]", w, h)
+	} else {
+		dimText = "[Image]"
+	}
+	dimLine := "  " + borderStyle.Render("\u2502") + "  " + bgStyle.Render(dimStyle.Render(dimText))
+	out = append(out, dimLine)
+
+	// Bottom border
+	bottomLine := "  " + borderStyle.Render("\u2570"+strings.Repeat("\u2500", boxWidth)+"\u256F")
+	out = append(out, bottomLine)
+
+	return out
 }
 
 func (r Renderer) getCalloutInfo(typ string) calloutInfo {
@@ -616,7 +719,19 @@ func (r Renderer) renderMarkdown(content string) []string {
 			continue
 		}
 
-		// Note embedding detection: line contains ![[...]]
+		// Standard markdown image: ![alt text](path/to/image.png)
+		if imgMatch := imgMarkdownImageRe.FindStringSubmatch(trimmed); imgMatch != nil {
+			imgAlt := imgMatch[1]
+			imgPath := imgMatch[2]
+			if imgIsImageFile(imgPath) {
+				imgName := filepath.Base(imgPath)
+				placeholder := imgRenderPlaceholder(imgName, imgAlt, r.vaultRoot, contentWidth)
+				result = append(result, placeholder...)
+				continue
+			}
+		}
+
+		// Note/image embedding detection: line contains ![[...]]
 		if embedRe.MatchString(trimmed) {
 			// Check if the entire line is just the embed
 			fullMatch := embedRe.FindString(trimmed)
@@ -629,6 +744,13 @@ func (r Renderer) renderMarkdown(content string) []string {
 				if hashIdx := strings.Index(ref, "#"); hashIdx >= 0 {
 					noteName = ref[:hashIdx]
 					heading = ref[hashIdx+1:]
+				}
+				// If it's an image file, render image placeholder instead of note embed
+				if imgIsImageFile(noteName) {
+					imgName := filepath.Base(noteName)
+					placeholder := imgRenderPlaceholder(imgName, "", r.vaultRoot, contentWidth)
+					result = append(result, placeholder...)
+					continue
 				}
 				embedLines := r.renderEmbed(noteName, heading, contentWidth)
 				result = append(result, embedLines...)
