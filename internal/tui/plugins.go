@@ -82,10 +82,12 @@ type PluginManager struct {
 	cursor    int
 	scroll    int
 	vaultPath string
-	detail    bool   // show detail view for selected plugin
-	runCursor int    // cursor within plugin commands in detail view
-	message   string
-	pending   *pendingCmd
+	detail       bool   // show detail view for selected plugin
+	runCursor    int    // cursor within plugin commands in detail view
+	message      string
+	pending      *pendingCmd
+	showRegistry bool   // show installable plugins view
+	regCursor    int    // cursor in registry list
 }
 
 func NewPluginManager() PluginManager {
@@ -244,6 +246,9 @@ func (pm PluginManager) Update(msg tea.Msg) (PluginManager, tea.Cmd) {
 		return pm, nil
 
 	case tea.KeyMsg:
+		if pm.showRegistry {
+			return pm.updateRegistry(msg)
+		}
 		if pm.detail {
 			return pm.updateDetail(msg)
 		}
@@ -291,6 +296,11 @@ func (pm PluginManager) updateList(msg tea.KeyMsg) (PluginManager, tea.Cmd) {
 				return pm, nil
 			}
 		}
+	case "i":
+		// Show installable registry plugins
+		pm.showRegistry = true
+		pm.regCursor = 0
+		return pm, nil
 	}
 	return pm, nil
 }
@@ -340,6 +350,9 @@ func (pm *PluginManager) saveManifest(idx int) {
 // ---------------------------------------------------------------------------
 
 func (pm PluginManager) View() string {
+	if pm.showRegistry {
+		return pm.viewRegistry()
+	}
 	if pm.detail && len(pm.plugins) > 0 && pm.cursor < len(pm.plugins) {
 		return pm.viewDetail()
 	}
@@ -461,7 +474,7 @@ func (pm PluginManager) viewList() string {
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", width-6)))
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  Enter: toggle  r: run command  d: details  Esc: close"))
+	b.WriteString(DimStyle.Render("  Enter: toggle  r: run  d: details  i: install  Esc: close"))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -687,6 +700,231 @@ func executePluginScript(pluginDir, script, notePath, noteContent, vaultPath str
 	}
 
 	return string(out), nil
+}
+
+// ---------------------------------------------------------------------------
+// Plugin Registry — built-in installable plugins
+// ---------------------------------------------------------------------------
+
+// RegistryPlugin describes a plugin available for installation.
+type RegistryPlugin struct {
+	Name        string
+	Description string
+	Version     string
+	Author      string
+	Manifest    PluginManifest
+	ScriptName  string // filename for the main script
+	ScriptBody  string // script content
+}
+
+// builtinRegistry contains all plugins available for one-click installation.
+var builtinRegistry = []RegistryPlugin{
+	{
+		Name: "word-count", Description: "Show word count stats on save", Version: "1.0.0", Author: "Granit",
+		Manifest: PluginManifest{
+			Name: "word-count", Description: "Show word count stats on save",
+			Version: "1.0.0", Author: "Granit", Enabled: true,
+			Commands: []PluginCmdDef{{Label: "Word Count", Description: "Count words in current note", Run: "count.sh"}},
+		},
+		ScriptName: "count.sh",
+		ScriptBody: "#!/bin/bash\nWORDS=$(wc -w < /dev/stdin)\necho \"MSG:Word count: $WORDS\"\n",
+	},
+	{
+		Name: "timestamp", Description: "Insert updated-at timestamp in frontmatter on save", Version: "1.0.0", Author: "Granit",
+		Manifest: PluginManifest{
+			Name: "timestamp", Description: "Insert updated-at timestamp in frontmatter on save",
+			Version: "1.0.0", Author: "Granit", Enabled: true,
+			Hooks: PluginHooks{OnSave: "stamp.sh"},
+		},
+		ScriptName: "stamp.sh",
+		ScriptBody: "#!/bin/bash\n# Adds/updates 'updated' field in frontmatter\nDATE=$(date +%Y-%m-%dT%H:%M:%S)\necho \"MSG:Timestamp updated: $DATE\"\n",
+	},
+	{
+		Name: "backlink-count", Description: "Show number of backlinks for current note", Version: "1.0.0", Author: "Granit",
+		Manifest: PluginManifest{
+			Name: "backlink-count", Description: "Count backlinks across vault",
+			Version: "1.0.0", Author: "Granit", Enabled: true,
+			Commands: []PluginCmdDef{{Label: "Backlink Count", Description: "Count files linking to current note", Run: "backlinks.sh"}},
+		},
+		ScriptName: "backlinks.sh",
+		ScriptBody: "#!/bin/bash\nNOTE_NAME=$(basename \"$GRANIT_NOTE_PATH\" .md)\nCOUNT=$(grep -rl \"\\[\\[$NOTE_NAME\\]\\]\" \"$GRANIT_VAULT_PATH\" --include='*.md' 2>/dev/null | wc -l)\necho \"MSG:$COUNT notes link to $NOTE_NAME\"\n",
+	},
+	{
+		Name: "reading-time", Description: "Estimate reading time for current note", Version: "1.0.0", Author: "Granit",
+		Manifest: PluginManifest{
+			Name: "reading-time", Description: "Estimate reading time",
+			Version: "1.0.0", Author: "Granit", Enabled: true,
+			Commands: []PluginCmdDef{{Label: "Reading Time", Description: "Estimate how long it takes to read this note", Run: "readtime.sh"}},
+		},
+		ScriptName: "readtime.sh",
+		ScriptBody: "#!/bin/bash\nWORDS=$(wc -w < /dev/stdin)\nMINS=$((WORDS / 200))\nif [ $MINS -lt 1 ]; then MINS=1; fi\necho \"MSG:~${MINS} min read ($WORDS words)\"\n",
+	},
+	{
+		Name: "orphan-finder", Description: "Find notes with no backlinks", Version: "1.0.0", Author: "Granit",
+		Manifest: PluginManifest{
+			Name: "orphan-finder", Description: "Find notes not linked from anywhere",
+			Version: "1.0.0", Author: "Granit", Enabled: true,
+			Commands: []PluginCmdDef{{Label: "Find Orphan Notes", Description: "List notes with no incoming links", Run: "orphans.sh"}},
+		},
+		ScriptName: "orphans.sh",
+		ScriptBody: "#!/bin/bash\nORPHANS=0\nfor f in \"$GRANIT_VAULT_PATH\"/*.md; do\n  NAME=$(basename \"$f\" .md)\n  LINKS=$(grep -rl \"\\[\\[$NAME\\]\\]\" \"$GRANIT_VAULT_PATH\" --include='*.md' 2>/dev/null | grep -v \"$f\" | wc -l)\n  if [ \"$LINKS\" -eq 0 ]; then\n    ORPHANS=$((ORPHANS + 1))\n  fi\ndone\necho \"MSG:Found $ORPHANS orphan note(s)\"\n",
+	},
+	{
+		Name: "daily-summary", Description: "Generate a summary of today's changes", Version: "1.0.0", Author: "Granit",
+		Manifest: PluginManifest{
+			Name: "daily-summary", Description: "Summarize today's vault activity",
+			Version: "1.0.0", Author: "Granit", Enabled: true,
+			Commands: []PluginCmdDef{{Label: "Daily Summary", Description: "Show notes modified today", Run: "summary.sh"}},
+		},
+		ScriptName: "summary.sh",
+		ScriptBody: "#!/bin/bash\nTODAY=$(date +%Y-%m-%d)\nCOUNT=$(find \"$GRANIT_VAULT_PATH\" -name '*.md' -newermt \"$TODAY\" 2>/dev/null | wc -l)\necho \"MSG:$COUNT notes modified today ($TODAY)\"\n",
+	},
+}
+
+// installRegistryPlugin creates the plugin directory and files in the global plugins folder.
+func installRegistryPlugin(rp RegistryPlugin) error {
+	pluginDir := filepath.Join(config.ConfigDir(), "plugins", rp.Name)
+
+	if err := os.MkdirAll(pluginDir, 0755); err != nil {
+		return fmt.Errorf("create dir: %w", err)
+	}
+
+	// Write manifest
+	manifestData, err := json.MarshalIndent(rp.Manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal manifest: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), manifestData, 0644); err != nil {
+		return fmt.Errorf("write manifest: %w", err)
+	}
+
+	// Write script
+	scriptPath := filepath.Join(pluginDir, rp.ScriptName)
+	if err := os.WriteFile(scriptPath, []byte(rp.ScriptBody), 0755); err != nil {
+		return fmt.Errorf("write script: %w", err)
+	}
+
+	return nil
+}
+
+// isRegistryPluginInstalled checks if a registry plugin is already installed.
+func (pm *PluginManager) isRegistryPluginInstalled(name string) bool {
+	for _, p := range pm.plugins {
+		if p.Manifest.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (pm PluginManager) updateRegistry(msg tea.KeyMsg) (PluginManager, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		pm.showRegistry = false
+		return pm, nil
+	case "up", "k":
+		if pm.regCursor > 0 {
+			pm.regCursor--
+		}
+	case "down", "j":
+		if pm.regCursor < len(builtinRegistry)-1 {
+			pm.regCursor++
+		}
+	case "enter":
+		if pm.regCursor < len(builtinRegistry) {
+			rp := builtinRegistry[pm.regCursor]
+			if pm.isRegistryPluginInstalled(rp.Name) {
+				pm.message = rp.Name + " is already installed"
+			} else if err := installRegistryPlugin(rp); err != nil {
+				pm.message = "Install failed: " + err.Error()
+			} else {
+				pm.Reload()
+				pm.message = "Installed " + rp.Name
+			}
+		}
+	}
+	return pm, nil
+}
+
+func (pm PluginManager) viewRegistry() string {
+	width := pm.width * 2 / 3
+	if width < 55 {
+		width = 55
+	}
+	if width > 80 {
+		width = 80
+	}
+
+	var b strings.Builder
+
+	title := lipgloss.NewStyle().
+		Foreground(mauve).
+		Bold(true).
+		Render("  " + IconSettingsChar + " Plugin Registry")
+	b.WriteString(title)
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  Install plugins with Enter"))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", width-6)))
+	b.WriteString("\n\n")
+
+	for i, rp := range builtinRegistry {
+		installed := pm.isRegistryPluginInstalled(rp.Name)
+		indicator := DimStyle.Render("  ")
+		if installed {
+			indicator = lipgloss.NewStyle().Foreground(green).Render("\u2713 ")
+		}
+
+		nameStr := rp.Name
+		versionStr := lipgloss.NewStyle().Foreground(overlay0).Render(" v" + rp.Version)
+		line := "  " + indicator + nameStr + versionStr
+
+		if i == pm.regCursor {
+			b.WriteString(lipgloss.NewStyle().
+				Background(surface0).
+				Foreground(peach).
+				Bold(true).
+				Width(width - 6).
+				Render(line))
+		} else {
+			b.WriteString(NormalItemStyle.Render(line))
+		}
+		b.WriteString("\n")
+
+		desc := "      " + rp.Description
+		if i == pm.regCursor {
+			b.WriteString(lipgloss.NewStyle().
+				Background(surface0).
+				Foreground(overlay0).
+				Width(width - 6).
+				Render(desc))
+		} else {
+			b.WriteString(DimStyle.Render(desc))
+		}
+		b.WriteString("\n")
+		if i < len(builtinRegistry)-1 {
+			b.WriteString("\n")
+		}
+	}
+
+	if pm.message != "" {
+		b.WriteString("\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(yellow).Render("  " + pm.message))
+	}
+
+	b.WriteString("\n\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", width-6)))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  Enter: install  Esc: back"))
+
+	border := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(mauve).
+		Padding(1, 2).
+		Width(width).
+		Background(mantle)
+
+	return border.Render(b.String())
 }
 
 // parsePluginMessage processes plugin output lines and returns a human-readable
