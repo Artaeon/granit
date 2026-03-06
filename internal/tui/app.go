@@ -125,6 +125,11 @@ type Model struct {
 	// Auto-save debounce
 	lastEditTime time.Time
 
+	// Exit splash
+	exitSplash    ExitSplash
+	showExitSplash bool
+	sessionStart  time.Time
+
 	// View mode scroll
 	viewScroll int
 
@@ -222,6 +227,7 @@ func NewModel(vaultPath string) (Model, error) {
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
+		sessionStart:   time.Now(),
 	}
 
 	m.statusbar.SetVaultPath(vaultPath)
@@ -382,6 +388,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		var cmd tea.Cmd
 		m.splash, cmd = m.splash.Update(msg)
+		return m, cmd
+	}
+
+	// Exit splash handling
+	if m.showExitSplash {
+		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			m.exitSplash.width = msg.Width
+			m.exitSplash.height = msg.Height
+		case exitTickMsg:
+			var cmd tea.Cmd
+			m.exitSplash, cmd = m.exitSplash.Update(msg)
+			if m.exitSplash.IsDone() {
+				m.quitting = true
+				return m, tea.Quit
+			}
+			return m, cmd
+		case tea.KeyMsg:
+			m.quitting = true
+			return m, tea.Quit
+		}
+		var cmd tea.Cmd
+		m.exitSplash, cmd = m.exitSplash.Update(msg)
 		return m, cmd
 	}
 
@@ -1175,8 +1204,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Global keys
 		switch msg.String() {
 		case "ctrl+c", "ctrl+q":
-			m.quitting = true
-			return m, tea.Quit
+			if m.showExitSplash {
+				m.quitting = true
+				return m, tea.Quit
+			}
+			return m, m.triggerExitSplash()
 
 		case "ctrl+s":
 			cmd := m.saveCurrentNote()
@@ -2085,8 +2117,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		return m, m.clearMessageAfter(5 * time.Second)
 	case CmdQuit:
-		m.quitting = true
-		return m, tea.Quit
+		return m, m.triggerExitSplash()
 	}
 	return m, nil
 }
@@ -2651,12 +2682,10 @@ func (m *Model) applyVimResult(r VimResult) tea.Cmd {
 		case "save":
 			return m.saveCurrentNote()
 		case "quit":
-			m.quitting = true
-			return tea.Quit
+			return m.triggerExitSplash()
 		case "save_quit":
 			m.saveCurrentNote()()
-			m.quitting = true
-			return tea.Quit
+			return m.triggerExitSplash()
 		default:
 			m.statusbar.SetMessage(r.StatusMsg)
 		}
@@ -2750,6 +2779,18 @@ func (m *Model) runPluginSaveHooks() tea.Cmd {
 	return RunPluginHook(enabled, "on_save", notePath, m.editor.GetContent(), m.vault.Root)
 }
 
+func (m *Model) triggerExitSplash() tea.Cmd {
+	// Unload Ollama model to free resources
+	if m.config.AIProvider == "ollama" {
+		stopOllama(m.config.OllamaModel)
+	}
+	m.showExitSplash = true
+	m.exitSplash = NewExitSplash(m.vault.NoteCount(), time.Since(m.sessionStart))
+	m.exitSplash.width = m.width
+	m.exitSplash.height = m.height
+	return m.exitSplash.Init()
+}
+
 func (m Model) clearMessageAfter(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg {
 		return clearMessageMsg{}
@@ -2762,12 +2803,13 @@ func (m Model) View() string {
 		return m.splash.View()
 	}
 
+	// Exit splash screen
+	if m.showExitSplash {
+		return m.exitSplash.View()
+	}
+
 	if m.quitting {
-		// Unload Ollama model to free resources
-		if m.config.AIProvider == "ollama" {
-			stopOllama(m.config.OllamaModel)
-		}
-		return lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("\n  Goodbye from Granit!\n\n")
+		return ""
 	}
 
 	if m.width == 0 {
