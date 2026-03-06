@@ -87,6 +87,8 @@ var helpSections = []helpSection{
 			{"Ctrl+B", "Bookmarks & recent notes"},
 			{"Ctrl+F", "Find in file"},
 			{"Ctrl+H", "Find & replace in file"},
+			{"Ctrl+J", "Quick switch files"},
+			{"Ctrl+Z", "Focus / zen mode"},
 			{"Ctrl+,", "Open settings"},
 			{"F5", "Show this help"},
 		},
@@ -174,7 +176,7 @@ func (h HelpOverlay) View() string {
 				Width(22).
 				Render("    " + binding.key)
 			descStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#CDD6F4")).
+				Foreground(text).
 				Render(binding.desc)
 			allLines = append(allLines, keyStyle+descStyle)
 		}
