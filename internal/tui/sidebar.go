@@ -78,6 +78,48 @@ func fuzzyMatch(str, pattern string) bool {
 	return pi == len(pattern)
 }
 
+// fuzzyMatchIndices returns the matched character indices for highlighting.
+func fuzzyMatchIndices(str, pattern string) []int {
+	lowerStr := strings.ToLower(str)
+	lowerPat := strings.ToLower(pattern)
+	var indices []int
+	pi := 0
+	for si := 0; si < len(lowerStr) && pi < len(lowerPat); si++ {
+		if lowerStr[si] == lowerPat[pi] {
+			indices = append(indices, si)
+			pi++
+		}
+	}
+	if pi < len(lowerPat) {
+		return nil
+	}
+	return indices
+}
+
+// fuzzyHighlight renders a string with matched characters highlighted.
+func fuzzyHighlight(name, query string, baseStyle, matchStyle lipgloss.Style) string {
+	if query == "" {
+		return baseStyle.Render(name)
+	}
+	indices := fuzzyMatchIndices(name, query)
+	if len(indices) == 0 {
+		return baseStyle.Render(name)
+	}
+	matchSet := make(map[int]bool, len(indices))
+	for _, idx := range indices {
+		matchSet[idx] = true
+	}
+	var b strings.Builder
+	for i, ch := range name {
+		if matchSet[i] {
+			b.WriteString(matchStyle.Render(string(ch)))
+		} else {
+			b.WriteString(baseStyle.Render(string(ch)))
+		}
+	}
+	return b.String()
+}
+
 func (s *Sidebar) Selected() string {
 	if s.treeView && s.search == "" {
 		return s.fileTree.Selected()
@@ -198,7 +240,7 @@ func (s Sidebar) View() string {
 	b.WriteString("\n")
 
 	// Thin separator
-	b.WriteString(lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("─", contentWidth)))
+	b.WriteString(lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat(ThemeSeparator, contentWidth)))
 	b.WriteString("\n")
 
 	// If tree view and not searching, use the file tree
@@ -279,15 +321,29 @@ func (s Sidebar) View() string {
 
 		if i == s.cursor && s.focused {
 			// Selected item: accent bar + highlighted background
-			accentBar := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("┃")
+			accentBar := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(ThemeAccentBar)
 			nameStyle := lipgloss.NewStyle().
 				Background(surface0).
 				Foreground(mauve).
 				Bold(true)
-			line := accentBar + nameStyle.Render(indent+icon+iconSpace+displayName)
+			var renderedName string
+			if s.search != "" {
+				matchStyle := lipgloss.NewStyle().Background(surface0).Foreground(peach).Bold(true).Underline(true)
+				renderedName = fuzzyHighlight(displayName, s.search, nameStyle, matchStyle)
+			} else {
+				renderedName = nameStyle.Render(displayName)
+			}
+			line := accentBar + nameStyle.Render(indent+icon+iconSpace) + renderedName
 			b.WriteString(lipgloss.NewStyle().Background(surface0).Width(contentWidth).Render(line))
 		} else {
-			b.WriteString(" " + indent + icon + iconSpace + NormalItemStyle.Render(displayName))
+			var renderedName string
+			if s.search != "" {
+				matchStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
+				renderedName = fuzzyHighlight(displayName, s.search, NormalItemStyle, matchStyle)
+			} else {
+				renderedName = NormalItemStyle.Render(displayName)
+			}
+			b.WriteString(" " + indent + icon + iconSpace + renderedName)
 		}
 		if i < end-1 {
 			b.WriteString("\n")
