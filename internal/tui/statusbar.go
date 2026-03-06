@@ -17,8 +17,9 @@ type StatusBar struct {
 	lineNum    int
 	colNum     int
 	wordCount  int
-	aiProvider string // "local", "ollama", "openai"
-	aiModel    string
+	aiProvider    string // "local", "ollama", "openai"
+	aiModel       string
+	pomodoroStatus string // e.g. "🍅 12:34"
 }
 
 func NewStatusBar() StatusBar {
@@ -63,6 +64,10 @@ func (sb *StatusBar) SetWordCount(count int) {
 func (sb *StatusBar) SetAIStatus(provider, model string) {
 	sb.aiProvider = provider
 	sb.aiModel = model
+}
+
+func (sb *StatusBar) SetPomodoroStatus(status string) {
+	sb.pomodoroStatus = status
 }
 
 func (sb StatusBar) View() string {
@@ -116,6 +121,14 @@ func (sb StatusBar) View() string {
 			Render(IconBotChar + " " + sb.aiModel)
 	}
 
+	// Pomodoro indicator
+	pomoIndicator := ""
+	if sb.pomodoroStatus != "" {
+		pomoIndicator = lipgloss.NewStyle().
+			Background(peach).Foreground(crust).Bold(true).Padding(0, 1).
+			Render(sb.pomodoroStatus)
+	}
+
 	// Right side info
 	wordInfo := ""
 	if sb.wordCount > 0 {
@@ -125,14 +138,14 @@ func (sb StatusBar) View() string {
 
 	// Calculate gap
 	leftLen := lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos)
-	rightLen := lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
+	rightLen := lipgloss.Width(pomoIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	gap := sb.width - leftLen - rightLen
 	if gap < 0 {
 		gap = 1
 	}
 	gapStr := StatusBarBg.Width(gap).Render(strings.Repeat(" ", gap))
 
-	bar := mode + fileSection + cursorPos + gapStr + aiIndicator + rightInfo
+	bar := mode + fileSection + cursorPos + gapStr + pomoIndicator + aiIndicator + rightInfo
 
 	// Help bar
 	helpItems := []struct{ key, desc string }{

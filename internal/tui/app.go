@@ -2773,10 +2773,8 @@ func (m Model) View() string {
 		if m.breadcrumb != nil && (len(m.breadcrumb.Pinned()) > 0 || m.breadcrumb.CanGoBack()) {
 			breadcrumbBar = m.breadcrumb.RenderBar(m.width, m.activeNote)
 		}
-		// Pomodoro status in status bar
-		if pomoStatus := m.pomodoro.StatusString(); pomoStatus != "" {
-			m.statusbar.SetMessage(pomoStatus)
-		}
+		// Pomodoro status indicator in status bar
+		m.statusbar.SetPomodoroStatus(m.pomodoro.StatusString())
 		status := m.statusbar.View()
 		if breadcrumbBar != "" {
 			view = lipgloss.JoinVertical(lipgloss.Left, content, breadcrumbBar, status)
