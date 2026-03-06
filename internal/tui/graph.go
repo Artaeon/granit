@@ -155,7 +155,7 @@ func (g GraphView) View() string {
 	b.WriteString("\n\n")
 
 	// Legend
-	legend := lipgloss.NewStyle().Foreground(lipgloss.Color("#6C7086")).Render(
+	legend := lipgloss.NewStyle().Foreground(overlay0).Render(
 		"  ← backlinks  → outgoing  ━ connection strength")
 	b.WriteString(legend)
 	b.WriteString("\n\n")
@@ -217,7 +217,7 @@ func (g GraphView) View() string {
 			emptyBar := DimStyle.Render(strings.Repeat("─", barWidth-barLen))
 
 			// Stats
-			stats := lipgloss.NewStyle().Foreground(lipgloss.Color("#6C7086")).
+			stats := lipgloss.NewStyle().Foreground(overlay0).
 				Render(" ←" + smallNum(node.incoming) + " →" + smallNum(node.outgoing))
 
 			isCurrent := node.path == g.centerNote
