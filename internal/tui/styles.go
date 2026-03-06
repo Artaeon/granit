@@ -2,36 +2,41 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
+// Color variables -- defaults are Catppuccin Mocha.
+// ApplyTheme() in themes.go overwrites every one of these.
 var (
-	// Catppuccin Mocha palette
-	rosewater  = lipgloss.Color("#F5E0DC")
-	flamingo   = lipgloss.Color("#F2CDCD")
-	pink       = lipgloss.Color("#F5C2E7")
-	mauve      = lipgloss.Color("#CBA6F7")
-	red        = lipgloss.Color("#F38BA8")
-	maroon     = lipgloss.Color("#EBA0AC")
-	peach      = lipgloss.Color("#FAB387")
-	yellow     = lipgloss.Color("#F9E2AF")
-	green      = lipgloss.Color("#A6E3A1")
-	teal       = lipgloss.Color("#94E2D5")
-	sky        = lipgloss.Color("#89DCEB")
-	sapphire   = lipgloss.Color("#74C7EC")
-	blue       = lipgloss.Color("#89B4FA")
-	lavender   = lipgloss.Color("#B4BEFE")
-	text       = lipgloss.Color("#CDD6F4")
-	subtext1   = lipgloss.Color("#BAC2DE")
-	subtext0   = lipgloss.Color("#A6ADC8")
-	overlay2   = lipgloss.Color("#9399B2")
-	overlay1   = lipgloss.Color("#7F849C")
-	overlay0   = lipgloss.Color("#6C7086")
-	surface2   = lipgloss.Color("#585B70")
-	surface1   = lipgloss.Color("#45475A")
-	surface0   = lipgloss.Color("#313244")
-	base       = lipgloss.Color("#1E1E2E")
-	mantle     = lipgloss.Color("#181825")
-	crust      = lipgloss.Color("#11111B")
+	rosewater = lipgloss.Color("#F5E0DC")
+	flamingo  = lipgloss.Color("#F2CDCD")
+	pink      = lipgloss.Color("#F5C2E7")
+	mauve     = lipgloss.Color("#CBA6F7")
+	red       = lipgloss.Color("#F38BA8")
+	maroon    = lipgloss.Color("#EBA0AC")
+	peach     = lipgloss.Color("#FAB387")
+	yellow    = lipgloss.Color("#F9E2AF")
+	green     = lipgloss.Color("#A6E3A1")
+	teal      = lipgloss.Color("#94E2D5")
+	sky       = lipgloss.Color("#89DCEB")
+	sapphire  = lipgloss.Color("#74C7EC")
+	blue      = lipgloss.Color("#89B4FA")
+	lavender  = lipgloss.Color("#B4BEFE")
+	text      = lipgloss.Color("#CDD6F4")
+	subtext1  = lipgloss.Color("#BAC2DE")
+	subtext0  = lipgloss.Color("#A6ADC8")
+	overlay2  = lipgloss.Color("#9399B2")
+	overlay1  = lipgloss.Color("#7F849C")
+	overlay0  = lipgloss.Color("#6C7086")
+	surface2  = lipgloss.Color("#585B70")
+	surface1  = lipgloss.Color("#45475A")
+	surface0  = lipgloss.Color("#313244")
+	base      = lipgloss.Color("#1E1E2E")
+	mantle    = lipgloss.Color("#181825")
+	crust     = lipgloss.Color("#11111B")
+)
 
-	// Panel styles - unfocused
+// Style variables -- defaults built from the Catppuccin Mocha colours above.
+// ApplyTheme() rebuilds every one of these when the user switches themes.
+var (
+	// Panel styles
 	PanelBorder = lipgloss.RoundedBorder()
 
 	SidebarStyle = lipgloss.NewStyle().
@@ -49,7 +54,7 @@ var (
 			BorderForeground(surface1).
 			Padding(0, 1)
 
-	// Focused panel gets bright mauve border
+	// Focused panel gets bright primary border
 	FocusedBorderColor = mauve
 
 	// Status bar - two-tone vim-like
