@@ -667,15 +667,23 @@ func (c Calendar) renderDateInfo(b *strings.Builder, width int) {
 
 func (c Calendar) renderFooter(b *strings.Builder, width int) {
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  " + strings.Repeat("─", width-8)))
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", width-8)))
 	b.WriteString("\n")
-	footerLine1 := lipgloss.NewStyle().Foreground(overlay1).
-		Render("  ←→: day  ↑↓: week  []: month  w: view")
-	b.WriteString(footerLine1)
+
+	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(overlay0)
+	sep := lipgloss.NewStyle().Foreground(surface1).Render(" | ")
+
+	b.WriteString("  " +
+		keyStyle.Render("hjkl") + descStyle.Render(" nav") + sep +
+		keyStyle.Render("[]") + descStyle.Render(" month") + sep +
+		keyStyle.Render("w") + descStyle.Render(" view") + sep +
+		keyStyle.Render("t") + descStyle.Render(" today"))
 	b.WriteString("\n")
-	footerLine2 := lipgloss.NewStyle().Foreground(overlay1).
-		Render("  Enter: open note  e: events  t: today")
-	b.WriteString(footerLine2)
+	b.WriteString("  " +
+		keyStyle.Render("Enter") + descStyle.Render(" open note") + sep +
+		keyStyle.Render("e") + descStyle.Render(" events") + sep +
+		keyStyle.Render("Esc") + descStyle.Render(" close"))
 }
 
 func (c Calendar) renderDayCell(day int, isToday, isCursor, hasNote, hasEvent bool, tasksDone, tasksTotal int, currentMonth, dim bool) string {
