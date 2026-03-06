@@ -93,6 +93,10 @@ Keyboard Shortcuts (TUI):
   Ctrl+N          Create new note
   Ctrl+S          Save current note
   Ctrl+E          Toggle view/edit mode
+  Ctrl+F          Find in file
+  Ctrl+H          Find & replace
+  Ctrl+O          Note outline
+  Ctrl+B          Bookmarks & recent
   Ctrl+G          Show note graph
   Ctrl+T          Browse tags
   Ctrl+X          Command palette
