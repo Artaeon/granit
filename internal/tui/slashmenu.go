@@ -45,33 +45,33 @@ func slashBuiltinItems() []SlashMenuItem {
 		// Lists & tasks
 		{Command: "bullet", Label: "Bullet List", Icon: "•", Description: "Unordered list item", Insert: "- "},
 		{Command: "number", Label: "Numbered List", Icon: "1.", Description: "Ordered list item", Insert: "1. "},
-		{Command: "todo", Label: "To-do", Icon: "☐", Description: "Checkbox task", Insert: "- [ ] "},
-		{Command: "done", Label: "Done", Icon: "☑", Description: "Completed task", Insert: "- [x] "},
+		{Command: "todo", Label: "To-do", Icon: "[ ]", Description: "Checkbox task", Insert: "- [ ] "},
+		{Command: "done", Label: "Done", Icon: "[x]", Description: "Completed task", Insert: "- [x] "},
 
 		// Blocks
-		{Command: "quote", Label: "Quote", Icon: "❝", Description: "Block quote", Insert: "> "},
+		{Command: "quote", Label: "Quote", Icon: ">", Description: "Block quote", Insert: "> "},
 		{Command: "code", Label: "Code Block", Icon: "<>", Description: "Fenced code block", Insert: "```\n\n```"},
 		{Command: "callout", Label: "Callout", Icon: "!", Description: "Callout block", Insert: "> [!note]\n> "},
-		{Command: "divider", Label: "Divider", Icon: "—", Description: "Horizontal rule", Insert: "\n---\n"},
-		{Command: "table", Label: "Table", Icon: "⊞", Description: "Markdown table", Insert: "| Column 1 | Column 2 | Column 3 |\n|----------|----------|----------|\n|          |          |          |"},
+		{Command: "divider", Label: "Divider", Icon: "--", Description: "Horizontal rule", Insert: "\n---\n"},
+		{Command: "table", Label: "Table", Icon: "||", Description: "Markdown table", Insert: "| Column 1 | Column 2 | Column 3 |\n|----------|----------|----------|\n|          |          |          |"},
 
 		// Links & media
-		{Command: "link", Label: "Wiki Link", Icon: "⟦⟧", Description: "Internal note link", Insert: "[[]]"},
-		{Command: "image", Label: "Image", Icon: "⌼", Description: "Image embed", Insert: "![alt text](url)"},
-		{Command: "url", Label: "External Link", Icon: "⌘", Description: "URL link", Insert: "[text](url)"},
+		{Command: "link", Label: "Wiki Link", Icon: "[[", Description: "Internal note link", Insert: "[[]]"},
+		{Command: "image", Label: "Image", Icon: "![", Description: "Image embed", Insert: "![alt text](url)"},
+		{Command: "url", Label: "External Link", Icon: "=>", Description: "URL link", Insert: "[text](url)"},
 
 		// Templates
-		{Command: "date", Label: "Today's Date", Icon: "⟳", Description: "Insert current date", Insert: "{{date}}"},
-		{Command: "time", Label: "Current Time", Icon: "◷", Description: "Insert current time", Insert: "{{time}}"},
+		{Command: "date", Label: "Today's Date", Icon: "D", Description: "Insert current date", Insert: "{{date}}"},
+		{Command: "time", Label: "Current Time", Icon: "T", Description: "Insert current time", Insert: "{{time}}"},
 		{Command: "frontmatter", Label: "Frontmatter", Icon: "---", Description: "YAML front matter", Insert: "---\ntitle: \ndate: {{date}}\ntags: []\n---\n"},
-		{Command: "meeting", Label: "Meeting Notes", Icon: "⚑", Description: "Meeting template", Insert: "## Meeting Notes\n\n**Date:** {{date}}\n**Attendees:**\n-\n\n**Agenda:**\n1.\n\n**Notes:**\n\n**Action Items:**\n- [ ] "},
-		{Command: "daily", Label: "Daily Note", Icon: "☀", Description: "Daily template", Insert: "# {{date}}\n\n## Tasks\n- [ ] \n\n## Notes\n\n## Reflection\n"},
+		{Command: "meeting", Label: "Meeting Notes", Icon: "M", Description: "Meeting template", Insert: "## Meeting Notes\n\n**Date:** {{date}}\n**Attendees:**\n-\n\n**Agenda:**\n1.\n\n**Notes:**\n\n**Action Items:**\n- [ ] "},
+		{Command: "daily", Label: "Daily Note", Icon: "DN", Description: "Daily template", Insert: "# {{date}}\n\n## Tasks\n- [ ] \n\n## Notes\n\n## Reflection\n"},
 
 		// Text formatting
 		{Command: "bold", Label: "Bold", Icon: "B", Description: "Bold text", Insert: "****"},
 		{Command: "italic", Label: "Italic", Icon: "I", Description: "Italic text", Insert: "**"},
-		{Command: "highlight", Label: "Highlight", Icon: "≡", Description: "Highlighted text", Insert: "===="},
-		{Command: "strikethrough", Label: "Strikethrough", Icon: "S", Description: "Strikethrough text", Insert: "~~~~"},
+		{Command: "highlight", Label: "Highlight", Icon: "==", Description: "Highlighted text", Insert: "===="},
+		{Command: "strikethrough", Label: "Strikethrough", Icon: "~~", Description: "Strikethrough text", Insert: "~~~~"},
 	}
 }
 
@@ -206,7 +206,7 @@ func (sm *SlashMenu) View() string {
 		return ""
 	}
 
-	menuWidth := 42
+	const menuInner = 44
 	maxVisible := 8
 	if len(sm.matches) < maxVisible {
 		maxVisible = len(sm.matches)
@@ -218,34 +218,46 @@ func (sm *SlashMenu) View() string {
 		scrollOffset = sm.cursor - maxVisible + 1
 	}
 
-	var b strings.Builder
+	var rows []string
 
 	// Header
 	headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 	queryStyle := lipgloss.NewStyle().Foreground(text).Bold(true)
-	b.WriteString(headerStyle.Render(" /"))
+	cursorStyle := lipgloss.NewStyle().Foreground(mauve)
+
+	headerText := headerStyle.Render("/")
 	if sm.query != "" {
-		b.WriteString(queryStyle.Render(sm.query))
+		headerText += queryStyle.Render(sm.query)
 	}
-	cursorBlink := lipgloss.NewStyle().Foreground(mauve).Render("▌")
-	b.WriteString(cursorBlink)
-	b.WriteString("\n")
+	headerText += cursorStyle.Render("|")
+	headerLine := lipgloss.NewStyle().Width(menuInner).Render(" " + headerText)
+	rows = append(rows, headerLine)
 
 	// Separator
-	sepStyle := lipgloss.NewStyle().Foreground(surface1)
-	b.WriteString(sepStyle.Render(strings.Repeat("─", menuWidth-2)))
-	b.WriteString("\n")
+	sepLine := lipgloss.NewStyle().Foreground(surface1).Width(menuInner).Render(strings.Repeat("─", menuInner))
+	rows = append(rows, sepLine)
 
 	end := scrollOffset + maxVisible
 	if end > len(sm.matches) {
 		end = len(sm.matches)
 	}
 
+	iconWidth := 4
+	labelWidth := 18
+
 	for i := scrollOffset; i < end; i++ {
 		item := sm.matches[i]
 		isSelected := i == sm.cursor
 
+		// Pad icon and label using visual width
+		icon := smVisualPad(item.Icon, iconWidth)
+		label := smVisualPad(item.Label, labelWidth)
+
 		if isSelected {
+			st := lipgloss.NewStyle().
+				Background(surface0).
+				Width(menuInner)
+
 			iconSt := lipgloss.NewStyle().
 				Background(surface0).
 				Foreground(mauve).
@@ -260,46 +272,47 @@ func (sm *SlashMenu) View() string {
 				Background(surface0).
 				Foreground(overlay0)
 
-			line := iconSt.Render(" "+smPadRight(item.Icon, 3)+" ") +
-				labelSt.Render(smPadRight(item.Label, 18)) +
-				descSt.Render(item.Description)
-
-			b.WriteString(lipgloss.NewStyle().Background(surface0).Width(menuWidth-2).Render(line))
+			content := " " + iconSt.Render(icon) + " " + labelSt.Render(label) + " " + descSt.Render(item.Description)
+			rows = append(rows, st.Render(content))
 		} else {
+			st := lipgloss.NewStyle().Width(menuInner)
+
 			iconSt := lipgloss.NewStyle().Foreground(surface2)
 			labelSt := lipgloss.NewStyle().Foreground(text)
 			descSt := lipgloss.NewStyle().Foreground(surface2)
 
-			b.WriteString(iconSt.Render(" "+smPadRight(item.Icon, 3)+" ") +
-				labelSt.Render(smPadRight(item.Label, 18)) +
-				descSt.Render(item.Description))
+			content := " " + iconSt.Render(icon) + " " + labelSt.Render(label) + " " + descSt.Render(item.Description)
+			rows = append(rows, st.Render(content))
 		}
-		b.WriteString("\n")
 	}
 
 	// Scroll indicator
 	if len(sm.matches) > maxVisible {
-		moreStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
 		remaining := len(sm.matches) - end
 		if remaining > 0 {
-			b.WriteString(moreStyle.Render(" +" + smItoa(remaining) + " more..."))
+			moreStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true).Width(menuInner)
+			rows = append(rows, moreStyle.Render(" +"+smItoa(remaining)+" more..."))
 		}
 	}
+
+	body := strings.Join(rows, "\n")
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(surface1).
-		Background(mantle).
-		Width(menuWidth)
+		Padding(0, 1).
+		Width(menuInner + 4) // +4 for padding
 
-	return border.Render(b.String())
+	return border.Render(body)
 }
 
-func smPadRight(s string, width int) string {
-	if len(s) >= width {
-		return s[:width]
+// smVisualPad pads s to the given visual width using spaces.
+func smVisualPad(s string, width int) string {
+	w := lipgloss.Width(s)
+	if w >= width {
+		return s
 	}
-	return s + strings.Repeat(" ", width-len(s))
+	return s + strings.Repeat(" ", width-w)
 }
 
 func smItoa(n int) string {

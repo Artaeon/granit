@@ -3155,7 +3155,7 @@ func (m Model) View() string {
 	if m.slashMenu != nil && m.slashMenu.IsActive() {
 		overlay := m.slashMenu.View()
 		if overlay != "" {
-			view = m.overlayAtCursor(view, overlay)
+			view = m.overlayCenter(view, overlay)
 		}
 	}
 	if m.splitPane.IsActive() {
