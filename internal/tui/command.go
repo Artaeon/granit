@@ -38,6 +38,9 @@ const (
 	CmdFocusMode
 	CmdQuickSwitch
 	CmdShowTrash
+	CmdShowCanvas
+	CmdShowCalendar
+	CmdShowBots
 	CmdQuit
 )
 
@@ -74,6 +77,9 @@ var AllCommands = []Command{
 	{Label: "Focus Mode", Desc: "Distraction-free writing", Shortcut: "Ctrl+Z", Action: CmdFocusMode},
 	{Label: "Quick Switch", Desc: "Switch between recent files", Shortcut: "Ctrl+J", Action: CmdQuickSwitch},
 	{Label: "Trash", Desc: "View and restore deleted notes", Shortcut: "", Action: CmdShowTrash},
+	{Label: "Canvas", Desc: "Visual note canvas / whiteboard", Shortcut: "Ctrl+W", Action: CmdShowCanvas},
+	{Label: "Calendar", Desc: "Calendar view with daily notes", Shortcut: "Ctrl+L", Action: CmdShowCalendar},
+	{Label: "Bots", Desc: "Local AI bots for note analysis", Shortcut: "Ctrl+R", Action: CmdShowBots},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 

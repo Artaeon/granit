@@ -21,25 +21,34 @@ type Sidebar struct {
 	// Config-driven
 	showIcons   bool
 	compactMode bool
+
+	// File tree view
+	treeView bool
+	fileTree FileTree
 }
 
 func NewSidebar(files []string) Sidebar {
+	ft := NewFileTree()
+	ft.SetFiles(files)
 	return Sidebar{
 		files:    files,
 		filtered: files,
 		cursor:   0,
 		focused:  true,
+		fileTree: ft,
 	}
 }
 
 func (s *Sidebar) SetSize(width, height int) {
 	s.width = width
 	s.height = height
+	s.fileTree.SetSize(width, height)
 }
 
 func (s *Sidebar) SetFiles(files []string) {
 	s.files = files
 	s.applyFilter()
+	s.fileTree.SetFiles(files)
 }
 
 func (s *Sidebar) applyFilter() {
@@ -70,6 +79,9 @@ func fuzzyMatch(str, pattern string) bool {
 }
 
 func (s *Sidebar) Selected() string {
+	if s.treeView && s.search == "" {
+		return s.fileTree.Selected()
+	}
 	if len(s.filtered) == 0 {
 		return ""
 	}
@@ -83,6 +95,32 @@ func (s Sidebar) Update(msg tea.Msg) (Sidebar, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Toggle between tree and flat view
+		if msg.String() == "ctrl+t" {
+			s.treeView = !s.treeView
+			s.fileTree.SetFocused(s.focused)
+			return s, nil
+		}
+
+		if s.treeView && s.search == "" {
+			// In tree mode, delegate most keys to file tree
+			switch msg.String() {
+			case "backspace":
+				// no-op in tree mode without search
+			default:
+				char := msg.String()
+				if len(char) == 1 && char[0] >= 32 && char[0] != ' ' {
+					// Start search mode in tree view
+					s.search += char
+					s.applyFilter()
+					s.treeView = false // temporarily switch to flat for search
+					return s, nil
+				}
+				s.fileTree = s.fileTree.Update(msg)
+			}
+			return s, nil
+		}
+
 		switch msg.String() {
 		case "up", "k":
 			if s.cursor > 0 {
@@ -130,7 +168,11 @@ func (s Sidebar) View() string {
 	}
 
 	// Header with icon
-	header := HeaderStyle.Render("  Explorer")
+	viewMode := "Explorer"
+	if s.treeView {
+		viewMode = "Explorer ▾"
+	}
+	header := HeaderStyle.Render("  " + viewMode)
 	b.WriteString(header)
 	b.WriteString("\n")
 
@@ -151,6 +193,12 @@ func (s Sidebar) View() string {
 	// Separator
 	b.WriteString(DimStyle.Render(strings.Repeat("─", contentWidth)))
 	b.WriteString("\n")
+
+	// If tree view and not searching, use the file tree
+	if s.treeView && s.search == "" {
+		b.WriteString(s.fileTree.View())
+		return b.String()
+	}
 
 	// File count
 	countStr := DimStyle.Render(strings.Repeat(" ", 1) +

@@ -101,6 +101,9 @@ Keyboard Shortcuts (TUI):
   Ctrl+Z          Focus / zen mode
   Ctrl+G          Show note graph
   Ctrl+T          Browse tags
+  Ctrl+W          Canvas / whiteboard
+  Ctrl+L          Calendar view
+  Ctrl+R          Local AI bots
   Ctrl+X          Command palette
   Ctrl+,          Settings
   Ctrl+Q / Ctrl+C Quit

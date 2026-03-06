@@ -71,6 +71,9 @@ type Model struct {
 	quickSwitch    QuickSwitch
 	autocomplete   Autocomplete
 	trash          Trash
+	canvas         Canvas
+	calendar       Calendar
+	bots           Bots
 
 	// View mode scroll
 	viewScroll int
@@ -123,6 +126,9 @@ func NewModel(vaultPath string) (Model, error) {
 		quickSwitch:    NewQuickSwitch(),
 		autocomplete:   NewAutocomplete(),
 		trash:          NewTrash(vaultPath),
+		canvas:         NewCanvas(),
+		calendar:       NewCalendar(),
+		bots:           NewBots(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -131,6 +137,31 @@ func NewModel(vaultPath string) (Model, error) {
 	m.statusbar.SetVaultPath(vaultPath)
 	m.statusbar.SetNoteCount(v.NoteCount())
 	m.autocomplete.SetNotes(paths)
+
+	// Set up renderer note lookup for transclusion
+	m.renderer.SetNoteLookup(func(name string) string {
+		// Try exact path
+		if note := m.vault.GetNote(name); note != nil {
+			return note.Content
+		}
+		// Try with .md extension
+		if note := m.vault.GetNote(name + ".md"); note != nil {
+			return note.Content
+		}
+		// Try basename match
+		for _, p := range m.vault.SortedPaths() {
+			base := strings.TrimSuffix(filepath.Base(p), ".md")
+			if base == name {
+				if note := m.vault.GetNote(p); note != nil {
+					return note.Content
+				}
+			}
+		}
+		return ""
+	})
+
+	// Set calendar daily notes
+	m.calendar.SetDailyNotes(paths)
 
 	// Apply config to components
 	m.syncConfigToComponents()
@@ -335,6 +366,73 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.canvas.IsActive() {
+			m.canvas, _ = m.canvas.Update(msg)
+			if nav := m.canvas.SelectedNote(); nav != "" {
+				resolved := m.resolveLink(nav)
+				if resolved != "" {
+					m.loadNote(resolved)
+					m.sidebar.cursor = m.findFileIndex(resolved)
+					m.setFocus(focusEditor)
+				}
+			}
+			return m, nil
+		}
+
+		if m.calendar.IsActive() {
+			m.calendar, _ = m.calendar.Update(msg)
+			if date := m.calendar.SelectedDate(); date != "" {
+				// Open or create daily note for selected date
+				name := date + ".md"
+				folder := m.config.DailyNotesFolder
+				if folder != "" {
+					name = filepath.Join(folder, name)
+				}
+				path := filepath.Join(m.vault.Root, name)
+				if _, err := os.Stat(path); os.IsNotExist(err) {
+					os.MkdirAll(filepath.Dir(path), 0755)
+					content := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n", date, date)
+					os.WriteFile(path, []byte(content), 0644)
+					m.vault.Scan()
+					m.index = vault.NewIndex(m.vault)
+					m.index.Build()
+					paths := m.vault.SortedPaths()
+					m.sidebar.SetFiles(paths)
+					m.autocomplete.SetNotes(paths)
+					m.calendar.SetDailyNotes(paths)
+					m.statusbar.SetNoteCount(m.vault.NoteCount())
+				}
+				m.loadNote(name)
+				m.sidebar.cursor = m.findFileIndex(name)
+				m.setFocus(focusEditor)
+			}
+			return m, nil
+		}
+
+		if m.bots.IsActive() {
+			m.bots, _ = m.bots.Update(msg)
+			if result := m.bots.GetResult(); result.Action != "none" {
+				switch result.Action {
+				case "tag":
+					// Apply suggested tags to current note content
+					if m.activeNote != "" && len(result.Tags) > 0 {
+						tagStr := strings.Join(result.Tags, ", ")
+						m.statusbar.SetMessage("Suggested tags: " + tagStr)
+					}
+				case "link":
+					if len(result.Links) > 0 {
+						m.statusbar.SetMessage("Found " + fmt.Sprintf("%d", len(result.Links)) + " related notes")
+					}
+				case "summary":
+					if result.Summary != "" {
+						m.statusbar.SetMessage("Summary generated")
+					}
+				}
+				return m, m.clearMessageAfter(3 * time.Second)
+			}
+			return m, nil
+		}
+
 		if m.confirmDelete {
 			switch msg.String() {
 			case "y", "Y", "enter":
@@ -503,6 +601,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return time.Time{}
 				},
 			)
+			return m, nil
+
+		case "ctrl+w":
+			m.canvas.SetSize(m.width, m.height)
+			m.canvas.Open()
+			return m, nil
+
+		case "ctrl+l":
+			m.calendar.SetSize(m.width, m.height)
+			m.calendar.Open()
+			return m, nil
+
+		case "ctrl+r":
+			m.bots.SetSize(m.width, m.height)
+			// Prepare vault data for bots
+			noteContents := make(map[string]string)
+			tagMap := make(map[string][]string)
+			for _, p := range m.vault.SortedPaths() {
+				if note := m.vault.GetNote(p); note != nil {
+					noteContents[p] = note.Content
+					if tags, ok := note.Frontmatter["tags"]; ok {
+						if tagList, ok := tags.([]interface{}); ok {
+							for _, t := range tagList {
+								if s, ok := t.(string); ok {
+									tagMap[s] = append(tagMap[s], p)
+								}
+							}
+						}
+					}
+				}
+			}
+			m.bots.SetVaultData(noteContents, tagMap)
+			m.bots.SetCurrentNote(m.activeNote, m.editor.GetContent())
+			m.bots.Open()
 			return m, nil
 
 		case "ctrl+z":
@@ -744,6 +876,33 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 				return time.Time{}
 			},
 		)
+	case CmdShowCanvas:
+		m.canvas.SetSize(m.width, m.height)
+		m.canvas.Open()
+	case CmdShowCalendar:
+		m.calendar.SetSize(m.width, m.height)
+		m.calendar.Open()
+	case CmdShowBots:
+		m.bots.SetSize(m.width, m.height)
+		noteContents := make(map[string]string)
+		tagMap := make(map[string][]string)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				noteContents[p] = note.Content
+				if tags, ok := note.Frontmatter["tags"]; ok {
+					if tagList, ok := tags.([]interface{}); ok {
+						for _, t := range tagList {
+							if s, ok := t.(string); ok {
+								tagMap[s] = append(tagMap[s], p)
+							}
+						}
+					}
+				}
+			}
+		}
+		m.bots.SetVaultData(noteContents, tagMap)
+		m.bots.SetCurrentNote(m.activeNote, m.editor.GetContent())
+		m.bots.Open()
 	case CmdQuit:
 		m.quitting = true
 		return m, tea.Quit
@@ -907,6 +1066,7 @@ func (m *Model) findFileIndex(relPath string) int {
 func (m *Model) setFocus(f focus) {
 	m.focus = f
 	m.sidebar.focused = (f == focusSidebar)
+	m.sidebar.fileTree.SetFocused(f == focusSidebar)
 	m.editor.focused = (f == focusEditor)
 	m.backlinks.focused = (f == focusBacklinks)
 
@@ -1180,6 +1340,18 @@ func (m Model) View() string {
 	}
 	if m.trash.IsActive() {
 		overlay := m.trash.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.canvas.IsActive() {
+		overlay := m.canvas.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.calendar.IsActive() {
+		overlay := m.calendar.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.bots.IsActive() {
+		overlay := m.bots.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.confirmDelete {
