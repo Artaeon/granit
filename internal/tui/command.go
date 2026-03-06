@@ -279,28 +279,41 @@ func (cp CommandPalette) View() string {
 		width = 80
 	}
 
+	innerWidth := width - 6
+
 	var b strings.Builder
 
 	// Header
-	title := lipgloss.NewStyle().
-		Foreground(mauve).
-		Bold(true).
-		Render("  Command Palette")
-	b.WriteString(title)
-	b.WriteString("\n\n")
+	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	b.WriteString(titleStyle.Render("  Command Palette"))
+	b.WriteString("\n")
 
-	// Search input
-	prompt := SearchPromptStyle.Render(" > ")
-	input := cp.query + DimStyle.Render("_")
-	b.WriteString(prompt + input)
+	// Search input with styled field
+	searchBg := lipgloss.NewStyle().
+		Background(surface0).
+		Foreground(text).
+		Width(innerWidth).
+		Padding(0, 1)
+	promptIcon := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(">")
+	cursor := lipgloss.NewStyle().Foreground(mauve).Render("|")
+	b.WriteString("  " + searchBg.Render(promptIcon+" "+cp.query+cursor))
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", width-6)))
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", innerWidth-4)))
 	b.WriteString("\n")
+
+	// Result count
+	if cp.query != "" && len(cp.filtered) > 0 {
+		countStyle := lipgloss.NewStyle().Foreground(surface2)
+		b.WriteString(countStyle.Render("  " + cpItoa(len(cp.filtered)) + " commands"))
+		b.WriteString("\n")
+	}
 
 	// Results
-	maxVisible := 12
+	maxVisible := 10
 	if len(cp.filtered) == 0 {
-		b.WriteString(DimStyle.Render("  No commands found"))
+		emptyStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
+		b.WriteString("\n")
+		b.WriteString(emptyStyle.Render("  No commands found"))
 	} else {
 		start := 0
 		if cp.cursor >= maxVisible {
@@ -314,39 +327,47 @@ func (cp CommandPalette) View() string {
 		for i := start; i < end; i++ {
 			cmd := cp.filtered[i]
 
-			iconStr := ""
+			iconStr := "  "
 			if cmd.Icon != nil {
 				iconStr = lipgloss.NewStyle().Foreground(blue).Render(*cmd.Icon) + " "
-			} else {
-				iconStr = "  "
 			}
 
-			label := cmd.Label
 			shortcut := ""
 			if cmd.Shortcut != "" {
 				shortcut = lipgloss.NewStyle().
-					Foreground(overlay0).
-					Render(" " + cmd.Shortcut)
-			}
-
-			desc := DimStyle.Render("  " + cmd.Desc)
-
-			if i == cp.cursor {
-				selected := lipgloss.NewStyle().
+					Foreground(surface2).
 					Background(surface0).
-					Foreground(peach).
-					Bold(true)
-
-				line := "  " + iconStr + label
-				b.WriteString(selected.Width(width - 6).Render(line + shortcut))
-			} else {
-				b.WriteString("  " + iconStr + NormalItemStyle.Render(label) + shortcut)
+					Padding(0, 1).
+					Render(cmd.Shortcut)
 			}
-			b.WriteString("\n")
+
 			if i == cp.cursor {
-				b.WriteString(lipgloss.NewStyle().Background(surface0).Width(width - 6).Render(desc))
+				// Selected: accent bar + highlighted
+				accentBar := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("┃")
+				nameStyle := lipgloss.NewStyle().
+					Background(surface0).
+					Foreground(mauve).
+					Bold(true)
+				descStyle := lipgloss.NewStyle().
+					Background(surface0).
+					Foreground(overlay0)
+
+				line1 := accentBar + " " + iconStr + nameStyle.Render(cmd.Label)
+				if shortcut != "" {
+					line1 += " " + shortcut
+				}
+				b.WriteString(lipgloss.NewStyle().Background(surface0).Width(innerWidth).Render(line1))
+				b.WriteString("\n")
+				b.WriteString(lipgloss.NewStyle().Background(surface0).Width(innerWidth).Render(
+					"    " + descStyle.Render(cmd.Desc)))
 			} else {
-				b.WriteString(desc)
+				line1 := "  " + iconStr + NormalItemStyle.Render(cmd.Label)
+				if shortcut != "" {
+					line1 += " " + shortcut
+				}
+				b.WriteString(line1)
+				b.WriteString("\n")
+				b.WriteString(DimStyle.Render("    " + cmd.Desc))
 			}
 			if i < end-1 {
 				b.WriteString("\n")
@@ -354,12 +375,33 @@ func (cp CommandPalette) View() string {
 		}
 	}
 
+	// Scroll indicator
+	if len(cp.filtered) > maxVisible {
+		b.WriteString("\n")
+		moreStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
+		remaining := len(cp.filtered) - maxVisible
+		if remaining > 0 {
+			b.WriteString(moreStyle.Render("  +" + cpItoa(remaining) + " more..."))
+		}
+	}
+
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(mauve).
 		Padding(1, 2).
-		Width(width).
-		Background(mantle)
+		Width(width)
 
 	return border.Render(b.String())
+}
+
+func cpItoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	s := ""
+	for n > 0 {
+		s = string(rune('0'+n%10)) + s
+		n /= 10
+	}
+	return s
 }
