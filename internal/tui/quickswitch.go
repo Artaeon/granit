@@ -234,15 +234,13 @@ func (qs QuickSwitch) View() string {
 					Foreground(overlay0)
 
 				line := prefix + selectedStyle.Render(namePadded) + " " + dimOnSelected.Render(item.modTime)
-				b.WriteString(selectedStyle.Width(innerWidth).Render(line))
+				b.WriteString(selectedStyle.MaxWidth(innerWidth).Render(line))
 			} else {
 				line := prefix + lipgloss.NewStyle().Foreground(text).Render(namePadded) + " " + modTimeStr
 				b.WriteString(line)
 			}
 
-			if i < end-1 {
-				b.WriteString("\n")
-			}
+			b.WriteString("\n")
 		}
 	}
 

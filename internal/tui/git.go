@@ -354,15 +354,13 @@ func (g GitOverlay) View() string {
 	} else {
 		for i := g.scroll; i < end; i++ {
 			b.WriteString(lines[i])
-			if i < end-1 {
-				b.WriteString("\n")
-			}
+			b.WriteString("\n")
 		}
 	}
 
 	// Commit mode input
 	if g.commitMode {
-		b.WriteString("\n\n")
+		b.WriteString("\n")
 		promptStyle := lipgloss.NewStyle().Foreground(yellow).Bold(true)
 		b.WriteString(promptStyle.Render("  Commit message: "))
 		b.WriteString(g.commitMsg + DimStyle.Render("_"))

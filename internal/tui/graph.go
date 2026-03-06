@@ -279,19 +279,17 @@ func (g GraphView) View() string {
 				b.WriteString(lipgloss.NewStyle().
 					Background(surface0).
 					Bold(true).
-					Width(innerWidth).
+					MaxWidth(innerWidth).
 					Render(line))
 			} else {
 				b.WriteString(line)
 			}
-			if i < end-1 {
-				b.WriteString("\n")
-			}
+			b.WriteString("\n")
 		}
 	}
 
 	// Footer
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", innerWidth-4)))
 	b.WriteString("\n")
 

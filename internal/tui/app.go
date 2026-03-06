@@ -3236,23 +3236,13 @@ func (m Model) overlayTopRight(bg, overlay string) string {
 	result := make([]string, len(bgLines))
 	copy(result, bgLines)
 
+	pad := strings.Repeat(" ", startX)
 	for i, overlayLine := range overlayLines {
 		y := startY + i
 		if y >= len(result) {
 			break
 		}
-		bgLine := result[y]
-		bgRunes := []rune(bgLine)
-
-		for len(bgRunes) < startX+lipgloss.Width(overlayLine) {
-			bgRunes = append(bgRunes, ' ')
-		}
-
-		newLine := string(bgRunes[:startX]) + overlayLine
-		if startX+lipgloss.Width(overlayLine) < len(bgRunes) {
-			newLine += string(bgRunes[startX+lipgloss.Width(overlayLine):])
-		}
-		result[y] = newLine
+		result[y] = pad + overlayLine
 	}
 
 	return strings.Join(result, "\n")
@@ -3634,18 +3624,16 @@ func (m Model) renderMoveFileOverlay() string {
 				Background(surface0).
 				Foreground(peach).
 				Bold(true).
-				Width(width - 6).
+				MaxWidth(width - 6).
 				Render("  " + icon + " " + dir)
 			b.WriteString(line)
 		} else {
 			b.WriteString("  " + icon + " " + NormalItemStyle.Render(dir))
 		}
-		if i < end-1 {
-			b.WriteString("\n")
-		}
+		b.WriteString("\n")
 	}
 
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 	b.WriteString(DimStyle.Render("  Enter: move here  Esc: cancel"))
 
 	border := lipgloss.NewStyle().
@@ -3683,23 +3671,13 @@ func (m Model) overlayCenter(bg, overlay string) string {
 	result := make([]string, len(bgLines))
 	copy(result, bgLines)
 
+	pad := strings.Repeat(" ", startX)
 	for i, overlayLine := range overlayLines {
 		y := startY + i
 		if y >= len(result) {
 			break
 		}
-		bgLine := result[y]
-		bgRunes := []rune(bgLine)
-
-		for len(bgRunes) < startX+lipgloss.Width(overlayLine) {
-			bgRunes = append(bgRunes, ' ')
-		}
-
-		newLine := string(bgRunes[:startX]) + overlayLine
-		if startX+lipgloss.Width(overlayLine) < len(bgRunes) {
-			newLine += string(bgRunes[startX+lipgloss.Width(overlayLine):])
-		}
-		result[y] = newLine
+		result[y] = pad + overlayLine
 	}
 
 	return strings.Join(result, "\n")
@@ -3756,23 +3734,13 @@ func (m Model) overlayAtCursor(bg, overlay string) string {
 	result := make([]string, len(bgLines))
 	copy(result, bgLines)
 
+	pad := strings.Repeat(" ", startX)
 	for i, overlayLine := range overlayLines {
 		y := startY + i
 		if y >= len(result) {
 			break
 		}
-		bgLine := result[y]
-		bgRunes := []rune(bgLine)
-
-		for len(bgRunes) < startX+lipgloss.Width(overlayLine) {
-			bgRunes = append(bgRunes, ' ')
-		}
-
-		newLine := string(bgRunes[:startX]) + overlayLine
-		if startX+lipgloss.Width(overlayLine) < len(bgRunes) {
-			newLine += string(bgRunes[startX+lipgloss.Width(overlayLine):])
-		}
-		result[y] = newLine
+		result[y] = pad + overlayLine
 	}
 
 	return strings.Join(result, "\n")

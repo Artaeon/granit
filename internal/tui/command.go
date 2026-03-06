@@ -292,11 +292,10 @@ func (cp CommandPalette) View() string {
 	searchBg := lipgloss.NewStyle().
 		Background(surface0).
 		Foreground(text).
-		Width(innerWidth).
-		Padding(0, 1)
+		Width(innerWidth - 2)
 	promptIcon := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(">")
 	cursor := lipgloss.NewStyle().Foreground(mauve).Render("|")
-	b.WriteString("  " + searchBg.Render(promptIcon+" "+cp.query+cursor))
+	b.WriteString("  " + searchBg.Render(" "+promptIcon+" "+cp.query+cursor))
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", innerWidth-4)))
 	b.WriteString("\n")
@@ -351,15 +350,15 @@ func (cp CommandPalette) View() string {
 				descStyle := lipgloss.NewStyle().
 					Background(surface0).
 					Foreground(overlay0)
+				rowBg := lipgloss.NewStyle().Background(surface0).MaxWidth(innerWidth)
 
 				line1 := accentBar + " " + iconStr + nameStyle.Render(cmd.Label)
 				if shortcut != "" {
 					line1 += " " + shortcut
 				}
-				b.WriteString(lipgloss.NewStyle().Background(surface0).Width(innerWidth).Render(line1))
+				b.WriteString(rowBg.Render(line1))
 				b.WriteString("\n")
-				b.WriteString(lipgloss.NewStyle().Background(surface0).Width(innerWidth).Render(
-					"    " + descStyle.Render(cmd.Desc)))
+				b.WriteString(rowBg.Render("    " + descStyle.Render(cmd.Desc)))
 			} else {
 				line1 := "  " + iconStr + NormalItemStyle.Render(cmd.Label)
 				if shortcut != "" {
@@ -369,9 +368,7 @@ func (cp CommandPalette) View() string {
 				b.WriteString("\n")
 				b.WriteString(DimStyle.Render("    " + cmd.Desc))
 			}
-			if i < end-1 {
-				b.WriteString("\n")
-			}
+			b.WriteString("\n")
 		}
 	}
 

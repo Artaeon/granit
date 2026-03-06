@@ -654,13 +654,11 @@ func (c Canvas) View() string {
 	rows := c.renderGrid(gw, gh)
 	for y := 0; y < len(rows); y++ {
 		b.WriteString(rows[y])
-		if y < len(rows)-1 {
-			b.WriteString("\n")
-		}
+		b.WriteString("\n")
 	}
 
 	// Footer
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", overlayW-6)))
 	b.WriteString("\n")
 	footer := "  arrows: move  n: add  d/x: del  m: move  L: connect  c: color  +/-: resize  z: zoom  Enter: open  Esc: close"
