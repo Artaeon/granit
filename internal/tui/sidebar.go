@@ -167,31 +167,38 @@ func (s Sidebar) View() string {
 		contentWidth = 10
 	}
 
-	// Header with icon
-	viewMode := "Explorer"
-	if s.treeView {
-		viewMode = "Explorer ▾"
+	// Header with accent bar and file count
+	headerAccent := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	fileCountStyle := lipgloss.NewStyle().Foreground(surface2)
+	headerLine := headerAccent.Render("  EXPLORER")
+	if len(s.files) > 0 {
+		headerLine += fileCountStyle.Render("  " + sidebarItoa(len(s.files)) + " files")
 	}
-	header := HeaderStyle.Render("  " + viewMode)
-	b.WriteString(header)
+	b.WriteString(headerLine)
 	b.WriteString("\n")
 
-	// Search bar
+	// Search bar with styled input field
 	if s.search != "" || s.focused {
-		searchIcon := SearchPromptStyle.Render("  ")
+		searchBg := lipgloss.NewStyle().
+			Background(surface0).
+			Foreground(text).
+			Width(contentWidth - 2).
+			Padding(0, 1)
+		searchIcon := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" > ")
 		searchText := s.search
-		if s.focused {
-			searchText += DimStyle.Render("_")
+		if s.focused && s.search == "" {
+			searchText = lipgloss.NewStyle().Foreground(surface2).Render("filter...")
 		}
-		searchBg := SearchInputStyle.Width(contentWidth - 4)
-		b.WriteString(searchIcon + searchBg.Render(searchText))
+		cursor := lipgloss.NewStyle().Foreground(mauve).Render("|")
+		b.WriteString(searchIcon + searchBg.Render(s.search+cursor))
+		_ = searchText
 	} else {
-		b.WriteString(DimStyle.Render("  search..."))
+		b.WriteString(lipgloss.NewStyle().Foreground(surface2).Render("  > filter..."))
 	}
 	b.WriteString("\n")
 
-	// Separator
-	b.WriteString(DimStyle.Render(strings.Repeat("─", contentWidth)))
+	// Thin separator
+	b.WriteString(lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("─", contentWidth)))
 	b.WriteString("\n")
 
 	// If tree view and not searching, use the file tree
@@ -199,12 +206,6 @@ func (s Sidebar) View() string {
 		b.WriteString(s.fileTree.View())
 		return b.String()
 	}
-
-	// File count
-	countStr := DimStyle.Render(strings.Repeat(" ", 1) +
-		formatCount(len(s.filtered), len(s.files)))
-	b.WriteString(countStr)
-	b.WriteString("\n")
 
 	// File list
 	visibleHeight := s.height - 6
@@ -214,7 +215,8 @@ func (s Sidebar) View() string {
 
 	if len(s.filtered) == 0 {
 		b.WriteString("\n")
-		b.WriteString(DimStyle.Render("  No files found"))
+		emptyStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
+		b.WriteString(emptyStyle.Render("  No files found"))
 		return b.String()
 	}
 
@@ -231,12 +233,8 @@ func (s Sidebar) View() string {
 
 		// Show directory header if changed
 		if dir != "." && dir != lastDir {
-			folderIcon := ""
-			if s.showIcons {
-				folderIcon = lipgloss.NewStyle().Foreground(peach).Render(IconFolderChar) + " "
-			}
-			dirDisplay := "  " + folderIcon + lipgloss.NewStyle().Foreground(peach).Render(dir+"/")
-			b.WriteString(dirDisplay)
+			folderLine := lipgloss.NewStyle().Foreground(peach).Bold(true).Render("  " + dir + "/")
+			b.WriteString(folderLine)
 			b.WriteString("\n")
 			lastDir = dir
 		}
@@ -244,24 +242,25 @@ func (s Sidebar) View() string {
 		// Strip .md extension for cleaner display
 		displayName := strings.TrimSuffix(name, ".md")
 
-		// File icon (conditional)
+		// File icon based on type
 		icon := ""
 		if s.showIcons {
-			icon = lipgloss.NewStyle().Foreground(blue).Render(IconFileChar)
-			// Check if it's a daily note
-			if len(displayName) >= 10 && displayName[4] == '-' && displayName[7] == '-' {
+			isDaily := len(displayName) >= 10 && displayName[4] == '-' && displayName[7] == '-'
+			if isDaily {
 				icon = lipgloss.NewStyle().Foreground(green).Render(IconDailyChar)
+			} else {
+				icon = lipgloss.NewStyle().Foreground(blue).Render(IconFileChar)
 			}
 		}
 
-		indent := "  "
+		indent := " "
 		if dir != "." {
-			indent = "    "
+			indent = "   "
 		}
 		if s.compactMode {
-			indent = " "
+			indent = ""
 			if dir != "." {
-				indent = "  "
+				indent = " "
 			}
 		}
 
@@ -279,35 +278,51 @@ func (s Sidebar) View() string {
 		}
 
 		if i == s.cursor && s.focused {
-			// Full-width highlight for selected item
-			line := indent + icon + iconSpace + displayName
-			padLen := contentWidth - lipgloss.Width(line)
-			if padLen < 0 {
-				padLen = 0
-			}
-			highlighted := lipgloss.NewStyle().
+			// Selected item: accent bar + highlighted background
+			accentBar := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("┃")
+			nameStyle := lipgloss.NewStyle().
 				Background(surface0).
-				Foreground(peach).
-				Bold(true).
-				Width(contentWidth).
-				Render(indent + icon + iconSpace + displayName + strings.Repeat(" ", padLen))
-			b.WriteString(highlighted)
+				Foreground(mauve).
+				Bold(true)
+			line := accentBar + nameStyle.Render(indent+icon+iconSpace+displayName)
+			b.WriteString(lipgloss.NewStyle().Background(surface0).Width(contentWidth).Render(line))
 		} else {
-			b.WriteString(indent + icon + iconSpace + NormalItemStyle.Render(displayName))
+			b.WriteString(" " + indent + icon + iconSpace + NormalItemStyle.Render(displayName))
 		}
 		if i < end-1 {
 			b.WriteString("\n")
 		}
 	}
 
-	// Scroll indicator
+	// Scroll indicator bar
 	if len(s.filtered) > visibleHeight {
 		pct := float64(s.scroll) / float64(len(s.filtered)-visibleHeight)
-		indicator := DimStyle.Render(scrollIndicator(pct))
-		b.WriteString("\n" + indicator)
+		b.WriteString("\n")
+		b.WriteString(sidebarScrollBar(pct, visibleHeight, len(s.filtered)))
 	}
 
 	return b.String()
+}
+
+// sidebarScrollBar renders a visual scroll position indicator.
+func sidebarScrollBar(pct float64, visH, total int) string {
+	if total <= visH {
+		return ""
+	}
+	p := int(pct * 100)
+	return lipgloss.NewStyle().Foreground(surface2).Render("  " + sidebarItoa(p) + "%%")
+}
+
+func sidebarItoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	s := ""
+	for n > 0 {
+		s = string(rune('0'+n%10)) + s
+		n /= 10
+	}
+	return s
 }
 
 func formatCount(filtered, total int) string {
