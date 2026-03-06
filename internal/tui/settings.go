@@ -89,6 +89,7 @@ func (s *Settings) buildItems() {
 		// Behavior
 		{label: "Confirm Delete", key: "confirm_delete", kind: "bool", value: s.config.ConfirmDelete},
 		{label: "Auto Refresh Vault", key: "auto_refresh", kind: "bool", value: s.config.AutoRefresh},
+		{label: "Git Auto Sync", key: "git_auto_sync", kind: "bool", value: s.config.GitAutoSync},
 	}
 }
 
@@ -301,6 +302,8 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.OpenAIModel = value.(string)
 	case "background_bots":
 		s.config.BackgroundBots = value.(bool)
+	case "git_auto_sync":
+		s.config.GitAutoSync = value.(bool)
 	}
 }
 
