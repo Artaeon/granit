@@ -37,6 +37,7 @@ const (
 	CmdNewFromTemplate
 	CmdFocusMode
 	CmdQuickSwitch
+	CmdShowTrash
 	CmdQuit
 )
 
@@ -72,6 +73,7 @@ var AllCommands = []Command{
 	{Label: "New from Template", Desc: "Create note from template", Shortcut: "", Action: CmdNewFromTemplate},
 	{Label: "Focus Mode", Desc: "Distraction-free writing", Shortcut: "Ctrl+Z", Action: CmdFocusMode},
 	{Label: "Quick Switch", Desc: "Switch between recent files", Shortcut: "Ctrl+J", Action: CmdQuickSwitch},
+	{Label: "Trash", Desc: "View and restore deleted notes", Shortcut: "", Action: CmdShowTrash},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
