@@ -142,28 +142,46 @@ func (g GraphView) View() string {
 		width = 100
 	}
 
+	innerWidth := width - 6
+
 	var b strings.Builder
 
-	// Header
-	title := lipgloss.NewStyle().
-		Foreground(mauve).
-		Bold(true).
-		Render("  Graph View — Note Connections")
-	b.WriteString(title)
-	b.WriteString("\n")
-	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
-	b.WriteString("\n\n")
+	// Header with stats
+	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	b.WriteString(titleStyle.Render("  Note Graph"))
 
-	// Legend
-	legend := lipgloss.NewStyle().Foreground(overlay0).Render(
-		"  ← backlinks  → outgoing  ━ connection strength")
-	b.WriteString(legend)
+	// Connection stats
+	totalLinks := 0
+	orphanCount := 0
+	for _, node := range g.nodes {
+		totalLinks += node.total
+		if node.total == 0 {
+			orphanCount++
+		}
+	}
+	statsStyle := lipgloss.NewStyle().Foreground(overlay0)
+	b.WriteString(statsStyle.Render("  " + smallNum(len(g.nodes)) + " notes  " +
+		smallNum(totalLinks/2) + " links  " + smallNum(orphanCount) + " orphans"))
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", innerWidth-4)))
+	b.WriteString("\n")
+
+	// Legend with color indicators
+	inStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+	outStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
+	hubStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+	orphanStyle := lipgloss.NewStyle().Foreground(red)
+	b.WriteString("  " +
+		inStyle.Render("━") + statsStyle.Render(" backlinks  ") +
+		outStyle.Render("━") + statsStyle.Render(" outgoing  ") +
+		hubStyle.Render("*") + statsStyle.Render(" hub  ") +
+		orphanStyle.Render("o") + statsStyle.Render(" orphan"))
 	b.WriteString("\n\n")
 
 	if len(g.nodes) == 0 {
 		b.WriteString(DimStyle.Render("  No notes found"))
 	} else {
-		visH := g.height - 12
+		visH := g.height - 14
 		if visH < 1 {
 			visH = 1
 		}
@@ -180,18 +198,18 @@ func (g GraphView) View() string {
 			}
 		}
 
-		barWidth := width - 40
-		if barWidth < 10 {
-			barWidth = 10
+		barWidth := innerWidth - 42
+		if barWidth < 8 {
+			barWidth = 8
 		}
 
 		for i := g.scroll; i < end; i++ {
 			node := g.nodes[i]
 			isSelected := i == g.cursor
 
-			// Name
+			// Name with truncation
 			name := node.name
-			maxNameLen := 25
+			maxNameLen := 22
 			if len(name) > maxNameLen {
 				name = name[:maxNameLen-3] + "..."
 			}
@@ -200,7 +218,23 @@ func (g GraphView) View() string {
 				namePad = 0
 			}
 
-			// Connection bar
+			// Node icon based on connection count
+			isCurrent := node.path == g.centerNote
+			isHub := node.total >= 5
+			isOrphan := node.total == 0
+			var icon string
+			switch {
+			case isCurrent:
+				icon = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("@ ")
+			case isHub:
+				icon = lipgloss.NewStyle().Foreground(green).Bold(true).Render("* ")
+			case isOrphan:
+				icon = lipgloss.NewStyle().Foreground(red).Render("o ")
+			default:
+				icon = lipgloss.NewStyle().Foreground(surface2).Render("- ")
+			}
+
+			// Connection bar with gradient
 			barLen := 0
 			if maxConn > 0 {
 				barLen = node.total * barWidth / maxConn
@@ -209,33 +243,46 @@ func (g GraphView) View() string {
 				barLen = 1
 			}
 
-			inBar := node.incoming * barLen / maxInt(1, node.total)
-			outBar := barLen - inBar
+			inBar := 0
+			outBar := 0
+			if node.total > 0 {
+				inBar = node.incoming * barLen / node.total
+				outBar = barLen - inBar
+			}
 
 			inBarStr := lipgloss.NewStyle().Foreground(blue).Render(strings.Repeat("━", inBar))
 			outBarStr := lipgloss.NewStyle().Foreground(peach).Render(strings.Repeat("━", outBar))
-			emptyBar := DimStyle.Render(strings.Repeat("─", barWidth-barLen))
+			emptyBar := lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("─", barWidth-barLen))
 
-			// Stats
-			stats := lipgloss.NewStyle().Foreground(overlay0).
-				Render(" ←" + smallNum(node.incoming) + " →" + smallNum(node.outgoing))
+			// Stats with color
+			inCount := lipgloss.NewStyle().Foreground(blue).Render(smallNum(node.incoming))
+			outCount := lipgloss.NewStyle().Foreground(peach).Render(smallNum(node.outgoing))
+			stats := statsStyle.Render(" ") + inCount + statsStyle.Render("<") +
+				outCount + statsStyle.Render(">")
 
-			isCurrent := node.path == g.centerNote
-			icon := "  "
-			if isCurrent {
-				icon = lipgloss.NewStyle().Foreground(green).Render("● ")
+			// Name styling based on connection importance
+			nameColor := text
+			if isHub {
+				nameColor = green
+			} else if isOrphan {
+				nameColor = surface2
+			} else if isCurrent {
+				nameColor = mauve
 			}
 
-			line := icon + name + strings.Repeat(" ", namePad) + " " + inBarStr + outBarStr + emptyBar + stats
+			nameStyled := lipgloss.NewStyle().Foreground(nameColor).Render(name)
+			pad := strings.Repeat(" ", namePad)
+
+			line := "  " + icon + nameStyled + pad + " " + inBarStr + outBarStr + emptyBar + stats
 
 			if isSelected {
 				b.WriteString(lipgloss.NewStyle().
 					Background(surface0).
 					Bold(true).
-					Width(width - 6).
+					Width(innerWidth).
 					Render(line))
 			} else {
-				b.WriteString(NormalItemStyle.Render(line))
+				b.WriteString(line)
 			}
 			if i < end-1 {
 				b.WriteString("\n")
@@ -245,14 +292,23 @@ func (g GraphView) View() string {
 
 	// Footer
 	b.WriteString("\n\n")
-	b.WriteString(DimStyle.Render("  " + smallNum(len(g.nodes)) + " notes  Enter: navigate  Esc: close"))
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", innerWidth-4)))
+	b.WriteString("\n")
+
+	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(overlay0)
+	sepStyle := lipgloss.NewStyle().Foreground(surface1)
+	sep := sepStyle.Render(" | ")
+	b.WriteString("  " +
+		keyStyle.Render("j/k") + descStyle.Render(" navigate") + sep +
+		keyStyle.Render("Enter") + descStyle.Render(" open") + sep +
+		keyStyle.Render("Esc") + descStyle.Render(" close"))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(mauve).
 		Padding(1, 2).
-		Width(width).
-		Background(mantle)
+		Width(width)
 
 	return border.Render(b.String())
 }
