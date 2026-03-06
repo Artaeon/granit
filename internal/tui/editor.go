@@ -29,6 +29,12 @@ type Editor struct {
 	undoStack    []editorSnapshot
 	redoStack    []editorSnapshot
 	lastSnapshot time.Time
+
+	// Config-driven
+	showLineNumbers      bool
+	highlightCurrentLine bool
+	autoCloseBrackets    bool
+	tabSize              int
 }
 
 func NewEditor() Editor {
@@ -304,9 +310,10 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			// Insert tab as spaces
 			e.saveSnapshot()
 			e.redoStack = nil
+			tabStr := strings.Repeat(" ", e.tabSize)
 			line := e.content[e.cursor]
-			e.content[e.cursor] = line[:e.col] + "    " + line[e.col:]
-			e.col += 4
+			e.content[e.cursor] = line[:e.col] + tabStr + line[e.col:]
+			e.col += e.tabSize
 			e.modified = true
 		default:
 			char := msg.String()
@@ -314,7 +321,27 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				e.saveSnapshot()
 				e.redoStack = nil
 				line := e.content[e.cursor]
-				e.content[e.cursor] = line[:e.col] + char + line[e.col:]
+
+				// Auto-close brackets
+				closeChar := ""
+				if e.autoCloseBrackets {
+					switch char {
+					case "(":
+						closeChar = ")"
+					case "[":
+						closeChar = "]"
+					case "{":
+						closeChar = "}"
+					case "\"":
+						closeChar = "\""
+					case "'":
+						closeChar = "'"
+					case "`":
+						closeChar = "`"
+					}
+				}
+
+				e.content[e.cursor] = line[:e.col] + char + closeChar + line[e.col:]
 				e.col++
 				e.modified = true
 				e.countWords()
@@ -386,18 +413,22 @@ func (e Editor) View() string {
 		line := e.content[i]
 		isActiveLine := (i == e.cursor && e.focused)
 
-		// Line number
-		lineNum := fmt.Sprintf("%4d ", i+1)
-		if isActiveLine {
-			b.WriteString(ActiveLineNumStyle.Render(lineNum))
-			b.WriteString(" ")
-		} else {
-			b.WriteString(LineNumStyle.Render(lineNum))
-			b.WriteString(" ")
+		// Line number (conditional)
+		gutterWidth := 0
+		if e.showLineNumbers {
+			lineNum := fmt.Sprintf("%4d ", i+1)
+			if isActiveLine {
+				b.WriteString(ActiveLineNumStyle.Render(lineNum))
+				b.WriteString(" ")
+			} else {
+				b.WriteString(LineNumStyle.Render(lineNum))
+				b.WriteString(" ")
+			}
+			gutterWidth = 7
 		}
 
 		// Determine max display width
-		maxWidth := contentWidth - 7
+		maxWidth := contentWidth - gutterWidth
 		if maxWidth < 5 {
 			maxWidth = 5
 		}
@@ -421,9 +452,17 @@ func (e Editor) View() string {
 				}
 				styledBefore := highlightLine(before, i, fmStart, fmEnd, codeBlockLines)
 				styledAfter := highlightLine(after, i, fmStart, fmEnd, codeBlockLines)
-				b.WriteString(styledBefore + CursorStyle.Render(cursorChar) + styledAfter)
+				lineContent := styledBefore + CursorStyle.Render(cursorChar) + styledAfter
+				if e.highlightCurrentLine {
+					lineContent = lipgloss.NewStyle().Background(surface0).Width(maxWidth).Render(lineContent)
+				}
+				b.WriteString(lineContent)
 			} else {
-				b.WriteString(highlightLine(displayLine, i, fmStart, fmEnd, codeBlockLines) + CursorStyle.Render(" "))
+				lineContent := highlightLine(displayLine, i, fmStart, fmEnd, codeBlockLines) + CursorStyle.Render(" ")
+				if e.highlightCurrentLine {
+					lineContent = lipgloss.NewStyle().Background(surface0).Width(maxWidth).Render(lineContent)
+				}
+				b.WriteString(lineContent)
 			}
 		} else {
 			b.WriteString(highlightLine(displayLine, i, fmStart, fmEnd, codeBlockLines))

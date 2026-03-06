@@ -17,6 +17,10 @@ type Sidebar struct {
 	height   int
 	width    int
 	scroll   int
+
+	// Config-driven
+	showIcons   bool
+	compactMode bool
 }
 
 func NewSidebar(files []string) Sidebar {
@@ -179,26 +183,47 @@ func (s Sidebar) View() string {
 
 		// Show directory header if changed
 		if dir != "." && dir != lastDir {
-			dirDisplay := "  " + lipgloss.NewStyle().Foreground(peach).Render("  " + dir + "/")
+			folderIcon := ""
+			if s.showIcons {
+				folderIcon = "  "
+			}
+			dirDisplay := "  " + lipgloss.NewStyle().Foreground(peach).Render(folderIcon + dir + "/")
 			b.WriteString(dirDisplay)
-			b.WriteString("\n")
+			if !s.compactMode {
+				b.WriteString("\n")
+			} else {
+				b.WriteString("\n")
+			}
 			lastDir = dir
 		}
 
 		// Strip .md extension for cleaner display
 		displayName := strings.TrimSuffix(name, ".md")
 
-		// File icon
-		icon := lipgloss.NewStyle().Foreground(blue).Render(" ")
-
-		// Check if it's a daily note
-		if len(displayName) >= 10 && displayName[4] == '-' && displayName[7] == '-' {
-			icon = lipgloss.NewStyle().Foreground(green).Render(" ")
+		// File icon (conditional)
+		icon := ""
+		if s.showIcons {
+			icon = lipgloss.NewStyle().Foreground(blue).Render(" ")
+			// Check if it's a daily note
+			if len(displayName) >= 10 && displayName[4] == '-' && displayName[7] == '-' {
+				icon = lipgloss.NewStyle().Foreground(green).Render(" ")
+			}
 		}
 
 		indent := "  "
 		if dir != "." {
 			indent = "    "
+		}
+		if s.compactMode {
+			indent = " "
+			if dir != "." {
+				indent = "  "
+			}
+		}
+
+		iconSpace := ""
+		if icon != "" {
+			iconSpace = " "
 		}
 
 		maxNameLen := contentWidth - len(indent) - 4
@@ -211,7 +236,7 @@ func (s Sidebar) View() string {
 
 		if i == s.cursor && s.focused {
 			// Full-width highlight for selected item
-			line := indent + icon + " " + displayName
+			line := indent + icon + iconSpace + displayName
 			padLen := contentWidth - lipgloss.Width(line)
 			if padLen < 0 {
 				padLen = 0
@@ -221,10 +246,10 @@ func (s Sidebar) View() string {
 				Foreground(peach).
 				Bold(true).
 				Width(contentWidth).
-				Render(indent + icon + " " + displayName + strings.Repeat(" ", padLen))
+				Render(indent + icon + iconSpace + displayName + strings.Repeat(" ", padLen))
 			b.WriteString(highlighted)
 		} else {
-			b.WriteString(indent + icon + " " + NormalItemStyle.Render(displayName))
+			b.WriteString(indent + icon + iconSpace + NormalItemStyle.Render(displayName))
 		}
 		if i < end-1 {
 			b.WriteString("\n")

@@ -74,6 +74,10 @@ type Model struct {
 
 	// View mode scroll
 	viewScroll int
+
+	// Confirm delete
+	confirmDelete     bool
+	confirmDeleteNote string
 }
 
 func NewModel(vaultPath string) (Model, error) {
@@ -126,6 +130,9 @@ func NewModel(vaultPath string) (Model, error) {
 	m.statusbar.SetVaultPath(vaultPath)
 	m.statusbar.SetNoteCount(v.NoteCount())
 	m.autocomplete.SetNotes(paths)
+
+	// Apply config to components
+	m.syncConfigToComponents()
 
 	if len(paths) > 0 {
 		m.loadNote(paths[0])
@@ -214,6 +221,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.settings.IsActive() {
 				m.config = m.settings.GetConfig()
 				m.config.Save()
+				m.syncConfigToComponents()
 			}
 			return m, nil
 		}
@@ -322,6 +330,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.sidebar.cursor = m.findFileIndex(restored)
 					m.statusbar.SetMessage("Restored: " + restored)
 				}
+			}
+			return m, nil
+		}
+
+		if m.confirmDelete {
+			switch msg.String() {
+			case "y", "Y", "enter":
+				m.confirmDelete = false
+				if m.confirmDeleteNote != "" {
+					if err := m.trash.MoveToTrash(m.confirmDeleteNote); err == nil {
+						m.vault.Scan()
+						m.index = vault.NewIndex(m.vault)
+						m.index.Build()
+						paths := m.vault.SortedPaths()
+						m.sidebar.SetFiles(paths)
+						m.autocomplete.SetNotes(paths)
+						m.statusbar.SetNoteCount(m.vault.NoteCount())
+						m.statusbar.SetMessage("Moved to trash: " + m.confirmDeleteNote)
+						if len(paths) > 0 {
+							m.loadNote(paths[0])
+						}
+					}
+					m.confirmDeleteNote = ""
+				}
+				return m, m.clearMessageAfter(2 * time.Second)
+			case "n", "N", "esc":
+				m.confirmDelete = false
+				m.confirmDeleteNote = ""
+				return m, nil
 			}
 			return m, nil
 		}
@@ -618,20 +655,25 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		return m, m.clearMessageAfter(2 * time.Second)
 	case CmdDeleteNote:
 		if m.activeNote != "" {
-			if err := m.trash.MoveToTrash(m.activeNote); err == nil {
-				m.vault.Scan()
-				m.index = vault.NewIndex(m.vault)
-				m.index.Build()
-				paths := m.vault.SortedPaths()
-				m.sidebar.SetFiles(paths)
-				m.autocomplete.SetNotes(paths)
-				m.statusbar.SetNoteCount(m.vault.NoteCount())
-				m.statusbar.SetMessage("Moved to trash: " + m.activeNote)
-				if len(paths) > 0 {
-					m.loadNote(paths[0])
+			if m.config.ConfirmDelete {
+				m.confirmDelete = true
+				m.confirmDeleteNote = m.activeNote
+			} else {
+				if err := m.trash.MoveToTrash(m.activeNote); err == nil {
+					m.vault.Scan()
+					m.index = vault.NewIndex(m.vault)
+					m.index.Build()
+					paths := m.vault.SortedPaths()
+					m.sidebar.SetFiles(paths)
+					m.autocomplete.SetNotes(paths)
+					m.statusbar.SetNoteCount(m.vault.NoteCount())
+					m.statusbar.SetMessage("Moved to trash: " + m.activeNote)
+					if len(paths) > 0 {
+						m.loadNote(paths[0])
+					}
 				}
+				return m, m.clearMessageAfter(2 * time.Second)
 			}
-			return m, m.clearMessageAfter(2 * time.Second)
 		}
 	case CmdShowTrash:
 		m.trash.SetSize(m.width, m.height)
@@ -912,6 +954,18 @@ func (m *Model) updateLayout() {
 	m.statusbar.SetWidth(m.width)
 }
 
+func (m *Model) syncConfigToComponents() {
+	m.sidebar.showIcons = m.config.ShowIcons
+	m.sidebar.compactMode = m.config.CompactMode
+	m.editor.showLineNumbers = m.config.LineNumbers
+	m.editor.highlightCurrentLine = m.config.HighlightCurrentLine
+	m.editor.autoCloseBrackets = m.config.AutoCloseBrackets
+	m.editor.tabSize = m.config.Editor.TabSize
+	if m.editor.tabSize < 1 {
+		m.editor.tabSize = 4
+	}
+}
+
 func (m Model) saveCurrentNote() tea.Cmd {
 	return func() tea.Msg {
 		if m.activeNote == "" {
@@ -1007,7 +1061,12 @@ func (m Model) View() string {
 		focusView := m.focusMode.RenderEditor(editorContent, m.editor.GetWordCount())
 		view = focusView
 	} else {
-		content := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor, backlinks)
+		var content string
+		if m.config.SidebarPosition == "right" {
+			content = lipgloss.JoinHorizontal(lipgloss.Top, backlinks, editor, sidebar)
+		} else {
+			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor, backlinks)
+		}
 		status := m.statusbar.View()
 		view = lipgloss.JoinVertical(lipgloss.Left, content, status)
 	}
@@ -1055,6 +1114,10 @@ func (m Model) View() string {
 	}
 	if m.trash.IsActive() {
 		overlay := m.trash.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.confirmDelete {
+		overlay := m.renderConfirmDeleteOverlay()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.commandPalette.IsActive() {
@@ -1183,6 +1246,33 @@ func (m Model) renderNewNoteOverlay() string {
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(green).
+		Padding(1, 2).
+		Width(width).
+		Background(mantle)
+
+	return border.Render(b.String())
+}
+
+func (m Model) renderConfirmDeleteOverlay() string {
+	width := 50
+
+	var b strings.Builder
+
+	title := lipgloss.NewStyle().
+		Foreground(red).
+		Bold(true).
+		Render("  Delete Note")
+	b.WriteString(title)
+	b.WriteString("\n\n")
+
+	b.WriteString("  Move to trash:\n")
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(peach).Bold(true).Render(m.confirmDeleteNote))
+	b.WriteString("\n\n")
+	b.WriteString(DimStyle.Render("  y/Enter: confirm  n/Esc: cancel"))
+
+	border := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(red).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)
