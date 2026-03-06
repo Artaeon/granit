@@ -33,6 +33,7 @@ const (
 )
 
 type clearMessageMsg struct{}
+type autoSaveTickMsg struct{ editTime time.Time }
 
 type Model struct {
 	vault     *vault.Vault
@@ -117,6 +118,9 @@ type Model struct {
 	linkCompleter *LinkCompleter
 	pomodoro      Pomodoro
 	webClipper    WebClipper
+
+	// Auto-save debounce
+	lastEditTime time.Time
 
 	// View mode scroll
 	viewScroll int
@@ -222,6 +226,7 @@ func NewModel(vaultPath string) (Model, error) {
 	m.publisher.SetVaultPath(vaultPath)
 	m.luaOverlay.SetEngine(m.luaEngine)
 	m.renderer.SetVaultNotes(m.vault.Notes)
+	m.renderer.SetVaultRoot(vaultPath)
 
 	// Set up renderer note lookup for transclusion
 	m.renderer.SetNoteLookup(func(name string) string {
@@ -362,6 +367,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case clearMessageMsg:
 		m.statusbar.SetMessage("")
+		return m, nil
+
+	case autoSaveTickMsg:
+		// Only save if this tick matches the last edit time (debounce)
+		if m.config.AutoSave && msg.editTime.Equal(m.lastEditTime) && m.editor.modified && m.activeNote != "" {
+			content := m.editor.GetContent()
+			path := filepath.Join(m.vault.Root, m.activeNote)
+			os.WriteFile(path, []byte(content), 0644)
+			m.editor.modified = false
+			m.statusbar.SetMessage("Auto-saved " + m.activeNote)
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
 		return m, nil
 
 	case gitCmdResultMsg:
@@ -1500,6 +1517,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Pomodoro: track word count during work sessions
 			if m.pomodoro.IsRunning() {
 				m.pomodoro.UpdateWordCount(m.editor.GetWordCount())
+			}
+
+			// Auto-save: debounce 2 seconds after last edit
+			if m.config.AutoSave && m.editor.modified {
+				if keyMsg, ok := msg.(tea.KeyMsg); ok {
+					k := keyMsg.String()
+					if len(k) == 1 || k == "space" || k == "backspace" || k == "enter" || k == "tab" || k == "delete" {
+						now := time.Now()
+						m.lastEditTime = now
+						autoSaveCmd := tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+							return autoSaveTickMsg{editTime: now}
+						})
+						cmd = tea.Batch(cmd, autoSaveCmd)
+					}
+				}
 			}
 		}
 	case focusBacklinks:
