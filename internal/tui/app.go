@@ -125,6 +125,9 @@ type Model struct {
 	// Slash command menu
 	slashMenu *SlashMenu
 
+	// Toast notifications
+	toast *Toast
+
 	// Auto-save debounce
 	lastEditTime time.Time
 
@@ -228,6 +231,7 @@ func NewModel(vaultPath string) (Model, error) {
 		tabBar:         NewTabBar(),
 		zettelkasten:   NewZettelkastenGenerator(),
 		slashMenu:      NewSlashMenu(),
+		toast:          NewToast(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -416,6 +420,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case clearMessageMsg:
 		m.statusbar.SetMessage("")
+		return m, nil
+
+	case toastExpireMsg:
+		if m.toast != nil {
+			m.toast.HandleExpire()
+		}
 		return m, nil
 
 	case autoSaveTickMsg:
@@ -1213,7 +1223,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			cmd := m.saveCurrentNote()
 			m.statusbar.SetMessage("Saved " + m.activeNote)
-			return m, tea.Batch(cmd, m.clearMessageAfter(2*time.Second))
+			var toastCmd tea.Cmd
+			if m.toast != nil {
+				toastCmd = m.toast.ShowSuccess("Saved " + m.activeNote)
+			}
+			return m, tea.Batch(cmd, m.clearMessageAfter(2*time.Second), toastCmd)
 
 		case "f1":
 			m.setFocus(focusSidebar)
@@ -2438,6 +2452,9 @@ func (m *Model) updateLayout() {
 	m.noteChat.SetSize(m.width, m.height)
 	m.pomodoro.SetSize(m.width, m.height)
 	m.webClipper.SetSize(m.width, m.height)
+	if m.toast != nil {
+		m.toast.SetWidth(m.width)
+	}
 	m.kanban.SetSize(m.width, m.height)
 }
 
@@ -3186,7 +3203,59 @@ func (m Model) View() string {
 		view = m.overlayCenter(view, overlay)
 	}
 
+	// Toast notifications (top-right corner)
+	if m.toast != nil && m.toast.HasItems() {
+		toastView := m.toast.View()
+		if toastView != "" {
+			view = m.overlayTopRight(view, toastView)
+		}
+	}
+
 	return view
+}
+
+// overlayTopRight places an overlay in the top-right corner of the background.
+func (m Model) overlayTopRight(bg, overlay string) string {
+	bgLines := strings.Split(bg, "\n")
+	overlayLines := strings.Split(overlay, "\n")
+
+	overlayWidth := 0
+	for _, line := range overlayLines {
+		w := lipgloss.Width(line)
+		if w > overlayWidth {
+			overlayWidth = w
+		}
+	}
+
+	startX := m.width - overlayWidth - 2
+	if startX < 0 {
+		startX = 0
+	}
+	startY := 1
+
+	result := make([]string, len(bgLines))
+	copy(result, bgLines)
+
+	for i, overlayLine := range overlayLines {
+		y := startY + i
+		if y >= len(result) {
+			break
+		}
+		bgLine := result[y]
+		bgRunes := []rune(bgLine)
+
+		for len(bgRunes) < startX+lipgloss.Width(overlayLine) {
+			bgRunes = append(bgRunes, ' ')
+		}
+
+		newLine := string(bgRunes[:startX]) + overlayLine
+		if startX+lipgloss.Width(overlayLine) < len(bgRunes) {
+			newLine += string(bgRunes[startX+lipgloss.Width(overlayLine):])
+		}
+		result[y] = newLine
+	}
+
+	return strings.Join(result, "\n")
 }
 
 func (m Model) renderViewMode() string {
