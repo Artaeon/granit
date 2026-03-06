@@ -87,6 +87,8 @@ type Model struct {
 	export         ExportOverlay
 	git            GitOverlay
 	plugins        PluginManager
+	contentSearch  ContentSearch
+	spellcheck     SpellChecker
 
 	// View mode scroll
 	viewScroll int
@@ -152,6 +154,8 @@ func NewModel(vaultPath string) (Model, error) {
 		export:         NewExportOverlay(),
 		git:            NewGitOverlay(),
 		plugins:        NewPluginManager(),
+		contentSearch:  NewContentSearch(),
+		spellcheck:     NewSpellChecker(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -161,6 +165,8 @@ func NewModel(vaultPath string) (Model, error) {
 	m.statusbar.SetNoteCount(v.NoteCount())
 	m.autocomplete.SetNotes(paths)
 	m.plugins.SetVaultPath(vaultPath)
+	m.canvas.SetVaultPath(vaultPath)
+	m.renderer.SetVaultNotes(m.vault.Notes)
 
 	// Set up renderer note lookup for transclusion
 	m.renderer.SetNoteLookup(func(name string) string {
@@ -532,6 +538,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, pluginCmd
+		}
+
+		if m.contentSearch.IsActive() {
+			m.contentSearch, _ = m.contentSearch.Update(msg)
+			if !m.contentSearch.IsActive() {
+				if result := m.contentSearch.SelectedResult(); result != nil {
+					m.loadNote(result.FilePath)
+					m.sidebar.cursor = m.findFileIndex(result.FilePath)
+					m.editor.cursor = result.Line
+					m.editor.col = result.Col
+					m.setFocus(focusEditor)
+				}
+			}
+			return m, nil
+		}
+
+		if m.spellcheck.IsActive() {
+			m.spellcheck, _ = m.spellcheck.Update(msg)
+			if !m.spellcheck.IsActive() {
+				if word, line, col, replacement, ok := m.spellcheck.GetCorrection(); ok {
+					_ = word
+					if line < len(m.editor.content) {
+						lineStr := m.editor.content[line]
+						if col+len(word) <= len(lineStr) {
+							m.editor.content[line] = lineStr[:col] + replacement + lineStr[col+len(word):]
+							m.editor.modified = true
+							m.statusbar.SetMessage("Fixed: " + word + " → " + replacement)
+						}
+					}
+				}
+			}
+			return m, nil
 		}
 
 		if m.confirmDelete {
@@ -1054,6 +1092,23 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdPluginManager:
 		m.plugins.SetSize(m.width, m.height)
 		m.plugins.Open()
+	case CmdContentSearch:
+		m.contentSearch.SetSize(m.width, m.height)
+		noteContents := make(map[string]string)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				noteContents[p] = note.Content
+			}
+		}
+		m.contentSearch.Open(noteContents)
+	case CmdSpellCheck:
+		if m.spellcheck.IsAvailable() {
+			m.spellcheck.SetSize(m.width, m.height)
+			m.spellcheck.Open(m.editor.GetContent())
+		} else {
+			m.statusbar.SetMessage("Spell check unavailable (install aspell or hunspell)")
+			return m, m.clearMessageAfter(3 * time.Second)
+		}
 	case CmdQuit:
 		m.quitting = true
 		return m, tea.Quit
@@ -1706,6 +1761,14 @@ func (m Model) View() string {
 	}
 	if m.plugins.IsActive() {
 		overlay := m.plugins.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.contentSearch.IsActive() {
+		overlay := m.contentSearch.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.spellcheck.IsActive() {
+		overlay := m.spellcheck.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.confirmDelete {
