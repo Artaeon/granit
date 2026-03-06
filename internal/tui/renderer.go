@@ -558,51 +558,61 @@ func (r Renderer) renderMarkdown(content string) []string {
 
 		// Headings
 		if strings.HasPrefix(trimmed, "# ") {
-			text := strings.TrimPrefix(trimmed, "# ")
-			// Big heading with underline
-			styled := lipgloss.NewStyle().
-				Foreground(mauve).
+			hText := strings.TrimPrefix(trimmed, "# ")
+			upper := strings.ToUpper(hText)
+			// Full-width background bar for H1
+			barStyle := lipgloss.NewStyle().
+				Foreground(crust).
+				Background(mauve).
 				Bold(true).
-				Render("  " + text)
+				Width(contentWidth).
+				Padding(0, 2)
 			underline := lipgloss.NewStyle().
 				Foreground(mauve).
-				Render("  " + strings.Repeat("═", len(text)))
+				Render("  " + strings.Repeat("━", contentWidth-4))
 			result = append(result, "")
-			result = append(result, styled)
+			result = append(result, "")
+			result = append(result, barStyle.Render(upper))
 			result = append(result, underline)
 			result = append(result, "")
 			continue
 		}
 		if strings.HasPrefix(trimmed, "## ") {
-			text := strings.TrimPrefix(trimmed, "## ")
+			hText := strings.TrimPrefix(trimmed, "## ")
+			// Accent left border + bold text for H2
+			bar := lipgloss.NewStyle().Foreground(blue).Bold(true).Render("┃ ")
 			styled := lipgloss.NewStyle().
 				Foreground(blue).
 				Bold(true).
-				Render("  " + text)
+				Render(hText)
 			underline := lipgloss.NewStyle().
 				Foreground(surface1).
-				Render("  " + strings.Repeat("─", len(text)))
+				Render("  " + strings.Repeat("─", contentWidth-4))
 			result = append(result, "")
-			result = append(result, styled)
+			result = append(result, "  "+bar+styled)
 			result = append(result, underline)
+			result = append(result, "")
 			continue
 		}
 		if strings.HasPrefix(trimmed, "### ") {
-			text := strings.TrimPrefix(trimmed, "### ")
+			hText := strings.TrimPrefix(trimmed, "### ")
+			bar := lipgloss.NewStyle().Foreground(sapphire).Render("│ ")
 			styled := lipgloss.NewStyle().
 				Foreground(sapphire).
 				Bold(true).
-				Render("  " + text)
+				Render(hText)
 			result = append(result, "")
-			result = append(result, styled)
+			result = append(result, "  "+bar+styled)
 			continue
 		}
 		if strings.HasPrefix(trimmed, "#### ") {
-			text := strings.TrimPrefix(trimmed, "#### ")
+			hText := strings.TrimPrefix(trimmed, "#### ")
 			styled := lipgloss.NewStyle().
 				Foreground(teal).
 				Bold(true).
-				Render("  " + text)
+				Italic(true).
+				Render("  " + hText)
+			result = append(result, "")
 			result = append(result, styled)
 			continue
 		}
