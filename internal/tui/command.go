@@ -41,6 +41,11 @@ const (
 	CmdShowCanvas
 	CmdShowCalendar
 	CmdShowBots
+	CmdNewFolder
+	CmdMoveFile
+	CmdExportNote
+	CmdGitOverlay
+	CmdPluginManager
 	CmdQuit
 )
 
@@ -49,37 +54,43 @@ type Command struct {
 	Desc     string
 	Shortcut string
 	Action   CommandAction
+	Icon     *string // pointer to icon char variable (nil = no icon)
 }
 
 var AllCommands = []Command{
-	{Label: "Open File", Desc: "Quick open a file", Shortcut: "Ctrl+P", Action: CmdOpenFile},
-	{Label: "New Note", Desc: "Create a new note", Shortcut: "Ctrl+N", Action: CmdNewNote},
-	{Label: "Save Note", Desc: "Save the current note", Shortcut: "Ctrl+S", Action: CmdSaveNote},
-	{Label: "Daily Note", Desc: "Open or create today's daily note", Shortcut: "", Action: CmdDailyNote},
-	{Label: "Toggle View/Edit", Desc: "Switch between view and edit mode", Shortcut: "Ctrl+E", Action: CmdToggleView},
-	{Label: "Settings", Desc: "Open settings panel", Shortcut: "Ctrl+,", Action: CmdSettings},
-	{Label: "Focus Editor", Desc: "Switch focus to the editor", Shortcut: "F2", Action: CmdFocusEditor},
-	{Label: "Focus Sidebar", Desc: "Switch focus to the file sidebar", Shortcut: "F1", Action: CmdFocusSidebar},
-	{Label: "Focus Backlinks", Desc: "Switch focus to the backlinks panel", Shortcut: "F3", Action: CmdFocusBacklinks},
+	{Label: "Open File", Desc: "Quick open a file", Shortcut: "Ctrl+P", Action: CmdOpenFile, Icon: &IconSearchChar},
+	{Label: "New Note", Desc: "Create a new note", Shortcut: "Ctrl+N", Action: CmdNewNote, Icon: &IconNewChar},
+	{Label: "Save Note", Desc: "Save the current note", Shortcut: "Ctrl+S", Action: CmdSaveNote, Icon: &IconSaveChar},
+	{Label: "Daily Note", Desc: "Open or create today's daily note", Shortcut: "", Action: CmdDailyNote, Icon: &IconDailyChar},
+	{Label: "Toggle View/Edit", Desc: "Switch between view and edit mode", Shortcut: "Ctrl+E", Action: CmdToggleView, Icon: &IconViewChar},
+	{Label: "Settings", Desc: "Open settings panel", Shortcut: "Ctrl+,", Action: CmdSettings, Icon: &IconSettingsChar},
+	{Label: "Focus Editor", Desc: "Switch focus to the editor", Shortcut: "F2", Action: CmdFocusEditor, Icon: &IconEditChar},
+	{Label: "Focus Sidebar", Desc: "Switch focus to the file sidebar", Shortcut: "F1", Action: CmdFocusSidebar, Icon: &IconFolderChar},
+	{Label: "Focus Backlinks", Desc: "Switch focus to the backlinks panel", Shortcut: "F3", Action: CmdFocusBacklinks, Icon: &IconLinkChar},
 	{Label: "Refresh Vault", Desc: "Rescan vault for changes", Shortcut: "", Action: CmdRefreshVault},
-	{Label: "Delete Note", Desc: "Delete the current note", Shortcut: "", Action: CmdDeleteNote},
-	{Label: "Rename Note", Desc: "Rename the current note", Shortcut: "F4", Action: CmdRenameNote},
-	{Label: "Show Graph", Desc: "Show note connection graph", Shortcut: "Ctrl+G", Action: CmdShowGraph},
-	{Label: "Show Tags", Desc: "Browse notes by tags", Shortcut: "Ctrl+T", Action: CmdShowTags},
-	{Label: "Help", Desc: "Show keyboard shortcuts", Shortcut: "F5", Action: CmdShowHelp},
-	{Label: "Outline", Desc: "Show note heading outline", Shortcut: "Ctrl+O", Action: CmdShowOutline},
-	{Label: "Bookmarks", Desc: "View starred & recent notes", Shortcut: "Ctrl+B", Action: CmdShowBookmarks},
-	{Label: "Toggle Bookmark", Desc: "Star/unstar current note", Shortcut: "", Action: CmdToggleBookmark},
-	{Label: "Find", Desc: "Search within current file", Shortcut: "Ctrl+F", Action: CmdFindInFile},
-	{Label: "Find & Replace", Desc: "Find and replace in file", Shortcut: "Ctrl+H", Action: CmdReplaceInFile},
-	{Label: "Vault Statistics", Desc: "Show vault stats & charts", Shortcut: "", Action: CmdShowStats},
-	{Label: "New from Template", Desc: "Create note from template", Shortcut: "", Action: CmdNewFromTemplate},
-	{Label: "Focus Mode", Desc: "Distraction-free writing", Shortcut: "Ctrl+Z", Action: CmdFocusMode},
-	{Label: "Quick Switch", Desc: "Switch between recent files", Shortcut: "Ctrl+J", Action: CmdQuickSwitch},
-	{Label: "Trash", Desc: "View and restore deleted notes", Shortcut: "", Action: CmdShowTrash},
-	{Label: "Canvas", Desc: "Visual note canvas / whiteboard", Shortcut: "Ctrl+W", Action: CmdShowCanvas},
-	{Label: "Calendar", Desc: "Calendar view with daily notes", Shortcut: "Ctrl+L", Action: CmdShowCalendar},
-	{Label: "Bots", Desc: "Local AI bots for note analysis", Shortcut: "Ctrl+R", Action: CmdShowBots},
+	{Label: "Delete Note", Desc: "Delete the current note", Shortcut: "", Action: CmdDeleteNote, Icon: &IconTrashChar},
+	{Label: "Rename Note", Desc: "Rename the current note", Shortcut: "F4", Action: CmdRenameNote, Icon: &IconEditChar},
+	{Label: "Show Graph", Desc: "Show note connection graph", Shortcut: "Ctrl+G", Action: CmdShowGraph, Icon: &IconGraphChar},
+	{Label: "Show Tags", Desc: "Browse notes by tags", Shortcut: "Ctrl+T", Action: CmdShowTags, Icon: &IconTagChar},
+	{Label: "Help", Desc: "Show keyboard shortcuts", Shortcut: "F5", Action: CmdShowHelp, Icon: &IconHelpChar},
+	{Label: "Outline", Desc: "Show note heading outline", Shortcut: "Ctrl+O", Action: CmdShowOutline, Icon: &IconOutlineChar},
+	{Label: "Bookmarks", Desc: "View starred & recent notes", Shortcut: "Ctrl+B", Action: CmdShowBookmarks, Icon: &IconBookmarkChar},
+	{Label: "Toggle Bookmark", Desc: "Star/unstar current note", Shortcut: "", Action: CmdToggleBookmark, Icon: &IconBookmarkChar},
+	{Label: "Find", Desc: "Search within current file", Shortcut: "Ctrl+F", Action: CmdFindInFile, Icon: &IconSearchChar},
+	{Label: "Find & Replace", Desc: "Find and replace in file", Shortcut: "Ctrl+H", Action: CmdReplaceInFile, Icon: &IconSearchChar},
+	{Label: "Vault Statistics", Desc: "Show vault stats & charts", Shortcut: "", Action: CmdShowStats, Icon: &IconGraphChar},
+	{Label: "New from Template", Desc: "Create note from template", Shortcut: "", Action: CmdNewFromTemplate, Icon: &IconFileChar},
+	{Label: "Focus Mode", Desc: "Distraction-free writing", Shortcut: "Ctrl+Z", Action: CmdFocusMode, Icon: &IconEditChar},
+	{Label: "Quick Switch", Desc: "Switch between recent files", Shortcut: "Ctrl+J", Action: CmdQuickSwitch, Icon: &IconFileChar},
+	{Label: "Trash", Desc: "View and restore deleted notes", Shortcut: "", Action: CmdShowTrash, Icon: &IconTrashChar},
+	{Label: "Canvas", Desc: "Visual note canvas / whiteboard", Shortcut: "Ctrl+W", Action: CmdShowCanvas, Icon: &IconCanvasChar},
+	{Label: "Calendar", Desc: "Calendar view with daily notes", Shortcut: "Ctrl+L", Action: CmdShowCalendar, Icon: &IconCalendarChar},
+	{Label: "Bots", Desc: "AI bots for note analysis", Shortcut: "Ctrl+R", Action: CmdShowBots, Icon: &IconBotChar},
+	{Label: "New Folder", Desc: "Create a new folder", Shortcut: "", Action: CmdNewFolder, Icon: &IconFolderChar},
+	{Label: "Move File", Desc: "Move current note to a folder", Shortcut: "", Action: CmdMoveFile, Icon: &IconFolderChar},
+	{Label: "Export Current Note", Desc: "Export note as HTML, text, or PDF", Shortcut: "", Action: CmdExportNote, Icon: &IconSaveChar},
+	{Label: "Git: Status & Commit", Desc: "Git status, log, diff, commit, push, pull", Shortcut: "", Action: CmdGitOverlay, Icon: &IconBotChar},
+	{Label: "Plugins", Desc: "Manage and run plugins", Shortcut: "", Action: CmdPluginManager, Icon: &IconSettingsChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
@@ -247,6 +258,13 @@ func (cp CommandPalette) View() string {
 		for i := start; i < end; i++ {
 			cmd := cp.filtered[i]
 
+			iconStr := ""
+			if cmd.Icon != nil {
+				iconStr = lipgloss.NewStyle().Foreground(blue).Render(*cmd.Icon) + " "
+			} else {
+				iconStr = "  "
+			}
+
 			label := cmd.Label
 			shortcut := ""
 			if cmd.Shortcut != "" {
@@ -263,10 +281,10 @@ func (cp CommandPalette) View() string {
 					Foreground(peach).
 					Bold(true)
 
-				line := "  " + label
+				line := "  " + iconStr + label
 				b.WriteString(selected.Width(width - 6).Render(line + shortcut))
 			} else {
-				b.WriteString("  " + NormalItemStyle.Render(label) + shortcut)
+				b.WriteString("  " + iconStr + NormalItemStyle.Render(label) + shortcut)
 			}
 			b.WriteString("\n")
 			if i == cp.cursor {
