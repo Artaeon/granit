@@ -83,6 +83,7 @@ type Model struct {
 func NewModel(vaultPath string) (Model, error) {
 	cfg := config.LoadForVault(vaultPath)
 	ApplyTheme(cfg.Theme)
+	ApplyIconTheme(cfg.IconTheme)
 
 	v, err := vault.NewVault(vaultPath)
 	if err != nil {
@@ -929,21 +930,46 @@ func (m *Model) cycleFocus(direction int) {
 }
 
 func (m *Model) updateLayout() {
-	sidebarWidth := m.width / 5
-	if sidebarWidth < 22 {
-		sidebarWidth = 22
+	layout := m.config.Layout
+	if layout == "" {
+		layout = "default"
 	}
-	if sidebarWidth > 35 {
-		sidebarWidth = 35
+
+	showSidebar := layout == "default" || layout == "writer"
+	showBacklinks := layout == "default"
+
+	sidebarWidth := 0
+	backlinksWidth := 0
+	if showSidebar {
+		sidebarWidth = m.width / 5
+		if sidebarWidth < 22 {
+			sidebarWidth = 22
+		}
+		if sidebarWidth > 35 {
+			sidebarWidth = 35
+		}
 	}
-	backlinksWidth := m.width / 5
-	if backlinksWidth < 22 {
-		backlinksWidth = 22
+	if showBacklinks {
+		backlinksWidth = m.width / 5
+		if backlinksWidth < 22 {
+			backlinksWidth = 22
+		}
+		if backlinksWidth > 30 {
+			backlinksWidth = 30
+		}
 	}
-	if backlinksWidth > 30 {
-		backlinksWidth = 30
+
+	panelBorders := 0
+	if showSidebar {
+		panelBorders += 2
 	}
-	editorWidth := m.width - sidebarWidth - backlinksWidth - 6
+	if showBacklinks {
+		panelBorders += 2
+	}
+	editorWidth := m.width - sidebarWidth - backlinksWidth - panelBorders - 2
+	if editorWidth < 30 {
+		editorWidth = 30
+	}
 
 	contentHeight := m.height - 3
 
@@ -998,22 +1024,49 @@ func (m Model) View() string {
 		return lipgloss.NewStyle().Foreground(mauve).Render("\n  Loading Granit...")
 	}
 
-	sidebarWidth := m.width / 5
-	if sidebarWidth < 22 {
-		sidebarWidth = 22
-	}
-	if sidebarWidth > 35 {
-		sidebarWidth = 35
-	}
-	backlinksWidth := m.width / 5
-	if backlinksWidth < 22 {
-		backlinksWidth = 22
-	}
-	if backlinksWidth > 30 {
-		backlinksWidth = 30
-	}
-	editorWidth := m.width - sidebarWidth - backlinksWidth - 6
 	contentHeight := m.height - 3
+	layout := m.config.Layout
+	if layout == "" {
+		layout = "default"
+	}
+
+	// Calculate widths based on layout
+	showSidebar := layout == "default" || layout == "writer"
+	showBacklinks := layout == "default"
+
+	sidebarWidth := 0
+	backlinksWidth := 0
+
+	if showSidebar {
+		sidebarWidth = m.width / 5
+		if sidebarWidth < 22 {
+			sidebarWidth = 22
+		}
+		if sidebarWidth > 35 {
+			sidebarWidth = 35
+		}
+	}
+	if showBacklinks {
+		backlinksWidth = m.width / 5
+		if backlinksWidth < 22 {
+			backlinksWidth = 22
+		}
+		if backlinksWidth > 30 {
+			backlinksWidth = 30
+		}
+	}
+
+	panelBorders := 0
+	if showSidebar {
+		panelBorders += 2
+	}
+	if showBacklinks {
+		panelBorders += 2
+	}
+	editorWidth := m.width - sidebarWidth - backlinksWidth - panelBorders - 2
+	if editorWidth < 30 {
+		editorWidth = 30
+	}
 
 	// Focus-aware borders
 	sidebarBorderColor := surface1
@@ -1029,12 +1082,6 @@ func (m Model) View() string {
 		backlinksBorderColor = FocusedBorderColor
 	}
 
-	sidebar := SidebarStyle.Copy().
-		BorderForeground(sidebarBorderColor).
-		Width(sidebarWidth).
-		Height(contentHeight).
-		Render(m.sidebar.View())
-
 	// Editor: view mode or edit mode
 	var editorContent string
 	if m.viewMode {
@@ -1049,23 +1096,42 @@ func (m Model) View() string {
 		Height(contentHeight).
 		Render(editorContent)
 
-	backlinks := BacklinksStyle.Copy().
-		BorderForeground(backlinksBorderColor).
-		Width(backlinksWidth).
-		Height(contentHeight).
-		Render(m.backlinks.View())
-
 	var view string
 	if m.focusMode.IsActive() {
-		// Focus mode: centered editor only
 		focusView := m.focusMode.RenderEditor(editorContent, m.editor.GetWordCount())
 		view = focusView
 	} else {
 		var content string
-		if m.config.SidebarPosition == "right" {
-			content = lipgloss.JoinHorizontal(lipgloss.Top, backlinks, editor, sidebar)
-		} else {
-			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor, backlinks)
+		switch layout {
+		case "minimal":
+			content = editor
+		case "writer":
+			sidebar := SidebarStyle.Copy().
+				BorderForeground(sidebarBorderColor).
+				Width(sidebarWidth).
+				Height(contentHeight).
+				Render(m.sidebar.View())
+			if m.config.SidebarPosition == "right" {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, editor, sidebar)
+			} else {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor)
+			}
+		default: // "default" - 3-panel
+			sidebar := SidebarStyle.Copy().
+				BorderForeground(sidebarBorderColor).
+				Width(sidebarWidth).
+				Height(contentHeight).
+				Render(m.sidebar.View())
+			backlinks := BacklinksStyle.Copy().
+				BorderForeground(backlinksBorderColor).
+				Width(backlinksWidth).
+				Height(contentHeight).
+				Render(m.backlinks.View())
+			if m.config.SidebarPosition == "right" {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, backlinks, editor, sidebar)
+			} else {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor, backlinks)
+			}
 		}
 		status := m.statusbar.View()
 		view = lipgloss.JoinVertical(lipgloss.Left, content, status)

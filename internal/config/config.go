@@ -27,6 +27,8 @@ type Config struct {
 	SidebarPosition string `json:"sidebar_position"` // "left" or "right"
 	ShowIcons       bool   `json:"show_icons"`
 	CompactMode     bool   `json:"compact_mode"`
+	IconTheme       string `json:"icon_theme"` // "unicode", "nerd", "emoji", "ascii"
+	Layout          string `json:"layout"`     // "default", "writer", "minimal"
 
 	// Behavior
 	AutoSave        bool `json:"auto_save"`
@@ -74,6 +76,8 @@ func DefaultConfig() Config {
 		SidebarPosition:        "left",
 		ShowIcons:              true,
 		CompactMode:            false,
+		IconTheme:              "unicode",
+		Layout:                 "default",
 		AutoSave:               false,
 		ShowSplash:             true,
 		VimMode:                false,

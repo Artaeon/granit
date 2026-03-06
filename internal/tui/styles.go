@@ -218,9 +218,68 @@ var (
 				Foreground(yellow).
 				Bold(true)
 
-	// File tree icons (using nerd font compatible unicode)
-	IconMd     = lipgloss.NewStyle().Foreground(blue).Render("")
-	IconFolder = lipgloss.NewStyle().Foreground(peach).Render("")
-	IconDaily  = lipgloss.NewStyle().Foreground(green).Render("")
-	IconTag    = lipgloss.NewStyle().Foreground(yellow).Render("")
+	// File tree icons
+	IconMd     = lipgloss.NewStyle().Foreground(blue).Render("◆")
+	IconFolder = lipgloss.NewStyle().Foreground(peach).Render("▸")
+	IconDaily  = lipgloss.NewStyle().Foreground(green).Render("◈")
+	IconTag    = lipgloss.NewStyle().Foreground(yellow).Render("♯")
 )
+
+// Icon character variables — changed by ApplyIconTheme()
+var (
+	IconFileChar     = "◆"
+	IconFolderChar   = "▸"
+	IconDailyChar    = "◈"
+	IconTagChar      = "♯"
+	IconSearchChar   = "◉"
+	IconBookmarkChar = "★"
+	IconCanvasChar   = "◫"
+	IconCalendarChar = "◇"
+)
+
+func ApplyIconTheme(theme string) {
+	switch theme {
+	case "nerd":
+		IconFileChar = "\uf0f6"
+		IconFolderChar = "\uf07b"
+		IconDailyChar = "\uf073"
+		IconTagChar = "\uf02c"
+		IconSearchChar = "\uf002"
+		IconBookmarkChar = "\uf02e"
+		IconCanvasChar = "\uf5fd"
+		IconCalendarChar = "\uf073"
+	case "emoji":
+		IconFileChar = "📄"
+		IconFolderChar = "📁"
+		IconDailyChar = "📅"
+		IconTagChar = "🏷"
+		IconSearchChar = "🔍"
+		IconBookmarkChar = "⭐"
+		IconCanvasChar = "🎨"
+		IconCalendarChar = "📆"
+	case "ascii":
+		IconFileChar = "~"
+		IconFolderChar = ">"
+		IconDailyChar = "@"
+		IconTagChar = "#"
+		IconSearchChar = "?"
+		IconBookmarkChar = "*"
+		IconCanvasChar = "+"
+		IconCalendarChar = "="
+	default: // "unicode"
+		IconFileChar = "◆"
+		IconFolderChar = "▸"
+		IconDailyChar = "◈"
+		IconTagChar = "♯"
+		IconSearchChar = "◉"
+		IconBookmarkChar = "★"
+		IconCanvasChar = "◫"
+		IconCalendarChar = "◇"
+	}
+
+	// Rebuild the pre-styled icon strings
+	IconMd = lipgloss.NewStyle().Foreground(blue).Render(IconFileChar)
+	IconFolder = lipgloss.NewStyle().Foreground(peach).Render(IconFolderChar)
+	IconDaily = lipgloss.NewStyle().Foreground(green).Render(IconDailyChar)
+	IconTag = lipgloss.NewStyle().Foreground(yellow).Render(IconTagChar)
+}

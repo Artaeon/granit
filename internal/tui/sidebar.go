@@ -185,15 +185,11 @@ func (s Sidebar) View() string {
 		if dir != "." && dir != lastDir {
 			folderIcon := ""
 			if s.showIcons {
-				folderIcon = "  "
+				folderIcon = lipgloss.NewStyle().Foreground(peach).Render(IconFolderChar) + " "
 			}
-			dirDisplay := "  " + lipgloss.NewStyle().Foreground(peach).Render(folderIcon + dir + "/")
+			dirDisplay := "  " + folderIcon + lipgloss.NewStyle().Foreground(peach).Render(dir+"/")
 			b.WriteString(dirDisplay)
-			if !s.compactMode {
-				b.WriteString("\n")
-			} else {
-				b.WriteString("\n")
-			}
+			b.WriteString("\n")
 			lastDir = dir
 		}
 
@@ -203,10 +199,10 @@ func (s Sidebar) View() string {
 		// File icon (conditional)
 		icon := ""
 		if s.showIcons {
-			icon = lipgloss.NewStyle().Foreground(blue).Render(" ")
+			icon = lipgloss.NewStyle().Foreground(blue).Render(IconFileChar)
 			// Check if it's a daily note
 			if len(displayName) >= 10 && displayName[4] == '-' && displayName[7] == '-' {
-				icon = lipgloss.NewStyle().Foreground(green).Render(" ")
+				icon = lipgloss.NewStyle().Foreground(green).Render(IconDailyChar)
 			}
 		}
 
