@@ -83,8 +83,8 @@ func (s SplashModel) View() string {
 	var content strings.Builder
 
 	// Animated logo
-	logoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#CBA6F7")).Bold(true)
-	glowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#B4BEFE"))
+	logoStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	glowStyle := lipgloss.NewStyle().Foreground(lavender)
 
 	for i, line := range splashLogo {
 		if i < s.progress {
@@ -101,7 +101,7 @@ func (s SplashModel) View() string {
 	if s.progress > len(splashLogo) {
 		content.WriteString("\n")
 		tagline := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#6C7086")).
+			Foreground(overlay0).
 			Italic(true).
 			Render("  Terminal Knowledge Manager — Obsidian Compatible")
 		content.WriteString(tagline)
@@ -112,7 +112,7 @@ func (s SplashModel) View() string {
 	if s.progress > len(splashLogo)+1 {
 		content.WriteString("\n")
 		version := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#89B4FA")).
+			Foreground(blue).
 			Render("  v0.1.0")
 		content.WriteString(version)
 		content.WriteString("\n")
@@ -120,13 +120,13 @@ func (s SplashModel) View() string {
 
 	if s.progress > len(splashLogo)+2 {
 		vaultInfo := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#6C7086")).
+			Foreground(overlay0).
 			Render("  Vault: " + s.vaultPath)
 		content.WriteString(vaultInfo)
 		content.WriteString("\n")
 
 		noteInfo := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#6C7086")).
+			Foreground(overlay0).
 			Render("  Notes: " + itoa(s.noteCount))
 		content.WriteString(noteInfo)
 		content.WriteString("\n")
@@ -137,13 +137,13 @@ func (s SplashModel) View() string {
 		content.WriteString("\n")
 		if s.done {
 			ready := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#A6E3A1")).
+				Foreground(green).
 				Bold(true).
 				Render("  Ready!")
 			content.WriteString(ready)
 		} else {
 			loading := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#F9E2AF")).
+				Foreground(yellow).
 				Render("  Loading...")
 			content.WriteString(loading)
 		}
@@ -154,7 +154,7 @@ func (s SplashModel) View() string {
 	if s.progress > len(splashLogo)+4 {
 		content.WriteString("\n")
 		hint := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#585B70")).
+			Foreground(surface2).
 			Render("  Press any key to continue")
 		content.WriteString(hint)
 	}
@@ -175,7 +175,7 @@ func (s SplashModel) View() string {
 		lipgloss.Center,
 		lipgloss.Center,
 		contentStr,
-		lipgloss.WithWhitespaceBackground(lipgloss.Color("#11111B")),
+		lipgloss.WithWhitespaceBackground(crust),
 	)
 
 	return centered
