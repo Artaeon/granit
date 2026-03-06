@@ -185,7 +185,7 @@ func (vs VaultStats) View() string {
 	var lines []string
 
 	sectionStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#CDD6F4"))
+	labelStyle := lipgloss.NewStyle().Foreground(text)
 	numStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
 	barStyle := lipgloss.NewStyle().Foreground(mauve)
 
