@@ -49,7 +49,7 @@ func (s *Settings) buildItems() {
 		{label: "Tab Size", key: "tab_size", kind: "int", value: s.config.Editor.TabSize},
 		{label: "Sort Files By", key: "sort_by", kind: "string", value: s.config.SortBy, options: []string{"name", "modified", "created"}},
 		{label: "Daily Notes Folder", key: "daily_notes_folder", kind: "string", value: s.config.DailyNotesFolder},
-		{label: "Theme", key: "theme", kind: "string", value: s.config.Theme, options: []string{"catppuccin-mocha", "catppuccin-latte", "tokyo-night", "gruvbox"}},
+		{label: "Theme", key: "theme", kind: "string", value: s.config.Theme, options: ThemeNames()},
 		{label: "Search Content by Default", key: "search_content", kind: "bool", value: s.config.SearchContentByDefault},
 	}
 }
@@ -172,6 +172,7 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.DailyNotesFolder = value.(string)
 	case "theme":
 		s.config.Theme = value.(string)
+		ApplyTheme(s.config.Theme)
 	case "search_content":
 		s.config.SearchContentByDefault = value.(bool)
 	}
