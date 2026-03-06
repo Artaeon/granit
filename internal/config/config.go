@@ -41,6 +41,14 @@ type Config struct {
 	AutoRefresh     bool `json:"auto_refresh"`
 	SpellCheck      bool `json:"spell_check"`
 
+	// AI / Bots
+	AIProvider  string `json:"ai_provider"`  // "local", "ollama", "openai"
+	OllamaModel string `json:"ollama_model"` // e.g. "qwen2.5:0.5b", "phi3:mini"
+	OllamaURL   string `json:"ollama_url"`   // e.g. "http://localhost:11434"
+	OpenAIKey   string `json:"openai_key"`   // API key for OpenAI
+	OpenAIModel string `json:"openai_model"` // e.g. "gpt-4o-mini", "gpt-4o"
+	BackgroundBots bool `json:"background_bots"` // auto-analyze on save
+
 	// Sidebar
 	ShowHiddenFiles bool   `json:"show_hidden_files"`
 	SortBy          string `json:"sort_by"` // "name", "modified", "created"
@@ -87,6 +95,12 @@ func DefaultConfig() Config {
 		ConfirmDelete:          true,
 		AutoRefresh:            true,
 		SpellCheck:             false,
+		AIProvider:             "local",
+		OllamaModel:            "qwen2.5:0.5b",
+		OllamaURL:              "http://localhost:11434",
+		OpenAIKey:              "",
+		OpenAIModel:            "gpt-4o-mini",
+		BackgroundBots:         false,
 		ShowHiddenFiles:        false,
 		SortBy:                 "name",
 		SearchContentByDefault: true,
