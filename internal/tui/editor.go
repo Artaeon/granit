@@ -485,7 +485,7 @@ func highlightInline(line string) string {
 				end++
 			}
 			if end > i+1 {
-				result.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#89B4FA")).Render(string(runes[i:end])))
+				result.WriteString(lipgloss.NewStyle().Foreground(blue).Render(string(runes[i:end])))
 				i = end
 				continue
 			}
