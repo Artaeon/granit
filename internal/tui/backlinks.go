@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type Backlinks struct {
@@ -14,6 +15,7 @@ type Backlinks struct {
 	height   int
 	width    int
 	mode     int // 0=incoming, 1=outgoing
+	scroll   int
 }
 
 func NewBacklinks() Backlinks {
@@ -29,6 +31,7 @@ func (bl *Backlinks) SetLinks(incoming, outgoing []string) {
 	bl.incoming = incoming
 	bl.outgoing = outgoing
 	bl.cursor = 0
+	bl.scroll = 0
 }
 
 func (bl *Backlinks) Selected() string {
@@ -58,14 +61,25 @@ func (bl Backlinks) Update(msg tea.Msg) (Backlinks, tea.Cmd) {
 		case "up", "k":
 			if bl.cursor > 0 {
 				bl.cursor--
+				if bl.cursor < bl.scroll {
+					bl.scroll = bl.cursor
+				}
 			}
 		case "down", "j":
 			if bl.cursor < len(items)-1 {
 				bl.cursor++
+				visibleHeight := bl.height - 8
+				if visibleHeight < 1 {
+					visibleHeight = 1
+				}
+				if bl.cursor >= bl.scroll+visibleHeight {
+					bl.scroll = bl.cursor - visibleHeight + 1
+				}
 			}
 		case "tab":
 			bl.mode = (bl.mode + 1) % 2
 			bl.cursor = 0
+			bl.scroll = 0
 		}
 	}
 	return bl, nil
@@ -73,47 +87,106 @@ func (bl Backlinks) Update(msg tea.Msg) (Backlinks, tea.Cmd) {
 
 func (bl Backlinks) View() string {
 	var b strings.Builder
-
-	// Tab header
-	inTab := "Backlinks"
-	outTab := "Outgoing"
-	if bl.mode == 0 {
-		inTab = SelectedStyle.Render("[Backlinks]")
-		outTab = DimStyle.Render(" Outgoing ")
-	} else {
-		inTab = DimStyle.Render(" Backlinks ")
-		outTab = SelectedStyle.Render("[Outgoing]")
+	contentWidth := bl.width - 4
+	if contentWidth < 10 {
+		contentWidth = 10
 	}
+
+	// Tab header with pill style
+	inCount := len(bl.incoming)
+	outCount := len(bl.outgoing)
+
+	activeTabStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#1E1E2E")).
+		Background(lipgloss.Color("#CBA6F7")).
+		Bold(true).
+		Padding(0, 1)
+
+	inactiveTabStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#6C7086")).
+		Background(lipgloss.Color("#313244")).
+		Padding(0, 1)
+
+	var inTab, outTab string
+	if bl.mode == 0 {
+		inTab = activeTabStyle.Render(formatTabLabel("Backlinks", inCount))
+		outTab = inactiveTabStyle.Render(formatTabLabel("Outgoing", outCount))
+	} else {
+		inTab = inactiveTabStyle.Render(formatTabLabel("Backlinks", inCount))
+		outTab = activeTabStyle.Render(formatTabLabel("Outgoing", outCount))
+	}
+
 	b.WriteString(inTab + " " + outTab)
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render(strings.Repeat("─", bl.width-4)))
+	b.WriteString(DimStyle.Render(strings.Repeat("─", contentWidth)))
 	b.WriteString("\n")
 
 	items := bl.currentItems()
 	if len(items) == 0 {
-		b.WriteString(DimStyle.Render("  (none)"))
+		b.WriteString("\n")
+		emptyIcon := DimStyle.Render("  ")
+		emptyText := DimStyle.Render(" No links found")
+		b.WriteString(emptyIcon + emptyText)
 		return b.String()
 	}
 
-	visibleHeight := bl.height - 4
+	visibleHeight := bl.height - 8
 	if visibleHeight < 1 {
 		visibleHeight = 1
 	}
 
-	for i := 0; i < len(items) && i < visibleHeight; i++ {
+	end := bl.scroll + visibleHeight
+	if end > len(items) {
+		end = len(items)
+	}
+
+	for i := bl.scroll; i < end; i++ {
 		name := items[i]
-		if len(name) > bl.width-6 {
-			name = name[:bl.width-9] + "..."
+		displayName := strings.TrimSuffix(name, ".md")
+
+		// Truncate if needed
+		maxLen := contentWidth - 6
+		if maxLen < 5 {
+			maxLen = 5
 		}
+		if len(displayName) > maxLen {
+			displayName = displayName[:maxLen-3] + "..."
+		}
+
+		icon := lipgloss.NewStyle().Foreground(lipgloss.Color("#89B4FA")).Render(" ")
+
 		if i == bl.cursor && bl.focused {
-			b.WriteString(SelectedStyle.Render("▸ " + name))
+			line := "  " + icon + " " + displayName
+			padLen := contentWidth - lipgloss.Width(line)
+			if padLen < 0 {
+				padLen = 0
+			}
+			highlighted := lipgloss.NewStyle().
+				Background(lipgloss.Color("#313244")).
+				Foreground(lipgloss.Color("#FAB387")).
+				Bold(true).
+				Width(contentWidth).
+				Render("  " + icon + " " + displayName + strings.Repeat(" ", padLen))
+			b.WriteString(highlighted)
 		} else {
-			b.WriteString(LinkStyle.Render("  " + name))
+			b.WriteString("  " + icon + " " + NormalItemStyle.Render(displayName))
 		}
-		if i < len(items)-1 && i < visibleHeight-1 {
+
+		if i < end-1 {
 			b.WriteString("\n")
 		}
 	}
 
 	return b.String()
+}
+
+func formatTabLabel(label string, count int) string {
+	if count == 0 {
+		return label
+	}
+	c := string(rune('0' + count%10))
+	if count >= 10 {
+		c = string(rune('0'+count/10)) + c
+	}
+	return label + " " + c
 }
