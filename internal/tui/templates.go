@@ -21,6 +21,7 @@ type Templates struct {
 	height    int
 	templates []NoteTemplate
 	result    string
+	selected  bool
 }
 
 func NewTemplates() Templates {
@@ -32,12 +33,18 @@ func NewTemplates() Templates {
 func builtinTemplates() []NoteTemplate {
 	return []NoteTemplate{
 		{
-			name: "Empty Note",
+			name: "Blank Note (no template)",
+			content: "",
+		},
+		{
+			name: "Standard Note",
 			content: `---
-title: Untitled
+title: {{title}}
 date: {{date}}
 tags: []
 ---
+
+# {{title}}
 
 `,
 		},
@@ -173,6 +180,87 @@ tags: [decision]
 -
 `,
 		},
+		{
+			name: "Journal Entry",
+			content: `---
+title: Journal - {{date}}
+date: {{date}}
+type: journal
+tags: [journal]
+---
+
+# {{date}}
+
+## Mood
+
+
+## What happened today
+
+
+## Gratitude
+1.
+2.
+3.
+
+## Tomorrow
+- [ ]
+`,
+		},
+		{
+			name: "Research Note",
+			content: `---
+title: {{title}}
+date: {{date}}
+type: research
+tags: [research]
+source: ""
+---
+
+# {{title}}
+
+## Key Findings
+
+
+## Methodology
+
+
+## Data / Evidence
+
+
+## Questions
+-
+
+## Related Notes
+-
+`,
+		},
+		{
+			name: "Learning Note (Zettelkasten)",
+			content: `---
+title: {{title}}
+date: {{date}}
+type: zettel
+tags: []
+---
+
+# {{title}}
+
+## Main Idea
+
+
+## In My Own Words
+
+
+## Source
+
+
+## Connections
+- [[]]
+
+## Questions
+-
+`,
+		},
 	}
 }
 
@@ -185,6 +273,7 @@ func (t *Templates) Open() {
 	t.cursor = 0
 	t.scroll = 0
 	t.result = ""
+	t.selected = false
 }
 
 func (t *Templates) Close() {
@@ -196,15 +285,20 @@ func (t *Templates) SetSize(width, height int) {
 	t.height = height
 }
 
+func (t *Templates) WasSelected() bool {
+	return t.selected
+}
+
 func (t *Templates) SelectedTemplate() string {
-	r := t.result
-	t.result = ""
-	if r == "" {
+	if !t.selected {
 		return ""
 	}
+	t.selected = false
+	r := t.result
+	t.result = ""
 	today := time.Now().Format("2006-01-02")
 	r = strings.ReplaceAll(r, "{{date}}", today)
-	return r
+	return r // may be "" for blank note
 }
 
 func (t Templates) Update(msg tea.Msg) (Templates, tea.Cmd) {
@@ -238,6 +332,7 @@ func (t Templates) Update(msg tea.Msg) (Templates, tea.Cmd) {
 		case "enter":
 			if len(t.templates) > 0 && t.cursor < len(t.templates) {
 				t.result = t.templates[t.cursor].content
+				t.selected = true
 				t.active = false
 			}
 		}
@@ -259,7 +354,7 @@ func (t Templates) View() string {
 	title := lipgloss.NewStyle().
 		Foreground(mauve).
 		Bold(true).
-		Render("  Templates")
+		Render("  " + IconNewChar + " New Note — Choose Template")
 	b.WriteString(title)
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", width-6)))
