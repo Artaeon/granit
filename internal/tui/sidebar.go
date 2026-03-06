@@ -179,7 +179,7 @@ func (s Sidebar) View() string {
 
 		// Show directory header if changed
 		if dir != "." && dir != lastDir {
-			dirDisplay := "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("#FAB387")).Render("  " + dir + "/")
+			dirDisplay := "  " + lipgloss.NewStyle().Foreground(peach).Render("  " + dir + "/")
 			b.WriteString(dirDisplay)
 			b.WriteString("\n")
 			lastDir = dir
@@ -189,11 +189,11 @@ func (s Sidebar) View() string {
 		displayName := strings.TrimSuffix(name, ".md")
 
 		// File icon
-		icon := lipgloss.NewStyle().Foreground(lipgloss.Color("#89B4FA")).Render(" ")
+		icon := lipgloss.NewStyle().Foreground(blue).Render(" ")
 
 		// Check if it's a daily note
 		if len(displayName) >= 10 && displayName[4] == '-' && displayName[7] == '-' {
-			icon = lipgloss.NewStyle().Foreground(lipgloss.Color("#A6E3A1")).Render(" ")
+			icon = lipgloss.NewStyle().Foreground(green).Render(" ")
 		}
 
 		indent := "  "
@@ -217,8 +217,8 @@ func (s Sidebar) View() string {
 				padLen = 0
 			}
 			highlighted := lipgloss.NewStyle().
-				Background(lipgloss.Color("#313244")).
-				Foreground(lipgloss.Color("#FAB387")).
+				Background(surface0).
+				Foreground(peach).
 				Bold(true).
 				Width(contentWidth).
 				Render(indent + icon + " " + displayName + strings.Repeat(" ", padLen))
