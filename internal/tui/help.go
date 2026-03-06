@@ -73,6 +73,8 @@ var helpSections = []helpSection{
 			{"Home / Ctrl+A", "Go to line start"},
 			{"End / Ctrl+E", "Go to line end"},
 			{"PgUp / PgDown", "Scroll page"},
+			{"Ctrl+U", "Undo"},
+			{"Ctrl+Y", "Redo"},
 			{"Ctrl+K", "Delete to end of line"},
 			{"Ctrl+D / Delete", "Delete character forward"},
 			{"Tab", "Insert 4 spaces"},
