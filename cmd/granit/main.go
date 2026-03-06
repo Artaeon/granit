@@ -14,7 +14,12 @@ import (
 	"github.com/artaeon/granit/internal/vault"
 )
 
-const version = "0.1.0"
+// Set by goreleaser ldflags at build time.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 func main() {
 	if len(os.Args) < 2 {
@@ -75,7 +80,7 @@ func main() {
 		runDaily(vaultPath)
 
 	case "version":
-		fmt.Printf("Granit v%s\n", version)
+		fmt.Printf("Granit v%s (%s, %s)\n", version, commit, date)
 
 	case "help":
 		printUsage()
