@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -536,7 +537,9 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 		case "enter":
 			e.saveSnapshot()
 			e.redoStack = nil
-			if len(e.cursors) > 0 {
+			if len(e.cursors) == 0 && e.isInTable() {
+				e.enterInTable()
+			} else if len(e.cursors) > 0 {
 				// Multi-cursor enter: process from bottom to top
 				allCursors := sortCursorsBottomUp(e.getAllCursors())
 				for _, c := range allCursors {
@@ -662,10 +665,12 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				e.countWords()
 			}
 		case "tab":
-			// Insert tab as spaces
 			e.saveSnapshot()
 			e.redoStack = nil
-			if len(e.cursors) > 0 {
+			if len(e.cursors) == 0 && e.isInTable() {
+				e.tabInTable()
+			} else if len(e.cursors) > 0 {
+				// Insert tab as spaces (multi-cursor)
 				allCursors := sortCursorsBottomUp(e.getAllCursors())
 				tabStr := strings.Repeat(" ", e.tabSize)
 				for _, c := range allCursors {
@@ -683,13 +688,15 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				for i := range e.cursors {
 					e.cursors[i].Col += e.tabSize
 				}
+				e.modified = true
 			} else {
+				// Insert tab as spaces (single cursor)
 				tabStr := strings.Repeat(" ", e.tabSize)
 				line := e.content[e.cursor]
 				e.content[e.cursor] = line[:e.col] + tabStr + line[e.col:]
 				e.col += e.tabSize
+				e.modified = true
 			}
-			e.modified = true
 		default:
 			char := msg.String()
 			if len(char) == 1 && char[0] >= 32 {
@@ -1239,4 +1246,330 @@ func findDouble(runes []rune, start int, ch rune) int {
 		}
 	}
 	return -1
+}
+
+// ---------------------------------------------------------------------------
+// Markdown table editing support
+// ---------------------------------------------------------------------------
+
+// separatorLineRe matches table separator lines like |---|---|, | :---: | --- |, etc.
+var separatorLineRe = regexp.MustCompile(`^\s*\|[\s:\-|]+\|\s*$`)
+
+// isTableLine returns true if the line looks like part of a markdown table
+// (starts with `|`, possibly with leading whitespace).
+func isTableLine(line string) bool {
+	return strings.HasPrefix(strings.TrimSpace(line), "|")
+}
+
+// isSeparatorLine returns true if the line is a table separator row (e.g. |---|---|).
+func isSeparatorLine(line string) bool {
+	return separatorLineRe.MatchString(line)
+}
+
+// isInTable returns true if the current cursor line is part of a markdown table.
+func (e *Editor) isInTable() bool {
+	if e.cursor < 0 || e.cursor >= len(e.content) {
+		return false
+	}
+	return isTableLine(e.content[e.cursor])
+}
+
+// tableRange returns the start and end line indices (inclusive) of the contiguous
+// table block containing the cursor line. Both start and end are guaranteed to
+// be valid indices into e.content.
+func (e *Editor) tableRange() (start, end int) {
+	start = e.cursor
+	for start > 0 && isTableLine(e.content[start-1]) {
+		start--
+	}
+	end = e.cursor
+	for end < len(e.content)-1 && isTableLine(e.content[end+1]) {
+		end++
+	}
+	return start, end
+}
+
+// countTableColumns counts the number of data columns in a table line.
+// It splits on `|`, trims the leading and trailing empty elements that result
+// from the outer pipes, and returns the count. For "|a|b|c|" this returns 3.
+func countTableColumns(line string) int {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" || trimmed == "|" {
+		return 0
+	}
+	// Remove leading and trailing pipe
+	if trimmed[0] == '|' {
+		trimmed = trimmed[1:]
+	}
+	if len(trimmed) > 0 && trimmed[len(trimmed)-1] == '|' {
+		trimmed = trimmed[:len(trimmed)-1]
+	}
+	if trimmed == "" {
+		return 1 // edge case: line was "||"
+	}
+	return strings.Count(trimmed, "|") + 1
+}
+
+// buildEmptyRow constructs an empty table row with the given number of columns,
+// e.g. buildEmptyRow(3) returns "|  |  |  |".
+func buildEmptyRow(cols int) string {
+	if cols <= 0 {
+		cols = 1
+	}
+	var b strings.Builder
+	for i := 0; i < cols; i++ {
+		b.WriteString("|  ")
+	}
+	b.WriteString("|")
+	return b.String()
+}
+
+// tabInTable handles Tab key inside a table. It moves the cursor to the next
+// cell. If the cursor is in the last cell of the last row, a new empty row is
+// appended. After navigation it calls alignTableAt to tidy the table.
+func (e *Editor) tabInTable() {
+	line := e.content[e.cursor]
+	col := e.col
+
+	// Find the next `|` after the current cursor position.
+	nextPipe := -1
+	for i := col; i < len(line); i++ {
+		if line[i] == '|' {
+			nextPipe = i
+			break
+		}
+	}
+
+	if nextPipe >= 0 {
+		// Check if there is another `|` after this one (i.e. another cell on this line).
+		afterPipe := nextPipe + 1
+		anotherPipe := strings.Index(line[afterPipe:], "|")
+		if anotherPipe >= 0 {
+			// Move cursor to just after the `|` we found, skipping one space if present.
+			target := afterPipe
+			if target < len(line) && line[target] == ' ' {
+				target++
+			}
+			e.col = target
+			e.alignTableAt()
+			e.modified = true
+			return
+		}
+	}
+
+	// No more cells on this line — move to the next row.
+	_, tableEnd := e.tableRange()
+	nextRow := e.cursor + 1
+
+	// Skip separator line
+	if nextRow <= tableEnd && isSeparatorLine(e.content[nextRow]) {
+		nextRow++
+	}
+
+	if nextRow <= tableEnd {
+		// Move to the first cell of the next row.
+		e.cursor = nextRow
+		e.col = 0
+		nextLine := e.content[e.cursor]
+		firstPipe := strings.Index(nextLine, "|")
+		if firstPipe >= 0 {
+			target := firstPipe + 1
+			if target < len(nextLine) && nextLine[target] == ' ' {
+				target++
+			}
+			e.col = target
+		}
+	} else {
+		// At or past the last row — insert a new empty row.
+		cols := countTableColumns(e.content[e.cursor])
+		newRow := buildEmptyRow(cols)
+		insertIdx := tableEnd + 1
+		newContent := make([]string, 0, len(e.content)+1)
+		newContent = append(newContent, e.content[:insertIdx]...)
+		newContent = append(newContent, newRow)
+		newContent = append(newContent, e.content[insertIdx:]...)
+		e.content = newContent
+		e.cursor = insertIdx
+		// Place cursor after the first `|` and optional space.
+		e.col = 1
+		if len(newRow) > 1 && newRow[1] == ' ' {
+			e.col = 2
+		}
+	}
+
+	e.alignTableAt()
+	e.modified = true
+	e.countWords()
+}
+
+// enterInTable handles Enter key inside a table. It inserts a new empty row
+// below the current line (with matching column count) and moves the cursor to
+// the first cell of the new row.
+func (e *Editor) enterInTable() {
+	cols := countTableColumns(e.content[e.cursor])
+	newRow := buildEmptyRow(cols)
+
+	insertIdx := e.cursor + 1
+	newContent := make([]string, 0, len(e.content)+1)
+	newContent = append(newContent, e.content[:insertIdx]...)
+	newContent = append(newContent, newRow)
+	newContent = append(newContent, e.content[insertIdx:]...)
+	e.content = newContent
+
+	e.cursor = insertIdx
+	// Place cursor after first `|` and optional space.
+	e.col = 1
+	if len(newRow) > 1 && newRow[1] == ' ' {
+		e.col = 2
+	}
+
+	e.alignTableAt()
+	e.modified = true
+	e.countWords()
+
+	// Ensure the cursor is visible.
+	visibleHeight := e.height - 4
+	if visibleHeight < 1 {
+		visibleHeight = 1
+	}
+	if e.cursor >= e.scroll+visibleHeight {
+		e.scroll = e.cursor - visibleHeight + 1
+	}
+}
+
+// alignTableAt aligns all columns in the markdown table surrounding the
+// current cursor line. Each cell is padded with spaces so that all rows have
+// uniform column widths. Separator lines are rebuilt with the correct dash
+// counts.
+func (e *Editor) alignTableAt() {
+	start, end := e.tableRange()
+	if start > end {
+		return
+	}
+
+	// Parse every row into cells.
+	type rowCells struct {
+		cells       []string
+		isSeparator bool
+		// For separator cells, remember alignment markers.
+		alignLeft  []bool
+		alignRight []bool
+	}
+
+	rows := make([]rowCells, 0, end-start+1)
+	maxCols := 0
+
+	for i := start; i <= end; i++ {
+		line := strings.TrimSpace(e.content[i])
+		sep := isSeparatorLine(e.content[i])
+
+		// Strip leading and trailing `|`.
+		if len(line) > 0 && line[0] == '|' {
+			line = line[1:]
+		}
+		if len(line) > 0 && line[len(line)-1] == '|' {
+			line = line[:len(line)-1]
+		}
+
+		parts := strings.Split(line, "|")
+		cells := make([]string, len(parts))
+		alignL := make([]bool, len(parts))
+		alignR := make([]bool, len(parts))
+
+		for j, p := range parts {
+			trimmed := strings.TrimSpace(p)
+			cells[j] = trimmed
+			if sep {
+				alignL[j] = strings.HasPrefix(trimmed, ":")
+				alignR[j] = strings.HasSuffix(trimmed, ":")
+			}
+		}
+		if len(cells) > maxCols {
+			maxCols = len(cells)
+		}
+		rows = append(rows, rowCells{
+			cells:       cells,
+			isSeparator: sep,
+			alignLeft:   alignL,
+			alignRight:  alignR,
+		})
+	}
+
+	if maxCols == 0 {
+		return
+	}
+
+	// Normalise: ensure every row has maxCols cells.
+	for i := range rows {
+		for len(rows[i].cells) < maxCols {
+			rows[i].cells = append(rows[i].cells, "")
+			rows[i].alignLeft = append(rows[i].alignLeft, false)
+			rows[i].alignRight = append(rows[i].alignRight, false)
+		}
+	}
+
+	// Determine the maximum width per column (ignoring separator rows).
+	colWidths := make([]int, maxCols)
+	for _, r := range rows {
+		if r.isSeparator {
+			continue
+		}
+		for j, c := range r.cells {
+			if len(c) > colWidths[j] {
+				colWidths[j] = len(c)
+			}
+		}
+	}
+	// Ensure a minimum width of 3 for each column (so separators look like ---).
+	for j := range colWidths {
+		if colWidths[j] < 3 {
+			colWidths[j] = 3
+		}
+	}
+
+	// Rebuild lines.
+	for ri, r := range rows {
+		var b strings.Builder
+		for j, c := range r.cells {
+			b.WriteByte('|')
+			b.WriteByte(' ')
+			if r.isSeparator {
+				// Build separator cell.
+				dashCount := colWidths[j]
+				prefix := ""
+				suffix := ""
+				if r.alignLeft[j] {
+					prefix = ":"
+					dashCount--
+				}
+				if r.alignRight[j] {
+					suffix = ":"
+					dashCount--
+				}
+				if dashCount < 1 {
+					dashCount = 1
+				}
+				b.WriteString(prefix)
+				b.WriteString(strings.Repeat("-", dashCount))
+				b.WriteString(suffix)
+			} else {
+				b.WriteString(c)
+				padding := colWidths[j] - len(c)
+				if padding > 0 {
+					b.WriteString(strings.Repeat(" ", padding))
+				}
+			}
+			b.WriteByte(' ')
+		}
+		b.WriteByte('|')
+		e.content[start+ri] = b.String()
+	}
+
+	// Adjust the cursor column — make sure it doesn't exceed the new line length.
+	if e.cursor >= start && e.cursor <= end {
+		line := e.content[e.cursor]
+		if e.col > len(line) {
+			e.col = len(line)
+		}
+	}
 }
