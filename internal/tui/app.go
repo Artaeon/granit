@@ -53,8 +53,9 @@ type Model struct {
 	searchResults []string
 	searchCursor  int
 
-	newNoteMode bool
-	newNoteName string
+	newNoteMode      bool
+	newNoteName      string
+	pendingTemplate  string
 
 	commandPalette CommandPalette
 	settings       Settings
@@ -65,6 +66,9 @@ type Model struct {
 	bookmarks      Bookmarks
 	findReplace    FindReplace
 	vaultStats     VaultStats
+	templates      Templates
+	focusMode      FocusMode
+	quickSwitch    QuickSwitch
 
 	// View mode scroll
 	viewScroll int
@@ -107,6 +111,9 @@ func NewModel(vaultPath string) (Model, error) {
 		bookmarks:      NewBookmarks(vaultPath),
 		findReplace:    NewFindReplace(),
 		vaultStats:     NewVaultStats(v, idx),
+		templates:      NewTemplates(),
+		focusMode:      NewFocusMode(),
+		quickSwitch:    NewQuickSwitch(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -273,6 +280,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.templates.IsActive() {
+			m.templates, _ = m.templates.Update(msg)
+			if tmpl := m.templates.SelectedTemplate(); tmpl != "" {
+				m.newNoteMode = true
+				m.newNoteName = ""
+				// Store template content for use when note name is confirmed
+				m.pendingTemplate = tmpl
+			}
+			return m, nil
+		}
+
+		if m.quickSwitch.IsActive() {
+			m.quickSwitch, _ = m.quickSwitch.Update(msg)
+			if nav := m.quickSwitch.SelectedFile(); nav != "" {
+				m.loadNote(nav)
+				m.sidebar.cursor = m.findFileIndex(nav)
+				m.setFocus(focusEditor)
+			}
+			return m, nil
+		}
+
 		if m.commandPalette.IsActive() {
 			m.commandPalette, _ = m.commandPalette.Update(msg)
 			if action := m.commandPalette.Result(); action != CmdNone {
@@ -397,6 +425,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.findReplace.SetSize(m.width, m.height)
 			m.findReplace.OpenReplace()
 			m.findReplace.UpdateMatches(m.editor.content)
+			return m, nil
+
+		case "ctrl+j":
+			m.quickSwitch.SetSize(m.width, m.height)
+			m.quickSwitch.Open(
+				m.bookmarks.data.Recent,
+				m.bookmarks.data.Starred,
+				m.vault.SortedPaths(),
+				func(path string) time.Time {
+					if note := m.vault.GetNote(path); note != nil {
+						return note.ModTime
+					}
+					return time.Time{}
+				},
+			)
+			return m, nil
+
+		case "ctrl+z":
+			if m.focusMode.IsActive() {
+				m.focusMode.Close()
+			} else {
+				m.focusMode.SetSize(m.width, m.height)
+				m.focusMode.Open(m.editor.GetWordCount())
+				m.setFocus(focusEditor)
+			}
 			return m, nil
 
 		case "esc":
@@ -593,6 +646,30 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdShowStats:
 		m.vaultStats.SetSize(m.width, m.height)
 		m.vaultStats.Open()
+	case CmdNewFromTemplate:
+		m.templates.SetSize(m.width, m.height)
+		m.templates.Open()
+	case CmdFocusMode:
+		if m.focusMode.IsActive() {
+			m.focusMode.Close()
+		} else {
+			m.focusMode.SetSize(m.width, m.height)
+			m.focusMode.Open(m.editor.GetWordCount())
+			m.setFocus(focusEditor)
+		}
+	case CmdQuickSwitch:
+		m.quickSwitch.SetSize(m.width, m.height)
+		m.quickSwitch.Open(
+			m.bookmarks.data.Recent,
+			m.bookmarks.data.Starred,
+			m.vault.SortedPaths(),
+			func(path string) time.Time {
+				if note := m.vault.GetNote(path); note != nil {
+					return note.ModTime
+				}
+				return time.Time{}
+			},
+		)
 	case CmdQuit:
 		m.quitting = true
 		return m, tea.Quit
@@ -676,6 +753,7 @@ func (m *Model) updateNewNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.newNoteMode = false
+		m.pendingTemplate = ""
 		return m, nil
 	case "enter":
 		if m.newNoteName != "" {
@@ -686,6 +764,10 @@ func (m *Model) updateNewNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			path := filepath.Join(m.vault.Root, name)
 			title := strings.TrimSuffix(filepath.Base(name), ".md")
 			content := "---\ntitle: " + title + "\ndate: " + time.Now().Format("2006-01-02") + "\ntags: []\n---\n\n# " + title + "\n\n"
+			if m.pendingTemplate != "" {
+				content = strings.ReplaceAll(m.pendingTemplate, "{{title}}", title)
+				m.pendingTemplate = ""
+			}
 
 			if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
 				if err := os.WriteFile(path, []byte(content), 0644); err == nil {
@@ -888,10 +970,16 @@ func (m Model) View() string {
 		Height(contentHeight).
 		Render(m.backlinks.View())
 
-	content := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor, backlinks)
-	status := m.statusbar.View()
-
-	view := lipgloss.JoinVertical(lipgloss.Left, content, status)
+	var view string
+	if m.focusMode.IsActive() {
+		// Focus mode: centered editor only
+		focusView := m.focusMode.RenderEditor(editorContent, m.editor.GetWordCount())
+		view = focusView
+	} else {
+		content := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor, backlinks)
+		status := m.statusbar.View()
+		view = lipgloss.JoinVertical(lipgloss.Left, content, status)
+	}
 
 	// Render overlays (in priority order)
 	if m.helpOverlay.IsActive() {
@@ -926,6 +1014,14 @@ func (m Model) View() string {
 		overlay := m.findReplace.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.templates.IsActive() {
+		overlay := m.templates.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.quickSwitch.IsActive() {
+		overlay := m.quickSwitch.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.commandPalette.IsActive() {
 		overlay := m.commandPalette.View()
 		view = m.overlayCenter(view, overlay)
@@ -951,7 +1047,7 @@ func (m Model) renderViewMode() string {
 
 	// Header
 	modeIndicator := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#11111B")).
+		Foreground(crust).
 		Background(green).
 		Bold(true).
 		Padding(0, 1).
