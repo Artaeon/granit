@@ -5,12 +5,15 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/artaeon/granit/internal/vault"
 )
 
 type Renderer struct {
 	width      int
 	height     int
 	noteLookup func(name string) string // returns content for a note name
+	vaultNotes map[string]*vault.Note   // for dataview queries
 }
 
 // calloutInfo maps callout type keywords to their color and icon.
@@ -37,6 +40,10 @@ func (r *Renderer) SetSize(width, height int) {
 
 func (r *Renderer) SetNoteLookup(fn func(string) string) {
 	r.noteLookup = fn
+}
+
+func (r *Renderer) SetVaultNotes(notes map[string]*vault.Note) {
+	r.vaultNotes = notes
 }
 
 func (r Renderer) getCalloutInfo(typ string) calloutInfo {
@@ -311,6 +318,30 @@ func (r Renderer) renderMarkdown(content string) []string {
 			if !inCodeBlock {
 				inCodeBlock = true
 				codeBlockLang = strings.TrimPrefix(trimmed, "```")
+
+				// Dataview query blocks: collect content and render inline
+				if codeBlockLang == "query" && r.vaultNotes != nil {
+					var queryLines []string
+					for i++; i < len(lines); i++ {
+						if strings.TrimSpace(lines[i]) == "```" {
+							break
+						}
+						queryLines = append(queryLines, lines[i])
+					}
+					queryBlock := strings.Join(queryLines, "\n")
+					query := ParseDataviewQuery(queryBlock)
+					if query != nil {
+						results := ExecuteDataviewQuery(query, r.vaultNotes)
+						rendered := RenderDataviewResults(results, query.Fields, contentWidth)
+						for _, rl := range strings.Split(rendered, "\n") {
+							result = append(result, rl)
+						}
+					}
+					inCodeBlock = false
+					codeBlockLang = ""
+					continue
+				}
+
 				if codeBlockLang != "" {
 					langLabel := lipgloss.NewStyle().
 						Foreground(overlay0).
