@@ -31,6 +31,10 @@
   <a href="#contributing">Contributing</a>
 </p>
 
+<p align="center">
+  <img src="assets/editor.gif" alt="Granit in action" width="800">
+</p>
+
 ---
 
 Granit is a **free, open-source** terminal-native personal knowledge management system built in Go. It reads and writes standard Markdown with YAML frontmatter and `[[wikilinks]]`, so your vault stays **fully compatible** with Obsidian, Logseq, and any other Markdown-based tool.
@@ -38,6 +42,29 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 **No Electron. No browser. No subscriptions. Just your terminal.**
 
 > **Why Granit?** Obsidian is great, but it's Electron-based, closed-source, and its AI features require a paid subscription. Granit gives you a fast, keyboard-driven alternative with **built-in AI** (local or cloud), **Vim keybindings**, **Git integration**, and **60+ features** — all running natively in your terminal at a fraction of the memory footprint.
+
+---
+
+## Screenshots
+
+<table>
+<tr>
+<td align="center"><strong>Splash Screen</strong></td>
+<td align="center"><strong>Rendered View Mode</strong></td>
+</tr>
+<tr>
+<td><img src="assets/screenshot-splash.png" alt="Splash screen" width="400"></td>
+<td><img src="assets/screenshot-viewmode.png" alt="View mode" width="400"></td>
+</tr>
+<tr>
+<td align="center"><strong>3-Panel Editor Layout</strong></td>
+<td align="center"><strong>Sidebar + Backlinks</strong></td>
+</tr>
+<tr>
+<td><img src="assets/screenshot-editor.png" alt="Editor layout" width="400"></td>
+<td><img src="assets/splash.gif" alt="Launch animation" width="400"></td>
+</tr>
+</table>
 
 ---
 
