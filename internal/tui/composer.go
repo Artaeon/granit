@@ -47,7 +47,8 @@ type Composer struct {
 	ollamaURL string
 	apiKey    string
 
-	existingNotes []string // vault note names for wikilink suggestions
+	existingNotes []string            // vault note names for wikilink suggestions
+	noteContents  map[string]string   // vault note contents for context
 
 	mode   int    // composerModeInput / composerModePreview / composerModeTitle
 	title  string // filename for the new note
@@ -128,6 +129,10 @@ func (c *Composer) SetExistingNotes(notes []string) {
 	c.existingNotes = notes
 }
 
+func (c *Composer) SetNoteContents(contents map[string]string) {
+	c.noteContents = contents
+}
+
 // ---------------------------------------------------------------------------
 // GetResult — consumed once after user accepts a generated note
 // ---------------------------------------------------------------------------
@@ -158,12 +163,61 @@ func (c *Composer) buildSystemPrompt() string {
 		noteList = strings.Join(c.existingNotes[:limit], ", ")
 	}
 
+	// Find relevant vault context based on the user's topic
+	vaultContext := ""
+	if len(c.noteContents) > 0 && c.prompt != "" {
+		topicWords := strings.Fields(strings.ToLower(c.prompt))
+		type scored struct {
+			path  string
+			score int
+		}
+		var matches []scored
+		for path, content := range c.noteContents {
+			lower := strings.ToLower(content) + " " + strings.ToLower(path)
+			score := 0
+			for _, w := range topicWords {
+				if len(w) > 2 {
+					score += strings.Count(lower, w)
+				}
+			}
+			if score > 0 {
+				matches = append(matches, scored{path, score})
+			}
+		}
+		// Sort by score descending
+		for i := 0; i < len(matches); i++ {
+			for j := i + 1; j < len(matches); j++ {
+				if matches[j].score > matches[i].score {
+					matches[i], matches[j] = matches[j], matches[i]
+				}
+			}
+		}
+		// Take top 5 relevant notes
+		var contextBuf strings.Builder
+		contextBuf.WriteString("\n\nRELEVANT EXISTING NOTES (use these for context and wikilinks):\n")
+		limit := 5
+		if len(matches) < limit {
+			limit = len(matches)
+		}
+		for i := 0; i < limit; i++ {
+			preview := c.noteContents[matches[i].path]
+			if len(preview) > 300 {
+				preview = preview[:300]
+			}
+			preview = strings.ReplaceAll(preview, "\n", " ")
+			contextBuf.WriteString(fmt.Sprintf("- [[%s]]: %s\n", strings.TrimSuffix(matches[i].path, ".md"), preview))
+		}
+		vaultContext = contextBuf.String()
+	}
+
 	sys := "You are a note-taking assistant. Generate a well-structured markdown note about the given topic. Include: " +
 		"1) YAML frontmatter with title, date (YYYY-MM-DD), and relevant tags. " +
 		"2) Clear headings (##, ###). " +
 		"3) Where relevant, include [[wikilinks]] to these existing notes: " + noteList + ". " +
 		"4) Use bullet points, numbered lists, and code blocks where appropriate. " +
-		"5) Keep it informative but concise."
+		"5) Keep it informative but concise. " +
+		"6) Build on existing knowledge from the user's vault when relevant." +
+		vaultContext
 
 	return sys
 }

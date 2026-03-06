@@ -122,6 +122,10 @@ type Model struct {
 	tabBar        *TabBar
 	zettelkasten  *ZettelkastenGenerator
 
+	// AI features
+	vaultRefactor  VaultRefactor
+	dailyBriefing  DailyBriefing
+
 	// Slash command menu
 	slashMenu *SlashMenu
 
@@ -230,6 +234,8 @@ func NewModel(vaultPath string) (Model, error) {
 		kanban:         NewKanban(),
 		tabBar:         NewTabBar(),
 		zettelkasten:   NewZettelkastenGenerator(),
+		vaultRefactor:  NewVaultRefactor(),
+		dailyBriefing:  NewDailyBriefing(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
 		showSplash:     cfg.ShowSplash,
@@ -579,6 +585,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.noteChat.IsActive() {
 			var cmd tea.Cmd
 			m.noteChat, cmd = m.noteChat.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case vaultRefactorResultMsg, vaultRefactorTickMsg:
+		if m.vaultRefactor.IsActive() {
+			var cmd tea.Cmd
+			m.vaultRefactor, cmd = m.vaultRefactor.Update(msg)
+			if !m.vaultRefactor.IsActive() {
+				if plan, ok := m.vaultRefactor.GetResult(); ok {
+					m.applyVaultRefactor(plan)
+				}
+			}
+			return m, cmd
+		}
+		return m, nil
+
+	case briefingResultMsg, briefingTickMsg:
+		if m.dailyBriefing.IsActive() {
+			var cmd tea.Cmd
+			m.dailyBriefing, cmd = m.dailyBriefing.Update(msg)
+			if !m.dailyBriefing.IsActive() {
+				if content, ok := m.dailyBriefing.GetResult(); ok {
+					m.writeBriefingToDailyNote(content)
+				}
+			}
 			return m, cmd
 		}
 		return m, nil
@@ -1088,6 +1120,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.noteChat.IsActive() {
 			var cmd tea.Cmd
 			m.noteChat, cmd = m.noteChat.Update(msg)
+			return m, cmd
+		}
+
+		if m.vaultRefactor.IsActive() {
+			var cmd tea.Cmd
+			m.vaultRefactor, cmd = m.vaultRefactor.Update(msg)
+			if !m.vaultRefactor.IsActive() {
+				if plan, ok := m.vaultRefactor.GetResult(); ok {
+					m.applyVaultRefactor(plan)
+				}
+			}
+			return m, cmd
+		}
+
+		if m.dailyBriefing.IsActive() {
+			var cmd tea.Cmd
+			m.dailyBriefing, cmd = m.dailyBriefing.Update(msg)
+			if !m.dailyBriefing.IsActive() {
+				if content, ok := m.dailyBriefing.GetResult(); ok {
+					m.writeBriefingToDailyNote(content)
+				}
+			}
 			return m, cmd
 		}
 
@@ -2000,6 +2054,13 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.composer.SetSize(m.width, m.height)
 		m.composer.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
 		m.composer.SetExistingNotes(m.vault.SortedPaths())
+		composerContents := make(map[string]string)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				composerContents[p] = note.Content
+			}
+		}
+		m.composer.SetNoteContents(composerContents)
 		m.composer.Open()
 	case CmdKnowledgeGraph:
 		m.knowledgeGraph.SetSize(m.width, m.height)
@@ -2186,6 +2247,42 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.statusbar.SetMessage("No .obsidian/ directory found")
 		}
 		return m, m.clearMessageAfter(5 * time.Second)
+	case CmdVaultRefactor:
+		m.vaultRefactor.SetSize(m.width, m.height)
+		m.vaultRefactor.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+		noteContents := make(map[string]string)
+		tagMap := make(map[string][]string)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				noteContents[p] = note.Content
+				if tags, ok := note.Frontmatter["tags"]; ok {
+					if tagList, ok := tags.([]interface{}); ok {
+						for _, t := range tagList {
+							if s, ok := t.(string); ok {
+								tagMap[s] = append(tagMap[s], p)
+							}
+						}
+					}
+				}
+			}
+		}
+		m.vaultRefactor.SetVaultData(noteContents, tagMap, m.vault.SortedPaths())
+		m.vaultRefactor.Open()
+
+	case CmdDailyBriefing:
+		m.dailyBriefing.SetSize(m.width, m.height)
+		m.dailyBriefing.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+		noteContents := make(map[string]string)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				noteContents[p] = note.Content
+			}
+		}
+		today := time.Now().Format("2006-01-02")
+		todayPath := today + ".md"
+		m.dailyBriefing.SetVaultData(noteContents, m.vault.SortedPaths(), todayPath)
+		m.dailyBriefing.Open()
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}
@@ -3171,6 +3268,14 @@ func (m Model) View() string {
 		overlay := m.kanban.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.vaultRefactor.IsActive() {
+		overlay := m.vaultRefactor.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.dailyBriefing.IsActive() {
+		overlay := m.dailyBriefing.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.pomodoro.IsActive() {
 		overlay := m.pomodoro.View()
 		view = m.overlayCenter(view, overlay)
@@ -3813,4 +3918,140 @@ func (m Model) overlayAtCursor(bg, overlay string) string {
 	}
 
 	return strings.Join(result, "\n")
+}
+
+// applyVaultRefactor parses the AI refactor plan and applies file moves,
+// tag additions, and wikilink insertions.
+func (m *Model) applyVaultRefactor(plan string) {
+	moveCount := 0
+	for _, line := range strings.Split(plan, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "MOVE:") {
+			continue
+		}
+		parts := strings.SplitN(line[5:], "|", 4)
+		if len(parts) < 1 {
+			continue
+		}
+		movePart := strings.TrimSpace(parts[0])
+		arrow := strings.SplitN(movePart, "->", 2)
+		if len(arrow) != 2 {
+			continue
+		}
+		oldName := strings.TrimSpace(arrow[0])
+		newName := strings.TrimSpace(arrow[1])
+
+		oldPath := filepath.Join(m.vault.Root, oldName)
+		newPath := filepath.Join(m.vault.Root, newName)
+
+		if _, err := os.Stat(oldPath); os.IsNotExist(err) {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(newPath), 0755); err != nil {
+			continue
+		}
+		if err := os.Rename(oldPath, newPath); err != nil {
+			continue
+		}
+		moveCount++
+
+		for _, part := range parts[1:] {
+			part = strings.TrimSpace(part)
+			if strings.HasPrefix(part, "TAGS:") {
+				tagStr := strings.TrimSpace(part[5:])
+				tags := strings.Split(tagStr, ",")
+				var cleanTags []string
+				for _, t := range tags {
+					t = strings.TrimSpace(t)
+					t = strings.TrimPrefix(t, "#")
+					if t != "" {
+						cleanTags = append(cleanTags, t)
+					}
+				}
+				if len(cleanTags) > 0 {
+					m.addTagsToFile(newPath, cleanTags)
+				}
+			}
+		}
+	}
+
+	if moveCount > 0 {
+		m.vault.Scan()
+		m.index = vault.NewIndex(m.vault)
+		m.index.Build()
+		paths := m.vault.SortedPaths()
+		m.sidebar.SetFiles(paths)
+		m.autocomplete.SetNotes(paths)
+		m.statusbar.SetNoteCount(m.vault.NoteCount())
+		m.statusbar.SetMessage(fmt.Sprintf("Vault refactored: %d files reorganized", moveCount))
+	} else {
+		m.statusbar.SetMessage("Vault refactor: no changes applied")
+	}
+}
+
+func (m *Model) addTagsToFile(path string, tags []string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	content := string(data)
+	lines := strings.Split(content, "\n")
+
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+		fmEnd := -1
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == "---" {
+				fmEnd = i
+				break
+			}
+		}
+		if fmEnd > 0 {
+			hasTagsLine := false
+			for i := 1; i < fmEnd; i++ {
+				if strings.HasPrefix(strings.TrimSpace(lines[i]), "tags:") {
+					hasTagsLine = true
+					break
+				}
+			}
+			if !hasTagsLine {
+				tagLine := "tags: [" + strings.Join(tags, ", ") + "]"
+				newLines := make([]string, 0, len(lines)+1)
+				newLines = append(newLines, lines[:fmEnd]...)
+				newLines = append(newLines, tagLine)
+				newLines = append(newLines, lines[fmEnd:]...)
+				os.WriteFile(path, []byte(strings.Join(newLines, "\n")), 0644)
+			}
+			return
+		}
+	}
+
+	fm := "---\ntags: [" + strings.Join(tags, ", ") + "]\n---\n\n"
+	os.WriteFile(path, []byte(fm+content), 0644)
+}
+
+func (m *Model) writeBriefingToDailyNote(briefingContent string) {
+	today := time.Now().Format("2006-01-02")
+	dailyName := today + ".md"
+	dailyPath := filepath.Join(m.vault.Root, dailyName)
+
+	existing, err := os.ReadFile(dailyPath)
+	if err != nil {
+		content := fmt.Sprintf("---\ndate: %s\ntype: daily\n---\n\n# %s\n\n%s\n", today, today, briefingContent)
+		os.WriteFile(dailyPath, []byte(content), 0644)
+	} else {
+		newContent := string(existing) + "\n\n---\n\n" + briefingContent + "\n"
+		os.WriteFile(dailyPath, []byte(newContent), 0644)
+	}
+
+	m.vault.Scan()
+	m.index = vault.NewIndex(m.vault)
+	m.index.Build()
+	paths := m.vault.SortedPaths()
+	m.sidebar.SetFiles(paths)
+	m.autocomplete.SetNotes(paths)
+	m.statusbar.SetNoteCount(m.vault.NoteCount())
+	m.loadNote(dailyName)
+	m.sidebar.cursor = m.findFileIndex(dailyName)
+	m.setFocus(focusEditor)
+	m.statusbar.SetMessage("Daily briefing written to " + dailyName)
 }
