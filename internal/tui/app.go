@@ -118,6 +118,9 @@ type Model struct {
 	linkCompleter *LinkCompleter
 	pomodoro      Pomodoro
 	webClipper    WebClipper
+	kanban        Kanban
+	tabBar        *TabBar
+	zettelkasten  *ZettelkastenGenerator
 
 	// Auto-save debounce
 	lastEditTime time.Time
@@ -213,6 +216,9 @@ func NewModel(vaultPath string) (Model, error) {
 		linkCompleter:  NewLinkCompleter(),
 		pomodoro:       NewPomodoro(),
 		webClipper:     NewWebClipper(),
+		kanban:         NewKanban(),
+		tabBar:         NewTabBar(),
+		zettelkasten:   NewZettelkastenGenerator(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -270,6 +276,17 @@ func NewModel(vaultPath string) (Model, error) {
 	}
 	m.linkCompleter.SetNotes(paths, snippets)
 
+	// Renderer vault root for image resolution
+	m.renderer.SetVaultRoot(v.Root)
+
+	// Zettelkasten snippets
+	if m.zettelkasten != nil && m.snippets != nil {
+		zkSnippets := ZettelkastenSnippets(m.zettelkasten)
+		for trigger, expansion := range zkSnippets {
+			m.snippets.AddSnippet(trigger, expansion)
+		}
+	}
+
 	// Vim mode setup
 	m.vimState.SetEnabled(cfg.VimMode)
 
@@ -307,6 +324,10 @@ func (m *Model) loadNote(relPath string) {
 	m.bookmarks.AddRecent(relPath)
 	if m.breadcrumb != nil {
 		m.breadcrumb.Push(relPath)
+	}
+	if m.tabBar != nil {
+		m.tabBar.AddTab(relPath)
+		m.tabBar.SetActive(relPath)
 	}
 	if m.pomodoro.IsRunning() {
 		m.pomodoro.NoteEdited(relPath)
@@ -1028,6 +1049,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.noteChat.IsActive() {
 			var cmd tea.Cmd
 			m.noteChat, cmd = m.noteChat.Update(msg)
+			return m, cmd
+		}
+
+		if m.kanban.IsActive() {
+			var cmd tea.Cmd
+			m.kanban, cmd = m.kanban.Update(msg)
+			if !m.kanban.IsActive() {
+				// Check if user toggled a task
+				if notePath, line, newDone, ok := m.kanban.GetToggleResult(); ok {
+					// Update the source note
+					if note := m.vault.GetNote(notePath); note != nil {
+						lines := strings.Split(note.Content, "\n")
+						if line >= 0 && line < len(lines) {
+							if newDone {
+								lines[line] = strings.Replace(lines[line], "- [ ]", "- [x]", 1)
+							} else {
+								lines[line] = strings.Replace(lines[line], "- [x]", "- [ ]", 1)
+							}
+							newContent := strings.Join(lines, "\n")
+							os.WriteFile(filepath.Join(m.vault.Root, notePath), []byte(newContent), 0644)
+							m.vault.Scan()
+							m.index = vault.NewIndex(m.vault)
+							m.index.Build()
+							if notePath == m.activeNote {
+								m.editor.LoadContent(newContent, m.activeNote)
+							}
+						}
+					}
+				}
+			}
 			return m, cmd
 		}
 
@@ -1989,6 +2040,37 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 				m.sidebar.cursor = m.findFileIndex(nav)
 			}
 		}
+	case CmdKanban:
+		m.kanban.SetSize(m.width, m.height)
+		noteContents := make(map[string]string)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				noteContents[p] = note.Content
+			}
+		}
+		m.kanban.SetTasks(noteContents)
+		m.kanban.Open()
+	case CmdZettelNote:
+		if m.zettelkasten != nil {
+			name := m.zettelkasten.GenerateNoteName("Untitled")
+			title := strings.TrimSuffix(name, ".md")
+			content := m.zettelkasten.GenerateTemplate(title)
+			path := filepath.Join(m.vault.Root, name)
+			if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+				m.vault.Scan()
+				m.index = vault.NewIndex(m.vault)
+				m.index.Build()
+				paths := m.vault.SortedPaths()
+				m.sidebar.SetFiles(paths)
+				m.autocomplete.SetNotes(paths)
+				m.statusbar.SetNoteCount(m.vault.NoteCount())
+				m.loadNote(name)
+				m.sidebar.cursor = m.findFileIndex(name)
+				m.setFocus(focusEditor)
+				m.statusbar.SetMessage("Created Zettelkasten note: " + name)
+				return m, m.clearMessageAfter(3 * time.Second)
+			}
+		}
 	case CmdImportObsidian:
 		imported := config.ImportObsidianConfig(m.vault.Root)
 		if imported != nil {
@@ -2269,6 +2351,7 @@ func (m *Model) updateLayout() {
 	m.noteChat.SetSize(m.width, m.height)
 	m.pomodoro.SetSize(m.width, m.height)
 	m.webClipper.SetSize(m.width, m.height)
+	m.kanban.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -2749,6 +2832,13 @@ func (m Model) View() string {
 		backlinksBorderColor = FocusedBorderColor
 	}
 
+	// Tab bar
+	var tabBarStr string
+	if m.tabBar != nil && len(m.tabBar.Tabs()) > 0 {
+		m.tabBar.SetModified(m.activeNote, m.editor.modified)
+		tabBarStr = m.tabBar.Render(editorWidth, m.activeNote)
+	}
+
 	// Editor: view mode or edit mode
 	var editorContent string
 	if m.viewMode {
@@ -2757,11 +2847,17 @@ func (m Model) View() string {
 		editorContent = m.editor.View()
 	}
 
+	// Combine tab bar + editor
+	editorPanel := editorContent
+	if tabBarStr != "" {
+		editorPanel = tabBarStr + "\n" + editorContent
+	}
+
 	editor := EditorStyle.Copy().
 		BorderForeground(editorBorderColor).
 		Width(editorWidth).
 		Height(contentHeight).
-		Render(editorContent)
+		Render(editorPanel)
 
 	var view string
 	if m.focusMode.IsActive() {
@@ -2938,6 +3034,10 @@ func (m Model) View() string {
 	}
 	if m.noteChat.IsActive() {
 		overlay := m.noteChat.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.kanban.IsActive() {
+		overlay := m.kanban.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.pomodoro.IsActive() {

@@ -46,6 +46,11 @@ func NewSnippetEngine() *SnippetEngine {
 	}
 }
 
+// AddSnippet adds a custom snippet trigger and expansion.
+func (se *SnippetEngine) AddSnippet(trigger, content string) {
+	se.snippets = append(se.snippets, Snippet{Trigger: trigger, Description: trigger, Content: content})
+}
+
 // GetSnippets returns all available snippets.
 func (se *SnippetEngine) GetSnippets() []Snippet {
 	return se.snippets
