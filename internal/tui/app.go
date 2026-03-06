@@ -208,8 +208,8 @@ func (m *Model) loadNote(relPath string) {
 	m.statusbar.SetWordCount(m.editor.GetWordCount())
 	m.viewScroll = 0
 
-	incoming := m.index.GetBacklinks(relPath)
-	outgoing := m.index.GetOutgoingLinks(relPath)
+	incoming := m.buildBacklinkItems(m.index.GetBacklinks(relPath), relPath)
+	outgoing := m.buildOutgoingItems(m.index.GetOutgoingLinks(relPath))
 	m.backlinks.SetLinks(incoming, outgoing)
 
 	m.bookmarks.AddRecent(relPath)
@@ -1434,6 +1434,36 @@ func (m Model) saveCurrentNote() tea.Cmd {
 		os.WriteFile(path, []byte(content), 0644)
 		return nil
 	}
+}
+
+func (m *Model) buildBacklinkItems(paths []string, targetNote string) []BacklinkItem {
+	var items []BacklinkItem
+	baseName := strings.TrimSuffix(filepath.Base(targetNote), ".md")
+	for _, p := range paths {
+		note := m.vault.GetNote(p)
+		ctx := ""
+		lineNum := 0
+		if note != nil {
+			lines := strings.Split(note.Content, "\n")
+			for i, line := range lines {
+				if strings.Contains(line, "[["+baseName+"]]") || strings.Contains(line, "[["+targetNote+"]]") {
+					ctx = strings.TrimSpace(line)
+					lineNum = i
+					break
+				}
+			}
+		}
+		items = append(items, BacklinkItem{Path: p, Context: ctx, LineNum: lineNum})
+	}
+	return items
+}
+
+func (m *Model) buildOutgoingItems(paths []string) []BacklinkItem {
+	var items []BacklinkItem
+	for _, p := range paths {
+		items = append(items, BacklinkItem{Path: p})
+	}
+	return items
 }
 
 func (m *Model) handlePluginOutput(pluginName, output string) {
