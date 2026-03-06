@@ -149,6 +149,45 @@ Press `Ctrl+N` to create a note from a built-in template:
 
 Templates support `{{title}}` and `{{date}}` placeholders that are filled in automatically.
 
+### Advanced Editor
+
+- **Table editing** -- Tab navigates between cells, Enter adds rows, automatic column alignment
+- **Snippet expansion** -- type `/date`, `/todo`, `/meeting`, `/table` etc. and press space to expand (18 built-in snippets)
+- **Multi-cursor editing** -- `Ctrl+D` to select word and add cursors at next occurrence
+- **Spellcheck** -- integrated aspell/hunspell support via the command palette
+
+### Full-Text Search
+
+Search across all note contents in the vault via the command palette. Results show file, line number, and matching context with highlighted terms.
+
+### Dataview Queries
+
+Embed live queries in your notes using code blocks:
+
+````
+```query
+from: tags:project
+where: status = active
+sort: modified desc
+fields: title, tags, modified
+limit: 10
+```
+````
+
+Results render as styled tables in view mode.
+
+### Split Panes
+
+View two notes side by side with independent scrolling. Open via the command palette.
+
+### Static Site Publisher
+
+Export your entire vault as a static HTML website with built-in CSS theme, tag pages, search, and wikilink resolution. Open via `Ctrl+X` → Publish Site.
+
+### Auto Git Sync
+
+Enable in settings to automatically commit and push on every save, and pull latest changes when opening a vault. Works with any git-initialized vault.
+
 ### Plugin System
 
 Extend Granit with custom plugins. Plugins are language-agnostic scripts that integrate via JSON manifests:
@@ -166,11 +205,28 @@ Plugins can:
 - **Modify note content**, insert text, or show messages
 - Run in any language (bash, Python, Node, etc.)
 
-Manage plugins via `Ctrl+X` → Plugins -- enable/disable, run commands, view details.
+**Built-in plugin registry** -- press `i` in the Plugin Manager to install from 6 ready-made plugins (word-count, timestamp, backlink-count, reading-time, orphan-finder, daily-summary).
+
+### Lua Scripting
+
+Write Lua scripts that interact with your vault. Place `.lua` files in `<vault>/.granit/lua/` or `~/.config/granit/lua/` and run them from the command palette.
+
+Scripts have full access to the `granit` API:
+- `granit.read_note(name)` / `granit.write_note(name, content)` / `granit.list_notes()`
+- `granit.set_content(text)` / `granit.insert(text)` / `granit.msg(text)`
+- `granit.note_path` / `granit.note_content` / `granit.frontmatter` / `granit.date()`
+
+### Obsidian Import
+
+Import settings from an existing Obsidian vault's `.obsidian/` directory -- theme, vim mode, tab size, daily notes folder, and more. Available in the command palette.
 
 ### Canvas / Whiteboard
 
-A visual canvas (`Ctrl+W`) for spatial note arrangement. Place note cards, reposition them, and draw connections between cards to map out ideas visually.
+A visual canvas (`Ctrl+W`) for spatial note arrangement:
+- Place note cards, reposition and resize them
+- Draw connections between cards
+- Cycle card colors and zoom levels
+- Auto-saves to `<vault>/.granit/canvas.json`
 
 ### Command Palette
 
@@ -196,46 +252,76 @@ Press `Ctrl+X` to open the command palette -- a fuzzy-searchable launcher for ev
 
 ## Installation
 
-### Go Install
+### Quick Install (Recommended)
 
-Requires Go 1.24 or later:
+Requires Go 1.23 or later:
 
 ```bash
-go install github.com/artaeon/granit/cmd/granit@latest
+git clone https://github.com/artaeon/granit.git
+cd granit
+go install ./cmd/granit/
 ```
 
-### Build from Source
+This installs the `granit` binary to `~/go/bin/`. Make sure it's in your PATH:
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc (one-time setup):
+export PATH="$HOME/go/bin:$PATH"
+
+# Then reload:
+source ~/.bashrc
+```
+
+Now you can run `granit` from anywhere:
+
+```bash
+granit            # opens current directory as vault
+granit ~/Notes    # opens a specific vault
+```
+
+### System-wide Install
+
+If you prefer a system-wide install:
 
 ```bash
 git clone https://github.com/artaeon/granit.git
 cd granit
 go build -o granit ./cmd/granit
-```
-
-Move the binary to a directory on your `PATH`:
-
-```bash
 sudo mv granit /usr/local/bin/
 ```
 
-### Download Binary
+### Go Install (Remote)
 
-Pre-built binaries for Linux and macOS are available on the [Releases](https://github.com/artaeon/granit/releases) page.
+```bash
+go install github.com/artaeon/granit/cmd/granit@latest
+```
+
+### Updating
+
+Pull the latest changes and reinstall:
+
+```bash
+cd granit
+git pull
+go install ./cmd/granit/
+```
 
 ---
 
 ## Quick Start
 
-**Open an existing vault** (any directory of Markdown files):
+**Open the current directory as a vault:**
 
 ```bash
-granit open ~/Notes
+granit
 ```
 
-Or simply pass the path directly:
+**Open a specific vault** (any directory of Markdown files):
 
 ```bash
 granit ~/Notes
+# or
+granit open ~/Notes
 ```
 
 **Create and open today's daily note:**
@@ -258,7 +344,7 @@ granit version
 
 ### First Steps
 
-1. Open a vault directory with `granit open <path>`.
+1. Run `granit` in any directory with `.md` files (or it will create a new vault).
 2. Use `Tab` or `F1`/`F2`/`F3` to switch between the sidebar, editor, and backlinks panel.
 3. Press `Ctrl+N` to create a new note, or select an existing note from the sidebar.
 4. Type `[[` in the editor to start a wikilink -- autocomplete will suggest matching notes.
@@ -389,6 +475,7 @@ Per-vault settings override global settings. All settings can also be changed fr
   "confirm_delete": true,
   "auto_refresh": true,
   "spell_check": false,
+  "git_auto_sync": false,
   "ai_provider": "local",
   "ollama_model": "qwen2.5:0.5b",
   "ollama_url": "http://localhost:11434",
@@ -431,6 +518,7 @@ Per-vault settings override global settings. All settings can also be changed fr
 | `confirm_delete` | bool | `true` | Ask for confirmation before deleting |
 | `auto_refresh` | bool | `true` | Auto-rescan vault for external changes |
 | `spell_check` | bool | `false` | Enable spell checking |
+| `git_auto_sync` | bool | `false` | Auto commit+push on save, pull on open |
 | `ai_provider` | string | `"local"` | AI backend: `"local"`, `"ollama"`, `"openai"` |
 | `ollama_model` | string | `"qwen2.5:0.5b"` | Ollama model to use |
 | `ollama_url` | string | `"http://localhost:11434"` | Ollama API endpoint |
@@ -569,6 +657,7 @@ granit/
   internal/
     config/
       config.go          JSON configuration (global + per-vault)
+      import.go          Obsidian .obsidian/ config importer
     vault/
       vault.go           Vault scanning, note storage
       parser.go          Markdown/frontmatter/wikilink parser
@@ -592,7 +681,16 @@ granit/
       templates.go       10 note templates
       git.go             Git integration overlay
       export.go          Note export (HTML, text, PDF)
-      plugins.go         Plugin system and manager
+      plugins.go         Plugin system, manager, and registry
+      publish.go         Static site publisher
+      lua.go             Lua scripting engine
+      luaoverlay.go      Lua script runner overlay
+      contentsearch.go   Full-text vault search
+      dataview.go        Dataview-lite query system
+      spellcheck.go      Spell checking (aspell/hunspell)
+      snippets.go        Snippet/template expansion
+      splitpane.go       Side-by-side note viewing
+      autosync.go        Auto git commit/push/pull
       graph.go           Note connection graph view
       tags.go            Tag browser
       calendar.go        Calendar view (month/week/agenda)
@@ -610,7 +708,7 @@ granit/
   go.sum
 ```
 
-The TUI is built entirely on [Bubble Tea](https://github.com/charmbracelet/bubbletea) (the Elm Architecture for Go terminals) with [Lip Gloss](https://github.com/charmbracelet/lipgloss) for styling. There are no other runtime dependencies beyond the Go standard library.
+The TUI is built on [Bubble Tea](https://github.com/charmbracelet/bubbletea) (the Elm Architecture for Go terminals) with [Lip Gloss](https://github.com/charmbracelet/lipgloss) for styling, and [GopherLua](https://github.com/yuin/gopher-lua) for Lua scripting support.
 
 ---
 
