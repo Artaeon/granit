@@ -1,15 +1,30 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
 
 type Renderer struct {
-	width  int
-	height int
+	width      int
+	height     int
+	noteLookup func(name string) string // returns content for a note name
 }
+
+// calloutInfo maps callout type keywords to their color and icon.
+type calloutInfo struct {
+	color lipgloss.Color
+	icon  string
+	label string
+}
+
+// calloutRe matches the opening line of a callout: > [!type] optional title
+var calloutRe = regexp.MustCompile(`^>\s*\[!(\w+)\]\s*(.*)$`)
+
+// embedRe matches note embedding syntax: ![[note-name]] or ![[note-name#heading]]
+var embedRe = regexp.MustCompile(`!\[\[([^\]]+)\]\]`)
 
 func NewRenderer() Renderer {
 	return Renderer{}
@@ -18,6 +33,192 @@ func NewRenderer() Renderer {
 func (r *Renderer) SetSize(width, height int) {
 	r.width = width
 	r.height = height
+}
+
+func (r *Renderer) SetNoteLookup(fn func(string) string) {
+	r.noteLookup = fn
+}
+
+func (r Renderer) getCalloutInfo(typ string) calloutInfo {
+	typ = strings.ToLower(typ)
+	switch typ {
+	case "note", "info":
+		return calloutInfo{color: blue, icon: "\u2139", label: "Note"}
+	case "tip", "hint":
+		return calloutInfo{color: teal, icon: "\u2726", label: "Tip"}
+	case "warning", "caution":
+		return calloutInfo{color: yellow, icon: "\u26A0", label: "Warning"}
+	case "danger", "error":
+		return calloutInfo{color: red, icon: "\u2716", label: "Danger"}
+	case "example":
+		return calloutInfo{color: peach, icon: "\u25B8", label: "Example"}
+	case "quote", "cite":
+		return calloutInfo{color: overlay1, icon: "\u275D", label: "Quote"}
+	case "success", "check":
+		return calloutInfo{color: green, icon: "\u2713", label: "Success"}
+	case "question", "faq":
+		return calloutInfo{color: sapphire, icon: "?", label: "Question"}
+	case "abstract", "summary", "tldr":
+		return calloutInfo{color: teal, icon: "\u2261", label: "Abstract"}
+	case "todo":
+		return calloutInfo{color: yellow, icon: "\u25CB", label: "Todo"}
+	case "bug":
+		return calloutInfo{color: red, icon: "\u25C9", label: "Bug"}
+	default:
+		return calloutInfo{color: blue, icon: "\u2139", label: strings.Title(typ)}
+	}
+}
+
+// renderCalloutBlock renders a collected callout block (header line + content lines).
+func (r Renderer) renderCalloutBlock(info calloutInfo, title string, contentLines []string, contentWidth int) []string {
+	var out []string
+
+	barStyle := lipgloss.NewStyle().Foreground(info.color)
+	iconLabelStyle := lipgloss.NewStyle().Foreground(info.color).Bold(true)
+	bgStyle := lipgloss.NewStyle().Background(surface0)
+
+	// Header line: ┃ icon Label: Optional Title
+	header := "  " + barStyle.Render("\u2503") + " " + iconLabelStyle.Render(info.icon+" "+info.label)
+	if title != "" {
+		header += lipgloss.NewStyle().Foreground(info.color).Bold(true).Render(": " + title)
+	}
+	out = append(out, bgStyle.Render(header))
+
+	// Content lines
+	for _, cl := range contentLines {
+		line := "  " + barStyle.Render("\u2503") + "   " + lipgloss.NewStyle().Foreground(text).Render(cl)
+		out = append(out, bgStyle.Render(line))
+	}
+
+	return out
+}
+
+// renderEmbed renders the embedded note preview box.
+func (r Renderer) renderEmbed(noteName string, heading string, contentWidth int) []string {
+	var out []string
+
+	boxWidth := contentWidth - 4
+	if boxWidth < 20 {
+		boxWidth = 20
+	}
+
+	label := noteName
+	if heading != "" {
+		label += " > " + heading
+	}
+
+	topLabel := "\u2500 \U0001F4CE Embedded: " + label + " "
+	topPad := boxWidth - len([]rune(topLabel)) - 2
+	if topPad < 0 {
+		topPad = 0
+	}
+	topLine := "  \u256D" + topLabel + strings.Repeat("\u2500", topPad) + "\u256E"
+
+	dimStyle := lipgloss.NewStyle().Foreground(overlay0)
+	embedBorderStyle := lipgloss.NewStyle().Foreground(sapphire)
+
+	out = append(out, embedBorderStyle.Render(topLine))
+
+	if r.noteLookup == nil {
+		contentLine := "  \u2502  " + dimStyle.Render("[note lookup not available]")
+		pad := boxWidth - len([]rune("[note lookup not available]")) - 4
+		if pad < 0 {
+			pad = 0
+		}
+		contentLine += strings.Repeat(" ", pad) + embedBorderStyle.Render("\u2502")
+		out = append(out, contentLine)
+	} else {
+		noteContent := r.noteLookup(noteName)
+		if noteContent == "" {
+			contentLine := "  " + embedBorderStyle.Render("\u2502") + "  " + dimStyle.Render("[note not found]")
+			out = append(out, contentLine+embedBorderStyle.Render("  \u2502"))
+		} else {
+			// If heading is specified, find the section
+			if heading != "" {
+				noteContent = extractHeadingSection(noteContent, heading)
+			}
+
+			noteLines := strings.Split(noteContent, "\n")
+			maxLines := 5
+			if len(noteLines) > maxLines {
+				noteLines = noteLines[:maxLines]
+			}
+			for _, nl := range noteLines {
+				nl = strings.TrimSpace(nl)
+				if nl == "" {
+					nl = " "
+				}
+				// Truncate long lines
+				runes := []rune(nl)
+				maxChars := boxWidth - 6
+				if maxChars < 10 {
+					maxChars = 10
+				}
+				if len(runes) > maxChars {
+					runes = runes[:maxChars]
+					nl = string(runes) + "..."
+				}
+				contentLine := "  " + embedBorderStyle.Render("\u2502") + "  " + lipgloss.NewStyle().Foreground(text).Render(nl)
+				out = append(out, contentLine)
+			}
+		}
+	}
+
+	bottomLine := "  \u2570" + strings.Repeat("\u2500", boxWidth) + "\u256F"
+	out = append(out, embedBorderStyle.Render(bottomLine))
+
+	return out
+}
+
+// extractHeadingSection returns the content under a given heading until the next heading of same or higher level.
+func extractHeadingSection(content string, heading string) string {
+	lines := strings.Split(content, "\n")
+	heading = strings.ToLower(strings.TrimSpace(heading))
+	inSection := false
+	sectionLevel := 0
+	var sectionLines []string
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !inSection {
+			// Check if this line is the target heading
+			hLevel, hText := parseHeading(trimmed)
+			if hLevel > 0 && strings.ToLower(hText) == heading {
+				inSection = true
+				sectionLevel = hLevel
+				continue
+			}
+		} else {
+			// Check if we hit another heading of same or higher level
+			hLevel, _ := parseHeading(strings.TrimSpace(line))
+			if hLevel > 0 && hLevel <= sectionLevel {
+				break
+			}
+			sectionLines = append(sectionLines, line)
+		}
+	}
+
+	if len(sectionLines) == 0 {
+		return ""
+	}
+	return strings.Join(sectionLines, "\n")
+}
+
+// parseHeading returns the heading level and text, or 0 if not a heading.
+func parseHeading(line string) (int, string) {
+	if strings.HasPrefix(line, "#### ") {
+		return 4, strings.TrimPrefix(line, "#### ")
+	}
+	if strings.HasPrefix(line, "### ") {
+		return 3, strings.TrimPrefix(line, "### ")
+	}
+	if strings.HasPrefix(line, "## ") {
+		return 2, strings.TrimPrefix(line, "## ")
+	}
+	if strings.HasPrefix(line, "# ") {
+		return 1, strings.TrimPrefix(line, "# ")
+	}
+	return 0, ""
 }
 
 func (r Renderer) Render(content string, scroll int) string {
@@ -65,7 +266,8 @@ func (r Renderer) renderMarkdown(content string) []string {
 		inFrontmatter = true
 	}
 
-	for i, line := range lines {
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
 		trimmed := strings.TrimSpace(line)
 
 		// Frontmatter handling
@@ -206,6 +408,33 @@ func (r Renderer) renderMarkdown(content string) []string {
 			continue
 		}
 
+		// Callout detection — must come before generic blockquote handling
+		if calloutRe.MatchString(trimmed) {
+			matches := calloutRe.FindStringSubmatch(trimmed)
+			calloutType := matches[1]
+			calloutTitle := strings.TrimSpace(matches[2])
+			info := r.getCalloutInfo(calloutType)
+
+			// Collect content lines (subsequent lines starting with "> ")
+			var calloutContent []string
+			for i+1 < len(lines) {
+				nextTrimmed := strings.TrimSpace(lines[i+1])
+				if strings.HasPrefix(nextTrimmed, "> ") {
+					calloutContent = append(calloutContent, strings.TrimPrefix(nextTrimmed, "> "))
+					i++
+				} else if nextTrimmed == ">" {
+					calloutContent = append(calloutContent, "")
+					i++
+				} else {
+					break
+				}
+			}
+
+			rendered := r.renderCalloutBlock(info, calloutTitle, calloutContent, contentWidth)
+			result = append(result, rendered...)
+			continue
+		}
+
 		// Blockquote
 		if strings.HasPrefix(trimmed, "> ") {
 			text := strings.TrimPrefix(trimmed, "> ")
@@ -291,6 +520,29 @@ func (r Renderer) renderMarkdown(content string) []string {
 			continue
 		}
 
+		// Note embedding detection: line contains ![[...]]
+		if embedRe.MatchString(trimmed) {
+			// Check if the entire line is just the embed
+			fullMatch := embedRe.FindString(trimmed)
+			if fullMatch == trimmed {
+				// Standalone embed line — render as embedded box
+				inner := embedRe.FindStringSubmatch(trimmed)
+				ref := inner[1]
+				noteName := ref
+				heading := ""
+				if hashIdx := strings.Index(ref, "#"); hashIdx >= 0 {
+					noteName = ref[:hashIdx]
+					heading = ref[hashIdx+1:]
+				}
+				embedLines := r.renderEmbed(noteName, heading, contentWidth)
+				result = append(result, embedLines...)
+				continue
+			}
+			// Mixed line: render inline with embed replaced by a styled link
+			result = append(result, "  "+r.renderInline(trimmed))
+			continue
+		}
+
 		// Normal paragraph
 		result = append(result, "  "+r.renderInline(trimmed))
 	}
@@ -309,6 +561,31 @@ func (r Renderer) renderInline(input string) string {
 	i := 0
 
 	for i < n {
+		// Embed links ![[...]] rendered inline as styled reference
+		if runes[i] == '!' && i+2 < n && runes[i+1] == '[' && runes[i+2] == '[' {
+			end := -1
+			for j := i + 3; j+1 < n; j++ {
+				if runes[j] == ']' && runes[j+1] == ']' {
+					end = j + 1
+					break
+				}
+			}
+			if end != -1 {
+				ref := string(runes[i+3 : end-1])
+				displayName := ref
+				if hashIdx := strings.Index(ref, "#"); hashIdx >= 0 {
+					displayName = ref[:hashIdx] + " > " + ref[hashIdx+1:]
+				}
+				styled := lipgloss.NewStyle().
+					Foreground(sapphire).
+					Italic(true).
+					Render("\U0001F4CE " + displayName)
+				result.WriteString(styled)
+				i = end + 1
+				continue
+			}
+		}
+
 		// WikiLinks [[...]]
 		if i+1 < n && runes[i] == '[' && runes[i+1] == '[' {
 			end := -1
