@@ -49,6 +49,8 @@ type Config struct {
 	OpenAIKey   string `json:"openai_key"`   // API key for OpenAI
 	OpenAIModel string `json:"openai_model"` // e.g. "gpt-4o-mini", "gpt-4o"
 	BackgroundBots bool `json:"background_bots"` // auto-analyze on save
+	AutoTag        bool `json:"auto_tag"`        // auto-tag notes on save
+	GhostWriter    bool `json:"ghost_writer"`    // inline AI writing suggestions
 
 	// Sidebar
 	ShowHiddenFiles bool   `json:"show_hidden_files"`

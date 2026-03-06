@@ -103,6 +103,12 @@ type Model struct {
 	knowledgeGraph KnowledgeGraph
 	autoLinker     *AutoLinker
 	tfidfIndex     *TFIDFIndex
+	tableEditor    TableEditor
+	semanticSearch SemanticSearch
+	ghostWriter    *GhostWriter
+	threadWeaver   ThreadWeaver
+	noteChat       NoteChat
+	autoTagger     *AutoTagger
 
 	// View mode scroll
 	viewScroll int
@@ -183,6 +189,12 @@ func NewModel(vaultPath string) (Model, error) {
 		composer:       NewComposer(),
 		knowledgeGraph: NewKnowledgeGraph(),
 		autoLinker:     NewAutoLinker(),
+		tableEditor:    NewTableEditor(),
+		semanticSearch: NewSemanticSearch(),
+		ghostWriter:    NewGhostWriter(),
+		threadWeaver:   NewThreadWeaver(),
+		noteChat:       NewNoteChat(),
+		autoTagger:     NewAutoTagger(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -221,6 +233,12 @@ func NewModel(vaultPath string) (Model, error) {
 
 	// Set calendar daily notes
 	m.calendar.SetDailyNotes(paths)
+
+	// Semantic search setup
+	m.semanticSearch.SetVaultPath(vaultPath)
+
+	// Ghost writer setup
+	m.ghostWriter.SetEnabled(cfg.GhostWriter)
 
 	// Apply config to components
 	m.syncConfigToComponents()
@@ -395,6 +413,70 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.clearMessageAfter(3 * time.Second)
 				}
 			}
+			return m, cmd
+		}
+		return m, nil
+
+	case semanticSearchMsg, semanticBuildMsg, semanticTickMsg:
+		if m.semanticSearch.IsActive() {
+			var cmd tea.Cmd
+			m.semanticSearch, cmd = m.semanticSearch.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case threadWeaverResultMsg, threadWeaverTickMsg:
+		if m.threadWeaver.IsActive() {
+			var cmd tea.Cmd
+			m.threadWeaver, cmd = m.threadWeaver.Update(msg)
+			if !m.threadWeaver.IsActive() {
+				if title, content, ok := m.threadWeaver.GetResult(); ok {
+					name := title
+					if !strings.HasSuffix(name, ".md") {
+						name += ".md"
+					}
+					path := filepath.Join(m.vault.Root, name)
+					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
+						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+							m.vault.Scan()
+							m.index = vault.NewIndex(m.vault)
+							m.index.Build()
+							paths := m.vault.SortedPaths()
+							m.sidebar.SetFiles(paths)
+							m.autocomplete.SetNotes(paths)
+							m.statusbar.SetNoteCount(m.vault.NoteCount())
+							m.loadNote(name)
+							m.sidebar.cursor = m.findFileIndex(name)
+							m.setFocus(focusEditor)
+							m.statusbar.SetMessage("Thread woven: " + name)
+						}
+					}
+					return m, m.clearMessageAfter(3 * time.Second)
+				}
+			}
+			return m, cmd
+		}
+		return m, nil
+
+	case noteChatResultMsg, noteChatTickMsg:
+		if m.noteChat.IsActive() {
+			var cmd tea.Cmd
+			m.noteChat, cmd = m.noteChat.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case autoTagResultMsg:
+		if msg.err == nil && len(msg.tags) > 0 {
+			m.applyTagsToNote(msg.tags)
+			m.statusbar.SetMessage("Auto-tagged: " + strings.Join(msg.tags, ", "))
+			return m, m.clearMessageAfter(3 * time.Second)
+		}
+		return m, nil
+
+	case ghostSuggestionMsg, ghostDebounceMsg:
+		if m.ghostWriter != nil {
+			cmd := m.ghostWriter.HandleMsg(msg)
 			return m, cmd
 		}
 		return m, nil
@@ -784,6 +866,73 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		if m.tableEditor.IsActive() {
+			var cmd tea.Cmd
+			m.tableEditor, cmd = m.tableEditor.Update(msg)
+			if !m.tableEditor.IsActive() {
+				if md, startLine, endLine, ok := m.tableEditor.GetResult(); ok {
+					// Replace the table lines in the editor
+					newLines := strings.Split(md, "\n")
+					before := m.editor.content[:startLine]
+					after := m.editor.content[endLine+1:]
+					m.editor.content = append(before, append(newLines, after...)...)
+					m.editor.modified = true
+					m.statusbar.SetMessage("Table updated")
+				}
+			}
+			return m, cmd
+		}
+
+		if m.semanticSearch.IsActive() {
+			var cmd tea.Cmd
+			m.semanticSearch, cmd = m.semanticSearch.Update(msg)
+			if !m.semanticSearch.IsActive() {
+				if nav := m.semanticSearch.SelectedResult(); nav != "" {
+					m.loadNote(nav)
+					m.sidebar.cursor = m.findFileIndex(nav)
+					m.setFocus(focusEditor)
+				}
+			}
+			return m, cmd
+		}
+
+		if m.threadWeaver.IsActive() {
+			var cmd tea.Cmd
+			m.threadWeaver, cmd = m.threadWeaver.Update(msg)
+			if !m.threadWeaver.IsActive() {
+				if title, content, ok := m.threadWeaver.GetResult(); ok {
+					name := title
+					if !strings.HasSuffix(name, ".md") {
+						name += ".md"
+					}
+					path := filepath.Join(m.vault.Root, name)
+					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
+						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+							m.vault.Scan()
+							m.index = vault.NewIndex(m.vault)
+							m.index.Build()
+							paths := m.vault.SortedPaths()
+							m.sidebar.SetFiles(paths)
+							m.autocomplete.SetNotes(paths)
+							m.statusbar.SetNoteCount(m.vault.NoteCount())
+							m.loadNote(name)
+							m.sidebar.cursor = m.findFileIndex(name)
+							m.setFocus(focusEditor)
+							m.statusbar.SetMessage("Thread woven: " + name)
+							return m, m.clearMessageAfter(3 * time.Second)
+						}
+					}
+				}
+			}
+			return m, cmd
+		}
+
+		if m.noteChat.IsActive() {
+			var cmd tea.Cmd
+			m.noteChat, cmd = m.noteChat.Update(msg)
+			return m, cmd
+		}
+
 		if m.confirmDelete {
 			switch msg.String() {
 			case "y", "Y", "enter":
@@ -1084,6 +1233,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sidebar, cmd = m.sidebar.Update(msg)
 	case focusEditor:
 		if !m.viewMode {
+			// Ghost writer: accept suggestion with Tab
+			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "tab" {
+				if m.ghostWriter != nil && m.ghostWriter.GetSuggestion() != "" {
+					suggestion := m.ghostWriter.Accept()
+					m.editor.InsertText(suggestion)
+					line, col := m.editor.GetCursor()
+					m.statusbar.SetCursor(line, col)
+					m.statusbar.SetWordCount(m.editor.GetWordCount())
+					return m, nil
+				}
+			}
 			m.editor, cmd = m.editor.Update(msg)
 			// Snippet expansion: when space is typed, check if word before cursor is a snippet trigger
 			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == " " {
@@ -1092,6 +1252,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			line, col := m.editor.GetCursor()
 			m.statusbar.SetCursor(line, col)
 			m.statusbar.SetWordCount(m.editor.GetWordCount())
+			// Ghost writer: trigger completion on edits
+			if m.ghostWriter != nil && m.ghostWriter.IsEnabled() {
+				if keyMsg, ok := msg.(tea.KeyMsg); ok {
+					k := keyMsg.String()
+					// Only trigger on actual text input, not navigation
+					if len(k) == 1 || k == "space" || k == "backspace" || k == "enter" {
+						m.ghostWriter.Dismiss()
+						ghostCmd := m.ghostWriter.OnEdit(m.editor.content, m.editor.cursor, m.editor.col)
+						if ghostCmd != nil {
+							cmd = tea.Batch(cmd, ghostCmd)
+						}
+					}
+				}
+			}
 		}
 	case focusBacklinks:
 		m.backlinks, cmd = m.backlinks.Update(msg)
@@ -1114,8 +1288,32 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		cmd := m.saveCurrentNote()
 		hookCmd := m.runPluginSaveHooks()
 		syncCmd := m.autoSync.CommitAndPush()
+		// Auto-tag if enabled
+		var tagCmd tea.Cmd
+		if m.autoTagger != nil && m.autoTagger.IsEnabled() {
+			m.autoTagger.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+			// Collect existing vault tags for consistency
+			var existingTags []string
+			tagSet := make(map[string]bool)
+			for _, p := range m.vault.SortedPaths() {
+				if note := m.vault.GetNote(p); note != nil {
+					if tags, ok := note.Frontmatter["tags"]; ok {
+						if tagList, ok := tags.([]interface{}); ok {
+							for _, t := range tagList {
+								if s, ok := t.(string); ok && !tagSet[s] {
+									existingTags = append(existingTags, s)
+									tagSet[s] = true
+								}
+							}
+						}
+					}
+				}
+			}
+			m.autoTagger.SetVaultTags(existingTags)
+			tagCmd = m.autoTagger.TagNote(m.editor.GetContent())
+		}
 		m.statusbar.SetMessage("Saved " + m.activeNote)
-		return m, tea.Batch(cmd, hookCmd, syncCmd, m.clearMessageAfter(2*time.Second))
+		return m, tea.Batch(cmd, hookCmd, syncCmd, tagCmd, m.clearMessageAfter(2*time.Second))
 	case CmdDailyNote:
 		today := time.Now().Format("2006-01-02")
 		name := today + ".md"
@@ -1430,6 +1628,50 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 			return m, m.clearMessageAfter(5 * time.Second)
 		}
+	case CmdTableEditor:
+		if m.activeNote != "" {
+			m.tableEditor.SetSize(m.width, m.height)
+			m.tableEditor.Open(m.editor.content, m.editor.cursor)
+		}
+	case CmdSemanticSearch:
+		m.semanticSearch.SetSize(m.width, m.height)
+		m.semanticSearch.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+		noteContents := make(map[string]string)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				noteContents[p] = note.Content
+			}
+		}
+		m.semanticSearch.SetNotes(noteContents)
+		m.semanticSearch.Open()
+	case CmdThreadWeaver:
+		m.threadWeaver.SetSize(m.width, m.height)
+		m.threadWeaver.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+		noteContents := make(map[string]string)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				noteContents[p] = note.Content
+			}
+		}
+		m.threadWeaver.SetNotes(m.vault.SortedPaths(), noteContents)
+		m.threadWeaver.Open()
+	case CmdNoteChat:
+		if m.activeNote != "" {
+			m.noteChat.SetSize(m.width, m.height)
+			m.noteChat.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+			m.noteChat.Open(m.activeNote, m.editor.GetContent())
+		}
+	case CmdToggleGhostWriter:
+		if m.ghostWriter != nil {
+			m.ghostWriter.SetEnabled(!m.ghostWriter.IsEnabled())
+			if m.ghostWriter.IsEnabled() {
+				m.ghostWriter.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+				m.statusbar.SetMessage("Ghost Writer enabled")
+			} else {
+				m.statusbar.SetMessage("Ghost Writer disabled")
+			}
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
 	case CmdImportObsidian:
 		imported := config.ImportObsidianConfig(m.vault.Root)
 		if imported != nil {
@@ -1702,6 +1944,10 @@ func (m *Model) updateLayout() {
 	m.aiChat.SetSize(m.width, m.height)
 	m.composer.SetSize(m.width, m.height)
 	m.knowledgeGraph.SetSize(m.width, m.height)
+	m.tableEditor.SetSize(m.width, m.height)
+	m.semanticSearch.SetSize(m.width, m.height)
+	m.threadWeaver.SetSize(m.width, m.height)
+	m.noteChat.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -1724,6 +1970,13 @@ func (m *Model) syncConfigToComponents() {
 	}
 	m.statusbar.SetAIStatus(m.config.AIProvider, aiModel)
 	m.autoSync.SetEnabled(m.config.GitAutoSync)
+	if m.ghostWriter != nil {
+		m.ghostWriter.SetEnabled(m.config.GhostWriter)
+		m.ghostWriter.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+	}
+	if m.autoTagger != nil {
+		m.autoTagger.SetEnabled(m.config.AutoTag)
+	}
 }
 
 func (m *Model) applyTagsToNote(tags []string) {
@@ -2207,6 +2460,22 @@ func (m Model) View() string {
 	}
 	if m.knowledgeGraph.IsActive() {
 		overlay := m.knowledgeGraph.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.tableEditor.IsActive() {
+		overlay := m.tableEditor.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.semanticSearch.IsActive() {
+		overlay := m.semanticSearch.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.threadWeaver.IsActive() {
+		overlay := m.threadWeaver.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.noteChat.IsActive() {
+		overlay := m.noteChat.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.splitPane.IsActive() {

@@ -390,6 +390,23 @@ func (r Renderer) renderMarkdown(content string) []string {
 					continue
 				}
 
+				// Mermaid diagram blocks: render as ASCII art
+				if codeBlockLang == "mermaid" {
+					var mermaidLines []string
+					for i++; i < len(lines); i++ {
+						if strings.TrimSpace(lines[i]) == "```" {
+							break
+						}
+						mermaidLines = append(mermaidLines, lines[i])
+					}
+					mermaidSrc := strings.Join(mermaidLines, "\n")
+					rendered := RenderMermaidASCII(mermaidSrc, contentWidth)
+					result = append(result, rendered...)
+					inCodeBlock = false
+					codeBlockLang = ""
+					continue
+				}
+
 				if codeBlockLang != "" {
 					langLabel := lipgloss.NewStyle().
 						Foreground(overlay0).

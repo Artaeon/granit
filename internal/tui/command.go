@@ -60,6 +60,11 @@ const (
 	CmdKnowledgeGraph
 	CmdAutoLink
 	CmdSimilarNotes
+	CmdTableEditor
+	CmdSemanticSearch
+	CmdThreadWeaver
+	CmdNoteChat
+	CmdToggleGhostWriter
 	CmdQuit
 )
 
@@ -119,6 +124,11 @@ var AllCommands = []Command{
 	{Label: "Knowledge Graph AI", Desc: "Analyze clusters, hubs, orphans, suggestions", Shortcut: "", Action: CmdKnowledgeGraph, Icon: &IconGraphChar},
 	{Label: "Auto-Link Suggestions", Desc: "Find unlinked mentions in current note", Shortcut: "", Action: CmdAutoLink, Icon: &IconLinkChar},
 	{Label: "Similar Notes", Desc: "Find notes similar to current one (TF-IDF)", Shortcut: "", Action: CmdSimilarNotes, Icon: &IconSearchChar},
+	{Label: "Table Editor", Desc: "Visual markdown table editor", Shortcut: "", Action: CmdTableEditor, Icon: &IconEditChar},
+	{Label: "Semantic Search", Desc: "AI-powered meaning-based vault search", Shortcut: "", Action: CmdSemanticSearch, Icon: &IconSearchChar},
+	{Label: "Thread Weaver", Desc: "Synthesize multiple notes into a new essay", Shortcut: "", Action: CmdThreadWeaver, Icon: &IconNewChar},
+	{Label: "Chat with Note", Desc: "AI Q&A focused on current note", Shortcut: "", Action: CmdNoteChat, Icon: &IconBotChar},
+	{Label: "Ghost Writer", Desc: "Toggle inline AI writing suggestions", Shortcut: "", Action: CmdToggleGhostWriter, Icon: &IconEditChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 

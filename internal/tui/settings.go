@@ -90,6 +90,8 @@ func (s *Settings) buildItems() {
 		{label: "Confirm Delete", key: "confirm_delete", kind: "bool", value: s.config.ConfirmDelete},
 		{label: "Auto Refresh Vault", key: "auto_refresh", kind: "bool", value: s.config.AutoRefresh},
 		{label: "Git Auto Sync", key: "git_auto_sync", kind: "bool", value: s.config.GitAutoSync},
+		{label: "Auto-Tag on Save", key: "auto_tag", kind: "bool", value: s.config.AutoTag},
+		{label: "Ghost Writer (AI completions)", key: "ghost_writer", kind: "bool", value: s.config.GhostWriter},
 	}
 }
 
@@ -304,6 +306,10 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.BackgroundBots = value.(bool)
 	case "git_auto_sync":
 		s.config.GitAutoSync = value.(bool)
+	case "auto_tag":
+		s.config.AutoTag = value.(bool)
+	case "ghost_writer":
+		s.config.GhostWriter = value.(bool)
 	}
 }
 
