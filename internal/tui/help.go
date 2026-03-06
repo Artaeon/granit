@@ -62,7 +62,7 @@ var helpSections = []helpSection{
 			{"Ctrl+N", "Create new note"},
 			{"Ctrl+S", "Save current note"},
 			{"F4", "Rename current note"},
-			{"Ctrl+Shift+P", "Command palette"},
+			{"Ctrl+X", "Command palette"},
 		},
 	},
 	{
@@ -71,7 +71,7 @@ var helpSections = []helpSection{
 			{"Ctrl+E", "Toggle view/edit mode"},
 			{"← / → / ↑ / ↓", "Move cursor"},
 			{"Home / Ctrl+A", "Go to line start"},
-			{"End / Ctrl+E", "Go to line end"},
+			{"End", "Go to line end"},
 			{"PgUp / PgDown", "Scroll page"},
 			{"Ctrl+U", "Undo"},
 			{"Ctrl+Y", "Redo"},

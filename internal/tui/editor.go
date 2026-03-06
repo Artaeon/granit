@@ -49,6 +49,9 @@ type Editor struct {
 	autoCloseBrackets    bool
 	tabSize              int
 
+	// Horizontal scroll for long lines
+	hscroll int
+
 	// Ghost text (AI inline completion)
 	ghostText string // dimmed suggestion shown after cursor
 }
@@ -73,6 +76,7 @@ func (e *Editor) LoadContent(content string, filePath string) {
 	e.cursor = 0
 	e.col = 0
 	e.scroll = 0
+	e.hscroll = 0
 	e.modified = false
 	e.countWords()
 }
@@ -438,7 +442,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			for i := range e.cursors {
 				e.cursors[i].Col = 0
 			}
-		case "end", "ctrl+e":
+		case "end":
 			e.col = len(e.content[e.cursor])
 			for i := range e.cursors {
 				e.cursors[i].Col = len(e.content[e.cursors[i].Line])
@@ -1026,28 +1030,47 @@ func (e Editor) View() string {
 			maxWidth = 5
 		}
 
+		// Apply horizontal scroll for active line, truncate others
 		displayLine := line
+		colOffset := 0
+		if isActiveLine {
+			// Adjust hscroll to keep cursor visible
+			if e.col < e.hscroll {
+				e.hscroll = e.col
+			} else if e.col >= e.hscroll+maxWidth {
+				e.hscroll = e.col - maxWidth + 1
+			}
+			colOffset = e.hscroll
+			if colOffset > 0 && colOffset < len(displayLine) {
+				displayLine = displayLine[colOffset:]
+			} else if colOffset >= len(displayLine) {
+				displayLine = ""
+			}
+		}
 		if len(displayLine) > maxWidth {
 			displayLine = displayLine[:maxWidth]
 		}
 
 		if isActiveLine && !hasMultiCursor {
-			// Render with main cursor only (original behavior)
+			// Render with main cursor only
 			ghostStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
 			ghostSuffix := ""
 			if e.ghostText != "" {
-				// Only show ghost text on the cursor line, after the cursor
 				ghostSuffix = ghostStyle.Render(e.ghostText)
 			}
-			if e.col <= len(displayLine) {
-				before := displayLine[:e.col]
+			adjCol := e.col - colOffset
+			if adjCol < 0 {
+				adjCol = 0
+			}
+			if adjCol <= len(displayLine) {
+				before := displayLine[:adjCol]
 				cursorChar := " "
-				if e.col < len(displayLine) {
-					cursorChar = string(displayLine[e.col])
+				if adjCol < len(displayLine) {
+					cursorChar = string(displayLine[adjCol])
 				}
 				after := ""
-				if e.col+1 < len(displayLine) {
-					after = displayLine[e.col+1:]
+				if adjCol+1 < len(displayLine) {
+					after = displayLine[adjCol+1:]
 				}
 				styledBefore := highlightLine(before, i, fmStart, fmEnd, codeBlockLines)
 				styledAfter := highlightLine(after, i, fmStart, fmEnd, codeBlockLines)
@@ -1062,6 +1085,11 @@ func (e Editor) View() string {
 					lineContent = lipgloss.NewStyle().Background(surface0).Width(maxWidth).Render(lineContent)
 				}
 				b.WriteString(lineContent)
+			}
+
+			// Show horizontal scroll indicator
+			if colOffset > 0 {
+				b.WriteString(DimStyle.Render(" ←"))
 			}
 		} else if isActiveLine || hasMultiCursor {
 			// Line has cursor(s): render character by character to place cursor highlights
