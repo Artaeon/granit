@@ -1,6 +1,10 @@
 package tui
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -9,15 +13,34 @@ import (
 
 // CanvasCard represents a note card placed on the canvas.
 type CanvasCard struct {
-	Title    string
-	NotePath string
-	X, Y     int
-	Width    int
+	Title    string `json:"title"`
+	NotePath string `json:"note_path"`
+	X        int    `json:"x"`
+	Y        int    `json:"y"`
+	Width    int    `json:"width"`
+	Color    int    `json:"color"`
+}
+
+// canvasCardJSON is used for clean JSON marshalling with separate x/y fields.
+type canvasCardJSON struct {
+	Title    string `json:"title"`
+	NotePath string `json:"note_path"`
+	X        int    `json:"x"`
+	Y        int    `json:"y"`
+	Width    int    `json:"width"`
+	Color    int    `json:"color,omitempty"`
 }
 
 // CanvasConnection represents a line drawn between two cards.
 type CanvasConnection struct {
-	FromIdx, ToIdx int
+	FromIdx int `json:"from"`
+	ToIdx   int `json:"to"`
+}
+
+// canvasFileData is the JSON structure saved to disk.
+type canvasFileData struct {
+	Cards       []canvasCardJSON   `json:"cards"`
+	Connections []CanvasConnection `json:"connections"`
 }
 
 // canvasMode tracks the current interaction mode.
@@ -30,10 +53,27 @@ const (
 	canvasModeConnect            // drawing a connection from a source card
 )
 
+// canvasZoom tracks the zoom level.
+type canvasZoom int
+
 const (
-	canvasCardWidth  = 16
-	canvasCardHeight = 3
+	canvasZoomNormal   canvasZoom = iota // 3-line cards (title only)
+	canvasZoomCompact                    // 1-line cards (title only, no border)
+	canvasZoomExpanded                   // 5-line cards (title + note path)
 )
+
+const (
+	canvasCardWidth     = 22
+	canvasCardHeight    = 3
+	canvasCardMinWidth  = 12
+	canvasCardMaxWidth  = 40
+	canvasCardNumColors = 6
+)
+
+// canvasColorTable maps color index to lipgloss color.
+func canvasColorTable() []lipgloss.Color {
+	return []lipgloss.Color{blue, green, yellow, peach, mauve, red}
+}
 
 // Canvas is a terminal-based whiteboard overlay where users can place,
 // move, connect and open note cards on a 2-D grid.
@@ -56,12 +96,18 @@ type Canvas struct {
 	inputBuf string
 
 	// Move mode state
-	moveIdx    int // index of the card being moved
-	moveOrigX  int
-	moveOrigY  int
+	moveIdx   int // index of the card being moved
+	moveOrigX int
+	moveOrigY int
 
 	// Connect mode state
 	connectFrom int // index of the source card
+
+	// Zoom state
+	zoom canvasZoom
+
+	// Vault path for persistence
+	vaultPath string
 }
 
 // NewCanvas returns an initialised, inactive Canvas.
@@ -70,6 +116,7 @@ func NewCanvas() Canvas {
 		selected:    -1,
 		moveIdx:     -1,
 		connectFrom: -1,
+		zoom:        canvasZoomNormal,
 	}
 }
 
@@ -79,17 +126,102 @@ func (c *Canvas) SetSize(width, height int) {
 	c.height = height
 }
 
+// SetVaultPath stores the vault path for persistence.
+func (c *Canvas) SetVaultPath(path string) {
+	c.vaultPath = path
+}
+
+// canvasFilePath returns the path to the canvas JSON file.
+func (c *Canvas) canvasFilePath() string {
+	if c.vaultPath == "" {
+		return ""
+	}
+	return filepath.Join(c.vaultPath, ".granit", "canvas.json")
+}
+
+// Save persists the current canvas state to disk.
+func (c *Canvas) Save() {
+	fp := c.canvasFilePath()
+	if fp == "" {
+		return
+	}
+
+	dir := filepath.Dir(fp)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+
+	cards := make([]canvasCardJSON, len(c.cards))
+	for i, card := range c.cards {
+		cards[i] = canvasCardJSON{
+			Title:    card.Title,
+			NotePath: card.NotePath,
+			X:        card.X,
+			Y:        card.Y,
+			Width:    card.Width,
+			Color:    card.Color,
+		}
+	}
+
+	data := canvasFileData{
+		Cards:       cards,
+		Connections: c.connections,
+	}
+
+	raw, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(fp, raw, 0o644)
+}
+
+// Load restores canvas state from disk.
+func (c *Canvas) Load() {
+	fp := c.canvasFilePath()
+	if fp == "" {
+		return
+	}
+
+	raw, err := os.ReadFile(fp)
+	if err != nil {
+		return
+	}
+
+	var data canvasFileData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return
+	}
+
+	c.cards = make([]CanvasCard, len(data.Cards))
+	for i, cj := range data.Cards {
+		c.cards[i] = CanvasCard{
+			Title:    cj.Title,
+			NotePath: cj.NotePath,
+			X:        cj.X,
+			Y:        cj.Y,
+			Width:    cj.Width,
+			Color:    cj.Color,
+		}
+	}
+	c.connections = data.Connections
+	if c.connections == nil {
+		c.connections = []CanvasConnection{}
+	}
+}
+
 // Open activates the canvas overlay.
 func (c *Canvas) Open() {
 	c.active = true
 	c.mode = canvasModeNormal
 	c.result = ""
 	c.inputBuf = ""
+	c.Load()
 	c.selected = c.cardAtCursor()
 }
 
 // Close deactivates the canvas overlay.
 func (c *Canvas) Close() {
+	c.Save()
 	c.active = false
 	c.mode = canvasModeNormal
 }
@@ -106,17 +238,25 @@ func (c *Canvas) SelectedNote() string {
 	return s
 }
 
-// gridWidth returns the usable grid width inside the overlay.
-func (c *Canvas) gridWidth() int {
-	w := c.width*2/3 - 6
-	if w < 40 {
-		w = 40
+// canvasOverlayWidth returns the overlay width clamped to reasonable bounds.
+func (c *Canvas) canvasOverlayWidth() int {
+	w := c.width * 4 / 5
+	if w < 60 {
+		w = 60
+	}
+	if w > 160 {
+		w = 160
 	}
 	return w
 }
 
-// gridHeight returns the usable grid height inside the overlay.
-func (c *Canvas) gridHeight() int {
+// canvasGridWidth returns the usable grid width inside the overlay.
+func (c *Canvas) canvasGridWidth() int {
+	return c.canvasOverlayWidth() - 6
+}
+
+// canvasGridHeight returns the usable grid height inside the overlay.
+func (c *Canvas) canvasGridHeight() int {
 	h := c.height - 10
 	if h < 10 {
 		h = 10
@@ -124,12 +264,25 @@ func (c *Canvas) gridHeight() int {
 	return h
 }
 
+// cardHeightForZoom returns the card height for the current zoom level.
+func (c *Canvas) cardHeightForZoom() int {
+	switch c.zoom {
+	case canvasZoomCompact:
+		return 1
+	case canvasZoomExpanded:
+		return 5
+	default:
+		return canvasCardHeight // 3
+	}
+}
+
 // cardAtCursor returns the index of the card whose bounding box contains the
 // cursor, or -1 if none.
 func (c *Canvas) cardAtCursor() int {
+	ch := c.cardHeightForZoom()
 	for i, card := range c.cards {
 		if c.cursorX >= card.X && c.cursorX < card.X+card.Width &&
-			c.cursorY >= card.Y && c.cursorY < card.Y+canvasCardHeight {
+			c.cursorY >= card.Y && c.cursorY < card.Y+ch {
 			return i
 		}
 	}
@@ -138,8 +291,8 @@ func (c *Canvas) cardAtCursor() int {
 
 // clampCursor keeps the cursor within the visible grid.
 func (c *Canvas) clampCursor() {
-	gw := c.gridWidth()
-	gh := c.gridHeight()
+	gw := c.canvasGridWidth()
+	gh := c.canvasGridHeight()
 	if c.cursorX < 0 {
 		c.cursorX = 0
 	}
@@ -180,6 +333,7 @@ func (c Canvas) Update(msg tea.Msg) (Canvas, tea.Cmd) {
 func (c Canvas) updateNormal(msg tea.KeyMsg) (Canvas, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "q":
+		c.Save()
 		c.active = false
 		return c, nil
 
@@ -206,12 +360,13 @@ func (c Canvas) updateNormal(msg tea.KeyMsg) (Canvas, tea.Cmd) {
 		c.mode = canvasModeInput
 		c.inputBuf = ""
 
-	// Delete card at cursor
-	case "d":
+	// Delete card at cursor (d, x, or delete)
+	case "d", "x", "delete":
 		idx := c.cardAtCursor()
 		if idx >= 0 {
 			c.removeCard(idx)
 			c.selected = c.cardAtCursor()
+			c.Save()
 		}
 
 	// Move mode
@@ -224,18 +379,52 @@ func (c Canvas) updateNormal(msg tea.KeyMsg) (Canvas, tea.Cmd) {
 			c.moveOrigY = c.cards[idx].Y
 		}
 
-	// Connect mode
-	case "c":
+	// Connect mode (L for link)
+	case "L":
 		idx := c.cardAtCursor()
 		if idx >= 0 {
 			c.mode = canvasModeConnect
 			c.connectFrom = idx
 		}
 
+	// Cycle card color
+	case "c":
+		idx := c.cardAtCursor()
+		if idx >= 0 {
+			c.cards[idx].Color = (c.cards[idx].Color + 1) % canvasCardNumColors
+			c.Save()
+		}
+
+	// Resize cards
+	case "+", "=":
+		idx := c.cardAtCursor()
+		if idx >= 0 && c.cards[idx].Width < canvasCardMaxWidth {
+			c.cards[idx].Width++
+			c.Save()
+		}
+	case "-", "_":
+		idx := c.cardAtCursor()
+		if idx >= 0 && c.cards[idx].Width > canvasCardMinWidth {
+			c.cards[idx].Width--
+			c.Save()
+		}
+
+	// Zoom level
+	case "z":
+		switch c.zoom {
+		case canvasZoomNormal:
+			c.zoom = canvasZoomCompact
+		case canvasZoomCompact:
+			c.zoom = canvasZoomExpanded
+		default:
+			c.zoom = canvasZoomNormal
+		}
+
 	// Open selected card
 	case "enter":
 		if c.selected >= 0 && c.selected < len(c.cards) {
 			c.result = c.cards[c.selected].NotePath
+			c.Save()
 			c.active = false
 		}
 		return c, nil
@@ -256,9 +445,11 @@ func (c Canvas) updateInput(msg tea.KeyMsg) (Canvas, tea.Cmd) {
 				X:        c.cursorX,
 				Y:        c.cursorY,
 				Width:    canvasCardWidth,
+				Color:    0,
 			}
 			c.cards = append(c.cards, card)
 			c.selected = len(c.cards) - 1
+			c.Save()
 		}
 		c.inputBuf = ""
 		c.mode = canvasModeNormal
@@ -282,12 +473,12 @@ func (c Canvas) updateMove(msg tea.KeyMsg) (Canvas, tea.Cmd) {
 	}
 	switch msg.String() {
 	case "esc":
-		// Cancel: restore original position
 		c.cards[c.moveIdx].X = c.moveOrigX
 		c.cards[c.moveIdx].Y = c.moveOrigY
 		c.mode = canvasModeNormal
 	case "enter":
 		c.mode = canvasModeNormal
+		c.Save()
 	case "up", "k":
 		if c.cards[c.moveIdx].Y > 0 {
 			c.cards[c.moveIdx].Y--
@@ -334,15 +525,15 @@ func (c Canvas) updateConnect(msg tea.KeyMsg) (Canvas, tea.Cmd) {
 		c.cursorX++
 		c.clampCursor()
 		c.selected = c.cardAtCursor()
-	case "c", "enter":
+	case "L", "enter":
 		target := c.cardAtCursor()
 		if target >= 0 && target != c.connectFrom {
-			// Avoid duplicate connections
 			if !c.connectionExists(c.connectFrom, target) {
 				c.connections = append(c.connections, CanvasConnection{
 					FromIdx: c.connectFrom,
 					ToIdx:   target,
 				})
+				c.Save()
 			}
 		}
 		c.connectFrom = -1
@@ -353,7 +544,6 @@ func (c Canvas) updateConnect(msg tea.KeyMsg) (Canvas, tea.Cmd) {
 
 // removeCard deletes a card and fixes up connection indices.
 func (c *Canvas) removeCard(idx int) {
-	// Remove connections that reference this card
 	var kept []CanvasConnection
 	for _, conn := range c.connections {
 		if conn.FromIdx == idx || conn.ToIdx == idx {
@@ -372,8 +562,7 @@ func (c *Canvas) removeCard(idx int) {
 	c.cards = append(c.cards[:idx], c.cards[idx+1:]...)
 }
 
-// connectionExists returns true if a connection already links the two cards
-// (in either direction).
+// connectionExists returns true if a connection already links the two cards.
 func (c *Canvas) connectionExists(a, b int) bool {
 	for _, conn := range c.connections {
 		if (conn.FromIdx == a && conn.ToIdx == b) ||
@@ -384,22 +573,30 @@ func (c *Canvas) connectionExists(a, b int) bool {
 	return false
 }
 
+// connectionsForCard returns the indices of cards connected to/from the given card.
+func (c *Canvas) connectionsForCard(idx int) []int {
+	seen := map[int]bool{}
+	for _, conn := range c.connections {
+		if conn.FromIdx == idx && !seen[conn.ToIdx] {
+			seen[conn.ToIdx] = true
+		}
+		if conn.ToIdx == idx && !seen[conn.FromIdx] {
+			seen[conn.FromIdx] = true
+		}
+	}
+	result := make([]int, 0, len(seen))
+	for k := range seen {
+		result = append(result, k)
+	}
+	return result
+}
+
 // ---------- View ----------
 
 func (c Canvas) View() string {
-	overlayW := c.width * 2 / 3
-	if overlayW < 50 {
-		overlayW = 50
-	}
-	if overlayW > 120 {
-		overlayW = 120
-	}
-
-	gw := overlayW - 6 // account for border + padding
-	if gw < 40 {
-		gw = 40
-	}
-	gh := c.gridHeight()
+	overlayW := c.canvasOverlayWidth()
+	gw := c.canvasGridWidth()
+	gh := c.canvasGridHeight()
 
 	var b strings.Builder
 
@@ -407,8 +604,23 @@ func (c Canvas) View() string {
 	title := lipgloss.NewStyle().
 		Foreground(mauve).
 		Bold(true).
-		Render("  Canvas")
+		Render("  ◫ Canvas")
 	b.WriteString(title)
+
+	// Zoom indicator
+	var zoomLabel string
+	switch c.zoom {
+	case canvasZoomCompact:
+		zoomLabel = " [compact]"
+	case canvasZoomExpanded:
+		zoomLabel = " [expanded]"
+	default:
+		zoomLabel = ""
+	}
+	if zoomLabel != "" {
+		b.WriteString(DimStyle.Render(zoomLabel))
+	}
+
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", overlayW-6)))
 	b.WriteString("\n")
@@ -423,7 +635,7 @@ func (c Canvas) View() string {
 	case canvasModeMove:
 		b.WriteString(lipgloss.NewStyle().Foreground(peach).Bold(true).
 			Render("  MOVE MODE") +
-			DimStyle.Render(" — arrows to reposition, Enter to confirm, Esc to cancel") + "\n")
+			DimStyle.Render(" — arrows to reposition, Enter to confirm, Esc cancel") + "\n")
 	case canvasModeConnect:
 		fromLabel := ""
 		if c.connectFrom >= 0 && c.connectFrom < len(c.cards) {
@@ -431,25 +643,18 @@ func (c Canvas) View() string {
 		}
 		b.WriteString(lipgloss.NewStyle().Foreground(yellow).Bold(true).
 			Render("  CONNECT") +
-			DimStyle.Render(" from \""+fromLabel+"\" — move to target, c/Enter to link, Esc to cancel") + "\n")
+			DimStyle.Render(" from \""+fromLabel+"\" — move to target, L/Enter link") + "\n")
 	default:
 		info := DimStyle.Render("  " + smallNum(len(c.cards)) + " cards  " +
 			smallNum(len(c.connections)) + " connections")
 		b.WriteString(info + "\n")
 	}
 
-	// Build the 2-D grid buffer
-	grid := c.buildGrid(gw, gh)
-
-	for y := 0; y < gh; y++ {
-		row := grid[y]
-		// Trim row to grid width in runes (each cell is one rune in the
-		// plain buffer; styling is applied per-cell below).
-		if len(row) > gw {
-			row = row[:gw]
-		}
-		b.WriteString(row)
-		if y < gh-1 {
+	// Build the 2-D grid and render rows
+	rows := c.renderGrid(gw, gh)
+	for y := 0; y < len(rows); y++ {
+		b.WriteString(rows[y])
+		if y < len(rows)-1 {
 			b.WriteString("\n")
 		}
 	}
@@ -458,7 +663,7 @@ func (c Canvas) View() string {
 	b.WriteString("\n\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", overlayW-6)))
 	b.WriteString("\n")
-	footer := "  arrows: move  n: add  d: delete  m: move  c: connect  Enter: open  Esc: close"
+	footer := "  arrows: move  n: add  d/x: del  m: move  L: connect  c: color  +/-: resize  z: zoom  Enter: open  Esc: close"
 	b.WriteString(DimStyle.Render(footer))
 
 	border := lipgloss.NewStyle().
@@ -471,38 +676,37 @@ func (c Canvas) View() string {
 	return border.Render(b.String())
 }
 
-// buildGrid renders all cards, connections and the cursor into a slice of
-// styled strings (one per row).
-func (c Canvas) buildGrid(gw, gh int) []string {
-	// cellChar stores the character at each grid position.
-	// cellColor stores an optional lipgloss.Color; empty means default.
+// renderGrid renders all cards, connections and the cursor into styled row strings.
+func (c Canvas) renderGrid(gw, gh int) []string {
 	type cell struct {
 		ch    rune
 		color lipgloss.Color
 		bold  bool
 	}
 
+	// Initialize grid with dot-pattern background
 	cells := make([][]cell, gh)
 	for y := 0; y < gh; y++ {
 		cells[y] = make([]cell, gw)
 		for x := 0; x < gw; x++ {
-			// Subtle dot pattern background
 			if x%4 == 0 && y%2 == 0 {
-				cells[y][x] = cell{ch: '.', color: surface0}
+				cells[y][x] = cell{ch: '·', color: surface1}
 			} else {
-				cells[y][x] = cell{ch: ' ', color: surface0}
+				cells[y][x] = cell{ch: ' ', color: surface1}
 			}
 		}
 	}
 
-	// Helper to set a cell safely.
 	setCell := func(x, y int, ch rune, color lipgloss.Color, bold bool) {
 		if x >= 0 && x < gw && y >= 0 && y < gh {
 			cells[y][x] = cell{ch: ch, color: color, bold: bold}
 		}
 	}
 
-	// Draw connections first (behind cards).
+	cardH := c.cardHeightForZoom()
+	colors := canvasColorTable()
+
+	// Draw connections first (behind cards)
 	for _, conn := range c.connections {
 		if conn.FromIdx < 0 || conn.FromIdx >= len(c.cards) ||
 			conn.ToIdx < 0 || conn.ToIdx >= len(c.cards) {
@@ -510,119 +714,232 @@ func (c Canvas) buildGrid(gw, gh int) []string {
 		}
 		from := c.cards[conn.FromIdx]
 		to := c.cards[conn.ToIdx]
-
-		// Centre points of each card.
 		fx := from.X + from.Width/2
-		fy := from.Y + canvasCardHeight/2
+		fy := from.Y + cardH/2
 		tx := to.X + to.Width/2
-		ty := to.Y + canvasCardHeight/2
-
+		ty := to.Y + cardH/2
 		c.drawConnection(fx, fy, tx, ty, gw, gh, setCell)
 	}
 
-	// Draw cards.
-	cardColors := []lipgloss.Color{blue, green, peach, yellow, red, mauve}
+	// Draw cards
 	for i, card := range c.cards {
-		borderColor := cardColors[i%len(cardColors)]
+		borderColor := colors[card.Color%canvasCardNumColors]
 		isSelected := (i == c.selected)
 		if isSelected {
 			borderColor = mauve
 		}
-		isMoving := (c.mode == canvasModeMove && i == c.moveIdx)
-		if isMoving {
+		if c.mode == canvasModeMove && i == c.moveIdx {
 			borderColor = peach
 		}
 
 		cw := card.Width
-		if cw < 5 {
+		if cw < canvasCardMinWidth {
 			cw = canvasCardWidth
 		}
 
-		// Truncate title to fit inside the box borders (2 border chars + 2 padding).
+		// Connection indicators: show linked card indices
+		connIndicator := ""
+		linked := c.connectionsForCard(i)
+		if len(linked) > 0 {
+			parts := make([]string, len(linked))
+			for ci, li := range linked {
+				parts[ci] = fmt.Sprintf("%d", li)
+			}
+			connIndicator = " \u2192" + strings.Join(parts, ",")
+		}
+
+		// Title text fitting
 		innerW := cw - 4
 		if innerW < 1 {
 			innerW = 1
 		}
+
 		displayTitle := card.Title
-		if len(displayTitle) > innerW {
-			displayTitle = displayTitle[:innerW-3]
-			if len(displayTitle) < 0 {
-				displayTitle = ""
+		// Append connection indicator to title if there's room
+		titleWithConn := displayTitle
+		if connIndicator != "" {
+			titleWithConn = displayTitle + connIndicator
+		}
+
+		switch c.zoom {
+		case canvasZoomCompact:
+			// Single-line compact card: " Title "
+			compactTitle := titleWithConn
+			maxLen := cw - 2
+			if maxLen < 1 {
+				maxLen = 1
 			}
-			displayTitle += "..."
-		}
-		// Pad title to inner width
-		for len(displayTitle) < innerW {
-			displayTitle += " "
-		}
-
-		// Top border: ╭──...──╮
-		setCell(card.X, card.Y, '\u256D', borderColor, isSelected) // ╭
-		for dx := 1; dx < cw-1; dx++ {
-			setCell(card.X+dx, card.Y, '\u2500', borderColor, isSelected) // ─
-		}
-		setCell(card.X+cw-1, card.Y, '\u256E', borderColor, isSelected) // ╮
-
-		// Middle row: │ Title │
-		setCell(card.X, card.Y+1, '\u2502', borderColor, isSelected)     // │
-		setCell(card.X+1, card.Y+1, ' ', text, false)                    // padding
-		for ti, tch := range displayTitle {
-			clr := text
+			if len(compactTitle) > maxLen {
+				if maxLen > 3 {
+					compactTitle = compactTitle[:maxLen-3] + "..."
+				} else {
+					compactTitle = compactTitle[:maxLen]
+				}
+			}
+			titleColor := text
 			if isSelected {
-				clr = mauve
+				titleColor = mauve
 			}
-			setCell(card.X+2+ti, card.Y+1, tch, clr, isSelected)
-		}
-		setCell(card.X+cw-2, card.Y+1, ' ', text, false)                // padding
-		setCell(card.X+cw-1, card.Y+1, '\u2502', borderColor, isSelected) // │
+			setCell(card.X, card.Y, '[', borderColor, isSelected)
+			for ti, tch := range compactTitle {
+				setCell(card.X+1+ti, card.Y, tch, titleColor, isSelected)
+			}
+			// Pad remaining
+			for px := len(compactTitle) + 1; px < cw-1; px++ {
+				setCell(card.X+px, card.Y, ' ', text, false)
+			}
+			setCell(card.X+cw-1, card.Y, ']', borderColor, isSelected)
 
-		// Bottom border: ╰──...──╯
-		setCell(card.X, card.Y+2, '\u2570', borderColor, isSelected) // ╰
-		for dx := 1; dx < cw-1; dx++ {
-			setCell(card.X+dx, card.Y+2, '\u2500', borderColor, isSelected) // ─
+		case canvasZoomExpanded:
+			// 5-line expanded card: border, title, note path, connection info, border
+			fitStr := func(s string, w int) string {
+				if len(s) > w {
+					if w > 3 {
+						return s[:w-3] + "..."
+					}
+					return s[:w]
+				}
+				for len(s) < w {
+					s += " "
+				}
+				return s
+			}
+			titleColor := text
+			if isSelected {
+				titleColor = mauve
+			}
+			// Top border
+			setCell(card.X, card.Y, '\u256D', borderColor, isSelected)
+			for dx := 1; dx < cw-1; dx++ {
+				setCell(card.X+dx, card.Y, '\u2500', borderColor, isSelected)
+			}
+			setCell(card.X+cw-1, card.Y, '\u256E', borderColor, isSelected)
+			// Row 1: Title
+			setCell(card.X, card.Y+1, '\u2502', borderColor, isSelected)
+			setCell(card.X+1, card.Y+1, ' ', text, false)
+			dt := fitStr(displayTitle, innerW)
+			for ti, tch := range dt {
+				setCell(card.X+2+ti, card.Y+1, tch, titleColor, isSelected)
+			}
+			setCell(card.X+cw-2, card.Y+1, ' ', text, false)
+			setCell(card.X+cw-1, card.Y+1, '\u2502', borderColor, isSelected)
+			// Row 2: Note path
+			setCell(card.X, card.Y+2, '\u2502', borderColor, isSelected)
+			setCell(card.X+1, card.Y+2, ' ', text, false)
+			np := fitStr(card.NotePath, innerW)
+			for ti, tch := range np {
+				setCell(card.X+2+ti, card.Y+2, tch, overlay0, false)
+			}
+			setCell(card.X+cw-2, card.Y+2, ' ', text, false)
+			setCell(card.X+cw-1, card.Y+2, '\u2502', borderColor, isSelected)
+			// Row 3: Connection indicators or empty
+			setCell(card.X, card.Y+3, '\u2502', borderColor, isSelected)
+			setCell(card.X+1, card.Y+3, ' ', text, false)
+			ci := ""
+			if connIndicator != "" {
+				ci = connIndicator
+			}
+			ciStr := fitStr(ci, innerW)
+			for ti, tch := range ciStr {
+				setCell(card.X+2+ti, card.Y+3, tch, overlay0, false)
+			}
+			setCell(card.X+cw-2, card.Y+3, ' ', text, false)
+			setCell(card.X+cw-1, card.Y+3, '\u2502', borderColor, isSelected)
+			// Bottom border
+			setCell(card.X, card.Y+4, '\u2570', borderColor, isSelected)
+			for dx := 1; dx < cw-1; dx++ {
+				setCell(card.X+dx, card.Y+4, '\u2500', borderColor, isSelected)
+			}
+			setCell(card.X+cw-1, card.Y+4, '\u256F', borderColor, isSelected)
+
+		default:
+			// Normal 3-line card
+			dtNormal := titleWithConn
+			if len(dtNormal) > innerW {
+				if innerW > 3 {
+					dtNormal = dtNormal[:innerW-3] + "..."
+				} else {
+					dtNormal = dtNormal[:innerW]
+				}
+			}
+			for len(dtNormal) < innerW {
+				dtNormal += " "
+			}
+
+			titleColor := text
+			if isSelected {
+				titleColor = mauve
+			}
+
+			// Top border: ╭──────────────────╮
+			setCell(card.X, card.Y, '\u256D', borderColor, isSelected)
+			for dx := 1; dx < cw-1; dx++ {
+				setCell(card.X+dx, card.Y, '\u2500', borderColor, isSelected)
+			}
+			setCell(card.X+cw-1, card.Y, '\u256E', borderColor, isSelected)
+
+			// Middle row: │ Title            │
+			setCell(card.X, card.Y+1, '\u2502', borderColor, isSelected)
+			setCell(card.X+1, card.Y+1, ' ', text, false)
+			for ti, tch := range dtNormal {
+				setCell(card.X+2+ti, card.Y+1, tch, titleColor, isSelected)
+			}
+			setCell(card.X+cw-2, card.Y+1, ' ', text, false)
+			setCell(card.X+cw-1, card.Y+1, '\u2502', borderColor, isSelected)
+
+			// Bottom border: ╰──────────────────╯
+			setCell(card.X, card.Y+2, '\u2570', borderColor, isSelected)
+			for dx := 1; dx < cw-1; dx++ {
+				setCell(card.X+dx, card.Y+2, '\u2500', borderColor, isSelected)
+			}
+			setCell(card.X+cw-1, card.Y+2, '\u256F', borderColor, isSelected)
 		}
-		setCell(card.X+cw-1, card.Y+2, '\u256F', borderColor, isSelected) // ╯
 	}
 
-	// Draw cursor on top.
+	// Draw cursor on top
 	if c.cursorX >= 0 && c.cursorX < gw && c.cursorY >= 0 && c.cursorY < gh {
 		existing := cells[c.cursorY][c.cursorX]
-		if existing.ch == ' ' || existing.ch == '.' {
-			setCell(c.cursorX, c.cursorY, '\u2588', mauve, true) // █
+		if existing.ch == ' ' || existing.ch == '\u00B7' {
+			setCell(c.cursorX, c.cursorY, '\u2588', mauve, true)
 		} else {
-			// Highlight the existing character under the cursor.
 			cells[c.cursorY][c.cursorX].color = mauve
 			cells[c.cursorY][c.cursorX].bold = true
 		}
 	}
 
-	// Render cell grid into styled strings.
+	// Render cell grid into styled strings, batching consecutive same-styled chars
 	rows := make([]string, gh)
 	for y := 0; y < gh; y++ {
 		var row strings.Builder
-		for x := 0; x < gw; x++ {
-			cl := cells[y][x]
-			style := lipgloss.NewStyle().Foreground(cl.color)
-			if cl.bold {
+		x := 0
+		for x < gw {
+			// Start a new batch
+			startColor := cells[y][x].color
+			startBold := cells[y][x].bold
+			var batch strings.Builder
+			batch.WriteRune(cells[y][x].ch)
+			x++
+			// Extend batch while style is the same
+			for x < gw && cells[y][x].color == startColor && cells[y][x].bold == startBold {
+				batch.WriteRune(cells[y][x].ch)
+				x++
+			}
+			// Render the batch
+			style := lipgloss.NewStyle().Foreground(startColor)
+			if startBold {
 				style = style.Bold(true)
 			}
-			row.WriteString(style.Render(string(cl.ch)))
+			row.WriteString(style.Render(batch.String()))
 		}
 		rows[y] = row.String()
 	}
 	return rows
 }
 
-// drawConnection renders a simple orthogonal path between two points using
-// box-drawing characters.
+// drawConnection renders an orthogonal path between two points with ASCII line chars.
 func (c Canvas) drawConnection(fx, fy, tx, ty, gw, gh int, setCell func(int, int, rune, lipgloss.Color, bool)) {
 	lineColor := overlay0
 
-	// We draw an L-shaped path: horizontal from (fx,fy) to (tx,fy), then
-	// vertical from (tx,fy) to (tx,ty). Use dashed lines for visual
-	// distinction from card borders.
-	//
-	// Determine direction.
 	dx := 1
 	if tx < fx {
 		dx = -1
@@ -632,9 +949,9 @@ func (c Canvas) drawConnection(fx, fy, tx, ty, gw, gh int, setCell func(int, int
 		dy = -1
 	}
 
-	// Horizontal segment
+	// Horizontal segment using ─
 	for x := fx; x != tx; x += dx {
-		setCell(x, fy, '\u2504', lineColor, false) // ┄ (dashed horizontal)
+		setCell(x, fy, '\u2500', lineColor, false)
 	}
 
 	// Corner
@@ -652,11 +969,26 @@ func (c Canvas) drawConnection(fx, fy, tx, ty, gw, gh int, setCell func(int, int
 		setCell(tx, fy, corner, lineColor, false)
 	}
 
-	// Vertical segment
+	// Vertical segment using │
 	for y := fy; y != ty; y += dy {
 		if y == fy && fx != tx {
-			continue // skip corner cell already drawn
+			continue
 		}
-		setCell(tx, y, '\u2506', lineColor, false) // ┆ (dashed vertical)
+		setCell(tx, y, '\u2502', lineColor, false)
+	}
+
+	// Arrow head at destination
+	if ty != fy {
+		if dy > 0 {
+			setCell(tx, ty, '\u2193', lineColor, false) // ↓ (down arrow using ↓ is not in basic set, use →)
+		} else {
+			setCell(tx, ty, '\u2191', lineColor, false) // ↑
+		}
+	} else if tx != fx {
+		if dx > 0 {
+			setCell(tx, ty, '\u2192', lineColor, false) // →
+		} else {
+			setCell(tx, ty, '\u2190', lineColor, false) // ←
+		}
 	}
 }
