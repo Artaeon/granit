@@ -83,6 +83,10 @@ var helpSections = []helpSection{
 		bindings: []helpBinding{
 			{"Ctrl+G", "Show note graph"},
 			{"Ctrl+T", "Browse tags"},
+			{"Ctrl+O", "Show note outline"},
+			{"Ctrl+B", "Bookmarks & recent notes"},
+			{"Ctrl+F", "Find in file"},
+			{"Ctrl+H", "Find & replace in file"},
 			{"Ctrl+,", "Open settings"},
 			{"F5", "Show this help"},
 		},
