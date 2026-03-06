@@ -1,0 +1,322 @@
+package tui
+
+import (
+	"fmt"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+type quickSwitchItem struct {
+	path    string
+	modTime string // formatted relative time like "2m ago", "1h ago", "3d ago"
+	starred bool
+}
+
+type QuickSwitch struct {
+	active bool
+	items  []quickSwitchItem
+	cursor int
+	width  int
+	height int
+	result string
+}
+
+func NewQuickSwitch() QuickSwitch {
+	return QuickSwitch{}
+}
+
+func (qs *QuickSwitch) SetSize(width, height int) {
+	qs.width = width
+	qs.height = height
+}
+
+// Open builds the item list from the provided sources.
+// Order: starred files first, then recent files, then remaining files sorted
+// by modification time (most recent first). Duplicates are suppressed.
+func (qs *QuickSwitch) Open(recentFiles []string, starredFiles []string, allPaths []string, getModTime func(string) time.Time) {
+	qs.active = true
+	qs.cursor = 0
+	qs.result = ""
+	qs.items = nil
+
+	seen := make(map[string]bool)
+	now := time.Now()
+
+	// Helper to append a path if not already seen.
+	addItem := func(path string, starred bool) {
+		if seen[path] {
+			return
+		}
+		seen[path] = true
+		mt := getModTime(path)
+		qs.items = append(qs.items, quickSwitchItem{
+			path:    path,
+			modTime: formatRelativeTime(now, mt),
+			starred: starred,
+		})
+	}
+
+	// Build a set of starred paths for quick lookup.
+	starredSet := make(map[string]bool, len(starredFiles))
+	for _, s := range starredFiles {
+		starredSet[s] = true
+	}
+
+	// 1. Starred files first.
+	for _, path := range starredFiles {
+		addItem(path, true)
+	}
+
+	// 2. Recent files (mark starred if applicable).
+	for _, path := range recentFiles {
+		addItem(path, starredSet[path])
+	}
+
+	// 3. Remaining files sorted by modification time (most recent first).
+	type modEntry struct {
+		path string
+		mt   time.Time
+	}
+	var remaining []modEntry
+	for _, path := range allPaths {
+		if seen[path] {
+			continue
+		}
+		remaining = append(remaining, modEntry{path: path, mt: getModTime(path)})
+	}
+	sort.Slice(remaining, func(i, j int) bool {
+		return remaining[i].mt.After(remaining[j].mt)
+	})
+	for _, entry := range remaining {
+		addItem(entry.path, starredSet[entry.path])
+	}
+}
+
+func (qs *QuickSwitch) Close() {
+	qs.active = false
+}
+
+func (qs *QuickSwitch) IsActive() bool {
+	return qs.active
+}
+
+// SelectedFile returns the selected path and resets the result.
+func (qs *QuickSwitch) SelectedFile() string {
+	r := qs.result
+	qs.result = ""
+	return r
+}
+
+func (qs QuickSwitch) Update(msg tea.Msg) (QuickSwitch, tea.Cmd) {
+	if !qs.active {
+		return qs, nil
+	}
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc", "tab":
+			qs.active = false
+		case "up", "k":
+			if qs.cursor > 0 {
+				qs.cursor--
+			}
+		case "down", "j":
+			if qs.cursor < len(qs.items)-1 {
+				qs.cursor++
+			}
+		case "enter":
+			if len(qs.items) > 0 && qs.cursor < len(qs.items) {
+				qs.result = qs.items[qs.cursor].path
+				qs.active = false
+			}
+		}
+	}
+	return qs, nil
+}
+
+func (qs QuickSwitch) View() string {
+	panelWidth := qs.width / 3
+	if panelWidth < 45 {
+		panelWidth = 45
+	}
+	if panelWidth > 65 {
+		panelWidth = 65
+	}
+
+	// Inner content width accounts for border (2) + padding (2*2 = 4).
+	innerWidth := panelWidth - 6
+
+	var b strings.Builder
+
+	// Title
+	title := lipgloss.NewStyle().
+		Foreground(mauve).
+		Bold(true).
+		Render("  Quick Switch")
+	b.WriteString(title)
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(strings.Repeat("─", innerWidth)))
+	b.WriteString("\n")
+
+	if len(qs.items) == 0 {
+		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  No files available"))
+	} else {
+		// Calculate visible window.
+		maxVisible := qs.height - 10
+		if maxVisible < 5 {
+			maxVisible = 5
+		}
+		if maxVisible > len(qs.items) {
+			maxVisible = len(qs.items)
+		}
+
+		start := 0
+		if qs.cursor >= maxVisible {
+			start = qs.cursor - maxVisible + 1
+		}
+		end := start + maxVisible
+		if end > len(qs.items) {
+			end = len(qs.items)
+		}
+
+		for i := start; i < end; i++ {
+			item := qs.items[i]
+
+			// Star indicator.
+			starIcon := "  "
+			if item.starred {
+				starIcon = lipgloss.NewStyle().Foreground(yellow).Render(" ") + " "
+			}
+
+			// File icon based on extension.
+			icon := fileIconForPath(item.path)
+
+			// File name (without .md extension for cleanliness).
+			name := filepath.Base(item.path)
+			name = strings.TrimSuffix(name, ".md")
+
+			// Relative time, right-aligned and dim.
+			modTimeStr := lipgloss.NewStyle().Foreground(overlay0).Render(item.modTime)
+
+			// Build line content: star + icon + name ... modTime
+			prefix := starIcon + icon + " "
+			// We need to calculate how much space the name can take.
+			// prefixWidth: star(2) + icon(~2) + space(1) = ~5
+			// modTimeWidth: varies, but reserve enough.
+			prefixWidth := lipgloss.Width(prefix)
+			modTimeWidth := lipgloss.Width(modTimeStr)
+			nameMaxWidth := innerWidth - prefixWidth - modTimeWidth - 1
+			if nameMaxWidth < 10 {
+				nameMaxWidth = 10
+			}
+
+			// Truncate name if needed.
+			if lipgloss.Width(name) > nameMaxWidth {
+				name = name[:nameMaxWidth-1] + "…"
+			}
+
+			// Pad name to fill available space for right-aligned time.
+			namePadded := name + strings.Repeat(" ", maxInt(0, nameMaxWidth-lipgloss.Width(name)))
+
+			if i == qs.cursor {
+				selectedStyle := lipgloss.NewStyle().
+					Background(surface0).
+					Foreground(peach).
+					Bold(true)
+				dimOnSelected := lipgloss.NewStyle().
+					Background(surface0).
+					Foreground(overlay0)
+
+				line := prefix + selectedStyle.Render(namePadded) + " " + dimOnSelected.Render(item.modTime)
+				b.WriteString(selectedStyle.Width(innerWidth).Render(line))
+			} else {
+				line := prefix + lipgloss.NewStyle().Foreground(text).Render(namePadded) + " " + modTimeStr
+				b.WriteString(line)
+			}
+
+			if i < end-1 {
+				b.WriteString("\n")
+			}
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(strings.Repeat("─", innerWidth)))
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  ↑↓/jk: navigate  Enter: open  Esc/Tab: close"))
+
+	border := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lavender).
+		Padding(1, 2).
+		Width(panelWidth).
+		Background(mantle)
+
+	return border.Render(b.String())
+}
+
+// fileIconForPath returns a styled nerd-font icon appropriate for the file.
+func fileIconForPath(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".md":
+		return lipgloss.NewStyle().Foreground(blue).Render("")
+	case ".txt":
+		return lipgloss.NewStyle().Foreground(subtext1).Render("")
+	case ".json":
+		return lipgloss.NewStyle().Foreground(yellow).Render("")
+	case ".yaml", ".yml":
+		return lipgloss.NewStyle().Foreground(peach).Render("")
+	case ".toml":
+		return lipgloss.NewStyle().Foreground(peach).Render("")
+	default:
+		return lipgloss.NewStyle().Foreground(blue).Render("")
+	}
+}
+
+// formatRelativeTime returns a human-readable relative time string.
+func formatRelativeTime(now, t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+
+	d := now.Sub(t)
+	if d < 0 {
+		d = -d
+	}
+
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		m := int(d.Minutes())
+		return fmt.Sprintf("%dm ago", m)
+	case d < 24*time.Hour:
+		h := int(d.Hours())
+		return fmt.Sprintf("%dh ago", h)
+	case d < 7*24*time.Hour:
+		days := int(d.Hours() / 24)
+		return fmt.Sprintf("%dd ago", days)
+	case d < 30*24*time.Hour:
+		weeks := int(d.Hours() / (24 * 7))
+		return fmt.Sprintf("%dw ago", weeks)
+	case d < 365*24*time.Hour:
+		months := int(d.Hours() / (24 * 30))
+		if months < 1 {
+			months = 1
+		}
+		return fmt.Sprintf("%dmo ago", months)
+	default:
+		years := int(d.Hours() / (24 * 365))
+		if years < 1 {
+			years = 1
+		}
+		return fmt.Sprintf("%dy ago", years)
+	}
+}
