@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,6 +16,13 @@ import (
 	"github.com/artaeon/granit/internal/config"
 	"github.com/artaeon/granit/internal/vault"
 )
+
+// stopOllama unloads running models to free memory when Granit exits.
+func stopOllama(model string) {
+	if model != "" {
+		exec.Command("ollama", "stop", model).Run()
+	}
+}
 
 type focus int
 
@@ -74,6 +84,9 @@ type Model struct {
 	canvas         Canvas
 	calendar       Calendar
 	bots           Bots
+	export         ExportOverlay
+	git            GitOverlay
+	plugins        PluginManager
 
 	// View mode scroll
 	viewScroll int
@@ -81,6 +94,13 @@ type Model struct {
 	// Confirm delete
 	confirmDelete     bool
 	confirmDeleteNote string
+
+	// Folder management
+	newFolderMode bool
+	newFolderName string
+	moveFileMode  bool
+	moveFileDirs  []string
+	moveFileCursor int
 }
 
 func NewModel(vaultPath string) (Model, error) {
@@ -129,6 +149,9 @@ func NewModel(vaultPath string) (Model, error) {
 		canvas:         NewCanvas(),
 		calendar:       NewCalendar(),
 		bots:           NewBots(),
+		export:         NewExportOverlay(),
+		git:            NewGitOverlay(),
+		plugins:        NewPluginManager(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -137,6 +160,7 @@ func NewModel(vaultPath string) (Model, error) {
 	m.statusbar.SetVaultPath(vaultPath)
 	m.statusbar.SetNoteCount(v.NoteCount())
 	m.autocomplete.SetNotes(paths)
+	m.plugins.SetVaultPath(vaultPath)
 
 	// Set up renderer note lookup for transclusion
 	m.renderer.SetNoteLookup(func(name string) string {
@@ -235,6 +259,56 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusbar.SetMessage("")
 		return m, nil
 
+	case gitCmdResultMsg:
+		if m.git.IsActive() {
+			var cmd tea.Cmd
+			m.git, cmd = m.git.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case botsTickMsg:
+		if m.bots.IsActive() {
+			var cmd tea.Cmd
+			m.bots, cmd = m.bots.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case ollamaResultMsg:
+		if m.bots.IsActive() {
+			var cmd tea.Cmd
+			m.bots, cmd = m.bots.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case ollamaSetupMsg:
+		if m.settings.IsActive() {
+			m.settings, _ = m.settings.Update(msg)
+			if !m.settings.setupRunning && msg.success {
+				m.config = m.settings.GetConfig()
+				m.config.Save()
+			}
+		}
+		return m, nil
+
+	case openaiResultMsg:
+		if m.bots.IsActive() {
+			var cmd tea.Cmd
+			m.bots, cmd = m.bots.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case pluginCmdResultMsg:
+		if msg.err != nil {
+			m.statusbar.SetMessage("Plugin error: " + msg.err.Error())
+		} else {
+			m.handlePluginOutput(msg.pluginName, msg.output)
+		}
+		return m, m.clearMessageAfter(3 * time.Second)
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -249,13 +323,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.settings.IsActive() {
-			m.settings, _ = m.settings.Update(msg)
+			var settingsCmd tea.Cmd
+			m.settings, settingsCmd = m.settings.Update(msg)
 			if !m.settings.IsActive() {
 				m.config = m.settings.GetConfig()
 				m.config.Save()
 				m.syncConfigToComponents()
 			}
-			return m, nil
+			return m, settingsCmd
+		}
+
+		if m.git.IsActive() {
+			var gitCmd tea.Cmd
+			m.git, gitCmd = m.git.Update(msg)
+			return m, gitCmd
 		}
 
 		if m.vaultStats.IsActive() {
@@ -327,11 +408,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.templates.IsActive() {
 			m.templates, _ = m.templates.Update(msg)
-			if tmpl := m.templates.SelectedTemplate(); tmpl != "" {
+			if !m.templates.IsActive() && m.templates.WasSelected() {
+				tmpl := m.templates.SelectedTemplate()
 				m.newNoteMode = true
 				m.newNoteName = ""
-				// Store template content for use when note name is confirmed
-				m.pendingTemplate = tmpl
+				m.pendingTemplate = tmpl // may be "" for blank note
 			}
 			return m, nil
 		}
@@ -410,27 +491,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.bots.IsActive() {
-			m.bots, _ = m.bots.Update(msg)
-			if result := m.bots.GetResult(); result.Action != "none" {
-				switch result.Action {
-				case "tag":
-					// Apply suggested tags to current note content
-					if m.activeNote != "" && len(result.Tags) > 0 {
-						tagStr := strings.Join(result.Tags, ", ")
-						m.statusbar.SetMessage("Suggested tags: " + tagStr)
+			var botCmd tea.Cmd
+			m.bots, botCmd = m.bots.Update(msg)
+			// Only process result when user closed the overlay (Enter on results)
+			if !m.bots.IsActive() {
+				if result := m.bots.GetResult(); result.Action != "none" {
+					switch result.Action {
+					case "tag":
+						if m.activeNote != "" && len(result.Tags) > 0 {
+							m.applyTagsToNote(result.Tags)
+							tagStr := strings.Join(result.Tags, ", ")
+							m.statusbar.SetMessage("Applied tags: " + tagStr)
+						}
+					case "link":
+						if len(result.Links) > 0 {
+							m.statusbar.SetMessage("Found " + fmt.Sprintf("%d", len(result.Links)) + " related notes")
+						}
+					case "summary":
+						if result.Summary != "" {
+							m.statusbar.SetMessage("Summary generated")
+						}
 					}
-				case "link":
-					if len(result.Links) > 0 {
-						m.statusbar.SetMessage("Found " + fmt.Sprintf("%d", len(result.Links)) + " related notes")
-					}
-				case "summary":
-					if result.Summary != "" {
-						m.statusbar.SetMessage("Summary generated")
-					}
+					return m, m.clearMessageAfter(3 * time.Second)
 				}
-				return m, m.clearMessageAfter(3 * time.Second)
 			}
+			return m, botCmd
+		}
+
+		if m.export.IsActive() {
+			m.export, _ = m.export.Update(msg)
 			return m, nil
+		}
+
+		if m.plugins.IsActive() {
+			var pluginCmd tea.Cmd
+			m.plugins, pluginCmd = m.plugins.Update(msg)
+			if !m.plugins.IsActive() {
+				if pCmd := m.plugins.PendingCommand(); pCmd != nil {
+					return m, RunPluginCommand(pCmd.plugin, pCmd.cmdDef, filepath.Join(m.vault.Root, m.activeNote), m.editor.GetContent(), m.vault.Root)
+				}
+			}
+			return m, pluginCmd
 		}
 
 		if m.confirmDelete {
@@ -460,6 +561,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, nil
+		}
+
+		if m.newFolderMode {
+			return m.updateNewFolder(msg)
+		}
+
+		if m.moveFileMode {
+			return m.updateMoveFile(msg)
 		}
 
 		if m.commandPalette.IsActive() {
@@ -532,8 +641,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "ctrl+n":
-			m.newNoteMode = true
-			m.newNoteName = ""
+			// Show template picker first, then name input
+			m.templates.SetSize(m.width, m.height)
+			m.templates.Open()
 			return m, nil
 
 		case "ctrl+e":
@@ -610,12 +720,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+l":
 			m.calendar.SetSize(m.width, m.height)
+			// Pass note contents for task parsing
+			noteContents := make(map[string]string)
+			for _, p := range m.vault.SortedPaths() {
+				if note := m.vault.GetNote(p); note != nil {
+					noteContents[p] = note.Content
+				}
+			}
+			m.calendar.SetNoteContents(noteContents)
 			m.calendar.Open()
 			return m, nil
 
 		case "ctrl+r":
 			m.bots.SetSize(m.width, m.height)
-			// Prepare vault data for bots
+			m.bots.SetAIConfig(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.OpenAIModel)
 			noteContents := make(map[string]string)
 			tagMap := make(map[string][]string)
 			for _, p := range m.vault.SortedPaths() {
@@ -648,6 +766,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "esc":
+			// If multi-cursors are active, clear them first
+			if m.focus == focusEditor && !m.viewMode && m.editor.HasMultiCursors() {
+				m.editor.clearMultiCursors()
+				return m, nil
+			}
 			if m.viewMode {
 				m.viewMode = false
 				m.statusbar.SetMode("EDIT")
@@ -731,12 +854,13 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.searchResults = m.vault.SortedPaths()
 		m.searchCursor = 0
 	case CmdNewNote:
-		m.newNoteMode = true
-		m.newNoteName = ""
+		m.templates.SetSize(m.width, m.height)
+		m.templates.Open()
 	case CmdSaveNote:
 		cmd := m.saveCurrentNote()
+		hookCmd := m.runPluginSaveHooks()
 		m.statusbar.SetMessage("Saved " + m.activeNote)
-		return m, tea.Batch(cmd, m.clearMessageAfter(2*time.Second))
+		return m, tea.Batch(cmd, hookCmd, m.clearMessageAfter(2*time.Second))
 	case CmdDailyNote:
 		today := time.Now().Format("2006-01-02")
 		name := today + ".md"
@@ -881,9 +1005,17 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.canvas.Open()
 	case CmdShowCalendar:
 		m.calendar.SetSize(m.width, m.height)
+		noteContents := make(map[string]string)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				noteContents[p] = note.Content
+			}
+		}
+		m.calendar.SetNoteContents(noteContents)
 		m.calendar.Open()
 	case CmdShowBots:
 		m.bots.SetSize(m.width, m.height)
+		m.bots.SetAIConfig(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.OpenAIModel)
 		noteContents := make(map[string]string)
 		tagMap := make(map[string][]string)
 		for _, p := range m.vault.SortedPaths() {
@@ -903,6 +1035,25 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.bots.SetVaultData(noteContents, tagMap)
 		m.bots.SetCurrentNote(m.activeNote, m.editor.GetContent())
 		m.bots.Open()
+	case CmdNewFolder:
+		m.newFolderMode = true
+		m.newFolderName = ""
+	case CmdMoveFile:
+		if m.activeNote != "" {
+			m.moveFileMode = true
+			m.moveFileCursor = 0
+			m.moveFileDirs = m.getVaultDirs()
+		}
+	case CmdExportNote:
+		m.export.SetSize(m.width, m.height)
+		m.export.Open(m.activeNote, m.editor.GetContent(), m.vault.Root)
+	case CmdGitOverlay:
+		m.git.SetSize(m.width, m.height)
+		m.git.Open()
+		return m, m.git.RefreshAll()
+	case CmdPluginManager:
+		m.plugins.SetSize(m.width, m.height)
+		m.plugins.Open()
 	case CmdQuit:
 		m.quitting = true
 		return m, tea.Quit
@@ -1095,6 +1246,17 @@ func (m *Model) updateLayout() {
 		layout = "default"
 	}
 
+	// Adaptive layout: auto-collapse panels for small terminals
+	if m.width < 80 {
+		// Very narrow — editor only (mobile-friendly)
+		layout = "minimal"
+	} else if m.width < 120 {
+		// Medium — sidebar + editor (no backlinks)
+		if layout == "default" {
+			layout = "writer"
+		}
+	}
+
 	showSidebar := layout == "default" || layout == "writer"
 	showBacklinks := layout == "default"
 
@@ -1131,7 +1293,11 @@ func (m *Model) updateLayout() {
 		editorWidth = 30
 	}
 
+	// Compact height for very small terminals
 	contentHeight := m.height - 3
+	if m.height < 20 && m.config.ShowHelp {
+		contentHeight = m.height - 2 // skip help bar
+	}
 
 	m.sidebar.SetSize(sidebarWidth, contentHeight)
 	m.editor.SetSize(editorWidth, contentHeight)
@@ -1150,6 +1316,112 @@ func (m *Model) syncConfigToComponents() {
 	if m.editor.tabSize < 1 {
 		m.editor.tabSize = 4
 	}
+	// AI status indicator
+	aiModel := ""
+	switch m.config.AIProvider {
+	case "ollama":
+		aiModel = m.config.OllamaModel
+	case "openai":
+		aiModel = m.config.OpenAIModel
+	}
+	m.statusbar.SetAIStatus(m.config.AIProvider, aiModel)
+}
+
+func (m *Model) applyTagsToNote(tags []string) {
+	content := m.editor.GetContent()
+	lines := strings.Split(content, "\n")
+
+	// Check if frontmatter exists
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+		// Find the closing ---
+		endIdx := -1
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == "---" {
+				endIdx = i
+				break
+			}
+		}
+
+		if endIdx > 0 {
+			// Look for existing tags: line in frontmatter
+			tagLineIdx := -1
+			for i := 1; i < endIdx; i++ {
+				trimmed := strings.TrimSpace(lines[i])
+				if strings.HasPrefix(trimmed, "tags:") {
+					tagLineIdx = i
+					break
+				}
+			}
+
+			// Build the new tags line — merge with existing
+			allTags := make(map[string]bool)
+			if tagLineIdx >= 0 {
+				// Parse existing tags
+				existing := strings.TrimPrefix(strings.TrimSpace(lines[tagLineIdx]), "tags:")
+				existing = strings.TrimSpace(existing)
+				existing = strings.Trim(existing, "[]")
+				for _, t := range strings.Split(existing, ",") {
+					t = strings.TrimSpace(t)
+					t = strings.Trim(t, "\"' ")
+					if t != "" {
+						allTags[t] = true
+					}
+				}
+			}
+			for _, t := range tags {
+				allTags[t] = true
+			}
+
+			// Build sorted tag list
+			var sortedTags []string
+			for t := range allTags {
+				sortedTags = append(sortedTags, t)
+			}
+			sort.Strings(sortedTags)
+			newTagLine := "tags: [" + strings.Join(sortedTags, ", ") + "]"
+
+			if tagLineIdx >= 0 {
+				lines[tagLineIdx] = newTagLine
+			} else {
+				// Insert tags line before closing ---
+				newLines := make([]string, 0, len(lines)+1)
+				newLines = append(newLines, lines[:endIdx]...)
+				newLines = append(newLines, newTagLine)
+				newLines = append(newLines, lines[endIdx:]...)
+				lines = newLines
+			}
+
+			newContent := strings.Join(lines, "\n")
+			m.editor.LoadContent(newContent, m.activeNote)
+			m.editor.modified = true
+			// Save directly to disk
+			os.WriteFile(filepath.Join(m.vault.Root, m.activeNote), []byte(newContent), 0644)
+			// Re-scan vault for updated tags
+			m.vault.Scan()
+			m.index = vault.NewIndex(m.vault)
+			m.index.Build()
+			return
+		}
+	}
+
+	// No frontmatter — create one with tags
+	var sortedTags []string
+	seen := make(map[string]bool)
+	for _, t := range tags {
+		if !seen[t] {
+			sortedTags = append(sortedTags, t)
+			seen[t] = true
+		}
+	}
+	sort.Strings(sortedTags)
+	frontmatter := "---\ntags: [" + strings.Join(sortedTags, ", ") + "]\n---\n"
+	newContent := frontmatter + content
+	m.editor.LoadContent(newContent, m.activeNote)
+	m.editor.modified = true
+	os.WriteFile(filepath.Join(m.vault.Root, m.activeNote), []byte(newContent), 0644)
+	m.vault.Scan()
+	m.index = vault.NewIndex(m.vault)
+	m.index.Build()
 }
 
 func (m Model) saveCurrentNote() tea.Cmd {
@@ -1162,6 +1434,42 @@ func (m Model) saveCurrentNote() tea.Cmd {
 		os.WriteFile(path, []byte(content), 0644)
 		return nil
 	}
+}
+
+func (m *Model) handlePluginOutput(pluginName, output string) {
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "MSG:"):
+			m.statusbar.SetMessage("[" + pluginName + "] " + strings.TrimPrefix(line, "MSG:"))
+		case strings.HasPrefix(line, "CONTENT:"):
+			// base64-encoded replacement content
+			encoded := strings.TrimPrefix(line, "CONTENT:")
+			if decoded, err := base64.StdEncoding.DecodeString(encoded); err == nil {
+				m.editor.SetContent(string(decoded))
+			}
+		case strings.HasPrefix(line, "INSERT:"):
+			encoded := strings.TrimPrefix(line, "INSERT:")
+			if decoded, err := base64.StdEncoding.DecodeString(encoded); err == nil {
+				m.editor.InsertText(string(decoded))
+			}
+		default:
+			m.statusbar.SetMessage("[" + pluginName + "] " + line)
+		}
+	}
+}
+
+func (m *Model) runPluginSaveHooks() tea.Cmd {
+	enabled := m.plugins.EnabledPlugins()
+	if len(enabled) == 0 {
+		return nil
+	}
+	notePath := filepath.Join(m.vault.Root, m.activeNote)
+	return RunPluginHook(enabled, "on_save", notePath, m.editor.GetContent(), m.vault.Root)
 }
 
 func (m Model) clearMessageAfter(d time.Duration) tea.Cmd {
@@ -1177,6 +1485,10 @@ func (m Model) View() string {
 	}
 
 	if m.quitting {
+		// Unload Ollama model to free resources
+		if m.config.AIProvider == "ollama" {
+			stopOllama(m.config.OllamaModel)
+		}
 		return lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("\n  Goodbye from Granit!\n\n")
 	}
 
@@ -1354,6 +1666,18 @@ func (m Model) View() string {
 		overlay := m.bots.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.export.IsActive() {
+		overlay := m.export.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.git.IsActive() {
+		overlay := m.git.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.plugins.IsActive() {
+		overlay := m.plugins.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.confirmDelete {
 		overlay := m.renderConfirmDeleteOverlay()
 		view = m.overlayCenter(view, overlay)
@@ -1368,6 +1692,14 @@ func (m Model) View() string {
 	}
 	if m.newNoteMode {
 		overlay := m.renderNewNoteOverlay()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.newFolderMode {
+		overlay := m.renderNewFolderOverlay()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.moveFileMode {
+		overlay := m.renderMoveFileOverlay()
 		view = m.overlayCenter(view, overlay)
 	}
 
@@ -1415,7 +1747,7 @@ func (m Model) renderSearchOverlay() string {
 	title := lipgloss.NewStyle().
 		Foreground(mauve).
 		Bold(true).
-		Render("  Quick Open")
+		Render("  " + IconSearchChar + " Quick Open")
 	b.WriteString(title)
 	b.WriteString("\n\n")
 
@@ -1432,7 +1764,7 @@ func (m Model) renderSearchOverlay() string {
 	} else {
 		for i := 0; i < len(m.searchResults) && i < maxResults; i++ {
 			name := strings.TrimSuffix(m.searchResults[i], ".md")
-			icon := lipgloss.NewStyle().Foreground(blue).Render(" ")
+			icon := lipgloss.NewStyle().Foreground(blue).Render(IconFileChar)
 			if i == m.searchCursor {
 				line := lipgloss.NewStyle().
 					Background(surface0).
@@ -1471,7 +1803,7 @@ func (m Model) renderNewNoteOverlay() string {
 	title := lipgloss.NewStyle().
 		Foreground(green).
 		Bold(true).
-		Render("  New Note")
+		Render("  " + IconNewChar + " New Note")
 	b.WriteString(title)
 	b.WriteString("\n\n")
 
@@ -1499,7 +1831,7 @@ func (m Model) renderConfirmDeleteOverlay() string {
 	title := lipgloss.NewStyle().
 		Foreground(red).
 		Bold(true).
-		Render("  Delete Note")
+		Render("  " + IconTrashChar + " Delete Note")
 	b.WriteString(title)
 	b.WriteString("\n\n")
 
@@ -1563,6 +1895,215 @@ func (m *Model) doReplaceAll() {
 		m.findReplace.UpdateMatches(m.editor.content)
 		m.statusbar.SetMessage(fmt.Sprintf("Replaced %d occurrences", count))
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Folder management
+// ---------------------------------------------------------------------------
+
+func (m *Model) getVaultDirs() []string {
+	dirSet := map[string]bool{".": true}
+	for _, p := range m.vault.SortedPaths() {
+		dir := filepath.Dir(p)
+		if dir != "." {
+			dirSet[dir] = true
+			// Also add parent dirs
+			for dir != "." {
+				dirSet[dir] = true
+				dir = filepath.Dir(dir)
+			}
+		}
+	}
+	dirs := make([]string, 0, len(dirSet))
+	for d := range dirSet {
+		if d == "." {
+			dirs = append(dirs, "(root)")
+		} else {
+			dirs = append(dirs, d)
+		}
+	}
+	sort.Strings(dirs)
+	return dirs
+}
+
+func (m Model) updateNewFolder(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.newFolderMode = false
+		return m, nil
+	case "enter":
+		if m.newFolderName != "" {
+			folderPath := filepath.Join(m.vault.Root, m.newFolderName)
+			if err := os.MkdirAll(folderPath, 0755); err == nil {
+				// Create a .gitkeep so folder shows up
+				m.statusbar.SetMessage("Created folder: " + m.newFolderName)
+			}
+		}
+		m.newFolderMode = false
+		return m, m.clearMessageAfter(2 * time.Second)
+	case "backspace":
+		if len(m.newFolderName) > 0 {
+			m.newFolderName = m.newFolderName[:len(m.newFolderName)-1]
+		}
+		return m, nil
+	default:
+		char := msg.String()
+		if len(char) == 1 && char[0] >= 32 {
+			m.newFolderName += char
+		}
+		return m, nil
+	}
+}
+
+func (m Model) updateMoveFile(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.moveFileMode = false
+		return m, nil
+	case "up", "k":
+		if m.moveFileCursor > 0 {
+			m.moveFileCursor--
+		}
+		return m, nil
+	case "down", "j":
+		if m.moveFileCursor < len(m.moveFileDirs)-1 {
+			m.moveFileCursor++
+		}
+		return m, nil
+	case "enter":
+		if m.activeNote != "" && m.moveFileCursor < len(m.moveFileDirs) {
+			targetDir := m.moveFileDirs[m.moveFileCursor]
+			if targetDir == "(root)" {
+				targetDir = ""
+			}
+			baseName := filepath.Base(m.activeNote)
+			var newPath string
+			if targetDir == "" {
+				newPath = baseName
+			} else {
+				newPath = filepath.Join(targetDir, baseName)
+			}
+
+			if newPath != m.activeNote {
+				oldFullPath := filepath.Join(m.vault.Root, m.activeNote)
+				newFullPath := filepath.Join(m.vault.Root, newPath)
+				os.MkdirAll(filepath.Dir(newFullPath), 0755)
+				if err := os.Rename(oldFullPath, newFullPath); err == nil {
+					m.vault.Scan()
+					m.index = vault.NewIndex(m.vault)
+					m.index.Build()
+					paths := m.vault.SortedPaths()
+					m.sidebar.SetFiles(paths)
+					m.autocomplete.SetNotes(paths)
+					m.statusbar.SetNoteCount(m.vault.NoteCount())
+					m.loadNote(newPath)
+					m.sidebar.cursor = m.findFileIndex(newPath)
+					m.statusbar.SetMessage("Moved to " + newPath)
+				}
+			}
+		}
+		m.moveFileMode = false
+		return m, m.clearMessageAfter(2 * time.Second)
+	}
+	return m, nil
+}
+
+func (m Model) renderNewFolderOverlay() string {
+	width := m.width / 3
+	if width < 40 {
+		width = 40
+	}
+
+	var b strings.Builder
+
+	title := lipgloss.NewStyle().
+		Foreground(peach).
+		Bold(true).
+		Render("  " + IconFolderChar + " New Folder")
+	b.WriteString(title)
+	b.WriteString("\n\n")
+
+	prompt := lipgloss.NewStyle().Foreground(peach).Bold(true).Render(" Name: ")
+	input := m.newFolderName + DimStyle.Render("_")
+	b.WriteString(prompt + input)
+	b.WriteString("\n\n")
+	b.WriteString(DimStyle.Render("  Enter to create, Esc to cancel"))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  Use / for nested folders (e.g. projects/web)"))
+
+	border := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(peach).
+		Padding(1, 2).
+		Width(width).
+		Background(mantle)
+
+	return border.Render(b.String())
+}
+
+func (m Model) renderMoveFileOverlay() string {
+	width := m.width / 3
+	if width < 40 {
+		width = 40
+	}
+
+	var b strings.Builder
+
+	title := lipgloss.NewStyle().
+		Foreground(blue).
+		Bold(true).
+		Render("  " + IconFolderChar + " Move Note")
+	b.WriteString(title)
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  Moving: " + m.activeNote))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
+	b.WriteString("\n")
+
+	visibleItems := m.height - 10
+	if visibleItems < 5 {
+		visibleItems = 5
+	}
+
+	start := 0
+	if m.moveFileCursor >= visibleItems {
+		start = m.moveFileCursor - visibleItems + 1
+	}
+	end := start + visibleItems
+	if end > len(m.moveFileDirs) {
+		end = len(m.moveFileDirs)
+	}
+
+	for i := start; i < end; i++ {
+		dir := m.moveFileDirs[i]
+		icon := lipgloss.NewStyle().Foreground(peach).Render(IconFolderChar)
+		if i == m.moveFileCursor {
+			line := lipgloss.NewStyle().
+				Background(surface0).
+				Foreground(peach).
+				Bold(true).
+				Width(width - 6).
+				Render("  " + icon + " " + dir)
+			b.WriteString(line)
+		} else {
+			b.WriteString("  " + icon + " " + NormalItemStyle.Render(dir))
+		}
+		if i < end-1 {
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString("\n\n")
+	b.WriteString(DimStyle.Render("  Enter: move here  Esc: cancel"))
+
+	border := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(blue).
+		Padding(1, 2).
+		Width(width).
+		Background(mantle)
+
+	return border.Render(b.String())
 }
 
 func (m Model) overlayCenter(bg, overlay string) string {
