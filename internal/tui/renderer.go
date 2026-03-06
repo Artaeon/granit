@@ -80,20 +80,20 @@ func (r Renderer) renderMarkdown(content string) []string {
 				// Render collected frontmatter as a styled block
 				if len(fmLines) > 0 {
 					fmBorder := lipgloss.NewStyle().
-						Foreground(lipgloss.Color("#6C7086")).
+						Foreground(overlay0).
 						Render("  ┌" + strings.Repeat("─", contentWidth-4) + "┐")
 					result = append(result, fmBorder)
 					for _, fl := range fmLines {
 						parts := strings.SplitN(fl, ":", 2)
 						if len(parts) == 2 {
-							key := lipgloss.NewStyle().Foreground(lipgloss.Color("#89B4FA")).Bold(true).Render(strings.TrimSpace(parts[0]))
-							val := lipgloss.NewStyle().Foreground(lipgloss.Color("#CDD6F4")).Render(strings.TrimSpace(parts[1]))
+							key := lipgloss.NewStyle().Foreground(blue).Bold(true).Render(strings.TrimSpace(parts[0]))
+							val := lipgloss.NewStyle().Foreground(text).Render(strings.TrimSpace(parts[1]))
 							fmLine := "  │ " + key + ": " + val
 							result = append(result, fmLine)
 						}
 					}
 					fmBorderBottom := lipgloss.NewStyle().
-						Foreground(lipgloss.Color("#6C7086")).
+						Foreground(overlay0).
 						Render("  └" + strings.Repeat("─", contentWidth-4) + "┘")
 					result = append(result, fmBorderBottom)
 					result = append(result, "")
@@ -111,13 +111,13 @@ func (r Renderer) renderMarkdown(content string) []string {
 				codeBlockLang = strings.TrimPrefix(trimmed, "```")
 				if codeBlockLang != "" {
 					langLabel := lipgloss.NewStyle().
-						Foreground(lipgloss.Color("#6C7086")).
+						Foreground(overlay0).
 						Italic(true).
 						Render("  " + codeBlockLang)
 					result = append(result, langLabel)
 				}
 				codeBorder := lipgloss.NewStyle().
-					Foreground(lipgloss.Color("#45475A")).
+					Foreground(surface1).
 					Render("  " + strings.Repeat("─", contentWidth-4))
 				result = append(result, codeBorder)
 				continue
@@ -125,7 +125,7 @@ func (r Renderer) renderMarkdown(content string) []string {
 				inCodeBlock = false
 				codeBlockLang = ""
 				codeBorder := lipgloss.NewStyle().
-					Foreground(lipgloss.Color("#45475A")).
+					Foreground(surface1).
 					Render("  " + strings.Repeat("─", contentWidth-4))
 				result = append(result, codeBorder)
 				continue
@@ -134,7 +134,7 @@ func (r Renderer) renderMarkdown(content string) []string {
 
 		if inCodeBlock {
 			codeLine := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#A6E3A1")).
+				Foreground(green).
 				Render("    " + line)
 			result = append(result, codeLine)
 			continue
@@ -149,7 +149,7 @@ func (r Renderer) renderMarkdown(content string) []string {
 		// Horizontal rule
 		if trimmed == "---" || trimmed == "***" || trimmed == "___" {
 			rule := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#45475A")).
+				Foreground(surface1).
 				Render("  " + strings.Repeat("━", contentWidth-4))
 			result = append(result, rule)
 			continue
@@ -160,11 +160,11 @@ func (r Renderer) renderMarkdown(content string) []string {
 			text := strings.TrimPrefix(trimmed, "# ")
 			// Big heading with underline
 			styled := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#CBA6F7")).
+				Foreground(mauve).
 				Bold(true).
 				Render("  " + text)
 			underline := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#CBA6F7")).
+				Foreground(mauve).
 				Render("  " + strings.Repeat("═", len(text)))
 			result = append(result, "")
 			result = append(result, styled)
@@ -175,11 +175,11 @@ func (r Renderer) renderMarkdown(content string) []string {
 		if strings.HasPrefix(trimmed, "## ") {
 			text := strings.TrimPrefix(trimmed, "## ")
 			styled := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#89B4FA")).
+				Foreground(blue).
 				Bold(true).
 				Render("  " + text)
 			underline := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#45475A")).
+				Foreground(surface1).
 				Render("  " + strings.Repeat("─", len(text)))
 			result = append(result, "")
 			result = append(result, styled)
@@ -189,7 +189,7 @@ func (r Renderer) renderMarkdown(content string) []string {
 		if strings.HasPrefix(trimmed, "### ") {
 			text := strings.TrimPrefix(trimmed, "### ")
 			styled := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#74C7EC")).
+				Foreground(sapphire).
 				Bold(true).
 				Render("  " + text)
 			result = append(result, "")
@@ -199,7 +199,7 @@ func (r Renderer) renderMarkdown(content string) []string {
 		if strings.HasPrefix(trimmed, "#### ") {
 			text := strings.TrimPrefix(trimmed, "#### ")
 			styled := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#94E2D5")).
+				Foreground(teal).
 				Bold(true).
 				Render("  " + text)
 			result = append(result, styled)
@@ -209,24 +209,24 @@ func (r Renderer) renderMarkdown(content string) []string {
 		// Blockquote
 		if strings.HasPrefix(trimmed, "> ") {
 			text := strings.TrimPrefix(trimmed, "> ")
-			bar := lipgloss.NewStyle().Foreground(lipgloss.Color("#CBA6F7")).Render("  ┃ ")
-			quote := lipgloss.NewStyle().Foreground(lipgloss.Color("#7F849C")).Italic(true).Render(text)
+			bar := lipgloss.NewStyle().Foreground(mauve).Render("  ┃ ")
+			quote := lipgloss.NewStyle().Foreground(overlay1).Italic(true).Render(text)
 			result = append(result, bar+quote)
 			continue
 		}
 
 		// Checkboxes
 		if strings.HasPrefix(trimmed, "- [x] ") || strings.HasPrefix(trimmed, "- [X] ") {
-			text := trimmed[6:]
-			checkbox := lipgloss.NewStyle().Foreground(lipgloss.Color("#A6E3A1")).Render("  ✓ ")
-			styledText := lipgloss.NewStyle().Foreground(lipgloss.Color("#6C7086")).Strikethrough(true).Render(text)
+			doneText := trimmed[6:]
+			checkbox := lipgloss.NewStyle().Foreground(green).Render("  ✓ ")
+			styledText := lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true).Render(doneText)
 			result = append(result, checkbox+styledText)
 			continue
 		}
 		if strings.HasPrefix(trimmed, "- [ ] ") {
-			text := trimmed[6:]
-			checkbox := lipgloss.NewStyle().Foreground(lipgloss.Color("#F9E2AF")).Render("  ○ ")
-			styledText := lipgloss.NewStyle().Foreground(lipgloss.Color("#CDD6F4")).Render(text)
+			todoText := trimmed[6:]
+			checkbox := lipgloss.NewStyle().Foreground(yellow).Render("  ○ ")
+			styledText := lipgloss.NewStyle().Foreground(text).Render(todoText)
 			result = append(result, checkbox+styledText)
 			continue
 		}
@@ -235,7 +235,7 @@ func (r Renderer) renderMarkdown(content string) []string {
 		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
 			text := trimmed[2:]
 			indent := strings.Repeat(" ", len(line)-len(trimmed))
-			bullet := lipgloss.NewStyle().Foreground(lipgloss.Color("#FAB387")).Render("  " + indent + "● ")
+			bullet := lipgloss.NewStyle().Foreground(peach).Render("  " + indent + "● ")
 			result = append(result, bullet+r.renderInline(text))
 			continue
 		}
@@ -255,7 +255,7 @@ func (r Renderer) renderMarkdown(content string) []string {
 					if allDigits {
 						num := trimmed[:idx]
 						text := trimmed[idx+2:]
-						numStyled := lipgloss.NewStyle().Foreground(lipgloss.Color("#FAB387")).Bold(true).Render("  " + num + ". ")
+						numStyled := lipgloss.NewStyle().Foreground(peach).Bold(true).Render("  " + num + ". ")
 						result = append(result, numStyled+r.renderInline(text))
 						isNumbered = true
 					}
@@ -279,12 +279,12 @@ func (r Renderer) renderMarkdown(content string) []string {
 				part = strings.TrimSpace(part)
 				if strings.Repeat("-", len(part)) == part && len(part) > 0 {
 					// Separator row
-					tableLine += lipgloss.NewStyle().Foreground(lipgloss.Color("#45475A")).Render(strings.Repeat("─", len(part)+2))
+					tableLine += lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", len(part)+2))
 				} else {
-					tableLine += lipgloss.NewStyle().Foreground(lipgloss.Color("#CDD6F4")).Render(" " + part + " ")
+					tableLine += lipgloss.NewStyle().Foreground(text).Render(" " + part + " ")
 				}
 				if pi < len(parts)-1 {
-					tableLine += lipgloss.NewStyle().Foreground(lipgloss.Color("#45475A")).Render("│")
+					tableLine += lipgloss.NewStyle().Foreground(surface1).Render("│")
 				}
 			}
 			result = append(result, tableLine)
@@ -298,13 +298,13 @@ func (r Renderer) renderMarkdown(content string) []string {
 	return result
 }
 
-func (r Renderer) renderInline(text string) string {
-	if text == "" {
+func (r Renderer) renderInline(input string) string {
+	if input == "" {
 		return ""
 	}
 
 	var result strings.Builder
-	runes := []rune(text)
+	runes := []rune(input)
 	n := len(runes)
 	i := 0
 
@@ -326,7 +326,7 @@ func (r Renderer) renderInline(text string) string {
 					displayName = linkContent[pipeIdx+1:]
 				}
 				styled := lipgloss.NewStyle().
-					Foreground(lipgloss.Color("#89B4FA")).
+					Foreground(blue).
 					Underline(true).
 					Render(displayName)
 				result.WriteString(styled)
@@ -347,8 +347,8 @@ func (r Renderer) renderInline(text string) string {
 			if end != -1 {
 				code := string(runes[i+1 : end])
 				styled := lipgloss.NewStyle().
-					Foreground(lipgloss.Color("#A6E3A1")).
-					Background(lipgloss.Color("#313244")).
+					Foreground(green).
+					Background(surface0).
 					Render(" " + code + " ")
 				result.WriteString(styled)
 				i = end + 1
@@ -368,7 +368,7 @@ func (r Renderer) renderInline(text string) string {
 			if end != -1 {
 				bold := string(runes[i+2 : end-1])
 				styled := lipgloss.NewStyle().
-					Foreground(lipgloss.Color("#CDD6F4")).
+					Foreground(text).
 					Bold(true).
 					Render(bold)
 				result.WriteString(styled)
@@ -389,7 +389,7 @@ func (r Renderer) renderInline(text string) string {
 			if end != -1 && end > i+1 {
 				italic := string(runes[i+1 : end])
 				styled := lipgloss.NewStyle().
-					Foreground(lipgloss.Color("#BAC2DE")).
+					Foreground(subtext1).
 					Italic(true).
 					Render(italic)
 				result.WriteString(styled)
@@ -407,8 +407,8 @@ func (r Renderer) renderInline(text string) string {
 			if end > i+1 {
 				tag := string(runes[i:end])
 				styled := lipgloss.NewStyle().
-					Foreground(lipgloss.Color("#11111B")).
-					Background(lipgloss.Color("#89B4FA")).
+					Foreground(crust).
+					Background(blue).
 					Render(" " + tag + " ")
 				result.WriteString(styled)
 				i = end
