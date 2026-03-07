@@ -98,6 +98,7 @@ const (
 	CmdLayoutReading
 	CmdLayoutDashboard
 	CmdBlogPublish
+	CmdGlobalReplace
 	CmdQuit
 )
 
@@ -144,6 +145,7 @@ var AllCommands = []Command{
 	{Label: "Git: Status & Commit", Desc: "Git status, log, diff, commit, push, pull", Shortcut: "", Action: CmdGitOverlay, Icon: &IconBotChar},
 	{Label: "Plugins", Desc: "Manage and run plugins", Shortcut: "", Action: CmdPluginManager, Icon: &IconSettingsChar},
 	{Label: "Search Vault Contents", Desc: "Full-text search across all notes", Shortcut: "", Action: CmdContentSearch, Icon: &IconSearchChar},
+	{Label: "Global Search & Replace", Desc: "Find and replace across all vault files", Shortcut: "", Action: CmdGlobalReplace, Icon: &IconSearchChar},
 	{Label: "Spell Check", Desc: "Check spelling in current note", Shortcut: "", Action: CmdSpellCheck, Icon: &IconEditChar},
 	{Label: "Import Obsidian Config", Desc: "Import settings from .obsidian/ directory", Shortcut: "", Action: CmdImportObsidian, Icon: &IconSettingsChar},
 	{Label: "Publish Site", Desc: "Export vault as static HTML site", Shortcut: "", Action: CmdPublishSite, Icon: &IconSaveChar},

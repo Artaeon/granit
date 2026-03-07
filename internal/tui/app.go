@@ -89,6 +89,7 @@ type Model struct {
 	git            GitOverlay
 	plugins        PluginManager
 	contentSearch  ContentSearch
+	globalReplace  GlobalReplace
 	spellcheck     SpellChecker
 	snippets       *SnippetEngine
 	autoSync       AutoSync
@@ -226,6 +227,7 @@ func NewModel(vaultPath string) (Model, error) {
 		git:            NewGitOverlay(),
 		plugins:        NewPluginManager(),
 		contentSearch:  NewContentSearch(),
+		globalReplace:  NewGlobalReplace(),
 		spellcheck:     NewSpellChecker(),
 		snippets:       NewSnippetEngine(),
 		autoSync:       NewAutoSync(vaultPath),
@@ -1067,6 +1069,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.sidebar.cursor = m.findFileIndex(result.FilePath)
 					m.editor.cursor = result.Line
 					m.editor.col = result.Col
+					m.setFocus(focusEditor)
+				}
+			}
+			return m, nil
+		}
+
+		if m.globalReplace.IsActive() {
+			m.globalReplace, _ = m.globalReplace.Update(msg)
+			if !m.globalReplace.IsActive() {
+				// Reload editor if active note was modified
+				if m.globalReplace.ModifiedFiles()[m.activeNote] {
+					if note := m.vault.GetNote(m.activeNote); note != nil {
+						m.editor.LoadContent(note.Content, m.editor.filePath)
+					}
+				}
+				if file, line, ok := m.globalReplace.GetJumpResult(); ok {
+					m.loadNote(file)
+					m.sidebar.cursor = m.findFileIndex(file)
+					m.editor.cursor = line
 					m.setFocus(focusEditor)
 				}
 			}
@@ -2321,6 +2342,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.contentSearch.Open(noteContents)
+	case CmdGlobalReplace:
+		m.globalReplace.SetSize(m.width, m.height)
+		m.globalReplace.Open(m.vault)
 	case CmdSpellCheck:
 		if m.spellcheck.IsAvailable() {
 			m.spellcheck.SetSize(m.width, m.height)
@@ -3714,6 +3738,10 @@ func (m Model) View() string {
 	}
 	if m.contentSearch.IsActive() {
 		overlay := m.contentSearch.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.globalReplace.IsActive() {
+		overlay := m.globalReplace.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.spellcheck.IsActive() {
