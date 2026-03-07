@@ -113,6 +113,8 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 - **Mind map view** — ASCII mind map from note headings and wikilinks, headings + links modes
 - **Daily journal prompts** — 100+ prompts across 8 categories with guided write mode
 - **Clipboard manager** — 50-entry history with search, pin, preview, and paste
+- **Daily planner** — time-blocked daily schedule (6am–10pm, 30-min slots) with task/event/habit sync, progress bar, focus session launch
+- **AI smart scheduler** — AI-powered optimal schedule generation with priority ordering, break insertion, estimated times, Ollama/OpenAI/local fallback
 - **Core plugins** — enable/disable 16 built-in modules via Settings > Core Plugins
 
 ### AI-Powered Features
@@ -644,6 +646,8 @@ granit/
       mindmap.go            Mind map view (ASCII tree from headings/links)
       journalprompts.go     Daily journal prompts (100+ across 8 categories)
       clipmanager.go        Clipboard manager (50-entry history with search)
+      dailyplanner.go       Daily planner (time-blocked schedule with task/event sync)
+      aischeduler.go        AI smart scheduler (Ollama/OpenAI/local algorithm)
       taskmanager.go        Task manager with kanban, calendar, priorities
       linkassist.go         Unlinked mention finder + batch linking
       blogpublish.go        Blog publisher (Medium + GitHub)
