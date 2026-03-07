@@ -369,6 +369,39 @@ func (la LinkAssist) View() string {
 	return border.Render(b.String())
 }
 
+// applyLinkSuggestions takes note content and a list of accepted suggestions,
+// and wraps each matched mention with [[ ]]. Suggestions are applied from last
+// to first (by position) so that earlier column offsets remain valid.
+func applyLinkSuggestions(content string, suggestions []LinkAssistItem) string {
+	if len(suggestions) == 0 {
+		return content
+	}
+
+	// Sort in reverse order (last line first, last column first) so that
+	// insertions don't shift positions of earlier suggestions.
+	sorted := make([]LinkAssistItem, len(suggestions))
+	copy(sorted, suggestions)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].LineNum != sorted[j].LineNum {
+			return sorted[i].LineNum > sorted[j].LineNum
+		}
+		return sorted[i].ColStart > sorted[j].ColStart
+	})
+
+	lines := strings.Split(content, "\n")
+	for _, s := range sorted {
+		if s.LineNum >= len(lines) {
+			continue
+		}
+		line := lines[s.LineNum]
+		if s.ColEnd > len(line) {
+			continue
+		}
+		lines[s.LineNum] = line[:s.ColStart] + "[[" + line[s.ColStart:s.ColEnd] + "]]" + line[s.ColEnd:]
+	}
+	return strings.Join(lines, "\n")
+}
+
 // isAlphanumeric returns true if a byte is a letter or digit.
 func isAlphanumeric(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'

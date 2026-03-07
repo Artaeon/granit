@@ -142,6 +142,7 @@ type Model struct {
 	research        ResearchAgent
 	imageManager    ImageManager
 	themeEditor     ThemeEditor
+	linkAssist      LinkAssist
 
 	// Slash command menu
 	slashMenu *SlashMenu
@@ -264,6 +265,7 @@ func NewModel(vaultPath string) (Model, error) {
 		research:        NewResearchAgent(),
 		imageManager:    NewImageManager(),
 		themeEditor:     NewThemeEditor(),
+		linkAssist:      NewLinkAssist(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
 		showSplash:     cfg.ShowSplash,
@@ -1296,6 +1298,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.loadNote(notePath)
 					m.sidebar.cursor = m.findFileIndex(notePath)
 					m.setFocus(focusEditor)
+				}
+			}
+			return m, cmd
+		}
+
+		if m.linkAssist.IsActive() {
+			var cmd tea.Cmd
+			m.linkAssist, cmd = m.linkAssist.Update(msg)
+			if !m.linkAssist.IsActive() {
+				if suggestions, ok := m.linkAssist.GetApplyResult(); ok && m.activeNote != "" {
+					content := m.editor.GetContent()
+					content = applyLinkSuggestions(content, suggestions)
+					m.editor.LoadContent(content, m.editor.filePath)
+					m.editor.modified = true
+					m.statusbar.SetMessage(fmt.Sprintf("Linked %d mentions", len(suggestions)))
 				}
 			}
 			return m, cmd
@@ -2621,6 +2638,12 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdUnfoldAll:
 		m.foldState.UnfoldAll()
 
+	case CmdLinkAssist:
+		if m.activeNote != "" {
+			m.linkAssist.SetSize(m.width, m.height)
+			m.linkAssist.Open(m.editor.GetContent(), m.vault.SortedPaths(), m.activeNote)
+		}
+
 	case CmdImageManager:
 		m.imageManager.SetSize(m.width, m.height)
 		m.imageManager.Open(m.vault.Root)
@@ -2967,6 +2990,7 @@ func (m *Model) updateLayout() {
 	m.research.SetSize(m.width, m.height)
 	m.imageManager.SetSize(m.width, m.height)
 	m.themeEditor.SetSize(m.width, m.height)
+	m.linkAssist.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -3702,6 +3726,10 @@ func (m Model) View() string {
 	}
 	if m.frontmatterEdit.IsActive() {
 		overlay := m.frontmatterEdit.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.linkAssist.IsActive() {
+		overlay := m.linkAssist.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.themeEditor.IsActive() {
