@@ -600,18 +600,34 @@ var builtinThemes = map[string]Theme{
 	},
 }
 
-// ThemeNames returns the sorted list of available built-in theme names.
+// ThemeNames returns the sorted list of all available theme names
+// (custom themes first, then built-in).
 func ThemeNames() []string {
-	names := make([]string, 0, len(builtinThemes))
-	for name := range builtinThemes {
+	seen := make(map[string]bool)
+	var names []string
+
+	// Custom themes first (they override built-ins with the same name)
+	for name := range customThemes {
 		names = append(names, name)
+		seen[name] = true
 	}
+
+	for name := range builtinThemes {
+		if !seen[name] {
+			names = append(names, name)
+		}
+	}
+
 	sort.Strings(names)
 	return names
 }
 
-// GetTheme returns a theme by name, or the default (catppuccin-mocha) if not found.
+// GetTheme returns a theme by name. Custom themes take priority over
+// built-in themes. Falls back to catppuccin-mocha if not found.
 func GetTheme(name string) Theme {
+	if t, ok := customThemes[name]; ok {
+		return t
+	}
 	if t, ok := builtinThemes[name]; ok {
 		return t
 	}
