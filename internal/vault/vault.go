@@ -9,14 +9,16 @@ import (
 )
 
 type Note struct {
-	Path         string
-	RelPath      string
-	Title        string
-	Frontmatter  map[string]interface{}
-	Links        []string    // outgoing [[wikilinks]]
-	Backlinks    []string    // notes linking to this one (populated by index)
-	Content      string
-	ModTime      time.Time
+	Path        string
+	RelPath     string
+	Title       string
+	Frontmatter map[string]interface{}
+	Links       []string // outgoing [[wikilinks]]
+	Backlinks   []string // notes linking to this one (populated by index)
+	Content     string
+	ModTime     time.Time
+	Size        int64 // file size in bytes (available without loading content)
+	loaded      bool  // whether content, frontmatter, and links have been parsed
 }
 
 type Vault struct {
@@ -64,6 +66,8 @@ func (v *Vault) Scan() error {
 			Title:   strings.TrimSuffix(info.Name(), filepath.Ext(info.Name())),
 			Content: string(content),
 			ModTime: info.ModTime(),
+			Size:    info.Size(),
+			loaded:  true,
 		}
 
 		note.Frontmatter = ParseFrontmatter(note.Content)
