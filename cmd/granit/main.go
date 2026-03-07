@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -79,10 +80,19 @@ func main() {
 		}
 		runDaily(vaultPath)
 
-	case "version":
+	case "list":
+		runList()
+
+	case "config":
+		runConfig()
+
+	case "man":
+		fmt.Print(generateManPage())
+
+	case "version", "--version", "-v":
 		fmt.Printf("Granit v%s (%s, %s)\n", version, commit, date)
 
-	case "help":
+	case "help", "--help", "-h":
 		printUsage()
 
 	default:
@@ -98,7 +108,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Print(`
+	fmt.Printf(`
    ██████╗ ██████╗  █████╗ ███╗   ██╗██╗████████╗
   ██╔════╝ ██╔══██╗██╔══██╗████╗  ██║██║╚══██╔══╝
   ██║  ███╗██████╔╝███████║██╔██╗ ██║██║   ██║
@@ -107,45 +117,99 @@ func printUsage() {
    ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝   ╚═╝
 
   Terminal Knowledge Manager — Obsidian Compatible
+  Version %s
 
-Usage:
-  granit <vault-path>     Open a vault in the TUI
-  granit open <path>      Open a vault in the TUI
-  granit scan <path>      Scan vault and print stats
-  granit daily [path]     Open/create today's daily note
-  granit version          Print version
-  granit help             Show this help
+`, version)
 
-Keyboard Shortcuts (TUI):
-  Tab / Shift+Tab Cycle between panels
-  F1              Focus file sidebar
-  F2              Focus editor
-  F3              Focus backlinks panel
-  F4              Rename current note
-  F5              Show keyboard shortcuts
-  Ctrl+P          Quick open (fuzzy search)
-  Ctrl+N          Create new note
-  Ctrl+S          Save current note
-  Ctrl+E          Toggle view/edit mode
-  Ctrl+F          Find in file
-  Ctrl+H          Find & replace
-  Ctrl+J          Quick switch files
-  Ctrl+O          Note outline
-  Ctrl+B          Bookmarks & recent
-  Ctrl+Z          Focus / zen mode
-  Ctrl+G          Show note graph
-  Ctrl+T          Browse tags
-  Ctrl+W          Canvas / whiteboard
-  Ctrl+L          Calendar (month/week/agenda)
-  Ctrl+R          AI bots (Ollama / local)
-  Ctrl+X          Command palette
-  Ctrl+,          Settings
-  Ctrl+Q / Ctrl+C Quit
-  Esc             Return to sidebar / close overlay
-  j/k or arrows   Navigate
-  Enter           Open selected file/link
-  Type to search  Fuzzy filter in sidebar
-  PgUp / PgDown   Scroll
+	fmt.Print(`USAGE
+  granit                        Launch vault selector (or open current dir)
+  granit <vault-path>           Open a vault directly
+  granit <command> [arguments]
+
+CORE COMMANDS
+  open <path>                   Open a vault in the TUI
+  daily [path]                  Open or create today's daily note
+  help, --help, -h              Show this help message
+  version, --version, -v        Print version information
+
+VAULT MANAGEMENT
+  scan <path>                   Scan a vault and print statistics
+  list                          List all known vaults
+  config                        Show configuration paths and current values
+
+ADVANCED
+  man                           Output roff-formatted man page (pipe to man -l -)
+
+EXAMPLES
+  granit ~/notes                Open the vault at ~/notes
+  granit open ~/knowledge       Same as above, explicit form
+  granit daily                  Create/open today's daily note in current dir
+  granit daily ~/notes          Create/open daily note in ~/notes
+  granit scan ~/notes           Print vault statistics and link graph
+  granit list                   Show registered vaults with last-opened dates
+  granit config                 Display active configuration
+  granit man | man -l -         View the full manual page
+
+ENVIRONMENT VARIABLES
+  GRANIT_VAULT                  Default vault path (used when no path given)
+  EDITOR                        Preferred external editor for shell-out
+
+CONFIGURATION FILES
+  ~/.config/granit/config.json  Global settings (theme, keybindings, AI, etc.)
+  ~/.config/granit/vaults.json  Known vault registry
+  <vault>/.granit.json          Per-vault setting overrides
+  ~/.config/granit/plugins/     Global plugin directory
+  <vault>/.granit/plugins/      Vault-local plugin directory
+
+KEYBOARD SHORTCUTS (TUI)
+
+  Navigation
+    Tab / Shift+Tab             Cycle between panels
+    F1                          Focus file sidebar
+    F2                          Focus editor
+    F3                          Focus backlinks panel
+    j/k or Up/Down              Navigate lists
+    Enter                       Open selected file or follow link
+    PgUp / PgDn                 Scroll page up/down
+    Type to search              Fuzzy filter in sidebar
+
+  Editing
+    Ctrl+S                      Save current note
+    Ctrl+E                      Toggle view/edit mode
+    Ctrl+U                      Undo
+    Ctrl+Y                      Redo
+    Ctrl+F                      Find in file
+    Ctrl+H                      Find and replace
+    Ctrl+D                      Multi-cursor: select word / next occurrence
+    Ctrl+Shift+Up/Down          Add cursor above/below
+
+  Overlays
+    Ctrl+P                      Quick open (fuzzy file search)
+    Ctrl+N                      Create new note (template picker)
+    Ctrl+J                      Quick switch files
+    Ctrl+O                      Note outline (headings)
+    Ctrl+B                      Bookmarks and recent notes
+    Ctrl+G                      Note graph visualization
+    Ctrl+T                      Browse tags
+    Ctrl+W                      Canvas / whiteboard
+    Ctrl+L                      Calendar (month/week/agenda)
+    Ctrl+X                      Command palette
+    Ctrl+,                      Settings
+    F4                          Rename current note
+    F5                          Show keyboard shortcuts
+    Ctrl+Z                      Focus / zen mode
+    Esc                         Close overlay / return to sidebar
+
+  AI Bots
+    Ctrl+R                      Open AI bots panel
+                                Providers: Ollama, OpenAI, local fallback
+                                9 bots: tagger, linker, summarizer, Q&A,
+                                writing assistant, titles, action items,
+                                MOC generator, daily digest
+
+  Application
+    Ctrl+Q                      Quit
+    Ctrl+C                      Quit
 `)
 }
 
@@ -246,4 +310,60 @@ type: daily
 
 	// Open the vault with the daily note
 	runTUI(vaultPath)
+}
+
+func runList() {
+	vl := config.LoadVaultList()
+	if len(vl.Vaults) == 0 {
+		fmt.Println("No known vaults. Open a directory with 'granit <path>' to register it.")
+		return
+	}
+
+	fmt.Println("Known vaults:")
+	fmt.Println(strings.Repeat("─", 60))
+	for _, v := range vl.Vaults {
+		marker := "  "
+		if v.Path == vl.LastUsed {
+			marker = "* "
+		}
+		fmt.Printf("%s%-30s  %s  (last: %s)\n", marker, v.Name, v.Path, v.LastOpen)
+	}
+	fmt.Println(strings.Repeat("─", 60))
+	fmt.Printf("  %d vault(s) registered (* = last used)\n", len(vl.Vaults))
+}
+
+func runConfig() {
+	cfg := config.Load()
+
+	fmt.Println("Granit Configuration")
+	fmt.Println(strings.Repeat("─", 50))
+	fmt.Printf("  Global config:   %s\n", config.ConfigPath())
+	fmt.Printf("  Config dir:      %s\n", config.ConfigDir())
+	fmt.Printf("  Vaults file:     %s\n", filepath.Join(config.ConfigDir(), "vaults.json"))
+	fmt.Printf("  Plugins dir:     %s\n", filepath.Join(config.ConfigDir(), "plugins"))
+	fmt.Println()
+
+	// Check which files actually exist
+	globalExists := "missing"
+	if _, err := os.Stat(config.ConfigPath()); err == nil {
+		globalExists = "exists"
+	}
+	vaultsExists := "missing"
+	vaultsPath := filepath.Join(config.ConfigDir(), "vaults.json")
+	if _, err := os.Stat(vaultsPath); err == nil {
+		vaultsExists = "exists"
+	}
+	fmt.Printf("  Global config:   [%s]\n", globalExists)
+	fmt.Printf("  Vaults file:     [%s]\n", vaultsExists)
+	fmt.Println()
+
+	fmt.Println("Current settings:")
+	fmt.Println(strings.Repeat("─", 50))
+
+	data, err := json.MarshalIndent(cfg, "  ", "  ")
+	if err != nil {
+		fmt.Printf("  Error marshaling config: %v\n", err)
+		return
+	}
+	fmt.Printf("  %s\n", string(data))
 }
