@@ -100,10 +100,13 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 - **Link assistant** — find unlinked mentions of other notes and batch-create `[[wikilinks]]`
 - **Tab reordering** — drag tabs with `Alt+Shift+Left/Right`, close with `Alt+W`
 - **Note encryption** — AES-256-GCM encryption with PBKDF2 key derivation for secure GitHub sync (`.md.enc` files)
+- **Language learning** — vocabulary tracker (9 languages), spaced repetition practice, grammar notes, dashboard with streaks and level charts
+- **Habit & goal tracker** — daily habits with streak visualization, goals with milestones and progress bars, completion stats
+- **Core plugins** — enable/disable 16 built-in modules via Settings > Core Plugins
 
 ### AI-Powered Features
 
-Granit includes **15 AI features** that work with local models (Ollama), OpenAI, or a zero-setup offline fallback:
+Granit includes **18 AI features** that work with local models (Ollama), OpenAI, or a zero-setup offline fallback:
 
 | Feature | Description |
 |---------|-------------|
@@ -118,7 +121,11 @@ Granit includes **15 AI features** that work with local models (Ollama), OpenAI,
 | **Auto-Link** | Find unlinked mentions of note titles in your text |
 | **Auto-Tag** | Automatically suggest tags on save |
 | **Similar Notes** | TF-IDF cosine similarity to find related notes |
-| **Deep Dive Research** | Research any topic via Claude Code — auto-generates structured vault notes with web search |
+| **AI Template Generator** | 9 template types (meeting, project, tech doc, blog, tutorial, comparison, summary, workout, custom) with AI generation |
+| **Deep Dive Research** | Research any topic via Claude Code — 4 profiles (general/academic/technical/creative), 4 source filters, research log |
+| **Vault Analyzer** | AI analysis of vault structure, gaps, orphans, and improvement suggestions via Claude Code |
+| **Note Enhancer** | AI-enhance current note with wikilinks, better structure, and deeper content via Claude Code |
+| **Daily Digest** | Generate weekly review from recent vault activity via Claude Code |
 | **Vault Refactor** | AI-powered suggestions to reorganize, merge, split, or retag notes |
 | **Daily Briefing** | AI-generated morning summary of recent notes, tasks, and connections |
 | **Quiz Mode** | Auto-generated quizzes from your notes for active recall |
@@ -612,7 +619,10 @@ granit/
       canvas.go             Visual whiteboard
       contentsearch.go      Full-text vault search
       imageview.go          Image manager + terminal preview
-      research.go           Deep Dive AI research agent
+      research.go           Deep Dive AI research agent + vault analyzer, note enhancer, daily digest
+      aitemplates.go        AI template generator (9 types, Ollama/OpenAI/local)
+      languagelearn.go      Language learning (vocabulary, practice, grammar, dashboard)
+      habits.go             Habit & goal tracker (daily habits, goals, stats)
       taskmanager.go        Task manager with kanban, calendar, priorities
       linkassist.go         Unlinked mention finder + batch linking
       blogpublish.go        Blog publisher (Medium + GitHub)
