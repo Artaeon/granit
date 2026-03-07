@@ -149,6 +149,12 @@ type Model struct {
 	aiTemplates      AITemplates
 	languageLearning LanguageLearning
 	habitTracker     HabitTracker
+	focusSession     FocusSession
+	standupGen       StandupGenerator
+	noteHistory      NoteHistory
+	smartConnect     SmartConnections
+	writingStats     WritingStats
+	quickCapture     QuickCapture
 	dueTodayCount    int
 
 	// Slash command menu
@@ -1145,6 +1151,56 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.habitTracker.IsActive() {
 			m.habitTracker, _ = m.habitTracker.Update(msg)
+			return m, nil
+		}
+
+		if m.focusSession.IsActive() {
+			var cmd tea.Cmd
+			m.focusSession, cmd = m.focusSession.Update(msg)
+			return m, cmd
+		}
+
+		if m.standupGen.IsActive() {
+			m.standupGen, _ = m.standupGen.Update(msg)
+			if !m.standupGen.IsActive() {
+				m.vault.Scan()
+				m.index.Build()
+				m.sidebar.SetFiles(m.vault.SortedPaths())
+			}
+			return m, nil
+		}
+
+		if m.noteHistory.IsActive() {
+			m.noteHistory, _ = m.noteHistory.Update(msg)
+			return m, nil
+		}
+
+		if m.smartConnect.IsActive() {
+			m.smartConnect, _ = m.smartConnect.Update(msg)
+			if !m.smartConnect.IsActive() {
+				if notePath, ok := m.smartConnect.GetSelectedNote(); ok {
+					m.loadNote(notePath)
+					m.sidebar.cursor = m.findFileIndex(notePath)
+				}
+			}
+			return m, nil
+		}
+
+		if m.writingStats.IsActive() {
+			m.writingStats, _ = m.writingStats.Update(msg)
+			return m, nil
+		}
+
+		if m.quickCapture.IsActive() {
+			m.quickCapture, _ = m.quickCapture.Update(msg)
+			if !m.quickCapture.IsActive() {
+				if filePath, ok := m.quickCapture.GetResult(); ok {
+					m.vault.Scan()
+					m.index.Build()
+					m.sidebar.SetFiles(m.vault.SortedPaths())
+					m.statusbar.SetMessage("Saved to " + filePath)
+				}
+			}
 			return m, nil
 		}
 
@@ -2905,6 +2961,34 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.habitTracker.Open(m.vault.Root)
 		}
 
+	case CmdFocusSession:
+		m.focusSession.SetSize(m.width, m.height)
+		m.focusSession.Open(m.vault.Root)
+
+	case CmdStandupGenerator:
+		m.standupGen.SetSize(m.width, m.height)
+		m.standupGen.Open(m.vault.Root)
+
+	case CmdNoteHistory:
+		m.noteHistory.SetSize(m.width, m.height)
+		m.noteHistory.OpenForNote(m.vault.Root, m.activeNote)
+
+	case CmdSmartConnections:
+		m.smartConnect.SetSize(m.width, m.height)
+		content := ""
+		if n, ok := m.vault.Notes[m.activeNote]; ok {
+			content = n.Content
+		}
+		m.smartConnect.OpenForNote(m.vault.Root, m.activeNote, content)
+
+	case CmdWritingStats:
+		m.writingStats.SetSize(m.width, m.height)
+		m.writingStats.Open(m.vault.Root)
+
+	case CmdQuickCapture:
+		m.quickCapture.SetSize(m.width, m.height)
+		m.quickCapture.Open(m.vault.Root)
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}
@@ -3868,6 +3952,30 @@ func (m Model) View() string {
 	}
 	if m.habitTracker.IsActive() {
 		overlay := m.habitTracker.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.focusSession.IsActive() {
+		overlay := m.focusSession.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.standupGen.IsActive() {
+		overlay := m.standupGen.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.noteHistory.IsActive() {
+		overlay := m.noteHistory.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.smartConnect.IsActive() {
+		overlay := m.smartConnect.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.writingStats.IsActive() {
+		overlay := m.writingStats.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.quickCapture.IsActive() {
+		overlay := m.quickCapture.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.spellcheck.IsActive() {
