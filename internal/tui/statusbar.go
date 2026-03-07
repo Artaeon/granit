@@ -166,9 +166,8 @@ func (sb StatusBar) View() string {
 		{"Ctrl+P", "search"},
 		{"Ctrl+N", "new"},
 		{"Ctrl+S", "save"},
-		{"Ctrl+F", "find"},
+		{"Ctrl+K", "tasks"},
 		{"Ctrl+X", "cmds"},
-		{"F5", "help"},
 		{"Ctrl+Q", "quit"},
 	}
 
