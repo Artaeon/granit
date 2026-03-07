@@ -28,7 +28,7 @@ type Config struct {
 	ShowIcons       bool   `json:"show_icons"`
 	CompactMode     bool   `json:"compact_mode"`
 	IconTheme       string `json:"icon_theme"` // "unicode", "nerd", "emoji", "ascii"
-	Layout          string `json:"layout"`     // "default", "writer", "minimal"
+	Layout          string `json:"layout"`     // "default", "writer", "minimal", "reading", "dashboard"
 
 	// Behavior
 	AutoSave        bool `json:"auto_save"`
