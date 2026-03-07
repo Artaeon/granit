@@ -111,11 +111,14 @@ func imgRenderPlaceholder(filename, altText, vaultRoot string, contentWidth int)
 	if isTerminalImageCapable() && vaultRoot != "" {
 		absPath := resolveImagePath(vaultRoot, filename)
 		if absPath != "" {
-			maxW := contentWidth / 2
+			maxW := contentWidth * 3 / 4
 			if maxW < 10 {
 				maxW = 10
 			}
-			maxH := 12 // terminal rows
+			if maxW > 120 {
+				maxW = 120
+			}
+			maxH := 20 // terminal rows
 			rendered, err := renderImageTerminal(absPath, maxW, maxH)
 			if err == nil && rendered != "" {
 				var out []string
