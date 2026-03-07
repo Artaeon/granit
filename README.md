@@ -99,7 +99,7 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 
 ### AI-Powered Features
 
-Granit includes **14 AI features** that work with local models (Ollama), OpenAI, or a zero-setup offline fallback:
+Granit includes **15 AI features** that work with local models (Ollama), OpenAI, or a zero-setup offline fallback:
 
 | Feature | Description |
 |---------|-------------|
@@ -114,6 +114,7 @@ Granit includes **14 AI features** that work with local models (Ollama), OpenAI,
 | **Auto-Link** | Find unlinked mentions of note titles in your text |
 | **Auto-Tag** | Automatically suggest tags on save |
 | **Similar Notes** | TF-IDF cosine similarity to find related notes |
+| **Deep Dive Research** | Research any topic via Claude Code — auto-generates structured vault notes with web search |
 | **Vault Refactor** | AI-powered suggestions to reorganize, merge, split, or retag notes |
 | **Daily Briefing** | AI-generated morning summary of recent notes, tasks, and connections |
 | **Quiz Mode** | Auto-generated quizzes from your notes for active recall |
@@ -241,6 +242,7 @@ go install ./cmd/granit/
 | **aspell** or **hunspell** | Spell checking | No |
 | **pandoc** | PDF export | No |
 | **xclip**, **xsel**, or **wl-copy** | System clipboard (Linux) | No — clipboard features degrade gracefully |
+| **Claude Code** | Deep Dive AI research agent | No — only needed for research feature |
 | **Git** | Version control features | No — git features are optional |
 
 ---
@@ -331,6 +333,19 @@ When Granit exits, it automatically unloads the Ollama model to free memory.
 ```
 
 Available models: `gpt-4o-mini`, `gpt-4o`, `gpt-4.1-mini`, `gpt-4.1-nano`.
+
+### Claude Code (Deep Dive Research)
+
+The **Deep Dive Research** feature uses [Claude Code](https://docs.anthropic.com/en/docs/claude-code) as an AI-powered research agent. When you give it a topic, it:
+
+1. Searches the web for current information
+2. Creates 5-25 interconnected notes in a `Research/` folder
+3. Generates a hub note (`_Index.md`) linking everything
+4. Adds frontmatter, tags, and `[[wikilinks]]` automatically
+
+Three output formats: **Zettelkasten** (atomic notes), **Outline** (hierarchical), or **Study Guide** (with flashcard-ready Q&A).
+
+**Requires**: Claude Code installed and authenticated (`claude` in PATH). No API key configuration needed in Granit.
 
 ### Local Fallback
 
