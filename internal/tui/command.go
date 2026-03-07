@@ -86,6 +86,7 @@ const (
 	CmdUnfoldAll
 	CmdFrontmatterEdit
 	CmdResearchAgent
+	CmdResearchFollowUp
 	CmdQuit
 )
 
@@ -171,6 +172,7 @@ var AllCommands = []Command{
 	{Label: "Unfold All", Desc: "Expand all sections", Shortcut: "", Action: CmdUnfoldAll, Icon: &IconOutlineChar},
 	{Label: "Edit Frontmatter", Desc: "Structured frontmatter property editor", Shortcut: "", Action: CmdFrontmatterEdit, Icon: &IconEditChar},
 	{Label: "Deep Dive Research", Desc: "AI research agent — create notes from any topic via Claude Code", Shortcut: "", Action: CmdResearchAgent, Icon: &IconBotChar},
+	{Label: "Research Follow-Up", Desc: "Go deeper on current note's topic via Claude Code", Shortcut: "", Action: CmdResearchFollowUp, Icon: &IconBotChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
