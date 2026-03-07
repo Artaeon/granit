@@ -80,6 +80,7 @@ const (
 	CmdGitHistory
 	CmdWorkspaces
 	CmdTimeline
+	CmdVaultSwitch
 	CmdQuit
 )
 
@@ -159,6 +160,7 @@ var AllCommands = []Command{
 	{Label: "Git History", Desc: "View commit history and diffs for current note", Shortcut: "", Action: CmdGitHistory, Icon: &IconEditChar},
 	{Label: "Workspaces", Desc: "Save and restore named workspace layouts", Shortcut: "", Action: CmdWorkspaces, Icon: &IconViewChar},
 	{Label: "Timeline", Desc: "Chronological view of all notes", Shortcut: "", Action: CmdTimeline, Icon: &IconDailyChar},
+	{Label: "Switch Vault", Desc: "Switch to a different vault", Shortcut: "", Action: CmdVaultSwitch, Icon: &IconFolderChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
