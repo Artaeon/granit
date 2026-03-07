@@ -135,6 +135,11 @@ type Model struct {
 	workspace  Workspace
 	timeline   Timeline
 
+	// Vault switch, frontmatter editor, folding
+	vaultSwitch     VaultSwitch
+	frontmatterEdit FrontmatterEditor
+	foldState       FoldState
+
 	// Slash command menu
 	slashMenu *SlashMenu
 
@@ -250,6 +255,9 @@ func NewModel(vaultPath string) (Model, error) {
 		gitHistory:      NewGitHistory(),
 		workspace:       NewWorkspace(config.ConfigDir()),
 		timeline:        NewTimeline(),
+		vaultSwitch:     NewVaultSwitch(),
+		frontmatterEdit: NewFrontmatterEditor(),
+		foldState:       NewFoldState(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
 		showSplash:     cfg.ShowSplash,
@@ -355,6 +363,7 @@ func (m *Model) loadNote(relPath string) {
 	outgoing := m.buildOutgoingItems(m.index.GetOutgoingLinks(relPath))
 	m.backlinks.SetLinks(incoming, outgoing)
 
+	m.foldState.UnfoldAll()
 	m.bookmarks.AddRecent(relPath)
 	if m.breadcrumb != nil {
 		m.breadcrumb.Push(relPath)
@@ -1231,6 +1240,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.loadNote(notePath)
 					m.sidebar.cursor = m.findFileIndex(notePath)
 					m.setFocus(focusEditor)
+				}
+			}
+			return m, cmd
+		}
+
+		if m.vaultSwitch.IsActive() {
+			var cmd tea.Cmd
+			m.vaultSwitch, cmd = m.vaultSwitch.Update(msg)
+			if !m.vaultSwitch.IsActive() {
+				if vaultPath, ok := m.vaultSwitch.GetSelectedVault(); ok {
+					// Relaunch with new vault
+					newModel, err := NewModel(vaultPath)
+					if err == nil {
+						newModel.width = m.width
+						newModel.height = m.height
+						newModel.showSplash = false
+						newModel.updateLayout()
+						return &newModel, nil
+					}
+				}
+			}
+			return m, cmd
+		}
+
+		if m.frontmatterEdit.IsActive() {
+			var cmd tea.Cmd
+			m.frontmatterEdit, cmd = m.frontmatterEdit.Update(msg)
+			if !m.frontmatterEdit.IsActive() {
+				if yamlBlock, ok := m.frontmatterEdit.GetResult(); ok && m.activeNote != "" {
+					content := m.editor.GetContent()
+					// Replace existing frontmatter or prepend new one
+					newContent := replaceFrontmatter(content, yamlBlock)
+					m.editor.LoadContent(newContent, m.editor.filePath)
+					m.editor.modified = true
+					m.statusbar.SetMessage("Frontmatter updated")
 				}
 			}
 			return m, cmd
@@ -2442,6 +2486,29 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		m.timeline.Open(notes)
 
+	case CmdVaultSwitch:
+		m.vaultSwitch.SetSize(m.width, m.height)
+		m.vaultSwitch.Open()
+
+	case CmdFrontmatterEdit:
+		if m.activeNote != "" {
+			m.frontmatterEdit.SetSize(m.width, m.height)
+			m.frontmatterEdit.Open(m.editor.GetContent())
+		}
+
+	case CmdFoldToggle:
+		if m.activeNote != "" {
+			m.foldState.ToggleFold(m.editor.cursor, m.editor.content)
+		}
+
+	case CmdFoldAll:
+		if m.activeNote != "" {
+			m.foldState.FoldAll(m.editor.content)
+		}
+
+	case CmdUnfoldAll:
+		m.foldState.UnfoldAll()
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}
@@ -2733,6 +2800,8 @@ func (m *Model) updateLayout() {
 	m.gitHistory.SetSize(m.width, m.height)
 	m.workspace.SetSize(m.width, m.height)
 	m.timeline.SetSize(m.width, m.height)
+	m.vaultSwitch.SetSize(m.width, m.height)
+	m.frontmatterEdit.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -3460,6 +3529,14 @@ func (m Model) View() string {
 	}
 	if m.timeline.IsActive() {
 		overlay := m.timeline.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.vaultSwitch.IsActive() {
+		overlay := m.vaultSwitch.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.frontmatterEdit.IsActive() {
+		overlay := m.frontmatterEdit.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.pomodoro.IsActive() {
@@ -4373,4 +4450,27 @@ func (m *Model) writeBriefingToDailyNote(briefingContent string) {
 	m.sidebar.cursor = m.findFileIndex(dailyName)
 	m.setFocus(focusEditor)
 	m.statusbar.SetMessage("Daily briefing written to " + dailyName)
+}
+
+// replaceFrontmatter replaces existing YAML frontmatter in content with newFM,
+// or prepends it if none exists.
+func replaceFrontmatter(content, newFM string) string {
+	if strings.HasPrefix(strings.TrimSpace(content), "---") {
+		lines := strings.SplitN(content, "\n", -1)
+		// Find end of existing frontmatter
+		endIdx := -1
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == "---" {
+				endIdx = i
+				break
+			}
+		}
+		if endIdx >= 0 {
+			// Replace from line 0 through endIdx with newFM
+			rest := strings.Join(lines[endIdx+1:], "\n")
+			return newFM + "\n" + rest
+		}
+	}
+	// No existing frontmatter — prepend
+	return newFM + "\n" + content
 }
