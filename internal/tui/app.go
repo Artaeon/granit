@@ -2583,6 +2583,12 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.research.Open(m.vault.Root)
 		}
 
+	case CmdResearchFollowUp:
+		if m.activeNote != "" && !m.research.IsRunning() {
+			m.research.SetSize(m.width, m.height)
+			m.research.OpenFollowUp(m.vault.Root, m.activeNote, m.editor.GetContent())
+		}
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}
