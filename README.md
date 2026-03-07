@@ -41,7 +41,7 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 
 **No Electron. No browser. No subscriptions. Just your terminal.**
 
-> **Why Granit?** Obsidian is great, but it's Electron-based, closed-source, and its AI features require a paid subscription. Granit gives you a fast, keyboard-driven alternative with **built-in AI** (local or cloud), **Vim keybindings**, **Git integration**, and **90+ features** — all running natively in your terminal at a fraction of the memory footprint.
+> **Why Granit?** Obsidian is great, but it's Electron-based, closed-source, and its AI features require a paid subscription. Granit gives you a fast, keyboard-driven alternative with **built-in AI** (local or cloud), **Vim keybindings**, **Git integration**, and **100+ features** — all running natively in your terminal at a fraction of the memory footprint.
 
 ---
 
@@ -94,7 +94,9 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 - **Focus/Zen mode** — distraction-free writing with `Ctrl+Z`
 - **Ghost Writer** — inline AI writing suggestions (Tab to accept)
 - **Visual table editor** — edit Markdown tables in a spreadsheet-like interface
-- **Mermaid diagrams** — ASCII rendering of flowcharts, sequence diagrams, and pie charts in view mode
+- **Mermaid diagrams** — ASCII rendering of flowcharts, sequence diagrams, pie charts, class diagrams, and Gantt charts in view mode
+- **Link assistant** — find unlinked mentions of other notes and batch-create `[[wikilinks]]`
+- **Tab reordering** — drag tabs with `Alt+Shift+Left/Right`, close with `Alt+W`
 - **Note encryption** — AES-256-GCM encryption with PBKDF2 key derivation for secure GitHub sync (`.md.enc` files)
 
 ### AI-Powered Features
@@ -130,6 +132,7 @@ Granit includes **15 AI features** that work with local models (Ollama), OpenAI,
 - **Full-text search** — search across all note contents with highlighted results
 - **Tag browser** (`Ctrl+T`) — browse and filter notes by tag
 - **Graph view** (`Ctrl+G`) — visualize note connections
+- **Task manager** (`Ctrl+K`) — cross-vault task view with Today/Upcoming/All/Completed tabs, calendar planning, priorities (`⏫🔼🔽`), due dates (`📅`), search, and quick-add
 - **Calendar view** (`Ctrl+L`) — month, week, and agenda views tied to daily notes
 - **Timeline view** — chronological visualization of all notes grouped by day, week, or month
 - **Bookmarks & recents** (`Ctrl+B`) — star notes and jump to recently opened files
@@ -607,6 +610,8 @@ granit/
       contentsearch.go      Full-text vault search
       imageview.go          Image manager + terminal preview
       research.go           Deep Dive AI research agent
+      taskmanager.go        Cross-vault task manager with calendar
+      linkassist.go         Unlinked mention finder + batch linking
       ... and 20+ more components
 ```
 
