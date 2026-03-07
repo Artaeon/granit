@@ -1,0 +1,41 @@
+# Maintainer: Artaeon <raphael.lugmayr@stoicera.com>
+pkgname=granit-git
+pkgver=r1.0000000
+pkgrel=1
+pkgdesc="A blazing-fast, AI-powered terminal knowledge manager — fully Obsidian compatible"
+arch=('x86_64' 'aarch64')
+url="https://github.com/artaeon/granit"
+license=('MIT')
+makedepends=('go>=1.23' 'git')
+optdepends=(
+  'ollama: local AI provider'
+  'aspell: spell checking'
+  'hunspell: spell checking (alternative)'
+  'pandoc: PDF export'
+  'xclip: system clipboard (X11)'
+  'wl-clipboard: system clipboard (Wayland)'
+  'git: version control features'
+)
+provides=('granit')
+conflicts=('granit')
+source=("git+${url}.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd granit
+  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  cd granit
+  export CGO_ENABLED=0
+  export GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw"
+  go build -ldflags "-s -w" -o "${pkgname%-git}" ./cmd/granit/
+}
+
+package() {
+  cd granit
+  install -Dm755 "${pkgname%-git}" "${pkgdir}/usr/bin/${pkgname%-git}"
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+}
