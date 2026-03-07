@@ -41,7 +41,7 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 
 **No Electron. No browser. No subscriptions. Just your terminal.**
 
-> **Why Granit?** Obsidian is great, but it's Electron-based, closed-source, and its AI features require a paid subscription. Granit gives you a fast, keyboard-driven alternative with **built-in AI** (local or cloud), **Vim keybindings**, **Git integration**, and **60+ features** — all running natively in your terminal at a fraction of the memory footprint.
+> **Why Granit?** Obsidian is great, but it's Electron-based, closed-source, and its AI features require a paid subscription. Granit gives you a fast, keyboard-driven alternative with **built-in AI** (local or cloud), **Vim keybindings**, **Git integration**, and **80+ features** — all running natively in your terminal at a fraction of the memory footprint.
 
 ---
 
@@ -73,15 +73,20 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 ### Core Editor
 
 - **Syntax-highlighted Markdown** — headings, bold, italic, code blocks, blockquotes, lists, checkboxes
+- **Language-aware code highlighting** — fenced code blocks colored per language (Go, Python, JS/TS, Rust, Shell) with keyword, type, string, comment, and number styling
 - **Wikilinks** — `[[note]]` linking with automatic resolution across the vault
 - **Backlinks panel** — see every note that links to the current one, plus outgoing links
+- **Live backlink preview** — floating popup showing linked note content when cursor is on a `[[wikilink]]`
 - **YAML frontmatter** — parsing and display of tags, dates, and custom fields
+- **Frontmatter editor** — structured overlay for editing properties (tags as pills, booleans as toggles, dates with validation, presets)
 - **Rendered view mode** — toggle between raw edit and styled reading with `Ctrl+E`
 - **Vim keybindings** — full modal editing (Normal/Insert/Visual/Command) with `hjkl`, `dd`/`yy`/`p`, `:w`/`:q`, dot repeat
 - **Multi-cursor editing** — `Ctrl+D` to select word and add cursors at next occurrence
 - **Undo/Redo** — full edit history (`Ctrl+U` / `Ctrl+Y`)
 - **Find & Replace** — `Ctrl+F` / `Ctrl+H` with match highlighting
 - **Smart autocomplete** — inline wikilink popup triggered by `[[` with fuzzy search and preview snippets
+- **Collapsible sections** — fold/unfold headings and code blocks with fold indicators (`▶`/`▼`)
+- **Footnotes** — `[^id]` references with styled markers and definition lookup
 - **Auto-close brackets** and smart indentation
 - **Line numbers** with active line highlighting
 - **Snippet expansion** — 18 built-in snippets (`/date`, `/todo`, `/meeting`, `/table`, etc.)
@@ -90,10 +95,11 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 - **Ghost Writer** — inline AI writing suggestions (Tab to accept)
 - **Visual table editor** — edit Markdown tables in a spreadsheet-like interface
 - **Mermaid diagrams** — ASCII rendering of flowcharts, sequence diagrams, and pie charts in view mode
+- **Note encryption** — AES-256-GCM encryption with PBKDF2 key derivation for secure GitHub sync (`.md.enc` files)
 
 ### AI-Powered Features
 
-Granit includes **12 AI features** that work with local models (Ollama), OpenAI, or a zero-setup offline fallback:
+Granit includes **14 AI features** that work with local models (Ollama), OpenAI, or a zero-setup offline fallback:
 
 | Feature | Description |
 |---------|-------------|
@@ -108,12 +114,15 @@ Granit includes **12 AI features** that work with local models (Ollama), OpenAI,
 | **Auto-Link** | Find unlinked mentions of note titles in your text |
 | **Auto-Tag** | Automatically suggest tags on save |
 | **Similar Notes** | TF-IDF cosine similarity to find related notes |
+| **Vault Refactor** | AI-powered suggestions to reorganize, merge, split, or retag notes |
+| **Daily Briefing** | AI-generated morning summary of recent notes, tasks, and connections |
 | **Quiz Mode** | Auto-generated quizzes from your notes for active recall |
 | **Flashcards** | Spaced repetition study (SM-2 algorithm) extracted from your notes |
 | **Learning Dashboard** | Track study progress, streaks, and mastery |
 
 ### Vault Management
 
+- **Multi-vault switcher** — switch between vaults without restarting, manage vault list in-app
 - **Vault selector** — pick from recent vaults or create new ones when launching `granit` without arguments
 - **File tree sidebar** with folder expand/collapse and file icons
 - **Fuzzy search** (`Ctrl+P`) across all notes
@@ -121,15 +130,18 @@ Granit includes **12 AI features** that work with local models (Ollama), OpenAI,
 - **Tag browser** (`Ctrl+T`) — browse and filter notes by tag
 - **Graph view** (`Ctrl+G`) — visualize note connections
 - **Calendar view** (`Ctrl+L`) — month, week, and agenda views tied to daily notes
+- **Timeline view** — chronological visualization of all notes grouped by day, week, or month
 - **Bookmarks & recents** (`Ctrl+B`) — star notes and jump to recently opened files
 - **Quick switch** (`Ctrl+J`) — fast switching among recent notes
 - **Note outline** (`Ctrl+O`) — heading-based document outline
+- **Workspace layouts** — save and restore named workspace snapshots (open tabs, layout, view mode)
 - **Breadcrumb navigation** — `Alt+Left`/`Alt+Right` for browser-style back/forward, pinned tabs
 - **Daily notes** — create or open today's note with a single command
 - **Vault statistics** — note counts, link density, word counts
 - **Trash** — soft-delete with restore
 - **Folder management** — create folders and move files
 - **File watcher** — auto-detects external changes and refreshes the vault
+- **Lazy vault loading** — on-demand content reading for fast startup with large vaults (1000+ notes)
 - **Pomodoro timer** — 25-min focus sessions with break cycles, writing stats tracking
 - **System clipboard** — `Ctrl+V` paste with platform-native clipboard access
 - **Web clipper** — fetch a URL, convert to Markdown, save as a note
@@ -143,6 +155,7 @@ Built-in git overlay with three views:
 - **Diff** — syntax-highlighted diff of unstaged changes
 - Quick actions: **commit** (c), **push** (p), **pull** (P), **refresh** (r)
 - **Auto-sync** — optional auto commit+push on save, pull on open
+- **Per-note git history** — view commit history, browse colored diffs, and restore previous versions for any note
 
 ### Export & Publishing
 
@@ -250,6 +263,15 @@ granit daily ~/Notes
 # Scan a vault and print stats:
 granit scan ~/Notes
 
+# List all known vaults:
+granit list
+
+# Show configuration paths and values:
+granit config
+
+# View the man page:
+granit man | man -l -
+
 # Print version:
 granit version
 ```
@@ -262,7 +284,7 @@ granit version
 4. Type `[[` in the editor to start a wikilink — autocomplete suggests matching notes.
 5. Press `Ctrl+E` to toggle between edit and rendered view mode.
 6. Press `Ctrl+S` to save. Enable auto-save in settings (`Ctrl+,`).
-7. Press `Ctrl+X` to open the **command palette** — access all 60+ commands from one place.
+7. Press `Ctrl+X` to open the **command palette** — access all 70+ commands from one place.
 
 ---
 
@@ -497,46 +519,54 @@ Per-vault settings override global. All settings can be changed from the built-i
 ```
 granit/
   cmd/granit/
-    main.go                 CLI entry point, vault selector
+    main.go                 CLI entry point, vault selector, subcommands
+    manpage.go              Roff man page generator (granit man)
   internal/
     config/
       config.go             JSON configuration (global + per-vault)
       vaults.go             Vault list persistence
       import.go             Obsidian config importer
     vault/
-      vault.go              Vault scanning, note storage
+      vault.go              Vault scanning with lazy loading
       parser.go             Markdown/frontmatter/wikilink parser
       index.go              Backlink and link index
     tui/
-      app.go                Main Bubble Tea model (~2800 lines)
+      app.go                Main Bubble Tea model (~4500 lines)
       editor.go             Text editor with multi-cursor
+      syntaxhl.go           Language-aware code block highlighting
       renderer.go           Markdown rendering for view mode
       sidebar.go            File tree sidebar
-      statusbar.go          Status bar with pomodoro indicator
+      statusbar.go          Status bar with AI + pomodoro indicators
       styles.go             Global style definitions
       themes.go             28 built-in color themes
-      command.go            Command palette (60+ actions)
+      command.go            Command palette (70+ actions)
       vim.go                Vim modal editing
-      watcher.go            File system polling watcher
+      folding.go            Collapsible heading/code fold state
+      footnotes.go          Footnote parsing and rendering
+      encryption.go         AES-256-GCM note encryption
+      frontmatteredit.go    Structured frontmatter property editor
+      backlinkpreview.go    Live wikilink hover preview
+      githistory.go         Per-note git history with diff/restore
+      workspace.go          Named workspace layout persistence
+      timeline.go           Chronological note timeline
+      vaultswitch.go        In-app multi-vault switcher
       vaultselector.go      Vault selector full-screen UI
-      clipboard.go          System clipboard + web clipper
-      pomodoro.go           Pomodoro focus timer
-      breadcrumb.go         Back/forward navigation + pinned tabs
-      linkcomplete.go       Wikilink autocomplete popup
+      bots.go               AI bot system (9 bots)
+      aichat.go             Vault-wide AI chat
+      composer.go           AI note composer
       ghostwriter.go        Inline AI writing suggestions
       threadweaver.go       Multi-note AI synthesis
       autotag.go            Auto-tagger + note chat
       embeddings.go         Semantic search with AI embeddings
+      knowledgegraph.go     Knowledge graph analysis
+      vaultrefactor.go      AI vault reorganization
+      dailybriefing.go      AI morning briefing generator
+      similarity.go         TF-IDF note similarity
       tableeditor.go        Visual markdown table editor
       mermaid.go            Mermaid diagram ASCII renderer
-      bots.go               AI bot system (9 bots)
       flashcards.go         Spaced repetition (SM-2)
       quizmode.go           Auto-generated quizzes
       learndash.go          Learning dashboard
-      aichat.go             Vault-wide AI chat
-      composer.go           AI note composer
-      knowledgegraph.go     Knowledge graph analysis
-      similarity.go         TF-IDF note similarity
       git.go                Git integration overlay
       export.go             Note export (HTML, text, PDF)
       publish.go            Static site publisher
@@ -545,7 +575,7 @@ granit/
       calendar.go           Calendar view (month/week/agenda)
       canvas.go             Visual whiteboard
       contentsearch.go      Full-text vault search
-      ... and more
+      ... and 20+ more components
 ```
 
 Built on [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss) by [Charm](https://charm.sh/).
