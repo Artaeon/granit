@@ -716,6 +716,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case focusSessionTickMsg:
+		if m.focusSession.IsActive() {
+			var cmd tea.Cmd
+			m.focusSession, cmd = m.focusSession.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case researchResultMsg:
 		// Always handle — research runs in background even if overlay is closed
 		if m.research.IsRunning() {
