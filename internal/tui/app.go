@@ -1690,6 +1690,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "alt+shift+left":
+			// Move active tab left
+			if m.tabBar != nil {
+				m.tabBar.MoveLeft()
+			}
+			return m, nil
+
+		case "alt+shift+right":
+			// Move active tab right
+			if m.tabBar != nil {
+				m.tabBar.MoveRight()
+			}
+			return m, nil
+
+		case "alt+w":
+			// Close active tab
+			if m.tabBar != nil && len(m.tabBar.Tabs()) > 1 {
+				newActive := m.tabBar.CloseActive()
+				if newActive != "" && newActive != m.activeNote {
+					m.loadNote(newActive)
+					m.sidebar.cursor = m.findFileIndex(newActive)
+				}
+			}
+			return m, nil
+
 		case "esc":
 			// If multi-cursors are active, clear them first
 			if m.focus == focusEditor && !m.viewMode && m.editor.HasMultiCursors() {
