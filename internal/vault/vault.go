@@ -3,6 +3,7 @@ package vault
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -86,13 +87,6 @@ func (v *Vault) SortedPaths() []string {
 	for p := range v.Notes {
 		paths = append(paths, p)
 	}
-	// Simple sort
-	for i := 0; i < len(paths); i++ {
-		for j := i + 1; j < len(paths); j++ {
-			if paths[i] > paths[j] {
-				paths[i], paths[j] = paths[j], paths[i]
-			}
-		}
-	}
+	sort.Strings(paths)
 	return paths
 }
