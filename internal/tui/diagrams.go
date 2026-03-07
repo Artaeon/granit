@@ -59,6 +59,8 @@ func RenderDiagramASCII(source string, maxWidth int) []string {
 		label = "Timeline"
 	case "comparison":
 		label = "Comparison"
+	case "figure":
+		label = "Figure"
 	}
 	lines = append(lines, "  "+headerStyle.Render(label))
 
@@ -81,6 +83,8 @@ func RenderDiagramASCII(source string, maxWidth int) []string {
 		bodyLines = renderTimelineDiagram(body, maxWidth)
 	case "comparison":
 		bodyLines = renderComparisonDiagram(body, maxWidth)
+	case "figure":
+		bodyLines = renderFigureDiagram(body, maxWidth)
 	default:
 		// Fallback: render as sequence if there are > separators, else as tree
 		if strings.Contains(strings.Join(body, " "), " > ") {
@@ -756,4 +760,385 @@ func rightPad(s string, width int) string {
 		return s[:width]
 	}
 	return s + strings.Repeat(" ", width-len(s))
+}
+
+// ---------------------------------------------------------------------------
+// Figure Diagram — pre-drawn fighting technique illustrations
+// ---------------------------------------------------------------------------
+
+type figureTemplate struct {
+	art   []string
+	notes []string
+}
+
+var figureTemplates = map[string]*figureTemplate{
+	"orthodox": {
+		art: []string{
+			"",
+			"              ○              ",
+			"             ╱│╲             ",
+			"           ●─╯ ╰─●          ",
+			"              │              ",
+			"             ╱ ╲             ",
+			"            ╱   ╲            ",
+			"           ▪     ▪           ",
+			"",
+			"        ╭─── Legend ───╮     ",
+			"        │ ○  head/chin │     ",
+			"        │ ●  fists     │     ",
+			"        │ ▪  feet      │     ",
+			"        ╰─────────────╯     ",
+		},
+		notes: []string{
+			"Chin tucked, eyes on opponent",
+			"Hands at chin level, elbows tight to body",
+			"Feet shoulder-width apart, lead foot forward",
+			"Weight evenly distributed 50/50",
+			"Knees slightly bent, stay light on feet",
+		},
+	},
+	"jab": {
+		art: []string{
+			"",
+			"              ○              ",
+			"             ╱│╲             ",
+			"       ●════╱ │ ╰─●         ",
+			"         →→→  │             ",
+			"             ╱│             ",
+			"            ╱  ╲            ",
+			"           ▪    ▪           ",
+			"           ↑                ",
+			"       push off             ",
+		},
+		notes: []string{
+			"Extend lead arm straight toward target",
+			"Rotate lead shoulder forward for extra reach",
+			"Rear hand stays at chin protecting face",
+			"Rotate fist palm-down at impact point",
+			"Snap punch back immediately — don't linger",
+		},
+	},
+	"cross": {
+		art: []string{
+			"",
+			"                ○            ",
+			"               ╱│╲           ",
+			"          ●─╮  │ ╲════●     ",
+			"             │ │   →→→      ",
+			"               │╲           ",
+			"              ╱  ╲          ",
+			"             ▪    ▪         ",
+			"                  ↻ pivot   ",
+		},
+		notes: []string{
+			"Drive rear hand straight from chin to target",
+			"Full hip and shoulder rotation generates power",
+			"Pivot rear foot — heel lifts, ball stays planted",
+			"Lead hand drops slightly to guard the body",
+			"Power chain: foot → hip → shoulder → fist",
+		},
+	},
+	"hook": {
+		art: []string{
+			"",
+			"              ○              ",
+			"             ╱│╲             ",
+			"         ╭─●╱ │ ╰─●         ",
+			"         │    │             ",
+			"         ╰──→ │             ",
+			"             ╱ ╲            ",
+			"            ▪   ▪           ",
+			"            ↻               ",
+		},
+		notes: []string{
+			"Bend lead elbow 90 degrees, arm parallel to floor",
+			"Power comes from hip and torso rotation, not arm",
+			"Pivot on lead foot, rotate entire body as one unit",
+			"Connect with first two knuckles at temple or jaw",
+			"Keep rear hand glued to chin throughout the punch",
+		},
+	},
+	"uppercut": {
+		art: []string{
+			"",
+			"              ○              ",
+			"             ╱│╲             ",
+			"           ●─╯ │╮           ",
+			"               │ │          ",
+			"               │ ●          ",
+			"               │ ↑          ",
+			"              ╱ ╲           ",
+			"             ▪   ▪          ",
+			"                 ↻          ",
+		},
+		notes: []string{
+			"Drop rear hand slightly, palm faces inward",
+			"Drive upward from legs — bend knees, then extend",
+			"Aim under the chin or to the solar plexus",
+			"Keep lead hand at chin as guard throughout",
+			"Short, compact arc — not a wide looping motion",
+		},
+	},
+	"front-kick": {
+		art: []string{
+			"",
+			"              ○              ",
+			"             ╱│╲             ",
+			"           ●─╯ ╰─●          ",
+			"             ╱│             ",
+			"            ╱ ╰───▪         ",
+			"           ▪    →→→         ",
+			"",
+			"         chamber → extend   ",
+		},
+		notes: []string{
+			"Chamber: lift knee to chest first",
+			"Extend: push foot straight toward target",
+			"Strike with ball of foot (push) or heel (thrust)",
+			"Lean upper body slightly back for balance",
+			"Snap leg back quickly — don't leave it extended",
+		},
+	},
+	"roundhouse": {
+		art: []string{
+			"",
+			"              ○              ",
+			"             ╱│╲             ",
+			"           ●─╯ ╰─●          ",
+			"             ╱│             ",
+			"            ╱ │             ",
+			"           ▪  ╰────▪        ",
+			"           ↻     →→→        ",
+			"         pivot    strike     ",
+		},
+		notes: []string{
+			"Pivot on lead foot — turn it away from target",
+			"Open hips fully, swing rear leg horizontally",
+			"Strike with the shin, NOT the foot or ankle",
+			"Follow through past the target for max power",
+			"Arm on kicking side swings back for momentum",
+		},
+	},
+	"elbow": {
+		art: []string{
+			"",
+			"              ○              ",
+			"             ╱│╲             ",
+			"        ╭──●╱ │ ╰─●         ",
+			"        ╰→    │             ",
+			"             ╱ ╲            ",
+			"            ▪   ▪           ",
+			"",
+			"      close range only!     ",
+		},
+		notes: []string{
+			"Close distance first — clinch or pocket range",
+			"Swing forearm in tight arc, elbow leads",
+			"Strike with point of elbow, aim at temple/brow",
+			"Types: horizontal, upward, downward, spinning",
+			"Most devastating short-range weapon in Muay Thai",
+		},
+	},
+	"knee": {
+		art: []string{
+			"",
+			"              ○              ",
+			"             ╱│╲             ",
+			"           ●─╯ ╰─●          ",
+			"             ╱│             ",
+			"            ╱ ╰─╮           ",
+			"           ▪    ▪           ",
+			"                ↑↑          ",
+			"            drive up        ",
+		},
+		notes: []string{
+			"Pull opponent into knee with collar tie or clinch",
+			"Drive knee straight up — hip extension is key",
+			"Target: solar plexus, floating ribs, or thigh",
+			"Pull hands down as knee comes up for extra force",
+			"Stay on ball of support foot for balance",
+		},
+	},
+	"slip": {
+		art: []string{
+			"",
+			"   ───── →→→ ─────           ",
+			"         ↘                    ",
+			"            ○                 ",
+			"           ╱│╲                ",
+			"         ●─╯ ╰─●             ",
+			"            │╲                ",
+			"           ╱  ╲               ",
+			"          ▪    ▪              ",
+			"       feet stay planted      ",
+		},
+		notes: []string{
+			"Bend at the waist, move head off the centerline",
+			"Slip OUTSIDE the punch for safer positioning",
+			"Eyes stay on opponent — never look at the floor",
+			"Feet stay planted — all movement from the waist",
+			"Immediately counter after slipping — don't just dodge",
+		},
+	},
+}
+
+var figureAliases = map[string]string{
+	"guard":           "orthodox",
+	"stance":          "orthodox",
+	"fighting-stance": "orthodox",
+	"southpaw":        "orthodox",
+	"teep":            "front-kick",
+	"push-kick":       "front-kick",
+	"straight":        "cross",
+	"rear-straight":   "cross",
+	"rear-cross":      "cross",
+	"power-punch":     "cross",
+	"lead-hook":       "hook",
+	"left-hook":       "hook",
+	"rear-uppercut":   "uppercut",
+	"lead-uppercut":   "uppercut",
+	"round-kick":      "roundhouse",
+	"roundhouse-kick": "roundhouse",
+	"low-kick":        "roundhouse",
+	"head-kick":       "roundhouse",
+	"body-kick":       "roundhouse",
+	"shin-kick":       "roundhouse",
+	"knee-strike":     "knee",
+	"clinch-knee":     "knee",
+	"elbow-strike":    "elbow",
+	"sok":             "elbow",
+	"slip-outside":    "slip",
+	"slip-inside":     "slip",
+	"bob":             "slip",
+	"bob-and-weave":   "slip",
+	"dodge":           "slip",
+	"evade":           "slip",
+}
+
+func renderFigureDiagram(body []string, maxWidth int) []string {
+	pose := ""
+	var extraNotes []string
+
+	for _, line := range body {
+		t := strings.TrimSpace(line)
+		l := strings.ToLower(t)
+		if strings.HasPrefix(l, "pose:") || strings.HasPrefix(l, "show:") {
+			pose = strings.TrimSpace(l[5:])
+			continue
+		}
+		if t != "" {
+			extraNotes = append(extraNotes, t)
+		}
+	}
+
+	// Normalize pose name
+	pose = strings.ToLower(strings.TrimSpace(pose))
+	pose = strings.ReplaceAll(pose, " ", "-")
+	pose = strings.ReplaceAll(pose, "_", "-")
+	if alias, ok := figureAliases[pose]; ok {
+		pose = alias
+	}
+
+	tmpl, ok := figureTemplates[pose]
+	if !ok {
+		return renderAvailablePoses(maxWidth)
+	}
+
+	var result []string
+
+	// Render figure art with colors
+	for _, line := range tmpl.art {
+		result = append(result, "    "+colorizeFigureLine(line))
+	}
+
+	// Key points header
+	separatorStyle := lipgloss.NewStyle().Foreground(surface1)
+	result = append(result, "")
+	result = append(result, "    "+separatorStyle.Render("─── Key Points ───"))
+
+	noteStyle := lipgloss.NewStyle().Foreground(overlay1)
+	bulletStyle := lipgloss.NewStyle().Foreground(green)
+
+	for _, note := range tmpl.notes {
+		result = append(result, "    "+bulletStyle.Render("  ▸ ")+noteStyle.Render(note))
+	}
+	for _, note := range extraNotes {
+		result = append(result, "    "+bulletStyle.Render("  ▸ ")+noteStyle.Render(note))
+	}
+
+	return result
+}
+
+func colorizeFigureLine(line string) string {
+	var result strings.Builder
+
+	headStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
+	fistStyle := lipgloss.NewStyle().Foreground(red).Bold(true)
+	bodyStyle := lipgloss.NewStyle().Foreground(text)
+	strikeStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+	footStyle := lipgloss.NewStyle().Foreground(teal).Bold(true)
+	arrowStyle := lipgloss.NewStyle().Foreground(yellow).Bold(true)
+	annotStyle := lipgloss.NewStyle().Foreground(overlay0)
+	curveStyle := lipgloss.NewStyle().Foreground(green)
+
+	runes := []rune(line)
+	for _, ch := range runes {
+		switch ch {
+		case '\u25CB': // ○
+			result.WriteString(headStyle.Render(string(ch)))
+		case '\u25CF', '\u25A0': // ● ■
+			result.WriteString(fistStyle.Render(string(ch)))
+		case '\u2502', '\u2571', '\u2572': // │ ╱ ╲
+			result.WriteString(bodyStyle.Render(string(ch)))
+		case '\u2550': // ═
+			result.WriteString(strikeStyle.Render(string(ch)))
+		case '\u25AA': // ▪
+			result.WriteString(footStyle.Render(string(ch)))
+		case '\u2192', '\u2190', '\u2191', '\u2193', '\u2197', '\u2198', '\u2199', '\u2196', '\u21BB', '\u21BA': // → ← ↑ ↓ ↗ ↘ ↙ ↖ ↻ ↺
+			result.WriteString(arrowStyle.Render(string(ch)))
+		case '\u256D', '\u256E', '\u256F', '\u2570': // ╭ ╮ ╯ ╰
+			result.WriteString(curveStyle.Render(string(ch)))
+		case '\u2500': // ─
+			result.WriteString(curveStyle.Render(string(ch)))
+		case ' ':
+			result.WriteRune(' ')
+		default:
+			result.WriteString(annotStyle.Render(string(ch)))
+		}
+	}
+
+	return result.String()
+}
+
+func renderAvailablePoses(maxWidth int) []string {
+	headerStyle := lipgloss.NewStyle().Foreground(yellow).Bold(true)
+	poseStyle := lipgloss.NewStyle().Foreground(blue)
+	descStyle := lipgloss.NewStyle().Foreground(overlay1)
+
+	poses := []struct{ name, desc string }{
+		{"orthodox", "Basic fighting stance / guard position"},
+		{"jab", "Lead hand straight punch"},
+		{"cross", "Rear hand power punch with hip rotation"},
+		{"hook", "Lead hook — horizontal arc punch"},
+		{"uppercut", "Rising punch from below"},
+		{"front-kick", "Front push kick / teep"},
+		{"roundhouse", "Round kick — horizontal leg strike with shin"},
+		{"elbow", "Horizontal elbow strike (close range)"},
+		{"knee", "Knee strike from clinch"},
+		{"slip", "Slipping / evading a punch"},
+	}
+
+	var result []string
+	result = append(result, "    "+headerStyle.Render("Unknown pose. Available poses:"))
+	result = append(result, "")
+
+	for _, p := range poses {
+		result = append(result, "    "+poseStyle.Render(rightPad(p.name, 14))+" "+descStyle.Render(p.desc))
+	}
+
+	result = append(result, "")
+	result = append(result, "    "+descStyle.Render("Usage: pose: <name>"))
+	result = append(result, "    "+descStyle.Render("Aliases: guard, teep, straight, round-kick, sok, bob-and-weave, etc."))
+
+	return result
 }
