@@ -41,7 +41,7 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 
 **No Electron. No browser. No subscriptions. Just your terminal.**
 
-> **Why Granit?** Obsidian is great, but it's Electron-based, closed-source, and its AI features require a paid subscription. Granit gives you a fast, keyboard-driven alternative with **built-in AI** (local or cloud), **Vim keybindings**, **Git integration**, and **80+ features** — all running natively in your terminal at a fraction of the memory footprint.
+> **Why Granit?** Obsidian is great, but it's Electron-based, closed-source, and its AI features require a paid subscription. Granit gives you a fast, keyboard-driven alternative with **built-in AI** (local or cloud), **Vim keybindings**, **Git integration**, and **90+ features** — all running natively in your terminal at a fraction of the memory footprint.
 
 ---
 
@@ -175,9 +175,21 @@ Built-in git overlay with three views:
 - **Canvas / Whiteboard** — visual note arrangement with connections and colors
 - **Split panes** — view two notes side by side
 
-### 28 Themes & 4 Icon Sets
+### 28+ Themes, Custom Themes & 4 Icon Sets
 
-Instantly switch between **22 dark** and **6 light** themes from settings. Choose from **Unicode**, **Nerd Font**, **Emoji**, or **ASCII** icon sets.
+Instantly switch between **22 dark** and **6 light** built-in themes from settings. Create your own with the **Theme Editor** — live-edit all 16 color roles with hex values, preview changes instantly, and save/export custom themes as JSON. Choose from **Unicode**, **Nerd Font**, **Emoji**, or **ASCII** icon sets.
+
+### 5 Panel Layouts
+
+- **Default** — 3-panel: sidebar + editor + backlinks
+- **Writer** — 2-panel: sidebar + editor
+- **Minimal** — editor only
+- **Reading** — editor + backlinks, no sidebar
+- **Dashboard** — 4-panel: sidebar + editor + outline + backlinks
+
+### Image Manager
+
+Browse, preview, insert, and delete images in your vault. Terminal image preview uses half-block character rendering for truecolor terminals.
 
 ### 10 Note Templates
 
@@ -554,6 +566,9 @@ granit/
       statusbar.go          Status bar with AI + pomodoro indicators
       styles.go             Global style definitions
       themes.go             28 built-in color themes
+      customtheme.go        Custom theme JSON loading/saving
+      themeeditor.go        Live theme editor overlay
+      layouts.go            5 panel layout definitions
       command.go            Command palette (70+ actions)
       vim.go                Vim modal editing
       folding.go            Collapsible heading/code fold state
@@ -590,6 +605,8 @@ granit/
       calendar.go           Calendar view (month/week/agenda)
       canvas.go             Visual whiteboard
       contentsearch.go      Full-text vault search
+      imageview.go          Image manager + terminal preview
+      research.go           Deep Dive AI research agent
       ... and 20+ more components
 ```
 
