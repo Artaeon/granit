@@ -101,8 +101,38 @@ func imgGetDimensions(vaultRoot, filename string) (int, int, bool) {
 	return 0, 0, false
 }
 
-// imgRenderPlaceholder renders a styled image placeholder box and returns the lines.
+// imgRenderPlaceholder renders an image inline.  When the terminal supports
+// truecolor it first attempts to render actual pixel art using half-block
+// characters (via renderImageTerminal in imageview.go).  If that fails or the
+// terminal lacks truecolor, it falls back to a styled placeholder box showing
+// the filename and dimensions.
 func imgRenderPlaceholder(filename, altText, vaultRoot string, contentWidth int) []string {
+	// Try terminal image rendering when supported.
+	if isTerminalImageCapable() && vaultRoot != "" {
+		absPath := resolveImagePath(vaultRoot, filename)
+		if absPath != "" {
+			maxW := contentWidth / 2
+			if maxW < 10 {
+				maxW = 10
+			}
+			maxH := 12 // terminal rows
+			rendered, err := renderImageTerminal(absPath, maxW, maxH)
+			if err == nil && rendered != "" {
+				var out []string
+				// Caption line above the image.
+				captionStyle := lipgloss.NewStyle().Foreground(overlay0).Italic(true)
+				caption := "  " + captionStyle.Render(filename)
+				if altText != "" {
+					caption += captionStyle.Render(" \u2014 " + altText)
+				}
+				out = append(out, caption)
+				out = append(out, strings.Split(rendered, "\n")...)
+				return out
+			}
+		}
+	}
+
+	// Fallback: styled placeholder box.
 	var out []string
 
 	boxWidth := contentWidth - 4
