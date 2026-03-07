@@ -871,7 +871,7 @@ func (e *Editor) hasAnyCursorOnLine(lineIdx int) bool {
 
 // renderLineWithCursors renders a line with multiple cursor positions highlighted.
 // The main cursor uses CursorStyle, additional cursors use the provided multiCursorStyle.
-func (e *Editor) renderLineWithCursors(displayLine string, lineIdx, fmStart, fmEnd int, codeBlocks map[int]bool, multiCursorStyle lipgloss.Style, maxWidth int) string {
+func (e *Editor) renderLineWithCursors(displayLine string, lineIdx, fmStart, fmEnd int, codeBlocks map[int]string, multiCursorStyle lipgloss.Style, maxWidth int) string {
 	// Collect cursor columns on this line
 	type cursorInfo struct {
 		col     int
@@ -987,16 +987,24 @@ func (e Editor) View() string {
 		}
 	}
 
-	// Detect code block regions
+	// Detect code block regions and track language per line
 	inCodeBlock := false
-	codeBlockLines := make(map[int]bool)
+	currentLang := ""
+	codeBlockLines := make(map[int]string)
 	for j := 0; j < len(e.content); j++ {
 		trimmed := strings.TrimSpace(e.content[j])
 		if strings.HasPrefix(trimmed, "```") {
-			inCodeBlock = !inCodeBlock
-			codeBlockLines[j] = true
+			if !inCodeBlock {
+				currentLang = parseFenceLang(e.content[j])
+				inCodeBlock = true
+				codeBlockLines[j] = "" // fence line itself gets no language highlight
+			} else {
+				inCodeBlock = false
+				codeBlockLines[j] = "" // closing fence
+				currentLang = ""
+			}
 		} else if inCodeBlock {
-			codeBlockLines[j] = true
+			codeBlockLines[j] = currentLang
 		}
 	}
 
@@ -1113,7 +1121,7 @@ func (e Editor) View() string {
 	return b.String()
 }
 
-func highlightLine(line string, lineIdx int, fmStart, fmEnd int, codeBlocks map[int]bool) string {
+func highlightLine(line string, lineIdx int, fmStart, fmEnd int, codeBlocks map[int]string) string {
 	if line == "" {
 		return ""
 	}
@@ -1124,8 +1132,14 @@ func highlightLine(line string, lineIdx int, fmStart, fmEnd int, codeBlocks map[
 	}
 
 	// Code blocks
-	if codeBlocks[lineIdx] {
-		return CodeBlockStyle.Render(line)
+	if lang, inBlock := codeBlocks[lineIdx]; inBlock {
+		// Fence lines (``` markers) keep the plain code block style
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") {
+			return CodeBlockStyle.Render(line)
+		}
+		// Content lines get language-aware syntax highlighting
+		return highlightCodeLine(line, lang)
 	}
 
 	trimmed := strings.TrimSpace(line)
