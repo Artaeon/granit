@@ -58,6 +58,11 @@ type ResearchAgent struct {
 
 	// Background state — research keeps running even when overlay is closed
 	running bool
+
+	// Follow-up mode — build upon existing research
+	followUp        bool
+	followUpContext string
+	followUpSource  string // original note path (relative)
 }
 
 // NewResearchAgent creates a new research agent overlay.
@@ -115,6 +120,33 @@ func (r *ResearchAgent) Open(vaultRoot string) {
 	r.createdFiles = nil
 	r.selectedFile = 0
 	r.elapsed = ""
+	r.followUp = false
+	r.followUpContext = ""
+	r.followUpSource = ""
+}
+
+// OpenFollowUp activates the research overlay in follow-up mode, pre-filling
+// the topic from the note title and storing existing content as context.
+func (r *ResearchAgent) OpenFollowUp(vaultRoot, notePath, noteContent string) {
+	r.active = true
+	r.phase = researchInput
+	r.output = ""
+	r.errorMsg = ""
+	r.scroll = 0
+	r.vaultRoot = vaultRoot
+	r.focusField = 0
+	r.createdFiles = nil
+	r.selectedFile = 0
+	r.elapsed = ""
+
+	// Follow-up state
+	r.followUp = true
+	r.followUpContext = noteContent
+	r.followUpSource = notePath
+
+	// Pre-fill topic from note filename (strip .md extension)
+	name := strings.TrimSuffix(filepath.Base(notePath), ".md")
+	r.topic = name
 }
 
 // Close hides the overlay.
@@ -159,6 +191,9 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 	vaultRoot := r.vaultRoot
 	depth := r.depth
 	format := r.format
+	followUp := r.followUp
+	followUpContext := r.followUpContext
+	followUpSource := r.followUpSource
 
 	return func() tea.Msg {
 		claudePath := findClaude()
@@ -168,7 +203,12 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 			}
 		}
 
-		prompt := buildResearchPrompt(topic, vaultRoot, depth, format)
+		var prompt string
+		if followUp {
+			prompt = buildFollowUpPrompt(topic, vaultRoot, depth, format, followUpContext, followUpSource)
+		} else {
+			prompt = buildResearchPrompt(topic, vaultRoot, depth, format)
+		}
 
 		cmd := exec.Command(claudePath,
 			"-p", prompt,
@@ -262,6 +302,88 @@ IMPORTANT:
 - After creating all files, list the files you created
 
 START RESEARCHING NOW.`, topic, noteCount, folder, formatInstr, today)
+}
+
+// buildFollowUpPrompt creates the prompt for follow-up research that builds
+// upon existing notes.
+func buildFollowUpPrompt(topic, vaultRoot string, depth, format int, existingContent, sourcePath string) string {
+	today := time.Now().Format("2006-01-02")
+
+	// Determine the folder — reuse the existing Research folder from the source note
+	folder := filepath.Join(vaultRoot, filepath.Dir(sourcePath))
+
+	var noteCount string
+	switch depth {
+	case 0:
+		noteCount = "3-5 concise follow-up notes"
+	case 1:
+		noteCount = "5-10 detailed follow-up notes"
+	case 2:
+		noteCount = "10-15 comprehensive follow-up notes covering every sub-aspect"
+	}
+
+	var formatInstr string
+	switch format {
+	case 0:
+		formatInstr = `Use Zettelkasten-style atomic notes. Each note should cover ONE concept or idea.
+Use descriptive titles. Link notes extensively with [[wikilinks]].
+Update the existing _Index.md hub note to include the new notes alongside existing entries.`
+	case 1:
+		formatInstr = `Use a hierarchical outline structure. Create sub-topic notes organized by category.
+Use [[wikilinks]] to connect them. Update the existing _Index.md to include new notes.`
+	case 2:
+		formatInstr = `Create study-oriented notes optimized for learning. Each note should include:
+- Clear explanations with examples
+- Key takeaways in bullet points
+- Flashcard-ready Q&A pairs formatted as "Q: question" / "A: answer" blocks
+- Practice exercises or thought experiments where applicable
+Update the existing _Index.md with the new notes and a suggested study order.
+Use [[wikilinks]] extensively.`
+	}
+
+	// Truncate existing content if it's very long to stay within prompt limits
+	contextSnippet := existingContent
+	if len(contextSnippet) > 8000 {
+		contextSnippet = contextSnippet[:8000] + "\n\n[... content truncated for brevity ...]"
+	}
+
+	return fmt.Sprintf(`You are a research assistant performing FOLLOW-UP research to go deeper on an existing topic.
+
+TOPIC: %s
+
+EXISTING RESEARCH (from %s):
+---
+%s
+---
+
+INSTRUCTIONS:
+1. Read the existing research above carefully to understand what has already been covered.
+2. Research this topic MORE DEEPLY using web search — focus on:
+   - Sub-topics not yet covered in the existing notes
+   - Recent developments or updates since the existing research
+   - Deeper technical details, edge cases, or advanced concepts
+   - Related topics, connections, and cross-disciplinary insights
+   - Counterarguments, criticisms, or alternative perspectives
+3. Create %s in the folder: %s
+4. Do NOT duplicate content that already exists in the folder — check existing files first.
+5. %s
+
+FORMAT for each note:
+- Start with YAML frontmatter: ---\ndate: %s\ntype: research\ntags: [research, follow-up, <relevant-tags>]\nsource: <url-if-applicable>\n---
+- Use Markdown with proper headings (## for sections)
+- Include [[wikilinks]] to other notes (both new and existing ones)
+- Be thorough, accurate, and cite sources where possible
+- Write in a clear, educational style
+
+IMPORTANT:
+- Create ALL new files using the Write tool
+- Read the existing _Index.md first, then UPDATE it to include links to your new notes (keep all existing links intact)
+- Each new filename should be descriptive (e.g., "Concept - Advanced Neural Architectures.md")
+- Do NOT create files outside the research folder
+- Do NOT overwrite existing notes — only create NEW ones and update _Index.md
+- After creating all files, list the new files you created
+
+START FOLLOW-UP RESEARCH NOW.`, topic, sourcePath, contextSnippet, noteCount, folder, formatInstr, today)
 }
 
 // parseCreatedFiles extracts file paths from Claude's output.
@@ -452,14 +574,41 @@ func (r ResearchAgent) View() string {
 func (r ResearchAgent) viewInput(innerW int) string {
 	var b strings.Builder
 
-	// Title
-	b.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).
-		Render("  Deep Dive Research"))
+	// Title — changes based on mode
+	if r.followUp {
+		b.WriteString(lipgloss.NewStyle().Foreground(peach).Bold(true).
+			Render("  Follow-Up Research"))
+	} else {
+		b.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).
+			Render("  Deep Dive Research"))
+	}
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render("  Powered by Claude Code"))
 	b.WriteString("\n\n")
+
+	// ── Follow-up context preview ──
+	if r.followUp && r.followUpContext != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(lavender).Bold(true).
+			Render("  Source Note"))
+		b.WriteString("\n")
+		srcName := strings.TrimSuffix(filepath.Base(r.followUpSource), ".md")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(peach).Render(srcName))
+		b.WriteString("\n")
+
+		// Show a preview of the context (first few lines, excluding frontmatter)
+		preview := r.contextPreview(innerW - 6)
+		if preview != "" {
+			previewBox := lipgloss.NewStyle().
+				Foreground(overlay0).
+				Width(innerW - 4).
+				Render(preview)
+			b.WriteString("  " + previewBox)
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
 
 	// ── Topic ──
 	label := r.fieldLabel("Topic", 0)
@@ -506,12 +655,16 @@ func (r ResearchAgent) viewInput(innerW int) string {
 			btnColor = green
 			btnFg = mantle
 		}
+		btnLabel := " Start Research "
+		if r.followUp {
+			btnLabel = " Start Follow-Up "
+		}
 		btn := lipgloss.NewStyle().
 			Background(btnColor).
 			Foreground(btnFg).
 			Bold(r.focusField == 3).
 			Padding(0, 3).
-			Render(" Start Research ")
+			Render(btnLabel)
 		b.WriteString("  " + btn)
 	} else {
 		b.WriteString("  " + DimStyle.Render("Enter a topic to begin"))
@@ -522,6 +675,48 @@ func (r ResearchAgent) viewInput(innerW int) string {
 	b.WriteString(DimStyle.Render("  Tab switch  ←→ option  Enter confirm  Esc close"))
 
 	return b.String()
+}
+
+// contextPreview returns a short preview of the follow-up source note content,
+// skipping YAML frontmatter and showing the first few meaningful lines.
+func (r ResearchAgent) contextPreview(maxWidth int) string {
+	content := r.followUpContext
+	if content == "" {
+		return ""
+	}
+
+	// Strip YAML frontmatter
+	if strings.HasPrefix(content, "---") {
+		if end := strings.Index(content[3:], "---"); end >= 0 {
+			content = strings.TrimSpace(content[end+6:])
+		}
+	}
+
+	lines := strings.Split(content, "\n")
+	var preview []string
+	maxLines := 4
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		// Truncate long lines
+		if len(trimmed) > maxWidth {
+			trimmed = trimmed[:maxWidth-1] + "…"
+		}
+		preview = append(preview, "  "+trimmed)
+		if len(preview) >= maxLines {
+			break
+		}
+	}
+	if len(preview) == 0 {
+		return ""
+	}
+	result := strings.Join(preview, "\n")
+	if len(lines) > maxLines {
+		result += "\n  ..."
+	}
+	return result
 }
 
 // fieldLabel returns a styled label, highlighted when focused.
