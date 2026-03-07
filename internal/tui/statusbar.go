@@ -20,6 +20,7 @@ type StatusBar struct {
 	aiProvider    string // "local", "ollama", "openai"
 	aiModel       string
 	pomodoroStatus string // e.g. "🍅 12:34"
+	researchStatus string // e.g. "Researching: AI trends"
 }
 
 func NewStatusBar() StatusBar {
@@ -68,6 +69,10 @@ func (sb *StatusBar) SetAIStatus(provider, model string) {
 
 func (sb *StatusBar) SetPomodoroStatus(status string) {
 	sb.pomodoroStatus = status
+}
+
+func (sb *StatusBar) SetResearchStatus(status string) {
+	sb.researchStatus = status
 }
 
 func (sb StatusBar) View() string {
@@ -129,6 +134,14 @@ func (sb StatusBar) View() string {
 			Render(sb.pomodoroStatus)
 	}
 
+	// Research indicator
+	researchIndicator := ""
+	if sb.researchStatus != "" {
+		researchIndicator = lipgloss.NewStyle().
+			Background(lavender).Foreground(crust).Bold(true).Padding(0, 1).
+			Render(sb.researchStatus)
+	}
+
 	// Right side info
 	wordInfo := ""
 	if sb.wordCount > 0 {
@@ -138,14 +151,14 @@ func (sb StatusBar) View() string {
 
 	// Calculate gap
 	leftLen := lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos)
-	rightLen := lipgloss.Width(pomoIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
+	rightLen := lipgloss.Width(researchIndicator) + lipgloss.Width(pomoIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	gap := sb.width - leftLen - rightLen
 	if gap < 0 {
 		gap = 1
 	}
 	gapStr := StatusBarBg.Width(gap).Render(strings.Repeat(" ", gap))
 
-	bar := mode + fileSection + cursorPos + gapStr + pomoIndicator + aiIndicator + rightInfo
+	bar := mode + fileSection + cursorPos + gapStr + researchIndicator + pomoIndicator + aiIndicator + rightInfo
 
 	// Help bar
 	helpItems := []struct{ key, desc string }{

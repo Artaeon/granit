@@ -55,6 +55,9 @@ type ResearchAgent struct {
 	// Elapsed time
 	startTime time.Time
 	elapsed   string
+
+	// Background state — research keeps running even when overlay is closed
+	running bool
 }
 
 // NewResearchAgent creates a new research agent overlay.
@@ -68,6 +71,29 @@ func NewResearchAgent() ResearchAgent {
 // IsActive returns whether the overlay is visible.
 func (r ResearchAgent) IsActive() bool {
 	return r.active
+}
+
+// IsRunning returns whether a research task is in progress (even if overlay is closed).
+func (r ResearchAgent) IsRunning() bool {
+	return r.running
+}
+
+// StatusText returns a short status string for the status bar.
+func (r ResearchAgent) StatusText() string {
+	if !r.running {
+		return ""
+	}
+	topic := r.topic
+	if len(topic) > 20 {
+		topic = topic[:20] + "…"
+	}
+	dots := int(time.Since(r.startTime).Seconds()) % 4
+	return IconBotChar + " " + topic + strings.Repeat(".", dots+1)
+}
+
+// Reopen shows the overlay again (e.g. to check on running/completed research).
+func (r *ResearchAgent) Reopen() {
+	r.active = true
 }
 
 // SetSize updates dimensions.
@@ -275,7 +301,8 @@ func (r ResearchAgent) Update(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 	case researchInput:
 		return r.updateInput(msg)
 	case researchRunning:
-		if msg.String() == "esc" || msg.String() == "ctrl+c" {
+		if msg.String() == "esc" {
+			// Close overlay but keep research running in background
 			r.active = false
 			return r, nil
 		}
@@ -306,6 +333,7 @@ func (r ResearchAgent) updateInput(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 	case "enter":
 		if r.focusField == 3 && r.topic != "" {
 			r.phase = researchRunning
+			r.running = true
 			r.startTime = time.Now()
 			return r, tea.Batch(r.runResearch(), r.tickElapsed())
 		}

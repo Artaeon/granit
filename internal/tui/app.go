@@ -666,12 +666,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case researchResultMsg:
-		if m.research.IsActive() {
+		// Always handle — research runs in background even if overlay is closed
+		if m.research.IsRunning() {
+			m.research.running = false
+			m.statusbar.SetResearchStatus("")
 			if msg.err != nil {
 				m.research.phase = researchError
 				m.research.errorMsg = msg.err.Error()
 				m.research.output = msg.output
 				m.research.elapsed = time.Since(m.research.startTime).Truncate(time.Second).String()
+				m.statusbar.SetMessage("Research failed: " + msg.err.Error())
 			} else {
 				m.research.phase = researchDone
 				m.research.elapsed = time.Since(m.research.startTime).Truncate(time.Second).String()
@@ -684,25 +688,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.sidebar.SetFiles(paths)
 				m.autocomplete.SetNotes(paths)
 				m.statusbar.SetNoteCount(m.vault.NoteCount())
-				// Use files from output or scan for new Research/ files
 				if len(msg.filesHint) > 0 {
 					m.research.createdFiles = msg.filesHint
 				} else {
-					// Find files in Research/ folder
 					for _, p := range paths {
 						if strings.HasPrefix(p, "Research/") {
 							m.research.createdFiles = append(m.research.createdFiles, p)
 						}
 					}
 				}
-				m.statusbar.SetMessage(fmt.Sprintf("Research complete: %d notes created", len(m.research.createdFiles)))
+				m.statusbar.SetMessage(fmt.Sprintf("Research complete: %d notes created — open via command palette", len(m.research.createdFiles)))
+				// Auto-open the overlay to show results if it was closed
+				if !m.research.IsActive() {
+					m.research.Reopen()
+				}
 			}
+			return m, m.clearMessageAfter(5 * time.Second)
 		}
 		return m, nil
 
 	case researchTickMsg:
-		if m.research.IsActive() && m.research.phase == researchRunning {
+		if m.research.IsRunning() {
 			m.research.elapsed = time.Since(m.research.startTime).Truncate(time.Second).String()
+			m.statusbar.SetResearchStatus(m.research.StatusText())
 			return m, m.research.tickElapsed()
 		}
 		return m, nil
@@ -2568,7 +2576,12 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdResearchAgent:
 		m.research.SetSize(m.width, m.height)
-		m.research.Open(m.vault.Root)
+		if m.research.IsRunning() {
+			// Reopen to show progress
+			m.research.Reopen()
+		} else {
+			m.research.Open(m.vault.Root)
+		}
 
 	case CmdQuit:
 		return m, m.triggerExitSplash()
