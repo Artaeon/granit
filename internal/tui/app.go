@@ -144,6 +144,7 @@ type Model struct {
 	themeEditor     ThemeEditor
 	linkAssist      LinkAssist
 	taskManager     TaskManager
+	blogPublisher   BlogPublisher
 	dueTodayCount   int
 
 	// Slash command menu
@@ -269,6 +270,7 @@ func NewModel(vaultPath string) (Model, error) {
 		themeEditor:     NewThemeEditor(),
 		linkAssist:      NewLinkAssist(),
 		taskManager:     NewTaskManager(),
+		blogPublisher:   NewBlogPublisher(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
 		showSplash:     cfg.ShowSplash,
@@ -530,6 +532,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.publisher.IsActive() {
 			var cmd tea.Cmd
 			m.publisher, cmd = m.publisher.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case blogPublishResultMsg:
+		if m.blogPublisher.IsActive() {
+			var cmd tea.Cmd
+			m.blogPublisher, cmd = m.blogPublisher.Update(msg)
 			return m, cmd
 		}
 		return m, nil
@@ -1385,19 +1395,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Handle new task
 			if notePath, taskText, ok := m.taskManager.GetNewTask(); ok {
-				if note := m.vault.GetNote(notePath); note != nil {
+				targetPath := notePath
+				note := m.vault.GetNote(targetPath)
+				// If no target note found, create Tasks.md in vault root
+				if note == nil || targetPath == "" {
+					targetPath = "Tasks.md"
+					note = m.vault.GetNote(targetPath)
+					if note == nil {
+						// Create the file
+						tasksFile := filepath.Join(m.vault.Root, "Tasks.md")
+						header := "# Tasks\n\n"
+						os.WriteFile(tasksFile, []byte(header), 0644)
+						m.vault.Scan()
+						note = m.vault.GetNote(targetPath)
+					}
+				}
+				if note != nil {
 					newContent := note.Content
 					if !strings.HasSuffix(newContent, "\n") {
 						newContent += "\n"
 					}
 					newContent += taskText + "\n"
 					note.Content = newContent
-					os.WriteFile(filepath.Join(m.vault.Root, notePath), []byte(newContent), 0644)
-					if notePath == m.activeNote {
+					os.WriteFile(filepath.Join(m.vault.Root, targetPath), []byte(newContent), 0644)
+					if targetPath == m.activeNote {
 						m.editor.LoadContent(newContent, m.editor.filePath)
 					}
-					m.statusbar.SetMessage("Task added to " + filepath.Base(notePath))
+					m.statusbar.SetMessage("Task added to " + filepath.Base(targetPath))
 					fileChanged = true
+					// Switch to All view so the newly added task is visible
+					m.taskManager.SwitchToAllView()
 				}
 			}
 			// Refresh task manager data if a file was modified
@@ -1433,6 +1460,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.statusbar.SetMessage(fmt.Sprintf("Linked %d mentions", len(suggestions)))
 				}
 			}
+			return m, cmd
+		}
+
+		if m.blogPublisher.IsActive() {
+			var cmd tea.Cmd
+			m.blogPublisher, cmd = m.blogPublisher.Update(msg)
 			return m, cmd
 		}
 
@@ -2403,6 +2436,20 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdPublishSite:
 		m.publisher.SetSize(m.width, m.height)
 		m.publisher.Open()
+	case CmdBlogPublish:
+		if m.activeNote != "" {
+			note := m.vault.GetNote(m.activeNote)
+			title := strings.TrimSuffix(filepath.Base(m.activeNote), ".md")
+			content := ""
+			if note != nil {
+				content = note.Content
+			}
+			m.blogPublisher.SetSize(m.width, m.height)
+			m.blogPublisher.Open(title, content)
+		} else {
+			m.statusbar.SetMessage("Open a note first to publish")
+			return m, m.clearMessageAfter(3 * time.Second)
+		}
 	case CmdSplitPane:
 		m.splitPane.SetSize(m.width, m.height)
 		m.splitPane.Open()
@@ -3123,6 +3170,7 @@ func (m *Model) updateLayout() {
 	m.themeEditor.SetSize(m.width, m.height)
 	m.linkAssist.SetSize(m.width, m.height)
 	m.taskManager.SetSize(m.width, m.height)
+	m.blogPublisher.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -3629,10 +3677,17 @@ func (m Model) View() string {
 		editorContent = m.editor.View()
 	}
 
-	// Combine tab bar + editor
+	// Folder-path breadcrumb (between tab bar and editor)
+	breadcrumbStr := renderBreadcrumb(m.activeNote, editorWidth)
+
+	// Combine tab bar + breadcrumb + editor
 	editorPanel := editorContent
-	if tabBarStr != "" {
+	if tabBarStr != "" && breadcrumbStr != "" {
+		editorPanel = tabBarStr + "\n" + breadcrumbStr + "\n" + editorContent
+	} else if tabBarStr != "" {
 		editorPanel = tabBarStr + "\n" + editorContent
+	} else if breadcrumbStr != "" {
+		editorPanel = breadcrumbStr + "\n" + editorContent
 	}
 
 	editor := EditorStyle.Copy().
@@ -3866,6 +3921,10 @@ func (m Model) View() string {
 	}
 	if m.linkAssist.IsActive() {
 		overlay := m.linkAssist.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.blogPublisher.IsActive() {
+		overlay := m.blogPublisher.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.themeEditor.IsActive() {

@@ -97,6 +97,7 @@ const (
 	CmdLayoutMinimal
 	CmdLayoutReading
 	CmdLayoutDashboard
+	CmdBlogPublish
 	CmdQuit
 )
 
@@ -146,6 +147,7 @@ var AllCommands = []Command{
 	{Label: "Spell Check", Desc: "Check spelling in current note", Shortcut: "", Action: CmdSpellCheck, Icon: &IconEditChar},
 	{Label: "Import Obsidian Config", Desc: "Import settings from .obsidian/ directory", Shortcut: "", Action: CmdImportObsidian, Icon: &IconSettingsChar},
 	{Label: "Publish Site", Desc: "Export vault as static HTML site", Shortcut: "", Action: CmdPublishSite, Icon: &IconSaveChar},
+	{Label: "Publish to Blog", Desc: "Publish note to Medium or GitHub blog", Shortcut: "", Action: CmdBlogPublish, Icon: &IconSaveChar},
 	{Label: "Split View", Desc: "View two notes side by side", Shortcut: "", Action: CmdSplitPane, Icon: &IconViewChar},
 	{Label: "Lua Scripts", Desc: "Run Lua scripts from vault or global dir", Shortcut: "", Action: CmdRunLuaScript, Icon: &IconBotChar},
 	{Label: "Flashcards", Desc: "Spaced repetition study from your notes", Shortcut: "", Action: CmdFlashcards, Icon: &IconBookmarkChar},

@@ -228,6 +228,11 @@ func (tm *TaskManager) SetActiveNote(path string) {
 	tm.activeNotePath = path
 }
 
+// SwitchToAllView switches to the "All" tasks view (used after adding a task).
+func (tm *TaskManager) SwitchToAllView() {
+	tm.view = taskViewAll
+}
+
 // Refresh re-parses all tasks from the vault without closing the overlay.
 func (tm *TaskManager) Refresh(notes map[string]*vault.Note) {
 	savedView := tm.view
