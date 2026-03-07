@@ -2604,12 +2604,31 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.themeEditor.SetSize(m.width, m.height)
 		m.themeEditor.Open(m.config.Theme)
 
-	case CmdLayoutReading:
-		m.config.Layout = LayoutReading
-		m.updateLayout()
-
-	case CmdLayoutDashboard:
-		m.config.Layout = LayoutDashboard
+	case CmdLayoutDefault, CmdLayoutWriter, CmdLayoutMinimal, CmdLayoutReading, CmdLayoutDashboard:
+		switch action {
+		case CmdLayoutDefault:
+			m.config.Layout = LayoutDefault
+			m.statusbar.SetMessage("Layout: Default (3-panel)")
+		case CmdLayoutWriter:
+			m.config.Layout = LayoutWriter
+			m.statusbar.SetMessage("Layout: Writer (2-panel)")
+		case CmdLayoutMinimal:
+			m.config.Layout = LayoutMinimal
+			m.statusbar.SetMessage("Layout: Minimal (editor only)")
+		case CmdLayoutReading:
+			m.config.Layout = LayoutReading
+			m.statusbar.SetMessage("Layout: Reading (editor + backlinks)")
+		case CmdLayoutDashboard:
+			m.config.Layout = LayoutDashboard
+			m.statusbar.SetMessage("Layout: Dashboard (4-panel)")
+		}
+		// Fix focus if current panel is hidden in new layout
+		if !LayoutHasSidebar(m.config.Layout) && m.focus == focusSidebar {
+			m.setFocus(focusEditor)
+		}
+		if !LayoutHasBacklinks(m.config.Layout) && m.focus == focusBacklinks {
+			m.setFocus(focusEditor)
+		}
 		m.updateLayout()
 
 	case CmdResearchAgent:

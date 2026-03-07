@@ -89,6 +89,9 @@ const (
 	CmdResearchFollowUp
 	CmdImageManager
 	CmdThemeEditor
+	CmdLayoutDefault
+	CmdLayoutWriter
+	CmdLayoutMinimal
 	CmdLayoutReading
 	CmdLayoutDashboard
 	CmdQuit
@@ -179,6 +182,9 @@ var AllCommands = []Command{
 	{Label: "Research Follow-Up", Desc: "Go deeper on current note's topic via Claude Code", Shortcut: "", Action: CmdResearchFollowUp, Icon: &IconBotChar},
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar},
 	{Label: "Theme Editor", Desc: "Create and customize color themes", Shortcut: "", Action: CmdThemeEditor, Icon: &IconSettingsChar},
+	{Label: "Default Layout", Desc: "3-panel: sidebar, editor, backlinks", Shortcut: "", Action: CmdLayoutDefault, Icon: &IconViewChar},
+	{Label: "Writer Layout", Desc: "2-panel: sidebar, editor", Shortcut: "", Action: CmdLayoutWriter, Icon: &IconViewChar},
+	{Label: "Minimal Layout", Desc: "Editor only", Shortcut: "", Action: CmdLayoutMinimal, Icon: &IconViewChar},
 	{Label: "Reading Layout", Desc: "Editor + backlinks, no sidebar", Shortcut: "", Action: CmdLayoutReading, Icon: &IconViewChar},
 	{Label: "Dashboard Layout", Desc: "4-panel: sidebar, editor, outline, backlinks", Shortcut: "", Action: CmdLayoutDashboard, Icon: &IconViewChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
