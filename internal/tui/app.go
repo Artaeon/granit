@@ -143,6 +143,7 @@ type Model struct {
 	imageManager    ImageManager
 	themeEditor     ThemeEditor
 	linkAssist      LinkAssist
+	taskManager     TaskManager
 
 	// Slash command menu
 	slashMenu *SlashMenu
@@ -266,6 +267,7 @@ func NewModel(vaultPath string) (Model, error) {
 		imageManager:    NewImageManager(),
 		themeEditor:     NewThemeEditor(),
 		linkAssist:      NewLinkAssist(),
+		taskManager:     NewTaskManager(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
 		showSplash:     cfg.ShowSplash,
@@ -1303,6 +1305,58 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		if m.taskManager.IsActive() {
+			var cmd tea.Cmd
+			m.taskManager, cmd = m.taskManager.Update(msg)
+			if !m.taskManager.IsActive() {
+				// Handle toggle result
+				if notePath, lineNum, newDone, ok := m.taskManager.GetToggleResult(); ok {
+					if note := m.vault.GetNote(notePath); note != nil {
+						lines := strings.Split(note.Content, "\n")
+						if lineNum > 0 && lineNum <= len(lines) {
+							line := lines[lineNum-1]
+							if newDone {
+								line = strings.Replace(line, "[ ]", "[x]", 1)
+							} else {
+								line = strings.Replace(line, "[x]", "[ ]", 1)
+								line = strings.Replace(line, "[X]", "[ ]", 1)
+							}
+							lines[lineNum-1] = line
+							newContent := strings.Join(lines, "\n")
+							note.Content = newContent
+							os.WriteFile(filepath.Join(m.vault.Root, notePath), []byte(newContent), 0644)
+							if notePath == m.activeNote {
+								m.editor.LoadContent(newContent, m.editor.filePath)
+							}
+						}
+					}
+				}
+				// Handle jump result
+				if notePath, lineNum, ok := m.taskManager.GetJumpResult(); ok {
+					m.loadNote(notePath)
+					m.sidebar.cursor = m.findFileIndex(notePath)
+					m.setFocus(focusEditor)
+					if lineNum > 0 {
+						m.editor.cursor = lineNum - 1
+						m.editor.scroll = maxInt(0, lineNum-m.editor.height/2)
+					}
+				}
+				// Handle new task
+				if notePath, taskText, ok := m.taskManager.GetNewTask(); ok {
+					if note := m.vault.GetNote(notePath); note != nil {
+						newContent := note.Content + "\n" + taskText
+						note.Content = newContent
+						os.WriteFile(filepath.Join(m.vault.Root, notePath), []byte(newContent), 0644)
+						if notePath == m.activeNote {
+							m.editor.LoadContent(newContent, m.editor.filePath)
+						}
+						m.statusbar.SetMessage("Task added to " + filepath.Base(notePath))
+					}
+				}
+			}
+			return m, cmd
+		}
+
 		if m.linkAssist.IsActive() {
 			var cmd tea.Cmd
 			m.linkAssist, cmd = m.linkAssist.Update(msg)
@@ -1598,6 +1652,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+x":
 			m.commandPalette.SetSize(m.width, m.height)
 			m.commandPalette.Open()
+			return m, nil
+
+		case "ctrl+k":
+			m.taskManager.SetSize(m.width, m.height)
+			m.taskManager.Open(m.vault.Root, m.vault.Notes)
 			return m, nil
 
 		case "ctrl+o":
@@ -2638,6 +2697,10 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdUnfoldAll:
 		m.foldState.UnfoldAll()
 
+	case CmdTaskManager:
+		m.taskManager.SetSize(m.width, m.height)
+		m.taskManager.Open(m.vault.Root, m.vault.Notes)
+
 	case CmdLinkAssist:
 		if m.activeNote != "" {
 			m.linkAssist.SetSize(m.width, m.height)
@@ -2991,6 +3054,7 @@ func (m *Model) updateLayout() {
 	m.imageManager.SetSize(m.width, m.height)
 	m.themeEditor.SetSize(m.width, m.height)
 	m.linkAssist.SetSize(m.width, m.height)
+	m.taskManager.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -3726,6 +3790,10 @@ func (m Model) View() string {
 	}
 	if m.frontmatterEdit.IsActive() {
 		overlay := m.frontmatterEdit.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.taskManager.IsActive() {
+		overlay := m.taskManager.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.linkAssist.IsActive() {
