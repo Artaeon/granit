@@ -67,7 +67,7 @@ func (s *Settings) buildItems() {
 		// Appearance settings
 		{label: "Theme", key: "theme", kind: "string", value: s.config.Theme, options: ThemeNames()},
 		{label: "Icon Theme", key: "icon_theme", kind: "string", value: s.config.IconTheme, options: []string{"unicode", "nerd", "emoji", "ascii"}},
-		{label: "Layout", key: "layout", kind: "string", value: s.config.Layout, options: []string{"default", "writer", "minimal"}},
+		{label: "Layout", key: "layout", kind: "string", value: s.config.Layout, options: AllLayouts()},
 		{label: "Sidebar Position", key: "sidebar_position", kind: "string", value: s.config.SidebarPosition, options: []string{"left", "right"}},
 		{label: "Show Icons", key: "show_icons", kind: "bool", value: s.config.ShowIcons},
 		{label: "Compact Mode", key: "compact_mode", kind: "bool", value: s.config.CompactMode},
