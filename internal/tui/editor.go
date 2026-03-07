@@ -1231,6 +1231,17 @@ func highlightInline(line string) string {
 			}
 		}
 
+		// Footnote references [^id]
+		if i+1 < n && runes[i] == '[' && runes[i+1] == '^' {
+			end := findSingle(runes, i+2, ']')
+			if end != -1 && end > i+2 {
+				id := string(runes[i+2 : end])
+				result.WriteString(RenderFootnoteMarker(id))
+				i = end + 1
+				continue
+			}
+		}
+
 		// Inline code `...`
 		if runes[i] == '`' {
 			end := findSingle(runes, i+1, '`')
