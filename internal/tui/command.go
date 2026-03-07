@@ -81,6 +81,10 @@ const (
 	CmdWorkspaces
 	CmdTimeline
 	CmdVaultSwitch
+	CmdFoldToggle
+	CmdFoldAll
+	CmdUnfoldAll
+	CmdFrontmatterEdit
 	CmdQuit
 )
 
@@ -161,6 +165,9 @@ var AllCommands = []Command{
 	{Label: "Workspaces", Desc: "Save and restore named workspace layouts", Shortcut: "", Action: CmdWorkspaces, Icon: &IconViewChar},
 	{Label: "Timeline", Desc: "Chronological view of all notes", Shortcut: "", Action: CmdTimeline, Icon: &IconDailyChar},
 	{Label: "Switch Vault", Desc: "Switch to a different vault", Shortcut: "", Action: CmdVaultSwitch, Icon: &IconFolderChar},
+	{Label: "Toggle Fold", Desc: "Fold/unfold section under cursor", Shortcut: "", Action: CmdFoldToggle, Icon: &IconOutlineChar},
+	{Label: "Fold All", Desc: "Collapse all sections", Shortcut: "", Action: CmdFoldAll, Icon: &IconOutlineChar},
+	{Label: "Unfold All", Desc: "Expand all sections", Shortcut: "", Action: CmdUnfoldAll, Icon: &IconOutlineChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
