@@ -70,19 +70,14 @@ func renderImageTerminal(imagePath string, maxWidth, maxHeight int) (string, err
 		dstH++
 	}
 
+	// Bilinear interpolation for smoother downscaling
 	pixels := make([][]color.Color, dstH)
 	for y := 0; y < dstH; y++ {
 		pixels[y] = make([]color.Color, dstW)
-		srcY := bounds.Min.Y + int(float64(y)*float64(srcH)/float64(dstH))
-		if srcY >= bounds.Max.Y {
-			srcY = bounds.Max.Y - 1
-		}
+		srcYf := float64(y) * float64(srcH) / float64(dstH)
 		for x := 0; x < dstW; x++ {
-			srcX := bounds.Min.X + int(float64(x)*float64(srcW)/float64(dstW))
-			if srcX >= bounds.Max.X {
-				srcX = bounds.Max.X - 1
-			}
-			pixels[y][x] = img.At(srcX, srcY)
+			srcXf := float64(x) * float64(srcW) / float64(dstW)
+			pixels[y][x] = bilinearSample(img, bounds, srcXf, srcYf)
 		}
 	}
 
@@ -111,6 +106,49 @@ func renderImageTerminal(imagePath string, maxWidth, maxHeight int) (string, err
 	}
 
 	return sb.String(), nil
+}
+
+// bilinearSample performs bilinear interpolation at fractional source coordinates.
+func bilinearSample(img image.Image, bounds image.Rectangle, srcX, srcY float64) color.Color {
+	x0 := int(srcX) + bounds.Min.X
+	y0 := int(srcY) + bounds.Min.Y
+	x1 := x0 + 1
+	y1 := y0 + 1
+
+	// Clamp to bounds
+	if x0 < bounds.Min.X {
+		x0 = bounds.Min.X
+	}
+	if y0 < bounds.Min.Y {
+		y0 = bounds.Min.Y
+	}
+	if x1 >= bounds.Max.X {
+		x1 = bounds.Max.X - 1
+	}
+	if y1 >= bounds.Max.Y {
+		y1 = bounds.Max.Y - 1
+	}
+
+	fx := srcX - float64(int(srcX))
+	fy := srcY - float64(int(srcY))
+
+	r00, g00, b00, a00 := img.At(x0, y0).RGBA()
+	r10, g10, b10, a10 := img.At(x1, y0).RGBA()
+	r01, g01, b01, a01 := img.At(x0, y1).RGBA()
+	r11, g11, b11, a11 := img.At(x1, y1).RGBA()
+
+	lerp := func(v00, v10, v01, v11 uint32) uint8 {
+		top := float64(v00)*(1-fx) + float64(v10)*fx
+		bot := float64(v01)*(1-fx) + float64(v11)*fx
+		return uint8((top*(1-fy) + bot*fy) / 256)
+	}
+
+	return color.RGBA{
+		R: lerp(r00, r10, r01, r11),
+		G: lerp(g00, g10, g01, g11),
+		B: lerp(b00, b10, b01, b11),
+		A: lerp(a00, a10, a01, a11),
+	}
 }
 
 func resolveImagePath(vaultRoot, filename string) string {
@@ -348,12 +386,12 @@ func (im *ImageManager) listHeight() int {
 }
 
 func (im *ImageManager) previewHeight() int {
-	h := im.height/3 - 2
-	if h < 4 {
-		h = 4
+	h := im.height/2 - 6
+	if h < 6 {
+		h = 6
 	}
-	if h > 16 {
-		h = 16
+	if h > 24 {
+		h = 24
 	}
 	return h
 }
