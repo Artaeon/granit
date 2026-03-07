@@ -132,14 +132,14 @@ Granit includes **15 AI features** that work with local models (Ollama), OpenAI,
 - **Full-text search** — search across all note contents with highlighted results
 - **Tag browser** (`Ctrl+T`) — browse and filter notes by tag
 - **Graph view** (`Ctrl+G`) — visualize note connections
-- **Task manager** (`Ctrl+K`) — cross-vault task view with Today/Upcoming/All/Completed tabs, calendar planning, priorities (`⏫🔼🔽`), due dates (`📅`), search, and quick-add
+- **Task manager** (`Ctrl+K`) — comprehensive task system with 6 views (Today, Upcoming, All, Done, Calendar, **Kanban board**), 5 priority levels (`🔺⏫🔼🔽`), due dates with date picker shortcuts, dedicated `Tasks.md` storage, source file badges, and cross-vault task scanning from all notes
 - **Calendar view** (`Ctrl+L`) — month, week, and agenda views tied to daily notes
 - **Timeline view** — chronological visualization of all notes grouped by day, week, or month
 - **Bookmarks & recents** (`Ctrl+B`) — star notes and jump to recently opened files
 - **Quick switch** (`Ctrl+J`) — fast switching among recent notes
 - **Note outline** (`Ctrl+O`) — heading-based document outline
 - **Workspace layouts** — save and restore named workspace snapshots (open tabs, layout, view mode)
-- **Breadcrumb navigation** — `Alt+Left`/`Alt+Right` for browser-style back/forward, pinned tabs
+- **Breadcrumb navigation** — folder-path breadcrumb above the editor (`vault > folder > note`), `Alt+Left`/`Alt+Right` for browser-style back/forward, pinned tabs
 - **Daily notes** — create or open today's note with a single command
 - **Vault statistics** — note counts, link density, word counts
 - **Trash** — soft-delete with restore
@@ -168,6 +168,7 @@ Built-in git overlay with three views:
 - **Export to PDF** — via pandoc (if installed)
 - **Bulk HTML export** — all vault notes at once
 - **Static site publisher** — export your vault as a complete HTML website with search, tag pages, and wikilink resolution
+- **Blog publisher** — publish notes to **Medium** (draft/public/unlisted with tag extraction) or **GitHub** (push Markdown to any repo/branch)
 
 ### Extensibility
 
@@ -194,9 +195,9 @@ Instantly switch between **22 dark** and **6 light** built-in themes from settin
 
 Browse, preview, insert, and delete images in your vault. Terminal image preview uses half-block character rendering for truecolor terminals.
 
-### 10 Note Templates
+### 10+ Note Templates
 
-Create notes from built-in templates: Standard, Meeting Notes, Project Plan, Weekly Review, Book Notes, Decision Record, Journal Entry, Research Note, Learning/Zettelkasten, and more.
+Create notes from built-in templates: Standard, Meeting Notes, Project Plan, Weekly Review, Book Notes, Decision Record, Journal Entry, Research Note, Learning/Zettelkasten, and more. **User-defined templates** are also supported — drop `.md` files into your vault's `templates/` folder and they appear in the template picker.
 
 ---
 
@@ -401,7 +402,7 @@ The default `"local"` provider uses keyword matching, stopword filtering, and to
 | `Ctrl+F` | Find in file |
 | `Ctrl+H` | Find and replace |
 | `Ctrl+D` | Select word / multi-cursor |
-| `Ctrl+K` | Delete to end of line |
+| `Ctrl+K` | Task manager |
 | `[[` | Trigger wikilink autocomplete |
 | `Tab` | Accept ghost writer suggestion / indent |
 
@@ -561,12 +562,12 @@ granit/
       parser.go             Markdown/frontmatter/wikilink parser
       index.go              Backlink and link index
     tui/
-      app.go                Main Bubble Tea model (~4500 lines)
+      app.go                Main Bubble Tea model (~4800 lines)
       editor.go             Text editor with multi-cursor
       syntaxhl.go           Language-aware code block highlighting
       renderer.go           Markdown rendering for view mode
       sidebar.go            File tree sidebar
-      statusbar.go          Status bar with AI + pomodoro indicators
+      statusbar.go          Status bar with AI, pomodoro, and task indicators
       styles.go             Global style definitions
       themes.go             28 built-in color themes
       customtheme.go        Custom theme JSON loading/saving
@@ -610,8 +611,10 @@ granit/
       contentsearch.go      Full-text vault search
       imageview.go          Image manager + terminal preview
       research.go           Deep Dive AI research agent
-      taskmanager.go        Cross-vault task manager with calendar
+      taskmanager.go        Task manager with kanban, calendar, priorities
       linkassist.go         Unlinked mention finder + batch linking
+      blogpublish.go        Blog publisher (Medium + GitHub)
+      breadcrumb.go         Breadcrumb navigation + pinned tabs
       ... and 20+ more components
 ```
 
