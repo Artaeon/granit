@@ -163,6 +163,46 @@ func (tb *TabBar) HasTab(path string) bool {
 	return tb.findTab(path) >= 0
 }
 
+// MoveLeft moves the active tab one position to the left. Returns true if moved.
+func (tb *TabBar) MoveLeft() bool {
+	if tb.activeIdx <= 0 || len(tb.tabs) < 2 {
+		return false
+	}
+	tb.tabs[tb.activeIdx], tb.tabs[tb.activeIdx-1] = tb.tabs[tb.activeIdx-1], tb.tabs[tb.activeIdx]
+	tb.activeIdx--
+	return true
+}
+
+// MoveRight moves the active tab one position to the right. Returns true if moved.
+func (tb *TabBar) MoveRight() bool {
+	if tb.activeIdx < 0 || tb.activeIdx >= len(tb.tabs)-1 || len(tb.tabs) < 2 {
+		return false
+	}
+	tb.tabs[tb.activeIdx], tb.tabs[tb.activeIdx+1] = tb.tabs[tb.activeIdx+1], tb.tabs[tb.activeIdx]
+	tb.activeIdx++
+	return true
+}
+
+// CloseActive closes the active tab (unless pinned) and returns the path of
+// the new active tab, or "" if no tabs remain.
+func (tb *TabBar) CloseActive() string {
+	if tb.activeIdx < 0 || tb.activeIdx >= len(tb.tabs) {
+		return ""
+	}
+	if tb.tabs[tb.activeIdx].Pinned {
+		return tb.tabs[tb.activeIdx].Path
+	}
+	tb.tabs = append(tb.tabs[:tb.activeIdx], tb.tabs[tb.activeIdx+1:]...)
+	if len(tb.tabs) == 0 {
+		tb.activeIdx = -1
+		return ""
+	}
+	if tb.activeIdx >= len(tb.tabs) {
+		tb.activeIdx = len(tb.tabs) - 1
+	}
+	return tb.tabs[tb.activeIdx].Path
+}
+
 // ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
