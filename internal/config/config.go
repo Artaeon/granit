@@ -60,6 +60,9 @@ type Config struct {
 	SearchContentByDefault bool `json:"search_content_by_default"`
 	MaxSearchResults       int  `json:"max_search_results"`
 
+	// Core Plugins — toggle built-in modules on/off
+	CorePlugins map[string]bool `json:"core_plugins"`
+
 	// File path (not serialized)
 	filePath string `json:"-"`
 }
@@ -108,7 +111,43 @@ func DefaultConfig() Config {
 		SortBy:                 "name",
 		SearchContentByDefault: true,
 		MaxSearchResults:       50,
+		CorePlugins:            DefaultCorePlugins(),
 	}
+}
+
+// DefaultCorePlugins returns the default set of core plugins, all enabled.
+func DefaultCorePlugins() map[string]bool {
+	return map[string]bool{
+		"task_manager":      true,
+		"calendar":          true,
+		"canvas":            true,
+		"graph_view":        true,
+		"flashcards":        true,
+		"quiz_mode":         true,
+		"pomodoro":          true,
+		"git_integration":   true,
+		"blog_publisher":    true,
+		"ai_templates":      true,
+		"research_agent":    true,
+		"language_learning": true,
+		"habit_tracker":     true,
+		"ghost_writer":      true,
+		"encryption":        true,
+		"spell_check":       true,
+	}
+}
+
+// CorePluginEnabled returns whether a core plugin is enabled.
+// Returns true if the plugin is not in the map (default enabled).
+func (c Config) CorePluginEnabled(name string) bool {
+	if c.CorePlugins == nil {
+		return true
+	}
+	enabled, exists := c.CorePlugins[name]
+	if !exists {
+		return true // default to enabled for unknown plugins
+	}
+	return enabled
 }
 
 func ConfigDir() string {

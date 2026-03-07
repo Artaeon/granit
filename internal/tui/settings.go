@@ -92,7 +92,30 @@ func (s *Settings) buildItems() {
 		{label: "Git Auto Sync", key: "git_auto_sync", kind: "bool", value: s.config.GitAutoSync},
 		{label: "Auto-Tag on Save", key: "auto_tag", kind: "bool", value: s.config.AutoTag},
 		{label: "Ghost Writer (AI completions)", key: "ghost_writer", kind: "bool", value: s.config.GhostWriter},
+
+		// ── Core Plugins ──
+		{label: "─── Core Plugins ───", key: "_header_plugins", kind: "header", value: nil},
+		{label: "Task Manager", key: "cp_task_manager", kind: "bool", value: s.corePluginVal("task_manager")},
+		{label: "Calendar", key: "cp_calendar", kind: "bool", value: s.corePluginVal("calendar")},
+		{label: "Canvas", key: "cp_canvas", kind: "bool", value: s.corePluginVal("canvas")},
+		{label: "Graph View", key: "cp_graph_view", kind: "bool", value: s.corePluginVal("graph_view")},
+		{label: "Flashcards", key: "cp_flashcards", kind: "bool", value: s.corePluginVal("flashcards")},
+		{label: "Quiz Mode", key: "cp_quiz_mode", kind: "bool", value: s.corePluginVal("quiz_mode")},
+		{label: "Pomodoro Timer", key: "cp_pomodoro", kind: "bool", value: s.corePluginVal("pomodoro")},
+		{label: "Git Integration", key: "cp_git_integration", kind: "bool", value: s.corePluginVal("git_integration")},
+		{label: "Blog Publisher", key: "cp_blog_publisher", kind: "bool", value: s.corePluginVal("blog_publisher")},
+		{label: "AI Templates", key: "cp_ai_templates", kind: "bool", value: s.corePluginVal("ai_templates")},
+		{label: "Research Agent", key: "cp_research_agent", kind: "bool", value: s.corePluginVal("research_agent")},
+		{label: "Language Learning", key: "cp_language_learning", kind: "bool", value: s.corePluginVal("language_learning")},
+		{label: "Habit Tracker", key: "cp_habit_tracker", kind: "bool", value: s.corePluginVal("habit_tracker")},
+		{label: "Ghost Writer", key: "cp_ghost_writer", kind: "bool", value: s.corePluginVal("ghost_writer")},
+		{label: "Encryption", key: "cp_encryption", kind: "bool", value: s.corePluginVal("encryption")},
+		{label: "Spell Check", key: "cp_spell_check", kind: "bool", value: s.corePluginVal("spell_check")},
 	}
+}
+
+func (s *Settings) corePluginVal(name string) bool {
+	return s.config.CorePluginEnabled(name)
 }
 
 func (s *Settings) SetSize(width, height int) {
@@ -165,10 +188,18 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 		case "up", "k":
 			if s.cursor > 0 {
 				s.cursor--
+				// Skip header items
+				for s.cursor > 0 && s.items[s.cursor].kind == "header" {
+					s.cursor--
+				}
 			}
 		case "down", "j":
 			if s.cursor < len(s.items)-1 {
 				s.cursor++
+				// Skip header items
+				for s.cursor < len(s.items)-1 && s.items[s.cursor].kind == "header" {
+					s.cursor++
+				}
 			}
 		case "enter", " ":
 			item := &s.items[s.cursor]
@@ -310,6 +341,15 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.AutoTag = value.(bool)
 	case "ghost_writer":
 		s.config.GhostWriter = value.(bool)
+	default:
+		// Handle core plugin toggles (cp_*)
+		if strings.HasPrefix(key, "cp_") {
+			pluginName := strings.TrimPrefix(key, "cp_")
+			if s.config.CorePlugins == nil {
+				s.config.CorePlugins = config.DefaultCorePlugins()
+			}
+			s.config.CorePlugins[pluginName] = value.(bool)
+		}
 	}
 }
 
@@ -379,6 +419,12 @@ func (s Settings) View() string {
 		var valueStr string
 
 		switch item.kind {
+		case "header":
+			// Section header — render as a divider
+			headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+			b.WriteString(headerStyle.Render("  " + label))
+			b.WriteString("\n")
+			continue
 		case "bool":
 			if item.value.(bool) {
 				valueStr = lipgloss.NewStyle().Foreground(green).Render("● ON")
