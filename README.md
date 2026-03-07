@@ -95,6 +95,8 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 - **Ghost Writer** — inline AI writing suggestions (Tab to accept)
 - **Visual table editor** — edit Markdown tables in a spreadsheet-like interface
 - **Mermaid diagrams** — ASCII rendering of flowcharts, sequence diagrams, pie charts, class diagrams, and Gantt charts in view mode
+- **Custom diagrams** — `diagram` code blocks with 6 types: sequence (combos/flows), tree (decisions), movement (footwork grids), timeline, comparison tables, and figure (pre-drawn fighting technique illustrations with 10 poses)
+- **Global search & replace** — find and replace text across all vault files with preview, per-file or vault-wide replacement
 - **Link assistant** — find unlinked mentions of other notes and batch-create `[[wikilinks]]`
 - **Tab reordering** — drag tabs with `Alt+Shift+Left/Right`, close with `Alt+W`
 - **Note encryption** — AES-256-GCM encryption with PBKDF2 key derivation for secure GitHub sync (`.md.enc` files)
@@ -615,6 +617,8 @@ granit/
       linkassist.go         Unlinked mention finder + batch linking
       blogpublish.go        Blog publisher (Medium + GitHub)
       breadcrumb.go         Breadcrumb navigation + pinned tabs
+      diagrams.go           Custom diagram engine (6 types + figures)
+      globalreplace.go      Global search & replace across vault
       ... and 20+ more components
 ```
 

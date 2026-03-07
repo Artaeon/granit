@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **User-defined templates** — drop `.md` files into your vault's `templates/` folder and they appear alongside built-in templates in the template picker
 - **Status bar task counter** — yellow badge showing number of tasks due today or overdue
 - **Ctrl+K shortcut** — opens the task manager from any context
+- **Custom diagram engine** — 6 diagram types rendered in view mode: sequence (combos/flows), tree (decisions), movement (footwork grids), timeline, comparison tables, and figure (10 pre-drawn fighting technique illustrations with colored body parts and key points)
+- **Global search & replace** — find and replace text across all vault files with live preview, replace one (Ctrl+R), replace in file (Ctrl+F), or replace all (Ctrl+A)
+- **AUR packages** — PKGBUILD for Arch Linux installation (release and git variants)
 - AI-powered features: ghost writer, AI chat, bots, and auto-tag suggestions
 - Markdown editor with syntax highlighting and vim mode support
 - Vault selector and splash screen for quick project switching
