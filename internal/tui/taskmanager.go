@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -23,7 +24,7 @@ type Task struct {
 	Text     string
 	Done     bool
 	DueDate  string // "2006-01-02" or ""
-	Priority int    // 0=none, 1=low, 2=medium, 3=high
+	Priority int    // 0=none, 1=low, 2=medium, 3=high, 4=highest
 	Tags     []string
 	NotePath string // source note relative path
 	LineNum  int    // 1-based line number in source note
@@ -38,15 +39,16 @@ const (
 	taskViewAll                       // 2
 	taskViewCompleted                 // 3
 	taskViewCalendar                  // 4
+	taskViewKanban                    // 5
 )
 
-// inputMode tracks text-input sub-modes.
+// inputMode tracks sub-modes.
 type tmInputMode int
 
 const (
 	tmInputNone   tmInputMode = iota
 	tmInputAdd                // adding a new task
-	tmInputDate               // editing due date
+	tmInputDate               // date picker
 	tmInputSearch             // filtering
 )
 
@@ -55,12 +57,13 @@ const (
 // ---------------------------------------------------------------------------
 
 var (
-	tmTaskRe    = regexp.MustCompile(`^(\s*- \[)([ xX])(\] .+)`)
-	tmDueDateRe = regexp.MustCompile(`\x{1F4C5}\s*(\d{4}-\d{2}-\d{2})`)
-	tmPrioHighRe   = regexp.MustCompile(`\x{23EB}`)  // ⏫
-	tmPrioMedRe    = regexp.MustCompile(`\x{1F53C}`)  // 🔼
-	tmPrioLowRe    = regexp.MustCompile(`\x{1F53D}`)  // 🔽
-	tmTagRe     = regexp.MustCompile(`#([A-Za-z0-9_/-]+)`)
+	tmTaskRe       = regexp.MustCompile(`^(\s*- \[)([ xX])(\] .+)`)
+	tmDueDateRe    = regexp.MustCompile(`\x{1F4C5}\s*(\d{4}-\d{2}-\d{2})`)
+	tmPrioHighestRe = regexp.MustCompile(`\x{1F53A}`)  // 🔺
+	tmPrioHighRe   = regexp.MustCompile(`\x{23EB}`)    // ⏫
+	tmPrioMedRe    = regexp.MustCompile(`\x{1F53C}`)   // 🔼
+	tmPrioLowRe    = regexp.MustCompile(`\x{1F53D}`)   // 🔽
+	tmTagRe        = regexp.MustCompile(`#([A-Za-z0-9_/-]+)`)
 )
 
 // ---------------------------------------------------------------------------
@@ -74,9 +77,9 @@ type TaskManager struct {
 	height int
 
 	// Data
+	vault     *vault.Vault
 	allTasks  []Task
 	filtered  []Task // currently displayed tasks
-	vaultRoot string
 
 	// Navigation
 	view   taskView
@@ -84,40 +87,33 @@ type TaskManager struct {
 	scroll int
 
 	// Input
-	inputMode  tmInputMode
-	inputBuf   string
-	inputNote  string // note path for new task target
+	inputMode tmInputMode
+	inputBuf  string
+
+	// Date picker state
+	datePickerDate time.Time // currently selected date in picker
 
 	// Calendar sub-view state
 	calYear  int
 	calMonth time.Month
 	calDay   int // selected day (1-based), 0 = none
 
-	// Consumed-once results
-	togglePath string
-	toggleLine int
-	toggleDone bool
-	toggleOK   bool
+	// Kanban state
+	kanbanCol    int      // 0-3: which column cursor is in
+	kanbanCursor [4]int   // cursor position within each column
+	kanbanScroll [4]int   // scroll position within each column
 
+	// Status message
+	statusMsg string
+
+	// Consumed-once: jump result
 	jumpPath string
 	jumpLine int
 	jumpOK   bool
 
-	newTaskPath string
-	newTaskText string
-	newTaskOK   bool
-
-	dateUpdatePath string
-	dateUpdateLine int
-	dateUpdateDate string
-	dateUpdateOK   bool
-
-	prioUpdatePath string
-	prioUpdateLine int
-	prioUpdatePrio int
-	prioUpdateOK   bool
-
-	activeNotePath string // fallback note for adding tasks
+	// File change tracking
+	fileChanged    bool
+	lastChangedNote string // path of most recently modified note
 }
 
 // NewTaskManager creates a new TaskManager overlay.
@@ -142,17 +138,22 @@ func (tm *TaskManager) SetSize(width, height int) {
 }
 
 // Open parses all tasks from the vault and activates the overlay.
-func (tm *TaskManager) Open(vaultRoot string, notes map[string]*vault.Note) {
+func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.active = true
-	tm.vaultRoot = vaultRoot
-	tm.allTasks = ParseAllTasks(notes)
+	tm.vault = v
+	tm.allTasks = ParseAllTasks(v.Notes)
 	tm.view = taskViewToday
 	tm.cursor = 0
 	tm.scroll = 0
 	tm.inputMode = tmInputNone
 	tm.inputBuf = ""
-	tm.inputNote = ""
-	tm.clearResults()
+	tm.statusMsg = ""
+	tm.jumpOK = false
+	tm.fileChanged = false
+	tm.lastChangedNote = ""
+	tm.kanbanCol = 0
+	tm.kanbanCursor = [4]int{}
+	tm.kanbanScroll = [4]int{}
 	now := time.Now()
 	tm.calYear = now.Year()
 	tm.calMonth = now.Month()
@@ -165,16 +166,6 @@ func (tm *TaskManager) Close() {
 	tm.active = false
 }
 
-// GetToggleResult returns a consumed-once toggle result.
-func (tm *TaskManager) GetToggleResult() (notePath string, lineNum int, newDone bool, ok bool) {
-	if !tm.toggleOK {
-		return "", 0, false, false
-	}
-	p, l, d := tm.togglePath, tm.toggleLine, tm.toggleDone
-	tm.toggleOK = false
-	return p, l, d, true
-}
-
 // GetJumpResult returns a consumed-once jump result.
 func (tm *TaskManager) GetJumpResult() (notePath string, lineNum int, ok bool) {
 	if !tm.jumpOK {
@@ -185,70 +176,18 @@ func (tm *TaskManager) GetJumpResult() (notePath string, lineNum int, ok bool) {
 	return p, l, true
 }
 
-// GetNewTask returns a consumed-once new task result.
-func (tm *TaskManager) GetNewTask() (notePath string, taskText string, ok bool) {
-	if !tm.newTaskOK {
-		return "", "", false
+// WasFileChanged returns true (consumed-once) if any file was modified.
+func (tm *TaskManager) WasFileChanged() bool {
+	if tm.fileChanged {
+		tm.fileChanged = false
+		return true
 	}
-	p, t := tm.newTaskPath, tm.newTaskText
-	tm.newTaskOK = false
-	return p, t, true
+	return false
 }
 
-func (tm *TaskManager) clearResults() {
-	tm.toggleOK = false
-	tm.jumpOK = false
-	tm.newTaskOK = false
-	tm.dateUpdateOK = false
-	tm.prioUpdateOK = false
-}
-
-// GetDateUpdateResult returns a consumed-once date change result.
-func (tm *TaskManager) GetDateUpdateResult() (notePath string, lineNum int, newDate string, ok bool) {
-	if !tm.dateUpdateOK {
-		return "", 0, "", false
-	}
-	p, l, d := tm.dateUpdatePath, tm.dateUpdateLine, tm.dateUpdateDate
-	tm.dateUpdateOK = false
-	return p, l, d, true
-}
-
-// GetPrioUpdateResult returns a consumed-once priority change result.
-func (tm *TaskManager) GetPrioUpdateResult() (notePath string, lineNum int, newPrio int, ok bool) {
-	if !tm.prioUpdateOK {
-		return "", 0, 0, false
-	}
-	p, l, pr := tm.prioUpdatePath, tm.prioUpdateLine, tm.prioUpdatePrio
-	tm.prioUpdateOK = false
-	return p, l, pr, true
-}
-
-// SetActiveNote sets the fallback note for adding tasks when no task is selected.
-func (tm *TaskManager) SetActiveNote(path string) {
-	tm.activeNotePath = path
-}
-
-// SwitchToAllView switches to the "All" tasks view (used after adding a task).
-func (tm *TaskManager) SwitchToAllView() {
-	tm.view = taskViewAll
-}
-
-// Refresh re-parses all tasks from the vault without closing the overlay.
-func (tm *TaskManager) Refresh(notes map[string]*vault.Note) {
-	savedView := tm.view
-	savedScroll := tm.scroll
-	savedCursor := tm.cursor
-	tm.allTasks = ParseAllTasks(notes)
-	tm.view = savedView
-	tm.rebuildFiltered()
-	tm.scroll = savedScroll
-	if savedCursor >= len(tm.filtered) {
-		savedCursor = len(tm.filtered) - 1
-	}
-	if savedCursor < 0 {
-		savedCursor = 0
-	}
-	tm.cursor = savedCursor
+// ActiveNotePath returns the path of the note that was most recently modified.
+func (tm *TaskManager) ActiveNotePath() string {
+	return tm.lastChangedNote
 }
 
 // CountTasksDueToday returns the number of incomplete tasks due today or overdue.
@@ -309,8 +248,10 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 				t.DueDate = dm[1]
 			}
 
-			// Priority
-			if tmPrioHighRe.MatchString(taskText) {
+			// Priority (check highest first)
+			if tmPrioHighestRe.MatchString(taskText) {
+				t.Priority = 4
+			} else if tmPrioHighRe.MatchString(taskText) {
 				t.Priority = 3
 			} else if tmPrioMedRe.MatchString(taskText) {
 				t.Priority = 2
@@ -408,6 +349,254 @@ func tmDaysInMonth(year int, month time.Month) int {
 	return time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
 }
 
+// tmNextMonday returns the next Monday from today.
+func tmNextMonday() time.Time {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	daysUntilMon := (8 - int(today.Weekday())) % 7
+	if daysUntilMon == 0 {
+		daysUntilMon = 7
+	}
+	return today.AddDate(0, 0, daysUntilMon)
+}
+
+// tmFormatDateLong formats a date for the date picker preview.
+func tmFormatDateLong(t time.Time) string {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	d := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.Local)
+	diff := int(d.Sub(today).Hours() / 24)
+	label := t.Format("Monday, Jan 2")
+	switch {
+	case diff < 0:
+		return fmt.Sprintf("%s (%dd ago)", label, -diff)
+	case diff == 0:
+		return label + " (today)"
+	case diff == 1:
+		return label + " (tomorrow)"
+	default:
+		return fmt.Sprintf("%s (+%dd)", label, diff)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Direct file I/O helpers
+// ---------------------------------------------------------------------------
+
+// writeLineChange modifies a specific line in a note file and writes it back.
+func (tm *TaskManager) writeLineChange(notePath string, lineNum int, transform func(string) string) bool {
+	if tm.vault == nil {
+		return false
+	}
+	note := tm.vault.GetNote(notePath)
+	if note == nil {
+		return false
+	}
+	lines := strings.Split(note.Content, "\n")
+	if lineNum < 1 || lineNum > len(lines) {
+		return false
+	}
+	lines[lineNum-1] = transform(lines[lineNum-1])
+	newContent := strings.Join(lines, "\n")
+	note.Content = newContent
+	absPath := filepath.Join(tm.vault.Root, notePath)
+	if err := os.WriteFile(absPath, []byte(newContent), 0644); err != nil {
+		return false
+	}
+	tm.fileChanged = true
+	tm.lastChangedNote = notePath
+	return true
+}
+
+// reparse re-parses all tasks from the vault and rebuilds the filtered list.
+func (tm *TaskManager) reparse() {
+	savedView := tm.view
+	savedCursor := tm.cursor
+	savedScroll := tm.scroll
+	tm.allTasks = ParseAllTasks(tm.vault.Notes)
+	tm.view = savedView
+	tm.rebuildFiltered()
+	tm.scroll = savedScroll
+	if savedCursor >= len(tm.filtered) {
+		savedCursor = len(tm.filtered) - 1
+	}
+	if savedCursor < 0 {
+		savedCursor = 0
+	}
+	tm.cursor = savedCursor
+}
+
+// doToggle toggles the done state of the task at the current cursor.
+func (tm *TaskManager) doToggle(task Task) {
+	newDone := !task.Done
+	ok := tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+		if newDone {
+			return strings.Replace(line, "[ ]", "[x]", 1)
+		}
+		line = strings.Replace(line, "[x]", "[ ]", 1)
+		line = strings.Replace(line, "[X]", "[ ]", 1)
+		return line
+	})
+	if ok {
+		if newDone {
+			tm.statusMsg = "Task completed"
+		} else {
+			tm.statusMsg = "Task reopened"
+		}
+		tm.reparse()
+	}
+}
+
+// doSetDate sets the due date on the task at the current cursor.
+func (tm *TaskManager) doSetDate(task Task, newDate string) {
+	ok := tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+		line = tmDueDateRe.ReplaceAllString(line, "")
+		line = strings.TrimRight(line, " ")
+		line += " \U0001F4C5 " + newDate
+		return line
+	})
+	if ok {
+		dt, _ := time.Parse("2006-01-02", newDate)
+		tm.statusMsg = "Due date set to " + dt.Format("Jan 2")
+		tm.reparse()
+	}
+}
+
+// doCyclePriority cycles the priority of the task at the current cursor.
+func (tm *TaskManager) doCyclePriority(task Task) {
+	newPrio := (task.Priority + 1) % 5 // 0→1→2→3→4→0
+	ok := tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+		// Remove all existing priority markers
+		line = tmPrioHighestRe.ReplaceAllString(line, "")
+		line = tmPrioHighRe.ReplaceAllString(line, "")
+		line = tmPrioMedRe.ReplaceAllString(line, "")
+		line = tmPrioLowRe.ReplaceAllString(line, "")
+		line = strings.TrimRight(line, " ")
+		if newPrio > 0 {
+			line += " " + tmPriorityIcon(newPrio)
+		}
+		return line
+	})
+	if ok {
+		tm.reparse()
+	}
+}
+
+// doAddTask adds a new task to Tasks.md in vault root.
+func (tm *TaskManager) doAddTask(taskText string) {
+	if tm.vault == nil {
+		return
+	}
+	taskLine := "- [ ] " + strings.TrimSpace(taskText)
+	// If in calendar view, append the selected date
+	if tm.view == taskViewCalendar && tm.calDay > 0 {
+		dateStr := fmt.Sprintf("%04d-%02d-%02d", tm.calYear, int(tm.calMonth), tm.calDay)
+		if !strings.Contains(taskLine, "\U0001F4C5") {
+			taskLine += " \U0001F4C5 " + dateStr
+		}
+	}
+
+	targetPath := "Tasks.md"
+	absPath := filepath.Join(tm.vault.Root, targetPath)
+
+	note := tm.vault.GetNote(targetPath)
+	if note == nil {
+		// Create Tasks.md with header
+		header := "# Tasks\n\n"
+		if err := os.WriteFile(absPath, []byte(header), 0644); err != nil {
+			return
+		}
+		// Re-scan to pick up the new file
+		tm.vault.Scan()
+		note = tm.vault.GetNote(targetPath)
+		if note == nil {
+			return
+		}
+	}
+
+	newContent := note.Content
+	if !strings.HasSuffix(newContent, "\n") {
+		newContent += "\n"
+	}
+	newContent += taskLine + "\n"
+	note.Content = newContent
+	if err := os.WriteFile(absPath, []byte(newContent), 0644); err != nil {
+		return
+	}
+
+	tm.fileChanged = true
+	tm.lastChangedNote = targetPath
+	tm.statusMsg = "Task added to Tasks.md"
+
+	// Switch to All view so the task is visible
+	tm.view = taskViewAll
+	tm.reparse()
+}
+
+// doKanbanMove moves a task between kanban columns by adding/removing tags.
+func (tm *TaskManager) doKanbanMove(task Task, direction int) {
+	cols := tm.kanbanColumns()
+	// Find which column the task is currently in
+	currentCol := -1
+	for c := 0; c < 4; c++ {
+		for _, t := range cols[c] {
+			if t.NotePath == task.NotePath && t.LineNum == task.LineNum {
+				currentCol = c
+				break
+			}
+		}
+		if currentCol >= 0 {
+			break
+		}
+	}
+	if currentCol < 0 {
+		return
+	}
+
+	targetCol := currentCol + direction
+	if targetCol < 0 || targetCol > 3 {
+		return
+	}
+
+	tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+		// Remove #doing and #inprogress tags
+		doingRe := regexp.MustCompile(`\s*#doing\b`)
+		inprogRe := regexp.MustCompile(`\s*#inprogress\b`)
+		line = doingRe.ReplaceAllString(line, "")
+		line = inprogRe.ReplaceAllString(line, "")
+
+		switch targetCol {
+		case 0: // Backlog: remove date, uncheck
+			line = tmDueDateRe.ReplaceAllString(line, "")
+			line = strings.Replace(line, "[x]", "[ ]", 1)
+			line = strings.Replace(line, "[X]", "[ ]", 1)
+		case 1: // Todo: uncheck (keep date)
+			line = strings.Replace(line, "[x]", "[ ]", 1)
+			line = strings.Replace(line, "[X]", "[ ]", 1)
+		case 2: // In Progress: add #doing, uncheck
+			line = strings.Replace(line, "[x]", "[ ]", 1)
+			line = strings.Replace(line, "[X]", "[ ]", 1)
+			line = strings.TrimRight(line, " ")
+			line += " #doing"
+		case 3: // Done: check
+			line = strings.Replace(line, "[ ]", "[x]", 1)
+		}
+		line = strings.TrimRight(line, " ")
+		return line
+	})
+	tm.reparse()
+	// Move cursor to target column
+	tm.kanbanCol = targetCol
+	// Rebuild columns and clamp cursor
+	newCols := tm.kanbanColumns()
+	if tm.kanbanCursor[targetCol] >= len(newCols[targetCol]) {
+		tm.kanbanCursor[targetCol] = len(newCols[targetCol]) - 1
+	}
+	if tm.kanbanCursor[targetCol] < 0 {
+		tm.kanbanCursor[targetCol] = 0
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Filtering / sorting
 // ---------------------------------------------------------------------------
@@ -426,6 +615,8 @@ func (tm *TaskManager) rebuildFiltered() {
 		tm.filtered = tm.filterCompleted()
 	case taskViewCalendar:
 		tm.filtered = tm.filterCalendarDay()
+	case taskViewKanban:
+		tm.filtered = nil // kanban uses columns, not flat list
 	}
 	if tm.inputMode == tmInputSearch && tm.inputBuf != "" {
 		tm.filtered = tm.applySearch(tm.filtered)
@@ -483,7 +674,6 @@ func (tm *TaskManager) filterAll() []Task {
 		out = append(out, t)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		// Tasks with due dates first
 		if (out[i].DueDate == "") != (out[j].DueDate == "") {
 			return out[i].DueDate != ""
 		}
@@ -502,7 +692,6 @@ func (tm *TaskManager) filterCompleted() []Task {
 			out = append(out, t)
 		}
 	}
-	// Sort by note path then line number (stable ordering)
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].NotePath != out[j].NotePath {
 			return out[i].NotePath < out[j].NotePath
@@ -542,11 +731,52 @@ func (tm *TaskManager) applySearch(tasks []Task) []Task {
 }
 
 // ---------------------------------------------------------------------------
+// Kanban columns
+// ---------------------------------------------------------------------------
+
+// kanbanColumns returns 4 columns: Backlog, Todo, In Progress, Done.
+func (tm *TaskManager) kanbanColumns() [4][]Task {
+	var cols [4][]Task
+
+	for _, t := range tm.allTasks {
+		hasDoingTag := false
+		for _, tag := range t.Tags {
+			if tag == "doing" || tag == "inprogress" {
+				hasDoingTag = true
+				break
+			}
+		}
+
+		switch {
+		case t.Done:
+			cols[3] = append(cols[3], t)
+		case hasDoingTag:
+			cols[2] = append(cols[2], t)
+		case t.DueDate != "":
+			cols[1] = append(cols[1], t)
+		default:
+			cols[0] = append(cols[0], t)
+		}
+	}
+
+	// Sort each column by priority descending
+	for c := 0; c < 4; c++ {
+		sort.Slice(cols[c], func(i, j int) bool {
+			return cols[c][i].Priority > cols[c][j].Priority
+		})
+	}
+
+	return cols
+}
+
+// ---------------------------------------------------------------------------
 // Priority helpers
 // ---------------------------------------------------------------------------
 
 func tmPriorityIcon(p int) string {
 	switch p {
+	case 4:
+		return "\U0001F53A" // 🔺
 	case 3:
 		return "\u23EB" // ⏫
 	case 2:
@@ -560,6 +790,8 @@ func tmPriorityIcon(p int) string {
 
 func tmPriorityColor(p int) lipgloss.Color {
 	switch p {
+	case 4:
+		return red
 	case 3:
 		return red
 	case 2:
@@ -583,9 +815,15 @@ func (tm TaskManager) Update(msg tea.Msg) (TaskManager, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Clear status message on any keypress
+		tm.statusMsg = ""
+
 		// Handle input modes first
 		if tm.inputMode != tmInputNone {
 			return tm.updateInput(msg)
+		}
+		if tm.view == taskViewKanban {
+			return tm.updateKanban(msg)
 		}
 		return tm.updateNormal(msg)
 	}
@@ -595,93 +833,215 @@ func (tm TaskManager) Update(msg tea.Msg) (TaskManager, tea.Cmd) {
 func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	key := msg.String()
 
+	switch tm.inputMode {
+	case tmInputDate:
+		return tm.updateDatePicker(key)
+	case tmInputAdd:
+		return tm.updateAddInput(key)
+	case tmInputSearch:
+		return tm.updateSearchInput(key)
+	}
+
+	return tm, nil
+}
+
+func (tm TaskManager) updateAddInput(key string) (TaskManager, tea.Cmd) {
 	switch key {
 	case "esc":
-		if tm.inputMode == tmInputSearch {
-			tm.inputMode = tmInputNone
-			tm.inputBuf = ""
-			tm.rebuildFiltered()
-		} else {
-			tm.inputMode = tmInputNone
-			tm.inputBuf = ""
-		}
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
 		return tm, nil
 
 	case "enter":
-		switch tm.inputMode {
-		case tmInputAdd:
-			if strings.TrimSpace(tm.inputBuf) != "" {
-				taskLine := "- [ ] " + strings.TrimSpace(tm.inputBuf)
-				// If in calendar view, append the selected date
-				if tm.view == taskViewCalendar && tm.calDay > 0 {
-					dateStr := fmt.Sprintf("%04d-%02d-%02d", tm.calYear, int(tm.calMonth), tm.calDay)
-					if !strings.Contains(taskLine, "\U0001F4C5") {
-						taskLine += " \U0001F4C5 " + dateStr
-					}
-				}
-				// Determine target note
-				target := tm.inputNote
-				if target == "" && len(tm.filtered) > 0 && tm.cursor < len(tm.filtered) {
-					target = tm.filtered[tm.cursor].NotePath
-				}
-				if target == "" {
-					target = tm.activeNotePath
-				}
-				if target != "" {
-					tm.newTaskPath = target
-					tm.newTaskText = taskLine
-					tm.newTaskOK = true
-				}
-			}
-			tm.inputMode = tmInputNone
-			tm.inputBuf = ""
-			return tm, nil
-
-		case tmInputDate:
-			if tm.cursor < len(tm.filtered) {
-				dateStr := strings.TrimSpace(tm.inputBuf)
-				if _, err := time.Parse("2006-01-02", dateStr); err == nil {
-					task := tm.filtered[tm.cursor]
-					tm.dateUpdatePath = task.NotePath
-					tm.dateUpdateLine = task.LineNum
-					tm.dateUpdateDate = dateStr
-					tm.dateUpdateOK = true
-					// Update local state
-					for i := range tm.allTasks {
-						if tm.allTasks[i].NotePath == task.NotePath && tm.allTasks[i].LineNum == task.LineNum {
-							tm.allTasks[i].DueDate = dateStr
-							break
-						}
-					}
-					tm.rebuildFiltered()
-				}
-			}
-			tm.inputMode = tmInputNone
-			tm.inputBuf = ""
-			return tm, nil
-
-		case tmInputSearch:
-			// Keep search active, just confirm
-			return tm, nil
+		if strings.TrimSpace(tm.inputBuf) != "" {
+			tm.doAddTask(tm.inputBuf)
 		}
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+		return tm, nil
 
 	case "backspace":
 		if len(tm.inputBuf) > 0 {
 			tm.inputBuf = tm.inputBuf[:len(tm.inputBuf)-1]
-			if tm.inputMode == tmInputSearch {
-				tm.rebuildFiltered()
-			}
 		}
 		return tm, nil
 
 	default:
 		if len(key) == 1 || key == " " {
 			tm.inputBuf += key
-			if tm.inputMode == tmInputSearch {
-				tm.rebuildFiltered()
-			}
 		}
 		return tm, nil
+	}
+}
+
+func (tm TaskManager) updateSearchInput(key string) (TaskManager, tea.Cmd) {
+	switch key {
+	case "esc":
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+		tm.rebuildFiltered()
+		return tm, nil
+
+	case "enter":
+		// Keep search active, just confirm
+		return tm, nil
+
+	case "backspace":
+		if len(tm.inputBuf) > 0 {
+			tm.inputBuf = tm.inputBuf[:len(tm.inputBuf)-1]
+			tm.rebuildFiltered()
+		}
+		return tm, nil
+
+	default:
+		if len(key) == 1 || key == " " {
+			tm.inputBuf += key
+			tm.rebuildFiltered()
+		}
+		return tm, nil
+	}
+}
+
+func (tm TaskManager) updateDatePicker(key string) (TaskManager, tea.Cmd) {
+	switch key {
+	case "esc":
+		tm.inputMode = tmInputNone
+		return tm, nil
+
+	case "enter":
+		// Confirm date
+		if tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			newDate := tm.datePickerDate.Format("2006-01-02")
+			tm.doSetDate(task, newDate)
+		}
+		tm.inputMode = tmInputNone
+		return tm, nil
+
+	case "t":
+		// Today
+		now := time.Now()
+		tm.datePickerDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+		return tm, nil
+
+	case "m":
+		// Tomorrow
+		now := time.Now()
+		tm.datePickerDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local).AddDate(0, 0, 1)
+		return tm, nil
+
+	case "w":
+		// Next Monday
+		tm.datePickerDate = tmNextMonday()
+		return tm, nil
+
+	case "+", "right":
+		tm.datePickerDate = tm.datePickerDate.AddDate(0, 0, 1)
+		return tm, nil
+
+	case "-", "left":
+		tm.datePickerDate = tm.datePickerDate.AddDate(0, 0, -1)
+		return tm, nil
+
+	default:
+		return tm, nil
+	}
+}
+
+func (tm TaskManager) updateKanban(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
+	key := msg.String()
+	cols := tm.kanbanColumns()
+
+	switch key {
+	case "esc", "q":
+		tm.active = false
+		return tm, nil
+
+	case "1":
+		tm.view = taskViewToday
+		tm.rebuildFiltered()
+	case "2":
+		tm.view = taskViewUpcoming
+		tm.rebuildFiltered()
+	case "3":
+		tm.view = taskViewAll
+		tm.rebuildFiltered()
+	case "4":
+		tm.view = taskViewCompleted
+		tm.rebuildFiltered()
+	case "5":
+		tm.view = taskViewCalendar
+		tm.rebuildFiltered()
+	case "6":
+		// Already on kanban
+	case "tab":
+		tm.view = (tm.view + 1) % 6
+		tm.rebuildFiltered()
+
+	case "h", "left":
+		if tm.kanbanCol > 0 {
+			tm.kanbanCol--
+		}
+	case "l", "right":
+		if tm.kanbanCol < 3 {
+			tm.kanbanCol++
+		}
+
+	case "j", "down":
+		col := cols[tm.kanbanCol]
+		if tm.kanbanCursor[tm.kanbanCol] < len(col)-1 {
+			tm.kanbanCursor[tm.kanbanCol]++
+			visH := tm.kanbanVisibleHeight()
+			if tm.kanbanCursor[tm.kanbanCol] >= tm.kanbanScroll[tm.kanbanCol]+visH {
+				tm.kanbanScroll[tm.kanbanCol] = tm.kanbanCursor[tm.kanbanCol] - visH + 1
+			}
+		}
+	case "k", "up":
+		if tm.kanbanCursor[tm.kanbanCol] > 0 {
+			tm.kanbanCursor[tm.kanbanCol]--
+			if tm.kanbanCursor[tm.kanbanCol] < tm.kanbanScroll[tm.kanbanCol] {
+				tm.kanbanScroll[tm.kanbanCol] = tm.kanbanCursor[tm.kanbanCol]
+			}
+		}
+
+	case "x", "enter":
+		col := cols[tm.kanbanCol]
+		if tm.kanbanCursor[tm.kanbanCol] < len(col) {
+			task := col[tm.kanbanCursor[tm.kanbanCol]]
+			tm.doToggle(task)
+		}
+
+	case ">":
+		col := cols[tm.kanbanCol]
+		if tm.kanbanCol < 3 && tm.kanbanCursor[tm.kanbanCol] < len(col) {
+			task := col[tm.kanbanCursor[tm.kanbanCol]]
+			tm.doKanbanMove(task, 1)
+		}
+
+	case "<":
+		col := cols[tm.kanbanCol]
+		if tm.kanbanCol > 0 && tm.kanbanCursor[tm.kanbanCol] < len(col) {
+			task := col[tm.kanbanCursor[tm.kanbanCol]]
+			tm.doKanbanMove(task, -1)
+		}
+
+	case "g":
+		col := cols[tm.kanbanCol]
+		if tm.kanbanCursor[tm.kanbanCol] < len(col) {
+			task := col[tm.kanbanCursor[tm.kanbanCol]]
+			tm.jumpPath = task.NotePath
+			tm.jumpLine = task.LineNum
+			tm.jumpOK = true
+			tm.active = false
+		}
+
+	case "a":
+		tm.inputMode = tmInputAdd
+		tm.inputBuf = ""
+
+	case "/":
+		tm.inputMode = tmInputSearch
+		tm.inputBuf = ""
 	}
 
 	return tm, nil
@@ -711,15 +1071,17 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case "5":
 		tm.view = taskViewCalendar
 		tm.rebuildFiltered()
+	case "6":
+		tm.view = taskViewKanban
+		tm.rebuildFiltered()
 
 	case "tab":
-		tm.view = (tm.view + 1) % 5
+		tm.view = (tm.view + 1) % 6
 		tm.rebuildFiltered()
 
 	// Navigation
 	case "up", "k":
 		if tm.view == taskViewCalendar && len(tm.filtered) == 0 {
-			// Navigate calendar days
 			tm.calDay -= 7
 			if tm.calDay < 1 {
 				tm.calMonth--
@@ -790,20 +1152,8 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case "enter", "x":
 		if tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
-			tm.togglePath = task.NotePath
-			tm.toggleLine = task.LineNum
-			tm.toggleDone = !task.Done
-			tm.toggleOK = true
-			// Update local state so the view refreshes immediately
-			for i := range tm.allTasks {
-				if tm.allTasks[i].NotePath == task.NotePath && tm.allTasks[i].LineNum == task.LineNum {
-					tm.allTasks[i].Done = !task.Done
-					break
-				}
-			}
-			tm.rebuildFiltered()
+			tm.doToggle(task)
 		} else if tm.view == taskViewCalendar && len(tm.filtered) == 0 {
-			// In calendar with no tasks shown, select the day to view tasks
 			tm.rebuildFiltered()
 		}
 
@@ -821,21 +1171,22 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case "a":
 		tm.inputMode = tmInputAdd
 		tm.inputBuf = ""
-		if tm.cursor < len(tm.filtered) {
-			tm.inputNote = tm.filtered[tm.cursor].NotePath
-		} else if tm.activeNotePath != "" {
-			tm.inputNote = tm.activeNotePath
-		}
 
-	// Set due date
+	// Set due date (date picker)
 	case "d":
 		if tm.cursor < len(tm.filtered) {
 			tm.inputMode = tmInputDate
 			task := tm.filtered[tm.cursor]
 			if task.DueDate != "" {
-				tm.inputBuf = task.DueDate
+				if t, err := time.Parse("2006-01-02", task.DueDate); err == nil {
+					tm.datePickerDate = t
+				} else {
+					now := time.Now()
+					tm.datePickerDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+				}
 			} else {
-				tm.inputBuf = tmToday()
+				now := time.Now()
+				tm.datePickerDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 			}
 		}
 
@@ -843,18 +1194,7 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case "p":
 		if tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
-			newPrio := (task.Priority + 1) % 4
-			tm.prioUpdatePath = task.NotePath
-			tm.prioUpdateLine = task.LineNum
-			tm.prioUpdatePrio = newPrio
-			tm.prioUpdateOK = true
-			for i := range tm.allTasks {
-				if tm.allTasks[i].NotePath == task.NotePath && tm.allTasks[i].LineNum == task.LineNum {
-					tm.allTasks[i].Priority = newPrio
-					break
-				}
-			}
-			tm.rebuildFiltered()
+			tm.doCyclePriority(task)
 		}
 
 	// Search
@@ -874,6 +1214,14 @@ func (tm *TaskManager) visibleHeight() int {
 	return h
 }
 
+func (tm *TaskManager) kanbanVisibleHeight() int {
+	h := tm.height - 12
+	if h < 3 {
+		h = 3
+	}
+	return h
+}
+
 // ---------------------------------------------------------------------------
 // View
 // ---------------------------------------------------------------------------
@@ -884,8 +1232,18 @@ func (tm TaskManager) View() string {
 	if width < 60 {
 		width = 60
 	}
-	if width > 90 {
-		width = 90
+	if width > 100 {
+		width = 100
+	}
+	// Kanban needs more width
+	if tm.view == taskViewKanban {
+		width = tm.width * 4 / 5
+		if width < 80 {
+			width = 80
+		}
+		if width > 140 {
+			width = 140
+		}
 	}
 
 	innerW := width - 8 // account for border + padding
@@ -902,12 +1260,20 @@ func (tm TaskManager) View() string {
 	switch tm.view {
 	case taskViewCalendar:
 		tm.renderCalendarView(&b, innerW)
+	case taskViewKanban:
+		tm.renderKanbanView(&b, innerW)
 	default:
 		tm.renderTaskList(&b, innerW)
 	}
 
 	// Input bar (if active)
 	tm.renderInput(&b, innerW)
+
+	// Status message
+	if tm.statusMsg != "" {
+		b.WriteString("\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(green).Render(tm.statusMsg))
+	}
 
 	// Help bar
 	tm.renderHelp(&b, innerW)
@@ -960,6 +1326,7 @@ func (tm *TaskManager) renderTabs(b *strings.Builder, w int) {
 		"All",
 		"Done",
 		"Calendar",
+		"Kanban",
 	}
 	counts := []int{
 		len(tm.filterToday()),
@@ -967,6 +1334,7 @@ func (tm *TaskManager) renderTabs(b *strings.Builder, w int) {
 		len(tm.filterAll()),
 		len(tm.filterCompleted()),
 		-1, // calendar doesn't show count
+		-1, // kanban doesn't show count
 	}
 
 	var tabs []string
@@ -1074,6 +1442,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	// Task text (strip emoji markers for cleaner display)
 	displayText := task.Text
 	displayText = tmDueDateRe.ReplaceAllString(displayText, "")
+	displayText = tmPrioHighestRe.ReplaceAllString(displayText, "")
 	displayText = tmPrioHighRe.ReplaceAllString(displayText, "")
 	displayText = tmPrioMedRe.ReplaceAllString(displayText, "")
 	displayText = tmPrioLowRe.ReplaceAllString(displayText, "")
@@ -1097,12 +1466,16 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		}
 	}
 
-	// Source note name
+	// Source note badge
 	noteName := strings.TrimSuffix(filepath.Base(task.NotePath), ".md")
-	noteLabel := lipgloss.NewStyle().Foreground(overlay0).Render(noteName)
+	noteLabel := lipgloss.NewStyle().
+		Foreground(text).
+		Background(surface1).
+		Padding(0, 1).
+		Render(noteName)
 
 	// Truncate text if necessary
-	maxTextW := w - 20
+	maxTextW := w - 30
 	if maxTextW < 10 {
 		maxTextW = 10
 	}
@@ -1124,7 +1497,6 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	line += " " + noteLabel
 
 	if isSelected {
-		// Highlight background for selected row
 		b.WriteString(lipgloss.NewStyle().
 			Background(surface0).
 			Width(w).
@@ -1150,7 +1522,23 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 	case tmInputAdd:
 		b.WriteString("  " + promptStyle.Render("New task: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
 	case tmInputDate:
-		b.WriteString("  " + promptStyle.Render("Due date (YYYY-MM-DD): ") + inputStyle.Render(tm.inputBuf+"\u2588"))
+		// Date picker display
+		preview := tmFormatDateLong(tm.datePickerDate)
+		dateStr := tm.datePickerDate.Format("2006-01-02")
+		b.WriteString("  " + promptStyle.Render("Due: ") +
+			lipgloss.NewStyle().Foreground(text).Bold(true).Render(preview))
+		b.WriteString("\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).Render(dateStr))
+		b.WriteString("\n")
+		shortcutStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+		descStyle := lipgloss.NewStyle().Foreground(overlay0)
+		b.WriteString("  " +
+			shortcutStyle.Render("t") + descStyle.Render(":today ") +
+			shortcutStyle.Render("m") + descStyle.Render(":tomorrow ") +
+			shortcutStyle.Render("w") + descStyle.Render(":monday ") +
+			shortcutStyle.Render("+/-") + descStyle.Render(":adjust ") +
+			shortcutStyle.Render("Enter") + descStyle.Render(":set ") +
+			shortcutStyle.Render("Esc") + descStyle.Render(":cancel"))
 	case tmInputSearch:
 		b.WriteString("  " + promptStyle.Render("Filter: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
 	}
@@ -1166,16 +1554,29 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 	descStyle := lipgloss.NewStyle().Foreground(overlay0)
 
 	var pairs []string
-	if tm.view == taskViewCalendar {
+	switch tm.view {
+	case taskViewCalendar:
 		pairs = []string{
 			keyStyle.Render("h/l") + descStyle.Render(":month "),
 			keyStyle.Render("j/k") + descStyle.Render(":day "),
 			keyStyle.Render("x") + descStyle.Render(":toggle "),
 			keyStyle.Render("g") + descStyle.Render(":go "),
 			keyStyle.Render("a") + descStyle.Render(":add "),
+			keyStyle.Render("Tab") + descStyle.Render(":view "),
 			keyStyle.Render("Esc") + descStyle.Render(":close"),
 		}
-	} else {
+	case taskViewKanban:
+		pairs = []string{
+			keyStyle.Render("h/l") + descStyle.Render(":col "),
+			keyStyle.Render("j/k") + descStyle.Render(":nav "),
+			keyStyle.Render("x") + descStyle.Render(":toggle "),
+			keyStyle.Render(">/<") + descStyle.Render(":move "),
+			keyStyle.Render("g") + descStyle.Render(":go "),
+			keyStyle.Render("a") + descStyle.Render(":add "),
+			keyStyle.Render("Tab") + descStyle.Render(":view "),
+			keyStyle.Render("Esc") + descStyle.Render(":close"),
+		}
+	default:
 		pairs = []string{
 			keyStyle.Render("j/k") + descStyle.Render(":nav "),
 			keyStyle.Render("x") + descStyle.Render(":toggle "),
@@ -1290,7 +1691,11 @@ func (tm *TaskManager) renderCalendarView(b *strings.Builder, w int) {
 	dayTitle := dt.Format("Monday, Jan 2")
 	b.WriteString("  " + lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(dayTitle))
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", maxInt(w-4, 10))))
+	calW := w - 4
+	if calW < 10 {
+		calW = 10
+	}
+	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", calW)))
 	b.WriteString("\n")
 
 	if len(tm.filtered) == 0 {
@@ -1312,5 +1717,140 @@ func (tm *TaskManager) renderCalendarView(b *strings.Builder, w int) {
 			}
 		}
 		b.WriteString("\n")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Kanban view
+// ---------------------------------------------------------------------------
+
+func (tm *TaskManager) renderKanbanView(b *strings.Builder, w int) {
+	cols := tm.kanbanColumns()
+	colNames := []string{"Backlog", "Todo", "In Progress", "Done"}
+	colColors := []lipgloss.Color{overlay1, blue, peach, green}
+
+	colWidth := w / 4
+	if colWidth < 15 {
+		colWidth = 15
+	}
+
+	visH := tm.kanbanVisibleHeight()
+
+	// Render each column
+	var colViews []string
+	for c := 0; c < 4; c++ {
+		var cb strings.Builder
+		isActiveCol := c == tm.kanbanCol
+
+		// Column header
+		headerStyle := lipgloss.NewStyle().Foreground(colColors[c]).Bold(true)
+		countStr := fmt.Sprintf(" %d", len(cols[c]))
+		countStyle := lipgloss.NewStyle().Foreground(overlay0)
+		header := headerStyle.Render(colNames[c]) + countStyle.Render(countStr)
+		cb.WriteString(header)
+		cb.WriteString("\n")
+
+		// Separator
+		sepColor := overlay0
+		if isActiveCol {
+			sepColor = colColors[c]
+		}
+		cb.WriteString(lipgloss.NewStyle().Foreground(sepColor).Render(strings.Repeat("\u2500", colWidth-2)))
+		cb.WriteString("\n")
+
+		// Tasks
+		if len(cols[c]) == 0 {
+			cb.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("(empty)"))
+			cb.WriteString("\n")
+		} else {
+			start := tm.kanbanScroll[c]
+			end := start + visH
+			if end > len(cols[c]) {
+				end = len(cols[c])
+			}
+			for i := start; i < end; i++ {
+				task := cols[c][i]
+				isSelected := isActiveCol && i == tm.kanbanCursor[c]
+				tm.renderKanbanCard(&cb, task, isSelected, colWidth-2)
+				cb.WriteString("\n")
+			}
+			// Scroll indicator
+			if len(cols[c]) > visH {
+				pos := fmt.Sprintf("%d/%d", tm.kanbanCursor[c]+1, len(cols[c]))
+				cb.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(pos))
+				cb.WriteString("\n")
+			}
+		}
+
+		colView := lipgloss.NewStyle().
+			Width(colWidth).
+			Render(cb.String())
+		colViews = append(colViews, colView)
+	}
+
+	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, colViews...))
+	b.WriteString("\n")
+}
+
+func (tm *TaskManager) renderKanbanCard(b *strings.Builder, task Task, isSelected bool, w int) {
+	// Checkbox
+	var checkbox string
+	if task.Done {
+		checkbox = lipgloss.NewStyle().Foreground(green).Render("[x]")
+	} else {
+		checkbox = lipgloss.NewStyle().Foreground(overlay0).Render("[ ]")
+	}
+
+	// Priority
+	prioIcon := tmPriorityIcon(task.Priority)
+	prioStyled := lipgloss.NewStyle().Foreground(tmPriorityColor(task.Priority)).Render(prioIcon)
+
+	// Task text
+	displayText := task.Text
+	displayText = tmDueDateRe.ReplaceAllString(displayText, "")
+	displayText = tmPrioHighestRe.ReplaceAllString(displayText, "")
+	displayText = tmPrioHighRe.ReplaceAllString(displayText, "")
+	displayText = tmPrioMedRe.ReplaceAllString(displayText, "")
+	displayText = tmPrioLowRe.ReplaceAllString(displayText, "")
+	displayText = strings.TrimSpace(displayText)
+
+	maxTextW := w - 8
+	if maxTextW < 5 {
+		maxTextW = 5
+	}
+	runes := []rune(displayText)
+	if len(runes) > maxTextW {
+		displayText = string(runes[:maxTextW-1]) + "\u2026"
+	}
+
+	textStyle := lipgloss.NewStyle().Foreground(text)
+	if task.Done {
+		textStyle = lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true)
+	}
+
+	line := checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
+
+	// Due date badge (compact)
+	if task.DueDate != "" {
+		dueLabel := tmFormatDue(task.DueDate)
+		var dueBadge string
+		if tmIsOverdue(task.DueDate) {
+			dueBadge = lipgloss.NewStyle().Foreground(red).Render(dueLabel)
+		} else if tmIsToday(task.DueDate) {
+			dueBadge = lipgloss.NewStyle().Foreground(yellow).Render(dueLabel)
+		} else {
+			dueBadge = lipgloss.NewStyle().Foreground(overlay0).Render(dueLabel)
+		}
+		line += " " + dueBadge
+	}
+
+	if isSelected {
+		prefix := lipgloss.NewStyle().Foreground(mauve).Render(ThemeAccentBar + " ")
+		b.WriteString(lipgloss.NewStyle().
+			Background(surface0).
+			Width(w).
+			Render(prefix + line))
+	} else {
+		b.WriteString("  " + line)
 	}
 }
