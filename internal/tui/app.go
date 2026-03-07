@@ -139,6 +139,7 @@ type Model struct {
 	vaultSwitch     VaultSwitch
 	frontmatterEdit FrontmatterEditor
 	foldState       FoldState
+	research        ResearchAgent
 
 	// Slash command menu
 	slashMenu *SlashMenu
@@ -258,6 +259,7 @@ func NewModel(vaultPath string) (Model, error) {
 		vaultSwitch:     NewVaultSwitch(),
 		frontmatterEdit: NewFrontmatterEditor(),
 		foldState:       NewFoldState(),
+		research:        NewResearchAgent(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
 		showSplash:     cfg.ShowSplash,
@@ -660,6 +662,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, cmd
+		}
+		return m, nil
+
+	case researchResultMsg:
+		if m.research.IsActive() {
+			if msg.err != nil {
+				m.research.phase = researchError
+				m.research.errorMsg = msg.err.Error()
+				m.research.output = msg.output
+				m.research.elapsed = time.Since(m.research.startTime).Truncate(time.Second).String()
+			} else {
+				m.research.phase = researchDone
+				m.research.elapsed = time.Since(m.research.startTime).Truncate(time.Second).String()
+				m.research.output = msg.output
+				// Refresh vault to pick up new files
+				m.vault.Scan()
+				m.index = vault.NewIndex(m.vault)
+				m.index.Build()
+				paths := m.vault.SortedPaths()
+				m.sidebar.SetFiles(paths)
+				m.autocomplete.SetNotes(paths)
+				m.statusbar.SetNoteCount(m.vault.NoteCount())
+				// Use files from output or scan for new Research/ files
+				if len(msg.filesHint) > 0 {
+					m.research.createdFiles = msg.filesHint
+				} else {
+					// Find files in Research/ folder
+					for _, p := range paths {
+						if strings.HasPrefix(p, "Research/") {
+							m.research.createdFiles = append(m.research.createdFiles, p)
+						}
+					}
+				}
+				m.statusbar.SetMessage(fmt.Sprintf("Research complete: %d notes created", len(m.research.createdFiles)))
+			}
+		}
+		return m, nil
+
+	case researchTickMsg:
+		if m.research.IsActive() && m.research.phase == researchRunning {
+			m.research.elapsed = time.Since(m.research.startTime).Truncate(time.Second).String()
+			return m, m.research.tickElapsed()
 		}
 		return m, nil
 
@@ -1239,6 +1283,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if notePath, ok := m.timeline.GetSelectedNote(); ok {
 					m.loadNote(notePath)
 					m.sidebar.cursor = m.findFileIndex(notePath)
+					m.setFocus(focusEditor)
+				}
+			}
+			return m, cmd
+		}
+
+		if m.research.IsActive() {
+			var cmd tea.Cmd
+			m.research, cmd = m.research.Update(msg)
+			if !m.research.IsActive() {
+				if filePath, ok := m.research.GetSelectedFile(); ok {
+					m.loadNote(filePath)
+					m.sidebar.cursor = m.findFileIndex(filePath)
 					m.setFocus(focusEditor)
 				}
 			}
@@ -2509,6 +2566,10 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdUnfoldAll:
 		m.foldState.UnfoldAll()
 
+	case CmdResearchAgent:
+		m.research.SetSize(m.width, m.height)
+		m.research.Open(m.vault.Root)
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}
@@ -2802,6 +2863,7 @@ func (m *Model) updateLayout() {
 	m.timeline.SetSize(m.width, m.height)
 	m.vaultSwitch.SetSize(m.width, m.height)
 	m.frontmatterEdit.SetSize(m.width, m.height)
+	m.research.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -3537,6 +3599,10 @@ func (m Model) View() string {
 	}
 	if m.frontmatterEdit.IsActive() {
 		overlay := m.frontmatterEdit.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.research.IsActive() {
+		overlay := m.research.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.pomodoro.IsActive() {
