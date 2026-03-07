@@ -111,6 +111,10 @@ const (
 	CmdSmartConnections
 	CmdWritingStats
 	CmdQuickCapture
+	CmdDashboard
+	CmdMindMap
+	CmdJournalPrompts
+	CmdClipManager
 	CmdQuit
 )
 
@@ -211,6 +215,10 @@ var AllCommands = []Command{
 	{Label: "Smart Connections", Desc: "Find semantically related notes using content similarity", Shortcut: "", Action: CmdSmartConnections, Icon: &IconLinkChar},
 	{Label: "Writing Statistics", Desc: "Word counts, writing streaks, and productivity charts", Shortcut: "", Action: CmdWritingStats, Icon: &IconGraphChar},
 	{Label: "Quick Capture", Desc: "Jot down a quick thought to inbox, daily, or tasks", Shortcut: "", Action: CmdQuickCapture, Icon: &IconNewChar},
+	{Label: "Dashboard", Desc: "Vault home screen with tasks, notes, stats, and streaks", Shortcut: "", Action: CmdDashboard, Icon: &IconDailyChar},
+	{Label: "Mind Map", Desc: "Visual mind map from note headings and wikilinks", Shortcut: "", Action: CmdMindMap, Icon: &IconGraphChar},
+	{Label: "Journal Prompts", Desc: "Daily reflection prompts with guided journaling", Shortcut: "", Action: CmdJournalPrompts, Icon: &IconEditChar},
+	{Label: "Clipboard Manager", Desc: "Browse and paste from clipboard history", Shortcut: "", Action: CmdClipManager, Icon: &IconOutlineChar},
 	{Label: "Task Manager", Desc: "View, manage, and plan all tasks across vault", Shortcut: "Ctrl+K", Action: CmdTaskManager, Icon: &IconCalendarChar},
 	{Label: "Link Assistant", Desc: "Find unlinked mentions and suggest wikilinks", Shortcut: "", Action: CmdLinkAssist, Icon: &IconLinkChar},
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar},
