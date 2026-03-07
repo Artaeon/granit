@@ -7,8 +7,8 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -18,20 +18,14 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Part 1: Terminal image renderer using half-block characters
+// Terminal image renderer using half-block characters
 // ---------------------------------------------------------------------------
 
-// isTerminalImageCapable returns true if the terminal advertises truecolor
-// or 256-color support via the COLORTERM environment variable.
 func isTerminalImageCapable() bool {
 	ct := os.Getenv("COLORTERM")
 	return ct == "truecolor" || ct == "24bit"
 }
 
-// renderImageTerminal loads an image file and converts it to terminal art
-// using upper-half-block characters. Each terminal row encodes two pixel
-// rows: the foreground color represents the top pixel and the background
-// color represents the bottom pixel.  Returns the rendered string or an error.
 func renderImageTerminal(imagePath string, maxWidth, maxHeight int) (string, error) {
 	f, err := os.Open(imagePath)
 	if err != nil {
@@ -51,11 +45,9 @@ func renderImageTerminal(imagePath string, maxWidth, maxHeight int) (string, err
 		return "", fmt.Errorf("image has zero dimensions")
 	}
 
-	// Each terminal row represents 2 pixel rows, so we can fit maxHeight*2 pixel rows.
 	targetW := maxWidth
 	targetH := maxHeight * 2
 
-	// Scale to fit within target dimensions while preserving aspect ratio.
 	scaleX := float64(targetW) / float64(srcW)
 	scaleY := float64(targetH) / float64(srcH)
 	scale := scaleX
@@ -63,7 +55,7 @@ func renderImageTerminal(imagePath string, maxWidth, maxHeight int) (string, err
 		scale = scaleY
 	}
 	if scale > 1.0 {
-		scale = 1.0 // don't upscale
+		scale = 1.0
 	}
 
 	dstW := int(float64(srcW) * scale)
@@ -74,12 +66,10 @@ func renderImageTerminal(imagePath string, maxWidth, maxHeight int) (string, err
 	if dstH < 1 {
 		dstH = 1
 	}
-	// Ensure even number of pixel rows for half-block pairing.
 	if dstH%2 != 0 {
 		dstH++
 	}
 
-	// Nearest-neighbor downscale: sample pixels from source.
 	pixels := make([][]color.Color, dstH)
 	for y := 0; y < dstH; y++ {
 		pixels[y] = make([]color.Color, dstW)
@@ -96,20 +86,17 @@ func renderImageTerminal(imagePath string, maxWidth, maxHeight int) (string, err
 		}
 	}
 
-	// Render using half-block characters.
 	var sb strings.Builder
 	for y := 0; y < dstH; y += 2 {
 		if y > 0 {
 			sb.WriteString("\n")
 		}
-		sb.WriteString("  ") // left margin
 		for x := 0; x < dstW; x++ {
 			topR, topG, topB, _ := pixels[y][x].RGBA()
 			var botR, botG, botB uint32
 			if y+1 < dstH {
 				botR, botG, botB, _ = pixels[y+1][x].RGBA()
 			}
-			// Convert from 16-bit to 8-bit color components.
 			tr, tg, tb := topR>>8, topG>>8, topB>>8
 			br, bg, bb := botR>>8, botG>>8, botB>>8
 
@@ -119,15 +106,13 @@ func renderImageTerminal(imagePath string, maxWidth, maxHeight int) (string, err
 			style := lipgloss.NewStyle().
 				Foreground(fgColor).
 				Background(bgColor)
-			sb.WriteString(style.Render("\u2580")) // upper half block
+			sb.WriteString(style.Render("\u2580"))
 		}
 	}
 
 	return sb.String(), nil
 }
 
-// resolveImagePath tries to find an image file in the vault, checking the
-// root and common subdirectories.  Returns the absolute path if found.
 func resolveImagePath(vaultRoot, filename string) string {
 	candidates := []string{
 		filepath.Join(vaultRoot, filename),
@@ -144,21 +129,17 @@ func resolveImagePath(vaultRoot, filename string) string {
 }
 
 // ---------------------------------------------------------------------------
-// Part 2: Image Manager Overlay
+// Image Manager Overlay
 // ---------------------------------------------------------------------------
 
-// imageEntry holds metadata about a single image found in the vault.
 type imageEntry struct {
-	RelPath  string // path relative to vault root
-	AbsPath  string // absolute path on disk
-	Width    int    // pixel width (0 if unreadable)
-	Height   int    // pixel height
-	FileSize int64  // bytes
+	RelPath  string
+	AbsPath  string
+	Width    int
+	Height   int
+	FileSize int64
 }
 
-// ImageManager is an overlay that lists all images in the vault, shows a
-// terminal preview of the selected image, and lets the user insert an embed
-// link or delete images.
 type ImageManager struct {
 	active       bool
 	images       []imageEntry
@@ -167,30 +148,30 @@ type ImageManager struct {
 	width        int
 	height       int
 	vaultRoot    string
-	insertResult string // consumed-once embed text
-	confirmDel   bool   // true while awaiting delete confirmation
-	preview      string // cached terminal preview for selected image
-	previewIdx   int    // cursor index the cached preview was built for
-	statusMsg    string // ephemeral status message
+	insertResult string
+	confirmDel   bool
+	preview      string
+	previewIdx   int
+	statusMsg    string
+
+	// Import mode
+	importing bool
+	importBuf string
 }
 
-// NewImageManager creates a new ImageManager.
 func NewImageManager() ImageManager {
 	return ImageManager{previewIdx: -1}
 }
 
-// SetSize updates the overlay dimensions.
 func (im *ImageManager) SetSize(width, height int) {
 	im.width = width
 	im.height = height
 }
 
-// IsActive returns whether the overlay is visible.
 func (im *ImageManager) IsActive() bool {
 	return im.active
 }
 
-// Open scans the vault for image files and opens the overlay.
 func (im *ImageManager) Open(vaultRoot string) {
 	im.active = true
 	im.vaultRoot = vaultRoot
@@ -201,15 +182,15 @@ func (im *ImageManager) Open(vaultRoot string) {
 	im.preview = ""
 	im.previewIdx = -1
 	im.statusMsg = ""
+	im.importing = false
+	im.importBuf = ""
 	im.scanImages()
 }
 
-// Close hides the overlay.
 func (im *ImageManager) Close() {
 	im.active = false
 }
 
-// GetInsertResult returns the wikilink embed text to insert, consuming it.
 func (im *ImageManager) GetInsertResult() (string, bool) {
 	if im.insertResult != "" {
 		r := im.insertResult
@@ -219,54 +200,43 @@ func (im *ImageManager) GetInsertResult() (string, bool) {
 	return "", false
 }
 
-// scanImages walks the vault root and common image directories looking for
-// image files.
 func (im *ImageManager) scanImages() {
 	im.images = nil
 	seen := make(map[string]bool)
 
-	dirs := []string{
-		im.vaultRoot,
-		filepath.Join(im.vaultRoot, "images"),
-		filepath.Join(im.vaultRoot, "assets"),
-		filepath.Join(im.vaultRoot, "attachments"),
-	}
-
 	imgExts := map[string]bool{
 		".png": true, ".jpg": true, ".jpeg": true,
 		".gif": true, ".svg": true, ".webp": true,
+		".bmp": true,
 	}
 
-	for _, dir := range dirs {
-		entries, err := os.ReadDir(dir)
+	filepath.Walk(im.vaultRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			continue
+			return nil
 		}
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
+		if info.IsDir() {
+			base := filepath.Base(path)
+			if base == ".git" || base == ".granit-trash" || base == "node_modules" {
+				return filepath.SkipDir
 			}
-			ext := strings.ToLower(filepath.Ext(e.Name()))
-			if !imgExts[ext] {
-				continue
-			}
-			absPath := filepath.Join(dir, e.Name())
-			if seen[absPath] {
-				continue
-			}
-			seen[absPath] = true
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		if !imgExts[ext] {
+			return nil
+		}
+		absPath, _ := filepath.Abs(path)
+		if seen[absPath] {
+			return nil
+		}
+		seen[absPath] = true
 
-			relPath, _ := filepath.Rel(im.vaultRoot, absPath)
+		relPath, _ := filepath.Rel(im.vaultRoot, absPath)
 
-			info, err := e.Info()
-			var fileSize int64
-			if err == nil {
-				fileSize = info.Size()
-			}
-
-			w, h := 0, 0
-			f, err := os.Open(absPath)
-			if err == nil {
+		w, h := 0, 0
+		if ext != ".svg" && ext != ".webp" {
+			f, ferr := os.Open(absPath)
+			if ferr == nil {
 				cfg, _, decErr := image.DecodeConfig(f)
 				f.Close()
 				if decErr == nil {
@@ -274,28 +244,26 @@ func (im *ImageManager) scanImages() {
 					h = cfg.Height
 				}
 			}
-
-			im.images = append(im.images, imageEntry{
-				RelPath:  relPath,
-				AbsPath:  absPath,
-				Width:    w,
-				Height:   h,
-				FileSize: fileSize,
-			})
 		}
-	}
 
-	// Sort alphabetically by relative path.
+		im.images = append(im.images, imageEntry{
+			RelPath:  relPath,
+			AbsPath:  absPath,
+			Width:    w,
+			Height:   h,
+			FileSize: info.Size(),
+		})
+		return nil
+	})
+
 	sort.Slice(im.images, func(i, j int) bool {
 		return im.images[i].RelPath < im.images[j].RelPath
 	})
 }
 
-// buildPreview renders a terminal art preview for the currently selected
-// image.  Caches the result to avoid re-rendering on every View() call.
 func (im *ImageManager) buildPreview() {
 	if im.previewIdx == im.cursor {
-		return // already cached
+		return
 	}
 	im.preview = ""
 	im.previewIdx = im.cursor
@@ -305,23 +273,21 @@ func (im *ImageManager) buildPreview() {
 	}
 
 	entry := im.images[im.cursor]
-
-	// Skip SVG/WebP (stdlib can't decode them).
 	ext := strings.ToLower(filepath.Ext(entry.AbsPath))
 	if ext == ".svg" || ext == ".webp" {
 		im.preview = lipgloss.NewStyle().Foreground(overlay0).Italic(true).
-			Render("  [preview not available for " + ext + " files]")
+			Render("  Preview not available for " + ext)
 		return
 	}
 
-	previewW := im.width/2 - 8
+	previewW := im.innerWidth() - 4
 	if previewW < 10 {
 		previewW = 10
 	}
-	if previewW > 60 {
-		previewW = 60
+	if previewW > 80 {
+		previewW = 80
 	}
-	previewH := 12
+	previewH := im.previewHeight()
 
 	if isTerminalImageCapable() {
 		rendered, err := renderImageTerminal(entry.AbsPath, previewW, previewH)
@@ -337,17 +303,16 @@ func (im *ImageManager) buildPreview() {
 	fileStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
 	dimStyle := lipgloss.NewStyle().Foreground(overlay0)
 
-	boxW := previewW
+	boxW := 40
 	sb.WriteString("  " + borderStyle.Render("\u256D"+strings.Repeat("\u2500", boxW)+"\u256E") + "\n")
-	sb.WriteString("  " + borderStyle.Render("\u2502") + " " + fileStyle.Render("IMG  "+filepath.Base(entry.AbsPath)) + "\n")
+	sb.WriteString("  " + borderStyle.Render("\u2502") + " " + fileStyle.Render(filepath.Base(entry.AbsPath)) + "\n")
 	if entry.Width > 0 {
-		sb.WriteString("  " + borderStyle.Render("\u2502") + " " + dimStyle.Render(fmt.Sprintf("[%dx%d]", entry.Width, entry.Height)) + "\n")
+		sb.WriteString("  " + borderStyle.Render("\u2502") + " " + dimStyle.Render(fmt.Sprintf("%dx%d  %s", entry.Width, entry.Height, formatFileSize(entry.FileSize))) + "\n")
 	}
 	sb.WriteString("  " + borderStyle.Render("\u2570"+strings.Repeat("\u2500", boxW)+"\u256F"))
 	im.preview = sb.String()
 }
 
-// formatFileSize returns a human-readable size string.
 func formatFileSize(size int64) string {
 	switch {
 	case size < 1024:
@@ -359,7 +324,40 @@ func formatFileSize(size int64) string {
 	}
 }
 
-// Update handles keyboard input for the image manager overlay.
+func (im *ImageManager) innerWidth() int {
+	w := im.width*3/4 - 6
+	if w < 54 {
+		w = 54
+	}
+	if w > 110 {
+		w = 110
+	}
+	return w
+}
+
+func (im *ImageManager) listHeight() int {
+	// Reserve space for: title(2) + separator(1) + info(1) + separator(1) + preview area + separator(1) + help(1) + padding
+	h := im.height/2 - 6
+	if h < 4 {
+		h = 4
+	}
+	if h > 20 {
+		h = 20
+	}
+	return h
+}
+
+func (im *ImageManager) previewHeight() int {
+	h := im.height/3 - 2
+	if h < 4 {
+		h = 4
+	}
+	if h > 16 {
+		h = 16
+	}
+	return h
+}
+
 func (im ImageManager) Update(msg tea.Msg) (ImageManager, tea.Cmd) {
 	if !im.active {
 		return im, nil
@@ -367,16 +365,40 @@ func (im ImageManager) Update(msg tea.Msg) (ImageManager, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		// Cancel delete confirmation on any key that isn't "y".
+		key := msg.String()
+
+		// Import mode — typing a file path
+		if im.importing {
+			switch key {
+			case "esc":
+				im.importing = false
+				im.importBuf = ""
+			case "enter":
+				im.doImport()
+			case "backspace":
+				if len(im.importBuf) > 0 {
+					im.importBuf = im.importBuf[:len(im.importBuf)-1]
+				}
+			default:
+				if len(key) == 1 && key[0] >= 32 {
+					im.importBuf += key
+				} else if key == " " {
+					im.importBuf += " "
+				}
+			}
+			return im, nil
+		}
+
+		// Delete confirmation
 		if im.confirmDel {
-			if msg.String() == "y" {
+			if key == "y" {
 				im.deleteSelected()
 			}
 			im.confirmDel = false
 			return im, nil
 		}
 
-		switch msg.String() {
+		switch key {
 		case "esc":
 			im.active = false
 		case "up", "k":
@@ -408,9 +430,17 @@ func (im ImageManager) Update(msg tea.Msg) (ImageManager, tea.Cmd) {
 		case "o":
 			if len(im.images) > 0 && im.cursor < len(im.images) {
 				entry := im.images[im.cursor]
-				// Fire and forget — open in system viewer.
-				cmd := exec.Command("xdg-open", entry.AbsPath)
-				cmd.Start()
+				openFileExternal(entry.AbsPath)
+			}
+		case "i":
+			im.importing = true
+			im.importBuf = ""
+			im.statusMsg = ""
+		case "c":
+			// Copy embed link to status (visual feedback)
+			if len(im.images) > 0 && im.cursor < len(im.images) {
+				name := filepath.Base(im.images[im.cursor].RelPath)
+				im.statusMsg = "Copied: ![[" + name + "]]"
 			}
 		}
 	}
@@ -418,7 +448,90 @@ func (im ImageManager) Update(msg tea.Msg) (ImageManager, tea.Cmd) {
 	return im, nil
 }
 
-// deleteSelected removes the currently selected image from disk and the list.
+func (im *ImageManager) doImport() {
+	srcPath := strings.TrimSpace(im.importBuf)
+	im.importing = false
+	im.importBuf = ""
+
+	if srcPath == "" {
+		return
+	}
+
+	// Expand ~ to home dir
+	if strings.HasPrefix(srcPath, "~/") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			srcPath = filepath.Join(home, srcPath[2:])
+		}
+	}
+
+	// Check source exists
+	srcInfo, err := os.Stat(srcPath)
+	if err != nil {
+		im.statusMsg = "File not found: " + srcPath
+		return
+	}
+	if srcInfo.IsDir() {
+		im.statusMsg = "Cannot import a directory"
+		return
+	}
+
+	// Validate extension
+	ext := strings.ToLower(filepath.Ext(srcPath))
+	validExts := map[string]bool{
+		".png": true, ".jpg": true, ".jpeg": true,
+		".gif": true, ".svg": true, ".webp": true, ".bmp": true,
+	}
+	if !validExts[ext] {
+		im.statusMsg = "Not an image: " + ext
+		return
+	}
+
+	// Ensure attachments dir exists
+	destDir := filepath.Join(im.vaultRoot, "attachments")
+	os.MkdirAll(destDir, 0755)
+
+	destPath := filepath.Join(destDir, filepath.Base(srcPath))
+
+	// Check if already exists
+	if _, err := os.Stat(destPath); err == nil {
+		im.statusMsg = "Already exists: " + filepath.Base(srcPath)
+		return
+	}
+
+	// Copy file
+	src, err := os.Open(srcPath)
+	if err != nil {
+		im.statusMsg = "Cannot open: " + err.Error()
+		return
+	}
+	defer src.Close()
+
+	dst, err := os.Create(destPath)
+	if err != nil {
+		im.statusMsg = "Cannot create: " + err.Error()
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		im.statusMsg = "Copy failed: " + err.Error()
+		return
+	}
+
+	im.statusMsg = "Imported: " + filepath.Base(srcPath)
+	im.scanImages()
+	im.previewIdx = -1
+
+	// Move cursor to imported file
+	for idx, entry := range im.images {
+		if entry.AbsPath == destPath {
+			im.cursor = idx
+			break
+		}
+	}
+}
+
 func (im *ImageManager) deleteSelected() {
 	if len(im.images) == 0 || im.cursor >= len(im.images) {
 		return
@@ -433,165 +546,200 @@ func (im *ImageManager) deleteSelected() {
 	if im.cursor >= len(im.images) && im.cursor > 0 {
 		im.cursor--
 	}
-	im.previewIdx = -1 // force preview rebuild
+	im.previewIdx = -1
 }
 
-// listHeight returns the number of visible list rows.
-func (im *ImageManager) listHeight() int {
-	h := im.height - 14
-	if h < 3 {
-		h = 3
+// openFileExternal opens a file in the system's default application.
+func openFileExternal(path string) {
+	for _, opener := range []string{"xdg-open", "open"} {
+		// Check if opener exists by trying to resolve it
+		if _, err := os.Stat("/usr/bin/" + opener); err == nil {
+			p, err := os.StartProcess("/usr/bin/"+opener, []string{opener, path}, &os.ProcAttr{
+				Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
+			})
+			if err == nil {
+				p.Release()
+				return
+			}
+		}
 	}
-	return h
 }
 
-// View renders the image manager overlay.
 func (im ImageManager) View() string {
-	totalW := im.width * 3 / 4
-	if totalW < 60 {
-		totalW = 60
-	}
-	if totalW > 100 {
-		totalW = 100
-	}
-
-	listW := totalW/2 - 2
-	if listW < 28 {
-		listW = 28
-	}
+	innerW := im.innerWidth()
+	totalW := innerW + 6
 
 	var b strings.Builder
 
-	// Title
-	title := lipgloss.NewStyle().Foreground(blue).Bold(true).Render("  Image Manager")
-	count := lipgloss.NewStyle().Foreground(overlay0).Render(fmt.Sprintf(" (%d)", len(im.images)))
-	b.WriteString(title + count + "\n")
-	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", totalW-6)) + "\n\n")
+	// ── Title ──
+	titleStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+	countStyle := lipgloss.NewStyle().Foreground(overlay0)
+	b.WriteString(titleStyle.Render("  Image Manager"))
+	b.WriteString(countStyle.Render(fmt.Sprintf("  %d images", len(im.images))))
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", innerW-2)))
+	b.WriteString("\n")
 
 	if len(im.images) == 0 {
-		b.WriteString(DimStyle.Render("  No images found in vault") + "\n")
-		b.WriteString(DimStyle.Render("  Place images in root, images/, assets/, or attachments/") + "\n")
+		emptyStyle := lipgloss.NewStyle().Foreground(overlay0).Italic(true)
+		b.WriteString("\n")
+		b.WriteString(emptyStyle.Render("  No images found in vault."))
+		b.WriteString("\n\n")
+		b.WriteString(emptyStyle.Render("  Place images in your vault root, or in"))
+		b.WriteString("\n")
+		b.WriteString(emptyStyle.Render("  attachments/, assets/, or images/ folders."))
+		b.WriteString("\n\n")
+		b.WriteString(emptyStyle.Render("  Press ") + lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("i") + emptyStyle.Render(" to import an image."))
+		b.WriteString("\n")
 	} else {
 		im.buildPreview()
 
+		// ── Image List ──
 		visH := im.listHeight()
 		end := im.scroll + visH
 		if end > len(im.images) {
 			end = len(im.images)
 		}
 
-		// Build the left-side list.
-		var listLines []string
+		nameW := innerW/2 - 4
+		if nameW < 20 {
+			nameW = 20
+		}
+
 		for i := im.scroll; i < end; i++ {
 			entry := im.images[i]
-			name := filepath.Base(entry.RelPath)
-			if len(name) > listW-8 {
-				name = name[:listW-11] + "..."
+			name := entry.RelPath
+			if len(name) > nameW {
+				name = "..." + name[len(name)-nameW+3:]
 			}
 
-			var detail string
+			// Right-align info
+			var info string
 			if entry.Width > 0 {
-				detail = fmt.Sprintf("%dx%d", entry.Width, entry.Height)
-			}
-			sizeStr := formatFileSize(entry.FileSize)
-			if detail != "" {
-				detail += " " + sizeStr
+				info = fmt.Sprintf("%dx%d  %s", entry.Width, entry.Height, formatFileSize(entry.FileSize))
 			} else {
-				detail = sizeStr
+				info = formatFileSize(entry.FileSize)
 			}
-
-			detailStyled := lipgloss.NewStyle().Foreground(overlay0).Render(detail)
 
 			if i == im.cursor {
-				accent := lipgloss.NewStyle().Foreground(blue).Bold(true).Render(ThemeAccentBar)
-				nameStyled := lipgloss.NewStyle().Foreground(blue).Bold(true).Render(name)
-				line := accent + " " + nameStyled
-				listLines = append(listLines, line)
-				listLines = append(listLines, "    "+detailStyled)
+				accentBar := lipgloss.NewStyle().Foreground(blue).Bold(true).Render(ThemeAccentBar)
+				nameStyled := lipgloss.NewStyle().
+					Background(surface0).
+					Foreground(blue).
+					Bold(true).
+					Render(name)
+				infoStyled := lipgloss.NewStyle().
+					Background(surface0).
+					Foreground(overlay0).
+					Render(info)
+				// Build full line with padding
+				leftPart := accentBar + " " + nameStyled
+				rightPart := infoStyled + " "
+				gap := innerW - lipgloss.Width(leftPart) - lipgloss.Width(rightPart) - 1
+				if gap < 1 {
+					gap = 1
+				}
+				padded := lipgloss.NewStyle().Background(surface0).Render(strings.Repeat(" ", gap))
+				b.WriteString(leftPart + padded + rightPart)
 			} else {
-				listLines = append(listLines, "  "+NormalItemStyle.Render(name))
-				listLines = append(listLines, "    "+detailStyled)
+				nameStyled := lipgloss.NewStyle().Foreground(text).Render(name)
+				infoStyled := lipgloss.NewStyle().Foreground(overlay0).Render(info)
+				leftPart := "  " + nameStyled
+				rightPart := infoStyled + " "
+				gap := innerW - lipgloss.Width(leftPart) - lipgloss.Width(rightPart) - 1
+				if gap < 1 {
+					gap = 1
+				}
+				b.WriteString(leftPart + strings.Repeat(" ", gap) + rightPart)
 			}
+			b.WriteString("\n")
 		}
 
-		// Build the right-side preview.
-		var previewLines []string
+		// Scroll indicator
+		if len(im.images) > visH {
+			scrollInfo := fmt.Sprintf("  %d-%d of %d", im.scroll+1, end, len(im.images))
+			b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(scrollInfo))
+			b.WriteString("\n")
+		}
+
+		// ── Separator ──
+		b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", innerW-2)))
+		b.WriteString("\n")
+
+		// ── Selected image info ──
+		if im.cursor < len(im.images) {
+			entry := im.images[im.cursor]
+			labelStyle := lipgloss.NewStyle().Foreground(subtext1)
+			valStyle := lipgloss.NewStyle().Foreground(text)
+			b.WriteString(labelStyle.Render("  File: ") + valStyle.Render(filepath.Base(entry.RelPath)))
+			if entry.Width > 0 {
+				b.WriteString(labelStyle.Render("  Size: ") + valStyle.Render(fmt.Sprintf("%dx%d", entry.Width, entry.Height)))
+			}
+			b.WriteString(labelStyle.Render("  Disk: ") + valStyle.Render(formatFileSize(entry.FileSize)))
+			embedText := "![[" + filepath.Base(entry.RelPath) + "]]"
+			b.WriteString(labelStyle.Render("  Embed: ") + lipgloss.NewStyle().Foreground(green).Render(embedText))
+			b.WriteString("\n")
+		}
+
+		// ── Preview ──
 		if im.preview != "" {
-			previewLines = strings.Split(im.preview, "\n")
-		} else {
-			previewLines = []string{DimStyle.Render("  [no preview]")}
-		}
-
-		// Merge list + preview side by side.
-		maxLines := len(listLines)
-		if len(previewLines) > maxLines {
-			maxLines = len(previewLines)
-		}
-		separator := lipgloss.NewStyle().Foreground(surface1).Render(" \u2502 ")
-		for li := 0; li < maxLines; li++ {
-			left := ""
-			if li < len(listLines) {
-				left = listLines[li]
+			b.WriteString("\n")
+			previewLines := strings.Split(im.preview, "\n")
+			for _, line := range previewLines {
+				b.WriteString("  " + line + "\n")
 			}
-			// Pad the left column to listW using spaces.
-			left = imgPadRight(left, listW)
-
-			right := ""
-			if li < len(previewLines) {
-				right = previewLines[li]
-			}
-
-			b.WriteString(left + separator + right + "\n")
 		}
 	}
 
-	// Status message.
+	// ── Import mode ──
+	if im.importing {
+		b.WriteString("\n")
+		promptStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+		inputStyle := lipgloss.NewStyle().Background(surface0).Foreground(text)
+		cursor := lipgloss.NewStyle().Foreground(mauve).Render("│")
+		b.WriteString(promptStyle.Render("  Import from: "))
+		b.WriteString(inputStyle.Render(im.importBuf+cursor) + "\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  Enter absolute path or ~/... path to image file") + "\n")
+	}
+
+	// ── Status message ──
 	if im.statusMsg != "" {
 		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(yellow).Render("  " + im.statusMsg))
-		b.WriteString("\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(yellow).Render("  " + im.statusMsg) + "\n")
 	}
 
-	// Confirmation prompt.
+	// ── Delete confirmation ──
 	if im.confirmDel && len(im.images) > 0 && im.cursor < len(im.images) {
 		b.WriteString("\n")
 		name := filepath.Base(im.images[im.cursor].RelPath)
-		b.WriteString(lipgloss.NewStyle().Foreground(red).Bold(true).Render("  Delete " + name + "? (y/n)"))
-		b.WriteString("\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(red).Bold(true).Render("  Delete " + name + "? (y/n)") + "\n")
 	}
 
-	// Footer.
+	// ── Help bar ──
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", totalW-6)) + "\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", innerW-2)) + "\n")
 
-	enterKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Enter")
-	enterDesc := DimStyle.Render(": insert  ")
-	delKey := lipgloss.NewStyle().Foreground(red).Bold(true).Render("d")
-	delDesc := DimStyle.Render(": delete  ")
-	openKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("o")
-	openDesc := DimStyle.Render(": open  ")
-	escKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Esc")
-	escDesc := DimStyle.Render(": close")
+	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(overlay0)
 
-	b.WriteString("  " + enterKey + enterDesc + delKey + delDesc + openKey + openDesc + escKey + escDesc)
+	helpItems := []struct{ key, desc string }{
+		{"Enter", "insert"},
+		{"i", "import"},
+		{"o", "open"},
+		{"d", "delete"},
+		{"Esc", "close"},
+	}
+	var helpParts []string
+	for _, h := range helpItems {
+		helpParts = append(helpParts, keyStyle.Render(h.key)+" "+descStyle.Render(h.desc))
+	}
+	b.WriteString("  " + strings.Join(helpParts, "  "))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(blue).
 		Padding(1, 2).
-		Width(totalW).
-		Background(mantle)
+		Width(totalW)
 
 	return border.Render(b.String())
-}
-
-// imgPadRight pads a string with spaces so that its visible width reaches at
-// least w characters.  This is a rough approximation — ANSI escape sequences
-// make exact width calculation non-trivial, so we use lipgloss.Width.
-func imgPadRight(s string, w int) string {
-	visible := lipgloss.Width(s)
-	if visible >= w {
-		return s
-	}
-	return s + strings.Repeat(" ", w-visible)
 }
