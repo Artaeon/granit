@@ -105,6 +105,12 @@ const (
 	CmdDailyDigest
 	CmdLanguageLearning
 	CmdHabitTracker
+	CmdFocusSession
+	CmdStandupGenerator
+	CmdNoteHistory
+	CmdSmartConnections
+	CmdWritingStats
+	CmdQuickCapture
 	CmdQuit
 )
 
@@ -199,6 +205,12 @@ var AllCommands = []Command{
 	{Label: "Daily Digest", Desc: "Generate weekly review from recent vault activity", Shortcut: "", Action: CmdDailyDigest, Icon: &IconCalendarChar},
 	{Label: "Language Learning", Desc: "Vocabulary tracker, practice sessions, grammar notes", Shortcut: "", Action: CmdLanguageLearning, Icon: &IconBookmarkChar},
 	{Label: "Habit Tracker", Desc: "Daily habits, goals, streaks, and progress tracking", Shortcut: "", Action: CmdHabitTracker, Icon: &IconGraphChar},
+	{Label: "Focus Session", Desc: "Guided work session with timer, tasks, and scratchpad", Shortcut: "", Action: CmdFocusSession, Icon: &IconDailyChar},
+	{Label: "Daily Standup", Desc: "Auto-generate standup from git commits, tasks, and notes", Shortcut: "", Action: CmdStandupGenerator, Icon: &IconCalendarChar},
+	{Label: "Note History", Desc: "Git version timeline and diff viewer for current note", Shortcut: "", Action: CmdNoteHistory, Icon: &IconOutlineChar},
+	{Label: "Smart Connections", Desc: "Find semantically related notes using content similarity", Shortcut: "", Action: CmdSmartConnections, Icon: &IconLinkChar},
+	{Label: "Writing Statistics", Desc: "Word counts, writing streaks, and productivity charts", Shortcut: "", Action: CmdWritingStats, Icon: &IconGraphChar},
+	{Label: "Quick Capture", Desc: "Jot down a quick thought to inbox, daily, or tasks", Shortcut: "Ctrl+G", Action: CmdQuickCapture, Icon: &IconNewChar},
 	{Label: "Task Manager", Desc: "View, manage, and plan all tasks across vault", Shortcut: "Ctrl+K", Action: CmdTaskManager, Icon: &IconCalendarChar},
 	{Label: "Link Assistant", Desc: "Find unlinked mentions and suggest wikilinks", Shortcut: "", Action: CmdLinkAssist, Icon: &IconLinkChar},
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar},
