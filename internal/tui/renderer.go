@@ -543,6 +543,23 @@ func (r Renderer) renderMarkdown(content string) []string {
 					continue
 				}
 
+				// Custom diagram blocks: render via diagram engine
+				if codeBlockLang == "diagram" {
+					var diagramLines []string
+					for i++; i < len(lines); i++ {
+						if strings.TrimSpace(lines[i]) == "```" {
+							break
+						}
+						diagramLines = append(diagramLines, lines[i])
+					}
+					diagramSrc := strings.Join(diagramLines, "\n")
+					rendered := RenderDiagramASCII(diagramSrc, contentWidth)
+					result = append(result, rendered...)
+					inCodeBlock = false
+					codeBlockLang = ""
+					continue
+				}
+
 				if codeBlockLang != "" {
 					langLabel := lipgloss.NewStyle().
 						Foreground(overlay0).
