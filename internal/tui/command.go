@@ -90,6 +90,8 @@ const (
 	CmdResearchFollowUp
 	CmdImageManager
 	CmdThemeEditor
+	CmdTaskManager
+	CmdLinkAssist
 	CmdLayoutDefault
 	CmdLayoutWriter
 	CmdLayoutMinimal
@@ -181,6 +183,8 @@ var AllCommands = []Command{
 	{Label: "Edit Frontmatter", Desc: "Structured frontmatter property editor", Shortcut: "", Action: CmdFrontmatterEdit, Icon: &IconEditChar},
 	{Label: "Deep Dive Research", Desc: "AI research agent — create notes from any topic via Claude Code", Shortcut: "", Action: CmdResearchAgent, Icon: &IconBotChar},
 	{Label: "Research Follow-Up", Desc: "Go deeper on current note's topic via Claude Code", Shortcut: "", Action: CmdResearchFollowUp, Icon: &IconBotChar},
+	{Label: "Task Manager", Desc: "View, manage, and plan all tasks across vault", Shortcut: "Ctrl+K", Action: CmdTaskManager, Icon: &IconCalendarChar},
+	{Label: "Link Assistant", Desc: "Find unlinked mentions and suggest wikilinks", Shortcut: "", Action: CmdLinkAssist, Icon: &IconLinkChar},
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar},
 	{Label: "Theme Editor", Desc: "Create and customize color themes", Shortcut: "", Action: CmdThemeEditor, Icon: &IconSettingsChar},
 	{Label: "Default Layout", Desc: "3-panel: sidebar, editor, backlinks", Shortcut: "", Action: CmdLayoutDefault, Icon: &IconViewChar},
