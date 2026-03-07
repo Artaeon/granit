@@ -87,6 +87,10 @@ const (
 	CmdFrontmatterEdit
 	CmdResearchAgent
 	CmdResearchFollowUp
+	CmdImageManager
+	CmdThemeEditor
+	CmdLayoutReading
+	CmdLayoutDashboard
 	CmdQuit
 )
 
@@ -173,6 +177,10 @@ var AllCommands = []Command{
 	{Label: "Edit Frontmatter", Desc: "Structured frontmatter property editor", Shortcut: "", Action: CmdFrontmatterEdit, Icon: &IconEditChar},
 	{Label: "Deep Dive Research", Desc: "AI research agent — create notes from any topic via Claude Code", Shortcut: "", Action: CmdResearchAgent, Icon: &IconBotChar},
 	{Label: "Research Follow-Up", Desc: "Go deeper on current note's topic via Claude Code", Shortcut: "", Action: CmdResearchFollowUp, Icon: &IconBotChar},
+	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar},
+	{Label: "Theme Editor", Desc: "Create and customize color themes", Shortcut: "", Action: CmdThemeEditor, Icon: &IconSettingsChar},
+	{Label: "Reading Layout", Desc: "Editor + backlinks, no sidebar", Shortcut: "", Action: CmdLayoutReading, Icon: &IconViewChar},
+	{Label: "Dashboard Layout", Desc: "4-panel: sidebar, editor, outline, backlinks", Shortcut: "", Action: CmdLayoutDashboard, Icon: &IconViewChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
