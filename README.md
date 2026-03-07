@@ -102,6 +102,12 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 - **Note encryption** — AES-256-GCM encryption with PBKDF2 key derivation for secure GitHub sync (`.md.enc` files)
 - **Language learning** — vocabulary tracker (9 languages), spaced repetition practice, grammar notes, dashboard with streaks and level charts
 - **Habit & goal tracker** — daily habits with streak visualization, goals with milestones and progress bars, completion stats
+- **Focus sessions** — guided work timer (25/45/60/90 min), goal setting, scratchpad, break timer, session logs in `FocusSessions/`
+- **Daily standup generator** — auto-generates standup from git commits, modified notes, completed tasks; saves to `Standups/`
+- **Note versioning timeline** — git history per note with visual timeline, colored diff viewer, and snapshot at any commit
+- **Smart connections** — TF-IDF content similarity finds semantically related notes with shared keyword display
+- **Writing statistics** — word count tracking, 14-day activity chart, writing streaks, top notes by length
+- **Quick capture** — compact floating input to quickly save thoughts to Inbox, daily note, Tasks, or new note
 - **Core plugins** — enable/disable 16 built-in modules via Settings > Core Plugins
 
 ### AI-Powered Features
@@ -623,6 +629,12 @@ granit/
       aitemplates.go        AI template generator (9 types, Ollama/OpenAI/local)
       languagelearn.go      Language learning (vocabulary, practice, grammar, dashboard)
       habits.go             Habit & goal tracker (daily habits, goals, stats)
+      focussession.go       Focus sessions (timer, scratchpad, session log)
+      standup.go            Daily standup generator (git, tasks, notes)
+      notehistory.go        Note versioning timeline (git diff, snapshots)
+      smartconnect.go       Smart connections (TF-IDF similarity engine)
+      writingstats.go       Writing statistics (word counts, streaks, charts)
+      quickcapture.go       Quick capture (floating input for rapid notes)
       taskmanager.go        Task manager with kanban, calendar, priorities
       linkassist.go         Unlinked mention finder + batch linking
       blogpublish.go        Blog publisher (Medium + GitHub)
