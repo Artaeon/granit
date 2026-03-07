@@ -99,6 +99,12 @@ const (
 	CmdLayoutDashboard
 	CmdBlogPublish
 	CmdGlobalReplace
+	CmdAITemplate
+	CmdVaultAnalyzer
+	CmdNoteEnhancer
+	CmdDailyDigest
+	CmdLanguageLearning
+	CmdHabitTracker
 	CmdQuit
 )
 
@@ -157,6 +163,7 @@ var AllCommands = []Command{
 	{Label: "Learning Dashboard", Desc: "Track study progress, streaks, mastery", Shortcut: "", Action: CmdLearnDashboard, Icon: &IconGraphChar},
 	{Label: "AI Chat", Desc: "Ask questions about your vault", Shortcut: "", Action: CmdAIChat, Icon: &IconBotChar},
 	{Label: "AI Compose Note", Desc: "Generate a note from a topic prompt", Shortcut: "", Action: CmdComposer, Icon: &IconNewChar},
+	{Label: "AI Template", Desc: "Generate a full note from a template type + topic with AI", Shortcut: "", Action: CmdAITemplate, Icon: &IconBotChar},
 	{Label: "Knowledge Graph AI", Desc: "Analyze clusters, hubs, orphans, suggestions", Shortcut: "", Action: CmdKnowledgeGraph, Icon: &IconGraphChar},
 	{Label: "Auto-Link Suggestions", Desc: "Find unlinked mentions in current note", Shortcut: "", Action: CmdAutoLink, Icon: &IconLinkChar},
 	{Label: "Similar Notes", Desc: "Find notes similar to current one (TF-IDF)", Shortcut: "", Action: CmdSimilarNotes, Icon: &IconSearchChar},
@@ -187,6 +194,11 @@ var AllCommands = []Command{
 	{Label: "Edit Frontmatter", Desc: "Structured frontmatter property editor", Shortcut: "", Action: CmdFrontmatterEdit, Icon: &IconEditChar},
 	{Label: "Deep Dive Research", Desc: "AI research agent — create notes from any topic via Claude Code", Shortcut: "", Action: CmdResearchAgent, Icon: &IconBotChar},
 	{Label: "Research Follow-Up", Desc: "Go deeper on current note's topic via Claude Code", Shortcut: "", Action: CmdResearchFollowUp, Icon: &IconBotChar},
+	{Label: "Vault Analyzer", Desc: "AI analysis of vault structure, gaps, and suggestions", Shortcut: "", Action: CmdVaultAnalyzer, Icon: &IconGraphChar},
+	{Label: "Note Enhancer", Desc: "AI-enhance current note with links, structure, depth", Shortcut: "", Action: CmdNoteEnhancer, Icon: &IconEditChar},
+	{Label: "Daily Digest", Desc: "Generate weekly review from recent vault activity", Shortcut: "", Action: CmdDailyDigest, Icon: &IconCalendarChar},
+	{Label: "Language Learning", Desc: "Vocabulary tracker, practice sessions, grammar notes", Shortcut: "", Action: CmdLanguageLearning, Icon: &IconBookmarkChar},
+	{Label: "Habit Tracker", Desc: "Daily habits, goals, streaks, and progress tracking", Shortcut: "", Action: CmdHabitTracker, Icon: &IconGraphChar},
 	{Label: "Task Manager", Desc: "View, manage, and plan all tasks across vault", Shortcut: "Ctrl+K", Action: CmdTaskManager, Icon: &IconCalendarChar},
 	{Label: "Link Assistant", Desc: "Find unlinked mentions and suggest wikilinks", Shortcut: "", Action: CmdLinkAssist, Icon: &IconLinkChar},
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar},

@@ -145,8 +145,11 @@ type Model struct {
 	themeEditor     ThemeEditor
 	linkAssist      LinkAssist
 	taskManager     TaskManager
-	blogPublisher   BlogPublisher
-	dueTodayCount   int
+	blogPublisher    BlogPublisher
+	aiTemplates      AITemplates
+	languageLearning LanguageLearning
+	habitTracker     HabitTracker
+	dueTodayCount    int
 
 	// Slash command menu
 	slashMenu *SlashMenu
@@ -272,7 +275,10 @@ func NewModel(vaultPath string) (Model, error) {
 		themeEditor:     NewThemeEditor(),
 		linkAssist:      NewLinkAssist(),
 		taskManager:     NewTaskManager(),
-		blogPublisher:   NewBlogPublisher(),
+		blogPublisher:    NewBlogPublisher(),
+		aiTemplates:      NewAITemplates(),
+		languageLearning: NewLanguageLearning(),
+		habitTracker:     NewHabitTracker(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
 		showSplash:     cfg.ShowSplash,
@@ -688,6 +694,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case aiTemplateResultMsg:
+		if m.aiTemplates.IsActive() {
+			var cmd tea.Cmd
+			m.aiTemplates, cmd = m.aiTemplates.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case aiTemplateTickMsg:
+		if m.aiTemplates.IsActive() {
+			var cmd tea.Cmd
+			m.aiTemplates, cmd = m.aiTemplates.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case researchResultMsg:
 		// Always handle — research runs in background even if overlay is closed
 		if m.research.IsRunning() {
@@ -1091,6 +1113,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.setFocus(focusEditor)
 				}
 			}
+			return m, nil
+		}
+
+		if m.aiTemplates.IsActive() {
+			m.aiTemplates, _ = m.aiTemplates.Update(msg)
+			if !m.aiTemplates.IsActive() {
+				if title, content, ok := m.aiTemplates.GetResult(); ok {
+					// Create the new note file
+					fileName := title + ".md"
+					relPath := fileName
+					absPath := filepath.Join(m.vault.Root, relPath)
+					if err := os.WriteFile(absPath, []byte(content), 0644); err == nil {
+						m.vault.Scan()
+						m.index.Build()
+						m.sidebar.SetFiles(m.vault.SortedPaths())
+						m.loadNote(relPath)
+						m.sidebar.cursor = m.findFileIndex(relPath)
+						m.setFocus(focusEditor)
+						m.statusbar.SetMessage("Created " + fileName)
+					}
+				}
+			}
+			return m, nil
+		}
+
+		if m.languageLearning.IsActive() {
+			m.languageLearning, _ = m.languageLearning.Update(msg)
+			return m, nil
+		}
+
+		if m.habitTracker.IsActive() {
+			m.habitTracker, _ = m.habitTracker.Update(msg)
 			return m, nil
 		}
 
@@ -2357,6 +2411,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.publisher.SetSize(m.width, m.height)
 		m.publisher.Open()
 	case CmdBlogPublish:
+		if !m.config.CorePluginEnabled("blog_publisher") {
+			break
+		}
 		if m.activeNote != "" {
 			note := m.vault.GetNote(m.activeNote)
 			title := strings.TrimSuffix(filepath.Base(m.activeNote), ".md")
@@ -2382,6 +2439,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.luaOverlay.SetSize(m.width, m.height)
 		m.luaOverlay.Open(m.activeNote, m.editor.GetContent(), nil)
 	case CmdFlashcards:
+		if !m.config.CorePluginEnabled("flashcards") {
+			break
+		}
 		m.flashcards.SetSize(m.width, m.height)
 		noteContents := make(map[string]string)
 		for _, p := range m.vault.SortedPaths() {
@@ -2523,6 +2583,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
 	case CmdPomodoro:
+		if !m.config.CorePluginEnabled("pomodoro") {
+			break
+		}
 		m.pomodoro.SetSize(m.width, m.height)
 		m.pomodoro.Open()
 	case CmdWebClip:
@@ -2732,6 +2795,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.foldState.UnfoldAll()
 
 	case CmdTaskManager:
+		if !m.config.CorePluginEnabled("task_manager") {
+			break
+		}
 		m.taskManager.SetSize(m.width, m.height)
 		m.taskManager.Open(m.vault)
 
@@ -2777,6 +2843,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.updateLayout()
 
 	case CmdResearchAgent:
+		if !m.config.CorePluginEnabled("research_agent") {
+			break
+		}
 		m.research.SetSize(m.width, m.height)
 		if m.research.IsRunning() {
 			// Reopen to show progress
@@ -2789,6 +2858,51 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		if m.activeNote != "" && !m.research.IsRunning() {
 			m.research.SetSize(m.width, m.height)
 			m.research.OpenFollowUp(m.vault.Root, m.activeNote, m.editor.GetContent())
+		}
+
+	case CmdAITemplate:
+		if !m.config.CorePluginEnabled("ai_templates") {
+			break
+		}
+		m.aiTemplates.SetSize(m.width, m.height)
+		m.aiTemplates.Open(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey)
+
+	case CmdVaultAnalyzer:
+		if !m.research.IsRunning() {
+			m.research.SetSize(m.width, m.height)
+			m.research.OpenVaultAnalyzer(m.vault.Root, m.vault.SortedPaths())
+		}
+
+	case CmdNoteEnhancer:
+		if m.activeNote != "" && !m.research.IsRunning() {
+			m.research.SetSize(m.width, m.height)
+			m.research.OpenNoteEnhancer(m.vault.Root, m.activeNote, m.editor.GetContent(), m.vault.SortedPaths())
+		}
+
+	case CmdDailyDigest:
+		if !m.research.IsRunning() {
+			m.research.SetSize(m.width, m.height)
+			recentNotes := make(map[string]string)
+			cutoff := time.Now().AddDate(0, 0, -7)
+			for _, p := range m.vault.SortedPaths() {
+				note := m.vault.GetNote(p)
+				if note != nil && note.ModTime.After(cutoff) {
+					recentNotes[p] = note.Content
+				}
+			}
+			m.research.OpenDailyDigest(m.vault.Root, recentNotes)
+		}
+
+	case CmdLanguageLearning:
+		if m.config.CorePluginEnabled("language_learning") {
+			m.languageLearning.SetSize(m.width, m.height)
+			m.languageLearning.Open(m.vault.Root)
+		}
+
+	case CmdHabitTracker:
+		if m.config.CorePluginEnabled("habit_tracker") {
+			m.habitTracker.SetSize(m.width, m.height)
+			m.habitTracker.Open(m.vault.Root)
 		}
 
 	case CmdQuit:
@@ -3742,6 +3856,18 @@ func (m Model) View() string {
 	}
 	if m.globalReplace.IsActive() {
 		overlay := m.globalReplace.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.aiTemplates.IsActive() {
+		overlay := m.aiTemplates.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.languageLearning.IsActive() {
+		overlay := m.languageLearning.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.habitTracker.IsActive() {
+		overlay := m.habitTracker.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.spellcheck.IsActive() {
