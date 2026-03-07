@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,17 @@ const (
 	researchError
 )
 
+// researchMode identifies which agent mode is active.
+type researchMode int
+
+const (
+	modeResearch      researchMode = iota // Deep Dive Research
+	modeFollowUp                          // Follow-Up Research
+	modeVaultAnalyzer                     // Vault Analyzer
+	modeNoteEnhancer                      // Note Enhancer
+	modeDailyDigest                       // Daily Digest Generator
+)
+
 // ResearchAgent is an overlay that invokes Claude Code CLI to research a topic
 // and generate structured notes in the vault.
 type ResearchAgent struct {
@@ -42,11 +54,13 @@ type ResearchAgent struct {
 	vaultRoot string
 
 	// Options
-	depth  int // 0=quick, 1=standard, 2=deep
-	format int // 0=zettelkasten, 1=outline, 2=study
+	depth        int // 0=quick, 1=standard, 2=deep
+	format       int // 0=zettelkasten, 1=outline, 2=study
+	profile      int // 0=general, 1=academic, 2=technical, 3=creative
+	sourceFilter int // 0=any, 1=web, 2=docs, 3=papers
 
 	// Selection
-	focusField int // 0=topic, 1=depth, 2=format, 3=run button
+	focusField int // 0=topic, 1=depth, 2=format, 3=profile, 4=source, 5=run button
 
 	// Created files
 	createdFiles []string
@@ -63,6 +77,20 @@ type ResearchAgent struct {
 	followUp        bool
 	followUpContext string
 	followUpSource  string // original note path (relative)
+
+	// Agent mode
+	mode researchMode
+
+	// Vault Analyzer state
+	vaultNoteList []string // list of all note relative paths
+
+	// Note Enhancer state
+	enhanceNotePath    string   // relative path of note to enhance
+	enhanceNoteContent string   // current content of note to enhance
+	enhanceVaultNames  []string // all vault note names for wikilink suggestions
+
+	// Daily Digest state
+	recentNotes map[string]string // path → content for recently modified notes
 }
 
 // NewResearchAgent creates a new research agent overlay.
@@ -88,12 +116,30 @@ func (r ResearchAgent) StatusText() string {
 	if !r.running {
 		return ""
 	}
+	var prefix string
+	switch r.mode {
+	case modeVaultAnalyzer:
+		prefix = "Analyzing"
+	case modeNoteEnhancer:
+		prefix = "Enhancing"
+	case modeDailyDigest:
+		prefix = "Digest"
+	default:
+		prefix = ""
+	}
 	topic := r.topic
 	if len(topic) > 20 {
 		topic = topic[:20] + "…"
 	}
 	dots := int(time.Since(r.startTime).Seconds()) % 4
-	return IconBotChar + " " + topic + strings.Repeat(".", dots+1)
+	label := topic
+	if prefix != "" {
+		label = prefix + ": " + topic
+		if len(label) > 28 {
+			label = label[:28] + "…"
+		}
+	}
+	return IconBotChar + " " + label + strings.Repeat(".", dots+1)
 }
 
 // Reopen shows the overlay again (e.g. to check on running/completed research).
@@ -123,6 +169,12 @@ func (r *ResearchAgent) Open(vaultRoot string) {
 	r.followUp = false
 	r.followUpContext = ""
 	r.followUpSource = ""
+	r.mode = modeResearch
+	r.vaultNoteList = nil
+	r.enhanceNotePath = ""
+	r.enhanceNoteContent = ""
+	r.enhanceVaultNames = nil
+	r.recentNotes = nil
 }
 
 // OpenFollowUp activates the research overlay in follow-up mode, pre-filling
@@ -143,10 +195,103 @@ func (r *ResearchAgent) OpenFollowUp(vaultRoot, notePath, noteContent string) {
 	r.followUp = true
 	r.followUpContext = noteContent
 	r.followUpSource = notePath
+	r.mode = modeFollowUp
+
+	// Clear other mode state
+	r.vaultNoteList = nil
+	r.enhanceNotePath = ""
+	r.enhanceNoteContent = ""
+	r.enhanceVaultNames = nil
+	r.recentNotes = nil
 
 	// Pre-fill topic from note filename (strip .md extension)
 	name := strings.TrimSuffix(filepath.Base(notePath), ".md")
 	r.topic = name
+}
+
+// OpenVaultAnalyzer activates the research overlay in vault analyzer mode.
+// noteList should contain relative paths of all notes in the vault.
+func (r *ResearchAgent) OpenVaultAnalyzer(vaultRoot string, noteList []string) {
+	r.active = true
+	r.phase = researchInput
+	r.topic = "Vault Analysis"
+	r.output = ""
+	r.errorMsg = ""
+	r.scroll = 0
+	r.vaultRoot = vaultRoot
+	r.focusField = 3 // focus on run button since no topic input needed
+	r.createdFiles = nil
+	r.selectedFile = 0
+	r.elapsed = ""
+	r.followUp = false
+	r.followUpContext = ""
+	r.followUpSource = ""
+	r.mode = modeVaultAnalyzer
+	r.depth = 1
+	r.format = 0
+	r.vaultNoteList = noteList
+	r.enhanceNotePath = ""
+	r.enhanceNoteContent = ""
+	r.enhanceVaultNames = nil
+	r.recentNotes = nil
+}
+
+// OpenNoteEnhancer activates the research overlay in note enhancer mode.
+// notePath is the relative path, noteContent is current content, vaultNoteNames
+// lists all note names for wikilink suggestions.
+func (r *ResearchAgent) OpenNoteEnhancer(vaultRoot, notePath, noteContent string, vaultNoteNames []string) {
+	r.active = true
+	r.phase = researchInput
+	r.output = ""
+	r.errorMsg = ""
+	r.scroll = 0
+	r.vaultRoot = vaultRoot
+	r.focusField = 3 // focus on run button
+	r.createdFiles = nil
+	r.selectedFile = 0
+	r.elapsed = ""
+	r.followUp = false
+	r.followUpContext = ""
+	r.followUpSource = ""
+	r.mode = modeNoteEnhancer
+	r.depth = 1
+	r.format = 0
+	r.enhanceNotePath = notePath
+	r.enhanceNoteContent = noteContent
+	r.enhanceVaultNames = vaultNoteNames
+	r.vaultNoteList = nil
+	r.recentNotes = nil
+
+	// Pre-fill topic from note filename
+	name := strings.TrimSuffix(filepath.Base(notePath), ".md")
+	r.topic = name
+}
+
+// OpenDailyDigest activates the research overlay in daily digest mode.
+// recentNotes maps relative path → content for notes modified in the last 7 days.
+func (r *ResearchAgent) OpenDailyDigest(vaultRoot string, recentNotes map[string]string) {
+	r.active = true
+	r.phase = researchInput
+	r.topic = "Weekly Review"
+	r.output = ""
+	r.errorMsg = ""
+	r.scroll = 0
+	r.vaultRoot = vaultRoot
+	r.focusField = 3 // focus on run button
+	r.createdFiles = nil
+	r.selectedFile = 0
+	r.elapsed = ""
+	r.followUp = false
+	r.followUpContext = ""
+	r.followUpSource = ""
+	r.mode = modeDailyDigest
+	r.depth = 1
+	r.format = 0
+	r.vaultNoteList = nil
+	r.enhanceNotePath = ""
+	r.enhanceNoteContent = ""
+	r.enhanceVaultNames = nil
+	r.recentNotes = recentNotes
 }
 
 // Close hides the overlay.
@@ -191,9 +336,18 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 	vaultRoot := r.vaultRoot
 	depth := r.depth
 	format := r.format
+	profile := r.profile
+	sourceFilter := r.sourceFilter
+	startTime := r.startTime
 	followUp := r.followUp
 	followUpContext := r.followUpContext
 	followUpSource := r.followUpSource
+	mode := r.mode
+	vaultNoteList := r.vaultNoteList
+	enhanceNotePath := r.enhanceNotePath
+	enhanceNoteContent := r.enhanceNoteContent
+	enhanceVaultNames := r.enhanceVaultNames
+	recentNotes := r.recentNotes
 
 	return func() tea.Msg {
 		claudePath := findClaude()
@@ -204,10 +358,21 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 		}
 
 		var prompt string
-		if followUp {
+		switch mode {
+		case modeFollowUp:
 			prompt = buildFollowUpPrompt(topic, vaultRoot, depth, format, followUpContext, followUpSource)
-		} else {
-			prompt = buildResearchPrompt(topic, vaultRoot, depth, format)
+		case modeVaultAnalyzer:
+			prompt = buildVaultAnalyzerPrompt(vaultRoot, vaultNoteList, depth)
+		case modeNoteEnhancer:
+			prompt = buildNoteEnhancerPrompt(vaultRoot, enhanceNotePath, enhanceNoteContent, enhanceVaultNames)
+		case modeDailyDigest:
+			prompt = buildDailyDigestPrompt(vaultRoot, recentNotes)
+		default:
+			if followUp {
+				prompt = buildFollowUpPrompt(topic, vaultRoot, depth, format, followUpContext, followUpSource)
+			} else {
+				prompt = buildResearchPrompt(topic, vaultRoot, depth, format, profile, sourceFilter)
+			}
 		}
 
 		cmd := exec.Command(claudePath,
@@ -229,6 +394,11 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 
 		files := parseCreatedFiles(string(output), vaultRoot)
 
+		// Append to Research Log if this was a research or follow-up run
+		if mode == modeResearch || mode == modeFollowUp {
+			appendResearchLog(vaultRoot, topic, depth, format, profile, sourceFilter, len(files), time.Since(startTime))
+		}
+
 		return researchResultMsg{
 			output:    string(output),
 			filesHint: files,
@@ -237,7 +407,7 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 }
 
 // buildResearchPrompt creates the prompt for Claude Code.
-func buildResearchPrompt(topic, vaultRoot string, depth, format int) string {
+func buildResearchPrompt(topic, vaultRoot string, depth, format, profile, sourceFilter int) string {
 	today := time.Now().Format("2006-01-02")
 
 	safeTopic := strings.ReplaceAll(topic, "/", "-")
@@ -277,9 +447,61 @@ Create a hub note as _Index.md with a suggested study order.
 Use [[wikilinks]] extensively.`
 	}
 
+	// Profile-specific instructions
+	var profileInstr string
+	switch profile {
+	case 1: // Academic
+		profileInstr = `RESEARCH PROFILE — Academic:
+- Use formal academic writing style throughout
+- Emphasize peer-reviewed sources and scholarly references
+- Include a bibliography/references section in each note
+- Cite sources using author-date format (e.g., Smith, 2024)
+- Discuss methodology, limitations, and research gaps
+- Prioritize precision and nuance over simplicity`
+	case 2: // Technical
+		profileInstr = `RESEARCH PROFILE — Technical:
+- Include code examples and implementation details where relevant
+- Use architecture diagrams described in Markdown (ASCII or Mermaid-style)
+- Cover APIs, libraries, frameworks, and tooling
+- Discuss performance considerations and trade-offs
+- Include configuration snippets and practical setup steps
+- Prioritize actionable, hands-on content`
+	case 3: // Creative
+		profileInstr = `RESEARCH PROFILE — Creative:
+- Use brainstorming and exploratory writing style
+- Present alternative perspectives and unconventional angles
+- Use mind-map style organization with branching ideas
+- Include thought experiments and "what if" scenarios
+- Draw connections across different domains and disciplines
+- Prioritize divergent thinking and idea generation`
+	default: // General
+		profileInstr = `RESEARCH PROFILE — General:
+- Use a balanced, well-rounded research approach
+- Mix breadth and depth appropriately
+- Write in clear, accessible language
+- Include both overview and detailed analysis`
+	}
+
+	// Source filter instructions
+	var sourceInstr string
+	switch sourceFilter {
+	case 1: // Web
+		sourceInstr = "SOURCE FOCUS: Search the general web for up-to-date articles, blog posts, tutorials, and news."
+	case 2: // Docs
+		sourceInstr = "SOURCE FOCUS: Prioritize official documentation, MDN, language references, API docs, and authoritative technical sources."
+	case 3: // Papers
+		sourceInstr = "SOURCE FOCUS: Prioritize academic papers, arxiv preprints, research publications, and scholarly articles. Include DOIs where available."
+	default: // Any
+		sourceInstr = "SOURCE FOCUS: Use any reliable sources — web articles, documentation, papers, books, etc."
+	}
+
 	return fmt.Sprintf(`You are a research assistant creating structured knowledge notes.
 
 TOPIC: %s
+
+%s
+
+%s
 
 INSTRUCTIONS:
 1. Research this topic thoroughly using web search to find current, accurate information.
@@ -292,7 +514,6 @@ FORMAT for each note:
 - Use Markdown with proper headings (## for sections)
 - Include [[wikilinks]] to other notes you create (use just the filename without .md)
 - Be thorough, accurate, and cite sources where possible
-- Write in a clear, educational style
 
 IMPORTANT:
 - Create ALL files using the Write tool
@@ -301,7 +522,7 @@ IMPORTANT:
 - Do NOT create files outside the research folder
 - After creating all files, list the files you created
 
-START RESEARCHING NOW.`, topic, noteCount, folder, formatInstr, today)
+START RESEARCHING NOW.`, topic, profileInstr, sourceInstr, noteCount, folder, formatInstr, today)
 }
 
 // buildFollowUpPrompt creates the prompt for follow-up research that builds
@@ -386,6 +607,286 @@ IMPORTANT:
 START FOLLOW-UP RESEARCH NOW.`, topic, sourcePath, contextSnippet, noteCount, folder, formatInstr, today)
 }
 
+// buildVaultAnalyzerPrompt creates the prompt for vault analysis mode.
+// Claude Code reads the entire vault, generates a MOC, gaps report, and suggestions.
+func buildVaultAnalyzerPrompt(vaultRoot string, noteList []string, depth int) string {
+	today := time.Now().Format("2006-01-02")
+	folder := filepath.Join(vaultRoot, "Vault Analysis "+today)
+
+	// Build the note listing for the prompt
+	var noteListStr string
+	if len(noteList) > 0 {
+		// Include all note paths so Claude knows what exists
+		listed := noteList
+		if len(listed) > 500 {
+			listed = listed[:500]
+			noteListStr = strings.Join(listed, "\n") + fmt.Sprintf("\n... and %d more notes", len(noteList)-500)
+		} else {
+			noteListStr = strings.Join(listed, "\n")
+		}
+	} else {
+		noteListStr = "(use Glob and Read tools to discover notes)"
+	}
+
+	var depthInstr string
+	switch depth {
+	case 0:
+		depthInstr = "Do a quick scan — focus on note titles and folder structure. Read a sample of 10-20 notes."
+	case 1:
+		depthInstr = "Do a thorough analysis — read all notes (or a substantial sample of 50+) to understand content and connections."
+	case 2:
+		depthInstr = "Do a comprehensive deep analysis — read EVERY note in the vault, analyze all content, links, and tags in detail."
+	}
+
+	return fmt.Sprintf(`You are a vault analysis assistant for a knowledge management system.
+
+VAULT ROOT: %s
+
+KNOWN NOTES IN VAULT:
+%s
+
+INSTRUCTIONS:
+1. %s
+2. Use the Glob tool to find all .md files: Glob("**/*.md") in the vault directory.
+3. Use the Read tool to read note contents and understand their topics, links, and structure.
+4. Create the analysis output folder: %s
+
+ANALYSIS TASKS — Create these files:
+
+A) **_Map of Content.md** — A comprehensive MOC (Map of Content):
+   - Group all notes by topic/theme
+   - Create sections with headings for each topic area
+   - List notes under each topic with [[wikilinks]]
+   - Show connections between topic areas
+   - Include a "Quick Navigation" section at the top
+
+B) **_Gaps Report.md** — Identify knowledge gaps:
+   - Topics that are mentioned or linked but don't have their own notes
+   - Broken [[wikilinks]] that point to non-existent notes
+   - Topic areas that seem underdeveloped compared to others
+   - Notes that are orphaned (no links to or from other notes)
+   - Missing connections between related notes
+
+C) **_Suggestions.md** — Actionable suggestions:
+   - Specific new notes to create (with suggested titles and brief outlines)
+   - Existing notes that should be linked together but aren't
+   - Notes that could be split into more atomic pieces
+   - Notes that could be merged
+   - Suggested folder reorganization if applicable
+   - Tags that could improve discoverability
+
+FORMAT for each analysis note:
+- Start with YAML frontmatter: ---\ndate: %s\ntype: vault-analysis\ntags: [vault-analysis, meta]\n---
+- Use Markdown with proper headings
+- Include [[wikilinks]] to actual vault notes (use just the filename without .md)
+- Be specific and actionable
+
+IMPORTANT:
+- Create ALL files using the Write tool
+- Create the output folder if it doesn't exist
+- Do NOT modify any existing vault notes
+- After creating all files, list the files you created
+
+START VAULT ANALYSIS NOW.`, vaultRoot, noteListStr, depthInstr, folder, today)
+}
+
+// buildNoteEnhancerPrompt creates the prompt for note enhancement mode.
+// Claude Code enhances a specific note with additional research and wikilinks.
+func buildNoteEnhancerPrompt(vaultRoot, notePath, noteContent string, vaultNoteNames []string) string {
+	today := time.Now().Format("2006-01-02")
+	fullPath := filepath.Join(vaultRoot, notePath)
+	backupPath := fullPath + ".backup-" + today
+
+	// Build list of existing vault notes for wikilink suggestions
+	var noteNamesStr string
+	if len(vaultNoteNames) > 0 {
+		names := vaultNoteNames
+		if len(names) > 300 {
+			names = names[:300]
+			noteNamesStr = strings.Join(names, "\n") + fmt.Sprintf("\n... and %d more", len(vaultNoteNames)-300)
+		} else {
+			noteNamesStr = strings.Join(names, "\n")
+		}
+	} else {
+		noteNamesStr = "(use Glob to discover notes)"
+	}
+
+	// Truncate very long note content
+	content := noteContent
+	if len(content) > 12000 {
+		content = content[:12000] + "\n\n[... content truncated for brevity ...]"
+	}
+
+	return fmt.Sprintf(`You are a note enhancement assistant for a knowledge management system.
+
+NOTE TO ENHANCE: %s
+VAULT ROOT: %s
+
+CURRENT NOTE CONTENT:
+---
+%s
+---
+
+EXISTING VAULT NOTES (for wikilink suggestions):
+%s
+
+INSTRUCTIONS:
+1. First, create a backup of the original note by writing the current content to: %s
+2. Then, enhance the note by:
+   a) Research the topic using WebSearch to find current, accurate information
+   b) Expand on existing content — add missing sections, fill in details, provide deeper explanations
+   c) Add relevant [[wikilinks]] to existing vault notes where topics overlap (use filenames without .md)
+   d) Add sources and citations in a "## Sources" section at the bottom
+   e) Preserve the existing YAML frontmatter but add/update the "updated" field to today's date (%s)
+   f) Keep the original author's voice and style — enhance, don't rewrite from scratch
+   g) Add new sections that are relevant but missing from the original
+3. Write the enhanced version back to the original file: %s
+
+ENHANCEMENT GUIDELINES:
+- Keep ALL original content — only add to it, reorganize, or clarify
+- Add [[wikilinks]] naturally within the text where other vault notes are relevant
+- New sections should flow naturally with the existing content
+- If the note has frontmatter tags, add relevant new tags
+- Include a "## See Also" section at the end with related vault notes
+- Add blockquotes for important definitions or key concepts
+- Use proper Markdown formatting (headings, lists, bold/italic)
+
+IMPORTANT:
+- Create the backup file FIRST using Write tool
+- Then write the enhanced version to the original path using Write tool
+- Do NOT create any other files
+- After writing, list what was changed (backup path and enhanced file path)
+
+START ENHANCING NOW.`, notePath, vaultRoot, content, noteNamesStr, backupPath, today, fullPath)
+}
+
+// buildDailyDigestPrompt creates the prompt for daily digest / weekly review mode.
+// Claude Code analyzes recently modified notes and generates a weekly review.
+func buildDailyDigestPrompt(vaultRoot string, recentNotes map[string]string) string {
+	today := time.Now().Format("2006-01-02")
+	reviewPath := filepath.Join(vaultRoot, fmt.Sprintf("Weekly Review %s.md", today))
+
+	// Build summaries of recent notes
+	var recentSummaries strings.Builder
+	noteCount := 0
+	for path, content := range recentNotes {
+		noteCount++
+		// Truncate long notes to keep prompt manageable
+		snippet := content
+		if len(snippet) > 2000 {
+			snippet = snippet[:2000] + "\n[... truncated ...]"
+		}
+		recentSummaries.WriteString(fmt.Sprintf("\n### %s\n```\n%s\n```\n", path, snippet))
+
+		// Safety limit for very large vaults
+		if noteCount >= 50 {
+			recentSummaries.WriteString(fmt.Sprintf("\n... and %d more recently modified notes (use Glob+Read to access them)\n", len(recentNotes)-50))
+			break
+		}
+	}
+
+	recentContent := recentSummaries.String()
+	if recentContent == "" {
+		recentContent = "(No recently modified notes found — use Glob to find .md files and check their modification times)"
+	}
+
+	return fmt.Sprintf(`You are a weekly review assistant for a knowledge management system.
+
+VAULT ROOT: %s
+TODAY'S DATE: %s
+
+RECENTLY MODIFIED NOTES (last 7 days):
+%s
+
+INSTRUCTIONS:
+1. Analyze the recently modified notes above carefully.
+2. If the note list seems incomplete, use Glob("**/*.md") and Read to find recently modified files.
+3. Create a comprehensive weekly review note at: %s
+
+THE WEEKLY REVIEW NOTE SHOULD CONTAIN:
+
+## Activity Summary
+- How many notes were modified/created this week
+- Which areas/topics saw the most activity
+- Brief description of what was worked on
+
+## Key Themes
+- Identify the main themes or topics across this week's notes
+- Show how different notes connect to each other
+- Highlight any emerging patterns or threads
+
+## Connections Discovered
+- Notes that are related but might not be linked yet
+- Cross-topic connections and insights
+- Suggest [[wikilinks]] between related recent notes
+
+## Follow-Up Tasks
+- Action items extracted from recent notes (look for TODO, FIXME, task lists)
+- Topics that need further research or development
+- Notes that feel incomplete and should be expanded
+- Questions raised in recent notes that haven't been answered
+
+## This Week at a Glance
+- A brief narrative summary of the week's knowledge work
+- What was learned, what was created, what evolved
+
+FORMAT:
+- Start with YAML frontmatter: ---\ndate: %s\ntype: weekly-review\ntags: [weekly-review, meta, digest]\n---
+- Use Markdown with clear headings and bullet points
+- Include [[wikilinks]] to all referenced notes (use filenames without .md)
+- Be specific — reference actual note content, not generic observations
+- Keep it actionable and useful
+
+IMPORTANT:
+- Create the review note using the Write tool
+- Do NOT modify any existing notes
+- If a weekly review for today already exists, overwrite it
+- After creating the file, list the file path
+
+START GENERATING WEEKLY REVIEW NOW.`, vaultRoot, today, recentContent, reviewPath, today)
+}
+
+// appendResearchLog writes a summary line to Research Log.md in the vault root.
+func appendResearchLog(vaultRoot, topic string, depth, format, profile, sourceFilter, noteCount int, elapsed time.Duration) {
+	logPath := filepath.Join(vaultRoot, "Research Log.md")
+
+	depthNames := []string{"quick", "standard", "deep"}
+	formatNames := []string{"zettelkasten", "outline", "study"}
+	profileNames := []string{"general", "academic", "technical", "creative"}
+
+	depthStr := "standard"
+	if depth >= 0 && depth < len(depthNames) {
+		depthStr = depthNames[depth]
+	}
+	formatStr := "zettelkasten"
+	if format >= 0 && format < len(formatNames) {
+		formatStr = formatNames[format]
+	}
+	profileStr := "general"
+	if profile >= 0 && profile < len(profileNames) {
+		profileStr = profileNames[profile]
+	}
+
+	date := time.Now().Format("2006-01-02 15:04")
+	elapsedStr := elapsed.Truncate(time.Second).String()
+	line := fmt.Sprintf("- [%s] **%s** — %s, %s, %s — %d notes created — %s\n",
+		date, topic, depthStr, formatStr, profileStr, noteCount, elapsedStr)
+
+	// Create the file with a header if it doesn't exist
+	if _, err := os.Stat(logPath); os.IsNotExist(err) {
+		header := "---\ndate: " + time.Now().Format("2006-01-02") + "\ntype: research-log\ntags: [research, log, meta]\n---\n\n# Research Log\n\n"
+		_ = os.WriteFile(logPath, []byte(header+line), 0644)
+		return
+	}
+
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = f.WriteString(line)
+}
+
 // parseCreatedFiles extracts file paths from Claude's output.
 func parseCreatedFiles(output, vaultRoot string) []string {
 	var files []string
@@ -442,24 +943,39 @@ func (r ResearchAgent) Update(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 }
 
 func (r ResearchAgent) updateInput(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
+	switch r.mode {
+	case modeVaultAnalyzer:
+		return r.updateInputVaultAnalyzer(msg)
+	case modeNoteEnhancer:
+		return r.updateInputNoteEnhancer(msg)
+	case modeDailyDigest:
+		return r.updateInputDailyDigest(msg)
+	default:
+		return r.updateInputResearch(msg)
+	}
+}
+
+// updateInputResearch handles input for Deep Dive and Follow-Up modes.
+// Focus fields: 0=topic, 1=depth, 2=format, 3=profile, 4=source, 5=run button
+func (r ResearchAgent) updateInputResearch(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		r.active = false
 		return r, nil
 	case "tab":
-		r.focusField = (r.focusField + 1) % 4
+		r.focusField = (r.focusField + 1) % 6
 		return r, nil
 	case "shift+tab":
-		r.focusField = (r.focusField + 3) % 4
+		r.focusField = (r.focusField + 5) % 6
 		return r, nil
 	case "enter":
-		if r.focusField == 3 && r.topic != "" {
+		if r.focusField == 5 && r.topic != "" {
 			r.phase = researchRunning
 			r.running = true
 			r.startTime = time.Now()
 			return r, tea.Batch(r.runResearch(), r.tickElapsed())
 		}
-		if r.focusField < 3 {
+		if r.focusField < 5 {
 			r.focusField++
 		}
 		return r, nil
@@ -468,6 +984,10 @@ func (r ResearchAgent) updateInput(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 			r.depth--
 		} else if r.focusField == 2 && r.format > 0 {
 			r.format--
+		} else if r.focusField == 3 && r.profile > 0 {
+			r.profile--
+		} else if r.focusField == 4 && r.sourceFilter > 0 {
+			r.sourceFilter--
 		}
 		return r, nil
 	case "right":
@@ -475,6 +995,10 @@ func (r ResearchAgent) updateInput(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 			r.depth++
 		} else if r.focusField == 2 && r.format < 2 {
 			r.format++
+		} else if r.focusField == 3 && r.profile < 3 {
+			r.profile++
+		} else if r.focusField == 4 && r.sourceFilter < 3 {
+			r.sourceFilter++
 		}
 		return r, nil
 	case "backspace":
@@ -493,6 +1017,82 @@ func (r ResearchAgent) updateInput(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 		}
 		return r, nil
 	}
+}
+
+// updateInputVaultAnalyzer handles input for vault analyzer mode.
+// Fields: 1=depth, 3=run button
+func (r ResearchAgent) updateInputVaultAnalyzer(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		r.active = false
+		return r, nil
+	case "tab":
+		if r.focusField == 1 {
+			r.focusField = 3
+		} else {
+			r.focusField = 1
+		}
+		return r, nil
+	case "shift+tab":
+		if r.focusField == 3 {
+			r.focusField = 1
+		} else {
+			r.focusField = 3
+		}
+		return r, nil
+	case "enter":
+		if r.focusField == 3 {
+			r.phase = researchRunning
+			r.running = true
+			r.startTime = time.Now()
+			return r, tea.Batch(r.runResearch(), r.tickElapsed())
+		}
+		r.focusField = 3
+		return r, nil
+	case "left":
+		if r.focusField == 1 && r.depth > 0 {
+			r.depth--
+		}
+		return r, nil
+	case "right":
+		if r.focusField == 1 && r.depth < 2 {
+			r.depth++
+		}
+		return r, nil
+	}
+	return r, nil
+}
+
+// updateInputNoteEnhancer handles input for note enhancer mode.
+// Only has the run button (field 3).
+func (r ResearchAgent) updateInputNoteEnhancer(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		r.active = false
+		return r, nil
+	case "enter":
+		r.phase = researchRunning
+		r.running = true
+		r.startTime = time.Now()
+		return r, tea.Batch(r.runResearch(), r.tickElapsed())
+	}
+	return r, nil
+}
+
+// updateInputDailyDigest handles input for daily digest mode.
+// Only has the run button (field 3).
+func (r ResearchAgent) updateInputDailyDigest(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		r.active = false
+		return r, nil
+	case "enter":
+		r.phase = researchRunning
+		r.running = true
+		r.startTime = time.Now()
+		return r, tea.Batch(r.runResearch(), r.tickElapsed())
+	}
+	return r, nil
 }
 
 type researchTickMsg struct{}
@@ -572,6 +1172,20 @@ func (r ResearchAgent) View() string {
 // ---------------------------------------------------------------------------
 
 func (r ResearchAgent) viewInput(innerW int) string {
+	switch r.mode {
+	case modeVaultAnalyzer:
+		return r.viewInputVaultAnalyzer(innerW)
+	case modeNoteEnhancer:
+		return r.viewInputNoteEnhancer(innerW)
+	case modeDailyDigest:
+		return r.viewInputDailyDigest(innerW)
+	default:
+		return r.viewInputResearch(innerW)
+	}
+}
+
+// viewInputResearch renders the input form for Deep Dive and Follow-Up modes.
+func (r ResearchAgent) viewInputResearch(innerW int) string {
 	var b strings.Builder
 
 	// Title — changes based on mode
@@ -647,11 +1261,25 @@ func (r ResearchAgent) viewInput(innerW int) string {
 	b.WriteString(r.renderRadio(fmtLabels, fmtDescs, r.format, r.focusField == 2, innerW))
 	b.WriteString("\n\n")
 
+	// ── Profile ──
+	profileLabels := []string{"General", "Academic", "Technical", "Creative"}
+	profileDescs := []string{"balanced", "citations", "code+arch", "brainstorm"}
+	b.WriteString(r.fieldLabel("Profile", 3) + "\n")
+	b.WriteString(r.renderRadio(profileLabels, profileDescs, r.profile, r.focusField == 3, innerW))
+	b.WriteString("\n\n")
+
+	// ── Source ──
+	sourceLabels := []string{"Any", "Web", "Docs", "Papers"}
+	sourceDescs := []string{"no filter", "general web", "official docs", "academic"}
+	b.WriteString(r.fieldLabel("Source", 4) + "\n")
+	b.WriteString(r.renderRadio(sourceLabels, sourceDescs, r.sourceFilter, r.focusField == 4, innerW))
+	b.WriteString("\n\n")
+
 	// ── Button ──
 	if r.topic != "" {
 		btnColor := surface0
 		btnFg := text
-		if r.focusField == 3 {
+		if r.focusField == 5 {
 			btnColor = green
 			btnFg = mantle
 		}
@@ -662,7 +1290,7 @@ func (r ResearchAgent) viewInput(innerW int) string {
 		btn := lipgloss.NewStyle().
 			Background(btnColor).
 			Foreground(btnFg).
-			Bold(r.focusField == 3).
+			Bold(r.focusField == 5).
 			Padding(0, 3).
 			Render(btnLabel)
 		b.WriteString("  " + btn)
@@ -675,6 +1303,267 @@ func (r ResearchAgent) viewInput(innerW int) string {
 	b.WriteString(DimStyle.Render("  Tab switch  ←→ option  Enter confirm  Esc close"))
 
 	return b.String()
+}
+
+// viewInputVaultAnalyzer renders the input form for vault analyzer mode.
+func (r ResearchAgent) viewInputVaultAnalyzer(innerW int) string {
+	var b strings.Builder
+
+	b.WriteString(lipgloss.NewStyle().Foreground(teal).Bold(true).
+		Render("  Vault Analyzer"))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  Powered by Claude Code"))
+	b.WriteString("\n\n")
+
+	// ── Description ──
+	descStyle := lipgloss.NewStyle().Foreground(lavender)
+	b.WriteString(descStyle.Render("  Analyze your entire vault to generate:"))
+	b.WriteString("\n")
+	itemStyle := lipgloss.NewStyle().Foreground(overlay0)
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Map of Content linking notes by topic"))
+	b.WriteString("\n")
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Gaps report for missing topics"))
+	b.WriteString("\n")
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Suggestions for new notes & links"))
+	b.WriteString("\n\n")
+
+	// ── Vault info ──
+	noteCountStr := fmt.Sprintf("%d notes", len(r.vaultNoteList))
+	b.WriteString(lipgloss.NewStyle().Foreground(lavender).Bold(true).
+		Render("  Vault"))
+	b.WriteString("\n")
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(peach).Render(noteCountStr+" in "+filepath.Base(r.vaultRoot)))
+	b.WriteString("\n\n")
+
+	// ── Depth (reuse field index 1) ──
+	depthLabels := []string{"Quick", "Standard", "Deep"}
+	depthDescs := []string{"sample scan", "thorough", "every note"}
+	b.WriteString(r.fieldLabel("Analysis Depth", 1) + "\n")
+	b.WriteString(r.renderRadio(depthLabels, depthDescs, r.depth, r.focusField == 1, innerW))
+	b.WriteString("\n\n")
+
+	// ── Button ──
+	btnColor := surface0
+	btnFg := text
+	if r.focusField == 3 {
+		btnColor = green
+		btnFg = mantle
+	}
+	btn := lipgloss.NewStyle().
+		Background(btnColor).
+		Foreground(btnFg).
+		Bold(r.focusField == 3).
+		Padding(0, 3).
+		Render(" Analyze Vault ")
+	b.WriteString("  " + btn)
+	b.WriteString("\n\n")
+
+	// ── Help ──
+	b.WriteString(DimStyle.Render("  Tab switch  ←→ depth  Enter confirm  Esc close"))
+
+	return b.String()
+}
+
+// viewInputNoteEnhancer renders the input form for note enhancer mode.
+func (r ResearchAgent) viewInputNoteEnhancer(innerW int) string {
+	var b strings.Builder
+
+	b.WriteString(lipgloss.NewStyle().Foreground(pink).Bold(true).
+		Render("  Note Enhancer"))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  Powered by Claude Code"))
+	b.WriteString("\n\n")
+
+	// ── Description ──
+	descStyle := lipgloss.NewStyle().Foreground(lavender)
+	b.WriteString(descStyle.Render("  Enhance your note with:"))
+	b.WriteString("\n")
+	itemStyle := lipgloss.NewStyle().Foreground(overlay0)
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Web research to expand content"))
+	b.WriteString("\n")
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Missing sections and details"))
+	b.WriteString("\n")
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Wikilinks to existing vault notes"))
+	b.WriteString("\n")
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Sources and citations"))
+	b.WriteString("\n\n")
+
+	// ── Target note ──
+	b.WriteString(lipgloss.NewStyle().Foreground(lavender).Bold(true).
+		Render("  Target Note"))
+	b.WriteString("\n")
+	noteName := strings.TrimSuffix(filepath.Base(r.enhanceNotePath), ".md")
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(peach).Render(noteName))
+	b.WriteString("\n")
+
+	// Preview of current content
+	preview := r.enhancerPreview(innerW - 6)
+	if preview != "" {
+		previewBox := lipgloss.NewStyle().
+			Foreground(overlay0).
+			Width(innerW - 4).
+			Render(preview)
+		b.WriteString("  " + previewBox)
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+
+	// ── Info ──
+	infoStyle := lipgloss.NewStyle().Foreground(overlay0)
+	b.WriteString(infoStyle.Render("  A backup will be created before changes."))
+	b.WriteString("\n")
+	b.WriteString(infoStyle.Render(fmt.Sprintf("  %d vault notes available for linking.", len(r.enhanceVaultNames))))
+	b.WriteString("\n\n")
+
+	// ── Button ──
+	btnColor := surface0
+	btnFg := text
+	if r.focusField == 3 {
+		btnColor = green
+		btnFg = mantle
+	}
+	btn := lipgloss.NewStyle().
+		Background(btnColor).
+		Foreground(btnFg).
+		Bold(r.focusField == 3).
+		Padding(0, 3).
+		Render(" Enhance Note ")
+	b.WriteString("  " + btn)
+	b.WriteString("\n\n")
+
+	// ── Help ──
+	b.WriteString(DimStyle.Render("  Enter confirm  Esc close"))
+
+	return b.String()
+}
+
+// viewInputDailyDigest renders the input form for daily digest mode.
+func (r ResearchAgent) viewInputDailyDigest(innerW int) string {
+	var b strings.Builder
+
+	b.WriteString(lipgloss.NewStyle().Foreground(yellow).Bold(true).
+		Render("  Daily Digest Generator"))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  Powered by Claude Code"))
+	b.WriteString("\n\n")
+
+	// ── Description ──
+	descStyle := lipgloss.NewStyle().Foreground(lavender)
+	b.WriteString(descStyle.Render("  Generate a weekly review from recent activity:"))
+	b.WriteString("\n")
+	itemStyle := lipgloss.NewStyle().Foreground(overlay0)
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Summary of recent changes"))
+	b.WriteString("\n")
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Connections between modified notes"))
+	b.WriteString("\n")
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Suggested follow-up tasks"))
+	b.WriteString("\n")
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Weekly review note"))
+	b.WriteString("\n\n")
+
+	// ── Recent activity ──
+	b.WriteString(lipgloss.NewStyle().Foreground(lavender).Bold(true).
+		Render("  Recent Activity"))
+	b.WriteString("\n")
+	noteCount := len(r.recentNotes)
+	if noteCount > 0 {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(peach).
+			Render(fmt.Sprintf("%d notes modified in the last 7 days", noteCount)))
+		b.WriteString("\n")
+
+		// Show a few recent note names
+		shown := 0
+		for path := range r.recentNotes {
+			if shown >= 5 {
+				remaining := noteCount - shown
+				if remaining > 0 {
+					b.WriteString(DimStyle.Render(fmt.Sprintf("    ... and %d more", remaining)))
+					b.WriteString("\n")
+				}
+				break
+			}
+			name := strings.TrimSuffix(filepath.Base(path), ".md")
+			if len(name) > innerW-8 {
+				name = name[:innerW-9] + "…"
+			}
+			b.WriteString(DimStyle.Render("    " + name))
+			b.WriteString("\n")
+			shown++
+		}
+	} else {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).
+			Render("No recently modified notes found"))
+		b.WriteString("\n")
+		b.WriteString("  " + DimStyle.Render("Claude will scan the vault for recent changes"))
+	}
+	b.WriteString("\n")
+
+	// ── Button ──
+	btnColor := surface0
+	btnFg := text
+	if r.focusField == 3 {
+		btnColor = green
+		btnFg = mantle
+	}
+	btn := lipgloss.NewStyle().
+		Background(btnColor).
+		Foreground(btnFg).
+		Bold(r.focusField == 3).
+		Padding(0, 3).
+		Render(" Generate Digest ")
+	b.WriteString("  " + btn)
+	b.WriteString("\n\n")
+
+	// ── Help ──
+	b.WriteString(DimStyle.Render("  Enter confirm  Esc close"))
+
+	return b.String()
+}
+
+// enhancerPreview returns a short preview of the note to be enhanced.
+func (r ResearchAgent) enhancerPreview(maxWidth int) string {
+	content := r.enhanceNoteContent
+	if content == "" {
+		return ""
+	}
+
+	// Strip YAML frontmatter
+	if strings.HasPrefix(content, "---") {
+		if end := strings.Index(content[3:], "---"); end >= 0 {
+			content = strings.TrimSpace(content[end+6:])
+		}
+	}
+
+	lines := strings.Split(content, "\n")
+	var preview []string
+	maxLines := 4
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if len(trimmed) > maxWidth {
+			trimmed = trimmed[:maxWidth-1] + "…"
+		}
+		preview = append(preview, "  "+trimmed)
+		if len(preview) >= maxLines {
+			break
+		}
+	}
+	if len(preview) == 0 {
+		return ""
+	}
+	result := strings.Join(preview, "\n")
+	if len(lines) > maxLines {
+		result += "\n  ..."
+	}
+	return result
 }
 
 // contextPreview returns a short preview of the follow-up source note content,
@@ -765,8 +1654,38 @@ func (r ResearchAgent) renderRadio(labels, descs []string, selected int, focused
 func (r ResearchAgent) viewRunning(innerW int) string {
 	var b strings.Builder
 
-	b.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).
-		Render("  Researching..."))
+	// Mode-specific title and description
+	var titleText, titleIcon, workDesc, timeDesc string
+	var titleColor lipgloss.Color
+	switch r.mode {
+	case modeVaultAnalyzer:
+		titleText = "Analyzing Vault..."
+		titleIcon = " "
+		titleColor = teal
+		workDesc = "Reading and analyzing vault notes."
+		timeDesc = "This takes 1-5 min depending on vault size."
+	case modeNoteEnhancer:
+		titleText = "Enhancing Note..."
+		titleIcon = " "
+		titleColor = pink
+		workDesc = "Researching and enhancing your note."
+		timeDesc = "This takes 1-3 min."
+	case modeDailyDigest:
+		titleText = "Generating Digest..."
+		titleIcon = " "
+		titleColor = yellow
+		workDesc = "Analyzing recent activity."
+		timeDesc = "This takes 1-2 min."
+	default:
+		titleText = "Researching..."
+		titleIcon = " "
+		titleColor = mauve
+		workDesc = "Searching the web and creating notes."
+		timeDesc = "This takes 1-3 min depending on depth."
+	}
+
+	b.WriteString(lipgloss.NewStyle().Foreground(titleColor).Bold(true).
+		Render(titleIcon + titleText))
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
 	b.WriteString("\n\n")
@@ -792,9 +1711,9 @@ func (r ResearchAgent) viewRunning(innerW int) string {
 
 	// Description
 	infoStyle := lipgloss.NewStyle().Foreground(overlay0)
-	b.WriteString(infoStyle.Render("  Searching the web and creating notes."))
+	b.WriteString(infoStyle.Render("  " + workDesc))
 	b.WriteString("\n")
-	b.WriteString(infoStyle.Render("  This takes 1-3 min depending on depth."))
+	b.WriteString(infoStyle.Render("  " + timeDesc))
 	b.WriteString("\n\n")
 
 	b.WriteString(DimStyle.Render("  Esc cancel"))
@@ -809,8 +1728,21 @@ func (r ResearchAgent) viewRunning(innerW int) string {
 func (r ResearchAgent) viewDone(innerW int) string {
 	var b strings.Builder
 
+	// Mode-specific completion title
+	var doneTitle string
+	switch r.mode {
+	case modeVaultAnalyzer:
+		doneTitle = "  Vault Analysis Complete"
+	case modeNoteEnhancer:
+		doneTitle = "  Note Enhanced"
+	case modeDailyDigest:
+		doneTitle = "  Digest Generated"
+	default:
+		doneTitle = "  Research Complete"
+	}
+
 	b.WriteString(lipgloss.NewStyle().Foreground(green).Bold(true).
-		Render("  Research Complete"))
+		Render(doneTitle))
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
 	b.WriteString("\n\n")
