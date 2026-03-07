@@ -115,6 +115,8 @@ const (
 	CmdMindMap
 	CmdJournalPrompts
 	CmdClipManager
+	CmdDailyPlanner
+	CmdAIScheduler
 	CmdQuit
 )
 
@@ -219,6 +221,8 @@ var AllCommands = []Command{
 	{Label: "Mind Map", Desc: "Visual mind map from note headings and wikilinks", Shortcut: "", Action: CmdMindMap, Icon: &IconGraphChar},
 	{Label: "Journal Prompts", Desc: "Daily reflection prompts with guided journaling", Shortcut: "", Action: CmdJournalPrompts, Icon: &IconEditChar},
 	{Label: "Clipboard Manager", Desc: "Browse and paste from clipboard history", Shortcut: "", Action: CmdClipManager, Icon: &IconOutlineChar},
+	{Label: "Daily Planner", Desc: "Time-blocked daily schedule with tasks, events, habits", Shortcut: "", Action: CmdDailyPlanner, Icon: &IconCalendarChar},
+	{Label: "AI Smart Scheduler", Desc: "AI-powered optimal schedule generation", Shortcut: "", Action: CmdAIScheduler, Icon: &IconBotChar},
 	{Label: "Task Manager", Desc: "View, manage, and plan all tasks across vault", Shortcut: "Ctrl+K", Action: CmdTaskManager, Icon: &IconCalendarChar},
 	{Label: "Link Assistant", Desc: "Find unlinked mentions and suggest wikilinks", Shortcut: "", Action: CmdLinkAssist, Icon: &IconLinkChar},
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar},
