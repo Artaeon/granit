@@ -140,6 +140,8 @@ type Model struct {
 	frontmatterEdit FrontmatterEditor
 	foldState       FoldState
 	research        ResearchAgent
+	imageManager    ImageManager
+	themeEditor     ThemeEditor
 
 	// Slash command menu
 	slashMenu *SlashMenu
@@ -260,6 +262,8 @@ func NewModel(vaultPath string) (Model, error) {
 		frontmatterEdit: NewFrontmatterEditor(),
 		foldState:       NewFoldState(),
 		research:        NewResearchAgent(),
+		imageManager:    NewImageManager(),
+		themeEditor:     NewThemeEditor(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
 		showSplash:     cfg.ShowSplash,
@@ -1292,6 +1296,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.loadNote(notePath)
 					m.sidebar.cursor = m.findFileIndex(notePath)
 					m.setFocus(focusEditor)
+				}
+			}
+			return m, cmd
+		}
+
+		if m.themeEditor.IsActive() {
+			var cmd tea.Cmd
+			m.themeEditor, cmd = m.themeEditor.Update(msg)
+			return m, cmd
+		}
+
+		if m.imageManager.IsActive() {
+			var cmd tea.Cmd
+			m.imageManager, cmd = m.imageManager.Update(msg)
+			if !m.imageManager.IsActive() {
+				if insertText, ok := m.imageManager.GetInsertResult(); ok && m.activeNote != "" {
+					m.editor.InsertText(insertText)
+					m.editor.modified = true
 				}
 			}
 			return m, cmd
@@ -2574,6 +2596,22 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdUnfoldAll:
 		m.foldState.UnfoldAll()
 
+	case CmdImageManager:
+		m.imageManager.SetSize(m.width, m.height)
+		m.imageManager.Open(m.vault.Root)
+
+	case CmdThemeEditor:
+		m.themeEditor.SetSize(m.width, m.height)
+		m.themeEditor.Open(m.config.Theme)
+
+	case CmdLayoutReading:
+		m.config.Layout = LayoutReading
+		m.updateLayout()
+
+	case CmdLayoutDashboard:
+		m.config.Layout = LayoutDashboard
+		m.updateLayout()
+
 	case CmdResearchAgent:
 		m.research.SetSize(m.width, m.height)
 		if m.research.IsRunning() {
@@ -2809,8 +2847,8 @@ func (m *Model) updateLayout() {
 		}
 	}
 
-	showSidebar := layout == "default" || layout == "writer"
-	showBacklinks := layout == "default"
+	showSidebar := LayoutHasSidebar(layout)
+	showBacklinks := LayoutHasBacklinks(layout)
 
 	sidebarWidth := 0
 	backlinksWidth := 0
@@ -2883,6 +2921,8 @@ func (m *Model) updateLayout() {
 	m.vaultSwitch.SetSize(m.width, m.height)
 	m.frontmatterEdit.SetSize(m.width, m.height)
 	m.research.SetSize(m.width, m.height)
+	m.imageManager.SetSize(m.width, m.height)
+	m.themeEditor.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -3323,8 +3363,8 @@ func (m Model) View() string {
 	}
 
 	// Calculate widths based on layout
-	showSidebar := layout == "default" || layout == "writer"
-	showBacklinks := layout == "default"
+	showSidebar := LayoutHasSidebar(layout)
+	showBacklinks := LayoutHasBacklinks(layout)
 
 	sidebarWidth := 0
 	backlinksWidth := 0
@@ -3618,6 +3658,14 @@ func (m Model) View() string {
 	}
 	if m.frontmatterEdit.IsActive() {
 		overlay := m.frontmatterEdit.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.themeEditor.IsActive() {
+		overlay := m.themeEditor.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.imageManager.IsActive() {
+		overlay := m.imageManager.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.research.IsActive() {
