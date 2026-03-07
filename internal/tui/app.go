@@ -155,6 +155,10 @@ type Model struct {
 	smartConnect     SmartConnections
 	writingStats     WritingStats
 	quickCapture     QuickCapture
+	dashboard        Dashboard
+	mindMap          MindMap
+	journalPrompts   JournalPrompts
+	clipManager      ClipManager
 	dueTodayCount    int
 
 	// Slash command menu
@@ -1033,6 +1037,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.calendar.IsActive() {
 			m.calendar, _ = m.calendar.Update(msg)
+			// Handle quick-add event: append task to daily note
+			if evDate, evText, ok := m.calendar.PendingEvent(); ok {
+				name := evDate + ".md"
+				folder := m.config.DailyNotesFolder
+				if folder != "" {
+					name = filepath.Join(folder, name)
+				}
+				path := filepath.Join(m.vault.Root, name)
+				if _, err := os.Stat(path); os.IsNotExist(err) {
+					os.MkdirAll(filepath.Dir(path), 0755)
+					content := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n", evDate, evDate)
+					os.WriteFile(path, []byte(content), 0644)
+				}
+				// Append the task line
+				f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+				if err == nil {
+					f.WriteString("- [ ] " + evText + "\n")
+					f.Close()
+				}
+				// Refresh vault data
+				m.vault.Scan()
+				m.index = vault.NewIndex(m.vault)
+				m.index.Build()
+				paths := m.vault.SortedPaths()
+				m.sidebar.SetFiles(paths)
+				m.autocomplete.SetNotes(paths)
+				m.calendar.SetDailyNotes(paths)
+				m.statusbar.SetNoteCount(m.vault.NoteCount())
+				// Re-parse note contents for the calendar
+				noteContents := make(map[string]string)
+				for _, p := range paths {
+					if note := m.vault.GetNote(p); note != nil {
+						noteContents[p] = note.Content
+					}
+				}
+				m.calendar.SetNoteContents(noteContents)
+				m.statusbar.SetMessage("Task added to " + evDate)
+			}
 			if date := m.calendar.SelectedDate(); date != "" {
 				// Open or create daily note for selected date
 				name := date + ".md"
@@ -1215,6 +1257,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.index.Build()
 					m.sidebar.SetFiles(m.vault.SortedPaths())
 					m.statusbar.SetMessage("Saved to " + filePath)
+				}
+			}
+			return m, nil
+		}
+
+		if m.dashboard.IsActive() {
+			m.dashboard, _ = m.dashboard.Update(msg)
+			if !m.dashboard.IsActive() {
+				if action, ok := m.dashboard.GetAction(); ok {
+					return m.executeCommand(action)
+				}
+			}
+			return m, nil
+		}
+
+		if m.mindMap.IsActive() {
+			m.mindMap, _ = m.mindMap.Update(msg)
+			return m, nil
+		}
+
+		if m.journalPrompts.IsActive() {
+			m.journalPrompts, _ = m.journalPrompts.Update(msg)
+			if !m.journalPrompts.IsActive() {
+				if filePath, ok := m.journalPrompts.GetResult(); ok {
+					m.vault.Scan()
+					m.index.Build()
+					m.sidebar.SetFiles(m.vault.SortedPaths())
+					m.loadNote(filePath)
+					m.statusbar.SetMessage("Journal saved")
+				}
+			}
+			return m, nil
+		}
+
+		if m.clipManager.IsActive() {
+			m.clipManager, _ = m.clipManager.Update(msg)
+			if !m.clipManager.IsActive() {
+				if text, ok := m.clipManager.GetResult(); ok {
+					m.editor.InsertText(text)
+					m.statusbar.SetMessage("Pasted from clipboard")
 				}
 			}
 			return m, nil
@@ -3005,6 +3087,23 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.quickCapture.SetSize(m.width, m.height)
 		m.quickCapture.Open(m.vault.Root)
 
+	case CmdDashboard:
+		m.dashboard.SetSize(m.width, m.height)
+		m.dashboard.Open(m.vault.Root)
+
+	case CmdMindMap:
+		m.mindMap.SetSize(m.width, m.height)
+		content := m.editor.GetContent()
+		m.mindMap.OpenForNote(m.vault.Root, m.activeNote, content)
+
+	case CmdJournalPrompts:
+		m.journalPrompts.SetSize(m.width, m.height)
+		m.journalPrompts.Open(m.vault.Root)
+
+	case CmdClipManager:
+		m.clipManager.SetSize(m.width, m.height)
+		m.clipManager.Open()
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}
@@ -3992,6 +4091,22 @@ func (m Model) View() string {
 	}
 	if m.quickCapture.IsActive() {
 		overlay := m.quickCapture.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.dashboard.IsActive() {
+		overlay := m.dashboard.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.mindMap.IsActive() {
+		overlay := m.mindMap.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.journalPrompts.IsActive() {
+		overlay := m.journalPrompts.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.clipManager.IsActive() {
+		overlay := m.clipManager.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.spellcheck.IsActive() {
