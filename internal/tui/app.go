@@ -724,6 +724,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case noteHistoryResultMsg:
+		if m.noteHistory.IsActive() {
+			var cmd tea.Cmd
+			m.noteHistory, cmd = m.noteHistory.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case researchResultMsg:
 		// Always handle — research runs in background even if overlay is closed
 		if m.research.IsRunning() {
