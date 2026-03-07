@@ -29,6 +29,7 @@ const (
 	calViewMonth calendarView = iota
 	calViewWeek
 	calViewAgenda
+	calViewYear
 )
 
 // TaskItem represents a task extracted from notes.
@@ -37,9 +38,43 @@ type TaskItem struct {
 	Done     bool
 	NotePath string
 	Date     string // YYYY-MM-DD if associated with a daily note
+	Priority int    // 0=none, 1=low, 2=medium, 3=high, 4=highest
 }
 
 var taskPattern = regexp.MustCompile(`^- \[([ xX])\] (.+)`)
+
+// taskPriority extracts priority from task text based on emoji markers.
+func taskPriority(text string) int {
+	if strings.Contains(text, "\U0001f534") { // red circle = highest
+		return 4
+	}
+	if strings.Contains(text, "\U0001f7e0") { // orange circle = high
+		return 3
+	}
+	if strings.Contains(text, "\U0001f7e1") { // yellow circle = medium
+		return 2
+	}
+	if strings.Contains(text, "\U0001f535") { // blue circle = low
+		return 1
+	}
+	return 0
+}
+
+// priorityColor returns the color for a given priority level.
+func priorityColor(priority int) lipgloss.Color {
+	switch priority {
+	case 4:
+		return red
+	case 3:
+		return peach
+	case 2:
+		return yellow
+	case 1:
+		return blue
+	default:
+		return text
+	}
+}
 
 // Calendar is an overlay component that displays a month-view calendar grid.
 type Calendar struct {
@@ -58,8 +93,19 @@ type Calendar struct {
 	view           calendarView
 
 	// Task data
-	tasks     map[string][]TaskItem // date -> tasks
-	allTasks  []TaskItem            // all tasks across notes
+	tasks    map[string][]TaskItem // date -> tasks
+	allTasks []TaskItem            // all tasks across notes
+
+	// Agenda scroll offset
+	agendaScroll int
+
+	// Quick add event
+	addingEvent bool
+	eventInput  string
+
+	// Pending event to be saved by app.go
+	pendingEventDate string
+	pendingEventText string
 }
 
 // NewCalendar creates a new Calendar overlay.
@@ -84,13 +130,16 @@ func (c *Calendar) Open() {
 	c.active = true
 	c.selected = ""
 	c.showEvents = false
+	c.addingEvent = false
+	c.eventInput = ""
+	c.agendaScroll = 0
 	now := time.Now()
 	c.today = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	c.cursor = c.today
 	c.viewing = c.today
 }
 
-func (c *Calendar) Close()       { c.active = false }
+func (c *Calendar) Close()        { c.active = false }
 func (c *Calendar) IsActive() bool { return c.active }
 
 func (c *Calendar) SetDailyNotes(notes []string) {
@@ -134,6 +183,7 @@ func (c *Calendar) SetNoteContents(notes map[string]string) {
 				Done:     done,
 				NotePath: path,
 				Date:     dateStr,
+				Priority: taskPriority(matches[2]),
 			}
 			c.allTasks = append(c.allTasks, task)
 			if dateStr != "" {
@@ -149,6 +199,19 @@ func (c *Calendar) SelectedDate() string {
 	return s
 }
 
+// PendingEvent returns any event the user quick-added, then clears it.
+// Returns (date "2006-01-02", taskText, ok).
+func (c *Calendar) PendingEvent() (string, string, bool) {
+	if c.pendingEventDate == "" {
+		return "", "", false
+	}
+	date := c.pendingEventDate
+	text := c.pendingEventText
+	c.pendingEventDate = ""
+	c.pendingEventText = ""
+	return date, text, true
+}
+
 func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 	if !c.active {
 		return c, nil
@@ -156,6 +219,31 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Quick-add event input mode
+		if c.addingEvent {
+			switch msg.String() {
+			case "esc":
+				c.addingEvent = false
+				c.eventInput = ""
+			case "enter":
+				if strings.TrimSpace(c.eventInput) != "" {
+					c.pendingEventDate = c.cursor.Format("2006-01-02")
+					c.pendingEventText = strings.TrimSpace(c.eventInput)
+				}
+				c.addingEvent = false
+				c.eventInput = ""
+			case "backspace":
+				if len(c.eventInput) > 0 {
+					c.eventInput = c.eventInput[:len(c.eventInput)-1]
+				}
+			default:
+				if len(msg.String()) == 1 || msg.String() == " " {
+					c.eventInput += msg.String()
+				}
+			}
+			return c, nil
+		}
+
 		switch msg.String() {
 		case "esc", "q":
 			if c.showEvents {
@@ -172,11 +260,21 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			c.cursor = c.cursor.AddDate(0, 0, 1)
 			c.syncViewing()
 		case "up", "k":
-			c.cursor = c.cursor.AddDate(0, 0, -7)
-			c.syncViewing()
+			if c.view == calViewAgenda {
+				if c.agendaScroll > 0 {
+					c.agendaScroll--
+				}
+			} else {
+				c.cursor = c.cursor.AddDate(0, 0, -7)
+				c.syncViewing()
+			}
 		case "down", "j":
-			c.cursor = c.cursor.AddDate(0, 0, 7)
-			c.syncViewing()
+			if c.view == calViewAgenda {
+				c.agendaScroll++
+			} else {
+				c.cursor = c.cursor.AddDate(0, 0, 7)
+				c.syncViewing()
+			}
 
 		case "[":
 			c.cursor = c.cursor.AddDate(0, -1, 0)
@@ -204,8 +302,29 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			c.syncViewing()
 
 		case "w":
-			// Toggle between month, week, agenda views
-			c.view = (c.view + 1) % 3
+			// Cycle through month -> week -> agenda (skip year, use y for that)
+			switch c.view {
+			case calViewMonth:
+				c.view = calViewWeek
+			case calViewWeek:
+				c.view = calViewAgenda
+				c.agendaScroll = 0
+			case calViewAgenda:
+				c.view = calViewMonth
+			case calViewYear:
+				c.view = calViewMonth
+			}
+
+		case "y":
+			if c.view == calViewYear {
+				c.view = calViewMonth
+			} else {
+				c.view = calViewYear
+			}
+
+		case "a":
+			c.addingEvent = true
+			c.eventInput = ""
 		}
 	}
 
@@ -222,6 +341,8 @@ func (c Calendar) View() string {
 		return c.viewWeek()
 	case calViewAgenda:
 		return c.viewAgenda()
+	case calViewYear:
+		return c.viewYear()
 	default:
 		return c.viewMonth()
 	}
@@ -233,11 +354,11 @@ func (c Calendar) View() string {
 
 func (c Calendar) viewMonth() string {
 	width := c.width * 2 / 3
-	if width < 38 {
-		width = 38
+	if width < 42 {
+		width = 42
 	}
-	if width > 56 {
-		width = 56
+	if width > 60 {
+		width = 60
 	}
 
 	var b strings.Builder
@@ -256,20 +377,26 @@ func (c Calendar) viewMonth() string {
 	navLeft := lipgloss.NewStyle().Foreground(overlay1).Render("< ")
 	navRight := lipgloss.NewStyle().Foreground(overlay1).Render(" >")
 	header := navLeft + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(monthYear) + navRight
-	headerPad := (28 - lipgloss.Width(header)) / 2
+	headerPad := (32 - lipgloss.Width(header)) / 2
 	if headerPad < 0 {
 		headerPad = 0
 	}
 	b.WriteString("  " + strings.Repeat(" ", headerPad) + header)
 	b.WriteString("\n\n")
 
-	// Day-of-week header
-	dayNames := []string{"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"}
+	// Day-of-week header with week number column
+	wkStyle := lipgloss.NewStyle().Foreground(surface1)
 	dayHeaderStyle := lipgloss.NewStyle().Foreground(subtext0).Bold(true)
+	weekendHeaderStyle := lipgloss.NewStyle().Foreground(overlay0).Bold(true)
+	dayNames := []string{"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"}
 	var dayRow strings.Builder
-	dayRow.WriteString("  ")
-	for _, d := range dayNames {
-		dayRow.WriteString(dayHeaderStyle.Render(fmt.Sprintf("%4s", d)))
+	dayRow.WriteString("  " + wkStyle.Render("Wk") + " ")
+	for i, d := range dayNames {
+		if i == 0 || i == 6 { // weekend
+			dayRow.WriteString(weekendHeaderStyle.Render(fmt.Sprintf("%4s", d)))
+		} else {
+			dayRow.WriteString(dayHeaderStyle.Render(fmt.Sprintf("%4s", d)))
+		}
 	}
 	b.WriteString(dayRow.String())
 	b.WriteString("\n")
@@ -283,12 +410,16 @@ func (c Calendar) viewMonth() string {
 	prevMonth := firstOfMonth.AddDate(0, 0, -1)
 	prevDays := daysIn(prevMonth.Month(), prevMonth.Year())
 
-	row := "  "
+	// Compute the date of the first cell (may be in previous month)
+	firstCellDate := firstOfMonth.AddDate(0, 0, -startWeekday)
+	_, weekNum := firstCellDate.ISOWeek()
+	row := "  " + wkStyle.Render(fmt.Sprintf("%2d", weekNum)) + " "
 	col := 0
 
 	for i := 0; i < startWeekday; i++ {
 		day := prevDays - startWeekday + 1 + i
-		cell := c.renderDayCell(day, false, false, false, false, 0, 0, false, true)
+		isWeekend := i == 0 || i == 6
+		cell := c.renderDayCell(day, false, false, false, false, 0, 0, false, true, isWeekend)
 		row += cell
 		col++
 	}
@@ -302,29 +433,42 @@ func (c Calendar) viewMonth() string {
 		hasNote := c.dailyNoteDates[dateStr]
 		hasEvent := c.dateHasEvent(dt)
 		tasksDone, tasksTotal := c.taskStats(dateStr)
+		isWeekend := dt.Weekday() == time.Sunday || dt.Weekday() == time.Saturday
 
-		cell := c.renderDayCell(d, isToday, isCursor, hasNote, hasEvent, tasksDone, tasksTotal, true, false)
+		cell := c.renderDayCell(d, isToday, isCursor, hasNote, hasEvent, tasksDone, tasksTotal, true, false, isWeekend)
 		row += cell
 		col++
 
 		if col == 7 {
 			b.WriteString(row)
 			b.WriteString("\n")
-			row = "  "
 			col = 0
+			if d < daysInMonth {
+				nextDate := dt.AddDate(0, 0, 1)
+				_, wn := nextDate.ISOWeek()
+				row = "  " + wkStyle.Render(fmt.Sprintf("%2d", wn)) + " "
+			} else {
+				row = ""
+			}
 		}
 	}
 
 	if col > 0 {
 		nextDay := 1
 		for col < 7 {
-			cell := c.renderDayCell(nextDay, false, false, false, false, 0, 0, false, true)
+			isWeekend := col == 0 || col == 6
+			cell := c.renderDayCell(nextDay, false, false, false, false, 0, 0, false, true, isWeekend)
 			row += cell
 			col++
 			nextDay++
 		}
 		b.WriteString(row)
 		b.WriteString("\n")
+	}
+
+	// Quick add input
+	if c.addingEvent {
+		c.renderQuickAdd(&b, width)
 	}
 
 	// Cursor date info
@@ -344,16 +488,16 @@ func (c Calendar) viewMonth() string {
 }
 
 // ---------------------------------------------------------------------------
-// Week View
+// Week View (with mini calendar sidebar)
 // ---------------------------------------------------------------------------
 
 func (c Calendar) viewWeek() string {
 	width := c.width * 2 / 3
-	if width < 50 {
-		width = 50
+	if width < 56 {
+		width = 56
 	}
-	if width > 70 {
-		width = 70
+	if width > 76 {
+		width = 76
 	}
 
 	var b strings.Builder
@@ -371,12 +515,18 @@ func (c Calendar) viewWeek() string {
 
 	// Week header
 	weekEnd := weekStart.AddDate(0, 0, 6)
-	weekLabel := weekStart.Format("Jan 2") + " - " + weekEnd.Format("Jan 2, 2006")
+	_, weekNum := c.cursor.ISOWeek()
+	weekLabel := fmt.Sprintf("Week %d: ", weekNum) + weekStart.Format("Jan 2") + " - " + weekEnd.Format("Jan 2, 2006")
 	b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(weekLabel))
 	b.WriteString("\n\n")
 
+	// Build week detail and mini calendar side by side
+	miniCal := c.renderMiniCalendar()
+	miniLines := strings.Split(miniCal, "\n")
+
 	dayNames := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
 
+	var weekLines []string
 	for i := 0; i < 7; i++ {
 		day := weekStart.AddDate(0, 0, i)
 		dateStr := day.Format("2006-01-02")
@@ -389,11 +539,15 @@ func (c Calendar) viewWeek() string {
 		// Day header
 		dayLabel := dayNames[i] + " " + day.Format("Jan 2")
 		dayStyle := lipgloss.NewStyle().Foreground(text)
+		isWeekend := i == 0 || i == 6
+		if isWeekend {
+			dayStyle = lipgloss.NewStyle().Foreground(overlay0)
+		}
 		if isToday {
-			dayStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
+			dayStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
 		}
 		if isCursor {
-			dayStyle = dayStyle.Underline(true)
+			dayStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
 		}
 
 		prefix := "  "
@@ -420,8 +574,7 @@ func (c Calendar) viewWeek() string {
 				fmt.Sprintf("[%d/%d]", tasksDone, tasksTotal))
 		}
 
-		b.WriteString(line + indicators)
-		b.WriteString("\n")
+		weekLines = append(weekLines, line+indicators)
 
 		// Show events and tasks for cursor day
 		if isCursor {
@@ -431,10 +584,9 @@ func (c Calendar) viewWeek() string {
 				if !ev.AllDay {
 					timeStr = ev.Date.Format("15:04") + " "
 				}
-				b.WriteString("    " + lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar+" ") +
-					DimStyle.Render(timeStr) +
+				weekLines = append(weekLines, "    "+lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar+" ")+
+					DimStyle.Render(timeStr)+
 					lipgloss.NewStyle().Foreground(text).Render(ev.Title))
-				b.WriteString("\n")
 			}
 			dayTasks := c.tasks[dateStr]
 			for _, task := range dayTasks {
@@ -443,13 +595,53 @@ func (c Calendar) viewWeek() string {
 					checkIcon = lipgloss.NewStyle().Foreground(green).Render("●")
 				}
 				taskText := task.Text
-				if len(taskText) > width-12 {
-					taskText = taskText[:width-15] + "..."
+				maxLen := width - 30
+				if maxLen < 20 {
+					maxLen = 20
 				}
-				b.WriteString("    " + checkIcon + " " + lipgloss.NewStyle().Foreground(text).Render(taskText))
-				b.WriteString("\n")
+				if len(taskText) > maxLen {
+					taskText = taskText[:maxLen-3] + "..."
+				}
+				weekLines = append(weekLines, "    "+checkIcon+" "+lipgloss.NewStyle().Foreground(text).Render(taskText))
 			}
 		}
+	}
+
+	// Combine week lines with mini calendar on the right
+	miniWidth := 24
+	weekColWidth := width - miniWidth - 6
+	if weekColWidth < 30 {
+		weekColWidth = 30
+	}
+
+	maxLines := len(weekLines)
+	if len(miniLines) > maxLines {
+		maxLines = len(miniLines)
+	}
+
+	for i := 0; i < maxLines; i++ {
+		wl := ""
+		if i < len(weekLines) {
+			wl = weekLines[i]
+		}
+		ml := ""
+		if i < len(miniLines) {
+			ml = miniLines[i]
+		}
+
+		// Pad week line to column width
+		wlWidth := lipgloss.Width(wl)
+		padding := weekColWidth - wlWidth
+		if padding < 1 {
+			padding = 1
+		}
+		b.WriteString(wl + strings.Repeat(" ", padding) + ml)
+		b.WriteString("\n")
+	}
+
+	// Quick add input
+	if c.addingEvent {
+		c.renderQuickAdd(&b, width)
 	}
 
 	c.renderFooter(&b, width)
@@ -464,8 +656,69 @@ func (c Calendar) viewWeek() string {
 	return border.Render(b.String())
 }
 
+// renderMiniCalendar builds a compact month calendar for use in the week view sidebar.
+func (c Calendar) renderMiniCalendar() string {
+	var b strings.Builder
+
+	year, month, _ := c.viewing.Date()
+	monthYear := c.viewing.Format("Jan 2006")
+
+	headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-12s", monthYear)))
+	b.WriteString("\n")
+
+	dayHeaderStyle := lipgloss.NewStyle().Foreground(subtext0)
+	b.WriteString(dayHeaderStyle.Render("  Su Mo Tu We Th Fr Sa"))
+	b.WriteString("\n")
+
+	firstOfMonth := time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
+	startWeekday := int(firstOfMonth.Weekday())
+	daysInMo := daysIn(month, year)
+
+	row := "  "
+	col := 0
+	for i := 0; i < startWeekday; i++ {
+		row += "   "
+		col++
+	}
+
+	for d := 1; d <= daysInMo; d++ {
+		dt := time.Date(year, month, d, 0, 0, 0, 0, time.Local)
+		isToday := dt.Equal(c.today)
+		isCursor := dt.Equal(c.cursor)
+
+		numStr := fmt.Sprintf("%2d", d)
+		switch {
+		case isCursor && isToday:
+			numStr = lipgloss.NewStyle().Background(green).Foreground(crust).Bold(true).Render(numStr)
+		case isToday:
+			numStr = lipgloss.NewStyle().Foreground(green).Bold(true).Render(numStr)
+		case isCursor:
+			numStr = lipgloss.NewStyle().Foreground(peach).Bold(true).Render(numStr)
+		default:
+			numStr = lipgloss.NewStyle().Foreground(overlay0).Render(numStr)
+		}
+		row += numStr + " "
+		col++
+
+		if col == 7 {
+			b.WriteString(row)
+			b.WriteString("\n")
+			row = "  "
+			col = 0
+		}
+	}
+
+	if col > 0 {
+		b.WriteString(row)
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
 // ---------------------------------------------------------------------------
-// Agenda View
+// Agenda View (enhanced 14-day lookahead)
 // ---------------------------------------------------------------------------
 
 func (c Calendar) viewAgenda() string {
@@ -487,25 +740,25 @@ func (c Calendar) viewAgenda() string {
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("─", width-8)))
 	b.WriteString("\n")
 
-	// Show upcoming tasks (next 14 days from today)
-	b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("Upcoming Tasks"))
+	// Show 14-day lookahead from today
+	lookAhead := 14
+	subTitle := fmt.Sprintf("Next %d Days", lookAhead)
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(subTitle))
 	b.WriteString("\n\n")
 
-	maxLines := c.height - 12
-	if maxLines < 5 {
-		maxLines = 5
+	// Build all agenda sections
+	type agendaSection struct {
+		header string
+		lines  []string
 	}
-	lineCount := 0
+	var sections []agendaSection
 
-	for d := 0; d < 14 && lineCount < maxLines; d++ {
+	for d := 0; d < lookAhead; d++ {
 		day := c.today.AddDate(0, 0, d)
 		dateStr := day.Format("2006-01-02")
 		dayTasks := c.tasks[dateStr]
 		dayEvents := c.eventsForDate(day)
-
-		if len(dayTasks) == 0 && len(dayEvents) == 0 {
-			continue
-		}
+		hasNote := c.dailyNoteDates[dateStr]
 
 		// Day header
 		dayLabel := day.Format("Mon Jan 2")
@@ -518,32 +771,38 @@ func (c Calendar) viewAgenda() string {
 		isToday := d == 0
 		dayStyle := lipgloss.NewStyle().Foreground(text).Bold(true)
 		if isToday {
-			dayStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
+			dayStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
+		}
+		isWeekend := day.Weekday() == time.Sunday || day.Weekday() == time.Saturday
+		if isWeekend && !isToday {
+			dayStyle = lipgloss.NewStyle().Foreground(overlay0).Bold(true)
 		}
 
-		b.WriteString("  " + dayStyle.Render(dayLabel))
-		b.WriteString("\n")
-		lineCount++
+		section := agendaSection{
+			header: "  " + dayStyle.Render(dayLabel),
+		}
 
+		// Daily note indicator
+		if hasNote {
+			section.lines = append(section.lines,
+				"    "+lipgloss.NewStyle().Foreground(green).Render(IconDailyChar)+" "+
+					lipgloss.NewStyle().Foreground(green).Render("Daily note"))
+		}
+
+		// Events
 		for _, ev := range dayEvents {
-			if lineCount >= maxLines {
-				break
-			}
 			timeStr := "all day"
 			if !ev.AllDay {
 				timeStr = ev.Date.Format("15:04")
 			}
-			b.WriteString("    " + lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar+" ") +
-				DimStyle.Render(timeStr+" ") +
-				lipgloss.NewStyle().Foreground(text).Render(ev.Title))
-			b.WriteString("\n")
-			lineCount++
+			section.lines = append(section.lines,
+				"    "+lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar+" ")+
+					DimStyle.Render(timeStr+" ")+
+					lipgloss.NewStyle().Foreground(text).Render(ev.Title))
 		}
 
+		// Tasks with priority coloring
 		for _, task := range dayTasks {
-			if lineCount >= maxLines {
-				break
-			}
 			checkIcon := lipgloss.NewStyle().Foreground(yellow).Render("○")
 			if task.Done {
 				checkIcon = lipgloss.NewStyle().Foreground(green).Render("●")
@@ -552,7 +811,48 @@ func (c Calendar) viewAgenda() string {
 			if len(taskText) > width-12 {
 				taskText = taskText[:width-15] + "..."
 			}
-			b.WriteString("    " + checkIcon + " " + lipgloss.NewStyle().Foreground(text).Render(taskText))
+			textColor := text
+			if task.Priority > 0 {
+				textColor = priorityColor(task.Priority)
+			}
+			section.lines = append(section.lines,
+				"    "+checkIcon+" "+lipgloss.NewStyle().Foreground(textColor).Render(taskText))
+		}
+
+		// If nothing for this day, show dim "No events"
+		if len(dayEvents) == 0 && len(dayTasks) == 0 && !hasNote {
+			section.lines = append(section.lines, DimStyle.Render("    No events"))
+		}
+
+		sections = append(sections, section)
+	}
+
+	// Apply scroll and render visible sections
+	maxLines := c.height - 14
+	if maxLines < 8 {
+		maxLines = 8
+	}
+
+	// Clamp scroll
+	if c.agendaScroll >= len(sections) {
+		c.agendaScroll = len(sections) - 1
+	}
+	if c.agendaScroll < 0 {
+		c.agendaScroll = 0
+	}
+
+	lineCount := 0
+	for i := c.agendaScroll; i < len(sections) && lineCount < maxLines; i++ {
+		sec := sections[i]
+		b.WriteString(sec.header)
+		b.WriteString("\n")
+		lineCount++
+
+		for _, line := range sec.lines {
+			if lineCount >= maxLines {
+				break
+			}
+			b.WriteString(line)
 			b.WriteString("\n")
 			lineCount++
 		}
@@ -560,8 +860,10 @@ func (c Calendar) viewAgenda() string {
 		lineCount++
 	}
 
-	if lineCount == 0 {
-		b.WriteString(DimStyle.Render("  No upcoming tasks or events"))
+	// Scroll indicator
+	if c.agendaScroll > 0 || c.agendaScroll+maxLines/3 < len(sections) {
+		scrollInfo := fmt.Sprintf("  Showing from day %d/%d", c.agendaScroll+1, lookAhead)
+		b.WriteString(DimStyle.Render(scrollInfo))
 		b.WriteString("\n")
 	}
 
@@ -573,14 +875,19 @@ func (c Calendar) viewAgenda() string {
 			doneTasks++
 		}
 	}
-	b.WriteString("\n")
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("─", width-8)))
 	b.WriteString("\n")
 	b.WriteString("  " + lipgloss.NewStyle().Foreground(text).Render(
 		fmt.Sprintf("Total tasks: %d  Done: ", totalTasks)) +
 		lipgloss.NewStyle().Foreground(green).Render(fmt.Sprintf("%d", doneTasks)) +
-		lipgloss.NewStyle().Foreground(text).Render(fmt.Sprintf("  Pending: ")) +
+		lipgloss.NewStyle().Foreground(text).Render("  Pending: ") +
 		lipgloss.NewStyle().Foreground(yellow).Render(fmt.Sprintf("%d", totalTasks-doneTasks)))
+
+	// Quick add input
+	if c.addingEvent {
+		b.WriteString("\n")
+		c.renderQuickAdd(&b, width)
+	}
 
 	c.renderFooter(&b, width)
 
@@ -595,8 +902,213 @@ func (c Calendar) viewAgenda() string {
 }
 
 // ---------------------------------------------------------------------------
+// Year View (compact 4x3 grid of mini months)
+// ---------------------------------------------------------------------------
+
+func (c Calendar) viewYear() string {
+	width := c.width * 3 / 4
+	if width < 68 {
+		width = 68
+	}
+	if width > 88 {
+		width = 88
+	}
+
+	var b strings.Builder
+
+	titleIcon := lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar)
+	titleText := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" Calendar")
+	viewLabel := DimStyle.Render(" [year]")
+	b.WriteString("  " + titleIcon + titleText + viewLabel)
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  " + strings.Repeat("─", width-8)))
+	b.WriteString("\n")
+
+	yearStr := fmt.Sprintf("%d", c.cursor.Year())
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(yearStr))
+	b.WriteString("\n\n")
+
+	// 4 rows x 3 columns of mini months
+	year := c.cursor.Year()
+	monthBlocks := make([]string, 12)
+
+	for m := 0; m < 12; m++ {
+		monthBlocks[m] = c.renderYearMiniMonth(year, time.Month(m+1))
+	}
+
+	for row := 0; row < 4; row++ {
+		// Each mini month is 3 lines: name, day header, dots
+		// Split each block into lines
+		blockLines := make([][]string, 3)
+		for col := 0; col < 3; col++ {
+			idx := row*3 + col
+			blockLines[col] = strings.Split(monthBlocks[idx], "\n")
+		}
+
+		// Find max lines among the 3 blocks
+		maxL := 0
+		for col := 0; col < 3; col++ {
+			if len(blockLines[col]) > maxL {
+				maxL = len(blockLines[col])
+			}
+		}
+
+		colWidth := (width - 8) / 3
+		if colWidth < 20 {
+			colWidth = 20
+		}
+
+		for line := 0; line < maxL; line++ {
+			rowStr := "  "
+			for col := 0; col < 3; col++ {
+				cellContent := ""
+				if line < len(blockLines[col]) {
+					cellContent = blockLines[col][line]
+				}
+				cellWidth := lipgloss.Width(cellContent)
+				pad := colWidth - cellWidth
+				if pad < 0 {
+					pad = 0
+				}
+				rowStr += cellContent + strings.Repeat(" ", pad)
+			}
+			b.WriteString(rowStr)
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+
+	// Quick add input
+	if c.addingEvent {
+		c.renderQuickAdd(&b, width)
+	}
+
+	c.renderFooter(&b, width)
+
+	border := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(blue).
+		Padding(1, 2).
+		Width(width).
+		Background(mantle)
+
+	return border.Render(b.String())
+}
+
+// renderYearMiniMonth renders a compact 3-line mini month for the year view.
+// Line 1: month name
+// Line 2: day-of-week abbreviations
+// Line 3+: activity dots per day
+func (c Calendar) renderYearMiniMonth(year int, month time.Month) string {
+	var b strings.Builder
+
+	// Month name, highlight current month
+	monthName := month.String()[:3]
+	isCursorMonth := c.cursor.Year() == year && c.cursor.Month() == month
+	isTodayMonth := c.today.Year() == year && c.today.Month() == month
+
+	nameStyle := lipgloss.NewStyle().Foreground(text).Bold(true)
+	if isCursorMonth {
+		nameStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
+	}
+	if isTodayMonth {
+		nameStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
+	}
+	b.WriteString(nameStyle.Render(monthName))
+	b.WriteString("\n")
+
+	// Short day-of-week header
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("S M T W T F S"))
+	b.WriteString("\n")
+
+	// Dots for each day
+	firstOfMonth := time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
+	startWeekday := int(firstOfMonth.Weekday())
+	daysInMo := daysIn(month, year)
+
+	dotGreen := lipgloss.NewStyle().Foreground(green).Render("*")
+	dotEvent := lipgloss.NewStyle().Foreground(blue).Render("*")
+	dotTask := lipgloss.NewStyle().Foreground(yellow).Render("*")
+	dotToday := lipgloss.NewStyle().Background(green).Foreground(crust).Bold(true).Render("*")
+	dotCursor := lipgloss.NewStyle().Foreground(peach).Bold(true).Render("*")
+	dotEmpty := lipgloss.NewStyle().Foreground(surface0).Render(".")
+	dotPad := " "
+
+	row := ""
+	col := 0
+	for i := 0; i < startWeekday; i++ {
+		row += dotPad + " "
+		col++
+	}
+
+	for d := 1; d <= daysInMo; d++ {
+		dateStr := fmt.Sprintf("%04d-%02d-%02d", year, int(month), d)
+		dt := time.Date(year, month, d, 0, 0, 0, 0, time.Local)
+		hasNote := c.dailyNoteDates[dateStr]
+		hasEvent := c.dateHasEvent(dt)
+		_, tasksTotal := c.taskStats(dateStr)
+		isToday := dt.Equal(c.today)
+		isCur := dt.Equal(c.cursor)
+
+		dot := dotEmpty
+		switch {
+		case isToday:
+			dot = dotToday
+		case isCur:
+			dot = dotCursor
+		case hasNote:
+			dot = dotGreen
+		case hasEvent:
+			dot = dotEvent
+		case tasksTotal > 0:
+			dot = dotTask
+		}
+
+		row += dot + " "
+		col++
+
+		if col == 7 {
+			b.WriteString(row)
+			b.WriteString("\n")
+			row = ""
+			col = 0
+		}
+	}
+
+	if col > 0 {
+		b.WriteString(row)
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
+
+func (c Calendar) renderQuickAdd(b *strings.Builder, width int) {
+	b.WriteString("\n")
+	promptStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
+	dateLabel := c.cursor.Format("Jan 2")
+	b.WriteString("  " + promptStyle.Render("Add task for "+dateLabel+": "))
+
+	inputStyle := lipgloss.NewStyle().Foreground(text).Background(surface0)
+	inputWidth := width - 26
+	if inputWidth < 15 {
+		inputWidth = 15
+	}
+	displayInput := c.eventInput
+	if len(displayInput) > inputWidth {
+		displayInput = displayInput[len(displayInput)-inputWidth:]
+	}
+	// Show cursor
+	cursorChar := lipgloss.NewStyle().Foreground(peach).Background(surface0).Render("_")
+	b.WriteString(inputStyle.Render(displayInput) + cursorChar)
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  Enter to save, Esc to cancel"))
+	b.WriteString("\n")
+}
 
 func (c Calendar) renderDateInfo(b *strings.Builder, width int) {
 	if c.showEvents {
@@ -682,26 +1194,38 @@ func (c Calendar) renderFooter(b *strings.Builder, width int) {
 	b.WriteString("\n")
 	b.WriteString("  " +
 		keyStyle.Render("Enter") + descStyle.Render(" open note") + sep +
+		keyStyle.Render("a") + descStyle.Render(" add task") + sep +
+		keyStyle.Render("y") + descStyle.Render(" year") + sep +
 		keyStyle.Render("e") + descStyle.Render(" events") + sep +
 		keyStyle.Render("Esc") + descStyle.Render(" close"))
 }
 
-func (c Calendar) renderDayCell(day int, isToday, isCursor, hasNote, hasEvent bool, tasksDone, tasksTotal int, currentMonth, dim bool) string {
+func (c Calendar) renderDayCell(day int, isToday, isCursor, hasNote, hasEvent bool, tasksDone, tasksTotal int, currentMonth, dim, isWeekend bool) string {
 	numStr := fmt.Sprintf("%2d", day)
 	marker := " "
 
+	// Task count badge for month view
+	badge := ""
+	if currentMonth && tasksTotal > 0 {
+		badgeColor := yellow
+		if tasksDone == tasksTotal {
+			badgeColor = green
+		}
+		badge = lipgloss.NewStyle().Foreground(badgeColor).Render(fmt.Sprintf("[%d]", tasksTotal))
+	}
+
 	if currentMonth {
 		if hasNote && hasEvent {
-			marker = lipgloss.NewStyle().Foreground(green).Render("·")
+			marker = lipgloss.NewStyle().Foreground(green).Render("*")
 		} else if hasNote {
-			marker = lipgloss.NewStyle().Foreground(green).Render("·")
+			marker = lipgloss.NewStyle().Foreground(green).Render("*")
 		} else if hasEvent {
-			marker = lipgloss.NewStyle().Foreground(blue).Render("·")
+			marker = lipgloss.NewStyle().Foreground(blue).Render("*")
 		} else if tasksTotal > 0 {
 			if tasksDone == tasksTotal {
-				marker = lipgloss.NewStyle().Foreground(green).Render("·")
+				marker = lipgloss.NewStyle().Foreground(green).Render("*")
 			} else {
-				marker = lipgloss.NewStyle().Foreground(yellow).Render("·")
+				marker = lipgloss.NewStyle().Foreground(yellow).Render("*")
 			}
 		}
 	}
@@ -710,25 +1234,34 @@ func (c Calendar) renderDayCell(day int, isToday, isCursor, hasNote, hasEvent bo
 	switch {
 	case isCursor && isToday:
 		styled = lipgloss.NewStyle().
-			Background(peach).
+			Background(green).
 			Foreground(crust).
 			Bold(true).
-			Underline(true).
 			Render(numStr)
 	case isToday:
 		styled = lipgloss.NewStyle().
-			Background(peach).
+			Background(green).
 			Foreground(crust).
 			Bold(true).
 			Render(numStr)
 	case isCursor:
 		styled = lipgloss.NewStyle().
-			Foreground(mauve).
-			Underline(true).
+			Background(peach).
+			Foreground(crust).
 			Bold(true).
 			Render(numStr)
 	case !currentMonth || dim:
 		styled = DimStyle.Render(numStr)
+	case isWeekend:
+		if hasNote && hasEvent {
+			styled = lipgloss.NewStyle().Foreground(green).Render(numStr)
+		} else if hasNote {
+			styled = lipgloss.NewStyle().Foreground(green).Render(numStr)
+		} else if hasEvent {
+			styled = lipgloss.NewStyle().Foreground(blue).Render(numStr)
+		} else {
+			styled = lipgloss.NewStyle().Foreground(overlay0).Render(numStr)
+		}
 	case hasNote && hasEvent:
 		styled = lipgloss.NewStyle().Foreground(green).Render(numStr)
 	case hasNote:
@@ -741,8 +1274,12 @@ func (c Calendar) renderDayCell(day int, isToday, isCursor, hasNote, hasEvent bo
 
 	if dim || !currentMonth {
 		marker = " "
+		badge = ""
 	}
 
+	if badge != "" {
+		return " " + styled + badge
+	}
 	return " " + styled + marker
 }
 
