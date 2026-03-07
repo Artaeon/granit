@@ -343,7 +343,7 @@ The **Deep Dive Research** feature uses [Claude Code](https://docs.anthropic.com
 3. Generates a hub note (`_Index.md`) linking everything
 4. Adds frontmatter, tags, and `[[wikilinks]]` automatically
 
-Three output formats: **Zettelkasten** (atomic notes), **Outline** (hierarchical), or **Study Guide** (with flashcard-ready Q&A).
+Three output formats: **Zettelkasten** (atomic notes), **Outline** (hierarchical), or **Study Guide** (with flashcard-ready Q&A). Research runs in the background with a live status bar indicator — keep editing while Claude works.
 
 **Requires**: Claude Code installed and authenticated (`claude` in PATH). No API key configuration needed in Granit.
 
