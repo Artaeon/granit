@@ -78,6 +78,39 @@ func (v *Vault) Scan() error {
 	})
 }
 
+// ScanFast collects only file paths, mod times, and sizes without reading
+// any file content. Notes are created with loaded=false; their content,
+// frontmatter, and links are parsed lazily when first accessed via GetNote.
+func (v *Vault) ScanFast() error {
+	v.Notes = make(map[string]*Note)
+	return filepath.Walk(v.Root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() && strings.HasPrefix(info.Name(), ".") {
+			return filepath.SkipDir
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if strings.ToLower(filepath.Ext(path)) != ".md" {
+			return nil
+		}
+
+		relPath, _ := filepath.Rel(v.Root, path)
+		note := &Note{
+			Path:    path,
+			RelPath: relPath,
+			Title:   strings.TrimSuffix(info.Name(), filepath.Ext(info.Name())),
+			ModTime: info.ModTime(),
+			Size:    info.Size(),
+			loaded:  false,
+		}
+		v.Notes[relPath] = note
+		return nil
+	})
+}
+
 func (v *Vault) GetNote(relPath string) *Note {
 	return v.Notes[relPath]
 }
