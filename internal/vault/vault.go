@@ -111,7 +111,32 @@ func (v *Vault) ScanFast() error {
 	})
 }
 
+// EnsureLoaded reads the file content and parses frontmatter and links for
+// the note at relPath, if it hasn't been loaded yet. Returns false if the
+// note does not exist in the vault or if reading fails.
+func (v *Vault) EnsureLoaded(relPath string) bool {
+	note, exists := v.Notes[relPath]
+	if !exists {
+		return false
+	}
+	if note.loaded {
+		return true
+	}
+
+	content, err := os.ReadFile(note.Path)
+	if err != nil {
+		return false
+	}
+
+	note.Content = string(content)
+	note.Frontmatter = ParseFrontmatter(note.Content)
+	note.Links = ParseWikiLinks(note.Content)
+	note.loaded = true
+	return true
+}
+
 func (v *Vault) GetNote(relPath string) *Note {
+	v.EnsureLoaded(relPath)
 	return v.Notes[relPath]
 }
 
