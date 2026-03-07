@@ -108,6 +108,11 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 - **Smart connections** — TF-IDF content similarity finds semantically related notes with shared keyword display
 - **Writing statistics** — word count tracking, 14-day activity chart, writing streaks, top notes by length
 - **Quick capture** — compact floating input to quickly save thoughts to Inbox, daily note, Tasks, or new note
+- **Vault dashboard** — home screen with today's tasks, recent notes, vault stats, writing streaks, 7-day activity chart
+- **Enhanced calendar** — year view, 14-day agenda, task badges, quick event add, week numbers
+- **Mind map view** — ASCII mind map from note headings and wikilinks, headings + links modes
+- **Daily journal prompts** — 100+ prompts across 8 categories with guided write mode
+- **Clipboard manager** — 50-entry history with search, pin, preview, and paste
 - **Core plugins** — enable/disable 16 built-in modules via Settings > Core Plugins
 
 ### AI-Powered Features
@@ -635,6 +640,10 @@ granit/
       smartconnect.go       Smart connections (TF-IDF similarity engine)
       writingstats.go       Writing statistics (word counts, streaks, charts)
       quickcapture.go       Quick capture (floating input for rapid notes)
+      dashboard.go          Vault dashboard home screen
+      mindmap.go            Mind map view (ASCII tree from headings/links)
+      journalprompts.go     Daily journal prompts (100+ across 8 categories)
+      clipmanager.go        Clipboard manager (50-entry history with search)
       taskmanager.go        Task manager with kanban, calendar, priorities
       linkassist.go         Unlinked mention finder + batch linking
       blogpublish.go        Blog publisher (Medium + GitHub)
