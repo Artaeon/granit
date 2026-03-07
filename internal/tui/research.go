@@ -42,10 +42,8 @@ type ResearchAgent struct {
 	vaultRoot string
 
 	// Options
-	depth       int    // 0=quick, 1=standard, 2=deep
-	format      int    // 0=zettelkasten, 1=outline, 2=study
-	depthLabels []string
-	formatLabels []string
+	depth  int // 0=quick, 1=standard, 2=deep
+	format int // 0=zettelkasten, 1=outline, 2=study
 
 	// Selection
 	focusField int // 0=topic, 1=depth, 2=format, 3=run button
@@ -62,10 +60,8 @@ type ResearchAgent struct {
 // NewResearchAgent creates a new research agent overlay.
 func NewResearchAgent() ResearchAgent {
 	return ResearchAgent{
-		depth:        1,
-		format:       0,
-		depthLabels:  []string{"Quick (5-8 notes)", "Standard (10-15 notes)", "Deep Dive (15-25 notes)"},
-		formatLabels: []string{"Zettelkasten (atomic notes)", "Outline (hierarchical)", "Study Guide (with flashcards)"},
+		depth:  1,
+		format: 0,
 	}
 }
 
@@ -111,13 +107,11 @@ func (r *ResearchAgent) GetSelectedFile() (string, bool) {
 
 // findClaude locates the claude CLI binary.
 func findClaude() string {
-	// Check common locations
 	paths := []string{
 		"claude",
 		"/usr/local/bin/claude",
 		"/usr/bin/claude",
 	}
-	// Check home local bin
 	if home, err := exec.Command("sh", "-c", "echo $HOME").Output(); err == nil {
 		h := strings.TrimSpace(string(home))
 		paths = append([]string{
@@ -144,14 +138,12 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 		claudePath := findClaude()
 		if claudePath == "" {
 			return researchResultMsg{
-				err: fmt.Errorf("claude CLI not found — install Claude Code first: https://docs.anthropic.com/en/docs/claude-code"),
+				err: fmt.Errorf("claude CLI not found - install Claude Code first"),
 			}
 		}
 
-		// Build the research prompt
 		prompt := buildResearchPrompt(topic, vaultRoot, depth, format)
 
-		// Run claude in non-interactive mode
 		cmd := exec.Command(claudePath,
 			"-p", prompt,
 			"--output-format", "text",
@@ -159,7 +151,6 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 			"--add-dir", vaultRoot,
 		)
 
-		// Unset CLAUDECODE env var to allow nested execution
 		cmd.Env = append(cmd.Environ(), "CLAUDECODE=")
 
 		output, err := cmd.CombinedOutput()
@@ -170,7 +161,6 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 			}
 		}
 
-		// Parse created files from output
 		files := parseCreatedFiles(string(output), vaultRoot)
 
 		return researchResultMsg{
@@ -184,7 +174,6 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 func buildResearchPrompt(topic, vaultRoot string, depth, format int) string {
 	today := time.Now().Format("2006-01-02")
 
-	// Determine folder
 	safeTopic := strings.ReplaceAll(topic, "/", "-")
 	safeTopic = strings.ReplaceAll(safeTopic, "\\", "-")
 	if len(safeTopic) > 50 {
@@ -192,7 +181,6 @@ func buildResearchPrompt(topic, vaultRoot string, depth, format int) string {
 	}
 	folder := filepath.Join(vaultRoot, "Research", fmt.Sprintf("%s %s", safeTopic, today))
 
-	// Depth instructions
 	var noteCount string
 	switch depth {
 	case 0:
@@ -203,18 +191,17 @@ func buildResearchPrompt(topic, vaultRoot string, depth, format int) string {
 		noteCount = "15-25 comprehensive notes covering every aspect"
 	}
 
-	// Format instructions
 	var formatInstr string
 	switch format {
-	case 0: // Zettelkasten
+	case 0:
 		formatInstr = `Use Zettelkasten-style atomic notes. Each note should cover ONE concept or idea.
 Use descriptive titles. Link notes extensively with [[wikilinks]].
 Create a hub/MOC (Map of Content) note as _Index.md that links to all other notes.`
-	case 1: // Outline
+	case 1:
 		formatInstr = `Use a hierarchical outline structure. Create a main overview note as _Index.md,
 then create sub-topic notes organized by category. Use [[wikilinks]] to connect them.
 Each note can cover broader topics than Zettelkasten but should still be focused.`
-	case 2: // Study Guide
+	case 2:
 		formatInstr = `Create study-oriented notes optimized for learning. Each note should include:
 - Clear explanations with examples
 - Key takeaways in bullet points
@@ -259,14 +246,11 @@ func parseCreatedFiles(output, vaultRoot string) []string {
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		// Look for markdown file references
 		if strings.HasSuffix(line, ".md") || strings.Contains(line, ".md ") || strings.Contains(line, ".md)") {
-			// Try to extract path
 			parts := strings.Fields(line)
 			for _, p := range parts {
 				p = strings.Trim(p, "`,*[]()-\"'")
 				if strings.HasSuffix(p, ".md") && strings.Contains(p, "/") {
-					// Make relative to vault
 					if strings.HasPrefix(p, vaultRoot) {
 						rel, _ := filepath.Rel(vaultRoot, p)
 						if rel != "" && !seen[rel] {
@@ -281,13 +265,16 @@ func parseCreatedFiles(output, vaultRoot string) []string {
 	return files
 }
 
+// ---------------------------------------------------------------------------
+// Update
+// ---------------------------------------------------------------------------
+
 // Update handles key events for the research overlay.
 func (r ResearchAgent) Update(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 	switch r.phase {
 	case researchInput:
 		return r.updateInput(msg)
 	case researchRunning:
-		// No interaction while running
 		if msg.String() == "esc" || msg.String() == "ctrl+c" {
 			r.active = false
 			return r, nil
@@ -318,7 +305,6 @@ func (r ResearchAgent) updateInput(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 		return r, nil
 	case "enter":
 		if r.focusField == 3 && r.topic != "" {
-			// Launch research
 			r.phase = researchRunning
 			r.startTime = time.Now()
 			return r, tea.Batch(r.runResearch(), r.tickElapsed())
@@ -383,49 +369,42 @@ func (r ResearchAgent) updateDone(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 		}
 		return r, nil
 	case "enter":
-		// Signal to open the selected file
 		r.active = false
-		return r, nil
-	case "pgup":
-		r.scroll -= 10
-		if r.scroll < 0 {
-			r.scroll = 0
-		}
-		return r, nil
-	case "pgdown":
-		r.scroll += 10
 		return r, nil
 	}
 	return r, nil
 }
 
+// ---------------------------------------------------------------------------
+// View
+// ---------------------------------------------------------------------------
+
+func (r ResearchAgent) overlayWidth() int {
+	w := r.width * 2 / 3
+	if w < 56 {
+		w = 56
+	}
+	if w > 80 {
+		w = 80
+	}
+	return w
+}
+
 // View renders the research overlay.
 func (r ResearchAgent) View() string {
-	w := r.width * 3 / 4
-	if w > 90 {
-		w = 90
-	}
-	if w < 50 {
-		w = 50
-	}
-	h := r.height * 3 / 4
-	if h > 35 {
-		h = 35
-	}
-	if h < 15 {
-		h = 15
-	}
+	w := r.overlayWidth()
+	innerW := w - 6 // padding + border
 
-	var content string
+	var body string
 	switch r.phase {
 	case researchInput:
-		content = r.viewInput(w, h)
+		body = r.viewInput(innerW)
 	case researchRunning:
-		content = r.viewRunning(w, h)
+		body = r.viewRunning(innerW)
 	case researchDone:
-		content = r.viewDone(w, h)
+		body = r.viewDone(innerW)
 	case researchError:
-		content = r.viewError(w, h)
+		body = r.viewError(innerW)
 	}
 
 	border := lipgloss.NewStyle().
@@ -433,180 +412,211 @@ func (r ResearchAgent) View() string {
 		BorderForeground(mauve).
 		Background(mantle).
 		Padding(1, 2).
-		Width(w).
-		Height(h)
+		Width(w)
 
-	return border.Render(content)
+	return border.Render(body)
 }
 
-func (r ResearchAgent) viewInput(w, h int) string {
+// ---------------------------------------------------------------------------
+// Input view
+// ---------------------------------------------------------------------------
+
+func (r ResearchAgent) viewInput(innerW int) string {
 	var b strings.Builder
 
-	title := lipgloss.NewStyle().
-		Foreground(mauve).
-		Bold(true).
-		Render("  Deep Dive — AI Research Agent")
-	b.WriteString(title + "\n")
-	b.WriteString(DimStyle.Render("  Powered by Claude Code") + "\n")
-	b.WriteString(ThemeSeparator + "\n\n")
+	// Title
+	b.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).
+		Render("  Deep Dive Research"))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  Powered by Claude Code"))
+	b.WriteString("\n\n")
 
-	// Topic field
-	topicLabel := "  Topic:"
+	// ── Topic ──
+	label := r.fieldLabel("Topic", 0)
+	b.WriteString(label + "\n")
+
+	topicText := r.topic
 	if r.focusField == 0 {
-		topicLabel = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  Topic:")
+		topicText += "█"
 	}
-	b.WriteString(topicLabel + "\n")
-	topicBox := r.topic
-	if r.focusField == 0 {
-		topicBox += "█"
+	if topicText == "" {
+		topicText = DimStyle.Render("Type a research topic...")
 	}
-	if topicBox == "" && r.focusField != 0 {
-		topicBox = DimStyle.Render("(enter research topic)")
+	inputW := innerW - 4
+	if inputW < 20 {
+		inputW = 20
 	}
-	inputStyle := lipgloss.NewStyle().
-		Foreground(text).
+	inputBox := lipgloss.NewStyle().
 		Background(surface0).
+		Foreground(text).
+		Width(inputW).
 		Padding(0, 1).
-		Width(w - 8)
-	b.WriteString("  " + inputStyle.Render(topicBox) + "\n\n")
+		Render(topicText)
+	b.WriteString("  " + inputBox + "\n\n")
 
-	// Depth selector
-	depthLabel := "  Depth:"
-	if r.focusField == 1 {
-		depthLabel = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  Depth:")
-	}
-	b.WriteString(depthLabel + "\n  ")
-	for i, label := range r.depthLabels {
-		if i == r.depth {
-			b.WriteString(lipgloss.NewStyle().
-				Foreground(mantle).
-				Background(mauve).
-				Padding(0, 1).
-				Render(label))
-		} else {
-			b.WriteString(lipgloss.NewStyle().
-				Foreground(overlay0).
-				Padding(0, 1).
-				Render(label))
-		}
-		if i < len(r.depthLabels)-1 {
-			b.WriteString("  ")
-		}
-	}
+	// ── Depth ──
+	depthLabels := []string{"Quick", "Standard", "Deep"}
+	depthDescs := []string{"5-8 notes", "10-15 notes", "15-25 notes"}
+	b.WriteString(r.fieldLabel("Depth", 1) + "\n")
+	b.WriteString(r.renderRadio(depthLabels, depthDescs, r.depth, r.focusField == 1, innerW))
 	b.WriteString("\n\n")
 
-	// Format selector
-	formatLabel := "  Format:"
-	if r.focusField == 2 {
-		formatLabel = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  Format:")
-	}
-	b.WriteString(formatLabel + "\n  ")
-	for i, label := range r.formatLabels {
-		if i == r.format {
-			b.WriteString(lipgloss.NewStyle().
-				Foreground(mantle).
-				Background(peach).
-				Padding(0, 1).
-				Render(label))
-		} else {
-			b.WriteString(lipgloss.NewStyle().
-				Foreground(overlay0).
-				Padding(0, 1).
-				Render(label))
-		}
-		if i < len(r.formatLabels)-1 {
-			b.WriteString("  ")
-		}
-	}
+	// ── Format ──
+	fmtLabels := []string{"Zettelkasten", "Outline", "Study Guide"}
+	fmtDescs := []string{"atomic notes", "hierarchical", "with flashcards"}
+	b.WriteString(r.fieldLabel("Format", 2) + "\n")
+	b.WriteString(r.renderRadio(fmtLabels, fmtDescs, r.format, r.focusField == 2, innerW))
 	b.WriteString("\n\n")
 
-	// Run button
-	if r.focusField == 3 && r.topic != "" {
-		b.WriteString("  " + lipgloss.NewStyle().
-			Foreground(mantle).
-			Background(green).
-			Bold(true).
+	// ── Button ──
+	if r.topic != "" {
+		btnColor := surface0
+		btnFg := text
+		if r.focusField == 3 {
+			btnColor = green
+			btnFg = mantle
+		}
+		btn := lipgloss.NewStyle().
+			Background(btnColor).
+			Foreground(btnFg).
+			Bold(r.focusField == 3).
 			Padding(0, 3).
-			Render("  Start Research  "))
-	} else if r.topic != "" {
-		b.WriteString("  " + lipgloss.NewStyle().
-			Foreground(text).
-			Background(surface0).
-			Padding(0, 3).
-			Render("  Start Research  "))
+			Render(" Start Research ")
+		b.WriteString("  " + btn)
 	} else {
-		b.WriteString("  " + DimStyle.Render("  Enter a topic to begin  "))
+		b.WriteString("  " + DimStyle.Render("Enter a topic to begin"))
 	}
 	b.WriteString("\n\n")
 
-	// Help
-	b.WriteString(DimStyle.Render("  Tab: switch fields  ←→: change option  Enter: confirm  Esc: close"))
+	// ── Help ──
+	b.WriteString(DimStyle.Render("  Tab switch  ←→ option  Enter confirm  Esc close"))
 
 	return b.String()
 }
 
-func (r ResearchAgent) viewRunning(w, h int) string {
+// fieldLabel returns a styled label, highlighted when focused.
+func (r ResearchAgent) fieldLabel(name string, idx int) string {
+	style := DimStyle
+	if r.focusField == idx {
+		style = lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	}
+	return style.Render("  " + name)
+}
+
+// renderRadio renders a horizontal radio-button selector.
+func (r ResearchAgent) renderRadio(labels, descs []string, selected int, focused bool, maxW int) string {
+	var parts []string
+	for i, label := range labels {
+		desc := ""
+		if i < len(descs) {
+			desc = " " + descs[i]
+		}
+		full := label + desc
+
+		if i == selected {
+			bg := mauve
+			if focused {
+				bg = peach
+			}
+			parts = append(parts, lipgloss.NewStyle().
+				Foreground(mantle).
+				Background(bg).
+				Padding(0, 1).
+				Render(full))
+		} else {
+			parts = append(parts, lipgloss.NewStyle().
+				Foreground(overlay0).
+				Padding(0, 1).
+				Render(full))
+		}
+	}
+	return "  " + strings.Join(parts, " ")
+}
+
+// ---------------------------------------------------------------------------
+// Running view
+// ---------------------------------------------------------------------------
+
+func (r ResearchAgent) viewRunning(innerW int) string {
 	var b strings.Builder
 
-	title := lipgloss.NewStyle().
-		Foreground(mauve).
-		Bold(true).
-		Render("  Researching...")
-	b.WriteString(title + "\n")
-	b.WriteString(ThemeSeparator + "\n\n")
-
-	b.WriteString(lipgloss.NewStyle().Foreground(peach).Bold(true).
-		Render("  Topic: ") + r.topic + "\n\n")
-
-	// Spinner animation
-	frames := []string{"  ", " ", " ", " "}
-	idx := int(time.Since(r.startTime).Seconds()) % len(frames)
-	spinner := lipgloss.NewStyle().Foreground(green).Render(frames[idx])
-
-	b.WriteString(spinner + " Claude Code is researching and creating notes...\n\n")
-
-	if r.elapsed != "" {
-		b.WriteString(DimStyle.Render("  Elapsed: " + r.elapsed) + "\n")
-	}
-
+	b.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).
+		Render("  Researching..."))
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  This may take 1-3 minutes depending on depth."))
-	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  Claude will search the web and create structured notes."))
+	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
 	b.WriteString("\n\n")
-	b.WriteString(DimStyle.Render("  Esc: cancel"))
+
+	// Topic
+	b.WriteString(lipgloss.NewStyle().Foreground(peach).Bold(true).
+		Render("  " + r.topic))
+	b.WriteString("\n\n")
+
+	// Animated dots
+	dots := int(time.Since(r.startTime).Seconds()) % 4
+	dotStr := strings.Repeat(".", dots+1)
+	spinner := lipgloss.NewStyle().Foreground(green).Bold(true).Render(dotStr)
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(lavender).Render("Claude is working") + spinner)
+	b.WriteString("\n\n")
+
+	// Progress info
+	if r.elapsed != "" {
+		b.WriteString("  " + DimStyle.Render("Elapsed: "+r.elapsed))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+
+	// Description
+	infoStyle := lipgloss.NewStyle().Foreground(overlay0)
+	b.WriteString(infoStyle.Render("  Searching the web and creating notes."))
+	b.WriteString("\n")
+	b.WriteString(infoStyle.Render("  This takes 1-3 min depending on depth."))
+	b.WriteString("\n\n")
+
+	b.WriteString(DimStyle.Render("  Esc cancel"))
 
 	return b.String()
 }
 
-func (r ResearchAgent) viewDone(w, h int) string {
+// ---------------------------------------------------------------------------
+// Done view
+// ---------------------------------------------------------------------------
+
+func (r ResearchAgent) viewDone(innerW int) string {
 	var b strings.Builder
 
-	title := lipgloss.NewStyle().
-		Foreground(green).
-		Bold(true).
-		Render("  Research Complete!")
-	b.WriteString(title + "\n")
-	b.WriteString(ThemeSeparator + "\n\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(green).Bold(true).
+		Render("  Research Complete"))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
+	b.WriteString("\n\n")
 
+	// Summary
 	b.WriteString(lipgloss.NewStyle().Foreground(peach).Bold(true).
-		Render("  Topic: ") + r.topic + "\n")
+		Render("  " + r.topic))
+	b.WriteString("\n")
 	if r.elapsed != "" {
-		b.WriteString(DimStyle.Render("  Time: " + r.elapsed) + "\n")
+		b.WriteString(DimStyle.Render("  Completed in " + r.elapsed))
+		b.WriteString("\n")
 	}
 	b.WriteString("\n")
 
 	if len(r.createdFiles) > 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).
-			Render(fmt.Sprintf("  Created %d notes:", len(r.createdFiles))) + "\n\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(lavender).
+			Render(fmt.Sprintf("  %d notes created:", len(r.createdFiles))))
+		b.WriteString("\n\n")
 
-		maxVisible := h - 12
+		maxVisible := r.height/2 - 10
 		if maxVisible < 5 {
 			maxVisible = 5
 		}
+		if maxVisible > len(r.createdFiles) {
+			maxVisible = len(r.createdFiles)
+		}
 
 		start := 0
-		if r.selectedFile >= maxVisible {
+		if r.selectedFile >= start+maxVisible {
 			start = r.selectedFile - maxVisible + 1
 		}
 		end := start + maxVisible
@@ -614,63 +624,119 @@ func (r ResearchAgent) viewDone(w, h int) string {
 			end = len(r.createdFiles)
 		}
 
+		nameStyle := lipgloss.NewStyle().Foreground(text)
+		selectedStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
+		pathStyle := lipgloss.NewStyle().Foreground(overlay0)
+
 		for i := start; i < end; i++ {
-			name := filepath.Base(r.createdFiles[i])
-			name = strings.TrimSuffix(name, ".md")
+			name := strings.TrimSuffix(filepath.Base(r.createdFiles[i]), ".md")
+			dir := filepath.Dir(r.createdFiles[i])
+
+			// Truncate long names
+			maxName := innerW - 8
+			if maxName < 20 {
+				maxName = 20
+			}
+			if len(name) > maxName {
+				name = name[:maxName-1] + "…"
+			}
 
 			if i == r.selectedFile {
-				b.WriteString("  " + ThemeAccentBar + " ")
-				b.WriteString(lipgloss.NewStyle().Foreground(peach).Bold(true).Render(name))
+				b.WriteString("  " + lipgloss.NewStyle().Foreground(peach).Render(ThemeAccentBar) + " ")
+				b.WriteString(selectedStyle.Render(name))
+				b.WriteString("\n")
+				// Show path for selected item
+				b.WriteString("      " + pathStyle.Render(dir))
+				b.WriteString("\n")
 			} else {
 				b.WriteString("    ")
-				b.WriteString(lipgloss.NewStyle().Foreground(text).Render(name))
+				b.WriteString(nameStyle.Render(name))
+				b.WriteString("\n")
 			}
+		}
+
+		if len(r.createdFiles) > maxVisible {
+			b.WriteString(DimStyle.Render(fmt.Sprintf("\n  %d/%d shown", maxVisible, len(r.createdFiles))))
 			b.WriteString("\n")
 		}
 	} else {
-		b.WriteString(DimStyle.Render("  Notes were created in your vault.") + "\n")
-		b.WriteString(DimStyle.Render("  Refresh the vault to see them.") + "\n")
+		b.WriteString(DimStyle.Render("  Notes created in your vault."))
+		b.WriteString("\n")
+		b.WriteString(DimStyle.Render("  Refresh to see them."))
+		b.WriteString("\n")
 	}
 
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  Enter: open note  j/k: navigate  Esc: close"))
+	b.WriteString(DimStyle.Render("  Enter open  j/k navigate  Esc close"))
 
 	return b.String()
 }
 
-func (r ResearchAgent) viewError(w, h int) string {
+// ---------------------------------------------------------------------------
+// Error view
+// ---------------------------------------------------------------------------
+
+func (r ResearchAgent) viewError(innerW int) string {
 	var b strings.Builder
 
-	title := lipgloss.NewStyle().
-		Foreground(red).
-		Bold(true).
-		Render("  Research Failed")
-	b.WriteString(title + "\n")
-	b.WriteString(ThemeSeparator + "\n\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(red).Bold(true).
+		Render("  Research Failed"))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
+	b.WriteString("\n\n")
 
-	b.WriteString(lipgloss.NewStyle().Foreground(red).Render("  " + r.errorMsg) + "\n\n")
+	// Error message — wrap to innerW
+	errMsg := r.errorMsg
+	if len(errMsg) > innerW-4 {
+		// Simple word wrap
+		words := strings.Fields(errMsg)
+		var lines []string
+		cur := ""
+		for _, w := range words {
+			if len(cur)+len(w)+1 > innerW-4 {
+				lines = append(lines, cur)
+				cur = w
+			} else {
+				if cur != "" {
+					cur += " "
+				}
+				cur += w
+			}
+		}
+		if cur != "" {
+			lines = append(lines, cur)
+		}
+		for _, l := range lines {
+			b.WriteString(lipgloss.NewStyle().Foreground(red).Render("  " + l))
+			b.WriteString("\n")
+		}
+	} else {
+		b.WriteString(lipgloss.NewStyle().Foreground(red).Render("  " + errMsg))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
 
 	if r.output != "" {
-		b.WriteString(DimStyle.Render("  Output:") + "\n")
+		b.WriteString(DimStyle.Render("  Output:"))
+		b.WriteString("\n")
 		lines := strings.Split(r.output, "\n")
-		maxLines := h - 10
-		if maxLines < 3 {
-			maxLines = 3
-		}
+		maxLines := 8
 		for i, line := range lines {
 			if i >= maxLines {
-				b.WriteString(DimStyle.Render(fmt.Sprintf("  ... (%d more lines)", len(lines)-i)) + "\n")
+				b.WriteString(DimStyle.Render(fmt.Sprintf("  ... %d more lines", len(lines)-i)))
+				b.WriteString("\n")
 				break
 			}
-			if len(line) > w-6 {
-				line = line[:w-6]
+			if len(line) > innerW-4 {
+				line = line[:innerW-4]
 			}
-			b.WriteString(DimStyle.Render("  "+line) + "\n")
+			b.WriteString(DimStyle.Render("  " + line))
+			b.WriteString("\n")
 		}
 	}
 
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  Enter/Esc: back to input"))
+	b.WriteString(DimStyle.Render("  Enter/Esc back"))
 
 	return b.String()
 }
