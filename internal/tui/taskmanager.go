@@ -106,6 +106,18 @@ type TaskManager struct {
 	newTaskPath string
 	newTaskText string
 	newTaskOK   bool
+
+	dateUpdatePath string
+	dateUpdateLine int
+	dateUpdateDate string
+	dateUpdateOK   bool
+
+	prioUpdatePath string
+	prioUpdateLine int
+	prioUpdatePrio int
+	prioUpdateOK   bool
+
+	activeNotePath string // fallback note for adding tasks
 }
 
 // NewTaskManager creates a new TaskManager overlay.
@@ -187,6 +199,73 @@ func (tm *TaskManager) clearResults() {
 	tm.toggleOK = false
 	tm.jumpOK = false
 	tm.newTaskOK = false
+	tm.dateUpdateOK = false
+	tm.prioUpdateOK = false
+}
+
+// GetDateUpdateResult returns a consumed-once date change result.
+func (tm *TaskManager) GetDateUpdateResult() (notePath string, lineNum int, newDate string, ok bool) {
+	if !tm.dateUpdateOK {
+		return "", 0, "", false
+	}
+	p, l, d := tm.dateUpdatePath, tm.dateUpdateLine, tm.dateUpdateDate
+	tm.dateUpdateOK = false
+	return p, l, d, true
+}
+
+// GetPrioUpdateResult returns a consumed-once priority change result.
+func (tm *TaskManager) GetPrioUpdateResult() (notePath string, lineNum int, newPrio int, ok bool) {
+	if !tm.prioUpdateOK {
+		return "", 0, 0, false
+	}
+	p, l, pr := tm.prioUpdatePath, tm.prioUpdateLine, tm.prioUpdatePrio
+	tm.prioUpdateOK = false
+	return p, l, pr, true
+}
+
+// SetActiveNote sets the fallback note for adding tasks when no task is selected.
+func (tm *TaskManager) SetActiveNote(path string) {
+	tm.activeNotePath = path
+}
+
+// Refresh re-parses all tasks from the vault without closing the overlay.
+func (tm *TaskManager) Refresh(notes map[string]*vault.Note) {
+	savedView := tm.view
+	savedScroll := tm.scroll
+	savedCursor := tm.cursor
+	tm.allTasks = ParseAllTasks(notes)
+	tm.view = savedView
+	tm.rebuildFiltered()
+	tm.scroll = savedScroll
+	if savedCursor >= len(tm.filtered) {
+		savedCursor = len(tm.filtered) - 1
+	}
+	if savedCursor < 0 {
+		savedCursor = 0
+	}
+	tm.cursor = savedCursor
+}
+
+// CountTasksDueToday returns the number of incomplete tasks due today or overdue.
+func CountTasksDueToday(notes map[string]*vault.Note) int {
+	count := 0
+	for _, note := range notes {
+		if note.Content == "" {
+			continue
+		}
+		for _, line := range strings.Split(note.Content, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if !strings.HasPrefix(trimmed, "- [ ]") {
+				continue
+			}
+			if dm := tmDueDateRe.FindStringSubmatch(line); dm != nil {
+				if tmIsToday(dm[1]) || tmIsOverdue(dm[1]) {
+					count++
+				}
+			}
+		}
+	}
+	return count
 }
 
 // ---------------------------------------------------------------------------
@@ -527,11 +606,21 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		switch tm.inputMode {
 		case tmInputAdd:
 			if strings.TrimSpace(tm.inputBuf) != "" {
-				taskLine := "- [ ] " + tm.inputBuf
+				taskLine := "- [ ] " + strings.TrimSpace(tm.inputBuf)
+				// If in calendar view, append the selected date
+				if tm.view == taskViewCalendar && tm.calDay > 0 {
+					dateStr := fmt.Sprintf("%04d-%02d-%02d", tm.calYear, int(tm.calMonth), tm.calDay)
+					if !strings.Contains(taskLine, "\U0001F4C5") {
+						taskLine += " \U0001F4C5 " + dateStr
+					}
+				}
 				// Determine target note
 				target := tm.inputNote
 				if target == "" && len(tm.filtered) > 0 && tm.cursor < len(tm.filtered) {
 					target = tm.filtered[tm.cursor].NotePath
+				}
+				if target == "" {
+					target = tm.activeNotePath
 				}
 				if target != "" {
 					tm.newTaskPath = target
@@ -548,14 +637,18 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 				dateStr := strings.TrimSpace(tm.inputBuf)
 				if _, err := time.Parse("2006-01-02", dateStr); err == nil {
 					task := tm.filtered[tm.cursor]
-					// Update the due date: remove old due date marker, add new one
-					newText := tmDueDateRe.ReplaceAllString(task.Text, "")
-					newText = strings.TrimSpace(newText) + " \U0001F4C5 " + dateStr
-					// Produce a toggle-like result to update the line
-					tm.togglePath = task.NotePath
-					tm.toggleLine = task.LineNum
-					tm.toggleDone = task.Done
-					tm.toggleOK = true
+					tm.dateUpdatePath = task.NotePath
+					tm.dateUpdateLine = task.LineNum
+					tm.dateUpdateDate = dateStr
+					tm.dateUpdateOK = true
+					// Update local state
+					for i := range tm.allTasks {
+						if tm.allTasks[i].NotePath == task.NotePath && tm.allTasks[i].LineNum == task.LineNum {
+							tm.allTasks[i].DueDate = dateStr
+							break
+						}
+					}
+					tm.rebuildFiltered()
 				}
 			}
 			tm.inputMode = tmInputNone
@@ -725,6 +818,8 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		tm.inputBuf = ""
 		if tm.cursor < len(tm.filtered) {
 			tm.inputNote = tm.filtered[tm.cursor].NotePath
+		} else if tm.activeNotePath != "" {
+			tm.inputNote = tm.activeNotePath
 		}
 
 	// Set due date
@@ -744,6 +839,10 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		if tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
 			newPrio := (task.Priority + 1) % 4
+			tm.prioUpdatePath = task.NotePath
+			tm.prioUpdateLine = task.LineNum
+			tm.prioUpdatePrio = newPrio
+			tm.prioUpdateOK = true
 			for i := range tm.allTasks {
 				if tm.allTasks[i].NotePath == task.NotePath && tm.allTasks[i].LineNum == task.LineNum {
 					tm.allTasks[i].Priority = newPrio

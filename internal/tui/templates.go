@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -9,8 +11,9 @@ import (
 )
 
 type NoteTemplate struct {
-	name    string
-	content string
+	name     string
+	content  string
+	isUser   bool // true if loaded from vault's templates/ folder
 }
 
 type Templates struct {
@@ -276,6 +279,44 @@ func (t *Templates) Open() {
 	t.selected = false
 }
 
+// OpenWithVault loads user templates from the vault's templates/ folder
+// and merges them with built-in templates.
+func (t *Templates) OpenWithVault(vaultRoot string) {
+	t.Open()
+	t.templates = builtinTemplates()
+	userTemplates := loadUserTemplates(vaultRoot)
+	if len(userTemplates) > 0 {
+		// Insert separator then user templates after "Blank Note"
+		t.templates = append(t.templates, userTemplates...)
+	}
+}
+
+// loadUserTemplates scans vaultRoot/templates/ for .md files.
+func loadUserTemplates(vaultRoot string) []NoteTemplate {
+	templatesDir := filepath.Join(vaultRoot, "templates")
+	entries, err := os.ReadDir(templatesDir)
+	if err != nil {
+		return nil
+	}
+	var templates []NoteTemplate
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(templatesDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name(), ".md")
+		templates = append(templates, NoteTemplate{
+			name:    name,
+			content: string(data),
+			isUser:  true,
+		})
+	}
+	return templates
+}
+
 func (t *Templates) Close() {
 	t.active = false
 }
@@ -384,11 +425,25 @@ func (t Templates) View() string {
 
 		iconChars := []string{" ", " ", " ", " ", " ", " "}
 
+		showedUserHeader := false
 		for i := t.scroll; i < end; i++ {
 			tmpl := t.templates[i]
 
+			// Show "Your Templates" header before first user template
+			if tmpl.isUser && !showedUserHeader {
+				if i > t.scroll {
+					b.WriteString("\n")
+				}
+				b.WriteString("  " + lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Your Templates"))
+				b.WriteString("\n")
+				showedUserHeader = true
+			}
+
 			iconIdx := i % len(icons)
 			icon := icons[iconIdx].Render(iconChars[iconIdx])
+			if tmpl.isUser {
+				icon = lipgloss.NewStyle().Foreground(green).Render("*")
+			}
 
 			if i == t.cursor {
 				line := "  " + icon + " " + tmpl.name

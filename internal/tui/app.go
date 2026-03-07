@@ -144,6 +144,7 @@ type Model struct {
 	themeEditor     ThemeEditor
 	linkAssist      LinkAssist
 	taskManager     TaskManager
+	dueTodayCount   int
 
 	// Slash command menu
 	slashMenu *SlashMenu
@@ -278,6 +279,8 @@ func NewModel(vaultPath string) (Model, error) {
 
 	m.statusbar.SetVaultPath(vaultPath)
 	m.statusbar.SetNoteCount(v.NoteCount())
+	m.dueTodayCount = CountTasksDueToday(v.Notes)
+	m.statusbar.SetDueTodayCount(m.dueTodayCount)
 	m.autocomplete.SetNotes(paths)
 	m.plugins.SetVaultPath(vaultPath)
 	m.canvas.SetVaultPath(vaultPath)
@@ -1308,50 +1311,111 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.taskManager.IsActive() {
 			var cmd tea.Cmd
 			m.taskManager, cmd = m.taskManager.Update(msg)
-			if !m.taskManager.IsActive() {
-				// Handle toggle result
-				if notePath, lineNum, newDone, ok := m.taskManager.GetToggleResult(); ok {
-					if note := m.vault.GetNote(notePath); note != nil {
-						lines := strings.Split(note.Content, "\n")
-						if lineNum > 0 && lineNum <= len(lines) {
-							line := lines[lineNum-1]
-							if newDone {
-								line = strings.Replace(line, "[ ]", "[x]", 1)
-							} else {
-								line = strings.Replace(line, "[x]", "[ ]", 1)
-								line = strings.Replace(line, "[X]", "[ ]", 1)
-							}
-							lines[lineNum-1] = line
-							newContent := strings.Join(lines, "\n")
-							note.Content = newContent
-							os.WriteFile(filepath.Join(m.vault.Root, notePath), []byte(newContent), 0644)
-							if notePath == m.activeNote {
-								m.editor.LoadContent(newContent, m.editor.filePath)
-							}
+			fileChanged := false
+			// Handle toggle result (always check, not just on close)
+			if notePath, lineNum, newDone, ok := m.taskManager.GetToggleResult(); ok {
+				if note := m.vault.GetNote(notePath); note != nil {
+					lines := strings.Split(note.Content, "\n")
+					if lineNum > 0 && lineNum <= len(lines) {
+						line := lines[lineNum-1]
+						if newDone {
+							line = strings.Replace(line, "[ ]", "[x]", 1)
+						} else {
+							line = strings.Replace(line, "[x]", "[ ]", 1)
+							line = strings.Replace(line, "[X]", "[ ]", 1)
 						}
-					}
-				}
-				// Handle jump result
-				if notePath, lineNum, ok := m.taskManager.GetJumpResult(); ok {
-					m.loadNote(notePath)
-					m.sidebar.cursor = m.findFileIndex(notePath)
-					m.setFocus(focusEditor)
-					if lineNum > 0 {
-						m.editor.cursor = lineNum - 1
-						m.editor.scroll = maxInt(0, lineNum-m.editor.height/2)
-					}
-				}
-				// Handle new task
-				if notePath, taskText, ok := m.taskManager.GetNewTask(); ok {
-					if note := m.vault.GetNote(notePath); note != nil {
-						newContent := note.Content + "\n" + taskText
+						lines[lineNum-1] = line
+						newContent := strings.Join(lines, "\n")
 						note.Content = newContent
 						os.WriteFile(filepath.Join(m.vault.Root, notePath), []byte(newContent), 0644)
 						if notePath == m.activeNote {
 							m.editor.LoadContent(newContent, m.editor.filePath)
 						}
-						m.statusbar.SetMessage("Task added to " + filepath.Base(notePath))
+						fileChanged = true
 					}
+				}
+			}
+			// Handle date update result
+			if notePath, lineNum, newDate, ok := m.taskManager.GetDateUpdateResult(); ok {
+				if note := m.vault.GetNote(notePath); note != nil {
+					lines := strings.Split(note.Content, "\n")
+					if lineNum > 0 && lineNum <= len(lines) {
+						line := lines[lineNum-1]
+						// Remove existing date marker
+						line = tmDueDateRe.ReplaceAllString(line, "")
+						line = strings.TrimRight(line, " ")
+						// Add new date
+						line += " \U0001F4C5 " + newDate
+						lines[lineNum-1] = line
+						newContent := strings.Join(lines, "\n")
+						note.Content = newContent
+						os.WriteFile(filepath.Join(m.vault.Root, notePath), []byte(newContent), 0644)
+						if notePath == m.activeNote {
+							m.editor.LoadContent(newContent, m.editor.filePath)
+						}
+						fileChanged = true
+					}
+				}
+			}
+			// Handle priority update result
+			if notePath, lineNum, newPrio, ok := m.taskManager.GetPrioUpdateResult(); ok {
+				if note := m.vault.GetNote(notePath); note != nil {
+					lines := strings.Split(note.Content, "\n")
+					if lineNum > 0 && lineNum <= len(lines) {
+						line := lines[lineNum-1]
+						// Remove existing priority markers
+						line = tmPrioHighRe.ReplaceAllString(line, "")
+						line = tmPrioMedRe.ReplaceAllString(line, "")
+						line = tmPrioLowRe.ReplaceAllString(line, "")
+						line = strings.TrimRight(line, " ")
+						// Add new priority if not none
+						if newPrio > 0 {
+							line += " " + tmPriorityIcon(newPrio)
+						}
+						lines[lineNum-1] = line
+						newContent := strings.Join(lines, "\n")
+						note.Content = newContent
+						os.WriteFile(filepath.Join(m.vault.Root, notePath), []byte(newContent), 0644)
+						if notePath == m.activeNote {
+							m.editor.LoadContent(newContent, m.editor.filePath)
+						}
+						fileChanged = true
+					}
+				}
+			}
+			// Handle new task
+			if notePath, taskText, ok := m.taskManager.GetNewTask(); ok {
+				if note := m.vault.GetNote(notePath); note != nil {
+					newContent := note.Content
+					if !strings.HasSuffix(newContent, "\n") {
+						newContent += "\n"
+					}
+					newContent += taskText + "\n"
+					note.Content = newContent
+					os.WriteFile(filepath.Join(m.vault.Root, notePath), []byte(newContent), 0644)
+					if notePath == m.activeNote {
+						m.editor.LoadContent(newContent, m.editor.filePath)
+					}
+					m.statusbar.SetMessage("Task added to " + filepath.Base(notePath))
+					fileChanged = true
+				}
+			}
+			// Refresh task manager data if a file was modified
+			if fileChanged {
+				m.dueTodayCount = CountTasksDueToday(m.vault.Notes)
+				m.statusbar.SetDueTodayCount(m.dueTodayCount)
+				if m.taskManager.IsActive() {
+					m.taskManager.Refresh(m.vault.Notes)
+				}
+			}
+			// Handle jump result (closes overlay)
+			if notePath, lineNum, ok := m.taskManager.GetJumpResult(); ok {
+				m.loadNote(notePath)
+				m.sidebar.cursor = m.findFileIndex(notePath)
+				m.setFocus(focusEditor)
+				if lineNum > 0 {
+					m.editor.cursor = lineNum - 1
+					m.editor.scroll = maxInt(0, lineNum-m.editor.height/2)
 				}
 			}
 			return m, cmd
@@ -1570,6 +1634,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			cmd := m.saveCurrentNote()
 			m.statusbar.SetMessage("Saved " + m.activeNote)
+			m.dueTodayCount = CountTasksDueToday(m.vault.Notes)
+			m.statusbar.SetDueTodayCount(m.dueTodayCount)
 			var toastCmd tea.Cmd
 			if m.toast != nil {
 				toastCmd = m.toast.ShowSuccess("Saved " + m.activeNote)
@@ -1621,7 +1687,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+n":
 			// Show template picker first, then name input
 			m.templates.SetSize(m.width, m.height)
-			m.templates.Open()
+			m.templates.OpenWithVault(m.vault.Root)
 			return m, nil
 
 		case "ctrl+e":
@@ -1656,6 +1722,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+k":
 			m.taskManager.SetSize(m.width, m.height)
+			m.taskManager.SetActiveNote(m.activeNote)
 			m.taskManager.Open(m.vault.Root, m.vault.Notes)
 			return m, nil
 
@@ -2092,7 +2159,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.searchCursor = 0
 	case CmdNewNote:
 		m.templates.SetSize(m.width, m.height)
-		m.templates.Open()
+		m.templates.OpenWithVault(m.vault.Root)
 	case CmdSaveNote:
 		cmd := m.saveCurrentNote()
 		hookCmd := m.runPluginSaveHooks()
@@ -2240,7 +2307,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.vaultStats.Open()
 	case CmdNewFromTemplate:
 		m.templates.SetSize(m.width, m.height)
-		m.templates.Open()
+		m.templates.OpenWithVault(m.vault.Root)
 	case CmdFocusMode:
 		if m.focusMode.IsActive() {
 			m.focusMode.Close()
@@ -2699,6 +2766,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdTaskManager:
 		m.taskManager.SetSize(m.width, m.height)
+		m.taskManager.SetActiveNote(m.activeNote)
 		m.taskManager.Open(m.vault.Root, m.vault.Notes)
 
 	case CmdLinkAssist:
