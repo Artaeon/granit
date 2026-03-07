@@ -1,11 +1,13 @@
 package tui
 
 import (
+	"bufio"
 	"encoding/base64"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -159,6 +161,8 @@ type Model struct {
 	mindMap          MindMap
 	journalPrompts   JournalPrompts
 	clipManager      ClipManager
+	dailyPlanner     DailyPlanner
+	aiScheduler      AIScheduler
 	dueTodayCount    int
 
 	// Slash command menu
@@ -289,6 +293,8 @@ func NewModel(vaultPath string) (Model, error) {
 		aiTemplates:      NewAITemplates(),
 		languageLearning: NewLanguageLearning(),
 		habitTracker:     NewHabitTracker(),
+		dailyPlanner:    NewDailyPlanner(),
+		aiScheduler:     NewAIScheduler(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
 		showSplash:     cfg.ShowSplash,
@@ -732,6 +738,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.noteHistory.IsActive() {
 			var cmd tea.Cmd
 			m.noteHistory, cmd = m.noteHistory.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case aiSchedulerResultMsg:
+		if m.aiScheduler.IsActive() {
+			var cmd tea.Cmd
+			m.aiScheduler, cmd = m.aiScheduler.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case aiSchedulerTickMsg:
+		if m.aiScheduler.IsActive() {
+			var cmd tea.Cmd
+			m.aiScheduler, cmd = m.aiScheduler.Update(msg)
 			return m, cmd
 		}
 		return m, nil
@@ -1300,6 +1322,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+		}
+
+		if m.dailyPlanner.IsActive() {
+			m.dailyPlanner, _ = m.dailyPlanner.Update(msg)
+			if !m.dailyPlanner.IsActive() {
+				m.vault.Scan()
+				m.index.Build()
+				m.sidebar.SetFiles(m.vault.SortedPaths())
+				m.statusbar.SetMessage("Daily planner closed")
+			}
+			return m, nil
+		}
+
+		if m.aiScheduler.IsActive() {
+			var cmd tea.Cmd
+			m.aiScheduler, cmd = m.aiScheduler.Update(msg)
+			if !m.aiScheduler.IsActive() {
+				if slots, ok := m.aiScheduler.GetSchedule(); ok && len(slots) > 0 {
+					// Convert AI schedule to planner data and open the planner
+					tasks, _, habits := m.gatherPlannerData()
+					m.dailyPlanner.SetSize(m.width, m.height)
+					m.dailyPlanner.Open(m.vault.Root, tasks, nil, habits)
+					m.dailyPlanner.ApplyAISchedule(slots)
+					m.statusbar.SetMessage("AI schedule applied to planner")
+				}
+			}
+			return m, cmd
 		}
 
 		if m.spellcheck.IsActive() {
@@ -3104,10 +3153,133 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.clipManager.SetSize(m.width, m.height)
 		m.clipManager.Open()
 
+	case CmdDailyPlanner:
+		m.dailyPlanner.SetSize(m.width, m.height)
+		tasks, events, habits := m.gatherPlannerData()
+		m.dailyPlanner.Open(m.vault.Root, tasks, events, habits)
+
+	case CmdAIScheduler:
+		m.aiScheduler.SetSize(m.width, m.height)
+		tasks, events := m.gatherSchedulerData()
+		m.aiScheduler.Open(m.vault.Root, tasks, events,
+			m.config.AIProvider, m.config.OllamaURL, m.config.OllamaModel,
+			m.config.OpenAIKey, m.config.OpenAIModel)
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}
 	return m, nil
+}
+
+// gatherPlannerData collects tasks, events, and habits for the daily planner.
+func (m *Model) gatherPlannerData() ([]PlannerTask, []PlannerEvent, []PlannerHabit) {
+	today := time.Now().Format("2006-01-02")
+	var tasks []PlannerTask
+	var events []PlannerEvent
+	var habits []PlannerHabit
+
+	// Scan Tasks.md for tasks due today
+	tasksPath := filepath.Join(m.vault.Root, "Tasks.md")
+	if f, err := os.Open(tasksPath); err == nil {
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if taskPattern.MatchString(line) {
+				m2 := taskPattern.FindStringSubmatch(line)
+				done := m2[1] != " "
+				text := m2[2]
+				dueDate := ""
+				if dm := regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`).FindStringSubmatch(text); dm != nil {
+					dueDate = dm[1]
+				}
+				if dueDate == today || (dueDate != "" && dueDate <= today && !done) {
+					tasks = append(tasks, PlannerTask{
+						Text:     text,
+						Done:     done,
+						Priority: taskPriority(text),
+						DueDate:  dueDate,
+						Source:   "Tasks.md",
+					})
+				}
+			}
+		}
+		f.Close()
+	}
+
+	// Scan calendar events for today
+	icsDir := filepath.Join(m.vault.Root, ".granit", "calendars")
+	if entries, err := os.ReadDir(icsDir); err == nil {
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), ".ics") {
+				continue
+			}
+			calEvents, err := ParseICSFile(filepath.Join(icsDir, e.Name()))
+			if err != nil {
+				continue
+			}
+			for _, ev := range calEvents {
+				if ev.Date.Format("2006-01-02") == today {
+					dur := 60
+					if !ev.EndDate.IsZero() {
+						dur = int(ev.EndDate.Sub(ev.Date).Minutes())
+					}
+					timeStr := ""
+					if !ev.AllDay {
+						timeStr = ev.Date.Format("15:04")
+					}
+					events = append(events, PlannerEvent{
+						Title:    ev.Title,
+						Time:     timeStr,
+						Duration: dur,
+					})
+				}
+			}
+		}
+	}
+
+	// Scan habits
+	habitsDir := filepath.Join(m.vault.Root, "Habits")
+	if entries, err := os.ReadDir(habitsDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() || e.Name() == "goals.md" || e.Name() == "stats.md" {
+				continue
+			}
+			name := strings.TrimSuffix(e.Name(), ".md")
+			habits = append(habits, PlannerHabit{Name: name})
+		}
+	}
+
+	return tasks, events, habits
+}
+
+// gatherSchedulerData collects tasks and events for the AI scheduler.
+func (m *Model) gatherSchedulerData() ([]SchedulerTask, []SchedulerEvent) {
+	plannerTasks, plannerEvents, _ := m.gatherPlannerData()
+
+	var tasks []SchedulerTask
+	for _, t := range plannerTasks {
+		tasks = append(tasks, SchedulerTask{
+			Text:     t.Text,
+			Priority: t.Priority,
+			DueDate:  t.DueDate,
+			Done:     t.Done,
+		})
+	}
+
+	var events []SchedulerEvent
+	for _, e := range plannerEvents {
+		dur := e.Duration
+		if dur <= 0 {
+			dur = 60
+		}
+		events = append(events, SchedulerEvent{
+			Title:    e.Title,
+			Time:     e.Time,
+			Duration: dur,
+		})
+	}
+
+	return tasks, events
 }
 
 func (m *Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -4107,6 +4279,14 @@ func (m Model) View() string {
 	}
 	if m.clipManager.IsActive() {
 		overlay := m.clipManager.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.dailyPlanner.IsActive() {
+		overlay := m.dailyPlanner.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.aiScheduler.IsActive() {
+		overlay := m.aiScheduler.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.spellcheck.IsActive() {
