@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Granit — Terminal Knowledge Manager</title>
+  <meta name="description" content="A blazing-fast, AI-powered terminal knowledge manager. Fully Obsidian compatible, built with Go and Bubble Tea.">
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #1e1e2e;
+      --bg-surface: #181825;
+      --bg-overlay: #11111b;
+      --bg-card: #252538;
+      --text: #cdd6f4;
+      --text-dim: #a6adc8;
+      --text-muted: #6c7086;
+      --accent: #cba6f7;
+      --blue: #89b4fa;
+      --green: #a6e3a1;
+      --peach: #fab387;
+      --red: #f38ba8;
+      --border: #313244;
+      --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code", "Source Code Pro", ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.7;
+      overflow-x: hidden;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+
+    a:hover {
+      color: var(--blue);
+    }
+
+    /* ─── Navigation ─── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: rgba(30, 30, 46, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    nav .logo {
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.05em;
+    }
+
+    nav .nav-links {
+      display: flex;
+      gap: 1.5rem;
+      list-style: none;
+    }
+
+    nav .nav-links a {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: color 0.2s ease;
+    }
+
+    nav .nav-links a:hover {
+      color: var(--accent);
+    }
+
+    /* ─── Sections ─── */
+    section {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+    }
+
+    .section-title {
+      font-family: var(--font-mono);
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+      text-align: center;
+    }
+
+    .section-title .accent {
+      color: var(--accent);
+    }
+
+    .section-subtitle {
+      color: var(--text-dim);
+      text-align: center;
+      margin-bottom: 3rem;
+      font-size: 1.05rem;
+    }
+
+    /* ─── Hero ─── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding-top: 4rem;
+    }
+
+    .hero-ascii {
+      font-family: var(--font-mono);
+      font-size: clamp(0.45rem, 1.8vw, 0.95rem);
+      line-height: 1.3;
+      color: var(--accent);
+      white-space: pre;
+      margin-bottom: 1.5rem;
+      text-shadow: 0 0 30px rgba(203, 166, 247, 0.3);
+    }
+
+    .hero-tagline {
+      font-size: clamp(1rem, 3vw, 1.5rem);
+      color: var(--text);
+      margin-bottom: 0.75rem;
+      font-weight: 600;
+    }
+
+    .hero-sub {
+      color: var(--text-dim);
+      font-size: 1.05rem;
+      margin-bottom: 2.5rem;
+      max-width: 550px;
+    }
+
+    .hero-cursor {
+      display: inline-block;
+      width: 2px;
+      height: 1.1em;
+      background: var(--accent);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    .hero-buttons {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.75rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg-overlay);
+    }
+
+    .btn-primary:hover {
+      color: var(--bg-overlay);
+      box-shadow: 0 4px 20px rgba(203, 166, 247, 0.4);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 4px 20px rgba(203, 166, 247, 0.15);
+    }
+
+    .hero-badges {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 2.5rem;
+    }
+
+    .badge {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.3rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+    }
+
+    /* ─── Features Grid ─── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--accent);
+      box-shadow: 0 8px 30px rgba(203, 166, 247, 0.1);
+    }
+
+    .feature-icon {
+      font-size: 1.75rem;
+      margin-bottom: 0.75rem;
+      display: block;
+    }
+
+    .feature-card h3 {
+      font-family: var(--font-mono);
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+    }
+
+    .feature-card p {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    .feature-card:nth-child(1) .feature-icon { color: var(--accent); }
+    .feature-card:nth-child(2) .feature-icon { color: var(--green); }
+    .feature-card:nth-child(3) .feature-icon { color: var(--peach); }
+    .feature-card:nth-child(4) .feature-icon { color: var(--blue); }
+    .feature-card:nth-child(5) .feature-icon { color: var(--red); }
+    .feature-card:nth-child(6) .feature-icon { color: var(--green); }
+    .feature-card:nth-child(7) .feature-icon { color: var(--peach); }
+    .feature-card:nth-child(8) .feature-icon { color: var(--accent); }
+    .feature-card:nth-child(9) .feature-icon { color: var(--blue); }
+
+    /* ─── Demo ─── */
+    .demo {
+      text-align: center;
+    }
+
+    .demo-container {
+      background: var(--bg-overlay);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .demo-titlebar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .demo-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .demo-dot:nth-child(1) { background: var(--red); }
+    .demo-dot:nth-child(2) { background: var(--peach); }
+    .demo-dot:nth-child(3) { background: var(--green); }
+
+    .demo-titlebar span {
+      margin-left: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .demo-container img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .demo-caption {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-top: 1rem;
+    }
+
+    /* ─── Stats ─── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.5rem;
+      margin-top: 1rem;
+    }
+
+    .stat-card {
+      text-align: center;
+      padding: 2rem 1rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      transition: border-color 0.2s ease;
+    }
+
+    .stat-card:hover {
+      border-color: var(--accent);
+    }
+
+    .stat-number {
+      font-family: var(--font-mono);
+      font-size: 2rem;
+      font-weight: 700;
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+
+    .stat-card:nth-child(1) .stat-number { color: var(--accent); }
+    .stat-card:nth-child(2) .stat-number { color: var(--blue); }
+    .stat-card:nth-child(3) .stat-number { color: var(--peach); }
+    .stat-card:nth-child(4) .stat-number { color: var(--green); }
+
+    .stat-label {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+
+    /* ─── Installation ─── */
+    .install-block {
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    .install-method {
+      margin-bottom: 2rem;
+    }
+
+    .install-method h3 {
+      font-family: var(--font-mono);
+      font-size: 1rem;
+      color: var(--text-dim);
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .install-method h3 .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .code-block {
+      position: relative;
+      background: var(--bg-overlay);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.6rem 1rem;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-header span {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .copy-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .copy-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .copy-btn.copied {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .code-block pre {
+      padding: 1.25rem;
+      overflow-x: auto;
+    }
+
+    .code-block code {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      line-height: 1.7;
+      color: var(--text);
+    }
+
+    .code-block .prompt {
+      color: var(--green);
+      user-select: none;
+    }
+
+    .code-block .comment {
+      color: var(--text-muted);
+    }
+
+    .code-block .cmd {
+      color: var(--blue);
+    }
+
+    .code-block .arg {
+      color: var(--peach);
+    }
+
+    /* ─── Documentation ─── */
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+    }
+
+    .doc-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+      text-decoration: none;
+    }
+
+    .doc-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--accent);
+      box-shadow: 0 6px 20px rgba(203, 166, 247, 0.1);
+      color: var(--text);
+    }
+
+    .doc-card .doc-icon {
+      font-size: 1.5rem;
+    }
+
+    .doc-card h4 {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .doc-card p {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* ─── Footer ─── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 3rem 2rem;
+      text-align: center;
+    }
+
+    .footer-content {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .footer-logo {
+      font-family: var(--font-mono);
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+    }
+
+    .footer-text {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      line-height: 1.8;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 1.5rem;
+      justify-content: center;
+      margin-top: 1rem;
+      list-style: none;
+    }
+
+    .footer-links a {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+    }
+
+    .footer-links a:hover {
+      color: var(--accent);
+    }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 900px) {
+      .features-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .stats-row {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .docs-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      nav .nav-links {
+        display: none;
+      }
+    }
+
+    @media (max-width: 600px) {
+      section {
+        padding: 3.5rem 1.25rem;
+      }
+
+      .hero {
+        padding-top: 5rem;
+        min-height: auto;
+        padding-bottom: 3rem;
+      }
+
+      .hero-ascii {
+        font-size: clamp(0.35rem, 4vw, 0.55rem);
+      }
+
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .stats-row {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+      }
+
+      .stat-card {
+        padding: 1.25rem 0.75rem;
+      }
+
+      .stat-number {
+        font-size: 1.5rem;
+      }
+
+      .docs-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-buttons {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .btn {
+        width: 100%;
+        max-width: 280px;
+        justify-content: center;
+      }
+
+      .section-title {
+        font-size: 1.4rem;
+      }
+    }
+
+    /* ─── Scrollbar ─── */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-overlay);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
+    }
+
+    /* ─── Selection ─── */
+    ::selection {
+      background: rgba(203, 166, 247, 0.3);
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav>
+    <div class="logo">GRANIT</div>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#demo">Demo</a></li>
+      <li><a href="#installation">Installation</a></li>
+      <li><a href="#documentation">Docs</a></li>
+      <li><a href="https://github.com/artaeon/granit">GitHub</a></li>
+    </ul>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-ascii" aria-label="GRANIT">
+ ██████╗ ██████╗  █████╗ ███╗   ██╗██╗████████╗
+██╔════╝ ██╔══██╗██╔══██╗████╗  ██║██║╚══██╔══╝
+██║  ███╗██████╔╝███████║██╔██╗ ██║██║   ██║
+██║   ██║██╔══██╗██╔══██║██║╚██╗██║██║   ██║
+╚██████╔╝██║  ██║██║  ██║██║ ╚████║██║   ██║
+ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝   ╚═╝</div>
+    <h1 class="hero-tagline">A blazing-fast, AI-powered terminal knowledge manager<span class="hero-cursor"></span></h1>
+    <p class="hero-sub">Fully Obsidian compatible. No Electron. No browser. No subscriptions. Just your terminal.</p>
+    <div class="hero-buttons">
+      <a href="#installation" class="btn btn-primary">Get Started</a>
+      <a href="https://github.com/artaeon/granit" class="btn btn-secondary">View on GitHub</a>
+    </div>
+    <div class="hero-badges">
+      <span class="badge">Go 1.23+</span>
+      <span class="badge">MIT License</span>
+      <span class="badge">Linux &amp; macOS</span>
+      <span class="badge">Active Development</span>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features">
+    <h2 class="section-title"><span class="accent">//</span> Features</h2>
+    <p class="section-subtitle">Everything you need for knowledge management, built into your terminal.</p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <span class="feature-icon">&#x2728;</span>
+        <h3>AI-Powered</h3>
+        <p>20+ AI features with Ollama, OpenAI, and Claude Code support. Auto-tagging, summarization, link suggestions, and local offline fallback.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x2328;&#xFE0F;</span>
+        <h3>Vim Mode</h3>
+        <p>Full modal editing with Normal, Insert, Visual, and Command modes. Dot repeat, macros, and everything you expect from Vim.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F3A8;</span>
+        <h3>35 Themes</h3>
+        <p>29 dark and 6 light themes including Catppuccin, Tokyo Night, Gruvbox, Nord, and more. Plus a custom theme editor.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x2705;</span>
+        <h3>Task Manager</h3>
+        <p>Kanban boards, task priorities, daily planner, and AI smart scheduler. Track your work right alongside your notes.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F500;</span>
+        <h3>Git Integration</h3>
+        <p>Built-in status, log, and diff views. Commit, push, and pull without leaving the TUI. Optional auto-sync on save.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F517;</span>
+        <h3>Obsidian Compatible</h3>
+        <p>Full support for [[wikilinks]], YAML frontmatter, and the same folder structure. Use your existing Obsidian vault as-is.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F4D0;</span>
+        <h3>8 Layouts</h3>
+        <p>Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, and Research modes. Adapt the UI to your current workflow.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F9E9;</span>
+        <h3>Plugin System</h3>
+        <p>Extend Granit with scripts and Lua plugins. 16 core plugins included. Hook into save, open, create, and delete events.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F512;</span>
+        <h3>Encryption</h3>
+        <p>AES-256-GCM encryption for sensitive notes. Secure your vault for safe syncing across devices without compromising privacy.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Demo -->
+  <section id="demo" class="demo">
+    <h2 class="section-title"><span class="accent">//</span> See It in Action</h2>
+    <p class="section-subtitle">A full-featured knowledge manager running entirely in your terminal.</p>
+    <div class="demo-container">
+      <div class="demo-titlebar">
+        <span class="demo-dot"></span>
+        <span class="demo-dot"></span>
+        <span class="demo-dot"></span>
+        <span>granit ~/vault</span>
+      </div>
+      <img src="../assets/editor.gif" alt="Granit editor demo showing the TUI in action" loading="lazy">
+    </div>
+    <p class="demo-caption">The default 3-panel layout with sidebar, editor, and backlinks panel.</p>
+  </section>
+
+  <!-- At a Glance -->
+  <section id="stats">
+    <h2 class="section-title"><span class="accent">//</span> At a Glance</h2>
+    <p class="section-subtitle">Built from the ground up for power users who live in the terminal.</p>
+    <div class="stats-row">
+      <div class="stat-card">
+        <span class="stat-number">80k+</span>
+        <span class="stat-label">Lines of Go</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-number">109</span>
+        <span class="stat-label">Source Files</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-number">35</span>
+        <span class="stat-label">Themes</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-number">100+</span>
+        <span class="stat-label">Features</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Installation -->
+  <section id="installation">
+    <h2 class="section-title"><span class="accent">//</span> Installation</h2>
+    <p class="section-subtitle">Up and running in under a minute.</p>
+    <div class="install-block">
+      <div class="install-method">
+        <h3><span class="dot" style="background: var(--green);"></span> From Source</h3>
+        <div class="code-block">
+          <div class="code-header">
+            <span>bash</span>
+            <button class="copy-btn" onclick="copyCode(this, 'install-source')">Copy</button>
+          </div>
+          <pre><code id="install-source"><span class="prompt">$</span> <span class="cmd">git</span> <span class="arg">clone</span> https://github.com/artaeon/granit.git
+<span class="prompt">$</span> <span class="cmd">cd</span> granit
+<span class="prompt">$</span> <span class="cmd">go</span> <span class="arg">install</span> ./cmd/granit/</code></pre>
+        </div>
+      </div>
+      <div class="install-method">
+        <h3><span class="dot" style="background: var(--blue);"></span> Arch Linux (AUR)</h3>
+        <div class="code-block">
+          <div class="code-header">
+            <span>bash</span>
+            <button class="copy-btn" onclick="copyCode(this, 'install-aur')">Copy</button>
+          </div>
+          <pre><code id="install-aur"><span class="prompt">$</span> <span class="cmd">yay</span> <span class="arg">-S</span> granit</code></pre>
+        </div>
+      </div>
+      <div class="install-method">
+        <h3><span class="dot" style="background: var(--peach);"></span> Run</h3>
+        <div class="code-block">
+          <div class="code-header">
+            <span>bash</span>
+            <button class="copy-btn" onclick="copyCode(this, 'install-run')">Copy</button>
+          </div>
+          <pre><code id="install-run"><span class="comment"># Open a vault directory</span>
+<span class="prompt">$</span> <span class="cmd">granit</span> <span class="arg">open</span> ~/my-vault
+
+<span class="comment"># Or scan and pick from known vaults</span>
+<span class="prompt">$</span> <span class="cmd">granit</span> <span class="arg">scan</span></code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Documentation -->
+  <section id="documentation">
+    <h2 class="section-title"><span class="accent">//</span> Documentation</h2>
+    <p class="section-subtitle">Comprehensive guides covering every aspect of Granit.</p>
+    <div class="docs-grid">
+      <a href="FEATURES.md" class="doc-card">
+        <span class="doc-icon">&#x1F4CB;</span>
+        <h4>Features</h4>
+        <p>Complete feature list and detailed descriptions.</p>
+      </a>
+      <a href="INSTALLATION.md" class="doc-card">
+        <span class="doc-icon">&#x1F4E6;</span>
+        <h4>Installation</h4>
+        <p>Setup instructions for all platforms.</p>
+      </a>
+      <a href="AI-GUIDE.md" class="doc-card">
+        <span class="doc-icon">&#x1F916;</span>
+        <h4>AI Guide</h4>
+        <p>Configure Ollama, OpenAI, and local AI.</p>
+      </a>
+      <a href="KEYBINDINGS.md" class="doc-card">
+        <span class="doc-icon">&#x2328;&#xFE0F;</span>
+        <h4>Keybindings</h4>
+        <p>All keyboard shortcuts and Vim bindings.</p>
+      </a>
+      <a href="ARCHITECTURE.md" class="doc-card">
+        <span class="doc-icon">&#x1F3D7;&#xFE0F;</span>
+        <h4>Architecture</h4>
+        <p>Codebase structure and design decisions.</p>
+      </a>
+      <a href="CONFIGURATION.md" class="doc-card">
+        <span class="doc-icon">&#x2699;&#xFE0F;</span>
+        <h4>Configuration</h4>
+        <p>Settings, config files, and customization.</p>
+      </a>
+      <a href="PLUGINS.md" class="doc-card">
+        <span class="doc-icon">&#x1F9E9;</span>
+        <h4>Plugins</h4>
+        <p>Plugin development and the hook system.</p>
+      </a>
+      <a href="THEMES.md" class="doc-card">
+        <span class="doc-icon">&#x1F3A8;</span>
+        <h4>Themes</h4>
+        <p>All 35 themes and the custom theme editor.</p>
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-content">
+      <div class="footer-logo">GRANIT</div>
+      <p class="footer-text">
+        Released under the MIT License.<br>
+        Built with Go and <a href="https://github.com/charmbracelet/bubbletea">Bubble Tea</a>.
+      </p>
+      <ul class="footer-links">
+        <li><a href="https://github.com/artaeon/granit">GitHub</a></li>
+        <li><a href="https://github.com/artaeon/granit/issues">Issues</a></li>
+        <li><a href="https://github.com/artaeon/granit/releases">Releases</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#documentation">Documentation</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <script>
+    function copyCode(button, id) {
+      var el = document.getElementById(id);
+      var text = el.textContent.replace(/^\$ /gm, '').replace(/^# .*$/gm, '').trim();
+      navigator.clipboard.writeText(text).then(function() {
+        button.textContent = 'Copied!';
+        button.classList.add('copied');
+        setTimeout(function() {
+          button.textContent = 'Copy';
+          button.classList.remove('copied');
+        }, 2000);
+      });
+    }
+  </script>
+
+</body>
+</html>
