@@ -60,6 +60,12 @@ type Config struct {
 	SearchContentByDefault bool `json:"search_content_by_default"`
 	MaxSearchResults       int  `json:"max_search_results"`
 
+	// Blog Publisher
+	MediumToken  string `json:"medium_token,omitempty"`
+	GitHubToken  string `json:"github_token,omitempty"`
+	GitHubRepo   string `json:"github_repo,omitempty"`
+	GitHubBranch string `json:"github_branch,omitempty"`
+
 	// Core Plugins — toggle built-in modules on/off
 	CorePlugins map[string]bool `json:"core_plugins"`
 
