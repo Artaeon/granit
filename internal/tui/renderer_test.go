@@ -2064,3 +2064,135 @@ func TestRenderNestedTaskListParentNoConnector(t *testing.T) {
 		t.Errorf("Top-level task should not have └ connector, got:\n%s", plain)
 	}
 }
+
+// =========================================================================
+// Callout/admonition improvements
+// =========================================================================
+
+func TestRenderCalloutBug(t *testing.T) {
+	r := newTestRenderer()
+	content := "> [!bug] Found a bug\n> This is a bug report"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Bug") {
+		t.Errorf("Bug callout should show label, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "Found a bug") {
+		t.Errorf("Bug callout should show title, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "◉") {
+		t.Errorf("Bug callout should show icon, got:\n%s", plain)
+	}
+}
+
+func TestRenderCalloutAbstract(t *testing.T) {
+	r := newTestRenderer()
+	content := "> [!abstract] Summary\n> This is the abstract"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Abstract") {
+		t.Errorf("Abstract callout should show label, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "Summary") {
+		t.Errorf("Abstract callout should show title, got:\n%s", plain)
+	}
+}
+
+func TestRenderCalloutImportant(t *testing.T) {
+	r := newTestRenderer()
+	content := "> [!important] Read this\n> Critical information"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Important") {
+		t.Errorf("Important callout should show label, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "★") {
+		t.Errorf("Important callout should show star icon, got:\n%s", plain)
+	}
+}
+
+func TestRenderCalloutFailure(t *testing.T) {
+	r := newTestRenderer()
+	content := "> [!failure] Test failed\n> Assertion error"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Failure") {
+		t.Errorf("Failure callout should show label, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "✘") {
+		t.Errorf("Failure callout should show ✘ icon, got:\n%s", plain)
+	}
+}
+
+func TestRenderCalloutMissing(t *testing.T) {
+	r := newTestRenderer()
+	content := "> [!missing] Data not found\n> File was deleted"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Missing") {
+		t.Errorf("Missing callout should show label, got:\n%s", plain)
+	}
+}
+
+func TestRenderCalloutAttention(t *testing.T) {
+	r := newTestRenderer()
+	content := "> [!attention] Watch out\n> Be careful here"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Attention") {
+		t.Errorf("Attention callout should show label, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "◆") {
+		t.Errorf("Attention callout should show diamond icon, got:\n%s", plain)
+	}
+}
+
+func TestRenderCalloutHasBorders(t *testing.T) {
+	r := newTestRenderer()
+	content := "> [!note] A note\n> Some content"
+	lines := renderedLines(r, content)
+	plainLines := make([]string, len(lines))
+	for i, l := range lines {
+		plainLines[i] = stripAnsiCodes(l)
+	}
+	// Should have top and bottom borders (─ characters beyond header)
+	borderCount := 0
+	for _, pl := range plainLines {
+		if strings.Contains(pl, "┃─") || strings.Contains(pl, "┃─") {
+			borderCount++
+		}
+	}
+	if borderCount < 2 {
+		t.Errorf("Callout should have top and bottom borders, found %d border lines in:\n%s",
+			borderCount, strings.Join(plainLines, "\n"))
+	}
+}
+
+func TestRenderCalloutAllNewTypes(t *testing.T) {
+	types := map[string]string{
+		"important": "Important",
+		"attention": "Attention",
+		"failure":   "Failure",
+		"fail":      "Failure",
+		"missing":   "Missing",
+	}
+	r := newTestRenderer()
+	for calloutType, expectedLabel := range types {
+		content := "> [!" + calloutType + "] Title"
+		out := rendered(r, content)
+		plain := stripAnsiCodes(out)
+		if !strings.Contains(plain, expectedLabel) {
+			t.Errorf("Callout [!%s] should produce label %q, got:\n%s", calloutType, expectedLabel, plain)
+		}
+	}
+}
+
+func TestRenderCalloutDistinctColors(t *testing.T) {
+	r := newTestRenderer()
+	// Bug and danger should look different (different icons at minimum)
+	bugOut := rendered(r, "> [!bug] Bug")
+	dangerOut := rendered(r, "> [!danger] Danger")
+	if bugOut == dangerOut {
+		t.Errorf("Bug and danger callouts should look different")
+	}
+}
