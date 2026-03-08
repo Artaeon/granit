@@ -643,6 +643,16 @@ func (s *Settings) applyEdit() {
 	}
 }
 
+// themePreview renders a small color swatch for a theme name.
+func themePreview(themeName string) string {
+	t := GetTheme(themeName)
+	swatch := func(c lipgloss.Color) string {
+		return lipgloss.NewStyle().Background(c).Render("  ")
+	}
+	return swatch(t.Primary) + swatch(t.Secondary) + swatch(t.Accent) +
+		swatch(t.Success) + swatch(t.Error) + swatch(t.Base)
+}
+
 func (s Settings) View() string {
 	width := s.width * 2 / 3
 	if width < 50 {
@@ -789,6 +799,15 @@ func (s Settings) View() string {
 				Bold(true).
 				Width(width - 6).
 				Render(line))
+
+			// Theme preview — show color swatches when the selected item is the theme setting
+			if item.key == "theme" {
+				if themeName, ok := item.value.(string); ok {
+					b.WriteString("\n")
+					preview := "    " + themePreview(themeName) + DimStyle.Render("  "+themeName)
+					b.WriteString(preview)
+				}
+			}
 		} else {
 			b.WriteString(NormalItemStyle.Render(line))
 		}
