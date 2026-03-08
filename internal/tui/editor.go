@@ -72,6 +72,10 @@ type Editor struct {
 	selectionActive bool
 	selectionStart  CursorPos // where selection began
 	selectionEnd    CursorPos // current cursor position (selection extends to here)
+
+	// Vim search highlights
+	searchMatches      []SearchMatch
+	currentSearchMatch int
 }
 
 // SetWordWrap enables or disables word wrapping in the editor.
@@ -188,6 +192,18 @@ func (e *Editor) SetScroll(offset int) {
 		offset = 0
 	}
 	e.scroll = offset
+}
+
+// SetSearchHighlights sets the search match positions for rendering.
+func (e *Editor) SetSearchHighlights(matches []SearchMatch, currentIdx int) {
+	e.searchMatches = matches
+	e.currentSearchMatch = currentIdx
+}
+
+// ClearSearchHighlights removes all search highlights.
+func (e *Editor) ClearSearchHighlights() {
+	e.searchMatches = nil
+	e.currentSearchMatch = -1
 }
 
 func (e *Editor) SetContent(content string) {
@@ -1624,6 +1640,80 @@ func (e *Editor) renderLineWithSelectionHighlight(displayLine string, lineIdx, f
 	return result.String()
 }
 
+// searchMatchesOnLine returns the search matches that fall on the given line,
+// adjusted for horizontal scroll offset.
+func (e *Editor) searchMatchesOnLine(lineIdx, colOffset int) []SearchMatch {
+	var matches []SearchMatch
+	for _, m := range e.searchMatches {
+		if m.Line == lineIdx {
+			adj := SearchMatch{
+				Line:     m.Line,
+				StartCol: m.StartCol - colOffset,
+				EndCol:   m.EndCol - colOffset,
+			}
+			if adj.EndCol <= 0 {
+				continue
+			}
+			if adj.StartCol < 0 {
+				adj.StartCol = 0
+			}
+			matches = append(matches, adj)
+		}
+	}
+	return matches
+}
+
+// renderWithSearchHighlights renders a line with search match highlighting applied.
+func (e *Editor) renderWithSearchHighlights(line string, lineIdx, fmStart, fmEnd int, codeBlocks map[int]string, colOffset int) string {
+	matches := e.searchMatchesOnLine(lineIdx, colOffset)
+	if len(matches) == 0 {
+		return highlightLine(line, lineIdx, fmStart, fmEnd, codeBlocks)
+	}
+
+	searchStyle := lipgloss.NewStyle().Background(yellow).Foreground(base).Bold(true)
+	currentStyle := lipgloss.NewStyle().Background(peach).Foreground(base).Bold(true)
+
+	var result strings.Builder
+	prevCol := 0
+	for _, m := range matches {
+		sc := m.StartCol
+		ec := m.EndCol
+		if sc >= len(line) {
+			continue
+		}
+		if ec > len(line) {
+			ec = len(line)
+		}
+		if sc < prevCol {
+			sc = prevCol
+		}
+		if sc >= ec {
+			continue
+		}
+		if sc > prevCol {
+			result.WriteString(highlightLine(line[prevCol:sc], lineIdx, fmStart, fmEnd, codeBlocks))
+		}
+		matchText := line[sc:ec]
+		isCurrentMatch := false
+		for mi, sm := range e.searchMatches {
+			if sm.Line == lineIdx && sm.StartCol-colOffset == sc && mi == e.currentSearchMatch {
+				isCurrentMatch = true
+				break
+			}
+		}
+		if isCurrentMatch {
+			result.WriteString(currentStyle.Render(matchText))
+		} else {
+			result.WriteString(searchStyle.Render(matchText))
+		}
+		prevCol = ec
+	}
+	if prevCol < len(line) {
+		result.WriteString(highlightLine(line[prevCol:], lineIdx, fmStart, fmEnd, codeBlocks))
+	}
+	return result.String()
+}
+
 func (e Editor) View() string {
 	var b strings.Builder
 	contentWidth := e.width - 4
@@ -1934,6 +2024,9 @@ func (e Editor) View() string {
 				if inSel {
 					styledBefore = e.renderLineWithSelectionHighlight(before, i, fmStart, fmEnd, codeBlockLines, selSC, selEC, colOffset, lipgloss.NewStyle().Background(surface1).Foreground(text))
 					styledAfter = e.renderLineWithSelectionHighlight(after, i, fmStart, fmEnd, codeBlockLines, selSC, selEC, colOffset+adjCol+1, lipgloss.NewStyle().Background(surface1).Foreground(text))
+				} else if len(e.searchMatches) > 0 {
+					styledBefore = e.renderWithSearchHighlights(before, i, fmStart, fmEnd, codeBlockLines, colOffset)
+					styledAfter = e.renderWithSearchHighlights(after, i, fmStart, fmEnd, codeBlockLines, colOffset+adjCol+1)
 				} else {
 					styledBefore = e.highlightLineWithBrackets(before, i, colOffset, fmStart, fmEnd, codeBlockLines, bracketStyle)
 					styledAfter = e.highlightLineWithBrackets(after, i, colOffset+adjCol+1, fmStart, fmEnd, codeBlockLines, bracketStyle)
@@ -1944,7 +2037,13 @@ func (e Editor) View() string {
 				}
 				b.WriteString(lineContent)
 			} else {
-				lineContent := highlightLine(displayLine, i, fmStart, fmEnd, codeBlockLines) + CursorStyle.Render(" ") + ghostSuffix
+				var styledLine string
+				if len(e.searchMatches) > 0 {
+					styledLine = e.renderWithSearchHighlights(displayLine, i, fmStart, fmEnd, codeBlockLines, colOffset)
+				} else {
+					styledLine = highlightLine(displayLine, i, fmStart, fmEnd, codeBlockLines)
+				}
+				lineContent := styledLine + CursorStyle.Render(" ") + ghostSuffix
 				if e.highlightCurrentLine {
 					lineContent = lipgloss.NewStyle().Background(surface0).Width(maxWidth).Render(lineContent)
 				}
@@ -1961,7 +2060,9 @@ func (e Editor) View() string {
 		} else if inSel {
 			b.WriteString(e.renderLineWithSelectionHighlight(displayLine, i, fmStart, fmEnd, codeBlockLines, selSC, selEC, colOffset, lipgloss.NewStyle().Background(surface1).Foreground(text)))
 		} else {
-			if e.matchBracketValid && i == e.matchBracketLine {
+			if len(e.searchMatches) > 0 {
+				b.WriteString(e.renderWithSearchHighlights(displayLine, i, fmStart, fmEnd, codeBlockLines, 0))
+			} else if e.matchBracketValid && i == e.matchBracketLine {
 				b.WriteString(e.highlightLineWithBrackets(displayLine, i, 0, fmStart, fmEnd, codeBlockLines, bracketStyle))
 			} else {
 				b.WriteString(highlightLine(displayLine, i, fmStart, fmEnd, codeBlockLines))

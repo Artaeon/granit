@@ -4682,6 +4682,12 @@ func (m *Model) loadNoteWithoutBreadcrumb(relPath string) {
 }
 
 func (m *Model) applyVimResult(r VimResult) tea.Cmd {
+	// Handle text object operations (inline edit within/across lines)
+	if r.TextOp != "" {
+		m.editor.saveSnapshot()
+		m.applyTextOp(r.TextOp, r.TextOpStartLine, r.TextOpStartCol, r.TextOpEndLine, r.TextOpEndCol)
+	}
+
 	if r.CursorSet {
 		m.editor.cursor = r.NewCursor
 		m.editor.col = r.NewCol
@@ -4831,7 +4837,72 @@ func (m *Model) applyVimResult(r VimResult) tea.Cmd {
 		}
 	}
 
+	// Text object operations (inline region delete/change/yank)
+	if r.TextOp != "" {
+		m.editor.saveSnapshot()
+		m.applyTextOp(r.TextOp, r.TextOpStartLine, r.TextOpStartCol, r.TextOpEndLine, r.TextOpEndCol)
+	}
+
+	// Sync search highlights from vim state to editor for rendering
+	if m.vimState != nil {
+		if m.vimState.IsSearchActive() {
+			m.editor.SetSearchHighlights(m.vimState.GetSearchMatches(), m.vimState.GetCurrentMatchIndex())
+		} else {
+			m.editor.ClearSearchHighlights()
+		}
+	}
+
 	return nil
+}
+
+// applyTextOp performs an inline text operation (delete/change region within the editor).
+// endCol is exclusive.
+func (m *Model) applyTextOp(op string, startLine, startCol, endLine, endCol int) {
+	if startLine >= len(m.editor.content) || endLine >= len(m.editor.content) {
+		return
+	}
+	if startLine == endLine {
+		// Single-line operation
+		runes := []rune(m.editor.content[startLine])
+		sc := startCol
+		ec := endCol
+		if sc > len(runes) {
+			sc = len(runes)
+		}
+		if ec > len(runes) {
+			ec = len(runes)
+		}
+		if sc > ec {
+			return
+		}
+		m.editor.content[startLine] = string(runes[:sc]) + string(runes[ec:])
+	} else {
+		// Multi-line operation
+		startRunes := []rune(m.editor.content[startLine])
+		endRunes := []rune(m.editor.content[endLine])
+
+		sc := startCol
+		if sc > len(startRunes) {
+			sc = len(startRunes)
+		}
+		ec := endCol
+		if ec > len(endRunes) {
+			ec = len(endRunes)
+		}
+
+		// Combine: keep before startCol on startLine + after endCol on endLine
+		newLine := string(startRunes[:sc]) + string(endRunes[ec:])
+
+		// Remove lines from startLine to endLine and replace with newLine
+		newContent := make([]string, 0, len(m.editor.content)-(endLine-startLine))
+		newContent = append(newContent, m.editor.content[:startLine]...)
+		newContent = append(newContent, newLine)
+		newContent = append(newContent, m.editor.content[endLine+1:]...)
+		m.editor.content = newContent
+	}
+
+	m.editor.modified = true
+	m.editor.countWords()
 }
 
 func (m *Model) getAIModel() string {
