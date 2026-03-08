@@ -4271,9 +4271,11 @@ func (m Model) View() string {
 	// Calculate widths based on layout
 	showSidebar := LayoutHasSidebar(layout)
 	showBacklinks := LayoutHasBacklinks(layout)
+	showOutline := LayoutHasOutline(layout)
 
 	sidebarWidth := 0
 	backlinksWidth := 0
+	outlineWidth := 0
 
 	if showSidebar {
 		sidebarWidth = m.width / 5
@@ -4293,6 +4295,15 @@ func (m Model) View() string {
 			backlinksWidth = 30
 		}
 	}
+	if showOutline {
+		outlineWidth = m.width / 7
+		if outlineWidth < 18 {
+			outlineWidth = 18
+		}
+		if outlineWidth > 25 {
+			outlineWidth = 25
+		}
+	}
 
 	panelBorders := 0
 	if showSidebar {
@@ -4301,7 +4312,10 @@ func (m Model) View() string {
 	if showBacklinks {
 		panelBorders += 2
 	}
-	editorWidth := m.width - sidebarWidth - backlinksWidth - panelBorders - 2
+	if showOutline {
+		panelBorders += 2
+	}
+	editorWidth := m.width - sidebarWidth - backlinksWidth - outlineWidth - panelBorders - 2
 	if editorWidth < 30 {
 		editorWidth = 30
 	}
@@ -4409,6 +4423,32 @@ func (m Model) View() string {
 				PaddingLeft(leftPad).
 				Height(contentHeight + 2).
 				Render(zenEditor)
+		case "dashboard": // 4-panel: sidebar | editor | outline | backlinks
+			sidebar := SidebarStyle.Copy().
+				BorderForeground(sidebarBorderColor).
+				Width(sidebarWidth).
+				Height(contentHeight).
+				Render(m.sidebar.View())
+
+			outlinePanelContent := m.outline.RenderPanel(m.editor.GetContent(), outlineWidth, contentHeight)
+			outlinePanel := lipgloss.NewStyle().
+				BorderStyle(PanelBorder).
+				BorderForeground(surface1).
+				Width(outlineWidth).
+				Height(contentHeight).
+				Render(outlinePanelContent)
+
+			backlinks := BacklinksStyle.Copy().
+				BorderForeground(backlinksBorderColor).
+				Width(backlinksWidth).
+				Height(contentHeight).
+				Render(m.backlinks.View())
+
+			if m.config.SidebarPosition == "right" {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, backlinks, outlinePanel, editor, sidebar)
+			} else {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor, outlinePanel, backlinks)
+			}
 		default: // "default" - 3-panel
 			sidebar := SidebarStyle.Copy().
 				BorderForeground(sidebarBorderColor).
