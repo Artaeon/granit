@@ -1228,16 +1228,19 @@ func (r Renderer) renderInline(input string) string {
 					break
 				}
 			}
-			if end != -1 {
-				code := string(runes[i+1 : end])
-				styled := lipgloss.NewStyle().
-					Foreground(green).
-					Background(surface0).
-					Render(" " + code + " ")
-				result.WriteString(styled)
-				i = end + 1
+			if end == -1 {
+				result.WriteRune('`')
+				i++
 				continue
 			}
+			code := string(runes[i+1 : end])
+			styled := lipgloss.NewStyle().
+				Foreground(green).
+				Background(surface0).
+				Render(" " + code + " ")
+			result.WriteString(styled)
+			i = end + 1
+			continue
 		}
 
 		// Bold **...**
@@ -1249,16 +1252,19 @@ func (r Renderer) renderInline(input string) string {
 					break
 				}
 			}
-			if end != -1 {
-				bold := string(runes[i+2 : end-1])
-				styled := lipgloss.NewStyle().
-					Foreground(text).
-					Bold(true).
-					Render(bold)
-				result.WriteString(styled)
-				i = end + 1
+			if end == -1 {
+				result.WriteRune('*')
+				i++
 				continue
 			}
+			bold := string(runes[i+2 : end-1])
+			styled := lipgloss.NewStyle().
+				Foreground(text).
+				Bold(true).
+				Render(bold)
+			result.WriteString(styled)
+			i = end + 1
+			continue
 		}
 
 		// Strikethrough ~~...~~
@@ -1270,16 +1276,19 @@ func (r Renderer) renderInline(input string) string {
 					break
 				}
 			}
-			if end != -1 {
-				struck := string(runes[i+2 : end-1])
-				styled := lipgloss.NewStyle().
-					Foreground(overlay0).
-					Strikethrough(true).
-					Render(struck)
-				result.WriteString(styled)
-				i = end + 1
+			if end == -1 {
+				result.WriteRune('~')
+				i++
 				continue
 			}
+			struck := string(runes[i+2 : end-1])
+			styled := lipgloss.NewStyle().
+				Foreground(overlay0).
+				Strikethrough(true).
+				Render(struck)
+			result.WriteString(styled)
+			i = end + 1
+			continue
 		}
 
 		// Highlight ==...==
@@ -1291,17 +1300,20 @@ func (r Renderer) renderInline(input string) string {
 					break
 				}
 			}
-			if end != -1 {
-				highlighted := string(runes[i+2 : end-1])
-				styled := lipgloss.NewStyle().
-					Foreground(crust).
-					Background(yellow).
-					Bold(true).
-					Render(highlighted)
-				result.WriteString(styled)
-				i = end + 1
+			if end == -1 {
+				result.WriteRune('=')
+				i++
 				continue
 			}
+			highlighted := string(runes[i+2 : end-1])
+			styled := lipgloss.NewStyle().
+				Foreground(crust).
+				Background(yellow).
+				Bold(true).
+				Render(highlighted)
+			result.WriteString(styled)
+			i = end + 1
+			continue
 		}
 
 		// Inline math $...$
@@ -1313,16 +1325,19 @@ func (r Renderer) renderInline(input string) string {
 					break
 				}
 			}
-			if end != -1 && end > i+1 {
-				math := string(runes[i+1 : end])
-				styled := lipgloss.NewStyle().
-					Foreground(teal).
-					Italic(true).
-					Render("$" + math + "$")
-				result.WriteString(styled)
-				i = end + 1
+			if end == -1 || end <= i+1 {
+				result.WriteRune('$')
+				i++
 				continue
 			}
+			math := string(runes[i+1 : end])
+			styled := lipgloss.NewStyle().
+				Foreground(teal).
+				Italic(true).
+				Render("$" + math + "$")
+			result.WriteString(styled)
+			i = end + 1
+			continue
 		}
 
 		// Footnote references [^n]
@@ -1355,16 +1370,19 @@ func (r Renderer) renderInline(input string) string {
 					break
 				}
 			}
-			if end != -1 && end > i+1 {
-				italic := string(runes[i+1 : end])
-				styled := lipgloss.NewStyle().
-					Foreground(subtext1).
-					Italic(true).
-					Render(italic)
-				result.WriteString(styled)
-				i = end + 1
+			if end == -1 || end <= i+1 {
+				result.WriteRune('*')
+				i++
 				continue
 			}
+			italic := string(runes[i+1 : end])
+			styled := lipgloss.NewStyle().
+				Foreground(subtext1).
+				Italic(true).
+				Render(italic)
+			result.WriteString(styled)
+			i = end + 1
+			continue
 		}
 
 		// Tags #tag
