@@ -523,6 +523,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusbar.SetMessage("")
 		return m, nil
 
+	case vimMacroReplayMsg:
+		if msg.idx >= len(msg.keys) {
+			if m.vimState != nil {
+				m.vimState.SetPlayingMacro(false)
+			}
+			return m, nil
+		}
+		key := msg.keys[msg.idx]
+		nextMsg := vimMacroReplayMsg{keys: msg.keys, idx: msg.idx + 1}
+		updatedModel, cmd := m.Update(key)
+		resultModel := updatedModel.(Model)
+		nextCmd := func() tea.Msg { return nextMsg }
+		if cmd != nil {
+			return resultModel, tea.Batch(cmd, nextCmd)
+		}
+		return resultModel, nextCmd
+
 	case toastExpireMsg:
 		if m.toast != nil {
 			m.toast.HandleExpire()
