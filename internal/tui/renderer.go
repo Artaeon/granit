@@ -459,9 +459,34 @@ func (r Renderer) renderTable(rows []string, contentWidth int) []string {
 		sb.WriteString(borderStyle.Render("│"))
 		out = append(out, sb.String())
 
-		// After header row, draw a thick separator: ├═┼═┤
+		// After header row, draw a thick separator with alignment indicators
 		if ri == 0 && sepIdx >= 0 {
-			out = append(out, buildBorder("├", "┼", "┤", "═"))
+			var sepSB strings.Builder
+			sepSB.WriteString("  ")
+			sepSB.WriteString("├")
+			for ci := 0; ci < numCols; ci++ {
+				w := colWidths[ci] + 2
+				switch alignments[ci] {
+				case 'c':
+					// Center: :═══:
+					sepSB.WriteString(":")
+					sepSB.WriteString(strings.Repeat("═", w-2))
+					sepSB.WriteString(":")
+				case 'r':
+					// Right: ════:
+					sepSB.WriteString(strings.Repeat("═", w-1))
+					sepSB.WriteString(":")
+				default:
+					// Left: :════ (or just ═════)
+					sepSB.WriteString(":")
+					sepSB.WriteString(strings.Repeat("═", w-1))
+				}
+				if ci < numCols-1 {
+					sepSB.WriteString("┼")
+				}
+			}
+			sepSB.WriteString("┤")
+			out = append(out, borderStyle.Render(sepSB.String()))
 		}
 	}
 
