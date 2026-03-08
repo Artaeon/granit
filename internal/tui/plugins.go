@@ -678,7 +678,39 @@ func executePluginScript(pluginDir, script, notePath, noteContent, vaultPath str
 		scriptPath = filepath.Join(pluginDir, scriptPath)
 	}
 
-	cmd := exec.CommandContext(ctx, scriptPath)
+	// Validate that the script path does not escape the plugin directory
+	absPlugin, err := filepath.Abs(pluginDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve plugin dir: %w", err)
+	}
+	absScript, err := filepath.Abs(scriptPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve script path: %w", err)
+	}
+	if !strings.HasPrefix(absScript, absPlugin+string(filepath.Separator)) {
+		return "", fmt.Errorf("script path %q escapes plugin directory %q", script, pluginDir)
+	}
+
+	// Verify the script exists and is a regular file (not a symlink to outside)
+	info, err := os.Lstat(absScript)
+	if err != nil {
+		return "", fmt.Errorf("stat script: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		// Resolve the symlink target and re-check it is within the plugin dir
+		resolved, err := filepath.EvalSymlinks(absScript)
+		if err != nil {
+			return "", fmt.Errorf("resolve symlink: %w", err)
+		}
+		if !strings.HasPrefix(resolved, absPlugin+string(filepath.Separator)) {
+			return "", fmt.Errorf("script symlink %q points outside plugin directory", script)
+		}
+	}
+	if !info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
+		return "", fmt.Errorf("script %q is not a regular file", script)
+	}
+
+	cmd := exec.CommandContext(ctx, absScript)
 	cmd.Dir = pluginDir
 
 	// Environment variables
