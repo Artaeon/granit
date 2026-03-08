@@ -209,9 +209,9 @@ Built-in git overlay with three views:
 - **Canvas / Whiteboard** — visual note arrangement with connections and colors
 - **Split panes** — view two notes side by side
 
-### 28+ Themes, Custom Themes & 4 Icon Sets
+### 35+ Themes, Custom Themes & 4 Icon Sets
 
-Instantly switch between **22 dark** and **6 light** built-in themes from settings. Create your own with the **Theme Editor** — live-edit all 16 color roles with hex values, preview changes instantly, and save/export custom themes as JSON. Choose from **Unicode**, **Nerd Font**, **Emoji**, or **ASCII** icon sets.
+Instantly switch between **29 dark** and **6 light** built-in themes from settings. Create your own with the **Theme Editor** — live-edit all 16 color roles with hex values, preview changes instantly, and save/export custom themes as JSON. Choose from **Unicode**, **Nerd Font**, **Emoji**, or **ASCII** icon sets.
 
 ### 5 Panel Layouts
 
@@ -599,7 +599,7 @@ granit/
       sidebar.go            File tree sidebar
       statusbar.go          Status bar with AI, pomodoro, and task indicators
       styles.go             Global style definitions
-      themes.go             28 built-in color themes
+      themes.go             35 built-in color themes
       customtheme.go        Custom theme JSON loading/saving
       themeeditor.go        Live theme editor overlay
       layouts.go            5 panel layout definitions
