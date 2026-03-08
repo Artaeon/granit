@@ -282,6 +282,195 @@ func (r Renderer) renderMathBlock(mathLines []string, contentWidth int) []string
 	return out
 }
 
+// parseTableCells splits a markdown table row into cells (trimming outer pipes).
+func parseTableCells(row string) []string {
+	row = strings.TrimSpace(row)
+	if strings.HasPrefix(row, "|") {
+		row = row[1:]
+	}
+	if strings.HasSuffix(row, "|") {
+		row = row[:len(row)-1]
+	}
+	parts := strings.Split(row, "|")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+// isSeparatorRow returns true if the row is a markdown table separator (e.g. |---|:---:|---:|).
+func isSeparatorRow(cells []string) bool {
+	for _, c := range cells {
+		c = strings.TrimSpace(c)
+		c = strings.TrimLeft(c, ":")
+		c = strings.TrimRight(c, ":")
+		if len(c) == 0 || strings.Trim(c, "-") != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// tableAlignment returns 'l', 'c', or 'r' based on separator cell content.
+func tableAlignment(cell string) byte {
+	cell = strings.TrimSpace(cell)
+	leftColon := strings.HasPrefix(cell, ":")
+	rightColon := strings.HasSuffix(cell, ":")
+	if leftColon && rightColon {
+		return 'c'
+	}
+	if rightColon {
+		return 'r'
+	}
+	return 'l'
+}
+
+// renderTable renders collected markdown table rows with box-drawing borders.
+func (r Renderer) renderTable(rows []string, contentWidth int) []string {
+	var out []string
+
+	if len(rows) == 0 {
+		return out
+	}
+
+	// Parse all rows into cells
+	var allCells [][]string
+	sepIdx := -1
+	var alignments []byte
+
+	for ri, row := range rows {
+		cells := parseTableCells(row)
+		if sepIdx < 0 && isSeparatorRow(cells) {
+			sepIdx = ri
+			// Extract alignments from separator
+			for _, c := range cells {
+				alignments = append(alignments, tableAlignment(c))
+			}
+			continue
+		}
+		allCells = append(allCells, cells)
+	}
+
+	if len(allCells) == 0 {
+		return out
+	}
+
+	// Determine number of columns
+	numCols := 0
+	for _, cells := range allCells {
+		if len(cells) > numCols {
+			numCols = len(cells)
+		}
+	}
+	if numCols == 0 {
+		return out
+	}
+
+	// Pad alignments to match column count
+	for len(alignments) < numCols {
+		alignments = append(alignments, 'l')
+	}
+
+	// Calculate column widths (max content width per column)
+	colWidths := make([]int, numCols)
+	for _, cells := range allCells {
+		for ci := 0; ci < numCols; ci++ {
+			if ci < len(cells) {
+				w := len([]rune(cells[ci]))
+				if w > colWidths[ci] {
+					colWidths[ci] = w
+				}
+			}
+		}
+	}
+	// Ensure minimum column width
+	for ci := range colWidths {
+		if colWidths[ci] < 3 {
+			colWidths[ci] = 3
+		}
+	}
+
+	borderStyle := lipgloss.NewStyle().Foreground(surface1)
+	headerStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+	cellStyle := lipgloss.NewStyle().Foreground(text)
+	altCellStyle := lipgloss.NewStyle().Foreground(text).Background(surface0)
+
+	// Helper: align text in a cell
+	alignCell := func(content string, width int, align byte) string {
+		runes := []rune(content)
+		contentLen := len(runes)
+		if contentLen >= width {
+			return string(runes[:width])
+		}
+		pad := width - contentLen
+		switch align {
+		case 'c':
+			left := pad / 2
+			right := pad - left
+			return strings.Repeat(" ", left) + content + strings.Repeat(" ", right)
+		case 'r':
+			return strings.Repeat(" ", pad) + content
+		default:
+			return content + strings.Repeat(" ", pad)
+		}
+	}
+
+	// Build horizontal border lines
+	buildBorder := func(left, mid, right, fill string) string {
+		var sb strings.Builder
+		sb.WriteString("  ")
+		sb.WriteString(left)
+		for ci := 0; ci < numCols; ci++ {
+			sb.WriteString(strings.Repeat(fill, colWidths[ci]+2))
+			if ci < numCols-1 {
+				sb.WriteString(mid)
+			}
+		}
+		sb.WriteString(right)
+		return borderStyle.Render(sb.String())
+	}
+
+	// Top border: ┌─┬─┐
+	out = append(out, buildBorder("┌", "┬", "┐", "─"))
+
+	for ri, cells := range allCells {
+		// Pad cells to numCols
+		for len(cells) < numCols {
+			cells = append(cells, "")
+		}
+
+		var sb strings.Builder
+		sb.WriteString("  ")
+		sb.WriteString(borderStyle.Render("│"))
+		for ci := 0; ci < numCols; ci++ {
+			content := alignCell(cells[ci], colWidths[ci], alignments[ci])
+			if ri == 0 && sepIdx >= 0 {
+				// Header row
+				sb.WriteString(" " + headerStyle.Render(content) + " ")
+			} else if ri%2 == 0 {
+				sb.WriteString(" " + altCellStyle.Render(content) + " ")
+			} else {
+				sb.WriteString(" " + cellStyle.Render(content) + " ")
+			}
+			if ci < numCols-1 {
+				sb.WriteString(borderStyle.Render("│"))
+			}
+		}
+		sb.WriteString(borderStyle.Render("│"))
+		out = append(out, sb.String())
+
+		// After header row, draw a thick separator: ├═┼═┤
+		if ri == 0 && sepIdx >= 0 {
+			out = append(out, buildBorder("├", "┼", "┤", "═"))
+		}
+	}
+
+	// Bottom border: └─┴─┘
+	out = append(out, buildBorder("└", "┴", "┘", "─"))
+
+	return out
+}
+
 // renderEmbed renders the embedded note preview box.
 func (r Renderer) renderEmbed(noteName string, heading string, contentWidth int) []string {
 	var out []string
@@ -842,24 +1031,21 @@ func (r Renderer) renderMarkdown(content string) []string {
 			continue
 		}
 
-		// Table detection (basic)
+		// Table detection — collect all consecutive table rows and render as a box table
 		if strings.Contains(trimmed, "|") && strings.Count(trimmed, "|") >= 2 {
-			// Simple: just style the pipe separators
-			tableLine := "  "
-			parts := strings.Split(trimmed, "|")
-			for pi, part := range parts {
-				part = strings.TrimSpace(part)
-				if strings.Repeat("-", len(part)) == part && len(part) > 0 {
-					// Separator row
-					tableLine += lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", len(part)+2))
+			var tableRows []string
+			tableRows = append(tableRows, trimmed)
+			for i+1 < len(lines) {
+				nextTrimmed := strings.TrimSpace(lines[i+1])
+				if strings.Contains(nextTrimmed, "|") && strings.Count(nextTrimmed, "|") >= 2 {
+					tableRows = append(tableRows, nextTrimmed)
+					i++
 				} else {
-					tableLine += lipgloss.NewStyle().Foreground(text).Render(" " + part + " ")
-				}
-				if pi < len(parts)-1 {
-					tableLine += lipgloss.NewStyle().Foreground(surface1).Render("│")
+					break
 				}
 			}
-			result = append(result, tableLine)
+			rendered := r.renderTable(tableRows, contentWidth)
+			result = append(result, rendered...)
 			continue
 		}
 
