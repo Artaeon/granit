@@ -549,6 +549,67 @@
       font-size: 0.9rem;
     }
 
+    /* ─── Keyboard Shortcuts ─── */
+    .shortcuts {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+    }
+
+    .shortcuts-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .shortcut-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.85rem 1.25rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      transition: border-color 0.2s ease, transform 0.15s ease;
+    }
+
+    .shortcut-item:hover {
+      border-color: var(--accent);
+      transform: translateX(4px);
+    }
+
+    .shortcut-label {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+
+    .shortcut-keys {
+      display: flex;
+      gap: 0.3rem;
+      align-items: center;
+    }
+
+    kbd {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.3rem 0.6rem;
+      background: var(--bg-overlay);
+      border: 1px solid var(--border);
+      border-bottom: 3px solid var(--border);
+      border-radius: 6px;
+      color: var(--accent);
+      white-space: nowrap;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+
+    .key-plus {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+    }
+
     /* ─── Theme Showcase ─── */
     .theme-showcase {
       max-width: 1100px;
@@ -817,6 +878,10 @@
         direction: ltr;
       }
 
+      .shortcuts-grid {
+        grid-template-columns: 1fr;
+      }
+
       nav .nav-links {
         display: none;
       }
@@ -826,6 +891,7 @@
       section,
       .comparison,
       .showcase,
+      .shortcuts,
       .theme-showcase {
         padding: 3.5rem 1.25rem;
       }
@@ -928,6 +994,7 @@
       <li><a href="#features">Features</a></li>
       <li><a href="#showcase">Showcase</a></li>
       <li><a href="#comparison">Compare</a></li>
+      <li><a href="#shortcuts">Keys</a></li>
       <li><a href="#demo">Demo</a></li>
       <li><a href="#installation">Installation</a></li>
       <li><a href="#documentation">Docs</a></li>
@@ -1176,6 +1243,62 @@
           </tr>
         </tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- Keyboard-First Design -->
+  <section class="shortcuts" id="shortcuts">
+    <h2 class="section-title"><span class="accent">//</span> Keyboard First</h2>
+    <p class="section-subtitle">Everything is one shortcut away. No mouse required.</p>
+    <div class="shortcuts-grid">
+      <div class="shortcut-item">
+        <span class="shortcut-label">Command Palette</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>X</kbd></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">Quick Switcher</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>J</kbd></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">New Note</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>N</kbd></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">Find &amp; Replace</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>F</kbd></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">AI Bots</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>R</kbd></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">Task Manager</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>K</kbd></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">Focus / Zen Mode</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>Z</kbd></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">Calendar</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>L</kbd></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">Settings</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>,</kbd></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">Note Graph</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>G</kbd></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">Tag Browser</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>T</kbd></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">Bookmarks</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>B</kbd></div>
+      </div>
     </div>
   </section>
 
