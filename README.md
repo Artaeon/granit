@@ -75,11 +75,40 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 </tr>
 <tr>
 <td align="center"><strong>3-Panel Editor Layout</strong></td>
-<td align="center"><strong>Sidebar + Backlinks</strong></td>
+<td align="center"><strong>Launch Animation</strong></td>
 </tr>
 <tr>
 <td><img src="assets/screenshot-editor.png" alt="Editor layout" width="400"></td>
 <td><img src="assets/splash.gif" alt="Launch animation" width="400"></td>
+</tr>
+</table>
+
+### Feature Showcase
+
+<table>
+<tr>
+<td align="center"><strong>Task Manager (Kanban + Calendar)</strong></td>
+<td align="center"><strong>AI Bots (9 Assistants)</strong></td>
+</tr>
+<tr>
+<td><img src="assets/screenshot-taskmanager.svg" alt="Task Manager" width="400"></td>
+<td><img src="assets/screenshot-ai-bots.svg" alt="AI Bots" width="400"></td>
+</tr>
+<tr>
+<td align="center"><strong>Vim Mode (Full Modal Editing)</strong></td>
+<td align="center"><strong>35 Built-in Themes</strong></td>
+</tr>
+<tr>
+<td><img src="assets/screenshot-vim.svg" alt="Vim Mode" width="400"></td>
+<td><img src="assets/screenshot-themes.svg" alt="Themes" width="400"></td>
+</tr>
+<tr>
+<td align="center"><strong>Calendar (Month/Week/Year/Agenda)</strong></td>
+<td align="center"><strong>Command Palette (70+ Commands)</strong></td>
+</tr>
+<tr>
+<td><img src="assets/screenshot-calendar.svg" alt="Calendar View" width="400"></td>
+<td><img src="assets/screenshot-command-palette.svg" alt="Command Palette" width="400"></td>
 </tr>
 </table>
 
