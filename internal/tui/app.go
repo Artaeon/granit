@@ -2488,12 +2488,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Vim mode handling
 				if m.vimState != nil && m.vimState.IsEnabled() {
 					result := m.vimState.HandleKey(k, m.editor.content, m.editor.cursor, m.editor.col, m.editor.height)
+					// Record keystroke for macro (skip keys that start/stop recording)
+					if m.vimState.IsRecording() && !result.MacroStop && result.MacroStart == 0 {
+						if keyMsg, ok := msg.(tea.KeyMsg); ok {
+							m.vimState.RecordKey(keyMsg)
+						}
+					}
 					cmd = m.applyVimResult(result)
 					if !result.PassThrough {
 						line, col := m.editor.GetCursor()
 						m.statusbar.SetCursor(line, col)
 						if m.vimState.IsEnabled() {
-							m.statusbar.SetMode("VIM:" + m.vimState.ModeString())
+							mode := "VIM:" + m.vimState.ModeString()
+							if rs := m.vimState.RecordingStatus(); rs != "" {
+								mode += " [" + rs + "]"
+							}
+							m.statusbar.SetMode(mode)
 						}
 						return m, cmd
 					}
@@ -3063,6 +3073,41 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
+	case CmdMacroRecord:
+		if m.vimState != nil && m.vimState.IsEnabled() {
+			if m.vimState.IsRecording() {
+				m.vimState.StopRecording()
+				m.statusbar.SetMode("VIM:" + m.vimState.ModeString())
+				m.statusbar.SetMessage("Macro recording stopped")
+			} else {
+				m.vimState.StartRecording('a')
+				mode := "VIM:" + m.vimState.ModeString() + " [" + m.vimState.RecordingStatus() + "]"
+				m.statusbar.SetMode(mode)
+				m.statusbar.SetMessage("Recording macro into @a (press q to stop)")
+			}
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
+		m.statusbar.SetMessage("Vim mode must be enabled for macros")
+		return m, m.clearMessageAfter(2 * time.Second)
+	case CmdMacroPlay:
+		if m.vimState != nil && m.vimState.IsEnabled() {
+			reg := m.vimState.LastMacroRegister()
+			if reg == 0 {
+				reg = 'a'
+			}
+			keys := m.vimState.GetMacro(reg)
+			if keys != nil && len(keys) > 0 {
+				m.vimState.SetLastMacroRegister(reg)
+				m.vimState.SetPlayingMacro(true)
+				return m, func() tea.Msg {
+					return vimMacroReplayMsg{keys: keys, idx: 0}
+				}
+			}
+			m.statusbar.SetMessage("No macro recorded in @" + string(reg))
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
+		m.statusbar.SetMessage("Vim mode must be enabled for macros")
+		return m, m.clearMessageAfter(2 * time.Second)
 	case CmdPinNote:
 		if m.activeNote != "" && m.breadcrumb != nil {
 			m.breadcrumb.Pin(m.activeNote)
@@ -3806,7 +3851,11 @@ func (m *Model) setFocus(f focus) {
 		if m.viewMode {
 			m.statusbar.SetMode("VIEW")
 		} else if m.vimState != nil && m.vimState.IsEnabled() {
-			m.statusbar.SetMode("VIM:" + m.vimState.ModeString())
+			mode := "VIM:" + m.vimState.ModeString()
+			if rs := m.vimState.RecordingStatus(); rs != "" {
+				mode += " [" + rs + "]"
+			}
+			m.statusbar.SetMode(mode)
 		} else {
 			m.statusbar.SetMode("EDIT")
 		}
@@ -4266,13 +4315,25 @@ func (m *Model) applyVimResult(r VimResult) tea.Cmd {
 		}
 	}
 	if r.EnterInsert {
-		m.statusbar.SetMode("VIM:INSERT")
+		mode := "VIM:INSERT"
+		if rs := m.vimState.RecordingStatus(); rs != "" {
+			mode += " [" + rs + "]"
+		}
+		m.statusbar.SetMode(mode)
 	}
 	if r.EnterNormal {
-		m.statusbar.SetMode("VIM:NORMAL")
+		mode := "VIM:NORMAL"
+		if rs := m.vimState.RecordingStatus(); rs != "" {
+			mode += " [" + rs + "]"
+		}
+		m.statusbar.SetMode(mode)
 	}
 	if r.EnterVisual {
-		m.statusbar.SetMode("VIM:VISUAL")
+		mode := "VIM:VISUAL"
+		if rs := m.vimState.RecordingStatus(); rs != "" {
+			mode += " [" + rs + "]"
+		}
+		m.statusbar.SetMode(mode)
 	}
 	if r.FoldToggle {
 		m.foldState.ToggleFold(m.editor.cursor, m.editor.content)
@@ -4283,6 +4344,33 @@ func (m *Model) applyVimResult(r VimResult) tea.Cmd {
 	if r.UnfoldAll {
 		m.foldState.UnfoldAll()
 	}
+
+	// Macro recording start — update status bar
+	if r.MacroStart != 0 {
+		mode := "VIM:" + m.vimState.ModeString() + " [" + m.vimState.RecordingStatus() + "]"
+		m.statusbar.SetMode(mode)
+	}
+
+	// Macro recording stop — update status bar
+	if r.MacroStop {
+		m.statusbar.SetMode("VIM:" + m.vimState.ModeString())
+	}
+
+	// Macro replay
+	if r.MacroReplay != 0 {
+		if !m.vimState.IsPlayingMacro() {
+			keys := m.vimState.GetMacro(r.MacroReplay)
+			if keys != nil && len(keys) > 0 {
+				m.vimState.SetLastMacroRegister(r.MacroReplay)
+				m.vimState.SetPlayingMacro(true)
+				return func() tea.Msg {
+					return vimMacroReplayMsg{keys: keys, idx: 0}
+				}
+			}
+			m.statusbar.SetMessage("macro @" + string(r.MacroReplay) + " is empty")
+		}
+	}
+
 	return nil
 }
 
