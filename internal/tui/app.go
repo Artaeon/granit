@@ -1593,13 +1593,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tableEditor, cmd = m.tableEditor.Update(msg)
 			if !m.tableEditor.IsActive() {
 				if md, startLine, endLine, ok := m.tableEditor.GetResult(); ok {
-					// Replace the table lines in the editor
+					m.editor.saveSnapshot()
 					newLines := strings.Split(md, "\n")
-					before := m.editor.content[:startLine]
-					after := m.editor.content[endLine+1:]
-					m.editor.content = append(before, append(newLines, after...)...)
+					if endLine < startLine {
+						// Insert mode: insert before startLine
+						before := make([]string, len(m.editor.content[:startLine]))
+						copy(before, m.editor.content[:startLine])
+						after := m.editor.content[startLine:]
+						m.editor.content = append(before, append(newLines, after...)...)
+						m.statusbar.SetMessage("Table inserted")
+					} else {
+						// Replace mode
+						before := make([]string, len(m.editor.content[:startLine]))
+						copy(before, m.editor.content[:startLine])
+						after := m.editor.content[endLine+1:]
+						m.editor.content = append(before, append(newLines, after...)...)
+						m.statusbar.SetMessage("Table updated")
+					}
 					m.editor.modified = true
-					m.statusbar.SetMessage("Table updated")
 				}
 			}
 			return m, cmd
@@ -2878,6 +2889,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		if m.activeNote != "" {
 			m.tableEditor.SetSize(m.width, m.height)
 			m.tableEditor.Open(m.editor.content, m.editor.cursor)
+			if !m.tableEditor.IsActive() {
+				m.tableEditor.OpenNew(m.editor.cursor)
+			}
 		}
 	case CmdSemanticSearch:
 		m.semanticSearch.SetSize(m.width, m.height)
