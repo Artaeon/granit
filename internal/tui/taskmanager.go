@@ -21,13 +21,14 @@ import (
 
 // Task represents a single task extracted from a markdown note.
 type Task struct {
-	Text     string
-	Done     bool
-	DueDate  string // "2006-01-02" or ""
-	Priority int    // 0=none, 1=low, 2=medium, 3=high, 4=highest
-	Tags     []string
-	NotePath string // source note relative path
-	LineNum  int    // 1-based line number in source note
+	Text          string
+	Done          bool
+	DueDate       string // "2006-01-02" or ""
+	Priority      int    // 0=none, 1=low, 2=medium, 3=high, 4=highest
+	ScheduledTime string // "HH:MM-HH:MM" or "" — set by AI scheduler
+	Tags          []string
+	NotePath      string // source note relative path
+	LineNum       int    // 1-based line number in source note
 }
 
 // taskView identifies which tab is active.
@@ -64,6 +65,7 @@ var (
 	tmPrioMedRe    = regexp.MustCompile(`\x{1F53C}`)   // 🔼
 	tmPrioLowRe    = regexp.MustCompile(`\x{1F53D}`)   // 🔽
 	tmTagRe        = regexp.MustCompile(`#([A-Za-z0-9_/-]+)`)
+	tmScheduleRe   = regexp.MustCompile(`⏰\s*(\d{2}:\d{2}-\d{2}:\d{2})`)
 )
 
 // ---------------------------------------------------------------------------
@@ -257,6 +259,11 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 				t.Priority = 2
 			} else if tmPrioLowRe.MatchString(taskText) {
 				t.Priority = 1
+			}
+
+			// Scheduled time (set by AI scheduler)
+			if sm := tmScheduleRe.FindStringSubmatch(taskText); sm != nil {
+				t.ScheduledTime = sm[1]
 			}
 
 			// Tags
@@ -1446,6 +1453,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	displayText = tmPrioHighRe.ReplaceAllString(displayText, "")
 	displayText = tmPrioMedRe.ReplaceAllString(displayText, "")
 	displayText = tmPrioLowRe.ReplaceAllString(displayText, "")
+	displayText = tmScheduleRe.ReplaceAllString(displayText, "")
 	displayText = strings.TrimSpace(displayText)
 
 	textStyle := lipgloss.NewStyle().Foreground(text)
@@ -1464,6 +1472,16 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		} else {
 			dueBadge = lipgloss.NewStyle().Foreground(crust).Background(surface1).Padding(0, 1).Render(dueLabel)
 		}
+	}
+
+	// Scheduled time badge (from AI scheduler)
+	var scheduleBadge string
+	if task.ScheduledTime != "" {
+		scheduleBadge = lipgloss.NewStyle().
+			Foreground(crust).
+			Background(teal).
+			Padding(0, 1).
+			Render(task.ScheduledTime)
 	}
 
 	// Source note badge
@@ -1491,6 +1509,9 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	}
 
 	line := prefix + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
+	if scheduleBadge != "" {
+		line += " " + scheduleBadge
+	}
 	if dueBadge != "" {
 		line += " " + dueBadge
 	}
