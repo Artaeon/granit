@@ -195,14 +195,50 @@ func (sb StatusBar) View() string {
 	}
 	rightInfo := StatusInfoStyle.Render(fmt.Sprintf("%s%d notes  %s", wordInfo, sb.noteCount, sb.vaultPath))
 
+	// Truncate to prevent overflow on narrow terminals
+	totalUsed := func() int {
+		return lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) +
+			lipgloss.Width(readingBar) + lipgloss.Width(researchIndicator) +
+			lipgloss.Width(taskIndicator) + lipgloss.Width(pomoIndicator) +
+			lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
+	}
+
+	// Step 1: If too wide, hide least important indicators (reading progress, AI badge)
+	if totalUsed() > sb.width {
+		readingBar = ""
+	}
+	if totalUsed() > sb.width {
+		aiIndicator = ""
+	}
+
+	// Step 2: If still too wide, truncate the file section with "..."
+	if totalUsed() > sb.width {
+		overhead := totalUsed() - sb.width
+		plainFile := fileIcon + " " + sb.activeNote
+		if len(plainFile) > overhead+4 {
+			plainFile = plainFile[:len(plainFile)-overhead-3] + "..."
+		} else {
+			plainFile = "..."
+		}
+		fileSection = StatusFileStyle.Render(plainFile)
+	}
+
+	// Step 3: If still too wide, drop the right info section
+	if totalUsed() > sb.width {
+		rightInfo = ""
+	}
+
 	// Calculate gap
 	leftLen := lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) + lipgloss.Width(readingBar)
 	rightLen := lipgloss.Width(researchIndicator) + lipgloss.Width(taskIndicator) + lipgloss.Width(pomoIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	gap := sb.width - leftLen - rightLen
 	if gap < 0 {
-		gap = 1
+		gap = 0
 	}
-	gapStr := StatusBarBg.Width(gap).Render(strings.Repeat(" ", gap))
+	gapStr := ""
+	if gap > 0 {
+		gapStr = StatusBarBg.Width(gap).Render(strings.Repeat(" ", gap))
+	}
 
 	bar := mode + fileSection + cursorPos + readingBar + gapStr + researchIndicator + taskIndicator + pomoIndicator + aiIndicator + rightInfo
 
