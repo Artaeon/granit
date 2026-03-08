@@ -54,6 +54,9 @@ type Editor struct {
 
 	// Ghost text (AI inline completion)
 	ghostText string // dimmed suggestion shown after cursor
+
+	// Heading/code-fence folding
+	foldState *FoldState
 }
 
 func NewEditor() Editor {
@@ -95,6 +98,19 @@ func (e *Editor) GetCursor() (int, int) {
 
 func (e *Editor) GetWordCount() int {
 	return e.wordCount
+}
+
+// SetFoldState sets the fold state used for heading/code-fence folding.
+func (e *Editor) SetFoldState(fs *FoldState) {
+	e.foldState = fs
+}
+
+// isLineFolded returns true if the given line is hidden inside a folded region.
+func (e *Editor) isLineFolded(line int) bool {
+	if e.foldState == nil {
+		return false
+	}
+	return e.foldState.IsFolded(line)
 }
 
 // SetGhostText sets the dimmed AI suggestion text to show after the cursor.
@@ -351,6 +367,10 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			} else {
 				if e.cursor > 0 {
 					e.cursor--
+					// Skip folded lines
+					for e.cursor > 0 && e.isLineFolded(e.cursor) {
+						e.cursor--
+					}
 					if e.col > len(e.content[e.cursor]) {
 						e.col = len(e.content[e.cursor])
 					}
@@ -392,6 +412,10 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			} else {
 				if e.cursor < len(e.content)-1 {
 					e.cursor++
+					// Skip folded lines
+					for e.cursor < len(e.content)-1 && e.isLineFolded(e.cursor) {
+						e.cursor++
+					}
 					if e.col > len(e.content[e.cursor]) {
 						e.col = len(e.content[e.cursor])
 					}
@@ -1013,7 +1037,21 @@ func (e Editor) View() string {
 		Background(mauve).
 		Foreground(base)
 
-	for i := e.scroll; i < end; i++ {
+	// Ensure scroll doesn't start inside a folded region
+	for e.scroll > 0 && e.isLineFolded(e.scroll) {
+		e.scroll--
+	}
+
+	visibleCount := 0
+	lastRenderedLine := -1
+	for i := e.scroll; i < len(e.content) && visibleCount < visibleHeight; i++ {
+		// Skip folded (hidden) lines
+		if e.isLineFolded(i) {
+			continue
+		}
+		visibleCount++
+		lastRenderedLine = i
+
 		line := e.content[i]
 		isActiveLine := (i == e.cursor && e.focused)
 		hasMultiCursor := e.focused && e.hasAnyCursorOnLine(i)
@@ -1024,9 +1062,19 @@ func (e Editor) View() string {
 			lineNum := fmt.Sprintf("%4d ", i+1)
 			if isActiveLine || hasMultiCursor {
 				b.WriteString(ActiveLineNumStyle.Render(lineNum))
-				b.WriteString(" ")
 			} else {
 				b.WriteString(LineNumStyle.Render(lineNum))
+			}
+
+			// Fold indicator in gutter
+			if e.foldState != nil {
+				indicator := e.foldState.GetFoldIndicator(i, e.content)
+				if indicator != "" {
+					b.WriteString(lipgloss.NewStyle().Foreground(peach).Render(indicator))
+				} else {
+					b.WriteString(" ")
+				}
+			} else {
 				b.WriteString(" ")
 			}
 			gutterWidth = 7
@@ -1106,16 +1154,36 @@ func (e Editor) View() string {
 			b.WriteString(highlightLine(displayLine, i, fmStart, fmEnd, codeBlockLines))
 		}
 
-		if i < end-1 {
+		// Show folded line count after heading/fence content
+		if e.foldState != nil {
+			if endLine, ok := e.foldState.GetFoldEnd(i); ok {
+				count := endLine - i
+				b.WriteString(DimStyle.Render(fmt.Sprintf(" ··· %d lines", count)))
+			}
+		}
+
+		if visibleCount < visibleHeight && lastRenderedLine < len(e.content)-1 {
 			b.WriteString("\n")
 		}
 	}
 
 	// Bottom info
-	if len(e.content) > visibleHeight {
+	foldedCount := 0
+	if e.foldState != nil {
+		for i := 0; i < len(e.content); i++ {
+			if e.isLineFolded(i) {
+				foldedCount++
+			}
+		}
+	}
+	if len(e.content) > visibleHeight || foldedCount > 0 {
 		b.WriteString("\n")
 		pct := float64(e.scroll) / float64(maxInt(1, len(e.content)-visibleHeight)) * 100
-		b.WriteString(DimStyle.Render(fmt.Sprintf("  %d lines  %.0f%%", len(e.content), pct)))
+		info := fmt.Sprintf("  %d lines  %.0f%%", len(e.content), pct)
+		if foldedCount > 0 {
+			info += fmt.Sprintf("  [%d folded]", foldedCount)
+		}
+		b.WriteString(DimStyle.Render(info))
 	}
 
 	return b.String()
