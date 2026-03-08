@@ -77,6 +77,9 @@ type BlogPublisher struct {
 	status string
 	done   bool
 	err    error
+
+	// Config persistence callback — saves tokens back to config
+	configSave func(target, mediumToken, ghToken, ghRepo, ghBranch string)
 }
 
 // NewBlogPublisher creates a new BlogPublisher overlay with default settings.
@@ -462,7 +465,7 @@ func blogPublishMedium(token, title, content, publishStatus string, tags []strin
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := blogHTTPDoWithRetry(req, 2)
 	if err != nil {
 		return "", fmt.Errorf("get user: %w", err)
 	}
@@ -518,7 +521,7 @@ func blogPublishMedium(token, title, content, publishStatus string, tags []strin
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = blogHTTPDoWithRetry(req, 2)
 	if err != nil {
 		return "", fmt.Errorf("create post: %w", err)
 	}
@@ -591,7 +594,7 @@ func blogPublishGitHub(token, repo, branch, dirPath, title, content string) (str
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := blogHTTPDoWithRetry(req, 2)
 	if err != nil {
 		return "", fmt.Errorf("check existing file: %w", err)
 	}
@@ -636,7 +639,7 @@ func blogPublishGitHub(token, repo, branch, dirPath, title, content string) (str
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = blogHTTPDoWithRetry(req, 2)
 	if err != nil {
 		return "", fmt.Errorf("push to GitHub: %w", err)
 	}
