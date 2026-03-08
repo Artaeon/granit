@@ -1483,9 +1483,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.dailyPlanner.SaveNow()
 
 					// Refresh vault so all components see updated Tasks.md
-					m.vault.Scan()
-					m.index.Build()
-					m.sidebar.SetFiles(m.vault.SortedPaths())
+					m.refreshComponents("")
 
 					m.statusbar.SetMessage("AI schedule applied to planner")
 				}
