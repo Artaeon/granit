@@ -18,18 +18,41 @@ type ollamaSetupMsg struct {
 	message string
 }
 
+// Settings category constants
+const (
+	catAppearance = "Appearance"
+	catEditor     = "Editor"
+	catAI         = "AI"
+	catFiles      = "Files"
+	catPlugins    = "Plugins"
+	catAdvanced   = "Advanced"
+)
+
+// settingsCategories defines the display order of categories.
+var settingsCategories = []string{
+	catAppearance,
+	catEditor,
+	catAI,
+	catFiles,
+	catPlugins,
+	catAdvanced,
+}
+
 type settingItem struct {
-	label   string
-	key     string
-	kind    string // "bool", "string", "int"
-	value   interface{}
-	options []string // for string types with limited options
+	label       string
+	key         string
+	kind        string // "bool", "string", "int", "action", "header"
+	value       interface{}
+	options     []string // for string types with limited options
+	category    string   // which group this setting belongs to
+	description string   // extra text for search matching
 }
 
 type Settings struct {
 	config  config.Config
 	items   []settingItem
-	cursor  int
+	visible []int // indices into items that are currently visible (after filtering)
+	cursor  int   // index into visible
 	scroll  int
 	width   int
 	height  int
@@ -47,75 +70,151 @@ func NewSettings(cfg config.Config) Settings {
 		config: cfg,
 	}
 	s.buildItems()
+	s.rebuildVisible()
 	return s
 }
 
 func (s *Settings) buildItems() {
 	s.items = []settingItem{
-		// Editor settings
-		{label: "Show Splash Screen", key: "show_splash", kind: "bool", value: s.config.ShowSplash},
-		{label: "Show Help Bar", key: "show_help", kind: "bool", value: s.config.ShowHelp},
-		{label: "Line Numbers", key: "line_numbers", kind: "bool", value: s.config.LineNumbers},
-		{label: "Word Wrap", key: "word_wrap", kind: "bool", value: s.config.WordWrap},
-		{label: "Auto Save", key: "auto_save", kind: "bool", value: s.config.AutoSave},
-		{label: "Default View Mode", key: "default_view_mode", kind: "bool", value: s.config.DefaultViewMode},
-		{label: "Vim Mode", key: "vim_mode", kind: "bool", value: s.config.VimMode},
-		{label: "Tab Size", key: "tab_size", kind: "int", value: s.config.Editor.TabSize},
-		{label: "Auto Close Brackets", key: "auto_close_brackets", kind: "bool", value: s.config.AutoCloseBrackets},
-		{label: "Highlight Current Line", key: "highlight_current_line", kind: "bool", value: s.config.HighlightCurrentLine},
+		// ── Appearance ──
+		{label: "Theme", key: "theme", kind: "string", value: s.config.Theme, options: ThemeNames(), category: catAppearance, description: "color scheme palette"},
+		{label: "Icon Theme", key: "icon_theme", kind: "string", value: s.config.IconTheme, options: []string{"unicode", "nerd", "emoji", "ascii"}, category: catAppearance, description: "icon set style"},
+		{label: "Layout", key: "layout", kind: "string", value: s.config.Layout, options: AllLayouts(), category: catAppearance, description: "panel arrangement"},
+		{label: "Sidebar Position", key: "sidebar_position", kind: "string", value: s.config.SidebarPosition, options: []string{"left", "right"}, category: catAppearance, description: "file explorer side"},
+		{label: "Show Icons", key: "show_icons", kind: "bool", value: s.config.ShowIcons, category: catAppearance, description: "display file icons"},
+		{label: "Compact Mode", key: "compact_mode", kind: "bool", value: s.config.CompactMode, category: catAppearance, description: "reduce padding spacing"},
+		{label: "Show Splash Screen", key: "show_splash", kind: "bool", value: s.config.ShowSplash, category: catAppearance, description: "startup animation"},
+		{label: "Show Help Bar", key: "show_help", kind: "bool", value: s.config.ShowHelp, category: catAppearance, description: "bottom key hints"},
 
-		// Appearance settings
-		{label: "Theme", key: "theme", kind: "string", value: s.config.Theme, options: ThemeNames()},
-		{label: "Icon Theme", key: "icon_theme", kind: "string", value: s.config.IconTheme, options: []string{"unicode", "nerd", "emoji", "ascii"}},
-		{label: "Layout", key: "layout", kind: "string", value: s.config.Layout, options: AllLayouts()},
-		{label: "Sidebar Position", key: "sidebar_position", kind: "string", value: s.config.SidebarPosition, options: []string{"left", "right"}},
-		{label: "Show Icons", key: "show_icons", kind: "bool", value: s.config.ShowIcons},
-		{label: "Compact Mode", key: "compact_mode", kind: "bool", value: s.config.CompactMode},
+		// ── Editor ──
+		{label: "Vim Mode", key: "vim_mode", kind: "bool", value: s.config.VimMode, category: catEditor, description: "vi keybindings modal editing"},
+		{label: "Word Wrap", key: "word_wrap", kind: "bool", value: s.config.WordWrap, category: catEditor, description: "wrap long lines"},
+		{label: "Tab Size", key: "tab_size", kind: "int", value: s.config.Editor.TabSize, category: catEditor, description: "indentation width spaces"},
+		{label: "Line Numbers", key: "line_numbers", kind: "bool", value: s.config.LineNumbers, category: catEditor, description: "show gutter numbers"},
+		{label: "Auto Close Brackets", key: "auto_close_brackets", kind: "bool", value: s.config.AutoCloseBrackets, category: catEditor, description: "pair matching parentheses"},
+		{label: "Highlight Current Line", key: "highlight_current_line", kind: "bool", value: s.config.HighlightCurrentLine, category: catEditor, description: "cursor line background"},
+		{label: "Default View Mode", key: "default_view_mode", kind: "bool", value: s.config.DefaultViewMode, category: catEditor, description: "open in preview reader"},
 
-		// Sidebar & Search
-		{label: "Sort Files By", key: "sort_by", kind: "string", value: s.config.SortBy, options: []string{"name", "modified", "created"}},
-		{label: "Daily Notes Folder", key: "daily_notes_folder", kind: "string", value: s.config.DailyNotesFolder},
-		{label: "Search Content by Default", key: "search_content", kind: "bool", value: s.config.SearchContentByDefault},
+		// ── AI ──
+		{label: "AI Provider", key: "ai_provider", kind: "string", value: s.config.AIProvider, options: []string{"local", "ollama", "openai"}, category: catAI, description: "language model backend"},
+		{label: "Ollama Model", key: "ollama_model", kind: "string", value: s.config.OllamaModel, options: []string{"qwen2.5:0.5b", "qwen2.5:1.5b", "qwen2.5:3b", "phi3:mini", "phi3.5:3.8b", "gemma2:2b", "tinyllama", "llama3.2", "llama3.2:1b", "mistral", "gemma2"}, category: catAI, description: "local LLM model name"},
+		{label: "Ollama URL", key: "ollama_url", kind: "string", value: s.config.OllamaURL, category: catAI, description: "server endpoint address"},
+		{label: ">> Setup Ollama (install + model)", key: "setup_ollama", kind: "action", value: "run", category: catAI, description: "wizard install configure"},
+		{label: "OpenAI API Key", key: "openai_key", kind: "string", value: s.config.OpenAIKey, category: catAI, description: "secret token authentication"},
+		{label: "OpenAI Model", key: "openai_model", kind: "string", value: s.config.OpenAIModel, options: []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1-nano"}, category: catAI, description: "GPT model version"},
+		{label: "Background Bots (auto-analyze)", key: "background_bots", kind: "bool", value: s.config.BackgroundBots, category: catAI, description: "automatic analysis on save"},
+		{label: "Ghost Writer (AI completions)", key: "ghost_writer", kind: "bool", value: s.config.GhostWriter, category: catAI, description: "inline writing suggestions"},
 
-		// AI / Bots
-		{label: "AI Provider", key: "ai_provider", kind: "string", value: s.config.AIProvider, options: []string{"local", "ollama", "openai"}},
-		{label: "Ollama Model", key: "ollama_model", kind: "string", value: s.config.OllamaModel, options: []string{"qwen2.5:0.5b", "qwen2.5:1.5b", "qwen2.5:3b", "phi3:mini", "phi3.5:3.8b", "gemma2:2b", "tinyllama", "llama3.2", "llama3.2:1b", "mistral", "gemma2"}},
-		{label: "Ollama URL", key: "ollama_url", kind: "string", value: s.config.OllamaURL},
-		{label: ">> Setup Ollama (install + model)", key: "setup_ollama", kind: "action", value: "run"},
-		{label: "OpenAI API Key", key: "openai_key", kind: "string", value: s.config.OpenAIKey},
-		{label: "OpenAI Model", key: "openai_model", kind: "string", value: s.config.OpenAIModel, options: []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1-nano"}},
-		{label: "Background Bots (auto-analyze)", key: "background_bots", kind: "bool", value: s.config.BackgroundBots},
+		// ── Files ──
+		{label: "Auto Save", key: "auto_save", kind: "bool", value: s.config.AutoSave, category: catFiles, description: "save on focus change"},
+		{label: "Daily Notes Folder", key: "daily_notes_folder", kind: "string", value: s.config.DailyNotesFolder, category: catFiles, description: "journal directory path"},
+		{label: "Sort Files By", key: "sort_by", kind: "string", value: s.config.SortBy, options: []string{"name", "modified", "created"}, category: catFiles, description: "file list ordering"},
+		{label: "Search Content by Default", key: "search_content", kind: "bool", value: s.config.SearchContentByDefault, category: catFiles, description: "full text search"},
+		{label: "Confirm Delete", key: "confirm_delete", kind: "bool", value: s.config.ConfirmDelete, category: catFiles, description: "ask before removing"},
+		{label: "Auto Refresh Vault", key: "auto_refresh", kind: "bool", value: s.config.AutoRefresh, category: catFiles, description: "reload on external change"},
 
-		// Behavior
-		{label: "Confirm Delete", key: "confirm_delete", kind: "bool", value: s.config.ConfirmDelete},
-		{label: "Auto Refresh Vault", key: "auto_refresh", kind: "bool", value: s.config.AutoRefresh},
-		{label: "Git Auto Sync", key: "git_auto_sync", kind: "bool", value: s.config.GitAutoSync},
-		{label: "Auto-Tag on Save", key: "auto_tag", kind: "bool", value: s.config.AutoTag},
-		{label: "Ghost Writer (AI completions)", key: "ghost_writer", kind: "bool", value: s.config.GhostWriter},
+		// ── Plugins ──
+		{label: "Task Manager", key: "cp_task_manager", kind: "bool", value: s.corePluginVal("task_manager"), category: catPlugins, description: "todo checklist management"},
+		{label: "Calendar", key: "cp_calendar", kind: "bool", value: s.corePluginVal("calendar"), category: catPlugins, description: "date event scheduling"},
+		{label: "Canvas", key: "cp_canvas", kind: "bool", value: s.corePluginVal("canvas"), category: catPlugins, description: "visual 2D board"},
+		{label: "Graph View", key: "cp_graph_view", kind: "bool", value: s.corePluginVal("graph_view"), category: catPlugins, description: "note link visualization"},
+		{label: "Flashcards", key: "cp_flashcards", kind: "bool", value: s.corePluginVal("flashcards"), category: catPlugins, description: "spaced repetition study"},
+		{label: "Quiz Mode", key: "cp_quiz_mode", kind: "bool", value: s.corePluginVal("quiz_mode"), category: catPlugins, description: "test knowledge review"},
+		{label: "Pomodoro Timer", key: "cp_pomodoro", kind: "bool", value: s.corePluginVal("pomodoro"), category: catPlugins, description: "focus work interval timer"},
+		{label: "Git Integration", key: "cp_git_integration", kind: "bool", value: s.corePluginVal("git_integration"), category: catPlugins, description: "version control sync"},
+		{label: "Blog Publisher", key: "cp_blog_publisher", kind: "bool", value: s.corePluginVal("blog_publisher"), category: catPlugins, description: "publish medium github"},
+		{label: "AI Templates", key: "cp_ai_templates", kind: "bool", value: s.corePluginVal("ai_templates"), category: catPlugins, description: "smart note generators"},
+		{label: "Research Agent", key: "cp_research_agent", kind: "bool", value: s.corePluginVal("research_agent"), category: catPlugins, description: "automated web lookup"},
+		{label: "Language Learning", key: "cp_language_learning", kind: "bool", value: s.corePluginVal("language_learning"), category: catPlugins, description: "vocabulary translation"},
+		{label: "Habit Tracker", key: "cp_habit_tracker", kind: "bool", value: s.corePluginVal("habit_tracker"), category: catPlugins, description: "daily streak progress"},
+		{label: "Ghost Writer", key: "cp_ghost_writer", kind: "bool", value: s.corePluginVal("ghost_writer"), category: catPlugins, description: "AI completion plugin"},
+		{label: "Encryption", key: "cp_encryption", kind: "bool", value: s.corePluginVal("encryption"), category: catPlugins, description: "note security protect"},
+		{label: "Spell Check", key: "cp_spell_check", kind: "bool", value: s.corePluginVal("spell_check"), category: catPlugins, description: "grammar typo detection"},
 
-		// ── Core Plugins ──
-		{label: "─── Core Plugins ───", key: "_header_plugins", kind: "header", value: nil},
-		{label: "Task Manager", key: "cp_task_manager", kind: "bool", value: s.corePluginVal("task_manager")},
-		{label: "Calendar", key: "cp_calendar", kind: "bool", value: s.corePluginVal("calendar")},
-		{label: "Canvas", key: "cp_canvas", kind: "bool", value: s.corePluginVal("canvas")},
-		{label: "Graph View", key: "cp_graph_view", kind: "bool", value: s.corePluginVal("graph_view")},
-		{label: "Flashcards", key: "cp_flashcards", kind: "bool", value: s.corePluginVal("flashcards")},
-		{label: "Quiz Mode", key: "cp_quiz_mode", kind: "bool", value: s.corePluginVal("quiz_mode")},
-		{label: "Pomodoro Timer", key: "cp_pomodoro", kind: "bool", value: s.corePluginVal("pomodoro")},
-		{label: "Git Integration", key: "cp_git_integration", kind: "bool", value: s.corePluginVal("git_integration")},
-		{label: "Blog Publisher", key: "cp_blog_publisher", kind: "bool", value: s.corePluginVal("blog_publisher")},
-		{label: "AI Templates", key: "cp_ai_templates", kind: "bool", value: s.corePluginVal("ai_templates")},
-		{label: "Research Agent", key: "cp_research_agent", kind: "bool", value: s.corePluginVal("research_agent")},
-		{label: "Language Learning", key: "cp_language_learning", kind: "bool", value: s.corePluginVal("language_learning")},
-		{label: "Habit Tracker", key: "cp_habit_tracker", kind: "bool", value: s.corePluginVal("habit_tracker")},
-		{label: "Ghost Writer", key: "cp_ghost_writer", kind: "bool", value: s.corePluginVal("ghost_writer")},
-		{label: "Encryption", key: "cp_encryption", kind: "bool", value: s.corePluginVal("encryption")},
-		{label: "Spell Check", key: "cp_spell_check", kind: "bool", value: s.corePluginVal("spell_check")},
+		// ── Advanced ──
+		{label: "Git Auto Sync", key: "git_auto_sync", kind: "bool", value: s.config.GitAutoSync, category: catAdvanced, description: "auto commit push pull"},
+		{label: "Auto-Tag on Save", key: "auto_tag", kind: "bool", value: s.config.AutoTag, category: catAdvanced, description: "automatic tag extraction"},
 	}
 }
 
 func (s *Settings) corePluginVal(name string) bool {
 	return s.config.CorePluginEnabled(name)
+}
+
+// rebuildVisible recomputes the visible list based on the current items.
+// It inserts category headers before each group of items.
+func (s *Settings) rebuildVisible() {
+	s.visible = s.visible[:0]
+
+	for _, cat := range settingsCategories {
+		// Add category header
+		headerIdx := s.addTempHeader(cat)
+		hasItems := false
+		for i, item := range s.items {
+			if item.category == cat {
+				if !hasItems {
+					s.visible = append(s.visible, headerIdx)
+					hasItems = true
+				}
+				s.visible = append(s.visible, i)
+			}
+		}
+	}
+
+	// Clamp cursor
+	if len(s.visible) == 0 {
+		s.cursor = 0
+		return
+	}
+	if s.cursor >= len(s.visible) {
+		s.cursor = len(s.visible) - 1
+	}
+	// Skip header if cursor landed on one
+	s.skipHeaderForward()
+}
+
+// addTempHeader appends a temporary header item to s.items and returns its index.
+func (s *Settings) addTempHeader(cat string) int {
+	idx := len(s.items)
+	s.items = append(s.items, settingItem{
+		label:    cat,
+		key:      "_header_" + strings.ToLower(cat),
+		kind:     "header",
+		category: cat,
+	})
+	return idx
+}
+
+func (s *Settings) skipHeaderForward() {
+	for s.cursor < len(s.visible) && s.items[s.visible[s.cursor]].kind == "header" {
+		s.cursor++
+	}
+	if s.cursor >= len(s.visible) {
+		// Try going backward if we went past the end
+		s.cursor = len(s.visible) - 1
+		for s.cursor > 0 && s.items[s.visible[s.cursor]].kind == "header" {
+			s.cursor--
+		}
+	}
+}
+
+func (s *Settings) skipHeaderBackward() {
+	for s.cursor > 0 && s.items[s.visible[s.cursor]].kind == "header" {
+		s.cursor--
+	}
+}
+
+// currentItem returns a pointer to the item at the current cursor position,
+// or nil if there are no visible items or cursor is on a header.
+func (s *Settings) currentItem() *settingItem {
+	if len(s.visible) == 0 || s.cursor < 0 || s.cursor >= len(s.visible) {
+		return nil
+	}
+	item := &s.items[s.visible[s.cursor]]
+	if item.kind == "header" {
+		return nil
+	}
+	return item
 }
 
 func (s *Settings) SetSize(width, height int) {
@@ -131,6 +230,7 @@ func (s *Settings) Toggle() {
 	s.active = !s.active
 	if s.active {
 		s.buildItems()
+		s.rebuildVisible()
 	}
 }
 
@@ -151,6 +251,7 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 				s.setupStatus = "Setup complete! Ollama is ready."
 				s.config.AIProvider = "ollama"
 				s.buildItems()
+				s.rebuildVisible()
 			} else {
 				s.setupStatus = "Setup failed: " + msg.message
 			}
@@ -188,21 +289,18 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 		case "up", "k":
 			if s.cursor > 0 {
 				s.cursor--
-				// Skip header items
-				for s.cursor > 0 && s.items[s.cursor].kind == "header" {
-					s.cursor--
-				}
+				s.skipHeaderBackward()
 			}
 		case "down", "j":
-			if s.cursor < len(s.items)-1 {
+			if s.cursor < len(s.visible)-1 {
 				s.cursor++
-				// Skip header items
-				for s.cursor < len(s.items)-1 && s.items[s.cursor].kind == "header" {
-					s.cursor++
-				}
+				s.skipHeaderForward()
 			}
 		case "enter", " ":
-			item := &s.items[s.cursor]
+			item := s.currentItem()
+			if item == nil {
+				break
+			}
 			switch item.kind {
 			case "bool":
 				val := item.value.(bool)
@@ -354,7 +452,10 @@ func (s *Settings) applyValue(key string, value interface{}) {
 }
 
 func (s *Settings) applyEdit() {
-	item := &s.items[s.cursor]
+	item := s.currentItem()
+	if item == nil {
+		return
+	}
 	switch item.kind {
 	case "string":
 		item.value = s.editBuf
@@ -407,22 +508,23 @@ func (s Settings) View() string {
 	}
 
 	end := start + visibleItems
-	if end > len(s.items) {
-		end = len(s.items)
+	if end > len(s.visible) {
+		end = len(s.visible)
 	}
 
-	for i := start; i < end; i++ {
-		item := s.items[i]
-		isSelected := i == s.cursor
+	for vi := start; vi < end; vi++ {
+		itemIdx := s.visible[vi]
+		item := s.items[itemIdx]
+		isSelected := vi == s.cursor
 
 		label := item.label
 		var valueStr string
 
 		switch item.kind {
 		case "header":
-			// Section header — render as a divider
+			// Category header with separator
 			headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-			b.WriteString(headerStyle.Render("  " + label))
+			b.WriteString(headerStyle.Render("  " + ThemeSeparator + ThemeSeparator + " " + label + " " + ThemeSeparator + ThemeSeparator))
 			b.WriteString("\n")
 			continue
 		case "bool":
