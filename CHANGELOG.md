@@ -63,6 +63,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Heading folding** — collapse/expand sections by heading level or code fences; fold indicators (▶/▼) in gutter; vim keybindings (za toggle, zM fold all, zR unfold all) and Alt+F for non-vim; command palette entries; folded headings show hidden line count
 - **Table editor improvements** — create new tables from command palette when cursor is not on an existing table (3-column, 2-row default); vertical scrolling for large tables with row indicator; insert mode vs replace mode
 - **7 new themes** — matrix (green-on-black), cobalt2 (deep blue/gold), monokai-pro (warm dark), horizon (purple/teal), zenburn (low-contrast earthy), iceberg (cool blue-gray), amber (retro CRT)
+- **Blog publisher token persistence** — Medium and GitHub tokens, repo, and branch saved to `~/.config/granit/config.json`; pre-filled on open so you never re-enter credentials
+- **Blog publisher reliability** — 30-second HTTP timeout, retry with exponential backoff (3 attempts) on server errors and rate limits, updated GitHub API header
+- **Enhanced research agent** — CLAUDE.md project context loaded into all research prompts; soul note persona shapes research writing tone; 10-minute process timeout; Esc cancels running research; WebFetch tool enabled for URL fetching
 
 ### Changed
 
