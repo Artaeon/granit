@@ -1227,6 +1227,170 @@ func (e *Editor) isWholeWord(lineIdx, col, length int) bool {
 	return true
 }
 
+// bracketPairs maps opening brackets to closing brackets and vice versa.
+var bracketPairs = map[byte]byte{
+	'(': ')', ')': '(',
+	'[': ']', ']': '[',
+	'{': '}', '}': '{',
+}
+
+// isOpenBracket returns true if the byte is an opening bracket.
+func isOpenBracket(b byte) bool {
+	return b == '(' || b == '[' || b == '{'
+}
+
+// isBracketChar returns true if the byte is any bracket character.
+func isBracketChar(b byte) bool {
+	_, ok := bracketPairs[b]
+	return ok
+}
+
+// isInsideString checks if the given column position in a line is inside a
+// quoted string (single or double quotes). This is a simple parity check.
+func isInsideString(line string, col int) bool {
+	inDouble := false
+	inSingle := false
+	for i := 0; i < col && i < len(line); i++ {
+		ch := line[i]
+		if ch == '"' && !inSingle {
+			inDouble = !inDouble
+		} else if ch == '\'' && !inDouble {
+			inSingle = !inSingle
+		}
+	}
+	return inDouble || inSingle
+}
+
+// findMatchingBracket searches for the bracket matching the one under (or just
+// before) the cursor. It handles nesting and skips brackets inside strings.
+// Returns (line, col, found).
+func (e *Editor) findMatchingBracket() (int, int, bool) {
+	if e.cursor >= len(e.content) {
+		return 0, 0, false
+	}
+	curLine := e.content[e.cursor]
+
+	// Check under cursor first, then one position before.
+	bracketCol := -1
+	if e.col < len(curLine) && isBracketChar(curLine[e.col]) {
+		bracketCol = e.col
+	} else if e.col > 0 && e.col-1 < len(curLine) && isBracketChar(curLine[e.col-1]) {
+		bracketCol = e.col - 1
+	}
+	if bracketCol < 0 {
+		return 0, 0, false
+	}
+
+	ch := curLine[bracketCol]
+	target := bracketPairs[ch]
+
+	// Detect code-fence regions so we can skip brackets inside them
+	// when the cursor itself is not inside a code fence.
+	inCodeFence := false
+	codeFenceLines := make(map[int]bool)
+	for j := 0; j < len(e.content); j++ {
+		trimmed := strings.TrimSpace(e.content[j])
+		if strings.HasPrefix(trimmed, "```") {
+			inCodeFence = !inCodeFence
+			codeFenceLines[j] = true
+		} else if inCodeFence {
+			codeFenceLines[j] = true
+		}
+	}
+
+	// Skip if the bracket itself is inside a string.
+	if isInsideString(curLine, bracketCol) {
+		return 0, 0, false
+	}
+
+	if isOpenBracket(ch) {
+		// Search forward
+		depth := 1
+		for ln := e.cursor; ln < len(e.content); ln++ {
+			if codeFenceLines[ln] && !codeFenceLines[e.cursor] {
+				continue
+			}
+			l := e.content[ln]
+			from := 0
+			if ln == e.cursor {
+				from = bracketCol + 1
+			}
+			for c := from; c < len(l); c++ {
+				if isInsideString(l, c) {
+					continue
+				}
+				if l[c] == ch {
+					depth++
+				} else if l[c] == target {
+					depth--
+					if depth == 0 {
+						return ln, c, true
+					}
+				}
+			}
+		}
+	} else {
+		// Search backward
+		depth := 1
+		for ln := e.cursor; ln >= 0; ln-- {
+			if codeFenceLines[ln] && !codeFenceLines[e.cursor] {
+				continue
+			}
+			l := e.content[ln]
+			from := len(l) - 1
+			if ln == e.cursor {
+				from = bracketCol - 1
+			}
+			for c := from; c >= 0; c-- {
+				if isInsideString(l, c) {
+					continue
+				}
+				if l[c] == ch {
+					depth++
+				} else if l[c] == target {
+					depth--
+					if depth == 0 {
+						return ln, c, true
+					}
+				}
+			}
+		}
+	}
+
+	return 0, 0, false
+}
+
+// updateBracketMatch recalculates the matching bracket position.
+func (e *Editor) updateBracketMatch() {
+	e.matchBracketLine, e.matchBracketCol, e.matchBracketValid = e.findMatchingBracket()
+}
+
+// isBracketHighlight returns true if the given position should be highlighted
+// as a matching bracket (either the bracket under cursor or its match).
+func (e *Editor) isBracketHighlight(lineIdx, col int) bool {
+	if !e.matchBracketValid {
+		return false
+	}
+	// The matching bracket position
+	if lineIdx == e.matchBracketLine && col == e.matchBracketCol {
+		return true
+	}
+	// The bracket under/before cursor itself
+	if e.cursor < len(e.content) {
+		cl := e.content[e.cursor]
+		if e.col < len(cl) && isBracketChar(cl[e.col]) {
+			if lineIdx == e.cursor && col == e.col {
+				return true
+			}
+		} else if e.col > 0 && e.col-1 < len(cl) && isBracketChar(cl[e.col-1]) {
+			if lineIdx == e.cursor && col == e.col-1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // hasAnyCursorOnLine checks if any additional cursor is on the given line.
 func (e *Editor) hasAnyCursorOnLine(lineIdx int) bool {
 	for _, c := range e.cursors {
@@ -1310,6 +1474,72 @@ func (e *Editor) renderLineWithCursors(displayLine string, lineIdx, fmStart, fmE
 	return lineContent
 }
 
+// isLineInSelection checks whether line lineIdx has any characters within the
+// current selection. If so it returns (true, selStartCol, selEndCol) relative
+// to the full line (before horizontal scroll / truncation).
+func (e *Editor) isLineInSelection(lineIdx int) (bool, int, int) {
+	if !e.selectionActive {
+		return false, 0, 0
+	}
+	sl, sc, el, ec := e.SelectionRange()
+	if lineIdx < sl || lineIdx > el {
+		return false, 0, 0
+	}
+	lineLen := len(e.content[lineIdx])
+	startCol := 0
+	endCol := lineLen
+	if lineIdx == sl {
+		startCol = sc
+	}
+	if lineIdx == el {
+		endCol = ec
+	}
+	if startCol > lineLen {
+		startCol = lineLen
+	}
+	if endCol > lineLen {
+		endCol = lineLen
+	}
+	return true, startCol, endCol
+}
+
+// renderLineWithSelectionHighlight renders a display line with selection
+// highlighting applied. selStart/selEnd are column offsets into the original
+// (pre-scroll) line; colOffset is the horizontal scroll offset that was applied.
+func (e *Editor) renderLineWithSelectionHighlight(displayLine string, lineIdx, fmStart, fmEnd int, codeBlocks map[int]string, selStart, selEnd, colOffset int, selStyle lipgloss.Style) string {
+	// Adjust selection columns for horizontal scroll
+	adjStart := selStart - colOffset
+	adjEnd := selEnd - colOffset
+	if adjStart < 0 {
+		adjStart = 0
+	}
+	if adjEnd < 0 {
+		return highlightLine(displayLine, lineIdx, fmStart, fmEnd, codeBlocks)
+	}
+	if adjStart > len(displayLine) {
+		return highlightLine(displayLine, lineIdx, fmStart, fmEnd, codeBlocks)
+	}
+	if adjEnd > len(displayLine) {
+		adjEnd = len(displayLine)
+	}
+	if adjStart >= adjEnd {
+		return highlightLine(displayLine, lineIdx, fmStart, fmEnd, codeBlocks)
+	}
+
+	var result strings.Builder
+	// Before selection
+	if adjStart > 0 {
+		result.WriteString(highlightLine(displayLine[:adjStart], lineIdx, fmStart, fmEnd, codeBlocks))
+	}
+	// Selected text
+	result.WriteString(selStyle.Render(displayLine[adjStart:adjEnd]))
+	// After selection
+	if adjEnd < len(displayLine) {
+		result.WriteString(highlightLine(displayLine[adjEnd:], lineIdx, fmStart, fmEnd, codeBlocks))
+	}
+	return result.String()
+}
+
 func (e Editor) View() string {
 	var b strings.Builder
 	contentWidth := e.width - 4
@@ -1380,6 +1610,11 @@ func (e Editor) View() string {
 	multiCursorStyle := lipgloss.NewStyle().
 		Background(mauve).
 		Foreground(base)
+
+	// Style for text selection highlight
+	_ = lipgloss.NewStyle().
+		Background(surface1).
+		Foreground(text)
 
 	// Ensure scroll doesn't start inside a folded region
 	for e.scroll > 0 && e.isLineFolded(e.scroll) {
