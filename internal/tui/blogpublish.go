@@ -100,6 +100,29 @@ func (bp *BlogPublisher) SetSize(w, h int) {
 	bp.height = h
 }
 
+// SetConfigSave sets the callback invoked after a successful publish to
+// persist tokens and repo settings back to the user config.
+func (bp *BlogPublisher) SetConfigSave(fn func(target, mediumToken, ghToken, ghRepo, ghBranch string)) {
+	bp.configSave = fn
+}
+
+// PreFill loads previously-saved tokens into the publisher so the user does
+// not have to re-enter them every session.
+func (bp *BlogPublisher) PreFill(mediumToken, ghToken, ghRepo, ghBranch string) {
+	if mediumToken != "" {
+		bp.mediumToken = mediumToken
+	}
+	if ghToken != "" {
+		bp.ghToken = ghToken
+	}
+	if ghRepo != "" {
+		bp.ghRepo = ghRepo
+	}
+	if ghBranch != "" {
+		bp.ghBranch = ghBranch
+	}
+}
+
 func (bp *BlogPublisher) Open(noteTitle, noteContent string) {
 	bp.active = true
 	bp.noteTitle = noteTitle
@@ -137,6 +160,10 @@ func (bp BlogPublisher) Update(msg tea.Msg) (BlogPublisher, tea.Cmd) {
 			bp.status = "Error: " + msg.err.Error()
 		} else {
 			bp.status = msg.url
+			// Persist tokens to config on successful publish
+			if bp.configSave != nil {
+				bp.configSave(bp.target, bp.mediumToken, bp.ghToken, bp.ghRepo, bp.ghBranch)
+			}
 		}
 		return bp, nil
 
