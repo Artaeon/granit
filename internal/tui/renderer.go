@@ -672,6 +672,60 @@ func parseHeading(line string) (int, string) {
 	return 0, ""
 }
 
+// isBlockElement returns true if a trimmed line starts a block-level markdown
+// element and should NOT be merged into a paragraph via soft-break joining.
+func isBlockElement(trimmed string) bool {
+	if strings.HasPrefix(trimmed, "#") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, ">") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "```") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "- [") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, ": ") {
+		return true
+	}
+	if trimmed == "---" || trimmed == "***" || trimmed == "___" {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "$$") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "[^") && strings.Contains(trimmed, "]:") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "![[") || strings.HasPrefix(trimmed, "![") {
+		return true
+	}
+	// Numbered list
+	if len(trimmed) > 1 && trimmed[0] >= '0' && trimmed[0] <= '9' {
+		for ci, ch := range trimmed {
+			if ch == '.' && ci > 0 && ci < 4 {
+				if ci+1 < len(trimmed) && trimmed[ci+1] == ' ' {
+					return true
+				}
+				break
+			}
+			if ch < '0' || ch > '9' {
+				break
+			}
+		}
+	}
+	// Table row
+	if strings.Contains(trimmed, "|") && strings.Count(trimmed, "|") >= 2 {
+		return true
+	}
+	return false
+}
+
 func (r Renderer) Render(content string, scroll int) string {
 	lines := r.renderMarkdown(content)
 
@@ -1182,8 +1236,34 @@ func (r Renderer) renderMarkdown(content string) []string {
 			}
 		}
 
-		// Normal paragraph
-		result = append(result, "  "+r.renderInline(trimmed))
+		// Normal paragraph — apply soft/hard line break rules (CommonMark)
+		// Collect consecutive paragraph lines:
+		//   - Line ending with 2+ spaces → hard break (new rendered line)
+		//   - Single newline → soft break (join with space on same line)
+		var paraSegments []string // each segment becomes a rendered line
+		currentSeg := trimmed
+		for i+1 < len(lines) {
+			nextRaw := lines[i+1]
+			nextTrimmed := strings.TrimSpace(nextRaw)
+			// Stop if next line is blank or a block-level element
+			if nextTrimmed == "" || isBlockElement(nextTrimmed) {
+				break
+			}
+			// Check if current raw line ends with 2+ spaces (hard break)
+			if strings.HasSuffix(line, "  ") {
+				paraSegments = append(paraSegments, currentSeg)
+				currentSeg = nextTrimmed
+			} else {
+				// Soft break: join with space
+				currentSeg += " " + nextTrimmed
+			}
+			i++
+			line = nextRaw
+		}
+		paraSegments = append(paraSegments, currentSeg)
+		for _, seg := range paraSegments {
+			result = append(result, "  "+r.renderInline(seg))
+		}
 	}
 
 	// Render collected footnotes at the bottom
