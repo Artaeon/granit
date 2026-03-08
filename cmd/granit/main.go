@@ -73,6 +73,13 @@ func main() {
 		}
 		runTUI(os.Args[2])
 
+	case "search":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: granit search <query> [vault-path] [--regex] [--json] [--case-sensitive] [--no-color]")
+			os.Exit(1)
+		}
+		runSearch(os.Args[2:])
+
 	case "scan":
 		if len(os.Args) < 3 {
 			fmt.Println("Usage: granit scan <vault-path>")
