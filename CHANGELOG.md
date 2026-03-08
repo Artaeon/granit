@@ -50,7 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Calendar view and graph view for visual note organization
 - Git integration for version control, export functionality, and plugin system
 - Slash command menu for fast in-editor actions
-- 28 built-in themes and a command palette for quick navigation
+- 35 built-in themes and a command palette for quick navigation
 - Pomodoro timer, flashcards, and quiz mode for productivity and learning
 - Mermaid diagram rendering (flowcharts, sequence, pie, class, Gantt charts)
 - Link assistant — find unlinked mentions and batch-create wikilinks
