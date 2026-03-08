@@ -417,6 +417,35 @@ func (bp *BlogPublisher) extractTags() []string {
 }
 
 // ---------------------------------------------------------------------------
+// HTTP retry with exponential backoff
+// ---------------------------------------------------------------------------
+
+func blogHTTPDoWithRetry(req *http.Request, maxRetries int) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			backoff := time.Duration(1<<uint(attempt-1)) * time.Second
+			time.Sleep(backoff)
+			// Reset request body if needed
+			if req.GetBody != nil {
+				req.Body, _ = req.GetBody()
+			}
+		}
+		resp, err = blogHTTPClient.Do(req)
+		if err != nil {
+			continue // network error, retry
+		}
+		// Don't retry on client errors (4xx), only on server errors (5xx) or rate limits (429)
+		if resp.StatusCode < 500 && resp.StatusCode != 429 {
+			return resp, nil
+		}
+		resp.Body.Close() // close before retry
+	}
+	return resp, err
+}
+
+// ---------------------------------------------------------------------------
 // Medium API
 // ---------------------------------------------------------------------------
 
