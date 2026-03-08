@@ -1564,3 +1564,66 @@ func TestRenderMarkdownHeadingExtraLines(t *testing.T) {
 		t.Errorf("H1 should produce multiple rendered lines (spacing + bar + text + underline), got %d", len(lines))
 	}
 }
+
+// =========================================================================
+// Definition lists
+// =========================================================================
+
+func TestRenderDefinitionListSingle(t *testing.T) {
+	r := newTestRenderer()
+	content := "Term One\n: This is the definition"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Term One") {
+		t.Errorf("Definition list should contain term text, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "This is the definition") {
+		t.Errorf("Definition list should contain definition text, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "▸") {
+		t.Errorf("Definition list should have marker character, got:\n%s", plain)
+	}
+}
+
+func TestRenderDefinitionListMultipleDefinitions(t *testing.T) {
+	r := newTestRenderer()
+	content := "Term\n: First definition\n: Second definition"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "First definition") {
+		t.Errorf("Should contain first definition, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "Second definition") {
+		t.Errorf("Should contain second definition, got:\n%s", plain)
+	}
+}
+
+func TestRenderDefinitionListMultipleTerms(t *testing.T) {
+	r := newTestRenderer()
+	content := "Term 1\n: Definition 1\n\nTerm 2\n: Definition 2"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Term 1") {
+		t.Errorf("Should contain first term, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "Definition 1") {
+		t.Errorf("Should contain first definition, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "Term 2") {
+		t.Errorf("Should contain second term, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "Definition 2") {
+		t.Errorf("Should contain second definition, got:\n%s", plain)
+	}
+}
+
+func TestRenderDefinitionListNotTriggeredWithoutColon(t *testing.T) {
+	r := newTestRenderer()
+	content := "Just a normal line\nFollowed by another"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	// Should NOT contain definition markers
+	if strings.Contains(plain, "▸") {
+		t.Errorf("Normal text should not trigger definition list, got:\n%s", plain)
+	}
+}
