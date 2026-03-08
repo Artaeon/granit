@@ -5734,7 +5734,48 @@ func (m Model) renderViewMode() string {
 
 	// Render markdown content
 	rendered := m.renderer.Render(m.editor.GetContent(), m.viewScroll)
-	b.WriteString(rendered)
+
+	// Add scroll position indicator on the right edge
+	vmTotalLines := m.renderer.RenderLineCount(m.editor.GetContent())
+	vmViewportH := m.renderer.height - 4
+	if vmViewportH < 1 {
+		vmViewportH = 1
+	}
+
+	renderedLines := strings.Split(rendered, "\n")
+	trackHeight := len(renderedLines)
+	if trackHeight > 0 && vmTotalLines > vmViewportH {
+		thumbSize := maxInt(1, trackHeight*vmViewportH/vmTotalLines)
+		if thumbSize > trackHeight {
+			thumbSize = trackHeight
+		}
+		vmMaxScroll := vmTotalLines - vmViewportH
+		thumbPos := 0
+		if vmMaxScroll > 0 {
+			thumbPos = m.viewScroll * (trackHeight - thumbSize) / vmMaxScroll
+		}
+		if thumbPos+thumbSize > trackHeight {
+			thumbPos = trackHeight - thumbSize
+		}
+		if thumbPos < 0 {
+			thumbPos = 0
+		}
+
+		trackStyle := lipgloss.NewStyle().Foreground(surface0)
+		thumbStyle := lipgloss.NewStyle().Foreground(mauve)
+
+		for i := 0; i < trackHeight; i++ {
+			var indicator string
+			if i >= thumbPos && i < thumbPos+thumbSize {
+				indicator = thumbStyle.Render("\u2588")
+			} else {
+				indicator = trackStyle.Render("\u2502")
+			}
+			renderedLines[i] = renderedLines[i] + " " + indicator
+		}
+	}
+
+	b.WriteString(strings.Join(renderedLines, "\n"))
 
 	return b.String()
 }
