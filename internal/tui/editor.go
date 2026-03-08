@@ -102,6 +102,7 @@ func (e *Editor) LoadContent(content string, filePath string) {
 	e.scroll = 0
 	e.hscroll = 0
 	e.modified = false
+	e.selectionActive = false
 	e.countWords()
 }
 
@@ -1669,6 +1670,12 @@ func (e Editor) View() string {
 		e.scroll--
 	}
 
+	// Calculate gutter width once for word wrap calculations
+	gutterWidth := 0
+	if e.showLineNumbers {
+		gutterWidth = 7
+	}
+
 	visibleCount := 0
 	lastRenderedLine := -1
 	for i := e.scroll; i < len(e.content) && visibleCount < visibleHeight; i++ {
@@ -1676,15 +1683,145 @@ func (e Editor) View() string {
 		if e.isLineFolded(i) {
 			continue
 		}
-		visibleCount++
-		lastRenderedLine = i
 
 		line := e.content[i]
 		isActiveLine := (i == e.cursor && e.focused)
 		hasMultiCursor := e.focused && e.hasAnyCursorOnLine(i)
 
+		// Determine max display width
+		maxWidth := contentWidth - gutterWidth
+		if maxWidth < 5 {
+			maxWidth = 5
+		}
+
+		// Word wrap path: split content line into multiple visual lines
+		if e.wordWrap && len(line) > maxWidth {
+			visualLines := e.splitLineForWrap(line, maxWidth)
+			// Determine which visual line the cursor is on (for active line)
+			cursorVisualLine := 0
+			cursorVisualCol := e.col
+			if isActiveLine {
+				remaining := e.col
+				for vi, vl := range visualLines {
+					if remaining <= len(vl) {
+						cursorVisualLine = vi
+						cursorVisualCol = remaining
+						break
+					}
+					remaining -= len(vl)
+					if vi < len(visualLines)-1 {
+						cursorVisualLine = vi + 1
+						cursorVisualCol = remaining
+					}
+				}
+			}
+
+			for vi, vl := range visualLines {
+				if visibleCount >= visibleHeight {
+					break
+				}
+
+				// Line number: only on first visual line; continuation gets wrap indicator
+				if e.showLineNumbers {
+					if vi == 0 {
+						lineNum := fmt.Sprintf("%4d ", i+1)
+						if isActiveLine || hasMultiCursor {
+							b.WriteString(ActiveLineNumStyle.Render(lineNum))
+						} else {
+							b.WriteString(LineNumStyle.Render(lineNum))
+						}
+						// Fold indicator in gutter
+						if e.foldState != nil {
+							indicator := e.foldState.GetFoldIndicator(i, e.content)
+							if indicator != "" {
+								b.WriteString(lipgloss.NewStyle().Foreground(peach).Render(indicator))
+							} else {
+								b.WriteString(" ")
+							}
+						} else {
+							b.WriteString(" ")
+						}
+					} else {
+						// Continuation line: blank gutter with wrap indicator
+						b.WriteString(DimStyle.Render("   " + WrapIndicator + " "))
+						b.WriteString(" ")
+					}
+				}
+
+				isCursorVisualLine := isActiveLine && vi == cursorVisualLine
+
+				if isCursorVisualLine && !hasMultiCursor {
+					// Render this visual line with cursor
+					ghostStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
+					ghostSuffix := ""
+					if e.ghostText != "" && vi == len(visualLines)-1 {
+						ghostSuffix = ghostStyle.Render(e.ghostText)
+					}
+					adjCol := cursorVisualCol
+					if adjCol < 0 {
+						adjCol = 0
+					}
+					// Calculate segment offset for bracket matching
+					segOffset := 0
+					for svi := 0; svi < vi; svi++ {
+						segOffset += len(visualLines[svi])
+					}
+					if adjCol <= len(vl) {
+						before := vl[:adjCol]
+						cursorChar := " "
+						if adjCol < len(vl) {
+							cursorChar = string(vl[adjCol])
+						}
+						after := ""
+						if adjCol+1 < len(vl) {
+							after = vl[adjCol+1:]
+						}
+						styledBefore := e.highlightLineWithBrackets(before, i, segOffset, fmStart, fmEnd, codeBlockLines, bracketStyle)
+						styledAfter := e.highlightLineWithBrackets(after, i, segOffset+adjCol+1, fmStart, fmEnd, codeBlockLines, bracketStyle)
+						lineContent := styledBefore + CursorStyle.Render(cursorChar) + styledAfter + ghostSuffix
+						if e.highlightCurrentLine {
+							lineContent = lipgloss.NewStyle().Background(surface0).Width(maxWidth).Render(lineContent)
+						}
+						b.WriteString(lineContent)
+					} else {
+						lineContent := highlightLine(vl, i, fmStart, fmEnd, codeBlockLines) + CursorStyle.Render(" ") + ghostSuffix
+						if e.highlightCurrentLine {
+							lineContent = lipgloss.NewStyle().Background(surface0).Width(maxWidth).Render(lineContent)
+						}
+						b.WriteString(lineContent)
+					}
+				} else if (isActiveLine || hasMultiCursor) && e.hasAnyCursorOnVisualLine(i, vi, maxWidth) {
+					b.WriteString(e.renderWrappedLineWithCursors(vl, i, vi, maxWidth, fmStart, fmEnd, codeBlockLines, multiCursorStyle))
+				} else {
+					styledLine := highlightLine(vl, i, fmStart, fmEnd, codeBlockLines)
+					if e.highlightCurrentLine && isActiveLine {
+						styledLine = lipgloss.NewStyle().Background(surface0).Width(maxWidth).Render(styledLine)
+					}
+					b.WriteString(styledLine)
+				}
+
+				// Show folded line count only on first visual line
+				if vi == 0 && e.foldState != nil {
+					if endLine, ok := e.foldState.GetFoldEnd(i); ok {
+						count := endLine - i
+						b.WriteString(DimStyle.Render(fmt.Sprintf(" ··· %d lines", count)))
+					}
+				}
+
+				visibleCount++
+				lastRenderedLine = i
+				if visibleCount < visibleHeight && (vi < len(visualLines)-1 || lastRenderedLine < len(e.content)-1) {
+					b.WriteString("\n")
+				}
+			}
+			continue
+		}
+
+		// Non-wrap path (original logic)
+		visibleCount++
+		lastRenderedLine = i
+
 		// Line number (conditional)
-		gutterWidth := 0
 		if e.showLineNumbers {
 			lineNum := fmt.Sprintf("%4d ", i+1)
 			if isActiveLine || hasMultiCursor {
@@ -1704,19 +1841,12 @@ func (e Editor) View() string {
 			} else {
 				b.WriteString(" ")
 			}
-			gutterWidth = 7
-		}
-
-		// Determine max display width
-		maxWidth := contentWidth - gutterWidth
-		if maxWidth < 5 {
-			maxWidth = 5
 		}
 
 		// Apply horizontal scroll for active line, truncate others
 		displayLine := line
 		colOffset := 0
-		if isActiveLine {
+		if isActiveLine && !e.wordWrap {
 			// Adjust hscroll to keep cursor visible
 			if e.col < e.hscroll {
 				e.hscroll = e.col
@@ -1814,10 +1944,147 @@ func (e Editor) View() string {
 		if foldedCount > 0 {
 			info += fmt.Sprintf("  [%d folded]", foldedCount)
 		}
+		if e.wordWrap {
+			info += "  [wrap]"
+		}
 		b.WriteString(DimStyle.Render(info))
 	}
 
 	return b.String()
+}
+
+
+// splitLineForWrap splits a content line into multiple visual lines that fit
+// within maxWidth. It tries to break at word boundaries (spaces) when possible.
+func (e *Editor) splitLineForWrap(line string, maxWidth int) []string {
+	if maxWidth < 1 {
+		maxWidth = 1
+	}
+	if len(line) <= maxWidth {
+		return []string{line}
+	}
+
+	var result []string
+	remaining := line
+	for len(remaining) > maxWidth {
+		// Try to break at a space within the last portion of the chunk
+		breakAt := maxWidth
+		lastSpace := -1
+		for j := maxWidth - 1; j >= maxWidth/2; j-- {
+			if remaining[j] == ' ' {
+				lastSpace = j
+				break
+			}
+		}
+		if lastSpace > 0 {
+			breakAt = lastSpace + 1 // include the space in the current line
+		}
+		result = append(result, remaining[:breakAt])
+		remaining = remaining[breakAt:]
+	}
+	if len(remaining) > 0 {
+		result = append(result, remaining)
+	}
+	return result
+}
+
+// hasAnyCursorOnVisualLine checks if any cursor (main or multi) falls on a
+// specific visual line segment of a wrapped content line.
+func (e *Editor) hasAnyCursorOnVisualLine(contentLine, visualLineIdx, maxWidth int) bool {
+	visualLines := e.splitLineForWrap(e.content[contentLine], maxWidth)
+	if visualLineIdx >= len(visualLines) {
+		return false
+	}
+	startCol := 0
+	for vi := 0; vi < visualLineIdx; vi++ {
+		startCol += len(visualLines[vi])
+	}
+	endCol := startCol + len(visualLines[visualLineIdx])
+
+	if contentLine == e.cursor && e.col >= startCol && e.col <= endCol {
+		return true
+	}
+	for _, c := range e.cursors {
+		if c.Line == contentLine && c.Col >= startCol && c.Col <= endCol {
+			return true
+		}
+	}
+	return false
+}
+
+// renderWrappedLineWithCursors renders a visual line segment from a wrapped
+// content line, placing cursor highlights at the correct positions.
+func (e *Editor) renderWrappedLineWithCursors(visualLine string, contentLine, visualLineIdx, maxWidth, fmStart, fmEnd int, codeBlocks map[int]string, multiCursorStyle lipgloss.Style) string {
+	visualLines := e.splitLineForWrap(e.content[contentLine], maxWidth)
+	startCol := 0
+	for vi := 0; vi < visualLineIdx; vi++ {
+		startCol += len(visualLines[vi])
+	}
+
+	type cursorInfo struct {
+		col    int
+		isMain bool
+	}
+	var cursorsOnLine []cursorInfo
+
+	if contentLine == e.cursor {
+		adjCol := e.col - startCol
+		if adjCol >= 0 && adjCol <= len(visualLine) {
+			cursorsOnLine = append(cursorsOnLine, cursorInfo{col: adjCol, isMain: true})
+		}
+	}
+	for _, c := range e.cursors {
+		if c.Line == contentLine {
+			adjCol := c.Col - startCol
+			if adjCol >= 0 && adjCol <= len(visualLine) {
+				cursorsOnLine = append(cursorsOnLine, cursorInfo{col: adjCol, isMain: false})
+			}
+		}
+	}
+
+	sort.Slice(cursorsOnLine, func(i, j int) bool {
+		return cursorsOnLine[i].col < cursorsOnLine[j].col
+	})
+
+	var result strings.Builder
+	prevCol := 0
+	for _, ci := range cursorsOnLine {
+		col := ci.col
+		if col > len(visualLine) {
+			col = len(visualLine)
+		}
+		if col < prevCol {
+			continue
+		}
+		if col > prevCol {
+			segment := visualLine[prevCol:col]
+			result.WriteString(highlightLine(segment, contentLine, fmStart, fmEnd, codeBlocks))
+		}
+		cursorChar := " "
+		if col < len(visualLine) {
+			cursorChar = string(visualLine[col])
+		}
+		if ci.isMain {
+			result.WriteString(CursorStyle.Render(cursorChar))
+		} else {
+			result.WriteString(multiCursorStyle.Render(cursorChar))
+		}
+		if col < len(visualLine) {
+			prevCol = col + 1
+		} else {
+			prevCol = col
+		}
+	}
+	if prevCol < len(visualLine) {
+		segment := visualLine[prevCol:]
+		result.WriteString(highlightLine(segment, contentLine, fmStart, fmEnd, codeBlocks))
+	}
+
+	lineContent := result.String()
+	if e.highlightCurrentLine && contentLine == e.cursor {
+		lineContent = lipgloss.NewStyle().Background(surface0).Width(maxWidth).Render(lineContent)
+	}
+	return lineContent
 }
 
 // highlightLineWithBrackets renders a line segment with syntax highlighting and
