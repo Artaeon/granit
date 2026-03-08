@@ -16,6 +16,8 @@ const (
 	LayoutReading   = "reading"
 	LayoutDashboard = "dashboard"
 	LayoutZen       = "zen"
+	LayoutTaskboard = "taskboard"
+	LayoutResearch  = "research"
 )
 
 // AllLayouts returns every valid layout name in display order.
@@ -27,6 +29,8 @@ func AllLayouts() []string {
 		LayoutReading,
 		LayoutDashboard,
 		LayoutZen,
+		LayoutTaskboard,
+		LayoutResearch,
 	}
 }
 
@@ -45,6 +49,10 @@ func LayoutDescription(layout string) string {
 		return "Sidebar + Editor + Outline + Backlinks (4-panel)"
 	case LayoutZen:
 		return "Centered editor, no chrome (distraction-free)"
+	case LayoutTaskboard:
+		return "Sidebar + Editor + Task summary (3-panel)"
+	case LayoutResearch:
+		return "Sidebar + Editor + Notes panel (3-panel)"
 	default:
 		return "Unknown layout"
 	}
@@ -65,6 +73,10 @@ func LayoutPanelCount(layout string) int {
 		return 4
 	case LayoutZen:
 		return 1
+	case LayoutTaskboard:
+		return 3
+	case LayoutResearch:
+		return 3
 	default:
 		return 3
 	}
@@ -83,7 +95,7 @@ func LayoutHasSidebar(layout string) bool {
 // LayoutHasBacklinks reports whether the layout includes the backlinks panel.
 func LayoutHasBacklinks(layout string) bool {
 	switch layout {
-	case LayoutWriter, LayoutMinimal, LayoutZen:
+	case LayoutWriter, LayoutMinimal, LayoutZen, LayoutTaskboard, LayoutResearch:
 		return false
 	default:
 		return true
