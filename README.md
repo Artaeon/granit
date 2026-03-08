@@ -54,7 +54,7 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 | | |
 |---|---|
 | **110+ source files** | 85,000+ lines of Go powering the TUI |
-| **35 themes** | 29 dark + 6 light, plus custom theme editor |
+| **40 themes** | 33 dark + 7 light, plus custom theme editor |
 | **20+ AI features** | Ollama, OpenAI, Claude Code, or offline fallback |
 | **8 layouts** | Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, Research |
 | **16 core plugins** | Enable/disable modules individually |
@@ -813,7 +813,7 @@ Found a bug or have a feature request? [Open an issue](https://github.com/artaeo
 | [Architecture](docs/ARCHITECTURE.md) | Technical overview and codebase structure |
 | [Configuration](docs/CONFIGURATION.md) | All config options with defaults |
 | [Plugin Guide](docs/PLUGINS.md) | Plugin development and Lua scripting |
-| [Theme Reference](docs/THEMES.md) | All 35 themes and custom theme creation |
+| [Theme Reference](docs/THEMES.md) | All 40 themes and custom theme creation |
 | [Changelog](CHANGELOG.md) | Version history and release notes |
 
 ---
