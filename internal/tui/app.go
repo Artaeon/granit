@@ -2777,6 +2777,22 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 				content = note.Content
 			}
 			m.blogPublisher.SetSize(m.width, m.height)
+			m.blogPublisher.PreFill(
+				m.config.MediumToken,
+				m.config.GitHubToken,
+				m.config.GitHubRepo,
+				m.config.GitHubBranch,
+			)
+			m.blogPublisher.SetConfigSave(func(target, mediumToken, ghToken, ghRepo, ghBranch string) {
+				if target == "medium" {
+					m.config.MediumToken = mediumToken
+				} else {
+					m.config.GitHubToken = ghToken
+					m.config.GitHubRepo = ghRepo
+					m.config.GitHubBranch = ghBranch
+				}
+				m.config.Save()
+			})
 			m.blogPublisher.Open(title, content)
 		} else {
 			m.statusbar.SetMessage("Open a note first to publish")
