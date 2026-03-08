@@ -93,6 +93,9 @@ func main() {
 	case "capture":
 		runCapture()
 
+	case "query":
+		runQuery()
+
 	case "config":
 		runConfig()
 
