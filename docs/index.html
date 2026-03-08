@@ -25,6 +25,8 @@
       --green: #a6e3a1;
       --peach: #fab387;
       --red: #f38ba8;
+      --yellow: #f9e2af;
+      --teal: #94e2d5;
       --border: #313244;
       --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code", "Source Code Pro", ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace;
       --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -509,8 +511,8 @@
     /* ─── Stats ─── */
     .stats-row {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 1.5rem;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
       margin-top: 1rem;
     }
 
@@ -539,6 +541,8 @@
     .stat-card:nth-child(2) .stat-number { color: var(--blue); }
     .stat-card:nth-child(3) .stat-number { color: var(--peach); }
     .stat-card:nth-child(4) .stat-number { color: var(--green); }
+    .stat-card:nth-child(5) .stat-number { color: var(--teal, #94e2d5); }
+    .stat-card:nth-child(6) .stat-number { color: var(--red); }
 
     .stat-label {
       color: var(--text-dim);
@@ -739,7 +743,7 @@
       }
 
       .stats-row {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(3, 1fr);
       }
 
       .docs-grid {
@@ -1128,26 +1132,34 @@
     <p class="demo-caption">The default 3-panel layout with sidebar, editor, and backlinks panel.</p>
   </section>
 
-  <!-- At a Glance -->
+  <!-- By the Numbers -->
   <section id="stats">
-    <h2 class="section-title"><span class="accent">//</span> At a Glance</h2>
-    <p class="section-subtitle">Built from the ground up for power users who live in the terminal.</p>
+    <h2 class="section-title"><span class="accent">//</span> By the Numbers</h2>
+    <p class="section-subtitle">A massive, well-tested codebase -- 100% free and open source.</p>
     <div class="stats-row">
       <div class="stat-card">
-        <span class="stat-number">80k+</span>
+        <span class="stat-number">113,000+</span>
         <span class="stat-label">Lines of Go</span>
       </div>
       <div class="stat-card">
-        <span class="stat-number">109</span>
-        <span class="stat-label">Source Files</span>
+        <span class="stat-number">1,438</span>
+        <span class="stat-label">Tests</span>
       </div>
       <div class="stat-card">
         <span class="stat-number">35</span>
         <span class="stat-label">Themes</span>
       </div>
       <div class="stat-card">
-        <span class="stat-number">100+</span>
-        <span class="stat-label">Features</span>
+        <span class="stat-number">140+</span>
+        <span class="stat-label">Commands</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-number">9</span>
+        <span class="stat-label">AI Bots</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-number">100%</span>
+        <span class="stat-label">Free &amp; Open Source</span>
       </div>
     </div>
   </section>
