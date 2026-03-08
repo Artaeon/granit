@@ -1118,6 +1118,31 @@ func (r Renderer) renderMarkdown(content string) []string {
 			continue
 		}
 
+		// Definition list: a term line followed by ": definition" lines
+		if !strings.HasPrefix(trimmed, ":") && trimmed != "" && i+1 < len(lines) {
+			nextTrimmed := strings.TrimSpace(lines[i+1])
+			if strings.HasPrefix(nextTrimmed, ": ") {
+				// This line is a definition term — render it and collect definitions
+				termStyle := lipgloss.NewStyle().Foreground(text).Bold(true)
+				result = append(result, "  "+termStyle.Render(trimmed))
+				// Collect all ": definition" lines
+				defMarkerStyle := lipgloss.NewStyle().Foreground(teal).Bold(true)
+				defTextStyle := lipgloss.NewStyle().Foreground(subtext0)
+				for i+1 < len(lines) {
+					defLine := strings.TrimSpace(lines[i+1])
+					if strings.HasPrefix(defLine, ": ") {
+						defContent := strings.TrimPrefix(defLine, ": ")
+						result = append(result, "    "+defMarkerStyle.Render("▸ ")+defTextStyle.Render(defContent))
+						i++
+					} else {
+						break
+					}
+				}
+				result = append(result, "") // blank line after definition block
+				continue
+			}
+		}
+
 		// Footnote definition: [^id]: text
 		if strings.HasPrefix(trimmed, "[^") {
 			closeBracket := strings.Index(trimmed, "]:")
