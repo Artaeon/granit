@@ -54,6 +54,27 @@
       color: var(--blue);
     }
 
+    /* ─── Scroll Fade-in Animations ─── */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(40px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .fade-in {
+      animation: fadeInUp 0.7s ease both;
+    }
+
+    .fade-in-delay-1 { animation-delay: 0.1s; }
+    .fade-in-delay-2 { animation-delay: 0.2s; }
+    .fade-in-delay-3 { animation-delay: 0.3s; }
+    .fade-in-delay-4 { animation-delay: 0.4s; }
+
     /* ─── Navigation ─── */
     nav {
       position: fixed;
@@ -77,6 +98,7 @@
       font-weight: 700;
       color: var(--accent);
       letter-spacing: 0.05em;
+      z-index: 102;
     }
 
     nav .nav-links {
@@ -93,6 +115,75 @@
     }
 
     nav .nav-links a:hover {
+      color: var(--accent);
+    }
+
+    /* ─── Hamburger Menu (CSS-only) ─── */
+    .hamburger-toggle {
+      display: none;
+    }
+
+    .hamburger-label {
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      gap: 5px;
+      width: 28px;
+      height: 28px;
+      cursor: pointer;
+      z-index: 102;
+    }
+
+    .hamburger-label span {
+      display: block;
+      width: 100%;
+      height: 2px;
+      background: var(--text);
+      border-radius: 2px;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+    }
+
+    .hamburger-toggle:checked ~ .hamburger-label span:nth-child(1) {
+      transform: rotate(45deg) translate(5px, 5px);
+    }
+
+    .hamburger-toggle:checked ~ .hamburger-label span:nth-child(2) {
+      opacity: 0;
+    }
+
+    .hamburger-toggle:checked ~ .hamburger-label span:nth-child(3) {
+      transform: rotate(-45deg) translate(5px, -5px);
+    }
+
+    .mobile-nav-overlay {
+      display: none;
+    }
+
+    /* ─── Back to Top ─── */
+    .back-to-top {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      z-index: 90;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .back-to-top:hover {
+      transform: translateY(-3px);
+      border-color: var(--accent);
+      box-shadow: 0 6px 20px rgba(203, 166, 247, 0.2);
       color: var(--accent);
     }
 
@@ -882,8 +973,56 @@
         grid-template-columns: 1fr;
       }
 
+      /* Hide desktop nav, show hamburger */
       nav .nav-links {
         display: none;
+      }
+
+      .hamburger-label {
+        display: flex;
+      }
+
+      .mobile-nav-overlay {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 101;
+        background: rgba(17, 17, 27, 0.97);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+      }
+
+      .hamburger-toggle:checked ~ .mobile-nav-overlay {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .mobile-nav-menu {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        gap: 2rem;
+      }
+
+      .mobile-nav-menu a {
+        color: var(--text);
+        font-family: var(--font-mono);
+        font-size: 1.3rem;
+        font-weight: 600;
+        transition: color 0.2s ease;
+      }
+
+      .mobile-nav-menu a:hover {
+        color: var(--accent);
       }
     }
 
@@ -958,6 +1097,14 @@
       .theme-grid {
         grid-template-columns: 1fr;
       }
+
+      .back-to-top {
+        bottom: 1.25rem;
+        right: 1.25rem;
+        width: 38px;
+        height: 38px;
+        font-size: 1rem;
+      }
     }
 
     /* ─── Scrollbar ─── */
@@ -1000,6 +1147,26 @@
       <li><a href="#documentation">Docs</a></li>
       <li><a href="https://github.com/artaeon/granit">GitHub</a></li>
     </ul>
+
+    <!-- Mobile hamburger (CSS-only) -->
+    <input type="checkbox" id="hamburger-toggle" class="hamburger-toggle" aria-label="Toggle navigation">
+    <label for="hamburger-toggle" class="hamburger-label" aria-label="Menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </label>
+    <div class="mobile-nav-overlay">
+      <ul class="mobile-nav-menu">
+        <li><a href="#features" onclick="document.getElementById('hamburger-toggle').checked=false">Features</a></li>
+        <li><a href="#showcase" onclick="document.getElementById('hamburger-toggle').checked=false">Showcase</a></li>
+        <li><a href="#comparison" onclick="document.getElementById('hamburger-toggle').checked=false">Compare</a></li>
+        <li><a href="#shortcuts" onclick="document.getElementById('hamburger-toggle').checked=false">Keys</a></li>
+        <li><a href="#demo" onclick="document.getElementById('hamburger-toggle').checked=false">Demo</a></li>
+        <li><a href="#installation" onclick="document.getElementById('hamburger-toggle').checked=false">Installation</a></li>
+        <li><a href="#documentation" onclick="document.getElementById('hamburger-toggle').checked=false">Docs</a></li>
+        <li><a href="https://github.com/artaeon/granit" onclick="document.getElementById('hamburger-toggle').checked=false">GitHub</a></li>
+      </ul>
+    </div>
   </nav>
 
   <!-- Hero -->
@@ -1027,50 +1194,50 @@
 
   <!-- Features -->
   <section id="features">
-    <h2 class="section-title"><span class="accent">//</span> Features</h2>
-    <p class="section-subtitle">Everything you need for knowledge management, built into your terminal.</p>
+    <h2 class="section-title fade-in"><span class="accent">//</span> Features</h2>
+    <p class="section-subtitle fade-in">Everything you need for knowledge management, built into your terminal.</p>
     <div class="features-grid">
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-1">
         <span class="feature-icon">&#x2728;</span>
         <h3>AI-Powered</h3>
         <p>20+ AI features with Ollama, OpenAI, and Claude Code support. Auto-tagging, summarization, link suggestions, and local offline fallback.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-2">
         <span class="feature-icon">&#x2328;&#xFE0F;</span>
         <h3>Vim Mode</h3>
         <p>Full modal editing with Normal, Insert, Visual, and Command modes. Dot repeat, macros, and everything you expect from Vim.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-3">
         <span class="feature-icon">&#x1F3A8;</span>
         <h3>35 Themes</h3>
         <p>29 dark and 6 light themes including Catppuccin, Tokyo Night, Gruvbox, Nord, and more. Plus a custom theme editor.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-1">
         <span class="feature-icon">&#x2705;</span>
         <h3>Task Manager</h3>
         <p>Kanban boards, task priorities, daily planner, and AI smart scheduler. Track your work right alongside your notes.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-2">
         <span class="feature-icon">&#x1F500;</span>
         <h3>Git Integration</h3>
         <p>Built-in status, log, and diff views. Commit, push, and pull without leaving the TUI. Optional auto-sync on save.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-3">
         <span class="feature-icon">&#x1F517;</span>
         <h3>Obsidian Compatible</h3>
         <p>Full support for [[wikilinks]], YAML frontmatter, and the same folder structure. Use your existing Obsidian vault as-is.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-1">
         <span class="feature-icon">&#x1F4D0;</span>
         <h3>8 Layouts</h3>
         <p>Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, and Research modes. Adapt the UI to your current workflow.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-2">
         <span class="feature-icon">&#x1F9E9;</span>
         <h3>Plugin System</h3>
         <p>Extend Granit with scripts and Lua plugins. 16 core plugins included. Hook into save, open, create, and delete events.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-3">
         <span class="feature-icon">&#x1F512;</span>
         <h3>Encryption</h3>
         <p>AES-256-GCM encryption for sensitive notes. Secure your vault for safe syncing across devices without compromising privacy.</p>
@@ -1080,11 +1247,11 @@
 
   <!-- Feature Showcase -->
   <div class="showcase" id="showcase">
-    <h2 class="section-title"><span class="accent">//</span> Feature Showcase</h2>
-    <p class="section-subtitle">A deeper look at what sets Granit apart.</p>
+    <h2 class="section-title fade-in"><span class="accent">//</span> Feature Showcase</h2>
+    <p class="section-subtitle fade-in">A deeper look at what sets Granit apart.</p>
 
     <!-- Editor in Action -->
-    <div class="showcase-item">
+    <div class="showcase-item fade-in">
       <div class="showcase-image">
         <img src="../assets/editor.gif" alt="Granit editor in action" loading="lazy"
              onerror="this.onerror=null;this.src='../assets/screenshot-editor.png';">
@@ -1103,7 +1270,7 @@
     </div>
 
     <!-- Task Manager -->
-    <div class="showcase-item reverse">
+    <div class="showcase-item reverse fade-in">
       <div class="showcase-image">
         <img src="../assets/screenshot-taskmanager.svg" alt="Granit Task Manager with Kanban board" loading="lazy">
       </div>
@@ -1121,7 +1288,7 @@
     </div>
 
     <!-- AI-Powered Features -->
-    <div class="showcase-item">
+    <div class="showcase-item fade-in">
       <div class="showcase-image">
         <img src="../assets/screenshot-ai-bots.svg" alt="Granit AI bots and assistants" loading="lazy">
       </div>
@@ -1139,7 +1306,7 @@
     </div>
 
     <!-- 35 Themes -->
-    <div class="showcase-item reverse">
+    <div class="showcase-item reverse fade-in">
       <div class="showcase-image">
         <img src="../assets/screenshot-themes.svg" alt="Granit theme selection showing 35 themes" loading="lazy">
       </div>
@@ -1159,9 +1326,9 @@
 
   <!-- Comparison Table -->
   <section class="comparison" id="comparison">
-    <h2 class="section-title"><span class="accent">//</span> Granit vs Obsidian</h2>
-    <p class="section-subtitle">A detailed, honest comparison. See exactly what you get -- and what you save.</p>
-    <div class="comparison-wrapper">
+    <h2 class="section-title fade-in"><span class="accent">//</span> Granit vs Obsidian</h2>
+    <p class="section-subtitle fade-in">A detailed, honest comparison. See exactly what you get -- and what you save.</p>
+    <div class="comparison-wrapper fade-in">
       <table class="comparison-table">
         <thead>
           <tr>
@@ -1248,54 +1415,54 @@
 
   <!-- Keyboard-First Design -->
   <section class="shortcuts" id="shortcuts">
-    <h2 class="section-title"><span class="accent">//</span> Keyboard First</h2>
-    <p class="section-subtitle">Everything is one shortcut away. No mouse required.</p>
+    <h2 class="section-title fade-in"><span class="accent">//</span> Keyboard First</h2>
+    <p class="section-subtitle fade-in">Everything is one shortcut away. No mouse required.</p>
     <div class="shortcuts-grid">
-      <div class="shortcut-item">
+      <div class="shortcut-item fade-in fade-in-delay-1">
         <span class="shortcut-label">Command Palette</span>
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>X</kbd></div>
       </div>
-      <div class="shortcut-item">
+      <div class="shortcut-item fade-in fade-in-delay-2">
         <span class="shortcut-label">Quick Switcher</span>
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>J</kbd></div>
       </div>
-      <div class="shortcut-item">
+      <div class="shortcut-item fade-in fade-in-delay-1">
         <span class="shortcut-label">New Note</span>
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>N</kbd></div>
       </div>
-      <div class="shortcut-item">
+      <div class="shortcut-item fade-in fade-in-delay-2">
         <span class="shortcut-label">Find &amp; Replace</span>
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>F</kbd></div>
       </div>
-      <div class="shortcut-item">
+      <div class="shortcut-item fade-in fade-in-delay-1">
         <span class="shortcut-label">AI Bots</span>
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>R</kbd></div>
       </div>
-      <div class="shortcut-item">
+      <div class="shortcut-item fade-in fade-in-delay-2">
         <span class="shortcut-label">Task Manager</span>
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>K</kbd></div>
       </div>
-      <div class="shortcut-item">
+      <div class="shortcut-item fade-in fade-in-delay-1">
         <span class="shortcut-label">Focus / Zen Mode</span>
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>Z</kbd></div>
       </div>
-      <div class="shortcut-item">
+      <div class="shortcut-item fade-in fade-in-delay-2">
         <span class="shortcut-label">Calendar</span>
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>L</kbd></div>
       </div>
-      <div class="shortcut-item">
+      <div class="shortcut-item fade-in fade-in-delay-1">
         <span class="shortcut-label">Settings</span>
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>,</kbd></div>
       </div>
-      <div class="shortcut-item">
+      <div class="shortcut-item fade-in fade-in-delay-2">
         <span class="shortcut-label">Note Graph</span>
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>G</kbd></div>
       </div>
-      <div class="shortcut-item">
+      <div class="shortcut-item fade-in fade-in-delay-1">
         <span class="shortcut-label">Tag Browser</span>
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>T</kbd></div>
       </div>
-      <div class="shortcut-item">
+      <div class="shortcut-item fade-in fade-in-delay-2">
         <span class="shortcut-label">Bookmarks</span>
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>B</kbd></div>
       </div>
@@ -1304,9 +1471,9 @@
 
   <!-- Demo -->
   <section id="demo" class="demo">
-    <h2 class="section-title"><span class="accent">//</span> See It in Action</h2>
-    <p class="section-subtitle">A full-featured knowledge manager running entirely in your terminal.</p>
-    <div class="demo-container">
+    <h2 class="section-title fade-in"><span class="accent">//</span> See It in Action</h2>
+    <p class="section-subtitle fade-in">A full-featured knowledge manager running entirely in your terminal.</p>
+    <div class="demo-container fade-in">
       <div class="demo-titlebar">
         <span class="demo-dot"></span>
         <span class="demo-dot"></span>
@@ -1315,13 +1482,13 @@
       </div>
       <img src="../assets/editor.gif" alt="Granit editor demo showing the TUI in action" loading="lazy">
     </div>
-    <p class="demo-caption">The default 3-panel layout with sidebar, editor, and backlinks panel.</p>
+    <p class="demo-caption fade-in">The default 3-panel layout with sidebar, editor, and backlinks panel.</p>
   </section>
 
   <!-- Theme Showcase -->
   <section class="theme-showcase" id="themes">
-    <h2 class="section-title"><span class="accent">//</span> Theme Variety</h2>
-    <p class="section-subtitle">35 built-in themes. Instantly switch from settings or create your own with the theme editor.</p>
+    <h2 class="section-title fade-in"><span class="accent">//</span> Theme Variety</h2>
+    <p class="section-subtitle fade-in">35 built-in themes. Instantly switch from settings or create your own with the theme editor.</p>
     <div class="theme-grid">
       <div class="theme-card">
         <div class="theme-card-name">Catppuccin Mocha</div>
@@ -1400,30 +1567,30 @@
 
   <!-- By the Numbers -->
   <section id="stats">
-    <h2 class="section-title"><span class="accent">//</span> By the Numbers</h2>
-    <p class="section-subtitle">A massive, well-tested codebase -- 100% free and open source.</p>
+    <h2 class="section-title fade-in"><span class="accent">//</span> By the Numbers</h2>
+    <p class="section-subtitle fade-in">A massive, well-tested codebase -- 100% free and open source.</p>
     <div class="stats-row">
-      <div class="stat-card">
+      <div class="stat-card fade-in fade-in-delay-1">
         <span class="stat-number">113,000+</span>
         <span class="stat-label">Lines of Go</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card fade-in fade-in-delay-2">
         <span class="stat-number">1,438</span>
         <span class="stat-label">Tests</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card fade-in fade-in-delay-3">
         <span class="stat-number">35</span>
         <span class="stat-label">Themes</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card fade-in fade-in-delay-1">
         <span class="stat-number">140+</span>
         <span class="stat-label">Commands</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card fade-in fade-in-delay-2">
         <span class="stat-number">9</span>
         <span class="stat-label">AI Bots</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card fade-in fade-in-delay-3">
         <span class="stat-number">100%</span>
         <span class="stat-label">Free &amp; Open Source</span>
       </div>
@@ -1432,10 +1599,10 @@
 
   <!-- Installation -->
   <section id="installation">
-    <h2 class="section-title"><span class="accent">//</span> Installation</h2>
-    <p class="section-subtitle">Up and running in under a minute. Pick your preferred method.</p>
+    <h2 class="section-title fade-in"><span class="accent">//</span> Installation</h2>
+    <p class="section-subtitle fade-in">Up and running in under a minute. Pick your preferred method.</p>
     <div class="install-block">
-      <div class="install-method">
+      <div class="install-method fade-in">
         <h3><span class="dot" style="background: var(--accent);"></span> Go Install (Recommended)</h3>
         <div class="code-block">
           <div class="code-header">
@@ -1445,7 +1612,7 @@
           <pre><code id="install-go"><span class="prompt">$</span> <span class="cmd">go</span> <span class="arg">install</span> github.com/artaeon/granit/cmd/granit@latest</code></pre>
         </div>
       </div>
-      <div class="install-method">
+      <div class="install-method fade-in">
         <h3><span class="dot" style="background: var(--blue);"></span> Arch Linux (AUR)</h3>
         <div class="code-block">
           <div class="code-header">
@@ -1459,7 +1626,7 @@
 <span class="prompt">$</span> <span class="cmd">yay</span> <span class="arg">-S</span> granit-git</code></pre>
         </div>
       </div>
-      <div class="install-method">
+      <div class="install-method fade-in">
         <h3><span class="dot" style="background: var(--green);"></span> Build from Source</h3>
         <div class="code-block">
           <div class="code-header">
@@ -1472,7 +1639,7 @@
 <span class="prompt">$</span> <span class="cmd">sudo</span> <span class="arg">mv</span> granit /usr/local/bin/</code></pre>
         </div>
       </div>
-      <div class="install-method">
+      <div class="install-method fade-in">
         <h3><span class="dot" style="background: var(--peach);"></span> Quick Start</h3>
         <div class="code-block">
           <div class="code-header">
@@ -1494,45 +1661,45 @@
 
   <!-- Documentation -->
   <section id="documentation">
-    <h2 class="section-title"><span class="accent">//</span> Documentation</h2>
-    <p class="section-subtitle">Comprehensive guides covering every aspect of Granit.</p>
+    <h2 class="section-title fade-in"><span class="accent">//</span> Documentation</h2>
+    <p class="section-subtitle fade-in">Comprehensive guides covering every aspect of Granit.</p>
     <div class="docs-grid">
-      <a href="FEATURES.md" class="doc-card">
+      <a href="FEATURES.md" class="doc-card fade-in fade-in-delay-1">
         <span class="doc-icon">&#x1F4CB;</span>
         <h4>Features</h4>
         <p>Complete feature list and detailed descriptions.</p>
       </a>
-      <a href="INSTALLATION.md" class="doc-card">
+      <a href="INSTALLATION.md" class="doc-card fade-in fade-in-delay-2">
         <span class="doc-icon">&#x1F4E6;</span>
         <h4>Installation</h4>
         <p>Setup instructions for all platforms.</p>
       </a>
-      <a href="AI-GUIDE.md" class="doc-card">
+      <a href="AI-GUIDE.md" class="doc-card fade-in fade-in-delay-3">
         <span class="doc-icon">&#x1F916;</span>
         <h4>AI Guide</h4>
         <p>Configure Ollama, OpenAI, and local AI.</p>
       </a>
-      <a href="KEYBINDINGS.md" class="doc-card">
+      <a href="KEYBINDINGS.md" class="doc-card fade-in fade-in-delay-4">
         <span class="doc-icon">&#x2328;&#xFE0F;</span>
         <h4>Keybindings</h4>
         <p>All keyboard shortcuts and Vim bindings.</p>
       </a>
-      <a href="ARCHITECTURE.md" class="doc-card">
+      <a href="ARCHITECTURE.md" class="doc-card fade-in fade-in-delay-1">
         <span class="doc-icon">&#x1F3D7;&#xFE0F;</span>
         <h4>Architecture</h4>
         <p>Codebase structure and design decisions.</p>
       </a>
-      <a href="CONFIGURATION.md" class="doc-card">
+      <a href="CONFIGURATION.md" class="doc-card fade-in fade-in-delay-2">
         <span class="doc-icon">&#x2699;&#xFE0F;</span>
         <h4>Configuration</h4>
         <p>Settings, config files, and customization.</p>
       </a>
-      <a href="PLUGINS.md" class="doc-card">
+      <a href="PLUGINS.md" class="doc-card fade-in fade-in-delay-3">
         <span class="doc-icon">&#x1F9E9;</span>
         <h4>Plugins</h4>
         <p>Plugin development and the hook system.</p>
       </a>
-      <a href="THEMES.md" class="doc-card">
+      <a href="THEMES.md" class="doc-card fade-in fade-in-delay-4">
         <span class="doc-icon">&#x1F3A8;</span>
         <h4>Themes</h4>
         <p>All 35 themes and the custom theme editor.</p>
@@ -1558,6 +1725,9 @@
     </div>
   </footer>
 
+  <!-- Back to Top Button -->
+  <a href="#" class="back-to-top" aria-label="Back to top" title="Back to top">&uarr;</a>
+
   <script>
     function copyCode(button, id) {
       var el = document.getElementById(id);
@@ -1571,6 +1741,23 @@
         }, 2000);
       });
     }
+    // Intersection Observer for scroll-triggered animations
+    (function() {
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            entry.target.style.animationPlayState = 'running';
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+      // Pause all animations initially, then trigger on scroll
+      document.querySelectorAll('.fade-in').forEach(function(el) {
+        el.style.animationPlayState = 'paused';
+        observer.observe(el);
+      });
+    })();
   </script>
 
 </body>
