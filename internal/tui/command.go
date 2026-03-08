@@ -125,6 +125,8 @@ const (
 	CmdWritingCoach
 	CmdDataview
 	CmdTimeTracker
+	CmdBackup
+	CmdShowTutorial
 	CmdQuit
 )
 
@@ -248,6 +250,8 @@ var AllCommands = []Command{
 	{Label: "Minimal Layout", Desc: "Editor only", Shortcut: "", Action: CmdLayoutMinimal, Icon: &IconViewChar},
 	{Label: "Reading Layout", Desc: "Editor + backlinks, no sidebar", Shortcut: "", Action: CmdLayoutReading, Icon: &IconViewChar},
 	{Label: "Dashboard Layout", Desc: "4-panel: sidebar, editor, outline, backlinks", Shortcut: "", Action: CmdLayoutDashboard, Icon: &IconViewChar},
+	{Label: "Vault Backup", Desc: "Create, restore, and manage vault backups", Shortcut: "", Action: CmdBackup, Icon: &IconSaveChar},
+	{Label: "Show Tutorial", Desc: "Interactive walkthrough of Granit features", Shortcut: "", Action: CmdShowTutorial, Icon: &IconHelpChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
