@@ -163,6 +163,14 @@ type Model struct {
 	clipManager      ClipManager
 	dailyPlanner     DailyPlanner
 	aiScheduler      AIScheduler
+	recurringTasks   RecurringTasks
+	notePreview      NotePreview
+	scratchpad       Scratchpad
+	projectMode      ProjectMode
+	nlSearch         NLSearch
+	writingCoach     WritingCoach
+	dataview         DataviewOverlay
+	timeTracker      TimeTracker
 	dueTodayCount    int
 
 	// Slash command menu
@@ -295,6 +303,8 @@ func NewModel(vaultPath string) (Model, error) {
 		habitTracker:     NewHabitTracker(),
 		dailyPlanner:    NewDailyPlanner(),
 		aiScheduler:     NewAIScheduler(),
+		notePreview:     NewNotePreview(),
+		dataview:        NewDataviewOverlay(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
 		showSplash:     cfg.ShowSplash,
@@ -754,6 +764,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.aiScheduler.IsActive() {
 			var cmd tea.Cmd
 			m.aiScheduler, cmd = m.aiScheduler.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case nlSearchResultMsg:
+		if m.nlSearch.IsActive() {
+			var cmd tea.Cmd
+			m.nlSearch, cmd = m.nlSearch.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case nlSearchTickMsg:
+		if m.nlSearch.IsActive() {
+			var cmd tea.Cmd
+			m.nlSearch, cmd = m.nlSearch.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case writingCoachResultMsg:
+		if m.writingCoach.IsActive() {
+			var cmd tea.Cmd
+			m.writingCoach, cmd = m.writingCoach.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case writingCoachTickMsg:
+		if m.writingCoach.IsActive() {
+			var cmd tea.Cmd
+			m.writingCoach, cmd = m.writingCoach.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case timeTrackerTickMsg:
+		if m.timeTracker.IsTimerRunning() {
+			var cmd tea.Cmd
+			m.timeTracker, cmd = m.timeTracker.Update(msg)
 			return m, cmd
 		}
 		return m, nil
@@ -1340,7 +1390,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.aiScheduler, cmd = m.aiScheduler.Update(msg)
 			if !m.aiScheduler.IsActive() {
 				if slots, ok := m.aiScheduler.GetSchedule(); ok && len(slots) > 0 {
-					// Convert AI schedule to planner data and open the planner
 					tasks, _, habits := m.gatherPlannerData()
 					m.dailyPlanner.SetSize(m.width, m.height)
 					m.dailyPlanner.Open(m.vault.Root, tasks, nil, habits)
@@ -1348,6 +1397,90 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.statusbar.SetMessage("AI schedule applied to planner")
 				}
 			}
+			return m, cmd
+		}
+
+		if m.recurringTasks.IsActive() {
+			m.recurringTasks, _ = m.recurringTasks.Update(msg)
+			if !m.recurringTasks.IsActive() {
+				if count, ok := m.recurringTasks.GetCreatedCount(); ok && count > 0 {
+					m.vault.Scan()
+					m.index.Build()
+					m.sidebar.SetFiles(m.vault.SortedPaths())
+					m.statusbar.SetMessage(fmt.Sprintf("%d recurring tasks created", count))
+				}
+			}
+			return m, nil
+		}
+
+		if m.notePreview.IsActive() {
+			m.notePreview, _ = m.notePreview.Update(msg)
+			if !m.notePreview.IsActive() {
+				if notePath, ok := m.notePreview.GetSelectedNote(); ok {
+					m.loadNote(notePath)
+					m.sidebar.cursor = m.findFileIndex(notePath)
+				}
+			}
+			return m, nil
+		}
+
+		if m.scratchpad.IsActive() {
+			m.scratchpad, _ = m.scratchpad.Update(msg)
+			return m, nil
+		}
+
+		if m.projectMode.IsActive() {
+			m.projectMode, _ = m.projectMode.Update(msg)
+			if !m.projectMode.IsActive() {
+				if notePath, ok := m.projectMode.GetSelectedNote(); ok {
+					m.loadNote(notePath)
+					m.sidebar.cursor = m.findFileIndex(notePath)
+				}
+				if action, ok := m.projectMode.GetAction(); ok {
+					return m.executeCommand(action)
+				}
+			}
+			return m, nil
+		}
+
+		if m.nlSearch.IsActive() {
+			var cmd tea.Cmd
+			m.nlSearch, cmd = m.nlSearch.Update(msg)
+			if !m.nlSearch.IsActive() {
+				if notePath, ok := m.nlSearch.GetSelectedNote(); ok {
+					m.loadNote(notePath)
+					m.sidebar.cursor = m.findFileIndex(notePath)
+				}
+			}
+			return m, cmd
+		}
+
+		if m.writingCoach.IsActive() {
+			var cmd tea.Cmd
+			m.writingCoach, cmd = m.writingCoach.Update(msg)
+			if !m.writingCoach.IsActive() {
+				if suggestion, ok := m.writingCoach.GetSuggestion(); ok {
+					m.editor.InsertText(suggestion)
+					m.statusbar.SetMessage("Writing suggestion applied")
+				}
+			}
+			return m, cmd
+		}
+
+		if m.dataview.IsActive() {
+			m.dataview, _ = m.dataview.Update(msg)
+			if !m.dataview.IsActive() {
+				if notePath, ok := m.dataview.GetSelectedNote(); ok {
+					m.loadNote(notePath)
+					m.sidebar.cursor = m.findFileIndex(notePath)
+				}
+			}
+			return m, nil
+		}
+
+		if m.timeTracker.IsActive() {
+			var cmd tea.Cmd
+			m.timeTracker, cmd = m.timeTracker.Update(msg)
 			return m, cmd
 		}
 
@@ -3165,6 +3298,47 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.config.AIProvider, m.config.OllamaURL, m.config.OllamaModel,
 			m.config.OpenAIKey, m.config.OpenAIModel)
 
+	case CmdRecurringTasks:
+		m.recurringTasks.SetSize(m.width, m.height)
+		m.recurringTasks.Open(m.vault.Root)
+
+	case CmdNotePreview:
+		if m.activeNote != "" {
+			if n, ok := m.vault.Notes[m.activeNote]; ok {
+				m.notePreview.SetSize(m.width, m.height)
+				m.notePreview.Open(m.activeNote, m.activeNote, n.Content)
+			}
+		}
+
+	case CmdScratchpad:
+		m.scratchpad.SetSize(m.width, m.height)
+		m.scratchpad.Open(m.vault.Root)
+
+	case CmdProjectMode:
+		m.projectMode.SetSize(m.width, m.height)
+		m.projectMode.Open(m.vault.Root)
+
+	case CmdNLSearch:
+		m.nlSearch.SetSize(m.width, m.height)
+		m.nlSearch.Open(m.vault.Root,
+			m.config.AIProvider, m.config.OllamaURL, m.config.OllamaModel,
+			m.config.OpenAIKey, m.config.OpenAIModel)
+
+	case CmdWritingCoach:
+		m.writingCoach.SetSize(m.width, m.height)
+		content := m.editor.GetContent()
+		m.writingCoach.Open(m.vault.Root, content, m.activeNote,
+			m.config.AIProvider, m.config.OllamaURL, m.config.OllamaModel,
+			m.config.OpenAIKey, m.config.OpenAIModel)
+
+	case CmdDataview:
+		m.dataview.SetSize(m.width, m.height)
+		m.dataview.Open(m.vault.Root)
+
+	case CmdTimeTracker:
+		m.timeTracker.SetSize(m.width, m.height)
+		m.timeTracker.Open(m.vault.Root)
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}
@@ -4287,6 +4461,38 @@ func (m Model) View() string {
 	}
 	if m.aiScheduler.IsActive() {
 		overlay := m.aiScheduler.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.recurringTasks.IsActive() {
+		overlay := m.recurringTasks.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.notePreview.IsActive() {
+		overlay := m.notePreview.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.scratchpad.IsActive() {
+		overlay := m.scratchpad.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.projectMode.IsActive() {
+		overlay := m.projectMode.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.nlSearch.IsActive() {
+		overlay := m.nlSearch.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.writingCoach.IsActive() {
+		overlay := m.writingCoach.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.dataview.IsActive() {
+		overlay := m.dataview.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.timeTracker.IsActive() {
+		overlay := m.timeTracker.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.spellcheck.IsActive() {
