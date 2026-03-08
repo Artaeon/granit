@@ -21,14 +21,14 @@ import (
 
 // Task represents a single task extracted from a markdown note.
 type Task struct {
-	Text          string
-	Done          bool
-	DueDate       string // "2006-01-02" or ""
-	Priority      int    // 0=none, 1=low, 2=medium, 3=high, 4=highest
-	ScheduledTime string // "HH:MM-HH:MM" or "" — set by AI scheduler
-	Tags          []string
-	NotePath      string // source note relative path
-	LineNum       int    // 1-based line number in source note
+	Text          string   `json:"text"`
+	Done          bool     `json:"done"`
+	DueDate       string   `json:"due_date"`           // "2006-01-02" or ""
+	Priority      int      `json:"priority"`            // 0=none, 1=low, 2=medium, 3=high, 4=highest
+	ScheduledTime string   `json:"scheduled_time,omitempty"` // "HH:MM-HH:MM" or "" — set by AI scheduler
+	Tags          []string `json:"tags,omitempty"`
+	NotePath      string   `json:"note_path"`           // source note relative path
+	LineNum       int      `json:"line_num"`             // 1-based line number in source note
 }
 
 // taskView identifies which tab is active.
