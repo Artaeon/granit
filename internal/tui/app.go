@@ -175,6 +175,9 @@ type Model struct {
 	timeTracker      TimeTracker
 	dueTodayCount    int
 
+	// Cross-component refresh flag
+	needsRefresh bool
+
 	// Slash command menu
 	slashMenu *SlashMenu
 
@@ -4007,6 +4010,41 @@ func (m *Model) updateLayout() {
 	m.blogPublisher.SetSize(m.width, m.height)
 	m.backup.SetSize(m.width, m.height)
 	m.onboarding.SetSize(m.width, m.height)
+}
+
+// refreshComponents re-scans the vault and updates all dependent components
+// after any file has been modified by an overlay. If changedPath is non-empty
+// and matches the currently open note, the editor is reloaded too.
+func (m *Model) refreshComponents(changedPath string) {
+	m.vault.Scan()
+	m.index.Build()
+	paths := m.vault.SortedPaths()
+	m.sidebar.SetFiles(paths)
+	m.autocomplete.SetNotes(paths)
+	m.statusbar.SetNoteCount(m.vault.NoteCount())
+
+	// Update due-today count
+	m.dueTodayCount = CountTasksDueToday(m.vault.Notes)
+	m.statusbar.SetDueTodayCount(m.dueTodayCount)
+
+	// Update calendar daily notes and note contents
+	m.calendar.SetDailyNotes(paths)
+	noteContents := make(map[string]string)
+	for _, p := range paths {
+		if note := m.vault.GetNote(p); note != nil {
+			noteContents[p] = note.Content
+		}
+	}
+	m.calendar.SetNoteContents(noteContents)
+
+	// If the changed file is currently open in the editor, reload it
+	if changedPath != "" && changedPath == m.activeNote {
+		if note := m.vault.GetNote(changedPath); note != nil {
+			m.editor.LoadContent(note.Content, m.editor.filePath)
+		}
+	}
+
+	m.needsRefresh = true
 }
 
 func (m *Model) syncConfigToComponents() {
