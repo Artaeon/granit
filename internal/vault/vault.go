@@ -22,8 +22,9 @@ type Note struct {
 }
 
 type Vault struct {
-	Root  string
-	Notes map[string]*Note // keyed by relative path
+	Root        string
+	Notes       map[string]*Note // keyed by relative path
+	SearchIndex *SearchIndex     // full-text search index
 }
 
 func NewVault(root string) (*Vault, error) {
@@ -39,7 +40,7 @@ func NewVault(root string) (*Vault, error) {
 
 func (v *Vault) Scan() error {
 	v.Notes = make(map[string]*Note)
-	return filepath.Walk(v.Root, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(v.Root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -76,6 +77,17 @@ func (v *Vault) Scan() error {
 		v.Notes[relPath] = note
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// Build or rebuild the full-text search index
+	if v.SearchIndex == nil {
+		v.SearchIndex = NewSearchIndex()
+	}
+	v.SearchIndex.Build(v)
+
+	return nil
 }
 
 // ScanFast collects only file paths, mod times, and sizes without reading
