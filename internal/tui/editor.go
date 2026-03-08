@@ -52,11 +52,22 @@ type Editor struct {
 	// Horizontal scroll for long lines
 	hscroll int
 
+	// Word wrap
+	wordWrap bool
+
 	// Ghost text (AI inline completion)
 	ghostText string // dimmed suggestion shown after cursor
 
 	// Heading/code-fence folding
 	foldState *FoldState
+}
+
+// SetWordWrap enables or disables word wrapping in the editor.
+func (e *Editor) SetWordWrap(enabled bool) {
+	e.wordWrap = enabled
+	if enabled {
+		e.hscroll = 0
+	}
 }
 
 func NewEditor() Editor {
@@ -121,6 +132,48 @@ func (e *Editor) SetGhostText(text string) {
 // GetGhostText returns the current ghost text suggestion.
 func (e *Editor) GetGhostText() string {
 	return e.ghostText
+}
+
+// CursorLine returns the current cursor line index.
+func (e *Editor) CursorLine() int {
+	return e.cursor
+}
+
+// CursorCol returns the current cursor column index.
+func (e *Editor) CursorCol() int {
+	return e.col
+}
+
+// ScrollOffset returns the current vertical scroll offset.
+func (e *Editor) ScrollOffset() int {
+	return e.scroll
+}
+
+// SetCursorPosition sets the cursor to the given line and column,
+// clamping to valid ranges within the current content.
+func (e *Editor) SetCursorPosition(line, col int) {
+	if line < 0 {
+		line = 0
+	}
+	if line >= len(e.content) {
+		line = len(e.content) - 1
+	}
+	if col < 0 {
+		col = 0
+	}
+	if line >= 0 && line < len(e.content) && col > len(e.content[line]) {
+		col = len(e.content[line])
+	}
+	e.cursor = line
+	e.col = col
+}
+
+// SetScroll sets the vertical scroll offset, clamping to valid range.
+func (e *Editor) SetScroll(offset int) {
+	if offset < 0 {
+		offset = 0
+	}
+	e.scroll = offset
 }
 
 func (e *Editor) SetContent(content string) {
