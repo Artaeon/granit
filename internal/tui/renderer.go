@@ -1515,6 +1515,16 @@ func (r Renderer) renderInline(input string) string {
 			continue
 		}
 
+		// HTML inline tags: <kbd>, <sub>, <sup>, <mark>, <abbr>
+		if runes[i] == '<' && i+1 < n && runes[i+1] != '/' {
+			remaining := string(runes[i:])
+			if styled, advance := r.tryRenderHTMLTag(remaining); advance > 0 {
+				result.WriteString(styled)
+				i += advance
+				continue
+			}
+		}
+
 		// Tags #tag
 		if runes[i] == '#' && (i == 0 || runes[i-1] == ' ') {
 			end := i + 1
@@ -1538,4 +1548,75 @@ func (r Renderer) renderInline(input string) string {
 	}
 
 	return result.String()
+}
+
+// HTML inline tag regexes
+var (
+	htmlKbdRe  = regexp.MustCompile(`^<kbd>(.*?)</kbd>`)
+	htmlSubRe  = regexp.MustCompile(`^<sub>(.*?)</sub>`)
+	htmlSupRe  = regexp.MustCompile(`^<sup>(.*?)</sup>`)
+	htmlMarkRe = regexp.MustCompile(`^<mark>(.*?)</mark>`)
+	htmlAbbrRe = regexp.MustCompile(`^<abbr\s+title="([^"]*)">(.*?)</abbr>`)
+)
+
+// tryRenderHTMLTag attempts to match and render an inline HTML tag at the
+// start of the given string. Returns the styled string and the number of
+// runes consumed, or ("", 0) if no match.
+func (r Renderer) tryRenderHTMLTag(s string) (string, int) {
+	// <kbd>text</kbd> → boxed/bordered styling
+	if m := htmlKbdRe.FindStringSubmatch(s); m != nil {
+		content := m[1]
+		styled := lipgloss.NewStyle().
+			Foreground(text).
+			Background(surface1).
+			Bold(true).
+			Render(" " + content + " ")
+		return styled, len([]rune(m[0]))
+	}
+
+	// <mark>text</mark> → highlighted (like ==text==)
+	if m := htmlMarkRe.FindStringSubmatch(s); m != nil {
+		content := m[1]
+		styled := lipgloss.NewStyle().
+			Foreground(crust).
+			Background(yellow).
+			Bold(true).
+			Render(content)
+		return styled, len([]rune(m[0]))
+	}
+
+	// <abbr title="...">text</abbr> → text with title shown inline
+	if m := htmlAbbrRe.FindStringSubmatch(s); m != nil {
+		title := m[1]
+		content := m[2]
+		abbrStyle := lipgloss.NewStyle().
+			Foreground(blue).
+			Underline(true).
+			Render(content)
+		titleStyle := lipgloss.NewStyle().
+			Foreground(overlay0).
+			Italic(true).
+			Render("[" + title + "]")
+		return abbrStyle + titleStyle, len([]rune(m[0]))
+	}
+
+	// <sup>text</sup> → superscript indicator
+	if m := htmlSupRe.FindStringSubmatch(s); m != nil {
+		content := m[1]
+		styled := lipgloss.NewStyle().
+			Foreground(sapphire).
+			Render("^" + content)
+		return styled, len([]rune(m[0]))
+	}
+
+	// <sub>text</sub> → subscript indicator
+	if m := htmlSubRe.FindStringSubmatch(s); m != nil {
+		content := m[1]
+		styled := lipgloss.NewStyle().
+			Foreground(sapphire).
+			Render("_" + content)
+		return styled, len([]rune(m[0]))
+	}
+
+	return "", 0
 }
