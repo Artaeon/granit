@@ -1953,3 +1953,114 @@ func TestRenderHTMLTagNotMatched(t *testing.T) {
 		t.Errorf("Unknown HTML tag should pass through, got:\n%s", plain)
 	}
 }
+
+// =========================================================================
+// Task list nesting
+// =========================================================================
+
+func TestRenderNestedTaskListUnchecked(t *testing.T) {
+	r := newTestRenderer()
+	content := "- [ ] Parent\n  - [ ] Child"
+	lines := renderedLines(r, content)
+	plainLines := make([]string, len(lines))
+	for i, l := range lines {
+		plainLines[i] = stripAnsiCodes(l)
+	}
+	foundParent := false
+	foundChild := false
+	for _, pl := range plainLines {
+		if strings.Contains(pl, "Parent") && strings.Contains(pl, "☐") {
+			foundParent = true
+		}
+		if strings.Contains(pl, "Child") && strings.Contains(pl, "☐") {
+			foundChild = true
+		}
+	}
+	if !foundParent {
+		t.Errorf("Should render parent task, got:\n%s", strings.Join(plainLines, "\n"))
+	}
+	if !foundChild {
+		t.Errorf("Should render child task, got:\n%s", strings.Join(plainLines, "\n"))
+	}
+}
+
+func TestRenderNestedTaskListChecked(t *testing.T) {
+	r := newTestRenderer()
+	content := "- [ ] Parent\n  - [x] Done child"
+	lines := renderedLines(r, content)
+	plainLines := make([]string, len(lines))
+	for i, l := range lines {
+		plainLines[i] = stripAnsiCodes(l)
+	}
+	foundDoneChild := false
+	for _, pl := range plainLines {
+		if strings.Contains(pl, "Done child") && strings.Contains(pl, "☑") {
+			foundDoneChild = true
+		}
+	}
+	if !foundDoneChild {
+		t.Errorf("Should render checked child task, got:\n%s", strings.Join(plainLines, "\n"))
+	}
+}
+
+func TestRenderNestedTaskListConnector(t *testing.T) {
+	r := newTestRenderer()
+	content := "- [ ] Parent\n  - [ ] Child"
+	lines := renderedLines(r, content)
+	plainLines := make([]string, len(lines))
+	for i, l := range lines {
+		plainLines[i] = stripAnsiCodes(l)
+	}
+	// Child should have connector character
+	foundConnector := false
+	for _, pl := range plainLines {
+		if strings.Contains(pl, "Child") && strings.Contains(pl, "└") {
+			foundConnector = true
+		}
+	}
+	if !foundConnector {
+		t.Errorf("Nested child should have └ connector, got:\n%s", strings.Join(plainLines, "\n"))
+	}
+}
+
+func TestRenderDeeplyNestedTaskList(t *testing.T) {
+	r := newTestRenderer()
+	content := "- [ ] Level 0\n  - [ ] Level 1\n    - [x] Level 2"
+	lines := renderedLines(r, content)
+	plainLines := make([]string, len(lines))
+	for i, l := range lines {
+		plainLines[i] = stripAnsiCodes(l)
+	}
+	if len(plainLines) < 3 {
+		t.Errorf("Should have at least 3 lines for 3 levels, got %d:\n%s",
+			len(plainLines), strings.Join(plainLines, "\n"))
+		return
+	}
+	// Level 2 should be more indented than Level 1
+	l1Indent := 0
+	l2Indent := 0
+	for _, pl := range plainLines {
+		stripped := strings.TrimLeft(pl, " ")
+		indent := len(pl) - len(stripped)
+		if strings.Contains(pl, "Level 1") {
+			l1Indent = indent
+		}
+		if strings.Contains(pl, "Level 2") {
+			l2Indent = indent
+		}
+	}
+	if l2Indent <= l1Indent {
+		t.Errorf("Level 2 should be more indented than Level 1 (got L1=%d, L2=%d)", l1Indent, l2Indent)
+	}
+}
+
+func TestRenderNestedTaskListParentNoConnector(t *testing.T) {
+	r := newTestRenderer()
+	content := "- [ ] Parent task"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	// Top-level task should NOT have connector
+	if strings.Contains(plain, "└") {
+		t.Errorf("Top-level task should not have └ connector, got:\n%s", plain)
+	}
+}
