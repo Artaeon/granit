@@ -8,6 +8,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Vim text objects** — inner/around operators (`iw`, `aw`, `is`, `as`, `ip`, `ap`, `i"`, `a"`, `i)`, `a)`, `i}`, `a}`, `i]`, `a]`, `i>`, `a<`, `` i` ``, `` a` ``); works with `d`, `c`, `y` operators and visual mode
+- **Vim marks** — `m` + a-z to set mark, `'` + a-z to jump to line, `` ` `` + a-z to jump to exact position, `''` to jump to previous position
+- **Vim search highlighting** — `/pattern` and `?pattern` highlight ALL matches in yellow, current match in orange; `n`/`N` cycle with wrap-around; match count in status bar; Esc clears highlights
+- **Landing page overhaul** — feature comparison table (Granit vs Obsidian), embedded screenshots and GIF, theme showcase with palette swatches, "By the Numbers" stats, keyboard-first design section, enhanced installation guide, scroll animations and mobile menu
+- **Markdown definition lists** — `Term\n: Definition` syntax rendered with bold term and indented colored marker
+- **Markdown soft/hard line breaks** — CommonMark-compliant: single newline = soft break (space), trailing two spaces = hard break (new line)
+- **Markdown HTML inline tags** — `<kbd>`, `<sub>`, `<sup>`, `<mark>`, `<abbr title="...">` rendered with appropriate styling
+- **Nested task lists** — indented checkboxes render with `└` connectors and proportional indentation
+- **Improved callout types** — added `[!important]`, `[!attention]`, `[!failure]`/`[!fail]`, `[!missing]` with distinct colors; callout blocks now have top/bottom borders
+- **Table alignment indicators** — header separator rows show `:═══` (left), `:═══:` (center), `═══:` (right) alignment markers
+- **Settings search** — press `/` in settings to fuzzy-filter by name, description, or category; case-insensitive matching
+- **Settings categories** — 6 organized groups (Appearance, Editor, AI, Files, Plugins, Advanced) with visual headers
+- **Settings reset to default** — press `Del` on any setting to restore default; modified settings show `*` indicator
+- **Theme color preview** — color palette swatches shown when browsing themes in settings
+- **5 accessibility themes** — high-contrast-dark, high-contrast-light, deuteranopia, protanopia, tritanopia (40 themes total)
+- **Full-text search index** — inverted index with TF-IDF scoring built during vault scan; O(1) search with phrase matching and relevance ranking; incremental updates on file save; thread-safe with RWMutex
+- **CLI: `granit init`** — initialize new vaults with Welcome.md, templates folder, and default config
+- **CLI: `granit search`** — search vault from command line with `--regex`, `--json`, `--case-sensitive`, `--no-color`
+- **CLI: `granit export`** — export notes to HTML/text/JSON with `--all` or `--note`; HTML includes CSS styling and index page
+- **CLI: `granit import`** — import from Obsidian, Logseq, or Notion with format conversion
+- **CLI: `granit backup`** — timestamped zip backups with `--restore` and `--list`
+- **CLI: `granit plugin`** — list/install/remove/enable/disable/info/create plugins from command line
+- **Plugin management package** — shared `internal/plugins/` package for CLI and TUI plugin operations
+- **Comprehensive test suites** — 9 new test files: AI scheduler (32 tests), daily planner (83 tests), language learning (56 tests), habit tracker (58 tests), project mode (52 tests), time tracker (48 tests), writing coach (49 tests), NL search (68 tests), knowledge gaps (53 tests)
+- **Search index tests** — 27 tests covering index construction, multi-word search, regex, TF-IDF ranking, incremental updates, thread safety
+- **Plugin management tests** — 21 tests covering install, remove, enable/disable, validation, scaffolding
 - **Task manager rewrite** — 6 views (Today, Upcoming, All, Done, Calendar, Kanban board), 5 priority levels (highest/high/medium/low/none), date picker with keyboard shortcuts (t=today, m=tomorrow, w=next Monday), dedicated `Tasks.md` storage, source file badges showing which note each task comes from, cross-vault task scanning from all files
 - **Blog publisher** — publish notes directly to Medium (draft/public/unlisted with frontmatter tag extraction) or GitHub (push Markdown to any repo and branch with SHA-based updates)
 - **Breadcrumb navigation** — folder-path breadcrumb bar above the editor showing `vault > folder > subfolder > note`, with left-truncation for deep paths
