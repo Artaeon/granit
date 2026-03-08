@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // VimMode represents the current editing mode in Vim emulation.
@@ -39,6 +42,14 @@ type VimState struct {
 	// Last action for dot repeat
 	lastAction string
 	lastCount  int
+
+	// Macro recording and replay
+	macros            map[byte][]tea.KeyMsg // stored macros per register (a-z)
+	recording         bool                  // whether currently recording
+	recordRegister    byte                  // which register is being recorded into
+	recordBuffer      []tea.KeyMsg          // current recording buffer
+	lastMacroRegister byte                  // for @@ replay
+	playingMacro      bool                  // prevent recursive macro execution
 }
 
 // VimResult is returned from HandleKey to tell the editor what to do.
@@ -84,12 +95,24 @@ type VimResult struct {
 	FoldToggle bool
 	FoldAll    bool
 	UnfoldAll  bool
+
+	// Macro recording/replay
+	MacroStart  byte // non-zero means start recording into this register
+	MacroStop   bool // stop recording current macro
+	MacroReplay byte // non-zero means replay macro from this register
+}
+
+// vimMacroReplayMsg is a tea.Msg used to replay macro keystrokes one at a time.
+type vimMacroReplayMsg struct {
+	keys []tea.KeyMsg
+	idx  int
 }
 
 // NewVimState creates a new VimState in Normal mode, disabled by default.
 func NewVimState() *VimState {
 	return &VimState{
-		mode: VimNormal,
+		mode:   VimNormal,
+		macros: make(map[byte][]tea.KeyMsg),
 	}
 }
 
@@ -125,6 +148,77 @@ func (vs *VimState) ModeString() string {
 	default:
 		return "NORMAL"
 	}
+}
+
+// RecordingStatus returns a status string shown while macro recording is active.
+// Returns "" when not recording, or "recording @a" when recording register 'a'.
+func (vs *VimState) RecordingStatus() string {
+	if !vs.recording {
+		return ""
+	}
+	return fmt.Sprintf("recording @%c", vs.recordRegister)
+}
+
+// IsRecording reports whether a macro is currently being recorded.
+func (vs *VimState) IsRecording() bool {
+	return vs.recording
+}
+
+// IsPlayingMacro reports whether a macro is currently being replayed.
+func (vs *VimState) IsPlayingMacro() bool {
+	return vs.playingMacro
+}
+
+// StartRecording begins recording keystrokes into the given register (a-z).
+func (vs *VimState) StartRecording(reg byte) {
+	vs.recording = true
+	vs.recordRegister = reg
+	vs.recordBuffer = nil
+}
+
+// StopRecording finishes recording and saves the buffer into the register.
+func (vs *VimState) StopRecording() {
+	if !vs.recording {
+		return
+	}
+	buf := vs.recordBuffer
+	if buf == nil {
+		buf = []tea.KeyMsg{}
+	}
+	vs.macros[vs.recordRegister] = buf
+	vs.recording = false
+	vs.recordBuffer = nil
+}
+
+// RecordKey appends a key message to the current recording buffer.
+func (vs *VimState) RecordKey(msg tea.KeyMsg) {
+	if vs.recording && !vs.playingMacro {
+		vs.recordBuffer = append(vs.recordBuffer, msg)
+	}
+}
+
+// GetMacro returns the recorded keystrokes for a register, or nil if empty.
+func (vs *VimState) GetMacro(reg byte) []tea.KeyMsg {
+	keys, ok := vs.macros[reg]
+	if !ok {
+		return nil
+	}
+	return keys
+}
+
+// SetPlayingMacro sets the playingMacro flag to prevent recursive execution.
+func (vs *VimState) SetPlayingMacro(playing bool) {
+	vs.playingMacro = playing
+}
+
+// LastMacroRegister returns the register used for the most recent @x replay.
+func (vs *VimState) LastMacroRegister() byte {
+	return vs.lastMacroRegister
+}
+
+// SetLastMacroRegister stores which register was last replayed (for @@).
+func (vs *VimState) SetLastMacroRegister(reg byte) {
+	vs.lastMacroRegister = reg
 }
 
 // HandleKey processes a single key event and returns a VimResult describing
@@ -597,6 +691,22 @@ func (vs *VimState) handleNormal(key string, content []string, cursor, col, heig
 		vs.cmdBuf = ""
 		return VimResult{EnterCommand: true, StatusMsg: ":"}
 
+	// ---- Macro recording ----
+	case "q":
+		if vs.recording {
+			// Stop recording
+			return VimResult{MacroStop: true, StatusMsg: "macro recorded"}
+		}
+		// Start recording: wait for register letter
+		vs.pending = "q"
+		return VimResult{}
+
+	// ---- Macro replay ----
+	case "@":
+		// Wait for register letter or @ for last-used
+		vs.pending = "@"
+		return VimResult{}
+
 	// ---- Folding (z-prefix) ----
 	case "z":
 		vs.pending = "z"
@@ -607,7 +717,7 @@ func (vs *VimState) handleNormal(key string, content []string, cursor, col, heig
 }
 
 // ---------------------------------------------------------------------------
-// Operator-pending handling (d, c, y, g + motion)
+// Operator-pending handling (d, c, y, g, z, q, @ + motion)
 // ---------------------------------------------------------------------------
 
 func (vs *VimState) handlePending(key string, content []string, cursor, col, count int) VimResult {
@@ -648,6 +758,27 @@ func (vs *VimState) handlePending(key string, content []string, cursor, col, cou
 			return VimResult{UnfoldAll: true}
 		}
 		vs.pending = ""
+		return VimResult{}
+	}
+
+	// q-prefix: start macro recording into register a-z
+	if op == "q" {
+		if len(key) == 1 && key[0] >= 'a' && key[0] <= 'z' {
+			return VimResult{MacroStart: key[0]}
+		}
+		// Invalid register — cancel
+		return VimResult{}
+	}
+
+	// @-prefix: replay macro from register a-z, or @@ for last used
+	if op == "@" {
+		if len(key) == 1 && key[0] >= 'a' && key[0] <= 'z' {
+			return VimResult{MacroReplay: key[0]}
+		}
+		if key == "@" && vs.lastMacroRegister != 0 {
+			return VimResult{MacroReplay: vs.lastMacroRegister}
+		}
+		// Invalid register — cancel
 		return VimResult{}
 	}
 
