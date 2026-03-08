@@ -20,6 +20,11 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Verify binary
+        run: |
+          go build -o granit ./cmd/granit/
+          ./granit version
+
       - name: Vet
         run: go vet ./...
 
