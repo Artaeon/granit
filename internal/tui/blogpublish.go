@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+var blogHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 // ---------------------------------------------------------------------------
 // Messages
