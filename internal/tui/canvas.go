@@ -172,7 +172,7 @@ func (c *Canvas) Save() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(fp, raw, 0o644)
+	_ = os.WriteFile(fp, raw, 0o600)
 }
 
 // Load restores canvas state from disk.
