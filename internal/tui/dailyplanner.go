@@ -1430,6 +1430,13 @@ func (dp *DailyPlanner) plannerFilePath() string {
 	return filepath.Join(dp.plannerDir(), dp.date.Format("2006-01-02")+".md")
 }
 
+// SaveNow persists the planner to disk unconditionally.  Used by app.go
+// after applying an AI schedule so the calendar can load the planner blocks.
+func (dp *DailyPlanner) SaveNow() {
+	dp.saveToFile()
+	dp.modified = false
+}
+
 // saveIfModified saves the planner to disk if there are unsaved changes.
 func (dp *DailyPlanner) saveIfModified() {
 	if dp.modified {
