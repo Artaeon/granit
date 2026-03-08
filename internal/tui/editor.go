@@ -62,9 +62,11 @@ type Editor struct {
 	foldState *FoldState
 
 	// Bracket matching
-	matchBracketLine  int
-	matchBracketCol   int
-	matchBracketValid bool
+	matchBracketLine    int
+	matchBracketCol     int
+	matchBracketValid   bool
+	codeFenceCache      map[int]bool
+	codeFenceCacheDirty bool
 
 	// Shift+Arrow text selection
 	selectionActive bool
@@ -1298,17 +1300,22 @@ func (e *Editor) findMatchingBracket() (int, int, bool) {
 
 	// Detect code-fence regions so we can skip brackets inside them
 	// when the cursor itself is not inside a code fence.
-	inCodeFence := false
-	codeFenceLines := make(map[int]bool)
-	for j := 0; j < len(e.content); j++ {
-		trimmed := strings.TrimSpace(e.content[j])
-		if strings.HasPrefix(trimmed, "```") {
-			inCodeFence = !inCodeFence
-			codeFenceLines[j] = true
-		} else if inCodeFence {
-			codeFenceLines[j] = true
+	// Use cached map to avoid O(n) scan on every keystroke.
+	if e.codeFenceCacheDirty || e.codeFenceCache == nil {
+		inCodeFence := false
+		e.codeFenceCache = make(map[int]bool)
+		for j := 0; j < len(e.content); j++ {
+			trimmed := strings.TrimSpace(e.content[j])
+			if strings.HasPrefix(trimmed, "```") {
+				inCodeFence = !inCodeFence
+				e.codeFenceCache[j] = true
+			} else if inCodeFence {
+				e.codeFenceCache[j] = true
+			}
 		}
+		e.codeFenceCacheDirty = false
 	}
+	codeFenceLines := e.codeFenceCache
 
 	// Skip if the bracket itself is inside a string.
 	if isInsideString(curLine, bracketCol) {
@@ -1695,7 +1702,7 @@ func (e Editor) View() string {
 		}
 
 		// Word wrap path: split content line into multiple visual lines
-		if e.wordWrap && len(line) > maxWidth {
+		if e.wordWrap && displayWidth(line) > maxWidth {
 			visualLines := e.splitLineForWrap(line, maxWidth)
 			// Determine which visual line the cursor is on (for active line)
 			cursorVisualLine := 0
@@ -1965,24 +1972,72 @@ func (e Editor) View() string {
 }
 
 
+// displayWidth returns the display width of a string, accounting for
+// wide characters (CJK, emoji) that take 2 columns.
+func displayWidth(s string) int {
+	w := 0
+	for _, r := range s {
+		if r >= 0x1100 && ((r <= 0x115F) || // Hangul Jamo
+			(r >= 0x2E80 && r <= 0x9FFF) || // CJK
+			(r >= 0xF900 && r <= 0xFAFF) || // CJK Compatibility
+			(r >= 0xFE30 && r <= 0xFE6F) || // CJK Forms
+			(r >= 0xFF01 && r <= 0xFF60) || // Fullwidth
+			(r >= 0xFFE0 && r <= 0xFFE6) || // Fullwidth
+			(r >= 0x1F000 && r <= 0x1FFFF) || // Emoji
+			(r >= 0x20000 && r <= 0x2FFFF)) { // CJK Ext B
+			w += 2
+		} else {
+			w++
+		}
+	}
+	return w
+}
+
 // splitLineForWrap splits a content line into multiple visual lines that fit
 // within maxWidth. It tries to break at word boundaries (spaces) when possible.
 func (e *Editor) splitLineForWrap(line string, maxWidth int) []string {
 	if maxWidth < 1 {
 		maxWidth = 1
 	}
-	if len(line) <= maxWidth {
+	if displayWidth(line) <= maxWidth {
 		return []string{line}
 	}
 
 	var result []string
 	remaining := line
-	for len(remaining) > maxWidth {
-		// Try to break at a space within the last portion of the chunk
-		breakAt := maxWidth
+	for displayWidth(remaining) > maxWidth {
+		// Walk runes to find the break point that fits within maxWidth columns
+		runes := []rune(remaining)
+		breakAt := 0
+		w := 0
+		for ri, r := range runes {
+			rw := 1
+			if r >= 0x1100 && ((r <= 0x115F) ||
+				(r >= 0x2E80 && r <= 0x9FFF) ||
+				(r >= 0xF900 && r <= 0xFAFF) ||
+				(r >= 0xFE30 && r <= 0xFE6F) ||
+				(r >= 0xFF01 && r <= 0xFF60) ||
+				(r >= 0xFFE0 && r <= 0xFFE6) ||
+				(r >= 0x1F000 && r <= 0x1FFFF) ||
+				(r >= 0x20000 && r <= 0x2FFFF)) {
+				rw = 2
+			}
+			if w+rw > maxWidth {
+				breakAt = ri
+				break
+			}
+			w += rw
+			breakAt = ri + 1
+		}
+		if breakAt == 0 {
+			breakAt = 1 // always make progress
+		}
+
+		// Try to break at a space within the last half of the chunk
 		lastSpace := -1
-		for j := maxWidth - 1; j >= maxWidth/2; j-- {
-			if remaining[j] == ' ' {
+		halfPoint := breakAt / 2
+		for j := breakAt - 1; j >= halfPoint; j-- {
+			if runes[j] == ' ' {
 				lastSpace = j
 				break
 			}
@@ -1990,8 +2045,8 @@ func (e *Editor) splitLineForWrap(line string, maxWidth int) []string {
 		if lastSpace > 0 {
 			breakAt = lastSpace + 1 // include the space in the current line
 		}
-		result = append(result, remaining[:breakAt])
-		remaining = remaining[breakAt:]
+		result = append(result, string(runes[:breakAt]))
+		remaining = string(runes[breakAt:])
 	}
 	if len(remaining) > 0 {
 		result = append(result, remaining)
