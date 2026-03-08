@@ -202,11 +202,19 @@ func (r Renderer) getCalloutInfo(typ string) calloutInfo {
 	case "question", "faq":
 		return calloutInfo{color: sapphire, icon: "?", label: "Question"}
 	case "abstract", "summary", "tldr":
-		return calloutInfo{color: teal, icon: "\u2261", label: "Abstract"}
+		return calloutInfo{color: sky, icon: "\u2261", label: "Abstract"}
 	case "todo":
 		return calloutInfo{color: yellow, icon: "\u25CB", label: "Todo"}
 	case "bug":
-		return calloutInfo{color: red, icon: "\u25C9", label: "Bug"}
+		return calloutInfo{color: maroon, icon: "\u25C9", label: "Bug"}
+	case "important":
+		return calloutInfo{color: mauve, icon: "\u2605", label: "Important"}
+	case "attention":
+		return calloutInfo{color: flamingo, icon: "\u25C6", label: "Attention"}
+	case "failure", "fail":
+		return calloutInfo{color: red, icon: "\u2718", label: "Failure"}
+	case "missing":
+		return calloutInfo{color: peach, icon: "\u2298", label: "Missing"}
 	default:
 		return calloutInfo{color: blue, icon: "\u2139", label: titleCase(typ)}
 	}
@@ -220,6 +228,14 @@ func (r Renderer) renderCalloutBlock(info calloutInfo, title string, contentLine
 	iconLabelStyle := lipgloss.NewStyle().Foreground(info.color).Bold(true)
 	bgStyle := lipgloss.NewStyle().Background(surface0)
 
+	// Top border with colored accent
+	topBorderWidth := contentWidth - 6
+	if topBorderWidth < 10 {
+		topBorderWidth = 10
+	}
+	topBorder := "  " + barStyle.Render("\u2503\u2500"+strings.Repeat("\u2500", topBorderWidth))
+	out = append(out, bgStyle.Render(topBorder))
+
 	// Header line: ┃ icon Label: Optional Title
 	header := "  " + barStyle.Render("\u2503") + " " + iconLabelStyle.Render(info.icon+" "+info.label)
 	if title != "" {
@@ -232,6 +248,10 @@ func (r Renderer) renderCalloutBlock(info calloutInfo, title string, contentLine
 		line := "  " + barStyle.Render("\u2503") + "   " + lipgloss.NewStyle().Foreground(text).Render(cl)
 		out = append(out, bgStyle.Render(line))
 	}
+
+	// Bottom border
+	bottomBorder := "  " + barStyle.Render("\u2503\u2500"+strings.Repeat("\u2500", topBorderWidth))
+	out = append(out, bgStyle.Render(bottomBorder))
 
 	return out
 }
