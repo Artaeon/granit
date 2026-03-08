@@ -97,6 +97,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Change notification system** — centralized `refreshComponents()` method re-scans vault, rebuilds index, updates sidebar/autocomplete/calendar/status bar after any component modifies files; active task manager auto-refreshes via `needsRefresh` flag
 - **AI scheduler full sync** — completed tasks filtered from scheduler input; AI-scheduled times persisted to Tasks.md with `⏰ HH:MM-HH:MM` markers; task manager shows scheduled times in teal badge; planner auto-saves after AI schedule applied
 - **Sync integration tests** — 15 tests verifying data flow between planner, calendar, task manager, and AI scheduler
+- **Word wrap toggle** — soft wrap long lines at viewport width with `↪` continuation indicators; word-boundary splitting; toggle from settings or command palette
+- **Scroll position memory** — cursor line/col/scroll position saved per note and persisted to `.granit/viewport.json` across sessions (LRU 100 entries)
+- **Search history** — Up/Down arrow recalls last 20 queries in content search and find/replace; persisted to `.granit/search-history.json`
+- **Bracket matching** — highlight matching `()` `[]` `{}` pairs with nesting support; skips brackets inside strings and code fences
+- **Regex search** — Alt+R toggles regex mode in content search, find/replace, and global replace; capture group support (`$1`, `$2`); invalid patterns show inline error
+- **Shift+Arrow text selection** — Shift+Left/Right/Up/Down/Home/End for traditional text selection; copy/cut selected text; typing replaces selection; Esc clears
+- **Smart paste** — paste URL over selected text creates `[text](url)` markdown link; reverse case also supported (paste text over URL)
+- **Reading progress bar** — `████░░░░ 42%` visual indicator in status bar during view mode; vertical scroll position indicator on right edge
+- **Shell piping CLI** — `granit list --json/--paths/--tags`, `granit search --regex --json`, `granit capture --stdin --daily --to`, `granit query 'tag:X AND folder:Y' --json`, `granit scan --json`
+- **Security hardening** — config file permissions `0600` (owner-only) for API keys; plugin script path traversal prevention; file write error handling; task line validation before sync toggle; corrupted tabs.json cleanup; vim count cap at 10000; unclosed delimiter rendering fix; multi-cursor bounds `clampCursor` helper; Task struct JSON tags
 
 ### Changed
 
