@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -17,6 +18,13 @@ type Breadcrumb struct {
 	// Pinned tabs
 	pinned    []string // paths of pinned notes
 	maxPinned int      // default 5
+
+	// Select mode — lets the user navigate breadcrumb segments with arrow keys
+	selectMode      bool
+	selectedSegment int      // index into selectSegments
+	selectSegments  []string // display segments (e.g. ["vault", "Projects", "web-app", "README"])
+	selectActiveNote string  // the activeNote path used to build selectSegments
+	selectedFolder  string   // consumed-once: full path selected by the user
 }
 
 // NewBreadcrumb creates a Breadcrumb with sensible defaults.
@@ -104,6 +112,204 @@ func (bc *Breadcrumb) Trail(maxLen int) []string {
 	trail := make([]string, end-start)
 	copy(trail, bc.history[start:end])
 	return trail
+}
+
+// ---------------------------------------------------------------------------
+// Select-mode: navigate breadcrumb segments with arrow keys
+// ---------------------------------------------------------------------------
+
+// breadcrumbSegments builds the display segments for a given activeNote path.
+// The result mirrors what renderBreadcrumb produces:
+// ["vault", ...folder parts..., filename_without_ext].
+func breadcrumbSegments(activeNote string) []string {
+	if activeNote == "" {
+		return nil
+	}
+	clean := filepath.ToSlash(activeNote)
+	parts := strings.Split(clean, "/")
+
+	var segments []string
+	segments = append(segments, "vault")
+	for i, p := range parts {
+		if i < len(parts)-1 {
+			segments = append(segments, p)
+		} else {
+			segments = append(segments, strings.TrimSuffix(p, ".md"))
+		}
+	}
+	return segments
+}
+
+// EnterSelectMode activates breadcrumb select mode and positions the cursor
+// on the last segment (the current note).
+func (bc *Breadcrumb) EnterSelectMode(activeNote string) {
+	segs := breadcrumbSegments(activeNote)
+	if len(segs) == 0 {
+		return
+	}
+	bc.selectMode = true
+	bc.selectSegments = segs
+	bc.selectActiveNote = activeNote
+	bc.selectedSegment = len(segs) - 1
+	bc.selectedFolder = ""
+}
+
+// IsSelectMode reports whether the breadcrumb is in segment-select mode.
+func (bc Breadcrumb) IsSelectMode() bool {
+	return bc.selectMode
+}
+
+// ExitSelectMode deactivates select mode without choosing a segment.
+func (bc *Breadcrumb) ExitSelectMode() {
+	bc.selectMode = false
+	bc.selectedSegment = 0
+	bc.selectSegments = nil
+	bc.selectActiveNote = ""
+	bc.selectedFolder = ""
+}
+
+// UpdateSelect handles keyboard input while in select mode.
+// Left/right arrows move between segments; enter confirms the selection and
+// returns the relative folder path (or the note path for the last segment);
+// esc exits select mode. The returned string is the selected path (empty when
+// not confirmed) and the bool indicates whether the selection was confirmed.
+func (bc *Breadcrumb) UpdateSelect(msg tea.KeyMsg) (string, bool) {
+	if !bc.selectMode || len(bc.selectSegments) == 0 {
+		return "", false
+	}
+
+	switch msg.String() {
+	case "left", "h":
+		if bc.selectedSegment > 0 {
+			bc.selectedSegment--
+		}
+	case "right", "l":
+		if bc.selectedSegment < len(bc.selectSegments)-1 {
+			bc.selectedSegment++
+		}
+	case "enter":
+		folder := bc.segmentPath(bc.selectedSegment)
+		bc.selectedFolder = folder
+		bc.selectMode = false
+		return folder, true
+	case "esc":
+		bc.ExitSelectMode()
+		return "", false
+	}
+	return "", false
+}
+
+// segmentPath maps a segment index back to a vault-relative path.
+//   - Segment 0 ("vault") → "" (vault root)
+//   - Segment 1..n-2 (folders) → joined folder path (e.g. "Projects/web-app")
+//   - Segment n-1 (filename) → the full activeNote path as-is
+func (bc *Breadcrumb) segmentPath(idx int) string {
+	if idx <= 0 {
+		// Vault root
+		return ""
+	}
+	if idx >= len(bc.selectSegments)-1 {
+		// Last segment is the note itself
+		return bc.selectActiveNote
+	}
+	// Folder segments: segments[1..idx] joined
+	clean := filepath.ToSlash(bc.selectActiveNote)
+	parts := strings.Split(clean, "/")
+	// parts[0..idx-1] are the folder components (segment 1 = parts[0], etc.)
+	if idx > len(parts) {
+		return bc.selectActiveNote
+	}
+	return strings.Join(parts[:idx], "/")
+}
+
+// ViewWithSelect renders the folder-path breadcrumb with the currently
+// selected segment highlighted in mauve+bold+underline. Non-selected segments
+// use subtext0 for text and surface1 for separator arrows. The output matches
+// the same layout as renderBreadcrumb.
+func (bc *Breadcrumb) ViewWithSelect(width int) string {
+	if len(bc.selectSegments) == 0 {
+		return ""
+	}
+
+	// Styles
+	selectedStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true).Underline(true)
+	normalStyle := lipgloss.NewStyle().Foreground(subtext0)
+	sepStyle := lipgloss.NewStyle().Foreground(surface1)
+	bgStyle := lipgloss.NewStyle().Background(surface0).Width(width)
+
+	sep := sepStyle.Render(" > ")
+	sepWidth := lipgloss.Width(sep)
+
+	prefix := "  "
+	prefixWidth := 2
+
+	renderSeg := func(i int, s string) string {
+		if i == bc.selectedSegment {
+			return selectedStyle.Render(s)
+		}
+		return normalStyle.Render(s)
+	}
+
+	// Full render attempt
+	var rendered []string
+	totalWidth := prefixWidth
+	for i, s := range bc.selectSegments {
+		r := renderSeg(i, s)
+		rendered = append(rendered, r)
+		totalWidth += lipgloss.Width(r)
+		if i < len(bc.selectSegments)-1 {
+			totalWidth += sepWidth
+		}
+	}
+
+	if totalWidth <= width {
+		line := prefix + strings.Join(rendered, sep)
+		return bgStyle.Render(line)
+	}
+
+	// Truncate from the left, keeping the selected segment visible
+	ellipsis := normalStyle.Render("...")
+	ellipsisWidth := lipgloss.Width(ellipsis)
+
+	for start := 1; start < len(bc.selectSegments)-1; start++ {
+		var truncRendered []string
+		truncRendered = append(truncRendered, ellipsis)
+		tw := prefixWidth + ellipsisWidth + sepWidth
+
+		for i := start; i < len(bc.selectSegments); i++ {
+			r := renderSeg(i, bc.selectSegments[i])
+			truncRendered = append(truncRendered, r)
+			tw += lipgloss.Width(r)
+			if i < len(bc.selectSegments)-1 {
+				tw += sepWidth
+			}
+		}
+
+		if tw <= width {
+			line := prefix + strings.Join(truncRendered, sep)
+			return bgStyle.Render(line)
+		}
+	}
+
+	// Last resort: "... > last_segment"
+	last := renderSeg(len(bc.selectSegments)-1, bc.selectSegments[len(bc.selectSegments)-1])
+	line := prefix + strings.Join([]string{ellipsis, last}, sep)
+	return bgStyle.Render(line)
+}
+
+// GetSelectedFolder returns the path selected by the user via enter in select
+// mode. It is consumed once: the value is cleared after the first read.
+// The bool is true only when a valid selection is available.
+func (bc *Breadcrumb) GetSelectedFolder() (string, bool) {
+	if bc.selectedFolder == "" && !bc.selectMode {
+		return "", false
+	}
+	if bc.selectedFolder == "" {
+		return "", false
+	}
+	folder := bc.selectedFolder
+	bc.selectedFolder = ""
+	return folder, true
 }
 
 // Pin adds a note path to the pinned tabs. If the note is already pinned it
