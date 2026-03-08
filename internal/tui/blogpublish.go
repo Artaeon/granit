@@ -592,7 +592,7 @@ func blogPublishGitHub(token, repo, branch, dirPath, title, content string) (str
 		return "", fmt.Errorf("create GET request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := blogHTTPDoWithRetry(req, 2)
 	if err != nil {
@@ -637,7 +637,7 @@ func blogPublishGitHub(token, repo, branch, dirPath, title, content string) (str
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err = blogHTTPDoWithRetry(req, 2)
 	if err != nil {
