@@ -2216,6 +2216,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateNewNote(msg)
 		}
 
+		// Selection copy/cut: intercept before global handlers when editor has selection
+		if m.focus == focusEditor && !m.viewMode && m.editor.HasSelection() {
+			switch msg.String() {
+			case "ctrl+c":
+				text := m.editor.GetSelectedText()
+				if text != "" {
+					ClipboardCopy(text)
+					m.editor.ClearSelection()
+					m.statusbar.SetMessage("Copied to clipboard")
+					return m, m.clearMessageAfter(2*time.Second)
+				}
+			case "ctrl+x":
+				text := m.editor.GetSelectedText()
+				if text != "" {
+					ClipboardCopy(text)
+					m.editor.DeleteSelection()
+					m.statusbar.SetMessage("Cut to clipboard")
+					line, col := m.editor.GetCursor()
+					m.statusbar.SetCursor(line, col)
+					m.statusbar.SetWordCount(m.editor.GetWordCount())
+					return m, m.clearMessageAfter(2*time.Second)
+				}
+			}
+		}
+
 		// Global keys
 		switch msg.String() {
 		case "ctrl+c", "ctrl+q":
@@ -2479,6 +2504,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "esc":
+			// If selection is active, clear it first
+			if m.focus == focusEditor && !m.viewMode && m.editor.HasSelection() {
+				m.editor.ClearSelection()
+				return m, nil
+			}
 			// If multi-cursors are active, clear them first
 			if m.focus == focusEditor && !m.viewMode && m.editor.HasMultiCursors() {
 				m.editor.clearMultiCursors()
@@ -3281,6 +3311,16 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
+	case CmdToggleWordWrap:
+		m.config.WordWrap = !m.config.WordWrap
+		m.editor.SetWordWrap(m.config.WordWrap)
+		m.config.Save()
+		if m.config.WordWrap {
+			m.statusbar.SetMessage("Word wrap enabled")
+		} else {
+			m.statusbar.SetMessage("Word wrap disabled")
+		}
+		return m, m.clearMessageAfter(2 * time.Second)
 	case CmdMacroRecord:
 		if m.vimState != nil && m.vimState.IsEnabled() {
 			if m.vimState.IsRecording() {
@@ -4388,6 +4428,7 @@ func (m *Model) syncConfigToComponents() {
 	m.editor.showLineNumbers = m.config.LineNumbers
 	m.editor.highlightCurrentLine = m.config.HighlightCurrentLine
 	m.editor.autoCloseBrackets = m.config.AutoCloseBrackets
+	m.editor.SetWordWrap(m.config.WordWrap)
 	m.editor.tabSize = m.config.Editor.TabSize
 	if m.editor.tabSize < 1 {
 		m.editor.tabSize = 4
