@@ -115,7 +115,7 @@ func TestOpenClose(t *testing.T) {
 	}
 }
 
-func TestSetSize(t *testing.T) {
+func TestProjectModeSetSize(t *testing.T) {
 	pm := NewProjectMode()
 	pm.SetSize(120, 40)
 	if pm.width != 120 || pm.height != 40 {

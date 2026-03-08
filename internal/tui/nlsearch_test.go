@@ -965,7 +965,7 @@ func TestParseAIResponse(t *testing.T) {
 // SetSize
 // ---------------------------------------------------------------------------
 
-func TestSetSize(t *testing.T) {
+func TestNLSearchSetSize(t *testing.T) {
 	nls := NewNLSearch()
 	nls.SetSize(120, 40)
 	if nls.width != 120 {
@@ -1017,7 +1017,7 @@ func TestMaxVisibleResults(t *testing.T) {
 // Overlay width helpers
 // ---------------------------------------------------------------------------
 
-func TestOverlayWidth(t *testing.T) {
+func TestNLSearchOverlayWidth(t *testing.T) {
 	nls := NewNLSearch()
 
 	t.Run("minimum width of 55", func(t *testing.T) {

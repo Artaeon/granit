@@ -910,7 +910,7 @@ func TestNoteTitle(t *testing.T) {
 	}
 }
 
-func TestOverlayWidth(t *testing.T) {
+func TestWritingCoachOverlayWidth(t *testing.T) {
 	wc := NewWritingCoach()
 
 	// Small terminal
