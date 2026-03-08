@@ -8,12 +8,14 @@ package tui
 //   - "minimal"   — 1-panel: editor only
 //   - "reading"   — 2-panel: editor (wide) | backlinks (no sidebar)
 //   - "dashboard" — 4-panel: sidebar | editor | outline | backlinks
+//   - "zen"       — 1-panel: centered editor, no chrome (distraction-free)
 const (
 	LayoutDefault   = "default"
 	LayoutWriter    = "writer"
 	LayoutMinimal   = "minimal"
 	LayoutReading   = "reading"
 	LayoutDashboard = "dashboard"
+	LayoutZen       = "zen"
 )
 
 // AllLayouts returns every valid layout name in display order.
@@ -24,6 +26,7 @@ func AllLayouts() []string {
 		LayoutMinimal,
 		LayoutReading,
 		LayoutDashboard,
+		LayoutZen,
 	}
 }
 
@@ -40,6 +43,8 @@ func LayoutDescription(layout string) string {
 		return "Editor + Backlinks, no sidebar (2-panel)"
 	case LayoutDashboard:
 		return "Sidebar + Editor + Outline + Backlinks (4-panel)"
+	case LayoutZen:
+		return "Centered editor, no chrome (distraction-free)"
 	default:
 		return "Unknown layout"
 	}
@@ -58,6 +63,8 @@ func LayoutPanelCount(layout string) int {
 		return 2
 	case LayoutDashboard:
 		return 4
+	case LayoutZen:
+		return 1
 	default:
 		return 3
 	}
@@ -66,7 +73,7 @@ func LayoutPanelCount(layout string) int {
 // LayoutHasSidebar reports whether the layout includes the file sidebar.
 func LayoutHasSidebar(layout string) bool {
 	switch layout {
-	case LayoutMinimal, LayoutReading:
+	case LayoutMinimal, LayoutReading, LayoutZen:
 		return false
 	default:
 		return true
@@ -76,7 +83,7 @@ func LayoutHasSidebar(layout string) bool {
 // LayoutHasBacklinks reports whether the layout includes the backlinks panel.
 func LayoutHasBacklinks(layout string) bool {
 	switch layout {
-	case LayoutWriter, LayoutMinimal:
+	case LayoutWriter, LayoutMinimal, LayoutZen:
 		return false
 	default:
 		return true
