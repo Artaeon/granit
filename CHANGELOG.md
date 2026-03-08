@@ -92,8 +92,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Renderer tests** — 80 tests covering all markdown elements, callouts, embeds, edge cases, and performance
 - **Tab bar tests** — 60 tests covering operations, navigation, pins, rendering, and edge cases
 - **Macro recording tests** — 12 tests covering start/stop, replay, multiple registers, recursive prevention
+- **Bidirectional planner ↔ task sync** — toggling tasks in the daily planner now updates Tasks.md; source file/line tracking on PlannerTask and timeBlock; consumed-once `GetCompletedTasks()` pattern
+- **Calendar ↔ planner integration** — calendar agenda/week/month views show planner blocks with time ranges; quick-add events from calendar flow to planner files; task toggle in calendar syncs back to source notes
+- **Change notification system** — centralized `refreshComponents()` method re-scans vault, rebuilds index, updates sidebar/autocomplete/calendar/status bar after any component modifies files; active task manager auto-refreshes via `needsRefresh` flag
+- **AI scheduler full sync** — completed tasks filtered from scheduler input; AI-scheduled times persisted to Tasks.md with `⏰ HH:MM-HH:MM` markers; task manager shows scheduled times in teal badge; planner auto-saves after AI schedule applied
+- **Sync integration tests** — 15 tests verifying data flow between planner, calendar, task manager, and AI scheduler
 
 ### Changed
+
+- Task manager, daily planner, calendar, and AI scheduler now share a unified sync layer — changes in any component propagate to all others
 
 - Task manager now stores tasks in a dedicated `Tasks.md` file instead of the active note
 - Task manager scans all vault files for tasks (Obsidian emoji format)
