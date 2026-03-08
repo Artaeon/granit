@@ -96,6 +96,12 @@ func (fs *FoldState) UnfoldAll() {
 	fs.folds = make(map[int]int)
 }
 
+// GetFoldEnd returns the end line of a fold starting at the given line.
+func (fs *FoldState) GetFoldEnd(line int) (int, bool) {
+	end, ok := fs.folds[line]
+	return end, ok
+}
+
 // GetFoldIndicator returns a gutter indicator for the given line:
 //   - "▶" when the line is a folded heading/fence (collapsed)
 //   - "▼" when the line is a heading/fence with content below (expanded)
