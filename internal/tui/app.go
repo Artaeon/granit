@@ -3706,10 +3706,13 @@ func (m *Model) updateLayout() {
 		editorWidth = 30
 	}
 
-	// Compact height for very small terminals
-	contentHeight := m.height - 3
-	if m.height < 20 && m.config.ShowHelp {
-		contentHeight = m.height - 2 // skip help bar
+	// Content height: terminal minus status bar (2 lines) minus panel borders (2 lines)
+	contentHeight := m.height - 4
+	if m.breadcrumb != nil && (len(m.breadcrumb.Pinned()) > 0 || m.breadcrumb.CanGoBack()) {
+		contentHeight-- // breadcrumb nav bar between content and status
+	}
+	if contentHeight < 6 {
+		contentHeight = 6
 	}
 
 	m.sidebar.SetSize(sidebarWidth, contentHeight)
@@ -4182,7 +4185,14 @@ func (m Model) View() string {
 		return lipgloss.NewStyle().Foreground(mauve).Render("\n  Loading Granit...")
 	}
 
-	contentHeight := m.height - 3
+	// Content height: terminal minus status bar (2 lines) minus panel borders (2 lines)
+	contentHeight := m.height - 4
+	if m.breadcrumb != nil && (len(m.breadcrumb.Pinned()) > 0 || m.breadcrumb.CanGoBack()) {
+		contentHeight-- // breadcrumb nav bar between content and status
+	}
+	if contentHeight < 6 {
+		contentHeight = 6
+	}
 	layout := m.config.Layout
 	if layout == "" {
 		layout = "default"
@@ -4324,6 +4334,11 @@ func (m Model) View() string {
 		} else {
 			view = lipgloss.JoinVertical(lipgloss.Left, content, status)
 		}
+	}
+
+	// Safety: truncate output to terminal height to prevent alt-screen overflow
+	if viewLines := strings.Split(view, "\n"); len(viewLines) > m.height {
+		view = strings.Join(viewLines[:m.height], "\n")
 	}
 
 	// Render overlays (in priority order)
