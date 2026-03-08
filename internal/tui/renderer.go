@@ -1082,19 +1082,37 @@ func (r Renderer) renderMarkdown(content string) []string {
 			continue
 		}
 
-		// Checkboxes with Unicode styling
+		// Checkboxes with Unicode styling and nesting support
 		if strings.HasPrefix(trimmed, "- [x] ") || strings.HasPrefix(trimmed, "- [X] ") {
 			doneText := trimmed[6:]
+			// Calculate nesting depth from indentation (2 spaces per level)
+			indent := len(line) - len(strings.TrimLeft(line, " \t"))
+			nestDepth := indent / 2
+			nestPad := strings.Repeat("  ", nestDepth)
+			// Use a connector line for nested items
+			prefix := "  " + nestPad
+			if nestDepth > 0 {
+				connStyle := lipgloss.NewStyle().Foreground(surface1)
+				prefix += connStyle.Render("└ ")
+			}
 			checkbox := lipgloss.NewStyle().Foreground(crust).Background(green).Bold(true).Render(" ☑ ")
 			styledText := lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true).Render(" " + doneText)
-			result = append(result, "  "+checkbox+styledText)
+			result = append(result, prefix+checkbox+styledText)
 			continue
 		}
 		if strings.HasPrefix(trimmed, "- [ ] ") {
 			todoText := trimmed[6:]
+			indent := len(line) - len(strings.TrimLeft(line, " \t"))
+			nestDepth := indent / 2
+			nestPad := strings.Repeat("  ", nestDepth)
+			prefix := "  " + nestPad
+			if nestDepth > 0 {
+				connStyle := lipgloss.NewStyle().Foreground(surface1)
+				prefix += connStyle.Render("└ ")
+			}
 			checkbox := lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(" ☐ ")
 			styledText := lipgloss.NewStyle().Foreground(text).Render(" " + todoText)
-			result = append(result, "  "+checkbox+styledText)
+			result = append(result, prefix+checkbox+styledText)
 			continue
 		}
 
