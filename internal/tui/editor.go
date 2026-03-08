@@ -441,6 +441,9 @@ func (e *Editor) GetSelectedText() string {
 		return ""
 	}
 	sl, sc, el, ec := e.SelectionRange()
+	if sl < 0 || el < 0 || sl >= len(e.content) || el >= len(e.content) {
+		return ""
+	}
 	if sl == el {
 		line := e.content[sl]
 		if sc > len(line) {
@@ -477,11 +480,15 @@ func (e *Editor) DeleteSelection() {
 	if !e.selectionActive {
 		return
 	}
+	sl, sc, el, ec := e.SelectionRange()
+	if sl < 0 || el < 0 || sl >= len(e.content) || el >= len(e.content) {
+		e.selectionActive = false
+		return
+	}
+
 	e.saveSnapshot()
 	e.codeFenceCacheDirty = true
 	e.redoStack = nil
-
-	sl, sc, el, ec := e.SelectionRange()
 
 	if sl == el {
 		line := e.content[sl]
