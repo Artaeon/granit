@@ -233,7 +233,9 @@ func aiSchedulerOllama(url, model, prompt string) tea.Cmd {
 		if err != nil {
 			return aiSchedulerResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)}
 		}
-		defer resp.Body.Close()
+		if resp != nil && resp.Body != nil {
+			defer resp.Body.Close()
+		}
 		var result struct {
 			Response string `json:"response"`
 		}
@@ -268,7 +270,9 @@ func aiSchedulerOpenAI(apiKey, model, prompt string) tea.Cmd {
 		if err != nil {
 			return aiSchedulerResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
 		}
-		defer resp.Body.Close()
+		if resp != nil && resp.Body != nil {
+			defer resp.Body.Close()
+		}
 		var result struct {
 			Choices []struct {
 				Message struct {

@@ -285,7 +285,9 @@ func sendToOllama(url, model, systemPrompt, userMsg string) tea.Cmd {
 		if err != nil {
 			return aiChatResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)}
 		}
-		defer resp.Body.Close()
+		if resp != nil && resp.Body != nil {
+			defer resp.Body.Close()
+		}
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -339,7 +341,9 @@ func sendToOpenAI(apiKey, model string, chatMessages []ChatMessage, systemPrompt
 		if err != nil {
 			return aiChatResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
 		}
-		defer resp.Body.Close()
+		if resp != nil && resp.Body != nil {
+			defer resp.Body.Close()
+		}
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {

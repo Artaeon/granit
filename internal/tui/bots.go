@@ -338,7 +338,9 @@ func doOpenAIRequest(apiKey, model, prompt string, kind botKind) openaiResultMsg
 	if err != nil {
 		return openaiResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err), botKind: kind}
 	}
-	defer resp.Body.Close()
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -377,7 +379,9 @@ func doOllamaRequest(url, model, prompt string, kind botKind) ollamaResultMsg {
 	if err != nil {
 		return ollamaResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err), botKind: kind}
 	}
-	defer resp.Body.Close()
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
