@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -35,6 +36,10 @@ type GlobalReplace struct {
 	cursor      int
 	scroll      int
 
+	// Regex search mode
+	regexMode bool
+	regexErr  string // non-empty when the regex pattern is invalid
+
 	vault     *vault.Vault
 	modified  map[string]bool // files changed during this session
 	jumpFile  string
@@ -63,6 +68,7 @@ func (gr *GlobalReplace) Open(v *vault.Vault) {
 	gr.jumpFile = ""
 	gr.jumpLine = 0
 	gr.jumpReady = false
+	gr.regexErr = ""
 }
 
 func (gr *GlobalReplace) Close() {
@@ -73,6 +79,18 @@ func (gr *GlobalReplace) Close() {
 func (gr *GlobalReplace) SetSize(w, h int) {
 	gr.width = w
 	gr.height = h
+}
+
+// IsRegexMode reports whether regex search is enabled.
+func (gr *GlobalReplace) IsRegexMode() bool {
+	return gr.regexMode
+}
+
+// ToggleRegex flips the regex mode flag and re-runs the search.
+func (gr *GlobalReplace) ToggleRegex() {
+	gr.regexMode = !gr.regexMode
+	gr.regexErr = ""
+	gr.search()
 }
 
 // GetJumpResult returns the file/line to navigate to and clears the flag.
@@ -99,6 +117,12 @@ func (gr GlobalReplace) Update(msg tea.Msg) (GlobalReplace, tea.Cmd) {
 		switch msg.String() {
 		case "esc":
 			gr.active = false
+			return gr, nil
+
+		case "alt+r":
+			gr.regexMode = !gr.regexMode
+			gr.regexErr = ""
+			gr.search()
 			return gr, nil
 
 		case "tab":
@@ -200,6 +224,13 @@ func (gr GlobalReplace) View() string {
 		Bold(true).
 		Render("  " + IconSearchChar + " Global Search & Replace")
 	b.WriteString(title)
+
+	// Regex mode indicator
+	modeIndicator := DimStyle.Render(" [Aa]")
+	if gr.regexMode {
+		modeIndicator = lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(" [.*]")
+	}
+	b.WriteString(modeIndicator)
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerWidth)))
 	b.WriteString("\n")
@@ -217,12 +248,24 @@ func (gr GlobalReplace) View() string {
 	}
 	b.WriteString(findLabel + findInput)
 
-	// Match count
+	// Match count or error
 	if gr.findQuery != "" {
-		fileCount := gr.countFiles()
-		b.WriteString(DimStyle.Render("  " + smallNum(len(gr.matches)) + " matches in " + smallNum(fileCount) + " files"))
+		if gr.regexErr != "" {
+			errStyle := lipgloss.NewStyle().Foreground(red).Bold(true)
+			b.WriteString("  " + errStyle.Render("Invalid regex"))
+		} else {
+			fileCount := gr.countFiles()
+			b.WriteString(DimStyle.Render("  " + smallNum(len(gr.matches)) + " matches in " + smallNum(fileCount) + " files"))
+		}
 	}
 	b.WriteString("\n")
+
+	// Regex error detail
+	if gr.regexErr != "" {
+		errStyle := lipgloss.NewStyle().Foreground(red)
+		b.WriteString(errStyle.Render("  " + gr.regexErr))
+		b.WriteString("\n")
+	}
 
 	// Replace field
 	replaceLabel := "  Replace: "
@@ -236,6 +279,9 @@ func (gr GlobalReplace) View() string {
 		replaceInput += DimStyle.Render("_")
 	}
 	b.WriteString(replaceLabel + replaceInput)
+	if gr.regexMode {
+		b.WriteString(DimStyle.Render("  ($1, $2 for groups)"))
+	}
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerWidth)))
 	b.WriteString("\n")
@@ -312,7 +358,7 @@ func (gr GlobalReplace) View() string {
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerWidth)))
 	b.WriteString("\n")
-	footer := "  Tab: switch field  Enter: jump  Ctrl+R: replace one"
+	footer := "  Tab: switch field  Enter: jump  Alt+R: regex  Ctrl+R: replace one"
 	b.WriteString(DimStyle.Render(footer))
 	b.WriteString("\n")
 	footer2 := "  Ctrl+F: replace in file  Ctrl+A: replace all  Esc: close"
@@ -329,19 +375,30 @@ func (gr GlobalReplace) View() string {
 }
 
 // search performs case-insensitive search across all vault notes.
+// When regexMode is enabled, it uses regex matching instead.
 func (gr *GlobalReplace) search() {
 	gr.matches = nil
 	gr.cursor = 0
 	gr.scroll = 0
+	gr.regexErr = ""
 
 	if gr.findQuery == "" || gr.vault == nil {
 		return
 	}
 
-	lowerQuery := strings.ToLower(gr.findQuery)
-
 	paths := gr.vault.SortedPaths()
 	sort.Strings(paths)
+
+	if gr.regexMode {
+		gr.searchRegex(paths)
+	} else {
+		gr.searchPlain(paths)
+	}
+}
+
+// searchPlain performs case-insensitive plain-text search.
+func (gr *GlobalReplace) searchPlain(paths []string) {
+	lowerQuery := strings.ToLower(gr.findQuery)
 
 	for _, path := range paths {
 		note := gr.vault.GetNote(path)
@@ -371,6 +428,41 @@ func (gr *GlobalReplace) search() {
 	}
 }
 
+// searchRegex performs regex-based search across all vault notes.
+func (gr *GlobalReplace) searchRegex(paths []string) {
+	re, err := regexp.Compile("(?i)" + gr.findQuery)
+	if err != nil {
+		gr.regexErr = err.Error()
+		return
+	}
+
+	for _, path := range paths {
+		note := gr.vault.GetNote(path)
+		if note == nil {
+			continue
+		}
+
+		lines := strings.Split(note.Content, "\n")
+		for lineIdx, line := range lines {
+			loc := re.FindStringIndex(line)
+			if loc == nil {
+				continue
+			}
+
+			gr.matches = append(gr.matches, GlobalReplaceMatch{
+				FilePath: path,
+				Line:     lineIdx,
+				Col:      loc[0],
+				Context:  line,
+			})
+
+			if len(gr.matches) >= 200 {
+				return
+			}
+		}
+	}
+}
+
 // replaceMatch replaces a single match and writes the file.
 func (gr *GlobalReplace) replaceMatch(idx int) {
 	if idx < 0 || idx >= len(gr.matches) {
@@ -388,9 +480,22 @@ func (gr *GlobalReplace) replaceMatch(idx int) {
 		return
 	}
 
-	// Replace first occurrence in the specific line (case-insensitive)
 	line := lines[m.Line]
-	newLine := caseInsensitiveReplaceFirst(line, gr.findQuery, gr.replaceText)
+	var newLine string
+	if gr.regexMode {
+		re, err := regexp.Compile("(?i)" + gr.findQuery)
+		if err != nil {
+			return
+		}
+		// Replace only the first match on this line
+		loc := re.FindStringIndex(line)
+		if loc == nil {
+			return
+		}
+		newLine = line[:loc[0]] + re.ReplaceAllString(line[loc[0]:loc[1]], gr.replaceText) + line[loc[1]:]
+	} else {
+		newLine = caseInsensitiveReplaceFirst(line, gr.findQuery, gr.replaceText)
+	}
 	if newLine == line {
 		return
 	}
@@ -408,7 +513,16 @@ func (gr *GlobalReplace) replaceAllInFile(filePath string) {
 		return
 	}
 
-	newContent := caseInsensitiveReplaceAll(note.Content, gr.findQuery, gr.replaceText)
+	var newContent string
+	if gr.regexMode {
+		re, err := regexp.Compile("(?i)" + gr.findQuery)
+		if err != nil {
+			return
+		}
+		newContent = re.ReplaceAllString(note.Content, gr.replaceText)
+	} else {
+		newContent = caseInsensitiveReplaceAll(note.Content, gr.findQuery, gr.replaceText)
+	}
 	if newContent == note.Content {
 		return
 	}
@@ -425,13 +539,27 @@ func (gr *GlobalReplace) replaceAll() {
 		files[m.FilePath] = true
 	}
 
+	var re *regexp.Regexp
+	if gr.regexMode {
+		var err error
+		re, err = regexp.Compile("(?i)" + gr.findQuery)
+		if err != nil {
+			return
+		}
+	}
+
 	for filePath := range files {
 		note := gr.vault.GetNote(filePath)
 		if note == nil {
 			continue
 		}
 
-		newContent := caseInsensitiveReplaceAll(note.Content, gr.findQuery, gr.replaceText)
+		var newContent string
+		if gr.regexMode {
+			newContent = re.ReplaceAllString(note.Content, gr.replaceText)
+		} else {
+			newContent = caseInsensitiveReplaceAll(note.Content, gr.findQuery, gr.replaceText)
+		}
 		if newContent != note.Content {
 			gr.writeFile(filePath, newContent)
 		}
@@ -472,6 +600,10 @@ func (gr *GlobalReplace) highlightMatch(line string, maxWidth int) string {
 		return NormalItemStyle.Render(display)
 	}
 
+	if gr.regexMode {
+		return gr.highlightMatchRegex(display)
+	}
+
 	lowerDisplay := strings.ToLower(display)
 	lowerQuery := strings.ToLower(gr.findQuery)
 
@@ -488,12 +620,53 @@ func (gr *GlobalReplace) highlightMatch(line string, maxWidth int) string {
 	return NormalItemStyle.Render(before) + highlighted + NormalItemStyle.Render(after)
 }
 
+// highlightMatchRegex highlights regex matches in the display line.
+func (gr *GlobalReplace) highlightMatchRegex(display string) string {
+	re, err := regexp.Compile("(?i)" + gr.findQuery)
+	if err != nil {
+		return NormalItemStyle.Render(display)
+	}
+
+	locs := re.FindAllStringIndex(display, -1)
+	if len(locs) == 0 {
+		return NormalItemStyle.Render(display)
+	}
+
+	var result strings.Builder
+	prev := 0
+	for _, loc := range locs {
+		if loc[0] > prev {
+			result.WriteString(NormalItemStyle.Render(display[prev:loc[0]]))
+		}
+		result.WriteString(MatchHighlightStyle.Render(display[loc[0]:loc[1]]))
+		prev = loc[1]
+	}
+	if prev < len(display) {
+		result.WriteString(NormalItemStyle.Render(display[prev:]))
+	}
+	return result.String()
+}
+
 func (gr *GlobalReplace) previewReplace(line string, maxWidth int) string {
 	if maxWidth < 10 {
 		maxWidth = 10
 	}
 
-	replaced := caseInsensitiveReplaceFirst(line, gr.findQuery, gr.replaceText)
+	var replaced string
+	if gr.regexMode {
+		re, err := regexp.Compile("(?i)" + gr.findQuery)
+		if err != nil {
+			return line
+		}
+		// Preview: replace first match only
+		loc := re.FindStringIndex(line)
+		if loc == nil {
+			return line
+		}
+		replaced = line[:loc[0]] + re.ReplaceAllString(line[loc[0]:loc[1]], gr.replaceText) + line[loc[1]:]
+	} else {
+		replaced = caseInsensitiveReplaceFirst(line, gr.findQuery, gr.replaceText)
+	}
 	if len(replaced) > maxWidth {
 		replaced = replaced[:maxWidth-3] + "..."
 	}
