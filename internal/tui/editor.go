@@ -1864,6 +1864,9 @@ func (e Editor) View() string {
 			displayLine = displayLine[:maxWidth]
 		}
 
+		// Check if this line has selection
+		inSel, selSC, selEC := e.isLineInSelection(i)
+
 		if isActiveLine && !hasMultiCursor {
 			// Render with main cursor only
 			ghostStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
@@ -1885,8 +1888,14 @@ func (e Editor) View() string {
 				if adjCol+1 < len(displayLine) {
 					after = displayLine[adjCol+1:]
 				}
-				styledBefore := e.highlightLineWithBrackets(before, i, colOffset, fmStart, fmEnd, codeBlockLines, bracketStyle)
-				styledAfter := e.highlightLineWithBrackets(after, i, colOffset+adjCol+1, fmStart, fmEnd, codeBlockLines, bracketStyle)
+				var styledBefore, styledAfter string
+				if inSel {
+					styledBefore = e.renderLineWithSelectionHighlight(before, i, fmStart, fmEnd, codeBlockLines, selSC, selEC, colOffset, lipgloss.NewStyle().Background(surface1).Foreground(text))
+					styledAfter = e.renderLineWithSelectionHighlight(after, i, fmStart, fmEnd, codeBlockLines, selSC, selEC, colOffset+adjCol+1, lipgloss.NewStyle().Background(surface1).Foreground(text))
+				} else {
+					styledBefore = e.highlightLineWithBrackets(before, i, colOffset, fmStart, fmEnd, codeBlockLines, bracketStyle)
+					styledAfter = e.highlightLineWithBrackets(after, i, colOffset+adjCol+1, fmStart, fmEnd, codeBlockLines, bracketStyle)
+				}
 				lineContent := styledBefore + CursorStyle.Render(cursorChar) + styledAfter + ghostSuffix
 				if e.highlightCurrentLine {
 					lineContent = lipgloss.NewStyle().Background(surface0).Width(maxWidth).Render(lineContent)
@@ -1907,6 +1916,8 @@ func (e Editor) View() string {
 		} else if isActiveLine || hasMultiCursor {
 			// Line has cursor(s): render character by character to place cursor highlights
 			b.WriteString(e.renderLineWithCursors(displayLine, i, fmStart, fmEnd, codeBlockLines, multiCursorStyle, maxWidth, bracketStyle))
+		} else if inSel {
+			b.WriteString(e.renderLineWithSelectionHighlight(displayLine, i, fmStart, fmEnd, codeBlockLines, selSC, selEC, colOffset, lipgloss.NewStyle().Background(surface1).Foreground(text)))
 		} else {
 			if e.matchBracketValid && i == e.matchBracketLine {
 				b.WriteString(e.highlightLineWithBrackets(displayLine, i, 0, fmStart, fmEnd, codeBlockLines, bracketStyle))
