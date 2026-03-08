@@ -136,6 +136,7 @@ const (
 	CmdSmartPaste
 	CmdToggleRegex
 	CmdToggleWordWrap
+	CmdKnowledgeGaps
 	CmdQuit
 )
 
@@ -270,6 +271,7 @@ var AllCommands = []Command{
 	{Label: "Dashboard Layout", Desc: "4-panel: sidebar, editor, outline, backlinks", Shortcut: "", Action: CmdLayoutDashboard, Icon: &IconViewChar},
 	{Label: "Vault Backup", Desc: "Create, restore, and manage vault backups", Shortcut: "", Action: CmdBackup, Icon: &IconSaveChar},
 	{Label: "Show Tutorial", Desc: "Interactive walkthrough of Granit features", Shortcut: "", Action: CmdShowTutorial, Icon: &IconHelpChar},
+	{Label: "AI Knowledge Gaps Analysis", Desc: "Find missing topics, stale notes, orphans, and unlinked clusters", Shortcut: "", Action: CmdKnowledgeGaps, Icon: &IconGraphChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
