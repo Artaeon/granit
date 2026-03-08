@@ -1733,6 +1733,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		if m.knowledgeGaps.IsActive() {
+			m.knowledgeGaps, _ = m.knowledgeGaps.Update(msg)
+			if !m.knowledgeGaps.IsActive() {
+				if notePath, ok := m.knowledgeGaps.GetSelectedNote(); ok {
+					m.loadNote(notePath)
+					m.setSidebarCursorToFile(notePath)
+				}
+			}
+			return m, nil
+		}
+
 		if m.spellcheck.IsActive() {
 			m.spellcheck, _ = m.spellcheck.Update(msg)
 			if !m.spellcheck.IsActive() {
@@ -3774,6 +3785,10 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.backup.SetSize(m.width, m.height)
 		m.backup.Open(m.vault.Root)
 
+	case CmdKnowledgeGaps:
+		m.knowledgeGaps.SetSize(m.width, m.height)
+		m.knowledgeGaps.Open(m.vault.Root)
+
 	case CmdShowTutorial:
 		m.onboarding.SetSize(m.width, m.height)
 		m.onboarding.Open()
@@ -5569,6 +5584,10 @@ func (m Model) View() string {
 	}
 	if m.timeTracker.IsActive() {
 		overlay := m.timeTracker.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.knowledgeGaps.IsActive() {
+		overlay := m.knowledgeGaps.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.spellcheck.IsActive() {
