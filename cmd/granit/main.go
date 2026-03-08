@@ -146,9 +146,15 @@ CORE COMMANDS
   version, --version, -v        Print version information
 
 VAULT MANAGEMENT
-  scan <path>                   Scan a vault and print statistics
-  list                          List all known vaults
+  scan <path>                   Scan a vault and print statistics (--json)
+  list [path]                   List vault notes (--json, --paths, --tags)
+  list --vaults                 List all known vaults
   config                        Show configuration paths and current values
+
+SEARCH & QUERY
+  search <query> [path]         Search vault content (--json, --regex)
+  query '<expression>' [path]   Query notes by metadata (--json, --table)
+  capture <text>                Quick-capture to Inbox.md (--to, --daily, --stdin)
 
 ADVANCED
   man                           Output roff-formatted man page (pipe to man -l -)
@@ -159,7 +165,19 @@ EXAMPLES
   granit daily                  Create/open today's daily note in current dir
   granit daily ~/notes          Create/open daily note in ~/notes
   granit scan ~/notes           Print vault statistics and link graph
-  granit list                   Show registered vaults with last-opened dates
+  granit scan ~/notes --json    Output vault stats as JSON
+  granit list ~/notes           List all notes as a table
+  granit list ~/notes --json    Output notes as JSON array
+  granit list ~/notes --paths   Output note paths (one per line, for piping)
+  granit list ~/notes --tags    List all unique tags in the vault
+  granit search "TODO" ~/notes  Search vault content (grep-like output)
+  granit search --regex "#+\s" ~/notes  Search with regex
+  granit query 'tag:project'    Find notes with a specific tag
+  granit query 'tag:project AND status:active' --table
+  granit capture "Buy milk"     Append to Inbox.md
+  granit capture --daily "Met with team"  Append to today's daily note
+  echo "idea" | granit capture --stdin    Capture from stdin
+  granit list --vaults          Show registered vaults with last-opened dates
   granit config                 Display active configuration
   granit man | man -l -         View the full manual page
 
@@ -246,9 +264,6 @@ func runTUI(vaultPath string) {
 }
 
 func runScan(vaultPath string) {
-	fmt.Printf("Scanning vault: %s\n", vaultPath)
-	fmt.Println(strings.Repeat("─", 40))
-
 	v, err := vault.NewVault(vaultPath)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
@@ -265,6 +280,14 @@ func runScan(vaultPath string) {
 	idx.Build()
 	elapsed := time.Since(start)
 
+	if hasFlag("--json") {
+		runScanJSON(v, idx, elapsed)
+		return
+	}
+
+	// Default: human-readable output
+	fmt.Printf("Scanning vault: %s\n", vaultPath)
+	fmt.Println(strings.Repeat("─", 40))
 	fmt.Printf("Notes found:  %d\n", v.NoteCount())
 	fmt.Printf("Scan time:    %v\n", elapsed)
 	fmt.Println(strings.Repeat("─", 40))
@@ -291,6 +314,75 @@ func runScan(vaultPath string) {
 			fmt.Printf("    Backlinks: %s\n", strings.Join(backlinks, ", "))
 		}
 	}
+}
+
+// ScanStats is the JSON representation for scan --json output.
+type ScanStats struct {
+	VaultPath  string     `json:"vault_path"`
+	NoteCount  int        `json:"note_count"`
+	TotalWords int        `json:"total_words"`
+	TotalLinks int        `json:"total_links"`
+	TotalTags  int        `json:"total_tags"`
+	ScanTimeMs int64      `json:"scan_time_ms"`
+	Notes      []ScanNote `json:"notes"`
+}
+
+// ScanNote is a single note entry in the scan JSON.
+type ScanNote struct {
+	Path      string   `json:"path"`
+	Title     string   `json:"title"`
+	Words     int      `json:"words"`
+	Links     []string `json:"links,omitempty"`
+	Backlinks []string `json:"backlinks,omitempty"`
+	Tags      []string `json:"tags,omitempty"`
+	Modified  string   `json:"modified"`
+}
+
+func runScanJSON(v *vault.Vault, idx *vault.Index, elapsed time.Duration) {
+	compact := hasFlag("--compact")
+
+	stats := ScanStats{
+		VaultPath:  v.Root,
+		NoteCount:  v.NoteCount(),
+		ScanTimeMs: elapsed.Milliseconds(),
+	}
+
+	allTags := make(map[string]bool)
+	for _, p := range v.SortedPaths() {
+		note := v.GetNote(p)
+		tags := extractTags(note)
+		words := countWords(note.Content)
+		backlinks := idx.GetBacklinks(p)
+
+		stats.TotalWords += words
+		stats.TotalLinks += len(note.Links)
+		for _, t := range tags {
+			allTags[t] = true
+		}
+
+		stats.Notes = append(stats.Notes, ScanNote{
+			Path:      note.RelPath,
+			Title:     note.Title,
+			Words:     words,
+			Links:     note.Links,
+			Backlinks: backlinks,
+			Tags:      tags,
+			Modified:  note.ModTime.Format("2006-01-02"),
+		})
+	}
+	stats.TotalTags = len(allTags)
+
+	var data []byte
+	var jsonErr error
+	if compact {
+		data, jsonErr = json.Marshal(stats)
+	} else {
+		data, jsonErr = json.MarshalIndent(stats, "", "  ")
+	}
+	if jsonErr != nil {
+		exitError("Error marshaling JSON: %v", jsonErr)
+	}
+	fmt.Println(string(data))
 }
 
 func runDaily(vaultPath string) {
