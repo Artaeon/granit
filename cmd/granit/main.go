@@ -59,6 +59,13 @@ func main() {
 	command := os.Args[1]
 
 	switch command {
+	case "init":
+		initPath := "."
+		if len(os.Args) >= 3 {
+			initPath = os.Args[2]
+		}
+		runInit(initPath)
+
 	case "open":
 		if len(os.Args) < 3 {
 			fmt.Println("Usage: granit open <vault-path>")
@@ -128,14 +135,26 @@ func printUsage() {
 
 CORE COMMANDS
   open <path>                   Open a vault in the TUI
+  init [path]                   Initialize a new vault at the given path
   daily [path]                  Open or create today's daily note
   help, --help, -h              Show this help message
   version, --version, -v        Print version information
 
 VAULT MANAGEMENT
   scan <path>                   Scan a vault and print statistics
+  search <query> [path]         Search vault notes from the command line
   list                          List all known vaults
   config                        Show configuration paths and current values
+  backup [path]                 Create a timestamped zip backup of the vault
+
+DATA MANAGEMENT
+  export [path]                 Export vault notes to HTML, text, or JSON
+  import --from <format> <src>  Import from Obsidian, Logseq, or Notion
+
+PLUGIN MANAGEMENT
+  plugin list                   List installed plugins
+  plugin install <path>         Install a plugin from a directory
+  plugin remove <name>          Remove an installed plugin
 
 ADVANCED
   man                           Output roff-formatted man page (pipe to man -l -)
@@ -143,9 +162,21 @@ ADVANCED
 EXAMPLES
   granit ~/notes                Open the vault at ~/notes
   granit open ~/knowledge       Same as above, explicit form
+  granit init ~/new-vault       Initialize a new vault
   granit daily                  Create/open today's daily note in current dir
   granit daily ~/notes          Create/open daily note in ~/notes
   granit scan ~/notes           Print vault statistics and link graph
+  granit search "project" .     Search for "project" in current directory
+  granit search --regex "TODO|FIXME" ~/notes
+                                Regex search across a vault
+  granit export --format html --all ~/notes
+                                Export all notes as HTML
+  granit import --from obsidian ~/obsidian-vault ~/notes
+                                Import from an Obsidian vault
+  granit plugin list            Show installed plugins
+  granit backup ~/notes         Create a zip backup of the vault
+  granit backup --restore backup.zip ~/notes
+                                Restore from a backup
   granit list                   Show registered vaults with last-opened dates
   granit config                 Display active configuration
   granit man | man -l -         View the full manual page
