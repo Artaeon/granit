@@ -36,6 +36,9 @@ type VimState struct {
 	searchBuf     string
 	searchForward bool
 
+	// Text object pending (i/a prefix after operator)
+	textObjPending string // "i" or "a" when waiting for text object char
+
 	// Last action for dot repeat
 	lastAction string
 	lastCount  int
@@ -84,6 +87,13 @@ type VimResult struct {
 	FoldToggle bool
 	FoldAll    bool
 	UnfoldAll  bool
+
+	// Text object operations (inline edit within/across lines)
+	TextOp         string // "delete", "change", "yank" — for inline text object ops
+	TextOpStartLine int
+	TextOpStartCol  int
+	TextOpEndLine   int
+	TextOpEndCol    int
 }
 
 // NewVimState creates a new VimState in Normal mode, disabled by default.
@@ -230,6 +240,57 @@ func (vs *VimState) handleVisual(key string, content []string, cursor, col, heig
 		maxLine = 0
 	}
 
+	// Text object pending in visual mode (v + i/a + object)
+	if vs.textObjPending != "" {
+		inner := vs.textObjPending == "i"
+		vs.textObjPending = ""
+		vs.pending = ""
+
+		// Resolve text object to update visual selection bounds
+		var rng textObjectRange
+		switch key {
+		case "w":
+			rng = textObjWord(content, cursor, col, inner)
+		case "s":
+			rng = textObjSentence(content, cursor, col, inner)
+		case "p":
+			rng = textObjParagraph(content, cursor, inner)
+		case "\"":
+			rng = textObjQuote(content, cursor, col, '"', inner)
+		case "'":
+			rng = textObjQuote(content, cursor, col, '\'', inner)
+		case "`":
+			rng = textObjQuote(content, cursor, col, '`', inner)
+		case ")", "(", "b":
+			rng = textObjPair(content, cursor, col, '(', ')', inner)
+		case "}", "{", "B":
+			rng = textObjPair(content, cursor, col, '{', '}', inner)
+		case "]", "[":
+			rng = textObjPair(content, cursor, col, '[', ']', inner)
+		case ">", "<":
+			rng = textObjPair(content, cursor, col, '<', '>', inner)
+		default:
+			return VimResult{}
+		}
+
+		if !rng.found {
+			return VimResult{}
+		}
+
+		// Update visual selection to match text object
+		vs.visualStart = rng.startLine
+		vs.visualCol = rng.startCol
+		endCol := rng.endCol - 1
+		if endCol < 0 {
+			endCol = 0
+		}
+		return VimResult{
+			NewCursor: rng.endLine,
+			NewCol:    endCol,
+			CursorSet: true,
+		}
+	}
+
 	switch key {
 	case "esc", "escape":
 		vs.mode = VimNormal
@@ -274,6 +335,12 @@ func (vs *VimState) handleVisual(key string, content []string, cursor, col, heig
 			endCol = 0
 		}
 		return VimResult{NewCursor: cursor, NewCol: endCol, CursorSet: true}
+
+	// Text object prefixes in visual mode
+	case "i", "a":
+		vs.textObjPending = key
+		vs.pending = "v" // visual text object
+		return VimResult{}
 
 	// Operations on selection
 	case "d", "x":
@@ -619,6 +686,13 @@ func (vs *VimState) handlePending(key string, content []string, cursor, col, cou
 		maxLine = 0
 	}
 
+	// Text object pending (operator + i/a waiting for object char)
+	if vs.textObjPending != "" {
+		inner := vs.textObjPending == "i"
+		vs.textObjPending = ""
+		return vs.handleTextObject(key, inner, op, content, cursor, col, count)
+	}
+
 	// g-prefix motions
 	if op == "g" {
 		switch key {
@@ -833,10 +907,494 @@ func (vs *VimState) handlePending(key string, content []string, cursor, col, cou
 		// Set pending again so we can capture the second g
 		vs.pending = op
 		return VimResult{StatusMsg: op + "g"}
+
+	case "i", "a":
+		// Text object prefix: di", da(, ci}, ya[, etc.
+		if op == "d" || op == "c" || op == "y" {
+			vs.textObjPending = key
+			vs.pending = op
+			return VimResult{}
+		}
 	}
 
 	// Unknown second key — cancel pending
 	return VimResult{}
+}
+
+// ---------------------------------------------------------------------------
+// Text object handling
+// ---------------------------------------------------------------------------
+
+// textObjectRange represents a range found by a text object.
+type textObjectRange struct {
+	startLine, startCol int
+	endLine, endCol     int
+	found               bool
+}
+
+// handleTextObject processes a text object key (after operator + i/a prefix).
+func (vs *VimState) handleTextObject(key string, inner bool, op string, content []string, cursor, col, count int) VimResult {
+	var rng textObjectRange
+
+	switch key {
+	case "w":
+		rng = textObjWord(content, cursor, col, inner)
+	case "s":
+		rng = textObjSentence(content, cursor, col, inner)
+	case "p":
+		rng = textObjParagraph(content, cursor, inner)
+	case "\"":
+		rng = textObjQuote(content, cursor, col, '"', inner)
+	case "'":
+		rng = textObjQuote(content, cursor, col, '\'', inner)
+	case "`":
+		rng = textObjQuote(content, cursor, col, '`', inner)
+	case ")", "(", "b":
+		rng = textObjPair(content, cursor, col, '(', ')', inner)
+	case "}", "{", "B":
+		rng = textObjPair(content, cursor, col, '{', '}', inner)
+	case "]", "[":
+		rng = textObjPair(content, cursor, col, '[', ']', inner)
+	case ">", "<":
+		rng = textObjPair(content, cursor, col, '<', '>', inner)
+	default:
+		return VimResult{}
+	}
+
+	if !rng.found {
+		return VimResult{}
+	}
+
+	// Extract the text in the range for the register
+	vs.register = extractRange(content, rng.startLine, rng.startCol, rng.endLine, rng.endCol)
+	prefix := "i"
+	if !inner {
+		prefix = "a"
+	}
+	vs.lastAction = op + prefix + key
+	vs.lastCount = count
+
+	switch op {
+	case "d":
+		return VimResult{
+			TextOp:          "delete",
+			TextOpStartLine: rng.startLine,
+			TextOpStartCol:  rng.startCol,
+			TextOpEndLine:   rng.endLine,
+			TextOpEndCol:    rng.endCol,
+			NewCursor:       rng.startLine,
+			NewCol:          rng.startCol,
+			CursorSet:       true,
+		}
+	case "c":
+		vs.mode = VimInsert
+		return VimResult{
+			TextOp:          "change",
+			TextOpStartLine: rng.startLine,
+			TextOpStartCol:  rng.startCol,
+			TextOpEndLine:   rng.endLine,
+			TextOpEndCol:    rng.endCol,
+			NewCursor:       rng.startLine,
+			NewCol:          rng.startCol,
+			CursorSet:       true,
+			EnterInsert:     true,
+		}
+	case "y":
+		return VimResult{
+			StatusMsg: "yanked",
+		}
+	}
+	return VimResult{}
+}
+
+// textObjWord finds the word under cursor. inner = word chars only, around = include surrounding whitespace.
+func textObjWord(content []string, cursor, col int, inner bool) textObjectRange {
+	if cursor >= len(content) {
+		return textObjectRange{}
+	}
+	runes := []rune(content[cursor])
+	if len(runes) == 0 {
+		return textObjectRange{}
+	}
+	if col >= len(runes) {
+		col = len(runes) - 1
+	}
+	if col < 0 {
+		return textObjectRange{}
+	}
+
+	start := col
+	end := col
+
+	if isWordChar(runes[col]) {
+		// Expand to word boundaries
+		for start > 0 && isWordChar(runes[start-1]) {
+			start--
+		}
+		for end < len(runes)-1 && isWordChar(runes[end+1]) {
+			end++
+		}
+		if !inner {
+			// Include trailing whitespace
+			for end+1 < len(runes) && isSpace(runes[end+1]) {
+				end++
+			}
+			// If no trailing space, include leading whitespace
+			if end == col {
+				for start > 0 && isSpace(runes[start-1]) {
+					start--
+				}
+			}
+		}
+	} else if isSpace(runes[col]) {
+		// On whitespace: select whitespace block
+		for start > 0 && isSpace(runes[start-1]) {
+			start--
+		}
+		for end < len(runes)-1 && isSpace(runes[end+1]) {
+			end++
+		}
+	} else {
+		// On punctuation
+		for start > 0 && !isWordChar(runes[start-1]) && !isSpace(runes[start-1]) {
+			start--
+		}
+		for end < len(runes)-1 && !isWordChar(runes[end+1]) && !isSpace(runes[end+1]) {
+			end++
+		}
+	}
+
+	return textObjectRange{
+		startLine: cursor, startCol: start,
+		endLine: cursor, endCol: end + 1,
+		found: true,
+	}
+}
+
+// textObjSentence finds the sentence under cursor, delimited by .!? followed by space or EOL.
+func textObjSentence(content []string, cursor, col int, inner bool) textObjectRange {
+	if cursor >= len(content) {
+		return textObjectRange{}
+	}
+
+	// Flatten content to find sentence boundaries
+	// Work on the current line for simplicity (matching vim behavior for most cases)
+	line := content[cursor]
+	runes := []rune(line)
+	if len(runes) == 0 {
+		return textObjectRange{}
+	}
+	if col >= len(runes) {
+		col = len(runes) - 1
+	}
+
+	// Find sentence start: scan backward for .!? followed by space, or start of line
+	start := 0
+	for i := col; i > 0; i-- {
+		if isSentenceEnd(runes[i-1]) {
+			// Check if the char after the punctuation is space
+			if i < len(runes) && isSpace(runes[i]) {
+				start = i
+				break
+			}
+		}
+	}
+
+	// Skip leading whitespace for inner
+	sentStart := start
+	if inner {
+		for sentStart < len(runes) && isSpace(runes[sentStart]) {
+			sentStart++
+		}
+	}
+
+	// Find sentence end: scan forward for .!?
+	end := len(runes)
+	for i := col; i < len(runes); i++ {
+		if isSentenceEnd(runes[i]) {
+			end = i + 1
+			break
+		}
+	}
+
+	// For around, include trailing whitespace
+	sentEnd := end
+	if !inner {
+		for sentEnd < len(runes) && isSpace(runes[sentEnd]) {
+			sentEnd++
+		}
+	}
+
+	return textObjectRange{
+		startLine: cursor, startCol: sentStart,
+		endLine: cursor, endCol: sentEnd,
+		found: true,
+	}
+}
+
+// textObjParagraph finds the paragraph under cursor, delimited by blank lines.
+func textObjParagraph(content []string, cursor int, inner bool) textObjectRange {
+	if cursor >= len(content) {
+		return textObjectRange{}
+	}
+
+	// Find paragraph start (scan up to blank line)
+	start := cursor
+	for start > 0 && strings.TrimSpace(content[start-1]) != "" {
+		start--
+	}
+
+	// Find paragraph end (scan down to blank line)
+	end := cursor
+	for end < len(content)-1 && strings.TrimSpace(content[end+1]) != "" {
+		end++
+	}
+
+	if inner {
+		return textObjectRange{
+			startLine: start, startCol: 0,
+			endLine: end, endCol: len(content[end]),
+			found: true,
+		}
+	}
+
+	// Around: include trailing blank lines
+	for end+1 < len(content) && strings.TrimSpace(content[end+1]) == "" {
+		end++
+	}
+
+	return textObjectRange{
+		startLine: start, startCol: 0,
+		endLine: end, endCol: len(content[end]),
+		found: true,
+	}
+}
+
+// textObjQuote finds quoted text on the current line.
+func textObjQuote(content []string, cursor, col int, quote rune, inner bool) textObjectRange {
+	if cursor >= len(content) {
+		return textObjectRange{}
+	}
+	runes := []rune(content[cursor])
+	if len(runes) == 0 {
+		return textObjectRange{}
+	}
+	if col >= len(runes) {
+		col = len(runes) - 1
+	}
+
+	// Find the opening quote
+	openIdx := -1
+	closeIdx := -1
+
+	// Strategy: find a pair of quotes that enclose the cursor position.
+	// First, find all quote positions on this line.
+	var quotePositions []int
+	for i, r := range runes {
+		if r == quote {
+			quotePositions = append(quotePositions, i)
+		}
+	}
+
+	// Find the pair that encloses cursor
+	for i := 0; i+1 < len(quotePositions); i += 2 {
+		o := quotePositions[i]
+		c := quotePositions[i+1]
+		if col >= o && col <= c {
+			openIdx = o
+			closeIdx = c
+			break
+		}
+	}
+
+	// If not found with simple pairing, try: cursor is on or after a quote,
+	// find the next quote
+	if openIdx == -1 {
+		// Find closest opening quote at or before cursor
+		for i := col; i >= 0; i-- {
+			if runes[i] == quote {
+				openIdx = i
+				break
+			}
+		}
+		if openIdx >= 0 {
+			// Find closing quote after openIdx
+			for i := openIdx + 1; i < len(runes); i++ {
+				if runes[i] == quote {
+					closeIdx = i
+					break
+				}
+			}
+		}
+		// If cursor is before any quote, try forward
+		if openIdx == -1 || closeIdx == -1 {
+			openIdx = -1
+			closeIdx = -1
+			for i := col; i < len(runes); i++ {
+				if runes[i] == quote {
+					if openIdx == -1 {
+						openIdx = i
+					} else {
+						closeIdx = i
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if openIdx == -1 || closeIdx == -1 || openIdx >= closeIdx {
+		return textObjectRange{}
+	}
+
+	if inner {
+		return textObjectRange{
+			startLine: cursor, startCol: openIdx + 1,
+			endLine: cursor, endCol: closeIdx,
+			found: true,
+		}
+	}
+	return textObjectRange{
+		startLine: cursor, startCol: openIdx,
+		endLine: cursor, endCol: closeIdx + 1,
+		found: true,
+	}
+}
+
+// textObjPair finds paired delimiters (parentheses, braces, brackets, angle brackets).
+// This searches across lines for matching pairs.
+func textObjPair(content []string, cursor, col int, open, close rune, inner bool) textObjectRange {
+	if cursor >= len(content) {
+		return textObjectRange{}
+	}
+
+	// Find the opening delimiter by scanning backward
+	openLine, openCol := findMatchingOpen(content, cursor, col, open, close)
+	if openLine == -1 {
+		return textObjectRange{}
+	}
+
+	// Find the closing delimiter by scanning forward from the opening
+	closeLine, closeCol := findMatchingClose(content, openLine, openCol, open, close)
+	if closeLine == -1 {
+		return textObjectRange{}
+	}
+
+	if inner {
+		// Inner: content between delimiters (excluding delimiters)
+		startCol := openCol + 1
+		startLine := openLine
+		endCol := closeCol
+		endLine := closeLine
+		return textObjectRange{
+			startLine: startLine, startCol: startCol,
+			endLine: endLine, endCol: endCol,
+			found: true,
+		}
+	}
+	// Around: include the delimiters
+	return textObjectRange{
+		startLine: openLine, startCol: openCol,
+		endLine: closeLine, endCol: closeCol + 1,
+		found: true,
+	}
+}
+
+// findMatchingOpen scans backward from (line, col) to find the matching opening delimiter.
+func findMatchingOpen(content []string, line, col int, open, close rune) (int, int) {
+	depth := 0
+	runes := []rune(content[line])
+
+	// First check if we're ON an open delimiter
+	if col < len(runes) && runes[col] == open {
+		return line, col
+	}
+
+	// Scan backward from current position
+	for l := line; l >= 0; l-- {
+		runes = []rune(content[l])
+		startCol := len(runes) - 1
+		if l == line {
+			startCol = col
+		}
+		for c := startCol; c >= 0; c-- {
+			ch := runes[c]
+			if ch == close {
+				depth++
+			} else if ch == open {
+				if depth == 0 {
+					return l, c
+				}
+				depth--
+			}
+		}
+	}
+	return -1, -1
+}
+
+// findMatchingClose scans forward from (line, col) to find the matching closing delimiter.
+func findMatchingClose(content []string, line, col int, open, close rune) (int, int) {
+	depth := 0
+	for l := line; l < len(content); l++ {
+		runes := []rune(content[l])
+		startCol := 0
+		if l == line {
+			startCol = col + 1
+		}
+		for c := startCol; c < len(runes); c++ {
+			ch := runes[c]
+			if ch == open {
+				depth++
+			} else if ch == close {
+				if depth == 0 {
+					return l, c
+				}
+				depth--
+			}
+		}
+	}
+	return -1, -1
+}
+
+// isSentenceEnd returns true if r is a sentence-ending punctuation character.
+func isSentenceEnd(r rune) bool {
+	return r == '.' || r == '!' || r == '?'
+}
+
+// extractRange extracts text from content between start and end positions.
+// endCol is exclusive.
+func extractRange(content []string, startLine, startCol, endLine, endCol int) string {
+	if startLine == endLine {
+		runes := []rune(content[startLine])
+		if startCol >= len(runes) {
+			return ""
+		}
+		ec := endCol
+		if ec > len(runes) {
+			ec = len(runes)
+		}
+		return string(runes[startCol:ec])
+	}
+	var parts []string
+	// First line from startCol
+	runes := []rune(content[startLine])
+	if startCol < len(runes) {
+		parts = append(parts, string(runes[startCol:]))
+	}
+	// Middle lines in full
+	for l := startLine + 1; l < endLine; l++ {
+		parts = append(parts, content[l])
+	}
+	// Last line up to endCol
+	if endLine < len(content) {
+		runes = []rune(content[endLine])
+		ec := endCol
+		if ec > len(runes) {
+			ec = len(runes)
+		}
+		parts = append(parts, string(runes[:ec]))
+	}
+	return strings.Join(parts, "\n")
 }
 
 // ---------------------------------------------------------------------------
