@@ -60,6 +60,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Vault refactor, daily briefing, quiz mode, learning dashboard
 - Static site publisher, web clipper, image manager, theme editor
 
+- **Heading folding** — collapse/expand sections by heading level or code fences; fold indicators (▶/▼) in gutter; vim keybindings (za toggle, zM fold all, zR unfold all) and Alt+F for non-vim; command palette entries; folded headings show hidden line count
+- **Table editor improvements** — create new tables from command palette when cursor is not on an existing table (3-column, 2-row default); vertical scrolling for large tables with row indicator; insert mode vs replace mode
+- **7 new themes** — matrix (green-on-black), cobalt2 (deep blue/gold), monokai-pro (warm dark), horizon (purple/teal), zenburn (low-contrast earthy), iceberg (cool blue-gray), amber (retro CRT)
+
 ### Changed
 
 - Task manager now stores tasks in a dedicated `Tasks.md` file instead of the active note
@@ -71,3 +75,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Task add not persisting when Today view filtered out new tasks without due dates
 - Task toggle/date/priority changes not saving (consumed-once pattern eliminated)
 - Task manager now uses direct file I/O instead of signaling through app.go
+- View mode cutting off top of screen on long notes (height calculation didn't account for status bar + borders)
