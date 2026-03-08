@@ -3707,14 +3707,23 @@ func (m *Model) updateLayout() {
 			layout = "writer"
 		} else if layout == "reading" {
 			layout = "minimal"
+		} else if layout == "dashboard" {
+			layout = "writer"
+		}
+	} else if m.width < 160 {
+		// Not wide enough for 4 panels — fall back to default 3-panel
+		if layout == "dashboard" {
+			layout = "default"
 		}
 	}
 
 	showSidebar := LayoutHasSidebar(layout)
 	showBacklinks := LayoutHasBacklinks(layout)
+	showOutline := LayoutHasOutline(layout)
 
 	sidebarWidth := 0
 	backlinksWidth := 0
+	outlineWidth := 0
 	if showSidebar {
 		sidebarWidth = m.width / 5
 		if sidebarWidth < 22 {
@@ -3733,6 +3742,15 @@ func (m *Model) updateLayout() {
 			backlinksWidth = 30
 		}
 	}
+	if showOutline {
+		outlineWidth = m.width / 7
+		if outlineWidth < 18 {
+			outlineWidth = 18
+		}
+		if outlineWidth > 25 {
+			outlineWidth = 25
+		}
+	}
 
 	panelBorders := 0
 	if showSidebar {
@@ -3741,7 +3759,10 @@ func (m *Model) updateLayout() {
 	if showBacklinks {
 		panelBorders += 2
 	}
-	editorWidth := m.width - sidebarWidth - backlinksWidth - panelBorders - 2
+	if showOutline {
+		panelBorders += 2
+	}
+	editorWidth := m.width - sidebarWidth - backlinksWidth - outlineWidth - panelBorders - 2
 	if editorWidth < 30 {
 		editorWidth = 30
 	}
