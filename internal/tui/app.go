@@ -1181,23 +1181,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					f.WriteString("- [ ] " + evText + "\n")
 					f.Close()
 				}
-				// Refresh vault data
-				m.vault.Scan()
-				m.index = vault.NewIndex(m.vault)
-				m.index.Build()
-				paths := m.vault.SortedPaths()
-				m.sidebar.SetFiles(paths)
-				m.autocomplete.SetNotes(paths)
-				m.calendar.SetDailyNotes(paths)
-				m.statusbar.SetNoteCount(m.vault.NoteCount())
-				// Re-parse note contents for the calendar
-				noteContents := make(map[string]string)
-				for _, p := range paths {
-					if note := m.vault.GetNote(p); note != nil {
-						noteContents[p] = note.Content
-					}
-				}
-				m.calendar.SetNoteContents(noteContents)
+				m.refreshComponents(name)
 				m.statusbar.SetMessage("Task added to " + evDate)
 			}
 			if date := m.calendar.SelectedDate(); date != "" {
@@ -2228,6 +2212,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.calendar.SetNoteContents(noteContents)
+			m.calendar.SetPlannerBlocks(loadPlannerBlocks(m.vault.Root))
 			m.calendar.Open()
 			return m, nil
 
@@ -2824,6 +2809,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.calendar.SetNoteContents(noteContents)
+		m.calendar.SetPlannerBlocks(loadPlannerBlocks(m.vault.Root))
 		m.calendar.Open()
 	case CmdShowBots:
 		m.bots.SetSize(m.width, m.height)
@@ -3708,6 +3694,71 @@ func (m *Model) gatherSchedulerData() ([]SchedulerTask, []SchedulerEvent) {
 	}
 
 	return tasks, events
+}
+
+// loadPlannerBlocks scans the Planner/ directory for schedule files and
+// returns all blocks keyed by date string ("YYYY-MM-DD").
+func loadPlannerBlocks(vaultRoot string) map[string][]PlannerBlock {
+	result := make(map[string][]PlannerBlock)
+	plannerDir := filepath.Join(vaultRoot, "Planner")
+	entries, err := os.ReadDir(plannerDir)
+	if err != nil {
+		return result
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		dateStr := strings.TrimSuffix(e.Name(), ".md")
+		if _, parseErr := time.Parse("2006-01-02", dateStr); parseErr != nil {
+			continue
+		}
+		fp := filepath.Join(plannerDir, e.Name())
+		f, err := os.Open(fp)
+		if err != nil {
+			continue
+		}
+		scanner := bufio.NewScanner(f)
+		inSchedule := false
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "## Schedule" {
+				inSchedule = true
+				continue
+			}
+			if strings.HasPrefix(line, "## ") {
+				inSchedule = false
+				continue
+			}
+			if !inSchedule || !strings.HasPrefix(line, "- ") {
+				continue
+			}
+			// Parse: - HH:MM-HH:MM | text | type [ | done]
+			trimmed := strings.TrimPrefix(line, "- ")
+			parts := strings.Split(trimmed, " | ")
+			if len(parts) < 3 {
+				continue
+			}
+			timeRange := strings.TrimSpace(parts[0])
+			timeParts := strings.Split(timeRange, "-")
+			if len(timeParts) != 2 {
+				continue
+			}
+			pb := PlannerBlock{
+				Date:      dateStr,
+				StartTime: strings.TrimSpace(timeParts[0]),
+				EndTime:   strings.TrimSpace(timeParts[1]),
+				Text:      strings.TrimSpace(parts[1]),
+				BlockType: strings.TrimSpace(strings.ToLower(parts[2])),
+			}
+			if len(parts) >= 4 && strings.TrimSpace(parts[3]) == "done" {
+				pb.Done = true
+			}
+			result[dateStr] = append(result[dateStr], pb)
+		}
+		f.Close()
+	}
+	return result
 }
 
 // updateTaskScheduleInFile annotates matching task lines in Tasks.md with a
