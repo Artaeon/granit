@@ -206,7 +206,11 @@ func (o Onboarding) renderProgress(availWidth int) string {
 		barWidth = 10
 	}
 
-	filled := (o.step + 1) * barWidth / o.totalSteps
+	total := o.totalSteps
+	if total <= 0 {
+		total = 10
+	}
+	filled := (o.step + 1) * barWidth / total
 	if filled > barWidth {
 		filled = barWidth
 	}

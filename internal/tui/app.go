@@ -328,6 +328,7 @@ func NewModel(vaultPath string) (Model, error) {
 		dataview:        NewDataviewOverlay(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
+		onboarding:     NewOnboarding(),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
