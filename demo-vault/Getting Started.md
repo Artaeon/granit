@@ -62,11 +62,16 @@ Welcome to Granit! This note covers the essentials to get you productive quickly
 
 ## Layouts
 
-Granit supports three layouts that adapt to your terminal size:
+Granit supports eight layouts that adapt to your terminal size and workflow:
 
 - **Default** (3 panels) — Sidebar + Editor + Backlinks. Best at 120+ columns.
 - **Writer** (2 panels) — Sidebar + Editor. Good for focused writing at 80-120 columns.
 - **Minimal** (1 panel) — Editor only. Automatically used below 80 columns, or toggle with focus mode.
+- **Reading** — Distraction-free rendered markdown view.
+- **Dashboard** — Overview of recent notes, tasks, and vault stats.
+- **Zen** — Centered editor with minimal chrome for deep focus.
+- **Taskboard** — Kanban-style board for managing tasks and projects.
+- **Research** — Multi-pane layout optimized for research workflows.
 
 ## What to Explore Next
 
