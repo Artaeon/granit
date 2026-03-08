@@ -3702,9 +3702,11 @@ func (m *Model) updateLayout() {
 		// Very narrow — editor only (mobile-friendly)
 		layout = "minimal"
 	} else if m.width < 120 {
-		// Medium — sidebar + editor (no backlinks)
+		// Medium — drop backlinks/sidebar when space is tight
 		if layout == "default" {
 			layout = "writer"
+		} else if layout == "reading" {
+			layout = "minimal"
 		}
 	}
 
