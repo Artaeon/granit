@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -35,7 +36,7 @@ type ContentSearch struct {
 
 	// Search history (Up/Down to recall previous queries)
 	history    []string
-	historyIdx int // -1 means new query mode; 0..len-1 indexes from most recent
+	historyIdx int    // -1 means new query mode; 0..len-1 indexes from most recent
 	savedQuery string // stash current typed query when browsing history
 
 	// Vault data
@@ -51,6 +52,18 @@ func NewContentSearch() ContentSearch {
 // IsActive reports whether the overlay is visible.
 func (cs *ContentSearch) IsActive() bool {
 	return cs.active
+}
+
+// IsRegexMode reports whether regex search is enabled.
+func (cs *ContentSearch) IsRegexMode() bool {
+	return cs.regexMode
+}
+
+// ToggleRegex flips the regex mode and re-runs the search.
+func (cs *ContentSearch) ToggleRegex() {
+	cs.regexMode = !cs.regexMode
+	cs.regexErr = ""
+	cs.search()
 }
 
 // Open activates the overlay with the given vault contents.
@@ -310,16 +323,16 @@ func (cs ContentSearch) View() string {
 }
 
 // search performs case-insensitive substring search across all note contents.
+// When regexMode is enabled it compiles the query as a regex pattern instead.
 func (cs *ContentSearch) search() {
 	cs.results = nil
 	cs.cursor = 0
 	cs.scroll = 0
+	cs.regexErr = ""
 
 	if cs.query == "" {
 		return
 	}
-
-	lowerQuery := strings.ToLower(cs.query)
 
 	// Collect all file paths and sort them for deterministic ordering.
 	paths := make([]string, 0, len(cs.noteContents))
@@ -327,6 +340,17 @@ func (cs *ContentSearch) search() {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
+
+	if cs.regexMode {
+		cs.searchRegex(paths)
+	} else {
+		cs.searchPlain(paths)
+	}
+}
+
+// searchPlain performs case-insensitive plain-text search.
+func (cs *ContentSearch) searchPlain(paths []string) {
+	lowerQuery := strings.ToLower(cs.query)
 
 	// Two passes: first collect exact-case matches, then case-insensitive-only.
 	var exact []ContentSearchResult
@@ -370,6 +394,38 @@ func (cs *ContentSearch) search() {
 	cs.results = append(exact, fuzzy...)
 }
 
+// searchRegex performs regex-based search across all note contents.
+func (cs *ContentSearch) searchRegex(paths []string) {
+	re, err := regexp.Compile("(?i)" + cs.query)
+	if err != nil {
+		cs.regexErr = err.Error()
+		return
+	}
+
+	for _, path := range paths {
+		content := cs.noteContents[path]
+		lines := strings.Split(content, "\n")
+
+		for lineIdx, line := range lines {
+			loc := re.FindStringIndex(line)
+			if loc == nil {
+				continue
+			}
+
+			cs.results = append(cs.results, ContentSearchResult{
+				FilePath: path,
+				Line:     lineIdx,
+				Col:      loc[0],
+				Context:  line,
+			})
+
+			if len(cs.results) >= 100 {
+				return
+			}
+		}
+	}
+}
+
 // highlightMatch returns the context line with the query highlighted in yellow+bold.
 func (cs ContentSearch) highlightMatch(line string, maxWidth int) string {
 	if maxWidth < 10 {
@@ -384,6 +440,10 @@ func (cs ContentSearch) highlightMatch(line string, maxWidth int) string {
 
 	if cs.query == "" {
 		return NormalItemStyle.Render(display)
+	}
+
+	if cs.regexMode {
+		return cs.highlightMatchRegex(display)
 	}
 
 	lowerDisplay := strings.ToLower(display)
@@ -401,6 +461,33 @@ func (cs ContentSearch) highlightMatch(line string, maxWidth int) string {
 	highlighted := MatchHighlightStyle.Render(match)
 
 	return NormalItemStyle.Render(before) + highlighted + NormalItemStyle.Render(after)
+}
+
+// highlightMatchRegex highlights regex matches in the display line.
+func (cs ContentSearch) highlightMatchRegex(display string) string {
+	re, err := regexp.Compile("(?i)" + cs.query)
+	if err != nil {
+		return NormalItemStyle.Render(display)
+	}
+
+	locs := re.FindAllStringIndex(display, -1)
+	if len(locs) == 0 {
+		return NormalItemStyle.Render(display)
+	}
+
+	var result strings.Builder
+	prev := 0
+	for _, loc := range locs {
+		if loc[0] > prev {
+			result.WriteString(NormalItemStyle.Render(display[prev:loc[0]]))
+		}
+		result.WriteString(MatchHighlightStyle.Render(display[loc[0]:loc[1]]))
+		prev = loc[1]
+	}
+	if prev < len(display) {
+		result.WriteString(NormalItemStyle.Render(display[prev:]))
+	}
+	return result.String()
 }
 
 // visibleHeight returns the number of result lines visible in the content area.
