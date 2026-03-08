@@ -208,7 +208,7 @@ func (r Renderer) getCalloutInfo(typ string) calloutInfo {
 	case "bug":
 		return calloutInfo{color: red, icon: "\u25C9", label: "Bug"}
 	default:
-		return calloutInfo{color: blue, icon: "\u2139", label: strings.Title(typ)}
+		return calloutInfo{color: blue, icon: "\u2139", label: titleCase(typ)}
 	}
 }
 
