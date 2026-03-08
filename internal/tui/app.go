@@ -1161,6 +1161,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.calendar.IsActive() {
+			// Clear refresh flag — calendar data is already updated by refreshComponents
+			if m.needsRefresh {
+				m.needsRefresh = false
+			}
 			m.calendar, _ = m.calendar.Update(msg)
 			// Handle quick-add event: append task to daily note
 			if evDate, evText, ok := m.calendar.PendingEvent(); ok {
@@ -1185,6 +1189,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				AddEventToPlannerFile(m.vault.Root, evDate, evText)
 				m.refreshComponents(name)
 				m.statusbar.SetMessage("Task added to " + evDate)
+			}
+			// Handle task toggles from the agenda view
+			if toggles := m.calendar.GetTaskToggles(); len(toggles) > 0 {
+				for _, toggle := range toggles {
+					absPath := filepath.Join(m.vault.Root, toggle.NotePath)
+					data, err := os.ReadFile(absPath)
+					if err != nil {
+						continue
+					}
+					lines := strings.Split(string(data), "\n")
+					if toggle.LineNum < 1 || toggle.LineNum > len(lines) {
+						continue
+					}
+					line := lines[toggle.LineNum-1]
+					if toggle.Done {
+						line = strings.Replace(line, "[ ]", "[x]", 1)
+					} else {
+						line = strings.Replace(line, "[x]", "[ ]", 1)
+						line = strings.Replace(line, "[X]", "[ ]", 1)
+					}
+					lines[toggle.LineNum-1] = line
+					os.WriteFile(absPath, []byte(strings.Join(lines, "\n")), 0644)
+				}
+				// Refresh vault data after toggling tasks
+				m.vault.Scan()
+				m.statusbar.SetMessage("Task toggled")
 			}
 			if date := m.calendar.SelectedDate(); date != "" {
 				// Open or create daily note for selected date
@@ -1407,6 +1437,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.dailyPlanner.IsActive() {
+			// Clear refresh flag — planner reads from its own saved file
+			if m.needsRefresh {
+				m.needsRefresh = false
+			}
 			m.dailyPlanner, _ = m.dailyPlanner.Update(msg)
 
 			// Sync completed tasks back to source files
