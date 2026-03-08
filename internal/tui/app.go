@@ -1210,7 +1210,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						line = strings.Replace(line, "[X]", "[ ]", 1)
 					}
 					lines[toggle.LineNum-1] = line
-					os.WriteFile(absPath, []byte(strings.Join(lines, "\n")), 0644)
+					if err := os.WriteFile(absPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+						m.statusbar.SetMessage("Error syncing task: " + err.Error())
+					}
 				}
 				// Refresh vault data after toggling tasks
 				m.vault.Scan()
@@ -1458,7 +1460,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								lines[tc.LineNum] = strings.Replace(lines[tc.LineNum], "- [x]", "- [ ]", 1)
 							}
 							newContent := strings.Join(lines, "\n")
-							os.WriteFile(filepath.Join(m.vault.Root, tc.NotePath), []byte(newContent), 0644)
+							if err := os.WriteFile(filepath.Join(m.vault.Root, tc.NotePath), []byte(newContent), 0644); err != nil {
+								m.statusbar.SetMessage("Error syncing task: " + err.Error())
+							}
 						}
 					}
 				}
