@@ -116,6 +116,7 @@ type Model struct {
 	knowledgeGraph KnowledgeGraph
 	autoLinker     *AutoLinker
 	tfidfIndex     *TFIDFIndex
+	tfidfDirty     bool
 	tableEditor    TableEditor
 	semanticSearch SemanticSearch
 	ghostWriter    *GhostWriter
@@ -3233,8 +3234,8 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 	case CmdSimilarNotes:
 		if m.activeNote != "" {
-			// Build TF-IDF index if needed
-			if m.tfidfIndex == nil {
+			// Build TF-IDF index if needed (rebuild when dirty or first time)
+			if m.tfidfIndex == nil || m.tfidfDirty {
 				noteContents := make(map[string]string)
 				for _, p := range m.vault.SortedPaths() {
 					if note := m.vault.GetNote(p); note != nil {
@@ -3242,6 +3243,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 					}
 				}
 				m.tfidfIndex = BuildTFIDF(noteContents)
+				m.tfidfDirty = false
 			}
 			similar := FindSimilar(m.tfidfIndex, m.activeNote, 5)
 			if len(similar) > 0 {
@@ -4451,6 +4453,7 @@ func (m *Model) refreshComponents(changedPath string) {
 		}
 	}
 
+	m.tfidfDirty = true
 	m.needsRefresh = true
 }
 
