@@ -1859,3 +1859,97 @@ func TestRenderIsBlockElement(t *testing.T) {
 		}
 	}
 }
+
+// =========================================================================
+// HTML inline tags
+// =========================================================================
+
+func TestRenderHTMLKbd(t *testing.T) {
+	r := newTestRenderer()
+	content := "Press <kbd>Ctrl</kbd> to continue"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Ctrl") {
+		t.Errorf("kbd tag should render content, got:\n%s", plain)
+	}
+	// Should not contain the raw HTML tags
+	if strings.Contains(plain, "<kbd>") || strings.Contains(plain, "</kbd>") {
+		t.Errorf("kbd tag HTML should be consumed, got:\n%s", plain)
+	}
+}
+
+func TestRenderHTMLSub(t *testing.T) {
+	r := newTestRenderer()
+	content := "H<sub>2</sub>O"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "_2") {
+		t.Errorf("sub tag should render with underscore prefix, got:\n%s", plain)
+	}
+	if strings.Contains(plain, "<sub>") {
+		t.Errorf("sub tag HTML should be consumed, got:\n%s", plain)
+	}
+}
+
+func TestRenderHTMLSup(t *testing.T) {
+	r := newTestRenderer()
+	content := "x<sup>2</sup> + y"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "^2") {
+		t.Errorf("sup tag should render with caret prefix, got:\n%s", plain)
+	}
+	if strings.Contains(plain, "<sup>") {
+		t.Errorf("sup tag HTML should be consumed, got:\n%s", plain)
+	}
+}
+
+func TestRenderHTMLMark(t *testing.T) {
+	r := newTestRenderer()
+	content := "This is <mark>highlighted</mark> text"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "highlighted") {
+		t.Errorf("mark tag should render content, got:\n%s", plain)
+	}
+	if strings.Contains(plain, "<mark>") {
+		t.Errorf("mark tag HTML should be consumed, got:\n%s", plain)
+	}
+}
+
+func TestRenderHTMLAbbr(t *testing.T) {
+	r := newTestRenderer()
+	content := "The <abbr title=\"HyperText Markup Language\">HTML</abbr> spec"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "HTML") {
+		t.Errorf("abbr tag should render text content, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "HyperText Markup Language") {
+		t.Errorf("abbr tag should show title, got:\n%s", plain)
+	}
+	if strings.Contains(plain, "<abbr") {
+		t.Errorf("abbr tag HTML should be consumed, got:\n%s", plain)
+	}
+}
+
+func TestRenderHTMLMultipleTags(t *testing.T) {
+	r := newTestRenderer()
+	content := "<kbd>Ctrl</kbd>+<kbd>C</kbd> to copy"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Ctrl") || !strings.Contains(plain, "C") {
+		t.Errorf("Multiple kbd tags should all render, got:\n%s", plain)
+	}
+}
+
+func TestRenderHTMLTagNotMatched(t *testing.T) {
+	r := newTestRenderer()
+	content := "A <div>tag</div> not supported"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	// Unknown HTML tags should pass through as-is
+	if !strings.Contains(plain, "<div>") {
+		t.Errorf("Unknown HTML tag should pass through, got:\n%s", plain)
+	}
+}
