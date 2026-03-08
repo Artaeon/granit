@@ -83,6 +83,15 @@ const (
 // DailyPlanner
 // ---------------------------------------------------------------------------
 
+// TaskCompletion records a task toggle that should be synced back to its
+// source file (e.g. Tasks.md).
+type TaskCompletion struct {
+	NotePath string
+	LineNum  int
+	Text     string
+	Done     bool
+}
+
 // DailyPlanner is a time-blocked daily schedule overlay that integrates with
 // tasks, calendar events, and habits.
 type DailyPlanner struct {
@@ -126,6 +135,9 @@ type DailyPlanner struct {
 
 	// File save
 	modified bool
+
+	// Pending task completions to sync back to source files
+	completedTasks []TaskCompletion
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +224,23 @@ func (dp *DailyPlanner) GetFocusResult() (task string, duration int, ok bool) {
 	dp.focusTask = ""
 	dp.focusDuration = 0
 	return t, d, true
+}
+
+// GetCompletedTasks returns and clears the list of task completions that
+// should be synced back to their source files. Consumed-once pattern.
+func (dp *DailyPlanner) GetCompletedTasks() []TaskCompletion {
+	if len(dp.completedTasks) == 0 {
+		return nil
+	}
+	result := dp.completedTasks
+	dp.completedTasks = nil
+	return result
+}
+
+// HasPendingSync reports whether there are task completions waiting to be
+// synced back to source files.
+func (dp DailyPlanner) HasPendingSync() bool {
+	return len(dp.completedTasks) > 0
 }
 
 // ---------------------------------------------------------------------------
@@ -770,6 +799,16 @@ func (dp *DailyPlanner) toggleDone(idx int) {
 	}
 	for i := start; i < len(dp.blocks) && dp.blocks[i].TaskText == text && dp.blocks[i].TaskType != blockEmpty; i++ {
 		dp.blocks[i].Done = newDone
+	}
+
+	// Record completion for bidirectional sync if this block has source tracking
+	if b.SourcePath != "" {
+		dp.completedTasks = append(dp.completedTasks, TaskCompletion{
+			NotePath: b.SourcePath,
+			LineNum:  b.SourceLine,
+			Text:     text,
+			Done:     newDone,
+		})
 	}
 }
 
