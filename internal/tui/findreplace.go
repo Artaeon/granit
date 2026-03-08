@@ -335,7 +335,7 @@ func (fr FindReplace) View() string {
 	}
 
 	b.WriteString("\n\n")
-	hints := "  ↑↓: navigate matches  Enter: jump"
+	hints := "  ↑↓: navigate/history  Enter: jump"
 	if fr.mode == 1 {
 		hints += "  Tab: switch field  Ctrl+A: replace all"
 	}
