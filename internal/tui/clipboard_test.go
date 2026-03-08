@@ -74,7 +74,7 @@ func TestHtmlToMarkdown_Headings(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := htmlToMarkdown(tc.tag)
+			got := htmlToMarkdown(tc.tag, "")
 			got = strings.TrimSpace(got)
 			if got != tc.md {
 				t.Errorf("htmlToMarkdown(%q) = %q, want %q", tc.tag, got, tc.md)
@@ -85,7 +85,7 @@ func TestHtmlToMarkdown_Headings(t *testing.T) {
 
 func TestHtmlToMarkdown_Paragraphs(t *testing.T) {
 	html := "<p>First paragraph</p><p>Second paragraph</p>"
-	got := htmlToMarkdown(html)
+	got := htmlToMarkdown(html, "")
 
 	if !strings.Contains(got, "First paragraph") {
 		t.Error("expected 'First paragraph' in output")
@@ -97,7 +97,7 @@ func TestHtmlToMarkdown_Paragraphs(t *testing.T) {
 
 func TestHtmlToMarkdown_Links(t *testing.T) {
 	html := `<a href="https://example.com">Click here</a>`
-	got := htmlToMarkdown(html)
+	got := htmlToMarkdown(html, "")
 	got = strings.TrimSpace(got)
 
 	if !strings.Contains(got, "[Click here](https://example.com)") {
@@ -107,28 +107,28 @@ func TestHtmlToMarkdown_Links(t *testing.T) {
 
 func TestHtmlToMarkdown_BoldItalic(t *testing.T) {
 	t.Run("bold with strong", func(t *testing.T) {
-		got := strings.TrimSpace(htmlToMarkdown("<strong>bold</strong>"))
+		got := strings.TrimSpace(htmlToMarkdown("<strong>bold</strong>", ""))
 		if !strings.Contains(got, "**bold**") {
 			t.Errorf("expected **bold**, got %q", got)
 		}
 	})
 
 	t.Run("bold with b tag", func(t *testing.T) {
-		got := strings.TrimSpace(htmlToMarkdown("<b>bold</b>"))
+		got := strings.TrimSpace(htmlToMarkdown("<b>bold</b>", ""))
 		if !strings.Contains(got, "**bold**") {
 			t.Errorf("expected **bold**, got %q", got)
 		}
 	})
 
 	t.Run("italic with em", func(t *testing.T) {
-		got := strings.TrimSpace(htmlToMarkdown("<em>italic</em>"))
+		got := strings.TrimSpace(htmlToMarkdown("<em>italic</em>", ""))
 		if !strings.Contains(got, "*italic*") {
 			t.Errorf("expected *italic*, got %q", got)
 		}
 	})
 
 	t.Run("italic with i tag", func(t *testing.T) {
-		got := strings.TrimSpace(htmlToMarkdown("<i>italic</i>"))
+		got := strings.TrimSpace(htmlToMarkdown("<i>italic</i>", ""))
 		if !strings.Contains(got, "*italic*") {
 			t.Errorf("expected *italic*, got %q", got)
 		}
@@ -137,7 +137,7 @@ func TestHtmlToMarkdown_BoldItalic(t *testing.T) {
 
 func TestHtmlToMarkdown_Lists(t *testing.T) {
 	html := "<ul><li>Item one</li><li>Item two</li><li>Item three</li></ul>"
-	got := htmlToMarkdown(html)
+	got := htmlToMarkdown(html, "")
 
 	if !strings.Contains(got, "- Item one") {
 		t.Errorf("expected '- Item one' in output, got %q", got)
@@ -152,7 +152,7 @@ func TestHtmlToMarkdown_Lists(t *testing.T) {
 
 func TestHtmlToMarkdown_Blockquotes(t *testing.T) {
 	html := "<blockquote>Quoted text here</blockquote>"
-	got := htmlToMarkdown(html)
+	got := htmlToMarkdown(html, "")
 
 	if !strings.Contains(got, "> Quoted text here") {
 		t.Errorf("expected blockquote markdown, got %q", got)
@@ -161,7 +161,7 @@ func TestHtmlToMarkdown_Blockquotes(t *testing.T) {
 
 func TestHtmlToMarkdown_Code(t *testing.T) {
 	html := "<code>fmt.Println</code>"
-	got := strings.TrimSpace(htmlToMarkdown(html))
+	got := strings.TrimSpace(htmlToMarkdown(html, ""))
 
 	if !strings.Contains(got, "`fmt.Println`") {
 		t.Errorf("expected backtick code, got %q", got)
@@ -203,7 +203,7 @@ func TestHtmlToMarkdown_StripsUnwantedBlocks(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := htmlToMarkdown(tc.html)
+			got := htmlToMarkdown(tc.html, "")
 			if strings.Contains(got, tc.absent) {
 				t.Errorf("expected %q to be stripped, got %q", tc.absent, got)
 			}
@@ -215,7 +215,7 @@ func TestHtmlToMarkdown_StripsUnwantedBlocks(t *testing.T) {
 }
 
 func TestHtmlToMarkdown_EmptyInput(t *testing.T) {
-	got := htmlToMarkdown("")
+	got := htmlToMarkdown("", "")
 	if got != "" {
 		t.Errorf("expected empty output for empty input, got %q", got)
 	}
