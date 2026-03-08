@@ -117,31 +117,66 @@ func (cs ContentSearch) Update(msg tea.Msg) (ContentSearch, tea.Cmd) {
 				r := cs.results[cs.cursor]
 				cs.selected = &r
 				cs.active = false
+				// Save query to history
+				if cs.query != "" {
+					cs.history = appendToHistory(cs.history, cs.query)
+					h := loadSearchHistory(cs.vaultRoot)
+					h.ContentSearch = cs.history
+					saveSearchHistory(cs.vaultRoot, h)
+				}
 			}
 			return cs, nil
 
 		case "up", "k":
-			if cs.cursor > 0 {
-				cs.cursor--
-				if cs.cursor < cs.scroll {
-					cs.scroll = cs.cursor
+			if len(cs.results) > 0 {
+				// Navigate results
+				if cs.cursor > 0 {
+					cs.cursor--
+					if cs.cursor < cs.scroll {
+						cs.scroll = cs.cursor
+					}
 				}
+			} else if len(cs.history) > 0 {
+				// Browse history (most recent first)
+				if cs.historyIdx == -1 {
+					cs.savedQuery = cs.query
+					cs.historyIdx = len(cs.history) - 1
+				} else if cs.historyIdx > 0 {
+					cs.historyIdx--
+				}
+				cs.query = cs.history[cs.historyIdx]
+				cs.search()
 			}
 			return cs, nil
 
 		case "down", "j":
-			if cs.cursor < len(cs.results)-1 {
-				cs.cursor++
-				visH := cs.visibleHeight()
-				if cs.cursor >= cs.scroll+visH {
-					cs.scroll = cs.cursor - visH + 1
+			if len(cs.results) > 0 {
+				// Navigate results
+				if cs.cursor < len(cs.results)-1 {
+					cs.cursor++
+					visH := cs.visibleHeight()
+					if cs.cursor >= cs.scroll+visH {
+						cs.scroll = cs.cursor - visH + 1
+					}
 				}
+			} else if cs.historyIdx >= 0 {
+				// Browse history forward
+				if cs.historyIdx < len(cs.history)-1 {
+					cs.historyIdx++
+					cs.query = cs.history[cs.historyIdx]
+				} else {
+					// Past the end — restore typed query
+					cs.historyIdx = -1
+					cs.query = cs.savedQuery
+				}
+				cs.search()
 			}
 			return cs, nil
 
 		case "backspace":
 			if len(cs.query) > 0 {
 				cs.query = cs.query[:len(cs.query)-1]
+				cs.historyIdx = -1
 				cs.search()
 			}
 			return cs, nil
@@ -150,6 +185,7 @@ func (cs ContentSearch) Update(msg tea.Msg) (ContentSearch, tea.Cmd) {
 			ch := msg.String()
 			if len(ch) == 1 && ch[0] >= 32 {
 				cs.query += ch
+				cs.historyIdx = -1
 				cs.search()
 			}
 			return cs, nil
@@ -257,7 +293,7 @@ func (cs ContentSearch) View() string {
 	b.WriteString("\n\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerWidth)))
 	b.WriteString("\n")
-	footer := "  Enter: jump  Alt+R: regex  Esc: close"
+	footer := "  Enter: jump  ↑↓: history  Alt+R: regex  Esc: close"
 	if len(cs.results) > 0 {
 		footer += "  (" + smallNum(len(cs.results)) + " results)"
 	}

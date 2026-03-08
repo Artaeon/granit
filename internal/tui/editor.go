@@ -60,6 +60,16 @@ type Editor struct {
 
 	// Heading/code-fence folding
 	foldState *FoldState
+
+	// Bracket matching
+	matchBracketLine  int
+	matchBracketCol   int
+	matchBracketValid bool
+
+	// Shift+Arrow text selection
+	selectionActive bool
+	selectionStart  CursorPos // where selection began
+	selectionEnd    CursorPos // current cursor position (selection extends to here)
 }
 
 // SetWordWrap enables or disables word wrapping in the editor.
@@ -212,6 +222,63 @@ func (e *Editor) InsertText(text string) {
 	e.countWords()
 }
 
+// isURL returns true when the trimmed string looks like a URL.
+func isURL(s string) bool {
+	s = strings.TrimSpace(s)
+	return strings.HasPrefix(s, "http://") ||
+		strings.HasPrefix(s, "https://") ||
+		strings.HasPrefix(s, "ftp://") ||
+		strings.HasPrefix(s, "www.")
+}
+
+// SmartPaste inserts clipboard text intelligently. When the clipboard holds a
+// URL and there is an active selection the selected text becomes the link label
+// and the URL becomes the target: [selected text](url). When the clipboard
+// holds a URL but nothing is selected, it inserts [url](url). When the
+// clipboard is not a URL, it falls through to a normal paste (returns false).
+func (e *Editor) SmartPaste(clipboard string) bool {
+	clipboard = strings.TrimSpace(clipboard)
+	if !isURL(clipboard) {
+		return false
+	}
+
+	if e.HasSelection() {
+		sel := e.GetSelectedText()
+		e.DeleteSelection()
+		e.InsertText("[" + sel + "](" + clipboard + ")")
+		return true
+	}
+
+	// No selection — check if the word under the cursor is set via Ctrl+D
+	if e.multiWord != "" {
+		word := e.multiWord
+		// Replace the word at each cursor with the markdown link.
+		// For simplicity: clear multi-cursors, then replace at main cursor.
+		startCol := -1
+		if e.cursor < len(e.content) {
+			line := e.content[e.cursor]
+			idx := strings.Index(line, word)
+			if idx >= 0 {
+				startCol = idx
+			}
+		}
+		if startCol >= 0 {
+			e.saveSnapshot()
+			e.clearMultiCursors()
+			line := e.content[e.cursor]
+			e.content[e.cursor] = line[:startCol] + "[" + word + "](" + clipboard + ")" + line[startCol+len(word):]
+			e.col = startCol + len("["+word+"]("+clipboard+")")
+			e.modified = true
+			e.countWords()
+			return true
+		}
+	}
+
+	// No selection, no multi-word — insert [url](url)
+	e.InsertText("[" + clipboard + "](" + clipboard + ")")
+	return true
+}
+
 func (e *Editor) countWords() {
 	total := 0
 	for _, line := range e.content {
@@ -322,6 +389,116 @@ func (e *Editor) clearMultiCursors() {
 	e.multiWord = ""
 }
 
+// ClearSelection deactivates any active text selection.
+func (e *Editor) ClearSelection() {
+	e.selectionActive = false
+}
+
+// HasSelection reports whether the editor has an active text selection.
+func (e *Editor) HasSelection() bool {
+	return e.selectionActive
+}
+
+// SelectionRange returns the normalized selection range (start <= end).
+func (e *Editor) SelectionRange() (startLine, startCol, endLine, endCol int) {
+	s := e.selectionStart
+	en := e.selectionEnd
+	if s.Line < en.Line || (s.Line == en.Line && s.Col <= en.Col) {
+		return s.Line, s.Col, en.Line, en.Col
+	}
+	return en.Line, en.Col, s.Line, s.Col
+}
+
+// GetSelectedText returns the text within the current selection.
+func (e *Editor) GetSelectedText() string {
+	if !e.selectionActive {
+		return ""
+	}
+	sl, sc, el, ec := e.SelectionRange()
+	if sl == el {
+		line := e.content[sl]
+		if sc > len(line) {
+			sc = len(line)
+		}
+		if ec > len(line) {
+			ec = len(line)
+		}
+		return line[sc:ec]
+	}
+	var parts []string
+	// First line: from startCol to end
+	firstLine := e.content[sl]
+	if sc > len(firstLine) {
+		sc = len(firstLine)
+	}
+	parts = append(parts, firstLine[sc:])
+	// Middle lines: full
+	for i := sl + 1; i < el; i++ {
+		parts = append(parts, e.content[i])
+	}
+	// Last line: from start to endCol
+	lastLine := e.content[el]
+	if ec > len(lastLine) {
+		ec = len(lastLine)
+	}
+	parts = append(parts, lastLine[:ec])
+	return strings.Join(parts, "\n")
+}
+
+// DeleteSelection removes the selected text and places the cursor at the
+// start of the former selection.
+func (e *Editor) DeleteSelection() {
+	if !e.selectionActive {
+		return
+	}
+	e.saveSnapshot()
+	e.redoStack = nil
+
+	sl, sc, el, ec := e.SelectionRange()
+
+	if sl == el {
+		line := e.content[sl]
+		if sc > len(line) {
+			sc = len(line)
+		}
+		if ec > len(line) {
+			ec = len(line)
+		}
+		e.content[sl] = line[:sc] + line[ec:]
+	} else {
+		firstLine := e.content[sl]
+		if sc > len(firstLine) {
+			sc = len(firstLine)
+		}
+		lastLine := e.content[el]
+		if ec > len(lastLine) {
+			ec = len(lastLine)
+		}
+		e.content[sl] = firstLine[:sc] + lastLine[ec:]
+		e.content = append(e.content[:sl+1], e.content[el+1:]...)
+	}
+
+	e.cursor = sl
+	e.col = sc
+	e.selectionActive = false
+	e.modified = true
+	e.countWords()
+}
+
+// startOrExtendSelection begins a new selection at the current cursor if none
+// is active, then updates selectionEnd to the current cursor position.
+func (e *Editor) startOrExtendSelection() {
+	if !e.selectionActive {
+		e.selectionActive = true
+		e.selectionStart = CursorPos{Line: e.cursor, Col: e.col}
+	}
+}
+
+// updateSelectionEnd updates the selection end to the current cursor position.
+func (e *Editor) updateSelectionEnd() {
+	e.selectionEnd = CursorPos{Line: e.cursor, Col: e.col}
+}
+
 // clampCursor constrains a (line, col) pair to valid content bounds.
 func (e *Editor) clampCursor(line, col int) (int, int) {
 	if line < 0 {
@@ -415,7 +592,87 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
+
+		// --- Shift+Arrow text selection ---
+		case "shift+left":
+			e.clearMultiCursors()
+			e.startOrExtendSelection()
+			// Move cursor left
+			if e.col > 0 {
+				e.col--
+			} else if e.cursor > 0 {
+				e.cursor--
+				e.col = len(e.content[e.cursor])
+			}
+			e.updateSelectionEnd()
+			return e, nil
+
+		case "shift+right":
+			e.clearMultiCursors()
+			e.startOrExtendSelection()
+			// Move cursor right
+			if e.col < len(e.content[e.cursor]) {
+				e.col++
+			} else if e.cursor < len(e.content)-1 {
+				e.cursor++
+				e.col = 0
+			}
+			e.updateSelectionEnd()
+			return e, nil
+
+		case "shift+up":
+			e.clearMultiCursors()
+			e.startOrExtendSelection()
+			if e.cursor > 0 {
+				e.cursor--
+				for e.cursor > 0 && e.isLineFolded(e.cursor) {
+					e.cursor--
+				}
+				if e.col > len(e.content[e.cursor]) {
+					e.col = len(e.content[e.cursor])
+				}
+				if e.cursor < e.scroll {
+					e.scroll = e.cursor
+				}
+			}
+			e.updateSelectionEnd()
+			return e, nil
+
+		case "shift+down":
+			e.clearMultiCursors()
+			e.startOrExtendSelection()
+			if e.cursor < len(e.content)-1 {
+				e.cursor++
+				for e.cursor < len(e.content)-1 && e.isLineFolded(e.cursor) {
+					e.cursor++
+				}
+				if e.col > len(e.content[e.cursor]) {
+					e.col = len(e.content[e.cursor])
+				}
+				visibleHeight := e.height - 4
+				if e.cursor >= e.scroll+visibleHeight {
+					e.scroll = e.cursor - visibleHeight + 1
+				}
+			}
+			e.updateSelectionEnd()
+			return e, nil
+
+		case "shift+home":
+			e.clearMultiCursors()
+			e.startOrExtendSelection()
+			e.col = 0
+			e.updateSelectionEnd()
+			return e, nil
+
+		case "shift+end":
+			e.clearMultiCursors()
+			e.startOrExtendSelection()
+			e.col = len(e.content[e.cursor])
+			e.updateSelectionEnd()
+			return e, nil
+
 		case "up":
+			e.ClearSelection()
 			if len(e.cursors) > 0 {
 				// Move all cursors up by 1
 				if e.cursor-1 < 0 {
@@ -447,6 +704,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				}
 			}
 		case "down":
+			e.ClearSelection()
 			if len(e.cursors) > 0 {
 				maxLine := len(e.content) - 1
 				if e.cursor+1 > maxLine {
@@ -490,6 +748,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				}
 			}
 		case "left":
+			e.ClearSelection()
 			if len(e.cursors) > 0 {
 				if e.col > 0 {
 					e.col--
@@ -508,6 +767,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				}
 			}
 		case "right":
+			e.ClearSelection()
 			if len(e.cursors) > 0 {
 				if e.col < len(e.content[e.cursor]) {
 					e.col++
@@ -526,16 +786,19 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				}
 			}
 		case "home", "ctrl+a":
+			e.ClearSelection()
 			e.col = 0
 			for i := range e.cursors {
 				e.cursors[i].Col = 0
 			}
 		case "end":
+			e.ClearSelection()
 			e.col = len(e.content[e.cursor])
 			for i := range e.cursors {
 				e.cursors[i].Col = len(e.content[e.cursors[i].Line])
 			}
 		case "pgup":
+			e.ClearSelection()
 			e.clearMultiCursors()
 			visH := e.height - 4
 			if visH < 1 {
@@ -553,6 +816,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				e.col = len(e.content[e.cursor])
 			}
 		case "pgdown":
+			e.ClearSelection()
 			e.clearMultiCursors()
 			visH := e.height - 4
 			if visH < 1 {
@@ -640,6 +904,10 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			return e, nil
 
 		case "enter":
+			if e.selectionActive {
+				e.DeleteSelection()
+				return e, nil
+			}
 			e.saveSnapshot()
 			e.redoStack = nil
 			if len(e.cursors) == 0 && e.isInTable() {
@@ -686,6 +954,10 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				e.countWords()
 			}
 		case "backspace":
+			if e.selectionActive {
+				e.DeleteSelection()
+				return e, nil
+			}
 			e.saveSnapshot()
 			e.redoStack = nil
 			if len(e.cursors) > 0 {
@@ -746,6 +1018,10 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				}
 			}
 		case "delete":
+			if e.selectionActive {
+				e.DeleteSelection()
+				return e, nil
+			}
 			e.saveSnapshot()
 			e.redoStack = nil
 			line := e.content[e.cursor]
@@ -805,6 +1081,10 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 		default:
 			char := msg.String()
 			if len(char) == 1 && char[0] >= 32 {
+				// Replace selection with typed character if active
+				if e.selectionActive {
+					e.DeleteSelection()
+				}
 				e.saveSnapshot()
 				e.redoStack = nil
 

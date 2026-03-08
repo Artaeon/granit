@@ -20,6 +20,12 @@ type FindReplace struct {
 	resultLine  int // line to jump to
 	doReplace   bool
 	doReplaceAll bool
+
+	// Search history for find queries (Up/Down to recall)
+	history    []string
+	historyIdx int    // -1 means new query mode
+	savedQuery string // stash current typed query when browsing history
+	vaultRoot  string
 }
 
 type FindMatch struct {
@@ -29,7 +35,7 @@ type FindMatch struct {
 }
 
 func NewFindReplace() FindReplace {
-	return FindReplace{resultLine: -1}
+	return FindReplace{resultLine: -1, historyIdx: -1}
 }
 
 func (fr *FindReplace) SetSize(width, height int) {
@@ -37,7 +43,7 @@ func (fr *FindReplace) SetSize(width, height int) {
 	fr.height = height
 }
 
-func (fr *FindReplace) OpenFind() {
+func (fr *FindReplace) OpenFind(vaultRoot string) {
 	fr.active = true
 	fr.mode = 0
 	fr.findQuery = ""
@@ -48,9 +54,14 @@ func (fr *FindReplace) OpenFind() {
 	fr.resultLine = -1
 	fr.doReplace = false
 	fr.doReplaceAll = false
+	fr.vaultRoot = vaultRoot
+	fr.historyIdx = -1
+	fr.savedQuery = ""
+	h := loadSearchHistory(vaultRoot)
+	fr.history = h.FindReplace
 }
 
-func (fr *FindReplace) OpenReplace() {
+func (fr *FindReplace) OpenReplace(vaultRoot string) {
 	fr.active = true
 	fr.mode = 1
 	fr.findQuery = ""
@@ -61,6 +72,11 @@ func (fr *FindReplace) OpenReplace() {
 	fr.resultLine = -1
 	fr.doReplace = false
 	fr.doReplaceAll = false
+	fr.vaultRoot = vaultRoot
+	fr.historyIdx = -1
+	fr.savedQuery = ""
+	h := loadSearchHistory(vaultRoot)
+	fr.history = h.FindReplace
 }
 
 func (fr *FindReplace) Close() {
@@ -144,6 +160,13 @@ func (fr FindReplace) Update(msg tea.Msg) (FindReplace, tea.Cmd) {
 			if fr.focusField == 0 && len(fr.matches) > 0 {
 				// Jump to current match
 				fr.resultLine = fr.matches[fr.matchIdx].line
+				// Save find query to history
+				if fr.findQuery != "" {
+					fr.history = appendToHistory(fr.history, fr.findQuery)
+					h := loadSearchHistory(fr.vaultRoot)
+					h.FindReplace = fr.history
+					saveSearchHistory(fr.vaultRoot, h)
+				}
 			} else if fr.focusField == 1 && fr.mode == 1 {
 				// Replace current
 				fr.doReplace = true
@@ -158,17 +181,38 @@ func (fr FindReplace) Update(msg tea.Msg) (FindReplace, tea.Cmd) {
 			if len(fr.matches) > 0 {
 				fr.matchIdx = (fr.matchIdx + 1) % len(fr.matches)
 				fr.resultLine = fr.matches[fr.matchIdx].line
+			} else if fr.focusField == 0 && len(fr.history) > 0 {
+				// Browse history forward in find field
+				if fr.historyIdx >= 0 {
+					if fr.historyIdx < len(fr.history)-1 {
+						fr.historyIdx++
+						fr.findQuery = fr.history[fr.historyIdx]
+					} else {
+						fr.historyIdx = -1
+						fr.findQuery = fr.savedQuery
+					}
+				}
 			}
 			return fr, nil
 		case "ctrl+p", "up":
 			if len(fr.matches) > 0 {
 				fr.matchIdx = (fr.matchIdx - 1 + len(fr.matches)) % len(fr.matches)
 				fr.resultLine = fr.matches[fr.matchIdx].line
+			} else if fr.focusField == 0 && len(fr.history) > 0 {
+				// Browse history (most recent first) in find field
+				if fr.historyIdx == -1 {
+					fr.savedQuery = fr.findQuery
+					fr.historyIdx = len(fr.history) - 1
+				} else if fr.historyIdx > 0 {
+					fr.historyIdx--
+				}
+				fr.findQuery = fr.history[fr.historyIdx]
 			}
 			return fr, nil
 		case "backspace":
 			if fr.focusField == 0 && len(fr.findQuery) > 0 {
 				fr.findQuery = fr.findQuery[:len(fr.findQuery)-1]
+				fr.historyIdx = -1
 			} else if fr.focusField == 1 && len(fr.replaceText) > 0 {
 				fr.replaceText = fr.replaceText[:len(fr.replaceText)-1]
 			}
@@ -178,6 +222,7 @@ func (fr FindReplace) Update(msg tea.Msg) (FindReplace, tea.Cmd) {
 			if len(char) == 1 && char[0] >= 32 {
 				if fr.focusField == 0 {
 					fr.findQuery += char
+					fr.historyIdx = -1
 				} else {
 					fr.replaceText += char
 				}

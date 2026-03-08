@@ -342,6 +342,11 @@ func NewModel(vaultPath string) (Model, error) {
 	m.editor.SetFoldState(&m.foldState)
 	m.renderer.SetVaultRoot(vaultPath)
 
+	// Initialize view mode on status bar if default is view mode
+	if cfg.DefaultViewMode {
+		m.statusbar.SetViewMode(true)
+	}
+
 	// Set up renderer note lookup for transclusion
 	m.renderer.SetNoteLookup(func(name string) string {
 		// Try exact path
@@ -2222,9 +2227,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewMode = !m.viewMode
 			if m.viewMode {
 				m.statusbar.SetMode("VIEW")
+				m.statusbar.SetViewMode(true)
 				m.viewScroll = 0
+				m.updateReadingProgress()
 			} else {
 				m.statusbar.SetMode("EDIT")
+				m.statusbar.SetViewMode(false)
 			}
 			return m, nil
 
@@ -2265,13 +2273,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+f":
 			m.findReplace.SetSize(m.width, m.height)
-			m.findReplace.OpenFind()
+			m.findReplace.OpenFind(m.vault.Root)
 			m.findReplace.UpdateMatches(m.editor.content)
 			return m, nil
 
 		case "ctrl+h":
 			m.findReplace.SetSize(m.width, m.height)
-			m.findReplace.OpenReplace()
+			m.findReplace.OpenReplace(m.vault.Root)
 			m.findReplace.UpdateMatches(m.editor.content)
 			return m, nil
 
@@ -2418,6 +2426,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.viewMode {
 				m.viewMode = false
 				m.statusbar.SetMode("EDIT")
+				m.statusbar.SetViewMode(false)
 				return m, nil
 			}
 			if m.focus == focusEditor || m.focus == focusBacklinks {
@@ -2454,18 +2463,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.viewScroll > 0 {
 					m.viewScroll--
 				}
+				m.updateReadingProgress()
 				return m, nil
 			case "down", "j":
 				m.viewScroll++
+				m.updateReadingProgress()
 				return m, nil
 			case "pgup":
 				m.viewScroll -= m.height / 2
 				if m.viewScroll < 0 {
 					m.viewScroll = 0
 				}
+				m.updateReadingProgress()
 				return m, nil
 			case "pgdown":
 				m.viewScroll += m.height / 2
+				m.updateReadingProgress()
 				return m, nil
 			}
 		}
@@ -2567,10 +2580,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 
-				// Clipboard: Ctrl+C copies selection, Ctrl+V pastes
+				// Clipboard: Ctrl+C copies selection, Ctrl+V pastes (smart paste for URLs)
 				if k == "ctrl+v" {
 					if text, err := ClipboardPaste(); err == nil && text != "" {
-						m.editor.InsertText(text)
+						if m.editor.SmartPaste(text) {
+							m.statusbar.SetMessage("Smart paste: created markdown link")
+						} else {
+							m.editor.InsertText(text)
+						}
 						line, col := m.editor.GetCursor()
 						m.statusbar.SetCursor(line, col)
 						m.statusbar.SetWordCount(m.editor.GetWordCount())
@@ -2777,9 +2794,12 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.viewMode = !m.viewMode
 		if m.viewMode {
 			m.statusbar.SetMode("VIEW")
+			m.statusbar.SetViewMode(true)
 			m.viewScroll = 0
+			m.updateReadingProgress()
 		} else {
 			m.statusbar.SetMode("EDIT")
+			m.statusbar.SetViewMode(false)
 		}
 	case CmdSettings:
 		m.settings.SetSize(m.width, m.height)
@@ -2857,11 +2877,11 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 	case CmdFindInFile:
 		m.findReplace.SetSize(m.width, m.height)
-		m.findReplace.OpenFind()
+		m.findReplace.OpenFind(m.vault.Root)
 		m.findReplace.UpdateMatches(m.editor.content)
 	case CmdReplaceInFile:
 		m.findReplace.SetSize(m.width, m.height)
-		m.findReplace.OpenReplace()
+		m.findReplace.OpenReplace(m.vault.Root)
 		m.findReplace.UpdateMatches(m.editor.content)
 	case CmdShowStats:
 		m.vaultStats.SetSize(m.width, m.height)
@@ -6424,8 +6444,11 @@ func (m *Model) applyWorkspaceLayout(layout *WorkspaceLayout) {
 	m.viewMode = layout.ViewMode
 	if m.viewMode {
 		m.statusbar.SetMode("VIEW")
+		m.statusbar.SetViewMode(true)
+		m.updateReadingProgress()
 	} else {
 		m.statusbar.SetMode("EDIT")
+		m.statusbar.SetViewMode(false)
 	}
 	// Restore focus
 	if layout.SidebarFocus {
