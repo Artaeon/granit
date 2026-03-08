@@ -81,6 +81,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **SVG terminal screenshots** — 6 feature mockup screenshots (task manager, AI bots, vim, themes, calendar, command palette)
 - **Contributing guide** — CONTRIBUTING.md with development setup, code conventions, PR workflow
 - **Issue and PR templates** — bug report, feature request, and pull request templates
+- **Vim macro recording** — `q` + register (a-z) to record, `q` to stop, `@` + register to replay, `@@` for last macro; status bar shows recording indicator; command palette entries for start/stop/play
+- **Persistent note tabs** — Ctrl+1-9 tab switching by position; session persistence to `.granit/tabs.json`; close others/right, pin/unpin, reopen closed tab from command palette; scroll indicators for overflow; drag-reorder highlight
+- **Improved markdown renderer** — `~~strikethrough~~` and `==highlight==` inline support; `$math$` and `$$block math$$` rendering; box-drawing table borders with header styling, alternating rows, and column alignment; nested blockquotes with depth-colored borders; footnote references and definitions; Unicode checkbox symbols (☐/☑); styled horizontal rule variants
+- **Demo vault** — 18 interconnected markdown files across 7 folders showcasing wikilinks, tasks, code blocks, diagrams, frontmatter, templates, and project management
+- **VHS recording scripts** — 6 tape files for creating real terminal GIF recordings (demo, vim, tasks, AI, themes, split pane)
+- **Vault stress tests** — 5000-note vault, 50k-line notes, 10k-char lines, 20-level nesting, 500+ wikilinks, circular links, malformed frontmatter, empty vault, special char filenames
+- **App smoke tests** — model initialization, overlay priority, focus transitions, resize propagation, splash dismissal
+- **Editor edge case tests** — insert at every position, 100 rapid undo/redo cycles, 10k-line paste, empty file operations, 50 simultaneous multi-cursors
+- **Renderer tests** — 80 tests covering all markdown elements, callouts, embeds, edge cases, and performance
+- **Tab bar tests** — 60 tests covering operations, navigation, pins, rendering, and edge cases
+- **Macro recording tests** — 12 tests covering start/stop, replay, multiple registers, recursive prevention
 
 ### Changed
 
