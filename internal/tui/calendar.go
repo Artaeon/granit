@@ -22,6 +22,24 @@ type CalendarEvent struct {
 	AllDay   bool
 }
 
+// PlannerBlock represents a scheduled block from the daily planner.
+type PlannerBlock struct {
+	Date      string // YYYY-MM-DD
+	StartTime string // HH:MM
+	EndTime   string // HH:MM
+	Text      string
+	BlockType string // task, event, break, focus
+	Done      bool
+}
+
+// TaskToggle represents a task whose completion state was toggled in the calendar.
+type TaskToggle struct {
+	NotePath string
+	LineNum  int
+	Text     string
+	Done     bool
+}
+
 // calendarView controls which view mode is active.
 type calendarView int
 
@@ -39,6 +57,7 @@ type TaskItem struct {
 	NotePath string
 	Date     string // YYYY-MM-DD if associated with a daily note
 	Priority int    // 0=none, 1=low, 2=medium, 3=high, 4=highest
+	LineNum  int    // 1-based line number in source note
 }
 
 var taskPattern = regexp.MustCompile(`^- \[([ xX])\] (.+)`)
@@ -96,8 +115,13 @@ type Calendar struct {
 	tasks    map[string][]TaskItem // date -> tasks
 	allTasks []TaskItem            // all tasks across notes
 
-	// Agenda scroll offset
+	// Planner block data (keyed by date "YYYY-MM-DD")
+	plannerBlocks map[string][]PlannerBlock
+
+	// Agenda scroll offset and cursor for task toggling
 	agendaScroll int
+	agendaCursor int
+	agendaItems  []agendaItem // flat list of interactive items in agenda view
 
 	// Quick add event
 	addingEvent bool
@@ -106,6 +130,9 @@ type Calendar struct {
 	// Pending event to be saved by app.go
 	pendingEventDate string
 	pendingEventText string
+
+	// Task toggles pending consumption by app.go
+	taskToggles []TaskToggle
 }
 
 // NewCalendar creates a new Calendar overlay.
@@ -118,6 +145,7 @@ func NewCalendar() Calendar {
 		today:          today,
 		dailyNoteDates: make(map[string]bool),
 		tasks:          make(map[string][]TaskItem),
+		plannerBlocks:  make(map[string][]PlannerBlock),
 	}
 }
 
@@ -133,6 +161,9 @@ func (c *Calendar) Open() {
 	c.addingEvent = false
 	c.eventInput = ""
 	c.agendaScroll = 0
+	c.agendaCursor = 0
+	c.agendaItems = nil
+	c.taskToggles = nil
 	now := time.Now()
 	c.today = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	c.cursor = c.today
@@ -171,7 +202,7 @@ func (c *Calendar) SetNoteContents(notes map[string]string) {
 			dateStr = base
 		}
 
-		for _, line := range strings.Split(content, "\n") {
+		for lineIdx, line := range strings.Split(content, "\n") {
 			line = strings.TrimSpace(line)
 			matches := taskPattern.FindStringSubmatch(line)
 			if matches == nil {
@@ -184,6 +215,7 @@ func (c *Calendar) SetNoteContents(notes map[string]string) {
 				NotePath: path,
 				Date:     dateStr,
 				Priority: taskPriority(matches[2]),
+				LineNum:  lineIdx + 1, // 1-based
 			}
 			c.allTasks = append(c.allTasks, task)
 			if dateStr != "" {
@@ -210,6 +242,28 @@ func (c *Calendar) PendingEvent() (string, string, bool) {
 	c.pendingEventDate = ""
 	c.pendingEventText = ""
 	return date, text, true
+}
+
+// agendaItem is an interactive item in the agenda view that can be toggled.
+type agendaItem struct {
+	itemType string // "task", "planner"
+	dateStr  string
+	index    int // index within the day's tasks or planner blocks
+}
+
+// SetPlannerBlocks stores planner schedule data keyed by date.
+func (c *Calendar) SetPlannerBlocks(blocks map[string][]PlannerBlock) {
+	c.plannerBlocks = blocks
+}
+
+// GetTaskToggles returns pending task toggles and clears them (consumed-once).
+func (c *Calendar) GetTaskToggles() []TaskToggle {
+	if len(c.taskToggles) == 0 {
+		return nil
+	}
+	toggles := c.taskToggles
+	c.taskToggles = nil
+	return toggles
 }
 
 func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
@@ -261,7 +315,9 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			c.syncViewing()
 		case "up", "k":
 			if c.view == calViewAgenda {
-				if c.agendaScroll > 0 {
+				if c.agendaCursor > 0 {
+					c.agendaCursor--
+				} else if c.agendaScroll > 0 {
 					c.agendaScroll--
 				}
 			} else {
@@ -270,10 +326,41 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			}
 		case "down", "j":
 			if c.view == calViewAgenda {
-				c.agendaScroll++
+				if c.agendaCursor < len(c.agendaItems)-1 {
+					c.agendaCursor++
+				} else {
+					c.agendaScroll++
+				}
 			} else {
 				c.cursor = c.cursor.AddDate(0, 0, 7)
 				c.syncViewing()
+			}
+
+		case " ":
+			// Toggle task completion in agenda view
+			if c.view == calViewAgenda && c.agendaCursor >= 0 && c.agendaCursor < len(c.agendaItems) {
+				item := c.agendaItems[c.agendaCursor]
+				if item.itemType == "task" {
+					tasks := c.tasks[item.dateStr]
+					if item.index >= 0 && item.index < len(tasks) {
+						tasks[item.index].Done = !tasks[item.index].Done
+						c.tasks[item.dateStr] = tasks
+						// Also update allTasks
+						for i := range c.allTasks {
+							if c.allTasks[i].NotePath == tasks[item.index].NotePath &&
+								c.allTasks[i].LineNum == tasks[item.index].LineNum {
+								c.allTasks[i].Done = tasks[item.index].Done
+								break
+							}
+						}
+						c.taskToggles = append(c.taskToggles, TaskToggle{
+							NotePath: tasks[item.index].NotePath,
+							LineNum:  tasks[item.index].LineNum,
+							Text:     tasks[item.index].Text,
+							Done:     tasks[item.index].Done,
+						})
+					}
+				}
 			}
 
 		case "[":
@@ -290,6 +377,33 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			c.syncViewing()
 
 		case "enter":
+			if c.view == calViewAgenda {
+				// In agenda view, toggle task on enter too
+				if c.agendaCursor >= 0 && c.agendaCursor < len(c.agendaItems) {
+					item := c.agendaItems[c.agendaCursor]
+					if item.itemType == "task" {
+						tasks := c.tasks[item.dateStr]
+						if item.index >= 0 && item.index < len(tasks) {
+							tasks[item.index].Done = !tasks[item.index].Done
+							c.tasks[item.dateStr] = tasks
+							for i := range c.allTasks {
+								if c.allTasks[i].NotePath == tasks[item.index].NotePath &&
+									c.allTasks[i].LineNum == tasks[item.index].LineNum {
+									c.allTasks[i].Done = tasks[item.index].Done
+									break
+								}
+							}
+							c.taskToggles = append(c.taskToggles, TaskToggle{
+								NotePath: tasks[item.index].NotePath,
+								LineNum:  tasks[item.index].LineNum,
+								Text:     tasks[item.index].Text,
+								Done:     tasks[item.index].Done,
+							})
+						}
+						return c, nil
+					}
+				}
+			}
 			c.selected = c.cursor.Format("2006-01-02")
 			c.active = false
 			return c, nil
@@ -309,6 +423,8 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			case calViewWeek:
 				c.view = calViewAgenda
 				c.agendaScroll = 0
+				c.agendaCursor = 0
+				c.agendaItems = nil
 			case calViewAgenda:
 				c.view = calViewMonth
 			case calViewYear:
@@ -573,10 +689,15 @@ func (c Calendar) viewWeek() string {
 			indicators += " " + lipgloss.NewStyle().Foreground(taskColor).Render(
 				fmt.Sprintf("[%d/%d]", tasksDone, tasksTotal))
 		}
+		dayPlannerBlocks := c.plannerBlocks[dateStr]
+		if len(dayPlannerBlocks) > 0 {
+			indicators += " " + lipgloss.NewStyle().Foreground(lavender).Render(
+				fmt.Sprintf("[P:%d]", len(dayPlannerBlocks)))
+		}
 
 		weekLines = append(weekLines, line+indicators)
 
-		// Show events and tasks for cursor day
+		// Show events, planner blocks, and tasks for cursor day
 		if isCursor {
 			dayEvents := c.eventsForDate(day)
 			for _, ev := range dayEvents {
@@ -587,6 +708,34 @@ func (c Calendar) viewWeek() string {
 				weekLines = append(weekLines, "    "+lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar+" ")+
 					DimStyle.Render(timeStr)+
 					lipgloss.NewStyle().Foreground(text).Render(ev.Title))
+			}
+			// Planner blocks for cursor day
+			for _, pb := range dayPlannerBlocks {
+				timeRange := pb.StartTime + "-" + pb.EndTime
+				tag := "[P]"
+				switch pb.BlockType {
+				case "break":
+					tag = "[B]"
+				case "focus":
+					tag = "[F]"
+				case "event":
+					tag = "[E]"
+				}
+				pbText := pb.Text
+				maxLen := width - 30
+				if maxLen < 20 {
+					maxLen = 20
+				}
+				if len(pbText) > maxLen {
+					pbText = pbText[:maxLen-3] + "..."
+				}
+				pbStyle := lipgloss.NewStyle().Foreground(lavender)
+				suffix := ""
+				if pb.Done {
+					pbStyle = lipgloss.NewStyle().Foreground(green).Strikethrough(true)
+					suffix = lipgloss.NewStyle().Foreground(green).Render(" ✓")
+				}
+				weekLines = append(weekLines, "    "+pbStyle.Render(timeRange+" "+tag+" "+pbText)+suffix)
 			}
 			dayTasks := c.tasks[dateStr]
 			for _, task := range dayTasks {
@@ -746,18 +895,21 @@ func (c Calendar) viewAgenda() string {
 	b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(subTitle))
 	b.WriteString("\n\n")
 
-	// Build all agenda sections
+	// Build all agenda sections and interactive item list
 	type agendaSection struct {
 		header string
 		lines  []string
+		items  []int // indices into c.agendaItems for each line (-1 if not interactive)
 	}
 	var sections []agendaSection
+	var items []agendaItem
 
 	for d := 0; d < lookAhead; d++ {
 		day := c.today.AddDate(0, 0, d)
 		dateStr := day.Format("2006-01-02")
 		dayTasks := c.tasks[dateStr]
 		dayEvents := c.eventsForDate(day)
+		dayPlannerBlocks := c.plannerBlocks[dateStr]
 		hasNote := c.dailyNoteDates[dateStr]
 
 		// Day header
@@ -787,6 +939,7 @@ func (c Calendar) viewAgenda() string {
 			section.lines = append(section.lines,
 				"    "+lipgloss.NewStyle().Foreground(green).Render(IconDailyChar)+" "+
 					lipgloss.NewStyle().Foreground(green).Render("Daily note"))
+			section.items = append(section.items, -1)
 		}
 
 		// Events
@@ -799,10 +952,44 @@ func (c Calendar) viewAgenda() string {
 				"    "+lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar+" ")+
 					DimStyle.Render(timeStr+" ")+
 					lipgloss.NewStyle().Foreground(text).Render(ev.Title))
+			section.items = append(section.items, -1)
 		}
 
-		// Tasks with priority coloring
-		for _, task := range dayTasks {
+		// Planner blocks
+		for _, pb := range dayPlannerBlocks {
+			timeRange := pb.StartTime + "-" + pb.EndTime
+			tag := "[P]"
+			switch pb.BlockType {
+			case "break":
+				tag = "[B]"
+			case "focus":
+				tag = "[F]"
+			case "event":
+				tag = "[E]"
+			}
+			pbText := pb.Text
+			if len(pbText) > width-22 {
+				pbText = pbText[:width-25] + "..."
+			}
+			pbStyle := lipgloss.NewStyle().Foreground(lavender)
+			doneMarker := ""
+			if pb.Done {
+				pbStyle = lipgloss.NewStyle().Foreground(green).Strikethrough(true)
+				doneMarker = lipgloss.NewStyle().Foreground(green).Render(" ✓")
+			}
+			section.lines = append(section.lines,
+				"    "+pbStyle.Render(timeRange+" "+tag+" "+pbText)+doneMarker)
+			section.items = append(section.items, -1)
+		}
+
+		// Tasks with priority coloring (interactive)
+		for ti, task := range dayTasks {
+			itemIdx := len(items)
+			items = append(items, agendaItem{
+				itemType: "task",
+				dateStr:  dateStr,
+				index:    ti,
+			})
 			checkIcon := lipgloss.NewStyle().Foreground(yellow).Render("○")
 			if task.Done {
 				checkIcon = lipgloss.NewStyle().Foreground(green).Render("●")
@@ -817,14 +1004,27 @@ func (c Calendar) viewAgenda() string {
 			}
 			section.lines = append(section.lines,
 				"    "+checkIcon+" "+lipgloss.NewStyle().Foreground(textColor).Render(taskText))
+			section.items = append(section.items, itemIdx)
 		}
 
 		// If nothing for this day, show dim "No events"
-		if len(dayEvents) == 0 && len(dayTasks) == 0 && !hasNote {
+		if len(dayEvents) == 0 && len(dayTasks) == 0 && len(dayPlannerBlocks) == 0 && !hasNote {
 			section.lines = append(section.lines, DimStyle.Render("    No events"))
+			section.items = append(section.items, -1)
 		}
 
 		sections = append(sections, section)
+	}
+
+	// Store agenda items for interaction
+	c.agendaItems = items
+
+	// Clamp agenda cursor
+	if c.agendaCursor >= len(items) {
+		c.agendaCursor = len(items) - 1
+	}
+	if c.agendaCursor < 0 {
+		c.agendaCursor = 0
 	}
 
 	// Apply scroll and render visible sections
@@ -848,9 +1048,14 @@ func (c Calendar) viewAgenda() string {
 		b.WriteString("\n")
 		lineCount++
 
-		for _, line := range sec.lines {
+		for li, line := range sec.lines {
 			if lineCount >= maxLines {
 				break
+			}
+			// Highlight the line if it corresponds to the agenda cursor
+			if sec.items[li] >= 0 && sec.items[li] == c.agendaCursor {
+				marker := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▸ ")
+				line = "  " + marker + strings.TrimLeft(line, " ")
 			}
 			b.WriteString(line)
 			b.WriteString("\n")
@@ -1146,8 +1351,9 @@ func (c Calendar) renderDateInfo(b *strings.Builder, width int) {
 		dayEvents := c.eventsForDate(c.cursor)
 		hasNote := c.dailyNoteDates[dateStr]
 		tasksDone, tasksTotal := c.taskStats(dateStr)
+		dayPlannerBlocks := c.plannerBlocks[dateStr]
 
-		if len(dayEvents) > 0 || hasNote || tasksTotal > 0 {
+		if len(dayEvents) > 0 || hasNote || tasksTotal > 0 || len(dayPlannerBlocks) > 0 {
 			b.WriteString("\n")
 			if hasNote {
 				dot := lipgloss.NewStyle().Foreground(green).Render("  " + IconDailyChar + " ")
@@ -1158,6 +1364,15 @@ func (c Calendar) renderDateInfo(b *strings.Builder, width int) {
 				dot := lipgloss.NewStyle().Foreground(blue).Render("  " + IconCalendarChar + " ")
 				count := fmt.Sprintf("%d event", len(dayEvents))
 				if len(dayEvents) > 1 {
+					count += "s"
+				}
+				b.WriteString(dot + lipgloss.NewStyle().Foreground(text).Render(count))
+				b.WriteString("\n")
+			}
+			if len(dayPlannerBlocks) > 0 {
+				dot := lipgloss.NewStyle().Foreground(lavender).Render("  ▪ ")
+				count := fmt.Sprintf("%d planner block", len(dayPlannerBlocks))
+				if len(dayPlannerBlocks) > 1 {
 					count += "s"
 				}
 				b.WriteString(dot + lipgloss.NewStyle().Foreground(text).Render(count))
@@ -1195,6 +1410,7 @@ func (c Calendar) renderFooter(b *strings.Builder, width int) {
 	b.WriteString("  " +
 		keyStyle.Render("Enter") + descStyle.Render(" open note") + sep +
 		keyStyle.Render("a") + descStyle.Render(" add task") + sep +
+		keyStyle.Render("Space") + descStyle.Render(" toggle") + sep +
 		keyStyle.Render("y") + descStyle.Render(" year") + sep +
 		keyStyle.Render("e") + descStyle.Render(" events") + sep +
 		keyStyle.Render("Esc") + descStyle.Render(" close"))
