@@ -3619,6 +3619,7 @@ func (m *Model) gatherPlannerData() ([]PlannerTask, []PlannerEvent, []PlannerHab
 	tasksPath := filepath.Join(m.vault.Root, "Tasks.md")
 	if f, err := os.Open(tasksPath); err == nil {
 		scanner := bufio.NewScanner(f)
+		lineNum := 0
 		for scanner.Scan() {
 			line := scanner.Text()
 			if taskPattern.MatchString(line) {
@@ -3636,9 +3637,12 @@ func (m *Model) gatherPlannerData() ([]PlannerTask, []PlannerEvent, []PlannerHab
 						Priority: taskPriority(text),
 						DueDate:  dueDate,
 						Source:   "Tasks.md",
+						NotePath: "Tasks.md",
+						LineNum:  lineNum,
 					})
 				}
 			}
+			lineNum++
 		}
 		f.Close()
 	}
