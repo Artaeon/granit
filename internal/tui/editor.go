@@ -231,14 +231,25 @@ func isURL(s string) bool {
 		strings.HasPrefix(s, "www.")
 }
 
-// SmartPaste inserts clipboard text intelligently. When the clipboard holds a
-// URL and there is an active selection the selected text becomes the link label
-// and the URL becomes the target: [selected text](url). When the clipboard
-// holds a URL but nothing is selected, it inserts [url](url). When the
-// clipboard is not a URL, it falls through to a normal paste (returns false).
+// SmartPaste inserts clipboard text intelligently.
+//
+// Clipboard is URL + text selected     -> [selected text](url)
+// Clipboard is URL + nothing selected  -> [url](url)
+// Clipboard is text + selected URL     -> [clipboard text](selected_url)
+//
+// Returns false when none of the smart cases apply (caller should paste normally).
 func (e *Editor) SmartPaste(clipboard string) bool {
 	clipboard = strings.TrimSpace(clipboard)
 	if !isURL(clipboard) {
+		// Reverse case: clipboard is plain text, but selected text is a URL
+		if e.HasSelection() {
+			sel := strings.TrimSpace(e.GetSelectedText())
+			if isURL(sel) {
+				e.DeleteSelection()
+				e.InsertText("[" + clipboard + "](" + sel + ")")
+				return true
+			}
+		}
 		return false
 	}
 
@@ -1403,7 +1414,7 @@ func (e *Editor) hasAnyCursorOnLine(lineIdx int) bool {
 
 // renderLineWithCursors renders a line with multiple cursor positions highlighted.
 // The main cursor uses CursorStyle, additional cursors use the provided multiCursorStyle.
-func (e *Editor) renderLineWithCursors(displayLine string, lineIdx, fmStart, fmEnd int, codeBlocks map[int]string, multiCursorStyle lipgloss.Style, maxWidth int) string {
+func (e *Editor) renderLineWithCursors(displayLine string, lineIdx, fmStart, fmEnd int, codeBlocks map[int]string, multiCursorStyle lipgloss.Style, maxWidth int, bracketStyle ...lipgloss.Style) string {
 	// Collect cursor columns on this line
 	type cursorInfo struct {
 		col     int
@@ -1440,7 +1451,22 @@ func (e *Editor) renderLineWithCursors(displayLine string, lineIdx, fmStart, fmE
 		// Render text before this cursor
 		if col > prevCol {
 			segment := displayLine[prevCol:col]
-			result.WriteString(highlightLine(segment, lineIdx, fmStart, fmEnd, codeBlocks))
+			if len(bracketStyle) > 0 && e.matchBracketValid && lineIdx == e.matchBracketLine {
+				bracketRel := e.matchBracketCol - prevCol
+				if bracketRel >= 0 && bracketRel < len(segment) {
+					if bracketRel > 0 {
+						result.WriteString(highlightLine(segment[:bracketRel], lineIdx, fmStart, fmEnd, codeBlocks))
+					}
+					result.WriteString(bracketStyle[0].Render(string(segment[bracketRel])))
+					if bracketRel+1 < len(segment) {
+						result.WriteString(highlightLine(segment[bracketRel+1:], lineIdx, fmStart, fmEnd, codeBlocks))
+					}
+				} else {
+					result.WriteString(highlightLine(segment, lineIdx, fmStart, fmEnd, codeBlocks))
+				}
+			} else {
+				result.WriteString(highlightLine(segment, lineIdx, fmStart, fmEnd, codeBlocks))
+			}
 		}
 
 		// Render the cursor character
@@ -1464,7 +1490,22 @@ func (e *Editor) renderLineWithCursors(displayLine string, lineIdx, fmStart, fmE
 	// Render remaining text after last cursor
 	if prevCol < len(displayLine) {
 		segment := displayLine[prevCol:]
-		result.WriteString(highlightLine(segment, lineIdx, fmStart, fmEnd, codeBlocks))
+		if len(bracketStyle) > 0 && e.matchBracketValid && lineIdx == e.matchBracketLine {
+			bracketRel := e.matchBracketCol - prevCol
+			if bracketRel >= 0 && bracketRel < len(segment) {
+				if bracketRel > 0 {
+					result.WriteString(highlightLine(segment[:bracketRel], lineIdx, fmStart, fmEnd, codeBlocks))
+				}
+				result.WriteString(bracketStyle[0].Render(string(segment[bracketRel])))
+				if bracketRel+1 < len(segment) {
+					result.WriteString(highlightLine(segment[bracketRel+1:], lineIdx, fmStart, fmEnd, codeBlocks))
+				}
+			} else {
+				result.WriteString(highlightLine(segment, lineIdx, fmStart, fmEnd, codeBlocks))
+			}
+		} else {
+			result.WriteString(highlightLine(segment, lineIdx, fmStart, fmEnd, codeBlocks))
+		}
 	}
 
 	lineContent := result.String()
@@ -1616,6 +1657,13 @@ func (e Editor) View() string {
 		Background(surface1).
 		Foreground(text)
 
+	// Bracket matching: compute the matching bracket position
+	e.updateBracketMatch()
+	bracketStyle := lipgloss.NewStyle().
+		Background(surface2).
+		Foreground(peach).
+		Bold(true)
+
 	// Ensure scroll doesn't start inside a folded region
 	for e.scroll > 0 && e.isLineFolded(e.scroll) {
 		e.scroll--
@@ -1707,8 +1755,8 @@ func (e Editor) View() string {
 				if adjCol+1 < len(displayLine) {
 					after = displayLine[adjCol+1:]
 				}
-				styledBefore := highlightLine(before, i, fmStart, fmEnd, codeBlockLines)
-				styledAfter := highlightLine(after, i, fmStart, fmEnd, codeBlockLines)
+				styledBefore := e.highlightLineWithBrackets(before, i, colOffset, fmStart, fmEnd, codeBlockLines, bracketStyle)
+				styledAfter := e.highlightLineWithBrackets(after, i, colOffset+adjCol+1, fmStart, fmEnd, codeBlockLines, bracketStyle)
 				lineContent := styledBefore + CursorStyle.Render(cursorChar) + styledAfter + ghostSuffix
 				if e.highlightCurrentLine {
 					lineContent = lipgloss.NewStyle().Background(surface0).Width(maxWidth).Render(lineContent)
@@ -1728,9 +1776,13 @@ func (e Editor) View() string {
 			}
 		} else if isActiveLine || hasMultiCursor {
 			// Line has cursor(s): render character by character to place cursor highlights
-			b.WriteString(e.renderLineWithCursors(displayLine, i, fmStart, fmEnd, codeBlockLines, multiCursorStyle, maxWidth))
+			b.WriteString(e.renderLineWithCursors(displayLine, i, fmStart, fmEnd, codeBlockLines, multiCursorStyle, maxWidth, bracketStyle))
 		} else {
-			b.WriteString(highlightLine(displayLine, i, fmStart, fmEnd, codeBlockLines))
+			if e.matchBracketValid && i == e.matchBracketLine {
+				b.WriteString(e.highlightLineWithBrackets(displayLine, i, 0, fmStart, fmEnd, codeBlockLines, bracketStyle))
+			} else {
+				b.WriteString(highlightLine(displayLine, i, fmStart, fmEnd, codeBlockLines))
+			}
 		}
 
 		// Show folded line count after heading/fence content
@@ -1766,6 +1818,72 @@ func (e Editor) View() string {
 	}
 
 	return b.String()
+}
+
+// highlightLineWithBrackets renders a line segment with syntax highlighting and
+// bracket matching highlights. segOffset is the column offset of this segment
+// within the original line (used to map bracket positions).
+func (e *Editor) highlightLineWithBrackets(segment string, lineIdx, segOffset, fmStart, fmEnd int, codeBlocks map[int]string, bStyle lipgloss.Style) string {
+	if !e.matchBracketValid {
+		return highlightLine(segment, lineIdx, fmStart, fmEnd, codeBlocks)
+	}
+
+	// Determine which positions on this line need bracket highlighting
+	var bracketPositions []int
+	// Check if the matching bracket is on this line
+	if lineIdx == e.matchBracketLine {
+		relCol := e.matchBracketCol - segOffset
+		if relCol >= 0 && relCol < len(segment) {
+			bracketPositions = append(bracketPositions, relCol)
+		}
+	}
+	// Check if the source bracket (under cursor) is on this line
+	if lineIdx == e.cursor && e.cursor < len(e.content) {
+		cl := e.content[e.cursor]
+		srcCol := -1
+		if e.col < len(cl) && isBracketChar(cl[e.col]) {
+			srcCol = e.col
+		} else if e.col > 0 && e.col-1 < len(cl) && isBracketChar(cl[e.col-1]) {
+			srcCol = e.col - 1
+		}
+		if srcCol >= 0 {
+			relCol := srcCol - segOffset
+			if relCol >= 0 && relCol < len(segment) {
+				found := false
+				for _, p := range bracketPositions {
+					if p == relCol {
+						found = true
+						break
+					}
+				}
+				if !found {
+					bracketPositions = append(bracketPositions, relCol)
+				}
+			}
+		}
+	}
+
+	if len(bracketPositions) == 0 {
+		return highlightLine(segment, lineIdx, fmStart, fmEnd, codeBlocks)
+	}
+
+	// Sort bracket positions
+	sort.Ints(bracketPositions)
+
+	// Build the result by splitting at bracket positions
+	var result strings.Builder
+	prev := 0
+	for _, bp := range bracketPositions {
+		if bp > prev {
+			result.WriteString(highlightLine(segment[prev:bp], lineIdx, fmStart, fmEnd, codeBlocks))
+		}
+		result.WriteString(bStyle.Render(string(segment[bp])))
+		prev = bp + 1
+	}
+	if prev < len(segment) {
+		result.WriteString(highlightLine(segment[prev:], lineIdx, fmStart, fmEnd, codeBlocks))
+	}
+	return result.String()
 }
 
 func highlightLine(line string, lineIdx int, fmStart, fmEnd int, codeBlocks map[int]string) string {
