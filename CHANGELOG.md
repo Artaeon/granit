@@ -68,6 +68,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Enhanced research agent** — CLAUDE.md project context loaded into all research prompts; soul note persona shapes research writing tone; 10-minute process timeout; Esc cancels running research; WebFetch tool enabled for URL fetching
 - **4 new layouts** — zen (centered distraction-free editor, 80-char max width, no chrome), taskboard (sidebar + editor + task summary with overdue/today/upcoming), research (sidebar + editor + recent notes/backlinks/links panel), dashboard (sidebar + editor + persistent outline + backlinks, 4-panel)
 - **Reading layout wired** — previously defined but not rendered; now shows editor + backlinks with no sidebar
+- **Interactive onboarding** — 10-step tutorial walkthrough on first launch; covers navigation, editing, vim mode, task manager, AI features, command palette, customization; reopenable from command palette ("Show Tutorial"); auto-dismissed after completion
+- **Vault backup system** — create timestamped zip archives in `.granit/backups/`; restore, delete, auto-prune (max 10); auto-backup modes (none/on_save/daily); management overlay from command palette
+- **Enhanced web clipper** — reader mode (extracts `<article>`/`<main>` content), URL input with cursor, `<pre><code>` to fenced code blocks, `<table>` to markdown tables, `<img>` to `![alt](src)`, `<ol>` numbered lists, `<del>` strikethrough, relative URL resolution, save format toggle (full/simplified), custom tag editor
+- **GitHub Pages landing page** — professional landing page at `docs/index.html` with Catppuccin Mocha theme, feature grid, install guide, doc links
+- **Comprehensive test suite** — config tests (27 tests), vault index/parser tests (46 tests), TUI folding/clipboard/similarity tests (26 tests); ~200 total test cases across all packages
+- **Enterprise documentation** — 8 professional docs: Feature Guide, Installation, AI Guide, Keybindings, Architecture, Configuration, Plugins, Themes (4,600+ lines)
+- **Auto-release CI** — GitHub Actions workflow auto-creates releases on push to main with date-based tags and cross-compiled binaries (linux/darwin, amd64/arm64)
 
 ### Changed
 
@@ -81,3 +88,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Task toggle/date/priority changes not saving (consumed-once pattern eliminated)
 - Task manager now uses direct file I/O instead of signaling through app.go
 - View mode cutting off top of screen on long notes (height calculation didn't account for status bar + borders)
+- Scratchpad scroll drift (every update moved content down due to value-receiver scroll state)
