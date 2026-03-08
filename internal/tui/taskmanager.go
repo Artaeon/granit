@@ -168,6 +168,18 @@ func (tm *TaskManager) Close() {
 	tm.active = false
 }
 
+// Refresh re-parses all tasks from the vault without resetting UI state.
+// This is used when another component modifies vault files while the task
+// manager is still open, so the displayed task list stays current.
+func (tm *TaskManager) Refresh(v *vault.Vault) {
+	tm.vault = v
+	tm.allTasks = ParseAllTasks(v.Notes)
+	tm.rebuildFiltered()
+	if tm.cursor >= len(tm.filtered) {
+		tm.cursor = maxInt(0, len(tm.filtered)-1)
+	}
+}
+
 // GetJumpResult returns a consumed-once jump result.
 func (tm *TaskManager) GetJumpResult() (notePath string, lineNum int, ok bool) {
 	if !tm.jumpOK {
