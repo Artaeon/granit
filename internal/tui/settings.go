@@ -256,6 +256,78 @@ func (s *Settings) currentItem() *settingItem {
 	return item
 }
 
+// defaultValueForKey returns the default value for a setting key.
+func (s *Settings) defaultValueForKey(key string) interface{} {
+	def := config.DefaultConfig()
+	switch key {
+	case "show_splash":
+		return def.ShowSplash
+	case "show_help":
+		return def.ShowHelp
+	case "line_numbers":
+		return def.LineNumbers
+	case "word_wrap":
+		return def.WordWrap
+	case "auto_save":
+		return def.AutoSave
+	case "default_view_mode":
+		return def.DefaultViewMode
+	case "vim_mode":
+		return def.VimMode
+	case "tab_size":
+		return def.Editor.TabSize
+	case "auto_close_brackets":
+		return def.AutoCloseBrackets
+	case "highlight_current_line":
+		return def.HighlightCurrentLine
+	case "theme":
+		return def.Theme
+	case "icon_theme":
+		return def.IconTheme
+	case "layout":
+		return def.Layout
+	case "sidebar_position":
+		return def.SidebarPosition
+	case "show_icons":
+		return def.ShowIcons
+	case "compact_mode":
+		return def.CompactMode
+	case "sort_by":
+		return def.SortBy
+	case "daily_notes_folder":
+		return def.DailyNotesFolder
+	case "search_content":
+		return def.SearchContentByDefault
+	case "ai_provider":
+		return def.AIProvider
+	case "ollama_model":
+		return def.OllamaModel
+	case "ollama_url":
+		return def.OllamaURL
+	case "openai_key":
+		return def.OpenAIKey
+	case "openai_model":
+		return def.OpenAIModel
+	case "background_bots":
+		return def.BackgroundBots
+	case "confirm_delete":
+		return def.ConfirmDelete
+	case "auto_refresh":
+		return def.AutoRefresh
+	case "git_auto_sync":
+		return def.GitAutoSync
+	case "auto_tag":
+		return def.AutoTag
+	case "ghost_writer":
+		return def.GhostWriter
+	default:
+		if strings.HasPrefix(key, "cp_") {
+			return true // core plugins default to enabled
+		}
+		return nil
+	}
+}
+
 func (s *Settings) SetSize(width, height int) {
 	s.width = width
 	s.height = height
@@ -380,6 +452,16 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 			if s.cursor < len(s.visible)-1 {
 				s.cursor++
 				s.skipHeaderForward()
+			}
+		case "backspace", "delete":
+			// Reset current setting to default
+			item := s.currentItem()
+			if item != nil && item.kind != "action" && item.kind != "header" {
+				defVal := s.defaultValueForKey(item.key)
+				if defVal != nil {
+					item.value = defVal
+					s.applyValue(item.key, defVal)
+				}
 			}
 		case "enter", " ":
 			item := s.currentItem()
@@ -641,6 +723,11 @@ func (s Settings) View() string {
 			} else {
 				valueStr = lipgloss.NewStyle().Foreground(red).Render("○ OFF")
 			}
+			// Show reset indicator if value differs from default
+			defVal := s.defaultValueForKey(item.key)
+			if defVal != nil && defVal.(bool) != item.value.(bool) {
+				valueStr += DimStyle.Render(" *")
+			}
 		case "string":
 			if s.editing && isSelected {
 				valueStr = s.editBuf + DimStyle.Render("_")
@@ -650,12 +737,27 @@ func (s Settings) View() string {
 				} else {
 					valueStr = lipgloss.NewStyle().Foreground(blue).Render(v)
 				}
+				// Show reset indicator if value differs from default
+				defVal := s.defaultValueForKey(item.key)
+				if defVal != nil {
+					if defStr, ok := defVal.(string); ok && defStr != v {
+						valueStr += DimStyle.Render(" *")
+					}
+				}
 			}
 		case "int":
 			if s.editing && isSelected {
 				valueStr = s.editBuf + DimStyle.Render("_")
 			} else {
 				valueStr = lipgloss.NewStyle().Foreground(peach).Render(intToStr(item.value))
+				defVal := s.defaultValueForKey(item.key)
+				if defVal != nil {
+					if defInt, ok := defVal.(int); ok {
+						if curInt, ok2 := item.value.(int); ok2 && defInt != curInt {
+							valueStr += DimStyle.Render(" *")
+						}
+					}
+				}
 			}
 		case "action":
 			if s.setupRunning && item.key == "setup_ollama" {
@@ -715,11 +817,38 @@ func (s Settings) View() string {
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
 	b.WriteString("\n")
-	hints := "  Enter: toggle  /: search  Esc: close"
+	hints := "  Enter: toggle  /: search  Del: reset  Esc: close"
 	if s.searching {
 		hints = "  Type to filter  Enter: apply  Esc: cancel"
 	}
 	b.WriteString(DimStyle.Render(hints))
+	// Show modified indicator for current setting
+	item := s.currentItem()
+	if item != nil && item.kind != "action" {
+		defVal := s.defaultValueForKey(item.key)
+		if defVal != nil {
+			modified := false
+			switch v := item.value.(type) {
+			case bool:
+				if dv, ok := defVal.(bool); ok {
+					modified = v != dv
+				}
+			case string:
+				if dv, ok := defVal.(string); ok {
+					modified = v != dv
+				}
+			case int:
+				if dv, ok := defVal.(int); ok {
+					modified = v != dv
+				}
+			}
+			if modified {
+				b.WriteString("\n")
+				defStr := fmt.Sprintf("%v", defVal)
+				b.WriteString(DimStyle.Render("  * modified (default: " + defStr + ")  Del/Backspace: reset"))
+			}
+		}
+	}
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
