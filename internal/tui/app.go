@@ -166,6 +166,8 @@ type Model struct {
 	recurringTasks   RecurringTasks
 	notePreview      NotePreview
 	scratchpad       Scratchpad
+	backup           Backup
+	onboarding       Onboarding
 	projectMode      ProjectMode
 	nlSearch         NLSearch
 	writingCoach     WritingCoach
@@ -460,12 +462,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyMsg:
 			// Any key press immediately dismisses the splash
 			m.showSplash = false
+			if ShouldShowOnboarding() {
+				m.onboarding.SetSize(m.width, m.height)
+				m.onboarding.Open()
+			}
 			return m, nil
 		case splashTickMsg:
 			var cmd tea.Cmd
 			m.splash, cmd = m.splash.Update(msg)
 			if m.splash.IsDone() {
 				m.showSplash = false
+				if ShouldShowOnboarding() {
+					m.onboarding.SetSize(m.width, m.height)
+					m.onboarding.Open()
+				}
 				return m, nil
 			}
 			return m, cmd
@@ -1428,6 +1438,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.scratchpad.IsActive() {
 			m.scratchpad, _ = m.scratchpad.Update(msg)
 			return m, nil
+		}
+
+		if m.backup.IsActive() {
+			m.backup, _ = m.backup.Update(msg)
+			return m, nil
+		}
+
+		if m.onboarding.IsActive() {
+			var cmd tea.Cmd
+			m.onboarding, cmd = m.onboarding.Update(msg)
+			if !m.onboarding.IsActive() {
+				m.onboarding.MarkComplete()
+			}
+			return m, cmd
 		}
 
 		if m.projectMode.IsActive() {
@@ -3377,6 +3401,14 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.timeTracker.SetSize(m.width, m.height)
 		m.timeTracker.Open(m.vault.Root)
 
+	case CmdBackup:
+		m.backup.SetSize(m.width, m.height)
+		m.backup.Open(m.vault.Root)
+
+	case CmdShowTutorial:
+		m.onboarding.SetSize(m.width, m.height)
+		m.onboarding.Open()
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}
@@ -3827,6 +3859,8 @@ func (m *Model) updateLayout() {
 	m.linkAssist.SetSize(m.width, m.height)
 	m.taskManager.SetSize(m.width, m.height)
 	m.blogPublisher.SetSize(m.width, m.height)
+	m.backup.SetSize(m.width, m.height)
+	m.onboarding.SetSize(m.width, m.height)
 }
 
 func (m *Model) syncConfigToComponents() {
@@ -4879,6 +4913,14 @@ func (m Model) View() string {
 	}
 	if m.scratchpad.IsActive() {
 		overlay := m.scratchpad.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.backup.IsActive() {
+		overlay := m.backup.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.onboarding.IsActive() {
+		overlay := m.onboarding.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.projectMode.IsActive() {
