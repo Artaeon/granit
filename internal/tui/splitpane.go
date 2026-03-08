@@ -8,6 +8,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// splitPanePickMsg is sent when a note is selected in the split pane picker.
+type splitPanePickMsg struct {
+	notePath string
+}
+
 // paneState holds the content and scroll position for one side of the split.
 type paneState struct {
 	title  string
@@ -23,6 +28,14 @@ type SplitPane struct {
 	focus  int // 0 = left, 1 = right
 	left   paneState
 	right  paneState
+
+	// Note picker state
+	picking       bool
+	pickQuery     string
+	allNotes      []string
+	filteredNotes []string
+	pickCursor    int
+	rightNotePath string
 }
 
 // NewSplitPane returns a SplitPane in its default (inactive) state.
@@ -35,23 +48,34 @@ func (sp *SplitPane) IsActive() bool {
 	return sp.active
 }
 
-// Open activates the split pane overlay.
+// Open activates the split pane overlay and enters note picker mode.
 func (sp *SplitPane) Open() {
 	sp.active = true
 	sp.focus = 0
 	sp.left.scroll = 0
 	sp.right.scroll = 0
+	sp.right.title = ""
+	sp.right.lines = nil
+	sp.rightNotePath = ""
+	sp.openPicker()
 }
 
 // Close deactivates the split pane overlay.
 func (sp *SplitPane) Close() {
 	sp.active = false
+	sp.picking = false
 }
 
 // SetSize updates the available terminal dimensions.
 func (sp *SplitPane) SetSize(width, height int) {
 	sp.width = width
 	sp.height = height
+}
+
+// SetNotes provides the list of vault note paths for the picker.
+func (sp *SplitPane) SetNotes(notes []string) {
+	sp.allNotes = notes
+	sp.filterNotes()
 }
 
 // SetLeftContent loads content into the left pane.
@@ -66,6 +90,43 @@ func (sp *SplitPane) SetRightContent(title string, lines []string) {
 	sp.right.title = title
 	sp.right.lines = lines
 	sp.right.scroll = 0
+}
+
+// GetRightNotePath returns the path of the note selected for the right pane.
+func (sp *SplitPane) GetRightNotePath() string {
+	return sp.rightNotePath
+}
+
+// openPicker enters note picker mode for the right pane.
+func (sp *SplitPane) openPicker() {
+	sp.picking = true
+	sp.pickQuery = ""
+	sp.pickCursor = 0
+	sp.filterNotes()
+}
+
+// filterNotes updates filteredNotes based on the current pickQuery.
+func (sp *SplitPane) filterNotes() {
+	if sp.pickQuery == "" {
+		sp.filteredNotes = make([]string, len(sp.allNotes))
+		copy(sp.filteredNotes, sp.allNotes)
+		return
+	}
+	query := strings.ToLower(sp.pickQuery)
+	filtered := make([]string, 0)
+	for _, note := range sp.allNotes {
+		if strings.Contains(strings.ToLower(note), query) {
+			filtered = append(filtered, note)
+		}
+	}
+	sp.filteredNotes = filtered
+	// Clamp cursor to valid range
+	if sp.pickCursor >= len(sp.filteredNotes) {
+		sp.pickCursor = len(sp.filteredNotes) - 1
+	}
+	if sp.pickCursor < 0 {
+		sp.pickCursor = 0
+	}
 }
 
 // focusedPane returns a pointer to the currently focused pane.
@@ -95,54 +156,123 @@ func (sp SplitPane) Update(msg tea.Msg) (SplitPane, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "esc":
+		if sp.picking {
+			return sp.updatePicker(msg)
+		}
+		return sp.updateNormal(msg)
+	}
+	return sp, nil
+}
+
+// updatePicker handles key events in picker mode.
+func (sp SplitPane) updatePicker(msg tea.KeyMsg) (SplitPane, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		if sp.pickQuery != "" {
+			// Clear the search query first
+			sp.pickQuery = ""
+			sp.pickCursor = 0
+			sp.filterNotes()
+		} else if sp.rightNotePath != "" {
+			// If a note was already picked, exit picker back to split view
+			sp.picking = false
+		} else {
+			// No note picked yet and no query, close the whole overlay
 			sp.active = false
+			sp.picking = false
+		}
 
-		case "tab":
-			sp.focus = (sp.focus + 1) % 2
+	case "enter":
+		if len(sp.filteredNotes) > 0 && sp.pickCursor < len(sp.filteredNotes) {
+			selected := sp.filteredNotes[sp.pickCursor]
+			sp.rightNotePath = selected
+			sp.picking = false
+			return sp, func() tea.Msg {
+				return splitPanePickMsg{notePath: selected}
+			}
+		}
 
-		case "down", "j":
-			pane := sp.focusedPane()
-			maxScroll := len(pane.lines) - sp.visibleHeight()
-			if maxScroll < 0 {
-				maxScroll = 0
-			}
-			if pane.scroll < maxScroll {
-				pane.scroll++
-			}
+	case "up":
+		if sp.pickCursor > 0 {
+			sp.pickCursor--
+		}
 
-		case "up", "k":
-			pane := sp.focusedPane()
-			if pane.scroll > 0 {
-				pane.scroll--
-			}
+	case "down":
+		if sp.pickCursor < len(sp.filteredNotes)-1 {
+			sp.pickCursor++
+		}
 
-		case "pgdown", "ctrl+d":
-			pane := sp.focusedPane()
-			jump := sp.visibleHeight() / 2
-			if jump < 1 {
-				jump = 1
-			}
-			maxScroll := len(pane.lines) - sp.visibleHeight()
-			if maxScroll < 0 {
-				maxScroll = 0
-			}
-			pane.scroll += jump
-			if pane.scroll > maxScroll {
-				pane.scroll = maxScroll
-			}
+	case "backspace":
+		if len(sp.pickQuery) > 0 {
+			sp.pickQuery = sp.pickQuery[:len(sp.pickQuery)-1]
+			sp.pickCursor = 0
+			sp.filterNotes()
+		}
 
-		case "pgup", "ctrl+u":
-			pane := sp.focusedPane()
-			jump := sp.visibleHeight() / 2
-			if jump < 1 {
-				jump = 1
-			}
-			pane.scroll -= jump
-			if pane.scroll < 0 {
-				pane.scroll = 0
-			}
+	default:
+		// Type characters into search query
+		key := msg.String()
+		if len(key) == 1 && key[0] >= 32 && key[0] <= 126 {
+			sp.pickQuery += key
+			sp.pickCursor = 0
+			sp.filterNotes()
+		}
+	}
+	return sp, nil
+}
+
+// updateNormal handles key events in normal (dual-pane viewing) mode.
+func (sp SplitPane) updateNormal(msg tea.KeyMsg) (SplitPane, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		sp.active = false
+
+	case "tab":
+		sp.focus = (sp.focus + 1) % 2
+
+	case "p":
+		sp.openPicker()
+
+	case "down", "j":
+		pane := sp.focusedPane()
+		maxScroll := len(pane.lines) - sp.visibleHeight()
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if pane.scroll < maxScroll {
+			pane.scroll++
+		}
+
+	case "up", "k":
+		pane := sp.focusedPane()
+		if pane.scroll > 0 {
+			pane.scroll--
+		}
+
+	case "pgdown", "ctrl+d":
+		pane := sp.focusedPane()
+		jump := sp.visibleHeight() / 2
+		if jump < 1 {
+			jump = 1
+		}
+		maxScroll := len(pane.lines) - sp.visibleHeight()
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		pane.scroll += jump
+		if pane.scroll > maxScroll {
+			pane.scroll = maxScroll
+		}
+
+	case "pgup", "ctrl+u":
+		pane := sp.focusedPane()
+		jump := sp.visibleHeight() / 2
+		if jump < 1 {
+			jump = 1
+		}
+		pane.scroll -= jump
+		if pane.scroll < 0 {
+			pane.scroll = 0
 		}
 	}
 	return sp, nil
@@ -169,7 +299,12 @@ func (sp SplitPane) View() string {
 
 	// --- render individual panes ---
 	leftView := sp.renderPane(sp.left, paneWidth, visH, sp.focus == 0)
-	rightView := sp.renderPane(sp.right, paneWidth, visH, sp.focus == 1)
+	var rightView string
+	if sp.picking {
+		rightView = sp.renderPicker(paneWidth, visH)
+	} else {
+		rightView = sp.renderPane(sp.right, paneWidth, visH, sp.focus == 1)
+	}
 
 	// --- vertical divider ---
 	dividerStyle := lipgloss.NewStyle().Foreground(surface0)
@@ -183,7 +318,13 @@ func (sp SplitPane) View() string {
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftView, divider, rightView)
 
 	// --- footer ---
-	footer := DimStyle.Render("  Tab: switch pane  j/k: scroll  Ctrl+D/U: page  Esc: close")
+	var footerText string
+	if sp.picking {
+		footerText = "  Type to search  Up/Down: navigate  Enter: select  Esc: cancel"
+	} else {
+		footerText = "  Tab: switch pane  j/k: scroll  Ctrl+D/U: page  p: pick note  Esc: close"
+	}
+	footer := DimStyle.Render(footerText)
 
 	content := body + "\n" + footer
 
@@ -196,6 +337,95 @@ func (sp SplitPane) View() string {
 		Background(mantle)
 
 	return border.Render(content)
+}
+
+// renderPicker renders the note picker UI for the right pane.
+func (sp SplitPane) renderPicker(width, visH int) string {
+	var b strings.Builder
+
+	// --- title ---
+	titleRendered := lipgloss.NewStyle().
+		Foreground(mauve).
+		Bold(true).
+		Render("Select Note")
+	b.WriteString(titleRendered)
+	b.WriteString("\n")
+
+	// --- separator ---
+	sep := lipgloss.NewStyle().Foreground(mauve).Render(strings.Repeat("─", width))
+	b.WriteString(sep)
+	b.WriteString("\n")
+
+	// --- search input ---
+	prompt := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("> ")
+	queryText := sp.pickQuery
+	if len(queryText) > width-4 {
+		queryText = queryText[len(queryText)-(width-4):]
+	}
+	cursor := lipgloss.NewStyle().Foreground(mauve).Render("_")
+	searchLine := prompt + NormalItemStyle.Render(queryText) + cursor
+	b.WriteString(searchLine)
+	b.WriteString("\n")
+
+	// --- note list ---
+	// Reserve 1 line for search input from visible height
+	listHeight := visH - 1
+	if listHeight < 1 {
+		listHeight = 1
+	}
+
+	// Determine visible window of filtered notes based on cursor position
+	startIdx := 0
+	if sp.pickCursor >= listHeight {
+		startIdx = sp.pickCursor - listHeight + 1
+	}
+	endIdx := startIdx + listHeight
+	if endIdx > len(sp.filteredNotes) {
+		endIdx = len(sp.filteredNotes)
+	}
+
+	lineCount := 0
+	for i := startIdx; i < endIdx; i++ {
+		note := sp.filteredNotes[i]
+		// Truncate to fit
+		display := note
+		if len(display) > width-2 {
+			display = display[:width-5] + "..."
+		}
+
+		if i == sp.pickCursor {
+			line := SelectedItemStyle.Render("> " + display)
+			b.WriteString(line)
+		} else {
+			line := NormalItemStyle.Render("  " + display)
+			b.WriteString(line)
+		}
+		lineCount++
+		if lineCount < listHeight {
+			b.WriteString("\n")
+		}
+	}
+
+	// Pad empty lines
+	for lineCount < listHeight {
+		if lineCount > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("")
+		lineCount++
+	}
+
+	// Show count
+	if len(sp.filteredNotes) > 0 {
+		countText := fmt.Sprintf(" %d/%d notes", len(sp.filteredNotes), len(sp.allNotes))
+		b.WriteString("\n")
+		b.WriteString(DimStyle.Render(countText))
+	} else if len(sp.allNotes) > 0 {
+		b.WriteString("\n")
+		b.WriteString(DimStyle.Render(" No matches"))
+	}
+
+	return lipgloss.NewStyle().Width(width).Render(b.String())
 }
 
 // renderPane renders one side of the split view.
