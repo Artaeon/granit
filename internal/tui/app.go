@@ -769,7 +769,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.autocomplete.SetNotes(paths)
 							m.statusbar.SetNoteCount(m.vault.NoteCount())
 							m.loadNote(name)
-							m.sidebar.cursor = m.findFileIndex(name)
+							m.setSidebarCursorToFile(name)
 							m.setFocus(focusEditor)
 							m.statusbar.SetMessage("AI note created: " + name)
 						}
@@ -810,7 +810,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.autocomplete.SetNotes(paths)
 							m.statusbar.SetNoteCount(m.vault.NoteCount())
 							m.loadNote(name)
-							m.sidebar.cursor = m.findFileIndex(name)
+							m.setSidebarCursorToFile(name)
 							m.setFocus(focusEditor)
 							m.statusbar.SetMessage("Thread woven: " + name)
 						}
@@ -1156,7 +1156,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.graphView, _ = m.graphView.Update(msg)
 			if nav := m.graphView.SelectedNote(); nav != "" {
 				m.loadNote(nav)
-				m.sidebar.cursor = m.findFileIndex(nav)
+				m.setSidebarCursorToFile(nav)
 				m.setFocus(focusEditor)
 			}
 			return m, nil
@@ -1166,7 +1166,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tagBrowser, _ = m.tagBrowser.Update(msg)
 			if nav := m.tagBrowser.SelectedNote(); nav != "" {
 				m.loadNote(nav)
-				m.sidebar.cursor = m.findFileIndex(nav)
+				m.setSidebarCursorToFile(nav)
 				m.setFocus(focusEditor)
 			}
 			return m, nil
@@ -1189,7 +1189,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.bookmarks, _ = m.bookmarks.Update(msg)
 			if nav := m.bookmarks.SelectedNote(); nav != "" {
 				m.loadNote(nav)
-				m.sidebar.cursor = m.findFileIndex(nav)
+				m.setSidebarCursorToFile(nav)
 				m.setFocus(focusEditor)
 			}
 			return m, nil
@@ -1229,7 +1229,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quickSwitch, _ = m.quickSwitch.Update(msg)
 			if nav := m.quickSwitch.SelectedFile(); nav != "" {
 				m.loadNote(nav)
-				m.sidebar.cursor = m.findFileIndex(nav)
+				m.setSidebarCursorToFile(nav)
 				m.setFocus(focusEditor)
 			}
 			return m, nil
@@ -1248,7 +1248,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.autocomplete.SetNotes(paths)
 					m.statusbar.SetNoteCount(m.vault.NoteCount())
 					m.loadNote(restored)
-					m.sidebar.cursor = m.findFileIndex(restored)
+					m.setSidebarCursorToFile(restored)
 					m.statusbar.SetMessage("Restored: " + restored)
 				}
 			}
@@ -1261,7 +1261,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				resolved := m.resolveLink(nav)
 				if resolved != "" {
 					m.loadNote(resolved)
-					m.sidebar.cursor = m.findFileIndex(resolved)
+					m.setSidebarCursorToFile(resolved)
 					m.setFocus(focusEditor)
 				}
 			}
@@ -1347,7 +1347,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.refreshComponents(name)
 				}
 				m.loadNote(name)
-				m.sidebar.cursor = m.findFileIndex(name)
+				m.setSidebarCursorToFile(name)
 				m.setFocus(focusEditor)
 			}
 			return m, nil
@@ -1402,7 +1402,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.contentSearch.IsActive() {
 				if result := m.contentSearch.SelectedResult(); result != nil {
 					m.loadNote(result.FilePath)
-					m.sidebar.cursor = m.findFileIndex(result.FilePath)
+					m.setSidebarCursorToFile(result.FilePath)
 					m.editor.cursor = result.Line
 					m.editor.col = result.Col
 					m.setFocus(focusEditor)
@@ -1422,7 +1422,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if file, line, ok := m.globalReplace.GetJumpResult(); ok {
 					m.loadNote(file)
-					m.sidebar.cursor = m.findFileIndex(file)
+					m.setSidebarCursorToFile(file)
 					m.editor.cursor = line
 					m.setFocus(focusEditor)
 				}
@@ -1443,7 +1443,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.index.Build()
 						m.sidebar.SetFiles(m.vault.SortedPaths())
 						m.loadNote(relPath)
-						m.sidebar.cursor = m.findFileIndex(relPath)
+						m.setSidebarCursorToFile(relPath)
 						m.setFocus(focusEditor)
 						m.statusbar.SetMessage("Created " + fileName)
 					}
@@ -1488,7 +1488,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.smartConnect.IsActive() {
 				if notePath, ok := m.smartConnect.GetSelectedNote(); ok {
 					m.loadNote(notePath)
-					m.sidebar.cursor = m.findFileIndex(notePath)
+					m.setSidebarCursorToFile(notePath)
 				}
 			}
 			return m, nil
@@ -1647,7 +1647,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.notePreview.IsActive() {
 				if notePath, ok := m.notePreview.GetSelectedNote(); ok {
 					m.loadNote(notePath)
-					m.sidebar.cursor = m.findFileIndex(notePath)
+					m.setSidebarCursorToFile(notePath)
 				}
 			}
 			return m, nil
@@ -1677,7 +1677,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.projectMode.IsActive() {
 				if notePath, ok := m.projectMode.GetSelectedNote(); ok {
 					m.loadNote(notePath)
-					m.sidebar.cursor = m.findFileIndex(notePath)
+					m.setSidebarCursorToFile(notePath)
 				}
 				if action, ok := m.projectMode.GetAction(); ok {
 					return m.executeCommand(action)
@@ -1692,7 +1692,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.nlSearch.IsActive() {
 				if notePath, ok := m.nlSearch.GetSelectedNote(); ok {
 					m.loadNote(notePath)
-					m.sidebar.cursor = m.findFileIndex(notePath)
+					m.setSidebarCursorToFile(notePath)
 				}
 			}
 			return m, cmd
@@ -1715,7 +1715,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.dataview.IsActive() {
 				if notePath, ok := m.dataview.GetSelectedNote(); ok {
 					m.loadNote(notePath)
-					m.sidebar.cursor = m.findFileIndex(notePath)
+					m.setSidebarCursorToFile(notePath)
 				}
 			}
 			return m, nil
@@ -1814,7 +1814,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.autocomplete.SetNotes(paths)
 							m.statusbar.SetNoteCount(m.vault.NoteCount())
 							m.loadNote(name)
-							m.sidebar.cursor = m.findFileIndex(name)
+							m.setSidebarCursorToFile(name)
 							m.setFocus(focusEditor)
 							m.statusbar.SetMessage("AI note created: " + name)
 							return m, m.clearMessageAfter(3 * time.Second)
@@ -1865,7 +1865,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.semanticSearch.IsActive() {
 				if nav := m.semanticSearch.SelectedResult(); nav != "" {
 					m.loadNote(nav)
-					m.sidebar.cursor = m.findFileIndex(nav)
+					m.setSidebarCursorToFile(nav)
 					m.setFocus(focusEditor)
 				}
 			}
@@ -1892,7 +1892,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.autocomplete.SetNotes(paths)
 							m.statusbar.SetNoteCount(m.vault.NoteCount())
 							m.loadNote(name)
-							m.sidebar.cursor = m.findFileIndex(name)
+							m.setSidebarCursorToFile(name)
 							m.setFocus(focusEditor)
 							m.statusbar.SetMessage("Thread woven: " + name)
 							return m, m.clearMessageAfter(3 * time.Second)
@@ -1976,7 +1976,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.timeline.IsActive() {
 				if notePath, ok := m.timeline.GetSelectedNote(); ok {
 					m.loadNote(notePath)
-					m.sidebar.cursor = m.findFileIndex(notePath)
+					m.setSidebarCursorToFile(notePath)
 					m.setFocus(focusEditor)
 				}
 			}
@@ -1999,7 +1999,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Handle jump result (closes overlay)
 			if notePath, lineNum, ok := m.taskManager.GetJumpResult(); ok {
 				m.loadNote(notePath)
-				m.sidebar.cursor = m.findFileIndex(notePath)
+				m.setSidebarCursorToFile(notePath)
 				m.setFocus(focusEditor)
 				if lineNum > 0 {
 					m.editor.cursor = lineNum - 1
@@ -2054,7 +2054,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.research.IsActive() {
 				if filePath, ok := m.research.GetSelectedFile(); ok {
 					m.loadNote(filePath)
-					m.sidebar.cursor = m.findFileIndex(filePath)
+					m.setSidebarCursorToFile(filePath)
 					m.setFocus(focusEditor)
 				}
 			}
@@ -2152,7 +2152,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.autocomplete.SetNotes(paths)
 							m.statusbar.SetNoteCount(m.vault.NoteCount())
 							m.loadNote(name)
-							m.sidebar.cursor = m.findFileIndex(name)
+							m.setSidebarCursorToFile(name)
 							m.setFocus(focusEditor)
 							m.statusbar.SetMessage("Web clip saved: " + name)
 							return m, m.clearMessageAfter(3 * time.Second)
@@ -2447,7 +2447,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if path := m.tabBar.SwitchToIndex(idx); path != "" {
 					if path != m.activeNote {
 						m.loadNote(path)
-						m.sidebar.cursor = m.findFileIndex(path)
+						m.setSidebarCursorToFile(path)
 					}
 				}
 			}
@@ -2457,7 +2457,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.breadcrumb != nil {
 				if nav := m.breadcrumb.Back(); nav != "" {
 					m.loadNoteWithoutBreadcrumb(nav)
-					m.sidebar.cursor = m.findFileIndex(nav)
+					m.setSidebarCursorToFile(nav)
 				}
 			}
 			return m, nil
@@ -2466,7 +2466,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.breadcrumb != nil {
 				if nav := m.breadcrumb.Forward(); nav != "" {
 					m.loadNoteWithoutBreadcrumb(nav)
-					m.sidebar.cursor = m.findFileIndex(nav)
+					m.setSidebarCursorToFile(nav)
 				}
 			}
 			return m, nil
@@ -2498,7 +2498,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				newActive := m.tabBar.CloseActive()
 				if newActive != "" && newActive != m.activeNote {
 					m.loadNote(newActive)
-					m.sidebar.cursor = m.findFileIndex(newActive)
+					m.setSidebarCursorToFile(newActive)
 				}
 			}
 			return m, nil
@@ -2540,7 +2540,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					resolved := m.resolveLink(selected)
 					if resolved != "" {
 						m.loadNote(resolved)
-						m.sidebar.cursor = m.findFileIndex(resolved)
+						m.setSidebarCursorToFile(resolved)
 					}
 				}
 				return m, nil
@@ -2879,7 +2879,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.statusbar.SetMessage("Created daily note: " + name)
 		}
 		m.loadNote(name)
-		m.sidebar.cursor = m.findFileIndex(name)
+		m.setSidebarCursorToFile(name)
 		m.setFocus(focusEditor)
 	case CmdToggleView:
 		m.viewMode = !m.viewMode
@@ -3372,14 +3372,14 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		if m.breadcrumb != nil {
 			if nav := m.breadcrumb.Back(); nav != "" {
 				m.loadNoteWithoutBreadcrumb(nav)
-				m.sidebar.cursor = m.findFileIndex(nav)
+				m.setSidebarCursorToFile(nav)
 			}
 		}
 	case CmdNavForward:
 		if m.breadcrumb != nil {
 			if nav := m.breadcrumb.Forward(); nav != "" {
 				m.loadNoteWithoutBreadcrumb(nav)
-				m.sidebar.cursor = m.findFileIndex(nav)
+				m.setSidebarCursorToFile(nav)
 			}
 		}
 	case CmdKanban:
@@ -3407,7 +3407,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 				m.autocomplete.SetNotes(paths)
 				m.statusbar.SetNoteCount(m.vault.NoteCount())
 				m.loadNote(name)
-				m.sidebar.cursor = m.findFileIndex(name)
+				m.setSidebarCursorToFile(name)
 				m.setFocus(focusEditor)
 				m.statusbar.SetMessage("Created Zettelkasten note: " + name)
 				return m, m.clearMessageAfter(3 * time.Second)
@@ -3802,7 +3802,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 				if m.vault.GetNote(path) != nil {
 					m.tabBar.AddTab(path)
 					m.loadNote(path)
-					m.sidebar.cursor = m.findFileIndex(path)
+					m.setSidebarCursorToFile(path)
 					m.statusbar.SetMessage("Reopened: " + path)
 					return m, m.clearMessageAfter(2 * time.Second)
 				}
@@ -4054,7 +4054,7 @@ func (m *Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if len(m.searchResults) > 0 && m.searchCursor < len(m.searchResults) {
 			m.loadNote(m.searchResults[m.searchCursor])
-			m.sidebar.cursor = m.findFileIndex(m.searchResults[m.searchCursor])
+			m.setSidebarCursorToFile(m.searchResults[m.searchCursor])
 			m.setFocus(focusEditor)
 		}
 		m.searchMode = false
@@ -4164,7 +4164,7 @@ func (m *Model) updateNewNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.sidebar.SetFiles(m.vault.SortedPaths())
 					m.statusbar.SetNoteCount(m.vault.NoteCount())
 					m.loadNote(name)
-					m.sidebar.cursor = m.findFileIndex(name)
+					m.setSidebarCursorToFile(name)
 					m.setFocus(focusEditor)
 					m.statusbar.SetMessage("Created " + name)
 				}
@@ -4214,7 +4214,15 @@ func (m *Model) findFileIndex(relPath string) int {
 			return i
 		}
 	}
-	return 0
+	return -1
+}
+
+// setSidebarCursorToFile updates the sidebar cursor to point at relPath.
+// If relPath is not found in the filtered list, the cursor is left unchanged.
+func (m *Model) setSidebarCursorToFile(relPath string) {
+	if idx := m.findFileIndex(relPath); idx >= 0 {
+		m.sidebar.cursor = idx
+	}
 }
 
 func (m *Model) setFocus(f focus) {
@@ -6204,7 +6212,7 @@ func (m Model) updateMoveFile(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.autocomplete.SetNotes(paths)
 					m.statusbar.SetNoteCount(m.vault.NoteCount())
 					m.loadNote(newPath)
-					m.sidebar.cursor = m.findFileIndex(newPath)
+					m.setSidebarCursorToFile(newPath)
 					m.statusbar.SetMessage("Moved to " + newPath)
 				}
 			}
@@ -6587,7 +6595,7 @@ func (m *Model) applyEncryptionResult(result EncryptionResult) {
 		m.statusbar.SetMessage("Encrypted: " + m.activeNote + " -> " + newName)
 		// Load the encrypted file (shows base64)
 		m.loadNote(newName)
-		m.sidebar.cursor = m.findFileIndex(newName)
+		m.setSidebarCursorToFile(newName)
 
 	case encActionDecrypt:
 		if !m.encryption.IsEncrypted(m.activeNote) {
@@ -6615,7 +6623,7 @@ func (m *Model) applyEncryptionResult(result EncryptionResult) {
 		m.autocomplete.SetNotes(paths)
 		m.statusbar.SetNoteCount(m.vault.NoteCount())
 		m.loadNote(newName)
-		m.sidebar.cursor = m.findFileIndex(newName)
+		m.setSidebarCursorToFile(newName)
 		m.statusbar.SetMessage("Decrypted: " + m.activeNote + " -> " + newName)
 	}
 }
@@ -6668,7 +6676,7 @@ func (m *Model) applyWorkspaceLayout(layout *WorkspaceLayout) {
 	// Restore active note
 	if layout.ActiveNote != "" && m.vault.GetNote(layout.ActiveNote) != nil {
 		m.loadNote(layout.ActiveNote)
-		m.sidebar.cursor = m.findFileIndex(layout.ActiveNote)
+		m.setSidebarCursorToFile(layout.ActiveNote)
 	}
 	// Restore view mode
 	m.viewMode = layout.ViewMode
@@ -6711,7 +6719,7 @@ func (m *Model) writeBriefingToDailyNote(briefingContent string) {
 	m.autocomplete.SetNotes(paths)
 	m.statusbar.SetNoteCount(m.vault.NoteCount())
 	m.loadNote(dailyName)
-	m.sidebar.cursor = m.findFileIndex(dailyName)
+	m.setSidebarCursorToFile(dailyName)
 	m.setFocus(focusEditor)
 	m.statusbar.SetMessage("Daily briefing written to " + dailyName)
 }
