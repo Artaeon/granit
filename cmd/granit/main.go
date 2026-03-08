@@ -100,6 +100,9 @@ func main() {
 		}
 		runDaily(vaultPath)
 
+	case "plugin":
+		runPlugin(os.Args[2:])
+
 	case "list":
 		runList()
 
