@@ -188,6 +188,7 @@ type Model struct {
 
 	// Cross-component refresh flag
 	needsRefresh bool
+	lastRefresh  time.Time
 
 	// Slash command menu
 	slashMenu *SlashMenu
@@ -4425,6 +4426,10 @@ func (m *Model) updateLayout() {
 // after any file has been modified by an overlay. If changedPath is non-empty
 // and matches the currently open note, the editor is reloaded too.
 func (m *Model) refreshComponents(changedPath string) {
+	if time.Since(m.lastRefresh) < 500*time.Millisecond {
+		return // Skip redundant refresh
+	}
+	m.lastRefresh = time.Now()
 	m.vault.Scan()
 	m.index.Build()
 	paths := m.vault.SortedPaths()
