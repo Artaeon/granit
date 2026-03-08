@@ -8,6 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/artaeon/granit/internal/vault"
 )
 
 // ContentSearchResult represents a single search hit within a note.
@@ -40,7 +42,8 @@ type ContentSearch struct {
 	savedQuery string // stash current typed query when browsing history
 
 	// Vault data
-	noteContents map[string]string // relPath -> content
+	noteContents map[string]string  // relPath -> content (fallback)
+	searchIndex  *vault.SearchIndex // inverted index for fast search
 	vaultRoot    string
 }
 
@@ -66,8 +69,8 @@ func (cs *ContentSearch) ToggleRegex() {
 	cs.search()
 }
 
-// Open activates the overlay with the given vault contents.
-func (cs *ContentSearch) Open(noteContents map[string]string, vaultRoot string) {
+// Open activates the overlay with the given vault contents and optional search index.
+func (cs *ContentSearch) Open(noteContents map[string]string, si *vault.SearchIndex, vaultRoot string) {
 	cs.active = true
 	cs.query = ""
 	cs.results = nil
@@ -75,6 +78,7 @@ func (cs *ContentSearch) Open(noteContents map[string]string, vaultRoot string) 
 	cs.scroll = 0
 	cs.selected = nil
 	cs.noteContents = noteContents
+	cs.searchIndex = si
 	cs.vaultRoot = vaultRoot
 	cs.historyIdx = -1
 	cs.savedQuery = ""
@@ -90,6 +94,7 @@ func (cs *ContentSearch) Close() {
 	cs.results = nil
 	cs.selected = nil
 	cs.noteContents = nil
+	cs.searchIndex = nil
 }
 
 // SetSize updates the available dimensions for the overlay.
@@ -323,6 +328,8 @@ func (cs ContentSearch) View() string {
 }
 
 // search performs case-insensitive substring search across all note contents.
+// When a search index is available and ready, it uses the inverted index for
+// faster results with TF-IDF ranking. Otherwise, it falls back to linear scan.
 // When regexMode is enabled it compiles the query as a regex pattern instead.
 func (cs *ContentSearch) search() {
 	cs.results = nil
@@ -334,6 +341,38 @@ func (cs *ContentSearch) search() {
 		return
 	}
 
+	// Fast path: use the inverted search index if available
+	if cs.searchIndex != nil && cs.searchIndex.IsReady() {
+		cs.searchIndexed()
+		return
+	}
+
+	// Fallback: linear scan
+	cs.searchLinear()
+}
+
+// searchIndexed uses the vault's inverted index for fast full-text search.
+func (cs *ContentSearch) searchIndexed() {
+	indexed := cs.searchIndex.Search(cs.query)
+
+	limit := 100
+	if len(indexed) > limit {
+		indexed = indexed[:limit]
+	}
+
+	cs.results = make([]ContentSearchResult, len(indexed))
+	for i, r := range indexed {
+		cs.results[i] = ContentSearchResult{
+			FilePath: r.Path,
+			Line:     r.Line,
+			Col:      r.Column,
+			Context:  r.MatchLine,
+		}
+	}
+}
+
+// searchLinear performs the original linear scan across all note contents.
+func (cs *ContentSearch) searchLinear() {
 	// Collect all file paths and sort them for deterministic ordering.
 	paths := make([]string, 0, len(cs.noteContents))
 	for p := range cs.noteContents {

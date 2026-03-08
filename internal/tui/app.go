@@ -669,6 +669,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			os.WriteFile(path, []byte(content), 0644)
 			m.editor.modified = false
 			m.lastSaveTime = time.Now()
+			// Incrementally update the search index for the saved file
+			if m.vault.SearchIndex != nil {
+				m.vault.SearchIndex.Update(m.activeNote, content)
+			}
 			m.statusbar.SetMessage("Auto-saved " + m.activeNote)
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
@@ -3084,7 +3088,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 				noteContents[p] = note.Content
 			}
 		}
-		m.contentSearch.Open(noteContents, m.vault.Root)
+		m.contentSearch.Open(noteContents, m.vault.SearchIndex, m.vault.Root)
 	case CmdGlobalReplace:
 		m.globalReplace.SetSize(m.width, m.height)
 		m.globalReplace.Open(m.vault)
@@ -4600,6 +4604,10 @@ func (m Model) saveCurrentNote() tea.Cmd {
 		content := m.editor.GetContent()
 		path := filepath.Join(m.vault.Root, m.activeNote)
 		os.WriteFile(path, []byte(content), 0644)
+		// Incrementally update the search index for the saved file
+		if m.vault.SearchIndex != nil {
+			m.vault.SearchIndex.Update(m.activeNote, content)
+		}
 		return nil
 	}
 }
