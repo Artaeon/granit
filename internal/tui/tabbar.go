@@ -439,12 +439,22 @@ func (tb *TabBar) LoadTabs(vaultPath string, validPaths map[string]bool) {
 
 	var data tabSessionData
 	if err := json.Unmarshal(raw, &data); err != nil {
+		// Corrupted JSON — delete the file and start with clean tabs.
+		_ = os.Remove(fp)
 		return
 	}
 
+	// Validate activeIdx is not negative.
+	if data.Active < 0 {
+		data.Active = 0
+	}
+
+	// Build pinned set, filtering out-of-bounds indices.
 	pinnedSet := make(map[int]bool)
 	for _, idx := range data.Pinned {
-		pinnedSet[idx] = true
+		if idx >= 0 && idx < len(data.Tabs) {
+			pinnedSet[idx] = true
+		}
 	}
 
 	// Clear existing tabs
