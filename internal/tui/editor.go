@@ -286,6 +286,7 @@ func (e *Editor) SmartPaste(clipboard string) bool {
 			e.content[e.cursor] = line[:startCol] + "[" + word + "](" + clipboard + ")" + line[startCol+len(word):]
 			e.col = startCol + len("["+word+"]("+clipboard+")")
 			e.modified = true
+			e.codeFenceCacheDirty = true
 			e.countWords()
 			return true
 		}
@@ -345,6 +346,9 @@ func (e *Editor) Undo() {
 	snap := e.undoStack[len(e.undoStack)-1]
 	e.undoStack = e.undoStack[:len(e.undoStack)-1]
 	e.content = snap.content
+	if len(e.content) == 0 {
+		e.content = []string{""}
+	}
 	e.cursor = snap.cursor
 	e.col = snap.col
 	e.modified = true
@@ -373,6 +377,9 @@ func (e *Editor) Redo() {
 	snap := e.redoStack[len(e.redoStack)-1]
 	e.redoStack = e.redoStack[:len(e.redoStack)-1]
 	e.content = snap.content
+	if len(e.content) == 0 {
+		e.content = []string{""}
+	}
 	e.cursor = snap.cursor
 	e.col = snap.col
 	e.modified = true
@@ -498,6 +505,9 @@ func (e *Editor) DeleteSelection() {
 		e.content = append(e.content[:sl+1], e.content[el+1:]...)
 	}
 
+	if len(e.content) == 0 {
+		e.content = []string{""}
+	}
 	e.cursor = sl
 	e.col = sc
 	e.selectionActive = false
@@ -957,6 +967,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				e.col = 0
 				e.clearMultiCursors()
 				e.modified = true
+				e.codeFenceCacheDirty = true
 				e.countWords()
 			} else {
 				line := e.content[e.cursor]
@@ -971,6 +982,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				e.cursor++
 				e.col = 0
 				e.modified = true
+				e.codeFenceCacheDirty = true
 				e.countWords()
 			}
 		case "backspace":
@@ -1019,6 +1031,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				}
 				e.clearMultiCursors()
 				e.modified = true
+				e.codeFenceCacheDirty = true
 				e.countWords()
 			} else {
 				if e.col > 0 {
@@ -1026,6 +1039,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					e.content[e.cursor] = line[:e.col-1] + line[e.col:]
 					e.col--
 					e.modified = true
+					e.codeFenceCacheDirty = true
 					e.countWords()
 				} else if e.cursor > 0 {
 					prevLen := len(e.content[e.cursor-1])
@@ -1034,6 +1048,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					e.cursor--
 					e.col = prevLen
 					e.modified = true
+					e.codeFenceCacheDirty = true
 					e.countWords()
 				}
 			}
@@ -1048,11 +1063,13 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			if e.col < len(line) {
 				e.content[e.cursor] = line[:e.col] + line[e.col+1:]
 				e.modified = true
+				e.codeFenceCacheDirty = true
 				e.countWords()
 			} else if e.cursor < len(e.content)-1 {
 				e.content[e.cursor] += e.content[e.cursor+1]
 				e.content = append(e.content[:e.cursor+1], e.content[e.cursor+2:]...)
 				e.modified = true
+				e.codeFenceCacheDirty = true
 				e.countWords()
 			}
 		case "ctrl+k":
@@ -1063,6 +1080,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			if e.col < len(line) {
 				e.content[e.cursor] = line[:e.col]
 				e.modified = true
+				e.codeFenceCacheDirty = true
 				e.countWords()
 			}
 		case "tab":
@@ -1090,6 +1108,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					e.cursors[i].Col += e.tabSize
 				}
 				e.modified = true
+				e.codeFenceCacheDirty = true
 			} else {
 				// Insert tab as spaces (single cursor)
 				tabStr := strings.Repeat(" ", e.tabSize)
@@ -1097,6 +1116,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				e.content[e.cursor] = line[:e.col] + tabStr + line[e.col:]
 				e.col += e.tabSize
 				e.modified = true
+				e.codeFenceCacheDirty = true
 			}
 		default:
 			char := msg.String()
@@ -1127,6 +1147,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 						e.cursors[i].Col++
 					}
 					e.modified = true
+					e.codeFenceCacheDirty = true
 					e.countWords()
 				} else {
 					line := e.content[e.cursor]
@@ -1153,6 +1174,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					e.content[e.cursor] = line[:e.col] + char + closeChar + line[e.col:]
 					e.col++
 					e.modified = true
+					e.codeFenceCacheDirty = true
 					e.countWords()
 				}
 			}
@@ -2538,6 +2560,7 @@ func (e *Editor) tabInTable() {
 			e.col = target
 			e.alignTableAt()
 			e.modified = true
+			e.codeFenceCacheDirty = true
 			return
 		}
 	}
