@@ -3038,6 +3038,19 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdGlobalReplace:
 		m.globalReplace.SetSize(m.width, m.height)
 		m.globalReplace.Open(m.vault)
+	case CmdToggleRegex:
+		// Toggle regex mode on whichever search overlay is currently active
+		if m.contentSearch.IsActive() {
+			m.contentSearch.ToggleRegex()
+		} else if m.findReplace.IsActive() {
+			m.findReplace.ToggleRegex()
+			m.findReplace.UpdateMatches(m.editor.content)
+		} else if m.globalReplace.IsActive() {
+			m.globalReplace.ToggleRegex()
+		} else {
+			m.statusbar.SetMessage("Open a search overlay first, then toggle regex with Alt+R")
+			return m, m.clearMessageAfter(3 * time.Second)
+		}
 	case CmdSpellCheck:
 		if m.spellcheck.IsAvailable() {
 			m.spellcheck.SetSize(m.width, m.height)
