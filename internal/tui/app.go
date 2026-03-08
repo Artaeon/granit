@@ -182,6 +182,7 @@ type Model struct {
 	writingCoach     WritingCoach
 	dataview         DataviewOverlay
 	timeTracker      TimeTracker
+	knowledgeGaps    KnowledgeGaps
 	dueTodayCount    int
 
 	// Cross-component refresh flag
@@ -195,6 +196,7 @@ type Model struct {
 
 	// Auto-save debounce
 	lastEditTime time.Time
+	lastSaveTime time.Time
 
 	// Exit splash
 	exitSplash    ExitSplash
@@ -664,6 +666,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			path := filepath.Join(m.vault.Root, m.activeNote)
 			os.WriteFile(path, []byte(content), 0644)
 			m.editor.modified = false
+			m.lastSaveTime = time.Now()
 			m.statusbar.SetMessage("Auto-saved " + m.activeNote)
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
@@ -1046,10 +1049,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.sidebar.SetFiles(paths)
 				m.autocomplete.SetNotes(paths)
 				m.statusbar.SetNoteCount(m.vault.NoteCount())
-				// Reload current note if it changed
+				// Reload current note if it changed, but skip if we just saved it
 				for _, p := range changeMsg.paths {
 					rel, _ := filepath.Rel(m.vault.Root, p)
 					if rel == m.activeNote {
+						if time.Since(m.lastSaveTime) < time.Second {
+							break // Skip reload, we just saved this
+						}
 						if note := m.vault.GetNote(m.activeNote); note != nil && !m.editor.modified {
 							m.editor.LoadContent(note.Content, m.activeNote)
 						}
@@ -2252,6 +2258,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+s":
 			cmd := m.saveCurrentNote()
+			m.lastSaveTime = time.Now()
 			m.statusbar.SetMessage("Saved " + m.activeNote)
 			m.dueTodayCount = CountTasksDueToday(m.vault.Notes)
 			m.statusbar.SetDueTodayCount(m.dueTodayCount)
