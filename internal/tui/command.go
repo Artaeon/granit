@@ -127,6 +127,12 @@ const (
 	CmdTimeTracker
 	CmdBackup
 	CmdShowTutorial
+	CmdMacroRecord
+	CmdMacroPlay
+	CmdCloseOtherTabs
+	CmdCloseTabsToRight
+	CmdTogglePinTab
+	CmdReopenClosedTab
 	CmdQuit
 )
 
@@ -197,8 +203,14 @@ var AllCommands = []Command{
 	{Label: "Pomodoro Timer", Desc: "Focus timer with writing stats", Shortcut: "", Action: CmdPomodoro, Icon: &IconDailyChar},
 	{Label: "Web Clipper", Desc: "Save a web page as a markdown note", Shortcut: "", Action: CmdWebClip, Icon: &IconSaveChar},
 	{Label: "Toggle Vim Mode", Desc: "Enable/disable Vim keybindings", Shortcut: "", Action: CmdToggleVim, Icon: &IconEditChar},
+	{Label: "Start Macro Recording", Desc: "Record keystrokes into a Vim macro register (a-z)", Shortcut: "q+reg", Action: CmdMacroRecord, Icon: &IconEditChar},
+	{Label: "Play Macro", Desc: "Replay a recorded Vim macro register", Shortcut: "@+reg", Action: CmdMacroPlay, Icon: &IconEditChar},
 	{Label: "Pin Note", Desc: "Pin current note as a tab", Shortcut: "", Action: CmdPinNote, Icon: &IconBookmarkChar},
 	{Label: "Unpin Note", Desc: "Unpin current note", Shortcut: "", Action: CmdUnpinNote, Icon: &IconBookmarkChar},
+	{Label: "Pin/Unpin Tab", Desc: "Toggle pin on active tab", Shortcut: "", Action: CmdTogglePinTab, Icon: &IconBookmarkChar},
+	{Label: "Close Other Tabs", Desc: "Close all tabs except the active one", Shortcut: "", Action: CmdCloseOtherTabs, Icon: &IconFileChar},
+	{Label: "Close Tabs to the Right", Desc: "Close tabs after the active one", Shortcut: "", Action: CmdCloseTabsToRight, Icon: &IconFileChar},
+	{Label: "Reopen Closed Tab", Desc: "Reopen the last closed tab", Shortcut: "", Action: CmdReopenClosedTab, Icon: &IconFileChar},
 	{Label: "Navigate Back", Desc: "Go to previous note in history", Shortcut: "Alt+Left", Action: CmdNavBack, Icon: &IconFolderChar},
 	{Label: "Navigate Forward", Desc: "Go to next note in history", Shortcut: "Alt+Right", Action: CmdNavForward, Icon: &IconFolderChar},
 	{Label: "Kanban Board", Desc: "View tasks as a Kanban board", Shortcut: "", Action: CmdKanban, Icon: &IconCanvasChar},
