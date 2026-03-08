@@ -66,6 +66,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Blog publisher token persistence** — Medium and GitHub tokens, repo, and branch saved to `~/.config/granit/config.json`; pre-filled on open so you never re-enter credentials
 - **Blog publisher reliability** — 30-second HTTP timeout, retry with exponential backoff (3 attempts) on server errors and rate limits, updated GitHub API header
 - **Enhanced research agent** — CLAUDE.md project context loaded into all research prompts; soul note persona shapes research writing tone; 10-minute process timeout; Esc cancels running research; WebFetch tool enabled for URL fetching
+- **4 new layouts** — zen (centered distraction-free editor, 80-char max width, no chrome), taskboard (sidebar + editor + task summary with overdue/today/upcoming), research (sidebar + editor + recent notes/backlinks/links panel), dashboard (sidebar + editor + persistent outline + backlinks, 4-panel)
+- **Reading layout wired** — previously defined but not rendered; now shows editor + backlinks with no sidebar
 
 ### Changed
 
