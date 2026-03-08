@@ -36,7 +36,9 @@
 </p>
 
 <p align="center">
-  <img src="assets/editor.gif" alt="Granit in action" width="800">
+  <img src="assets/hero.gif" alt="Granit in action" width="800">
+  <br>
+  <sub>Recorded with <a href="https://github.com/charmbracelet/vhs">VHS</a> &mdash; see <code>tapes/</code> for source scripts. Fallback: <a href="assets/editor.gif">assets/editor.gif</a></sub>
 </p>
 
 ---
