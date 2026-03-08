@@ -81,7 +81,11 @@ func main() {
 		runDaily(vaultPath)
 
 	case "list":
-		runList()
+		if hasFlag("--vaults") {
+			runListVaults()
+		} else {
+			runListNotes()
+		}
 
 	case "config":
 		runConfig()
@@ -312,7 +316,7 @@ type: daily
 	runTUI(vaultPath)
 }
 
-func runList() {
+func runListVaults() {
 	vl := config.LoadVaultList()
 	if len(vl.Vaults) == 0 {
 		fmt.Println("No known vaults. Open a directory with 'granit <path>' to register it.")
