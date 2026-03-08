@@ -123,10 +123,8 @@ func createBackup(vaultPath, outputPath string) {
 		fmt.Printf("Error creating backup file: %v\n", err)
 		os.Exit(1)
 	}
-	defer zipFile.Close()
 
 	w := zip.NewWriter(zipFile)
-	defer w.Close()
 
 	fileCount := 0
 	var totalSize int64
@@ -184,9 +182,20 @@ func createBackup(vaultPath, outputPath string) {
 	})
 
 	if err != nil {
+		// Close and clean up on error
+		w.Close()
+		zipFile.Close()
 		fmt.Printf("Error creating backup: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Close the zip writer and file before reading size
+	if err := w.Close(); err != nil {
+		zipFile.Close()
+		fmt.Printf("Error finalizing backup: %v\n", err)
+		os.Exit(1)
+	}
+	zipFile.Close()
 
 	// Get final backup file size
 	backupInfo, _ := os.Stat(backupPath)
