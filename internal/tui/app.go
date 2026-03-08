@@ -557,6 +557,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case splitPanePickMsg:
+		if m.splitPane.IsActive() {
+			note := m.vault.GetNote(msg.notePath)
+			if note != nil {
+				lines := strings.Split(note.Content, "\n")
+				m.splitPane.SetRightContent(msg.notePath, lines)
+			}
+		}
+		return m, nil
+
 	case luaRunResultMsg:
 		if m.luaOverlay.IsActive() {
 			r := msg.result
@@ -2824,8 +2834,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 	case CmdSplitPane:
 		m.splitPane.SetSize(m.width, m.height)
+		m.splitPane.SetNotes(m.vault.SortedPaths())
 		m.splitPane.Open()
-		// Load current note and let user pick second note
+		// Load current note into the left pane; right pane opens the picker
 		if m.activeNote != "" {
 			content := strings.Split(m.editor.GetContent(), "\n")
 			m.splitPane.SetLeftContent(m.activeNote, content)
