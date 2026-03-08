@@ -967,11 +967,34 @@ func (r Renderer) renderMarkdown(content string) []string {
 			continue
 		}
 
-		// Blockquote
-		if strings.HasPrefix(trimmed, "> ") {
-			text := strings.TrimPrefix(trimmed, "> ")
-			bar := lipgloss.NewStyle().Foreground(mauve).Render("  ┃ ")
-			quote := lipgloss.NewStyle().Foreground(overlay1).Italic(true).Render(text)
+		// Blockquote (with nesting support)
+		if strings.HasPrefix(trimmed, ">") {
+			// Count nesting depth and extract text
+			depth := 0
+			remainder := trimmed
+			for strings.HasPrefix(remainder, ">") {
+				depth++
+				remainder = strings.TrimPrefix(remainder, ">")
+				remainder = strings.TrimPrefix(remainder, " ")
+			}
+
+			// Colors per nesting depth level
+			quoteColors := []lipgloss.Color{mauve, blue, teal, peach, pink}
+			textColors := []lipgloss.Color{overlay1, subtext0, subtext1, overlay2, overlay0}
+
+			var bar string
+			bar = "  "
+			for d := 0; d < depth; d++ {
+				colorIdx := d % len(quoteColors)
+				barChar := "┃"
+				if d > 0 {
+					barChar = "│"
+				}
+				bar += lipgloss.NewStyle().Foreground(quoteColors[colorIdx]).Render(barChar) + " "
+			}
+
+			textColorIdx := (depth - 1) % len(textColors)
+			quote := lipgloss.NewStyle().Foreground(textColors[textColorIdx]).Italic(true).Render(remainder)
 			result = append(result, bar+quote)
 			continue
 		}
