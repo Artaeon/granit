@@ -1203,6 +1203,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						continue
 					}
 					line := lines[toggle.LineNum-1]
+					// Validate that the line still contains the expected task marker and text
+					hasMarker := strings.Contains(line, "- [ ]") || strings.Contains(line, "- [x]") || strings.Contains(line, "- [X]")
+					hasText := toggle.Text == "" || strings.Contains(line, toggle.Text)
+					if !hasMarker || !hasText {
+						continue
+					}
 					if toggle.Done {
 						line = strings.Replace(line, "[ ]", "[x]", 1)
 					} else {
@@ -1454,6 +1460,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if note := m.vault.GetNote(tc.NotePath); note != nil {
 						lines := strings.Split(note.Content, "\n")
 						if tc.LineNum >= 0 && tc.LineNum < len(lines) {
+							// Validate that the line still contains the expected task marker and text
+							line := lines[tc.LineNum]
+							hasMarker := strings.Contains(line, "- [ ]") || strings.Contains(line, "- [x]")
+							hasText := tc.Text == "" || strings.Contains(line, tc.Text)
+							if !hasMarker || !hasText {
+								continue
+							}
 							if tc.Done {
 								lines[tc.LineNum] = strings.Replace(lines[tc.LineNum], "- [ ]", "- [x]", 1)
 							} else {
