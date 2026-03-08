@@ -314,10 +314,10 @@ func (e *Editor) saveSnapshot() {
 		cursor:  e.cursor,
 		col:     e.col,
 	}
-	e.undoStack = append(e.undoStack, snap)
-	if len(e.undoStack) > 100 {
-		e.undoStack = e.undoStack[len(e.undoStack)-100:]
+	if len(e.undoStack) >= 100 {
+		e.undoStack = e.undoStack[1:] // Remove oldest
 	}
+	e.undoStack = append(e.undoStack, snap)
 	e.lastSnapshot = now
 }
 
