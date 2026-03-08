@@ -222,7 +222,7 @@ var AllCommands = []Command{
 	{Label: "Kanban Board", Desc: "View tasks as a Kanban board", Shortcut: "", Action: CmdKanban, Icon: &IconCanvasChar},
 	{Label: "New Zettelkasten Note", Desc: "Create a note with unique Zettelkasten ID", Shortcut: "", Action: CmdZettelNote, Icon: &IconNewChar},
 	{Label: "AI Vault Refactor", Desc: "AI reorganizes folders, names, tags, and links", Shortcut: "", Action: CmdVaultRefactor, Icon: &IconBotChar},
-	{Label: "Daily Briefing", Desc: "DeepCoven morning briefing with today's focus", Shortcut: "", Action: CmdDailyBriefing, Icon: &IconDailyChar},
+	{Label: "Daily Briefing", Desc: "Granit morning briefing with today's focus", Shortcut: "", Action: CmdDailyBriefing, Icon: &IconDailyChar},
 	{Label: "Encrypt/Decrypt Note", Desc: "AES-256-GCM encryption for secure GitHub sync", Shortcut: "", Action: CmdEncryptNote, Icon: &IconSaveChar},
 	{Label: "Git History", Desc: "View commit history and diffs for current note", Shortcut: "", Action: CmdGitHistory, Icon: &IconEditChar},
 	{Label: "Workspaces", Desc: "Save and restore named workspace layouts", Shortcut: "", Action: CmdWorkspaces, Icon: &IconViewChar},
