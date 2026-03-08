@@ -418,6 +418,9 @@ func (vs *VimState) handleNormal(key string, content []string, cursor, col, heig
 			return vs.motionResult(content, cursor, 0, cursor)
 		}
 		vs.count = vs.count*10 + digit
+		if vs.count > 10000 {
+			vs.count = 10000
+		}
 		return VimResult{StatusMsg: vimIntToStr(vs.count)}
 	}
 
