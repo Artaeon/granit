@@ -60,6 +60,10 @@ type Settings struct {
 	editing bool
 	editBuf string
 
+	// Search / filter
+	searching bool
+	searchBuf string
+
 	// Ollama setup wizard
 	setupRunning bool
 	setupStatus  string
@@ -141,22 +145,40 @@ func (s *Settings) corePluginVal(name string) bool {
 	return s.config.CorePluginEnabled(name)
 }
 
-// rebuildVisible recomputes the visible list based on the current items.
-// It inserts category headers before each group of items.
+// rebuildVisible recomputes the visible list based on the current search query.
+// It inserts category headers before each group of matching items.
 func (s *Settings) rebuildVisible() {
 	s.visible = s.visible[:0]
 
-	for _, cat := range settingsCategories {
-		// Add category header
-		headerIdx := s.addTempHeader(cat)
-		hasItems := false
-		for i, item := range s.items {
-			if item.category == cat {
-				if !hasItems {
-					s.visible = append(s.visible, headerIdx)
-					hasItems = true
+	if s.searchBuf == "" {
+		// No filter — show all items grouped by category
+		for _, cat := range settingsCategories {
+			headerIdx := s.addTempHeader(cat)
+			hasItems := false
+			for i, item := range s.items {
+				if item.category == cat {
+					if !hasItems {
+						s.visible = append(s.visible, headerIdx)
+						hasItems = true
+					}
+					s.visible = append(s.visible, i)
 				}
-				s.visible = append(s.visible, i)
+			}
+		}
+	} else {
+		// Filter mode — fuzzy match against label, category, and description
+		query := strings.ToLower(s.searchBuf)
+		for _, cat := range settingsCategories {
+			headerIdx := s.addTempHeader(cat)
+			hasItems := false
+			for i, item := range s.items {
+				if item.category == cat && s.settingMatchesQuery(item, query) {
+					if !hasItems {
+						s.visible = append(s.visible, headerIdx)
+						hasItems = true
+					}
+					s.visible = append(s.visible, i)
+				}
 			}
 		}
 	}
@@ -171,6 +193,23 @@ func (s *Settings) rebuildVisible() {
 	}
 	// Skip header if cursor landed on one
 	s.skipHeaderForward()
+}
+
+// settingMatchesQuery does case-insensitive fuzzy matching against label, category, and description.
+func (s *Settings) settingMatchesQuery(item settingItem, query string) bool {
+	combined := strings.ToLower(item.label + " " + item.description + " " + item.category)
+	return settingsFuzzyMatch(combined, query)
+}
+
+// settingsFuzzyMatch checks if all characters in pattern appear in str in order.
+func settingsFuzzyMatch(str, pattern string) bool {
+	pi := 0
+	for si := 0; si < len(str) && pi < len(pattern); si++ {
+		if str[si] == pattern[pi] {
+			pi++
+		}
+	}
+	return pi == len(pattern)
 }
 
 // addTempHeader appends a temporary header item to s.items and returns its index.
@@ -229,6 +268,8 @@ func (s *Settings) GetConfig() config.Config {
 func (s *Settings) Toggle() {
 	s.active = !s.active
 	if s.active {
+		s.searching = false
+		s.searchBuf = ""
 		s.buildItems()
 		s.rebuildVisible()
 	}
@@ -260,6 +301,39 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 		}
 		return s, nil
 	case tea.KeyMsg:
+		// ── Search mode input ──
+		if s.searching {
+			switch msg.String() {
+			case "esc":
+				s.searching = false
+				s.searchBuf = ""
+				s.buildItems()
+				s.rebuildVisible()
+			case "enter":
+				// Jump to first matching setting and exit search mode
+				s.searching = false
+				s.buildItems()
+				s.rebuildVisible()
+			case "backspace":
+				if len(s.searchBuf) > 0 {
+					s.searchBuf = s.searchBuf[:len(s.searchBuf)-1]
+					s.cursor = 0
+					s.buildItems()
+					s.rebuildVisible()
+				}
+			default:
+				char := msg.String()
+				if len(char) == 1 {
+					s.searchBuf += char
+					s.cursor = 0
+					s.buildItems()
+					s.rebuildVisible()
+				}
+			}
+			return s, nil
+		}
+
+		// ── Editing mode input ──
 		if s.editing {
 			switch msg.String() {
 			case "esc":
@@ -284,7 +358,18 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 
 		switch msg.String() {
 		case "esc", "ctrl+,":
-			s.active = false
+			if s.searchBuf != "" {
+				// Clear search first
+				s.searchBuf = ""
+				s.buildItems()
+				s.rebuildVisible()
+			} else {
+				s.active = false
+			}
+			return s, nil
+		case "/":
+			s.searching = true
+			s.searchBuf = ""
 			return s, nil
 		case "up", "k":
 			if s.cursor > 0 {
@@ -495,9 +580,32 @@ func (s Settings) View() string {
 	b.WriteString(title)
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
-	visibleItems := s.height - 8
+	// Search bar
+	if s.searching {
+		prompt := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  / ")
+		input := s.searchBuf + lipgloss.NewStyle().Foreground(overlay0).Render("_")
+		b.WriteString(prompt + input)
+		b.WriteString("\n")
+		b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
+		b.WriteString("\n")
+	} else if s.searchBuf != "" {
+		filterInfo := DimStyle.Render(fmt.Sprintf("  filter: %q  (/ to search, Esc to clear)", s.searchBuf))
+		b.WriteString(filterInfo)
+		b.WriteString("\n")
+		b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+
+	// Calculate visible area
+	extraLines := 0
+	if s.searching || s.searchBuf != "" {
+		extraLines = 2
+	}
+	visibleItems := s.height - 10 - extraLines
 	if visibleItems < 5 {
 		visibleItems = 5
 	}
@@ -585,6 +693,12 @@ func (s Settings) View() string {
 		b.WriteString("\n")
 	}
 
+	// No results message
+	if len(s.visible) == 0 && s.searchBuf != "" {
+		noMatch := DimStyle.Render("  No settings match your search.")
+		b.WriteString("\n" + noMatch + "\n")
+	}
+
 	// Setup status
 	if s.setupStatus != "" {
 		b.WriteString("\n")
@@ -601,7 +715,11 @@ func (s Settings) View() string {
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  Enter/Space: toggle  Esc: close  Changes auto-save"))
+	hints := "  Enter: toggle  /: search  Esc: close"
+	if s.searching {
+		hints = "  Type to filter  Enter: apply  Esc: cancel"
+	}
+	b.WriteString(DimStyle.Render(hints))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
