@@ -23,6 +23,19 @@ type TreeNode struct {
 	Depth    int
 }
 
+// fileCount returns the total number of file (non-directory) descendants.
+func (n *TreeNode) fileCount() int {
+	count := 0
+	for _, c := range n.Children {
+		if c.IsDir {
+			count += c.fileCount()
+		} else {
+			count++
+		}
+	}
+	return count
+}
+
 // FileTree is a collapsible tree-view component for navigating files and
 // folders. It is designed to be embedded inside the Sidebar.
 type FileTree struct {
@@ -40,18 +53,30 @@ func NewFileTree() FileTree {
 	return FileTree{}
 }
 
-// SetFiles takes a sorted list of relative file paths (e.g.
-// ["daily/2024-01-01.md", "notes/project.md", "readme.md"]) and builds the
+// SetFiles takes a sorted list of relative file paths and builds the
 // internal tree hierarchy.
 func (ft *FileTree) SetFiles(files []string) {
+	// Remember which directories were expanded before rebuild.
+	expandedDirs := make(map[string]bool)
+	if ft.root != nil {
+		var collectExpanded func(node *TreeNode)
+		collectExpanded = func(node *TreeNode) {
+			if node.IsDir && node.Expanded {
+				expandedDirs[node.Path] = true
+			}
+			for _, c := range node.Children {
+				collectExpanded(c)
+			}
+		}
+		collectExpanded(ft.root)
+	}
+	isFirstBuild := ft.root == nil
+
 	root := &TreeNode{Name: "", Path: "", IsDir: true, Expanded: true, Depth: -1}
 
-	// dirMap tracks already-created directory nodes keyed by their path.
 	dirMap := make(map[string]*TreeNode)
 	dirMap[""] = root
 
-	// ensureDir creates (or returns) the TreeNode for the given directory path,
-	// recursively ensuring parent directories exist.
 	var ensureDir func(dirPath string, depth int) *TreeNode
 	ensureDir = func(dirPath string, depth int) *TreeNode {
 		if n, ok := dirMap[dirPath]; ok {
@@ -67,11 +92,10 @@ func (ft *FileTree) SetFiles(files []string) {
 		}
 		parent := ensureDir(parentPath, parentDepth)
 		node := &TreeNode{
-			Name:     filepath.Base(dirPath),
-			Path:     dirPath,
-			IsDir:    true,
-			Expanded: false,
-			Depth:    depth,
+			Name:  filepath.Base(dirPath),
+			Path:  dirPath,
+			IsDir: true,
+			Depth: depth,
 		}
 		parent.Children = append(parent.Children, node)
 		dirMap[dirPath] = node
@@ -99,8 +123,7 @@ func (ft *FileTree) SetFiles(files []string) {
 		parent.Children = append(parent.Children, fileNode)
 	}
 
-	// Sort children at every level: directories first (alphabetically), then
-	// files (alphabetically).
+	// Sort: directories first (alphabetically), then files (alphabetically).
 	var sortChildren func(node *TreeNode)
 	sortChildren = func(node *TreeNode) {
 		sort.SliceStable(node.Children, func(i, j int) bool {
@@ -118,26 +141,40 @@ func (ft *FileTree) SetFiles(files []string) {
 	}
 	sortChildren(root)
 
-	// Root-level directories start expanded; nested directories start collapsed.
-	for _, child := range root.Children {
-		if child.IsDir {
-			child.Expanded = true
+	// Restore expansion state, or default for first build.
+	if isFirstBuild {
+		// First build: expand root-level directories only.
+		for _, child := range root.Children {
+			if child.IsDir {
+				child.Expanded = true
+			}
 		}
+	} else {
+		// Subsequent builds: restore previous expansion state.
+		var restoreExpanded func(node *TreeNode)
+		restoreExpanded = func(node *TreeNode) {
+			if node.IsDir {
+				node.Expanded = expandedDirs[node.Path]
+			}
+			for _, c := range node.Children {
+				restoreExpanded(c)
+			}
+		}
+		// Root is always expanded.
+		root.Expanded = true
+		restoreExpanded(root)
 	}
 
 	ft.root = root
 	ft.rebuild()
-
-	// Clamp cursor.
-	if ft.cursor >= len(ft.visible) {
-		ft.cursor = maxInt(0, len(ft.visible)-1)
-	}
+	ft.clampCursor()
 }
 
 // SetSize updates the viewport dimensions available for rendering.
 func (ft *FileTree) SetSize(width, height int) {
 	ft.width = width
 	ft.height = height
+	ft.clampScroll()
 }
 
 // SetFocused sets whether this component currently has keyboard focus.
@@ -164,24 +201,42 @@ func (ft FileTree) Update(msg tea.KeyMsg) FileTree {
 		return ft
 	}
 
-	visibleHeight := ft.viewHeight()
+	vh := ft.viewHeight()
 
 	switch msg.String() {
 	case "up", "k":
 		if ft.cursor > 0 {
 			ft.cursor--
-			if ft.cursor < ft.scroll {
-				ft.scroll = ft.cursor
-			}
+			ft.ensureVisible()
 		}
 
 	case "down", "j":
 		if ft.cursor < len(ft.visible)-1 {
 			ft.cursor++
-			if ft.cursor >= ft.scroll+visibleHeight {
-				ft.scroll = ft.cursor - visibleHeight + 1
-			}
+			ft.ensureVisible()
 		}
+
+	case "pgup", "ctrl+u":
+		ft.cursor -= vh / 2
+		if ft.cursor < 0 {
+			ft.cursor = 0
+		}
+		ft.ensureVisible()
+
+	case "pgdown", "ctrl+d":
+		ft.cursor += vh / 2
+		if ft.cursor >= len(ft.visible) {
+			ft.cursor = len(ft.visible) - 1
+		}
+		ft.ensureVisible()
+
+	case "home", "g":
+		ft.cursor = 0
+		ft.scroll = 0
+
+	case "end", "G":
+		ft.cursor = len(ft.visible) - 1
+		ft.ensureVisible()
 
 	case "enter", " ":
 		node := ft.visible[ft.cursor]
@@ -198,7 +253,6 @@ func (ft FileTree) Update(msg tea.KeyMsg) FileTree {
 			ft.rebuild()
 			ft.clampCursor()
 		} else {
-			// Move to parent directory.
 			ft.goToParent()
 		}
 
@@ -208,7 +262,23 @@ func (ft FileTree) Update(msg tea.KeyMsg) FileTree {
 			node.Expanded = true
 			ft.rebuild()
 			ft.clampCursor()
+		} else if node.IsDir && node.Expanded && len(node.Children) > 0 {
+			// Move into expanded directory.
+			ft.cursor++
+			ft.ensureVisible()
 		}
+
+	case "z":
+		// Collapse all directories.
+		ft.setAllExpanded(false)
+		ft.rebuild()
+		ft.clampCursor()
+
+	case "Z":
+		// Expand all directories.
+		ft.setAllExpanded(true)
+		ft.rebuild()
+		ft.clampCursor()
 	}
 
 	return ft
@@ -222,8 +292,8 @@ func (ft FileTree) View() string {
 
 	var b strings.Builder
 
-	visibleHeight := ft.viewHeight()
-	end := ft.scroll + visibleHeight
+	vh := ft.viewHeight()
+	end := ft.scroll + vh
 	if end > len(ft.visible) {
 		end = len(ft.visible)
 	}
@@ -252,10 +322,10 @@ func (ft FileTree) View() string {
 		}
 	}
 
-	// Scroll indicator.
-	if len(ft.visible) > visibleHeight {
-		pct := float64(ft.scroll) / float64(len(ft.visible)-visibleHeight)
-		b.WriteString("\n" + DimStyle.Render(scrollIndicator(pct)))
+	// Visual scroll bar on right edge.
+	if len(ft.visible) > vh {
+		b.WriteString("\n")
+		b.WriteString(ft.renderScrollBar(vh))
 	}
 
 	return b.String()
@@ -263,8 +333,7 @@ func (ft FileTree) View() string {
 
 // ---------- internal helpers ----------
 
-// rebuild flattens the tree according to the current expanded state of each
-// directory, populating ft.visible.
+// rebuild flattens the tree according to the current expanded state.
 func (ft *FileTree) rebuild() {
 	ft.visible = ft.visible[:0]
 	if ft.root == nil {
@@ -291,23 +360,45 @@ func (ft FileTree) viewHeight() int {
 	return h
 }
 
-// clampCursor ensures cursor and scroll are within valid bounds after the
-// visible list has been rebuilt.
+// ensureVisible adjusts scroll so the cursor is within the viewport.
+func (ft *FileTree) ensureVisible() {
+	vh := ft.viewHeight()
+	if ft.cursor < ft.scroll {
+		ft.scroll = ft.cursor
+	}
+	if ft.cursor >= ft.scroll+vh {
+		ft.scroll = ft.cursor - vh + 1
+	}
+	ft.clampScroll()
+}
+
+// clampScroll ensures scroll doesn't go past the end.
+func (ft *FileTree) clampScroll() {
+	vh := ft.viewHeight()
+	maxScroll := len(ft.visible) - vh
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if ft.scroll > maxScroll {
+		ft.scroll = maxScroll
+	}
+	if ft.scroll < 0 {
+		ft.scroll = 0
+	}
+}
+
+// clampCursor ensures cursor and scroll are within valid bounds.
 func (ft *FileTree) clampCursor() {
 	if ft.cursor >= len(ft.visible) {
 		ft.cursor = maxInt(0, len(ft.visible)-1)
 	}
-	visibleHeight := ft.viewHeight()
-	if ft.cursor < ft.scroll {
-		ft.scroll = ft.cursor
+	if ft.cursor < 0 {
+		ft.cursor = 0
 	}
-	if ft.cursor >= ft.scroll+visibleHeight {
-		ft.scroll = ft.cursor - visibleHeight + 1
-	}
+	ft.ensureVisible()
 }
 
-// goToParent moves the cursor to the parent directory of the currently selected
-// node.
+// goToParent moves the cursor to the parent directory.
 func (ft *FileTree) goToParent() {
 	if ft.cursor < 0 || ft.cursor >= len(ft.visible) {
 		return
@@ -317,16 +408,31 @@ func (ft *FileTree) goToParent() {
 	for i := ft.cursor - 1; i >= 0; i-- {
 		if ft.visible[i].IsDir && ft.visible[i].Depth == targetDepth {
 			ft.cursor = i
-			if ft.cursor < ft.scroll {
-				ft.scroll = ft.cursor
-			}
+			ft.ensureVisible()
 			return
 		}
 	}
 }
 
-// isDailyNote returns true when the file name (without extension) matches the
-// YYYY-MM-DD daily-note pattern.
+// setAllExpanded sets the expanded state of all directory nodes (except root).
+func (ft *FileTree) setAllExpanded(expanded bool) {
+	if ft.root == nil {
+		return
+	}
+	var walk func(node *TreeNode)
+	walk = func(node *TreeNode) {
+		if node.IsDir {
+			node.Expanded = expanded
+		}
+		for _, c := range node.Children {
+			walk(c)
+		}
+	}
+	walk(ft.root)
+	ft.root.Expanded = true // root always expanded
+}
+
+// isDailyNote returns true when the file name matches YYYY-MM-DD.
 func isDailyNote(name string) bool {
 	bare := strings.TrimSuffix(name, filepath.Ext(name))
 	return dailyPattern.MatchString(bare)
@@ -342,14 +448,16 @@ func (ft FileTree) renderNode(node *TreeNode, maxWidth int) string {
 			arrow = "\u25be" // ▾ expanded
 		}
 		folderStyle := lipgloss.NewStyle().Foreground(peach)
-		return indent + folderStyle.Render(arrow+" "+IconFolderChar+" "+node.Name+"/")
+		countStyle := lipgloss.NewStyle().Foreground(surface2)
+		fc := node.fileCount()
+		countStr := countStyle.Render(" " + treeItoa(fc))
+		return indent + folderStyle.Render(arrow+" "+IconFolderChar+" "+node.Name+"/") + countStr
 	}
 
 	// File node.
 	displayName := strings.TrimSuffix(node.Name, ".md")
 
-	// Truncate if needed.
-	maxNameLen := maxWidth - (node.Depth*2 + 4) // indent + icon + spaces
+	maxNameLen := maxWidth - (node.Depth*2 + 4)
 	if maxNameLen < 5 {
 		maxNameLen = 5
 	}
@@ -365,9 +473,7 @@ func (ft FileTree) renderNode(node *TreeNode, maxWidth int) string {
 	return indent + icon + " " + NormalItemStyle.Render(displayName)
 }
 
-// renderNodePlain produces a plain-text (uncolored) line used as the basis for
-// the highlighted/selected row, which gets its own uniform styling applied on
-// top.
+// renderNodePlain produces a plain-text line for the selected/highlighted row.
 func (ft FileTree) renderNodePlain(node *TreeNode, maxWidth int) string {
 	indent := strings.Repeat("  ", node.Depth)
 
@@ -376,7 +482,8 @@ func (ft FileTree) renderNodePlain(node *TreeNode, maxWidth int) string {
 		if node.Expanded {
 			arrow = "\u25be"
 		}
-		return indent + arrow + " " + IconFolderChar + " " + node.Name + "/"
+		fc := node.fileCount()
+		return indent + arrow + " " + IconFolderChar + " " + node.Name + "/ " + treeItoa(fc)
 	}
 
 	displayName := strings.TrimSuffix(node.Name, ".md")
@@ -394,4 +501,69 @@ func (ft FileTree) renderNodePlain(node *TreeNode, maxWidth int) string {
 	}
 
 	return indent + iconChar + " " + displayName
+}
+
+// renderScrollBar creates a visual scrollbar showing position within the tree.
+func (ft FileTree) renderScrollBar(vh int) string {
+	total := len(ft.visible)
+	if total <= vh {
+		return ""
+	}
+
+	barWidth := ft.width - 6
+	if barWidth < 10 {
+		barWidth = 10
+	}
+
+	// Position indicator.
+	pos := ft.cursor + 1
+	posStr := treeItoa(pos) + "/" + treeItoa(total)
+
+	// Visual thumb.
+	trackLen := barWidth - len(posStr) - 4
+	if trackLen < 4 {
+		trackLen = 4
+	}
+	thumbSize := maxInt(1, trackLen*vh/total)
+	if thumbSize > trackLen {
+		thumbSize = trackLen
+	}
+	maxScroll := total - vh
+	thumbPos := 0
+	if maxScroll > 0 {
+		thumbPos = ft.scroll * (trackLen - thumbSize) / maxScroll
+	}
+	if thumbPos+thumbSize > trackLen {
+		thumbPos = trackLen - thumbSize
+	}
+	if thumbPos < 0 {
+		thumbPos = 0
+	}
+
+	trackStyle := lipgloss.NewStyle().Foreground(surface0)
+	thumbStyle := lipgloss.NewStyle().Foreground(surface2)
+	posStyle := lipgloss.NewStyle().Foreground(surface2)
+
+	track := ""
+	for i := 0; i < trackLen; i++ {
+		if i >= thumbPos && i < thumbPos+thumbSize {
+			track += thumbStyle.Render("█")
+		} else {
+			track += trackStyle.Render("░")
+		}
+	}
+
+	return "  " + track + " " + posStyle.Render(posStr)
+}
+
+func treeItoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	s := ""
+	for n > 0 {
+		s = string(rune('0'+n%10)) + s
+		n /= 10
+	}
+	return s
 }
