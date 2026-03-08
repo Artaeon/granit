@@ -176,14 +176,14 @@ func (w *Workspace) loadWorkspaces() {
 }
 
 func (w *Workspace) saveWorkspaces() {
-	if err := os.MkdirAll(w.configDir, 0755); err != nil {
+	if err := os.MkdirAll(w.configDir, 0700); err != nil {
 		return
 	}
 	data, err := json.MarshalIndent(w.layouts, "", "  ")
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(w.storagePath(), data, 0644)
+	_ = os.WriteFile(w.storagePath(), data, 0600)
 }
 
 // ---------------------------------------------------------------------------

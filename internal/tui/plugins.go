@@ -342,7 +342,7 @@ func (pm *PluginManager) saveManifest(idx int) {
 		return
 	}
 	path := filepath.Join(p.Dir, "plugin.json")
-	_ = os.WriteFile(path, data, 0644)
+	_ = os.WriteFile(path, data, 0600)
 }
 
 // ---------------------------------------------------------------------------
@@ -817,7 +817,7 @@ var builtinRegistry = []RegistryPlugin{
 func installRegistryPlugin(rp RegistryPlugin) error {
 	pluginDir := filepath.Join(config.ConfigDir(), "plugins", rp.Name)
 
-	if err := os.MkdirAll(pluginDir, 0755); err != nil {
+	if err := os.MkdirAll(pluginDir, 0700); err != nil {
 		return fmt.Errorf("create dir: %w", err)
 	}
 
@@ -826,13 +826,13 @@ func installRegistryPlugin(rp RegistryPlugin) error {
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), manifestData, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), manifestData, 0600); err != nil {
 		return fmt.Errorf("write manifest: %w", err)
 	}
 
 	// Write script
 	scriptPath := filepath.Join(pluginDir, rp.ScriptName)
-	if err := os.WriteFile(scriptPath, []byte(rp.ScriptBody), 0755); err != nil {
+	if err := os.WriteFile(scriptPath, []byte(rp.ScriptBody), 0700); err != nil {
 		return fmt.Errorf("write script: %w", err)
 	}
 

@@ -40,13 +40,13 @@ func LoadVaultList() VaultList {
 // SaveVaultList saves the vault list to ~/.config/granit/vaults.json.
 func SaveVaultList(vl VaultList) {
 	dir := ConfigDir()
-	os.MkdirAll(dir, 0755)
+	os.MkdirAll(dir, 0700)
 
 	data, err := json.MarshalIndent(vl, "", "  ")
 	if err != nil {
 		return
 	}
-	os.WriteFile(vaultsPath(), data, 0644)
+	os.WriteFile(vaultsPath(), data, 0600)
 }
 
 // AddVault adds or updates a vault entry. It sets LastOpen to the current time

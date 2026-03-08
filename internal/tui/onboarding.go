@@ -60,7 +60,7 @@ func (o *Onboarding) SetSize(w, h int) {
 // MarkComplete writes the sentinel file so the tutorial is not shown again.
 func (o *Onboarding) MarkComplete() {
 	dir := config.ConfigDir()
-	_ = os.MkdirAll(dir, 0o755)
+	_ = os.MkdirAll(dir, 0o700)
 	f, err := os.Create(filepath.Join(dir, onboardingDoneFile))
 	if err == nil {
 		f.Close()

@@ -399,7 +399,7 @@ func (tb *TabBar) SaveTabs(vaultPath string) {
 		return
 	}
 	dir := filepath.Join(vaultPath, ".granit")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return
 	}
 
@@ -422,7 +422,7 @@ func (tb *TabBar) SaveTabs(vaultPath string) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(dir, "tabs.json"), raw, 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "tabs.json"), raw, 0o600)
 }
 
 // LoadTabs restores tabs from <vaultPath>/.granit/tabs.json.
