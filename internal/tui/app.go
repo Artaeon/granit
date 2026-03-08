@@ -1429,6 +1429,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.dailyPlanner.IsActive() {
 			m.dailyPlanner, _ = m.dailyPlanner.Update(msg)
+
+			// Sync completed tasks back to source files
+			if completions := m.dailyPlanner.GetCompletedTasks(); len(completions) > 0 {
+				needRescan := false
+				for _, tc := range completions {
+					if tc.NotePath == "" {
+						continue
+					}
+					if note := m.vault.GetNote(tc.NotePath); note != nil {
+						lines := strings.Split(note.Content, "\n")
+						if tc.LineNum >= 0 && tc.LineNum < len(lines) {
+							if tc.Done {
+								lines[tc.LineNum] = strings.Replace(lines[tc.LineNum], "- [ ]", "- [x]", 1)
+							} else {
+								lines[tc.LineNum] = strings.Replace(lines[tc.LineNum], "- [x]", "- [ ]", 1)
+							}
+							newContent := strings.Join(lines, "\n")
+							os.WriteFile(filepath.Join(m.vault.Root, tc.NotePath), []byte(newContent), 0644)
+							needRescan = true
+							if tc.NotePath == m.activeNote {
+								m.editor.LoadContent(newContent, m.activeNote)
+							}
+						}
+					}
+				}
+				if needRescan {
+					m.vault.Scan()
+					m.index = vault.NewIndex(m.vault)
+					m.index.Build()
+					m.sidebar.SetFiles(m.vault.SortedPaths())
+					m.dueTodayCount = CountTasksDueToday(m.vault.Notes)
+					m.statusbar.SetDueTodayCount(m.dueTodayCount)
+				}
+			}
+
 			if !m.dailyPlanner.IsActive() {
 				m.vault.Scan()
 				m.index.Build()
@@ -1447,6 +1482,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.dailyPlanner.SetSize(m.width, m.height)
 					m.dailyPlanner.Open(m.vault.Root, tasks, nil, habits)
 					m.dailyPlanner.ApplyAISchedule(slots)
+
+					// Persist schedule markers to Tasks.md
+					for _, slot := range slots {
+						if slot.Type != "task" {
+							continue
+						}
+						start := fmt.Sprintf("%02d:%02d", slot.StartHour, slot.StartMin)
+						end := fmt.Sprintf("%02d:%02d", slot.EndHour, slot.EndMin)
+						updateTaskScheduleInFile(m.vault.Root, slot.Task, start, end)
+					}
+
+					// Auto-save planner so calendar can load the schedule
+					m.dailyPlanner.SaveNow()
+
+					// Refresh vault so all components see updated Tasks.md
+					m.vault.Scan()
+					m.index.Build()
+					m.sidebar.SetFiles(m.vault.SortedPaths())
+
 					m.statusbar.SetMessage("AI schedule applied to planner")
 				}
 			}
@@ -3666,6 +3720,51 @@ func (m *Model) gatherSchedulerData() ([]SchedulerTask, []SchedulerEvent) {
 	}
 
 	return tasks, events
+}
+
+// updateTaskScheduleInFile annotates matching task lines in Tasks.md with a
+// schedule marker (⏰ HH:MM-HH:MM).  If the line already has a marker it is
+// replaced with the new times.
+func updateTaskScheduleInFile(vaultRoot, taskText, startTime, endTime string) {
+	tasksPath := filepath.Join(vaultRoot, "Tasks.md")
+	data, err := os.ReadFile(tasksPath)
+	if err != nil {
+		return
+	}
+
+	scheduleMarkerRe := regexp.MustCompile(`\s*⏰\s*\d{2}:\d{2}-\d{2}:\d{2}`)
+	marker := " ⏰ " + startTime + "-" + endTime
+
+	// Normalise the task text for matching: trim emoji markers and whitespace.
+	normalise := func(s string) string {
+		s = scheduleMarkerRe.ReplaceAllString(s, "")
+		return strings.TrimSpace(s)
+	}
+	needle := normalise(taskText)
+
+	lines := strings.Split(string(data), "\n")
+	changed := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "- [") {
+			continue
+		}
+		// Extract task text from the checkbox line.
+		if idx := strings.Index(trimmed, "] "); idx >= 0 {
+			lineTask := normalise(trimmed[idx+2:])
+			if lineTask == needle {
+				// Remove any existing marker first.
+				cleaned := scheduleMarkerRe.ReplaceAllString(line, "")
+				lines[i] = cleaned + marker
+				changed = true
+				break // one match is enough
+			}
+		}
+	}
+
+	if changed {
+		os.WriteFile(tasksPath, []byte(strings.Join(lines, "\n")), 0644)
+	}
 }
 
 func (m *Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
