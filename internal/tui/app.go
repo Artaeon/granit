@@ -323,6 +323,7 @@ func NewModel(vaultPath string) (Model, error) {
 	m.publisher.SetVaultPath(vaultPath)
 	m.luaOverlay.SetEngine(m.luaEngine)
 	m.renderer.SetVaultNotes(m.vault.Notes)
+	m.editor.SetFoldState(&m.foldState)
 	m.renderer.SetVaultRoot(vaultPath)
 
 	// Set up renderer note lookup for transclusion
@@ -2195,6 +2196,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Move active tab right
 			if m.tabBar != nil {
 				m.tabBar.MoveRight()
+			}
+			return m, nil
+
+		case "alt+f":
+			// Toggle fold at cursor
+			if m.activeNote != "" {
+				m.foldState.ToggleFold(m.editor.cursor, m.editor.content)
 			}
 			return m, nil
 
@@ -4081,6 +4089,15 @@ func (m *Model) applyVimResult(r VimResult) tea.Cmd {
 	}
 	if r.EnterVisual {
 		m.statusbar.SetMode("VIM:VISUAL")
+	}
+	if r.FoldToggle {
+		m.foldState.ToggleFold(m.editor.cursor, m.editor.content)
+	}
+	if r.FoldAll {
+		m.foldState.FoldAll(m.editor.content)
+	}
+	if r.UnfoldAll {
+		m.foldState.UnfoldAll()
 	}
 	return nil
 }
