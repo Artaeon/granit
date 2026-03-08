@@ -25,6 +25,8 @@
       --green: #a6e3a1;
       --peach: #fab387;
       --red: #f38ba8;
+      --yellow: #f9e2af;
+      --teal: #94e2d5;
       --border: #313244;
       --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code", "Source Code Pro", ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace;
       --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -52,6 +54,59 @@
       color: var(--blue);
     }
 
+    /* ─── Scroll Fade-in Animations ─── */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(40px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeInLeft {
+      from {
+        opacity: 0;
+        transform: translateX(-40px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes fadeInRight {
+      from {
+        opacity: 0;
+        transform: translateX(40px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .fade-in {
+      animation: fadeInUp 0.7s ease both;
+    }
+
+    .fade-in-left {
+      animation: fadeInLeft 0.7s ease both;
+    }
+
+    .fade-in-right {
+      animation: fadeInRight 0.7s ease both;
+    }
+
+    .fade-in-delay-1 { animation-delay: 0.1s; }
+    .fade-in-delay-2 { animation-delay: 0.2s; }
+    .fade-in-delay-3 { animation-delay: 0.3s; }
+    .fade-in-delay-4 { animation-delay: 0.4s; }
+    .fade-in-delay-5 { animation-delay: 0.5s; }
+    .fade-in-delay-6 { animation-delay: 0.6s; }
+
     /* ─── Navigation ─── */
     nav {
       position: fixed;
@@ -75,6 +130,7 @@
       font-weight: 700;
       color: var(--accent);
       letter-spacing: 0.05em;
+      z-index: 102;
     }
 
     nav .nav-links {
@@ -92,6 +148,47 @@
 
     nav .nav-links a:hover {
       color: var(--accent);
+    }
+
+    /* ─── Hamburger Menu (CSS-only) ─── */
+    .hamburger-toggle {
+      display: none;
+    }
+
+    .hamburger-label {
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      gap: 5px;
+      width: 28px;
+      height: 28px;
+      cursor: pointer;
+      z-index: 102;
+    }
+
+    .hamburger-label span {
+      display: block;
+      width: 100%;
+      height: 2px;
+      background: var(--text);
+      border-radius: 2px;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+    }
+
+    .hamburger-toggle:checked ~ .hamburger-label span:nth-child(1) {
+      transform: rotate(45deg) translate(5px, 5px);
+    }
+
+    .hamburger-toggle:checked ~ .hamburger-label span:nth-child(2) {
+      opacity: 0;
+    }
+
+    .hamburger-toggle:checked ~ .hamburger-label span:nth-child(3) {
+      transform: rotate(-45deg) translate(5px, -5px);
+    }
+
+    .mobile-nav-overlay {
+      display: none;
     }
 
     /* ─── Sections ─── */
@@ -285,6 +382,316 @@
     .feature-card:nth-child(7) .feature-icon { color: var(--peach); }
     .feature-card:nth-child(8) .feature-icon { color: var(--accent); }
     .feature-card:nth-child(9) .feature-icon { color: var(--blue); }
+
+    /* ─── Feature Showcase (Alternating Layout) ─── */
+    .showcase {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 3rem 2rem 5rem;
+    }
+
+    .showcase-item {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: center;
+      margin-bottom: 5rem;
+    }
+
+    .showcase-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .showcase-item.reverse {
+      direction: rtl;
+    }
+
+    .showcase-item.reverse > * {
+      direction: ltr;
+    }
+
+    .showcase-image {
+      background: var(--bg-overlay);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .showcase-image img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .showcase-text h3 {
+      font-family: var(--font-mono);
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.75rem;
+    }
+
+    .showcase-text h3 .accent {
+      color: var(--accent);
+    }
+
+    .showcase-text p {
+      color: var(--text-dim);
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      line-height: 1.7;
+    }
+
+    .showcase-text ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .showcase-text ul li {
+      color: var(--text-dim);
+      font-size: 0.95rem;
+      padding: 0.3rem 0;
+      padding-left: 1.5rem;
+      position: relative;
+      line-height: 1.6;
+    }
+
+    .showcase-text ul li::before {
+      content: "\25b8";
+      color: var(--accent);
+      position: absolute;
+      left: 0;
+      font-size: 0.85rem;
+    }
+
+    /* ─── Comparison Table ─── */
+    .comparison {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+    }
+
+    .comparison-wrapper {
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      min-width: 650px;
+    }
+
+    .comparison-table thead th {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      padding: 1rem 1.25rem;
+      text-align: center;
+      background: var(--bg-surface);
+      border-bottom: 2px solid var(--border);
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .comparison-table thead th:first-child {
+      text-align: left;
+      color: var(--text-dim);
+    }
+
+    .comparison-table thead th.highlight {
+      color: var(--accent);
+      background: rgba(203, 166, 247, 0.08);
+    }
+
+    .comparison-table tbody td {
+      padding: 0.75rem 1.25rem;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+    }
+
+    .comparison-table tbody td:first-child {
+      text-align: left;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .comparison-table tbody td.highlight {
+      background: rgba(203, 166, 247, 0.04);
+    }
+
+    .comparison-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .comparison-table tbody tr:hover {
+      background: rgba(203, 166, 247, 0.03);
+    }
+
+    .check {
+      color: var(--green);
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+
+    .cross {
+      color: var(--red);
+      font-size: 1.1rem;
+      opacity: 0.6;
+    }
+
+    .partial {
+      color: var(--yellow);
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+    }
+
+    /* ─── Testimonials ─── */
+    .testimonials {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+    }
+
+    .testimonials-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+
+    .testimonial-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      position: relative;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .testimonial-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--accent);
+    }
+
+    .testimonial-card::before {
+      content: "\201C";
+      font-family: Georgia, serif;
+      font-size: 4rem;
+      color: var(--accent);
+      opacity: 0.3;
+      position: absolute;
+      top: 0.5rem;
+      left: 1.25rem;
+      line-height: 1;
+    }
+
+    .testimonial-quote {
+      color: var(--text-dim);
+      font-size: 0.95rem;
+      line-height: 1.7;
+      margin-bottom: 1.5rem;
+      padding-top: 1rem;
+      font-style: italic;
+    }
+
+    .testimonial-author {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .testimonial-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--bg-surface);
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .testimonial-name {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .testimonial-role {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* ─── Keyboard Shortcuts ─── */
+    .shortcuts {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+    }
+
+    .shortcuts-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .shortcut-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.85rem 1.25rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      transition: border-color 0.2s ease, transform 0.15s ease;
+    }
+
+    .shortcut-item:hover {
+      border-color: var(--accent);
+      transform: translateX(4px);
+    }
+
+    .shortcut-label {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+
+    .shortcut-keys {
+      display: flex;
+      gap: 0.3rem;
+      align-items: center;
+    }
+
+    kbd {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.3rem 0.6rem;
+      background: var(--bg-overlay);
+      border: 1px solid var(--border);
+      border-bottom: 3px solid var(--border);
+      border-radius: 6px;
+      color: var(--accent);
+      white-space: nowrap;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+
+    .key-plus {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+    }
 
     /* ─── Demo ─── */
     .demo {
@@ -521,6 +928,34 @@
       line-height: 1.4;
     }
 
+    /* ─── Back to Top ─── */
+    .back-to-top {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      z-index: 90;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.3s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .back-to-top:hover {
+      transform: translateY(-3px);
+      border-color: var(--accent);
+      box-shadow: 0 6px 20px rgba(203, 166, 247, 0.2);
+      color: var(--accent);
+    }
+
     /* ─── Footer ─── */
     footer {
       border-top: 1px solid var(--border);
@@ -578,13 +1013,82 @@
         grid-template-columns: repeat(2, 1fr);
       }
 
+      /* Hide desktop nav, show hamburger */
       nav .nav-links {
         display: none;
+      }
+
+      .hamburger-label {
+        display: flex;
+      }
+
+      .mobile-nav-overlay {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 101;
+        background: rgba(17, 17, 27, 0.97);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+      }
+
+      .hamburger-toggle:checked ~ .mobile-nav-overlay {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .mobile-nav-menu {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        gap: 2rem;
+      }
+
+      .mobile-nav-menu a {
+        color: var(--text);
+        font-family: var(--font-mono);
+        font-size: 1.3rem;
+        font-weight: 600;
+        transition: color 0.2s ease;
+      }
+
+      .mobile-nav-menu a:hover {
+        color: var(--accent);
+      }
+
+      .showcase-item {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+      }
+
+      .showcase-item.reverse {
+        direction: ltr;
+      }
+
+      .testimonials-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .shortcuts-grid {
+        grid-template-columns: 1fr;
       }
     }
 
     @media (max-width: 600px) {
-      section {
+      section,
+      .showcase,
+      .comparison,
+      .testimonials,
+      .shortcuts {
         padding: 3.5rem 1.25rem;
       }
 
@@ -633,6 +1137,27 @@
       .section-title {
         font-size: 1.4rem;
       }
+
+      .showcase-text h3 {
+        font-size: 1.15rem;
+      }
+
+      .comparison-table {
+        font-size: 0.8rem;
+      }
+
+      .comparison-table thead th,
+      .comparison-table tbody td {
+        padding: 0.6rem 0.75rem;
+      }
+
+      .back-to-top {
+        bottom: 1.25rem;
+        right: 1.25rem;
+        width: 38px;
+        height: 38px;
+        font-size: 1rem;
+      }
     }
 
     /* ─── Scrollbar ─── */
@@ -667,11 +1192,34 @@
     <div class="logo">GRANIT</div>
     <ul class="nav-links">
       <li><a href="#features">Features</a></li>
+      <li><a href="#showcase">Showcase</a></li>
       <li><a href="#demo">Demo</a></li>
+      <li><a href="#comparison">Compare</a></li>
+      <li><a href="#shortcuts">Keys</a></li>
       <li><a href="#installation">Installation</a></li>
       <li><a href="#documentation">Docs</a></li>
       <li><a href="https://github.com/artaeon/granit">GitHub</a></li>
     </ul>
+
+    <!-- Mobile hamburger (CSS-only) -->
+    <input type="checkbox" id="hamburger-toggle" class="hamburger-toggle" aria-label="Toggle navigation">
+    <label for="hamburger-toggle" class="hamburger-label" aria-label="Menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </label>
+    <div class="mobile-nav-overlay">
+      <ul class="mobile-nav-menu">
+        <li><a href="#features" onclick="document.getElementById('hamburger-toggle').checked=false">Features</a></li>
+        <li><a href="#showcase" onclick="document.getElementById('hamburger-toggle').checked=false">Showcase</a></li>
+        <li><a href="#demo" onclick="document.getElementById('hamburger-toggle').checked=false">Demo</a></li>
+        <li><a href="#comparison" onclick="document.getElementById('hamburger-toggle').checked=false">Compare</a></li>
+        <li><a href="#shortcuts" onclick="document.getElementById('hamburger-toggle').checked=false">Keys</a></li>
+        <li><a href="#installation" onclick="document.getElementById('hamburger-toggle').checked=false">Installation</a></li>
+        <li><a href="#documentation" onclick="document.getElementById('hamburger-toggle').checked=false">Docs</a></li>
+        <li><a href="https://github.com/artaeon/granit" onclick="document.getElementById('hamburger-toggle').checked=false">GitHub</a></li>
+      </ul>
+    </div>
   </nav>
 
   <!-- Hero -->
@@ -699,50 +1247,50 @@
 
   <!-- Features -->
   <section id="features">
-    <h2 class="section-title"><span class="accent">//</span> Features</h2>
-    <p class="section-subtitle">Everything you need for knowledge management, built into your terminal.</p>
+    <h2 class="section-title fade-in"><span class="accent">//</span> Features</h2>
+    <p class="section-subtitle fade-in">Everything you need for knowledge management, built into your terminal.</p>
     <div class="features-grid">
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-1">
         <span class="feature-icon">&#x2728;</span>
         <h3>AI-Powered</h3>
         <p>20+ AI features with Ollama, OpenAI, and Claude Code support. Auto-tagging, summarization, link suggestions, and local offline fallback.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-2">
         <span class="feature-icon">&#x2328;&#xFE0F;</span>
         <h3>Vim Mode</h3>
         <p>Full modal editing with Normal, Insert, Visual, and Command modes. Dot repeat, macros, and everything you expect from Vim.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-3">
         <span class="feature-icon">&#x1F3A8;</span>
         <h3>35 Themes</h3>
         <p>29 dark and 6 light themes including Catppuccin, Tokyo Night, Gruvbox, Nord, and more. Plus a custom theme editor.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-1">
         <span class="feature-icon">&#x2705;</span>
         <h3>Task Manager</h3>
         <p>Kanban boards, task priorities, daily planner, and AI smart scheduler. Track your work right alongside your notes.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-2">
         <span class="feature-icon">&#x1F500;</span>
         <h3>Git Integration</h3>
         <p>Built-in status, log, and diff views. Commit, push, and pull without leaving the TUI. Optional auto-sync on save.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-3">
         <span class="feature-icon">&#x1F517;</span>
         <h3>Obsidian Compatible</h3>
         <p>Full support for [[wikilinks]], YAML frontmatter, and the same folder structure. Use your existing Obsidian vault as-is.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-1">
         <span class="feature-icon">&#x1F4D0;</span>
         <h3>8 Layouts</h3>
         <p>Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, and Research modes. Adapt the UI to your current workflow.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-2">
         <span class="feature-icon">&#x1F9E9;</span>
         <h3>Plugin System</h3>
         <p>Extend Granit with scripts and Lua plugins. 16 core plugins included. Hook into save, open, create, and delete events.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card fade-in fade-in-delay-3">
         <span class="feature-icon">&#x1F512;</span>
         <h3>Encryption</h3>
         <p>AES-256-GCM encryption for sensitive notes. Secure your vault for safe syncing across devices without compromising privacy.</p>
@@ -750,11 +1298,125 @@
     </div>
   </section>
 
+  <!-- Feature Showcase -->
+  <div class="showcase" id="showcase">
+    <h2 class="section-title fade-in"><span class="accent">//</span> Feature Showcase</h2>
+    <p class="section-subtitle fade-in">A deeper look at what sets Granit apart.</p>
+
+    <!-- Task Manager & Kanban -->
+    <div class="showcase-item fade-in">
+      <div class="showcase-image">
+        <img src="assets/screenshot-taskmanager.svg" alt="Granit Task Manager and Kanban board" loading="lazy">
+      </div>
+      <div class="showcase-text">
+        <h3><span class="accent">#</span> Task Manager &amp; Kanban</h3>
+        <p>Manage your tasks, projects, and priorities without leaving the terminal. A full Kanban board built right into your knowledge base.</p>
+        <ul>
+          <li>Drag-and-drop style Kanban columns (Todo, In Progress, Done)</li>
+          <li>Task priorities with color-coded indicators</li>
+          <li>Daily planner with time-blocked schedule view</li>
+          <li>AI smart scheduler that auto-assigns tasks to time slots</li>
+          <li>Parse tasks directly from your Markdown notes</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- AI-Powered Features -->
+    <div class="showcase-item reverse fade-in">
+      <div class="showcase-image">
+        <img src="assets/screenshot-ai-bots.svg" alt="Granit AI bots and assistants" loading="lazy">
+      </div>
+      <div class="showcase-text">
+        <h3><span class="accent">#</span> AI-Powered Features</h3>
+        <p>9 specialized AI bots that understand your notes and help you think, write, and organize more effectively.</p>
+        <ul>
+          <li>Auto-Tagger: intelligent tag suggestions from note content</li>
+          <li>Link Suggester: discovers connections between your notes</li>
+          <li>Summarizer, Question Bot, and Writing Assistant</li>
+          <li>Works with Ollama (local), OpenAI, or a built-in offline fallback</li>
+          <li>MOC Generator creates Maps of Content from your vault</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 35 Themes -->
+    <div class="showcase-item fade-in">
+      <div class="showcase-image">
+        <img src="assets/screenshot-themes.svg" alt="Granit theme selection showing 35 themes" loading="lazy">
+      </div>
+      <div class="showcase-text">
+        <h3><span class="accent">#</span> 35 Themes</h3>
+        <p>From Catppuccin Mocha to Synthwave 84, find a color palette that matches your aesthetic and environment.</p>
+        <ul>
+          <li>29 dark themes and 6 light themes included</li>
+          <li>Catppuccin, Tokyo Night, Gruvbox, Nord, Dracula, and more</li>
+          <li>Custom theme editor: create your own color palette</li>
+          <li>Hot-swap themes instantly from the settings overlay</li>
+          <li>Every UI element respects the active theme</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Vim Mode -->
+    <div class="showcase-item reverse fade-in">
+      <div class="showcase-image">
+        <img src="assets/screenshot-vim.svg" alt="Granit Vim mode with modal editing" loading="lazy">
+      </div>
+      <div class="showcase-text">
+        <h3><span class="accent">#</span> Vim Mode</h3>
+        <p>A full Vim experience built natively into the editor. No external dependencies, no shelling out.</p>
+        <ul>
+          <li>Normal, Insert, Visual, and Command-line modes</li>
+          <li>Motions: w, b, e, 0, $, gg, G, f, t, and more</li>
+          <li>Operators: d, c, y with text objects (iw, aw, i", a(, etc.)</li>
+          <li>Dot repeat, macros (q/@ recording), and registers</li>
+          <li>Ex commands: :w, :q, :s, :set, :noh, and custom commands</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Calendar & Planning -->
+    <div class="showcase-item fade-in">
+      <div class="showcase-image">
+        <img src="assets/screenshot-calendar.svg" alt="Granit calendar with month, week, and agenda views" loading="lazy">
+      </div>
+      <div class="showcase-text">
+        <h3><span class="accent">#</span> Calendar &amp; Planning</h3>
+        <p>A built-in calendar with multiple views that integrates with your daily notes and task system.</p>
+        <ul>
+          <li>Month, week, and agenda views with keyboard navigation</li>
+          <li>Import .ics calendar files for external events</li>
+          <li>Automatic task parsing from Markdown checkboxes</li>
+          <li>Jump to any date's daily note instantly</li>
+          <li>Weekly review templates with summary statistics</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Command Palette -->
+    <div class="showcase-item reverse fade-in">
+      <div class="showcase-image">
+        <img src="assets/screenshot-command-palette.svg" alt="Granit command palette with fuzzy search" loading="lazy">
+      </div>
+      <div class="showcase-text">
+        <h3><span class="accent">#</span> Command Palette</h3>
+        <p>Access every feature instantly. Fuzzy search through 33+ commands without memorizing shortcuts.</p>
+        <ul>
+          <li>Fuzzy-matched search across all commands</li>
+          <li>Quick access to themes, layouts, exports, and more</li>
+          <li>Icon-annotated entries for fast visual scanning</li>
+          <li>Recently used commands prioritized at the top</li>
+          <li>Extensible with plugin-defined commands</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
   <!-- Demo -->
   <section id="demo" class="demo">
-    <h2 class="section-title"><span class="accent">//</span> See It in Action</h2>
-    <p class="section-subtitle">A full-featured knowledge manager running entirely in your terminal.</p>
-    <div class="demo-container">
+    <h2 class="section-title fade-in"><span class="accent">//</span> See It in Action</h2>
+    <p class="section-subtitle fade-in">A full-featured knowledge manager running entirely in your terminal.</p>
+    <div class="demo-container fade-in">
       <div class="demo-titlebar">
         <span class="demo-dot"></span>
         <span class="demo-dot"></span>
@@ -763,27 +1425,211 @@
       </div>
       <img src="assets/editor.gif" alt="Granit editor demo showing the TUI in action" loading="lazy">
     </div>
-    <p class="demo-caption">The default 3-panel layout with sidebar, editor, and backlinks panel.</p>
+    <p class="demo-caption fade-in">The default 3-panel layout with sidebar, editor, and backlinks panel.</p>
+  </section>
+
+  <!-- Comparison Table -->
+  <section class="comparison" id="comparison">
+    <h2 class="section-title fade-in"><span class="accent">//</span> How Granit Compares</h2>
+    <p class="section-subtitle fade-in">See how Granit stacks up against other knowledge management tools.</p>
+    <div class="comparison-wrapper fade-in">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th class="highlight">Granit</th>
+            <th>Obsidian</th>
+            <th>Notion</th>
+            <th>Logseq</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Terminal Native</td>
+            <td class="highlight"><span class="check">&#x2713;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+          </tr>
+          <tr>
+            <td>Free &amp; Open Source</td>
+            <td class="highlight"><span class="check">&#x2713;</span></td>
+            <td><span class="partial">Freemium</span></td>
+            <td><span class="partial">Freemium</span></td>
+            <td><span class="check">&#x2713;</span></td>
+          </tr>
+          <tr>
+            <td>AI Built-in</td>
+            <td class="highlight"><span class="check">&#x2713;</span></td>
+            <td><span class="partial">Plugin</span></td>
+            <td><span class="check">&#x2713;</span></td>
+            <td><span class="partial">Plugin</span></td>
+          </tr>
+          <tr>
+            <td>Vim Mode</td>
+            <td class="highlight"><span class="check">&#x2713;</span></td>
+            <td><span class="partial">Plugin</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+          </tr>
+          <tr>
+            <td>No Electron</td>
+            <td class="highlight"><span class="check">&#x2713;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+          </tr>
+          <tr>
+            <td>Offline First</td>
+            <td class="highlight"><span class="check">&#x2713;</span></td>
+            <td><span class="check">&#x2713;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+            <td><span class="check">&#x2713;</span></td>
+          </tr>
+          <tr>
+            <td>Plugin System</td>
+            <td class="highlight"><span class="check">&#x2713;</span></td>
+            <td><span class="check">&#x2713;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+            <td><span class="check">&#x2713;</span></td>
+          </tr>
+          <tr>
+            <td>Wikilinks</td>
+            <td class="highlight"><span class="check">&#x2713;</span></td>
+            <td><span class="check">&#x2713;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+            <td><span class="check">&#x2713;</span></td>
+          </tr>
+          <tr>
+            <td>Git Integration</td>
+            <td class="highlight"><span class="check">&#x2713;</span></td>
+            <td><span class="partial">Plugin</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+            <td><span class="check">&#x2713;</span></td>
+          </tr>
+          <tr>
+            <td>Themes</td>
+            <td class="highlight"><span class="check">35</span></td>
+            <td><span class="check">&#x2713;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+            <td><span class="partial">Limited</span></td>
+          </tr>
+          <tr>
+            <td>Encryption</td>
+            <td class="highlight"><span class="check">&#x2713;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+            <td><span class="partial">Plugin</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Keyboard Shortcuts -->
+  <section class="shortcuts" id="shortcuts">
+    <h2 class="section-title fade-in"><span class="accent">//</span> Keyboard First</h2>
+    <p class="section-subtitle fade-in">Everything is one shortcut away. No mouse required.</p>
+    <div class="shortcuts-grid">
+      <div class="shortcut-item fade-in fade-in-delay-1">
+        <span class="shortcut-label">Command Palette</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>X</kbd></div>
+      </div>
+      <div class="shortcut-item fade-in fade-in-delay-2">
+        <span class="shortcut-label">Quick Switcher</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>J</kbd></div>
+      </div>
+      <div class="shortcut-item fade-in fade-in-delay-1">
+        <span class="shortcut-label">New Note</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>N</kbd></div>
+      </div>
+      <div class="shortcut-item fade-in fade-in-delay-2">
+        <span class="shortcut-label">Find &amp; Replace</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>F</kbd></div>
+      </div>
+      <div class="shortcut-item fade-in fade-in-delay-1">
+        <span class="shortcut-label">AI Bots</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>R</kbd></div>
+      </div>
+      <div class="shortcut-item fade-in fade-in-delay-2">
+        <span class="shortcut-label">Settings</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>,</kbd></div>
+      </div>
+      <div class="shortcut-item fade-in fade-in-delay-1">
+        <span class="shortcut-label">Focus / Zen Mode</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>Z</kbd></div>
+      </div>
+      <div class="shortcut-item fade-in fade-in-delay-2">
+        <span class="shortcut-label">Bookmarks</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>B</kbd></div>
+      </div>
+      <div class="shortcut-item fade-in fade-in-delay-1">
+        <span class="shortcut-label">Calendar</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>L</kbd></div>
+      </div>
+      <div class="shortcut-item fade-in fade-in-delay-2">
+        <span class="shortcut-label">Outline</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>O</kbd></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Testimonials -->
+  <section class="testimonials" id="testimonials">
+    <h2 class="section-title fade-in"><span class="accent">//</span> What People Say</h2>
+    <p class="section-subtitle fade-in">From developers and terminal enthusiasts who made the switch.</p>
+    <div class="testimonials-grid">
+      <div class="testimonial-card fade-in fade-in-delay-1">
+        <p class="testimonial-quote">I switched from Obsidian because I was tired of Electron eating 500MB of RAM for a note-taking app. Granit starts in milliseconds and I never have to leave my terminal. The Vim mode alone is worth it.</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">MK</div>
+          <div>
+            <div class="testimonial-name">@terminaldev</div>
+            <div class="testimonial-role">Backend Engineer</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card fade-in fade-in-delay-2">
+        <p class="testimonial-quote">The AI bots running through Ollama are a game-changer. I get intelligent tagging, link suggestions, and summarization completely offline. No API keys, no cloud, no privacy concerns.</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">SL</div>
+          <div>
+            <div class="testimonial-name">@privacyFirst</div>
+            <div class="testimonial-role">Security Researcher</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card fade-in fade-in-delay-3">
+        <p class="testimonial-quote">Finally a knowledge manager that respects my workflow. Git integration, Markdown files, and the command palette make Granit feel like VS Code and Vim had a child that only does notes -- perfectly.</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">RJ</div>
+          <div>
+            <div class="testimonial-name">@dotfiles_nerd</div>
+            <div class="testimonial-role">DevOps Lead</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- At a Glance -->
   <section id="stats">
-    <h2 class="section-title"><span class="accent">//</span> At a Glance</h2>
-    <p class="section-subtitle">Built from the ground up for power users who live in the terminal.</p>
+    <h2 class="section-title fade-in"><span class="accent">//</span> At a Glance</h2>
+    <p class="section-subtitle fade-in">Built from the ground up for power users who live in the terminal.</p>
     <div class="stats-row">
-      <div class="stat-card">
+      <div class="stat-card fade-in fade-in-delay-1">
         <span class="stat-number">80k+</span>
         <span class="stat-label">Lines of Go</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card fade-in fade-in-delay-2">
         <span class="stat-number">109</span>
         <span class="stat-label">Source Files</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card fade-in fade-in-delay-3">
         <span class="stat-number">35</span>
         <span class="stat-label">Themes</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card fade-in fade-in-delay-4">
         <span class="stat-number">100+</span>
         <span class="stat-label">Features</span>
       </div>
@@ -792,10 +1638,10 @@
 
   <!-- Installation -->
   <section id="installation">
-    <h2 class="section-title"><span class="accent">//</span> Installation</h2>
-    <p class="section-subtitle">Up and running in under a minute.</p>
+    <h2 class="section-title fade-in"><span class="accent">//</span> Installation</h2>
+    <p class="section-subtitle fade-in">Up and running in under a minute.</p>
     <div class="install-block">
-      <div class="install-method">
+      <div class="install-method fade-in">
         <h3><span class="dot" style="background: var(--green);"></span> From Source</h3>
         <div class="code-block">
           <div class="code-header">
@@ -807,7 +1653,7 @@
 <span class="prompt">$</span> <span class="cmd">go</span> <span class="arg">install</span> ./cmd/granit/</code></pre>
         </div>
       </div>
-      <div class="install-method">
+      <div class="install-method fade-in">
         <h3><span class="dot" style="background: var(--blue);"></span> Arch Linux (AUR)</h3>
         <div class="code-block">
           <div class="code-header">
@@ -817,7 +1663,7 @@
           <pre><code id="install-aur"><span class="prompt">$</span> <span class="cmd">yay</span> <span class="arg">-S</span> granit</code></pre>
         </div>
       </div>
-      <div class="install-method">
+      <div class="install-method fade-in">
         <h3><span class="dot" style="background: var(--peach);"></span> Run</h3>
         <div class="code-block">
           <div class="code-header">
@@ -836,45 +1682,45 @@
 
   <!-- Documentation -->
   <section id="documentation">
-    <h2 class="section-title"><span class="accent">//</span> Documentation</h2>
-    <p class="section-subtitle">Comprehensive guides covering every aspect of Granit.</p>
+    <h2 class="section-title fade-in"><span class="accent">//</span> Documentation</h2>
+    <p class="section-subtitle fade-in">Comprehensive guides covering every aspect of Granit.</p>
     <div class="docs-grid">
-      <a href="FEATURES.md" class="doc-card">
+      <a href="FEATURES.md" class="doc-card fade-in fade-in-delay-1">
         <span class="doc-icon">&#x1F4CB;</span>
         <h4>Features</h4>
         <p>Complete feature list and detailed descriptions.</p>
       </a>
-      <a href="INSTALLATION.md" class="doc-card">
+      <a href="INSTALLATION.md" class="doc-card fade-in fade-in-delay-2">
         <span class="doc-icon">&#x1F4E6;</span>
         <h4>Installation</h4>
         <p>Setup instructions for all platforms.</p>
       </a>
-      <a href="AI-GUIDE.md" class="doc-card">
+      <a href="AI-GUIDE.md" class="doc-card fade-in fade-in-delay-3">
         <span class="doc-icon">&#x1F916;</span>
         <h4>AI Guide</h4>
         <p>Configure Ollama, OpenAI, and local AI.</p>
       </a>
-      <a href="KEYBINDINGS.md" class="doc-card">
+      <a href="KEYBINDINGS.md" class="doc-card fade-in fade-in-delay-4">
         <span class="doc-icon">&#x2328;&#xFE0F;</span>
         <h4>Keybindings</h4>
         <p>All keyboard shortcuts and Vim bindings.</p>
       </a>
-      <a href="ARCHITECTURE.md" class="doc-card">
+      <a href="ARCHITECTURE.md" class="doc-card fade-in fade-in-delay-1">
         <span class="doc-icon">&#x1F3D7;&#xFE0F;</span>
         <h4>Architecture</h4>
         <p>Codebase structure and design decisions.</p>
       </a>
-      <a href="CONFIGURATION.md" class="doc-card">
+      <a href="CONFIGURATION.md" class="doc-card fade-in fade-in-delay-2">
         <span class="doc-icon">&#x2699;&#xFE0F;</span>
         <h4>Configuration</h4>
         <p>Settings, config files, and customization.</p>
       </a>
-      <a href="PLUGINS.md" class="doc-card">
+      <a href="PLUGINS.md" class="doc-card fade-in fade-in-delay-3">
         <span class="doc-icon">&#x1F9E9;</span>
         <h4>Plugins</h4>
         <p>Plugin development and the hook system.</p>
       </a>
-      <a href="THEMES.md" class="doc-card">
+      <a href="THEMES.md" class="doc-card fade-in fade-in-delay-4">
         <span class="doc-icon">&#x1F3A8;</span>
         <h4>Themes</h4>
         <p>All 35 themes and the custom theme editor.</p>
@@ -900,6 +1746,9 @@
     </div>
   </footer>
 
+  <!-- Back to Top Button -->
+  <a href="#" class="back-to-top" aria-label="Back to top" title="Back to top">&uarr;</a>
+
   <script>
     function copyCode(button, id) {
       var el = document.getElementById(id);
@@ -913,6 +1762,24 @@
         }, 2000);
       });
     }
+
+    // Intersection Observer for scroll-triggered animations
+    (function() {
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            entry.target.style.animationPlayState = 'running';
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+      // Pause all animations initially, then trigger on scroll
+      document.querySelectorAll('.fade-in, .fade-in-left, .fade-in-right').forEach(function(el) {
+        el.style.animationPlayState = 'paused';
+        observer.observe(el);
+      });
+    })();
   </script>
 
 </body>
