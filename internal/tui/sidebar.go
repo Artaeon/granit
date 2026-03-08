@@ -35,6 +35,7 @@ func NewSidebar(files []string) Sidebar {
 		filtered: files,
 		cursor:   0,
 		focused:  true,
+		treeView: true,
 		fileTree: ft,
 	}
 }
@@ -179,13 +180,49 @@ func (s Sidebar) Update(msg tea.Msg) (Sidebar, tea.Cmd) {
 		case "down", "j":
 			if s.cursor < len(s.filtered)-1 {
 				s.cursor++
-				visibleHeight := s.height - 6
+				visibleHeight := s.height - 4
 				if visibleHeight < 1 {
 					visibleHeight = 1
 				}
 				if s.cursor >= s.scroll+visibleHeight {
 					s.scroll = s.cursor - visibleHeight + 1
 				}
+			}
+		case "pgup", "ctrl+u":
+			visibleHeight := s.height - 4
+			if visibleHeight < 1 {
+				visibleHeight = 1
+			}
+			s.cursor -= visibleHeight / 2
+			if s.cursor < 0 {
+				s.cursor = 0
+			}
+			if s.cursor < s.scroll {
+				s.scroll = s.cursor
+			}
+		case "pgdown", "ctrl+d":
+			visibleHeight := s.height - 4
+			if visibleHeight < 1 {
+				visibleHeight = 1
+			}
+			s.cursor += visibleHeight / 2
+			if s.cursor >= len(s.filtered) {
+				s.cursor = len(s.filtered) - 1
+			}
+			if s.cursor >= s.scroll+visibleHeight {
+				s.scroll = s.cursor - visibleHeight + 1
+			}
+		case "home":
+			s.cursor = 0
+			s.scroll = 0
+		case "end":
+			s.cursor = maxInt(0, len(s.filtered)-1)
+			visibleHeight := s.height - 4
+			if visibleHeight < 1 {
+				visibleHeight = 1
+			}
+			if s.cursor >= s.scroll+visibleHeight {
+				s.scroll = s.cursor - visibleHeight + 1
 			}
 		case "backspace":
 			if len(s.search) > 0 {
@@ -255,7 +292,7 @@ func (s Sidebar) View() string {
 	}
 
 	// File list
-	visibleHeight := s.height - 6
+	visibleHeight := s.height - 4
 	if visibleHeight < 1 {
 		visibleHeight = 1
 	}
