@@ -59,12 +59,26 @@ func main() {
 	command := os.Args[1]
 
 	switch command {
+	case "init":
+		initPath := "."
+		if len(os.Args) >= 3 {
+			initPath = os.Args[2]
+		}
+		runInit(initPath)
+
 	case "open":
 		if len(os.Args) < 3 {
 			fmt.Println("Usage: granit open <vault-path>")
 			os.Exit(1)
 		}
 		runTUI(os.Args[2])
+
+	case "search":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: granit search <query> [vault-path] [--regex] [--json] [--case-sensitive] [--no-color]")
+			os.Exit(1)
+		}
+		runSearch(os.Args[2:])
 
 	case "scan":
 		if len(os.Args) < 3 {
@@ -73,12 +87,24 @@ func main() {
 		}
 		runScan(os.Args[2])
 
+	case "export":
+		runExport(os.Args[2:])
+
+	case "import":
+		runImport(os.Args[2:])
+
 	case "daily":
 		vaultPath := "."
 		if len(os.Args) >= 3 {
 			vaultPath = os.Args[2]
 		}
 		runDaily(vaultPath)
+
+	case "backup":
+		runBackup(os.Args[2:])
+
+	case "plugin":
+		runPlugin(os.Args[2:])
 
 	case "list":
 		if hasFlag("--vaults") {
@@ -87,17 +113,11 @@ func main() {
 			runListNotes()
 		}
 
-	case "search":
-		runSearch()
-
 	case "capture":
 		runCapture()
 
 	case "query":
 		runQuery()
-
-	case "plugin":
-		runPlugin()
 
 	case "config":
 		runConfig()
@@ -144,15 +164,22 @@ func printUsage() {
 
 CORE COMMANDS
   open <path>                   Open a vault in the TUI
+  init [path]                   Initialize a new vault at the given path
   daily [path]                  Open or create today's daily note
   help, --help, -h              Show this help message
   version, --version, -v        Print version information
 
 VAULT MANAGEMENT
   scan <path>                   Scan a vault and print statistics (--json)
+  init [path]                   Initialize a new vault
   list [path]                   List vault notes (--json, --paths, --tags)
   list --vaults                 List all known vaults
   config                        Show configuration paths and current values
+  backup [path]                 Create a timestamped zip backup of the vault
+
+DATA MANAGEMENT
+  export [path]                 Export vault notes to HTML, text, or JSON
+  import --from <format> <src>  Import from Obsidian, Logseq, or Notion
 
 PLUGIN MANAGEMENT
   plugin list                   List all installed plugins (--json)
@@ -174,6 +201,7 @@ ADVANCED
 EXAMPLES
   granit ~/notes                Open the vault at ~/notes
   granit open ~/knowledge       Same as above, explicit form
+  granit init ~/new-vault       Initialize a new vault
   granit daily                  Create/open today's daily note in current dir
   granit daily ~/notes          Create/open daily note in ~/notes
   granit scan ~/notes           Print vault statistics and link graph
@@ -185,10 +213,15 @@ EXAMPLES
   granit search "TODO" ~/notes  Search vault content (grep-like output)
   granit search --regex "#+\s" ~/notes  Search with regex
   granit query 'tag:project'    Find notes with a specific tag
-  granit query 'tag:project AND status:active' --table
   granit capture "Buy milk"     Append to Inbox.md
-  granit capture --daily "Met with team"  Append to today's daily note
-  echo "idea" | granit capture --stdin    Capture from stdin
+  granit export --format html --all ~/notes
+                                Export all notes as HTML
+  granit import --from obsidian ~/obsidian-vault ~/notes
+                                Import from an Obsidian vault
+  granit plugin list            Show installed plugins
+  granit backup ~/notes         Create a zip backup of the vault
+  granit backup --restore backup.zip ~/notes
+                                Restore from a backup
   granit list --vaults          Show registered vaults with last-opened dates
   granit config                 Display active configuration
   granit man | man -l -         View the full manual page

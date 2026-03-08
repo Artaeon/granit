@@ -3,262 +3,274 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/artaeon/granit/internal/config"
-	"github.com/artaeon/granit/internal/plugins"
 )
 
-func runPlugin() {
-	if len(os.Args) < 3 {
-		printPluginUsage()
+type pluginManifest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Version     string `json:"version"`
+	Author      string `json:"author"`
+	Enabled     bool   `json:"enabled"`
+}
+
+func runPlugin(args []string) {
+	if len(args) == 0 {
+		fmt.Println("Usage: granit plugin <list|install|remove> [name]")
 		os.Exit(1)
 	}
 
-	subcommand := os.Args[2]
+	subcommand := args[0]
+	rest := args[1:]
 
 	switch subcommand {
 	case "list":
-		runPluginList()
+		pluginList()
 	case "install":
-		runPluginInstall()
+		if len(rest) < 1 {
+			fmt.Println("Usage: granit plugin install <path>")
+			os.Exit(1)
+		}
+		pluginInstall(rest[0])
 	case "remove":
-		runPluginRemove()
-	case "enable":
-		runPluginEnable()
-	case "disable":
-		runPluginDisable()
-	case "info":
-		runPluginInfo()
-	case "create":
-		runPluginCreate()
+		if len(rest) < 1 {
+			fmt.Println("Usage: granit plugin remove <name>")
+			os.Exit(1)
+		}
+		pluginRemove(rest[0])
 	default:
 		fmt.Printf("Unknown plugin subcommand: %s\n", subcommand)
-		printPluginUsage()
+		fmt.Println("Usage: granit plugin <list|install|remove> [name]")
 		os.Exit(1)
 	}
 }
 
-func printPluginUsage() {
-	fmt.Print(`Usage: granit plugin <subcommand> [arguments]
+func pluginList() {
+	pluginsDir := filepath.Join(config.ConfigDir(), "plugins")
 
-Subcommands:
-  list                    List all installed plugins
-  install <path>          Install a plugin from a local directory
-  remove <name>           Remove an installed plugin
-  enable <name>           Enable a plugin
-  disable <name>          Disable a plugin
-  info <name>             Show detailed plugin information
-  create <name>           Scaffold a new plugin template
-
-Examples:
-  granit plugin list
-  granit plugin install ./my-plugin
-  granit plugin remove word-count
-  granit plugin enable word-count
-  granit plugin disable word-count
-  granit plugin info word-count
-  granit plugin create my-new-plugin
-`)
-}
-
-func runPluginList() {
-	configDir := config.ConfigDir()
-	pluginList, err := plugins.ListPlugins(configDir)
+	entries, err := os.ReadDir(pluginsDir)
 	if err != nil {
-		exitError("Error listing plugins: %v", err)
-	}
-
-	if hasFlag("--json") {
-		data, err := json.MarshalIndent(pluginList, "", "  ")
-		if err != nil {
-			exitError("Error marshaling JSON: %v", err)
+		if os.IsNotExist(err) {
+			fmt.Println("No plugins installed.")
+			fmt.Printf("Plugin directory: %s\n", pluginsDir)
+			return
 		}
-		fmt.Println(string(data))
-		return
+		fmt.Printf("Error reading plugins directory: %v\n", err)
+		os.Exit(1)
 	}
 
-	if len(pluginList) == 0 {
+	var plugins []pluginInfo
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		manifestPath := filepath.Join(pluginsDir, entry.Name(), "plugin.json")
+		data, err := os.ReadFile(manifestPath)
+		if err != nil {
+			continue
+		}
+		var manifest pluginManifest
+		if err := json.Unmarshal(data, &manifest); err != nil {
+			continue
+		}
+		plugins = append(plugins, pluginInfo{
+			dir:      entry.Name(),
+			manifest: manifest,
+		})
+	}
+
+	if len(plugins) == 0 {
 		fmt.Println("No plugins installed.")
-		fmt.Printf("  Plugin directory: %s/plugins/\n", configDir)
-		fmt.Println("  Use 'granit plugin create <name>' to scaffold a new plugin.")
+		fmt.Printf("Plugin directory: %s\n", pluginsDir)
 		return
 	}
 
 	fmt.Println("Installed plugins:")
-	fmt.Println(strings.Repeat("\u2500", 60))
+	fmt.Println(strings.Repeat("-", 70))
+	fmt.Printf("  %-20s %-10s %-10s %s\n", "NAME", "VERSION", "STATUS", "DESCRIPTION")
+	fmt.Println(strings.Repeat("-", 70))
 
-	for _, p := range pluginList {
-		status := "\u2717 disabled"
-		if p.Enabled {
-			status = "\u2713 enabled"
+	for _, p := range plugins {
+		status := "disabled"
+		if p.manifest.Enabled {
+			status = "enabled"
 		}
-
-		fmt.Printf("  %-20s v%-10s %s\n", p.Name, p.Version, status)
-		if p.Description != "" {
-			fmt.Printf("    %s\n", p.Description)
+		desc := p.manifest.Description
+		if len(desc) > 30 {
+			desc = desc[:27] + "..."
 		}
+		fmt.Printf("  %-20s %-10s %-10s %s\n",
+			p.manifest.Name,
+			p.manifest.Version,
+			status,
+			desc,
+		)
 	}
-
-	fmt.Println(strings.Repeat("\u2500", 60))
-	fmt.Printf("  %d plugin(s) installed\n", len(pluginList))
+	fmt.Println(strings.Repeat("-", 70))
+	fmt.Printf("  %d plugin(s) installed\n", len(plugins))
+	fmt.Printf("  Plugin directory: %s\n", pluginsDir)
 }
 
-func runPluginInstall() {
-	if len(os.Args) < 4 {
-		exitError("Usage: granit plugin install <path>")
-	}
-
-	source := os.Args[3]
-	configDir := config.ConfigDir()
-
-	if err := plugins.InstallPlugin(source, configDir); err != nil {
-		exitError("Error installing plugin: %v", err)
-	}
-
-	// Read back the installed plugin info for display
-	info, _ := plugins.ValidatePlugin(source)
-	if info != nil {
-		fmt.Printf("Installed plugin: %s v%s\n", info.Name, info.Version)
-	} else {
-		fmt.Println("Plugin installed successfully.")
-	}
+type pluginInfo struct {
+	dir      string
+	manifest pluginManifest
 }
 
-func runPluginRemove() {
-	if len(os.Args) < 4 {
-		exitError("Usage: granit plugin remove <name>")
-	}
-
-	name := os.Args[3]
-	configDir := config.ConfigDir()
-
-	if err := plugins.RemovePlugin(name, configDir); err != nil {
-		exitError("Error removing plugin: %v", err)
-	}
-
-	fmt.Printf("Removed plugin: %s\n", name)
-}
-
-func runPluginEnable() {
-	if len(os.Args) < 4 {
-		exitError("Usage: granit plugin enable <name>")
-	}
-
-	name := os.Args[3]
-	configDir := config.ConfigDir()
-
-	if err := plugins.EnablePlugin(name, configDir); err != nil {
-		exitError("Error enabling plugin: %v", err)
-	}
-
-	fmt.Printf("Enabled plugin: %s\n", name)
-}
-
-func runPluginDisable() {
-	if len(os.Args) < 4 {
-		exitError("Usage: granit plugin disable <name>")
-	}
-
-	name := os.Args[3]
-	configDir := config.ConfigDir()
-
-	if err := plugins.DisablePlugin(name, configDir); err != nil {
-		exitError("Error disabling plugin: %v", err)
-	}
-
-	fmt.Printf("Disabled plugin: %s\n", name)
-}
-
-func runPluginInfo() {
-	if len(os.Args) < 4 {
-		exitError("Usage: granit plugin info <name>")
-	}
-
-	name := os.Args[3]
-	configDir := config.ConfigDir()
-
-	pluginList, err := plugins.ListPlugins(configDir)
+func pluginInstall(sourcePath string) {
+	absSource, err := filepath.Abs(sourcePath)
 	if err != nil {
-		exitError("Error listing plugins: %v", err)
+		fmt.Printf("Error resolving path: %v\n", err)
+		os.Exit(1)
 	}
 
-	var found *plugins.PluginInfo
-	for i := range pluginList {
-		if pluginList[i].Name == name {
-			found = &pluginList[i]
-			break
-		}
+	// Verify source is a directory
+	info, err := os.Stat(absSource)
+	if err != nil || !info.IsDir() {
+		fmt.Printf("Error: %s is not a valid directory\n", absSource)
+		os.Exit(1)
 	}
 
-	if found == nil {
-		exitError("Plugin %q not found. Use 'granit plugin list' to see installed plugins.", name)
+	// Verify plugin.json exists
+	manifestPath := filepath.Join(absSource, "plugin.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		fmt.Printf("Error: no plugin.json found in %s\n", absSource)
+		os.Exit(1)
 	}
 
-	if hasFlag("--json") {
-		data, err := json.MarshalIndent(found, "", "  ")
-		if err != nil {
-			exitError("Error marshaling JSON: %v", err)
-		}
-		fmt.Println(string(data))
-		return
+	var manifest pluginManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		fmt.Printf("Error: invalid plugin.json: %v\n", err)
+		os.Exit(1)
 	}
 
-	status := "disabled"
-	if found.Enabled {
-		status = "enabled"
+	if manifest.Name == "" {
+		fmt.Println("Error: plugin.json must have a 'name' field")
+		os.Exit(1)
 	}
 
-	fmt.Printf("Plugin: %s\n", found.Name)
-	fmt.Println(strings.Repeat("\u2500", 40))
-	fmt.Printf("  Version:     %s\n", found.Version)
-	fmt.Printf("  Author:      %s\n", found.Author)
-	fmt.Printf("  Status:      %s\n", status)
-	fmt.Printf("  Description: %s\n", found.Description)
-	fmt.Printf("  Path:        %s\n", found.Path)
+	// Determine destination
+	pluginsDir := filepath.Join(config.ConfigDir(), "plugins")
+	destDir := filepath.Join(pluginsDir, manifest.Name)
 
-	if len(found.Commands) > 0 {
-		fmt.Printf("  Commands:    %s\n", strings.Join(found.Commands, ", "))
-	} else {
-		fmt.Printf("  Commands:    (none)\n")
+	// Check if already installed
+	if _, err := os.Stat(destDir); err == nil {
+		fmt.Printf("Plugin %q is already installed at %s\n", manifest.Name, destDir)
+		fmt.Println("Remove it first with: granit plugin remove " + manifest.Name)
+		os.Exit(1)
 	}
 
-	if len(found.Hooks) > 0 {
-		fmt.Printf("  Hooks:       %s\n", strings.Join(found.Hooks, ", "))
-	} else {
-		fmt.Printf("  Hooks:       (none)\n")
+	// Create plugins directory
+	if err := os.MkdirAll(pluginsDir, 0755); err != nil {
+		fmt.Printf("Error creating plugins directory: %v\n", err)
+		os.Exit(1)
 	}
+
+	// Copy the plugin directory
+	if err := copyDir(absSource, destDir); err != nil {
+		fmt.Printf("Error installing plugin: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Installed plugin: %s v%s\n", manifest.Name, manifest.Version)
+	if manifest.Description != "" {
+		fmt.Printf("  %s\n", manifest.Description)
+	}
+	if manifest.Author != "" {
+		fmt.Printf("  Author: %s\n", manifest.Author)
+	}
+	fmt.Printf("  Location: %s\n", destDir)
 }
 
-func runPluginCreate() {
-	if len(os.Args) < 4 {
-		exitError("Usage: granit plugin create <name>")
+func pluginRemove(name string) {
+	pluginsDir := filepath.Join(config.ConfigDir(), "plugins")
+	pluginDir := filepath.Join(pluginsDir, name)
+
+	// Verify plugin exists
+	if _, err := os.Stat(pluginDir); os.IsNotExist(err) {
+		fmt.Printf("Error: plugin %q is not installed\n", name)
+		fmt.Printf("Use 'granit plugin list' to see installed plugins.\n")
+		os.Exit(1)
 	}
 
-	name := os.Args[3]
-
-	// Determine output directory: use current directory by default,
-	// or --dir=<path> flag if provided.
-	dir := "."
-	if d := getFlagValue("--dir"); d != "" {
-		dir = d
+	// Read manifest for display
+	manifestPath := filepath.Join(pluginDir, "plugin.json")
+	var manifest pluginManifest
+	if data, err := os.ReadFile(manifestPath); err == nil {
+		json.Unmarshal(data, &manifest)
 	}
 
-	pluginDir, err := plugins.ScaffoldPlugin(name, dir)
+	// Remove the directory
+	if err := os.RemoveAll(pluginDir); err != nil {
+		fmt.Printf("Error removing plugin: %v\n", err)
+		os.Exit(1)
+	}
+
+	displayName := name
+	if manifest.Name != "" {
+		displayName = manifest.Name
+	}
+	fmt.Printf("Removed plugin: %s\n", displayName)
+}
+
+// copyDir recursively copies a directory tree.
+func copyDir(src, dst string) error {
+	srcInfo, err := os.Stat(src)
 	if err != nil {
-		exitError("Error creating plugin: %v", err)
+		return err
 	}
 
-	fmt.Printf("Created plugin scaffold: %s\n", pluginDir)
-	fmt.Println()
-	fmt.Println("Files created:")
-	fmt.Printf("  %s/plugin.json   — plugin manifest\n", pluginDir)
-	fmt.Printf("  %s/main.sh       — main script template\n", pluginDir)
-	fmt.Printf("  %s/README.md     — development guide\n", pluginDir)
-	fmt.Println()
-	fmt.Println("Next steps:")
-	fmt.Println("  1. Edit main.sh with your plugin logic")
-	fmt.Println("  2. Update plugin.json with description and commands")
-	fmt.Printf("  3. Install with: granit plugin install %s\n", pluginDir)
+	if err := os.MkdirAll(dst, srcInfo.Mode()); err != nil {
+		return err
+	}
+
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// copyFile copies a single file.
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	srcInfo, err := srcFile.Stat()
+	if err != nil {
+		return err
+	}
+
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
 }
