@@ -13,7 +13,15 @@ const (
 	VimInsert
 	VimVisual
 	VimCommand // : command line
+	VimSearch  // / or ? search input
 )
+
+// SearchMatch represents a single search match position in the document.
+type SearchMatch struct {
+	Line     int
+	StartCol int
+	EndCol   int // exclusive
+}
 
 // VimState holds all state for Vim-style modal editing.
 type VimState struct {
@@ -33,8 +41,11 @@ type VimState struct {
 	cmdBuf string // : command buffer
 
 	// Search
-	searchBuf     string
-	searchForward bool
+	searchBuf      string
+	searchForward  bool
+	searchMatches  []SearchMatch
+	currentMatch   int // index into searchMatches for the current/active match
+	searchActive   bool // true when search highlights should be shown
 
 	// Text object pending (i/a prefix after operator)
 	textObjPending string // "i" or "a" when waiting for text object char
@@ -136,6 +147,8 @@ func (vs *VimState) ModeString() string {
 		return "VISUAL"
 	case VimCommand:
 		return "COMMAND"
+	case VimSearch:
+		return "SEARCH"
 	default:
 		return "NORMAL"
 	}
@@ -157,6 +170,8 @@ func (vs *VimState) HandleKey(key string, content []string, cursor, col, height 
 		return vs.handleVisual(key, content, cursor, col, height)
 	case VimCommand:
 		return vs.handleCommand(key, content, cursor)
+	case VimSearch:
+		return vs.handleSearch(key, content, cursor, col)
 	default:
 		return vs.handleNormal(key, content, cursor, col, height)
 	}
@@ -385,6 +400,17 @@ func (vs *VimState) handleNormal(key string, content []string, cursor, col, heig
 	maxLine := len(content) - 1
 	if maxLine < 0 {
 		maxLine = 0
+	}
+
+	// Esc in normal mode clears search highlights
+	if key == "esc" || key == "escape" {
+		if vs.searchActive {
+			vs.searchActive = false
+			vs.searchMatches = nil
+			vs.currentMatch = -1
+			return VimResult{StatusMsg: "search cleared"}
+		}
+		return VimResult{}
 	}
 
 	// --- Numeric prefix accumulation ---
@@ -630,23 +656,17 @@ func (vs *VimState) handleNormal(key string, content []string, cursor, col, heig
 	case "/":
 		vs.searchForward = true
 		vs.searchBuf = ""
+		vs.mode = VimSearch
 		return VimResult{StatusMsg: "/"}
 	case "?":
 		vs.searchForward = false
 		vs.searchBuf = ""
+		vs.mode = VimSearch
 		return VimResult{StatusMsg: "?"}
 	case "n":
-		dir := "next"
-		if !vs.searchForward {
-			dir = "prev"
-		}
-		return VimResult{StatusMsg: "search_" + dir + ":" + vs.searchBuf}
+		return vs.nextSearchMatch(content, cursor, col, true)
 	case "N":
-		dir := "prev"
-		if !vs.searchForward {
-			dir = "next"
-		}
-		return VimResult{StatusMsg: "search_" + dir + ":" + vs.searchBuf}
+		return vs.nextSearchMatch(content, cursor, col, false)
 
 	// ---- Repeat ----
 	case ".":
@@ -686,6 +706,220 @@ func (vs *VimState) handleNormal(key string, content []string, cursor, col, heig
 	}
 
 	return VimResult{}
+}
+
+// ---------------------------------------------------------------------------
+// Search mode
+// ---------------------------------------------------------------------------
+
+func (vs *VimState) handleSearch(key string, content []string, cursor, col int) VimResult {
+	switch key {
+	case "esc", "escape":
+		vs.mode = VimNormal
+		vs.searchBuf = ""
+		vs.searchActive = false
+		vs.searchMatches = nil
+		vs.currentMatch = -1
+		return VimResult{EnterNormal: true}
+	case "enter":
+		vs.mode = VimNormal
+		if vs.searchBuf == "" {
+			vs.searchActive = false
+			vs.searchMatches = nil
+			return VimResult{EnterNormal: true}
+		}
+		// Compute all matches
+		vs.computeSearchMatches(content)
+		if len(vs.searchMatches) == 0 {
+			vs.searchActive = false
+			return VimResult{
+				EnterNormal: true,
+				StatusMsg:   "Pattern not found: " + vs.searchBuf,
+			}
+		}
+		vs.searchActive = true
+		// Jump to the first match after/at cursor position
+		return vs.jumpToNearestMatch(content, cursor, col, vs.searchForward)
+	case "backspace":
+		if len(vs.searchBuf) > 0 {
+			vs.searchBuf = vs.searchBuf[:len(vs.searchBuf)-1]
+		}
+		if len(vs.searchBuf) == 0 {
+			prompt := "/"
+			if !vs.searchForward {
+				prompt = "?"
+			}
+			return VimResult{StatusMsg: prompt}
+		}
+		prompt := "/"
+		if !vs.searchForward {
+			prompt = "?"
+		}
+		return VimResult{StatusMsg: prompt + vs.searchBuf}
+	default:
+		if len(key) == 1 {
+			vs.searchBuf += key
+		}
+		prompt := "/"
+		if !vs.searchForward {
+			prompt = "?"
+		}
+		return VimResult{StatusMsg: prompt + vs.searchBuf}
+	}
+}
+
+// computeSearchMatches finds all occurrences of searchBuf in content (case-insensitive).
+func (vs *VimState) computeSearchMatches(content []string) {
+	vs.searchMatches = nil
+	vs.currentMatch = -1
+	if vs.searchBuf == "" {
+		return
+	}
+
+	pattern := strings.ToLower(vs.searchBuf)
+	for lineIdx, line := range content {
+		lower := strings.ToLower(line)
+		offset := 0
+		for {
+			idx := strings.Index(lower[offset:], pattern)
+			if idx < 0 {
+				break
+			}
+			absIdx := offset + idx
+			vs.searchMatches = append(vs.searchMatches, SearchMatch{
+				Line:     lineIdx,
+				StartCol: absIdx,
+				EndCol:   absIdx + len(pattern),
+			})
+			offset = absIdx + 1
+			if offset >= len(lower) {
+				break
+			}
+		}
+	}
+}
+
+// jumpToNearestMatch finds the nearest search match to the cursor and jumps to it.
+func (vs *VimState) jumpToNearestMatch(content []string, cursor, col int, forward bool) VimResult {
+	if len(vs.searchMatches) == 0 {
+		return VimResult{EnterNormal: true, StatusMsg: "Pattern not found: " + vs.searchBuf}
+	}
+
+	bestIdx := -1
+	if forward {
+		// Find first match at or after cursor
+		for i, m := range vs.searchMatches {
+			if m.Line > cursor || (m.Line == cursor && m.StartCol >= col) {
+				bestIdx = i
+				break
+			}
+		}
+		// Wrap around
+		if bestIdx == -1 {
+			bestIdx = 0
+		}
+	} else {
+		// Find last match at or before cursor
+		for i := len(vs.searchMatches) - 1; i >= 0; i-- {
+			m := vs.searchMatches[i]
+			if m.Line < cursor || (m.Line == cursor && m.StartCol <= col) {
+				bestIdx = i
+				break
+			}
+		}
+		// Wrap around
+		if bestIdx == -1 {
+			bestIdx = len(vs.searchMatches) - 1
+		}
+	}
+
+	vs.currentMatch = bestIdx
+	m := vs.searchMatches[bestIdx]
+	matchInfo := vimIntToStr(bestIdx+1) + "/" + vimIntToStr(len(vs.searchMatches))
+	return VimResult{
+		EnterNormal: true,
+		NewCursor:   m.Line,
+		NewCol:      m.StartCol,
+		CursorSet:   true,
+		StatusMsg:   "/" + vs.searchBuf + "  [" + matchInfo + "]",
+	}
+}
+
+// nextSearchMatch handles n/N to cycle through search matches.
+func (vs *VimState) nextSearchMatch(content []string, cursor, col int, sameDirection bool) VimResult {
+	if !vs.searchActive || len(vs.searchMatches) == 0 {
+		if vs.searchBuf != "" {
+			// Re-compute matches (buffer might have changed)
+			vs.computeSearchMatches(content)
+			if len(vs.searchMatches) == 0 {
+				return VimResult{StatusMsg: "Pattern not found: " + vs.searchBuf}
+			}
+			vs.searchActive = true
+		} else {
+			return VimResult{StatusMsg: "No previous search"}
+		}
+	}
+
+	forward := vs.searchForward
+	if !sameDirection {
+		forward = !forward
+	}
+
+	if forward {
+		// Find next match after current position
+		bestIdx := -1
+		for i, m := range vs.searchMatches {
+			if m.Line > cursor || (m.Line == cursor && m.StartCol > col) {
+				bestIdx = i
+				break
+			}
+		}
+		if bestIdx == -1 {
+			bestIdx = 0 // wrap
+		}
+		vs.currentMatch = bestIdx
+	} else {
+		// Find previous match before current position
+		bestIdx := -1
+		for i := len(vs.searchMatches) - 1; i >= 0; i-- {
+			m := vs.searchMatches[i]
+			if m.Line < cursor || (m.Line == cursor && m.StartCol < col) {
+				bestIdx = i
+				break
+			}
+		}
+		if bestIdx == -1 {
+			bestIdx = len(vs.searchMatches) - 1 // wrap
+		}
+		vs.currentMatch = bestIdx
+	}
+
+	match := vs.searchMatches[vs.currentMatch]
+	matchInfo := vimIntToStr(vs.currentMatch+1) + "/" + vimIntToStr(len(vs.searchMatches))
+	return VimResult{
+		NewCursor: match.Line,
+		NewCol:    match.StartCol,
+		CursorSet: true,
+		StatusMsg: "/" + vs.searchBuf + "  [" + matchInfo + "]",
+	}
+}
+
+// GetSearchMatches returns current search matches for rendering highlights.
+func (vs *VimState) GetSearchMatches() []SearchMatch {
+	if !vs.searchActive {
+		return nil
+	}
+	return vs.searchMatches
+}
+
+// GetCurrentMatchIndex returns the index of the currently active search match.
+func (vs *VimState) GetCurrentMatchIndex() int {
+	return vs.currentMatch
+}
+
+// IsSearchActive reports whether search highlighting is active.
+func (vs *VimState) IsSearchActive() bool {
+	return vs.searchActive
 }
 
 // ---------------------------------------------------------------------------

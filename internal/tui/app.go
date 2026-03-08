@@ -4192,6 +4192,16 @@ func (m *Model) applyVimResult(r VimResult) tea.Cmd {
 	if r.UnfoldAll {
 		m.foldState.UnfoldAll()
 	}
+
+	// Sync search highlights from vim state to editor for rendering
+	if m.vimState != nil {
+		if m.vimState.IsSearchActive() {
+			m.editor.SetSearchHighlights(m.vimState.GetSearchMatches(), m.vimState.GetCurrentMatchIndex())
+		} else {
+			m.editor.ClearSearchHighlights()
+		}
+	}
+
 	return nil
 }
 
