@@ -932,6 +932,91 @@ func (r Renderer) renderInline(input string) string {
 			}
 		}
 
+		// Strikethrough ~~...~~
+		if i+1 < n && runes[i] == '~' && runes[i+1] == '~' {
+			end := -1
+			for j := i + 2; j+1 < n; j++ {
+				if runes[j] == '~' && runes[j+1] == '~' {
+					end = j + 1
+					break
+				}
+			}
+			if end != -1 {
+				struck := string(runes[i+2 : end-1])
+				styled := lipgloss.NewStyle().
+					Foreground(overlay0).
+					Strikethrough(true).
+					Render(struck)
+				result.WriteString(styled)
+				i = end + 1
+				continue
+			}
+		}
+
+		// Highlight ==...==
+		if i+1 < n && runes[i] == '=' && runes[i+1] == '=' {
+			end := -1
+			for j := i + 2; j+1 < n; j++ {
+				if runes[j] == '=' && runes[j+1] == '=' {
+					end = j + 1
+					break
+				}
+			}
+			if end != -1 {
+				highlighted := string(runes[i+2 : end-1])
+				styled := lipgloss.NewStyle().
+					Foreground(crust).
+					Background(yellow).
+					Bold(true).
+					Render(highlighted)
+				result.WriteString(styled)
+				i = end + 1
+				continue
+			}
+		}
+
+		// Inline math $...$
+		if runes[i] == '$' && (i+1 < n && runes[i+1] != '$') {
+			end := -1
+			for j := i + 1; j < n; j++ {
+				if runes[j] == '$' {
+					end = j
+					break
+				}
+			}
+			if end != -1 && end > i+1 {
+				math := string(runes[i+1 : end])
+				styled := lipgloss.NewStyle().
+					Foreground(teal).
+					Italic(true).
+					Render("$" + math + "$")
+				result.WriteString(styled)
+				i = end + 1
+				continue
+			}
+		}
+
+		// Footnote references [^n]
+		if runes[i] == '[' && i+2 < n && runes[i+1] == '^' {
+			end := -1
+			for j := i + 2; j < n; j++ {
+				if runes[j] == ']' {
+					end = j
+					break
+				}
+			}
+			if end != -1 {
+				fnID := string(runes[i+2 : end])
+				styled := lipgloss.NewStyle().
+					Foreground(sapphire).
+					Bold(true).
+					Render("[" + fnID + "]")
+				result.WriteString(styled)
+				i = end + 1
+				continue
+			}
+		}
+
 		// Italic *...*
 		if runes[i] == '*' && (i+1 < n && runes[i+1] != '*') {
 			end := -1
