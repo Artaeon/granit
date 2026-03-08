@@ -426,16 +426,47 @@ func NewModel(vaultPath string) (Model, error) {
 	return m, nil
 }
 
+// saveScrollPosition caches the current editor cursor and scroll state
+// for the active note so it can be restored later.
+func (m *Model) saveScrollPosition() {
+	if m.activeNote == "" {
+		return
+	}
+	if m.scrollCache == nil {
+		m.scrollCache = make(map[string]scrollPosition)
+	}
+	m.scrollCache[m.activeNote] = scrollPosition{
+		Line:   m.editor.CursorLine(),
+		Col:    m.editor.CursorCol(),
+		Scroll: m.editor.ScrollOffset(),
+	}
+}
+
+// restoreScrollPosition restores cached cursor and scroll state for a note
+// after its content has been loaded into the editor.
+func (m *Model) restoreScrollPosition(relPath string) {
+	if pos, ok := m.scrollCache[relPath]; ok {
+		m.editor.SetCursorPosition(pos.Line, pos.Col)
+		m.editor.SetScroll(pos.Scroll)
+	}
+}
+
 func (m *Model) loadNote(relPath string) {
 	note := m.vault.GetNote(relPath)
 	if note == nil {
 		return
 	}
+	// Save scroll position of the note we're leaving
+	m.saveScrollPosition()
+
 	m.activeNote = relPath
 	m.editor.LoadContent(note.Content, relPath)
 	m.statusbar.SetActiveNote(relPath)
 	m.statusbar.SetWordCount(m.editor.GetWordCount())
 	m.viewScroll = 0
+
+	// Restore scroll position if we've seen this note before
+	m.restoreScrollPosition(relPath)
 
 	incoming := m.buildBacklinkItems(m.index.GetBacklinks(relPath), relPath)
 	outgoing := m.buildOutgoingItems(m.index.GetOutgoingLinks(relPath))
@@ -4443,11 +4474,17 @@ func (m *Model) loadNoteWithoutBreadcrumb(relPath string) {
 	if note == nil {
 		return
 	}
+	// Save scroll position of the note we're leaving
+	m.saveScrollPosition()
+
 	m.activeNote = relPath
 	m.editor.LoadContent(note.Content, relPath)
 	m.statusbar.SetActiveNote(relPath)
 	m.statusbar.SetWordCount(m.editor.GetWordCount())
 	m.viewScroll = 0
+
+	// Restore scroll position if we've seen this note before
+	m.restoreScrollPosition(relPath)
 
 	incoming := m.buildBacklinkItems(m.index.GetBacklinks(relPath), relPath)
 	outgoing := m.buildOutgoingItems(m.index.GetOutgoingLinks(relPath))
@@ -5604,6 +5641,34 @@ func (m Model) renderViewMode() string {
 	b.WriteString(rendered)
 
 	return b.String()
+}
+
+// updateReadingProgress calculates the reading progress percentage
+// based on the current scroll position and total rendered lines.
+func (m *Model) updateReadingProgress() {
+	totalLines := m.renderer.RenderLineCount(m.editor.GetContent())
+	viewportHeight := m.renderer.height - 4
+	if viewportHeight < 1 {
+		viewportHeight = 1
+	}
+
+	maxScroll := totalLines - viewportHeight
+	if maxScroll <= 0 {
+		// Content fits in viewport — always 100%
+		m.statusbar.SetReadingProgress(100)
+		return
+	}
+
+	// Clamp viewScroll to valid range
+	if m.viewScroll > maxScroll {
+		m.viewScroll = maxScroll
+	}
+
+	percent := m.viewScroll * 100 / maxScroll
+	if percent > 100 {
+		percent = 100
+	}
+	m.statusbar.SetReadingProgress(percent)
 }
 
 func (m Model) renderSearchOverlay() string {
