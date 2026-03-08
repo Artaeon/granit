@@ -738,6 +738,107 @@ var builtinThemes = map[string]Theme{
 		Crust:    lipgloss.Color("#000000"),
 		Border: "normal", Density: "compact", AccentBar: "│", Separator: "─", LinkUnderline: false,
 	},
+	// ── Accessibility themes ─────────────────────────────────────────
+	"high-contrast-dark": {
+		Name:     "high-contrast-dark",
+		Primary:  lipgloss.Color("#FFFF00"), // bright yellow headings
+		Secondary: lipgloss.Color("#00FFFF"), // bright cyan links
+		Accent:   lipgloss.Color("#FF00FF"), // magenta accent
+		Warning:  lipgloss.Color("#FFFF00"), // bright yellow warnings
+		Success:  lipgloss.Color("#00FF00"), // bright green
+		Error:    lipgloss.Color("#FF0000"), // bright red
+		Info:     lipgloss.Color("#00FFFF"), // bright cyan
+		Text:     lipgloss.Color("#FFFFFF"), // pure white text
+		Subtext:  lipgloss.Color("#E0E0E0"),
+		Dim:      lipgloss.Color("#A0A0A0"),
+		Surface2: lipgloss.Color("#505050"),
+		Surface1: lipgloss.Color("#303030"),
+		Surface0: lipgloss.Color("#1A1A1A"),
+		Base:     lipgloss.Color("#000000"), // pure black background
+		Mantle:   lipgloss.Color("#000000"),
+		Crust:    lipgloss.Color("#000000"),
+		Border: "thick", Density: "normal", AccentBar: "█", Separator: "━", LinkUnderline: true,
+	},
+	"high-contrast-light": {
+		Name:     "high-contrast-light",
+		Primary:  lipgloss.Color("#000080"), // dark blue headings
+		Secondary: lipgloss.Color("#800000"), // dark red links
+		Accent:   lipgloss.Color("#804000"), // dark orange accent
+		Warning:  lipgloss.Color("#806000"), // dark gold warnings
+		Success:  lipgloss.Color("#006400"), // dark green
+		Error:    lipgloss.Color("#CC0000"), // strong red
+		Info:     lipgloss.Color("#000080"), // dark blue
+		Text:     lipgloss.Color("#000000"), // pure black text
+		Subtext:  lipgloss.Color("#1A1A1A"),
+		Dim:      lipgloss.Color("#404040"),
+		Surface2: lipgloss.Color("#808080"),
+		Surface1: lipgloss.Color("#C0C0C0"),
+		Surface0: lipgloss.Color("#E0E0E0"),
+		Base:     lipgloss.Color("#FFFFFF"), // pure white background
+		Mantle:   lipgloss.Color("#FFFFFF"),
+		Crust:    lipgloss.Color("#F0F0F0"),
+		Border: "thick", Density: "normal", AccentBar: "█", Separator: "━", LinkUnderline: true,
+	},
+	"deuteranopia": {
+		Name:     "deuteranopia",
+		Primary:  lipgloss.Color("#648FFF"), // blue-purple headings
+		Secondary: lipgloss.Color("#785EF0"), // violet links
+		Accent:   lipgloss.Color("#FF8C00"), // orange accent
+		Warning:  lipgloss.Color("#FFD700"), // yellow warnings (not red)
+		Success:  lipgloss.Color("#0000FF"), // blue for success (not green)
+		Error:    lipgloss.Color("#FFD700"), // yellow for errors (not red)
+		Info:     lipgloss.Color("#648FFF"), // blue info
+		Text:     lipgloss.Color("#E0E0E0"),
+		Subtext:  lipgloss.Color("#B0B0B0"),
+		Dim:      lipgloss.Color("#707070"),
+		Surface2: lipgloss.Color("#484848"),
+		Surface1: lipgloss.Color("#363636"),
+		Surface0: lipgloss.Color("#282828"),
+		Base:     lipgloss.Color("#1A1A1A"),
+		Mantle:   lipgloss.Color("#121212"),
+		Crust:    lipgloss.Color("#0A0A0A"),
+		Border: "thick", Density: "normal", AccentBar: "█", Separator: "━", LinkUnderline: true,
+	},
+	"protanopia": {
+		Name:     "protanopia",
+		Primary:  lipgloss.Color("#E69F00"), // yellow headings
+		Secondary: lipgloss.Color("#56B4E9"), // cyan links
+		Accent:   lipgloss.Color("#D55E00"), // orange accent
+		Warning:  lipgloss.Color("#F0E442"), // bright yellow warnings
+		Success:  lipgloss.Color("#0072B2"), // blue for success (not green)
+		Error:    lipgloss.Color("#E69F00"), // yellow-orange for errors (not red)
+		Info:     lipgloss.Color("#56B4E9"), // cyan info
+		Text:     lipgloss.Color("#E0E0E0"),
+		Subtext:  lipgloss.Color("#B0B0B0"),
+		Dim:      lipgloss.Color("#707070"),
+		Surface2: lipgloss.Color("#484848"),
+		Surface1: lipgloss.Color("#363636"),
+		Surface0: lipgloss.Color("#282828"),
+		Base:     lipgloss.Color("#1A1A1A"),
+		Mantle:   lipgloss.Color("#121212"),
+		Crust:    lipgloss.Color("#0A0A0A"),
+		Border: "thick", Density: "normal", AccentBar: "█", Separator: "━", LinkUnderline: true,
+	},
+	"tritanopia": {
+		Name:     "tritanopia",
+		Primary:  lipgloss.Color("#CC0000"), // red headings
+		Secondary: lipgloss.Color("#00CED1"), // cyan links
+		Accent:   lipgloss.Color("#CC79A7"), // magenta accent
+		Warning:  lipgloss.Color("#CC0000"), // red for warnings (not yellow)
+		Success:  lipgloss.Color("#009E73"), // green for success
+		Error:    lipgloss.Color("#CC79A7"), // magenta for errors
+		Info:     lipgloss.Color("#00CED1"), // cyan info
+		Text:     lipgloss.Color("#E0E0E0"),
+		Subtext:  lipgloss.Color("#B0B0B0"),
+		Dim:      lipgloss.Color("#707070"),
+		Surface2: lipgloss.Color("#484848"),
+		Surface1: lipgloss.Color("#363636"),
+		Surface0: lipgloss.Color("#282828"),
+		Base:     lipgloss.Color("#1A1A1A"),
+		Mantle:   lipgloss.Color("#121212"),
+		Crust:    lipgloss.Color("#0A0A0A"),
+		Border: "thick", Density: "normal", AccentBar: "█", Separator: "━", LinkUnderline: true,
+	},
 }
 
 // ThemeNames returns the sorted list of all available theme names
