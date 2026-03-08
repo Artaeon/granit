@@ -87,6 +87,9 @@ func main() {
 		}
 		runScan(os.Args[2])
 
+	case "export":
+		runExport(os.Args[2:])
+
 	case "daily":
 		vaultPath := "."
 		if len(os.Args) >= 3 {
