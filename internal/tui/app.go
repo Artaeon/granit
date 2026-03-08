@@ -1813,13 +1813,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Check if task manager wrote any files
 			if m.taskManager.WasFileChanged() {
 				changedNote := m.taskManager.ActiveNotePath()
-				if changedNote == m.activeNote {
-					if note := m.vault.GetNote(changedNote); note != nil {
-						m.editor.LoadContent(note.Content, m.editor.filePath)
-					}
-				}
-				m.dueTodayCount = CountTasksDueToday(m.vault.Notes)
-				m.statusbar.SetDueTodayCount(m.dueTodayCount)
+				m.refreshComponents(changedNote)
 			}
 			// Handle jump result (closes overlay)
 			if notePath, lineNum, ok := m.taskManager.GetJumpResult(); ok {
@@ -3647,11 +3641,14 @@ func (m *Model) gatherSchedulerData() ([]SchedulerTask, []SchedulerEvent) {
 
 	var tasks []SchedulerTask
 	for _, t := range plannerTasks {
+		if t.Done {
+			continue // skip completed tasks — nothing to schedule
+		}
 		tasks = append(tasks, SchedulerTask{
 			Text:     t.Text,
 			Priority: t.Priority,
 			DueDate:  t.DueDate,
-			Done:     t.Done,
+			Done:     false,
 		})
 	}
 
