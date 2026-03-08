@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -34,6 +35,9 @@ type TableEditor struct {
 	// Source tracking
 	startLine int // line in editor where table starts
 	endLine   int // line in editor where table ends
+
+	// Scrolling
+	scroll int
 
 	// Result tracking
 	confirmed bool
@@ -120,6 +124,22 @@ func (te *TableEditor) Open(content []string, cursorLine int) {
 	te.editing = false
 	te.editBuf = ""
 	te.confirmed = false
+	te.scroll = 0
+	te.active = true
+}
+
+// OpenNew creates a blank 3-column, 2-row table for insertion at the given line.
+func (te *TableEditor) OpenNew(insertLine int) {
+	te.headers = []string{"Column 1", "Column 2", "Column 3"}
+	te.alignments = []int{alignLeft, alignLeft, alignLeft}
+	te.rows = [][]string{{"", "", ""}, {"", "", ""}}
+	te.startLine = insertLine
+	te.endLine = insertLine - 1 // sentinel: endLine < startLine means "insert mode"
+	te.curRow = -1
+	te.curCol = 0
+	te.editing = false
+	te.confirmed = false
+	te.scroll = 0
 	te.active = true
 }
 
@@ -127,6 +147,17 @@ func (te *TableEditor) Open(content []string, cursorLine int) {
 func (te *TableEditor) Close() {
 	te.active = false
 	te.editing = false
+}
+
+// visibleDataRows returns the number of data rows that can be displayed
+// in the overlay given the current height.
+func (te *TableEditor) visibleDataRows() int {
+	overhead := 17 // title, borders, header, separator, alignment row, help, padding
+	avail := te.height - overhead
+	if avail < 3 {
+		avail = 3
+	}
+	return avail
 }
 
 // SetSize sets the available width and height for the overlay.
@@ -331,6 +362,17 @@ func (te TableEditor) updateNavigating(key string) (TableEditor, tea.Cmd) {
 		}
 	}
 
+	// Auto-scroll to keep cursor visible
+	vis := te.visibleDataRows()
+	if te.curRow >= 0 {
+		if te.curRow >= te.scroll+vis {
+			te.scroll = te.curRow - vis + 1
+		}
+		if te.curRow < te.scroll {
+			te.scroll = te.curRow
+		}
+	}
+
 	return te, nil
 }
 
@@ -388,10 +430,19 @@ func (te TableEditor) View() string {
 	b.WriteString(te.renderSeparator(colWidths))
 	b.WriteString("\n")
 
-	// Data rows
-	for rowIdx, row := range te.rows {
+	// Data rows (with vertical scrolling)
+	vis := te.visibleDataRows()
+	startIdx := te.scroll
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	endIdx := startIdx + vis
+	if endIdx > len(te.rows) {
+		endIdx = len(te.rows)
+	}
+	for rowIdx := startIdx; rowIdx < endIdx; rowIdx++ {
 		b.WriteString("  ")
-		b.WriteString(te.renderRow(row, colWidths, rowIdx))
+		b.WriteString(te.renderRow(te.rows[rowIdx], colWidths, rowIdx))
 		b.WriteString("\n")
 	}
 
@@ -399,6 +450,13 @@ func (te TableEditor) View() string {
 	b.WriteString("  ")
 	b.WriteString(te.renderBottomBorder(colWidths))
 	b.WriteString("\n")
+
+	// Scroll indicator
+	if len(te.rows) > vis {
+		scrollInfo := fmt.Sprintf("  Rows %d-%d of %d", startIdx+1, endIdx, len(te.rows))
+		b.WriteString(DimStyle.Render(scrollInfo))
+		b.WriteString("\n")
+	}
 
 	// Alignment indicator line
 	b.WriteString("\n")
