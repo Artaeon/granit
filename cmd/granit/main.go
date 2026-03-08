@@ -96,6 +96,9 @@ func main() {
 	case "query":
 		runQuery()
 
+	case "plugin":
+		runPlugin()
+
 	case "config":
 		runConfig()
 
@@ -150,6 +153,15 @@ VAULT MANAGEMENT
   list [path]                   List vault notes (--json, --paths, --tags)
   list --vaults                 List all known vaults
   config                        Show configuration paths and current values
+
+PLUGIN MANAGEMENT
+  plugin list                   List all installed plugins (--json)
+  plugin install <path>         Install a plugin from a local directory
+  plugin remove <name>          Remove an installed plugin
+  plugin enable <name>          Enable a plugin
+  plugin disable <name>         Disable a plugin
+  plugin info <name>            Show detailed plugin information (--json)
+  plugin create <name>          Scaffold a new plugin template (--dir=<path>)
 
 SEARCH & QUERY
   search <query> [path]         Search vault content (--json, --regex)
