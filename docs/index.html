@@ -1155,18 +1155,16 @@
   <!-- Installation -->
   <section id="installation">
     <h2 class="section-title"><span class="accent">//</span> Installation</h2>
-    <p class="section-subtitle">Up and running in under a minute.</p>
+    <p class="section-subtitle">Up and running in under a minute. Pick your preferred method.</p>
     <div class="install-block">
       <div class="install-method">
-        <h3><span class="dot" style="background: var(--green);"></span> From Source</h3>
+        <h3><span class="dot" style="background: var(--accent);"></span> Go Install (Recommended)</h3>
         <div class="code-block">
           <div class="code-header">
             <span>bash</span>
-            <button class="copy-btn" onclick="copyCode(this, 'install-source')">Copy</button>
+            <button class="copy-btn" onclick="copyCode(this, 'install-go')">Copy</button>
           </div>
-          <pre><code id="install-source"><span class="prompt">$</span> <span class="cmd">git</span> <span class="arg">clone</span> https://github.com/artaeon/granit.git
-<span class="prompt">$</span> <span class="cmd">cd</span> granit
-<span class="prompt">$</span> <span class="cmd">go</span> <span class="arg">install</span> ./cmd/granit/</code></pre>
+          <pre><code id="install-go"><span class="prompt">$</span> <span class="cmd">go</span> <span class="arg">install</span> github.com/artaeon/granit/cmd/granit@latest</code></pre>
         </div>
       </div>
       <div class="install-method">
@@ -1176,11 +1174,28 @@
             <span>bash</span>
             <button class="copy-btn" onclick="copyCode(this, 'install-aur')">Copy</button>
           </div>
-          <pre><code id="install-aur"><span class="prompt">$</span> <span class="cmd">yay</span> <span class="arg">-S</span> granit</code></pre>
+          <pre><code id="install-aur"><span class="comment"># Stable release</span>
+<span class="prompt">$</span> <span class="cmd">yay</span> <span class="arg">-S</span> granit
+
+<span class="comment"># Or latest git version</span>
+<span class="prompt">$</span> <span class="cmd">yay</span> <span class="arg">-S</span> granit-git</code></pre>
         </div>
       </div>
       <div class="install-method">
-        <h3><span class="dot" style="background: var(--peach);"></span> Run</h3>
+        <h3><span class="dot" style="background: var(--green);"></span> Build from Source</h3>
+        <div class="code-block">
+          <div class="code-header">
+            <span>bash</span>
+            <button class="copy-btn" onclick="copyCode(this, 'install-source')">Copy</button>
+          </div>
+          <pre><code id="install-source"><span class="prompt">$</span> <span class="cmd">git</span> <span class="arg">clone</span> https://github.com/artaeon/granit.git
+<span class="prompt">$</span> <span class="cmd">cd</span> granit
+<span class="prompt">$</span> <span class="cmd">go</span> <span class="arg">build</span> -o granit ./cmd/granit
+<span class="prompt">$</span> <span class="cmd">sudo</span> <span class="arg">mv</span> granit /usr/local/bin/</code></pre>
+        </div>
+      </div>
+      <div class="install-method">
+        <h3><span class="dot" style="background: var(--peach);"></span> Quick Start</h3>
         <div class="code-block">
           <div class="code-header">
             <span>bash</span>
@@ -1189,8 +1204,11 @@
           <pre><code id="install-run"><span class="comment"># Open a vault directory</span>
 <span class="prompt">$</span> <span class="cmd">granit</span> <span class="arg">open</span> ~/my-vault
 
-<span class="comment"># Or scan and pick from known vaults</span>
-<span class="prompt">$</span> <span class="cmd">granit</span> <span class="arg">scan</span></code></pre>
+<span class="comment"># Or launch the vault selector</span>
+<span class="prompt">$</span> <span class="cmd">granit</span>
+
+<span class="comment"># Try the built-in demo vault</span>
+<span class="prompt">$</span> <span class="cmd">granit</span> <span class="arg">demo-vault</span></code></pre>
         </div>
       </div>
     </div>
