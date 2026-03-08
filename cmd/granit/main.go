@@ -87,6 +87,9 @@ func main() {
 			runListNotes()
 		}
 
+	case "search":
+		runSearch()
+
 	case "config":
 		runConfig()
 
