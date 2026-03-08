@@ -133,6 +133,7 @@ const (
 	CmdCloseTabsToRight
 	CmdTogglePinTab
 	CmdReopenClosedTab
+	CmdSmartPaste
 	CmdQuit
 )
 
@@ -243,6 +244,7 @@ var AllCommands = []Command{
 	{Label: "Mind Map", Desc: "Visual mind map from note headings and wikilinks", Shortcut: "", Action: CmdMindMap, Icon: &IconGraphChar},
 	{Label: "Journal Prompts", Desc: "Daily reflection prompts with guided journaling", Shortcut: "", Action: CmdJournalPrompts, Icon: &IconEditChar},
 	{Label: "Clipboard Manager", Desc: "Browse and paste from clipboard history", Shortcut: "", Action: CmdClipManager, Icon: &IconOutlineChar},
+	{Label: "Smart Paste (URL to Link)", Desc: "Paste URL as markdown link with selected text", Shortcut: "Ctrl+V", Action: CmdSmartPaste, Icon: &IconLinkChar},
 	{Label: "Daily Planner", Desc: "Time-blocked daily schedule with tasks, events, habits", Shortcut: "", Action: CmdDailyPlanner, Icon: &IconCalendarChar},
 	{Label: "AI Smart Scheduler", Desc: "AI-powered optimal schedule generation", Shortcut: "", Action: CmdAIScheduler, Icon: &IconBotChar},
 	{Label: "Recurring Tasks", Desc: "Manage daily/weekly/monthly recurring tasks", Shortcut: "", Action: CmdRecurringTasks, Icon: &IconCalendarChar},

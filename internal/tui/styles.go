@@ -40,6 +40,7 @@ var (
 	ThemeAccentBar = "┃"
 	ThemeSeparator = "─"
 	ThemeLinkUL    = true
+	WrapIndicator  = "↪"
 )
 
 // PanelPadding returns padding values based on current density.

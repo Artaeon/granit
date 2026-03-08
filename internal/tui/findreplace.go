@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,6 +21,10 @@ type FindReplace struct {
 	resultLine  int // line to jump to
 	doReplace   bool
 	doReplaceAll bool
+
+	// Regex search mode
+	regexMode bool
+	regexErr  string // non-empty when the regex pattern is invalid
 
 	// Search history for find queries (Up/Down to recall)
 	history    []string
@@ -57,6 +62,7 @@ func (fr *FindReplace) OpenFind(vaultRoot string) {
 	fr.vaultRoot = vaultRoot
 	fr.historyIdx = -1
 	fr.savedQuery = ""
+	fr.regexErr = ""
 	h := loadSearchHistory(vaultRoot)
 	fr.history = h.FindReplace
 }
@@ -75,6 +81,7 @@ func (fr *FindReplace) OpenReplace(vaultRoot string) {
 	fr.vaultRoot = vaultRoot
 	fr.historyIdx = -1
 	fr.savedQuery = ""
+	fr.regexErr = ""
 	h := loadSearchHistory(vaultRoot)
 	fr.history = h.FindReplace
 }
@@ -85,6 +92,17 @@ func (fr *FindReplace) Close() {
 
 func (fr *FindReplace) IsActive() bool {
 	return fr.active
+}
+
+// IsRegexMode reports whether regex search is enabled.
+func (fr *FindReplace) IsRegexMode() bool {
+	return fr.regexMode
+}
+
+// ToggleRegex flips the regex mode flag.
+func (fr *FindReplace) ToggleRegex() {
+	fr.regexMode = !fr.regexMode
+	fr.regexErr = ""
 }
 
 func (fr *FindReplace) GetJumpLine() int {
@@ -115,9 +133,19 @@ func (fr *FindReplace) GetReplaceText() string {
 
 func (fr *FindReplace) UpdateMatches(content []string) {
 	fr.matches = nil
+	fr.regexErr = ""
 	if fr.findQuery == "" {
 		return
 	}
+
+	if fr.regexMode {
+		fr.updateMatchesRegex(content)
+	} else {
+		fr.updateMatchesPlain(content)
+	}
+}
+
+func (fr *FindReplace) updateMatchesPlain(content []string) {
 	query := strings.ToLower(fr.findQuery)
 	for i, line := range content {
 		lower := strings.ToLower(line)
@@ -140,6 +168,28 @@ func (fr *FindReplace) UpdateMatches(content []string) {
 	}
 }
 
+func (fr *FindReplace) updateMatchesRegex(content []string) {
+	re, err := regexp.Compile("(?i)" + fr.findQuery)
+	if err != nil {
+		fr.regexErr = err.Error()
+		return
+	}
+
+	for i, line := range content {
+		locs := re.FindAllStringIndex(line, -1)
+		for _, loc := range locs {
+			fr.matches = append(fr.matches, FindMatch{
+				line: i,
+				col:  loc[0],
+				text: line,
+			})
+		}
+	}
+	if fr.matchIdx >= len(fr.matches) {
+		fr.matchIdx = 0
+	}
+}
+
 func (fr FindReplace) Update(msg tea.Msg) (FindReplace, tea.Cmd) {
 	if !fr.active {
 		return fr, nil
@@ -150,6 +200,10 @@ func (fr FindReplace) Update(msg tea.Msg) (FindReplace, tea.Cmd) {
 		switch msg.String() {
 		case "esc":
 			fr.active = false
+			return fr, nil
+		case "alt+r":
+			fr.regexMode = !fr.regexMode
+			fr.regexErr = ""
 			return fr, nil
 		case "tab":
 			if fr.mode == 1 {
@@ -253,6 +307,13 @@ func (fr FindReplace) View() string {
 		Bold(true).
 		Render(titleText)
 	b.WriteString(title)
+
+	// Regex mode indicator next to title
+	modeIndicator := DimStyle.Render(" [Aa]")
+	if fr.regexMode {
+		modeIndicator = lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(" [.*]")
+	}
+	b.WriteString(modeIndicator)
 	b.WriteString("\n\n")
 
 	// Find field
@@ -270,13 +331,25 @@ func (fr FindReplace) View() string {
 
 	// Match count
 	if fr.findQuery != "" {
-		matchInfo := DimStyle.Render("  " + smallNum(len(fr.matches)) + " matches")
-		if len(fr.matches) > 0 {
-			matchInfo += DimStyle.Render(" [" + smallNum(fr.matchIdx+1) + "/" + smallNum(len(fr.matches)) + "]")
+		if fr.regexErr != "" {
+			errStyle := lipgloss.NewStyle().Foreground(red).Bold(true)
+			b.WriteString("  " + errStyle.Render("Invalid regex"))
+		} else {
+			matchInfo := DimStyle.Render("  " + smallNum(len(fr.matches)) + " matches")
+			if len(fr.matches) > 0 {
+				matchInfo += DimStyle.Render(" [" + smallNum(fr.matchIdx+1) + "/" + smallNum(len(fr.matches)) + "]")
+			}
+			b.WriteString(matchInfo)
 		}
-		b.WriteString(matchInfo)
 	}
 	b.WriteString("\n")
+
+	// Regex error detail
+	if fr.regexErr != "" {
+		errStyle := lipgloss.NewStyle().Foreground(red)
+		b.WriteString(errStyle.Render("  " + fr.regexErr))
+		b.WriteString("\n")
+	}
 
 	// Replace field
 	if fr.mode == 1 {
@@ -291,6 +364,9 @@ func (fr FindReplace) View() string {
 			replaceInput += DimStyle.Render("_")
 		}
 		b.WriteString(replaceLabel + replaceInput)
+		if fr.regexMode {
+			b.WriteString(DimStyle.Render("  ($1, $2 for groups)"))
+		}
 		b.WriteString("\n")
 	}
 
@@ -308,16 +384,22 @@ func (fr FindReplace) View() string {
 			if len(preview) > width-20 {
 				preview = preview[:width-23] + "..."
 			}
-			// Highlight the match in the preview
-			lowerPreview := strings.ToLower(preview)
-			lowerQuery := strings.ToLower(fr.findQuery)
-			idx := strings.Index(lowerPreview, lowerQuery)
-			if idx >= 0 {
-				before := preview[:idx]
-				match := preview[idx : idx+len(fr.findQuery)]
-				after := preview[idx+len(fr.findQuery):]
-				highlighted := MatchHighlightStyle.Render(match)
-				preview = before + highlighted + after
+
+			if fr.regexMode {
+				// Regex highlighting
+				preview = fr.highlightRegex(preview)
+			} else {
+				// Plain text highlighting
+				lowerPreview := strings.ToLower(preview)
+				lowerQuery := strings.ToLower(fr.findQuery)
+				idx := strings.Index(lowerPreview, lowerQuery)
+				if idx >= 0 {
+					before := preview[:idx]
+					match := preview[idx : idx+len(fr.findQuery)]
+					after := preview[idx+len(fr.findQuery):]
+					highlighted := MatchHighlightStyle.Render(match)
+					preview = before + highlighted + after
+				}
 			}
 
 			if i == fr.matchIdx {
@@ -335,9 +417,9 @@ func (fr FindReplace) View() string {
 	}
 
 	b.WriteString("\n\n")
-	hints := "  ↑↓: navigate/history  Enter: jump"
+	hints := "  ↑↓: navigate/history  Enter: jump  Alt+R: regex"
 	if fr.mode == 1 {
-		hints += "  Tab: switch field  Ctrl+A: replace all"
+		hints += "  Tab: switch  Ctrl+A: replace all"
 	}
 	b.WriteString(DimStyle.Render(hints))
 
@@ -354,4 +436,31 @@ func (fr FindReplace) View() string {
 		Background(mantle)
 
 	return border.Render(b.String())
+}
+
+// highlightRegex highlights all regex matches in the preview string.
+func (fr FindReplace) highlightRegex(preview string) string {
+	re, err := regexp.Compile("(?i)" + fr.findQuery)
+	if err != nil {
+		return preview
+	}
+
+	locs := re.FindAllStringIndex(preview, -1)
+	if len(locs) == 0 {
+		return preview
+	}
+
+	var result strings.Builder
+	prev := 0
+	for _, loc := range locs {
+		if loc[0] > prev {
+			result.WriteString(preview[prev:loc[0]])
+		}
+		result.WriteString(MatchHighlightStyle.Render(preview[loc[0]:loc[1]]))
+		prev = loc[1]
+	}
+	if prev < len(preview) {
+		result.WriteString(preview[prev:])
+	}
+	return result.String()
 }

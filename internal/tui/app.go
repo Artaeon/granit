@@ -5950,6 +5950,12 @@ func (m *Model) doReplace() {
 	if query == "" {
 		return
 	}
+
+	if m.findReplace.IsRegexMode() {
+		m.doReplaceRegex(query, replacement, false)
+		return
+	}
+
 	// Replace first occurrence from current position
 	for i := m.editor.cursor; i < len(m.editor.content); i++ {
 		lower := strings.ToLower(m.editor.content[i])
@@ -5971,6 +5977,12 @@ func (m *Model) doReplaceAll() {
 	if query == "" {
 		return
 	}
+
+	if m.findReplace.IsRegexMode() {
+		m.doReplaceRegex(query, replacement, true)
+		return
+	}
+
 	count := 0
 	for i := range m.editor.content {
 		lower := strings.ToLower(m.editor.content[i])
@@ -5983,6 +5995,51 @@ func (m *Model) doReplaceAll() {
 			count++
 		}
 	}
+	if count > 0 {
+		m.editor.modified = true
+		m.editor.countWords()
+		m.findReplace.UpdateMatches(m.editor.content)
+		m.statusbar.SetMessage(fmt.Sprintf("Replaced %d occurrences", count))
+	}
+}
+
+// doReplaceRegex performs regex-aware replacement. When replaceAll is false,
+// only the first match from the current cursor position is replaced.
+func (m *Model) doReplaceRegex(pattern, replacement string, replaceAll bool) {
+	re, err := regexp.Compile("(?i)" + pattern)
+	if err != nil {
+		return
+	}
+
+	count := 0
+	start := 0
+	if !replaceAll {
+		start = m.editor.cursor
+	}
+
+	for i := start; i < len(m.editor.content); i++ {
+		line := m.editor.content[i]
+		if replaceAll {
+			newLine := re.ReplaceAllString(line, replacement)
+			if newLine != line {
+				// Count individual matches for the status message
+				count += len(re.FindAllStringIndex(line, -1))
+				m.editor.content[i] = newLine
+			}
+		} else {
+			loc := re.FindStringIndex(line)
+			if loc != nil {
+				newLine := line[:loc[0]] + re.ReplaceAllString(line[loc[0]:loc[1]], replacement) + line[loc[1]:]
+				m.editor.content[i] = newLine
+				count++
+				m.editor.modified = true
+				m.editor.countWords()
+				m.findReplace.UpdateMatches(m.editor.content)
+				return
+			}
+		}
+	}
+
 	if count > 0 {
 		m.editor.modified = true
 		m.editor.countWords()
