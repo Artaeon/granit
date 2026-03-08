@@ -236,6 +236,52 @@ func (r Renderer) renderCalloutBlock(info calloutInfo, title string, contentLine
 	return out
 }
 
+// renderMathBlock renders a block math expression in a styled box.
+func (r Renderer) renderMathBlock(mathLines []string, contentWidth int) []string {
+	var out []string
+
+	boxWidth := contentWidth - 4
+	if boxWidth < 20 {
+		boxWidth = 20
+	}
+
+	borderStyle := lipgloss.NewStyle().Foreground(teal)
+	labelStyle := lipgloss.NewStyle().Foreground(teal).Italic(true)
+	mathStyle := lipgloss.NewStyle().Foreground(teal).Italic(true)
+
+	// Top border with "math" label
+	label := " math "
+	topPad := boxWidth - len([]rune(label)) - 2
+	if topPad < 0 {
+		topPad = 0
+	}
+	topLine := "  " + borderStyle.Render("╭"+label) + borderStyle.Render(strings.Repeat("─", topPad)+"╮")
+	_ = labelStyle // label is rendered inline
+	out = append(out, topLine)
+
+	// Math content lines
+	for _, ml := range mathLines {
+		ml = strings.TrimSpace(ml)
+		// Center the math content within the box
+		padding := (boxWidth - len([]rune(ml)) - 4) / 2
+		if padding < 0 {
+			padding = 0
+		}
+		contentLine := "  " + borderStyle.Render("│") +
+			strings.Repeat(" ", padding+1) +
+			mathStyle.Render(ml) +
+			strings.Repeat(" ", maxInt(1, boxWidth-len([]rune(ml))-padding-3)) +
+			borderStyle.Render("│")
+		out = append(out, contentLine)
+	}
+
+	// Bottom border
+	bottomLine := "  " + borderStyle.Render("╰"+strings.Repeat("─", boxWidth)+"╯")
+	out = append(out, bottomLine)
+
+	return out
+}
+
 // renderEmbed renders the embedded note preview box.
 func (r Renderer) renderEmbed(noteName string, heading string, contentWidth int) []string {
 	var out []string
@@ -597,11 +643,49 @@ func (r Renderer) renderMarkdown(content string) []string {
 			continue
 		}
 
+		// Block math $$...$$
+		if strings.HasPrefix(trimmed, "$$") {
+			// Check if it's a single-line block math: $$...$$ on one line
+			if strings.HasSuffix(trimmed, "$$") && len(trimmed) > 4 {
+				mathContent := trimmed[2 : len(trimmed)-2]
+				mathLines := r.renderMathBlock([]string{mathContent}, contentWidth)
+				result = append(result, mathLines...)
+				continue
+			}
+			// Multi-line block math: collect until closing $$
+			var mathContentLines []string
+			for i+1 < len(lines) {
+				i++
+				nextTrimmed := strings.TrimSpace(lines[i])
+				if nextTrimmed == "$$" || strings.HasSuffix(nextTrimmed, "$$") {
+					if nextTrimmed != "$$" {
+						mathContentLines = append(mathContentLines, strings.TrimSuffix(nextTrimmed, "$$"))
+					}
+					break
+				}
+				mathContentLines = append(mathContentLines, lines[i])
+			}
+			mathLines := r.renderMathBlock(mathContentLines, contentWidth)
+			result = append(result, mathLines...)
+			continue
+		}
+
 		// Horizontal rule
 		if trimmed == "---" || trimmed == "***" || trimmed == "___" {
-			rule := lipgloss.NewStyle().
-				Foreground(surface1).
-				Render("  " + strings.Repeat("━", contentWidth-4))
+			hrChar := "─"
+			if trimmed == "***" {
+				hrChar = "═"
+			} else if trimmed == "___" {
+				hrChar = "━"
+			}
+			leftStyle := lipgloss.NewStyle().Foreground(surface1)
+			accentStyle := lipgloss.NewStyle().Foreground(overlay0)
+			diamond := accentStyle.Render(" ◆ ")
+			halfWidth := (contentWidth - 8) / 2
+			if halfWidth < 2 {
+				halfWidth = 2
+			}
+			rule := "  " + leftStyle.Render(strings.Repeat(hrChar, halfWidth)) + diamond + leftStyle.Render(strings.Repeat(hrChar, halfWidth))
 			result = append(result, rule)
 			continue
 		}
