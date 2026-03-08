@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -128,11 +130,19 @@ type webClipTickMsg struct{}
 // WebClipper overlay — fetch a URL, extract content, prepare a markdown note
 // ---------------------------------------------------------------------------
 
+// clipFormat controls the output format of the web clip.
+type clipFormat int
+
+const (
+	clipFormatFull       clipFormat = iota // frontmatter + heading + content
+	clipFormatSimplified                   // just content, no frontmatter
+)
+
 // WebClipper is an overlay for configuring and previewing a web clip.
 type WebClipper struct {
-	active  bool
-	width   int
-	height  int
+	active bool
+	width  int
+	height int
 
 	url     string
 	title   string
@@ -150,6 +160,18 @@ type WebClipper struct {
 	editingTitle bool
 	titleBuf     string
 	scrollOffset int
+
+	// URL input mode — when opened with empty URL
+	urlInputMode bool
+	urlBuf       string
+
+	// Save format toggle
+	format clipFormat
+
+	// Custom tags
+	editingTags bool
+	tagsBuf     string
+	customTags  []string
 }
 
 // NewWebClipper returns a zero-value WebClipper ready for use.
@@ -162,13 +184,12 @@ func (wc *WebClipper) IsActive() bool {
 	return wc.active
 }
 
-// Open activates the web clipper and begins fetching the given URL.
+// Open activates the web clipper. If url is empty, the URL input field is shown.
 func (wc *WebClipper) Open(url string) {
 	wc.active = true
 	wc.url = url
 	wc.title = ""
 	wc.content = ""
-	wc.loading = true
 	wc.loadingTick = 0
 	wc.done = false
 	wc.resultReady = false
@@ -177,6 +198,21 @@ func (wc *WebClipper) Open(url string) {
 	wc.editingTitle = false
 	wc.titleBuf = ""
 	wc.scrollOffset = 0
+	wc.format = clipFormatFull
+	wc.editingTags = false
+	wc.tagsBuf = ""
+	wc.customTags = nil
+
+	if url == "" {
+		// URL input mode — wait for user to type URL
+		wc.urlInputMode = true
+		wc.urlBuf = ""
+		wc.loading = false
+	} else {
+		wc.urlInputMode = false
+		wc.urlBuf = ""
+		wc.loading = true
+	}
 }
 
 // Close deactivates the overlay and resets state.
@@ -186,6 +222,8 @@ func (wc *WebClipper) Close() {
 	wc.done = false
 	wc.resultReady = false
 	wc.editingTitle = false
+	wc.urlInputMode = false
+	wc.editingTags = false
 }
 
 // SetSize updates the overlay dimensions.
@@ -234,9 +272,19 @@ func (wc WebClipper) Update(msg tea.Msg) (WebClipper, tea.Cmd) {
 		return wc, nil
 
 	case tea.KeyMsg:
+		// URL input mode
+		if wc.urlInputMode {
+			return wc.updateURLInput(msg)
+		}
+
 		// Editing title mode
 		if wc.editingTitle {
 			return wc.updateEditTitle(msg)
+		}
+
+		// Editing tags mode
+		if wc.editingTags {
+			return wc.updateEditTags(msg)
 		}
 
 		// Normal navigation
@@ -247,20 +295,9 @@ func (wc WebClipper) Update(msg tea.Msg) (WebClipper, tea.Cmd) {
 
 		case "enter":
 			if wc.done && wc.title != "" {
-				// Build final markdown with frontmatter
-				now := time.Now().Format("2006-01-02")
-				var sb strings.Builder
-				sb.WriteString("---\n")
-				sb.WriteString("source: " + wc.url + "\n")
-				sb.WriteString("clipped: " + now + "\n")
-				sb.WriteString("tags: [clipped]\n")
-				sb.WriteString("---\n\n")
-				sb.WriteString("# " + wc.title + "\n\n")
-				sb.WriteString(wc.content)
-
 				wc.resultReady = true
 				wc.resultTitle = wc.title
-				wc.resultContent = sb.String()
+				wc.resultContent = wc.buildOutput()
 				wc.active = false
 				return wc, nil
 			}
@@ -269,6 +306,21 @@ func (wc WebClipper) Update(msg tea.Msg) (WebClipper, tea.Cmd) {
 			if wc.done {
 				wc.editingTitle = true
 				wc.titleBuf = wc.title
+			}
+
+		case "f":
+			if wc.done {
+				if wc.format == clipFormatFull {
+					wc.format = clipFormatSimplified
+				} else {
+					wc.format = clipFormatFull
+				}
+			}
+
+		case "t":
+			if wc.done {
+				wc.editingTags = true
+				wc.tagsBuf = strings.Join(wc.customTags, ", ")
 			}
 
 		case "j", "down":
@@ -293,6 +345,56 @@ func (wc WebClipper) Update(msg tea.Msg) (WebClipper, tea.Cmd) {
 	return wc, nil
 }
 
+// updateURLInput handles key events in URL input mode.
+func (wc WebClipper) updateURLInput(msg tea.KeyMsg) (WebClipper, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		u := strings.TrimSpace(wc.urlBuf)
+		if u == "" {
+			return wc, nil
+		}
+		// Auto-add scheme if missing
+		if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+			u = "https://" + u
+		}
+		wc.url = u
+		wc.urlInputMode = false
+		wc.loading = true
+		return wc, tea.Batch(
+			fetchAndClip(u),
+			tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg {
+				return webClipTickMsg{}
+			}),
+		)
+	case "esc":
+		wc.active = false
+		return wc, nil
+	case "backspace":
+		if len(wc.urlBuf) > 0 {
+			wc.urlBuf = wc.urlBuf[:len(wc.urlBuf)-1]
+		}
+	case "ctrl+u":
+		wc.urlBuf = ""
+	case "ctrl+v":
+		if pasted, err := ClipboardPaste(); err == nil {
+			pasted = strings.TrimSpace(pasted)
+			// Only paste first line
+			if idx := strings.IndexAny(pasted, "\r\n"); idx >= 0 {
+				pasted = pasted[:idx]
+			}
+			wc.urlBuf += pasted
+		}
+	case "space":
+		// No spaces in URLs — ignore
+	default:
+		ch := msg.String()
+		if len(ch) == 1 {
+			wc.urlBuf += ch
+		}
+	}
+	return wc, nil
+}
+
 // updateEditTitle handles key events while editing the title.
 func (wc WebClipper) updateEditTitle(msg tea.KeyMsg) (WebClipper, tea.Cmd) {
 	switch msg.String() {
@@ -314,6 +416,55 @@ func (wc WebClipper) updateEditTitle(msg tea.KeyMsg) (WebClipper, tea.Cmd) {
 		}
 	}
 	return wc, nil
+}
+
+// updateEditTags handles key events while editing tags.
+func (wc WebClipper) updateEditTags(msg tea.KeyMsg) (WebClipper, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		wc.customTags = nil
+		for _, t := range strings.Split(wc.tagsBuf, ",") {
+			t = strings.TrimSpace(t)
+			if t != "" {
+				wc.customTags = append(wc.customTags, t)
+			}
+		}
+		wc.editingTags = false
+	case "esc":
+		wc.editingTags = false
+	case "backspace":
+		if len(wc.tagsBuf) > 0 {
+			wc.tagsBuf = wc.tagsBuf[:len(wc.tagsBuf)-1]
+		}
+	default:
+		ch := msg.String()
+		if len(ch) == 1 {
+			wc.tagsBuf += ch
+		}
+	}
+	return wc, nil
+}
+
+// buildOutput assembles the final markdown output based on current settings.
+func (wc WebClipper) buildOutput() string {
+	var sb strings.Builder
+
+	if wc.format == clipFormatFull {
+		now := time.Now().Format("2006-01-02")
+		sb.WriteString("---\n")
+		sb.WriteString("source: " + wc.url + "\n")
+		sb.WriteString("clipped: " + now + "\n")
+
+		// Build tags list
+		tags := []string{"clipped"}
+		tags = append(tags, wc.customTags...)
+		sb.WriteString("tags: [" + strings.Join(tags, ", ") + "]\n")
+		sb.WriteString("---\n\n")
+		sb.WriteString("# " + wc.title + "\n\n")
+	}
+
+	sb.WriteString(wc.content)
+	return sb.String()
 }
 
 // maxScroll returns the maximum scroll offset for the content preview.
@@ -359,6 +510,37 @@ func (wc WebClipper) View() string {
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerW)))
 	b.WriteString("\n\n")
 
+	// URL input mode
+	if wc.urlInputMode {
+		urlLabel := lipgloss.NewStyle().Foreground(text).Render("  URL: ")
+		cursor := lipgloss.NewStyle().Foreground(green).Bold(true).Render("\u2588")
+		urlVal := lipgloss.NewStyle().
+			Foreground(blue).
+			Bold(true).
+			Render(wc.urlBuf + cursor)
+		b.WriteString(urlLabel + urlVal)
+		b.WriteString("\n\n")
+		b.WriteString(DimStyle.Render("  Type or paste a URL and press Enter"))
+		b.WriteString("\n\n")
+
+		helpKeys := lipgloss.NewStyle().Foreground(surface0).Background(overlay0).Padding(0, 1)
+		helpDesc := DimStyle
+		b.WriteString("  ")
+		b.WriteString(helpKeys.Render("Enter") + helpDesc.Render(" fetch") + "  ")
+		b.WriteString(helpKeys.Render("Ctrl+V") + helpDesc.Render(" paste") + "  ")
+		b.WriteString(helpKeys.Render("Ctrl+U") + helpDesc.Render(" clear") + "  ")
+		b.WriteString(helpKeys.Render("Esc") + helpDesc.Render(" cancel"))
+
+		border := lipgloss.NewStyle().
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(mauve).
+			Padding(1, 2).
+			Width(width).
+			Background(mantle)
+
+		return border.Render(b.String())
+	}
+
 	// URL
 	urlLabel := lipgloss.NewStyle().Foreground(text).Render("  URL: ")
 	urlValue := lipgloss.NewStyle().Foreground(blue).Render(truncate(wc.url, innerW-8))
@@ -391,6 +573,35 @@ func (wc WebClipper) View() string {
 				Bold(true).
 				Render(truncate(wc.title, innerW-10))
 			b.WriteString(titleLabel + titleVal)
+		}
+		b.WriteString("\n")
+
+		// Format indicator
+		formatLabel := lipgloss.NewStyle().Foreground(text).Render("  Format: ")
+		formatName := "full (frontmatter + content)"
+		if wc.format == clipFormatSimplified {
+			formatName = "simplified (content only)"
+		}
+		formatVal := lipgloss.NewStyle().Foreground(teal).Render(formatName)
+		b.WriteString(formatLabel + formatVal)
+		b.WriteString("\n")
+
+		// Tags
+		tagsLabel := lipgloss.NewStyle().Foreground(text).Render("  Tags: ")
+		if wc.editingTags {
+			cursor := lipgloss.NewStyle().Foreground(green).Bold(true).Render("\u2588")
+			editVal := lipgloss.NewStyle().
+				Foreground(yellow).
+				Bold(true).
+				Render(wc.tagsBuf + cursor)
+			b.WriteString(tagsLabel + editVal)
+			b.WriteString("\n")
+			b.WriteString(DimStyle.Render("  comma-separated  Enter: confirm  Esc: cancel"))
+		} else {
+			allTags := []string{"clipped"}
+			allTags = append(allTags, wc.customTags...)
+			tagsVal := lipgloss.NewStyle().Foreground(yellow).Render(strings.Join(allTags, ", "))
+			b.WriteString(tagsLabel + tagsVal)
 		}
 		b.WriteString("\n\n")
 
@@ -434,13 +645,15 @@ func (wc WebClipper) View() string {
 		b.WriteString("\n")
 
 		// Help
-		if !wc.editingTitle {
+		if !wc.editingTitle && !wc.editingTags {
 			helpKeys := lipgloss.NewStyle().Foreground(surface0).Background(overlay0).Padding(0, 1)
 			helpDesc := DimStyle
 
 			b.WriteString("  ")
 			b.WriteString(helpKeys.Render("Enter") + helpDesc.Render(" save") + "  ")
-			b.WriteString(helpKeys.Render("e") + helpDesc.Render(" edit title") + "  ")
+			b.WriteString(helpKeys.Render("e") + helpDesc.Render(" title") + "  ")
+			b.WriteString(helpKeys.Render("f") + helpDesc.Render(" format") + "  ")
+			b.WriteString(helpKeys.Render("t") + helpDesc.Render(" tags") + "\n  ")
 			b.WriteString(helpKeys.Render("j/k") + helpDesc.Render(" scroll") + "  ")
 			b.WriteString(helpKeys.Render("Esc") + helpDesc.Render(" cancel"))
 		}
@@ -462,44 +675,56 @@ func (wc WebClipper) View() string {
 
 // fetchAndClip returns a tea.Cmd that fetches the URL, extracts the title
 // and body content, converts to markdown, and sends back a webClipResult.
-func fetchAndClip(url string) tea.Cmd {
+func fetchAndClip(rawURL string) tea.Cmd {
 	return func() tea.Msg {
 		client := &http.Client{
 			Timeout: 10 * time.Second,
 		}
 
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequest("GET", rawURL, nil)
 		if err != nil {
-			return webClipResult{url: url, err: fmt.Errorf("invalid URL: %w", err)}
+			return webClipResult{url: rawURL, err: fmt.Errorf("invalid URL: %w", err)}
 		}
 		req.Header.Set("User-Agent", "Granit/1.0 WebClipper")
 
 		resp, err := client.Do(req)
 		if err != nil {
-			return webClipResult{url: url, err: fmt.Errorf("fetch failed: %w", err)}
+			return webClipResult{url: rawURL, err: fmt.Errorf("fetch failed: %w", err)}
 		}
 		defer resp.Body.Close()
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return webClipResult{url: url, err: fmt.Errorf("read failed: %w", err)}
+			return webClipResult{url: rawURL, err: fmt.Errorf("read failed: %w", err)}
 		}
 
 		html := string(body)
 
+		// Derive base URL for resolving relative paths
+		baseURL := ""
+		if parsed, err := url.Parse(rawURL); err == nil {
+			baseURL = parsed.Scheme + "://" + parsed.Host
+		}
+
 		// Extract <title>
 		title := extractTitle(html)
+		if title == "" {
+			title = extractOGTitle(html)
+		}
 		if title == "" {
 			title = "Untitled"
 		}
 
+		// Try reader-mode extraction: prefer <article> or <main>
+		contentHTML := extractReaderContent(html)
+
 		// Convert HTML to markdown-like text
-		content := htmlToMarkdown(html)
+		content := htmlToMarkdown(contentHTML, baseURL)
 
 		return webClipResult{
 			title:   title,
 			content: content,
-			url:     url,
+			url:     rawURL,
 		}
 	}
 }
@@ -510,11 +735,18 @@ func fetchAndClip(url string) tea.Cmd {
 
 var (
 	reClipTitle      = regexp.MustCompile(`(?i)<title[^>]*>([\s\S]*?)</title>`)
+	reOGTitle        = regexp.MustCompile(`(?i)<meta\s[^>]*property\s*=\s*"og:title"[^>]*content\s*=\s*"([^"]*)"`)
+	reOGTitleAlt     = regexp.MustCompile(`(?i)<meta\s[^>]*content\s*=\s*"([^"]*)"[^>]*property\s*=\s*"og:title"`)
 	reScript         = regexp.MustCompile(`(?is)<script[\s>][\s\S]*?</script>`)
 	reStyle          = regexp.MustCompile(`(?is)<style[\s>][\s\S]*?</style>`)
 	reNav            = regexp.MustCompile(`(?is)<nav[\s>][\s\S]*?</nav>`)
 	reFooter         = regexp.MustCompile(`(?is)<footer[\s>][\s\S]*?</footer>`)
 	reHeader         = regexp.MustCompile(`(?is)<header[\s>][\s\S]*?</header>`)
+	reAside          = regexp.MustCompile(`(?is)<aside[\s>][\s\S]*?</aside>`)
+	reForm           = regexp.MustCompile(`(?is)<form[\s>][\s\S]*?</form>`)
+	reIframe         = regexp.MustCompile(`(?is)<iframe[\s>][\s\S]*?</iframe>`)
+	reArticle        = regexp.MustCompile(`(?is)<article[^>]*>([\s\S]*?)</article>`)
+	reMain           = regexp.MustCompile(`(?is)<main[^>]*>([\s\S]*?)</main>`)
 	reH1             = regexp.MustCompile(`(?i)<h1[^>]*>([\s\S]*?)</h1>`)
 	reH2             = regexp.MustCompile(`(?i)<h2[^>]*>([\s\S]*?)</h2>`)
 	reH3             = regexp.MustCompile(`(?i)<h3[^>]*>([\s\S]*?)</h3>`)
@@ -525,9 +757,29 @@ var (
 	reAnchor         = regexp.MustCompile(`(?i)<a\s[^>]*href="([^"]*)"[^>]*>([\s\S]*?)</a>`)
 	reStrong         = regexp.MustCompile(`(?i)<(?:strong|b)[^>]*>([\s\S]*?)</(?:strong|b)>`)
 	reEm             = regexp.MustCompile(`(?i)<(?:em|i)[^>]*>([\s\S]*?)</(?:em|i)>`)
+	reStrikethrough  = regexp.MustCompile(`(?i)<(?:del|s)[^>]*>([\s\S]*?)</(?:del|s)>`)
+	reSup            = regexp.MustCompile(`(?i)<sup[^>]*>([\s\S]*?)</sup>`)
+	reSub            = regexp.MustCompile(`(?i)<sub[^>]*>([\s\S]*?)</sub>`)
 	clipReListItem       = regexp.MustCompile(`(?i)<li[^>]*>([\s\S]*?)</li>`)
 	clipReBlockquote     = regexp.MustCompile(`(?i)<blockquote[^>]*>([\s\S]*?)</blockquote>`)
 	reCode           = regexp.MustCompile(`(?i)<code[^>]*>([\s\S]*?)</code>`)
+	rePreCode        = regexp.MustCompile(`(?is)<pre[^>]*>\s*<code(?:\s+class="(?:language-)?([^"]*)")?[^>]*>([\s\S]*?)</code>\s*</pre>`)
+	rePre            = regexp.MustCompile(`(?is)<pre[^>]*>([\s\S]*?)</pre>`)
+	reImg            = regexp.MustCompile(`(?i)<img\s[^>]*>`)
+	reImgSrc         = regexp.MustCompile(`(?i)src="([^"]*)"`)
+	reImgAlt         = regexp.MustCompile(`(?i)alt="([^"]*)"`)
+	reFigure         = regexp.MustCompile(`(?is)<figure[^>]*>([\s\S]*?)</figure>`)
+	reFigCaption     = regexp.MustCompile(`(?is)<figcaption[^>]*>([\s\S]*?)</figcaption>`)
+	reHr             = regexp.MustCompile(`(?i)<hr\s*/?>`)
+	reTable          = regexp.MustCompile(`(?is)<table[^>]*>([\s\S]*?)</table>`)
+	reThead          = regexp.MustCompile(`(?is)<thead[^>]*>([\s\S]*?)</thead>`)
+	reTbody          = regexp.MustCompile(`(?is)<tbody[^>]*>([\s\S]*?)</tbody>`)
+	reTr             = regexp.MustCompile(`(?is)<tr[^>]*>([\s\S]*?)</tr>`)
+	reThTd           = regexp.MustCompile(`(?is)<(?:th|td)[^>]*>([\s\S]*?)</(?:th|td)>`)
+	reOlOpen         = regexp.MustCompile(`(?i)<ol[^>]*>`)
+	reOlClose        = regexp.MustCompile(`(?i)</ol>`)
+	reUlOpen         = regexp.MustCompile(`(?i)<ul[^>]*>`)
+	reUlClose        = regexp.MustCompile(`(?i)</ul>`)
 	reBr             = regexp.MustCompile(`(?i)<br\s*/?>`)
 	reTagStrip       = regexp.MustCompile(`<[^>]+>`)
 	reMultiNewline   = regexp.MustCompile(`\n{3,}`)
@@ -553,8 +805,61 @@ func extractTitle(html string) string {
 	return strings.TrimSpace(title)
 }
 
+// extractOGTitle extracts the og:title meta tag as fallback title.
+func extractOGTitle(html string) string {
+	m := reOGTitle.FindStringSubmatch(html)
+	if len(m) >= 2 {
+		return decodeHTMLEntities(strings.TrimSpace(m[1]))
+	}
+	m = reOGTitleAlt.FindStringSubmatch(html)
+	if len(m) >= 2 {
+		return decodeHTMLEntities(strings.TrimSpace(m[1]))
+	}
+	return ""
+}
+
+// extractReaderContent tries to find <article> or <main> for focused content.
+// Falls back to full HTML body if neither is found.
+func extractReaderContent(html string) string {
+	// Try <article> first (most blog/news sites)
+	if m := reArticle.FindStringSubmatch(html); len(m) >= 2 {
+		return m[1]
+	}
+	// Try <main>
+	if m := reMain.FindStringSubmatch(html); len(m) >= 2 {
+		return m[1]
+	}
+	// Fallback: use whole document
+	return html
+}
+
+// resolveURL resolves a potentially relative URL against a base URL.
+func resolveURL(href, baseURL string) string {
+	if baseURL == "" || href == "" {
+		return href
+	}
+	// Already absolute
+	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") || strings.HasPrefix(href, "//") {
+		return href
+	}
+	// Data URIs, mailto, etc. — leave alone
+	if strings.Contains(href, ":") {
+		return href
+	}
+	// Protocol-relative
+	if strings.HasPrefix(href, "//") {
+		return "https:" + href
+	}
+	// Absolute path
+	if strings.HasPrefix(href, "/") {
+		return baseURL + href
+	}
+	// Relative path
+	return baseURL + "/" + href
+}
+
 // htmlToMarkdown performs a best-effort conversion of HTML to markdown.
-func htmlToMarkdown(html string) string {
+func htmlToMarkdown(html string, baseURL string) string {
 	// Remove comments
 	html = reHTMLComment.ReplaceAllString(html, "")
 
@@ -564,18 +869,135 @@ func htmlToMarkdown(html string) string {
 	html = reNav.ReplaceAllString(html, "")
 	html = reFooter.ReplaceAllString(html, "")
 	html = reHeader.ReplaceAllString(html, "")
+	html = reAside.ReplaceAllString(html, "")
+	html = reForm.ReplaceAllString(html, "")
+	html = reIframe.ReplaceAllString(html, "")
+
+	// --- Pre/code blocks (before inline code, to avoid clobbering) ---
+	html = rePreCode.ReplaceAllStringFunc(html, func(match string) string {
+		m := rePreCode.FindStringSubmatch(match)
+		if len(m) < 3 {
+			return match
+		}
+		lang := m[1]
+		code := m[2]
+		// Decode HTML entities in code blocks
+		code = decodeHTMLEntities(code)
+		// Strip any remaining tags inside code
+		code = reTagStrip.ReplaceAllString(code, "")
+		code = strings.TrimRight(code, "\n")
+		return "\n\n```" + lang + "\n" + code + "\n```\n\n"
+	})
+	// Standalone <pre> without <code>
+	html = rePre.ReplaceAllStringFunc(html, func(match string) string {
+		m := rePre.FindStringSubmatch(match)
+		if len(m) < 2 {
+			return match
+		}
+		code := decodeHTMLEntities(m[1])
+		code = reTagStrip.ReplaceAllString(code, "")
+		code = strings.TrimRight(code, "\n")
+		return "\n\n```\n" + code + "\n```\n\n"
+	})
+
+	// --- Figures with captions ---
+	html = reFigure.ReplaceAllStringFunc(html, func(match string) string {
+		m := reFigure.FindStringSubmatch(match)
+		if len(m) < 2 {
+			return match
+		}
+		inner := m[1]
+
+		// Extract image
+		imgMatch := reImg.FindString(inner)
+		imgMd := ""
+		if imgMatch != "" {
+			src := ""
+			alt := ""
+			if sm := reImgSrc.FindStringSubmatch(imgMatch); len(sm) >= 2 {
+				src = resolveURL(sm[1], baseURL)
+			}
+			if am := reImgAlt.FindStringSubmatch(imgMatch); len(am) >= 2 {
+				alt = am[1]
+			}
+			imgMd = "![" + alt + "](" + src + ")"
+		}
+
+		// Extract caption
+		caption := ""
+		if cm := reFigCaption.FindStringSubmatch(inner); len(cm) >= 2 {
+			caption = reTagStrip.ReplaceAllString(cm[1], "")
+			caption = strings.TrimSpace(decodeHTMLEntities(caption))
+		}
+
+		result := "\n\n"
+		if imgMd != "" {
+			result += imgMd + "\n"
+		}
+		if caption != "" {
+			result += "*" + caption + "*\n"
+		}
+		return result + "\n"
+	})
+
+	// --- Images ---
+	html = reImg.ReplaceAllStringFunc(html, func(match string) string {
+		src := ""
+		alt := ""
+		if sm := reImgSrc.FindStringSubmatch(match); len(sm) >= 2 {
+			src = resolveURL(sm[1], baseURL)
+		}
+		if am := reImgAlt.FindStringSubmatch(match); len(am) >= 2 {
+			alt = am[1]
+		}
+		if src == "" {
+			return ""
+		}
+		return "![" + alt + "](" + src + ")"
+	})
+
+	// --- Tables ---
+	html = reTable.ReplaceAllStringFunc(html, func(match string) string {
+		return convertTable(match)
+	})
+
+	// --- Horizontal rules ---
+	html = reHr.ReplaceAllString(html, "\n\n---\n\n")
+
+	// --- Ordered lists with numbering ---
+	html = convertOrderedLists(html)
+
+	// --- Unordered lists with nesting ---
+	html = convertUnorderedLists(html)
 
 	// Convert inline elements first (inside tags that will be processed next)
-	// Links: <a href="url">text</a> → [text](url)
-	html = reAnchor.ReplaceAllString(html, "[$2]($1)")
+	// Links: <a href="url">text</a> -> [text](url)
+	html = reAnchor.ReplaceAllStringFunc(html, func(match string) string {
+		m := reAnchor.FindStringSubmatch(match)
+		if len(m) < 3 {
+			return match
+		}
+		href := resolveURL(m[1], baseURL)
+		linkText := m[2]
+		return "[" + linkText + "](" + href + ")"
+	})
 
-	// Bold: <strong>/<b> → **text**
+	// Bold: <strong>/<b> -> **text**
 	html = reStrong.ReplaceAllString(html, "**$1**")
 
-	// Italic: <em>/<i> → *text*
+	// Italic: <em>/<i> -> *text*
 	html = reEm.ReplaceAllString(html, "*$1*")
 
-	// Inline code
+	// Strikethrough: <del>/<s> -> ~~text~~
+	html = reStrikethrough.ReplaceAllString(html, "~~$1~~")
+
+	// Superscript: <sup> -> ^text^
+	html = reSup.ReplaceAllString(html, "^$1^")
+
+	// Subscript: <sub> -> ~text~
+	html = reSub.ReplaceAllString(html, "~$1~")
+
+	// Inline code (only remaining after pre/code blocks were handled)
 	html = reCode.ReplaceAllString(html, "`$1`")
 
 	// Headings
@@ -589,7 +1011,7 @@ func htmlToMarkdown(html string) string {
 	// Paragraphs
 	html = reParagraph.ReplaceAllString(html, "\n\n$1\n\n")
 
-	// List items
+	// Remaining list items (not already handled by ol/ul conversion)
 	html = clipReListItem.ReplaceAllString(html, "\n- $1")
 
 	// Blockquotes
@@ -630,6 +1052,150 @@ func htmlToMarkdown(html string) string {
 	html = reMultiNewline.ReplaceAllString(html, "\n\n")
 
 	return strings.TrimSpace(html)
+}
+
+// convertTable converts an HTML table to a markdown table.
+func convertTable(tableHTML string) string {
+	// Extract all rows
+	rows := reTr.FindAllStringSubmatch(tableHTML, -1)
+	if len(rows) == 0 {
+		return ""
+	}
+
+	var mdRows [][]string
+
+	for _, row := range rows {
+		if len(row) < 2 {
+			continue
+		}
+		cells := reThTd.FindAllStringSubmatch(row[1], -1)
+		var mdCells []string
+		for _, cell := range cells {
+			if len(cell) < 2 {
+				continue
+			}
+			cellText := reTagStrip.ReplaceAllString(cell[1], "")
+			cellText = decodeHTMLEntities(cellText)
+			cellText = strings.TrimSpace(cellText)
+			// Replace pipes in cell content to avoid breaking table
+			cellText = strings.ReplaceAll(cellText, "|", "\\|")
+			mdCells = append(mdCells, cellText)
+		}
+		if len(mdCells) > 0 {
+			mdRows = append(mdRows, mdCells)
+		}
+	}
+
+	if len(mdRows) == 0 {
+		return ""
+	}
+
+	// Determine max columns
+	maxCols := 0
+	for _, row := range mdRows {
+		if len(row) > maxCols {
+			maxCols = len(row)
+		}
+	}
+
+	// Pad rows to same column count
+	for i := range mdRows {
+		for len(mdRows[i]) < maxCols {
+			mdRows[i] = append(mdRows[i], "")
+		}
+	}
+
+	// Determine if first row came from <thead>
+	hasThead := reThead.MatchString(tableHTML)
+
+	var sb strings.Builder
+	sb.WriteString("\n\n")
+
+	// Header row
+	sb.WriteString("| " + strings.Join(mdRows[0], " | ") + " |\n")
+
+	// Separator row
+	sep := make([]string, maxCols)
+	for i := range sep {
+		sep[i] = "---"
+	}
+	sb.WriteString("| " + strings.Join(sep, " | ") + " |\n")
+
+	// Data rows — skip first row if it was a header
+	startIdx := 1
+	if !hasThead && len(mdRows) > 1 {
+		// If no thead, first row is still treated as header (already written)
+		startIdx = 1
+	}
+	for i := startIdx; i < len(mdRows); i++ {
+		sb.WriteString("| " + strings.Join(mdRows[i], " | ") + " |\n")
+	}
+
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// convertOrderedLists converts <ol> with <li> to numbered markdown lists.
+// Handles nesting by tracking depth.
+func convertOrderedLists(html string) string {
+	// Process from innermost to outermost to handle nesting
+	for i := 0; i < 5; i++ { // Max 5 nesting levels
+		reOlFull := regexp.MustCompile(`(?is)<ol[^>]*>([\s\S]*?)</ol>`)
+		if !reOlFull.MatchString(html) {
+			break
+		}
+		html = reOlFull.ReplaceAllStringFunc(html, func(match string) string {
+			m := reOlFull.FindStringSubmatch(match)
+			if len(m) < 2 {
+				return match
+			}
+			inner := m[1]
+			items := clipReListItem.FindAllStringSubmatch(inner, -1)
+			var result strings.Builder
+			result.WriteString("\n")
+			indent := strings.Repeat("  ", i)
+			for idx, item := range items {
+				if len(item) < 2 {
+					continue
+				}
+				content := strings.TrimSpace(reTagStrip.ReplaceAllString(item[1], ""))
+				result.WriteString(indent + strconv.Itoa(idx+1) + ". " + content + "\n")
+			}
+			return result.String()
+		})
+	}
+	return html
+}
+
+// convertUnorderedLists converts <ul> with <li> to bullet-point markdown lists.
+// Handles nesting by tracking depth.
+func convertUnorderedLists(html string) string {
+	for i := 0; i < 5; i++ { // Max 5 nesting levels
+		reUlFull := regexp.MustCompile(`(?is)<ul[^>]*>([\s\S]*?)</ul>`)
+		if !reUlFull.MatchString(html) {
+			break
+		}
+		html = reUlFull.ReplaceAllStringFunc(html, func(match string) string {
+			m := reUlFull.FindStringSubmatch(match)
+			if len(m) < 2 {
+				return match
+			}
+			inner := m[1]
+			items := clipReListItem.FindAllStringSubmatch(inner, -1)
+			var result strings.Builder
+			result.WriteString("\n")
+			indent := strings.Repeat("  ", i)
+			for _, item := range items {
+				if len(item) < 2 {
+					continue
+				}
+				content := strings.TrimSpace(reTagStrip.ReplaceAllString(item[1], ""))
+				result.WriteString(indent + "- " + content + "\n")
+			}
+			return result.String()
+		})
+	}
+	return html
 }
 
 // decodeHTMLEntities converts common HTML entities to their text equivalents.
