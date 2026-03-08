@@ -4129,8 +4129,10 @@ func (m *Model) filterSearch() {
 	m.searchResults = append(m.searchResults, fuzzyMatches...)
 	m.searchResults = append(m.searchResults, contentMatches...)
 
-	if m.searchCursor >= len(m.searchResults) {
-		m.searchCursor = maxInt(0, len(m.searchResults)-1)
+	if len(m.searchResults) == 0 {
+		m.searchCursor = 0
+	} else if m.searchCursor >= len(m.searchResults) {
+		m.searchCursor = len(m.searchResults) - 1
 	}
 }
 
