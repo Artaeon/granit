@@ -1432,7 +1432,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Sync completed tasks back to source files
 			if completions := m.dailyPlanner.GetCompletedTasks(); len(completions) > 0 {
-				needRescan := false
 				for _, tc := range completions {
 					if tc.NotePath == "" {
 						continue
@@ -1447,27 +1446,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							}
 							newContent := strings.Join(lines, "\n")
 							os.WriteFile(filepath.Join(m.vault.Root, tc.NotePath), []byte(newContent), 0644)
-							needRescan = true
-							if tc.NotePath == m.activeNote {
-								m.editor.LoadContent(newContent, m.activeNote)
-							}
 						}
 					}
 				}
-				if needRescan {
-					m.vault.Scan()
-					m.index = vault.NewIndex(m.vault)
-					m.index.Build()
-					m.sidebar.SetFiles(m.vault.SortedPaths())
-					m.dueTodayCount = CountTasksDueToday(m.vault.Notes)
-					m.statusbar.SetDueTodayCount(m.dueTodayCount)
-				}
+				m.refreshComponents("")
 			}
 
 			if !m.dailyPlanner.IsActive() {
-				m.vault.Scan()
-				m.index.Build()
-				m.sidebar.SetFiles(m.vault.SortedPaths())
+				m.refreshComponents("")
 				m.statusbar.SetMessage("Daily planner closed")
 			}
 			return m, nil
