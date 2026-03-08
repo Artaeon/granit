@@ -393,7 +393,19 @@ func NewModel(vaultPath string) (Model, error) {
 	// Configure auto git sync
 	m.autoSync.SetEnabled(cfg.GitAutoSync)
 
-	if len(paths) > 0 {
+	// Restore persisted tabs from previous session
+	if m.tabBar != nil {
+		validPaths := make(map[string]bool, len(paths))
+		for _, p := range paths {
+			validPaths[p] = true
+		}
+		m.tabBar.LoadTabs(vaultPath, validPaths)
+		if active := m.tabBar.GetActive(); active != "" {
+			m.loadNote(active)
+		} else if len(paths) > 0 {
+			m.loadNote(paths[0])
+		}
+	} else if len(paths) > 0 {
 		m.loadNote(paths[0])
 	}
 
@@ -2201,6 +2213,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4", "ctrl+5",
+			"ctrl+6", "ctrl+7", "ctrl+8", "ctrl+9":
+			if m.tabBar != nil {
+				// Parse digit from key string (last character)
+				keyStr := msg.String()
+				digit := int(keyStr[len(keyStr)-1] - '0')
+				idx := digit - 1 // 1-indexed to 0-indexed
+				if path := m.tabBar.SwitchToIndex(idx); path != "" {
+					if path != m.activeNote {
+						m.loadNote(path)
+						m.sidebar.cursor = m.findFileIndex(path)
+					}
+				}
+			}
+			return m, nil
+
 		case "alt+left":
 			if m.breadcrumb != nil {
 				if nav := m.breadcrumb.Back(); nav != "" {
@@ -3420,6 +3448,47 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.onboarding.SetSize(m.width, m.height)
 		m.onboarding.Open()
 
+	case CmdCloseOtherTabs:
+		if m.tabBar != nil {
+			m.tabBar.CloseOthers()
+			m.statusbar.SetMessage("Closed other tabs")
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
+
+	case CmdCloseTabsToRight:
+		if m.tabBar != nil {
+			m.tabBar.CloseToRight()
+			m.statusbar.SetMessage("Closed tabs to the right")
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
+
+	case CmdTogglePinTab:
+		if m.tabBar != nil && m.activeNote != "" {
+			m.tabBar.TogglePin()
+			if m.tabBar.IsActiveTabPinned() {
+				m.statusbar.SetMessage("Pinned tab: " + m.activeNote)
+			} else {
+				m.statusbar.SetMessage("Unpinned tab: " + m.activeNote)
+			}
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
+
+	case CmdReopenClosedTab:
+		if m.tabBar != nil {
+			if path := m.tabBar.ReopenLast(); path != "" {
+				if m.vault.GetNote(path) != nil {
+					m.tabBar.AddTab(path)
+					m.loadNote(path)
+					m.sidebar.cursor = m.findFileIndex(path)
+					m.statusbar.SetMessage("Reopened: " + path)
+					return m, m.clearMessageAfter(2 * time.Second)
+				}
+			} else {
+				m.statusbar.SetMessage("No closed tabs to reopen")
+				return m, m.clearMessageAfter(2 * time.Second)
+			}
+		}
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}
@@ -4278,6 +4347,10 @@ func (m *Model) runPluginSaveHooks() tea.Cmd {
 }
 
 func (m *Model) triggerExitSplash() tea.Cmd {
+	// Save open tabs for session persistence
+	if m.tabBar != nil {
+		m.tabBar.SaveTabs(m.vault.Root)
+	}
 	// Unload Ollama model to free resources
 	if m.config.AIProvider == "ollama" {
 		stopOllama(m.config.OllamaModel)
