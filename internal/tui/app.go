@@ -4351,6 +4351,13 @@ func (m Model) View() string {
 			} else {
 				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor)
 			}
+		case "reading":
+			backlinks := BacklinksStyle.Copy().
+				BorderForeground(backlinksBorderColor).
+				Width(backlinksWidth).
+				Height(contentHeight).
+				Render(m.backlinks.View())
+			content = lipgloss.JoinHorizontal(lipgloss.Top, editor, backlinks)
 		default: // "default" - 3-panel
 			sidebar := SidebarStyle.Copy().
 				BorderForeground(sidebarBorderColor).
