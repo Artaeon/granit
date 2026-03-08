@@ -286,6 +286,93 @@
     .feature-card:nth-child(8) .feature-icon { color: var(--accent); }
     .feature-card:nth-child(9) .feature-icon { color: var(--blue); }
 
+    /* ─── Comparison Table ─── */
+    .comparison {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+    }
+
+    .comparison-wrapper {
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      min-width: 500px;
+    }
+
+    .comparison-table thead th {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      padding: 1rem 1.25rem;
+      text-align: center;
+      background: var(--bg-surface);
+      border-bottom: 2px solid var(--border);
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .comparison-table thead th:first-child {
+      text-align: left;
+      color: var(--text-dim);
+    }
+
+    .comparison-table thead th.highlight {
+      color: var(--accent);
+      background: rgba(203, 166, 247, 0.08);
+    }
+
+    .comparison-table tbody td {
+      padding: 0.75rem 1.25rem;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+    }
+
+    .comparison-table tbody td:first-child {
+      text-align: left;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .comparison-table tbody td.highlight {
+      background: rgba(203, 166, 247, 0.04);
+    }
+
+    .comparison-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .comparison-table tbody tr:hover {
+      background: rgba(203, 166, 247, 0.03);
+    }
+
+    .check {
+      color: var(--green);
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+
+    .cross {
+      color: var(--red);
+      font-size: 1.1rem;
+      opacity: 0.6;
+    }
+
+    .partial {
+      color: var(--yellow);
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+    }
+
     /* ─── Demo ─── */
     .demo {
       text-align: center;
@@ -584,8 +671,18 @@
     }
 
     @media (max-width: 600px) {
-      section {
+      section,
+      .comparison {
         padding: 3.5rem 1.25rem;
+      }
+
+      .comparison-table {
+        font-size: 0.8rem;
+      }
+
+      .comparison-table thead th,
+      .comparison-table tbody td {
+        padding: 0.6rem 0.75rem;
       }
 
       .hero {
@@ -667,6 +764,7 @@
     <div class="logo">GRANIT</div>
     <ul class="nav-links">
       <li><a href="#features">Features</a></li>
+      <li><a href="#comparison">Compare</a></li>
       <li><a href="#demo">Demo</a></li>
       <li><a href="#installation">Installation</a></li>
       <li><a href="#documentation">Docs</a></li>
@@ -747,6 +845,95 @@
         <h3>Encryption</h3>
         <p>AES-256-GCM encryption for sensitive notes. Secure your vault for safe syncing across devices without compromising privacy.</p>
       </div>
+    </div>
+  </section>
+
+  <!-- Comparison Table -->
+  <section class="comparison" id="comparison">
+    <h2 class="section-title"><span class="accent">//</span> Granit vs Obsidian</h2>
+    <p class="section-subtitle">A detailed, honest comparison. See exactly what you get -- and what you save.</p>
+    <div class="comparison-wrapper">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th class="highlight">Granit</th>
+            <th>Obsidian</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Price</td>
+            <td class="highlight"><span class="check">Free forever</span></td>
+            <td><span class="partial">$50/yr commercial + $8/mo sync + $14/mo AI</span></td>
+          </tr>
+          <tr>
+            <td>Terminal Native</td>
+            <td class="highlight"><span class="check">&#x2713;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+          </tr>
+          <tr>
+            <td>Vim Mode</td>
+            <td class="highlight"><span class="check">Full with macros</span></td>
+            <td><span class="partial">Plugin</span></td>
+          </tr>
+          <tr>
+            <td>AI Integration</td>
+            <td class="highlight"><span class="check">Built-in: Ollama / OpenAI / Claude</span></td>
+            <td><span class="partial">$14/mo add-on</span></td>
+          </tr>
+          <tr>
+            <td>Themes</td>
+            <td class="highlight"><span class="check">35 built-in + editor</span></td>
+            <td><span class="partial">Community</span></td>
+          </tr>
+          <tr>
+            <td>Speed</td>
+            <td class="highlight"><span class="check">Instant startup</span></td>
+            <td><span class="partial">Electron</span></td>
+          </tr>
+          <tr>
+            <td>Privacy</td>
+            <td class="highlight"><span class="check">100% local</span></td>
+            <td><span class="partial">Cloud optional</span></td>
+          </tr>
+          <tr>
+            <td>Open Source</td>
+            <td class="highlight"><span class="check">&#x2713;</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+          </tr>
+          <tr>
+            <td>Task Manager</td>
+            <td class="highlight"><span class="check">Built-in, 6 views</span></td>
+            <td><span class="partial">Plugin</span></td>
+          </tr>
+          <tr>
+            <td>Daily Planner</td>
+            <td class="highlight"><span class="check">Built-in with AI scheduler</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+          </tr>
+          <tr>
+            <td>Language Learning</td>
+            <td class="highlight"><span class="check">Built-in</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+          </tr>
+          <tr>
+            <td>Habit Tracker</td>
+            <td class="highlight"><span class="check">Built-in</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+          </tr>
+          <tr>
+            <td>Research Agent</td>
+            <td class="highlight"><span class="check">Claude Code integration</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+          </tr>
+          <tr>
+            <td>Encryption</td>
+            <td class="highlight"><span class="check">AES-256-GCM</span></td>
+            <td><span class="cross">No built-in</span></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
