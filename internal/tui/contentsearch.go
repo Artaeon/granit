@@ -29,13 +29,23 @@ type ContentSearch struct {
 	scroll   int
 	selected *ContentSearchResult // set when user presses Enter
 
+	// Regex search mode
+	regexMode bool
+	regexErr  string // non-empty when the regex pattern is invalid
+
+	// Search history (Up/Down to recall previous queries)
+	history    []string
+	historyIdx int // -1 means new query mode; 0..len-1 indexes from most recent
+	savedQuery string // stash current typed query when browsing history
+
 	// Vault data
 	noteContents map[string]string // relPath -> content
+	vaultRoot    string
 }
 
 // NewContentSearch returns a zero-value ContentSearch ready for use.
 func NewContentSearch() ContentSearch {
-	return ContentSearch{}
+	return ContentSearch{historyIdx: -1}
 }
 
 // IsActive reports whether the overlay is visible.
@@ -44,7 +54,7 @@ func (cs *ContentSearch) IsActive() bool {
 }
 
 // Open activates the overlay with the given vault contents.
-func (cs *ContentSearch) Open(noteContents map[string]string) {
+func (cs *ContentSearch) Open(noteContents map[string]string, vaultRoot string) {
 	cs.active = true
 	cs.query = ""
 	cs.results = nil
@@ -52,6 +62,12 @@ func (cs *ContentSearch) Open(noteContents map[string]string) {
 	cs.scroll = 0
 	cs.selected = nil
 	cs.noteContents = noteContents
+	cs.vaultRoot = vaultRoot
+	cs.historyIdx = -1
+	cs.savedQuery = ""
+	// Load history from disk
+	h := loadSearchHistory(vaultRoot)
+	cs.history = h.ContentSearch
 }
 
 // Close deactivates the overlay.
@@ -88,6 +104,12 @@ func (cs ContentSearch) Update(msg tea.Msg) (ContentSearch, tea.Cmd) {
 		switch msg.String() {
 		case "esc":
 			cs.active = false
+			return cs, nil
+
+		case "alt+r":
+			cs.regexMode = !cs.regexMode
+			cs.regexErr = ""
+			cs.search()
 			return cs, nil
 
 		case "enter":
@@ -160,11 +182,20 @@ func (cs ContentSearch) View() string {
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerWidth)))
 	b.WriteString("\n")
 
-	// Search input
+	// Search input with regex mode indicator
 	prompt := SearchPromptStyle.Render("  > ")
 	input := cs.query + DimStyle.Render("_")
-	b.WriteString(prompt + input)
+	modeIndicator := DimStyle.Render(" [Aa]")
+	if cs.regexMode {
+		modeIndicator = lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(" [.*]")
+	}
+	b.WriteString(prompt + input + modeIndicator)
 	b.WriteString("\n")
+	if cs.regexErr != "" {
+		errStyle := lipgloss.NewStyle().Foreground(red).Bold(true)
+		b.WriteString(errStyle.Render("  Invalid regex: " + cs.regexErr))
+		b.WriteString("\n")
+	}
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerWidth)))
 	b.WriteString("\n")
 
@@ -226,7 +257,7 @@ func (cs ContentSearch) View() string {
 	b.WriteString("\n\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerWidth)))
 	b.WriteString("\n")
-	footer := "  Enter: jump to match  Esc: close"
+	footer := "  Enter: jump  Alt+R: regex  Esc: close"
 	if len(cs.results) > 0 {
 		footer += "  (" + smallNum(len(cs.results)) + " results)"
 	}

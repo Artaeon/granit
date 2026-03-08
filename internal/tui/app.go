@@ -37,6 +37,14 @@ const (
 type clearMessageMsg struct{}
 type autoSaveTickMsg struct{ editTime time.Time }
 
+// scrollPosition stores cursor and scroll state for a note so it can be
+// restored when the user reopens the file.
+type scrollPosition struct {
+	Line   int `json:"line"`
+	Col    int `json:"col"`
+	Scroll int `json:"scroll"`
+}
+
 type Model struct {
 	vault     *vault.Vault
 	index     *vault.Index
@@ -194,6 +202,9 @@ type Model struct {
 
 	// View mode scroll
 	viewScroll int
+
+	// Scroll position memory — restores cursor/scroll when reopening a note
+	scrollCache map[string]scrollPosition
 
 	// Confirm delete
 	confirmDelete     bool
@@ -2911,7 +2922,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 				noteContents[p] = note.Content
 			}
 		}
-		m.contentSearch.Open(noteContents)
+		m.contentSearch.Open(noteContents, m.vault.Root)
 	case CmdGlobalReplace:
 		m.globalReplace.SetSize(m.width, m.height)
 		m.globalReplace.Open(m.vault)
