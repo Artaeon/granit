@@ -115,6 +115,14 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 - **Clipboard manager** — 50-entry history with search, pin, preview, and paste
 - **Daily planner** — time-blocked daily schedule (6am–10pm, 30-min slots) with task/event/habit sync, progress bar, focus session launch
 - **AI smart scheduler** — AI-powered optimal schedule generation with priority ordering, break insertion, estimated times, Ollama/OpenAI/local fallback
+- **Recurring tasks** — daily/weekly/monthly auto-creating tasks with management overlay
+- **Note preview popup** — floating preview of linked notes with scroll and formatting
+- **Floating scratchpad** — persistent scratch area that survives across notes and sessions
+- **Project mode** — project management with 9 categories, dashboards, note/task grouping
+- **Natural language search** — AI-powered "find notes about..." with relevance explanations
+- **AI writing coach** — clarity/structure/style analysis with soul note persona support
+- **Dataview queries** — query notes by frontmatter properties with interactive builder
+- **Time tracker** — per-note/task time tracking with pomodoro integration and reports
 - **Core plugins** — enable/disable 16 built-in modules via Settings > Core Plugins
 
 ### AI-Powered Features
@@ -648,6 +656,14 @@ granit/
       clipmanager.go        Clipboard manager (50-entry history with search)
       dailyplanner.go       Daily planner (time-blocked schedule with task/event sync)
       aischeduler.go        AI smart scheduler (Ollama/OpenAI/local algorithm)
+      recurringtasks.go     Recurring tasks (daily/weekly/monthly auto-creation)
+      notepreview.go        Note preview popup (floating preview with scroll)
+      scratchpad.go         Floating scratchpad (persistent across notes)
+      projectmode.go        Project mode (categories, dashboards, task grouping)
+      nlsearch.go           Natural language search (AI-powered vault search)
+      writingcoach.go       AI writing coach (style analysis + soul note persona)
+      dataview.go           Dataview queries (frontmatter filter/sort/display)
+      timetracker.go        Time tracker (per-note tracking + pomodoro stats)
       taskmanager.go        Task manager with kanban, calendar, priorities
       linkassist.go         Unlinked mention finder + batch linking
       blogpublish.go        Blog publisher (Medium + GitHub)
