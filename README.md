@@ -51,12 +51,13 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 
 | | |
 |---|---|
-| **109 source files** | 80,000+ lines of Go powering the TUI |
+| **110+ source files** | 85,000+ lines of Go powering the TUI |
 | **35 themes** | 29 dark + 6 light, plus custom theme editor |
 | **20+ AI features** | Ollama, OpenAI, Claude Code, or offline fallback |
 | **8 layouts** | Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, Research |
 | **16 core plugins** | Enable/disable modules individually |
-| **Full Vim mode** | Normal, Insert, Visual, Command — including dot repeat |
+| **Full Vim mode** | Normal, Insert, Visual, Command — dot repeat + macro recording |
+| **400+ tests** | Unit, integration, stress, edge case, and benchmark tests |
 | **Obsidian compatible** | `[[wikilinks]]`, YAML frontmatter, same folder structure |
 | **Zero telemetry** | Your data stays local. Always. |
 
@@ -384,6 +385,14 @@ granit man | man -l -
 granit version
 ```
 
+### Try the Demo Vault
+
+Granit ships with a demo vault showcasing all major features — 18 interconnected notes with wikilinks, tasks, code blocks, Mermaid diagrams, and project management:
+
+```bash
+granit demo-vault
+```
+
 ### First Steps
 
 1. Run `granit` in any directory with `.md` files — or create a new vault from the selector.
@@ -394,6 +403,7 @@ granit version
 6. Press `Ctrl+S` to save. Enable auto-save in settings (`Ctrl+,`).
 7. Press `Ctrl+X` to open the **command palette** — access all 70+ commands from one place.
 8. Press `Ctrl+K` to open the **task manager** — manage tasks with Kanban board and priorities.
+9. Press `Ctrl+1`–`Ctrl+9` to switch between open tabs. Tabs persist across sessions.
 
 ---
 
@@ -527,6 +537,7 @@ When enabled (settings or command palette), the editor uses full modal keybindin
 | **Insert** | All keys pass through; `Esc` returns to Normal |
 | **Visual** | Movement extends selection; `d` deletes, `y` yanks |
 | **Command** | `:w` save, `:q` quit, `:wq` save+quit, `:{n}` go to line |
+| **Macros** | `q`+register to record, `q` to stop, `@`+register to replay, `@@` for last |
 
 ---
 
