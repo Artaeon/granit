@@ -105,6 +105,7 @@ func (e *Editor) LoadContent(content string, filePath string) {
 	e.hscroll = 0
 	e.modified = false
 	e.selectionActive = false
+	e.codeFenceCacheDirty = true
 	e.countWords()
 }
 
@@ -196,11 +197,13 @@ func (e *Editor) SetContent(content string) {
 		e.content = []string{""}
 	}
 	e.modified = true
+	e.codeFenceCacheDirty = true
 	e.countWords()
 }
 
 func (e *Editor) InsertText(text string) {
 	e.saveSnapshot()
+	e.codeFenceCacheDirty = true
 	for _, ch := range text {
 		if ch == '\n' {
 			// Split current line
@@ -345,6 +348,7 @@ func (e *Editor) Undo() {
 	e.cursor = snap.cursor
 	e.col = snap.col
 	e.modified = true
+	e.codeFenceCacheDirty = true
 	e.countWords()
 }
 
@@ -372,6 +376,7 @@ func (e *Editor) Redo() {
 	e.cursor = snap.cursor
 	e.col = snap.col
 	e.modified = true
+	e.codeFenceCacheDirty = true
 	e.countWords()
 }
 
@@ -466,6 +471,7 @@ func (e *Editor) DeleteSelection() {
 		return
 	}
 	e.saveSnapshot()
+	e.codeFenceCacheDirty = true
 	e.redoStack = nil
 
 	sl, sc, el, ec := e.SelectionRange()
@@ -2061,17 +2067,26 @@ func (e *Editor) hasAnyCursorOnVisualLine(contentLine, visualLineIdx, maxWidth i
 	if visualLineIdx >= len(visualLines) {
 		return false
 	}
-	startCol := 0
-	for vi := 0; vi < visualLineIdx; vi++ {
-		startCol += len(visualLines[vi])
-	}
-	endCol := startCol + len(visualLines[visualLineIdx])
 
-	if contentLine == e.cursor && e.col >= startCol && e.col <= endCol {
+	// cursorOnSegment determines which visual line segment a cursor column falls on
+	cursorOnSegment := func(cursorCol int) int {
+		segStart := 0
+		for vi := 0; vi < len(visualLines); vi++ {
+			segEnd := segStart + len([]rune(visualLines[vi]))
+			if cursorCol >= segStart && cursorCol < segEnd {
+				return vi
+			}
+			segStart = segEnd
+		}
+		// Cursor at end of last segment
+		return len(visualLines) - 1
+	}
+
+	if contentLine == e.cursor && cursorOnSegment(e.col) == visualLineIdx {
 		return true
 	}
 	for _, c := range e.cursors {
-		if c.Line == contentLine && c.Col >= startCol && c.Col <= endCol {
+		if c.Line == contentLine && cursorOnSegment(c.Col) == visualLineIdx {
 			return true
 		}
 	}
