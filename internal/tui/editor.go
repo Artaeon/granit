@@ -2607,6 +2607,7 @@ func (e *Editor) tabInTable() {
 
 	e.alignTableAt()
 	e.modified = true
+	e.codeFenceCacheDirty = true
 	e.countWords()
 }
 
@@ -2633,6 +2634,7 @@ func (e *Editor) enterInTable() {
 
 	e.alignTableAt()
 	e.modified = true
+	e.codeFenceCacheDirty = true
 	e.countWords()
 
 	// Ensure the cursor is visible.
