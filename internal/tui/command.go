@@ -117,6 +117,14 @@ const (
 	CmdClipManager
 	CmdDailyPlanner
 	CmdAIScheduler
+	CmdRecurringTasks
+	CmdNotePreview
+	CmdScratchpad
+	CmdProjectMode
+	CmdNLSearch
+	CmdWritingCoach
+	CmdDataview
+	CmdTimeTracker
 	CmdQuit
 )
 
@@ -223,6 +231,14 @@ var AllCommands = []Command{
 	{Label: "Clipboard Manager", Desc: "Browse and paste from clipboard history", Shortcut: "", Action: CmdClipManager, Icon: &IconOutlineChar},
 	{Label: "Daily Planner", Desc: "Time-blocked daily schedule with tasks, events, habits", Shortcut: "", Action: CmdDailyPlanner, Icon: &IconCalendarChar},
 	{Label: "AI Smart Scheduler", Desc: "AI-powered optimal schedule generation", Shortcut: "", Action: CmdAIScheduler, Icon: &IconBotChar},
+	{Label: "Recurring Tasks", Desc: "Manage daily/weekly/monthly recurring tasks", Shortcut: "", Action: CmdRecurringTasks, Icon: &IconCalendarChar},
+	{Label: "Note Preview", Desc: "Preview the note under cursor", Shortcut: "", Action: CmdNotePreview, Icon: &IconViewChar},
+	{Label: "Scratchpad", Desc: "Floating persistent scratchpad", Shortcut: "", Action: CmdScratchpad, Icon: &IconEditChar},
+	{Label: "Projects", Desc: "Project management with dashboards and categories", Shortcut: "", Action: CmdProjectMode, Icon: &IconFolderChar},
+	{Label: "Natural Language Search", Desc: "AI-powered meaning-based vault search", Shortcut: "", Action: CmdNLSearch, Icon: &IconSearchChar},
+	{Label: "Writing Coach", Desc: "AI writing analysis with persona support", Shortcut: "", Action: CmdWritingCoach, Icon: &IconBotChar},
+	{Label: "Dataview Query", Desc: "Query notes by frontmatter properties", Shortcut: "", Action: CmdDataview, Icon: &IconGraphChar},
+	{Label: "Time Tracker", Desc: "Track time per note/task with pomodoro stats", Shortcut: "", Action: CmdTimeTracker, Icon: &IconDailyChar},
 	{Label: "Task Manager", Desc: "View, manage, and plan all tasks across vault", Shortcut: "Ctrl+K", Action: CmdTaskManager, Icon: &IconCalendarChar},
 	{Label: "Link Assistant", Desc: "Find unlinked mentions and suggest wikilinks", Shortcut: "", Action: CmdLinkAssist, Icon: &IconLinkChar},
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar},
