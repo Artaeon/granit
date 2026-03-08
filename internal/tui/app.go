@@ -5492,9 +5492,25 @@ func (m Model) View() string {
 		}
 	}
 
-	// Safety: truncate output to terminal height to prevent alt-screen overflow
+	// Safety: truncate content to terminal height, preserving status bar at bottom.
+	// The status bar is the last 2 lines; if the view overflows, trim the content
+	// area instead of chopping off the status bar.
 	if viewLines := strings.Split(view, "\n"); len(viewLines) > m.height {
-		view = strings.Join(viewLines[:m.height], "\n")
+		statusLines := 2
+		if len(viewLines) >= statusLines {
+			contentLines := viewLines[:len(viewLines)-statusLines]
+			statusPart := viewLines[len(viewLines)-statusLines:]
+			maxContent := m.height - statusLines
+			if maxContent < 0 {
+				maxContent = 0
+			}
+			if len(contentLines) > maxContent {
+				contentLines = contentLines[:maxContent]
+			}
+			view = strings.Join(append(contentLines, statusPart...), "\n")
+		} else {
+			view = strings.Join(viewLines[:m.height], "\n")
+		}
 	}
 
 	// Render overlays (in priority order)

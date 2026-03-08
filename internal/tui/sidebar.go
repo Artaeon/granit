@@ -42,7 +42,12 @@ func NewSidebar(files []string) Sidebar {
 func (s *Sidebar) SetSize(width, height int) {
 	s.width = width
 	s.height = height
-	s.fileTree.SetSize(width, height)
+	// Reserve 3 lines for header, search bar, and separator
+	treeHeight := height - 3
+	if treeHeight < 1 {
+		treeHeight = 1
+	}
+	s.fileTree.SetSize(width, treeHeight)
 }
 
 func (s *Sidebar) SetFiles(files []string) {
