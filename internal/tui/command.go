@@ -135,6 +135,7 @@ const (
 	CmdReopenClosedTab
 	CmdSmartPaste
 	CmdToggleRegex
+	CmdToggleWordWrap
 	CmdQuit
 )
 
@@ -206,6 +207,7 @@ var AllCommands = []Command{
 	{Label: "Pomodoro Timer", Desc: "Focus timer with writing stats", Shortcut: "", Action: CmdPomodoro, Icon: &IconDailyChar},
 	{Label: "Web Clipper", Desc: "Save a web page as a markdown note", Shortcut: "", Action: CmdWebClip, Icon: &IconSaveChar},
 	{Label: "Toggle Vim Mode", Desc: "Enable/disable Vim keybindings", Shortcut: "", Action: CmdToggleVim, Icon: &IconEditChar},
+	{Label: "Toggle Word Wrap", Desc: "Wrap long lines at viewport width", Shortcut: "", Action: CmdToggleWordWrap, Icon: &IconEditChar},
 	{Label: "Start Macro Recording", Desc: "Record keystrokes into a Vim macro register (a-z)", Shortcut: "q+reg", Action: CmdMacroRecord, Icon: &IconEditChar},
 	{Label: "Play Macro", Desc: "Replay a recorded Vim macro register", Shortcut: "@+reg", Action: CmdMacroPlay, Icon: &IconEditChar},
 	{Label: "Pin Note", Desc: "Pin current note as a tab", Shortcut: "", Action: CmdPinNote, Icon: &IconBookmarkChar},
