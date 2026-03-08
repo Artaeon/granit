@@ -39,6 +39,10 @@ type VimState struct {
 	// Text object pending (i/a prefix after operator)
 	textObjPending string // "i" or "a" when waiting for text object char
 
+	// Marks
+	marks    map[byte]CursorPos // a-z marks
+	prevMark CursorPos          // '' previous position (before last jump)
+
 	// Last action for dot repeat
 	lastAction string
 	lastCount  int
@@ -651,6 +655,17 @@ func (vs *VimState) handleNormal(key string, content []string, cursor, col, heig
 		}
 		return VimResult{}
 
+	// ---- Marks ----
+	case "m":
+		vs.pending = "m"
+		return VimResult{}
+	case "'":
+		vs.pending = "'"
+		return VimResult{}
+	case "`":
+		vs.pending = "`"
+		return VimResult{}
+
 	// ---- Visual mode ----
 	case "v", "V":
 		vs.mode = VimVisual
@@ -722,6 +737,121 @@ func (vs *VimState) handlePending(key string, content []string, cursor, col, cou
 			return VimResult{UnfoldAll: true}
 		}
 		vs.pending = ""
+		return VimResult{}
+	}
+
+	// Mark commands
+	if op == "m" {
+		// Set mark: m + a-z
+		if len(key) == 1 && key[0] >= 'a' && key[0] <= 'z' {
+			if vs.marks == nil {
+				vs.marks = make(map[byte]CursorPos)
+			}
+			vs.marks[key[0]] = CursorPos{Line: cursor, Col: col}
+			return VimResult{StatusMsg: "mark " + key + " set"}
+		}
+		return VimResult{}
+	}
+
+	if op == "'" {
+		// Jump to mark line: ' + a-z, or '' for previous position
+		if key == "'" {
+			// '' — jump to previous position
+			prev := vs.prevMark
+			vs.prevMark = CursorPos{Line: cursor, Col: col}
+			target := prev.Line
+			if target >= len(content) {
+				target = len(content) - 1
+			}
+			if target < 0 {
+				target = 0
+			}
+			return VimResult{
+				NewCursor: target,
+				NewCol:    firstNonSpace(content, target),
+				CursorSet: true,
+			}
+		}
+		if len(key) == 1 && key[0] >= 'a' && key[0] <= 'z' {
+			if vs.marks == nil {
+				return VimResult{StatusMsg: "mark not set"}
+			}
+			pos, ok := vs.marks[key[0]]
+			if !ok {
+				return VimResult{StatusMsg: "mark " + key + " not set"}
+			}
+			vs.prevMark = CursorPos{Line: cursor, Col: col}
+			target := pos.Line
+			if target >= len(content) {
+				target = len(content) - 1
+			}
+			return VimResult{
+				NewCursor: target,
+				NewCol:    firstNonSpace(content, target),
+				CursorSet: true,
+			}
+		}
+		return VimResult{}
+	}
+
+	if op == "`" {
+		// Jump to exact mark position: ` + a-z, or `` for previous position
+		if key == "`" {
+			// `` — jump to exact previous position
+			prev := vs.prevMark
+			vs.prevMark = CursorPos{Line: cursor, Col: col}
+			target := prev.Line
+			if target >= len(content) {
+				target = len(content) - 1
+			}
+			if target < 0 {
+				target = 0
+			}
+			targetCol := prev.Col
+			if target >= 0 && target < len(content) {
+				lineLen := lineLength(content, target)
+				if targetCol >= lineLen && lineLen > 0 {
+					targetCol = lineLen - 1
+				}
+			}
+			if targetCol < 0 {
+				targetCol = 0
+			}
+			return VimResult{
+				NewCursor: target,
+				NewCol:    targetCol,
+				CursorSet: true,
+			}
+		}
+		if len(key) == 1 && key[0] >= 'a' && key[0] <= 'z' {
+			if vs.marks == nil {
+				return VimResult{StatusMsg: "mark not set"}
+			}
+			pos, ok := vs.marks[key[0]]
+			if !ok {
+				return VimResult{StatusMsg: "mark " + key + " not set"}
+			}
+			vs.prevMark = CursorPos{Line: cursor, Col: col}
+			target := pos.Line
+			if target >= len(content) {
+				target = len(content) - 1
+			}
+			targetCol := pos.Col
+			if target >= 0 && target < len(content) {
+				lineLen := lineLength(content, target)
+				if targetCol >= lineLen && lineLen > 0 {
+					targetCol = lineLen - 1
+				}
+			}
+			if targetCol < 0 {
+				targetCol = 0
+			}
+			return VimResult{
+				NewCursor: target,
+				NewCol:    targetCol,
+				CursorSet: true,
+			}
+		}
 		return VimResult{}
 	}
 
