@@ -161,6 +161,15 @@ func (s *Scratchpad) wordCount() int {
 // Update
 // ---------------------------------------------------------------------------
 
+// visibleHeight returns the number of content lines visible in the scratchpad.
+func (s *Scratchpad) visibleHeight() int {
+	h := s.height - 12
+	if h < 4 {
+		h = 4
+	}
+	return h
+}
+
 // Update handles keyboard input for the scratchpad overlay.
 func (s Scratchpad) Update(msg tea.Msg) (Scratchpad, tea.Cmd) {
 	if !s.active {
@@ -180,6 +189,7 @@ func (s Scratchpad) Update(msg tea.Msg) (Scratchpad, tea.Cmd) {
 				s.cursorLine--
 				s.clampCursor()
 			}
+			s.ensureVisible(s.visibleHeight())
 			return s, nil
 
 		case "down":
@@ -187,6 +197,7 @@ func (s Scratchpad) Update(msg tea.Msg) (Scratchpad, tea.Cmd) {
 				s.cursorLine++
 				s.clampCursor()
 			}
+			s.ensureVisible(s.visibleHeight())
 			return s, nil
 
 		case "left":
@@ -197,6 +208,7 @@ func (s Scratchpad) Update(msg tea.Msg) (Scratchpad, tea.Cmd) {
 				s.cursorLine--
 				s.cursorCol = len(s.content[s.cursorLine])
 			}
+			s.ensureVisible(s.visibleHeight())
 			return s, nil
 
 		case "right":
@@ -208,6 +220,7 @@ func (s Scratchpad) Update(msg tea.Msg) (Scratchpad, tea.Cmd) {
 				s.cursorLine++
 				s.cursorCol = 0
 			}
+			s.ensureVisible(s.visibleHeight())
 			return s, nil
 
 		case "home":
@@ -218,12 +231,38 @@ func (s Scratchpad) Update(msg tea.Msg) (Scratchpad, tea.Cmd) {
 			s.cursorCol = len(s.content[s.cursorLine])
 			return s, nil
 
+		case "pgup":
+			vis := s.visibleHeight()
+			s.cursorLine -= vis
+			if s.cursorLine < 0 {
+				s.cursorLine = 0
+			}
+			s.clampCursor()
+			s.ensureVisible(vis)
+			return s, nil
+
+		case "pgdown":
+			vis := s.visibleHeight()
+			s.cursorLine += vis
+			if s.cursorLine >= len(s.content) {
+				s.cursorLine = len(s.content) - 1
+			}
+			s.clampCursor()
+			s.ensureVisible(vis)
+			return s, nil
+
+		case "tab":
+			s.insertChar("\t")
+			return s, nil
+
 		case "enter":
 			s.insertNewline()
+			s.ensureVisible(s.visibleHeight())
 			return s, nil
 
 		case "backspace":
 			s.deleteBack()
+			s.ensureVisible(s.visibleHeight())
 			return s, nil
 
 		case "delete":
@@ -237,11 +276,17 @@ func (s Scratchpad) Update(msg tea.Msg) (Scratchpad, tea.Cmd) {
 
 		default:
 			ch := msg.String()
+			// Only insert printable single-byte ASCII or multi-byte UTF-8 runes.
+			// Reject named keys like "f1", "insert", etc.
 			if len(ch) == 1 && ch[0] >= 32 && ch[0] < 127 {
 				s.insertChar(ch)
 			} else if len(ch) > 1 && !strings.HasPrefix(ch, "ctrl+") &&
 				!strings.HasPrefix(ch, "alt+") &&
-				!strings.HasPrefix(ch, "shift+") {
+				!strings.HasPrefix(ch, "shift+") &&
+				!strings.HasPrefix(ch, "f") &&
+				ch != "insert" && ch != "pgup" && ch != "pgdown" &&
+				ch != "tab" && ch != "home" && ch != "end" &&
+				ch != "up" && ch != "down" && ch != "left" && ch != "right" {
 				// Multi-byte UTF-8 character.
 				s.insertChar(ch)
 			}
@@ -352,15 +397,20 @@ func (s Scratchpad) View() string {
 		innerWidth = 20
 	}
 
-	// Reserve space: border (2) + padding (2) + title (1) + ruler (1) +
-	// status (1) + hints (1) + spacing (2) = ~10 lines of chrome.
-	contentHeight := s.height - 12
-	if contentHeight < 4 {
-		contentHeight = 4
-	}
+	// Use same height calculation as Update.
+	contentHeight := s.visibleHeight()
 
-	// --- auto-scroll ---
-	s.ensureVisible(contentHeight)
+	// Recompute scroll for rendering (scroll is maintained in Update).
+	scroll := s.scroll
+	if s.cursorLine < scroll {
+		scroll = s.cursorLine
+	}
+	if s.cursorLine >= scroll+contentHeight {
+		scroll = s.cursorLine - contentHeight + 1
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
 
 	var b strings.Builder
 
@@ -389,7 +439,7 @@ func (s Scratchpad) View() string {
 		lineNumWidth = 5
 	}
 
-	end := s.scroll + contentHeight
+	end := scroll + contentHeight
 	if end > len(s.content) {
 		end = len(s.content)
 	}
@@ -399,7 +449,7 @@ func (s Scratchpad) View() string {
 		textAreaWidth = 10
 	}
 
-	for i := s.scroll; i < end; i++ {
+	for i := scroll; i < end; i++ {
 		line := s.content[i]
 
 		// Line number.
@@ -426,7 +476,7 @@ func (s Scratchpad) View() string {
 	}
 
 	// Pad remaining lines if content is shorter than visible area.
-	rendered := end - s.scroll
+	rendered := end - scroll
 	for rendered < contentHeight {
 		numStr := fmt.Sprintf("%*s", lineNumWidth, "")
 		sep := DimStyle.Render("│")
