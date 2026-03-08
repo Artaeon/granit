@@ -100,6 +100,9 @@ func main() {
 		}
 		runDaily(vaultPath)
 
+	case "backup":
+		runBackup(os.Args[2:])
+
 	case "plugin":
 		runPlugin(os.Args[2:])
 
