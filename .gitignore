@@ -36,3 +36,4 @@ Thumbs.db
 # Build
 /build/
 /tmp/
+.claude/worktrees/
