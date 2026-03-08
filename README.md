@@ -18,16 +18,20 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License"></a>
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge" alt="Status">
+  <img src="https://img.shields.io/badge/TUI-80k%2B%20Lines-orange?style=for-the-badge" alt="Codebase">
+  <img src="https://img.shields.io/badge/Themes-35-purple?style=for-the-badge" alt="Themes">
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> •
-  <a href="#installation">Installation</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#ai-features">AI Features</a> •
-  <a href="#keyboard-shortcuts">Shortcuts</a> •
-  <a href="#configuration">Config</a> •
-  <a href="#themes">Themes</a> •
+  <a href="#features">Features</a> &bull;
+  <a href="#installation">Installation</a> &bull;
+  <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#ai-features">AI Features</a> &bull;
+  <a href="#keyboard-shortcuts">Shortcuts</a> &bull;
+  <a href="#configuration">Config</a> &bull;
+  <a href="#themes">Themes</a> &bull;
+  <a href="#architecture">Architecture</a> &bull;
+  <a href="docs/">Documentation</a> &bull;
   <a href="#contributing">Contributing</a>
 </p>
 
@@ -42,6 +46,19 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 **No Electron. No browser. No subscriptions. Just your terminal.**
 
 > **Why Granit?** Obsidian is great, but it's Electron-based, closed-source, and its AI features require a paid subscription. Granit gives you a fast, keyboard-driven alternative with **built-in AI** (local or cloud), **Vim keybindings**, **Git integration**, and **100+ features** — all running natively in your terminal at a fraction of the memory footprint.
+
+### At a Glance
+
+| | |
+|---|---|
+| **109 source files** | 80,000+ lines of Go powering the TUI |
+| **35 themes** | 29 dark + 6 light, plus custom theme editor |
+| **20+ AI features** | Ollama, OpenAI, Claude Code, or offline fallback |
+| **8 layouts** | Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, Research |
+| **16 core plugins** | Enable/disable modules individually |
+| **Full Vim mode** | Normal, Insert, Visual, Command — including dot repeat |
+| **Obsidian compatible** | `[[wikilinks]]`, YAML frontmatter, same folder structure |
+| **Zero telemetry** | Your data stays local. Always. |
 
 ---
 
@@ -70,126 +87,125 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 
 ## Features
 
+Granit ships with **100+ features** across 8 categories. For the full breakdown, see the [Feature Guide](docs/FEATURES.md).
+
 ### Core Editor
 
-- **Syntax-highlighted Markdown** — headings, bold, italic, code blocks, blockquotes, lists, checkboxes
-- **Language-aware code highlighting** — fenced code blocks colored per language (Go, Python, JS/TS, Rust, Shell) with keyword, type, string, comment, and number styling
-- **Wikilinks** — `[[note]]` linking with automatic resolution across the vault
-- **Backlinks panel** — see every note that links to the current one, plus outgoing links
-- **Live backlink preview** — floating popup showing linked note content when cursor is on a `[[wikilink]]`
-- **YAML frontmatter** — parsing and display of tags, dates, and custom fields
-- **Frontmatter editor** — structured overlay for editing properties (tags as pills, booleans as toggles, dates with validation, presets)
-- **Rendered view mode** — toggle between raw edit and styled reading with `Ctrl+E`
-- **Vim keybindings** — full modal editing (Normal/Insert/Visual/Command) with `hjkl`, `dd`/`yy`/`p`, `:w`/`:q`, dot repeat
-- **Multi-cursor editing** — `Ctrl+D` to select word and add cursors at next occurrence
-- **Undo/Redo** — full edit history (`Ctrl+U` / `Ctrl+Y`)
-- **Find & Replace** — `Ctrl+F` / `Ctrl+H` with match highlighting
-- **Smart autocomplete** — inline wikilink popup triggered by `[[` with fuzzy search and preview snippets
-- **Collapsible sections** — fold/unfold headings and code blocks with fold indicators (`▶`/`▼`)
-- **Footnotes** — `[^id]` references with styled markers and definition lookup
-- **Auto-close brackets** and smart indentation
-- **Line numbers** with active line highlighting
-- **Snippet expansion** — 18 built-in snippets (`/date`, `/todo`, `/meeting`, `/table`, etc.)
-- **Spell checking** — integrated aspell/hunspell support
-- **Focus/Zen mode** — distraction-free writing with `Ctrl+Z`
+- **Syntax-highlighted Markdown** with language-aware code blocks (Go, Python, JS/TS, Rust, Shell)
+- **Vim keybindings** — full modal editing: Normal/Insert/Visual/Command with `hjkl`, `dd`/`yy`/`p`, `:w`/`:q`, dot repeat
+- **Multi-cursor editing** — `Ctrl+D` to add cursors at next occurrence; `Ctrl+Shift+Up/Down` for column cursors
+- **Heading folding** — collapse/expand sections by heading level; fold indicators in gutter; `za`/`zM`/`zR` vim bindings and `Alt+F`
+- **Visual table editor** — edit Markdown tables in a spreadsheet-like interface with scrolling, insert mode, and new table creation
+- **Wikilinks** with `[[` autocomplete popup, fuzzy search, and preview snippets
+- **Backlinks panel** and live **note preview popup** on hover
+- **YAML frontmatter** parsing + structured **frontmatter editor** (tags as pills, booleans as toggles)
+- **Rendered view mode** (`Ctrl+E`) with styled Markdown, Mermaid diagrams, and custom diagram blocks
+- **Find & Replace** in-file (`Ctrl+F`/`Ctrl+H`) and **global search & replace** across all vault files
 - **Ghost Writer** — inline AI writing suggestions (Tab to accept)
-- **Visual table editor** — edit Markdown tables in a spreadsheet-like interface
-- **Mermaid diagrams** — ASCII rendering of flowcharts, sequence diagrams, pie charts, class diagrams, and Gantt charts in view mode
-- **Custom diagrams** — `diagram` code blocks with 6 types: sequence (combos/flows), tree (decisions), movement (footwork grids), timeline, comparison tables, and figure (pre-drawn fighting technique illustrations with 10 poses)
-- **Global search & replace** — find and replace text across all vault files with preview, per-file or vault-wide replacement
-- **Link assistant** — find unlinked mentions of other notes and batch-create `[[wikilinks]]`
-- **Tab reordering** — drag tabs with `Alt+Shift+Left/Right`, close with `Alt+W`
-- **Note encryption** — AES-256-GCM encryption with PBKDF2 key derivation for secure GitHub sync (`.md.enc` files)
-- **Language learning** — vocabulary tracker (9 languages), spaced repetition practice, grammar notes, dashboard with streaks and level charts
-- **Habit & goal tracker** — daily habits with streak visualization, goals with milestones and progress bars, completion stats
-- **Focus sessions** — guided work timer (25/45/60/90 min), goal setting, scratchpad, break timer, session logs in `FocusSessions/`
-- **Daily standup generator** — auto-generates standup from git commits, modified notes, completed tasks; saves to `Standups/`
-- **Note versioning timeline** — git history per note with visual timeline, colored diff viewer, and snapshot at any commit
-- **Smart connections** — TF-IDF content similarity finds semantically related notes with shared keyword display
-- **Writing statistics** — word count tracking, 14-day activity chart, writing streaks, top notes by length
-- **Quick capture** — compact floating input to quickly save thoughts to Inbox, daily note, Tasks, or new note
-- **Vault dashboard** — home screen with today's tasks, recent notes, vault stats, writing streaks, 7-day activity chart
-- **Enhanced calendar** — year view, 14-day agenda, task badges, quick event add, week numbers
-- **Mind map view** — ASCII mind map from note headings and wikilinks, headings + links modes
-- **Daily journal prompts** — 100+ prompts across 8 categories with guided write mode
-- **Clipboard manager** — 50-entry history with search, pin, preview, and paste
-- **Daily planner** — time-blocked daily schedule (6am–10pm, 30-min slots) with task/event/habit sync, progress bar, focus session launch
-- **AI smart scheduler** — AI-powered optimal schedule generation with priority ordering, break insertion, estimated times, Ollama/OpenAI/local fallback
-- **Recurring tasks** — daily/weekly/monthly auto-creating tasks with management overlay
-- **Note preview popup** — floating preview of linked notes with scroll and formatting
-- **Floating scratchpad** — persistent scratch area that survives across notes and sessions
-- **Project mode** — project management with 9 categories, dashboards, note/task grouping
-- **Natural language search** — AI-powered "find notes about..." with relevance explanations
-- **AI writing coach** — clarity/structure/style analysis with soul note persona support
-- **Dataview queries** — query notes by frontmatter properties with interactive builder
-- **Time tracker** — per-note/task time tracking with pomodoro integration and reports
-- **Core plugins** — enable/disable 16 built-in modules via Settings > Core Plugins
+- **18 built-in snippets** (`/date`, `/todo`, `/meeting`, `/table`, and more)
+- **Note encryption** — AES-256-GCM with PBKDF2 for secure GitHub sync
+- **Mermaid diagrams** — flowcharts, sequence, pie, class, Gantt as ASCII art
+- **Custom diagram engine** — 6 types: sequence, tree, movement, timeline, comparison, figure (10 pre-drawn fighting technique illustrations)
+- **Link assistant** — find unlinked mentions and batch-create wikilinks
+- **Spell checking**, auto-close brackets, smart indentation, line numbers
 
 ### AI-Powered Features
 
-Granit includes **18 AI features** that work with local models (Ollama), OpenAI, or a zero-setup offline fallback:
+Granit includes **20+ AI features** that work with local models (Ollama), OpenAI, Claude Code, or a zero-setup offline fallback. See the [AI Guide](docs/AI-GUIDE.md) for setup.
 
-| Feature | Description |
-|---------|-------------|
-| **9 AI Bots** | Auto-Tagger, Link Suggester, Summarizer, Q&A, Writing Assistant, Title Suggester, Action Items, MOC Generator, Daily Digest |
-| **AI Chat** | Ask questions about your entire vault with context-aware answers |
-| **Chat with Note** | AI Q&A focused on the current note |
-| **AI Compose** | Generate full notes from a topic prompt |
-| **Ghost Writer** | Inline writing suggestions as you type |
-| **Thread Weaver** | Synthesize multiple notes into a new essay or summary |
-| **Semantic Search** | AI-powered meaning-based vault search using embeddings |
-| **Knowledge Graph AI** | Analyze clusters, hubs, orphan notes, and get link suggestions |
-| **Auto-Link** | Find unlinked mentions of note titles in your text |
-| **Auto-Tag** | Automatically suggest tags on save |
-| **Similar Notes** | TF-IDF cosine similarity to find related notes |
-| **AI Template Generator** | 9 template types (meeting, project, tech doc, blog, tutorial, comparison, summary, workout, custom) with AI generation |
-| **Deep Dive Research** | Research any topic via Claude Code — 4 profiles (general/academic/technical/creative), 4 source filters, research log |
-| **Vault Analyzer** | AI analysis of vault structure, gaps, orphans, and improvement suggestions via Claude Code |
-| **Note Enhancer** | AI-enhance current note with wikilinks, better structure, and deeper content via Claude Code |
-| **Daily Digest** | Generate weekly review from recent vault activity via Claude Code |
-| **Vault Refactor** | AI-powered suggestions to reorganize, merge, split, or retag notes |
-| **Daily Briefing** | AI-generated morning summary of recent notes, tasks, and connections |
-| **Quiz Mode** | Auto-generated quizzes from your notes for active recall |
-| **Flashcards** | Spaced repetition study (SM-2 algorithm) extracted from your notes |
-| **Learning Dashboard** | Track study progress, streaks, and mastery |
+| Feature | Shortcut | Description |
+|---------|----------|-------------|
+| **9 AI Bots** | `Ctrl+R` | Auto-Tagger, Link Suggester, Summarizer, Q&A, Writing Assistant, Title Suggester, Action Items, MOC Generator, Daily Digest |
+| **AI Chat** | Command palette | Ask questions about your entire vault with context-aware answers |
+| **Chat with Note** | Command palette | AI Q&A focused on the current note |
+| **AI Compose** | Command palette | Generate full notes from a topic prompt |
+| **Ghost Writer** | Settings toggle | Inline writing suggestions as you type (Tab to accept) |
+| **Thread Weaver** | Command palette | Synthesize multiple notes into a new essay or summary |
+| **Semantic Search** | Command palette | Meaning-based vault search using AI embeddings |
+| **Knowledge Graph AI** | Command palette | Analyze clusters, hubs, orphans, and get link suggestions |
+| **Auto-Link** | Command palette | Find unlinked mentions of note titles |
+| **Auto-Tag** | Settings toggle | Automatically suggest tags on save |
+| **Smart Connections** | Command palette | TF-IDF cosine similarity to find related notes |
+| **AI Templates** | Command palette | 9 template types with AI generation |
+| **Deep Dive Research** | Command palette | Multi-note research via Claude Code — 4 profiles, 4 source filters |
+| **Vault Analyzer** | Command palette | AI analysis of vault structure and gaps via Claude Code |
+| **Note Enhancer** | Command palette | AI-enhance notes with links and deeper content via Claude Code |
+| **Daily Digest** | Command palette | Weekly review from recent vault activity via Claude Code |
+| **NL Search** | Command palette | Natural language vault search ("find notes about...") |
+| **AI Writing Coach** | Command palette | Clarity/structure/style analysis with soul note persona support |
+| **AI Smart Scheduler** | Command palette | AI-powered optimal daily schedule generation |
+| **Vault Refactor** | Command palette | AI suggestions to reorganize, merge, or retag notes |
+| **Daily Briefing** | Command palette | AI morning summary of notes, tasks, and connections |
+| **Quiz Mode** | Command palette | Auto-generated quizzes from your notes for active recall |
+| **Flashcards** | Command palette | Spaced repetition (SM-2 algorithm) from your notes |
+| **Learning Dashboard** | Command palette | Track study progress, streaks, and mastery |
 
 ### Vault Management
 
-- **Multi-vault switcher** — switch between vaults without restarting, manage vault list in-app
-- **Vault selector** — pick from recent vaults or create new ones when launching `granit` without arguments
-- **File tree sidebar** with folder expand/collapse and file icons
-- **Fuzzy search** (`Ctrl+P`) across all notes
-- **Full-text search** — search across all note contents with highlighted results
+- **Multi-vault switcher** — switch between vaults without restarting
+- **Vault selector** — pick from recent vaults or create new ones at launch
+- **File tree sidebar** with folder collapse/expand and fuzzy search (`Ctrl+P`)
+- **Full-text search** across all note contents with highlighted results
 - **Tag browser** (`Ctrl+T`) — browse and filter notes by tag
 - **Graph view** (`Ctrl+G`) — visualize note connections
-- **Task manager** (`Ctrl+K`) — comprehensive task system with 6 views (Today, Upcoming, All, Done, Calendar, **Kanban board**), 5 priority levels (`🔺⏫🔼🔽`), due dates with date picker shortcuts, dedicated `Tasks.md` storage, source file badges, and cross-vault task scanning from all notes
-- **Calendar view** (`Ctrl+L`) — month, week, and agenda views tied to daily notes
-- **Timeline view** — chronological visualization of all notes grouped by day, week, or month
+- **Note outline** (`Ctrl+O`) — heading-based document structure
 - **Bookmarks & recents** (`Ctrl+B`) — star notes and jump to recently opened files
-- **Quick switch** (`Ctrl+J`) — fast switching among recent notes
-- **Note outline** (`Ctrl+O`) — heading-based document outline
-- **Workspace layouts** — save and restore named workspace snapshots (open tabs, layout, view mode)
-- **Breadcrumb navigation** — folder-path breadcrumb above the editor (`vault > folder > note`), `Alt+Left`/`Alt+Right` for browser-style back/forward, pinned tabs
+- **Quick switch** (`Ctrl+J`) — fast file switching
+- **Breadcrumb navigation** — folder path above the editor with click navigation
 - **Daily notes** — create or open today's note with a single command
-- **Vault statistics** — note counts, link density, word counts
-- **Trash** — soft-delete with restore
-- **Folder management** — create folders and move files
-- **File watcher** — auto-detects external changes and refreshes the vault
-- **Lazy vault loading** — on-demand content reading for fast startup with large vaults (1000+ notes)
-- **Pomodoro timer** — 25-min focus sessions with break cycles, writing stats tracking
-- **System clipboard** — `Ctrl+V` paste with platform-native clipboard access
-- **Web clipper** — fetch a URL, convert to Markdown, save as a note
+- **Vault statistics** — note counts, link density, word counts, activity charts
+- **Trash** — soft-delete with restore from `.granit-trash/`
+- **File watcher** — auto-detects external changes and refreshes
+- **Lazy vault loading** — on-demand reading for fast startup with 1000+ notes
+- **Workspace layouts** — save and restore named workspace snapshots
+
+### Task Management & Productivity
+
+| Feature | Access | Description |
+|---------|--------|-------------|
+| **Task Manager** | `Ctrl+K` | 6 views (Today, Upcoming, All, Done, Calendar, Kanban), 5 priority levels, date picker, cross-vault scanning |
+| **Daily Planner** | Command palette | Time-blocked daily schedule (6am–10pm, 30-min slots) with task/event/habit import |
+| **AI Smart Scheduler** | Command palette | Auto-generate optimal daily schedules based on priorities and estimated times |
+| **Recurring Tasks** | Command palette | Daily/weekly/monthly auto-creating tasks |
+| **Pomodoro Timer** | Command palette | 25-min focus sessions with break cycles |
+| **Focus Sessions** | Command palette | Guided work timer (25/45/60/90 min) with goal, scratchpad, and session log |
+| **Time Tracker** | Command palette | Per-note/task time tracking with pomodoro counting and reports |
+| **Habit & Goal Tracker** | Command palette | Daily habits with 7-day streaks, goals with milestones and progress bars |
+| **Daily Standup** | Command palette | Auto-generate standup from git commits, modified notes, and completed tasks |
+| **Quick Capture** | Command palette | Compact floating input for rapid thought capture to Inbox, daily note, or Tasks |
+| **Journal Prompts** | Command palette | 100+ curated prompts across 8 categories with guided write mode |
+| **Clipboard Manager** | Command palette | 50-entry clipboard history with search, pin, preview, and paste |
+| **Floating Scratchpad** | Command palette | Persistent scratch area that survives across notes and sessions |
+
+### Knowledge & Analytics
+
+- **Smart Connections** — TF-IDF content similarity finds semantically related notes with shared keyword display
+- **Writing Statistics** — word counts, 14-day activity chart, writing streaks, top notes by length
+- **Mind Map View** — ASCII mind map from note headings and wikilinks (two modes: headings + links)
+- **Dataview Queries** — query notes by frontmatter properties with interactive builder (filters, sort, table/list)
+- **Note Versioning Timeline** — git history per note with colored diff viewer and snapshot restore
+- **Note Preview Popup** — floating preview of linked notes with scroll and formatting
+- **Vault Dashboard** — home screen with today's tasks, recent notes, vault stats, activity chart
+- **Enhanced Calendar** (`Ctrl+L`) — month/week/year view, 14-day agenda, task badges, quick event add
+- **Project Mode** — project management with 9 categories, dashboards, completion stats
+
+### Language Learning
+
+- **Vocabulary tracker** with 9 languages and spaced repetition practice
+- **Grammar notes** with templates
+- **Progress dashboard** with streak tracking and level distribution charts
+- Stores everything in `Languages/` folder as Markdown
 
 ### Git Integration
 
-Built-in git overlay with three views:
+Built-in git overlay with status, log, and diff views:
 
 - **Status** — modified, added, deleted, and untracked files
 - **Log** — recent commit history with colored hashes
 - **Diff** — syntax-highlighted diff of unstaged changes
 - Quick actions: **commit** (c), **push** (p), **pull** (P), **refresh** (r)
 - **Auto-sync** — optional auto commit+push on save, pull on open
-- **Per-note git history** — view commit history, browse colored diffs, and restore previous versions for any note
+- **Per-note git history** — view commit history, browse colored diffs, restore previous versions
 
 ### Export & Publishing
 
@@ -197,40 +213,43 @@ Built-in git overlay with three views:
 - **Export to Plain Text** — Markdown stripped to plain text
 - **Export to PDF** — via pandoc (if installed)
 - **Bulk HTML export** — all vault notes at once
-- **Static site publisher** — export your vault as a complete HTML website with search, tag pages, and wikilink resolution
-- **Blog publisher** — publish notes to **Medium** (draft/public/unlisted with tag extraction) or **GitHub** (push Markdown to any repo/branch)
+- **Static site publisher** — export vault as a complete HTML website with search, tag pages, and wikilink resolution
+- **Blog publisher** — publish to **Medium** (draft/public/unlisted) or **GitHub** (push to any repo/branch) with persistent token storage and retry logic
 
 ### Extensibility
 
-- **Plugin system** — language-agnostic scripts with JSON manifests, 6 built-in plugins
-- **Lua scripting** — full API access to vault operations (`granit.read_note`, `granit.write_note`, etc.)
+- **Plugin system** — language-agnostic scripts with JSON manifests and 6 lifecycle hooks. See [Plugin Guide](docs/PLUGINS.md).
+- **Lua scripting** — full API access (`granit.read_note`, `granit.write_note`, etc.)
+- **Core plugins** — enable/disable 16 built-in modules individually via Settings > Core Plugins
 - **Dataview queries** — embed live queries in notes using `query` code blocks
 - **Obsidian import** — import settings from existing `.obsidian/` directories
-- **Canvas / Whiteboard** — visual note arrangement with connections and colors
+- **Canvas / Whiteboard** (`Ctrl+W`) — visual note arrangement with connections and colors
 - **Split panes** — view two notes side by side
 
-### 35+ Themes, Custom Themes & 4 Icon Sets
+### 35 Themes, Custom Themes & 4 Icon Sets
 
-Instantly switch between **29 dark** and **6 light** built-in themes from settings. Create your own with the **Theme Editor** — live-edit all 16 color roles with hex values, preview changes instantly, and save/export custom themes as JSON. Choose from **Unicode**, **Nerd Font**, **Emoji**, or **ASCII** icon sets.
+Instantly switch between **29 dark** and **6 light** built-in themes from settings. Create your own with the **Theme Editor** — live-edit all 16 color roles with hex values, preview changes instantly, and save/export custom themes as JSON. Choose from **Unicode**, **Nerd Font**, **Emoji**, or **ASCII** icon sets. See all themes in the [Theme Reference](docs/THEMES.md).
 
 ### 8 Panel Layouts
 
-- **Default** — 3-panel: sidebar + editor + backlinks
-- **Writer** — 2-panel: sidebar + editor
-- **Minimal** — editor only
-- **Reading** — editor + backlinks, no sidebar (wide editor for reading)
-- **Dashboard** — 4-panel: sidebar + editor + persistent outline + backlinks
-- **Zen** — centered distraction-free editor, 80-char max width, no chrome
-- **Taskboard** — sidebar + editor + task summary panel (overdue/today/upcoming)
-- **Research** — sidebar + editor + notes panel (recent notes, backlinks, links)
+| Layout | Panels | Description |
+|--------|--------|-------------|
+| **Default** | 3 | Sidebar + editor + backlinks |
+| **Writer** | 2 | Sidebar + editor |
+| **Minimal** | 1 | Editor only |
+| **Reading** | 2 | Editor + backlinks (wide reading) |
+| **Dashboard** | 4 | Sidebar + editor + outline + backlinks |
+| **Zen** | 1 | Centered editor, 80-char max, no chrome |
+| **Taskboard** | 3 | Sidebar + editor + task summary |
+| **Research** | 3 | Sidebar + editor + notes/backlinks panel |
 
 ### Image Manager
 
-Browse, preview, insert, and delete images in your vault. Terminal image preview uses half-block character rendering for truecolor terminals.
+Browse, preview, insert, and delete images in your vault. Terminal preview uses half-block character rendering for truecolor terminals.
 
 ### 10+ Note Templates
 
-Create notes from built-in templates: Standard, Meeting Notes, Project Plan, Weekly Review, Book Notes, Decision Record, Journal Entry, Research Note, Learning/Zettelkasten, and more. **User-defined templates** are also supported — drop `.md` files into your vault's `templates/` folder and they appear in the template picker.
+Create notes from built-in templates: Standard, Meeting Notes, Project Plan, Weekly Review, Book Notes, Decision Record, Journal Entry, Research Note, Learning/Zettelkasten, and more. **User-defined templates** — drop `.md` files into your vault's `templates/` folder and they appear alongside built-in templates.
 
 ---
 
@@ -241,6 +260,8 @@ Create notes from built-in templates: Standard, Meeting Notes, Project Plan, Wee
 - **Go 1.23+** ([install Go](https://go.dev/doc/install))
 - **Git** (for cloning and git features)
 - Linux or macOS (Windows support planned)
+
+For detailed instructions, see the [Installation Guide](docs/INSTALLATION.md).
 
 ### Quick Install (Recommended)
 
@@ -255,9 +276,16 @@ This installs the `granit` binary to `~/go/bin/`. Make sure it's in your PATH:
 ```bash
 # Add to ~/.bashrc or ~/.zshrc (one-time setup):
 export PATH="$HOME/go/bin:$PATH"
+```
 
-# Then reload:
-source ~/.bashrc  # or source ~/.zshrc
+### Arch Linux (AUR)
+
+```bash
+# Stable release
+yay -S granit
+
+# Latest git
+yay -S granit-git
 ```
 
 ### System-wide Install
@@ -290,8 +318,8 @@ go install ./cmd/granit/
 | **Ollama** | Local AI (recommended) | No — local fallback works offline |
 | **aspell** or **hunspell** | Spell checking | No |
 | **pandoc** | PDF export | No |
-| **xclip**, **xsel**, or **wl-copy** | System clipboard (Linux) | No — clipboard features degrade gracefully |
-| **Claude Code** | Deep Dive AI research agent | No — only needed for research feature |
+| **xclip**, **xsel**, or **wl-copy** | System clipboard (Linux) | No — degrades gracefully |
+| **Claude Code** | Deep Dive AI research agent | No — only for research feature |
 | **Git** | Version control features | No — git features are optional |
 
 ---
@@ -331,17 +359,18 @@ granit version
 
 1. Run `granit` in any directory with `.md` files — or create a new vault from the selector.
 2. Use `Tab` or `F1`/`F2`/`F3` to switch between sidebar, editor, and backlinks.
-3. Press `Ctrl+N` to create a new note (pick from 10 templates).
+3. Press `Ctrl+N` to create a new note (pick from 10+ templates).
 4. Type `[[` in the editor to start a wikilink — autocomplete suggests matching notes.
 5. Press `Ctrl+E` to toggle between edit and rendered view mode.
 6. Press `Ctrl+S` to save. Enable auto-save in settings (`Ctrl+,`).
 7. Press `Ctrl+X` to open the **command palette** — access all 70+ commands from one place.
+8. Press `Ctrl+K` to open the **task manager** — manage tasks with Kanban board and priorities.
 
 ---
 
 ## AI Features
 
-Granit supports three AI providers. The **local** provider works out of the box with no setup.
+Granit supports three AI providers. The **local** provider works out of the box with no setup. For the full guide, see [AI Guide](docs/AI-GUIDE.md).
 
 ### Ollama (Recommended for Local AI)
 
@@ -385,16 +414,16 @@ Available models: `gpt-4o-mini`, `gpt-4o`, `gpt-4.1-mini`, `gpt-4.1-nano`.
 
 ### Claude Code (Deep Dive Research)
 
-The **Deep Dive Research** feature uses [Claude Code](https://docs.anthropic.com/en/docs/claude-code) as an AI-powered research agent. When you give it a topic, it:
+The **Deep Dive Research** feature uses [Claude Code](https://docs.anthropic.com/en/docs/claude-code) as an AI-powered research agent. It searches the web, creates 5–25 interconnected notes in a `Research/` folder with a hub index note, adds frontmatter/tags/wikilinks automatically. Three output formats: **Zettelkasten**, **Outline**, or **Study Guide**. Research runs in the background with a live status indicator.
 
-1. Searches the web for current information
-2. Creates 5-25 interconnected notes in a `Research/` folder
-3. Generates a hub note (`_Index.md`) linking everything
-4. Adds frontmatter, tags, and `[[wikilinks]]` automatically
+Advanced integration:
+- **CLAUDE.md awareness** — project context loaded into all research prompts
+- **Soul note persona** — `.granit/soul-note.md` shapes the research writing tone
+- **10-minute timeout** with Esc cancellation
+- **4 research profiles**: General, Academic, Technical, Creative
+- **4 source filters**: Any, Web, Docs, Papers
 
-Three output formats: **Zettelkasten** (atomic notes), **Outline** (hierarchical), or **Study Guide** (with flashcard-ready Q&A). Research runs in the background with a live status bar indicator — keep editing while Claude works.
-
-**Requires**: Claude Code installed and authenticated (`claude` in PATH). No API key configuration needed in Granit.
+**Requires**: Claude Code installed and authenticated (`claude` in PATH).
 
 ### Local Fallback
 
@@ -403,6 +432,8 @@ The default `"local"` provider uses keyword matching, stopword filtering, and to
 ---
 
 ## Keyboard Shortcuts
+
+For the complete reference, see [Keybindings Guide](docs/KEYBINDINGS.md).
 
 ### Navigation
 
@@ -436,6 +467,7 @@ The default `"local"` provider uses keyword matching, stopword filtering, and to
 | `Ctrl+H` | Find and replace |
 | `Ctrl+D` | Select word / multi-cursor |
 | `Ctrl+K` | Task manager |
+| `Alt+F` | Toggle fold at cursor |
 | `[[` | Trigger wikilink autocomplete |
 | `Tab` | Accept ghost writer suggestion / indent |
 
@@ -462,7 +494,7 @@ When enabled (settings or command palette), the editor uses full modal keybindin
 
 | Mode | Keys |
 |------|------|
-| **Normal** | `h`/`j`/`k`/`l`, `w`/`b`/`e`, `0`/`$`, `gg`/`G`, `dd`/`yy`/`p`, `u`/`Ctrl+R`, `i`/`a`/`o`/`O`, `.` repeat |
+| **Normal** | `h`/`j`/`k`/`l`, `w`/`b`/`e`, `0`/`$`, `gg`/`G`, `dd`/`yy`/`p`, `u`/`Ctrl+R`, `i`/`a`/`o`/`O`, `.` repeat, `za`/`zM`/`zR` fold |
 | **Insert** | All keys pass through; `Esc` returns to Normal |
 | **Visual** | Movement extends selection; `d` deletes, `y` yanks |
 | **Command** | `:w` save, `:q` quit, `:wq` save+quit, `:{n}` go to line |
@@ -471,7 +503,7 @@ When enabled (settings or command palette), the editor uses full modal keybindin
 
 ## Configuration
 
-Granit uses a layered JSON config:
+Granit uses a layered JSON config. For all options, see the [Configuration Reference](docs/CONFIGURATION.md).
 
 | Scope | Path |
 |-------|------|
@@ -523,7 +555,7 @@ Per-vault settings override global. All settings can be changed from the built-i
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `theme` | `catppuccin-mocha` | Color theme (28 available) |
+| `theme` | `catppuccin-mocha` | Color theme (35 available) |
 | `icon_theme` | `unicode` | `unicode`, `nerd`, `emoji`, or `ascii` |
 | `layout` | `default` | `default`, `writer`, `minimal`, `reading`, `dashboard`, `zen`, `taskboard`, `research` |
 | `vim_mode` | `false` | Enable Vim-style modal editing |
@@ -538,7 +570,7 @@ Per-vault settings override global. All settings can be changed from the built-i
 
 ## Themes
 
-### Dark Themes (22)
+### Dark Themes (29)
 
 | Theme | Description |
 |-------|-------------|
@@ -564,6 +596,13 @@ Per-vault settings override global. All settings can be changed from the built-i
 | `moonlight` | Soft blue-purple moonlit |
 | `vitesse-dark` | Minimal, modern green |
 | `oxocarbon` | IBM Carbon-inspired |
+| `matrix` | Green on black hacker aesthetic |
+| `cobalt2` | Deep blue with gold accents |
+| `monokai-pro` | Warm dark with vivid syntax colors |
+| `horizon` | Purple and teal gradients |
+| `zenburn` | Low-contrast earthy tones |
+| `iceberg` | Cool blue-gray and frost |
+| `amber` | Retro CRT amber monochrome |
 
 ### Light Themes (6)
 
@@ -575,6 +614,8 @@ Per-vault settings override global. All settings can be changed from the built-i
 | `github-light` | GitHub light mode |
 | `ayu-light` | Clean, bright light |
 | `min-light` | Ultra-minimal bright |
+
+Create custom themes with the built-in **Theme Editor** — live-edit 16 color roles and export as JSON.
 
 ---
 
@@ -594,8 +635,8 @@ granit/
       vault.go              Vault scanning with lazy loading
       parser.go             Markdown/frontmatter/wikilink parser
       index.go              Backlink and link index
-    tui/
-      app.go                Main Bubble Tea model (~4800 lines)
+    tui/                    109 source files, 80k+ lines
+      app.go                Main Bubble Tea model
       editor.go             Text editor with multi-cursor
       syntaxhl.go           Language-aware code block highlighting
       renderer.go           Markdown rendering for view mode
@@ -643,40 +684,45 @@ granit/
       canvas.go             Visual whiteboard
       contentsearch.go      Full-text vault search
       imageview.go          Image manager + terminal preview
-      research.go           Deep Dive AI research agent + vault analyzer, note enhancer, daily digest
-      aitemplates.go        AI template generator (9 types, Ollama/OpenAI/local)
-      languagelearn.go      Language learning (vocabulary, practice, grammar, dashboard)
-      habits.go             Habit & goal tracker (daily habits, goals, stats)
-      focussession.go       Focus sessions (timer, scratchpad, session log)
-      standup.go            Daily standup generator (git, tasks, notes)
-      notehistory.go        Note versioning timeline (git diff, snapshots)
-      smartconnect.go       Smart connections (TF-IDF similarity engine)
-      writingstats.go       Writing statistics (word counts, streaks, charts)
-      quickcapture.go       Quick capture (floating input for rapid notes)
+      research.go           Deep Dive AI research + vault analyzer + note enhancer + daily digest
+      aitemplates.go        AI template generator (9 types)
+      languagelearn.go      Language learning (vocabulary, practice, grammar)
+      habits.go             Habit & goal tracker
+      focussession.go       Focus sessions (timer, scratchpad, log)
+      standup.go            Daily standup generator
+      notehistory.go        Note versioning timeline
+      smartconnect.go       Smart connections (TF-IDF similarity)
+      writingstats.go       Writing statistics
+      quickcapture.go       Quick capture (floating input)
       dashboard.go          Vault dashboard home screen
-      mindmap.go            Mind map view (ASCII tree from headings/links)
-      journalprompts.go     Daily journal prompts (100+ across 8 categories)
-      clipmanager.go        Clipboard manager (50-entry history with search)
-      dailyplanner.go       Daily planner (time-blocked schedule with task/event sync)
-      aischeduler.go        AI smart scheduler (Ollama/OpenAI/local algorithm)
-      recurringtasks.go     Recurring tasks (daily/weekly/monthly auto-creation)
-      notepreview.go        Note preview popup (floating preview with scroll)
-      scratchpad.go         Floating scratchpad (persistent across notes)
-      projectmode.go        Project mode (categories, dashboards, task grouping)
-      nlsearch.go           Natural language search (AI-powered vault search)
-      writingcoach.go       AI writing coach (style analysis + soul note persona)
-      dataview.go           Dataview queries (frontmatter filter/sort/display)
-      timetracker.go        Time tracker (per-note tracking + pomodoro stats)
-      taskmanager.go        Task manager with kanban, calendar, priorities
-      linkassist.go         Unlinked mention finder + batch linking
+      mindmap.go            Mind map view (ASCII tree)
+      journalprompts.go     Daily journal prompts (100+ prompts)
+      clipmanager.go        Clipboard manager (50-entry history)
+      dailyplanner.go       Daily planner (time-blocked schedule)
+      aischeduler.go        AI smart scheduler
+      recurringtasks.go     Recurring tasks (auto-creation)
+      notepreview.go        Note preview popup
+      scratchpad.go         Floating scratchpad
+      projectmode.go        Project mode (categories, dashboards)
+      nlsearch.go           Natural language search
+      writingcoach.go       AI writing coach
+      dataview.go           Dataview queries
+      timetracker.go        Time tracker + pomodoro stats
+      taskmanager.go        Task manager (kanban, calendar, priorities)
+      linkassist.go         Unlinked mention finder
       blogpublish.go        Blog publisher (Medium + GitHub)
       breadcrumb.go         Breadcrumb navigation + pinned tabs
-      diagrams.go           Custom diagram engine (6 types + figures)
-      globalreplace.go      Global search & replace across vault
-      ... and 20+ more components
+      diagrams.go           Custom diagram engine (6 types)
+      globalreplace.go      Global search & replace
+      ... and more
+  .github/
+    workflows/
+      ci.yml                Build + vet + test on every push/PR
+      release.yml           GoReleaser on tag push (v*)
+      auto-release.yml      Auto-tag and release on main push
 ```
 
-Built on [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss) by [Charm](https://charm.sh/).
+Built on [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss) by [Charm](https://charm.sh/). For the full technical overview, see [Architecture Guide](docs/ARCHITECTURE.md).
 
 ---
 
@@ -700,6 +746,7 @@ go build -o granit ./cmd/granit
 - Configuration goes in `internal/config/config.go` + `internal/tui/settings.go`
 - Themes are `Theme` structs in `internal/tui/themes.go`
 - Keep dependencies minimal (currently: Bubble Tea, Lip Gloss, GopherLua)
+- See the [Architecture Guide](docs/ARCHITECTURE.md) for detailed conventions
 
 ### Submitting Changes
 
@@ -710,6 +757,22 @@ go build -o granit ./cmd/granit
 ### Reporting Issues
 
 Found a bug or have a feature request? [Open an issue](https://github.com/artaeon/granit/issues).
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Feature Guide](docs/FEATURES.md) | Exhaustive feature reference with usage instructions |
+| [Installation Guide](docs/INSTALLATION.md) | Detailed installation for all platforms |
+| [AI Guide](docs/AI-GUIDE.md) | AI provider setup and feature documentation |
+| [Keybindings](docs/KEYBINDINGS.md) | Complete keyboard shortcut reference |
+| [Architecture](docs/ARCHITECTURE.md) | Technical overview and codebase structure |
+| [Configuration](docs/CONFIGURATION.md) | All config options with defaults |
+| [Plugin Guide](docs/PLUGINS.md) | Plugin development and Lua scripting |
+| [Theme Reference](docs/THEMES.md) | All 35 themes and custom theme creation |
+| [Changelog](CHANGELOG.md) | Version history and release notes |
 
 ---
 
