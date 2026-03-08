@@ -269,6 +269,26 @@ func (e *Editor) clearMultiCursors() {
 	e.multiWord = ""
 }
 
+// clampCursor constrains a (line, col) pair to valid content bounds.
+func (e *Editor) clampCursor(line, col int) (int, int) {
+	if line < 0 {
+		line = 0
+	}
+	if line >= len(e.content) {
+		line = len(e.content) - 1
+	}
+	if line < 0 {
+		return 0, 0
+	}
+	if col < 0 {
+		col = 0
+	}
+	if col > len(e.content[line]) {
+		col = len(e.content[line])
+	}
+	return line, col
+}
+
 // HasMultiCursors reports whether the editor has additional cursors active.
 func (e *Editor) HasMultiCursors() bool {
 	return len(e.cursors) > 0
@@ -353,13 +373,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					e.col = len(e.content[e.cursor])
 				}
 				for i := range e.cursors {
-					e.cursors[i].Line--
-					if e.cursors[i].Line < 0 {
-						e.cursors[i].Line = 0
-					}
-					if e.cursors[i].Col > len(e.content[e.cursors[i].Line]) {
-						e.cursors[i].Col = len(e.content[e.cursors[i].Line])
-					}
+					e.cursors[i].Line, e.cursors[i].Col = e.clampCursor(e.cursors[i].Line-1, e.cursors[i].Col)
 				}
 				if e.cursor < e.scroll {
 					e.scroll = e.cursor
@@ -400,10 +414,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					e.col = len(e.content[e.cursor])
 				}
 				for i := range e.cursors {
-					e.cursors[i].Line++
-					if e.cursors[i].Col > len(e.content[e.cursors[i].Line]) {
-						e.cursors[i].Col = len(e.content[e.cursors[i].Line])
-					}
+					e.cursors[i].Line, e.cursors[i].Col = e.clampCursor(e.cursors[i].Line+1, e.cursors[i].Col)
 				}
 				visibleHeight := e.height - 4
 				if e.cursor >= e.scroll+visibleHeight {
