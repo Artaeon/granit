@@ -75,6 +75,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Comprehensive test suite** — config tests (27 tests), vault index/parser tests (46 tests), TUI folding/clipboard/similarity tests (26 tests); ~200 total test cases across all packages
 - **Enterprise documentation** — 8 professional docs: Feature Guide, Installation, AI Guide, Keybindings, Architecture, Configuration, Plugins, Themes (4,600+ lines)
 - **Auto-release CI** — GitHub Actions workflow auto-creates releases on push to main with date-based tags and cross-compiled binaries (linux/darwin, amd64/arm64)
+- **Split pane note picker** — fuzzy search picker for selecting a second note in split view; `p` to re-open picker, Esc context-aware, scrollable filtered list
+- **Editor tests** — comprehensive tests for insert, delete, selection, undo/redo, multi-cursor editing
+- **Vim mode tests** — tests for normal, insert, visual mode, motions, and commands
+- **SVG terminal screenshots** — 6 feature mockup screenshots (task manager, AI bots, vim, themes, calendar, command palette)
+- **Contributing guide** — CONTRIBUTING.md with development setup, code conventions, PR workflow
+- **Issue and PR templates** — bug report, feature request, and pull request templates
 
 ### Changed
 
