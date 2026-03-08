@@ -686,6 +686,10 @@ func (r Renderer) renderMarkdown(content string) []string {
 	inCodeBlock := false
 	codeBlockLang := ""
 
+	// Footnote definitions collected during rendering
+	var footnoteOrder []string
+	footnoteMap := map[string]string{}
+
 	// First pass: collect frontmatter
 	var fmLines []string
 	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
@@ -1114,8 +1118,40 @@ func (r Renderer) renderMarkdown(content string) []string {
 			continue
 		}
 
+		// Footnote definition: [^id]: text
+		if strings.HasPrefix(trimmed, "[^") {
+			closeBracket := strings.Index(trimmed, "]:")
+			if closeBracket > 2 {
+				fnID := trimmed[2:closeBracket]
+				fnText := strings.TrimSpace(trimmed[closeBracket+2:])
+				if _, exists := footnoteMap[fnID]; !exists {
+					footnoteOrder = append(footnoteOrder, fnID)
+				}
+				footnoteMap[fnID] = fnText
+				continue
+			}
+		}
+
 		// Normal paragraph
 		result = append(result, "  "+r.renderInline(trimmed))
+	}
+
+	// Render collected footnotes at the bottom
+	if len(footnoteOrder) > 0 {
+		result = append(result, "")
+		borderStyle := lipgloss.NewStyle().Foreground(surface1)
+		result = append(result, borderStyle.Render("  "+strings.Repeat("─", contentWidth-4)))
+		labelStyle := lipgloss.NewStyle().Foreground(overlay0).Italic(true)
+		result = append(result, "  "+labelStyle.Render("Footnotes"))
+		result = append(result, "")
+
+		fnIDStyle := lipgloss.NewStyle().Foreground(sapphire).Bold(true)
+		fnTextStyle := lipgloss.NewStyle().Foreground(subtext0)
+		for _, fnID := range footnoteOrder {
+			fnText := footnoteMap[fnID]
+			line := "  " + fnIDStyle.Render("["+fnID+"]") + " " + fnTextStyle.Render(fnText)
+			result = append(result, line)
+		}
 	}
 
 	return result
