@@ -1181,6 +1181,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					f.WriteString("- [ ] " + evText + "\n")
 					f.Close()
 				}
+				// Also add to planner file for the date
+				AddEventToPlannerFile(m.vault.Root, evDate, evText)
 				m.refreshComponents(name)
 				m.statusbar.SetMessage("Task added to " + evDate)
 			}
@@ -1823,6 +1825,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.taskManager.IsActive() {
+			// Refresh task list if another component changed vault files
+			if m.needsRefresh {
+				m.taskManager.Refresh(m.vault)
+				m.needsRefresh = false
+			}
 			var cmd tea.Cmd
 			m.taskManager, cmd = m.taskManager.Update(msg)
 			// Check if task manager wrote any files

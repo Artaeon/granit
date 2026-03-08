@@ -1741,3 +1741,116 @@ func (dp *DailyPlanner) ApplyAISchedule(slots []schedulerSlot) {
 	dp.recountProgress()
 	dp.modified = true
 }
+
+// AddEventToFile appends an event block to an existing planner file for the
+// given date.  If no planner file exists for that date, one is created with
+// frontmatter and a schedule section.  The event is placed at the next
+// available hour (after the last existing block, or 09:00 by default) and
+// given a 1-hour duration.
+func AddEventToPlannerFile(vaultRoot, dateStr, text string) {
+	plannerDir := filepath.Join(vaultRoot, "Planner")
+	if err := os.MkdirAll(plannerDir, 0755); err != nil {
+		return
+	}
+
+	fp := filepath.Join(plannerDir, dateStr+".md")
+
+	// Determine the next available start time by scanning existing blocks.
+	nextHour := 9
+	nextMin := 0
+
+	if data, err := os.ReadFile(fp); err == nil {
+		inSchedule := false
+		for _, line := range strings.Split(string(data), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "## Schedule" {
+				inSchedule = true
+				continue
+			}
+			if strings.HasPrefix(trimmed, "## ") {
+				inSchedule = false
+				continue
+			}
+			if !inSchedule || !strings.HasPrefix(trimmed, "- ") {
+				continue
+			}
+			// Parse end time from "- HH:MM-HH:MM | ..."
+			entry := strings.TrimPrefix(trimmed, "- ")
+			parts := strings.Split(entry, " | ")
+			if len(parts) < 2 {
+				continue
+			}
+			timeRange := strings.TrimSpace(parts[0])
+			timeParts := strings.Split(timeRange, "-")
+			if len(timeParts) != 2 {
+				continue
+			}
+			var h, m int
+			if _, err := fmt.Sscanf(strings.TrimSpace(timeParts[1]), "%d:%d", &h, &m); err == nil {
+				if h > nextHour || (h == nextHour && m > nextMin) {
+					nextHour = h
+					nextMin = m
+				}
+			}
+		}
+	}
+
+	startTime := fmt.Sprintf("%02d:%02d", nextHour, nextMin)
+	endHour := nextHour + 1
+	endMin := nextMin
+	if endHour > 22 {
+		endHour = 22
+		endMin = 0
+	}
+	endTime := fmt.Sprintf("%02d:%02d", endHour, endMin)
+
+	newLine := fmt.Sprintf("- %s-%s | %s | event\n", startTime, endTime, text)
+
+	// If the file does not exist, create it with frontmatter and schedule header.
+	if _, err := os.Stat(fp); os.IsNotExist(err) {
+		var content strings.Builder
+		content.WriteString("---\n")
+		content.WriteString("date: " + dateStr + "\n")
+		content.WriteString("type: planner\n")
+		content.WriteString("---\n\n")
+		content.WriteString("## Schedule\n\n")
+		content.WriteString(newLine)
+		os.WriteFile(fp, []byte(content.String()), 0644)
+		return
+	}
+
+	// File exists — append into the ## Schedule section.
+	data, err := os.ReadFile(fp)
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+
+	// Find the end of the schedule section to insert.
+	insertIdx := -1
+	inSchedule := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "## Schedule" {
+			inSchedule = true
+			continue
+		}
+		if inSchedule {
+			if strings.HasPrefix(trimmed, "## ") || (trimmed == "" && i+1 < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[i+1]), "## ")) {
+				insertIdx = i
+				break
+			}
+		}
+	}
+
+	if insertIdx < 0 {
+		// Append at end if no other section found
+		insertIdx = len(lines)
+	}
+
+	newLines := make([]string, 0, len(lines)+1)
+	newLines = append(newLines, lines[:insertIdx]...)
+	newLines = append(newLines, strings.TrimRight(newLine, "\n"))
+	newLines = append(newLines, lines[insertIdx:]...)
+	os.WriteFile(fp, []byte(strings.Join(newLines, "\n")), 0644)
+}
