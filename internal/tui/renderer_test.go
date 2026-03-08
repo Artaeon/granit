@@ -1727,3 +1727,135 @@ func TestRenderDefinitionListNotTriggeredWithoutColon(t *testing.T) {
 		t.Errorf("Normal text should not trigger definition list, got:\n%s", plain)
 	}
 }
+
+// =========================================================================
+// Soft line breaks vs hard breaks
+// =========================================================================
+
+func TestRenderSoftBreak(t *testing.T) {
+	r := newTestRenderer()
+	content := "First line\nSecond line"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	// Soft break: single newline should join with space
+	if !strings.Contains(plain, "First line Second line") {
+		t.Errorf("Soft break should join lines with space, got:\n%s", plain)
+	}
+}
+
+func TestRenderHardBreak(t *testing.T) {
+	r := newTestRenderer()
+	// Two trailing spaces before newline = hard break
+	content := "First line  \nSecond line"
+	lines := renderedLines(r, content)
+	plainLines := make([]string, len(lines))
+	for i, l := range lines {
+		plainLines[i] = stripAnsiCodes(l)
+	}
+	// Hard break should produce separate rendered lines
+	foundFirst := false
+	foundSecond := false
+	for _, pl := range plainLines {
+		if strings.Contains(pl, "First line") {
+			foundFirst = true
+		}
+		if strings.Contains(pl, "Second line") {
+			foundSecond = true
+		}
+	}
+	if !foundFirst || !foundSecond {
+		t.Errorf("Hard break should render both lines, got:\n%s", strings.Join(plainLines, "\n"))
+	}
+	// They should NOT be on the same line
+	for _, pl := range plainLines {
+		if strings.Contains(pl, "First line") && strings.Contains(pl, "Second line") {
+			t.Errorf("Hard break should put lines on separate rendered lines, got:\n%s", pl)
+		}
+	}
+}
+
+func TestRenderSoftBreakMultipleLines(t *testing.T) {
+	r := newTestRenderer()
+	content := "Line one\nLine two\nLine three"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Line one Line two Line three") {
+		t.Errorf("Multiple soft breaks should join all lines, got:\n%s", plain)
+	}
+}
+
+func TestRenderParagraphBreak(t *testing.T) {
+	r := newTestRenderer()
+	content := "Paragraph one\n\nParagraph two"
+	lines := renderedLines(r, content)
+	plainLines := make([]string, len(lines))
+	for i, l := range lines {
+		plainLines[i] = stripAnsiCodes(l)
+	}
+	// Empty line should separate paragraphs
+	foundP1 := false
+	foundP2 := false
+	for _, pl := range plainLines {
+		if strings.Contains(pl, "Paragraph one") {
+			foundP1 = true
+		}
+		if strings.Contains(pl, "Paragraph two") {
+			foundP2 = true
+		}
+	}
+	if !foundP1 || !foundP2 {
+		t.Errorf("Paragraph break should render both paragraphs, got:\n%s", strings.Join(plainLines, "\n"))
+	}
+}
+
+func TestRenderSoftBreakStopsAtHeading(t *testing.T) {
+	r := newTestRenderer()
+	content := "Some text\n## Heading"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	// Heading should not be merged into paragraph
+	if strings.Contains(plain, "Some text Heading") {
+		t.Errorf("Soft break should not merge heading into paragraph, got:\n%s", plain)
+	}
+}
+
+func TestRenderSoftBreakStopsAtList(t *testing.T) {
+	r := newTestRenderer()
+	content := "Some text\n- list item"
+	out := rendered(r, content)
+	plain := stripAnsiCodes(out)
+	if strings.Contains(plain, "Some text - list item") || strings.Contains(plain, "Some text list item") {
+		t.Errorf("Soft break should not merge list item into paragraph, got:\n%s", plain)
+	}
+}
+
+func TestRenderIsBlockElement(t *testing.T) {
+	blockLines := []string{
+		"# Heading", "## H2", "### H3", "#### H4",
+		"> Blockquote", "```code",
+		"- Item", "* Star item",
+		"- [ ] Todo", "- [x] Done",
+		"---", "***", "___",
+		"$$math", "[^1]: footnote",
+		"![[embed]]", "![alt](img.png)",
+		"1. Numbered",
+		"| table | row |",
+		": definition",
+	}
+	for _, line := range blockLines {
+		if !isBlockElement(line) {
+			t.Errorf("Expected %q to be detected as block element", line)
+		}
+	}
+
+	nonBlockLines := []string{
+		"Normal text",
+		"Some paragraph content",
+		"Just a sentence.",
+	}
+	for _, line := range nonBlockLines {
+		if isBlockElement(line) {
+			t.Errorf("Expected %q to NOT be detected as block element", line)
+		}
+	}
+}
