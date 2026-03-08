@@ -24,6 +24,8 @@ type PlannerTask struct {
 	Priority int    // 0=none, 1=low, 2=medium, 3=high, 4=highest
 	DueDate  string // YYYY-MM-DD
 	Source   string // which file it came from
+	NotePath string // relative path to source note (for bidirectional sync)
+	LineNum  int    // 0-based line number in the source note
 }
 
 // PlannerEvent represents a calendar event for the planner.
@@ -57,13 +59,15 @@ const (
 
 // timeBlock is a single 30-minute slot in the schedule grid.
 type timeBlock struct {
-	Hour     int            // 0-23
-	HalfHour bool           // false=:00, true=:30
-	TaskText string         // assigned task/event text
-	TaskType blockType      // type of the block content
-	Done     bool           // whether the block is completed
-	Color    lipgloss.Color // color for rendering the block
-	Priority int            // priority for task blocks (0-4)
+	Hour       int            // 0-23
+	HalfHour   bool           // false=:00, true=:30
+	TaskText   string         // assigned task/event text
+	TaskType   blockType      // type of the block content
+	Done       bool           // whether the block is completed
+	Color      lipgloss.Color // color for rendering the block
+	Priority   int            // priority for task blocks (0-4)
+	SourcePath string         // relative path to source note (for bidirectional sync)
+	SourceLine int            // 0-based line number in the source note
 }
 
 // plannerPanel tracks which sub-panel has focus.
@@ -558,8 +562,12 @@ func (dp DailyPlanner) updateSchedule(msg tea.KeyMsg) (DailyPlanner, tea.Cmd) {
 				task := dp.unscheduled[dp.unschedCursor]
 				dp.placeBlock(dp.cursor, task.Text, blockTask, 2)
 				dp.blocks[dp.cursor].Priority = task.Priority
+				dp.blocks[dp.cursor].SourcePath = task.NotePath
+				dp.blocks[dp.cursor].SourceLine = task.LineNum
 				if dp.cursor+1 < len(dp.blocks) && dp.blocks[dp.cursor+1].TaskText == task.Text {
 					dp.blocks[dp.cursor+1].Priority = task.Priority
+					dp.blocks[dp.cursor+1].SourcePath = task.NotePath
+					dp.blocks[dp.cursor+1].SourceLine = task.LineNum
 				}
 				dp.unscheduled = append(dp.unscheduled[:dp.unschedCursor], dp.unscheduled[dp.unschedCursor+1:]...)
 				if dp.unschedCursor >= len(dp.unscheduled) && dp.unschedCursor > 0 {
@@ -616,8 +624,12 @@ func (dp DailyPlanner) updateUnscheduled(msg tea.KeyMsg) (DailyPlanner, tea.Cmd)
 				task := dp.unscheduled[dp.unschedCursor]
 				dp.placeBlock(dp.cursor, task.Text, blockTask, 2)
 				dp.blocks[dp.cursor].Priority = task.Priority
+				dp.blocks[dp.cursor].SourcePath = task.NotePath
+				dp.blocks[dp.cursor].SourceLine = task.LineNum
 				if dp.cursor+1 < len(dp.blocks) && dp.blocks[dp.cursor+1].TaskText == task.Text {
 					dp.blocks[dp.cursor+1].Priority = task.Priority
+					dp.blocks[dp.cursor+1].SourcePath = task.NotePath
+					dp.blocks[dp.cursor+1].SourceLine = task.LineNum
 				}
 				dp.unscheduled = append(dp.unscheduled[:dp.unschedCursor], dp.unscheduled[dp.unschedCursor+1:]...)
 				if dp.unschedCursor >= len(dp.unscheduled) && dp.unschedCursor > 0 {
@@ -735,6 +747,8 @@ func (dp *DailyPlanner) deleteBlock(idx int) {
 		dp.blocks[i].Done = false
 		dp.blocks[i].Color = ""
 		dp.blocks[i].Priority = 0
+		dp.blocks[i].SourcePath = ""
+		dp.blocks[i].SourceLine = 0
 	}
 }
 
@@ -777,6 +791,8 @@ func (dp *DailyPlanner) moveBlock(from, to int) {
 	done := b.Done
 	c := b.Color
 	pri := b.Priority
+	srcPath := b.SourcePath
+	srcLine := b.SourceLine
 
 	// Count span length
 	start := from
@@ -798,6 +814,8 @@ func (dp *DailyPlanner) moveBlock(from, to int) {
 		dp.blocks[i].Done = false
 		dp.blocks[i].Color = ""
 		dp.blocks[i].Priority = 0
+		dp.blocks[i].SourcePath = ""
+		dp.blocks[i].SourceLine = 0
 	}
 
 	// Place at new position
@@ -807,6 +825,8 @@ func (dp *DailyPlanner) moveBlock(from, to int) {
 		dp.blocks[to+s].Done = done
 		dp.blocks[to+s].Color = c
 		dp.blocks[to+s].Priority = pri
+		dp.blocks[to+s].SourcePath = srcPath
+		dp.blocks[to+s].SourceLine = srcLine
 	}
 }
 
@@ -1651,11 +1671,24 @@ func (dp *DailyPlanner) ApplyAISchedule(slots []schedulerSlot) {
 			c = text
 		}
 
+		// Try to match slot text to an unscheduled task for source tracking
+		var srcPath string
+		var srcLine int
+		for _, ut := range dp.unscheduled {
+			if ut.Text == slot.Task || strings.Contains(ut.Text, slot.Task) || strings.Contains(slot.Task, ut.Text) {
+				srcPath = ut.NotePath
+				srcLine = ut.LineNum
+				break
+			}
+		}
+
 		for s := 0; s < numSlots && idx+s < len(dp.blocks); s++ {
 			dp.blocks[idx+s].TaskText = slot.Task
 			dp.blocks[idx+s].TaskType = bt
 			dp.blocks[idx+s].Color = c
 			dp.blocks[idx+s].Priority = slot.Priority
+			dp.blocks[idx+s].SourcePath = srcPath
+			dp.blocks[idx+s].SourceLine = srcLine
 		}
 	}
 
