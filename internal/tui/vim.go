@@ -79,6 +79,11 @@ type VimResult struct {
 	PasteBelow bool
 	PasteAbove bool
 	PasteText  string
+
+	// Folding
+	FoldToggle bool
+	FoldAll    bool
+	UnfoldAll  bool
 }
 
 // NewVimState creates a new VimState in Normal mode, disabled by default.
@@ -591,6 +596,11 @@ func (vs *VimState) handleNormal(key string, content []string, cursor, col, heig
 		vs.mode = VimCommand
 		vs.cmdBuf = ""
 		return VimResult{EnterCommand: true, StatusMsg: ":"}
+
+	// ---- Folding (z-prefix) ----
+	case "z":
+		vs.pending = "z"
+		return VimResult{}
 	}
 
 	return VimResult{}
@@ -624,6 +634,20 @@ func (vs *VimState) handlePending(key string, content []string, cursor, col, cou
 			return vs.motionResult(content, target, 0, target)
 		}
 		// Unknown g-combo — ignore
+		return VimResult{}
+	}
+
+	// z-prefix folding commands
+	if op == "z" {
+		switch key {
+		case "a":
+			return VimResult{FoldToggle: true}
+		case "M":
+			return VimResult{FoldAll: true}
+		case "R":
+			return VimResult{UnfoldAll: true}
+		}
+		vs.pending = ""
 		return VimResult{}
 	}
 
