@@ -549,6 +549,60 @@
       font-size: 0.9rem;
     }
 
+    /* ─── Theme Showcase ─── */
+    .theme-showcase {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+    }
+
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+    }
+
+    .theme-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .theme-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--accent);
+      box-shadow: 0 8px 30px rgba(203, 166, 247, 0.1);
+    }
+
+    .theme-card-name {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.75rem;
+    }
+
+    .theme-palette {
+      display: flex;
+      gap: 4px;
+      height: 32px;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .theme-palette .swatch {
+      flex: 1;
+      border-radius: 4px;
+    }
+
+    .theme-card-desc {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      margin-top: 0.6rem;
+    }
+
     /* ─── Installation ─── */
     .install-block {
       max-width: 700px;
@@ -750,6 +804,10 @@
         grid-template-columns: repeat(2, 1fr);
       }
 
+      .theme-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
       .showcase-item {
         grid-template-columns: 1fr;
         gap: 1.5rem;
@@ -767,7 +825,8 @@
     @media (max-width: 600px) {
       section,
       .comparison,
-      .showcase {
+      .showcase,
+      .theme-showcase {
         padding: 3.5rem 1.25rem;
       }
 
@@ -828,6 +887,10 @@
 
       .showcase-text h3 {
         font-size: 1.15rem;
+      }
+
+      .theme-grid {
+        grid-template-columns: 1fr;
       }
     }
 
@@ -1130,6 +1193,86 @@
       <img src="../assets/editor.gif" alt="Granit editor demo showing the TUI in action" loading="lazy">
     </div>
     <p class="demo-caption">The default 3-panel layout with sidebar, editor, and backlinks panel.</p>
+  </section>
+
+  <!-- Theme Showcase -->
+  <section class="theme-showcase" id="themes">
+    <h2 class="section-title"><span class="accent">//</span> Theme Variety</h2>
+    <p class="section-subtitle">35 built-in themes. Instantly switch from settings or create your own with the theme editor.</p>
+    <div class="theme-grid">
+      <div class="theme-card">
+        <div class="theme-card-name">Catppuccin Mocha</div>
+        <div class="theme-palette">
+          <div class="swatch" style="background: #1e1e2e;"></div>
+          <div class="swatch" style="background: #cba6f7;"></div>
+          <div class="swatch" style="background: #89b4fa;"></div>
+          <div class="swatch" style="background: #a6e3a1;"></div>
+          <div class="swatch" style="background: #fab387;"></div>
+          <div class="swatch" style="background: #f38ba8;"></div>
+        </div>
+        <div class="theme-card-desc">Warm, pastel dark (default)</div>
+      </div>
+      <div class="theme-card">
+        <div class="theme-card-name">Tokyo Night</div>
+        <div class="theme-palette">
+          <div class="swatch" style="background: #1a1b26;"></div>
+          <div class="swatch" style="background: #bb9af7;"></div>
+          <div class="swatch" style="background: #7aa2f7;"></div>
+          <div class="swatch" style="background: #9ece6a;"></div>
+          <div class="swatch" style="background: #ff9e64;"></div>
+          <div class="swatch" style="background: #f7768e;"></div>
+        </div>
+        <div class="theme-card-desc">Inspired by Tokyo at night</div>
+      </div>
+      <div class="theme-card">
+        <div class="theme-card-name">Gruvbox Dark</div>
+        <div class="theme-palette">
+          <div class="swatch" style="background: #282828;"></div>
+          <div class="swatch" style="background: #d3869b;"></div>
+          <div class="swatch" style="background: #83a598;"></div>
+          <div class="swatch" style="background: #b8bb26;"></div>
+          <div class="swatch" style="background: #fe8019;"></div>
+          <div class="swatch" style="background: #fb4934;"></div>
+        </div>
+        <div class="theme-card-desc">Retro, earthy warm tones</div>
+      </div>
+      <div class="theme-card">
+        <div class="theme-card-name">Nord</div>
+        <div class="theme-palette">
+          <div class="swatch" style="background: #2e3440;"></div>
+          <div class="swatch" style="background: #b48ead;"></div>
+          <div class="swatch" style="background: #81a1c1;"></div>
+          <div class="swatch" style="background: #a3be8c;"></div>
+          <div class="swatch" style="background: #d08770;"></div>
+          <div class="swatch" style="background: #bf616a;"></div>
+        </div>
+        <div class="theme-card-desc">Arctic, cool blue palette</div>
+      </div>
+      <div class="theme-card">
+        <div class="theme-card-name">Dracula</div>
+        <div class="theme-palette">
+          <div class="swatch" style="background: #282a36;"></div>
+          <div class="swatch" style="background: #bd93f9;"></div>
+          <div class="swatch" style="background: #8be9fd;"></div>
+          <div class="swatch" style="background: #50fa7b;"></div>
+          <div class="swatch" style="background: #ffb86c;"></div>
+          <div class="swatch" style="background: #ff5555;"></div>
+        </div>
+        <div class="theme-card-desc">Classic dark with vivid accents</div>
+      </div>
+      <div class="theme-card">
+        <div class="theme-card-name">Rose Pine</div>
+        <div class="theme-palette">
+          <div class="swatch" style="background: #191724;"></div>
+          <div class="swatch" style="background: #c4a7e7;"></div>
+          <div class="swatch" style="background: #9ccfd8;"></div>
+          <div class="swatch" style="background: #31748f;"></div>
+          <div class="swatch" style="background: #f6c177;"></div>
+          <div class="swatch" style="background: #eb6f92;"></div>
+        </div>
+        <div class="theme-card-desc">Muted, elegant dark</div>
+      </div>
+    </div>
   </section>
 
   <!-- By the Numbers -->
