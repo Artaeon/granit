@@ -90,6 +90,9 @@ func main() {
 	case "search":
 		runSearch()
 
+	case "capture":
+		runCapture()
+
 	case "config":
 		runConfig()
 
