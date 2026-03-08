@@ -213,13 +213,16 @@ Built-in git overlay with three views:
 
 Instantly switch between **29 dark** and **6 light** built-in themes from settings. Create your own with the **Theme Editor** — live-edit all 16 color roles with hex values, preview changes instantly, and save/export custom themes as JSON. Choose from **Unicode**, **Nerd Font**, **Emoji**, or **ASCII** icon sets.
 
-### 5 Panel Layouts
+### 8 Panel Layouts
 
 - **Default** — 3-panel: sidebar + editor + backlinks
 - **Writer** — 2-panel: sidebar + editor
 - **Minimal** — editor only
-- **Reading** — editor + backlinks, no sidebar
-- **Dashboard** — 4-panel: sidebar + editor + outline + backlinks
+- **Reading** — editor + backlinks, no sidebar (wide editor for reading)
+- **Dashboard** — 4-panel: sidebar + editor + persistent outline + backlinks
+- **Zen** — centered distraction-free editor, 80-char max width, no chrome
+- **Taskboard** — sidebar + editor + task summary panel (overdue/today/upcoming)
+- **Research** — sidebar + editor + notes panel (recent notes, backlinks, links)
 
 ### Image Manager
 
@@ -522,7 +525,7 @@ Per-vault settings override global. All settings can be changed from the built-i
 |--------|---------|-------------|
 | `theme` | `catppuccin-mocha` | Color theme (28 available) |
 | `icon_theme` | `unicode` | `unicode`, `nerd`, `emoji`, or `ascii` |
-| `layout` | `default` | `default` (3-panel), `writer` (2-panel), `minimal` (editor only) |
+| `layout` | `default` | `default`, `writer`, `minimal`, `reading`, `dashboard`, `zen`, `taskboard`, `research` |
 | `vim_mode` | `false` | Enable Vim-style modal editing |
 | `ghost_writer` | `false` | Enable inline AI writing suggestions |
 | `auto_tag` | `false` | Auto-suggest tags on save |
@@ -602,7 +605,7 @@ granit/
       themes.go             35 built-in color themes
       customtheme.go        Custom theme JSON loading/saving
       themeeditor.go        Live theme editor overlay
-      layouts.go            5 panel layout definitions
+      layouts.go            8 panel layout definitions
       command.go            Command palette (70+ actions)
       vim.go                Vim modal editing
       folding.go            Collapsible heading/code fold state
