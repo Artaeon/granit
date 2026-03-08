@@ -3,6 +3,7 @@ package tui
 import (
 	"bufio"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -412,6 +413,9 @@ func NewModel(vaultPath string) (Model, error) {
 	// Configure auto git sync
 	m.autoSync.SetEnabled(cfg.GitAutoSync)
 
+	// Restore scroll position cache from previous session
+	m.scrollCache = loadScrollCache(vaultPath)
+
 	// Restore persisted tabs from previous session
 	if m.tabBar != nil {
 		validPaths := make(map[string]bool, len(paths))
@@ -454,6 +458,63 @@ func (m *Model) restoreScrollPosition(relPath string) {
 		m.editor.SetCursorPosition(pos.Line, pos.Col)
 		m.editor.SetScroll(pos.Scroll)
 	}
+}
+
+const maxScrollCacheEntries = 100
+
+// saveScrollCache persists the scroll position cache to <vaultRoot>/.granit/viewport.json.
+// It performs LRU eviction when the cache exceeds maxScrollCacheEntries.
+func (m *Model) saveScrollCache(vaultRoot string) {
+	if vaultRoot == "" || len(m.scrollCache) == 0 {
+		return
+	}
+	// Save the currently active note's position before writing
+	m.saveScrollPosition()
+
+	cache := m.scrollCache
+
+	// LRU eviction: keep only the most recent maxScrollCacheEntries.
+	// Since Go maps are unordered, just trim to size.
+	if len(cache) > maxScrollCacheEntries {
+		trimmed := make(map[string]scrollPosition, maxScrollCacheEntries)
+		count := 0
+		for k, v := range cache {
+			if count >= maxScrollCacheEntries {
+				break
+			}
+			trimmed[k] = v
+			count++
+		}
+		cache = trimmed
+	}
+
+	dir := filepath.Join(vaultRoot, ".granit")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return
+	}
+	raw, err := json.MarshalIndent(cache, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(dir, "viewport.json"), raw, 0o600)
+}
+
+// loadScrollCache reads the scroll position cache from <vaultRoot>/.granit/viewport.json.
+func loadScrollCache(vaultRoot string) map[string]scrollPosition {
+	if vaultRoot == "" {
+		return make(map[string]scrollPosition)
+	}
+	fp := filepath.Join(vaultRoot, ".granit", "viewport.json")
+	raw, err := os.ReadFile(fp)
+	if err != nil {
+		return make(map[string]scrollPosition)
+	}
+	var cache map[string]scrollPosition
+	if err := json.Unmarshal(raw, &cache); err != nil {
+		_ = os.Remove(fp)
+		return make(map[string]scrollPosition)
+	}
+	return cache
 }
 
 func (m *Model) loadNote(relPath string) {
@@ -3583,6 +3644,19 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.clipManager.SetSize(m.width, m.height)
 		m.clipManager.Open()
 
+	case CmdSmartPaste:
+		if text, err := ClipboardPaste(); err == nil && text != "" {
+			if m.editor.SmartPaste(text) {
+				m.statusbar.SetMessage("Smart paste: created markdown link")
+			} else {
+				m.editor.InsertText(text)
+				m.statusbar.SetMessage("Pasted from clipboard")
+			}
+			line, col := m.editor.GetCursor()
+			m.statusbar.SetCursor(line, col)
+			m.statusbar.SetWordCount(m.editor.GetWordCount())
+		}
+
 	case CmdDailyPlanner:
 		m.dailyPlanner.SetSize(m.width, m.height)
 		tasks, events, habits := m.gatherPlannerData()
@@ -4748,6 +4822,8 @@ func (m *Model) triggerExitSplash() tea.Cmd {
 	if m.tabBar != nil {
 		m.tabBar.SaveTabs(m.vault.Root)
 	}
+	// Save scroll positions for session persistence
+	m.saveScrollCache(m.vault.Root)
 	// Unload Ollama model to free resources
 	if m.config.AIProvider == "ollama" {
 		stopOllama(m.config.OllamaModel)
