@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -18,16 +21,21 @@ type TabEntry struct {
 // clickable tabs at the top of the editor area. It is a helper component
 // (not a tea.Model) — callers invoke its methods directly.
 type TabBar struct {
-	tabs      []TabEntry
-	maxTabs   int // default 8
-	activeIdx int // which tab is currently active
+	tabs          []TabEntry
+	maxTabs       int // default 8
+	activeIdx     int // which tab is currently active
+	closedHistory []string
+	scrollOffset  int
+	moveHighlight int       // index of tab being moved (-1 = none)
+	moveHighTime  time.Time // when highlight was set
 }
 
 // NewTabBar creates a TabBar with sensible defaults.
 func NewTabBar() *TabBar {
 	return &TabBar{
-		maxTabs:   8,
-		activeIdx: -1,
+		maxTabs:       8,
+		activeIdx:     -1,
+		moveHighlight: -1,
 	}
 }
 
@@ -55,6 +63,7 @@ func (tb *TabBar) AddTab(path string) {
 		evicted := false
 		for i, t := range tb.tabs {
 			if !t.Pinned {
+				tb.pushClosed(t.Path)
 				tb.tabs = append(tb.tabs[:i], tb.tabs[i+1:]...)
 				if tb.activeIdx >= i && tb.activeIdx > 0 {
 					tb.activeIdx--
@@ -82,6 +91,7 @@ func (tb *TabBar) RemoveTab(path string) {
 	if tb.tabs[idx].Pinned {
 		return
 	}
+	tb.pushClosed(tb.tabs[idx].Path)
 	tb.tabs = append(tb.tabs[:idx], tb.tabs[idx+1:]...)
 
 	// Adjust active index.
@@ -122,12 +132,47 @@ func (tb *TabBar) UnpinTab(path string) {
 	}
 }
 
+// TogglePin toggles the pinned state of the active tab.
+func (tb *TabBar) TogglePin() {
+	if tb.activeIdx >= 0 && tb.activeIdx < len(tb.tabs) {
+		tb.tabs[tb.activeIdx].Pinned = !tb.tabs[tb.activeIdx].Pinned
+	}
+}
+
+// IsActiveTabPinned reports whether the active tab is pinned.
+func (tb *TabBar) IsActiveTabPinned() bool {
+	if tb.activeIdx >= 0 && tb.activeIdx < len(tb.tabs) {
+		return tb.tabs[tb.activeIdx].Pinned
+	}
+	return false
+}
+
 // GetActive returns the path of the currently active tab, or an empty string.
 func (tb *TabBar) GetActive() string {
 	if tb.activeIdx >= 0 && tb.activeIdx < len(tb.tabs) {
 		return tb.tabs[tb.activeIdx].Path
 	}
 	return ""
+}
+
+// ActiveIndex returns the active tab index.
+func (tb *TabBar) ActiveIndex() int {
+	return tb.activeIdx
+}
+
+// Count returns the number of open tabs.
+func (tb *TabBar) Count() int {
+	return len(tb.tabs)
+}
+
+// SwitchToIndex switches to the tab at index i (0-based). Returns the path
+// of the activated tab or "" if the index is invalid.
+func (tb *TabBar) SwitchToIndex(i int) string {
+	if i < 0 || i >= len(tb.tabs) {
+		return ""
+	}
+	tb.activeIdx = i
+	return tb.tabs[i].Path
 }
 
 // NextTab cycles to the next tab and returns its path. Wraps around.
@@ -170,6 +215,8 @@ func (tb *TabBar) MoveLeft() bool {
 	}
 	tb.tabs[tb.activeIdx], tb.tabs[tb.activeIdx-1] = tb.tabs[tb.activeIdx-1], tb.tabs[tb.activeIdx]
 	tb.activeIdx--
+	tb.moveHighlight = tb.activeIdx
+	tb.moveHighTime = time.Now()
 	return true
 }
 
@@ -180,6 +227,8 @@ func (tb *TabBar) MoveRight() bool {
 	}
 	tb.tabs[tb.activeIdx], tb.tabs[tb.activeIdx+1] = tb.tabs[tb.activeIdx+1], tb.tabs[tb.activeIdx]
 	tb.activeIdx++
+	tb.moveHighlight = tb.activeIdx
+	tb.moveHighTime = time.Now()
 	return true
 }
 
@@ -192,6 +241,7 @@ func (tb *TabBar) CloseActive() string {
 	if tb.tabs[tb.activeIdx].Pinned {
 		return tb.tabs[tb.activeIdx].Path
 	}
+	tb.pushClosed(tb.tabs[tb.activeIdx].Path)
 	tb.tabs = append(tb.tabs[:tb.activeIdx], tb.tabs[tb.activeIdx+1:]...)
 	if len(tb.tabs) == 0 {
 		tb.activeIdx = -1
@@ -201,6 +251,223 @@ func (tb *TabBar) CloseActive() string {
 		tb.activeIdx = len(tb.tabs) - 1
 	}
 	return tb.tabs[tb.activeIdx].Path
+}
+
+// ---------------------------------------------------------------------------
+// Closed tab history
+// ---------------------------------------------------------------------------
+
+// pushClosed adds a path to the closed history stack (max 5, LIFO).
+func (tb *TabBar) pushClosed(path string) {
+	if path == "" {
+		return
+	}
+	// Remove if already in history to avoid duplicates
+	for i, p := range tb.closedHistory {
+		if p == path {
+			tb.closedHistory = append(tb.closedHistory[:i], tb.closedHistory[i+1:]...)
+			break
+		}
+	}
+	tb.closedHistory = append(tb.closedHistory, path)
+	if len(tb.closedHistory) > 5 {
+		tb.closedHistory = tb.closedHistory[len(tb.closedHistory)-5:]
+	}
+}
+
+// ReopenLast pops the most recently closed tab path from history.
+// Returns "" if there is nothing to reopen.
+func (tb *TabBar) ReopenLast() string {
+	if len(tb.closedHistory) == 0 {
+		return ""
+	}
+	last := tb.closedHistory[len(tb.closedHistory)-1]
+	tb.closedHistory = tb.closedHistory[:len(tb.closedHistory)-1]
+	return last
+}
+
+// ---------------------------------------------------------------------------
+// Close multiple tabs
+// ---------------------------------------------------------------------------
+
+// CloseOthers closes all tabs except the active one (pinned tabs are kept).
+func (tb *TabBar) CloseOthers() {
+	if tb.activeIdx < 0 || tb.activeIdx >= len(tb.tabs) {
+		return
+	}
+	active := tb.tabs[tb.activeIdx]
+	var kept []TabEntry
+	for i, t := range tb.tabs {
+		if i == tb.activeIdx {
+			kept = append(kept, t)
+		} else if t.Pinned {
+			kept = append(kept, t)
+		} else {
+			tb.pushClosed(t.Path)
+		}
+	}
+	tb.tabs = kept
+	// Find the active tab's new index
+	tb.activeIdx = 0
+	for i, t := range tb.tabs {
+		if t.Path == active.Path {
+			tb.activeIdx = i
+			break
+		}
+	}
+}
+
+// CloseToRight closes all unpinned tabs to the right of the active one.
+func (tb *TabBar) CloseToRight() {
+	if tb.activeIdx < 0 || tb.activeIdx >= len(tb.tabs)-1 {
+		return
+	}
+	var kept []TabEntry
+	kept = append(kept, tb.tabs[:tb.activeIdx+1]...)
+	for _, t := range tb.tabs[tb.activeIdx+1:] {
+		if t.Pinned {
+			kept = append(kept, t)
+		} else {
+			tb.pushClosed(t.Path)
+		}
+	}
+	tb.tabs = kept
+	if tb.activeIdx >= len(tb.tabs) {
+		tb.activeIdx = len(tb.tabs) - 1
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tab scroll
+// ---------------------------------------------------------------------------
+
+// ScrollLeft scrolls the visible tab window one position left.
+func (tb *TabBar) ScrollLeft() {
+	if tb.scrollOffset > 0 {
+		tb.scrollOffset--
+	}
+}
+
+// ScrollRight scrolls the visible tab window one position right.
+func (tb *TabBar) ScrollRight() {
+	maxOffset := len(tb.tabs) - 1
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if tb.scrollOffset < maxOffset {
+		tb.scrollOffset++
+	}
+}
+
+// clampScroll ensures scrollOffset is within valid range and active tab is visible.
+func (tb *TabBar) clampScroll(visibleCount int) {
+	if tb.scrollOffset < 0 {
+		tb.scrollOffset = 0
+	}
+	maxOffset := len(tb.tabs) - visibleCount
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if tb.scrollOffset > maxOffset {
+		tb.scrollOffset = maxOffset
+	}
+	// Ensure active tab is visible
+	if tb.activeIdx >= 0 {
+		if tb.activeIdx < tb.scrollOffset {
+			tb.scrollOffset = tb.activeIdx
+		}
+		if tb.activeIdx >= tb.scrollOffset+visibleCount {
+			tb.scrollOffset = tb.activeIdx - visibleCount + 1
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Persistence
+// ---------------------------------------------------------------------------
+
+// tabSessionData is the JSON schema for persisting open tabs.
+type tabSessionData struct {
+	Tabs   []string `json:"tabs"`
+	Active int      `json:"active"`
+	Pinned []int    `json:"pinned"`
+}
+
+// SaveTabs persists open tabs to <vaultPath>/.granit/tabs.json.
+func (tb *TabBar) SaveTabs(vaultPath string) {
+	if vaultPath == "" {
+		return
+	}
+	dir := filepath.Join(vaultPath, ".granit")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+
+	var paths []string
+	var pinned []int
+	for i, t := range tb.tabs {
+		paths = append(paths, t.Path)
+		if t.Pinned {
+			pinned = append(pinned, i)
+		}
+	}
+
+	data := tabSessionData{
+		Tabs:   paths,
+		Active: tb.activeIdx,
+		Pinned: pinned,
+	}
+
+	raw, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(dir, "tabs.json"), raw, 0o644)
+}
+
+// LoadTabs restores tabs from <vaultPath>/.granit/tabs.json.
+// It only adds tabs whose paths are present in validPaths (to skip deleted notes).
+func (tb *TabBar) LoadTabs(vaultPath string, validPaths map[string]bool) {
+	if vaultPath == "" {
+		return
+	}
+	fp := filepath.Join(vaultPath, ".granit", "tabs.json")
+	raw, err := os.ReadFile(fp)
+	if err != nil {
+		return
+	}
+
+	var data tabSessionData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return
+	}
+
+	pinnedSet := make(map[int]bool)
+	for _, idx := range data.Pinned {
+		pinnedSet[idx] = true
+	}
+
+	// Clear existing tabs
+	tb.tabs = nil
+	tb.activeIdx = -1
+
+	for i, p := range data.Tabs {
+		if validPaths != nil && !validPaths[p] {
+			continue
+		}
+		entry := TabEntry{
+			Path:   p,
+			Pinned: pinnedSet[i],
+		}
+		tb.tabs = append(tb.tabs, entry)
+	}
+
+	if len(tb.tabs) > 0 {
+		tb.activeIdx = data.Active
+		if tb.activeIdx < 0 || tb.activeIdx >= len(tb.tabs) {
+			tb.activeIdx = 0
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -217,7 +484,7 @@ func tbBaseName(path string) string {
 	return base
 }
 
-// tbTruncName truncates a name to maxLen characters, appending "…" if needed.
+// tbTruncName truncates a name to maxLen characters, appending "..." if needed.
 func tbTruncName(name string, maxLen int) string {
 	runes := []rune(name)
 	if len(runes) <= maxLen {
@@ -227,7 +494,7 @@ func tbTruncName(name string, maxLen int) string {
 }
 
 // tbRenderTab renders a single tab label with the appropriate styling.
-func tbRenderTab(entry TabEntry, isActive bool) string {
+func tbRenderTab(entry TabEntry, isActive bool, isMoving bool) string {
 	name := tbTruncName(tbBaseName(entry.Path), 14)
 
 	var parts []string
@@ -238,8 +505,16 @@ func tbRenderTab(entry TabEntry, isActive bool) string {
 		parts = append(parts, pinIcon)
 	}
 
-	// Tab name with active/inactive styling
-	if isActive {
+	// Tab name with active/inactive/moving styling
+	if isMoving {
+		// Moving tab: highlight with peach background
+		nameStyled := lipgloss.NewStyle().
+			Foreground(crust).
+			Background(peach).
+			Bold(true).
+			Render(name)
+		parts = append(parts, nameStyled)
+	} else if isActive {
 		// Active tab: bright text with accent underline effect
 		nameStyled := lipgloss.NewStyle().
 			Foreground(mauve).
@@ -269,6 +544,12 @@ func tbRenderTab(entry TabEntry, isActive bool) string {
 	content := strings.Join(parts, " ")
 
 	// Wrap in padding
+	if isMoving {
+		return lipgloss.NewStyle().
+			Background(peach).
+			Padding(0, 1).
+			Render(content)
+	}
 	if isActive {
 		return lipgloss.NewStyle().
 			Background(surface0).
@@ -298,44 +579,109 @@ func (tb *TabBar) Render(width int, activeNote string) string {
 		}
 	}
 
-	// Render tabs one by one, tracking total width.
+	// Clear move highlight after 500ms
+	isHighlightActive := tb.moveHighlight >= 0 && time.Since(tb.moveHighTime) < 500*time.Millisecond
+
+	// Pre-render all tabs to measure widths for scroll calculation
 	type tabInfo struct {
 		rendered string
 		width    int
 		isActive bool
+		index    int
 	}
-	var tabs []tabInfo
-	totalWidth := 0
-	hiddenCount := 0
-	overflowBudget := 8
 
+	var allRendered []tabInfo
 	for i, entry := range tb.tabs {
 		isActive := i == tb.activeIdx
-		tabStr := tbRenderTab(entry, isActive)
+		isMoving := isHighlightActive && i == tb.moveHighlight
+		tabStr := tbRenderTab(entry, isActive, isMoving)
 		tabWidth := lipgloss.Width(tabStr)
+		allRendered = append(allRendered, tabInfo{rendered: tabStr, width: tabWidth, isActive: isActive, index: i})
+	}
 
-		needed := tabWidth
-		if totalWidth+needed > width-overflowBudget && !isActive && len(tabs) > 0 {
-			hiddenCount++
-			continue
+	// Determine how many tabs fit in the available width
+	scrollArrowBudget := 0
+	if tb.scrollOffset > 0 {
+		scrollArrowBudget += 3 // "< " prefix
+	}
+
+	// Calculate visible tabs from scrollOffset
+	var visible []tabInfo
+	totalWidth := scrollArrowBudget
+	overflowBudget := 8
+	for i := tb.scrollOffset; i < len(allRendered); i++ {
+		needed := allRendered[i].width
+		if totalWidth+needed > width-overflowBudget && len(visible) > 0 && !allRendered[i].isActive {
+			break
 		}
+		visible = append(visible, allRendered[i])
+		totalWidth += needed
+		if totalWidth >= width-overflowBudget {
+			break
+		}
+	}
 
-		tabs = append(tabs, tabInfo{rendered: tabStr, width: tabWidth, isActive: isActive})
-		totalWidth += tabWidth
+	// Clamp scroll so active tab is visible
+	if tb.activeIdx >= 0 {
+		activeVisible := false
+		for _, v := range visible {
+			if v.index == tb.activeIdx {
+				activeVisible = true
+				break
+			}
+		}
+		if !activeVisible {
+			// Adjust scrollOffset to make active visible
+			if tb.activeIdx < tb.scrollOffset {
+				tb.scrollOffset = tb.activeIdx
+			} else {
+				// Scroll right until active is visible
+				tb.scrollOffset = tb.activeIdx
+			}
+			// Re-render visible set
+			visible = nil
+			scrollArrowBudget = 0
+			if tb.scrollOffset > 0 {
+				scrollArrowBudget = 3
+			}
+			totalWidth = scrollArrowBudget
+			for i := tb.scrollOffset; i < len(allRendered); i++ {
+				needed := allRendered[i].width
+				if totalWidth+needed > width-overflowBudget && len(visible) > 0 && !allRendered[i].isActive {
+					break
+				}
+				visible = append(visible, allRendered[i])
+				totalWidth += needed
+				if totalWidth >= width-overflowBudget {
+					break
+				}
+			}
+		}
+	}
+
+	hiddenAfter := 0
+	if len(visible) > 0 {
+		lastVisibleIdx := visible[len(visible)-1].index
+		hiddenAfter = len(tb.tabs) - lastVisibleIdx - 1
 	}
 
 	// Build tab line
 	var tabLine strings.Builder
-	for _, t := range tabs {
+
+	// Left scroll indicator
+	if tb.scrollOffset > 0 {
+		scrollStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+		tabLine.WriteString(scrollStyle.Render("< "))
+	}
+
+	for _, t := range visible {
 		tabLine.WriteString(t.rendered)
 	}
 
-	// Overflow indicator
-	if hiddenCount > 0 {
-		overflowStyle := lipgloss.NewStyle().Foreground(surface2)
-		overflow := overflowStyle.Render(" +" + tbItoa(hiddenCount))
-		tabLine.WriteString(overflow)
-		totalWidth += lipgloss.Width(overflow)
+	// Right overflow/scroll indicator
+	if hiddenAfter > 0 {
+		scrollStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+		tabLine.WriteString(scrollStyle.Render(" +" + tbItoa(hiddenAfter) + " >"))
 	}
 
 	// Pad to fill width
@@ -349,11 +695,19 @@ func (tb *TabBar) Render(width int, activeNote string) string {
 	// Build underline: accent color under active tab, dim elsewhere
 	var underLine strings.Builder
 	accentStyle := lipgloss.NewStyle().Foreground(mauve)
+	moveStyle := lipgloss.NewStyle().Foreground(peach)
 	dimLineStyle := lipgloss.NewStyle().Foreground(surface0)
 
-	for _, t := range tabs {
+	// Account for left scroll indicator in underline
+	if tb.scrollOffset > 0 {
+		underLine.WriteString(dimLineStyle.Render("──"))
+	}
+
+	for _, t := range visible {
 		if t.isActive {
 			underLine.WriteString(accentStyle.Render(strings.Repeat("━", t.width)))
+		} else if isHighlightActive && t.index == tb.moveHighlight {
+			underLine.WriteString(moveStyle.Render(strings.Repeat("━", t.width)))
 		} else {
 			underLine.WriteString(dimLineStyle.Render(strings.Repeat("─", t.width)))
 		}
