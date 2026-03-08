@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -71,7 +72,8 @@ type ResearchAgent struct {
 	elapsed   string
 
 	// Background state — research keeps running even when overlay is closed
-	running bool
+	running    bool
+	cancelFunc context.CancelFunc // cancel running research process
 
 	// Follow-up mode — build upon existing research
 	followUp        bool
@@ -330,6 +332,41 @@ func findClaude() string {
 	return ""
 }
 
+// loadProjectContext reads CLAUDE.md and .claude/settings.json from the vault
+// root to provide Claude Code with project-specific context.
+func loadProjectContext(vaultRoot string) string {
+	var ctx strings.Builder
+
+	// Check for CLAUDE.md in vault root
+	claudeMdPath := filepath.Join(vaultRoot, "CLAUDE.md")
+	if data, err := os.ReadFile(claudeMdPath); err == nil && len(data) > 0 {
+		ctx.WriteString("\n\nPROJECT CONTEXT (from CLAUDE.md):\n")
+		ctx.WriteString(string(data))
+		ctx.WriteString("\n")
+	}
+
+	// Check for .claude/settings.json
+	claudeSettingsPath := filepath.Join(vaultRoot, ".claude", "settings.json")
+	if data, err := os.ReadFile(claudeSettingsPath); err == nil && len(data) > 0 {
+		ctx.WriteString("\n\nCLAUDE SETTINGS:\n")
+		ctx.WriteString(string(data))
+		ctx.WriteString("\n")
+	}
+
+	return ctx.String()
+}
+
+// loadSoulNote reads .granit/soul-note.md from the vault to shape the tone
+// and style of research output.
+func loadSoulNote(vaultRoot string) string {
+	soulNotePath := filepath.Join(vaultRoot, ".granit", "soul-note.md")
+	data, err := os.ReadFile(soulNotePath)
+	if err != nil || len(data) == 0 {
+		return ""
+	}
+	return "\n\nWrite in the following style and voice:\n" + string(data) + "\n"
+}
+
 // runResearch launches claude code to research a topic and create notes.
 func (r *ResearchAgent) runResearch() tea.Cmd {
 	topic := r.topic
@@ -349,7 +386,13 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 	enhanceVaultNames := r.enhanceVaultNames
 	recentNotes := r.recentNotes
 
+	// Create a context with 10-minute timeout for the research process
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	r.cancelFunc = cancel
+
 	return func() tea.Msg {
+		defer cancel()
+
 		claudePath := findClaude()
 		if claudePath == "" {
 			return researchResultMsg{
@@ -375,16 +418,28 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 			}
 		}
 
-		cmd := exec.Command(claudePath,
+		cmd := exec.CommandContext(ctx, claudePath,
 			"-p", prompt,
 			"--output-format", "text",
-			"--allowedTools", "Bash(find:*,ls:*,cat:*) Read Write WebSearch Glob Grep",
+			"--allowedTools", "Bash(find:*,ls:*,cat:*) Read Write WebSearch WebFetch Glob Grep",
 			"--add-dir", vaultRoot,
 		)
 
 		cmd.Env = append(cmd.Environ(), "CLAUDECODE=")
 
 		output, err := cmd.CombinedOutput()
+		if ctx.Err() == context.DeadlineExceeded {
+			return researchResultMsg{
+				output: string(output),
+				err:    fmt.Errorf("research timed out after 10 minutes"),
+			}
+		}
+		if ctx.Err() == context.Canceled {
+			return researchResultMsg{
+				output: string(output),
+				err:    fmt.Errorf("research cancelled by user"),
+			}
+		}
 		if err != nil {
 			return researchResultMsg{
 				output: string(output),
@@ -495,7 +550,7 @@ Use [[wikilinks]] extensively.`
 		sourceInstr = "SOURCE FOCUS: Use any reliable sources — web articles, documentation, papers, books, etc."
 	}
 
-	return fmt.Sprintf(`You are a research assistant creating structured knowledge notes.
+	prompt := fmt.Sprintf(`You are a research assistant creating structured knowledge notes.
 
 TOPIC: %s
 
@@ -520,9 +575,16 @@ IMPORTANT:
 - The _Index.md hub note should be created LAST and link to everything
 - Each filename should be descriptive (e.g., "Concept - Neural Networks.md")
 - Do NOT create files outside the research folder
-- After creating all files, list the files you created
+- After creating all files, list the files you created`, topic, profileInstr, sourceInstr, noteCount, folder, formatInstr, today)
 
-START RESEARCHING NOW.`, topic, profileInstr, sourceInstr, noteCount, folder, formatInstr, today)
+	// Append project context from CLAUDE.md and .claude/settings.json
+	prompt += loadProjectContext(vaultRoot)
+
+	// Append soul note for tone/style guidance
+	prompt += loadSoulNote(vaultRoot)
+
+	prompt += "\n\nSTART RESEARCHING NOW."
+	return prompt
 }
 
 // buildFollowUpPrompt creates the prompt for follow-up research that builds
@@ -568,7 +630,7 @@ Use [[wikilinks]] extensively.`
 		contextSnippet = contextSnippet[:8000] + "\n\n[... content truncated for brevity ...]"
 	}
 
-	return fmt.Sprintf(`You are a research assistant performing FOLLOW-UP research to go deeper on an existing topic.
+	prompt := fmt.Sprintf(`You are a research assistant performing FOLLOW-UP research to go deeper on an existing topic.
 
 TOPIC: %s
 
@@ -602,9 +664,16 @@ IMPORTANT:
 - Each new filename should be descriptive (e.g., "Concept - Advanced Neural Architectures.md")
 - Do NOT create files outside the research folder
 - Do NOT overwrite existing notes — only create NEW ones and update _Index.md
-- After creating all files, list the new files you created
+- After creating all files, list the new files you created`, topic, sourcePath, contextSnippet, noteCount, folder, formatInstr, today)
 
-START FOLLOW-UP RESEARCH NOW.`, topic, sourcePath, contextSnippet, noteCount, folder, formatInstr, today)
+	// Append project context from CLAUDE.md and .claude/settings.json
+	prompt += loadProjectContext(vaultRoot)
+
+	// Append soul note for tone/style guidance
+	prompt += loadSoulNote(vaultRoot)
+
+	prompt += "\n\nSTART FOLLOW-UP RESEARCH NOW."
+	return prompt
 }
 
 // buildVaultAnalyzerPrompt creates the prompt for vault analysis mode.
@@ -638,7 +707,7 @@ func buildVaultAnalyzerPrompt(vaultRoot string, noteList []string, depth int) st
 		depthInstr = "Do a comprehensive deep analysis — read EVERY note in the vault, analyze all content, links, and tags in detail."
 	}
 
-	return fmt.Sprintf(`You are a vault analysis assistant for a knowledge management system.
+	prompt := fmt.Sprintf(`You are a vault analysis assistant for a knowledge management system.
 
 VAULT ROOT: %s
 
@@ -685,9 +754,16 @@ IMPORTANT:
 - Create ALL files using the Write tool
 - Create the output folder if it doesn't exist
 - Do NOT modify any existing vault notes
-- After creating all files, list the files you created
+- After creating all files, list the files you created`, vaultRoot, noteListStr, depthInstr, folder, today)
 
-START VAULT ANALYSIS NOW.`, vaultRoot, noteListStr, depthInstr, folder, today)
+	// Append project context from CLAUDE.md and .claude/settings.json
+	prompt += loadProjectContext(vaultRoot)
+
+	// Append soul note for tone/style guidance
+	prompt += loadSoulNote(vaultRoot)
+
+	prompt += "\n\nSTART VAULT ANALYSIS NOW."
+	return prompt
 }
 
 // buildNoteEnhancerPrompt creates the prompt for note enhancement mode.
@@ -717,7 +793,7 @@ func buildNoteEnhancerPrompt(vaultRoot, notePath, noteContent string, vaultNoteN
 		content = content[:12000] + "\n\n[... content truncated for brevity ...]"
 	}
 
-	return fmt.Sprintf(`You are a note enhancement assistant for a knowledge management system.
+	prompt := fmt.Sprintf(`You are a note enhancement assistant for a knowledge management system.
 
 NOTE TO ENHANCE: %s
 VAULT ROOT: %s
@@ -755,9 +831,16 @@ IMPORTANT:
 - Create the backup file FIRST using Write tool
 - Then write the enhanced version to the original path using Write tool
 - Do NOT create any other files
-- After writing, list what was changed (backup path and enhanced file path)
+- After writing, list what was changed (backup path and enhanced file path)`, notePath, vaultRoot, content, noteNamesStr, backupPath, today, fullPath)
 
-START ENHANCING NOW.`, notePath, vaultRoot, content, noteNamesStr, backupPath, today, fullPath)
+	// Append project context from CLAUDE.md and .claude/settings.json
+	prompt += loadProjectContext(vaultRoot)
+
+	// Append soul note for tone/style guidance
+	prompt += loadSoulNote(vaultRoot)
+
+	prompt += "\n\nSTART ENHANCING NOW."
+	return prompt
 }
 
 // buildDailyDigestPrompt creates the prompt for daily digest / weekly review mode.
@@ -790,7 +873,7 @@ func buildDailyDigestPrompt(vaultRoot string, recentNotes map[string]string) str
 		recentContent = "(No recently modified notes found — use Glob to find .md files and check their modification times)"
 	}
 
-	return fmt.Sprintf(`You are a weekly review assistant for a knowledge management system.
+	prompt := fmt.Sprintf(`You are a weekly review assistant for a knowledge management system.
 
 VAULT ROOT: %s
 TODAY'S DATE: %s
@@ -844,6 +927,14 @@ IMPORTANT:
 - After creating the file, list the file path
 
 START GENERATING WEEKLY REVIEW NOW.`, vaultRoot, today, recentContent, reviewPath, today)
+
+	// Append project context from CLAUDE.md and .claude/settings.json
+	prompt += loadProjectContext(vaultRoot)
+
+	// Append soul note for tone/style guidance
+	prompt += loadSoulNote(vaultRoot)
+
+	return prompt
 }
 
 // appendResearchLog writes a summary line to Research Log.md in the vault root.
@@ -925,8 +1016,13 @@ func (r ResearchAgent) Update(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 		return r.updateInput(msg)
 	case researchRunning:
 		if msg.String() == "esc" {
-			// Close overlay but keep research running in background
-			r.active = false
+			// Cancel the running research process
+			if r.cancelFunc != nil {
+				r.cancelFunc()
+				r.cancelFunc = nil
+			}
+			r.phase = researchInput
+			r.running = false
 			return r, nil
 		}
 		return r, nil
