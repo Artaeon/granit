@@ -4315,6 +4315,12 @@ func (m Model) View() string {
 	// Folder-path breadcrumb (between tab bar and editor)
 	breadcrumbStr := renderBreadcrumb(m.activeNote, editorWidth)
 
+	// Zen layout hides tab bar and breadcrumb for distraction-free writing
+	if layout == "zen" {
+		tabBarStr = ""
+		breadcrumbStr = ""
+	}
+
 	// Combine tab bar + breadcrumb + editor
 	editorPanel := editorContent
 	if tabBarStr != "" && breadcrumbStr != "" {
@@ -4358,6 +4364,28 @@ func (m Model) View() string {
 				Height(contentHeight).
 				Render(m.backlinks.View())
 			content = lipgloss.JoinHorizontal(lipgloss.Top, editor, backlinks)
+		case "zen":
+			// Centered editor with constrained width, no borders
+			maxContentWidth := 82
+			if editorWidth > maxContentWidth {
+				editorWidth = maxContentWidth
+			}
+			// Re-render editor panel with constrained width, no border
+			zenEditor := lipgloss.NewStyle().
+				Width(editorWidth).
+				Height(contentHeight).
+				Background(base).
+				Padding(0, 1).
+				Render(editorPanel)
+			// Center it horizontally
+			leftPad := (m.width - editorWidth - 2) / 2
+			if leftPad < 0 {
+				leftPad = 0
+			}
+			content = lipgloss.NewStyle().
+				PaddingLeft(leftPad).
+				Height(contentHeight + 2).
+				Render(zenEditor)
 		default: // "default" - 3-panel
 			sidebar := SidebarStyle.Copy().
 				BorderForeground(sidebarBorderColor).
