@@ -585,11 +585,11 @@ func (r Renderer) renderEmbedLine(line string, maxChars int) string {
 
 	// Checkboxes
 	if strings.HasPrefix(line, "- [ ] ") {
-		return lipgloss.NewStyle().Foreground(overlay0).Render("[ ] ") +
+		return lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("☐ ") +
 			lipgloss.NewStyle().Foreground(text).Render(line[6:])
 	}
 	if strings.HasPrefix(line, "- [x] ") {
-		return lipgloss.NewStyle().Foreground(green).Render("[x] ") +
+		return lipgloss.NewStyle().Foreground(green).Bold(true).Render("☑ ") +
 			lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true).Render(line[6:])
 	}
 
@@ -1003,19 +1003,19 @@ func (r Renderer) renderMarkdown(content string) []string {
 			continue
 		}
 
-		// Checkboxes
+		// Checkboxes with Unicode styling
 		if strings.HasPrefix(trimmed, "- [x] ") || strings.HasPrefix(trimmed, "- [X] ") {
 			doneText := trimmed[6:]
-			checkbox := lipgloss.NewStyle().Foreground(green).Render("  ✓ ")
-			styledText := lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true).Render(doneText)
-			result = append(result, checkbox+styledText)
+			checkbox := lipgloss.NewStyle().Foreground(crust).Background(green).Bold(true).Render(" ☑ ")
+			styledText := lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true).Render(" " + doneText)
+			result = append(result, "  "+checkbox+styledText)
 			continue
 		}
 		if strings.HasPrefix(trimmed, "- [ ] ") {
 			todoText := trimmed[6:]
-			checkbox := lipgloss.NewStyle().Foreground(yellow).Render("  ○ ")
-			styledText := lipgloss.NewStyle().Foreground(text).Render(todoText)
-			result = append(result, checkbox+styledText)
+			checkbox := lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(" ☐ ")
+			styledText := lipgloss.NewStyle().Foreground(text).Render(" " + todoText)
+			result = append(result, "  "+checkbox+styledText)
 			continue
 		}
 
