@@ -126,6 +126,86 @@ func (o Outline) Update(msg tea.Msg) (Outline, tea.Cmd) {
 	return o, nil
 }
 
+// RenderPanel renders the outline as a persistent side panel (no overlay border).
+// It parses headings from content and renders them in a compact list.
+func (o *Outline) RenderPanel(content string, width, height int) string {
+	// Re-parse headings from the current content
+	o.parseHeadings(content)
+
+	var b strings.Builder
+
+	title := lipgloss.NewStyle().
+		Foreground(mauve).
+		Bold(true).
+		Render("  OUTLINE")
+	b.WriteString(title)
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("─", width-4)))
+	b.WriteString("\n")
+
+	if len(o.items) == 0 {
+		b.WriteString(DimStyle.Render("  No headings found"))
+		b.WriteString("\n")
+	} else {
+		visH := height - 4
+		if visH < 3 {
+			visH = 3
+		}
+		end := o.scroll + visH
+		if end > len(o.items) {
+			end = len(o.items)
+		}
+
+		headingStyles := []lipgloss.Style{
+			lipgloss.NewStyle().Foreground(mauve).Bold(true),    // h1
+			lipgloss.NewStyle().Foreground(blue).Bold(true),     // h2
+			lipgloss.NewStyle().Foreground(sapphire).Bold(true), // h3
+			lipgloss.NewStyle().Foreground(teal),                // h4
+			lipgloss.NewStyle().Foreground(green),               // h5
+			lipgloss.NewStyle().Foreground(yellow),              // h6
+		}
+
+		for i := o.scroll; i < end; i++ {
+			item := o.items[i]
+			indent := strings.Repeat("  ", item.level-1)
+
+			styleIdx := item.level - 1
+			if styleIdx >= len(headingStyles) {
+				styleIdx = len(headingStyles) - 1
+			}
+
+			prefix := "\u25cf "
+			if item.level > 1 {
+				prefix = "\u25e6 "
+			}
+
+			text := item.text
+			maxLen := width - 6 - len(indent)*2
+			if maxLen < 8 {
+				maxLen = 8
+			}
+			if len(text) > maxLen {
+				text = text[:maxLen-3] + "..."
+			}
+
+			styled := headingStyles[styleIdx].Render(prefix + text)
+
+			if i == o.cursor {
+				line := "  " + indent + styled
+				b.WriteString(lipgloss.NewStyle().
+					Background(surface0).
+					Width(width - 4).
+					Render(line))
+			} else {
+				b.WriteString("  " + indent + styled)
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	return b.String()
+}
+
 func (o Outline) View() string {
 	width := o.width / 2
 	if width < 45 {
