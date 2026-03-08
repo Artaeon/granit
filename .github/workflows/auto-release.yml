@@ -1,0 +1,84 @@
+name: Auto Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  auto-release:
+    runs-on: ubuntu-latest
+
+    # Skip releases for docs/ci/chore commits
+    if: >-
+      !startsWith(github.event.head_commit.message, 'docs:') &&
+      !startsWith(github.event.head_commit.message, 'ci:') &&
+      !startsWith(github.event.head_commit.message, 'chore:')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - name: Determine version tag
+        id: version
+        run: |
+          DATE_TAG="v$(date -u +%Y.%m.%d)"
+          # Check how many tags already exist for today
+          EXISTING=$(git tag -l "${DATE_TAG}*" | wc -l)
+          if [ "$EXISTING" -eq 0 ]; then
+            TAG="$DATE_TAG"
+          else
+            TAG="${DATE_TAG}.${EXISTING}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Version tag: $TAG"
+
+      - name: Build binaries
+        env:
+          VERSION: ${{ steps.version.outputs.tag }}
+          COMMIT: ${{ github.sha }}
+          BUILD_DATE: ${{ github.event.head_commit.timestamp }}
+        run: |
+          LDFLAGS="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${BUILD_DATE}"
+          PLATFORMS=(
+            "linux/amd64"
+            "linux/arm64"
+            "darwin/amd64"
+            "darwin/arm64"
+          )
+          mkdir -p dist
+          for PLATFORM in "${PLATFORMS[@]}"; do
+            OS="${PLATFORM%/*}"
+            ARCH="${PLATFORM#*/}"
+            BINARY="granit"
+            echo "Building ${OS}/${ARCH}..."
+            CGO_ENABLED=0 GOOS="$OS" GOARCH="$ARCH" go build \
+              -ldflags "$LDFLAGS" \
+              -o "dist/${BINARY}" \
+              ./cmd/granit/
+            TARBALL="granit_${VERSION}_${OS}_${ARCH}.tar.gz"
+            tar -czf "dist/${TARBALL}" -C dist "${BINARY}"
+            rm "dist/${BINARY}"
+            echo "Created dist/${TARBALL}"
+          done
+          ls -lh dist/
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" dist/*.tar.gz \
+            --title "Granit $TAG" \
+            --generate-notes \
+            --latest
