@@ -100,9 +100,10 @@ type matrixErrorResponse struct {
 // ---------------------------------------------------------------------------
 
 type matrixLoginResultMsg struct {
-	token  string
-	userID string
-	err    error
+	token      string
+	userID     string
+	homeserver string // resolved homeserver URL after well-known discovery
+	err        error
 }
 
 type matrixSyncResultMsg struct {
@@ -604,6 +605,37 @@ func matrixNormalizeHomeserver(hs string) string {
 	return hs
 }
 
+// matrixDiscoverHomeserver performs .well-known lookup to find the actual API base URL.
+// Many servers (like matrix.org) redirect API calls to a different host.
+func matrixDiscoverHomeserver(hs string) string {
+	wellKnownURL := hs + "/.well-known/matrix/client"
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(wellKnownURL)
+	if err != nil {
+		return hs
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return hs
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return hs
+	}
+	var wk struct {
+		Homeserver struct {
+			BaseURL string `json:"base_url"`
+		} `json:"m.homeserver"`
+	}
+	if err := json.Unmarshal(body, &wk); err != nil {
+		return hs
+	}
+	if wk.Homeserver.BaseURL != "" {
+		return strings.TrimRight(wk.Homeserver.BaseURL, "/")
+	}
+	return hs
+}
+
 func matrixHTTPClient() *http.Client {
 	return &http.Client{Timeout: 30 * time.Second}
 }
@@ -653,7 +685,10 @@ func matrixDoRequest(method, url string, body interface{}, token string) ([]byte
 
 func matrixLogin(homeserver, user, password string) tea.Cmd {
 	return func() tea.Msg {
-		url := strings.TrimRight(homeserver, "/") + "/_matrix/client/v3/login"
+		// Discover the actual API base URL via .well-known
+		resolved := matrixDiscoverHomeserver(homeserver)
+
+		url := resolved + "/_matrix/client/v3/login"
 		reqBody := matrixLoginRequest{
 			Type:     "m.login.password",
 			User:     user,
@@ -667,7 +702,7 @@ func matrixLogin(homeserver, user, password string) tea.Cmd {
 
 		resp, err := matrixHTTPClient().Post(url, "application/json", bytes.NewReader(data))
 		if err != nil {
-			return matrixLoginResultMsg{err: fmt.Errorf("cannot connect to %s: %w", homeserver, err)}
+			return matrixLoginResultMsg{err: fmt.Errorf("cannot connect to %s: %w", resolved, err)}
 		}
 		defer resp.Body.Close()
 
@@ -686,8 +721,9 @@ func matrixLogin(homeserver, user, password string) tea.Cmd {
 		}
 
 		return matrixLoginResultMsg{
-			token:  loginResp.AccessToken,
-			userID: loginResp.UserID,
+			token:      loginResp.AccessToken,
+			userID:     loginResp.UserID,
+			homeserver: resolved,
 		}
 	}
 }
@@ -1015,6 +1051,10 @@ func (mx Matrix) Update(msg tea.Msg) (Matrix, tea.Cmd) {
 		} else {
 			mx.accessToken = msg.token
 			mx.userID = msg.userID
+			// Update homeserver to the resolved URL from well-known discovery
+			if msg.homeserver != "" {
+				mx.homeserver = msg.homeserver
+			}
 			mx.connState = matrixConnected
 			mx.focus = matrixFocusRooms
 			mx.loginError = ""
