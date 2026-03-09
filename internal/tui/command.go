@@ -158,6 +158,8 @@ var AllCommands = []Command{
 	{Label: "Focus Editor", Desc: "Switch focus to the editor", Shortcut: "F2", Action: CmdFocusEditor, Icon: &IconEditChar},
 	{Label: "Focus Sidebar", Desc: "Switch focus to the file sidebar", Shortcut: "F1", Action: CmdFocusSidebar, Icon: &IconFolderChar},
 	{Label: "Focus Backlinks", Desc: "Switch focus to the backlinks panel", Shortcut: "F3", Action: CmdFocusBacklinks, Icon: &IconLinkChar},
+	{Label: "Toggle Sidebar", Desc: "Show or hide the file sidebar", Shortcut: "", Action: CmdToggleSidebar, Icon: &IconFolderChar},
+	{Label: "Search in File", Desc: "Search within the current file", Shortcut: "", Action: CmdSearchInFile, Icon: &IconSearchChar},
 	{Label: "Refresh Vault", Desc: "Rescan vault for changes", Shortcut: "", Action: CmdRefreshVault},
 	{Label: "Delete Note", Desc: "Delete the current note", Shortcut: "", Action: CmdDeleteNote, Icon: &IconTrashChar},
 	{Label: "Rename Note", Desc: "Rename the current note", Shortcut: "F4", Action: CmdRenameNote, Icon: &IconEditChar},

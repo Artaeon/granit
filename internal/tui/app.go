@@ -2993,7 +2993,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
-	case CmdFindInFile:
+	case CmdFindInFile, CmdSearchInFile:
 		m.findReplace.SetSize(m.width, m.height)
 		m.findReplace.OpenFind(m.vault.Root)
 		m.findReplace.UpdateMatches(m.editor.content)
@@ -3614,6 +3614,35 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		if !LayoutHasBacklinks(m.config.Layout) && m.focus == focusBacklinks {
 			m.setFocus(focusEditor)
+		}
+		m.updateLayout()
+
+	case CmdToggleSidebar:
+		if LayoutHasSidebar(m.config.Layout) {
+			// Hide sidebar: switch to a layout without it
+			switch m.config.Layout {
+			case LayoutWriter:
+				m.config.Layout = LayoutMinimal
+			case LayoutDashboard:
+				m.config.Layout = LayoutReading
+			default:
+				m.config.Layout = LayoutReading
+			}
+			if m.focus == focusSidebar {
+				m.setFocus(focusEditor)
+			}
+			m.statusbar.SetMessage("Sidebar hidden")
+		} else {
+			// Show sidebar: switch to a layout with it
+			switch m.config.Layout {
+			case LayoutMinimal:
+				m.config.Layout = LayoutWriter
+			case LayoutReading:
+				m.config.Layout = LayoutDefault
+			default:
+				m.config.Layout = LayoutDefault
+			}
+			m.statusbar.SetMessage("Sidebar shown")
 		}
 		m.updateLayout()
 
