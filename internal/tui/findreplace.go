@@ -31,6 +31,9 @@ type FindReplace struct {
 	historyIdx int    // -1 means new query mode
 	savedQuery string // stash current typed query when browsing history
 	vaultRoot  string
+
+	// Preview scroll state
+	previewScroll int // first visible match index in preview list
 }
 
 type FindMatch struct {
@@ -63,6 +66,7 @@ func (fr *FindReplace) OpenFind(vaultRoot string) {
 	fr.historyIdx = -1
 	fr.savedQuery = ""
 	fr.regexErr = ""
+	fr.previewScroll = 0
 	h := loadSearchHistory(vaultRoot)
 	fr.history = h.FindReplace
 }
@@ -82,6 +86,7 @@ func (fr *FindReplace) OpenReplace(vaultRoot string) {
 	fr.historyIdx = -1
 	fr.savedQuery = ""
 	fr.regexErr = ""
+	fr.previewScroll = 0
 	h := loadSearchHistory(vaultRoot)
 	fr.history = h.FindReplace
 }
@@ -134,6 +139,7 @@ func (fr *FindReplace) GetReplaceText() string {
 func (fr *FindReplace) UpdateMatches(content []string) {
 	fr.matches = nil
 	fr.regexErr = ""
+	fr.previewScroll = 0
 	if fr.findQuery == "" {
 		return
 	}
@@ -142,6 +148,18 @@ func (fr *FindReplace) UpdateMatches(content []string) {
 		fr.updateMatchesRegex(content)
 	} else {
 		fr.updateMatchesPlain(content)
+	}
+}
+
+// previewPageSize is the maximum number of matches shown in the preview list.
+const previewPageSize = 5
+
+// ensureMatchVisible adjusts previewScroll so that matchIdx is visible.
+func (fr *FindReplace) ensureMatchVisible() {
+	if fr.matchIdx < fr.previewScroll {
+		fr.previewScroll = fr.matchIdx
+	} else if fr.matchIdx >= fr.previewScroll+previewPageSize {
+		fr.previewScroll = fr.matchIdx - previewPageSize + 1
 	}
 }
 
@@ -235,6 +253,7 @@ func (fr FindReplace) Update(msg tea.Msg) (FindReplace, tea.Cmd) {
 			if len(fr.matches) > 0 {
 				fr.matchIdx = (fr.matchIdx + 1) % len(fr.matches)
 				fr.resultLine = fr.matches[fr.matchIdx].line
+				fr.ensureMatchVisible()
 			} else if fr.focusField == 0 && len(fr.history) > 0 {
 				// Browse history forward in find field
 				if fr.historyIdx >= 0 {
@@ -252,6 +271,7 @@ func (fr FindReplace) Update(msg tea.Msg) (FindReplace, tea.Cmd) {
 			if len(fr.matches) > 0 {
 				fr.matchIdx = (fr.matchIdx - 1 + len(fr.matches)) % len(fr.matches)
 				fr.resultLine = fr.matches[fr.matchIdx].line
+				fr.ensureMatchVisible()
 			} else if fr.focusField == 0 && len(fr.history) > 0 {
 				// Browse history (most recent first) in find field
 				if fr.historyIdx == -1 {
@@ -376,8 +396,20 @@ func (fr FindReplace) View() string {
 		b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
 		b.WriteString("\n")
 
-		maxPreview := 5
-		for i := 0; i < len(fr.matches) && i < maxPreview; i++ {
+		// Show scroll range indicator when there are more matches than visible
+		total := len(fr.matches)
+		start := fr.previewScroll
+		end := start + previewPageSize
+		if end > total {
+			end = total
+		}
+		if total > previewPageSize {
+			rangeInfo := "  (showing " + smallNum(start+1) + "-" + smallNum(end) + " of " + smallNum(total) + " matches)"
+			b.WriteString(DimStyle.Render(rangeInfo))
+			b.WriteString("\n")
+		}
+
+		for i := start; i < end; i++ {
 			m := fr.matches[i]
 			lineStr := DimStyle.Render("  L" + smallNum(m.line+1) + ": ")
 			preview := m.text
@@ -410,7 +442,7 @@ func (fr FindReplace) View() string {
 			} else {
 				b.WriteString(lineStr + preview)
 			}
-			if i < maxPreview-1 && i < len(fr.matches)-1 {
+			if i < end-1 {
 				b.WriteString("\n")
 			}
 		}
