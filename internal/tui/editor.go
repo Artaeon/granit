@@ -838,7 +838,8 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					e.col++
 				}
 				for i := range e.cursors {
-					if e.cursors[i].Col < len(e.content[e.cursors[i].Line]) {
+					if e.cursors[i].Line >= 0 && e.cursors[i].Line < len(e.content) &&
+						e.cursors[i].Col < len(e.content[e.cursors[i].Line]) {
 						e.cursors[i].Col++
 					}
 				}
@@ -860,7 +861,9 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			e.ClearSelection()
 			e.col = len(e.content[e.cursor])
 			for i := range e.cursors {
-				e.cursors[i].Col = len(e.content[e.cursors[i].Line])
+				if e.cursors[i].Line >= 0 && e.cursors[i].Line < len(e.content) {
+					e.cursors[i].Col = len(e.content[e.cursors[i].Line])
+				}
 			}
 		case "pgup":
 			e.ClearSelection()
