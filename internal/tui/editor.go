@@ -10,6 +10,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/artaeon/granit/internal/config"
 )
 
 // CursorPos represents a cursor position in the editor.
@@ -48,6 +50,8 @@ type Editor struct {
 	highlightCurrentLine bool
 	autoCloseBrackets    bool
 	tabSize              int
+	insertTabs           bool
+	autoIndent           bool
 
 	// Horizontal scroll for long lines
 	hscroll int
@@ -84,6 +88,16 @@ func (e *Editor) SetWordWrap(enabled bool) {
 	if enabled {
 		e.hscroll = 0
 	}
+}
+
+// SetEditorConfig applies editor configuration (tab size, insert tabs, auto indent).
+func (e *Editor) SetEditorConfig(cfg config.EditorConfig) {
+	e.tabSize = cfg.TabSize
+	if e.tabSize < 1 {
+		e.tabSize = 4
+	}
+	e.insertTabs = cfg.InsertTabs
+	e.autoIndent = cfg.AutoIndent
 }
 
 func NewEditor() Editor {
@@ -968,6 +982,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			} else if len(e.cursors) > 0 {
 				// Multi-cursor enter: process from bottom to top
 				allCursors := sortCursorsBottomUp(e.getAllCursors())
+				var indent string
 				for _, c := range allCursors {
 					if c.Line >= len(e.content) {
 						continue
@@ -977,8 +992,12 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					if col > len(line) {
 						col = len(line)
 					}
+					// Capture leading whitespace for auto-indent
+					if e.autoIndent {
+						indent = leadingWhitespace(line)
+					}
 					before := line[:col]
-					after := line[col:]
+					after := indent + line[col:]
 					e.content[c.Line] = before
 					newContent := make([]string, 0, len(e.content)+1)
 					newContent = append(newContent, e.content[:c.Line+1]...)
@@ -987,7 +1006,11 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					e.content = newContent
 				}
 				e.cursor++
-				e.col = 0
+				if e.autoIndent && len(allCursors) > 0 {
+					e.col = len(indent)
+				} else {
+					e.col = 0
+				}
 				e.clearMultiCursors()
 				e.modified = true
 				e.codeFenceCacheDirty = true
@@ -996,14 +1019,19 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				line := e.content[e.cursor]
 				before := line[:e.col]
 				after := line[e.col:]
+				// Copy leading whitespace for auto-indent
+				var indent string
+				if e.autoIndent {
+					indent = leadingWhitespace(line)
+				}
 				e.content[e.cursor] = before
 				newContent := make([]string, 0, len(e.content)+1)
 				newContent = append(newContent, e.content[:e.cursor+1]...)
-				newContent = append(newContent, after)
+				newContent = append(newContent, indent+after)
 				newContent = append(newContent, e.content[e.cursor+1:]...)
 				e.content = newContent
 				e.cursor++
-				e.col = 0
+				e.col = len(indent)
 				e.modified = true
 				e.codeFenceCacheDirty = true
 				e.countWords()
@@ -1112,9 +1140,17 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			if len(e.cursors) == 0 && e.isInTable() {
 				e.tabInTable()
 			} else if len(e.cursors) > 0 {
-				// Insert tab as spaces (multi-cursor)
+				// Multi-cursor tab insertion
 				allCursors := sortCursorsBottomUp(e.getAllCursors())
-				tabStr := strings.Repeat(" ", e.tabSize)
+				var tabStr string
+				var advance int
+				if e.insertTabs {
+					tabStr = "\t"
+					advance = 1
+				} else {
+					tabStr = strings.Repeat(" ", e.tabSize)
+					advance = e.tabSize
+				}
 				for _, c := range allCursors {
 					if c.Line >= len(e.content) {
 						continue
@@ -1126,18 +1162,26 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					}
 					e.content[c.Line] = line[:col] + tabStr + line[col:]
 				}
-				e.col += e.tabSize
+				e.col += advance
 				for i := range e.cursors {
-					e.cursors[i].Col += e.tabSize
+					e.cursors[i].Col += advance
 				}
 				e.modified = true
 				e.codeFenceCacheDirty = true
 			} else {
-				// Insert tab as spaces (single cursor)
-				tabStr := strings.Repeat(" ", e.tabSize)
+				// Single cursor tab insertion
+				var tabStr string
+				var advance int
+				if e.insertTabs {
+					tabStr = "\t"
+					advance = 1
+				} else {
+					tabStr = strings.Repeat(" ", e.tabSize)
+					advance = e.tabSize
+				}
 				line := e.content[e.cursor]
 				e.content[e.cursor] = line[:e.col] + tabStr + line[e.col:]
-				e.col += e.tabSize
+				e.col += advance
 				e.modified = true
 				e.codeFenceCacheDirty = true
 			}
@@ -2890,4 +2934,14 @@ func (e *Editor) alignTableAt() {
 			e.col = len(line)
 		}
 	}
+}
+
+// leadingWhitespace returns the leading whitespace (spaces and tabs) of a line.
+func leadingWhitespace(line string) string {
+	for i, r := range line {
+		if r != ' ' && r != '\t' {
+			return line[:i]
+		}
+	}
+	return line
 }
