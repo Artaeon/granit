@@ -138,6 +138,7 @@ const (
 	CmdToggleWordWrap
 	CmdKnowledgeGaps
 	CmdExtractToNote
+	CmdToggleSpellCheck
 	CmdQuit
 )
 
@@ -189,6 +190,7 @@ var AllCommands = []Command{
 	{Label: "Global Search & Replace", Desc: "Find and replace across all vault files", Shortcut: "", Action: CmdGlobalReplace, Icon: &IconSearchChar},
 	{Label: "Toggle Regex Search", Desc: "Switch between plain text and regex mode in active search", Shortcut: "Alt+R", Action: CmdToggleRegex, Icon: &IconSearchChar},
 	{Label: "Spell Check", Desc: "Check spelling in current note", Shortcut: "", Action: CmdSpellCheck, Icon: &IconEditChar},
+	{Label: "Toggle Spell Check", Desc: "Enable/disable inline spell checking", Shortcut: "", Action: CmdToggleSpellCheck, Icon: &IconEditChar},
 	{Label: "Import Obsidian Config", Desc: "Import settings from .obsidian/ directory", Shortcut: "", Action: CmdImportObsidian, Icon: &IconSettingsChar},
 	{Label: "Publish Site", Desc: "Export vault as static HTML site", Shortcut: "", Action: CmdPublishSite, Icon: &IconSaveChar},
 	{Label: "Publish to Blog", Desc: "Publish note to Medium or GitHub blog", Shortcut: "", Action: CmdBlogPublish, Icon: &IconSaveChar},
