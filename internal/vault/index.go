@@ -70,3 +70,8 @@ func (idx *Index) GetOutgoingLinks(relPath string) []string {
 	}
 	return note.Links
 }
+
+// ResolveLink resolves a wikilink name to a vault-relative path.
+func (idx *Index) ResolveLink(link string) string {
+	return idx.resolveLink(link)
+}

@@ -11,30 +11,34 @@ import (
 )
 
 type GraphView struct {
-	active      bool
-	vault       *vault.Vault
-	index       *vault.Index
-	nodes       []graphNode
-	cursor      int
-	scroll      int
-	width       int
-	height      int
-	centerNote  string
-	selected    string // the note the user selected to navigate to
+	active     bool
+	vault      *vault.Vault
+	index      *vault.Index
+	nodes      []graphNode
+	cursor     int
+	scroll     int
+	width      int
+	height     int
+	centerNote string
+	selected   string // the note the user selected to navigate to
+	localMode  bool   // true = local graph (1-2 hops), false = global graph
+	depth      int    // hop depth for local mode: 1 or 2
 }
 
 type graphNode struct {
-	name       string
-	path       string
-	incoming   int
-	outgoing   int
-	total      int
+	name     string
+	path     string
+	incoming int
+	outgoing int
+	total    int
+	hopDist  int // distance from center note (0=center, 1=direct, 2=second-degree)
 }
 
 func NewGraphView(v *vault.Vault, idx *vault.Index) GraphView {
 	return GraphView{
 		vault: v,
 		index: idx,
+		depth: 1,
 	}
 }
 
@@ -66,7 +70,20 @@ func (g *GraphView) SelectedNote() string {
 	return s
 }
 
+// SetCurrentNote sets the center note for local graph mode.
+func (g *GraphView) SetCurrentNote(name string) {
+	g.centerNote = name
+}
+
 func (g *GraphView) buildGraph() {
+	if g.localMode && g.centerNote != "" {
+		g.buildLocalGraph()
+	} else {
+		g.buildGlobalGraph()
+	}
+}
+
+func (g *GraphView) buildGlobalGraph() {
 	g.nodes = nil
 
 	// Build nodes with connection counts
@@ -84,6 +101,7 @@ func (g *GraphView) buildGraph() {
 			incoming: incoming,
 			outgoing: outgoing,
 			total:    incoming + outgoing,
+			hopDist:  -1,
 		})
 	}
 
@@ -91,6 +109,86 @@ func (g *GraphView) buildGraph() {
 	sort.Slice(g.nodes, func(i, j int) bool {
 		return g.nodes[i].total > g.nodes[j].total
 	})
+}
+
+func (g *GraphView) buildLocalGraph() {
+	g.nodes = nil
+
+	// Collect nodes within g.depth hops of centerNote
+	// hopMap: path -> minimum hop distance from center
+	hopMap := make(map[string]int)
+	hopMap[g.centerNote] = 0
+
+	// BFS from center note
+	frontier := []string{g.centerNote}
+	for hop := 1; hop <= g.depth; hop++ {
+		var nextFrontier []string
+		for _, path := range frontier {
+			neighbors := g.getNeighbors(path)
+			for _, nb := range neighbors {
+				if _, seen := hopMap[nb]; !seen {
+					hopMap[nb] = hop
+					nextFrontier = append(nextFrontier, nb)
+				}
+			}
+		}
+		frontier = nextFrontier
+	}
+
+	// Build node list from collected paths
+	for path, dist := range hopMap {
+		note := g.vault.GetNote(path)
+		if note == nil {
+			continue
+		}
+		incoming := len(g.index.GetBacklinks(path))
+		outgoing := len(note.Links)
+
+		g.nodes = append(g.nodes, graphNode{
+			name:     strings.TrimSuffix(path, ".md"),
+			path:     path,
+			incoming: incoming,
+			outgoing: outgoing,
+			total:    incoming + outgoing,
+			hopDist:  dist,
+		})
+	}
+
+	// Sort: center first, then by hop distance, then by total connections
+	sort.Slice(g.nodes, func(i, j int) bool {
+		if g.nodes[i].hopDist != g.nodes[j].hopDist {
+			return g.nodes[i].hopDist < g.nodes[j].hopDist
+		}
+		return g.nodes[i].total > g.nodes[j].total
+	})
+}
+
+// getNeighbors returns all directly connected note paths (both incoming and outgoing).
+func (g *GraphView) getNeighbors(path string) []string {
+	seen := make(map[string]bool)
+	var result []string
+
+	// Outgoing links: resolve wikilink names to paths
+	note := g.vault.GetNote(path)
+	if note != nil {
+		for _, link := range note.Links {
+			resolved := g.index.ResolveLink(link)
+			if resolved != "" && !seen[resolved] {
+				seen[resolved] = true
+				result = append(result, resolved)
+			}
+		}
+	}
+
+	// Incoming links (backlinks)
+	for _, bl := range g.index.GetBacklinks(path) {
+		if !seen[bl] {
+			seen[bl] = true
+			result = append(result, bl)
+		}
+	}
+
+	return result
 }
 
 func (g GraphView) Update(msg tea.Msg) (GraphView, tea.Cmd) {
@@ -128,6 +226,25 @@ func (g GraphView) Update(msg tea.Msg) (GraphView, tea.Cmd) {
 				g.active = false
 			}
 			return g, nil
+		case "tab":
+			g.localMode = !g.localMode
+			g.cursor = 0
+			g.scroll = 0
+			g.buildGraph()
+		case "1":
+			if g.localMode && g.depth != 1 {
+				g.depth = 1
+				g.cursor = 0
+				g.scroll = 0
+				g.buildGraph()
+			}
+		case "2":
+			if g.localMode && g.depth != 2 {
+				g.depth = 2
+				g.cursor = 0
+				g.scroll = 0
+				g.buildGraph()
+			}
 		}
 	}
 	return g, nil
@@ -146,9 +263,18 @@ func (g GraphView) View() string {
 
 	var b strings.Builder
 
-	// Header with stats
+	// Header with stats and mode indicator
 	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	b.WriteString(titleStyle.Render("  Note Graph"))
+	modeStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+	if g.localMode {
+		b.WriteString(titleStyle.Render("  Note Graph"))
+		b.WriteString(modeStyle.Render("  Local"))
+		depthStyle := lipgloss.NewStyle().Foreground(overlay0)
+		b.WriteString(depthStyle.Render(" (" + smallNum(g.depth) + " hop)"))
+	} else {
+		b.WriteString(titleStyle.Render("  Note Graph"))
+		b.WriteString(modeStyle.Render("  Global"))
+	}
 
 	// Connection stats
 	totalLinks := 0
@@ -179,7 +305,11 @@ func (g GraphView) View() string {
 	b.WriteString("\n\n")
 
 	if len(g.nodes) == 0 {
-		b.WriteString(DimStyle.Render("  No notes found"))
+		if g.localMode {
+			b.WriteString(DimStyle.Render("  No connected notes found"))
+		} else {
+			b.WriteString(DimStyle.Render("  No notes found"))
+		}
 	} else {
 		visH := g.height - 14
 		if visH < 1 {
@@ -218,7 +348,7 @@ func (g GraphView) View() string {
 				namePad = 0
 			}
 
-			// Node icon based on connection count
+			// Node icon based on connection count and hop distance
 			isCurrent := node.path == g.centerNote
 			isHub := node.total >= 5
 			isOrphan := node.total == 0
@@ -226,6 +356,8 @@ func (g GraphView) View() string {
 			switch {
 			case isCurrent:
 				icon = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("@ ")
+			case g.localMode && node.hopDist == 2:
+				icon = lipgloss.NewStyle().Foreground(surface2).Render("~ ")
 			case isHub:
 				icon = lipgloss.NewStyle().Foreground(green).Bold(true).Render("* ")
 			case isOrphan:
@@ -260,14 +392,16 @@ func (g GraphView) View() string {
 			stats := statsStyle.Render(" ") + inCount + statsStyle.Render("<") +
 				outCount + statsStyle.Render(">")
 
-			// Name styling based on connection importance
+			// Name styling based on connection importance and hop distance
 			nameColor := text
-			if isHub {
+			if isCurrent {
+				nameColor = mauve
+			} else if g.localMode && node.hopDist == 2 {
+				nameColor = surface2
+			} else if isHub {
 				nameColor = green
 			} else if isOrphan {
 				nameColor = surface2
-			} else if isCurrent {
-				nameColor = mauve
 			}
 
 			nameStyled := lipgloss.NewStyle().Foreground(nameColor).Render(name)
@@ -297,10 +431,15 @@ func (g GraphView) View() string {
 	descStyle := lipgloss.NewStyle().Foreground(overlay0)
 	sepStyle := lipgloss.NewStyle().Foreground(surface1)
 	sep := sepStyle.Render(" | ")
-	b.WriteString("  " +
+	footer := "  " +
 		keyStyle.Render("j/k") + descStyle.Render(" navigate") + sep +
 		keyStyle.Render("Enter") + descStyle.Render(" open") + sep +
-		keyStyle.Render("Esc") + descStyle.Render(" close"))
+		keyStyle.Render("Tab") + descStyle.Render(" local/global")
+	if g.localMode {
+		footer += sep + keyStyle.Render("1/2") + descStyle.Render(" depth")
+	}
+	footer += sep + keyStyle.Render("Esc") + descStyle.Render(" close")
+	b.WriteString(footer)
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
