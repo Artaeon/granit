@@ -283,14 +283,15 @@ func (r Renderer) renderMathBlock(mathLines []string, contentWidth int) []string
 	for _, ml := range mathLines {
 		ml = strings.TrimSpace(ml)
 		// Center the math content within the box
-		padding := (boxWidth - len([]rune(ml)) - 4) / 2
+		mlWidth := lipgloss.Width(ml)
+		padding := (boxWidth - mlWidth - 4) / 2
 		if padding < 0 {
 			padding = 0
 		}
 		contentLine := "  " + borderStyle.Render("│") +
 			strings.Repeat(" ", padding+1) +
 			mathStyle.Render(ml) +
-			strings.Repeat(" ", maxInt(1, boxWidth-len([]rune(ml))-padding-3)) +
+			strings.Repeat(" ", maxInt(1, boxWidth-mlWidth-padding-3)) +
 			borderStyle.Render("│")
 		out = append(out, contentLine)
 	}
@@ -605,7 +606,7 @@ func (r Renderer) renderEmbed(noteName string, heading string, contentWidth int)
 	}
 
 	topLabel := "\u2500 \U0001F4CE Embedded: " + label + " "
-	topPad := boxWidth - len([]rune(topLabel)) - 2
+	topPad := boxWidth - lipgloss.Width(topLabel) - 2
 	if topPad < 0 {
 		topPad = 0
 	}
