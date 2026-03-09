@@ -137,7 +137,6 @@ const (
 	CmdToggleRegex
 	CmdToggleWordWrap
 	CmdKnowledgeGaps
-	CmdMatrixChat
 	CmdQuit
 )
 
@@ -273,7 +272,6 @@ var AllCommands = []Command{
 	{Label: "Vault Backup", Desc: "Create, restore, and manage vault backups", Shortcut: "", Action: CmdBackup, Icon: &IconSaveChar},
 	{Label: "Show Tutorial", Desc: "Interactive walkthrough of Granit features", Shortcut: "", Action: CmdShowTutorial, Icon: &IconHelpChar},
 	{Label: "AI Knowledge Gaps Analysis", Desc: "Find missing topics, stale notes, orphans, and unlinked clusters", Shortcut: "", Action: CmdKnowledgeGaps, Icon: &IconGraphChar},
-	{Label: "Matrix Chat", Desc: "Chat via Matrix/Element protocol", Shortcut: "Alt+M", Action: CmdMatrixChat, Icon: &IconLinkChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
