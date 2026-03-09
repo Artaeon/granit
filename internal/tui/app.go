@@ -5205,6 +5205,9 @@ func (m *Model) applyVimResult(r VimResult) tea.Cmd {
 		if m.editor.cursor < 0 {
 			m.editor.cursor = 0
 		}
+		if len(m.editor.content) == 0 {
+			m.editor.content = []string{""}
+		}
 		if m.editor.cursor >= len(m.editor.content) {
 			m.editor.cursor = len(m.editor.content) - 1
 		}
@@ -5225,6 +5228,9 @@ func (m *Model) applyVimResult(r VimResult) tea.Cmd {
 			m.editor.saveSnapshot()
 			m.vimState.register = m.editor.content[m.editor.cursor]
 			m.editor.content = append(m.editor.content[:m.editor.cursor], m.editor.content[m.editor.cursor+1:]...)
+			if len(m.editor.content) == 0 {
+				m.editor.content = []string{""}
+			}
 			if m.editor.cursor >= len(m.editor.content) {
 				m.editor.cursor = len(m.editor.content) - 1
 			}
