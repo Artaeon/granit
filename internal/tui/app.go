@@ -1162,7 +1162,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case matrixLoginResultMsg, matrixRoomsResultMsg, matrixMessagesResultMsg,
-		matrixSendResultMsg, matrixSyncResultMsg, matrixSyncTickMsg, matrixReactionResultMsg:
+		matrixSendResultMsg, matrixSyncResultMsg, matrixSyncTickMsg, matrixReactionResultMsg,
+		matrixAISummaryMsg, matrixAIActionsMsg, matrixAIReplyMsg,
+		matrixAITranslateMsg, matrixAINoteMsg, matrixAIContextMsg, matrixAITickMsg:
 		if m.matrix.IsActive() {
 			var cmd tea.Cmd
 			m.matrix, cmd = m.matrix.Update(msg)
@@ -2547,6 +2549,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.matrix.SetCaptureNote(func(filename, content string) {
 				m.matrixCaptureNote(filename, content)
 			})
+			m.matrix.ConfigureAI(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.OpenAIModel)
+			m.matrix.SetCurrentNoteContent(m.editor.GetContent())
 			m.matrix.Open()
 			// Start sync if we have a token
 			if cmd := m.matrix.StartSync(); cmd != nil {
@@ -3186,6 +3190,8 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.matrix.SetCaptureNote(func(filename, content string) {
 			m.matrixCaptureNote(filename, content)
 		})
+		m.matrix.ConfigureAI(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.OpenAIModel)
+		m.matrix.SetCurrentNoteContent(m.editor.GetContent())
 		m.matrix.Open()
 		if cmd := m.matrix.StartSync(); cmd != nil {
 			return m, cmd
