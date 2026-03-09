@@ -66,16 +66,6 @@ type Config struct {
 	GitHubRepo   string `json:"github_repo,omitempty"`
 	GitHubBranch string `json:"github_branch,omitempty"`
 
-	// Matrix Chat
-	MatrixHomeserver      string `json:"matrix_homeserver,omitempty"`
-	MatrixUsername        string `json:"matrix_username,omitempty"`
-	MatrixAccessToken    string `json:"matrix_access_token,omitempty"`
-	MatrixEnabled        bool   `json:"matrix_enabled"`
-	MatrixReadReceipts   bool   `json:"matrix_read_receipts"`
-	MatrixTypingIndicators bool `json:"matrix_typing_indicators"`
-	MatrixAutoDeleteCache bool     `json:"matrix_auto_delete_cache"`
-	MatrixPinnedRooms     []string `json:"matrix_pinned_rooms,omitempty"`
-
 	// Core Plugins — toggle built-in modules on/off
 	CorePlugins map[string]bool `json:"core_plugins"`
 
@@ -127,7 +117,6 @@ func DefaultConfig() Config {
 		SortBy:                 "name",
 		SearchContentByDefault: true,
 		MaxSearchResults:       50,
-		MatrixAutoDeleteCache:  true,
 		CorePlugins:            DefaultCorePlugins(),
 	}
 }
