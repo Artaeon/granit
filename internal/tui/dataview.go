@@ -276,6 +276,9 @@ func (d *DataviewOverlay) moveCursorDown() {
 }
 
 func (d *DataviewOverlay) browseHistoryUp() {
+	if len(d.history) == 0 {
+		return
+	}
 	if d.historyIdx == -1 {
 		d.savedQuery = d.query
 		d.historyIdx = len(d.history) - 1
@@ -287,6 +290,9 @@ func (d *DataviewOverlay) browseHistoryUp() {
 }
 
 func (d *DataviewOverlay) browseHistoryDown() {
+	if len(d.history) == 0 {
+		return
+	}
 	if d.historyIdx < len(d.history)-1 {
 		d.historyIdx++
 		d.query = d.history[d.historyIdx]
