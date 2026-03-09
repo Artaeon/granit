@@ -4732,6 +4732,7 @@ func (m *Model) syncConfigToComponents() {
 	if m.editor.tabSize < 1 {
 		m.editor.tabSize = 4
 	}
+	m.spellcheck.SetInlineEnabled(m.config.SpellCheck)
 	// AI status indicator
 	aiModel := ""
 	switch m.config.AIProvider {
@@ -5071,6 +5072,9 @@ func (m *Model) applyVimResult(r VimResult) tea.Cmd {
 			mode += " [" + rs + "]"
 		}
 		m.statusbar.SetMode(mode)
+	}
+	if r.EnterCommand {
+		m.statusbar.SetMode("VIM:COMMAND")
 	}
 	if r.FoldToggle {
 		m.foldState.ToggleFold(m.editor.cursor, m.editor.content)
