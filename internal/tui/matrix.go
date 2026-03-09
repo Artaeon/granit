@@ -50,7 +50,8 @@ type matrixJoinedRoom struct {
 }
 
 type matrixTimeline struct {
-	Events []matrixEvent `json:"events"`
+	Events    []matrixEvent `json:"events"`
+	PrevBatch string        `json:"prev_batch"`
 }
 
 type matrixEvent struct {
@@ -216,11 +217,13 @@ type Matrix struct {
 	pinnedRooms []string // room IDs that are pinned
 
 	// Messages
-	messages       map[string][]matrixChatMessage // roomID -> messages
-	messageScroll  int
-	messageInput   string
-	messageCursor  int // selected message index for reactions/replies
-	messageSelect  bool // whether a message is selected
+	messages        map[string][]matrixChatMessage // roomID -> messages
+	prevBatchTokens map[string]string              // roomID -> prev_batch token for /messages pagination
+	loadingMessages map[string]bool                // roomID -> whether messages are being loaded
+	messageScroll   int
+	messageInput    string
+	messageCursor   int  // selected message index for reactions/replies
+	messageSelect   bool // whether a message is selected
 
 	// Message search
 	msgSearchMode   bool
@@ -274,6 +277,8 @@ type Matrix struct {
 func NewMatrix() Matrix {
 	return Matrix{
 		messages:        make(map[string][]matrixChatMessage),
+		prevBatchTokens: make(map[string]string),
+		loadingMessages: make(map[string]bool),
 		e2eeStatus:      make(map[string]bool),
 		connState:       matrixDisconnected,
 		focus:           matrixFocusLogin,
@@ -312,6 +317,8 @@ func (mx *Matrix) Close() {
 	mx.active = false
 	if mx.autoDeleteCache {
 		mx.messages = make(map[string][]matrixChatMessage)
+		mx.prevBatchTokens = make(map[string]string)
+		mx.loadingMessages = make(map[string]bool)
 	}
 }
 
@@ -786,10 +793,13 @@ func matrixFetchRooms(homeserver, token string) tea.Cmd {
 	}
 }
 
-func matrixFetchMessages(homeserver, token, roomID string, limit int) tea.Cmd {
+func matrixFetchMessages(homeserver, token, roomID string, limit int, fromToken ...string) tea.Cmd {
 	return func() tea.Msg {
 		url := fmt.Sprintf("%s/_matrix/client/v3/rooms/%s/messages?dir=b&limit=%d",
 			strings.TrimRight(homeserver, "/"), roomID, limit)
+		if len(fromToken) > 0 && fromToken[0] != "" {
+			url += "&from=" + fromToken[0]
+		}
 
 		data, err := matrixDoRequest("GET", url, nil, token)
 		if err != nil {
@@ -1091,9 +1101,14 @@ func (mx Matrix) Update(msg tea.Msg) (Matrix, tea.Cmd) {
 			}
 			mx.sortRooms()
 			if len(mx.rooms) > 0 {
-				mx.statusMsg = fmt.Sprintf("%d rooms loaded", len(mx.rooms))
-				// Fetch messages for first room
-				return mx, matrixFetchMessages(mx.homeserver, mx.accessToken, mx.rooms[0].ID, 50)
+				mx.statusMsg = fmt.Sprintf("%d rooms loaded — syncing messages...", len(mx.rooms))
+				// Start initial sync to fetch timeline events for all rooms
+				// (the /messages endpoint requires a `from` token on many servers)
+				if !mx.syncRunning {
+					mx.syncRunning = true
+					mx.connState = matrixSyncing
+					return mx, matrixSync(mx.homeserver, mx.accessToken, mx.syncToken)
+				}
 			} else {
 				mx.statusMsg = "No rooms joined"
 			}
@@ -1101,6 +1116,7 @@ func (mx Matrix) Update(msg tea.Msg) (Matrix, tea.Cmd) {
 		return mx, nil
 
 	case matrixMessagesResultMsg:
+		mx.loadingMessages[msg.roomID] = false
 		if msg.err != nil {
 			mx.statusMsg = "Error loading messages: " + msg.err.Error()
 		} else {
@@ -1110,7 +1126,23 @@ func (mx Matrix) Update(msg tea.Msg) (Matrix, tea.Cmd) {
 					msg.messages[i].IsOwn = true
 				}
 			}
-			mx.messages[msg.roomID] = msg.messages
+			// Merge with existing messages (sync may have already added some)
+			existing := mx.messages[msg.roomID]
+			if len(existing) > 0 {
+				// Deduplicate: add only messages not already present
+				seen := make(map[string]bool, len(existing))
+				for _, m := range existing {
+					seen[m.EventID] = true
+				}
+				for _, m := range msg.messages {
+					if !seen[m.EventID] {
+						existing = append(existing, m)
+					}
+				}
+				mx.messages[msg.roomID] = existing
+			} else {
+				mx.messages[msg.roomID] = msg.messages
+			}
 			mx.messageScroll = 0
 		}
 		return mx, nil
@@ -1124,7 +1156,8 @@ func (mx Matrix) Update(msg tea.Msg) (Matrix, tea.Cmd) {
 			mx.replyToEvent = ""
 			mx.replyPreview = ""
 			// Refresh messages for the room
-			return mx, matrixFetchMessages(mx.homeserver, mx.accessToken, msg.roomID, 50)
+			fromToken := mx.prevBatchTokens[msg.roomID]
+			return mx, matrixFetchMessages(mx.homeserver, mx.accessToken, msg.roomID, 50, fromToken)
 		}
 		return mx, nil
 
@@ -1136,7 +1169,9 @@ func (mx Matrix) Update(msg tea.Msg) (Matrix, tea.Cmd) {
 			// Refresh to see the reaction
 			rooms := mx.filteredRooms()
 			if mx.roomCursor < len(rooms) {
-				return mx, matrixFetchMessages(mx.homeserver, mx.accessToken, rooms[mx.roomCursor].ID, 50)
+				roomID := rooms[mx.roomCursor].ID
+				fromToken := mx.prevBatchTokens[roomID]
+				return mx, matrixFetchMessages(mx.homeserver, mx.accessToken, roomID, 50, fromToken)
 			}
 		}
 		return mx, nil
@@ -1194,6 +1229,11 @@ func (mx Matrix) Update(msg tea.Msg) (Matrix, tea.Cmd) {
 func (mx *Matrix) processSyncResponse(resp *matrixSyncResponse) {
 	mx.syncRunning = false
 	for roomID, joinedRoom := range resp.Rooms.Join {
+		// Store prev_batch token for loading earlier history via /messages
+		if joinedRoom.Timeline.PrevBatch != "" {
+			mx.prevBatchTokens[roomID] = joinedRoom.Timeline.PrevBatch
+		}
+
 		// Update unread counts
 		for i := range mx.rooms {
 			if mx.rooms[i].ID == roomID {
@@ -1668,8 +1708,10 @@ func (mx Matrix) handleRoomKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 			mx.messageScroll = 0
 			if mx.roomCursor < len(filtered) {
 				roomID := filtered[mx.roomCursor].ID
-				if _, ok := mx.messages[roomID]; !ok {
-					return mx, matrixFetchMessages(mx.homeserver, mx.accessToken, roomID, 50)
+				if _, ok := mx.messages[roomID]; !ok && !mx.loadingMessages[roomID] {
+					mx.loadingMessages[roomID] = true
+					fromToken := mx.prevBatchTokens[roomID]
+					return mx, matrixFetchMessages(mx.homeserver, mx.accessToken, roomID, 50, fromToken)
 				}
 			}
 		}
@@ -1679,8 +1721,10 @@ func (mx Matrix) handleRoomKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 			mx.messageScroll = 0
 			if mx.roomCursor < len(filtered) {
 				roomID := filtered[mx.roomCursor].ID
-				if _, ok := mx.messages[roomID]; !ok {
-					return mx, matrixFetchMessages(mx.homeserver, mx.accessToken, roomID, 50)
+				if _, ok := mx.messages[roomID]; !ok && !mx.loadingMessages[roomID] {
+					mx.loadingMessages[roomID] = true
+					fromToken := mx.prevBatchTokens[roomID]
+					return mx, matrixFetchMessages(mx.homeserver, mx.accessToken, roomID, 50, fromToken)
 				}
 			}
 		}
