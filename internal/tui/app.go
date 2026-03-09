@@ -2832,6 +2832,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 									}
 								}
 							}
+							if m.editor.col < 0 {
+								m.editor.col = 0
+							}
 							m.editor.InsertText(result + "]]")
 							m.editor.modified = true
 						}
