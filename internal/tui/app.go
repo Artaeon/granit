@@ -2554,7 +2554,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 			m.matrix.ConfigureAI(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.OpenAIModel)
 			m.matrix.SetCurrentNoteContent(m.editor.GetContent())
-			m.matrix.Open()
+			if openCmd := m.matrix.Open(); openCmd != nil {
+				return m, openCmd
+			}
 			// Start sync if we have a token
 			if cmd := m.matrix.StartSync(); cmd != nil {
 				return m, cmd
@@ -3195,7 +3197,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		})
 		m.matrix.ConfigureAI(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.OpenAIModel)
 		m.matrix.SetCurrentNoteContent(m.editor.GetContent())
-		m.matrix.Open()
+		if openCmd := m.matrix.Open(); openCmd != nil {
+			return m, openCmd
+		}
 		if cmd := m.matrix.StartSync(); cmd != nil {
 			return m, cmd
 		}
