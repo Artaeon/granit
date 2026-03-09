@@ -125,6 +125,19 @@ type VimResult struct {
 	TextOpStartCol  int
 	TextOpEndLine   int
 	TextOpEndCol    int
+
+	// Ex command results
+	ExOpenFile    string // :e <file> — filename to open (fuzzy matched by app)
+	ExForceQuit   bool   // :q! — quit without saving
+	ExSetOption   string // :set option — "number", "nonumber", "wrap", "nowrap"
+	ExClearSearch bool   // :noh — clear search highlights
+	ExSubstitute  *ExSubResult // :s or :%s substitution result
+}
+
+// ExSubResult holds the result of an ex :s substitution command.
+type ExSubResult struct {
+	NewLines []string // updated content lines
+	Count    int      // number of replacements made
 }
 
 // vimMacroReplayMsg is a tea.Msg used to replay macro keystrokes one at a time.
@@ -322,9 +335,40 @@ func (vs *VimState) executeCommand(content []string, cursor int) VimResult {
 		return VimResult{EnterNormal: true, StatusMsg: "save"}
 	case "q":
 		return VimResult{EnterNormal: true, StatusMsg: "quit"}
-	case "wq":
+	case "wq", "x":
 		return VimResult{EnterNormal: true, StatusMsg: "save_quit"}
+	case "q!":
+		return VimResult{EnterNormal: true, ExForceQuit: true}
+	case "e":
+		return VimResult{EnterNormal: true, StatusMsg: "no file name"}
+	case "noh", "nohlsearch":
+		vs.searchActive = false
+		vs.searchMatches = nil
+		vs.currentMatch = -1
+		return VimResult{EnterNormal: true, ExClearSearch: true}
+	case "set number":
+		return VimResult{EnterNormal: true, ExSetOption: "number"}
+	case "set nonumber", "set nonu":
+		return VimResult{EnterNormal: true, ExSetOption: "nonumber"}
+	case "set wrap":
+		return VimResult{EnterNormal: true, ExSetOption: "wrap"}
+	case "set nowrap":
+		return VimResult{EnterNormal: true, ExSetOption: "nowrap"}
 	default:
+		// :e <file> — open file
+		if strings.HasPrefix(cmd, "e ") {
+			filename := strings.TrimSpace(cmd[2:])
+			if filename != "" {
+				return VimResult{EnterNormal: true, ExOpenFile: filename}
+			}
+			return VimResult{EnterNormal: true, StatusMsg: "no file name"}
+		}
+
+		// Substitution: :s/old/new/[g] or :%s/old/new/[g]
+		if sub := parseSubstitution(cmd, content, cursor); sub != nil {
+			return *sub
+		}
+
 		// Check for :{number} — go to line
 		lineNum := parseNumber(cmd)
 		if lineNum > 0 {
@@ -341,6 +385,117 @@ func (vs *VimState) executeCommand(content []string, cursor int) VimResult {
 		}
 		return VimResult{EnterNormal: true, StatusMsg: "unknown command: " + cmd}
 	}
+}
+
+// parseSubstitution handles :s/old/new/[g] and :%s/old/new/[g] commands.
+func parseSubstitution(cmd string, content []string, cursor int) *VimResult {
+	allLines := false
+	sub := cmd
+
+	// :%s — substitute across entire file
+	if strings.HasPrefix(sub, "%s") {
+		allLines = true
+		sub = sub[1:] // strip %, now starts with "s"
+	}
+
+	// Must start with s followed by a delimiter
+	if len(sub) < 2 || sub[0] != 's' {
+		return nil
+	}
+
+	delim := sub[1]
+	// Parse s/old/new/[flags] using the delimiter character
+	parts := splitSubParts(sub[2:], delim)
+	if len(parts) < 2 {
+		return nil
+	}
+
+	old := parts[0]
+	new := parts[1]
+	flags := ""
+	if len(parts) >= 3 {
+		flags = parts[2]
+	}
+
+	if old == "" {
+		return &VimResult{EnterNormal: true, StatusMsg: "empty search pattern"}
+	}
+
+	globalReplace := strings.Contains(flags, "g")
+
+	// Copy content to avoid modifying the original
+	newLines := make([]string, len(content))
+	copy(newLines, content)
+
+	count := 0
+	startLine := cursor
+	endLine := cursor
+	if allLines {
+		startLine = 0
+		endLine = len(content) - 1
+	}
+
+	for i := startLine; i <= endLine; i++ {
+		if globalReplace {
+			n := strings.Count(newLines[i], old)
+			if n > 0 {
+				newLines[i] = strings.ReplaceAll(newLines[i], old, new)
+				count += n
+			}
+		} else {
+			idx := strings.Index(newLines[i], old)
+			if idx >= 0 {
+				newLines[i] = newLines[i][:idx] + new + newLines[i][idx+len(old):]
+				count++
+			}
+		}
+	}
+
+	if count == 0 {
+		return &VimResult{EnterNormal: true, StatusMsg: "pattern not found: " + old}
+	}
+
+	return &VimResult{
+		EnterNormal:  true,
+		ExSubstitute: &ExSubResult{NewLines: newLines, Count: count},
+		StatusMsg:    fmt.Sprintf("%d substitution(s)", count),
+	}
+}
+
+// splitSubParts splits a substitution body by the delimiter.
+// e.g. for "old/new/g" with delim '/', returns ["old", "new", "g"].
+func splitSubParts(s string, delim byte) []string {
+	var parts []string
+	var cur strings.Builder
+	escaped := false
+	for i := 0; i < len(s); i++ {
+		if escaped {
+			cur.WriteByte(s[i])
+			escaped = false
+			continue
+		}
+		if s[i] == '\\' {
+			escaped = true
+			continue
+		}
+		if s[i] == delim {
+			parts = append(parts, cur.String())
+			cur.Reset()
+			continue
+		}
+		cur.WriteByte(s[i])
+	}
+	parts = append(parts, cur.String())
+	return parts
+}
+
+// GetCmdBuffer returns the current command-line buffer for rendering.
+// Returns empty string when not in command mode.
+func (vs *VimState) GetCmdBuffer() string {
+	if vs.mode != VimCommand {
+		return ""
+	}
+	return vs.cmdBuf
 }
 
 // ---------------------------------------------------------------------------
