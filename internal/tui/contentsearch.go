@@ -36,6 +36,12 @@ type ContentSearch struct {
 	regexMode bool
 	regexErr  string // non-empty when the regex pattern is invalid
 
+	// Filename-only mode (vs full-text content search)
+	filenameMode bool
+
+	// Config-driven limits
+	maxResults int // max number of results to return (from config.MaxSearchResults)
+
 	// Search history (Up/Down to recall previous queries)
 	history    []string
 	historyIdx int    // -1 means new query mode; 0..len-1 indexes from most recent
@@ -49,7 +55,7 @@ type ContentSearch struct {
 
 // NewContentSearch returns a zero-value ContentSearch ready for use.
 func NewContentSearch() ContentSearch {
-	return ContentSearch{historyIdx: -1}
+	return ContentSearch{historyIdx: -1, maxResults: 50}
 }
 
 // IsActive reports whether the overlay is visible.
@@ -70,7 +76,9 @@ func (cs *ContentSearch) ToggleRegex() {
 }
 
 // Open activates the overlay with the given vault contents and optional search index.
-func (cs *ContentSearch) Open(noteContents map[string]string, si *vault.SearchIndex, vaultRoot string) {
+// searchContent controls the default mode: true for content search, false for filename search.
+// maxResults limits the number of results returned (0 or negative uses default of 50).
+func (cs *ContentSearch) Open(noteContents map[string]string, si *vault.SearchIndex, vaultRoot string, searchContent bool, maxResults int) {
 	cs.active = true
 	cs.query = ""
 	cs.results = nil
@@ -80,6 +88,12 @@ func (cs *ContentSearch) Open(noteContents map[string]string, si *vault.SearchIn
 	cs.noteContents = noteContents
 	cs.searchIndex = si
 	cs.vaultRoot = vaultRoot
+	cs.filenameMode = !searchContent
+	if maxResults > 0 {
+		cs.maxResults = maxResults
+	} else {
+		cs.maxResults = 50
+	}
 	cs.historyIdx = -1
 	cs.savedQuery = ""
 	// Load history from disk
@@ -127,6 +141,11 @@ func (cs ContentSearch) Update(msg tea.Msg) (ContentSearch, tea.Cmd) {
 		case "alt+r":
 			cs.regexMode = !cs.regexMode
 			cs.regexErr = ""
+			cs.search()
+			return cs, nil
+
+		case "alt+m":
+			cs.filenameMode = !cs.filenameMode
 			cs.search()
 			return cs, nil
 
@@ -227,23 +246,31 @@ func (cs ContentSearch) View() string {
 	var b strings.Builder
 
 	// Title
+	titleText := "  " + IconSearchChar + " Search Vault Contents"
+	if cs.filenameMode {
+		titleText = "  " + IconSearchChar + " Search Vault Filenames"
+	}
 	title := lipgloss.NewStyle().
 		Foreground(mauve).
 		Bold(true).
-		Render("  " + IconSearchChar + " Search Vault Contents")
+		Render(titleText)
 	b.WriteString(title)
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerWidth)))
 	b.WriteString("\n")
 
-	// Search input with regex mode indicator
+	// Search input with regex and mode indicators
 	prompt := SearchPromptStyle.Render("  > ")
 	input := cs.query + DimStyle.Render("_")
-	modeIndicator := DimStyle.Render(" [Aa]")
+	regexIndicator := DimStyle.Render(" [Aa]")
 	if cs.regexMode {
-		modeIndicator = lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(" [.*]")
+		regexIndicator = lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(" [.*]")
 	}
-	b.WriteString(prompt + input + modeIndicator)
+	searchModeTag := DimStyle.Render(" [content]")
+	if cs.filenameMode {
+		searchModeTag = lipgloss.NewStyle().Foreground(green).Bold(true).Render(" [filename]")
+	}
+	b.WriteString(prompt + input + regexIndicator + searchModeTag)
 	b.WriteString("\n")
 	if cs.regexErr != "" {
 		errStyle := lipgloss.NewStyle().Foreground(red).Bold(true)
@@ -256,7 +283,11 @@ func (cs ContentSearch) View() string {
 	// Results area
 	if cs.query == "" {
 		b.WriteString("\n")
-		b.WriteString(DimStyle.Render("  Type to search across all notes..."))
+		hint := "  Type to search across all notes..."
+		if cs.filenameMode {
+			hint = "  Type to search filenames..."
+		}
+		b.WriteString(DimStyle.Render(hint))
 		b.WriteString("\n")
 	} else if len(cs.results) == 0 {
 		b.WriteString("\n")
@@ -311,7 +342,7 @@ func (cs ContentSearch) View() string {
 	b.WriteString("\n\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerWidth)))
 	b.WriteString("\n")
-	footer := "  Enter: jump  ↑↓: history  Alt+R: regex  Esc: close"
+	footer := "  Enter: jump  ↑↓: history  Alt+R: regex  Alt+M: mode  Esc: close"
 	if len(cs.results) > 0 {
 		footer += "  (" + smallNum(len(cs.results)) + " results)"
 	}
@@ -331,6 +362,7 @@ func (cs ContentSearch) View() string {
 // When a search index is available and ready, it uses the inverted index for
 // faster results with TF-IDF ranking. Otherwise, it falls back to linear scan.
 // When regexMode is enabled it compiles the query as a regex pattern instead.
+// When filenameMode is enabled it matches against file paths instead of content.
 func (cs *ContentSearch) search() {
 	cs.results = nil
 	cs.cursor = 0
@@ -338,6 +370,12 @@ func (cs *ContentSearch) search() {
 	cs.regexErr = ""
 
 	if cs.query == "" {
+		return
+	}
+
+	// Filename-only mode: match against file paths
+	if cs.filenameMode {
+		cs.searchFilenames()
 		return
 	}
 
@@ -355,7 +393,7 @@ func (cs *ContentSearch) search() {
 func (cs *ContentSearch) searchIndexed() {
 	indexed := cs.searchIndex.Search(cs.query)
 
-	limit := 100
+	limit := cs.maxResults
 	if len(indexed) > limit {
 		indexed = indexed[:limit]
 	}
@@ -384,6 +422,36 @@ func (cs *ContentSearch) searchLinear() {
 		cs.searchRegex(paths)
 	} else {
 		cs.searchPlain(paths)
+	}
+}
+
+// searchFilenames matches the query against file paths (name-only search).
+func (cs *ContentSearch) searchFilenames() {
+	paths := make([]string, 0, len(cs.noteContents))
+	for p := range cs.noteContents {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+
+	lowerQuery := strings.ToLower(cs.query)
+
+	for _, path := range paths {
+		lowerPath := strings.ToLower(path)
+		col := strings.Index(lowerPath, lowerQuery)
+		if col == -1 {
+			continue
+		}
+
+		cs.results = append(cs.results, ContentSearchResult{
+			FilePath: path,
+			Line:     0,
+			Col:      col,
+			Context:  path,
+		})
+
+		if len(cs.results) >= cs.maxResults {
+			return
+		}
 	}
 }
 
@@ -421,11 +489,11 @@ func (cs *ContentSearch) searchPlain(paths []string) {
 			}
 
 			// Enforce global limit across both buckets.
-			if len(exact)+len(fuzzy) >= 100 {
+			if len(exact)+len(fuzzy) >= cs.maxResults {
 				break
 			}
 		}
-		if len(exact)+len(fuzzy) >= 100 {
+		if len(exact)+len(fuzzy) >= cs.maxResults {
 			break
 		}
 	}
@@ -458,7 +526,7 @@ func (cs *ContentSearch) searchRegex(paths []string) {
 				Context:  line,
 			})
 
-			if len(cs.results) >= 100 {
+			if len(cs.results) >= cs.maxResults {
 				return
 			}
 		}

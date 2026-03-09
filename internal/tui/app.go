@@ -3091,7 +3091,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 				noteContents[p] = note.Content
 			}
 		}
-		m.contentSearch.Open(noteContents, m.vault.SearchIndex, m.vault.Root)
+		m.contentSearch.Open(noteContents, m.vault.SearchIndex, m.vault.Root, m.config.SearchContentByDefault, m.config.MaxSearchResults)
 	case CmdGlobalReplace:
 		m.globalReplace.SetSize(m.width, m.height)
 		m.globalReplace.Open(m.vault)
