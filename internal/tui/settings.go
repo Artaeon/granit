@@ -26,6 +26,7 @@ const (
 	catFiles      = "Files"
 	catPlugins    = "Plugins"
 	catAdvanced   = "Advanced"
+	catMatrix     = "Matrix"
 )
 
 // settingsCategories defines the display order of categories.
@@ -35,6 +36,7 @@ var settingsCategories = []string{
 	catAI,
 	catFiles,
 	catPlugins,
+	catMatrix,
 	catAdvanced,
 }
 
@@ -134,6 +136,14 @@ func (s *Settings) buildItems() {
 		{label: "Ghost Writer", key: "cp_ghost_writer", kind: "bool", value: s.corePluginVal("ghost_writer"), category: catPlugins, description: "AI completion plugin"},
 		{label: "Encryption", key: "cp_encryption", kind: "bool", value: s.corePluginVal("encryption"), category: catPlugins, description: "note security protect"},
 		{label: "Spell Check", key: "cp_spell_check", kind: "bool", value: s.corePluginVal("spell_check"), category: catPlugins, description: "grammar typo detection"},
+
+		// ── Matrix ──
+		{label: "Matrix Enabled", key: "matrix_enabled", kind: "bool", value: s.config.MatrixEnabled, category: catMatrix, description: "enable Matrix chat integration"},
+		{label: "Matrix Homeserver", key: "matrix_homeserver", kind: "string", value: s.config.MatrixHomeserver, category: catMatrix, description: "homeserver URL e.g. https://matrix.org"},
+		{label: "Matrix Username", key: "matrix_username", kind: "string", value: s.config.MatrixUsername, category: catMatrix, description: "Matrix user ID"},
+		{label: "Matrix Read Receipts", key: "matrix_read_receipts", kind: "bool", value: s.config.MatrixReadReceipts, category: catMatrix, description: "send read receipts to others"},
+		{label: "Matrix Typing Indicators", key: "matrix_typing_indicators", kind: "bool", value: s.config.MatrixTypingIndicators, category: catMatrix, description: "show typing status"},
+		{label: "Matrix Auto-delete Cache", key: "matrix_auto_delete_cache", kind: "bool", value: s.config.MatrixAutoDeleteCache, category: catMatrix, description: "clear messages on close"},
 
 		// ── Advanced ──
 		{label: "Git Auto Sync", key: "git_auto_sync", kind: "bool", value: s.config.GitAutoSync, category: catAdvanced, description: "auto commit push pull"},
@@ -320,6 +330,18 @@ func (s *Settings) defaultValueForKey(key string) interface{} {
 		return def.AutoTag
 	case "ghost_writer":
 		return def.GhostWriter
+	case "matrix_enabled":
+		return def.MatrixEnabled
+	case "matrix_homeserver":
+		return def.MatrixHomeserver
+	case "matrix_username":
+		return def.MatrixUsername
+	case "matrix_read_receipts":
+		return def.MatrixReadReceipts
+	case "matrix_typing_indicators":
+		return def.MatrixTypingIndicators
+	case "matrix_auto_delete_cache":
+		return def.MatrixAutoDeleteCache
 	default:
 		if strings.HasPrefix(key, "cp_") {
 			return true // core plugins default to enabled
@@ -606,6 +628,18 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.AutoTag = value.(bool)
 	case "ghost_writer":
 		s.config.GhostWriter = value.(bool)
+	case "matrix_enabled":
+		s.config.MatrixEnabled = value.(bool)
+	case "matrix_homeserver":
+		s.config.MatrixHomeserver = value.(string)
+	case "matrix_username":
+		s.config.MatrixUsername = value.(string)
+	case "matrix_read_receipts":
+		s.config.MatrixReadReceipts = value.(bool)
+	case "matrix_typing_indicators":
+		s.config.MatrixTypingIndicators = value.(bool)
+	case "matrix_auto_delete_cache":
+		s.config.MatrixAutoDeleteCache = value.(bool)
 	default:
 		// Handle core plugin toggles (cp_*)
 		if strings.HasPrefix(key, "cp_") {
