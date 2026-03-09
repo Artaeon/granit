@@ -351,6 +351,8 @@ func (s *Settings) Toggle() {
 	if s.active {
 		s.searching = false
 		s.searchBuf = ""
+		s.scroll = 0
+		s.cursor = 0
 		s.buildItems()
 		s.rebuildVisible()
 	}
