@@ -14,19 +14,27 @@ import (
 // resolveCaptureVault determines the vault path for capture/clip commands.
 // Priority: --vault / -v flag > GRANIT_VAULT env > last opened vault > cwd.
 func resolveCaptureVault() string {
+	var vaultPath string
 	if v := getFlagValue("--vault"); v != "" {
-		return v
+		vaultPath = v
+	} else if v := getFlagValue("-v"); v != "" {
+		vaultPath = v
+	} else if envVault := os.Getenv("GRANIT_VAULT"); envVault != "" {
+		vaultPath = envVault
+	} else if last := config.LoadVaultList().LastUsed; last != "" {
+		vaultPath = last
+	} else {
+		vaultPath = "."
 	}
-	if v := getFlagValue("-v"); v != "" {
-		return v
+	// Validate that the resolved path is a directory.
+	info, err := os.Stat(vaultPath)
+	if err != nil {
+		exitError("Vault path does not exist: %s", vaultPath)
 	}
-	if envVault := os.Getenv("GRANIT_VAULT"); envVault != "" {
-		return envVault
+	if !info.IsDir() {
+		exitError("Vault path is not a directory: %s", vaultPath)
 	}
-	if last := config.LoadVaultList().LastUsed; last != "" {
-		return last
-	}
-	return "."
+	return vaultPath
 }
 
 // resolveTargetFile returns the target filename from flags or default.
@@ -60,16 +68,26 @@ func ensureTargetFile(targetPath string) {
 func appendCapture(vaultPath, targetPath, text string) {
 	ensureTargetFile(targetPath)
 
-	f, err := os.OpenFile(targetPath, os.O_APPEND|os.O_WRONLY, 0644)
+	// Read existing content.
+	existing, err := os.ReadFile(targetPath)
 	if err != nil {
-		exitError("Error opening file: %v", err)
+		exitError("Error reading file: %v", err)
 	}
-	defer f.Close()
 
+	// Build new content.
 	timestamp := time.Now().Format("15:04")
 	entry := fmt.Sprintf("\n- **%s** — %s\n", timestamp, text)
-	if _, err := f.WriteString(entry); err != nil {
+	newContent := append(existing, []byte(entry)...)
+
+	// Atomic write via temp file + rename.
+	tmpPath := targetPath + ".tmp"
+	if err := os.WriteFile(tmpPath, newContent, 0644); err != nil {
+		os.Remove(tmpPath)
 		exitError("Error writing to file: %v", err)
+	}
+	if err := os.Rename(tmpPath, targetPath); err != nil {
+		os.Remove(tmpPath)
+		exitError("Error saving file: %v", err)
 	}
 
 	rel, _ := filepath.Rel(vaultPath, targetPath)
@@ -80,10 +98,26 @@ func appendCapture(vaultPath, targetPath, text string) {
 }
 
 // runCapture handles "granit capture <text>" — appends text to inbox with timestamp.
+func validateTargetInVault(vaultPath, targetPath string) {
+	absVault, err := filepath.Abs(vaultPath)
+	if err != nil {
+		exitError("Error resolving vault path: %v", err)
+	}
+	absTarget, err := filepath.Abs(targetPath)
+	if err != nil {
+		exitError("Error resolving target path: %v", err)
+	}
+	rel, err := filepath.Rel(absVault, absTarget)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		exitError("Target file %q is outside the vault directory", targetPath)
+	}
+}
+
 func runCapture() {
 	vaultPath := resolveCaptureVault()
 	targetFile := resolveTargetFile()
 	targetPath := filepath.Join(vaultPath, targetFile)
+	validateTargetInVault(vaultPath, targetPath)
 
 	args := getCapturePositionalArgs()
 	if len(args) == 0 {
@@ -99,6 +133,7 @@ func runClip() {
 	vaultPath := resolveCaptureVault()
 	targetFile := resolveTargetFile()
 	targetPath := filepath.Join(vaultPath, targetFile)
+	validateTargetInVault(vaultPath, targetPath)
 
 	scanner := bufio.NewScanner(os.Stdin)
 	var lines []string
