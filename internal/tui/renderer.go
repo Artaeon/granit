@@ -345,6 +345,36 @@ func tableAlignment(cell string) byte {
 	return 'l'
 }
 
+// stripMarkdownForWidth returns the display width of a string after stripping
+// markdown syntax characters. This is used to calculate column widths based on
+// visible content rather than raw markdown.
+func stripMarkdownForWidth(s string) int {
+	// Replace wikilinks [[target|display]] with display, [[target]] with target
+	re := regexp.MustCompile(`\[\[([^\]|]+)\|([^\]]+)\]\]`)
+	s = re.ReplaceAllString(s, "$2")
+	re2 := regexp.MustCompile(`\[\[([^\]]+)\]\]`)
+	s = re2.ReplaceAllString(s, "$1")
+	// Remove embed syntax ![[...]] → content
+	re3 := regexp.MustCompile(`!\[\[([^\]]+)\]\]`)
+	s = re3.ReplaceAllString(s, "$1")
+	// Remove inline code backticks
+	re4 := regexp.MustCompile("`([^`]+)`")
+	s = re4.ReplaceAllString(s, "$1")
+	// Remove bold ** markers
+	s = strings.ReplaceAll(s, "**", "")
+	// Remove strikethrough ~~ markers
+	s = strings.ReplaceAll(s, "~~", "")
+	// Remove highlight == markers
+	s = strings.ReplaceAll(s, "==", "")
+	// Remove italic * markers (after bold is already removed)
+	re5 := regexp.MustCompile(`\*([^*]+)\*`)
+	s = re5.ReplaceAllString(s, "$1")
+	// Remove # from tags like #tag (but not heading markers)
+	re6 := regexp.MustCompile(`#(\w+)`)
+	s = re6.ReplaceAllString(s, "$1")
+	return len([]rune(s))
+}
+
 // renderTable renders collected markdown table rows with box-drawing borders.
 func (r Renderer) renderTable(rows []string, contentWidth int) []string {
 	var out []string
@@ -391,12 +421,12 @@ func (r Renderer) renderTable(rows []string, contentWidth int) []string {
 		alignments = append(alignments, 'l')
 	}
 
-	// Calculate column widths (max content width per column)
+	// Calculate column widths based on display width (stripped of markdown syntax)
 	colWidths := make([]int, numCols)
 	for _, cells := range allCells {
 		for ci := 0; ci < numCols; ci++ {
 			if ci < len(cells) {
-				w := len([]rune(cells[ci]))
+				w := stripMarkdownForWidth(cells[ci])
 				if w > colWidths[ci] {
 					colWidths[ci] = w
 				}
@@ -410,28 +440,69 @@ func (r Renderer) renderTable(rows []string, contentWidth int) []string {
 		}
 	}
 
+	// Constrain table width to contentWidth - 4 (account for leading indent + borders)
+	maxTableWidth := contentWidth - 4
+	if maxTableWidth < 20 {
+		maxTableWidth = 20
+	}
+	// Total width = sum of colWidths + 3 per column (│ + space + space) + 1 for final │
+	// Actually: 2 (indent) + │ + for each col: space + content + space + │
+	// Border overhead per column = 3 (space + space + separator), plus 1 for first │
+	borderOverhead := numCols*3 + 1
+	totalWidth := borderOverhead
+	for _, w := range colWidths {
+		totalWidth += w
+	}
+	if totalWidth > maxTableWidth {
+		// Proportionally shrink columns to fit
+		available := maxTableWidth - borderOverhead
+		if available < numCols*3 {
+			available = numCols * 3
+		}
+		totalContent := 0
+		for _, w := range colWidths {
+			totalContent += w
+		}
+		if totalContent > 0 {
+			newWidths := make([]int, numCols)
+			assigned := 0
+			for ci := 0; ci < numCols; ci++ {
+				newWidths[ci] = colWidths[ci] * available / totalContent
+				if newWidths[ci] < 3 {
+					newWidths[ci] = 3
+				}
+				assigned += newWidths[ci]
+			}
+			// Distribute any remaining space to the first column
+			if assigned < available {
+				newWidths[0] += available - assigned
+			}
+			colWidths = newWidths
+		}
+	}
+
 	borderStyle := lipgloss.NewStyle().Foreground(surface1)
 	headerStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
 	cellStyle := lipgloss.NewStyle().Foreground(text)
 	altCellStyle := lipgloss.NewStyle().Foreground(text).Background(surface0)
 
-	// Helper: align text in a cell
-	alignCell := func(content string, width int, align byte) string {
-		runes := []rune(content)
-		contentLen := len(runes)
-		if contentLen >= width {
-			return string(runes[:width])
+	// Helper: align a rendered cell (with ANSI escapes) in a column of given width.
+	// displayWidth is the visible width of the rendered content (measured with lipgloss.Width).
+	alignCell := func(rendered string, displayWidth int, colWidth int, align byte) string {
+		if displayWidth >= colWidth {
+			// Truncate: we can't easily truncate ANSI strings, so just return as-is
+			return rendered
 		}
-		pad := width - contentLen
+		pad := colWidth - displayWidth
 		switch align {
 		case 'c':
 			left := pad / 2
 			right := pad - left
-			return strings.Repeat(" ", left) + content + strings.Repeat(" ", right)
+			return strings.Repeat(" ", left) + rendered + strings.Repeat(" ", right)
 		case 'r':
-			return strings.Repeat(" ", pad) + content
+			return strings.Repeat(" ", pad) + rendered
 		default:
-			return content + strings.Repeat(" ", pad)
+			return rendered + strings.Repeat(" ", pad)
 		}
 	}
 
@@ -463,14 +534,17 @@ func (r Renderer) renderTable(rows []string, contentWidth int) []string {
 		sb.WriteString("  ")
 		sb.WriteString(borderStyle.Render("│"))
 		for ci := 0; ci < numCols; ci++ {
-			content := alignCell(cells[ci], colWidths[ci], alignments[ci])
+			// Render inline markdown in the cell content
+			rendered := r.renderInline(cells[ci])
+			displayWidth := lipgloss.Width(rendered)
+			aligned := alignCell(rendered, displayWidth, colWidths[ci], alignments[ci])
 			if ri == 0 && sepIdx >= 0 {
 				// Header row
-				sb.WriteString(" " + headerStyle.Render(content) + " ")
+				sb.WriteString(" " + headerStyle.Render(aligned) + " ")
 			} else if ri%2 == 0 {
-				sb.WriteString(" " + altCellStyle.Render(content) + " ")
+				sb.WriteString(" " + altCellStyle.Render(aligned) + " ")
 			} else {
-				sb.WriteString(" " + cellStyle.Render(content) + " ")
+				sb.WriteString(" " + cellStyle.Render(aligned) + " ")
 			}
 			if ci < numCols-1 {
 				sb.WriteString(borderStyle.Render("│"))
