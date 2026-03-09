@@ -170,8 +170,11 @@ func serveNote(w http.ResponseWriter, r *http.Request, v *vault.Vault, idx *vaul
 
 		if mappedPath, ok := titleMap[lookupKey]; ok {
 			note = v.GetNote(mappedPath)
-		} else if mappedPath, ok := titleMap[baseName]; ok {
-			note = v.GetNote(mappedPath)
+		}
+		if note == nil {
+			if mappedPath, ok := titleMap[baseName]; ok {
+				note = v.GetNote(mappedPath)
+			}
 		}
 	}
 
