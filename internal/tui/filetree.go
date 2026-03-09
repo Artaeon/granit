@@ -46,6 +46,9 @@ type FileTree struct {
 	height  int
 	width   int
 	focused bool
+
+	// Config-driven
+	showHidden bool
 }
 
 // NewFileTree returns a zero-value FileTree ready for use.
@@ -103,6 +106,11 @@ func (ft *FileTree) SetFiles(files []string) {
 	}
 
 	for _, f := range files {
+		// Skip hidden files/paths when showHidden is false.
+		if !ft.showHidden && isHiddenPath(f) {
+			continue
+		}
+
 		dir := filepath.Dir(f)
 		name := filepath.Base(f)
 
