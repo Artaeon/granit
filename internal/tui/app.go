@@ -220,6 +220,10 @@ type Model struct {
 	moveFileMode  bool
 	moveFileDirs  []string
 	moveFileCursor int
+
+	// Extract to note
+	extractMode bool
+	extractName string
 }
 
 func NewModel(vaultPath string) (Model, error) {
@@ -2242,6 +2246,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateNewNote(msg)
 		}
 
+		if m.extractMode {
+			return m.updateExtractNote(msg)
+		}
+
 		// Selection copy/cut: intercept before global handlers when editor has selection
 		if m.focus == focusEditor && !m.viewMode && m.editor.HasSelection() {
 			switch msg.String() {
@@ -3874,6 +3882,15 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case CmdExtractToNote:
+		sel := m.editor.GetSelectedText()
+		if sel == "" {
+			m.statusbar.SetMessage("No text selected")
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
+		m.extractMode = true
+		m.extractName = ""
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}
@@ -4243,6 +4260,67 @@ func (m *Model) updateNewNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		char := msg.String()
 		if len(char) == 1 && char[0] >= 32 {
 			m.newNoteName += char
+		}
+		return m, nil
+	}
+}
+
+func (m *Model) updateExtractNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.extractMode = false
+		return m, nil
+	case "enter":
+		if m.extractName != "" {
+			sel := m.editor.GetSelectedText()
+			if sel == "" {
+				m.extractMode = false
+				m.statusbar.SetMessage("No text selected")
+				return m, m.clearMessageAfter(2 * time.Second)
+			}
+
+			name := m.extractName
+			if !strings.HasSuffix(name, ".md") {
+				name += ".md"
+			}
+			path := filepath.Join(m.vault.Root, name)
+
+			if _, err := os.Stat(path); err == nil {
+				m.statusbar.SetMessage("Note already exists: " + name)
+				m.extractMode = false
+				return m, m.clearMessageAfter(2 * time.Second)
+			}
+
+			title := strings.TrimSuffix(filepath.Base(name), ".md")
+			content := "---\ntitle: " + title + "\ndate: " + time.Now().Format("2006-01-02") + "\ntags: []\n---\n\n" + sel + "\n"
+
+			if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
+				if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+					m.editor.DeleteSelection()
+					m.editor.InsertText("[[" + title + "]]")
+					m.saveCurrentNote()()
+					m.vault.Scan()
+					m.index = vault.NewIndex(m.vault)
+					m.index.Build()
+					paths := m.vault.SortedPaths()
+					m.sidebar.SetFiles(paths)
+					m.autocomplete.SetNotes(paths)
+					m.statusbar.SetNoteCount(m.vault.NoteCount())
+					m.statusbar.SetMessage("Extracted to [[" + title + "]]")
+				}
+			}
+		}
+		m.extractMode = false
+		return m, m.clearMessageAfter(2 * time.Second)
+	case "backspace":
+		if len(m.extractName) > 0 {
+			m.extractName = m.extractName[:len(m.extractName)-1]
+		}
+		return m, nil
+	default:
+		char := msg.String()
+		if len(char) == 1 && char[0] >= 32 {
+			m.extractName += char
 		}
 		return m, nil
 	}
@@ -5884,6 +5962,10 @@ func (m Model) View() string {
 		overlay := m.renderNewNoteOverlay()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.extractMode {
+		overlay := m.renderExtractNoteOverlay()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.newFolderMode {
 		overlay := m.renderNewFolderOverlay()
 		view = m.overlayCenter(view, overlay)
@@ -6137,6 +6219,37 @@ func (m Model) renderNewNoteOverlay() string {
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(green).
+		Padding(1, 2).
+		Width(width).
+		Background(mantle)
+
+	return border.Render(b.String())
+}
+
+func (m Model) renderExtractNoteOverlay() string {
+	width := m.width / 3
+	if width < 45 {
+		width = 45
+	}
+
+	var b strings.Builder
+
+	title := lipgloss.NewStyle().
+		Foreground(blue).
+		Bold(true).
+		Render("  " + IconLinkChar + " Extract to Note")
+	b.WriteString(title)
+	b.WriteString("\n\n")
+
+	prompt := lipgloss.NewStyle().Foreground(blue).Bold(true).Render(" Name: ")
+	input := m.extractName + DimStyle.Render("_")
+	b.WriteString(prompt + input)
+	b.WriteString("\n\n")
+	b.WriteString(DimStyle.Render("  Enter to extract, Esc to cancel"))
+
+	border := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(blue).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)
