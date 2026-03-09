@@ -1321,22 +1321,24 @@ func (e *Editor) findNextWholeWord(word string, startLine, startCol int, existin
 }
 
 // isWholeWord checks if the substring at line[col:col+length] is a whole word.
+// col and length are rune indices.
 func (e *Editor) isWholeWord(lineIdx, col, length int) bool {
 	if lineIdx >= len(e.content) {
 		return false
 	}
-	line := e.content[lineIdx]
-	if col+length > len(line) {
+	runes := []rune(e.content[lineIdx])
+	if col+length > len(runes) {
 		return false
 	}
 	if col > 0 {
-		r := rune(line[col-1])
+		r := runes[col-1]
 		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
 			return false
 		}
 	}
-	if col+length < len(line) {
-		r := rune(line[col+length])
+	end := col + length
+	if end < len(runes) {
+		r := runes[end]
 		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
 			return false
 		}
