@@ -5230,7 +5230,7 @@ func (m *Model) applyVimResult(r VimResult) tea.Cmd {
 		m.editor.scroll = r.ScrollTo
 	}
 	if r.DeleteLine {
-		if len(m.editor.content) > 1 {
+		if len(m.editor.content) > 1 && m.editor.cursor < len(m.editor.content) {
 			m.editor.saveSnapshot()
 			m.vimState.register = m.editor.content[m.editor.cursor]
 			m.editor.content = append(m.editor.content[:m.editor.cursor], m.editor.content[m.editor.cursor+1:]...)
