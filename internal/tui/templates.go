@@ -337,8 +337,13 @@ func (t *Templates) SelectedTemplate() string {
 	t.selected = false
 	r := t.result
 	t.result = ""
-	today := time.Now().Format("2006-01-02")
-	r = strings.ReplaceAll(r, "{{date}}", today)
+	now := time.Now()
+	r = strings.ReplaceAll(r, "{{date}}", now.Format("2006-01-02"))
+	r = strings.ReplaceAll(r, "{{time}}", now.Format("15:04"))
+	r = strings.ReplaceAll(r, "{{datetime}}", now.Format("2006-01-02 15:04"))
+	r = strings.ReplaceAll(r, "{{yesterday}}", now.AddDate(0, 0, -1).Format("2006-01-02"))
+	r = strings.ReplaceAll(r, "{{tomorrow}}", now.AddDate(0, 0, 1).Format("2006-01-02"))
+	r = strings.ReplaceAll(r, "{{weekday}}", now.Weekday().String())
 	return r // may be "" for blank note
 }
 
