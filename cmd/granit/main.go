@@ -119,6 +119,9 @@ func main() {
 	case "capture":
 		runCapture()
 
+	case "clip":
+		runClip()
+
 	case "query":
 		runQuery()
 
@@ -197,7 +200,8 @@ PLUGIN MANAGEMENT
 SEARCH & QUERY
   search <query> [path]         Search vault content (--json, --regex)
   query '<expression>' [path]   Query notes by metadata (--json, --table)
-  capture <text>                Quick-capture to Inbox.md (--to, --daily, --stdin)
+  capture <text>                Quick-capture to inbox.md (-v vault, -f file)
+  clip                          Capture from stdin (echo "idea" | granit clip)
 
 ADVANCED
   man                           Output roff-formatted man page (pipe to man -l -)
@@ -219,7 +223,8 @@ EXAMPLES
   granit search "TODO" ~/notes  Search vault content (grep-like output)
   granit search --regex "#+\s" ~/notes  Search with regex
   granit query 'tag:project'    Find notes with a specific tag
-  granit capture "Buy milk"     Append to Inbox.md
+  granit capture "Buy milk"     Append timestamped entry to inbox.md
+  echo "idea" | granit clip    Capture from stdin to inbox.md
   granit export --format html --all ~/notes
                                 Export all notes as HTML
   granit import --from obsidian ~/obsidian-vault ~/notes
