@@ -1,6 +1,6 @@
 # Granit — Theme Switching Showcase
-# Shows: open settings, navigate to theme, switch between several themes
-# Duration: ~15 seconds
+# Shows: open settings via command palette, navigate to theme, cycle themes
+# Duration: ~20 seconds
 
 Output assets/themes.gif
 
@@ -23,12 +23,15 @@ Sleep 300ms
 Enter
 Sleep 1s
 
-# ── Open Settings overlay ───────────────────────────────────────────────────
-Ctrl+,
-Sleep 1500ms
+# ── Open Settings via command palette ─────────────────────────────────────────
+Ctrl+X
+Sleep 1s
+Type "settings"
+Sleep 800ms
+Enter
+Sleep 2s
 
-# ── Navigate down to the Theme setting ───────────────────────────────────────
-# Theme is the 13th item (after editor settings); navigate to it
+# ── Navigate down to the Theme setting ────────────────────────────────────────
 Type "j"
 Sleep 200ms
 Type "j"
@@ -54,32 +57,26 @@ Sleep 200ms
 Type "j"
 Sleep 200ms
 
-# ── Cycle through themes (Enter or right arrow cycles string options) ────────
-
-# Switch to tokyo-night
+# ── Cycle through themes ──────────────────────────────────────────────────────
 Enter
 Sleep 1200ms
 
-# Switch to gruvbox-dark
 Enter
 Sleep 1200ms
 
-# Switch to nord
 Enter
 Sleep 1200ms
 
-# Switch to dracula
 Enter
 Sleep 1200ms
 
-# Switch to rose-pine
 Enter
 Sleep 1200ms
 
-# ── Close settings ──────────────────────────────────────────────────────────
+# ── Close settings ───────────────────────────────────────────────────────────
 Escape
 Sleep 1s
 
 # ── Quit ─────────────────────────────────────────────────────────────────────
 Ctrl+Q
-Sleep 1s
+Sleep 500ms
