@@ -161,10 +161,11 @@ func (bm Bookmarks) Update(msg tea.Msg) (Bookmarks, tea.Cmd) {
 				}
 			}
 		case "enter":
-			if len(items) > 0 && bm.cursor < len(items) {
-				bm.result = items[bm.cursor]
-				bm.active = false
+			if len(items) == 0 || bm.cursor >= len(items) {
+				return bm, nil
 			}
+			bm.result = items[bm.cursor]
+			bm.active = false
 		case "d", "delete":
 			// Remove from starred
 			if bm.mode == 0 && len(bm.data.Starred) > 0 && bm.cursor < len(bm.data.Starred) {
