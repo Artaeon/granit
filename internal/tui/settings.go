@@ -98,6 +98,7 @@ func (s *Settings) buildItems() {
 		{label: "Auto Close Brackets", key: "auto_close_brackets", kind: "bool", value: s.config.AutoCloseBrackets, category: catEditor, description: "pair matching parentheses"},
 		{label: "Highlight Current Line", key: "highlight_current_line", kind: "bool", value: s.config.HighlightCurrentLine, category: catEditor, description: "cursor line background"},
 		{label: "Default View Mode", key: "default_view_mode", kind: "bool", value: s.config.DefaultViewMode, category: catEditor, description: "open in preview reader"},
+		{label: "Inline Spell Check", key: "spell_check", kind: "bool", value: s.config.SpellCheck, category: catEditor, description: "highlight misspelled words"},
 
 		// ── AI ──
 		{label: "AI Provider", key: "ai_provider", kind: "string", value: s.config.AIProvider, options: []string{"local", "ollama", "openai"}, category: catAI, description: "language model backend"},
@@ -329,6 +330,8 @@ func (s *Settings) defaultValueForKey(key string) interface{} {
 		return def.AutoTag
 	case "ghost_writer":
 		return def.GhostWriter
+	case "spell_check":
+		return def.SpellCheck
 	default:
 		if strings.HasPrefix(key, "cp_") {
 			return true // core plugins default to enabled
@@ -619,6 +622,8 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.AutoTag = value.(bool)
 	case "ghost_writer":
 		s.config.GhostWriter = value.(bool)
+	case "spell_check":
+		s.config.SpellCheck = value.(bool)
 	default:
 		// Handle core plugin toggles (cp_*)
 		if strings.HasPrefix(key, "cp_") {
