@@ -325,6 +325,9 @@ func (mx *Matrix) Configure(homeserver, username, token string, readReceipts, ty
 	if token != "" && mx.homeserver != "" {
 		mx.connState = matrixConnected
 		mx.focus = matrixFocusRooms
+	} else {
+		mx.connState = matrixDisconnected
+		mx.focus = matrixFocusLogin
 	}
 }
 
@@ -1310,7 +1313,7 @@ func (mx Matrix) handleKeyMsg(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 		mx.Close()
 		return mx, nil
 
-	case "ctrl+m":
+	case "alt+m":
 		mx.Close()
 		return mx, nil
 
@@ -2169,7 +2172,7 @@ func (mx Matrix) View() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", innerW)))
 	b.WriteString("\n")
 
-	if mx.focus == matrixFocusLogin && mx.accessToken == "" {
+	if mx.accessToken == "" {
 		b.WriteString(mx.renderLoginForm(innerW, height-6))
 	} else if mx.showPrivacy {
 		b.WriteString(mx.renderPrivacyPanel(innerW, height-6))
@@ -2198,6 +2201,9 @@ func (mx Matrix) View() string {
 		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  " + mx.statusMsg))
 	} else if mx.accessToken != "" {
 		hints := "  Tab: switch  /: search  s: share  P: pin  ^S: AI summary  ^A: actions  ^R: reply  Esc: close"
+		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(hints))
+	} else {
+		hints := "  Tab: next field  Enter: login  Esc: close"
 		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(hints))
 	}
 
