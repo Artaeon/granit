@@ -2255,8 +2255,30 @@ func (mx Matrix) View() string {
 	if mx.statusMsg != "" {
 		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  " + mx.statusMsg))
 	} else if mx.accessToken != "" {
-		hints := "  Tab: switch  /: search  s: share  P: pin  ^S: AI summary  ^A: actions  ^R: reply  Esc: close"
-		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(hints))
+		// Show current room name in status + connection + condensed hints
+		statusParts := []string{}
+		rooms := mx.filteredRooms()
+		if mx.roomCursor < len(rooms) {
+			rn := rooms[mx.roomCursor].Name
+			if len(rn) > 20 {
+				rn = rn[:17] + "..."
+			}
+			statusParts = append(statusParts, lipgloss.NewStyle().Foreground(subtext0).Render(rn))
+		}
+		statusParts = append(statusParts, connStatus)
+
+		hintStyle := lipgloss.NewStyle().Foreground(overlay0)
+		hints := hintStyle.Render("Tab:switch /: search s:share Esc:close")
+		maxHintW := innerW - 4
+		for _, sp := range statusParts {
+			maxHintW -= lipgloss.Width(sp) + 2
+		}
+		if maxHintW < 20 {
+			hints = hintStyle.Render("Tab /: s: Esc")
+		}
+
+		b.WriteString("  " + strings.Join(statusParts, lipgloss.NewStyle().Foreground(surface1).Render(" | ")) +
+			"  " + hints)
 	} else {
 		hints := "  Tab: next field  Enter: login  Esc: close"
 		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(hints))
@@ -2307,25 +2329,41 @@ func (mx Matrix) renderLoginForm(width, maxHeight int) string {
 	b.WriteString(dimStyle.Render("  Your access token will be stored in config."))
 	b.WriteString("\n\n")
 
-	fields := []struct {
-		label string
-		value string
-		mask  bool
-	}{
-		{"Homeserver URL", mx.loginServer, false},
-		{"Username", mx.loginUser, false},
-		{"Password", mx.loginPass, true},
+	type loginField struct {
+		label       string
+		value       string
+		mask        bool
+		placeholder string
+		hint        string
+	}
+	fields := []loginField{
+		{"Homeserver", mx.loginServer, false, "matrix.org", "server address"},
+		{"Username", mx.loginUser, false, "@user:server", "Matrix user ID"},
+		{"Password", mx.loginPass, true, "", ""},
 	}
 
-	labelStyle := lipgloss.NewStyle().Foreground(text).Width(16)
-	activeLabel := lipgloss.NewStyle().Foreground(mauve).Bold(true).Width(16)
-	inputStyle := lipgloss.NewStyle().Foreground(blue)
+	labelStyle := lipgloss.NewStyle().Foreground(subtext0).Width(14)
+	activeLabel := lipgloss.NewStyle().Foreground(mauve).Bold(true).Width(14)
+	inputStyle := lipgloss.NewStyle().Foreground(text)
+	activeInputStyle := lipgloss.NewStyle().Foreground(text).Background(surface0)
 	cursorStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	placeholderStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
+	hintStyle := lipgloss.NewStyle().Foreground(surface2)
+
+	// Form border
+	formW := width - 6
+	if formW > 60 {
+		formW = 60
+	}
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(surface1).Render("\u256D"+strings.Repeat("\u2500", formW)+"\u256E"))
+	b.WriteString("\n")
 
 	for i, f := range fields {
 		ls := labelStyle
+		iStyle := inputStyle
 		if i == mx.loginFocus {
 			ls = activeLabel
+			iStyle = activeInputStyle
 		}
 
 		displayValue := f.value
@@ -2333,18 +2371,37 @@ func (mx Matrix) renderLoginForm(width, maxHeight int) string {
 			displayValue = strings.Repeat("*", len(displayValue))
 		}
 
-		cursor := ""
+		cursor := " "
 		if i == mx.loginFocus {
-			cursor = cursorStyle.Render("\u2502")
+			cursor = cursorStyle.Render("\u2588")
 		}
 
-		b.WriteString("  " + ls.Render(f.label+":") + " " + inputStyle.Render(displayValue) + cursor)
+		valueDisplay := iStyle.Render(displayValue) + cursor
+		if displayValue == "" && i == mx.loginFocus {
+			valueDisplay = placeholderStyle.Render(f.placeholder) + cursor
+		} else if displayValue == "" && f.placeholder != "" {
+			valueDisplay = placeholderStyle.Render(f.placeholder)
+		}
+
+		hintText := ""
+		if f.hint != "" {
+			hintText = " " + hintStyle.Render(f.hint)
+		}
+
+		prefix := lipgloss.NewStyle().Foreground(surface1).Render("\u2502") + " "
+		suffix := " " + lipgloss.NewStyle().Foreground(surface1).Render("\u2502")
+		_ = suffix // just for the border char
+
+		b.WriteString("  " + prefix + ls.Render(f.label+":") + " " + valueDisplay + hintText)
 		b.WriteString("\n")
 	}
 
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(surface1).Render("\u2570"+strings.Repeat("\u2500", formW)+"\u256F"))
+	b.WriteString("\n")
+
 	if mx.loginError != "" {
 		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(red).Render("  Error: " + mx.loginError))
+		b.WriteString(lipgloss.NewStyle().Foreground(red).Bold(true).Render("  Error: " + mx.loginError))
 	}
 
 	if mx.connState == matrixConnecting {
@@ -2353,7 +2410,12 @@ func (mx Matrix) renderLoginForm(width, maxHeight int) string {
 	}
 
 	b.WriteString("\n\n")
-	b.WriteString(dimStyle.Render("  Enter: login  Tab: next field  Esc: close"))
+	enterHint := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("Enter")
+	tabHint := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("Tab")
+	escHint := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("Esc")
+	b.WriteString(dimStyle.Render("  ") + enterHint + dimStyle.Render(": login  ") +
+		tabHint + dimStyle.Render(": next field  ") +
+		escHint + dimStyle.Render(": close"))
 
 	return b.String()
 }
@@ -2489,28 +2551,36 @@ func (mx Matrix) renderRoomList(width, height int) string {
 
 	focusStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 	dimFocus := lipgloss.NewStyle().Foreground(overlay0)
+	countStyle := lipgloss.NewStyle().Foreground(surface2)
 
-	header := "Rooms"
+	rooms := mx.filteredRooms()
+	header := fmt.Sprintf("Rooms (%d)", len(rooms))
 	if mx.focus == matrixFocusRooms {
-		b.WriteString(focusStyle.Render(" " + header))
+		b.WriteString(focusStyle.Render("  " + header))
 	} else {
-		b.WriteString(dimFocus.Render(" " + header))
+		b.WriteString(dimFocus.Render("  " + header))
 	}
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", width)))
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", width-2)))
 	b.WriteString("\n")
+	_ = countStyle
 
 	// Search bar
 	if mx.searching {
 		prompt := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("/")
-		b.WriteString(" " + prompt + lipgloss.NewStyle().Foreground(blue).Render(mx.roomSearch) +
-			lipgloss.NewStyle().Foreground(mauve).Render("\u2502"))
+		b.WriteString("  " + prompt + lipgloss.NewStyle().Foreground(blue).Render(mx.roomSearch) +
+			lipgloss.NewStyle().Foreground(mauve).Render("\u2588"))
 		b.WriteString("\n")
 	}
 
-	rooms := mx.filteredRooms()
 	if len(rooms) == 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(" No rooms"))
+		if mx.connState == matrixSyncing || mx.connState == matrixConnecting {
+			b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Italic(true).Render("  Loading..."))
+		} else if mx.searching {
+			b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  No matches"))
+		} else {
+			b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  No rooms"))
+		}
 		return b.String()
 	}
 
@@ -2537,12 +2607,23 @@ func (mx Matrix) renderRoomList(width, height int) string {
 	for i := start; i < end; i++ {
 		room := rooms[i]
 		name := room.Name
-		if len(name) > width-6 {
-			name = name[:width-9] + "..."
+		maxNameW := width - 8
+		if room.Pinned {
+			maxNameW -= 2
+		}
+		if maxNameW < 6 {
+			maxNameW = 6
+		}
+		if len(name) > maxNameW {
+			name = name[:maxNameW-3] + "..."
 		}
 
+		// Selected room background highlight
+		isSelected := i == mx.roomCursor
+		isFocused := isSelected && mx.focus == matrixFocusRooms
+
 		prefix := "  "
-		if i == mx.roomCursor {
+		if isSelected {
 			prefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("> ")
 		}
 
@@ -2552,13 +2633,15 @@ func (mx Matrix) renderRoomList(width, height int) string {
 			if IconFileChar == "~" { // ascii mode
 				pinIcon = lipgloss.NewStyle().Foreground(yellow).Render("* ")
 			} else {
-				pinIcon = lipgloss.NewStyle().Foreground(yellow).Render("\U0001F4CC ")
+				pinIcon = lipgloss.NewStyle().Foreground(yellow).Render("\u272A ")
 			}
 		}
 
 		nameStyle := lipgloss.NewStyle().Foreground(text)
-		if i == mx.roomCursor && mx.focus == matrixFocusRooms {
+		if isFocused {
 			nameStyle = lipgloss.NewStyle().Foreground(mauve).Bold(true)
+		} else if isSelected {
+			nameStyle = lipgloss.NewStyle().Foreground(lavender)
 		}
 
 		unreadBadge := ""
@@ -2572,7 +2655,7 @@ func (mx Matrix) renderRoomList(width, height int) string {
 
 		encIcon := ""
 		if room.Encrypted {
-			encIcon = lipgloss.NewStyle().Foreground(green).Render(" E")
+			encIcon = lipgloss.NewStyle().Foreground(green).Render(" \u2022")
 		}
 
 		b.WriteString(prefix + pinIcon + nameStyle.Render(name) + unreadBadge + encIcon)
@@ -2584,10 +2667,10 @@ func (mx Matrix) renderRoomList(width, height int) string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", width)))
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", width-2)))
 	b.WriteString("\n")
 	actionStyle := lipgloss.NewStyle().Foreground(overlay0)
-	b.WriteString(actionStyle.Render(" [s]hare [P]in [p]rivacy"))
+	b.WriteString(actionStyle.Render("  [/]find [P]in [R]efresh"))
 
 	return b.String()
 }
@@ -2597,7 +2680,7 @@ func (mx Matrix) renderMessagePanel(width, height int) string {
 
 	rooms := mx.filteredRooms()
 	if mx.roomCursor >= len(rooms) {
-		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(" Select a room"))
+		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  Select a room"))
 		return b.String()
 	}
 
@@ -2608,29 +2691,37 @@ func (mx Matrix) renderMessagePanel(width, height int) string {
 	dimFocus := lipgloss.NewStyle().Foreground(overlay0)
 
 	roomName := room.Name
-	if len(roomName) > width-2 {
-		roomName = roomName[:width-5] + "..."
+	encBadge := ""
+	if room.Encrypted {
+		encBadge = lipgloss.NewStyle().Foreground(green).Render(" \u2022E2EE")
+	}
+	maxNameW := width - 10
+	if maxNameW < 10 {
+		maxNameW = 10
+	}
+	if len(roomName) > maxNameW {
+		roomName = roomName[:maxNameW-3] + "..."
 	}
 	if mx.focus == matrixFocusMessages || mx.focus == matrixFocusInput {
-		b.WriteString(focusStyle.Render(" " + roomName))
+		b.WriteString(focusStyle.Render("  " + roomName) + encBadge)
 	} else {
-		b.WriteString(dimFocus.Render(" " + roomName))
+		b.WriteString(dimFocus.Render("  " + roomName) + encBadge)
 	}
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", width)))
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", width-2)))
 	b.WriteString("\n")
 
 	// Message search bar
 	if mx.msgSearchMode {
 		searchPrompt := lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("Search: ")
 		searchText := lipgloss.NewStyle().Foreground(blue).Render(mx.msgSearchQuery)
-		searchCursor := lipgloss.NewStyle().Foreground(mauve).Render("\u2502")
+		searchCursor := lipgloss.NewStyle().Foreground(mauve).Render("\u2588")
 		matchCount := ""
 		if len(mx.msgSearchMatches) > 0 {
 			matchCount = lipgloss.NewStyle().Foreground(overlay0).Render(
 				fmt.Sprintf(" (%d/%d)", mx.msgSearchIdx+1, len(mx.msgSearchMatches)))
 		}
-		b.WriteString(" " + searchPrompt + searchText + searchCursor + matchCount)
+		b.WriteString("  " + searchPrompt + searchText + searchCursor + matchCount)
 		b.WriteString("\n")
 	}
 
@@ -2645,13 +2736,13 @@ func (mx Matrix) renderMessagePanel(width, height int) string {
 				emojis = append(emojis, " "+emoji+" ")
 			}
 		}
-		b.WriteString(pickerBg.Render("React: " + strings.Join(emojis, "")))
+		b.WriteString(pickerBg.Render("  React: " + strings.Join(emojis, "")))
 		b.WriteString("\n")
 	}
 
 	// Messages area
 	msgs := mx.messages[room.ID]
-	inputHeight := 3 // separator + input + e2ee line
+	inputHeight := 3 // separator + input + status line
 	if mx.replyToEvent != "" {
 		inputHeight++ // reply preview line
 	}
@@ -2667,15 +2758,29 @@ func (mx Matrix) renderMessagePanel(width, height int) string {
 	}
 
 	if len(msgs) == 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Italic(true).Render(" No messages yet"))
-		b.WriteString("\n")
-		for i := 1; i < msgHeight; i++ {
+		if mx.loadingMessages[room.ID] || mx.connState == matrixSyncing {
+			b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Italic(true).Render("  Loading messages..."))
+			b.WriteString("\n")
+		} else {
+			b.WriteString("\n")
+			b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Italic(true).Render("  No messages in this room"))
+			b.WriteString("\n")
+			b.WriteString(lipgloss.NewStyle().Foreground(surface2).Render("  Type below to start a conversation"))
+			b.WriteString("\n")
+		}
+		for i := 3; i < msgHeight; i++ {
 			b.WriteString("\n")
 		}
 	} else {
-		// Render messages from bottom up
+		// Render messages with separators between different senders
 		var renderedLines []string
 		for i, msg := range msgs {
+			// Add separator between messages from different senders
+			if i > 0 && msgs[i-1].Sender != msg.Sender {
+				renderedLines = append(renderedLines,
+					"  "+lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("\u2504", width-4)))
+			}
+
 			line := mx.renderMessage(msg, width, i)
 			renderedLines = append(renderedLines, line)
 
@@ -2709,53 +2814,74 @@ func (mx Matrix) renderMessagePanel(width, height int) string {
 	}
 
 	// Input area
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", width)))
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", width-2)))
 	b.WriteString("\n")
 
 	// Reply preview
 	if mx.replyToEvent != "" {
 		replyStyle := lipgloss.NewStyle().Foreground(overlay0).Italic(true)
-		b.WriteString(replyStyle.Render(" \u2502 Replying to: " + mx.replyPreview))
+		replyBar := lipgloss.NewStyle().Foreground(mauve).Render("\u2502")
+		b.WriteString("  " + replyBar + replyStyle.Render(" Replying to: "+mx.replyPreview))
 		b.WriteString("\n")
 	}
 
-	inputPrompt := lipgloss.NewStyle().Foreground(overlay0).Render(" > ")
+	// Input field
 	inputText := mx.messageInput
 	cursor := ""
-	if mx.focus == matrixFocusInput {
-		cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("\u2502")
-		inputPrompt = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" > ")
+	isFocused := mx.focus == matrixFocusInput
+	inputPrompt := lipgloss.NewStyle().Foreground(overlay0).Render("  > ")
+	if isFocused {
+		cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("\u2588")
+		inputPrompt = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  > ")
 	}
 
-	maxInputLen := width - 6
+	maxInputLen := width - 8
+	if maxInputLen < 10 {
+		maxInputLen = 10
+	}
+
+	// Character count for long messages
+	charCount := ""
+	if len(mx.messageInput) > 100 {
+		charCount = " " + lipgloss.NewStyle().Foreground(surface2).Render(fmt.Sprintf("[%d]", len(mx.messageInput)))
+	}
+
 	if len(inputText) > maxInputLen {
 		inputText = inputText[len(inputText)-maxInputLen:]
 	}
 
-	b.WriteString(inputPrompt + lipgloss.NewStyle().Foreground(text).Render(inputText) + cursor)
+	if inputText == "" && isFocused {
+		placeholder := lipgloss.NewStyle().Foreground(surface2).Italic(true).Render("Type a message...")
+		b.WriteString(inputPrompt + placeholder + cursor)
+	} else {
+		inputTextStyle := lipgloss.NewStyle().Foreground(text)
+		if isFocused {
+			inputTextStyle = lipgloss.NewStyle().Foreground(text).Background(surface0)
+		}
+		b.WriteString(inputPrompt + inputTextStyle.Render(inputText) + cursor + charCount)
+	}
 	b.WriteString("\n")
 
-	// E2EE status + message mode hints
-	e2eeLabel := lipgloss.NewStyle().Foreground(overlay0).Render(" Unencrypted")
-	if room.Encrypted {
-		e2eeLabel = lipgloss.NewStyle().Foreground(green).Render(" E2EE Ready")
-	}
+	// Status line: E2EE + mode hints
 	modeHint := ""
 	if mx.focus == matrixFocusMessages {
 		if mx.messageSelect {
-			modeHint = lipgloss.NewStyle().Foreground(yellow).Render("  [SELECT] c:capture C:thread r:react R:reply")
+			modeHint = lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("  SELECT ") +
+				lipgloss.NewStyle().Foreground(overlay0).Render("c:capture C:thread r:react R:reply")
 		} else {
-			modeHint = lipgloss.NewStyle().Foreground(overlay0).Render("  v:select /:search")
+			modeHint = lipgloss.NewStyle().Foreground(overlay0).Render("  v:select /:search i:input")
 		}
+	} else if mx.focus == matrixFocusInput {
+		modeHint = lipgloss.NewStyle().Foreground(overlay0).Render("  Enter:send Tab:switch")
 	}
-	b.WriteString(e2eeLabel + modeHint)
+	b.WriteString(modeHint)
 
 	return b.String()
 }
 
 func (mx Matrix) renderMessage(msg matrixChatMessage, maxWidth int, idx int) string {
 	timeStr := msg.Timestamp.Format("15:04")
-	timeStyle := lipgloss.NewStyle().Foreground(overlay0)
+	timeStyle := lipgloss.NewStyle().Foreground(surface2)
 	senderStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
 	bodyStyle := lipgloss.NewStyle().Foreground(text)
 
@@ -2763,10 +2889,13 @@ func (mx Matrix) renderMessage(msg matrixChatMessage, maxWidth int, idx int) str
 		senderStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
 	}
 
+	isSelected := mx.messageSelect && idx == mx.messageCursor
+
 	// Highlight if selected
-	if mx.messageSelect && idx == mx.messageCursor {
-		bodyStyle = lipgloss.NewStyle().Foreground(yellow).Bold(true)
-		senderStyle = lipgloss.NewStyle().Foreground(yellow).Bold(true)
+	if isSelected {
+		bodyStyle = lipgloss.NewStyle().Foreground(text).Background(surface0)
+		senderStyle = senderStyle.Background(surface0)
+		timeStyle = lipgloss.NewStyle().Foreground(surface2).Background(surface0)
 	}
 
 	// Highlight search matches
@@ -2788,11 +2917,11 @@ func (mx Matrix) renderMessage(msg matrixChatMessage, maxWidth int, idx int) str
 	// Reply indicator
 	replyPrefix := ""
 	if msg.ReplyTo != "" {
-		replyPrefix = lipgloss.NewStyle().Foreground(overlay0).Render("\u2502 ") // vertical bar for reply
+		replyPrefix = lipgloss.NewStyle().Foreground(mauve).Render("\u2502 ")
 	}
 
 	// Truncate long messages
-	availW := maxWidth - len(timeStr) - len(sender) - 8
+	availW := maxWidth - len(timeStr) - len(sender) - 10
 	if msg.ReplyTo != "" {
 		availW -= 2
 	}
@@ -2805,13 +2934,13 @@ func (mx Matrix) renderMessage(msg matrixChatMessage, maxWidth int, idx int) str
 	// Replace newlines with spaces for single-line display
 	body = strings.ReplaceAll(body, "\n", " ")
 
-	selectMarker := " "
-	if mx.messageSelect && idx == mx.messageCursor {
-		selectMarker = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(">")
+	selectMarker := "  "
+	if isSelected {
+		selectMarker = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("> ")
 	}
 
 	return selectMarker + replyPrefix + timeStyle.Render("["+timeStr+"]") + " " +
-		senderStyle.Render(sender+":") + " " +
+		senderStyle.Render(sender) + lipgloss.NewStyle().Foreground(surface2).Render(": ") +
 		bodyStyle.Render(body)
 }
 
