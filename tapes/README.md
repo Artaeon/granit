@@ -63,8 +63,12 @@ The output GIF will be written to `assets/<name>.gif` as specified in each tape 
 | `vim-mode.tape` | `assets/vim-mode.gif` | Vim mode: hjkl, dd/yy/p, visual mode, :w save | ~20s |
 | `task-manager.tape` | `assets/task-manager.gif` | Task manager: views, add task, priority, due dates | ~20s |
 | `ai-features.tape` | `assets/ai-features.gif` | AI bots: summarizer, AI compose from palette | ~20s |
-| `themes.tape` | `assets/themes.gif` | Theme switching via settings overlay | ~15s |
+| `themes.tape` | `assets/themes.gif` | Theme switching via settings overlay | ~20s |
 | `split-pane.tape` | `assets/split-pane.gif` | Split pane: side-by-side notes with Tab switching | ~15s |
+| `calendar.tape` | `assets/calendar.gif` | Calendar: month/week/agenda views, month navigation | ~18s |
+| `command-palette.tape` | `assets/command-palette.gif` | Command palette: fuzzy search through 70+ commands | ~15s |
+| `graph.tape` | `assets/graph.gif` | Note graph: visualize vault connections | ~12s |
+| `settings.tape` | `assets/settings.gif` | Settings panel: browse and toggle options | ~15s |
 
 ## Tips
 
@@ -76,3 +80,4 @@ The output GIF will be written to `assets/<name>.gif` as specified in each tape 
   WebM video output instead.
 - If VHS fails with a display error, make sure you have a working display
   (X11/Wayland) or run inside a virtual framebuffer (`Xvfb`).
+- VHS cannot handle `Ctrl+,` — use the command palette to open settings instead.
