@@ -187,6 +187,9 @@ func (e *Editor) ScrollOffset() int {
 // SetCursorPosition sets the cursor to the given line and column,
 // clamping to valid ranges within the current content.
 func (e *Editor) SetCursorPosition(line, col int) {
+	if len(e.content) == 0 {
+		e.content = []string{""}
+	}
 	if line < 0 {
 		line = 0
 	}
@@ -196,7 +199,7 @@ func (e *Editor) SetCursorPosition(line, col int) {
 	if col < 0 {
 		col = 0
 	}
-	if line >= 0 && line < len(e.content) && col > len(e.content[line]) {
+	if col > len(e.content[line]) {
 		col = len(e.content[line])
 	}
 	e.cursor = line
