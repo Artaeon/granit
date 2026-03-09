@@ -109,6 +109,7 @@ func (s *Settings) buildItems() {
 		{label: "OpenAI Model", key: "openai_model", kind: "string", value: s.config.OpenAIModel, options: []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1-nano"}, category: catAI, description: "GPT model version"},
 		{label: "Background Bots (auto-analyze)", key: "background_bots", kind: "bool", value: s.config.BackgroundBots, category: catAI, description: "automatic analysis on save"},
 		{label: "Ghost Writer (AI completions)", key: "ghost_writer", kind: "bool", value: s.config.GhostWriter, category: catAI, description: "inline writing suggestions"},
+		{label: "Semantic Search (embedding index)", key: "semantic_search_enabled", kind: "bool", value: s.config.SemanticSearchEnabled, category: catAI, description: "background vector embedding index for meaning-based search"},
 
 		// ── Files ──
 		{label: "Auto Save", key: "auto_save", kind: "bool", value: s.config.AutoSave, category: catFiles, description: "save on focus change"},
@@ -332,6 +333,8 @@ func (s *Settings) defaultValueForKey(key string) interface{} {
 		return def.GhostWriter
 	case "spell_check":
 		return def.SpellCheck
+	case "semantic_search_enabled":
+		return def.SemanticSearchEnabled
 	default:
 		if strings.HasPrefix(key, "cp_") {
 			return true // core plugins default to enabled
@@ -624,6 +627,8 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.GhostWriter = value.(bool)
 	case "spell_check":
 		s.config.SpellCheck = value.(bool)
+	case "semantic_search_enabled":
+		s.config.SemanticSearchEnabled = value.(bool)
 	default:
 		// Handle core plugin toggles (cp_*)
 		if strings.HasPrefix(key, "cp_") {
