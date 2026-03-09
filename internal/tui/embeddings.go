@@ -287,21 +287,6 @@ func migrateIndex(idx *EmbeddingIndex) {
 	idx.Version = 2
 }
 
-// indexLookupVec returns the embedding vector for a path from either the v2
-// Entries map or the legacy Embeddings map.
-func indexLookupVec(idx *EmbeddingIndex, path string) ([]float64, bool) {
-	if idx == nil {
-		return nil, false
-	}
-	if entry, ok := idx.Entries[path]; ok {
-		return entry.Vector, true
-	}
-	if vec, ok := idx.Embeddings[path]; ok {
-		return vec, true
-	}
-	return nil, false
-}
-
 // indexAllVecs returns all path->vector pairs from the index, preferring v2
 // Entries over legacy Embeddings.
 func indexAllVecs(idx *EmbeddingIndex) map[string][]float64 {
