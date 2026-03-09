@@ -53,14 +53,15 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 
 | | |
 |---|---|
-| **110+ source files** | 85,000+ lines of Go powering the TUI |
+| **140+ source files** | 115,000+ lines of Go powering the TUI |
 | **40 themes** | 33 dark + 7 light, plus custom theme editor |
 | **20+ AI features** | Ollama, OpenAI, Claude Code, or offline fallback |
 | **8 layouts** | Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, Research |
 | **16 core plugins** | Enable/disable modules individually |
-| **Full Vim mode** | Normal, Insert, Visual, Command — dot repeat + macro recording |
+| **Full Vim mode** | Normal, Insert, Visual, Command — ex commands, dot repeat, macros |
 | **400+ tests** | Unit, integration, stress, edge case, and benchmark tests |
 | **Obsidian compatible** | `[[wikilinks]]`, YAML frontmatter, same folder structure |
+| **Dataview queries** | Query notes like a database: TABLE, LIST, TASK with WHERE/SORT |
 | **Zero telemetry** | Your data stays local. Always. |
 
 ---
@@ -126,8 +127,9 @@ Granit ships with **100+ features** across 8 categories. For the full breakdown,
 
 ### Core Editor
 
-- **Syntax-highlighted Markdown** with language-aware code blocks (Go, Python, JS/TS, Rust, Shell)
-- **Vim keybindings** — full modal editing: Normal/Insert/Visual/Command with `hjkl`, `dd`/`yy`/`p`, `:w`/`:q`, dot repeat
+- **Syntax-highlighted Markdown** with Chroma-powered code blocks (200+ languages, theme-aware)
+- **Vim keybindings** — full modal editing: Normal/Insert/Visual/Command with `hjkl`, `dd`/`yy`/`p`, dot repeat, macro recording
+- **Vim ex commands** — `:w`, `:wq`, `:x`, `:q!`, `:e <file>`, `:s/old/new/g`, `:%s`, `:set wrap`, `:noh`, `:<line>`
 - **Multi-cursor editing** — `Ctrl+D` to add cursors at next occurrence; `Ctrl+Shift+Up/Down` for column cursors
 - **Heading folding** — collapse/expand sections by heading level; fold indicators in gutter; `za`/`zM`/`zR` vim bindings and `Alt+F`
 - **Visual table editor** — edit Markdown tables in a spreadsheet-like interface with scrolling, insert mode, and new table creation
@@ -142,7 +144,9 @@ Granit ships with **100+ features** across 8 categories. For the full breakdown,
 - **Mermaid diagrams** — flowcharts, sequence, pie, class, Gantt as ASCII art
 - **Custom diagram engine** — 6 types: sequence, tree, movement, timeline, comparison, figure (10 pre-drawn fighting technique illustrations)
 - **Link assistant** — find unlinked mentions and batch-create wikilinks
-- **Spell checking**, auto-close brackets, smart indentation, line numbers
+- **Spell checking** — aspell/hunspell integration with personal dictionary, inline red highlights, and suggestion overlay
+- **File watcher** — detects external changes (vim, VS Code, git pull) with reload confirmation dialog
+- Auto-close brackets, smart indentation, line numbers
 
 ### AI-Powered Features
 
@@ -156,7 +160,7 @@ Granit includes **20+ AI features** that work with local models (Ollama), OpenAI
 | **AI Compose** | Command palette | Generate full notes from a topic prompt |
 | **Ghost Writer** | Settings toggle | Inline writing suggestions as you type (Tab to accept) |
 | **Thread Weaver** | Command palette | Synthesize multiple notes into a new essay or summary |
-| **Semantic Search** | Command palette | Meaning-based vault search using AI embeddings |
+| **Semantic Search** | Command palette | Meaning-based vault search with cached AI embeddings (incremental, background indexed) |
 | **Knowledge Graph AI** | Command palette | Analyze clusters, hubs, orphans, and get link suggestions |
 | **Auto-Link** | Command palette | Find unlinked mentions of note titles |
 | **Auto-Tag** | Settings toggle | Automatically suggest tags on save |
@@ -190,7 +194,9 @@ Granit includes **20+ AI features** that work with local models (Ollama), OpenAI
 - **Daily notes** — create or open today's note with a single command
 - **Vault statistics** — note counts, link density, word counts, activity charts
 - **Trash** — soft-delete with restore from `.granit-trash/`
-- **File watcher** — auto-detects external changes and refreshes
+- **File watcher** — fsnotify-based instant detection of external changes with reload confirmation dialog
+- **Quick capture** — `granit capture "idea"` or `echo "thought" | granit clip` to append timestamped entries to inbox
+- **First-run tutorial** — 6-page interactive walkthrough on first launch, re-openable from command palette
 - **Lazy vault loading** — on-demand reading for fast startup with 1000+ notes
 - **Workspace layouts** — save and restore named workspace snapshots
 
@@ -217,7 +223,7 @@ Granit includes **20+ AI features** that work with local models (Ollama), OpenAI
 - **Smart Connections** — TF-IDF content similarity finds semantically related notes with shared keyword display
 - **Writing Statistics** — word counts, 14-day activity chart, writing streaks, top notes by length
 - **Mind Map View** — ASCII mind map from note headings and wikilinks (two modes: headings + links)
-- **Dataview Queries** — query notes by frontmatter properties with interactive builder (filters, sort, table/list)
+- **Dataview Queries** — SQL-like query language: `TABLE title, tags FROM "folder" WHERE tags CONTAINS "project" SORT date DESC`
 - **Note Versioning Timeline** — git history per note with colored diff viewer and snapshot restore
 - **Note Preview Popup** — floating preview of linked notes with scroll and formatting
 - **Vault Dashboard** — home screen with today's tasks, recent notes, vault stats, activity chart
@@ -256,7 +262,7 @@ Built-in git overlay with status, log, and diff views:
 - **Plugin system** — language-agnostic scripts with JSON manifests and 6 lifecycle hooks. See [Plugin Guide](docs/PLUGINS.md).
 - **Lua scripting** — full API access (`granit.read_note`, `granit.write_note`, etc.)
 - **Core plugins** — enable/disable 16 built-in modules individually via Settings > Core Plugins
-- **Dataview queries** — embed live queries in notes using `query` code blocks
+- **Dataview queries** — SQL-like query language with TABLE/LIST/TASK modes, WHERE/SORT/LIMIT, embedded in notes or interactive overlay
 - **Obsidian import** — import settings from existing `.obsidian/` directories
 - **Canvas / Whiteboard** (`Ctrl+W`) — visual note arrangement with connections and colors
 - **Split panes** — view two notes side by side
@@ -373,6 +379,12 @@ granit open ~/Notes
 
 # Create/open today's daily note:
 granit daily ~/Notes
+
+# Quick capture a thought to inbox:
+granit capture "Remember to review PR #42"
+
+# Pipe content to inbox:
+echo "Meeting notes: discussed Q3 roadmap" | granit clip
 
 # Scan a vault and print stats:
 granit scan ~/Notes
@@ -541,7 +553,7 @@ When enabled (settings or command palette), the editor uses full modal keybindin
 | **Normal** | `h`/`j`/`k`/`l`, `w`/`b`/`e`, `0`/`$`, `gg`/`G`, `dd`/`yy`/`p`, `u`/`Ctrl+R`, `i`/`a`/`o`/`O`, `.` repeat, `za`/`zM`/`zR` fold |
 | **Insert** | All keys pass through; `Esc` returns to Normal |
 | **Visual** | Movement extends selection; `d` deletes, `y` yanks |
-| **Command** | `:w` save, `:q` quit, `:wq` save+quit, `:{n}` go to line |
+| **Command** | `:w` save, `:q` quit, `:wq`/`:x` save+quit, `:q!` force quit, `:e <file>` open, `:s/old/new/g` substitute, `:%s` global substitute, `:set wrap`/`:set number`, `:noh` clear search, `:{n}` go to line |
 | **Macros** | `q`+register to record, `q` to stop, `@`+register to replay, `@@` for last |
 
 ---
@@ -587,6 +599,8 @@ Per-vault settings override global. All settings can be changed from the built-i
   "vim_mode": false,
   "ghost_writer": false,
   "auto_tag": false,
+  "spell_check": false,
+  "semantic_search_enabled": false,
   "daily_notes_folder": "",
   "daily_note_template": "",
   "git_auto_sync": false,
@@ -607,6 +621,8 @@ Per-vault settings override global. All settings can be changed from the built-i
 | `ghost_writer` | `false` | Enable inline AI writing suggestions |
 | `auto_tag` | `false` | Auto-suggest tags on save |
 | `git_auto_sync` | `false` | Auto commit+push on save, pull on open |
+| `spell_check` | `false` | Enable inline spell checking with red highlights |
+| `semantic_search_enabled` | `false` | Enable background embedding index for semantic search |
 | `ai_provider` | `local` | `local`, `ollama`, or `openai` |
 
 </details>
@@ -680,10 +696,17 @@ granit/
       vault.go              Vault scanning with lazy loading
       parser.go             Markdown/frontmatter/wikilink parser
       index.go              Backlink and link index
-    tui/                    109 source files, 80k+ lines
+    tui/                    140+ source files, 115k+ lines
       app.go                Main Bubble Tea model
       editor.go             Text editor with multi-cursor
-      syntaxhl.go           Language-aware code block highlighting
+      syntaxhl.go           Chroma-based code block highlighting (200+ languages)
+      highlight.go          Syntax highlighting engine with theme-aware colors
+      watcher.go            fsnotify file watcher with debounce
+      tutorial.go           First-run 6-page tutorial overlay
+      spellengine.go        Spell check engine (aspell/hunspell/builtin)
+      spellcheck.go         Spell check overlay with suggestions
+      dataview_parser.go    Dataview SQL-like query parser
+      dataview_engine.go    Dataview query execution engine
       renderer.go           Markdown rendering for view mode
       sidebar.go            File tree sidebar
       statusbar.go          Status bar with AI, pomodoro, and task indicators
@@ -790,7 +813,7 @@ go build -o granit ./cmd/granit
 - Overlays use value receivers for `Update` and `View`, helper components use pointer receivers
 - Configuration goes in `internal/config/config.go` + `internal/tui/settings.go`
 - Themes are `Theme` structs in `internal/tui/themes.go`
-- Keep dependencies minimal (currently: Bubble Tea, Lip Gloss, GopherLua)
+- Keep dependencies minimal (currently: Bubble Tea, Lip Gloss, GopherLua, Chroma, fsnotify)
 - See the [Architecture Guide](docs/ARCHITECTURE.md) for detailed conventions
 
 ### Submitting Changes
