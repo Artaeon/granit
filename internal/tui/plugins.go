@@ -306,6 +306,10 @@ func (pm PluginManager) updateList(msg tea.KeyMsg) (PluginManager, tea.Cmd) {
 }
 
 func (pm PluginManager) updateDetail(msg tea.KeyMsg) (PluginManager, tea.Cmd) {
+	if pm.cursor >= len(pm.plugins) {
+		pm.detail = false
+		return pm, nil
+	}
 	p := pm.plugins[pm.cursor]
 	cmdCount := len(p.Manifest.Commands)
 
