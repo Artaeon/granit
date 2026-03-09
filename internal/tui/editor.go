@@ -409,8 +409,7 @@ func (e *Editor) Redo() {
 	if len(e.content) == 0 {
 		e.content = []string{""}
 	}
-	e.cursor = snap.cursor
-	e.col = snap.col
+	e.cursor, e.col = e.clampCursor(snap.cursor, snap.col)
 	e.modified = true
 	e.codeFenceCacheDirty = true
 	e.countWords()
