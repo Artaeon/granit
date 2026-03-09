@@ -2285,27 +2285,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateExtractNote(msg)
 		}
 
-		// Selection copy/cut: intercept before global handlers when editor has selection
+		// Selection copy: intercept Ctrl+C before global quit handler when editor has selection
 		if m.focus == focusEditor && !m.viewMode && m.editor.HasSelection() {
-			switch msg.String() {
-			case "ctrl+c":
+			if msg.String() == "ctrl+c" {
 				text := m.editor.GetSelectedText()
 				if text != "" {
 					ClipboardCopy(text)
 					m.editor.ClearSelection()
 					m.statusbar.SetMessage("Copied to clipboard")
-					return m, m.clearMessageAfter(2*time.Second)
-				}
-			case "ctrl+x":
-				text := m.editor.GetSelectedText()
-				if text != "" {
-					ClipboardCopy(text)
-					m.editor.DeleteSelection()
-					m.statusbar.SetMessage("Cut to clipboard")
-					line, col := m.editor.GetCursor()
-					m.statusbar.SetCursor(line, col)
-					m.statusbar.SetWordCount(m.editor.GetWordCount())
-					return m, m.clearMessageAfter(2*time.Second)
+					return m, m.clearMessageAfter(2 * time.Second)
 				}
 			}
 		}
@@ -2403,6 +2391,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "ctrl+x":
+			// Cut selected text when editing with a selection; otherwise open command palette
+			if m.focus == focusEditor && !m.viewMode && m.editor.HasSelection() {
+				text := m.editor.GetSelectedText()
+				if text != "" {
+					ClipboardCopy(text)
+					m.editor.DeleteSelection()
+					m.statusbar.SetMessage("Cut to clipboard")
+					line, col := m.editor.GetCursor()
+					m.statusbar.SetCursor(line, col)
+					m.statusbar.SetWordCount(m.editor.GetWordCount())
+					return m, m.clearMessageAfter(2 * time.Second)
+				}
+			}
 			m.commandPalette.SetSize(m.width, m.height)
 			m.commandPalette.Open()
 			return m, nil
