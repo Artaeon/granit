@@ -37,6 +37,7 @@ const (
 
 type clearMessageMsg struct{}
 type autoSaveTickMsg struct{ editTime time.Time }
+type saveResultMsg struct{ err error }
 
 // scrollPosition stores cursor and scroll state for a note so it can be
 // restored when the user reopens the file.
@@ -504,7 +505,9 @@ func (m *Model) saveScrollCache(vaultRoot string) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(dir, "viewport.json"), raw, 0o600)
+	if err := os.WriteFile(filepath.Join(dir, "viewport.json"), raw, 0o600); err != nil {
+		m.statusbar.SetMessage("Failed to save scroll cache: " + err.Error())
+	}
 }
 
 // loadScrollCache reads the scroll position cache from <vaultRoot>/.granit/viewport.json.
@@ -670,7 +673,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.config.AutoSave && msg.editTime.Equal(m.lastEditTime) && m.editor.modified && m.activeNote != "" {
 			content := m.editor.GetContent()
 			path := filepath.Join(m.vault.Root, m.activeNote)
-			os.WriteFile(path, []byte(content), 0644)
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				m.statusbar.SetMessage("Autosave failed: " + err.Error())
+				return m, m.clearMessageAfter(5 * time.Second)
+			}
 			m.editor.modified = false
 			m.lastSaveTime = time.Now()
 			// Incrementally update the search index for the saved file
@@ -709,6 +715,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.clearMessageAfter(3 * time.Second)
 		}
 		return m, nil
+
+	case saveResultMsg:
+		if msg.err != nil {
+			m.statusbar.SetMessage("Save failed: " + msg.err.Error())
+			var toastCmd tea.Cmd
+			if m.toast != nil {
+				toastCmd = m.toast.ShowError("Save failed: " + msg.err.Error())
+			}
+			return m, tea.Batch(toastCmd, m.clearMessageAfter(5*time.Second))
+		}
+		m.statusbar.SetMessage("Saved " + m.activeNote)
+		var toastCmd tea.Cmd
+		if m.toast != nil {
+			toastCmd = m.toast.ShowSuccess("Saved " + m.activeNote)
+		}
+		return m, tea.Batch(toastCmd, m.clearMessageAfter(2*time.Second))
 
 	case splitPanePickMsg:
 		if m.splitPane.IsActive() {
@@ -867,7 +889,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					content := msg.output
 					if content != "" && m.activeNote != "" {
 						path := filepath.Join(m.vault.Root, m.activeNote)
-						os.WriteFile(path, []byte(content), 0644)
+						if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+							m.statusbar.SetMessage("Git restore failed: " + err.Error())
+							return m, m.clearMessageAfter(5 * time.Second)
+						}
 						m.vault.Scan()
 						m.index = vault.NewIndex(m.vault)
 						m.index.Build()
@@ -2104,13 +2129,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if vaultPath, ok := m.vaultSwitch.GetSelectedVault(); ok {
 					// Relaunch with new vault
 					newModel, err := NewModel(vaultPath)
-					if err == nil {
-						newModel.width = m.width
-						newModel.height = m.height
-						newModel.showSplash = false
-						newModel.updateLayout()
-						return &newModel, nil
+					if err != nil {
+						m.statusbar.SetMessage("Failed to open vault: " + err.Error())
+						return m, m.clearMessageAfter(5 * time.Second)
 					}
+					newModel.width = m.width
+					newModel.height = m.height
+					newModel.showSplash = false
+					newModel.updateLayout()
+					return &newModel, nil
 				}
 			}
 			return m, cmd
@@ -2293,14 +2320,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			cmd := m.saveCurrentNote()
 			m.lastSaveTime = time.Now()
-			m.statusbar.SetMessage("Saved " + m.activeNote)
 			m.dueTodayCount = CountTasksDueToday(m.vault.Notes)
 			m.statusbar.SetDueTodayCount(m.dueTodayCount)
-			var toastCmd tea.Cmd
-			if m.toast != nil {
-				toastCmd = m.toast.ShowSuccess("Saved " + m.activeNote)
-			}
-			return m, tea.Batch(cmd, m.clearMessageAfter(2*time.Second), toastCmd)
+			return m, cmd
 
 		case "f1":
 			m.setFocus(focusSidebar)
@@ -2904,8 +2926,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.autoTagger.SetVaultTags(existingTags)
 			tagCmd = m.autoTagger.TagNote(m.editor.GetContent())
 		}
-		m.statusbar.SetMessage("Saved " + m.activeNote)
-		return m, tea.Batch(cmd, hookCmd, syncCmd, tagCmd, m.clearMessageAfter(2*time.Second))
+		return m, tea.Batch(cmd, hookCmd, syncCmd, tagCmd)
 	case CmdDailyNote:
 		today := time.Now().Format("2006-01-02")
 		name := today + ".md"
@@ -2915,10 +2936,16 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		path := filepath.Join(m.vault.Root, name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			os.MkdirAll(filepath.Dir(path), 0755)
+			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+				m.statusbar.SetMessage("Failed to create daily note folder: " + err.Error())
+				return m, m.clearMessageAfter(5 * time.Second)
+			}
 			fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n## Tasks\n- [ ] \n\n## Notes\n\n", today, today)
 			content := m.dailyNoteContent(today, fallback)
-			os.WriteFile(path, []byte(content), 0644)
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				m.statusbar.SetMessage("Failed to create daily note: " + err.Error())
+				return m, m.clearMessageAfter(5 * time.Second)
+			}
 			m.vault.Scan()
 			m.index = vault.NewIndex(m.vault)
 			m.index.Build()
@@ -4691,7 +4718,10 @@ func (m *Model) applyTagsToNote(tags []string) {
 			m.editor.LoadContent(newContent, m.activeNote)
 			m.editor.modified = true
 			// Save directly to disk
-			os.WriteFile(filepath.Join(m.vault.Root, m.activeNote), []byte(newContent), 0644)
+			if err := os.WriteFile(filepath.Join(m.vault.Root, m.activeNote), []byte(newContent), 0644); err != nil {
+				m.statusbar.SetMessage("Failed to save tags: " + err.Error())
+				return
+			}
 			// Re-scan vault for updated tags
 			m.vault.Scan()
 			m.index = vault.NewIndex(m.vault)
@@ -4714,7 +4744,10 @@ func (m *Model) applyTagsToNote(tags []string) {
 	newContent := frontmatter + content
 	m.editor.LoadContent(newContent, m.activeNote)
 	m.editor.modified = true
-	os.WriteFile(filepath.Join(m.vault.Root, m.activeNote), []byte(newContent), 0644)
+	if err := os.WriteFile(filepath.Join(m.vault.Root, m.activeNote), []byte(newContent), 0644); err != nil {
+		m.statusbar.SetMessage("Failed to save tags: " + err.Error())
+		return
+	}
 	m.vault.Scan()
 	m.index = vault.NewIndex(m.vault)
 	m.index.Build()
@@ -4727,12 +4760,14 @@ func (m Model) saveCurrentNote() tea.Cmd {
 		}
 		content := m.editor.GetContent()
 		path := filepath.Join(m.vault.Root, m.activeNote)
-		os.WriteFile(path, []byte(content), 0644)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return saveResultMsg{err: err}
+		}
 		// Incrementally update the search index for the saved file
 		if m.vault.SearchIndex != nil {
 			m.vault.SearchIndex.Update(m.activeNote, content)
 		}
-		return nil
+		return saveResultMsg{err: nil}
 	}
 }
 
@@ -6991,13 +7026,18 @@ func (m *Model) writeBriefingToDailyNote(briefingContent string) {
 	dailyPath := filepath.Join(m.vault.Root, dailyName)
 
 	existing, err := os.ReadFile(dailyPath)
+	var writeErr error
 	if err != nil {
 		fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\n---\n\n# %s\n\n%s\n", today, today, briefingContent)
 		content := m.dailyNoteContent(today, fallback)
-		os.WriteFile(dailyPath, []byte(content), 0644)
+		writeErr = os.WriteFile(dailyPath, []byte(content), 0644)
 	} else {
 		newContent := string(existing) + "\n\n---\n\n" + briefingContent + "\n"
-		os.WriteFile(dailyPath, []byte(newContent), 0644)
+		writeErr = os.WriteFile(dailyPath, []byte(newContent), 0644)
+	}
+	if writeErr != nil {
+		m.statusbar.SetMessage("Failed to write daily briefing: " + writeErr.Error())
+		return
 	}
 
 	m.vault.Scan()
