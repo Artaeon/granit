@@ -47,9 +47,10 @@ type Config struct {
 	OllamaURL   string `json:"ollama_url"`   // e.g. "http://localhost:11434"
 	OpenAIKey   string `json:"openai_key"`   // API key for OpenAI
 	OpenAIModel string `json:"openai_model"` // e.g. "gpt-4o-mini", "gpt-4o"
-	BackgroundBots bool `json:"background_bots"` // auto-analyze on save
-	AutoTag        bool `json:"auto_tag"`        // auto-tag notes on save
-	GhostWriter    bool `json:"ghost_writer"`    // inline AI writing suggestions
+	BackgroundBots        bool `json:"background_bots"`         // auto-analyze on save
+	AutoTag               bool `json:"auto_tag"`                // auto-tag notes on save
+	GhostWriter           bool `json:"ghost_writer"`            // inline AI writing suggestions
+	SemanticSearchEnabled bool `json:"semantic_search_enabled"` // background embedding index for semantic search
 
 	// Sidebar
 	ShowHiddenFiles bool   `json:"show_hidden_files"`
