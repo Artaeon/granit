@@ -264,16 +264,29 @@ type Matrix struct {
 
 	// Slash command results displayed inline
 	slashResults []string
+
+	// AI features
+	ai                 MatrixAI
+	currentNoteContent string
 }
 
 func NewMatrix() Matrix {
 	return Matrix{
-		messages:   make(map[string][]matrixChatMessage),
-		e2eeStatus: make(map[string]bool),
-		connState:  matrixDisconnected,
-		focus:      matrixFocusLogin,
+		messages:        make(map[string][]matrixChatMessage),
+		e2eeStatus:      make(map[string]bool),
+		connState:       matrixDisconnected,
+		focus:           matrixFocusLogin,
 		autoDeleteCache: true,
+		ai:              NewMatrixAI(),
 	}
+}
+
+func (mx *Matrix) ConfigureAI(provider, ollamaModel, ollamaURL, openaiKey, openaiModel string) {
+	mx.ai.SetAIConfig(provider, ollamaModel, ollamaURL, openaiKey, openaiModel)
+}
+
+func (mx *Matrix) SetCurrentNoteContent(content string) {
+	mx.currentNoteContent = content
 }
 
 func (mx *Matrix) SetSize(width, height int) {
@@ -1089,7 +1102,27 @@ func (mx Matrix) Update(msg tea.Msg) (Matrix, tea.Cmd) {
 		}
 		return mx, nil
 
+	case matrixAISummaryMsg, matrixAIActionsMsg, matrixAIReplyMsg,
+		matrixAITranslateMsg, matrixAINoteMsg, matrixAIContextMsg, matrixAITickMsg:
+		var cmd tea.Cmd
+		mx.ai, cmd = mx.ai.Update(msg)
+		return mx, cmd
+
 	case tea.KeyMsg:
+		// If AI panel is active, route keys there first
+		if mx.ai.IsActive() {
+			var cmd tea.Cmd
+			mx.ai, cmd = mx.ai.Update(msg)
+			// Check if a reply was selected
+			if reply := mx.ai.GetSelectedReply(); reply != "" {
+				mx.messageInput = reply
+			}
+			// Check if AI panel was closed (Esc handled by AI)
+			if !mx.ai.IsActive() {
+				return mx, cmd
+			}
+			return mx, cmd
+		}
 		return mx.handleKeyMsg(msg)
 	}
 
@@ -1227,6 +1260,22 @@ func (mx Matrix) handleKeyMsg(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 
 	case "ctrl+m":
 		mx.Close()
+		return mx, nil
+
+	// AI features
+	case "ctrl+s", "ctrl+a", "ctrl+r", "ctrl+t", "ctrl+n", "ctrl+i":
+		if mx.connState == matrixConnected || mx.connState == matrixSyncing {
+			rooms := mx.filteredRooms()
+			var msgs []matrixChatMessage
+			if mx.roomCursor < len(rooms) {
+				msgs = mx.messages[rooms[mx.roomCursor].ID]
+			}
+			mx.ai.SetSize(mx.width-4, mx.height-4)
+			cmd := mx.ai.HandleKey(key, msgs, mx.currentNoteContent)
+			if cmd != nil {
+				return mx, cmd
+			}
+		}
 		return mx, nil
 
 	case "tab":
@@ -2096,7 +2145,7 @@ func (mx Matrix) View() string {
 	if mx.statusMsg != "" {
 		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  " + mx.statusMsg))
 	} else if mx.accessToken != "" {
-		hints := "  Tab: switch  /: search  s: share  P: pin  p: privacy  n: DM  R: refresh  Esc: close"
+		hints := "  Tab: switch  /: search  s: share  P: pin  ^S: AI summary  ^A: actions  ^R: reply  Esc: close"
 		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(hints))
 	}
 
@@ -2107,7 +2156,15 @@ func (mx Matrix) View() string {
 		Width(width).
 		Background(mantle)
 
-	return border.Render(b.String())
+	result := border.Render(b.String())
+
+	// Overlay AI panel on top if active
+	if mx.ai.IsActive() {
+		aiView := mx.ai.View(width-2, height-4)
+		result = result + "\n" + aiView
+	}
+
+	return result
 }
 
 func (mx Matrix) connectionBadge() string {
