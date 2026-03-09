@@ -300,7 +300,7 @@ func (mx *Matrix) IsActive() bool { return mx.active }
 func (mx *Matrix) Open() {
 	mx.active = true
 	mx.statusMsg = ""
-	if mx.accessToken != "" {
+	if mx.accessToken != "" && mx.homeserver != "" {
 		mx.focus = matrixFocusRooms
 		mx.connState = matrixConnected
 	} else {
@@ -322,7 +322,7 @@ func (mx *Matrix) Configure(homeserver, username, token string, readReceipts, ty
 	mx.sendReadReceipts = readReceipts
 	mx.sendTypingIndicators = typingIndicators
 	mx.autoDeleteCache = autoDelete
-	if token != "" {
+	if token != "" && mx.homeserver != "" {
 		mx.connState = matrixConnected
 		mx.focus = matrixFocusRooms
 	}
@@ -1147,7 +1147,7 @@ func (mx Matrix) Update(msg tea.Msg) (Matrix, tea.Cmd) {
 		return mx, nil
 
 	case matrixSyncTickMsg:
-		if mx.active && mx.accessToken != "" && !mx.syncRunning {
+		if mx.active && mx.accessToken != "" && mx.homeserver != "" && !mx.syncRunning {
 			mx.syncRunning = true
 			mx.connState = matrixSyncing
 			return mx, matrixSync(mx.homeserver, mx.accessToken, mx.syncToken)
@@ -2130,7 +2130,7 @@ func (mx *Matrix) filteredRooms() []matrixRoom {
 
 // StartSync initiates background sync if connected
 func (mx *Matrix) StartSync() tea.Cmd {
-	if mx.accessToken == "" {
+	if mx.accessToken == "" || mx.homeserver == "" {
 		return nil
 	}
 	return matrixSync(mx.homeserver, mx.accessToken, mx.syncToken)
