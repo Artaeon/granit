@@ -218,6 +218,10 @@ type Model struct {
 	confirmDelete     bool
 	confirmDeleteNote string
 
+	// External file reload confirmation
+	pendingReload     bool
+	pendingReloadPath string
+
 	// Folder management
 	newFolderMode bool
 	newFolderName string
@@ -1098,35 +1102,63 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case fileWatchTickMsg:
-		if m.fileWatcher != nil && m.fileWatcher.IsEnabled() {
-			if changeMsg, changed := m.fileWatcher.Check(); changed {
-				// Rescan vault
-				m.vault.Scan()
-				m.index = vault.NewIndex(m.vault)
-				m.index.Build()
-				paths := m.vault.SortedPaths()
-				m.sidebar.SetFiles(paths)
-				m.autocomplete.SetNotes(paths)
-				m.statusbar.SetNoteCount(m.vault.NoteCount())
-				// Reload current note if it changed, but skip if we just saved it
-				for _, p := range changeMsg.paths {
-					rel, _ := filepath.Rel(m.vault.Root, p)
-					if rel == m.activeNote {
-						if time.Since(m.lastSaveTime) < time.Second {
-							break // Skip reload, we just saved this
+	case fileChangeMsg:
+		if m.fileWatcher == nil || !m.fileWatcher.IsEnabled() {
+			return m, nil
+		}
+		// Rescan vault to pick up created/deleted files
+		m.vault.Scan()
+		m.index = vault.NewIndex(m.vault)
+		m.index.Build()
+		paths := m.vault.SortedPaths()
+		m.sidebar.SetFiles(paths)
+		m.autocomplete.SetNotes(paths)
+		m.statusbar.SetNoteCount(m.vault.NoteCount())
+		var toastCmd tea.Cmd
+		// Check whether the currently open note was changed externally
+		for _, p := range msg.paths {
+			rel, _ := filepath.Rel(m.vault.Root, p)
+			if rel == m.activeNote {
+				// Ignore events caused by our own save
+				if time.Since(m.lastSaveTime) < time.Second {
+					break
+				}
+				if m.editor.modified {
+					// Unsaved changes — ask user before overwriting
+					m.pendingReload = true
+					m.pendingReloadPath = m.activeNote
+					if m.toast != nil {
+						toastCmd = m.toast.ShowWarning("File modified externally. Reload? (y/n)")
+					}
+				} else {
+					// No local changes — silently reload and preserve cursor
+					curLine, curCol := m.editor.GetCursor()
+					curScroll := m.editor.scroll
+					if note := m.vault.GetNote(m.activeNote); note != nil {
+						m.editor.LoadContent(note.Content, m.activeNote)
+						m.editor.cursor = curLine
+						m.editor.col = curCol
+						// Clamp to new content bounds
+						if m.editor.cursor >= len(m.editor.content) {
+							m.editor.cursor = len(m.editor.content) - 1
 						}
-						if note := m.vault.GetNote(m.activeNote); note != nil && !m.editor.modified {
-							m.editor.LoadContent(note.Content, m.activeNote)
+						if m.editor.cursor < 0 {
+							m.editor.cursor = 0
 						}
-						break
+						if m.editor.col > len(m.editor.content[m.editor.cursor]) {
+							m.editor.col = len(m.editor.content[m.editor.cursor])
+						}
+						m.editor.scroll = curScroll
+					}
+					baseName := filepath.Base(m.activeNote)
+					if m.toast != nil {
+						toastCmd = m.toast.ShowInfo("Reloaded: " + baseName)
 					}
 				}
-				_ = changeMsg
+				break
 			}
-			return m, m.fileWatcher.Tick()
 		}
-		return m, nil
+		return m, tea.Batch(toastCmd, m.fileWatcher.waitForEvent())
 
 	case pomodoroTickMsg:
 		var cmd tea.Cmd
@@ -2290,6 +2322,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmDelete = false
 				m.confirmDeleteNote = ""
 				return m, nil
+			}
+			return m, nil
+		}
+
+		if m.pendingReload {
+			switch msg.String() {
+			case "y", "Y":
+				m.pendingReload = false
+				notePath := m.pendingReloadPath
+				m.pendingReloadPath = ""
+				curLine, curCol := m.editor.GetCursor()
+				curScroll := m.editor.scroll
+				if note := m.vault.GetNote(notePath); note != nil {
+					m.editor.LoadContent(note.Content, notePath)
+					m.editor.cursor = curLine
+					m.editor.col = curCol
+					if m.editor.cursor >= len(m.editor.content) {
+						m.editor.cursor = len(m.editor.content) - 1
+					}
+					if m.editor.cursor < 0 {
+						m.editor.cursor = 0
+					}
+					if m.editor.col > len(m.editor.content[m.editor.cursor]) {
+						m.editor.col = len(m.editor.content[m.editor.cursor])
+					}
+					m.editor.scroll = curScroll
+				}
+				baseName := filepath.Base(notePath)
+				var toastCmd tea.Cmd
+				if m.toast != nil {
+					toastCmd = m.toast.ShowInfo("Reloaded: " + baseName)
+				}
+				return m, toastCmd
+			case "n", "N", "esc":
+				m.pendingReload = false
+				m.pendingReloadPath = ""
+				var toastCmd tea.Cmd
+				if m.toast != nil {
+					toastCmd = m.toast.ShowInfo("Kept local changes")
+				}
+				return m, toastCmd
 			}
 			return m, nil
 		}
@@ -5390,6 +5463,10 @@ func (m *Model) runPluginSaveHooks() tea.Cmd {
 }
 
 func (m *Model) triggerExitSplash() tea.Cmd {
+	// Stop file watcher to avoid leaking goroutines/descriptors
+	if m.fileWatcher != nil {
+		m.fileWatcher.Stop()
+	}
 	// Save open tabs for session persistence
 	if m.tabBar != nil {
 		m.tabBar.SaveTabs(m.vault.Root)
@@ -6283,6 +6360,10 @@ func (m Model) View() string {
 		overlay := m.renderConfirmDeleteOverlay()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.pendingReload {
+		overlay := m.renderPendingReloadOverlay()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.commandPalette.IsActive() {
 		overlay := m.commandPalette.View()
 		view = m.overlayCenter(view, overlay)
@@ -6610,6 +6691,34 @@ func (m Model) renderConfirmDeleteOverlay() string {
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(red).
+		Padding(1, 2).
+		Width(width).
+		Background(mantle)
+
+	return border.Render(b.String())
+}
+
+func (m Model) renderPendingReloadOverlay() string {
+	width := 54
+
+	var b strings.Builder
+
+	title := lipgloss.NewStyle().
+		Foreground(peach).
+		Bold(true).
+		Render("  " + IconFileChar + " File Modified Externally")
+	b.WriteString(title)
+	b.WriteString("\n\n")
+
+	b.WriteString("  The file has been changed outside Granit:\n")
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(blue).Bold(true).Render(m.pendingReloadPath))
+	b.WriteString("\n\n")
+	b.WriteString("  You have unsaved changes. Reload from disk?\n\n")
+	b.WriteString(DimStyle.Render("  y: reload (discard changes)  n/Esc: keep editing"))
+
+	border := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(peach).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)
