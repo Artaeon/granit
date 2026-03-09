@@ -1146,6 +1146,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Focus mode goal-setting prompt intercepts all keys while active.
+		if m.focusMode.IsActive() && m.focusMode.IsSettingGoal() {
+			m.focusMode, _ = m.focusMode.Update(msg)
+			return m, nil
+		}
+
 		if m.settings.IsActive() {
 			var settingsCmd tea.Cmd
 			m.settings, settingsCmd = m.settings.Update(msg)
@@ -2471,6 +2477,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.setFocus(focusEditor)
 			}
 			return m, nil
+
+		case "alt+g":
+			if m.focusMode.IsActive() {
+				m.focusMode.OpenGoalPrompt()
+				return m, nil
+			}
 
 		case "ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4", "ctrl+5",
 			"ctrl+6", "ctrl+7", "ctrl+8", "ctrl+9":
