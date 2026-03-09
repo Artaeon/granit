@@ -305,8 +305,7 @@ func (s Sidebar) View() string {
 			searchText = lipgloss.NewStyle().Foreground(surface2).Render("filter...")
 		}
 		cursor := lipgloss.NewStyle().Foreground(mauve).Render("|")
-		b.WriteString(searchIcon + searchBg.Render(s.search+cursor))
-		_ = searchText
+		b.WriteString(searchIcon + searchBg.Render(searchText+cursor))
 	} else {
 		b.WriteString(lipgloss.NewStyle().Foreground(surface2).Render("  > filter..."))
 	}
