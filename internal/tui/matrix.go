@@ -315,7 +315,7 @@ func (mx *Matrix) Close() {
 }
 
 func (mx *Matrix) Configure(homeserver, username, token string, readReceipts, typingIndicators, autoDelete bool) {
-	mx.homeserver = strings.TrimRight(homeserver, "/")
+	mx.homeserver = matrixNormalizeHomeserver(homeserver)
 	mx.username = username
 	mx.accessToken = token
 	mx.sendReadReceipts = readReceipts
@@ -591,6 +591,18 @@ func convertInlineMarkdown(text string) string {
 // ---------------------------------------------------------------------------
 // HTTP helpers
 // ---------------------------------------------------------------------------
+
+func matrixNormalizeHomeserver(hs string) string {
+	hs = strings.TrimSpace(hs)
+	hs = strings.TrimRight(hs, "/")
+	if hs == "" {
+		return hs
+	}
+	if !strings.HasPrefix(hs, "http://") && !strings.HasPrefix(hs, "https://") {
+		hs = "https://" + hs
+	}
+	return hs
+}
 
 func matrixHTTPClient() *http.Client {
 	return &http.Client{Timeout: 30 * time.Second}
@@ -1354,7 +1366,7 @@ func (mx Matrix) handleLoginKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 		if mx.loginServer != "" && mx.loginUser != "" && mx.loginPass != "" {
 			mx.connState = matrixConnecting
 			mx.loginError = ""
-			mx.homeserver = strings.TrimRight(mx.loginServer, "/")
+			mx.homeserver = matrixNormalizeHomeserver(mx.loginServer)
 			mx.username = mx.loginUser
 			return mx, matrixLogin(mx.homeserver, mx.loginUser, mx.loginPass)
 		} else {
