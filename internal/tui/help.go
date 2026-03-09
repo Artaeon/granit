@@ -136,7 +136,22 @@ func (h HelpOverlay) Update(msg tea.Msg) (HelpOverlay, tea.Cmd) {
 				h.scroll--
 			}
 		case "down", "j":
-			h.scroll++
+			// Count total lines for max scroll bound
+			totalLines := 0
+			for _, section := range helpSections {
+				totalLines += 2 + len(section.bindings) + 1 // blank + title + separator + bindings
+			}
+			visH := h.height - 8
+			if visH < 10 {
+				visH = 10
+			}
+			maxScroll := totalLines - visH
+			if maxScroll < 0 {
+				maxScroll = 0
+			}
+			if h.scroll < maxScroll {
+				h.scroll++
+			}
 		}
 	}
 	return h, nil
