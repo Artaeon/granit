@@ -302,15 +302,21 @@ func (mx *Matrix) SetSize(width, height int) {
 
 func (mx *Matrix) IsActive() bool { return mx.active }
 
-func (mx *Matrix) Open() {
+func (mx *Matrix) Open() tea.Cmd {
 	mx.active = true
 	mx.statusMsg = ""
 	if mx.accessToken != "" && mx.homeserver != "" {
 		mx.focus = matrixFocusRooms
 		mx.connState = matrixConnected
-	} else {
-		mx.focus = matrixFocusLogin
+		// Fetch rooms if we don't have any yet
+		if len(mx.rooms) == 0 {
+			mx.statusMsg = "Loading rooms..."
+			return matrixFetchRooms(mx.homeserver, mx.accessToken)
+		}
+		return nil
 	}
+	mx.focus = matrixFocusLogin
+	return nil
 }
 
 func (mx *Matrix) Close() {
