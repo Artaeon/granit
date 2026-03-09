@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -33,7 +34,9 @@ func LoadVaultList() VaultList {
 	if err != nil {
 		return vl
 	}
-	json.Unmarshal(data, &vl)
+	if err := json.Unmarshal(data, &vl); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to parse %s: %v (using empty vault list)\n", vaultsPath(), err)
+	}
 	return vl
 }
 
