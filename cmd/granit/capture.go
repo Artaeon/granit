@@ -7,86 +7,67 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/artaeon/granit/internal/config"
 )
 
-func runCapture() {
-	vaultPath := "."
+// resolveCaptureVault determines the vault path for capture/clip commands.
+// Priority: --vault / -v flag > GRANIT_VAULT env > last opened vault > cwd.
+func resolveCaptureVault() string {
 	if v := getFlagValue("--vault"); v != "" {
-		vaultPath = v
-	} else if envVault := os.Getenv("GRANIT_VAULT"); envVault != "" {
-		vaultPath = envVault
+		return v
 	}
-
-	toDaily := hasFlag("--daily")
-	readStdin := hasFlag("--stdin")
-	targetFile := getFlagValue("--to")
-
-	// Determine the target file path
-	var targetPath string
-	if toDaily {
-		today := time.Now().Format("2006-01-02")
-		targetPath = filepath.Join(vaultPath, today+".md")
-		// Create daily note if it doesn't exist
-		if _, err := os.Stat(targetPath); os.IsNotExist(err) {
-			content := fmt.Sprintf("---\ndate: %s\ntype: daily\n---\n\n# %s\n\n## Tasks\n- [ ]\n\n## Notes\n\n", today, today)
-			if err := os.WriteFile(targetPath, []byte(content), 0644); err != nil {
-				exitError("Error creating daily note: %v", err)
-			}
-			fmt.Fprintf(os.Stderr, "Created daily note: %s\n", targetPath)
-		}
-	} else if targetFile != "" {
-		targetPath = filepath.Join(vaultPath, targetFile)
-	} else {
-		targetPath = filepath.Join(vaultPath, "Inbox.md")
+	if v := getFlagValue("-v"); v != "" {
+		return v
 	}
-
-	// Collect the text to append
-	var text string
-	if readStdin || !isTerminal() {
-		// Read from stdin
-		scanner := bufio.NewScanner(os.Stdin)
-		var lines []string
-		for scanner.Scan() {
-			lines = append(lines, scanner.Text())
-		}
-		if err := scanner.Err(); err != nil {
-			exitError("Error reading stdin: %v", err)
-		}
-		text = strings.Join(lines, "\n")
-	} else {
-		// Collect from positional arguments
-		args := getPositionalArgs(2)
-		if len(args) == 0 {
-			exitError("Usage: granit capture <text>\n  granit capture --to Tasks.md \"- [ ] Fix bug\"\n  echo \"ideas\" | granit capture --stdin\n  granit capture --daily \"Meeting notes\"")
-		}
-		text = strings.Join(args, " ")
+	if envVault := os.Getenv("GRANIT_VAULT"); envVault != "" {
+		return envVault
 	}
-
-	if text == "" {
-		exitError("Nothing to capture.")
+	if last := config.LoadVaultList().LastUsed; last != "" {
+		return last
 	}
+	return "."
+}
 
-	// Ensure the target file exists; create if not
-	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
-		// Create the file with a simple header
-		baseName := strings.TrimSuffix(filepath.Base(targetPath), ".md")
-		header := fmt.Sprintf("# %s\n\n", baseName)
-		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-			exitError("Error creating directory: %v", err)
-		}
-		if err := os.WriteFile(targetPath, []byte(header), 0644); err != nil {
-			exitError("Error creating file: %v", err)
-		}
+// resolveTargetFile returns the target filename from flags or default.
+func resolveTargetFile() string {
+	if f := getFlagValue("--file"); f != "" {
+		return f
 	}
+	if f := getFlagValue("-f"); f != "" {
+		return f
+	}
+	return "inbox.md"
+}
 
-	// Append the text with a newline
+// ensureTargetFile creates the target file with frontmatter if it doesn't exist.
+func ensureTargetFile(targetPath string) {
+	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+		return
+	}
+	baseName := strings.TrimSuffix(filepath.Base(targetPath), ".md")
+	today := time.Now().Format("2006-01-02")
+	header := fmt.Sprintf("---\ntitle: %s\ndate: %s\ntype: inbox\n---\n\n# %s\n", baseName, today, baseName)
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+		exitError("Error creating directory: %v", err)
+	}
+	if err := os.WriteFile(targetPath, []byte(header), 0644); err != nil {
+		exitError("Error creating file: %v", err)
+	}
+}
+
+// appendCapture writes a timestamped entry to the target file and prints confirmation.
+func appendCapture(vaultPath, targetPath, text string) {
+	ensureTargetFile(targetPath)
+
 	f, err := os.OpenFile(targetPath, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		exitError("Error opening file: %v", err)
 	}
 	defer f.Close()
 
-	entry := text + "\n"
+	timestamp := time.Now().Format("15:04")
+	entry := fmt.Sprintf("\n- **%s** — %s\n", timestamp, text)
 	if _, err := f.WriteString(entry); err != nil {
 		exitError("Error writing to file: %v", err)
 	}
@@ -95,7 +76,64 @@ func runCapture() {
 	if rel == "" {
 		rel = targetPath
 	}
-	fmt.Fprintf(os.Stderr, "Captured to %s\n", rel)
+	fmt.Printf("Captured to %s\n", rel)
+}
+
+// runCapture handles "granit capture <text>" — appends text to inbox with timestamp.
+func runCapture() {
+	vaultPath := resolveCaptureVault()
+	targetFile := resolveTargetFile()
+	targetPath := filepath.Join(vaultPath, targetFile)
+
+	args := getCapturePositionalArgs()
+	if len(args) == 0 {
+		exitError("Usage: granit capture \"some text\"\n       granit capture -v ~/notes -f tasks.md \"Buy milk\"")
+	}
+	text := strings.Join(args, " ")
+
+	appendCapture(vaultPath, targetPath, text)
+}
+
+// runClip handles "granit clip" — reads stdin and appends to inbox with timestamp.
+func runClip() {
+	vaultPath := resolveCaptureVault()
+	targetFile := resolveTargetFile()
+	targetPath := filepath.Join(vaultPath, targetFile)
+
+	scanner := bufio.NewScanner(os.Stdin)
+	var lines []string
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		exitError("Error reading stdin: %v", err)
+	}
+	text := strings.TrimSpace(strings.Join(lines, "\n"))
+	if text == "" {
+		exitError("Nothing to capture. Pipe text into granit clip:\n       echo \"idea\" | granit clip")
+	}
+
+	appendCapture(vaultPath, targetPath, text)
+}
+
+// getCapturePositionalArgs returns non-flag arguments after the subcommand,
+// skipping both long (--key value) and short (-k value) flags.
+func getCapturePositionalArgs() []string {
+	var args []string
+	for i := 2; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if strings.HasPrefix(arg, "--") || strings.HasPrefix(arg, "-") {
+			// Skip --key=value
+			if strings.Contains(arg, "=") {
+				continue
+			}
+			// Skip the next arg too (it's the flag value)
+			i++
+			continue
+		}
+		args = append(args, arg)
+	}
+	return args
 }
 
 // isTerminal checks if stdin is connected to a terminal (not a pipe).
