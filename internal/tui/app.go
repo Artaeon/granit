@@ -1149,6 +1149,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.config = m.settings.GetConfig()
 				m.config.Save()
 				m.syncConfigToComponents()
+				m.sidebar.SetFiles(m.vault.SortedPaths())
 			}
 			return m, settingsCmd
 		}
@@ -4501,6 +4502,7 @@ func (m *Model) refreshComponents(changedPath string) {
 func (m *Model) syncConfigToComponents() {
 	m.sidebar.showIcons = m.config.ShowIcons
 	m.sidebar.compactMode = m.config.CompactMode
+	m.sidebar.SetShowHidden(m.config.ShowHiddenFiles)
 	m.editor.showLineNumbers = m.config.LineNumbers
 	m.editor.highlightCurrentLine = m.config.HighlightCurrentLine
 	m.editor.autoCloseBrackets = m.config.AutoCloseBrackets
