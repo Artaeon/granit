@@ -5096,7 +5096,14 @@ func (m Model) saveCurrentNote() tea.Cmd {
 		}
 		content := m.editor.GetContent()
 		path := filepath.Join(m.vault.Root, m.activeNote)
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		// Atomic save: write to temp file then rename to avoid partial writes on crash
+		tmpPath := path + ".tmp"
+		if err := os.WriteFile(tmpPath, []byte(content), 0644); err != nil {
+			os.Remove(tmpPath)
+			return saveResultMsg{err: err}
+		}
+		if err := os.Rename(tmpPath, path); err != nil {
+			os.Remove(tmpPath)
 			return saveResultMsg{err: err}
 		}
 		// Incrementally update the search index for the saved file
