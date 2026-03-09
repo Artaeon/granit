@@ -170,6 +170,9 @@ func (vs VaultStats) Update(msg tea.Msg) (VaultStats, tea.Cmd) {
 		case "down", "j":
 			vs.scroll++
 		}
+		if vs.scroll < 0 {
+			vs.scroll = 0
+		}
 	}
 	return vs, nil
 }
