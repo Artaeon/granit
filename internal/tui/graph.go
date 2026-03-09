@@ -114,6 +114,14 @@ func (g *GraphView) buildGlobalGraph() {
 func (g *GraphView) buildLocalGraph() {
 	g.nodes = nil
 
+	// Validate that centerNote still exists in the vault
+	if g.centerNote == "" || g.vault.GetNote(g.centerNote) == nil {
+		// Center note was deleted or is empty; fall back to global mode
+		g.localMode = false
+		g.buildGlobalGraph()
+		return
+	}
+
 	// Collect nodes within g.depth hops of centerNote
 	// hopMap: path -> minimum hop distance from center
 	hopMap := make(map[string]int)
@@ -227,6 +235,11 @@ func (g GraphView) Update(msg tea.Msg) (GraphView, tea.Cmd) {
 			}
 			return g, nil
 		case "tab":
+			// When switching to local mode, validate centerNote exists
+			if !g.localMode && (g.centerNote == "" || g.vault.GetNote(g.centerNote) == nil) {
+				// Can't switch to local mode without a valid center note
+				break
+			}
 			g.localMode = !g.localMode
 			g.cursor = 0
 			g.scroll = 0
