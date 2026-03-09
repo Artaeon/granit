@@ -359,8 +359,7 @@ func (s Sidebar) View() string {
 		// File icon based on type
 		icon := ""
 		if s.showIcons {
-			isDaily := len(displayName) >= 10 && displayName[4] == '-' && displayName[7] == '-'
-			if isDaily {
+			if isDailyNote(name) {
 				icon = lipgloss.NewStyle().Foreground(green).Render(IconDailyChar)
 			} else {
 				icon = lipgloss.NewStyle().Foreground(blue).Render(IconFileChar)
