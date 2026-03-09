@@ -411,19 +411,20 @@ func getOpenAIEmbedding(apiKey, model, text string) ([]float64, error) {
 	return oaiResp.Data[0].Embedding, nil
 }
 
-// truncateContent returns at most maxLen characters of the input.
+// truncateContent returns at most maxLen characters (runes) of the input.
 func truncateContent(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	r := []rune(s)
+	if len(r) <= maxLen {
 		return s
 	}
-	return s[:maxLen]
+	return string(r[:maxLen])
 }
 
 // noteSnippet returns the first ~100 characters of a note, trimmed.
 func noteSnippet(content string) string {
 	s := strings.TrimSpace(content)
-	if len(s) > 100 {
-		s = s[:100]
+	if r := []rune(s); len(r) > 100 {
+		s = string(r[:100])
 	}
 	// Replace newlines with spaces for single-line display.
 	s = strings.ReplaceAll(s, "\n", " ")
