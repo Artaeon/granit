@@ -1,10 +1,10 @@
 package tui
 
 import (
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -19,9 +19,19 @@ type MisspelledWord struct {
 	Suggest []string // up to 5 suggestions
 }
 
-// SpellChecker provides spell-checking integration by piping text through
-// aspell or hunspell, and presents an overlay for reviewing and applying
-// corrections.
+// spellCheckDoneMsg is sent when an async spell check completes.
+type spellCheckDoneMsg struct {
+	words []MisspelledWord
+}
+
+// spellCheckTickMsg fires after a debounce period to trigger inline checking.
+type spellCheckTickMsg struct {
+	editTime time.Time
+}
+
+// SpellChecker provides spell-checking integration using aspell, hunspell, or
+// a built-in dictionary fallback. It presents an overlay for reviewing and
+// applying corrections, and supports inline highlighting of misspelled words.
 type SpellChecker struct {
 	active      bool
 	width       int
@@ -32,29 +42,47 @@ type SpellChecker struct {
 	selected    *MisspelledWord // currently highlighted misspelling
 	replacement string          // the chosen replacement
 	applied     bool
-	available   bool // whether aspell/hunspell is installed
-	tool        string // "aspell" or "hunspell"
+
+	// Spell engine (shared between overlay and inline checking)
+	engine *spellEngine
+
+	// Inline spell check state
+	inlineEnabled bool              // config-driven toggle
+	inlineWords   []MisspelledWord  // last inline check results
+	inlinePos     map[int]map[int]bool // line -> col -> true for rendering
+	lastCheckTime time.Time         // debounce: last edit timestamp that triggered a check
 }
 
-// NewSpellChecker probes for aspell or hunspell and returns a ready-to-use
-// SpellChecker. If neither tool is found, IsAvailable() will return false.
+// NewSpellChecker probes for aspell, hunspell, or a built-in dictionary and
+// returns a ready-to-use SpellChecker.
 func NewSpellChecker() SpellChecker {
-	sc := SpellChecker{}
-
-	if path, err := exec.LookPath("aspell"); err == nil && path != "" {
-		sc.available = true
-		sc.tool = "aspell"
-	} else if path, err := exec.LookPath("hunspell"); err == nil && path != "" {
-		sc.available = true
-		sc.tool = "hunspell"
+	return SpellChecker{
+		engine: newSpellEngine(),
 	}
-
-	return sc
 }
 
-// IsAvailable reports whether a spell-checking tool was found on the system.
+// IsAvailable reports whether a spell-checking backend was found on the system.
 func (sc *SpellChecker) IsAvailable() bool {
-	return sc.available
+	return sc.engine.isAvailable()
+}
+
+// BackendName returns the name of the active spell-checking backend.
+func (sc *SpellChecker) BackendName() string {
+	return sc.engine.backendName()
+}
+
+// SetInlineEnabled enables or disables inline spell check highlighting.
+func (sc *SpellChecker) SetInlineEnabled(enabled bool) {
+	sc.inlineEnabled = enabled
+	if !enabled {
+		sc.inlineWords = nil
+		sc.inlinePos = nil
+	}
+}
+
+// InlineEnabled reports whether inline spell checking is currently on.
+func (sc *SpellChecker) InlineEnabled() bool {
+	return sc.inlineEnabled && sc.engine.isAvailable()
 }
 
 // stripMarkdown removes markdown formatting so the spell checker does not
@@ -63,6 +91,8 @@ func stripMarkdownForSpellCheck(content string) string {
 	lines := strings.Split(content, "\n")
 	var result []string
 	inCodeBlock := false
+	inFrontmatter := false
+	pastFirstLine := false
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -79,13 +109,27 @@ func stripMarkdownForSpellCheck(content string) string {
 			continue
 		}
 
-		cleaned := line
-
-		// Strip frontmatter delimiters
+		// Track frontmatter region
 		if trimmed == "---" {
+			if !pastFirstLine {
+				inFrontmatter = true
+				pastFirstLine = true
+				result = append(result, "")
+				continue
+			}
+			if inFrontmatter {
+				inFrontmatter = false
+				result = append(result, "")
+				continue
+			}
+		}
+		pastFirstLine = true
+		if inFrontmatter {
 			result = append(result, "")
 			continue
 		}
+
+		cleaned := line
 
 		// Strip heading markers
 		cleaned = regexp.MustCompile(`^#{1,6}\s`).ReplaceAllString(cleaned, "")
@@ -101,6 +145,9 @@ func stripMarkdownForSpellCheck(content string) string {
 
 		// Strip images ![alt](url)
 		cleaned = regexp.MustCompile(`!\[([^\]]*)\]\([^)]*\)`).ReplaceAllString(cleaned, "$1")
+
+		// Strip URLs
+		cleaned = regexp.MustCompile(`https?://\S+`).ReplaceAllString(cleaned, "")
 
 		// Strip bold/italic markers
 		cleaned = strings.ReplaceAll(cleaned, "***", "")
@@ -122,88 +169,7 @@ func stripMarkdownForSpellCheck(content string) string {
 // Check runs the spell checker on content and returns all misspelled words
 // with their positions in the original text.
 func (sc *SpellChecker) Check(content string) []MisspelledWord {
-	if !sc.available {
-		return nil
-	}
-
-	cleaned := stripMarkdownForSpellCheck(content)
-	originalLines := strings.Split(content, "\n")
-
-	var args []string
-	if sc.tool == "aspell" {
-		args = []string{"pipe"}
-	} else {
-		args = []string{"-a"}
-	}
-
-	cmd := exec.Command(sc.tool, args...)
-	cmd.Stdin = strings.NewReader(cleaned)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-
-	var words []MisspelledWord
-	outputLines := strings.Split(string(out), "\n")
-
-	// aspell/hunspell pipe mode: the first line is a version banner.
-	// Then for each input line, output lines appear followed by a blank line
-	// separating the next input line.
-	inputLine := 0
-	firstLine := true
-
-	for _, ol := range outputLines {
-		if firstLine {
-			// Skip version/banner line
-			firstLine = false
-			continue
-		}
-
-		if ol == "" {
-			// Blank line = separator between input lines
-			inputLine++
-			continue
-		}
-
-		if strings.HasPrefix(ol, "&") {
-			// & word count offset: suggestion1, suggestion2, ...
-			word, offset, suggestions := parseAmpersandLine(ol)
-			if word == "" {
-				continue
-			}
-
-			col := findWordCol(originalLines, inputLine, word, offset)
-
-			if len(suggestions) > 5 {
-				suggestions = suggestions[:5]
-			}
-
-			words = append(words, MisspelledWord{
-				Word:    word,
-				Line:    inputLine,
-				Col:     col,
-				Suggest: suggestions,
-			})
-		} else if strings.HasPrefix(ol, "#") {
-			// # word offset — no suggestions
-			word, offset := parseHashLine(ol)
-			if word == "" {
-				continue
-			}
-
-			col := findWordCol(originalLines, inputLine, word, offset)
-
-			words = append(words, MisspelledWord{
-				Word:    word,
-				Line:    inputLine,
-				Col:     col,
-				Suggest: nil,
-			})
-		}
-		// Lines starting with * or @ are correct/ignored — skip them.
-	}
-
-	return words
+	return sc.engine.check(content)
 }
 
 // parseAmpersandLine parses an aspell "&" line:
@@ -334,6 +300,45 @@ func (sc *SpellChecker) GetCorrection() (word string, line, col int, replacement
 	return sc.selected.Word, sc.selected.Line, sc.selected.Col, sc.replacement, true
 }
 
+// AddToPersonalDict adds the selected word to the personal dictionary.
+func (sc *SpellChecker) AddToPersonalDict(word string) {
+	sc.engine.addToPersonal(word)
+}
+
+// IgnoreAllOccurrences marks a word as ignored for this session and removes
+// all occurrences from the current results list.
+func (sc *SpellChecker) IgnoreAllOccurrences(word string) {
+	sc.engine.addSessionIgnore(word)
+	lw := strings.ToLower(word)
+
+	// Remove all occurrences from the word list
+	filtered := sc.words[:0]
+	for _, w := range sc.words {
+		if strings.ToLower(w.Word) != lw {
+			filtered = append(filtered, w)
+		}
+	}
+	sc.words = filtered
+}
+
+// removeCurrentWord removes the word at the cursor from the list and adjusts.
+func (sc *SpellChecker) removeCurrentWord() {
+	if len(sc.words) == 0 || sc.cursor >= len(sc.words) {
+		return
+	}
+	sc.words = append(sc.words[:sc.cursor], sc.words[sc.cursor+1:]...)
+	if sc.cursor >= len(sc.words) && sc.cursor > 0 {
+		sc.cursor--
+	}
+	if len(sc.words) > 0 {
+		sc.selected = &sc.words[sc.cursor]
+	} else {
+		sc.selected = nil
+	}
+	sc.applied = false
+	sc.replacement = ""
+}
+
 // Update handles keyboard input for the spell check overlay.
 func (sc SpellChecker) Update(msg tea.Msg) (SpellChecker, tea.Cmd) {
 	if !sc.active {
@@ -397,9 +402,17 @@ func (sc SpellChecker) Update(msg tea.Msg) (SpellChecker, tea.Cmd) {
 			return sc, nil
 
 		case "i":
-			// Ignore — remove word from list
+			// Ignore this occurrence — remove from list
+			sc.removeCurrentWord()
+			return sc, nil
+
+		case "d":
+			// Add to personal dictionary and remove all occurrences
 			if len(sc.words) > 0 && sc.cursor < len(sc.words) {
-				sc.words = append(sc.words[:sc.cursor], sc.words[sc.cursor+1:]...)
+				w := sc.words[sc.cursor]
+				sc.AddToPersonalDict(w.Word)
+				sc.IgnoreAllOccurrences(w.Word)
+				// Adjust cursor
 				if sc.cursor >= len(sc.words) && sc.cursor > 0 {
 					sc.cursor--
 				}
@@ -408,8 +421,23 @@ func (sc SpellChecker) Update(msg tea.Msg) (SpellChecker, tea.Cmd) {
 				} else {
 					sc.selected = nil
 				}
-				sc.applied = false
-				sc.replacement = ""
+			}
+			return sc, nil
+
+		case "a":
+			// Ignore all occurrences of this word (session only)
+			if len(sc.words) > 0 && sc.cursor < len(sc.words) {
+				w := sc.words[sc.cursor]
+				sc.IgnoreAllOccurrences(w.Word)
+				// Adjust cursor
+				if sc.cursor >= len(sc.words) && sc.cursor > 0 {
+					sc.cursor--
+				}
+				if len(sc.words) > 0 {
+					sc.selected = &sc.words[sc.cursor]
+				} else {
+					sc.selected = nil
+				}
 			}
 			return sc, nil
 		}
@@ -442,12 +470,11 @@ func (sc SpellChecker) View() string {
 	var b strings.Builder
 
 	// Title
-	titleIcon := "Spell Check"
-	toolName := sc.tool
+	toolName := sc.engine.backendName()
 	title := lipgloss.NewStyle().
 		Foreground(green).
 		Bold(true).
-		Render("  " + titleIcon + " (" + toolName + ")")
+		Render("  Spell Check (" + toolName + ")")
 	b.WriteString(title)
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", width-8)))
@@ -508,14 +535,15 @@ func (sc SpellChecker) View() string {
 			}
 			b.WriteString("\n")
 
-			// Suggestions line
+			// Suggestions line with numbered hints
 			if len(w.Suggest) > 0 {
-				sugLine := "      Suggestions: "
+				sugLine := "      "
 				for si, s := range w.Suggest {
+					numStr := lipgloss.NewStyle().Foreground(yellow).Render(smallNum(si+1) + ":")
 					if si == 0 {
-						sugLine += firstSuggestStyle.Render(s)
+						sugLine += numStr + firstSuggestStyle.Render(s)
 					} else {
-						sugLine += NormalItemStyle.Render(", " + s)
+						sugLine += NormalItemStyle.Render("  ") + numStr + NormalItemStyle.Render(s)
 					}
 				}
 				b.WriteString(sugLine)
@@ -534,7 +562,9 @@ func (sc SpellChecker) View() string {
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", width-8)))
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  Enter/1-5: fix  i: ignore  Esc: close"))
+	b.WriteString(DimStyle.Render("  Enter/1-5: fix  i: ignore  a: ignore all"))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  d: add to dictionary  Esc: close"))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -544,6 +574,55 @@ func (sc SpellChecker) View() string {
 		Background(mantle)
 
 	return border.Render(b.String())
+}
+
+// --- Inline spell check support ---
+
+// RunInlineCheck runs the spell checker asynchronously and returns a command
+// that sends the results when done.
+func (sc *SpellChecker) RunInlineCheck(content string) tea.Cmd {
+	engine := sc.engine
+	return func() tea.Msg {
+		words := engine.check(content)
+		return spellCheckDoneMsg{words: words}
+	}
+}
+
+// HandleInlineResult processes the async spell check result for inline display.
+func (sc *SpellChecker) HandleInlineResult(words []MisspelledWord) {
+	sc.inlineWords = words
+	sc.rebuildInlinePositions()
+}
+
+// rebuildInlinePositions constructs the line->col->bool map for fast lookup
+// during editor rendering.
+func (sc *SpellChecker) rebuildInlinePositions() {
+	sc.inlinePos = make(map[int]map[int]bool)
+	for _, w := range sc.inlineWords {
+		if sc.inlinePos[w.Line] == nil {
+			sc.inlinePos[w.Line] = make(map[int]bool)
+		}
+		for c := w.Col; c < w.Col+len(w.Word); c++ {
+			sc.inlinePos[w.Line][c] = true
+		}
+	}
+}
+
+// InlinePositions returns the position map for inline misspelling highlights.
+// Returns nil if inline checking is disabled or no results are available.
+func (sc *SpellChecker) InlinePositions() map[int]map[int]bool {
+	if !sc.inlineEnabled {
+		return nil
+	}
+	return sc.inlinePos
+}
+
+// ScheduleInlineCheck returns a tea.Cmd that fires after a debounce delay.
+// The caller should record editTime and only process the tick if it matches.
+func ScheduleInlineCheck(editTime time.Time) tea.Cmd {
+	return tea.Tick(1*time.Second, func(_ time.Time) tea.Msg {
+		return spellCheckTickMsg{editTime: editTime}
+	})
 }
 
 // GetMisspelledPositions builds a lookup map of line -> col -> true for all
