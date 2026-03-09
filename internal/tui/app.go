@@ -4592,12 +4592,13 @@ func (m *Model) updateLayout() {
 	}
 
 	// Content height: terminal minus status bar (2 lines) minus panel borders (2 lines)
-	contentHeight := m.height - 4
+	overhead := 4
 	if m.breadcrumb != nil && (len(m.breadcrumb.Pinned()) > 0 || m.breadcrumb.CanGoBack()) {
-		contentHeight-- // breadcrumb nav bar between content and status
+		overhead++ // breadcrumb nav bar between content and status
 	}
-	if contentHeight < 6 {
-		contentHeight = 6
+	contentHeight := m.height - overhead
+	if contentHeight < 1 {
+		contentHeight = 1
 	}
 
 	m.sidebar.SetSize(sidebarWidth, contentHeight)
@@ -5258,12 +5259,13 @@ func (m Model) View() string {
 	}
 
 	// Content height: terminal minus status bar (2 lines) minus panel borders (2 lines)
-	contentHeight := m.height - 4
+	overhead := 4
 	if m.breadcrumb != nil && (len(m.breadcrumb.Pinned()) > 0 || m.breadcrumb.CanGoBack()) {
-		contentHeight-- // breadcrumb nav bar between content and status
+		overhead++ // breadcrumb nav bar between content and status
 	}
-	if contentHeight < 6 {
-		contentHeight = 6
+	contentHeight := m.height - overhead
+	if contentHeight < 1 {
+		contentHeight = 1
 	}
 	layout := m.config.Layout
 	if layout == "" {
