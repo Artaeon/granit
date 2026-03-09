@@ -73,7 +73,8 @@ type Config struct {
 	MatrixEnabled        bool   `json:"matrix_enabled"`
 	MatrixReadReceipts   bool   `json:"matrix_read_receipts"`
 	MatrixTypingIndicators bool `json:"matrix_typing_indicators"`
-	MatrixAutoDeleteCache bool  `json:"matrix_auto_delete_cache"`
+	MatrixAutoDeleteCache bool     `json:"matrix_auto_delete_cache"`
+	MatrixPinnedRooms     []string `json:"matrix_pinned_rooms,omitempty"`
 
 	// Core Plugins — toggle built-in modules on/off
 	CorePlugins map[string]bool `json:"core_plugins"`

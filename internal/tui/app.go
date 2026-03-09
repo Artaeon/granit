@@ -559,6 +559,43 @@ func (m *Model) loadNote(relPath string) {
 	}
 }
 
+// matrixCaptureNote creates or appends to a note from the Matrix overlay.
+// If the file is Tasks.md and content starts with "- [ ]", it appends; otherwise creates new.
+func (m *Model) matrixCaptureNote(filename, content string) {
+	// Determine target path: use Inbox/ subfolder if it exists
+	targetDir := m.vault.Root
+	inboxDir := filepath.Join(m.vault.Root, "Inbox")
+	if info, err := os.Stat(inboxDir); err == nil && info.IsDir() {
+		// For Tasks.md, keep it in root
+		if filename != "Tasks.md" {
+			targetDir = inboxDir
+		}
+	}
+
+	fullPath := filepath.Join(targetDir, filename)
+
+	// Special handling for Tasks.md: append rather than overwrite
+	if filename == "Tasks.md" && strings.HasPrefix(strings.TrimSpace(content), "- [") {
+		f, err := os.OpenFile(fullPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err == nil {
+			f.WriteString("\n" + content)
+			f.Close()
+		}
+	} else {
+		os.MkdirAll(filepath.Dir(fullPath), 0755)
+		os.WriteFile(fullPath, []byte(content), 0644)
+	}
+
+	// Rescan vault
+	m.vault.Scan()
+	m.index = vault.NewIndex(m.vault)
+	m.index.Build()
+	paths := m.vault.SortedPaths()
+	m.sidebar.SetFiles(paths)
+	m.autocomplete.SetNotes(paths)
+	m.statusbar.SetNoteCount(m.vault.NoteCount())
+}
+
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 	if m.showSplash {
@@ -1125,9 +1162,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case matrixLoginResultMsg, matrixRoomsResultMsg, matrixMessagesResultMsg,
-		matrixSendResultMsg, matrixSyncResultMsg, matrixSyncTickMsg,
-		matrixAISummaryMsg, matrixAIActionsMsg, matrixAIReplyMsg,
-		matrixAITranslateMsg, matrixAINoteMsg, matrixAIContextMsg, matrixAITickMsg:
+		matrixSendResultMsg, matrixSyncResultMsg, matrixSyncTickMsg, matrixReactionResultMsg:
 		if m.matrix.IsActive() {
 			var cmd tea.Cmd
 			m.matrix, cmd = m.matrix.Update(msg)
@@ -1136,6 +1171,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.config.MatrixAccessToken = m.matrix.GetAccessToken()
 				m.config.Save()
 			}
+			// Update unread count for status bar
+			m.statusbar.SetMatrixUnread(m.matrix.UnreadCount())
 			return m, cmd
 		}
 		return m, nil
@@ -1415,11 +1452,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.matrix.IsActive() {
 			var matrixCmd tea.Cmd
 			m.matrix, matrixCmd = m.matrix.Update(msg)
+			// Update unread count for status bar
+			m.statusbar.SetMatrixUnread(m.matrix.UnreadCount())
 			if !m.matrix.IsActive() {
-				// Persist privacy settings back to config
+				// Persist privacy settings and pinned rooms back to config
 				m.config.MatrixReadReceipts = m.matrix.sendReadReceipts
 				m.config.MatrixTypingIndicators = m.matrix.sendTypingIndicators
 				m.config.MatrixAutoDeleteCache = m.matrix.autoDeleteCache
+				m.config.MatrixPinnedRooms = m.matrix.GetPinnedRooms()
 				m.config.Save()
 			}
 			return m, matrixCmd
@@ -2493,13 +2533,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.config.MatrixTypingIndicators,
 				m.config.MatrixAutoDeleteCache,
 			)
-			m.matrix.ConfigureAI(
-				m.config.AIProvider,
-				m.config.OllamaModel,
-				m.config.OllamaURL,
-				m.config.OpenAIKey,
-				m.config.OpenAIModel,
-			)
 			// Set share content from current note or selection
 			selectedText := m.editor.GetSelectedText()
 			if selectedText != "" {
@@ -2507,7 +2540,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.matrix.SetShareContent(m.editor.GetContent())
 			}
-			m.matrix.SetCurrentNoteContent(m.editor.GetContent())
+			// Wire vault integration
+			m.matrix.SetVaultFiles(m.vault.SortedPaths())
+			m.matrix.SetVaultRoot(m.vault.Root)
+			m.matrix.SetPinnedRooms(m.config.MatrixPinnedRooms)
+			m.matrix.SetCaptureNote(func(filename, content string) {
+				m.matrixCaptureNote(filename, content)
+			})
 			m.matrix.Open()
 			// Start sync if we have a token
 			if cmd := m.matrix.StartSync(); cmd != nil {
@@ -3135,20 +3174,18 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.config.MatrixTypingIndicators,
 			m.config.MatrixAutoDeleteCache,
 		)
-		m.matrix.ConfigureAI(
-			m.config.AIProvider,
-			m.config.OllamaModel,
-			m.config.OllamaURL,
-			m.config.OpenAIKey,
-			m.config.OpenAIModel,
-		)
 		selectedText := m.editor.GetSelectedText()
 		if selectedText != "" {
 			m.matrix.SetShareContent(selectedText)
 		} else {
 			m.matrix.SetShareContent(m.editor.GetContent())
 		}
-		m.matrix.SetCurrentNoteContent(m.editor.GetContent())
+		m.matrix.SetVaultFiles(m.vault.SortedPaths())
+		m.matrix.SetVaultRoot(m.vault.Root)
+		m.matrix.SetPinnedRooms(m.config.MatrixPinnedRooms)
+		m.matrix.SetCaptureNote(func(filename, content string) {
+			m.matrixCaptureNote(filename, content)
+		})
 		m.matrix.Open()
 		if cmd := m.matrix.StartSync(); cmd != nil {
 			return m, cmd

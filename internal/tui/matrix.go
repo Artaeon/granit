@@ -127,6 +127,10 @@ type matrixSendResultMsg struct {
 	err     error
 }
 
+type matrixReactionResultMsg struct {
+	err error
+}
+
 type matrixSyncTickMsg struct{}
 
 // ---------------------------------------------------------------------------
@@ -141,6 +145,7 @@ type matrixRoom struct {
 	LastTime    time.Time
 	Members     []string
 	Encrypted   bool
+	Pinned      bool
 }
 
 type matrixChatMessage struct {
@@ -149,6 +154,8 @@ type matrixChatMessage struct {
 	Timestamp time.Time
 	EventID   string
 	IsOwn     bool
+	ReplyTo   string // event ID this is a reply to
+	Reactions map[string]int // emoji -> count
 }
 
 type matrixFocusArea int
@@ -170,6 +177,9 @@ const (
 	matrixConnected
 	matrixSyncing
 )
+
+// Available reaction emojis
+var matrixReactionEmojis = []string{"\U0001F44D", "\u2764\uFE0F", "\U0001F602", "\U0001F389", "\U0001F914", "\U0001F440"}
 
 // ---------------------------------------------------------------------------
 // Matrix overlay component
@@ -202,11 +212,28 @@ type Matrix struct {
 	roomScroll  int
 	roomSearch  string
 	searching   bool
+	pinnedRooms []string // room IDs that are pinned
 
 	// Messages
-	messages      map[string][]matrixChatMessage // roomID -> messages
-	messageScroll int
-	messageInput  string
+	messages       map[string][]matrixChatMessage // roomID -> messages
+	messageScroll  int
+	messageInput   string
+	messageCursor  int // selected message index for reactions/replies
+	messageSelect  bool // whether a message is selected
+
+	// Message search
+	msgSearchMode   bool
+	msgSearchQuery  string
+	msgSearchIdx    int // current match index
+	msgSearchMatches []int // indices of matching messages
+
+	// Reply context
+	replyToEvent string // event ID being replied to
+	replyPreview string // preview text of the message being replied to
+
+	// Reaction picker
+	showReactionPicker bool
+	reactionCursor     int
 
 	// Focus
 	focus matrixFocusArea
@@ -230,11 +257,13 @@ type Matrix struct {
 	// E2EE status cache per room
 	e2eeStatus map[string]bool
 
-	// AI analysis features
-	ai MatrixAI
+	// Vault integration callbacks and data
+	captureNote func(filename, content string) // callback to create a note in the vault
+	vaultFiles  []string                       // list of vault file paths
+	vaultRoot   string                         // vault root directory
 
-	// Current note content for AI context
-	currentNoteContent string
+	// Slash command results displayed inline
+	slashResults []string
 }
 
 func NewMatrix() Matrix {
@@ -244,7 +273,6 @@ func NewMatrix() Matrix {
 		connState:  matrixDisconnected,
 		focus:      matrixFocusLogin,
 		autoDeleteCache: true,
-		ai:         NewMatrixAI(),
 	}
 }
 
@@ -290,19 +318,261 @@ func (mx *Matrix) GetAccessToken() string {
 	return mx.accessToken
 }
 
-// ConfigureAI sets the AI provider settings on the embedded MatrixAI.
-func (mx *Matrix) ConfigureAI(provider, ollamaModel, ollamaURL, openaiKey, openaiModel string) {
-	mx.ai.SetAIConfig(provider, ollamaModel, ollamaURL, openaiKey, openaiModel)
-}
-
-// SetCurrentNoteContent stores the current note body for AI context features.
-func (mx *Matrix) SetCurrentNoteContent(content string) {
-	mx.currentNoteContent = content
-}
-
 // SetShareContent sets content to be shared when user presses 's'
 func (mx *Matrix) SetShareContent(content string) {
 	mx.shareContent = content
+}
+
+// SetCaptureNote sets the callback for creating notes in the vault
+func (mx *Matrix) SetCaptureNote(fn func(filename, content string)) {
+	mx.captureNote = fn
+}
+
+// SetVaultFiles provides vault file list for slash commands
+func (mx *Matrix) SetVaultFiles(files []string) {
+	mx.vaultFiles = files
+}
+
+// SetVaultRoot provides vault root directory for slash commands
+func (mx *Matrix) SetVaultRoot(root string) {
+	mx.vaultRoot = root
+}
+
+// SetPinnedRooms loads pinned room IDs from config
+func (mx *Matrix) SetPinnedRooms(pinned []string) {
+	mx.pinnedRooms = pinned
+	// Apply pinned status to rooms
+	for i := range mx.rooms {
+		mx.rooms[i].Pinned = false
+		for _, pid := range mx.pinnedRooms {
+			if mx.rooms[i].ID == pid {
+				mx.rooms[i].Pinned = true
+				break
+			}
+		}
+	}
+}
+
+// GetPinnedRooms returns the current pinned room IDs
+func (mx *Matrix) GetPinnedRooms() []string {
+	return mx.pinnedRooms
+}
+
+// UnreadCount returns total unread messages across all rooms
+func (mx *Matrix) UnreadCount() int {
+	total := 0
+	for _, room := range mx.rooms {
+		total += room.UnreadCount
+	}
+	return total
+}
+
+// ---------------------------------------------------------------------------
+// Markdown to HTML converter for note sharing
+// ---------------------------------------------------------------------------
+
+func matrixMarkdownToHTML(md string) string {
+	lines := strings.Split(md, "\n")
+	var out strings.Builder
+	inCodeBlock := false
+	inList := false
+	inBlockquote := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Code blocks
+		if strings.HasPrefix(trimmed, "```") {
+			if inCodeBlock {
+				out.WriteString("</code></pre>\n")
+				inCodeBlock = false
+			} else {
+				if inList {
+					out.WriteString("</ul>\n")
+					inList = false
+				}
+				out.WriteString("<pre><code>")
+				inCodeBlock = true
+			}
+			continue
+		}
+		if inCodeBlock {
+			out.WriteString(strings.ReplaceAll(line, "<", "&lt;"))
+			out.WriteString("\n")
+			continue
+		}
+
+		// Close blockquote if needed
+		if inBlockquote && !strings.HasPrefix(trimmed, ">") {
+			out.WriteString("</blockquote>\n")
+			inBlockquote = false
+		}
+
+		// Empty line
+		if trimmed == "" {
+			if inList {
+				out.WriteString("</ul>\n")
+				inList = false
+			}
+			continue
+		}
+
+		// Headings
+		if strings.HasPrefix(trimmed, "#### ") {
+			if inList {
+				out.WriteString("</ul>\n")
+				inList = false
+			}
+			out.WriteString("<h4>" + convertInlineMarkdown(trimmed[5:]) + "</h4>\n")
+			continue
+		}
+		if strings.HasPrefix(trimmed, "### ") {
+			if inList {
+				out.WriteString("</ul>\n")
+				inList = false
+			}
+			out.WriteString("<h3>" + convertInlineMarkdown(trimmed[4:]) + "</h3>\n")
+			continue
+		}
+		if strings.HasPrefix(trimmed, "## ") {
+			if inList {
+				out.WriteString("</ul>\n")
+				inList = false
+			}
+			out.WriteString("<h2>" + convertInlineMarkdown(trimmed[3:]) + "</h2>\n")
+			continue
+		}
+		if strings.HasPrefix(trimmed, "# ") {
+			if inList {
+				out.WriteString("</ul>\n")
+				inList = false
+			}
+			out.WriteString("<h1>" + convertInlineMarkdown(trimmed[2:]) + "</h1>\n")
+			continue
+		}
+
+		// Blockquote
+		if strings.HasPrefix(trimmed, "> ") {
+			if !inBlockquote {
+				if inList {
+					out.WriteString("</ul>\n")
+					inList = false
+				}
+				out.WriteString("<blockquote>")
+				inBlockquote = true
+			}
+			out.WriteString(convertInlineMarkdown(trimmed[2:]) + "<br>")
+			continue
+		}
+
+		// Unordered list
+		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
+			if !inList {
+				out.WriteString("<ul>\n")
+				inList = true
+			}
+			out.WriteString("<li>" + convertInlineMarkdown(trimmed[2:]) + "</li>\n")
+			continue
+		}
+
+		// Regular paragraph
+		if inList {
+			out.WriteString("</ul>\n")
+			inList = false
+		}
+		out.WriteString("<p>" + convertInlineMarkdown(trimmed) + "</p>\n")
+	}
+
+	if inList {
+		out.WriteString("</ul>\n")
+	}
+	if inCodeBlock {
+		out.WriteString("</code></pre>\n")
+	}
+	if inBlockquote {
+		out.WriteString("</blockquote>\n")
+	}
+
+	return out.String()
+}
+
+func convertInlineMarkdown(text string) string {
+	result := text
+
+	// Bold: **text** -> <strong>text</strong>
+	for {
+		start := strings.Index(result, "**")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(result[start+2:], "**")
+		if end == -1 {
+			break
+		}
+		end += start + 2
+		inner := result[start+2 : end]
+		result = result[:start] + "<strong>" + inner + "</strong>" + result[end+2:]
+	}
+
+	// Italic: *text* -> <em>text</em>
+	for {
+		start := strings.Index(result, "*")
+		if start == -1 {
+			break
+		}
+		// Skip if it's inside a tag
+		if start > 0 && result[start-1] == '<' {
+			break
+		}
+		end := strings.Index(result[start+1:], "*")
+		if end == -1 {
+			break
+		}
+		end += start + 1
+		inner := result[start+1 : end]
+		if inner == "" {
+			break
+		}
+		result = result[:start] + "<em>" + inner + "</em>" + result[end+1:]
+	}
+
+	// Inline code: `text` -> <code>text</code>
+	for {
+		start := strings.Index(result, "`")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(result[start+1:], "`")
+		if end == -1 {
+			break
+		}
+		end += start + 1
+		inner := result[start+1 : end]
+		result = result[:start] + "<code>" + inner + "</code>" + result[end+1:]
+	}
+
+	// Links: [text](url) -> <a href="url">text</a>
+	for {
+		lbStart := strings.Index(result, "[")
+		if lbStart == -1 {
+			break
+		}
+		lbEnd := strings.Index(result[lbStart:], "](")
+		if lbEnd == -1 {
+			break
+		}
+		lbEnd += lbStart
+		rpEnd := strings.Index(result[lbEnd+2:], ")")
+		if rpEnd == -1 {
+			break
+		}
+		rpEnd += lbEnd + 2
+		linkText := result[lbStart+1 : lbEnd]
+		linkURL := result[lbEnd+2 : rpEnd]
+		result = result[:lbStart] + "<a href=\"" + linkURL + "\">" + linkText + "</a>" + result[rpEnd+1:]
+	}
+
+	return result
 }
 
 // ---------------------------------------------------------------------------
@@ -466,20 +736,50 @@ func matrixFetchMessages(homeserver, token, roomID string, limit int) tea.Cmd {
 
 		var messages []matrixChatMessage
 		for _, ev := range msgResp.Chunk {
-			if ev.Type != "m.room.message" {
-				continue
+			if ev.Type == "m.room.message" {
+				body, _ := ev.Content["body"].(string)
+				if body == "" {
+					continue
+				}
+				ts := time.Unix(0, ev.OriginServerTS*int64(time.Millisecond))
+
+				// Check for reply
+				replyTo := ""
+				if relatesTo, ok := ev.Content["m.relates_to"].(map[string]interface{}); ok {
+					if inReplyTo, ok := relatesTo["m.in_reply_to"].(map[string]interface{}); ok {
+						if eid, ok := inReplyTo["event_id"].(string); ok {
+							replyTo = eid
+						}
+					}
+				}
+
+				messages = append(messages, matrixChatMessage{
+					Sender:    extractDisplayName(ev.Sender),
+					Body:      body,
+					Timestamp: ts,
+					EventID:   ev.EventID,
+					ReplyTo:   replyTo,
+					Reactions: make(map[string]int),
+				})
+			} else if ev.Type == "m.reaction" {
+				// Collect reactions
+				if relatesTo, ok := ev.Content["m.relates_to"].(map[string]interface{}); ok {
+					targetID, _ := relatesTo["event_id"].(string)
+					emoji, _ := relatesTo["key"].(string)
+					if targetID != "" && emoji != "" {
+						// We'll apply these after sorting
+						for i := range messages {
+							if messages[i].EventID == targetID {
+								if messages[i].Reactions == nil {
+									messages[i].Reactions = make(map[string]int)
+								}
+								messages[i].Reactions[emoji]++
+								break
+							}
+						}
+					}
+				}
 			}
-			body, _ := ev.Content["body"].(string)
-			if body == "" {
-				continue
-			}
-			ts := time.Unix(0, ev.OriginServerTS*int64(time.Millisecond))
-			messages = append(messages, matrixChatMessage{
-				Sender:    extractDisplayName(ev.Sender),
-				Body:      body,
-				Timestamp: ts,
-				EventID:   ev.EventID,
-			})
 		}
 
 		// Reverse to chronological order (API returns newest first)
@@ -516,6 +816,87 @@ func matrixSendMessage(homeserver, token, roomID, body string, txnID int) tea.Cm
 		}
 
 		return matrixSendResultMsg{roomID: roomID, eventID: sendResp.EventID}
+	}
+}
+
+func matrixSendFormattedMessage(homeserver, token, roomID, body, htmlBody string, txnID int) tea.Cmd {
+	return func() tea.Msg {
+		url := fmt.Sprintf("%s/_matrix/client/v3/rooms/%s/send/m.room.message/%d",
+			strings.TrimRight(homeserver, "/"), roomID, txnID)
+
+		content := map[string]string{
+			"msgtype":        "m.text",
+			"body":           body,
+			"format":         "org.matrix.custom.html",
+			"formatted_body": htmlBody,
+		}
+
+		data, err := matrixDoRequest("PUT", url, content, token)
+		if err != nil {
+			return matrixSendResultMsg{roomID: roomID, err: err}
+		}
+
+		var sendResp matrixSendResponse
+		if err := json.Unmarshal(data, &sendResp); err != nil {
+			return matrixSendResultMsg{roomID: roomID, err: fmt.Errorf("parse send response: %w", err)}
+		}
+
+		if sendResp.ErrCode != "" {
+			return matrixSendResultMsg{roomID: roomID, err: fmt.Errorf("%s: %s", sendResp.ErrCode, sendResp.Error)}
+		}
+
+		return matrixSendResultMsg{roomID: roomID, eventID: sendResp.EventID}
+	}
+}
+
+func matrixSendReply(homeserver, token, roomID, body, replyToEventID string, txnID int) tea.Cmd {
+	return func() tea.Msg {
+		url := fmt.Sprintf("%s/_matrix/client/v3/rooms/%s/send/m.room.message/%d",
+			strings.TrimRight(homeserver, "/"), roomID, txnID)
+
+		content := map[string]interface{}{
+			"msgtype": "m.text",
+			"body":    body,
+			"m.relates_to": map[string]interface{}{
+				"m.in_reply_to": map[string]interface{}{
+					"event_id": replyToEventID,
+				},
+			},
+		}
+
+		data, err := matrixDoRequest("PUT", url, content, token)
+		if err != nil {
+			return matrixSendResultMsg{roomID: roomID, err: err}
+		}
+
+		var sendResp matrixSendResponse
+		if err := json.Unmarshal(data, &sendResp); err != nil {
+			return matrixSendResultMsg{roomID: roomID, err: fmt.Errorf("parse send response: %w", err)}
+		}
+
+		if sendResp.ErrCode != "" {
+			return matrixSendResultMsg{roomID: roomID, err: fmt.Errorf("%s: %s", sendResp.ErrCode, sendResp.Error)}
+		}
+
+		return matrixSendResultMsg{roomID: roomID, eventID: sendResp.EventID}
+	}
+}
+
+func matrixSendReaction(homeserver, token, roomID, eventID, emoji string, txnID int) tea.Cmd {
+	return func() tea.Msg {
+		url := fmt.Sprintf("%s/_matrix/client/v3/rooms/%s/send/m.reaction/%d",
+			strings.TrimRight(homeserver, "/"), roomID, txnID)
+
+		content := map[string]interface{}{
+			"m.relates_to": map[string]interface{}{
+				"rel_type": "m.annotation",
+				"event_id": eventID,
+				"key":      emoji,
+			},
+		}
+
+		_, err := matrixDoRequest("PUT", url, content, token)
+		return matrixReactionResultMsg{err: err}
 	}
 }
 
@@ -624,6 +1005,16 @@ func (mx Matrix) Update(msg tea.Msg) (Matrix, tea.Cmd) {
 			mx.statusMsg = "Error loading rooms: " + msg.err.Error()
 		} else {
 			mx.rooms = msg.rooms
+			// Apply pinned status
+			for i := range mx.rooms {
+				for _, pid := range mx.pinnedRooms {
+					if mx.rooms[i].ID == pid {
+						mx.rooms[i].Pinned = true
+						break
+					}
+				}
+			}
+			mx.sortRooms()
 			if len(mx.rooms) > 0 {
 				mx.statusMsg = fmt.Sprintf("%d rooms loaded", len(mx.rooms))
 				// Fetch messages for first room
@@ -654,8 +1045,24 @@ func (mx Matrix) Update(msg tea.Msg) (Matrix, tea.Cmd) {
 			mx.statusMsg = "Send error: " + msg.err.Error()
 		} else {
 			mx.statusMsg = "Message sent"
+			// Clear reply context after sending
+			mx.replyToEvent = ""
+			mx.replyPreview = ""
 			// Refresh messages for the room
 			return mx, matrixFetchMessages(mx.homeserver, mx.accessToken, msg.roomID, 50)
+		}
+		return mx, nil
+
+	case matrixReactionResultMsg:
+		if msg.err != nil {
+			mx.statusMsg = "Reaction error: " + msg.err.Error()
+		} else {
+			mx.statusMsg = "Reaction sent"
+			// Refresh to see the reaction
+			rooms := mx.filteredRooms()
+			if mx.roomCursor < len(rooms) {
+				return mx, matrixFetchMessages(mx.homeserver, mx.accessToken, rooms[mx.roomCursor].ID, 50)
+			}
 		}
 		return mx, nil
 
@@ -682,35 +1089,7 @@ func (mx Matrix) Update(msg tea.Msg) (Matrix, tea.Cmd) {
 		}
 		return mx, nil
 
-	// AI result messages
-	case matrixAISummaryMsg, matrixAIActionsMsg, matrixAIReplyMsg,
-		matrixAITranslateMsg, matrixAINoteMsg, matrixAIContextMsg, matrixAITickMsg:
-		var aiCmd tea.Cmd
-		mx.ai, aiCmd = mx.ai.Update(msg)
-		return mx, aiCmd
-
 	case tea.KeyMsg:
-		// If AI panel is active, route keys there first
-		if mx.ai.IsActive() {
-			var aiCmd tea.Cmd
-			prevActive := mx.ai.IsActive()
-			mx.ai, aiCmd = mx.ai.Update(msg)
-			// Check if a reply was selected
-			if prevActive && !mx.ai.IsActive() && mx.ai.resultType == matrixAIResultReply {
-				reply := mx.ai.GetSelectedReply()
-				if reply != "" {
-					mx.messageInput = reply
-					mx.focus = matrixFocusInput
-				}
-			}
-			// Check if note generation completed (Enter pressed)
-			if prevActive && !mx.ai.IsActive() && mx.ai.resultType == matrixAIResultNote {
-				// Capture content is available via GetCaptureContent()
-				// The caller (app.go) will handle note creation
-				mx.statusMsg = "Note ready — save from vault"
-			}
-			return mx, aiCmd
-		}
 		return mx.handleKeyMsg(msg)
 	}
 
@@ -730,36 +1109,78 @@ func (mx *Matrix) processSyncResponse(resp *matrixSyncResponse) {
 
 		// Append new messages
 		for _, ev := range joinedRoom.Timeline.Events {
-			if ev.Type != "m.room.message" {
-				continue
-			}
-			body, _ := ev.Content["body"].(string)
-			if body == "" {
-				continue
-			}
-			ts := time.Unix(0, ev.OriginServerTS*int64(time.Millisecond))
-			msg := matrixChatMessage{
-				Sender:    extractDisplayName(ev.Sender),
-				Body:      body,
-				Timestamp: ts,
-				EventID:   ev.EventID,
-				IsOwn:     ev.Sender == mx.userID,
-			}
-
-			// Check for duplicates
-			existing := mx.messages[roomID]
-			isDuplicate := false
-			for _, m := range existing {
-				if m.EventID == ev.EventID {
-					isDuplicate = true
-					break
+			if ev.Type == "m.room.message" {
+				body, _ := ev.Content["body"].(string)
+				if body == "" {
+					continue
 				}
-			}
-			if !isDuplicate {
-				mx.messages[roomID] = append(mx.messages[roomID], msg)
+				ts := time.Unix(0, ev.OriginServerTS*int64(time.Millisecond))
+
+				replyTo := ""
+				if relatesTo, ok := ev.Content["m.relates_to"].(map[string]interface{}); ok {
+					if inReplyTo, ok := relatesTo["m.in_reply_to"].(map[string]interface{}); ok {
+						if eid, ok := inReplyTo["event_id"].(string); ok {
+							replyTo = eid
+						}
+					}
+				}
+
+				msg := matrixChatMessage{
+					Sender:    extractDisplayName(ev.Sender),
+					Body:      body,
+					Timestamp: ts,
+					EventID:   ev.EventID,
+					IsOwn:     ev.Sender == mx.userID,
+					ReplyTo:   replyTo,
+					Reactions: make(map[string]int),
+				}
+
+				// Check for duplicates
+				existing := mx.messages[roomID]
+				isDuplicate := false
+				for _, m := range existing {
+					if m.EventID == ev.EventID {
+						isDuplicate = true
+						break
+					}
+				}
+				if !isDuplicate {
+					mx.messages[roomID] = append(mx.messages[roomID], msg)
+				}
+			} else if ev.Type == "m.reaction" {
+				if relatesTo, ok := ev.Content["m.relates_to"].(map[string]interface{}); ok {
+					targetID, _ := relatesTo["event_id"].(string)
+					emoji, _ := relatesTo["key"].(string)
+					if targetID != "" && emoji != "" {
+						msgs := mx.messages[roomID]
+						for i := range msgs {
+							if msgs[i].EventID == targetID {
+								if msgs[i].Reactions == nil {
+									msgs[i].Reactions = make(map[string]int)
+								}
+								msgs[i].Reactions[emoji]++
+								break
+							}
+						}
+					}
+				}
 			}
 		}
 	}
+}
+
+// sortRooms puts pinned rooms at the top
+func (mx *Matrix) sortRooms() {
+	pinned := make([]matrixRoom, 0)
+	unpinned := make([]matrixRoom, 0)
+	for _, r := range mx.rooms {
+		if r.Pinned {
+			pinned = append(pinned, r)
+		} else {
+			unpinned = append(unpinned, r)
+		}
+	}
+	mx.rooms = append(pinned, unpinned...)
 }
 
 func (mx Matrix) handleKeyMsg(msg tea.KeyMsg) (Matrix, tea.Cmd) {
@@ -768,6 +1189,16 @@ func (mx Matrix) handleKeyMsg(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 	// Global keys
 	switch key {
 	case "esc":
+		if mx.showReactionPicker {
+			mx.showReactionPicker = false
+			return mx, nil
+		}
+		if mx.msgSearchMode {
+			mx.msgSearchMode = false
+			mx.msgSearchQuery = ""
+			mx.msgSearchMatches = nil
+			return mx, nil
+		}
 		if mx.showPrivacy {
 			mx.showPrivacy = false
 			mx.focus = matrixFocusRooms
@@ -780,6 +1211,15 @@ func (mx Matrix) handleKeyMsg(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 		if mx.searching {
 			mx.searching = false
 			mx.roomSearch = ""
+			return mx, nil
+		}
+		if mx.messageSelect {
+			mx.messageSelect = false
+			return mx, nil
+		}
+		if mx.replyToEvent != "" {
+			mx.replyToEvent = ""
+			mx.replyPreview = ""
 			return mx, nil
 		}
 		mx.Close()
@@ -796,6 +1236,9 @@ func (mx Matrix) handleKeyMsg(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 		if mx.showPrivacy {
 			return mx, nil
 		}
+		if mx.showReactionPicker {
+			return mx, nil
+		}
 		// Cycle: rooms -> messages -> input -> rooms
 		switch mx.focus {
 		case matrixFocusRooms:
@@ -806,28 +1249,6 @@ func (mx Matrix) handleKeyMsg(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 			mx.focus = matrixFocusRooms
 		}
 		return mx, nil
-	}
-
-	// AI keybindings (only when connected and not in login/privacy/search/newDM)
-	if mx.connState == matrixConnected || mx.connState == matrixSyncing {
-		if !mx.showPrivacy && mx.focus != matrixFocusLogin && mx.focus != matrixFocusNewDM && !mx.searching {
-			switch key {
-			case "ctrl+s", "ctrl+a", "ctrl+r", "ctrl+t", "ctrl+n", "ctrl+i":
-				// Get messages for current room
-				var msgs []matrixChatMessage
-				rooms := mx.filteredRooms()
-				if mx.roomCursor < len(rooms) {
-					msgs = mx.messages[rooms[mx.roomCursor].ID]
-				}
-				mx.ai.SetSize(mx.width, mx.height)
-				if cmd := mx.ai.HandleKey(key, msgs, mx.currentNoteContent); cmd != nil {
-					return mx, cmd
-				}
-				if mx.ai.IsActive() {
-					return mx, nil
-				}
-			}
-		}
 	}
 
 	// Login form handling
@@ -845,9 +1266,19 @@ func (mx Matrix) handleKeyMsg(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 		return mx.handleNewDMKeys(msg)
 	}
 
+	// Reaction picker
+	if mx.showReactionPicker {
+		return mx.handleReactionPickerKeys(msg)
+	}
+
 	// Room search
 	if mx.searching {
 		return mx.handleSearchKeys(msg)
+	}
+
+	// Message search
+	if mx.msgSearchMode {
+		return mx.handleMsgSearchKeys(msg)
 	}
 
 	// Focus-specific keys
@@ -964,6 +1395,154 @@ func (mx Matrix) handleSearchKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 	return mx, nil
 }
 
+func (mx Matrix) handleReactionPickerKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
+	key := msg.String()
+	switch key {
+	case "h", "left":
+		if mx.reactionCursor > 0 {
+			mx.reactionCursor--
+		}
+	case "l", "right":
+		if mx.reactionCursor < len(matrixReactionEmojis)-1 {
+			mx.reactionCursor++
+		}
+	case "enter":
+		// Send the reaction
+		rooms := mx.filteredRooms()
+		if mx.roomCursor < len(rooms) {
+			msgs := mx.messages[rooms[mx.roomCursor].ID]
+			if mx.messageCursor >= 0 && mx.messageCursor < len(msgs) {
+				mx.txnCounter++
+				emoji := matrixReactionEmojis[mx.reactionCursor]
+				mx.showReactionPicker = false
+				return mx, matrixSendReaction(
+					mx.homeserver, mx.accessToken,
+					rooms[mx.roomCursor].ID,
+					msgs[mx.messageCursor].EventID,
+					emoji, mx.txnCounter,
+				)
+			}
+		}
+		mx.showReactionPicker = false
+	case "1":
+		mx.reactionCursor = 0
+		return mx.sendSelectedReaction()
+	case "2":
+		mx.reactionCursor = 1
+		return mx.sendSelectedReaction()
+	case "3":
+		mx.reactionCursor = 2
+		return mx.sendSelectedReaction()
+	case "4":
+		mx.reactionCursor = 3
+		return mx.sendSelectedReaction()
+	case "5":
+		mx.reactionCursor = 4
+		return mx.sendSelectedReaction()
+	case "6":
+		mx.reactionCursor = 5
+		return mx.sendSelectedReaction()
+	}
+	return mx, nil
+}
+
+func (mx Matrix) sendSelectedReaction() (Matrix, tea.Cmd) {
+	rooms := mx.filteredRooms()
+	if mx.roomCursor < len(rooms) {
+		msgs := mx.messages[rooms[mx.roomCursor].ID]
+		if mx.messageCursor >= 0 && mx.messageCursor < len(msgs) {
+			mx.txnCounter++
+			emoji := matrixReactionEmojis[mx.reactionCursor]
+			mx.showReactionPicker = false
+			return mx, matrixSendReaction(
+				mx.homeserver, mx.accessToken,
+				rooms[mx.roomCursor].ID,
+				msgs[mx.messageCursor].EventID,
+				emoji, mx.txnCounter,
+			)
+		}
+	}
+	mx.showReactionPicker = false
+	return mx, nil
+}
+
+// handleMsgSearchKeys handles message search mode input
+func (mx Matrix) handleMsgSearchKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
+	key := msg.String()
+	switch key {
+	case "enter":
+		// Finalize search, compute matches
+		mx.updateMsgSearchMatches()
+		if len(mx.msgSearchMatches) > 0 {
+			mx.msgSearchIdx = 0
+			mx.scrollToMessage(mx.msgSearchMatches[0])
+		}
+	case "backspace":
+		if len(mx.msgSearchQuery) > 0 {
+			mx.msgSearchQuery = mx.msgSearchQuery[:len(mx.msgSearchQuery)-1]
+			mx.updateMsgSearchMatches()
+		}
+	case "n":
+		// Next match (only if search is finalized, i.e. after enter)
+		if len(mx.msgSearchMatches) > 0 {
+			mx.msgSearchIdx = (mx.msgSearchIdx + 1) % len(mx.msgSearchMatches)
+			mx.scrollToMessage(mx.msgSearchMatches[mx.msgSearchIdx])
+		}
+		return mx, nil
+	case "N":
+		// Previous match
+		if len(mx.msgSearchMatches) > 0 {
+			mx.msgSearchIdx--
+			if mx.msgSearchIdx < 0 {
+				mx.msgSearchIdx = len(mx.msgSearchMatches) - 1
+			}
+			mx.scrollToMessage(mx.msgSearchMatches[mx.msgSearchIdx])
+		}
+		return mx, nil
+	default:
+		char := key
+		if len(char) == 1 {
+			mx.msgSearchQuery += char
+			mx.updateMsgSearchMatches()
+		}
+	}
+	return mx, nil
+}
+
+func (mx *Matrix) updateMsgSearchMatches() {
+	mx.msgSearchMatches = nil
+	if mx.msgSearchQuery == "" {
+		return
+	}
+	rooms := mx.filteredRooms()
+	if mx.roomCursor >= len(rooms) {
+		return
+	}
+	msgs := mx.messages[rooms[mx.roomCursor].ID]
+	query := strings.ToLower(mx.msgSearchQuery)
+	for i, msg := range msgs {
+		if strings.Contains(strings.ToLower(msg.Body), query) ||
+			strings.Contains(strings.ToLower(msg.Sender), query) {
+			mx.msgSearchMatches = append(mx.msgSearchMatches, i)
+		}
+	}
+}
+
+func (mx *Matrix) scrollToMessage(msgIdx int) {
+	rooms := mx.filteredRooms()
+	if mx.roomCursor >= len(rooms) {
+		return
+	}
+	msgs := mx.messages[rooms[mx.roomCursor].ID]
+	if msgIdx >= 0 && msgIdx < len(msgs) {
+		// Scroll so the message is visible (approximate: set scroll based on distance from end)
+		mx.messageScroll = len(msgs) - msgIdx - 5
+		if mx.messageScroll < 0 {
+			mx.messageScroll = 0
+		}
+	}
+}
+
 func (mx Matrix) handleRoomKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 	key := msg.String()
 	filtered := mx.filteredRooms()
@@ -1007,15 +1586,19 @@ func (mx Matrix) handleRoomKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 		mx.searching = true
 		mx.roomSearch = ""
 	case "s":
-		// Share current note to selected room
+		// Share current note to selected room with HTML formatting
 		if mx.shareContent != "" && mx.roomCursor < len(filtered) {
 			roomID := filtered[mx.roomCursor].ID
 			mx.txnCounter++
-			shareText := "Shared note from Granit:\n\n" + mx.shareContent
-			if len(shareText) > 4000 {
-				shareText = shareText[:4000] + "\n\n[truncated]"
+			plainBody := "Shared note from Granit:\n\n" + mx.shareContent
+			if len(plainBody) > 4000 {
+				plainBody = plainBody[:4000] + "\n\n[truncated]"
 			}
-			return mx, matrixSendMessage(mx.homeserver, mx.accessToken, roomID, shareText, mx.txnCounter)
+			htmlBody := "<h3>Shared note from Granit</h3>\n" + matrixMarkdownToHTML(mx.shareContent)
+			if len(htmlBody) > 8000 {
+				htmlBody = htmlBody[:8000] + "\n<p><em>[truncated]</em></p>"
+			}
+			return mx, matrixSendFormattedMessage(mx.homeserver, mx.accessToken, roomID, plainBody, htmlBody, mx.txnCounter)
 		} else if mx.shareContent == "" {
 			mx.statusMsg = "No note content to share"
 		}
@@ -1029,6 +1612,14 @@ func (mx Matrix) handleRoomKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 	case "p":
 		mx.showPrivacy = true
 		mx.focus = matrixFocusPrivacy
+	case "P":
+		// Toggle pin on selected room
+		if mx.roomCursor < len(filtered) {
+			roomID := filtered[mx.roomCursor].ID
+			mx.togglePinRoom(roomID)
+			mx.sortRooms()
+			mx.statusMsg = "Room pin toggled"
+		}
 	case "n":
 		mx.focus = matrixFocusNewDM
 		mx.newDMInput = ""
@@ -1039,8 +1630,40 @@ func (mx Matrix) handleRoomKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 	return mx, nil
 }
 
+func (mx *Matrix) togglePinRoom(roomID string) {
+	// Check if already pinned
+	for i, pid := range mx.pinnedRooms {
+		if pid == roomID {
+			// Unpin
+			mx.pinnedRooms = append(mx.pinnedRooms[:i], mx.pinnedRooms[i+1:]...)
+			for j := range mx.rooms {
+				if mx.rooms[j].ID == roomID {
+					mx.rooms[j].Pinned = false
+					break
+				}
+			}
+			return
+		}
+	}
+	// Pin
+	mx.pinnedRooms = append(mx.pinnedRooms, roomID)
+	for j := range mx.rooms {
+		if mx.rooms[j].ID == roomID {
+			mx.rooms[j].Pinned = true
+			break
+		}
+	}
+}
+
 func (mx Matrix) handleMessageKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 	key := msg.String()
+
+	rooms := mx.filteredRooms()
+	var msgs []matrixChatMessage
+	if mx.roomCursor < len(rooms) {
+		msgs = mx.messages[rooms[mx.roomCursor].ID]
+	}
+
 	switch key {
 	case "ctrl+d":
 		mx.messageScroll += 10
@@ -1050,15 +1673,122 @@ func (mx Matrix) handleMessageKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 			mx.messageScroll = 0
 		}
 	case "j", "down":
-		mx.messageScroll++
+		if mx.messageSelect && len(msgs) > 0 {
+			if mx.messageCursor < len(msgs)-1 {
+				mx.messageCursor++
+			}
+		} else {
+			mx.messageScroll++
+		}
 	case "k", "up":
-		if mx.messageScroll > 0 {
+		if mx.messageSelect && mx.messageCursor > 0 {
+			mx.messageCursor--
+		} else if mx.messageScroll > 0 {
 			mx.messageScroll--
 		}
 	case "G":
 		mx.messageScroll = 0 // scroll to bottom (0 = bottom since we render from bottom)
 	case "i", "enter":
 		mx.focus = matrixFocusInput
+		mx.messageSelect = false
+	case "/":
+		// Enter message search mode
+		mx.msgSearchMode = true
+		mx.msgSearchQuery = ""
+		mx.msgSearchMatches = nil
+	case "v":
+		// Toggle message selection mode
+		mx.messageSelect = !mx.messageSelect
+		if mx.messageSelect && len(msgs) > 0 {
+			mx.messageCursor = len(msgs) - 1
+		}
+	case "c":
+		// Capture selected message as a note
+		if mx.messageSelect && len(msgs) > 0 && mx.messageCursor < len(msgs) && mx.captureNote != nil {
+			msg := msgs[mx.messageCursor]
+			now := time.Now()
+			filename := fmt.Sprintf("Matrix - %s - %s.md", msg.Sender, now.Format("2006-01-02"))
+			roomName := ""
+			if mx.roomCursor < len(rooms) {
+				roomName = rooms[mx.roomCursor].Name
+			}
+			content := fmt.Sprintf("---\ntags: [matrix, captured]\nsource_room: %s\ntimestamp: %s\n---\n\n%s\n",
+				roomName,
+				msg.Timestamp.Format(time.RFC3339),
+				msg.Body,
+			)
+			mx.captureNote(filename, content)
+			mx.statusMsg = "Captured message to note: " + filename
+		} else if !mx.messageSelect {
+			mx.statusMsg = "Press v to select messages first, then c to capture"
+		}
+	case "C":
+		// Capture entire conversation as a note
+		if mx.captureNote != nil && mx.roomCursor < len(rooms) && len(msgs) > 0 {
+			room := rooms[mx.roomCursor]
+			now := time.Now()
+			filename := fmt.Sprintf("Matrix Thread - %s - %s.md",
+				room.Name, now.Format("2006-01-02"))
+
+			// Gather participants
+			participants := make(map[string]bool)
+			var earliest, latest time.Time
+			for i, m := range msgs {
+				participants[m.Sender] = true
+				if i == 0 || m.Timestamp.Before(earliest) {
+					earliest = m.Timestamp
+				}
+				if i == 0 || m.Timestamp.After(latest) {
+					latest = m.Timestamp
+				}
+			}
+			partList := make([]string, 0, len(participants))
+			for p := range participants {
+				partList = append(partList, p)
+			}
+
+			var contentBuf strings.Builder
+			contentBuf.WriteString("---\n")
+			contentBuf.WriteString("tags: [matrix, captured, thread]\n")
+			contentBuf.WriteString(fmt.Sprintf("room: %s\n", room.Name))
+			contentBuf.WriteString(fmt.Sprintf("participants: [%s]\n", strings.Join(partList, ", ")))
+			contentBuf.WriteString(fmt.Sprintf("date_start: %s\n", earliest.Format("2006-01-02")))
+			contentBuf.WriteString(fmt.Sprintf("date_end: %s\n", latest.Format("2006-01-02")))
+			contentBuf.WriteString("---\n\n")
+
+			for _, m := range msgs {
+				contentBuf.WriteString(fmt.Sprintf("**%s** (%s): %s\n\n",
+					m.Sender, m.Timestamp.Format("15:04"), m.Body))
+			}
+
+			mx.captureNote(filename, contentBuf.String())
+			mx.statusMsg = "Captured thread to note: " + filename
+		}
+	case "r":
+		// Open reaction picker
+		if mx.messageSelect && len(msgs) > 0 && mx.messageCursor < len(msgs) {
+			mx.showReactionPicker = true
+			mx.reactionCursor = 0
+		} else if !mx.messageSelect {
+			mx.statusMsg = "Press v to select a message first, then r to react"
+		}
+	case "R":
+		if !mx.messageSelect {
+			// Refresh rooms (same as room panel R)
+			return mx, matrixFetchRooms(mx.homeserver, mx.accessToken)
+		}
+		// Reply to selected message
+		if mx.messageSelect && len(msgs) > 0 && mx.messageCursor < len(msgs) {
+			targetMsg := msgs[mx.messageCursor]
+			mx.replyToEvent = targetMsg.EventID
+			preview := targetMsg.Body
+			if len(preview) > 50 {
+				preview = preview[:50] + "..."
+			}
+			mx.replyPreview = targetMsg.Sender + ": " + preview
+			mx.focus = matrixFocusInput
+			mx.messageSelect = false
+		}
 	}
 	return mx, nil
 }
@@ -1068,6 +1798,13 @@ func (mx Matrix) handleInputKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 	switch key {
 	case "enter":
 		if mx.messageInput != "" {
+			// Check for slash commands
+			if strings.HasPrefix(mx.messageInput, "/") {
+				result := mx.handleSlashCommand(mx.messageInput)
+				mx.messageInput = ""
+				return mx, result
+			}
+
 			filtered := mx.filteredRooms()
 			if mx.roomCursor < len(filtered) {
 				roomID := filtered[mx.roomCursor].ID
@@ -1075,7 +1812,12 @@ func (mx Matrix) handleInputKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 				input := mx.messageInput
 				mx.messageInput = ""
 				var cmds []tea.Cmd
-				cmds = append(cmds, matrixSendMessage(mx.homeserver, mx.accessToken, roomID, input, mx.txnCounter))
+
+				if mx.replyToEvent != "" {
+					cmds = append(cmds, matrixSendReply(mx.homeserver, mx.accessToken, roomID, input, mx.replyToEvent, mx.txnCounter))
+				} else {
+					cmds = append(cmds, matrixSendMessage(mx.homeserver, mx.accessToken, roomID, input, mx.txnCounter))
+				}
 				// Stop typing indicator
 				if mx.sendTypingIndicators && mx.userID != "" {
 					cmds = append(cmds, matrixSendTyping(mx.homeserver, mx.accessToken, roomID, mx.userID, false))
@@ -1102,6 +1844,173 @@ func (mx Matrix) handleInputKeys(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 		}
 	}
 	return mx, nil
+}
+
+// ---------------------------------------------------------------------------
+// Slash Commands
+// ---------------------------------------------------------------------------
+
+func (mx *Matrix) handleSlashCommand(input string) tea.Cmd {
+	parts := strings.SplitN(strings.TrimSpace(input), " ", 2)
+	cmd := parts[0]
+	arg := ""
+	if len(parts) > 1 {
+		arg = parts[1]
+	}
+
+	switch cmd {
+	case "/note":
+		// Create a quick note from current room context
+		if arg == "" {
+			mx.statusMsg = "Usage: /note <title>"
+			return nil
+		}
+		if mx.captureNote != nil {
+			rooms := mx.filteredRooms()
+			roomName := ""
+			if mx.roomCursor < len(rooms) {
+				roomName = rooms[mx.roomCursor].Name
+			}
+			filename := arg
+			if !strings.HasSuffix(filename, ".md") {
+				filename += ".md"
+			}
+			content := fmt.Sprintf("---\ntags: [matrix, note]\nsource_room: %s\ncreated: %s\n---\n\n",
+				roomName, time.Now().Format(time.RFC3339))
+			mx.captureNote(filename, content)
+			mx.statusMsg = "Created note: " + filename
+		} else {
+			mx.statusMsg = "Note capture not available"
+		}
+		return nil
+
+	case "/search":
+		// Search vault notes
+		if arg == "" {
+			mx.statusMsg = "Usage: /search <query>"
+			return nil
+		}
+		query := strings.ToLower(arg)
+		var matches []string
+		for _, f := range mx.vaultFiles {
+			if strings.Contains(strings.ToLower(f), query) {
+				matches = append(matches, f)
+				if len(matches) >= 10 {
+					break
+				}
+			}
+		}
+		if len(matches) == 0 {
+			mx.slashResults = []string{"No notes found matching: " + arg}
+		} else {
+			mx.slashResults = make([]string, 0, len(matches)+1)
+			mx.slashResults = append(mx.slashResults, fmt.Sprintf("Found %d notes:", len(matches)))
+			mx.slashResults = append(mx.slashResults, matches...)
+		}
+		mx.statusMsg = fmt.Sprintf("Search: %d results for '%s'", len(matches), arg)
+		return nil
+
+	case "/share":
+		// Share a specific note by name
+		if arg == "" {
+			mx.statusMsg = "Usage: /share <note-name>"
+			return nil
+		}
+		query := strings.ToLower(arg)
+		var bestMatch string
+		for _, f := range mx.vaultFiles {
+			if strings.Contains(strings.ToLower(f), query) {
+				bestMatch = f
+				break
+			}
+		}
+		if bestMatch == "" {
+			mx.statusMsg = "No note found matching: " + arg
+			return nil
+		}
+		// We need the content - use the shareContent for now with a message
+		rooms := mx.filteredRooms()
+		if mx.roomCursor < len(rooms) {
+			mx.txnCounter++
+			shareMsg := fmt.Sprintf("Shared note: %s", bestMatch)
+			return matrixSendMessage(mx.homeserver, mx.accessToken, rooms[mx.roomCursor].ID, shareMsg, mx.txnCounter)
+		}
+		return nil
+
+	case "/pin":
+		// Pin current room to sidebar
+		rooms := mx.filteredRooms()
+		if mx.roomCursor < len(rooms) {
+			mx.togglePinRoom(rooms[mx.roomCursor].ID)
+			mx.sortRooms()
+			mx.statusMsg = "Room pin toggled"
+		}
+		return nil
+
+	case "/task":
+		// Create a task
+		if arg == "" {
+			mx.statusMsg = "Usage: /task <description>"
+			return nil
+		}
+		if mx.captureNote != nil {
+			taskLine := fmt.Sprintf("- [ ] %s\n", arg)
+			mx.captureNote("Tasks.md", taskLine)
+			mx.statusMsg = "Task added: " + arg
+		} else {
+			mx.statusMsg = "Note capture not available"
+		}
+		return nil
+
+	case "/status":
+		// Show connection status
+		rooms := mx.filteredRooms()
+		totalUnread := mx.UnreadCount()
+		connStr := "Disconnected"
+		switch mx.connState {
+		case matrixConnected:
+			connStr = "Connected"
+		case matrixConnecting:
+			connStr = "Connecting"
+		case matrixSyncing:
+			connStr = "Syncing"
+		}
+		mx.slashResults = []string{
+			fmt.Sprintf("Connection: %s", connStr),
+			fmt.Sprintf("Server: %s", mx.homeserver),
+			fmt.Sprintf("User: %s", extractDisplayName(mx.userID)),
+			fmt.Sprintf("Rooms: %d", len(rooms)),
+			fmt.Sprintf("Unread: %d", totalUnread),
+			fmt.Sprintf("Sync token: %s", truncateStr(mx.syncToken, 20)),
+		}
+		mx.statusMsg = "Status info displayed"
+		return nil
+
+	case "/help":
+		mx.slashResults = []string{
+			"Available commands:",
+			"  /note <title>    - Create a quick note",
+			"  /search <query>  - Search vault notes",
+			"  /share <name>    - Share a note to the room",
+			"  /pin             - Toggle pin on current room",
+			"  /task <desc>     - Create a task in Tasks.md",
+			"  /status          - Show connection info",
+			"  /help            - Show this help",
+		}
+		mx.statusMsg = "Showing help"
+		return nil
+
+	default:
+		mx.statusMsg = "Unknown command: " + cmd + " (try /help)"
+		return nil
+	}
+}
+
+func truncateStr(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }
 
 func (mx *Matrix) filteredRooms() []matrixRoom {
@@ -1156,7 +2065,7 @@ func (mx Matrix) View() string {
 	title := titleStyle.Render("  " + IconLinkChar + " Matrix Chat")
 	b.WriteString(title + "  " + connStatus)
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerW)))
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", innerW)))
 	b.WriteString("\n")
 
 	if mx.focus == matrixFocusLogin && mx.accessToken == "" {
@@ -1171,15 +2080,23 @@ func (mx Matrix) View() string {
 
 	// Status bar
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerW)))
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", innerW)))
 	b.WriteString("\n")
 
-	if mx.ai.IsProcessing() {
-		b.WriteString(lipgloss.NewStyle().Foreground(sapphire).Render("  " + IconBotChar + " AI analyzing..."))
-	} else if mx.statusMsg != "" {
+	// Slash command results
+	if len(mx.slashResults) > 0 {
+		sysStyle := lipgloss.NewStyle().Foreground(yellow).Italic(true)
+		for _, line := range mx.slashResults {
+			b.WriteString(sysStyle.Render("  " + line))
+			b.WriteString("\n")
+		}
+		mx.slashResults = nil
+	}
+
+	if mx.statusMsg != "" {
 		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  " + mx.statusMsg))
 	} else if mx.accessToken != "" {
-		hints := "  Tab ^S:sum ^A:actions ^R:reply ^T:translate ^N:note ^I:context  Esc: close"
+		hints := "  Tab: switch  /: search  s: share  P: pin  p: privacy  n: DM  R: refresh  Esc: close"
 		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(hints))
 	}
 
@@ -1190,64 +2107,19 @@ func (mx Matrix) View() string {
 		Width(width).
 		Background(mantle)
 
-	chatView := border.Render(b.String())
-
-	// Overlay AI result panel on top if active
-	if mx.ai.IsActive() {
-		aiPanel := mx.ai.View(width, height)
-		// Center the AI panel over the chat view
-		chatLines := strings.Split(chatView, "\n")
-		aiLines := strings.Split(aiPanel, "\n")
-
-		chatH := len(chatLines)
-		aiH := len(aiLines)
-		aiW := lipgloss.Width(aiPanel)
-		chatW := lipgloss.Width(chatView)
-
-		startRow := (chatH - aiH) / 2
-		if startRow < 0 {
-			startRow = 0
-		}
-		startCol := (chatW - aiW) / 2
-		if startCol < 0 {
-			startCol = 0
-		}
-
-		// Overlay the AI panel onto the chat view
-		for i, aiLine := range aiLines {
-			row := startRow + i
-			if row >= 0 && row < len(chatLines) {
-				chatLine := chatLines[row]
-				chatLineW := lipgloss.Width(chatLine)
-				if startCol+aiW <= chatLineW {
-					// Splice the AI line into the chat line
-					// For simplicity, just replace the full line with the AI content padded
-					prefix := ""
-					if startCol > 0 {
-						prefix = strings.Repeat(" ", startCol)
-					}
-					chatLines[row] = prefix + aiLine
-				} else {
-					chatLines[row] = strings.Repeat(" ", startCol) + aiLine
-				}
-			}
-		}
-		chatView = strings.Join(chatLines, "\n")
-	}
-
-	return chatView
+	return border.Render(b.String())
 }
 
 func (mx Matrix) connectionBadge() string {
 	switch mx.connState {
 	case matrixConnected:
-		return lipgloss.NewStyle().Foreground(green).Render("● Connected")
+		return lipgloss.NewStyle().Foreground(green).Render("\u25CF Connected")
 	case matrixConnecting:
-		return lipgloss.NewStyle().Foreground(yellow).Render("◌ Connecting...")
+		return lipgloss.NewStyle().Foreground(yellow).Render("\u25CC Connecting...")
 	case matrixSyncing:
-		return lipgloss.NewStyle().Foreground(blue).Render("↻ Syncing")
+		return lipgloss.NewStyle().Foreground(blue).Render("\u21BB Syncing")
 	default:
-		return lipgloss.NewStyle().Foreground(red).Render("○ Disconnected")
+		return lipgloss.NewStyle().Foreground(red).Render("\u25CB Disconnected")
 	}
 }
 
@@ -1293,7 +2165,7 @@ func (mx Matrix) renderLoginForm(width, maxHeight int) string {
 
 		cursor := ""
 		if i == mx.loginFocus {
-			cursor = cursorStyle.Render("│")
+			cursor = cursorStyle.Render("\u2502")
 		}
 
 		b.WriteString("  " + ls.Render(f.label+":") + " " + inputStyle.Render(displayValue) + cursor)
@@ -1336,9 +2208,9 @@ func (mx Matrix) renderPrivacyPanel(width, maxHeight int) string {
 	}
 
 	for _, item := range items {
-		toggle := lipgloss.NewStyle().Foreground(red).Render("○ OFF")
+		toggle := lipgloss.NewStyle().Foreground(red).Render("\u25CB OFF")
 		if item.value {
-			toggle = lipgloss.NewStyle().Foreground(green).Render("● ON")
+			toggle = lipgloss.NewStyle().Foreground(green).Render("\u25CF ON")
 		}
 
 		keyStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
@@ -1381,7 +2253,7 @@ func (mx Matrix) renderNewDMForm(width int) string {
 	inputStyle := lipgloss.NewStyle().Foreground(blue)
 	cursorStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 
-	b.WriteString("  " + labelStyle.Render("Username: ") + inputStyle.Render(mx.newDMInput) + cursorStyle.Render("│"))
+	b.WriteString("  " + labelStyle.Render("Username: ") + inputStyle.Render(mx.newDMInput) + cursorStyle.Render("\u2502"))
 	b.WriteString("\n\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  Enter @user:server  |  Enter: start DM  |  Esc: cancel"))
 
@@ -1400,7 +2272,7 @@ func (mx Matrix) renderMainView(width, maxHeight int) string {
 	msgPanel := mx.renderMessagePanel(msgWidth, maxHeight)
 
 	// Join panels side by side
-	separator := lipgloss.NewStyle().Foreground(surface1).Render("│")
+	separator := lipgloss.NewStyle().Foreground(surface1).Render("\u2502")
 	roomLines := strings.Split(roomPanel, "\n")
 	msgLines := strings.Split(msgPanel, "\n")
 
@@ -1455,14 +2327,14 @@ func (mx Matrix) renderRoomList(width, height int) string {
 		b.WriteString(dimFocus.Render(" " + header))
 	}
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", width)))
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", width)))
 	b.WriteString("\n")
 
 	// Search bar
 	if mx.searching {
 		prompt := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("/")
 		b.WriteString(" " + prompt + lipgloss.NewStyle().Foreground(blue).Render(mx.roomSearch) +
-			lipgloss.NewStyle().Foreground(mauve).Render("│"))
+			lipgloss.NewStyle().Foreground(mauve).Render("\u2502"))
 		b.WriteString("\n")
 	}
 
@@ -1495,13 +2367,23 @@ func (mx Matrix) renderRoomList(width, height int) string {
 	for i := start; i < end; i++ {
 		room := rooms[i]
 		name := room.Name
-		if len(name) > width-4 {
-			name = name[:width-7] + "..."
+		if len(name) > width-6 {
+			name = name[:width-9] + "..."
 		}
 
 		prefix := "  "
 		if i == mx.roomCursor {
 			prefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("> ")
+		}
+
+		// Pin indicator
+		pinIcon := ""
+		if room.Pinned {
+			if IconFileChar == "~" { // ascii mode
+				pinIcon = lipgloss.NewStyle().Foreground(yellow).Render("* ")
+			} else {
+				pinIcon = lipgloss.NewStyle().Foreground(yellow).Render("\U0001F4CC ")
+			}
 		}
 
 		nameStyle := lipgloss.NewStyle().Foreground(text)
@@ -1523,7 +2405,7 @@ func (mx Matrix) renderRoomList(width, height int) string {
 			encIcon = lipgloss.NewStyle().Foreground(green).Render(" E")
 		}
 
-		b.WriteString(prefix + nameStyle.Render(name) + unreadBadge + encIcon)
+		b.WriteString(prefix + pinIcon + nameStyle.Render(name) + unreadBadge + encIcon)
 		b.WriteString("\n")
 	}
 
@@ -1532,10 +2414,10 @@ func (mx Matrix) renderRoomList(width, height int) string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", width)))
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", width)))
 	b.WriteString("\n")
 	actionStyle := lipgloss.NewStyle().Foreground(overlay0)
-	b.WriteString(actionStyle.Render(" [s]hare [p]rivacy"))
+	b.WriteString(actionStyle.Render(" [s]hare [P]in [p]rivacy"))
 
 	return b.String()
 }
@@ -1565,13 +2447,51 @@ func (mx Matrix) renderMessagePanel(width, height int) string {
 		b.WriteString(dimFocus.Render(" " + roomName))
 	}
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", width)))
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", width)))
 	b.WriteString("\n")
+
+	// Message search bar
+	if mx.msgSearchMode {
+		searchPrompt := lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("Search: ")
+		searchText := lipgloss.NewStyle().Foreground(blue).Render(mx.msgSearchQuery)
+		searchCursor := lipgloss.NewStyle().Foreground(mauve).Render("\u2502")
+		matchCount := ""
+		if len(mx.msgSearchMatches) > 0 {
+			matchCount = lipgloss.NewStyle().Foreground(overlay0).Render(
+				fmt.Sprintf(" (%d/%d)", mx.msgSearchIdx+1, len(mx.msgSearchMatches)))
+		}
+		b.WriteString(" " + searchPrompt + searchText + searchCursor + matchCount)
+		b.WriteString("\n")
+	}
+
+	// Reaction picker
+	if mx.showReactionPicker {
+		pickerBg := lipgloss.NewStyle().Background(surface0).Padding(0, 1)
+		var emojis []string
+		for i, emoji := range matrixReactionEmojis {
+			if i == mx.reactionCursor {
+				emojis = append(emojis, lipgloss.NewStyle().Background(mauve).Foreground(crust).Render(" "+emoji+" "))
+			} else {
+				emojis = append(emojis, " "+emoji+" ")
+			}
+		}
+		b.WriteString(pickerBg.Render("React: " + strings.Join(emojis, "")))
+		b.WriteString("\n")
+	}
 
 	// Messages area
 	msgs := mx.messages[room.ID]
 	inputHeight := 3 // separator + input + e2ee line
+	if mx.replyToEvent != "" {
+		inputHeight++ // reply preview line
+	}
 	msgHeight := height - 4 - inputHeight
+	if mx.msgSearchMode {
+		msgHeight--
+	}
+	if mx.showReactionPicker {
+		msgHeight--
+	}
 	if msgHeight < 3 {
 		msgHeight = 3
 	}
@@ -1585,9 +2505,15 @@ func (mx Matrix) renderMessagePanel(width, height int) string {
 	} else {
 		// Render messages from bottom up
 		var renderedLines []string
-		for _, msg := range msgs {
-			line := mx.renderMessage(msg, width)
+		for i, msg := range msgs {
+			line := mx.renderMessage(msg, width, i)
 			renderedLines = append(renderedLines, line)
+
+			// Render reactions under messages
+			if len(msg.Reactions) > 0 {
+				reactionLine := mx.renderReactions(msg.Reactions)
+				renderedLines = append(renderedLines, reactionLine)
+			}
 		}
 
 		// Apply scroll
@@ -1613,14 +2539,21 @@ func (mx Matrix) renderMessagePanel(width, height int) string {
 	}
 
 	// Input area
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", width)))
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", width)))
 	b.WriteString("\n")
+
+	// Reply preview
+	if mx.replyToEvent != "" {
+		replyStyle := lipgloss.NewStyle().Foreground(overlay0).Italic(true)
+		b.WriteString(replyStyle.Render(" \u2502 Replying to: " + mx.replyPreview))
+		b.WriteString("\n")
+	}
 
 	inputPrompt := lipgloss.NewStyle().Foreground(overlay0).Render(" > ")
 	inputText := mx.messageInput
 	cursor := ""
 	if mx.focus == matrixFocusInput {
-		cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("│")
+		cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("\u2502")
 		inputPrompt = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" > ")
 	}
 
@@ -1632,17 +2565,25 @@ func (mx Matrix) renderMessagePanel(width, height int) string {
 	b.WriteString(inputPrompt + lipgloss.NewStyle().Foreground(text).Render(inputText) + cursor)
 	b.WriteString("\n")
 
-	// E2EE status
+	// E2EE status + message mode hints
 	e2eeLabel := lipgloss.NewStyle().Foreground(overlay0).Render(" Unencrypted")
 	if room.Encrypted {
 		e2eeLabel = lipgloss.NewStyle().Foreground(green).Render(" E2EE Ready")
 	}
-	b.WriteString(e2eeLabel)
+	modeHint := ""
+	if mx.focus == matrixFocusMessages {
+		if mx.messageSelect {
+			modeHint = lipgloss.NewStyle().Foreground(yellow).Render("  [SELECT] c:capture C:thread r:react R:reply")
+		} else {
+			modeHint = lipgloss.NewStyle().Foreground(overlay0).Render("  v:select /:search")
+		}
+	}
+	b.WriteString(e2eeLabel + modeHint)
 
 	return b.String()
 }
 
-func (mx Matrix) renderMessage(msg matrixChatMessage, maxWidth int) string {
+func (mx Matrix) renderMessage(msg matrixChatMessage, maxWidth int, idx int) string {
 	timeStr := msg.Timestamp.Format("15:04")
 	timeStyle := lipgloss.NewStyle().Foreground(overlay0)
 	senderStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
@@ -1652,14 +2593,39 @@ func (mx Matrix) renderMessage(msg matrixChatMessage, maxWidth int) string {
 		senderStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
 	}
 
+	// Highlight if selected
+	if mx.messageSelect && idx == mx.messageCursor {
+		bodyStyle = lipgloss.NewStyle().Foreground(yellow).Bold(true)
+		senderStyle = lipgloss.NewStyle().Foreground(yellow).Bold(true)
+	}
+
+	// Highlight search matches
+	if mx.msgSearchMode && mx.msgSearchQuery != "" {
+		for _, matchIdx := range mx.msgSearchMatches {
+			if matchIdx == idx {
+				bodyStyle = lipgloss.NewStyle().Foreground(yellow).Bold(true)
+				break
+			}
+		}
+	}
+
 	sender := msg.Sender
 	if len(sender) > 12 {
 		sender = sender[:12]
 	}
 
 	body := msg.Body
+	// Reply indicator
+	replyPrefix := ""
+	if msg.ReplyTo != "" {
+		replyPrefix = lipgloss.NewStyle().Foreground(overlay0).Render("\u2502 ") // vertical bar for reply
+	}
+
 	// Truncate long messages
 	availW := maxWidth - len(timeStr) - len(sender) - 8
+	if msg.ReplyTo != "" {
+		availW -= 2
+	}
 	if availW < 10 {
 		availW = 10
 	}
@@ -1669,7 +2635,28 @@ func (mx Matrix) renderMessage(msg matrixChatMessage, maxWidth int) string {
 	// Replace newlines with spaces for single-line display
 	body = strings.ReplaceAll(body, "\n", " ")
 
-	return " " + timeStyle.Render("["+timeStr+"]") + " " +
+	selectMarker := " "
+	if mx.messageSelect && idx == mx.messageCursor {
+		selectMarker = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(">")
+	}
+
+	return selectMarker + replyPrefix + timeStyle.Render("["+timeStr+"]") + " " +
 		senderStyle.Render(sender+":") + " " +
 		bodyStyle.Render(body)
+}
+
+func (mx Matrix) renderReactions(reactions map[string]int) string {
+	if len(reactions) == 0 {
+		return ""
+	}
+	var parts []string
+	for emoji, count := range reactions {
+		pill := lipgloss.NewStyle().
+			Background(surface0).
+			Foreground(text).
+			Padding(0, 0).
+			Render(fmt.Sprintf(" %s %d ", emoji, count))
+		parts = append(parts, pill)
+	}
+	return "   " + strings.Join(parts, " ")
 }
