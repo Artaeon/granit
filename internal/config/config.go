@@ -21,7 +21,6 @@ type Config struct {
 	// Editor enhancements
 	AutoCloseBrackets    bool `json:"auto_close_brackets"`
 	HighlightCurrentLine bool `json:"highlight_current_line"`
-	ShowMinimap          bool `json:"show_minimap"`
 
 	// Appearance
 	SidebarPosition string `json:"sidebar_position"` // "left" or "right"
@@ -92,7 +91,6 @@ func DefaultConfig() Config {
 		DailyNoteTemplate:      "",
 		AutoCloseBrackets:      true,
 		HighlightCurrentLine:   true,
-		ShowMinimap:            false,
 		SidebarPosition:        "left",
 		ShowIcons:              true,
 		CompactMode:            false,
