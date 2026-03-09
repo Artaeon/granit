@@ -21,6 +21,7 @@ type Sidebar struct {
 	// Config-driven
 	showIcons   bool
 	compactMode bool
+	showHidden  bool
 
 	// File tree view
 	treeView bool
@@ -51,6 +52,14 @@ func (s *Sidebar) SetSize(width, height int) {
 	s.fileTree.SetSize(width, treeHeight)
 }
 
+func (s *Sidebar) SetShowHidden(show bool) {
+	s.showHidden = show
+	s.fileTree.showHidden = show
+	// Re-filter the flat list and rebuild the tree with current files.
+	s.applyFilter()
+	s.fileTree.SetFiles(s.files)
+}
+
 func (s *Sidebar) SetFiles(files []string) {
 	s.files = files
 	s.applyFilter()
@@ -59,12 +68,24 @@ func (s *Sidebar) SetFiles(files []string) {
 
 func (s *Sidebar) applyFilter() {
 	if s.search == "" {
-		s.filtered = s.files
+		if s.showHidden {
+			s.filtered = s.files
+		} else {
+			s.filtered = nil
+			for _, f := range s.files {
+				if !isHiddenPath(f) {
+					s.filtered = append(s.filtered, f)
+				}
+			}
+		}
 		return
 	}
 	query := strings.ToLower(s.search)
 	s.filtered = nil
 	for _, f := range s.files {
+		if !s.showHidden && isHiddenPath(f) {
+			continue
+		}
 		if fuzzyMatch(strings.ToLower(f), query) {
 			s.filtered = append(s.filtered, f)
 		}
@@ -72,6 +93,16 @@ func (s *Sidebar) applyFilter() {
 	if s.cursor >= len(s.filtered) {
 		s.cursor = maxInt(0, len(s.filtered)-1)
 	}
+}
+
+// isHiddenPath returns true if any segment of the path starts with a dot.
+func isHiddenPath(p string) bool {
+	for _, seg := range strings.Split(filepath.ToSlash(p), "/") {
+		if strings.HasPrefix(seg, ".") {
+			return true
+		}
+	}
+	return false
 }
 
 func fuzzyMatch(str, pattern string) bool {
@@ -255,8 +286,8 @@ func (s Sidebar) View() string {
 	headerAccent := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 	fileCountStyle := lipgloss.NewStyle().Foreground(surface2)
 	headerLine := headerAccent.Render("  EXPLORER")
-	if len(s.files) > 0 {
-		headerLine += fileCountStyle.Render("  " + sidebarItoa(len(s.files)) + " files")
+	if len(s.filtered) > 0 {
+		headerLine += fileCountStyle.Render("  " + sidebarItoa(len(s.filtered)) + " files")
 	}
 	b.WriteString(headerLine)
 	b.WriteString("\n")
