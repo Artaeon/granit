@@ -123,8 +123,6 @@ type Model struct {
 	threadWeaver   ThreadWeaver
 	noteChat       NoteChat
 	autoTagger     *AutoTagger
-	matrix         Matrix
-
 	// Batch 2 features
 	vimState      *VimState
 	fileWatcher   *FileWatcher
@@ -295,7 +293,6 @@ func NewModel(vaultPath string) (Model, error) {
 		threadWeaver:   NewThreadWeaver(),
 		noteChat:       NewNoteChat(),
 		autoTagger:     NewAutoTagger(),
-		matrix:         NewMatrix(),
 		vimState:       NewVimState(),
 		fileWatcher:    NewFileWatcher(vaultPath),
 		breadcrumb:     NewBreadcrumb(),
@@ -557,43 +554,6 @@ func (m *Model) loadNote(relPath string) {
 	if m.pomodoro.IsRunning() {
 		m.pomodoro.NoteEdited(relPath)
 	}
-}
-
-// matrixCaptureNote creates or appends to a note from the Matrix overlay.
-// If the file is Tasks.md and content starts with "- [ ]", it appends; otherwise creates new.
-func (m *Model) matrixCaptureNote(filename, content string) {
-	// Determine target path: use Inbox/ subfolder if it exists
-	targetDir := m.vault.Root
-	inboxDir := filepath.Join(m.vault.Root, "Inbox")
-	if info, err := os.Stat(inboxDir); err == nil && info.IsDir() {
-		// For Tasks.md, keep it in root
-		if filename != "Tasks.md" {
-			targetDir = inboxDir
-		}
-	}
-
-	fullPath := filepath.Join(targetDir, filename)
-
-	// Special handling for Tasks.md: append rather than overwrite
-	if filename == "Tasks.md" && strings.HasPrefix(strings.TrimSpace(content), "- [") {
-		f, err := os.OpenFile(fullPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err == nil {
-			f.WriteString("\n" + content)
-			f.Close()
-		}
-	} else {
-		os.MkdirAll(filepath.Dir(fullPath), 0755)
-		os.WriteFile(fullPath, []byte(content), 0644)
-	}
-
-	// Rescan vault
-	m.vault.Scan()
-	m.index = vault.NewIndex(m.vault)
-	m.index.Build()
-	paths := m.vault.SortedPaths()
-	m.sidebar.SetFiles(paths)
-	m.autocomplete.SetNotes(paths)
-	m.statusbar.SetNoteCount(m.vault.NoteCount())
 }
 
 func (m Model) Init() tea.Cmd {
@@ -1161,27 +1121,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case matrixLoginResultMsg, matrixRoomsResultMsg, matrixMessagesResultMsg,
-		matrixSendResultMsg, matrixSyncResultMsg, matrixSyncTickMsg, matrixReactionResultMsg,
-		matrixAISummaryMsg, matrixAIActionsMsg, matrixAIReplyMsg,
-		matrixAITranslateMsg, matrixAINoteMsg, matrixAIContextMsg, matrixAITickMsg:
-		if m.matrix.IsActive() {
-			var cmd tea.Cmd
-			m.matrix, cmd = m.matrix.Update(msg)
-			// Persist token and resolved homeserver to config on successful login
-			if loginMsg, ok := msg.(matrixLoginResultMsg); ok && loginMsg.err == nil {
-				m.config.MatrixAccessToken = m.matrix.GetAccessToken()
-				if loginMsg.homeserver != "" {
-					m.config.MatrixHomeserver = loginMsg.homeserver
-				}
-				m.config.Save()
-			}
-			// Update unread count for status bar
-			m.statusbar.SetMatrixUnread(m.matrix.UnreadCount())
-			return m, cmd
-		}
-		return m, nil
-
 	case pluginCmdResultMsg:
 		if msg.err != nil {
 			m.statusbar.SetMessage("Plugin error: " + msg.err.Error())
@@ -1452,22 +1391,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, botCmd
-		}
-
-		if m.matrix.IsActive() {
-			var matrixCmd tea.Cmd
-			m.matrix, matrixCmd = m.matrix.Update(msg)
-			// Update unread count for status bar
-			m.statusbar.SetMatrixUnread(m.matrix.UnreadCount())
-			if !m.matrix.IsActive() {
-				// Persist privacy settings and pinned rooms back to config
-				m.config.MatrixReadReceipts = m.matrix.sendReadReceipts
-				m.config.MatrixTypingIndicators = m.matrix.sendTypingIndicators
-				m.config.MatrixAutoDeleteCache = m.matrix.autoDeleteCache
-				m.config.MatrixPinnedRooms = m.matrix.GetPinnedRooms()
-				m.config.Save()
-			}
-			return m, matrixCmd
 		}
 
 		if m.export.IsActive() {
@@ -2528,41 +2451,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.bots.Open()
 			return m, nil
 
-		case "alt+m":
-			m.matrix.SetSize(m.width, m.height)
-			m.matrix.Configure(
-				m.config.MatrixHomeserver,
-				m.config.MatrixUsername,
-				m.config.MatrixAccessToken,
-				m.config.MatrixReadReceipts,
-				m.config.MatrixTypingIndicators,
-				m.config.MatrixAutoDeleteCache,
-			)
-			// Set share content from current note or selection
-			selectedText := m.editor.GetSelectedText()
-			if selectedText != "" {
-				m.matrix.SetShareContent(selectedText)
-			} else {
-				m.matrix.SetShareContent(m.editor.GetContent())
-			}
-			// Wire vault integration
-			m.matrix.SetVaultFiles(m.vault.SortedPaths())
-			m.matrix.SetVaultRoot(m.vault.Root)
-			m.matrix.SetPinnedRooms(m.config.MatrixPinnedRooms)
-			m.matrix.SetCaptureNote(func(filename, content string) {
-				m.matrixCaptureNote(filename, content)
-			})
-			m.matrix.ConfigureAI(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.OpenAIModel)
-			m.matrix.SetCurrentNoteContent(m.editor.GetContent())
-			if openCmd := m.matrix.Open(); openCmd != nil {
-				return m, openCmd
-			}
-			// Start sync if we have a token
-			if cmd := m.matrix.StartSync(); cmd != nil {
-				return m, cmd
-			}
-			return m, nil
-
 		case "ctrl+z":
 			if m.focusMode.IsActive() {
 				m.focusMode.Close()
@@ -3173,36 +3061,6 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.bots.SetVaultData(noteContents, tagMap)
 		m.bots.SetCurrentNote(m.activeNote, m.editor.GetContent())
 		m.bots.Open()
-	case CmdMatrixChat:
-		m.matrix.SetSize(m.width, m.height)
-		m.matrix.Configure(
-			m.config.MatrixHomeserver,
-			m.config.MatrixUsername,
-			m.config.MatrixAccessToken,
-			m.config.MatrixReadReceipts,
-			m.config.MatrixTypingIndicators,
-			m.config.MatrixAutoDeleteCache,
-		)
-		selectedText := m.editor.GetSelectedText()
-		if selectedText != "" {
-			m.matrix.SetShareContent(selectedText)
-		} else {
-			m.matrix.SetShareContent(m.editor.GetContent())
-		}
-		m.matrix.SetVaultFiles(m.vault.SortedPaths())
-		m.matrix.SetVaultRoot(m.vault.Root)
-		m.matrix.SetPinnedRooms(m.config.MatrixPinnedRooms)
-		m.matrix.SetCaptureNote(func(filename, content string) {
-			m.matrixCaptureNote(filename, content)
-		})
-		m.matrix.ConfigureAI(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.OpenAIModel)
-		m.matrix.SetCurrentNoteContent(m.editor.GetContent())
-		if openCmd := m.matrix.Open(); openCmd != nil {
-			return m, openCmd
-		}
-		if cmd := m.matrix.StartSync(); cmd != nil {
-			return m, cmd
-		}
 	case CmdNewFolder:
 		m.newFolderMode = true
 		m.newFolderName = ""
@@ -5709,10 +5567,6 @@ func (m Model) View() string {
 	}
 	if m.bots.IsActive() {
 		overlay := m.bots.View()
-		view = m.overlayCenter(view, overlay)
-	}
-	if m.matrix.IsActive() {
-		overlay := m.matrix.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.export.IsActive() {
