@@ -344,6 +344,9 @@ func getOllamaEmbedding(url, model, text string) ([]float64, error) {
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Post(url+"/api/embed", "application/json", bytes.NewReader(data))
 	if err != nil {
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
 		return nil, fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)
 	}
 	defer resp.Body.Close()
@@ -389,6 +392,9 @@ func getOpenAIEmbedding(apiKey, model, text string) ([]float64, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
 		return nil, fmt.Errorf("cannot connect to OpenAI: %w", err)
 	}
 	defer resp.Body.Close()
