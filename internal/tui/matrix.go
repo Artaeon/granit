@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -227,7 +226,6 @@ type Matrix struct {
 	// Sync
 	syncRunning bool
 	txnCounter  int
-	mu          sync.Mutex
 
 	// E2EE status cache per room
 	e2eeStatus map[string]bool
