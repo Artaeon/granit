@@ -1168,9 +1168,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.matrix.IsActive() {
 			var cmd tea.Cmd
 			m.matrix, cmd = m.matrix.Update(msg)
-			// Persist token to config on successful login
+			// Persist token and resolved homeserver to config on successful login
 			if loginMsg, ok := msg.(matrixLoginResultMsg); ok && loginMsg.err == nil {
 				m.config.MatrixAccessToken = m.matrix.GetAccessToken()
+				if loginMsg.homeserver != "" {
+					m.config.MatrixHomeserver = loginMsg.homeserver
+				}
 				m.config.Save()
 			}
 			// Update unread count for status bar
