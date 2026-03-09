@@ -453,6 +453,8 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 		case "/":
 			s.searching = true
 			s.searchBuf = ""
+			s.editing = false
+			s.editBuf = ""
 			return s, nil
 		case "up", "k":
 			if s.cursor > 0 {
