@@ -359,7 +359,11 @@ func (sc SpellChecker) Update(msg tea.Msg) (SpellChecker, tea.Cmd) {
 				if sc.cursor < sc.scroll {
 					sc.scroll = sc.cursor
 				}
-				sc.selected = &sc.words[sc.cursor]
+				if len(sc.words) > 0 && sc.cursor < len(sc.words) {
+					sc.selected = &sc.words[sc.cursor]
+				} else {
+					sc.selected = nil
+				}
 				sc.applied = false
 				sc.replacement = ""
 			}
@@ -372,7 +376,11 @@ func (sc SpellChecker) Update(msg tea.Msg) (SpellChecker, tea.Cmd) {
 				if sc.cursor >= sc.scroll+visH {
 					sc.scroll = sc.cursor - visH + 1
 				}
-				sc.selected = &sc.words[sc.cursor]
+				if len(sc.words) > 0 && sc.cursor < len(sc.words) {
+					sc.selected = &sc.words[sc.cursor]
+				} else {
+					sc.selected = nil
+				}
 				sc.applied = false
 				sc.replacement = ""
 			}
