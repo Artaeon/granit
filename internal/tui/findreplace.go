@@ -141,6 +141,7 @@ func (fr *FindReplace) UpdateMatches(content []string) {
 	fr.regexErr = ""
 	fr.previewScroll = 0
 	if fr.findQuery == "" {
+		fr.matchIdx = 0
 		return
 	}
 
@@ -148,6 +149,10 @@ func (fr *FindReplace) UpdateMatches(content []string) {
 		fr.updateMatchesRegex(content)
 	} else {
 		fr.updateMatchesPlain(content)
+	}
+
+	if fr.matchIdx >= len(fr.matches) {
+		fr.matchIdx = 0
 	}
 }
 
