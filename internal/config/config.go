@@ -65,6 +65,9 @@ type Config struct {
 	GitHubRepo   string `json:"github_repo,omitempty"`
 	GitHubBranch string `json:"github_branch,omitempty"`
 
+	// Tutorial
+	TutorialCompleted bool `json:"tutorial_completed"`
+
 	// Core Plugins — toggle built-in modules on/off
 	CorePlugins map[string]bool `json:"core_plugins"`
 
