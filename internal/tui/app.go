@@ -1424,10 +1424,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				path := filepath.Join(m.vault.Root, name)
 				if _, err := os.Stat(path); os.IsNotExist(err) {
-					os.MkdirAll(filepath.Dir(path), 0755)
+					if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+						m.statusbar.SetMessage("Error creating directory: " + err.Error())
+						return m, nil
+					}
 					fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n", evDate, evDate)
 					content := m.dailyNoteContent(evDate, fallback)
-					os.WriteFile(path, []byte(content), 0644)
+					if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+						m.statusbar.SetMessage("Error creating daily note: " + err.Error())
+						return m, nil
+					}
 				}
 				// Append the task line
 				f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
@@ -1483,10 +1489,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				path := filepath.Join(m.vault.Root, name)
 				if _, err := os.Stat(path); os.IsNotExist(err) {
-					os.MkdirAll(filepath.Dir(path), 0755)
+					if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+						m.statusbar.SetMessage("Error creating directory: " + err.Error())
+						return m, nil
+					}
 					fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n", date, date)
 					content := m.dailyNoteContent(date, fallback)
-					os.WriteFile(path, []byte(content), 0644)
+					if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+						m.statusbar.SetMessage("Error creating daily note: " + err.Error())
+						return m, nil
+					}
 					m.refreshComponents(name)
 				}
 				m.loadNote(name)
