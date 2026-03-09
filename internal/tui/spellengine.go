@@ -428,7 +428,8 @@ func (se *spellEngine) suggest(word string, n int) []string {
 
 // editDistance computes the Levenshtein distance between two strings.
 func editDistance(a, b string) int {
-	la, lb := len(a), len(b)
+	ra, rb := []rune(a), []rune(b)
+	la, lb := len(ra), len(rb)
 	if la == 0 {
 		return lb
 	}
@@ -447,7 +448,7 @@ func editDistance(a, b string) int {
 		curr[0] = i
 		for j := 1; j <= lb; j++ {
 			cost := 1
-			if a[i-1] == b[j-1] {
+			if ra[i-1] == rb[j-1] {
 				cost = 0
 			}
 			ins := curr[j-1] + 1
