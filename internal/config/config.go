@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -180,7 +181,9 @@ func Load() Config {
 	// Load global config
 	globalPath := ConfigPath()
 	if data, err := os.ReadFile(globalPath); err == nil {
-		json.Unmarshal(data, &cfg)
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to parse %s: %v (using defaults)\n", globalPath, err)
+		}
 	}
 	cfg.filePath = globalPath
 
@@ -193,7 +196,9 @@ func LoadForVault(vaultRoot string) Config {
 	// Override with vault-specific config
 	vaultPath := VaultConfigPath(vaultRoot)
 	if data, err := os.ReadFile(vaultPath); err == nil {
-		json.Unmarshal(data, &cfg)
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to parse %s: %v (using defaults)\n", vaultPath, err)
+		}
 	}
 	cfg.filePath = vaultPath
 
