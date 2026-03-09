@@ -242,8 +242,9 @@ func TestResolveCaptureVault_FromEnv(t *testing.T) {
 	origArgs := os.Args
 	defer func() { os.Args = origArgs }()
 
+	tmpDir := t.TempDir()
 	origEnv := os.Getenv("GRANIT_VAULT")
-	os.Setenv("GRANIT_VAULT", "/tmp/myvault")
+	os.Setenv("GRANIT_VAULT", tmpDir)
 	defer func() {
 		if origEnv != "" {
 			os.Setenv("GRANIT_VAULT", origEnv)
@@ -255,8 +256,8 @@ func TestResolveCaptureVault_FromEnv(t *testing.T) {
 	os.Args = []string{"granit", "capture", "text"}
 
 	got := resolveCaptureVault()
-	if got != "/tmp/myvault" {
-		t.Errorf("expected '/tmp/myvault' from env, got %q", got)
+	if got != tmpDir {
+		t.Errorf("expected %q from env, got %q", tmpDir, got)
 	}
 }
 
@@ -264,8 +265,10 @@ func TestResolveCaptureVault_FlagOverridesEnv(t *testing.T) {
 	origArgs := os.Args
 	defer func() { os.Args = origArgs }()
 
+	envDir := t.TempDir()
+	flagDir := t.TempDir()
 	origEnv := os.Getenv("GRANIT_VAULT")
-	os.Setenv("GRANIT_VAULT", "/tmp/envvault")
+	os.Setenv("GRANIT_VAULT", envDir)
 	defer func() {
 		if origEnv != "" {
 			os.Setenv("GRANIT_VAULT", origEnv)
@@ -274,11 +277,11 @@ func TestResolveCaptureVault_FlagOverridesEnv(t *testing.T) {
 		}
 	}()
 
-	os.Args = []string{"granit", "capture", "--vault", "/tmp/flagvault", "text"}
+	os.Args = []string{"granit", "capture", "--vault", flagDir, "text"}
 
 	got := resolveCaptureVault()
-	if got != "/tmp/flagvault" {
-		t.Errorf("expected '/tmp/flagvault' from flag, got %q", got)
+	if got != flagDir {
+		t.Errorf("expected %q from flag, got %q", flagDir, got)
 	}
 }
 
