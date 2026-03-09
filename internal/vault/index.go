@@ -38,6 +38,14 @@ func (idx *Index) Build() {
 }
 
 func (idx *Index) resolveLink(link string) string {
+	// Strip heading anchor (e.g. "note#heading" -> "note") before resolving.
+	if hashIdx := strings.Index(link, "#"); hashIdx >= 0 {
+		link = link[:hashIdx]
+	}
+	if link == "" {
+		return ""
+	}
+
 	// Try exact match first (with .md extension)
 	if !strings.HasSuffix(link, ".md") {
 		link = link + ".md"

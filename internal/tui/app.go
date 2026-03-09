@@ -1308,7 +1308,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if nav := m.canvas.SelectedNote(); nav != "" {
 				resolved := m.resolveLink(nav)
 				if resolved != "" {
+					_, anchor := splitLinkAnchor(nav)
 					m.loadNote(resolved)
+					m.navigateToHeading(anchor)
 					m.setSidebarCursorToFile(resolved)
 					m.setFocus(focusEditor)
 				}
@@ -2606,10 +2608,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focus == focusBacklinks {
 				selected := m.backlinks.Selected()
 				if selected != "" {
-					resolved := m.resolveLink(selected)
-					if resolved != "" {
-						m.loadNote(resolved)
-						m.setSidebarCursorToFile(resolved)
+					notePart, anchor := splitLinkAnchor(selected)
+					if notePart == "" && anchor != "" {
+						// Same-note anchor like [[#heading]]
+						m.navigateToHeading(anchor)
+					} else {
+						resolved := m.resolveLink(selected)
+						if resolved != "" {
+							m.loadNote(resolved)
+							m.navigateToHeading(anchor)
+							m.setSidebarCursorToFile(resolved)
+						}
 					}
 				}
 				return m, nil
@@ -2811,11 +2820,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Live backlink preview: update on every cursor move
 			m.backlinkPreview.Update(m.editor.content, m.editor.cursor, m.editor.col, func(name string) string {
+				// Strip heading anchor before looking up note content.
+				notePart, _ := splitLinkAnchor(name)
 				// Try with and without .md extension
-				if note := m.vault.GetNote(name + ".md"); note != nil {
+				if note := m.vault.GetNote(notePart + ".md"); note != nil {
 					return note.Content
 				}
-				if note := m.vault.GetNote(name); note != nil {
+				if note := m.vault.GetNote(notePart); note != nil {
 					return note.Content
 				}
 				return ""
@@ -4365,17 +4376,30 @@ func (m *Model) updateExtractNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m *Model) resolveLink(link string) string {
-	if m.vault.GetNote(link) != nil {
-		return link
+// splitLinkAnchor splits a wikilink target like "note#heading" into the note
+// part and the heading anchor (without the '#'). If there is no anchor the
+// second return value is "".
+func splitLinkAnchor(link string) (string, string) {
+	if idx := strings.Index(link, "#"); idx >= 0 {
+		return link[:idx], link[idx+1:]
 	}
-	if !strings.HasSuffix(link, ".md") {
-		withMd := link + ".md"
+	return link, ""
+}
+
+func (m *Model) resolveLink(link string) string {
+	// Strip heading anchor before resolving.
+	notePart, _ := splitLinkAnchor(link)
+
+	if m.vault.GetNote(notePart) != nil {
+		return notePart
+	}
+	if !strings.HasSuffix(notePart, ".md") {
+		withMd := notePart + ".md"
 		if m.vault.GetNote(withMd) != nil {
 			return withMd
 		}
 	}
-	base := filepath.Base(link)
+	base := filepath.Base(notePart)
 	if !strings.HasSuffix(base, ".md") {
 		base += ".md"
 	}
@@ -4385,6 +4409,39 @@ func (m *Model) resolveLink(link string) string {
 		}
 	}
 	return ""
+}
+
+// navigateToHeading scrolls the editor so that the first heading whose text
+// matches anchor (case-insensitive, ignoring leading '#' characters and
+// surrounding whitespace) is visible near the top of the viewport.
+func (m *Model) navigateToHeading(anchor string) {
+	if anchor == "" {
+		return
+	}
+	// Normalise the anchor: Obsidian lowercases and replaces spaces with
+	// hyphens in URL-style anchors, so we do a relaxed comparison.
+	normalize := func(s string) string {
+		s = strings.ToLower(strings.TrimSpace(s))
+		s = strings.ReplaceAll(s, "-", " ")
+		s = strings.ReplaceAll(s, "_", " ")
+		return s
+	}
+	target := normalize(anchor)
+
+	for i, line := range m.editor.content {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		// Strip leading '#' characters and the mandatory space.
+		headingText := strings.TrimLeft(trimmed, "#")
+		headingText = strings.TrimSpace(headingText)
+		if normalize(headingText) == target {
+			m.editor.SetCursorPosition(i, 0)
+			m.editor.SetScroll(i)
+			return
+		}
+	}
 }
 
 func (m *Model) findFileIndex(relPath string) int {
