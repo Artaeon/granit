@@ -111,6 +111,9 @@ func (e ExportOverlay) Update(msg tea.Msg) (ExportOverlay, tea.Cmd) {
 }
 
 func (e *ExportOverlay) doExport() {
+	if e.cursor < 0 || e.cursor >= len(e.formats) {
+		return
+	}
 	switch e.cursor {
 	case 0: // HTML
 		e.exportHTML()
