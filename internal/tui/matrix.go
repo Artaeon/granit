@@ -229,6 +229,12 @@ type Matrix struct {
 
 	// E2EE status cache per room
 	e2eeStatus map[string]bool
+
+	// AI analysis features
+	ai MatrixAI
+
+	// Current note content for AI context
+	currentNoteContent string
 }
 
 func NewMatrix() Matrix {
@@ -238,6 +244,7 @@ func NewMatrix() Matrix {
 		connState:  matrixDisconnected,
 		focus:      matrixFocusLogin,
 		autoDeleteCache: true,
+		ai:         NewMatrixAI(),
 	}
 }
 
@@ -281,6 +288,16 @@ func (mx *Matrix) Configure(homeserver, username, token string, readReceipts, ty
 
 func (mx *Matrix) GetAccessToken() string {
 	return mx.accessToken
+}
+
+// ConfigureAI sets the AI provider settings on the embedded MatrixAI.
+func (mx *Matrix) ConfigureAI(provider, ollamaModel, ollamaURL, openaiKey, openaiModel string) {
+	mx.ai.SetAIConfig(provider, ollamaModel, ollamaURL, openaiKey, openaiModel)
+}
+
+// SetCurrentNoteContent stores the current note body for AI context features.
+func (mx *Matrix) SetCurrentNoteContent(content string) {
+	mx.currentNoteContent = content
 }
 
 // SetShareContent sets content to be shared when user presses 's'
@@ -665,7 +682,35 @@ func (mx Matrix) Update(msg tea.Msg) (Matrix, tea.Cmd) {
 		}
 		return mx, nil
 
+	// AI result messages
+	case matrixAISummaryMsg, matrixAIActionsMsg, matrixAIReplyMsg,
+		matrixAITranslateMsg, matrixAINoteMsg, matrixAIContextMsg, matrixAITickMsg:
+		var aiCmd tea.Cmd
+		mx.ai, aiCmd = mx.ai.Update(msg)
+		return mx, aiCmd
+
 	case tea.KeyMsg:
+		// If AI panel is active, route keys there first
+		if mx.ai.IsActive() {
+			var aiCmd tea.Cmd
+			prevActive := mx.ai.IsActive()
+			mx.ai, aiCmd = mx.ai.Update(msg)
+			// Check if a reply was selected
+			if prevActive && !mx.ai.IsActive() && mx.ai.resultType == matrixAIResultReply {
+				reply := mx.ai.GetSelectedReply()
+				if reply != "" {
+					mx.messageInput = reply
+					mx.focus = matrixFocusInput
+				}
+			}
+			// Check if note generation completed (Enter pressed)
+			if prevActive && !mx.ai.IsActive() && mx.ai.resultType == matrixAIResultNote {
+				// Capture content is available via GetCaptureContent()
+				// The caller (app.go) will handle note creation
+				mx.statusMsg = "Note ready — save from vault"
+			}
+			return mx, aiCmd
+		}
 		return mx.handleKeyMsg(msg)
 	}
 
@@ -761,6 +806,28 @@ func (mx Matrix) handleKeyMsg(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 			mx.focus = matrixFocusRooms
 		}
 		return mx, nil
+	}
+
+	// AI keybindings (only when connected and not in login/privacy/search/newDM)
+	if mx.connState == matrixConnected || mx.connState == matrixSyncing {
+		if !mx.showPrivacy && mx.focus != matrixFocusLogin && mx.focus != matrixFocusNewDM && !mx.searching {
+			switch key {
+			case "ctrl+s", "ctrl+a", "ctrl+r", "ctrl+t", "ctrl+n", "ctrl+i":
+				// Get messages for current room
+				var msgs []matrixChatMessage
+				rooms := mx.filteredRooms()
+				if mx.roomCursor < len(rooms) {
+					msgs = mx.messages[rooms[mx.roomCursor].ID]
+				}
+				mx.ai.SetSize(mx.width, mx.height)
+				if cmd := mx.ai.HandleKey(key, msgs, mx.currentNoteContent); cmd != nil {
+					return mx, cmd
+				}
+				if mx.ai.IsActive() {
+					return mx, nil
+				}
+			}
+		}
 	}
 
 	// Login form handling
@@ -1107,10 +1174,12 @@ func (mx Matrix) View() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerW)))
 	b.WriteString("\n")
 
-	if mx.statusMsg != "" {
+	if mx.ai.IsProcessing() {
+		b.WriteString(lipgloss.NewStyle().Foreground(sapphire).Render("  " + IconBotChar + " AI analyzing..."))
+	} else if mx.statusMsg != "" {
 		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  " + mx.statusMsg))
 	} else if mx.accessToken != "" {
-		hints := "  Tab: switch  /: search  s: share note  p: privacy  n: new DM  R: refresh  Esc: close"
+		hints := "  Tab ^S:sum ^A:actions ^R:reply ^T:translate ^N:note ^I:context  Esc: close"
 		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(hints))
 	}
 
@@ -1121,7 +1190,52 @@ func (mx Matrix) View() string {
 		Width(width).
 		Background(mantle)
 
-	return border.Render(b.String())
+	chatView := border.Render(b.String())
+
+	// Overlay AI result panel on top if active
+	if mx.ai.IsActive() {
+		aiPanel := mx.ai.View(width, height)
+		// Center the AI panel over the chat view
+		chatLines := strings.Split(chatView, "\n")
+		aiLines := strings.Split(aiPanel, "\n")
+
+		chatH := len(chatLines)
+		aiH := len(aiLines)
+		aiW := lipgloss.Width(aiPanel)
+		chatW := lipgloss.Width(chatView)
+
+		startRow := (chatH - aiH) / 2
+		if startRow < 0 {
+			startRow = 0
+		}
+		startCol := (chatW - aiW) / 2
+		if startCol < 0 {
+			startCol = 0
+		}
+
+		// Overlay the AI panel onto the chat view
+		for i, aiLine := range aiLines {
+			row := startRow + i
+			if row >= 0 && row < len(chatLines) {
+				chatLine := chatLines[row]
+				chatLineW := lipgloss.Width(chatLine)
+				if startCol+aiW <= chatLineW {
+					// Splice the AI line into the chat line
+					// For simplicity, just replace the full line with the AI content padded
+					prefix := ""
+					if startCol > 0 {
+						prefix = strings.Repeat(" ", startCol)
+					}
+					chatLines[row] = prefix + aiLine
+				} else {
+					chatLines[row] = strings.Repeat(" ", startCol) + aiLine
+				}
+			}
+		}
+		chatView = strings.Join(chatLines, "\n")
+	}
+
+	return chatView
 }
 
 func (mx Matrix) connectionBadge() string {
