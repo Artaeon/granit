@@ -159,6 +159,16 @@ func (c Config) CorePluginEnabled(name string) bool {
 	return enabled
 }
 
+// SetFilePath overrides the path used by Save.
+func (c *Config) SetFilePath(path string) {
+	c.filePath = path
+}
+
+// GetFilePath returns the path that Save will write to.
+func (c *Config) GetFilePath() string {
+	return c.filePath
+}
+
 func ConfigDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
