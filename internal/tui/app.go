@@ -2528,7 +2528,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.bots.Open()
 			return m, nil
 
-		case "ctrl+m":
+		case "alt+m":
 			m.matrix.SetSize(m.width, m.height)
 			m.matrix.Configure(
 				m.config.MatrixHomeserver,
