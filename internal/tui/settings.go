@@ -148,6 +148,15 @@ func (s *Settings) corePluginVal(name string) bool {
 // rebuildVisible recomputes the visible list based on the current search query.
 // It inserts category headers before each group of matching items.
 func (s *Settings) rebuildVisible() {
+	// Strip previously-added temporary headers so they don't accumulate
+	clean := s.items[:0]
+	for _, item := range s.items {
+		if item.kind != "header" {
+			clean = append(clean, item)
+		}
+	}
+	s.items = clean
+
 	s.visible = s.visible[:0]
 
 	if s.searchBuf == "" {
