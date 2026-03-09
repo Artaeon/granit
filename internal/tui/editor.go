@@ -375,10 +375,12 @@ func (e *Editor) Undo() {
 		e.redoStack = e.redoStack[len(e.redoStack)-100:]
 	}
 
-	// Pop from undo stack and restore
+	// Pop from undo stack and restore (deep copy to avoid corrupting history)
 	snap := e.undoStack[len(e.undoStack)-1]
 	e.undoStack = e.undoStack[:len(e.undoStack)-1]
-	e.content = snap.content
+	restored := make([]string, len(snap.content))
+	copy(restored, snap.content)
+	e.content = restored
 	if len(e.content) == 0 {
 		e.content = []string{""}
 	}
@@ -405,10 +407,12 @@ func (e *Editor) Redo() {
 		e.undoStack = e.undoStack[len(e.undoStack)-100:]
 	}
 
-	// Pop from redo stack and restore
+	// Pop from redo stack and restore (deep copy to avoid corrupting history)
 	snap := e.redoStack[len(e.redoStack)-1]
 	e.redoStack = e.redoStack[:len(e.redoStack)-1]
-	e.content = snap.content
+	restored := make([]string, len(snap.content))
+	copy(restored, snap.content)
+	e.content = restored
 	if len(e.content) == 0 {
 		e.content = []string{""}
 	}
