@@ -7,13 +7,20 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// statusToast represents a single queued status bar notification.
+type statusToast struct {
+	text     string
+	priority ToastLevel
+}
+
 type StatusBar struct {
 	vaultPath  string
 	activeNote string
 	noteCount  int
 	mode       string
 	width      int
-	message    string
+	message    string // kept for backward compat (legacy single message)
+	messages   []statusToast
 	lineNum    int
 	colNum     int
 	wordCount  int
@@ -54,6 +61,51 @@ func (sb *StatusBar) SetMode(mode string) {
 
 func (sb *StatusBar) SetMessage(msg string) {
 	sb.message = msg
+	if msg == "" {
+		// Clear all messages (backward compat with clearMessageMsg).
+		sb.messages = nil
+		return
+	}
+	sb.pushStatusToast(msg, ToastInfo)
+}
+
+func (sb *StatusBar) SetWarning(msg string) {
+	sb.message = msg
+	sb.pushStatusToast(msg, ToastWarning)
+}
+
+func (sb *StatusBar) SetError(msg string) {
+	sb.message = msg
+	sb.pushStatusToast(msg, ToastError)
+}
+
+// pushStatusToast adds a message to the queue. Duplicates are ignored.
+func (sb *StatusBar) pushStatusToast(text string, priority ToastLevel) {
+	for _, t := range sb.messages {
+		if t.text == text && t.priority == priority {
+			return
+		}
+	}
+	sb.messages = append(sb.messages, statusToast{text: text, priority: priority})
+}
+
+// topStatusToast returns the highest-priority message in the queue.
+// If multiple share the same priority, the most recent one wins.
+func (sb *StatusBar) topStatusToast() (statusToast, bool) {
+	if len(sb.messages) == 0 {
+		// Fall back to legacy single message field.
+		if sb.message != "" {
+			return statusToast{text: sb.message, priority: ToastInfo}, true
+		}
+		return statusToast{}, false
+	}
+	best := sb.messages[len(sb.messages)-1]
+	for _, t := range sb.messages {
+		if t.priority > best.priority {
+			best = t
+		}
+	}
+	return best, true
 }
 
 func (sb *StatusBar) SetCursor(line, col int) {
@@ -260,13 +312,30 @@ func (sb StatusBar) View() string {
 	}
 	helpBar := HelpBarStyle.Width(sb.width).Render(strings.Join(helpParts, "  "))
 
-	if sb.message != "" {
-		msgStyle := lipgloss.NewStyle().
-			Background(surface0).
-			Foreground(yellow).
-			Padding(0, 1).
-			Width(sb.width)
-		return bar + "\n" + msgStyle.Render(" " + sb.message) + "\n" + helpBar
+	if toast, ok := sb.topStatusToast(); ok {
+		var msgStyle lipgloss.Style
+		switch toast.priority {
+		case ToastError:
+			msgStyle = lipgloss.NewStyle().
+				Background(red).
+				Foreground(crust).
+				Bold(true).
+				Padding(0, 1).
+				Width(sb.width)
+		case ToastWarning:
+			msgStyle = lipgloss.NewStyle().
+				Background(yellow).
+				Foreground(crust).
+				Padding(0, 1).
+				Width(sb.width)
+		default:
+			msgStyle = lipgloss.NewStyle().
+				Background(surface0).
+				Foreground(yellow).
+				Padding(0, 1).
+				Width(sb.width)
+		}
+		return bar + "\n" + msgStyle.Render(" "+toast.text) + "\n" + helpBar
 	}
 
 	return bar + "\n" + helpBar

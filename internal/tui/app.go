@@ -688,7 +688,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case autoSyncResultMsg:
 		if msg.err != nil {
-			m.statusbar.SetMessage("Git sync error: " + msg.err.Error())
+			m.statusbar.SetError("Git sync error: " + msg.err.Error())
 		} else if msg.action == "pull" && msg.output != "" {
 			trimmed := strings.TrimSpace(msg.output)
 			if trimmed != "" && trimmed != "Already up to date." {
@@ -988,7 +988,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.research.errorMsg = msg.err.Error()
 				m.research.output = msg.output
 				m.research.elapsed = time.Since(m.research.startTime).Truncate(time.Second).String()
-				m.statusbar.SetMessage("Research failed: " + msg.err.Error())
+				m.statusbar.SetError("Research failed: " + msg.err.Error())
 			} else {
 				m.research.phase = researchDone
 				m.research.elapsed = time.Since(m.research.startTime).Truncate(time.Second).String()
@@ -1123,7 +1123,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pluginCmdResultMsg:
 		if msg.err != nil {
-			m.statusbar.SetMessage("Plugin error: " + msg.err.Error())
+			m.statusbar.SetError("Plugin error: " + msg.err.Error())
 		} else {
 			m.handlePluginOutput(msg.pluginName, msg.output)
 		}
@@ -1339,7 +1339,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					lines[toggle.LineNum-1] = line
 					if err := os.WriteFile(absPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
-						m.statusbar.SetMessage("Error syncing task: " + err.Error())
+						m.statusbar.SetError("Error syncing task: " + err.Error())
 					}
 				}
 				// Refresh vault data after toggling tasks
@@ -1597,7 +1597,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							}
 							newContent := strings.Join(lines, "\n")
 							if err := os.WriteFile(filepath.Join(m.vault.Root, tc.NotePath), []byte(newContent), 0644); err != nil {
-								m.statusbar.SetMessage("Error syncing task: " + err.Error())
+								m.statusbar.SetError("Error syncing task: " + err.Error())
 							}
 						}
 					}
@@ -3106,7 +3106,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		} else if m.globalReplace.IsActive() {
 			m.globalReplace.ToggleRegex()
 		} else {
-			m.statusbar.SetMessage("Open a search overlay first, then toggle regex with Alt+R")
+			m.statusbar.SetWarning("Open a search overlay first, then toggle regex with Alt+R")
 			return m, m.clearMessageAfter(3 * time.Second)
 		}
 	case CmdSpellCheck:
@@ -3114,7 +3114,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.spellcheck.SetSize(m.width, m.height)
 			m.spellcheck.Open(m.editor.GetContent())
 		} else {
-			m.statusbar.SetMessage("Spell check unavailable (install aspell or hunspell)")
+			m.statusbar.SetWarning("Spell check unavailable (install aspell or hunspell)")
 			return m, m.clearMessageAfter(3 * time.Second)
 		}
 	case CmdPublishSite:
@@ -3150,7 +3150,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			})
 			m.blogPublisher.Open(title, content)
 		} else {
-			m.statusbar.SetMessage("Open a note first to publish")
+			m.statusbar.SetWarning("Open a note first to publish")
 			return m, m.clearMessageAfter(3 * time.Second)
 		}
 	case CmdSplitPane:
@@ -3364,7 +3364,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
-		m.statusbar.SetMessage("Vim mode must be enabled for macros")
+		m.statusbar.SetWarning("Vim mode must be enabled for macros")
 		return m, m.clearMessageAfter(2 * time.Second)
 	case CmdMacroPlay:
 		if m.vimState != nil && m.vimState.IsEnabled() {
@@ -3383,7 +3383,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.statusbar.SetMessage("No macro recorded in @" + string(reg))
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
-		m.statusbar.SetMessage("Vim mode must be enabled for macros")
+		m.statusbar.SetWarning("Vim mode must be enabled for macros")
 		return m, m.clearMessageAfter(2 * time.Second)
 	case CmdPinNote:
 		if m.activeNote != "" && m.breadcrumb != nil {
@@ -6737,13 +6737,13 @@ func (m *Model) applyEncryptionResult(result EncryptionResult) {
 	case encActionEncrypt:
 		encrypted, err := m.encryption.EncryptContent(content)
 		if err != nil {
-			m.statusbar.SetMessage("Encryption failed: " + err.Error())
+			m.statusbar.SetError("Encryption failed: " + err.Error())
 			return
 		}
 		newName := m.encryption.EncryptedName(m.activeNote)
 		newPath := filepath.Join(m.vault.Root, newName)
 		if err := os.WriteFile(newPath, []byte(encrypted), 0644); err != nil {
-			m.statusbar.SetMessage("Failed to write encrypted file")
+			m.statusbar.SetError("Failed to write encrypted file")
 			return
 		}
 		// Remove the original unencrypted file
@@ -6762,18 +6762,18 @@ func (m *Model) applyEncryptionResult(result EncryptionResult) {
 
 	case encActionDecrypt:
 		if !m.encryption.IsEncrypted(m.activeNote) {
-			m.statusbar.SetMessage("Note is not encrypted")
+			m.statusbar.SetWarning("Note is not encrypted")
 			return
 		}
 		decrypted, err := m.encryption.DecryptContent(content)
 		if err != nil {
-			m.statusbar.SetMessage("Decryption failed - wrong passphrase?")
+			m.statusbar.SetError("Decryption failed - wrong passphrase?")
 			return
 		}
 		newName := m.encryption.DecryptedName(m.activeNote)
 		newPath := filepath.Join(m.vault.Root, newName)
 		if err := os.WriteFile(newPath, []byte(decrypted), 0644); err != nil {
-			m.statusbar.SetMessage("Failed to write decrypted file")
+			m.statusbar.SetError("Failed to write decrypted file")
 			return
 		}
 		// Remove the encrypted file
