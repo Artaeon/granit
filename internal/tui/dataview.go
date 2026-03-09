@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -212,7 +213,7 @@ func (d DataviewOverlay) handleKey(msg tea.KeyMsg) (DataviewOverlay, tea.Cmd) {
 		return d, nil
 
 	default:
-		if !d.hasRun && len(key) == 1 && key[0] >= 32 {
+		if r, _ := utf8.DecodeRuneInString(key); !d.hasRun && utf8.RuneCountInString(key) == 1 && r >= 32 {
 			d.query = d.query[:d.cursorPos] + key + d.query[d.cursorPos:]
 			d.cursorPos++
 			d.historyIdx = -1
