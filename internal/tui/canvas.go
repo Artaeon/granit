@@ -372,12 +372,14 @@ func (c Canvas) updateNormal(msg tea.KeyMsg) (Canvas, tea.Cmd) {
 	// Move mode
 	case "m":
 		idx := c.cardAtCursor()
-		if idx >= 0 {
-			c.mode = canvasModeMove
-			c.moveIdx = idx
-			c.moveOrigX = c.cards[idx].X
-			c.moveOrigY = c.cards[idx].Y
+		if idx < 0 || idx >= len(c.cards) {
+			c.mode = canvasModeNormal
+			return c, nil
 		}
+		c.mode = canvasModeMove
+		c.moveIdx = idx
+		c.moveOrigX = c.cards[idx].X
+		c.moveOrigY = c.cards[idx].Y
 
 	// Connect mode (L for link)
 	case "L":
