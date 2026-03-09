@@ -2,6 +2,8 @@ package tui
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -21,11 +24,21 @@ import (
 // Types
 // ---------------------------------------------------------------------------
 
+// EmbeddingEntry holds a cached embedding vector alongside its content hash
+// so that stale entries can be detected without re-calling the API.
+type EmbeddingEntry struct {
+	Vector      []float64 `json:"vector"`
+	ContentHash string    `json:"content_hash"` // SHA-256 of note content at embed time
+}
+
 // EmbeddingIndex holds precomputed vector embeddings for vault notes.
 type EmbeddingIndex struct {
-	Embeddings map[string][]float64 `json:"embeddings"` // notePath -> embedding vector
+	Embeddings map[string][]float64 `json:"embeddings,omitempty"` // legacy: notePath -> embedding vector
 	Model      string               `json:"model"`
 	Version    int                   `json:"version"`
+
+	// V2 cache with content hashes for incremental updates.
+	Entries map[string]EmbeddingEntry `json:"entries,omitempty"` // notePath -> entry
 }
 
 // semanticResult represents a single search hit ranked by cosine similarity.
@@ -64,6 +77,10 @@ type SemanticSearch struct {
 	building      bool
 	buildProgress int
 	buildTotal    int
+
+	// Background indexing state
+	bgIndexing bool   // background build in progress (not user-triggered)
+	bgMu       sync.Mutex
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +100,17 @@ type semanticSearchMsg struct {
 }
 
 type semanticTickMsg struct{}
+
+// semanticBgIndexMsg is sent when background embedding indexing completes or
+// reports progress (used when SemanticSearchEnabled triggers indexing on startup
+// or after a note is saved).
+type semanticBgIndexMsg struct {
+	done     bool
+	progress int
+	total    int
+	err      error
+	statusText string // human-readable status for the status bar
+}
 
 // ---------------------------------------------------------------------------
 // Ollama embedding API types
@@ -230,6 +258,80 @@ func LoadIndex(vaultPath string) *EmbeddingIndex {
 	return &idx
 }
 
+// contentHash returns the hex-encoded SHA-256 hash of s.
+func contentHash(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
+}
+
+// migrateIndex upgrades a legacy v1 index (flat Embeddings map, no hashes)
+// to the v2 format with EmbeddingEntry structs. After migration the legacy
+// Embeddings map is cleared.
+func migrateIndex(idx *EmbeddingIndex) {
+	if idx == nil {
+		return
+	}
+	if idx.Entries == nil {
+		idx.Entries = make(map[string]EmbeddingEntry, len(idx.Embeddings))
+	}
+	// Migrate any legacy entries that are not yet in Entries.
+	for path, vec := range idx.Embeddings {
+		if _, ok := idx.Entries[path]; !ok {
+			idx.Entries[path] = EmbeddingEntry{
+				Vector:      vec,
+				ContentHash: "", // unknown — will be re-embedded on next build
+			}
+		}
+	}
+	idx.Embeddings = nil
+	idx.Version = 2
+}
+
+// indexLookupVec returns the embedding vector for a path from either the v2
+// Entries map or the legacy Embeddings map.
+func indexLookupVec(idx *EmbeddingIndex, path string) ([]float64, bool) {
+	if idx == nil {
+		return nil, false
+	}
+	if entry, ok := idx.Entries[path]; ok {
+		return entry.Vector, true
+	}
+	if vec, ok := idx.Embeddings[path]; ok {
+		return vec, true
+	}
+	return nil, false
+}
+
+// indexAllVecs returns all path->vector pairs from the index, preferring v2
+// Entries over legacy Embeddings.
+func indexAllVecs(idx *EmbeddingIndex) map[string][]float64 {
+	if idx == nil {
+		return nil
+	}
+	result := make(map[string][]float64, len(idx.Entries)+len(idx.Embeddings))
+	for path, vec := range idx.Embeddings {
+		result[path] = vec
+	}
+	for path, entry := range idx.Entries {
+		result[path] = entry.Vector
+	}
+	return result
+}
+
+// MarkNoteStale marks a note's cached embedding as stale so that it will be
+// re-embedded on the next background index pass.
+func (ss *SemanticSearch) MarkNoteStale(notePath string) {
+	if ss.index == nil {
+		return
+	}
+	if ss.index.Entries != nil {
+		if entry, ok := ss.index.Entries[notePath]; ok {
+			entry.ContentHash = "" // empty hash forces re-embed
+			ss.index.Entries[notePath] = entry
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Embedding generation helpers
 // ---------------------------------------------------------------------------
@@ -371,9 +473,8 @@ func embeddingCosineSimilarity(a, b []float64) float64 {
 // Background index building
 // ---------------------------------------------------------------------------
 
-// buildEmbeddingIndex determines which notes need (re-)embedding and whether
-// the model has changed, then returns a tea.Cmd that builds the index in a
-// background goroutine, sending progress via semanticBuildMsg.
+// needsRebuild reports whether the index needs re-building because notes
+// were added, removed, changed, or the model was switched.
 func (ss *SemanticSearch) needsRebuild() bool {
 	if ss.index == nil {
 		return true
@@ -381,15 +482,26 @@ func (ss *SemanticSearch) needsRebuild() bool {
 	if ss.index.Model != ss.model {
 		return true
 	}
+	allVecs := indexAllVecs(ss.index)
 	// Check for added/removed notes.
 	for path := range ss.noteContents {
-		if _, ok := ss.index.Embeddings[path]; !ok {
+		if _, ok := allVecs[path]; !ok {
 			return true
 		}
 	}
-	for path := range ss.index.Embeddings {
+	for path := range allVecs {
 		if _, ok := ss.noteContents[path]; !ok {
 			return true
+		}
+	}
+	// Check for content changes via hash.
+	for path, content := range ss.noteContents {
+		if ss.index.Entries != nil {
+			if entry, ok := ss.index.Entries[path]; ok {
+				if entry.ContentHash == "" || entry.ContentHash != contentHash(content) {
+					return true
+				}
+			}
 		}
 	}
 	return false
@@ -406,12 +518,20 @@ func (ss *SemanticSearch) startBuild() tea.Cmd {
 	apiKey := ss.apiKey
 	vaultPath := ss.vaultPath
 
-	// Determine which paths need embedding.
-	existing := make(map[string][]float64)
+	// Snapshot existing entries that are still valid (same model, path exists,
+	// content hash matches).
+	existingEntries := make(map[string]EmbeddingEntry)
 	if ss.index != nil && ss.index.Model == model {
-		for p, vec := range ss.index.Embeddings {
-			if _, ok := notes[p]; ok {
-				existing[p] = vec
+		// Migrate legacy index if needed.
+		migrateIndex(ss.index)
+		for p, entry := range ss.index.Entries {
+			content, noteExists := notes[p]
+			if !noteExists {
+				continue // note was deleted
+			}
+			// Keep the cached embedding only if the content hash matches.
+			if entry.ContentHash != "" && entry.ContentHash == contentHash(content) {
+				existingEntries[p] = entry
 			}
 		}
 	}
@@ -419,7 +539,7 @@ func (ss *SemanticSearch) startBuild() tea.Cmd {
 	// Paths that still need embedding.
 	var todo []string
 	for path := range notes {
-		if _, ok := existing[path]; !ok {
+		if _, ok := existingEntries[path]; !ok {
 			todo = append(todo, path)
 		}
 	}
@@ -431,17 +551,17 @@ func (ss *SemanticSearch) startBuild() tea.Cmd {
 		if total == 0 {
 			// Nothing to do — index is up to date.
 			idx := &EmbeddingIndex{
-				Embeddings: existing,
-				Model:      model,
-				Version:    1,
+				Entries: existingEntries,
+				Model:   model,
+				Version: 2,
 			}
 			_ = SaveIndex(vaultPath, idx)
 			return semanticBuildMsg{done: true, progress: 0, total: 0}
 		}
 
-		embeddings := make(map[string][]float64, len(existing)+total)
-		for p, v := range existing {
-			embeddings[p] = v
+		entries := make(map[string]EmbeddingEntry, len(existingEntries)+total)
+		for p, e := range existingEntries {
+			entries[p] = e
 		}
 
 		for i, path := range todo {
@@ -452,20 +572,27 @@ func (ss *SemanticSearch) startBuild() tea.Cmd {
 
 			vec, err := getEmbedding(provider, model, ollamaURL, apiKey, content)
 			if err != nil {
+				// Save what we have so far so progress is not lost.
+				partial := &EmbeddingIndex{
+					Entries: entries,
+					Model:   model,
+					Version: 2,
+				}
+				_ = SaveIndex(vaultPath, partial)
 				return semanticBuildMsg{err: fmt.Errorf("embedding %s: %w", path, err)}
 			}
-			embeddings[path] = vec
+			entries[path] = EmbeddingEntry{
+				Vector:      vec,
+				ContentHash: contentHash(notes[path]),
+			}
 
-			// Send progress for every note (via channel would be ideal,
-			// but bubbletea commands return a single Msg — so we just
-			// report the final result here; the tick handles animation).
 			_ = i // progress tracked via final message
 		}
 
 		idx := &EmbeddingIndex{
-			Embeddings: embeddings,
-			Model:      model,
-			Version:    1,
+			Entries: entries,
+			Model:   model,
+			Version: 2,
 		}
 		_ = SaveIndex(vaultPath, idx)
 		return semanticBuildMsg{done: true, progress: total, total: total}
@@ -477,6 +604,153 @@ func semanticTick() tea.Cmd {
 	return tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg {
 		return semanticTickMsg{}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Background indexing (non-overlay, triggered on startup / note save)
+// ---------------------------------------------------------------------------
+
+// StartBackgroundIndex returns a tea.Cmd that builds or updates the embedding
+// index in the background. Unlike startBuild (which is tied to the overlay),
+// this runs silently and reports progress via semanticBgIndexMsg so the status
+// bar can show "Building search index: 42/500 notes...".
+func (ss *SemanticSearch) StartBackgroundIndex(notes map[string]string) tea.Cmd {
+	ss.bgMu.Lock()
+	if ss.bgIndexing {
+		ss.bgMu.Unlock()
+		return nil // already running
+	}
+	ss.bgIndexing = true
+	ss.bgMu.Unlock()
+
+	// Snapshot everything we need.
+	provider := ss.provider
+	model := ss.model
+	ollamaURL := ss.ollamaURL
+	apiKey := ss.apiKey
+	vaultPath := ss.vaultPath
+
+	// Load or create index.
+	idx := ss.index
+	if idx == nil && vaultPath != "" {
+		idx = LoadIndex(vaultPath)
+	}
+
+	notesCopy := make(map[string]string, len(notes))
+	for k, v := range notes {
+		notesCopy[k] = v
+	}
+
+	return func() tea.Msg {
+		defer func() {
+			ss.bgMu.Lock()
+			ss.bgIndexing = false
+			ss.bgMu.Unlock()
+		}()
+
+		// Migrate legacy index.
+		if idx != nil {
+			migrateIndex(idx)
+		}
+
+		// Determine which notes need (re-)embedding.
+		existingEntries := make(map[string]EmbeddingEntry)
+		if idx != nil && idx.Model == model {
+			for p, entry := range idx.Entries {
+				content, noteExists := notesCopy[p]
+				if !noteExists {
+					continue
+				}
+				if entry.ContentHash != "" && entry.ContentHash == contentHash(content) {
+					existingEntries[p] = entry
+				}
+			}
+		}
+
+		var todo []string
+		for path := range notesCopy {
+			if _, ok := existingEntries[path]; !ok {
+				todo = append(todo, path)
+			}
+		}
+		sort.Strings(todo)
+
+		total := len(todo)
+		if total == 0 {
+			// Index is fully up to date.
+			newIdx := &EmbeddingIndex{
+				Entries: existingEntries,
+				Model:   model,
+				Version: 2,
+			}
+			_ = SaveIndex(vaultPath, newIdx)
+			return semanticBgIndexMsg{done: true, progress: 0, total: 0, statusText: "Embedding index up to date"}
+		}
+
+		entries := make(map[string]EmbeddingEntry, len(existingEntries)+total)
+		for p, e := range existingEntries {
+			entries[p] = e
+		}
+
+		for i, path := range todo {
+			content := truncateContent(notesCopy[path], 2000)
+			if strings.TrimSpace(content) == "" {
+				content = path
+			}
+
+			vec, err := getEmbedding(provider, model, ollamaURL, apiKey, content)
+			if err != nil {
+				// Save partial progress.
+				partial := &EmbeddingIndex{
+					Entries: entries,
+					Model:   model,
+					Version: 2,
+				}
+				_ = SaveIndex(vaultPath, partial)
+				return semanticBgIndexMsg{
+					err:        fmt.Errorf("embedding %s: %w", path, err),
+					progress:   i,
+					total:      total,
+					statusText: fmt.Sprintf("Embedding index error at %d/%d", i, total),
+				}
+			}
+			entries[path] = EmbeddingEntry{
+				Vector:      vec,
+				ContentHash: contentHash(notesCopy[path]),
+			}
+
+			// Save every 10 notes to avoid losing all progress on crash.
+			if (i+1)%10 == 0 {
+				checkpoint := &EmbeddingIndex{
+					Entries: entries,
+					Model:   model,
+					Version: 2,
+				}
+				_ = SaveIndex(vaultPath, checkpoint)
+			}
+		}
+
+		finalIdx := &EmbeddingIndex{
+			Entries: entries,
+			Model:   model,
+			Version: 2,
+		}
+		_ = SaveIndex(vaultPath, finalIdx)
+
+		return semanticBgIndexMsg{
+			done:       true,
+			progress:   total,
+			total:      total,
+			statusText: fmt.Sprintf("Embedding index built: %d notes", len(entries)),
+		}
+	}
+}
+
+// IsBgIndexing reports whether background indexing is in progress.
+func (ss *SemanticSearch) IsBgIndexing() bool {
+	ss.bgMu.Lock()
+	defer ss.bgMu.Unlock()
+	return ss.bgIndexing
 }
 
 // ---------------------------------------------------------------------------
@@ -494,8 +768,11 @@ func (ss *SemanticSearch) startSearch() tea.Cmd {
 	idx := ss.index
 	notes := ss.noteContents
 
+	// Collect all vectors from both legacy and v2 formats.
+	allVecs := indexAllVecs(idx)
+
 	return func() tea.Msg {
-		if idx == nil || len(idx.Embeddings) == 0 {
+		if len(allVecs) == 0 {
 			return semanticSearchMsg{err: fmt.Errorf("no embedding index — press 'b' to build")}
 		}
 
@@ -510,7 +787,7 @@ func (ss *SemanticSearch) startSearch() tea.Cmd {
 			score float64
 		}
 		var hits []scored
-		for path, vec := range idx.Embeddings {
+		for path, vec := range allVecs {
 			sim := embeddingCosineSimilarity(queryVec, vec)
 			if sim > 0 {
 				hits = append(hits, scored{path, sim})
@@ -752,7 +1029,8 @@ func (ss SemanticSearch) View() string {
 
 		// Index status
 		if ss.index != nil {
-			indexInfo := fmt.Sprintf("  Index: %d notes [%s]", len(ss.index.Embeddings), ss.index.Model)
+			indexCount := len(indexAllVecs(ss.index))
+			indexInfo := fmt.Sprintf("  Index: %d notes [%s]", indexCount, ss.index.Model)
 			b.WriteString(DimStyle.Render(indexInfo))
 			b.WriteString("\n")
 		} else {
