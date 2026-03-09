@@ -236,20 +236,20 @@ func (s *Settings) addTempHeader(cat string) int {
 }
 
 func (s *Settings) skipHeaderForward() {
-	for s.cursor < len(s.visible) && s.items[s.visible[s.cursor]].kind == "header" {
+	for attempts := 0; attempts < len(s.visible) && s.cursor < len(s.visible) && s.items[s.visible[s.cursor]].kind == "header"; attempts++ {
 		s.cursor++
 	}
 	if s.cursor >= len(s.visible) {
+		s.cursor = maxInt(0, len(s.visible)-1)
 		// Try going backward if we went past the end
-		s.cursor = len(s.visible) - 1
-		for s.cursor > 0 && s.items[s.visible[s.cursor]].kind == "header" {
+		for attempts := 0; attempts < len(s.visible) && s.cursor > 0 && s.items[s.visible[s.cursor]].kind == "header"; attempts++ {
 			s.cursor--
 		}
 	}
 }
 
 func (s *Settings) skipHeaderBackward() {
-	for s.cursor > 0 && s.items[s.visible[s.cursor]].kind == "header" {
+	for attempts := 0; attempts < len(s.visible) && s.cursor > 0 && s.items[s.visible[s.cursor]].kind == "header"; attempts++ {
 		s.cursor--
 	}
 }
