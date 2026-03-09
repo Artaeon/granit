@@ -592,6 +592,12 @@ func (m Model) Init() tea.Cmd {
 	if m.fileWatcher != nil && m.fileWatcher.IsEnabled() {
 		cmds = append(cmds, m.fileWatcher.Start())
 	}
+	// Background embedding index
+	if m.config.SemanticSearchEnabled && m.config.AIProvider != "local" {
+		if bgCmd := m.startSemanticBgIndex(); bgCmd != nil {
+			cmds = append(cmds, bgCmd)
+		}
+	}
 	if len(cmds) == 0 {
 		return nil
 	}
@@ -759,7 +765,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.toast != nil {
 			toastCmd = m.toast.ShowSuccess("Saved " + m.activeNote)
 		}
-		return m, tea.Batch(toastCmd, m.clearMessageAfter(2*time.Second))
+		// Mark saved note's embedding as stale and reindex in background.
+		var bgCmd tea.Cmd
+		if m.config.SemanticSearchEnabled && m.config.AIProvider != "local" {
+			m.semanticSearch.MarkNoteStale(m.activeNote)
+			bgCmd = m.startSemanticBgIndex()
+		}
+		return m, tea.Batch(toastCmd, m.clearMessageAfter(2*time.Second), bgCmd)
 
 	case splitPanePickMsg:
 		if m.splitPane.IsActive() {
@@ -852,6 +864,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, nil
+
+	case semanticBgIndexMsg:
+		if msg.err != nil {
+			m.statusbar.SetMessage("Embedding index error: " + msg.err.Error())
+		} else if msg.statusText != "" {
+			m.statusbar.SetMessage(msg.statusText)
+			// Reload index so semantic search overlay can use it.
+			if m.semanticSearch.vaultPath != "" {
+				m.semanticSearch.index = LoadIndex(m.semanticSearch.vaultPath)
+			}
+		}
+		return m, m.clearMessageAfter(3 * time.Second)
 
 	case threadWeaverResultMsg, threadWeaverTickMsg:
 		if m.threadWeaver.IsActive() {
@@ -1242,6 +1266,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.config.Save()
 				m.syncConfigToComponents()
 				m.sidebar.SetFiles(m.vault.SortedPaths())
+				// Start background embedding indexing if semantic search was just enabled.
+				if m.config.SemanticSearchEnabled && m.config.AIProvider != "local" {
+					if bgCmd := m.startSemanticBgIndex(); bgCmd != nil {
+						return m, tea.Batch(settingsCmd, bgCmd)
+					}
+				}
 			}
 			return m, settingsCmd
 		}
@@ -5424,6 +5454,23 @@ func (m *Model) buildOutgoingItems(paths []string) []BacklinkItem {
 		items = append(items, BacklinkItem{Path: p})
 	}
 	return items
+}
+
+// startSemanticBgIndex configures the semantic search and kicks off a
+// background tea.Cmd to build or update the embedding index incrementally.
+func (m *Model) startSemanticBgIndex() tea.Cmd {
+	if m.semanticSearch.IsBgIndexing() {
+		return nil
+	}
+	m.semanticSearch.SetVaultPath(m.vault.Root)
+	m.semanticSearch.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+	noteContents := make(map[string]string)
+	for _, p := range m.vault.SortedPaths() {
+		if note := m.vault.GetNote(p); note != nil {
+			noteContents[p] = note.Content
+		}
+	}
+	return m.semanticSearch.StartBackgroundIndex(noteContents)
 }
 
 func (m *Model) handlePluginOutput(pluginName, output string) {
