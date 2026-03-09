@@ -988,9 +988,12 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			if len(e.cursors) == 0 && e.isInTable() {
 				e.enterInTable()
 			} else if len(e.cursors) > 0 {
-				// Multi-cursor enter: process from bottom to top
+				// Multi-cursor enter: process from bottom to top so that
+				// line insertions don't shift indices of cursors still to process.
 				allCursors := sortCursorsBottomUp(e.getAllCursors())
+				primaryLine := e.cursor
 				var indent string
+				var insertedBelow int // count of newlines inserted at lines < primaryLine
 				for _, c := range allCursors {
 					if c.Line >= len(e.content) {
 						continue
@@ -1012,8 +1015,11 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					newContent = append(newContent, after)
 					newContent = append(newContent, e.content[c.Line+1:]...)
 					e.content = newContent
+					if c.Line < primaryLine {
+						insertedBelow++
+					}
 				}
-				e.cursor++
+				e.cursor = primaryLine + 1 + insertedBelow
 				if e.autoIndent && len(allCursors) > 0 {
 					e.col = len(indent)
 				} else {
