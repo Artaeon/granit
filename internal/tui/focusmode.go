@@ -149,7 +149,16 @@ func (f *FocusMode) RenderEditor(editorView string, wordCount int) string {
 
 	// --- column geometry ---
 	const maxColumn = 80
-	colWidth := f.width - 4 // leave room for border + padding
+	w := f.width
+	h := f.height
+	if w < 1 {
+		w = 1
+	}
+	if h < 1 {
+		h = 1
+	}
+
+	colWidth := w - 4 // leave room for border + padding
 	if colWidth > maxColumn {
 		colWidth = maxColumn
 	}
@@ -159,7 +168,7 @@ func (f *FocusMode) RenderEditor(editorView string, wordCount int) string {
 
 	// Available height: total minus border (2) minus status line (1) minus
 	// a small top/bottom breathing margin supplied by padding.
-	innerHeight := f.height - 4
+	innerHeight := h - 4
 	if innerHeight < 4 {
 		innerHeight = 4
 	}
@@ -211,8 +220,8 @@ func (f *FocusMode) RenderEditor(editorView string, wordCount int) string {
 
 	// --- center the panel horizontally and vertically ---
 	centered := lipgloss.Place(
-		f.width,
-		f.height,
+		w,
+		h,
 		lipgloss.Center,
 		lipgloss.Center,
 		rendered,
@@ -225,11 +234,19 @@ func (f *FocusMode) RenderEditor(editorView string, wordCount int) string {
 // focus-mode panel: word count and, when a target is set, a small progress
 // bar with "X/Y words".
 func (f *FocusMode) buildStatus(wordCount int, availWidth int) string {
+	if availWidth < 4 {
+		availWidth = 4
+	}
+
 	dimStyle := lipgloss.NewStyle().Foreground(overlay0)
 	countStyle := lipgloss.NewStyle().Foreground(subtext0)
 
 	sep := dimStyle.Render("─")
-	ruler := strings.Repeat(sep, availWidth-2)
+	rulerLen := availWidth - 2
+	if rulerLen < 0 {
+		rulerLen = 0
+	}
+	ruler := strings.Repeat(sep, rulerLen)
 
 	var info string
 	if f.targetWords > 0 {
@@ -244,7 +261,11 @@ func (f *FocusMode) buildStatus(wordCount int, availWidth int) string {
 				pct = 100
 			}
 		}
-		info = f.renderProgressBar(progress, f.targetWords, availWidth-2) +
+		barMaxW := availWidth - 2
+		if barMaxW < 0 {
+			barMaxW = 0
+		}
+		info = f.renderProgressBar(progress, f.targetWords, barMaxW) +
 			"  " + countStyle.Render(fmt.Sprintf("%d/%d words  %d%%", progress, f.targetWords, pct))
 	} else {
 		info = countStyle.Render(fmt.Sprintf("%d words", wordCount))
