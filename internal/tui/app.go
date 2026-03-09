@@ -3505,6 +3505,10 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 		}
 	case CmdSemanticSearch:
+		if m.config.AIProvider == "local" {
+			m.statusbar.SetMessage("Semantic search requires Ollama or OpenAI — configure in Settings (Ctrl+,)")
+			return m, m.clearMessageAfter(4 * time.Second)
+		}
 		m.semanticSearch.SetSize(m.width, m.height)
 		m.semanticSearch.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
 		noteContents := make(map[string]string)
@@ -3516,7 +3520,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.semanticSearch.SetNotes(noteContents)
 		m.semanticSearch.Open()
 		// Auto-build if enabled and index needs updating.
-		if m.config.SemanticSearchEnabled && m.config.AIProvider != "local" && m.semanticSearch.needsRebuild() {
+		if m.config.SemanticSearchEnabled && m.semanticSearch.needsRebuild() {
 			m.semanticSearch.building = true
 			m.semanticSearch.buildProgress = 0
 			m.semanticSearch.buildTotal = len(noteContents)
