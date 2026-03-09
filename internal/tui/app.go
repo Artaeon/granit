@@ -3138,8 +3138,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.export.Open(m.activeNote, m.editor.GetContent(), m.vault.Root)
 	case CmdGitOverlay:
 		m.git.SetSize(m.width, m.height)
-		m.git.Open()
-		return m, m.git.RefreshAll()
+		return m, m.git.Open()
 	case CmdPluginManager:
 		m.plugins.SetSize(m.width, m.height)
 		m.plugins.Open()

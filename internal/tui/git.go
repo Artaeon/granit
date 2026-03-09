@@ -47,7 +47,7 @@ func (g *GitOverlay) IsActive() bool {
 	return g.active
 }
 
-func (g *GitOverlay) Open() {
+func (g *GitOverlay) Open() tea.Cmd {
 	g.active = true
 	g.state = gitStateStatus
 	g.cursor = 0
@@ -55,6 +55,7 @@ func (g *GitOverlay) Open() {
 	g.commitMode = false
 	g.commitMsg = ""
 	g.errorMsg = ""
+	return g.RefreshAll()
 }
 
 func (g *GitOverlay) Close() {
@@ -234,7 +235,26 @@ func (g GitOverlay) updateNormal(msg tea.KeyMsg) (GitOverlay, tea.Cmd) {
 
 	// Scrolling
 	case "j", "down":
-		g.scroll++
+		var lines []string
+		switch g.state {
+		case gitStateStatus:
+			lines = g.renderStatusLines()
+		case gitStateLog:
+			lines = g.renderLogLines()
+		case gitStateDiff:
+			lines = g.renderDiffLines()
+		}
+		visH := g.height - 12
+		if visH < 5 {
+			visH = 5
+		}
+		maxScroll := len(lines) - visH
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if g.scroll < maxScroll {
+			g.scroll++
+		}
 		return g, nil
 	case "k", "up":
 		if g.scroll > 0 {
