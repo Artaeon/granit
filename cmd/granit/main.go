@@ -80,6 +80,9 @@ func main() {
 		}
 		runSearch(os.Args[2:])
 
+	case "serve":
+		runServe(os.Args[2:])
+
 	case "scan":
 		if len(os.Args) < 3 {
 			fmt.Println("Usage: granit scan <vault-path>")
@@ -171,6 +174,7 @@ CORE COMMANDS
 
 VAULT MANAGEMENT
   scan <path>                   Scan a vault and print statistics (--json)
+  serve [path] [--port 8080]    Serve vault as read-only website for browser access
   init [path]                   Initialize a new vault
   list [path]                   List vault notes (--json, --paths, --tags)
   list --vaults                 List all known vaults
@@ -210,6 +214,8 @@ EXAMPLES
   granit list ~/notes --json    Output notes as JSON array
   granit list ~/notes --paths   Output note paths (one per line, for piping)
   granit list ~/notes --tags    List all unique tags in the vault
+  granit serve ~/notes           Serve vault as website at localhost:8080
+  granit serve ~/notes --port 3000  Serve on a custom port
   granit search "TODO" ~/notes  Search vault content (grep-like output)
   granit search --regex "#+\s" ~/notes  Search with regex
   granit query 'tag:project'    Find notes with a specific tag
