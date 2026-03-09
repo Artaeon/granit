@@ -947,6 +947,326 @@ func TestSearchInitiation(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Ex commands: :x, :q!, :e, :s, :%s, :set, :noh
+// ---------------------------------------------------------------------------
+
+func TestExCommand_X(t *testing.T) {
+	content := sampleContent()
+	height := 24
+
+	t.Run(":x saves and quits", func(t *testing.T) {
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		vs.HandleKey("x", content, 0, 0, height)
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if r.StatusMsg != "save_quit" {
+			t.Errorf("expected status 'save_quit', got %q", r.StatusMsg)
+		}
+		if vs.Mode() != VimNormal {
+			t.Error("expected return to normal mode after :x")
+		}
+	})
+}
+
+func TestExCommand_ForceQuit(t *testing.T) {
+	content := sampleContent()
+	height := 24
+
+	t.Run(":q! force quits", func(t *testing.T) {
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		vs.HandleKey("q", content, 0, 0, height)
+		vs.HandleKey("!", content, 0, 0, height)
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if !r.ExForceQuit {
+			t.Error("expected ExForceQuit flag")
+		}
+	})
+}
+
+func TestExCommand_OpenFile(t *testing.T) {
+	content := sampleContent()
+	height := 24
+
+	t.Run(":e opens file", func(t *testing.T) {
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		for _, c := range "e notes.md" {
+			vs.HandleKey(string(c), content, 0, 0, height)
+		}
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if r.ExOpenFile != "notes.md" {
+			t.Errorf("expected ExOpenFile 'notes.md', got %q", r.ExOpenFile)
+		}
+	})
+
+	t.Run(":e without filename shows error", func(t *testing.T) {
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		vs.HandleKey("e", content, 0, 0, height)
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if r.StatusMsg != "no file name" {
+			t.Errorf("expected 'no file name', got %q", r.StatusMsg)
+		}
+	})
+}
+
+func TestExCommand_Substitute(t *testing.T) {
+	height := 24
+
+	t.Run(":s/old/new/ on current line", func(t *testing.T) {
+		content := []string{"foo bar foo", "baz foo baz"}
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		for _, c := range "s/foo/qux/" {
+			vs.HandleKey(string(c), content, 0, 0, height)
+		}
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if r.ExSubstitute == nil {
+			t.Fatal("expected ExSubstitute to be non-nil")
+		}
+		if r.ExSubstitute.Count != 1 {
+			t.Errorf("expected 1 substitution, got %d", r.ExSubstitute.Count)
+		}
+		if r.ExSubstitute.NewLines[0] != "qux bar foo" {
+			t.Errorf("expected 'qux bar foo', got %q", r.ExSubstitute.NewLines[0])
+		}
+		// Line 1 should be unchanged
+		if r.ExSubstitute.NewLines[1] != "baz foo baz" {
+			t.Errorf("line 1 should be unchanged, got %q", r.ExSubstitute.NewLines[1])
+		}
+	})
+
+	t.Run(":s/old/new/g replaces all on current line", func(t *testing.T) {
+		content := []string{"foo bar foo", "baz foo baz"}
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		for _, c := range "s/foo/qux/g" {
+			vs.HandleKey(string(c), content, 0, 0, height)
+		}
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if r.ExSubstitute == nil {
+			t.Fatal("expected ExSubstitute to be non-nil")
+		}
+		if r.ExSubstitute.Count != 2 {
+			t.Errorf("expected 2 substitutions, got %d", r.ExSubstitute.Count)
+		}
+		if r.ExSubstitute.NewLines[0] != "qux bar qux" {
+			t.Errorf("expected 'qux bar qux', got %q", r.ExSubstitute.NewLines[0])
+		}
+	})
+
+	t.Run(":%s/old/new/g replaces all in file", func(t *testing.T) {
+		content := []string{"foo bar foo", "baz foo baz"}
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		for _, c := range "%s/foo/qux/g" {
+			vs.HandleKey(string(c), content, 0, 0, height)
+		}
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if r.ExSubstitute == nil {
+			t.Fatal("expected ExSubstitute to be non-nil")
+		}
+		if r.ExSubstitute.Count != 3 {
+			t.Errorf("expected 3 substitutions, got %d", r.ExSubstitute.Count)
+		}
+		if r.ExSubstitute.NewLines[0] != "qux bar qux" {
+			t.Errorf("expected 'qux bar qux', got %q", r.ExSubstitute.NewLines[0])
+		}
+		if r.ExSubstitute.NewLines[1] != "baz qux baz" {
+			t.Errorf("expected 'baz qux baz', got %q", r.ExSubstitute.NewLines[1])
+		}
+	})
+
+	t.Run(":s with no match shows error", func(t *testing.T) {
+		content := []string{"hello world"}
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		for _, c := range "s/xyz/abc/" {
+			vs.HandleKey(string(c), content, 0, 0, height)
+		}
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if r.ExSubstitute != nil {
+			t.Error("expected nil ExSubstitute when pattern not found")
+		}
+		if r.StatusMsg != "pattern not found: xyz" {
+			t.Errorf("expected pattern not found message, got %q", r.StatusMsg)
+		}
+	})
+
+	t.Run(":s with escaped delimiter", func(t *testing.T) {
+		content := []string{"a/b/c"}
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		for _, c := range `s/a\/b/x` {
+			vs.HandleKey(string(c), content, 0, 0, height)
+		}
+		vs.HandleKey("/", content, 0, 0, height)
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if r.ExSubstitute == nil {
+			t.Fatal("expected ExSubstitute to be non-nil")
+		}
+		if r.ExSubstitute.NewLines[0] != "x/c" {
+			t.Errorf("expected 'x/c', got %q", r.ExSubstitute.NewLines[0])
+		}
+	})
+}
+
+func TestExCommand_SetOptions(t *testing.T) {
+	content := sampleContent()
+	height := 24
+
+	t.Run(":set number", func(t *testing.T) {
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		for _, c := range "set number" {
+			vs.HandleKey(string(c), content, 0, 0, height)
+		}
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if r.ExSetOption != "number" {
+			t.Errorf("expected ExSetOption 'number', got %q", r.ExSetOption)
+		}
+	})
+
+	t.Run(":set nonumber", func(t *testing.T) {
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		for _, c := range "set nonumber" {
+			vs.HandleKey(string(c), content, 0, 0, height)
+		}
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if r.ExSetOption != "nonumber" {
+			t.Errorf("expected ExSetOption 'nonumber', got %q", r.ExSetOption)
+		}
+	})
+
+	t.Run(":set nonu (abbreviation)", func(t *testing.T) {
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		for _, c := range "set nonu" {
+			vs.HandleKey(string(c), content, 0, 0, height)
+		}
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if r.ExSetOption != "nonumber" {
+			t.Errorf("expected ExSetOption 'nonumber', got %q", r.ExSetOption)
+		}
+	})
+
+	t.Run(":set wrap", func(t *testing.T) {
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		for _, c := range "set wrap" {
+			vs.HandleKey(string(c), content, 0, 0, height)
+		}
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if r.ExSetOption != "wrap" {
+			t.Errorf("expected ExSetOption 'wrap', got %q", r.ExSetOption)
+		}
+	})
+
+	t.Run(":set nowrap", func(t *testing.T) {
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		for _, c := range "set nowrap" {
+			vs.HandleKey(string(c), content, 0, 0, height)
+		}
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if r.ExSetOption != "nowrap" {
+			t.Errorf("expected ExSetOption 'nowrap', got %q", r.ExSetOption)
+		}
+	})
+}
+
+func TestExCommand_NoHighlight(t *testing.T) {
+	content := sampleContent()
+	height := 24
+
+	t.Run(":noh clears search highlights", func(t *testing.T) {
+		vs := enabledVim()
+		// First do a search to set up highlights
+		vs.searchActive = true
+		vs.searchMatches = []SearchMatch{{Line: 0, StartCol: 0, EndCol: 5}}
+
+		vs.HandleKey(":", content, 0, 0, height)
+		for _, c := range "noh" {
+			vs.HandleKey(string(c), content, 0, 0, height)
+		}
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if !r.ExClearSearch {
+			t.Error("expected ExClearSearch flag")
+		}
+		if vs.searchActive {
+			t.Error("expected searchActive to be false after :noh")
+		}
+	})
+
+	t.Run(":nohlsearch also works", func(t *testing.T) {
+		vs := enabledVim()
+		vs.searchActive = true
+
+		vs.HandleKey(":", content, 0, 0, height)
+		for _, c := range "nohlsearch" {
+			vs.HandleKey(string(c), content, 0, 0, height)
+		}
+		r := vs.HandleKey("enter", content, 0, 0, height)
+		if !r.ExClearSearch {
+			t.Error("expected ExClearSearch flag")
+		}
+	})
+}
+
+func TestExCommand_GetCmdBuffer(t *testing.T) {
+	content := sampleContent()
+	height := 24
+
+	t.Run("returns empty when not in command mode", func(t *testing.T) {
+		vs := enabledVim()
+		if vs.GetCmdBuffer() != "" {
+			t.Error("expected empty buffer in normal mode")
+		}
+	})
+
+	t.Run("returns buffer in command mode", func(t *testing.T) {
+		vs := enabledVim()
+		vs.HandleKey(":", content, 0, 0, height)
+		vs.HandleKey("w", content, 0, 0, height)
+		vs.HandleKey("q", content, 0, 0, height)
+		if vs.GetCmdBuffer() != "wq" {
+			t.Errorf("expected buffer 'wq', got %q", vs.GetCmdBuffer())
+		}
+	})
+}
+
+func TestSplitSubParts(t *testing.T) {
+	t.Run("simple split", func(t *testing.T) {
+		parts := splitSubParts("old/new/g", '/')
+		if len(parts) != 3 {
+			t.Fatalf("expected 3 parts, got %d", len(parts))
+		}
+		if parts[0] != "old" || parts[1] != "new" || parts[2] != "g" {
+			t.Errorf("unexpected parts: %v", parts)
+		}
+	})
+
+	t.Run("escaped delimiter", func(t *testing.T) {
+		parts := splitSubParts(`a\/b/new/`, '/')
+		if len(parts) != 3 {
+			t.Fatalf("expected 3 parts, got %d", len(parts))
+		}
+		if parts[0] != "a/b" {
+			t.Errorf("expected 'a/b', got %q", parts[0])
+		}
+	})
+
+	t.Run("no trailing delimiter", func(t *testing.T) {
+		parts := splitSubParts("old/new", '/')
+		if len(parts) != 2 {
+			t.Fatalf("expected 2 parts, got %d", len(parts))
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Helper functions (exported for vim.go)
 // ---------------------------------------------------------------------------
 
