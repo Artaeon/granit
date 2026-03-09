@@ -547,7 +547,9 @@ func (ss *SemanticSearch) startBuild() tea.Cmd {
 				Model:   model,
 				Version: 2,
 			}
-			_ = SaveIndex(vaultPath, idx)
+			if err := SaveIndex(vaultPath, idx); err != nil {
+				return semanticBuildMsg{err: fmt.Errorf("saving embedding index: %w", err)}
+			}
 			return semanticBuildMsg{done: true, progress: 0, total: 0}
 		}
 
@@ -570,8 +572,12 @@ func (ss *SemanticSearch) startBuild() tea.Cmd {
 					Model:   model,
 					Version: 2,
 				}
-				_ = SaveIndex(vaultPath, partial)
-				return semanticBuildMsg{err: fmt.Errorf("embedding %s: %w", path, err)}
+				saveErr := SaveIndex(vaultPath, partial)
+				embedErr := fmt.Errorf("embedding %s: %w", path, err)
+				if saveErr != nil {
+					return semanticBuildMsg{err: fmt.Errorf("%w (also failed to save partial index: %v)", embedErr, saveErr)}
+				}
+				return semanticBuildMsg{err: embedErr}
 			}
 			entries[path] = EmbeddingEntry{
 				Vector:      vec,
@@ -586,7 +592,9 @@ func (ss *SemanticSearch) startBuild() tea.Cmd {
 			Model:   model,
 			Version: 2,
 		}
-		_ = SaveIndex(vaultPath, idx)
+		if err := SaveIndex(vaultPath, idx); err != nil {
+			return semanticBuildMsg{err: fmt.Errorf("saving embedding index: %w", err)}
+		}
 		return semanticBuildMsg{done: true, progress: total, total: total}
 	}
 }
@@ -675,7 +683,12 @@ func (ss *SemanticSearch) StartBackgroundIndex(notes map[string]string) tea.Cmd 
 				Model:   model,
 				Version: 2,
 			}
-			_ = SaveIndex(vaultPath, newIdx)
+			if err := SaveIndex(vaultPath, newIdx); err != nil {
+				return semanticBgIndexMsg{
+					err:        fmt.Errorf("saving embedding index: %w", err),
+					statusText: "Failed to save embedding index",
+				}
+			}
 			return semanticBgIndexMsg{done: true, progress: 0, total: 0, statusText: "Embedding index up to date"}
 		}
 
@@ -698,12 +711,18 @@ func (ss *SemanticSearch) StartBackgroundIndex(notes map[string]string) tea.Cmd 
 					Model:   model,
 					Version: 2,
 				}
-				_ = SaveIndex(vaultPath, partial)
+				saveErr := SaveIndex(vaultPath, partial)
+				embedErr := fmt.Errorf("embedding %s: %w", path, err)
+				statusText := fmt.Sprintf("Embedding index error at %d/%d", i, total)
+				if saveErr != nil {
+					embedErr = fmt.Errorf("%w (also failed to save partial index: %v)", embedErr, saveErr)
+					statusText += " (save failed)"
+				}
 				return semanticBgIndexMsg{
-					err:        fmt.Errorf("embedding %s: %w", path, err),
+					err:        embedErr,
 					progress:   i,
 					total:      total,
-					statusText: fmt.Sprintf("Embedding index error at %d/%d", i, total),
+					statusText: statusText,
 				}
 			}
 			entries[path] = EmbeddingEntry{
@@ -718,7 +737,14 @@ func (ss *SemanticSearch) StartBackgroundIndex(notes map[string]string) tea.Cmd 
 					Model:   model,
 					Version: 2,
 				}
-				_ = SaveIndex(vaultPath, checkpoint)
+				if err := SaveIndex(vaultPath, checkpoint); err != nil {
+					return semanticBgIndexMsg{
+						err:        fmt.Errorf("saving embedding checkpoint at %d/%d: %w", i+1, total, err),
+						progress:   i + 1,
+						total:      total,
+						statusText: fmt.Sprintf("Failed to save embedding checkpoint at %d/%d", i+1, total),
+					}
+				}
 			}
 		}
 
@@ -727,7 +753,14 @@ func (ss *SemanticSearch) StartBackgroundIndex(notes map[string]string) tea.Cmd 
 			Model:   model,
 			Version: 2,
 		}
-		_ = SaveIndex(vaultPath, finalIdx)
+		if err := SaveIndex(vaultPath, finalIdx); err != nil {
+			return semanticBgIndexMsg{
+				err:        fmt.Errorf("saving final embedding index: %w", err),
+				progress:   total,
+				total:      total,
+				statusText: "Failed to save embedding index",
+			}
+		}
 
 		return semanticBgIndexMsg{
 			done:       true,
