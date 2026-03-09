@@ -80,6 +80,9 @@ type Editor struct {
 	// Vim search highlights
 	searchMatches      []SearchMatch
 	currentSearchMatch int
+
+	// Inline spell check: positions of misspelled characters (line -> col -> true)
+	spellPositions map[int]map[int]bool
 }
 
 // SetWordWrap enables or disables word wrapping in the editor.
@@ -1759,6 +1762,57 @@ func (e *Editor) renderWithSearchHighlights(line string, lineIdx, fmStart, fmEnd
 	return result.String()
 }
 
+// SetSpellPositions updates the misspelled character position map used for
+// inline spell check highlights in the editor.
+func (e *Editor) SetSpellPositions(pos map[int]map[int]bool) {
+	e.spellPositions = pos
+}
+
+// hasSpellErrors returns true if the given line has any misspelled characters.
+func (e *Editor) hasSpellErrors(lineIdx int) bool {
+	if e.spellPositions == nil {
+		return false
+	}
+	_, ok := e.spellPositions[lineIdx]
+	return ok
+}
+
+// renderWithSpellHighlights renders a line with misspelled words underlined in red.
+// It delegates non-misspelled segments to highlightLine for normal syntax coloring.
+func (e *Editor) renderWithSpellHighlights(line string, lineIdx, fmStart, fmEnd int, codeBlocks map[int]string, colOffset int) string {
+	linePos := e.spellPositions[lineIdx]
+	if linePos == nil {
+		return highlightLine(line, lineIdx, fmStart, fmEnd, codeBlocks)
+	}
+
+	spellStyle := lipgloss.NewStyle().Foreground(red).Underline(true)
+
+	var result strings.Builder
+	inSpell := false
+	spanStart := 0
+
+	for i := 0; i <= len(line); i++ {
+		absCol := colOffset + i
+		isMisspelled := i < len(line) && linePos[absCol]
+
+		if i == len(line) || isMisspelled != inSpell {
+			// Flush the current segment
+			seg := line[spanStart:i]
+			if len(seg) > 0 {
+				if inSpell {
+					result.WriteString(spellStyle.Render(seg))
+				} else {
+					result.WriteString(highlightLine(seg, lineIdx, fmStart, fmEnd, codeBlocks))
+				}
+			}
+			spanStart = i
+			inSpell = isMisspelled
+		}
+	}
+
+	return result.String()
+}
+
 func (e Editor) View() string {
 	var b strings.Builder
 	contentWidth := e.width - 4
@@ -1970,7 +2024,17 @@ func (e Editor) View() string {
 				} else if (isActiveLine || hasMultiCursor) && e.hasAnyCursorOnVisualLine(i, vi, maxWidth) {
 					b.WriteString(e.renderWrappedLineWithCursors(vl, i, vi, maxWidth, fmStart, fmEnd, codeBlockLines, multiCursorStyle))
 				} else {
-					styledLine := highlightLine(vl, i, fmStart, fmEnd, codeBlockLines)
+					// Calculate column offset for this visual line segment
+					wrapColOffset := 0
+					for wvi := 0; wvi < vi; wvi++ {
+						wrapColOffset += len(visualLines[wvi])
+					}
+					var styledLine string
+					if e.hasSpellErrors(i) {
+						styledLine = e.renderWithSpellHighlights(vl, i, fmStart, fmEnd, codeBlockLines, wrapColOffset)
+					} else {
+						styledLine = highlightLine(vl, i, fmStart, fmEnd, codeBlockLines)
+					}
 					if e.highlightCurrentLine && isActiveLine {
 						styledLine = lipgloss.NewStyle().Background(surface0).Width(maxWidth).Render(styledLine)
 					}
@@ -2109,6 +2173,8 @@ func (e Editor) View() string {
 				b.WriteString(e.renderWithSearchHighlights(displayLine, i, fmStart, fmEnd, codeBlockLines, 0))
 			} else if e.matchBracketValid && i == e.matchBracketLine {
 				b.WriteString(e.highlightLineWithBrackets(displayLine, i, 0, fmStart, fmEnd, codeBlockLines, bracketStyle))
+			} else if e.hasSpellErrors(i) {
+				b.WriteString(e.renderWithSpellHighlights(displayLine, i, fmStart, fmEnd, codeBlockLines, 0))
 			} else {
 				b.WriteString(highlightLine(displayLine, i, fmStart, fmEnd, codeBlockLines))
 			}
