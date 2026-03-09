@@ -435,6 +435,14 @@ func parseSubstitution(cmd string, content []string, cursor int) *VimResult {
 		endLine = len(content) - 1
 	}
 
+	// Clamp to valid range to prevent out-of-bounds access
+	if startLine < 0 {
+		startLine = 0
+	}
+	if endLine >= len(content) {
+		endLine = len(content) - 1
+	}
+
 	for i := startLine; i <= endLine; i++ {
 		if globalReplace {
 			n := strings.Count(newLines[i], old)
