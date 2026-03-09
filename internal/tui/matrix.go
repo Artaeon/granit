@@ -1274,6 +1274,15 @@ func (mx *Matrix) sortRooms() {
 func (mx Matrix) handleKeyMsg(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 	key := msg.String()
 
+	// Login form gets priority when active — handle all keys there
+	if mx.focus == matrixFocusLogin && mx.accessToken == "" {
+		if key == "esc" || key == "alt+m" {
+			mx.Close()
+			return mx, nil
+		}
+		return mx.handleLoginKeys(msg)
+	}
+
 	// Global keys
 	switch key {
 	case "esc":
@@ -1353,11 +1362,6 @@ func (mx Matrix) handleKeyMsg(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 			mx.focus = matrixFocusRooms
 		}
 		return mx, nil
-	}
-
-	// Login form handling
-	if mx.focus == matrixFocusLogin {
-		return mx.handleLoginKeys(msg)
 	}
 
 	// Privacy panel
