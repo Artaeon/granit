@@ -5490,7 +5490,9 @@ func (m *Model) applyTextOp(op string, startLine, startCol, endLine, endCol int)
 		newContent := make([]string, 0, len(m.editor.content)-(endLine-startLine))
 		newContent = append(newContent, m.editor.content[:startLine]...)
 		newContent = append(newContent, newLine)
-		newContent = append(newContent, m.editor.content[endLine+1:]...)
+		if endLine+1 < len(m.editor.content) {
+			newContent = append(newContent, m.editor.content[endLine+1:]...)
+		}
 		m.editor.content = newContent
 	}
 
