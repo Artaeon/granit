@@ -263,6 +263,7 @@ func (fr FindReplace) Update(msg tea.Msg) (FindReplace, tea.Cmd) {
 					} else {
 						fr.historyIdx = -1
 						fr.findQuery = fr.savedQuery
+						fr.savedQuery = ""
 					}
 				}
 			}
@@ -287,6 +288,7 @@ func (fr FindReplace) Update(msg tea.Msg) (FindReplace, tea.Cmd) {
 			if fr.focusField == 0 && len(fr.findQuery) > 0 {
 				fr.findQuery = fr.findQuery[:len(fr.findQuery)-1]
 				fr.historyIdx = -1
+				fr.savedQuery = ""
 			} else if fr.focusField == 1 && len(fr.replaceText) > 0 {
 				fr.replaceText = fr.replaceText[:len(fr.replaceText)-1]
 			}
@@ -297,6 +299,7 @@ func (fr FindReplace) Update(msg tea.Msg) (FindReplace, tea.Cmd) {
 				if fr.focusField == 0 {
 					fr.findQuery += char
 					fr.historyIdx = -1
+					fr.savedQuery = ""
 				} else {
 					fr.replaceText += char
 				}
