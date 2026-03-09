@@ -4574,6 +4574,47 @@ func (m *Model) updateLayout() {
 	if showOutline {
 		panelBorders += 2
 	}
+
+	// Ensure panel widths + minimum editor (30) + borders fit in terminal width.
+	// The editor border always takes 2 columns.
+	minEditorWidth := 30
+	totalPanels := sidebarWidth + backlinksWidth + outlineWidth
+	available := m.width - panelBorders - 2 // space for editor after borders
+	if totalPanels+minEditorWidth > available {
+		// Proportionally shrink panels to fit
+		budget := available - minEditorWidth
+		if budget < 0 {
+			budget = 0
+		}
+		if totalPanels > 0 && budget > 0 {
+			ratio := float64(budget) / float64(totalPanels)
+			sidebarWidth = int(float64(sidebarWidth) * ratio)
+			backlinksWidth = int(float64(backlinksWidth) * ratio)
+			outlineWidth = int(float64(outlineWidth) * ratio)
+			// Distribute rounding remainder to sidebar (largest panel)
+			remainder := budget - sidebarWidth - backlinksWidth - outlineWidth
+			sidebarWidth += remainder
+		} else {
+			// No room for panels at all — hide them
+			sidebarWidth = 0
+			backlinksWidth = 0
+			outlineWidth = 0
+		}
+		// Hide panels that shrank below a usable minimum
+		if outlineWidth > 0 && outlineWidth < 10 {
+			outlineWidth = 0
+			panelBorders -= 2
+		}
+		if backlinksWidth > 0 && backlinksWidth < 10 {
+			backlinksWidth = 0
+			panelBorders -= 2
+		}
+		if sidebarWidth > 0 && sidebarWidth < 10 {
+			sidebarWidth = 0
+			panelBorders -= 2
+		}
+	}
+
 	editorWidth := m.width - sidebarWidth - backlinksWidth - outlineWidth - panelBorders - 2
 
 	// Taskboard and research layouts have an extra right panel
@@ -5319,6 +5360,42 @@ func (m Model) View() string {
 	if showOutline {
 		panelBorders += 2
 	}
+
+	// Ensure panel widths + minimum editor (30) + borders fit in terminal width.
+	minEditorWidth := 30
+	totalPanels := sidebarWidth + backlinksWidth + outlineWidth
+	available := m.width - panelBorders - 2
+	if totalPanels+minEditorWidth > available {
+		budget := available - minEditorWidth
+		if budget < 0 {
+			budget = 0
+		}
+		if totalPanels > 0 && budget > 0 {
+			ratio := float64(budget) / float64(totalPanels)
+			sidebarWidth = int(float64(sidebarWidth) * ratio)
+			backlinksWidth = int(float64(backlinksWidth) * ratio)
+			outlineWidth = int(float64(outlineWidth) * ratio)
+			remainder := budget - sidebarWidth - backlinksWidth - outlineWidth
+			sidebarWidth += remainder
+		} else {
+			sidebarWidth = 0
+			backlinksWidth = 0
+			outlineWidth = 0
+		}
+		if outlineWidth > 0 && outlineWidth < 10 {
+			outlineWidth = 0
+			panelBorders -= 2
+		}
+		if backlinksWidth > 0 && backlinksWidth < 10 {
+			backlinksWidth = 0
+			panelBorders -= 2
+		}
+		if sidebarWidth > 0 && sidebarWidth < 10 {
+			sidebarWidth = 0
+			panelBorders -= 2
+		}
+	}
+
 	editorWidth := m.width - sidebarWidth - backlinksWidth - outlineWidth - panelBorders - 2
 	if editorWidth < 30 {
 		editorWidth = 30
@@ -5428,31 +5505,40 @@ func (m Model) View() string {
 				Height(contentHeight + 2).
 				Render(zenEditor)
 		case "dashboard": // 4-panel: sidebar | editor | outline | backlinks
-			sidebar := SidebarStyle.Copy().
-				BorderForeground(sidebarBorderColor).
-				Width(sidebarWidth).
-				Height(contentHeight).
-				Render(m.sidebar.View())
-
-			outlinePanelContent := m.outline.RenderPanel(m.editor.GetContent(), outlineWidth, contentHeight)
-			outlinePanel := lipgloss.NewStyle().
-				BorderStyle(PanelBorder).
-				BorderForeground(surface1).
-				Width(outlineWidth).
-				Height(contentHeight).
-				Render(outlinePanelContent)
-
-			backlinks := BacklinksStyle.Copy().
-				BorderForeground(backlinksBorderColor).
-				Width(backlinksWidth).
-				Height(contentHeight).
-				Render(m.backlinks.View())
-
-			if m.config.SidebarPosition == "right" {
-				content = lipgloss.JoinHorizontal(lipgloss.Top, backlinks, outlinePanel, editor, sidebar)
-			} else {
-				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor, outlinePanel, backlinks)
+			var leftPanels, rightPanels []string
+			if sidebarWidth > 0 {
+				sidebar := SidebarStyle.Copy().
+					BorderForeground(sidebarBorderColor).
+					Width(sidebarWidth).
+					Height(contentHeight).
+					Render(m.sidebar.View())
+				if m.config.SidebarPosition == "right" {
+					rightPanels = append(rightPanels, sidebar)
+				} else {
+					leftPanels = append(leftPanels, sidebar)
+				}
 			}
+			if outlineWidth > 0 {
+				outlinePanelContent := m.outline.RenderPanel(m.editor.GetContent(), outlineWidth, contentHeight)
+				outlinePanel := lipgloss.NewStyle().
+					BorderStyle(PanelBorder).
+					BorderForeground(surface1).
+					Width(outlineWidth).
+					Height(contentHeight).
+					Render(outlinePanelContent)
+				rightPanels = append(rightPanels, outlinePanel)
+			}
+			if backlinksWidth > 0 {
+				backlinks := BacklinksStyle.Copy().
+					BorderForeground(backlinksBorderColor).
+					Width(backlinksWidth).
+					Height(contentHeight).
+					Render(m.backlinks.View())
+				rightPanels = append(rightPanels, backlinks)
+			}
+			panels := append(leftPanels, editor)
+			panels = append(panels, rightPanels...)
+			content = lipgloss.JoinHorizontal(lipgloss.Top, panels...)
 		case "taskboard":
 			sidebar := SidebarStyle.Copy().
 				BorderForeground(sidebarBorderColor).
