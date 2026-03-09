@@ -244,12 +244,18 @@ func (g GraphView) Update(msg tea.Msg) (GraphView, tea.Cmd) {
 			g.cursor = 0
 			g.scroll = 0
 			g.buildGraph()
+			if g.cursor >= len(g.nodes) {
+				g.cursor = maxInt(0, len(g.nodes)-1)
+			}
 		case "1":
 			if g.localMode && g.depth != 1 {
 				g.depth = 1
 				g.cursor = 0
 				g.scroll = 0
 				g.buildGraph()
+				if g.cursor >= len(g.nodes) {
+					g.cursor = maxInt(0, len(g.nodes)-1)
+				}
 			}
 		case "2":
 			if g.localMode && g.depth != 2 {
@@ -257,6 +263,9 @@ func (g GraphView) Update(msg tea.Msg) (GraphView, tea.Cmd) {
 				g.cursor = 0
 				g.scroll = 0
 				g.buildGraph()
+				if g.cursor >= len(g.nodes) {
+					g.cursor = maxInt(0, len(g.nodes)-1)
+				}
 			}
 		}
 	}
