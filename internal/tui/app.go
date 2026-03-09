@@ -3515,6 +3515,14 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		m.semanticSearch.SetNotes(noteContents)
 		m.semanticSearch.Open()
+		// Auto-build if enabled and index needs updating.
+		if m.config.SemanticSearchEnabled && m.config.AIProvider != "local" && m.semanticSearch.needsRebuild() {
+			m.semanticSearch.building = true
+			m.semanticSearch.buildProgress = 0
+			m.semanticSearch.buildTotal = len(noteContents)
+			m.semanticSearch.loadingTick = 0
+			return m, tea.Batch(m.semanticSearch.startBuild(), semanticTick())
+		}
 	case CmdThreadWeaver:
 		m.threadWeaver.SetSize(m.width, m.height)
 		m.threadWeaver.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
