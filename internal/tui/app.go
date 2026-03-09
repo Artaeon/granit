@@ -2011,7 +2011,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						// Replace mode
 						before := make([]string, len(m.editor.content[:startLine]))
 						copy(before, m.editor.content[:startLine])
-						after := m.editor.content[endLine+1:]
+						var after []string
+						if endLine+1 < len(m.editor.content) {
+							after = m.editor.content[endLine+1:]
+						}
 						m.editor.content = append(before, append(newLines, after...)...)
 						m.statusbar.SetMessage("Table updated")
 					}
