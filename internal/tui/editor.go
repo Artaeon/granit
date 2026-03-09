@@ -597,23 +597,23 @@ func (e *Editor) wordUnderCursor() (string, int) {
 	if e.cursor >= len(e.content) {
 		return "", 0
 	}
-	line := e.content[e.cursor]
-	if len(line) == 0 || e.col > len(line) {
+	runes := []rune(e.content[e.cursor])
+	if len(runes) == 0 || e.col > len(runes) {
 		return "", 0
 	}
 	col := e.col
-	if col >= len(line) {
-		col = len(line) - 1
+	if col >= len(runes) {
+		col = len(runes) - 1
 	}
 	if col < 0 {
 		return "", 0
 	}
-	r := rune(line[col])
+	r := runes[col]
 	if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
 		// Try one position to the left (cursor may be just past the word)
 		if col > 0 {
 			col--
-			r = rune(line[col])
+			r = runes[col]
 			if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
 				return "", 0
 			}
@@ -623,21 +623,21 @@ func (e *Editor) wordUnderCursor() (string, int) {
 	}
 	start := col
 	for start > 0 {
-		r := rune(line[start-1])
+		r := runes[start-1]
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
 			break
 		}
 		start--
 	}
 	end := col
-	for end < len(line)-1 {
-		r := rune(line[end+1])
+	for end < len(runes)-1 {
+		r := runes[end+1]
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
 			break
 		}
 		end++
 	}
-	return line[start : end+1], start
+	return string(runes[start : end+1]), start
 }
 
 // isMultiCursorAt checks if any additional cursor is at the given position.
