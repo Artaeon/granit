@@ -177,7 +177,7 @@ type Model struct {
 	notePreview      NotePreview
 	scratchpad       Scratchpad
 	backup           Backup
-	onboarding       Onboarding
+	tutorial          Tutorial
 	projectMode      ProjectMode
 	nlSearch         NLSearch
 	writingCoach     WritingCoach
@@ -332,7 +332,7 @@ func NewModel(vaultPath string) (Model, error) {
 		dataview:        NewDataviewOverlay(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
-		onboarding:     NewOnboarding(),
+		tutorial:       NewTutorial(&cfg),
 		showSplash:     cfg.ShowSplash,
 		splash:         NewSplashModel(vaultPath, v.NoteCount()),
 		viewMode:       cfg.DefaultViewMode,
@@ -596,9 +596,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyMsg:
 			// Any key press immediately dismisses the splash
 			m.showSplash = false
-			if ShouldShowOnboarding() {
-				m.onboarding.SetSize(m.width, m.height)
-				m.onboarding.Open()
+			if !m.config.TutorialCompleted {
+				m.tutorial.SetSize(m.width, m.height)
+				m.tutorial.Open()
 			}
 			return m, nil
 		case splashTickMsg:
@@ -606,9 +606,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.splash, cmd = m.splash.Update(msg)
 			if m.splash.IsDone() {
 				m.showSplash = false
-				if ShouldShowOnboarding() {
-					m.onboarding.SetSize(m.width, m.height)
-					m.onboarding.Open()
+				if !m.config.TutorialCompleted {
+					m.tutorial.SetSize(m.width, m.height)
+					m.tutorial.Open()
 				}
 				return m, nil
 			}
@@ -1715,12 +1715,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.onboarding.IsActive() {
+		if m.tutorial.IsActive() {
 			var cmd tea.Cmd
-			m.onboarding, cmd = m.onboarding.Update(msg)
-			if !m.onboarding.IsActive() {
-				m.onboarding.MarkComplete()
-			}
+			m.tutorial, cmd = m.tutorial.Update(msg)
 			return m, cmd
 		}
 
@@ -3896,8 +3893,8 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.knowledgeGaps.Open(m.vault.Root)
 
 	case CmdShowTutorial:
-		m.onboarding.SetSize(m.width, m.height)
-		m.onboarding.Open()
+		m.tutorial.SetSize(m.width, m.height)
+		m.tutorial.Open()
 
 	case CmdCloseOtherTabs:
 		if m.tabBar != nil {
@@ -4680,7 +4677,7 @@ func (m *Model) updateLayout() {
 	m.taskManager.SetSize(m.width, m.height)
 	m.blogPublisher.SetSize(m.width, m.height)
 	m.backup.SetSize(m.width, m.height)
-	m.onboarding.SetSize(m.width, m.height)
+	m.tutorial.SetSize(m.width, m.height)
 }
 
 // refreshComponents re-scans the vault and updates all dependent components
@@ -5115,6 +5112,74 @@ func (m *Model) applyVimResult(r VimResult) tea.Cmd {
 	if r.TextOp != "" {
 		m.editor.saveSnapshot()
 		m.applyTextOp(r.TextOp, r.TextOpStartLine, r.TextOpStartCol, r.TextOpEndLine, r.TextOpEndCol)
+	}
+
+	// Ex command: :q! — force quit without saving
+	if r.ExForceQuit {
+		m.editor.modified = false // discard changes
+		return m.triggerExitSplash()
+	}
+
+	// Ex command: :e <file> — open file by fuzzy match
+	if r.ExOpenFile != "" {
+		query := strings.ToLower(r.ExOpenFile)
+		paths := m.vault.SortedPaths()
+		// First try exact match, then fuzzy match
+		bestMatch := ""
+		for _, p := range paths {
+			if strings.EqualFold(p, r.ExOpenFile) || strings.EqualFold(p, r.ExOpenFile+".md") {
+				bestMatch = p
+				break
+			}
+		}
+		if bestMatch == "" {
+			for _, p := range paths {
+				if fuzzyMatch(strings.ToLower(p), query) {
+					bestMatch = p
+					break
+				}
+			}
+		}
+		if bestMatch != "" {
+			m.loadNote(bestMatch)
+			m.statusbar.SetMessage("opened " + bestMatch)
+		} else {
+			m.statusbar.SetMessage("file not found: " + r.ExOpenFile)
+		}
+	}
+
+	// Ex command: :set option — toggle editor options
+	if r.ExSetOption != "" {
+		switch r.ExSetOption {
+		case "number":
+			m.editor.showLineNumbers = true
+			m.config.LineNumbers = true
+			m.statusbar.SetMessage("line numbers on")
+		case "nonumber":
+			m.editor.showLineNumbers = false
+			m.config.LineNumbers = false
+			m.statusbar.SetMessage("line numbers off")
+		case "wrap":
+			m.editor.SetWordWrap(true)
+			m.config.WordWrap = true
+			m.statusbar.SetMessage("word wrap on")
+		case "nowrap":
+			m.editor.SetWordWrap(false)
+			m.config.WordWrap = false
+			m.statusbar.SetMessage("word wrap off")
+		}
+	}
+
+	// Ex command: :noh — clear search highlights
+	if r.ExClearSearch {
+		m.editor.ClearSearchHighlights()
+	}
+
+	// Ex command: :s substitution
+	if r.ExSubstitute != nil {
+		m.editor.saveSnapshot()
+		m.editor.content = r.ExSubstitute.NewLines
+		m.editor.modified = true
 	}
 
 	// Sync search highlights from vim state to editor for rendering
@@ -5977,8 +6042,8 @@ func (m Model) View() string {
 		overlay := m.backup.View()
 		view = m.overlayCenter(view, overlay)
 	}
-	if m.onboarding.IsActive() {
-		overlay := m.onboarding.View()
+	if m.tutorial.IsActive() {
+		overlay := m.tutorial.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.projectMode.IsActive() {
