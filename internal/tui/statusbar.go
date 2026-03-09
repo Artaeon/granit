@@ -24,7 +24,6 @@ type StatusBar struct {
 	dueTodayCount  int
 	readingProgress int  // 0-100 percentage
 	viewMode        bool // whether currently in view mode
-	matrixUnread    int  // total unread Matrix messages
 }
 
 func NewStatusBar() StatusBar {
@@ -97,10 +96,6 @@ func (sb *StatusBar) SetViewMode(active bool) {
 	sb.viewMode = active
 }
 
-func (sb *StatusBar) SetMatrixUnread(count int) {
-	sb.matrixUnread = count
-}
-
 func (sb StatusBar) View() string {
 	// Mode badge
 	modeColors := map[string]lipgloss.Color{
@@ -169,18 +164,6 @@ func (sb StatusBar) View() string {
 			Render(IconBotChar + " " + sb.aiModel)
 	}
 
-	// Matrix unread badge
-	matrixBadge := ""
-	if sb.matrixUnread > 0 {
-		badgeText := fmt.Sprintf("\U0001F4AC %d", sb.matrixUnread)
-		if IconFileChar == "~" { // ascii icon mode
-			badgeText = fmt.Sprintf("[M:%d]", sb.matrixUnread)
-		}
-		matrixBadge = lipgloss.NewStyle().
-			Background(peach).Foreground(crust).Bold(true).Padding(0, 1).
-			Render(badgeText)
-	}
-
 	// Pomodoro indicator
 	pomoIndicator := ""
 	if sb.pomodoroStatus != "" {
@@ -217,15 +200,12 @@ func (sb StatusBar) View() string {
 		return lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) +
 			lipgloss.Width(readingBar) + lipgloss.Width(researchIndicator) +
 			lipgloss.Width(taskIndicator) + lipgloss.Width(pomoIndicator) +
-			lipgloss.Width(matrixBadge) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
+			lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	}
 
-	// Step 1: If too wide, hide least important indicators (reading progress, matrix, AI badge)
+	// Step 1: If too wide, hide least important indicators (reading progress, AI badge)
 	if totalUsed() > sb.width {
 		readingBar = ""
-	}
-	if totalUsed() > sb.width {
-		matrixBadge = ""
 	}
 	if totalUsed() > sb.width {
 		aiIndicator = ""
@@ -250,7 +230,7 @@ func (sb StatusBar) View() string {
 
 	// Calculate gap
 	leftLen := lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) + lipgloss.Width(readingBar)
-	rightLen := lipgloss.Width(researchIndicator) + lipgloss.Width(taskIndicator) + lipgloss.Width(pomoIndicator) + lipgloss.Width(matrixBadge) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
+	rightLen := lipgloss.Width(researchIndicator) + lipgloss.Width(taskIndicator) + lipgloss.Width(pomoIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	gap := sb.width - leftLen - rightLen
 	if gap < 0 {
 		gap = 0
@@ -260,7 +240,7 @@ func (sb StatusBar) View() string {
 		gapStr = StatusBarBg.Width(gap).Render(strings.Repeat(" ", gap))
 	}
 
-	bar := mode + fileSection + cursorPos + readingBar + gapStr + researchIndicator + taskIndicator + pomoIndicator + matrixBadge + aiIndicator + rightInfo
+	bar := mode + fileSection + cursorPos + readingBar + gapStr + researchIndicator + taskIndicator + pomoIndicator + aiIndicator + rightInfo
 
 	// Help bar
 	helpItems := []struct{ key, desc string }{
