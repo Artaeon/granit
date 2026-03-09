@@ -400,19 +400,11 @@ func (al *AutoLinker) contextSnippet(m LinkSuggestion, maxWidth int) string {
 		start = 0
 	} else if start > 0 {
 		prefix = "..."
-		start += 3
-		if start > m.Col {
-			start = m.Col
-		}
 	}
 	if end > len(line) {
 		end = len(line)
 	} else if end < len(line) {
 		suffix = "..."
-		end -= 3
-		if end < matchEnd {
-			end = matchEnd
-		}
 	}
 
 	before := line[start:m.Col]

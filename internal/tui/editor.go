@@ -379,8 +379,7 @@ func (e *Editor) Undo() {
 	if len(e.content) == 0 {
 		e.content = []string{""}
 	}
-	e.cursor = snap.cursor
-	e.col = snap.col
+	e.cursor, e.col = e.clampCursor(snap.cursor, snap.col)
 	e.modified = true
 	e.codeFenceCacheDirty = true
 	e.countWords()
@@ -2273,8 +2272,10 @@ func (e *Editor) renderWrappedLineWithCursors(visualLine string, contentLine, vi
 	visualLines := e.splitLineForWrap(e.content[contentLine], maxWidth)
 	startCol := 0
 	for vi := 0; vi < visualLineIdx; vi++ {
-		startCol += len(visualLines[vi])
+		startCol += len([]rune(visualLines[vi]))
 	}
+
+	vlRunes := []rune(visualLine)
 
 	type cursorInfo struct {
 		col    int
@@ -2284,14 +2285,14 @@ func (e *Editor) renderWrappedLineWithCursors(visualLine string, contentLine, vi
 
 	if contentLine == e.cursor {
 		adjCol := e.col - startCol
-		if adjCol >= 0 && adjCol <= len(visualLine) {
+		if adjCol >= 0 && adjCol <= len(vlRunes) {
 			cursorsOnLine = append(cursorsOnLine, cursorInfo{col: adjCol, isMain: true})
 		}
 	}
 	for _, c := range e.cursors {
 		if c.Line == contentLine {
 			adjCol := c.Col - startCol
-			if adjCol >= 0 && adjCol <= len(visualLine) {
+			if adjCol >= 0 && adjCol <= len(vlRunes) {
 				cursorsOnLine = append(cursorsOnLine, cursorInfo{col: adjCol, isMain: false})
 			}
 		}
@@ -2305,33 +2306,33 @@ func (e *Editor) renderWrappedLineWithCursors(visualLine string, contentLine, vi
 	prevCol := 0
 	for _, ci := range cursorsOnLine {
 		col := ci.col
-		if col > len(visualLine) {
-			col = len(visualLine)
+		if col > len(vlRunes) {
+			col = len(vlRunes)
 		}
 		if col < prevCol {
 			continue
 		}
 		if col > prevCol {
-			segment := visualLine[prevCol:col]
+			segment := string(vlRunes[prevCol:col])
 			result.WriteString(highlightLine(segment, contentLine, fmStart, fmEnd, codeBlocks))
 		}
 		cursorChar := " "
-		if col < len(visualLine) {
-			cursorChar = string(visualLine[col])
+		if col < len(vlRunes) {
+			cursorChar = string(vlRunes[col])
 		}
 		if ci.isMain {
 			result.WriteString(CursorStyle.Render(cursorChar))
 		} else {
 			result.WriteString(multiCursorStyle.Render(cursorChar))
 		}
-		if col < len(visualLine) {
+		if col < len(vlRunes) {
 			prevCol = col + 1
 		} else {
 			prevCol = col
 		}
 	}
-	if prevCol < len(visualLine) {
-		segment := visualLine[prevCol:]
+	if prevCol < len(vlRunes) {
+		segment := string(vlRunes[prevCol:])
 		result.WriteString(highlightLine(segment, contentLine, fmStart, fmEnd, codeBlocks))
 	}
 
