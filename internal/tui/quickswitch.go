@@ -131,6 +131,9 @@ func (qs QuickSwitch) Update(msg tea.Msg) (QuickSwitch, tea.Cmd) {
 				qs.cursor++
 			}
 		case "enter":
+			if qs.cursor >= len(qs.items) {
+				qs.cursor = maxInt(0, len(qs.items)-1)
+			}
 			if len(qs.items) > 0 && qs.cursor < len(qs.items) {
 				qs.result = qs.items[qs.cursor].path
 				qs.active = false
