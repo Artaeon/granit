@@ -267,8 +267,14 @@ func (sb StatusBar) View() string {
 	if totalUsed() > sb.width {
 		overhead := totalUsed() - sb.width
 		plainFile := fileIcon + " " + sb.activeNote
-		if len(plainFile) > overhead+4 {
-			plainFile = plainFile[:len(plainFile)-overhead-3] + "..."
+		if lipgloss.Width(plainFile) > overhead+4 {
+			// Truncate by runes to avoid cutting multi-byte characters
+			runes := []rune(plainFile)
+			cut := len(runes)
+			for lipgloss.Width(string(runes[:cut])) > lipgloss.Width(plainFile)-overhead-3 && cut > 0 {
+				cut--
+			}
+			plainFile = string(runes[:cut]) + "..."
 		} else {
 			plainFile = "..."
 		}
