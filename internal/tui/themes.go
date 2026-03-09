@@ -1123,4 +1123,7 @@ func ApplyTheme(name string) {
 	IconFolder = lipgloss.NewStyle().Foreground(peach).Render("")
 	IconDaily = lipgloss.NewStyle().Foreground(green).Render("")
 	IconTag = lipgloss.NewStyle().Foreground(yellow).Render("")
+
+	// Invalidate syntax highlight cache so code blocks pick up new colors.
+	InvalidateChromaCache()
 }
