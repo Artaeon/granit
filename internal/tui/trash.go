@@ -191,8 +191,10 @@ func (t *Trash) RestoreFile() string {
 
 	// Remove from list and fix cursor.
 	t.items = append(t.items[:t.cursor], t.items[t.cursor+1:]...)
-	if t.cursor >= len(t.items) && t.cursor > 0 {
-		t.cursor--
+	if len(t.items) == 0 {
+		t.cursor = 0
+	} else if t.cursor >= len(t.items) {
+		t.cursor = len(t.items) - 1
 	}
 
 	return t.result
@@ -220,8 +222,10 @@ func (t *Trash) PurgeSelected() {
 	os.Remove(filepath.Join(dir, item.TrashPath+".json"))
 
 	t.items = append(t.items[:t.cursor], t.items[t.cursor+1:]...)
-	if t.cursor >= len(t.items) && t.cursor > 0 {
-		t.cursor--
+	if len(t.items) == 0 {
+		t.cursor = 0
+	} else if t.cursor >= len(t.items) {
+		t.cursor = len(t.items) - 1
 	}
 	t.doPurge = true
 }
