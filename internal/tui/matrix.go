@@ -823,10 +823,15 @@ func matrixFetchMessages(homeserver, token, roomID string, limit int, fromToken 
 
 		var messages []matrixChatMessage
 		for _, ev := range msgResp.Chunk {
-			if ev.Type == "m.room.message" {
-				body, _ := ev.Content["body"].(string)
-				if body == "" {
-					continue
+			if ev.Type == "m.room.message" || ev.Type == "m.room.encrypted" {
+				var body string
+				if ev.Type == "m.room.encrypted" {
+					body = "\U0001F512 [encrypted message]"
+				} else {
+					body, _ = ev.Content["body"].(string)
+					if body == "" {
+						continue
+					}
 				}
 				ts := time.Unix(0, ev.OriginServerTS*int64(time.Millisecond))
 
@@ -994,7 +999,7 @@ func matrixSync(homeserver, token, since string) tea.Cmd {
 			url += "&since=" + since
 		} else {
 			// For initial sync, only fetch recent events
-			url += "&filter={\"room\":{\"timeline\":{\"limit\":10}}}"
+			url += "&filter={\"room\":{\"timeline\":{\"limit\":30}}}"
 		}
 
 		req, err := http.NewRequest("GET", url, nil)
@@ -1250,10 +1255,15 @@ func (mx *Matrix) processSyncResponse(resp *matrixSyncResponse) {
 
 		// Append new messages
 		for _, ev := range joinedRoom.Timeline.Events {
-			if ev.Type == "m.room.message" {
-				body, _ := ev.Content["body"].(string)
-				if body == "" {
-					continue
+			if ev.Type == "m.room.message" || ev.Type == "m.room.encrypted" {
+				var body string
+				if ev.Type == "m.room.encrypted" {
+					body = "\U0001F512 [encrypted message]"
+				} else {
+					body, _ = ev.Content["body"].(string)
+					if body == "" {
+						continue
+					}
 				}
 				ts := time.Unix(0, ev.OriginServerTS*int64(time.Millisecond))
 
@@ -2332,7 +2342,14 @@ func (mx Matrix) renderLoginForm(width, maxHeight int) string {
 	dimStyle := lipgloss.NewStyle().Foreground(overlay0)
 	b.WriteString(dimStyle.Render("  Connect to your Matrix homeserver to chat."))
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("  Your access token will be stored in config."))
+	b.WriteString(dimStyle.Render("  Your access token will be stored locally."))
+	b.WriteString("\n\n")
+	warnStyle := lipgloss.NewStyle().Foreground(yellow)
+	b.WriteString(warnStyle.Render("  Note: E2EE is not supported. Encrypted messages"))
+	b.WriteString("\n")
+	b.WriteString(warnStyle.Render("  will show as [encrypted]. Messages you send are"))
+	b.WriteString("\n")
+	b.WriteString(warnStyle.Render("  unencrypted. Use for unencrypted rooms only."))
 	b.WriteString("\n\n")
 
 	type loginField struct {
