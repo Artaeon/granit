@@ -57,7 +57,7 @@ func (s SplashModel) Update(msg tea.Msg) (SplashModel, tea.Cmd) {
 
 	case splashTickMsg:
 		s.tick++
-		if s.tick >= 90 {
+		if s.tick >= 40 {
 			s.done = true
 			return s, nil
 		}
@@ -100,10 +100,10 @@ func (s SplashModel) View() string {
 
 	var content strings.Builder
 
-	// ── Phase 1 (ticks 0-20): Logo reveal with rainbow sweep ─────────
-	if s.tick <= 20 {
+	// ── Phase 1 (ticks 0-9): Logo reveal with rainbow sweep ─────────
+	if s.tick <= 9 {
 		s.renderLogoReveal(&content)
-	} else if s.tick <= 30 {
+	} else if s.tick <= 13 {
 		// Phase 2: Logo glow/pulse with color cycling
 		s.renderLogoPulse(&content)
 	} else {
@@ -111,42 +111,49 @@ func (s SplashModel) View() string {
 		s.renderLogoStatic(&content)
 	}
 
-	// ── Phase 3 (ticks 18-28): Sparkle particles around logo ─────────
-	// (rendered as decorative lines above/below — integrated into the centered block)
-
-	// ── Phase 4 (ticks 22-32): Animated horizontal rule ──────────────
-	if s.tick >= 22 {
+	// ── Phase 3 (ticks 10+): Animated horizontal rule ────────────────
+	if s.tick >= 10 {
 		content.WriteString("\n")
 		s.renderAnimatedRule(&content)
 	}
 
-	// ── Phase 5 (ticks 26-38): Tagline with typewriter + cursor ──────
-	if s.tick >= 26 {
+	// ── Phase 4 (ticks 12+): Tagline with typewriter + cursor ────────
+	if s.tick >= 12 {
 		s.renderTagline(&content)
 	}
 
-	// ── Phase 6 (ticks 34-50): Animated system checks ────────────────
-	if s.tick >= 34 {
+	// ── Phase 5 (ticks 15+): Animated system checks ─────────────────
+	if s.tick >= 15 {
 		content.WriteString("\n")
 		s.renderSystemChecks(&content)
 	}
 
-	// ── Phase 7 (ticks 48-60): Gradient progress bar ─────────────────
-	if s.tick >= 48 {
+	// ── Phase 6 (ticks 21+): Gradient progress bar ──────────────────
+	if s.tick >= 21 {
 		content.WriteString("\n")
 		s.renderProgressBar(&content)
 	}
 
-	// ── Phase 8 (ticks 58-72): Vault info with slide-in ──────────────
-	if s.tick >= 58 {
+	// ── Phase 7 (ticks 26+): Vault info with slide-in ───────────────
+	if s.tick >= 26 {
 		content.WriteString("\n")
 		s.renderVaultInfo(&content)
 	}
 
-	// ── Phase 9 (ticks 70+): Ready message with glow ─────────────────
-	if s.tick >= 70 {
+	// ── Phase 8 (ticks 31+): Ready message with glow ────────────────
+	if s.tick >= 31 {
 		content.WriteString("\n")
 		s.renderReady(&content)
+	}
+
+	// ── Skip hint: shown immediately ─────────────────────────────────
+	{
+		hintStyle := lipgloss.NewStyle().Foreground(surface2)
+		if s.tick%8 < 4 {
+			hintStyle = lipgloss.NewStyle().Foreground(overlay0)
+		}
+		content.WriteString("\n")
+		content.WriteString(hintStyle.Render("  Press any key to continue"))
 	}
 
 	contentStr := content.String()
@@ -171,8 +178,8 @@ func (s SplashModel) renderLogoReveal(b *strings.Builder) {
 		runes := []rune(line)
 		lineLen := len(runes)
 
-		// Stagger each line by 2 ticks
-		lineStart := i * 3
+		// Stagger each line by 1 tick
+		lineStart := i
 		ticksIn := s.tick - lineStart
 		if ticksIn < 0 {
 			b.WriteString(dimStyle.Render(string(runes)))
@@ -180,8 +187,8 @@ func (s SplashModel) renderLogoReveal(b *strings.Builder) {
 			continue
 		}
 
-		// Reveal speed: full line in ~8 ticks
-		charsRevealed := ticksIn * lineLen / 8
+		// Reveal speed: full line in ~4 ticks
+		charsRevealed := ticksIn * lineLen / 4
 		if charsRevealed > lineLen {
 			charsRevealed = lineLen
 		}
@@ -234,7 +241,7 @@ func (s SplashModel) renderLogoStatic(b *strings.Builder) {
 // renderAnimatedRule draws a horizontal rule with a shimmer effect.
 func (s SplashModel) renderAnimatedRule(b *strings.Builder) {
 	maxLen := 52
-	progress := s.tick - 22
+	progress := s.tick - 10
 	currentLen := progress * maxLen / 6
 	if currentLen > maxLen {
 		currentLen = maxLen
@@ -265,8 +272,8 @@ func (s SplashModel) renderTagline(b *strings.Builder) {
 	runes := []rune(tagline)
 	total := len(runes)
 
-	ticksIn := s.tick - 26
-	charsShown := ticksIn * 4 // 4 chars per tick for snappy typing
+	ticksIn := s.tick - 12
+	charsShown := ticksIn * 8 // 8 chars per tick for faster typing
 	if charsShown > total {
 		charsShown = total
 	}
@@ -280,7 +287,7 @@ func (s SplashModel) renderTagline(b *strings.Builder) {
 	}
 
 	// Blinking cursor while typing or shortly after
-	if charsShown < total || (s.tick-26) < 20 {
+	if charsShown < total || (s.tick-12) < 10 {
 		if s.tick%4 < 2 {
 			cursorStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 			line.WriteString(cursorStyle.Render("▌"))
@@ -307,15 +314,15 @@ func (s SplashModel) renderSystemChecks(b *strings.Builder) {
 		{"Initializing plugins", "◈", green},
 	}
 
-	ticksIn := s.tick - 34
-	linesRevealed := ticksIn/3 + 1
+	ticksIn := s.tick - 15
+	linesRevealed := ticksIn/1 + 1
 	if linesRevealed > len(checks) {
 		linesRevealed = len(checks)
 	}
 
 	for i := 0; i < linesRevealed; i++ {
 		check := checks[i]
-		lineAge := ticksIn - i*3
+		lineAge := ticksIn - i*1
 
 		var prefix string
 		var prefixColor lipgloss.Color
@@ -349,8 +356,8 @@ func (s SplashModel) renderSystemChecks(b *strings.Builder) {
 // renderProgressBar draws a gradient progress bar with percentage.
 func (s SplashModel) renderProgressBar(b *strings.Builder) {
 	barWidth := 44
-	ticksIn := s.tick - 48
-	filled := ticksIn * barWidth / 10
+	ticksIn := s.tick - 21
+	filled := ticksIn * barWidth / 5
 	if filled > barWidth {
 		filled = barWidth
 	}
@@ -396,15 +403,15 @@ func (s SplashModel) renderVaultInfo(b *strings.Builder) {
 		{"◆", "Version", "v0.1.0", mauve},
 	}
 
-	ticksIn := s.tick - 58
-	linesRevealed := ticksIn/2 + 1
+	ticksIn := s.tick - 26
+	linesRevealed := ticksIn/1 + 1
 	if linesRevealed > len(lines) {
 		linesRevealed = len(lines)
 	}
 
 	for i := 0; i < linesRevealed; i++ {
 		line := lines[i]
-		lineAge := ticksIn - i*2
+		lineAge := ticksIn - i*1
 
 		// Slide-in: indent decreases over time
 		indent := 10 - lineAge*3
@@ -427,7 +434,7 @@ func (s SplashModel) renderVaultInfo(b *strings.Builder) {
 
 // renderReady renders the "Ready!" message with pulsing glow.
 func (s SplashModel) renderReady(b *strings.Builder) {
-	ticksIn := s.tick - 70
+	ticksIn := s.tick - 31
 
 	if ticksIn >= 0 {
 		// Pulsing checkmark - alternate between bright and normal
@@ -439,16 +446,6 @@ func (s SplashModel) renderReady(b *strings.Builder) {
 		}
 		b.WriteString(checkStyle.Render("  ✦ Ready!"))
 		b.WriteString("\n")
-	}
-
-	if ticksIn >= 4 {
-		// Press any key hint with fade-in
-		hintStyle := lipgloss.NewStyle().Foreground(surface2)
-		if s.tick%8 < 4 {
-			hintStyle = lipgloss.NewStyle().Foreground(overlay0)
-		}
-		b.WriteString("\n")
-		b.WriteString(hintStyle.Render("  Press any key to continue"))
 	}
 }
 
