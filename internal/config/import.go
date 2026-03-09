@@ -81,7 +81,11 @@ func readJSON(path string, dest interface{}) bool {
 	if err != nil {
 		return false
 	}
-	return json.Unmarshal(data, dest) == nil
+	if err := json.Unmarshal(data, dest); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to parse %s: %v\n", path, err)
+		return false
+	}
+	return true
 }
 
 // countHotkeys returns the number of custom hotkey bindings in hotkeys.json.
@@ -93,7 +97,8 @@ func countHotkeys(vaultRoot string) int {
 	}
 
 	var hotkeys map[string]json.RawMessage
-	if json.Unmarshal(data, &hotkeys) != nil {
+	if err := json.Unmarshal(data, &hotkeys); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to parse %s: %v\n", path, err)
 		return 0
 	}
 	return len(hotkeys)
@@ -109,7 +114,8 @@ func countPlugins(vaultRoot string) int {
 	}
 
 	var plugins []string
-	if json.Unmarshal(data, &plugins) != nil {
+	if err := json.Unmarshal(data, &plugins); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to parse %s: %v\n", path, err)
 		return 0
 	}
 	return len(plugins)
