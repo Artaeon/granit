@@ -200,6 +200,9 @@ type Model struct {
 	lastEditTime time.Time
 	lastSaveTime time.Time
 
+	// Inline spell check debounce
+	lastSpellEditTime time.Time
+
 	// Exit splash
 	exitSplash    ExitSplash
 	showExitSplash bool
@@ -561,6 +564,15 @@ func (m *Model) loadNote(relPath string) {
 	if m.pomodoro.IsRunning() {
 		m.pomodoro.NoteEdited(relPath)
 	}
+
+	// Run inline spell check on the newly loaded note
+	if m.spellcheck.InlineEnabled() {
+		words := m.spellcheck.Check(note.Content)
+		m.spellcheck.HandleInlineResult(words)
+		m.editor.SetSpellPositions(m.spellcheck.InlinePositions())
+	} else {
+		m.editor.SetSpellPositions(nil)
+	}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -686,6 +698,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusbar.SetMessage("Auto-saved " + m.activeNote)
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
+		return m, nil
+
+	case spellCheckTickMsg:
+		// Debounced inline spell check: only run if this tick matches the last edit time
+		if m.spellcheck.InlineEnabled() && msg.editTime.Equal(m.lastSpellEditTime) && m.activeNote != "" {
+			content := m.editor.GetContent()
+			return m, m.spellcheck.RunInlineCheck(content)
+		}
+		return m, nil
+
+	case spellCheckDoneMsg:
+		m.spellcheck.HandleInlineResult(msg.words)
+		m.editor.SetSpellPositions(m.spellcheck.InlinePositions())
 		return m, nil
 
 	case gitCmdResultMsg:
@@ -1789,18 +1814,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.spellcheck.IsActive() {
 			m.spellcheck, _ = m.spellcheck.Update(msg)
-			if !m.spellcheck.IsActive() {
-				if word, line, col, replacement, ok := m.spellcheck.GetCorrection(); ok {
-					_ = word
-					if line < len(m.editor.content) {
-						lineStr := m.editor.content[line]
-						if col+len(word) <= len(lineStr) {
-							m.editor.content[line] = lineStr[:col] + replacement + lineStr[col+len(word):]
-							m.editor.modified = true
-							m.statusbar.SetMessage("Fixed: " + word + " → " + replacement)
-						}
+			wasApplied := false
+			if word, line, col, replacement, ok := m.spellcheck.GetCorrection(); ok {
+				_ = word
+				if line < len(m.editor.content) {
+					lineStr := m.editor.content[line]
+					if col+len(word) <= len(lineStr) {
+						m.editor.content[line] = lineStr[:col] + replacement + lineStr[col+len(word):]
+						m.editor.modified = true
+						m.statusbar.SetMessage("Fixed: " + word + " → " + replacement)
+						wasApplied = true
+						// Re-open overlay with updated content to refresh positions
+						m.spellcheck.Open(m.editor.GetContent())
 					}
 				}
+			}
+			if !m.spellcheck.IsActive() && m.spellcheck.InlineEnabled() {
+				// Overlay closed — refresh inline highlights
+				now := time.Now()
+				m.lastSpellEditTime = now
+				return m, ScheduleInlineCheck(now)
+			}
+			if wasApplied {
+				return m, nil
 			}
 			return m, nil
 		}
@@ -2893,6 +2929,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+
+			// Inline spell check: debounce 1 second after last edit
+			if m.spellcheck.InlineEnabled() {
+				if keyMsg, ok := msg.(tea.KeyMsg); ok {
+					k := keyMsg.String()
+					if len(k) == 1 || k == "space" || k == "backspace" || k == "enter" || k == "tab" || k == "delete" {
+						now := time.Now()
+						m.lastSpellEditTime = now
+						cmd = tea.Batch(cmd, ScheduleInlineCheck(now))
+					}
+				}
+			}
 		}
 	case focusBacklinks:
 		m.backlinks, cmd = m.backlinks.Update(msg)
@@ -3177,9 +3225,25 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.spellcheck.SetSize(m.width, m.height)
 			m.spellcheck.Open(m.editor.GetContent())
 		} else {
-			m.statusbar.SetWarning("Spell check unavailable (install aspell or hunspell)")
+			m.statusbar.SetWarning("Spell check unavailable (install aspell/hunspell or /usr/share/dict/words)")
 			return m, m.clearMessageAfter(3 * time.Second)
 		}
+	case CmdToggleSpellCheck:
+		m.config.SpellCheck = !m.config.SpellCheck
+		m.spellcheck.SetInlineEnabled(m.config.SpellCheck)
+		if m.config.SpellCheck {
+			m.statusbar.SetMessage("Inline spell check enabled (" + m.spellcheck.BackendName() + ")")
+			// Trigger an immediate check
+			if m.activeNote != "" && m.spellcheck.IsAvailable() {
+				now := time.Now()
+				m.lastSpellEditTime = now
+				return m, tea.Batch(m.clearMessageAfter(2*time.Second), ScheduleInlineCheck(now))
+			}
+		} else {
+			m.editor.SetSpellPositions(nil)
+			m.statusbar.SetMessage("Inline spell check disabled")
+		}
+		return m, m.clearMessageAfter(2 * time.Second)
 	case CmdPublishSite:
 		m.publisher.SetSize(m.width, m.height)
 		m.publisher.Open()
