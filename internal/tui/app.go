@@ -877,6 +877,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.clearMessageAfter(3 * time.Second)
 
+	case tutorialSaveErrMsg:
+		m.statusbar.SetMessage("Failed to save tutorial state: " + msg.err.Error())
+		return m, m.clearMessageAfter(3 * time.Second)
+
 	case threadWeaverResultMsg, threadWeaverTickMsg:
 		if m.threadWeaver.IsActive() {
 			var cmd tea.Cmd

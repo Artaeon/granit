@@ -51,12 +51,24 @@ func (t *Tutorial) SetSize(w, h int) {
 	t.height = h
 }
 
+// tutorialSaveErrMsg is sent when saving the tutorial-completed flag fails.
+type tutorialSaveErrMsg struct {
+	err error
+}
+
 // MarkComplete sets TutorialCompleted in the config and saves it.
-func (t *Tutorial) MarkComplete() {
-	if t.cfg != nil {
-		t.cfg.TutorialCompleted = true
-		_ = t.cfg.Save()
+// Returns a tea.Cmd that sends tutorialSaveErrMsg on failure, or nil on success.
+func (t *Tutorial) MarkComplete() tea.Cmd {
+	if t.cfg == nil {
+		return nil
 	}
+	t.cfg.TutorialCompleted = true
+	if err := t.cfg.Save(); err != nil {
+		return func() tea.Msg {
+			return tutorialSaveErrMsg{err: err}
+		}
+	}
+	return nil
 }
 
 // Update handles key events for navigating between tutorial pages.
@@ -82,11 +94,11 @@ func (t Tutorial) Update(msg tea.Msg) (Tutorial, tea.Cmd) {
 			} else {
 				// Last page — close and mark done
 				t.active = false
-				t.MarkComplete()
+				return t, t.MarkComplete()
 			}
 		case "q", "esc":
 			t.active = false
-			t.MarkComplete()
+			return t, t.MarkComplete()
 		}
 	}
 	return t, nil
