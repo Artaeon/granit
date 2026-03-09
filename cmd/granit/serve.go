@@ -124,6 +124,7 @@ func buildTitleMap(v *vault.Vault) map[string]string {
 
 // notePathFromURL converts a URL path like "/folder/My Note" to a vault
 // relative path like "folder/My Note.md".
+// Returns empty string if the path attempts to escape the vault root.
 func notePathFromURL(urlPath string) string {
 	// Strip leading slash
 	p := strings.TrimPrefix(urlPath, "/")
@@ -131,7 +132,13 @@ func notePathFromURL(urlPath string) string {
 	if !strings.HasSuffix(strings.ToLower(p), ".md") {
 		p += ".md"
 	}
-	return p
+	// Sanitize: resolve any ".." or "." components and ensure the result
+	// stays within the vault (i.e. does not escape via path traversal).
+	cleaned := filepath.Clean(p)
+	if filepath.IsAbs(cleaned) || strings.HasPrefix(cleaned, "..") {
+		return ""
+	}
+	return cleaned
 }
 
 func serveNote(w http.ResponseWriter, r *http.Request, v *vault.Vault, idx *vault.Index, titleMap map[string]string) {
@@ -141,6 +148,13 @@ func serveNote(w http.ResponseWriter, r *http.Request, v *vault.Vault, idx *vaul
 	relPath := urlPath
 	if !strings.HasSuffix(strings.ToLower(relPath), ".md") {
 		relPath += ".md"
+	}
+
+	// Sanitize the path to prevent directory traversal attacks.
+	relPath = filepath.Clean(relPath)
+	if filepath.IsAbs(relPath) || strings.HasPrefix(relPath, "..") {
+		http.NotFound(w, r)
+		return
 	}
 
 	note := v.GetNote(relPath)
