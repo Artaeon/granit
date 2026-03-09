@@ -328,6 +328,13 @@ func (mx *Matrix) Configure(homeserver, username, token string, readReceipts, ty
 	} else {
 		mx.connState = matrixDisconnected
 		mx.focus = matrixFocusLogin
+		// Pre-populate login form with known values
+		if mx.loginServer == "" && homeserver != "" {
+			mx.loginServer = homeserver
+		}
+		if mx.loginUser == "" && username != "" {
+			mx.loginUser = username
+		}
 	}
 }
 
@@ -1275,7 +1282,7 @@ func (mx Matrix) handleKeyMsg(msg tea.KeyMsg) (Matrix, tea.Cmd) {
 	key := msg.String()
 
 	// Login form gets priority when active — handle all keys there
-	if mx.focus == matrixFocusLogin && mx.accessToken == "" {
+	if mx.focus == matrixFocusLogin || mx.accessToken == "" || mx.homeserver == "" {
 		if key == "esc" || key == "alt+m" {
 			mx.Close()
 			return mx, nil
@@ -2176,7 +2183,7 @@ func (mx Matrix) View() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2500", innerW)))
 	b.WriteString("\n")
 
-	if mx.accessToken == "" {
+	if mx.accessToken == "" || mx.homeserver == "" {
 		b.WriteString(mx.renderLoginForm(innerW, height-6))
 	} else if mx.showPrivacy {
 		b.WriteString(mx.renderPrivacyPanel(innerW, height-6))
