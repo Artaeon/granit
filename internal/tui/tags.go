@@ -171,6 +171,15 @@ func (t TagBrowser) Update(msg tea.Msg) (TagBrowser, tea.Cmd) {
 			if t.mode == 1 {
 				t.mode = 0
 				t.noteCursor = 0
+				t.scroll = 0
+				// Re-sync scroll to keep tag cursor visible
+				visH := t.height - 10
+				if visH < 5 {
+					visH = 5
+				}
+				if t.cursor >= visH {
+					t.scroll = t.cursor - visH + 1
+				}
 				return t, nil
 			}
 			t.active = false
@@ -182,20 +191,36 @@ func (t TagBrowser) Update(msg tea.Msg) (TagBrowser, tea.Cmd) {
 			if t.mode == 0 {
 				if t.cursor > 0 {
 					t.cursor--
+					if t.cursor < t.scroll {
+						t.scroll = t.cursor
+					}
 				}
 			} else {
 				if t.noteCursor > 0 {
 					t.noteCursor--
+					if t.noteCursor < t.scroll {
+						t.scroll = t.noteCursor
+					}
 				}
 			}
 		case "down", "j":
+			visH := t.height - 10
+			if visH < 5 {
+				visH = 5
+			}
 			if t.mode == 0 {
 				if t.cursor < len(t.tags)-1 {
 					t.cursor++
+					if t.cursor >= t.scroll+visH {
+						t.scroll = t.cursor - visH + 1
+					}
 				}
 			} else {
 				if t.noteCursor < len(t.notes)-1 {
 					t.noteCursor++
+					if t.noteCursor >= t.scroll+visH {
+						t.scroll = t.noteCursor - visH + 1
+					}
 				}
 			}
 		case "enter":
@@ -204,6 +229,7 @@ func (t TagBrowser) Update(msg tea.Msg) (TagBrowser, tea.Cmd) {
 				t.findNotesForTag(t.selected)
 				t.mode = 1
 				t.noteCursor = 0
+				t.scroll = 0
 			} else if t.mode == 1 && len(t.notes) > 0 {
 				t.result = t.notes[t.noteCursor]
 				t.active = false
@@ -243,9 +269,9 @@ func (t TagBrowser) View() string {
 			if visH < 5 {
 				visH = 5
 			}
-			start := 0
-			if t.cursor >= visH {
-				start = t.cursor - visH + 1
+			start := t.scroll
+			if start < 0 {
+				start = 0
 			}
 			end := start + visH
 			if end > len(t.tags) {
@@ -296,9 +322,9 @@ func (t TagBrowser) View() string {
 			if visH < 5 {
 				visH = 5
 			}
-			start := 0
-			if t.noteCursor >= visH {
-				start = t.noteCursor - visH + 1
+			start := t.scroll
+			if start < 0 {
+				start = 0
 			}
 			end := start + visH
 			if end > len(t.notes) {
