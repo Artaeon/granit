@@ -5123,6 +5123,9 @@ func (m *Model) tryExpandSnippet() {
 	if m.snippets == nil {
 		return
 	}
+	if m.editor.cursor >= len(m.editor.content) {
+		return
+	}
 	line := m.editor.content[m.editor.cursor]
 	col := m.editor.col
 	// col points after the space. The word is before the space.
