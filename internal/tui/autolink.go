@@ -350,10 +350,11 @@ func (al AutoLinker) Update(msg tea.Msg) (AutoLinker, tea.Cmd) {
 // visibleHeight returns the number of mention rows that fit in the
 // overlay at the current terminal height.
 func (al *AutoLinker) visibleHeight() int {
-	// Each mention takes 3 lines (context + info + blank), plus header/footer.
-	h := (al.height - 14) / 3
-	if h < 3 {
-		h = 3
+	// Each mention takes ~4 lines in rendering: 2 content lines + separator + gap.
+	// Header/footer uses roughly 12 lines. Use 4-line estimate per mention.
+	h := (al.height - 12) / 4
+	if h < 2 {
+		h = 2
 	}
 	return h
 }
