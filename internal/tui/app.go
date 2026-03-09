@@ -123,6 +123,7 @@ type Model struct {
 	threadWeaver   ThreadWeaver
 	noteChat       NoteChat
 	autoTagger     *AutoTagger
+	matrix         Matrix
 
 	// Batch 2 features
 	vimState      *VimState
@@ -294,6 +295,7 @@ func NewModel(vaultPath string) (Model, error) {
 		threadWeaver:   NewThreadWeaver(),
 		noteChat:       NewNoteChat(),
 		autoTagger:     NewAutoTagger(),
+		matrix:         NewMatrix(),
 		vimState:       NewVimState(),
 		fileWatcher:    NewFileWatcher(vaultPath),
 		breadcrumb:     NewBreadcrumb(),
@@ -1122,6 +1124,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case matrixLoginResultMsg, matrixRoomsResultMsg, matrixMessagesResultMsg,
+		matrixSendResultMsg, matrixSyncResultMsg, matrixSyncTickMsg:
+		if m.matrix.IsActive() {
+			var cmd tea.Cmd
+			m.matrix, cmd = m.matrix.Update(msg)
+			// Persist token to config on successful login
+			if loginMsg, ok := msg.(matrixLoginResultMsg); ok && loginMsg.err == nil {
+				m.config.MatrixAccessToken = m.matrix.GetAccessToken()
+				m.config.Save()
+			}
+			return m, cmd
+		}
+		return m, nil
+
 	case pluginCmdResultMsg:
 		if msg.err != nil {
 			m.statusbar.SetMessage("Plugin error: " + msg.err.Error())
@@ -1392,6 +1408,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, botCmd
+		}
+
+		if m.matrix.IsActive() {
+			var matrixCmd tea.Cmd
+			m.matrix, matrixCmd = m.matrix.Update(msg)
+			if !m.matrix.IsActive() {
+				// Persist privacy settings back to config
+				m.config.MatrixReadReceipts = m.matrix.sendReadReceipts
+				m.config.MatrixTypingIndicators = m.matrix.sendTypingIndicators
+				m.config.MatrixAutoDeleteCache = m.matrix.autoDeleteCache
+				m.config.Save()
+			}
+			return m, matrixCmd
 		}
 
 		if m.export.IsActive() {
@@ -2452,6 +2481,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.bots.Open()
 			return m, nil
 
+		case "ctrl+m":
+			m.matrix.SetSize(m.width, m.height)
+			m.matrix.Configure(
+				m.config.MatrixHomeserver,
+				m.config.MatrixUsername,
+				m.config.MatrixAccessToken,
+				m.config.MatrixReadReceipts,
+				m.config.MatrixTypingIndicators,
+				m.config.MatrixAutoDeleteCache,
+			)
+			// Set share content from current note or selection
+			selectedText := m.editor.GetSelectedText()
+			if selectedText != "" {
+				m.matrix.SetShareContent(selectedText)
+			} else {
+				m.matrix.SetShareContent(m.editor.GetContent())
+			}
+			m.matrix.Open()
+			// Start sync if we have a token
+			if cmd := m.matrix.StartSync(); cmd != nil {
+				return m, cmd
+			}
+			return m, nil
+
 		case "ctrl+z":
 			if m.focusMode.IsActive() {
 				m.focusMode.Close()
@@ -3062,6 +3115,26 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.bots.SetVaultData(noteContents, tagMap)
 		m.bots.SetCurrentNote(m.activeNote, m.editor.GetContent())
 		m.bots.Open()
+	case CmdMatrixChat:
+		m.matrix.SetSize(m.width, m.height)
+		m.matrix.Configure(
+			m.config.MatrixHomeserver,
+			m.config.MatrixUsername,
+			m.config.MatrixAccessToken,
+			m.config.MatrixReadReceipts,
+			m.config.MatrixTypingIndicators,
+			m.config.MatrixAutoDeleteCache,
+		)
+		selectedText := m.editor.GetSelectedText()
+		if selectedText != "" {
+			m.matrix.SetShareContent(selectedText)
+		} else {
+			m.matrix.SetShareContent(m.editor.GetContent())
+		}
+		m.matrix.Open()
+		if cmd := m.matrix.StartSync(); cmd != nil {
+			return m, cmd
+		}
 	case CmdNewFolder:
 		m.newFolderMode = true
 		m.newFolderName = ""
@@ -5568,6 +5641,10 @@ func (m Model) View() string {
 	}
 	if m.bots.IsActive() {
 		overlay := m.bots.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.matrix.IsActive() {
+		overlay := m.matrix.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.export.IsActive() {
