@@ -1125,7 +1125,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case matrixLoginResultMsg, matrixRoomsResultMsg, matrixMessagesResultMsg,
-		matrixSendResultMsg, matrixSyncResultMsg, matrixSyncTickMsg:
+		matrixSendResultMsg, matrixSyncResultMsg, matrixSyncTickMsg,
+		matrixAISummaryMsg, matrixAIActionsMsg, matrixAIReplyMsg,
+		matrixAITranslateMsg, matrixAINoteMsg, matrixAIContextMsg, matrixAITickMsg:
 		if m.matrix.IsActive() {
 			var cmd tea.Cmd
 			m.matrix, cmd = m.matrix.Update(msg)
@@ -2491,6 +2493,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.config.MatrixTypingIndicators,
 				m.config.MatrixAutoDeleteCache,
 			)
+			m.matrix.ConfigureAI(
+				m.config.AIProvider,
+				m.config.OllamaModel,
+				m.config.OllamaURL,
+				m.config.OpenAIKey,
+				m.config.OpenAIModel,
+			)
 			// Set share content from current note or selection
 			selectedText := m.editor.GetSelectedText()
 			if selectedText != "" {
@@ -2498,6 +2507,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.matrix.SetShareContent(m.editor.GetContent())
 			}
+			m.matrix.SetCurrentNoteContent(m.editor.GetContent())
 			m.matrix.Open()
 			// Start sync if we have a token
 			if cmd := m.matrix.StartSync(); cmd != nil {
@@ -3125,12 +3135,20 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.config.MatrixTypingIndicators,
 			m.config.MatrixAutoDeleteCache,
 		)
+		m.matrix.ConfigureAI(
+			m.config.AIProvider,
+			m.config.OllamaModel,
+			m.config.OllamaURL,
+			m.config.OpenAIKey,
+			m.config.OpenAIModel,
+		)
 		selectedText := m.editor.GetSelectedText()
 		if selectedText != "" {
 			m.matrix.SetShareContent(selectedText)
 		} else {
 			m.matrix.SetShareContent(m.editor.GetContent())
 		}
+		m.matrix.SetCurrentNoteContent(m.editor.GetContent())
 		m.matrix.Open()
 		if cmd := m.matrix.StartSync(); cmd != nil {
 			return m, cmd
