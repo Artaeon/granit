@@ -972,6 +972,17 @@ func (r Renderer) renderMarkdown(content string) []string {
 					continue
 				}
 
+				// Regular code block: collect lines until closing fence,
+				// then highlight the entire block at once for proper
+				// multi-line token state (e.g. block comments, heredocs).
+				var codeLines []string
+				for i++; i < len(lines); i++ {
+					if strings.TrimSpace(lines[i]) == "```" {
+						break
+					}
+					codeLines = append(codeLines, lines[i])
+				}
+
 				if codeBlockLang != "" {
 					langLabel := lipgloss.NewStyle().
 						Foreground(overlay0).
@@ -983,6 +994,16 @@ func (r Renderer) renderMarkdown(content string) []string {
 					Foreground(surface1).
 					Render("  " + strings.Repeat("─", contentWidth-4))
 				result = append(result, codeBorder)
+
+				// Syntax-highlight the collected code block
+				highlighted := HighlightCodeBlock(codeBlockLang, codeLines)
+				for _, hl := range highlighted {
+					result = append(result, "    "+hl)
+				}
+
+				result = append(result, codeBorder)
+				inCodeBlock = false
+				codeBlockLang = ""
 				continue
 			} else {
 				inCodeBlock = false
@@ -996,9 +1017,9 @@ func (r Renderer) renderMarkdown(content string) []string {
 		}
 
 		if inCodeBlock {
-			codeLine := lipgloss.NewStyle().
-				Foreground(green).
-				Render("    " + line)
+			// Safety fallback — should not reach here with the
+			// collection approach above.
+			codeLine := CodeBlockStyle.Render("    " + line)
 			result = append(result, codeLine)
 			continue
 		}
