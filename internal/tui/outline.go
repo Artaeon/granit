@@ -38,6 +38,9 @@ func (o *Outline) Open(content string) {
 	o.scroll = 0
 	o.result = -1
 	o.parseHeadings(content)
+	if o.cursor >= len(o.items) {
+		o.cursor = maxInt(0, len(o.items)-1)
+	}
 }
 
 func (o *Outline) Close() {
@@ -131,6 +134,9 @@ func (o Outline) Update(msg tea.Msg) (Outline, tea.Cmd) {
 func (o *Outline) RenderPanel(content string, width, height int) string {
 	// Re-parse headings from the current content
 	o.parseHeadings(content)
+	if o.cursor >= len(o.items) {
+		o.cursor = maxInt(0, len(o.items)-1)
+	}
 
 	var b strings.Builder
 
