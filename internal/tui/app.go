@@ -4015,7 +4015,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdDataview:
 		m.dataview.SetSize(m.width, m.height)
-		m.dataview.Open(m.vault.Root)
+		m.dataview.Open(m.vault)
 
 	case CmdTimeTracker:
 		m.timeTracker.SetSize(m.width, m.height)
