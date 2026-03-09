@@ -2244,6 +2244,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.statusbar.SetMessage("Moved to trash: " + m.confirmDeleteNote)
 						if len(paths) > 0 {
 							m.loadNote(paths[0])
+						} else {
+							m.activeNote = ""
+							m.editor.SetContent("")
+							m.statusbar.SetActiveNote("")
 						}
 					}
 					m.confirmDeleteNote = ""
@@ -3015,6 +3019,10 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 					m.statusbar.SetMessage("Moved to trash: " + m.activeNote)
 					if len(paths) > 0 {
 						m.loadNote(paths[0])
+					} else {
+						m.activeNote = ""
+						m.editor.SetContent("")
+						m.statusbar.SetActiveNote("")
 					}
 				}
 				return m, m.clearMessageAfter(2 * time.Second)
