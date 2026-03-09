@@ -1296,7 +1296,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				path := filepath.Join(m.vault.Root, name)
 				if _, err := os.Stat(path); os.IsNotExist(err) {
 					os.MkdirAll(filepath.Dir(path), 0755)
-					content := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n", evDate, evDate)
+					fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n", evDate, evDate)
+					content := m.dailyNoteContent(evDate, fallback)
 					os.WriteFile(path, []byte(content), 0644)
 				}
 				// Append the task line
@@ -1354,7 +1355,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				path := filepath.Join(m.vault.Root, name)
 				if _, err := os.Stat(path); os.IsNotExist(err) {
 					os.MkdirAll(filepath.Dir(path), 0755)
-					content := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n", date, date)
+					fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n", date, date)
+					content := m.dailyNoteContent(date, fallback)
 					os.WriteFile(path, []byte(content), 0644)
 					m.refreshComponents(name)
 				}
@@ -2893,7 +2895,8 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		path := filepath.Join(m.vault.Root, name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			os.MkdirAll(filepath.Dir(path), 0755)
-			content := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n## Tasks\n- [ ] \n\n## Notes\n\n", today, today)
+			fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n## Tasks\n- [ ] \n\n## Notes\n\n", today, today)
+			content := m.dailyNoteContent(today, fallback)
 			os.WriteFile(path, []byte(content), 0644)
 			m.vault.Scan()
 			m.index = vault.NewIndex(m.vault)
@@ -6833,7 +6836,8 @@ func (m *Model) writeBriefingToDailyNote(briefingContent string) {
 
 	existing, err := os.ReadFile(dailyPath)
 	if err != nil {
-		content := fmt.Sprintf("---\ndate: %s\ntype: daily\n---\n\n# %s\n\n%s\n", today, today, briefingContent)
+		fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\n---\n\n# %s\n\n%s\n", today, today, briefingContent)
+		content := m.dailyNoteContent(today, fallback)
 		os.WriteFile(dailyPath, []byte(content), 0644)
 	} else {
 		newContent := string(existing) + "\n\n---\n\n" + briefingContent + "\n"
@@ -6851,6 +6855,35 @@ func (m *Model) writeBriefingToDailyNote(briefingContent string) {
 	m.setSidebarCursorToFile(dailyName)
 	m.setFocus(focusEditor)
 	m.statusbar.SetMessage("Daily briefing written to " + dailyName)
+}
+
+// dailyNoteContent returns the initial content for a new daily note.
+// If DailyNoteTemplate is configured and the template file exists in the vault,
+// the template is loaded and variables are replaced:
+//   - {{date}}    → the note's date (YYYY-MM-DD)
+//   - {{title}}   → the note filename without extension
+//   - {{weekday}} → the full weekday name (e.g. "Monday")
+//
+// If the template is not configured or the file cannot be read, fallback is used.
+func (m *Model) dailyNoteContent(date, fallback string) string {
+	tmplPath := m.config.DailyNoteTemplate
+	if tmplPath == "" {
+		return fallback
+	}
+	absPath := filepath.Join(m.vault.Root, tmplPath)
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return fallback
+	}
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		t = time.Now()
+	}
+	content := string(data)
+	content = strings.ReplaceAll(content, "{{date}}", date)
+	content = strings.ReplaceAll(content, "{{title}}", date)
+	content = strings.ReplaceAll(content, "{{weekday}}", t.Weekday().String())
+	return content
 }
 
 // replaceFrontmatter replaces existing YAML frontmatter in content with newFM,
