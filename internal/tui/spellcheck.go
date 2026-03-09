@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -602,7 +603,7 @@ func (sc *SpellChecker) rebuildInlinePositions() {
 		if sc.inlinePos[w.Line] == nil {
 			sc.inlinePos[w.Line] = make(map[int]bool)
 		}
-		for c := w.Col; c < w.Col+len(w.Word); c++ {
+		for c := w.Col; c < w.Col+utf8.RuneCountInString(w.Word); c++ {
 			sc.inlinePos[w.Line][c] = true
 		}
 	}
@@ -639,7 +640,7 @@ func GetMisspelledPositions(content string, words []MisspelledWord) map[int]map[
 			positions[w.Line] = make(map[int]bool)
 		}
 		// Mark every column that the misspelled word occupies.
-		for c := w.Col; c < w.Col+len(w.Word); c++ {
+		for c := w.Col; c < w.Col+utf8.RuneCountInString(w.Word); c++ {
 			positions[w.Line][c] = true
 		}
 	}
