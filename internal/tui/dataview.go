@@ -2,13 +2,10 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -17,97 +14,48 @@ import (
 )
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Dataview Overlay — interactive query builder and results viewer
+// Dataview Overlay — SQL-like query language for querying notes
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ---------------------------------------------------------------------------
-// Query types
-// ---------------------------------------------------------------------------
-
-// DataviewQuery describes what to search for and how to present results.
-type DataviewQuery struct {
-	Source        string        // "vault" or a folder path
-	Filters      []queryFilter // frontmatter filters
-	SortBy       string        // field name to sort on
-	SortDesc     bool          // true = descending
-	DisplayFields []string     // frontmatter keys shown in output
-	Limit        int           // max results
-	ViewType     string        // "table" or "list"
-}
-
-// queryFilter is a single predicate applied to every candidate note.
-type queryFilter struct {
-	Field string // frontmatter key or virtual field
-	Op    string // =, !=, contains, >, <, >=, <=
-	Value string
-}
-
-// dvNoteResult is one row in the result set.
-type dvNoteResult struct {
-	Path        string
-	Title       string
-	Frontmatter map[string]string
-	Created     time.Time
-	Modified    time.Time
-	WordCount   int
-	Tags        []string
-}
-
-// ---------------------------------------------------------------------------
-// Overlay
-// ---------------------------------------------------------------------------
-
-// DataviewOverlay provides a query-builder UI and a results viewer.
+// DataviewOverlay provides a text-based query input with results viewer.
+// Users type queries in an Obsidian Dataview-like syntax:
+//
+//	TABLE title, date, tags FROM "folder" WHERE tags CONTAINS "project"
+//	LIST FROM #tag WHERE date >= 2024-01-01 SORT date DESC
+//	TASK FROM "projects" WHERE !completed
 type DataviewOverlay struct {
 	active    bool
 	width     int
 	height    int
-	vaultRoot string
+	vault     *vault.Vault
 
-	// Phases: 0 = builder, 1 = results.
-	phase int
+	// Query input
+	query     string
+	cursorPos int // cursor position within query string
 
-	query   DataviewQuery
-	results []dvNoteResult
+	// Parsed and executed results
+	parsed  *DVParsedQuery
+	result  DVQueryResult
+	hasRun  bool // true after first query execution
 
 	// Results navigation
 	cursor int
 	scroll int
 
-	// Builder navigation
-	builderField int // which row is focused (0-6)
-
-	// Filter list
-	filterCursor int
-
-	// Adding-filter sub-mode
-	addingFilter     bool
-	filterFieldBuf   string
-	filterOpBuf      string
-	filterValueBuf   string
-	filterInputField int // 0=field, 1=op, 2=value
+	// History
+	history    []string
+	historyIdx int    // -1 = editing; 0..len-1 = browsing
+	savedQuery string
 
 	// Consumed-once selected note
 	selectedNote string
 	hasResult    bool
 }
 
-// Operator choices available in the filter operator selector.
-var dvFilterOps = []string{"=", "!=", "contains", ">", "<", ">=", "<="}
-
-// Limit presets cycled by left/right in the builder.
-var dvLimitPresets = []int{10, 25, 50, 100}
-
 // NewDataviewOverlay returns a zero-value overlay ready to be opened.
 func NewDataviewOverlay() DataviewOverlay {
 	return DataviewOverlay{
-		query: DataviewQuery{
-			Source:        "vault",
-			Limit:         25,
-			ViewType:      "table",
-			DisplayFields: []string{"title", "tags", "path"},
-			SortBy:        "title",
-		},
+		historyIdx: -1,
 	}
 }
 
@@ -115,23 +63,21 @@ func NewDataviewOverlay() DataviewOverlay {
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-// Open initialises the overlay with the given vault root directory.
-func (d *DataviewOverlay) Open(vaultRoot string) {
+// Open initialises the overlay.
+func (d *DataviewOverlay) Open(v *vault.Vault) {
 	d.active = true
-	d.vaultRoot = vaultRoot
-	d.phase = 0
+	d.vault = v
+	d.query = ""
+	d.cursorPos = 0
+	d.parsed = nil
+	d.result = DVQueryResult{}
+	d.hasRun = false
 	d.cursor = 0
 	d.scroll = 0
-	d.builderField = 0
-	d.filterCursor = 0
-	d.addingFilter = false
-	d.filterFieldBuf = ""
-	d.filterOpBuf = "="
-	d.filterValueBuf = ""
-	d.filterInputField = 0
 	d.selectedNote = ""
 	d.hasResult = false
-	d.results = nil
+	d.historyIdx = -1
+	d.savedQuery = ""
 }
 
 // SetSize updates the available rendering dimensions.
@@ -168,753 +114,335 @@ func (d DataviewOverlay) Update(msg tea.Msg) (DataviewOverlay, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if d.phase == 0 {
-			return d.updateBuilder(msg)
-		}
-		return d.updateResults(msg)
+		return d.handleKey(msg)
 	}
 	return d, nil
 }
 
-// --- builder phase ---------------------------------------------------------
-
-// Builder rows:
-//
-//	0 = Source
-//	1 = Filters
-//	2 = Sort By
-//	3 = Sort Direction
-//	4 = Display Fields
-//	5 = View Type
-//	6 = Limit
-const (
-	dvFieldSource     = 0
-	dvFieldFilters    = 1
-	dvFieldSortBy     = 2
-	dvFieldSortDir    = 3
-	dvFieldDisplay    = 4
-	dvFieldViewType   = 5
-	dvFieldLimit      = 6
-	dvBuilderRowCount = 7
-)
-
-func (d DataviewOverlay) updateBuilder(msg tea.KeyMsg) (DataviewOverlay, tea.Cmd) {
-	key := msg.String()
-
-	// If we are in the add-filter sub-mode handle it separately.
-	if d.addingFilter {
-		return d.updateAddFilter(msg)
-	}
-
-	switch key {
-	case "esc", "q":
-		d.active = false
-		return d, nil
-
-	case "tab", "down", "j":
-		d.builderField = (d.builderField + 1) % dvBuilderRowCount
-	case "shift+tab", "up", "k":
-		d.builderField = (d.builderField - 1 + dvBuilderRowCount) % dvBuilderRowCount
-
-	case "enter":
-		d.executeQuery()
-		d.phase = 1
-		d.cursor = 0
-		d.scroll = 0
-		return d, nil
-
-	case "a":
-		if d.builderField == dvFieldFilters {
-			d.addingFilter = true
-			d.filterFieldBuf = ""
-			d.filterOpBuf = "="
-			d.filterValueBuf = ""
-			d.filterInputField = 0
-		}
-
-	case "d":
-		if d.builderField == dvFieldFilters && len(d.query.Filters) > 0 {
-			idx := d.filterCursor
-			if idx >= 0 && idx < len(d.query.Filters) {
-				d.query.Filters = append(d.query.Filters[:idx], d.query.Filters[idx+1:]...)
-				if d.filterCursor >= len(d.query.Filters) && d.filterCursor > 0 {
-					d.filterCursor--
-				}
-			}
-		}
-
-	case "left", "h":
-		d.builderLeft()
-	case "right", "l":
-		d.builderRight()
-
-	default:
-		d.builderType(msg)
-	}
-
-	return d, nil
-}
-
-func (d *DataviewOverlay) builderLeft() {
-	switch d.builderField {
-	case dvFieldSource:
-		d.query.Source = "vault"
-	case dvFieldFilters:
-		if d.filterCursor > 0 {
-			d.filterCursor--
-		}
-	case dvFieldSortDir:
-		d.query.SortDesc = !d.query.SortDesc
-	case dvFieldViewType:
-		if d.query.ViewType == "list" {
-			d.query.ViewType = "table"
-		} else {
-			d.query.ViewType = "list"
-		}
-	case dvFieldLimit:
-		for i, v := range dvLimitPresets {
-			if v == d.query.Limit {
-				if i > 0 {
-					d.query.Limit = dvLimitPresets[i-1]
-				}
-				return
-			}
-		}
-		d.query.Limit = dvLimitPresets[0]
-	}
-}
-
-func (d *DataviewOverlay) builderRight() {
-	switch d.builderField {
-	case dvFieldFilters:
-		if d.filterCursor < len(d.query.Filters)-1 {
-			d.filterCursor++
-		}
-	case dvFieldSortDir:
-		d.query.SortDesc = !d.query.SortDesc
-	case dvFieldViewType:
-		if d.query.ViewType == "table" {
-			d.query.ViewType = "list"
-		} else {
-			d.query.ViewType = "table"
-		}
-	case dvFieldLimit:
-		for i, v := range dvLimitPresets {
-			if v == d.query.Limit {
-				if i < len(dvLimitPresets)-1 {
-					d.query.Limit = dvLimitPresets[i+1]
-				}
-				return
-			}
-		}
-		d.query.Limit = dvLimitPresets[len(dvLimitPresets)-1]
-	}
-}
-
-func (d *DataviewOverlay) builderType(msg tea.KeyMsg) {
-	key := msg.String()
-	if len(key) != 1 {
-		if key == "backspace" {
-			switch d.builderField {
-			case dvFieldSource:
-				if len(d.query.Source) > 0 {
-					d.query.Source = d.query.Source[:len(d.query.Source)-1]
-				}
-			case dvFieldSortBy:
-				if len(d.query.SortBy) > 0 {
-					d.query.SortBy = d.query.SortBy[:len(d.query.SortBy)-1]
-				}
-			case dvFieldDisplay:
-				raw := strings.Join(d.query.DisplayFields, ", ")
-				if len(raw) > 0 {
-					raw = raw[:len(raw)-1]
-					d.query.DisplayFields = dvParseCSV(raw)
-				}
-			}
-		}
-		return
-	}
-	ch := key
-	switch d.builderField {
-	case dvFieldSource:
-		d.query.Source += ch
-	case dvFieldSortBy:
-		d.query.SortBy += ch
-	case dvFieldDisplay:
-		raw := strings.Join(d.query.DisplayFields, ", ") + ch
-		d.query.DisplayFields = dvParseCSV(raw)
-	}
-}
-
-// --- add filter sub-mode ---------------------------------------------------
-
-func (d DataviewOverlay) updateAddFilter(msg tea.KeyMsg) (DataviewOverlay, tea.Cmd) {
+func (d DataviewOverlay) handleKey(msg tea.KeyMsg) (DataviewOverlay, tea.Cmd) {
 	key := msg.String()
 
 	switch key {
 	case "esc":
-		d.addingFilter = false
-		return d, nil
-
-	case "tab":
-		d.filterInputField = (d.filterInputField + 1) % 3
-		return d, nil
-
-	case "shift+tab":
-		d.filterInputField = (d.filterInputField - 1 + 3) % 3
+		if d.hasRun {
+			// Go back to query editing
+			d.hasRun = false
+			d.cursor = 0
+			d.scroll = 0
+			return d, nil
+		}
+		d.active = false
 		return d, nil
 
 	case "enter":
-		if d.filterFieldBuf != "" {
-			d.query.Filters = append(d.query.Filters, queryFilter{
-				Field: strings.TrimSpace(d.filterFieldBuf),
-				Op:    d.filterOpBuf,
-				Value: strings.TrimSpace(d.filterValueBuf),
-			})
-			d.filterCursor = len(d.query.Filters) - 1
+		if d.hasRun {
+			// Select current result
+			d.selectCurrentResult()
+			return d, nil
 		}
-		d.addingFilter = false
+		// Execute query
+		d.executeQuery()
+		return d, nil
+
+	case "up":
+		if d.hasRun {
+			d.moveCursorUp()
+		} else if len(d.history) > 0 {
+			d.browseHistoryUp()
+		}
+		return d, nil
+
+	case "down":
+		if d.hasRun {
+			d.moveCursorDown()
+		} else if d.historyIdx >= 0 {
+			d.browseHistoryDown()
+		}
+		return d, nil
+
+	case "ctrl+c":
+		d.active = false
+		return d, nil
+
+	case "backspace":
+		if !d.hasRun && len(d.query) > 0 {
+			if d.cursorPos > 0 {
+				d.query = d.query[:d.cursorPos-1] + d.query[d.cursorPos:]
+				d.cursorPos--
+			}
+			d.historyIdx = -1
+		}
+		return d, nil
+
+	case "delete":
+		if !d.hasRun && d.cursorPos < len(d.query) {
+			d.query = d.query[:d.cursorPos] + d.query[d.cursorPos+1:]
+			d.historyIdx = -1
+		}
 		return d, nil
 
 	case "left":
-		if d.filterInputField == 1 {
-			for i, op := range dvFilterOps {
-				if op == d.filterOpBuf && i > 0 {
-					d.filterOpBuf = dvFilterOps[i-1]
-					break
-				}
-			}
+		if !d.hasRun && d.cursorPos > 0 {
+			d.cursorPos--
 		}
 		return d, nil
 
 	case "right":
-		if d.filterInputField == 1 {
-			for i, op := range dvFilterOps {
-				if op == d.filterOpBuf && i < len(dvFilterOps)-1 {
-					d.filterOpBuf = dvFilterOps[i+1]
-					break
-				}
-			}
+		if !d.hasRun && d.cursorPos < len(d.query) {
+			d.cursorPos++
 		}
 		return d, nil
 
-	case "backspace":
-		switch d.filterInputField {
-		case 0:
-			if len(d.filterFieldBuf) > 0 {
-				d.filterFieldBuf = d.filterFieldBuf[:len(d.filterFieldBuf)-1]
-			}
-		case 2:
-			if len(d.filterValueBuf) > 0 {
-				d.filterValueBuf = d.filterValueBuf[:len(d.filterValueBuf)-1]
-			}
+	case "home", "ctrl+a":
+		if !d.hasRun {
+			d.cursorPos = 0
+		}
+		return d, nil
+
+	case "end", "ctrl+e":
+		if !d.hasRun {
+			d.cursorPos = len(d.query)
+		}
+		return d, nil
+
+	case "tab":
+		if !d.hasRun {
+			d.insertCompletion()
 		}
 		return d, nil
 
 	default:
-		if len(key) == 1 {
-			switch d.filterInputField {
-			case 0:
-				d.filterFieldBuf += key
-			case 2:
-				d.filterValueBuf += key
-			}
+		if !d.hasRun && len(key) == 1 && key[0] >= 32 {
+			d.query = d.query[:d.cursorPos] + key + d.query[d.cursorPos:]
+			d.cursorPos++
+			d.historyIdx = -1
 		}
+		return d, nil
 	}
-
-	return d, nil
 }
 
-// --- results phase ---------------------------------------------------------
+func (d *DataviewOverlay) executeQuery() {
+	if strings.TrimSpace(d.query) == "" {
+		return
+	}
 
-func (d DataviewOverlay) updateResults(msg tea.KeyMsg) (DataviewOverlay, tea.Cmd) {
-	key := msg.String()
+	// Save to history
+	d.history = dvAppendHistory(d.history, d.query)
 
-	switch key {
-	case "esc":
-		d.phase = 0
-		return d, nil
-	case "q":
-		d.active = false
-		return d, nil
+	// Parse and execute
+	d.parsed = ParseDVQuery(d.query)
+	d.result = ExecuteDVQuery(d.parsed, d.vault)
+	d.hasRun = true
+	d.cursor = 0
+	d.scroll = 0
+}
 
-	case "up", "k":
-		if d.cursor > 0 {
-			d.cursor--
-			if d.cursor < d.scroll {
-				d.scroll = d.cursor
-			}
-		}
-	case "down", "j":
-		if d.cursor < len(d.results)-1 {
-			d.cursor++
-			visH := d.visibleRows()
-			if d.cursor >= d.scroll+visH {
-				d.scroll = d.cursor - visH + 1
-			}
-		}
-	case "enter":
-		if len(d.results) > 0 && d.cursor < len(d.results) {
-			d.selectedNote = d.results[d.cursor].Path
+func (d *DataviewOverlay) selectCurrentResult() {
+	switch d.result.Mode {
+	case DVModeTable, DVModeList:
+		if len(d.result.Rows) > 0 && d.cursor < len(d.result.Rows) {
+			d.selectedNote = d.result.Rows[d.cursor].NotePath
 			d.hasResult = true
 			d.active = false
 		}
-		return d, nil
+	case DVModeTask:
+		if len(d.result.Tasks) > 0 && d.cursor < len(d.result.Tasks) {
+			d.selectedNote = d.result.Tasks[d.cursor].NotePath
+			d.hasResult = true
+			d.active = false
+		}
+	}
+}
+
+func (d *DataviewOverlay) moveCursorUp() {
+	if d.cursor > 0 {
+		d.cursor--
+		if d.cursor < d.scroll {
+			d.scroll = d.cursor
+		}
+	}
+}
+
+func (d *DataviewOverlay) moveCursorDown() {
+	maxIdx := d.resultCount() - 1
+	if d.cursor < maxIdx {
+		d.cursor++
+		visH := d.visibleRows()
+		if d.cursor >= d.scroll+visH {
+			d.scroll = d.cursor - visH + 1
+		}
+	}
+}
+
+func (d *DataviewOverlay) browseHistoryUp() {
+	if d.historyIdx == -1 {
+		d.savedQuery = d.query
+		d.historyIdx = len(d.history) - 1
+	} else if d.historyIdx > 0 {
+		d.historyIdx--
+	}
+	d.query = d.history[d.historyIdx]
+	d.cursorPos = len(d.query)
+}
+
+func (d *DataviewOverlay) browseHistoryDown() {
+	if d.historyIdx < len(d.history)-1 {
+		d.historyIdx++
+		d.query = d.history[d.historyIdx]
+	} else {
+		d.historyIdx = -1
+		d.query = d.savedQuery
+	}
+	d.cursorPos = len(d.query)
+}
+
+func (d *DataviewOverlay) insertCompletion() {
+	upper := strings.ToUpper(strings.TrimSpace(d.query))
+
+	// Offer completions based on what's typed so far
+	completions := map[string]string{
+		"":      "TABLE ",
+		"T":     "TABLE ",
+		"TA":    "TABLE ",
+		"TAB":   "TABLE ",
+		"TABL":  "TABLE ",
+		"L":     "LIST ",
+		"LI":    "LIST ",
+		"LIS":   "LIST ",
+		"TAS":   "TASK ",
 	}
 
-	return d, nil
+	if c, ok := completions[upper]; ok {
+		d.query = c
+		d.cursorPos = len(d.query)
+		return
+	}
+
+	// After a mode keyword, suggest common continuations
+	words := strings.Fields(upper)
+	if len(words) > 0 {
+		last := words[len(words)-1]
+		suffixes := map[string]string{
+			"F":   "FROM ",
+			"FR":  "FROM ",
+			"FRO": "FROM ",
+			"W":   "WHERE ",
+			"WH":  "WHERE ",
+			"WHE": "WHERE ",
+			"WHER": "WHERE ",
+			"S":   "SORT ",
+			"SO":  "SORT ",
+			"SOR": "SORT ",
+			"C":   "CONTAINS ",
+			"CO":  "CONTAINS ",
+			"CON": "CONTAINS ",
+			"CONT": "CONTAINS ",
+			"CONTA": "CONTAINS ",
+			"CONTAI": "CONTAINS ",
+			"CONTAIN": "CONTAINS ",
+		}
+		if s, ok := suffixes[last]; ok {
+			// Replace the last word
+			prefix := d.query[:len(d.query)-len(last)]
+			d.query = prefix + s
+			d.cursorPos = len(d.query)
+		}
+	}
+}
+
+func (d DataviewOverlay) resultCount() int {
+	switch d.result.Mode {
+	case DVModeTable, DVModeList:
+		return len(d.result.Rows)
+	case DVModeTask:
+		return len(d.result.Tasks)
+	}
+	return 0
 }
 
 func (d DataviewOverlay) visibleRows() int {
-	h := d.height - 14
-	if h < 1 {
-		h = 1
+	h := d.height - 16
+	if h < 3 {
+		h = 3
 	}
 	return h
-}
-
-// ---------------------------------------------------------------------------
-// Query execution
-// ---------------------------------------------------------------------------
-
-func (d *DataviewOverlay) executeQuery() {
-	d.results = nil
-
-	root := d.vaultRoot
-	if d.query.Source != "vault" && d.query.Source != "" {
-		candidate := d.query.Source
-		if !filepath.IsAbs(candidate) {
-			candidate = filepath.Join(d.vaultRoot, candidate)
-		}
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			root = candidate
-		}
-	}
-
-	var notes []dvNoteResult
-	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if info.IsDir() {
-			// Skip hidden directories.
-			if strings.HasPrefix(info.Name(), ".") && path != root {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(strings.ToLower(info.Name()), ".md") {
-			return nil
-		}
-
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return nil
-		}
-		content := string(data)
-
-		relPath, _ := filepath.Rel(d.vaultRoot, path)
-		if relPath == "" {
-			relPath = path
-		}
-
-		fm := parseFrontmatter(content)
-		title := dvExtractTitle(content, info.Name())
-		tags := dvExtractTags(fm, content)
-		wc := len(strings.Fields(content))
-
-		nr := dvNoteResult{
-			Path:        relPath,
-			Title:       title,
-			Frontmatter: fm,
-			Created:     info.ModTime(),
-			Modified:    info.ModTime(),
-			WordCount:   wc,
-			Tags:        tags,
-		}
-
-		// Store virtual fields into frontmatter map for uniform access.
-		nr.Frontmatter["title"] = nr.Title
-		nr.Frontmatter["path"] = nr.Path
-		nr.Frontmatter["words"] = fmt.Sprintf("%d", nr.WordCount)
-		nr.Frontmatter["created"] = nr.Created.Format("2006-01-02")
-		nr.Frontmatter["modified"] = nr.Modified.Format("2006-01-02")
-		nr.Frontmatter["folder"] = filepath.Base(filepath.Dir(path))
-		if _, ok := nr.Frontmatter["tags"]; !ok {
-			nr.Frontmatter["tags"] = strings.Join(nr.Tags, ", ")
-		}
-
-		notes = append(notes, nr)
-		return nil
-	})
-
-	// Apply filters.
-	var filtered []dvNoteResult
-	for _, n := range notes {
-		if d.matchesAllFilters(n) {
-			filtered = append(filtered, n)
-		}
-	}
-
-	// Sort.
-	d.sortResults(filtered)
-
-	// Limit.
-	if d.query.Limit > 0 && len(filtered) > d.query.Limit {
-		filtered = filtered[:d.query.Limit]
-	}
-
-	d.results = filtered
-}
-
-func (d *DataviewOverlay) matchesAllFilters(n dvNoteResult) bool {
-	for _, f := range d.query.Filters {
-		if !d.matchFilter(n, f) {
-			return false
-		}
-	}
-	return true
-}
-
-func (d *DataviewOverlay) matchFilter(n dvNoteResult, f queryFilter) bool {
-	val := dvFieldValue(n, f.Field)
-	target := f.Value
-
-	switch f.Op {
-	case "=":
-		return strings.EqualFold(val, target)
-	case "!=":
-		return !strings.EqualFold(val, target)
-	case "contains":
-		return strings.Contains(strings.ToLower(val), strings.ToLower(target))
-	case ">":
-		return val > target
-	case "<":
-		return val < target
-	case ">=":
-		return val >= target
-	case "<=":
-		return val <= target
-	}
-	return true
-}
-
-func dvFieldValue(n dvNoteResult, field string) string {
-	field = strings.ToLower(strings.TrimSpace(field))
-	switch field {
-	case "title":
-		return n.Title
-	case "path":
-		return n.Path
-	case "words":
-		return fmt.Sprintf("%d", n.WordCount)
-	case "created":
-		return n.Created.Format("2006-01-02")
-	case "modified":
-		return n.Modified.Format("2006-01-02")
-	case "folder":
-		return filepath.Base(filepath.Dir(n.Path))
-	case "tags":
-		return strings.Join(n.Tags, ", ")
-	default:
-		if v, ok := n.Frontmatter[field]; ok {
-			return v
-		}
-	}
-	return ""
-}
-
-func (d *DataviewOverlay) sortResults(results []dvNoteResult) {
-	field := strings.ToLower(strings.TrimSpace(d.query.SortBy))
-	if field == "" {
-		field = "title"
-	}
-	desc := d.query.SortDesc
-
-	sort.SliceStable(results, func(i, j int) bool {
-		a := dvFieldValue(results[i], field)
-		b := dvFieldValue(results[j], field)
-		if desc {
-			return a > b
-		}
-		return a < b
-	})
-}
-
-// ---------------------------------------------------------------------------
-// Frontmatter parser
-// ---------------------------------------------------------------------------
-
-// parseFrontmatter extracts YAML frontmatter from markdown content.
-// It handles simple key: value pairs and tags in both inline and list format.
-func parseFrontmatter(content string) map[string]string {
-	fm := make(map[string]string)
-
-	lines := strings.Split(content, "\n")
-	if len(lines) < 2 || strings.TrimSpace(lines[0]) != "---" {
-		return fm
-	}
-
-	endIdx := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			endIdx = i
-			break
-		}
-	}
-	if endIdx < 0 {
-		return fm
-	}
-
-	// Track the current key for multi-line list values (e.g. tags).
-	currentKey := ""
-	var listValues []string
-
-	flushList := func() {
-		if currentKey != "" && len(listValues) > 0 {
-			fm[currentKey] = strings.Join(listValues, ", ")
-		}
-		currentKey = ""
-		listValues = nil
-	}
-
-	kvRe := regexp.MustCompile(`^([A-Za-z0-9_-]+)\s*:\s*(.*)$`)
-	listItemRe := regexp.MustCompile(`^\s+-\s+(.+)$`)
-
-	for i := 1; i < endIdx; i++ {
-		line := lines[i]
-		trimmed := strings.TrimSpace(line)
-
-		if trimmed == "" {
-			continue
-		}
-
-		// Check for list item first (indented "- value").
-		if m := listItemRe.FindStringSubmatch(line); m != nil {
-			if currentKey != "" {
-				listValues = append(listValues, strings.TrimSpace(m[1]))
-			}
-			continue
-		}
-
-		// Flush any pending list.
-		flushList()
-
-		// Match key: value
-		if m := kvRe.FindStringSubmatch(trimmed); m != nil {
-			key := strings.ToLower(m[1])
-			val := strings.TrimSpace(m[2])
-
-			// Strip surrounding quotes.
-			val = strings.Trim(val, "\"'")
-
-			if val == "" {
-				// Possibly followed by list items.
-				currentKey = key
-				listValues = nil
-			} else {
-				fm[key] = val
-			}
-		}
-	}
-	flushList()
-
-	return fm
-}
-
-// dvExtractTitle finds the first # heading or falls back to filename.
-func dvExtractTitle(content string, filename string) string {
-	lines := strings.Split(content, "\n")
-
-	// Skip frontmatter if present.
-	start := 0
-	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
-		for i := 1; i < len(lines); i++ {
-			if strings.TrimSpace(lines[i]) == "---" {
-				start = i + 1
-				break
-			}
-		}
-	}
-
-	for i := start; i < len(lines); i++ {
-		trimmed := strings.TrimSpace(lines[i])
-		if strings.HasPrefix(trimmed, "# ") {
-			return strings.TrimSpace(trimmed[2:])
-		}
-	}
-
-	return strings.TrimSuffix(filename, ".md")
-}
-
-// dvExtractTags collects tags from frontmatter and inline #hashtags.
-func dvExtractTags(fm map[string]string, content string) []string {
-	seen := make(map[string]bool)
-	var tags []string
-
-	// From frontmatter.
-	if raw, ok := fm["tags"]; ok && raw != "" {
-		for _, t := range strings.Split(raw, ",") {
-			t = strings.TrimSpace(t)
-			if t != "" && !seen[t] {
-				seen[t] = true
-				tags = append(tags, t)
-			}
-		}
-	}
-
-	// Inline #tags.
-	words := strings.Fields(content)
-	for _, w := range words {
-		if strings.HasPrefix(w, "#") && len(w) > 1 {
-			tag := strings.TrimRight(w[1:], ".,;:!?)")
-			if tag != "" && !strings.HasPrefix(tag, "#") && !seen[tag] {
-				seen[tag] = true
-				tags = append(tags, tag)
-			}
-		}
-	}
-
-	return tags
-}
-
-// dvParseCSV splits a comma-separated string into trimmed non-empty tokens.
-func dvParseCSV(s string) []string {
-	var out []string
-	for _, part := range strings.Split(s, ",") {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-	return out
 }
 
 // ---------------------------------------------------------------------------
 // View
 // ---------------------------------------------------------------------------
 
-// View renders the overlay (builder or results depending on phase).
+// View renders the overlay.
 func (d DataviewOverlay) View() string {
-	width := d.width * 2 / 3
-	if width < 70 {
-		width = 70
+	width := d.width * 3 / 4
+	if width < 80 {
+		width = 80
 	}
-	if width > 110 {
-		width = 110
+	if width > 120 {
+		width = 120
 	}
 	innerWidth := width - 6
 
-	if d.phase == 0 {
-		return d.viewBuilder(width, innerWidth)
-	}
-	return d.viewResults(width, innerWidth)
-}
-
-// --- builder view ----------------------------------------------------------
-
-func (d DataviewOverlay) viewBuilder(width, innerWidth int) string {
 	var b strings.Builder
 
+	// Title
 	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	b.WriteString(titleStyle.Render(IconSearchChar + "  Dataview Query Builder"))
+	b.WriteString(titleStyle.Render(IconSearchChar + "  Dataview Query"))
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerWidth)))
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
-	labelStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true).Width(18)
-	valueStyle := lipgloss.NewStyle().Foreground(text)
-	activeLabel := lipgloss.NewStyle().Foreground(mauve).Bold(true).Width(18)
-	activeValue := lipgloss.NewStyle().Foreground(peach).Bold(true)
-	hintStyle := lipgloss.NewStyle().Foreground(overlay0)
-
-	row := func(idx int, label, value, hint string) {
-		ls := labelStyle
-		vs := valueStyle
-		prefix := "  "
-		if idx == d.builderField {
-			ls = activeLabel
-			vs = activeValue
-			prefix = lipgloss.NewStyle().Foreground(mauve).Render("▸ ")
+	// Query input
+	prompt := SearchPromptStyle.Render("  > ")
+	queryDisplay := d.query
+	if !d.hasRun {
+		// Show cursor
+		before := ""
+		after := ""
+		if d.cursorPos <= len(d.query) {
+			before = d.query[:d.cursorPos]
+			after = d.query[d.cursorPos:]
 		}
-		line := prefix + ls.Render(label) + vs.Render(value)
-		if hint != "" && idx == d.builderField {
-			line += "  " + hintStyle.Render(hint)
+		cursorChar := lipgloss.NewStyle().Background(text).Foreground(base).Render(" ")
+		if d.cursorPos < len(d.query) {
+			cursorChar = lipgloss.NewStyle().Background(text).Foreground(base).Render(string(d.query[d.cursorPos]))
+			after = d.query[d.cursorPos+1:]
 		}
-		b.WriteString(line + "\n")
+		queryDisplay = before + cursorChar + after
 	}
-
-	// 0: Source
-	srcDisplay := d.query.Source
-	if srcDisplay == "vault" || srcDisplay == "" {
-		srcDisplay = "Entire Vault"
-	}
-	row(dvFieldSource, "Source:", srcDisplay, "type path or 'vault'")
-
+	b.WriteString(prompt + queryDisplay)
 	b.WriteString("\n")
 
-	// 1: Filters
-	if d.builderField == dvFieldFilters {
-		b.WriteString(lipgloss.NewStyle().Foreground(mauve).Render("▸ "))
-		b.WriteString(activeLabel.Render("Filters:"))
-	} else {
-		b.WriteString("  ")
-		b.WriteString(labelStyle.Render("Filters:"))
-	}
-	if len(d.query.Filters) == 0 {
-		b.WriteString(hintStyle.Render("(none)"))
-	}
-	b.WriteString("\n")
-
-	for i, f := range d.query.Filters {
-		prefix := "    "
-		fStyle := lipgloss.NewStyle().Foreground(text)
-		if d.builderField == dvFieldFilters && i == d.filterCursor {
-			fStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
-			prefix = "   " + lipgloss.NewStyle().Foreground(mauve).Render("›") + " "
-		}
-		opStyle := lipgloss.NewStyle().Foreground(sapphire)
-		line := prefix + fStyle.Render(f.Field) + " " + opStyle.Render(f.Op) + " " + fStyle.Render(f.Value)
-		b.WriteString(line + "\n")
+	if !d.hasRun && d.query == "" {
+		// Show syntax help
+		b.WriteString("\n")
+		hintStyle := lipgloss.NewStyle().Foreground(overlay0)
+		exStyle := lipgloss.NewStyle().Foreground(lavender)
+		b.WriteString(hintStyle.Render("  Examples:") + "\n")
+		b.WriteString(exStyle.Render("  TABLE title, date, tags FROM \"folder\" WHERE tags CONTAINS \"project\"") + "\n")
+		b.WriteString(exStyle.Render("  LIST FROM #tag WHERE date >= 2024-01-01 SORT date DESC") + "\n")
+		b.WriteString(exStyle.Render("  TASK FROM \"projects\" WHERE !completed") + "\n")
+		b.WriteString("\n")
+		b.WriteString(hintStyle.Render("  Syntax:") + "\n")
+		kwStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
+		b.WriteString("  " + kwStyle.Render("TABLE") + hintStyle.Render(" field1, field2  ") +
+			kwStyle.Render("LIST") + hintStyle.Render("  ") +
+			kwStyle.Render("TASK") + "\n")
+		b.WriteString("  " + kwStyle.Render("FROM") + hintStyle.Render(" \"folder\" or #tag") + "\n")
+		b.WriteString("  " + kwStyle.Render("WHERE") + hintStyle.Render(" field ") +
+			kwStyle.Render("= != > < >= <= CONTAINS") + hintStyle.Render(" value") + "\n")
+		b.WriteString("  " + kwStyle.Render("SORT") + hintStyle.Render(" field ") +
+			kwStyle.Render("ASC") + hintStyle.Render("/") + kwStyle.Render("DESC") + "\n")
+		b.WriteString("  " + kwStyle.Render("LIMIT") + hintStyle.Render(" number") + "\n")
 	}
 
-	if d.addingFilter {
-		b.WriteString(d.viewAddFilter(innerWidth))
-	} else if d.builderField == dvFieldFilters {
-		b.WriteString(hintStyle.Render("    a: add filter  d: delete") + "\n")
+	if d.hasRun {
+		b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerWidth)))
+		b.WriteString("\n")
+		b.WriteString(d.renderResults(innerWidth))
 	}
 
-	b.WriteString("\n")
-
-	// 2: Sort By
-	sortDisplay := d.query.SortBy
-	if sortDisplay == "" {
-		sortDisplay = "title"
-	}
-	row(dvFieldSortBy, "Sort By:", sortDisplay, "type field name")
-
-	// 3: Sort Direction
-	dirDisplay := "ascending"
-	if d.query.SortDesc {
-		dirDisplay = "descending"
-	}
-	row(dvFieldSortDir, "Sort Direction:", dirDisplay, "left/right to toggle")
-
-	b.WriteString("\n")
-
-	// 4: Display Fields
-	dfDisplay := strings.Join(d.query.DisplayFields, ", ")
-	if dfDisplay == "" {
-		dfDisplay = "title, tags, path"
-	}
-	row(dvFieldDisplay, "Display Fields:", dfDisplay, "comma-separated")
-
-	// 5: View Type
-	row(dvFieldViewType, "View Type:", d.query.ViewType, "left/right to toggle")
-
-	// 6: Limit
-	row(dvFieldLimit, "Limit:", fmt.Sprintf("%d", d.query.Limit), "left/right to adjust")
-
+	// Footer
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerWidth)))
 	b.WriteString("\n")
@@ -924,10 +452,19 @@ func (d DataviewOverlay) viewBuilder(width, innerWidth int) string {
 	sepStyle := lipgloss.NewStyle().Foreground(surface1)
 	sep := sepStyle.Render(" | ")
 
-	b.WriteString("  " +
-		keyStyle.Render("Tab") + descStyle.Render(" navigate") + sep +
-		keyStyle.Render("Enter") + descStyle.Render(" run query") + sep +
-		keyStyle.Render("Esc") + descStyle.Render(" close"))
+	if d.hasRun {
+		b.WriteString("  " +
+			keyStyle.Render("↑↓") + descStyle.Render(" navigate") + sep +
+			keyStyle.Render("Enter") + descStyle.Render(" open note") + sep +
+			keyStyle.Render("Esc") + descStyle.Render(" edit query") + sep +
+			keyStyle.Render("Ctrl+C") + descStyle.Render(" close"))
+	} else {
+		b.WriteString("  " +
+			keyStyle.Render("Enter") + descStyle.Render(" run query") + sep +
+			keyStyle.Render("Tab") + descStyle.Render(" complete") + sep +
+			keyStyle.Render("↑↓") + descStyle.Render(" history") + sep +
+			keyStyle.Render("Esc") + descStyle.Render(" close"))
+	}
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -939,175 +476,106 @@ func (d DataviewOverlay) viewBuilder(width, innerWidth int) string {
 	return border.Render(b.String())
 }
 
-func (d DataviewOverlay) viewAddFilter(innerWidth int) string {
+// renderResults renders the query results based on mode.
+func (d DataviewOverlay) renderResults(innerWidth int) string {
 	var b strings.Builder
 
-	boxStyle := lipgloss.NewStyle().
-		Foreground(text).
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(surface1).
-		Padding(0, 1).
-		Width(innerWidth - 6).
-		MarginLeft(4)
+	// Result count header
+	modeLabel := "TABLE"
+	switch d.result.Mode {
+	case DVModeList:
+		modeLabel = "LIST"
+	case DVModeTask:
+		modeLabel = "TASK"
+	}
 
-	labelStyle := lipgloss.NewStyle().Foreground(lavender).Width(10)
-	activeStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
-	normalStyle := lipgloss.NewStyle().Foreground(text)
+	countStyle := lipgloss.NewStyle().Foreground(overlay0)
+	modeStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+	b.WriteString("  " + modeStyle.Render(modeLabel))
+	count := d.resultCount()
+	b.WriteString(countStyle.Render(fmt.Sprintf("  %d result", count)))
+	if count != 1 {
+		b.WriteString(countStyle.Render("s"))
+	}
+	if d.result.Total > count {
+		b.WriteString(countStyle.Render(fmt.Sprintf(" (of %d)", d.result.Total)))
+	}
+	b.WriteString("\n\n")
 
-	var inner strings.Builder
-	inner.WriteString(lipgloss.NewStyle().Foreground(green).Bold(true).Render("New Filter") + "\n")
+	if count == 0 {
+		b.WriteString(DimStyle.Render("  No matching notes found."))
+		b.WriteString("\n")
+		return b.String()
+	}
 
-	// Field name
-	vs := normalStyle
-	if d.filterInputField == 0 {
-		vs = activeStyle
+	switch d.result.Mode {
+	case DVModeTable:
+		b.WriteString(d.renderTableView(innerWidth))
+	case DVModeList:
+		b.WriteString(d.renderListView(innerWidth))
+	case DVModeTask:
+		b.WriteString(d.renderTaskView(innerWidth))
 	}
-	fieldDisplay := d.filterFieldBuf
-	if d.filterInputField == 0 {
-		fieldDisplay += "│"
-	}
-	if fieldDisplay == "" && d.filterInputField != 0 {
-		fieldDisplay = "(empty)"
-	}
-	inner.WriteString(labelStyle.Render("Field:") + vs.Render(fieldDisplay) + "\n")
-
-	// Operator
-	vs = normalStyle
-	if d.filterInputField == 1 {
-		vs = activeStyle
-	}
-	opDisplay := d.filterOpBuf
-	if d.filterInputField == 1 {
-		opDisplay = "◂ " + opDisplay + " ▸"
-	}
-	inner.WriteString(labelStyle.Render("Operator:") + vs.Render(opDisplay) + "\n")
-
-	// Value
-	vs = normalStyle
-	if d.filterInputField == 2 {
-		vs = activeStyle
-	}
-	valDisplay := d.filterValueBuf
-	if d.filterInputField == 2 {
-		valDisplay += "│"
-	}
-	if valDisplay == "" && d.filterInputField != 2 {
-		valDisplay = "(empty)"
-	}
-	inner.WriteString(labelStyle.Render("Value:") + vs.Render(valDisplay) + "\n")
-
-	hintStyle := lipgloss.NewStyle().Foreground(overlay0)
-	inner.WriteString(hintStyle.Render("Tab: next field  Enter: add  Esc: cancel"))
-
-	b.WriteString(boxStyle.Render(inner.String()))
-	b.WriteString("\n")
 
 	return b.String()
 }
 
-// --- results view ----------------------------------------------------------
-
-func (d DataviewOverlay) viewResults(width, innerWidth int) string {
-	var b strings.Builder
-
-	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	b.WriteString(titleStyle.Render(IconGraphChar + "  Query Results"))
-
-	countStyle := lipgloss.NewStyle().Foreground(overlay0)
-	b.WriteString(countStyle.Render(fmt.Sprintf("  %d notes", len(d.results))))
-	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerWidth)))
-	b.WriteString("\n")
-
-	if len(d.results) == 0 {
-		b.WriteString("\n")
-		b.WriteString(DimStyle.Render("  No matching notes found."))
-		b.WriteString("\n")
-	} else if d.query.ViewType == "table" {
-		b.WriteString(d.renderTable(innerWidth))
-	} else {
-		b.WriteString(d.renderList(innerWidth))
-	}
-
-	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerWidth)))
-	b.WriteString("\n")
-
-	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-	sepStyle := lipgloss.NewStyle().Foreground(surface1)
-	sep := sepStyle.Render(" | ")
-
-	b.WriteString("  " +
-		keyStyle.Render("j/k") + descStyle.Render(" navigate") + sep +
-		keyStyle.Render("Enter") + descStyle.Render(" open") + sep +
-		keyStyle.Render("Esc") + descStyle.Render(" back") + sep +
-		keyStyle.Render("q") + descStyle.Render(" close"))
-
-	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
-		Padding(1, 2).
-		Width(width).
-		Background(mantle)
-
-	return border.Render(b.String())
-}
-
-// renderTable draws an ASCII-bordered table of results.
-func (d DataviewOverlay) renderTable(innerWidth int) string {
-	fields := d.query.DisplayFields
+// renderTableView draws an ASCII table of results.
+func (d DataviewOverlay) renderTableView(innerWidth int) string {
+	fields := d.result.Fields
 	if len(fields) == 0 {
-		fields = []string{"title", "tags", "path"}
+		fields = []string{"title", "path"}
 	}
 
 	numCols := len(fields)
-	colWidth := (innerWidth - numCols - 1) / numCols
+	colWidth := (innerWidth - numCols - 3) / numCols
 	if colWidth < 8 {
 		colWidth = 8
 	}
 
 	var b strings.Builder
 
+	borderSt := lipgloss.NewStyle().Foreground(surface1)
+
 	// Top border
-	b.WriteString("  " + dvCorner("tl"))
+	b.WriteString("  " + borderSt.Render("┌"))
 	for i := 0; i < numCols; i++ {
-		b.WriteString(strings.Repeat("─", colWidth))
+		b.WriteString(borderSt.Render(strings.Repeat("─", colWidth)))
 		if i < numCols-1 {
-			b.WriteString(dvCorner("tc"))
+			b.WriteString(borderSt.Render("┬"))
 		}
 	}
-	b.WriteString(dvCorner("tr") + "\n")
+	b.WriteString(borderSt.Render("┐") + "\n")
 
 	// Header row
 	headerStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-	b.WriteString("  │")
+	b.WriteString("  " + borderSt.Render("│"))
 	for _, f := range fields {
 		label := dvTruncate(dvCapitalize(f), colWidth-2)
 		padded := dvPadField(label, colWidth-2)
-		b.WriteString(" " + headerStyle.Render(padded) + " │")
+		b.WriteString(" " + headerStyle.Render(padded) + " " + borderSt.Render("│"))
 	}
 	b.WriteString("\n")
 
 	// Header separator
-	b.WriteString("  " + dvCorner("ml"))
+	b.WriteString("  " + borderSt.Render("├"))
 	for i := 0; i < numCols; i++ {
-		b.WriteString(strings.Repeat("─", colWidth))
+		b.WriteString(borderSt.Render(strings.Repeat("─", colWidth)))
 		if i < numCols-1 {
-			b.WriteString(dvCorner("mc"))
+			b.WriteString(borderSt.Render("┼"))
 		}
 	}
-	b.WriteString(dvCorner("mr") + "\n")
+	b.WriteString(borderSt.Render("┤") + "\n")
 
 	// Data rows
 	visH := d.visibleRows()
 	end := d.scroll + visH
-	if end > len(d.results) {
-		end = len(d.results)
+	if end > len(d.result.Rows) {
+		end = len(d.result.Rows)
 	}
 
 	for idx := d.scroll; idx < end; idx++ {
-		nr := d.results[idx]
+		row := d.result.Rows[idx]
 		isSelected := idx == d.cursor
 
 		rowStyle := lipgloss.NewStyle().Foreground(text)
@@ -1115,122 +583,138 @@ func (d DataviewOverlay) renderTable(innerWidth int) string {
 			rowStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
 		}
 
-		prefix := "  │"
+		prefix := "  " + borderSt.Render("│")
 		if isSelected {
-			prefix = lipgloss.NewStyle().Foreground(mauve).Render("▸ ") + "│"
+			prefix = lipgloss.NewStyle().Foreground(mauve).Render("▸ ") + borderSt.Render("│")
 		}
 		b.WriteString(prefix)
 
 		for _, f := range fields {
-			val := dvFieldValue(nr, f)
+			val := row.Fields[f]
+			if val == "" {
+				val = "-"
+			}
 			truncated := dvTruncate(val, colWidth-2)
 			padded := dvPadField(truncated, colWidth-2)
-			b.WriteString(" " + rowStyle.Render(padded) + " │")
+			b.WriteString(" " + rowStyle.Render(padded) + " " + borderSt.Render("│"))
 		}
 		b.WriteString("\n")
 	}
 
 	// Bottom border
-	b.WriteString("  " + dvCorner("bl"))
+	b.WriteString("  " + borderSt.Render("└"))
 	for i := 0; i < numCols; i++ {
-		b.WriteString(strings.Repeat("─", colWidth))
+		b.WriteString(borderSt.Render(strings.Repeat("─", colWidth)))
 		if i < numCols-1 {
-			b.WriteString(dvCorner("bc"))
+			b.WriteString(borderSt.Render("┴"))
 		}
 	}
-	b.WriteString(dvCorner("br"))
+	b.WriteString(borderSt.Render("┘"))
 
 	return b.String()
 }
 
-// renderList draws one note per row with inline field values.
-func (d DataviewOverlay) renderList(innerWidth int) string {
-	fields := d.query.DisplayFields
-	if len(fields) == 0 {
-		fields = []string{"title", "tags", "path"}
-	}
-
+// renderListView draws a bullet list of note names as wikilinks.
+func (d DataviewOverlay) renderListView(innerWidth int) string {
 	var b strings.Builder
 
 	visH := d.visibleRows()
 	end := d.scroll + visH
-	if end > len(d.results) {
-		end = len(d.results)
+	if end > len(d.result.Rows) {
+		end = len(d.result.Rows)
 	}
 
 	for idx := d.scroll; idx < end; idx++ {
-		nr := d.results[idx]
+		row := d.result.Rows[idx]
 		isSelected := idx == d.cursor
 
-		titleStyle := lipgloss.NewStyle().Foreground(text)
-		metaStyle := lipgloss.NewStyle().Foreground(overlay0)
+		titleStyle := lipgloss.NewStyle().Foreground(blue)
+		pathStyle := lipgloss.NewStyle().Foreground(overlay0)
+		bullet := DimStyle.Render("  - ")
 		if isSelected {
 			titleStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
-			metaStyle = lipgloss.NewStyle().Foreground(lavender)
+			pathStyle = lipgloss.NewStyle().Foreground(lavender)
+			bullet = lipgloss.NewStyle().Foreground(mauve).Render("  ▸ ")
 		}
 
-		prefix := "  "
+		name := strings.TrimSuffix(filepath.Base(row.NotePath), ".md")
+		link := titleStyle.Render("[[" + name + "]]")
+		path := pathStyle.Render("  " + row.NotePath)
+
+		line := bullet + link + path
+		b.WriteString(dvTruncate(line, innerWidth) + "\n")
+	}
+
+	return b.String()
+}
+
+// renderTaskView draws a checkbox list grouped by source note.
+func (d DataviewOverlay) renderTaskView(innerWidth int) string {
+	var b strings.Builder
+
+	visH := d.visibleRows()
+	end := d.scroll + visH
+	if end > len(d.result.Tasks) {
+		end = len(d.result.Tasks)
+	}
+
+	lastNote := ""
+	for idx := d.scroll; idx < end; idx++ {
+		task := d.result.Tasks[idx]
+		isSelected := idx == d.cursor
+
+		// Group header
+		if task.NotePath != lastNote {
+			if lastNote != "" {
+				b.WriteString("\n")
+			}
+			noteStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+			b.WriteString("  " + noteStyle.Render(task.NoteTitle) + "\n")
+			lastNote = task.NotePath
+		}
+
+		checkStyle := lipgloss.NewStyle().Foreground(green)
+		textStyle := lipgloss.NewStyle().Foreground(text)
+		prefix := "    "
 		if isSelected {
-			prefix = lipgloss.NewStyle().Foreground(mauve).Render("▸ ")
+			textStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
+			prefix = lipgloss.NewStyle().Foreground(mauve).Render("  ▸ ")
 		}
 
-		// Title line
-		titleVal := dvFieldValue(nr, "title")
-		b.WriteString(prefix + titleStyle.Render(dvTruncate(titleVal, innerWidth-4)) + "\n")
-
-		// Meta line: remaining fields
-		var meta []string
-		for _, f := range fields {
-			if strings.ToLower(f) == "title" {
-				continue
-			}
-			val := dvFieldValue(nr, f)
-			if val != "" {
-				meta = append(meta, f+": "+val)
+		checkbox := checkStyle.Render("[ ]")
+		if task.Completed {
+			checkbox = checkStyle.Render("[x]")
+			if !isSelected {
+				textStyle = lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true)
 			}
 		}
-		if len(meta) > 0 {
-			metaLine := strings.Join(meta, "  ")
-			b.WriteString("    " + metaStyle.Render(dvTruncate(metaLine, innerWidth-6)) + "\n")
-		}
 
-		if idx < end-1 {
-			b.WriteString(lipgloss.NewStyle().Foreground(surface0).
-				Render("  "+strings.Repeat("·", innerWidth-4)) + "\n")
-		}
+		taskText := dvTruncate(task.Text, innerWidth-10)
+		b.WriteString(prefix + checkbox + " " + textStyle.Render(taskText) + "\n")
 	}
 
 	return b.String()
 }
 
 // ---------------------------------------------------------------------------
-// Table drawing helpers
+// Helpers
 // ---------------------------------------------------------------------------
 
-// dvCorner returns a styled box-drawing character for the named position.
-func dvCorner(pos string) string {
-	s := lipgloss.NewStyle().Foreground(surface1)
-	switch pos {
-	case "tl":
-		return s.Render("┌")
-	case "tr":
-		return s.Render("┐")
-	case "bl":
-		return s.Render("└")
-	case "br":
-		return s.Render("┘")
-	case "tc":
-		return s.Render("┬")
-	case "bc":
-		return s.Render("┴")
-	case "ml":
-		return s.Render("├")
-	case "mr":
-		return s.Render("┤")
-	case "mc":
-		return s.Render("┼")
+// dvAppendHistory adds a query to the history, deduplicating.
+func dvAppendHistory(history []string, query string) []string {
+	// Remove duplicates
+	var filtered []string
+	for _, h := range history {
+		if h != query {
+			filtered = append(filtered, h)
+		}
 	}
-	return s.Render("│")
+	filtered = append(filtered, query)
+	// Keep last 50 entries
+	if len(filtered) > 50 {
+		filtered = filtered[len(filtered)-50:]
+	}
+	return filtered
 }
 
 // dvTruncate shortens a string to fit within maxLen runes.
