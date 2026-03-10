@@ -2755,7 +2755,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "alt+w":
 			// Weekly note
-			return m, m.executeCommand(CmdWeeklyNote)
+			return m.executeCommand(CmdWeeklyNote)
 
 		case "esc":
 			// If selection is active, clear it first
