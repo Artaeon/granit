@@ -233,6 +233,9 @@ type Model struct {
 	// Extract to note
 	extractMode bool
 	extractName string
+
+	// Auto daily note on startup
+	pendingDailyNote bool
 }
 
 func NewModel(vaultPath string) (Model, error) {
@@ -341,10 +344,11 @@ func NewModel(vaultPath string) (Model, error) {
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
 		tutorial:       NewTutorial(&cfg),
-		showSplash:     cfg.ShowSplash,
-		splash:         NewSplashModel(vaultPath, v.NoteCount()),
-		viewMode:       cfg.DefaultViewMode,
-		sessionStart:   time.Now(),
+		showSplash:       cfg.ShowSplash,
+		splash:           NewSplashModel(vaultPath, v.NoteCount()),
+		viewMode:         cfg.DefaultViewMode,
+		sessionStart:     time.Now(),
+		pendingDailyNote: cfg.AutoDailyNote,
 	}
 
 	m.statusbar.SetVaultPath(vaultPath)
@@ -623,6 +627,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tutorial.SetSize(m.width, m.height)
 				m.tutorial.Open()
 			}
+			if m.pendingDailyNote {
+				m.pendingDailyNote = false
+				m.openDailyNote()
+			}
 			return m, nil
 		case splashTickMsg:
 			var cmd tea.Cmd
@@ -632,6 +640,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !m.config.TutorialCompleted {
 					m.tutorial.SetSize(m.width, m.height)
 					m.tutorial.Open()
+				}
+				if m.pendingDailyNote {
+					m.pendingDailyNote = false
+					m.openDailyNote()
 				}
 				return m, nil
 			}
@@ -1248,6 +1260,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.updateLayout()
+		// Auto-open daily note on first resize when splash is not shown
+		if m.pendingDailyNote && !m.showSplash {
+			m.pendingDailyNote = false
+			m.openDailyNote()
+		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -2717,6 +2734,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "alt+d":
+			m.openDailyNote()
+			return m, nil
+
+		case "alt+[":
+			m.navigateDailyNote(-1)
+			return m, nil
+
+		case "alt+]":
+			m.navigateDailyNote(1)
+			return m, nil
+
 		case "alt+f":
 			// Toggle fold at cursor
 			if m.activeNote != "" {
@@ -3115,34 +3144,11 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmd, hookCmd, syncCmd, tagCmd)
 	case CmdDailyNote:
-		today := time.Now().Format("2006-01-02")
-		name := today + ".md"
-		folder := m.config.DailyNotesFolder
-		if folder != "" {
-			name = filepath.Join(folder, name)
-		}
-		path := filepath.Join(m.vault.Root, name)
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-				m.statusbar.SetMessage("Failed to create daily note folder: " + err.Error())
-				return m, m.clearMessageAfter(5 * time.Second)
-			}
-			fallback := m.buildDailyFallback(today)
-			content := m.dailyNoteContent(today, fallback)
-			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-				m.statusbar.SetMessage("Failed to create daily note: " + err.Error())
-				return m, m.clearMessageAfter(5 * time.Second)
-			}
-			m.vault.Scan()
-			m.index = vault.NewIndex(m.vault)
-			m.index.Build()
-			m.sidebar.SetFiles(m.vault.SortedPaths())
-			m.statusbar.SetNoteCount(m.vault.NoteCount())
-			m.statusbar.SetMessage("Created daily note: " + name)
-		}
-		m.loadNote(name)
-		m.setSidebarCursorToFile(name)
-		m.setFocus(focusEditor)
+		m.openDailyNote()
+	case CmdPrevDailyNote:
+		m.navigateDailyNote(-1)
+	case CmdNextDailyNote:
+		m.navigateDailyNote(1)
 	case CmdToggleView:
 		m.viewMode = !m.viewMode
 		if m.viewMode {
@@ -7616,6 +7622,65 @@ func (m *Model) buildDailyFallback(date string) string {
 		b.WriteString("{{carry_forward}}\n\n")
 	}
 	return b.String()
+}
+
+// openDailyNote creates (if needed) and opens today's daily note.
+func (m *Model) openDailyNote() {
+	today := time.Now().Format("2006-01-02")
+	name := today + ".md"
+	folder := m.config.DailyNotesFolder
+	if folder != "" {
+		name = filepath.Join(folder, name)
+	}
+	path := filepath.Join(m.vault.Root, name)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			m.statusbar.SetMessage("Failed to create daily note folder: " + err.Error())
+			return
+		}
+		fallback := m.buildDailyFallback(today)
+		content := m.dailyNoteContent(today, fallback)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			m.statusbar.SetMessage("Failed to create daily note: " + err.Error())
+			return
+		}
+		m.vault.Scan()
+		m.index = vault.NewIndex(m.vault)
+		m.index.Build()
+		m.sidebar.SetFiles(m.vault.SortedPaths())
+		m.statusbar.SetNoteCount(m.vault.NoteCount())
+		m.statusbar.SetMessage("Created daily note: " + name)
+	}
+	m.loadNote(name)
+	m.setSidebarCursorToFile(name)
+	m.setFocus(focusEditor)
+}
+
+// navigateDailyNote navigates to the previous (direction=-1) or next (direction=+1)
+// daily note relative to the current note's date (or today if not on a daily note).
+func (m *Model) navigateDailyNote(direction int) {
+	currentDate := time.Now()
+	if m.activeNote != "" {
+		base := strings.TrimSuffix(filepath.Base(m.activeNote), ".md")
+		if t, err := time.Parse("2006-01-02", base); err == nil {
+			currentDate = t
+		}
+	}
+	folder := m.config.DailyNotesFolder
+	for i := 1; i <= 365; i++ {
+		target := currentDate.AddDate(0, 0, direction*i)
+		name := target.Format("2006-01-02") + ".md"
+		if folder != "" {
+			name = filepath.Join(folder, name)
+		}
+		if m.vault.GetNote(name) != nil {
+			m.loadNote(name)
+			m.setSidebarCursorToFile(name)
+			m.setFocus(focusEditor)
+			return
+		}
+	}
+	m.statusbar.SetMessage("No daily note found in that direction")
 }
 
 // dailyNoteContent returns the initial content for a new daily note.
