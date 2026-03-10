@@ -226,7 +226,7 @@ func (kg *KnowledgeGraph) clusterName(notes []string) string {
 			bestCount = c
 		}
 	}
-	return strings.Title(bestWord)
+	return titleCase(bestWord)
 }
 
 // suggestConnections finds notes that share keywords but aren't linked.
