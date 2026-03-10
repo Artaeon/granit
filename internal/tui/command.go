@@ -142,6 +142,7 @@ const (
 	CmdToggleSpellCheck
 	CmdPrevDailyNote
 	CmdNextDailyNote
+	CmdCommandCenter
 	CmdQuit
 )
 
@@ -284,6 +285,7 @@ var AllCommands = []Command{
 	{Label: "Show Tutorial", Desc: "Interactive walkthrough of Granit features", Shortcut: "", Action: CmdShowTutorial, Icon: &IconHelpChar},
 	{Label: "AI Knowledge Gaps Analysis", Desc: "Find missing topics, stale notes, orphans, and unlinked clusters", Shortcut: "", Action: CmdKnowledgeGaps, Icon: &IconGraphChar},
 	{Label: "Extract to Note", Desc: "Move selection to a new note, leave wikilink", Shortcut: "", Action: CmdExtractToNote, Icon: &IconLinkChar},
+	{Label: "Command Center", Desc: "What do I do RIGHT NOW? dashboard", Shortcut: "Alt+C", Action: CmdCommandCenter, Icon: &IconCalendarChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
