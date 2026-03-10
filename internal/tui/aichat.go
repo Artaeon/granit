@@ -243,8 +243,8 @@ func findRelevantNotes(query string, notes map[string]string, maxChars int) (con
 			break
 		}
 
-		if len(body) > remaining {
-			body = body[:remaining]
+		if r := []rune(body); len(r) > remaining {
+			body = string(r[:remaining])
 		}
 
 		b.WriteString(header)
