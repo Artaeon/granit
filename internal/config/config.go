@@ -16,9 +16,11 @@ type Config struct {
 	ShowHelp bool   `json:"show_help"`
 
 	// Vault settings
-	DailyNotesFolder   string   `json:"daily_notes_folder"`
-	DailyNoteTemplate  string   `json:"daily_note_template"`
+	DailyNotesFolder    string   `json:"daily_notes_folder"`
+	DailyNoteTemplate   string   `json:"daily_note_template"`
 	DailyRecurringTasks []string `json:"daily_recurring_tasks"`
+	WeeklyNotesFolder   string   `json:"weekly_notes_folder"`
+	WeeklyNoteTemplate  string   `json:"weekly_note_template"`
 
 	// Editor enhancements
 	AutoCloseBrackets    bool `json:"auto_close_brackets"`
@@ -97,6 +99,8 @@ func DefaultConfig() Config {
 		DailyNotesFolder:       "",
 		DailyNoteTemplate:      "",
 		DailyRecurringTasks:    []string{},
+		WeeklyNotesFolder:      "",
+		WeeklyNoteTemplate:     "",
 		AutoCloseBrackets:      true,
 		HighlightCurrentLine:   true,
 		SidebarPosition:        "left",
