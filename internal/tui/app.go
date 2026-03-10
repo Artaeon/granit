@@ -120,7 +120,7 @@ type Model struct {
 	tfidfIndex     *TFIDFIndex
 	tfidfDirty     bool
 	tableEditor    TableEditor
-	semanticSearch SemanticSearch
+	semanticSearch *SemanticSearch
 	ghostWriter    *GhostWriter
 	threadWeaver   ThreadWeaver
 	noteChat       NoteChat

@@ -148,8 +148,8 @@ type openaiEmbeddingResponse struct {
 // ---------------------------------------------------------------------------
 
 // NewSemanticSearch returns a zero-value SemanticSearch ready for use.
-func NewSemanticSearch() SemanticSearch {
-	return SemanticSearch{
+func NewSemanticSearch() *SemanticSearch {
+	return &SemanticSearch{
 		provider:  "ollama",
 		model:     "nomic-embed-text",
 		ollamaURL: "http://localhost:11434",
@@ -850,7 +850,7 @@ func (ss *SemanticSearch) startSearch() tea.Cmd {
 // ---------------------------------------------------------------------------
 
 // Update handles key events, build/search results, and tick messages.
-func (ss SemanticSearch) Update(msg tea.Msg) (SemanticSearch, tea.Cmd) {
+func (ss *SemanticSearch) Update(msg tea.Msg) (*SemanticSearch, tea.Cmd) {
 	if !ss.active {
 		return ss, nil
 	}
@@ -980,7 +980,7 @@ func (ss SemanticSearch) Update(msg tea.Msg) (SemanticSearch, tea.Cmd) {
 // ---------------------------------------------------------------------------
 
 // View renders the semantic search overlay panel.
-func (ss SemanticSearch) View() string {
+func (ss *SemanticSearch) View() string {
 	panelWidth := ss.width * 2 / 3
 	if panelWidth < 60 {
 		panelWidth = 60
@@ -1174,7 +1174,7 @@ func (ss SemanticSearch) View() string {
 }
 
 // visibleHeight returns the number of result entries visible in the content area.
-func (ss SemanticSearch) visibleHeight() int {
+func (ss *SemanticSearch) visibleHeight() int {
 	// Each result takes ~2 lines (name + snippet). Subtract chrome.
 	h := (ss.height - 16) / 2
 	if h < 3 {
