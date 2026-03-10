@@ -430,8 +430,8 @@ func (d Dashboard) View() string {
 				mark = doneStyle.Render("\u25a0")
 			}
 			txt := t.Text
-			if len(txt) > halfW-6 {
-				txt = txt[:halfW-9] + "..."
+			if r := []rune(txt); len(r) > halfW-6 {
+				txt = string(r[:halfW-9]) + "..."
 			}
 			taskLines = append(taskLines, "  "+mark+" "+labelStyle.Render(txt))
 		}
@@ -455,8 +455,8 @@ func (d Dashboard) View() string {
 			if maxNameW < 10 {
 				maxNameW = 10
 			}
-			if len(name) > maxNameW {
-				name = name[:maxNameW-3] + "..."
+			if r := []rune(name); len(r) > maxNameW {
+				name = string(r[:maxNameW-3]) + "..."
 			}
 			gap := halfW - 6 - lipgloss.Width(name) - lipgloss.Width(n.TimeAgo)
 			if gap < 1 {
