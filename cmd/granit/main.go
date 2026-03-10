@@ -443,6 +443,11 @@ func runScanJSON(v *vault.Vault, idx *vault.Index, elapsed time.Duration) {
 
 func runDaily(vaultPath string) {
 	today := time.Now().Format("2006-01-02")
+	now := time.Now()
+	weekday := now.Weekday().String()
+	yesterday := now.AddDate(0, 0, -1).Format("2006-01-02")
+	tomorrow := now.AddDate(0, 0, 1).Format("2006-01-02")
+	_, week := now.ISOWeek()
 	filename := today + ".md"
 	dailyPath := filepath.Join(vaultPath, filename)
 
@@ -450,16 +455,25 @@ func runDaily(vaultPath string) {
 		content := fmt.Sprintf(`---
 date: %s
 type: daily
+tags: [daily]
 ---
 
-# %s
+# %s — %s
+
+## Morning
+- [ ]
 
 ## Tasks
 - [ ]
 
 ## Notes
 
-`, today, today)
+
+## Reflection
+
+`, today, today, weekday)
+		// Append navigation links
+		content += fmt.Sprintf("---\n*[[%s|Yesterday]] | [[%s|Tomorrow]] | Week %d*\n", yesterday, tomorrow, week)
 		if err := os.WriteFile(dailyPath, []byte(content), 0644); err != nil {
 			fmt.Printf("Error creating daily note: %v\n", err)
 			os.Exit(1)
