@@ -185,6 +185,7 @@ type Model struct {
 	dataview         DataviewOverlay
 	timeTracker      TimeTracker
 	knowledgeGaps    KnowledgeGaps
+	commandCenter    CommandCenter
 	dueTodayCount    int
 
 	// Cross-component refresh flag
@@ -337,6 +338,7 @@ func NewModel(vaultPath string) (Model, error) {
 		aiTemplates:      NewAITemplates(),
 		languageLearning: NewLanguageLearning(),
 		habitTracker:     NewHabitTracker(),
+		commandCenter:   NewCommandCenter(),
 		dailyPlanner:    NewDailyPlanner(),
 		aiScheduler:     NewAIScheduler(),
 		notePreview:     NewNotePreview(),
@@ -1856,6 +1858,73 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.commandCenter.IsActive() {
+			m.commandCenter, _ = m.commandCenter.Update(msg)
+			if !m.commandCenter.IsActive() {
+				// Handle consumed-once results.
+				if m.commandCenter.ShouldStartPomodoro() {
+					m.pomodoro.Open()
+					m.pomodoro.Start()
+					return m, nil
+				}
+				if task := m.commandCenter.CompletedTask(); task != nil {
+					// Toggle task done in source note.
+					if task.NotePath != "" {
+						if note := m.vault.GetNote(task.NotePath); note != nil {
+							lines := strings.Split(note.Content, "\n")
+							if task.LineNum >= 0 && task.LineNum < len(lines) {
+								lines[task.LineNum] = strings.Replace(lines[task.LineNum], "- [ ]", "- [x]", 1)
+								newContent := strings.Join(lines, "\n")
+								_ = os.WriteFile(filepath.Join(m.vault.Root, task.NotePath), []byte(newContent), 0644)
+								m.refreshComponents(task.NotePath)
+							}
+						}
+					}
+				}
+				if projName := m.commandCenter.SelectedProject(); projName != "" {
+					m.projectMode.SetSize(m.width, m.height)
+					m.projectMode.Open(m.vault.Root)
+				}
+				if habitName := m.commandCenter.ToggledHabit(); habitName != "" {
+					m.habitTracker.Open(m.vault.Root)
+					m.habitTracker.toggleToday(habitName)
+					m.habitTracker.Close()
+				}
+			} else {
+				// Handle consumed-once results while still active.
+				if m.commandCenter.ShouldStartPomodoro() {
+					m.commandCenter.Close()
+					m.pomodoro.Open()
+					m.pomodoro.Start()
+					return m, nil
+				}
+				if task := m.commandCenter.CompletedTask(); task != nil {
+					if task.NotePath != "" {
+						if note := m.vault.GetNote(task.NotePath); note != nil {
+							lines := strings.Split(note.Content, "\n")
+							if task.LineNum >= 0 && task.LineNum < len(lines) {
+								lines[task.LineNum] = strings.Replace(lines[task.LineNum], "- [ ]", "- [x]", 1)
+								newContent := strings.Join(lines, "\n")
+								_ = os.WriteFile(filepath.Join(m.vault.Root, task.NotePath), []byte(newContent), 0644)
+								m.refreshComponents(task.NotePath)
+							}
+						}
+					}
+				}
+				if projName := m.commandCenter.SelectedProject(); projName != "" {
+					m.commandCenter.Close()
+					m.projectMode.SetSize(m.width, m.height)
+					m.projectMode.Open(m.vault.Root)
+				}
+				if habitName := m.commandCenter.ToggledHabit(); habitName != "" {
+					m.habitTracker.Open(m.vault.Root)
+					m.habitTracker.toggleToday(habitName)
+					m.habitTracker.Close()
+				}
+			}
+			return m, nil
+		}
+
 		if m.nlSearch.IsActive() {
 			var cmd tea.Cmd
 			m.nlSearch, cmd = m.nlSearch.Update(msg)
@@ -2756,6 +2825,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "alt+w":
 			// Weekly note
 			return m.executeCommand(CmdWeeklyNote)
+
+		case "alt+c":
+			// Command Center
+			return m.executeCommand(CmdCommandCenter)
 
 		case "esc":
 			// If selection is active, clear it first
@@ -4092,6 +4165,25 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.projectMode.SetSize(m.width, m.height)
 		m.projectMode.Open(m.vault.Root)
 
+	case CmdCommandCenter:
+		m.commandCenter.SetSize(m.width, m.height)
+		// Gather data from all productivity systems.
+		allTasks := ParseAllTasks(m.vault.Notes)
+		// Load projects.
+		pm := NewProjectMode()
+		pm.Open(m.vault.Root)
+		pm.Close()
+		var projects []Project
+		projects = append(projects, pm.projects...)
+		// Load habits.
+		ht := NewHabitTracker()
+		ht.Open(m.vault.Root)
+		ht.Close()
+		// Gather calendar events for today.
+		_, plannerEvents, _ := m.gatherPlannerData()
+		m.commandCenter.LoadData(allTasks, projects, ht.habits, ht.logs, plannerEvents)
+		m.commandCenter.Open()
+
 	case CmdNLSearch:
 		m.nlSearch.SetSize(m.width, m.height)
 		m.nlSearch.Open(m.vault.Root,
@@ -4945,6 +5037,7 @@ func (m *Model) updateLayout() {
 	m.notePreview.SetSize(m.width, m.height)
 	m.scratchpad.SetSize(m.width, m.height)
 	m.projectMode.SetSize(m.width, m.height)
+	m.commandCenter.SetSize(m.width, m.height)
 	m.nlSearch.SetSize(m.width, m.height)
 	m.writingCoach.SetSize(m.width, m.height)
 	m.dataview.SetSize(m.width, m.height)
@@ -6368,6 +6461,10 @@ func (m Model) View() string {
 	}
 	if m.projectMode.IsActive() {
 		overlay := m.projectMode.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.commandCenter.IsActive() {
+		overlay := m.commandCenter.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.nlSearch.IsActive() {
