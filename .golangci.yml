@@ -1,0 +1,27 @@
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - errcheck
+  disable:
+    - depguard
+
+linters-settings:
+  errcheck:
+    exclude-functions:
+      - (io.Closer).Close
+      - (net/http.ResponseWriter).Write
+  staticcheck:
+    checks:
+      - all
+      - "-SA1019" # allow deprecated for gradual migration
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 5
