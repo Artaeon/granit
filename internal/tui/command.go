@@ -16,6 +16,7 @@ const (
 	CmdNewNote
 	CmdSaveNote
 	CmdDailyNote
+	CmdWeeklyNote
 	CmdToggleView
 	CmdSettings
 	CmdToggleSidebar
@@ -159,6 +160,7 @@ var AllCommands = []Command{
 	{Label: "Daily Note", Desc: "Open or create today's daily note", Shortcut: "Alt+D", Action: CmdDailyNote, Icon: &IconDailyChar},
 	{Label: "Previous Daily Note", Desc: "Navigate to the previous daily note", Shortcut: "Alt+[", Action: CmdPrevDailyNote, Icon: &IconDailyChar},
 	{Label: "Next Daily Note", Desc: "Navigate to the next daily note", Shortcut: "Alt+]", Action: CmdNextDailyNote, Icon: &IconDailyChar},
+	{Label: "Weekly Note", Desc: "Open or create this week's note", Shortcut: "Alt+W", Action: CmdWeeklyNote, Icon: &IconCalendarChar},
 	{Label: "Toggle View/Edit", Desc: "Switch between view and edit mode", Shortcut: "Ctrl+E", Action: CmdToggleView, Icon: &IconViewChar},
 	{Label: "Settings", Desc: "Open settings panel", Shortcut: "Ctrl+,", Action: CmdSettings, Icon: &IconSettingsChar},
 	{Label: "Focus Editor", Desc: "Switch focus to the editor", Shortcut: "F2", Action: CmdFocusEditor, Icon: &IconEditChar},
