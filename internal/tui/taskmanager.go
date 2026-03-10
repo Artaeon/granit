@@ -513,7 +513,7 @@ func (tm *TaskManager) doAddTask(taskText string) {
 			return
 		}
 		// Re-scan to pick up the new file
-		tm.vault.Scan()
+		_ = tm.vault.Scan()
 		note = tm.vault.GetNote(targetPath)
 		if note == nil {
 			return

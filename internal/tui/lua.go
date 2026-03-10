@@ -131,7 +131,7 @@ func (le *LuaEngine) executeScript(L *lua.LState, script LuaScript, notePath, no
 	// granit.list_notes() — list all .md files in vault
 	L.SetField(granitMod, "list_notes", L.NewFunction(func(L *lua.LState) int {
 		tbl := L.NewTable()
-		filepath.Walk(le.vaultPath, func(path string, info os.FileInfo, err error) error {
+		_ = filepath.Walk(le.vaultPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
@@ -156,7 +156,7 @@ func (le *LuaEngine) executeScript(L *lua.LState, script LuaScript, notePath, no
 			name += ".md"
 		}
 		path := filepath.Join(le.vaultPath, name)
-		os.MkdirAll(filepath.Dir(path), 0755)
+		_ = os.MkdirAll(filepath.Dir(path), 0755)
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			L.Push(lua.LFalse)
 			L.Push(lua.LString(err.Error()))

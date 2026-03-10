@@ -8,7 +8,7 @@ import (
 
 func TestResolveLink_ExactMatch(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "note.md"), []byte("# Note"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "note.md"), []byte("# Note"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -29,7 +29,7 @@ func TestResolveLink_ExactMatch(t *testing.T) {
 
 func TestResolveLink_WithMdExtension(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "readme.md"), []byte("# Readme"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "readme.md"), []byte("# Readme"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -50,8 +50,8 @@ func TestResolveLink_WithMdExtension(t *testing.T) {
 
 func TestResolveLink_BaseNameMatch(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "subfolder"), 0755)
-	os.WriteFile(filepath.Join(dir, "subfolder", "deep-note.md"), []byte("# Deep"), 0644)
+	_ = os.MkdirAll(filepath.Join(dir, "subfolder"), 0755)
+	_ = os.WriteFile(filepath.Join(dir, "subfolder", "deep-note.md"), []byte("# Deep"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -73,7 +73,7 @@ func TestResolveLink_BaseNameMatch(t *testing.T) {
 
 func TestResolveLink_HeadingAnchor(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "target.md"), []byte("# Target\n## Heading"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "target.md"), []byte("# Target\n## Heading"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestResolveLink_HeadingAnchor(t *testing.T) {
 
 func TestResolveLink_NotFound(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "existing.md"), []byte("# Existing"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "existing.md"), []byte("# Existing"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -136,8 +136,8 @@ func TestResolveLink_EmptyLink(t *testing.T) {
 func TestIndex_CircularLinks(t *testing.T) {
 	// A->B->A should not cause an infinite loop during Build.
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "A.md"), []byte("Link to [[B]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "B.md"), []byte("Link to [[A]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "A.md"), []byte("Link to [[B]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "B.md"), []byte("Link to [[A]]"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -165,7 +165,7 @@ func TestIndex_CircularLinks(t *testing.T) {
 func TestIndex_SelfLink(t *testing.T) {
 	// A note linking to itself should create a backlink from itself.
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "recursive.md"), []byte("See [[recursive]] for more"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "recursive.md"), []byte("See [[recursive]] for more"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -197,7 +197,7 @@ func TestResolveLink_HeadingOnlyAnchor(t *testing.T) {
 	// A link like "#heading" (heading-only, no note name) should return empty
 	// since stripping the anchor leaves an empty link.
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "note.md"), []byte("# Note"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "note.md"), []byte("# Note"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -217,8 +217,8 @@ func TestResolveLink_HeadingOnlyAnchor(t *testing.T) {
 
 func TestResolveLink_SubfolderPathWithAnchor(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "folder"), 0755)
-	os.WriteFile(filepath.Join(dir, "folder", "doc.md"), []byte("# Doc"), 0644)
+	_ = os.MkdirAll(filepath.Join(dir, "folder"), 0755)
+	_ = os.WriteFile(filepath.Join(dir, "folder", "doc.md"), []byte("# Doc"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -241,8 +241,8 @@ func TestResolveLink_SubfolderPathWithAnchor(t *testing.T) {
 func TestIndex_BuildWithHeadingLinks(t *testing.T) {
 	// Ensure heading anchors in wikilinks still create proper backlinks.
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "source.md"), []byte("Go to [[target#details]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "target.md"), []byte("# Target\n## Details"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "source.md"), []byte("Go to [[target#details]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "target.md"), []byte("# Target\n## Details"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {

@@ -116,7 +116,7 @@ func (bm *Bookmarks) load() {
 	if err != nil {
 		return
 	}
-	json.Unmarshal(data, &bm.data)
+	_ = json.Unmarshal(data, &bm.data)
 }
 
 func (bm *Bookmarks) save() {
@@ -124,7 +124,7 @@ func (bm *Bookmarks) save() {
 	if err != nil {
 		return
 	}
-	os.WriteFile(bm.dataPath(), data, 0644)
+	_ = os.WriteFile(bm.dataPath(), data, 0644)
 }
 
 func (bm Bookmarks) Update(msg tea.Msg) (Bookmarks, tea.Cmd) {

@@ -31,7 +31,7 @@ func renderImageTerminal(imagePath string, maxWidth, maxHeight int) (string, err
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	img, _, err := image.Decode(f)
 	if err != nil {
@@ -248,7 +248,7 @@ func (im *ImageManager) scanImages() {
 		".bmp": true,
 	}
 
-	filepath.Walk(im.vaultRoot, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(im.vaultRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -276,7 +276,7 @@ func (im *ImageManager) scanImages() {
 			f, ferr := os.Open(absPath)
 			if ferr == nil {
 				cfg, _, decErr := image.DecodeConfig(f)
-				f.Close()
+				_ = f.Close()
 				if decErr == nil {
 					w = cfg.Width
 					h = cfg.Height
@@ -527,7 +527,7 @@ func (im *ImageManager) doImport() {
 
 	// Ensure attachments dir exists
 	destDir := filepath.Join(im.vaultRoot, "attachments")
-	os.MkdirAll(destDir, 0755)
+	_ = os.MkdirAll(destDir, 0755)
 
 	destPath := filepath.Join(destDir, filepath.Base(srcPath))
 
@@ -543,14 +543,14 @@ func (im *ImageManager) doImport() {
 		im.statusMsg = "Cannot open: " + err.Error()
 		return
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	dst, err := os.Create(destPath)
 	if err != nil {
 		im.statusMsg = "Cannot create: " + err.Error()
 		return
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 
 	if _, err := io.Copy(dst, src); err != nil {
 		im.statusMsg = "Copy failed: " + err.Error()
@@ -596,7 +596,7 @@ func openFileExternal(path string) {
 				Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
 			})
 			if err == nil {
-				p.Release()
+				_ = p.Release()
 				return
 			}
 		}

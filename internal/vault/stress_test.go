@@ -28,7 +28,7 @@ func TestStress_5000Notes(t *testing.T) {
 			subdir = "research"
 		}
 		if subdir != "" {
-			os.MkdirAll(filepath.Join(dir, subdir), 0755)
+			_ = os.MkdirAll(filepath.Join(dir, subdir), 0755)
 		}
 		// Use filename-matching wikilinks: link target matches the note filename
 		// (without .md) so the index can resolve them by basename.
@@ -245,9 +245,9 @@ func TestStress_ManyWikilinks(t *testing.T) {
 func TestStress_CircularWikilinks(t *testing.T) {
 	dir := t.TempDir()
 
-	os.WriteFile(filepath.Join(dir, "A.md"), []byte("# A\n\nLink to [[B]]."), 0644)
-	os.WriteFile(filepath.Join(dir, "B.md"), []byte("# B\n\nLink to [[C]]."), 0644)
-	os.WriteFile(filepath.Join(dir, "C.md"), []byte("# C\n\nLink to [[A]]."), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "A.md"), []byte("# A\n\nLink to [[B]]."), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "B.md"), []byte("# B\n\nLink to [[C]]."), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "C.md"), []byte("# C\n\nLink to [[A]]."), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -369,10 +369,10 @@ func TestEdge_EmptyVault(t *testing.T) {
 func TestEdge_NonMarkdownOnly(t *testing.T) {
 	dir := t.TempDir()
 
-	os.WriteFile(filepath.Join(dir, "image.png"), []byte{0x89, 0x50, 0x4E, 0x47}, 0644)
-	os.WriteFile(filepath.Join(dir, "data.json"), []byte(`{"key": "value"}`), 0644)
-	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("Just a text file"), 0644)
-	os.WriteFile(filepath.Join(dir, "script.py"), []byte("print('hello')"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "image.png"), []byte{0x89, 0x50, 0x4E, 0x47}, 0644)
+	_ = os.WriteFile(filepath.Join(dir, "data.json"), []byte(`{"key": "value"}`), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("Just a text file"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "script.py"), []byte("print('hello')"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -493,7 +493,7 @@ func TestStress_ScanFast_5000Notes(t *testing.T) {
 func TestEdge_SelfReference(t *testing.T) {
 	dir := t.TempDir()
 
-	os.WriteFile(filepath.Join(dir, "self.md"), []byte("# Self\n\nI link to [[self]]."), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "self.md"), []byte("# Self\n\nI link to [[self]]."), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -528,7 +528,7 @@ func TestEdge_SelfReference(t *testing.T) {
 func TestEdge_EmptyFile(t *testing.T) {
 	dir := t.TempDir()
 
-	os.WriteFile(filepath.Join(dir, "empty.md"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "empty.md"), []byte(""), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {

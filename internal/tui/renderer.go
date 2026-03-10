@@ -92,7 +92,7 @@ func imgGetDimensions(vaultRoot, filename string) (int, int, bool) {
 			continue
 		}
 		cfg, _, err := image.DecodeConfig(f)
-		f.Close()
+		_ = f.Close()
 		if err != nil {
 			continue
 		}

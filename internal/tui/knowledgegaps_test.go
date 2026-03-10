@@ -1084,7 +1084,7 @@ func TestKnowledgeGaps_NonMdFilesSkipped(t *testing.T) {
 	})
 	// Also create a .txt file
 	txtPath := filepath.Join(root, "readme.txt")
-	os.WriteFile(txtPath, []byte("This is not markdown"), 0o644)
+	_ = os.WriteFile(txtPath, []byte("This is not markdown"), 0o644)
 
 	kg := NewKnowledgeGaps()
 	kg.Open(root)

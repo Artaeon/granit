@@ -164,9 +164,9 @@ func TestBuildNoteIndex(t *testing.T) {
 
 	// Create a directory structure
 	subDir := filepath.Join(tmpDir, "subfolder")
-	os.MkdirAll(subDir, 0755)
+	_ = os.MkdirAll(subDir, 0755)
 	hiddenDir := filepath.Join(tmpDir, ".hidden")
-	os.MkdirAll(hiddenDir, 0755)
+	_ = os.MkdirAll(hiddenDir, 0755)
 
 	writeTestNote(t, tmpDir, "root.md", "# Root Note\nContent here\n#tag1 #tag2")
 	writeTestNote(t, subDir, "sub.md", "No heading\nJust content with #mytag")

@@ -129,7 +129,7 @@ func (d *Dashboard) scan() {
 		d.weekDays[6-i] = day.Format("Mon")
 	}
 
-	filepath.Walk(d.vaultRoot, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(d.vaultRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -510,7 +510,7 @@ func (d Dashboard) View() string {
 	// Activity score (notes modified today).
 	todayCount := 0
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	filepath.Walk(d.vaultRoot, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(d.vaultRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".md") {
 			return nil
 		}

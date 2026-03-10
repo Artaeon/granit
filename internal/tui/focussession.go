@@ -114,7 +114,7 @@ func (fs *FocusSession) loadTasks() {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -401,7 +401,7 @@ func (fs *FocusSession) saveSession() {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Check if file is new (empty) to write a header
 	info, _ := f.Stat()

@@ -114,7 +114,7 @@ func runSearch(args []string) {
 		if err != nil {
 			return nil // skip files we can't read
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		relPath, _ := filepath.Rel(absPath, path)
 		scanner := bufio.NewScanner(file)

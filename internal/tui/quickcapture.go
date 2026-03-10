@@ -178,7 +178,7 @@ func (qc *QuickCapture) save() {
 			return
 		}
 		_, err = f.WriteString(content)
-		f.Close()
+		_ = f.Close()
 		if err != nil {
 			qc.statusMsg = "Error: " + err.Error()
 			return

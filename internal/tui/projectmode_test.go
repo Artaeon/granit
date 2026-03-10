@@ -19,7 +19,7 @@ import (
 func createProjectVault(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".granit"), 0755)
+	_ = os.MkdirAll(filepath.Join(dir, ".granit"), 0755)
 	return dir
 }
 
@@ -54,7 +54,7 @@ func readProjectsJSON(t *testing.T, vaultRoot string) []Project {
 func createNotesInFolder(t *testing.T, vaultRoot, folder string, names []string) {
 	t.Helper()
 	absFolder := filepath.Join(vaultRoot, folder)
-	os.MkdirAll(absFolder, 0755)
+	_ = os.MkdirAll(absFolder, 0755)
 	for i, name := range names {
 		content := "# " + name + "\n\nSome content.\n"
 		path := filepath.Join(absFolder, name+".md")
@@ -63,7 +63,7 @@ func createNotesInFolder(t *testing.T, vaultRoot, folder string, names []string)
 		}
 		// Stagger mod times so sort order is deterministic.
 		modTime := time.Now().Add(-time.Duration(i) * time.Minute)
-		os.Chtimes(path, modTime, modTime)
+		_ = os.Chtimes(path, modTime, modTime)
 	}
 }
 
@@ -71,7 +71,7 @@ func createNotesInFolder(t *testing.T, vaultRoot, folder string, names []string)
 func createTaskFile(t *testing.T, vaultRoot, relPath, content string) {
 	t.Helper()
 	abs := filepath.Join(vaultRoot, relPath)
-	os.MkdirAll(filepath.Dir(abs), 0755)
+	_ = os.MkdirAll(filepath.Dir(abs), 0755)
 	if err := os.WriteFile(abs, []byte(content), 0644); err != nil {
 		t.Fatalf("write task file %s: %v", relPath, err)
 	}
@@ -318,7 +318,7 @@ func TestScanProjectFolder_FindsMdFiles(t *testing.T) {
 	folder := "docs"
 	createNotesInFolder(t, vault, folder, []string{"readme", "changelog", "design"})
 	// Also create a non-md file that should be excluded.
-	os.WriteFile(filepath.Join(vault, folder, "data.json"), []byte("{}"), 0644)
+	_ = os.WriteFile(filepath.Join(vault, folder, "data.json"), []byte("{}"), 0644)
 
 	pm := NewProjectMode()
 	pm.vaultRoot = vault
@@ -344,7 +344,7 @@ func TestScanProjectFolder_EmptyFolder(t *testing.T) {
 	vault := createProjectVault(t)
 
 	folder := "empty"
-	os.MkdirAll(filepath.Join(vault, folder), 0755)
+	_ = os.MkdirAll(filepath.Join(vault, folder), 0755)
 
 	pm := NewProjectMode()
 	pm.vaultRoot = vault
@@ -674,7 +674,7 @@ func TestProjectWithNoNotes_DashboardShowsZero(t *testing.T) {
 
 	// Create project pointing to a folder with no markdown files.
 	folder := "emptyfolder"
-	os.MkdirAll(filepath.Join(vault, folder), 0755)
+	_ = os.MkdirAll(filepath.Join(vault, folder), 0755)
 
 	writeProjectsJSON(t, vault, []Project{
 		{Name: "EmptyProj", Folder: folder, Status: "active", Category: "other"},

@@ -178,7 +178,7 @@ func (te ThemeEditor) Update(msg tea.Msg) (ThemeEditor, tea.Cmd) {
 				if name != "" {
 					te.theme.Name = name
 					te.applyRolesToTheme()
-					SaveCustomTheme(te.configDir, te.theme)
+					_ = SaveCustomTheme(te.configDir, te.theme)
 					// Reload custom themes so the new one appears immediately
 					InitCustomThemes(te.configDir)
 					te.exported = "Saved as: " + name

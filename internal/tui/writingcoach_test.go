@@ -464,9 +464,9 @@ func TestCoachCategoryIcon(t *testing.T) {
 func TestWritingCoach_Open_LoadsSoulNote(t *testing.T) {
 	vault := t.TempDir()
 	soulDir := filepath.Join(vault, ".granit")
-	os.MkdirAll(soulDir, 0755)
+	_ = os.MkdirAll(soulDir, 0755)
 	soulContent := "You are a cheerful writing mentor."
-	os.WriteFile(filepath.Join(soulDir, "soul-note.md"), []byte(soulContent), 0644)
+	_ = os.WriteFile(filepath.Join(soulDir, "soul-note.md"), []byte(soulContent), 0644)
 
 	wc := NewWritingCoach()
 	wc.Open(vault, "Test content.", "test.md", "local", "", "", "", "")

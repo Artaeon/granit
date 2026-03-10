@@ -183,8 +183,8 @@ func (t *Trash) RestoreFile() string {
 	}
 
 	// Clean up trash copy and sidecar.
-	os.Remove(srcPath)
-	os.Remove(filepath.Join(dir, item.TrashPath+".json"))
+	_ = os.Remove(srcPath)
+	_ = os.Remove(filepath.Join(dir, item.TrashPath+".json"))
 
 	t.result = item.OrigPath
 	t.doRestore = true
@@ -218,8 +218,8 @@ func (t *Trash) PurgeSelected() {
 	item := t.items[t.cursor]
 	dir := t.trashDir()
 
-	os.Remove(filepath.Join(dir, item.TrashPath))
-	os.Remove(filepath.Join(dir, item.TrashPath+".json"))
+	_ = os.Remove(filepath.Join(dir, item.TrashPath))
+	_ = os.Remove(filepath.Join(dir, item.TrashPath+".json"))
 
 	t.items = append(t.items[:t.cursor], t.items[t.cursor+1:]...)
 	if len(t.items) == 0 {

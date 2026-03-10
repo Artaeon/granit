@@ -100,7 +100,7 @@ func (fw *FileWatcher) Stop() {
 		close(fw.stopChan)
 	}
 	if fw.watcher != nil {
-		fw.watcher.Close()
+		_ = fw.watcher.Close()
 	}
 }
 

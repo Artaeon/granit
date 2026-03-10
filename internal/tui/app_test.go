@@ -13,10 +13,10 @@ import (
 func createTestVault(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "note1.md"), []byte("# Note 1\n\nHello world.\n\nLink to [[note2]]."), 0644)
-	os.WriteFile(filepath.Join(dir, "note2.md"), []byte("# Note 2\n\nSee [[note1]]."), 0644)
-	os.MkdirAll(filepath.Join(dir, "subfolder"), 0755)
-	os.WriteFile(filepath.Join(dir, "subfolder", "deep.md"), []byte("# Deep\n\nNested note."), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "note1.md"), []byte("# Note 1\n\nHello world.\n\nLink to [[note2]]."), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "note2.md"), []byte("# Note 2\n\nSee [[note1]]."), 0644)
+	_ = os.MkdirAll(filepath.Join(dir, "subfolder"), 0755)
+	_ = os.WriteFile(filepath.Join(dir, "subfolder", "deep.md"), []byte("# Deep\n\nNested note."), 0644)
 	return dir
 }
 

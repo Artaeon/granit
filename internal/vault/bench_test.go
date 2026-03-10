@@ -84,7 +84,7 @@ func createTempVault(b *testing.B, n int) string {
 	// Create a couple of subdirectories for realism.
 	subdirs := []string{"", "projects", "journal", "research"}
 	for _, sub := range subdirs[1:] {
-		os.MkdirAll(filepath.Join(dir, sub), 0755)
+		_ = os.MkdirAll(filepath.Join(dir, sub), 0755)
 	}
 
 	for i := 0; i < n; i++ {

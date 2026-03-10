@@ -169,7 +169,7 @@ func createBackup(vaultPath, outputPath string) {
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		written, err := io.Copy(writer, file)
 		if err != nil {
@@ -183,19 +183,19 @@ func createBackup(vaultPath, outputPath string) {
 
 	if err != nil {
 		// Close and clean up on error
-		w.Close()
-		zipFile.Close()
+		_ = w.Close()
+		_ = zipFile.Close()
 		fmt.Printf("Error creating backup: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Close the zip writer and file before reading size
 	if err := w.Close(); err != nil {
-		zipFile.Close()
+		_ = zipFile.Close()
 		fmt.Printf("Error finalizing backup: %v\n", err)
 		os.Exit(1)
 	}
-	zipFile.Close()
+	_ = zipFile.Close()
 
 	// Get final backup file size
 	backupInfo, _ := os.Stat(backupPath)
@@ -314,7 +314,7 @@ func restoreBackup(backupFile, vaultPath string) {
 		fmt.Printf("Error opening backup: %v\n", err)
 		os.Exit(1)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	fileCount := 0
 
@@ -329,7 +329,7 @@ func restoreBackup(backupFile, vaultPath string) {
 		}
 
 		if file.FileInfo().IsDir() {
-			os.MkdirAll(destPath, file.Mode())
+			_ = os.MkdirAll(destPath, file.Mode())
 			continue
 		}
 
@@ -348,14 +348,14 @@ func restoreBackup(backupFile, vaultPath string) {
 
 		dstFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, file.Mode())
 		if err != nil {
-			srcFile.Close()
+			_ = srcFile.Close()
 			fmt.Printf("  Error writing %s: %v\n", file.Name, err)
 			continue
 		}
 
 		_, err = io.Copy(dstFile, srcFile)
-		srcFile.Close()
-		dstFile.Close()
+		_ = srcFile.Close()
+		_ = dstFile.Close()
 
 		if err != nil {
 			fmt.Printf("  Error extracting %s: %v\n", file.Name, err)

@@ -126,7 +126,7 @@ func (se *spellEngine) loadBuiltinDict() {
 			}
 			se.dict[strings.ToLower(word)] = true
 		}
-		f.Close()
+		_ = f.Close()
 		if len(se.dict) > 100 {
 			return
 		}
@@ -141,7 +141,7 @@ func (se *spellEngine) loadPersonalDict() {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -168,10 +168,10 @@ func (se *spellEngine) savePersonalDict() error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	for _, w := range words {
-		f.WriteString(w + "\n")
+		_, _ = f.WriteString(w + "\n")
 	}
 	return nil
 }
@@ -179,7 +179,7 @@ func (se *spellEngine) savePersonalDict() error {
 // addToPersonal adds a word to the personal dictionary and persists it.
 func (se *spellEngine) addToPersonal(word string) {
 	se.personal[strings.ToLower(word)] = true
-	se.savePersonalDict()
+	_ = se.savePersonalDict()
 }
 
 // addSessionIgnore marks a word as ignored for this session only.

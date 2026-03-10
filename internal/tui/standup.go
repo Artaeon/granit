@@ -181,7 +181,7 @@ func (s *StandupGenerator) scanTasks() {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	today := time.Now().Format("2006-01-02")
 	yesterday := time.Now().Add(-24 * time.Hour).Format("2006-01-02")

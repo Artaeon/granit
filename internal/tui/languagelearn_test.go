@@ -774,7 +774,7 @@ func TestLoadGrammarFiles_IgnoresNonMD(t *testing.T) {
 	root := t.TempDir()
 	makeGrammarFile(t, root, "notes.md", "# Notes")
 	dir := filepath.Join(root, "Languages", "grammar")
-	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("not md"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("not md"), 0644)
 
 	ll := NewLanguageLearning()
 	ll.vaultRoot = root
@@ -787,7 +787,7 @@ func TestLoadGrammarFiles_IgnoresNonMD(t *testing.T) {
 
 func TestCreateGrammarViaOverlay(t *testing.T) {
 	root := t.TempDir()
-	os.MkdirAll(filepath.Join(root, "Languages", "grammar"), 0755)
+	_ = os.MkdirAll(filepath.Join(root, "Languages", "grammar"), 0755)
 
 	ll := NewLanguageLearning()
 	ll.Open(root)
@@ -1172,7 +1172,7 @@ func TestEdge_NewLanguageWithNoEntries(t *testing.T) {
 func TestEdge_LoadVocabulary_MalformedLines(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "Languages")
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 
 	content := `---
 type: vocabulary
@@ -1186,7 +1186,7 @@ type: vocabulary
 | another | line | here |
 | fine | bien | French | 1 | 2026-01-02 | 0 |
 `
-	os.WriteFile(filepath.Join(dir, "vocabulary.md"), []byte(content), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "vocabulary.md"), []byte(content), 0644)
 
 	ll := NewLanguageLearning()
 	ll.Open(root)

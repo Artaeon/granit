@@ -63,7 +63,7 @@ func (o *Onboarding) MarkComplete() {
 	_ = os.MkdirAll(dir, 0o700)
 	f, err := os.Create(filepath.Join(dir, onboardingDoneFile))
 	if err == nil {
-		f.Close()
+		_ = f.Close()
 	}
 }
 

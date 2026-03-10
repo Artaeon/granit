@@ -75,7 +75,7 @@ func TestEnsureTargetFile_DoesNotOverwriteExisting(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "existing.md")
 	original := "# My existing note\n"
-	os.WriteFile(target, []byte(original), 0644)
+	_ = os.WriteFile(target, []byte(original), 0644)
 
 	ensureTargetFile(target)
 
@@ -125,7 +125,7 @@ func TestAppendCapture_AppendsTimestampedEntry(t *testing.T) {
 func TestAppendCapture_AppendsToExistingContent(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "inbox.md")
-	os.WriteFile(target, []byte("# Inbox\n"), 0644)
+	_ = os.WriteFile(target, []byte("# Inbox\n"), 0644)
 
 	appendCapture(dir, target, "First item")
 	appendCapture(dir, target, "Second item")
@@ -220,10 +220,10 @@ func TestResolveCaptureVault_FallbackToDot(t *testing.T) {
 
 	// Clear env var
 	origEnv := os.Getenv("GRANIT_VAULT")
-	os.Unsetenv("GRANIT_VAULT")
+	_ = os.Unsetenv("GRANIT_VAULT")
 	defer func() {
 		if origEnv != "" {
-			os.Setenv("GRANIT_VAULT", origEnv)
+			_ = os.Setenv("GRANIT_VAULT", origEnv)
 		}
 	}()
 
@@ -244,12 +244,12 @@ func TestResolveCaptureVault_FromEnv(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	origEnv := os.Getenv("GRANIT_VAULT")
-	os.Setenv("GRANIT_VAULT", tmpDir)
+	_ = os.Setenv("GRANIT_VAULT", tmpDir)
 	defer func() {
 		if origEnv != "" {
-			os.Setenv("GRANIT_VAULT", origEnv)
+			_ = os.Setenv("GRANIT_VAULT", origEnv)
 		} else {
-			os.Unsetenv("GRANIT_VAULT")
+			_ = os.Unsetenv("GRANIT_VAULT")
 		}
 	}()
 
@@ -268,12 +268,12 @@ func TestResolveCaptureVault_FlagOverridesEnv(t *testing.T) {
 	envDir := t.TempDir()
 	flagDir := t.TempDir()
 	origEnv := os.Getenv("GRANIT_VAULT")
-	os.Setenv("GRANIT_VAULT", envDir)
+	_ = os.Setenv("GRANIT_VAULT", envDir)
 	defer func() {
 		if origEnv != "" {
-			os.Setenv("GRANIT_VAULT", origEnv)
+			_ = os.Setenv("GRANIT_VAULT", origEnv)
 		} else {
-			os.Unsetenv("GRANIT_VAULT")
+			_ = os.Unsetenv("GRANIT_VAULT")
 		}
 	}()
 

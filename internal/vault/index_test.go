@@ -26,8 +26,8 @@ func TestNewIndex(t *testing.T) {
 
 func TestBuildCreatesBacklinks(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "A.md"), []byte("Link to [[B]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "B.md"), []byte("# Note B\nJust content."), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "A.md"), []byte("Link to [[B]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "B.md"), []byte("# Note B\nJust content."), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -52,9 +52,9 @@ func TestBuildCreatesBacklinks(t *testing.T) {
 func TestBuildCrossDirectoryLinkResolution(t *testing.T) {
 	// Obsidian shortest-path: [[nested]] should resolve to sub/nested.md
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "root.md"), []byte("Link to [[nested]]"), 0644)
-	os.MkdirAll(filepath.Join(dir, "sub"), 0755)
-	os.WriteFile(filepath.Join(dir, "sub", "nested.md"), []byte("# Nested note"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "root.md"), []byte("Link to [[nested]]"), 0644)
+	_ = os.MkdirAll(filepath.Join(dir, "sub"), 0755)
+	_ = os.WriteFile(filepath.Join(dir, "sub", "nested.md"), []byte("# Nested note"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -78,10 +78,10 @@ func TestBuildCrossDirectoryLinkResolution(t *testing.T) {
 
 func TestBuildCrossDirectoryDeepNesting(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "a", "b"), 0755)
-	os.MkdirAll(filepath.Join(dir, "x"), 0755)
-	os.WriteFile(filepath.Join(dir, "a", "b", "deep.md"), []byte("Link to [[shallow]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "x", "shallow.md"), []byte("# Shallow"), 0644)
+	_ = os.MkdirAll(filepath.Join(dir, "a", "b"), 0755)
+	_ = os.MkdirAll(filepath.Join(dir, "x"), 0755)
+	_ = os.WriteFile(filepath.Join(dir, "a", "b", "deep.md"), []byte("Link to [[shallow]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "x", "shallow.md"), []byte("# Shallow"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -105,10 +105,10 @@ func TestBuildCrossDirectoryDeepNesting(t *testing.T) {
 
 func TestGetBacklinksReturnsCorrectSources(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "src1.md"), []byte("[[target]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "src2.md"), []byte("See [[target]] for info"), 0644)
-	os.WriteFile(filepath.Join(dir, "target.md"), []byte("# Target"), 0644)
-	os.WriteFile(filepath.Join(dir, "unrelated.md"), []byte("# No links here"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "src1.md"), []byte("[[target]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "src2.md"), []byte("See [[target]] for info"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "target.md"), []byte("# Target"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "unrelated.md"), []byte("# No links here"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -137,7 +137,7 @@ func TestGetBacklinksReturnsCorrectSources(t *testing.T) {
 
 func TestGetBacklinksNonExistentNote(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "note.md"), []byte("# Note"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "note.md"), []byte("# Note"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -158,10 +158,10 @@ func TestGetBacklinksNonExistentNote(t *testing.T) {
 
 func TestGetOutgoingLinksReturnsCorrectTargets(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "hub.md"), []byte("Links to [[A]] and [[B]] and [[C]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "A.md"), []byte("# A"), 0644)
-	os.WriteFile(filepath.Join(dir, "B.md"), []byte("# B"), 0644)
-	os.WriteFile(filepath.Join(dir, "C.md"), []byte("# C"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "hub.md"), []byte("Links to [[A]] and [[B]] and [[C]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "A.md"), []byte("# A"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "B.md"), []byte("# B"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "C.md"), []byte("# C"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -207,8 +207,8 @@ func TestGetOutgoingLinksNonExistentNote(t *testing.T) {
 
 func TestBuildCircularLinks(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "A.md"), []byte("Link to [[B]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "B.md"), []byte("Link to [[A]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "A.md"), []byte("Link to [[B]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "B.md"), []byte("Link to [[A]]"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -235,9 +235,9 @@ func TestBuildCircularLinks(t *testing.T) {
 
 func TestBuildCircularTriangle(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "A.md"), []byte("[[B]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "B.md"), []byte("[[C]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "C.md"), []byte("[[A]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "A.md"), []byte("[[B]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "B.md"), []byte("[[C]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "C.md"), []byte("[[A]]"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -263,7 +263,7 @@ func TestBuildCircularTriangle(t *testing.T) {
 
 func TestBuildLinksToNonExistentNote(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "note.md"), []byte("Link to [[phantom]] that does not exist"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "note.md"), []byte("Link to [[phantom]] that does not exist"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -292,7 +292,7 @@ func TestBuildLinksToNonExistentNote(t *testing.T) {
 
 func TestBuildMultipleLinksToNonExistentNotes(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "linker.md"), []byte("[[ghost1]] and [[ghost2]] and [[ghost3]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "linker.md"), []byte("[[ghost1]] and [[ghost2]] and [[ghost3]]"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -313,10 +313,10 @@ func TestBuildMultipleLinksToNonExistentNotes(t *testing.T) {
 
 func TestBuildMultipleNotesLinkToSameTarget(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "hub.md"), []byte("# Hub"), 0644)
-	os.WriteFile(filepath.Join(dir, "spoke1.md"), []byte("Back to [[hub]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "spoke2.md"), []byte("Also see [[hub]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "spoke3.md"), []byte("Ref [[hub]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "hub.md"), []byte("# Hub"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "spoke1.md"), []byte("Back to [[hub]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "spoke2.md"), []byte("Also see [[hub]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "spoke3.md"), []byte("Ref [[hub]]"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -346,9 +346,9 @@ func TestBuildMultipleNotesLinkToSameTarget(t *testing.T) {
 
 func TestBuildPopulatesNoteBacklinksField(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "target.md"), []byte("# Target note"), 0644)
-	os.WriteFile(filepath.Join(dir, "linker1.md"), []byte("See [[target]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "linker2.md"), []byte("Also [[target]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "target.md"), []byte("# Target note"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "linker1.md"), []byte("See [[target]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "linker2.md"), []byte("Also [[target]]"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -382,8 +382,8 @@ func TestBuildPopulatesNoteBacklinksField(t *testing.T) {
 
 func TestBuildNoteWithNoBacklinksHasNilField(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "lonely.md"), []byte("# All alone"), 0644)
-	os.WriteFile(filepath.Join(dir, "other.md"), []byte("# Other note"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "lonely.md"), []byte("# All alone"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "other.md"), []byte("# Other note"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -407,8 +407,8 @@ func TestBuildNoteWithNoBacklinksHasNilField(t *testing.T) {
 
 func TestBuildResetsBacklinksOnRebuild(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "A.md"), []byte("[[B]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "B.md"), []byte("# B"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "A.md"), []byte("[[B]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "B.md"), []byte("# B"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -438,7 +438,7 @@ func TestBuildResetsBacklinksOnRebuild(t *testing.T) {
 
 func TestBuildSelfLink(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "self.md"), []byte("Link to [[self]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "self.md"), []byte("Link to [[self]]"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -462,8 +462,8 @@ func TestBuildSelfLink(t *testing.T) {
 
 func TestBuildWithMixedExistingAndDanglingLinks(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "note.md"), []byte("[[real]] and [[fake]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "real.md"), []byte("# Real note"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "note.md"), []byte("[[real]] and [[fake]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "real.md"), []byte("# Real note"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -495,10 +495,10 @@ func TestBuildWithMixedExistingAndDanglingLinks(t *testing.T) {
 func TestBuildLargeVault(t *testing.T) {
 	dir := t.TempDir()
 	// Create a hub note linked to by many spokes
-	os.WriteFile(filepath.Join(dir, "hub.md"), []byte("# Central Hub"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "hub.md"), []byte("# Central Hub"), 0644)
 	for i := 0; i < 50; i++ {
 		name := filepath.Join(dir, "spoke"+string(rune('A'+i%26))+string(rune('0'+i/26))+".md")
-		os.WriteFile(name, []byte("Ref [[hub]]"), 0644)
+		_ = os.WriteFile(name, []byte("Ref [[hub]]"), 0644)
 	}
 
 	v, err := NewVault(dir)
@@ -520,8 +520,8 @@ func TestBuildLargeVault(t *testing.T) {
 
 func TestBuildWithDisplayTextLinks(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "source.md"), []byte("See [[target|display text]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "target.md"), []byte("# Target"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "source.md"), []byte("See [[target|display text]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "target.md"), []byte("# Target"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -565,8 +565,8 @@ func TestBuildEmptyVault(t *testing.T) {
 
 func TestBuildNoteWithMultipleLinksToSameTarget(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "repeater.md"), []byte("[[X]] and again [[X]]"), 0644)
-	os.WriteFile(filepath.Join(dir, "X.md"), []byte("# X"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "repeater.md"), []byte("[[X]] and again [[X]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "X.md"), []byte("# X"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -588,7 +588,7 @@ func TestBuildNoteWithMultipleLinksToSameTarget(t *testing.T) {
 
 func TestResolveLinkExactMatch(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "note.md"), []byte("# Note"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "note.md"), []byte("# Note"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -602,8 +602,8 @@ func TestResolveLinkExactMatch(t *testing.T) {
 
 	// resolveLink is unexported, but we can test via Build behavior
 	// Link with .md extension should match directly
-	os.WriteFile(filepath.Join(dir, "linker.md"), []byte("[[note.md]]"), 0644)
-	v.Scan()
+	_ = os.WriteFile(filepath.Join(dir, "linker.md"), []byte("[[note.md]]"), 0644)
+	_ = v.Scan()
 	idx.Build()
 
 	backlinks := idx.GetBacklinks("note.md")
@@ -614,8 +614,8 @@ func TestResolveLinkExactMatch(t *testing.T) {
 
 func TestResolveLinkWithoutExtension(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "target.md"), []byte("# Target"), 0644)
-	os.WriteFile(filepath.Join(dir, "linker.md"), []byte("[[target]]"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "target.md"), []byte("# Target"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "linker.md"), []byte("[[target]]"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {

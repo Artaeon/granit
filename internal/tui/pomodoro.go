@@ -906,7 +906,7 @@ func (p *Pomodoro) logSessionEntry(task, project string, durationMin int, comple
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Write header if file is new
 	info, _ := f.Stat()

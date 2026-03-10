@@ -1508,8 +1508,8 @@ func (dp *DailyPlanner) saveToFile() {
 	if err != nil {
 		return
 	}
-	defer f.Close()
-	f.WriteString(b.String())
+	defer func() { _ = f.Close() }()
+	_, _ = f.WriteString(b.String())
 }
 
 // slotTimeEnd returns the end time for a slot (i.e. the start of the next
@@ -1541,7 +1541,7 @@ func (dp *DailyPlanner) loadFromFile() bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	inSchedule := false
@@ -1660,7 +1660,7 @@ func (dp *DailyPlanner) parseHabitLine(line string) {
 		name = strings.TrimSpace(rest[:idx])
 		streakPart := rest[idx+9:]
 		if endIdx := strings.Index(streakPart, ")"); endIdx >= 0 {
-			fmt.Sscanf(streakPart[:endIdx], "%d", &streak)
+			_, _ = fmt.Sscanf(streakPart[:endIdx], "%d", &streak)
 		}
 	}
 
@@ -1815,7 +1815,7 @@ func AddEventToPlannerFile(vaultRoot, dateStr, text string) {
 		content.WriteString("---\n\n")
 		content.WriteString("## Schedule\n\n")
 		content.WriteString(newLine)
-		os.WriteFile(fp, []byte(content.String()), 0644)
+		_ = os.WriteFile(fp, []byte(content.String()), 0644)
 		return
 	}
 
@@ -1852,5 +1852,5 @@ func AddEventToPlannerFile(vaultRoot, dateStr, text string) {
 	newLines = append(newLines, lines[:insertIdx]...)
 	newLines = append(newLines, strings.TrimRight(newLine, "\n"))
 	newLines = append(newLines, lines[insertIdx:]...)
-	os.WriteFile(fp, []byte(strings.Join(newLines, "\n")), 0644)
+	_ = os.WriteFile(fp, []byte(strings.Join(newLines, "\n")), 0644)
 }

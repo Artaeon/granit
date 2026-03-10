@@ -147,7 +147,7 @@ func TestTrashItemListing(t *testing.T) {
 	// Create and trash two files
 	for _, name := range []string{"note1.md", "note2.md"} {
 		p := filepath.Join(tmpDir, name)
-		os.WriteFile(p, []byte("content of "+name), 0644)
+		_ = os.WriteFile(p, []byte("content of "+name), 0644)
 		if err := tr.MoveToTrash(name); err != nil {
 			t.Fatalf("MoveToTrash(%s) failed: %v", name, err)
 		}
@@ -171,8 +171,8 @@ func TestTrashNavigation(t *testing.T) {
 	// Create and trash several files
 	for _, name := range []string{"a.md", "b.md", "c.md"} {
 		p := filepath.Join(tmpDir, name)
-		os.WriteFile(p, []byte("content"), 0644)
-		tr.MoveToTrash(name)
+		_ = os.WriteFile(p, []byte("content"), 0644)
+		_ = tr.MoveToTrash(name)
 	}
 
 	tr.Open()
@@ -228,8 +228,8 @@ func TestTrashCursorBoundsAfterPurge(t *testing.T) {
 	// Create and trash two files
 	for _, name := range []string{"a.md", "b.md"} {
 		p := filepath.Join(tmpDir, name)
-		os.WriteFile(p, []byte("content"), 0644)
-		tr.MoveToTrash(name)
+		_ = os.WriteFile(p, []byte("content"), 0644)
+		_ = tr.MoveToTrash(name)
 	}
 
 	tr.Open()
@@ -252,8 +252,8 @@ func TestTrashCursorBoundsAfterRestore(t *testing.T) {
 	// Create and trash two files
 	for _, name := range []string{"a.md", "b.md"} {
 		p := filepath.Join(tmpDir, name)
-		os.WriteFile(p, []byte("content"), 0644)
-		tr.MoveToTrash(name)
+		_ = os.WriteFile(p, []byte("content"), 0644)
+		_ = tr.MoveToTrash(name)
 	}
 
 	tr.Open()
@@ -282,8 +282,8 @@ func TestTrashRestoreFile(t *testing.T) {
 
 	// Create and trash a file
 	notePath := filepath.Join(tmpDir, "restore_me.md")
-	os.WriteFile(notePath, []byte("restore content"), 0644)
-	tr.MoveToTrash("restore_me.md")
+	_ = os.WriteFile(notePath, []byte("restore content"), 0644)
+	_ = tr.MoveToTrash("restore_me.md")
 
 	tr.Open()
 	if len(tr.items) != 1 {
@@ -340,8 +340,8 @@ func TestTrashPurgeSelected(t *testing.T) {
 
 	// Create and trash a file
 	notePath := filepath.Join(tmpDir, "purge_me.md")
-	os.WriteFile(notePath, []byte("purge content"), 0644)
-	tr.MoveToTrash("purge_me.md")
+	_ = os.WriteFile(notePath, []byte("purge content"), 0644)
+	_ = tr.MoveToTrash("purge_me.md")
 
 	tr.Open()
 	if len(tr.items) != 1 {
@@ -433,8 +433,8 @@ func TestTrashMultipleItemsCursorBehavior(t *testing.T) {
 	// Create and trash 5 files
 	for i := 0; i < 5; i++ {
 		name := filepath.Join(tmpDir, string(rune('a'+i))+".md")
-		os.WriteFile(name, []byte("content"), 0644)
-		tr.MoveToTrash(string(rune('a'+i)) + ".md")
+		_ = os.WriteFile(name, []byte("content"), 0644)
+		_ = tr.MoveToTrash(string(rune('a'+i)) + ".md")
 		// Small delay to ensure different timestamps for sorting
 		time.Sleep(time.Millisecond)
 	}
@@ -491,7 +491,7 @@ func TestTrashUpdateInactive(t *testing.T) {
 func TestTrashSortingNewestFirst(t *testing.T) {
 	tmpDir := t.TempDir()
 	trashDir := filepath.Join(tmpDir, ".granit-trash")
-	os.MkdirAll(trashDir, 0755)
+	_ = os.MkdirAll(trashDir, 0755)
 
 	// Manually create two sidecar files with known timestamps
 	older := TrashItem{
@@ -506,13 +506,13 @@ func TestTrashSortingNewestFirst(t *testing.T) {
 	}
 
 	// Write content files
-	os.WriteFile(filepath.Join(trashDir, "old_content"), []byte("old"), 0644)
-	os.WriteFile(filepath.Join(trashDir, "new_content"), []byte("new"), 0644)
+	_ = os.WriteFile(filepath.Join(trashDir, "old_content"), []byte("old"), 0644)
+	_ = os.WriteFile(filepath.Join(trashDir, "new_content"), []byte("new"), 0644)
 
 	// Write sidecar JSON files
 	for _, item := range []TrashItem{older, newer} {
 		data, _ := json.Marshal(item)
-		os.WriteFile(filepath.Join(trashDir, item.TrashPath+".json"), data, 0644)
+		_ = os.WriteFile(filepath.Join(trashDir, item.TrashPath+".json"), data, 0644)
 	}
 
 	tr := NewTrash(tmpDir)
@@ -562,8 +562,8 @@ func TestTrashViewWithItems(t *testing.T) {
 
 	// Create and trash a file
 	notePath := filepath.Join(tmpDir, "view_test.md")
-	os.WriteFile(notePath, []byte("test content"), 0644)
-	tr.MoveToTrash("view_test.md")
+	_ = os.WriteFile(notePath, []byte("test content"), 0644)
+	_ = tr.MoveToTrash("view_test.md")
 
 	tr.SetSize(100, 40)
 	tr.Open()

@@ -367,7 +367,7 @@ func (fc *Flashcards) SaveProgress(vaultPath string) {
 	if err != nil {
 		return
 	}
-	os.WriteFile(p, data, 0644)
+	_ = os.WriteFile(p, data, 0644)
 }
 
 func (fc *Flashcards) LoadProgress(vaultPath string) {

@@ -149,9 +149,9 @@ func (ll *LanguageLearning) loadVocabulary() {
 			continue
 		}
 		level := 1
-		fmt.Sscanf(strings.TrimSpace(parts[4]), "%d", &level)
+		_, _ = fmt.Sscanf(strings.TrimSpace(parts[4]), "%d", &level)
 		correct := 0
-		fmt.Sscanf(strings.TrimSpace(parts[6]), "%d", &correct)
+		_, _ = fmt.Sscanf(strings.TrimSpace(parts[6]), "%d", &correct)
 		ll.vocab = append(ll.vocab, VocabEntry{
 			Word:         strings.TrimSpace(parts[1]),
 			Translation:  strings.TrimSpace(parts[2]),
@@ -165,7 +165,7 @@ func (ll *LanguageLearning) loadVocabulary() {
 
 func (ll *LanguageLearning) saveVocabulary() {
 	dir := filepath.Dir(ll.vocabPath())
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 
 	var b strings.Builder
 	b.WriteString("---\ntype: vocabulary\n---\n# Vocabulary\n\n")
@@ -175,7 +175,7 @@ func (ll *LanguageLearning) saveVocabulary() {
 		b.WriteString(fmt.Sprintf("| %s | %s | %s | %d | %s | %d |\n",
 			v.Word, v.Translation, v.Language, v.Level, v.LastReviewed, v.Correct))
 	}
-	os.WriteFile(ll.vocabPath(), []byte(b.String()), 0644)
+	_ = os.WriteFile(ll.vocabPath(), []byte(b.String()), 0644)
 }
 
 func (ll *LanguageLearning) loadGrammarFiles() {
@@ -608,7 +608,7 @@ func (ll *LanguageLearning) handleTextInput(current string, msg tea.KeyMsg) stri
 
 func (ll *LanguageLearning) createGrammarNote(topic, language string) {
 	dir := ll.grammarDir()
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 
 	filename := strings.ReplaceAll(strings.ToLower(topic), " ", "-") + ".md"
 	path := filepath.Join(dir, filename)
@@ -633,7 +633,7 @@ level: beginner
 
 `, language, topic, topic)
 
-	os.WriteFile(path, []byte(content), 0644)
+	_ = os.WriteFile(path, []byte(content), 0644)
 }
 
 func (ll LanguageLearning) contentHeight() int {

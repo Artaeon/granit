@@ -82,11 +82,11 @@ func appendCapture(vaultPath, targetPath, text string) {
 	// Atomic write via temp file + rename.
 	tmpPath := targetPath + ".tmp"
 	if err := os.WriteFile(tmpPath, newContent, 0644); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		exitError("Error writing to file: %v", err)
 	}
 	if err := os.Rename(tmpPath, targetPath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		exitError("Error saving file: %v", err)
 	}
 

@@ -399,10 +399,10 @@ func CreateBackup(vaultPath string) error {
 	if err != nil {
 		return fmt.Errorf("create zip: %w", err)
 	}
-	defer zipFile.Close()
+	defer func() { _ = zipFile.Close() }()
 
 	w := zip.NewWriter(zipFile)
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	err = filepath.Walk(vaultPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -450,7 +450,7 @@ func CreateBackup(vaultPath string) error {
 		if openErr != nil {
 			return nil
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		_, copyErr := io.Copy(writer, f)
 		return copyErr
@@ -458,7 +458,7 @@ func CreateBackup(vaultPath string) error {
 
 	if err != nil {
 		// Clean up partial zip on error.
-		os.Remove(zipPath)
+		_ = os.Remove(zipPath)
 		return fmt.Errorf("walk vault: %w", err)
 	}
 
@@ -473,7 +473,7 @@ func RestoreBackup(vaultPath string, backupPath string) error {
 	if err != nil {
 		return fmt.Errorf("open backup: %w", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	for _, f := range r.File {
 		destPath := filepath.Join(vaultPath, f.Name)
@@ -502,13 +502,13 @@ func RestoreBackup(vaultPath string, backupPath string) error {
 
 		outFile, err := os.Create(destPath)
 		if err != nil {
-			rc.Close()
+			_ = rc.Close()
 			return err
 		}
 
 		_, err = io.Copy(outFile, rc)
-		outFile.Close()
-		rc.Close()
+		_ = outFile.Close()
+		_ = rc.Close()
 		if err != nil {
 			return err
 		}
@@ -568,7 +568,7 @@ func PruneBackups(vaultPath string, maxCount int) {
 	// Remove the oldest entries that exceed the limit.
 	toRemove := len(files) - maxCount
 	for i := 0; i < toRemove; i++ {
-		os.Remove(files[i].path)
+		_ = os.Remove(files[i].path)
 	}
 }
 

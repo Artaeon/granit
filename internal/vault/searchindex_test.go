@@ -413,7 +413,7 @@ func TestTokenize(t *testing.T) {
 
 func TestSearchIndexBuiltDuringScan(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "test.md"), []byte("Searchable content here"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "test.md"), []byte("Searchable content here"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
@@ -446,17 +446,17 @@ func TestSearchIndexBuiltDuringScan(t *testing.T) {
 
 func TestSearchIndexRebuildOnRescan(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "test.md"), []byte("First version content"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "test.md"), []byte("First version content"), 0644)
 
 	v, err := NewVault(dir)
 	if err != nil {
 		t.Fatalf("NewVault failed: %v", err)
 	}
-	v.Scan()
+	_ = v.Scan()
 
 	// Write new content
-	os.WriteFile(filepath.Join(dir, "test.md"), []byte("Second version different"), 0644)
-	v.Scan()
+	_ = os.WriteFile(filepath.Join(dir, "test.md"), []byte("Second version different"), 0644)
+	_ = v.Scan()
 
 	// Old content should not be found
 	results := v.SearchIndex.Search("first")
