@@ -139,6 +139,8 @@ const (
 	CmdKnowledgeGaps
 	CmdExtractToNote
 	CmdToggleSpellCheck
+	CmdPrevDailyNote
+	CmdNextDailyNote
 	CmdQuit
 )
 
@@ -154,7 +156,9 @@ var AllCommands = []Command{
 	{Label: "Open File", Desc: "Quick open a file", Shortcut: "Ctrl+P", Action: CmdOpenFile, Icon: &IconSearchChar},
 	{Label: "New Note", Desc: "Create a new note", Shortcut: "Ctrl+N", Action: CmdNewNote, Icon: &IconNewChar},
 	{Label: "Save Note", Desc: "Save the current note", Shortcut: "Ctrl+S", Action: CmdSaveNote, Icon: &IconSaveChar},
-	{Label: "Daily Note", Desc: "Open or create today's daily note", Shortcut: "", Action: CmdDailyNote, Icon: &IconDailyChar},
+	{Label: "Daily Note", Desc: "Open or create today's daily note", Shortcut: "Alt+D", Action: CmdDailyNote, Icon: &IconDailyChar},
+	{Label: "Previous Daily Note", Desc: "Navigate to the previous daily note", Shortcut: "Alt+[", Action: CmdPrevDailyNote, Icon: &IconDailyChar},
+	{Label: "Next Daily Note", Desc: "Navigate to the next daily note", Shortcut: "Alt+]", Action: CmdNextDailyNote, Icon: &IconDailyChar},
 	{Label: "Toggle View/Edit", Desc: "Switch between view and edit mode", Shortcut: "Ctrl+E", Action: CmdToggleView, Icon: &IconViewChar},
 	{Label: "Settings", Desc: "Open settings panel", Shortcut: "Ctrl+,", Action: CmdSettings, Icon: &IconSettingsChar},
 	{Label: "Focus Editor", Desc: "Switch focus to the editor", Shortcut: "F2", Action: CmdFocusEditor, Icon: &IconEditChar},
