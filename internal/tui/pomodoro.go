@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,6 +20,16 @@ const (
 	PomodoroShortBreak
 	PomodoroBreakonLong
 )
+
+// QueueTask represents a single task in the focus queue.
+type QueueTask struct {
+	Text      string
+	Priority  int
+	Project   string // project name (for tracking)
+	Estimated int    // estimated minutes
+	Elapsed   int    // actual minutes spent
+	Done      bool
+}
 
 // Pomodoro implements an overlay Pomodoro timer with writing stats tracking.
 type Pomodoro struct {
@@ -45,6 +57,23 @@ type Pomodoro struct {
 	// History
 	startTime  time.Time
 	sessionLog []pomodoroSession
+
+	// Focus queue
+	queue       []QueueTask    // ordered task queue for the day
+	queueCursor int            // current position in queue
+	showQueue   bool           // show queue panel in overlay
+	queueScroll int            // scroll offset for long queue lists
+
+	// Time tracking
+	taskTimeLog map[string]int // task text -> minutes spent
+	currentTask string         // task being worked on now
+
+	// Queue add-task input mode
+	addingTask   bool
+	addTaskInput string
+
+	// Vault root for session logging
+	vaultRoot string
 }
 
 type pomodoroSession struct {
@@ -52,6 +81,7 @@ type pomodoroSession struct {
 	Duration time.Duration
 	Words    int
 	Notes    int
+	Task     string // task worked on during this session
 }
 
 // pomodoroTickMsg is sent every second while the timer is running.
@@ -66,6 +96,8 @@ func NewPomodoro() Pomodoro {
 		longBreak:      15 * time.Minute,
 		longBreakAfter: 4,
 		notesEdited:    make(map[string]bool),
+		taskTimeLog:    make(map[string]int),
+		showQueue:      true,
 	}
 }
 
@@ -90,6 +122,11 @@ func (p *Pomodoro) SetSize(w, h int) {
 	p.height = h
 }
 
+// SetVaultRoot stores the vault root path for session logging.
+func (p *Pomodoro) SetVaultRoot(root string) {
+	p.vaultRoot = root
+}
+
 // Start begins a new work session.
 func (p *Pomodoro) Start() {
 	p.state = PomodoroWork
@@ -97,6 +134,11 @@ func (p *Pomodoro) Start() {
 	p.total = p.workDuration
 	p.startTime = time.Now()
 	p.wordsWritten = 0
+
+	// Set current task from queue if available
+	if qt := p.CurrentQueueTask(); qt != nil {
+		p.currentTask = qt.Text
+	}
 }
 
 // Pause toggles the timer between running and paused. When paused the state
@@ -151,6 +193,118 @@ func (p *Pomodoro) IsRunning() bool {
 	return p.state != PomodoroIdle && p.remaining > 0
 }
 
+// ---------------------------------------------------------------------------
+// Focus Queue methods
+// ---------------------------------------------------------------------------
+
+// SetQueue replaces the focus queue with the provided tasks.
+func (p *Pomodoro) SetQueue(tasks []QueueTask) {
+	p.queue = tasks
+	p.queueCursor = 0
+	p.queueScroll = 0
+	// Advance to first undone task
+	for i, t := range p.queue {
+		if !t.Done {
+			p.queueCursor = i
+			break
+		}
+	}
+	if len(p.queue) > 0 {
+		p.showQueue = true
+		qt := p.CurrentQueueTask()
+		if qt != nil {
+			p.currentTask = qt.Text
+		}
+	}
+}
+
+// AddToQueue appends a task to the focus queue.
+func (p *Pomodoro) AddToQueue(task QueueTask) {
+	p.queue = append(p.queue, task)
+	if len(p.queue) == 1 {
+		p.queueCursor = 0
+		p.currentTask = task.Text
+	}
+}
+
+// CurrentQueueTask returns the current (non-done) task in the queue, or nil.
+func (p *Pomodoro) CurrentQueueTask() *QueueTask {
+	if len(p.queue) == 0 {
+		return nil
+	}
+	for i := p.queueCursor; i < len(p.queue); i++ {
+		if !p.queue[i].Done {
+			p.queueCursor = i
+			return &p.queue[i]
+		}
+	}
+	return nil
+}
+
+// AdvanceQueue marks the current task done, records elapsed time, and moves
+// to the next undone task. Returns true if there is a next task.
+func (p *Pomodoro) AdvanceQueue() bool {
+	qt := p.CurrentQueueTask()
+	if qt == nil {
+		return false
+	}
+
+	// Record elapsed time on current task
+	qt.Done = true
+	p.logSessionEntry(qt.Text, qt.Project, qt.Elapsed, true)
+
+	// Move to next undone task
+	for i := p.queueCursor + 1; i < len(p.queue); i++ {
+		if !p.queue[i].Done {
+			p.queueCursor = i
+			p.currentTask = p.queue[i].Text
+			// Auto-start a new pomodoro for the next task
+			p.state = PomodoroWork
+			p.remaining = p.workDuration
+			p.total = p.workDuration
+			p.startTime = time.Now()
+			p.wordsWritten = 0
+			p.wordsAtStart = 0
+			p.notesEdited = make(map[string]bool)
+			return true
+		}
+	}
+
+	// All tasks done
+	p.currentTask = ""
+	return false
+}
+
+// SkipTask skips the current queue task without marking done, moves to next.
+func (p *Pomodoro) SkipTask() bool {
+	if len(p.queue) == 0 {
+		return false
+	}
+	for i := p.queueCursor + 1; i < len(p.queue); i++ {
+		if !p.queue[i].Done {
+			p.queueCursor = i
+			p.currentTask = p.queue[i].Text
+			return true
+		}
+	}
+	return false
+}
+
+// GetTimeLog returns the accumulated time log mapping task text to minutes.
+func (p *Pomodoro) GetTimeLog() map[string]int {
+	return p.taskTimeLog
+}
+
+// queueComplete returns true if all queue tasks are done.
+func (p *Pomodoro) queueComplete() bool {
+	for _, t := range p.queue {
+		if !t.Done {
+			return false
+		}
+	}
+	return len(p.queue) > 0
+}
+
 // StatusString returns a short status string suitable for the status bar.
 // Returns an empty string when idle.
 func (p *Pomodoro) StatusString() string {
@@ -165,7 +319,16 @@ func (p *Pomodoro) StatusString() string {
 	secs := int(rem.Seconds()) % 60
 	switch p.state {
 	case PomodoroWork:
-		return fmt.Sprintf("\U0001f345 %d:%02d", mins, secs) // tomato emoji
+		base := fmt.Sprintf("\U0001f345 %d:%02d", mins, secs) // tomato emoji
+		if p.currentTask != "" {
+			taskLabel := p.currentTask
+			// Truncate to keep status bar compact
+			if len(taskLabel) > 25 {
+				taskLabel = taskLabel[:22] + "..."
+			}
+			base += " \u00b7 " + taskLabel
+		}
+		return base
 	case PomodoroShortBreak, PomodoroBreakonLong:
 		return fmt.Sprintf("\u2615 %d:%02d", mins, secs) // coffee emoji
 	}
@@ -189,6 +352,8 @@ func (p Pomodoro) Update(msg tea.Msg) (Pomodoro, tea.Cmd) {
 			p.remaining = 0
 			switch p.state {
 			case PomodoroWork:
+				// Track elapsed time on current queue task
+				p.trackElapsedOnCurrentTask()
 				p.finishWorkSession()
 				p.startBreak()
 			case PomodoroShortBreak, PomodoroBreakonLong:
@@ -205,6 +370,12 @@ func (p Pomodoro) Update(msg tea.Msg) (Pomodoro, tea.Cmd) {
 		if !p.active {
 			return p, nil
 		}
+
+		// Handle add-task input mode
+		if p.addingTask {
+			return p.updateAddTask(msg)
+		}
+
 		switch msg.String() {
 		case "esc":
 			p.active = false
@@ -227,20 +398,96 @@ func (p Pomodoro) Update(msg tea.Msg) (Pomodoro, tea.Cmd) {
 			p.remaining = 0
 			p.total = 0
 			return p, nil
+		case "enter":
+			// Complete current queue task and advance
+			if len(p.queue) > 0 && p.CurrentQueueTask() != nil {
+				p.trackElapsedOnCurrentTask()
+				hasNext := p.AdvanceQueue()
+				if hasNext {
+					return p, p.tick()
+				}
+				// All done — stop timer
+				p.state = PomodoroIdle
+				p.remaining = 0
+				p.total = 0
+				return p, nil
+			}
+			return p, nil
+		case "n":
+			// Skip to next task in queue
+			if len(p.queue) > 0 {
+				p.SkipTask()
+			}
+			return p, nil
+		case "a":
+			// Enter add-task mode
+			p.addingTask = true
+			p.addTaskInput = ""
+			return p, nil
+		case "q":
+			// Toggle queue panel visibility
+			p.showQueue = !p.showQueue
+			return p, nil
+		case "j":
+			// Scroll queue down
+			if p.showQueue && len(p.queue) > 0 {
+				maxScroll := len(p.queue) - 1
+				if p.queueScroll < maxScroll {
+					p.queueScroll++
+				}
+			}
+			return p, nil
+		case "k":
+			// Scroll queue up
+			if p.showQueue && p.queueScroll > 0 {
+				p.queueScroll--
+			}
+			return p, nil
 		}
 	}
 
 	return p, nil
 }
 
+// updateAddTask handles key events while in the add-task mini input mode.
+func (p Pomodoro) updateAddTask(msg tea.KeyMsg) (Pomodoro, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		p.addingTask = false
+		p.addTaskInput = ""
+		return p, nil
+	case "enter":
+		text := strings.TrimSpace(p.addTaskInput)
+		if text != "" {
+			p.AddToQueue(QueueTask{
+				Text:      text,
+				Estimated: int(p.workDuration.Minutes()),
+			})
+		}
+		p.addingTask = false
+		p.addTaskInput = ""
+		return p, nil
+	case "backspace":
+		if len(p.addTaskInput) > 0 {
+			p.addTaskInput = p.addTaskInput[:len(p.addTaskInput)-1]
+		}
+		return p, nil
+	default:
+		for _, r := range msg.Runes {
+			p.addTaskInput += string(r)
+		}
+		return p, nil
+	}
+}
+
 // View renders the Pomodoro overlay.
 func (p Pomodoro) View() string {
 	width := p.width / 2
-	if width < 44 {
-		width = 44
+	if width < 52 {
+		width = 52
 	}
-	if width > 60 {
-		width = 60
+	if width > 65 {
+		width = 65
 	}
 
 	var b strings.Builder
@@ -313,14 +560,139 @@ func (p Pomodoro) View() string {
 			filled = 0
 		}
 		empty := barWidth - filled
+		pct := 0
+		if p.total > 0 {
+			pct = int(100 * float64(elapsed) / float64(p.total))
+			if pct > 100 {
+				pct = 100
+			}
+		}
 
 		filledStyle := lipgloss.NewStyle().Foreground(mauve)
 		emptyStyle := lipgloss.NewStyle().Foreground(surface1)
 
 		bar := "  " + filledStyle.Render(strings.Repeat("\u2588", filled)) +
-			emptyStyle.Render(strings.Repeat("\u2591", empty))
+			emptyStyle.Render(strings.Repeat("\u2591", empty)) +
+			lipgloss.NewStyle().Foreground(subtext0).Render(fmt.Sprintf(" %d%%", pct))
 		b.WriteString(bar)
 		b.WriteString("\n\n")
+	}
+
+	// Current task display (when queue is active)
+	if p.currentTask != "" && len(p.queue) > 0 {
+		nowLabel := lipgloss.NewStyle().Foreground(green).Bold(true).Render("\u25b6 NOW: ")
+		taskText := p.currentTask
+		if len(taskText) > width-18 {
+			taskText = taskText[:width-21] + "..."
+		}
+		b.WriteString("  " + nowLabel + lipgloss.NewStyle().Foreground(text).Bold(true).Render(taskText))
+		b.WriteString("\n")
+
+		if qt := p.CurrentQueueTask(); qt != nil {
+			details := "  "
+			if qt.Project != "" {
+				details += lipgloss.NewStyle().Foreground(blue).Render("Project: "+qt.Project)
+				if qt.Estimated > 0 {
+					details += lipgloss.NewStyle().Foreground(overlay0).Render(" \u00b7 ")
+				}
+			}
+			if qt.Estimated > 0 {
+				details += lipgloss.NewStyle().Foreground(subtext0).Render(
+					fmt.Sprintf("Est: %dmin", qt.Estimated))
+			}
+			b.WriteString("  " + details)
+			b.WriteString("\n")
+			b.WriteString("  " + lipgloss.NewStyle().Foreground(subtext0).Render(
+				fmt.Sprintf("  Time spent: %dmin", qt.Elapsed)))
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+
+	// Focus Queue panel
+	if p.showQueue && len(p.queue) > 0 {
+		b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", width-8)))
+		b.WriteString("\n")
+		queueTitle := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("FOCUS QUEUE")
+		b.WriteString("  " + queueTitle)
+		b.WriteString("\n")
+
+		maxVisible := 6
+		start := p.queueScroll
+		end := start + maxVisible
+		if end > len(p.queue) {
+			end = len(p.queue)
+		}
+
+		for i := start; i < end; i++ {
+			qt := p.queue[i]
+			num := fmt.Sprintf("%d. ", i+1)
+			icon := "\u25cb" // ○ not done
+			iconStyle := lipgloss.NewStyle().Foreground(overlay0)
+			textStyle := lipgloss.NewStyle().Foreground(text)
+
+			if qt.Done {
+				icon = "\u2713" // ✓
+				iconStyle = lipgloss.NewStyle().Foreground(green)
+				textStyle = lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true)
+			} else if i == p.queueCursor {
+				icon = "\u25b6" // ▶
+				iconStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
+				textStyle = lipgloss.NewStyle().Foreground(text).Bold(true)
+			}
+
+			taskLabel := qt.Text
+			timeInfo := ""
+			if qt.Estimated > 0 {
+				timeInfo = fmt.Sprintf("%dmin / %dmin", qt.Elapsed, qt.Estimated)
+			} else {
+				timeInfo = fmt.Sprintf("%dmin", qt.Elapsed)
+			}
+
+			// Calculate available width for task text
+			timeWidth := len(timeInfo) + 2
+			numWidth := len(num) + 2 // icon + space
+			maxTaskWidth := width - 8 - numWidth - timeWidth
+			if maxTaskWidth < 10 {
+				maxTaskWidth = 10
+			}
+			if len(taskLabel) > maxTaskWidth {
+				taskLabel = taskLabel[:maxTaskWidth-3] + "..."
+			}
+
+			// Pad to right-align time info
+			leftPart := num + iconStyle.Render(icon) + " " + textStyle.Render(taskLabel)
+			leftWidth := len(num) + 2 + len(taskLabel) // approximate
+			padding := width - 8 - leftWidth - len(timeInfo)
+			if padding < 1 {
+				padding = 1
+			}
+
+			timeStyle := lipgloss.NewStyle().Foreground(subtext0)
+			if qt.Done {
+				timeStyle = lipgloss.NewStyle().Foreground(green)
+			}
+
+			b.WriteString("  " + leftPart + strings.Repeat(" ", padding) + timeStyle.Render(timeInfo))
+			b.WriteString("\n")
+		}
+
+		if len(p.queue) > maxVisible {
+			remaining := len(p.queue) - end
+			if remaining > 0 {
+				b.WriteString("  " + DimStyle.Render(fmt.Sprintf("  ... %d more", remaining)))
+				b.WriteString("\n")
+			}
+		}
+
+		// Queue completion message
+		if p.queueComplete() {
+			b.WriteString("\n")
+			doneMsg := lipgloss.NewStyle().Foreground(green).Bold(true).Render(
+				"  All tasks complete!")
+			b.WriteString("  " + doneMsg)
+			b.WriteString("\n")
+		}
 	}
 
 	// Stats section
@@ -330,24 +702,17 @@ func (p Pomodoro) View() string {
 	statLabel := lipgloss.NewStyle().Foreground(subtext0)
 	statValue := lipgloss.NewStyle().Foreground(text)
 
-	b.WriteString("  " + statLabel.Render("Sessions today: ") +
-		statValue.Render(fmt.Sprintf("%d", p.sessionsToday)))
-	b.WriteString("\n")
-
-	b.WriteString("  " + statLabel.Render("Words this session: ") +
-		statValue.Render(fmt.Sprintf("%d", p.wordsWritten)))
-	b.WriteString("\n")
-
+	// Compact stats line
 	totalWords := 0
 	for _, s := range p.sessionLog {
 		totalWords += s.Words
 	}
 	totalWords += p.wordsWritten
-	b.WriteString("  " + statLabel.Render("Total words today: ") +
-		statValue.Render(fmt.Sprintf("%d", totalWords)))
-	b.WriteString("\n")
-
-	b.WriteString("  " + statLabel.Render("Notes edited: ") +
+	b.WriteString("  " + statLabel.Render("Sessions: ") +
+		statValue.Render(fmt.Sprintf("%d today", p.sessionsToday)) +
+		statLabel.Render(" \u00b7 Words: ") +
+		statValue.Render(fmt.Sprintf("%d", totalWords)) +
+		statLabel.Render(" \u00b7 Notes: ") +
 		statValue.Render(fmt.Sprintf("%d", len(p.notesEdited))))
 	b.WriteString("\n")
 
@@ -369,13 +734,38 @@ func (p Pomodoro) View() string {
 			wordStr := fmt.Sprintf("%dw", s.Words)
 			noteStr := fmt.Sprintf("%dn", s.Notes)
 
-			b.WriteString("  " +
+			line := "  " +
 				lipgloss.NewStyle().Foreground(overlay0).Render(timeStr) + "  " +
 				lipgloss.NewStyle().Foreground(text).Render(durStr) + "  " +
 				lipgloss.NewStyle().Foreground(green).Render(wordStr) + "  " +
-				lipgloss.NewStyle().Foreground(blue).Render(noteStr))
+				lipgloss.NewStyle().Foreground(blue).Render(noteStr)
+			if s.Task != "" {
+				taskLabel := s.Task
+				if len(taskLabel) > 20 {
+					taskLabel = taskLabel[:17] + "..."
+				}
+				line += "  " + lipgloss.NewStyle().Foreground(subtext0).Render(taskLabel)
+			}
+			b.WriteString(line)
 			b.WriteString("\n")
 		}
+	}
+
+	// Add-task input mode
+	if p.addingTask {
+		b.WriteString("\n")
+		b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", width-8)))
+		b.WriteString("\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("Add task: "))
+		inputDisplay := p.addTaskInput +
+			lipgloss.NewStyle().Background(text).Foreground(mantle).Render(" ")
+		inputBox := lipgloss.NewStyle().
+			Foreground(text).
+			Background(surface0).
+			Padding(0, 1).
+			Width(width - 18)
+		b.WriteString(inputBox.Render(inputDisplay))
+		b.WriteString("\n")
 	}
 
 	// Controls
@@ -383,7 +773,15 @@ func (p Pomodoro) View() string {
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", width-8)))
 	b.WriteString("\n")
 	controlStyle := lipgloss.NewStyle().Foreground(overlay1)
-	b.WriteString(controlStyle.Render("  Space: start/pause  s: skip  r: reset  Esc: minimize"))
+	if p.addingTask {
+		b.WriteString(controlStyle.Render("  Enter: confirm  Esc: cancel"))
+	} else if len(p.queue) > 0 {
+		b.WriteString(controlStyle.Render("  Space: start/pause  Enter: complete task"))
+		b.WriteString("\n")
+		b.WriteString(controlStyle.Render("  n: skip  a: add task  q: toggle queue  Esc: close"))
+	} else {
+		b.WriteString(controlStyle.Render("  Space: start/pause  s: skip  r: reset  a: add task  Esc: close"))
+	}
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -402,6 +800,37 @@ func (p Pomodoro) tick() tea.Cmd {
 	})
 }
 
+// trackElapsedOnCurrentTask adds the elapsed pomodoro minutes to the current
+// queue task and the time log.
+func (p *Pomodoro) trackElapsedOnCurrentTask() {
+	if p.currentTask == "" || len(p.queue) == 0 {
+		return
+	}
+	elapsedMins := int(p.workDuration.Minutes())
+	rem := p.remaining
+	if rem < 0 {
+		rem = -rem
+	}
+	actualMins := int((p.workDuration - rem).Minutes())
+	if actualMins < 0 {
+		actualMins = 0
+	}
+	if actualMins > elapsedMins {
+		actualMins = elapsedMins
+	}
+
+	// Update queue task elapsed time
+	if qt := p.CurrentQueueTask(); qt != nil {
+		qt.Elapsed += actualMins
+	}
+
+	// Update time log
+	if p.taskTimeLog == nil {
+		p.taskTimeLog = make(map[string]int)
+	}
+	p.taskTimeLog[p.currentTask] += actualMins
+}
+
 // finishWorkSession records the completed work session in the log.
 func (p *Pomodoro) finishWorkSession() {
 	p.sessionsToday++
@@ -411,8 +840,19 @@ func (p *Pomodoro) finishWorkSession() {
 		Duration: p.workDuration,
 		Words:    p.wordsWritten,
 		Notes:    len(p.notesEdited),
+		Task:     p.currentTask,
 	}
 	p.sessionLog = append(p.sessionLog, session)
+
+	// Log non-queue session to file
+	if p.currentTask != "" {
+		project := ""
+		if qt := p.CurrentQueueTask(); qt != nil {
+			project = qt.Project
+		}
+		p.logSessionEntry(p.currentTask, project, int(p.workDuration.Minutes()), false)
+	}
+
 	// Reset per-session counters
 	p.wordsWritten = 0
 	p.wordsAtStart = 0
@@ -431,4 +871,54 @@ func (p *Pomodoro) startBreak() {
 		p.total = p.shortBreak
 	}
 	p.startTime = time.Now()
+}
+
+// logSessionEntry writes a session entry to FocusSessions/YYYY-MM-DD.md.
+func (p *Pomodoro) logSessionEntry(task, project string, durationMin int, completed bool) {
+	if p.vaultRoot == "" {
+		return
+	}
+	dir := filepath.Join(p.vaultRoot, "FocusSessions")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+
+	now := time.Now()
+	filename := now.Format("2006-01-02") + ".md"
+	filePath := filepath.Join(dir, filename)
+
+	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	// Write header if file is new
+	info, _ := f.Stat()
+	if info != nil && info.Size() == 0 {
+		header := fmt.Sprintf("# Focus Sessions - %s\n\n", now.Format("2006-01-02"))
+		_, _ = f.WriteString(header)
+	}
+
+	pomodoroCount := durationMin / int(p.workDuration.Minutes())
+	if pomodoroCount < 1 {
+		pomodoroCount = 1
+	}
+
+	status := "In progress"
+	if completed {
+		status = "Completed \u2713"
+	}
+
+	var entry strings.Builder
+	entry.WriteString(fmt.Sprintf("## Session %s\n", now.Format("15:04")))
+	entry.WriteString(fmt.Sprintf("- Task: %s\n", task))
+	if project != "" {
+		entry.WriteString(fmt.Sprintf("- Project: %s\n", project))
+	}
+	entry.WriteString(fmt.Sprintf("- Duration: %d min (%d pomodoros)\n", durationMin, pomodoroCount))
+	entry.WriteString(fmt.Sprintf("- Status: %s\n", status))
+	entry.WriteString("\n")
+
+	_, _ = f.WriteString(entry.String())
 }
