@@ -113,6 +113,7 @@ func (s *Settings) buildItems() {
 
 		// ── Files ──
 		{label: "Auto Save", key: "auto_save", kind: "bool", value: s.config.AutoSave, category: catFiles, description: "save on focus change"},
+		{label: "Auto Daily Note", key: "auto_daily_note", kind: "bool", value: s.config.AutoDailyNote, category: catFiles, description: "open daily note on startup"},
 		{label: "Daily Notes Folder", key: "daily_notes_folder", kind: "string", value: s.config.DailyNotesFolder, category: catFiles, description: "journal directory path"},
 		{label: "Sort Files By", key: "sort_by", kind: "string", value: s.config.SortBy, options: []string{"name", "modified", "created"}, category: catFiles, description: "file list ordering"},
 		{label: "Search Content by Default", key: "search_content", kind: "bool", value: s.config.SearchContentByDefault, category: catFiles, description: "full text search"},
@@ -305,6 +306,8 @@ func (s *Settings) defaultValueForKey(key string) interface{} {
 		return def.CompactMode
 	case "sort_by":
 		return def.SortBy
+	case "auto_daily_note":
+		return def.AutoDailyNote
 	case "daily_notes_folder":
 		return def.DailyNotesFolder
 	case "search_content":
@@ -580,6 +583,8 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.VimMode = value.(bool)
 	case "sort_by":
 		s.config.SortBy = value.(string)
+	case "auto_daily_note":
+		s.config.AutoDailyNote = value.(bool)
 	case "daily_notes_folder":
 		s.config.DailyNotesFolder = value.(string)
 	case "theme":
