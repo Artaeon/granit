@@ -98,6 +98,7 @@ var helpSections = []helpSection{
 			{"Ctrl+Z", "Focus / zen mode"},
 			{"Ctrl+,", "Open settings"},
 			{"Alt+D", "Open today's daily note"},
+			{"Alt+P", "Plan My Day (AI schedule)"},
 			{"Alt+[", "Previous daily note"},
 			{"Alt+]", "Next daily note"},
 			{"F5", "Show this help"},
