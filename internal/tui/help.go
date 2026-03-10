@@ -93,6 +93,7 @@ var helpSections = []helpSection{
 			{"Ctrl+W", "Visual canvas / whiteboard"},
 			{"Ctrl+L", "Calendar (month/week/agenda)"},
 			{"Ctrl+R", "AI bots (Ollama / local)"},
+			{"Alt+W", "Open weekly note"},
 			{"Ctrl+Z", "Focus / zen mode"},
 			{"Ctrl+,", "Open settings"},
 			{"Alt+D", "Open today's daily note"},
