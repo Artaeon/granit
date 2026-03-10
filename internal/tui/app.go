@@ -361,6 +361,7 @@ func NewModel(vaultPath string) (Model, error) {
 	m.statusbar.SetDueTodayCount(m.dueTodayCount)
 	m.autocomplete.SetNotes(paths)
 	m.plugins.SetVaultPath(vaultPath)
+	m.pomodoro.SetVaultRoot(vaultPath)
 	m.canvas.SetVaultPath(vaultPath)
 	m.publisher.SetVaultPath(vaultPath)
 	m.luaOverlay.SetEngine(m.luaEngine)
@@ -1820,6 +1821,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					// Auto-save planner so calendar can load the schedule
 					m.dailyPlanner.SaveNow()
+
+					// Populate pomodoro focus queue from scheduled task slots
+					var queueTasks []QueueTask
+					for _, slot := range slots {
+						if slot.Type != "task" {
+							continue
+						}
+						estMin := slot.slotMinutes()
+						if estMin <= 0 {
+							estMin = 25
+						}
+						queueTasks = append(queueTasks, QueueTask{
+							Text:      slot.Task,
+							Priority:  slot.Priority,
+							Estimated: estMin,
+						})
+					}
+					if len(queueTasks) > 0 {
+						m.pomodoro.SetVaultRoot(m.vault.Root)
+						m.pomodoro.SetQueue(queueTasks)
+					}
 
 					// Refresh vault so all components see updated Tasks.md
 					m.refreshComponents("")
@@ -3725,6 +3747,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			break
 		}
 		m.pomodoro.SetSize(m.width, m.height)
+		m.pomodoro.SetVaultRoot(m.vault.Root)
 		m.pomodoro.Open()
 	case CmdWebClip:
 		m.webClipper.SetSize(m.width, m.height)
