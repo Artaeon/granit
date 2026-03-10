@@ -1077,10 +1077,6 @@ func (ss *SemanticSearch) View() string {
 		} else if len(ss.results) > 0 {
 			b.WriteString("\n")
 			visH := ss.visibleHeight()
-			end := visH
-			if end > len(ss.results) {
-				end = len(ss.results)
-			}
 
 			// Determine scroll offset so the cursor stays visible.
 			scrollOff := 0
@@ -1088,7 +1084,7 @@ func (ss *SemanticSearch) View() string {
 				scrollOff = ss.cursor - visH + 1
 			}
 			start := scrollOff
-			end = start + visH
+			end := start + visH
 			if end > len(ss.results) {
 				end = len(ss.results)
 			}

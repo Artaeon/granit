@@ -137,7 +137,6 @@ func ParseDVQuery(raw string) *DVParsedQuery {
 			if n, err := strconv.Atoi(tokens[pos]); err == nil && n > 0 {
 				q.Limit = n
 			}
-			pos++
 		}
 	}
 
@@ -201,7 +200,7 @@ func tokenizeDV(s string) []string {
 		for i < len(runes) && runes[i] != ' ' && runes[i] != '\t' &&
 			runes[i] != ',' && runes[i] != '"' && runes[i] != '\'' &&
 			runes[i] != '=' && runes[i] != '>' && runes[i] != '<' &&
-			!(i+1 < len(runes) && runes[i] == '!' && runes[i+1] == '=') {
+			(i+1 >= len(runes) || runes[i] != '!' || runes[i+1] != '=') {
 			i++
 		}
 		if i > start {

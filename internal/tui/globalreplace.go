@@ -236,7 +236,7 @@ func (gr GlobalReplace) View() string {
 	b.WriteString("\n")
 
 	// Find field
-	findLabel := "  Find:    "
+	var findLabel string
 	if gr.focusField == 0 {
 		findLabel = SearchPromptStyle.Render("  Find:    ")
 	} else {
@@ -268,7 +268,7 @@ func (gr GlobalReplace) View() string {
 	}
 
 	// Replace field
-	replaceLabel := "  Replace: "
+	var replaceLabel string
 	if gr.focusField == 1 {
 		replaceLabel = lipgloss.NewStyle().Foreground(green).Bold(true).Render("  Replace: ")
 	} else {

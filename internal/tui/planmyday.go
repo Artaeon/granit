@@ -714,7 +714,7 @@ func (p *PlanMyDay) generateLocalPlan() {
 		}
 
 		// Determine slot type and duration
-		dur := 30
+		var dur int
 		slotType := "deep-work"
 		if i >= len(scored)/2 {
 			slotType = "admin"

@@ -184,7 +184,7 @@ func (m Model) View() string {
 		editorPanel = breadcrumbStr + "\n" + editorContent
 	}
 
-	editor := EditorStyle.Copy().
+	editor := EditorStyle.
 		BorderForeground(editorBorderColor).
 		Width(editorWidth).
 		Height(contentHeight).
@@ -200,7 +200,7 @@ func (m Model) View() string {
 		case "minimal":
 			content = editor
 		case "writer":
-			sidebar := SidebarStyle.Copy().
+			sidebar := SidebarStyle.
 				BorderForeground(sidebarBorderColor).
 				Width(sidebarWidth).
 				Height(contentHeight).
@@ -211,7 +211,7 @@ func (m Model) View() string {
 				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor)
 			}
 		case "reading":
-			backlinks := BacklinksStyle.Copy().
+			backlinks := BacklinksStyle.
 				BorderForeground(backlinksBorderColor).
 				Width(backlinksWidth).
 				Height(contentHeight).
@@ -242,7 +242,7 @@ func (m Model) View() string {
 		case "dashboard": // 4-panel: sidebar | editor | outline | backlinks
 			var leftPanels, rightPanels []string
 			if sidebarWidth > 0 {
-				sidebar := SidebarStyle.Copy().
+				sidebar := SidebarStyle.
 					BorderForeground(sidebarBorderColor).
 					Width(sidebarWidth).
 					Height(contentHeight).
@@ -264,7 +264,7 @@ func (m Model) View() string {
 				rightPanels = append(rightPanels, outlinePanel)
 			}
 			if backlinksWidth > 0 {
-				backlinks := BacklinksStyle.Copy().
+				backlinks := BacklinksStyle.
 					BorderForeground(backlinksBorderColor).
 					Width(backlinksWidth).
 					Height(contentHeight).
@@ -275,7 +275,7 @@ func (m Model) View() string {
 			panels = append(panels, rightPanels...)
 			content = lipgloss.JoinHorizontal(lipgloss.Top, panels...)
 		case "taskboard":
-			sidebar := SidebarStyle.Copy().
+			sidebar := SidebarStyle.
 				BorderForeground(sidebarBorderColor).
 				Width(sidebarWidth).
 				Height(contentHeight).
@@ -389,7 +389,7 @@ func (m Model) View() string {
 			if tbEditorWidth < 30 {
 				tbEditorWidth = 30
 			}
-			tbEditor := EditorStyle.Copy().
+			tbEditor := EditorStyle.
 				BorderForeground(editorBorderColor).
 				Width(tbEditorWidth).
 				Height(contentHeight).
@@ -397,7 +397,7 @@ func (m Model) View() string {
 
 			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, tbEditor, taskPanel)
 		case "research":
-			sidebar := SidebarStyle.Copy().
+			sidebar := SidebarStyle.
 				BorderForeground(sidebarBorderColor).
 				Width(sidebarWidth).
 				Height(contentHeight).
@@ -499,7 +499,7 @@ func (m Model) View() string {
 			if rsEditorWidth < 30 {
 				rsEditorWidth = 30
 			}
-			rsEditor := EditorStyle.Copy().
+			rsEditor := EditorStyle.
 				BorderForeground(editorBorderColor).
 				Width(rsEditorWidth).
 				Height(contentHeight).
@@ -507,12 +507,12 @@ func (m Model) View() string {
 
 			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rsEditor, notesPanel)
 		default: // "default" - 3-panel
-			sidebar := SidebarStyle.Copy().
+			sidebar := SidebarStyle.
 				BorderForeground(sidebarBorderColor).
 				Width(sidebarWidth).
 				Height(contentHeight).
 				Render(m.sidebar.View())
-			backlinks := BacklinksStyle.Copy().
+			backlinks := BacklinksStyle.
 				BorderForeground(backlinksBorderColor).
 				Width(backlinksWidth).
 				Height(contentHeight).
@@ -1346,7 +1346,6 @@ func (m *Model) doReplaceRegex(pattern, replacement string, replaceAll bool) {
 			if loc != nil {
 				newLine := line[:loc[0]] + re.ReplaceAllString(line[loc[0]:loc[1]], replacement) + line[loc[1]:]
 				m.editor.content[i] = newLine
-				count++
 				m.editor.modified = true
 				m.editor.countWords()
 				m.findReplace.UpdateMatches(m.editor.content)
@@ -1453,9 +1452,9 @@ func (m Model) updateMoveFile(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if newPath != m.activeNote {
 				oldFullPath := filepath.Join(m.vault.Root, m.activeNote)
 				newFullPath := filepath.Join(m.vault.Root, newPath)
-				os.MkdirAll(filepath.Dir(newFullPath), 0755)
+				_ = os.MkdirAll(filepath.Dir(newFullPath), 0755)
 				if err := os.Rename(oldFullPath, newFullPath); err == nil {
-					m.vault.Scan()
+					_ = m.vault.Scan()
 					m.index = vault.NewIndex(m.vault)
 					m.index.Build()
 					paths := m.vault.SortedPaths()
@@ -1639,69 +1638,6 @@ func ansiSkipCols(s string, n int) string {
 	return "\x1b[0m" + s[i:]
 }
 
-// overlayAtCursor places an overlay near the editor cursor position (below it).
-func (m Model) overlayAtCursor(bg, overlay string) string {
-	bgLines := strings.Split(bg, "\n")
-	overlayLines := strings.Split(overlay, "\n")
-
-	overlayHeight := len(overlayLines)
-	overlayWidth := 0
-	for _, line := range overlayLines {
-		w := lipgloss.Width(line)
-		if w > overlayWidth {
-			overlayWidth = w
-		}
-	}
-
-	// Approximate cursor screen position
-	// Editor starts after sidebar, cursor line offset by scroll
-	sidebarWidth := 0
-	if m.config.Layout == "" || m.config.Layout == "default" || m.config.Layout == "writer" {
-		sidebarWidth = m.width / 5
-		if sidebarWidth < 22 {
-			sidebarWidth = 22
-		}
-		if sidebarWidth > 35 {
-			sidebarWidth = 35
-		}
-	}
-	// Add border + gutter
-	gutterWidth := 0
-	if m.config.LineNumbers {
-		gutterWidth = 7
-	}
-	startX := sidebarWidth + 3 + gutterWidth + m.editor.col
-	startY := m.editor.cursor - m.editor.scroll + 3 // +3 for header/separator
-
-	// Make sure it fits on screen
-	if startX+overlayWidth > m.width {
-		startX = m.width - overlayWidth - 1
-	}
-	if startX < 1 {
-		startX = 1
-	}
-	if startY+overlayHeight > m.height-2 {
-		startY = m.editor.cursor - m.editor.scroll - overlayHeight
-	}
-	if startY < 1 {
-		startY = 1
-	}
-
-	result := make([]string, len(bgLines))
-	copy(result, bgLines)
-
-	pad := strings.Repeat(" ", startX)
-	for i, overlayLine := range overlayLines {
-		y := startY + i
-		if y >= len(result) {
-			break
-		}
-		right := ansiSkipCols(result[y], startX+lipgloss.Width(overlayLine))
-		result[y] = pad + overlayLine + right
-	}
-
-	return strings.Join(result, "\n")
-}
 
 // applyVaultRefactor parses the AI refactor plan and applies file moves,
 // tag additions, and wikilink insertions.
@@ -1759,7 +1695,7 @@ func (m *Model) applyVaultRefactor(plan string) {
 	}
 
 	if moveCount > 0 {
-		m.vault.Scan()
+		_ = m.vault.Scan()
 		m.index = vault.NewIndex(m.vault)
 		m.index.Build()
 		paths := m.vault.SortedPaths()
@@ -1802,14 +1738,14 @@ func (m *Model) addTagsToFile(path string, tags []string) {
 				newLines = append(newLines, lines[:fmEnd]...)
 				newLines = append(newLines, tagLine)
 				newLines = append(newLines, lines[fmEnd:]...)
-				os.WriteFile(path, []byte(strings.Join(newLines, "\n")), 0644)
+				_ = os.WriteFile(path, []byte(strings.Join(newLines, "\n")), 0644)
 			}
 			return
 		}
 	}
 
 	fm := "---\ntags: [" + strings.Join(tags, ", ") + "]\n---\n\n"
-	os.WriteFile(path, []byte(fm+content), 0644)
+	_ = os.WriteFile(path, []byte(fm+content), 0644)
 }
 
 // applyEncryptionResult handles the result of an encrypt/decrypt operation.
@@ -1835,8 +1771,8 @@ func (m *Model) applyEncryptionResult(result EncryptionResult) {
 			return
 		}
 		// Remove the original unencrypted file
-		os.Remove(oldPath)
-		m.vault.Scan()
+		_ = os.Remove(oldPath)
+		_ = m.vault.Scan()
 		m.index = vault.NewIndex(m.vault)
 		m.index.Build()
 		paths := m.vault.SortedPaths()
@@ -1865,8 +1801,8 @@ func (m *Model) applyEncryptionResult(result EncryptionResult) {
 			return
 		}
 		// Remove the encrypted file
-		os.Remove(oldPath)
-		m.vault.Scan()
+		_ = os.Remove(oldPath)
+		_ = m.vault.Scan()
 		m.index = vault.NewIndex(m.vault)
 		m.index.Build()
 		paths := m.vault.SortedPaths()
@@ -1968,7 +1904,7 @@ func (m *Model) writeBriefingToDailyNote(briefingContent string) {
 		return
 	}
 
-	m.vault.Scan()
+	_ = m.vault.Scan()
 	m.index = vault.NewIndex(m.vault)
 	m.index.Build()
 	paths := m.vault.SortedPaths()
@@ -2023,7 +1959,7 @@ func (m *Model) openDailyNote() {
 			m.statusbar.SetMessage("Failed to create daily note: " + err.Error())
 			return
 		}
-		m.vault.Scan()
+		_ = m.vault.Scan()
 		m.index = vault.NewIndex(m.vault)
 		m.index.Build()
 		m.sidebar.SetFiles(m.vault.SortedPaths())

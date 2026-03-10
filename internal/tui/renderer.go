@@ -858,7 +858,6 @@ func (r Renderer) renderMarkdown(content string) []string {
 	inFrontmatter := false
 	fmDone := false
 	inCodeBlock := false
-	codeBlockLang := ""
 
 	// Footnote definitions collected during rendering
 	var footnoteOrder []string
@@ -913,8 +912,7 @@ func (r Renderer) renderMarkdown(content string) []string {
 		// Code blocks
 		if strings.HasPrefix(trimmed, "```") {
 			if !inCodeBlock {
-				inCodeBlock = true
-				codeBlockLang = strings.TrimPrefix(trimmed, "```")
+				codeBlockLang := strings.TrimPrefix(trimmed, "```")
 
 				// Dataview query blocks: collect content and render inline
 				if codeBlockLang == "query" && r.vaultNotes != nil {
@@ -934,8 +932,6 @@ func (r Renderer) renderMarkdown(content string) []string {
 							result = append(result, rl)
 						}
 					}
-					inCodeBlock = false
-					codeBlockLang = ""
 					continue
 				}
 
@@ -951,8 +947,6 @@ func (r Renderer) renderMarkdown(content string) []string {
 					mermaidSrc := strings.Join(mermaidLines, "\n")
 					rendered := RenderMermaidASCII(mermaidSrc, contentWidth)
 					result = append(result, rendered...)
-					inCodeBlock = false
-					codeBlockLang = ""
 					continue
 				}
 
@@ -968,8 +962,6 @@ func (r Renderer) renderMarkdown(content string) []string {
 					diagramSrc := strings.Join(diagramLines, "\n")
 					rendered := RenderDiagramASCII(diagramSrc, contentWidth)
 					result = append(result, rendered...)
-					inCodeBlock = false
-					codeBlockLang = ""
 					continue
 				}
 
@@ -1003,12 +995,8 @@ func (r Renderer) renderMarkdown(content string) []string {
 				}
 
 				result = append(result, codeBorder)
-				inCodeBlock = false
-				codeBlockLang = ""
 				continue
 			} else {
-				inCodeBlock = false
-				codeBlockLang = ""
 				codeBorder := lipgloss.NewStyle().
 					Foreground(surface1).
 					Render("  " + strings.Repeat("─", contentWidth-4))

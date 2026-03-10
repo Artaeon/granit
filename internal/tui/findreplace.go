@@ -345,7 +345,7 @@ func (fr FindReplace) View() string {
 	b.WriteString("\n\n")
 
 	// Find field
-	findLabel := "  Find:    "
+	var findLabel string
 	if fr.focusField == 0 {
 		findLabel = SearchPromptStyle.Render("  Find:    ")
 	} else {
@@ -381,7 +381,7 @@ func (fr FindReplace) View() string {
 
 	// Replace field
 	if fr.mode == 1 {
-		replaceLabel := "  Replace: "
+		var replaceLabel string
 		if fr.focusField == 1 {
 			replaceLabel = lipgloss.NewStyle().Foreground(green).Bold(true).Render("  Replace: ")
 		} else {

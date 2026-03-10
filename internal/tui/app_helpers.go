@@ -124,7 +124,7 @@ func (m *Model) updateNewNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 			if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
 				if err := os.WriteFile(path, []byte(content), 0644); err == nil {
-					m.vault.Scan()
+					_ = m.vault.Scan()
 					m.index = vault.NewIndex(m.vault)
 					m.index.Build()
 					m.sidebar.SetFiles(m.vault.SortedPaths())
@@ -186,7 +186,7 @@ func (m *Model) updateExtractNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.editor.DeleteSelection()
 					m.editor.InsertText("[[" + title + "]]")
 					m.saveCurrentNote()()
-					m.vault.Scan()
+					_ = m.vault.Scan()
 					m.index = vault.NewIndex(m.vault)
 					m.index.Build()
 					paths := m.vault.SortedPaths()
@@ -342,13 +342,12 @@ func (m *Model) updateLayout() {
 		layout = "minimal"
 	} else if m.width < 120 {
 		// Medium — drop backlinks/sidebar when space is tight
-		if layout == "default" {
+		switch layout {
+		case "default":
 			layout = "writer"
-		} else if layout == "reading" {
+		case "reading":
 			layout = "minimal"
-		} else if layout == "dashboard" {
-			layout = "writer"
-		} else if layout == "taskboard" || layout == "research" {
+		case "dashboard", "taskboard", "research":
 			layout = "writer"
 		}
 	} else if m.width < 160 {
@@ -570,7 +569,7 @@ func (m *Model) refreshComponents(changedPath string) {
 		return // Skip redundant refresh
 	}
 	m.lastRefresh = time.Now()
-	m.vault.Scan()
+	_ = m.vault.Scan()
 	m.index.Build()
 	paths := m.vault.SortedPaths()
 	m.sidebar.SetFiles(paths)
@@ -710,7 +709,7 @@ func (m *Model) applyTagsToNote(tags []string) {
 				return
 			}
 			// Re-scan vault for updated tags
-			m.vault.Scan()
+			_ = m.vault.Scan()
 			m.index = vault.NewIndex(m.vault)
 			m.index.Build()
 			return
@@ -735,7 +734,7 @@ func (m *Model) applyTagsToNote(tags []string) {
 		m.statusbar.SetMessage("Failed to save tags: " + err.Error())
 		return
 	}
-	m.vault.Scan()
+	_ = m.vault.Scan()
 	m.index = vault.NewIndex(m.vault)
 	m.index.Build()
 }
@@ -750,11 +749,11 @@ func (m Model) saveCurrentNote() tea.Cmd {
 		// Atomic save: write to temp file then rename to avoid partial writes on crash
 		tmpPath := path + ".tmp"
 		if err := os.WriteFile(tmpPath, []byte(content), 0644); err != nil {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 			return saveResultMsg{err: err}
 		}
 		if err := os.Rename(tmpPath, path); err != nil {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 			return saveResultMsg{err: err}
 		}
 		// Incrementally update the search index for the saved file
@@ -917,6 +916,7 @@ func (m *Model) applyVimResult(r VimResult) tea.Cmd {
 		newContent = append(newContent, m.editor.content[:m.editor.cursor]...)
 		newContent = append(newContent, m.vimState.register)
 		newContent = append(newContent, m.editor.content[m.editor.cursor:]...)
+		m.editor.content = newContent
 		m.editor.col = 0
 		m.editor.modified = true
 	}
@@ -999,7 +999,7 @@ func (m *Model) applyVimResult(r VimResult) tea.Cmd {
 	if r.MacroReplay != 0 {
 		if !m.vimState.IsPlayingMacro() {
 			keys := m.vimState.GetMacro(r.MacroReplay)
-			if keys != nil && len(keys) > 0 {
+			if len(keys) > 0 {
 				m.vimState.SetLastMacroRegister(r.MacroReplay)
 				m.vimState.SetPlayingMacro(true)
 				return func() tea.Msg {
