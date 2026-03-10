@@ -4,16 +4,20 @@ linters:
     - staticcheck
     - ineffassign
     - unused
+    - errcheck
   disable:
     - depguard
-    - errcheck # Too many intentional defer .Close() patterns; re-enable after cleanup
 
 linters-settings:
+  errcheck:
+    exclude-functions:
+      - (io.Closer).Close
+      - (net/http.ResponseWriter).Write
   staticcheck:
     checks:
       - all
       - "-SA1019" # allow deprecated APIs during gradual migration
-      - "-ST1005" # allow capitalized error strings (Go convention, not bug)
+      - "-ST1005" # allow capitalized error strings
       - "-QF1003" # skip tagged switch suggestions
       - "-QF1001" # skip De Morgan's law suggestions
       - "-S1016"  # skip struct conversion suggestions
