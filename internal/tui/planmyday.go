@@ -408,7 +408,7 @@ func planMyDayOllama(url, model, prompt string) tea.Cmd {
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return planMyDayResultMsg{err: err}
+			return planMyDayResultMsg{err: fmt.Errorf("failed to read response: %w", err)}
 		}
 
 		var chatResp struct {
@@ -464,7 +464,10 @@ func planMyDayOpenAI(apiKey, model, prompt string) tea.Cmd {
 		}
 		defer resp.Body.Close()
 
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return planMyDayResultMsg{err: fmt.Errorf("failed to read response: %w", err)}
+		}
 
 		var chatResp struct {
 			Choices []struct {
@@ -932,6 +935,10 @@ func (p PlanMyDay) updateResult(msg tea.KeyMsg) (PlanMyDay, tea.Cmd) {
 		}
 	case "down", "j":
 		p.scroll++
+		// The View function will clamp, but prevent excessive growth
+		if p.scroll > 200 {
+			p.scroll = 200
+		}
 	case "enter":
 		// Apply to daily note
 		p.shouldApply = true
@@ -1147,8 +1154,8 @@ func (p PlanMyDay) viewResult(width int) string {
 		if maxNameLen < 10 {
 			maxNameLen = 10
 		}
-		if len(taskName) > maxNameLen {
-			taskName = taskName[:maxNameLen-3] + "..."
+		if r := []rune(taskName); len(r) > maxNameLen {
+			taskName = string(r[:maxNameLen-3]) + "..."
 		}
 
 		typeTag := DimStyle.Render(" [" + slot.Type + "]")
