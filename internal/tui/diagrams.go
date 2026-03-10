@@ -195,7 +195,7 @@ func renderSequenceDiagram(body []string, maxWidth int) []string {
 
 			// Top of boxes: ╭───╮
 			topLine := "    "
-			for i, _ := range chunk {
+			for i := range chunk {
 				topLine += boxStyle.Render("╭" + strings.Repeat("─", boxW-2) + "╮")
 				if i < len(chunk)-1 {
 					topLine += "   " // arrow space
@@ -219,7 +219,7 @@ func renderSequenceDiagram(body []string, maxWidth int) []string {
 
 			// Bottom: ╰───╯
 			botLine := "    "
-			for i, _ := range chunk {
+			for i := range chunk {
 				botLine += boxStyle.Render("╰" + strings.Repeat("─", boxW-2) + "╯")
 				if i < len(chunk)-1 {
 					botLine += "   " // arrow space

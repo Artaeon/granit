@@ -487,7 +487,7 @@ func TestBookmarksUpdateInactive(t *testing.T) {
 	bm := NewBookmarks(tmpDir)
 
 	// Update while inactive should be a no-op
-	bm, cmd := bm.Update(tea.KeyMsg{Type: tea.KeyDown})
+	_, cmd := bm.Update(tea.KeyMsg{Type: tea.KeyDown})
 	if cmd != nil {
 		t.Error("expected nil cmd when inactive")
 	}

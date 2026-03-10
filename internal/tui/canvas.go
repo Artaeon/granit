@@ -153,14 +153,7 @@ func (c *Canvas) Save() {
 
 	cards := make([]canvasCardJSON, len(c.cards))
 	for i, card := range c.cards {
-		cards[i] = canvasCardJSON{
-			Title:    card.Title,
-			NotePath: card.NotePath,
-			X:        card.X,
-			Y:        card.Y,
-			Width:    card.Width,
-			Color:    card.Color,
-		}
+		cards[i] = canvasCardJSON(card)
 	}
 
 	data := canvasFileData{
@@ -194,14 +187,7 @@ func (c *Canvas) Load() {
 
 	c.cards = make([]CanvasCard, len(data.Cards))
 	for i, cj := range data.Cards {
-		c.cards[i] = CanvasCard{
-			Title:    cj.Title,
-			NotePath: cj.NotePath,
-			X:        cj.X,
-			Y:        cj.Y,
-			Width:    cj.Width,
-			Color:    cj.Color,
-		}
+		c.cards[i] = CanvasCard(cj)
 	}
 	c.connections = data.Connections
 	if c.connections == nil {

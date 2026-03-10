@@ -481,7 +481,7 @@ func blogHTTPDoWithRetry(req *http.Request, maxRetries int) (*http.Response, err
 
 func blogPublishMedium(token, title, content, publishStatus string, tags []string) (string, error) {
 	if token == "" {
-		return "", fmt.Errorf("Medium API token is required")
+		return "", fmt.Errorf("medium API token is required")
 	}
 
 	// Step 1: Get user ID
@@ -504,7 +504,7 @@ func blogPublishMedium(token, title, content, publishStatus string, tags []strin
 	}
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("Medium API error (%d): %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("medium API error (%d): %s", resp.StatusCode, string(body))
 	}
 
 	var userResp struct {
@@ -560,7 +560,7 @@ func blogPublishMedium(token, title, content, publishStatus string, tags []strin
 	}
 
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		return "", fmt.Errorf("Medium API error (%d): %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("medium API error (%d): %s", resp.StatusCode, string(body))
 	}
 
 	var postResp struct {
@@ -637,7 +637,7 @@ func blogPublishGitHub(token, repo, branch, dirPath, title, content string) (str
 		}
 	} else {
 		// Drain the body for non-200 responses
-		io.ReadAll(resp.Body)
+		_, _ = io.ReadAll(resp.Body)
 	}
 
 	// Step 2: Create or update the file

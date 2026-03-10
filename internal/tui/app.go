@@ -17,7 +17,7 @@ import (
 // stopOllama unloads running models to free memory when Granit exits.
 func stopOllama(model string) {
 	if model != "" {
-		exec.Command("ollama", "stop", model).Run()
+		_ = exec.Command("ollama", "stop", model).Run()
 	}
 }
 

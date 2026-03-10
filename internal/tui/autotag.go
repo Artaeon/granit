@@ -178,7 +178,7 @@ func atCallOllama(url, model, systemPrompt, userPrompt string) (string, error) {
 	}
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var chatResp atOllamaChatResp
@@ -187,7 +187,7 @@ func atCallOllama(url, model, systemPrompt, userPrompt string) (string, error) {
 	}
 
 	if chatResp.Error != "" {
-		return "", fmt.Errorf("Ollama error: %s", chatResp.Error)
+		return "", fmt.Errorf("ollama error: %s", chatResp.Error)
 	}
 
 	return chatResp.Message.Content, nil

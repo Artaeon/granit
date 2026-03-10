@@ -153,7 +153,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			trimmed := strings.TrimSpace(msg.output)
 			if trimmed != "" && trimmed != "Already up to date." {
 				// Rescan vault after pull brought changes
-				m.vault.Scan()
+				_ = m.vault.Scan()
 				m.index.Build()
 				m.sidebar.SetFiles(m.vault.SortedPaths())
 				m.statusbar.SetMessage("Git: pulled latest changes")
@@ -252,7 +252,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
 						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
-							m.vault.Scan()
+							_ = m.vault.Scan()
 							m.index = vault.NewIndex(m.vault)
 							m.index.Build()
 							paths := m.vault.SortedPaths()
@@ -309,7 +309,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
 						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
-							m.vault.Scan()
+							_ = m.vault.Scan()
 							m.index = vault.NewIndex(m.vault)
 							m.index.Build()
 							paths := m.vault.SortedPaths()
@@ -365,7 +365,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.statusbar.SetMessage("Git restore failed: " + err.Error())
 							return m, m.clearMessageAfter(5 * time.Second)
 						}
-						m.vault.Scan()
+						_ = m.vault.Scan()
 						m.index = vault.NewIndex(m.vault)
 						m.index.Build()
 						m.loadNote(m.activeNote)
@@ -519,7 +519,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.research.elapsed = time.Since(m.research.startTime).Truncate(time.Second).String()
 				m.research.output = msg.output
 				// Refresh vault to pick up new files
-				m.vault.Scan()
+				_ = m.vault.Scan()
 				m.index = vault.NewIndex(m.vault)
 				m.index.Build()
 				paths := m.vault.SortedPaths()
@@ -574,7 +574,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		// Rescan vault to pick up created/deleted files
-		m.vault.Scan()
+		_ = m.vault.Scan()
 		m.index = vault.NewIndex(m.vault)
 		m.index.Build()
 		paths := m.vault.SortedPaths()
@@ -661,7 +661,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.settings, _ = m.settings.Update(msg)
 			if !m.settings.setupRunning && msg.success {
 				m.config = m.settings.GetConfig()
-				m.config.Save()
+				_ = m.config.Save()
 			}
 		}
 		return m, nil
@@ -711,7 +711,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.settings, settingsCmd = m.settings.Update(msg)
 			if !m.settings.IsActive() {
 				m.config = m.settings.GetConfig()
-				m.config.Save()
+				_ = m.config.Save()
 				m.syncConfigToComponents()
 				m.sidebar.SetFiles(m.vault.SortedPaths())
 				// Start background embedding indexing if semantic search was just enabled.
@@ -823,7 +823,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.trash.ShouldRestore() {
 				restored := m.trash.RestoreFile()
 				if restored != "" {
-					m.vault.Scan()
+					_ = m.vault.Scan()
 					m.index = vault.NewIndex(m.vault)
 					m.index.Build()
 					paths := m.vault.SortedPaths()
@@ -882,8 +882,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Append the task line
 				f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
 				if err == nil {
-					f.WriteString("- [ ] " + evText + "\n")
-					f.Close()
+					_, _ = f.WriteString("- [ ] " + evText + "\n")
+					_ = f.Close()
 				}
 				// Also add to planner file for the date
 				AddEventToPlannerFile(m.vault.Root, evDate, evText)
@@ -921,7 +921,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				// Refresh vault data after toggling tasks
-				m.vault.Scan()
+				_ = m.vault.Scan()
 				m.statusbar.SetMessage("Task toggled")
 			}
 			if date := m.calendar.SelectedDate(); date != "" {
@@ -1038,7 +1038,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					relPath := fileName
 					absPath := filepath.Join(m.vault.Root, relPath)
 					if err := os.WriteFile(absPath, []byte(content), 0644); err == nil {
-						m.vault.Scan()
+						_ = m.vault.Scan()
 						m.index.Build()
 						m.sidebar.SetFiles(m.vault.SortedPaths())
 						m.loadNote(relPath)
@@ -1070,7 +1070,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.standupGen.IsActive() {
 			m.standupGen, _ = m.standupGen.Update(msg)
 			if !m.standupGen.IsActive() {
-				m.vault.Scan()
+				_ = m.vault.Scan()
 				m.index.Build()
 				m.sidebar.SetFiles(m.vault.SortedPaths())
 			}
@@ -1102,7 +1102,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quickCapture, _ = m.quickCapture.Update(msg)
 			if !m.quickCapture.IsActive() {
 				if filePath, ok := m.quickCapture.GetResult(); ok {
-					m.vault.Scan()
+					_ = m.vault.Scan()
 					m.index.Build()
 					m.sidebar.SetFiles(m.vault.SortedPaths())
 					m.statusbar.SetMessage("Saved to " + filePath)
@@ -1130,7 +1130,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.journalPrompts, _ = m.journalPrompts.Update(msg)
 			if !m.journalPrompts.IsActive() {
 				if filePath, ok := m.journalPrompts.GetResult(); ok {
-					m.vault.Scan()
+					_ = m.vault.Scan()
 					m.index.Build()
 					m.sidebar.SetFiles(m.vault.SortedPaths())
 					m.loadNote(filePath)
@@ -1266,7 +1266,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.recurringTasks, _ = m.recurringTasks.Update(msg)
 			if !m.recurringTasks.IsActive() {
 				if count, ok := m.recurringTasks.GetCreatedCount(); ok && count > 0 {
-					m.vault.Scan()
+					_ = m.vault.Scan()
 					m.index.Build()
 					m.sidebar.SetFiles(m.vault.SortedPaths())
 					m.statusbar.SetMessage(fmt.Sprintf("%d recurring tasks created", count))
@@ -1525,7 +1525,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
 						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
-							m.vault.Scan()
+							_ = m.vault.Scan()
 							m.index = vault.NewIndex(m.vault)
 							m.index.Build()
 							paths := m.vault.SortedPaths()
@@ -1606,7 +1606,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
 						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
-							m.vault.Scan()
+							_ = m.vault.Scan()
 							m.index = vault.NewIndex(m.vault)
 							m.index.Build()
 							paths := m.vault.SortedPaths()
@@ -1836,8 +1836,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								lines[line] = strings.Replace(lines[line], "- [x]", "- [ ]", 1)
 							}
 							newContent := strings.Join(lines, "\n")
-							os.WriteFile(filepath.Join(m.vault.Root, notePath), []byte(newContent), 0644)
-							m.vault.Scan()
+							_ = os.WriteFile(filepath.Join(m.vault.Root, notePath), []byte(newContent), 0644)
+							_ = m.vault.Scan()
 							m.index = vault.NewIndex(m.vault)
 							m.index.Build()
 							if notePath == m.activeNote {
@@ -1868,7 +1868,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
 						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
-							m.vault.Scan()
+							_ = m.vault.Scan()
 							m.index = vault.NewIndex(m.vault)
 							m.index.Build()
 							paths := m.vault.SortedPaths()
@@ -1893,7 +1893,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmDelete = false
 				if m.confirmDeleteNote != "" {
 					if err := m.trash.MoveToTrash(m.confirmDeleteNote); err == nil {
-						m.vault.Scan()
+						_ = m.vault.Scan()
 						m.index = vault.NewIndex(m.vault)
 						m.index.Build()
 						paths := m.vault.SortedPaths()
@@ -1994,7 +1994,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.String() == "ctrl+c" {
 				text := m.editor.GetSelectedText()
 				if text != "" {
-					ClipboardCopy(text)
+					_ = ClipboardCopy(text)
 					m.editor.ClearSelection()
 					m.statusbar.SetMessage("Copied to clipboard")
 					return m, m.clearMessageAfter(2 * time.Second)
@@ -2099,7 +2099,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focus == focusEditor && !m.viewMode && m.editor.HasSelection() {
 				text := m.editor.GetSelectedText()
 				if text != "" {
-					ClipboardCopy(text)
+					_ = ClipboardCopy(text)
 					m.editor.DeleteSelection()
 					m.statusbar.SetMessage("Cut to clipboard")
 					line, col := m.editor.GetCursor()

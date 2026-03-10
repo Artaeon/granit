@@ -833,7 +833,7 @@ func doAITemplateOllama(url, model, prompt string) aiTemplateResultMsg {
 	}
 
 	if resp.StatusCode != 200 {
-		return aiTemplateResultMsg{err: fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body))}
+		return aiTemplateResultMsg{err: fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, string(body))}
 	}
 
 	var ollamaResponse ollamaResp
@@ -1057,13 +1057,6 @@ func (a AITemplates) updateTopicInput(msg tea.KeyMsg) (AITemplates, tea.Cmd) {
 		a.errMsg = ""
 		return a, tea.Batch(a.generateContent(), aiTemplateTickCmd())
 	case "backspace":
-		if isCustom && a.topicInput != "" {
-			// If topic is entered and we have a custom input field active,
-			// we need to determine which field is active.
-			// Convention: topic first, then tab to custom prompt.
-			// Simplified: topic is always the active text field in this state,
-			// custom input is entered after topic via tab.
-		}
 		if len(a.topicInput) > 0 {
 			a.topicInput = a.topicInput[:len(a.topicInput)-1]
 		}

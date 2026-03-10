@@ -77,7 +77,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 				m.statusbar.SetMessage("Failed to create weekly note: " + err.Error())
 				return m, m.clearMessageAfter(5 * time.Second)
 			}
-			m.vault.Scan()
+			_ = m.vault.Scan()
 			m.index = vault.NewIndex(m.vault)
 			m.index.Build()
 			m.sidebar.SetFiles(m.vault.SortedPaths())
@@ -108,7 +108,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdFocusBacklinks:
 		m.setFocus(focusBacklinks)
 	case CmdRefreshVault:
-		m.vault.Scan()
+		_ = m.vault.Scan()
 		m.index = vault.NewIndex(m.vault)
 		m.index.Build()
 		paths := m.vault.SortedPaths()
@@ -124,7 +124,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 				m.confirmDeleteNote = m.activeNote
 			} else {
 				if err := m.trash.MoveToTrash(m.activeNote); err == nil {
-					m.vault.Scan()
+					_ = m.vault.Scan()
 					m.index = vault.NewIndex(m.vault)
 					m.index.Build()
 					paths := m.vault.SortedPaths()
@@ -343,7 +343,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 					m.config.GitHubRepo = ghRepo
 					m.config.GitHubBranch = ghBranch
 				}
-				m.config.Save()
+				_ = m.config.Save()
 			})
 			m.blogPublisher.Open(title, content)
 		} else {
@@ -540,7 +540,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		if m.vimState != nil {
 			m.vimState.SetEnabled(!m.vimState.IsEnabled())
 			m.config.VimMode = m.vimState.IsEnabled()
-			m.config.Save()
+			_ = m.config.Save()
 			if m.vimState.IsEnabled() {
 				m.statusbar.SetMode("VIM:NORMAL")
 				m.statusbar.SetMessage("Vim mode enabled")
@@ -553,7 +553,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdToggleWordWrap:
 		m.config.WordWrap = !m.config.WordWrap
 		m.editor.SetWordWrap(m.config.WordWrap)
-		m.config.Save()
+		_ = m.config.Save()
 		if m.config.WordWrap {
 			m.statusbar.SetMessage("Word wrap enabled")
 		} else {
@@ -583,7 +583,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 				reg = 'a'
 			}
 			keys := m.vimState.GetMacro(reg)
-			if keys != nil && len(keys) > 0 {
+			if len(keys) > 0 {
 				m.vimState.SetLastMacroRegister(reg)
 				m.vimState.SetPlayingMacro(true)
 				return m, func() tea.Msg {
@@ -638,7 +638,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			content := m.zettelkasten.GenerateTemplate(title)
 			path := filepath.Join(m.vault.Root, name)
 			if err := os.WriteFile(path, []byte(content), 0644); err == nil {
-				m.vault.Scan()
+				_ = m.vault.Scan()
 				m.index = vault.NewIndex(m.vault)
 				m.index.Build()
 				paths := m.vault.SortedPaths()
@@ -656,7 +656,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		imported := config.ImportObsidianConfig(m.vault.Root)
 		if imported != nil {
 			m.config = *imported
-			m.config.Save()
+			_ = m.config.Save()
 			ApplyTheme(m.config.Theme)
 			m.syncConfigToComponents()
 			report := config.ImportReport(m.vault.Root)
@@ -1162,7 +1162,7 @@ func (m *Model) gatherPlannerData() ([]PlannerTask, []PlannerEvent, []PlannerHab
 			}
 			lineNum++
 		}
-		f.Close()
+		_ = f.Close()
 	}
 
 	// Scan calendar events for today
@@ -1274,7 +1274,7 @@ func (m *Model) gatherPlanMyDayData() ([]Task, []PlannerEvent, []habitEntry, []P
 			}
 			lineNum++
 		}
-		f.Close()
+		_ = f.Close()
 	}
 
 	// Also scan all vault notes for tasks
@@ -1370,7 +1370,7 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 		return
 	}
 
-	m.vault.Scan()
+	_ = m.vault.Scan()
 	m.index.Build()
 	paths := m.vault.SortedPaths()
 	m.sidebar.SetFiles(paths)
@@ -1441,7 +1441,7 @@ func loadPlannerBlocks(vaultRoot string) map[string][]PlannerBlock {
 			}
 			result[dateStr] = append(result[dateStr], pb)
 		}
-		f.Close()
+		_ = f.Close()
 	}
 	return result
 }
@@ -1487,6 +1487,6 @@ func updateTaskScheduleInFile(vaultRoot, taskText, startTime, endTime string) {
 	}
 
 	if changed {
-		os.WriteFile(tasksPath, []byte(strings.Join(lines, "\n")), 0644)
+		_ = os.WriteFile(tasksPath, []byte(strings.Join(lines, "\n")), 0644)
 	}
 }

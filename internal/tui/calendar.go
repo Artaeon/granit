@@ -914,9 +914,10 @@ func (c Calendar) viewAgenda() string {
 
 		// Day header
 		dayLabel := day.Format("Mon Jan 2")
-		if d == 0 {
+		switch d {
+		case 0:
 			dayLabel += " (today)"
-		} else if d == 1 {
+		case 1:
 			dayLabel += " (tomorrow)"
 		}
 
@@ -1568,7 +1569,7 @@ func ParseICSFile(path string) ([]CalendarEvent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open ics file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var events []CalendarEvent
 	var current *CalendarEvent
