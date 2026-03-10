@@ -511,8 +511,8 @@ func priorityDot(pri int) string {
 	}
 }
 
-// priorityLabel returns a colored label for a priority value.
-func priorityLabel(pri int) string {
+// projectPriorityLabel returns a colored label for a priority value.
+func projectPriorityLabel(pri int) string {
 	if pri < 0 || pri >= len(projectPriorityLabels) {
 		pri = 0
 	}
@@ -1394,7 +1394,7 @@ func (pm ProjectMode) viewDashboard() string {
 	var metaParts []string
 	metaParts = append(metaParts, "Status: "+lipgloss.NewStyle().Foreground(statusColor(proj.Status)).Bold(true).Render(proj.Status))
 	if proj.Priority > 0 {
-		metaParts = append(metaParts, "Priority: "+priorityDot(proj.Priority)+" "+priorityLabel(proj.Priority))
+		metaParts = append(metaParts, "Priority: "+priorityDot(proj.Priority)+" "+projectPriorityLabel(proj.Priority))
 	}
 	if proj.DueDate != "" {
 		metaParts = append(metaParts, "Due: "+lipgloss.NewStyle().Foreground(teal).Render(proj.DueDate))
