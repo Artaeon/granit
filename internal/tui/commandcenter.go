@@ -258,8 +258,8 @@ func (cc *CommandCenter) LoadData(tasks []Task, projects []Project, habits []hab
 				done++
 			} else if nextAction == "" {
 				nextAction = t.Text
-				if len(nextAction) > 30 {
-					nextAction = nextAction[:27] + "..."
+				if r := []rune(nextAction); len(r) > 30 {
+					nextAction = string(r[:27]) + "..."
 				}
 			}
 		}
@@ -544,8 +544,8 @@ func (cc CommandCenter) viewNow(innerW int) string {
 	icon := cc.priorityIcon(task.Priority)
 	taskName := task.Text
 	maxNameW := innerW - 12
-	if len(taskName) > maxNameW {
-		taskName = taskName[:maxNameW-3] + "..."
+	if r := []rune(taskName); len(r) > maxNameW {
+		taskName = string(r[:maxNameW-3]) + "..."
 	}
 
 	cardStyle := lipgloss.NewStyle().
@@ -567,8 +567,8 @@ func (cc CommandCenter) viewNow(innerW int) string {
 	}
 	if task.NotePath != "" {
 		noteName := strings.TrimSuffix(task.NotePath, ".md")
-		if len(noteName) > 20 {
-			noteName = noteName[:17] + "..."
+		if r := []rune(noteName); len(r) > 20 {
+			noteName = string(r[:17]) + "..."
 		}
 		details = append(details, DimStyle.Render("Note: "+noteName))
 	}
@@ -609,8 +609,8 @@ func (cc CommandCenter) viewNextUp(innerW int) string {
 		if maxW < 20 {
 			maxW = 20
 		}
-		if len(taskName) > maxW {
-			taskName = taskName[:maxW-3] + "..."
+		if r := []rune(taskName); len(r) > maxW {
+			taskName = string(r[:maxW-3]) + "..."
 		}
 
 		num := lipgloss.NewStyle().Foreground(overlay0).Render(fmt.Sprintf("  %d. ", i+1))
@@ -685,8 +685,8 @@ func (cc CommandCenter) viewSchedule(innerW int) string {
 		if maxW < 15 {
 			maxW = 15
 		}
-		if len(taskName) > maxW {
-			taskName = taskName[:maxW-3] + "..."
+		if r := []rune(taskName); len(r) > maxW {
+			taskName = string(r[:maxW-3]) + "..."
 		}
 
 		nameStyle := lipgloss.NewStyle().Foreground(text)
@@ -753,8 +753,8 @@ func (cc CommandCenter) viewProjects(innerW int) string {
 		nameColor := projectAccentColor(proj.Color)
 		nameStyle := lipgloss.NewStyle().Foreground(nameColor).Bold(true)
 		name := proj.Name
-		if len(name) > 16 {
-			name = name[:13] + "..."
+		if r := []rune(name); len(r) > 16 {
+			name = string(r[:13]) + "..."
 		}
 
 		// Progress bar
@@ -778,8 +778,8 @@ func (cc CommandCenter) viewProjects(innerW int) string {
 			if maxActW < 10 {
 				maxActW = 10
 			}
-			if len(act) > maxActW {
-				act = act[:maxActW-3] + "..."
+			if r := []rune(act); len(r) > maxActW {
+				act = string(r[:maxActW-3]) + "..."
 			}
 			nextAct = DimStyle.Render(" \u2192 " + act)
 		}
@@ -833,8 +833,8 @@ func (cc CommandCenter) viewHabitsSection(innerW int) string {
 		}
 
 		name := h.Name
-		if len(name) > 20 {
-			name = name[:17] + "..."
+		if r := []rune(name); len(r) > 20 {
+			name = string(r[:17]) + "..."
 		}
 		nameStyle := lipgloss.NewStyle().Foreground(text)
 		if h.Done {
