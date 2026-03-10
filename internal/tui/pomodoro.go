@@ -249,7 +249,9 @@ func (p *Pomodoro) AdvanceQueue() bool {
 		return false
 	}
 
-	// Record elapsed time on current task
+	// Track any remaining in-progress time first
+	p.trackElapsedOnCurrentTask()
+	// Now mark done and log
 	qt.Done = true
 	p.logSessionEntry(qt.Text, qt.Project, qt.Elapsed, true)
 
@@ -279,6 +281,9 @@ func (p *Pomodoro) AdvanceQueue() bool {
 func (p *Pomodoro) SkipTask() bool {
 	if len(p.queue) == 0 {
 		return false
+	}
+	if p.queueCursor < 0 {
+		p.queueCursor = 0
 	}
 	for i := p.queueCursor + 1; i < len(p.queue); i++ {
 		if !p.queue[i].Done {
@@ -401,7 +406,6 @@ func (p Pomodoro) Update(msg tea.Msg) (Pomodoro, tea.Cmd) {
 		case "enter":
 			// Complete current queue task and advance
 			if len(p.queue) > 0 && p.CurrentQueueTask() != nil {
-				p.trackElapsedOnCurrentTask()
 				hasNext := p.AdvanceQueue()
 				if hasNext {
 					return p, p.tick()
@@ -662,7 +666,7 @@ func (p Pomodoro) View() string {
 
 			// Pad to right-align time info
 			leftPart := num + iconStyle.Render(icon) + " " + textStyle.Render(taskLabel)
-			leftWidth := len(num) + 2 + len(taskLabel) // approximate
+			leftWidth := lipgloss.Width(leftPart)
 			padding := width - 8 - leftWidth - len(timeInfo)
 			if padding < 1 {
 				padding = 1
@@ -800,35 +804,46 @@ func (p Pomodoro) tick() tea.Cmd {
 	})
 }
 
-// trackElapsedOnCurrentTask adds the elapsed pomodoro minutes to the current
-// queue task and the time log.
+// trackElapsedOnCurrentTask adds the incremental elapsed pomodoro minutes
+// (since last tracking) to the current queue task and the time log.
 func (p *Pomodoro) trackElapsedOnCurrentTask() {
 	if p.currentTask == "" || len(p.queue) == 0 {
 		return
 	}
-	elapsedMins := int(p.workDuration.Minutes())
+	maxMins := int(p.workDuration.Minutes())
 	rem := p.remaining
 	if rem < 0 {
 		rem = -rem
 	}
-	actualMins := int((p.workDuration - rem).Minutes())
-	if actualMins < 0 {
-		actualMins = 0
+	totalElapsed := int((p.workDuration - rem).Minutes())
+	if totalElapsed < 0 {
+		totalElapsed = 0
 	}
-	if actualMins > elapsedMins {
-		actualMins = elapsedMins
+	if totalElapsed > maxMins {
+		totalElapsed = maxMins
+	}
+
+	// Compute incremental delta since last tracking to avoid double-counting
+	qt := p.CurrentQueueTask()
+	alreadyTracked := 0
+	if qt != nil {
+		alreadyTracked = qt.Elapsed
+	}
+	delta := totalElapsed - alreadyTracked
+	if delta <= 0 {
+		return
 	}
 
 	// Update queue task elapsed time
-	if qt := p.CurrentQueueTask(); qt != nil {
-		qt.Elapsed += actualMins
+	if qt != nil {
+		qt.Elapsed += delta
 	}
 
 	// Update time log
 	if p.taskTimeLog == nil {
 		p.taskTimeLog = make(map[string]int)
 	}
-	p.taskTimeLog[p.currentTask] += actualMins
+	p.taskTimeLog[p.currentTask] += delta
 }
 
 // finishWorkSession records the completed work session in the log.
@@ -897,7 +912,9 @@ func (p *Pomodoro) logSessionEntry(task, project string, durationMin int, comple
 	info, _ := f.Stat()
 	if info != nil && info.Size() == 0 {
 		header := fmt.Sprintf("# Focus Sessions - %s\n\n", now.Format("2006-01-02"))
-		_, _ = f.WriteString(header)
+		if _, err := f.WriteString(header); err != nil {
+			return
+		}
 	}
 
 	pomodoroCount := durationMin / int(p.workDuration.Minutes())
@@ -920,5 +937,7 @@ func (p *Pomodoro) logSessionEntry(task, project string, durationMin int, comple
 	entry.WriteString(fmt.Sprintf("- Status: %s\n", status))
 	entry.WriteString("\n")
 
-	_, _ = f.WriteString(entry.String())
+	if _, err := f.WriteString(entry.String()); err != nil {
+		return
+	}
 }
