@@ -50,22 +50,78 @@ var projectColorNames = []string{
 	"pink", "lavender", "teal", "sapphire", "flamingo",
 }
 
+// projectPriorityLabels maps priority values to display labels.
+var projectPriorityLabels = []string{
+	"none", "low", "medium", "high", "highest",
+}
+
 // ---------------------------------------------------------------------------
 // Data types
 // ---------------------------------------------------------------------------
 
+// ProjectMilestone represents a sub-step within a project goal.
+type ProjectMilestone struct {
+	Text string `json:"text"`
+	Done bool   `json:"done"`
+}
+
+// ProjectGoal represents a high-level goal within a project.
+type ProjectGoal struct {
+	Title      string             `json:"title"`
+	Done       bool               `json:"done"`
+	Milestones []ProjectMilestone `json:"milestones"`
+}
+
 // Project represents a single tracked project in the vault.
 type Project struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Folder      string   `json:"folder"`
-	Tags        []string `json:"tags"`
-	Status      string   `json:"status"`
-	Color       string   `json:"color"`
-	CreatedAt   string   `json:"created_at"`
-	Notes       []string `json:"notes"`
-	TaskFilter  string   `json:"task_filter"`
-	Category    string   `json:"category"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	Folder      string        `json:"folder"`
+	Tags        []string      `json:"tags"`
+	Status      string        `json:"status"`
+	Color       string        `json:"color"`
+	CreatedAt   string        `json:"created_at"`
+	Notes       []string      `json:"notes"`
+	TaskFilter  string        `json:"task_filter"`
+	Category    string        `json:"category"`
+	Goals       []ProjectGoal `json:"goals"`
+	NextAction  string        `json:"next_action"`
+	Priority    int           `json:"priority"`
+	DueDate     string        `json:"due_date"`
+	TimeSpent   int           `json:"time_spent"`
+}
+
+// Progress returns 0.0..1.0 representing project completion.
+// Priority: goals with milestones > goals without milestones > tasks.
+func (p Project) Progress() float64 {
+	// Check for goals with milestones first.
+	totalMilestones := 0
+	doneMilestones := 0
+	for _, g := range p.Goals {
+		totalMilestones += len(g.Milestones)
+		for _, m := range g.Milestones {
+			if m.Done {
+				doneMilestones++
+			}
+		}
+	}
+	if totalMilestones > 0 {
+		return float64(doneMilestones) / float64(totalMilestones)
+	}
+
+	// Goals without milestones.
+	if len(p.Goals) > 0 {
+		doneGoals := 0
+		for _, g := range p.Goals {
+			if g.Done {
+				doneGoals++
+			}
+		}
+		return float64(doneGoals) / float64(len(p.Goals))
+	}
+
+	// No goals — cannot compute from tasks here (tasks are scanned separately).
+	return 0.0
 }
 
 // projectTask is a parsed checkbox task relevant to a project.
@@ -111,16 +167,30 @@ type ProjectMode struct {
 	dashNotes []projectNote
 	dashTasks []projectTask
 
+	// Goal management mode (inside dashboard)
+	goalMode     bool // true when in goal management sub-mode
+	goalCursor   int  // cursor within goals list
+	goalExpanded int  // index of expanded goal (-1 = none)
+	milestoneCur int  // cursor within milestones of expanded goal
+
+	// Dashboard input mode for next-action / goal / milestone entry
+	dashInput     bool   // true when typing a single-line input
+	dashInputKind string // "next_action", "goal", "milestone"
+	dashInputBuf  string
+
 	// Edit form state
-	editIdx       int // -1 = new project, >= 0 = editing existing
-	editField     int // 0=name, 1=desc, 2=folder, 3=category, 4=tags, 5=color, 6=status
-	editName      string
-	editDesc      string
-	editFolder    string
-	editCategory  int
-	editTags      string
-	editColor     int
-	editStatus    int
+	editIdx        int // -1 = new project, >= 0 = editing existing
+	editField      int // 0..9 (see editFields slice)
+	editName       string
+	editDesc       string
+	editFolder     string
+	editCategory   int
+	editTags       string
+	editColor      int
+	editStatus     int
+	editPriority   int
+	editDueDate    string
+	editNextAction string
 
 	// Consumed-once outputs
 	selectedNote string
@@ -131,8 +201,9 @@ type ProjectMode struct {
 // NewProjectMode creates a new inactive ProjectMode overlay.
 func NewProjectMode() ProjectMode {
 	return ProjectMode{
-		categoryIdx: -1,
-		editIdx:     -1,
+		categoryIdx:  -1,
+		editIdx:      -1,
+		goalExpanded: -1,
 	}
 }
 
@@ -158,6 +229,11 @@ func (pm *ProjectMode) Open(vaultRoot string) {
 	pm.selectedNote = ""
 	pm.hasNote = false
 	pm.action = CmdNone
+	pm.goalMode = false
+	pm.goalCursor = 0
+	pm.goalExpanded = -1
+	pm.milestoneCur = 0
+	pm.dashInput = false
 	pm.loadProjects()
 }
 
@@ -419,8 +495,60 @@ func statusBadge(status string) string {
 		lipgloss.NewStyle().Foreground(c).Bold(true).Render(label)
 }
 
+// priorityDot returns a colored dot for priority display.
+func priorityDot(pri int) string {
+	switch pri {
+	case 4: // highest
+		return lipgloss.NewStyle().Foreground(red).Render("●")
+	case 3: // high
+		return lipgloss.NewStyle().Foreground(peach).Render("●")
+	case 2: // medium
+		return lipgloss.NewStyle().Foreground(yellow).Render("●")
+	case 1: // low
+		return lipgloss.NewStyle().Foreground(blue).Render("●")
+	default:
+		return lipgloss.NewStyle().Foreground(overlay0).Render("○")
+	}
+}
+
+// priorityLabel returns a colored label for a priority value.
+func priorityLabel(pri int) string {
+	if pri < 0 || pri >= len(projectPriorityLabels) {
+		pri = 0
+	}
+	label := strings.ToUpper(projectPriorityLabels[pri])
+	switch pri {
+	case 4:
+		return lipgloss.NewStyle().Foreground(red).Bold(true).Render(label)
+	case 3:
+		return lipgloss.NewStyle().Foreground(peach).Bold(true).Render(label)
+	case 2:
+		return lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(label)
+	case 1:
+		return lipgloss.NewStyle().Foreground(blue).Bold(true).Render(label)
+	default:
+		return lipgloss.NewStyle().Foreground(overlay0).Render(label)
+	}
+}
+
+// formatTimeSpent returns a human-readable duration string.
+func formatTimeSpent(minutes int) string {
+	if minutes <= 0 {
+		return "0m"
+	}
+	h := minutes / 60
+	m := minutes % 60
+	if h == 0 {
+		return fmt.Sprintf("%dm", m)
+	}
+	if m == 0 {
+		return fmt.Sprintf("%dh", h)
+	}
+	return fmt.Sprintf("%dh %dm", h, m)
+}
+
 // ---------------------------------------------------------------------------
-// Filtering
+// Filtering & Sorting
 // ---------------------------------------------------------------------------
 
 func (pm *ProjectMode) filteredProjects() []int {
@@ -435,7 +563,60 @@ func (pm *ProjectMode) filteredProjects() []int {
 			indices = append(indices, i)
 		}
 	}
+
+	// Sort: active projects by priority (desc), then due date (asc).
+	// Paused/completed/archived go to the bottom.
+	sort.SliceStable(indices, func(a, b int) bool {
+		pa := pm.projects[indices[a]]
+		pb := pm.projects[indices[b]]
+
+		aActive := pa.Status == "active"
+		bActive := pb.Status == "active"
+
+		// Active projects first.
+		if aActive != bActive {
+			return aActive
+		}
+
+		// Within same activity group, sort by priority (highest first).
+		if pa.Priority != pb.Priority {
+			return pa.Priority > pb.Priority
+		}
+
+		// Then by due date (soonest first, empty last).
+		if pa.DueDate != pb.DueDate {
+			if pa.DueDate == "" {
+				return false
+			}
+			if pb.DueDate == "" {
+				return true
+			}
+			return pa.DueDate < pb.DueDate
+		}
+
+		return false
+	})
+
 	return indices
+}
+
+// progressWithTasks computes project progress, using task data as fallback.
+func progressWithTasks(proj Project, tasks []projectTask) float64 {
+	prog := proj.Progress()
+	if prog > 0 || len(proj.Goals) > 0 {
+		return prog
+	}
+	// Fallback to tasks.
+	if len(tasks) == 0 {
+		return 0
+	}
+	done := 0
+	for _, t := range tasks {
+		if t.Done {
+			done++
+		}
+	}
+	return float64(done) / float64(len(tasks))
 }
 
 // ---------------------------------------------------------------------------
@@ -529,11 +710,25 @@ func (pm *ProjectMode) cycleStatus(idx int) {
 }
 
 func (pm ProjectMode) updateDashboard(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
-	switch msg.String() {
+	key := msg.String()
+
+	// Handle input mode first.
+	if pm.dashInput {
+		return pm.updateDashInput(msg)
+	}
+
+	// Handle goal mode.
+	if pm.goalMode {
+		return pm.updateGoalMode(msg)
+	}
+
+	switch key {
 	case "esc":
 		pm.phase = pmPhaseList
 		pm.dashSection = 0
 		pm.dashScroll = 0
+		pm.goalMode = false
+		pm.goalExpanded = -1
 	case "tab":
 		pm.dashSection = (pm.dashSection + 1) % 3
 		pm.dashScroll = 0
@@ -558,6 +753,11 @@ func (pm ProjectMode) updateDashboard(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 		pm.action = CmdTaskManager
 		pm.active = false
 	case "n":
+		// Set next action (input mode).
+		pm.dashInput = true
+		pm.dashInputKind = "next_action"
+		pm.dashInputBuf = pm.projects[pm.selectedProj].NextAction
+	case "N":
 		// Create new note in project folder.
 		proj := pm.projects[pm.selectedProj]
 		if proj.Folder != "" {
@@ -570,9 +770,170 @@ func (pm ProjectMode) updateDashboard(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 			pm.hasNote = true
 			pm.active = false
 		}
+	case "g":
+		// Enter goal management mode.
+		pm.goalMode = true
+		pm.goalCursor = 0
+		pm.goalExpanded = -1
+		pm.milestoneCur = 0
+	case "p":
+		// Cycle priority: none -> low -> medium -> high -> highest -> none.
+		proj := &pm.projects[pm.selectedProj]
+		proj.Priority = (proj.Priority + 1) % len(projectPriorityLabels)
+		pm.saveProjects()
 	}
 	return pm, nil
 }
+
+func (pm ProjectMode) updateDashInput(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
+	key := msg.String()
+
+	switch key {
+	case "esc":
+		pm.dashInput = false
+		pm.dashInputBuf = ""
+		pm.dashInputKind = ""
+	case "enter":
+		val := strings.TrimSpace(pm.dashInputBuf)
+		switch pm.dashInputKind {
+		case "next_action":
+			pm.projects[pm.selectedProj].NextAction = val
+			pm.saveProjects()
+		case "goal":
+			if val != "" {
+				pm.projects[pm.selectedProj].Goals = append(pm.projects[pm.selectedProj].Goals, ProjectGoal{
+					Title: val,
+				})
+				pm.saveProjects()
+			}
+		case "milestone":
+			if val != "" && pm.goalExpanded >= 0 && pm.goalExpanded < len(pm.projects[pm.selectedProj].Goals) {
+				pm.projects[pm.selectedProj].Goals[pm.goalExpanded].Milestones = append(
+					pm.projects[pm.selectedProj].Goals[pm.goalExpanded].Milestones,
+					ProjectMilestone{Text: val},
+				)
+				pm.saveProjects()
+			}
+		}
+		pm.dashInput = false
+		pm.dashInputBuf = ""
+		pm.dashInputKind = ""
+	case "backspace":
+		if len(pm.dashInputBuf) > 0 {
+			pm.dashInputBuf = pm.dashInputBuf[:len(pm.dashInputBuf)-1]
+		}
+	default:
+		if len(key) == 1 {
+			pm.dashInputBuf += key
+		} else if key == "space" {
+			pm.dashInputBuf += " "
+		}
+	}
+	return pm, nil
+}
+
+func (pm ProjectMode) updateGoalMode(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
+	key := msg.String()
+	proj := &pm.projects[pm.selectedProj]
+
+	switch key {
+	case "esc":
+		if pm.goalExpanded >= 0 {
+			pm.goalExpanded = -1
+			pm.milestoneCur = 0
+		} else {
+			pm.goalMode = false
+		}
+	case "up", "k":
+		if pm.goalExpanded >= 0 {
+			if pm.milestoneCur > 0 {
+				pm.milestoneCur--
+			}
+		} else {
+			if pm.goalCursor > 0 {
+				pm.goalCursor--
+			}
+		}
+	case "down", "j":
+		if pm.goalExpanded >= 0 {
+			if pm.goalExpanded < len(proj.Goals) {
+				g := proj.Goals[pm.goalExpanded]
+				if pm.milestoneCur < len(g.Milestones)-1 {
+					pm.milestoneCur++
+				}
+			}
+		} else {
+			if pm.goalCursor < len(proj.Goals)-1 {
+				pm.goalCursor++
+			}
+		}
+	case " ", "enter":
+		if pm.goalExpanded >= 0 {
+			// Toggle milestone.
+			if pm.goalExpanded < len(proj.Goals) {
+				g := &proj.Goals[pm.goalExpanded]
+				if pm.milestoneCur >= 0 && pm.milestoneCur < len(g.Milestones) {
+					g.Milestones[pm.milestoneCur].Done = !g.Milestones[pm.milestoneCur].Done
+					pm.saveProjects()
+				}
+			}
+		} else {
+			// Toggle goal done or expand.
+			if pm.goalCursor >= 0 && pm.goalCursor < len(proj.Goals) {
+				g := &proj.Goals[pm.goalCursor]
+				if len(g.Milestones) > 0 {
+					// Expand to show milestones.
+					pm.goalExpanded = pm.goalCursor
+					pm.milestoneCur = 0
+				} else {
+					// Toggle done.
+					g.Done = !g.Done
+					pm.saveProjects()
+				}
+			}
+		}
+	case "a":
+		// Add new goal.
+		pm.dashInput = true
+		pm.dashInputKind = "goal"
+		pm.dashInputBuf = ""
+	case "m":
+		// Add milestone to selected goal.
+		if pm.goalExpanded >= 0 {
+			pm.dashInput = true
+			pm.dashInputKind = "milestone"
+			pm.dashInputBuf = ""
+		} else if pm.goalCursor >= 0 && pm.goalCursor < len(proj.Goals) {
+			pm.goalExpanded = pm.goalCursor
+			pm.milestoneCur = 0
+			pm.dashInput = true
+			pm.dashInputKind = "milestone"
+			pm.dashInputBuf = ""
+		}
+	case "d":
+		// Delete goal or milestone.
+		if pm.goalExpanded >= 0 && pm.goalExpanded < len(proj.Goals) {
+			g := &proj.Goals[pm.goalExpanded]
+			if len(g.Milestones) > 0 && pm.milestoneCur >= 0 && pm.milestoneCur < len(g.Milestones) {
+				g.Milestones = append(g.Milestones[:pm.milestoneCur], g.Milestones[pm.milestoneCur+1:]...)
+				if pm.milestoneCur >= len(g.Milestones) && pm.milestoneCur > 0 {
+					pm.milestoneCur--
+				}
+				pm.saveProjects()
+			}
+		} else if pm.goalCursor >= 0 && pm.goalCursor < len(proj.Goals) {
+			proj.Goals = append(proj.Goals[:pm.goalCursor], proj.Goals[pm.goalCursor+1:]...)
+			if pm.goalCursor >= len(proj.Goals) && pm.goalCursor > 0 {
+				pm.goalCursor--
+			}
+			pm.saveProjects()
+		}
+	}
+	return pm, nil
+}
+
+// editFieldCount is the total number of edit form fields.
+const editFieldCount = 10
 
 func (pm ProjectMode) updateEdit(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 	key := msg.String()
@@ -581,11 +942,11 @@ func (pm ProjectMode) updateEdit(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 	case "esc":
 		pm.phase = pmPhaseList
 	case "tab":
-		pm.editField = (pm.editField + 1) % 7
+		pm.editField = (pm.editField + 1) % editFieldCount
 	case "shift+tab":
 		pm.editField--
 		if pm.editField < 0 {
-			pm.editField = 6
+			pm.editField = editFieldCount - 1
 		}
 	case "enter":
 		pm.commitEdit()
@@ -607,6 +968,11 @@ func (pm ProjectMode) updateEdit(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 			if pm.editStatus < 0 {
 				pm.editStatus = len(projectStatuses) - 1
 			}
+		case 7: // priority
+			pm.editPriority--
+			if pm.editPriority < 0 {
+				pm.editPriority = len(projectPriorityLabels) - 1
+			}
 		}
 	case "right":
 		switch pm.editField {
@@ -616,6 +982,8 @@ func (pm ProjectMode) updateEdit(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 			pm.editColor = (pm.editColor + 1) % len(projectColorNames)
 		case 6: // status
 			pm.editStatus = (pm.editStatus + 1) % len(projectStatuses)
+		case 7: // priority
+			pm.editPriority = (pm.editPriority + 1) % len(projectPriorityLabels)
 		}
 	case "backspace":
 		pm.editBackspace()
@@ -645,6 +1013,14 @@ func (pm *ProjectMode) editBackspace() {
 		if len(pm.editTags) > 0 {
 			pm.editTags = pm.editTags[:len(pm.editTags)-1]
 		}
+	case 8: // due date
+		if len(pm.editDueDate) > 0 {
+			pm.editDueDate = pm.editDueDate[:len(pm.editDueDate)-1]
+		}
+	case 9: // next action
+		if len(pm.editNextAction) > 0 {
+			pm.editNextAction = pm.editNextAction[:len(pm.editNextAction)-1]
+		}
 	}
 }
 
@@ -658,6 +1034,10 @@ func (pm *ProjectMode) editInsertChar(ch string) {
 		pm.editFolder += ch
 	case 4:
 		pm.editTags += ch
+	case 8: // due date
+		pm.editDueDate += ch
+	case 9: // next action
+		pm.editNextAction += ch
 	}
 }
 
@@ -672,6 +1052,9 @@ func (pm *ProjectMode) openAddForm() {
 	pm.editTags = ""
 	pm.editColor = 0
 	pm.editStatus = 0
+	pm.editPriority = 0
+	pm.editDueDate = ""
+	pm.editNextAction = ""
 }
 
 func (pm *ProjectMode) openEditForm(projIdx int) {
@@ -705,12 +1088,23 @@ func (pm *ProjectMode) openEditForm(projIdx int) {
 			break
 		}
 	}
+	pm.editPriority = proj.Priority
+	if pm.editPriority < 0 || pm.editPriority >= len(projectPriorityLabels) {
+		pm.editPriority = 0
+	}
+	pm.editDueDate = proj.DueDate
+	pm.editNextAction = proj.NextAction
 }
 
 func (pm *ProjectMode) openDashboard() {
 	pm.phase = pmPhaseDashboard
 	pm.dashSection = 0
 	pm.dashScroll = 0
+	pm.goalMode = false
+	pm.goalCursor = 0
+	pm.goalExpanded = -1
+	pm.milestoneCur = 0
+	pm.dashInput = false
 	proj := pm.projects[pm.selectedProj]
 	pm.dashNotes = pm.scanProjectFolder(proj)
 	pm.dashTasks = pm.scanProjectTasks(proj)
@@ -731,6 +1125,10 @@ func (pm *ProjectMode) commitEdit() {
 	if pm.editStatus >= 0 && pm.editStatus < len(projectStatuses) {
 		st = projectStatuses[pm.editStatus]
 	}
+	pri := pm.editPriority
+	if pri < 0 || pri >= len(projectPriorityLabels) {
+		pri = 0
+	}
 
 	if pm.editIdx < 0 {
 		// New project.
@@ -743,6 +1141,9 @@ func (pm *ProjectMode) commitEdit() {
 			Color:       col,
 			CreatedAt:   time.Now().Format("2006-01-02"),
 			Category:    cat,
+			Priority:    pri,
+			DueDate:     pm.editDueDate,
+			NextAction:  pm.editNextAction,
 		}
 		pm.projects = append(pm.projects, proj)
 	} else {
@@ -754,6 +1155,9 @@ func (pm *ProjectMode) commitEdit() {
 		pm.projects[pm.editIdx].Status = st
 		pm.projects[pm.editIdx].Color = col
 		pm.projects[pm.editIdx].Category = cat
+		pm.projects[pm.editIdx].Priority = pri
+		pm.projects[pm.editIdx].DueDate = pm.editDueDate
+		pm.projects[pm.editIdx].NextAction = pm.editNextAction
 	}
 	pm.saveProjects()
 }
@@ -791,6 +1195,32 @@ func (pm ProjectMode) overlayWidth() int {
 		w = 100
 	}
 	return w
+}
+
+// pmProgressBar renders a small inline progress bar of given width.
+func pmProgressBar(progress float64, width int) string {
+	if progress < 0 {
+		progress = 0
+	}
+	if progress > 1 {
+		progress = 1
+	}
+	filled := int(progress * float64(width))
+	if filled > width {
+		filled = width
+	}
+	empty := width - filled
+	bar := lipgloss.NewStyle().Foreground(green).Render(strings.Repeat("█", filled))
+	bar += lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("░", empty))
+	return bar
+}
+
+// pmPadRight pads a string to the given visible width.
+func pmPadRight(s string, width int) string {
+	if len(s) >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-len(s))
 }
 
 // ---------------------------------------------------------------------------
@@ -852,30 +1282,46 @@ func (pm ProjectMode) viewList() string {
 			idx := filtered[vi]
 			proj := pm.projects[idx]
 
-			// Status icon
-			stIcon := lipgloss.NewStyle().Foreground(statusColor(proj.Status)).Render("● ")
+			// Priority dot
+			pDot := priorityDot(proj.Priority) + " "
 
-			// Name
+			// Name (with max width to leave room for other columns)
+			nameMaxW := width - 50
+			if nameMaxW < 12 {
+				nameMaxW = 12
+			}
+			displayName := proj.Name
+			if len(displayName) > nameMaxW {
+				displayName = displayName[:nameMaxW-3] + "..."
+			}
 			nameStyle := lipgloss.NewStyle().Foreground(projectAccentColor(proj.Color)).Bold(true)
-			name := nameStyle.Render(proj.Name)
+			name := nameStyle.Render(pmPadRight(displayName, nameMaxW))
 
-			// Category badge
-			catBadge := lipgloss.NewStyle().
-				Foreground(categoryColor(proj.Category)).
-				Render(" [" + proj.Category + "]")
+			// Status badge
+			stBadge := lipgloss.NewStyle().Foreground(statusColor(proj.Status)).Render(pmPadRight(proj.Status, 10))
 
-			// Note count
-			noteCount := lipgloss.NewStyle().Foreground(subtext0).
-				Render(fmt.Sprintf(" %d notes", len(proj.Notes)))
+			// Progress bar
+			tasks := pm.scanProjectTasks(proj)
+			prog := progressWithTasks(proj, tasks)
+			pctInt := int(prog * 100)
+			bar := pmProgressBar(prog, 10)
+			pctStr := lipgloss.NewStyle().Foreground(green).Render(fmt.Sprintf("%3d%%", pctInt))
 
-			// Task count (inline scan for display)
-			taskCount := ""
-			if proj.TaskFilter != "" || len(proj.Tags) > 0 {
-				taskCount = lipgloss.NewStyle().Foreground(subtext0).
-					Render(fmt.Sprintf(" %s tasks", IconCalendarChar))
+			// Next action (truncated)
+			nextAct := ""
+			if proj.NextAction != "" {
+				na := proj.NextAction
+				maxNA := width - 60 - nameMaxW
+				if maxNA < 5 {
+					maxNA = 5
+				}
+				if len(na) > maxNA {
+					na = na[:maxNA-3] + "..."
+				}
+				nextAct = DimStyle.Render(" -> ") + lipgloss.NewStyle().Foreground(subtext0).Render(na)
 			}
 
-			line := "  " + stIcon + name + catBadge + noteCount + taskCount
+			line := "  " + pDot + name + " " + stBadge + " " + bar + " " + pctStr + nextAct
 
 			if vi == pm.cursor {
 				b.WriteString(lipgloss.NewStyle().
@@ -884,16 +1330,6 @@ func (pm ProjectMode) viewList() string {
 					Render(line))
 			} else {
 				b.WriteString(line)
-			}
-
-			// Description on next line if present
-			if proj.Description != "" {
-				desc := proj.Description
-				maxDesc := width - 12
-				if len(desc) > maxDesc {
-					desc = desc[:maxDesc-3] + "..."
-				}
-				b.WriteString("\n    " + DimStyle.Render(desc))
 			}
 
 			if vi < end-1 {
@@ -954,8 +1390,29 @@ func (pm ProjectMode) viewDashboard() string {
 		b.WriteString("\n")
 	}
 
+	// Status line: priority, due date, time spent
+	var metaParts []string
+	metaParts = append(metaParts, "Status: "+lipgloss.NewStyle().Foreground(statusColor(proj.Status)).Bold(true).Render(proj.Status))
+	if proj.Priority > 0 {
+		metaParts = append(metaParts, "Priority: "+priorityDot(proj.Priority)+" "+priorityLabel(proj.Priority))
+	}
+	if proj.DueDate != "" {
+		metaParts = append(metaParts, "Due: "+lipgloss.NewStyle().Foreground(teal).Render(proj.DueDate))
+	}
+	if proj.TimeSpent > 0 {
+		metaParts = append(metaParts, "Time: "+lipgloss.NewStyle().Foreground(peach).Render(formatTimeSpent(proj.TimeSpent)))
+	}
+	b.WriteString(DimStyle.Render("  ") + strings.Join(metaParts, DimStyle.Render("  ")))
+	b.WriteString("\n")
+
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", width-6)))
 	b.WriteString("\n\n")
+
+	// Next Action section
+	b.WriteString(pm.viewDashNextAction(width, proj))
+
+	// Goals section
+	b.WriteString(pm.viewDashGoals(width, proj))
 
 	// Section tabs
 	sections := []string{"Notes", "Tasks", "Stats"}
@@ -980,12 +1437,153 @@ func (pm ProjectMode) viewDashboard() string {
 		b.WriteString(pm.viewDashStats(width))
 	}
 
+	// Input prompt (if active)
+	if pm.dashInput {
+		b.WriteString("\n")
+		var prompt string
+		switch pm.dashInputKind {
+		case "next_action":
+			prompt = "Next action: "
+		case "goal":
+			prompt = "New goal: "
+		case "milestone":
+			prompt = "New milestone: "
+		}
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(prompt) +
+			lipgloss.NewStyle().Foreground(text).Render(pm.dashInputBuf+"_"))
+		b.WriteString("\n")
+	}
+
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", width-6)))
 	b.WriteString("\n")
 	b.WriteString(pm.dashHelpBar())
 
 	return pm.wrapBorder(b.String(), width, accent)
+}
+
+func (pm ProjectMode) viewDashNextAction(_ int, proj Project) string {
+	var b strings.Builder
+
+	sectionTitle := lipgloss.NewStyle().Foreground(peach).Bold(true).Render("  NEXT ACTION")
+	b.WriteString(sectionTitle)
+	b.WriteString("\n")
+
+	if proj.NextAction != "" {
+		box := lipgloss.NewStyle().
+			Foreground(text).
+			PaddingLeft(1).
+			PaddingRight(1).
+			Background(surface0)
+		b.WriteString("  " + box.Render(proj.NextAction))
+	} else {
+		b.WriteString("  " + DimStyle.Render("(none set - press 'n' to set)"))
+	}
+	b.WriteString("\n\n")
+	return b.String()
+}
+
+func (pm ProjectMode) viewDashGoals(width int, proj Project) string {
+	var b strings.Builder
+
+	// Calculate progress
+	prog := proj.Progress()
+	if len(proj.Goals) == 0 && len(pm.dashTasks) > 0 {
+		prog = progressWithTasks(proj, pm.dashTasks)
+	}
+	pctInt := int(prog * 100)
+
+	sectionTitle := lipgloss.NewStyle().Foreground(blue).Bold(true).Render("  GOALS")
+	progStr := DimStyle.Render("Progress: ") +
+		lipgloss.NewStyle().Foreground(green).Bold(true).Render(fmt.Sprintf("%d%%", pctInt))
+
+	// Right-align progress
+	titleLen := 9 // "  GOALS" approximate visible length
+	progVisLen := 16
+	padding := width - 6 - titleLen - progVisLen
+	if padding < 2 {
+		padding = 2
+	}
+	b.WriteString(sectionTitle + strings.Repeat(" ", padding) + progStr)
+	b.WriteString("\n")
+
+	// Progress bar
+	barWidth := width - 10
+	if barWidth < 10 {
+		barWidth = 10
+	}
+	b.WriteString("  " + pmProgressBar(prog, barWidth))
+
+	// Goal count
+	doneGoals := 0
+	for _, g := range proj.Goals {
+		if g.Done {
+			doneGoals++
+		}
+	}
+	if len(proj.Goals) > 0 {
+		b.WriteString(" " + DimStyle.Render(fmt.Sprintf("%d/%d goals", doneGoals, len(proj.Goals))))
+	}
+	b.WriteString("\n")
+
+	if len(proj.Goals) == 0 {
+		b.WriteString("  " + DimStyle.Render("No goals yet - press 'g' to manage"))
+		b.WriteString("\n")
+	} else {
+		b.WriteString("\n")
+		for gi, g := range proj.Goals {
+			// Goal line
+			var icon string
+			if g.Done {
+				icon = lipgloss.NewStyle().Foreground(green).Render("  + ")
+			} else {
+				// Check if it's "in progress" (has some done milestones)
+				hasDone := false
+				for _, m := range g.Milestones {
+					if m.Done {
+						hasDone = true
+						break
+					}
+				}
+				if hasDone {
+					icon = lipgloss.NewStyle().Foreground(blue).Render("  > ")
+				} else {
+					icon = lipgloss.NewStyle().Foreground(overlay0).Render("  - ")
+				}
+			}
+
+			goalStyle := lipgloss.NewStyle().Foreground(text)
+			if pm.goalMode && !pm.dashInput && pm.goalExpanded < 0 && pm.goalCursor == gi {
+				goalStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
+			}
+			if g.Done {
+				goalStyle = goalStyle.Strikethrough(true).Foreground(overlay0)
+			}
+			b.WriteString(icon + goalStyle.Render(g.Title))
+			b.WriteString("\n")
+
+			// Milestones
+			for mi, m := range g.Milestones {
+				var mIcon string
+				if m.Done {
+					mIcon = lipgloss.NewStyle().Foreground(green).Render("    + ")
+				} else {
+					mIcon = lipgloss.NewStyle().Foreground(overlay0).Render("    - ")
+				}
+				msStyle := lipgloss.NewStyle().Foreground(subtext0)
+				if pm.goalMode && pm.goalExpanded == gi && pm.milestoneCur == mi {
+					msStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
+				}
+				if m.Done {
+					msStyle = msStyle.Strikethrough(true).Foreground(overlay0)
+				}
+				b.WriteString(mIcon + msStyle.Render(m.Text))
+				b.WriteString("\n")
+			}
+		}
+	}
+	b.WriteString("\n")
+	return b.String()
 }
 
 func (pm ProjectMode) viewDashNotes(width int) string {
@@ -1043,10 +1641,16 @@ func (pm ProjectMode) viewDashNotes(width int) string {
 func (pm ProjectMode) viewDashTasks(width int) string {
 	var b strings.Builder
 
+	doneTasks := 0
+	for _, t := range pm.dashTasks {
+		if t.Done {
+			doneTasks++
+		}
+	}
 	title := lipgloss.NewStyle().Foreground(yellow).Bold(true).
 		Render(IconCalendarChar + "  Tasks")
 	b.WriteString("  " + title)
-	b.WriteString(DimStyle.Render(fmt.Sprintf(" (%d)", len(pm.dashTasks))))
+	b.WriteString(DimStyle.Render(fmt.Sprintf(" (%d/%d done)", doneTasks, len(pm.dashTasks))))
 	b.WriteString("\n")
 
 	if len(pm.dashTasks) == 0 {
@@ -1136,6 +1740,32 @@ func (pm ProjectMode) viewDashStats(width int) string {
 	empty := lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("░", barWidth-filled))
 	b.WriteString("  " + bar + empty + "\n\n")
 
+	// Priority
+	if proj.Priority > 0 {
+		b.WriteString(pm.statLine("Priority", projectPriorityLabels[proj.Priority], peach, width))
+	}
+
+	// Due date
+	if proj.DueDate != "" {
+		b.WriteString(pm.statLine("Due Date", proj.DueDate, teal, width))
+	}
+
+	// Time spent
+	if proj.TimeSpent > 0 {
+		b.WriteString(pm.statLine("Time Spent", formatTimeSpent(proj.TimeSpent), peach, width))
+	}
+
+	// Goals progress
+	if len(proj.Goals) > 0 {
+		doneGoals := 0
+		for _, g := range proj.Goals {
+			if g.Done {
+				doneGoals++
+			}
+		}
+		b.WriteString(pm.statLine("Goals", fmt.Sprintf("%d/%d", doneGoals, len(proj.Goals)), blue, width))
+	}
+
 	// Created date
 	b.WriteString(pm.statLine("Created", proj.CreatedAt, lavender, width))
 
@@ -1168,15 +1798,74 @@ func (pm ProjectMode) statLine(label, value string, c lipgloss.Color, _ int) str
 }
 
 func (pm ProjectMode) dashHelpBar() string {
+	if pm.dashInput {
+		keys := []struct {
+			key  string
+			desc string
+		}{
+			{"Enter", "confirm"},
+			{"Esc", "cancel"},
+		}
+		var parts []string
+		for _, k := range keys {
+			kk := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(k.key)
+			dd := DimStyle.Render(":" + k.desc)
+			parts = append(parts, kk+dd)
+		}
+		return "  " + strings.Join(parts, "  ")
+	}
+
+	if pm.goalMode {
+		if pm.goalExpanded >= 0 {
+			keys := []struct {
+				key  string
+				desc string
+			}{
+				{"Space", "toggle"},
+				{"m", "milestone"},
+				{"d", "delete"},
+				{"j/k", "move"},
+				{"Esc", "back"},
+			}
+			var parts []string
+			for _, k := range keys {
+				kk := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(k.key)
+				dd := DimStyle.Render(":" + k.desc)
+				parts = append(parts, kk+dd)
+			}
+			return "  " + strings.Join(parts, "  ")
+		}
+		keys := []struct {
+			key  string
+			desc string
+		}{
+			{"Enter", "expand"},
+			{"a", "add goal"},
+			{"m", "milestone"},
+			{"d", "delete"},
+			{"j/k", "move"},
+			{"Esc", "back"},
+		}
+		var parts []string
+		for _, k := range keys {
+			kk := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(k.key)
+			dd := DimStyle.Render(":" + k.desc)
+			parts = append(parts, kk+dd)
+		}
+		return "  " + strings.Join(parts, "  ")
+	}
+
 	keys := []struct {
 		key  string
 		desc string
 	}{
 		{"o", "open note"},
 		{"t", "tasks"},
-		{"n", "new note"},
+		{"N", "new note"},
+		{"g", "goals"},
+		{"n", "next action"},
+		{"p", "priority"},
 		{"Tab", "section"},
-		{"j/k", "scroll"},
 		{"Esc", "back"},
 	}
 
@@ -1216,6 +1905,9 @@ func (pm ProjectMode) viewEdit() string {
 		{"Tags", 4},
 		{"Color", 5},
 		{"Status", 6},
+		{"Priority", 7},
+		{"Due Date", 8},
+		{"Next Action", 9},
 	}
 
 	for _, f := range fields {
@@ -1227,6 +1919,7 @@ func (pm ProjectMode) viewEdit() string {
 		b.WriteString("  " + labelStyle.Render(f.label) + "\n")
 
 		var valueStr string
+		isSelector := false
 		switch f.fieldIdx {
 		case 0:
 			valueStr = pm.editName
@@ -1236,15 +1929,25 @@ func (pm ProjectMode) viewEdit() string {
 			valueStr = pm.editFolder
 		case 3:
 			valueStr = pm.renderSelector(projectCategories, pm.editCategory, active)
+			isSelector = true
 		case 4:
 			valueStr = pm.editTags
 		case 5:
 			valueStr = pm.renderColorSelector(active)
+			isSelector = true
 		case 6:
 			valueStr = pm.renderSelector(projectStatuses, pm.editStatus, active)
+			isSelector = true
+		case 7:
+			valueStr = pm.renderSelector(projectPriorityLabels, pm.editPriority, active)
+			isSelector = true
+		case 8:
+			valueStr = pm.editDueDate
+		case 9:
+			valueStr = pm.editNextAction
 		}
 
-		if f.fieldIdx == 3 || f.fieldIdx == 5 || f.fieldIdx == 6 {
+		if isSelector {
 			b.WriteString("    " + valueStr + "\n\n")
 		} else {
 			cursor := ""
