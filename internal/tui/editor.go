@@ -2100,7 +2100,8 @@ func (e Editor) View() string {
 		}
 
 		// Apply horizontal scroll for active line, truncate others
-		displayLine := line
+		displayRunes := []rune(line)
+		displayLine := ""
 		colOffset := 0
 		if isActiveLine && !e.wordWrap {
 			// Adjust hscroll to keep cursor visible
@@ -2110,15 +2111,16 @@ func (e Editor) View() string {
 				e.hscroll = e.col - maxWidth + 1
 			}
 			colOffset = e.hscroll
-			if colOffset > 0 && colOffset < len(displayLine) {
-				displayLine = displayLine[colOffset:]
-			} else if colOffset >= len(displayLine) {
-				displayLine = ""
+			if colOffset > 0 && colOffset < len(displayRunes) {
+				displayRunes = displayRunes[colOffset:]
+			} else if colOffset >= len(displayRunes) {
+				displayRunes = nil
 			}
 		}
-		if len(displayLine) > maxWidth {
-			displayLine = displayLine[:maxWidth]
+		if len(displayRunes) > maxWidth {
+			displayRunes = displayRunes[:maxWidth]
 		}
+		displayLine = string(displayRunes)
 
 		// Check if this line has selection
 		inSel, selSC, selEC := e.isLineInSelection(i)
