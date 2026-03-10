@@ -115,6 +115,8 @@ func (s *Settings) buildItems() {
 		{label: "Auto Save", key: "auto_save", kind: "bool", value: s.config.AutoSave, category: catFiles, description: "save on focus change"},
 		{label: "Auto Daily Note", key: "auto_daily_note", kind: "bool", value: s.config.AutoDailyNote, category: catFiles, description: "open daily note on startup"},
 		{label: "Daily Notes Folder", key: "daily_notes_folder", kind: "string", value: s.config.DailyNotesFolder, category: catFiles, description: "journal directory path"},
+		{label: "Weekly Notes Folder", key: "weekly_notes_folder", kind: "string", value: s.config.WeeklyNotesFolder, category: catFiles, description: "weekly review directory path"},
+		{label: "Weekly Note Template", key: "weekly_note_template", kind: "string", value: s.config.WeeklyNoteTemplate, category: catFiles, description: "weekly note template file"},
 		{label: "Sort Files By", key: "sort_by", kind: "string", value: s.config.SortBy, options: []string{"name", "modified", "created"}, category: catFiles, description: "file list ordering"},
 		{label: "Search Content by Default", key: "search_content", kind: "bool", value: s.config.SearchContentByDefault, category: catFiles, description: "full text search"},
 		{label: "Confirm Delete", key: "confirm_delete", kind: "bool", value: s.config.ConfirmDelete, category: catFiles, description: "ask before removing"},
@@ -310,6 +312,10 @@ func (s *Settings) defaultValueForKey(key string) interface{} {
 		return def.AutoDailyNote
 	case "daily_notes_folder":
 		return def.DailyNotesFolder
+	case "weekly_notes_folder":
+		return def.WeeklyNotesFolder
+	case "weekly_note_template":
+		return def.WeeklyNoteTemplate
 	case "search_content":
 		return def.SearchContentByDefault
 	case "ai_provider":
@@ -587,6 +593,10 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.AutoDailyNote = value.(bool)
 	case "daily_notes_folder":
 		s.config.DailyNotesFolder = value.(string)
+	case "weekly_notes_folder":
+		s.config.WeeklyNotesFolder = value.(string)
+	case "weekly_note_template":
+		s.config.WeeklyNoteTemplate = value.(string)
 	case "theme":
 		s.config.Theme = value.(string)
 		ApplyTheme(s.config.Theme)
