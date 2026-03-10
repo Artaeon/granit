@@ -21,7 +21,6 @@ type KnowledgeGraph struct {
 	clusters     []NoteCluster
 	hubs         []HubNote
 	orphans      []string
-	bridges      []BridgeNote
 	suggestions  []ConnectionSuggestion
 	analysisMode int // 0=overview, 1=clusters, 2=hubs, 3=orphans, 4=suggestions
 

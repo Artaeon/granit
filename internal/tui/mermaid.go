@@ -876,16 +876,6 @@ func buildParticipantRow(participants []seqParticipant, spacing int, borderStyle
 		"    " + strings.Join(botParts, "")
 }
 
-func buildLifeline(participants []seqParticipant, spacing int, lifelineStyle lipgloss.Style) string {
-	var parts []string
-	for range participants {
-		center := spacing / 2
-		left := center
-		right := spacing - center - 1
-		parts = append(parts, strings.Repeat(" ", left)+lifelineStyle.Render("│")+strings.Repeat(" ", right))
-	}
-	return "    " + strings.Join(parts, "")
-}
 
 func buildLifelineWithActivation(participants []seqParticipant, spacing int, lifelineStyle, activStyle lipgloss.Style, active map[string]bool) string {
 	var parts []string
@@ -1681,8 +1671,6 @@ type ganttTask struct {
 	name     string
 	section  string
 	status   string // "done", "active", "crit", ""
-	start    string
-	duration string
 	barStart float64 // normalized 0..1
 	barEnd   float64 // normalized 0..1
 }

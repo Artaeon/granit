@@ -51,7 +51,7 @@ type SpellChecker struct {
 	inlineEnabled bool              // config-driven toggle
 	inlineWords   []MisspelledWord  // last inline check results
 	inlinePos     map[int]map[int]bool // line -> col -> true for rendering
-	lastCheckTime time.Time         // debounce: last edit timestamp that triggered a check
+
 }
 
 // NewSpellChecker probes for aspell, hunspell, or a built-in dictionary and

@@ -92,7 +92,7 @@ func runServe(args []string) {
 	go func() {
 		<-sigCh
 		fmt.Println("\nShutting down server...")
-		server.Close()
+		_ = server.Close()
 	}()
 
 	fmt.Printf("Serving vault at http://%s — press Ctrl+C to stop\n", addr)
@@ -122,24 +122,6 @@ func buildTitleMap(v *vault.Vault) map[string]string {
 	return m
 }
 
-// notePathFromURL converts a URL path like "/folder/My Note" to a vault
-// relative path like "folder/My Note.md".
-// Returns empty string if the path attempts to escape the vault root.
-func notePathFromURL(urlPath string) string {
-	// Strip leading slash
-	p := strings.TrimPrefix(urlPath, "/")
-	// The URL path might already end in .md or not
-	if !strings.HasSuffix(strings.ToLower(p), ".md") {
-		p += ".md"
-	}
-	// Sanitize: resolve any ".." or "." components and ensure the result
-	// stays within the vault (i.e. does not escape via path traversal).
-	cleaned := filepath.Clean(p)
-	if filepath.IsAbs(cleaned) || strings.HasPrefix(cleaned, "..") {
-		return ""
-	}
-	return cleaned
-}
 
 func serveNote(w http.ResponseWriter, r *http.Request, v *vault.Vault, idx *vault.Index, titleMap map[string]string) {
 	urlPath := strings.TrimPrefix(r.URL.Path, "/")
@@ -356,10 +338,6 @@ func serveIndexPage(v *vault.Vault) string {
 `)
 
 	// Group by folder
-	type folderGroup struct {
-		folder string
-		notes  []*vault.Note
-	}
 	groups := make(map[string][]*vault.Note)
 	var folderOrder []string
 

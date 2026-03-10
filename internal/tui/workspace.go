@@ -484,17 +484,6 @@ func (w *Workspace) viewSaveMode(innerW int) string {
 	return b.String()
 }
 
-// viewRenameInput renders the rename-mode input for an inline row.
-func (w *Workspace) viewRenameInput() string {
-	promptStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	inputStyle := lipgloss.NewStyle().Foreground(text)
-	cursorChar := lipgloss.NewStyle().
-		Background(text).
-		Foreground(mantle).
-		Render(" ")
-
-	return promptStyle.Render("Name: ") + inputStyle.Render(w.renameBuf) + cursorChar
-}
 
 // wrapBorder wraps content in the standard overlay border.
 func (w *Workspace) wrapBorder(width int, content string) string {

@@ -901,7 +901,6 @@ func ApplyTheme(name string) {
 
 	// Derived colour variables that some files reference directly.
 	// Map them sensibly from the theme roles.
-	rosewater = t.Accent    // warm accent fallback
 	flamingo = t.Error      // close to red family
 	pink = t.Primary        // close to primary/mauve
 	maroon = t.Error        // red family

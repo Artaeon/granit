@@ -911,7 +911,7 @@ func (kg KnowledgeGaps) severityIcon(severity int) string {
 
 var kgTagRegex = regexp.MustCompile(`(?:^|\s)#([a-zA-Z][a-zA-Z0-9_-]*)`)
 var kgFrontmatterTagRegex = regexp.MustCompile(`(?m)^tags:\s*\[([^\]]*)\]`)
-var kgFrontmatterTagListRegex = regexp.MustCompile(`(?m)^tags:\s*$`)
+
 var kgHeadingRegex = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`)
 var kgWikilinkRegex = regexp.MustCompile(`\[\[([^\]|]+)(?:\|[^\]]+)?\]\]`)
 

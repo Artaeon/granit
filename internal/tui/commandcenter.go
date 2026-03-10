@@ -63,9 +63,6 @@ type CommandCenter struct {
 	section int // 0=now, 1=schedule, 2=projects, 3=habits
 	scroll  int // scroll within current section
 
-	// Integration
-	vaultRoot string
-
 	// Consumed-once outputs
 	startPomodoro   bool
 	completedTask   *Task

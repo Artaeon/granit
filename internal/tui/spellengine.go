@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode"
 )
@@ -469,7 +468,3 @@ func editDistance(a, b string) int {
 	return prev[lb]
 }
 
-// smallNum converts an integer to a string — shared helper used by the overlay.
-func spellSmallNum(n int) string {
-	return strconv.Itoa(n)
-}

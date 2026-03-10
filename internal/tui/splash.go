@@ -22,7 +22,6 @@ var splashLogo = []string{
 var sparkleChars = []string{"·", "✦", "✧", "◆", "◇", "⟡", "∗", "⊹", "⋆"}
 
 type splashTickMsg struct{}
-type splashDoneMsg struct{}
 
 type SplashModel struct {
 	width     int

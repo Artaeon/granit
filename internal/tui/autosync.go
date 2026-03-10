@@ -44,13 +44,6 @@ func (a *AutoSync) isGitRepo() bool {
 	return err == nil && strings.TrimSpace(string(out)) == "true"
 }
 
-// runGitIn executes a git command in the vault directory.
-func (a *AutoSync) runGitIn(args ...string) (string, error) {
-	fullArgs := append([]string{"-C", a.vaultPath}, args...)
-	cmd := exec.Command("git", fullArgs...)
-	out, err := cmd.CombinedOutput()
-	return string(out), err
-}
 
 // PullOnOpen runs git pull in the background when the vault is opened.
 // Returns a tea.Cmd that performs the pull asynchronously.

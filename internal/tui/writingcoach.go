@@ -155,9 +155,6 @@ func (wc WritingCoach) overlayWidth() int {
 	return w
 }
 
-func (wc WritingCoach) overlayInnerWidth() int {
-	return wc.overlayWidth() - 6
-}
 
 func (wc WritingCoach) modeLabel() string {
 	switch wc.analysisMode {
@@ -1036,7 +1033,7 @@ func (wc WritingCoach) viewAnalyzing(width int) string {
 	frame := spinFrames[wc.spinner%len(spinFrames)]
 	spinner := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(frame)
 
-	providerLabel := wc.aiProvider
+	var providerLabel string
 	switch wc.aiProvider {
 	case "ollama":
 		providerLabel = "Ollama (" + wc.ollamaModel + ")"

@@ -295,11 +295,6 @@ func (b *Bots) GetResult() BotResult {
 // Ollama API calls
 // ---------------------------------------------------------------------------
 
-func callOllama(url, model, prompt string) tea.Cmd {
-	return func() tea.Msg {
-		return doOllamaRequest(url, model, prompt, botAutoTagger)
-	}
-}
 
 func callOllamaForBot(url, model, prompt string, kind botKind) tea.Cmd {
 	return func() tea.Msg {

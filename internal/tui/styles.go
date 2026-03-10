@@ -5,7 +5,6 @@ import "github.com/charmbracelet/lipgloss"
 // Color variables -- defaults are Catppuccin Mocha.
 // ApplyTheme() in themes.go overwrites every one of these.
 var (
-	rosewater = lipgloss.Color("#F5E0DC")
 	flamingo  = lipgloss.Color("#F2CDCD")
 	pink      = lipgloss.Color("#F5C2E7")
 	mauve     = lipgloss.Color("#CBA6F7")

@@ -361,7 +361,6 @@ func (e ExportOverlay) View() string {
 var (
 	reHeading    = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
 	reBold       = regexp.MustCompile(`\*\*(.+?)\*\*`)
-	reItalic     = regexp.MustCompile(`(?:^|[^*])\*([^*]+?)\*(?:[^*]|$)`)
 	reInlineCode = regexp.MustCompile("`([^`]+)`")
 	reWikiLink   = regexp.MustCompile(`\[\[([^\]]+)\]\]`)
 	reMdLink     = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)

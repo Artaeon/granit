@@ -332,7 +332,7 @@ func (as AIScheduler) buildSchedulerPrompt() string {
 		}
 	}
 
-	b.WriteString(fmt.Sprintf("\nConstraints:\n"))
+	b.WriteString("\nConstraints:\n")
 	b.WriteString(fmt.Sprintf("- Work hours: %02d:00-%02d:00\n", as.prefs.WorkStart, as.prefs.WorkEnd))
 	b.WriteString(fmt.Sprintf("- Lunch: %02d:00-%02d:%02d\n", as.prefs.LunchStart,
 		as.prefs.LunchStart+as.prefs.LunchDuration/60, as.prefs.LunchDuration%60))
@@ -879,9 +879,6 @@ func (as AIScheduler) overlayWidth() int {
 	return w
 }
 
-func (as AIScheduler) overlayInnerWidth() int {
-	return as.overlayWidth() - 6
-}
 
 // ---------------------------------------------------------------------------
 // View: setup phase

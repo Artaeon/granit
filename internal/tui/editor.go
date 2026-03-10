@@ -649,15 +649,6 @@ func (e *Editor) wordUnderCursor() (string, int) {
 	return string(runes[start : end+1]), start
 }
 
-// isMultiCursorAt checks if any additional cursor is at the given position.
-func (e *Editor) isMultiCursorAt(line, col int) bool {
-	for _, c := range e.cursors {
-		if c.Line == line && c.Col == col {
-			return true
-		}
-	}
-	return false
-}
 
 func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 	if !e.focused {
@@ -1498,31 +1489,6 @@ func (e *Editor) updateBracketMatch() {
 	e.matchBracketLine, e.matchBracketCol, e.matchBracketValid = e.findMatchingBracket()
 }
 
-// isBracketHighlight returns true if the given position should be highlighted
-// as a matching bracket (either the bracket under cursor or its match).
-func (e *Editor) isBracketHighlight(lineIdx, col int) bool {
-	if !e.matchBracketValid {
-		return false
-	}
-	// The matching bracket position
-	if lineIdx == e.matchBracketLine && col == e.matchBracketCol {
-		return true
-	}
-	// The bracket under/before cursor itself
-	if e.cursor < len(e.content) {
-		cl := e.content[e.cursor]
-		if e.col < len(cl) && isBracketChar(cl[e.col]) {
-			if lineIdx == e.cursor && col == e.col {
-				return true
-			}
-		} else if e.col > 0 && e.col-1 < len(cl) && isBracketChar(cl[e.col-1]) {
-			if lineIdx == e.cursor && col == e.col-1 {
-				return true
-			}
-		}
-	}
-	return false
-}
 
 // hasAnyCursorOnLine checks if any additional cursor is on the given line.
 func (e *Editor) hasAnyCursorOnLine(lineIdx int) bool {
@@ -1856,11 +1822,6 @@ func (e Editor) View() string {
 		visibleHeight = 1
 	}
 
-	end := e.scroll + visibleHeight
-	if end > len(e.content) {
-		end = len(e.content)
-	}
-
 	// Detect frontmatter region
 	fmStart, fmEnd := -1, -1
 	if len(e.content) > 0 && strings.TrimSpace(e.content[0]) == "---" {
@@ -1923,7 +1884,7 @@ func (e Editor) View() string {
 	}
 
 	visibleCount := 0
-	lastRenderedLine := -1
+	var lastRenderedLine int
 	for i := e.scroll; i < len(e.content) && visibleCount < visibleHeight; i++ {
 		// Skip folded (hidden) lines
 		if e.isLineFolded(i) {

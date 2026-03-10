@@ -452,24 +452,6 @@ func sidebarItoa(n int) string {
 	return s
 }
 
-func formatCount(filtered, total int) string {
-	if filtered == total {
-		return DimStyle.Render(strings.Repeat(" ", 0) + string(rune('0'+filtered%10)))
-	}
-	// Show "N/M files"
-	return ""
-}
-
-func scrollIndicator(pct float64) string {
-	if pct <= 0 {
-		return "  TOP"
-	}
-	if pct >= 1 {
-		return "  BOT"
-	}
-	p := int(pct * 100)
-	return "  " + string(rune('0'+p/10)) + string(rune('0'+p%10)) + "%"
-}
 
 func maxInt(a, b int) int {
 	if a > b {

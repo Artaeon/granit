@@ -359,28 +359,6 @@ func (tb *TabBar) ScrollRight() {
 	}
 }
 
-// clampScroll ensures scrollOffset is within valid range and active tab is visible.
-func (tb *TabBar) clampScroll(visibleCount int) {
-	if tb.scrollOffset < 0 {
-		tb.scrollOffset = 0
-	}
-	maxOffset := len(tb.tabs) - visibleCount
-	if maxOffset < 0 {
-		maxOffset = 0
-	}
-	if tb.scrollOffset > maxOffset {
-		tb.scrollOffset = maxOffset
-	}
-	// Ensure active tab is visible
-	if tb.activeIdx >= 0 {
-		if tb.activeIdx < tb.scrollOffset {
-			tb.scrollOffset = tb.activeIdx
-		}
-		if tb.activeIdx >= tb.scrollOffset+visibleCount {
-			tb.scrollOffset = tb.activeIdx - visibleCount + 1
-		}
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Persistence

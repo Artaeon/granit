@@ -314,19 +314,6 @@ func tmIsOverdue(dateStr string) bool {
 	return t.Before(today)
 }
 
-func tmIsThisWeek(dateStr string) bool {
-	if dateStr == "" {
-		return false
-	}
-	t, err := time.Parse("2006-01-02", dateStr)
-	if err != nil {
-		return false
-	}
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-	weekEnd := today.AddDate(0, 0, 7)
-	return !t.Before(today) && t.Before(weekEnd)
-}
 
 func tmDaysUntil(dateStr string) int {
 	if dateStr == "" {
