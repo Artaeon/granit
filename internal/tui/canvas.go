@@ -769,11 +769,11 @@ func (c Canvas) renderGrid(gw, gh int) []string {
 			if maxLen < 1 {
 				maxLen = 1
 			}
-			if len(compactTitle) > maxLen {
+			if r := []rune(compactTitle); len(r) > maxLen {
 				if maxLen > 3 {
-					compactTitle = compactTitle[:maxLen-3] + "..."
+					compactTitle = string(r[:maxLen-3]) + "..."
 				} else {
-					compactTitle = compactTitle[:maxLen]
+					compactTitle = string(r[:maxLen])
 				}
 			}
 			titleColor := text
@@ -793,16 +793,17 @@ func (c Canvas) renderGrid(gw, gh int) []string {
 		case canvasZoomExpanded:
 			// 5-line expanded card: border, title, note path, connection info, border
 			fitStr := func(s string, w int) string {
-				if len(s) > w {
+				r := []rune(s)
+				if len(r) > w {
 					if w > 3 {
-						return s[:w-3] + "..."
+						return string(r[:w-3]) + "..."
 					}
-					return s[:w]
+					return string(r[:w])
 				}
-				for len(s) < w {
-					s += " "
+				for len(r) < w {
+					r = append(r, ' ')
 				}
-				return s
+				return string(r)
 			}
 			titleColor := text
 			if isSelected {
@@ -855,14 +856,14 @@ func (c Canvas) renderGrid(gw, gh int) []string {
 		default:
 			// Normal 3-line card
 			dtNormal := titleWithConn
-			if len(dtNormal) > innerW {
+			if dtRunes := []rune(dtNormal); len(dtRunes) > innerW {
 				if innerW > 3 {
-					dtNormal = dtNormal[:innerW-3] + "..."
+					dtNormal = string(dtRunes[:innerW-3]) + "..."
 				} else {
-					dtNormal = dtNormal[:innerW]
+					dtNormal = string(dtRunes[:innerW])
 				}
 			}
-			for len(dtNormal) < innerW {
+			for len([]rune(dtNormal)) < innerW {
 				dtNormal += " "
 			}
 
