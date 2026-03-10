@@ -13,6 +13,9 @@ import (
 // dailyPattern matches YYYY-MM-DD date filenames (daily notes).
 var dailyPattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
+// weeklyPattern matches YYYY-Www filenames (weekly notes).
+var weeklyPattern = regexp.MustCompile(`^\d{4}-W\d{2}$`)
+
 // TreeNode represents a single entry (file or directory) in the file tree.
 type TreeNode struct {
 	Name     string
@@ -446,6 +449,12 @@ func isDailyNote(name string) bool {
 	return dailyPattern.MatchString(bare)
 }
 
+// isWeeklyNote returns true when the file name matches YYYY-Www.
+func isWeeklyNote(name string) bool {
+	bare := strings.TrimSuffix(name, filepath.Ext(name))
+	return weeklyPattern.MatchString(bare)
+}
+
 // renderNode produces a styled single line for a tree node.
 func (ft FileTree) renderNode(node *TreeNode, maxWidth int) string {
 	indent := strings.Repeat("  ", node.Depth)
@@ -476,6 +485,8 @@ func (ft FileTree) renderNode(node *TreeNode, maxWidth int) string {
 	icon := lipgloss.NewStyle().Foreground(blue).Render(IconFileChar)
 	if isDailyNote(node.Name) {
 		icon = lipgloss.NewStyle().Foreground(green).Render(IconDailyChar)
+	} else if isWeeklyNote(node.Name) {
+		icon = lipgloss.NewStyle().Foreground(sapphire).Render(IconCalendarChar)
 	}
 
 	return indent + icon + " " + NormalItemStyle.Render(displayName)
@@ -506,6 +517,8 @@ func (ft FileTree) renderNodePlain(node *TreeNode, maxWidth int) string {
 	iconChar := IconFileChar
 	if isDailyNote(node.Name) {
 		iconChar = IconDailyChar
+	} else if isWeeklyNote(node.Name) {
+		iconChar = IconCalendarChar
 	}
 
 	return indent + iconChar + " " + displayName
