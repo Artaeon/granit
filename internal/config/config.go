@@ -32,6 +32,7 @@ type Config struct {
 	Layout          string `json:"layout"`     // "default", "writer", "minimal", "reading", "dashboard"
 
 	// Behavior
+	AutoDailyNote   bool `json:"auto_daily_note"`
 	AutoSave        bool `json:"auto_save"`
 	ShowSplash      bool `json:"show_splash"`
 	VimMode         bool `json:"vim_mode"`
