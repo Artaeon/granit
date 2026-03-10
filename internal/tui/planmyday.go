@@ -1181,7 +1181,7 @@ func (p PlanMyDay) viewResult(width int) string {
 		lines = append(lines, adviceTitle)
 		lines = append(lines, DimStyle.Render("  "+strings.Repeat(ThemeSeparator, innerW-4)))
 		// Word-wrap the advice text
-		wrapped := wordWrap(p.advice, innerW-4)
+		wrapped := planWrap(p.advice, innerW-4)
 		for _, wl := range strings.Split(wrapped, "\n") {
 			lines = append(lines, "  "+lipgloss.NewStyle().Foreground(text).Italic(true).Render(wl))
 		}
@@ -1287,8 +1287,8 @@ func daySlotPriorityIcon(priority int) string {
 	}
 }
 
-// wordWrap breaks text into lines of at most maxWidth characters.
-func wordWrap(text string, maxWidth int) string {
+// planWrap breaks text into lines of at most maxWidth characters.
+func planWrap(text string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return text
 	}
