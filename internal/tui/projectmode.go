@@ -710,6 +710,11 @@ func (pm *ProjectMode) cycleStatus(idx int) {
 }
 
 func (pm ProjectMode) updateDashboard(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
+	if pm.selectedProj < 0 || pm.selectedProj >= len(pm.projects) {
+		pm.phase = pmPhaseList
+		return pm, nil
+	}
+
 	key := msg.String()
 
 	// Handle input mode first.
@@ -786,6 +791,11 @@ func (pm ProjectMode) updateDashboard(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 }
 
 func (pm ProjectMode) updateDashInput(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
+	if pm.selectedProj < 0 || pm.selectedProj >= len(pm.projects) {
+		pm.phase = pmPhaseList
+		return pm, nil
+	}
+
 	key := msg.String()
 
 	switch key {
@@ -833,6 +843,11 @@ func (pm ProjectMode) updateDashInput(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 }
 
 func (pm ProjectMode) updateGoalMode(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
+	if pm.selectedProj < 0 || pm.selectedProj >= len(pm.projects) {
+		pm.phase = pmPhaseList
+		return pm, nil
+	}
+
 	key := msg.String()
 	proj := &pm.projects[pm.selectedProj]
 
@@ -923,8 +938,10 @@ func (pm ProjectMode) updateGoalMode(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 			}
 		} else if pm.goalCursor >= 0 && pm.goalCursor < len(proj.Goals) {
 			proj.Goals = append(proj.Goals[:pm.goalCursor], proj.Goals[pm.goalCursor+1:]...)
-			if pm.goalCursor >= len(proj.Goals) && pm.goalCursor > 0 {
-				pm.goalCursor--
+			if len(proj.Goals) == 0 {
+				pm.goalCursor = 0
+			} else if pm.goalCursor >= len(proj.Goals) {
+				pm.goalCursor = len(proj.Goals) - 1
 			}
 			pm.saveProjects()
 		}
@@ -1315,8 +1332,8 @@ func (pm ProjectMode) viewList() string {
 				if maxNA < 5 {
 					maxNA = 5
 				}
-				if len(na) > maxNA {
-					na = na[:maxNA-3] + "..."
+				if r := []rune(na); len(r) > maxNA {
+					na = string(r[:maxNA-3]) + "..."
 				}
 				nextAct = DimStyle.Render(" -> ") + lipgloss.NewStyle().Foreground(subtext0).Render(na)
 			}
@@ -1372,6 +1389,10 @@ func (pm ProjectMode) listHelpBar() string {
 // --- Dashboard view ---
 
 func (pm ProjectMode) viewDashboard() string {
+	if pm.selectedProj < 0 || pm.selectedProj >= len(pm.projects) {
+		return ""
+	}
+
 	width := pm.overlayWidth()
 	proj := pm.projects[pm.selectedProj]
 
