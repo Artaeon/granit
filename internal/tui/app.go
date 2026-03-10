@@ -2754,15 +2754,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "alt+w":
-			// Close active tab
-			if m.tabBar != nil && len(m.tabBar.Tabs()) > 1 {
-				newActive := m.tabBar.CloseActive()
-				if newActive != "" && newActive != m.activeNote {
-					m.loadNote(newActive)
-					m.setSidebarCursorToFile(newActive)
-				}
-			}
-			return m, nil
+			// Weekly note
+			return m, m.executeCommand(CmdWeeklyNote)
 
 		case "esc":
 			// If selection is active, clear it first
@@ -3149,6 +3142,34 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.navigateDailyNote(-1)
 	case CmdNextDailyNote:
 		m.navigateDailyNote(1)
+	case CmdWeeklyNote:
+		year, week := time.Now().ISOWeek()
+		wName := fmt.Sprintf("%d-W%02d.md", year, week)
+		wFolder := m.config.WeeklyNotesFolder
+		if wFolder != "" {
+			wName = filepath.Join(wFolder, wName)
+		}
+		wPath := filepath.Join(m.vault.Root, wName)
+		if _, err := os.Stat(wPath); os.IsNotExist(err) {
+			if err := os.MkdirAll(filepath.Dir(wPath), 0755); err != nil {
+				m.statusbar.SetMessage("Failed to create weekly note folder: " + err.Error())
+				return m, m.clearMessageAfter(5 * time.Second)
+			}
+			content := m.weeklyNoteContent(year, week)
+			if err := os.WriteFile(wPath, []byte(content), 0644); err != nil {
+				m.statusbar.SetMessage("Failed to create weekly note: " + err.Error())
+				return m, m.clearMessageAfter(5 * time.Second)
+			}
+			m.vault.Scan()
+			m.index = vault.NewIndex(m.vault)
+			m.index.Build()
+			m.sidebar.SetFiles(m.vault.SortedPaths())
+			m.statusbar.SetNoteCount(m.vault.NoteCount())
+			m.statusbar.SetMessage("Created weekly note: " + wName)
+		}
+		m.loadNote(wName)
+		m.setSidebarCursorToFile(wName)
+		m.setFocus(focusEditor)
 	case CmdToggleView:
 		m.viewMode = !m.viewMode
 		if m.viewMode {
@@ -7804,6 +7825,79 @@ func (m *Model) yesterdayIncompleteTasks() []string {
 		}
 	}
 	return tasks
+}
+
+// weeklyNoteContent returns the initial content for a new weekly note.
+// If WeeklyNoteTemplate is configured and the template file exists in the vault,
+// the template is loaded and variables are replaced:
+//   - {{week}}        → e.g. "2026-W11"
+//   - {{year}}        → e.g. "2026"
+//   - {{week_number}} → e.g. "11"
+//   - {{week_start}}  → Monday date (YYYY-MM-DD)
+//   - {{week_end}}    → Sunday date (YYYY-MM-DD)
+//   - {{daily_links}} → wikilinks for each day of the week
+//
+// If the template is not configured or cannot be read, a default template is used.
+func (m *Model) weeklyNoteContent(year, week int) string {
+	weekStr := fmt.Sprintf("%d-W%02d", year, week)
+	monday := isoWeekStart(year, week)
+	sunday := monday.AddDate(0, 0, 6)
+
+	// Build daily links
+	var dailyLinks []string
+	for d := 0; d < 7; d++ {
+		day := monday.AddDate(0, 0, d)
+		dailyLinks = append(dailyLinks, fmt.Sprintf("- [[%s]] %s", day.Format("2006-01-02"), day.Weekday().String()))
+	}
+
+	// Check for custom template
+	if m.config.WeeklyNoteTemplate != "" {
+		absPath := filepath.Join(m.vault.Root, m.config.WeeklyNoteTemplate)
+		if data, err := os.ReadFile(absPath); err == nil {
+			content := string(data)
+			content = strings.ReplaceAll(content, "{{week}}", weekStr)
+			content = strings.ReplaceAll(content, "{{year}}", fmt.Sprintf("%d", year))
+			content = strings.ReplaceAll(content, "{{week_number}}", fmt.Sprintf("%d", week))
+			content = strings.ReplaceAll(content, "{{week_start}}", monday.Format("2006-01-02"))
+			content = strings.ReplaceAll(content, "{{week_end}}", sunday.Format("2006-01-02"))
+			content = strings.ReplaceAll(content, "{{daily_links}}", strings.Join(dailyLinks, "\n"))
+			return content
+		}
+	}
+
+	// Default template
+	var sb strings.Builder
+	sb.WriteString("---\n")
+	sb.WriteString(fmt.Sprintf("week: %s\n", weekStr))
+	sb.WriteString("type: weekly\n")
+	sb.WriteString("tags: [weekly]\n")
+	sb.WriteString("---\n\n")
+	sb.WriteString(fmt.Sprintf("# Week %d — %s to %s\n\n", week, monday.Format("Jan 2"), sunday.Format("Jan 2")))
+
+	// Daily links
+	sb.WriteString("## Daily Notes\n")
+	for _, link := range dailyLinks {
+		sb.WriteString(link + "\n")
+	}
+	sb.WriteString("\n")
+
+	sb.WriteString("## Week Goals\n- [ ] \n\n")
+	sb.WriteString("## Review\n\n### What went well?\n\n\n### What could improve?\n\n\n### Key takeaways\n\n")
+
+	return sb.String()
+}
+
+// isoWeekStart returns the Monday of the given ISO week.
+func isoWeekStart(year, week int) time.Time {
+	// January 4 is always in week 1
+	jan4 := time.Date(year, 1, 4, 0, 0, 0, 0, time.Local)
+	_, w := jan4.ISOWeek()
+	// Calculate Monday of week 1, then add weeks
+	monday := jan4.AddDate(0, 0, -int(jan4.Weekday()-time.Monday))
+	if jan4.Weekday() == time.Sunday {
+		monday = jan4.AddDate(0, 0, -6)
+	}
+	return monday.AddDate(0, 0, (week-w)*7)
 }
 
 // replaceFrontmatter replaces existing YAML frontmatter in content with newFM,
