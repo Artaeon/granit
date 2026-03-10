@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1428,7 +1429,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.statusbar.SetMessage("Error creating directory: " + err.Error())
 						return m, nil
 					}
-					fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n", evDate, evDate)
+					fallback := m.buildDailyFallback(evDate)
 					content := m.dailyNoteContent(evDate, fallback)
 					if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 						m.statusbar.SetMessage("Error creating daily note: " + err.Error())
@@ -1493,7 +1494,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.statusbar.SetMessage("Error creating directory: " + err.Error())
 						return m, nil
 					}
-					fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n", date, date)
+					fallback := m.buildDailyFallback(date)
 					content := m.dailyNoteContent(date, fallback)
 					if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 						m.statusbar.SetMessage("Error creating daily note: " + err.Error())
@@ -3126,7 +3127,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 				m.statusbar.SetMessage("Failed to create daily note folder: " + err.Error())
 				return m, m.clearMessageAfter(5 * time.Second)
 			}
-			fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n## Tasks\n- [ ] \n\n## Notes\n\n", today, today)
+			fallback := m.buildDailyFallback(today)
 			content := m.dailyNoteContent(today, fallback)
 			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 				m.statusbar.SetMessage("Failed to create daily note: " + err.Error())
@@ -7570,7 +7571,7 @@ func (m *Model) writeBriefingToDailyNote(briefingContent string) {
 	existing, err := os.ReadFile(dailyPath)
 	var writeErr error
 	if err != nil {
-		fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\n---\n\n# %s\n\n%s\n", today, today, briefingContent)
+		fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s — {{weekday}}\n\n%s\n", today, today, briefingContent)
 		content := m.dailyNoteContent(today, fallback)
 		writeErr = os.WriteFile(dailyPath, []byte(content), 0644)
 	} else {
@@ -7595,33 +7596,149 @@ func (m *Model) writeBriefingToDailyNote(briefingContent string) {
 	m.statusbar.SetMessage("Daily briefing written to " + dailyName)
 }
 
+// buildDailyFallback constructs the rich default daily note template.
+// It uses {{weekday}} and other template variables that get expanded by dailyNoteContent.
+func (m *Model) buildDailyFallback(date string) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n", date))
+	b.WriteString(fmt.Sprintf("# %s — {{weekday}}\n\n", date))
+	b.WriteString("## Morning\n- [ ] \n\n")
+	b.WriteString("## Tasks\n")
+	if len(m.config.DailyRecurringTasks) > 0 {
+		b.WriteString("{{recurring_tasks}}\n")
+	}
+	b.WriteString("- [ ] \n\n")
+	b.WriteString("## Notes\n\n\n")
+	b.WriteString("## Reflection\n\n")
+	carriedTasks := m.yesterdayIncompleteTasks()
+	if len(carriedTasks) > 0 {
+		b.WriteString("## Carried Forward\n")
+		b.WriteString("{{carry_forward}}\n\n")
+	}
+	return b.String()
+}
+
 // dailyNoteContent returns the initial content for a new daily note.
 // If DailyNoteTemplate is configured and the template file exists in the vault,
 // the template is loaded and variables are replaced:
-//   - {{date}}    → the note's date (YYYY-MM-DD)
-//   - {{title}}   → the note filename without extension
-//   - {{weekday}} → the full weekday name (e.g. "Monday")
+//   - {{date}}           → the note's date (YYYY-MM-DD)
+//   - {{title}}          → the note filename without extension
+//   - {{weekday}}        → the full weekday name (e.g. "Monday")
+//   - {{time}}           → current time in HH:MM format (e.g. "09:30")
+//   - {{yesterday}}      → yesterday's date in YYYY-MM-DD format
+//   - {{tomorrow}}       → tomorrow's date in YYYY-MM-DD format
+//   - {{week_number}}    → ISO week number (e.g. "11")
+//   - {{month_name}}     → full month name (e.g. "March")
+//   - {{year}}           → 4-digit year (e.g. "2026")
+//   - {{streak}}         → consecutive daily note streak count
+//   - {{carry_forward}}  → incomplete tasks from yesterday's daily note
+//   - {{recurring_tasks}} → configured recurring daily tasks as checkboxes
 //
 // If the template is not configured or the file cannot be read, fallback is used.
 func (m *Model) dailyNoteContent(date, fallback string) string {
-	tmplPath := m.config.DailyNoteTemplate
-	if tmplPath == "" {
-		return fallback
-	}
-	absPath := filepath.Join(m.vault.Root, tmplPath)
-	data, err := os.ReadFile(absPath)
-	if err != nil {
-		return fallback
-	}
 	t, err := time.Parse("2006-01-02", date)
 	if err != nil {
 		t = time.Now()
 	}
-	content := string(data)
-	content = strings.ReplaceAll(content, "{{date}}", date)
-	content = strings.ReplaceAll(content, "{{title}}", date)
-	content = strings.ReplaceAll(content, "{{weekday}}", t.Weekday().String())
-	return content
+
+	// Build template variable replacements
+	yesterday := t.AddDate(0, 0, -1).Format("2006-01-02")
+	tomorrow := t.AddDate(0, 0, 1).Format("2006-01-02")
+	_, week := t.ISOWeek()
+	weekNumber := strconv.Itoa(week)
+	monthName := t.Month().String()
+	year := strconv.Itoa(t.Year())
+	currentTime := time.Now().Format("15:04")
+	streak := strconv.Itoa(m.dailyNoteStreak())
+
+	// Build carry-forward tasks
+	carryForward := ""
+	carriedTasks := m.yesterdayIncompleteTasks()
+	if len(carriedTasks) > 0 {
+		carryForward = strings.Join(carriedTasks, "\n")
+	}
+
+	// Build recurring tasks
+	recurringTasks := ""
+	if len(m.config.DailyRecurringTasks) > 0 {
+		var lines []string
+		for _, task := range m.config.DailyRecurringTasks {
+			lines = append(lines, "- [ ] "+task)
+		}
+		recurringTasks = strings.Join(lines, "\n")
+	}
+
+	replaceVars := func(content string) string {
+		content = strings.ReplaceAll(content, "{{date}}", date)
+		content = strings.ReplaceAll(content, "{{title}}", date)
+		content = strings.ReplaceAll(content, "{{weekday}}", t.Weekday().String())
+		content = strings.ReplaceAll(content, "{{time}}", currentTime)
+		content = strings.ReplaceAll(content, "{{yesterday}}", yesterday)
+		content = strings.ReplaceAll(content, "{{tomorrow}}", tomorrow)
+		content = strings.ReplaceAll(content, "{{week_number}}", weekNumber)
+		content = strings.ReplaceAll(content, "{{month_name}}", monthName)
+		content = strings.ReplaceAll(content, "{{year}}", year)
+		content = strings.ReplaceAll(content, "{{streak}}", streak)
+		content = strings.ReplaceAll(content, "{{carry_forward}}", carryForward)
+		content = strings.ReplaceAll(content, "{{recurring_tasks}}", recurringTasks)
+		return content
+	}
+
+	tmplPath := m.config.DailyNoteTemplate
+	if tmplPath == "" {
+		return replaceVars(fallback)
+	}
+	absPath := filepath.Join(m.vault.Root, tmplPath)
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return replaceVars(fallback)
+	}
+	return replaceVars(string(data))
+}
+
+// dailyNoteStreak counts consecutive days backwards from today that have a daily note.
+func (m *Model) dailyNoteStreak() int {
+	streak := 0
+	folder := m.config.DailyNotesFolder
+	for d := 0; d < 365; d++ {
+		date := time.Now().AddDate(0, 0, -d)
+		name := date.Format("2006-01-02") + ".md"
+		if folder != "" {
+			name = filepath.Join(folder, name)
+		}
+		if m.vault.GetNote(name) != nil {
+			streak++
+		} else if d > 0 {
+			// Today might not exist yet, that's ok — but a gap breaks the streak
+			break
+		} else {
+			// Today doesn't exist, start counting from yesterday
+			continue
+		}
+	}
+	return streak
+}
+
+// yesterdayIncompleteTasks returns incomplete task lines from yesterday's daily note.
+func (m *Model) yesterdayIncompleteTasks() []string {
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	name := yesterday + ".md"
+	folder := m.config.DailyNotesFolder
+	if folder != "" {
+		name = filepath.Join(folder, name)
+	}
+	note := m.vault.GetNote(name)
+	if note == nil {
+		return nil
+	}
+	var tasks []string
+	for _, line := range strings.Split(note.Content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "- [ ] ") && len(trimmed) > 6 {
+			tasks = append(tasks, trimmed)
+		}
+	}
+	return tasks
 }
 
 // replaceFrontmatter replaces existing YAML frontmatter in content with newFM,
