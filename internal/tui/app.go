@@ -185,6 +185,7 @@ type Model struct {
 	dataview         DataviewOverlay
 	timeTracker      TimeTracker
 	knowledgeGaps    KnowledgeGaps
+	planMyDay        PlanMyDay
 	commandCenter    CommandCenter
 	dueTodayCount    int
 
@@ -341,6 +342,7 @@ func NewModel(vaultPath string) (Model, error) {
 		commandCenter:   NewCommandCenter(),
 		dailyPlanner:    NewDailyPlanner(),
 		aiScheduler:     NewAIScheduler(),
+		planMyDay:       NewPlanMyDay(),
 		notePreview:     NewNotePreview(),
 		dataview:        NewDataviewOverlay(),
 		slashMenu:      NewSlashMenu(),
@@ -1035,6 +1037,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.aiScheduler.IsActive() {
 			var cmd tea.Cmd
 			m.aiScheduler, cmd = m.aiScheduler.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case planMyDayResultMsg:
+		if m.planMyDay.IsActive() {
+			var cmd tea.Cmd
+			m.planMyDay, cmd = m.planMyDay.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case planMyDayTickMsg:
+		if m.planMyDay.IsActive() {
+			var cmd tea.Cmd
+			m.planMyDay, cmd = m.planMyDay.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case planMyDayGatherMsg:
+		if m.planMyDay.IsActive() {
+			var cmd tea.Cmd
+			m.planMyDay, cmd = m.planMyDay.Update(msg)
 			return m, cmd
 		}
 		return m, nil
@@ -1799,6 +1825,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.refreshComponents("")
 
 					m.statusbar.SetMessage("AI schedule applied to planner")
+				}
+			}
+			return m, cmd
+		}
+
+		if m.planMyDay.IsActive() {
+			var cmd tea.Cmd
+			m.planMyDay, cmd = m.planMyDay.Update(msg)
+			if !m.planMyDay.IsActive() {
+				if sched, goal, focus, advice, ok := m.planMyDay.GetAppliedPlan(); ok && len(sched) > 0 {
+					m.writePlanMyDayToDailyNote(sched, goal, focus, advice)
+					m.refreshComponents("")
+					m.statusbar.SetMessage("Day plan applied to daily note")
 				}
 			}
 			return m, cmd
@@ -2806,6 +2845,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "alt+d":
 			m.openDailyNote()
 			return m, nil
+
+		case "alt+p":
+			return m.executeCommand(CmdPlanMyDay)
 
 		case "alt+[":
 			m.navigateDailyNote(-1)
@@ -4145,6 +4187,14 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.config.AIProvider, m.config.OllamaURL, m.config.OllamaModel,
 			m.config.OpenAIKey, m.config.OpenAIModel)
 
+	case CmdPlanMyDay:
+		m.planMyDay.SetSize(m.width, m.height)
+		tasks, events, habits, projects, yesterdayTasks := m.gatherPlanMyDayData()
+		cmd := m.planMyDay.Open(m.vault.Root, tasks, events, habits, projects, yesterdayTasks,
+			m.config.AIProvider, m.config.OllamaURL, m.config.OllamaModel,
+			m.config.OpenAIKey, m.config.OpenAIModel)
+		return m, cmd
+
 	case CmdRecurringTasks:
 		m.recurringTasks.SetSize(m.width, m.height)
 		m.recurringTasks.Open(m.vault.Root)
@@ -4389,6 +4439,143 @@ func (m *Model) gatherSchedulerData() ([]SchedulerTask, []SchedulerEvent) {
 	}
 
 	return tasks, events
+}
+
+// gatherPlanMyDayData collects all data needed by the Plan My Day overlay.
+func (m *Model) gatherPlanMyDayData() ([]Task, []PlannerEvent, []habitEntry, []Project, []string) {
+	// Tasks: gather from the task manager's scanning logic
+	var tasks []Task
+	today := time.Now().Format("2006-01-02")
+	tasksPath := filepath.Join(m.vault.Root, "Tasks.md")
+	if f, err := os.Open(tasksPath); err == nil {
+		scanner := bufio.NewScanner(f)
+		lineNum := 0
+		for scanner.Scan() {
+			line := scanner.Text()
+			if taskPattern.MatchString(line) {
+				m2 := taskPattern.FindStringSubmatch(line)
+				done := m2[1] != " "
+				text := m2[2]
+				dueDate := ""
+				if dm := regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`).FindStringSubmatch(text); dm != nil {
+					dueDate = dm[1]
+				}
+				tasks = append(tasks, Task{
+					Text:     text,
+					Done:     done,
+					Priority: taskPriority(text),
+					DueDate:  dueDate,
+					NotePath: "Tasks.md",
+					LineNum:  lineNum,
+				})
+			}
+			lineNum++
+		}
+		f.Close()
+	}
+
+	// Also scan all vault notes for tasks
+	for _, p := range m.vault.SortedPaths() {
+		if p == "Tasks.md" {
+			continue
+		}
+		note := m.vault.GetNote(p)
+		if note == nil {
+			continue
+		}
+		for lineNum, line := range strings.Split(note.Content, "\n") {
+			if taskPattern.MatchString(line) {
+				m2 := taskPattern.FindStringSubmatch(line)
+				done := m2[1] != " "
+				text := m2[2]
+				dueDate := ""
+				if dm := regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`).FindStringSubmatch(text); dm != nil {
+					dueDate = dm[1]
+				}
+				// Include if due today/overdue, or if it's a recent note's task
+				if dueDate == today || (dueDate != "" && dueDate <= today && !done) || dueDate == "" {
+					tasks = append(tasks, Task{
+						Text:     text,
+						Done:     done,
+						Priority: taskPriority(text),
+						DueDate:  dueDate,
+						NotePath: p,
+						LineNum:  lineNum,
+					})
+				}
+			}
+		}
+	}
+
+	// Calendar events
+	_, events, _ := m.gatherPlannerData()
+
+	// Habits
+	var habits []habitEntry
+	ht := NewHabitTracker()
+	ht.vaultRoot = m.vault.Root
+	ht.loadHabits()
+	habits = ht.habits
+
+	// Projects
+	pm := NewProjectMode()
+	pm.vaultRoot = m.vault.Root
+	pm.loadProjects()
+	var projects []Project
+	for _, proj := range pm.projects {
+		if proj.Status == "active" {
+			projects = append(projects, proj)
+		}
+	}
+
+	// Yesterday's incomplete tasks
+	yesterdayTasks := m.yesterdayIncompleteTasks()
+
+	return tasks, events, habits, projects, yesterdayTasks
+}
+
+// writePlanMyDayToDailyNote writes the AI-generated day plan to today's daily note.
+func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, focusOrder []string, advice string) {
+	today := time.Now().Format("2006-01-02")
+	dailyName := today + ".md"
+	folder := m.config.DailyNotesFolder
+	if folder != "" {
+		dailyName = filepath.Join(folder, dailyName)
+	}
+	dailyPath := filepath.Join(m.vault.Root, dailyName)
+
+	planContent := FormatDayPlanMarkdown(schedule, topGoal, focusOrder, advice)
+
+	existing, err := os.ReadFile(dailyPath)
+	var writeErr error
+	if err != nil {
+		// Create new daily note with plan
+		if err := os.MkdirAll(filepath.Dir(dailyPath), 0755); err != nil {
+			m.statusbar.SetMessage("Failed to create daily note folder: " + err.Error())
+			return
+		}
+		fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n%s", today, today, planContent)
+		content := m.dailyNoteContent(today, fallback)
+		writeErr = os.WriteFile(dailyPath, []byte(content), 0644)
+	} else {
+		// Append to existing daily note
+		newContent := string(existing) + "\n\n" + planContent
+		writeErr = os.WriteFile(dailyPath, []byte(newContent), 0644)
+	}
+	if writeErr != nil {
+		m.statusbar.SetMessage("Failed to write day plan: " + writeErr.Error())
+		return
+	}
+
+	m.vault.Scan()
+	m.index.Build()
+	paths := m.vault.SortedPaths()
+	m.sidebar.SetFiles(paths)
+	m.autocomplete.SetNotes(paths)
+	m.statusbar.SetNoteCount(m.vault.NoteCount())
+	m.loadNote(dailyName)
+	m.setSidebarCursorToFile(dailyName)
+	m.setFocus(focusEditor)
 }
 
 // loadPlannerBlocks scans the Planner/ directory for schedule files and
@@ -5033,6 +5220,7 @@ func (m *Model) updateLayout() {
 	m.clipManager.SetSize(m.width, m.height)
 	m.dailyPlanner.SetSize(m.width, m.height)
 	m.aiScheduler.SetSize(m.width, m.height)
+	m.planMyDay.SetSize(m.width, m.height)
 	m.recurringTasks.SetSize(m.width, m.height)
 	m.notePreview.SetSize(m.width, m.height)
 	m.scratchpad.SetSize(m.width, m.height)
@@ -6437,6 +6625,10 @@ func (m Model) View() string {
 	}
 	if m.aiScheduler.IsActive() {
 		overlay := m.aiScheduler.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.planMyDay.IsActive() {
+		overlay := m.planMyDay.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.recurringTasks.IsActive() {
