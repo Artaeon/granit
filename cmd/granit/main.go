@@ -122,6 +122,9 @@ func main() {
 	case "todo":
 		runTodo(os.Args[2:])
 
+	case "today":
+		runToday(os.Args[2:])
+
 	case "capture":
 		runCapture()
 
@@ -178,6 +181,7 @@ CORE COMMANDS
   open <path>                   Open a vault in the TUI
   init [path]                   Initialize a new vault at the given path
   daily [path]                  Open or create today's daily note
+  today [path]                  Print today's dashboard (tasks, habits, overdue)
   help, --help, -h              Show this help message
   version, --version, -v        Print version information
 
@@ -253,6 +257,8 @@ EXAMPLES
   granit backup ~/notes         Create a zip backup of the vault
   granit backup --restore backup.zip ~/notes
                                 Restore from a backup
+  granit today                  Print today's tasks, habits, overdue items
+  granit today --json           Output today's dashboard as JSON
   granit sync ~/notes           Pull, commit, push in one command
   granit sync -m "weekly update" ~/notes
                                 Sync with custom commit message
