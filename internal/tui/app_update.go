@@ -632,6 +632,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pomodoro, cmd = m.pomodoro.Update(msg)
 		return m, cmd
 
+	case clockInTickMsg:
+		var cmd tea.Cmd
+		m.clockIn, cmd = m.clockIn.Update(msg)
+		return m, cmd
+
+	case clockInReminderMsg:
+		// Fire terminal bell and show toast notification
+		reminderText := msg.Text
+		m.statusbar.SetMessage(fmt.Sprintf("🔔 %s", reminderText))
+		return m, tea.Printf("\a") // terminal bell
+
 	case webClipResult, webClipTickMsg:
 		if m.webClipper.IsActive() {
 			var cmd tea.Cmd
