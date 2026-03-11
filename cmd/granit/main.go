@@ -140,6 +140,9 @@ func main() {
 	case "config":
 		runConfig()
 
+	case "completion":
+		runCompletion(os.Args[2:])
+
 	case "man":
 		fmt.Print(generateManPage())
 
@@ -229,6 +232,11 @@ SEARCH & QUERY
                                   --tag <name>    Add tag (repeatable)
   capture <text>                Quick-capture to inbox.md (-v vault, -f file)
   clip                          Capture from stdin (echo "idea" | granit clip)
+
+SHELL COMPLETIONS
+  completion bash               Output bash completion script
+  completion zsh                Output zsh completion script
+  completion fish               Output fish completion script
 
 ADVANCED
   man                           Output roff-formatted man page (pipe to man -l -)
