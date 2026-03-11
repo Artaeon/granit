@@ -119,6 +119,9 @@ func main() {
 	case "sync":
 		runSync(os.Args[2:])
 
+	case "todo":
+		runTodo(os.Args[2:])
+
 	case "capture":
 		runCapture()
 
@@ -209,6 +212,10 @@ PLUGIN MANAGEMENT
 SEARCH & QUERY
   search <query> [path]         Search vault content (--json, --regex)
   query '<expression>' [path]   Query notes by metadata (--json, --table)
+  todo <text>                    Add a task to Tasks.md with metadata
+                                  --due <date>    today, tomorrow, monday, YYYY-MM-DD
+                                  --priority <p>  highest, high, medium, low
+                                  --tag <name>    Add tag (repeatable)
   capture <text>                Quick-capture to inbox.md (-v vault, -f file)
   clip                          Capture from stdin (echo "idea" | granit clip)
 
@@ -233,6 +240,10 @@ EXAMPLES
   granit search --regex "#+\s" ~/notes  Search with regex
   granit query 'tag:project'    Find notes with a specific tag
   granit capture "Buy milk"     Append timestamped entry to inbox.md
+  granit todo "Buy groceries" --due tomorrow --priority high
+                                Add a task with due date and priority
+  granit todo "Review PR" --tag work
+                                Add a tagged task to Tasks.md
   echo "idea" | granit clip    Capture from stdin to inbox.md
   granit export --format html --all ~/notes
                                 Export all notes as HTML
