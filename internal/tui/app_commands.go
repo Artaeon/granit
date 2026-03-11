@@ -522,6 +522,27 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
+	case CmdClockIn:
+		if m.clockIn.IsActive() {
+			m.statusbar.SetMessage("Already clocked in — clock out first")
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
+		project := ""
+		if m.activeNote != "" {
+			// Use current note name as project context
+			project = m.activeNote
+		}
+		cmd := m.clockIn.ClockInCmd(project)
+		m.statusbar.SetMessage("Clocked in")
+		return m, tea.Batch(cmd, m.clearMessageAfter(2*time.Second))
+	case CmdClockOut:
+		if !m.clockIn.IsActive() {
+			m.statusbar.SetMessage("Not clocked in")
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
+		m.clockIn.ClockOutCmd()
+		m.statusbar.SetMessage("Clocked out — session saved to Timetracking/")
+		return m, m.clearMessageAfter(3 * time.Second)
 	case CmdPomodoro:
 		if !m.config.CorePluginEnabled("pomodoro") {
 			break
