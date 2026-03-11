@@ -27,6 +27,7 @@ type StatusBar struct {
 	aiProvider     string // "local", "ollama", "openai"
 	aiModel        string
 	pomodoroStatus string // e.g. "🍅 12:34"
+	clockInStatus  string // e.g. "⏱ 1:23:45 · Project"
 	researchStatus string // e.g. "Researching: AI trends"
 	dueTodayCount  int
 	readingProgress int  // 0-100 percentage
@@ -124,6 +125,10 @@ func (sb *StatusBar) SetAIStatus(provider, model string) {
 
 func (sb *StatusBar) SetPomodoroStatus(status string) {
 	sb.pomodoroStatus = status
+}
+
+func (sb *StatusBar) SetClockInStatus(status string) {
+	sb.clockInStatus = status
 }
 
 func (sb *StatusBar) SetResearchStatus(status string) {
@@ -224,6 +229,14 @@ func (sb StatusBar) View() string {
 			Render(sb.pomodoroStatus)
 	}
 
+	// Clock-in indicator
+	clockIndicator := ""
+	if sb.clockInStatus != "" {
+		clockIndicator = lipgloss.NewStyle().
+			Background(teal).Foreground(crust).Bold(true).Padding(0, 1).
+			Render(sb.clockInStatus)
+	}
+
 	// Research indicator
 	researchIndicator := ""
 	if sb.researchStatus != "" {
@@ -251,8 +264,8 @@ func (sb StatusBar) View() string {
 	totalUsed := func() int {
 		return lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) +
 			lipgloss.Width(readingBar) + lipgloss.Width(researchIndicator) +
-			lipgloss.Width(taskIndicator) + lipgloss.Width(pomoIndicator) +
-			lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
+			lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) +
+			lipgloss.Width(pomoIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	}
 
 	// Step 1: If too wide, hide least important indicators (reading progress, AI badge)
@@ -288,7 +301,7 @@ func (sb StatusBar) View() string {
 
 	// Calculate gap
 	leftLen := lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) + lipgloss.Width(readingBar)
-	rightLen := lipgloss.Width(researchIndicator) + lipgloss.Width(taskIndicator) + lipgloss.Width(pomoIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
+	rightLen := lipgloss.Width(researchIndicator) + lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) + lipgloss.Width(pomoIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	gap := sb.width - leftLen - rightLen
 	if gap < 0 {
 		gap = 0
@@ -298,7 +311,7 @@ func (sb StatusBar) View() string {
 		gapStr = StatusBarBg.Width(gap).Render(strings.Repeat(" ", gap))
 	}
 
-	bar := mode + fileSection + cursorPos + readingBar + gapStr + researchIndicator + taskIndicator + pomoIndicator + aiIndicator + rightInfo
+	bar := mode + fileSection + cursorPos + readingBar + gapStr + researchIndicator + taskIndicator + clockIndicator + pomoIndicator + aiIndicator + rightInfo
 
 	// Help bar
 	helpItems := []struct{ key, desc string }{
