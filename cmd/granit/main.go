@@ -125,6 +125,9 @@ func main() {
 	case "today":
 		runToday(os.Args[2:])
 
+	case "review":
+		runReview(os.Args[2:])
+
 	case "capture":
 		runCapture()
 
@@ -182,6 +185,10 @@ CORE COMMANDS
   init [path]                   Initialize a new vault at the given path
   daily [path]                  Open or create today's daily note
   today [path]                  Print today's dashboard (tasks, habits, overdue)
+  review [path]                 Daily review (or --week for weekly)
+                                  --week/-w       Weekly review instead of daily
+                                  --markdown/--md Output as markdown (sendable)
+                                  --save          Save to Reviews/ folder in vault
   help, --help, -h              Show this help message
   version, --version, -v        Print version information
 
@@ -259,6 +266,9 @@ EXAMPLES
                                 Restore from a backup
   granit today                  Print today's tasks, habits, overdue items
   granit today --json           Output today's dashboard as JSON
+  granit review                 Daily review of completed and pending tasks
+  granit review --week --md     Weekly review as markdown (send to team)
+  granit review --save          Save review as note in Reviews/ folder
   granit sync ~/notes           Pull, commit, push in one command
   granit sync -m "weekly update" ~/notes
                                 Sync with custom commit message
