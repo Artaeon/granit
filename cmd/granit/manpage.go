@@ -74,6 +74,28 @@ Pull (rebase), stage all changes, commit, and push in one command.
 Auto-resolves conflicts by accepting the newest version.
 Supports \fB\-\-quiet\fR, \fB\-\-dry\-run\fR, and \fB\-m\fR.
 .TP
+.B clock in \fR[\fB\-\-project \fIname\fR]
+Start a work session. The elapsed time is shown in the TUI status bar.
+.TP
+.B clock out
+End the active session. The session is logged to Timetracking/ in the vault.
+.TP
+.B clock status
+Show the current session status and today's total time.
+.TP
+.B clock log \fR[\fB\-\-week\fR]
+Show today's time log, or the weekly summary with \fB\-\-week\fR.
+.TP
+.B remind \fItext\fR \fB\-\-at \fIHH:MM\fR
+Set a reminder. Use \fB\-\-daily\fR (default), \fB\-\-weekdays\fR, or \fB\-\-once\fR.
+Reminders fire as a terminal bell and status bar notification in the TUI.
+.TP
+.B remind list
+Show all configured reminders.
+.TP
+.B remind remove \fInumber\fR
+Remove a reminder by its index.
+.TP
 .B completion \fR<\fIbash\fR|\fIzsh\fR|\fIfish\fR>
 Output shell completion script for the given shell.
 .TP
