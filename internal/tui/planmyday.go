@@ -99,6 +99,9 @@ type PlanMyDay struct {
 	appliedFocus    []string
 	appliedAdvice   string
 
+	// Clocked sessions for display
+	clockedSessions []clockPlanSlot
+
 	// Animation
 	loadingTick int
 	spinnerTick int
@@ -179,6 +182,11 @@ func (p *PlanMyDay) Open(
 
 // Close deactivates the overlay.
 func (p *PlanMyDay) Close() { p.active = false }
+
+// SetClockedSessions provides today's clocked sessions for display in the planner.
+func (p *PlanMyDay) SetClockedSessions(sessions []clockPlanSlot) {
+	p.clockedSessions = sessions
+}
 
 // GetAppliedPlan returns the schedule to write to the daily note and resets the flag.
 func (p *PlanMyDay) GetAppliedPlan() ([]daySlot, string, []string, string, bool) {
@@ -1111,6 +1119,32 @@ func (p PlanMyDay) viewResult(width int) string {
 		goalIcon := lipgloss.NewStyle().Foreground(red).Bold(true).Render("  TARGET ")
 		goalText := lipgloss.NewStyle().Foreground(text).Bold(true).Render(p.topGoal)
 		lines = append(lines, goalIcon+goalText)
+		lines = append(lines, "")
+	}
+
+	// Clocked sessions section (if any)
+	if len(p.clockedSessions) > 0 {
+		clockTitle := lipgloss.NewStyle().Foreground(teal).Bold(true).Render("  CLOCKED TIME")
+		lines = append(lines, clockTitle)
+		lines = append(lines, DimStyle.Render("  "+strings.Repeat(ThemeSeparator, innerW-4)))
+
+		var totalClocked time.Duration
+		for _, cs := range p.clockedSessions {
+			timeStr := lipgloss.NewStyle().Foreground(teal).Render(cs.Start + "-" + cs.End)
+			projStr := lipgloss.NewStyle().Foreground(sapphire).Render(cs.Project)
+			durStr := DimStyle.Render(" (" + cs.FormatDuration() + ")")
+			activeTag := ""
+			if cs.Active {
+				activeTag = lipgloss.NewStyle().Foreground(green).Bold(true).Render(" ● active")
+			}
+			lines = append(lines, "  "+timeStr+"  "+projStr+durStr+activeTag)
+			totalClocked += cs.Duration
+		}
+
+		h := int(totalClocked.Hours())
+		m := int(totalClocked.Minutes()) % 60
+		totalStr := fmt.Sprintf("%dh %02dm", h, m)
+		lines = append(lines, DimStyle.Render(fmt.Sprintf("  Total clocked: %s", totalStr)))
 		lines = append(lines, "")
 	}
 
