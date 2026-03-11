@@ -47,16 +47,60 @@ func (a *AutoSync) isGitRepo() bool {
 
 // PullOnOpen runs git pull in the background when the vault is opened.
 // Returns a tea.Cmd that performs the pull asynchronously.
+// On conflict, auto-resolves by accepting the newest (remote) version.
 func (a *AutoSync) PullOnOpen() tea.Cmd {
 	if !a.enabled || !a.isGitRepo() {
 		return nil
 	}
 	vaultPath := a.vaultPath
 	return func() tea.Msg {
-		fullArgs := []string{"-C", vaultPath, "pull", "--rebase", "--quiet"}
-		cmd := exec.Command("git", fullArgs...)
-		out, err := cmd.CombinedOutput()
-		return autoSyncResultMsg{action: "pull", output: string(out), err: err}
+		gitRun := func(args ...string) (string, error) {
+			fullArgs := append([]string{"-C", vaultPath}, args...)
+			cmd := exec.Command("git", fullArgs...)
+			out, err := cmd.CombinedOutput()
+			return string(out), err
+		}
+
+		out, err := gitRun("pull", "--rebase", "--quiet")
+		if err == nil {
+			return autoSyncResultMsg{action: "pull", output: strings.TrimSpace(out)}
+		}
+
+		// Check if the error is a rebase conflict
+		if !strings.Contains(out, "CONFLICT") && !strings.Contains(out, "conflict") {
+			return autoSyncResultMsg{action: "pull", output: out, err: err}
+		}
+
+		// Auto-resolve conflicts by accepting the newest (theirs) version
+		resolved := 0
+		status, statusErr := gitRun("status", "--porcelain")
+		if statusErr == nil {
+			for _, line := range strings.Split(status, "\n") {
+				line = strings.TrimSpace(line)
+				if len(line) < 3 {
+					continue
+				}
+				code := line[:2]
+				file := strings.TrimSpace(line[3:])
+				if code == "UU" || code == "AA" {
+					if _, resolveErr := gitRun("checkout", "--theirs", file); resolveErr == nil {
+						gitRun("add", file)
+						resolved++
+					}
+				}
+			}
+		}
+
+		// Continue the rebase
+		if resolved > 0 {
+			gitRun("rebase", "--continue")
+			msg := fmt.Sprintf("auto-resolved %d conflict(s) (accepted newest)", resolved)
+			return autoSyncResultMsg{action: "pull", output: msg}
+		}
+
+		// If we couldn't resolve, abort the rebase to leave vault usable
+		gitRun("rebase", "--abort")
+		return autoSyncResultMsg{action: "pull", output: "conflict detected, rebase aborted", err: err}
 	}
 }
 
