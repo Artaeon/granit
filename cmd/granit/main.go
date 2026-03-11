@@ -116,6 +116,12 @@ func main() {
 			runListNotes()
 		}
 
+	case "clock":
+		runClock(os.Args[2:])
+
+	case "remind":
+		runRemind(os.Args[2:])
+
 	case "sync":
 		runSync(os.Args[2:])
 
@@ -204,6 +210,18 @@ VAULT MANAGEMENT
   config                        Show configuration paths and current values
   backup [path]                 Create a timestamped zip backup of the vault
 
+TIME TRACKING
+  clock in [--project "name"]   Clock in to start a work session
+  clock out                     Clock out and log the session
+  clock status                  Show current session and elapsed time
+  clock log [--week]            Show today's time log (or weekly)
+
+REMINDERS
+  remind "text" --at HH:MM     Set a reminder (--daily, --weekdays, --once)
+  remind list                   Show all reminders
+  remind remove <number>        Remove a reminder
+  remind toggle <number>        Enable/disable a reminder
+
 GIT SYNC
   sync [path]                   Pull, commit all changes, push (one command)
                                   --quiet/-q      Suppress output
@@ -272,6 +290,12 @@ EXAMPLES
   granit backup ~/notes         Create a zip backup of the vault
   granit backup --restore backup.zip ~/notes
                                 Restore from a backup
+  granit clock in --project "Study Go"
+                                Clock in to a work session
+  granit clock out              Clock out and save session to Timetracking/
+  granit clock log              Show today's time log
+  granit remind "Start work" --at 07:00 --daily
+                                Set a daily reminder at 7am
   granit today                  Print today's tasks, habits, overdue items
   granit today --json           Output today's dashboard as JSON
   granit review                 Daily review of completed and pending tasks
