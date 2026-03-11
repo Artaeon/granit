@@ -116,6 +116,9 @@ func main() {
 			runListNotes()
 		}
 
+	case "sync":
+		runSync(os.Args[2:])
+
 	case "capture":
 		runCapture()
 
@@ -184,6 +187,12 @@ VAULT MANAGEMENT
   config                        Show configuration paths and current values
   backup [path]                 Create a timestamped zip backup of the vault
 
+GIT SYNC
+  sync [path]                   Pull, commit all changes, push (one command)
+                                  --quiet/-q      Suppress output
+                                  --dry-run       Show what would happen
+                                  -m "message"    Custom commit message
+
 DATA MANAGEMENT
   export [path]                 Export vault notes to HTML, text, or JSON
   import --from <format> <src>  Import from Obsidian, Logseq, or Notion
@@ -233,6 +242,9 @@ EXAMPLES
   granit backup ~/notes         Create a zip backup of the vault
   granit backup --restore backup.zip ~/notes
                                 Restore from a backup
+  granit sync ~/notes           Pull, commit, push in one command
+  granit sync -m "weekly update" ~/notes
+                                Sync with custom commit message
   granit list --vaults          Show registered vaults with last-opened dates
   granit config                 Display active configuration
   granit man | man -l -         View the full manual page
