@@ -55,6 +55,28 @@ Create or open today's daily note. If
 .I path
 is omitted, the current directory is used.
 .TP
+.B today \fR[\fIpath\fR]
+Print today's terminal dashboard: tasks, overdue items, upcoming
+(7 days), and habit streaks. Use \fB\-\-json\fR for JSON output.
+.TP
+.B review \fR[\fIpath\fR]
+Generate a daily review summary. Use \fB\-\-week\fR for weekly.
+\fB\-\-markdown\fR outputs sendable markdown. \fB\-\-save\fR writes
+the review to the Reviews/ folder in the vault.
+.TP
+.B todo \fItext\fR
+Add a task to Tasks.md. Supports \fB\-\-due\fR (today, tomorrow,
+monday, YYYY-MM-DD), \fB\-\-priority\fR (highest, high, medium, low),
+and \fB\-\-tag\fR.
+.TP
+.B sync \fR[\fIpath\fR]
+Pull (rebase), stage all changes, commit, and push in one command.
+Auto-resolves conflicts by accepting the newest version.
+Supports \fB\-\-quiet\fR, \fB\-\-dry\-run\fR, and \fB\-m\fR.
+.TP
+.B completion \fR<\fIbash\fR|\fIzsh\fR|\fIfish\fR>
+Output shell completion script for the given shell.
+.TP
 .B help\fR, \fB\-\-help\fR, \fB\-h
 Display the help summary and exit.
 .TP
