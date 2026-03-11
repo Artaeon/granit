@@ -144,6 +144,8 @@ const (
 	CmdNextDailyNote
 	CmdPlanMyDay
 	CmdCommandCenter
+	CmdClockIn
+	CmdClockOut
 	CmdQuit
 )
 
@@ -219,6 +221,8 @@ var AllCommands = []Command{
 	{Label: "Chat with Note", Desc: "AI Q&A focused on current note", Shortcut: "", Action: CmdNoteChat, Icon: &IconBotChar},
 	{Label: "Ghost Writer", Desc: "Toggle inline AI writing suggestions", Shortcut: "", Action: CmdToggleGhostWriter, Icon: &IconEditChar},
 	{Label: "Pomodoro Timer", Desc: "Focus timer with writing stats", Shortcut: "", Action: CmdPomodoro, Icon: &IconDailyChar},
+	{Label: "Clock In", Desc: "Start a work session timer", Shortcut: "", Action: CmdClockIn, Icon: &IconDailyChar},
+	{Label: "Clock Out", Desc: "Stop work session and log time", Shortcut: "", Action: CmdClockOut, Icon: &IconDailyChar},
 	{Label: "Web Clipper", Desc: "Save a web page as a markdown note", Shortcut: "", Action: CmdWebClip, Icon: &IconSaveChar},
 	{Label: "Toggle Vim Mode", Desc: "Enable/disable Vim keybindings", Shortcut: "", Action: CmdToggleVim, Icon: &IconEditChar},
 	{Label: "Toggle Word Wrap", Desc: "Wrap long lines at viewport width", Shortcut: "", Action: CmdToggleWordWrap, Icon: &IconEditChar},
