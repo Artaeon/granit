@@ -36,7 +36,7 @@ _granit_completions() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    commands="open init daily today review sync scan serve export import backup plugin list capture clip query config todo search completion version help man"
+    commands="open init daily today review sync clock remind scan serve export import backup plugin list capture clip query config todo search completion version help man"
 
     case "${prev}" in
         granit)
@@ -60,6 +60,14 @@ _granit_completions() {
             ;;
         plugin)
             COMPREPLY=( $(compgen -W "list install remove enable disable info create" -- "${cur}") )
+            return 0
+            ;;
+        clock)
+            COMPREPLY=( $(compgen -W "in out status log" -- "${cur}") )
+            return 0
+            ;;
+        remind)
+            COMPREPLY=( $(compgen -W "list remove toggle clear" -- "${cur}") )
             return 0
             ;;
         completion)
@@ -139,6 +147,8 @@ _granit() {
         'clip:Capture from stdin'
         'query:Query notes by metadata'
         'config:Show configuration'
+        'clock:Time tracking (in/out/status/log)'
+        'remind:Manage scheduled reminders'
         'completion:Generate shell completions'
         'version:Print version'
         'help:Show help'
@@ -163,6 +173,16 @@ _granit() {
                     local -a plugin_cmds
                     plugin_cmds=(list install remove enable disable info create)
                     _describe 'plugin command' plugin_cmds
+                    ;;
+                clock)
+                    local -a clock_cmds
+                    clock_cmds=('in:Start a work session' 'out:End the session' 'status:Show current session' 'log:Show time log')
+                    _describe 'clock command' clock_cmds
+                    ;;
+                remind)
+                    local -a remind_cmds
+                    remind_cmds=('list:Show all reminders' 'remove:Remove by index' 'toggle:Enable/disable' 'clear:Remove all')
+                    _describe 'remind command' remind_cmds
                     ;;
                 completion)
                     local -a shells
@@ -262,6 +282,8 @@ complete -c granit -n '__fish_use_subcommand' -a 'capture' -d 'Quick-capture to 
 complete -c granit -n '__fish_use_subcommand' -a 'clip' -d 'Capture from stdin'
 complete -c granit -n '__fish_use_subcommand' -a 'query' -d 'Query notes by metadata'
 complete -c granit -n '__fish_use_subcommand' -a 'config' -d 'Show configuration'
+complete -c granit -n '__fish_use_subcommand' -a 'clock' -d 'Time tracking (in/out/status/log)'
+complete -c granit -n '__fish_use_subcommand' -a 'remind' -d 'Manage scheduled reminders'
 complete -c granit -n '__fish_use_subcommand' -a 'completion' -d 'Generate shell completions'
 complete -c granit -n '__fish_use_subcommand' -a 'version' -d 'Print version'
 complete -c granit -n '__fish_use_subcommand' -a 'help' -d 'Show help'
@@ -272,6 +294,18 @@ complete -c granit -n '__fish_seen_subcommand_from open scan daily today review 
 
 # plugin subcommands
 complete -c granit -n '__fish_seen_subcommand_from plugin' -a 'list install remove enable disable info create'
+
+# clock subcommands
+complete -c granit -n '__fish_seen_subcommand_from clock' -a 'in out status log'
+complete -c granit -n '__fish_seen_subcommand_from clock; and __fish_seen_subcommand_from in' -l project -s p -x -d 'Project name'
+complete -c granit -n '__fish_seen_subcommand_from clock; and __fish_seen_subcommand_from log' -l week -d 'Show weekly log'
+
+# remind subcommands
+complete -c granit -n '__fish_seen_subcommand_from remind' -a 'list remove toggle clear'
+complete -c granit -n '__fish_seen_subcommand_from remind' -l at -x -d 'Time (HH:MM)'
+complete -c granit -n '__fish_seen_subcommand_from remind' -l daily -d 'Repeat daily'
+complete -c granit -n '__fish_seen_subcommand_from remind' -l weekdays -d 'Repeat Mon-Fri'
+complete -c granit -n '__fish_seen_subcommand_from remind' -l once -d 'Fire once'
 
 # completion subcommands
 complete -c granit -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
