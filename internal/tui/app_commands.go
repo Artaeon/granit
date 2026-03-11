@@ -1014,6 +1014,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdPlanMyDay:
 		m.planMyDay.SetSize(m.width, m.height)
 		tasks, events, habits, projects, yesterdayTasks := m.gatherPlanMyDayData()
+		m.planMyDay.SetClockedSessions(m.clockIn.SessionsForPlan())
 		cmd := m.planMyDay.Open(m.vault.Root, tasks, events, habits, projects, yesterdayTasks,
 			m.config.AIProvider, m.config.OllamaURL, m.config.OllamaModel,
 			m.config.OpenAIKey, m.config.OpenAIModel)
