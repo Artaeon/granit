@@ -89,6 +89,10 @@ func runToday(args []string) {
 	// Load habits
 	habits, todayHabits := loadTodayHabits(vaultPath, today)
 
+	// Load clock sessions
+	clockData := loadClockData(vaultPath)
+	clockSessions, clockActive, clockTotal := todayClockSessions(clockData, today)
+
 	if jsonOut {
 		printTodayJSON(today, weekday, overdue, todayTasks, upcoming, completed, habits, todayHabits)
 		return
@@ -148,6 +152,33 @@ func runToday(args []string) {
 			}
 			fmt.Printf("    %s %s%s\n", done, h.name, streak)
 		}
+	}
+
+	if len(clockSessions) > 0 || clockActive != nil {
+		fmt.Println("\n  ⏱ Time Tracking")
+		for _, s := range clockSessions {
+			start, _ := time.Parse(time.RFC3339, s.Start)
+			end, _ := time.Parse(time.RFC3339, s.End)
+			dur := end.Sub(start)
+			project := s.Project
+			if project == "" {
+				project = "work"
+			}
+			fmt.Printf("    %s → %s  %-18s %s\n",
+				start.Format("15:04"), end.Format("15:04"), project, formatDuration(dur))
+		}
+		if clockActive != nil {
+			start, _ := time.Parse(time.RFC3339, clockActive.Start)
+			elapsed := time.Since(start)
+			project := clockActive.Project
+			if project == "" {
+				project = "work"
+			}
+			fmt.Printf("    %s → ...   %-18s %s (active)\n",
+				start.Format("15:04"), project, formatDuration(elapsed))
+		}
+		fmt.Printf("    ──────────────────────────────────\n")
+		fmt.Printf("    Total: %s\n", formatDuration(clockTotal))
 	}
 
 	fmt.Println()
@@ -391,4 +422,35 @@ func printTodayJSON(today, weekday string, overdue, todayTasks, upcoming []today
 	}
 
 	fmt.Println("}")
+}
+
+// todayClockSessions returns completed sessions, active session, and total time for today.
+func todayClockSessions(data clockData, today string) ([]clockSession, *clockSession, time.Duration) {
+	var sessions []clockSession
+	var active *clockSession
+	var total time.Duration
+
+	for _, s := range data.Sessions {
+		start, err := time.Parse(time.RFC3339, s.Start)
+		if err != nil || start.Format("2006-01-02") != today {
+			continue
+		}
+		sessions = append(sessions, s)
+		if s.End != "" {
+			end, err := time.Parse(time.RFC3339, s.End)
+			if err == nil {
+				total += end.Sub(start)
+			}
+		}
+	}
+
+	if data.Active != nil {
+		start, err := time.Parse(time.RFC3339, data.Active.Start)
+		if err == nil && start.Format("2006-01-02") == today {
+			active = data.Active
+			total += time.Since(start)
+		}
+	}
+
+	return sessions, active, total
 }
