@@ -179,6 +179,7 @@ type Model struct {
 	timeTracker      TimeTracker
 	knowledgeGaps    KnowledgeGaps
 	planMyDay        PlanMyDay
+	clockIn          ClockIn
 	commandCenter    CommandCenter
 	dueTodayCount    int
 
@@ -336,6 +337,7 @@ func NewModel(vaultPath string) (Model, error) {
 		dailyPlanner:    NewDailyPlanner(),
 		aiScheduler:     NewAIScheduler(),
 		planMyDay:       NewPlanMyDay(),
+		clockIn:         NewClockIn(vaultPath),
 		notePreview:     NewNotePreview(),
 		dataview:        NewDataviewOverlay(),
 		slashMenu:      NewSlashMenu(),
@@ -595,6 +597,8 @@ func (m Model) Init() tea.Cmd {
 	if m.fileWatcher != nil && m.fileWatcher.IsEnabled() {
 		cmds = append(cmds, m.fileWatcher.Start())
 	}
+	// Clock-in timer and reminder tick loop
+	cmds = append(cmds, m.clockIn.StartTicking())
 	// Background embedding index
 	if m.config.SemanticSearchEnabled && m.config.AIProvider != "local" {
 		if bgCmd := m.startSemanticBgIndex(); bgCmd != nil {
