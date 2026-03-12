@@ -831,6 +831,9 @@ func (m *Model) loadNoteWithoutBreadcrumb(relPath string) {
 	m.activeNote = relPath
 	m.editor.LoadContent(note.Content, relPath)
 	m.statusbar.SetActiveNote(relPath)
+	if m.ghostWriter != nil {
+		m.ghostWriter.SetNoteTitle(relPath)
+	}
 	m.statusbar.SetWordCount(m.editor.GetWordCount())
 	m.viewScroll = 0
 

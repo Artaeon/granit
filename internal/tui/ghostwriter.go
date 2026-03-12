@@ -52,8 +52,9 @@ type GhostWriter struct {
 	debounceMs int       // milliseconds to wait before requesting (default: 800)
 
 	// Context
-	contextLines int // number of lines before cursor to send as context (default: 20)
-	maxTokens    int // max tokens for completion (default: 50)
+	contextLines int    // number of lines before cursor to send as context (default: 30)
+	maxTokens    int    // max tokens for completion (default: 50)
+	noteTitle    string // current note title for context
 
 	// Internal: shuttled from OnEdit to debounce handler
 	contextBuf  string
@@ -71,7 +72,7 @@ func NewGhostWriter() *GhostWriter {
 		model:        "llama3.2",
 		ollamaURL:    "http://localhost:11434",
 		debounceMs:   800,
-		contextLines: 20,
+		contextLines: 30,
 		maxTokens:    50,
 	}
 }
@@ -106,6 +107,11 @@ func (gw *GhostWriter) SetConfig(provider, model, ollamaURL, apiKey string) {
 		gw.ollamaURL = ollamaURL
 	}
 	gw.apiKey = apiKey
+}
+
+// SetNoteTitle updates the note title used for ghost writer context.
+func (gw *GhostWriter) SetNoteTitle(title string) {
+	gw.noteTitle = title
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +241,25 @@ func (gw *GhostWriter) buildContext(content []string, cursorLine, cursorCol int)
 	}
 
 	var b strings.Builder
+
+	// Prepend note title for topic awareness.
+	if gw.noteTitle != "" {
+		b.WriteString("# ")
+		b.WriteString(strings.TrimSuffix(gw.noteTitle, ".md"))
+		b.WriteString("\n\n")
+	}
+
+	// Find the nearest heading above the cursor (if outside context window).
+	if startLine > 0 {
+		for i := startLine - 1; i >= 0; i-- {
+			trimmed := strings.TrimSpace(content[i])
+			if strings.HasPrefix(trimmed, "#") {
+				b.WriteString(trimmed)
+				b.WriteString("\n...\n")
+				break
+			}
+		}
+	}
 
 	// Full lines before the cursor line.
 	for i := startLine; i < cursorLine; i++ {
