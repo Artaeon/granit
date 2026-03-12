@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,10 +12,20 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// dropLastRune removes the last UTF-8 rune from a string safely.
+func dropLastRune(s string) string {
+	_, size := utf8.DecodeLastRuneInString(s)
+	return s[:len(s)-size]
+}
+
+// clipboardTimeout is the max duration for clipboard tool execution.
+const clipboardTimeout = 3 * time.Second
 
 // ---------------------------------------------------------------------------
 // Clipboard — system clipboard read/write via CLI tools
@@ -26,19 +37,22 @@ type Clipboard struct{}
 // ClipboardCopy copies the given text to the system clipboard.
 // It tries platform-appropriate tools and falls back gracefully.
 func ClipboardCopy(text string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), clipboardTimeout)
+	defer cancel()
+
 	var cmd *exec.Cmd
 
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("pbcopy")
+		cmd = exec.CommandContext(ctx, "pbcopy")
 	case "linux":
 		// Try Wayland first, then X11 tools
 		if path, err := exec.LookPath("wl-copy"); err == nil {
-			cmd = exec.Command(path)
+			cmd = exec.CommandContext(ctx, path)
 		} else if path, err := exec.LookPath("xclip"); err == nil {
-			cmd = exec.Command(path, "-selection", "clipboard")
+			cmd = exec.CommandContext(ctx, path, "-selection", "clipboard")
 		} else if path, err := exec.LookPath("xsel"); err == nil {
-			cmd = exec.Command(path, "--clipboard", "--input")
+			cmd = exec.CommandContext(ctx, path, "--clipboard", "--input")
 		} else {
 			return fmt.Errorf("no clipboard tool found (install xclip, xsel, or wl-copy)")
 		}
@@ -56,9 +70,12 @@ func ClipboardCopy(text string) error {
 	}
 
 	if _, err := io.WriteString(stdin, text); err != nil {
+		_ = stdin.Close()
 		return fmt.Errorf("clipboard: %w", err)
 	}
-	stdin.Close()
+	if err := stdin.Close(); err != nil {
+		return fmt.Errorf("clipboard: %w", err)
+	}
 
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("clipboard: %w", err)
@@ -68,18 +85,21 @@ func ClipboardCopy(text string) error {
 
 // ClipboardPaste reads text from the system clipboard.
 func ClipboardPaste() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), clipboardTimeout)
+	defer cancel()
+
 	var cmd *exec.Cmd
 
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("pbpaste")
+		cmd = exec.CommandContext(ctx, "pbpaste")
 	case "linux":
 		if path, err := exec.LookPath("wl-paste"); err == nil {
-			cmd = exec.Command(path)
+			cmd = exec.CommandContext(ctx, path)
 		} else if path, err := exec.LookPath("xclip"); err == nil {
-			cmd = exec.Command(path, "-selection", "clipboard", "-o")
+			cmd = exec.CommandContext(ctx, path, "-selection", "clipboard", "-o")
 		} else if path, err := exec.LookPath("xsel"); err == nil {
-			cmd = exec.Command(path, "--clipboard", "--output")
+			cmd = exec.CommandContext(ctx, path, "--clipboard", "--output")
 		} else {
 			return "", fmt.Errorf("no clipboard tool found (install xclip, xsel, or wl-paste)")
 		}
@@ -94,19 +114,24 @@ func ClipboardPaste() (string, error) {
 	return string(out), nil
 }
 
-// ClipboardAvailable checks whether a clipboard tool is installed.
+// ClipboardAvailable checks whether clipboard tools for both copy and paste are installed.
 func ClipboardAvailable() bool {
 	switch runtime.GOOS {
 	case "darwin":
-		_, err := exec.LookPath("pbcopy")
-		return err == nil
+		_, errCopy := exec.LookPath("pbcopy")
+		_, errPaste := exec.LookPath("pbpaste")
+		return errCopy == nil && errPaste == nil
 	case "linux":
-		for _, tool := range []string{"wl-copy", "xclip", "xsel"} {
+		// Need both copy and paste tools; xclip/xsel handle both
+		for _, tool := range []string{"xclip", "xsel"} {
 			if _, err := exec.LookPath(tool); err == nil {
 				return true
 			}
 		}
-		return false
+		// Wayland: need both wl-copy and wl-paste
+		_, errCopy := exec.LookPath("wl-copy")
+		_, errPaste := exec.LookPath("wl-paste")
+		return errCopy == nil && errPaste == nil
 	default:
 		return false
 	}
@@ -150,6 +175,7 @@ type WebClipper struct {
 	loading bool
 	loadingTick int
 	done    bool
+	errored bool // true when fetch failed — prevents saving
 
 	// Result
 	resultReady   bool
@@ -192,6 +218,7 @@ func (wc *WebClipper) Open(url string) {
 	wc.content = ""
 	wc.loadingTick = 0
 	wc.done = false
+	wc.errored = false
 	wc.resultReady = false
 	wc.resultTitle = ""
 	wc.resultContent = ""
@@ -220,6 +247,7 @@ func (wc *WebClipper) Close() {
 	wc.active = false
 	wc.loading = false
 	wc.done = false
+	wc.errored = false
 	wc.resultReady = false
 	wc.editingTitle = false
 	wc.urlInputMode = false
@@ -254,12 +282,14 @@ func (wc WebClipper) Update(msg tea.Msg) (WebClipper, tea.Cmd) {
 			wc.content = "Error: " + msg.err.Error()
 			wc.title = "Error"
 			wc.done = true
+			wc.errored = true
 			return wc, nil
 		}
 		wc.title = msg.title
 		wc.content = msg.content
 		wc.url = msg.url
 		wc.done = true
+		wc.errored = false
 		return wc, nil
 
 	case webClipTickMsg:
@@ -290,11 +320,11 @@ func (wc WebClipper) Update(msg tea.Msg) (WebClipper, tea.Cmd) {
 		// Normal navigation
 		switch msg.String() {
 		case "esc":
-			wc.active = false
+			wc.Close()
 			return wc, nil
 
 		case "enter":
-			if wc.done && wc.title != "" {
+			if wc.done && wc.title != "" && !wc.errored {
 				wc.resultReady = true
 				wc.resultTitle = wc.title
 				wc.resultContent = wc.buildOutput()
@@ -371,7 +401,7 @@ func (wc WebClipper) updateURLInput(msg tea.KeyMsg) (WebClipper, tea.Cmd) {
 		return wc, nil
 	case "backspace":
 		if len(wc.urlBuf) > 0 {
-			wc.urlBuf = wc.urlBuf[:len(wc.urlBuf)-1]
+			wc.urlBuf = dropLastRune(wc.urlBuf)
 		}
 	case "ctrl+u":
 		wc.urlBuf = ""
@@ -407,7 +437,7 @@ func (wc WebClipper) updateEditTitle(msg tea.KeyMsg) (WebClipper, tea.Cmd) {
 		wc.editingTitle = false
 	case "backspace":
 		if len(wc.titleBuf) > 0 {
-			wc.titleBuf = wc.titleBuf[:len(wc.titleBuf)-1]
+			wc.titleBuf = dropLastRune(wc.titleBuf)
 		}
 	default:
 		ch := msg.String()
@@ -434,7 +464,7 @@ func (wc WebClipper) updateEditTags(msg tea.KeyMsg) (WebClipper, tea.Cmd) {
 		wc.editingTags = false
 	case "backspace":
 		if len(wc.tagsBuf) > 0 {
-			wc.tagsBuf = wc.tagsBuf[:len(wc.tagsBuf)-1]
+			wc.tagsBuf = dropLastRune(wc.tagsBuf)
 		}
 	default:
 		ch := msg.String()
@@ -445,6 +475,14 @@ func (wc WebClipper) updateEditTags(msg tea.KeyMsg) (WebClipper, tea.Cmd) {
 	return wc, nil
 }
 
+// yamlEscape quotes a string for safe inclusion in YAML frontmatter.
+func yamlEscape(s string) string {
+	if strings.ContainsAny(s, ":\n\"'{}[]#&*!|>,@`") {
+		return "\"" + strings.ReplaceAll(s, "\"", "\\\"") + "\""
+	}
+	return s
+}
+
 // buildOutput assembles the final markdown output based on current settings.
 func (wc WebClipper) buildOutput() string {
 	var sb strings.Builder
@@ -452,13 +490,15 @@ func (wc WebClipper) buildOutput() string {
 	if wc.format == clipFormatFull {
 		now := time.Now().Format("2006-01-02")
 		sb.WriteString("---\n")
-		sb.WriteString("source: " + wc.url + "\n")
+		sb.WriteString("source: " + yamlEscape(wc.url) + "\n")
 		sb.WriteString("clipped: " + now + "\n")
 
-		// Build tags list
-		tags := []string{"clipped"}
-		tags = append(tags, wc.customTags...)
-		sb.WriteString("tags: [" + strings.Join(tags, ", ") + "]\n")
+		// Build tags list with escaped values
+		var quotedTags []string
+		for _, t := range append([]string{"clipped"}, wc.customTags...) {
+			quotedTags = append(quotedTags, yamlEscape(t))
+		}
+		sb.WriteString("tags: [" + strings.Join(quotedTags, ", ") + "]\n")
 		sb.WriteString("---\n\n")
 		sb.WriteString("# " + wc.title + "\n\n")
 	}
@@ -693,7 +733,7 @@ func fetchAndClip(rawURL string) tea.Cmd {
 		}
 		defer resp.Body.Close()
 
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10 MB limit
 		if err != nil {
 			return webClipResult{url: rawURL, err: fmt.Errorf("read failed: %w", err)}
 		}
@@ -834,16 +874,16 @@ func resolveURL(href, baseURL string) string {
 		return href
 	}
 	// Already absolute
-	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") || strings.HasPrefix(href, "//") {
-		return href
-	}
-	// Data URIs, mailto, etc. — leave alone
-	if strings.Contains(href, ":") {
+	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
 		return href
 	}
 	// Protocol-relative
 	if strings.HasPrefix(href, "//") {
 		return "https:" + href
+	}
+	// Data URIs, mailto, etc. — leave alone
+	if strings.Contains(href, ":") {
+		return href
 	}
 	// Absolute path
 	if strings.HasPrefix(href, "/") {
@@ -1194,8 +1234,8 @@ func convertUnorderedLists(html string) string {
 }
 
 // decodeHTMLEntities converts common HTML entities to their text equivalents.
+// Note: &amp; is decoded last to prevent double-decoding (e.g. &amp;lt; → &lt; → <).
 func decodeHTMLEntities(s string) string {
-	s = reHTMLEntAmp.ReplaceAllString(s, "&")
 	s = reHTMLEntLt.ReplaceAllString(s, "<")
 	s = reHTMLEntGt.ReplaceAllString(s, ">")
 	s = reHTMLEntQuot.ReplaceAllString(s, "\"")
@@ -1215,6 +1255,8 @@ func decodeHTMLEntities(s string) string {
 		}
 		return match
 	})
+	// Decode &amp; last to avoid double-decoding
+	s = reHTMLEntAmp.ReplaceAllString(s, "&")
 	return s
 }
 
