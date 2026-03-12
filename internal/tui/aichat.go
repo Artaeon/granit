@@ -244,7 +244,22 @@ func findRelevantNotes(query string, notes map[string]string, maxChars int) (con
 	totalLen := 0
 	for _, s := range scores {
 		body := notes[s.path]
-		header := fmt.Sprintf("\n--- Note: %s ---\n", s.path)
+
+		// Extract tags from frontmatter for extra context.
+		tags := extractFrontmatterTags(body)
+		tagStr := ""
+		if len(tags) > 0 {
+			tagStr = fmt.Sprintf("  Tags: %s\n", strings.Join(tags, ", "))
+		}
+
+		// Include folder path for structural context.
+		folder := ""
+		if idx := strings.LastIndex(s.path, "/"); idx > 0 {
+			folder = fmt.Sprintf("  Folder: %s\n", s.path[:idx])
+		}
+
+		noteName := strings.TrimSuffix(s.path, ".md")
+		header := fmt.Sprintf("\n--- Note: %s ---\n%s%s", noteName, folder, tagStr)
 		headerLen := len(header)
 
 		remaining := maxChars - totalLen - headerLen
@@ -259,7 +274,7 @@ func findRelevantNotes(query string, notes map[string]string, maxChars int) (con
 		b.WriteString(header)
 		b.WriteString(body)
 		totalLen += headerLen + len(body)
-		usedNotes = append(usedNotes, s.path)
+		usedNotes = append(usedNotes, noteName)
 
 		if totalLen >= maxChars {
 			break
@@ -267,6 +282,42 @@ func findRelevantNotes(query string, notes map[string]string, maxChars int) (con
 	}
 
 	return b.String(), usedNotes
+}
+
+// extractFrontmatterTags extracts tags from a note's YAML frontmatter block.
+func extractFrontmatterTags(body string) []string {
+	if !strings.HasPrefix(body, "---") {
+		return nil
+	}
+	end := strings.Index(body[3:], "---")
+	if end == -1 {
+		return nil
+	}
+	block := body[3 : 3+end]
+	for _, line := range strings.Split(block, "\n") {
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		if strings.TrimSpace(parts[0]) != "tags" {
+			continue
+		}
+		value := strings.TrimSpace(parts[1])
+		// Handle [tag1, tag2] format
+		if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
+			value = value[1 : len(value)-1]
+		}
+		var tags []string
+		for _, t := range strings.Split(value, ",") {
+			t = strings.TrimSpace(t)
+			t = strings.Trim(t, "\"'")
+			if t != "" {
+				tags = append(tags, t)
+			}
+		}
+		return tags
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
