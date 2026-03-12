@@ -348,11 +348,15 @@ func doOpenAIRequest(apiKey, model, prompt string, kind botKind) openaiResultMsg
 	}
 
 	if openaiResp.Error != nil {
-		return openaiResultMsg{err: fmt.Errorf("OpenAI error: %s", openaiResp.Error.Message), botKind: kind}
+		hint := openaiResp.Error.Message
+		if strings.Contains(hint, "auth") || strings.Contains(hint, "key") {
+			hint += " — check your API key in Settings (Ctrl+,)"
+		}
+		return openaiResultMsg{err: fmt.Errorf("OpenAI: %s", hint), botKind: kind}
 	}
 
 	if len(openaiResp.Choices) == 0 {
-		return openaiResultMsg{err: fmt.Errorf("OpenAI returned no choices"), botKind: kind}
+		return openaiResultMsg{err: fmt.Errorf("OpenAI returned an empty response — try a different model in Settings (Ctrl+,)"), botKind: kind}
 	}
 
 	return openaiResultMsg{response: openaiResp.Choices[0].Message.Content, botKind: kind}
@@ -372,7 +376,7 @@ func doOllamaRequest(url, model, prompt string, kind botKind) ollamaResultMsg {
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Post(url+"/api/generate", "application/json", bytes.NewReader(data))
 	if err != nil {
-		return ollamaResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err), botKind: kind}
+		return ollamaResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s — is it running? Try: ollama serve", url), botKind: kind}
 	}
 	if resp != nil && resp.Body != nil {
 		defer resp.Body.Close()
@@ -384,7 +388,7 @@ func doOllamaRequest(url, model, prompt string, kind botKind) ollamaResultMsg {
 	}
 
 	if resp.StatusCode != 200 {
-		return ollamaResultMsg{err: fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body)), botKind: kind}
+		return ollamaResultMsg{err: fmt.Errorf("Ollama error (status %d) — check model is pulled: ollama pull <model>", resp.StatusCode), botKind: kind}
 	}
 
 	var ollamaResp ollamaResponse

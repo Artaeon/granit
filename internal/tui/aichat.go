@@ -283,7 +283,7 @@ func sendToOllama(url, model, systemPrompt, userMsg string) tea.Cmd {
 		client := &http.Client{Timeout: 120 * time.Second}
 		resp, err := client.Post(url+"/api/generate", "application/json", bytes.NewReader(data))
 		if err != nil {
-			return aiChatResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)}
+			return aiChatResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s — is it running? Try: ollama serve", url)}
 		}
 		if resp != nil && resp.Body != nil {
 			defer resp.Body.Close()
@@ -295,7 +295,7 @@ func sendToOllama(url, model, systemPrompt, userMsg string) tea.Cmd {
 		}
 
 		if resp.StatusCode != 200 {
-			return aiChatResultMsg{err: fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body))}
+			return aiChatResultMsg{err: fmt.Errorf("Ollama error (status %d). Check model is pulled: ollama pull %s", resp.StatusCode, model)}
 		}
 
 		var olResp ollamaResponse
@@ -339,7 +339,7 @@ func sendToOpenAI(apiKey, model string, chatMessages []ChatMessage, systemPrompt
 
 		resp, err := client.Do(req)
 		if err != nil {
-			return aiChatResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
+			return aiChatResultMsg{err: fmt.Errorf("cannot reach OpenAI API — check your internet connection")}
 		}
 		if resp != nil && resp.Body != nil {
 			defer resp.Body.Close()
@@ -356,11 +356,15 @@ func sendToOpenAI(apiKey, model string, chatMessages []ChatMessage, systemPrompt
 		}
 
 		if oaiResp.Error != nil {
-			return aiChatResultMsg{err: fmt.Errorf("OpenAI error: %s", oaiResp.Error.Message)}
+			hint := oaiResp.Error.Message
+			if strings.Contains(hint, "auth") || strings.Contains(hint, "key") {
+				hint += " — check your API key in Settings (Ctrl+,)"
+			}
+			return aiChatResultMsg{err: fmt.Errorf("OpenAI: %s", hint)}
 		}
 
 		if len(oaiResp.Choices) == 0 {
-			return aiChatResultMsg{err: fmt.Errorf("OpenAI returned no choices")}
+			return aiChatResultMsg{err: fmt.Errorf("OpenAI returned an empty response — try a different model in Settings (Ctrl+,)")}
 		}
 
 		return aiChatResultMsg{response: oaiResp.Choices[0].Message.Content}

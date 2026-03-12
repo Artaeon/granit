@@ -350,7 +350,7 @@ func ghostCallOllama(url, model, context string, maxTokens int) (string, error) 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Post(url+"/api/generate", "application/json", bytes.NewReader(data))
 	if err != nil {
-		return "", fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)
+		return "", fmt.Errorf("Ghost Writer: cannot connect to Ollama at %s — is it running? Try: ollama serve", url)
 	}
 	defer resp.Body.Close()
 
@@ -360,7 +360,7 @@ func ghostCallOllama(url, model, context string, maxTokens int) (string, error) 
 	}
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("Ghost Writer: Ollama error (status %d) — check model is pulled: ollama pull %s", resp.StatusCode, model)
 	}
 
 	var olResp ghostOllamaResponse
@@ -403,7 +403,7 @@ func ghostCallOpenAI(apiKey, model, context string, maxTokens int) (string, erro
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("cannot connect to OpenAI: %w", err)
+		return "", fmt.Errorf("Ghost Writer: cannot reach OpenAI API — check your internet connection")
 	}
 	defer resp.Body.Close()
 
@@ -418,11 +418,15 @@ func ghostCallOpenAI(apiKey, model, context string, maxTokens int) (string, erro
 	}
 
 	if oaiResp.Error != nil {
-		return "", fmt.Errorf("OpenAI error: %s", oaiResp.Error.Message)
+		hint := oaiResp.Error.Message
+		if strings.Contains(hint, "auth") || strings.Contains(hint, "key") {
+			hint += " — check your API key in Settings (Ctrl+,)"
+		}
+		return "", fmt.Errorf("Ghost Writer: OpenAI: %s", hint)
 	}
 
 	if len(oaiResp.Choices) == 0 {
-		return "", fmt.Errorf("OpenAI returned no choices")
+		return "", fmt.Errorf("Ghost Writer: OpenAI returned an empty response")
 	}
 
 	return oaiResp.Choices[0].Message.Content, nil
