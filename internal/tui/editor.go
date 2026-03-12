@@ -238,28 +238,47 @@ func (e *Editor) SetContent(content string) {
 }
 
 func (e *Editor) InsertText(text string) {
+	// Normalize line endings and strip null bytes
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	text = strings.ReplaceAll(text, "\x00", "")
+	if text == "" {
+		return
+	}
+
 	e.saveSnapshot()
 	e.codeFenceCacheDirty = true
-	for _, ch := range text {
-		if ch == '\n' {
-			// Split current line
-			line := e.content[e.cursor]
-			before := line[:e.col]
-			after := line[e.col:]
-			e.content[e.cursor] = before
-			newLines := append(e.content[:e.cursor+1], append([]string{after}, e.content[e.cursor+1:]...)...)
-			e.content = newLines
-			e.cursor++
-			e.col = 0
-		} else {
-			line := e.content[e.cursor]
-			if e.col > len(line) {
-				e.col = len(line)
-			}
-			e.content[e.cursor] = line[:e.col] + string(ch) + line[e.col:]
-			e.col++
-		}
+
+	// Batch insert: split text into lines and splice into content
+	lines := strings.Split(text, "\n")
+
+	curLine := e.content[e.cursor]
+	if e.col > len(curLine) {
+		e.col = len(curLine)
 	}
+	before := curLine[:e.col]
+	after := curLine[e.col:]
+
+	if len(lines) == 1 {
+		// Single line: just splice into current line
+		e.content[e.cursor] = before + lines[0] + after
+		e.col += len(lines[0])
+	} else {
+		// Multi-line: split current line, insert new lines between
+		e.content[e.cursor] = before + lines[0]
+		newContent := make([]string, 0, len(e.content)+len(lines)-1)
+		newContent = append(newContent, e.content[:e.cursor+1]...)
+		for i := 1; i < len(lines)-1; i++ {
+			newContent = append(newContent, lines[i])
+		}
+		lastLine := lines[len(lines)-1] + after
+		newContent = append(newContent, lastLine)
+		newContent = append(newContent, e.content[e.cursor+1:]...)
+		e.content = newContent
+		e.cursor += len(lines) - 1
+		e.col = len(lines[len(lines)-1])
+	}
+
 	e.modified = true
 	e.countWords()
 }
