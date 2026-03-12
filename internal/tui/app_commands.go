@@ -983,20 +983,35 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.journalPrompts.Open(m.vault.Root)
 
 	case CmdClipManager:
+		// Load current system clipboard into clipboard manager
+		if text, err := ClipboardPaste(); err == nil && text != "" {
+			m.clipManager.AddClip(text, "(system clipboard)")
+		}
 		m.clipManager.SetSize(m.width, m.height)
 		m.clipManager.Open()
 
 	case CmdSmartPaste:
-		if text, err := ClipboardPaste(); err == nil && text != "" {
-			if m.editor.SmartPaste(text) {
-				m.statusbar.SetMessage("Smart paste: created markdown link")
-			} else {
-				m.editor.InsertText(text)
-				m.statusbar.SetMessage("Pasted from clipboard")
+		if m.viewMode {
+			m.statusbar.SetMessage("Cannot paste in view mode")
+		} else {
+			text, err := ClipboardPaste()
+			if err != nil {
+				m.statusbar.SetMessage("Clipboard error: " + err.Error())
+			} else if text != "" {
+				if m.editor.HasSelection() {
+					m.editor.DeleteSelection()
+				}
+				if m.editor.SmartPaste(text) {
+					m.statusbar.SetMessage("Smart paste: created markdown link")
+				} else {
+					m.editor.InsertText(text)
+					m.statusbar.SetMessage("Pasted from clipboard")
+				}
+				m.clipManager.AddClip(text, m.activeNote)
+				line, col := m.editor.GetCursor()
+				m.statusbar.SetCursor(line, col)
+				m.statusbar.SetWordCount(m.editor.GetWordCount())
 			}
-			line, col := m.editor.GetCursor()
-			m.statusbar.SetCursor(line, col)
-			m.statusbar.SetWordCount(m.editor.GetWordCount())
 		}
 
 	case CmdDailyPlanner:
