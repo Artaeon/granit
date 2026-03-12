@@ -137,14 +137,18 @@ func (cm *ClipManager) SetSize(w, h int) {
 
 // AddClip records a new clip in the history. Duplicates are moved to the
 // front rather than inserted again. The list is capped at maxClips.
+// Pinned state is preserved when a duplicate is re-added.
 func (cm *ClipManager) AddClip(text, source string) {
 	if strings.TrimSpace(text) == "" {
 		return
 	}
 
-	// Deduplicate — remove any existing entry with the same text.
+	// Deduplicate — remove any existing entry with the same text,
+	// preserving its pinned state.
+	wasPinned := false
 	for i := 0; i < len(cm.clips); i++ {
 		if cm.clips[i].Text == text {
+			wasPinned = cm.clips[i].Pinned
 			cm.clips = append(cm.clips[:i], cm.clips[i+1:]...)
 			break
 		}
@@ -154,15 +158,30 @@ func (cm *ClipManager) AddClip(text, source string) {
 		Text:      text,
 		Timestamp: time.Now(),
 		Source:    source,
-		Pinned:   false,
+		Pinned:   wasPinned,
 	}
 
 	// Prepend.
 	cm.clips = append([]clipEntry{entry}, cm.clips...)
 
-	// Cap at maxClips.
+	// Cap at maxClips, but never drop pinned clips.
 	if len(cm.clips) > maxClips {
-		cm.clips = cm.clips[:maxClips]
+		for len(cm.clips) > maxClips {
+			// Remove the last unpinned clip
+			removed := false
+			for i := len(cm.clips) - 1; i >= 0; i-- {
+				if !cm.clips[i].Pinned {
+					cm.clips = append(cm.clips[:i], cm.clips[i+1:]...)
+					removed = true
+					break
+				}
+			}
+			if !removed {
+				// All clips are pinned — hard cap
+				cm.clips = cm.clips[:maxClips]
+				break
+			}
+		}
 	}
 }
 
@@ -262,7 +281,7 @@ func (cm ClipManager) updateSearch(msg tea.KeyMsg) (ClipManager, tea.Cmd) {
 		// Keep filtered results, switch to normal nav
 	case "backspace":
 		if len(cm.searchBuf) > 0 {
-			cm.searchBuf = cm.searchBuf[:len(cm.searchBuf)-1]
+			cm.searchBuf = dropLastRune(cm.searchBuf)
 			cm.rebuildFiltered()
 			cm.cursor = 0
 			cm.scroll = 0
@@ -318,10 +337,12 @@ func (cm ClipManager) updateNormal(msg tea.KeyMsg) (ClipManager, tea.Cmd) {
 	case "d":
 		if len(cm.filtered) > 0 && cm.cursor < len(cm.filtered) {
 			idx := cm.filtered[cm.cursor]
-			cm.clips = append(cm.clips[:idx], cm.clips[idx+1:]...)
-			cm.rebuildFiltered()
-			if cm.cursor >= len(cm.filtered) && cm.cursor > 0 {
-				cm.cursor--
+			if idx >= 0 && idx < len(cm.clips) {
+				cm.clips = append(cm.clips[:idx], cm.clips[idx+1:]...)
+				cm.rebuildFiltered()
+				if cm.cursor >= len(cm.filtered) && cm.cursor > 0 {
+					cm.cursor--
+				}
 			}
 		}
 
