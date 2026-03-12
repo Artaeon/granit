@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -384,6 +386,19 @@ func runTUI(vaultPath string) {
 	}
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
+
+	// Handle SIGTERM/SIGHUP: tell Bubble Tea to quit gracefully.
+	// Sends Ctrl+Q twice: first triggers exit splash (which auto-saves),
+	// second confirms quit.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGHUP)
+	go func() {
+		<-sigCh
+		p.Send(tea.KeyMsg{Type: tea.KeyCtrlQ})
+		time.Sleep(100 * time.Millisecond)
+		p.Send(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	}()
+
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running Granit: %v\n", err)
 		os.Exit(1)
