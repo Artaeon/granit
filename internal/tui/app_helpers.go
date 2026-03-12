@@ -1243,6 +1243,21 @@ func (m *Model) runPluginSaveHooks() tea.Cmd {
 }
 
 func (m *Model) triggerExitSplash() tea.Cmd {
+	// Save unsaved changes before exiting to prevent data loss
+	if m.editor.modified && m.activeNote != "" {
+		content := m.editor.GetContent()
+		path := filepath.Join(m.vault.Root, m.activeNote)
+		tmpPath := path + ".tmp"
+		if err := os.WriteFile(tmpPath, []byte(content), 0644); err == nil {
+			if err := os.Rename(tmpPath, path); err == nil {
+				m.editor.modified = false
+			} else {
+				_ = os.Remove(tmpPath)
+			}
+		} else {
+			_ = os.Remove(tmpPath)
+		}
+	}
 	// Stop file watcher to avoid leaking goroutines/descriptors
 	if m.fileWatcher != nil {
 		m.fileWatcher.Stop()
