@@ -405,9 +405,22 @@ func doOllamaRequest(url, model, prompt string, kind botKind) ollamaResultMsg {
 
 func (b *Bots) buildAutoTaggerPrompt() string {
 	noteName := strings.TrimSuffix(b.currentPath, ".md")
+
+	// Count how many notes use each tag to help AI understand the taxonomy.
+	tagCounts := make(map[string]int)
+	for _, body := range b.notes {
+		for _, tag := range extractFrontmatterTags(body) {
+			tagCounts[tag]++
+		}
+	}
+
 	existingTags := make([]string, 0, len(b.tags))
 	for t := range b.tags {
-		existingTags = append(existingTags, t)
+		if c, ok := tagCounts[t]; ok && c > 1 {
+			existingTags = append(existingTags, fmt.Sprintf("%s (%d notes)", t, c))
+		} else {
+			existingTags = append(existingTags, t)
+		}
 	}
 	sort.Strings(existingTags)
 	tagList := strings.Join(existingTags, ", ")
@@ -440,20 +453,25 @@ func (b *Bots) buildLinkSuggesterPrompt() string {
 		content = content[:1500]
 	}
 
-	// Build a brief index of other notes
+	// Build a brief index of other notes — include all titles, with
+	// content previews for the first 30 to give the AI enough context.
 	var noteIndex strings.Builder
 	count := 0
 	for path, body := range b.notes {
-		if path == b.currentPath || count >= 20 {
+		if path == b.currentPath {
 			continue
 		}
 		name := strings.TrimSuffix(path, ".md")
-		preview := body
-		if len(preview) > 200 {
-			preview = preview[:200]
+		if count < 30 {
+			preview := body
+			if len(preview) > 200 {
+				preview = preview[:200]
+			}
+			preview = strings.ReplaceAll(preview, "\n", " ")
+			noteIndex.WriteString(fmt.Sprintf("- %s: %s\n", name, preview))
+		} else {
+			noteIndex.WriteString(fmt.Sprintf("- %s\n", name))
 		}
-		preview = strings.ReplaceAll(preview, "\n", " ")
-		noteIndex.WriteString(fmt.Sprintf("- %s: %s\n", name, preview))
 		count++
 	}
 
