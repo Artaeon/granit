@@ -47,9 +47,9 @@ var helpSections = []helpSection{
 		title: "Navigation",
 		bindings: []helpBinding{
 			{"Tab / Shift+Tab", "Cycle between panels"},
-			{"F1", "Focus file sidebar"},
-			{"F2", "Focus editor"},
-			{"F3", "Focus backlinks panel"},
+			{"F1 / Alt+1", "Focus file sidebar"},
+			{"F2 / Alt+2", "Focus editor"},
+			{"F3 / Alt+3", "Focus backlinks panel"},
 			{"Esc", "Return to sidebar / close overlay"},
 			{"j / k / ↑ / ↓", "Navigate up/down"},
 			{"Enter", "Open selected file/link"},
@@ -101,7 +101,7 @@ var helpSections = []helpSection{
 			{"Alt+P", "Plan My Day (AI schedule)"},
 			{"Alt+[", "Previous daily note"},
 			{"Alt+]", "Next daily note"},
-			{"F5", "Show this help"},
+			{"F5 / Alt+?", "Show this help"},
 		},
 	},
 	{

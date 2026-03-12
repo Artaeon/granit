@@ -2061,15 +2061,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusbar.SetDueTodayCount(m.dueTodayCount)
 			return m, cmd
 
-		case "f1":
+		case "f1", "alt+1":
 			m.setFocus(focusSidebar)
 			return m, nil
 
-		case "f2":
+		case "f2", "alt+2":
 			m.setFocus(focusEditor)
 			return m, nil
 
-		case "f3":
+		case "f3", "alt+3":
 			m.setFocus(focusBacklinks)
 			return m, nil
 
@@ -2081,7 +2081,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "f5":
+		case "f5", "alt+?":
 			m.helpOverlay.SetSize(m.width, m.height)
 			m.helpOverlay.Toggle()
 			return m, nil

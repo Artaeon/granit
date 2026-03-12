@@ -373,7 +373,7 @@ func (t Tutorial) pageNavigation(w int) (string, string) {
 	b.WriteString("\n")
 	b.WriteString(tutBinding("Tab / Shift+Tab", "Cycle between panels"))
 	b.WriteString("\n")
-	b.WriteString(tutBinding("F1 / F2 / F3", "Jump to sidebar / editor / backlinks"))
+	b.WriteString(tutBinding("Alt+1 / Alt+2 / Alt+3", "Jump to sidebar / editor / backlinks"))
 	b.WriteString("\n\n")
 
 	b.WriteString(tutSection("Finding Files"))
@@ -591,7 +591,7 @@ func (t Tutorial) pageShortcuts(w int) (string, string) {
 	b.WriteString("\n")
 	b.WriteString(tutBinding("Ctrl+,", "Settings"))
 	b.WriteString("\n")
-	b.WriteString(tutBinding("F5", "Full help / all shortcuts"))
+	b.WriteString(tutBinding("Alt+?", "Full help / all shortcuts"))
 	b.WriteString("\n")
 	b.WriteString(tutBinding("Ctrl+Q", "Quit"))
 	b.WriteString("\n\n")
