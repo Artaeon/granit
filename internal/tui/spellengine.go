@@ -177,9 +177,10 @@ func (se *spellEngine) savePersonalDict() error {
 }
 
 // addToPersonal adds a word to the personal dictionary and persists it.
-func (se *spellEngine) addToPersonal(word string) {
+// Returns an error if saving to disk fails.
+func (se *spellEngine) addToPersonal(word string) error {
 	se.personal[strings.ToLower(word)] = true
-	_ = se.savePersonalDict()
+	return se.savePersonalDict()
 }
 
 // addSessionIgnore marks a word as ignored for this session only.

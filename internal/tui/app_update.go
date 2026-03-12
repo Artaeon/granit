@@ -1468,6 +1468,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.spellcheck.IsActive() {
 			m.spellcheck, _ = m.spellcheck.Update(msg)
+			if errMsg := m.spellcheck.ConsumeError(); errMsg != "" {
+				m.statusbar.SetWarning(errMsg)
+			}
 			wasApplied := false
 			if word, line, col, replacement, ok := m.spellcheck.GetCorrection(); ok {
 				_ = word

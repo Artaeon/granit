@@ -52,6 +52,8 @@ type SpellChecker struct {
 	inlineWords   []MisspelledWord  // last inline check results
 	inlinePos     map[int]map[int]bool // line -> col -> true for rendering
 
+	// Last error from dictionary save (consumed by caller)
+	lastError string
 }
 
 // NewSpellChecker probes for aspell, hunspell, or a built-in dictionary and
@@ -302,8 +304,16 @@ func (sc *SpellChecker) GetCorrection() (word string, line, col int, replacement
 }
 
 // AddToPersonalDict adds the selected word to the personal dictionary.
-func (sc *SpellChecker) AddToPersonalDict(word string) {
-	sc.engine.addToPersonal(word)
+// Returns an error if persisting to disk fails.
+func (sc *SpellChecker) AddToPersonalDict(word string) error {
+	return sc.engine.addToPersonal(word)
+}
+
+// ConsumeError returns and clears the last error message, if any.
+func (sc *SpellChecker) ConsumeError() string {
+	e := sc.lastError
+	sc.lastError = ""
+	return e
 }
 
 // IgnoreAllOccurrences marks a word as ignored for this session and removes
@@ -419,7 +429,9 @@ func (sc SpellChecker) Update(msg tea.Msg) (SpellChecker, tea.Cmd) {
 			// Add to personal dictionary and remove all occurrences
 			if len(sc.words) > 0 && sc.cursor < len(sc.words) {
 				w := sc.words[sc.cursor]
-				sc.AddToPersonalDict(w.Word)
+				if err := sc.AddToPersonalDict(w.Word); err != nil {
+					sc.lastError = "Could not save personal dictionary: " + err.Error()
+				}
 				sc.IgnoreAllOccurrences(w.Word)
 				// Adjust cursor
 				if sc.cursor >= len(sc.words) && sc.cursor > 0 {
