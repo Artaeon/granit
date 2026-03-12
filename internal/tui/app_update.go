@@ -110,7 +110,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.config.AutoSave && msg.editTime.Equal(m.lastEditTime) && m.editor.modified && m.activeNote != "" {
 			content := m.editor.GetContent()
 			path := filepath.Join(m.vault.Root, m.activeNote)
-			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			// Atomic write: temp file + rename to prevent corruption on crash
+			tmpPath := path + ".tmp"
+			if err := os.WriteFile(tmpPath, []byte(content), 0644); err != nil {
+				_ = os.Remove(tmpPath)
+				m.statusbar.SetMessage("Autosave failed: " + err.Error())
+				return m, m.clearMessageAfter(5 * time.Second)
+			}
+			if err := os.Rename(tmpPath, path); err != nil {
+				_ = os.Remove(tmpPath)
 				m.statusbar.SetMessage("Autosave failed: " + err.Error())
 				return m, m.clearMessageAfter(5 * time.Second)
 			}
@@ -1155,8 +1163,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.clipManager, _ = m.clipManager.Update(msg)
 			if !m.clipManager.IsActive() {
 				if text, ok := m.clipManager.GetResult(); ok {
-					m.editor.InsertText(text)
-					m.statusbar.SetMessage("Pasted from clipboard")
+					if m.viewMode {
+						m.statusbar.SetMessage("Cannot paste in view mode")
+					} else {
+						if m.editor.HasSelection() {
+							m.editor.DeleteSelection()
+						}
+						if !m.editor.SmartPaste(text) {
+							m.editor.InsertText(text)
+						}
+						m.statusbar.SetMessage("Pasted from clipboard")
+					}
 				}
 			}
 			return m, nil
@@ -1872,7 +1889,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.webClipper, cmd = m.webClipper.Update(msg)
 			if !m.webClipper.IsActive() {
 				if title, content, ok := m.webClipper.GetResult(); ok {
-					name := title
+					// Sanitize title for use as filename — prevent path traversal
+					name := filepath.Base(title)
+					name = strings.Map(func(r rune) rune {
+						if r == '/' || r == '\\' || r == ':' || r == '*' || r == '?' || r == '"' || r == '<' || r == '>' || r == '|' || r == '\x00' {
+							return '_'
+						}
+						return r
+					}, name)
+					if name == "" || name == "." || name == ".." {
+						name = "Untitled Clip"
+					}
 					if !strings.HasSuffix(name, ".md") {
 						name += ".md"
 					}
@@ -2001,13 +2028,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Selection copy: intercept Ctrl+C before global quit handler when editor has selection
-		if m.focus == focusEditor && !m.viewMode && m.editor.HasSelection() {
+		// Works in both edit and view mode — copying is a read-only operation.
+		if m.focus == focusEditor && m.editor.HasSelection() {
 			if msg.String() == "ctrl+c" {
 				text := m.editor.GetSelectedText()
 				if text != "" {
-					_ = ClipboardCopy(text)
+					if err := ClipboardCopy(text); err != nil {
+						m.statusbar.SetMessage("Copy failed: " + err.Error())
+					} else {
+						m.statusbar.SetMessage("Copied to clipboard")
+					}
+					m.clipManager.AddClip(text, m.activeNote)
 					m.editor.ClearSelection()
-					m.statusbar.SetMessage("Copied to clipboard")
 					return m, m.clearMessageAfter(2 * time.Second)
 				}
 			}
@@ -2110,9 +2142,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focus == focusEditor && !m.viewMode && m.editor.HasSelection() {
 				text := m.editor.GetSelectedText()
 				if text != "" {
-					_ = ClipboardCopy(text)
+					if err := ClipboardCopy(text); err != nil {
+						m.statusbar.SetMessage("Cut failed: " + err.Error())
+					} else {
+						m.statusbar.SetMessage("Cut to clipboard")
+					}
+					m.clipManager.AddClip(text, m.activeNote)
 					m.editor.DeleteSelection()
-					m.statusbar.SetMessage("Cut to clipboard")
 					line, col := m.editor.GetCursor()
 					m.statusbar.SetCursor(line, col)
 					m.statusbar.SetWordCount(m.editor.GetWordCount())
@@ -2391,6 +2427,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if keyMsg, ok := msg.(tea.KeyMsg); ok {
 				k := keyMsg.String()
 
+				// Bracketed paste: handle text pasted via terminal (Ctrl+Shift+V, right-click, etc.)
+				// Must run before link completer / slash menu to avoid desync.
+				if keyMsg.Paste {
+					// Dismiss popups that would misinterpret paste content
+					if m.linkCompleter != nil && m.linkCompleter.IsActive() {
+						m.linkCompleter.Deactivate()
+					}
+					if m.slashMenu != nil && m.slashMenu.IsActive() {
+						m.slashMenu.Close()
+					}
+					text := string(keyMsg.Runes)
+					if text == "" {
+						return m, nil // empty paste, nothing to do
+					}
+					if m.editor.HasSelection() {
+						m.editor.DeleteSelection()
+					}
+					if m.editor.SmartPaste(text) {
+						m.statusbar.SetMessage("Smart paste: created markdown link")
+					} else {
+						m.editor.InsertText(text)
+					}
+					m.clipManager.AddClip(text, m.activeNote)
+					line, col := m.editor.GetCursor()
+					m.statusbar.SetCursor(line, col)
+					m.statusbar.SetWordCount(m.editor.GetWordCount())
+					return m, nil
+				}
+
 				// Link completer intercepts keys when active
 				if m.linkCompleter != nil && m.linkCompleter.IsActive() {
 					switch k {
@@ -2482,12 +2547,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Clipboard: Ctrl+C copies selection, Ctrl+V pastes (smart paste for URLs)
 				if k == "ctrl+v" {
-					if text, err := ClipboardPaste(); err == nil && text != "" {
+					text, err := ClipboardPaste()
+					if err != nil {
+						m.statusbar.SetMessage("Clipboard error: " + err.Error())
+						return m, m.clearMessageAfter(3 * time.Second)
+					}
+					if text != "" {
+						if m.editor.HasSelection() {
+							m.editor.DeleteSelection()
+						}
 						if m.editor.SmartPaste(text) {
 							m.statusbar.SetMessage("Smart paste: created markdown link")
 						} else {
 							m.editor.InsertText(text)
 						}
+						m.clipManager.AddClip(text, m.activeNote)
 						line, col := m.editor.GetCursor()
 						m.statusbar.SetCursor(line, col)
 						m.statusbar.SetWordCount(m.editor.GetWordCount())
