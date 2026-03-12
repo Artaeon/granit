@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License"></a>
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge" alt="Status">
-  <img src="https://img.shields.io/badge/TUI-80k%2B%20Lines-orange?style=for-the-badge" alt="Codebase">
+  <img src="https://img.shields.io/badge/TUI-148k%2B%20Lines-orange?style=for-the-badge" alt="Codebase">
   <img src="https://img.shields.io/badge/Themes-35-purple?style=for-the-badge" alt="Themes">
 </p>
 
@@ -53,7 +53,7 @@ Granit is a **free, open-source** terminal-native personal knowledge management 
 
 | | |
 |---|---|
-| **140+ source files** | 115,000+ lines of Go powering the TUI |
+| **220+ source files** | 148,000+ lines of Go powering the TUI |
 | **40 themes** | 33 dark + 7 light, plus custom theme editor |
 | **20+ AI features** | Ollama, OpenAI, Claude Code, or offline fallback |
 | **8 layouts** | Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, Research |
@@ -206,7 +206,13 @@ Granit includes **20+ AI features** that work with local models (Ollama), OpenAI
 |---------|--------|-------------|
 | **Task Manager** | `Ctrl+K` | 6 views (Today, Upcoming, All, Done, Calendar, Kanban), 5 priority levels, date picker, cross-vault scanning |
 | **Daily Planner** | Command palette | Time-blocked daily schedule (6am–10pm, 30-min slots) with task/event/habit import |
+| **Plan My Day (AI)** | Command palette | AI-optimized daily schedule with focus order, carry-forward tasks, and personalized advice |
 | **AI Smart Scheduler** | Command palette | Auto-generate optimal daily schedules based on priorities and estimated times |
+| **Clock / Time Tracking** | `granit clock` | Clock in/out with project tags, status bar timer, daily and weekly logs in `Timetracking/` |
+| **Reminders** | `granit remind` | Scheduled reminders with daily/weekdays/once patterns, terminal bell + status bar notifications |
+| **Today Dashboard** | `granit today` | Terminal dashboard: tasks, overdue, upcoming, habits, clocked time — `--json` for scripts |
+| **Daily/Weekly Review** | `granit review` | Review summary with `--week`, `--markdown`, `--save` to `Reviews/` folder |
+| **CLI Task Add** | `granit todo` | Add tasks from CLI with `--due`, `--priority`, `--tag` flags |
 | **Recurring Tasks** | Command palette | Daily/weekly/monthly auto-creating tasks |
 | **Pomodoro Timer** | Command palette | 25-min focus sessions with break cycles |
 | **Focus Sessions** | Command palette | Guided work timer (25/45/60/90 min) with goal, scratchpad, and session log |
@@ -247,6 +253,7 @@ Built-in git overlay with status, log, and diff views:
 - Quick actions: **commit** (c), **push** (p), **pull** (P), **refresh** (r)
 - **Auto-sync** — optional auto commit+push on save, pull on open
 - **Per-note git history** — view commit history, browse colored diffs, restore previous versions
+- **CLI sync** — `granit sync` pulls (rebase), commits, and pushes in one command with auto-conflict resolution
 
 ### Export & Publishing
 
@@ -256,6 +263,14 @@ Built-in git overlay with status, log, and diff views:
 - **Bulk HTML export** — all vault notes at once
 - **Static site publisher** — export vault as a complete HTML website with search, tag pages, and wikilink resolution
 - **Blog publisher** — publish to **Medium** (draft/public/unlisted) or **GitHub** (push to any repo/branch) with persistent token storage and retry logic
+
+### Data Safety
+
+- **Atomic file writes** — saves use temp file + rename to prevent corruption on crash or power loss
+- **Save on quit** — unsaved changes are automatically saved before exit (including splash screen dismiss)
+- **Signal handling** — SIGTERM and SIGHUP trigger graceful save-and-quit instead of data loss
+- **Clipboard hardening** — 3-second timeout on clipboard operations, rune-safe text handling, path traversal protection
+- **Vault backup** — `granit backup` creates timestamped zip archives with `--restore` support
 
 ### Extensibility
 
@@ -374,17 +389,57 @@ granit
 # Open a specific vault:
 granit ~/Notes
 
-# Open with explicit command:
-granit open ~/Notes
-
 # Create/open today's daily note:
 granit daily ~/Notes
+
+# Today's terminal dashboard (tasks, habits, time tracking):
+granit today ~/Notes
+
+# Daily or weekly review summary:
+granit review ~/Notes
+granit review ~/Notes --week --save
+
+# Add a task from the command line:
+granit todo "Ship v2.0" --due friday --priority high --tag release
 
 # Quick capture a thought to inbox:
 granit capture "Remember to review PR #42"
 
 # Pipe content to inbox:
 echo "Meeting notes: discussed Q3 roadmap" | granit clip
+
+# Time tracking:
+granit clock in --project "granit"
+granit clock status
+granit clock out
+granit clock log --week
+
+# Set a reminder:
+granit remind "Stand up" --at 09:00 --weekdays
+granit remind list
+
+# Git sync (pull, commit, push in one command):
+granit sync ~/Notes -m "Evening sync"
+
+# Search vault content:
+granit search "meeting notes" ~/Notes
+
+# Initialize a new vault:
+granit init ~/NewVault
+
+# Backup and restore:
+granit backup ~/Notes --output ~/backups/
+granit backup --restore ~/backups/notes-2026-03-12.zip
+
+# Serve vault as read-only website:
+granit serve ~/Notes --port 8080
+
+# Plugin management:
+granit plugin list
+granit plugin create my-plugin
+
+# Shell completions (bash, zsh, fish):
+granit completion bash >> ~/.bashrc
 
 # Scan a vault and print stats:
 granit scan ~/Notes
@@ -687,6 +742,10 @@ granit/
   cmd/granit/
     main.go                 CLI entry point, vault selector, subcommands
     manpage.go              Roff man page generator (granit man)
+    today.go                Today dashboard (tasks, habits, time)
+    clock.go                Clock in/out time tracking
+    remind.go               Reminder management
+    sync.go                 Git sync (pull, commit, push)
   internal/
     config/
       config.go             JSON configuration (global + per-vault)
@@ -696,7 +755,7 @@ granit/
       vault.go              Vault scanning with lazy loading
       parser.go             Markdown/frontmatter/wikilink parser
       index.go              Backlink and link index
-    tui/                    140+ source files, 115k+ lines
+    tui/                    178 source files, 134k+ lines
       app.go                Main Bubble Tea model
       editor.go             Text editor with multi-cursor
       syntaxhl.go           Chroma-based code block highlighting (200+ languages)
@@ -766,7 +825,10 @@ granit/
       mindmap.go            Mind map view (ASCII tree)
       journalprompts.go     Daily journal prompts (100+ prompts)
       clipmanager.go        Clipboard manager (50-entry history)
+      clipboard.go          System clipboard + Web Clipper
       dailyplanner.go       Daily planner (time-blocked schedule)
+      planmyday.go          AI Plan My Day optimizer
+      clockin.go            Clock in/out + reminder system
       aischeduler.go        AI smart scheduler
       recurringtasks.go     Recurring tasks (auto-creation)
       notepreview.go        Note preview popup
