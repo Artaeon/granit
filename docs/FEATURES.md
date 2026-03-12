@@ -771,6 +771,55 @@ Project management with 9 categories, dashboards, and note/task grouping. Organi
 - **Access:** Command palette > "Projects"
 - **Example:** Create a "Website Redesign" project, assign notes and tasks to it, and view a project dashboard.
 
+### Plan My Day (AI)
+
+AI-optimized daily planning. Gathers tasks, calendar events, habits, projects, and yesterday's carry-forward items, then generates an optimized schedule with focus order and personalized advice. Shows clocked time tracking sessions integrated into the plan. Works with Ollama, OpenAI, or a local fallback algorithm.
+
+- **Access:** Command palette > "Plan My Day"
+- **Example:** AI analyzes your 8 tasks, 2 meetings, and 3 habits, then generates: "9:00 Deep Work — Write Report (highest priority), 10:30 Meeting — Team Standup, 11:00 Review — PR #42..."
+
+### Clock / Time Tracking (CLI)
+
+Clock in and out of work sessions from the terminal. Sessions are tagged with optional project names, tracked with elapsed time in the TUI status bar, and logged to `Timetracking/` as Markdown tables.
+
+- **Access:** `granit clock in [--project "name"]`, `granit clock out`, `granit clock status`, `granit clock log [--week]`
+- **Example:** `granit clock in --project "granit"` starts tracking. The status bar shows `[01:23:45 granit]`. `granit clock out` logs the session.
+
+### Reminders
+
+Scheduled reminders with daily, weekdays, or one-time patterns. Reminders fire as a terminal bell and status bar notification when the TUI is running.
+
+- **Access:** `granit remind "text" --at HH:MM [--daily|--weekdays|--once]`, `granit remind list`, `granit remind remove <n>`
+- **Example:** `granit remind "Stand up and stretch" --at 14:00 --weekdays` sets a weekday-only 2pm reminder.
+
+### Today Dashboard (CLI)
+
+Terminal dashboard showing today's tasks, overdue items, upcoming tasks (7 days), completed tasks, habit streaks, and clocked time totals. Supports `--json` output for scripting.
+
+- **Access:** `granit today [vault-path]`
+- **Example:** Run `granit today ~/Notes` to see "3 tasks due today, 1 overdue, 2h 15m clocked" at a glance.
+
+### Daily / Weekly Review (CLI)
+
+Generate a review summary of completed and pending tasks, habit completion, and time tracked. Save reviews to the `Reviews/` folder in your vault.
+
+- **Access:** `granit review [path] [--week] [--markdown] [--save]`
+- **Example:** `granit review ~/Notes --week --save` generates a weekly review and saves it as a Markdown note.
+
+### CLI Task Add
+
+Add tasks directly from the command line with due dates, priorities, and tags. Tasks are appended to `Tasks.md`.
+
+- **Access:** `granit todo "text" [--due date] [--priority level] [--tag name]`
+- **Example:** `granit todo "Ship v2.0" --due friday --priority high --tag release`
+
+### Data Safety
+
+Production-hardened data protection: atomic file writes (temp file + rename), automatic save on quit, SIGTERM/SIGHUP signal handling for graceful shutdown, clipboard timeout protection, and rune-safe text operations.
+
+- **Access:** Automatic — no configuration needed
+- **Example:** If the terminal is killed during a save, no data is lost because writes are atomic.
+
 ---
 
 ## Knowledge Tools
@@ -856,6 +905,20 @@ View the commit history for any individual note, browse colored diffs between ve
 
 - **Access:** Command palette > "Git: Status & Commit" for the overlay; "Git History" for per-note history
 - **Example:** View the last 20 commits affecting `Architecture.md`, see what changed in each commit, and restore the version from 3 days ago.
+
+### CLI Sync
+
+One-command pull (rebase), stage all changes, commit, and push. Auto-resolves conflicts by accepting the newest version. Supports `--quiet`, `--dry-run`, and `-m "message"`.
+
+- **Access:** `granit sync [path] [-m "message"] [--dry-run]`
+- **Example:** `granit sync ~/Notes -m "Evening sync"` pulls, commits, and pushes all changes.
+
+### Vault Backup
+
+Create timestamped zip backups of your vault. List available backups and restore from any archive.
+
+- **Access:** `granit backup [path] [--output dir]`, `granit backup --restore file.zip`, `granit backup --list`
+- **Example:** `granit backup ~/Notes` creates `notes-2026-03-12.zip`.
 
 ---
 
