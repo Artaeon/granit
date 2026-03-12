@@ -58,6 +58,9 @@ type GhostWriter struct {
 	// Internal: shuttled from OnEdit to debounce handler
 	contextBuf  string
 	requestTime time.Time
+
+	// Last error from AI provider (cleared on next successful suggestion)
+	lastError string
 }
 
 // NewGhostWriter creates a GhostWriter with sensible defaults.
@@ -129,6 +132,13 @@ func (gw *GhostWriter) Dismiss() {
 	gw.suggestion = ""
 }
 
+// ConsumeError returns and clears the last error message, if any.
+func (gw *GhostWriter) ConsumeError() string {
+	e := gw.lastError
+	gw.lastError = ""
+	return e
+}
+
 // ---------------------------------------------------------------------------
 // Edit hook & debounce
 // ---------------------------------------------------------------------------
@@ -184,9 +194,10 @@ func (gw *GhostWriter) HandleMsg(msg tea.Msg) tea.Cmd {
 	case ghostSuggestionMsg:
 		gw.pending = false
 		if msg.err != nil {
-			// Silently discard errors — ghost text is best-effort.
+			gw.lastError = msg.err.Error()
 			return nil
 		}
+		gw.lastError = ""
 		// Only accept the suggestion if no newer edits happened while
 		// the request was in flight.
 		if gw.requestTime.Equal(gw.lastEdit) {

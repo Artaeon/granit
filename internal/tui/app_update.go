@@ -573,6 +573,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.ghostWriter != nil {
 			cmd := m.ghostWriter.HandleMsg(msg)
 			m.editor.SetGhostText(m.ghostWriter.GetSuggestion())
+			if errMsg := m.ghostWriter.ConsumeError(); errMsg != "" {
+				m.statusbar.SetWarning(errMsg)
+			}
 			return m, cmd
 		}
 		return m, nil
