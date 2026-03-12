@@ -431,6 +431,23 @@ func sendToOpenAI(apiKey, model string, chatMessages []ChatMessage, systemPrompt
 	}
 }
 
+// localChatFallback provides a keyword-based response when no AI provider
+// is available. It returns the matched note excerpts as the "answer".
+func localChatFallback(query string, usedNotes []string, contextText string) tea.Cmd {
+	return func() tea.Msg {
+		if len(usedNotes) == 0 {
+			return aiChatResultMsg{response: "No notes matched your query. Try different keywords or switch to an AI provider (Ollama/OpenAI) in Settings (Ctrl+,) for smarter search."}
+		}
+
+		var b strings.Builder
+		b.WriteString(fmt.Sprintf("Found %d relevant note(s): **%s**\n\n", len(usedNotes), strings.Join(usedNotes, "**, **")))
+		b.WriteString("Here are the matching excerpts:\n")
+		b.WriteString(contextText)
+		b.WriteString("\n\n_Using local keyword search. For AI-powered answers, configure Ollama or OpenAI in Settings (Ctrl+,)._")
+		return aiChatResultMsg{response: b.String()}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Loading animation tick
 // ---------------------------------------------------------------------------
@@ -463,7 +480,7 @@ func (ac AIChat) Update(msg tea.Msg) (AIChat, tea.Cmd) {
 		if msg.err != nil {
 			ac.messages = append(ac.messages, ChatMessage{
 				Role:    "system",
-				Content: fmt.Sprintf("Error: %v", msg.err),
+				Content: fmt.Sprintf("Error: %v\n\nTip: Set AI provider to \"local\" in Settings (Ctrl+,) for offline keyword search.", msg.err),
 				Time:    time.Now(),
 			})
 		} else {
@@ -527,6 +544,9 @@ func (ac AIChat) Update(msg tea.Msg) (AIChat, tea.Cmd) {
 					convMsgs[len(convMsgs)-1].Content = userMsg
 				}
 				cmd = sendToOpenAI(ac.apiKey, ac.model, convMsgs, aiChatSystemPrompt)
+			case "local":
+				// Local fallback: return matched note excerpts directly.
+				cmd = localChatFallback(trimmed, usedNotes, contextText)
 			default: // "ollama"
 				cmd = sendToOllama(ac.ollamaURL, ac.model, aiChatSystemPrompt, userMsg)
 			}
