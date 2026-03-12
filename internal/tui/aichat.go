@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -197,6 +198,14 @@ func findRelevantNotes(query string, notes map[string]string, maxChars int) (con
 		return "", nil
 	}
 
+	// Build word-boundary regexes for each keyword to avoid matching
+	// "test" inside "testing" or "contest".
+	kwRegexps := make([]*regexp.Regexp, len(keywords))
+	for i, kw := range keywords {
+		pattern := `(?i)\b` + regexp.QuoteMeta(kw) + `\b`
+		kwRegexps[i] = regexp.MustCompile(pattern)
+	}
+
 	// Score each note.
 	type scored struct {
 		path  string
@@ -205,12 +214,12 @@ func findRelevantNotes(query string, notes map[string]string, maxChars int) (con
 	var scores []scored
 
 	for path, body := range notes {
-		lowerBody := strings.ToLower(body)
 		lowerPath := strings.ToLower(path)
 		score := 0
-		for _, kw := range keywords {
-			// Count occurrences in body.
-			score += strings.Count(lowerBody, kw)
+		for i, kw := range keywords {
+			// Count whole-word occurrences in body.
+			matches := kwRegexps[i].FindAllStringIndex(body, -1)
+			score += len(matches)
 			// Bonus for keyword in note name.
 			if strings.Contains(lowerPath, kw) {
 				score += 3
