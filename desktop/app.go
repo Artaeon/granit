@@ -59,6 +59,7 @@ type GranitApp struct {
 	index     *vault.Index
 	config    config.Config
 	vaultRoot string
+	watcher   interface{ Close() error }
 }
 
 func NewGranitApp() *GranitApp {
@@ -70,7 +71,9 @@ func (a *GranitApp) startup(ctx context.Context) {
 	a.config = config.Load()
 }
 
-func (a *GranitApp) shutdown(_ context.Context) {}
+func (a *GranitApp) shutdown(_ context.Context) {
+	a.stopFileWatcher()
+}
 
 // validatePath ensures the resolved path stays inside the vault root.
 func (a *GranitApp) validatePath(userPath string) (string, error) {
@@ -106,6 +109,9 @@ func (a *GranitApp) OpenVault(path string) error {
 	a.index = idx
 	a.vaultRoot = abs
 	a.config = config.LoadForVault(abs)
+
+	// Start file watcher for auto-refresh
+	a.startFileWatcher()
 
 	// Register in vault list
 	vl := config.LoadVaultList()
