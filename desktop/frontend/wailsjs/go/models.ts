@@ -16,6 +16,22 @@ export namespace main {
 	        this.context = source["context"];
 	    }
 	}
+	export class BackupInfoDTO {
+	    name: string;
+	    date: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BackupInfoDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.date = source["date"];
+	        this.size = source["size"];
+	    }
+	}
 	export class BookmarkFile {
 	    starred: string[];
 	    recent: string[];
@@ -163,6 +179,22 @@ export namespace main {
 	        this.icon = source["icon"];
 	    }
 	}
+	export class FlashcardDTO {
+	    front: string;
+	    back: string;
+	    id: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FlashcardDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.front = source["front"];
+	        this.back = source["back"];
+	        this.id = source["id"];
+	    }
+	}
 	export class FolderNode {
 	    name: string;
 	    path: string;
@@ -274,6 +306,22 @@ export namespace main {
 	}
 	
 	
+	export class LinkSuggestionDTO {
+	    target: string;
+	    context: string;
+	    line: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LinkSuggestionDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.target = source["target"];
+	        this.context = source["context"];
+	        this.line = source["line"];
+	    }
+	}
 	export class NoteDetail {
 	    relPath: string;
 	    title: string;
@@ -318,6 +366,24 @@ export namespace main {
 	        this.size = source["size"];
 	    }
 	}
+	export class NoteVersionDTO {
+	    hash: string;
+	    date: string;
+	    message: string;
+	    author: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoteVersionDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hash = source["hash"];
+	        this.date = source["date"];
+	        this.message = source["message"];
+	        this.author = source["author"];
+	    }
+	}
 	export class OutlineItem {
 	    level: number;
 	    text: string;
@@ -332,6 +398,70 @@ export namespace main {
 	        this.level = source["level"];
 	        this.text = source["text"];
 	        this.line = source["line"];
+	    }
+	}
+	export class PluginInfoDTO {
+	    name: string;
+	    description: string;
+	    version: string;
+	    author: string;
+	    enabled: boolean;
+	    commands: string[];
+	    hooks: string[];
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginInfoDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.version = source["version"];
+	        this.author = source["author"];
+	        this.enabled = source["enabled"];
+	        this.commands = source["commands"];
+	        this.hooks = source["hooks"];
+	        this.path = source["path"];
+	    }
+	}
+	export class QuizQuestionDTO {
+	    question: string;
+	    choices: string[];
+	    answer: number;
+	    source: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new QuizQuestionDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.question = source["question"];
+	        this.choices = source["choices"];
+	        this.answer = source["answer"];
+	        this.source = source["source"];
+	    }
+	}
+	export class RecurringTaskDTO {
+	    text: string;
+	    pattern: string;
+	    notePath: string;
+	    line: number;
+	    nextDue: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RecurringTaskDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.text = source["text"];
+	        this.pattern = source["pattern"];
+	        this.notePath = source["notePath"];
+	        this.line = source["line"];
+	        this.nextDue = source["nextDue"];
 	    }
 	}
 	export class SearchHit {
@@ -363,6 +493,7 @@ export namespace main {
 	    value: any;
 	    options?: string[];
 	    category: string;
+	    description?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SettingItem(source);
@@ -376,6 +507,41 @@ export namespace main {
 	        this.value = source["value"];
 	        this.options = source["options"];
 	        this.category = source["category"];
+	        this.description = source["description"];
+	    }
+	}
+	export class SmartConnectionDTO {
+	    relPath: string;
+	    title: string;
+	    score: number;
+	    reason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SmartConnectionDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.relPath = source["relPath"];
+	        this.title = source["title"];
+	        this.score = source["score"];
+	        this.reason = source["reason"];
+	    }
+	}
+	export class SnippetDTO {
+	    trigger: string;
+	    content: string;
+	    description: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SnippetDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.trigger = source["trigger"];
+	        this.content = source["content"];
+	        this.description = source["description"];
 	    }
 	}
 	export class StatEntry {
@@ -392,6 +558,24 @@ export namespace main {
 	        this.value = source["value"];
 	    }
 	}
+	export class TableDataDTO {
+	    headers: string[];
+	    rows: string[][];
+	    startLine: number;
+	    endLine: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TableDataDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.headers = source["headers"];
+	        this.rows = source["rows"];
+	        this.startLine = source["startLine"];
+	        this.endLine = source["endLine"];
+	    }
+	}
 	export class TagEntryDTO {
 	    name: string;
 	    count: number;
@@ -404,6 +588,24 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
 	        this.count = source["count"];
+	    }
+	}
+	export class TaskItem {
+	    text: string;
+	    done: boolean;
+	    notePath: string;
+	    lineNum: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TaskItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.text = source["text"];
+	        this.done = source["done"];
+	        this.notePath = source["notePath"];
+	        this.lineNum = source["lineNum"];
 	    }
 	}
 	export class TemplateInfo {
@@ -420,6 +622,26 @@ export namespace main {
 	        this.name = source["name"];
 	        this.content = source["content"];
 	        this.isUser = source["isUser"];
+	    }
+	}
+	export class TimelineEntryDTO {
+	    date: string;
+	    title: string;
+	    relPath: string;
+	    tags: string[];
+	    wordCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TimelineEntryDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.title = source["title"];
+	        this.relPath = source["relPath"];
+	        this.tags = source["tags"];
+	        this.wordCount = source["wordCount"];
 	    }
 	}
 	export class TrashItemInfo {

@@ -6,6 +6,14 @@ export function AddRecent(arg1) {
   return window['go']['main']['GranitApp']['AddRecent'](arg1);
 }
 
+export function ChatWithAI(arg1) {
+  return window['go']['main']['GranitApp']['ChatWithAI'](arg1);
+}
+
+export function CreateBackup() {
+  return window['go']['main']['GranitApp']['CreateBackup']();
+}
+
 export function CreateFolder(arg1) {
   return window['go']['main']['GranitApp']['CreateFolder'](arg1);
 }
@@ -18,8 +26,28 @@ export function CreateNote(arg1, arg2) {
   return window['go']['main']['GranitApp']['CreateNote'](arg1, arg2);
 }
 
+export function DecryptNote(arg1, arg2) {
+  return window['go']['main']['GranitApp']['DecryptNote'](arg1, arg2);
+}
+
+export function DeleteBackup(arg1) {
+  return window['go']['main']['GranitApp']['DeleteBackup'](arg1);
+}
+
+export function DeleteCanvas(arg1) {
+  return window['go']['main']['GranitApp']['DeleteCanvas'](arg1);
+}
+
 export function DeleteNote(arg1) {
   return window['go']['main']['GranitApp']['DeleteNote'](arg1);
+}
+
+export function DeleteWorkspace(arg1) {
+  return window['go']['main']['GranitApp']['DeleteWorkspace'](arg1);
+}
+
+export function EncryptNote(arg1, arg2) {
+  return window['go']['main']['GranitApp']['EncryptNote'](arg1, arg2);
 }
 
 export function ExportAll() {
@@ -46,6 +74,14 @@ export function GetAllTags() {
   return window['go']['main']['GranitApp']['GetAllTags']();
 }
 
+export function GetAllTasks() {
+  return window['go']['main']['GranitApp']['GetAllTasks']();
+}
+
+export function GetAutoLinkSuggestions(arg1) {
+  return window['go']['main']['GranitApp']['GetAutoLinkSuggestions'](arg1);
+}
+
 export function GetBacklinkContext(arg1) {
   return window['go']['main']['GranitApp']['GetBacklinkContext'](arg1);
 }
@@ -62,8 +98,24 @@ export function GetCalendarData(arg1, arg2) {
   return window['go']['main']['GranitApp']['GetCalendarData'](arg1, arg2);
 }
 
+export function GetCanvas(arg1) {
+  return window['go']['main']['GranitApp']['GetCanvas'](arg1);
+}
+
 export function GetCommands() {
   return window['go']['main']['GranitApp']['GetCommands']();
+}
+
+export function GetDailyBriefing() {
+  return window['go']['main']['GranitApp']['GetDailyBriefing']();
+}
+
+export function GetFlashcardProgress() {
+  return window['go']['main']['GranitApp']['GetFlashcardProgress']();
+}
+
+export function GetFlashcards(arg1) {
+  return window['go']['main']['GranitApp']['GetFlashcards'](arg1);
 }
 
 export function GetFolderTree() {
@@ -78,12 +130,40 @@ export function GetGraphData(arg1) {
   return window['go']['main']['GranitApp']['GetGraphData'](arg1);
 }
 
+export function GetHabits() {
+  return window['go']['main']['GranitApp']['GetHabits']();
+}
+
+export function GetJournalPrompts() {
+  return window['go']['main']['GranitApp']['GetJournalPrompts']();
+}
+
+export function GetKanban() {
+  return window['go']['main']['GranitApp']['GetKanban']();
+}
+
 export function GetKnownVaults() {
   return window['go']['main']['GranitApp']['GetKnownVaults']();
 }
 
+export function GetMindMapData(arg1) {
+  return window['go']['main']['GranitApp']['GetMindMapData'](arg1);
+}
+
 export function GetNote(arg1) {
   return window['go']['main']['GranitApp']['GetNote'](arg1);
+}
+
+export function GetNoteAtVersion(arg1, arg2) {
+  return window['go']['main']['GranitApp']['GetNoteAtVersion'](arg1, arg2);
+}
+
+export function GetNoteDiff(arg1, arg2) {
+  return window['go']['main']['GranitApp']['GetNoteDiff'](arg1, arg2);
+}
+
+export function GetNoteHistory(arg1) {
+  return window['go']['main']['GranitApp']['GetNoteHistory'](arg1);
 }
 
 export function GetNotes() {
@@ -102,12 +182,36 @@ export function GetPlatform() {
   return window['go']['main']['GranitApp']['GetPlatform']();
 }
 
+export function GetPlugins() {
+  return window['go']['main']['GranitApp']['GetPlugins']();
+}
+
+export function GetQuizQuestions(arg1) {
+  return window['go']['main']['GranitApp']['GetQuizQuestions'](arg1);
+}
+
+export function GetRecurringTasks() {
+  return window['go']['main']['GranitApp']['GetRecurringTasks']();
+}
+
+export function GetSmartConnections(arg1) {
+  return window['go']['main']['GranitApp']['GetSmartConnections'](arg1);
+}
+
+export function GetSnippets() {
+  return window['go']['main']['GranitApp']['GetSnippets']();
+}
+
 export function GetTemplates() {
   return window['go']['main']['GranitApp']['GetTemplates']();
 }
 
 export function GetTheme() {
   return window['go']['main']['GranitApp']['GetTheme']();
+}
+
+export function GetTimeline() {
+  return window['go']['main']['GranitApp']['GetTimeline']();
 }
 
 export function GetTrashItems() {
@@ -120,6 +224,10 @@ export function GetVaultPath() {
 
 export function GetVaultStats() {
   return window['go']['main']['GranitApp']['GetVaultStats']();
+}
+
+export function GetWritingFeedback(arg1) {
+  return window['go']['main']['GranitApp']['GetWritingFeedback'](arg1);
 }
 
 export function GitCommit(arg1) {
@@ -146,8 +254,28 @@ export function GitStatus() {
   return window['go']['main']['GranitApp']['GitStatus']();
 }
 
+export function IsNoteEncrypted(arg1) {
+  return window['go']['main']['GranitApp']['IsNoteEncrypted'](arg1);
+}
+
 export function IsVaultOpen() {
   return window['go']['main']['GranitApp']['IsVaultOpen']();
+}
+
+export function ListBackups() {
+  return window['go']['main']['GranitApp']['ListBackups']();
+}
+
+export function ListCanvases() {
+  return window['go']['main']['GranitApp']['ListCanvases']();
+}
+
+export function ListWorkspaces() {
+  return window['go']['main']['GranitApp']['ListWorkspaces']();
+}
+
+export function LoadWorkspace(arg1) {
+  return window['go']['main']['GranitApp']['LoadWorkspace'](arg1);
 }
 
 export function MoveFile(arg1, arg2) {
@@ -156,6 +284,14 @@ export function MoveFile(arg1, arg2) {
 
 export function OpenVault(arg1) {
   return window['go']['main']['GranitApp']['OpenVault'](arg1);
+}
+
+export function ParseMarkdownTable(arg1, arg2) {
+  return window['go']['main']['GranitApp']['ParseMarkdownTable'](arg1, arg2);
+}
+
+export function PublishToBlog(arg1, arg2) {
+  return window['go']['main']['GranitApp']['PublishToBlog'](arg1, arg2);
 }
 
 export function PurgeFromTrash(arg1) {
@@ -170,16 +306,60 @@ export function RenameNote(arg1, arg2) {
   return window['go']['main']['GranitApp']['RenameNote'](arg1, arg2);
 }
 
+export function RenameWorkspace(arg1, arg2) {
+  return window['go']['main']['GranitApp']['RenameWorkspace'](arg1, arg2);
+}
+
 export function RestoreFromTrash(arg1) {
   return window['go']['main']['GranitApp']['RestoreFromTrash'](arg1);
+}
+
+export function RestoreNoteVersion(arg1, arg2) {
+  return window['go']['main']['GranitApp']['RestoreNoteVersion'](arg1, arg2);
 }
 
 export function RunBot(arg1, arg2, arg3) {
   return window['go']['main']['GranitApp']['RunBot'](arg1, arg2, arg3);
 }
 
+export function RunDataviewQuery(arg1) {
+  return window['go']['main']['GranitApp']['RunDataviewQuery'](arg1);
+}
+
+export function RunPluginCommand(arg1, arg2) {
+  return window['go']['main']['GranitApp']['RunPluginCommand'](arg1, arg2);
+}
+
+export function SaveCanvas(arg1, arg2) {
+  return window['go']['main']['GranitApp']['SaveCanvas'](arg1, arg2);
+}
+
+export function SaveDecryptedNote(arg1, arg2) {
+  return window['go']['main']['GranitApp']['SaveDecryptedNote'](arg1, arg2);
+}
+
+export function SaveFlashcardProgress(arg1) {
+  return window['go']['main']['GranitApp']['SaveFlashcardProgress'](arg1);
+}
+
+export function SaveHabits(arg1) {
+  return window['go']['main']['GranitApp']['SaveHabits'](arg1);
+}
+
+export function SaveKanban(arg1) {
+  return window['go']['main']['GranitApp']['SaveKanban'](arg1);
+}
+
 export function SaveNote(arg1, arg2) {
   return window['go']['main']['GranitApp']['SaveNote'](arg1, arg2);
+}
+
+export function SaveSnippets(arg1) {
+  return window['go']['main']['GranitApp']['SaveSnippets'](arg1);
+}
+
+export function SaveWorkspace(arg1, arg2) {
+  return window['go']['main']['GranitApp']['SaveWorkspace'](arg1, arg2);
 }
 
 export function Search(arg1) {
@@ -196,6 +376,10 @@ export function SetTheme(arg1) {
 
 export function ToggleBookmark(arg1) {
   return window['go']['main']['GranitApp']['ToggleBookmark'](arg1);
+}
+
+export function TogglePlugin(arg1) {
+  return window['go']['main']['GranitApp']['TogglePlugin'](arg1);
 }
 
 export function ToggleTask(arg1, arg2) {
