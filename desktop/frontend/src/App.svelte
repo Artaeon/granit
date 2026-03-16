@@ -117,21 +117,10 @@
   let searchResults: any[] = []
   let searchBusy = false
 
-  // New feature overlay data
-  let canvasData: any = null
-  let kanbanData: any = null
-  let allTasks: any[] = []
-  let flashcardsData: any[] = []
-  let quizData: any[] = []
-  let mindMapData: any = null
-  let timelineData: any[] = []
+  // New feature overlay data (used by components that receive props from App)
   let pluginsData: any[] = []
-  let dataviewResults: any[] = []
-  let noteHistoryData: any[] = []
   let autoLinkData: any[] = []
-  let smartConnectionsData: any[] = []
-  let recurringTasksData: any[] = []
-  let dailyBriefingData: any = null
+  let noteHistoryData: any[] = []
 
   const themeNames = [
     'catppuccin-mocha', 'catppuccin-latte', 'catppuccin-frappe', 'catppuccin-macchiato',
