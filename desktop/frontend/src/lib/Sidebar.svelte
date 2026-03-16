@@ -52,7 +52,7 @@
 
   function handleContextMenu(event: MouseEvent, path: string) {
     event.preventDefault()
-    if (confirm(`Delete "${path}"?`)) dispatch('delete', path)
+    dispatch('contextmenu', { x: event.clientX, y: event.clientY, path })
   }
 
   function clearSearch() { searchQuery = '' }
