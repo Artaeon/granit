@@ -609,64 +609,98 @@
 {:else}
   <div class="flex flex-col h-full bg-ctp-base">
     <!-- Title Bar -->
-    <div class="title-bar flex items-center h-[34px] px-3 bg-ctp-crust border-b border-ctp-surface0/50 select-none gap-2"
+    <div class="title-bar flex items-center h-[38px] px-4 bg-ctp-crust border-b border-ctp-surface0/40 select-none gap-3"
       style="--wails-draggable: drag">
       <!-- Sidebar toggle -->
       <button on:click={() => showSidebar = !showSidebar}
-        class="w-6 h-6 flex items-center justify-center rounded text-ctp-overlay1 hover:bg-ctp-surface0 hover:text-ctp-text transition-colors"
-        style="--wails-draggable: no-drag">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-          <path d="M2 4h12M2 8h12M2 12h12" />
+        class="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
+        class:text-ctp-blue={showSidebar}
+        class:text-ctp-overlay1={!showSidebar}
+        class:hover:bg-ctp-surface0={true}
+        style="--wails-draggable: no-drag"
+        data-tooltip="Toggle sidebar">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          {#if showSidebar}
+            <rect x="1" y="2" width="5" height="12" rx="1" /><path d="M9 4h5M9 8h5M9 12h3" />
+          {:else}
+            <path d="M2 4h12M2 8h12M2 12h12" />
+          {/if}
         </svg>
       </button>
 
-      <!-- Vault name -->
-      <span class="text-[12px] font-semibold text-ctp-subtext0">{vaultPath ? vaultPath.split('/').pop() : 'Granit'}</span>
+      <!-- Vault name with icon -->
+      <div class="flex items-center gap-1.5">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-mauve)" stroke-width="1.5" stroke-linecap="round" class="opacity-70">
+          <path d="M2 5h5l1.5-2H13a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5z" />
+        </svg>
+        <span class="text-[13px] font-semibold text-ctp-subtext0">{vaultPath ? vaultPath.split('/').pop() : 'Granit'}</span>
+      </div>
 
       <!-- Breadcrumbs -->
       {#if activeNotePath}
-        {#each activeNotePath.split('/') as segment, i}
-          <span class="text-ctp-surface2 text-[11px]">/</span>
-          {#if i < activeNotePath.split('/').length - 1}
-            <span class="text-[11px] text-ctp-overlay0">{segment}</span>
-          {:else}
-            <span class="text-[11px] text-ctp-text font-medium">{segment.replace('.md', '')}</span>
+        <div class="flex items-center gap-1 overflow-hidden">
+          {#each activeNotePath.split('/') as segment, i}
+            <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-surface2)" stroke-width="2" stroke-linecap="round"><path d="M6 4l4 4-4 4" /></svg>
+            {#if i < activeNotePath.split('/').length - 1}
+              <span class="text-[12px] text-ctp-overlay0 truncate max-w-[80px]">{segment}</span>
+            {:else}
+              <span class="text-[12px] text-ctp-text font-medium truncate max-w-[160px]">{segment.replace('.md', '')}</span>
+            {/if}
+          {/each}
+          {#if dirty}
+            <span class="w-2 h-2 rounded-full bg-ctp-peach animate-pulse ml-1 flex-shrink-0" title="Unsaved"></span>
           {/if}
-        {/each}
+        </div>
       {/if}
 
       <div class="flex-1"></div>
 
-      <!-- Backlinks toggle -->
-      <button on:click={() => showBacklinks = !showBacklinks}
-        class="w-6 h-6 flex items-center justify-center rounded transition-colors"
-        class:text-ctp-blue={showBacklinks}
-        class:text-ctp-overlay0={!showBacklinks}
-        class:hover:text-ctp-text={!showBacklinks}
-        style="--wails-draggable: no-drag"
-        title="Toggle backlinks panel">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-          <circle cx="5" cy="5" r="3" /><circle cx="11" cy="11" r="3" /><path d="M7.5 7.5l1 1" />
-        </svg>
-      </button>
+      <!-- Right side controls -->
+      <div class="flex items-center gap-1">
+        <!-- Backlinks toggle -->
+        <button on:click={() => showBacklinks = !showBacklinks}
+          class="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
+          class:text-ctp-blue={showBacklinks}
+          class:bg-ctp-blue={showBacklinks}
+          class:bg-opacity-10={showBacklinks}
+          class:text-ctp-overlay0={!showBacklinks}
+          class:hover:bg-ctp-surface0={!showBacklinks}
+          style="--wails-draggable: no-drag"
+          data-tooltip="Backlinks">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <circle cx="5" cy="5" r="3" /><circle cx="11" cy="11" r="3" /><path d="M7.5 7.5l1 1" />
+          </svg>
+        </button>
 
-      <!-- Theme dropdown -->
-      <select bind:value={currentTheme} on:change={handleThemeChange}
-        class="text-[11px] bg-ctp-surface0 text-ctp-subtext0 border border-ctp-surface1 rounded px-1.5 py-0.5 outline-none cursor-pointer hover:border-ctp-overlay0 transition-colors"
-        style="--wails-draggable: no-drag">
-        {#each themeNames as name}
-          <option value={name}>{name}</option>
-        {/each}
-      </select>
+        <!-- Command palette -->
+        <button on:click={() => { paletteMode = 'commands'; openOverlay('commandPalette') }}
+          class="w-7 h-7 flex items-center justify-center rounded-md text-ctp-overlay1 hover:bg-ctp-surface0 hover:text-ctp-text transition-colors"
+          style="--wails-draggable: no-drag"
+          data-tooltip="Commands (Ctrl+X)">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </button>
 
-      <!-- Search icon -->
-      <button on:click={() => { paletteMode = 'files'; openOverlay('commandPalette') }}
-        class="w-6 h-6 flex items-center justify-center rounded text-ctp-overlay1 hover:bg-ctp-surface0 hover:text-ctp-text transition-colors"
-        style="--wails-draggable: no-drag">
+        <!-- Theme dropdown -->
+        <select bind:value={currentTheme} on:change={handleThemeChange}
+          class="text-[11px] bg-ctp-surface0/60 text-ctp-subtext0 border border-ctp-surface0/70 rounded-md px-2 py-1 outline-none cursor-pointer hover:border-ctp-overlay0 transition-colors appearance-none pr-5"
+          style="--wails-draggable: no-drag; background-image: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%228%22 height=%228%22 viewBox=%220 0 16 16%22><path fill=%22%236c7086%22 d=%22M4 6l4 4 4-4%22/></svg>'); background-repeat: no-repeat; background-position: right 6px center;">
+          {#each themeNames as name}
+            <option value={name}>{name}</option>
+          {/each}
+        </select>
+
+        <!-- Search -->
+        <button on:click={() => { paletteMode = 'files'; openOverlay('commandPalette') }}
+          class="w-7 h-7 flex items-center justify-center rounded-md text-ctp-overlay1 hover:bg-ctp-surface0 hover:text-ctp-text transition-colors"
+          style="--wails-draggable: no-drag"
+          data-tooltip="Search (Ctrl+P)">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
           <circle cx="7" cy="7" r="4" /><path d="M10 10l3.5 3.5" />
         </svg>
       </button>
+    </div>
     </div>
 
     {#if focusMode && activeNote}
