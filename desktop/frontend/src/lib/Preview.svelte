@@ -1,10 +1,23 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte'
+  import { createEventDispatcher, afterUpdate } from 'svelte'
   import { marked } from 'marked'
+  import { markedHighlight } from 'marked-highlight'
+  import hljs from 'highlight.js'
 
   export let content = ''
 
   const dispatch = createEventDispatcher()
+
+  // Setup syntax highlighting
+  marked.use(markedHighlight({
+    langPrefix: 'hljs language-',
+    highlight(code: string, lang: string) {
+      if (lang && hljs.getLanguage(lang)) {
+        return hljs.highlight(code, { language: lang }).value
+      }
+      return hljs.highlightAuto(code).value
+    }
+  }))
 
   // Custom marked extensions for wikilinks and image embeds
   const wikilinkExtension = {
@@ -14,12 +27,7 @@
     tokenizer(src: string) {
       const match = src.match(/^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/)
       if (match) {
-        return {
-          type: 'wikilink',
-          raw: match[0],
-          target: match[1],
-          display: match[2] || match[1],
-        }
+        return { type: 'wikilink', raw: match[0], target: match[1], display: match[2] || match[1] }
       }
     },
     renderer(token: any) {
@@ -33,13 +41,7 @@
     start(src: string) { return src.indexOf('![[') },
     tokenizer(src: string) {
       const match = src.match(/^!\[\[([^\]]+)\]\]/)
-      if (match) {
-        return {
-          type: 'imageEmbed',
-          raw: match[0],
-          src: match[1],
-        }
-      }
+      if (match) { return { type: 'imageEmbed', raw: match[0], src: match[1] } }
     },
     renderer(token: any) {
       const ext = token.src.split('.').pop()?.toLowerCase() || ''
@@ -51,7 +53,6 @@
     }
   }
 
-  // Custom renderer
   const renderer = {
     listitem(text: string, task: boolean, checked: boolean) {
       if (task) {
@@ -60,16 +61,21 @@
       }
       return `<li>${text}</li>\n`
     },
-    // Code blocks with language label
     code(code: string, language: string | undefined) {
       const lang = language || ''
-      const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      let highlighted: string
+      if (lang && hljs.getLanguage(lang)) {
+        highlighted = hljs.highlight(code, { language: lang }).value
+      } else if (lang) {
+        highlighted = hljs.highlightAuto(code).value
+      } else {
+        highlighted = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      }
       const langLabel = lang ? `<div class="code-lang-label">${lang}</div>` : ''
-      return `<div class="code-block-wrapper">${langLabel}<pre><code class="language-${lang}">${escaped}</code></pre></div>`
+      const copyBtn = `<button class="code-copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.querySelector('code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)})">Copy</button>`
+      return `<div class="code-block-wrapper">${langLabel}${copyBtn}<pre><code class="hljs language-${lang}">${highlighted}</code></pre></div>`
     },
-    // Blockquote with callout support
     blockquote(quote: string) {
-      // Check for callout pattern: [!type] optional title
       const calloutMatch = quote.match(/^\s*<p>\s*\[!([\w-]+)\]\s*(.*?)<\/p>/)
       if (calloutMatch) {
         const type = calloutMatch[1].toLowerCase()
@@ -83,8 +89,6 @@
           'example': '📋', 'quote': '💬', 'cite': '💬',
           'bug': '🐛', 'abstract': '📄', 'summary': '📄', 'todo': '📌',
         }
-        const icon = icons[type] || '📝'
-
         const colorClasses: Record<string, string> = {
           'note': 'callout-note', 'info': 'callout-info', 'tip': 'callout-success', 'hint': 'callout-success',
           'warning': 'callout-warning', 'caution': 'callout-warning',
@@ -95,14 +99,15 @@
           'bug': 'callout-danger', 'abstract': 'callout-info', 'summary': 'callout-info',
           'todo': 'callout-warning',
         }
-        const colorClass = colorClasses[type] || 'callout-note'
-
-        return `<div class="callout ${colorClass}">
-          <div class="callout-title">${icon} ${title}</div>
+        return `<div class="callout ${colorClasses[type] || 'callout-note'}">
+          <div class="callout-title">${icons[type] || '📝'} ${title}</div>
           ${body ? `<div class="callout-body">${body}</div>` : ''}
         </div>`
       }
       return `<blockquote>${quote}</blockquote>`
+    },
+    table(header: string, body: string) {
+      return `<div class="table-wrapper"><table><thead>${header}</thead><tbody>${body}</tbody></table></div>`
     },
   }
 
@@ -116,6 +121,9 @@
   let previewEl: HTMLDivElement
 
   function handlePreviewClick(e: MouseEvent) {
+    const copyBtn = (e.target as HTMLElement).closest('.code-copy-btn')
+    if (copyBtn) { e.preventDefault(); return }
+
     const target = (e.target as HTMLElement).closest('a.wikilink') as HTMLElement
     if (target) {
       e.preventDefault()
@@ -124,7 +132,6 @@
     }
   }
 
-  // Debounce preview rendering for split mode performance
   let renderedHtml = ''
   let renderTimer: ReturnType<typeof setTimeout>
   $: {
