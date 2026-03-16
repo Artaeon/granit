@@ -505,6 +505,42 @@
         else { const p = await api().CreateNote(today, `---\ndate: ${today}\ntype: daily\ntags: [daily]\n---\n\n# ${today}\n\n## Tasks\n- [ ]\n\n## Notes\n\n`); await refreshTree(); handleSelectNote(new CustomEvent('s', { detail: p })) }
         break
       case 'quit': window.close(); break
+      // Aliases: commands.ts uses short names, map to show_* openers
+      case 'kanban': openKanban(); break
+      case 'timeline': openTimeline(); break
+      case 'mind_map': openMindMap(); break
+      case 'flashcards': openFlashcards(); break
+      case 'ai_chat': openAiChat(); break
+      case 'habit_tracker': openHabitTracker(); break
+      case 'pomodoro': openPomodoro(); break
+      case 'writing_coach': openWritingCoach(); break
+      case 'table_editor': openTableEditor(); break
+      case 'plugin_manager': openPluginManager(); break
+      case 'auto_link': openAutoLink(); break
+      case 'smart_connections': openSmartConnections(); break
+      case 'note_history': openNoteHistory(); break
+      case 'vault_backup': openBackupRestore(); break
+      case 'similar_notes': openSmartConnections(); break
+      case 'link_assist': openAutoLink(); break
+      case 'writing_stats': openWritingCoach(); break
+      case 'plan_my_day': openDailyPlanner(); break
+      case 'dashboard': openDailyBriefing(); break
+      case 'spell_check': break // handled by CodeMirror
+      case 'split_pane': mode = 'split'; break
+      case 'global_replace': openFindReplace(); break
+      case 'git_history': openGit(); break
+      case 'publish_site': openBlogPublisher(); break
+      case 'layout_default': break
+      case 'layout_writer': showBacklinks = false; break
+      case 'layout_minimal': showSidebar = false; showBacklinks = false; break
+      case 'layout_reading': mode = 'preview'; break
+      case 'weekly_note':
+        const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1)
+        const weekStr = weekStart.toISOString().split('T')[0]
+        const weekNote = notes.find(n => n.relPath.includes(weekStr))
+        if (weekNote) { handleSelectNote(new CustomEvent('s', { detail: weekNote.relPath })) }
+        else { const wp = await api().CreateNote(`weekly-${weekStr}`, `---\ndate: ${weekStr}\ntype: weekly\ntags: [weekly]\n---\n\n# Week of ${weekStr}\n\n## Goals\n- [ ]\n\n## Review\n\n`); await refreshTree(); handleSelectNote(new CustomEvent('s', { detail: wp })) }
+        break
       default: break
     }
   }
