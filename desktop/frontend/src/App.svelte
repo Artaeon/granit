@@ -399,17 +399,17 @@
   function openContentSearch() { searchResults = []; searchBusy = false; openOverlay('contentSearch') }
   function openCanvas() { openOverlay('canvas') }
   async function openKanban() { openOverlay('kanban') }
-  async function openTaskManager() { try { allTasks = await api().GetAllTasks() || [] } catch { allTasks = [] }; openOverlay('taskManager') }
+  function openTaskManager() { openOverlay('taskManager') }
   function openPomodoro() { openOverlay('pomodoro') }
   async function openHabitTracker() { openOverlay('habitTracker') }
   async function openDailyPlanner() { openOverlay('dailyPlanner') }
-  async function openDailyBriefing() { try { dailyBriefingData = await api().GetDailyBriefing() } catch { dailyBriefingData = {} }; openOverlay('dailyBriefing') }
+  function openDailyBriefing() { openOverlay('dailyBriefing') }
   function openJournalPrompts() { openOverlay('journalPrompts') }
   function openWritingCoach() { openOverlay('writingCoach') }
-  async function openFlashcards() { if (activeNotePath) { try { flashcardsData = await api().GetFlashcards(activeNotePath) || [] } catch { flashcardsData = [] } }; openOverlay('flashcards') }
-  async function openQuiz() { if (activeNotePath) { try { quizData = await api().GetQuizQuestions(activeNotePath) || [] } catch { quizData = [] } }; openOverlay('quiz') }
-  async function openMindMap() { try { mindMapData = await api().GetMindMapData(activeNotePath || '') } catch { mindMapData = null }; openOverlay('mindMap') }
-  async function openTimeline() { try { timelineData = await api().GetTimeline() || [] } catch { timelineData = [] }; openOverlay('timeline') }
+  function openFlashcards() { openOverlay('flashcards') }
+  function openQuiz() { openOverlay('quiz') }
+  function openMindMap() { openOverlay('mindMap') }
+  function openTimeline() { openOverlay('timeline') }
   function openAiChat() { openOverlay('aiChat') }
   function openSnippets() { openOverlay('snippets') }
   function openTableEditor() { openOverlay('tableEditor') }
@@ -421,8 +421,8 @@
   async function openAutoLink() { if (activeNotePath) { try { autoLinkData = await api().GetAutoLinkSuggestions(activeNotePath) || [] } catch { autoLinkData = [] } }; openOverlay('autoLink') }
   function openBlogPublisher() { openOverlay('blogPublisher') }
   function openEncryption() { openOverlay('encryption') }
-  async function openRecurringTasks() { try { recurringTasksData = await api().GetRecurringTasks() || [] } catch { recurringTasksData = [] }; openOverlay('recurringTasks') }
-  async function openSmartConnections() { if (activeNotePath) { try { smartConnectionsData = await api().GetSmartConnections(activeNotePath) || [] } catch { smartConnectionsData = [] } }; openOverlay('smartConnections') }
+  function openRecurringTasks() { openOverlay('recurringTasks') }
+  function openSmartConnections() { openOverlay('smartConnections') }
 
   async function refreshGit() {
     const [s, l, d] = await Promise.allSettled([api().GitStatus(), api().GitLog(), api().GitDiff()])
@@ -962,7 +962,7 @@
       on:openNote={(e) => { closeOverlay('kanban'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }} />
   {/if}
   {#if overlays.taskManager}
-    <TaskManager tasks={allTasks}
+    <TaskManager
       on:openNote={(e) => { closeOverlay('taskManager'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
       on:close={() => closeOverlay('taskManager')} />
   {/if}
@@ -976,7 +976,7 @@
     <DailyPlanner on:close={() => closeOverlay('dailyPlanner')} />
   {/if}
   {#if overlays.dailyBriefing}
-    <DailyBriefing data={dailyBriefingData}
+    <DailyBriefing
       on:openNote={(e) => { closeOverlay('dailyBriefing'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
       on:close={() => closeOverlay('dailyBriefing')} />
   {/if}
@@ -990,7 +990,7 @@
       on:close={() => closeOverlay('writingCoach')} />
   {/if}
   {#if overlays.flashcards}
-    <Flashcards cards={flashcardsData} notePath={activeNotePath}
+    <Flashcards notePath={activeNotePath}
       on:close={() => closeOverlay('flashcards')} />
   {/if}
   {#if overlays.quiz}
@@ -1003,7 +1003,7 @@
       on:close={() => closeOverlay('mindMap')} />
   {/if}
   {#if overlays.timeline}
-    <Timeline entries={timelineData}
+    <Timeline
       on:select={(e) => { closeOverlay('timeline'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
       on:close={() => closeOverlay('timeline')} />
   {/if}
@@ -1051,7 +1051,7 @@
       on:close={() => closeOverlay('encryption')} />
   {/if}
   {#if overlays.recurringTasks}
-    <RecurringTasks tasks={recurringTasksData}
+    <RecurringTasks
       on:openNote={(e) => { closeOverlay('recurringTasks'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
       on:close={() => closeOverlay('recurringTasks')} />
   {/if}
