@@ -110,7 +110,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-2xl bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden" style="max-height:85vh">
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
@@ -120,7 +120,7 @@
         </svg>
         <span class="text-sm font-semibold text-ctp-mauve">Writing Coach</span>
       </div>
-      <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+      <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
         on:click={() => dispatch('close')}>esc</kbd>
     </div>
 
@@ -130,19 +130,19 @@
       <div class="grid grid-cols-4 gap-3">
         <div class="bg-ctp-base rounded-lg p-3 border border-ctp-surface0 text-center">
           <div class="text-xl font-bold text-ctp-blue">{wordCount}</div>
-          <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wide mt-0.5">Words</div>
+          <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wide mt-0.5">Words</div>
         </div>
         <div class="bg-ctp-base rounded-lg p-3 border border-ctp-surface0 text-center">
           <div class="text-xl font-bold text-ctp-teal">{sentenceCount}</div>
-          <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wide mt-0.5">Sentences</div>
+          <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wide mt-0.5">Sentences</div>
         </div>
         <div class="bg-ctp-base rounded-lg p-3 border border-ctp-surface0 text-center">
           <div class="text-xl font-bold text-ctp-peach">{paragraphCount}</div>
-          <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wide mt-0.5">Paragraphs</div>
+          <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wide mt-0.5">Paragraphs</div>
         </div>
         <div class="bg-ctp-base rounded-lg p-3 border border-ctp-surface0 text-center">
           <div class="text-xl font-bold" style="color: {readabilityColor(readabilityScore)}">{readabilityScore}</div>
-          <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wide mt-0.5">Readability</div>
+          <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wide mt-0.5">Readability</div>
         </div>
       </div>
 
@@ -158,7 +158,7 @@
           <div class="h-full rounded-full transition-all duration-500"
             style="width: {readabilityScore}%; background: {readabilityColor(readabilityScore)}"></div>
         </div>
-        <div class="flex items-center justify-between mt-2 text-[10px] text-ctp-surface2">
+        <div class="flex items-center justify-between mt-2 text-[12px] text-ctp-overlay1">
           <span>Avg. {avgSentenceLength} words/sentence</span>
           <span>{Math.round(wordCount / Math.max(paragraphCount, 1))} words/paragraph</span>
         </div>
@@ -181,8 +181,8 @@
       {#if loading}
         <div class="flex flex-col items-center justify-center py-8 gap-3">
           <div class="w-6 h-6 border-2 border-ctp-mauve border-t-transparent rounded-full animate-spin"></div>
-          <span class="text-sm text-ctp-overlay0">Analyzing your writing...</span>
-          <span class="text-[10px] text-ctp-surface2">This may take a moment with AI providers</span>
+          <span class="text-sm text-ctp-overlay1">Analyzing your writing...</span>
+          <span class="text-[12px] text-ctp-overlay1">This may take a moment with AI providers</span>
         </div>
       {/if}
 
@@ -198,7 +198,7 @@
         <div>
           <div class="flex items-center justify-between mb-3">
             <h3 class="text-xs font-semibold text-ctp-mauve uppercase tracking-wider">Feedback</h3>
-            <div class="flex items-center gap-3 text-[10px]">
+            <div class="flex items-center gap-3 text-[12px]">
               <span style="color: var(--ctp-green)">
                 {feedback.filter(f => f.severity === 1).length} minor
               </span>
@@ -216,11 +216,11 @@
               <div class="bg-ctp-base rounded-lg border border-ctp-surface0 p-3">
                 <div class="flex items-center gap-2 mb-1.5">
                   <!-- Category badge -->
-                  <span class="px-2 py-0.5 rounded text-[10px] font-medium bg-ctp-surface0 text-ctp-overlay1 capitalize">
+                  <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-ctp-surface0 text-ctp-overlay1 capitalize">
                     {item.category}
                   </span>
                   <!-- Severity -->
-                  <span class="text-[10px] font-medium" style="color: {severityColors[item.severity] || 'var(--ctp-overlay0)'}">
+                  <span class="text-[12px] font-medium" style="color: {severityColors[item.severity] || 'var(--ctp-overlay0)'}">
                     [{severityLabels[item.severity] || 'unknown'}]
                   </span>
                 </div>
@@ -230,7 +230,7 @@
 
                 <!-- Suggestion -->
                 {#if item.suggestion}
-                  <p class="text-[11px] text-ctp-teal italic">{item.suggestion}</p>
+                  <p class="text-[13px] text-ctp-teal italic">{item.suggestion}</p>
                 {/if}
               </div>
             {/each}
@@ -257,8 +257,8 @@
             <path d="M3 2h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" />
             <path d="M5 6h6M5 9h4" />
           </svg>
-          <p class="text-sm text-ctp-overlay0">No content to analyze</p>
-          <p class="text-[11px] text-ctp-surface2">Write something in a note first</p>
+          <p class="text-sm text-ctp-overlay1">No content to analyze</p>
+          <p class="text-[13px] text-ctp-overlay1">Write something in a note first</p>
         </div>
       {/if}
     </div>

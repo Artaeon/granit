@@ -26,7 +26,7 @@
   function selectDay(day: number) { selectedDate = dateStr(day) }
 </script>
 
-<div class="fixed inset-0 z-50 flex justify-center items-center" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center items-center" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-3xl h-[80vh] bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden">
     <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
       <div class="flex items-center gap-3">
@@ -34,14 +34,14 @@
         <span class="text-sm font-semibold text-ctp-text w-32 text-center">{monthName} {year}</span>
         <button on:click={nextMonth} class="text-ctp-overlay1 hover:text-ctp-text text-lg">&rarr;</button>
       </div>
-      <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
+      <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
     </div>
     <div class="flex flex-1 min-h-0">
       <!-- Calendar grid -->
       <div class="flex-1 p-4">
         <div class="grid grid-cols-7 gap-1 mb-1">
           {#each ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as d}
-            <div class="text-[10px] text-ctp-overlay0 text-center py-1">{d}</div>
+            <div class="text-[12px] text-ctp-overlay1 text-center py-1">{d}</div>
           {/each}
         </div>
         <div class="grid grid-cols-7 gap-1">
@@ -63,7 +63,7 @@
             </button>
           {/each}
         </div>
-        <div class="flex gap-4 mt-3 text-[10px] text-ctp-overlay0">
+        <div class="flex gap-4 mt-3 text-[12px] text-ctp-overlay1">
           <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-ctp-green mr-1"></span>Note</span>
           <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-ctp-yellow mr-1"></span>Task</span>
           <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-ctp-sapphire mr-1"></span>Event</span>
@@ -75,7 +75,7 @@
           <h4 class="text-xs font-semibold text-ctp-mauve mb-2">{selectedDate}</h4>
           {#if tasks[selectedDate]?.length}
             <div class="mb-3">
-              <div class="text-[10px] text-ctp-overlay0 uppercase mb-1">Tasks</div>
+              <div class="text-[12px] text-ctp-overlay1 uppercase mb-1">Tasks</div>
               {#each tasks[selectedDate] as task}
                 <div class="flex items-start gap-1.5 py-0.5">
                   <input type="checkbox" checked={task.done} on:change={() => dispatch('toggleTask', { notePath: task.notePath, lineNum: task.lineNum })}
@@ -92,7 +92,7 @@
             <button on:click={() => dispatch('openNote', selectedDate + '.md')} class="text-xs text-ctp-blue mt-2 hover:underline">Open daily note</button>
           {/if}
         {:else}
-          <p class="text-xs text-ctp-overlay0">Select a day</p>
+          <p class="text-xs text-ctp-overlay1">Select a day</p>
         {/if}
       </div>
     </div>

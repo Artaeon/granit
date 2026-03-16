@@ -83,7 +83,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-2xl bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden" style="max-height:85vh">
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
@@ -93,7 +93,7 @@
         </svg>
         <span class="text-sm font-semibold text-ctp-green">Habit Tracker</span>
       </div>
-      <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+      <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
         on:click={() => dispatch('close')}>esc</kbd>
     </div>
 
@@ -101,7 +101,7 @@
     <div class="px-4 py-3 border-b border-ctp-surface0">
       <div class="flex items-center justify-between mb-1.5">
         <span class="text-xs text-ctp-overlay1">Today's Progress</span>
-        <span class="text-xs font-medium" class:text-ctp-green={completionPercent === 100} class:text-ctp-yellow={completionPercent > 0 && completionPercent < 100} class:text-ctp-overlay0={completionPercent === 0}>
+        <span class="text-xs font-medium" class:text-ctp-green={completionPercent === 100} class:text-ctp-yellow={completionPercent > 0 && completionPercent < 100} class:text-ctp-overlay1={completionPercent === 0}>
           {completedToday}/{habits.length} &middot; {completionPercent}%
         </span>
       </div>
@@ -121,12 +121,12 @@
           <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-surface2)" stroke-width="1" stroke-linecap="round" class="opacity-40">
             <path d="M3 8l3 3 7-7" />
           </svg>
-          <p class="text-sm text-ctp-overlay0">No habits tracked yet</p>
-          <p class="text-[11px] text-ctp-surface2">Add your first habit to get started</p>
+          <p class="text-sm text-ctp-overlay1">No habits tracked yet</p>
+          <p class="text-[13px] text-ctp-overlay1">Add your first habit to get started</p>
         </div>
       {:else}
         <!-- Day headers -->
-        <div class="grid items-center px-4 py-2 border-b border-ctp-surface0 text-[10px] text-ctp-overlay0" style="grid-template-columns: 1fr 28px repeat(7, 32px) 50px">
+        <div class="grid items-center px-4 py-2 border-b border-ctp-surface0 text-[12px] text-ctp-overlay1" style="grid-template-columns: 1fr 28px repeat(7, 32px) 50px">
           <span>Habit</span>
           <span></span>
           {#each days as day, i}
@@ -141,12 +141,12 @@
           <div class="grid items-center px-4 py-2.5 hover:bg-ctp-surface0/30 transition-colors border-b border-ctp-surface0/50" style="grid-template-columns: 1fr 28px repeat(7, 32px) 50px">
             <!-- Habit name -->
             <div class="flex items-center gap-2 min-w-0">
-              <span class="text-[13px] text-ctp-text truncate">{habit.name}</span>
+              <span class="text-sm text-ctp-text truncate">{habit.name}</span>
             </div>
 
             <!-- Delete button -->
             <button on:click={() => deleteHabit(hi)}
-              class="text-[10px] text-ctp-surface2 hover:text-ctp-red transition-colors w-5 h-5 flex items-center justify-center rounded hover:bg-ctp-surface0">
+              class="text-[12px] text-ctp-overlay1 hover:text-ctp-red transition-colors w-5 h-5 flex items-center justify-center rounded hover:bg-ctp-surface0">
               &times;
             </button>
 
@@ -156,8 +156,8 @@
                 <button on:click={() => toggleDay(hi, day)}
                   class="w-6 h-6 rounded-md flex items-center justify-center transition-all text-xs
                     {habit.log[day] ? 'bg-ctp-green text-ctp-crust' :
-                     day === todayStr ? 'bg-ctp-surface1 text-ctp-overlay0 hover:bg-ctp-yellow/30' :
-                     'bg-ctp-surface0 text-ctp-surface2 hover:bg-ctp-surface1'}">
+                     day === todayStr ? 'bg-ctp-surface1 text-ctp-overlay1 hover:bg-ctp-yellow/30' :
+                     'bg-ctp-surface0 text-ctp-overlay1 hover:bg-ctp-surface1'}">
                   {#if habit.log[day]}
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                       <path d="M3 8l3 3 7-7" />
@@ -171,9 +171,9 @@
             <div class="flex items-center justify-center gap-1">
               {#if streak(habit) > 0}
                 <span class="text-xs font-bold text-ctp-peach">{streak(habit)}d</span>
-                <span class="text-[10px]">🔥</span>
+                <span class="text-[12px]">🔥</span>
               {:else}
-                <span class="text-xs text-ctp-surface2">0d</span>
+                <span class="text-xs text-ctp-overlay1">0d</span>
               {/if}
             </div>
           </div>
@@ -187,7 +187,7 @@
         <form on:submit|preventDefault={addHabit} class="flex items-center gap-2">
           <input bind:value={newHabitName}
             placeholder="New habit name..."
-            class="flex-1 bg-ctp-surface0 text-ctp-text text-sm px-3 py-1.5 rounded-lg border border-ctp-surface1 focus:border-ctp-mauve focus:outline-none placeholder:text-ctp-overlay0"
+            class="flex-1 bg-ctp-surface0 text-ctp-text text-sm px-3 py-1.5 rounded-lg border border-ctp-surface1 focus:border-ctp-mauve focus:outline-none placeholder:text-ctp-surface2"
             autofocus />
           <button type="submit" class="px-3 py-1.5 bg-ctp-green text-ctp-crust text-xs font-medium rounded-lg hover:opacity-90 transition-opacity">Add</button>
           <button type="button" on:click={() => { showAddInput = false; newHabitName = '' }}

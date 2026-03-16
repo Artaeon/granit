@@ -304,7 +304,7 @@
   function findCard(id: string) { return cards.find(c => c.id === id) }
 </script>
 
-<div class="fixed inset-0 z-50 flex justify-center pt-[3%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[3%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-[90vw] max-w-6xl h-[88vh] bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-overlay flex flex-col overflow-hidden">
 
     {#if showPicker}
@@ -316,7 +316,7 @@
           </svg>
           <span class="text-sm font-semibold text-ctp-text">Canvases</span>
         </div>
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
           on:click={() => dispatch('close')}>esc</kbd>
       </div>
 
@@ -330,7 +330,7 @@
             on:keydown={e => e.key === 'Enter' && createCanvas()}
           />
           <button
-            class="px-3 py-1.5 bg-ctp-blue text-ctp-base text-[12px] font-medium rounded-lg hover:opacity-90 transition-opacity"
+            class="px-3 py-1.5 bg-ctp-blue text-ctp-base text-[13px] font-medium rounded-lg hover:opacity-90 transition-opacity"
             on:click={createCanvas}>
             Create
           </button>
@@ -341,8 +341,8 @@
             <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-surface2)" stroke-width="1" class="opacity-40">
               <rect x="1" y="1" width="14" height="14" rx="2" /><line x1="5" y1="1" x2="5" y2="15" /><line x1="11" y1="1" x2="11" y2="15" />
             </svg>
-            <p class="text-sm text-ctp-overlay0">No canvases yet</p>
-            <p class="text-[11px] text-ctp-surface2">Create one to get started</p>
+            <p class="text-sm text-ctp-overlay1">No canvases yet</p>
+            <p class="text-[13px] text-ctp-overlay1">Create one to get started</p>
           </div>
         {:else}
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -350,13 +350,13 @@
               <div class="group bg-ctp-base border border-ctp-surface0 rounded-lg p-3 hover:border-ctp-blue transition-colors cursor-pointer"
                 on:click={() => openCanvas(name)}>
                 <div class="flex items-center justify-between mb-1">
-                  <span class="text-[13px] text-ctp-text font-medium truncate">{name}</span>
-                  <button class="text-[10px] text-ctp-overlay0 hover:text-ctp-red opacity-0 group-hover:opacity-100 transition-opacity"
+                  <span class="text-sm text-ctp-text font-medium truncate">{name}</span>
+                  <button class="text-[12px] text-ctp-overlay1 hover:text-ctp-red opacity-0 group-hover:opacity-100 transition-opacity"
                     on:click|stopPropagation={() => deleteCanvas(name)}>
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8" /></svg>
                   </button>
                 </div>
-                <div class="text-[10px] text-ctp-overlay0">Click to open</div>
+                <div class="text-[12px] text-ctp-overlay1">Click to open</div>
               </div>
             {/each}
           </div>
@@ -367,20 +367,20 @@
       <!-- Canvas Editor -->
       <div class="flex items-center justify-between px-4 py-2 border-b border-ctp-surface0">
         <div class="flex items-center gap-3">
-          <button class="text-[11px] text-ctp-overlay0 hover:text-ctp-blue transition-colors flex items-center gap-1"
+          <button class="text-[13px] text-ctp-overlay1 hover:text-ctp-blue transition-colors flex items-center gap-1"
             on:click={backToPicker}>
             <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2L4 8l6 6" /></svg>
             Back
           </button>
           <span class="text-sm font-semibold text-ctp-text">{currentCanvas}</span>
-          <span class="text-[10px] text-ctp-overlay0">{cards.length} cards</span>
-          <span class="text-[10px] text-ctp-overlay0">{connections.length} connections</span>
+          <span class="text-[12px] text-ctp-overlay1">{cards.length} cards</span>
+          <span class="text-[12px] text-ctp-overlay1">{connections.length} connections</span>
         </div>
         <div class="flex items-center gap-2">
-          <button class="px-2 py-1 bg-ctp-blue text-ctp-base text-[11px] rounded hover:opacity-90 transition-opacity"
+          <button class="px-2 py-1 bg-ctp-blue text-ctp-base text-[13px] rounded hover:opacity-90 transition-opacity"
             on:click={addCard}>+ Card</button>
-          <span class="text-[10px] text-ctp-overlay0">{Math.round(zoom * 100)}%</span>
-          <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1"
+          <span class="text-[12px] text-ctp-overlay1">{Math.round(zoom * 100)}%</span>
+          <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1"
             on:click={() => dispatch('close')}>esc</kbd>
         </div>
       </div>
@@ -417,7 +417,7 @@
                 {@const fc = cardCenter(fromCard)}
                 {@const tc = cardCenter(toCard)}
                 <line x1={fc.x} y1={fc.y} x2={tc.x} y2={tc.y}
-                  stroke="var(--ctp-overlay0)" stroke-width={1.5 / zoom} opacity="0.5" />
+                  stroke="var(--ctp-overlay1)" stroke-width={1.5 / zoom} opacity="0.5" />
                 <!-- Arrow head -->
                 {@const angle = Math.atan2(tc.y - fc.y, tc.x - fc.x)}
                 {@const arrowSize = 8}
@@ -475,23 +475,23 @@
         {#if contextCard}
           <div class="fixed bg-ctp-base border border-ctp-surface0 rounded-lg shadow-lg py-1 z-[60] min-w-[140px]"
             style="left:{contextX}px;top:{contextY}px">
-            <button class="w-full px-3 py-1.5 text-[12px] text-left text-ctp-text hover:bg-ctp-surface0 flex items-center gap-2"
+            <button class="w-full px-3 py-1.5 text-[13px] text-left text-ctp-text hover:bg-ctp-surface0 flex items-center gap-2"
               on:click={() => { if (contextCard) { editingCard = contextCard; editTitle = contextCard.title; editContent = contextCard.content; contextCard = null } }}>
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 2l3 3L5 14H2v-3z" /></svg>
               Edit
             </button>
-            <button class="w-full px-3 py-1.5 text-[12px] text-left text-ctp-text hover:bg-ctp-surface0 flex items-center gap-2"
+            <button class="w-full px-3 py-1.5 text-[13px] text-left text-ctp-text hover:bg-ctp-surface0 flex items-center gap-2"
               on:click={() => { if (contextCard) cycleColor(contextCard) }}>
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6" /></svg>
               Color
             </button>
-            <button class="w-full px-3 py-1.5 text-[12px] text-left text-ctp-text hover:bg-ctp-surface0 flex items-center gap-2"
+            <button class="w-full px-3 py-1.5 text-[13px] text-left text-ctp-text hover:bg-ctp-surface0 flex items-center gap-2"
               on:click={() => { if (contextCard) startConnect(contextCard, new MouseEvent('mousedown')) }}>
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12L12 4" /><circle cx="12" cy="4" r="2" /></svg>
               Connect
             </button>
             <div class="border-t border-ctp-surface0 my-1"></div>
-            <button class="w-full px-3 py-1.5 text-[12px] text-left text-ctp-red hover:bg-ctp-surface0 flex items-center gap-2"
+            <button class="w-full px-3 py-1.5 text-[13px] text-left text-ctp-red hover:bg-ctp-surface0 flex items-center gap-2"
               on:click={() => { if (contextCard) deleteCard(contextCard) }}>
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8" /></svg>
               Delete
@@ -504,7 +504,7 @@
           <div class="absolute inset-0 flex items-center justify-center z-[60]" style="background:rgba(0,0,0,0.3)"
             on:click|self={() => saveEditingCard()}>
             <div class="w-80 bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-overlay p-4">
-              <div class="text-[12px] font-semibold text-ctp-text mb-3">Edit Card</div>
+              <div class="text-[13px] font-semibold text-ctp-text mb-3">Edit Card</div>
               <input class="w-full bg-ctp-base border border-ctp-surface0 rounded-lg px-3 py-1.5 text-sm text-ctp-text mb-2 focus:outline-none focus:border-ctp-blue"
                 placeholder="Title" bind:value={editTitle}
                 on:keydown={e => e.key === 'Enter' && !e.shiftKey && saveEditingCard()} />
@@ -520,9 +520,9 @@
                 {/each}
               </div>
               <div class="flex justify-end gap-2">
-                <button class="px-3 py-1 text-[11px] text-ctp-overlay0 hover:text-ctp-text transition-colors"
+                <button class="px-3 py-1 text-[13px] text-ctp-overlay1 hover:text-ctp-text transition-colors"
                   on:click={() => { editingCard = null }}>Cancel</button>
-                <button class="px-3 py-1 bg-ctp-blue text-ctp-base text-[11px] rounded-lg hover:opacity-90"
+                <button class="px-3 py-1 bg-ctp-blue text-ctp-base text-[13px] rounded-lg hover:opacity-90"
                   on:click={saveEditingCard}>Save</button>
               </div>
             </div>
@@ -531,7 +531,7 @@
       </div>
 
       <!-- Footer -->
-      <div class="px-4 py-1.5 border-t border-ctp-surface0 flex items-center gap-4 text-[10px] text-ctp-overlay0">
+      <div class="px-4 py-1.5 border-t border-ctp-surface0 flex items-center gap-4 text-[12px] text-ctp-overlay1">
         <span>Drag to move cards</span>
         <span>Double-click to edit</span>
         <span>Right-click for menu</span>

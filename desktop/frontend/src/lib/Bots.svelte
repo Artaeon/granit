@@ -19,7 +19,7 @@
   export function setError(e: string) { error = e; step = 'list' }
 </script>
 
-<div class="fixed inset-0 z-50 flex justify-center pt-[8%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[8%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-xl h-[70vh] bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden">
     <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
       <div class="flex items-center gap-2">
@@ -27,11 +27,11 @@
           <button on:click={() => { step = 'list'; error = '' }} class="text-xs text-ctp-overlay1 hover:text-ctp-text">&larr;</button>
         {/if}
         <span class="text-sm font-semibold text-ctp-text">AI Bots</span>
-        <span class="text-[10px] px-1.5 py-0.5 rounded bg-ctp-surface0 text-ctp-overlay0">
+        <span class="text-[12px] px-1.5 py-0.5 rounded bg-ctp-surface0 text-ctp-overlay1">
           {#if step === 'loading'}running...{:else}{bots.length} bots{/if}
         </span>
       </div>
-      <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
+      <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
     </div>
 
     {#if error}
@@ -48,7 +48,7 @@
             </span>
             <div>
               <div class="text-sm text-ctp-text">{bot.name}</div>
-              <div class="text-[10px] text-ctp-overlay0">{bot.desc}</div>
+              <div class="text-[12px] text-ctp-overlay1">{bot.desc}</div>
             </div>
           </button>
         {/each}
@@ -66,7 +66,7 @@
         <div class="flex items-center justify-center h-full">
           <div class="text-center space-y-3">
             <div class="text-2xl animate-pulse text-ctp-mauve">...</div>
-            <p class="text-sm text-ctp-overlay0">Thinking...</p>
+            <p class="text-sm text-ctp-overlay1">Thinking...</p>
           </div>
         </div>
 

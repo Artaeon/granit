@@ -8,47 +8,12 @@
   import BacklinksPanel from './lib/BacklinksPanel.svelte'
   import CommandPalette from './lib/CommandPalette.svelte'
   import Settings from './lib/Settings.svelte'
-  import GraphView from './lib/GraphView.svelte'
-  import TagBrowser from './lib/TagBrowser.svelte'
-  import Bookmarks from './lib/Bookmarks.svelte'
-  import Help from './lib/Help.svelte'
-  import Outline from './lib/Outline.svelte'
-  import VaultStats from './lib/VaultStats.svelte'
-  import Templates from './lib/Templates.svelte'
-  import Trash from './lib/Trash.svelte'
-  import GitPanel from './lib/GitPanel.svelte'
-  import Bots from './lib/Bots.svelte'
-  import Calendar from './lib/Calendar.svelte'
-  import ExportPanel from './lib/ExportPanel.svelte'
   import FindReplace from './lib/FindReplace.svelte'
   import ContentSearch from './lib/ContentSearch.svelte'
   import QuickSwitcher from './lib/QuickSwitcher.svelte'
-  import Canvas from './lib/Canvas.svelte'
-  import Kanban from './lib/Kanban.svelte'
-  import TaskManager from './lib/TaskManager.svelte'
-  import Pomodoro from './lib/Pomodoro.svelte'
-  import HabitTracker from './lib/HabitTracker.svelte'
-  import DailyPlanner from './lib/DailyPlanner.svelte'
-  import DailyBriefing from './lib/DailyBriefing.svelte'
-  import JournalPrompts from './lib/JournalPrompts.svelte'
-  import WritingCoach from './lib/WritingCoach.svelte'
-  import Flashcards from './lib/Flashcards.svelte'
-  import Quiz from './lib/Quiz.svelte'
-  import MindMap from './lib/MindMap.svelte'
-  import Timeline from './lib/Timeline.svelte'
-  import AiChat from './lib/AiChat.svelte'
-  import Snippets from './lib/Snippets.svelte'
-  import TableEditor from './lib/TableEditor.svelte'
-  import PluginManager from './lib/PluginManager.svelte'
-  import Dataview from './lib/Dataview.svelte'
-  import NoteHistory from './lib/NoteHistory.svelte'
-  import WorkspaceManager from './lib/WorkspaceManager.svelte'
-  import BackupRestore from './lib/BackupRestore.svelte'
-  import AutoLink from './lib/AutoLink.svelte'
-  import BlogPublisher from './lib/BlogPublisher.svelte'
-  import EncryptionPanel from './lib/EncryptionPanel.svelte'
-  import RecurringTasks from './lib/RecurringTasks.svelte'
-  import SmartConnections from './lib/SmartConnections.svelte'
+  import Bookmarks from './lib/Bookmarks.svelte'
+  import Help from './lib/Help.svelte'
+  import Outline from './lib/Outline.svelte'
   import InputDialog from './lib/InputDialog.svelte'
   import ContextMenu from './lib/ContextMenu.svelte'
   import type { NoteDetail, FolderNode, NoteInfo, Tab, BacklinkEntry } from './lib/types'
@@ -116,7 +81,7 @@
   let gitDiff = ''
   let gitMessage = ''
   let botsList: any[] = []
-  let botsRef: Bots
+  let botsRef: any
   let calendarData: any = null
   let exportMessage = ''
   let searchResults: any[] = []
@@ -652,7 +617,7 @@
  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝   ╚═╝</pre>
       <div class="space-y-1">
         <p class="text-ctp-subtext0 text-lg font-light tracking-wide">Knowledge Manager</p>
-        <p class="text-ctp-surface2 text-xs tracking-wider">Notes &middot; Links &middot; Ideas</p>
+        <p class="text-ctp-overlay1 text-xs tracking-wider">Notes &middot; Links &middot; Ideas</p>
       </div>
       <button on:click={handleOpenVault}
         class="block mx-auto px-10 py-3 bg-ctp-blue text-ctp-crust rounded-lg font-semibold
@@ -660,9 +625,9 @@
                active:translate-y-0 transition-all duration-200 text-sm tracking-wide">
         Open Vault
       </button>
-      <div class="flex items-center justify-center gap-4 text-ctp-overlay0 text-[11px]">
+      <div class="flex items-center justify-center gap-4 text-ctp-overlay1 text-[13px]">
         <span class="flex items-center gap-1.5">
-          <kbd class="bg-ctp-surface0 px-1.5 py-0.5 rounded text-[10px]">Ctrl+O</kbd> browse
+          <kbd class="bg-ctp-surface0 px-1.5 py-0.5 rounded text-[12px]">Ctrl+O</kbd> browse
         </span>
       </div>
     </div>
@@ -694,7 +659,7 @@
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-mauve)" stroke-width="1.5" stroke-linecap="round" class="opacity-70">
           <path d="M2 5h5l1.5-2H13a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5z" />
         </svg>
-        <span class="text-[13px] font-semibold text-ctp-subtext0">{vaultPath ? vaultPath.split('/').pop() : 'Granit'}</span>
+        <span class="text-sm font-semibold text-ctp-subtext0">{vaultPath ? vaultPath.split('/').pop() : 'Granit'}</span>
       </div>
 
       <!-- Breadcrumbs -->
@@ -703,9 +668,9 @@
           {#each activeNotePath.split('/') as segment, i}
             <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-surface2)" stroke-width="2" stroke-linecap="round"><path d="M6 4l4 4-4 4" /></svg>
             {#if i < activeNotePath.split('/').length - 1}
-              <span class="text-[12px] text-ctp-overlay0 truncate max-w-[80px]">{segment}</span>
+              <span class="text-[13px] text-ctp-overlay1 truncate max-w-[80px]">{segment}</span>
             {:else}
-              <span class="text-[12px] text-ctp-text font-medium truncate max-w-[160px]">{segment.replace('.md', '')}</span>
+              <span class="text-[13px] text-ctp-text font-medium truncate max-w-[160px]">{segment.replace('.md', '')}</span>
             {/if}
           {/each}
           {#if dirty}
@@ -724,7 +689,7 @@
           class:text-ctp-blue={showBacklinks}
           class:bg-ctp-blue={showBacklinks}
           class:bg-opacity-10={showBacklinks}
-          class:text-ctp-overlay0={!showBacklinks}
+          class:text-ctp-overlay1={!showBacklinks}
           class:hover:bg-ctp-surface0={!showBacklinks}
           style="--wails-draggable: no-drag"
           data-tooltip="Backlinks">
@@ -745,7 +710,7 @@
 
         <!-- Theme dropdown -->
         <select bind:value={currentTheme} on:change={handleThemeChange}
-          class="text-[11px] bg-ctp-surface0/60 text-ctp-subtext0 border border-ctp-surface0/70 rounded-md px-2 py-1 outline-none cursor-pointer hover:border-ctp-overlay0 transition-colors appearance-none pr-5"
+          class="text-[13px] bg-ctp-surface0/60 text-ctp-subtext0 border border-ctp-surface0/70 rounded-md px-2 py-1 outline-none cursor-pointer hover:border-ctp-overlay0 transition-colors appearance-none pr-5"
           style="--wails-draggable: no-drag; background-image: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%228%22 height=%228%22 viewBox=%220 0 16 16%22><path fill=%22%236c7086%22 d=%22M4 6l4 4 4-4%22/></svg>'); background-repeat: no-repeat; background-position: right 6px center;">
           {#each themeNames as name}
             <option value={name}>{name}</option>
@@ -767,7 +732,7 @@
     {#if focusMode && activeNote}
       <!-- Focus Mode (Zen Writing) -->
       <div class="flex flex-col flex-1 min-h-0">
-        <div class="flex items-center justify-between px-6 h-10 text-ctp-overlay0 text-[12px] border-b border-ctp-surface0/30 select-none">
+        <div class="flex items-center justify-between px-6 h-10 text-ctp-overlay1 text-[13px] border-b border-ctp-surface0/30 select-none">
           <button on:click={() => focusMode = false}
             class="flex items-center gap-1.5 hover:text-ctp-text transition-colors">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -775,7 +740,7 @@
             </svg>
             Exit Focus
           </button>
-          <div class="flex items-center gap-4 text-ctp-surface2">
+          <div class="flex items-center gap-4 text-ctp-overlay1">
             <span>{activeNote?.title || ''}</span>
             <span class="text-ctp-surface1">&middot;</span>
             <span>{editorContent.split(/\s+/).filter(Boolean).length} words</span>
@@ -783,7 +748,7 @@
               <span class="w-1.5 h-1.5 rounded-full bg-ctp-peach animate-pulse"></span>
             {/if}
           </div>
-          <span class="text-ctp-surface2 text-[10px]">Esc to exit</span>
+          <span class="text-ctp-overlay1 text-[12px]">Esc to exit</span>
         </div>
         <div class="flex-1 flex justify-center overflow-hidden">
           <div class="w-full max-w-[780px]">
@@ -825,21 +790,21 @@
                     <path d="M4 2h8v12H4V2z" /><path d="M6 5h4m-4 2.5h3m-3 2.5h2" />
                   </svg>
                   <div class="space-y-1">
-                    <p class="text-ctp-overlay0 text-[15px] font-light">Select a note to begin</p>
-                    <p class="text-ctp-surface2 text-[12px]">or use a shortcut below</p>
+                    <p class="text-ctp-overlay1 text-[15px] font-light">Select a note to begin</p>
+                    <p class="text-ctp-overlay1 text-[13px]">or use a shortcut below</p>
                   </div>
-                  <div class="flex items-center justify-center gap-6 text-[11px] text-ctp-overlay0">
+                  <div class="flex items-center justify-center gap-6 text-[13px] text-ctp-overlay1">
                     <button on:click={() => { paletteMode = 'files'; openOverlay('commandPalette') }}
                       class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-ctp-surface0/50 hover:bg-ctp-surface0 transition-colors">
-                      <kbd class="text-[10px] bg-ctp-surface0 px-1 py-0.5 rounded">Ctrl+P</kbd> Search
+                      <kbd class="text-[12px] bg-ctp-surface0 px-1 py-0.5 rounded">Ctrl+P</kbd> Search
                     </button>
                     <button on:click={handleCreateNote}
                       class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-ctp-surface0/50 hover:bg-ctp-surface0 transition-colors">
-                      <kbd class="text-[10px] bg-ctp-surface0 px-1 py-0.5 rounded">Ctrl+N</kbd> Create
+                      <kbd class="text-[12px] bg-ctp-surface0 px-1 py-0.5 rounded">Ctrl+N</kbd> Create
                     </button>
                     <button on:click={openQuickSwitcher}
                       class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-ctp-surface0/50 hover:bg-ctp-surface0 transition-colors">
-                      <kbd class="text-[10px] bg-ctp-surface0 px-1 py-0.5 rounded">Ctrl+J</kbd> Switch
+                      <kbd class="text-[12px] bg-ctp-surface0 px-1 py-0.5 rounded">Ctrl+J</kbd> Switch
                     </button>
                   </div>
                 </div>
@@ -898,14 +863,22 @@
       on:close={() => closeOverlay('settings')} />
   {/if}
   {#if overlays.graph}
-    <GraphView data={graphData} on:select={(e) => { closeOverlay('graph'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
-      on:close={() => closeOverlay('graph')} />
+    {#await import('./lib/GraphView.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} data={graphData} on:select={(e) => { closeOverlay('graph'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
+        on:close={() => closeOverlay('graph')} />
+    {/await}
   {/if}
   {#if overlays.tags}
-    <TagBrowser tags={tagsData} {notesForTag}
-      on:selectTag={async (e) => { notesForTag = await api().GetNotesForTag(e.detail) || [] }}
-      on:openNote={(e) => { closeOverlay('tags'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
-      on:close={() => closeOverlay('tags')} />
+    {#await import('./lib/TagBrowser.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} tags={tagsData} {notesForTag}
+        on:selectTag={async (e) => { notesForTag = await api().GetNotesForTag(e.detail) || [] }}
+        on:openNote={(e) => { closeOverlay('tags'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
+        on:close={() => closeOverlay('tags')} />
+    {/await}
   {/if}
   {#if overlays.bookmarks}
     <Bookmarks starred={bookmarkData.starred || []} recent={bookmarkData.recent || []}
@@ -921,48 +894,76 @@
       on:close={() => closeOverlay('outline')} />
   {/if}
   {#if overlays.stats}
-    <VaultStats stats={statsData} on:close={() => closeOverlay('stats')} />
+    {#await import('./lib/VaultStats.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} stats={statsData} on:close={() => closeOverlay('stats')} />
+    {/await}
   {/if}
   {#if overlays.templates}
-    <Templates templates={templatesData}
-      on:create={async (e) => { const p = await api().CreateFromTemplate(e.detail.idx, e.detail.name); closeOverlay('templates'); await refreshTree(); handleSelectNote(new CustomEvent('s', { detail: p })) }}
-      on:close={() => closeOverlay('templates')} />
+    {#await import('./lib/Templates.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} templates={templatesData}
+        on:create={async (e) => { const p = await api().CreateFromTemplate(e.detail.idx, e.detail.name); closeOverlay('templates'); await refreshTree(); handleSelectNote(new CustomEvent('s', { detail: p })) }}
+        on:close={() => closeOverlay('templates')} />
+    {/await}
   {/if}
   {#if overlays.trash}
-    <Trash items={trashData}
-      on:restore={async (e) => { await api().RestoreFromTrash(e.detail); trashData = await api().GetTrashItems() || []; await refreshTree() }}
-      on:purge={async (e) => { await api().PurgeFromTrash(e.detail); trashData = await api().GetTrashItems() || [] }}
-      on:close={() => closeOverlay('trash')} />
+    {#await import('./lib/Trash.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} items={trashData}
+        on:restore={async (e) => { await api().RestoreFromTrash(e.detail); trashData = await api().GetTrashItems() || []; await refreshTree() }}
+        on:purge={async (e) => { await api().PurgeFromTrash(e.detail); trashData = await api().GetTrashItems() || [] }}
+        on:close={() => closeOverlay('trash')} />
+    {/await}
   {/if}
   {#if overlays.git}
-    <GitPanel statusLines={gitStatus} logLines={gitLog} diffText={gitDiff} message={gitMessage}
-      on:refresh={refreshGit}
-      on:commit={async (e) => { try { gitMessage = await api().GitCommit(e.detail); await refreshGit() } catch (err) { gitMessage = 'Commit failed: ' + err } }}
-      on:push={async () => { try { gitMessage = await api().GitPush() } catch (err) { gitMessage = 'Push failed: ' + err } }}
-      on:pull={async () => { try { gitMessage = await api().GitPull(); await refreshGit() } catch (err) { gitMessage = 'Pull failed: ' + err } }}
-      on:close={() => closeOverlay('git')} />
+    {#await import('./lib/GitPanel.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} statusLines={gitStatus} logLines={gitLog} diffText={gitDiff} message={gitMessage}
+        on:refresh={refreshGit}
+        on:commit={async (e) => { try { gitMessage = await api().GitCommit(e.detail); await refreshGit() } catch (err) { gitMessage = 'Commit failed: ' + err } }}
+        on:push={async () => { try { gitMessage = await api().GitPush() } catch (err) { gitMessage = 'Push failed: ' + err } }}
+        on:pull={async () => { try { gitMessage = await api().GitPull(); await refreshGit() } catch (err) { gitMessage = 'Pull failed: ' + err } }}
+        on:close={() => closeOverlay('git')} />
+    {/await}
   {/if}
   {#if overlays.bots}
-    <Bots bind:this={botsRef} bots={botsList}
-      on:run={async (e) => { try { const r = await api().RunBot(e.detail.kind, activeNotePath || '', e.detail.question || ''); botsRef.setResult(r) } catch (err) { botsRef.setError(String(err)) } }}
-      on:close={() => closeOverlay('bots')} />
+    {#await import('./lib/Bots.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} bind:this={botsRef} bots={botsList}
+        on:run={async (e) => { try { const r = await api().RunBot(e.detail.kind, activeNotePath || '', e.detail.question || ''); botsRef.setResult(r) } catch (err) { botsRef.setError(String(err)) } }}
+        on:close={() => closeOverlay('bots')} />
+    {/await}
   {/if}
   {#if overlays.calendar}
-    <Calendar data={calendarData}
-      on:navigate={async (e) => { calendarData = await api().GetCalendarData(e.detail.year, e.detail.month) }}
-      on:toggleTask={async (e) => { await api().ToggleTask(e.detail.notePath, e.detail.lineNum); const now = new Date(); calendarData = await api().GetCalendarData(now.getFullYear(), now.getMonth() + 1) }}
-      on:openNote={(e) => { closeOverlay('calendar'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
-      on:close={() => closeOverlay('calendar')} />
+    {#await import('./lib/Calendar.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} data={calendarData}
+        on:navigate={async (e) => { calendarData = await api().GetCalendarData(e.detail.year, e.detail.month) }}
+        on:toggleTask={async (e) => { await api().ToggleTask(e.detail.notePath, e.detail.lineNum); const now = new Date(); calendarData = await api().GetCalendarData(now.getFullYear(), now.getMonth() + 1) }}
+        on:openNote={(e) => { closeOverlay('calendar'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
+        on:close={() => closeOverlay('calendar')} />
+    {/await}
   {/if}
   {#if overlays.export}
-    <ExportPanel notePath={activeNotePath} message={exportMessage}
-      on:export={async (e) => { try {
-        if (e.detail === 'html') exportMessage = await api().ExportHTML(activeNotePath)
-        else if (e.detail === 'text') exportMessage = await api().ExportText(activeNotePath)
-        else if (e.detail === 'pdf') exportMessage = await api().ExportPDF(activeNotePath)
-        else if (e.detail === 'all') exportMessage = await api().ExportAll()
-      } catch (err) { exportMessage = 'Error: ' + err } }}
-      on:close={() => closeOverlay('export')} />
+    {#await import('./lib/ExportPanel.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} notePath={activeNotePath} message={exportMessage}
+        on:export={async (e) => { try {
+          if (e.detail === 'html') exportMessage = await api().ExportHTML(activeNotePath)
+          else if (e.detail === 'text') exportMessage = await api().ExportText(activeNotePath)
+          else if (e.detail === 'pdf') exportMessage = await api().ExportPDF(activeNotePath)
+          else if (e.detail === 'all') exportMessage = await api().ExportAll()
+        } catch (err) { exportMessage = 'Error: ' + err } }}
+        on:close={() => closeOverlay('export')} />
+    {/await}
   {/if}
   {#if overlays.findReplace}
     <FindReplace content={editorContent}
@@ -981,110 +982,214 @@
       on:close={() => closeOverlay('quickSwitcher')} />
   {/if}
   {#if overlays.canvas}
-    <Canvas on:close={() => closeOverlay('canvas')} />
+    {#await import('./lib/Canvas.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} on:close={() => closeOverlay('canvas')} />
+    {/await}
   {/if}
   {#if overlays.kanban}
-    <Kanban on:close={() => closeOverlay('kanban')}
-      on:openNote={(e) => { closeOverlay('kanban'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }} />
+    {#await import('./lib/Kanban.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} on:close={() => closeOverlay('kanban')}
+        on:openNote={(e) => { closeOverlay('kanban'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }} />
+    {/await}
   {/if}
   {#if overlays.taskManager}
-    <TaskManager
-      on:openNote={(e) => { closeOverlay('taskManager'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
-      on:close={() => closeOverlay('taskManager')} />
+    {#await import('./lib/TaskManager.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default}
+        on:openNote={(e) => { closeOverlay('taskManager'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
+        on:close={() => closeOverlay('taskManager')} />
+    {/await}
   {/if}
   {#if overlays.pomodoro}
-    <Pomodoro on:close={() => closeOverlay('pomodoro')} />
+    {#await import('./lib/Pomodoro.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} on:close={() => closeOverlay('pomodoro')} />
+    {/await}
   {/if}
   {#if overlays.habitTracker}
-    <HabitTracker on:close={() => closeOverlay('habitTracker')} />
+    {#await import('./lib/HabitTracker.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} on:close={() => closeOverlay('habitTracker')} />
+    {/await}
   {/if}
   {#if overlays.dailyPlanner}
-    <DailyPlanner on:close={() => closeOverlay('dailyPlanner')} />
+    {#await import('./lib/DailyPlanner.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} on:close={() => closeOverlay('dailyPlanner')} />
+    {/await}
   {/if}
   {#if overlays.dailyBriefing}
-    <DailyBriefing
-      on:openNote={(e) => { closeOverlay('dailyBriefing'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
-      on:close={() => closeOverlay('dailyBriefing')} />
+    {#await import('./lib/DailyBriefing.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default}
+        on:openNote={(e) => { closeOverlay('dailyBriefing'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
+        on:close={() => closeOverlay('dailyBriefing')} />
+    {/await}
   {/if}
   {#if overlays.journalPrompts}
-    <JournalPrompts
-      on:create={async (e) => { const p = await api().CreateNote(e.detail.name, e.detail.content); closeOverlay('journalPrompts'); await refreshTree(); handleSelectNote(new CustomEvent('s', { detail: p })) }}
-      on:close={() => closeOverlay('journalPrompts')} />
+    {#await import('./lib/JournalPrompts.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default}
+        on:create={async (e) => { const p = await api().CreateNote(e.detail.name, e.detail.content); closeOverlay('journalPrompts'); await refreshTree(); handleSelectNote(new CustomEvent('s', { detail: p })) }}
+        on:close={() => closeOverlay('journalPrompts')} />
+    {/await}
   {/if}
   {#if overlays.writingCoach}
-    <WritingCoach content={editorContent} notePath={activeNotePath}
-      on:close={() => closeOverlay('writingCoach')} />
+    {#await import('./lib/WritingCoach.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} content={editorContent} notePath={activeNotePath}
+        on:close={() => closeOverlay('writingCoach')} />
+    {/await}
   {/if}
   {#if overlays.flashcards}
-    <Flashcards notePath={activeNotePath}
-      on:close={() => closeOverlay('flashcards')} />
+    {#await import('./lib/Flashcards.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} notePath={activeNotePath}
+        on:close={() => closeOverlay('flashcards')} />
+    {/await}
   {/if}
   {#if overlays.quiz}
-    <Quiz notePath={activeNotePath}
-      on:close={() => closeOverlay('quiz')} />
+    {#await import('./lib/Quiz.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} notePath={activeNotePath}
+        on:close={() => closeOverlay('quiz')} />
+    {/await}
   {/if}
   {#if overlays.mindMap}
-    <MindMap notePath={activeNotePath}
-      on:select={(e) => { closeOverlay('mindMap'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
-      on:close={() => closeOverlay('mindMap')} />
+    {#await import('./lib/MindMap.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} notePath={activeNotePath}
+        on:select={(e) => { closeOverlay('mindMap'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
+        on:close={() => closeOverlay('mindMap')} />
+    {/await}
   {/if}
   {#if overlays.timeline}
-    <Timeline
-      on:select={(e) => { closeOverlay('timeline'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
-      on:close={() => closeOverlay('timeline')} />
+    {#await import('./lib/Timeline.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default}
+        on:select={(e) => { closeOverlay('timeline'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
+        on:close={() => closeOverlay('timeline')} />
+    {/await}
   {/if}
   {#if overlays.aiChat}
-    <AiChat noteTitle={activeNote?.title || ''} noteContent={editorContent}
-      on:close={() => closeOverlay('aiChat')} />
+    {#await import('./lib/AiChat.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} noteTitle={activeNote?.title || ''} noteContent={editorContent}
+        on:close={() => closeOverlay('aiChat')} />
+    {/await}
   {/if}
   {#if overlays.snippets}
-    <Snippets on:close={() => closeOverlay('snippets')} />
+    {#await import('./lib/Snippets.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} on:close={() => closeOverlay('snippets')} />
+    {/await}
   {/if}
   {#if overlays.tableEditor}
-    <TableEditor
-      on:insert={(e) => { closeOverlay('tableEditor') }}
-      on:close={() => closeOverlay('tableEditor')} />
+    {#await import('./lib/TableEditor.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default}
+        on:insert={(e) => { closeOverlay('tableEditor') }}
+        on:close={() => closeOverlay('tableEditor')} />
+    {/await}
   {/if}
   {#if overlays.pluginManager}
-    <PluginManager plugins={pluginsData}
-      on:close={() => closeOverlay('pluginManager')} />
+    {#await import('./lib/PluginManager.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} plugins={pluginsData}
+        on:close={() => closeOverlay('pluginManager')} />
+    {/await}
   {/if}
   {#if overlays.dataview}
-    <Dataview
-      on:openNote={(e) => { closeOverlay('dataview'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
-      on:close={() => closeOverlay('dataview')} />
+    {#await import('./lib/Dataview.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default}
+        on:openNote={(e) => { closeOverlay('dataview'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
+        on:close={() => closeOverlay('dataview')} />
+    {/await}
   {/if}
   {#if overlays.noteHistory}
-    <NoteHistory notePath={activeNotePath} entries={noteHistoryData}
-      on:close={() => closeOverlay('noteHistory')} />
+    {#await import('./lib/NoteHistory.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} notePath={activeNotePath} entries={noteHistoryData}
+        on:close={() => closeOverlay('noteHistory')} />
+    {/await}
   {/if}
   {#if overlays.workspaceManager}
-    <WorkspaceManager on:close={() => closeOverlay('workspaceManager')} />
+    {#await import('./lib/WorkspaceManager.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} on:close={() => closeOverlay('workspaceManager')} />
+    {/await}
   {/if}
   {#if overlays.backupRestore}
-    <BackupRestore on:close={() => closeOverlay('backupRestore')} />
+    {#await import('./lib/BackupRestore.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} on:close={() => closeOverlay('backupRestore')} />
+    {/await}
   {/if}
   {#if overlays.autoLink}
-    <AutoLink suggestions={autoLinkData} notePath={activeNotePath}
-      on:close={() => closeOverlay('autoLink')} />
+    {#await import('./lib/AutoLink.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} suggestions={autoLinkData} notePath={activeNotePath}
+        on:close={() => closeOverlay('autoLink')} />
+    {/await}
   {/if}
   {#if overlays.blogPublisher}
-    <BlogPublisher notePath={activeNotePath} noteTitle={activeNote?.title || ''}
-      on:close={() => closeOverlay('blogPublisher')} />
+    {#await import('./lib/BlogPublisher.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} notePath={activeNotePath} noteTitle={activeNote?.title || ''}
+        on:close={() => closeOverlay('blogPublisher')} />
+    {/await}
   {/if}
   {#if overlays.encryption}
-    <EncryptionPanel notePath={activeNotePath}
-      on:close={() => closeOverlay('encryption')} />
+    {#await import('./lib/EncryptionPanel.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} notePath={activeNotePath}
+        on:close={() => closeOverlay('encryption')} />
+    {/await}
   {/if}
   {#if overlays.recurringTasks}
-    <RecurringTasks
-      on:openNote={(e) => { closeOverlay('recurringTasks'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
-      on:close={() => closeOverlay('recurringTasks')} />
+    {#await import('./lib/RecurringTasks.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default}
+        on:openNote={(e) => { closeOverlay('recurringTasks'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
+        on:close={() => closeOverlay('recurringTasks')} />
+    {/await}
   {/if}
   {#if overlays.smartConnections}
-    <SmartConnections notePath={activeNotePath} noteTitle={activeNote?.title || ''}
-      on:openNote={(e) => { closeOverlay('smartConnections'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
-      on:close={() => closeOverlay('smartConnections')} />
+    {#await import('./lib/SmartConnections.svelte')}
+      <div class="overlay-loading"></div>
+    {:then mod}
+      <svelte:component this={mod.default} notePath={activeNotePath} noteTitle={activeNote?.title || ''}
+        on:openNote={(e) => { closeOverlay('smartConnections'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
+        on:close={() => closeOverlay('smartConnections')} />
+    {/await}
   {/if}
 
   <!-- Input Dialog (replaces browser prompt()) -->

@@ -124,7 +124,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="fixed inset-0 z-50 flex justify-center pt-[10%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[10%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-lg h-[60vh] bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden">
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
@@ -136,16 +136,16 @@
           <rect x="9" y="9" width="5" height="5" rx="0.5" />
         </svg>
         <span class="text-sm font-semibold text-ctp-text">Workspaces</span>
-        <span class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded-full">
+        <span class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded-full">
           {workspaces.length}
         </span>
       </div>
       <div class="flex items-center gap-2">
         <button on:click={enterSaveMode}
-          class="text-[11px] font-medium bg-ctp-green/90 text-ctp-crust px-3 py-1 rounded-md hover:bg-ctp-green transition-colors">
+          class="text-[13px] font-medium bg-ctp-green/90 text-ctp-crust px-3 py-1 rounded-md hover:bg-ctp-green transition-colors">
           Save Current
         </button>
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
           on:click={() => dispatch('close')}>esc</kbd>
       </div>
     </div>
@@ -160,11 +160,11 @@
             class="flex-1 px-3 py-1.5 text-sm bg-ctp-surface0 text-ctp-text rounded-md border border-ctp-surface1 outline-none focus:border-ctp-green transition-colors" />
           <button on:click={saveWorkspace}
             disabled={!saveName.trim()}
-            class="text-[11px] font-medium bg-ctp-green text-ctp-crust px-3 py-1.5 rounded-md hover:opacity-90 transition-opacity disabled:opacity-40">
+            class="text-[13px] font-medium bg-ctp-green text-ctp-crust px-3 py-1.5 rounded-md hover:opacity-90 transition-opacity disabled:opacity-40">
             Save
           </button>
           <button on:click={() => { saveMode = false; saveName = '' }}
-            class="text-[11px] text-ctp-overlay0 px-2 py-1.5 rounded-md hover:bg-ctp-surface0 transition-colors">
+            class="text-[13px] text-ctp-overlay1 px-2 py-1.5 rounded-md hover:bg-ctp-surface0 transition-colors">
             Cancel
           </button>
         </div>
@@ -173,7 +173,7 @@
 
     <!-- Message bar -->
     {#if message}
-      <div class="flex items-center gap-2 px-4 py-2 text-[11px] border-b border-ctp-surface0"
+      <div class="flex items-center gap-2 px-4 py-2 text-[13px] border-b border-ctp-surface0"
         style="background: color-mix(in srgb, {messageType === 'error' ? 'var(--ctp-red)' : 'var(--ctp-green)'} 8%, transparent);
                color: {messageType === 'error' ? 'var(--ctp-red)' : 'var(--ctp-green)'}">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -187,18 +187,18 @@
     <div class="flex-1 overflow-y-auto py-1">
       {#if loading}
         <div class="flex items-center justify-center py-16">
-          <span class="text-ctp-overlay0 text-sm">Loading workspaces...</span>
+          <span class="text-ctp-overlay1 text-sm">Loading workspaces...</span>
         </div>
       {:else if workspaces.length === 0}
         <div class="flex flex-col items-center py-16 gap-3">
-          <svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay0)" stroke-width="1" stroke-linecap="round" class="opacity-40">
+          <svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay1)" stroke-width="1" stroke-linecap="round" class="opacity-40">
             <rect x="2" y="2" width="5" height="5" rx="0.5" />
             <rect x="9" y="2" width="5" height="5" rx="0.5" />
             <rect x="2" y="9" width="5" height="5" rx="0.5" />
             <rect x="9" y="9" width="5" height="5" rx="0.5" />
           </svg>
-          <p class="text-ctp-overlay0 text-sm">No workspaces saved yet</p>
-          <p class="text-[11px] text-ctp-overlay0">Save your current layout to quickly restore it later.</p>
+          <p class="text-ctp-overlay1 text-sm">No workspaces saved yet</p>
+          <p class="text-[13px] text-ctp-overlay1">Save your current layout to quickly restore it later.</p>
         </div>
       {:else}
         {#each workspaces as name}
@@ -218,24 +218,24 @@
                 <input bind:this={renameInput} bind:value={renameBuf}
                   on:keydown={(e) => handleRenameKeydown(e, name)}
                   on:blur={() => confirmRename(name)}
-                  class="w-full px-2 py-0.5 text-[13px] bg-ctp-surface0 text-ctp-text rounded border border-ctp-blue outline-none" />
+                  class="w-full px-2 py-0.5 text-sm bg-ctp-surface0 text-ctp-text rounded border border-ctp-blue outline-none" />
               {:else}
-                <div class="text-[13px] font-medium text-ctp-text truncate">{name}</div>
+                <div class="text-sm font-medium text-ctp-text truncate">{name}</div>
               {/if}
             </div>
 
             <!-- Actions -->
             <div class="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
               <button on:click={() => loadWorkspace(name)}
-                class="text-[10px] font-medium px-2 py-0.5 rounded bg-ctp-blue/15 text-ctp-blue hover:bg-ctp-blue/25 transition-colors">
+                class="text-[12px] font-medium px-2 py-0.5 rounded bg-ctp-blue/15 text-ctp-blue hover:bg-ctp-blue/25 transition-colors">
                 Load
               </button>
               <button on:click={() => startRename(name)}
-                class="text-[10px] font-medium px-2 py-0.5 rounded bg-ctp-surface0 text-ctp-subtext0 hover:bg-ctp-surface1 transition-colors">
+                class="text-[12px] font-medium px-2 py-0.5 rounded bg-ctp-surface0 text-ctp-subtext0 hover:bg-ctp-surface1 transition-colors">
                 Rename
               </button>
               <button on:click={() => deleteWorkspace(name)}
-                class="text-[10px] font-medium px-2 py-0.5 rounded bg-ctp-surface0 text-ctp-red hover:bg-ctp-red/15 transition-colors">
+                class="text-[12px] font-medium px-2 py-0.5 rounded bg-ctp-surface0 text-ctp-red hover:bg-ctp-red/15 transition-colors">
                 Delete
               </button>
             </div>
@@ -245,7 +245,7 @@
     </div>
 
     <!-- Footer -->
-    <div class="px-4 py-2 border-t border-ctp-surface0 text-[10px] text-ctp-overlay0">
+    <div class="px-4 py-2 border-t border-ctp-surface0 text-[12px] text-ctp-overlay1">
       Workspaces save open tabs, active note, and layout state. Stored in .granit/workspaces/.
     </div>
   </div>

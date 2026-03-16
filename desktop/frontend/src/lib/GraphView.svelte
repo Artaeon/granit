@@ -53,11 +53,11 @@
   function nodeRadius(n: any) { return Math.max(4, Math.min(12, 4 + n.total)) }
 </script>
 
-<div class="fixed inset-0 z-50 flex justify-center items-center" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center items-center" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-[85vw] h-[80vh] bg-ctp-base rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden">
     <div class="flex items-center justify-between px-4 py-2 border-b border-ctp-surface0 bg-ctp-mantle">
       <span class="text-sm font-semibold text-ctp-text">Note Graph</span>
-      <div class="flex items-center gap-3 text-[10px] text-ctp-overlay0">
+      <div class="flex items-center gap-3 text-[12px] text-ctp-overlay1">
         <span>{data?.stats?.totalNodes || 0} nodes</span>
         <span>{data?.stats?.totalEdges || 0} edges</span>
         <span>{data?.stats?.orphanCount || 0} orphans</span>
@@ -84,7 +84,7 @@
         {/each}
       </svg>
     </div>
-    <div class="px-4 py-1.5 border-t border-ctp-surface0 bg-ctp-mantle flex gap-4 text-[10px] text-ctp-overlay0">
+    <div class="px-4 py-1.5 border-t border-ctp-surface0 bg-ctp-mantle flex gap-4 text-[12px] text-ctp-overlay1">
       <span><span class="inline-block w-2 h-2 rounded-full bg-ctp-green mr-1"></span>Hub (5+)</span>
       <span><span class="inline-block w-2 h-2 rounded-full bg-ctp-blue mr-1"></span>Normal</span>
       <span><span class="inline-block w-2 h-2 rounded-full bg-ctp-red mr-1"></span>Orphan</span>

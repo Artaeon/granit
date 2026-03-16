@@ -132,15 +132,15 @@
         </svg>
         <span class="text-sm font-semibold text-ctp-text">AI Chat</span>
         {#if noteTitle}
-          <span class="text-[10px] px-1.5 py-0.5 rounded bg-ctp-surface0 text-ctp-overlay0 truncate max-w-[200px]">{noteTitle}</span>
+          <span class="text-[12px] px-1.5 py-0.5 rounded bg-ctp-surface0 text-ctp-overlay1 truncate max-w-[200px]">{noteTitle}</span>
         {/if}
       </div>
       <div class="flex items-center gap-2">
         <button on:click={clearChat}
-          class="text-[10px] text-ctp-overlay0 hover:text-ctp-red px-2 py-0.5 rounded bg-ctp-surface0 transition-colors">
+          class="text-[12px] text-ctp-overlay1 hover:text-ctp-red px-2 py-0.5 rounded bg-ctp-surface0 transition-colors">
           Clear
         </button>
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
       </div>
     </div>
 
@@ -154,7 +154,7 @@
               <div class="bg-ctp-blue text-ctp-crust rounded-2xl rounded-br-md px-4 py-2.5 text-sm leading-relaxed">
                 {msg.content}
               </div>
-              <div class="text-[9px] text-ctp-overlay0 text-right mt-1 mr-1">{msg.time}</div>
+              <div class="text-[11px] text-ctp-overlay1 text-right mt-1 mr-1">{msg.time}</div>
             </div>
           </div>
 
@@ -168,19 +168,19 @@
                     <path d="M2 8h12M5 4l-3 4 3 4M11 4l3 4-3 4" />
                   </svg>
                 </div>
-                <span class="text-[10px] text-ctp-overlay0">Assistant</span>
+                <span class="text-[12px] text-ctp-overlay1">Assistant</span>
               </div>
               <div class="bg-ctp-surface0 text-ctp-text rounded-2xl rounded-bl-md px-4 py-2.5 text-sm leading-relaxed prose-sm">
                 {@html renderMarkdown(msg.content)}
               </div>
-              <div class="text-[9px] text-ctp-overlay0 mt-1 ml-1">{msg.time}</div>
+              <div class="text-[11px] text-ctp-overlay1 mt-1 ml-1">{msg.time}</div>
             </div>
           </div>
 
         {:else if msg.role === 'system'}
           <!-- System message: centered -->
           <div class="flex justify-center">
-            <div class="text-[11px] text-ctp-overlay0 italic bg-ctp-surface0/50 px-3 py-1.5 rounded-full max-w-[80%] text-center">
+            <div class="text-[13px] text-ctp-overlay1 italic bg-ctp-surface0/50 px-3 py-1.5 rounded-full max-w-[80%] text-center">
               {msg.content}
             </div>
           </div>
@@ -197,7 +197,7 @@
                   <path d="M2 8h12M5 4l-3 4 3 4M11 4l3 4-3 4" />
                 </svg>
               </div>
-              <span class="text-[10px] text-ctp-overlay0">Assistant</span>
+              <span class="text-[12px] text-ctp-overlay1">Assistant</span>
             </div>
             <div class="bg-ctp-surface0 text-ctp-text rounded-2xl rounded-bl-md px-4 py-3">
               <div class="flex items-center gap-1.5">
@@ -214,7 +214,7 @@
     <!-- Input area -->
     <div class="border-t border-ctp-surface0 px-4 py-3">
       {#if error}
-        <div class="text-[11px] text-ctp-red bg-ctp-surface0 px-3 py-1.5 rounded-lg mb-2">{error}</div>
+        <div class="text-[13px] text-ctp-red bg-ctp-surface0 px-3 py-1.5 rounded-lg mb-2">{error}</div>
       {/if}
       <div class="flex items-end gap-2">
         <textarea
@@ -225,7 +225,7 @@
           rows="1"
           class="flex-1 bg-ctp-surface0 text-ctp-text rounded-xl px-4 py-2.5 text-sm outline-none
             border border-ctp-surface1 focus:border-ctp-blue resize-none
-            placeholder:text-ctp-overlay0 max-h-32"
+            placeholder:text-ctp-surface2 max-h-32"
           disabled={loading}
         ></textarea>
         <button
@@ -233,7 +233,7 @@
           disabled={loading || !input.trim()}
           class="w-9 h-9 rounded-xl flex items-center justify-center transition-all
             {loading || !input.trim()
-              ? 'bg-ctp-surface0 text-ctp-overlay0 cursor-not-allowed'
+              ? 'bg-ctp-surface0 text-ctp-overlay1 cursor-not-allowed'
               : 'bg-ctp-blue text-ctp-crust hover:opacity-90 cursor-pointer'}"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -241,7 +241,7 @@
           </svg>
         </button>
       </div>
-      <div class="flex items-center justify-between mt-2 text-[10px] text-ctp-overlay0">
+      <div class="flex items-center justify-between mt-2 text-[12px] text-ctp-overlay1">
         <span><kbd class="bg-ctp-surface0 px-1 py-px rounded">Enter</kbd> send &nbsp; <kbd class="bg-ctp-surface0 px-1 py-px rounded">Shift+Enter</kbd> newline</span>
         <span>{messages.filter(m => m.role !== 'system').length} messages</span>
       </div>

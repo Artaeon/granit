@@ -121,7 +121,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-2xl bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden" style="max-height:85vh">
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
@@ -132,13 +132,13 @@
           </svg>
           <span class="text-sm font-semibold text-ctp-blue">Daily Planner</span>
         </div>
-        <div class="text-[11px] text-ctp-overlay0 mt-0.5 ml-6">{todayFormatted}</div>
+        <div class="text-[13px] text-ctp-overlay1 mt-0.5 ml-6">{todayFormatted}</div>
       </div>
       <div class="flex items-center gap-3">
         {#if totalCount > 0}
-          <span class="text-[11px] text-ctp-overlay0">{completedCount}/{totalCount} done</span>
+          <span class="text-[13px] text-ctp-overlay1">{completedCount}/{totalCount} done</span>
         {/if}
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
           on:click={() => dispatch('close')}>esc</kbd>
       </div>
     </div>
@@ -148,13 +148,13 @@
       <!-- Calendar events for today -->
       {#if calendarEvents.length > 0}
         <div class="bg-ctp-base rounded-lg p-3 border border-ctp-surface0">
-          <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wider mb-2 font-medium">Calendar Events</div>
+          <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wider mb-2 font-medium">Calendar Events</div>
           {#each calendarEvents as ev}
             <div class="flex items-center gap-2 py-1">
               <span class="w-1.5 h-1.5 rounded-full bg-ctp-sapphire flex-shrink-0"></span>
               <span class="text-xs text-ctp-text">{ev.title}</span>
               {#if ev.time}
-                <span class="text-[10px] text-ctp-overlay0 ml-auto">{ev.time}</span>
+                <span class="text-[12px] text-ctp-overlay1 ml-auto">{ev.time}</span>
               {/if}
             </div>
           {/each}
@@ -164,7 +164,7 @@
       <!-- Vault tasks due today -->
       {#if vaultTasks.length > 0}
         <div class="bg-ctp-base rounded-lg p-3 border border-ctp-surface0">
-          <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wider mb-2 font-medium">Vault Tasks Due Today</div>
+          <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wider mb-2 font-medium">Vault Tasks Due Today</div>
           {#each vaultTasks as task}
             <div class="flex items-center gap-2 py-1">
               <input type="checkbox" checked={task.done}
@@ -182,13 +182,13 @@
           <div class="flex items-center gap-2 px-3 py-2 border-b border-ctp-surface0/50">
             <span class="text-sm">{block.icon}</span>
             <span class="text-xs font-semibold" style="color: {block.color}">{block.label}</span>
-            <span class="text-[10px] text-ctp-overlay0 ml-1">{block.hours}</span>
-            <span class="text-[10px] text-ctp-surface2 ml-auto">{itemsForBlock(block.key).length} items</span>
+            <span class="text-[12px] text-ctp-overlay1 ml-1">{block.hours}</span>
+            <span class="text-[12px] text-ctp-overlay1 ml-auto">{itemsForBlock(block.key).length} items</span>
           </div>
 
           <div class="p-2">
             {#if itemsForBlock(block.key).length === 0}
-              <div class="text-[11px] text-ctp-surface2 py-2 px-2">No tasks scheduled</div>
+              <div class="text-[13px] text-ctp-overlay1 py-2 px-2">No tasks scheduled</div>
             {/if}
 
             {#each itemsForBlock(block.key) as item}
@@ -210,7 +210,7 @@
                 <span class="text-xs text-ctp-text flex-1" class:line-through={item.done} class:opacity-50={item.done}>{item.text}</span>
 
                 <button on:click={() => deleteItem(item.id)}
-                  class="text-[10px] text-ctp-surface2 hover:text-ctp-red opacity-0 group-hover:opacity-100 transition-opacity px-1">&times;</button>
+                  class="text-[12px] text-ctp-overlay1 hover:text-ctp-red opacity-0 group-hover:opacity-100 transition-opacity px-1">&times;</button>
               </div>
             {/each}
           </div>
@@ -224,7 +224,7 @@
         <form on:submit|preventDefault={addTask} class="space-y-2">
           <input bind:value={newTaskText}
             placeholder="What needs to be done?"
-            class="w-full bg-ctp-surface0 text-ctp-text text-sm px-3 py-1.5 rounded-lg border border-ctp-surface1 focus:border-ctp-mauve focus:outline-none placeholder:text-ctp-overlay0"
+            class="w-full bg-ctp-surface0 text-ctp-text text-sm px-3 py-1.5 rounded-lg border border-ctp-surface1 focus:border-ctp-mauve focus:outline-none placeholder:text-ctp-surface2"
             autofocus />
           <div class="flex items-center gap-2">
             <select bind:value={newTaskBlock}

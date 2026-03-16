@@ -146,7 +146,7 @@
   ]
 </script>
 
-<div class="fixed inset-0 z-50 flex justify-center pt-[5%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[5%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-2xl h-[82vh] bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-overlay flex flex-col overflow-hidden">
 
     <!-- Header -->
@@ -158,12 +158,12 @@
         <span class="text-sm font-semibold text-ctp-text">Task Manager</span>
       </div>
       <div class="flex items-center gap-3">
-        <span class="text-[10px] text-ctp-overlay0">{pendingCount} pending</span>
-        <span class="text-[10px] text-ctp-green">{completedCount} done</span>
-        <span class="text-[10px] text-ctp-overlay0">{totalCount} total</span>
-        <button class="text-[10px] text-ctp-overlay0 hover:text-ctp-blue transition-colors"
+        <span class="text-[12px] text-ctp-overlay1">{pendingCount} pending</span>
+        <span class="text-[12px] text-ctp-green">{completedCount} done</span>
+        <span class="text-[12px] text-ctp-overlay1">{totalCount} total</span>
+        <button class="text-[12px] text-ctp-overlay1 hover:text-ctp-blue transition-colors"
           on:click={loadTasks}>Refresh</button>
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
           on:click={() => dispatch('close')}>esc</kbd>
       </div>
     </div>
@@ -172,10 +172,10 @@
     <div class="flex items-center gap-2 px-4 py-2 border-b border-ctp-surface0">
       <!-- Search -->
       <div class="flex-1 relative">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay0)" stroke-width="1.5" class="absolute left-2.5 top-1/2 -translate-y-1/2">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay1)" stroke-width="1.5" class="absolute left-2.5 top-1/2 -translate-y-1/2">
           <circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" />
         </svg>
-        <input class="w-full bg-ctp-base border border-ctp-surface0 rounded-lg pl-8 pr-3 py-1.5 text-[12px] text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue"
+        <input class="w-full bg-ctp-base border border-ctp-surface0 rounded-lg pl-8 pr-3 py-1.5 text-[13px] text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue"
           placeholder="Search tasks..."
           bind:value={searchQuery} />
       </div>
@@ -183,10 +183,10 @@
       <!-- Filter buttons -->
       <div class="flex bg-ctp-base rounded-lg border border-ctp-surface0 overflow-hidden">
         {#each filterOptions as opt}
-          <button class="px-2.5 py-1 text-[11px] transition-colors"
+          <button class="px-2.5 py-1 text-[13px] transition-colors"
             class:bg-ctp-blue={filter === opt.id}
             class:text-ctp-base={filter === opt.id}
-            class:text-ctp-overlay0={filter !== opt.id}
+            class:text-ctp-overlay1={filter !== opt.id}
             class:hover:text-ctp-text={filter !== opt.id}
             on:click={() => filter = opt.id}>
             {opt.label}
@@ -197,10 +197,10 @@
       <!-- Sort buttons -->
       <div class="flex bg-ctp-base rounded-lg border border-ctp-surface0 overflow-hidden">
         {#each sortOptions as opt}
-          <button class="px-2.5 py-1 text-[11px] transition-colors"
+          <button class="px-2.5 py-1 text-[13px] transition-colors"
             class:bg-ctp-surface1={sortBy === opt.id}
             class:text-ctp-text={sortBy === opt.id}
-            class:text-ctp-overlay0={sortBy !== opt.id}
+            class:text-ctp-overlay1={sortBy !== opt.id}
             class:hover:text-ctp-text={sortBy !== opt.id}
             on:click={() => sortBy = opt.id}>
             {opt.label}
@@ -211,14 +211,14 @@
 
     {#if loading}
       <div class="flex-1 flex items-center justify-center">
-        <span class="text-sm text-ctp-overlay0">Loading tasks...</span>
+        <span class="text-sm text-ctp-overlay1">Loading tasks...</span>
       </div>
     {:else if filtered.length === 0}
       <div class="flex-1 flex flex-col items-center justify-center gap-2">
         <svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-surface2)" stroke-width="1" class="opacity-40">
           <rect x="2" y="2" width="12" height="12" rx="2" /><path d="M5 8l2 2 4-4" />
         </svg>
-        <p class="text-sm text-ctp-overlay0">
+        <p class="text-sm text-ctp-overlay1">
           {#if searchQuery}
             No tasks matching "{searchQuery}"
           {:else if filter === 'pending'}
@@ -229,7 +229,7 @@
             No tasks found in vault
           {/if}
         </p>
-        <p class="text-[11px] text-ctp-surface2">Tasks are lines starting with - [ ] or - [x] in your notes</p>
+        <p class="text-[13px] text-ctp-overlay1">Tasks are lines starting with - [ ] or - [x] in your notes</p>
       </div>
     {:else}
       <!-- Task List -->
@@ -241,14 +241,14 @@
               <!-- File header -->
               <button class="w-full px-4 py-1.5 flex items-center gap-2 hover:bg-ctp-surface0/30 transition-colors"
                 on:click={() => dispatch('openNote', group.path)}>
-                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay0)" stroke-width="1.3">
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay1)" stroke-width="1.3">
                   <path d="M3 2h7l3 3v9H3z" /><path d="M10 2v3h3" />
                 </svg>
-                <span class="text-[11px] font-medium text-ctp-blue">{group.name}</span>
+                <span class="text-[13px] font-medium text-ctp-blue">{group.name}</span>
                 {#if folderOf(group.path)}
-                  <span class="text-[10px] text-ctp-surface2">{folderOf(group.path)}</span>
+                  <span class="text-[12px] text-ctp-overlay1">{folderOf(group.path)}</span>
                 {/if}
-                <span class="text-[10px] text-ctp-overlay0 ml-auto">{group.tasks.length}</span>
+                <span class="text-[12px] text-ctp-overlay1 ml-auto">{group.tasks.length}</span>
               </button>
 
               <!-- Tasks in this file -->
@@ -266,7 +266,7 @@
                   </button>
 
                   <!-- Task text -->
-                  <span class="flex-1 text-[12px] text-ctp-text truncate"
+                  <span class="flex-1 text-[13px] text-ctp-text truncate"
                     class:line-through={task.done}
                     class:opacity-50={task.done}>
                     {task.text}
@@ -274,14 +274,14 @@
 
                   <!-- Priority badge -->
                   {#if priorityLabel(task.text)}
-                    <span class="text-[9px] font-medium px-1.5 py-0.5 rounded-full"
+                    <span class="text-[11px] font-medium px-1.5 py-0.5 rounded-full"
                       style="color:{priorityColor(task.text)};background:color-mix(in srgb, {priorityColor(task.text)} 15%, transparent)">
                       {priorityLabel(task.text)}
                     </span>
                   {/if}
 
                   <!-- Line number -->
-                  <span class="text-[9px] text-ctp-surface2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span class="text-[11px] text-ctp-overlay1 opacity-0 group-hover:opacity-100 transition-opacity">
                     L{task.lineNum}
                   </span>
                 </div>
@@ -305,30 +305,30 @@
 
               <!-- Task text -->
               <div class="flex-1 min-w-0">
-                <div class="text-[12px] text-ctp-text truncate"
+                <div class="text-[13px] text-ctp-text truncate"
                   class:line-through={task.done}
                   class:opacity-50={task.done}>
                   {task.text}
                 </div>
-                <button class="text-[10px] text-ctp-overlay0 hover:text-ctp-blue truncate block transition-colors"
+                <button class="text-[12px] text-ctp-overlay1 hover:text-ctp-blue truncate block transition-colors"
                   on:click={() => openNote(task)}>
                   {noteName(task.notePath)}
                   {#if folderOf(task.notePath)}
-                    <span class="text-ctp-surface2">/ {folderOf(task.notePath)}</span>
+                    <span class="text-ctp-overlay1">/ {folderOf(task.notePath)}</span>
                   {/if}
                 </button>
               </div>
 
               <!-- Priority badge -->
               {#if priorityLabel(task.text)}
-                <span class="text-[9px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0"
+                <span class="text-[11px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0"
                   style="color:{priorityColor(task.text)};background:color-mix(in srgb, {priorityColor(task.text)} 15%, transparent)">
                   {priorityLabel(task.text)}
                 </span>
               {/if}
 
               <!-- Line number -->
-              <span class="text-[9px] text-ctp-surface2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+              <span class="text-[11px] text-ctp-overlay1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                 L{task.lineNum}
               </span>
             </div>
@@ -338,7 +338,7 @@
     {/if}
 
     <!-- Footer -->
-    <div class="px-4 py-1.5 border-t border-ctp-surface0 flex items-center gap-4 text-[10px] text-ctp-overlay0">
+    <div class="px-4 py-1.5 border-t border-ctp-surface0 flex items-center gap-4 text-[12px] text-ctp-overlay1">
       <span>Click checkbox to toggle</span>
       <span>Click file name to open note</span>
       <span>Tasks: <code class="text-ctp-blue">- [ ]</code> and <code class="text-ctp-green">- [x]</code> in notes</span>

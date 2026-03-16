@@ -115,7 +115,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-md bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden" style="max-height:85vh">
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
@@ -124,8 +124,8 @@
         <span class="text-sm font-semibold text-ctp-mauve">Pomodoro Timer</span>
       </div>
       <div class="flex items-center gap-2">
-        <button on:click={minimize} class="text-[10px] text-ctp-overlay0 hover:text-ctp-text px-1.5 py-0.5 rounded hover:bg-ctp-surface0 transition-colors">minimize</button>
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+        <button on:click={minimize} class="text-[12px] text-ctp-overlay1 hover:text-ctp-text px-1.5 py-0.5 rounded hover:bg-ctp-surface0 transition-colors">minimize</button>
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
           on:click={() => dispatch('close')}>esc</kbd>
       </div>
     </div>
@@ -156,7 +156,7 @@
             {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
           </div>
           {#if state !== 'idle'}
-            <div class="text-xs text-ctp-overlay0 mt-1">{Math.round(progress)}%</div>
+            <div class="text-xs text-ctp-overlay1 mt-1">{Math.round(progress)}%</div>
           {/if}
         </div>
       </div>
@@ -197,12 +197,12 @@
       <div class="flex items-center gap-4 mt-4 pt-4 border-t border-ctp-surface0 w-full justify-center">
         <div class="text-center">
           <div class="text-2xl font-bold text-ctp-peach">{sessions}</div>
-          <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wide">Sessions</div>
+          <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wide">Sessions</div>
         </div>
         <div class="w-px h-8 bg-ctp-surface0"></div>
         <div class="text-center">
           <div class="text-2xl font-bold text-ctp-text">{sessions * 25}</div>
-          <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wide">Minutes</div>
+          <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wide">Minutes</div>
         </div>
         <div class="w-px h-8 bg-ctp-surface0"></div>
         <div class="flex gap-1">
@@ -215,7 +215,7 @@
 
     <!-- Footer hint -->
     <div class="px-4 py-2 border-t border-ctp-surface0 text-center">
-      <span class="text-[10px] text-ctp-overlay0">
+      <span class="text-[12px] text-ctp-overlay1">
         {state === 'work' ? '25 min focus' : state === 'shortBreak' ? '5 min break' : state === 'longBreak' ? '15 min long break' : 'Press Start to begin'}
         {#if sessions > 0} &middot; Long break after every {LONG_BREAK_AFTER} sessions{/if}
       </span>

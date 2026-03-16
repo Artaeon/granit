@@ -191,7 +191,7 @@
 
     {#if loading}
       <div class="flex items-center justify-center p-12">
-        <span class="text-ctp-overlay0 text-sm">Loading flashcards...</span>
+        <span class="text-ctp-overlay1 text-sm">Loading flashcards...</span>
       </div>
 
     {:else if mode === 'deck'}
@@ -200,28 +200,28 @@
         <span class="text-sm font-semibold text-ctp-mauve">Flashcards</span>
         <div class="flex items-center gap-2">
           <!-- svelte-ignore a11y-click-events-have-key-events -->
-          <span class="text-[10px] text-ctp-overlay0 cursor-pointer hover:text-ctp-text" on:click={() => { mode = 'stats' }}>Stats</span>
+          <span class="text-[12px] text-ctp-overlay1 cursor-pointer hover:text-ctp-text" on:click={() => { mode = 'stats' }}>Stats</span>
           <!-- svelte-ignore a11y-click-events-have-key-events -->
-          <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
+          <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
         </div>
       </div>
       <div class="flex-1 overflow-y-auto p-5 space-y-4">
         <!-- Stats cards -->
         <div class="grid grid-cols-2 gap-3">
           <div class="bg-ctp-surface0 rounded-lg p-3">
-            <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wider">Total Cards</div>
+            <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wider">Total Cards</div>
             <div class="text-xl font-semibold text-ctp-text">{cards.length}</div>
           </div>
           <div class="bg-ctp-surface0 rounded-lg p-3">
-            <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wider">Due Today</div>
+            <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wider">Due Today</div>
             <div class="text-xl font-semibold text-ctp-yellow">{dueCards.length}</div>
           </div>
           <div class="bg-ctp-surface0 rounded-lg p-3">
-            <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wider">New</div>
+            <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wider">New</div>
             <div class="text-xl font-semibold text-ctp-blue">{newCards.length}</div>
           </div>
           <div class="bg-ctp-surface0 rounded-lg p-3">
-            <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wider">Mastered</div>
+            <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wider">Mastered</div>
             <div class="text-xl font-semibold text-ctp-green">{masteredCards.length}</div>
           </div>
         </div>
@@ -229,7 +229,7 @@
         <!-- Mastery progress bar -->
         {#if cards.length > 0}
           <div>
-            <div class="flex justify-between text-[10px] text-ctp-overlay0 mb-1">
+            <div class="flex justify-between text-[12px] text-ctp-overlay1 mb-1">
               <span>Mastery Progress</span>
               <span>{progressPct()}%</span>
             </div>
@@ -242,8 +242,8 @@
 
         {#if cards.length === 0}
           <div class="text-center py-8">
-            <p class="text-ctp-overlay0 text-sm">No flashcards found in this note.</p>
-            <p class="text-ctp-overlay0 text-xs mt-2">Add Q:/A: pairs, definition lists (term :: def), or cloze deletions.</p>
+            <p class="text-ctp-overlay1 text-sm">No flashcards found in this note.</p>
+            <p class="text-ctp-overlay1 text-xs mt-2">Add Q:/A: pairs, definition lists (term :: def), or cloze deletions.</p>
           </div>
         {:else}
           <!-- Start Review Button -->
@@ -252,10 +252,10 @@
             on:click={startReview}>
             {#if dueCards.length > 0}
               <div class="text-ctp-mauve font-semibold">Start Review</div>
-              <div class="text-[10px] text-ctp-overlay0 mt-1">{dueCards.length} cards due</div>
+              <div class="text-[12px] text-ctp-overlay1 mt-1">{dueCards.length} cards due</div>
             {:else}
-              <div class="text-ctp-overlay0">No cards due right now</div>
-              <div class="text-[10px] text-ctp-overlay0 mt-1">Check back later</div>
+              <div class="text-ctp-overlay1">No cards due right now</div>
+              <div class="text-[12px] text-ctp-overlay1 mt-1">Check back later</div>
             {/if}
           </div>
         {/if}
@@ -265,7 +265,7 @@
       <!-- Review Mode -->
       <div class="flex items-center justify-between px-5 py-3 border-b border-ctp-surface0">
         <span class="text-sm font-semibold text-ctp-mauve">Review</span>
-        <span class="text-xs text-ctp-overlay0">{sessionDone + 1} / {sessionTotal}</span>
+        <span class="text-xs text-ctp-overlay1">{sessionDone + 1} / {sessionTotal}</span>
       </div>
 
       <!-- Progress bar -->
@@ -289,14 +289,14 @@
               <div class="w-full min-h-[200px] bg-ctp-surface0 rounded-xl border border-ctp-surface1 p-6 flex flex-col items-center justify-center cursor-pointer"
                 class:hidden={showAnswer}
                 on:click={flipCard}>
-                <div class="text-[10px] text-ctp-blue uppercase tracking-wider mb-3">Question</div>
+                <div class="text-[12px] text-ctp-blue uppercase tracking-wider mb-3">Question</div>
                 <div class="text-ctp-text text-center text-lg leading-relaxed">{card.front}</div>
-                <div class="text-[10px] text-ctp-overlay0 mt-4">Click or press Space to reveal</div>
+                <div class="text-[12px] text-ctp-overlay1 mt-4">Click or press Space to reveal</div>
               </div>
               <!-- Back -->
               {#if showAnswer}
                 <div class="w-full min-h-[200px] bg-ctp-surface0 rounded-xl border border-ctp-green/30 p-6 flex flex-col items-center justify-center">
-                  <div class="text-[10px] text-ctp-green uppercase tracking-wider mb-3">Answer</div>
+                  <div class="text-[12px] text-ctp-green uppercase tracking-wider mb-3">Answer</div>
                   <div class="text-ctp-text text-center leading-relaxed whitespace-pre-wrap">{card.back}</div>
                 </div>
               {/if}
@@ -310,25 +310,25 @@
               <button class="flex-1 py-2.5 rounded-lg bg-ctp-red/20 text-ctp-red text-sm font-medium hover:bg-ctp-red/30 transition-colors"
                 on:click={() => rateCard(1)}>
                 <div>Again</div>
-                <div class="text-[10px] opacity-70">1</div>
+                <div class="text-[12px] opacity-70">1</div>
               </button>
               <!-- svelte-ignore a11y-click-events-have-key-events -->
               <button class="flex-1 py-2.5 rounded-lg bg-ctp-yellow/20 text-ctp-yellow text-sm font-medium hover:bg-ctp-yellow/30 transition-colors"
                 on:click={() => rateCard(3)}>
                 <div>Hard</div>
-                <div class="text-[10px] opacity-70">2</div>
+                <div class="text-[12px] opacity-70">2</div>
               </button>
               <!-- svelte-ignore a11y-click-events-have-key-events -->
               <button class="flex-1 py-2.5 rounded-lg bg-ctp-blue/20 text-ctp-blue text-sm font-medium hover:bg-ctp-blue/30 transition-colors"
                 on:click={() => rateCard(4)}>
                 <div>Good</div>
-                <div class="text-[10px] opacity-70">3</div>
+                <div class="text-[12px] opacity-70">3</div>
               </button>
               <!-- svelte-ignore a11y-click-events-have-key-events -->
               <button class="flex-1 py-2.5 rounded-lg bg-ctp-green/20 text-ctp-green text-sm font-medium hover:bg-ctp-green/30 transition-colors"
                 on:click={() => rateCard(5)}>
                 <div>Easy</div>
-                <div class="text-[10px] opacity-70">4</div>
+                <div class="text-[12px] opacity-70">4</div>
               </button>
             </div>
           {/if}
@@ -338,7 +338,7 @@
         <div class="flex-1 flex flex-col items-center justify-center p-8">
           <div class="text-3xl mb-3 text-ctp-green font-bold">Done!</div>
           <div class="text-ctp-text mb-1">{sessionDone} cards reviewed</div>
-          <div class="text-ctp-overlay0 text-sm">{sessionCorrect} correct ({sessionTotal > 0 ? Math.round(sessionCorrect / sessionTotal * 100) : 0}%)</div>
+          <div class="text-ctp-overlay1 text-sm">{sessionCorrect} correct ({sessionTotal > 0 ? Math.round(sessionCorrect / sessionTotal * 100) : 0}%)</div>
           <!-- svelte-ignore a11y-click-events-have-key-events -->
           <button class="mt-6 px-6 py-2 bg-ctp-surface0 hover:bg-ctp-surface1 rounded-lg text-ctp-text text-sm transition-colors"
             on:click={() => { mode = 'deck' }}>Back to Deck</button>
@@ -350,16 +350,16 @@
       <div class="flex items-center justify-between px-5 py-3 border-b border-ctp-surface0">
         <span class="text-sm font-semibold text-ctp-mauve">Flashcard Stats</span>
         <!-- svelte-ignore a11y-click-events-have-key-events -->
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => { mode = 'deck' }}>back</kbd>
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => { mode = 'deck' }}>back</kbd>
       </div>
       <div class="flex-1 overflow-y-auto p-5 space-y-4">
         <div class="grid grid-cols-2 gap-3">
           <div class="bg-ctp-surface0 rounded-lg p-3">
-            <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wider">Total Reviews</div>
+            <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wider">Total Reviews</div>
             <div class="text-lg font-semibold text-ctp-text">{progress.totalReviews}</div>
           </div>
           <div class="bg-ctp-surface0 rounded-lg p-3">
-            <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wider">Streak</div>
+            <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wider">Streak</div>
             <div class="text-lg font-semibold text-ctp-peach">{progress.streakDays || 0} days</div>
           </div>
         </div>
@@ -379,7 +379,7 @@
                 <div class="h-full {entry.color} rounded-full transition-all"
                   style="width:{cards.length > 0 ? Math.round(entry.count / cards.length * 100) : 0}%"></div>
               </div>
-              <span class="text-xs text-ctp-overlay0 w-8 text-right">{entry.count}</span>
+              <span class="text-xs text-ctp-overlay1 w-8 text-right">{entry.count}</span>
             </div>
           {/each}
         </div>
@@ -395,7 +395,7 @@
                 <div class="h-full bg-ctp-blue" style="width:{Math.round(newCards.length / cards.length * 100)}%"></div>
               </div>
             </div>
-            <div class="flex gap-4 mt-2 text-[10px] text-ctp-overlay0">
+            <div class="flex gap-4 mt-2 text-[12px] text-ctp-overlay1">
               <span><span class="inline-block w-2 h-2 rounded-full bg-ctp-green mr-1"></span>Mastered {Math.round(masteredCards.length / cards.length * 100)}%</span>
               <span><span class="inline-block w-2 h-2 rounded-full bg-ctp-mauve mr-1"></span>Learning {Math.round((cards.length - masteredCards.length - newCards.length) / cards.length * 100)}%</span>
               <span><span class="inline-block w-2 h-2 rounded-full bg-ctp-blue mr-1"></span>New {Math.round(newCards.length / cards.length * 100)}%</span>

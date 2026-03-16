@@ -47,11 +47,11 @@
   ]
 </script>
 
-<div class="fixed inset-0 z-50 flex justify-center pt-[8%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[8%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-2xl h-[75vh] bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden">
     <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
       <span class="text-sm font-semibold text-ctp-text">Keyboard Shortcuts</span>
-      <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
+      <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
     </div>
     <div class="flex-1 overflow-y-auto p-4 space-y-5">
       {#each sections as section}
@@ -61,7 +61,7 @@
             {#each section.keys as [key, desc]}
               <div class="flex items-center justify-between py-1 px-2">
                 <span class="text-sm text-ctp-text">{desc}</span>
-                <kbd class="text-[10px] text-ctp-blue bg-ctp-surface0 px-2 py-0.5 rounded font-mono">{key}</kbd>
+                <kbd class="text-[12px] text-ctp-blue bg-ctp-surface0 px-2 py-0.5 rounded font-mono">{key}</kbd>
               </div>
             {/each}
           </div>

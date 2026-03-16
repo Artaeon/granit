@@ -86,9 +86,9 @@
       <!-- Header -->
       <div class="px-3 py-1.5 border-b border-ctp-surface1">
         <div class="flex items-center gap-1.5">
-          <span class="text-[10px] text-ctp-blue font-semibold">Link to...</span>
+          <span class="text-[12px] text-ctp-blue font-semibold">Link to...</span>
           {#if query}
-            <span class="text-[11px] text-ctp-text font-medium">{query}</span>
+            <span class="text-[13px] text-ctp-text font-medium">{query}</span>
           {/if}
         </div>
       </div>
@@ -109,9 +109,9 @@
               <path d="M3 2h10v12H3V2zm2 3h6m-6 3h4" />
             </svg>
             <div class="min-w-0 flex-1">
-              <div class="text-[12px] truncate">{note.title}</div>
+              <div class="text-[13px] truncate">{note.title}</div>
               {#if folderOf(note.relPath)}
-                <div class="text-[9px] text-ctp-overlay0 truncate">{folderOf(note.relPath)}</div>
+                <div class="text-[11px] text-ctp-overlay1 truncate">{folderOf(note.relPath)}</div>
               {/if}
             </div>
           </div>
@@ -120,7 +120,7 @@
 
       <!-- Scroll hint -->
       {#if filtered.length > maxVisible}
-        <div class="px-3 py-1 border-t border-ctp-surface1 text-[9px] text-ctp-overlay0 text-right">
+        <div class="px-3 py-1 border-t border-ctp-surface1 text-[11px] text-ctp-overlay1 text-right">
           +{filtered.length - maxVisible} more
         </div>
       {/if}

@@ -12,11 +12,11 @@
   ]
 </script>
 
-<div class="fixed inset-0 z-50 flex justify-center pt-[15%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[15%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-sm h-fit bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl overflow-hidden">
     <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
       <span class="text-sm font-semibold text-ctp-text">Export</span>
-      <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
+      <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
     </div>
     {#if message}
       <div class="px-4 py-2 text-xs {message.includes('error') || message.includes('Error') ? 'text-ctp-red' : 'text-ctp-green'} bg-ctp-surface0">{message}</div>
@@ -28,7 +28,7 @@
           disabled={fmt.id !== 'all' && !notePath}>
           <div>
             <div class="text-sm text-ctp-text">{fmt.name}</div>
-            <div class="text-[10px] text-ctp-overlay0">{fmt.desc}</div>
+            <div class="text-[12px] text-ctp-overlay1">{fmt.desc}</div>
           </div>
         </button>
       {/each}

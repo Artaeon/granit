@@ -123,22 +123,22 @@
       {#if mode === 'commands'}
         <span class="text-ctp-mauve text-lg font-bold">&gt;</span>
       {:else}
-        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay0)" stroke-width="1.5" stroke-linecap="round">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay1)" stroke-width="1.5" stroke-linecap="round">
           <circle cx="7" cy="7" r="4.5" /><path d="M11 11l3.5 3.5" />
         </svg>
       {/if}
       <input bind:this={inputEl} bind:value={query} on:keydown={handleKeydown}
         placeholder={mode === 'commands' ? 'Type a command...' : 'Search notes...'}
-        class="flex-1 bg-transparent text-ctp-text text-[15px] outline-none placeholder:text-ctp-overlay0" />
+        class="flex-1 bg-transparent text-ctp-text text-[15px] outline-none placeholder:text-ctp-surface2" />
 
       <!-- Mode tabs -->
       <div class="flex bg-ctp-surface0 rounded-lg p-0.5 gap-0.5">
         <button on:click={() => { mode = 'files'; query = ''; selectedIndex = 0 }}
-          class="px-2 py-0.5 text-[10px] rounded-md transition-all {mode === 'files' ? 'bg-ctp-surface1 text-ctp-text' : 'text-ctp-overlay0 hover:text-ctp-subtext0'}">
+          class="px-2 py-0.5 text-[12px] rounded-md transition-all {mode === 'files' ? 'bg-ctp-surface1 text-ctp-text' : 'text-ctp-overlay1 hover:text-ctp-subtext0'}">
           Files
         </button>
         <button on:click={() => { mode = 'commands'; query = ''; selectedIndex = 0 }}
-          class="px-2 py-0.5 text-[10px] rounded-md transition-all {mode === 'commands' ? 'bg-ctp-surface1 text-ctp-text' : 'text-ctp-overlay0 hover:text-ctp-subtext0'}">
+          class="px-2 py-0.5 text-[12px] rounded-md transition-all {mode === 'commands' ? 'bg-ctp-surface1 text-ctp-text' : 'text-ctp-overlay1 hover:text-ctp-subtext0'}">
           Commands
         </button>
       </div>
@@ -157,9 +157,9 @@
               <path d="M3 2h10v12H3V2zm2 3h6m-6 3h4" />
             </svg>
             <div class="min-w-0 flex-1">
-              <div class="text-[13px] truncate {i === selectedIndex ? 'text-ctp-text' : 'text-ctp-subtext1'}">{note.title}</div>
+              <div class="text-sm truncate {i === selectedIndex ? 'text-ctp-text' : 'text-ctp-subtext1'}">{note.title}</div>
               {#if folderOf(note.relPath)}
-                <div class="text-[10px] text-ctp-overlay0 truncate">{folderOf(note.relPath)}</div>
+                <div class="text-[12px] text-ctp-overlay1 truncate">{folderOf(note.relPath)}</div>
               {/if}
             </div>
           </div>
@@ -181,28 +181,28 @@
               </svg>
             </div>
             <div class="min-w-0 flex-1">
-              <div class="text-[13px] {i === selectedIndex ? 'text-ctp-text' : 'text-ctp-subtext1'}">{cmd.label}</div>
-              <div class="text-[10px] text-ctp-overlay0 truncate">{cmd.desc}</div>
+              <div class="text-sm {i === selectedIndex ? 'text-ctp-text' : 'text-ctp-subtext1'}">{cmd.label}</div>
+              <div class="text-[12px] text-ctp-overlay1 truncate">{cmd.desc}</div>
             </div>
             <div class="flex items-center gap-2 flex-shrink-0">
               {#if cmd.shortcut}
-                <kbd class="text-[9px] text-ctp-overlay0 bg-ctp-surface0 border border-ctp-surface1 px-1.5 py-0.5 rounded font-mono">{cmd.shortcut}</kbd>
+                <kbd class="text-[11px] text-ctp-overlay1 bg-ctp-surface0 border border-ctp-surface1 px-1.5 py-0.5 rounded font-mono">{cmd.shortcut}</kbd>
               {/if}
-              <span class="text-[9px] text-ctp-surface2">{cmd.category}</span>
+              <span class="text-[11px] text-ctp-overlay1">{cmd.category}</span>
             </div>
           </div>
         {/each}
       {/if}
 
       {#if items.length === 0}
-        <p class="px-5 py-8 text-center text-sm text-ctp-overlay0">
+        <p class="px-5 py-8 text-center text-sm text-ctp-overlay1">
           {mode === 'files' ? 'No matching notes' : 'No matching commands'}
         </p>
       {/if}
     </div>
 
     <!-- Footer -->
-    <div class="flex items-center justify-between px-5 py-2 border-t border-ctp-surface0 text-[10px] text-ctp-overlay0">
+    <div class="flex items-center justify-between px-5 py-2 border-t border-ctp-surface0 text-[12px] text-ctp-overlay1">
       <div class="flex gap-3">
         <span><kbd class="bg-ctp-surface0 px-1 py-px rounded">Tab</kbd> switch mode</span>
         <span><kbd class="bg-ctp-surface0 px-1 py-px rounded">&uarr;&darr;</kbd> navigate</span>

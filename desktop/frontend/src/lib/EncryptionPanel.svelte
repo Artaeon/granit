@@ -98,7 +98,7 @@
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 <div class="fixed inset-0 z-50 flex justify-center pt-[10%]"
-  style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)"
+  style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)"
   on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-md h-fit bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-overlay overflow-hidden">
     <!-- Header -->
@@ -115,18 +115,18 @@
         {/if}
         <span class="text-sm font-semibold text-ctp-text">Encryption</span>
         {#if isEncrypted}
-          <span class="text-[10px] font-medium bg-ctp-green/20 text-ctp-green px-1.5 py-0.5 rounded">Encrypted</span>
+          <span class="text-[12px] font-medium bg-ctp-green/20 text-ctp-green px-1.5 py-0.5 rounded">Encrypted</span>
         {:else}
-          <span class="text-[10px] font-medium bg-ctp-surface0 text-ctp-overlay0 px-1.5 py-0.5 rounded">Decrypted</span>
+          <span class="text-[12px] font-medium bg-ctp-surface0 text-ctp-overlay1 px-1.5 py-0.5 rounded">Decrypted</span>
         {/if}
       </div>
-      <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+      <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
         on:click={() => dispatch('close')}>esc</kbd>
     </div>
 
     <!-- Status message -->
     {#if message}
-      <div class="flex items-center gap-2 px-4 py-2 text-[11px] border-b border-ctp-surface0"
+      <div class="flex items-center gap-2 px-4 py-2 text-[13px] border-b border-ctp-surface0"
         style="background: color-mix(in srgb, {messageType === 'error' ? 'var(--ctp-red)' : 'var(--ctp-green)'} 8%, transparent);
                color: {messageType === 'error' ? 'var(--ctp-red)' : 'var(--ctp-green)'}">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -148,7 +148,7 @@
           </div>
         {:else}
           <div class="w-16 h-16 rounded-full bg-ctp-surface0 flex items-center justify-center">
-            <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay0)" stroke-width="1.2" stroke-linecap="round">
+            <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay1)" stroke-width="1.2" stroke-linecap="round">
               <rect x="3" y="7" width="10" height="7" rx="1" /><path d="M5 7V5a3 3 0 0 1 6 0" />
             </svg>
           </div>
@@ -157,7 +157,7 @@
 
       <!-- Password input -->
       <div>
-        <div class="text-[10px] text-ctp-overlay0 mb-1.5">Password</div>
+        <div class="text-[12px] text-ctp-overlay1 mb-1.5">Password</div>
         <div class="relative">
           {#if showPassword}
             <input type="text" bind:value={password}
@@ -171,7 +171,7 @@
               class="w-full px-3 py-2 pr-10 text-sm bg-ctp-surface0 text-ctp-text rounded-lg border border-ctp-surface1 outline-none focus:border-ctp-mauve transition-colors" />
           {/if}
           <button on:click={() => showPassword = !showPassword}
-            class="absolute right-2 top-1/2 -translate-y-1/2 text-ctp-overlay0 hover:text-ctp-text transition-colors">
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-ctp-overlay1 hover:text-ctp-text transition-colors">
             {#if showPassword}
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
                 <path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4" /><circle cx="8" cy="8" r="2" />
@@ -191,7 +191,7 @@
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-yellow)" stroke-width="1.5" stroke-linecap="round" class="flex-shrink-0 mt-0.5">
             <path d="M8 2L1 14h14L8 2zM8 6v4m0 2v.5" />
           </svg>
-          <span class="text-[10px] text-ctp-yellow/80">
+          <span class="text-[12px] text-ctp-yellow/80">
             If you lose your password, the note cannot be recovered. Make sure to remember it or store it securely.
           </span>
         </div>
@@ -200,9 +200,9 @@
       <!-- Decrypted preview -->
       {#if showDecrypted && decryptedContent}
         <div>
-          <div class="text-[10px] text-ctp-overlay0 mb-1.5">Preview (not saved)</div>
+          <div class="text-[12px] text-ctp-overlay1 mb-1.5">Preview (not saved)</div>
           <div class="bg-ctp-surface0 rounded-lg px-3 py-2 max-h-32 overflow-y-auto">
-            <pre class="text-[11px] text-ctp-text whitespace-pre-wrap font-mono">{decryptedContent.slice(0, 500)}{decryptedContent.length > 500 ? '...' : ''}</pre>
+            <pre class="text-[13px] text-ctp-text whitespace-pre-wrap font-mono">{decryptedContent.slice(0, 500)}{decryptedContent.length > 500 ? '...' : ''}</pre>
           </div>
         </div>
       {/if}
@@ -211,18 +211,18 @@
       <div class="flex gap-2">
         {#if isEncrypted}
           <button on:click={decrypt} disabled={loading || !password}
-            class="flex-1 text-[12px] font-semibold bg-ctp-blue text-ctp-crust px-4 py-2.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40">
+            class="flex-1 text-[13px] font-semibold bg-ctp-blue text-ctp-crust px-4 py-2.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40">
             {loading ? 'Decrypting...' : 'Decrypt (Preview)'}
           </button>
           {#if showDecrypted}
             <button on:click={decryptAndSave} disabled={loading}
-              class="flex-1 text-[12px] font-semibold bg-ctp-green text-ctp-crust px-4 py-2.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40">
+              class="flex-1 text-[13px] font-semibold bg-ctp-green text-ctp-crust px-4 py-2.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40">
               Save Decrypted
             </button>
           {/if}
         {:else}
           <button on:click={encrypt} disabled={loading || !password}
-            class="flex-1 text-[12px] font-semibold bg-ctp-mauve text-ctp-crust px-4 py-2.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40">
+            class="flex-1 text-[13px] font-semibold bg-ctp-mauve text-ctp-crust px-4 py-2.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40">
             {loading ? 'Encrypting...' : 'Encrypt Note'}
           </button>
         {/if}

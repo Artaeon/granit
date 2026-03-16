@@ -211,7 +211,7 @@
   function noteName(path: string) { return path.replace(/\.md$/, '').split('/').pop() || path }
 </script>
 
-<div class="fixed inset-0 z-50 flex justify-center pt-[4%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[4%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-[90vw] max-w-5xl h-[85vh] bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-overlay flex flex-col overflow-hidden">
 
     <!-- Header -->
@@ -221,22 +221,22 @@
           <rect x="1" y="2" width="4" height="12" rx="1" /><rect x="6" y="2" width="4" height="8" rx="1" /><rect x="11" y="2" width="4" height="10" rx="1" />
         </svg>
         <span class="text-sm font-semibold text-ctp-text">Kanban Board</span>
-        <span class="text-[10px] text-ctp-overlay0">{totalCards} tasks</span>
+        <span class="text-[12px] text-ctp-overlay1">{totalCards} tasks</span>
         {#if totalCards > 0}
-          <span class="text-[10px] text-ctp-green font-medium">{pct}% done</span>
+          <span class="text-[12px] text-ctp-green font-medium">{pct}% done</span>
         {/if}
       </div>
       <div class="flex items-center gap-2">
-        <button class="px-2 py-1 text-[11px] text-ctp-overlay0 hover:text-ctp-blue transition-colors"
+        <button class="px-2 py-1 text-[13px] text-ctp-overlay1 hover:text-ctp-blue transition-colors"
           on:click={loadBoard}>Refresh</button>
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
           on:click={() => dispatch('close')}>esc</kbd>
       </div>
     </div>
 
     {#if loading}
       <div class="flex-1 flex items-center justify-center">
-        <span class="text-sm text-ctp-overlay0">Loading tasks...</span>
+        <span class="text-sm text-ctp-overlay1">Loading tasks...</span>
       </div>
     {:else}
       <!-- Board -->
@@ -253,10 +253,10 @@
             <div class="flex items-center justify-between px-3 py-2 border-b border-ctp-surface0">
               <div class="flex items-center gap-2">
                 <div class="w-2.5 h-2.5 rounded-full" style="background:{col.color}"></div>
-                <span class="text-[12px] font-semibold text-ctp-text">{col.title}</span>
-                <span class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded-full">{col.cards.length}</span>
+                <span class="text-[13px] font-semibold text-ctp-text">{col.title}</span>
+                <span class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded-full">{col.cards.length}</span>
               </div>
-              <button class="text-[14px] text-ctp-overlay0 hover:text-ctp-blue transition-colors leading-none"
+              <button class="text-[14px] text-ctp-overlay1 hover:text-ctp-blue transition-colors leading-none"
                 on:click={() => { addingToColumn = col.id; newCardTitle = '' }}>+</button>
             </div>
 
@@ -273,9 +273,9 @@
                     }}
                     autofocus />
                   <div class="flex justify-end gap-1.5 mt-1.5">
-                    <button class="text-[10px] text-ctp-overlay0 hover:text-ctp-text px-1.5 py-0.5"
+                    <button class="text-[12px] text-ctp-overlay1 hover:text-ctp-text px-1.5 py-0.5"
                       on:click={() => addingToColumn = null}>Cancel</button>
-                    <button class="text-[10px] text-ctp-base bg-ctp-blue px-2 py-0.5 rounded hover:opacity-90"
+                    <button class="text-[12px] text-ctp-base bg-ctp-blue px-2 py-0.5 rounded hover:opacity-90"
                       on:click={() => addCard(col.id)}>Add</button>
                   </div>
                 </div>
@@ -298,23 +298,23 @@
                     </button>
 
                     <div class="flex-1 min-w-0">
-                      <div class="text-[12px] text-ctp-text leading-snug"
+                      <div class="text-[13px] text-ctp-text leading-snug"
                         class:line-through={card.done}
                         class:opacity-50={card.done}>
                         {card.title}
                       </div>
                       {#if card.notePath}
-                        <button class="text-[10px] text-ctp-overlay0 hover:text-ctp-blue truncate block mt-0.5 transition-colors"
+                        <button class="text-[12px] text-ctp-overlay1 hover:text-ctp-blue truncate block mt-0.5 transition-colors"
                           on:click|stopPropagation={() => openNote(card)}>
                           {noteName(card.notePath)}
                         </button>
                       {:else}
-                        <span class="text-[10px] text-ctp-surface2 mt-0.5 block">manual</span>
+                        <span class="text-[12px] text-ctp-overlay1 mt-0.5 block">manual</span>
                       {/if}
                     </div>
 
                     <!-- Delete -->
-                    <button class="flex-shrink-0 text-ctp-overlay0 hover:text-ctp-red opacity-0 group-hover:opacity-100 transition-opacity"
+                    <button class="flex-shrink-0 text-ctp-overlay1 hover:text-ctp-red opacity-0 group-hover:opacity-100 transition-opacity"
                       on:click|stopPropagation={() => deleteCard(col.id, card.id)}>
                       <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8" /></svg>
                     </button>
@@ -327,7 +327,7 @@
                   <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-surface2)" stroke-width="1" class="opacity-40">
                     <rect x="3" y="3" width="10" height="10" rx="2" />
                   </svg>
-                  <span class="text-[10px] text-ctp-surface2">No tasks</span>
+                  <span class="text-[12px] text-ctp-overlay1">No tasks</span>
                 </div>
               {/if}
             </div>
@@ -337,7 +337,7 @@
     {/if}
 
     <!-- Footer -->
-    <div class="px-4 py-1.5 border-t border-ctp-surface0 flex items-center gap-4 text-[10px] text-ctp-overlay0">
+    <div class="px-4 py-1.5 border-t border-ctp-surface0 flex items-center gap-4 text-[12px] text-ctp-overlay1">
       <span>Drag cards between columns</span>
       <span>Click checkbox to toggle</span>
       <span>Click note name to open</span>

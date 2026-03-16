@@ -40,7 +40,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-xl bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden" style="max-height:85vh">
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
@@ -50,7 +50,7 @@
         </svg>
         <span class="text-sm font-semibold text-ctp-mauve">Daily Briefing</span>
       </div>
-      <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+      <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
         on:click={() => dispatch('close')}>esc</kbd>
     </div>
 
@@ -59,7 +59,7 @@
       {#if loading}
         <div class="flex flex-col items-center justify-center py-16 gap-3">
           <div class="w-6 h-6 border-2 border-ctp-mauve border-t-transparent rounded-full animate-spin"></div>
-          <span class="text-sm text-ctp-overlay0">Loading briefing...</span>
+          <span class="text-sm text-ctp-overlay1">Loading briefing...</span>
         </div>
       {:else if error}
         <div class="flex flex-col items-center justify-center py-16 gap-2">
@@ -70,24 +70,24 @@
         <!-- Greeting -->
         <div class="mb-5">
           <h2 class="text-lg font-semibold text-ctp-text">{data.greeting}!</h2>
-          <p class="text-sm text-ctp-overlay0">{data.dateFormatted}</p>
+          <p class="text-sm text-ctp-overlay1">{data.dateFormatted}</p>
         </div>
 
         <!-- Stats cards -->
         <div class="grid grid-cols-3 gap-3 mb-5">
           <div class="bg-ctp-base rounded-lg p-3 border border-ctp-surface0 text-center">
             <div class="text-2xl font-bold text-ctp-blue">{data.modifiedToday}</div>
-            <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wide mt-0.5">Modified Today</div>
+            <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wide mt-0.5">Modified Today</div>
           </div>
           <div class="bg-ctp-base rounded-lg p-3 border border-ctp-surface0 text-center">
             <div class="text-2xl font-bold text-ctp-green">{data.totalNotes}</div>
-            <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wide mt-0.5">Total Notes</div>
+            <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wide mt-0.5">Total Notes</div>
           </div>
           <div class="bg-ctp-base rounded-lg p-3 border border-ctp-surface0 text-center">
             <div class="text-2xl font-bold" class:text-ctp-yellow={taskPercent < 100} class:text-ctp-green={taskPercent === 100}>
               {data.completedTasks}/{data.totalTasks}
             </div>
-            <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wide mt-0.5">Tasks Done</div>
+            <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wide mt-0.5">Tasks Done</div>
           </div>
         </div>
 
@@ -95,8 +95,8 @@
         {#if data.totalTasks > 0}
           <div class="mb-5">
             <div class="flex items-center justify-between mb-1">
-              <span class="text-[11px] text-ctp-overlay1">Task Completion</span>
-              <span class="text-[11px] font-medium" class:text-ctp-green={taskPercent === 100} class:text-ctp-yellow={taskPercent < 100}>{taskPercent}%</span>
+              <span class="text-[13px] text-ctp-overlay1">Task Completion</span>
+              <span class="text-[13px] font-medium" class:text-ctp-green={taskPercent === 100} class:text-ctp-yellow={taskPercent < 100}>{taskPercent}%</span>
             </div>
             <div class="w-full h-1.5 bg-ctp-surface0 rounded-full overflow-hidden">
               <div class="h-full rounded-full transition-all duration-500"
@@ -116,10 +116,10 @@
                 <button on:click={() => openNote(note.relPath)}
                   class="w-full flex items-center justify-between px-3 py-2 hover:bg-ctp-surface0/50 transition-colors text-left">
                   <div class="min-w-0 flex-1">
-                    <div class="text-[13px] text-ctp-text truncate">{note.title}</div>
-                    <div class="text-[10px] text-ctp-overlay0 truncate">{note.relPath}</div>
+                    <div class="text-sm text-ctp-text truncate">{note.title}</div>
+                    <div class="text-[12px] text-ctp-overlay1 truncate">{note.relPath}</div>
                   </div>
-                  <span class="text-[10px] text-ctp-surface2 ml-2 flex-shrink-0">{timeAgo(note.modTime)}</span>
+                  <span class="text-[12px] text-ctp-overlay1 ml-2 flex-shrink-0">{timeAgo(note.modTime)}</span>
                 </button>
               {/each}
             </div>
@@ -135,13 +135,13 @@
                 <div class="flex items-center gap-2">
                   <span class="w-1.5 h-1.5 rounded-full bg-ctp-sapphire flex-shrink-0"></span>
                   <span class="text-xs text-ctp-text flex-1">{ev.title}</span>
-                  <span class="text-[10px] text-ctp-overlay0">
-                    {#if ev.allDay}<span class="text-ctp-surface2">all day</span>{/if}
+                  <span class="text-[12px] text-ctp-overlay1">
+                    {#if ev.allDay}<span class="text-ctp-overlay1">all day</span>{/if}
                     {#if ev.date !== data.date}
-                      <span class="text-ctp-surface2 ml-1">{ev.date}</span>
+                      <span class="text-ctp-overlay1 ml-1">{ev.date}</span>
                     {/if}
                     {#if ev.location}
-                      <span class="text-ctp-surface2 ml-1">@ {ev.location}</span>
+                      <span class="text-ctp-overlay1 ml-1">@ {ev.location}</span>
                     {/if}
                   </span>
                 </div>
@@ -153,8 +153,8 @@
         <!-- Empty state if nothing -->
         {#if !data.recentNotes?.length && !data.upcomingEvents?.length && data.totalTasks === 0}
           <div class="flex flex-col items-center py-8 gap-2">
-            <p class="text-sm text-ctp-overlay0">Your vault is quiet today</p>
-            <p class="text-[11px] text-ctp-surface2">Start writing to see activity here</p>
+            <p class="text-sm text-ctp-overlay1">Your vault is quiet today</p>
+            <p class="text-[13px] text-ctp-overlay1">Start writing to see activity here</p>
           </div>
         {/if}
       {/if}

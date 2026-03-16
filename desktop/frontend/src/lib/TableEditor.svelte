@@ -236,16 +236,16 @@
           <path d="M2 3h12v10H2V3zM2 6h12M2 9h12M6 3v10M10 3v10" />
         </svg>
         <span class="text-sm font-semibold text-ctp-text">Table Editor</span>
-        <span class="text-[10px] px-1.5 py-0.5 rounded bg-ctp-surface0 text-ctp-overlay0">
+        <span class="text-[12px] px-1.5 py-0.5 rounded bg-ctp-surface0 text-ctp-overlay1">
           {headers.length} cols &times; {rows.length} rows
         </span>
       </div>
       <div class="flex items-center gap-2">
         <button on:click={copyMarkdown}
-          class="text-[10px] text-ctp-overlay0 hover:text-ctp-blue px-2 py-0.5 rounded bg-ctp-surface0 transition-colors">
+          class="text-[12px] text-ctp-overlay1 hover:text-ctp-blue px-2 py-0.5 rounded bg-ctp-surface0 transition-colors">
           Copy MD
         </button>
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
       </div>
     </div>
 
@@ -265,20 +265,20 @@
                 <div class="flex items-center justify-center gap-1">
                   <button
                     on:click={() => setAlignment(colIdx, 'left')}
-                    class="w-5 h-5 rounded text-[9px] transition-colors
-                      {alignments[colIdx] === 'left' ? 'bg-ctp-blue/20 text-ctp-blue' : 'text-ctp-overlay0 hover:text-ctp-subtext0 bg-ctp-surface0'}">
+                    class="w-5 h-5 rounded text-[11px] transition-colors
+                      {alignments[colIdx] === 'left' ? 'bg-ctp-blue/20 text-ctp-blue' : 'text-ctp-overlay1 hover:text-ctp-subtext0 bg-ctp-surface0'}">
                     L
                   </button>
                   <button
                     on:click={() => setAlignment(colIdx, 'center')}
-                    class="w-5 h-5 rounded text-[9px] transition-colors
-                      {alignments[colIdx] === 'center' ? 'bg-ctp-blue/20 text-ctp-blue' : 'text-ctp-overlay0 hover:text-ctp-subtext0 bg-ctp-surface0'}">
+                    class="w-5 h-5 rounded text-[11px] transition-colors
+                      {alignments[colIdx] === 'center' ? 'bg-ctp-blue/20 text-ctp-blue' : 'text-ctp-overlay1 hover:text-ctp-subtext0 bg-ctp-surface0'}">
                     C
                   </button>
                   <button
                     on:click={() => setAlignment(colIdx, 'right')}
-                    class="w-5 h-5 rounded text-[9px] transition-colors
-                      {alignments[colIdx] === 'right' ? 'bg-ctp-blue/20 text-ctp-blue' : 'text-ctp-overlay0 hover:text-ctp-subtext0 bg-ctp-surface0'}">
+                    class="w-5 h-5 rounded text-[11px] transition-colors
+                      {alignments[colIdx] === 'right' ? 'bg-ctp-blue/20 text-ctp-blue' : 'text-ctp-overlay1 hover:text-ctp-subtext0 bg-ctp-surface0'}">
                     R
                   </button>
                 </div>
@@ -289,7 +289,7 @@
 
           <!-- Header row -->
           <tr>
-            <th class="w-8 text-[9px] text-ctp-overlay0 font-normal">H</th>
+            <th class="w-8 text-[11px] text-ctp-overlay1 font-normal">H</th>
             {#each headers as header, colIdx}
               <th
                 class="border border-ctp-surface1 px-0 py-0 relative
@@ -320,7 +320,7 @@
         <tbody>
           {#each rows as row, rowIdx}
             <tr>
-              <td class="w-8 text-[9px] text-ctp-overlay0 text-center">{rowIdx + 1}</td>
+              <td class="w-8 text-[11px] text-ctp-overlay1 text-center">{rowIdx + 1}</td>
               {#each headers as _, colIdx}
                 <td
                   class="border border-ctp-surface1 px-0 py-0 relative
@@ -345,7 +345,7 @@
               {/each}
               <td class="w-8">
                 <button on:click={() => { curRow = rowIdx; deleteRow() }}
-                  class="w-5 h-5 rounded text-[10px] text-ctp-overlay0 hover:text-ctp-red hover:bg-ctp-surface0 transition-colors mx-auto block opacity-0 group-hover:opacity-100"
+                  class="w-5 h-5 rounded text-[12px] text-ctp-overlay1 hover:text-ctp-red hover:bg-ctp-surface0 transition-colors mx-auto block opacity-0 group-hover:opacity-100"
                   style="opacity: 0.3;"
                   on:mouseenter={(e) => { e.currentTarget.style.opacity = '1' }}
                   on:mouseleave={(e) => { e.currentTarget.style.opacity = '0.3' }}>
@@ -400,10 +400,10 @@
     <!-- Markdown preview -->
     <div class="border-t border-ctp-surface0 px-4 py-2">
       <details>
-        <summary class="text-[10px] text-ctp-overlay0 cursor-pointer select-none hover:text-ctp-subtext0">
+        <summary class="text-[12px] text-ctp-overlay1 cursor-pointer select-none hover:text-ctp-subtext0">
           Preview Markdown
         </summary>
-        <pre class="mt-2 p-3 bg-ctp-crust rounded-lg text-[11px] text-ctp-text font-mono overflow-x-auto whitespace-pre">{generateMarkdown()}</pre>
+        <pre class="mt-2 p-3 bg-ctp-crust rounded-lg text-[13px] text-ctp-text font-mono overflow-x-auto whitespace-pre">{generateMarkdown()}</pre>
       </details>
     </div>
   </div>

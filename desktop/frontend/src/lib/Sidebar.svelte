@@ -65,10 +65,10 @@
 
 <div class="flex flex-col h-full bg-ctp-mantle select-none">
   <!-- Header -->
-  <div class="flex items-center justify-between px-4 pt-3 pb-2">
-    <span class="text-[10px] font-bold text-ctp-overlay0 uppercase tracking-[0.15em]">Explorer</span>
+  <div class="flex items-center justify-between px-4 py-3">
+    <span class="text-[12px] font-bold text-ctp-subtext0 uppercase tracking-[0.15em]">Explorer</span>
     <button on:click={() => dispatch('create')}
-      class="w-[26px] h-[26px] flex items-center justify-center rounded-md text-ctp-overlay1
+      class="w-[28px] h-[28px] flex items-center justify-center rounded-md text-ctp-overlay1
              hover:bg-ctp-surface0 hover:text-ctp-text transition-all duration-100"
       data-tooltip="New note"
       title="New note (Ctrl+N)">
@@ -80,16 +80,18 @@
 
   <!-- Search -->
   <div class="px-3 pb-2">
-    <div class="search-input-wrapper flex items-center gap-2 px-2.5 py-[6px] bg-ctp-base/60 rounded-lg border border-ctp-surface0/70 transition-all duration-150">
-      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay0)" stroke-width="1.5" stroke-linecap="round" class="flex-shrink-0">
+    <div class="search-input-wrapper flex items-center gap-2 px-2.5 py-[7px] bg-ctp-base/60 rounded-lg border border-ctp-surface0/70 transition-all duration-150">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay1)" stroke-width="1.5" stroke-linecap="round" class="flex-shrink-0">
         <circle cx="7" cy="7" r="4" /><path d="M10 10l3.5 3.5" />
       </svg>
       <input type="text" bind:value={searchQuery} placeholder="Filter notes..."
-        class="flex-1 bg-transparent text-[12px] text-ctp-text outline-none placeholder:text-ctp-surface2 border-none" />
+        class="flex-1 bg-transparent text-[13px] text-ctp-text outline-none placeholder:text-ctp-surface2 border-none" />
       {#if searchQuery}
         <button on:click={clearSearch}
-          class="w-4 h-4 flex items-center justify-center rounded text-ctp-overlay0 hover:text-ctp-text hover:bg-ctp-surface0 transition-colors text-[11px] p-0 bg-transparent border-0">
-          &times;
+          class="w-5 h-5 flex items-center justify-center rounded text-ctp-overlay1 hover:text-ctp-text hover:bg-ctp-surface0 transition-colors">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg>
         </button>
       {/if}
     </div>
@@ -100,12 +102,12 @@
     {#each filteredItems as item}
       {#if item.isFolder}
         <button
-          class="w-full flex items-center gap-1.5 px-2 py-[5px] text-[12px] text-ctp-subtext0
-                 hover:bg-ctp-surface0/50 rounded-md transition-all duration-75 group"
+          class="w-full flex items-center gap-1.5 px-2 py-[6px] text-[13px] text-ctp-subtext0
+                 hover:bg-ctp-surface0/50 hover:text-ctp-text rounded-md transition-all duration-75 group"
           style="padding-left: {8 + item.depth * 14}px"
           on:click={() => toggleFolder(item.path)}>
           <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            class="text-ctp-overlay0 transition-transform duration-150 flex-shrink-0"
+            class="text-ctp-overlay1 transition-transform duration-150 flex-shrink-0"
             class:rotate-90={item.expanded}>
             <path d="M6 4l4 4-4 4" />
           </svg>
@@ -118,20 +120,21 @@
       {:else}
         {@const isActive = item.path === activeNotePath}
         <button
-          class="w-full flex items-center gap-1.5 px-2 py-[5px] text-[12px] rounded-md transition-all duration-75 group"
+          class="w-full flex items-center gap-1.5 px-2 py-[6px] text-[13px] rounded-md transition-all duration-75 group"
           class:text-ctp-blue={isActive}
-          class:font-medium={isActive}
+          class:font-semibold={isActive}
           class:text-ctp-subtext1={!isActive}
           class:hover:bg-ctp-surface0={!isActive}
+          class:hover:text-ctp-text={!isActive}
           style="padding-left: {8 + item.depth * 14 + 12}px;
                  {isActive ? 'background: color-mix(in srgb, var(--ctp-blue) 12%, transparent);' : ''}"
           on:click={() => selectNote(item.path)}
           on:contextmenu={(e) => handleContextMenu(e, item.path)}>
           {#if isActive}
-            <div class="w-[3px] h-3 rounded-full bg-ctp-blue absolute left-1 flex-shrink-0"></div>
+            <div class="w-[3px] h-3.5 rounded-full bg-ctp-blue absolute left-1 flex-shrink-0"></div>
           {/if}
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none"
-            stroke="{isActive ? 'var(--ctp-blue)' : 'var(--ctp-surface2)'}"
+            stroke="{isActive ? 'var(--ctp-blue)' : 'var(--ctp-overlay1)'}"
             stroke-width="1.3" stroke-linecap="round" class="flex-shrink-0">
             <path d="M4 2h8v12H4V2zm2 3h4m-4 2.5h3" />
           </svg>
@@ -141,15 +144,17 @@
     {/each}
 
     {#if filteredItems.length === 0}
-      <div class="flex flex-col items-center justify-center py-8 gap-2">
-        <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-surface2)" stroke-width="1" stroke-linecap="round" class="opacity-50">
+      <div class="flex flex-col items-center justify-center py-10 gap-3">
+        <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay1)" stroke-width="0.8" stroke-linecap="round" class="opacity-60">
           <path d="M4 2h8v12H4V2zm2 3h4m-4 2.5h3" />
         </svg>
-        <p class="text-[11px] text-ctp-overlay0 text-center">
+        <p class="text-[13px] text-ctp-overlay1 text-center">
           {searchQuery ? 'No matching notes' : 'Empty vault'}
         </p>
         {#if !searchQuery}
-          <p class="text-[10px] text-ctp-surface2 text-center">Press Ctrl+N to create</p>
+          <p class="text-[12px] text-ctp-overlay1 text-center">
+            Press <kbd class="bg-ctp-surface0 px-1.5 py-0.5 rounded text-[11px]">Ctrl+N</kbd> to create
+          </p>
         {/if}
       </div>
     {/if}
@@ -158,10 +163,10 @@
   <!-- Outline section -->
   {#if outlineItems.length > 0}
     <div class="border-t border-ctp-surface0/50 flex-shrink-0">
-      <button class="w-full flex items-center justify-between px-4 py-2 hover:bg-ctp-surface0/30 transition-colors"
+      <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-ctp-surface0/30 transition-colors"
         on:click={() => outlineExpanded = !outlineExpanded}>
-        <span class="text-[10px] font-bold text-ctp-overlay0 uppercase tracking-[0.15em]">Outline</span>
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay0)" stroke-width="2" stroke-linecap="round"
+        <span class="text-[12px] font-bold text-ctp-subtext0 uppercase tracking-[0.15em]">Outline</span>
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay1)" stroke-width="2" stroke-linecap="round"
           class="transition-transform duration-150" class:rotate-90={outlineExpanded}>
           <path d="M6 4l4 4-4 4" />
         </svg>
@@ -170,9 +175,9 @@
         <div class="overflow-y-auto max-h-[200px] px-2 pb-2">
           {#each outlineItems as item}
             <button on:click={() => dispatch('jumpToLine', item.line)}
-              class="w-full flex items-center gap-1 px-2 py-[3px] text-[11px] hover:bg-ctp-surface0/50 rounded-md text-left transition-colors"
+              class="w-full flex items-center gap-1.5 px-2 py-[4px] text-[13px] hover:bg-ctp-surface0/50 rounded-md text-left transition-colors"
               style="padding-left: {8 + (item.level - 1) * 12}px">
-              <span class="w-1 h-1 rounded-full flex-shrink-0" style="background: {outlineColors[item.level] || 'var(--ctp-text)'}"></span>
+              <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background: {outlineColors[item.level] || 'var(--ctp-text)'}"></span>
               <span class="truncate"
                 style="color: {outlineColors[item.level] || 'var(--ctp-text)'}; font-weight: {item.level <= 2 ? '600' : '400'}">
                 {item.text}
@@ -185,9 +190,9 @@
   {/if}
 
   <!-- Footer -->
-  <div class="px-4 py-2 border-t border-ctp-surface0/50 flex items-center gap-2 text-[10px] text-ctp-surface2">
+  <div class="px-4 py-2 border-t border-ctp-surface0/50 flex items-center gap-2 text-[12px] text-ctp-overlay1">
     <span>{noteCount} notes</span>
-    <span class="text-ctp-surface1">&middot;</span>
+    <span class="text-ctp-surface2 select-none">&middot;</span>
     <span>{folderCount} folders</span>
   </div>
 </div>

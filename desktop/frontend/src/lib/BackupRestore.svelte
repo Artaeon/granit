@@ -100,7 +100,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="fixed inset-0 z-50 flex justify-center pt-[10%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[10%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-lg h-[60vh] bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden">
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
@@ -111,7 +111,7 @@
         </svg>
         <span class="text-sm font-semibold text-ctp-text">Vault Backup</span>
         {#if backups.length > 0}
-          <span class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded-full">
+          <span class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded-full">
             {backups.length}
           </span>
         {/if}
@@ -119,10 +119,10 @@
       <div class="flex items-center gap-2">
         <button on:click={createBackup}
           disabled={creating}
-          class="text-[11px] font-medium bg-ctp-green/90 text-ctp-crust px-3 py-1 rounded-md hover:bg-ctp-green transition-colors disabled:opacity-50">
+          class="text-[13px] font-medium bg-ctp-green/90 text-ctp-crust px-3 py-1 rounded-md hover:bg-ctp-green transition-colors disabled:opacity-50">
           {creating ? 'Creating...' : 'Create Backup'}
         </button>
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
           on:click={() => dispatch('close')}>esc</kbd>
       </div>
     </div>
@@ -132,14 +132,14 @@
       <div class="px-4 py-3 border-b border-ctp-surface0 bg-ctp-green/5">
         <div class="flex items-center gap-3">
           <div class="w-4 h-4 border-2 border-ctp-green border-t-transparent rounded-full animate-spin"></div>
-          <span class="text-[12px] text-ctp-green">Creating backup... This may take a moment for large vaults.</span>
+          <span class="text-[13px] text-ctp-green">Creating backup... This may take a moment for large vaults.</span>
         </div>
       </div>
     {/if}
 
     <!-- Message bar -->
     {#if message}
-      <div class="flex items-center gap-2 px-4 py-2 text-[11px] border-b border-ctp-surface0"
+      <div class="flex items-center gap-2 px-4 py-2 text-[13px] border-b border-ctp-surface0"
         style="background: color-mix(in srgb, {messageType === 'error' ? 'var(--ctp-red)' : 'var(--ctp-green)'} 8%, transparent);
                color: {messageType === 'error' ? 'var(--ctp-red)' : 'var(--ctp-green)'}">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -153,16 +153,16 @@
     <div class="flex-1 overflow-y-auto">
       {#if loading}
         <div class="flex items-center justify-center py-16">
-          <span class="text-ctp-overlay0 text-sm">Loading backups...</span>
+          <span class="text-ctp-overlay1 text-sm">Loading backups...</span>
         </div>
       {:else if backups.length === 0}
         <div class="flex flex-col items-center py-16 gap-3">
-          <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay0)" stroke-width="1" stroke-linecap="round" class="opacity-40">
+          <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay1)" stroke-width="1" stroke-linecap="round" class="opacity-40">
             <rect x="2" y="2" width="12" height="12" rx="2" />
             <path d="M5 6h6M5 8h6M5 10h4" />
           </svg>
-          <p class="text-ctp-overlay0 text-sm">No backups yet</p>
-          <p class="text-[11px] text-ctp-overlay0">Create a backup to archive your vault as a tar.gz file.</p>
+          <p class="text-ctp-overlay1 text-sm">No backups yet</p>
+          <p class="text-[13px] text-ctp-overlay1">Create a backup to archive your vault as a tar.gz file.</p>
         </div>
       {:else}
         <div class="py-1">
@@ -178,18 +178,18 @@
 
               <!-- Backup info -->
               <div class="flex-1 min-w-0">
-                <div class="text-[12px] font-medium text-ctp-text truncate">{backup.name}</div>
+                <div class="text-[13px] font-medium text-ctp-text truncate">{backup.name}</div>
                 <div class="flex items-center gap-3 mt-0.5">
-                  <span class="text-[10px] text-ctp-overlay0">{formatDate(backup.date)}</span>
-                  <span class="text-[10px] text-ctp-overlay0">{timeAgo(backup.date)}</span>
-                  <span class="text-[10px] text-ctp-subtext0 font-medium">{formatSize(backup.size)}</span>
+                  <span class="text-[12px] text-ctp-overlay1">{formatDate(backup.date)}</span>
+                  <span class="text-[12px] text-ctp-overlay1">{timeAgo(backup.date)}</span>
+                  <span class="text-[12px] text-ctp-subtext0 font-medium">{formatSize(backup.size)}</span>
                 </div>
               </div>
 
               <!-- Actions -->
               <div class="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button on:click={() => deleteBackup(backup.name)}
-                  class="text-[10px] font-medium px-2 py-0.5 rounded bg-ctp-surface0 text-ctp-red hover:bg-ctp-red/15 transition-colors">
+                  class="text-[12px] font-medium px-2 py-0.5 rounded bg-ctp-surface0 text-ctp-red hover:bg-ctp-red/15 transition-colors">
                   Delete
                 </button>
               </div>
@@ -200,7 +200,7 @@
     </div>
 
     <!-- Footer -->
-    <div class="px-4 py-2 border-t border-ctp-surface0 text-[10px] text-ctp-overlay0">
+    <div class="px-4 py-2 border-t border-ctp-surface0 text-[12px] text-ctp-overlay1">
       Backups are stored as tar.gz archives in .granit/backups/. Extract manually to restore.
     </div>
   </div>

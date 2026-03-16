@@ -44,21 +44,24 @@
         <div class="h-px bg-ctp-surface1 my-1 mx-2"></div>
       {:else}
         <button on:click={() => { dispatch('action', item.action); dispatch('close') }}
-          class="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12px] text-left transition-colors rounded-md mx-0.5"
+          class="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-left transition-colors rounded-md mx-0.5"
           class:text-ctp-red={item.danger}
+          class:hover:bg-ctp-red={item.danger}
+          class:hover:bg-opacity-15={item.danger}
           class:text-ctp-text={!item.danger}
-          class:hover:bg-ctp-surface1={true}
+          class:hover:bg-ctp-surface1={!item.danger}
+          class:hover:text-ctp-text={true}
           style="width: calc(100% - 4px)">
           {#if item.icon && iconPaths[item.icon]}
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" class="flex-shrink-0 opacity-70">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" class="flex-shrink-0 opacity-80">
               <path d="{iconPaths[item.icon]}" />
             </svg>
           {:else}
-            <span class="w-[13px]"></span>
+            <span class="w-[14px]"></span>
           {/if}
-          <span class="flex-1">{item.label}</span>
+          <span class="flex-1 font-medium">{item.label}</span>
           {#if item.shortcut}
-            <kbd class="text-[9px] text-ctp-overlay0 bg-ctp-mantle px-1.5 py-0.5 rounded">{item.shortcut}</kbd>
+            <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-mantle px-1.5 py-0.5 rounded">{item.shortcut}</kbd>
           {/if}
         </button>
       {/if}

@@ -32,7 +32,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-2xl h-[80vh] bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-overlay flex flex-col overflow-hidden">
     <!-- Header -->
     <div class="flex items-center justify-between px-5 py-3 border-b border-ctp-surface0">
@@ -44,13 +44,13 @@
       </div>
       <div class="flex items-center gap-2">
         <div class="search-input-wrapper flex items-center gap-1.5 px-2.5 py-1 bg-ctp-surface0/60 rounded-lg border border-ctp-surface0/70 transition-all">
-          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay0)" stroke-width="1.5" stroke-linecap="round">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay1)" stroke-width="1.5" stroke-linecap="round">
             <circle cx="7" cy="7" r="4" /><path d="M10 10l3.5 3.5" />
           </svg>
           <input bind:value={search} placeholder="Filter..."
             class="bg-transparent text-xs text-ctp-text outline-none w-28 placeholder:text-ctp-surface2 border-none" />
         </div>
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
           on:click={() => dispatch('close')}>esc</kbd>
       </div>
     </div>
@@ -63,14 +63,14 @@
           <div>
             <div class="flex items-center gap-2 mb-3 pb-2 border-b border-ctp-surface0/40">
               <span class="text-xs">{categoryIcons[cat] || '⚙️'}</span>
-              <h3 class="text-[11px] font-bold text-ctp-overlay1 uppercase tracking-[0.12em]">{cat}</h3>
+              <h3 class="text-[13px] font-bold text-ctp-overlay1 uppercase tracking-[0.12em]">{cat}</h3>
             </div>
             {#each items as s}
               <div class="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-ctp-surface0/40 transition-colors group">
                 <div class="flex flex-col gap-0.5 min-w-0 flex-1 mr-4">
-                  <span class="text-[13px] text-ctp-text">{s.label}</span>
+                  <span class="text-sm text-ctp-text">{s.label}</span>
                   {#if s.description}
-                    <span class="text-[10px] text-ctp-overlay0 leading-tight">{s.description}</span>
+                    <span class="text-[12px] text-ctp-overlay1 leading-tight">{s.description}</span>
                   {/if}
                 </div>
                 {#if s.type === 'bool'}
@@ -79,16 +79,16 @@
                   </button>
                 {:else if s.type === 'select'}
                   <button on:click={() => cycle(s)}
-                    class="text-[11px] text-ctp-blue bg-ctp-surface0 px-3 py-1 rounded-md
+                    class="text-[13px] text-ctp-blue bg-ctp-surface0 px-3 py-1 rounded-md
                            hover:bg-ctp-surface1 transition-colors font-medium border border-ctp-surface0 hover:border-ctp-surface1">
                     {s.value || '(none)'}
                   </button>
                 {:else if editingKey === s.key}
                   <input bind:value={editValue} on:blur={() => commitEdit(s)} on:keydown={(e) => e.key === 'Enter' && commitEdit(s)}
-                    class="text-[11px] bg-ctp-surface0 text-ctp-text px-3 py-1 rounded-md border border-ctp-blue outline-none w-44" autofocus />
+                    class="text-[13px] bg-ctp-surface0 text-ctp-text px-3 py-1 rounded-md border border-ctp-blue outline-none w-44" autofocus />
                 {:else}
                   <button on:click={() => startEdit(s)}
-                    class="text-[11px] text-ctp-subtext0 bg-ctp-surface0 px-3 py-1 rounded-md
+                    class="text-[13px] text-ctp-subtext0 bg-ctp-surface0 px-3 py-1 rounded-md
                            hover:bg-ctp-surface1 transition-colors truncate max-w-[200px] border border-ctp-surface0 hover:border-ctp-surface1">
                     {s.value || '(click to set)'}
                   </button>
@@ -101,7 +101,7 @@
     </div>
 
     <!-- Footer -->
-    <div class="px-5 py-2.5 border-t border-ctp-surface0 text-[10px] text-ctp-overlay0 flex items-center gap-3">
+    <div class="px-5 py-2.5 border-t border-ctp-surface0 text-[12px] text-ctp-overlay1 flex items-center gap-3">
       <span>Click values to edit</span>
       <span class="text-ctp-surface1">&middot;</span>
       <span>Changes save automatically</span>

@@ -235,7 +235,7 @@
 </script>
 
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="fixed inset-0 z-50 flex justify-center items-center" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)"
+<div class="fixed inset-0 z-50 flex justify-center items-center" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)"
   on:click|self={() => dispatch('close')}>
   <div class="w-[85vw] h-[80vh] bg-ctp-base rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden">
     <!-- Header -->
@@ -243,10 +243,10 @@
       <div class="flex items-center gap-3">
         <span class="text-sm font-semibold text-ctp-mauve">Mind Map</span>
         {#if root}
-          <span class="text-[10px] text-ctp-overlay0">{root.name}</span>
+          <span class="text-[12px] text-ctp-overlay1">{root.name}</span>
         {/if}
       </div>
-      <div class="flex items-center gap-3 text-[10px] text-ctp-overlay0">
+      <div class="flex items-center gap-3 text-[12px] text-ctp-overlay1">
         <span>{totalNodes} nodes</span>
         <span>Zoom: {Math.round(zoom * 100)}%</span>
         <!-- svelte-ignore a11y-click-events-have-key-events -->
@@ -260,11 +260,11 @@
     <div class="flex-1 relative" bind:clientWidth={width} bind:clientHeight={height}>
       {#if loading}
         <div class="absolute inset-0 flex items-center justify-center">
-          <span class="text-ctp-overlay0 text-sm">Building mind map...</span>
+          <span class="text-ctp-overlay1 text-sm">Building mind map...</span>
         </div>
       {:else if !root || layoutNodes.length === 0}
         <div class="absolute inset-0 flex items-center justify-center">
-          <span class="text-ctp-overlay0 text-sm">No links found for this note</span>
+          <span class="text-ctp-overlay1 text-sm">No links found for this note</span>
         </div>
       {:else}
         <!-- svelte-ignore a11y-no-static-element-interactions -->
@@ -319,7 +319,7 @@
     </div>
 
     <!-- Footer -->
-    <div class="px-4 py-1.5 border-t border-ctp-surface0 bg-ctp-mantle flex gap-4 text-[10px] text-ctp-overlay0">
+    <div class="px-4 py-1.5 border-t border-ctp-surface0 bg-ctp-mantle flex gap-4 text-[12px] text-ctp-overlay1">
       {#each depthColors.slice(0, 3) as color, i}
         <span>
           <span class="inline-block w-2 h-2 rounded-full mr-1" style="background:{color}"></span>

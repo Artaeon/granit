@@ -165,7 +165,7 @@
 
     {#if loading}
       <div class="flex items-center justify-center p-12">
-        <span class="text-ctp-overlay0 text-sm">Generating quiz questions...</span>
+        <span class="text-ctp-overlay1 text-sm">Generating quiz questions...</span>
       </div>
 
     {:else if state === 'setup'}
@@ -173,20 +173,20 @@
       <div class="flex items-center justify-between px-5 py-3 border-b border-ctp-surface0">
         <span class="text-sm font-semibold text-ctp-mauve">Quiz Mode</span>
         <!-- svelte-ignore a11y-click-events-have-key-events -->
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
       </div>
       <div class="flex-1 overflow-y-auto p-5 space-y-4">
         <div class="text-ctp-text text-sm">Test your knowledge from your notes!</div>
 
         <div class="bg-ctp-surface0 rounded-lg p-4">
-          <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wider mb-2">Questions Available</div>
+          <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wider mb-2">Questions Available</div>
           <div class="text-2xl font-semibold text-ctp-peach">{questions.length}</div>
         </div>
 
         {#if questions.length === 0}
           <div class="text-center py-4">
-            <p class="text-ctp-overlay0 text-sm">No quiz questions could be generated from this note.</p>
-            <p class="text-ctp-overlay0 text-xs mt-2">Add headings, lists, bold terms, or definition pairs to generate questions.</p>
+            <p class="text-ctp-overlay1 text-sm">No quiz questions could be generated from this note.</p>
+            <p class="text-ctp-overlay1 text-xs mt-2">Add headings, lists, bold terms, or definition pairs to generate questions.</p>
           </div>
         {:else}
           <!-- svelte-ignore a11y-click-events-have-key-events -->
@@ -202,7 +202,7 @@
       {@const q = questions[currentIdx]}
       <div class="flex items-center justify-between px-5 py-3 border-b border-ctp-surface0">
         <span class="text-sm font-semibold text-ctp-mauve">Question {currentIdx + 1} / {questions.length}</span>
-        <span class="text-xs text-ctp-overlay0">Score: {score}</span>
+        <span class="text-xs text-ctp-overlay1">Score: {score}</span>
       </div>
 
       <!-- Progress bar -->
@@ -226,7 +226,7 @@
             <div class="flex items-center gap-3 p-3 rounded-lg bg-ctp-base border border-ctp-surface0 cursor-pointer hover:border-ctp-mauve/50 transition-colors"
               class:border-ctp-mauve={selectedChoice === i}
               on:click={() => selectAnswer(i)}>
-              <span class="w-7 h-7 rounded-full bg-ctp-surface0 flex items-center justify-center text-xs font-semibold text-ctp-overlay0 shrink-0">
+              <span class="w-7 h-7 rounded-full bg-ctp-surface0 flex items-center justify-center text-xs font-semibold text-ctp-overlay1 shrink-0">
                 {choiceLabels[i] || i + 1}
               </span>
               <span class="text-sm text-ctp-text">{choice}</span>
@@ -234,14 +234,14 @@
           {/each}
         </div>
 
-        <div class="text-[10px] text-ctp-overlay0 text-center">Press 1-{q.choices.length} to select</div>
+        <div class="text-[12px] text-ctp-overlay1 text-center">Press 1-{q.choices.length} to select</div>
       </div>
 
     {:else if state === 'feedback'}
       <!-- Feedback -->
       <div class="flex items-center justify-between px-5 py-3 border-b border-ctp-surface0">
         <span class="text-sm font-semibold text-ctp-mauve">Question {currentIdx + 1} / {questions.length}</span>
-        <span class="text-xs text-ctp-overlay0">Score: {score}</span>
+        <span class="text-xs text-ctp-overlay1">Score: {score}</span>
       </div>
 
       <div class="flex-1 flex flex-col items-center justify-center p-8"
@@ -256,7 +256,7 @@
           </div>
         {/if}
 
-        <div class="mt-6 text-[10px] text-ctp-overlay0">Press Space to continue</div>
+        <div class="mt-6 text-[12px] text-ctp-overlay1">Press Space to continue</div>
         <!-- svelte-ignore a11y-click-events-have-key-events -->
         <button class="mt-3 px-6 py-2 bg-ctp-surface0 hover:bg-ctp-surface1 rounded-lg text-ctp-text text-sm transition-colors"
           on:click={nextQuestion}>Continue</button>
@@ -267,7 +267,7 @@
       <div class="flex items-center justify-between px-5 py-3 border-b border-ctp-surface0">
         <span class="text-sm font-semibold text-ctp-mauve">Quiz Results</span>
         <!-- svelte-ignore a11y-click-events-have-key-events -->
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
       </div>
 
       <div class="flex-1 overflow-y-auto p-5 space-y-4">
@@ -275,7 +275,7 @@
         <div class="text-center py-4">
           <div class="text-4xl font-bold {scoreColor()}">{scorePct()}%</div>
           <div class="text-ctp-text mt-1">{score} / {questions.length} correct</div>
-          <div class="text-ctp-overlay0 text-sm mt-1">Time: {formatTime(Date.now() - startTime)}</div>
+          <div class="text-ctp-overlay1 text-sm mt-1">Time: {formatTime(Date.now() - startTime)}</div>
         </div>
 
         <!-- Question-by-question breakdown -->
@@ -289,7 +289,7 @@
                 {:else}
                   <span class="text-ctp-red text-xs shrink-0">&#10008;</span>
                 {/if}
-                <span class="text-ctp-overlay0 truncate flex-1">{questions[i]?.question || ''}</span>
+                <span class="text-ctp-overlay1 truncate flex-1">{questions[i]?.question || ''}</span>
               </div>
             {/each}
           </div>

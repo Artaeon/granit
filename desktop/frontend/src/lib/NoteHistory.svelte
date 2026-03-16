@@ -103,7 +103,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="fixed inset-0 z-50 flex justify-center pt-[4%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[4%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-3xl h-[85vh] bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden">
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
@@ -114,17 +114,17 @@
         </svg>
         {#if viewMode !== 'timeline'}
           <button on:click={() => { viewMode = 'timeline'; selectedVersion = null }}
-            class="text-[11px] text-ctp-overlay1 hover:text-ctp-text transition-colors">
+            class="text-[13px] text-ctp-overlay1 hover:text-ctp-text transition-colors">
             History
           </button>
-          <span class="text-ctp-overlay0 text-[11px]">/</span>
+          <span class="text-ctp-overlay1 text-[13px]">/</span>
           <span class="text-sm font-semibold text-ctp-text ml-1">
             {viewMode === 'diff' ? 'Diff' : 'Snapshot'}: {selectedVersion ? shortHash(selectedVersion.hash) : ''}
           </span>
         {:else}
           <span class="text-sm font-semibold text-ctp-text">History: {noteBase}</span>
           {#if versions.length > 0}
-            <span class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded-full">
+            <span class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded-full">
               {versions.length} version{versions.length === 1 ? '' : 's'}
             </span>
           {/if}
@@ -133,18 +133,18 @@
       <div class="flex items-center gap-2">
         {#if viewMode === 'diff'}
           <button on:click={() => diffDisplay = diffDisplay === 'unified' ? 'sidebyside' : 'unified'}
-            class="text-[10px] font-medium bg-ctp-surface0 text-ctp-subtext0 px-2 py-0.5 rounded hover:bg-ctp-surface1 transition-colors">
+            class="text-[12px] font-medium bg-ctp-surface0 text-ctp-subtext0 px-2 py-0.5 rounded hover:bg-ctp-surface1 transition-colors">
             {diffDisplay === 'unified' ? 'Side-by-side' : 'Unified'}
           </button>
         {/if}
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
           on:click={() => dispatch('close')}>esc</kbd>
       </div>
     </div>
 
     <!-- Message bar -->
     {#if message}
-      <div class="flex items-center gap-2 px-4 py-2 text-[11px] border-b border-ctp-surface0"
+      <div class="flex items-center gap-2 px-4 py-2 text-[13px] border-b border-ctp-surface0"
         style="background: color-mix(in srgb, {messageType === 'error' ? 'var(--ctp-red)' : 'var(--ctp-green)'} 8%, transparent);
                color: {messageType === 'error' ? 'var(--ctp-red)' : 'var(--ctp-green)'}">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -158,16 +158,16 @@
     <div class="flex-1 overflow-y-auto">
       {#if loading || loadingContent}
         <div class="flex items-center justify-center py-16">
-          <span class="text-ctp-overlay0 text-sm">Loading...</span>
+          <span class="text-ctp-overlay1 text-sm">Loading...</span>
         </div>
       {:else if error && viewMode === 'timeline'}
         <div class="flex flex-col items-center py-16 gap-3">
-          <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay0)" stroke-width="1" stroke-linecap="round" class="opacity-40">
+          <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay1)" stroke-width="1" stroke-linecap="round" class="opacity-40">
             <circle cx="8" cy="8" r="6" />
             <path d="M8 4v4l2 2" />
           </svg>
-          <p class="text-ctp-overlay0 text-sm">{error}</p>
-          <p class="text-[11px] text-ctp-overlay0">Initialize a git repo in your vault to track note history.</p>
+          <p class="text-ctp-overlay1 text-sm">{error}</p>
+          <p class="text-[13px] text-ctp-overlay1">Initialize a git repo in your vault to track note history.</p>
         </div>
       {:else if viewMode === 'timeline'}
         <!-- Timeline view -->
@@ -188,25 +188,25 @@
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
-                      <span class="text-[11px] font-mono text-ctp-yellow">{shortHash(version.hash)}</span>
-                      <span class="text-[10px] text-ctp-overlay0">{version.date}</span>
+                      <span class="text-[13px] font-mono text-ctp-yellow">{shortHash(version.hash)}</span>
+                      <span class="text-[12px] text-ctp-overlay1">{version.date}</span>
                     </div>
-                    <p class="text-[12px] text-ctp-text mt-0.5 truncate">{version.message}</p>
-                    <p class="text-[10px] text-ctp-overlay0 mt-0.5">{version.author}</p>
+                    <p class="text-[13px] text-ctp-text mt-0.5 truncate">{version.message}</p>
+                    <p class="text-[12px] text-ctp-overlay1 mt-0.5">{version.author}</p>
                   </div>
 
                   <!-- Action buttons -->
                   <div class="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity pt-0.5">
                     <button on:click={() => viewDiff(version)}
-                      class="text-[10px] font-medium px-2 py-0.5 rounded bg-ctp-surface0 text-ctp-subtext0 hover:bg-ctp-surface1 hover:text-ctp-blue transition-colors">
+                      class="text-[12px] font-medium px-2 py-0.5 rounded bg-ctp-surface0 text-ctp-subtext0 hover:bg-ctp-surface1 hover:text-ctp-blue transition-colors">
                       Diff
                     </button>
                     <button on:click={() => viewSnapshot(version)}
-                      class="text-[10px] font-medium px-2 py-0.5 rounded bg-ctp-surface0 text-ctp-subtext0 hover:bg-ctp-surface1 hover:text-ctp-mauve transition-colors">
+                      class="text-[12px] font-medium px-2 py-0.5 rounded bg-ctp-surface0 text-ctp-subtext0 hover:bg-ctp-surface1 hover:text-ctp-mauve transition-colors">
                       View
                     </button>
                     <button on:click={() => restoreVersion(version)}
-                      class="text-[10px] font-medium px-2 py-0.5 rounded bg-ctp-surface0 text-ctp-subtext0 hover:bg-ctp-surface1 hover:text-ctp-green transition-colors">
+                      class="text-[12px] font-medium px-2 py-0.5 rounded bg-ctp-surface0 text-ctp-subtext0 hover:bg-ctp-surface1 hover:text-ctp-green transition-colors">
                       Restore
                     </button>
                   </div>
@@ -217,9 +217,9 @@
         </div>
       {:else if viewMode === 'diff'}
         <!-- Diff view -->
-        <div class="p-4 font-mono text-[11px] leading-relaxed">
+        <div class="p-4 font-mono text-[13px] leading-relaxed">
           {#if selectedVersion}
-            <div class="mb-3 text-[10px] text-ctp-overlay0">
+            <div class="mb-3 text-[12px] text-ctp-overlay1">
               Comparing <span class="text-ctp-yellow font-semibold">{shortHash(selectedVersion.hash)}</span>
               ({selectedVersion.date}) with current version
             </div>
@@ -230,7 +230,7 @@
             </div>
           {/each}
           {#if diffContent.trim() === '(no differences)'}
-            <p class="text-ctp-overlay0 text-center py-8 font-sans text-sm">No differences from current version</p>
+            <p class="text-ctp-overlay1 text-center py-8 font-sans text-sm">No differences from current version</p>
           {/if}
         </div>
       {:else if viewMode === 'snapshot'}
@@ -238,23 +238,23 @@
         <div class="p-4">
           {#if selectedVersion}
             <div class="flex items-center justify-between mb-3">
-              <span class="text-[10px] text-ctp-overlay0">
+              <span class="text-[12px] text-ctp-overlay1">
                 Content at <span class="text-ctp-yellow font-mono font-semibold">{shortHash(selectedVersion.hash)}</span>
                 ({selectedVersion.date})
               </span>
               <button on:click={() => restoreVersion(selectedVersion)}
-                class="text-[10px] font-medium px-2.5 py-1 rounded bg-ctp-green/15 text-ctp-green hover:bg-ctp-green/25 transition-colors">
+                class="text-[12px] font-medium px-2.5 py-1 rounded bg-ctp-green/15 text-ctp-green hover:bg-ctp-green/25 transition-colors">
                 Restore this version
               </button>
             </div>
           {/if}
-          <pre class="text-[12px] leading-relaxed text-ctp-text bg-ctp-base rounded-lg p-4 border border-ctp-surface0 overflow-x-auto whitespace-pre-wrap">{snapshotContent}</pre>
+          <pre class="text-[13px] leading-relaxed text-ctp-text bg-ctp-base rounded-lg p-4 border border-ctp-surface0 overflow-x-auto whitespace-pre-wrap">{snapshotContent}</pre>
         </div>
       {/if}
     </div>
 
     <!-- Footer -->
-    <div class="px-4 py-2 border-t border-ctp-surface0 text-[10px] text-ctp-overlay0">
+    <div class="px-4 py-2 border-t border-ctp-surface0 text-[12px] text-ctp-overlay1">
       {#if viewMode === 'timeline'}
         Hover a commit to view diff, snapshot, or restore.
       {:else if viewMode === 'diff'}

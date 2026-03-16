@@ -118,9 +118,9 @@
         <div class="flex items-center gap-1">
           <span class="text-ctp-mauve font-bold text-sm">/</span>
           {#if query}
-            <span class="text-[12px] text-ctp-text font-medium">{query}</span>
+            <span class="text-[13px] text-ctp-text font-medium">{query}</span>
           {/if}
-          <span class="text-[12px] text-ctp-mauve animate-pulse">|</span>
+          <span class="text-[13px] text-ctp-mauve animate-pulse">|</span>
         </div>
       </div>
 
@@ -134,13 +134,13 @@
             on:click={() => dispatch('select', expandPlaceholders(item.insert))}
             on:mouseenter={() => selectedIndex = i}
           >
-            <div class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 text-[11px] font-mono
+            <div class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 text-[13px] font-mono
               {i === selectedIndex ? 'bg-ctp-mauve/20 text-ctp-mauve' : 'bg-ctp-crust text-ctp-overlay1'}">
               {item.icon}
             </div>
             <div class="min-w-0 flex-1">
-              <div class="text-[12px] {i === selectedIndex ? 'text-ctp-text font-medium' : 'text-ctp-subtext1'}">{item.label}</div>
-              <div class="text-[9px] text-ctp-overlay0 truncate">{item.description}</div>
+              <div class="text-[13px] {i === selectedIndex ? 'text-ctp-text font-medium' : 'text-ctp-subtext1'}">{item.label}</div>
+              <div class="text-[11px] text-ctp-overlay1 truncate">{item.description}</div>
             </div>
           </div>
         {/each}
@@ -148,13 +148,13 @@
 
       <!-- Scroll hint -->
       {#if filtered.length > maxVisible}
-        <div class="px-3 py-1 border-t border-ctp-surface1 text-[9px] text-ctp-overlay0 text-right">
+        <div class="px-3 py-1 border-t border-ctp-surface1 text-[11px] text-ctp-overlay1 text-right">
           +{filtered.length - maxVisible} more
         </div>
       {/if}
 
       <!-- Footer -->
-      <div class="px-3 py-1 border-t border-ctp-surface1 text-[9px] text-ctp-overlay0 flex gap-3">
+      <div class="px-3 py-1 border-t border-ctp-surface1 text-[11px] text-ctp-overlay1 flex gap-3">
         <span><kbd class="bg-ctp-crust px-1 py-px rounded">&uarr;&darr;</kbd> navigate</span>
         <span><kbd class="bg-ctp-crust px-1 py-px rounded">Enter</kbd> insert</span>
         <span><kbd class="bg-ctp-crust px-1 py-px rounded">Esc</kbd> close</span>

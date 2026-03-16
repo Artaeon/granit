@@ -89,7 +89,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-lg bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden" style="max-height:85vh">
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
@@ -100,21 +100,21 @@
         </svg>
         <span class="text-sm font-semibold text-ctp-mauve">Journal Prompts</span>
       </div>
-      <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+      <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
         on:click={() => dispatch('close')}>esc</kbd>
     </div>
 
     {#if loading}
       <div class="flex flex-col items-center justify-center py-16 gap-3">
         <div class="w-6 h-6 border-2 border-ctp-mauve border-t-transparent rounded-full animate-spin"></div>
-        <span class="text-sm text-ctp-overlay0">Loading prompts...</span>
+        <span class="text-sm text-ctp-overlay1">Loading prompts...</span>
       </div>
     {:else}
       <!-- Category tabs -->
       <div class="px-4 py-2 border-b border-ctp-surface0 flex gap-1 flex-wrap">
         {#each categories as cat}
           <button on:click={() => filterByCategory(cat)}
-            class="px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors
+            class="px-2.5 py-1 rounded-full text-[13px] font-medium transition-colors
               {activeCategory === cat
                 ? 'text-ctp-crust'
                 : 'text-ctp-overlay1 hover:text-ctp-text hover:bg-ctp-surface0'}"
@@ -129,7 +129,7 @@
         {#if currentPrompt}
           <!-- Category badge -->
           <div class="mb-4">
-            <span class="px-2.5 py-1 rounded-full text-[10px] font-medium text-ctp-crust"
+            <span class="px-2.5 py-1 rounded-full text-[12px] font-medium text-ctp-crust"
               style="background: {catColor}">
               {currentPrompt.category}
             </span>
@@ -143,11 +143,11 @@
           </div>
 
           <!-- Prompt counter -->
-          <div class="mt-4 text-[10px] text-ctp-surface2">
+          <div class="mt-4 text-[12px] text-ctp-overlay1">
             {currentIndex + 1} of {filteredPrompts.length}
           </div>
         {:else}
-          <p class="text-sm text-ctp-overlay0">No prompts available</p>
+          <p class="text-sm text-ctp-overlay1">No prompts available</p>
         {/if}
       </div>
 

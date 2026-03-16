@@ -1,5 +1,27 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+/* Overlay loading spinner */
+.overlay-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(17, 17, 27, 0.6);
+  backdrop-filter: blur(8px);
+}
+.overlay-loading::after {
+  content: '';
+  width: 28px;
+  height: 28px;
+  border: 2.5px solid var(--ctp-surface1);
+  border-top-color: var(--ctp-blue);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -1179,8 +1201,12 @@ html, body, #app {
   width: 100%;
   overflow: hidden;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  letter-spacing: 0.01em;
 }
 
 body {
@@ -1218,19 +1244,21 @@ body {
 
 *:focus-visible {
   outline: 2px solid var(--ctp-blue);
-  outline-offset: -2px;
+  outline-offset: 1px;
   border-radius: 4px;
+}
+/* Inset focus ring for buttons inside tight containers */
+button:focus-visible {
+  outline-offset: -1px;
 }
 
 /* ======================== Transitions ======================== */
+/* Targeted transitions — only interactive elements animate */
 
-*, *::before, *::after {
+button, a, [role="button"], [role="tab"], select, .toggle, .sidebar-item, .tab-item, .nav-link {
   transition-property: color, background-color, border-color, opacity;
   transition-duration: 75ms;
   transition-timing-function: ease;
-}
-textarea, input, pre, code {
-  transition: none;
 }
 
 /* ======================== KBD ======================== */
@@ -1354,7 +1382,7 @@ kbd {
   position: absolute;
   top: 0;
   right: 36px;
-  font-size: 0.65em;
+  font-size: 0.75em;
   padding: 3px 10px;
   background: var(--ctp-surface1);
   color: var(--ctp-overlay1);
@@ -1369,7 +1397,7 @@ kbd {
   position: absolute;
   top: 6px;
   right: 6px;
-  font-size: 0.65em;
+  font-size: 0.75em;
   padding: 3px 10px;
   background: var(--ctp-surface0);
   color: var(--ctp-overlay1);
@@ -1544,7 +1572,10 @@ kbd {
 
 /* Increase backdrop blur for depth */
 .fixed.inset-0.z-50[style*="backdrop-filter"] {
-  backdrop-filter: blur(6px) !important;
+  backdrop-filter: blur(10px) !important;
+}
+.fixed.inset-0.z-50[style*="background"] {
+  backdrop-filter: blur(10px);
 }
 
 /* ======================== Interactive States ======================== */
@@ -1553,6 +1584,18 @@ kbd {
 button:not(:disabled):active {
   transform: scale(0.97);
   transition: transform 50ms ease;
+}
+
+/* Disabled state standard */
+button:disabled, input:disabled, select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Smooth opacity transitions for appearing elements */
+.group:hover .group-hover\:opacity-100,
+.group:hover .group-hover\:opacity-60 {
+  transition: opacity 150ms ease;
 }
 
 /* Better input focus glow */
@@ -1614,11 +1657,11 @@ textarea:focus {
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%) translateY(-4px);
-  padding: 4px 8px;
-  font-size: 10px;
+  padding: 5px 10px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--ctp-text);
-  background: var(--ctp-surface0);
+  background: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
   border-radius: 6px;
   white-space: nowrap;
@@ -1626,7 +1669,7 @@ textarea:focus {
   opacity: 0;
   transition: opacity 150ms ease, transform 150ms ease;
   z-index: 100;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
 }
 
 [data-tooltip]:hover::after {

@@ -4,7 +4,6 @@
   import { EditorState } from '@codemirror/state'
   import { keymap } from '@codemirror/view'
   import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
-  import { languages } from '@codemirror/language-data'
   import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
   import { tags } from '@lezer/highlight'
 
@@ -142,7 +141,7 @@
       doc: content,
       extensions: [
         basicSetup,
-        markdown({ base: markdownLanguage, codeLanguages: languages }),
+        markdown({ base: markdownLanguage }),
         syntaxHighlighting(granitHighlight),
         granitTheme,
         keymap.of([
@@ -255,7 +254,7 @@
       {/if}
       {#each group as tool}
         <button on:click={tool.action} title={tool.title}
-          class="w-7 h-7 flex items-center justify-center text-ctp-overlay0 hover:text-ctp-text hover:bg-ctp-surface0/70
+          class="w-7 h-7 flex items-center justify-center text-ctp-overlay1 hover:text-ctp-text hover:bg-ctp-surface0/70
                  rounded-md transition-all duration-75" data-tooltip={tool.title}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
             <path d="{tool.icon}" />
@@ -266,7 +265,7 @@
 
     <div class="flex-1"></div>
 
-    <div class="flex items-center gap-1.5 text-[10px]">
+    <div class="flex items-center gap-1.5 text-[12px]">
       {#if dirty}
         <span class="flex items-center gap-1 text-ctp-peach">
           <span class="w-1.5 h-1.5 rounded-full bg-ctp-peach animate-pulse"></span>

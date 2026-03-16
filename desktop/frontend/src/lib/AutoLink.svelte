@@ -51,7 +51,7 @@
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 <div class="fixed inset-0 z-50 flex justify-center pt-[8%]"
-  style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)"
+  style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)"
   on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-xl h-[70vh] bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-overlay flex flex-col overflow-hidden">
     <!-- Header -->
@@ -61,18 +61,18 @@
           <path d="M6 4H4a2 2 0 0 0 0 4h2M10 4h2a2 2 0 0 1 0 4h-2M5 8h6" />
         </svg>
         <span class="text-sm font-semibold text-ctp-text">Auto-Link Suggestions</span>
-        <span class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded">
+        <span class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded">
           {suggestions.length} found
         </span>
       </div>
       <div class="flex items-center gap-2">
         {#if suggestions.length > 0 && pendingCount > 0}
           <button on:click={linkAll}
-            class="text-[11px] font-medium bg-ctp-green/90 text-ctp-crust px-3 py-1 rounded-md hover:bg-ctp-green transition-colors">
+            class="text-[13px] font-medium bg-ctp-green/90 text-ctp-crust px-3 py-1 rounded-md hover:bg-ctp-green transition-colors">
             Link All ({pendingCount})
           </button>
         {/if}
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
           on:click={() => dispatch('close')}>esc</kbd>
       </div>
     </div>
@@ -81,7 +81,7 @@
     <div class="flex-1 overflow-y-auto py-2">
       {#if loading}
         <div class="flex flex-col items-center py-16 gap-2">
-          <span class="text-ctp-overlay0 text-sm animate-pulse">Scanning for unlinked mentions...</span>
+          <span class="text-ctp-overlay1 text-sm animate-pulse">Scanning for unlinked mentions...</span>
         </div>
       {:else if error}
         <div class="flex flex-col items-center py-16 gap-2">
@@ -92,8 +92,8 @@
           <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-green)" stroke-width="1.5" stroke-linecap="round" class="opacity-50">
             <path d="M3 8l3 3 7-7" />
           </svg>
-          <span class="text-ctp-overlay0 text-sm">No unlinked mentions found</span>
-          <span class="text-ctp-surface2 text-[10px]">All note references are already linked</span>
+          <span class="text-ctp-overlay1 text-sm">No unlinked mentions found</span>
+          <span class="text-ctp-overlay1 text-[12px]">All note references are already linked</span>
         </div>
       {:else}
         {#each suggestions as suggestion, i}
@@ -112,26 +112,26 @@
                   </svg>
                 {/if}
                 <span class="text-sm font-semibold text-ctp-blue">{suggestion.target}</span>
-                <span class="text-[10px] text-ctp-overlay0">L{suggestion.line}</span>
-                <span class="text-[10px] text-ctp-lavender font-mono">[[{suggestion.target}]]</span>
+                <span class="text-[12px] text-ctp-overlay1">L{suggestion.line}</span>
+                <span class="text-[12px] text-ctp-lavender font-mono">[[{suggestion.target}]]</span>
               </div>
               {#if !isLinked}
                 <button on:click={() => linkOne(i)}
-                  class="text-[10px] font-medium bg-ctp-blue/80 text-ctp-crust px-2.5 py-0.5 rounded hover:bg-ctp-blue transition-colors">
+                  class="text-[12px] font-medium bg-ctp-blue/80 text-ctp-crust px-2.5 py-0.5 rounded hover:bg-ctp-blue transition-colors">
                   Link it
                 </button>
               {:else}
-                <span class="text-[10px] text-ctp-green font-medium">Linked</span>
+                <span class="text-[12px] text-ctp-green font-medium">Linked</span>
               {/if}
             </div>
-            <div class="text-[11px] text-ctp-subtext0 pl-5 truncate">{suggestion.context}</div>
+            <div class="text-[13px] text-ctp-subtext0 pl-5 truncate">{suggestion.context}</div>
           </div>
         {/each}
       {/if}
     </div>
 
     <!-- Footer -->
-    <div class="flex items-center gap-3 px-4 py-2 border-t border-ctp-surface0 text-[10px] text-ctp-surface2">
+    <div class="flex items-center gap-3 px-4 py-2 border-t border-ctp-surface0 text-[12px] text-ctp-overlay1">
       <span>{linkedSet.size} linked</span>
       <span class="text-ctp-surface1">&middot;</span>
       <span>{pendingCount} remaining</span>

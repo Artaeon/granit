@@ -173,18 +173,18 @@
           <path d="M3 3h4l2 10H5L3 3zM9 3h4l-2 10h-4" />
         </svg>
         <span class="text-sm font-semibold text-ctp-text">Snippets</span>
-        <span class="text-[10px] px-1.5 py-0.5 rounded bg-ctp-surface0 text-ctp-overlay0">{snippets.length} snippets</span>
+        <span class="text-[12px] px-1.5 py-0.5 rounded bg-ctp-surface0 text-ctp-overlay1">{snippets.length} snippets</span>
       </div>
       <div class="flex items-center gap-2">
         <button on:click={importSnippets}
-          class="text-[10px] text-ctp-overlay0 hover:text-ctp-blue px-2 py-0.5 rounded bg-ctp-surface0 transition-colors">
+          class="text-[12px] text-ctp-overlay1 hover:text-ctp-blue px-2 py-0.5 rounded bg-ctp-surface0 transition-colors">
           Import
         </button>
         <button on:click={exportSnippets}
-          class="text-[10px] text-ctp-overlay0 hover:text-ctp-blue px-2 py-0.5 rounded bg-ctp-surface0 transition-colors">
+          class="text-[12px] text-ctp-overlay1 hover:text-ctp-blue px-2 py-0.5 rounded bg-ctp-surface0 transition-colors">
           Export
         </button>
-        <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
+        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer" on:click={() => dispatch('close')}>esc</kbd>
       </div>
     </div>
 
@@ -199,13 +199,13 @@
     <div class="flex-1 overflow-y-auto">
       {#if loading}
         <div class="flex items-center justify-center h-32">
-          <div class="text-sm text-ctp-overlay0 animate-pulse">Loading snippets...</div>
+          <div class="text-sm text-ctp-overlay1 animate-pulse">Loading snippets...</div>
         </div>
 
       {:else}
         <!-- Usage instructions -->
         <div class="px-4 py-3 border-b border-ctp-surface0">
-          <div class="text-[11px] text-ctp-overlay0 space-y-1">
+          <div class="text-[13px] text-ctp-overlay1 space-y-1">
             <p>Type a snippet trigger (e.g. <code class="bg-ctp-surface0 px-1 rounded text-ctp-peach">/date</code>) and press <kbd class="bg-ctp-surface0 px-1 py-px rounded">Tab</kbd> to expand it.</p>
             <p>Placeholders: <code class="bg-ctp-surface0 px-1 rounded text-ctp-peach">{'{{date}}'}</code> <code class="bg-ctp-surface0 px-1 rounded text-ctp-peach">{'{{time}}'}</code> <code class="bg-ctp-surface0 px-1 rounded text-ctp-peach">{'{{datetime}}'}</code></p>
           </div>
@@ -217,18 +217,18 @@
             <div class="text-xs font-semibold text-ctp-mauve">{editIndex >= 0 ? 'Edit Snippet' : 'New Snippet'}</div>
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="text-[10px] text-ctp-overlay0 block mb-1">Trigger</label>
+                <label class="text-[12px] text-ctp-overlay1 block mb-1">Trigger</label>
                 <input bind:value={editTrigger} placeholder="/trigger"
                   class="w-full px-2 py-1.5 bg-ctp-surface0 text-ctp-text rounded-lg border border-ctp-surface1 focus:border-ctp-blue outline-none text-xs font-mono" />
               </div>
               <div>
-                <label class="text-[10px] text-ctp-overlay0 block mb-1">Description</label>
+                <label class="text-[12px] text-ctp-overlay1 block mb-1">Description</label>
                 <input bind:value={editDescription} placeholder="Brief description"
                   class="w-full px-2 py-1.5 bg-ctp-surface0 text-ctp-text rounded-lg border border-ctp-surface1 focus:border-ctp-blue outline-none text-xs" />
               </div>
             </div>
             <div>
-              <label class="text-[10px] text-ctp-overlay0 block mb-1">Content</label>
+              <label class="text-[12px] text-ctp-overlay1 block mb-1">Content</label>
               <textarea bind:value={editContent} placeholder="Expanded content..."
                 rows="4"
                 class="w-full px-2 py-1.5 bg-ctp-surface0 text-ctp-text rounded-lg border border-ctp-surface1 focus:border-ctp-blue outline-none text-xs font-mono resize-none"></textarea>
@@ -249,7 +249,7 @@
         <!-- Custom snippets -->
         {#if customList.length > 0}
           <div class="px-4 pt-3 pb-1">
-            <div class="text-[10px] text-ctp-mauve font-semibold uppercase tracking-wider">Custom Snippets</div>
+            <div class="text-[12px] text-ctp-mauve font-semibold uppercase tracking-wider">Custom Snippets</div>
           </div>
           {#each customList as snippet, i}
             <div class="flex items-start gap-3 px-4 py-2 hover:bg-ctp-surface0/50 transition-colors group">
@@ -258,15 +258,15 @@
               </code>
               <div class="flex-1 min-w-0">
                 <div class="text-xs text-ctp-text">{snippet.description}</div>
-                <pre class="text-[10px] text-ctp-overlay0 mt-1 truncate max-w-full">{snippet.content.slice(0, 80)}{snippet.content.length > 80 ? '...' : ''}</pre>
+                <pre class="text-[12px] text-ctp-overlay1 mt-1 truncate max-w-full">{snippet.content.slice(0, 80)}{snippet.content.length > 80 ? '...' : ''}</pre>
               </div>
               <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                 <button on:click={() => startEdit(i)}
-                  class="text-[10px] text-ctp-blue hover:text-ctp-text px-1.5 py-0.5 rounded bg-ctp-surface0">
+                  class="text-[12px] text-ctp-blue hover:text-ctp-text px-1.5 py-0.5 rounded bg-ctp-surface0">
                   Edit
                 </button>
                 <button on:click={() => deleteSnippet(i)}
-                  class="text-[10px] text-ctp-red hover:text-ctp-text px-1.5 py-0.5 rounded bg-ctp-surface0">
+                  class="text-[12px] text-ctp-red hover:text-ctp-text px-1.5 py-0.5 rounded bg-ctp-surface0">
                   Del
                 </button>
               </div>
@@ -276,7 +276,7 @@
 
         <!-- Built-in snippets -->
         <div class="px-4 pt-3 pb-1">
-          <div class="text-[10px] text-ctp-mauve font-semibold uppercase tracking-wider">Built-in Snippets</div>
+          <div class="text-[12px] text-ctp-mauve font-semibold uppercase tracking-wider">Built-in Snippets</div>
         </div>
         {#each builtinList as snippet}
           <div class="flex items-start gap-3 px-4 py-2 hover:bg-ctp-surface0/50 transition-colors">
@@ -285,7 +285,7 @@
             </code>
             <div class="flex-1 min-w-0">
               <div class="text-xs text-ctp-text">{snippet.description}</div>
-              <pre class="text-[10px] text-ctp-overlay0 mt-1 truncate max-w-full">{snippet.content.slice(0, 80)}{snippet.content.length > 80 ? '...' : ''}</pre>
+              <pre class="text-[12px] text-ctp-overlay1 mt-1 truncate max-w-full">{snippet.content.slice(0, 80)}{snippet.content.length > 80 ? '...' : ''}</pre>
             </div>
           </div>
         {/each}
@@ -301,7 +301,7 @@
         </svg>
         Add Snippet
       </button>
-      <div class="text-[10px] text-ctp-overlay0">
+      <div class="text-[12px] text-ctp-overlay1">
         <kbd class="bg-ctp-surface0 px-1 py-px rounded">Esc</kbd> close
       </div>
     </div>

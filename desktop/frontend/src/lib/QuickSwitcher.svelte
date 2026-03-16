@@ -63,7 +63,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="fixed inset-0 z-50 flex justify-center pt-[12%]" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)" on:click|self={() => dispatch('close')}>
+<div class="fixed inset-0 z-50 flex justify-center pt-[12%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-full max-w-lg max-h-[50vh] bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden">
     <!-- Search input -->
     <div class="flex items-center gap-2 px-4 py-3 border-b border-ctp-surface0">
@@ -73,8 +73,8 @@
       <input type="text" bind:this={inputEl} bind:value={query}
         on:keydown={handleKeydown}
         placeholder="Quick switch..."
-        class="flex-1 bg-transparent text-sm text-ctp-text outline-none placeholder:text-ctp-overlay0" />
-      <kbd class="text-[10px] text-ctp-overlay0 bg-ctp-surface0 px-1.5 py-0.5 rounded">Ctrl+J</kbd>
+        class="flex-1 bg-transparent text-sm text-ctp-text outline-none placeholder:text-ctp-surface2" />
+      <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded">Ctrl+J</kbd>
     </div>
 
     <!-- Note list -->
@@ -89,19 +89,19 @@
           class:text-ctp-subtext1={i !== selectedIndex}
           on:click={() => dispatch('select', note.relPath)}>
           {#if isStarred}
-            <span class="text-ctp-yellow text-[12px] flex-shrink-0">★</span>
+            <span class="text-ctp-yellow text-[13px] flex-shrink-0">★</span>
           {:else if isRecent}
-            <span class="text-ctp-overlay0 text-[12px] flex-shrink-0">◷</span>
+            <span class="text-ctp-overlay1 text-[13px] flex-shrink-0">◷</span>
           {:else}
-            <span class="text-ctp-surface2 text-[12px] flex-shrink-0">◇</span>
+            <span class="text-ctp-overlay1 text-[13px] flex-shrink-0">◇</span>
           {/if}
-          <span class="text-[13px] truncate flex-1">{note.title}</span>
-          <span class="text-[10px] text-ctp-overlay0 truncate max-w-[120px]">{note.relPath}</span>
+          <span class="text-sm truncate flex-1">{note.title}</span>
+          <span class="text-[12px] text-ctp-overlay1 truncate max-w-[120px]">{note.relPath}</span>
         </button>
       {/each}
 
       {#if filteredNotes.length === 0}
-        <p class="text-center text-sm text-ctp-overlay0 py-8">No notes found</p>
+        <p class="text-center text-sm text-ctp-overlay1 py-8">No notes found</p>
       {/if}
     </div>
   </div>
