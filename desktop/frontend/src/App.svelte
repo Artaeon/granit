@@ -994,11 +994,11 @@
       on:close={() => closeOverlay('flashcards')} />
   {/if}
   {#if overlays.quiz}
-    <Quiz questions={quizData}
+    <Quiz notePath={activeNotePath}
       on:close={() => closeOverlay('quiz')} />
   {/if}
   {#if overlays.mindMap}
-    <MindMap data={mindMapData}
+    <MindMap notePath={activeNotePath}
       on:select={(e) => { closeOverlay('mindMap'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
       on:close={() => closeOverlay('mindMap')} />
   {/if}
