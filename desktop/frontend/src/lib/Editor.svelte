@@ -206,22 +206,42 @@
     view.focus()
   }
 
+  // SVG icon paths (16x16 viewBox)
+  const icons = {
+    bold: 'M4 2h5a3 3 0 0 1 0 6H4zm0 6h6a3 3 0 0 1 0 6H4z',
+    italic: 'M6 2h6M4 14h6M10 2L6 14',
+    strike: 'M2 8h12M4 3c0 0 0 3 4 3s4-3 4-3M4 13c0 0 0-3 4-3s4 3 4 3',
+    code: 'M5 4L1 8l4 4M11 4l4 4-4 4',
+    h1: 'M2 2v12M10 2v12M2 8h8M13 4v8l2-2',
+    h2: 'M1 2v12M8 2v12M1 8h7M11 4h3a2 2 0 0 1 0 4h-2l3 4',
+    h3: 'M1 2v12M8 2v12M1 8h7M12 4h2a1.5 1.5 0 0 1 0 3h-1a1.5 1.5 0 0 1 0 3h-2',
+    link: 'M7 3H4a3 3 0 0 0 0 6h3M9 3h3a3 3 0 0 1 0 6H9M5 8h6',
+    task: 'M3 1h10v14H3zM6 5l1.5 1.5L10 4M6 9h4',
+    quote: 'M3 4h10M3 8h6M3 12h8',
+    list: 'M4 4h10M4 8h10M4 12h10M1 4h1M1 8h1M1 12h1',
+    table: 'M1 2h14v12H1zM1 6h14M1 10h14M6 2v12M11 2v12',
+    hr: 'M2 8h12',
+  }
+
   const toolGroups = [
     [
-      { label: 'B', action: () => wrapSelection('**', '**'), title: 'Bold (Ctrl+B)', cls: 'font-bold' },
-      { label: 'I', action: () => wrapSelection('*', '*'), title: 'Italic (Ctrl+I)', cls: 'italic' },
-      { label: 'S', action: () => wrapSelection('~~', '~~'), title: 'Strikethrough', cls: '' },
-      { label: '</>', action: () => wrapSelection('`', '`'), title: 'Code', cls: '' },
+      { icon: icons.bold, action: () => wrapSelection('**', '**'), title: 'Bold (Ctrl+B)' },
+      { icon: icons.italic, action: () => wrapSelection('*', '*'), title: 'Italic (Ctrl+I)' },
+      { icon: icons.strike, action: () => wrapSelection('~~', '~~'), title: 'Strikethrough' },
+      { icon: icons.code, action: () => wrapSelection('`', '`'), title: 'Inline Code' },
     ],
     [
-      { label: 'H1', action: () => wrapSelection('# ', '\n'), title: 'Heading 1', cls: '' },
-      { label: 'H2', action: () => wrapSelection('## ', '\n'), title: 'Heading 2', cls: '' },
-      { label: 'H3', action: () => wrapSelection('### ', '\n'), title: 'Heading 3', cls: '' },
+      { icon: icons.h1, action: () => insertAtCursor('# '), title: 'Heading 1' },
+      { icon: icons.h2, action: () => insertAtCursor('## '), title: 'Heading 2' },
+      { icon: icons.h3, action: () => insertAtCursor('### '), title: 'Heading 3' },
     ],
     [
-      { label: '[[', action: () => wrapSelection('[[', ']]'), title: 'Wikilink', cls: '' },
-      { label: '- [ ]', action: () => insertAtCursor('- [ ] '), title: 'Task', cls: '' },
-      { label: '>', action: () => insertAtCursor('> '), title: 'Quote', cls: '' },
+      { icon: icons.link, action: () => wrapSelection('[[', ']]'), title: 'Wikilink' },
+      { icon: icons.task, action: () => insertAtCursor('- [ ] '), title: 'Task' },
+      { icon: icons.quote, action: () => insertAtCursor('> '), title: 'Blockquote' },
+      { icon: icons.list, action: () => insertAtCursor('- '), title: 'Bullet List' },
+      { icon: icons.table, action: () => insertAtCursor('| Col 1 | Col 2 |\n|--------|--------|\n|        |        |\n'), title: 'Table' },
+      { icon: icons.hr, action: () => insertAtCursor('\n---\n'), title: 'Horizontal Rule' },
     ],
   ]
 </script>
@@ -231,13 +251,15 @@
   <div class="flex items-center gap-0.5 px-3 py-1.5 border-b border-ctp-surface0/50 bg-ctp-mantle/50">
     {#each toolGroups as group, gi}
       {#if gi > 0}
-        <div class="w-px h-4 bg-ctp-surface0 mx-1"></div>
+        <div class="w-px h-4 bg-ctp-surface0/60 mx-1.5"></div>
       {/if}
       {#each group as tool}
         <button on:click={tool.action} title={tool.title}
-          class="px-2 py-1 text-[11px] text-ctp-overlay0 hover:text-ctp-text hover:bg-ctp-surface0
-                 rounded-md transition-all duration-75 {tool.cls}">
-          {tool.label}
+          class="w-7 h-7 flex items-center justify-center text-ctp-overlay0 hover:text-ctp-text hover:bg-ctp-surface0/70
+                 rounded-md transition-all duration-75" data-tooltip={tool.title}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="{tool.icon}" />
+          </svg>
         </button>
       {/each}
     {/each}
