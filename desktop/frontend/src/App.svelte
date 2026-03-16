@@ -1008,7 +1008,7 @@
       on:close={() => closeOverlay('timeline')} />
   {/if}
   {#if overlays.aiChat}
-    <AiChat notePath={activeNotePath} noteTitle={activeNote?.title || ''}
+    <AiChat noteTitle={activeNote?.title || ''} noteContent={editorContent}
       on:close={() => closeOverlay('aiChat')} />
   {/if}
   {#if overlays.snippets}
@@ -1056,7 +1056,7 @@
       on:close={() => closeOverlay('recurringTasks')} />
   {/if}
   {#if overlays.smartConnections}
-    <SmartConnections connections={smartConnectionsData} notePath={activeNotePath}
+    <SmartConnections notePath={activeNotePath} noteTitle={activeNote?.title || ''}
       on:openNote={(e) => { closeOverlay('smartConnections'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
       on:close={() => closeOverlay('smartConnections')} />
   {/if}
