@@ -67,8 +67,11 @@
             </div>
             {#each items as s}
               <div class="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-ctp-surface0/40 transition-colors group">
-                <div class="flex flex-col gap-0.5">
+                <div class="flex flex-col gap-0.5 min-w-0 flex-1 mr-4">
                   <span class="text-[13px] text-ctp-text">{s.label}</span>
+                  {#if s.description}
+                    <span class="text-[10px] text-ctp-overlay0 leading-tight">{s.description}</span>
+                  {/if}
                 </div>
                 {#if s.type === 'bool'}
                   <button on:click={() => toggle(s)}
