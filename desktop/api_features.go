@@ -777,46 +777,47 @@ var allCommands = []CommandInfo{
 // ==================== Settings ====================
 
 type SettingItem struct {
-	Key      string      `json:"key"`
-	Label    string      `json:"label"`
-	Type     string      `json:"type"`
-	Value    interface{} `json:"value"`
-	Options  []string    `json:"options,omitempty"`
-	Category string      `json:"category"`
+	Key         string      `json:"key"`
+	Label       string      `json:"label"`
+	Type        string      `json:"type"`
+	Value       interface{} `json:"value"`
+	Options     []string    `json:"options,omitempty"`
+	Category    string      `json:"category"`
+	Description string      `json:"description,omitempty"`
 }
 
 func (a *GranitApp) GetAllSettings() []SettingItem {
 	c := a.config
 	return []SettingItem{
-		{"theme", "Theme", "select", c.Theme, []string{"catppuccin-mocha", "catppuccin-latte", "catppuccin-frappe", "catppuccin-macchiato", "tokyo-night", "gruvbox-dark", "nord", "dracula", "solarized-dark", "solarized-light", "rose-pine", "rose-pine-dawn", "everforest-dark", "kanagawa", "one-dark", "github-dark", "github-light", "ayu-dark", "ayu-light", "palenight", "synthwave-84", "nightfox", "vesper", "poimandres", "moonlight", "vitesse-dark", "min-light", "oxocarbon"}, "Appearance"},
-		{"icon_theme", "Icon Theme", "select", c.IconTheme, []string{"unicode", "nerd", "emoji", "ascii"}, "Appearance"},
-		{"layout", "Layout", "select", c.Layout, []string{"default", "writer", "minimal", "reading", "dashboard"}, "Appearance"},
-		{"sidebar_position", "Sidebar Position", "select", c.SidebarPosition, []string{"left", "right"}, "Appearance"},
-		{"show_icons", "Show Icons", "bool", c.ShowIcons, nil, "Appearance"},
-		{"compact_mode", "Compact Mode", "bool", c.CompactMode, nil, "Appearance"},
-		{"show_splash", "Show Splash Screen", "bool", c.ShowSplash, nil, "Appearance"},
-		{"show_help", "Show Help Bar", "bool", c.ShowHelp, nil, "Appearance"},
-		{"vim_mode", "Vim Mode", "bool", c.VimMode, nil, "Editor"},
-		{"word_wrap", "Word Wrap", "bool", c.WordWrap, nil, "Editor"},
-		{"tab_size", "Tab Size", "int", c.Editor.TabSize, nil, "Editor"},
-		{"line_numbers", "Line Numbers", "bool", c.LineNumbers, nil, "Editor"},
-		{"auto_close_brackets", "Auto Close Brackets", "bool", c.AutoCloseBrackets, nil, "Editor"},
-		{"highlight_current_line", "Highlight Current Line", "bool", c.HighlightCurrentLine, nil, "Editor"},
-		{"default_view_mode", "Default View Mode", "bool", c.DefaultViewMode, nil, "Editor"},
-		{"spell_check", "Inline Spell Check", "bool", c.SpellCheck, nil, "Editor"},
-		{"ai_provider", "AI Provider", "select", c.AIProvider, []string{"local", "ollama", "openai"}, "AI"},
-		{"ollama_model", "Ollama Model", "select", c.OllamaModel, []string{"qwen2.5:0.5b", "qwen2.5:1.5b", "qwen2.5:3b", "phi3:mini", "phi3.5:3.8b", "gemma2:2b", "tinyllama", "llama3.2", "llama3.2:1b", "mistral", "gemma2"}, "AI"},
-		{"ollama_url", "Ollama URL", "string", c.OllamaURL, nil, "AI"},
-		{"openai_key", "OpenAI API Key", "string", c.OpenAIKey, nil, "AI"},
-		{"openai_model", "OpenAI Model", "select", c.OpenAIModel, []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1-nano"}, "AI"},
-		{"auto_save", "Auto Save", "bool", c.AutoSave, nil, "Files"},
-		{"auto_daily_note", "Auto Daily Note", "bool", c.AutoDailyNote, nil, "Files"},
-		{"daily_notes_folder", "Daily Notes Folder", "string", c.DailyNotesFolder, nil, "Files"},
-		{"sort_by", "Sort Files By", "select", c.SortBy, []string{"name", "modified", "created"}, "Files"},
-		{"confirm_delete", "Confirm Delete", "bool", c.ConfirmDelete, nil, "Files"},
-		{"auto_refresh", "Auto Refresh Vault", "bool", c.AutoRefresh, nil, "Files"},
-		{"git_auto_sync", "Git Auto Sync", "bool", c.GitAutoSync, nil, "Advanced"},
-		{"auto_tag", "Auto-Tag on Save", "bool", c.AutoTag, nil, "Advanced"},
+		{"theme", "Theme", "select", c.Theme, []string{"catppuccin-mocha", "catppuccin-latte", "catppuccin-frappe", "catppuccin-macchiato", "tokyo-night", "gruvbox-dark", "nord", "dracula", "solarized-dark", "solarized-light", "rose-pine", "rose-pine-dawn", "everforest-dark", "kanagawa", "one-dark", "github-dark", "github-light", "ayu-dark", "ayu-light", "palenight", "synthwave-84", "nightfox", "vesper", "poimandres", "moonlight", "vitesse-dark", "min-light", "oxocarbon", "matrix", "cobalt2", "monokai-pro", "horizon", "zenburn", "iceberg", "amber", "high-contrast-dark", "high-contrast-light", "deuteranopia", "protanopia", "tritanopia"}, "Appearance", "Color theme for the entire app"},
+		{"icon_theme", "Icon Theme", "select", c.IconTheme, []string{"unicode", "nerd", "emoji", "ascii"}, "Appearance", "Icon set used throughout the interface"},
+		{"layout", "Layout", "select", c.Layout, []string{"default", "writer", "minimal", "reading", "dashboard"}, "Appearance", "Panel arrangement: default (3-panel), writer (2-panel), minimal (editor only)"},
+		{"sidebar_position", "Sidebar Position", "select", c.SidebarPosition, []string{"left", "right"}, "Appearance", "Which side to show the file explorer"},
+		{"show_icons", "Show Icons", "bool", c.ShowIcons, nil, "Appearance", "Display file and folder icons in sidebar"},
+		{"compact_mode", "Compact Mode", "bool", c.CompactMode, nil, "Appearance", "Reduce padding and spacing for more content"},
+		{"show_splash", "Show Splash Screen", "bool", c.ShowSplash, nil, "Appearance", "Show animated logo on startup"},
+		{"show_help", "Show Help Bar", "bool", c.ShowHelp, nil, "Appearance", "Display keyboard shortcut hints"},
+		{"vim_mode", "Vim Mode", "bool", c.VimMode, nil, "Editor", "Enable Vim keybindings (hjkl, modes, etc.)"},
+		{"word_wrap", "Word Wrap", "bool", c.WordWrap, nil, "Editor", "Wrap long lines instead of horizontal scroll"},
+		{"tab_size", "Tab Size", "int", c.Editor.TabSize, nil, "Editor", "Number of spaces per tab (2 or 4)"},
+		{"line_numbers", "Line Numbers", "bool", c.LineNumbers, nil, "Editor", "Show line numbers in the editor gutter"},
+		{"auto_close_brackets", "Auto Close Brackets", "bool", c.AutoCloseBrackets, nil, "Editor", "Automatically insert closing brackets and quotes"},
+		{"highlight_current_line", "Highlight Current Line", "bool", c.HighlightCurrentLine, nil, "Editor", "Subtle background highlight on the cursor line"},
+		{"default_view_mode", "Default View Mode", "bool", c.DefaultViewMode, nil, "Editor", "Open notes in preview mode by default"},
+		{"spell_check", "Inline Spell Check", "bool", c.SpellCheck, nil, "Editor", "Underline misspelled words while typing"},
+		{"ai_provider", "AI Provider", "select", c.AIProvider, []string{"local", "ollama", "openai"}, "AI", "AI backend for bots, chat, and writing tools"},
+		{"ollama_model", "Ollama Model", "select", c.OllamaModel, []string{"qwen2.5:0.5b", "qwen2.5:1.5b", "qwen2.5:3b", "phi3:mini", "phi3.5:3.8b", "gemma2:2b", "tinyllama", "llama3.2", "llama3.2:1b", "mistral", "gemma2"}, "AI", "Local Ollama model to use for AI features"},
+		{"ollama_url", "Ollama URL", "string", c.OllamaURL, nil, "AI", "Ollama server address (default: http://localhost:11434)"},
+		{"openai_key", "OpenAI API Key", "string", c.OpenAIKey, nil, "AI", "Your OpenAI API key for cloud AI features"},
+		{"openai_model", "OpenAI Model", "select", c.OpenAIModel, []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1-nano"}, "AI", "OpenAI model to use (mini = faster, cheaper)"},
+		{"auto_save", "Auto Save", "bool", c.AutoSave, nil, "Files", "Automatically save notes after 2 seconds of inactivity"},
+		{"auto_daily_note", "Auto Daily Note", "bool", c.AutoDailyNote, nil, "Files", "Create today's daily note on vault open"},
+		{"daily_notes_folder", "Daily Notes Folder", "string", c.DailyNotesFolder, nil, "Files", "Folder for daily notes (empty = vault root)"},
+		{"sort_by", "Sort Files By", "select", c.SortBy, []string{"name", "modified", "created"}, "Files", "Default file sorting order in sidebar"},
+		{"confirm_delete", "Confirm Delete", "bool", c.ConfirmDelete, nil, "Files", "Ask for confirmation before deleting notes"},
+		{"auto_refresh", "Auto Refresh Vault", "bool", c.AutoRefresh, nil, "Files", "Watch for external file changes and refresh"},
+		{"git_auto_sync", "Git Auto Sync", "bool", c.GitAutoSync, nil, "Advanced", "Auto-commit and push changes on save"},
+		{"auto_tag", "Auto-Tag on Save", "bool", c.AutoTag, nil, "Advanced", "Use AI to suggest tags when saving notes"},
 	}
 }
 
