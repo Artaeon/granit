@@ -49,7 +49,12 @@
   import EncryptionPanel from './lib/EncryptionPanel.svelte'
   import RecurringTasks from './lib/RecurringTasks.svelte'
   import SmartConnections from './lib/SmartConnections.svelte'
+  import InputDialog from './lib/InputDialog.svelte'
+  import ContextMenu from './lib/ContextMenu.svelte'
   import type { NoteDetail, FolderNode, NoteInfo, Tab, BacklinkEntry } from './lib/types'
+
+  // @ts-ignore - Wails runtime events
+  import { EventsOn } from '../wailsjs/runtime/runtime'
 
   // @ts-ignore
   const api = () => window.go?.main?.GranitApp
@@ -117,10 +122,22 @@
   let searchResults: any[] = []
   let searchBusy = false
 
-  // New feature overlay data (used by components that receive props from App)
+  // New feature overlay data
   let pluginsData: any[] = []
   let autoLinkData: any[] = []
   let noteHistoryData: any[] = []
+  let dataviewResults: any[] = []
+
+  // Input dialog state
+  let inputDialog: { show: boolean; title: string; placeholder: string; value: string; action: string; callback: (v: string) => void } = { show: false, title: '', placeholder: '', value: '', action: '', callback: () => {} }
+  function showInputDialog(title: string, placeholder: string, value: string, action: string, callback: (v: string) => void) {
+    inputDialog = { show: true, title, placeholder, value, action, callback }
+  }
+  function closeInputDialog() { inputDialog = { ...inputDialog, show: false } }
+
+  // Context menu state
+  let contextMenu: { show: boolean; x: number; y: number; path: string } = { show: false, x: 0, y: 0, path: '' }
+  function closeContextMenu() { contextMenu = { ...contextMenu, show: false } }
 
   const themeNames = [
     'catppuccin-mocha', 'catppuccin-latte', 'catppuccin-frappe', 'catppuccin-macchiato',
@@ -140,6 +157,13 @@
       vaultOpen = await api().IsVaultOpen()
       if (vaultOpen) await loadVault()
     } catch (e) { console.log('Waiting for vault...') }
+
+    // Listen for file system changes (auto-refresh)
+    try {
+      EventsOn('vault:changed', async () => {
+        if (vaultOpen) await refreshTree()
+      })
+    } catch {}
   })
 
   function applyTheme(name: string) {
@@ -299,15 +323,16 @@
     }
   }
 
-  async function handleCreateNote() {
-    const name = prompt('Note name:')
-    if (!name) return
-    try {
-      const fm = `---\ndate: ${new Date().toISOString().split('T')[0]}\n---\n\n# ${name}\n\n`
-      const relPath = await api().CreateNote(name, fm)
-      await refreshTree()
-      handleSelectNote(new CustomEvent('select', { detail: relPath }))
-    } catch (e) { console.error('Failed to create note:', e) }
+  function handleCreateNote() {
+    showInputDialog('New Note', 'Enter note name...', '', 'Create', async (name) => {
+      closeInputDialog()
+      try {
+        const fm = `---\ndate: ${new Date().toISOString().split('T')[0]}\n---\n\n# ${name}\n\n`
+        const relPath = await api().CreateNote(name, fm)
+        await refreshTree()
+        handleSelectNote(new CustomEvent('select', { detail: relPath }))
+      } catch (e) { console.error('Failed to create note:', e) }
+    })
   }
 
   async function handleDeleteNote(event: CustomEvent<string>) {
@@ -483,8 +508,12 @@
         break
       case 'rename_note':
         if (activeNotePath) {
-          const newName = prompt('New name:', activeNote?.title || '')
-          if (newName) { const np = await api().RenameNote(activeNotePath, newName); await refreshTree(); handleSelectNote(new CustomEvent('s', { detail: np })) }
+          showInputDialog('Rename Note', 'Enter new name...', activeNote?.title || '', 'Rename', async (newName) => {
+            closeInputDialog()
+            const np = await api().RenameNote(activeNotePath, newName)
+            await refreshTree()
+            handleSelectNote(new CustomEvent('s', { detail: np }))
+          })
         }
         break
       case 'daily_note':
@@ -523,6 +552,12 @@
       case 'layout_writer': showBacklinks = false; break
       case 'layout_minimal': showSidebar = false; showBacklinks = false; break
       case 'layout_reading': mode = 'preview'; break
+      case 'new_folder':
+        showInputDialog('New Folder', 'Folder name...', '', 'Create', async (name) => {
+          closeInputDialog()
+          try { await api().CreateFolder(name); await refreshTree() } catch (e) { console.error(e) }
+        })
+        break
       case 'weekly_note':
         const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1)
         const weekStr = weekStart.toISOString().split('T')[0]
@@ -590,6 +625,7 @@
         'j': () => openQuickSwitcher(),
         'k': () => dispatchCommand('task_manager'),
         'q': () => window.close(),
+        'o': () => { if (!vaultOpen) handleOpenVault() },
       }
       if (handlers[key]) { event.preventDefault(); handlers[key]() }
     }
@@ -615,7 +651,7 @@
 ╚██████╔╝██║  ██║██║  ██║██║ ╚████║██║   ██║
  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝   ╚═╝</pre>
       <div class="space-y-1">
-        <p class="text-ctp-subtext0 text-lg font-light tracking-wide">Terminal Knowledge Manager</p>
+        <p class="text-ctp-subtext0 text-lg font-light tracking-wide">Knowledge Manager</p>
         <p class="text-ctp-surface2 text-xs tracking-wider">Notes &middot; Links &middot; Ideas</p>
       </div>
       <button on:click={handleOpenVault}
@@ -765,6 +801,7 @@
           <div class="flex-shrink-0 border-r border-ctp-surface0" style="width: {sidebarWidth}px">
             <Sidebar {tree} {activeNotePath} outlineItems={outlineData}
               on:select={handleSelectNote} on:create={handleCreateNote} on:delete={handleDeleteNote}
+              on:contextmenu={(e) => { contextMenu = { show: true, x: e.detail.x, y: e.detail.y, path: e.detail.path } }}
               on:jumpToLine={(e) => { /* TODO: scroll editor */ }} />
           </div>
           <div class="resize-handle w-1 cursor-col-resize hover:bg-ctp-blue/20 active:bg-ctp-blue/40 transition-colors"
@@ -1048,5 +1085,48 @@
     <SmartConnections notePath={activeNotePath} noteTitle={activeNote?.title || ''}
       on:openNote={(e) => { closeOverlay('smartConnections'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
       on:close={() => closeOverlay('smartConnections')} />
+  {/if}
+
+  <!-- Input Dialog (replaces browser prompt()) -->
+  {#if inputDialog.show}
+    <InputDialog title={inputDialog.title} placeholder={inputDialog.placeholder} value={inputDialog.value} action={inputDialog.action}
+      on:confirm={(e) => inputDialog.callback(e.detail)}
+      on:cancel={closeInputDialog} />
+  {/if}
+
+  <!-- Context Menu -->
+  {#if contextMenu.show}
+    <ContextMenu x={contextMenu.x} y={contextMenu.y}
+      items={[
+        { label: 'Open in New Tab', action: 'open', icon: 'open' },
+        { label: 'Rename', action: 'rename', icon: 'rename', shortcut: 'F4' },
+        { label: 'Move to Folder', action: 'move', icon: 'move' },
+        { label: 'Copy Path', action: 'copy_path', icon: 'copy' },
+        { label: 'Bookmark', action: 'bookmark', icon: 'star' },
+        { label: '', action: '', separator: true },
+        { label: 'Delete', action: 'delete', icon: 'delete', danger: true },
+      ]}
+      on:action={async (e) => {
+        const path = contextMenu.path
+        closeContextMenu()
+        switch (e.detail) {
+          case 'open': handleSelectNote(new CustomEvent('s', { detail: path })); break
+          case 'rename':
+            showInputDialog('Rename', 'New name...', path.replace('.md', '').split('/').pop() || '', 'Rename', async (name) => {
+              closeInputDialog()
+              const np = await api().RenameNote(path, name); await refreshTree()
+              handleSelectNote(new CustomEvent('s', { detail: np }))
+            }); break
+          case 'move':
+            showInputDialog('Move to Folder', 'Folder path...', '', 'Move', async (dir) => {
+              closeInputDialog()
+              await api().MoveFile(path, dir); await refreshTree()
+            }); break
+          case 'copy_path': navigator.clipboard.writeText(path); break
+          case 'bookmark': await api().ToggleBookmark(path); break
+          case 'delete': handleDeleteNote(new CustomEvent('d', { detail: path })); break
+        }
+      }}
+      on:close={closeContextMenu} />
   {/if}
 {/if}
