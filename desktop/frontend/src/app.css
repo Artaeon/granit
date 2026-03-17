@@ -8,8 +8,8 @@
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(17, 17, 27, 0.6);
-  backdrop-filter: blur(8px);
+  background: rgba(15, 15, 15, 0.6);
+  backdrop-filter: blur(4px);
 }
 .overlay-loading::after {
   content: '';
@@ -1188,6 +1188,64 @@
   --ctp-rosewater: #e0e0e0;
 }
 
+/* Notion Dark */
+:root[data-theme="notion-dark"] {
+  --ctp-base: #191919;
+  --ctp-mantle: #202020;
+  --ctp-crust: #171717;
+  --ctp-surface0: #252525;
+  --ctp-surface1: #2f2f2f;
+  --ctp-surface2: #373737;
+  --ctp-overlay0: #6b6b6b;
+  --ctp-overlay1: #9b9b9b;
+  --ctp-text: #e3e3e1;
+  --ctp-subtext0: #9b9a97;
+  --ctp-subtext1: #b4b4b0;
+  --ctp-blue: #529cca;
+  --ctp-lavender: #9065b0;
+  --ctp-sapphire: #529cca;
+  --ctp-sky: #529cca;
+  --ctp-teal: #4dab9a;
+  --ctp-green: #4dab9a;
+  --ctp-yellow: #cb7b2c;
+  --ctp-peach: #cb7b2c;
+  --ctp-maroon: #c4554d;
+  --ctp-red: #c4554d;
+  --ctp-mauve: #9065b0;
+  --ctp-pink: #b85c8a;
+  --ctp-flamingo: #c4554d;
+  --ctp-rosewater: #e3e3e1;
+}
+
+/* Notion Light */
+:root[data-theme="notion-light"] {
+  --ctp-base: #ffffff;
+  --ctp-mantle: #fbfbfa;
+  --ctp-crust: #f7f6f3;
+  --ctp-surface0: #f1f1ef;
+  --ctp-surface1: #e8e7e4;
+  --ctp-surface2: #d3d2cf;
+  --ctp-overlay0: #91918e;
+  --ctp-overlay1: #787774;
+  --ctp-text: #37352f;
+  --ctp-subtext0: #6b6b6b;
+  --ctp-subtext1: #55534e;
+  --ctp-blue: #2383e2;
+  --ctp-lavender: #6940a5;
+  --ctp-sapphire: #2383e2;
+  --ctp-sky: #2383e2;
+  --ctp-teal: #0f7b6c;
+  --ctp-green: #0f7b6c;
+  --ctp-yellow: #cb7b2c;
+  --ctp-peach: #cb7b2c;
+  --ctp-maroon: #e03e3e;
+  --ctp-red: #e03e3e;
+  --ctp-mauve: #6940a5;
+  --ctp-pink: #ad1a72;
+  --ctp-flamingo: #e03e3e;
+  --ctp-rosewater: #37352f;
+}
+
 /* ======================== Base Styles ======================== */
 
 * {
@@ -1200,13 +1258,13 @@ html, body, #app {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  font-size: 15px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.003em;
 }
 
 body {
@@ -1224,11 +1282,14 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--ctp-surface1);
+  background: transparent;
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--ctp-surface2);
+}
+*:hover > ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ctp-surface2) 50%, transparent);
 }
 
 .overflow-y-auto { scrollbar-gutter: stable; }
@@ -1256,9 +1317,9 @@ button:focus-visible {
 /* Targeted transitions — only interactive elements animate */
 
 button, a, [role="button"], [role="tab"], select, .toggle, .sidebar-item, .tab-item, .nav-link {
-  transition-property: color, background-color, border-color, opacity;
-  transition-duration: 75ms;
-  transition-timing-function: ease;
+  transition-property: color, background-color, border-color, opacity, transform;
+  transition-duration: 120ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* ======================== KBD ======================== */
@@ -1641,21 +1702,17 @@ mark.fuzzy-match {
   animation: modalSlideIn 250ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Increase backdrop blur for depth */
+/* Overlay backdrop */
 .fixed.inset-0.z-50[style*="backdrop-filter"] {
-  backdrop-filter: blur(10px) !important;
+  backdrop-filter: blur(4px) !important;
+  background: rgba(15, 15, 15, 0.6) !important;
 }
 .fixed.inset-0.z-50[style*="background"] {
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(4px);
+  background: rgba(15, 15, 15, 0.6);
 }
 
 /* ======================== Interactive States ======================== */
-
-/* Subtle press feedback on all buttons */
-button:not(:disabled):active {
-  transform: scale(0.97);
-  transition: transform 50ms ease;
-}
 
 /* Disabled state standard */
 button:disabled, input:disabled, select:disabled {
@@ -1748,9 +1805,9 @@ textarea:focus {
 
 .shadow-overlay {
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--ctp-surface0) 80%, transparent),
-    0 8px 32px rgba(0,0,0,0.35),
-    0 2px 8px rgba(0,0,0,0.2);
+    0 0 0 1px rgba(15, 15, 15, 0.05),
+    0 3px 6px rgba(15, 15, 15, 0.1),
+    0 9px 24px rgba(15, 15, 15, 0.2);
 }
 
 /* ======================== Tab active indicator ======================== */

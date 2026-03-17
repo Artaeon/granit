@@ -201,33 +201,25 @@
   style="background: rgba(17,17,27,0.6); backdrop-filter: blur(8px);"
   on:click|self={() => dispatch('close')}>
 
-  <div class="w-full max-w-xl bg-ctp-mantle rounded-2xl border border-ctp-surface0 overflow-hidden shadow-overlay">
+  <div class="w-full max-w-[600px] bg-ctp-mantle rounded-xl border border-ctp-surface0 overflow-hidden shadow-overlay">
 
     <!-- Input row -->
-    <div class="flex items-center gap-3 px-5 py-5 border-b border-ctp-surface0">
-      {#if mode === 'commands'}
-        <span class="text-ctp-mauve text-xl font-bold">&gt;</span>
-      {:else}
-        <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay1)" stroke-width="1.5" stroke-linecap="round">
-          <circle cx="7" cy="7" r="4.5" /><path d="M11 11l3.5 3.5" />
-        </svg>
-      {/if}
-      <input bind:this={inputEl} bind:value={query} on:keydown={handleKeydown}
-        placeholder={mode === 'commands' ? 'Type a command...' : 'Search notes...'}
-        class="flex-1 bg-transparent text-ctp-text text-base py-0.5 outline-none placeholder:text-ctp-surface2" />
-
-      <!-- Mode tabs -->
-      <div class="flex bg-ctp-surface0 rounded-lg p-0.5 gap-0.5">
-        <button on:click={() => { mode = 'files'; query = ''; selectedIndex = 0 }}
-          class="px-2.5 py-1 text-[12px] rounded-md transition-all {mode === 'files' ? 'bg-ctp-surface1 text-ctp-text' : 'text-ctp-overlay1 hover:text-ctp-subtext0'}">
-          Files
-        </button>
-        <button on:click={() => { mode = 'commands'; query = ''; selectedIndex = 0 }}
-          class="px-2.5 py-1 text-[12px] rounded-md transition-all {mode === 'commands' ? 'bg-ctp-surface1 text-ctp-text' : 'text-ctp-overlay1 hover:text-ctp-subtext0'}">
-          Commands
-        </button>
+    <div class="px-5 pt-5 pb-0">
+      <div class="flex items-center gap-3">
+        {#if mode === 'commands'}
+          <span class="text-ctp-mauve text-xl font-bold">&gt;</span>
+        {:else}
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay1)" stroke-width="1.5" stroke-linecap="round">
+            <circle cx="7" cy="7" r="4.5" /><path d="M11 11l3.5 3.5" />
+          </svg>
+        {/if}
+        <input bind:this={inputEl} bind:value={query} on:keydown={handleKeydown}
+          placeholder={mode === 'commands' ? 'Type a command...' : 'Search notes...'}
+          class="flex-1 bg-transparent text-ctp-text text-lg py-0.5 outline-none border-none placeholder:text-ctp-overlay0" />
       </div>
+      <p class="text-[12px] text-ctp-overlay0 px-5 pb-2">Type &gt; for commands</p>
     </div>
+    <div class="border-b border-ctp-surface0/30"></div>
 
     <!-- Results -->
     <div bind:this={listEl} class="max-h-[420px] overflow-y-auto py-1">
@@ -235,16 +227,16 @@
         {#each filteredFiles as note, i}
           <div data-index={i}
             class="flex items-center gap-3 px-5 py-2.5 cursor-pointer transition-colors duration-75
-              {i === selectedIndex ? 'bg-ctp-blue/[0.08] border-l-[3px] border-ctp-blue' : 'hover:bg-ctp-surface0/50 border-l-[3px] border-transparent'}"
+              {i === selectedIndex ? 'bg-ctp-surface0' : 'hover:bg-ctp-surface0/50'}"
             on:click={() => dispatch('select', note.relPath)}
             on:mouseenter={() => selectedIndex = i}>
-            <svg class="flex-shrink-0" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="{i === selectedIndex ? 'var(--ctp-blue)' : 'var(--ctp-overlay0)'}" stroke-width="1.5" stroke-linecap="round">
+            <svg class="flex-shrink-0 opacity-30" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-overlay0)" stroke-width="1.5" stroke-linecap="round">
               <path d="M3 2h10v12H3V2zm2 3h6m-6 3h4" />
             </svg>
             <div class="min-w-0 flex-1">
               <div class="text-sm truncate {i === selectedIndex ? 'text-ctp-text' : 'text-ctp-subtext1'}">{@html fuzzyHighlight(note.title, activeQuery)}</div>
               {#if folderOf(note.relPath)}
-                <div class="text-[12px] text-ctp-overlay1 truncate">{folderOf(note.relPath)}</div>
+                <div class="text-[12px] text-ctp-overlay0 truncate">{folderOf(note.relPath)}</div>
               {/if}
             </div>
           </div>
@@ -260,13 +252,12 @@
           {#each group.commands as { cmd, globalIndex }}
             <div data-index={globalIndex}
               class="flex items-center gap-3 px-5 py-2.5 cursor-pointer transition-colors duration-75
-                {globalIndex === selectedIndex ? 'bg-ctp-blue/[0.08] border-l-[3px] border-ctp-blue' : 'hover:bg-ctp-surface0/50 border-l-[3px] border-transparent'}"
+                {globalIndex === selectedIndex ? 'bg-ctp-surface0' : 'hover:bg-ctp-surface0/50'}"
               on:click={() => dispatch('command', cmd.action)}
               on:mouseenter={() => selectedIndex = globalIndex}>
-              <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0
-                {globalIndex === selectedIndex ? 'bg-ctp-blue/20' : 'bg-ctp-surface0'}">
+              <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 opacity-30 bg-ctp-surface0">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none"
-                  stroke="{globalIndex === selectedIndex ? 'var(--ctp-blue)' : 'var(--ctp-overlay1)'}"
+                  stroke="var(--ctp-overlay1)"
                   stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="{getIcon(cmd.icon)}" />
                 </svg>
@@ -293,23 +284,12 @@
     </div>
 
     <!-- Footer -->
-    <div class="flex items-center justify-between px-5 py-2.5 border-t border-ctp-surface0 text-[12px] text-ctp-overlay1">
-      <div class="flex gap-3">
-        <span><kbd class="bg-ctp-surface0 px-1 py-px rounded">&#8593;&#8595;</kbd> Navigate</span>
-        <span class="text-ctp-surface1">&#183;</span>
-        <span><kbd class="bg-ctp-surface0 px-1 py-px rounded">Enter</kbd> Select</span>
-        <span class="text-ctp-surface1">&#183;</span>
-        <span><kbd class="bg-ctp-surface0 px-1 py-px rounded">Tab</kbd> Switch mode</span>
-        <span class="text-ctp-surface1">&#183;</span>
-        <span><kbd class="bg-ctp-surface0 px-1 py-px rounded">Esc</kbd> Close</span>
-      </div>
-      <span class="text-ctp-overlay0">
-        {#if mode === 'files'}
-          {filteredFiles.length} of {totalFileCount} notes
-        {:else}
-          {filteredCommands.length} of {totalCommandCount} commands
-        {/if}
-      </span>
+    <div class="flex items-center justify-end px-5 py-2.5 border-t border-ctp-surface0 text-[12px] text-ctp-overlay0">
+      {#if mode === 'files'}
+        {filteredFiles.length} of {totalFileCount} notes
+      {:else}
+        {filteredCommands.length} of {totalCommandCount} commands
+      {/if}
     </div>
   </div>
 </div>

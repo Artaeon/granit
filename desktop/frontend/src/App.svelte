@@ -115,6 +115,7 @@
     'poimandres', 'moonlight', 'vitesse-dark', 'min-light', 'oxocarbon',
     'matrix', 'cobalt2', 'monokai-pro', 'horizon', 'zenburn', 'iceberg', 'amber',
     'high-contrast-dark', 'high-contrast-light', 'deuteranopia', 'protanopia', 'tritanopia',
+    'notion-dark', 'notion-light',
   ]
 
   onMount(async () => {
@@ -745,7 +746,7 @@
 {:else}
   <div class="flex flex-col h-full bg-ctp-base">
     <!-- Title Bar -->
-    <div class="title-bar flex items-center h-[38px] px-4 bg-ctp-crust border-b border-ctp-surface0/40 select-none gap-3"
+    <div class="title-bar flex items-center h-[44px] px-4 bg-ctp-base border-b border-ctp-surface0/20 select-none gap-3"
       style="--wails-draggable: drag">
       <!-- Sidebar toggle -->
       <button on:click={() => showSidebar = !showSidebar}
@@ -764,19 +765,17 @@
         </svg>
       </button>
 
-      <!-- Vault name with icon -->
+      <!-- Vault name with dot -->
       <div class="flex items-center gap-1.5">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-mauve)" stroke-width="1.5" stroke-linecap="round" class="opacity-70">
-          <path d="M2 5h5l1.5-2H13a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5z" />
-        </svg>
-        <span class="text-sm font-semibold text-ctp-subtext0">{vaultPath ? vaultPath.split('/').pop() : 'Granit'}</span>
+        <span class="w-2 h-2 rounded-full bg-ctp-mauve"></span>
+        <span class="text-sm text-ctp-subtext0" style="font-weight: 600">{vaultPath ? vaultPath.split('/').pop() : 'Granit'}</span>
       </div>
 
       <!-- Breadcrumbs -->
       {#if activeNotePath}
         <div class="flex items-center gap-1 overflow-hidden">
           {#each activeNotePath.split('/') as segment, i}
-            <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-surface2)" stroke-width="2" stroke-linecap="round"><path d="M6 4l4 4-4 4" /></svg>
+            <span class="text-ctp-overlay0 mx-0.5">/</span>
             {#if i < activeNotePath.split('/').length - 1}
               <span class="text-[13px] text-ctp-overlay1 truncate max-w-[80px]">{segment}</span>
             {:else}
@@ -817,15 +816,6 @@
             <path d="M4 6l4 4 4-4" />
           </svg>
         </button>
-
-        <!-- Theme dropdown -->
-        <select bind:value={currentTheme} on:change={handleThemeChange}
-          class="text-[13px] bg-ctp-surface0/60 text-ctp-subtext0 border border-ctp-surface0/70 rounded-md px-2 py-1 outline-none cursor-pointer hover:border-ctp-overlay0 transition-colors appearance-none pr-5"
-          style="--wails-draggable: no-drag; background-image: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%228%22 height=%228%22 viewBox=%220 0 16 16%22><path fill=%22%236c7086%22 d=%22M4 6l4 4 4-4%22/></svg>'); background-repeat: no-repeat; background-position: right 6px center;">
-          {#each themeNames as name}
-            <option value={name}>{name}</option>
-          {/each}
-        </select>
 
         <!-- Search -->
         <button on:click={() => { paletteMode = 'files'; openOverlay('commandPalette') }}
@@ -874,7 +864,7 @@
         <!-- Sidebar -->
         {#if showSidebar}
           <div class="flex-shrink-0 border-r border-ctp-surface0" style="width: {sidebarWidth}px">
-            <Sidebar {tree} {activeNotePath} outlineItems={outlineData}
+            <Sidebar {tree} {activeNotePath} outlineItems={outlineData} vaultName={vaultPath ? vaultPath.split('/').pop() || 'Granit' : 'Granit'}
               on:select={handleSelectNote} on:create={handleCreateNote} on:delete={handleDeleteNote}
               on:contextmenu={(e) => { contextMenu = { show: true, x: e.detail.x, y: e.detail.y, path: e.detail.path } }}
               on:jumpToLine={(e) => { /* TODO: scroll editor */ }} />

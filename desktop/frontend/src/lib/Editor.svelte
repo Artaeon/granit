@@ -21,26 +21,24 @@
     '&': {
       backgroundColor: 'var(--ctp-base)',
       color: 'var(--ctp-text)',
-      fontSize: '14px',
+      fontSize: '16px',
       height: '100%',
     },
     '&.cm-focused': { outline: 'none' },
     '.cm-scroller': {
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+      fontFamily: "'Lyon-Text', Georgia, 'YuMincho', 'Yu Mincho', 'Hiragino Mincho ProN', 'Hiragino Mincho Pro', serif",
       lineHeight: '1.75',
       overflow: 'auto',
     },
     '.cm-content': {
-      padding: '24px 32px',
+      padding: '48px 96px',
       caretColor: 'var(--ctp-text)',
       minHeight: '100%',
+      maxWidth: '900px',
+      margin: '0 auto',
     },
     '.cm-gutters': {
-      backgroundColor: 'color-mix(in srgb, var(--ctp-mantle) 60%, transparent)',
-      color: 'var(--ctp-surface2)',
-      border: 'none',
-      borderRight: '1px solid color-mix(in srgb, var(--ctp-surface0) 50%, transparent)',
-      minWidth: '48px',
+      display: 'none',
     },
     '.cm-activeLineGutter': {
       backgroundColor: 'transparent',
@@ -48,7 +46,7 @@
       fontWeight: '600',
     },
     '.cm-activeLine': {
-      backgroundColor: 'color-mix(in srgb, var(--ctp-surface0) 20%, transparent)',
+      backgroundColor: 'transparent',
     },
     '.cm-cursor, .cm-dropCursor': {
       borderLeftColor: 'var(--ctp-text)',
@@ -104,12 +102,12 @@
   })
 
   const granitHighlight = HighlightStyle.define([
-    { tag: tags.heading1, color: 'var(--ctp-mauve)', fontWeight: 'bold', fontSize: '1.4em' },
-    { tag: tags.heading2, color: 'var(--ctp-blue)', fontWeight: 'bold', fontSize: '1.2em' },
-    { tag: tags.heading3, color: 'var(--ctp-sapphire)', fontWeight: 'bold', fontSize: '1.1em' },
-    { tag: tags.heading4, color: 'var(--ctp-teal)', fontWeight: 'bold' },
-    { tag: tags.heading5, color: 'var(--ctp-green)', fontWeight: 'bold' },
-    { tag: tags.heading6, color: 'var(--ctp-yellow)', fontWeight: 'bold' },
+    { tag: tags.heading1, color: 'var(--ctp-text)', fontWeight: 'bold', fontSize: '2em' },
+    { tag: tags.heading2, color: 'var(--ctp-text)', fontWeight: 'bold', fontSize: '1.5em' },
+    { tag: tags.heading3, color: 'var(--ctp-text)', fontWeight: 'bold', fontSize: '1.25em' },
+    { tag: tags.heading4, color: 'var(--ctp-text)', fontWeight: 'bold' },
+    { tag: tags.heading5, color: 'var(--ctp-text)', fontWeight: 'bold' },
+    { tag: tags.heading6, color: 'var(--ctp-text)', fontWeight: 'bold' },
     { tag: tags.emphasis, fontStyle: 'italic', color: 'var(--ctp-subtext1)' },
     { tag: tags.strong, fontWeight: 'bold' },
     { tag: tags.strikethrough, textDecoration: 'line-through', color: 'var(--ctp-overlay0)' },
@@ -273,10 +271,10 @@
 
 <div class="flex flex-col h-full bg-ctp-base">
   <!-- Toolbar -->
-  <div class="flex items-center gap-0.5 px-3 py-1.5 border-b border-ctp-surface0/50 bg-ctp-mantle/50">
+  <div class="flex items-center gap-0.5 px-2 py-0.5 border-b border-ctp-surface0/20 bg-ctp-base">
     {#each toolGroups as group, gi}
       {#if gi > 0}
-        <div class="w-px h-4 bg-ctp-surface0/60 mx-1.5"></div>
+        <span class="text-ctp-surface1 text-[10px] mx-1">&middot;</span>
       {/if}
       {#each group as tool}
         <button on:click={tool.action} title={tool.title}
@@ -288,22 +286,6 @@
         </button>
       {/each}
     {/each}
-
-    <div class="flex-1"></div>
-
-    <div class="flex items-center gap-1.5 text-[12px]">
-      {#if dirty}
-        <span class="flex items-center gap-1 text-ctp-peach">
-          <span class="w-1.5 h-1.5 rounded-full bg-ctp-peach animate-pulse"></span>
-          Modified
-        </span>
-      {:else}
-        <span class="text-ctp-green flex items-center gap-1">
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 8l3 3 7-7" /></svg>
-          Saved
-        </span>
-      {/if}
-    </div>
   </div>
 
   <!-- CodeMirror editor -->
