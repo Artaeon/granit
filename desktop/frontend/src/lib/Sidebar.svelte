@@ -11,16 +11,21 @@
   let searchQuery = ''
   let expandedFolders = new Set<string>()
   let outlineExpanded = true
+  let viewMode: 'tree' | 'flat' = 'tree'
 
   $: flatItems = tree ? flattenTree(tree, 0) : []
+  $: allFlatNotes = tree ? getAllNotes(tree) : []
   $: filteredItems = searchQuery
-    ? flatItems.filter(item =>
+    ? (viewMode === 'flat' ? allFlatNotes : flatItems).filter(item =>
         !item.isFolder && item.name.toLowerCase().includes(searchQuery.toLowerCase())
       )
-    : flatItems
+    : viewMode === 'flat'
+      ? allFlatNotes
+      : flatItems
 
-  $: noteCount = flatItems.filter(i => !i.isFolder).length
+  $: noteCount = (tree ? getAllNotes(tree) : []).length
   $: folderCount = flatItems.filter(i => i.isFolder).length
+  $: folderNoteCounts = tree ? buildFolderCounts(tree) : new Map<string, number>()
 
   function flattenTree(node: FolderNode, depth: number): FlatTreeItem[] {
     const items: FlatTreeItem[] = []
@@ -40,6 +45,91 @@
       }
     }
     return items
+  }
+
+  /** Get all notes in flat alphabetical order with folder path as secondary info */
+  function getAllNotes(node: FolderNode, parentPath = ''): FlatTreeItem[] {
+    const notes: FlatTreeItem[] = []
+    if (!node.children) return notes
+    for (const child of node.children) {
+      if (child.isFolder && child.children) {
+        notes.push(...getAllNotes(child, child.path))
+      } else if (!child.isFolder) {
+        notes.push({
+          name: child.name,
+          path: child.path,
+          isFolder: false,
+          depth: 0,
+          expanded: false,
+        })
+      }
+    }
+    return notes.sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  /** Count the total notes inside each folder recursively */
+  function buildFolderCounts(node: FolderNode): Map<string, number> {
+    const counts = new Map<string, number>()
+    function countNotes(n: FolderNode): number {
+      if (!n.children) return 0
+      let total = 0
+      for (const child of n.children) {
+        if (child.isFolder) {
+          total += countNotes(child)
+        } else {
+          total += 1
+        }
+      }
+      counts.set(n.path, total)
+      return total
+    }
+    countNotes(node)
+    return counts
+  }
+
+  /** Collect all folder paths from the tree */
+  function collectFolderPaths(node: FolderNode): string[] {
+    const paths: string[] = []
+    if (!node.children) return paths
+    for (const child of node.children) {
+      if (child.isFolder) {
+        paths.push(child.path)
+        paths.push(...collectFolderPaths(child))
+      }
+    }
+    return paths
+  }
+
+  function expandAll() {
+    if (!tree) return
+    const allPaths = collectFolderPaths(tree)
+    expandedFolders = new Set(allPaths)
+  }
+
+  function collapseAll() {
+    expandedFolders = new Set()
+  }
+
+  /** Returns HTML with matching portion highlighted */
+  function highlightMatch(name: string, query: string): string {
+    if (!query) return escapeHtml(name)
+    const lower = name.toLowerCase()
+    const idx = lower.indexOf(query.toLowerCase())
+    if (idx === -1) return escapeHtml(name)
+    const before = name.slice(0, idx)
+    const match = name.slice(idx, idx + query.length)
+    const after = name.slice(idx + query.length)
+    return `${escapeHtml(before)}<span class="text-ctp-blue bg-ctp-blue/20 rounded-sm px-[1px]">${escapeHtml(match)}</span>${escapeHtml(after)}`
+  }
+
+  function escapeHtml(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  }
+
+  /** Extract the folder portion from a full note path */
+  function getFolderPath(path: string): string {
+    const idx = path.lastIndexOf('/')
+    return idx > 0 ? path.substring(0, idx) : ''
   }
 
   function toggleFolder(path: string) {
@@ -67,15 +157,57 @@
   <!-- Header -->
   <div class="flex items-center justify-between px-4 py-3">
     <span class="text-[12px] font-bold text-ctp-subtext0 uppercase tracking-[0.15em]">Explorer</span>
-    <button on:click={() => dispatch('create')}
-      class="w-[28px] h-[28px] flex items-center justify-center rounded-md text-ctp-overlay1
-             hover:bg-ctp-surface0 hover:text-ctp-text transition-all duration-100"
-      data-tooltip="New note"
-      title="New note (Ctrl+N)">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-        <path d="M8 3v10M3 8h10" />
-      </svg>
-    </button>
+    <div class="flex items-center gap-0.5">
+      <!-- Tree/Flat toggle -->
+      <button on:click={() => viewMode = viewMode === 'tree' ? 'flat' : 'tree'}
+        class="w-[28px] h-[28px] flex items-center justify-center rounded-md text-ctp-overlay1
+               hover:bg-ctp-surface0 hover:text-ctp-text transition-all duration-100"
+        title="{viewMode === 'tree' ? 'Switch to flat list' : 'Switch to tree view'}">
+        {#if viewMode === 'tree'}
+          <!-- List icon -->
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <path d="M3 4h10M3 8h10M3 12h10" />
+          </svg>
+        {:else}
+          <!-- Tree icon -->
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <path d="M4 3v10M4 6h4M4 10h6M8 6v2M10 10v2" />
+          </svg>
+        {/if}
+      </button>
+      <!-- Expand all -->
+      {#if viewMode === 'tree' && !searchQuery}
+        <button on:click={expandAll}
+          class="w-[28px] h-[28px] flex items-center justify-center rounded-md text-ctp-overlay1
+                 hover:bg-ctp-surface0 hover:text-ctp-text transition-all duration-100"
+          title="Expand all folders">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <path d="M4 6l4 4 4-4" />
+            <path d="M4 2l4 4 4-4" />
+          </svg>
+        </button>
+        <!-- Collapse all -->
+        <button on:click={collapseAll}
+          class="w-[28px] h-[28px] flex items-center justify-center rounded-md text-ctp-overlay1
+                 hover:bg-ctp-surface0 hover:text-ctp-text transition-all duration-100"
+          title="Collapse all folders">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <path d="M4 10l4-4 4 4" />
+            <path d="M4 14l4-4 4 4" />
+          </svg>
+        </button>
+      {/if}
+      <!-- New note -->
+      <button on:click={() => dispatch('create')}
+        class="w-[28px] h-[28px] flex items-center justify-center rounded-md text-ctp-overlay1
+               hover:bg-ctp-surface0 hover:text-ctp-text transition-all duration-100"
+        data-tooltip="New note"
+        title="New note (Ctrl+N)">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M8 3v10M3 8h10" />
+        </svg>
+      </button>
+    </div>
   </div>
 
   <!-- Search -->
@@ -103,7 +235,7 @@
       {#if item.isFolder}
         <button
           class="w-full flex items-center gap-1.5 px-2 py-[6px] text-[13px] text-ctp-subtext0
-                 hover:bg-ctp-surface0/50 hover:text-ctp-text rounded-md transition-all duration-75 group"
+                 hover:bg-ctp-surface0/60 hover:text-ctp-text rounded-md transition-all duration-75 group"
           style="padding-left: {8 + item.depth * 14}px"
           on:click={() => toggleFolder(item.path)}>
           <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -111,34 +243,48 @@
             class:rotate-90={item.expanded}>
             <path d="M6 4l4 4-4 4" />
           </svg>
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke-width="1.3" stroke-linecap="round" class="flex-shrink-0"
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke-width="1.3" stroke-linecap="round"
+            class="flex-shrink-0 transition-all duration-75 group-hover:brightness-125"
             stroke={item.expanded ? 'var(--ctp-peach)' : 'var(--ctp-yellow)'}>
             <path d="M2 5h5l1.5-2H13a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5z" />
           </svg>
-          <span class="truncate font-medium">{item.name}</span>
+          <span class="truncate font-medium flex-1 text-left">{item.name}</span>
+          {#if folderNoteCounts.has(item.path)}
+            <span class="text-[11px] text-ctp-overlay0 font-normal tabular-nums ml-auto mr-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100">{folderNoteCounts.get(item.path)}</span>
+          {/if}
         </button>
       {:else}
         {@const isActive = item.path === activeNotePath}
         <button
-          class="w-full flex items-center gap-1.5 px-2 py-[6px] text-[13px] rounded-md transition-all duration-75 group"
-          class:text-ctp-blue={isActive}
-          class:font-semibold={isActive}
-          class:text-ctp-subtext1={!isActive}
-          class:hover:bg-ctp-surface0={!isActive}
-          class:hover:text-ctp-text={!isActive}
-          style="padding-left: {8 + item.depth * 14 + 12}px;
-                 {isActive ? 'background: color-mix(in srgb, var(--ctp-blue) 12%, transparent);' : ''}"
+          class="w-full flex items-center gap-1.5 px-2 py-[6px] text-[13px] rounded-md transition-all duration-75 group relative
+                 {isActive ? 'text-ctp-blue font-bold' : 'text-ctp-subtext1 hover:bg-ctp-surface0/60 hover:text-ctp-text'}"
+          style="padding-left: {8 + (viewMode === 'flat' ? 0 : item.depth * 14) + 12}px;
+                 {isActive ? 'background: color-mix(in srgb, var(--ctp-blue) 15%, transparent);' : ''}"
           on:click={() => selectNote(item.path)}
           on:contextmenu={(e) => handleContextMenu(e, item.path)}>
+          <!-- Active indicator bar -->
           {#if isActive}
-            <div class="w-[3px] h-3.5 rounded-full bg-ctp-blue absolute left-1 flex-shrink-0"></div>
+            <div class="w-[3px] h-4 rounded-full bg-ctp-blue absolute left-[5px] flex-shrink-0"></div>
           {/if}
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none"
             stroke="{isActive ? 'var(--ctp-blue)' : 'var(--ctp-overlay1)'}"
-            stroke-width="1.3" stroke-linecap="round" class="flex-shrink-0">
+            stroke-width="1.3" stroke-linecap="round"
+            class="flex-shrink-0 transition-all duration-75 {isActive ? '' : 'group-hover:brightness-150'}">
             <path d="M4 2h8v12H4V2zm2 3h4m-4 2.5h3" />
           </svg>
-          <span class="truncate">{item.name}</span>
+          <div class="flex flex-col min-w-0 flex-1">
+            {#if searchQuery}
+              <span class="truncate">{@html highlightMatch(item.name, searchQuery)}</span>
+            {:else}
+              <span class="truncate">{item.name}</span>
+            {/if}
+            {#if viewMode === 'flat'}
+              {@const folder = getFolderPath(item.path)}
+              {#if folder}
+                <span class="text-[11px] text-ctp-overlay0 truncate leading-tight">{folder}</span>
+              {/if}
+            {/if}
+          </div>
         </button>
       {/if}
     {/each}

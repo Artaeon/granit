@@ -47,6 +47,7 @@ export interface Tab {
   dirty: boolean
   content: string
   scrollPos: number
+  cursorPos: number
 }
 
 export interface BacklinkEntry {

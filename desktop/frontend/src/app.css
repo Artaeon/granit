@@ -1543,6 +1543,77 @@ kbd {
   transition: width 0.2s ease, opacity 0.15s ease;
 }
 
+/* ======================== Splash Screen Animations ======================== */
+
+@keyframes logoReveal {
+  0% { opacity: 0; transform: scale(0.9); filter: blur(8px) drop-shadow(0 0 0 transparent); }
+  60% { opacity: 1; transform: scale(1.02); filter: blur(0) drop-shadow(0 0 30px color-mix(in srgb, var(--ctp-mauve) 30%, transparent)); }
+  100% { opacity: 1; transform: scale(1); filter: blur(0) drop-shadow(0 0 20px color-mix(in srgb, var(--ctp-mauve) 20%, transparent)); }
+}
+
+@keyframes taglineReveal {
+  from { opacity: 0; transform: translateY(6px); letter-spacing: 0.3em; }
+  to { opacity: 1; transform: translateY(0); letter-spacing: 0.05em; }
+}
+
+@keyframes buttonReveal {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 20px color-mix(in srgb, var(--ctp-blue) 20%, transparent); }
+  50% { box-shadow: 0 0 40px color-mix(in srgb, var(--ctp-blue) 35%, transparent), 0 4px 24px color-mix(in srgb, var(--ctp-blue) 20%, transparent); }
+}
+
+.splash-logo { animation: logoReveal 800ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.splash-tagline { animation: taglineReveal 600ms cubic-bezier(0.16, 1, 0.3, 1) 400ms both; }
+.splash-subtitle { animation: fadeSlideUp 400ms ease-out 700ms both; }
+.splash-button { animation: buttonReveal 500ms cubic-bezier(0.16, 1, 0.3, 1) 900ms both; }
+.splash-hints { animation: fadeSlideUp 400ms ease-out 1100ms both; }
+.splash-button:hover { animation: pulseGlow 2s ease-in-out infinite; }
+
+/* ======================== Quick Action Cards ======================== */
+
+.action-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.25rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--ctp-surface0);
+  background: color-mix(in srgb, var(--ctp-surface0) 30%, transparent);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+.action-card:hover {
+  background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
+  border-color: var(--ctp-surface1);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+.action-card:active {
+  transform: translateY(0);
+}
+
+/* ======================== Fuzzy Match Highlighting ======================== */
+
+mark.fuzzy-match {
+  color: var(--ctp-blue);
+  background: transparent;
+  font-weight: 700;
+}
+
+/* ======================== Sidebar Enhancements ======================== */
+
+.sidebar-search-match {
+  color: var(--ctp-blue);
+  background: color-mix(in srgb, var(--ctp-blue) 15%, transparent);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 /* ======================== Overlay Animations ======================== */
 
 @keyframes overlayFadeIn {

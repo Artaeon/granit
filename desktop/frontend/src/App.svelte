@@ -42,6 +42,7 @@
   // Tab state
   let tabs: Tab[] = []
   let activeTabIndex = -1
+  let editorRef: any
 
   // Backlinks panel
   let showBacklinks = true
@@ -199,6 +200,7 @@
         dirty: false,
         content: note?.content || '',
         scrollPos: 0,
+        cursorPos: 0,
       }]
       activeTabIndex = tabs.length - 1
 
@@ -211,9 +213,15 @@
   function switchToTab(index: number) {
     if (index === activeTabIndex || index < 0 || index >= tabs.length) return
 
-    // Save current tab state
+    // Save current tab state (content, dirty, scroll & cursor positions)
     if (activeTabIndex >= 0 && tabs[activeTabIndex]) {
-      tabs[activeTabIndex] = { ...tabs[activeTabIndex], content: editorContent, dirty }
+      tabs[activeTabIndex] = {
+        ...tabs[activeTabIndex],
+        content: editorContent,
+        dirty,
+        scrollPos: editorRef?.getScrollPos?.() ?? 0,
+        cursorPos: editorRef?.getCursorPos?.() ?? 0,
+      }
     }
 
     activeTabIndex = index
@@ -221,6 +229,14 @@
     editorContent = tab.content
     dirty = tab.dirty
     activeNotePath = tab.relPath
+
+    // Restore scroll & cursor after the editor updates with new content
+    requestAnimationFrame(() => {
+      if (editorRef) {
+        editorRef.setCursorPos?.(tab.cursorPos ?? 0)
+        editorRef.setScrollPos?.(tab.scrollPos ?? 0)
+      }
+    })
 
     api().GetNote(tab.relPath).then(note => { activeNote = note }).catch(() => {})
     loadBacklinks(tab.relPath)
@@ -606,29 +622,65 @@
 <svelte:window on:keydown={handleKeydown} on:mousemove={handleMouseMove} on:mouseup={stopResize} />
 
 {#if !vaultOpen}
-  <div class="flex items-center justify-center h-full bg-ctp-base">
-    <div class="text-center space-y-8" style="animation: fadeSlideUp 400ms ease-out">
-      <pre class="text-ctp-mauve text-sm leading-tight font-mono select-none" style="filter: drop-shadow(0 0 20px color-mix(in srgb, var(--ctp-mauve) 20%, transparent))">
+  <div class="flex items-center justify-center h-full bg-ctp-base overflow-hidden">
+    <div class="text-center space-y-8">
+      <!-- Logo with gradient glow backdrop -->
+      <div class="relative splash-logo">
+        <div class="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
+          <div class="w-[320px] h-[120px] rounded-full opacity-30 blur-[60px]"
+            style="background: radial-gradient(ellipse, var(--ctp-mauve), var(--ctp-blue), transparent 70%)"></div>
+        </div>
+        <pre class="relative text-ctp-mauve text-sm leading-tight font-mono select-none" style="filter: drop-shadow(0 0 24px color-mix(in srgb, var(--ctp-mauve) 25%, transparent))">
  ██████╗ ██████╗  █████╗ ███╗   ██╗██╗████████╗
 ██╔════╝ ██╔══██╗██╔══██╗████╗  ██║██║╚══██╔══╝
 ██║  ███╗██████╔╝███████║██╔██╗ ██║██║   ██║
 ██║   ██║██╔══██╗██╔══██║██║╚██╗██║██║   ██║
 ╚██████╔╝██║  ██║██║  ██║██║ ╚████║██║   ██║
  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝   ╚═╝</pre>
-      <div class="space-y-1">
-        <p class="text-ctp-subtext0 text-lg font-light tracking-wide">Knowledge Manager</p>
-        <p class="text-ctp-overlay1 text-xs tracking-wider">Notes &middot; Links &middot; Ideas</p>
       </div>
-      <button on:click={handleOpenVault}
-        class="block mx-auto px-10 py-3 bg-ctp-blue text-ctp-crust rounded-lg font-semibold
-               hover:shadow-lg hover:shadow-ctp-blue/20 hover:-translate-y-0.5
-               active:translate-y-0 transition-all duration-200 text-sm tracking-wide">
-        Open Vault
-      </button>
-      <div class="flex items-center justify-center gap-4 text-ctp-overlay1 text-[13px]">
-        <span class="flex items-center gap-1.5">
-          <kbd class="bg-ctp-surface0 px-1.5 py-0.5 rounded text-[12px]">Ctrl+O</kbd> browse
-        </span>
+
+      <!-- Tagline with typewriter effect -->
+      <div class="splash-tagline space-y-1.5">
+        <p class="text-ctp-subtext0 text-lg font-light tracking-wide splash-typewriter">Knowledge Manager</p>
+        <p class="text-ctp-overlay1 text-xs tracking-wider splash-typewriter-sub">Notes &middot; Links &middot; Ideas</p>
+        <p class="text-ctp-surface2 text-[11px] tracking-widest mt-2 splash-version">v0.1.0</p>
+      </div>
+
+      <!-- Open Vault button with gradient and glow -->
+      <div class="splash-actions">
+        <button on:click={handleOpenVault}
+          class="group relative block mx-auto px-12 py-3.5 rounded-xl font-semibold text-sm tracking-wide
+                 text-ctp-crust overflow-hidden
+                 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+          style="background: linear-gradient(135deg, var(--ctp-blue), var(--ctp-mauve)); box-shadow: 0 0 24px color-mix(in srgb, var(--ctp-blue) 30%, transparent), 0 4px 16px rgba(0,0,0,0.2)">
+          <span class="relative z-10 flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+              <path d="M2 5h5l1.5-2H13a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5z" />
+            </svg>
+            Open Vault
+          </span>
+          <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+            style="background: linear-gradient(135deg, var(--ctp-mauve), var(--ctp-blue))"></div>
+        </button>
+
+        <div class="flex items-center justify-center gap-4 text-ctp-overlay1 text-[13px] mt-4">
+          <span class="flex items-center gap-1.5">
+            <kbd class="bg-ctp-surface0 px-1.5 py-0.5 rounded text-[12px]">Ctrl+O</kbd> browse
+          </span>
+        </div>
+      </div>
+
+      <!-- Recent vaults placeholder -->
+      <div class="splash-recent pt-2">
+        <p class="text-ctp-surface2 text-[12px] uppercase tracking-widest mb-3">Recent Vaults</p>
+        <div class="flex flex-col items-center gap-1.5">
+          <button class="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] text-ctp-overlay1 bg-ctp-surface0/30 hover:bg-ctp-surface0/60 transition-colors w-56 text-left">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="text-ctp-mauve opacity-60 flex-shrink-0">
+              <path d="M2 5h5l1.5-2H13a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5z" />
+            </svg>
+            <span class="truncate text-ctp-subtext0">No recent vaults</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -752,7 +804,7 @@
         </div>
         <div class="flex-1 flex justify-center overflow-hidden">
           <div class="w-full max-w-[780px]">
-            <Editor content={editorContent} {dirty}
+            <Editor bind:this={editorRef} content={editorContent} {dirty}
               on:change={handleContentChange} on:save={handleSave}
               on:cursor={(e) => { cursorLine = e.detail.line; cursorCol = e.detail.col }} />
           </div>
@@ -784,33 +836,95 @@
 
           <div class="flex-1 flex min-h-0">
             {#if !activeNote}
+              {@const hour = new Date().getHours()}
+              {@const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}
+              {@const todayFormatted = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               <div class="flex-1 flex items-center justify-center">
-                <div class="text-center space-y-5" style="animation: fadeSlideUp 300ms ease-out">
-                  <svg width="48" height="48" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-surface2)" stroke-width="0.8" stroke-linecap="round" class="mx-auto opacity-40">
-                    <path d="M4 2h8v12H4V2z" /><path d="M6 5h4m-4 2.5h3m-3 2.5h2" />
-                  </svg>
-                  <div class="space-y-1">
-                    <p class="text-ctp-overlay1 text-[15px] font-light">Select a note to begin</p>
-                    <p class="text-ctp-overlay1 text-[13px]">or use a shortcut below</p>
+                <div class="empty-state-container text-center max-w-lg mx-auto px-6">
+                  <!-- Greeting -->
+                  <div class="empty-state-greeting mb-2">
+                    <p class="text-ctp-text text-2xl font-light tracking-wide">{greeting}</p>
+                    <p class="text-ctp-overlay1 text-[13px] mt-1">{todayFormatted}</p>
                   </div>
-                  <div class="flex items-center justify-center gap-6 text-[13px] text-ctp-overlay1">
-                    <button on:click={() => { paletteMode = 'files'; openOverlay('commandPalette') }}
-                      class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-ctp-surface0/50 hover:bg-ctp-surface0 transition-colors">
-                      <kbd class="text-[12px] bg-ctp-surface0 px-1 py-0.5 rounded">Ctrl+P</kbd> Search
-                    </button>
+
+                  <!-- Quick action cards — 2x2 grid -->
+                  <div class="empty-state-cards grid grid-cols-2 gap-3 mt-8">
                     <button on:click={handleCreateNote}
-                      class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-ctp-surface0/50 hover:bg-ctp-surface0 transition-colors">
-                      <kbd class="text-[12px] bg-ctp-surface0 px-1 py-0.5 rounded">Ctrl+N</kbd> Create
+                      class="group flex flex-col items-start gap-2 p-4 rounded-xl bg-ctp-surface0/30 border border-ctp-surface0/50
+                             hover:bg-ctp-surface0/60 hover:border-ctp-overlay0/40 hover:-translate-y-0.5
+                             transition-all duration-200 text-left">
+                      <div class="flex items-center justify-between w-full">
+                        <div class="w-9 h-9 rounded-lg flex items-center justify-center bg-ctp-green/10 text-ctp-green">
+                          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                            <path d="M8 3v10M3 8h10" />
+                          </svg>
+                        </div>
+                        <kbd class="text-[11px] text-ctp-surface2 bg-ctp-surface0/60 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">Ctrl+N</kbd>
+                      </div>
+                      <div>
+                        <p class="text-ctp-text text-[14px] font-medium">New Note</p>
+                        <p class="text-ctp-overlay1 text-[12px] mt-0.5">Create a blank note</p>
+                      </div>
                     </button>
+
+                    <button on:click={() => dispatchCommand('daily_note')}
+                      class="group flex flex-col items-start gap-2 p-4 rounded-xl bg-ctp-surface0/30 border border-ctp-surface0/50
+                             hover:bg-ctp-surface0/60 hover:border-ctp-overlay0/40 hover:-translate-y-0.5
+                             transition-all duration-200 text-left">
+                      <div class="flex items-center justify-between w-full">
+                        <div class="w-9 h-9 rounded-lg flex items-center justify-center bg-ctp-peach/10 text-ctp-peach">
+                          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                            <rect x="2" y="2" width="12" height="12" rx="2" /><path d="M2 6h12M5 2v2M11 2v2" />
+                          </svg>
+                        </div>
+                        <kbd class="text-[11px] text-ctp-surface2 bg-ctp-surface0/60 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">Alt+D</kbd>
+                      </div>
+                      <div>
+                        <p class="text-ctp-text text-[14px] font-medium">Daily Note</p>
+                        <p class="text-ctp-overlay1 text-[12px] mt-0.5">Open today's journal</p>
+                      </div>
+                    </button>
+
+                    <button on:click={() => openContentSearch()}
+                      class="group flex flex-col items-start gap-2 p-4 rounded-xl bg-ctp-surface0/30 border border-ctp-surface0/50
+                             hover:bg-ctp-surface0/60 hover:border-ctp-overlay0/40 hover:-translate-y-0.5
+                             transition-all duration-200 text-left">
+                      <div class="flex items-center justify-between w-full">
+                        <div class="w-9 h-9 rounded-lg flex items-center justify-center bg-ctp-blue/10 text-ctp-blue">
+                          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                            <circle cx="7" cy="7" r="4" /><path d="M10 10l3.5 3.5" />
+                          </svg>
+                        </div>
+                        <kbd class="text-[11px] text-ctp-surface2 bg-ctp-surface0/60 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">Ctrl+Shift+F</kbd>
+                      </div>
+                      <div>
+                        <p class="text-ctp-text text-[14px] font-medium">Search Vault</p>
+                        <p class="text-ctp-overlay1 text-[12px] mt-0.5">Find across all notes</p>
+                      </div>
+                    </button>
+
                     <button on:click={openQuickSwitcher}
-                      class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-ctp-surface0/50 hover:bg-ctp-surface0 transition-colors">
-                      <kbd class="text-[12px] bg-ctp-surface0 px-1 py-0.5 rounded">Ctrl+J</kbd> Switch
+                      class="group flex flex-col items-start gap-2 p-4 rounded-xl bg-ctp-surface0/30 border border-ctp-surface0/50
+                             hover:bg-ctp-surface0/60 hover:border-ctp-overlay0/40 hover:-translate-y-0.5
+                             transition-all duration-200 text-left">
+                      <div class="flex items-center justify-between w-full">
+                        <div class="w-9 h-9 rounded-lg flex items-center justify-center bg-ctp-mauve/10 text-ctp-mauve">
+                          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                            <path d="M3 4h10M3 8h7M3 12h5" /><path d="M12 10l2 2-2 2" />
+                          </svg>
+                        </div>
+                        <kbd class="text-[11px] text-ctp-surface2 bg-ctp-surface0/60 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">Ctrl+J</kbd>
+                      </div>
+                      <div>
+                        <p class="text-ctp-text text-[14px] font-medium">Quick Switch</p>
+                        <p class="text-ctp-overlay1 text-[12px] mt-0.5">Jump to any note fast</p>
+                      </div>
                     </button>
                   </div>
                 </div>
               </div>
             {:else if mode === 'edit'}
-              <Editor content={editorContent} {dirty}
+              <Editor bind:this={editorRef} content={editorContent} {dirty}
                 on:change={handleContentChange} on:save={handleSave}
                 on:cursor={(e) => { cursorLine = e.detail.line; cursorCol = e.detail.col }} />
             {:else if mode === 'preview'}
@@ -818,7 +932,7 @@
             {:else}
               <div class="flex-1 flex">
                 <div class="w-1/2 border-r border-ctp-surface0">
-                  <Editor content={editorContent} {dirty}
+                  <Editor bind:this={editorRef} content={editorContent} {dirty}
                     on:change={handleContentChange} on:save={handleSave}
                     on:cursor={(e) => { cursorLine = e.detail.line; cursorCol = e.detail.col }} />
                 </div>
@@ -1235,3 +1349,65 @@
       on:close={closeContextMenu} />
   {/if}
 {/if}
+
+<style>
+  /* Splash screen phased reveal animations */
+  .splash-logo {
+    animation: splashFadeIn 600ms ease-out both;
+  }
+  .splash-tagline {
+    animation: splashFadeIn 500ms ease-out 400ms both;
+  }
+  .splash-typewriter {
+    display: inline-block;
+    overflow: hidden;
+    white-space: nowrap;
+    border-right: 2px solid var(--ctp-mauve);
+    animation: splashFadeIn 500ms ease-out 400ms both, splashTypewriter 1.2s steps(18) 500ms both, splashBlinkCaret 600ms step-end 500ms 3;
+  }
+  .splash-typewriter-sub {
+    animation: splashFadeIn 400ms ease-out 1000ms both;
+  }
+  .splash-version {
+    animation: splashFadeIn 400ms ease-out 1200ms both;
+  }
+  .splash-actions {
+    animation: splashSlideUp 500ms ease-out 800ms both;
+  }
+  .splash-recent {
+    animation: splashSlideUp 500ms ease-out 1100ms both;
+  }
+
+  @keyframes splashFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes splashSlideUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes splashTypewriter {
+    from { max-width: 0; }
+    to { max-width: 100%; }
+  }
+  @keyframes splashBlinkCaret {
+    50% { border-color: transparent; }
+  }
+
+  /* Empty state (no active note) animations */
+  .empty-state-greeting {
+    animation: emptyFadeIn 400ms ease-out both;
+  }
+  .empty-state-cards {
+    animation: emptySlideUp 400ms ease-out 150ms both;
+  }
+
+  @keyframes emptyFadeIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes emptySlideUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>

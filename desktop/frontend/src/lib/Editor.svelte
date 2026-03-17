@@ -205,6 +205,32 @@
     view.focus()
   }
 
+  // Exported scroll/cursor position helpers for tab restore
+  export function getScrollPos(): number {
+    if (!view) return 0
+    return view.scrollDOM.scrollTop
+  }
+
+  export function setScrollPos(pos: number) {
+    if (!view) return
+    // Defer to next tick so the editor has rendered the new content
+    requestAnimationFrame(() => {
+      if (view) view.scrollDOM.scrollTop = pos
+    })
+  }
+
+  export function getCursorPos(): number {
+    if (!view) return 0
+    return view.state.selection.main.head
+  }
+
+  export function setCursorPos(pos: number) {
+    if (!view) return
+    const docLen = view.state.doc.length
+    const safePos = Math.min(pos, docLen)
+    view.dispatch({ selection: { anchor: safePos } })
+  }
+
   // SVG icon paths (16x16 viewBox)
   const icons = {
     bold: 'M4 2h5a3 3 0 0 1 0 6H4zm0 6h6a3 3 0 0 1 0 6H4z',
