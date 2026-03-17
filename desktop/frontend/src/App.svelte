@@ -497,12 +497,13 @@
           })
         }
         break
-      case 'daily_note':
+      case 'daily_note': {
         const today = new Date().toISOString().split('T')[0]
         const existing = notes.find(n => n.relPath === today + '.md')
         if (existing) { handleSelectNote(new CustomEvent('s', { detail: existing.relPath })) }
         else { const p = await api().CreateNote(today, `---\ndate: ${today}\ntype: daily\ntags: [daily]\n---\n\n# ${today}\n\n## Tasks\n- [ ]\n\n## Notes\n\n`); await refreshTree(); handleSelectNote(new CustomEvent('s', { detail: p })) }
         break
+      }
       case 'quit': window.close(); break
       // Aliases: commands.ts uses short names, map to show_* openers
       case 'kanban': openKanban(); break
@@ -539,13 +540,14 @@
           try { await api().CreateFolder(name); await refreshTree() } catch (e) { console.error(e) }
         })
         break
-      case 'weekly_note':
+      case 'weekly_note': {
         const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1)
         const weekStr = weekStart.toISOString().split('T')[0]
         const weekNote = notes.find(n => n.relPath.includes(weekStr))
         if (weekNote) { handleSelectNote(new CustomEvent('s', { detail: weekNote.relPath })) }
         else { const wp = await api().CreateNote(`weekly-${weekStr}`, `---\ndate: ${weekStr}\ntype: weekly\ntags: [weekly]\n---\n\n# Week of ${weekStr}\n\n## Goals\n- [ ]\n\n## Review\n\n`); await refreshTree(); handleSelectNote(new CustomEvent('s', { detail: wp })) }
         break
+      }
       default: break
     }
   }
@@ -596,7 +598,7 @@
         ',': () => openSettings(),
         'g': () => openGraph(),
         't': () => openTags(),
-        'o': () => openOutlineOverlay(),
+        'o': () => { vaultOpen ? openOutlineOverlay() : handleOpenVault() },
         'b': () => { if (mode !== 'edit' && mode !== 'split') openBookmarks() },
         'f': () => openFindReplace(),
         'h': () => openFindReplace(),
@@ -606,7 +608,6 @@
         'j': () => openQuickSwitcher(),
         'k': () => dispatchCommand('task_manager'),
         'q': () => window.close(),
-        'o': () => { if (!vaultOpen) handleOpenVault() },
       }
       if (handlers[key]) { event.preventDefault(); handlers[key]() }
     }
@@ -619,7 +620,8 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKeydown} on:mousemove={handleMouseMove} on:mouseup={stopResize} />
+<svelte:window on:keydown={handleKeydown} on:mousemove={handleMouseMove} on:mouseup={stopResize}
+  on:beforeunload={(e) => { if (dirty) { e.preventDefault(); e.returnValue = '' } }} />
 
 {#if !vaultOpen}
   <div class="flex items-center justify-center h-full bg-ctp-base overflow-hidden">
@@ -982,6 +984,10 @@
     {:then mod}
       <svelte:component this={mod.default} data={graphData} on:select={(e) => { closeOverlay('graph'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
         on:close={() => closeOverlay('graph')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.tags}
@@ -992,6 +998,10 @@
         on:selectTag={async (e) => { notesForTag = await api().GetNotesForTag(e.detail) || [] }}
         on:openNote={(e) => { closeOverlay('tags'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
         on:close={() => closeOverlay('tags')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.bookmarks}
@@ -1012,6 +1022,10 @@
       <div class="overlay-loading"></div>
     {:then mod}
       <svelte:component this={mod.default} stats={statsData} on:close={() => closeOverlay('stats')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.templates}
@@ -1021,6 +1035,10 @@
       <svelte:component this={mod.default} templates={templatesData}
         on:create={async (e) => { const p = await api().CreateFromTemplate(e.detail.idx, e.detail.name); closeOverlay('templates'); await refreshTree(); handleSelectNote(new CustomEvent('s', { detail: p })) }}
         on:close={() => closeOverlay('templates')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.trash}
@@ -1031,6 +1049,10 @@
         on:restore={async (e) => { await api().RestoreFromTrash(e.detail); trashData = await api().GetTrashItems() || []; await refreshTree() }}
         on:purge={async (e) => { await api().PurgeFromTrash(e.detail); trashData = await api().GetTrashItems() || [] }}
         on:close={() => closeOverlay('trash')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.git}
@@ -1043,6 +1065,10 @@
         on:push={async () => { try { gitMessage = await api().GitPush() } catch (err) { gitMessage = 'Push failed: ' + err } }}
         on:pull={async () => { try { gitMessage = await api().GitPull(); await refreshGit() } catch (err) { gitMessage = 'Pull failed: ' + err } }}
         on:close={() => closeOverlay('git')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.bots}
@@ -1052,6 +1078,10 @@
       <svelte:component this={mod.default} bind:this={botsRef} bots={botsList}
         on:run={async (e) => { try { const r = await api().RunBot(e.detail.kind, activeNotePath || '', e.detail.question || ''); botsRef.setResult(r) } catch (err) { botsRef.setError(String(err)) } }}
         on:close={() => closeOverlay('bots')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.calendar}
@@ -1063,6 +1093,10 @@
         on:toggleTask={async (e) => { await api().ToggleTask(e.detail.notePath, e.detail.lineNum); const now = new Date(); calendarData = await api().GetCalendarData(now.getFullYear(), now.getMonth() + 1) }}
         on:openNote={(e) => { closeOverlay('calendar'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
         on:close={() => closeOverlay('calendar')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.export}
@@ -1077,6 +1111,10 @@
           else if (e.detail === 'all') exportMessage = await api().ExportAll()
         } catch (err) { exportMessage = 'Error: ' + err } }}
         on:close={() => closeOverlay('export')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.findReplace}
@@ -1100,6 +1138,10 @@
       <div class="overlay-loading"></div>
     {:then mod}
       <svelte:component this={mod.default} on:close={() => closeOverlay('canvas')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.kanban}
@@ -1108,6 +1150,10 @@
     {:then mod}
       <svelte:component this={mod.default} on:close={() => closeOverlay('kanban')}
         on:openNote={(e) => { closeOverlay('kanban'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.taskManager}
@@ -1117,6 +1163,10 @@
       <svelte:component this={mod.default}
         on:openNote={(e) => { closeOverlay('taskManager'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
         on:close={() => closeOverlay('taskManager')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.pomodoro}
@@ -1124,6 +1174,10 @@
       <div class="overlay-loading"></div>
     {:then mod}
       <svelte:component this={mod.default} on:close={() => closeOverlay('pomodoro')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.habitTracker}
@@ -1131,6 +1185,10 @@
       <div class="overlay-loading"></div>
     {:then mod}
       <svelte:component this={mod.default} on:close={() => closeOverlay('habitTracker')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.dailyPlanner}
@@ -1138,6 +1196,10 @@
       <div class="overlay-loading"></div>
     {:then mod}
       <svelte:component this={mod.default} on:close={() => closeOverlay('dailyPlanner')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.dailyBriefing}
@@ -1147,6 +1209,10 @@
       <svelte:component this={mod.default}
         on:openNote={(e) => { closeOverlay('dailyBriefing'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
         on:close={() => closeOverlay('dailyBriefing')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.journalPrompts}
@@ -1156,6 +1222,10 @@
       <svelte:component this={mod.default}
         on:create={async (e) => { const p = await api().CreateNote(e.detail.name, e.detail.content); closeOverlay('journalPrompts'); await refreshTree(); handleSelectNote(new CustomEvent('s', { detail: p })) }}
         on:close={() => closeOverlay('journalPrompts')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.writingCoach}
@@ -1164,6 +1234,10 @@
     {:then mod}
       <svelte:component this={mod.default} content={editorContent} notePath={activeNotePath}
         on:close={() => closeOverlay('writingCoach')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.flashcards}
@@ -1172,6 +1246,10 @@
     {:then mod}
       <svelte:component this={mod.default} notePath={activeNotePath}
         on:close={() => closeOverlay('flashcards')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.quiz}
@@ -1180,6 +1258,10 @@
     {:then mod}
       <svelte:component this={mod.default} notePath={activeNotePath}
         on:close={() => closeOverlay('quiz')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.mindMap}
@@ -1189,6 +1271,10 @@
       <svelte:component this={mod.default} notePath={activeNotePath}
         on:select={(e) => { closeOverlay('mindMap'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
         on:close={() => closeOverlay('mindMap')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.timeline}
@@ -1198,6 +1284,10 @@
       <svelte:component this={mod.default}
         on:select={(e) => { closeOverlay('timeline'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
         on:close={() => closeOverlay('timeline')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.aiChat}
@@ -1206,6 +1296,10 @@
     {:then mod}
       <svelte:component this={mod.default} noteTitle={activeNote?.title || ''} noteContent={editorContent}
         on:close={() => closeOverlay('aiChat')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.snippets}
@@ -1213,6 +1307,10 @@
       <div class="overlay-loading"></div>
     {:then mod}
       <svelte:component this={mod.default} on:close={() => closeOverlay('snippets')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.tableEditor}
@@ -1222,6 +1320,10 @@
       <svelte:component this={mod.default}
         on:insert={(e) => { closeOverlay('tableEditor') }}
         on:close={() => closeOverlay('tableEditor')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.pluginManager}
@@ -1230,6 +1332,10 @@
     {:then mod}
       <svelte:component this={mod.default} plugins={pluginsData}
         on:close={() => closeOverlay('pluginManager')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.dataview}
@@ -1239,6 +1345,10 @@
       <svelte:component this={mod.default}
         on:openNote={(e) => { closeOverlay('dataview'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
         on:close={() => closeOverlay('dataview')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.noteHistory}
@@ -1247,6 +1357,10 @@
     {:then mod}
       <svelte:component this={mod.default} notePath={activeNotePath} entries={noteHistoryData}
         on:close={() => closeOverlay('noteHistory')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.workspaceManager}
@@ -1254,6 +1368,10 @@
       <div class="overlay-loading"></div>
     {:then mod}
       <svelte:component this={mod.default} on:close={() => closeOverlay('workspaceManager')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.backupRestore}
@@ -1261,6 +1379,10 @@
       <div class="overlay-loading"></div>
     {:then mod}
       <svelte:component this={mod.default} on:close={() => closeOverlay('backupRestore')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.autoLink}
@@ -1269,6 +1391,10 @@
     {:then mod}
       <svelte:component this={mod.default} suggestions={autoLinkData} notePath={activeNotePath}
         on:close={() => closeOverlay('autoLink')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.blogPublisher}
@@ -1277,6 +1403,10 @@
     {:then mod}
       <svelte:component this={mod.default} notePath={activeNotePath} noteTitle={activeNote?.title || ''}
         on:close={() => closeOverlay('blogPublisher')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.encryption}
@@ -1285,6 +1415,10 @@
     {:then mod}
       <svelte:component this={mod.default} notePath={activeNotePath}
         on:close={() => closeOverlay('encryption')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.recurringTasks}
@@ -1294,6 +1428,10 @@
       <svelte:component this={mod.default}
         on:openNote={(e) => { closeOverlay('recurringTasks'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
         on:close={() => closeOverlay('recurringTasks')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
   {#if overlays.smartConnections}
@@ -1303,6 +1441,10 @@
       <svelte:component this={mod.default} notePath={activeNotePath} noteTitle={activeNote?.title || ''}
         on:openNote={(e) => { closeOverlay('smartConnections'); handleSelectNote(new CustomEvent('s', { detail: e.detail })) }}
         on:close={() => closeOverlay('smartConnections')} />
+    {:catch}
+      <div class="overlay-loading" style="cursor:pointer" on:click={() => closeAllOverlays()}>
+        <span style="color:var(--ctp-red);font-size:13px;position:absolute;bottom:45%;text-align:center">Failed to load. Click to close.</span>
+      </div>
     {/await}
   {/if}
 

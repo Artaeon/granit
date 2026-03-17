@@ -47,7 +47,7 @@
       const before = text.slice(0, subIdx)
       const match = text.slice(subIdx, subIdx + ql.length)
       const after = text.slice(subIdx + ql.length)
-      return escape(before) + '<mark class="text-ctp-blue bg-transparent font-bold">' + escape(match) + '</mark>' + escape(after)
+      return escapeHtml(before) + '<mark class="text-ctp-blue bg-transparent font-bold">' + escapeHtml(match) + '</mark>' + escapeHtml(after)
     }
 
     // Fuzzy: highlight individual matched characters
@@ -59,21 +59,21 @@
         qi++
       }
     }
-    if (qi < ql.length) return escape(text)
+    if (qi < ql.length) return escapeHtml(text)
 
     const matchSet = new Set(indices)
     let result = ''
     for (let i = 0; i < text.length; i++) {
       if (matchSet.has(i)) {
-        result += '<mark class="text-ctp-blue bg-transparent font-bold">' + escape(text[i]) + '</mark>'
+        result += '<mark class="text-ctp-blue bg-transparent font-bold">' + escapeHtml(text[i]) + '</mark>'
       } else {
-        result += escape(text[i])
+        result += escapeHtml(text[i])
       }
     }
     return result
   }
 
-  function escape(s: string): string {
+  function escapeHtml(s: string): string {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   }
 

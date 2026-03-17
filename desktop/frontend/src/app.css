@@ -1679,10 +1679,6 @@ textarea:focus {
 
 /* ======================== Spinner ======================== */
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 .spinner {
   display: inline-block;
   width: 14px;
