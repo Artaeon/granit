@@ -548,6 +548,62 @@
         else { const wp = await api().CreateNote(`weekly-${weekStr}`, `---\ndate: ${weekStr}\ntype: weekly\ntags: [weekly]\n---\n\n# Week of ${weekStr}\n\n## Goals\n- [ ]\n\n## Review\n\n`); await refreshTree(); handleSelectNote(new CustomEvent('s', { detail: wp })) }
         break
       }
+      // Previously unhandled commands — now wired up
+      case 'ai_compose': openAiChat(); break
+      case 'ai_template': openTemplates(); break
+      case 'clock_in': case 'clock_out': openPomodoro(); break
+      case 'command_center': { paletteMode = 'commands'; openOverlay('commandPalette') }; break
+      case 'extract_to_note':
+        if (activeNotePath && editorContent) {
+          showInputDialog('Extract to Note', 'New note name...', '', 'Extract', async (name) => {
+            closeInputDialog()
+            try {
+              const p = await api().CreateNote(name, `---\ndate: ${new Date().toISOString().split('T')[0]}\n---\n\n`)
+              await refreshTree()
+              handleSelectNote(new CustomEvent('s', { detail: p }))
+            } catch (e) { console.error(e) }
+          })
+        }
+        break
+      case 'frontmatter_edit': break // handled in-editor
+      case 'import_obsidian': break // TODO: needs import wizard
+      case 'knowledge_gaps': openSmartConnections(); break
+      case 'layout_dashboard': showSidebar = true; showBacklinks = true; break
+      case 'move_file':
+        if (activeNotePath) {
+          showInputDialog('Move to Folder', 'Folder path...', '', 'Move', async (dir) => {
+            closeInputDialog()
+            try { await api().MoveFile(activeNotePath, dir); await refreshTree() } catch (e) { console.error(e) }
+          })
+        }
+        break
+      case 'nav_back': case 'nav_forward': break // TODO: navigation history stack
+      case 'next_daily': case 'prev_daily': {
+        const d = new Date()
+        d.setDate(d.getDate() + (action === 'next_daily' ? 1 : -1))
+        const ds = d.toISOString().split('T')[0]
+        const dn = notes.find(n => n.relPath.includes(ds))
+        if (dn) handleSelectNote(new CustomEvent('s', { detail: dn.relPath }))
+        break
+      }
+      case 'note_enhancer': openBots(); break
+      case 'quick_capture':
+        showInputDialog('Quick Capture', 'Quick thought...', '', 'Save', async (text) => {
+          closeInputDialog()
+          try {
+            const ts = new Date().toISOString().replace(/[:.]/g, '-')
+            await api().CreateNote(`inbox-${ts}`, `---\ndate: ${new Date().toISOString().split('T')[0]}\ntags: [inbox]\n---\n\n${text}\n`)
+            await refreshTree()
+          } catch (e) { console.error(e) }
+        })
+        break
+      case 'research_agent': openAiChat(); break
+      case 'show_tutorial': openHelp(); break
+      case 'toggle_ghost_writer': break // TODO: needs CodeMirror extension
+      case 'toggle_vim': break // TODO: needs @codemirror/vim
+      case 'toggle_word_wrap': break // CodeMirror handles this
+      case 'vault_analyzer': openStats(); break
+      case 'vault_switch': handleOpenVault(); break
       default: break
     }
   }
