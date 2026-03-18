@@ -475,7 +475,7 @@ func (vs VaultSelector) viewPathInput() string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(blue).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(panelWidth).
 		Background(mantle)
@@ -554,7 +554,7 @@ func (vs VaultSelector) viewNameInput() string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(peach).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(panelWidth).
 		Background(mantle)
