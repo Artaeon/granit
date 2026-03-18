@@ -831,17 +831,13 @@ func (kg KnowledgeGaps) View() string {
 				nameStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 				title := f.Title
 				maxTitleLen := innerWidth - 8
-				if len(title) > maxTitleLen {
-					title = title[:maxTitleLen-3] + "..."
-				}
+				title = TruncateDisplay(title, maxTitleLen)
 				b.WriteString(accentBar + " " + severityIcon + " " + nameStyle.Render(title))
 			} else {
 				nameStyle := lipgloss.NewStyle().Foreground(text)
 				title := f.Title
 				maxTitleLen := innerWidth - 8
-				if len(title) > maxTitleLen {
-					title = title[:maxTitleLen-3] + "..."
-				}
+				title = TruncateDisplay(title, maxTitleLen)
 				b.WriteString("  " + severityIcon + " " + nameStyle.Render(title))
 			}
 			b.WriteString("\n")
@@ -850,9 +846,7 @@ func (kg KnowledgeGaps) View() string {
 			descStyle := lipgloss.NewStyle().Foreground(overlay0)
 			desc := f.Description
 			maxDescLen := innerWidth - 6
-			if len(desc) > maxDescLen {
-				desc = desc[:maxDescLen-3] + "..."
-			}
+			desc = TruncateDisplay(desc, maxDescLen)
 			b.WriteString("     " + descStyle.Render(desc))
 			b.WriteString("\n")
 		}
