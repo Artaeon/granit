@@ -123,9 +123,7 @@ func (np NotePreview) View() string {
 	if displayTitle == "" {
 		displayTitle = "Untitled"
 	}
-	if len(displayTitle) > innerWidth-2 {
-		displayTitle = displayTitle[:innerWidth-5] + "..."
-	}
+	displayTitle = TruncateDisplay(displayTitle, innerWidth-2)
 	titleRendered := lipgloss.NewStyle().
 		Foreground(mauve).
 		Bold(true).
