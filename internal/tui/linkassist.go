@@ -349,15 +349,9 @@ func (la LinkAssist) View() string {
 	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
 	b.WriteString("\n")
 
-	// Help bar.
-	spaceKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Space/Enter")
-	spaceDesc := DimStyle.Render(": toggle  ")
-	applyKey := lipgloss.NewStyle().Foreground(green).Bold(true).Render("a")
-	applyDesc := DimStyle.Render(": apply  ")
-	escKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Esc")
-	escDesc := DimStyle.Render(": cancel")
-
-	b.WriteString("  " + spaceKey + spaceDesc + applyKey + applyDesc + escKey + escDesc)
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Space/Enter", "toggle"}, {"a", "apply"}, {"Esc", "cancel"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
