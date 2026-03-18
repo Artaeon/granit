@@ -770,7 +770,7 @@ func (fc Flashcards) viewReview() string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(peach).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(w).
 		Background(mantle)
