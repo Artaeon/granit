@@ -822,10 +822,9 @@ type footerKey struct {
 
 // renderFooterKeys renders a styled footer with key hints.
 func (nh NoteHistory) renderFooterKeys(keys []footerKey) string {
-	var parts []string
-	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-	for _, fk := range keys {
-		parts = append(parts, keyStyle.Render(fk.key)+DimStyle.Render(": "+fk.desc))
+	pairs := make([]struct{ Key, Desc string }, len(keys))
+	for i, fk := range keys {
+		pairs[i] = struct{ Key, Desc string }{fk.key, fk.desc}
 	}
-	return "  " + strings.Join(parts, DimStyle.Render("  "))
+	return RenderHelpBar(pairs)
 }
