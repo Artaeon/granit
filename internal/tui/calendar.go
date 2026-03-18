@@ -721,14 +721,7 @@ func (c Calendar) viewWeek() string {
 				case "event":
 					tag = "[E]"
 				}
-				pbText := pb.Text
-				maxLen := width - 30
-				if maxLen < 20 {
-					maxLen = 20
-				}
-				if len(pbText) > maxLen {
-					pbText = pbText[:maxLen-3] + "..."
-				}
+				pbText := TruncateDisplay(pb.Text, width-30)
 				pbStyle := lipgloss.NewStyle().Foreground(lavender)
 				suffix := ""
 				if pb.Done {
@@ -743,14 +736,7 @@ func (c Calendar) viewWeek() string {
 				if task.Done {
 					checkIcon = lipgloss.NewStyle().Foreground(green).Render("●")
 				}
-				taskText := task.Text
-				maxLen := width - 30
-				if maxLen < 20 {
-					maxLen = 20
-				}
-				if len(taskText) > maxLen {
-					taskText = taskText[:maxLen-3] + "..."
-				}
+				taskText := TruncateDisplay(task.Text, width-30)
 				weekLines = append(weekLines, "    "+checkIcon+" "+lipgloss.NewStyle().Foreground(text).Render(taskText))
 			}
 		}
@@ -968,10 +954,7 @@ func (c Calendar) viewAgenda() string {
 			case "event":
 				tag = "[E]"
 			}
-			pbText := pb.Text
-			if len(pbText) > width-22 {
-				pbText = pbText[:width-25] + "..."
-			}
+			pbText := TruncateDisplay(pb.Text, width-22)
 			pbStyle := lipgloss.NewStyle().Foreground(lavender)
 			doneMarker := ""
 			if pb.Done {
@@ -995,10 +978,7 @@ func (c Calendar) viewAgenda() string {
 			if task.Done {
 				checkIcon = lipgloss.NewStyle().Foreground(green).Render("●")
 			}
-			taskText := task.Text
-			if len(taskText) > width-12 {
-				taskText = taskText[:width-15] + "..."
-			}
+			taskText := TruncateDisplay(task.Text, width-12)
 			textColor := text
 			if task.Priority > 0 {
 				textColor = priorityColor(task.Priority)
@@ -1010,7 +990,7 @@ func (c Calendar) viewAgenda() string {
 
 		// If nothing for this day, show dim "No events"
 		if len(dayEvents) == 0 && len(dayTasks) == 0 && len(dayPlannerBlocks) == 0 && !hasNote {
-			section.lines = append(section.lines, DimStyle.Render("    No events"))
+			section.lines = append(section.lines, DimStyle.Render("    No events or tasks. Press 'a' to add one."))
 			section.items = append(section.items, -1)
 		}
 
