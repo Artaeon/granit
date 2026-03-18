@@ -71,13 +71,7 @@ func (ce clipEntry) preview(maxLen int) string {
 	line := strings.ReplaceAll(ce.Text, "\n", " ")
 	line = strings.ReplaceAll(line, "\r", "")
 	line = strings.Join(strings.Fields(line), " ")
-	if len(line) > maxLen {
-		if maxLen > 3 {
-			return line[:maxLen-3] + "..."
-		}
-		return line[:maxLen]
-	}
-	return line
+	return TruncateDisplay(line, maxLen)
 }
 
 // ClipManager provides a clipboard history overlay for the TUI.
