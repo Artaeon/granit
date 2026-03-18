@@ -1161,7 +1161,7 @@ func (ss *SemanticSearch) View() string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(yellow).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(panelWidth).
 		Background(mantle)
