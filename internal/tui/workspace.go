@@ -374,11 +374,8 @@ func (w Workspace) View() string {
 			}
 
 			// Workspace name
-			name := layout.Name
 			maxNameLen := 16
-			if len(name) > maxNameLen {
-				name = name[:maxNameLen-1] + "…"
-			}
+			name := TruncateDisplay(layout.Name, maxNameLen)
 
 			// Active note — show just the basename without .md
 			activeNote := ""
@@ -389,9 +386,7 @@ func (w Workspace) View() string {
 			if maxNoteLen < 8 {
 				maxNoteLen = 8
 			}
-			if len(activeNote) > maxNoteLen {
-				activeNote = activeNote[:maxNoteLen-1] + "…"
-			}
+			activeNote = TruncateDisplay(activeNote, maxNoteLen)
 
 			// Date — show just the date portion
 			date := layout.CreatedAt
