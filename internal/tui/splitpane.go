@@ -441,9 +441,7 @@ func (sp SplitPane) renderPane(pane paneState, width, visH int, focused bool) st
 	if maxTitleLen < 5 {
 		maxTitleLen = 5
 	}
-	if len(titleStr) > maxTitleLen {
-		titleStr = titleStr[:maxTitleLen-3] + "..."
-	}
+	titleStr = TruncateDisplay(titleStr, maxTitleLen)
 
 	var titleRendered string
 	if focused {
