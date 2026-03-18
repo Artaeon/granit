@@ -338,15 +338,24 @@ func (cs ContentSearch) View() string {
 		}
 	}
 
+	// Scroll indicator
+	if len(cs.results) > cs.visibleHeight() {
+		b.WriteString("\n")
+		b.WriteString(DimStyle.Render("  " + ScrollIndicator(cs.scroll, len(cs.results), cs.visibleHeight())))
+	}
+
 	// Footer
 	b.WriteString("\n\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerWidth)))
 	b.WriteString("\n")
-	footer := "  Enter: jump  ↑↓: history  Alt+R: regex  Alt+M: mode  Esc: close"
-	if len(cs.results) > 0 {
-		footer += "  (" + smallNum(len(cs.results)) + " results)"
+	pairs := []struct{ Key, Desc string }{
+		{"Enter", "jump"}, {"↑↓", "history"}, {"Alt+R", "regex"}, {"Alt+M", "mode"}, {"Esc", "close"},
 	}
-	b.WriteString(DimStyle.Render(footer))
+	helpLine := RenderHelpBar(pairs)
+	if len(cs.results) > 0 {
+		helpLine += "  " + DimStyle.Render("("+smallNum(len(cs.results))+" results)")
+	}
+	b.WriteString(helpLine)
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -540,10 +549,7 @@ func (cs ContentSearch) highlightMatch(line string, maxWidth int) string {
 	}
 
 	// Truncate long lines before highlighting.
-	display := line
-	if len(display) > maxWidth {
-		display = display[:maxWidth-3] + "..."
-	}
+	display := TruncateDisplay(line, maxWidth)
 
 	if cs.query == "" {
 		return NormalItemStyle.Render(display)
