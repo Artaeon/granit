@@ -283,14 +283,9 @@ func (t Timeline) View() string {
 		Render("  " + strings.Repeat("─", innerWidth-4)))
 	b.WriteString("\n")
 
-	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-	sepStyle := lipgloss.NewStyle().Foreground(surface1)
-	sep := sepStyle.Render("  ")
-	b.WriteString("  " +
-		keyStyle.Render("Enter") + descStyle.Render(": open") + sep +
-		keyStyle.Render("Tab") + descStyle.Render(": change view") + sep +
-		keyStyle.Render("Esc") + descStyle.Render(": close"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Enter", "open"}, {"Tab", "view"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
