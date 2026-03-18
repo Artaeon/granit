@@ -330,18 +330,10 @@ func (kb Kanban) View() string {
 	b.WriteString("\n")
 
 	// Footer with keybinds
-	footerStyle := lipgloss.NewStyle().Foreground(overlay0)
-	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	sepStyle := lipgloss.NewStyle().Foreground(surface1)
-	sep := sepStyle.Render(" | ")
-
-	b.WriteString("  ")
-	b.WriteString(keyStyle.Render("←→") + footerStyle.Render(" column") + sep)
-	b.WriteString(keyStyle.Render("↑↓") + footerStyle.Render(" card") + sep)
-	b.WriteString(keyStyle.Render("m") + footerStyle.Render(" move →") + sep)
-	b.WriteString(keyStyle.Render("M") + footerStyle.Render(" move ←") + sep)
-	b.WriteString(keyStyle.Render("x") + footerStyle.Render(" toggle") + sep)
-	b.WriteString(keyStyle.Render("Esc") + footerStyle.Render(" close"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"←→", "column"}, {"↑↓", "card"}, {"m", "move →"}, {"M", "move ←"},
+		{"x", "toggle"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
