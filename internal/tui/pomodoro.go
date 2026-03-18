@@ -773,15 +773,20 @@ func (p Pomodoro) View() string {
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", width-8)))
 	b.WriteString("\n")
-	controlStyle := lipgloss.NewStyle().Foreground(overlay1)
 	if p.addingTask {
-		b.WriteString(controlStyle.Render("  Enter: confirm  Esc: cancel"))
+		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+			{"Enter", "confirm"}, {"Esc", "cancel"},
+		}))
 	} else if len(p.queue) > 0 {
-		b.WriteString(controlStyle.Render("  Space: start/pause  Enter: complete task"))
-		b.WriteString("\n")
-		b.WriteString(controlStyle.Render("  n: skip  a: add task  q: toggle queue  Esc: close"))
+		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+			{"Space", "start/pause"}, {"Enter", "complete"}, {"n", "skip"},
+			{"a", "add task"}, {"q", "queue"}, {"Esc", "close"},
+		}))
 	} else {
-		b.WriteString(controlStyle.Render("  Space: start/pause  s: skip  r: reset  a: add task  Esc: close"))
+		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+			{"Space", "start/pause"}, {"s", "skip"}, {"r", "reset"},
+			{"a", "add task"}, {"Esc", "close"},
+		}))
 	}
 
 	border := lipgloss.NewStyle().
