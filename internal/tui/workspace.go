@@ -430,19 +430,10 @@ func (w Workspace) View() string {
 	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
 	b.WriteString("\n")
 
-	// Footer with keybinding hints
-	enterKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Enter")
-	enterDesc := DimStyle.Render(": load  ")
-	saveKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("s")
-	saveDesc := DimStyle.Render(": save current  ")
-	delKey := lipgloss.NewStyle().Foreground(red).Bold(true).Render("d")
-	delDesc := DimStyle.Render(": delete  ")
-	renKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("r")
-	renDesc := DimStyle.Render(": rename  ")
-	escKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Esc")
-	escDesc := DimStyle.Render(": close")
-
-	b.WriteString("  " + enterKey + enterDesc + saveKey + saveDesc + delKey + delDesc + renKey + renDesc + escKey + escDesc)
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Enter", "load"}, {"s", "save current"}, {"d", "delete"},
+		{"r", "rename"}, {"Esc", "close"},
+	}))
 
 	return w.wrapBorder(width, b.String())
 }
