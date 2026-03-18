@@ -232,6 +232,10 @@ func (bm Bookmarks) View() string {
 	b.WriteString("\n\n")
 
 	items := bm.currentItems()
+	visH := bm.height - 10
+	if visH < 5 {
+		visH = 5
+	}
 	if len(items) == 0 {
 		if bm.mode == 0 {
 			b.WriteString(DimStyle.Render("  No starred notes\n"))
@@ -240,10 +244,6 @@ func (bm Bookmarks) View() string {
 			b.WriteString(DimStyle.Render("  No recent files"))
 		}
 	} else {
-		visH := bm.height - 10
-		if visH < 5 {
-			visH = 5
-		}
 		end := bm.scroll + visH
 		if end > len(items) {
 			end = len(items)
@@ -271,16 +271,24 @@ func (bm Bookmarks) View() string {
 				b.WriteString("\n")
 			}
 		}
+
+		// Scroll indicator
+		if len(items) > visH {
+			b.WriteString("\n")
+			b.WriteString(DimStyle.Render("  " + ScrollIndicator(bm.scroll, len(items), visH)))
+		}
 	}
 
 	b.WriteString("\n\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
 	b.WriteString("\n")
-	footer := "  Tab: switch  Enter: open  Esc: close"
-	if bm.mode == 0 {
-		footer += "  d: unstar"
+	pairs := []struct{ Key, Desc string }{
+		{"Tab", "switch"}, {"Enter", "open"}, {"Esc", "close"},
 	}
-	b.WriteString(DimStyle.Render(footer))
+	if bm.mode == 0 {
+		pairs = append(pairs[:2], append([]struct{ Key, Desc string }{{"d", "unstar"}}, pairs[2:]...)...)
+	}
+	b.WriteString(RenderHelpBar(pairs))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
