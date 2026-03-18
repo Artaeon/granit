@@ -178,9 +178,7 @@ func (bl Backlinks) View() string {
 		if maxLen < 5 {
 			maxLen = 5
 		}
-		if len(displayName) > maxLen {
-			displayName = displayName[:maxLen-3] + "..."
-		}
+		displayName = TruncateDisplay(displayName, maxLen)
 
 		icon := lipgloss.NewStyle().Foreground(blue).Render(" ")
 
