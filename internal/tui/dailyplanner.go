@@ -1285,10 +1285,7 @@ func (dp DailyPlanner) viewRightPanel(width int) string {
 			if maxName < 5 {
 				maxName = 5
 			}
-			name := habit.Name
-			if len(name) > maxName {
-				name = name[:maxName-3] + "..."
-			}
+			name := TruncateDisplay(habit.Name, maxName)
 
 			padding := width - 6 - lipgloss.Width(name) - lipgloss.Width(streakVis) - lipgloss.Width(streakLabel) - 4
 			if padding < 1 {
