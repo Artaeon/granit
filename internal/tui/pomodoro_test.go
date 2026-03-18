@@ -552,8 +552,8 @@ func TestPomodoro_StatusString_Work_LongTaskTruncated(t *testing.T) {
 	p.currentTask = "This is a very long task name that should be truncated"
 
 	s := p.StatusString()
-	if !containsSubstring(s, "...") {
-		t.Errorf("expected truncated task with '...' in StatusString, got %q", s)
+	if !containsSubstring(s, "…") {
+		t.Errorf("expected truncated task with '…' in StatusString, got %q", s)
 	}
 }
 
