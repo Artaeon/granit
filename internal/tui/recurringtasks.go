@@ -502,10 +502,7 @@ func (rt RecurringTasks) viewList(b *strings.Builder, width int) {
 			if maxTextW < 10 {
 				maxTextW = 10
 			}
-			taskText := task.Text
-			if r := []rune(taskText); len(r) > maxTextW {
-				taskText = string(r[:maxTextW-1]) + "…"
-			}
+			taskText := TruncateDisplay(task.Text, maxTextW)
 			if i == rt.cursor {
 				line := fmt.Sprintf("  %s %s  %s%s", status, taskText, freq, last)
 				b.WriteString(lipgloss.NewStyle().
