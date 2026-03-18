@@ -454,23 +454,14 @@ func (d DataviewOverlay) View() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerWidth)))
 	b.WriteString("\n")
 
-	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-	sepStyle := lipgloss.NewStyle().Foreground(surface1)
-	sep := sepStyle.Render(" | ")
-
 	if d.hasRun {
-		b.WriteString("  " +
-			keyStyle.Render("↑↓") + descStyle.Render(" navigate") + sep +
-			keyStyle.Render("Enter") + descStyle.Render(" open note") + sep +
-			keyStyle.Render("Esc") + descStyle.Render(" edit query") + sep +
-			keyStyle.Render("Ctrl+C") + descStyle.Render(" close"))
+		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+			{"↑↓", "nav"}, {"Enter", "open"}, {"Esc", "edit query"}, {"Ctrl+C", "close"},
+		}))
 	} else {
-		b.WriteString("  " +
-			keyStyle.Render("Enter") + descStyle.Render(" run query") + sep +
-			keyStyle.Render("Tab") + descStyle.Render(" complete") + sep +
-			keyStyle.Render("↑↓") + descStyle.Render(" history") + sep +
-			keyStyle.Render("Esc") + descStyle.Render(" close"))
+		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+			{"Enter", "run"}, {"Tab", "complete"}, {"↑↓", "history"}, {"Esc", "close"},
+		}))
 	}
 
 	border := lipgloss.NewStyle().
