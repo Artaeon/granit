@@ -387,14 +387,9 @@ func (t Trash) View() string {
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", width-6)))
 	b.WriteString("\n")
 
-	enterKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Enter/r")
-	enterDesc := DimStyle.Render(": restore  ")
-	delKey := lipgloss.NewStyle().Foreground(red).Bold(true).Render("d")
-	delDesc := DimStyle.Render(": delete forever  ")
-	escKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Esc")
-	escDesc := DimStyle.Render(": close")
-
-	b.WriteString("  " + enterKey + enterDesc + delKey + delDesc + escKey + escDesc)
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Enter/r", "restore"}, {"d", "delete forever"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
