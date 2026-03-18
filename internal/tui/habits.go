@@ -1170,18 +1170,30 @@ func (ht HabitTracker) viewStats(innerW int) string {
 }
 
 func (ht HabitTracker) renderHelp() string {
+	var pairs []struct{ Key, Desc string }
 	switch ht.tab {
 	case 0:
-		return DimStyle.Render("  tab/1-3: switch  j/k: move  space: toggle  n: new  d: delete  esc: close")
+		pairs = []struct{ Key, Desc string }{
+			{"Tab/1-3", "switch"}, {"j/k", "move"}, {"Space", "toggle"},
+			{"n", "new"}, {"d", "delete"}, {"Esc", "close"},
+		}
 	case 1:
 		if ht.goalExpanded >= 0 {
-			return DimStyle.Render("  space: toggle milestone  m: add milestone  d: archive  esc: back")
+			pairs = []struct{ Key, Desc string }{
+				{"Space", "toggle"}, {"m", "milestone"}, {"d", "archive"}, {"Esc", "back"},
+			}
+		} else {
+			pairs = []struct{ Key, Desc string }{
+				{"Tab/1-3", "switch"}, {"j/k", "move"}, {"Enter", "expand"},
+				{"n", "new"}, {"d", "archive"}, {"Esc", "close"},
+			}
 		}
-		return DimStyle.Render("  tab/1-3: switch  j/k: move  enter: expand  n: new  d: archive  esc: close")
 	case 2:
-		return DimStyle.Render("  tab/1-3: switch  esc: close")
+		pairs = []struct{ Key, Desc string }{
+			{"Tab/1-3", "switch"}, {"Esc", "close"},
+		}
 	}
-	return ""
+	return RenderHelpBar(pairs)
 }
 
 // habitProgressBar renders a progress bar with block characters.
