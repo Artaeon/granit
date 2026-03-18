@@ -861,25 +861,16 @@ func (te TableEditor) renderRow(cells []string, colWidths []int, rowIdx int) str
 }
 
 func (te TableEditor) renderNavHelp() string {
-	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-
-	var lines []string
-	lines = append(lines,
-		"  "+keyStyle.Render("Arrows")+descStyle.Render(": navigate")+
-			"  "+keyStyle.Render("Enter")+descStyle.Render(": edit cell")+
-			"  "+keyStyle.Render("Tab")+descStyle.Render(": next cell"))
-	lines = append(lines,
-		"  "+keyStyle.Render("a")+descStyle.Render(": add row")+
-			"  "+keyStyle.Render("A")+descStyle.Render(": add col")+
-			"  "+keyStyle.Render("d")+descStyle.Render(": del row")+
-			"  "+keyStyle.Render("D")+descStyle.Render(": del col"))
-	lines = append(lines,
-		"  "+keyStyle.Render("l/c/r")+descStyle.Render(": align left/center/right")+
-			"  "+keyStyle.Render("Ctrl+S")+descStyle.Render(": confirm")+
-			"  "+keyStyle.Render("Esc")+descStyle.Render(": close"))
-
-	return strings.Join(lines, "\n")
+	line1 := RenderHelpBar([]struct{ Key, Desc string }{
+		{"Arrows", "navigate"}, {"Enter", "edit cell"}, {"Tab", "next cell"},
+	})
+	line2 := RenderHelpBar([]struct{ Key, Desc string }{
+		{"a", "add row"}, {"A", "add col"}, {"d", "del row"}, {"D", "del col"},
+	})
+	line3 := RenderHelpBar([]struct{ Key, Desc string }{
+		{"l/c/r", "align"}, {"Ctrl+S", "confirm"}, {"Esc", "close"},
+	})
+	return line1 + "\n" + line2 + "\n" + line3
 }
 
 func (te TableEditor) renderEditHelp() string {
