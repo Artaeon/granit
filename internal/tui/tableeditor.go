@@ -874,14 +874,10 @@ func (te TableEditor) renderNavHelp() string {
 }
 
 func (te TableEditor) renderEditHelp() string {
-	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-
 	editLabel := lipgloss.NewStyle().Foreground(green).Bold(true).Render("  EDITING")
-	return editLabel + "  " +
-		keyStyle.Render("Enter") + descStyle.Render(": confirm") + "  " +
-		keyStyle.Render("Esc") + descStyle.Render(": cancel") + "  " +
-		keyStyle.Render("Backspace") + descStyle.Render(": delete")
+	return editLabel + "  " + RenderHelpBar([]struct{ Key, Desc string }{
+		{"Enter", "confirm"}, {"Esc", "cancel"}, {"Backspace", "delete"},
+	})[2:] // trim leading "  " since editLabel provides spacing
 }
 
 // tePadCell pads a string to a given width with the specified alignment.
