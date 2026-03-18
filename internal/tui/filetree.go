@@ -478,9 +478,7 @@ func (ft FileTree) renderNode(node *TreeNode, maxWidth int) string {
 	if maxNameLen < 5 {
 		maxNameLen = 5
 	}
-	if len(displayName) > maxNameLen {
-		displayName = displayName[:maxNameLen-3] + "..."
-	}
+	displayName = TruncateDisplay(displayName, maxNameLen)
 
 	icon := lipgloss.NewStyle().Foreground(blue).Render(IconFileChar)
 	if isDailyNote(node.Name) {
@@ -510,9 +508,7 @@ func (ft FileTree) renderNodePlain(node *TreeNode, maxWidth int) string {
 	if maxNameLen < 5 {
 		maxNameLen = 5
 	}
-	if len(displayName) > maxNameLen {
-		displayName = displayName[:maxNameLen-3] + "..."
-	}
+	displayName = TruncateDisplay(displayName, maxNameLen)
 
 	iconChar := IconFileChar
 	if isDailyNote(node.Name) {
