@@ -536,17 +536,13 @@ func (e Encryption) View() string {
 
 	switch e.mode {
 	case encModeMenu:
-		jk := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("j/k")
-		enter := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Enter")
-		esc := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Esc")
-		b.WriteString("  " + jk + DimStyle.Render(": navigate  "))
-		b.WriteString(enter + DimStyle.Render(": select  "))
-		b.WriteString(esc + DimStyle.Render(": close"))
+		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+			{"j/k", "navigate"}, {"Enter", "select"}, {"Esc", "close"},
+		}))
 	case encModeEnterPassphrase, encModeConfirmPassphrase:
-		enter := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Enter")
-		esc := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Esc")
-		b.WriteString("  " + enter + DimStyle.Render(": confirm  "))
-		b.WriteString(esc + DimStyle.Render(": back"))
+		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+			{"Enter", "confirm"}, {"Esc", "back"},
+		}))
 	}
 
 	border := lipgloss.NewStyle().
