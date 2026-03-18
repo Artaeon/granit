@@ -355,18 +355,9 @@ func (b Backup) View() string {
 	s.WriteString(DimStyle.Render(strings.Repeat("\u2500", width-6)))
 	s.WriteString("\n")
 
-	cKey := lipgloss.NewStyle().Foreground(green).Bold(true).Render("c")
-	cDesc := DimStyle.Render(": create  ")
-	rKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("r")
-	rDesc := DimStyle.Render(": restore  ")
-	dKey := lipgloss.NewStyle().Foreground(red).Bold(true).Render("d")
-	dDesc := DimStyle.Render(": delete  ")
-	aKey := lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("a")
-	aDesc := DimStyle.Render(": auto  ")
-	escKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Esc")
-	escDesc := DimStyle.Render(": close")
-
-	s.WriteString("  " + cKey + cDesc + rKey + rDesc + dKey + dDesc + aKey + aDesc + escKey + escDesc)
+	s.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"c", "create"}, {"r", "restore"}, {"d", "delete"}, {"a", "auto"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
