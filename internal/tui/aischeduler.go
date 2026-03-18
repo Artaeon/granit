@@ -974,9 +974,7 @@ func (as AIScheduler) viewSetup(width int) string {
 			if maxTextLen < 10 {
 				maxTextLen = 10
 			}
-			if len(taskText) > maxTextLen {
-				taskText = taskText[:maxTextLen-3] + "..."
-			}
+			taskText = TruncateDisplay(taskText, maxTextLen)
 
 			// Estimated time
 			estStr := "___"
@@ -1142,9 +1140,7 @@ func (as AIScheduler) viewResult(width int) string {
 			if maxNameLen < 8 {
 				maxNameLen = 8
 			}
-			if len(taskName) > maxNameLen {
-				taskName = taskName[:maxNameLen-3] + "..."
-			}
+			taskName = TruncateDisplay(taskName, maxNameLen)
 			paddedName := fmt.Sprintf("%-*s", maxNameLen, taskName)
 
 			// Color by type
