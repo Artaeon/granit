@@ -649,8 +649,10 @@ func (c Canvas) View() string {
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", overlayW-6)))
 	b.WriteString("\n")
-	footer := "  arrows: move  n: add  d/x: del  m: move  L: connect  c: color  +/-: resize  z: zoom  Enter: open  Esc: close"
-	b.WriteString(DimStyle.Render(footer))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"arrows", "move"}, {"n", "add"}, {"d/x", "del"}, {"m", "move"}, {"L", "connect"},
+		{"c", "color"}, {"+/-", "resize"}, {"z", "zoom"}, {"Enter", "open"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
