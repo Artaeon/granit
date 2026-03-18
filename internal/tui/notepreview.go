@@ -166,7 +166,9 @@ func (np NotePreview) View() string {
 	b.WriteString("\n\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", innerWidth)))
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  j/k: scroll  Enter: open  Esc/q: close"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"j/k", "scroll"}, {"Enter", "open"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
