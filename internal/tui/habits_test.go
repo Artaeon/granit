@@ -953,9 +953,9 @@ func TestEdgeCase_IsTodayCompleted_LogExistsButHabitNot(t *testing.T) {
 	}
 }
 
-// ── habitPadRight ────────────────────────────────────────────────
+// ── PadRight ─────────────────────────────────────────────────────
 
-func TestHabitPadRight(t *testing.T) {
+func TestPadRight(t *testing.T) {
 	tests := []struct {
 		input    string
 		width    int
@@ -970,9 +970,9 @@ func TestHabitPadRight(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
-			got := habitPadRight(tc.input, tc.width)
+			got := PadRight(tc.input, tc.width)
 			if got != tc.expected {
-				t.Errorf("habitPadRight(%q, %d) = %q, want %q", tc.input, tc.width, got, tc.expected)
+				t.Errorf("PadRight(%q, %d) = %q, want %q", tc.input, tc.width, got, tc.expected)
 			}
 		})
 	}
