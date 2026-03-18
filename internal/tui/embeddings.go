@@ -1106,13 +1106,7 @@ func (ss *SemanticSearch) View() string {
 				if maxSnippetLen < 0 {
 					maxSnippetLen = 0
 				}
-				if len(snippet) > maxSnippetLen {
-					if maxSnippetLen > 3 {
-						snippet = snippet[:maxSnippetLen-3] + "..."
-					} else {
-						snippet = ""
-					}
-				}
+				snippet = TruncateDisplay(snippet, maxSnippetLen)
 
 				if i == ss.cursor {
 					selectedLine := fmt.Sprintf("  %s  %s", scoreStyle.Render(scorePct),
