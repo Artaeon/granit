@@ -601,16 +601,9 @@ func (sc SmartConnections) renderList(b *strings.Builder, innerWidth int) {
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerWidth)))
 	b.WriteString("\n")
 
-	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-	sepStyle := lipgloss.NewStyle().Foreground(surface1)
-	sep := sepStyle.Render(" | ")
-
-	b.WriteString("  " +
-		keyStyle.Render("j/k") + descStyle.Render(" navigate") + sep +
-		keyStyle.Render("Enter") + descStyle.Render(" preview") + sep +
-		keyStyle.Render("l") + descStyle.Render(" insert link") + sep +
-		keyStyle.Render("Esc") + descStyle.Render(" close"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"j/k", "nav"}, {"Enter", "preview"}, {"l", "insert link"}, {"Esc", "close"},
+	}))
 }
 
 func (sc SmartConnections) renderPreview(b *strings.Builder, innerWidth int) {
@@ -667,11 +660,9 @@ func (sc SmartConnections) renderPreview(b *strings.Builder, innerWidth int) {
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerWidth)))
 	b.WriteString("\n")
 
-	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-	b.WriteString("  " +
-		keyStyle.Render("j/k") + descStyle.Render(" scroll") + "  " +
-		keyStyle.Render("Esc") + descStyle.Render(" back to list"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"j/k", "scroll"}, {"Esc", "back"},
+	}))
 }
 
 // ---------------------------------------------------------------------------
