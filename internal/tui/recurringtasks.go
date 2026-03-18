@@ -597,11 +597,9 @@ func (rt RecurringTasks) viewForm(b *strings.Builder, width int, title string) {
 
 	// Footer
 	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)) + "\n")
-	tabKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Tab")
-	enterKey := lipgloss.NewStyle().Foreground(green).Bold(true).Render("Enter")
-	escKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Esc")
-	b.WriteString("  " + tabKey + DimStyle.Render(": next field  ") +
-		enterKey + DimStyle.Render(": save  ") + escKey + DimStyle.Render(": cancel"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Tab", "next field"}, {"Enter", "save"}, {"Esc", "cancel"},
+	}))
 }
 
 // ----- formatting helpers -----
