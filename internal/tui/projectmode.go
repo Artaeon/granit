@@ -1307,10 +1307,7 @@ func (pm ProjectMode) viewList() string {
 			if nameMaxW < 12 {
 				nameMaxW = 12
 			}
-			displayName := proj.Name
-			if len(displayName) > nameMaxW {
-				displayName = displayName[:nameMaxW-3] + "..."
-			}
+			displayName := TruncateDisplay(proj.Name, nameMaxW)
 			nameStyle := lipgloss.NewStyle().Foreground(projectAccentColor(proj.Color)).Bold(true)
 			name := nameStyle.Render(pmPadRight(displayName, nameMaxW))
 
@@ -1705,11 +1702,7 @@ func (pm ProjectMode) viewDashTasks(width int) string {
 			checkbox = lipgloss.NewStyle().Foreground(overlay0).Render("[ ] ")
 		}
 
-		taskText := task.Text
-		maxLen := width - 16
-		if len(taskText) > maxLen {
-			taskText = taskText[:maxLen-3] + "..."
-		}
+		taskText := TruncateDisplay(task.Text, width-16)
 
 		textStyle := lipgloss.NewStyle().Foreground(text)
 		if task.Done {
