@@ -743,11 +743,15 @@ func (ac AIChat) View() string {
 	b.WriteString("\n")
 
 	// Help bar.
-	helpText := "Enter: send  Esc: close  Up/Down: scroll"
 	if ac.loading {
-		helpText = "Waiting for response...  Esc: close"
+		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+			{"...", "waiting"}, {"Esc", "close"},
+		}))
+	} else {
+		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+			{"Enter", "send"}, {"↑↓", "scroll"}, {"Esc", "close"},
+		}))
 	}
-	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  " + helpText))
 
 	// Wrap in panel border.
 	panel := lipgloss.NewStyle().
