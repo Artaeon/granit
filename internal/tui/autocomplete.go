@@ -165,10 +165,7 @@ func (a Autocomplete) View() string {
 	rows = append(rows, divider)
 
 	for i := start; i < end; i++ {
-		name := a.suggestions[i]
-		if len(name) > innerWidth {
-			name = name[:innerWidth-3] + "..."
-		}
+		name := TruncateDisplay(a.suggestions[i], innerWidth)
 		if i == a.cursor {
 			rows = append(rows, selectedStyle.Render(name))
 		} else {
