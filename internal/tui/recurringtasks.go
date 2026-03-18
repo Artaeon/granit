@@ -527,19 +527,9 @@ func (rt RecurringTasks) viewList(b *strings.Builder, width int) {
 
 	b.WriteString("\n\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)) + "\n")
-	keys := []struct{ key, desc string }{
-		{"a", "add"}, {"e", "edit"}, {"d", "delete"}, {"space", "toggle"}, {"Esc", "close"},
-	}
-	var footer strings.Builder
-	footer.WriteString("  ")
-	for i, k := range keys {
-		footer.WriteString(lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(k.key))
-		footer.WriteString(DimStyle.Render(": " + k.desc))
-		if i < len(keys)-1 {
-			footer.WriteString("  ")
-		}
-	}
-	b.WriteString(footer.String())
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"a", "add"}, {"e", "edit"}, {"d", "delete"}, {"Space", "toggle"}, {"Esc", "close"},
+	}))
 }
 
 func (rt RecurringTasks) viewForm(b *strings.Builder, width int, title string) {
