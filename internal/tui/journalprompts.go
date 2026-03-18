@@ -572,18 +572,13 @@ func (jp JournalPrompts) renderBrowseMode(b *strings.Builder, width int) {
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", width-10)))
 	b.WriteString("\n")
 
-	kStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-	dStyle := DimStyle
-
-	b.WriteString("  " +
-		kStyle.Render("1-8") + dStyle.Render(": category  ") +
-		kStyle.Render("0") + dStyle.Render(": all  ") +
-		kStyle.Render("r") + dStyle.Render(": shuffle  ") +
-		kStyle.Render("Enter") + dStyle.Render(": write"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"1-8", "category"}, {"0", "all"}, {"r", "shuffle"}, {"Enter", "write"},
+	}))
 	b.WriteString("\n")
-	b.WriteString("  " +
-		kStyle.Render("j/k") + dStyle.Render(": navigate  ") +
-		kStyle.Render("Esc") + dStyle.Render(": close"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"j/k", "navigate"}, {"Esc", "close"},
+	}))
 }
 
 // renderWriteMode draws the journal response composition view.
@@ -662,12 +657,9 @@ func (jp JournalPrompts) renderWriteMode(b *strings.Builder, width int) {
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", width-10)))
 	b.WriteString("\n")
 
-	kStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-	dStyle := DimStyle
-
-	b.WriteString("  " +
-		kStyle.Render("Ctrl+S") + dStyle.Render(": save  ") +
-		kStyle.Render("Esc") + dStyle.Render(": cancel"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Ctrl+S", "save"}, {"Esc", "cancel"},
+	}))
 }
 
 // wrapPromptText wraps text to fit within the given width.
