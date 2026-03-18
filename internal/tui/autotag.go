@@ -850,7 +850,7 @@ func (nc NoteChat) View() string {
 	// Wrap in panel border
 	panel := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(panelWidth).
 		Background(mantle)

@@ -543,7 +543,7 @@ func (vr VaultRefactor) View() string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(panelWidth).
 		Background(mantle)

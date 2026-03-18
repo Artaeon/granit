@@ -459,7 +459,7 @@ func (jp JournalPrompts) View() string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)

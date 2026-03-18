@@ -524,7 +524,7 @@ func (s Scratchpad) View() string {
 	// --- border ---
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(panelWidth).
 		Background(mantle)

@@ -1035,7 +1035,7 @@ func (as AIScheduler) viewSetup(width int) string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)
@@ -1080,7 +1080,7 @@ func (as AIScheduler) viewGenerating(width int) string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)
@@ -1194,7 +1194,7 @@ func (as AIScheduler) viewResult(width int) string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)
@@ -1242,7 +1242,7 @@ func (as AIScheduler) viewApplied(width int) string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)

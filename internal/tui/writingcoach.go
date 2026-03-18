@@ -1008,7 +1008,7 @@ func (wc WritingCoach) viewSetup(width int) string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)
@@ -1058,7 +1058,7 @@ func (wc WritingCoach) viewAnalyzing(width int) string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)
@@ -1212,7 +1212,7 @@ func (wc WritingCoach) viewResults(width int) string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)

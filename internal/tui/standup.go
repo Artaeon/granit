@@ -496,7 +496,7 @@ func (s StandupGenerator) viewScanning(width int) string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)
@@ -604,7 +604,7 @@ func (s StandupGenerator) viewPreview(width int) string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)
@@ -701,7 +701,7 @@ func (s StandupGenerator) viewEdit(width int) string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)

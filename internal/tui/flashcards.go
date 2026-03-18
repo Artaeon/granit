@@ -666,7 +666,7 @@ func (fc Flashcards) viewDeck() string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(w).
 		Background(mantle)
@@ -909,7 +909,7 @@ func (fc Flashcards) viewStats() string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(w).
 		Background(mantle)

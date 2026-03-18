@@ -159,7 +159,7 @@ func (t Tutorial) View() string {
 	// ── Outer box ───────────────────────────────────────────────────
 	box := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 3).
 		Width(width).
 		Background(mantle)

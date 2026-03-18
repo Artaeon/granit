@@ -1255,7 +1255,7 @@ func (r ResearchAgent) View() string {
 
 	border := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Background(mantle).
 		Padding(1, 2).
 		Width(w)

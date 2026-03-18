@@ -330,7 +330,7 @@ func (sp SplitPane) View() string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Width(sp.width - 2).
 		Height(sp.height - 2).
 		Padding(0, 1).
