@@ -534,28 +534,17 @@ func (al AutoLinker) View() string {
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerWidth)))
 	b.WriteString("\n")
 
-	// Key hints
-	enterKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Enter/a")
-	enterDesc := DimStyle.Render(": accept  ")
-	skipKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("x")
-	skipDesc := DimStyle.Render(": skip  ")
-	allAcceptKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("A")
-	allAcceptDesc := DimStyle.Render(": accept all  ")
-	allRejectKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("X")
-	allRejectDesc := DimStyle.Render(": skip all")
-	b.WriteString("  " + enterKey + enterDesc + skipKey + skipDesc)
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Enter/a", "accept"}, {"x", "skip"}, {"A", "accept all"}, {"X", "skip all"},
+	}))
 	b.WriteString("\n")
-	b.WriteString("  " + allAcceptKey + allAcceptDesc + allRejectKey + allRejectDesc)
-	b.WriteString("\n")
-	navKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("j/k")
-	navDesc := DimStyle.Render(": navigate  ")
-	escKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Esc/q")
-	escDesc := DimStyle.Render(": close")
-	b.WriteString("  " + navKey + navDesc + escKey + escDesc)
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"j/k", "navigate"}, {"Esc/q", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(sapphire).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
 		Background(mantle)
