@@ -163,8 +163,12 @@ func (lo LuaOverlay) View() string {
 
 			// Show path dimmed
 			shortPath := s.Path
-			if len(shortPath) > width-12 {
-				shortPath = "..." + shortPath[len(shortPath)-width+15:]
+			if lipgloss.Width(shortPath) > width-12 {
+				r := []rune(shortPath)
+				for len(r) > 0 && lipgloss.Width("…"+string(r)) > width-12 {
+					r = r[1:]
+				}
+				shortPath = "…" + string(r)
 			}
 			if i == lo.cursor {
 				b.WriteString(lipgloss.NewStyle().
