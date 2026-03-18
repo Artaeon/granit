@@ -218,15 +218,9 @@ func (mm MindMap) View() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", innerWidth-4)))
 	b.WriteString("\n")
 
-	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-	sepStyle := lipgloss.NewStyle().Foreground(surface1)
-	sep := sepStyle.Render(" | ")
-	b.WriteString("  " +
-		keyStyle.Render("m") + descStyle.Render(" mode") + sep +
-		keyStyle.Render("hjkl") + descStyle.Render(" scroll") + sep +
-		keyStyle.Render("c") + descStyle.Render(" center") + sep +
-		keyStyle.Render("Esc") + descStyle.Render(" close"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"m", "mode"}, {"hjkl", "scroll"}, {"c", "center"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
