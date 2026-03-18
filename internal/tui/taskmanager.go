@@ -1571,47 +1571,26 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", w-4)))
 	b.WriteString("\n")
 
-	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-
-	var pairs []string
+	var pairs []struct{ Key, Desc string }
 	switch tm.view {
 	case taskViewCalendar:
-		pairs = []string{
-			keyStyle.Render("h/l") + descStyle.Render(":month "),
-			keyStyle.Render("j/k") + descStyle.Render(":day "),
-			keyStyle.Render("x") + descStyle.Render(":toggle "),
-			keyStyle.Render("g") + descStyle.Render(":go "),
-			keyStyle.Render("a") + descStyle.Render(":add "),
-			keyStyle.Render("Tab") + descStyle.Render(":view "),
-			keyStyle.Render("Esc") + descStyle.Render(":close"),
+		pairs = []struct{ Key, Desc string }{
+			{"h/l", "month"}, {"j/k", "day"}, {"x", "toggle"},
+			{"g", "go"}, {"a", "add"}, {"Tab", "view"}, {"Esc", "close"},
 		}
 	case taskViewKanban:
-		pairs = []string{
-			keyStyle.Render("h/l") + descStyle.Render(":col "),
-			keyStyle.Render("j/k") + descStyle.Render(":nav "),
-			keyStyle.Render("x") + descStyle.Render(":toggle "),
-			keyStyle.Render(">/<") + descStyle.Render(":move "),
-			keyStyle.Render("g") + descStyle.Render(":go "),
-			keyStyle.Render("a") + descStyle.Render(":add "),
-			keyStyle.Render("Tab") + descStyle.Render(":view "),
-			keyStyle.Render("Esc") + descStyle.Render(":close"),
+		pairs = []struct{ Key, Desc string }{
+			{"h/l", "col"}, {"j/k", "nav"}, {"x", "toggle"}, {">/<", "move"},
+			{"g", "go"}, {"a", "add"}, {"Tab", "view"}, {"Esc", "close"},
 		}
 	default:
-		pairs = []string{
-			keyStyle.Render("j/k") + descStyle.Render(":nav "),
-			keyStyle.Render("x") + descStyle.Render(":toggle "),
-			keyStyle.Render("g") + descStyle.Render(":go "),
-			keyStyle.Render("a") + descStyle.Render(":add "),
-			keyStyle.Render("d") + descStyle.Render(":date "),
-			keyStyle.Render("p") + descStyle.Render(":prio "),
-			keyStyle.Render("/") + descStyle.Render(":search "),
-			keyStyle.Render("Tab") + descStyle.Render(":view "),
-			keyStyle.Render("Esc") + descStyle.Render(":close"),
+		pairs = []struct{ Key, Desc string }{
+			{"j/k", "nav"}, {"x", "toggle"}, {"g", "go"}, {"a", "add"},
+			{"d", "date"}, {"p", "prio"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
 		}
 	}
 
-	b.WriteString("  " + strings.Join(pairs, " "))
+	b.WriteString(RenderHelpBar(pairs))
 }
 
 // ---------------------------------------------------------------------------
