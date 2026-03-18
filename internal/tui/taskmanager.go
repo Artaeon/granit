@@ -1496,10 +1496,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	if maxTextW < 10 {
 		maxTextW = 10
 	}
-	runes := []rune(displayText)
-	if len(runes) > maxTextW {
-		displayText = string(runes[:maxTextW-1]) + "\u2026"
-	}
+	displayText = TruncateDisplay(displayText, maxTextW)
 
 	// Build the line
 	prefix := "  "
