@@ -1264,16 +1264,7 @@ func decodeHTMLEntities(s string) string {
 // Helpers
 // ---------------------------------------------------------------------------
 
-// truncate shortens a string to at most maxLen characters, adding ellipsis.
+// truncate shortens a string to at most maxLen display width, adding ellipsis.
 func truncate(s string, maxLen int) string {
-	if maxLen <= 0 {
-		return ""
-	}
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 3 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-3] + "..."
+	return TruncateDisplay(s, maxLen)
 }
