@@ -360,12 +360,9 @@ func (g GraphView) View() string {
 			isSelected := i == g.cursor
 
 			// Name with truncation
-			name := node.name
+			name := TruncateDisplay(node.name, 22)
 			maxNameLen := 22
-			if len(name) > maxNameLen {
-				name = name[:maxNameLen-3] + "..."
-			}
-			namePad := maxNameLen - len(name)
+			namePad := maxNameLen - lipgloss.Width(name)
 			if namePad < 0 {
 				namePad = 0
 			}
