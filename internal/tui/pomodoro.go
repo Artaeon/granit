@@ -585,10 +585,7 @@ func (p Pomodoro) View() string {
 	// Current task display (when queue is active)
 	if p.currentTask != "" && len(p.queue) > 0 {
 		nowLabel := lipgloss.NewStyle().Foreground(green).Bold(true).Render("\u25b6 NOW: ")
-		taskText := p.currentTask
-		if len(taskText) > width-18 {
-			taskText = taskText[:width-21] + "..."
-		}
+		taskText := TruncateDisplay(p.currentTask, width-18)
 		b.WriteString("  " + nowLabel + lipgloss.NewStyle().Foreground(text).Bold(true).Render(taskText))
 		b.WriteString("\n")
 
