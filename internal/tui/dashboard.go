@@ -565,24 +565,10 @@ func (d Dashboard) View() string {
 
 	// --- Footer ---
 	lines = append(lines, dimSt.Render(strings.Repeat("\u2500", innerW-4)))
-	footerKeys := []struct {
-		key  string
-		desc string
-	}{
-		{"n", "new note"},
-		{"t", "tasks"},
-		{"c", "calendar"},
-		{"s", "standup"},
-		{"d", "daily"},
-		{"f", "focus"},
-		{"Esc", "close"},
-	}
-	var footerParts []string
-	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-	for _, fk := range footerKeys {
-		footerParts = append(footerParts, keyStyle.Render(fk.key)+dimSt.Render(": "+fk.desc))
-	}
-	lines = append(lines, "  "+strings.Join(footerParts, "  "))
+	lines = append(lines, RenderHelpBar([]struct{ Key, Desc string }{
+		{"n", "new note"}, {"t", "tasks"}, {"c", "calendar"},
+		{"s", "standup"}, {"d", "daily"}, {"f", "focus"}, {"Esc", "close"},
+	}))
 
 	// Assemble with scrolling.
 	var b strings.Builder
