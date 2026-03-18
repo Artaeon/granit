@@ -419,6 +419,7 @@ func (d Dashboard) View() string {
 	taskLines = append(taskLines, dimSt.Render(strings.Repeat("\u2500", halfW-4)))
 	if len(d.todayTasks) == 0 {
 		taskLines = append(taskLines, dimSt.Render("  No tasks for today"))
+		taskLines = append(taskLines, dimSt.Render("  Press 't' to open task manager"))
 	} else {
 		shown := d.todayTasks
 		if len(shown) > 5 {
@@ -429,10 +430,7 @@ func (d Dashboard) View() string {
 			if t.Done {
 				mark = doneStyle.Render("\u25a0")
 			}
-			txt := t.Text
-			if r := []rune(txt); len(r) > halfW-6 {
-				txt = string(r[:halfW-9]) + "..."
-			}
+			txt := TruncateDisplay(t.Text, halfW-6)
 			taskLines = append(taskLines, "  "+mark+" "+labelStyle.Render(txt))
 		}
 		summary := fmt.Sprintf("  %d tasks (%d done)", len(d.todayTasks), d.tasksDone)
@@ -448,16 +446,14 @@ func (d Dashboard) View() string {
 	recentLines = append(recentLines, dimSt.Render(strings.Repeat("\u2500", halfW-4)))
 	if len(d.recentNotes) == 0 {
 		recentLines = append(recentLines, dimSt.Render("  No recent notes"))
+		recentLines = append(recentLines, dimSt.Render("  Press 'n' to create one"))
 	} else {
 		for _, n := range d.recentNotes {
-			name := n.Name
-			maxNameW := halfW - len(n.TimeAgo) - 8
+			maxNameW := halfW - lipgloss.Width(n.TimeAgo) - 8
 			if maxNameW < 10 {
 				maxNameW = 10
 			}
-			if r := []rune(name); len(r) > maxNameW {
-				name = string(r[:maxNameW-3]) + "..."
-			}
+			name := TruncateDisplay(n.Name, maxNameW)
 			gap := halfW - 6 - lipgloss.Width(name) - lipgloss.Width(n.TimeAgo)
 			if gap < 1 {
 				gap = 1
@@ -621,11 +617,17 @@ func (d Dashboard) View() string {
 		end = len(flat)
 	}
 
+	if d.scroll > 0 {
+		b.WriteString(DimStyle.Render("  "+ScrollIndicator(d.scroll, len(flat), visH)) + "\n")
+	}
 	for i := d.scroll; i < end; i++ {
 		b.WriteString(flat[i])
 		if i < end-1 {
 			b.WriteString("\n")
 		}
+	}
+	if end < len(flat) {
+		b.WriteString("\n" + DimStyle.Render("  "+ScrollIndicator(d.scroll, len(flat), visH)))
 	}
 
 	border := lipgloss.NewStyle().
