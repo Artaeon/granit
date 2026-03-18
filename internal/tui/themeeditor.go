@@ -411,12 +411,9 @@ func (te ThemeEditor) View() string {
 
 	// Help line
 	b.WriteString("\n")
-	helpStyle := lipgloss.NewStyle().Foreground(overlay0)
-	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-	b.WriteString("  " + keyStyle.Render("Enter") + helpStyle.Render(" edit color  "))
-	b.WriteString(keyStyle.Render("s") + helpStyle.Render(" save  "))
-	b.WriteString(keyStyle.Render("e") + helpStyle.Render(" export  "))
-	b.WriteString(keyStyle.Render("Esc") + helpStyle.Render(" close"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Enter", "edit color"}, {"s", "save"}, {"e", "export"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
