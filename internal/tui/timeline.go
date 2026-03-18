@@ -369,18 +369,14 @@ func (t Timeline) renderBody(b *strings.Builder, innerWidth int) {
 				if maxTitleLen < 12 {
 					maxTitleLen = 12
 				}
-				if len(title) > maxTitleLen {
-					title = title[:maxTitleLen-3] + "..."
-				}
+				title = TruncateDisplay(title, maxTitleLen)
 
 				preview := entry.Preview
 				maxPreviewLen := innerWidth - maxTitleLen - 20
 				if maxPreviewLen < 10 {
 					maxPreviewLen = 10
 				}
-				if len(preview) > maxPreviewLen {
-					preview = preview[:maxPreviewLen-3] + "..."
-				}
+				preview = TruncateDisplay(preview, maxPreviewLen)
 
 				tagStr := ""
 				if len(entry.Tags) > 0 {
