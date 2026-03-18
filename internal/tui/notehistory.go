@@ -507,9 +507,7 @@ func (nh NoteHistory) viewTimeline() string {
 			if maxSubjectLen < 10 {
 				maxSubjectLen = 10
 			}
-			if len(subject) > maxSubjectLen {
-				subject = subject[:maxSubjectLen-3] + "..."
-			}
+			subject = TruncateDisplay(subject, maxSubjectLen)
 
 			// Line 1: node + time ago + short hash
 			timePart := timeStyle.Render(entry.TimeAgo)
@@ -601,9 +599,7 @@ func (nh NoteHistory) viewDiff() string {
 	if nh.cursor >= 0 && nh.cursor < len(nh.entries) {
 		entry := nh.entries[nh.cursor]
 		diffTitle = fmt.Sprintf("  Diff: %s \u2014 %s", entry.ShortHash, entry.Subject)
-		if len(diffTitle) > innerW {
-			diffTitle = diffTitle[:innerW-3] + "..."
-		}
+		diffTitle = TruncateDisplay(diffTitle, innerW)
 	} else {
 		diffTitle = "  Diff"
 	}
