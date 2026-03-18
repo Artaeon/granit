@@ -725,49 +725,36 @@ func (ll LanguageLearning) renderTabBar() string {
 }
 
 func (ll LanguageLearning) renderFooter() string {
-	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-	descStyle := DimStyle
-
-	var hints []string
-	hints = append(hints, keyStyle.Render("Tab")+descStyle.Render(": switch"))
-	hints = append(hints, keyStyle.Render("1-4")+descStyle.Render(": tabs"))
+	pairs := []struct{ Key, Desc string }{
+		{"Tab", "switch"}, {"1-4", "tabs"},
+	}
 
 	switch ll.tab {
 	case 0:
 		if ll.addingWord {
-			hints = append(hints, keyStyle.Render("Enter")+descStyle.Render(": next/save"))
-			hints = append(hints, keyStyle.Render("Esc")+descStyle.Render(": cancel"))
+			pairs = append(pairs, struct{ Key, Desc string }{"Enter", "next/save"}, struct{ Key, Desc string }{"Esc", "cancel"})
 		} else {
-			hints = append(hints, keyStyle.Render("n")+descStyle.Render(": add"))
-			hints = append(hints, keyStyle.Render("d")+descStyle.Render(": delete"))
-			hints = append(hints, keyStyle.Render("Esc")+descStyle.Render(": close"))
+			pairs = append(pairs, struct{ Key, Desc string }{"n", "add"}, struct{ Key, Desc string }{"d", "delete"}, struct{ Key, Desc string }{"Esc", "close"})
 		}
 	case 1:
 		if ll.practicing {
-			hints = append(hints, keyStyle.Render("Enter")+descStyle.Render(": submit"))
-			hints = append(hints, keyStyle.Render("Esc")+descStyle.Render(": stop"))
+			pairs = append(pairs, struct{ Key, Desc string }{"Enter", "submit"}, struct{ Key, Desc string }{"Esc", "stop"})
 		} else {
-			hints = append(hints, keyStyle.Render("Enter")+descStyle.Render(": start"))
-			hints = append(hints, keyStyle.Render("Esc")+descStyle.Render(": close"))
+			pairs = append(pairs, struct{ Key, Desc string }{"Enter", "start"}, struct{ Key, Desc string }{"Esc", "close"})
 		}
 	case 2:
 		if ll.creatingNote {
-			hints = append(hints, keyStyle.Render("Enter")+descStyle.Render(": next/save"))
-			hints = append(hints, keyStyle.Render("Esc")+descStyle.Render(": cancel"))
+			pairs = append(pairs, struct{ Key, Desc string }{"Enter", "next/save"}, struct{ Key, Desc string }{"Esc", "cancel"})
 		} else if ll.grammarView != "" {
-			hints = append(hints, keyStyle.Render("j/k")+descStyle.Render(": scroll"))
-			hints = append(hints, keyStyle.Render("Esc")+descStyle.Render(": back"))
+			pairs = append(pairs, struct{ Key, Desc string }{"j/k", "scroll"}, struct{ Key, Desc string }{"Esc", "back"})
 		} else {
-			hints = append(hints, keyStyle.Render("n")+descStyle.Render(": new"))
-			hints = append(hints, keyStyle.Render("Enter")+descStyle.Render(": open"))
-			hints = append(hints, keyStyle.Render("Esc")+descStyle.Render(": close"))
+			pairs = append(pairs, struct{ Key, Desc string }{"n", "new"}, struct{ Key, Desc string }{"Enter", "open"}, struct{ Key, Desc string }{"Esc", "close"})
 		}
 	case 3:
-		hints = append(hints, keyStyle.Render("j/k")+descStyle.Render(": scroll"))
-		hints = append(hints, keyStyle.Render("Esc")+descStyle.Render(": close"))
+		pairs = append(pairs, struct{ Key, Desc string }{"j/k", "scroll"}, struct{ Key, Desc string }{"Esc", "close"})
 	}
 
-	return "  " + strings.Join(hints, "  ")
+	return RenderHelpBar(pairs)
 }
 
 // ---------- Tab views ----------
