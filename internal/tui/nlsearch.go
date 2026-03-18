@@ -525,9 +525,7 @@ func (nls NLSearch) runLocalSearch() []nlSearchResult {
 					for _, kw := range keywords {
 						if strings.Contains(lineLower, kw) {
 							snippet = strings.TrimSpace(line)
-							if len(snippet) > 80 {
-								snippet = snippet[:77] + "..."
-							}
+							snippet = TruncateDisplay(snippet, 80)
 							break
 						}
 					}
@@ -541,9 +539,7 @@ func (nls NLSearch) runLocalSearch() []nlSearchResult {
 						trimmed := strings.TrimSpace(line)
 						if trimmed != "" && !strings.HasPrefix(trimmed, "---") && !strings.HasPrefix(trimmed, "#") {
 							snippet = trimmed
-							if len(snippet) > 80 {
-								snippet = snippet[:77] + "..."
-							}
+							snippet = TruncateDisplay(snippet, 80)
 							break
 						}
 					}
@@ -720,9 +716,7 @@ func (nls *NLSearch) parseAIResponse(response string) {
 				trimmed := strings.TrimSpace(cl)
 				if trimmed != "" && !strings.HasPrefix(trimmed, "---") && !strings.HasPrefix(trimmed, "# ") {
 					snippet = trimmed
-					if len(snippet) > 80 {
-						snippet = snippet[:77] + "..."
-					}
+					snippet = TruncateDisplay(snippet, 80)
 					break
 				}
 			}
@@ -1210,10 +1204,7 @@ func (nls NLSearch) viewResults() string {
 
 				// Relevance on highlighted
 				if result.Relevance != "" {
-					relText := result.Relevance
-					if len(relText) > innerWidth-8 {
-						relText = relText[:innerWidth-11] + "..."
-					}
+					relText := TruncateDisplay(result.Relevance, innerWidth-8)
 					relevanceLine := lipgloss.NewStyle().
 						Background(surface0).
 						Foreground(lavender).
@@ -1225,10 +1216,7 @@ func (nls NLSearch) viewResults() string {
 
 				// Snippet on highlighted
 				if result.Snippet != "" {
-					snipText := result.Snippet
-					if len(snipText) > innerWidth-8 {
-						snipText = snipText[:innerWidth-11] + "..."
-					}
+					snipText := TruncateDisplay(result.Snippet, innerWidth-8)
 					snippetLine := lipgloss.NewStyle().
 						Background(surface0).
 						Foreground(overlay0).
@@ -1240,10 +1228,7 @@ func (nls NLSearch) viewResults() string {
 				}
 
 				// Path on highlighted
-				pathText := result.Path
-				if len(pathText) > innerWidth-8 {
-					pathText = pathText[:innerWidth-11] + "..."
-				}
+				pathText := TruncateDisplay(result.Path, innerWidth-8)
 				pathLine := lipgloss.NewStyle().
 					Background(surface0).
 					Foreground(surface1).
@@ -1259,20 +1244,14 @@ func (nls NLSearch) viewResults() string {
 
 				// Relevance
 				if result.Relevance != "" {
-					relText := result.Relevance
-					if len(relText) > innerWidth-8 {
-						relText = relText[:innerWidth-11] + "..."
-					}
+					relText := TruncateDisplay(result.Relevance, innerWidth-8)
 					b.WriteString(lipgloss.NewStyle().Foreground(teal).Render("      " + relText))
 					b.WriteString("\n")
 				}
 
 				// Snippet
 				if result.Snippet != "" {
-					snipText := result.Snippet
-					if len(snipText) > innerWidth-8 {
-						snipText = snipText[:innerWidth-11] + "..."
-					}
+					snipText := TruncateDisplay(result.Snippet, innerWidth-8)
 					b.WriteString(DimStyle.Render("      " + snipText))
 				}
 			}
