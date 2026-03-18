@@ -1722,6 +1722,8 @@ func (tm *TaskManager) renderCalendarView(b *strings.Builder, w int) {
 	if len(tm.filtered) == 0 {
 		b.WriteString(DimStyle.Render("  No tasks for this day"))
 		b.WriteString("\n")
+		b.WriteString(DimStyle.Render("  Press 'a' to add a task"))
+		b.WriteString("\n")
 	} else {
 		visH := tm.visibleHeight() - 12 // reserve space for calendar grid
 		if visH < 3 {
