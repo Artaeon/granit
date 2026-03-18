@@ -1361,26 +1361,10 @@ func (pm ProjectMode) viewList() string {
 }
 
 func (pm ProjectMode) listHelpBar() string {
-	keys := []struct {
-		key  string
-		desc string
-	}{
-		{"Enter", "open"},
-		{"a", "add"},
-		{"e", "edit"},
-		{"d", "archive"},
-		{"Tab", "filter"},
-		{"Space", "status"},
-		{"Esc", "close"},
-	}
-
-	var parts []string
-	for _, k := range keys {
-		kk := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(k.key)
-		dd := DimStyle.Render(":" + k.desc)
-		parts = append(parts, kk+dd)
-	}
-	return "  " + strings.Join(parts, "  ")
+	return RenderHelpBar([]struct{ Key, Desc string }{
+		{"Enter", "open"}, {"a", "add"}, {"e", "edit"},
+		{"d", "archive"}, {"Tab", "filter"}, {"Space", "status"}, {"Esc", "close"},
+	})
 }
 
 // --- Dashboard view ---
@@ -1813,83 +1797,28 @@ func (pm ProjectMode) statLine(label, value string, c lipgloss.Color, _ int) str
 
 func (pm ProjectMode) dashHelpBar() string {
 	if pm.dashInput {
-		keys := []struct {
-			key  string
-			desc string
-		}{
-			{"Enter", "confirm"},
-			{"Esc", "cancel"},
-		}
-		var parts []string
-		for _, k := range keys {
-			kk := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(k.key)
-			dd := DimStyle.Render(":" + k.desc)
-			parts = append(parts, kk+dd)
-		}
-		return "  " + strings.Join(parts, "  ")
+		return RenderHelpBar([]struct{ Key, Desc string }{
+			{"Enter", "confirm"}, {"Esc", "cancel"},
+		})
 	}
 
 	if pm.goalMode {
 		if pm.goalExpanded >= 0 {
-			keys := []struct {
-				key  string
-				desc string
-			}{
-				{"Space", "toggle"},
-				{"m", "milestone"},
-				{"d", "delete"},
-				{"j/k", "move"},
-				{"Esc", "back"},
-			}
-			var parts []string
-			for _, k := range keys {
-				kk := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(k.key)
-				dd := DimStyle.Render(":" + k.desc)
-				parts = append(parts, kk+dd)
-			}
-			return "  " + strings.Join(parts, "  ")
+			return RenderHelpBar([]struct{ Key, Desc string }{
+				{"Space", "toggle"}, {"m", "milestone"}, {"d", "delete"},
+				{"j/k", "move"}, {"Esc", "back"},
+			})
 		}
-		keys := []struct {
-			key  string
-			desc string
-		}{
-			{"Enter", "expand"},
-			{"a", "add goal"},
-			{"m", "milestone"},
-			{"d", "delete"},
-			{"j/k", "move"},
-			{"Esc", "back"},
-		}
-		var parts []string
-		for _, k := range keys {
-			kk := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(k.key)
-			dd := DimStyle.Render(":" + k.desc)
-			parts = append(parts, kk+dd)
-		}
-		return "  " + strings.Join(parts, "  ")
+		return RenderHelpBar([]struct{ Key, Desc string }{
+			{"Enter", "expand"}, {"a", "add goal"}, {"m", "milestone"},
+			{"d", "delete"}, {"j/k", "move"}, {"Esc", "back"},
+		})
 	}
 
-	keys := []struct {
-		key  string
-		desc string
-	}{
-		{"o", "open note"},
-		{"t", "tasks"},
-		{"N", "new note"},
-		{"g", "goals"},
-		{"n", "next action"},
-		{"p", "priority"},
-		{"Tab", "section"},
-		{"Esc", "back"},
-	}
-
-	var parts []string
-	for _, k := range keys {
-		kk := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(k.key)
-		dd := DimStyle.Render(":" + k.desc)
-		parts = append(parts, kk+dd)
-	}
-	return "  " + strings.Join(parts, "  ")
+	return RenderHelpBar([]struct{ Key, Desc string }{
+		{"o", "open note"}, {"t", "tasks"}, {"N", "new note"}, {"g", "goals"},
+		{"n", "next action"}, {"p", "priority"}, {"Tab", "section"}, {"Esc", "back"},
+	})
 }
 
 // --- Edit form view ---
@@ -2030,22 +1959,9 @@ func (pm ProjectMode) renderColorSelector(active bool) string {
 }
 
 func (pm ProjectMode) editHelpBar() string {
-	keys := []struct {
-		key  string
-		desc string
-	}{
-		{"Tab", "next field"},
-		{"Enter", "save"},
-		{"\u2190/\u2192", "selector"},
-		{"Esc", "cancel"},
-	}
-	var parts []string
-	for _, k := range keys {
-		kk := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(k.key)
-		dd := DimStyle.Render(":" + k.desc)
-		parts = append(parts, kk+dd)
-	}
-	return "  " + strings.Join(parts, "  ")
+	return RenderHelpBar([]struct{ Key, Desc string }{
+		{"Tab", "next field"}, {"Enter", "save"}, {"←/→", "selector"}, {"Esc", "cancel"},
+	})
 }
 
 // ---------------------------------------------------------------------------
