@@ -185,14 +185,11 @@ func (o *Outline) RenderPanel(content string, width, height int) string {
 				prefix = "\u25e6 "
 			}
 
-			text := item.text
 			maxLen := width - 6 - len(indent)*2
 			if maxLen < 8 {
 				maxLen = 8
 			}
-			if len(text) > maxLen {
-				text = text[:maxLen-3] + "..."
-			}
+			text := TruncateDisplay(item.text, maxLen)
 
 			styled := headingStyles[styleIdx].Render(prefix + text)
 
@@ -272,14 +269,11 @@ func (o Outline) View() string {
 
 			lineNum := DimStyle.Render("L" + smallNum(item.line+1) + " ")
 
-			text := item.text
 			maxLen := width - 12 - len(indent)
 			if maxLen < 10 {
 				maxLen = 10
 			}
-			if len(text) > maxLen {
-				text = text[:maxLen-3] + "..."
-			}
+			text := TruncateDisplay(item.text, maxLen)
 
 			content := indent + headingStyles[styleIdx].Render(prefix+text)
 
