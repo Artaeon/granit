@@ -1363,6 +1363,7 @@ func (tm *TaskManager) renderTabs(b *strings.Builder, w int) {
 func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 	if len(tm.filtered) == 0 {
 		emptyMsg := "No tasks"
+		hint := "Press 'a' to add a task"
 		switch tm.view {
 		case taskViewToday:
 			emptyMsg = "No tasks due today"
@@ -1370,10 +1371,13 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 			emptyMsg = "No upcoming tasks this week"
 		case taskViewCompleted:
 			emptyMsg = "No completed tasks"
+			hint = "Complete a task with 'x' to see it here"
+		case taskViewAll:
+			emptyMsg = "No tasks in vault"
 		}
 		b.WriteString(DimStyle.Render("  " + emptyMsg))
 		b.WriteString("\n")
-		b.WriteString(DimStyle.Render("  Press 'a' to add a task"))
+		b.WriteString(DimStyle.Render("  " + hint))
 		b.WriteString("\n")
 		return
 	}
