@@ -949,14 +949,11 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 			checkbox = lipgloss.NewStyle().Foreground(green).Render("[x]")
 		}
 
-		name := h.Name
 		nameW := innerW - 40
 		if nameW < 10 {
 			nameW = 10
 		}
-		if len(name) > nameW {
-			name = name[:nameW-3] + "..."
-		}
+		name := TruncateDisplay(h.Name, nameW)
 
 		cursor := "  "
 		nameStyle := labelStyle
@@ -968,7 +965,7 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 		streak := ht.streakBlocks(h.Name)
 		streakNum := streakStyle.Render(fmt.Sprintf(" %dd", h.Streak))
 
-		line := cursor + checkbox + " " + nameStyle.Render(habitPadRight(name, nameW)) + " " + streak + streakNum
+		line := cursor + checkbox + " " + nameStyle.Render(PadRight(name, nameW)) + " " + streak + streakNum
 		lines = append(lines, line)
 	}
 
@@ -1011,7 +1008,11 @@ func (ht HabitTracker) viewGoals(innerW int) string {
 		}
 
 		prog := g.goalProgress()
-		bar := habitProgressBar(prog, 20)
+		barW := innerW / 4
+		if barW < 10 {
+			barW = 10
+		}
+		bar := habitProgressBar(prog, barW)
 
 		lines = append(lines, cursor+nameStyle.Render(g.Title))
 		lines = append(lines, fmt.Sprintf("    %s  %s %s",
@@ -1102,11 +1103,8 @@ func (ht HabitTracker) viewStats(innerW int) string {
 		for _, h := range ht.habits {
 			current := h.Streak
 			longest := ht.longestStreak(h.Name)
-			name := h.Name
-			if len(name) > 20 {
-				name = name[:17] + "..."
-			}
-			lines = append(lines, "  "+labelStyle.Render(habitPadRight(name, 22))+
+			name := TruncateDisplay(h.Name, 20)
+			lines = append(lines, "  "+labelStyle.Render(PadRight(name, 22))+
 				lipgloss.NewStyle().Foreground(green).Bold(true).Render(fmt.Sprintf("current: %d", current))+"  "+
 				DimStyle.Render(fmt.Sprintf("longest: %d", longest)))
 		}
@@ -1121,12 +1119,13 @@ func (ht HabitTracker) viewStats(innerW int) string {
 		for _, gi := range active {
 			g := ht.goals[gi]
 			prog := g.goalProgress()
-			bar := habitProgressBar(prog, 20)
-			name := g.Title
-			if len(name) > 20 {
-				name = name[:17] + "..."
+			barW := innerW / 4
+			if barW < 10 {
+				barW = 10
 			}
-			lines = append(lines, "  "+labelStyle.Render(habitPadRight(name, 22))+bar+" "+numStyle.Render(fmt.Sprintf("%d%%", prog)))
+			bar := habitProgressBar(prog, barW)
+			name := TruncateDisplay(g.Title, 20)
+			lines = append(lines, "  "+labelStyle.Render(PadRight(name, 22))+bar+" "+numStyle.Render(fmt.Sprintf("%d%%", prog)))
 		}
 		lines = append(lines, "")
 	}
@@ -1211,10 +1210,3 @@ func habitProgressBar(pct int, width int) string {
 	return "[" + bar + "]"
 }
 
-// habitPadRight pads a string to the given width.
-func habitPadRight(s string, width int) string {
-	if len(s) >= width {
-		return s
-	}
-	return s + strings.Repeat(" ", width-len(s))
-}
