@@ -757,21 +757,9 @@ func (im ImageManager) View() string {
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", innerW-2)) + "\n")
 
-	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-
-	helpItems := []struct{ key, desc string }{
-		{"Enter", "insert"},
-		{"i", "import"},
-		{"o", "open"},
-		{"d", "delete"},
-		{"Esc", "close"},
-	}
-	var helpParts []string
-	for _, h := range helpItems {
-		helpParts = append(helpParts, keyStyle.Render(h.key)+" "+descStyle.Render(h.desc))
-	}
-	b.WriteString("  " + strings.Join(helpParts, "  "))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Enter", "insert"}, {"i", "import"}, {"o", "open"}, {"d", "delete"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
