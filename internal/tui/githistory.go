@@ -459,14 +459,9 @@ func (g GitHistory) viewList() string {
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerW)))
 	b.WriteString("\n")
 
-	enterKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Enter")
-	enterDesc := DimStyle.Render(": view diff  ")
-	restoreKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("r")
-	restoreDesc := DimStyle.Render(": restore  ")
-	escKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Esc")
-	escDesc := DimStyle.Render(": close")
-
-	b.WriteString("  " + enterKey + enterDesc + restoreKey + restoreDesc + escKey + escDesc)
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Enter", "view diff"}, {"r", "restore"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -572,9 +567,9 @@ func (g GitHistory) viewDiff() string {
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", innerW)))
 	b.WriteString("\n")
 
-	escKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Esc")
-	escDesc := DimStyle.Render(": back to list")
-	b.WriteString("  " + escKey + escDesc)
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Esc", "back to list"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
