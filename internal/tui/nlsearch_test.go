@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // ---------------------------------------------------------------------------
@@ -736,11 +738,11 @@ func TestSnippetExtraction(t *testing.T) {
 		if len(results) == 0 {
 			t.Fatal("expected results")
 		}
-		if len(results[0].Snippet) > 80 {
-			t.Errorf("snippet should be at most 80 chars, got %d", len(results[0].Snippet))
+		if lipgloss.Width(results[0].Snippet) > 80 {
+			t.Errorf("snippet display width should be at most 80, got %d", lipgloss.Width(results[0].Snippet))
 		}
-		if !strings.HasSuffix(results[0].Snippet, "...") {
-			t.Error("truncated snippet should end with '...'")
+		if !strings.HasSuffix(results[0].Snippet, "…") {
+			t.Error("truncated snippet should end with '…'")
 		}
 	})
 
