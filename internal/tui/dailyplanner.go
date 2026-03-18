@@ -1203,10 +1203,7 @@ func (dp DailyPlanner) viewRightPanel(width int) string {
 			if maxText < 5 {
 				maxText = 5
 			}
-			displayText := task.Text
-			if len(displayText) > maxText {
-				displayText = displayText[:maxText-3] + "..."
-			}
+			displayText := TruncateDisplay(task.Text, maxText)
 
 			textStyle := NormalItemStyle
 			donePrefix := ""
