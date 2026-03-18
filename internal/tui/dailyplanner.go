@@ -1392,28 +1392,12 @@ func (dp *DailyPlanner) recountDirect() {
 
 // viewHelp renders the keybinding help bar.
 func (dp DailyPlanner) viewHelp() string {
-	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-
-	pairs := []struct{ key, desc string }{
-		{"a", "add"},
-		{"d", "delete"},
-		{"Enter", "assign"},
-		{"Tab", "panel"},
-		{"Space", "done"},
-		{"m", "move"},
-		{"f", "focus"},
-		{"s", "save"},
-		{"[/]", "day"},
-		{"Esc", "close"},
+	pairs := []struct{ Key, Desc string }{
+		{"a", "add"}, {"d", "delete"}, {"Enter", "assign"}, {"Tab", "panel"},
+		{"Space", "done"}, {"m", "move"}, {"f", "focus"}, {"s", "save"},
+		{"[/]", "day"}, {"Esc", "close"},
 	}
-
-	var parts []string
-	for _, p := range pairs {
-		parts = append(parts, keyStyle.Render(p.key)+descStyle.Render(":"+p.desc))
-	}
-
-	return "  " + strings.Join(parts, "  ")
+	return RenderHelpBar(pairs)
 }
 
 // ---------------------------------------------------------------------------
