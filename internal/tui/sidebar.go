@@ -386,9 +386,7 @@ func (s Sidebar) View() string {
 		if maxNameLen < 5 {
 			maxNameLen = 5
 		}
-		if len(displayName) > maxNameLen {
-			displayName = displayName[:maxNameLen-3] + "..."
-		}
+		displayName = TruncateDisplay(displayName, maxNameLen)
 
 		if i == s.cursor && s.focused {
 			// Selected item: accent bar + highlighted background
