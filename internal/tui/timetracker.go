@@ -679,9 +679,7 @@ func (tt TimeTracker) viewOverview(width int) string {
 		for i, na := range topNotes {
 			name := filepath.Base(na.NotePath)
 			name = strings.TrimSuffix(name, ".md")
-			if len(name) > 22 {
-				name = name[:19] + "..."
-			}
+			name = TruncateDisplay(name, 22)
 
 			barLen := 0
 			if maxTime > 0 {
@@ -792,14 +790,10 @@ func (tt TimeTracker) viewDaily(width int) string {
 			e := tt.todayEntries[i]
 			name := filepath.Base(e.NotePath)
 			name = strings.TrimSuffix(name, ".md")
-			if len(name) > 22 {
-				name = name[:19] + "..."
-			}
+			name = TruncateDisplay(name, 22)
 
 			task := e.TaskText
-			if len(task) > 18 {
-				task = task[:15] + "..."
-			}
+			task = TruncateDisplay(task, 18)
 			if task == "" {
 				task = DimStyle.Render("-")
 			}
@@ -895,9 +889,7 @@ func (tt TimeTracker) viewWeekly(width int) string {
 			na := weekNotes[i]
 			name := filepath.Base(na.NotePath)
 			name = strings.TrimSuffix(name, ".md")
-			if len(name) > 22 {
-				name = name[:19] + "..."
-			}
+			name = TruncateDisplay(name, 22)
 
 			barLen := 0
 			if maxTime > 0 {
@@ -1014,9 +1006,7 @@ func (tt TimeTracker) viewNoteDetail(width int) string {
 			}
 			dur := formatDurationShort(e.Duration)
 			task := e.TaskText
-			if len(task) > 20 {
-				task = task[:17] + "..."
-			}
+			task = TruncateDisplay(task, 20)
 
 			line := fmt.Sprintf("  %s  %s-%s  %8s",
 				lipgloss.NewStyle().Foreground(sapphire).Render(e.Date),
