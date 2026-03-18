@@ -1,6 +1,11 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 // Color variables -- defaults are Catppuccin Mocha.
 // ApplyTheme() in themes.go overwrites every one of these.
@@ -284,6 +289,65 @@ var (
 	IconNewChar      = "+"
 	IconOutlineChar  = "≡"
 )
+
+// OverlayBorderColor is the standard border color for all overlay panels.
+// Using the primary accent (mauve) ensures visual consistency across views.
+var OverlayBorderColor = mauve
+
+// TruncateDisplay truncates a string to maxWidth using lipgloss.Width()
+// for accurate display-width measurement (handles wide unicode/emoji).
+// Returns the original string if it fits within maxWidth.
+func TruncateDisplay(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= maxWidth {
+		return s
+	}
+	r := []rune(s)
+	for i := len(r); i > 0; i-- {
+		candidate := string(r[:i]) + "…"
+		if lipgloss.Width(candidate) <= maxWidth {
+			return candidate
+		}
+	}
+	return "…"
+}
+
+// PadRight pads a string to the given display width using spaces.
+// Uses lipgloss.Width() for accurate measurement with unicode characters.
+func PadRight(s string, width int) string {
+	w := lipgloss.Width(s)
+	if w >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-w)
+}
+
+// ScrollIndicator returns a compact scroll position string using ▲/▼ arrows.
+func ScrollIndicator(scrollPos, total, visible int) string {
+	if total <= visible {
+		return ""
+	}
+	var parts []string
+	if scrollPos > 0 {
+		parts = append(parts, "▲")
+	}
+	parts = append(parts, fmt.Sprintf("%d/%d", scrollPos+1, total))
+	if scrollPos+visible < total {
+		parts = append(parts, "▼")
+	}
+	return strings.Join(parts, " ")
+}
+
+// RenderHelpBar renders a standardized help bar using HelpKeyStyle and HelpDescStyle.
+func RenderHelpBar(pairs []struct{ Key, Desc string }) string {
+	var parts []string
+	for _, p := range pairs {
+		parts = append(parts, HelpKeyStyle.Render(p.Key)+HelpDescStyle.Render(":"+p.Desc))
+	}
+	return "  " + strings.Join(parts, "  ")
+}
 
 func ApplyIconTheme(theme string) {
 	switch theme {
