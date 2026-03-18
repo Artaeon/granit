@@ -870,16 +870,9 @@ func (kg KnowledgeGaps) View() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerWidth)))
 	b.WriteString("\n")
 
-	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-	sepStyle := lipgloss.NewStyle().Foreground(surface1)
-	sep := sepStyle.Render(" | ")
-
-	b.WriteString("  " +
-		keyStyle.Render("Tab") + descStyle.Render(" switch view") + sep +
-		keyStyle.Render("Enter") + descStyle.Render(" open note") + sep +
-		keyStyle.Render("r") + descStyle.Render(" refresh") + sep +
-		keyStyle.Render("Esc") + descStyle.Render(" close"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Tab", "switch"}, {"Enter", "open"}, {"r", "refresh"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
