@@ -323,9 +323,7 @@ func (m Model) View() string {
 						if eIdx := strings.Index(taskText, " \U0001f4c5"); eIdx >= 0 {
 							taskText = taskText[:eIdx]
 						}
-						if len(taskText) > taskPanelWidth-8 {
-							taskText = taskText[:taskPanelWidth-11] + "..."
-						}
+						taskText = TruncateDisplay(taskText, taskPanelWidth-8)
 						if dueDate < today {
 							overdueCount++
 							taskContent.WriteString("  " + lipgloss.NewStyle().Foreground(red).Render("\u2717 "+taskText) + "\n")
@@ -355,9 +353,7 @@ func (m Model) View() string {
 						if eIdx := strings.Index(taskText, " \U0001f4c5"); eIdx >= 0 {
 							taskText = taskText[:eIdx]
 						}
-						if len(taskText) > taskPanelWidth-8 {
-							taskText = taskText[:taskPanelWidth-11] + "..."
-						}
+						taskText = TruncateDisplay(taskText, taskPanelWidth-8)
 						if dueDate == today {
 							taskContent.WriteString("  " + lipgloss.NewStyle().Foreground(yellow).Render("\u25cb "+taskText) + "\n")
 						}
@@ -440,9 +436,7 @@ func (m Model) View() string {
 				r := recents[i]
 				name := filepath.Base(r.path)
 				name = strings.TrimSuffix(name, ".md")
-				if len(name) > notesPanelWidth-12 {
-					name = name[:notesPanelWidth-15] + "..."
-				}
+				name = TruncateDisplay(name, notesPanelWidth-12)
 				style := lipgloss.NewStyle().Foreground(text)
 				if r.path == m.activeNote {
 					style = style.Foreground(mauve).Bold(true)
@@ -475,9 +469,7 @@ func (m Model) View() string {
 				note := m.vault.GetNote(m.activeNote)
 				if note != nil && len(note.Links) > 0 {
 					for _, link := range note.Links {
-						if len(link) > notesPanelWidth-8 {
-							link = link[:notesPanelWidth-11] + "..."
-						}
+						link = TruncateDisplay(link, notesPanelWidth-8)
 						notesContent.WriteString("  " + lipgloss.NewStyle().Foreground(blue).Render("\u2192 "+link) + "\n")
 					}
 				} else {
