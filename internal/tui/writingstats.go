@@ -455,10 +455,7 @@ func (ws WritingStats) viewOverview(width int) []string {
 	lines = append(lines, labelStyle.Render("  Avg Words/Note:    ")+numStyle.Render(formatNum(ws.avgWordsNote)))
 	lines = append(lines, "")
 
-	longestDisplay := ws.longestNote
-	if len(longestDisplay) > 30 {
-		longestDisplay = longestDisplay[:27] + "..."
-	}
+	longestDisplay := TruncateDisplay(ws.longestNote, 30)
 	lines = append(lines, labelStyle.Render("  Longest Note:      ")+lipgloss.NewStyle().Foreground(blue).Bold(true).Render(longestDisplay))
 	lines = append(lines, labelStyle.Render("                     ")+DimStyle.Render(formatNum(ws.longestWords)+" words"))
 	lines = append(lines, "")
