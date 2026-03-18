@@ -1065,14 +1065,11 @@ func (dp DailyPlanner) viewSchedule(width int) string {
 			tag := blockTypeTag(blk.TaskType)
 
 			// Truncate text if needed
-			maxText := blockWidth - len(tag) - 2
+			maxText := blockWidth - lipgloss.Width(tag) - 2
 			if maxText < 3 {
 				maxText = 3
 			}
-			displayText := blk.TaskText
-			if len(displayText) > maxText {
-				displayText = displayText[:maxText-3] + "..."
-			}
+			displayText := TruncateDisplay(blk.TaskText, maxText)
 
 			blockStyle := lipgloss.NewStyle().Foreground(c)
 			tagStyle := lipgloss.NewStyle().Foreground(c)
@@ -1128,13 +1125,12 @@ func (dp DailyPlanner) viewSchedule(width int) string {
 	}
 
 	// Scroll indicators
-	if dp.scroll > 0 {
-		b.WriteString(DimStyle.Render("  ... more above ..."))
-		b.WriteString("\n")
-	}
-	if end < len(dp.blocks) {
-		b.WriteString(DimStyle.Render("  ... more below ..."))
-		b.WriteString("\n")
+	if len(dp.blocks) > dp.visibleSlots() {
+		indicator := ScrollIndicator(dp.scroll, len(dp.blocks), dp.visibleSlots())
+		if indicator != "" {
+			b.WriteString(DimStyle.Render("  " + indicator))
+			b.WriteString("\n")
+		}
 	}
 
 	return b.String()
@@ -1158,6 +1154,8 @@ func (dp DailyPlanner) viewRightPanel(width int) string {
 
 	if len(dp.unscheduled) == 0 {
 		b.WriteString(DimStyle.Render("  No unscheduled tasks"))
+		b.WriteString("\n")
+		b.WriteString(DimStyle.Render("  Press 'a' to add one"))
 		b.WriteString("\n")
 	} else {
 		maxVisible := dp.visibleSlots() / 2
@@ -1253,6 +1251,8 @@ func (dp DailyPlanner) viewRightPanel(width int) string {
 
 	if len(dp.habits) == 0 {
 		b.WriteString(DimStyle.Render("  No habits configured"))
+		b.WriteString("\n")
+		b.WriteString(DimStyle.Render("  Open Habits tracker to add some"))
 		b.WriteString("\n")
 	} else {
 		for i, habit := range dp.habits {
