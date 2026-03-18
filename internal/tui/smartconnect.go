@@ -492,9 +492,7 @@ func (sc SmartConnections) renderList(b *strings.Builder, innerWidth int) {
 	// Title
 	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 	noteName := strings.TrimSuffix(sc.currentNote, ".md")
-	if len(noteName) > innerWidth-30 {
-		noteName = noteName[:innerWidth-33] + "..."
-	}
+	noteName = TruncateDisplay(noteName, innerWidth-30)
 	b.WriteString(titleStyle.Render(IconGraphChar + " Smart Connections"))
 	b.WriteString("\n")
 	noteLabel := lipgloss.NewStyle().Foreground(overlay0).Render("  for: ")
@@ -638,9 +636,7 @@ func (sc SmartConnections) renderPreview(b *strings.Builder, innerWidth int) {
 	for i := start; i < end; i++ {
 		line := lines[i]
 		// Truncate long lines
-		if len(line) > innerWidth-6 {
-			line = line[:innerWidth-9] + "..."
-		}
+		line = TruncateDisplay(line, innerWidth-6)
 		num := lineNumStyle.Render(smallNum(i + 1))
 		b.WriteString(num + " " + contentStyle.Render(line))
 		if i < end-1 {
