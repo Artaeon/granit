@@ -496,10 +496,7 @@ func (kg *KnowledgeGraph) renderHubs(b *strings.Builder, width int) {
 
 	for i := start; i < end; i++ {
 		h := kg.hubs[i]
-		name := strings.TrimSuffix(h.Path, ".md")
-		if len(name) > 20 {
-			name = name[:17] + "..."
-		}
+		name := TruncateDisplay(strings.TrimSuffix(h.Path, ".md"), 20)
 
 		bar := ""
 		if maxTotal > 0 {
