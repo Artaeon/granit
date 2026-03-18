@@ -346,25 +346,16 @@ func (vs VaultSwitch) View() string {
 
 	// Help bar at bottom of overlay
 	b.WriteString("\n")
-	var helpParts []string
-	helpKey := lipgloss.NewStyle().Foreground(peach).Bold(true)
-	helpDesc := lipgloss.NewStyle().Foreground(overlay0)
-
 	if vs.adding {
-		helpParts = append(helpParts,
-			helpKey.Render("Enter")+helpDesc.Render(" confirm"),
-			helpKey.Render("Esc")+helpDesc.Render(" cancel"),
-		)
+		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+			{"Enter", "confirm"}, {"Esc", "cancel"},
+		}))
 	} else {
-		helpParts = append(helpParts,
-			helpKey.Render("j/k")+helpDesc.Render(" navigate"),
-			helpKey.Render("Enter")+helpDesc.Render(" switch"),
-			helpKey.Render("a")+helpDesc.Render(" add"),
-			helpKey.Render("d")+helpDesc.Render(" remove"),
-			helpKey.Render("Esc")+helpDesc.Render(" close"),
-		)
+		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+			{"j/k", "navigate"}, {"Enter", "switch"}, {"a", "add"},
+			{"d", "remove"}, {"Esc", "close"},
+		}))
 	}
-	b.WriteString("  " + strings.Join(helpParts, "  "))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
