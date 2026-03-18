@@ -534,10 +534,7 @@ func (fs FocusSession) viewSetup(b *strings.Builder, width int) {
 		}
 
 		for i := start; i < end; i++ {
-			taskText := fs.tasks[i]
-			if len(taskText) > width-12 {
-				taskText = taskText[:width-15] + "..."
-			}
+			taskText := TruncateDisplay(fs.tasks[i], width-12)
 			if i == fs.taskIdx && fs.setupField == 0 {
 				b.WriteString("  " + lipgloss.NewStyle().Foreground(green).Bold(true).Render("> "+taskText))
 			} else {
@@ -668,10 +665,7 @@ func (fs FocusSession) viewActive(b *strings.Builder, width int) {
 	if fs.sessionTask != "" {
 		taskLabel := lipgloss.NewStyle().Foreground(teal).Bold(true)
 		b.WriteString("  " + taskLabel.Render("Task: "))
-		taskText := fs.sessionTask
-		if len(taskText) > width-14 {
-			taskText = taskText[:width-17] + "..."
-		}
+		taskText := TruncateDisplay(fs.sessionTask, width-14)
 		b.WriteString(lipgloss.NewStyle().Foreground(text).Render(taskText))
 		b.WriteString("\n")
 	}
