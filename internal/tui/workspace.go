@@ -460,12 +460,9 @@ func (w *Workspace) viewSaveMode(innerW int) string {
 	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
 	b.WriteString("\n")
 
-	enterKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Enter")
-	enterDesc := DimStyle.Render(": confirm  ")
-	escKey := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Esc")
-	escDesc := DimStyle.Render(": cancel")
-
-	b.WriteString("  " + enterKey + enterDesc + escKey + escDesc)
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Enter", "confirm"}, {"Esc", "cancel"},
+	}))
 
 	return b.String()
 }
