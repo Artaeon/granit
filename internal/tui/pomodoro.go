@@ -326,11 +326,7 @@ func (p *Pomodoro) StatusString() string {
 	case PomodoroWork:
 		base := fmt.Sprintf("\U0001f345 %d:%02d", mins, secs) // tomato emoji
 		if p.currentTask != "" {
-			taskLabel := p.currentTask
-			// Truncate to keep status bar compact
-			if len(taskLabel) > 25 {
-				taskLabel = taskLabel[:22] + "..."
-			}
+			taskLabel := TruncateDisplay(p.currentTask, 25)
 			base += " \u00b7 " + taskLabel
 		}
 		return base
@@ -657,9 +653,7 @@ func (p Pomodoro) View() string {
 			if maxTaskWidth < 10 {
 				maxTaskWidth = 10
 			}
-			if len(taskLabel) > maxTaskWidth {
-				taskLabel = taskLabel[:maxTaskWidth-3] + "..."
-			}
+			taskLabel = TruncateDisplay(taskLabel, maxTaskWidth)
 
 			// Pad to right-align time info
 			leftPart := num + iconStyle.Render(icon) + " " + textStyle.Render(taskLabel)
@@ -742,9 +736,7 @@ func (p Pomodoro) View() string {
 				lipgloss.NewStyle().Foreground(blue).Render(noteStr)
 			if s.Task != "" {
 				taskLabel := s.Task
-				if len(taskLabel) > 20 {
-					taskLabel = taskLabel[:17] + "..."
-				}
+				taskLabel = TruncateDisplay(taskLabel, 20)
 				line += "  " + lipgloss.NewStyle().Foreground(subtext0).Render(taskLabel)
 			}
 			b.WriteString(line)
