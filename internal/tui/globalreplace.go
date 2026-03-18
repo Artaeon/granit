@@ -591,10 +591,7 @@ func (gr *GlobalReplace) highlightMatch(line string, maxWidth int) string {
 		maxWidth = 10
 	}
 
-	display := line
-	if len(display) > maxWidth {
-		display = display[:maxWidth-3] + "..."
-	}
+	display := TruncateDisplay(line, maxWidth)
 
 	if gr.findQuery == "" {
 		return NormalItemStyle.Render(display)
@@ -667,9 +664,7 @@ func (gr *GlobalReplace) previewReplace(line string, maxWidth int) string {
 	} else {
 		replaced = caseInsensitiveReplaceFirst(line, gr.findQuery, gr.replaceText)
 	}
-	if len(replaced) > maxWidth {
-		replaced = replaced[:maxWidth-3] + "..."
-	}
+	replaced = TruncateDisplay(replaced, maxWidth)
 	return replaced
 }
 
