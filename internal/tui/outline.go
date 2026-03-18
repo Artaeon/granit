@@ -293,7 +293,9 @@ func (o Outline) View() string {
 	}
 
 	b.WriteString("\n\n")
-	b.WriteString(DimStyle.Render("  Enter: jump to heading  Esc: close"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Enter", "jump"}, {"j/k", "nav"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
