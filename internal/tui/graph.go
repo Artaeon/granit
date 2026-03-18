@@ -449,19 +449,14 @@ func (g GraphView) View() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", innerWidth-4)))
 	b.WriteString("\n")
 
-	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-	sepStyle := lipgloss.NewStyle().Foreground(surface1)
-	sep := sepStyle.Render(" | ")
-	footer := "  " +
-		keyStyle.Render("j/k") + descStyle.Render(" navigate") + sep +
-		keyStyle.Render("Enter") + descStyle.Render(" open") + sep +
-		keyStyle.Render("Tab") + descStyle.Render(" local/global")
-	if g.localMode {
-		footer += sep + keyStyle.Render("1/2") + descStyle.Render(" depth")
+	pairs := []struct{ Key, Desc string }{
+		{"j/k", "nav"}, {"Enter", "open"}, {"Tab", "local/global"},
 	}
-	footer += sep + keyStyle.Render("Esc") + descStyle.Render(" close")
-	b.WriteString(footer)
+	if g.localMode {
+		pairs = append(pairs, struct{ Key, Desc string }{"1/2", "depth"})
+	}
+	pairs = append(pairs, struct{ Key, Desc string }{"Esc", "close"})
+	b.WriteString(RenderHelpBar(pairs))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
