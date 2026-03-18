@@ -420,10 +420,7 @@ func (fr FindReplace) View() string {
 		for i := start; i < end; i++ {
 			m := fr.matches[i]
 			lineStr := DimStyle.Render("  L" + smallNum(m.line+1) + ": ")
-			preview := m.text
-			if len(preview) > width-20 {
-				preview = preview[:width-23] + "..."
-			}
+			preview := TruncateDisplay(m.text, width-20)
 
 			if fr.regexMode {
 				// Regex highlighting
