@@ -563,10 +563,7 @@ func (fe FrontmatterEditor) renderFieldValue(f fmField, maxW int) string {
 		if f.value == "" {
 			return DimStyle.Render("(empty)")
 		}
-		v := f.value
-		if len(v) > maxW {
-			v = v[:maxW-3] + "..."
-		}
+		v := TruncateDisplay(f.value, maxW)
 		return lipgloss.NewStyle().Foreground(text).Render(v)
 	}
 }
