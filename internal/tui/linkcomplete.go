@@ -304,10 +304,7 @@ func (lc *LinkCompleter) Render(maxWidth, maxHeight int) string {
 	rows = append(rows, title)
 
 	// Query row with cursor indicator.
-	queryText := " > " + lc.query + "_"
-	if len(queryText) > innerWidth {
-		queryText = queryText[:innerWidth]
-	}
+	queryText := TruncateDisplay(" > "+lc.query+"_", innerWidth)
 	rows = append(rows, queryStyle.Render(lcPadRight(queryText, innerWidth)))
 
 	// Divider.
@@ -319,15 +316,10 @@ func (lc *LinkCompleter) Render(maxWidth, maxHeight int) string {
 		snippet := lc.snippetForName(name)
 
 		// Truncate name if needed.
-		displayName := name
-		if len(displayName) > innerWidth-4 {
-			displayName = displayName[:innerWidth-7] + "..."
-		}
+		displayName := TruncateDisplay(name, innerWidth-4)
 
 		// Truncate snippet.
-		if len(snippet) > innerWidth-2 {
-			snippet = snippet[:innerWidth-5] + "..."
-		}
+		snippet = TruncateDisplay(snippet, innerWidth-2)
 		if snippet == "" {
 			snippet = " "
 		}
