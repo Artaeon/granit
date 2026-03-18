@@ -556,9 +556,7 @@ func (sc SmartConnections) renderList(b *strings.Builder, innerWidth int) {
 			if maxNameLen < 10 {
 				maxNameLen = 10
 			}
-			if len(displayName) > maxNameLen {
-				displayName = displayName[:maxNameLen-3] + "..."
-			}
+			displayName = TruncateDisplay(displayName, maxNameLen)
 
 			if i == sc.cursor {
 				line := "  " + scoreStr + "  " + displayName
@@ -581,9 +579,7 @@ func (sc SmartConnections) renderList(b *strings.Builder, innerWidth int) {
 				if maxTermLen < 10 {
 					maxTermLen = 10
 				}
-				if len(terms) > maxTermLen {
-					terms = terms[:maxTermLen-3] + "..."
-				}
+				terms = TruncateDisplay(terms, maxTermLen)
 				b.WriteString("       " + sharedStyle.Render("shared: "+terms))
 				b.WriteString("\n")
 			}
