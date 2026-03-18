@@ -274,7 +274,7 @@ func TestTruncate(t *testing.T) {
 			name:   "over limit adds ellipsis",
 			input:  "this is a long string",
 			maxLen: 10,
-			want:   "this is...",
+			want:   "this is a…",
 		},
 		{
 			name:   "zero limit",
@@ -289,22 +289,22 @@ func TestTruncate(t *testing.T) {
 			want:   "",
 		},
 		{
-			name:   "maxLen 1 truncates without ellipsis",
+			name:   "maxLen 1 truncates to ellipsis",
 			input:  "hello",
 			maxLen: 1,
-			want:   "h",
+			want:   "…",
 		},
 		{
-			name:   "maxLen 3 truncates without ellipsis",
+			name:   "maxLen 3 truncates with ellipsis",
 			input:  "hello",
 			maxLen: 3,
-			want:   "hel",
+			want:   "he…",
 		},
 		{
 			name:   "maxLen 4 with ellipsis",
 			input:  "hello world",
 			maxLen: 4,
-			want:   "h...",
+			want:   "hel…",
 		},
 		{
 			name:   "empty string",
