@@ -129,17 +129,11 @@ func (r ResearchAgent) StatusText() string {
 	default:
 		prefix = ""
 	}
-	topic := r.topic
-	if len(topic) > 20 {
-		topic = topic[:20] + "…"
-	}
+	topic := TruncateDisplay(r.topic, 20)
 	dots := int(time.Since(r.startTime).Seconds()) % 4
 	label := topic
 	if prefix != "" {
-		label = prefix + ": " + topic
-		if len(label) > 28 {
-			label = label[:28] + "…"
-		}
+		label = TruncateDisplay(prefix+": "+topic, 28)
 	}
 	return IconBotChar + " " + label + strings.Repeat(".", dots+1)
 }
