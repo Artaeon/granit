@@ -928,10 +928,7 @@ func (bp *BlogPublisher) viewResult(b *strings.Builder, innerW int) {
 		b.WriteString(errStyle.Render("  Publication failed"))
 		b.WriteString("\n\n")
 		// Wrap long error messages
-		errMsg := bp.status
-		if len(errMsg) > innerW-4 {
-			errMsg = errMsg[:innerW-7] + "..."
-		}
+		errMsg := TruncateDisplay(bp.status, innerW-4)
 		b.WriteString(lipgloss.NewStyle().Foreground(red).Render("  " + errMsg))
 	} else {
 		okStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
