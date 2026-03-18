@@ -958,6 +958,7 @@ func ApplyTheme(name string) {
 		Padding(padV, padH)
 
 	FocusedBorderColor = mauve
+	OverlayBorderColor = mauve
 
 	// Status bar
 	StatusModeStyle = lipgloss.NewStyle().
