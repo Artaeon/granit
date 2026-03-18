@@ -110,10 +110,7 @@ func (c *ClockIn) StatusString() string {
 
 	base := fmt.Sprintf("⏱ %d:%02d:%02d", h, m, s)
 	if c.project != "" {
-		label := c.project
-		if len(label) > 20 {
-			label = label[:17] + "..."
-		}
+		label := TruncateDisplay(c.project, 20)
 		base += " · " + label
 	}
 	return base
