@@ -1134,41 +1134,25 @@ func (tt TimeTracker) renderDailyChart(data []dayTotal, availWidth int) string {
 
 // helpLine returns the contextual help text for the given phase.
 func (tt TimeTracker) helpLine(phase int) string {
-	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-	descStyle := DimStyle
-
 	switch phase {
 	case 0: // Overview
-		parts := []string{
-			keyStyle.Render("s") + descStyle.Render(":start/stop"),
-			keyStyle.Render("1") + descStyle.Render(":today"),
-			keyStyle.Render("2") + descStyle.Render(":weekly"),
-			keyStyle.Render("j/k") + descStyle.Render(":navigate"),
-			keyStyle.Render("Enter") + descStyle.Render(":detail"),
-			keyStyle.Render("q/Esc") + descStyle.Render(":close"),
-		}
-		return "  " + strings.Join(parts, "  ")
+		return RenderHelpBar([]struct{ Key, Desc string }{
+			{"s", "start/stop"}, {"1", "today"}, {"2", "weekly"},
+			{"j/k", "navigate"}, {"Enter", "detail"}, {"q/Esc", "close"},
+		})
 	case 1: // Daily
-		parts := []string{
-			keyStyle.Render("h/l") + descStyle.Render(":prev/next day"),
-			keyStyle.Render("j/k") + descStyle.Render(":navigate"),
-			keyStyle.Render("Enter") + descStyle.Render(":note detail"),
-			keyStyle.Render("Esc") + descStyle.Render(":back"),
-		}
-		return "  " + strings.Join(parts, "  ")
+		return RenderHelpBar([]struct{ Key, Desc string }{
+			{"h/l", "prev/next day"}, {"j/k", "navigate"},
+			{"Enter", "note detail"}, {"Esc", "back"},
+		})
 	case 2: // Weekly
-		parts := []string{
-			keyStyle.Render("j/k") + descStyle.Render(":navigate"),
-			keyStyle.Render("Enter") + descStyle.Render(":note detail"),
-			keyStyle.Render("Esc") + descStyle.Render(":back"),
-		}
-		return "  " + strings.Join(parts, "  ")
+		return RenderHelpBar([]struct{ Key, Desc string }{
+			{"j/k", "navigate"}, {"Enter", "note detail"}, {"Esc", "back"},
+		})
 	case 3: // Note detail
-		parts := []string{
-			keyStyle.Render("j/k") + descStyle.Render(":scroll"),
-			keyStyle.Render("Esc") + descStyle.Render(":back"),
-		}
-		return "  " + strings.Join(parts, "  ")
+		return RenderHelpBar([]struct{ Key, Desc string }{
+			{"j/k", "scroll"}, {"Esc", "back"},
+		})
 	}
 	return ""
 }
