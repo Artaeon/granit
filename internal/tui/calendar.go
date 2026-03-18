@@ -1398,23 +1398,12 @@ func (c Calendar) renderFooter(b *strings.Builder, width int) {
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", width-8)))
 	b.WriteString("\n")
 
-	keyStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(overlay0)
-	sep := lipgloss.NewStyle().Foreground(surface1).Render(" | ")
-
-	b.WriteString("  " +
-		keyStyle.Render("hjkl") + descStyle.Render(" nav") + sep +
-		keyStyle.Render("[]") + descStyle.Render(" month") + sep +
-		keyStyle.Render("w") + descStyle.Render(" view") + sep +
-		keyStyle.Render("t") + descStyle.Render(" today"))
-	b.WriteString("\n")
-	b.WriteString("  " +
-		keyStyle.Render("Enter") + descStyle.Render(" open note") + sep +
-		keyStyle.Render("a") + descStyle.Render(" add task") + sep +
-		keyStyle.Render("Space") + descStyle.Render(" toggle") + sep +
-		keyStyle.Render("y") + descStyle.Render(" year") + sep +
-		keyStyle.Render("e") + descStyle.Render(" events") + sep +
-		keyStyle.Render("Esc") + descStyle.Render(" close"))
+	pairs := []struct{ Key, Desc string }{
+		{"hjkl", "nav"}, {"[]", "month"}, {"w", "view"}, {"t", "today"},
+		{"Enter", "open"}, {"a", "add"}, {"Space", "toggle"},
+		{"y", "year"}, {"e", "events"}, {"Esc", "close"},
+	}
+	b.WriteString(RenderHelpBar(pairs))
 }
 
 func (c Calendar) renderDayCell(day int, isToday, isCursor, hasNote, hasEvent bool, tasksDone, tasksTotal int, currentMonth, dim, isWeekend bool) string {
