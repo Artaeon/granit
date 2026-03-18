@@ -863,24 +863,10 @@ func (cc CommandCenter) viewHabitsSection(innerW int) string {
 
 // renderHelp renders the footer help bar.
 func (cc CommandCenter) renderHelp() string {
-	keys := []struct {
-		key  string
-		desc string
-	}{
-		{"Tab", "section"},
-		{"j/k", "scroll"},
-		{"Space", "focus"},
-		{"Enter", "action"},
-		{"Esc", "close"},
-	}
-
-	var parts []string
-	for _, k := range keys {
-		kk := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(k.key)
-		dd := DimStyle.Render(":" + k.desc)
-		parts = append(parts, kk+dd)
-	}
-	return "  " + strings.Join(parts, "  ")
+	return RenderHelpBar([]struct{ Key, Desc string }{
+		{"Tab", "section"}, {"j/k", "scroll"}, {"Space", "focus"},
+		{"Enter", "action"}, {"Esc", "close"},
+	})
 }
 
 // ---------------------------------------------------------------------------
