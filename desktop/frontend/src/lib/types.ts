@@ -55,3 +55,66 @@ export interface BacklinkEntry {
   title: string
   context: string
 }
+
+export interface Block {
+  id: string
+  content: string
+  children: Block[]
+  collapsed: boolean
+}
+
+export interface TaskItem {
+  text: string
+  done: boolean
+  notePath: string
+  lineNum: number
+}
+
+export interface ProjectMilestone {
+  text: string
+  done: boolean
+}
+
+export interface ProjectGoal {
+  title: string
+  done: boolean
+  milestones: ProjectMilestone[]
+}
+
+export interface Project {
+  name: string
+  description: string
+  folder: string
+  tags: string[]
+  status: 'active' | 'paused' | 'completed' | 'archived'
+  color: string
+  createdAt: string
+  notes: string[]
+  taskFilter: string
+  category: string
+  goals: ProjectGoal[]
+  nextAction: string
+  priority: number
+  dueDate: string
+  timeSpent: number
+}
+
+export interface KanbanCard {
+  id: string
+  title: string
+  notePath: string
+  lineNum: number
+  done: boolean
+  manual: boolean
+  priority: number
+  dueDate: string
+  tags: string[]
+  columnId: string
+}
+
+export interface KanbanColumn {
+  id: string
+  title: string
+  color: string
+  cards: KanbanCard[]
+}

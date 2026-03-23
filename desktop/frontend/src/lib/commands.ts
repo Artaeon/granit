@@ -112,6 +112,17 @@ export const allCommands: Command[] = [
   { action: 'command_center', label: 'Command Center', desc: 'What do I do RIGHT NOW?', shortcut: 'Alt+C', icon: 'zap', category: 'Tools' },
   { action: 'show_tutorial', label: 'Tutorial', desc: 'Interactive walkthrough', shortcut: '', icon: 'help', category: 'Tools' },
 
+  // Overlays & Misc
+  { action: 'show_daily_briefing', label: 'Daily Briefing', desc: 'Morning briefing with today\'s focus', shortcut: '', icon: 'zap', category: 'Tools' },
+  { action: 'show_journal_prompts', label: 'Journal Prompts', desc: 'Daily reflection prompts', shortcut: '', icon: 'edit', category: 'Tools' },
+  { action: 'show_quiz', label: 'Quiz', desc: 'Auto-generated quizzes from vault', shortcut: '', icon: 'layers', category: 'Tools' },
+  { action: 'show_snippets', label: 'Snippets', desc: 'Saved text snippets', shortcut: '', icon: 'save', category: 'Tools' },
+  { action: 'show_dataview', label: 'Dataview', desc: 'Query notes by properties', shortcut: '', icon: 'search', category: 'Tools' },
+  { action: 'show_workspaces', label: 'Workspaces', desc: 'Save and restore layouts', shortcut: '', icon: 'layout', category: 'Tools' },
+  { action: 'show_encryption', label: 'Encryption', desc: 'Encrypt/decrypt notes', shortcut: '', icon: 'lock', category: 'Tools' },
+  { action: 'show_recurring_tasks', label: 'Recurring Tasks', desc: 'Manage recurring tasks', shortcut: '', icon: 'check-list', category: 'Tools' },
+  { action: 'show_projects', label: 'Projects', desc: 'Project & goals manager', shortcut: '', icon: 'folder', category: 'Tools' },
+
   // App
   { action: 'quit', label: 'Quit', desc: 'Exit Granit', shortcut: 'Ctrl+Q', icon: 'x', category: 'App' },
 ]
@@ -159,4 +170,6 @@ export const iconSvg: Record<string, string> = {
   'table': 'M2 2h12v12H2V2zm0 4h12m0 4H2m5-8v12',
   'check': 'M3 8l3 3 7-7',
   'canvas': 'M2 2h5v5H2V2zm7 0h5v5H9V2zm-7 7h5v5H2V9zm7 0h5v5H9V9z',
+  'lock': 'M4 7h8v6H4V7zm2-2a2 2 0 0 1 4 0v2H6V5z',
+  'layout': 'M2 2h12v12H2V2zm4 0v12m4-12v12',
 }

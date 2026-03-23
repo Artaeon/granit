@@ -21,10 +21,54 @@
   animation: spin 0.6s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Global border fix - prevents harsh white lines on dark themes */
+.sidebar-border-r {
+  border-right: 1px solid color-mix(in srgb, var(--ctp-surface0) 40%, transparent);
+}
+.sidebar-border-l {
+  border-left: 1px solid color-mix(in srgb, var(--ctp-surface0) 40%, transparent);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ctp-surface1) 50%, transparent);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ctp-surface1);
+}
+
+/* Global reset for cleaner dark theme rendering */
+*, *::before, *::after {
+  border-color: color-mix(in srgb, var(--ctp-surface0) 40%, transparent);
+}
+
+/* Selection color */
+::selection {
+  background: color-mix(in srgb, var(--ctp-blue) 30%, transparent);
+}
+
+/* Focus ring style */
+:focus-visible {
+  outline: 1.5px solid color-mix(in srgb, var(--ctp-blue) 50%, transparent);
+  outline-offset: -1px;
+}
 
 /* ======================== Themes ======================== */
 
