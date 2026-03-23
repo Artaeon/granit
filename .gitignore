@@ -37,3 +37,9 @@ Thumbs.db
 /build/
 /tmp/
 .claude/worktrees/
+
+# Wails / Desktop
+desktop/desktop
+desktop/frontend/dist/
+desktop/frontend/node_modules/
+desktop/frontend/package.json.md5
