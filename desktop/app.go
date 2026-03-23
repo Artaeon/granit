@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/artaeon/granit/internal/config"
@@ -55,6 +56,7 @@ type SearchHit struct {
 
 type GranitApp struct {
 	ctx       context.Context
+	mu        sync.RWMutex
 	vault     *vault.Vault
 	index     *vault.Index
 	config    config.Config
@@ -105,12 +107,14 @@ func (a *GranitApp) OpenVault(path string) error {
 	idx := vault.NewIndex(v)
 	idx.Build()
 
+	a.mu.Lock()
 	a.vault = v
 	a.index = idx
 	a.vaultRoot = abs
 	a.config = config.LoadForVault(abs)
+	a.mu.Unlock()
 
-	// Start file watcher for auto-refresh
+	// Start file watcher for auto-refresh (does not acquire a.mu)
 	a.startFileWatcher()
 
 	// Register in vault list
@@ -135,18 +139,25 @@ func (a *GranitApp) SelectVaultDialog() (string, error) {
 }
 
 func (a *GranitApp) IsVaultOpen() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	return a.vault != nil
 }
 
 func (a *GranitApp) GetVaultPath() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	return a.vaultRoot
 }
 
 // ---------- Note operations ----------
 
 func (a *GranitApp) GetNotes() []NoteInfo {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
 	if a.vault == nil {
-		return nil
+		return []NoteInfo{}
 	}
 	paths := a.vault.SortedPaths()
 	notes := make([]NoteInfo, 0, len(paths))
@@ -163,6 +174,9 @@ func (a *GranitApp) GetNotes() []NoteInfo {
 }
 
 func (a *GranitApp) GetNote(relPath string) (*NoteDetail, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
 	if a.vault == nil {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -186,6 +200,9 @@ func (a *GranitApp) GetNote(relPath string) (*NoteDetail, error) {
 }
 
 func (a *GranitApp) SaveNote(relPath string, content string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if a.vault == nil {
 		return fmt.Errorf("no vault open")
 	}
@@ -196,7 +213,7 @@ func (a *GranitApp) SaveNote(relPath string, content string) error {
 		return fmt.Errorf("invalid path")
 	}
 
-	if err := os.WriteFile(abs, []byte(content), 0644); err != nil {
+	if err := atomicWriteFile(abs, []byte(content), 0644); err != nil {
 		return err
 	}
 
@@ -218,6 +235,9 @@ func (a *GranitApp) SaveNote(relPath string, content string) error {
 }
 
 func (a *GranitApp) CreateNote(name string, content string) (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if a.vault == nil {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -235,7 +255,7 @@ func (a *GranitApp) CreateNote(name string, content string) (string, error) {
 	if _, err := os.Stat(absPath); err == nil {
 		return "", fmt.Errorf("note already exists: %s", name)
 	}
-	if err := os.WriteFile(absPath, []byte(content), 0644); err != nil {
+	if err := atomicWriteFile(absPath, []byte(content), 0644); err != nil {
 		return "", err
 	}
 
@@ -244,10 +264,17 @@ func (a *GranitApp) CreateNote(name string, content string) (string, error) {
 	}
 	a.index.Build()
 
+	if a.vault.SearchIndex != nil {
+		a.vault.SearchIndex.Update(name, content)
+	}
+
 	return name, nil
 }
 
 func (a *GranitApp) DeleteNote(relPath string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if a.vault == nil {
 		return fmt.Errorf("no vault open")
 	}
@@ -274,20 +301,27 @@ func (a *GranitApp) DeleteNote(relPath string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(trashPath, content, 0644); err != nil {
+	if err := atomicWriteFile(trashPath, content, 0644); err != nil {
 		return err
 	}
 
 	// Write metadata sidecar
-	meta, _ := json.Marshal(map[string]interface{}{
+	meta, err := json.Marshal(map[string]interface{}{
 		"orig_path":  relPath,
 		"trash_path": trashFile,
 		"deleted_at": time.Now(),
 	})
-	os.WriteFile(filepath.Join(trashDir, trashFile+".json"), meta, 0644)
+	if err != nil {
+		return fmt.Errorf("marshal trash metadata: %w", err)
+	}
+	if err := atomicWriteFile(filepath.Join(trashDir, trashFile+".json"), meta, 0644); err != nil {
+		return fmt.Errorf("write trash metadata: %w", err)
+	}
 
 	// Remove original
-	os.Remove(abs)
+	if err := os.Remove(abs); err != nil {
+		return fmt.Errorf("remove original file: %w", err)
+	}
 
 	delete(a.vault.Notes, relPath)
 	if a.vault.SearchIndex != nil {
@@ -299,6 +333,9 @@ func (a *GranitApp) DeleteNote(relPath string) error {
 }
 
 func (a *GranitApp) RenameNote(oldPath string, newName string) (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if a.vault == nil {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -324,12 +361,23 @@ func (a *GranitApp) RenameNote(oldPath string, newName string) (string, error) {
 	}
 	a.index.Build()
 
+	// Update search index: remove old path, add new path with content
+	if a.vault.SearchIndex != nil {
+		a.vault.SearchIndex.Remove(oldPath)
+		if note := a.vault.GetNote(newRelPath); note != nil {
+			a.vault.SearchIndex.Update(newRelPath, note.Content)
+		}
+	}
+
 	return newRelPath, nil
 }
 
 // ---------- Folder tree ----------
 
 func (a *GranitApp) GetFolderTree() *FolderNode {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
 	if a.vault == nil {
 		return &FolderNode{Name: "No vault", IsFolder: true}
 	}
@@ -390,6 +438,8 @@ func (a *GranitApp) GetFolderTree() *FolderNode {
 // ---------- Search ----------
 
 func (a *GranitApp) Search(query string) []SearchHit {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil || a.vault.SearchIndex == nil {
 		return nil
 	}
@@ -415,12 +465,32 @@ func (a *GranitApp) Search(query string) []SearchHit {
 // ---------- Config ----------
 
 func (a *GranitApp) GetTheme() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	return a.config.Theme
 }
 
 func (a *GranitApp) SetTheme(theme string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.config.Theme = theme
 	return a.config.Save()
+}
+
+// ---------- Helpers ----------
+
+// atomicWriteFile writes data to a temporary file then renames it into place,
+// preventing partial/corrupt writes on crash.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, perm); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // ---------- Vault assets handler (serves images/files from vault) ----------
@@ -434,15 +504,19 @@ func NewVaultAssetsHandler(app *GranitApp) *VaultAssetsHandler {
 }
 
 func (h *VaultAssetsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if h.app.vaultRoot == "" || !strings.HasPrefix(r.URL.Path, "/vault-assets/") {
+	h.app.mu.RLock()
+	vaultRoot := h.app.vaultRoot
+	h.app.mu.RUnlock()
+
+	if vaultRoot == "" || !strings.HasPrefix(r.URL.Path, "/vault-assets/") {
 		return
 	}
 
 	relPath := strings.TrimPrefix(r.URL.Path, "/vault-assets/")
-	absPath := filepath.Join(h.app.vaultRoot, relPath)
+	absPath := filepath.Join(vaultRoot, relPath)
 
 	abs, err := filepath.Abs(absPath)
-	if err != nil || !strings.HasPrefix(abs, h.app.vaultRoot) {
+	if err != nil || !strings.HasPrefix(abs, vaultRoot) {
 		http.NotFound(w, r)
 		return
 	}

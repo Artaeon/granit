@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,8 +64,12 @@ func (a *GranitApp) startFileWatcher() {
 				}
 				debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
 					// Re-scan vault and rebuild index
+					a.mu.Lock()
+					defer a.mu.Unlock()
 					if a.vault != nil {
-						a.vault.Scan()
+						if err := a.vault.Scan(); err != nil {
+							log.Printf("warning: vault scan failed: %v", err)
+						}
 						if a.index != nil {
 							a.index.Build()
 						}
