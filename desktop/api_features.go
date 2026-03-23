@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -35,6 +36,8 @@ var builtinTemplates = []TemplateInfo{
 }
 
 func (a *GranitApp) GetTemplates() []TemplateInfo {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	templates := make([]TemplateInfo, len(builtinTemplates))
 	copy(templates, builtinTemplates)
 	if a.vaultRoot == "" {
@@ -101,6 +104,14 @@ type VaultStatsData struct {
 }
 
 func (a *GranitApp) GetVaultStats() *VaultStatsData {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.getVaultStatsInternal()
+}
+
+// getVaultStatsInternal is the lock-free version of GetVaultStats.
+// Callers must hold at least a.mu.RLock().
+func (a *GranitApp) getVaultStatsInternal() *VaultStatsData {
 	if a.vault == nil {
 		return &VaultStatsData{}
 	}
@@ -222,6 +233,8 @@ func (a *GranitApp) GetAllTags() []TagEntryDTO {
 	if a.vault == nil {
 		return nil
 	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	tagMap := make(map[string]int)
 	for _, p := range a.vault.SortedPaths() {
 		note := a.vault.GetNote(p)
@@ -257,6 +270,8 @@ func (a *GranitApp) GetNotesForTag(tag string) []NoteInfo {
 	if a.vault == nil {
 		return nil
 	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	var result []NoteInfo
 	for _, p := range a.vault.SortedPaths() {
 		note := a.vault.GetNote(p)
@@ -330,6 +345,8 @@ func (a *GranitApp) GetGraphData(centerNote string) *GraphData {
 	if a.vault == nil {
 		return &GraphData{}
 	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	data := &GraphData{}
 	edgeSet := make(map[string]bool)
 
@@ -443,7 +460,10 @@ func (a *GranitApp) loadBookmarks() *BookmarkFile {
 		return &BookmarkFile{}
 	}
 	var bm BookmarkFile
-	json.Unmarshal(data, &bm)
+	if err := json.Unmarshal(data, &bm); err != nil {
+		log.Printf("warning: failed to parse bookmarks: %v", err)
+		return &BookmarkFile{}
+	}
 	return &bm
 }
 
@@ -452,10 +472,12 @@ func (a *GranitApp) saveBookmarks(bm *BookmarkFile) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(a.bookmarksPath(), data, 0644)
+	return atomicWriteFile(a.bookmarksPath(), data, 0644)
 }
 
 func (a *GranitApp) GetBookmarks() *BookmarkFile {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return &BookmarkFile{}
 	}
@@ -463,6 +485,9 @@ func (a *GranitApp) GetBookmarks() *BookmarkFile {
 }
 
 func (a *GranitApp) ToggleBookmark(relPath string) (bool, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	bm := a.loadBookmarks()
 	for i, s := range bm.Starred {
 		if s == relPath {
@@ -478,6 +503,9 @@ func (a *GranitApp) AddRecent(relPath string) error {
 	if a.vaultRoot == "" {
 		return nil
 	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	bm := a.loadBookmarks()
 	filtered := make([]string, 0, len(bm.Recent))
 	for _, r := range bm.Recent {
@@ -508,6 +536,8 @@ type trashMeta struct {
 }
 
 func (a *GranitApp) GetTrashItems() []TrashItemInfo {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return nil
 	}
@@ -545,6 +575,9 @@ func (a *GranitApp) GetTrashItems() []TrashItemInfo {
 }
 
 func (a *GranitApp) RestoreFromTrash(trashFile string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	trashDir := filepath.Join(a.vaultRoot, ".granit-trash")
 	// Validate trash file stays within trash dir
 	srcAbs, err := filepath.Abs(filepath.Join(trashDir, trashFile))
@@ -564,25 +597,37 @@ func (a *GranitApp) RestoreFromTrash(trashFile string) error {
 	if err != nil {
 		return err
 	}
-	os.MkdirAll(filepath.Dir(dst), 0755)
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return fmt.Errorf("create parent directories: %w", err)
+	}
 	content, err := os.ReadFile(srcAbs)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(dst, content, 0644); err != nil {
+	if err := atomicWriteFile(dst, content, 0644); err != nil {
 		return err
 	}
-	os.Remove(srcAbs)
-	os.Remove(metaPath)
+	if err := os.Remove(srcAbs); err != nil {
+		log.Printf("warning: failed to remove trash file %s: %v", srcAbs, err)
+	}
+	if err := os.Remove(metaPath); err != nil {
+		log.Printf("warning: failed to remove trash metadata %s: %v", metaPath, err)
+	}
 	a.vault.Scan()
 	a.index.Build()
 	return nil
 }
 
 func (a *GranitApp) PurgeFromTrash(trashFile string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	trashDir := filepath.Join(a.vaultRoot, ".granit-trash")
-	os.Remove(filepath.Join(trashDir, trashFile))
-	os.Remove(filepath.Join(trashDir, trashFile+".json"))
+	if err := os.Remove(filepath.Join(trashDir, trashFile)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("purge trash file: %w", err)
+	}
+	if err := os.Remove(filepath.Join(trashDir, trashFile+".json")); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("purge trash metadata: %w", err)
+	}
 	return nil
 }
 
@@ -612,6 +657,8 @@ func (a *GranitApp) GetOutline(relPath string) []OutlineItem {
 	if a.vault == nil {
 		return nil
 	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	note := a.vault.GetNote(relPath)
 	if note == nil {
 		return nil
@@ -787,6 +834,8 @@ type SettingItem struct {
 }
 
 func (a *GranitApp) GetAllSettings() []SettingItem {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	c := a.config
 	return []SettingItem{
 		{"theme", "Theme", "select", c.Theme, []string{"catppuccin-mocha", "catppuccin-latte", "catppuccin-frappe", "catppuccin-macchiato", "tokyo-night", "gruvbox-dark", "nord", "dracula", "solarized-dark", "solarized-light", "rose-pine", "rose-pine-dawn", "everforest-dark", "kanagawa", "one-dark", "github-dark", "github-light", "ayu-dark", "ayu-light", "palenight", "synthwave-84", "nightfox", "vesper", "poimandres", "moonlight", "vitesse-dark", "min-light", "oxocarbon", "matrix", "cobalt2", "monokai-pro", "horizon", "zenburn", "iceberg", "amber", "high-contrast-dark", "high-contrast-light", "deuteranopia", "protanopia", "tritanopia"}, "Appearance", "Color theme for the entire app"},
@@ -822,6 +871,8 @@ func (a *GranitApp) GetAllSettings() []SettingItem {
 }
 
 func (a *GranitApp) UpdateSetting(key string, value interface{}) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	c := &a.config
 	setBool := func(target *bool) error {
 		v, ok := value.(bool)
@@ -918,6 +969,8 @@ func (a *GranitApp) RefreshVault() error {
 	if a.vault == nil {
 		return fmt.Errorf("no vault open")
 	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if err := a.vault.Scan(); err != nil {
 		return err
 	}
@@ -926,6 +979,8 @@ func (a *GranitApp) RefreshVault() error {
 }
 
 func (a *GranitApp) CreateFolder(path string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.vaultRoot == "" {
 		return fmt.Errorf("no vault open")
 	}
@@ -937,6 +992,9 @@ func (a *GranitApp) CreateFolder(path string) error {
 }
 
 func (a *GranitApp) MoveFile(relPath string, newDir string) (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if a.vault == nil {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -987,6 +1045,8 @@ func (a *GranitApp) GetBacklinkContext(relPath string) []BacklinkContextEntry {
 	if a.vault == nil || a.index == nil {
 		return nil
 	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	backlinks := a.index.GetBacklinks(relPath)
 	entries := make([]BacklinkContextEntry, 0, len(backlinks))
 	for _, bl := range backlinks {
