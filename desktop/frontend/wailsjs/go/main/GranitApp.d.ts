@@ -14,6 +14,8 @@ export function CreateFromTemplate(arg1:number,arg2:string):Promise<string>;
 
 export function CreateNote(arg1:string,arg2:string):Promise<string>;
 
+export function CreateProject(arg1:string):Promise<void>;
+
 export function DecryptNote(arg1:string,arg2:string):Promise<string>;
 
 export function DeleteBackup(arg1:string):Promise<void>;
@@ -22,9 +24,13 @@ export function DeleteCanvas(arg1:string):Promise<void>;
 
 export function DeleteNote(arg1:string):Promise<void>;
 
+export function DeleteProject(arg1:number):Promise<void>;
+
 export function DeleteWorkspace(arg1:string):Promise<void>;
 
 export function EncryptNote(arg1:string,arg2:string):Promise<void>;
+
+export function EnsureJournalNote(arg1:string):Promise<main.NoteDetail>;
 
 export function ExportAll():Promise<string>;
 
@@ -68,6 +74,8 @@ export function GetGraphData(arg1:string):Promise<main.GraphData>;
 
 export function GetHabits():Promise<string>;
 
+export function GetJournalNotes(arg1:number):Promise<Array<main.NoteDetail>>;
+
 export function GetJournalPrompts():Promise<Array<Record<string, string>>>;
 
 export function GetKanban():Promise<string>;
@@ -93,6 +101,10 @@ export function GetOutline(arg1:string):Promise<Array<main.OutlineItem>>;
 export function GetPlatform():Promise<string>;
 
 export function GetPlugins():Promise<Array<main.PluginInfoDTO>>;
+
+export function GetProjectTasks(arg1:string):Promise<Array<main.TaskItem>>;
+
+export function GetProjects():Promise<Array<main.Project>>;
 
 export function GetQuizQuestions(arg1:string):Promise<Array<main.QuizQuestionDTO>>;
 
@@ -178,6 +190,8 @@ export function SaveKanban(arg1:string):Promise<void>;
 
 export function SaveNote(arg1:string,arg2:string):Promise<void>;
 
+export function SaveProjectsJSON(arg1:string):Promise<void>;
+
 export function SaveSnippets(arg1:string):Promise<void>;
 
 export function SaveWorkspace(arg1:string,arg2:string):Promise<void>;
@@ -193,5 +207,7 @@ export function ToggleBookmark(arg1:string):Promise<boolean>;
 export function TogglePlugin(arg1:string):Promise<void>;
 
 export function ToggleTask(arg1:string,arg2:number):Promise<void>;
+
+export function UpdateProject(arg1:number,arg2:string):Promise<void>;
 
 export function UpdateSetting(arg1:string,arg2:any):Promise<void>;

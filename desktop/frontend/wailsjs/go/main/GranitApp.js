@@ -26,6 +26,10 @@ export function CreateNote(arg1, arg2) {
   return window['go']['main']['GranitApp']['CreateNote'](arg1, arg2);
 }
 
+export function CreateProject(arg1) {
+  return window['go']['main']['GranitApp']['CreateProject'](arg1);
+}
+
 export function DecryptNote(arg1, arg2) {
   return window['go']['main']['GranitApp']['DecryptNote'](arg1, arg2);
 }
@@ -42,12 +46,20 @@ export function DeleteNote(arg1) {
   return window['go']['main']['GranitApp']['DeleteNote'](arg1);
 }
 
+export function DeleteProject(arg1) {
+  return window['go']['main']['GranitApp']['DeleteProject'](arg1);
+}
+
 export function DeleteWorkspace(arg1) {
   return window['go']['main']['GranitApp']['DeleteWorkspace'](arg1);
 }
 
 export function EncryptNote(arg1, arg2) {
   return window['go']['main']['GranitApp']['EncryptNote'](arg1, arg2);
+}
+
+export function EnsureJournalNote(arg1) {
+  return window['go']['main']['GranitApp']['EnsureJournalNote'](arg1);
 }
 
 export function ExportAll() {
@@ -134,6 +146,10 @@ export function GetHabits() {
   return window['go']['main']['GranitApp']['GetHabits']();
 }
 
+export function GetJournalNotes(arg1) {
+  return window['go']['main']['GranitApp']['GetJournalNotes'](arg1);
+}
+
 export function GetJournalPrompts() {
   return window['go']['main']['GranitApp']['GetJournalPrompts']();
 }
@@ -184,6 +200,14 @@ export function GetPlatform() {
 
 export function GetPlugins() {
   return window['go']['main']['GranitApp']['GetPlugins']();
+}
+
+export function GetProjectTasks(arg1) {
+  return window['go']['main']['GranitApp']['GetProjectTasks'](arg1);
+}
+
+export function GetProjects() {
+  return window['go']['main']['GranitApp']['GetProjects']();
 }
 
 export function GetQuizQuestions(arg1) {
@@ -354,6 +378,10 @@ export function SaveNote(arg1, arg2) {
   return window['go']['main']['GranitApp']['SaveNote'](arg1, arg2);
 }
 
+export function SaveProjectsJSON(arg1) {
+  return window['go']['main']['GranitApp']['SaveProjectsJSON'](arg1);
+}
+
 export function SaveSnippets(arg1) {
   return window['go']['main']['GranitApp']['SaveSnippets'](arg1);
 }
@@ -384,6 +412,10 @@ export function TogglePlugin(arg1) {
 
 export function ToggleTask(arg1, arg2) {
   return window['go']['main']['GranitApp']['ToggleTask'](arg1, arg2);
+}
+
+export function UpdateProject(arg1, arg2) {
+  return window['go']['main']['GranitApp']['UpdateProject'](arg1, arg2);
 }
 
 export function UpdateSetting(arg1, arg2) {
