@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { getFlashcards, getFlashcardProgress, saveFlashcardProgress } from './api'
   const dispatch = createEventDispatcher()
-  const api = () => (window as any).go?.main?.GranitApp
 
   export let notePath: string = ''
 
@@ -62,13 +62,13 @@
   async function loadData() {
     loading = true
     try {
-      const rawProgress = await api()?.GetFlashcardProgress()
+      const rawProgress = await getFlashcardProgress()
       if (rawProgress && rawProgress !== '{}') {
         progress = JSON.parse(rawProgress)
         if (!progress.cards) progress.cards = {}
       }
       if (notePath) {
-        cards = (await api()?.GetFlashcards(notePath)) || []
+        cards = (await getFlashcards(notePath)) || []
       }
     } catch (e) {
       console.error('Failed to load flashcards:', e)
@@ -151,7 +151,7 @@
 
   async function saveProgress() {
     try {
-      await api()?.SaveFlashcardProgress(JSON.stringify(progress))
+      await saveFlashcardProgress(JSON.stringify(progress))
     } catch (e) {
       console.error('Failed to save progress:', e)
     }

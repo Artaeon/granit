@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { deleteWorkspace as apiDeleteWorkspace, listWorkspaces, loadWorkspace as apiLoadWorkspace, renameWorkspace } from './api'
   const dispatch = createEventDispatcher()
 
   let workspaces: string[] = []
@@ -12,15 +13,12 @@
   let messageType: 'success' | 'error' = 'success'
   let saveInput: HTMLInputElement | null = null
   let renameInput: HTMLInputElement | null = null
-
-  const api = (window as any).go?.main?.GranitApp
-
   onMount(loadWorkspaces)
 
   async function loadWorkspaces() {
     loading = true
     try {
-      const result = await api?.ListWorkspaces()
+      const result = await listWorkspaces()
       workspaces = result || []
     } catch (e: any) {
       showMessage('Failed to load workspaces: ' + e.message, 'error')
@@ -53,7 +51,7 @@
 
   async function loadWorkspace(name: string) {
     try {
-      const data = await api?.LoadWorkspace(name)
+      const data = await apiLoadWorkspace(name)
       if (data) {
         dispatch('load-workspace', { name, data })
         showMessage(`Workspace "${name}" loaded`, 'success')
@@ -66,7 +64,7 @@
   async function deleteWorkspace(name: string) {
     if (!confirm(`Delete workspace "${name}"?`)) return
     try {
-      await api?.DeleteWorkspace(name)
+      await apiDeleteWorkspace(name)
       showMessage(`Workspace "${name}" deleted`, 'success')
       await loadWorkspaces()
     } catch (e: any) {
@@ -89,7 +87,7 @@
       return
     }
     try {
-      await api?.RenameWorkspace(oldName, newName)
+      await renameWorkspace(oldName, newName)
       showMessage(`Renamed to "${newName}"`, 'success')
       renameMode = null
       renameBuf = ''

@@ -1,11 +1,10 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
+  import { decryptNote, encryptNote, isNoteEncrypted, saveDecryptedNote } from './api'
 
   export let notePath: string = ''
 
   const dispatch = createEventDispatcher()
-  const api = (window as any).go?.main?.GranitApp
-
   let isEncrypted = false
   let password = ''
   let showPassword = false
@@ -16,9 +15,9 @@
   let showDecrypted = false
 
   async function checkStatus() {
-    if (!api || !notePath) return
+    if (!notePath) return
     try {
-      isEncrypted = await api.IsNoteEncrypted(notePath)
+      isEncrypted = await isNoteEncrypted(notePath)
     } catch {
       isEncrypted = false
     }
@@ -32,7 +31,7 @@
   $: if (notePath) checkStatus()
 
   async function encrypt() {
-    if (!api || !notePath || !password) {
+    if (!notePath || !password) {
       message = 'Please enter a password'
       messageType = 'error'
       return
@@ -40,7 +39,7 @@
     loading = true
     message = ''
     try {
-      await api.EncryptNote(notePath, password)
+      await encryptNote(notePath, password)
       isEncrypted = true
       message = 'Note encrypted successfully'
       messageType = 'success'
@@ -54,7 +53,7 @@
   }
 
   async function decrypt() {
-    if (!api || !notePath || !password) {
+    if (!notePath || !password) {
       message = 'Please enter a password'
       messageType = 'error'
       return
@@ -62,7 +61,7 @@
     loading = true
     message = ''
     try {
-      decryptedContent = await api.DecryptNote(notePath, password)
+      decryptedContent = await decryptNote(notePath, password)
       showDecrypted = true
       message = 'Decrypted successfully (preview only)'
       messageType = 'success'
@@ -76,10 +75,10 @@
   }
 
   async function decryptAndSave() {
-    if (!api || !notePath || !password) return
+    if (!notePath || !password) return
     loading = true
     try {
-      await api.SaveDecryptedNote(notePath, password)
+      await saveDecryptedNote(notePath, password)
       isEncrypted = false
       showDecrypted = false
       decryptedContent = ''

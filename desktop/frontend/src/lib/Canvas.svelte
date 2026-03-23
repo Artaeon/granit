@@ -1,9 +1,7 @@
-<!-- svelte-ignore a11y-click-events-have-key-events -->
-<!-- svelte-ignore a11y-no-static-element-interactions -->
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { listCanvases, getCanvas, saveCanvas, deleteCanvas as deleteCanvasApi } from './api'
   const dispatch = createEventDispatcher()
-  const api = () => (window as any).go?.main?.GranitApp
 
   // ---------- Types ----------
   interface CanvasCard {
@@ -89,7 +87,7 @@
 
   async function loadCanvasList() {
     try {
-      canvases = (await api()?.ListCanvases()) || []
+      canvases = (await listCanvases()) || []
     } catch { canvases = [] }
   }
 
@@ -97,7 +95,7 @@
     currentCanvas = name
     showPicker = false
     try {
-      const raw = await api()?.GetCanvas(name)
+      const raw = await getCanvas(name)
       const data: CanvasData = raw ? JSON.parse(raw) : { cards: [], connections: [] }
       cards = (data.cards || []).map(c => ({ ...c, id: c.id || genId(), width: c.width || CARD_W, height: c.height || CARD_H }))
       connections = data.connections || []
@@ -117,7 +115,7 @@
   }
 
   async function deleteCanvas(name: string) {
-    try { await api()?.DeleteCanvas(name) } catch {}
+    try { await deleteCanvasApi(name) } catch {}
     await loadCanvasList()
     if (currentCanvas === name) {
       showPicker = true
@@ -138,7 +136,7 @@
   }
 
   async function saveCanvasData(name: string, data: CanvasData) {
-    try { await api()?.SaveCanvas(name, JSON.stringify(data)) } catch {}
+    try { await saveCanvas(name, JSON.stringify(data)) } catch {}
   }
 
   function genId() { return Math.random().toString(36).slice(2, 10) }
@@ -304,6 +302,8 @@
   function findCard(id: string) { return cards.find(c => c.id === id) }
 </script>
 
+<!-- svelte-ignore a11y-click-events-have-key-events -->
+<!-- svelte-ignore a11y-no-static-element-interactions -->
 <div class="fixed inset-0 z-50 flex justify-center pt-[3%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
   <div class="w-[90vw] max-w-6xl h-[88vh] bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-overlay flex flex-col overflow-hidden">
 

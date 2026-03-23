@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { createBackup as apiCreateBackup, deleteBackup as apiDeleteBackup, listBackups } from './api'
   const dispatch = createEventDispatcher()
 
   interface BackupInfo {
@@ -13,15 +14,12 @@
   let creating = false
   let message = ''
   let messageType: 'success' | 'error' = 'success'
-
-  const api = (window as any).go?.main?.GranitApp
-
   onMount(loadBackups)
 
   async function loadBackups() {
     loading = true
     try {
-      const result = await api?.ListBackups()
+      const result = await listBackups()
       backups = result || []
     } catch (e: any) {
       showMessage('Failed to load backups: ' + e.message, 'error')
@@ -34,7 +32,7 @@
     creating = true
     message = ''
     try {
-      const name = await api?.CreateBackup()
+      const name = await apiCreateBackup()
       showMessage(`Backup created: ${name}`, 'success')
       await loadBackups()
     } catch (e: any) {
@@ -46,7 +44,7 @@
   async function deleteBackup(name: string) {
     if (!confirm(`Delete backup "${name}"? This cannot be undone.`)) return
     try {
-      await api?.DeleteBackup(name)
+      await apiDeleteBackup(name)
       showMessage('Backup deleted', 'success')
       await loadBackups()
     } catch (e: any) {

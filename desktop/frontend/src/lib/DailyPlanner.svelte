@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { getCalendarData, getHabits, saveHabits } from './api'
   const dispatch = createEventDispatcher()
-  const api = () => (window as any).go?.main?.GranitApp
 
   interface PlannerItem {
     id: string
@@ -77,7 +77,7 @@
   async function loadPlanner() {
     // Load calendar events for today
     try {
-      const calData = await api()?.GetCalendarData(today.getFullYear(), today.getMonth() + 1)
+      const calData = await getCalendarData(today.getFullYear(), today.getMonth() + 1)
       if (calData?.events) {
         calendarEvents = calData.events.filter((e: any) => e.date === todayStr)
       }
@@ -89,7 +89,7 @@
 
     // Load saved planner data
     try {
-      const raw = await api()?.GetHabits() // reuse storage
+      const raw = await getHabits() // reuse storage
       if (raw) {
         const parsed = JSON.parse(raw)
         if (parsed._planner?.[todayStr]) {
@@ -103,13 +103,13 @@
     try {
       let data: any = {}
       try {
-        const raw = await api()?.GetHabits()
+        const raw = await getHabits()
         if (raw) data = JSON.parse(raw)
         if (Array.isArray(data)) data = { _habits: data }
       } catch { /* ignore */ }
       if (!data._planner) data._planner = {}
       data._planner[todayStr] = items
-      await api()?.SaveHabits(JSON.stringify(data))
+      await saveHabits(JSON.stringify(data))
     } catch { /* ignore */ }
   }
 

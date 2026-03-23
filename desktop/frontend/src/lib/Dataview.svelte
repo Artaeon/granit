@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { runDataviewQuery } from './api'
   const dispatch = createEventDispatcher()
 
   let query = ''
@@ -10,9 +11,6 @@
   let sortCol = ''
   let sortDesc = false
   let showExamples = true
-
-  const api = (window as any).go?.main?.GranitApp
-
   const exampleQueries = [
     { label: 'All notes sorted by date', query: 'SORT date DESC' },
     { label: 'Notes in projects folder', query: 'FROM "projects" SORT title' },
@@ -28,7 +26,7 @@
     error = ''
     showExamples = false
     try {
-      const raw = await api?.RunDataviewQuery(query)
+      const raw = await runDataviewQuery(query)
       results = raw || []
       if (results.length > 0) {
         // Collect all unique column keys

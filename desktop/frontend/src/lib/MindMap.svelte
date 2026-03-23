@@ -1,8 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { getMindMapData } from './api'
   const dispatch = createEventDispatcher()
-  const api = () => (window as any).go?.main?.GranitApp
-
   export let notePath: string = ''
 
   interface MindMapNode {
@@ -68,7 +67,7 @@
   async function loadData() {
     loading = true
     try {
-      const raw = await api()?.GetMindMapData(notePath)
+      const raw = await getMindMapData(notePath)
       if (raw) {
         root = JSON.parse(raw)
         computeLayout()

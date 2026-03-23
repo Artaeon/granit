@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { getPlugins, runPluginCommand, togglePlugin as apiTogglePlugin } from './api'
   const dispatch = createEventDispatcher()
 
   interface PluginInfo {
@@ -19,15 +20,12 @@
   let messageType: 'success' | 'error' = 'success'
   let runningCommand = ''
   let selectedPlugin: PluginInfo | null = null
-
-  const api = (window as any).go?.main?.GranitApp
-
   onMount(loadPlugins)
 
   async function loadPlugins() {
     loading = true
     try {
-      const result = await api?.GetPlugins()
+      const result = await getPlugins()
       plugins = result || []
     } catch (e: any) {
       showMessage('Failed to load plugins: ' + e.message, 'error')
@@ -37,7 +35,7 @@
 
   async function togglePlugin(name: string) {
     try {
-      await api?.TogglePlugin(name)
+      await apiTogglePlugin(name)
       await loadPlugins()
       const plugin = plugins.find(p => p.name === name)
       showMessage(`${name} ${plugin?.enabled ? 'enabled' : 'disabled'}`, 'success')
@@ -49,7 +47,7 @@
   async function runCommand(pluginName: string, command: string) {
     runningCommand = pluginName + ':' + command
     try {
-      const result = await api?.RunPluginCommand(pluginName, command)
+      const result = await runPluginCommand(pluginName, command)
       showMessage(result || 'Command completed', 'success')
     } catch (e: any) {
       showMessage('Command failed: ' + e.message, 'error')

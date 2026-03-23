@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { getDailyBriefing } from './api'
   const dispatch = createEventDispatcher()
-  const api = () => (window as any).go?.main?.GranitApp
 
   let loading = true
   let error = ''
@@ -11,7 +11,7 @@
     loading = true
     error = ''
     try {
-      data = await api()?.GetDailyBriefing()
+      data = await getDailyBriefing()
     } catch (e) {
       error = String(e)
     }

@@ -1,8 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { getTimeline } from './api'
   const dispatch = createEventDispatcher()
-  const api = () => (window as any).go?.main?.GranitApp
-
   interface TimelineEntry {
     date: string
     title: string
@@ -40,7 +39,7 @@
   async function loadTimeline() {
     loading = true
     try {
-      entries = (await api()?.GetTimeline()) || []
+      entries = (await getTimeline()) || []
     } catch (e) {
       console.error('Failed to load timeline:', e)
     }

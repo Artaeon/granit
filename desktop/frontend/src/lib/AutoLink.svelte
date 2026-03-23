@@ -1,10 +1,10 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
+  import { getAutoLinkSuggestions } from './api'
 
   export let notePath: string = ''
 
   const dispatch = createEventDispatcher()
-  const api = (window as any).go?.main?.GranitApp
 
   let suggestions: Array<{ target: string; context: string; line: number }> = []
   let loading = false
@@ -12,11 +12,11 @@
   let linkedSet = new Set<number>()
 
   async function loadSuggestions() {
-    if (!api || !notePath) return
+    if (!notePath) return
     loading = true
     error = ''
     try {
-      const result = await api.GetAutoLinkSuggestions(notePath)
+      const result = await getAutoLinkSuggestions(notePath)
       suggestions = result || []
     } catch (e: any) {
       error = e?.message || 'Failed to load suggestions'

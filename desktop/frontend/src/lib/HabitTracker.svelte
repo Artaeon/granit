@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { getHabits, saveHabits } from './api'
   const dispatch = createEventDispatcher()
-  const api = () => (window as any).go?.main?.GranitApp
 
   interface Habit {
     name: string
@@ -45,7 +45,7 @@
   function toggleDay(habitIdx: number, date: string) {
     habits[habitIdx].log[date] = !habits[habitIdx].log[date]
     habits = habits
-    saveHabits()
+    persistHabits()
   }
 
   function addHabit() {
@@ -54,17 +54,17 @@
     habits = [...habits, { name, created: todayStr, log: {} }]
     newHabitName = ''
     showAddInput = false
-    saveHabits()
+    persistHabits()
   }
 
   function deleteHabit(idx: number) {
     habits = habits.filter((_, i) => i !== idx)
-    saveHabits()
+    persistHabits()
   }
 
-  async function loadHabits() {
+  async function loadHabitsData() {
     try {
-      const raw = await api()?.GetHabits()
+      const raw = await getHabits()
       if (raw) {
         const parsed = JSON.parse(raw)
         if (Array.isArray(parsed)) habits = parsed
@@ -72,13 +72,13 @@
     } catch { /* empty vault or no data */ }
   }
 
-  async function saveHabits() {
+  async function persistHabits() {
     try {
-      await api()?.SaveHabits(JSON.stringify(habits))
+      await saveHabits(JSON.stringify(habits))
     } catch { /* ignore */ }
   }
 
-  onMount(() => { loadHabits() })
+  onMount(() => { loadHabitsData() })
 </script>
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->

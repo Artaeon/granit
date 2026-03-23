@@ -1,9 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { getSnippets, saveSnippets } from './api'
 
   const dispatch = createEventDispatcher()
-  const api = () => (window as any).go?.main?.GranitApp
-
   interface Snippet {
     trigger: string
     content: string
@@ -29,7 +28,7 @@
     loading = true
     error = ''
     try {
-      const result = await api()?.GetSnippets()
+      const result = await getSnippets()
       if (result) {
         snippets = result
       }
@@ -101,7 +100,7 @@
 
   async function persistSnippets() {
     try {
-      await api()?.SaveSnippets(JSON.stringify(userSnippets))
+      await saveSnippets(JSON.stringify(userSnippets))
       successMsg = 'Snippets saved'
       setTimeout(() => { successMsg = '' }, 2000)
     } catch (e: any) {

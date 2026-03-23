@@ -1,8 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { getJournalPrompts } from './api'
   const dispatch = createEventDispatcher()
-  const api = () => (window as any).go?.main?.GranitApp
-
   interface Prompt {
     category: string
     text: string
@@ -56,7 +55,7 @@
   async function loadPrompts() {
     loading = true
     try {
-      const result = await api()?.GetJournalPrompts()
+      const result = await getJournalPrompts()
       if (result && result.length > 0) {
         prompts = result
       }

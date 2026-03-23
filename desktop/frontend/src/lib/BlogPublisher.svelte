@@ -1,12 +1,11 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
+  import { publishToBlog } from './api'
 
   export let notePath: string = ''
   export let noteTitle: string = ''
 
   const dispatch = createEventDispatcher()
-  const api = (window as any).go?.main?.GranitApp
-
   let format: 'html' | 'markdown' = 'html'
   let publishing = false
   let outputPath = ''
@@ -22,12 +21,12 @@
   $: displayTitle = customTitle || noteTitle || 'Untitled'
 
   async function publish() {
-    if (!api || !notePath) return
+    if (!notePath) return
     publishing = true
     error = ''
     outputPath = ''
     try {
-      const result = await api.PublishToBlog(notePath, format)
+      const result = await publishToBlog(notePath, format)
       outputPath = result
     } catch (e: any) {
       error = e?.message || 'Publishing failed'

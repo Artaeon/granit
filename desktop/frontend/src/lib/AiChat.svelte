@@ -1,11 +1,11 @@
 <script lang="ts">
   import { createEventDispatcher, onMount, tick } from 'svelte'
+  import { chatWithAI } from './api'
 
   export let noteTitle: string = ''
   export let noteContent: string = ''
 
   const dispatch = createEventDispatcher()
-  const api = () => (window as any).go?.main?.GranitApp
 
   interface ChatMsg {
     role: 'user' | 'assistant' | 'system'
@@ -48,7 +48,7 @@
         .filter(m => m.role !== 'system')
         .map(m => ({ role: m.role, content: m.content }))
 
-      const response = await api()?.ChatWithAI(JSON.stringify(payload))
+      const response = await chatWithAI(JSON.stringify(payload))
       if (response) {
         messages = [...messages, { role: 'assistant', content: response, time: now() }]
       } else {

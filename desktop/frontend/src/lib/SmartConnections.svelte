@@ -1,12 +1,11 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
+  import { getSmartConnections } from './api'
 
   export let notePath: string = ''
   export let noteTitle: string = ''
 
   const dispatch = createEventDispatcher()
-  const api = (window as any).go?.main?.GranitApp
-
   type Connection = {
     relPath: string
     title: string
@@ -19,11 +18,11 @@
   let error = ''
 
   async function loadConnections() {
-    if (!api || !notePath) return
+    if (!notePath) return
     loading = true
     error = ''
     try {
-      const result = await api.GetSmartConnections(notePath)
+      const result = await getSmartConnections(notePath)
       connections = result || []
     } catch (e: any) {
       error = e?.message || 'Failed to find connections'

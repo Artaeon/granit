@@ -1,8 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { getQuizQuestions } from './api'
   const dispatch = createEventDispatcher()
-  const api = () => (window as any).go?.main?.GranitApp
-
   export let notePath: string = ''
 
   interface Question {
@@ -39,7 +38,7 @@
     loading = true
     try {
       if (notePath) {
-        questions = (await api()?.GetQuizQuestions(notePath)) || []
+        questions = (await getQuizQuestions(notePath)) || []
       }
     } catch (e) {
       console.error('Failed to load quiz questions:', e)

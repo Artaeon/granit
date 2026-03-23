@@ -1,8 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
+  import { getWritingFeedback } from './api'
   export let content: string = ''
   const dispatch = createEventDispatcher()
-  const api = () => (window as any).go?.main?.GranitApp
 
   interface FeedbackItem {
     category: string
@@ -85,7 +85,7 @@
     feedback = []
 
     try {
-      const result = await api()?.GetWritingFeedback(content)
+      const result = await getWritingFeedback(content)
       if (result) {
         try {
           const parsed = JSON.parse(result)

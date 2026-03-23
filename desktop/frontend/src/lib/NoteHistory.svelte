@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import { getNoteAtVersion, getNoteDiff, getNoteHistory, restoreNoteVersion } from './api'
   export let notePath: string = ''
   const dispatch = createEventDispatcher()
 
@@ -23,9 +24,6 @@
   let loadingContent = false
   let message = ''
   let messageType: 'success' | 'error' = 'success'
-
-  const api = (window as any).go?.main?.GranitApp
-
   onMount(loadHistory)
 
   async function loadHistory() {
@@ -33,7 +31,7 @@
     loading = true
     error = ''
     try {
-      const result = await api?.GetNoteHistory(notePath)
+      const result = await getNoteHistory(notePath)
       versions = result || []
       if (versions.length === 0) {
         error = 'No git history found for this note'
@@ -48,7 +46,7 @@
     selectedVersion = version
     loadingContent = true
     try {
-      snapshotContent = await api?.GetNoteAtVersion(notePath, version.hash) || ''
+      snapshotContent = await getNoteAtVersion(notePath, version.hash) || ''
       viewMode = 'snapshot'
     } catch (e: any) {
       showMessage('Failed to load version: ' + e.message, 'error')
@@ -60,7 +58,7 @@
     selectedVersion = version
     loadingContent = true
     try {
-      diffContent = await api?.GetNoteDiff(notePath, version.hash) || ''
+      diffContent = await getNoteDiff(notePath, version.hash) || ''
       viewMode = 'diff'
     } catch (e: any) {
       showMessage('Failed to load diff: ' + e.message, 'error')
@@ -71,7 +69,7 @@
   async function restoreVersion(version: NoteVersion) {
     if (!confirm(`Restore note to version ${version.hash.slice(0, 7)} from ${version.date}?`)) return
     try {
-      await api?.RestoreNoteVersion(notePath, version.hash)
+      await restoreNoteVersion(notePath, version.hash)
       showMessage('Note restored to version ' + version.hash.slice(0, 7), 'success')
       dispatch('restored')
     } catch (e: any) {

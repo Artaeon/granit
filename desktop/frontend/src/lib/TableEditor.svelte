@@ -1,9 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher, onMount, tick } from 'svelte'
+  import { parseMarkdownTable } from './api'
 
   const dispatch = createEventDispatcher()
-  const api = () => (window as any).go?.main?.GranitApp
-
   export let initialContent: string = ''
   export let initialLine: number = -1
 
@@ -29,7 +28,7 @@
 
   async function parseTable() {
     try {
-      const result = await api()?.ParseMarkdownTable(initialContent, initialLine)
+      const result = await parseMarkdownTable(initialContent, initialLine)
       if (result) {
         headers = result.headers || ['Column 1', 'Column 2', 'Column 3']
         rows = result.rows?.length ? result.rows : [new Array(headers.length).fill('')]

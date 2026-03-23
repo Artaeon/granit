@@ -1,9 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
+  import { getRecurringTasks } from './api'
 
   const dispatch = createEventDispatcher()
-  const api = (window as any).go?.main?.GranitApp
-
   type Task = {
     text: string
     pattern: string
@@ -18,11 +17,10 @@
   let filter: 'all' | 'overdue' | 'today' | 'week' = 'all'
 
   async function loadTasks() {
-    if (!api) return
     loading = true
     error = ''
     try {
-      const result = await api.GetRecurringTasks()
+      const result = await getRecurringTasks()
       tasks = result || []
     } catch (e: any) {
       error = e?.message || 'Failed to load recurring tasks'
