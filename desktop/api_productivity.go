@@ -14,6 +14,8 @@ import (
 
 // GetHabits loads and returns the habits JSON from .granit/habits.json.
 func (a *GranitApp) GetHabits() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -30,6 +32,8 @@ func (a *GranitApp) GetHabits() (string, error) {
 
 // SaveHabits writes the habits JSON to .granit/habits.json.
 func (a *GranitApp) SaveHabits(data string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.vault == nil {
 		return fmt.Errorf("no vault open")
 	}
@@ -38,13 +42,15 @@ func (a *GranitApp) SaveHabits(data string) error {
 		return err
 	}
 	p := filepath.Join(dir, "habits.json")
-	return os.WriteFile(p, []byte(data), 0o644)
+	return atomicWriteFile(p, []byte(data), 0o644)
 }
 
 // ==================== Daily Briefing ====================
 
 // GetDailyBriefing returns today's vault activity summary.
 func (a *GranitApp) GetDailyBriefing() (map[string]interface{}, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -194,6 +200,8 @@ func (a *GranitApp) GetJournalPrompts() []map[string]string {
 
 // GetWritingFeedback uses the configured AI provider to give writing feedback.
 func (a *GranitApp) GetWritingFeedback(content string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return "", fmt.Errorf("no vault open")
 	}

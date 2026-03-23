@@ -11,6 +11,8 @@ import (
 
 // SaveCanvas persists canvas JSON data to .granit/canvas/<name>.json.
 func (a *GranitApp) SaveCanvas(name string, data string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.vaultRoot == "" {
 		return fmt.Errorf("no vault open")
 	}
@@ -34,11 +36,13 @@ func (a *GranitApp) SaveCanvas(name string, data string) error {
 		return fmt.Errorf("invalid canvas name")
 	}
 
-	return os.WriteFile(abs, []byte(data), 0o644)
+	return atomicWriteFile(abs, []byte(data), 0o644)
 }
 
 // GetCanvas loads canvas JSON data from .granit/canvas/<name>.json.
 func (a *GranitApp) GetCanvas(name string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -65,6 +69,8 @@ func (a *GranitApp) GetCanvas(name string) (string, error) {
 
 // ListCanvases returns the names of all saved canvases.
 func (a *GranitApp) ListCanvases() ([]string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -90,6 +96,8 @@ func (a *GranitApp) ListCanvases() ([]string, error) {
 
 // DeleteCanvas removes a canvas file from .granit/canvas/.
 func (a *GranitApp) DeleteCanvas(name string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.vaultRoot == "" {
 		return fmt.Errorf("no vault open")
 	}

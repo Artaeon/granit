@@ -11,6 +11,8 @@ import (
 
 // GetKanban loads the kanban board JSON from .granit/kanban.json.
 func (a *GranitApp) GetKanban() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -27,6 +29,8 @@ func (a *GranitApp) GetKanban() (string, error) {
 
 // SaveKanban persists the kanban board JSON to .granit/kanban.json.
 func (a *GranitApp) SaveKanban(data string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.vaultRoot == "" {
 		return fmt.Errorf("no vault open")
 	}
@@ -35,7 +39,7 @@ func (a *GranitApp) SaveKanban(data string) error {
 		return fmt.Errorf("failed to create .granit directory: %w", err)
 	}
 	fp := filepath.Join(dir, "kanban.json")
-	return os.WriteFile(fp, []byte(data), 0o644)
+	return atomicWriteFile(fp, []byte(data), 0o644)
 }
 
 // ==================== Tasks ====================
@@ -51,6 +55,14 @@ type TaskItem struct {
 // GetAllTasks scans all vault notes for checkbox task lines (- [ ] and - [x])
 // and returns them with their source note path, line number, text, and status.
 func (a *GranitApp) GetAllTasks() ([]TaskItem, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.getAllTasksInternal()
+}
+
+// getAllTasksInternal is the lock-free version of GetAllTasks.
+// Callers must hold at least a.mu.RLock().
+func (a *GranitApp) getAllTasksInternal() ([]TaskItem, error) {
 	if a.vault == nil {
 		return nil, fmt.Errorf("no vault open")
 	}

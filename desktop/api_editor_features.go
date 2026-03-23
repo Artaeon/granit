@@ -41,6 +41,8 @@ type ChatMessageDTO struct {
 // assistant response. The messages parameter is a JSON string of ChatMessageDTO
 // objects representing the conversation history.
 func (a *GranitApp) ChatWithAI(messages string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -187,7 +189,9 @@ func doChatOpenAI(apiKey, model, systemPrompt string, msgs []ChatMessageDTO) (st
 
 	data, _ := io.ReadAll(resp.Body)
 	var r openaiResp
-	json.Unmarshal(data, &r)
+	if err := json.Unmarshal(data, &r); err != nil {
+		return "", fmt.Errorf("invalid OpenAI response: %w", err)
+	}
 	if r.Error != nil {
 		return "", fmt.Errorf("OpenAI: %s", r.Error.Message)
 	}
@@ -351,6 +355,8 @@ func (a *GranitApp) snippetsFilePath() string {
 
 // GetSnippets returns all available snippets (built-in plus user-defined).
 func (a *GranitApp) GetSnippets() ([]SnippetDTO, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	snippets := builtinSnippetDTOs()
 
 	// Load user snippets from .granit/snippets.json
@@ -390,6 +396,8 @@ func (a *GranitApp) GetSnippets() ([]SnippetDTO, error) {
 
 // SaveSnippets persists user-defined snippets to disk.
 func (a *GranitApp) SaveSnippets(data string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	var snippets []SnippetDTO
 	if err := json.Unmarshal([]byte(data), &snippets); err != nil {
 		return fmt.Errorf("invalid snippet data: %w", err)
@@ -403,7 +411,7 @@ func (a *GranitApp) SaveSnippets(data string) error {
 		return err
 	}
 
-	return os.WriteFile(filePath, jsonData, 0644)
+	return atomicWriteFile(filePath, jsonData, 0644)
 }
 
 // ==================== Table Parsing ====================

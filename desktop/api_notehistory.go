@@ -26,6 +26,8 @@ type NoteVersionDTO struct {
 // GetNoteHistory returns the git commit history for a specific note file.
 // It runs `git log --follow` to track the file across renames.
 func (a *GranitApp) GetNoteHistory(relPath string) ([]NoteVersionDTO, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -68,6 +70,8 @@ func (a *GranitApp) GetNoteHistory(relPath string) ([]NoteVersionDTO, error) {
 // GetNoteAtVersion returns the content of a note at a specific git commit.
 // It runs `git show <hash>:<path>` to retrieve the historical content.
 func (a *GranitApp) GetNoteAtVersion(relPath string, commitHash string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -90,6 +94,8 @@ func (a *GranitApp) GetNoteAtVersion(relPath string, commitHash string) (string,
 // GetNoteDiff returns the diff between the current version of a note and a
 // specific historical commit.
 func (a *GranitApp) GetNoteDiff(relPath string, commitHash string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -134,6 +140,8 @@ func (a *GranitApp) RestoreNoteVersion(relPath string, commitHash string) error 
 // SaveWorkspace saves a workspace configuration as a JSON file in
 // <vault>/.granit/workspaces/<name>.json.
 func (a *GranitApp) SaveWorkspace(name string, data string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.vaultRoot == "" {
 		return fmt.Errorf("no vault open")
 	}
@@ -163,11 +171,13 @@ func (a *GranitApp) SaveWorkspace(name string, data string) error {
 		return fmt.Errorf("invalid workspace name")
 	}
 
-	return os.WriteFile(wsPath, []byte(data), 0644)
+	return atomicWriteFile(wsPath, []byte(data), 0644)
 }
 
 // LoadWorkspace reads a saved workspace JSON from disk.
 func (a *GranitApp) LoadWorkspace(name string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -190,6 +200,8 @@ func (a *GranitApp) LoadWorkspace(name string) (string, error) {
 
 // ListWorkspaces returns the names of all saved workspaces.
 func (a *GranitApp) ListWorkspaces() ([]string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -213,6 +225,8 @@ func (a *GranitApp) ListWorkspaces() ([]string, error) {
 
 // DeleteWorkspace removes a saved workspace file.
 func (a *GranitApp) DeleteWorkspace(name string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.vaultRoot == "" {
 		return fmt.Errorf("no vault open")
 	}
@@ -234,6 +248,8 @@ func (a *GranitApp) DeleteWorkspace(name string) error {
 
 // RenameWorkspace renames a saved workspace file.
 func (a *GranitApp) RenameWorkspace(oldName string, newName string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.vaultRoot == "" {
 		return fmt.Errorf("no vault open")
 	}
@@ -270,6 +286,8 @@ func (a *GranitApp) RenameWorkspace(oldName string, newName string) error {
 // .granit/backups directory itself) and stores it in <vault>/.granit/backups/.
 // Returns the backup filename on success.
 func (a *GranitApp) CreateBackup() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -368,6 +386,8 @@ type BackupInfoDTO struct {
 // ListBackups returns all backup files in <vault>/.granit/backups/,
 // sorted by date (newest first).
 func (a *GranitApp) ListBackups() ([]BackupInfoDTO, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -404,6 +424,8 @@ func (a *GranitApp) ListBackups() ([]BackupInfoDTO, error) {
 
 // DeleteBackup removes a backup file.
 func (a *GranitApp) DeleteBackup(name string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.vaultRoot == "" {
 		return fmt.Errorf("no vault open")
 	}

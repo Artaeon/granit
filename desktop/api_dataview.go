@@ -25,6 +25,8 @@ import (
 //	WHERE tags CONTAINS "meeting" SORT title
 //	FROM "daily" SORT date DESC LIMIT 5
 func (a *GranitApp) RunDataviewQuery(query string) ([]map[string]interface{}, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return nil, fmt.Errorf("no vault open")
 	}

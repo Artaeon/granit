@@ -50,6 +50,8 @@ func flashcardID(front, source string) string {
 //   - Definition lists: `- term :: definition`
 //   - Cloze deletions: {{c1::answer}}
 func (a *GranitApp) GetFlashcards(notePath string) ([]FlashcardDTO, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -178,6 +180,8 @@ func (a *GranitApp) GetFlashcards(notePath string) ([]FlashcardDTO, error) {
 
 // SaveFlashcardProgress saves review progress data to .granit/flashcards.json.
 func (a *GranitApp) SaveFlashcardProgress(data string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.vaultRoot == "" {
 		return fmt.Errorf("no vault open")
 	}
@@ -185,11 +189,13 @@ func (a *GranitApp) SaveFlashcardProgress(data string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "flashcards.json"), []byte(data), 0644)
+	return atomicWriteFile(filepath.Join(dir, "flashcards.json"), []byte(data), 0644)
 }
 
 // GetFlashcardProgress loads the saved flashcard progress from .granit/flashcards.json.
 func (a *GranitApp) GetFlashcardProgress() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return "{}", nil
 	}
@@ -209,6 +215,8 @@ func (a *GranitApp) GetFlashcardProgress() (string, error) {
 // GetQuizQuestions generates quiz questions from a note's content.
 // It produces multiple-choice, fill-in-the-blank, true/false, and definition questions.
 func (a *GranitApp) GetQuizQuestions(notePath string) ([]QuizQuestionDTO, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -445,6 +453,8 @@ func quizMultipleChoiceQuestions(source string, lines []string) []QuizQuestionDT
 
 // GetTimeline returns all notes sorted by modification date with title, date, tags, and word count.
 func (a *GranitApp) GetTimeline() ([]TimelineEntryDTO, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -546,6 +556,8 @@ type mindMapNodeDTO struct {
 // GetMindMapData returns hierarchical link data as JSON for the mind map visualization.
 // It builds a tree from the center note outward (2 hops deep).
 func (a *GranitApp) GetMindMapData(centerNote string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return "{}", fmt.Errorf("no vault open")
 	}

@@ -31,6 +31,8 @@ type LinkSuggestionDTO struct {
 // GetAutoLinkSuggestions analyzes the note at relPath and finds mentions
 // of other note titles that are not already wrapped in [[ ]].
 func (a *GranitApp) GetAutoLinkSuggestions(relPath string) ([]LinkSuggestionDTO, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -144,6 +146,8 @@ func advIsAlphaNum(ch byte) bool {
 // PublishToBlog exports a note as blog-ready HTML or clean markdown.
 // Format: "html" or "markdown". Returns the output file path.
 func (a *GranitApp) PublishToBlog(relPath string, format string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -197,7 +201,7 @@ func (a *GranitApp) PublishToBlog(relPath string, format string) (string, error)
 
 		wrapped := wrapBlogHTML(title, metaHTML.String()+body)
 		outPath := filepath.Join(outDir, baseName+".html")
-		if err := os.WriteFile(outPath, []byte(wrapped), 0644); err != nil {
+		if err := atomicWriteFile(outPath, []byte(wrapped), 0644); err != nil {
 			return "", err
 		}
 		return outPath, nil
@@ -234,7 +238,7 @@ func (a *GranitApp) PublishToBlog(relPath string, format string) (string, error)
 		buf.WriteString(content)
 
 		outPath := filepath.Join(outDir, baseName+".md")
-		if err := os.WriteFile(outPath, []byte(buf.String()), 0644); err != nil {
+		if err := atomicWriteFile(outPath, []byte(buf.String()), 0644); err != nil {
 			return "", err
 		}
 		return outPath, nil
@@ -323,6 +327,8 @@ func advDeriveKey(passphrase string, salt []byte) []byte {
 // EncryptNote encrypts the note content at relPath with AES-256-GCM
 // and replaces the file content with the encrypted base64 blob.
 func (a *GranitApp) EncryptNote(relPath string, password string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.vault == nil {
 		return fmt.Errorf("no vault open")
 	}
@@ -378,7 +384,7 @@ func (a *GranitApp) EncryptNote(relPath string, password string) error {
 	blob = append(blob, ciphertext...)
 
 	encoded := "GRANIT-ENC:" + base64.StdEncoding.EncodeToString(blob)
-	if err := os.WriteFile(absPath, []byte(encoded), 0644); err != nil {
+	if err := atomicWriteFile(absPath, []byte(encoded), 0644); err != nil {
 		return fmt.Errorf("writing encrypted file: %w", err)
 	}
 
@@ -393,6 +399,14 @@ func (a *GranitApp) EncryptNote(relPath string, password string) error {
 // DecryptNote decrypts the note at relPath and returns the plaintext.
 // Does NOT save the decrypted content back to disk.
 func (a *GranitApp) DecryptNote(relPath string, password string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.decryptNoteInternal(relPath, password)
+}
+
+// decryptNoteInternal is the lock-free version of DecryptNote.
+// Callers must hold at least a.mu.RLock().
+func (a *GranitApp) decryptNoteInternal(relPath string, password string) (string, error) {
 	if a.vault == nil {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -452,6 +466,8 @@ func (a *GranitApp) DecryptNote(relPath string, password string) (string, error)
 
 // IsNoteEncrypted checks whether the note at relPath has been encrypted.
 func (a *GranitApp) IsNoteEncrypted(relPath string) bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return false
 	}
@@ -464,7 +480,9 @@ func (a *GranitApp) IsNoteEncrypted(relPath string) bool {
 
 // SaveDecryptedNote decrypts and saves the plaintext back to disk.
 func (a *GranitApp) SaveDecryptedNote(relPath string, password string) error {
-	plaintext, err := a.DecryptNote(relPath, password)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	plaintext, err := a.decryptNoteInternal(relPath, password)
 	if err != nil {
 		return err
 	}
@@ -472,7 +490,7 @@ func (a *GranitApp) SaveDecryptedNote(relPath string, password string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(absPath, []byte(plaintext), 0644); err != nil {
+	if err := atomicWriteFile(absPath, []byte(plaintext), 0644); err != nil {
 		return err
 	}
 	if n := a.vault.GetNote(relPath); n != nil {
@@ -513,6 +531,8 @@ var taskLineRe = regexp.MustCompile(`^(\s*)- \[([ xX])\]\s+(.+)`)
 // GetRecurringTasks scans all notes for task lines with recurrence
 // patterns (e.g., "every monday", "daily", "weekly").
 func (a *GranitApp) GetRecurringTasks() ([]RecurringTaskDTO, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -679,6 +699,8 @@ func advCosineSimilarity(a, b map[string]float64) float64 {
 // GetSmartConnections finds notes similar to the one at relPath using
 // TF-IDF cosine similarity, shared tags, and mutual links.
 func (a *GranitApp) GetSmartConnections(relPath string) ([]SmartConnectionDTO, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return nil, fmt.Errorf("no vault open")
 	}

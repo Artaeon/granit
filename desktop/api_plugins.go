@@ -55,6 +55,8 @@ type pluginHooksDesktop struct {
 // and vault-local (<vault>/.granit/plugins/) directories and returns their
 // manifest information.
 func (a *GranitApp) GetPlugins() ([]PluginInfoDTO, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	var plugins []PluginInfoDTO
 
 	// Global plugins
@@ -134,6 +136,8 @@ func discoverPlugins(dir string) []PluginInfoDTO {
 // and vault-local plugin directories and toggles the enabled flag in the
 // plugin.json manifest.
 func (a *GranitApp) TogglePlugin(name string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	dirs := []string{filepath.Join(config.ConfigDir(), "plugins")}
 	if a.vaultRoot != "" {
 		dirs = append(dirs, filepath.Join(a.vaultRoot, ".granit", "plugins"))
@@ -156,7 +160,7 @@ func (a *GranitApp) TogglePlugin(name string) error {
 		if err != nil {
 			return fmt.Errorf("marshal manifest: %w", err)
 		}
-		if err := os.WriteFile(manifestPath, updated, 0600); err != nil {
+		if err := atomicWriteFile(manifestPath, updated, 0600); err != nil {
 			return fmt.Errorf("write manifest: %w", err)
 		}
 		return nil
@@ -170,6 +174,8 @@ func (a *GranitApp) TogglePlugin(name string) error {
 // associated script with a 10-second timeout. Environment variables
 // GRANIT_VAULT_PATH, GRANIT_NOTE_PATH, and GRANIT_NOTE_NAME are set.
 func (a *GranitApp) RunPluginCommand(name string, command string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	dirs := []string{filepath.Join(config.ConfigDir(), "plugins")}
 	if a.vaultRoot != "" {
 		dirs = append(dirs, filepath.Join(a.vaultRoot, ".granit", "plugins"))

@@ -27,6 +27,8 @@ func (a *GranitApp) runGit(args ...string) (string, error) {
 }
 
 func (a *GranitApp) GitStatus() ([]string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -41,6 +43,8 @@ func (a *GranitApp) GitStatus() ([]string, error) {
 }
 
 func (a *GranitApp) GitLog() ([]string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -55,6 +59,8 @@ func (a *GranitApp) GitLog() ([]string, error) {
 }
 
 func (a *GranitApp) GitDiff() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -69,6 +75,8 @@ func (a *GranitApp) GitDiff() (string, error) {
 }
 
 func (a *GranitApp) GitCommit(message string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -83,6 +91,8 @@ func (a *GranitApp) GitCommit(message string) (string, error) {
 }
 
 func (a *GranitApp) GitPush() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -94,6 +104,8 @@ func (a *GranitApp) GitPush() (string, error) {
 }
 
 func (a *GranitApp) GitPull() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -136,6 +148,8 @@ func (a *GranitApp) GetBotList() []BotInfo {
 }
 
 func (a *GranitApp) RunBot(kind int, notePath string, question string) (*BotResultData, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return nil, fmt.Errorf("no vault open")
 	}
@@ -468,7 +482,7 @@ func localSummarizer(content string) string {
 }
 
 func (a *GranitApp) localDailyDigest() string {
-	stats := a.GetVaultStats()
+	stats := a.getVaultStatsInternal()
 	var buf strings.Builder
 	buf.WriteString(fmt.Sprintf("Vault: %d notes, %d words, %d links\n", stats.TotalNotes, stats.TotalWords, stats.TotalLinks))
 	buf.WriteString(fmt.Sprintf("Orphan notes: %d\n", stats.OrphanNotes))
@@ -597,6 +611,8 @@ var (
 )
 
 func (a *GranitApp) ExportHTML(relPath string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -608,13 +624,15 @@ func (a *GranitApp) ExportHTML(relPath string) (string, error) {
 	wrapped := wrapHTML(note.Title, html)
 	outPath := filepath.Join(a.vaultRoot, strings.TrimSuffix(relPath, ".md")+".html")
 	os.MkdirAll(filepath.Dir(outPath), 0755)
-	if err := os.WriteFile(outPath, []byte(wrapped), 0644); err != nil {
+	if err := atomicWriteFile(outPath, []byte(wrapped), 0644); err != nil {
 		return "", err
 	}
 	return outPath, nil
 }
 
 func (a *GranitApp) ExportText(relPath string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -625,13 +643,15 @@ func (a *GranitApp) ExportText(relPath string) (string, error) {
 	text := stripMarkdown(note.Content)
 	outPath := filepath.Join(a.vaultRoot, strings.TrimSuffix(relPath, ".md")+".txt")
 	os.MkdirAll(filepath.Dir(outPath), 0755)
-	if err := os.WriteFile(outPath, []byte(text), 0644); err != nil {
+	if err := atomicWriteFile(outPath, []byte(text), 0644); err != nil {
 		return "", err
 	}
 	return outPath, nil
 }
 
 func (a *GranitApp) ExportPDF(relPath string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -649,6 +669,8 @@ func (a *GranitApp) ExportPDF(relPath string) (string, error) {
 }
 
 func (a *GranitApp) ExportAll() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return "", fmt.Errorf("no vault open")
 	}
@@ -666,12 +688,14 @@ func (a *GranitApp) ExportAll() (string, error) {
 		outName := strings.TrimSuffix(p, ".md") + ".html"
 		outPath := filepath.Join(exportDir, outName)
 		os.MkdirAll(filepath.Dir(outPath), 0755)
-		os.WriteFile(outPath, []byte(wrapped), 0644)
+		if err := atomicWriteFile(outPath, []byte(wrapped), 0644); err != nil {
+			continue
+		}
 		indexLinks = append(indexLinks, fmt.Sprintf(`<li><a href="%s">%s</a></li>`, outName, htmlEscape(note.Title)))
 		exported++
 	}
 	indexHTML := wrapHTML("Vault Export", "<h1>Vault Export</h1>\n<ul>\n"+strings.Join(indexLinks, "\n")+"\n</ul>")
-	os.WriteFile(filepath.Join(exportDir, "index.html"), []byte(indexHTML), 0644)
+	_ = atomicWriteFile(filepath.Join(exportDir, "index.html"), []byte(indexHTML), 0644)
 	return fmt.Sprintf("Exported %d notes to %s", exported, exportDir), nil
 }
 
@@ -919,6 +943,8 @@ type CalendarData struct {
 var taskPattern = regexp.MustCompile(`^- \[([ xX])\] (.+)`)
 
 func (a *GranitApp) GetCalendarData(year, month int) *CalendarData {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vault == nil {
 		return &CalendarData{Year: year, Month: month, Tasks: make(map[string][]CalendarTask)}
 	}
@@ -994,6 +1020,8 @@ func taskPriority(text string) int {
 }
 
 func (a *GranitApp) ToggleTask(notePath string, lineNum int) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.vault == nil {
 		return fmt.Errorf("no vault open")
 	}
@@ -1016,7 +1044,7 @@ func (a *GranitApp) ToggleTask(notePath string, lineNum int) error {
 		lines[lineNum-1] = strings.Replace(strings.Replace(line, "- [x] ", "- [ ] ", 1), "- [X] ", "- [ ] ", 1)
 	}
 	newContent := strings.Join(lines, "\n")
-	if err := os.WriteFile(absPath, []byte(newContent), 0644); err != nil {
+	if err := atomicWriteFile(absPath, []byte(newContent), 0644); err != nil {
 		return err
 	}
 	// Update vault
@@ -1119,6 +1147,8 @@ func parseICSTime(value string) (time.Time, bool) {
 // ==================== Git Branch ====================
 
 func (a *GranitApp) GetGitBranch() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.vaultRoot == "" {
 		return ""
 	}
