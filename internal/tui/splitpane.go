@@ -359,8 +359,9 @@ func (sp SplitPane) renderPicker(width, visH int) string {
 	// --- search input ---
 	prompt := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("> ")
 	queryText := sp.pickQuery
-	if len(queryText) > width-4 {
-		queryText = queryText[len(queryText)-(width-4):]
+	maxQ := width - 4
+	if maxQ > 0 && len(queryText) > maxQ {
+		queryText = queryText[len(queryText)-maxQ:]
 	}
 	cursor := lipgloss.NewStyle().Foreground(mauve).Render("_")
 	searchLine := prompt + NormalItemStyle.Render(queryText) + cursor
