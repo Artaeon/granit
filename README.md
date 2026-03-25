@@ -17,7 +17,7 @@
   <a href="#installation"><img src="https://img.shields.io/badge/Go-1.24+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License"></a>
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform">
-  <img src="https://img.shields.io/badge/TUI-148k%2B%20Lines-orange?style=for-the-badge" alt="Codebase">
+  <img src="https://img.shields.io/badge/TUI-164k%2B%20Lines-orange?style=for-the-badge" alt="Codebase">
   <img src="https://img.shields.io/badge/Desktop-Wails%20v2-9B59B6?style=for-the-badge" alt="Desktop App">
   <img src="https://img.shields.io/badge/Themes-40-purple?style=for-the-badge" alt="Themes">
 </p>
@@ -42,7 +42,7 @@ Granit is a **free, open-source** personal knowledge management system built in 
 
 | | |
 |---|---|
-| **220+ source files** | 148,000+ lines of Go |
+| **240+ source files** | 164,000+ lines of Go |
 | **40 themes** | 33 dark + 7 light, plus custom theme editor |
 | **20+ AI features** | Ollama, OpenAI, Nous, Claude Code, or offline fallback |
 | **8 layouts** | Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, Research |
@@ -56,14 +56,10 @@ Granit is a **free, open-source** personal knowledge management system built in 
 
 ## Screenshots
 
-<!-- TUI version -->
 <p align="center">
-  <img src="assets/hero.gif" alt="Granit TUI in action" width="800"><br>
-  <sub>Terminal UI -- recorded with <a href="https://github.com/charmbracelet/vhs">VHS</a></sub>
+  <img src="assets/hero.gif" alt="Granit TUI" width="800"><br>
+  <sub>Terminal UI -- the desktop app (Wails v2 + Svelte) provides the same features in a native window</sub>
 </p>
-
-<!-- Desktop version -->
-<!-- <img src="assets/desktop.png" alt="Granit Desktop (Wails)" width="800"> -->
 
 ---
 
@@ -86,6 +82,7 @@ Granit is a **free, open-source** personal knowledge management system built in 
 - Smart Connections (TF-IDF similarity), semantic search (AI embeddings)
 - Dataview queries -- SQL-like: `TABLE title, tags FROM "folder" WHERE tags CONTAINS "project" SORT date DESC`
 - Link assistant, Knowledge Graph AI, mind map view, canvas/whiteboard (`Ctrl+W`)
+- Zettelkasten ID generator for linked atomic notes
 - Note versioning timeline with git-powered diffs and snapshot restore
 
 ### Task Management
@@ -107,8 +104,10 @@ Granit is a **free, open-source** personal knowledge management system built in 
 - Habit tracker with 7-day streaks, pomodoro timer, focus sessions (25/45/60/90 min)
 - Daily planner with time-blocked schedule, Daily Jot for quick entries
 - Command palette (`Ctrl+X`) with 70+ commands
+- Scratchpad overlay for quick floating notes (auto-saved)
 - Quick capture, journal prompts (100+), clipboard manager (50-entry history)
 - Clock in/out time tracking with project tags and weekly logs
+- Workspace snapshots -- save and restore named TUI layouts
 - Reminders with daily/weekdays/once scheduling
 
 ### Calendar
@@ -139,8 +138,10 @@ Granit is a **free, open-source** personal knowledge management system built in 
 - Language learning -- vocabulary tracker for 9 languages with practice mode
 - Learning dashboard with streaks, mastery tracking, and level distribution
 
-### Export and Publishing
+### Import, Export, and Publishing
 
+- Import from other note formats
+- Trash/recycle bin with restore for deleted notes
 - Export to HTML, plain text, or PDF (via pandoc); bulk export entire vault
 - Static site publisher with search, tag pages, and wikilink resolution
 - Blog publisher -- Medium and GitHub with token persistence
@@ -247,10 +248,14 @@ granit capture "Remember to review PR #42"
 | `granit clock in/out/log` | Time tracking with project tags |
 | `granit remind "text"` | Set reminders (`--at HH:MM`, `--daily`) |
 | `granit serve [path]` | Serve vault as read-only website |
+| `granit list [path]` | List vault notes (`--json`, `--paths`, `--tags`) |
+| `granit query <filter>` | Query notes by tag, folder, or frontmatter (`--json`) |
+| `granit import <source>` | Import notes from other formats (`--from`) |
 | `granit export [path]` | Export to HTML, text, or JSON |
 | `granit backup [path]` | Create timestamped zip backup |
 | `granit plugin list` | Plugin management |
 | `granit config` | Show configuration |
+| `granit man` | Generate man page |
 | `granit completion bash` | Shell completions (bash/zsh/fish) |
 
 Run `granit help` for the full command reference.
@@ -264,11 +269,14 @@ Run `granit help` for the full command reference.
 | Key | Action |
 |-----|--------|
 | `Tab` / `Shift+Tab` | Cycle between panels |
-| `F1` / `F2` / `F3` | Focus sidebar / editor / backlinks |
+| `F1` (`Alt+1`) / `F2` (`Alt+2`) / `F3` (`Alt+3`) | Focus sidebar / editor / backlinks |
+| `F4` | Rename current note |
+| `F5` (`Alt+?`) | Help overlay |
 | `Esc` | Close overlay / return to sidebar |
 | `Ctrl+P` | Quick open (fuzzy file search) |
 | `Ctrl+J` | Quick switch files |
 | `Ctrl+N` | Create new note |
+| `Ctrl+1`--`Ctrl+9` | Switch to tab by number |
 
 ### Editor
 
@@ -312,18 +320,11 @@ Granit supports four AI providers. The **local** fallback works offline with no 
 
 ```bash
 curl -fsSL https://ollama.ai/install.sh | sh
-ollama pull qwen2.5:0.5b
+ollama pull qwen2.5:0.5b   # 4 GB RAM -- use larger models with more RAM
 ollama serve
 ```
 
-Or use the built-in setup wizard: Settings (`Ctrl+,`) > Setup Ollama.
-
-| RAM | Recommended Model |
-|-----|-------------------|
-| 4 GB | `qwen2.5:0.5b` |
-| 8 GB | `qwen2.5:1.5b` or `phi3:mini` |
-| 16 GB | `qwen2.5:3b` or `phi3.5:3.8b` |
-| 32 GB+ | `llama3.2` or `mistral` |
+Or use the built-in wizard: Settings (`Ctrl+,`) > Setup Ollama.
 
 ### OpenAI
 
@@ -386,56 +387,25 @@ Granit uses layered JSON configuration. Per-vault settings override global setti
 
 All settings are editable from the built-in settings panel (`Ctrl+,`).
 
-### Key Options
+Key options: `theme` (40 themes), `layout` (8 layouts), `vim_mode`, `auto_save`, `ai_provider` (`local`/`ollama`/`openai`/`nous`), `ghost_writer`, `auto_tag`, `git_auto_sync`, `spell_check`, `icon_theme` (`unicode`/`nerd`/`emoji`/`ascii`), `pomodoro_goal`, `nextcloud_auto_sync`.
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `theme` | `catppuccin-mocha` | Color theme (40 available) |
-| `layout` | `default` | Panel layout (8 options) |
-| `vim_mode` | `false` | Enable Vim modal editing |
-| `auto_save` | `false` | Save automatically |
-| `ai_provider` | `local` | `local`, `ollama`, `openai`, or `nous` |
-| `ghost_writer` | `false` | Inline AI writing suggestions |
-| `auto_tag` | `false` | Auto-suggest tags on save |
-| `git_auto_sync` | `false` | Auto commit+push on save |
-| `spell_check` | `false` | Inline spell checking |
-| `icon_theme` | `unicode` | `unicode`, `nerd`, `emoji`, or `ascii` |
-| `pomodoro_goal` | `8` | Daily pomodoro session target |
-| `nextcloud_auto_sync` | `false` | Auto-sync via WebDAV |
-
-### Environment Variables
-
-| Variable | Purpose |
-|----------|---------|
-| `GRANIT_VAULT` | Default vault path |
-| `EDITOR` | Preferred external editor |
+Environment variables: `GRANIT_VAULT` (default vault path), `EDITOR` (external editor).
 
 ---
 
 ## Architecture
 
-Granit is built as a Go monolith with two frontends sharing the same core.
+Granit is a Go monolith with two frontends sharing the same core packages.
 
 ```
-granit/
-  cmd/granit/           CLI entry point and subcommands
-  internal/
-    config/             JSON configuration (global + per-vault)
-    vault/              Vault scanning, Markdown parser, backlink index
-    tui/                Terminal UI -- 178+ source files on Bubble Tea
-  desktop/              Wails v2 desktop application
-    app.go              Go API bridge for the Svelte frontend
-    frontend/           Svelte SPA
-      src/
-        App.svelte      Main application component
-        lib/            Layout components, stores, utilities
+cmd/granit/        CLI entry point and subcommands
+internal/config/   JSON configuration (global + per-vault)
+internal/vault/    Vault scanning, Markdown parser, backlink index
+internal/tui/      Terminal UI -- 188 source files on Bubble Tea
+desktop/           Wails v2 desktop app (Go API + Svelte frontend)
 ```
 
-**TUI**: Built on [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss) by [Charm](https://charm.sh/). Every overlay and panel follows the `Model` / `Update` / `View` pattern.
-
-**Desktop**: Built on [Wails v2](https://wails.io/). The Go backend exposes API methods that the Svelte frontend calls via Wails bindings. The same `internal/vault` and `internal/config` packages power both interfaces.
-
-**Plugins**: Language-agnostic scripts with JSON manifests and 6 lifecycle hooks. Lua scripting engine with full vault API access. 16 core plugins can be individually toggled.
+The **TUI** is built on [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss). The **desktop app** uses [Wails v2](https://wails.io/) with a Svelte frontend calling the same Go backend via bindings. A **Lua scripting engine** and **plugin system** (16 core plugins, language-agnostic scripts) provide extensibility.
 
 ---
 
