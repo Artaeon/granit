@@ -2442,6 +2442,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "alt+r":
+			// Open research agent with current note as context
+			if m.activeNote != "" && !m.research.IsRunning() {
+				m.research.SetSize(m.width, m.height)
+				m.research.OpenNoteEnhance(m.vault.Root, m.activeNote, m.editor.GetContent(), m.vault.SortedPaths())
+			} else if !m.research.IsRunning() {
+				m.research.SetSize(m.width, m.height)
+				m.research.Open(m.vault.Root)
+			}
+			return m, nil
+
 		case "alt+w":
 			// Weekly note
 			return m.executeCommand(CmdWeeklyNote)

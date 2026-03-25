@@ -34,11 +34,14 @@ const (
 type researchMode int
 
 const (
-	modeResearch      researchMode = iota // Deep Dive Research
-	modeFollowUp                          // Follow-Up Research
-	modeVaultAnalyzer                     // Vault Analyzer
-	modeNoteEnhancer                      // Note Enhancer
-	modeDailyDigest                       // Daily Digest Generator
+	modeResearch       researchMode = iota // Deep Dive Research
+	modeFollowUp                           // Follow-Up Research
+	modeVaultAnalyzer                      // Vault Analyzer
+	modeNoteEnhancer                       // Note Enhancer
+	modeDailyDigest                        // Daily Digest Generator
+	modeNoteRefactor                       // Note Refactor (split into sub-notes)
+	modeDeepResearch                       // Deep Research (with vault context)
+	modeNoteEnhance                        // Note Enhancement (in-place)
 )
 
 // ResearchAgent is an overlay that invokes Claude Code CLI to research a topic
@@ -93,6 +96,11 @@ type ResearchAgent struct {
 
 	// Daily Digest state
 	recentNotes map[string]string // path → content for recently modified notes
+
+	// Note Assistant state (shared across refactor/deep-research/enhance modes)
+	assistNotePath    string   // relative path of the target note
+	assistNoteContent string   // content of the target note
+	assistVaultTitles []string // all vault note titles (without .md) for wikilink context
 }
 
 // NewResearchAgent creates a new research agent overlay.
@@ -126,6 +134,12 @@ func (r ResearchAgent) StatusText() string {
 		prefix = "Enhancing"
 	case modeDailyDigest:
 		prefix = "Digest"
+	case modeNoteRefactor:
+		prefix = "Refactoring"
+	case modeDeepResearch:
+		prefix = "Deep Research"
+	case modeNoteEnhance:
+		prefix = "Enhancing"
 	default:
 		prefix = ""
 	}
@@ -296,6 +310,101 @@ func (r *ResearchAgent) OpenDailyDigest(vaultRoot string, recentNotes map[string
 	r.recentNotes = recentNotes
 }
 
+// OpenNoteRefactor activates the research overlay in note refactor mode.
+// The agent splits the note into sub-notes linked together.
+func (r *ResearchAgent) OpenNoteRefactor(vaultRoot, notePath, noteContent string, vaultTitles []string) {
+	r.active = true
+	r.phase = researchInput
+	r.output = ""
+	r.errorMsg = ""
+	r.scroll = 0
+	r.vaultRoot = vaultRoot
+	r.focusField = 3
+	r.createdFiles = nil
+	r.selectedFile = 0
+	r.elapsed = ""
+	r.followUp = false
+	r.followUpContext = ""
+	r.followUpSource = ""
+	r.mode = modeNoteRefactor
+	r.depth = 1
+	r.format = 0
+	r.vaultNoteList = nil
+	r.enhanceNotePath = ""
+	r.enhanceNoteContent = ""
+	r.enhanceVaultNames = nil
+	r.recentNotes = nil
+	r.assistNotePath = notePath
+	r.assistNoteContent = noteContent
+	r.assistVaultTitles = vaultTitles
+
+	name := strings.TrimSuffix(filepath.Base(notePath), ".md")
+	r.topic = name
+}
+
+// OpenDeepResearch activates the research overlay in deep research mode.
+// Creates comprehensive notes with vault-aware wikilinks.
+func (r *ResearchAgent) OpenDeepResearch(vaultRoot, topic string, vaultTitles []string) {
+	r.active = true
+	r.phase = researchInput
+	r.output = ""
+	r.errorMsg = ""
+	r.scroll = 0
+	r.vaultRoot = vaultRoot
+	r.focusField = 0
+	r.createdFiles = nil
+	r.selectedFile = 0
+	r.elapsed = ""
+	r.followUp = false
+	r.followUpContext = ""
+	r.followUpSource = ""
+	r.mode = modeDeepResearch
+	r.depth = 2
+	r.format = 0
+	r.vaultNoteList = nil
+	r.enhanceNotePath = ""
+	r.enhanceNoteContent = ""
+	r.enhanceVaultNames = nil
+	r.recentNotes = nil
+	r.assistNotePath = ""
+	r.assistNoteContent = ""
+	r.assistVaultTitles = vaultTitles
+
+	r.topic = topic
+}
+
+// OpenNoteEnhance activates the research overlay in note enhancement mode.
+// Enhances the note in-place without creating new files.
+func (r *ResearchAgent) OpenNoteEnhance(vaultRoot, notePath, noteContent string, vaultTitles []string) {
+	r.active = true
+	r.phase = researchInput
+	r.output = ""
+	r.errorMsg = ""
+	r.scroll = 0
+	r.vaultRoot = vaultRoot
+	r.focusField = 3
+	r.createdFiles = nil
+	r.selectedFile = 0
+	r.elapsed = ""
+	r.followUp = false
+	r.followUpContext = ""
+	r.followUpSource = ""
+	r.mode = modeNoteEnhance
+	r.depth = 1
+	r.format = 0
+	r.vaultNoteList = nil
+	r.enhanceNotePath = ""
+	r.enhanceNoteContent = ""
+	r.enhanceVaultNames = nil
+	r.recentNotes = nil
+	r.assistNotePath = notePath
+	r.assistNoteContent = noteContent
+	r.assistVaultTitles = vaultTitles
+
+	name := strings.TrimSuffix(filepath.Base(notePath), ".md")
+	r.topic = name
+}
+
 // Close hides the overlay.
 func (r *ResearchAgent) Close() {
 	r.active = false
@@ -385,6 +494,9 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 	enhanceNoteContent := r.enhanceNoteContent
 	enhanceVaultNames := r.enhanceVaultNames
 	recentNotes := r.recentNotes
+	assistNotePath := r.assistNotePath
+	assistNoteContent := r.assistNoteContent
+	assistVaultTitles := r.assistVaultTitles
 
 	// Create a context with 10-minute timeout for the research process
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -410,6 +522,12 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 			prompt = buildNoteEnhancerPrompt(vaultRoot, enhanceNotePath, enhanceNoteContent, enhanceVaultNames)
 		case modeDailyDigest:
 			prompt = buildDailyDigestPrompt(vaultRoot, recentNotes)
+		case modeNoteRefactor:
+			prompt = buildNoteRefactorPrompt(vaultRoot, assistNotePath, assistNoteContent, assistVaultTitles)
+		case modeDeepResearch:
+			prompt = buildDeepResearchPrompt(topic, vaultRoot, assistVaultTitles)
+		case modeNoteEnhance:
+			prompt = buildNoteEnhancePrompt(vaultRoot, assistNotePath, assistNoteContent, assistVaultTitles)
 		default:
 			if followUp {
 				prompt = buildFollowUpPrompt(topic, vaultRoot, depth, format, followUpContext, followUpSource)
@@ -449,8 +567,8 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 
 		files := parseCreatedFiles(string(output), vaultRoot)
 
-		// Append to Research Log if this was a research or follow-up run
-		if mode == modeResearch || mode == modeFollowUp {
+		// Append to Research Log for research-type runs
+		if mode == modeResearch || mode == modeFollowUp || mode == modeDeepResearch || mode == modeNoteRefactor {
 			appendResearchLog(vaultRoot, topic, depth, format, profile, sourceFilter, len(files), time.Since(startTime))
 		}
 
@@ -585,6 +703,26 @@ IMPORTANT:
 
 	prompt += "\n\nSTART RESEARCHING NOW."
 	return prompt
+}
+
+// buildVaultTitlesContext returns a formatted string listing all vault note titles
+// so Claude can create [[wikilinks]] to existing notes.
+func buildVaultTitlesContext(vaultTitles []string) string {
+	if len(vaultTitles) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\nEXISTING VAULT NOTES (use [[Title]] to link to these):\n")
+	listed := vaultTitles
+	if len(listed) > 500 {
+		listed = listed[:500]
+		sb.WriteString(strings.Join(listed, "\n"))
+		sb.WriteString(fmt.Sprintf("\n... and %d more notes", len(vaultTitles)-500))
+	} else {
+		sb.WriteString(strings.Join(listed, "\n"))
+	}
+	sb.WriteString("\n")
+	return sb.String()
 }
 
 // buildFollowUpPrompt creates the prompt for follow-up research that builds
@@ -1046,6 +1184,10 @@ func (r ResearchAgent) updateInput(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 		return r.updateInputNoteEnhancer(msg)
 	case modeDailyDigest:
 		return r.updateInputDailyDigest(msg)
+	case modeNoteRefactor:
+		return r.updateInputNoteRefactor(msg)
+	case modeNoteEnhance:
+		return r.updateInputNoteEnhance(msg)
 	default:
 		return r.updateInputResearch(msg)
 	}
@@ -1275,6 +1417,10 @@ func (r ResearchAgent) viewInput(innerW int) string {
 		return r.viewInputNoteEnhancer(innerW)
 	case modeDailyDigest:
 		return r.viewInputDailyDigest(innerW)
+	case modeNoteRefactor:
+		return r.viewInputNoteRefactor(innerW)
+	case modeNoteEnhance:
+		return r.viewInputNoteEnhance(innerW)
 	default:
 		return r.viewInputResearch(innerW)
 	}
@@ -1833,6 +1979,10 @@ func (r ResearchAgent) viewDone(innerW int) string {
 		doneTitle = "  Note Enhanced"
 	case modeDailyDigest:
 		doneTitle = "  Digest Generated"
+	case modeNoteRefactor:
+		doneTitle = "  Note Refactored"
+	case modeNoteEnhance:
+		doneTitle = "  Note Enhanced"
 	default:
 		doneTitle = "  Research Complete"
 	}
@@ -1990,4 +2140,445 @@ func (r ResearchAgent) viewError(innerW int) string {
 	b.WriteString(DimStyle.Render("  Enter/Esc back"))
 
 	return b.String()
+}
+
+// ---------------------------------------------------------------------------
+// Note Refactor mode — split note into sub-notes
+// ---------------------------------------------------------------------------
+
+// updateInputNoteRefactor handles input for note refactor mode.
+func (r ResearchAgent) updateInputNoteRefactor(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		r.active = false
+		return r, nil
+	case "enter":
+		r.phase = researchRunning
+		r.running = true
+		r.startTime = time.Now()
+		return r, tea.Batch(r.runResearch(), r.tickElapsed())
+	}
+	return r, nil
+}
+
+// viewInputNoteRefactor renders the input form for note refactor mode.
+func (r ResearchAgent) viewInputNoteRefactor(innerW int) string {
+	var b strings.Builder
+
+	b.WriteString(lipgloss.NewStyle().Foreground(peach).Bold(true).
+		Render("  Refactor Note: Split into Sub-Notes"))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  Powered by Claude Code"))
+	b.WriteString("\n\n")
+
+	// Description
+	descStyle := lipgloss.NewStyle().Foreground(lavender)
+	b.WriteString(descStyle.Render("  Split this note into well-structured sub-notes:"))
+	b.WriteString("\n")
+	itemStyle := lipgloss.NewStyle().Foreground(overlay0)
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Extract sections into standalone notes"))
+	b.WriteString("\n")
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Link sub-notes with [[wikilinks]]"))
+	b.WriteString("\n")
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Keep original as an index page"))
+	b.WriteString("\n\n")
+
+	// Target note
+	b.WriteString(lipgloss.NewStyle().Foreground(lavender).Bold(true).
+		Render("  Target Note"))
+	b.WriteString("\n")
+	noteName := strings.TrimSuffix(filepath.Base(r.assistNotePath), ".md")
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(peach).Render(noteName))
+	b.WriteString("\n")
+
+	// Preview
+	preview := r.assistPreview(innerW - 6)
+	if preview != "" {
+		previewBox := lipgloss.NewStyle().
+			Foreground(overlay0).
+			Width(innerW - 4).
+			Render(preview)
+		b.WriteString("  " + previewBox)
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+
+	// Info
+	infoStyle := lipgloss.NewStyle().Foreground(overlay0)
+	b.WriteString(infoStyle.Render(fmt.Sprintf("  %d vault notes available for linking.", len(r.assistVaultTitles))))
+	b.WriteString("\n\n")
+
+	// Button
+	btnColor := surface0
+	btnFg := text
+	if r.focusField == 3 {
+		btnColor = green
+		btnFg = mantle
+	}
+	btn := lipgloss.NewStyle().
+		Background(btnColor).
+		Foreground(btnFg).
+		Bold(r.focusField == 3).
+		Padding(0, 3).
+		Render(" Refactor Note ")
+	b.WriteString("  " + btn)
+	b.WriteString("\n\n")
+
+	b.WriteString(DimStyle.Render("  Enter confirm  Esc close"))
+
+	return b.String()
+}
+
+// ---------------------------------------------------------------------------
+// Note Enhance mode — improve note in-place
+// ---------------------------------------------------------------------------
+
+// updateInputNoteEnhance handles input for note enhance mode.
+func (r ResearchAgent) updateInputNoteEnhance(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		r.active = false
+		return r, nil
+	case "enter":
+		r.phase = researchRunning
+		r.running = true
+		r.startTime = time.Now()
+		return r, tea.Batch(r.runResearch(), r.tickElapsed())
+	}
+	return r, nil
+}
+
+// viewInputNoteEnhance renders the input form for note enhance mode.
+func (r ResearchAgent) viewInputNoteEnhance(innerW int) string {
+	var b strings.Builder
+
+	b.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).
+		Render("  Enhance Note: Add Depth and Links"))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  Powered by Claude Code"))
+	b.WriteString("\n\n")
+
+	// Description
+	descStyle := lipgloss.NewStyle().Foreground(lavender)
+	b.WriteString(descStyle.Render("  Improve this note in-place with:"))
+	b.WriteString("\n")
+	itemStyle := lipgloss.NewStyle().Foreground(overlay0)
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " More detail and examples"))
+	b.WriteString("\n")
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " [[Wikilinks]] to related vault notes"))
+	b.WriteString("\n")
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " Better structure and formatting"))
+	b.WriteString("\n")
+	b.WriteString(itemStyle.Render("  " + ThemeAccentBar + " No new files — only enhances this note"))
+	b.WriteString("\n\n")
+
+	// Target note
+	b.WriteString(lipgloss.NewStyle().Foreground(lavender).Bold(true).
+		Render("  Target Note"))
+	b.WriteString("\n")
+	noteName := strings.TrimSuffix(filepath.Base(r.assistNotePath), ".md")
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(peach).Render(noteName))
+	b.WriteString("\n")
+
+	// Preview
+	preview := r.assistPreview(innerW - 6)
+	if preview != "" {
+		previewBox := lipgloss.NewStyle().
+			Foreground(overlay0).
+			Width(innerW - 4).
+			Render(preview)
+		b.WriteString("  " + previewBox)
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+
+	// Info
+	infoStyle := lipgloss.NewStyle().Foreground(overlay0)
+	b.WriteString(infoStyle.Render("  A backup will be created before changes."))
+	b.WriteString("\n")
+	b.WriteString(infoStyle.Render(fmt.Sprintf("  %d vault notes available for linking.", len(r.assistVaultTitles))))
+	b.WriteString("\n\n")
+
+	// Button
+	btnColor := surface0
+	btnFg := text
+	if r.focusField == 3 {
+		btnColor = green
+		btnFg = mantle
+	}
+	btn := lipgloss.NewStyle().
+		Background(btnColor).
+		Foreground(btnFg).
+		Bold(r.focusField == 3).
+		Padding(0, 3).
+		Render(" Enhance Note ")
+	b.WriteString("  " + btn)
+	b.WriteString("\n\n")
+
+	b.WriteString(DimStyle.Render("  Enter confirm  Esc close"))
+
+	return b.String()
+}
+
+// assistPreview returns a short preview of the assistNoteContent (excluding frontmatter).
+func (r ResearchAgent) assistPreview(maxWidth int) string {
+	content := r.assistNoteContent
+	if content == "" {
+		return ""
+	}
+
+	// Strip YAML frontmatter
+	if strings.HasPrefix(content, "---") {
+		if end := strings.Index(content[3:], "---"); end >= 0 {
+			content = strings.TrimSpace(content[end+6:])
+		}
+	}
+
+	lines := strings.Split(content, "\n")
+	var preview []string
+	maxLines := 4
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if len(trimmed) > maxWidth {
+			trimmed = trimmed[:maxWidth-1] + "…"
+		}
+		preview = append(preview, "  "+trimmed)
+		if len(preview) >= maxLines {
+			break
+		}
+	}
+	if len(preview) == 0 {
+		return ""
+	}
+	return strings.Join(preview, "\n")
+}
+
+// ---------------------------------------------------------------------------
+// Prompt builders for new modes
+// ---------------------------------------------------------------------------
+
+// buildNoteRefactorPrompt creates the prompt for note refactor mode.
+// Claude splits the note into sub-notes linked with wikilinks, keeping the original as an index.
+func buildNoteRefactorPrompt(vaultRoot, notePath, noteContent string, vaultTitles []string) string {
+	today := time.Now().Format("2006-01-02")
+	fullPath := filepath.Join(vaultRoot, notePath)
+	noteDir := filepath.Dir(fullPath)
+	noteName := strings.TrimSuffix(filepath.Base(notePath), ".md")
+
+	// Build list of existing vault titles for wikilink context
+	var titlesStr string
+	if len(vaultTitles) > 0 {
+		titles := make([]string, 0, len(vaultTitles))
+		for _, t := range vaultTitles {
+			titles = append(titles, strings.TrimSuffix(filepath.Base(t), ".md"))
+		}
+		if len(titles) > 300 {
+			titlesStr = strings.Join(titles[:300], "\n") + fmt.Sprintf("\n... and %d more", len(titles)-300)
+		} else {
+			titlesStr = strings.Join(titles, "\n")
+		}
+	} else {
+		titlesStr = "(use Glob to discover notes)"
+	}
+
+	// Truncate very long note content
+	content := noteContent
+	if len(content) > 12000 {
+		content = content[:12000] + "\n\n[... content truncated for brevity ...]"
+	}
+
+	prompt := fmt.Sprintf(`You are a note refactoring assistant for a knowledge management vault.
+
+NOTE TO REFACTOR: %s
+VAULT ROOT: %s
+
+CURRENT NOTE CONTENT:
+---
+%s
+---
+
+EXISTING VAULT NOTES (for wikilink references):
+%s
+
+INSTRUCTIONS:
+1. Analyze the note and identify distinct sections, concepts, or topics that deserve their own standalone note.
+2. For each extracted concept, create a new note file in the same directory (%s) with:
+   - A descriptive filename (kebab-case or matching vault convention)
+   - YAML frontmatter with title, date (%s), and relevant tags
+   - The extracted content, expanded and well-structured
+   - [[wikilinks]] back to the index note "%s" and to other related vault notes
+3. Rewrite the ORIGINAL note (%s) as an index page that:
+   - Keeps a brief summary/overview of the topic
+   - Contains [[wikilinks]] to each newly created sub-note
+   - Preserves the original frontmatter (update the "updated" field to %s)
+   - Organizes links in a logical structure (not just a flat list)
+
+REFACTORING GUIDELINES:
+- Each sub-note should be atomic — one concept per note (Zettelkasten principle)
+- Use [[wikilinks]] using filenames without the .md extension
+- Link to EXISTING vault notes where topics overlap (see the list above)
+- Keep the original note readable as a standalone overview/index
+- Preserve all original content — nothing should be lost, only reorganized
+- Add proper Markdown formatting (headings, lists, emphasis)
+- Sub-note filenames should be clear and descriptive
+
+IMPORTANT:
+- Use the Write tool to create each sub-note
+- Use the Write tool to rewrite the original note as an index
+- After writing all files, list every file you created or modified`, notePath, vaultRoot, content, titlesStr, noteDir, today, noteName, fullPath, today)
+
+	prompt += loadProjectContext(vaultRoot)
+	prompt += loadSoulNote(vaultRoot)
+	prompt += "\n\nSTART REFACTORING NOW."
+	return prompt
+}
+
+// buildNoteEnhancePrompt creates the prompt for note enhance mode.
+// Claude improves the note in-place with more detail, examples, wikilinks, and better structure.
+func buildNoteEnhancePrompt(vaultRoot, notePath, noteContent string, vaultTitles []string) string {
+	today := time.Now().Format("2006-01-02")
+	fullPath := filepath.Join(vaultRoot, notePath)
+	backupPath := fullPath + ".backup-" + today
+
+	// Build list of existing vault titles for wikilink context
+	var titlesStr string
+	if len(vaultTitles) > 0 {
+		titles := make([]string, 0, len(vaultTitles))
+		for _, t := range vaultTitles {
+			titles = append(titles, strings.TrimSuffix(filepath.Base(t), ".md"))
+		}
+		if len(titles) > 300 {
+			titlesStr = strings.Join(titles[:300], "\n") + fmt.Sprintf("\n... and %d more", len(titles)-300)
+		} else {
+			titlesStr = strings.Join(titles, "\n")
+		}
+	} else {
+		titlesStr = "(use Glob to discover notes)"
+	}
+
+	// Truncate very long note content
+	content := noteContent
+	if len(content) > 12000 {
+		content = content[:12000] + "\n\n[... content truncated for brevity ...]"
+	}
+
+	prompt := fmt.Sprintf(`You are a note enhancement assistant for a knowledge management vault.
+
+NOTE TO ENHANCE: %s
+VAULT ROOT: %s
+
+CURRENT NOTE CONTENT:
+---
+%s
+---
+
+EXISTING VAULT NOTES (for wikilink references):
+%s
+
+INSTRUCTIONS:
+1. First, create a backup of the original note by writing the current content to: %s
+2. Then, enhance the note IN-PLACE by:
+   a) Add more detail, depth, and nuance to existing sections
+   b) Include concrete examples, analogies, or case studies where helpful
+   c) Add [[wikilinks]] to existing vault notes wherever topics overlap (use filenames without .md)
+   d) Improve the structure — better headings, logical flow, clear hierarchy
+   e) Preserve the existing YAML frontmatter but update the "updated" field to %s
+   f) Keep the original author's voice — enhance, don't rewrite from scratch
+3. Write the enhanced version back to the original file: %s
+
+ENHANCEMENT GUIDELINES:
+- Keep ALL original content — only add to it, reorganize, or clarify
+- Add [[wikilinks]] naturally within the text where other vault notes are relevant
+- Add a "## See Also" section at the end linking to related vault notes
+- Use blockquotes for key definitions or important concepts
+- Add examples using code blocks, lists, or indented paragraphs as appropriate
+- If the note has frontmatter tags, add relevant new tags
+- Use proper Markdown formatting throughout
+- Do NOT create any new files — only modify this one note
+
+IMPORTANT:
+- Create the backup file FIRST using the Write tool
+- Then write the enhanced version to the original path using the Write tool
+- Do NOT create any other files besides the backup
+- After writing, list what was changed`, notePath, vaultRoot, content, titlesStr, backupPath, today, fullPath)
+
+	prompt += loadProjectContext(vaultRoot)
+	prompt += loadSoulNote(vaultRoot)
+	prompt += "\n\nSTART ENHANCING NOW."
+	return prompt
+}
+
+// buildDeepResearchPrompt creates the prompt for deep research mode.
+// Claude performs comprehensive research with vault-aware wikilinks.
+func buildDeepResearchPrompt(topic, vaultRoot string, vaultTitles []string) string {
+	today := time.Now().Format("2006-01-02")
+
+	safeTopic := strings.ReplaceAll(topic, "/", "-")
+	safeTopic = strings.ReplaceAll(safeTopic, "\\", "-")
+	if len(safeTopic) > 50 {
+		safeTopic = safeTopic[:50]
+	}
+	folder := filepath.Join(vaultRoot, "Research "+safeTopic+" "+today)
+
+	// Build list of existing vault titles for wikilink context
+	var titlesStr string
+	if len(vaultTitles) > 0 {
+		titles := make([]string, 0, len(vaultTitles))
+		for _, t := range vaultTitles {
+			titles = append(titles, strings.TrimSuffix(filepath.Base(t), ".md"))
+		}
+		if len(titles) > 300 {
+			titlesStr = strings.Join(titles[:300], "\n") + fmt.Sprintf("\n... and %d more", len(titles)-300)
+		} else {
+			titlesStr = strings.Join(titles, "\n")
+		}
+	} else {
+		titlesStr = "(use Glob to discover notes)"
+	}
+
+	prompt := fmt.Sprintf(`You are a deep research assistant for a knowledge management vault.
+
+TOPIC: %s
+VAULT ROOT: %s
+OUTPUT FOLDER: %s
+DATE: %s
+
+EXISTING VAULT NOTES (for wikilink references):
+%s
+
+INSTRUCTIONS:
+1. Use WebSearch to thoroughly research "%s" from multiple angles.
+2. Create a folder at %s (use Bash mkdir -p).
+3. Create comprehensive, interlinked notes in that folder:
+   a) A main index note (00-index.md) that links to all sub-notes
+   b) Individual notes for each major subtopic or concept
+   c) Each note should have YAML frontmatter with title, date, and tags
+   d) Use [[wikilinks]] extensively — both between new notes and to existing vault notes
+4. Aim for 15-25 notes covering the topic in depth.
+
+RESEARCH GUIDELINES:
+- Each note should be atomic — one concept per note
+- Include concrete examples, data, and citations
+- Link to existing vault notes where topics overlap (see list above)
+- Use proper Markdown formatting (headings, lists, emphasis, blockquotes)
+- Add a "## Sources" section to notes that reference external information
+- Add a "## See Also" section linking to related vault and research notes
+- Frontmatter should include: title, date, tags, and related fields
+
+IMPORTANT:
+- Create the output folder first
+- Use Write tool to create each note file
+- After writing all files, list every file you created`, topic, vaultRoot, folder, today, titlesStr, topic, folder)
+
+	prompt += loadProjectContext(vaultRoot)
+	prompt += loadSoulNote(vaultRoot)
+	prompt += "\n\nSTART RESEARCHING NOW."
+	return prompt
 }
