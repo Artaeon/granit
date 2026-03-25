@@ -181,6 +181,9 @@ func (si *SearchIndex) Search(query string) []SearchResult {
 		}
 
 		// IDF for this term
+		if si.totalDocs == 0 {
+			continue
+		}
 		idf := math.Log(1.0 + float64(si.totalDocs)/float64(len(docs)))
 
 		for docPath := range docs {
