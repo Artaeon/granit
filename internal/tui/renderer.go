@@ -22,6 +22,12 @@ type Renderer struct {
 	noteLookup func(name string) string // returns content for a note name
 	vaultNotes map[string]*vault.Note   // for dataview queries
 	vaultRoot  string                   // root path of the vault for resolving images
+	viewStyle  string                   // "default", "reading", "minimal"
+
+	// Cache: avoid re-rendering the entire document on every scroll
+	cachedContent string   // content hash for cache invalidation
+	cachedWidth   int      // width used for cached render
+	cachedLines   []string // pre-rendered lines
 }
 
 // calloutInfo maps callout type keywords to their color and icon.
@@ -37,8 +43,8 @@ var calloutRe = regexp.MustCompile(`^>\s*\[!(\w+)\]\s*(.*)$`)
 // embedRe matches note embedding syntax: ![[note-name]] or ![[note-name#heading]]
 var embedRe = regexp.MustCompile(`!\[\[([^\]]+)\]\]`)
 
-func NewRenderer() Renderer {
-	return Renderer{}
+func NewRenderer() *Renderer {
+	return &Renderer{}
 }
 
 func (r *Renderer) SetSize(width, height int) {
@@ -56,6 +62,13 @@ func (r *Renderer) SetVaultNotes(notes map[string]*vault.Note) {
 
 func (r *Renderer) SetVaultRoot(root string) {
 	r.vaultRoot = root
+}
+
+func (r *Renderer) SetViewStyle(style string) {
+	if style != r.viewStyle {
+		r.viewStyle = style
+		r.InvalidateCache()
+	}
 }
 
 // imgMarkdownImageRe matches standard markdown images: ![alt text](path/to/image.png)
@@ -243,10 +256,22 @@ func (r Renderer) renderCalloutBlock(info calloutInfo, title string, contentLine
 	}
 	out = append(out, bgStyle.Render(header))
 
-	// Content lines
+	// Content lines — wrap to fit within the callout box
+	innerWidth := contentWidth - 10 // account for border + padding
+	if innerWidth < 20 {
+		innerWidth = 20
+	}
 	for _, cl := range contentLines {
-		line := "  " + barStyle.Render("\u2503") + "   " + lipgloss.NewStyle().Foreground(text).Render(cl)
-		out = append(out, bgStyle.Render(line))
+		if cl == "" {
+			line := "  " + barStyle.Render("\u2503")
+			out = append(out, bgStyle.Render(line))
+			continue
+		}
+		wrapped := r.wrapParagraph(cl, innerWidth)
+		for _, wl := range wrapped {
+			line := "  " + barStyle.Render("\u2503") + "   " + wl
+			out = append(out, bgStyle.Render(line))
+		}
 	}
 
 	// Bottom border
@@ -490,8 +515,15 @@ func (r Renderer) renderTable(rows []string, contentWidth int) []string {
 	// Helper: align a rendered cell (with ANSI escapes) in a column of given width.
 	// displayWidth is the visible width of the rendered content (measured with lipgloss.Width).
 	alignCell := func(rendered string, displayWidth int, colWidth int, align byte) string {
-		if displayWidth >= colWidth {
-			// Truncate: we can't easily truncate ANSI strings, so just return as-is
+		if displayWidth > colWidth {
+			// Truncate to fit: strip runes from the end until it fits
+			runes := []rune(stripAnsi(rendered))
+			if len(runes) > colWidth-1 {
+				runes = runes[:colWidth-1]
+			}
+			return string(runes) + "…"
+		}
+		if displayWidth == colWidth {
 			return rendered
 		}
 		pad := colWidth - displayWidth
@@ -821,8 +853,18 @@ func isBlockElement(trimmed string) bool {
 	return false
 }
 
-func (r Renderer) Render(content string, scroll int) string {
-	lines := r.renderMarkdown(content)
+func (r *Renderer) ensureCache(content string) {
+	if r.cachedContent == content && r.cachedWidth == r.width && r.cachedLines != nil {
+		return
+	}
+	r.cachedLines = r.renderMarkdown(content)
+	r.cachedContent = content
+	r.cachedWidth = r.width
+}
+
+func (r *Renderer) Render(content string, scroll int) string {
+	r.ensureCache(content)
+	lines := r.cachedLines
 
 	// Apply scroll
 	if scroll >= len(lines) {
@@ -843,8 +885,15 @@ func (r Renderer) Render(content string, scroll int) string {
 	return strings.Join(visible, "\n")
 }
 
-func (r Renderer) RenderLineCount(content string) int {
-	return len(r.renderMarkdown(content))
+func (r *Renderer) RenderLineCount(content string) int {
+	r.ensureCache(content)
+	return len(r.cachedLines)
+}
+
+// InvalidateCache forces re-rendering on next call (e.g. after content edit).
+func (r *Renderer) InvalidateCache() {
+	r.cachedLines = nil
+	r.cachedContent = ""
 }
 
 func (r Renderer) renderMarkdown(content string) []string {
@@ -1069,50 +1118,64 @@ func (r Renderer) renderMarkdown(content string) []string {
 		// Headings
 		if strings.HasPrefix(trimmed, "# ") {
 			hText := strings.TrimPrefix(trimmed, "# ")
-			upper := strings.ToUpper(hText)
-			// Full-width background bar for H1
-			barStyle := lipgloss.NewStyle().
-				Foreground(crust).
-				Background(mauve).
-				Bold(true).
-				Width(contentWidth).
-				Padding(0, 2)
-			underline := lipgloss.NewStyle().
-				Foreground(mauve).
-				Render("  " + strings.Repeat("━", contentWidth-4))
 			result = append(result, "")
-			result = append(result, "")
-			result = append(result, barStyle.Render(upper))
-			result = append(result, underline)
+			switch r.viewStyle {
+			case "reading":
+				// Clean, large heading — no background bar
+				styled := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(hText)
+				underline := lipgloss.NewStyle().Foreground(mauve).Render("  " + strings.Repeat("━", lipgloss.Width(hText)+2))
+				result = append(result, "  "+styled)
+				result = append(result, underline)
+			case "minimal":
+				styled := lipgloss.NewStyle().Foreground(text).Bold(true).Render(hText)
+				result = append(result, "  "+styled)
+			default:
+				barStyle := lipgloss.NewStyle().
+					Foreground(crust).
+					Background(mauve).
+					Bold(true).
+					Width(contentWidth).
+					Padding(0, 2)
+				result = append(result, barStyle.Render(hText))
+			}
 			result = append(result, "")
 			continue
 		}
 		if strings.HasPrefix(trimmed, "## ") {
 			hText := strings.TrimPrefix(trimmed, "## ")
-			// Accent left border + bold text for H2
-			bar := lipgloss.NewStyle().Foreground(blue).Bold(true).Render("┃ ")
-			styled := lipgloss.NewStyle().
-				Foreground(blue).
-				Bold(true).
-				Render(hText)
-			underline := lipgloss.NewStyle().
-				Foreground(surface1).
-				Render("  " + strings.Repeat("─", contentWidth-4))
 			result = append(result, "")
-			result = append(result, "  "+bar+styled)
-			result = append(result, underline)
+			switch r.viewStyle {
+			case "reading":
+				styled := lipgloss.NewStyle().Foreground(blue).Bold(true).Render(hText)
+				underline := lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", lipgloss.Width(hText)+2))
+				result = append(result, "  "+styled)
+				result = append(result, underline)
+			case "minimal":
+				styled := lipgloss.NewStyle().Foreground(subtext1).Bold(true).Render(hText)
+				result = append(result, "  "+styled)
+			default:
+				bar := lipgloss.NewStyle().Foreground(blue).Bold(true).Render("┃ ")
+				styled := lipgloss.NewStyle().Foreground(blue).Bold(true).Render(hText)
+				result = append(result, "  "+bar+styled)
+			}
 			result = append(result, "")
 			continue
 		}
 		if strings.HasPrefix(trimmed, "### ") {
 			hText := strings.TrimPrefix(trimmed, "### ")
-			bar := lipgloss.NewStyle().Foreground(sapphire).Render("│ ")
-			styled := lipgloss.NewStyle().
-				Foreground(sapphire).
-				Bold(true).
-				Render(hText)
 			result = append(result, "")
-			result = append(result, "  "+bar+styled)
+			switch r.viewStyle {
+			case "reading":
+				styled := lipgloss.NewStyle().Foreground(sapphire).Bold(true).Render(hText)
+				result = append(result, "  "+styled)
+			case "minimal":
+				styled := lipgloss.NewStyle().Foreground(overlay2).Bold(true).Render(hText)
+				result = append(result, "  "+styled)
+			default:
+				bar := lipgloss.NewStyle().Foreground(sapphire).Render("│ ")
+				styled := lipgloss.NewStyle().Foreground(sapphire).Bold(true).Render(hText)
+				result = append(result, "  "+bar+styled)
+			}
 			continue
 		}
 		if strings.HasPrefix(trimmed, "#### ") {
@@ -1181,27 +1244,51 @@ func (r Renderer) renderMarkdown(content string) []string {
 			}
 
 			textColorIdx := (depth - 1) % len(textColors)
-			quote := lipgloss.NewStyle().Foreground(textColors[textColorIdx]).Italic(true).Render(remainder)
-			result = append(result, bar+quote)
+			quoteStyle := lipgloss.NewStyle().Foreground(textColors[textColorIdx]).Italic(true)
+			innerWidth := contentWidth - 4 - depth*2
+			if innerWidth < 20 {
+				innerWidth = 20
+			}
+			// Wrap long blockquote lines
+			words := strings.Fields(remainder)
+			if len(words) == 0 {
+				result = append(result, bar)
+			} else {
+				current := words[0]
+				for _, w := range words[1:] {
+					if len([]rune(current))+1+len([]rune(w)) > innerWidth {
+						result = append(result, bar+quoteStyle.Render(current))
+						current = w
+					} else {
+						current += " " + w
+					}
+				}
+				result = append(result, bar+quoteStyle.Render(current))
+			}
 			continue
 		}
 
 		// Checkboxes with Unicode styling and nesting support
 		if strings.HasPrefix(trimmed, "- [x] ") || strings.HasPrefix(trimmed, "- [X] ") {
 			doneText := trimmed[6:]
-			// Calculate nesting depth from indentation (2 spaces per level)
 			indent := len(line) - len(strings.TrimLeft(line, " \t"))
 			nestDepth := indent / 2
 			nestPad := strings.Repeat("  ", nestDepth)
-			// Use a connector line for nested items
 			prefix := "  " + nestPad
 			if nestDepth > 0 {
 				connStyle := lipgloss.NewStyle().Foreground(surface1)
 				prefix += connStyle.Render("└ ")
 			}
 			checkbox := lipgloss.NewStyle().Foreground(crust).Background(green).Bold(true).Render(" ☑ ")
-			styledText := lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true).Render(" " + doneText)
-			result = append(result, prefix+checkbox+styledText)
+			cbPad := "  " + nestPad + "    " // continuation indent
+			cbStyle := lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true)
+			wrapped := r.wrapParagraph(doneText, contentWidth-8-nestDepth*2)
+			if len(wrapped) > 0 {
+				result = append(result, prefix+checkbox+" "+cbStyle.Render(stripAnsi(wrapped[0])))
+				for _, wl := range wrapped[1:] {
+					result = append(result, cbPad+cbStyle.Render(stripAnsi(wl)))
+				}
+			}
 			continue
 		}
 		if strings.HasPrefix(trimmed, "- [ ] ") {
@@ -1215,17 +1302,30 @@ func (r Renderer) renderMarkdown(content string) []string {
 				prefix += connStyle.Render("└ ")
 			}
 			checkbox := lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(" ☐ ")
-			styledText := lipgloss.NewStyle().Foreground(text).Render(" " + todoText)
-			result = append(result, prefix+checkbox+styledText)
+			cbPad := "  " + nestPad + "    " // continuation indent
+			wrapped := r.wrapParagraph(todoText, contentWidth-8-nestDepth*2)
+			if len(wrapped) > 0 {
+				result = append(result, prefix+checkbox+" "+wrapped[0])
+				for _, wl := range wrapped[1:] {
+					result = append(result, cbPad+wl)
+				}
+			}
 			continue
 		}
 
 		// Unordered list
 		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
-			text := trimmed[2:]
+			listText := trimmed[2:]
 			indent := strings.Repeat(" ", len(line)-len(trimmed))
-			bullet := lipgloss.NewStyle().Foreground(peach).Render("  " + indent + "● ")
-			result = append(result, bullet+r.renderInline(text))
+			bulletStr := lipgloss.NewStyle().Foreground(peach).Render("  " + indent + "● ")
+			bulletPad := "  " + indent + "  " // continuation indent
+			wrapped := r.wrapParagraph(listText, contentWidth-6-len(indent))
+			if len(wrapped) > 0 {
+				result = append(result, bulletStr+wrapped[0])
+				for _, wl := range wrapped[1:] {
+					result = append(result, bulletPad+wl)
+				}
+			}
 			continue
 		}
 
@@ -1243,9 +1343,16 @@ func (r Renderer) renderMarkdown(content string) []string {
 					}
 					if allDigits {
 						num := trimmed[:idx]
-						text := trimmed[idx+2:]
+						listText := trimmed[idx+2:]
 						numStyled := lipgloss.NewStyle().Foreground(peach).Bold(true).Render("  " + num + ". ")
-						result = append(result, numStyled+r.renderInline(text))
+						numPad := "     " // continuation indent matching "  N. "
+						wrapped := r.wrapParagraph(listText, contentWidth-8)
+						if len(wrapped) > 0 {
+							result = append(result, numStyled+wrapped[0])
+							for _, wl := range wrapped[1:] {
+								result = append(result, numPad+wl)
+							}
+						}
 						isNumbered = true
 					}
 				}
@@ -1384,7 +1491,10 @@ func (r Renderer) renderMarkdown(content string) []string {
 		}
 		paraSegments = append(paraSegments, currentSeg)
 		for _, seg := range paraSegments {
-			result = append(result, "  "+r.renderInline(seg))
+			wrapped := r.wrapParagraph(seg, contentWidth-4)
+			for _, wl := range wrapped {
+				result = append(result, "  "+wl)
+			}
 		}
 	}
 
@@ -1407,6 +1517,47 @@ func (r Renderer) renderMarkdown(content string) []string {
 	}
 
 	return result
+}
+
+// wrapParagraph renders inline markdown first, then wraps the rendered output
+// by visual width. This ensures formatting spans like **bold** that cross word
+// boundaries are rendered correctly before wrapping.
+func (r Renderer) wrapParagraph(text string, maxWidth int) []string {
+	if maxWidth <= 0 {
+		maxWidth = 60
+	}
+	if text == "" {
+		return []string{""}
+	}
+
+	// Render inline first so **bold** etc. are processed on the full text
+	rendered := r.renderInline(text)
+	visWidth := lipgloss.Width(rendered)
+	if visWidth <= maxWidth {
+		return []string{rendered}
+	}
+
+	// For long lines, split the source text by words, render inline per chunk,
+	// and wrap when visual width exceeds maxWidth.
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return []string{""}
+	}
+
+	var lines []string
+	current := words[0]
+	for _, w := range words[1:] {
+		candidate := current + " " + w
+		// Measure visual width of rendered candidate
+		if lipgloss.Width(r.renderInline(candidate)) > maxWidth {
+			lines = append(lines, r.renderInline(current))
+			current = w
+		} else {
+			current = candidate
+		}
+	}
+	lines = append(lines, r.renderInline(current))
+	return lines
 }
 
 func (r Renderer) renderInline(input string) string {
@@ -1610,6 +1761,67 @@ func (r Renderer) renderInline(input string) string {
 				result.WriteString(styled)
 				i = end + 1
 				continue
+			}
+		}
+
+		// Bold-italic ***...***
+		if i+2 < n && runes[i] == '*' && runes[i+1] == '*' && runes[i+2] == '*' {
+			end := -1
+			for j := i + 3; j+2 < n; j++ {
+				if runes[j] == '*' && runes[j+1] == '*' && runes[j+2] == '*' {
+					end = j + 2
+					break
+				}
+			}
+			if end != -1 {
+				boldItalic := string(runes[i+3 : end-2])
+				styled := lipgloss.NewStyle().
+					Foreground(text).
+					Bold(true).
+					Italic(true).
+					Render(boldItalic)
+				result.WriteString(styled)
+				i = end + 1
+				continue
+			}
+		}
+
+		// Markdown links [text](url)
+		if runes[i] == '[' && (i == 0 || runes[i-1] != '!') {
+			// Not a wikilink (already handled above) and not embed
+			bracketEnd := -1
+			for j := i + 1; j < n; j++ {
+				if runes[j] == ']' {
+					bracketEnd = j
+					break
+				}
+				if runes[j] == '[' {
+					break // nested bracket, abort
+				}
+			}
+			if bracketEnd != -1 && bracketEnd+1 < n && runes[bracketEnd+1] == '(' {
+				parenEnd := -1
+				for j := bracketEnd + 2; j < n; j++ {
+					if runes[j] == ')' {
+						parenEnd = j
+						break
+					}
+				}
+				if parenEnd != -1 {
+					linkText := string(runes[i+1 : bracketEnd])
+					linkURL := string(runes[bracketEnd+2 : parenEnd])
+					textStyled := lipgloss.NewStyle().
+						Foreground(blue).
+						Underline(true).
+						Render(linkText)
+					urlStyled := lipgloss.NewStyle().
+						Foreground(overlay0).
+						Render(" ↗")
+					_ = linkURL // URL shown as indicator only in TUI
+					result.WriteString(textStyled + urlStyled)
+					i = parenEnd + 1
+					continue
+				}
 			}
 		}
 

@@ -13,19 +13,19 @@ var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 func stripAnsiCodes(s string) string { return ansiRe.ReplaceAllString(s, "") }
 
 // newTestRenderer creates a renderer with a usable width/height for testing.
-func newTestRenderer() Renderer {
+func newTestRenderer() *Renderer {
 	r := NewRenderer()
 	r.SetSize(80, 40)
 	return r
 }
 
 // rendered is a helper that renders content and returns the raw output string.
-func rendered(r Renderer, content string) string {
+func rendered(r *Renderer, content string) string {
 	return r.Render(content, 0)
 }
 
 // renderedLines returns the output split into lines.
-func renderedLines(r Renderer, content string) []string {
+func renderedLines(r *Renderer, content string) []string {
 	out := r.Render(content, 0)
 	if out == "" {
 		return nil
@@ -40,8 +40,9 @@ func renderedLines(r Renderer, content string) []string {
 func TestRenderHeadingH1(t *testing.T) {
 	r := newTestRenderer()
 	out := rendered(r, "# Hello World")
-	if !strings.Contains(out, "HELLO WORLD") {
-		t.Errorf("H1 should render uppercase text, got:\n%s", out)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Hello World") {
+		t.Errorf("H1 should contain heading text, got:\n%s", plain)
 	}
 }
 
@@ -1149,7 +1150,7 @@ Some [[wikilink]] and #tag content.
 	plain := stripAnsiCodes(out)
 
 	checks := map[string]string{
-		"MAIN TITLE":     "H1 uppercased",
+		"Main Title":     "H1 text",
 		"Section One":    "H2 text",
 		"Subsection":     "H3 text",
 		"Final Heading":  "H4 text",
@@ -1244,7 +1245,7 @@ End of document.`
 
 	plain := stripAnsiCodes(out)
 	expected := []string{
-		"DOCUMENT", "Introduction", "other note", "alias",
+		"Document", "Introduction", "other note", "alias",
 		"Watch out", "Simple quote", "Open task", "Done task",
 		"console.log", "fmt.Println",
 	}
@@ -1559,9 +1560,9 @@ func TestRenderMarkdownDirectLineCount(t *testing.T) {
 func TestRenderMarkdownHeadingExtraLines(t *testing.T) {
 	r := newTestRenderer()
 	lines := r.renderMarkdown("# Title")
-	// H1 adds: blank, blank, styled text, underline, blank = 5 lines
-	if len(lines) < 4 {
-		t.Errorf("H1 should produce multiple rendered lines (spacing + bar + text + underline), got %d", len(lines))
+	// H1 adds: blank + bar + blank = 3 lines
+	if len(lines) < 3 {
+		t.Errorf("H1 should produce multiple rendered lines (spacing + bar + spacing), got %d", len(lines))
 	}
 }
 
