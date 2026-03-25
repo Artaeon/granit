@@ -89,6 +89,10 @@ type Project struct {
 	Priority    int           `json:"priority"`
 	DueDate     string        `json:"due_date"`
 	TimeSpent   int           `json:"time_spent"`
+
+	// Computed fields (not stored in JSON)
+	TasksDone  int `json:"-"` // completed tasks matched to this project
+	TasksTotal int `json:"-"` // total tasks matched to this project
 }
 
 // Progress returns 0.0..1.0 representing project completion.
@@ -120,8 +124,34 @@ func (p Project) Progress() float64 {
 		return float64(doneGoals) / float64(len(p.Goals))
 	}
 
-	// No goals — cannot compute from tasks here (tasks are scanned separately).
+	// No goals — fall back to task progress if available.
+	if p.TasksTotal > 0 {
+		return float64(p.TasksDone) / float64(p.TasksTotal)
+	}
 	return 0.0
+}
+
+// TaskProgress returns 0.0..1.0 representing task completion for this project.
+func (p Project) TaskProgress() float64 {
+	if p.TasksTotal == 0 {
+		return 0.0
+	}
+	return float64(p.TasksDone) / float64(p.TasksTotal)
+}
+
+// ComputeTaskCounts populates TasksDone and TasksTotal from a list of tasks.
+func (p *Project) ComputeTaskCounts(tasks []Task) {
+	p.TasksDone = 0
+	p.TasksTotal = 0
+	for _, t := range tasks {
+		if t.Project != p.Name {
+			continue
+		}
+		p.TasksTotal++
+		if t.Done {
+			p.TasksDone++
+		}
+	}
 }
 
 // projectTask is a parsed checkbox task relevant to a project.
@@ -692,6 +722,12 @@ func (pm ProjectMode) updateList(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 			idx := filtered[pm.cursor]
 			pm.cycleStatus(idx)
 			pm.saveProjects()
+			// Clamp cursor after status change may alter filtered list.
+			newFiltered := pm.filteredProjects()
+			if pm.cursor >= len(newFiltered) {
+				pm.cursor = max(0, len(newFiltered)-1)
+			}
+			pm.scroll = 0
 		}
 	}
 	return pm, nil
@@ -745,6 +781,9 @@ func (pm ProjectMode) updateDashboard(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 		pm.dashScroll++
 	case "o":
 		// Open selected note from the notes section.
+		if pm.dashSection == 0 && len(pm.dashNotes) == 0 {
+			return pm, nil
+		}
 		if pm.dashSection == 0 && len(pm.dashNotes) > 0 {
 			noteIdx := pm.dashScroll
 			if noteIdx >= len(pm.dashNotes) {
@@ -1125,6 +1164,16 @@ func (pm *ProjectMode) openDashboard() {
 	proj := pm.projects[pm.selectedProj]
 	pm.dashNotes = pm.scanProjectFolder(proj)
 	pm.dashTasks = pm.scanProjectTasks(proj)
+
+	// Populate TasksDone/TasksTotal from scanned project tasks.
+	done := 0
+	for _, t := range pm.dashTasks {
+		if t.Done {
+			done++
+		}
+	}
+	pm.projects[pm.selectedProj].TasksDone = done
+	pm.projects[pm.selectedProj].TasksTotal = len(pm.dashTasks)
 }
 
 func (pm *ProjectMode) commitEdit() {
@@ -1546,6 +1595,16 @@ func (pm ProjectMode) viewDashGoals(width int, proj Project) string {
 		b.WriteString(" " + DimStyle.Render(fmt.Sprintf("%d/%d goals", doneGoals, len(proj.Goals))))
 	}
 	b.WriteString("\n")
+
+	// Task progress (secondary indicator)
+	if proj.TasksTotal > 0 {
+		taskPct := proj.TasksDone * 100 / proj.TasksTotal
+		taskProgStr := DimStyle.Render("  Tasks: ") +
+			lipgloss.NewStyle().Foreground(yellow).Render(fmt.Sprintf("%d/%d", proj.TasksDone, proj.TasksTotal)) +
+			DimStyle.Render(fmt.Sprintf(" (%d%%)", taskPct))
+		b.WriteString(taskProgStr)
+		b.WriteString("\n")
+	}
 
 	if len(proj.Goals) == 0 {
 		b.WriteString("  " + DimStyle.Render("No goals yet - press 'g' to manage"))
