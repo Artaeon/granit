@@ -46,6 +46,7 @@ type calendarView int
 const (
 	calViewMonth calendarView = iota
 	calViewWeek
+	calView3Day
 	calViewAgenda
 	calViewYear
 )
@@ -117,6 +118,10 @@ type Calendar struct {
 
 	// Planner block data (keyed by date "YYYY-MM-DD")
 	plannerBlocks map[string][]PlannerBlock
+
+	// Habit data for enriched views
+	habitEntries []habitEntry
+	habitLogs    []habitLog
 
 	// Agenda scroll offset and cursor for task toggling
 	agendaScroll int
@@ -256,6 +261,28 @@ func (c *Calendar) SetPlannerBlocks(blocks map[string][]PlannerBlock) {
 	c.plannerBlocks = blocks
 }
 
+// SetHabitData stores habit entries and logs for display in calendar views.
+func (c *Calendar) SetHabitData(entries []habitEntry, logs []habitLog) {
+	c.habitEntries = entries
+	c.habitLogs = logs
+}
+
+// habitStats returns (completed, total) habit counts for a given date string.
+func (c Calendar) habitStats(dateStr string) (int, int) {
+	total := len(c.habitEntries)
+	if total == 0 {
+		return 0, 0
+	}
+	done := 0
+	for _, log := range c.habitLogs {
+		if log.Date == dateStr {
+			done = len(log.Completed)
+			break
+		}
+	}
+	return done, total
+}
+
 // GetTaskToggles returns pending task toggles and clears them (consumed-once).
 func (c *Calendar) GetTaskToggles() []TaskToggle {
 	if len(c.taskToggles) == 0 {
@@ -320,6 +347,8 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				} else if c.agendaScroll > 0 {
 					c.agendaScroll--
 				}
+			} else if c.view == calView3Day {
+				// No vertical navigation in 3-day view
 			} else {
 				c.cursor = c.cursor.AddDate(0, 0, -7)
 				c.syncViewing()
@@ -331,6 +360,8 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				} else {
 					c.agendaScroll++
 				}
+			} else if c.view == calView3Day {
+				// No vertical navigation in 3-day view
 			} else {
 				c.cursor = c.cursor.AddDate(0, 0, 7)
 				c.syncViewing()
@@ -416,11 +447,13 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			c.syncViewing()
 
 		case "w":
-			// Cycle through month -> week -> agenda (skip year, use y for that)
+			// Cycle through month -> week -> 3day -> agenda (skip year, use y for that)
 			switch c.view {
 			case calViewMonth:
 				c.view = calViewWeek
 			case calViewWeek:
+				c.view = calView3Day
+			case calView3Day:
 				c.view = calViewAgenda
 				c.agendaScroll = 0
 				c.agendaCursor = 0
@@ -455,6 +488,8 @@ func (c Calendar) View() string {
 	switch c.view {
 	case calViewWeek:
 		return c.viewWeek()
+	case calView3Day:
+		return c.view3Day()
 	case calViewAgenda:
 		return c.viewAgenda()
 	case calViewYear:
@@ -604,16 +639,16 @@ func (c Calendar) viewMonth() string {
 }
 
 // ---------------------------------------------------------------------------
-// Week View (with mini calendar sidebar)
+// Week View (time grid with 7 day columns)
 // ---------------------------------------------------------------------------
 
 func (c Calendar) viewWeek() string {
-	width := c.width * 2 / 3
-	if width < 56 {
-		width = 56
+	width := c.width * 3 / 4
+	if width < 80 {
+		width = 80
 	}
-	if width > 76 {
-		width = 76
+	if width > 120 {
+		width = 120
 	}
 
 	var b strings.Builder
@@ -623,169 +658,196 @@ func (c Calendar) viewWeek() string {
 	viewLabel := DimStyle.Render(" [week]")
 	b.WriteString("  " + titleIcon + titleText + viewLabel)
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  " + strings.Repeat("─", width-8)))
+	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", width-8)))
 	b.WriteString("\n")
 
 	// Find the Sunday of the cursor's week
 	weekStart := c.cursor.AddDate(0, 0, -int(c.cursor.Weekday()))
 
-	// Week header
 	weekEnd := weekStart.AddDate(0, 0, 6)
 	_, weekNum := c.cursor.ISOWeek()
-	weekLabel := fmt.Sprintf("Week %d: ", weekNum) + weekStart.Format("Jan 2") + " - " + weekEnd.Format("Jan 2, 2006")
+	weekLabel := fmt.Sprintf("Week %d: ", weekNum) + weekStart.Format("Jan 2") + " \u2013 " + weekEnd.Format("Jan 2, 2006")
 	b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(weekLabel))
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
-	// Build week detail and mini calendar side by side
-	miniCal := c.renderMiniCalendar()
-	miniLines := strings.Split(miniCal, "\n")
+	// Column widths: time gutter + 7 day columns
+	timeGutterW := 7
+	dayColW := (width - timeGutterW - 4) / 7
+	if dayColW < 8 {
+		dayColW = 8
+	}
 
+	nowHour := time.Now().Hour()
+	nowMin := time.Now().Minute()
+	todayStr := time.Now().Format("2006-01-02")
+
+	// Day headers with task/habit counts
 	dayNames := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
-
-	var weekLines []string
+	headerLine := strings.Repeat(" ", timeGutterW) + "\u2503"
 	for i := 0; i < 7; i++ {
 		day := weekStart.AddDate(0, 0, i)
 		dateStr := day.Format("2006-01-02")
 		isToday := day.Equal(c.today)
 		isCursor := day.Equal(c.cursor)
-		hasNote := c.dailyNoteDates[dateStr]
-		hasEvent := c.dateHasEvent(day)
-		tasksDone, tasksTotal := c.taskStats(dateStr)
+		_, tasksTotal := c.taskStats(dateStr)
+		habitsDone, habitsTotal := c.habitStats(dateStr)
 
-		// Day header
-		dayLabel := dayNames[i] + " " + day.Format("Jan 2")
-		dayStyle := lipgloss.NewStyle().Foreground(text)
-		isWeekend := i == 0 || i == 6
-		if isWeekend {
-			dayStyle = lipgloss.NewStyle().Foreground(overlay0)
-		}
+		label := dayNames[i] + " " + day.Format("2")
+		headerStyle := lipgloss.NewStyle().Foreground(text)
 		if isToday {
-			dayStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
-		}
-		if isCursor {
-			dayStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
-		}
-
-		prefix := "  "
-		if isCursor {
-			prefix = lipgloss.NewStyle().Foreground(mauve).Render("▸ ")
+			headerStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
+		} else if isCursor {
+			headerStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
+		} else if i == 0 || i == 6 {
+			headerStyle = lipgloss.NewStyle().Foreground(overlay0)
 		}
 
-		line := prefix + dayStyle.Render(dayLabel)
-
-		// Indicators
-		indicators := ""
-		if hasNote {
-			indicators += " " + lipgloss.NewStyle().Foreground(green).Render(IconDailyChar)
-		}
-		if hasEvent {
-			indicators += " " + lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar)
-		}
+		cellContent := headerStyle.Render(label)
 		if tasksTotal > 0 {
-			taskColor := yellow
-			if tasksDone == tasksTotal {
-				taskColor = green
-			}
-			indicators += " " + lipgloss.NewStyle().Foreground(taskColor).Render(
-				fmt.Sprintf("[%d/%d]", tasksDone, tasksTotal))
+			cellContent += lipgloss.NewStyle().Foreground(yellow).Render(fmt.Sprintf(" T:%d", tasksTotal))
 		}
-		dayPlannerBlocks := c.plannerBlocks[dateStr]
-		if len(dayPlannerBlocks) > 0 {
-			indicators += " " + lipgloss.NewStyle().Foreground(lavender).Render(
-				fmt.Sprintf("[P:%d]", len(dayPlannerBlocks)))
+		if habitsTotal > 0 {
+			cellContent += lipgloss.NewStyle().Foreground(green).Render(fmt.Sprintf(" H:%d/%d", habitsDone, habitsTotal))
 		}
 
-		weekLines = append(weekLines, line+indicators)
+		cellWidth := lipgloss.Width(cellContent)
+		pad := dayColW - cellWidth
+		if pad < 0 {
+			pad = 0
+		}
+		headerLine += " " + cellContent + strings.Repeat(" ", pad) + "\u2503"
+	}
+	b.WriteString(headerLine + "\n")
 
-		// Show events, planner blocks, and tasks for cursor day
-		if isCursor {
-			dayEvents := c.eventsForDate(day)
-			for _, ev := range dayEvents {
-				timeStr := ""
-				if !ev.AllDay {
-					timeStr = ev.Date.Format("15:04") + " "
-				}
-				weekLines = append(weekLines, "    "+lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar+" ")+
-					DimStyle.Render(timeStr)+
-					lipgloss.NewStyle().Foreground(text).Render(ev.Title))
+	// Separator
+	sepLine := strings.Repeat(" ", timeGutterW) + "\u2523"
+	for i := 0; i < 7; i++ {
+		sepLine += strings.Repeat("\u2501", dayColW+1) + "\u254B"
+	}
+	b.WriteString(sepLine + "\n")
+
+	// Build grid data: for each day, map hour -> content
+	type gridCell struct {
+		text  string
+		color lipgloss.Color
+	}
+	dayGrids := make([]map[int]gridCell, 7)
+	for i := 0; i < 7; i++ {
+		dayGrids[i] = make(map[int]gridCell)
+		day := weekStart.AddDate(0, 0, i)
+		dateStr := day.Format("2006-01-02")
+
+		// Place planner blocks
+		for _, pb := range c.plannerBlocks[dateStr] {
+			startH, startM := parseTimeHM(pb.StartTime)
+			endH, endM := parseTimeHM(pb.EndTime)
+			if startH < 6 {
+				startH = 6
 			}
-			// Planner blocks for cursor day
-			for _, pb := range dayPlannerBlocks {
-				timeRange := pb.StartTime + "-" + pb.EndTime
-				tag := "[P]"
-				switch pb.BlockType {
-				case "break":
-					tag = "[B]"
-				case "focus":
-					tag = "[F]"
-				case "event":
-					tag = "[E]"
-				}
-				pbText := pb.Text
-				maxLen := width - 30
-				if maxLen < 20 {
-					maxLen = 20
-				}
-				if len(pbText) > maxLen {
-					pbText = pbText[:maxLen-3] + "..."
-				}
-				pbStyle := lipgloss.NewStyle().Foreground(lavender)
-				suffix := ""
-				if pb.Done {
-					pbStyle = lipgloss.NewStyle().Foreground(green).Strikethrough(true)
-					suffix = lipgloss.NewStyle().Foreground(green).Render(" ✓")
-				}
-				weekLines = append(weekLines, "    "+pbStyle.Render(timeRange+" "+tag+" "+pbText)+suffix)
+			if endH > 22 || (endH == 22 && endM > 0) {
+				endH = 22
+				endM = 0
 			}
-			dayTasks := c.tasks[dateStr]
-			for _, task := range dayTasks {
-				checkIcon := lipgloss.NewStyle().Foreground(yellow).Render("○")
-				if task.Done {
-					checkIcon = lipgloss.NewStyle().Foreground(green).Render("●")
+			_ = startM
+			_ = endM
+			blockColor := c.blockTypeColor(pb.BlockType)
+			for h := startH; h < endH; h++ {
+				label := pb.Text
+				if h == startH {
+					// Show text on first hour
+					maxLen := dayColW - 3
+					if maxLen < 4 {
+						maxLen = 4
+					}
+					if len(label) > maxLen {
+						label = label[:maxLen-1] + "\u2026"
+					}
+				} else {
+					label = "\u2502" // continuation bar
 				}
-				taskText := task.Text
-				maxLen := width - 30
-				if maxLen < 20 {
-					maxLen = 20
+				dayGrids[i][h] = gridCell{text: label, color: blockColor}
+			}
+		}
+
+		// Place events
+		for _, ev := range c.eventsForDate(day) {
+			if ev.AllDay {
+				continue
+			}
+			h := ev.Date.Hour()
+			if h < 6 || h >= 22 {
+				continue
+			}
+			if _, exists := dayGrids[i][h]; !exists {
+				label := ev.Title
+				maxLen := dayColW - 3
+				if maxLen < 4 {
+					maxLen = 4
 				}
-				if len(taskText) > maxLen {
-					taskText = taskText[:maxLen-3] + "..."
+				if len(label) > maxLen {
+					label = label[:maxLen-1] + "\u2026"
 				}
-				weekLines = append(weekLines, "    "+checkIcon+" "+lipgloss.NewStyle().Foreground(text).Render(taskText))
+				dayGrids[i][h] = gridCell{text: label, color: lavender}
 			}
 		}
 	}
 
-	// Combine week lines with mini calendar on the right
-	miniWidth := 24
-	weekColWidth := width - miniWidth - 6
-	if weekColWidth < 30 {
-		weekColWidth = 30
-	}
-
-	maxLines := len(weekLines)
-	if len(miniLines) > maxLines {
-		maxLines = len(miniLines)
-	}
-
-	for i := 0; i < maxLines; i++ {
-		wl := ""
-		if i < len(weekLines) {
-			wl = weekLines[i]
-		}
-		ml := ""
-		if i < len(miniLines) {
-			ml = miniLines[i]
+	// Time rows 06:00 - 21:00
+	for hour := 6; hour < 22; hour++ {
+		timeLabel := fmt.Sprintf(" %02d:00 ", hour)
+		timeStyle := DimStyle
+		isCurrentHour := todayStr >= weekStart.Format("2006-01-02") &&
+			todayStr <= weekEnd.Format("2006-01-02") && hour == nowHour
+		if isCurrentHour {
+			timeStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
 		}
 
-		// Pad week line to column width
-		wlWidth := lipgloss.Width(wl)
-		padding := weekColWidth - wlWidth
-		if padding < 1 {
-			padding = 1
+		rowLine := timeStyle.Render(timeLabel) + "\u2503"
+		for i := 0; i < 7; i++ {
+			day := weekStart.AddDate(0, 0, i)
+			dateStr := day.Format("2006-01-02")
+			cell, hasBlock := dayGrids[i][hour]
+
+			// Current time indicator
+			isNowSlot := dateStr == todayStr && hour == nowHour
+			cellStr := ""
+			if hasBlock {
+				blockStyle := lipgloss.NewStyle().Foreground(cell.color)
+				if cell.text == "\u2502" {
+					cellStr = blockStyle.Render(" \u2588 ") + strings.Repeat(" ", dayColW-3)
+				} else {
+					cellStr = blockStyle.Render(" \u2588 "+cell.text)
+					cellWidth := lipgloss.Width(cellStr)
+					pad := dayColW + 1 - cellWidth
+					if pad < 0 {
+						pad = 0
+					}
+					cellStr += strings.Repeat(" ", pad)
+				}
+			} else {
+				cellStr = strings.Repeat(" ", dayColW+1)
+			}
+
+			if isNowSlot {
+				// Draw current time marker
+				markerPos := nowMin * dayColW / 60
+				if markerPos < 1 {
+					markerPos = 1
+				}
+				if !hasBlock {
+					marker := strings.Repeat("\u2500", dayColW)
+					cellStr = lipgloss.NewStyle().Foreground(red).Render(" "+marker)
+					pad := dayColW + 1 - lipgloss.Width(cellStr)
+					if pad < 0 {
+						pad = 0
+					}
+					cellStr += strings.Repeat(" ", pad)
+				}
+			}
+
+			rowLine += cellStr + "\u2503"
 		}
-		b.WriteString(wl + strings.Repeat(" ", padding) + ml)
-		b.WriteString("\n")
+		b.WriteString(rowLine + "\n")
 	}
 
 	// Quick add input
@@ -803,6 +865,295 @@ func (c Calendar) viewWeek() string {
 		Background(mantle)
 
 	return border.Render(b.String())
+}
+
+// ---------------------------------------------------------------------------
+// 3-Day View (horizontal 3-column time grid)
+// ---------------------------------------------------------------------------
+
+func (c Calendar) view3Day() string {
+	width := c.width * 3 / 4
+	if width < 72 {
+		width = 72
+	}
+	if width > 110 {
+		width = 110
+	}
+
+	var b strings.Builder
+
+	titleIcon := lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar)
+	titleText := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" Calendar")
+	viewLabel := DimStyle.Render(" [3-day]")
+	b.WriteString("  " + titleIcon + titleText + viewLabel)
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", width-8)))
+	b.WriteString("\n")
+
+	// 3 columns: cursor day, cursor+1, cursor+2
+	timeGutterW := 7
+	colW := (width - timeGutterW - 4) / 3
+	if colW < 16 {
+		colW = 16
+	}
+
+	nowHour := time.Now().Hour()
+	nowMin := time.Now().Minute()
+	todayStr := time.Now().Format("2006-01-02")
+
+	// Day headers
+	headerLine := strings.Repeat(" ", timeGutterW) + "\u2503"
+	for i := 0; i < 3; i++ {
+		day := c.cursor.AddDate(0, 0, i)
+		dateStr := day.Format("2006-01-02")
+		isToday := day.Equal(c.today)
+
+		label := day.Format("Mon 2 Jan")
+		headerStyle := lipgloss.NewStyle().Foreground(text).Bold(true)
+		if isToday {
+			headerStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
+			label += " (today)"
+		}
+		tasksDone, tasksTotal := c.taskStats(dateStr)
+		habitsDone, habitsTotal := c.habitStats(dateStr)
+
+		cellContent := headerStyle.Render(label)
+		if tasksTotal > 0 {
+			cellContent += lipgloss.NewStyle().Foreground(yellow).Render(fmt.Sprintf(" T:%d/%d", tasksDone, tasksTotal))
+		}
+		if habitsTotal > 0 {
+			cellContent += lipgloss.NewStyle().Foreground(green).Render(fmt.Sprintf(" H:%d/%d", habitsDone, habitsTotal))
+		}
+
+		cellWidth := lipgloss.Width(cellContent)
+		pad := colW - cellWidth
+		if pad < 0 {
+			pad = 0
+		}
+		headerLine += " " + cellContent + strings.Repeat(" ", pad) + "\u2503"
+	}
+	b.WriteString(headerLine + "\n")
+
+	// Separator
+	sepLine := strings.Repeat(" ", timeGutterW) + "\u2523"
+	for i := 0; i < 3; i++ {
+		sepLine += strings.Repeat("\u2501", colW+1) + "\u254B"
+	}
+	b.WriteString(sepLine + "\n")
+
+	// Build grid data for each of the 3 days
+	type gridCell struct {
+		text    string
+		color   lipgloss.Color
+		project string
+	}
+	dayGrids := make([]map[int]gridCell, 3)
+	for i := 0; i < 3; i++ {
+		dayGrids[i] = make(map[int]gridCell)
+		day := c.cursor.AddDate(0, 0, i)
+		dateStr := day.Format("2006-01-02")
+
+		// Place planner blocks
+		for _, pb := range c.plannerBlocks[dateStr] {
+			startH, _ := parseTimeHM(pb.StartTime)
+			endH, _ := parseTimeHM(pb.EndTime)
+			if startH < 6 {
+				startH = 6
+			}
+			if endH > 22 {
+				endH = 22
+			}
+			blockColor := c.blockTypeColor(pb.BlockType)
+			for h := startH; h < endH; h++ {
+				label := pb.Text
+				if h == startH {
+					maxLen := colW - 4
+					if maxLen < 4 {
+						maxLen = 4
+					}
+					if len(label) > maxLen {
+						label = label[:maxLen-1] + "\u2026"
+					}
+				} else {
+					label = "\u2502"
+				}
+				dayGrids[i][h] = gridCell{text: label, color: blockColor}
+			}
+		}
+
+		// Place events
+		for _, ev := range c.eventsForDate(day) {
+			if ev.AllDay {
+				continue
+			}
+			h := ev.Date.Hour()
+			if h < 6 || h >= 22 {
+				continue
+			}
+			if _, exists := dayGrids[i][h]; !exists {
+				label := ev.Title
+				maxLen := colW - 4
+				if maxLen < 4 {
+					maxLen = 4
+				}
+				if len(label) > maxLen {
+					label = label[:maxLen-1] + "\u2026"
+				}
+				dayGrids[i][h] = gridCell{text: label, color: lavender}
+			}
+		}
+	}
+
+	// Time rows 06:00 - 21:00
+	for hour := 6; hour < 22; hour++ {
+		timeLabel := fmt.Sprintf(" %02d:00 ", hour)
+		timeStyle := DimStyle
+		if hour == nowHour {
+			timeStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
+		}
+
+		rowLine := timeStyle.Render(timeLabel) + "\u2503"
+		for i := 0; i < 3; i++ {
+			day := c.cursor.AddDate(0, 0, i)
+			dateStr := day.Format("2006-01-02")
+			cell, hasBlock := dayGrids[i][hour]
+
+			isNowSlot := dateStr == todayStr && hour == nowHour
+			cellStr := ""
+			if hasBlock {
+				blockStyle := lipgloss.NewStyle().Foreground(cell.color)
+				if cell.text == "\u2502" {
+					cellStr = blockStyle.Render(" \u2588 ") + strings.Repeat(" ", colW-3)
+				} else {
+					rendered := blockStyle.Render(" \u2588 " + cell.text)
+					cellWidth := lipgloss.Width(rendered)
+					pad := colW + 1 - cellWidth
+					if pad < 0 {
+						pad = 0
+					}
+					cellStr = rendered + strings.Repeat(" ", pad)
+				}
+			} else {
+				cellStr = strings.Repeat(" ", colW+1)
+			}
+
+			if isNowSlot && !hasBlock {
+				_ = nowMin
+				marker := strings.Repeat("\u2500", colW)
+				cellStr = lipgloss.NewStyle().Foreground(red).Render(" "+marker)
+				pad := colW + 1 - lipgloss.Width(cellStr)
+				if pad < 0 {
+					pad = 0
+				}
+				cellStr += strings.Repeat(" ", pad)
+			}
+
+			rowLine += cellStr + "\u2503"
+		}
+		b.WriteString(rowLine + "\n")
+	}
+
+	// Bottom summary row: tasks and habits per day
+	summSep := strings.Repeat(" ", timeGutterW) + "\u2523"
+	for i := 0; i < 3; i++ {
+		summSep += strings.Repeat("\u2501", colW+1) + "\u254B"
+	}
+	b.WriteString(summSep + "\n")
+
+	// Tasks pending row
+	taskLine := strings.Repeat(" ", timeGutterW) + "\u2503"
+	for i := 0; i < 3; i++ {
+		day := c.cursor.AddDate(0, 0, i)
+		dateStr := day.Format("2006-01-02")
+		tasksDone, tasksTotal := c.taskStats(dateStr)
+		pending := tasksTotal - tasksDone
+		label := fmt.Sprintf(" Tasks: %d pending", pending)
+		taskStyle := lipgloss.NewStyle().Foreground(yellow)
+		if pending == 0 && tasksTotal > 0 {
+			taskStyle = lipgloss.NewStyle().Foreground(green)
+			label = " Tasks: all done"
+		} else if tasksTotal == 0 {
+			taskStyle = DimStyle
+			label = " No tasks"
+		}
+		rendered := taskStyle.Render(label)
+		cellWidth := lipgloss.Width(rendered)
+		pad := colW + 1 - cellWidth
+		if pad < 0 {
+			pad = 0
+		}
+		taskLine += rendered + strings.Repeat(" ", pad) + "\u2503"
+	}
+	b.WriteString(taskLine + "\n")
+
+	// Habits row
+	habitLine := strings.Repeat(" ", timeGutterW) + "\u2503"
+	for i := 0; i < 3; i++ {
+		day := c.cursor.AddDate(0, 0, i)
+		dateStr := day.Format("2006-01-02")
+		habitsDone, habitsTotal := c.habitStats(dateStr)
+		label := ""
+		habitStyle := DimStyle
+		if habitsTotal > 0 {
+			label = fmt.Sprintf(" Habits: %d/%d done", habitsDone, habitsTotal)
+			habitStyle = lipgloss.NewStyle().Foreground(green)
+			if habitsDone < habitsTotal {
+				habitStyle = lipgloss.NewStyle().Foreground(peach)
+			}
+		}
+		rendered := habitStyle.Render(label)
+		cellWidth := lipgloss.Width(rendered)
+		pad := colW + 1 - cellWidth
+		if pad < 0 {
+			pad = 0
+		}
+		habitLine += rendered + strings.Repeat(" ", pad) + "\u2503"
+	}
+	b.WriteString(habitLine + "\n")
+
+	// Quick add input
+	if c.addingEvent {
+		c.renderQuickAdd(&b, width)
+	}
+
+	c.renderFooter(&b, width)
+
+	border := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(blue).
+		Padding(1, 2).
+		Width(width).
+		Background(mantle)
+
+	return border.Render(b.String())
+}
+
+// blockTypeColor returns the color for a planner block type.
+func (c Calendar) blockTypeColor(blockType string) lipgloss.Color {
+	switch blockType {
+	case "task":
+		return blue
+	case "event":
+		return lavender
+	case "break":
+		return overlay0
+	case "focus":
+		return green
+	default:
+		return text
+	}
+}
+
+// parseTimeHM parses "HH:MM" into hour and minute integers.
+func parseTimeHM(t string) (int, int) {
+	parts := strings.SplitN(t, ":", 2)
+	if len(parts) != 2 {
+		return 0, 0
+	}
+	h, m := 0, 0
+	fmt.Sscanf(parts[0], "%d", &h)
+	fmt.Sscanf(parts[1], "%d", &m)
+	return h, m
 }
 
 // renderMiniCalendar builds a compact month calendar for use in the week view sidebar.

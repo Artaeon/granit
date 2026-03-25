@@ -446,16 +446,22 @@ func TestCalendar_ViewCycling(t *testing.T) {
 		t.Errorf("expected calViewWeek after first 'w', got %d", c.view)
 	}
 
-	// 'w' cycles week -> agenda
+	// 'w' cycles week -> 3day
+	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	if c.view != calView3Day {
+		t.Errorf("expected calView3Day after second 'w', got %d", c.view)
+	}
+
+	// 'w' cycles 3day -> agenda
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
 	if c.view != calViewAgenda {
-		t.Errorf("expected calViewAgenda after second 'w', got %d", c.view)
+		t.Errorf("expected calViewAgenda after third 'w', got %d", c.view)
 	}
 
 	// 'w' cycles agenda -> month
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
 	if c.view != calViewMonth {
-		t.Errorf("expected calViewMonth after third 'w', got %d", c.view)
+		t.Errorf("expected calViewMonth after fourth 'w', got %d", c.view)
 	}
 }
 
@@ -733,5 +739,131 @@ func TestCalendar_DaysIn(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("daysIn(%v, %d) = %d, want %d", tc.month, tc.year, got, tc.want)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 3-Day View — renders non-empty output
+// ---------------------------------------------------------------------------
+
+func TestCalendar_3DayViewRenders(t *testing.T) {
+	c := NewCalendar()
+	c.Open()
+	c.SetSize(120, 40)
+
+	// Switch to 3-day view: month -> week -> 3day (press 'w' twice)
+	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+
+	if c.view != calView3Day {
+		t.Fatalf("expected calView3Day, got %d", c.view)
+	}
+
+	output := c.View()
+	if output == "" {
+		t.Fatal("expected non-empty View() output in 3-day view")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SetHabitData / habitStats — correct counts
+// ---------------------------------------------------------------------------
+
+func TestCalendar_SetHabitData(t *testing.T) {
+	c := NewCalendar()
+
+	entries := []habitEntry{
+		{Name: "Exercise", Created: "2026-03-01", Streak: 5},
+		{Name: "Read", Created: "2026-03-01", Streak: 3},
+		{Name: "Meditate", Created: "2026-03-01", Streak: 1},
+	}
+	logs := []habitLog{
+		{Date: "2026-03-25", Completed: []string{"Exercise", "Read"}},
+		{Date: "2026-03-24", Completed: []string{"Exercise"}},
+	}
+
+	c.SetHabitData(entries, logs)
+
+	// 2026-03-25: 2 done out of 3 total
+	done, total := c.habitStats("2026-03-25")
+	if total != 3 {
+		t.Fatalf("expected total=3, got %d", total)
+	}
+	if done != 2 {
+		t.Fatalf("expected done=2 for 2026-03-25, got %d", done)
+	}
+
+	// 2026-03-24: 1 done out of 3 total
+	done, total = c.habitStats("2026-03-24")
+	if total != 3 {
+		t.Fatalf("expected total=3, got %d", total)
+	}
+	if done != 1 {
+		t.Fatalf("expected done=1 for 2026-03-24, got %d", done)
+	}
+
+	// Date with no logs: 0 done out of 3 total
+	done, total = c.habitStats("2026-03-20")
+	if total != 3 {
+		t.Fatalf("expected total=3 for date with no logs, got %d", total)
+	}
+	if done != 0 {
+		t.Fatalf("expected done=0 for date with no logs, got %d", done)
+	}
+
+	// No entries at all: 0, 0
+	c2 := NewCalendar()
+	done, total = c2.habitStats("2026-03-25")
+	if total != 0 || done != 0 {
+		t.Fatalf("expected (0,0) with no habit entries, got (%d,%d)", done, total)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CalendarPanel — initial state, rendering, size
+// ---------------------------------------------------------------------------
+
+func TestCalendarPanel_NewCalendarPanel(t *testing.T) {
+	cp := NewCalendarPanel()
+
+	if cp.width != 0 {
+		t.Errorf("expected initial width=0, got %d", cp.width)
+	}
+	if cp.height != 0 {
+		t.Errorf("expected initial height=0, got %d", cp.height)
+	}
+	if cp.daysWithEvents == nil {
+		t.Error("expected daysWithEvents map to be initialised")
+	}
+	if len(cp.plannerBlocks) != 0 {
+		t.Errorf("expected empty plannerBlocks, got %d", len(cp.plannerBlocks))
+	}
+	if len(cp.upcomingTasks) != 0 {
+		t.Errorf("expected empty upcomingTasks, got %d", len(cp.upcomingTasks))
+	}
+	if cp.now.IsZero() {
+		t.Error("expected non-zero now time")
+	}
+}
+
+func TestCalendarPanel_View_Empty(t *testing.T) {
+	cp := NewCalendarPanel()
+	cp.SetSize(40, 30)
+
+	output := cp.View()
+	if output == "" {
+		t.Error("expected non-empty View() output even with no data")
+	}
+}
+
+func TestCalendarPanel_SetSize(t *testing.T) {
+	cp := NewCalendarPanel()
+	cp.SetSize(80, 50)
+
+	if cp.width != 80 {
+		t.Errorf("expected width=80, got %d", cp.width)
+	}
+	if cp.height != 50 {
+		t.Errorf("expected height=50, got %d", cp.height)
 	}
 }
