@@ -1536,6 +1536,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.weeklyReview.IsActive() {
+			m.weeklyReview, _ = m.weeklyReview.Update(msg)
+			return m, nil
+		}
+
+		if m.readingList.IsActive() {
+			m.readingList, _ = m.readingList.Update(msg)
+			return m, nil
+		}
+
 		if m.spellcheck.IsActive() {
 			m.spellcheck, _ = m.spellcheck.Update(msg)
 			if errMsg := m.spellcheck.ConsumeError(); errMsg != "" {

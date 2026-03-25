@@ -148,6 +148,8 @@ const (
 	CmdClockOut
 	CmdNextcloudSync
 	CmdNousStatus
+	CmdReadingList
+	CmdWeeklyReview
 	CmdQuit
 )
 
@@ -296,6 +298,8 @@ var AllCommands = []Command{
 	{Label: "Extract to Note", Desc: "Move selection to a new note, leave wikilink", Shortcut: "", Action: CmdExtractToNote, Icon: &IconLinkChar},
 	{Label: "Command Center", Desc: "What do I do RIGHT NOW? dashboard", Shortcut: "Alt+C", Action: CmdCommandCenter, Icon: &IconCalendarChar},
 	{Label: "Nextcloud Sync", Desc: "Sync vault with Nextcloud via WebDAV", Shortcut: "", Action: CmdNextcloudSync, Icon: &IconSaveChar},
+	{Label: "Weekly Review", Desc: "Guided weekly review with tasks, wins, lessons, priorities", Shortcut: "", Action: CmdWeeklyReview, Icon: &IconCalendarChar},
+	{Label: "Reading List", Desc: "Track URLs and articles to read later", Shortcut: "", Action: CmdReadingList, Icon: &IconBookmarkChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 

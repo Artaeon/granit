@@ -1203,6 +1203,14 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		return m, m.clearMessageAfter(5 * time.Second)
 
+	case CmdWeeklyReview:
+		m.weeklyReview.SetSize(m.width, m.height)
+		m.weeklyReview.Open(m.vault.Root, m.vault)
+
+	case CmdReadingList:
+		m.readingList.SetSize(m.width, m.height)
+		m.readingList.Open(m.vault.Root)
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}

@@ -923,6 +923,14 @@ func (m Model) View() string {
 		overlay := m.research.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.weeklyReview.IsActive() {
+		overlay := m.weeklyReview.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.readingList.IsActive() {
+		overlay := m.readingList.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.pomodoro.IsActive() {
 		overlay := m.pomodoro.View()
 		view = m.overlayCenter(view, overlay)
