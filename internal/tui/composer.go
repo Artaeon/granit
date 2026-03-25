@@ -42,10 +42,12 @@ type Composer struct {
 	loading          bool
 	done             bool // generation complete
 
-	provider  string // "ollama" or "openai"
-	model     string
-	ollamaURL string
-	apiKey    string
+	provider   string // "ollama", "openai", or "nous"
+	model      string
+	ollamaURL  string
+	apiKey     string
+	nousURL    string
+	nousAPIKey string
 
 	existingNotes []string            // vault note names for wikilink suggestions
 	noteContents  map[string]string   // vault note contents for context
@@ -109,7 +111,7 @@ func (c *Composer) SetSize(width, height int) {
 // Configuration
 // ---------------------------------------------------------------------------
 
-func (c *Composer) SetConfig(provider, model, ollamaURL, apiKey string) {
+func (c *Composer) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
 	c.provider = provider
 	if c.provider == "" {
 		c.provider = "ollama"
@@ -123,6 +125,12 @@ func (c *Composer) SetConfig(provider, model, ollamaURL, apiKey string) {
 		c.ollamaURL = "http://localhost:11434"
 	}
 	c.apiKey = apiKey
+	if len(nousOpts) > 0 && nousOpts[0] != "" {
+		c.nousURL = nousOpts[0]
+	}
+	if len(nousOpts) > 1 {
+		c.nousAPIKey = nousOpts[1]
+	}
 }
 
 func (c *Composer) SetExistingNotes(notes []string) {
@@ -229,11 +237,17 @@ func (c *Composer) generateNote() tea.Cmd {
 	model := c.model
 	ollamaURL := c.ollamaURL
 	apiKey := c.apiKey
+	nousURL := c.nousURL
+	nousAPIKey := c.nousAPIKey
 
 	return func() tea.Msg {
 		switch provider {
 		case "openai":
 			return doComposerOpenAI(apiKey, model, systemPrompt, userPrompt)
+		case "nous":
+			client := NewNousClient(nousURL, nousAPIKey)
+			resp, err := client.Chat(systemPrompt + "\n\n" + userPrompt)
+			return composerResultMsg{content: resp, err: err}
 		default: // "ollama"
 			return doComposerOllama(ollamaURL, model, systemPrompt, userPrompt)
 		}

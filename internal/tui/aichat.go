@@ -75,10 +75,12 @@ type AIChat struct {
 	input        string
 	scroll       int
 	loading      bool
-	provider     string // "ollama" or "openai"
+	provider     string // "ollama", "openai", or "nous"
 	model        string
 	ollamaURL    string
 	apiKey       string
+	nousURL      string
+	nousAPIKey   string
 	noteContents map[string]string
 	maxContext   int
 
@@ -140,7 +142,7 @@ func (ac *AIChat) SetSize(width, height int) {
 // ---------------------------------------------------------------------------
 
 // SetConfig configures the AI provider and connection details.
-func (ac *AIChat) SetConfig(provider, model, ollamaURL, apiKey string) {
+func (ac *AIChat) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
 	if provider != "" {
 		ac.provider = provider
 	}
@@ -151,6 +153,12 @@ func (ac *AIChat) SetConfig(provider, model, ollamaURL, apiKey string) {
 		ac.ollamaURL = ollamaURL
 	}
 	ac.apiKey = apiKey
+	if len(nousOpts) > 0 && nousOpts[0] != "" {
+		ac.nousURL = nousOpts[0]
+	}
+	if len(nousOpts) > 1 {
+		ac.nousAPIKey = nousOpts[1]
+	}
 }
 
 // SetNotes provides the vault contents for context lookup.
@@ -431,6 +439,19 @@ func sendToOpenAI(apiKey, model string, chatMessages []ChatMessage, systemPrompt
 	}
 }
 
+// sendToNous creates a tea.Cmd that calls the Nous chat API and returns an
+// aiChatResultMsg.
+func sendToNous(url, apiKey, userMsg string) tea.Cmd {
+	return func() tea.Msg {
+		client := NewNousClient(url, apiKey)
+		resp, err := client.Chat(userMsg)
+		if err != nil {
+			return aiChatResultMsg{err: err}
+		}
+		return aiChatResultMsg{response: resp}
+	}
+}
+
 // localChatFallback provides a keyword-based response when no AI provider
 // is available. It returns the matched note excerpts as the "answer".
 func localChatFallback(query string, usedNotes []string, contextText string) tea.Cmd {
@@ -544,6 +565,8 @@ func (ac AIChat) Update(msg tea.Msg) (AIChat, tea.Cmd) {
 					convMsgs[len(convMsgs)-1].Content = userMsg
 				}
 				cmd = sendToOpenAI(ac.apiKey, ac.model, convMsgs, aiChatSystemPrompt)
+			case "nous":
+				cmd = sendToNous(ac.nousURL, ac.nousAPIKey, userMsg)
 			case "local":
 				// Local fallback: return matched note excerpts directly.
 				cmd = localChatFallback(trimmed, usedNotes, contextText)

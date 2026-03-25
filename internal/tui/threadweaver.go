@@ -48,10 +48,12 @@ type ThreadWeaver struct {
 	style int // 0=essay, 1=summary, 2=comparison, 3=outline
 
 	// AI config
-	provider  string
-	model     string
-	ollamaURL string
-	apiKey    string
+	provider   string
+	model      string
+	ollamaURL  string
+	apiKey     string
+	nousURL    string
+	nousAPIKey string
 
 	// Generation state
 	loading     bool
@@ -125,7 +127,7 @@ func (tw *ThreadWeaver) SetSize(w, h int) {
 // Configuration
 // ---------------------------------------------------------------------------
 
-func (tw *ThreadWeaver) SetConfig(provider, model, ollamaURL, apiKey string) {
+func (tw *ThreadWeaver) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
 	tw.provider = provider
 	if tw.provider == "" {
 		tw.provider = "ollama"
@@ -139,6 +141,12 @@ func (tw *ThreadWeaver) SetConfig(provider, model, ollamaURL, apiKey string) {
 		tw.ollamaURL = "http://localhost:11434"
 	}
 	tw.apiKey = apiKey
+	if len(nousOpts) > 0 && nousOpts[0] != "" {
+		tw.nousURL = nousOpts[0]
+	}
+	if len(nousOpts) > 1 {
+		tw.nousAPIKey = nousOpts[1]
+	}
 }
 
 func (tw *ThreadWeaver) SetNotes(paths []string, contents map[string]string) {
@@ -283,11 +291,17 @@ func (tw *ThreadWeaver) generate() tea.Cmd {
 	model := tw.model
 	ollamaURL := tw.ollamaURL
 	apiKey := tw.apiKey
+	nousURL := tw.nousURL
+	nousAPIKey := tw.nousAPIKey
 
 	return func() tea.Msg {
 		switch provider {
 		case "openai":
 			return twCallOpenAI(apiKey, model, systemPrompt, userPrompt)
+		case "nous":
+			client := NewNousClient(nousURL, nousAPIKey)
+			resp, err := client.Chat(systemPrompt + "\n\n" + userPrompt)
+			return threadWeaverResultMsg{content: resp, err: err}
 		default:
 			return twCallOllama(ollamaURL, model, systemPrompt, userPrompt)
 		}

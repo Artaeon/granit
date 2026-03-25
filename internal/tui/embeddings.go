@@ -191,7 +191,7 @@ func (ss *SemanticSearch) SetSize(w, h int) {
 }
 
 // SetConfig updates the AI provider configuration.
-func (ss *SemanticSearch) SetConfig(provider, model, ollamaURL, apiKey string) {
+func (ss *SemanticSearch) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
 	ss.provider = provider
 	if model != "" {
 		ss.model = model
@@ -200,6 +200,7 @@ func (ss *SemanticSearch) SetConfig(provider, model, ollamaURL, apiKey string) {
 		ss.ollamaURL = ollamaURL
 	}
 	ss.apiKey = apiKey
+	// Nous opts accepted for API compatibility but not used for embeddings.
 }
 
 // SetNotes provides the note contents used for building the index.

@@ -91,10 +91,12 @@ type AITemplates struct {
 	customInput string // used when template type is "Custom"
 
 	// AI config (set via Open)
-	provider  string
-	model     string
-	ollamaURL string
-	apiKey    string
+	provider   string
+	model      string
+	ollamaURL  string
+	apiKey     string
+	nousURL    string
+	nousAPIKey string
 
 	// Generated content
 	generatedContent string
@@ -125,7 +127,7 @@ func NewAITemplates() AITemplates {
 func (a AITemplates) IsActive() bool { return a.active }
 
 // Open activates the overlay and stores the AI configuration.
-func (a *AITemplates) Open(provider, model, ollamaURL, apiKey string) {
+func (a *AITemplates) Open(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
 	a.active = true
 	a.state = aitStateTypeSelect
 	a.cursor = 0
@@ -154,6 +156,12 @@ func (a *AITemplates) Open(provider, model, ollamaURL, apiKey string) {
 		a.ollamaURL = "http://localhost:11434"
 	}
 	a.apiKey = apiKey
+	if len(nousOpts) > 0 && nousOpts[0] != "" {
+		a.nousURL = nousOpts[0]
+	}
+	if len(nousOpts) > 1 {
+		a.nousAPIKey = nousOpts[1]
+	}
 }
 
 // Close hides the overlay.
@@ -785,6 +793,8 @@ func (a *AITemplates) generateContent() tea.Cmd {
 	model := a.model
 	ollamaURL := a.ollamaURL
 	apiKey := a.apiKey
+	nousURL := a.nousURL
+	nousAPIKey := a.nousAPIKey
 
 	return func() tea.Msg {
 		switch provider {
@@ -792,6 +802,10 @@ func (a *AITemplates) generateContent() tea.Cmd {
 			return doAITemplateOpenAI(apiKey, model, prompt)
 		case "ollama":
 			return doAITemplateOllama(ollamaURL, model, prompt)
+		case "nous":
+			client := NewNousClient(nousURL, nousAPIKey)
+			resp, err := client.Chat(prompt)
+			return aiTemplateResultMsg{content: resp, err: err}
 		default:
 			// local — should not reach here since local is handled synchronously
 			return aiTemplateResultMsg{content: "", err: fmt.Errorf("local provider handled synchronously")}
@@ -1385,6 +1399,8 @@ func (a AITemplates) providerBadge() string {
 		return lipgloss.NewStyle().Foreground(green).Render("[ollama]")
 	case "openai":
 		return lipgloss.NewStyle().Foreground(blue).Render("[openai]")
+	case "nous":
+		return lipgloss.NewStyle().Foreground(green).Render("[nous]")
 	default:
 		return lipgloss.NewStyle().Foreground(overlay0).Render("[local]")
 	}
