@@ -20,9 +20,21 @@ func NewIndex(v *Vault) *Index {
 func (idx *Index) Build() {
 	idx.Backlinks = make(map[string][]string)
 
+	// Pre-build basename→path map for O(1) basename lookups
+	basenameMap := make(map[string]string, len(idx.vault.Notes))
+	for notePath := range idx.vault.Notes {
+		base := filepath.Base(notePath)
+		basenameMap[base] = notePath
+		// Also map without extension for wikilink resolution
+		noExt := strings.TrimSuffix(base, filepath.Ext(base))
+		if _, exists := basenameMap[noExt]; !exists {
+			basenameMap[noExt] = notePath
+		}
+	}
+
 	for srcPath, note := range idx.vault.Notes {
 		for _, link := range note.Links {
-			targetPath := idx.resolveLink(link)
+			targetPath := idx.resolveLinkWithMap(link, basenameMap)
 			if targetPath != "" {
 				idx.Backlinks[targetPath] = append(idx.Backlinks[targetPath], srcPath)
 			}
@@ -37,7 +49,7 @@ func (idx *Index) Build() {
 	}
 }
 
-func (idx *Index) resolveLink(link string) string {
+func (idx *Index) resolveLinkWithMap(link string, basenameMap map[string]string) string {
 	// Strip heading anchor (e.g. "note#heading" -> "note") before resolving.
 	if hashIdx := strings.Index(link, "#"); hashIdx >= 0 {
 		link = link[:hashIdx]
@@ -56,15 +68,23 @@ func (idx *Index) resolveLink(link string) string {
 		return link
 	}
 
-	// Search by filename only (Obsidian's shortest-path resolution)
+	// Basename lookup via map (O(1) instead of O(n))
 	baseName := filepath.Base(link)
-	for notePath := range idx.vault.Notes {
-		if filepath.Base(notePath) == baseName {
-			return notePath
-		}
+	if path, ok := basenameMap[baseName]; ok {
+		return path
 	}
 
 	return ""
+}
+
+func (idx *Index) resolveLink(link string) string {
+	// Build a temporary basename map for single-call usage
+	basenameMap := make(map[string]string, len(idx.vault.Notes))
+	for notePath := range idx.vault.Notes {
+		base := filepath.Base(notePath)
+		basenameMap[base] = notePath
+	}
+	return idx.resolveLinkWithMap(link, basenameMap)
 }
 
 func (idx *Index) GetBacklinks(relPath string) []string {
