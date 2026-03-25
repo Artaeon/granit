@@ -23,7 +23,7 @@ func TruncateDisplay(s string, maxWidth int) string {
 	}
 	// Trim rune-by-rune until it fits
 	runes := []rune(s)
-	for len(runes) > 0 && lipgloss.Width(string(runes))> maxWidth-1 {
+	for len(runes) > 0 && lipgloss.Width(string(runes)) > maxWidth-1 {
 		runes = runes[:len(runes)-1]
 	}
 	return string(runes) + "…"
