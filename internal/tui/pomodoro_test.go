@@ -865,4 +865,64 @@ func TestPomodoro_Update_AddTaskEmptySubmit(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// SetGoal
+// ---------------------------------------------------------------------------
+
+func TestPomodoro_SetGoal(t *testing.T) {
+	p := NewPomodoro()
+
+	if p.pomodoroGoal != 0 {
+		t.Errorf("expected initial pomodoroGoal=0, got %d", p.pomodoroGoal)
+	}
+
+	p.SetGoal(10)
+	if p.pomodoroGoal != 10 {
+		t.Errorf("expected pomodoroGoal=10, got %d", p.pomodoroGoal)
+	}
+
+	p.SetGoal(0)
+	if p.pomodoroGoal != 0 {
+		t.Errorf("expected pomodoroGoal=0 after reset, got %d", p.pomodoroGoal)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetCompletedTasks — consumed-once pattern
+// ---------------------------------------------------------------------------
+
+func TestPomodoro_GetCompletedTasks(t *testing.T) {
+	p := NewPomodoro()
+
+	// Initially empty.
+	result := p.GetCompletedTasks()
+	if result != nil {
+		t.Errorf("expected nil for empty completedTasks, got %v", result)
+	}
+
+	// Add some completed tasks.
+	p.completedTasks = []TaskCompletion{
+		{NotePath: "work/sprint.md", LineNum: 5, Text: "fix bug", Done: true},
+		{NotePath: "daily/today.md", LineNum: 2, Text: "review PR", Done: true},
+	}
+
+	// First call returns the tasks.
+	result = p.GetCompletedTasks()
+	if len(result) != 2 {
+		t.Fatalf("expected 2 completed tasks, got %d", len(result))
+	}
+	if result[0].NotePath != "work/sprint.md" {
+		t.Errorf("expected first task NotePath='work/sprint.md', got %q", result[0].NotePath)
+	}
+	if result[1].Text != "review PR" {
+		t.Errorf("expected second task Text='review PR', got %q", result[1].Text)
+	}
+
+	// Second call returns nil (consumed).
+	result2 := p.GetCompletedTasks()
+	if result2 != nil {
+		t.Errorf("expected nil on second GetCompletedTasks call, got %v", result2)
+	}
+}
+
 // containsSubstring is defined in focusmode_test.go (same package)
