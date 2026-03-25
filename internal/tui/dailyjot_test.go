@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -490,11 +491,13 @@ func TestCarryOverTasks(t *testing.T) {
 
 func TestCarryOverTasks_NoDuplicates(t *testing.T) {
 	_, dj := setupTempVault(t)
+	today := time.Now().Format("2006-01-02")
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 	dj.days = []jotDay{
-		{Date: "2026-03-19", Label: "Today", Entries: []jotEntry{
+		{Date: today, Label: "Today", Entries: []jotEntry{
 			{Time: "08:00", Text: "[ ] already here"},
 		}},
-		{Date: "2026-03-18", Label: "Yesterday", Entries: []jotEntry{
+		{Date: yesterday, Label: "Yesterday", Entries: []jotEntry{
 			{Time: "09:00", Text: "[ ] already here"},
 		}},
 	}
