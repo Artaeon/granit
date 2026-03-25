@@ -1,11 +1,21 @@
 package tui
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+// Kanban-local regex patterns (mirrors taskmanager patterns).
+var (
+	kbDueDateRe    = regexp.MustCompile(`\x{1F4C5}\s*(\d{4}-\d{2}-\d{2})`)
+	kbPrioHighestRe = regexp.MustCompile(`\x{1F53A}`)  // 🔺
+	kbPrioHighRe   = regexp.MustCompile(`\x{23EB}`)    // ⏫
+	kbPrioMedRe    = regexp.MustCompile(`\x{1F53C}`)   // 🔼
+	kbPrioLowRe    = regexp.MustCompile(`\x{1F53D}`)   // 🔽
 )
 
 // ---------------------------------------------------------------------------
@@ -14,10 +24,13 @@ import (
 
 // KanbanCard represents a single task card on the Kanban board.
 type KanbanCard struct {
-	Text   string
-	Source string // note path where this task lives
-	Line   int    // line number in source note
-	Done   bool
+	Text     string
+	Source   string // note path where this task lives
+	Line     int    // line number in source note
+	Done     bool
+	Priority int    // 0=none, 1=low, 2=medium, 3=high, 4=highest
+	DueDate  string // "2006-01-02" or ""
+	Project  string // project name if matched
 }
 
 // KanbanColumn represents a column on the Kanban board.
@@ -119,6 +132,23 @@ func (kb *Kanban) SetTasks(noteContents map[string]string) {
 			} else {
 				continue
 			}
+
+			// Parse priority
+			if kbPrioHighestRe.MatchString(card.Text) {
+				card.Priority = 4
+			} else if kbPrioHighRe.MatchString(card.Text) {
+				card.Priority = 3
+			} else if kbPrioMedRe.MatchString(card.Text) {
+				card.Priority = 2
+			} else if kbPrioLowRe.MatchString(card.Text) {
+				card.Priority = 1
+			}
+
+			// Parse due date
+			if dm := kbDueDateRe.FindStringSubmatch(card.Text); dm != nil {
+				card.DueDate = dm[1]
+			}
+
 			kb.allCards = append(kb.allCards, card)
 		}
 	}
@@ -139,8 +169,45 @@ func (kb *Kanban) SetTasks(noteContents map[string]string) {
 		}
 	}
 
+	// Sort cards within each column by priority (highest first).
+	for i := range kb.columns {
+		sort.SliceStable(kb.columns[i].Cards, func(a, b int) bool {
+			return kb.columns[i].Cards[a].Priority > kb.columns[i].Cards[b].Priority
+		})
+	}
+
 	// Clamp cursors.
 	kb.kbClampCursors()
+}
+
+// SetTaskProjects applies project names from matched tasks to Kanban cards.
+// It matches cards to tasks by source path and line number.
+func (kb *Kanban) SetTaskProjects(tasks []Task) {
+	// Build a lookup map: "notePath:lineNum" -> project name
+	projMap := make(map[string]string)
+	for _, t := range tasks {
+		if t.Project != "" {
+			key := t.NotePath + ":" + kbItoa(t.LineNum)
+			projMap[key] = t.Project
+		}
+	}
+
+	for i := range kb.allCards {
+		key := kb.allCards[i].Source + ":" + kbItoa(kb.allCards[i].Line)
+		if proj, ok := projMap[key]; ok {
+			kb.allCards[i].Project = proj
+		}
+	}
+
+	// Update column cards too.
+	for ci := range kb.columns {
+		for ci2 := range kb.columns[ci].Cards {
+			key := kb.columns[ci].Cards[ci2].Source + ":" + kbItoa(kb.columns[ci].Cards[ci2].Line)
+			if proj, ok := projMap[key]; ok {
+				kb.columns[ci].Cards[ci2].Project = proj
+			}
+		}
+	}
 }
 
 // GetToggleResult returns a pending toggle action, if any.
@@ -409,9 +476,17 @@ func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCard
 			card := col.Cards[i]
 			isSelected := isActiveCol && i == kb.cardCursor
 
-			cardText := kbTruncate(card.Text, width-6)
+			prioIcon := kbPriorityIcon(card.Priority)
+			cardText := kbTruncate(card.Text, width-8)
 			sourceName := kbBaseName(card.Source)
-			sourceStr := kbTruncate(sourceName, width-8)
+			metaParts := []string{sourceName}
+			if card.Project != "" {
+				metaParts = append(metaParts, card.Project)
+			}
+			if card.DueDate != "" {
+				metaParts = append(metaParts, card.DueDate)
+			}
+			sourceStr := kbTruncate(strings.Join(metaParts, " | "), width-8)
 
 			if isSelected {
 				checkIcon := "o"
@@ -426,7 +501,7 @@ func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCard
 				srcSt := lipgloss.NewStyle().Background(surface0).Foreground(overlay0)
 				bgStyle := lipgloss.NewStyle().Background(surface0).Width(width)
 
-				line1 := " " + checkSt.Render(checkIcon) + " " + textSt.Render(cardText)
+				line1 := " " + checkSt.Render(checkIcon) + prioIcon + " " + textSt.Render(cardText)
 				line2 := "   " + srcSt.Render(sourceStr)
 
 				lines = append(lines, bgStyle.Render(line1))
@@ -443,7 +518,7 @@ func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCard
 				textSt := lipgloss.NewStyle().Foreground(text)
 				srcSt := lipgloss.NewStyle().Foreground(surface2)
 
-				line1 := " " + checkSt.Render(checkIcon) + " " + textSt.Render(cardText)
+				line1 := " " + checkSt.Render(checkIcon) + prioIcon + " " + textSt.Render(cardText)
 				line2 := "   " + srcSt.Render(sourceStr)
 
 				lines = append(lines, lineStyle.Render(line1))
@@ -470,6 +545,22 @@ func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCard
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// kbPriorityIcon returns a colored priority dot for kanban cards.
+func kbPriorityIcon(priority int) string {
+	switch priority {
+	case 4:
+		return lipgloss.NewStyle().Foreground(red).Render("\u25cf")
+	case 3:
+		return lipgloss.NewStyle().Foreground(peach).Render("\u25cf")
+	case 2:
+		return lipgloss.NewStyle().Foreground(yellow).Render("\u25cf")
+	case 1:
+		return lipgloss.NewStyle().Foreground(blue).Render("\u25cf")
+	default:
+		return ""
+	}
 }
 
 // kbHasWipTag checks whether a task text contains a #wip or #doing tag.
