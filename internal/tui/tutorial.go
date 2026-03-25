@@ -19,6 +19,8 @@ type Tutorial struct {
 	height     int
 	totalPages int
 	cfg        *config.Config
+	vaultRoot  string
+	statusMsg  string
 }
 
 // NewTutorial returns a Tutorial in its default (inactive) state.
@@ -95,6 +97,15 @@ func (t Tutorial) Update(msg tea.Msg) (Tutorial, tea.Cmd) {
 				// Last page — close and mark done
 				t.active = false
 				return t, t.MarkComplete()
+			}
+		case "s":
+			// Create sample vault notes on last page
+			if t.page == t.totalPages-1 && t.vaultRoot != "" {
+				if err := createSampleVault(t.vaultRoot); err != nil {
+					t.statusMsg = "Error: " + err.Error()
+				} else {
+					t.statusMsg = "Sample notes created!"
+				}
 			}
 		case "q", "esc":
 			t.active = false

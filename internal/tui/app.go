@@ -182,6 +182,8 @@ type Model struct {
 	planMyDay        PlanMyDay
 	clockIn          ClockIn
 	commandCenter    CommandCenter
+	weeklyReview      WeeklyReview
+	readingList       ReadingList
 	nextcloudOverlay  NextcloudOverlay
 	calendarPanel     CalendarPanel
 	rightPanelCalendar bool // toggle: show calendar panel instead of backlinks
@@ -344,6 +346,8 @@ func NewModel(vaultPath string) (Model, error) {
 		planMyDay:       NewPlanMyDay(),
 		clockIn:         NewClockIn(vaultPath),
 		notePreview:     NewNotePreview(),
+		weeklyReview:     NewWeeklyReview(),
+		readingList:      NewReadingList(),
 		nextcloudOverlay: NewNextcloudOverlay(),
 		dataview:        NewDataviewOverlay(),
 		slashMenu:      NewSlashMenu(),
@@ -356,6 +360,7 @@ func NewModel(vaultPath string) (Model, error) {
 		pendingDailyNote: cfg.AutoDailyNote,
 	}
 
+	m.tutorial.vaultRoot = vaultPath
 	m.statusbar.SetVaultPath(vaultPath)
 	m.statusbar.SetNoteCount(v.NoteCount())
 	m.dueTodayCount = CountTasksDueToday(v.Notes)
