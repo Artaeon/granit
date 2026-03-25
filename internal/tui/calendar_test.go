@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -865,5 +866,91 @@ func TestCalendarPanel_SetSize(t *testing.T) {
 	}
 	if cp.height != 50 {
 		t.Errorf("expected height=50, got %d", cp.height)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CalendarPanel — Refresh with planner blocks and tasks
+// ---------------------------------------------------------------------------
+
+func TestCalendarPanel_Refresh(t *testing.T) {
+	cp := NewCalendarPanel()
+	cp.SetSize(40, 30)
+
+	todayStr := time.Now().Format("2006-01-02")
+
+	plannerBlocks := map[string][]PlannerBlock{
+		todayStr: {
+			{Date: todayStr, StartTime: "09:00", EndTime: "10:00", Text: "Morning standup", BlockType: "event"},
+			{Date: todayStr, StartTime: "14:00", EndTime: "15:00", Text: "Deep work", BlockType: "focus"},
+		},
+	}
+
+	noteContents := map[string]string{
+		"projects/alpha/tasks.md": "- [ ] Buy milk \U0001f4c5 " + todayStr + "\n- [x] Done task \U0001f4c5 " + todayStr,
+	}
+
+	cp.Refresh(plannerBlocks, noteContents)
+
+	if len(cp.plannerBlocks) != 2 {
+		t.Errorf("expected 2 planner blocks, got %d", len(cp.plannerBlocks))
+	}
+
+	// Blocks should be sorted by start time
+	if len(cp.plannerBlocks) >= 2 && cp.plannerBlocks[0].StartTime > cp.plannerBlocks[1].StartTime {
+		t.Error("expected planner blocks sorted by start time")
+	}
+
+	if len(cp.upcomingTasks) == 0 {
+		t.Error("expected at least one upcoming task")
+	}
+}
+
+func TestCalendarPanel_ViewWithSchedule(t *testing.T) {
+	cp := NewCalendarPanel()
+	cp.SetSize(60, 30)
+	cp.plannerBlocks = []PlannerBlock{
+		{StartTime: "09:00", Text: "Morning meeting", BlockType: "event"},
+		{StartTime: "14:00", Text: "Code review", BlockType: "task"},
+	}
+
+	output := cp.View()
+	if output == "" {
+		t.Fatal("expected non-empty View() output")
+	}
+	plain := stripAnsiCodes(output)
+	if !strings.Contains(plain, "09:00") {
+		t.Error("expected schedule block time '09:00' in output")
+	}
+	if !strings.Contains(plain, "Morning meeting") {
+		t.Error("expected schedule block text in output")
+	}
+	// "No scheduled blocks" should NOT appear
+	if strings.Contains(plain, "No scheduled blocks") {
+		t.Error("should not show 'No scheduled blocks' when blocks exist")
+	}
+}
+
+func TestCalendarPanel_ViewWithTasks(t *testing.T) {
+	cp := NewCalendarPanel()
+	cp.SetSize(60, 30)
+
+	todayStr := time.Now().Format("2006-01-02")
+	cp.upcomingTasks = []calendarPanelTask{
+		{Text: "Review PR", DueDate: todayStr, Priority: 3, Project: "granit"},
+		{Text: "Write docs", DueDate: todayStr, Priority: 1},
+	}
+
+	output := cp.View()
+	plain := stripAnsiCodes(output)
+
+	if !strings.Contains(plain, "Review PR") {
+		t.Error("expected task text 'Review PR' in output")
+	}
+	if !strings.Contains(plain, "granit") {
+		t.Error("expected project name 'granit' in output")
+	}
+	if strings.Contains(plain, "No tasks due") {
+		t.Error("should not show 'No tasks due' when tasks exist")
 	}
 }

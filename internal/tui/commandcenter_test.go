@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -1001,5 +1002,100 @@ func TestCcPadRight(t *testing.T) {
 	}
 	if got := ccPadRight("toolong", 3); got != "toolong" {
 		t.Errorf("expected 'toolong' unchanged, got %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Project task counts displayed correctly
+// ---------------------------------------------------------------------------
+
+func TestCommandCenter_ProjectTaskCounts(t *testing.T) {
+	cc := NewCommandCenter()
+	cc.Open()
+	cc.SetSize(120, 40)
+
+	projects := []Project{
+		{Name: "Alpha", Status: "active", Folder: "alpha/"},
+		{Name: "Beta", Status: "active", Folder: "beta/"},
+	}
+	tasks := []Task{
+		{Text: "task a1", Done: false, NotePath: "alpha/notes.md"},
+		{Text: "task a2", Done: true, NotePath: "alpha/notes.md"},
+		{Text: "task a3", Done: true, NotePath: "alpha/notes.md"},
+		{Text: "task b1", Done: false, NotePath: "beta/notes.md"},
+	}
+	cc.LoadData(tasks, projects, nil, nil, nil)
+
+	if len(cc.projects) != 2 {
+		t.Fatalf("expected 2 projects, got %d", len(cc.projects))
+	}
+
+	var alpha, beta *projectSummary
+	for i := range cc.projects {
+		switch cc.projects[i].Name {
+		case "Alpha":
+			alpha = &cc.projects[i]
+		case "Beta":
+			beta = &cc.projects[i]
+		}
+	}
+
+	if alpha == nil {
+		t.Fatal("Alpha project not found")
+	}
+	if alpha.TasksTotal != 3 {
+		t.Errorf("Alpha: expected 3 total tasks, got %d", alpha.TasksTotal)
+	}
+	if alpha.TasksDone != 2 {
+		t.Errorf("Alpha: expected 2 done tasks, got %d", alpha.TasksDone)
+	}
+
+	if beta == nil {
+		t.Fatal("Beta project not found")
+	}
+	if beta.TasksTotal != 1 {
+		t.Errorf("Beta: expected 1 total task, got %d", beta.TasksTotal)
+	}
+	if beta.TasksDone != 0 {
+		t.Errorf("Beta: expected 0 done tasks, got %d", beta.TasksDone)
+	}
+
+	// Verify view renders task counts
+	output := cc.View()
+	plain := stripAnsiCodes(output)
+	if !strings.Contains(plain, "[2/3]") {
+		t.Error("expected Alpha task count [2/3] in View output")
+	}
+	if !strings.Contains(plain, "[0/1]") {
+		t.Error("expected Beta task count [0/1] in View output")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Task project name shown in NEXT UP section
+// ---------------------------------------------------------------------------
+
+func TestCommandCenter_TaskProjectName(t *testing.T) {
+	cc := NewCommandCenter()
+	cc.Open()
+	cc.SetSize(120, 40)
+
+	tasks := []Task{
+		{Text: "top task", Done: false, Priority: 4, Project: "MyProject"},
+		{Text: "second task", Done: false, Priority: 3, Project: "OtherProj"},
+		{Text: "third task", Done: false, Priority: 2},
+	}
+	cc.LoadData(tasks, nil, nil, nil, nil)
+
+	output := cc.View()
+	plain := stripAnsiCodes(output)
+
+	// The NOW task should show project name
+	if !strings.Contains(plain, "MyProject") {
+		t.Error("expected project name 'MyProject' in View output")
+	}
+	// Next up tasks should show project name in brackets
+	if !strings.Contains(plain, "OtherProj") {
+		t.Error("expected project name 'OtherProj' in View output")
 	}
 }
