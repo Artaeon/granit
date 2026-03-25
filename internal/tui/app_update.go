@@ -501,6 +501,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case aiPlannerResultMsg:
+		if m.aiProjectPlanner.IsActive() {
+			var cmd tea.Cmd
+			m.aiProjectPlanner, cmd = m.aiProjectPlanner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case aiPlannerTickMsg:
+		if m.aiProjectPlanner.IsActive() {
+			var cmd tea.Cmd
+			m.aiProjectPlanner, cmd = m.aiProjectPlanner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case nlSearchResultMsg:
 		if m.nlSearch.IsActive() {
 			var cmd tea.Cmd
@@ -1355,6 +1371,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		if m.aiProjectPlanner.IsActive() {
+			var cmd tea.Cmd
+			wasActive := m.aiProjectPlanner.IsActive()
+			m.aiProjectPlanner, cmd = m.aiProjectPlanner.Update(msg)
+			if wasActive && !m.aiProjectPlanner.IsActive() {
+				// Refresh project mode data after creating a project
+				m.refreshComponents("")
+				m.statusbar.SetMessage("AI project plan created")
+			}
+			return m, cmd
+		}
+
 		if m.recurringTasks.IsActive() {
 			m.recurringTasks, _ = m.recurringTasks.Update(msg)
 			if !m.recurringTasks.IsActive() {
@@ -1479,6 +1507,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.habitTracker.Open(m.vault.Root)
 					m.habitTracker.toggleToday(habitName)
 					m.habitTracker.Close()
+				}
+			}
+			return m, nil
+		}
+
+		if m.projectDashboard.IsActive() {
+			m.projectDashboard, _ = m.projectDashboard.Update(msg)
+			if !m.projectDashboard.IsActive() {
+				if projName := m.projectDashboard.SelectedProject(); projName != "" {
+					m.projectMode.SetSize(m.width, m.height)
+					m.projectMode.Open(m.vault.Root)
 				}
 			}
 			return m, nil

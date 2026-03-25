@@ -1054,6 +1054,20 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.config.OpenAIKey, m.config.OpenAIModel)
 		return m, cmd
 
+	case CmdAIProjectPlanner:
+		m.aiProjectPlanner.SetSize(m.width, m.height)
+		titles := make([]string, 0, len(m.vault.Notes))
+		for k := range m.vault.Notes {
+			titles = append(titles, strings.TrimSuffix(filepath.Base(k), ".md"))
+		}
+		m.aiProjectPlanner.Open(m.vault.Root, titles,
+			m.config.AIProvider, m.getAIModel(), m.config.OllamaURL,
+			m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
+
+	case CmdProjectDashboard:
+		m.projectDashboard.SetSize(m.width, m.height)
+		m.projectDashboard.Open(m.vault.Root, m.vault)
+
 	case CmdRecurringTasks:
 		m.recurringTasks.SetSize(m.width, m.height)
 		m.recurringTasks.Open(m.vault.Root)

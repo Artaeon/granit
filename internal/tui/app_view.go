@@ -753,6 +753,10 @@ func (m Model) View() string {
 		overlay := m.planMyDay.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.aiProjectPlanner.IsActive() {
+		overlay := m.aiProjectPlanner.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.recurringTasks.IsActive() {
 		overlay := m.recurringTasks.View()
 		view = m.overlayCenter(view, overlay)
@@ -779,6 +783,10 @@ func (m Model) View() string {
 	}
 	if m.projectMode.IsActive() {
 		overlay := m.projectMode.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.projectDashboard.IsActive() {
+		overlay := m.projectDashboard.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.commandCenter.IsActive() {

@@ -184,6 +184,8 @@ type Model struct {
 	commandCenter    CommandCenter
 	weeklyReview      WeeklyReview
 	readingList       ReadingList
+	aiProjectPlanner  AIProjectPlanner
+	projectDashboard  ProjectDashboard
 	nextcloudOverlay  NextcloudOverlay
 	calendarPanel     CalendarPanel
 	rightPanelCalendar bool // toggle: show calendar panel instead of backlinks
@@ -348,6 +350,8 @@ func NewModel(vaultPath string) (Model, error) {
 		notePreview:     NewNotePreview(),
 		weeklyReview:     NewWeeklyReview(),
 		readingList:      NewReadingList(),
+		aiProjectPlanner: NewAIProjectPlanner(),
+		projectDashboard: NewProjectDashboard(),
 		nextcloudOverlay: NewNextcloudOverlay(),
 		dataview:        NewDataviewOverlay(),
 		slashMenu:      NewSlashMenu(),

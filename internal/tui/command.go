@@ -150,6 +150,8 @@ const (
 	CmdNousStatus
 	CmdReadingList
 	CmdWeeklyReview
+	CmdAIProjectPlanner
+	CmdProjectDashboard
 	CmdQuit
 )
 
@@ -300,6 +302,8 @@ var AllCommands = []Command{
 	{Label: "Nextcloud Sync", Desc: "Sync vault with Nextcloud via WebDAV", Shortcut: "", Action: CmdNextcloudSync, Icon: &IconSaveChar},
 	{Label: "Weekly Review", Desc: "Guided weekly review with tasks, wins, lessons, priorities", Shortcut: "", Action: CmdWeeklyReview, Icon: &IconCalendarChar},
 	{Label: "Reading List", Desc: "Track URLs and articles to read later", Shortcut: "", Action: CmdReadingList, Icon: &IconBookmarkChar},
+	{Label: "AI Project Planner", Desc: "Break down a project idea into phases, milestones, and tasks with AI", Shortcut: "", Action: CmdAIProjectPlanner, Icon: &IconBotChar},
+	{Label: "Project Dashboard", Desc: "Cross-project overview with progress, blockers, and deadlines", Shortcut: "", Action: CmdProjectDashboard, Icon: &IconFolderChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
