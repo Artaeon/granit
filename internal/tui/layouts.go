@@ -18,6 +18,7 @@ const (
 	LayoutZen       = "zen"
 	LayoutTaskboard = "taskboard"
 	LayoutResearch  = "research"
+	LayoutCalendar  = "calendar"
 )
 
 // AllLayouts returns every valid layout name in display order.
@@ -31,6 +32,7 @@ func AllLayouts() []string {
 		LayoutZen,
 		LayoutTaskboard,
 		LayoutResearch,
+		LayoutCalendar,
 	}
 }
 
@@ -53,6 +55,8 @@ func LayoutDescription(layout string) string {
 		return "Sidebar + Editor + Task summary (3-panel)"
 	case LayoutResearch:
 		return "Sidebar + Editor + Notes panel (3-panel)"
+	case LayoutCalendar:
+		return "Sidebar + Editor + Calendar/Schedule (3-panel)"
 	default:
 		return "Unknown layout"
 	}
@@ -77,6 +81,8 @@ func LayoutPanelCount(layout string) int {
 		return 3
 	case LayoutResearch:
 		return 3
+	case LayoutCalendar:
+		return 3
 	default:
 		return 3
 	}
@@ -95,11 +101,16 @@ func LayoutHasSidebar(layout string) bool {
 // LayoutHasBacklinks reports whether the layout includes the backlinks panel.
 func LayoutHasBacklinks(layout string) bool {
 	switch layout {
-	case LayoutWriter, LayoutMinimal, LayoutZen, LayoutTaskboard, LayoutResearch:
+	case LayoutWriter, LayoutMinimal, LayoutZen, LayoutTaskboard, LayoutResearch, LayoutCalendar:
 		return false
 	default:
 		return true
 	}
+}
+
+// LayoutHasCalendarPanel reports whether the layout includes the calendar side panel.
+func LayoutHasCalendarPanel(layout string) bool {
+	return layout == LayoutCalendar
 }
 
 // LayoutHasOutline reports whether the layout includes a persistent outline panel.
