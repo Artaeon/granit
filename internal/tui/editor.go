@@ -72,6 +72,12 @@ type Editor struct {
 	codeFenceCache      map[int]bool
 	codeFenceCacheDirty bool
 
+	// Cached code block and frontmatter detection for View()
+	viewCodeBlockCache map[int]string // line index → language
+	viewFMStart        int            // frontmatter start line (-1 = none)
+	viewFMEnd          int            // frontmatter end line (-1 = none)
+	viewCacheValid     bool           // invalidated alongside codeFenceCacheDirty
+
 	// Shift+Arrow text selection
 	selectionActive bool
 	selectionStart  CursorPos // where selection began
@@ -109,6 +115,57 @@ func NewEditor() Editor {
 	}
 }
 
+// rebuildBlockCaches rebuilds the code fence and code block caches.
+// Call this whenever content changes to avoid O(n) rescanning in View().
+func (e *Editor) rebuildBlockCaches() {
+	// Rebuild codeFenceCache (used by bracket matching)
+	inCodeFence := false
+	e.codeFenceCache = make(map[int]bool)
+	for j := 0; j < len(e.content); j++ {
+		trimmed := strings.TrimSpace(e.content[j])
+		if strings.HasPrefix(trimmed, "```") {
+			inCodeFence = !inCodeFence
+			e.codeFenceCache[j] = true
+		} else if inCodeFence {
+			e.codeFenceCache[j] = true
+		}
+	}
+	e.codeFenceCacheDirty = false
+
+	// Rebuild viewCodeBlockCache (used by View() for syntax highlighting)
+	e.viewFMStart, e.viewFMEnd = -1, -1
+	if len(e.content) > 0 && strings.TrimSpace(e.content[0]) == "---" {
+		e.viewFMStart = 0
+		for j := 1; j < len(e.content); j++ {
+			if strings.TrimSpace(e.content[j]) == "---" {
+				e.viewFMEnd = j
+				break
+			}
+		}
+	}
+
+	inBlock := false
+	currentLang := ""
+	e.viewCodeBlockCache = make(map[int]string, len(e.content)/4)
+	for j := 0; j < len(e.content); j++ {
+		trimmed := strings.TrimSpace(e.content[j])
+		if strings.HasPrefix(trimmed, "```") {
+			if !inBlock {
+				currentLang = parseFenceLang(e.content[j])
+				inBlock = true
+				e.viewCodeBlockCache[j] = ""
+			} else {
+				inBlock = false
+				e.viewCodeBlockCache[j] = ""
+				currentLang = ""
+			}
+		} else if inBlock {
+			e.viewCodeBlockCache[j] = currentLang
+		}
+	}
+	e.viewCacheValid = true
+}
+
 func (e *Editor) SetSize(width, height int) {
 	e.width = width
 	e.height = height
@@ -126,7 +183,7 @@ func (e *Editor) LoadContent(content string, filePath string) {
 	e.hscroll = 0
 	e.modified = false
 	e.selectionActive = false
-	e.codeFenceCacheDirty = true
+	e.rebuildBlockCaches()
 	e.countWords()
 }
 
@@ -233,7 +290,7 @@ func (e *Editor) SetContent(content string) {
 		e.content = []string{""}
 	}
 	e.modified = true
-	e.codeFenceCacheDirty = true
+	e.rebuildBlockCaches()
 	e.countWords()
 }
 
@@ -247,7 +304,7 @@ func (e *Editor) InsertText(text string) {
 	}
 
 	e.saveSnapshot()
-	e.codeFenceCacheDirty = true
+	e.rebuildBlockCaches()
 
 	// Batch insert: split text into lines and splice into content
 	lines := strings.Split(text, "\n")
@@ -341,7 +398,7 @@ func (e *Editor) SmartPaste(clipboard string) bool {
 			e.content[e.cursor] = line[:startCol] + "[" + word + "](" + clipboard + ")" + line[startCol+len(word):]
 			e.col = startCol + len("["+word+"]("+clipboard+")")
 			e.modified = true
-			e.codeFenceCacheDirty = true
+			e.rebuildBlockCaches()
 			e.countWords()
 			return true
 		}
@@ -408,7 +465,7 @@ func (e *Editor) Undo() {
 	}
 	e.cursor, e.col = e.clampCursor(snap.cursor, snap.col)
 	e.modified = true
-	e.codeFenceCacheDirty = true
+	e.rebuildBlockCaches()
 	e.countWords()
 }
 
@@ -440,7 +497,7 @@ func (e *Editor) Redo() {
 	}
 	e.cursor, e.col = e.clampCursor(snap.cursor, snap.col)
 	e.modified = true
-	e.codeFenceCacheDirty = true
+	e.rebuildBlockCaches()
 	e.countWords()
 }
 
@@ -544,7 +601,7 @@ func (e *Editor) DeleteSelection() {
 	}
 
 	e.saveSnapshot()
-	e.codeFenceCacheDirty = true
+	e.rebuildBlockCaches()
 	e.redoStack = nil
 
 	if sl == el {
@@ -1040,7 +1097,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				}
 				e.clearMultiCursors()
 				e.modified = true
-				e.codeFenceCacheDirty = true
+				e.rebuildBlockCaches()
 				e.countWords()
 			} else {
 				line := e.content[e.cursor]
@@ -1060,7 +1117,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				e.cursor++
 				e.col = len(indent)
 				e.modified = true
-				e.codeFenceCacheDirty = true
+				e.rebuildBlockCaches()
 				e.countWords()
 			}
 		case "backspace":
@@ -1109,7 +1166,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				}
 				e.clearMultiCursors()
 				e.modified = true
-				e.codeFenceCacheDirty = true
+				e.rebuildBlockCaches()
 				e.countWords()
 			} else {
 				if e.col > 0 {
@@ -1117,7 +1174,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					e.content[e.cursor] = line[:e.col-1] + line[e.col:]
 					e.col--
 					e.modified = true
-					e.codeFenceCacheDirty = true
+					e.rebuildBlockCaches()
 					e.countWords()
 				} else if e.cursor > 0 {
 					prevLen := len(e.content[e.cursor-1])
@@ -1126,7 +1183,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					e.cursor--
 					e.col = prevLen
 					e.modified = true
-					e.codeFenceCacheDirty = true
+					e.rebuildBlockCaches()
 					e.countWords()
 				}
 			}
@@ -1141,13 +1198,13 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			if e.col < len(line) {
 				e.content[e.cursor] = line[:e.col] + line[e.col+1:]
 				e.modified = true
-				e.codeFenceCacheDirty = true
+				e.rebuildBlockCaches()
 				e.countWords()
 			} else if e.cursor < len(e.content)-1 {
 				e.content[e.cursor] += e.content[e.cursor+1]
 				e.content = append(e.content[:e.cursor+1], e.content[e.cursor+2:]...)
 				e.modified = true
-				e.codeFenceCacheDirty = true
+				e.rebuildBlockCaches()
 				e.countWords()
 			}
 		case "ctrl+k":
@@ -1158,7 +1215,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			if e.col < len(line) {
 				e.content[e.cursor] = line[:e.col]
 				e.modified = true
-				e.codeFenceCacheDirty = true
+				e.rebuildBlockCaches()
 				e.countWords()
 			}
 		case "tab":
@@ -1194,7 +1251,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					e.cursors[i].Col += advance
 				}
 				e.modified = true
-				e.codeFenceCacheDirty = true
+				e.rebuildBlockCaches()
 			} else {
 				// Single cursor tab insertion
 				var tabStr string
@@ -1210,7 +1267,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				e.content[e.cursor] = line[:e.col] + tabStr + line[e.col:]
 				e.col += advance
 				e.modified = true
-				e.codeFenceCacheDirty = true
+				e.rebuildBlockCaches()
 			}
 		default:
 			char := msg.String()
@@ -1241,7 +1298,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 						e.cursors[i].Col++
 					}
 					e.modified = true
-					e.codeFenceCacheDirty = true
+					e.rebuildBlockCaches()
 					e.countWords()
 				} else {
 					line := e.content[e.cursor]
@@ -1268,7 +1325,7 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 					e.content[e.cursor] = line[:e.col] + char + closeChar + line[e.col:]
 					e.col++
 					e.modified = true
-					e.codeFenceCacheDirty = true
+					e.rebuildBlockCaches()
 					e.countWords()
 				}
 			}
@@ -1422,22 +1479,9 @@ func (e *Editor) findMatchingBracket() (int, int, bool) {
 	ch := curLine[bracketCol]
 	target := bracketPairs[ch]
 
-	// Detect code-fence regions so we can skip brackets inside them
-	// when the cursor itself is not inside a code fence.
-	// Use cached map to avoid O(n) scan on every keystroke.
-	if e.codeFenceCacheDirty || e.codeFenceCache == nil {
-		inCodeFence := false
-		e.codeFenceCache = make(map[int]bool)
-		for j := 0; j < len(e.content); j++ {
-			trimmed := strings.TrimSpace(e.content[j])
-			if strings.HasPrefix(trimmed, "```") {
-				inCodeFence = !inCodeFence
-				e.codeFenceCache[j] = true
-			} else if inCodeFence {
-				e.codeFenceCache[j] = true
-			}
-		}
-		e.codeFenceCacheDirty = false
+	// Use eagerly-rebuilt code fence cache to skip brackets inside fenced blocks.
+	if e.codeFenceCache == nil {
+		e.rebuildBlockCaches()
 	}
 	codeFenceLines := e.codeFenceCache
 
@@ -1841,37 +1885,11 @@ func (e Editor) View() string {
 		visibleHeight = 1
 	}
 
-	// Detect frontmatter region
-	fmStart, fmEnd := -1, -1
-	if len(e.content) > 0 && strings.TrimSpace(e.content[0]) == "---" {
-		fmStart = 0
-		for j := 1; j < len(e.content); j++ {
-			if strings.TrimSpace(e.content[j]) == "---" {
-				fmEnd = j
-				break
-			}
-		}
-	}
-
-	// Detect code block regions and track language per line
-	inCodeBlock := false
-	currentLang := ""
-	codeBlockLines := make(map[int]string)
-	for j := 0; j < len(e.content); j++ {
-		trimmed := strings.TrimSpace(e.content[j])
-		if strings.HasPrefix(trimmed, "```") {
-			if !inCodeBlock {
-				currentLang = parseFenceLang(e.content[j])
-				inCodeBlock = true
-				codeBlockLines[j] = "" // fence line itself gets no language highlight
-			} else {
-				inCodeBlock = false
-				codeBlockLines[j] = "" // closing fence
-				currentLang = ""
-			}
-		} else if inCodeBlock {
-			codeBlockLines[j] = currentLang
-		}
+	// Use cached frontmatter and code block detection (rebuilt only on content change)
+	fmStart, fmEnd := e.viewFMStart, e.viewFMEnd
+	codeBlockLines := e.viewCodeBlockCache
+	if codeBlockLines == nil {
+		codeBlockLines = make(map[int]string)
 	}
 
 	// Style for additional multi-cursors (mauve background)
@@ -2778,7 +2796,7 @@ func (e *Editor) tabInTable() {
 			e.col = target
 			e.alignTableAt()
 			e.modified = true
-			e.codeFenceCacheDirty = true
+			e.rebuildBlockCaches()
 			return
 		}
 	}
@@ -2825,7 +2843,7 @@ func (e *Editor) tabInTable() {
 
 	e.alignTableAt()
 	e.modified = true
-	e.codeFenceCacheDirty = true
+	e.rebuildBlockCaches()
 	e.countWords()
 }
 
@@ -2852,7 +2870,7 @@ func (e *Editor) enterInTable() {
 
 	e.alignTableAt()
 	e.modified = true
-	e.codeFenceCacheDirty = true
+	e.rebuildBlockCaches()
 	e.countWords()
 
 	// Ensure the cursor is visible.
