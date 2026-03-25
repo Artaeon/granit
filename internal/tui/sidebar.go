@@ -318,6 +318,10 @@ func (s Sidebar) View() string {
 	// If tree view and not searching, use the file tree
 	if s.treeView && s.search == "" {
 		b.WriteString(s.fileTree.View())
+		if s.focused {
+			b.WriteString("\n")
+			b.WriteString(DimStyle.Render("  z:collapse  Z:expand  ←→:fold"))
+		}
 		return b.String()
 	}
 
