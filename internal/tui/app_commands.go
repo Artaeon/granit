@@ -31,7 +31,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		// Auto-tag if enabled
 		var tagCmd tea.Cmd
 		if m.autoTagger != nil && m.autoTagger.IsEnabled() {
-			m.autoTagger.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+			m.autoTagger.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
 			// Collect existing vault tags for consistency
 			var existingTags []string
 			tagSet := make(map[string]bool)
@@ -224,10 +224,15 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		m.calendar.SetNoteContents(noteContents)
 		m.calendar.SetPlannerBlocks(loadPlannerBlocks(m.vault.Root))
+		// Load habit data for calendar views
+		ht := NewHabitTracker()
+		ht.Open(m.vault.Root)
+		ht.Close()
+		m.calendar.SetHabitData(ht.habits, ht.logs)
 		m.calendar.Open()
 	case CmdShowBots:
 		m.bots.SetSize(m.width, m.height)
-		m.bots.SetAIConfig(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.OpenAIModel)
+		m.bots.SetAIConfig(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.OpenAIModel, m.config.NousURL, m.config.NousAPIKey)
 		noteContents := make(map[string]string)
 		tagMap := make(map[string][]string)
 		for _, p := range m.vault.SortedPaths() {
@@ -394,7 +399,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.learnDash.Open()
 	case CmdAIChat:
 		m.aiChat.SetSize(m.width, m.height)
-		m.aiChat.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+		m.aiChat.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
 		noteContents := make(map[string]string)
 		for _, p := range m.vault.SortedPaths() {
 			if note := m.vault.GetNote(p); note != nil {
@@ -405,7 +410,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.aiChat.Open()
 	case CmdComposer:
 		m.composer.SetSize(m.width, m.height)
-		m.composer.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+		m.composer.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
 		m.composer.SetExistingNotes(m.vault.SortedPaths())
 		composerContents := make(map[string]string)
 		for _, p := range m.vault.SortedPaths() {
@@ -477,7 +482,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			return m, m.clearMessageAfter(4 * time.Second)
 		}
 		m.semanticSearch.SetSize(m.width, m.height)
-		m.semanticSearch.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+		m.semanticSearch.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
 		noteContents := make(map[string]string)
 		for _, p := range m.vault.SortedPaths() {
 			if note := m.vault.GetNote(p); note != nil {
@@ -496,7 +501,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 	case CmdThreadWeaver:
 		m.threadWeaver.SetSize(m.width, m.height)
-		m.threadWeaver.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+		m.threadWeaver.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
 		noteContents := make(map[string]string)
 		for _, p := range m.vault.SortedPaths() {
 			if note := m.vault.GetNote(p); note != nil {
@@ -508,14 +513,14 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdNoteChat:
 		if m.activeNote != "" {
 			m.noteChat.SetSize(m.width, m.height)
-			m.noteChat.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+			m.noteChat.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
 			m.noteChat.Open(m.activeNote, m.editor.GetContent())
 		}
 	case CmdToggleGhostWriter:
 		if m.ghostWriter != nil {
 			m.ghostWriter.SetEnabled(!m.ghostWriter.IsEnabled())
 			if m.ghostWriter.IsEnabled() {
-				m.ghostWriter.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+				m.ghostWriter.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
 				m.statusbar.SetMessage("Ghost Writer enabled")
 			} else {
 				m.statusbar.SetMessage("Ghost Writer disabled")
@@ -651,6 +656,13 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.kanban.SetTasks(noteContents)
+		// Enrich kanban cards with project info
+		allTasks := ParseAllTasks(m.vault.Notes)
+		pm := NewProjectMode()
+		pm.vaultRoot = m.vault.Root
+		pm.loadProjects()
+		MatchTasksToProjects(allTasks, pm.projects)
+		m.kanban.SetTaskProjects(allTasks)
 		m.kanban.Open()
 	case CmdZettelNote:
 		if m.zettelkasten != nil {
@@ -688,7 +700,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		return m, m.clearMessageAfter(5 * time.Second)
 	case CmdVaultRefactor:
 		m.vaultRefactor.SetSize(m.width, m.height)
-		m.vaultRefactor.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+		m.vaultRefactor.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
 		noteContents := make(map[string]string)
 		tagMap := make(map[string][]string)
 		for _, p := range m.vault.SortedPaths() {
@@ -710,7 +722,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdDailyBriefing:
 		m.dailyBriefing.SetSize(m.width, m.height)
-		m.dailyBriefing.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+		m.dailyBriefing.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
 		noteContents := make(map[string]string)
 		for _, p := range m.vault.SortedPaths() {
 			if note := m.vault.GetNote(p); note != nil {
@@ -806,7 +818,13 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			break
 		}
 		m.taskManager.SetSize(m.width, m.height)
+		m.taskManager.config = m.config
 		m.taskManager.Open(m.vault)
+		// Enrich tasks with project associations
+		pm := NewProjectMode()
+		pm.vaultRoot = m.vault.Root
+		pm.loadProjects()
+		MatchTasksToProjects(m.taskManager.allTasks, pm.projects)
 
 	case CmdLinkAssist:
 		if m.activeNote != "" {
@@ -901,7 +919,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			break
 		}
 		m.aiTemplates.SetSize(m.width, m.height)
-		m.aiTemplates.Open(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey)
+		m.aiTemplates.Open(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
 
 	case CmdVaultAnalyzer:
 		if !m.research.IsRunning() {
@@ -938,6 +956,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdHabitTracker:
 		if m.config.CorePluginEnabled("habit_tracker") {
 			m.habitTracker.SetSize(m.width, m.height)
+			m.habitTracker.vault = m.vault
 			m.habitTracker.Open(m.vault.Root)
 		}
 
@@ -1059,12 +1078,17 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.commandCenter.SetSize(m.width, m.height)
 		// Gather data from all productivity systems.
 		allTasks := ParseAllTasks(m.vault.Notes)
-		// Load projects.
+		// Load projects and match tasks to projects.
 		pm := NewProjectMode()
 		pm.Open(m.vault.Root)
 		pm.Close()
 		var projects []Project
 		projects = append(projects, pm.projects...)
+		MatchTasksToProjects(allTasks, projects)
+		// Compute task counts for each project.
+		for i := range projects {
+			projects[i].ComputeTaskCounts(allTasks)
+		}
 		// Load habits.
 		ht := NewHabitTracker()
 		ht.Open(m.vault.Root)
@@ -1156,6 +1180,28 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		m.extractMode = true
 		m.extractName = ""
+
+	case CmdNextcloudSync:
+		m.nextcloudOverlay.SetSize(m.width, m.height)
+		m.nextcloudOverlay.Open(m.config, m.vault.Root)
+
+	case CmdNousStatus:
+		if m.config.AIProvider != "nous" {
+			m.statusbar.SetMessage("Nous is not the active AI provider. Set AI Provider to 'nous' in Settings.")
+			return m, m.clearMessageAfter(3 * time.Second)
+		}
+		client := NewNousClient(m.config.NousURL, m.config.NousAPIKey)
+		if err := client.TestConnection(); err != nil {
+			m.statusbar.SetMessage("Nous: " + err.Error())
+			return m, m.clearMessageAfter(3 * time.Second)
+		}
+		status, err := client.GetStatus()
+		if err != nil {
+			m.statusbar.SetMessage("Nous connected but status unavailable: " + err.Error())
+		} else {
+			m.statusbar.SetMessage("Nous: " + status)
+		}
+		return m, m.clearMessageAfter(5 * time.Second)
 
 	case CmdQuit:
 		return m, m.triggerExitSplash()

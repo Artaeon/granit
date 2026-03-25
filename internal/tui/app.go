@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,7 +47,7 @@ type Model struct {
 	index     *vault.Index
 	sidebar   Sidebar
 	editor    Editor
-	renderer  Renderer
+	renderer  *Renderer
 	backlinks Backlinks
 	statusbar StatusBar
 	config    config.Config
@@ -181,7 +182,10 @@ type Model struct {
 	planMyDay        PlanMyDay
 	clockIn          ClockIn
 	commandCenter    CommandCenter
-	dueTodayCount    int
+	nextcloudOverlay  NextcloudOverlay
+	calendarPanel     CalendarPanel
+	rightPanelCalendar bool // toggle: show calendar panel instead of backlinks
+	dueTodayCount     int
 
 	// Cross-component refresh flag
 	needsRefresh bool
@@ -260,6 +264,7 @@ func NewModel(vaultPath string) (Model, error) {
 		editor:         NewEditor(),
 		renderer:       NewRenderer(),
 		backlinks:      NewBacklinks(),
+		calendarPanel:  NewCalendarPanel(),
 		statusbar:      NewStatusBar(),
 		config:         cfg,
 		focus:          focusSidebar,
@@ -339,6 +344,7 @@ func NewModel(vaultPath string) (Model, error) {
 		planMyDay:       NewPlanMyDay(),
 		clockIn:         NewClockIn(vaultPath),
 		notePreview:     NewNotePreview(),
+		nextcloudOverlay: NewNextcloudOverlay(),
 		dataview:        NewDataviewOverlay(),
 		slashMenu:      NewSlashMenu(),
 		toast:          NewToast(),
@@ -357,10 +363,12 @@ func NewModel(vaultPath string) (Model, error) {
 	m.autocomplete.SetNotes(paths)
 	m.plugins.SetVaultPath(vaultPath)
 	m.pomodoro.SetVaultRoot(vaultPath)
+	m.pomodoro.SetGoal(cfg.PomodoroGoal)
 	m.canvas.SetVaultPath(vaultPath)
 	m.publisher.SetVaultPath(vaultPath)
 	m.luaOverlay.SetEngine(m.luaEngine)
 	m.renderer.SetVaultNotes(m.vault.Notes)
+	m.renderer.SetViewStyle(cfg.ViewStyle)
 	m.editor.SetFoldState(&m.foldState)
 	m.renderer.SetVaultRoot(vaultPath)
 
@@ -561,6 +569,11 @@ func (m *Model) loadNote(relPath string) {
 	outgoing := m.buildOutgoingItems(m.index.GetOutgoingLinks(relPath))
 	m.backlinks.SetLinks(incoming, outgoing)
 
+	// Refresh calendar panel if active
+	if m.rightPanelCalendar || LayoutHasCalendarPanel(m.config.Layout) {
+		m.refreshCalendarPanel()
+	}
+
 	m.foldState.UnfoldAll()
 	m.bookmarks.AddRecent(relPath)
 	if m.breadcrumb != nil {
@@ -599,6 +612,21 @@ func (m Model) Init() tea.Cmd {
 	}
 	// Clock-in timer and reminder tick loop
 	cmds = append(cmds, m.clockIn.StartTicking())
+	// Nous: auto-ingest vault notes on startup
+	if m.config.AIProvider == "nous" {
+		notes := m.vault.Notes
+		nousURL := m.config.NousURL
+		nousAPIKey := m.config.NousAPIKey
+		go func() {
+			client := NewNousClient(nousURL, nousAPIKey)
+			count, err := client.IngestVault(notes)
+			if err != nil {
+				log.Printf("Nous ingest failed: %v", err)
+			} else {
+				log.Printf("Nous: indexed %d notes", count)
+			}
+		}()
+	}
 	// Background embedding index
 	if m.config.SemanticSearchEnabled && m.config.AIProvider != "local" {
 		if bgCmd := m.startSemanticBgIndex(); bgCmd != nil {
