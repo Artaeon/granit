@@ -23,12 +23,12 @@ import (
 // NextcloudSync handles bidirectional file synchronisation with a Nextcloud
 // server over WebDAV.  It uses only the Go standard library (net/http).
 type NextcloudSync struct {
-	baseURL   string // e.g. "https://cloud.example.com"
-	user      string
-	pass      string
+	baseURL    string // e.g. "https://cloud.example.com"
+	user       string
+	pass       string
 	remotePath string // e.g. "/Notes"
-	vaultRoot string
-	client    *http.Client
+	vaultRoot  string
+	client     *http.Client
 }
 
 // NewNextcloudSync creates a configured sync client.
@@ -315,6 +315,9 @@ func (nc *NextcloudSync) mkcolRemote(relDir string) error {
 		partial := strings.Join(parts[:i+1], "/")
 		resp, err := nc.doReq("MKCOL", nc.davURL(partial), nil)
 		if err != nil {
+			if resp != nil {
+				resp.Body.Close()
+			}
 			return err
 		}
 		resp.Body.Close()
@@ -498,14 +501,14 @@ const (
 
 // NextcloudOverlay is the TUI panel for interacting with Nextcloud sync.
 type NextcloudOverlay struct {
-	active   bool
-	width    int
-	height   int
-	cursor   int
-	message  string
-	msgStyle string // "ok", "err", "info"
-	running  bool   // an operation is in progress
-	config   config.Config
+	active    bool
+	width     int
+	height    int
+	cursor    int
+	message   string
+	msgStyle  string // "ok", "err", "info"
+	running   bool   // an operation is in progress
+	config    config.Config
 	vaultRoot string
 
 	lastSyncTime time.Time

@@ -20,9 +20,9 @@ type CalendarPanel struct {
 
 	// Data
 	now            time.Time
-	plannerBlocks  []PlannerBlock            // today's planner blocks
-	upcomingTasks  []calendarPanelTask       // tasks due today/tomorrow
-	daysWithEvents map[int]bool              // day-of-month -> has events
+	plannerBlocks  []PlannerBlock      // today's planner blocks
+	upcomingTasks  []calendarPanelTask // tasks due today/tomorrow
+	daysWithEvents map[int]bool        // day-of-month -> has events
 	vaultRoot      string
 }
 
@@ -269,8 +269,6 @@ func (cp CalendarPanel) renderMiniCalendar(width int) string {
 	todayStyle := lipgloss.NewStyle().Foreground(base).Background(mauve).Bold(true)
 	normalStyle := lipgloss.NewStyle().Foreground(text)
 	eventDotStyle := lipgloss.NewStyle().Foreground(blue)
-	dimDayStyle := lipgloss.NewStyle().Foreground(overlay0)
-	_ = dimDayStyle
 
 	var line strings.Builder
 	// Leading padding for first week

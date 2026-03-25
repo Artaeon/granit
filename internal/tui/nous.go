@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -135,7 +136,7 @@ func (nc *NousClient) IngestVault(notes map[string]*vault.Note) (int, error) {
 			continue
 		}
 		if err := nc.IngestNote(path, note.Content); err != nil {
-			// Non-fatal — continue with other notes
+			log.Printf("nous: ingest failed for %s: %v", path, err)
 			continue
 		}
 		count++
