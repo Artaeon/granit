@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/artaeon/granit/internal/config"
 	"github.com/artaeon/granit/internal/vault"
 )
 
@@ -25,10 +26,12 @@ type Task struct {
 	Done          bool     `json:"done"`
 	DueDate       string   `json:"due_date"`           // "2006-01-02" or ""
 	Priority      int      `json:"priority"`            // 0=none, 1=low, 2=medium, 3=high, 4=highest
+	Recurrence    string   `json:"recurrence,omitempty"` // "daily", "weekly", "monthly", "3x-week" or ""
 	ScheduledTime string   `json:"scheduled_time,omitempty"` // "HH:MM-HH:MM" or "" — set by AI scheduler
 	Tags          []string `json:"tags,omitempty"`
 	NotePath      string   `json:"note_path"`           // source note relative path
 	LineNum       int      `json:"line_num"`             // 1-based line number in source note
+	Project       string   `json:"project,omitempty"`   // project name (matched via tag/folder)
 }
 
 // taskView identifies which tab is active.
@@ -66,6 +69,8 @@ var (
 	tmPrioLowRe    = regexp.MustCompile(`\x{1F53D}`)   // 🔽
 	tmTagRe        = regexp.MustCompile(`#([A-Za-z0-9_/-]+)`)
 	tmScheduleRe   = regexp.MustCompile(`⏰\s*(\d{2}:\d{2}-\d{2}:\d{2})`)
+	tmRecurEmojiRe = regexp.MustCompile(`\x{1F501}\s*(daily|weekly|monthly|3x-week)`)
+	tmRecurTagRe   = regexp.MustCompile(`#(daily|weekly|monthly|3x-week)\b`)
 )
 
 // ---------------------------------------------------------------------------
@@ -80,6 +85,7 @@ type TaskManager struct {
 
 	// Data
 	vault     *vault.Vault
+	config    config.Config
 	allTasks  []Task
 	filtered  []Task // currently displayed tasks
 
@@ -104,6 +110,16 @@ type TaskManager struct {
 	kanbanCol    int      // 0-3: which column cursor is in
 	kanbanCursor [4]int   // cursor position within each column
 	kanbanScroll [4]int   // scroll position within each column
+
+	// Bulk selection
+	selected   map[int]bool // filtered-index → selected
+	selectMode bool
+
+	// Project filter
+	projectFilter string
+
+	// Quick toggle: hide completed tasks in current session
+	hideCompleted bool
 
 	// Status message
 	statusMsg string
@@ -144,6 +160,7 @@ func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.active = true
 	tm.vault = v
 	tm.allTasks = ParseAllTasks(v.Notes)
+	tm.allTasks = FilterTasks(tm.allTasks, tm.config)
 	tm.view = taskViewToday
 	tm.cursor = 0
 	tm.scroll = 0
@@ -153,6 +170,9 @@ func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.jumpOK = false
 	tm.fileChanged = false
 	tm.lastChangedNote = ""
+	tm.selected = make(map[int]bool)
+	tm.selectMode = false
+	tm.projectFilter = ""
 	tm.kanbanCol = 0
 	tm.kanbanCursor = [4]int{}
 	tm.kanbanScroll = [4]int{}
@@ -174,6 +194,7 @@ func (tm *TaskManager) Close() {
 func (tm *TaskManager) Refresh(v *vault.Vault) {
 	tm.vault = v
 	tm.allTasks = ParseAllTasks(v.Notes)
+	tm.allTasks = FilterTasks(tm.allTasks, tm.config)
 	tm.rebuildFiltered()
 	if tm.cursor >= len(tm.filtered) {
 		tm.cursor = maxInt(0, len(tm.filtered)-1)
@@ -273,6 +294,13 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 				t.Priority = 1
 			}
 
+			// Recurrence (emoji or tag form)
+			if rm := tmRecurEmojiRe.FindStringSubmatch(taskText); rm != nil {
+				t.Recurrence = rm[1]
+			} else if rm := tmRecurTagRe.FindStringSubmatch(taskText); rm != nil {
+				t.Recurrence = rm[1]
+			}
+
 			// Scheduled time (set by AI scheduler)
 			if sm := tmScheduleRe.FindStringSubmatch(taskText); sm != nil {
 				t.ScheduledTime = sm[1]
@@ -287,6 +315,95 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 		}
 	}
 	return tasks
+}
+
+// FilterTasks applies config-based filtering to remove tasks that don't match
+// the user's filter settings: tag requirements, folder exclusions, and
+// completed-task hiding.
+func FilterTasks(tasks []Task, cfg config.Config) []Task {
+	if cfg.TaskFilterMode == "all" && len(cfg.TaskExcludeFolders) == 0 && !cfg.TaskExcludeDone {
+		return tasks // no filtering needed
+	}
+	var filtered []Task
+	for _, t := range tasks {
+		// Exclude folders
+		excluded := false
+		for _, folder := range cfg.TaskExcludeFolders {
+			if strings.HasPrefix(t.NotePath, folder) {
+				excluded = true
+				break
+			}
+		}
+		if excluded {
+			continue
+		}
+
+		// Tagged mode: require at least one of the required tags
+		if cfg.TaskFilterMode == "tagged" && len(cfg.TaskRequiredTags) > 0 {
+			hasTag := false
+			for _, reqTag := range cfg.TaskRequiredTags {
+				for _, taskTag := range t.Tags {
+					if strings.EqualFold(taskTag, reqTag) {
+						hasTag = true
+						break
+					}
+				}
+				if hasTag {
+					break
+				}
+			}
+			if !hasTag {
+				continue
+			}
+		}
+
+		// Hide completed tasks
+		if cfg.TaskExcludeDone && t.Done {
+			continue
+		}
+
+		filtered = append(filtered, t)
+	}
+	return filtered
+}
+
+// MatchTasksToProjects sets the Project field on each task by checking whether
+// the task's note path falls under a project folder or any of its tags match
+// the project's TaskFilter.
+func MatchTasksToProjects(tasks []Task, projects []Project) {
+	for i := range tasks {
+		matchTaskToProject(&tasks[i], projects)
+	}
+}
+
+// matchTaskToProject checks if a task belongs to any project and sets
+// task.Project accordingly.
+func matchTaskToProject(task *Task, projects []Project) {
+	for _, proj := range projects {
+		// Check folder match.
+		if proj.Folder != "" && strings.HasPrefix(task.NotePath, proj.Folder) {
+			task.Project = proj.Name
+			return
+		}
+		// Check TaskFilter match against task tags.
+		if proj.TaskFilter != "" {
+			for _, tag := range task.Tags {
+				if strings.EqualFold(tag, proj.TaskFilter) {
+					task.Project = proj.Name
+					return
+				}
+			}
+		}
+		// Check project tags against task tags.
+		for _, ptag := range proj.Tags {
+			for _, ttag := range task.Tags {
+				if strings.EqualFold(ttag, ptag) {
+					task.Project = proj.Name
+					return
+				}
+			}
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -420,6 +537,7 @@ func (tm *TaskManager) reparse() {
 	savedCursor := tm.cursor
 	savedScroll := tm.scroll
 	tm.allTasks = ParseAllTasks(tm.vault.Notes)
+	tm.allTasks = FilterTasks(tm.allTasks, tm.config)
 	tm.view = savedView
 	tm.rebuildFiltered()
 	tm.scroll = savedScroll
@@ -604,10 +722,148 @@ func (tm *TaskManager) doKanbanMove(task Task, direction int) {
 }
 
 // ---------------------------------------------------------------------------
+// Bulk operations
+// ---------------------------------------------------------------------------
+
+// doBulkToggle marks all selected tasks as done.
+func (tm *TaskManager) doBulkToggle() {
+	count := 0
+	// Process in reverse order of LineNum to avoid line shifts within the same file.
+	type selTask struct {
+		idx  int
+		task Task
+	}
+	var tasks []selTask
+	for idx := range tm.selected {
+		if idx < len(tm.filtered) {
+			tasks = append(tasks, selTask{idx, tm.filtered[idx]})
+		}
+	}
+	sort.Slice(tasks, func(i, j int) bool {
+		if tasks[i].task.NotePath != tasks[j].task.NotePath {
+			return tasks[i].task.NotePath < tasks[j].task.NotePath
+		}
+		return tasks[i].task.LineNum > tasks[j].task.LineNum
+	})
+	for _, st := range tasks {
+		ok := tm.writeLineChange(st.task.NotePath, st.task.LineNum, func(line string) string {
+			return strings.Replace(line, "[ ]", "[x]", 1)
+		})
+		if ok {
+			count++
+		}
+	}
+	tm.selectMode = false
+	tm.selected = make(map[int]bool)
+	tm.statusMsg = fmt.Sprintf("%d tasks completed", count)
+	tm.reparse()
+}
+
+// doBulkDelete removes all selected task lines from their source files.
+func (tm *TaskManager) doBulkDelete() {
+	// Group by file, sort lines descending to avoid index shifts.
+	type delEntry struct {
+		notePath string
+		lineNum  int
+	}
+	var entries []delEntry
+	for idx := range tm.selected {
+		if idx < len(tm.filtered) {
+			t := tm.filtered[idx]
+			entries = append(entries, delEntry{t.NotePath, t.LineNum})
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].notePath != entries[j].notePath {
+			return entries[i].notePath < entries[j].notePath
+		}
+		return entries[i].lineNum > entries[j].lineNum
+	})
+	count := 0
+	for _, e := range entries {
+		if tm.deleteTaskLine(e.notePath, e.lineNum) {
+			count++
+		}
+	}
+	tm.selectMode = false
+	tm.selected = make(map[int]bool)
+	tm.statusMsg = fmt.Sprintf("%d tasks deleted", count)
+	tm.reparse()
+}
+
+// deleteTaskLine removes a single line from a note file.
+func (tm *TaskManager) deleteTaskLine(notePath string, lineNum int) bool {
+	if tm.vault == nil {
+		return false
+	}
+	note := tm.vault.GetNote(notePath)
+	if note == nil {
+		return false
+	}
+	lines := strings.Split(note.Content, "\n")
+	if lineNum < 1 || lineNum > len(lines) {
+		return false
+	}
+	lines = append(lines[:lineNum-1], lines[lineNum:]...)
+	newContent := strings.Join(lines, "\n")
+	note.Content = newContent
+	absPath := filepath.Join(tm.vault.Root, notePath)
+	if err := os.WriteFile(absPath, []byte(newContent), 0644); err != nil {
+		return false
+	}
+	tm.fileChanged = true
+	tm.lastChangedNote = notePath
+	return true
+}
+
+// doBulkSetDate sets the due date on all selected tasks.
+func (tm *TaskManager) doBulkSetDate(newDate string) {
+	count := 0
+	for idx := range tm.selected {
+		if idx < len(tm.filtered) {
+			task := tm.filtered[idx]
+			ok := tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+				line = tmDueDateRe.ReplaceAllString(line, "")
+				line = strings.TrimRight(line, " ")
+				line += " \U0001F4C5 " + newDate
+				return line
+			})
+			if ok {
+				count++
+			}
+		}
+	}
+	tm.selectMode = false
+	tm.selected = make(map[int]bool)
+	dt, _ := time.Parse("2006-01-02", newDate)
+	tm.statusMsg = fmt.Sprintf("%d tasks due %s", count, dt.Format("Jan 2"))
+	tm.reparse()
+}
+
+// doShiftDate shifts the due date of a task by the given number of days.
+func (tm *TaskManager) doShiftDate(task Task, days int) {
+	var baseDate time.Time
+	if task.DueDate != "" {
+		t, err := time.Parse("2006-01-02", task.DueDate)
+		if err != nil {
+			return
+		}
+		baseDate = t
+	} else {
+		now := time.Now()
+		baseDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	}
+	newDate := baseDate.AddDate(0, 0, days).Format("2006-01-02")
+	tm.doSetDate(task, newDate)
+}
+
+// ---------------------------------------------------------------------------
 // Filtering / sorting
 // ---------------------------------------------------------------------------
 
 func (tm *TaskManager) rebuildFiltered() {
+	tm.selected = make(map[int]bool)
+	tm.selectMode = false
 	tm.cursor = 0
 	tm.scroll = 0
 	switch tm.view {
@@ -623,6 +879,18 @@ func (tm *TaskManager) rebuildFiltered() {
 		tm.filtered = tm.filterCalendarDay()
 	case taskViewKanban:
 		tm.filtered = nil // kanban uses columns, not flat list
+	}
+	if tm.projectFilter != "" {
+		tm.filtered = tm.applyProjectFilter(tm.filtered)
+	}
+	if tm.hideCompleted {
+		var undone []Task
+		for _, t := range tm.filtered {
+			if !t.Done {
+				undone = append(undone, t)
+			}
+		}
+		tm.filtered = undone
 	}
 	if tm.inputMode == tmInputSearch && tm.inputBuf != "" {
 		tm.filtered = tm.applySearch(tm.filtered)
@@ -736,6 +1004,30 @@ func (tm *TaskManager) applySearch(tasks []Task) []Task {
 	return out
 }
 
+func (tm *TaskManager) applyProjectFilter(tasks []Task) []Task {
+	var out []Task
+	for _, t := range tasks {
+		if t.Project == tm.projectFilter {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// uniqueProjects returns a sorted list of distinct project names from allTasks.
+func (tm *TaskManager) uniqueProjects() []string {
+	seen := make(map[string]bool)
+	var names []string
+	for _, t := range tm.allTasks {
+		if t.Project != "" && !seen[t.Project] {
+			seen[t.Project] = true
+			names = append(names, t.Project)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
 // ---------------------------------------------------------------------------
 // Kanban columns
 // ---------------------------------------------------------------------------
@@ -767,7 +1059,7 @@ func (tm *TaskManager) kanbanColumns() [4][]Task {
 
 	// Sort each column by priority descending
 	for c := 0; c < 4; c++ {
-		sort.Slice(cols[c], func(i, j int) bool {
+		sort.SliceStable(cols[c], func(i, j int) bool {
 			return cols[c][i].Priority > cols[c][j].Priority
 		})
 	}
@@ -916,9 +1208,11 @@ func (tm TaskManager) updateDatePicker(key string) (TaskManager, tea.Cmd) {
 
 	case "enter":
 		// Confirm date
-		if tm.cursor < len(tm.filtered) {
+		newDate := tm.datePickerDate.Format("2006-01-02")
+		if tm.selectMode && len(tm.selected) > 0 {
+			tm.doBulkSetDate(newDate)
+		} else if tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
-			newDate := tm.datePickerDate.Format("2006-01-02")
 			tm.doSetDate(task, newDate)
 		}
 		tm.inputMode = tmInputNone
@@ -1058,6 +1352,12 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 
 	switch key {
 	case "esc", "q":
+		if tm.selectMode {
+			tm.selectMode = false
+			tm.selected = make(map[int]bool)
+			tm.statusMsg = "Selection cleared"
+			return tm, nil
+		}
 		tm.active = false
 		return tm, nil
 
@@ -1154,13 +1454,43 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.rebuildFiltered()
 		}
 
-	// Toggle completion
-	case "enter", "x":
+	// Toggle selection (bulk mode)
+	case "v":
 		if tm.cursor < len(tm.filtered) {
+			if tm.selected == nil {
+				tm.selected = make(map[int]bool)
+			}
+			if tm.selected[tm.cursor] {
+				delete(tm.selected, tm.cursor)
+			} else {
+				tm.selected[tm.cursor] = true
+			}
+			tm.selectMode = len(tm.selected) > 0
+		}
+
+	// Toggle completion / bulk mark done
+	case "enter", "x":
+		if tm.selectMode && len(tm.selected) > 0 {
+			tm.doBulkToggle()
+		} else if tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
 			tm.doToggle(task)
 		} else if tm.view == taskViewCalendar && len(tm.filtered) == 0 {
 			tm.rebuildFiltered()
+		}
+
+	// Bulk delete
+	case "D":
+		if tm.selectMode && len(tm.selected) > 0 {
+			tm.doBulkDelete()
+		}
+
+	// Bulk set due date / single date picker
+	case "s":
+		if tm.selectMode && len(tm.selected) > 0 {
+			tm.inputMode = tmInputDate
+			now := time.Now()
+			tm.datePickerDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 		}
 
 	// Jump to source
@@ -1196,12 +1526,80 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			}
 		}
 
-	// Cycle priority
+	// Quick date adjustment: shift forward 1 day
+	case "+":
+		if !tm.selectMode && tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			tm.doShiftDate(task, 1)
+		}
+
+	// Quick date adjustment: shift back 1 day
+	case "-":
+		if !tm.selectMode && tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			tm.doShiftDate(task, -1)
+		}
+
+	// Quick date: set to today
+	case "t":
+		if !tm.selectMode && tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			tm.doSetDate(task, tmToday())
+		}
+
+	// Quick date: set to tomorrow
+	case "T":
+		if !tm.selectMode && tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			now := time.Now()
+			tomorrow := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local).AddDate(0, 0, 1)
+			tm.doSetDate(task, tomorrow.Format("2006-01-02"))
+		}
+
+	// Cycle project filter
 	case "p":
+		projects := tm.uniqueProjects()
+		if len(projects) == 0 {
+			tm.statusMsg = "No projects found"
+		} else if tm.projectFilter == "" {
+			tm.projectFilter = projects[0]
+			tm.statusMsg = "Filter: " + tm.projectFilter
+			tm.rebuildFiltered()
+		} else {
+			// Find current index, advance
+			idx := -1
+			for i, p := range projects {
+				if p == tm.projectFilter {
+					idx = i
+					break
+				}
+			}
+			if idx >= 0 && idx < len(projects)-1 {
+				tm.projectFilter = projects[idx+1]
+				tm.statusMsg = "Filter: " + tm.projectFilter
+			} else {
+				tm.projectFilter = ""
+				tm.statusMsg = "Filter: All"
+			}
+			tm.rebuildFiltered()
+		}
+
+	// Cycle priority (moved from p to !)
+	case "!":
 		if tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
 			tm.doCyclePriority(task)
 		}
+
+	// Toggle hide completed tasks
+	case "H":
+		tm.hideCompleted = !tm.hideCompleted
+		if tm.hideCompleted {
+			tm.statusMsg = "Hiding completed tasks"
+		} else {
+			tm.statusMsg = "Showing completed tasks"
+		}
+		tm.rebuildFiltered()
 
 	// Search
 	case "/":
@@ -1309,7 +1707,43 @@ func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
 	stats := lipgloss.NewStyle().Foreground(overlay0).
 		Render(fmt.Sprintf("  %d/%d done", done, total))
 
-	b.WriteString("  " + icon + title + stats)
+	// Project filter indicator
+	var filterBadge string
+	if tm.projectFilter != "" {
+		filterBadge = "  " + lipgloss.NewStyle().
+			Foreground(crust).Background(peach).Padding(0, 1).
+			Render(tm.projectFilter)
+	}
+
+	// Select mode indicator
+	var selectBadge string
+	if tm.selectMode {
+		selectBadge = "  " + lipgloss.NewStyle().
+			Foreground(crust).Background(yellow).Padding(0, 1).
+			Render(fmt.Sprintf("%d selected", len(tm.selected)))
+	}
+
+	// Task filter mode indicator
+	var filterModeBadge string
+	if tm.config.TaskFilterMode == "tagged" && len(tm.config.TaskRequiredTags) > 0 {
+		filterModeBadge = "  " + lipgloss.NewStyle().
+			Foreground(crust).Background(teal).Padding(0, 1).
+			Render("tagged: " + strings.Join(tm.config.TaskRequiredTags, ","))
+	} else if tm.config.TaskFilterMode == "folders" && len(tm.config.TaskExcludeFolders) > 0 {
+		filterModeBadge = "  " + lipgloss.NewStyle().
+			Foreground(crust).Background(teal).Padding(0, 1).
+			Render("folder filter")
+	}
+
+	// Hide completed indicator
+	var hideBadge string
+	if tm.hideCompleted {
+		hideBadge = "  " + lipgloss.NewStyle().
+			Foreground(crust).Background(surface1).Padding(0, 1).
+			Render("hide done")
+	}
+
+	b.WriteString("  " + icon + title + stats + filterBadge + filterModeBadge + hideBadge + selectBadge)
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", w-4)))
 	b.WriteString("\n")
@@ -1347,7 +1781,7 @@ func (tm *TaskManager) renderTabs(b *strings.Builder, w int) {
 	for i, name := range names {
 		label := fmt.Sprintf("%d:%s", i+1, name)
 		if counts[i] >= 0 {
-			label += fmt.Sprintf(" %d", counts[i])
+			label += fmt.Sprintf(" (%d)", counts[i])
 		}
 		if taskView(i) == tm.view {
 			tabs = append(tabs, activeStyle.Render(label))
@@ -1431,7 +1865,14 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 }
 
 func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w int) {
-	isSelected := idx == tm.cursor
+	isCursor := idx == tm.cursor
+	isBulkSelected := tm.selected[idx]
+
+	// Selection marker
+	var selMarker string
+	if isBulkSelected {
+		selMarker = lipgloss.NewStyle().Foreground(yellow).Render("\u25CF ") // ●
+	}
 
 	// Checkbox
 	var checkbox string
@@ -1453,11 +1894,18 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	displayText = tmPrioMedRe.ReplaceAllString(displayText, "")
 	displayText = tmPrioLowRe.ReplaceAllString(displayText, "")
 	displayText = tmScheduleRe.ReplaceAllString(displayText, "")
+	displayText = tmRecurEmojiRe.ReplaceAllString(displayText, "")
 	displayText = strings.TrimSpace(displayText)
 
 	textStyle := lipgloss.NewStyle().Foreground(text)
 	if task.Done {
 		textStyle = lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true)
+	}
+
+	// Recurrence badge
+	var recurBadge string
+	if task.Recurrence != "" {
+		recurBadge = lipgloss.NewStyle().Foreground(teal).Render("\U0001F501")
 	}
 
 	// Due date badge
@@ -1503,11 +1951,14 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 
 	// Build the line
 	prefix := "  "
-	if isSelected {
+	if isCursor {
 		prefix = lipgloss.NewStyle().Foreground(mauve).Render("  " + ThemeAccentBar + " ")
 	}
 
-	line := prefix + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
+	line := prefix + selMarker + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
+	if recurBadge != "" {
+		line += " " + recurBadge
+	}
 	if scheduleBadge != "" {
 		line += " " + scheduleBadge
 	}
@@ -1516,9 +1967,13 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	}
 	line += " " + noteLabel
 
-	if isSelected {
+	if isCursor || isBulkSelected {
+		bgColor := surface0
+		if isBulkSelected && !isCursor {
+			bgColor = surface1
+		}
 		b.WriteString(lipgloss.NewStyle().
-			Background(surface0).
+			Background(bgColor).
 			Width(w).
 			Render(line))
 	} else {
@@ -1597,16 +2052,28 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 			keyStyle.Render("Esc") + descStyle.Render(":close"),
 		}
 	default:
-		pairs = []string{
-			keyStyle.Render("j/k") + descStyle.Render(":nav "),
-			keyStyle.Render("x") + descStyle.Render(":toggle "),
-			keyStyle.Render("g") + descStyle.Render(":go "),
-			keyStyle.Render("a") + descStyle.Render(":add "),
-			keyStyle.Render("d") + descStyle.Render(":date "),
-			keyStyle.Render("p") + descStyle.Render(":prio "),
-			keyStyle.Render("/") + descStyle.Render(":search "),
-			keyStyle.Render("Tab") + descStyle.Render(":view "),
-			keyStyle.Render("Esc") + descStyle.Render(":close"),
+		if tm.selectMode {
+			pairs = []string{
+				keyStyle.Render("v") + descStyle.Render(":select "),
+				keyStyle.Render("x") + descStyle.Render(":done "),
+				keyStyle.Render("D") + descStyle.Render(":delete "),
+				keyStyle.Render("s") + descStyle.Render(":date "),
+				keyStyle.Render("Esc") + descStyle.Render(":clear"),
+			}
+		} else {
+			pairs = []string{
+				keyStyle.Render("j/k") + descStyle.Render(":nav "),
+				keyStyle.Render("x") + descStyle.Render(":toggle "),
+				keyStyle.Render("v") + descStyle.Render(":select "),
+				keyStyle.Render("+/-") + descStyle.Render(":shift "),
+				keyStyle.Render("t/T") + descStyle.Render(":today "),
+				keyStyle.Render("d") + descStyle.Render(":date "),
+				keyStyle.Render("p") + descStyle.Render(":proj "),
+				keyStyle.Render("!") + descStyle.Render(":prio "),
+				keyStyle.Render("H") + descStyle.Render(":hide-done "),
+				keyStyle.Render("/") + descStyle.Render(":search "),
+				keyStyle.Render("Esc") + descStyle.Render(":close"),
+			}
 		}
 	}
 
