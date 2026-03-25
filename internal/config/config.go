@@ -32,6 +32,7 @@ type Config struct {
 	CompactMode     bool   `json:"compact_mode"`
 	IconTheme       string `json:"icon_theme"` // "unicode", "nerd", "emoji", "ascii"
 	Layout          string `json:"layout"`     // "default", "writer", "minimal", "reading", "dashboard"
+	ViewStyle       string `json:"view_style"` // "default", "reading", "minimal"
 
 	// Behavior
 	AutoDailyNote   bool `json:"auto_daily_note"`
@@ -47,11 +48,13 @@ type Config struct {
 	GitAutoSync     bool `json:"git_auto_sync"`
 
 	// AI / Bots
-	AIProvider  string `json:"ai_provider"`  // "local", "ollama", "openai"
+	AIProvider  string `json:"ai_provider"`  // "local", "ollama", "openai", "nous"
 	OllamaModel string `json:"ollama_model"` // e.g. "qwen2.5:0.5b", "phi3:mini"
 	OllamaURL   string `json:"ollama_url"`   // e.g. "http://localhost:11434"
 	OpenAIKey   string `json:"openai_key"`   // API key for OpenAI
 	OpenAIModel string `json:"openai_model"` // e.g. "gpt-4o-mini", "gpt-4o"
+	NousURL     string `json:"nous_url"`     // e.g. "http://localhost:3333"
+	NousAPIKey  string `json:"nous_api_key"` // optional API key for Nous
 	BackgroundBots        bool `json:"background_bots"`         // auto-analyze on save
 	AutoTag               bool `json:"auto_tag"`                // auto-tag notes on save
 	GhostWriter           bool `json:"ghost_writer"`            // inline AI writing suggestions
@@ -64,6 +67,22 @@ type Config struct {
 	// Search
 	SearchContentByDefault bool `json:"search_content_by_default"`
 	MaxSearchResults       int  `json:"max_search_results"`
+
+	// Nextcloud Sync
+	NextcloudURL      string `json:"nextcloud_url"`
+	NextcloudUser     string `json:"nextcloud_user"`
+	NextcloudPass     string `json:"nextcloud_pass"`
+	NextcloudPath     string `json:"nextcloud_path"`
+	NextcloudAutoSync bool   `json:"nextcloud_auto_sync"`
+
+	// Task Manager
+	TaskFilterMode     string   `json:"task_filter_mode"`      // "all", "tagged", "folders"
+	TaskRequiredTags   []string `json:"task_required_tags"`    // e.g. ["task", "todo"] — only show tasks with these tags
+	TaskExcludeFolders []string `json:"task_exclude_folders"`  // e.g. ["Archive/", "templates/"]
+	TaskExcludeDone    bool     `json:"task_exclude_done"`     // hide completed tasks
+
+	// Focus / Pomodoro
+	PomodoroGoal int `json:"pomodoro_goal"` // daily session target, default 8
 
 	// Blog Publisher
 	MediumToken  string `json:"medium_token,omitempty"`
@@ -108,6 +127,7 @@ func DefaultConfig() Config {
 		CompactMode:            false,
 		IconTheme:              "unicode",
 		Layout:                 "default",
+		ViewStyle:              "default",
 		AutoSave:               false,
 		ShowSplash:             true,
 		VimMode:                false,
@@ -122,11 +142,18 @@ func DefaultConfig() Config {
 		OllamaURL:              "http://localhost:11434",
 		OpenAIKey:              "",
 		OpenAIModel:            "gpt-4o-mini",
+		NousURL:                "http://localhost:3333",
+		NousAPIKey:             "",
 		BackgroundBots:         false,
 		ShowHiddenFiles:        false,
 		SortBy:                 "name",
 		SearchContentByDefault: true,
 		MaxSearchResults:       50,
+		TaskFilterMode:         "all",
+		TaskRequiredTags:       []string{},
+		TaskExcludeFolders:     []string{},
+		TaskExcludeDone:        false,
+		PomodoroGoal:           8,
 		CorePlugins:            DefaultCorePlugins(),
 	}
 }
@@ -245,6 +272,10 @@ func (c Config) SaveToVault(vaultRoot string) error {
 
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
 

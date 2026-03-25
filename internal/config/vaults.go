@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -43,13 +44,19 @@ func LoadVaultList() VaultList {
 // SaveVaultList saves the vault list to ~/.config/granit/vaults.json.
 func SaveVaultList(vl VaultList) {
 	dir := ConfigDir()
-	_ = os.MkdirAll(dir, 0700)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		log.Printf("warning: failed to create config dir: %v", err)
+		return
+	}
 
 	data, err := json.MarshalIndent(vl, "", "  ")
 	if err != nil {
+		log.Printf("warning: failed to marshal vault list: %v", err)
 		return
 	}
-	_ = os.WriteFile(vaultsPath(), data, 0600)
+	if err := os.WriteFile(vaultsPath(), data, 0600); err != nil {
+		log.Printf("warning: failed to write vault list: %v", err)
+	}
 }
 
 // AddVault adds or updates a vault entry. It sets LastOpen to the current time
