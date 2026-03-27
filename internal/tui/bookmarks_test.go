@@ -288,10 +288,16 @@ func TestBookmarksTabSwitching(t *testing.T) {
 		t.Errorf("expected recent items, got %v", items)
 	}
 
+	// Tab to reading (mode 2)
+	bm, _ = bm.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if bm.mode != 2 {
+		t.Errorf("expected mode 2 after second tab, got %d", bm.mode)
+	}
+
 	// Tab back to starred
 	bm, _ = bm.Update(tea.KeyMsg{Type: tea.KeyTab})
 	if bm.mode != 0 {
-		t.Errorf("expected mode 0 after second tab, got %d", bm.mode)
+		t.Errorf("expected mode 0 after third tab, got %d", bm.mode)
 	}
 }
 
