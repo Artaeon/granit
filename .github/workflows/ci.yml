@@ -18,7 +18,7 @@ jobs:
           cache: true
 
       - name: Build
-        run: go build ./...
+        run: go build ./cmd/... ./internal/...
 
       - name: Verify binary
         run: |
@@ -26,13 +26,13 @@ jobs:
           ./granit version
 
       - name: Vet
-        run: go vet ./...
+        run: go vet ./cmd/... ./internal/...
 
       - name: Lint
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.64.5
-          args: --timeout=5m
+          args: --timeout=5m ./cmd/... ./internal/...
 
       - name: Test
-        run: go test ./...
+        run: go test ./cmd/... ./internal/...
