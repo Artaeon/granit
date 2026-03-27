@@ -749,3 +749,51 @@ func TestSettings_UpdateWhenInactive(t *testing.T) {
 		t.Error("Update on inactive settings should not activate it")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// No duplicate keys in buildItems
+// ---------------------------------------------------------------------------
+
+func TestSettings_NoDuplicateItems(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := NewSettings(cfg)
+
+	seen := make(map[string]bool)
+	for _, item := range s.items {
+		if item.kind == "header" {
+			continue
+		}
+		if seen[item.key] {
+			t.Errorf("duplicate settings key: %q", item.key)
+		}
+		seen[item.key] = true
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Every category has at least one item
+// ---------------------------------------------------------------------------
+
+func TestSettings_AllCategoriesHaveItems(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := NewSettings(cfg)
+
+	categoryItems := make(map[string]int)
+	for _, item := range s.items {
+		if item.kind == "header" {
+			continue
+		}
+		if item.category != "" {
+			categoryItems[item.category]++
+		}
+	}
+
+	expectedCategories := []string{
+		"Appearance", "Editor", "AI", "Files", "Plugins", "Advanced",
+	}
+	for _, cat := range expectedCategories {
+		if categoryItems[cat] == 0 {
+			t.Errorf("category %q has no items", cat)
+		}
+	}
+}

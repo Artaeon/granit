@@ -147,6 +147,12 @@ const (
 	CmdCommandCenter
 	CmdClockIn
 	CmdClockOut
+	CmdNextcloudSync
+	CmdNousStatus
+	CmdReadingList
+	CmdWeeklyReview
+	CmdAIProjectPlanner
+	CmdProjectDashboard
 	CmdQuit
 )
 
@@ -211,6 +217,7 @@ var AllCommands = []Command{
 	{Label: "Quiz Mode", Desc: "Test your knowledge with auto-generated quizzes", Shortcut: "", Action: CmdQuizMode, Icon: &IconHelpChar},
 	{Label: "Learning Dashboard", Desc: "Track study progress, streaks, mastery", Shortcut: "", Action: CmdLearnDashboard, Icon: &IconGraphChar},
 	{Label: "AI Chat", Desc: "Ask questions about your vault", Shortcut: "", Action: CmdAIChat, Icon: &IconBotChar},
+	{Label: "Nous Status", Desc: "Check local Nous AI server connection and status", Shortcut: "", Action: CmdNousStatus, Icon: &IconBotChar},
 	{Label: "AI Compose Note", Desc: "Generate a note from a topic prompt", Shortcut: "", Action: CmdComposer, Icon: &IconNewChar},
 	{Label: "AI Template", Desc: "Generate a full note from a template type + topic with AI", Shortcut: "", Action: CmdAITemplate, Icon: &IconBotChar},
 	{Label: "Knowledge Graph AI", Desc: "Analyze clusters, hubs, orphans, suggestions", Shortcut: "", Action: CmdKnowledgeGraph, Icon: &IconGraphChar},
@@ -294,6 +301,11 @@ var AllCommands = []Command{
 	{Label: "AI Knowledge Gaps Analysis", Desc: "Find missing topics, stale notes, orphans, and unlinked clusters", Shortcut: "", Action: CmdKnowledgeGaps, Icon: &IconGraphChar},
 	{Label: "Extract to Note", Desc: "Move selection to a new note, leave wikilink", Shortcut: "", Action: CmdExtractToNote, Icon: &IconLinkChar},
 	{Label: "Command Center", Desc: "What do I do RIGHT NOW? dashboard", Shortcut: "Alt+C", Action: CmdCommandCenter, Icon: &IconCalendarChar},
+	{Label: "Nextcloud Sync", Desc: "Sync vault with Nextcloud via WebDAV", Shortcut: "", Action: CmdNextcloudSync, Icon: &IconSaveChar},
+	{Label: "Weekly Review", Desc: "Guided weekly review with tasks, wins, lessons, priorities", Shortcut: "", Action: CmdWeeklyReview, Icon: &IconCalendarChar},
+	{Label: "Reading List", Desc: "Track URLs and articles to read later", Shortcut: "", Action: CmdReadingList, Icon: &IconBookmarkChar},
+	{Label: "AI Project Planner", Desc: "Break down a project idea into phases, milestones, and tasks with AI", Shortcut: "", Action: CmdAIProjectPlanner, Icon: &IconBotChar},
+	{Label: "Project Dashboard", Desc: "Cross-project overview with progress, blockers, and deadlines", Shortcut: "", Action: CmdProjectDashboard, Icon: &IconFolderChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 

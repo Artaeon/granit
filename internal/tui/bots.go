@@ -216,11 +216,13 @@ type Bots struct {
 	activeBot botKind
 
 	// AI config
-	aiProvider  string // "local", "ollama", or "openai"
+	aiProvider  string // "local", "ollama", "openai", or "nous"
 	ollamaModel string
 	ollamaURL   string
 	openaiKey   string
 	openaiModel string
+	nousURL     string
+	nousAPIKey  string
 
 	// Loading animation
 	loadingTick int
@@ -239,7 +241,7 @@ func (b *Bots) SetSize(width, height int) {
 	b.height = height
 }
 
-func (b *Bots) SetAIConfig(provider, ollamaModel, ollamaURL, openaiKey, openaiModel string) {
+func (b *Bots) SetAIConfig(provider, ollamaModel, ollamaURL, openaiKey, openaiModel, nousURL, nousAPIKey string) {
 	b.aiProvider = provider
 	if b.aiProvider == "" {
 		b.aiProvider = "local"
@@ -257,6 +259,11 @@ func (b *Bots) SetAIConfig(provider, ollamaModel, ollamaURL, openaiKey, openaiMo
 	if b.openaiModel == "" {
 		b.openaiModel = "gpt-4o-mini"
 	}
+	b.nousURL = nousURL
+	if b.nousURL == "" {
+		b.nousURL = "http://localhost:3333"
+	}
+	b.nousAPIKey = nousAPIKey
 }
 
 func (b *Bots) Open() {
@@ -305,6 +312,24 @@ func callOllamaForBot(url, model, prompt string, kind botKind) tea.Cmd {
 func callOpenAIForBot(apiKey, model, prompt string, kind botKind) tea.Cmd {
 	return func() tea.Msg {
 		return doOpenAIRequest(apiKey, model, prompt, kind)
+	}
+}
+
+// nousResultMsg carries the response from Nous back to Update.
+type nousResultMsg struct {
+	response string
+	err      error
+	botKind  botKind
+}
+
+func callNousForBot(url, apiKey, prompt string, kind botKind) tea.Cmd {
+	return func() tea.Msg {
+		client := NewNousClient(url, apiKey)
+		resp, err := client.Chat(prompt)
+		if err != nil {
+			return nousResultMsg{err: err, botKind: kind}
+		}
+		return nousResultMsg{response: resp, botKind: kind}
 	}
 }
 
@@ -680,6 +705,25 @@ func (b Bots) Update(msg tea.Msg) (Bots, tea.Cmd) {
 		b.state = botsStateResults
 		return b, nil
 
+	case nousResultMsg:
+		if b.state != botsStateLoading {
+			return b, nil
+		}
+		if msg.err != nil {
+			var lines []string
+			lines = append(lines, lipgloss.NewStyle().Foreground(yellow).Render(
+				"  "+IconBookmarkChar+" Nous unavailable, using local analysis"))
+			lines = append(lines, DimStyle.Render("  "+msg.err.Error()))
+			lines = append(lines, "")
+			b.runLocalBot()
+			b.resultLines = append(lines, b.resultLines...)
+			b.state = botsStateResults
+			return b, nil
+		}
+		b.processAIResponse(msg.response, "Nous")
+		b.state = botsStateResults
+		return b, nil
+
 	case tea.KeyMsg:
 		switch b.state {
 		case botsStateList:
@@ -767,7 +811,7 @@ func (b Bots) updateResults(msg tea.KeyMsg) (Bots, tea.Cmd) {
 
 // startBot decides whether to use Ollama, OpenAI, or local analysis
 func (b Bots) startBot() (Bots, tea.Cmd) {
-	useAI := (b.aiProvider == "ollama" || b.aiProvider == "openai") && b.activeBot != botDailyDigest
+	useAI := (b.aiProvider == "ollama" || b.aiProvider == "openai" || b.aiProvider == "nous") && b.activeBot != botDailyDigest
 
 	if useAI {
 		b.state = botsStateLoading
@@ -786,6 +830,13 @@ func (b Bots) startBot() (Bots, tea.Cmd) {
 		if b.aiProvider == "openai" && b.openaiKey != "" {
 			return b, tea.Batch(
 				callOpenAIForBot(b.openaiKey, b.openaiModel, prompt, b.activeBot),
+				botsTickCmd(),
+			)
+		}
+
+		if b.aiProvider == "nous" {
+			return b, tea.Batch(
+				callNousForBot(b.nousURL, b.nousAPIKey, prompt, b.activeBot),
 				botsTickCmd(),
 			)
 		}
@@ -1931,6 +1982,9 @@ func (b Bots) viewList(width int) string {
 	case "openai":
 		providerLabel = "OpenAI: " + b.openaiModel
 		providerColor = green
+	case "nous":
+		providerLabel = "Nous (local)"
+		providerColor = green
 	}
 	providerStatus := lipgloss.NewStyle().Foreground(providerColor).Render("  " + IconSearchChar + " " + providerLabel)
 	buf.WriteString(providerStatus)
@@ -2016,6 +2070,9 @@ func (b Bots) viewInput(width int) string {
 	case "openai":
 		buf.WriteString(DimStyle.Render("  AI will answer using OpenAI: " + b.openaiModel))
 		buf.WriteString("\n")
+	case "nous":
+		buf.WriteString(DimStyle.Render("  AI will answer using Nous (local)"))
+		buf.WriteString("\n")
 	}
 	buf.WriteString(DimStyle.Render("  Enter: search  Esc: back"))
 
@@ -2059,6 +2116,9 @@ func (b Bots) viewLoading(width int) string {
 	if b.aiProvider == "openai" {
 		thinkingLabel = "Thinking with " + b.openaiModel + "..."
 		connectLabel = "Connecting to OpenAI API..."
+	} else if b.aiProvider == "nous" {
+		thinkingLabel = "Thinking with Nous..."
+		connectLabel = "Connecting to Nous at " + b.nousURL
 	}
 	buf.WriteString("  " + spinner + " " + lipgloss.NewStyle().Foreground(text).Render(thinkingLabel))
 	buf.WriteString("\n\n")

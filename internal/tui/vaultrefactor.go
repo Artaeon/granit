@@ -72,10 +72,12 @@ type VaultRefactor struct {
 	allPaths []string
 
 	// AI config
-	provider  string
-	model     string
-	ollamaURL string
-	apiKey    string
+	provider   string
+	model      string
+	ollamaURL  string
+	apiKey     string
+	nousURL    string
+	nousAPIKey string
 
 	// result to be consumed by app
 	resultPlan  string
@@ -106,11 +108,17 @@ func (vr *VaultRefactor) SetSize(w, h int) {
 	vr.height = h
 }
 
-func (vr *VaultRefactor) SetConfig(provider, model, ollamaURL, apiKey string) {
+func (vr *VaultRefactor) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
 	vr.provider = provider
 	vr.model = model
 	vr.ollamaURL = ollamaURL
 	vr.apiKey = apiKey
+	if len(nousOpts) > 0 && nousOpts[0] != "" {
+		vr.nousURL = nousOpts[0]
+	}
+	if len(nousOpts) > 1 {
+		vr.nousAPIKey = nousOpts[1]
+	}
 }
 
 func (vr *VaultRefactor) SetVaultData(notes map[string]string, tags map[string][]string, allPaths []string) {
@@ -219,11 +227,17 @@ func (vr *VaultRefactor) startRefactor() tea.Cmd {
 	model := vr.model
 	ollamaURL := vr.ollamaURL
 	apiKey := vr.apiKey
+	nousURL := vr.nousURL
+	nousAPIKey := vr.nousAPIKey
 
 	return func() tea.Msg {
 		switch provider {
 		case "openai":
 			return doRefactorOpenAI(apiKey, model, prompt)
+		case "nous":
+			client := NewNousClient(nousURL, nousAPIKey)
+			resp, err := client.Chat(prompt)
+			return vaultRefactorResultMsg{plan: resp, err: err}
 		default:
 			return doRefactorOllama(ollamaURL, model, prompt)
 		}

@@ -24,6 +24,9 @@ const (
 	catEditor     = "Editor"
 	catAI         = "AI"
 	catFiles      = "Files"
+	catSync       = "Sync"
+	catTasks      = "Tasks"
+	catFocus      = "Focus"
 	catPlugins    = "Plugins"
 	catAdvanced   = "Advanced"
 )
@@ -34,6 +37,9 @@ var settingsCategories = []string{
 	catEditor,
 	catAI,
 	catFiles,
+	catTasks,
+	catFocus,
+	catSync,
 	catPlugins,
 	catAdvanced,
 }
@@ -84,6 +90,7 @@ func (s *Settings) buildItems() {
 		{label: "Theme", key: "theme", kind: "string", value: s.config.Theme, options: ThemeNames(), category: catAppearance, description: "color scheme palette"},
 		{label: "Icon Theme", key: "icon_theme", kind: "string", value: s.config.IconTheme, options: []string{"unicode", "nerd", "emoji", "ascii"}, category: catAppearance, description: "icon set style"},
 		{label: "Layout", key: "layout", kind: "string", value: s.config.Layout, options: AllLayouts(), category: catAppearance, description: "panel arrangement"},
+		{label: "View Style", key: "view_style", kind: "string", value: s.config.ViewStyle, options: []string{"default", "reading", "minimal"}, category: catAppearance, description: "Ctrl+E view mode style"},
 		{label: "Sidebar Position", key: "sidebar_position", kind: "string", value: s.config.SidebarPosition, options: []string{"left", "right"}, category: catAppearance, description: "file explorer side"},
 		{label: "Show Icons", key: "show_icons", kind: "bool", value: s.config.ShowIcons, category: catAppearance, description: "display file icons"},
 		{label: "Compact Mode", key: "compact_mode", kind: "bool", value: s.config.CompactMode, category: catAppearance, description: "reduce padding spacing"},
@@ -101,12 +108,14 @@ func (s *Settings) buildItems() {
 		{label: "Inline Spell Check", key: "spell_check", kind: "bool", value: s.config.SpellCheck, category: catEditor, description: "highlight misspelled words"},
 
 		// ── AI ──
-		{label: "AI Provider", key: "ai_provider", kind: "string", value: s.config.AIProvider, options: []string{"local", "ollama", "openai"}, category: catAI, description: "language model backend"},
+		{label: "AI Provider", key: "ai_provider", kind: "string", value: s.config.AIProvider, options: []string{"local", "ollama", "openai", "nous"}, category: catAI, description: "language model backend"},
 		{label: "Ollama Model", key: "ollama_model", kind: "string", value: s.config.OllamaModel, options: []string{"qwen2.5:0.5b", "qwen2.5:1.5b", "qwen2.5:3b", "phi3:mini", "phi3.5:3.8b", "gemma2:2b", "tinyllama", "llama3.2", "llama3.2:1b", "mistral", "gemma2"}, category: catAI, description: "local LLM model name"},
 		{label: "Ollama URL", key: "ollama_url", kind: "string", value: s.config.OllamaURL, category: catAI, description: "server endpoint address"},
 		{label: ">> Setup Ollama (install + model)", key: "setup_ollama", kind: "action", value: "run", category: catAI, description: "wizard install configure"},
 		{label: "OpenAI API Key", key: "openai_key", kind: "string", value: s.config.OpenAIKey, category: catAI, description: "secret token authentication"},
 		{label: "OpenAI Model", key: "openai_model", kind: "string", value: s.config.OpenAIModel, options: []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1-nano"}, category: catAI, description: "GPT model version"},
+		{label: "Nous URL", key: "nous_url", kind: "string", value: s.config.NousURL, category: catAI, description: "local Nous AI server endpoint"},
+		{label: "Nous API Key", key: "nous_api_key", kind: "string", value: s.config.NousAPIKey, category: catAI, description: "optional Nous authentication key"},
 		{label: "Background Bots (auto-analyze)", key: "background_bots", kind: "bool", value: s.config.BackgroundBots, category: catAI, description: "automatic analysis on save"},
 		{label: "Ghost Writer (AI completions)", key: "ghost_writer", kind: "bool", value: s.config.GhostWriter, category: catAI, description: "inline writing suggestions"},
 		{label: "Semantic Search (embedding index)", key: "semantic_search_enabled", kind: "bool", value: s.config.SemanticSearchEnabled, category: catAI, description: "background vector embedding index for meaning-based search"},
@@ -121,6 +130,22 @@ func (s *Settings) buildItems() {
 		{label: "Search Content by Default", key: "search_content", kind: "bool", value: s.config.SearchContentByDefault, category: catFiles, description: "full text search"},
 		{label: "Confirm Delete", key: "confirm_delete", kind: "bool", value: s.config.ConfirmDelete, category: catFiles, description: "ask before removing"},
 		{label: "Auto Refresh Vault", key: "auto_refresh", kind: "bool", value: s.config.AutoRefresh, category: catFiles, description: "reload on external change"},
+
+		// ── Tasks ──
+		{label: "Task Filter Mode", key: "task_filter_mode", kind: "string", value: s.config.TaskFilterMode, options: []string{"all", "tagged", "folders"}, category: catTasks, description: "filter tasks: all checkboxes, only tagged, or by folder"},
+		{label: "Required Tags", key: "task_required_tags", kind: "string", value: strings.Join(s.config.TaskRequiredTags, ", "), category: catTasks, description: "comma-separated tags to filter tasks (e.g. task, todo)"},
+		{label: "Exclude Folders", key: "task_exclude_folders", kind: "string", value: strings.Join(s.config.TaskExcludeFolders, ", "), category: catTasks, description: "comma-separated folders to exclude from task list"},
+		{label: "Hide Completed Tasks", key: "task_exclude_done", kind: "bool", value: s.config.TaskExcludeDone, category: catTasks, description: "hide completed tasks from all views"},
+
+		// ── Focus ──
+		{label: "Daily Pomodoro Goal", key: "pomodoro_goal", kind: "int", value: s.config.PomodoroGoal, category: catFocus, description: "target sessions per day focus timer"},
+
+		// ── Sync ──
+		{label: "Nextcloud URL", key: "nextcloud_url", kind: "string", value: s.config.NextcloudURL, category: catSync, description: "server address WebDAV"},
+		{label: "Nextcloud Username", key: "nextcloud_user", kind: "string", value: s.config.NextcloudUser, category: catSync, description: "login user account"},
+		{label: "Nextcloud Password", key: "nextcloud_pass", kind: "string", value: s.config.NextcloudPass, category: catSync, description: "app password token"},
+		{label: "Nextcloud Remote Path", key: "nextcloud_path", kind: "string", value: s.config.NextcloudPath, category: catSync, description: "remote folder directory"},
+		{label: "Nextcloud Auto Sync", key: "nextcloud_auto_sync", kind: "bool", value: s.config.NextcloudAutoSync, category: catSync, description: "sync on save automatic"},
 
 		// ── Plugins ──
 		{label: "Task Manager", key: "cp_task_manager", kind: "bool", value: s.corePluginVal("task_manager"), category: catPlugins, description: "todo checklist management"},
@@ -154,7 +179,8 @@ func (s *Settings) corePluginVal(name string) bool {
 // It inserts category headers before each group of matching items.
 func (s *Settings) rebuildVisible() {
 	// Strip previously-added temporary headers so they don't accumulate
-	clean := s.items[:0]
+	// Use a new slice to avoid aliasing bugs with the backing array
+	clean := make([]settingItem, 0, len(s.items))
 	for _, item := range s.items {
 		if item.kind != "header" {
 			clean = append(clean, item)
@@ -300,6 +326,8 @@ func (s *Settings) defaultValueForKey(key string) interface{} {
 		return def.IconTheme
 	case "layout":
 		return def.Layout
+	case "view_style":
+		return def.ViewStyle
 	case "sidebar_position":
 		return def.SidebarPosition
 	case "show_icons":
@@ -328,6 +356,10 @@ func (s *Settings) defaultValueForKey(key string) interface{} {
 		return def.OpenAIKey
 	case "openai_model":
 		return def.OpenAIModel
+	case "nous_url":
+		return def.NousURL
+	case "nous_api_key":
+		return def.NousAPIKey
 	case "background_bots":
 		return def.BackgroundBots
 	case "confirm_delete":
@@ -344,6 +376,16 @@ func (s *Settings) defaultValueForKey(key string) interface{} {
 		return def.SpellCheck
 	case "semantic_search_enabled":
 		return def.SemanticSearchEnabled
+	case "task_filter_mode":
+		return def.TaskFilterMode
+	case "task_required_tags":
+		return ""
+	case "task_exclude_folders":
+		return ""
+	case "task_exclude_done":
+		return def.TaskExcludeDone
+	case "pomodoro_goal":
+		return def.PomodoroGoal
 	default:
 		if strings.HasPrefix(key, "cp_") {
 			return true // core plugins default to enabled
@@ -606,6 +648,8 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		ApplyIconTheme(s.config.IconTheme)
 	case "layout":
 		s.config.Layout = value.(string)
+	case "view_style":
+		s.config.ViewStyle = value.(string)
 	case "search_content":
 		s.config.SearchContentByDefault = value.(bool)
 	case "auto_close_brackets":
@@ -632,6 +676,10 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.OpenAIKey = value.(string)
 	case "openai_model":
 		s.config.OpenAIModel = value.(string)
+	case "nous_url":
+		s.config.NousURL = value.(string)
+	case "nous_api_key":
+		s.config.NousAPIKey = value.(string)
 	case "background_bots":
 		s.config.BackgroundBots = value.(bool)
 	case "git_auto_sync":
@@ -644,6 +692,26 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.SpellCheck = value.(bool)
 	case "semantic_search_enabled":
 		s.config.SemanticSearchEnabled = value.(bool)
+	case "task_filter_mode":
+		s.config.TaskFilterMode = value.(string)
+	case "task_required_tags":
+		s.config.TaskRequiredTags = splitCommaTags(value.(string))
+	case "task_exclude_folders":
+		s.config.TaskExcludeFolders = splitCommaTags(value.(string))
+	case "task_exclude_done":
+		s.config.TaskExcludeDone = value.(bool)
+	case "pomodoro_goal":
+		s.config.PomodoroGoal = value.(int)
+	case "nextcloud_url":
+		s.config.NextcloudURL = value.(string)
+	case "nextcloud_user":
+		s.config.NextcloudUser = value.(string)
+	case "nextcloud_pass":
+		s.config.NextcloudPass = value.(string)
+	case "nextcloud_path":
+		s.config.NextcloudPath = value.(string)
+	case "nextcloud_auto_sync":
+		s.config.NextcloudAutoSync = value.(bool)
 	default:
 		// Handle core plugin toggles (cp_*)
 		if strings.HasPrefix(key, "cp_") {
@@ -933,4 +1001,16 @@ func intToStr(v interface{}) string {
 	default:
 		return "?"
 	}
+}
+
+// splitCommaTags splits a comma-separated string into trimmed, non-empty tokens.
+func splitCommaTags(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }

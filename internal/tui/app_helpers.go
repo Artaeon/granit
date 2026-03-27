@@ -562,6 +562,41 @@ func (m *Model) updateLayout() {
 }
 
 // refreshComponents re-scans the vault and updates all dependent components
+// syncPomodoroCompletions consumes completed tasks from the pomodoro timer
+// and syncs them back to their source notes (toggling checkboxes).
+func (m *Model) syncPomodoroCompletions() {
+	completions := m.pomodoro.GetCompletedTasks()
+	if len(completions) == 0 {
+		return
+	}
+	for _, tc := range completions {
+		if tc.NotePath == "" {
+			continue
+		}
+		if note := m.vault.GetNote(tc.NotePath); note != nil {
+			lines := strings.Split(note.Content, "\n")
+			if tc.LineNum >= 0 && tc.LineNum < len(lines) {
+				line := lines[tc.LineNum]
+				hasMarker := strings.Contains(line, "- [ ]") || strings.Contains(line, "- [x]")
+				hasText := tc.Text == "" || strings.Contains(line, tc.Text)
+				if !hasMarker || !hasText {
+					continue
+				}
+				if tc.Done {
+					lines[tc.LineNum] = strings.Replace(lines[tc.LineNum], "- [ ]", "- [x]", 1)
+				} else {
+					lines[tc.LineNum] = strings.Replace(lines[tc.LineNum], "- [x]", "- [ ]", 1)
+				}
+				newContent := strings.Join(lines, "\n")
+				if err := os.WriteFile(filepath.Join(m.vault.Root, tc.NotePath), []byte(newContent), 0644); err != nil {
+					m.statusbar.SetError("Error syncing pomodoro task: " + err.Error())
+				}
+			}
+		}
+	}
+	m.refreshComponents("")
+}
+
 // after any file has been modified by an overlay. If changedPath is non-empty
 // and matches the currently open note, the editor is reloaded too.
 func (m *Model) refreshComponents(changedPath string) {
@@ -647,12 +682,14 @@ func (m *Model) syncConfigToComponents() {
 		aiModel = m.config.OllamaModel
 	case "openai":
 		aiModel = m.config.OpenAIModel
+	case "nous":
+		aiModel = "local"
 	}
 	m.statusbar.SetAIStatus(m.config.AIProvider, aiModel)
 	m.autoSync.SetEnabled(m.config.GitAutoSync)
 	if m.ghostWriter != nil {
 		m.ghostWriter.SetEnabled(m.config.GhostWriter)
-		m.ghostWriter.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+		m.ghostWriter.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
 	}
 	if m.autoTagger != nil {
 		m.autoTagger.SetEnabled(m.config.AutoTag)
@@ -660,6 +697,7 @@ func (m *Model) syncConfigToComponents() {
 	if m.vimState != nil {
 		m.vimState.SetEnabled(m.config.VimMode)
 	}
+	m.pomodoro.SetGoal(m.config.PomodoroGoal)
 }
 
 func (m *Model) applyTagsToNote(tags []string) {
@@ -877,7 +915,24 @@ func (m *Model) loadNoteWithoutBreadcrumb(relPath string) {
 		m.backlinks.SetSuggestions(suggestions)
 	}
 
+	// Refresh calendar panel if active
+	if m.rightPanelCalendar || LayoutHasCalendarPanel(m.config.Layout) {
+		m.refreshCalendarPanel()
+	}
+
 	m.bookmarks.AddRecent(relPath)
+}
+
+// refreshCalendarPanel reloads planner blocks and tasks into the calendar panel.
+func (m *Model) refreshCalendarPanel() {
+	m.calendarPanel.SetVaultRoot(m.vault.Root)
+	noteContents := make(map[string]string)
+	for _, p := range m.vault.SortedPaths() {
+		if note := m.vault.GetNote(p); note != nil {
+			noteContents[p] = note.Content
+		}
+	}
+	m.calendarPanel.Refresh(loadPlannerBlocks(m.vault.Root), noteContents)
 }
 
 func (m *Model) applyVimResult(r VimResult) tea.Cmd {
@@ -1190,6 +1245,8 @@ func (m *Model) getAIModel() string {
 		return m.config.OllamaModel
 	case "openai":
 		return m.config.OpenAIModel
+	case "nous":
+		return "nous"
 	default:
 		return m.config.OllamaModel
 	}
@@ -1232,7 +1289,7 @@ func (m *Model) startSemanticBgIndex() tea.Cmd {
 		return nil
 	}
 	m.semanticSearch.SetVaultPath(m.vault.Root)
-	m.semanticSearch.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey)
+	m.semanticSearch.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
 	noteContents := make(map[string]string)
 	for _, p := range m.vault.SortedPaths() {
 		if note := m.vault.GetNote(p); note != nil {

@@ -55,7 +55,10 @@ func (v *Vault) Scan() error {
 			return nil
 		}
 
-		relPath, _ := filepath.Rel(v.Root, path)
+		relPath, err := filepath.Rel(v.Root, path)
+		if err != nil {
+			return nil // skip this file
+		}
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return err
@@ -109,7 +112,10 @@ func (v *Vault) ScanFast() error {
 			return nil
 		}
 
-		relPath, _ := filepath.Rel(v.Root, path)
+		relPath, err := filepath.Rel(v.Root, path)
+		if err != nil {
+			return nil // skip this file
+		}
 		note := &Note{
 			Path:    path,
 			RelPath: relPath,

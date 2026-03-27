@@ -24,10 +24,12 @@ type AutoTagger struct {
 	enabled bool
 
 	// AI config
-	provider  string
-	model     string
-	ollamaURL string
-	apiKey    string
+	provider   string
+	model      string
+	ollamaURL  string
+	apiKey     string
+	nousURL    string
+	nousAPIKey string
 
 	// Existing tags in the vault for consistency
 	vaultTags []string
@@ -60,7 +62,7 @@ func (at *AutoTagger) IsEnabled() bool {
 }
 
 // SetConfig configures the AI provider and connection details.
-func (at *AutoTagger) SetConfig(provider, model, ollamaURL, apiKey string) {
+func (at *AutoTagger) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
 	if provider != "" {
 		at.provider = provider
 	}
@@ -71,6 +73,12 @@ func (at *AutoTagger) SetConfig(provider, model, ollamaURL, apiKey string) {
 		at.ollamaURL = ollamaURL
 	}
 	at.apiKey = apiKey
+	if len(nousOpts) > 0 && nousOpts[0] != "" {
+		at.nousURL = nousOpts[0]
+	}
+	if len(nousOpts) > 1 {
+		at.nousAPIKey = nousOpts[1]
+	}
 }
 
 // SetVaultTags provides the set of tags already present in the vault so the
@@ -102,6 +110,8 @@ func (at *AutoTagger) TagNote(content string) tea.Cmd {
 	model := at.model
 	ollamaURL := at.ollamaURL
 	apiKey := at.apiKey
+	nousURL := at.nousURL
+	nousAPIKey := at.nousAPIKey
 
 	return func() tea.Msg {
 		var response string
@@ -110,6 +120,9 @@ func (at *AutoTagger) TagNote(content string) tea.Cmd {
 		switch provider {
 		case "openai":
 			response, err = atCallOpenAI(apiKey, model, systemPrompt, userPrompt)
+		case "nous":
+			client := NewNousClient(nousURL, nousAPIKey)
+			response, err = client.Chat(systemPrompt + "\n\n" + userPrompt)
 		default: // "ollama"
 			response, err = atCallOllama(ollamaURL, model, systemPrompt, userPrompt)
 		}
@@ -337,10 +350,12 @@ type NoteChat struct {
 	loading     bool
 	loadingTick int
 
-	provider  string
-	model     string
-	ollamaURL string
-	apiKey    string
+	provider   string
+	model      string
+	ollamaURL  string
+	apiKey     string
+	nousURL    string
+	nousAPIKey string
 }
 
 // NewNoteChat creates an empty NoteChat with sensible defaults.
@@ -391,7 +406,7 @@ func (nc *NoteChat) SetSize(w, h int) {
 }
 
 // SetConfig configures the AI provider and connection details.
-func (nc *NoteChat) SetConfig(provider, model, ollamaURL, apiKey string) {
+func (nc *NoteChat) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
 	if provider != "" {
 		nc.provider = provider
 	}
@@ -402,6 +417,12 @@ func (nc *NoteChat) SetConfig(provider, model, ollamaURL, apiKey string) {
 		nc.ollamaURL = ollamaURL
 	}
 	nc.apiKey = apiKey
+	if len(nousOpts) > 0 && nousOpts[0] != "" {
+		nc.nousURL = nousOpts[0]
+	}
+	if len(nousOpts) > 1 {
+		nc.nousAPIKey = nousOpts[1]
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -512,6 +533,27 @@ func ncSendToOllama(url, model, systemPrompt string, history []noteChatMessage) 
 
 // ncSendToOpenAI calls the OpenAI chat completions API with the full
 // conversation history.
+func ncSendToNous(url, apiKey, systemPrompt string, history []noteChatMessage) tea.Cmd {
+	return func() tea.Msg {
+		// Build combined prompt from system + history
+		var prompt strings.Builder
+		prompt.WriteString(systemPrompt)
+		prompt.WriteString("\n\n")
+		for _, m := range history {
+			if m.Role == "system" {
+				continue
+			}
+			prompt.WriteString(m.Role + ": " + m.Content + "\n")
+		}
+		client := NewNousClient(url, apiKey)
+		resp, err := client.Chat(prompt.String())
+		if err != nil {
+			return noteChatResultMsg{err: err}
+		}
+		return noteChatResultMsg{content: resp}
+	}
+}
+
 func ncSendToOpenAI(apiKey, model, systemPrompt string, history []noteChatMessage) tea.Cmd {
 	return func() tea.Msg {
 		var msgs []ncOpenAIMsg
@@ -646,6 +688,8 @@ func (nc NoteChat) Update(msg tea.Msg) (NoteChat, tea.Cmd) {
 			switch nc.provider {
 			case "openai":
 				cmd = ncSendToOpenAI(nc.apiKey, nc.model, systemPrompt, nc.messages)
+			case "nous":
+				cmd = ncSendToNous(nc.nousURL, nc.nousAPIKey, systemPrompt, nc.messages)
 			default: // "ollama"
 				cmd = ncSendToOllama(nc.ollamaURL, nc.model, systemPrompt, nc.messages)
 			}

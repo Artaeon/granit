@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/artaeon/granit/internal/vault"
 )
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Splash screen phase
 	if m.showSplash {
@@ -107,6 +109,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case autoSaveTickMsg:
 		// Only save if this tick matches the last edit time (debounce)
+		if m.vault == nil {
+			return m, nil
+		}
 		if m.config.AutoSave && msg.editTime.Equal(m.lastEditTime) && m.editor.modified && m.activeNote != "" {
 			content := m.editor.GetContent()
 			path := filepath.Join(m.vault.Root, m.activeNote)
@@ -154,6 +159,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case ncTestResultMsg, ncPushResultMsg, ncPullResultMsg, ncSyncResultMsg:
+		if m.nextcloudOverlay.IsActive() {
+			var cmd tea.Cmd
+			m.nextcloudOverlay, cmd = m.nextcloudOverlay.Update(msg)
+			// After pull/sync, rescan vault for new files
+			switch msg.(type) {
+			case ncPullResultMsg, ncSyncResultMsg:
+				if err := m.vault.Scan(); err != nil {
+					log.Printf("warning: vault scan failed: %v", err)
+				}
+				m.index.Build()
+				m.sidebar.SetFiles(m.vault.SortedPaths())
+			}
+			return m, cmd
+		}
+		return m, nil
+
 	case autoSyncResultMsg:
 		if msg.err != nil {
 			m.statusbar.SetError("Git sync error: " + msg.err.Error())
@@ -161,7 +183,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			trimmed := strings.TrimSpace(msg.output)
 			if trimmed != "" && trimmed != "Already up to date." {
 				// Rescan vault after pull brought changes
-				_ = m.vault.Scan()
+				if err := m.vault.Scan(); err != nil {
+					log.Printf("warning: vault scan failed: %v", err)
+				}
 				m.index.Build()
 				m.sidebar.SetFiles(m.vault.SortedPaths())
 				m.statusbar.SetMessage("Git: pulled latest changes")
@@ -260,7 +284,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
 						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
-							_ = m.vault.Scan()
+							if err := m.vault.Scan(); err != nil {
+								log.Printf("warning: vault scan failed: %v", err)
+							}
 							m.index = vault.NewIndex(m.vault)
 							m.index.Build()
 							paths := m.vault.SortedPaths()
@@ -317,7 +343,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
 						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
-							_ = m.vault.Scan()
+							if err := m.vault.Scan(); err != nil {
+								log.Printf("warning: vault scan failed: %v", err)
+							}
 							m.index = vault.NewIndex(m.vault)
 							m.index.Build()
 							paths := m.vault.SortedPaths()
@@ -373,7 +401,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.statusbar.SetMessage("Git restore failed: " + err.Error())
 							return m, m.clearMessageAfter(5 * time.Second)
 						}
-						_ = m.vault.Scan()
+						if err := m.vault.Scan(); err != nil {
+							log.Printf("warning: vault scan failed: %v", err)
+						}
 						m.index = vault.NewIndex(m.vault)
 						m.index.Build()
 						m.loadNote(m.activeNote)
@@ -471,6 +501,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case aiPlannerResultMsg:
+		if m.aiProjectPlanner.IsActive() {
+			var cmd tea.Cmd
+			m.aiProjectPlanner, cmd = m.aiProjectPlanner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case aiPlannerTickMsg:
+		if m.aiProjectPlanner.IsActive() {
+			var cmd tea.Cmd
+			m.aiProjectPlanner, cmd = m.aiProjectPlanner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case nlSearchResultMsg:
 		if m.nlSearch.IsActive() {
 			var cmd tea.Cmd
@@ -527,7 +573,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.research.elapsed = time.Since(m.research.startTime).Truncate(time.Second).String()
 				m.research.output = msg.output
 				// Refresh vault to pick up new files
-				_ = m.vault.Scan()
+				if err := m.vault.Scan(); err != nil {
+					log.Printf("warning: vault scan failed: %v", err)
+				}
 				m.index = vault.NewIndex(m.vault)
 				m.index.Build()
 				paths := m.vault.SortedPaths()
@@ -617,8 +665,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if m.editor.cursor < 0 {
 							m.editor.cursor = 0
 						}
-						if m.editor.col > len(m.editor.content[m.editor.cursor]) {
-							m.editor.col = len(m.editor.content[m.editor.cursor])
+						if len(m.editor.content) > 0 {
+							if m.editor.col > len(m.editor.content[m.editor.cursor]) {
+								m.editor.col = len(m.editor.content[m.editor.cursor])
+							}
 						}
 						m.editor.scroll = curScroll
 					}
@@ -635,6 +685,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pomodoroTickMsg:
 		var cmd tea.Cmd
 		m.pomodoro, cmd = m.pomodoro.Update(msg)
+		m.syncPomodoroCompletions()
 		return m, cmd
 
 	case clockInTickMsg:
@@ -678,6 +729,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.settings.setupRunning && msg.success {
 				m.config = m.settings.GetConfig()
 				_ = m.config.Save()
+				m.renderer.SetViewStyle(m.config.ViewStyle)
 			}
 		}
 		return m, nil
@@ -839,7 +891,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.trash.ShouldRestore() {
 				restored := m.trash.RestoreFile()
 				if restored != "" {
-					_ = m.vault.Scan()
+					if err := m.vault.Scan(); err != nil {
+						log.Printf("warning: vault scan failed: %v", err)
+					}
 					m.index = vault.NewIndex(m.vault)
 					m.index.Build()
 					paths := m.vault.SortedPaths()
@@ -1054,7 +1108,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					relPath := fileName
 					absPath := filepath.Join(m.vault.Root, relPath)
 					if err := os.WriteFile(absPath, []byte(content), 0644); err == nil {
-						_ = m.vault.Scan()
+						if err := m.vault.Scan(); err != nil {
+							log.Printf("warning: vault scan failed: %v", err)
+						}
 						m.index.Build()
 						m.sidebar.SetFiles(m.vault.SortedPaths())
 						m.loadNote(relPath)
@@ -1086,7 +1142,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.standupGen.IsActive() {
 			m.standupGen, _ = m.standupGen.Update(msg)
 			if !m.standupGen.IsActive() {
-				_ = m.vault.Scan()
+				if err := m.vault.Scan(); err != nil {
+					log.Printf("warning: vault scan failed: %v", err)
+				}
 				m.index.Build()
 				m.sidebar.SetFiles(m.vault.SortedPaths())
 			}
@@ -1129,7 +1187,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quickCapture, _ = m.quickCapture.Update(msg)
 			if !m.quickCapture.IsActive() {
 				if filePath, ok := m.quickCapture.GetResult(); ok {
-					_ = m.vault.Scan()
+					if err := m.vault.Scan(); err != nil {
+						log.Printf("warning: vault scan failed: %v", err)
+					}
 					m.index.Build()
 					m.sidebar.SetFiles(m.vault.SortedPaths())
 					m.statusbar.SetMessage("Saved to " + filePath)
@@ -1157,7 +1217,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.journalPrompts, _ = m.journalPrompts.Update(msg)
 			if !m.journalPrompts.IsActive() {
 				if filePath, ok := m.journalPrompts.GetResult(); ok {
-					_ = m.vault.Scan()
+					if err := m.vault.Scan(); err != nil {
+						log.Printf("warning: vault scan failed: %v", err)
+					}
 					m.index.Build()
 					m.sidebar.SetFiles(m.vault.SortedPaths())
 					m.loadNote(filePath)
@@ -1265,10 +1327,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if estMin <= 0 {
 							estMin = 25
 						}
+						// Try to find source note info for bidirectional sync
+						var srcPath string
+						var srcLine int
+						for _, t := range m.taskManager.allTasks {
+							if t.Text == slot.Task || strings.Contains(t.Text, slot.Task) || strings.Contains(slot.Task, t.Text) {
+								srcPath = t.NotePath
+								srcLine = t.LineNum
+								break
+							}
+						}
 						queueTasks = append(queueTasks, QueueTask{
-							Text:      slot.Task,
-							Priority:  slot.Priority,
-							Estimated: estMin,
+							Text:       slot.Task,
+							Priority:   slot.Priority,
+							Estimated:  estMin,
+							SourcePath: srcPath,
+							SourceLine: srcLine,
 						})
 					}
 					if len(queueTasks) > 0 {
@@ -1298,11 +1372,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		if m.aiProjectPlanner.IsActive() {
+			var cmd tea.Cmd
+			wasActive := m.aiProjectPlanner.IsActive()
+			m.aiProjectPlanner, cmd = m.aiProjectPlanner.Update(msg)
+			if wasActive && !m.aiProjectPlanner.IsActive() {
+				// Refresh project mode data after creating a project
+				m.refreshComponents("")
+				m.statusbar.SetMessage("AI project plan created")
+			}
+			return m, cmd
+		}
+
 		if m.recurringTasks.IsActive() {
 			m.recurringTasks, _ = m.recurringTasks.Update(msg)
 			if !m.recurringTasks.IsActive() {
 				if count, ok := m.recurringTasks.GetCreatedCount(); ok && count > 0 {
-					_ = m.vault.Scan()
+					if err := m.vault.Scan(); err != nil {
+						log.Printf("warning: vault scan failed: %v", err)
+					}
 					m.index.Build()
 					m.sidebar.SetFiles(m.vault.SortedPaths())
 					m.statusbar.SetMessage(fmt.Sprintf("%d recurring tasks created", count))
@@ -1330,6 +1418,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.backup.IsActive() {
 			m.backup, _ = m.backup.Update(msg)
 			return m, nil
+		}
+
+		if m.nextcloudOverlay.IsActive() {
+			var cmd tea.Cmd
+			m.nextcloudOverlay, cmd = m.nextcloudOverlay.Update(msg)
+			return m, cmd
 		}
 
 		if m.tutorial.IsActive() {
@@ -1424,6 +1518,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.projectDashboard.IsActive() {
+			m.projectDashboard, _ = m.projectDashboard.Update(msg)
+			if !m.projectDashboard.IsActive() {
+				if projName := m.projectDashboard.SelectedProject(); projName != "" {
+					m.projectMode.SetSize(m.width, m.height)
+					m.projectMode.Open(m.vault.Root)
+				}
+			}
+			return m, nil
+		}
+
 		if m.nlSearch.IsActive() {
 			var cmd tea.Cmd
 			m.nlSearch, cmd = m.nlSearch.Update(msg)
@@ -1473,6 +1578,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.setSidebarCursorToFile(notePath)
 				}
 			}
+			return m, nil
+		}
+
+		if m.weeklyReview.IsActive() {
+			m.weeklyReview, _ = m.weeklyReview.Update(msg)
+			return m, nil
+		}
+
+		if m.readingList.IsActive() {
+			m.readingList, _ = m.readingList.Update(msg)
 			return m, nil
 		}
 
@@ -1569,7 +1684,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
 						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
-							_ = m.vault.Scan()
+							if err := m.vault.Scan(); err != nil {
+								log.Printf("warning: vault scan failed: %v", err)
+							}
 							m.index = vault.NewIndex(m.vault)
 							m.index.Build()
 							paths := m.vault.SortedPaths()
@@ -1601,6 +1718,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if md, startLine, endLine, ok := m.tableEditor.GetResult(); ok {
 					m.editor.saveSnapshot()
 					newLines := strings.Split(md, "\n")
+					if startLine < 0 {
+						startLine = 0
+					}
+					if startLine > len(m.editor.content) {
+						startLine = len(m.editor.content)
+					}
+					if endLine < 0 {
+						endLine = 0
+					}
+					if endLine >= len(m.editor.content) {
+						endLine = len(m.editor.content) - 1
+					}
 					if endLine < startLine {
 						// Insert mode: insert before startLine
 						before := make([]string, len(m.editor.content[:startLine]))
@@ -1650,7 +1779,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
 						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
-							_ = m.vault.Scan()
+							if err := m.vault.Scan(); err != nil {
+								log.Printf("warning: vault scan failed: %v", err)
+							}
 							m.index = vault.NewIndex(m.vault)
 							m.index.Build()
 							paths := m.vault.SortedPaths()
@@ -1897,6 +2028,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.pomodoro.IsActive() {
 			var cmd tea.Cmd
 			m.pomodoro, cmd = m.pomodoro.Update(msg)
+			m.syncPomodoroCompletions()
 			return m, cmd
 		}
 
@@ -1922,7 +2054,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
 						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
-							_ = m.vault.Scan()
+							if err := m.vault.Scan(); err != nil {
+								log.Printf("warning: vault scan failed: %v", err)
+							}
 							m.index = vault.NewIndex(m.vault)
 							m.index.Build()
 							paths := m.vault.SortedPaths()
@@ -1947,7 +2081,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmDelete = false
 				if m.confirmDeleteNote != "" {
 					if err := m.trash.MoveToTrash(m.confirmDeleteNote); err == nil {
-						_ = m.vault.Scan()
+						if err := m.vault.Scan(); err != nil {
+							log.Printf("warning: vault scan failed: %v", err)
+						}
 						m.index = vault.NewIndex(m.vault)
 						m.index.Build()
 						paths := m.vault.SortedPaths()
@@ -1992,8 +2128,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.editor.cursor < 0 {
 						m.editor.cursor = 0
 					}
-					if m.editor.col > len(m.editor.content[m.editor.cursor]) {
-						m.editor.col = len(m.editor.content[m.editor.cursor])
+					if len(m.editor.content) > 0 {
+						if m.editor.col > len(m.editor.content[m.editor.cursor]) {
+							m.editor.col = len(m.editor.content[m.editor.cursor])
+						}
 					}
 					m.editor.scroll = curScroll
 				}
@@ -2177,6 +2315,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+k":
 			m.taskManager.SetSize(m.width, m.height)
+			m.taskManager.config = m.config
 			m.taskManager.Open(m.vault)
 			return m, nil
 
@@ -2238,7 +2377,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+r":
 			m.bots.SetSize(m.width, m.height)
-			m.bots.SetAIConfig(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.OpenAIModel)
+			m.bots.SetAIConfig(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.OpenAIModel, m.config.NousURL, m.config.NousAPIKey)
 			noteContents := make(map[string]string)
 			tagMap := make(map[string][]string)
 			for _, p := range m.vault.SortedPaths() {
@@ -2346,6 +2485,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "alt+r":
+			// Open research agent with current note as context
+			if m.activeNote != "" && !m.research.IsRunning() {
+				m.research.SetSize(m.width, m.height)
+				m.research.OpenNoteEnhance(m.vault.Root, m.activeNote, m.editor.GetContent(), m.vault.SortedPaths())
+			} else if !m.research.IsRunning() {
+				m.research.SetSize(m.width, m.height)
+				m.research.Open(m.vault.Root)
+			}
+			return m, nil
+
 		case "alt+w":
 			// Weekly note
 			return m.executeCommand(CmdWeeklyNote)
@@ -2353,6 +2503,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "alt+c":
 			// Command Center
 			return m.executeCommand(CmdCommandCenter)
+
+		case "alt+C":
+			// Toggle calendar panel in right sidebar
+			m.rightPanelCalendar = !m.rightPanelCalendar
+			if m.rightPanelCalendar {
+				m.calendarPanel.SetVaultRoot(m.vault.Root)
+				noteContents := make(map[string]string)
+				for _, p := range m.vault.SortedPaths() {
+					if note := m.vault.GetNote(p); note != nil {
+						noteContents[p] = note.Content
+					}
+				}
+				m.calendarPanel.Refresh(loadPlannerBlocks(m.vault.Root), noteContents)
+				m.statusbar.SetMessage("Calendar panel enabled (Alt+Shift+C to toggle)")
+			} else {
+				m.statusbar.SetMessage("Backlinks panel restored (Alt+Shift+C to toggle)")
+			}
+			return m, nil
 
 		case "esc":
 			// If selection is active, clear it first
@@ -2486,7 +2654,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							// Remove query chars already typed
 							for range q {
 								m.editor.col--
-								if m.editor.col >= 0 && m.editor.cursor < len(m.editor.content) {
+								if m.editor.col >= 0 && m.editor.cursor >= 0 && m.editor.cursor < len(m.editor.content) {
 									line := m.editor.content[m.editor.cursor]
 									if m.editor.col < len(line) {
 										m.editor.content[m.editor.cursor] = line[:m.editor.col] + line[m.editor.col+1:]
@@ -2532,7 +2700,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					insertText, consumed, closed := m.slashMenu.HandleKey(k)
 					if insertText != "" {
 						// Delete the "/" and query chars that triggered the menu
-						if m.editor.cursor < len(m.editor.content) {
+						if m.editor.cursor >= 0 && m.editor.cursor < len(m.editor.content) {
 							line := m.editor.content[m.editor.cursor]
 							// Remove "/" + query chars (slash is at col - queryLen - 1)
 							slashCol := m.editor.col - queryLen - 1
@@ -2659,7 +2827,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Detect [[ for link completion
 			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "[" {
 				if m.linkCompleter != nil && !m.linkCompleter.IsActive() &&
-					m.editor.cursor < len(m.editor.content) {
+					m.editor.cursor >= 0 && m.editor.cursor < len(m.editor.content) {
 					// Check if the char before cursor is also [
 					curLine := m.editor.content[m.editor.cursor]
 					c := m.editor.col
@@ -2672,7 +2840,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Detect "/" at start of line or after space for slash menu
 			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "/" {
 				if m.slashMenu != nil && !m.slashMenu.IsActive() &&
-					m.editor.cursor < len(m.editor.content) {
+					m.editor.cursor >= 0 && m.editor.cursor < len(m.editor.content) {
 					curLine := m.editor.content[m.editor.cursor]
 					c := m.editor.col
 					// "/" is valid if at col 1 (just typed at start) or after a space

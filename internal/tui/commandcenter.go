@@ -562,6 +562,9 @@ func (cc CommandCenter) viewNow(innerW int) string {
 		details = append(details, DimStyle.Render("Due: ")+
 			lipgloss.NewStyle().Foreground(cc.dueDateColor(task.DueDate)).Render(dueLabel))
 	}
+	if task.Project != "" {
+		details = append(details, lipgloss.NewStyle().Foreground(lavender).Render(task.Project))
+	}
 	if task.NotePath != "" {
 		noteName := strings.TrimSuffix(task.NotePath, ".md")
 		if r := []rune(noteName); len(r) > 20 {
@@ -619,7 +622,12 @@ func (cc CommandCenter) viewNextUp(innerW int) string {
 			dueStr = "  " + lipgloss.NewStyle().Foreground(cc.dueDateColor(task.DueDate)).Render(dueLabel)
 		}
 
-		b.WriteString(num + icon + " " + name + dueStr)
+		projStr := ""
+		if task.Project != "" {
+			projStr = "  " + DimStyle.Render("["+task.Project+"]")
+		}
+
+		b.WriteString(num + icon + " " + name + dueStr + projStr)
 		b.WriteString("\n")
 	}
 
@@ -781,11 +789,18 @@ func (cc CommandCenter) viewProjects(innerW int) string {
 			nextAct = DimStyle.Render(" \u2192 " + act)
 		}
 
+		// Task count indicator
+		taskCountStr := ""
+		if proj.TasksTotal > 0 {
+			taskCountStr = DimStyle.Render(fmt.Sprintf(" [%d/%d]", proj.TasksDone, proj.TasksTotal))
+		}
+
 		isSelected := active && i == cc.scroll
-		line := fmt.Sprintf("  %-16s %s %s%s",
+		line := fmt.Sprintf("  %-16s %s %s%s%s",
 			nameStyle.Render(ccPadRight(name, 16)),
 			bar,
 			pctStr,
+			taskCountStr,
 			nextAct)
 
 		if isSelected {

@@ -23,12 +23,14 @@ const (
 
 // QueueTask represents a single task in the focus queue.
 type QueueTask struct {
-	Text      string
-	Priority  int
-	Project   string // project name (for tracking)
-	Estimated int    // estimated minutes
-	Elapsed   int    // actual minutes spent
-	Done      bool
+	Text       string
+	Priority   int
+	Project    string // project name (for tracking)
+	Estimated  int    // estimated minutes
+	Elapsed    int    // actual minutes spent
+	Done       bool
+	SourcePath string // relative path to source note (for bidirectional sync)
+	SourceLine int    // 0-based line number in source note
 }
 
 // Pomodoro implements an overlay Pomodoro timer with writing stats tracking.
@@ -74,6 +76,12 @@ type Pomodoro struct {
 
 	// Vault root for session logging
 	vaultRoot string
+
+	// Completed tasks to sync back to source files (consumed-once by app)
+	completedTasks []TaskCompletion
+
+	// Daily session goal
+	pomodoroGoal int // target sessions per day, 0 means use config default
 }
 
 type pomodoroSession struct {
@@ -125,6 +133,22 @@ func (p *Pomodoro) SetSize(w, h int) {
 // SetVaultRoot stores the vault root path for session logging.
 func (p *Pomodoro) SetVaultRoot(root string) {
 	p.vaultRoot = root
+}
+
+// SetGoal sets the daily session goal.
+func (p *Pomodoro) SetGoal(goal int) {
+	p.pomodoroGoal = goal
+}
+
+// GetCompletedTasks returns and clears the list of task completions that
+// should be synced back to their source files. Consumed-once pattern.
+func (p *Pomodoro) GetCompletedTasks() []TaskCompletion {
+	if len(p.completedTasks) == 0 {
+		return nil
+	}
+	result := p.completedTasks
+	p.completedTasks = nil
+	return result
 }
 
 // Start begins a new work session.
@@ -254,6 +278,16 @@ func (p *Pomodoro) AdvanceQueue() bool {
 	// Now mark done and log
 	qt.Done = true
 	p.logSessionEntry(qt.Text, qt.Project, qt.Elapsed, true)
+
+	// Record completion for sync back to source file
+	if qt.SourcePath != "" {
+		p.completedTasks = append(p.completedTasks, TaskCompletion{
+			NotePath: qt.SourcePath,
+			LineNum:  qt.SourceLine,
+			Text:     qt.Text,
+			Done:     true,
+		})
+	}
 
 	// Move to next undone task
 	for i := p.queueCursor + 1; i < len(p.queue); i++ {
@@ -697,15 +731,43 @@ func (p Pomodoro) View() string {
 	statLabel := lipgloss.NewStyle().Foreground(subtext0)
 	statValue := lipgloss.NewStyle().Foreground(text)
 
+	// Daily goal progress
+	goal := p.pomodoroGoal
+	if goal <= 0 {
+		goal = 8
+	}
+	sessionLabel := fmt.Sprintf("%d/%d today", p.sessionsToday, goal)
+	if p.sessionsToday >= goal {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(green).Bold(true).Render(
+			"Sessions: "+sessionLabel+" \u2714 Goal reached!"))
+	} else {
+		b.WriteString("  " + statLabel.Render("Sessions: ") + statValue.Render(sessionLabel))
+	}
+
+	// Mini progress bar for daily goal
+	goalBarWidth := 20
+	goalFilled := int(float64(goalBarWidth) * float64(p.sessionsToday) / float64(goal))
+	if goalFilled > goalBarWidth {
+		goalFilled = goalBarWidth
+	}
+	goalEmpty := goalBarWidth - goalFilled
+	goalBarColor := mauve
+	if p.sessionsToday >= goal {
+		goalBarColor = green
+	}
+	b.WriteString("  " +
+		lipgloss.NewStyle().Foreground(goalBarColor).Render(strings.Repeat("\u2588", goalFilled)) +
+		lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2591", goalEmpty)))
+	b.WriteString("\n")
+
 	// Compact stats line
 	totalWords := 0
 	for _, s := range p.sessionLog {
 		totalWords += s.Words
 	}
 	totalWords += p.wordsWritten
-	b.WriteString("  " + statLabel.Render("Sessions: ") +
-		statValue.Render(fmt.Sprintf("%d today", p.sessionsToday)) +
-		statLabel.Render(" \u00b7 Words: ") +
+	b.WriteString("  " +
+		statLabel.Render("Words: ") +
 		statValue.Render(fmt.Sprintf("%d", totalWords)) +
 		statLabel.Render(" \u00b7 Notes: ") +
 		statValue.Render(fmt.Sprintf("%d", len(p.notesEdited))))

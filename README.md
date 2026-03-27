@@ -10,302 +10,149 @@
 </p>
 
 <p align="center">
-  <strong>A blazing-fast, AI-powered terminal knowledge manager — fully Obsidian compatible</strong>
+  <strong>A blazing-fast, AI-powered knowledge manager for terminal and desktop -- fully Obsidian compatible</strong>
 </p>
 
 <p align="center">
-  <a href="#installation"><img src="https://img.shields.io/badge/Go-1.23+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
+  <a href="#installation"><img src="https://img.shields.io/badge/Go-1.24+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License"></a>
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform">
-  <img src="https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge" alt="Status">
-  <img src="https://img.shields.io/badge/TUI-148k%2B%20Lines-orange?style=for-the-badge" alt="Codebase">
-  <img src="https://img.shields.io/badge/Themes-35-purple?style=for-the-badge" alt="Themes">
+  <img src="https://img.shields.io/badge/TUI-164k%2B%20Lines-orange?style=for-the-badge" alt="Codebase">
+  <img src="https://img.shields.io/badge/Desktop-Wails%20v2-9B59B6?style=for-the-badge" alt="Desktop App">
+  <img src="https://img.shields.io/badge/Themes-40-purple?style=for-the-badge" alt="Themes">
 </p>
 
 <p align="center">
   <a href="#features">Features</a> &bull;
   <a href="#installation">Installation</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
-  <a href="#ai-features">AI Features</a> &bull;
+  <a href="#cli-commands">CLI Commands</a> &bull;
   <a href="#keyboard-shortcuts">Shortcuts</a> &bull;
+  <a href="#ai-setup">AI Setup</a> &bull;
+  <a href="#nextcloud-sync">Nextcloud Sync</a> &bull;
   <a href="#configuration">Config</a> &bull;
-  <a href="#themes">Themes</a> &bull;
-  <a href="#architecture">Architecture</a> &bull;
-  <a href="docs/">Documentation</a> &bull;
-  <a href="#contributing">Contributing</a>
-</p>
-
-<p align="center">
-  <img src="assets/hero.gif" alt="Granit in action" width="800">
-  <br>
-  <sub>Recorded with <a href="https://github.com/charmbracelet/vhs">VHS</a> &mdash; see <code>tapes/</code> for source scripts. Fallback: <a href="assets/editor.gif">assets/editor.gif</a></sub>
+  <a href="#architecture">Architecture</a>
 </p>
 
 ---
 
-Granit is a **free, open-source** terminal-native personal knowledge management system built in Go. It reads and writes standard Markdown with YAML frontmatter and `[[wikilinks]]`, so your vault stays **fully compatible** with Obsidian, Logseq, and any other Markdown-based tool.
+Granit is a **free, open-source** personal knowledge management system built in Go. It runs as a full-featured **terminal TUI** or as a native **desktop application** (Wails v2 + Svelte). It reads and writes standard Markdown with YAML frontmatter and `[[wikilinks]]`, keeping your vault **fully compatible** with Obsidian, Logseq, and any other Markdown-based tool.
 
-**No Electron. No browser. No subscriptions. Just your terminal.**
-
-> **Why Granit?** Obsidian is great, but it's Electron-based, closed-source, and its AI features require a paid subscription. Granit gives you a fast, keyboard-driven alternative with **built-in AI** (local or cloud), **Vim keybindings**, **Git integration**, and **100+ features** — all running natively in your terminal at a fraction of the memory footprint.
-
-### At a Glance
+**No Electron. No browser. No subscriptions. Just your terminal -- or a lightweight native window.**
 
 | | |
 |---|---|
-| **220+ source files** | 148,000+ lines of Go powering the TUI |
+| **240+ source files** | 164,000+ lines of Go |
 | **40 themes** | 33 dark + 7 light, plus custom theme editor |
-| **20+ AI features** | Ollama, OpenAI, Claude Code, or offline fallback |
+| **20+ AI features** | Ollama, OpenAI, Nous, Claude Code, or offline fallback |
 | **8 layouts** | Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, Research |
 | **16 core plugins** | Enable/disable modules individually |
-| **Full Vim mode** | Normal, Insert, Visual, Command — ex commands, dot repeat, macros |
-| **400+ tests** | Unit, integration, stress, edge case, and benchmark tests |
+| **Full Vim mode** | Normal, Insert, Visual, Command -- ex commands, dot repeat, macros |
+| **Desktop app** | Wails v2 with Svelte frontend |
 | **Obsidian compatible** | `[[wikilinks]]`, YAML frontmatter, same folder structure |
-| **Dataview queries** | Query notes like a database: TABLE, LIST, TASK with WHERE/SORT |
 | **Zero telemetry** | Your data stays local. Always. |
 
 ---
 
 ## Screenshots
 
-<table>
-<tr>
-<td align="center"><strong>Full Demo</strong></td>
-<td align="center"><strong>Launch Animation</strong></td>
-</tr>
-<tr>
-<td><img src="assets/demo.gif" alt="Granit demo" width="400"></td>
-<td><img src="assets/splash.gif" alt="Launch animation" width="400"></td>
-</tr>
-<tr>
-<td align="center"><strong>Task Manager (Kanban + Calendar)</strong></td>
-<td align="center"><strong>AI Bots (9 Assistants)</strong></td>
-</tr>
-<tr>
-<td><img src="assets/task-manager.gif" alt="Task Manager" width="400"></td>
-<td><img src="assets/ai-features.gif" alt="AI Bots" width="400"></td>
-</tr>
-<tr>
-<td align="center"><strong>Vim Mode (Full Modal Editing)</strong></td>
-<td align="center"><strong>35 Built-in Themes</strong></td>
-</tr>
-<tr>
-<td><img src="assets/vim-mode.gif" alt="Vim Mode" width="400"></td>
-<td><img src="assets/themes.gif" alt="Themes" width="400"></td>
-</tr>
-<tr>
-<td align="center"><strong>Calendar (Month/Week/Year/Agenda)</strong></td>
-<td align="center"><strong>Command Palette (70+ Commands)</strong></td>
-</tr>
-<tr>
-<td><img src="assets/calendar.gif" alt="Calendar View" width="400"></td>
-<td><img src="assets/command-palette.gif" alt="Command Palette" width="400"></td>
-</tr>
-<tr>
-<td align="center"><strong>Note Graph</strong></td>
-<td align="center"><strong>Split Pane View</strong></td>
-</tr>
-<tr>
-<td><img src="assets/graph.gif" alt="Note Graph" width="400"></td>
-<td><img src="assets/split-pane.gif" alt="Split Pane" width="400"></td>
-</tr>
-<tr>
-<td align="center"><strong>Settings Panel</strong></td>
-<td align="center"><strong>3-Panel Editor Layout</strong></td>
-</tr>
-<tr>
-<td><img src="assets/settings.gif" alt="Settings" width="400"></td>
-<td><img src="assets/screenshot-editor.png" alt="Editor layout" width="400"></td>
-</tr>
-</table>
+<p align="center">
+  <img src="assets/hero.gif" alt="Granit TUI" width="800"><br>
+  <sub>Terminal UI -- the desktop app (Wails v2 + Svelte) provides the same features in a native window</sub>
+</p>
 
 ---
 
 ## Features
 
-Granit ships with **100+ features** across 8 categories. For the full breakdown, see the [Feature Guide](docs/FEATURES.md).
+### Editor
 
-### Core Editor
+- Syntax-highlighted Markdown with Chroma (200+ languages)
+- Full Vim modal editing -- Normal, Insert, Visual, Command modes with macros and dot repeat
+- Multi-cursor editing, heading folding, split pane view, visual table editor
+- Find and replace in-file and global across the vault
+- Ghost Writer -- inline AI writing suggestions (Tab to accept)
+- 18 built-in snippets, wikilink `[[` autocomplete, rendered view mode (`Ctrl+E`)
+- Mermaid diagram rendering, auto-close brackets, smart indentation
 
-- **Syntax-highlighted Markdown** with Chroma-powered code blocks (200+ languages, theme-aware)
-- **Vim keybindings** — full modal editing: Normal/Insert/Visual/Command with `hjkl`, `dd`/`yy`/`p`, dot repeat, macro recording
-- **Vim ex commands** — `:w`, `:wq`, `:x`, `:q!`, `:e <file>`, `:s/old/new/g`, `:%s`, `:set wrap`, `:noh`, `:<line>`
-- **Multi-cursor editing** — `Ctrl+D` to add cursors at next occurrence; `Ctrl+Shift+Up/Down` for column cursors
-- **Heading folding** — collapse/expand sections by heading level; fold indicators in gutter; `za`/`zM`/`zR` vim bindings and `Alt+F`
-- **Visual table editor** — edit Markdown tables in a spreadsheet-like interface with scrolling, insert mode, and new table creation
-- **Wikilinks** with `[[` autocomplete popup, fuzzy search, and preview snippets
-- **Backlinks panel** and live **note preview popup** on hover
-- **YAML frontmatter** parsing + structured **frontmatter editor** (tags as pills, booleans as toggles)
-- **Rendered view mode** (`Ctrl+E`) with styled Markdown, Mermaid diagrams, and custom diagram blocks
-- **Find & Replace** in-file (`Ctrl+F`/`Ctrl+H`) and **global search & replace** across all vault files
-- **Ghost Writer** — inline AI writing suggestions (Tab to accept)
-- **18 built-in snippets** (`/date`, `/todo`, `/meeting`, `/table`, and more)
-- **Note encryption** — AES-256-GCM with PBKDF2 for secure GitHub sync
-- **Mermaid diagrams** — flowcharts, sequence, pie, class, Gantt as ASCII art
-- **Custom diagram engine** — 6 types: sequence, tree, movement, timeline, comparison, figure (10 pre-drawn fighting technique illustrations)
-- **Link assistant** — find unlinked mentions and batch-create wikilinks
-- **Spell checking** — aspell/hunspell integration with personal dictionary, inline red highlights, and suggestion overlay
-- **File watcher** — detects external changes (vim, VS Code, git pull) with reload confirmation dialog
-- Auto-close brackets, smart indentation, line numbers
+### Knowledge Management
 
-### AI-Powered Features
+- `[[Wikilinks]]` with autocomplete, backlinks panel, and note graph (`Ctrl+G`)
+- Tag browser (`Ctrl+T`), note outline (`Ctrl+O`), bookmarks and recents (`Ctrl+B`)
+- Smart Connections (TF-IDF similarity), semantic search (AI embeddings)
+- Dataview queries -- SQL-like: `TABLE title, tags FROM "folder" WHERE tags CONTAINS "project" SORT date DESC`
+- Link assistant, Knowledge Graph AI, mind map view, canvas/whiteboard (`Ctrl+W`)
+- Zettelkasten ID generator for linked atomic notes
+- Note versioning timeline with git-powered diffs and snapshot restore
 
-Granit includes **20+ AI features** that work with local models (Ollama), OpenAI, Claude Code, or a zero-setup offline fallback. See the [AI Guide](docs/AI-GUIDE.md) for setup.
+### Task Management
 
-| Feature | Shortcut | Description |
-|---------|----------|-------------|
-| **9 AI Bots** | `Ctrl+R` | Auto-Tagger, Link Suggester, Summarizer, Q&A, Writing Assistant, Title Suggester, Action Items, MOC Generator, Daily Digest |
-| **AI Chat** | Command palette | Ask questions about your entire vault with context-aware answers |
-| **Chat with Note** | Command palette | AI Q&A focused on the current note |
-| **AI Compose** | Command palette | Generate full notes from a topic prompt |
-| **Ghost Writer** | Settings toggle | Inline writing suggestions as you type (Tab to accept) |
-| **Thread Weaver** | Command palette | Synthesize multiple notes into a new essay or summary |
-| **Semantic Search** | Command palette | Meaning-based vault search with cached AI embeddings (incremental, background indexed) |
-| **Knowledge Graph AI** | Command palette | Analyze clusters, hubs, orphans, and get link suggestions |
-| **Auto-Link** | Command palette | Find unlinked mentions of note titles |
-| **Auto-Tag** | Settings toggle | Automatically suggest tags on save |
-| **Smart Connections** | Command palette | TF-IDF cosine similarity to find related notes |
-| **AI Templates** | Command palette | 9 template types with AI generation |
-| **Deep Dive Research** | Command palette | Multi-note research via Claude Code — 4 profiles, 4 source filters |
-| **Vault Analyzer** | Command palette | AI analysis of vault structure and gaps via Claude Code |
-| **Note Enhancer** | Command palette | AI-enhance notes with links and deeper content via Claude Code |
-| **Daily Digest** | Command palette | Weekly review from recent vault activity via Claude Code |
-| **NL Search** | Command palette | Natural language vault search ("find notes about...") |
-| **AI Writing Coach** | Command palette | Clarity/structure/style analysis with soul note persona support |
-| **AI Smart Scheduler** | Command palette | AI-powered optimal daily schedule generation |
-| **Vault Refactor** | Command palette | AI suggestions to reorganize, merge, or retag notes |
-| **Daily Briefing** | Command palette | AI morning summary of notes, tasks, and connections |
-| **Quiz Mode** | Command palette | Auto-generated quizzes from your notes for active recall |
-| **Flashcards** | Command palette | Spaced repetition (SM-2 algorithm) from your notes |
-| **Learning Dashboard** | Command palette | Track study progress, streaks, and mastery |
+- Task Manager (`Ctrl+K`) -- 6 views: Today, Upcoming, All, Done, Calendar, Kanban
+- 5 priority levels, date picker, cross-vault scanning
+- Recurring tasks -- daily, weekly, monthly auto-creation
+- Bulk operations and project-based filtering
+- CLI task add: `granit todo "Ship v2.0" --due friday --priority high --tag release`
 
-### Vault Management
+### Projects and Goals
 
-- **Multi-vault switcher** — switch between vaults without restarting
-- **Vault selector** — pick from recent vaults or create new ones at launch
-- **File tree sidebar** with folder collapse/expand and fuzzy search (`Ctrl+P`)
-- **Full-text search** across all note contents with highlighted results
-- **Tag browser** (`Ctrl+T`) — browse and filter notes by tag
-- **Graph view** (`Ctrl+G`) — visualize note connections
-- **Note outline** (`Ctrl+O`) — heading-based document structure
-- **Bookmarks & recents** (`Ctrl+B`) — star notes and jump to recently opened files
-- **Quick switch** (`Ctrl+J`) — fast file switching
-- **Breadcrumb navigation** — folder path above the editor with click navigation
-- **Daily notes** — create or open today's note with a single command
-- **Vault statistics** — note counts, link density, word counts, activity charts
-- **Trash** — soft-delete with restore from `.granit-trash/`
-- **File watcher** — fsnotify-based instant detection of external changes with reload confirmation dialog
-- **Quick capture** — `granit capture "idea"` or `echo "thought" | granit clip` to append timestamped entries to inbox
-- **First-run tutorial** — 6-page interactive walkthrough on first launch, re-openable from command palette
-- **Lazy vault loading** — on-demand reading for fast startup with 1000+ notes
-- **Workspace layouts** — save and restore named workspace snapshots
+- Project Mode -- 9 categories with dashboards and completion stats
+- Goal tracking with milestones and progress bars
+- Daily standup generator from git commits, modified notes, and completed tasks
 
-### Task Management & Productivity
+### Habits and Productivity
 
-| Feature | Access | Description |
-|---------|--------|-------------|
-| **Task Manager** | `Ctrl+K` | 6 views (Today, Upcoming, All, Done, Calendar, Kanban), 5 priority levels, date picker, cross-vault scanning |
-| **Daily Planner** | Command palette | Time-blocked daily schedule (6am–10pm, 30-min slots) with task/event/habit import |
-| **Plan My Day (AI)** | Command palette | AI-optimized daily schedule with focus order, carry-forward tasks, and personalized advice |
-| **AI Smart Scheduler** | Command palette | Auto-generate optimal daily schedules based on priorities and estimated times |
-| **Clock / Time Tracking** | `granit clock` | Clock in/out with project tags, status bar timer, daily and weekly logs in `Timetracking/` |
-| **Reminders** | `granit remind` | Scheduled reminders with daily/weekdays/once patterns, terminal bell + status bar notifications |
-| **Today Dashboard** | `granit today` | Terminal dashboard: tasks, overdue, upcoming, habits, clocked time — `--json` for scripts |
-| **Daily/Weekly Review** | `granit review` | Review summary with `--week`, `--markdown`, `--save` to `Reviews/` folder |
-| **CLI Task Add** | `granit todo` | Add tasks from CLI with `--due`, `--priority`, `--tag` flags |
-| **Recurring Tasks** | Command palette | Daily/weekly/monthly auto-creating tasks |
-| **Pomodoro Timer** | Command palette | 25-min focus sessions with break cycles |
-| **Focus Sessions** | Command palette | Guided work timer (25/45/60/90 min) with goal, scratchpad, and session log |
-| **Time Tracker** | Command palette | Per-note/task time tracking with pomodoro counting and reports |
-| **Habit & Goal Tracker** | Command palette | Daily habits with 7-day streaks, goals with milestones and progress bars |
-| **Daily Standup** | Command palette | Auto-generate standup from git commits, modified notes, and completed tasks |
-| **Quick Capture** | Command palette | Compact floating input for rapid thought capture to Inbox, daily note, or Tasks |
-| **Journal Prompts** | Command palette | 100+ curated prompts across 8 categories with guided write mode |
-| **Clipboard Manager** | Command palette | 50-entry clipboard history with search, pin, preview, and paste |
-| **Floating Scratchpad** | Command palette | Persistent scratch area that survives across notes and sessions |
+- Habit tracker with 7-day streaks, pomodoro timer, focus sessions (25/45/60/90 min)
+- Daily planner with time-blocked schedule, Daily Jot for quick entries
+- Command palette (`Ctrl+X`) with 70+ commands
+- Scratchpad overlay for quick floating notes (auto-saved)
+- Quick capture, journal prompts (100+), clipboard manager (50-entry history)
+- Clock in/out time tracking with project tags and weekly logs
+- Workspace snapshots -- save and restore named TUI layouts
+- Reminders with daily/weekdays/once scheduling
 
-### Knowledge & Analytics
+### Calendar
 
-- **Smart Connections** — TF-IDF content similarity finds semantically related notes with shared keyword display
-- **Writing Statistics** — word counts, 14-day activity chart, writing streaks, top notes by length
-- **Mind Map View** — ASCII mind map from note headings and wikilinks (two modes: headings + links)
-- **Dataview Queries** — SQL-like query language: `TABLE title, tags FROM "folder" WHERE tags CONTAINS "project" SORT date DESC`
-- **Note Versioning Timeline** — git history per note with colored diff viewer and snapshot restore
-- **Note Preview Popup** — floating preview of linked notes with scroll and formatting
-- **Vault Dashboard** — home screen with today's tasks, recent notes, vault stats, activity chart
-- **Enhanced Calendar** (`Ctrl+L`) — month/week/year view, 14-day agenda, task badges, quick event add
-- **Project Mode** — project management with 9 categories, dashboards, completion stats
+- Month, week, 3-day, agenda, and year views (`Ctrl+L`)
+- Calendar sidebar panel
+- Task badges on calendar dates
+- Quick event creation from calendar
 
-### Language Learning
+### AI Integration
 
-- **Vocabulary tracker** with 9 languages and spaced repetition practice
-- **Grammar notes** with templates
-- **Progress dashboard** with streak tracking and level distribution charts
-- Stores everything in `Languages/` folder as Markdown
+- **9 AI Bots** (`Ctrl+R`) -- tagger, linker, summarizer, Q&A, writing assistant, titles, action items, MOC generator, daily digest
+- AI Chat, AI Compose, Thread Weaver, Ghost Writer, Deep Dive Research (Claude Code)
+- AI Writing Coach, AI Smart Scheduler, Vault Refactor, Daily Briefing
+- Quiz Mode and Flashcards (SM-2 spaced repetition) for active recall
+- Providers: **Nous**, **Ollama**, **OpenAI**, or zero-setup offline fallback
 
-### Git Integration
+### Sync
 
-Built-in git overlay with status, log, and diff views:
+- **Nextcloud** WebDAV sync with auto-sync option
+- **Git integration** -- built-in overlay with status, log, diff, commit, push, pull
+- `granit sync` -- pull, commit, push in one CLI command
+- Per-note git history with colored diffs and version restore
 
-- **Status** — modified, added, deleted, and untracked files
-- **Log** — recent commit history with colored hashes
-- **Diff** — syntax-highlighted diff of unstaged changes
-- Quick actions: **commit** (c), **push** (p), **pull** (P), **refresh** (r)
-- **Auto-sync** — optional auto commit+push on save, pull on open
-- **Per-note git history** — view commit history, browse colored diffs, restore previous versions
-- **CLI sync** — `granit sync` pulls (rebase), commits, and pushes in one command with auto-conflict resolution
+### Study and Language Learning
 
-### Export & Publishing
+- Flashcards with SM-2 spaced repetition, auto-generated quizzes
+- Language learning -- vocabulary tracker for 9 languages with practice mode
+- Learning dashboard with streaks, mastery tracking, and level distribution
 
-- **Export to HTML** — styled document with CSS
-- **Export to Plain Text** — Markdown stripped to plain text
-- **Export to PDF** — via pandoc (if installed)
-- **Bulk HTML export** — all vault notes at once
-- **Static site publisher** — export vault as a complete HTML website with search, tag pages, and wikilink resolution
-- **Blog publisher** — publish to **Medium** (draft/public/unlisted) or **GitHub** (push to any repo/branch) with persistent token storage and retry logic
+### Import, Export, and Publishing
 
-### Data Safety
+- Import from other note formats
+- Trash/recycle bin with restore for deleted notes
+- Export to HTML, plain text, or PDF (via pandoc); bulk export entire vault
+- Static site publisher with search, tag pages, and wikilink resolution
+- Blog publisher -- Medium and GitHub with token persistence
+- Note encryption -- AES-256-GCM with PBKDF2
 
-- **Atomic file writes** — saves use temp file + rename to prevent corruption on crash or power loss
-- **Save on quit** — unsaved changes are automatically saved before exit (including splash screen dismiss)
-- **Signal handling** — SIGTERM and SIGHUP trigger graceful save-and-quit instead of data loss
-- **Clipboard hardening** — 3-second timeout on clipboard operations, rune-safe text handling, path traversal protection
-- **Vault backup** — `granit backup` creates timestamped zip archives with `--restore` support
+### Desktop App
 
-### Extensibility
-
-- **Plugin system** — language-agnostic scripts with JSON manifests and 6 lifecycle hooks. See [Plugin Guide](docs/PLUGINS.md).
-- **Lua scripting** — full API access (`granit.read_note`, `granit.write_note`, etc.)
-- **Core plugins** — enable/disable 16 built-in modules individually via Settings > Core Plugins
-- **Dataview queries** — SQL-like query language with TABLE/LIST/TASK modes, WHERE/SORT/LIMIT, embedded in notes or interactive overlay
-- **Obsidian import** — import settings from existing `.obsidian/` directories
-- **Canvas / Whiteboard** (`Ctrl+W`) — visual note arrangement with connections and colors
-- **Split panes** — view two notes side by side
-
-### 35 Themes, Custom Themes & 4 Icon Sets
-
-Instantly switch between **29 dark** and **6 light** built-in themes from settings. Create your own with the **Theme Editor** — live-edit all 16 color roles with hex values, preview changes instantly, and save/export custom themes as JSON. Choose from **Unicode**, **Nerd Font**, **Emoji**, or **ASCII** icon sets. See all themes in the [Theme Reference](docs/THEMES.md).
-
-### 8 Panel Layouts
-
-| Layout | Panels | Description |
-|--------|--------|-------------|
-| **Default** | 3 | Sidebar + editor + backlinks |
-| **Writer** | 2 | Sidebar + editor |
-| **Minimal** | 1 | Editor only |
-| **Reading** | 2 | Editor + backlinks (wide reading) |
-| **Dashboard** | 4 | Sidebar + editor + outline + backlinks |
-| **Zen** | 1 | Centered editor, 80-char max, no chrome |
-| **Taskboard** | 3 | Sidebar + editor + task summary |
-| **Research** | 3 | Sidebar + editor + notes/backlinks panel |
-
-### Image Manager
-
-Browse, preview, insert, and delete images in your vault. Terminal preview uses half-block character rendering for truecolor terminals.
-
-### 10+ Note Templates
-
-Create notes from built-in templates: Standard, Meeting Notes, Project Plan, Weekly Review, Book Notes, Decision Record, Journal Entry, Research Note, Learning/Zettelkasten, and more. **User-defined templates** — drop `.md` files into your vault's `templates/` folder and they appear alongside built-in templates.
+- Native desktop application built with **Wails v2**
+- **Svelte** frontend with reactive UI components
+- Full feature parity with the TUI -- same Go backend
+- File tree sidebar, editor, overlays, and keyboard shortcuts
 
 ---
 
@@ -313,13 +160,11 @@ Create notes from built-in templates: Standard, Meeting Notes, Project Plan, Wee
 
 ### Requirements
 
-- **Go 1.23+** ([install Go](https://go.dev/doc/install))
+- **Go 1.24+** ([install Go](https://go.dev/doc/install))
 - **Git** (for cloning and git features)
-- Linux or macOS (Windows support planned)
+- Linux or macOS
 
-For detailed instructions, see the [Installation Guide](docs/INSTALLATION.md).
-
-### Quick Install (Recommended)
+### TUI (Terminal)
 
 ```bash
 git clone https://github.com/artaeon/granit.git
@@ -327,191 +172,163 @@ cd granit
 go install ./cmd/granit/
 ```
 
-This installs the `granit` binary to `~/go/bin/`. Make sure it's in your PATH:
+Make sure `~/go/bin` is in your PATH:
 
 ```bash
-# Add to ~/.bashrc or ~/.zshrc (one-time setup):
 export PATH="$HOME/go/bin:$PATH"
 ```
 
-### Arch Linux (AUR)
+### Desktop App (Wails)
 
 ```bash
-# Stable release
-yay -S granit
+# Install Wails CLI
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-# Latest git
-yay -S granit-git
+# Build the desktop app
+cd granit/desktop
+wails build
 ```
 
-### System-wide Install
-
-```bash
-git clone https://github.com/artaeon/granit.git
-cd granit
-go build -o granit ./cmd/granit
-sudo mv granit /usr/local/bin/
-```
-
-### Go Install (Remote)
-
-```bash
-go install github.com/artaeon/granit/cmd/granit@latest
-```
-
-### Updating
-
-```bash
-cd granit
-git pull
-go install ./cmd/granit/
-```
+The built binary will be in `desktop/build/bin/`.
 
 ### Optional Dependencies
 
-| Tool | Purpose | Required? |
-|------|---------|-----------|
-| **Ollama** | Local AI (recommended) | No — local fallback works offline |
-| **aspell** or **hunspell** | Spell checking | No |
-| **pandoc** | PDF export | No |
-| **xclip**, **xsel**, or **wl-copy** | System clipboard (Linux) | No — degrades gracefully |
-| **Claude Code** | Deep Dive AI research agent | No — only for research feature |
-| **Git** | Version control features | No — git features are optional |
+| Tool | Purpose |
+|------|---------|
+| **Ollama** | Local AI models |
+| **aspell** / **hunspell** | Spell checking |
+| **pandoc** | PDF export |
+| **xclip** / **wl-copy** | System clipboard (Linux) |
+| **Claude Code** | Deep Dive research agent |
 
 ---
 
 ## Quick Start
 
 ```bash
-# Open the vault selector (pick from recent vaults or create new):
+# Launch vault selector:
 granit
 
 # Open a specific vault:
 granit ~/Notes
 
-# Create/open today's daily note:
+# Create today's daily note:
 granit daily ~/Notes
 
-# Today's terminal dashboard (tasks, habits, time tracking):
-granit today ~/Notes
-
-# Daily or weekly review summary:
-granit review ~/Notes
-granit review ~/Notes --week --save
-
-# Add a task from the command line:
-granit todo "Ship v2.0" --due friday --priority high --tag release
-
-# Quick capture a thought to inbox:
+# Quick capture a thought:
 granit capture "Remember to review PR #42"
-
-# Pipe content to inbox:
-echo "Meeting notes: discussed Q3 roadmap" | granit clip
-
-# Time tracking:
-granit clock in --project "granit"
-granit clock status
-granit clock out
-granit clock log --week
-
-# Set a reminder:
-granit remind "Stand up" --at 09:00 --weekdays
-granit remind list
-
-# Git sync (pull, commit, push in one command):
-granit sync ~/Notes -m "Evening sync"
-
-# Search vault content:
-granit search "meeting notes" ~/Notes
-
-# Initialize a new vault:
-granit init ~/NewVault
-
-# Backup and restore:
-granit backup ~/Notes --output ~/backups/
-granit backup --restore ~/backups/notes-2026-03-12.zip
-
-# Serve vault as read-only website:
-granit serve ~/Notes --port 8080
-
-# Plugin management:
-granit plugin list
-granit plugin create my-plugin
-
-# Shell completions (bash, zsh, fish):
-granit completion bash >> ~/.bashrc
-
-# Scan a vault and print stats:
-granit scan ~/Notes
-
-# List all known vaults:
-granit list
-
-# Show configuration paths and values:
-granit config
-
-# View the man page:
-granit man | man -l -
-
-# Print version:
-granit version
-```
-
-### Try the Demo Vault
-
-Granit ships with a demo vault showcasing all major features — 18 interconnected notes with wikilinks, tasks, code blocks, Mermaid diagrams, and project management:
-
-```bash
-granit demo-vault
 ```
 
 ### First Steps
 
-1. Run `granit` in any directory with `.md` files — or create a new vault from the selector.
+1. Run `granit` in any directory with `.md` files, or create a new vault from the selector.
 2. Use `Tab` or `F1`/`F2`/`F3` to switch between sidebar, editor, and backlinks.
-3. Press `Ctrl+N` to create a new note (pick from 10+ templates).
-4. Type `[[` in the editor to start a wikilink — autocomplete suggests matching notes.
-5. Press `Ctrl+E` to toggle between edit and rendered view mode.
-6. Press `Ctrl+S` to save. Enable auto-save in settings (`Ctrl+,`).
-7. Press `Ctrl+X` to open the **command palette** — access all 70+ commands from one place.
-8. Press `Ctrl+K` to open the **task manager** — manage tasks with Kanban board and priorities.
-9. Press `Ctrl+1`–`Ctrl+9` to switch between open tabs. Tabs persist across sessions.
+3. Press `Ctrl+N` to create a new note from 10+ templates.
+4. Type `[[` in the editor to start a wikilink with autocomplete.
+5. Press `Ctrl+E` to toggle between edit and rendered view.
+6. Press `Ctrl+X` to open the command palette -- access 70+ commands.
+7. Press `Ctrl+K` to open the task manager with Kanban board.
 
 ---
 
-## AI Features
+## CLI Commands
 
-Granit supports three AI providers. The **local** provider works out of the box with no setup. For the full guide, see [AI Guide](docs/AI-GUIDE.md).
+| Command | Description |
+|---------|-------------|
+| `granit` | Launch vault selector |
+| `granit <path>` | Open a vault directly |
+| `granit init [path]` | Initialize a new vault |
+| `granit daily [path]` | Create/open today's daily note |
+| `granit today [path]` | Print today's dashboard (`--json`) |
+| `granit review [path]` | Daily review (`--week`, `--markdown`, `--save`) |
+| `granit search <query>` | Search vault content (`--regex`, `--json`) |
+| `granit todo <text>` | Add task (`--due`, `--priority`, `--tag`) |
+| `granit capture <text>` | Quick-capture to inbox.md |
+| `granit sync [path]` | Pull, commit, push (`--dry-run`, `-m "msg"`) |
+| `granit clock in/out/log` | Time tracking with project tags |
+| `granit remind "text"` | Set reminders (`--at HH:MM`, `--daily`) |
+| `granit serve [path]` | Serve vault as read-only website |
+| `granit list [path]` | List vault notes (`--json`, `--paths`, `--tags`) |
+| `granit query <filter>` | Query notes by tag, folder, or frontmatter (`--json`) |
+| `granit import <source>` | Import notes from other formats (`--from`) |
+| `granit export [path]` | Export to HTML, text, or JSON |
+| `granit backup [path]` | Create timestamped zip backup |
+| `granit plugin list` | Plugin management |
+| `granit config` | Show configuration |
+| `granit man` | Generate man page |
+| `granit completion bash` | Shell completions (bash/zsh/fish) |
 
-### Ollama (Recommended for Local AI)
+Run `granit help` for the full command reference.
 
-Granit includes a **built-in setup wizard**. Open settings (`Ctrl+,`), select **"Setup Ollama"**, and press Enter. The wizard installs Ollama and pulls your chosen model automatically.
+---
 
-Or set up manually:
+## Keyboard Shortcuts
+
+### Navigation
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `Shift+Tab` | Cycle between panels |
+| `F1` (`Alt+1`) / `F2` (`Alt+2`) / `F3` (`Alt+3`) | Focus sidebar / editor / backlinks |
+| `F4` | Rename current note |
+| `F5` (`Alt+?`) | Help overlay |
+| `Esc` | Close overlay / return to sidebar |
+| `Ctrl+P` | Quick open (fuzzy file search) |
+| `Ctrl+J` | Quick switch files |
+| `Ctrl+N` | Create new note |
+| `Ctrl+1`--`Ctrl+9` | Switch to tab by number |
+
+### Editor
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+S` | Save |
+| `Ctrl+E` | Toggle view/edit mode |
+| `Ctrl+U` / `Ctrl+Y` | Undo / Redo |
+| `Ctrl+F` / `Ctrl+H` | Find / Find and replace |
+| `Ctrl+D` | Multi-cursor: select word / next occurrence |
+| `Alt+F` | Toggle fold at cursor |
+
+### Views and Tools
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+X` | Command palette |
+| `Ctrl+K` | Task manager |
+| `Ctrl+G` | Note graph |
+| `Ctrl+T` | Tag browser |
+| `Ctrl+O` | Note outline |
+| `Ctrl+B` | Bookmarks and recent |
+| `Ctrl+L` | Calendar |
+| `Ctrl+R` | AI bots |
+| `Ctrl+W` | Canvas / whiteboard |
+| `Ctrl+Z` | Focus / zen mode |
+| `Ctrl+,` | Settings |
+| `Ctrl+Q` | Quit |
+
+### Vim Mode
+
+When enabled, the editor supports full modal keybindings: `hjkl` movement, `dd`/`yy`/`p`, `w`/`b`/`e` word motion, `i`/`a`/`o` insert, `.` dot repeat, `q`+register macros, visual selection, and ex commands (`:w`, `:wq`, `:s/old/new/g`, `:%s`, `:set wrap`, `:{line}`).
+
+---
+
+## AI Setup
+
+Granit supports four AI providers. The **local** fallback works offline with no setup.
+
+### Ollama (Recommended)
 
 ```bash
-# Install Ollama
 curl -fsSL https://ollama.ai/install.sh | sh
-
-# Pull a model
-ollama pull qwen2.5:0.5b
-
-# Start the server
+ollama pull qwen2.5:0.5b   # 4 GB RAM -- use larger models with more RAM
 ollama serve
 ```
 
-#### Model Recommendations
-
-| RAM | Model | Quality |
-|-----|-------|---------|
-| 4 GB | `qwen2.5:0.5b` | Fast, lightweight |
-| 8 GB | `qwen2.5:1.5b` or `phi3:mini` | Good balance |
-| 16 GB | `qwen2.5:3b` or `phi3.5:3.8b` | High quality |
-| 32 GB+ | `llama3.2` or `mistral` | Best quality |
-
-When Granit exits, it automatically unloads the Ollama model to free memory.
+Or use the built-in wizard: Settings (`Ctrl+,`) > Setup Ollama.
 
 ### OpenAI
+
+Set in `~/.config/granit/config.json`:
 
 ```json
 {
@@ -521,408 +338,84 @@ When Granit exits, it automatically unloads the Ollama model to free memory.
 }
 ```
 
-Available models: `gpt-4o-mini`, `gpt-4o`, `gpt-4.1-mini`, `gpt-4.1-nano`.
+### Nous (Local Server)
 
-### Claude Code (Deep Dive Research)
+```json
+{
+  "ai_provider": "nous",
+  "nous_url": "http://localhost:3333",
+  "nous_api_key": ""
+}
+```
 
-The **Deep Dive Research** feature uses [Claude Code](https://docs.anthropic.com/en/docs/claude-code) as an AI-powered research agent. It searches the web, creates 5–25 interconnected notes in a `Research/` folder with a hub index note, adds frontmatter/tags/wikilinks automatically. Three output formats: **Zettelkasten**, **Outline**, or **Study Guide**. Research runs in the background with a live status indicator.
+### Claude Code (Research)
 
-Advanced integration:
-- **CLAUDE.md awareness** — project context loaded into all research prompts
-- **Soul note persona** — `.granit/soul-note.md` shapes the research writing tone
-- **10-minute timeout** with Esc cancellation
-- **4 research profiles**: General, Academic, Technical, Creative
-- **4 source filters**: Any, Web, Docs, Papers
-
-**Requires**: Claude Code installed and authenticated (`claude` in PATH).
-
-### Local Fallback
-
-The default `"local"` provider uses keyword matching, stopword filtering, and topic detection — no network calls, no API keys, works offline.
+The Deep Dive Research feature uses Claude Code as a research agent. Requires `claude` in PATH.
 
 ---
 
-## Keyboard Shortcuts
+## Nextcloud Sync
 
-For the complete reference, see [Keybindings Guide](docs/KEYBINDINGS.md).
+Granit can sync your vault via Nextcloud WebDAV.
 
-### Navigation
+Configure in `~/.config/granit/config.json` or via Settings (`Ctrl+,`):
 
-| Key | Action |
-|-----|--------|
-| `Tab` / `Shift+Tab` | Cycle between panels |
-| `F1` / `F2` / `F3` | Focus sidebar / editor / backlinks |
-| `Alt+Left` / `Alt+Right` | Navigate back / forward in history |
-| `Esc` | Return to sidebar / close overlay |
-| `j` / `k` / Arrows | Navigate up/down |
-| `Enter` | Open selected file or link |
+```json
+{
+  "nextcloud_url": "https://your-nextcloud.example.com",
+  "nextcloud_user": "username",
+  "nextcloud_pass": "app-password",
+  "nextcloud_path": "Notes",
+  "nextcloud_auto_sync": false
+}
+```
 
-### File Operations
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+P` | Quick open (fuzzy search) |
-| `Ctrl+N` | Create new note (template picker) |
-| `Ctrl+S` | Save current note |
-| `Ctrl+V` | Paste from system clipboard |
-| `F4` | Rename current note |
-| `Ctrl+X` | Command palette (all commands) |
-
-### Editor
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+E` | Toggle view/edit mode |
-| `Ctrl+U` / `Ctrl+Y` | Undo / Redo |
-| `Ctrl+F` | Find in file |
-| `Ctrl+H` | Find and replace |
-| `Ctrl+D` | Select word / multi-cursor |
-| `Ctrl+K` | Task manager |
-| `Alt+F` | Toggle fold at cursor |
-| `[[` | Trigger wikilink autocomplete |
-| `Tab` | Accept ghost writer suggestion / indent |
-
-### Views & Tools
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+G` | Note graph |
-| `Ctrl+T` | Tag browser |
-| `Ctrl+O` | Note outline |
-| `Ctrl+B` | Bookmarks & recent |
-| `Ctrl+J` | Quick switch files |
-| `Ctrl+W` | Canvas / whiteboard |
-| `Ctrl+L` | Calendar view |
-| `Ctrl+R` | AI bots |
-| `Ctrl+Z` | Focus / zen mode |
-| `Ctrl+,` | Settings |
-| `F5` | Help / keyboard shortcuts |
-| `Ctrl+Q` | Quit |
-
-### Vim Mode
-
-When enabled (settings or command palette), the editor uses full modal keybindings:
-
-| Mode | Keys |
-|------|------|
-| **Normal** | `h`/`j`/`k`/`l`, `w`/`b`/`e`, `0`/`$`, `gg`/`G`, `dd`/`yy`/`p`, `u`/`Ctrl+R`, `i`/`a`/`o`/`O`, `.` repeat, `za`/`zM`/`zR` fold |
-| **Insert** | All keys pass through; `Esc` returns to Normal |
-| **Visual** | Movement extends selection; `d` deletes, `y` yanks |
-| **Command** | `:w` save, `:q` quit, `:wq`/`:x` save+quit, `:q!` force quit, `:e <file>` open, `:s/old/new/g` substitute, `:%s` global substitute, `:set wrap`/`:set number`, `:noh` clear search, `:{n}` go to line |
-| **Macros** | `q`+register to record, `q` to stop, `@`+register to replay, `@@` for last |
+Generate an app password in Nextcloud under Settings > Security > Devices & sessions. Set `nextcloud_auto_sync` to `true` to sync automatically on save and open.
 
 ---
 
 ## Configuration
 
-Granit uses a layered JSON config. For all options, see the [Configuration Reference](docs/CONFIGURATION.md).
+Granit uses layered JSON configuration. Per-vault settings override global settings.
 
 | Scope | Path |
 |-------|------|
 | Global | `~/.config/granit/config.json` |
 | Per-vault | `<vault>/.granit.json` |
-| Vault list | `~/.config/granit/vaults.json` |
+| Vault registry | `~/.config/granit/vaults.json` |
+| Plugins | `~/.config/granit/plugins/` or `<vault>/.granit/plugins/` |
 
-Per-vault settings override global. All settings can be changed from the built-in settings panel (`Ctrl+,`).
+All settings are editable from the built-in settings panel (`Ctrl+,`).
 
-<details>
-<summary><strong>All Configuration Options</strong></summary>
+Key options: `theme` (40 themes), `layout` (8 layouts), `vim_mode`, `auto_save`, `ai_provider` (`local`/`ollama`/`openai`/`nous`), `ghost_writer`, `auto_tag`, `git_auto_sync`, `spell_check`, `icon_theme` (`unicode`/`nerd`/`emoji`/`ascii`), `pomodoro_goal`, `nextcloud_auto_sync`.
 
-```json
-{
-  "editor": {
-    "tab_size": 4,
-    "insert_tabs": false,
-    "auto_indent": true
-  },
-  "theme": "catppuccin-mocha",
-  "icon_theme": "unicode",
-  "layout": "default",
-  "sidebar_position": "left",
-  "show_icons": true,
-  "show_help": true,
-  "show_splash": true,
-  "compact_mode": false,
-  "line_numbers": true,
-  "word_wrap": false,
-  "highlight_current_line": true,
-  "auto_close_brackets": true,
-  "auto_save": false,
-  "auto_refresh": true,
-  "confirm_delete": true,
-  "default_view_mode": false,
-  "vim_mode": false,
-  "ghost_writer": false,
-  "auto_tag": false,
-  "spell_check": false,
-  "semantic_search_enabled": false,
-  "daily_notes_folder": "",
-  "daily_note_template": "",
-  "git_auto_sync": false,
-  "ai_provider": "local",
-  "ollama_model": "qwen2.5:0.5b",
-  "ollama_url": "http://localhost:11434",
-  "openai_key": "",
-  "openai_model": "gpt-4o-mini"
-}
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `theme` | `catppuccin-mocha` | Color theme (35 available) |
-| `icon_theme` | `unicode` | `unicode`, `nerd`, `emoji`, or `ascii` |
-| `layout` | `default` | `default`, `writer`, `minimal`, `reading`, `dashboard`, `zen`, `taskboard`, `research` |
-| `vim_mode` | `false` | Enable Vim-style modal editing |
-| `ghost_writer` | `false` | Enable inline AI writing suggestions |
-| `auto_tag` | `false` | Auto-suggest tags on save |
-| `git_auto_sync` | `false` | Auto commit+push on save, pull on open |
-| `spell_check` | `false` | Enable inline spell checking with red highlights |
-| `semantic_search_enabled` | `false` | Enable background embedding index for semantic search |
-| `ai_provider` | `local` | `local`, `ollama`, or `openai` |
-
-</details>
-
----
-
-## Themes
-
-### Dark Themes (29)
-
-| Theme | Description |
-|-------|-------------|
-| `catppuccin-mocha` | Warm, pastel dark (default) |
-| `catppuccin-frappe` | Mid-tone Catppuccin |
-| `catppuccin-macchiato` | Deep Catppuccin |
-| `tokyo-night` | Inspired by Tokyo at night |
-| `gruvbox-dark` | Retro, earthy warm tones |
-| `nord` | Arctic, cool blue palette |
-| `dracula` | Classic dark with vivid accents |
-| `solarized-dark` | Ethan Schoonover's dark palette |
-| `rose-pine` | Muted, elegant dark |
-| `everforest-dark` | Nature-inspired greens |
-| `kanagawa` | Inspired by Hokusai |
-| `one-dark` | Atom's iconic dark theme |
-| `github-dark` | GitHub dark mode |
-| `ayu-dark` | Minimal, deep dark |
-| `palenight` | Material Design dark |
-| `synthwave-84` | Neon retro synthwave |
-| `nightfox` | Cool, refined dark |
-| `vesper` | Warm amber on deep brown |
-| `poimandres` | Cool teal and pastels |
-| `moonlight` | Soft blue-purple moonlit |
-| `vitesse-dark` | Minimal, modern green |
-| `oxocarbon` | IBM Carbon-inspired |
-| `matrix` | Green on black hacker aesthetic |
-| `cobalt2` | Deep blue with gold accents |
-| `monokai-pro` | Warm dark with vivid syntax colors |
-| `horizon` | Purple and teal gradients |
-| `zenburn` | Low-contrast earthy tones |
-| `iceberg` | Cool blue-gray and frost |
-| `amber` | Retro CRT amber monochrome |
-
-### Light Themes (6)
-
-| Theme | Description |
-|-------|-------------|
-| `catppuccin-latte` | Warm, pastel light |
-| `solarized-light` | Ethan Schoonover's light |
-| `rose-pine-dawn` | Elegant, warm light |
-| `github-light` | GitHub light mode |
-| `ayu-light` | Clean, bright light |
-| `min-light` | Ultra-minimal bright |
-
-Create custom themes with the built-in **Theme Editor** — live-edit 16 color roles and export as JSON.
+Environment variables: `GRANIT_VAULT` (default vault path), `EDITOR` (external editor).
 
 ---
 
 ## Architecture
 
+Granit is a Go monolith with two frontends sharing the same core packages.
+
 ```
-granit/
-  cmd/granit/
-    main.go                 CLI entry point, vault selector, subcommands
-    manpage.go              Roff man page generator (granit man)
-    today.go                Today dashboard (tasks, habits, time)
-    clock.go                Clock in/out time tracking
-    remind.go               Reminder management
-    sync.go                 Git sync (pull, commit, push)
-  internal/
-    config/
-      config.go             JSON configuration (global + per-vault)
-      vaults.go             Vault list persistence
-      import.go             Obsidian config importer
-    vault/
-      vault.go              Vault scanning with lazy loading
-      parser.go             Markdown/frontmatter/wikilink parser
-      index.go              Backlink and link index
-    tui/                    178 source files, 134k+ lines
-      app.go                Main Bubble Tea model
-      editor.go             Text editor with multi-cursor
-      syntaxhl.go           Chroma-based code block highlighting (200+ languages)
-      highlight.go          Syntax highlighting engine with theme-aware colors
-      watcher.go            fsnotify file watcher with debounce
-      tutorial.go           First-run 6-page tutorial overlay
-      spellengine.go        Spell check engine (aspell/hunspell/builtin)
-      spellcheck.go         Spell check overlay with suggestions
-      dataview_parser.go    Dataview SQL-like query parser
-      dataview_engine.go    Dataview query execution engine
-      renderer.go           Markdown rendering for view mode
-      sidebar.go            File tree sidebar
-      statusbar.go          Status bar with AI, pomodoro, and task indicators
-      styles.go             Global style definitions
-      themes.go             35 built-in color themes
-      customtheme.go        Custom theme JSON loading/saving
-      themeeditor.go        Live theme editor overlay
-      layouts.go            8 panel layout definitions
-      command.go            Command palette (70+ actions)
-      vim.go                Vim modal editing
-      folding.go            Collapsible heading/code fold state
-      footnotes.go          Footnote parsing and rendering
-      encryption.go         AES-256-GCM note encryption
-      frontmatteredit.go    Structured frontmatter property editor
-      backlinkpreview.go    Live wikilink hover preview
-      githistory.go         Per-note git history with diff/restore
-      workspace.go          Named workspace layout persistence
-      timeline.go           Chronological note timeline
-      vaultswitch.go        In-app multi-vault switcher
-      vaultselector.go      Vault selector full-screen UI
-      bots.go               AI bot system (9 bots)
-      aichat.go             Vault-wide AI chat
-      composer.go           AI note composer
-      ghostwriter.go        Inline AI writing suggestions
-      threadweaver.go       Multi-note AI synthesis
-      autotag.go            Auto-tagger + note chat
-      embeddings.go         Semantic search with AI embeddings
-      knowledgegraph.go     Knowledge graph analysis
-      vaultrefactor.go      AI vault reorganization
-      dailybriefing.go      AI morning briefing generator
-      similarity.go         TF-IDF note similarity
-      tableeditor.go        Visual markdown table editor
-      mermaid.go            Mermaid diagram ASCII renderer
-      flashcards.go         Spaced repetition (SM-2)
-      quizmode.go           Auto-generated quizzes
-      learndash.go          Learning dashboard
-      git.go                Git integration overlay
-      export.go             Note export (HTML, text, PDF)
-      publish.go            Static site publisher
-      plugins.go            Plugin system + registry
-      lua.go                Lua scripting engine
-      calendar.go           Calendar view (month/week/agenda)
-      canvas.go             Visual whiteboard
-      contentsearch.go      Full-text vault search
-      imageview.go          Image manager + terminal preview
-      research.go           Deep Dive AI research + vault analyzer + note enhancer + daily digest
-      aitemplates.go        AI template generator (9 types)
-      languagelearn.go      Language learning (vocabulary, practice, grammar)
-      habits.go             Habit & goal tracker
-      focussession.go       Focus sessions (timer, scratchpad, log)
-      standup.go            Daily standup generator
-      notehistory.go        Note versioning timeline
-      smartconnect.go       Smart connections (TF-IDF similarity)
-      writingstats.go       Writing statistics
-      quickcapture.go       Quick capture (floating input)
-      dashboard.go          Vault dashboard home screen
-      mindmap.go            Mind map view (ASCII tree)
-      journalprompts.go     Daily journal prompts (100+ prompts)
-      clipmanager.go        Clipboard manager (50-entry history)
-      clipboard.go          System clipboard + Web Clipper
-      dailyplanner.go       Daily planner (time-blocked schedule)
-      planmyday.go          AI Plan My Day optimizer
-      clockin.go            Clock in/out + reminder system
-      aischeduler.go        AI smart scheduler
-      recurringtasks.go     Recurring tasks (auto-creation)
-      notepreview.go        Note preview popup
-      scratchpad.go         Floating scratchpad
-      projectmode.go        Project mode (categories, dashboards)
-      nlsearch.go           Natural language search
-      writingcoach.go       AI writing coach
-      dataview.go           Dataview queries
-      timetracker.go        Time tracker + pomodoro stats
-      taskmanager.go        Task manager (kanban, calendar, priorities)
-      linkassist.go         Unlinked mention finder
-      blogpublish.go        Blog publisher (Medium + GitHub)
-      breadcrumb.go         Breadcrumb navigation + pinned tabs
-      diagrams.go           Custom diagram engine (6 types)
-      globalreplace.go      Global search & replace
-      ... and more
-  .github/
-    workflows/
-      ci.yml                Build + vet + test on every push/PR
-      release.yml           GoReleaser on tag push (v*)
-      auto-release.yml      Auto-tag and release on main push
+cmd/granit/        CLI entry point and subcommands
+internal/config/   JSON configuration (global + per-vault)
+internal/vault/    Vault scanning, Markdown parser, backlink index
+internal/tui/      Terminal UI -- 188 source files on Bubble Tea
+desktop/           Wails v2 desktop app (Go API + Svelte frontend)
 ```
 
-Built on [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss) by [Charm](https://charm.sh/). For the full technical overview, see [Architecture Guide](docs/ARCHITECTURE.md).
-
----
-
-## Contributing
-
-Contributions are welcome! Granit is free and open-source software.
-
-### Build & Run
-
-```bash
-git clone https://github.com/artaeon/granit.git
-cd granit
-go build -o granit ./cmd/granit
-./granit ~/your-vault
-```
-
-### Development Guidelines
-
-- All TUI components live in `internal/tui/` and follow Bubble Tea's `Model`/`Update`/`View` pattern
-- Overlays use value receivers for `Update` and `View`, helper components use pointer receivers
-- Configuration goes in `internal/config/config.go` + `internal/tui/settings.go`
-- Themes are `Theme` structs in `internal/tui/themes.go`
-- Keep dependencies minimal (currently: Bubble Tea, Lip Gloss, GopherLua, Chroma, fsnotify)
-- See the [Architecture Guide](docs/ARCHITECTURE.md) for detailed conventions
-
-### Submitting Changes
-
-1. Fork the repository and create a feature branch
-2. Make your changes and verify `go build ./...` and `go vet ./...` pass
-3. Open a pull request with a clear description
-
-### Reporting Issues
-
-Found a bug or have a feature request? [Open an issue](https://github.com/artaeon/granit/issues).
-
----
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [Feature Guide](docs/FEATURES.md) | Exhaustive feature reference with usage instructions |
-| [Installation Guide](docs/INSTALLATION.md) | Detailed installation for all platforms |
-| [AI Guide](docs/AI-GUIDE.md) | AI provider setup and feature documentation |
-| [Keybindings](docs/KEYBINDINGS.md) | Complete keyboard shortcut reference |
-| [Architecture](docs/ARCHITECTURE.md) | Technical overview and codebase structure |
-| [Configuration](docs/CONFIGURATION.md) | All config options with defaults |
-| [Plugin Guide](docs/PLUGINS.md) | Plugin development and Lua scripting |
-| [Theme Reference](docs/THEMES.md) | All 40 themes and custom theme creation |
-| [Changelog](CHANGELOG.md) | Version history and release notes |
+The **TUI** is built on [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss). The **desktop app** uses [Wails v2](https://wails.io/) with a Svelte frontend calling the same Go backend via bindings. A **Lua scripting engine** and **plugin system** (16 core plugins, language-agnostic scripts) provide extensibility.
 
 ---
 
 ## License
 
-Granit is released under the [MIT License](LICENSE). Free to use, modify, and distribute.
-
----
-
-## Acknowledgments
-
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea) & [Lip Gloss](https://github.com/charmbracelet/lipgloss) — the terminal UI framework
-- [Charm](https://charm.sh/) — the team behind the Go terminal ecosystem
-- [Obsidian](https://obsidian.md/) — inspiration for vault-based knowledge management
-- [Catppuccin](https://github.com/catppuccin/catppuccin) — the default color palette
-- [GopherLua](https://github.com/yuin/gopher-lua) — Lua scripting support
+Granit is released under the [MIT License](LICENSE).
 
 ---
 
 <p align="center">
-  <strong>Granit</strong> — your knowledge, your terminal, your rules.<br>
+  <strong>Granit</strong> -- your knowledge, your terminal, your rules.<br>
   <sub>Free and open source. No telemetry. No subscriptions. Your data stays local.</sub>
 </p>

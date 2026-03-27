@@ -40,10 +40,12 @@ type GhostWriter struct {
 	enabled bool
 
 	// AI config
-	provider  string
-	model     string
-	ollamaURL string
-	apiKey    string
+	provider   string
+	model      string
+	ollamaURL  string
+	apiKey     string
+	nousURL    string
+	nousAPIKey string
 
 	// State
 	suggestion string    // the current ghost text suggestion
@@ -96,7 +98,7 @@ func (gw *GhostWriter) IsEnabled() bool {
 }
 
 // SetConfig sets the AI provider configuration.
-func (gw *GhostWriter) SetConfig(provider, model, ollamaURL, apiKey string) {
+func (gw *GhostWriter) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
 	if provider != "" {
 		gw.provider = provider
 	}
@@ -107,6 +109,12 @@ func (gw *GhostWriter) SetConfig(provider, model, ollamaURL, apiKey string) {
 		gw.ollamaURL = ollamaURL
 	}
 	gw.apiKey = apiKey
+	if len(nousOpts) > 0 && nousOpts[0] != "" {
+		gw.nousURL = nousOpts[0]
+	}
+	if len(nousOpts) > 1 {
+		gw.nousAPIKey = nousOpts[1]
+	}
 }
 
 // SetNoteTitle updates the note title used for ghost writer context.
@@ -339,6 +347,9 @@ func (gw *GhostWriter) requestCompletion(context string) tea.Cmd {
 	apiKey := gw.apiKey
 	maxTokens := gw.maxTokens
 
+	nousURL := gw.nousURL
+	nousAPIKey := gw.nousAPIKey
+
 	return func() tea.Msg {
 		var raw string
 		var err error
@@ -346,6 +357,8 @@ func (gw *GhostWriter) requestCompletion(context string) tea.Cmd {
 		switch provider {
 		case "openai":
 			raw, err = ghostCallOpenAI(apiKey, model, context, maxTokens)
+		case "nous":
+			raw, err = ghostCallNous(nousURL, nousAPIKey, context)
 		default: // "ollama"
 			raw, err = ghostCallOllama(ollamaURL, model, context, maxTokens)
 		}
@@ -466,6 +479,16 @@ func ghostCallOpenAI(apiKey, model, context string, maxTokens int) (string, erro
 	}
 
 	return oaiResp.Choices[0].Message.Content, nil
+}
+
+func ghostCallNous(url, apiKey, context string) (string, error) {
+	client := NewNousClient(url, apiKey)
+	prompt := "Continue the following text naturally. Only output the continuation, no explanation.\n\n" + context
+	resp, err := client.Chat(prompt)
+	if err != nil {
+		return "", fmt.Errorf("Ghost Writer: %v", err)
+	}
+	return resp, nil
 }
 
 // ---------------------------------------------------------------------------

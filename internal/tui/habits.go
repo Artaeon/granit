@@ -11,6 +11,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/artaeon/granit/internal/vault"
 )
 
 // habitEntry represents a single tracked habit.
@@ -90,6 +92,9 @@ type HabitTracker struct {
 
 	// Delete confirmation
 	confirmDelete bool
+
+	// Vault reference for syncing habit completions to tasks
+	vault *vault.Vault
 }
 
 // NewHabitTracker creates a new HabitTracker overlay.
@@ -438,6 +443,97 @@ func (ht *HabitTracker) toggleToday(habitName string) {
 	ht.saveHabits()
 }
 
+// SyncHabitToTasks finds a matching "- [ ] habitName" task in today's daily
+// note or jot and toggles it to "- [x] habitName". This bridges the habit
+// tracker with the task system so completing a habit marks the corresponding
+// task done automatically.
+func (ht *HabitTracker) SyncHabitToTasks(habitName string, v *vault.Vault) {
+	if v == nil {
+		return
+	}
+
+	today := time.Now().Format("2006-01-02")
+	// Patterns for daily notes / jots that might contain today's tasks.
+	todayPatterns := []string{
+		today + ".md",                           // YYYY-MM-DD.md
+		"Daily/" + today + ".md",                // Daily/YYYY-MM-DD.md
+		"Journal/" + today + ".md",              // Journal/YYYY-MM-DD.md
+		"daily/" + today + ".md",                // daily/YYYY-MM-DD.md
+		"journal/" + today + ".md",              // journal/YYYY-MM-DD.md
+		"Jots/" + today + ".md",                 // Jots/YYYY-MM-DD.md
+		"jots/" + today + ".md",                 // jots/YYYY-MM-DD.md
+	}
+
+	unchecked := "- [ ] " + habitName
+	checked := "- [x] " + habitName
+
+	for _, pattern := range todayPatterns {
+		note, ok := v.Notes[pattern]
+		if !ok || note.Content == "" {
+			continue
+		}
+
+		if !strings.Contains(note.Content, unchecked) {
+			continue
+		}
+
+		// Replace the first occurrence of unchecked with checked.
+		newContent := strings.Replace(note.Content, unchecked, checked, 1)
+		if newContent == note.Content {
+			continue
+		}
+
+		// Write back to disk and update the in-memory note.
+		if err := os.WriteFile(note.Path, []byte(newContent), 0o644); err == nil {
+			note.Content = newContent
+		}
+		return // Only update the first matching note.
+	}
+}
+
+// UnsyncHabitFromTasks reverts a "- [x] habitName" task back to "- [ ] habitName"
+// in today's daily note when a habit completion is toggled off.
+func (ht *HabitTracker) UnsyncHabitFromTasks(habitName string, v *vault.Vault) {
+	if v == nil {
+		return
+	}
+
+	today := time.Now().Format("2006-01-02")
+	todayPatterns := []string{
+		today + ".md",
+		"Daily/" + today + ".md",
+		"Journal/" + today + ".md",
+		"daily/" + today + ".md",
+		"journal/" + today + ".md",
+		"Jots/" + today + ".md",
+		"jots/" + today + ".md",
+	}
+
+	checked := "- [x] " + habitName
+	unchecked := "- [ ] " + habitName
+
+	for _, pattern := range todayPatterns {
+		note, ok := v.Notes[pattern]
+		if !ok || note.Content == "" {
+			continue
+		}
+
+		if !strings.Contains(note.Content, checked) {
+			continue
+		}
+
+		newContent := strings.Replace(note.Content, checked, unchecked, 1)
+		if newContent == note.Content {
+			continue
+		}
+
+		if err := os.WriteFile(note.Path, []byte(newContent), 0o644); err == nil {
+			note.Content = newContent
+		}
+		return
+	}
+}
+
 // streakBlocks returns a colored 7-day visual for a habit.
 func (ht HabitTracker) streakBlocks(habitName string) string {
 	today, _ := time.Parse("2006-01-02", todayStr())
@@ -663,7 +759,15 @@ func (ht HabitTracker) Update(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 		switch ht.tab {
 		case 0: // Toggle habit
 			if ht.cursor < len(ht.habits) {
-				ht.toggleToday(ht.habits[ht.cursor].Name)
+				name := ht.habits[ht.cursor].Name
+				wasCompleted := ht.isTodayCompleted(name)
+				ht.toggleToday(name)
+				// If we just completed (not uncompleted), sync to tasks
+				if !wasCompleted {
+					ht.SyncHabitToTasks(name, ht.vault)
+				} else {
+					ht.UnsyncHabitFromTasks(name, ht.vault)
+				}
 			}
 		case 1: // Toggle milestone or expand goal
 			if ht.goalExpanded >= 0 {

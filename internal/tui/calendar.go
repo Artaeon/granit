@@ -48,6 +48,7 @@ const (
 	calViewWeek
 	calViewAgenda
 	calViewYear
+	calView3Day
 )
 
 // TaskItem represents a task extracted from notes.
@@ -121,6 +122,10 @@ type Calendar struct {
 	// Week grid cursor for time-grid navigation
 	weekGridCursorHour int // 0-16 (row, hours 6-22)
 
+	// Habit data for enriched views
+	habitEntries []habitEntry
+	habitLogs    []habitLog
+
 	// Agenda scroll offset and cursor for task toggling
 	agendaScroll int
 	agendaCursor int
@@ -189,6 +194,28 @@ func (c *Calendar) SetDailyNotes(notes []string) {
 
 func (c *Calendar) SetEvents(events []CalendarEvent) {
 	c.events = events
+}
+
+// SetHabitData stores habit entries and logs for enriched calendar views.
+func (c *Calendar) SetHabitData(entries []habitEntry, logs []habitLog) {
+	c.habitEntries = entries
+	c.habitLogs = logs
+}
+
+// habitStats returns (completed, total) habit counts for a given date.
+func (c Calendar) habitStats(dateStr string) (int, int) {
+	total := len(c.habitEntries)
+	if total == 0 {
+		return 0, 0
+	}
+	done := 0
+	for _, log := range c.habitLogs {
+		if log.Date == dateStr {
+			done = len(log.Completed)
+			break
+		}
+	}
+	return done, total
 }
 
 // SetNoteContents parses tasks from note content for the calendar.
@@ -431,6 +458,8 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			case calViewMonth:
 				c.view = calViewWeek
 			case calViewWeek:
+				c.view = calView3Day
+			case calView3Day:
 				c.view = calViewAgenda
 				c.agendaScroll = 0
 				c.agendaCursor = 0
@@ -465,6 +494,8 @@ func (c Calendar) View() string {
 	switch c.view {
 	case calViewWeek:
 		return c.viewWeek()
+	case calView3Day:
+		return c.viewWeek() // reuse week grid for 3-day view
 	case calViewAgenda:
 		return c.viewAgenda()
 	case calViewYear:

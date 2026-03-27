@@ -1,8 +1,13 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/artaeon/granit/internal/vault"
 )
 
 // ── Initialization ───────────────────────────────────────────────
@@ -1168,5 +1173,141 @@ func TestLoadGoals_NoFile(t *testing.T) {
 
 	if ht.goals != nil {
 		t.Fatal("goals should be nil when file does not exist")
+	}
+}
+
+// ── SyncHabitToTasks ─────────────────────────────────────────────
+
+func TestSyncHabitToTasks_MatchesJournalTask(t *testing.T) {
+	tmpDir := t.TempDir()
+	today := time.Now().Format("2006-01-02")
+	dailyDir := filepath.Join(tmpDir, "Daily")
+	if err := os.MkdirAll(dailyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	notePath := filepath.Join(dailyDir, today+".md")
+	content := "# Today\n- [ ] Exercise\n- [ ] Read\n"
+	if err := os.WriteFile(notePath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	relPath := "Daily/" + today + ".md"
+	v := &vault.Vault{
+		Root: tmpDir,
+		Notes: map[string]*vault.Note{
+			relPath: {
+				Path:    notePath,
+				RelPath: relPath,
+				Content: content,
+			},
+		},
+	}
+
+	ht := NewHabitTracker()
+	ht.SyncHabitToTasks("Exercise", v)
+
+	// Read back from disk
+	data, err := os.ReadFile(notePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+
+	if !strings.Contains(got, "- [x] Exercise") {
+		t.Fatalf("expected task to be checked, got:\n%s", got)
+	}
+	// Read task should remain unchecked
+	if !strings.Contains(got, "- [ ] Read") {
+		t.Fatalf("expected Read task to remain unchecked, got:\n%s", got)
+	}
+}
+
+func TestSyncHabitToTasks_NoMatch(t *testing.T) {
+	tmpDir := t.TempDir()
+	today := time.Now().Format("2006-01-02")
+	dailyDir := filepath.Join(tmpDir, "Daily")
+	if err := os.MkdirAll(dailyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	notePath := filepath.Join(dailyDir, today+".md")
+	content := "# Today\n- [ ] Read\n- [ ] Meditate\n"
+	if err := os.WriteFile(notePath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	relPath := "Daily/" + today + ".md"
+	v := &vault.Vault{
+		Root: tmpDir,
+		Notes: map[string]*vault.Note{
+			relPath: {
+				Path:    notePath,
+				RelPath: relPath,
+				Content: content,
+			},
+		},
+	}
+
+	ht := NewHabitTracker()
+	ht.SyncHabitToTasks("Exercise", v)
+
+	data, err := os.ReadFile(notePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != content {
+		t.Fatalf("expected file unchanged, got:\n%s", string(data))
+	}
+}
+
+func TestSyncHabitToTasks_NilVault(t *testing.T) {
+	ht := NewHabitTracker()
+	// Should not panic with nil vault
+	ht.SyncHabitToTasks("Exercise", nil)
+}
+
+func TestSyncHabitToTasks_AlreadyDone(t *testing.T) {
+	tmpDir := t.TempDir()
+	today := time.Now().Format("2006-01-02")
+	dailyDir := filepath.Join(tmpDir, "Daily")
+	if err := os.MkdirAll(dailyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	notePath := filepath.Join(dailyDir, today+".md")
+	content := "# Today\n- [x] Exercise\n- [ ] Read\n"
+	if err := os.WriteFile(notePath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	relPath := "Daily/" + today + ".md"
+	v := &vault.Vault{
+		Root: tmpDir,
+		Notes: map[string]*vault.Note{
+			relPath: {
+				Path:    notePath,
+				RelPath: relPath,
+				Content: content,
+			},
+		},
+	}
+
+	ht := NewHabitTracker()
+	ht.SyncHabitToTasks("Exercise", v)
+
+	data, err := os.ReadFile(notePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+
+	// Should remain exactly as-is (no double toggle)
+	if got != content {
+		t.Fatalf("expected file unchanged for already-done task, got:\n%s", got)
+	}
+	// Verify it wasn't toggled back to unchecked
+	if strings.Contains(got, "- [ ] Exercise") {
+		t.Fatal("already-done task should not be toggled back to unchecked")
 	}
 }

@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/artaeon/granit/internal/config"
 	"github.com/artaeon/granit/internal/vault"
 )
 
@@ -33,6 +34,8 @@ type Task struct {
 	ParentLine       int      `json:"parent_line,omitempty"`      // LineNum of parent task, 0 if top-level
 	DependsOn        []string `json:"depends_on,omitempty"`       // dependency references (task text snippets)
 	EstimatedMinutes int      `json:"estimated_minutes,omitempty"` // time estimate in minutes
+	Recurrence       string   `json:"recurrence,omitempty"`        // "daily", "weekly", "monthly", etc.
+	Project          string   `json:"project,omitempty"`           // matched project name
 }
 
 // taskView identifies which tab is active.
@@ -88,6 +91,8 @@ var (
 	tmScheduleRe   = regexp.MustCompile(`⏰\s*(\d{2}:\d{2}-\d{2}:\d{2})`)
 	tmDependsRe    = regexp.MustCompile(`depends:"([^"]+)"|depends:([^\s]+)`)
 	tmEstimateRe   = regexp.MustCompile(`~(\d+)(m|h)`)
+	tmRecurEmojiRe = regexp.MustCompile(`\x{1F501}\s*(daily|weekly|monthly|3x-week)`)
+	tmRecurTagRe   = regexp.MustCompile(`#(daily|weekly|monthly|3x-week)\b`)
 )
 
 // ---------------------------------------------------------------------------
@@ -102,6 +107,7 @@ type TaskManager struct {
 
 	// Data
 	vault     *vault.Vault
+	config    config.Config
 	allTasks  []Task
 	filtered  []Task // currently displayed tasks
 
@@ -385,6 +391,13 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 				}
 			}
 
+			// Recurrence
+			if rm := tmRecurEmojiRe.FindStringSubmatch(taskText); rm != nil {
+				t.Recurrence = rm[1]
+			} else if rm := tmRecurTagRe.FindStringSubmatch(taskText); rm != nil {
+				t.Recurrence = rm[1]
+			}
+
 			// Time estimate (~30m, ~2h)
 			if em := tmEstimateRe.FindStringSubmatch(taskText); em != nil {
 				val := 0
@@ -399,6 +412,82 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 		}
 	}
 	return tasks
+}
+
+// FilterTasks applies config-based task filtering (exclude folders, require
+// tags, hide completed).
+func FilterTasks(tasks []Task, cfg config.Config) []Task {
+	if cfg.TaskFilterMode == "all" && len(cfg.TaskExcludeFolders) == 0 && !cfg.TaskExcludeDone {
+		return tasks
+	}
+	var filtered []Task
+	for _, t := range tasks {
+		excluded := false
+		for _, folder := range cfg.TaskExcludeFolders {
+			if strings.HasPrefix(t.NotePath, folder) {
+				excluded = true
+				break
+			}
+		}
+		if excluded {
+			continue
+		}
+		if cfg.TaskFilterMode == "tagged" && len(cfg.TaskRequiredTags) > 0 {
+			hasTag := false
+			for _, reqTag := range cfg.TaskRequiredTags {
+				for _, taskTag := range t.Tags {
+					if strings.EqualFold(taskTag, reqTag) {
+						hasTag = true
+						break
+					}
+				}
+				if hasTag {
+					break
+				}
+			}
+			if !hasTag {
+				continue
+			}
+		}
+		if cfg.TaskExcludeDone && t.Done {
+			continue
+		}
+		filtered = append(filtered, t)
+	}
+	return filtered
+}
+
+// MatchTasksToProjects assigns project names to tasks based on folder,
+// task filter, or tag matching.
+func MatchTasksToProjects(tasks []Task, projects []Project) {
+	for i := range tasks {
+		matchTaskToProject(&tasks[i], projects)
+	}
+}
+
+func matchTaskToProject(task *Task, projects []Project) {
+	for _, proj := range projects {
+		if proj.Folder != "" && strings.HasPrefix(task.NotePath, proj.Folder) {
+			task.Project = proj.Name
+			return
+		}
+		if proj.TaskFilter != "" {
+			for _, tag := range task.Tags {
+				if strings.EqualFold(tag, proj.TaskFilter) {
+					task.Project = proj.Name
+					return
+				}
+			}
+		}
+		for _, ptag := range proj.Tags {
+			for _, ttag := range task.Tags {
+				if strings.EqualFold(ttag, ptag) {
+					task.Project = proj.Name
+					return
+				}
+			}
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1185,6 +1274,21 @@ func (tm *TaskManager) collectTags() []struct {
 		}{Tag: tc.Tag, Count: tc.Count}
 	}
 	return out
+}
+
+// uniqueProjects returns a sorted deduplicated list of project names
+// assigned to tasks.
+func (tm *TaskManager) uniqueProjects() []string {
+	seen := make(map[string]bool)
+	var names []string
+	for _, t := range tm.allTasks {
+		if t.Project != "" && !seen[t.Project] {
+			seen[t.Project] = true
+			names = append(names, t.Project)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // ---------------------------------------------------------------------------

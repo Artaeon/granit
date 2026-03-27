@@ -52,10 +52,18 @@ func (m Model) View() string {
 	showSidebar := LayoutHasSidebar(layout)
 	showBacklinks := LayoutHasBacklinks(layout)
 	showOutline := LayoutHasOutline(layout)
+	showCalPanel := LayoutHasCalendarPanel(layout)
+
+	// Toggle: when rightPanelCalendar is set, swap backlinks for calendar panel
+	if m.rightPanelCalendar && showBacklinks {
+		showBacklinks = false
+		showCalPanel = true
+	}
 
 	sidebarWidth := 0
 	backlinksWidth := 0
 	outlineWidth := 0
+	calPanelWidth := 0
 
 	if showSidebar {
 		sidebarWidth = m.width / 5
@@ -75,6 +83,15 @@ func (m Model) View() string {
 			backlinksWidth = 30
 		}
 	}
+	if showCalPanel {
+		calPanelWidth = m.width / 4
+		if calPanelWidth < 28 {
+			calPanelWidth = 28
+		}
+		if calPanelWidth > 35 {
+			calPanelWidth = 35
+		}
+	}
 	if showOutline {
 		outlineWidth = m.width / 7
 		if outlineWidth < 18 {
@@ -92,13 +109,16 @@ func (m Model) View() string {
 	if showBacklinks {
 		panelBorders += 2
 	}
+	if showCalPanel {
+		panelBorders += 2
+	}
 	if showOutline {
 		panelBorders += 2
 	}
 
 	// Ensure panel widths + minimum editor (30) + borders fit in terminal width.
 	minEditorWidth := 30
-	totalPanels := sidebarWidth + backlinksWidth + outlineWidth
+	totalPanels := sidebarWidth + backlinksWidth + calPanelWidth + outlineWidth
 	available := m.width - panelBorders - 2
 	if totalPanels+minEditorWidth > available {
 		budget := available - minEditorWidth
@@ -109,12 +129,14 @@ func (m Model) View() string {
 			ratio := float64(budget) / float64(totalPanels)
 			sidebarWidth = int(float64(sidebarWidth) * ratio)
 			backlinksWidth = int(float64(backlinksWidth) * ratio)
+			calPanelWidth = int(float64(calPanelWidth) * ratio)
 			outlineWidth = int(float64(outlineWidth) * ratio)
-			remainder := budget - sidebarWidth - backlinksWidth - outlineWidth
+			remainder := budget - sidebarWidth - backlinksWidth - calPanelWidth - outlineWidth
 			sidebarWidth += remainder
 		} else {
 			sidebarWidth = 0
 			backlinksWidth = 0
+			calPanelWidth = 0
 			outlineWidth = 0
 		}
 		if outlineWidth > 0 && outlineWidth < 10 {
@@ -125,13 +147,17 @@ func (m Model) View() string {
 			backlinksWidth = 0
 			panelBorders -= 2
 		}
+		if calPanelWidth > 0 && calPanelWidth < 10 {
+			calPanelWidth = 0
+			panelBorders -= 2
+		}
 		if sidebarWidth > 0 && sidebarWidth < 10 {
 			sidebarWidth = 0
 			panelBorders -= 2
 		}
 	}
 
-	editorWidth := m.width - sidebarWidth - backlinksWidth - outlineWidth - panelBorders - 2
+	editorWidth := m.width - sidebarWidth - backlinksWidth - calPanelWidth - outlineWidth - panelBorders - 2
 	if editorWidth < 30 {
 		editorWidth = 30
 	}
@@ -211,12 +237,23 @@ func (m Model) View() string {
 				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor)
 			}
 		case "reading":
-			backlinks := BacklinksStyle.
-				BorderForeground(backlinksBorderColor).
-				Width(backlinksWidth).
-				Height(contentHeight).
-				Render(m.backlinks.View())
-			content = lipgloss.JoinHorizontal(lipgloss.Top, editor, backlinks)
+			if showCalPanel {
+				m.calendarPanel.SetSize(calPanelWidth, contentHeight)
+				calPanel := lipgloss.NewStyle().
+					BorderStyle(PanelBorder).
+					BorderForeground(backlinksBorderColor).
+					Width(calPanelWidth).
+					Height(contentHeight).
+					Render(m.calendarPanel.View())
+				content = lipgloss.JoinHorizontal(lipgloss.Top, editor, calPanel)
+			} else {
+				backlinks := BacklinksStyle.
+					BorderForeground(backlinksBorderColor).
+					Width(backlinksWidth).
+					Height(contentHeight).
+					Render(m.backlinks.View())
+				content = lipgloss.JoinHorizontal(lipgloss.Top, editor, backlinks)
+			}
 		case "zen":
 			// Centered editor with constrained width, no borders
 			maxContentWidth := 82
@@ -498,21 +535,36 @@ func (m Model) View() string {
 				Render(editorPanel)
 
 			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rsEditor, notesPanel)
-		default: // "default" - 3-panel
+		default: // "default" - 3-panel (with optional calendar toggle)
 			sidebar := SidebarStyle.
 				BorderForeground(sidebarBorderColor).
 				Width(sidebarWidth).
 				Height(contentHeight).
 				Render(m.sidebar.View())
-			backlinks := BacklinksStyle.
-				BorderForeground(backlinksBorderColor).
-				Width(backlinksWidth).
-				Height(contentHeight).
-				Render(m.backlinks.View())
-			if m.config.SidebarPosition == "right" {
-				content = lipgloss.JoinHorizontal(lipgloss.Top, backlinks, editor, sidebar)
+			if showCalPanel {
+				m.calendarPanel.SetSize(calPanelWidth, contentHeight)
+				calPanel := lipgloss.NewStyle().
+					BorderStyle(PanelBorder).
+					BorderForeground(backlinksBorderColor).
+					Width(calPanelWidth).
+					Height(contentHeight).
+					Render(m.calendarPanel.View())
+				if m.config.SidebarPosition == "right" {
+					content = lipgloss.JoinHorizontal(lipgloss.Top, calPanel, editor, sidebar)
+				} else {
+					content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor, calPanel)
+				}
 			} else {
-				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor, backlinks)
+				backlinks := BacklinksStyle.
+					BorderForeground(backlinksBorderColor).
+					Width(backlinksWidth).
+					Height(contentHeight).
+					Render(m.backlinks.View())
+				if m.config.SidebarPosition == "right" {
+					content = lipgloss.JoinHorizontal(lipgloss.Top, backlinks, editor, sidebar)
+				} else {
+					content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor, backlinks)
+				}
 			}
 		}
 		// Breadcrumb bar (between content and status)
@@ -697,6 +749,10 @@ func (m Model) View() string {
 		overlay := m.planMyDay.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.aiProjectPlanner.IsActive() {
+		overlay := m.aiProjectPlanner.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.recurringTasks.IsActive() {
 		overlay := m.recurringTasks.View()
 		view = m.overlayCenter(view, overlay)
@@ -713,12 +769,20 @@ func (m Model) View() string {
 		overlay := m.backup.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.nextcloudOverlay.IsActive() {
+		overlay := m.nextcloudOverlay.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.tutorial.IsActive() {
 		overlay := m.tutorial.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.projectMode.IsActive() {
 		overlay := m.projectMode.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.projectDashboard.IsActive() {
+		overlay := m.projectDashboard.View()
 		view = m.overlayCenter(view, overlay)
 	}
 	if m.commandCenter.IsActive() {
@@ -863,6 +927,14 @@ func (m Model) View() string {
 		overlay := m.research.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.weeklyReview.IsActive() {
+		overlay := m.weeklyReview.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.readingList.IsActive() {
+		overlay := m.readingList.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.pomodoro.IsActive() {
 		overlay := m.pomodoro.View()
 		view = m.overlayCenter(view, overlay)
@@ -972,16 +1044,7 @@ func (m Model) renderViewMode() string {
 		contentWidth = 10
 	}
 
-	// Header
-	modeIndicator := lipgloss.NewStyle().
-		Foreground(crust).
-		Background(green).
-		Bold(true).
-		Padding(0, 1).
-		Render("VIEW")
-	headerText := modeIndicator + "  " + HeaderStyle.Render(m.editor.filePath)
-	b.WriteString(headerText)
-	b.WriteString("\n")
+	// Minimal header — just a thin separator (breadcrumb already shows the path)
 	b.WriteString(DimStyle.Render(strings.Repeat("─", contentWidth)))
 	b.WriteString("\n")
 
@@ -996,6 +1059,23 @@ func (m Model) renderViewMode() string {
 	}
 
 	renderedLines := strings.Split(rendered, "\n")
+
+	// Clamp each line width to prevent overflow when EditorStyle wraps.
+	// Lines wider than contentWidth cause garbled rendering with overlays.
+	maxLineW := contentWidth - 2
+	if maxLineW < 10 {
+		maxLineW = 10
+	}
+	for i, rl := range renderedLines {
+		w := lipgloss.Width(rl)
+		if w > maxLineW {
+			// Truncate using plain text (ANSI-aware truncation is too complex;
+			// the renderer should ideally produce lines within budget already).
+			plain := stripAnsi(rl)
+			renderedLines[i] = TruncateDisplay(plain, maxLineW)
+		}
+	}
+
 	trackHeight := len(renderedLines)
 	if trackHeight > 0 && vmTotalLines > vmViewportH {
 		thumbSize := maxInt(1, trackHeight*vmViewportH/vmTotalLines)

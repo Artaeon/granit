@@ -88,10 +88,12 @@ type DailyBriefing struct {
 	todayPath   string   // path to today's daily note
 
 	// AI config
-	provider  string
-	model     string
-	ollamaURL string
-	apiKey    string
+	provider   string
+	model      string
+	ollamaURL  string
+	apiKey     string
+	nousURL    string
+	nousAPIKey string
 
 	// result to write into daily note
 	resultContent string
@@ -123,11 +125,17 @@ func (db *DailyBriefing) SetSize(w, h int) {
 	db.height = h
 }
 
-func (db *DailyBriefing) SetConfig(provider, model, ollamaURL, apiKey string) {
+func (db *DailyBriefing) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
 	db.provider = provider
 	db.model = model
 	db.ollamaURL = ollamaURL
 	db.apiKey = apiKey
+	if len(nousOpts) > 0 && nousOpts[0] != "" {
+		db.nousURL = nousOpts[0]
+	}
+	if len(nousOpts) > 1 {
+		db.nousAPIKey = nousOpts[1]
+	}
 }
 
 func (db *DailyBriefing) SetVaultData(notes map[string]string, recentPaths []string, todayPath string) {
@@ -220,11 +228,17 @@ func (db *DailyBriefing) startBriefing() tea.Cmd {
 	model := db.model
 	ollamaURL := db.ollamaURL
 	apiKey := db.apiKey
+	nousURL := db.nousURL
+	nousAPIKey := db.nousAPIKey
 
 	return func() tea.Msg {
 		switch provider {
 		case "openai":
 			return doBriefingOpenAI(apiKey, model, prompt)
+		case "nous":
+			client := NewNousClient(nousURL, nousAPIKey)
+			resp, err := client.Chat(prompt)
+			return briefingResultMsg{content: resp, err: err}
 		default:
 			return doBriefingOllama(ollamaURL, model, prompt)
 		}

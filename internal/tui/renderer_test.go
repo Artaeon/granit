@@ -13,19 +13,19 @@ var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 func stripAnsiCodes(s string) string { return ansiRe.ReplaceAllString(s, "") }
 
 // newTestRenderer creates a renderer with a usable width/height for testing.
-func newTestRenderer() Renderer {
+func newTestRenderer() *Renderer {
 	r := NewRenderer()
 	r.SetSize(80, 40)
 	return r
 }
 
 // rendered is a helper that renders content and returns the raw output string.
-func rendered(r Renderer, content string) string {
+func rendered(r *Renderer, content string) string {
 	return r.Render(content, 0)
 }
 
 // renderedLines returns the output split into lines.
-func renderedLines(r Renderer, content string) []string {
+func renderedLines(r *Renderer, content string) []string {
 	out := r.Render(content, 0)
 	if out == "" {
 		return nil
@@ -40,8 +40,9 @@ func renderedLines(r Renderer, content string) []string {
 func TestRenderHeadingH1(t *testing.T) {
 	r := newTestRenderer()
 	out := rendered(r, "# Hello World")
-	if !strings.Contains(out, "HELLO WORLD") {
-		t.Errorf("H1 should render uppercase text, got:\n%s", out)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Hello World") {
+		t.Errorf("H1 should contain heading text, got:\n%s", plain)
 	}
 }
 
@@ -1149,7 +1150,7 @@ Some [[wikilink]] and #tag content.
 	plain := stripAnsiCodes(out)
 
 	checks := map[string]string{
-		"MAIN TITLE":     "H1 uppercased",
+		"Main Title":     "H1 text",
 		"Section One":    "H2 text",
 		"Subsection":     "H3 text",
 		"Final Heading":  "H4 text",
@@ -1244,7 +1245,7 @@ End of document.`
 
 	plain := stripAnsiCodes(out)
 	expected := []string{
-		"DOCUMENT", "Introduction", "other note", "alias",
+		"Document", "Introduction", "other note", "alias",
 		"Watch out", "Simple quote", "Open task", "Done task",
 		"console.log", "fmt.Println",
 	}
@@ -1559,9 +1560,9 @@ func TestRenderMarkdownDirectLineCount(t *testing.T) {
 func TestRenderMarkdownHeadingExtraLines(t *testing.T) {
 	r := newTestRenderer()
 	lines := r.renderMarkdown("# Title")
-	// H1 adds: blank, blank, styled text, underline, blank = 5 lines
-	if len(lines) < 4 {
-		t.Errorf("H1 should produce multiple rendered lines (spacing + bar + text + underline), got %d", len(lines))
+	// H1 adds: blank + bar + blank = 3 lines
+	if len(lines) < 3 {
+		t.Errorf("H1 should produce multiple rendered lines (spacing + bar + spacing), got %d", len(lines))
 	}
 }
 
@@ -2194,5 +2195,106 @@ func TestRenderCalloutDistinctColors(t *testing.T) {
 	dangerOut := rendered(r, "> [!danger] Danger")
 	if bugOut == dangerOut {
 		t.Errorf("Bug and danger callouts should look different")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// wrapParagraph
+// ---------------------------------------------------------------------------
+
+func TestRenderWrapParagraph(t *testing.T) {
+	r := newTestRenderer()
+	// A long paragraph should wrap into multiple lines
+	longText := "This is a very long paragraph that should definitely be wrapped " +
+		"when the maximum width is set to a small value like thirty characters wide."
+	lines := r.wrapParagraph(longText, 30)
+	if len(lines) < 2 {
+		t.Errorf("expected long paragraph to wrap into multiple lines, got %d line(s)", len(lines))
+	}
+	// Each line should be at most 30 visible characters (approximately,
+	// accounting for ANSI codes)
+	for i, line := range lines {
+		plain := stripAnsiCodes(line)
+		if len(plain) > 35 { // small tolerance
+			t.Errorf("line %d too long (%d chars): %q", i, len(plain), plain)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Bold-italic rendering ***text***
+// ---------------------------------------------------------------------------
+
+func TestRenderBoldItalic(t *testing.T) {
+	r := newTestRenderer()
+	out := rendered(r, "***important***")
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "important") {
+		t.Errorf("expected 'important' in output, got: %s", plain)
+	}
+	// Should not contain the raw *** markers
+	if strings.Contains(plain, "***") {
+		t.Errorf("expected *** markers to be consumed, got: %s", plain)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Markdown link [text](url) rendering
+// ---------------------------------------------------------------------------
+
+func TestRenderMarkdownLink(t *testing.T) {
+	r := newTestRenderer()
+	out := rendered(r, "[Click here](https://example.com)")
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "Click here") {
+		t.Errorf("expected link text 'Click here' in output, got: %s", plain)
+	}
+	// The URL should be indicated but not shown in full
+	if !strings.Contains(plain, "\u2197") {
+		t.Errorf("expected link indicator arrow in output, got: %s", plain)
+	}
+	// Raw markdown syntax should not appear
+	if strings.Contains(plain, "](") {
+		t.Errorf("expected markdown link syntax to be consumed, got: %s", plain)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Callout wrapping
+// ---------------------------------------------------------------------------
+
+func TestRenderCalloutWraps(t *testing.T) {
+	r := NewRenderer()
+	r.SetSize(80, 40)
+	longContent := "> [!note] My Note\n> " +
+		"This is a very long callout content line that should " +
+		"definitely get wrapped when rendered inside the callout box."
+	out := rendered(r, longContent)
+	if out == "" {
+		t.Fatal("expected non-empty output for callout")
+	}
+	plain := stripAnsiCodes(out)
+	// The callout should render something
+	if !strings.Contains(plain, "Note") && !strings.Contains(plain, "note") {
+		t.Errorf("expected callout label in output, got:\n%s", plain)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Numbered list wrapping
+// ---------------------------------------------------------------------------
+
+func TestRenderNumberedListWraps(t *testing.T) {
+	r := NewRenderer()
+	r.SetSize(80, 40)
+	longItem := "1. This is a very long numbered list item that " +
+		"should be wrapped when the terminal is narrow enough to require it."
+	out := rendered(r, longItem)
+	plain := stripAnsiCodes(out)
+	if !strings.Contains(plain, "1.") {
+		t.Error("expected '1.' prefix in numbered list output")
+	}
+	if !strings.Contains(plain, "very long") {
+		t.Error("expected numbered list item text in output")
 	}
 }

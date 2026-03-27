@@ -58,14 +58,14 @@ func TestBugfix_BracketMatch_CodeFenceCache(t *testing.T) {
 		t.Errorf("second call gave different result: (%d, %d, %v)", ln2, col2, found2)
 	}
 
-	// Marking cache dirty should cause a rebuild.
-	e.codeFenceCacheDirty = true
+	// Triggering a rebuild via rebuildBlockCaches should refresh the cache.
+	e.rebuildBlockCaches()
 	ln3, col3, found3 := e.findMatchingBracket()
 	if !found3 || ln3 != 999 || col3 != 0 {
-		t.Errorf("after dirty rebuild: expected (999,0,true), got (%d,%d,%v)", ln3, col3, found3)
+		t.Errorf("after rebuild: expected (999,0,true), got (%d,%d,%v)", ln3, col3, found3)
 	}
-	if e.codeFenceCacheDirty {
-		t.Error("cache dirty flag should be cleared after rebuild")
+	if e.codeFenceCache == nil {
+		t.Error("codeFenceCache should be populated after rebuild")
 	}
 }
 

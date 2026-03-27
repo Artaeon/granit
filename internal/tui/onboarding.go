@@ -25,6 +25,8 @@ type Onboarding struct {
 	height     int
 	totalSteps int
 	skipped    bool
+	vaultRoot  string
+	statusMsg  string
 }
 
 // NewOnboarding returns an Onboarding in its default (inactive) state.
@@ -95,6 +97,14 @@ func (o Onboarding) Update(msg tea.Msg) (Onboarding, tea.Cmd) {
 				// Last step — close and mark done
 				o.active = false
 				o.MarkComplete()
+			}
+		case "s":
+			if o.step == o.totalSteps-1 && o.vaultRoot != "" {
+				if err := createSampleVault(o.vaultRoot); err == nil {
+					o.statusMsg = "Sample notes created!"
+				} else {
+					o.statusMsg = "Error: " + err.Error()
+				}
 			}
 		case "q", "esc":
 			o.active = false
@@ -245,6 +255,7 @@ func (o Onboarding) renderFooter(availWidth int) string {
 	if o.step < o.totalSteps-1 {
 		parts = append(parts, keyStyle.Render("→")+dimStyle.Render(" next"))
 	} else {
+		parts = append(parts, keyStyle.Render("s")+dimStyle.Render(" samples"))
 		parts = append(parts, keyStyle.Render("Enter")+dimStyle.Render(" start"))
 	}
 
@@ -853,8 +864,73 @@ func (o Onboarding) stepGetStarted(w int) (string, string) {
 	b.WriteString("\n\n")
 
 	b.WriteString(onbText("Press "))
+	b.WriteString(onbKey("s"))
+	b.WriteString(onbText(" to create sample notes in your vault."))
+	b.WriteString("\n")
+	b.WriteString(onbText("Press "))
 	b.WriteString(onbKey("Enter"))
 	b.WriteString(onbText(" to start using Granit."))
 
+	if o.statusMsg != "" {
+		b.WriteString("\n\n")
+		statusStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+		b.WriteString(statusStyle.Render(o.statusMsg))
+	}
+
 	return "Get Started", b.String()
+}
+
+// ── Sample vault creation ───────────────────────────────────────────────────
+
+// createSampleVault writes a set of starter notes into vaultRoot, skipping any
+// file that already exists so it never overwrites user content.
+func createSampleVault(vaultRoot string) error {
+	samples := map[string]string{
+		"Welcome.md": `# Welcome to Granit
+
+Your personal knowledge manager. Start by creating notes with ` + "`Ctrl+N`" + `.
+
+## Quick Tips
+- Link notes with ` + "`[[Note Name]]`" + `
+- Add tasks with ` + "`- [ ] Task description`" + `
+- Open command palette with ` + "`Ctrl+X`" + `
+- Toggle view mode with ` + "`Ctrl+E`" + `
+- Search with ` + "`Ctrl+K`" + `
+
+## Next Steps
+- [ ] Create your first note
+- [ ] Link two notes together
+- [ ] Try the daily planner
+- [ ] Set up your habits
+`,
+		"Tasks Example.md": "# Example Tasks\n\n" +
+			"- [ ] \U0001F53A High priority task \U0001F4C5 2026-04-01\n" +
+			"- [ ] \u23EB Review project goals #project\n" +
+			"- [ ] \U0001F53C Read chapter 3 #reading\n" +
+			"- [ ] \U0001F53D Organize bookmarks #low\n" +
+			"- [x] Completed task example\n",
+		"Project Example.md": `# My First Project
+
+A sample project to get started with Granit's project tracking.
+
+## Goals
+- [ ] Define project scope
+- [ ] Set up milestones
+- [ ] Track progress daily
+
+## Notes
+Use ` + "`Ctrl+X`" + ` → "Projects" to manage projects with goals and milestones.
+`,
+	}
+
+	for name, content := range samples {
+		p := filepath.Join(vaultRoot, name)
+		if _, err := os.Stat(p); err == nil {
+			continue // already exists, skip
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }

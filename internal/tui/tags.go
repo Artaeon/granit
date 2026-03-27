@@ -225,7 +225,7 @@ func (t TagBrowser) Update(msg tea.Msg) (TagBrowser, tea.Cmd) {
 			}
 		case "enter":
 			if t.mode == 0 && len(t.tags) > 0 {
-				if len(t.tags) == 0 || t.cursor >= len(t.tags) {
+				if t.cursor >= len(t.tags) {
 					return t, nil
 				}
 				t.selected = t.tags[t.cursor].name
@@ -234,7 +234,7 @@ func (t TagBrowser) Update(msg tea.Msg) (TagBrowser, tea.Cmd) {
 				t.noteCursor = 0
 				t.scroll = 0
 			} else if t.mode == 1 && len(t.notes) > 0 {
-				if len(t.notes) == 0 || t.noteCursor >= len(t.notes) {
+				if t.noteCursor >= len(t.notes) {
 					return t, nil
 				}
 				t.result = t.notes[t.noteCursor]
