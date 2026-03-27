@@ -79,40 +79,61 @@ Granit is a **free, open-source** personal knowledge management system built in 
 
 - `[[Wikilinks]]` with autocomplete, backlinks panel, and note graph (`Ctrl+G`)
 - Tag browser (`Ctrl+T`), note outline (`Ctrl+O`), bookmarks and recents (`Ctrl+B`)
-- Smart Connections (TF-IDF similarity), semantic search (AI embeddings)
+- Reading list with progress tracking (to-read / reading / completed) and star ratings
+- Link suggestions -- TF-IDF similarity-powered "Suggested" tab in backlinks panel
+- Smart Connections, semantic search (AI embeddings), Knowledge Graph AI
 - Dataview queries -- SQL-like: `TABLE title, tags FROM "folder" WHERE tags CONTAINS "project" SORT date DESC`
-- Link assistant, Knowledge Graph AI, mind map view, canvas/whiteboard (`Ctrl+W`)
-- Zettelkasten ID generator for linked atomic notes
+- Mind map view, canvas/whiteboard (`Ctrl+W`), Zettelkasten ID generator
 - Note versioning timeline with git-powered diffs and snapshot restore
 
 ### Task Management
 
 - Task Manager (`Ctrl+K`) -- 6 views: Today, Upcoming, All, Done, Calendar, Kanban
 - 5 priority levels, date picker, cross-vault scanning
+- Subtask hierarchy -- indentation-based nesting with expand/collapse (`e`)
+- Task dependencies -- `depends:` syntax with blocked indicators
+- Time estimation -- `~30m` / `~2h` syntax with workload totals
+- Reschedule (`r`) -- quick move to tomorrow, next Monday, +1 week, +1 month
+- Advanced sort (`s`) -- by priority, due date, A-Z, source, or tag
+- Bulk operations (`v`) -- select multiple tasks, batch toggle/date/priority
+- Tag and priority filters (`#`, `P`) with visual badges
+- Focus session launcher (`f`) -- start a timed session directly from a task
 - Recurring tasks -- daily, weekly, monthly auto-creation
-- Bulk operations and project-based filtering
+- Custom kanban columns -- configurable via settings with tag-based routing
+- Overdue grouping -- Today view splits overdue (red) from today's tasks
+- Project matching -- auto-assign tasks to projects by folder or tag
+- Task filtering by config -- exclude folders, require tags, hide completed
 - CLI task add: `granit todo "Ship v2.0" --due friday --priority high --tag release`
 
 ### Projects and Goals
 
 - Project Mode -- 9 categories with dashboards and completion stats
 - Goal tracking with milestones and progress bars
+- Project health dashboard -- velocity tracking, traffic-light status indicator
+- Goal burndown charts -- ASCII chart with ideal vs actual milestone pace
+- Cross-project dashboard -- overview of all projects with health indicators
+- AI project planner -- automated project breakdown with milestones
 - Daily standup generator from git commits, modified notes, and completed tasks
 
 ### Habits and Productivity
 
 - Habit tracker with 7-day streaks, pomodoro timer, focus sessions (25/45/60/90 min)
-- Daily planner with time-blocked schedule, Daily Jot for quick entries
+- Daily planner with time-blocked schedule and multi-hour blocks (30m to 3h)
+- Daily review -- guided 5-phase end-of-day review with rescheduling
+- Weekly review -- structured weekly reflection overlay
 - Command palette (`Ctrl+X`) with 70+ commands
 - Scratchpad overlay for quick floating notes (auto-saved)
-- Quick capture, journal prompts (100+), clipboard manager (50-entry history)
+- Quick capture with inbox count badge in status bar
+- Journal prompts (100+), clipboard manager (50-entry history)
 - Clock in/out time tracking with project tags and weekly logs
 - Workspace snapshots -- save and restore named TUI layouts
 - Reminders with daily/weekdays/once scheduling
+- Dashboard -- overdue warnings, habit widget, writing streaks, quick stats
 
 ### Calendar
 
 - Month, week, 3-day, agenda, and year views (`Ctrl+L`)
+- Week time grid -- hourly rows with 7 day columns showing events and planner blocks
 - Calendar sidebar panel
 - Task badges on calendar dates
 - Quick event creation from calendar
@@ -305,6 +326,29 @@ Run `granit help` for the full command reference.
 | `Ctrl+Z` | Focus / zen mode |
 | `Ctrl+,` | Settings |
 | `Ctrl+Q` | Quit |
+
+### Task Manager (`Ctrl+K`)
+
+| Key | Action |
+|-----|--------|
+| `j`/`k` | Navigate up/down |
+| `x` | Toggle task done/undone |
+| `e` | Expand/collapse subtasks |
+| `f` | Start focus session on task |
+| `g` | Jump to task source note |
+| `a` | Add new task |
+| `d` | Set due date |
+| `r` | Reschedule (tomorrow/Monday/+1wk/+1mo) |
+| `E` | Set time estimate (15m-2h) |
+| `s` | Cycle sort mode (priority/date/A-Z/source/tag) |
+| `b` | Add dependency |
+| `v` | Enter bulk select mode |
+| `p` | Cycle priority |
+| `#` | Cycle tag filter |
+| `P` | Cycle priority filter |
+| `c` | Clear all filters |
+| `/` | Search tasks |
+| `Tab` | Switch view (Today/Upcoming/All/Done/Calendar/Kanban) |
 
 ### Vim Mode
 

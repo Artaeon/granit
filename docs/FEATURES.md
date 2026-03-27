@@ -685,14 +685,25 @@ AI-powered optimal daily schedule generation. Analyzes your tasks, priorities, a
 Full-featured task management with 6 views (Today, Upcoming, All, Done, Calendar, Kanban), 5 priority levels, due dates, and cross-vault scanning. Tasks are stored in `Tasks.md` and also parsed from all vault notes.
 
 - **Access:** `Ctrl+K`
-- **Example:** Create a task with priority High, due date March 10, then view it on the Kanban board.
+- **Subtasks:** Indent tasks with spaces to create parent-child hierarchy. Press `e` to expand/collapse.
+- **Dependencies:** Add `depends:taskname` (or `depends:"multi word"`) to block a task until its dependency is done.
+- **Time Estimation:** Add `~30m` or `~2h` to task text. Press `E` for quick presets. Today view shows total workload.
+- **Reschedule:** Press `r` for quick options: tomorrow, next Monday, +1 week, +1 month, or custom date.
+- **Sort:** Press `s` to cycle: priority (default), due date, alphabetical, source note, or first tag.
+- **Bulk Ops:** Press `v` to enter select mode. Space selects tasks, `x` bulk-toggles, `d` bulk-sets dates.
+- **Filters:** `#` cycles tag filter, `P` cycles priority filter, `/` searches (supports `#tag` syntax), `c` clears.
+- **Focus:** Press `f` to start a focus session pre-loaded with the selected task.
+- **Overdue:** Today view groups tasks into OVERDUE (red) and TODAY (green) sections.
+- **Custom Kanban:** Configure columns via `kanban_columns` and `kanban_column_tags` in settings.
+- **Project Matching:** Tasks auto-assign to projects by folder path or tag.
 
 ### Daily Planner
 
-Time-blocked daily schedule from 6am to 10pm in 30-minute slots. Syncs with tasks, calendar events, and habits. Shows a progress bar and supports launching focus sessions from time blocks.
+Time-blocked daily schedule from 6am to 10pm in 30-minute slots. Supports multi-hour blocks (30m to 3h). Syncs with tasks, calendar events, and habits. Shows a progress bar and supports launching focus sessions from time blocks.
 
 - **Access:** Command palette > "Daily Planner"
-- **Example:** Block 9:00-10:30 for "Deep Work: Write Report", then see your day's completion percentage.
+- **Duration:** Press `-`/`+` when adding a block to adjust duration from 30 minutes to 3 hours.
+- **Example:** Block 9:00-11:00 for a 2-hour "Deep Work: Write Report" session.
 
 ### Pomodoro Timer
 
@@ -729,19 +740,56 @@ Track daily habits with streak visualization. Set goals with milestones and prog
 - **Access:** Command palette > "Habit Tracker"
 - **Example:** Track habits like "Write 500 words", "Exercise", and "Read 30 minutes" with a 30-day streak chart.
 
+### Daily Review
+
+Guided end-of-day review with 5 phases: celebrate completed tasks, reschedule overdue items (tomorrow/next week/skip), review tomorrow's plan, write a reflection, and save to `Reviews/daily-YYYY-MM-DD.md`.
+
+- **Access:** Command palette > "Daily Review"
+- **Example:** Reschedule 2 overdue tasks to tomorrow, review your 5 completed tasks, and write "Good progress on the API" as your reflection.
+
+### Weekly Review
+
+Structured weekly reflection overlay with metrics, wins, challenges, and next week planning.
+
+- **Access:** Command palette > "Weekly Review"
+
 ### Daily Standup Generator
 
 Auto-generates standup reports from git commits, modified notes, and completed tasks. Saves reports to `Standups/`.
 
 - **Access:** Command palette > "Daily Standup"
-- **Example:** The generator creates "Yesterday: Edited 3 notes, committed 5 changes, completed 2 tasks. Today: Focus on Project Alpha documentation."
 
 ### Quick Capture
 
-A compact floating input for quickly saving thoughts. Choose a destination: Inbox note, daily note, Tasks, or a new note.
+A compact floating input for quickly saving thoughts. Choose a destination: Inbox note, daily note, Tasks, or a new note. Inbox item count shown in status bar.
 
 - **Access:** Command palette > "Quick Capture"
-- **Example:** Capture "Remember to check API rate limits" and it's appended to your Inbox note.
+- **Inbox Badge:** Status bar shows a blue badge with unprocessed inbox item count.
+
+### Project Health Dashboard
+
+Cross-project overview showing all projects with progress bars, health indicators (On Track / At Risk / Behind), velocity tracking (milestones per week), and overdue task warnings.
+
+- **Access:** Command palette > "Project Dashboard"
+
+### Goal Burndown Charts
+
+ASCII burndown chart in the project goals section showing ideal vs actual milestone pace. Displays weeks on X-axis, remaining milestones on Y-axis, and a pace indicator.
+
+- **Shown in:** Project Mode > Goals section (when project has milestones and due date)
+
+### Link Suggestions
+
+The backlinks panel has a "Suggested" tab showing notes similar to the current note, powered by TF-IDF similarity analysis. Press Enter on a suggestion to insert a `[[wikilink]]`.
+
+- **Access:** Focus backlinks panel (`F3`), press `Tab` to reach "Suggested" tab.
+
+### Reading List
+
+The bookmarks overlay has a "Reading" tab for tracking reading progress on notes with status (to-read / reading / completed) and 1-5 star ratings.
+
+- **Access:** `Ctrl+B` > Tab to "Reading"
+- **Keys:** `a` add note, `p` cycle status, `r` cycle rating, `d` remove
 
 ### Journal Prompts
 

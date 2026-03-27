@@ -8,6 +8,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Task reschedule** (`r` key) — quick move to tomorrow, next Monday, +1 week, +1 month, or custom date
+- **Advanced task sorting** (`s` key) — cycle between priority, due date, alphabetical, source note, and first tag
+- **Subtask hierarchy** — indentation-based parent/child nesting with expand/collapse (`e` key) and tree rendering
+- **Task dependencies** — `depends:text` or `depends:"multi word"` syntax; blocked tasks show lock icon and dimmed text
+- **Bulk task operations** (`v` key) — visual select mode with batch toggle, date set, and priority change
+- **Task time estimation** — `~30m` / `~2h` syntax with badge display and workload total in Today view; `E` key for quick presets
+- **Focus session launcher** (`f` key) — start focus session pre-loaded with selected task from task manager
+- **Tag and priority filters** — `#` cycles tags, `P` cycles priorities, `c` clears; filter badges in title bar; tab counts reflect active filters
+- **Overdue task grouping** — Today view splits into OVERDUE (red header) and TODAY (green header) sections
+- **Custom kanban columns** — configurable via `kanban_columns` and `kanban_column_tags` in settings; dynamic column count with cycling color palette
+- **Daily review overlay** — guided 5-phase end-of-day review: celebrate, reschedule overdue, plan tomorrow, reflect, save to Reviews/
+- **Overdue warnings on dashboard** — red warning section with count and task list when overdue items exist
+- **Habit widget on dashboard** — shows today's habits with completion checkboxes and streak counts
+- **Inbox count indicator** — sapphire badge in status bar showing unchecked Inbox.md items
+- **Link suggestions** — "Suggested" tab in backlinks panel powered by TF-IDF similarity; Enter inserts `[[wikilink]]`
+- **Reading list with progress** — "Reading" tab in bookmarks with status (to-read/reading/completed) and 1-5 star ratings
+- **Multi-hour time blocks** — daily planner supports 30m to 3h block durations via `-`/`+` keys
+- **Week view time grid** — calendar week view shows hourly rows x 7 day columns with events and planner blocks in cells
+- **Project health dashboard** — traffic-light health indicator (On Track/At Risk/Behind), velocity tracking (milestones/week)
+- **Goal burndown charts** — ASCII chart with ideal vs actual milestone pace and "On track" / "Behind by N" indicator
+- **Nextcloud WebDAV sync** — bidirectional sync with conflict resolution, TUI overlay with test/push/pull/sync controls
+- **Desktop app** — Wails-based desktop application with Svelte frontend
+- **Weekly review overlay** — structured weekly reflection with metrics and planning
+- **AI project planner** — automated project breakdown with milestones
+- **Cross-project dashboard** — overview of all projects grouped by status with health indicators
+- **Task recurrence parsing** — `daily`, `weekly`, `monthly`, `3x-week` via emoji or tag syntax
+- **Task filtering by config** — `task_filter_mode`, `task_required_tags`, `task_exclude_folders`, `task_exclude_done`
+- **Task-to-project matching** — auto-assign tasks to projects by folder path or tag
+
+### Fixed
+
+- Calendar agenda view losing state due to value receiver (agendaItems never persisted)
+- Calendar task toggles not syncing to other components (missing refreshComponents call)
+- Kanban task toggles and file watcher not calling refreshComponents
+- Search filter persisting across task manager tab switches
+- Search on kanban view applying to nil slice
+- Calendar day filter showing completed tasks (now excluded like other views)
+- Today and Upcoming tabs overlapping (today's tasks no longer in Upcoming)
+- Tab counts not reflecting active tag/priority filters
+- Calendar task data empty at app initialization
+- SetPlannerBlocks not rebuilding agenda items when in agenda view
+- Bare `#` in search matching any task with `#` in text
+- Priority filter cycling through value 0 (unset)
+- Nested subtask collapse not hiding grandchildren
+- Kanban WIP tag routing placing cards in wrong columns
+- Dependency matching too loose (substring → prefix match)
+- Text truncation not accounting for variable-width prefixes
+- Link completer and slash menu bounds checks for empty editors
+- Select mode `q` key closing overlay instead of exiting select mode
+- Week grid single-digit hour matching (9:00 vs 09)
+- Burndown chart x-axis label alignment
+- Daily review file write setting fileChanged on I/O error
+- Reading list delete missing scroll adjustment
+- Dependency blocked status computed per-render (now cached in rebuildFiltered)
+- CI workflow excluding desktop package (needs npm-built frontend assets)
+
 - **Vim text objects** — inner/around operators (`iw`, `aw`, `is`, `as`, `ip`, `ap`, `i"`, `a"`, `i)`, `a)`, `i}`, `a}`, `i]`, `a]`, `i>`, `a<`, `` i` ``, `` a` ``); works with `d`, `c`, `y` operators and visual mode
 - **Vim marks** — `m` + a-z to set mark, `'` + a-z to jump to line, `` ` `` + a-z to jump to exact position, `''` to jump to previous position
 - **Vim search highlighting** — `/pattern` and `?pattern` highlight ALL matches in yellow, current match in orange; `n`/`N` cycle with wrap-around; match count in status bar; Esc clears highlights

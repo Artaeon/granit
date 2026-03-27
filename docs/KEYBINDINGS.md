@@ -370,26 +370,60 @@ Enter Command mode by pressing `:` in Normal mode. Type a command and press `Ent
 
 ## Task Manager Shortcuts
 
+### Navigation & Views
+
 | Key | Action |
 |-----|--------|
-| `Tab` | Cycle between views (Today / Upcoming / All / Done / Calendar / Kanban) |
-| `Up` / `Down` / `j` / `k` | Navigate tasks |
-| `Enter` | Toggle task completion |
-| `n` | Create new task |
-| `d` | Set/change due date |
-| `p` | Cycle priority level |
-| `e` | Edit task text |
-| `x` | Delete task |
-| `Esc` | Close task manager |
+| `Tab` | Cycle views (Today / Upcoming / All / Done / Calendar / Kanban) |
+| `1`-`6` | Jump to specific view |
+| `j` / `k` | Navigate tasks |
+| `Esc`, `q` | Close task manager |
+
+### Task Actions
+
+| Key | Action |
+|-----|--------|
+| `x`, `Enter` | Toggle task done/undone |
+| `a` | Add new task |
+| `g` | Jump to task source note |
+| `d` | Set/change due date (date picker) |
+| `r` | Reschedule (1=tomorrow, 2=Monday, 3=+1wk, 4=+1mo, 5=custom) |
+| `p` | Cycle priority level (none/low/med/high/highest) |
+| `E` | Set time estimate (1=15m, 2=30m, 3=45m, 4=1h, 5=1.5h, 6=2h) |
+| `e` | Expand/collapse subtasks |
+| `b` | Add task dependency |
+| `f` | Start focus session on task |
+
+### Filtering & Sorting
+
+| Key | Action |
+|-----|--------|
+| `/` | Search tasks (supports `#tag` syntax) |
+| `#` | Cycle tag filter |
+| `P` | Cycle priority filter |
+| `s` | Cycle sort mode (priority / due date / A-Z / source / tag) |
+| `c` | Clear all active filters |
+
+### Bulk Operations
+
+| Key | Action |
+|-----|--------|
+| `v` | Enter/exit select mode |
+| `Space` | Toggle selection on current task (in select mode) |
+| `x` | Bulk toggle done/undone (in select mode) |
+| `d` | Bulk set due date (in select mode) |
+| `Esc`, `q` | Exit select mode |
 
 ### Kanban Board
 
 | Key | Action |
 |-----|--------|
-| `Left` / `Right` / `h` / `l` | Move between columns |
-| `Up` / `Down` / `j` / `k` | Navigate tasks within a column |
-| `Enter` | Move task to next column |
-| `Esc` | Close kanban |
+| `h` / `l` | Move between columns |
+| `j` / `k` | Navigate tasks within a column |
+| `x`, `Enter` | Toggle task completion |
+| `>` / `<` | Move task to next/previous column |
+| `g` | Jump to task source note |
+| `a` | Add new task |
 
 ---
 
