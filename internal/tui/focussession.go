@@ -100,6 +100,15 @@ func (fs *FocusSession) Open(vaultRoot string) {
 	fs.loadTasks()
 }
 
+// OpenWithTask opens the focus session pre-loaded with a specific task,
+// skipping the task selection step in setup.
+func (fs *FocusSession) OpenWithTask(vaultRoot, taskText string) {
+	fs.Open(vaultRoot)
+	fs.sessionTask = taskText
+	fs.goalInput = taskText
+	fs.setupField = 1 // skip task selection, go to duration
+}
+
 // SetSize updates the available terminal dimensions.
 func (fs *FocusSession) SetSize(w, h int) {
 	fs.width = w

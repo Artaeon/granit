@@ -1761,6 +1761,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.editor.scroll = maxInt(0, lineNum-m.editor.height/2)
 				}
 			}
+			// Launch focus session for selected task
+			if task, ok := m.taskManager.GetFocusRequest(); ok {
+				m.focusSession.SetSize(m.width, m.height)
+				m.focusSession.OpenWithTask(m.vault.Root, task)
+			}
 			return m, cmd
 		}
 

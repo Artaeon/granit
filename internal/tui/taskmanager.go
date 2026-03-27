@@ -152,6 +152,10 @@ type TaskManager struct {
 	jumpLine int
 	jumpOK   bool
 
+	// Consumed-once: focus session launch
+	focusTask   string
+	hasFocusReq bool
+
 	// File change tracking
 	fileChanged    bool
 	lastChangedNote string // path of most recently modified note
@@ -233,6 +237,16 @@ func (tm *TaskManager) GetJumpResult() (notePath string, lineNum int, ok bool) {
 	p, l := tm.jumpPath, tm.jumpLine
 	tm.jumpOK = false
 	return p, l, true
+}
+
+// GetFocusRequest returns a task to start a focus session on (consumed-once).
+func (tm *TaskManager) GetFocusRequest() (task string, ok bool) {
+	if !tm.hasFocusReq {
+		return "", false
+	}
+	t := tm.focusTask
+	tm.hasFocusReq = false
+	return t, true
 }
 
 // WasFileChanged returns true (consumed-once) if any file was modified.
@@ -1751,6 +1765,15 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.doCyclePriority(task)
 		}
 
+	// Focus session on current task
+	case "f":
+		if tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			tm.focusTask = tmCleanText(task.Text)
+			tm.hasFocusReq = true
+			tm.active = false
+		}
+
 	// Select mode (bulk operations)
 	case "v":
 		tm.selectMode = true
@@ -2336,7 +2359,7 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 		}
 	default:
 		pairs = []struct{ Key, Desc string }{
-			{"j/k", "nav"}, {"x", "toggle"}, {"e", "expand"}, {"g", "go"}, {"a", "add"},
+			{"j/k", "nav"}, {"x", "toggle"}, {"e", "expand"}, {"f", "focus"}, {"g", "go"}, {"a", "add"},
 			{"d", "date"}, {"r", "reschedule"}, {"s", "sort"}, {"p", "prio"}, {"#", "tag"},
 			{"P", "filter prio"}, {"c", "clear"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
 		}
