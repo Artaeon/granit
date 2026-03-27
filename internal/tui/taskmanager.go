@@ -775,7 +775,11 @@ func (tm *TaskManager) applySearch(tasks []Task) []Task {
 	query := strings.ToLower(tm.inputBuf)
 
 	// Support #tag queries: "#doing" matches tasks tagged with "doing".
-	if strings.HasPrefix(query, "#") && len(query) > 1 {
+	if strings.HasPrefix(query, "#") {
+		if len(query) == 1 {
+			// Bare "#" with no tag name — return all tasks unfiltered.
+			return tasks
+		}
 		tagQuery := query[1:]
 		var out []Task
 		for _, t := range tasks {
@@ -1393,12 +1397,10 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.filterPriority = 2
 		case 2:
 			tm.filterPriority = 1
-		case 1:
-			tm.filterPriority = 0
 		default:
 			tm.filterPriority = -1
 		}
-		prioNames := []string{"none", "low", "medium", "high", "highest"}
+		prioNames := map[int]string{1: "low", 2: "medium", 3: "high", 4: "highest"}
 		if tm.filterPriority >= 0 {
 			tm.statusMsg = "Priority: " + prioNames[tm.filterPriority]
 		} else {
