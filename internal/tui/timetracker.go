@@ -112,6 +112,17 @@ func (tt *TimeTracker) Close() {
 	tt.active = false
 }
 
+// TaskTimeMap returns cumulative duration per task text across all entries.
+func (tt *TimeTracker) TaskTimeMap() map[string]int {
+	result := make(map[string]int)
+	for _, e := range tt.entries {
+		if e.TaskText != "" {
+			result[e.TaskText] += int(e.Duration.Minutes())
+		}
+	}
+	return result
+}
+
 // IsActive reports whether the time tracker overlay is currently visible.
 func (tt TimeTracker) IsActive() bool {
 	return tt.active

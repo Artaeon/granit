@@ -828,6 +828,15 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		pm.vaultRoot = m.vault.Root
 		pm.loadProjects()
 		MatchTasksToProjects(m.taskManager.allTasks, pm.projects)
+		// Enrich tasks with actual time from time tracker
+		timeMap := m.timeTracker.TaskTimeMap()
+		for i := range m.taskManager.allTasks {
+			t := &m.taskManager.allTasks[i]
+			if mins, ok := timeMap[tmCleanText(t.Text)]; ok {
+				t.ActualMinutes = mins
+			}
+		}
+		m.taskManager.rebuildFiltered()
 
 	case CmdLinkAssist:
 		if m.activeNote != "" {

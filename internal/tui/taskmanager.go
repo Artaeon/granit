@@ -37,6 +37,7 @@ type Task struct {
 	EstimatedMinutes int      `json:"estimated_minutes,omitempty"` // time estimate in minutes
 	Recurrence       string   `json:"recurrence,omitempty"`        // "daily", "weekly", "monthly", etc.
 	Project          string   `json:"project,omitempty"`           // matched project name
+	ActualMinutes    int      `json:"-"`                           // computed from time tracker, not serialized
 }
 
 // taskView identifies which tab is active.
@@ -1269,6 +1270,17 @@ func (tm *TaskManager) applySortMode(tasks []Task) []Task {
 }
 
 // tmCleanText strips emoji markers and tags for sort comparison.
+func tmFormatMinutes(minutes int) string {
+	if minutes < 60 {
+		return fmt.Sprintf("%dm", minutes)
+	}
+	h, m := minutes/60, minutes%60
+	if m == 0 {
+		return fmt.Sprintf("%dh", h)
+	}
+	return fmt.Sprintf("%dh%dm", h, m)
+}
+
 func tmCleanText(s string) string {
 	s = tmDueDateRe.ReplaceAllString(s, "")
 	s = tmPrioHighestRe.ReplaceAllString(s, "")
@@ -2642,6 +2654,21 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		estimateWidth = len(label) + 3
 	}
 
+	// Actual time badge (from time tracker)
+	var actualBadge string
+	actualWidth := 0
+	if task.ActualMinutes > 0 {
+		label := tmFormatMinutes(task.ActualMinutes)
+		badgeColor := green
+		if task.EstimatedMinutes > 0 && task.ActualMinutes > task.EstimatedMinutes {
+			badgeColor = red
+		}
+		actualBadge = lipgloss.NewStyle().
+			Foreground(crust).Background(badgeColor).Padding(0, 1).
+			Render(label)
+		actualWidth = len(label) + 3
+	}
+
 	// Source note badge
 	noteName := strings.TrimSuffix(filepath.Base(task.NotePath), ".md")
 	noteLabel := lipgloss.NewStyle().
@@ -2704,7 +2731,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	for _, tag := range task.Tags {
 		tagWidth += len(tag) + 2 // "#" + tag + space
 	}
-	maxTextW := w - 30 - tagWidth - prefixExtra - estimateWidth
+	maxTextW := w - 30 - tagWidth - prefixExtra - estimateWidth - actualWidth
 	if maxTextW < 10 {
 		maxTextW = 10
 	}
@@ -2730,6 +2757,9 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	}
 	if estimateBadge != "" {
 		line += " " + estimateBadge
+	}
+	if actualBadge != "" {
+		line += " " + actualBadge
 	}
 	if scheduleBadge != "" {
 		line += " " + scheduleBadge
