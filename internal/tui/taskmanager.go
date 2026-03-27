@@ -668,7 +668,8 @@ func (tm *TaskManager) filterUpcoming() []Task {
 			continue
 		}
 		days := tmDaysUntil(t.DueDate)
-		if days >= 0 && days <= 7 {
+		// Exclude today (days == 0) and overdue — those belong to the Today tab.
+		if days >= 1 && days <= 7 {
 			out = append(out, t)
 		}
 	}
