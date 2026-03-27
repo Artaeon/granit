@@ -391,8 +391,15 @@ func NewModel(vaultPath string) (Model, error) {
 		return ""
 	})
 
-	// Set calendar daily notes
+	// Set calendar daily notes and parse task data
 	m.calendar.SetDailyNotes(paths)
+	noteContents := make(map[string]string)
+	for _, p := range paths {
+		if note := v.GetNote(p); note != nil {
+			noteContents[p] = note.Content
+		}
+	}
+	m.calendar.SetNoteContents(noteContents)
 
 	// Semantic search setup
 	m.semanticSearch.SetVaultPath(vaultPath)
