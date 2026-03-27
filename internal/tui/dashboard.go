@@ -18,6 +18,13 @@ type dashTask struct {
 	Done bool
 }
 
+// dashHabit represents a habit with today's status for the dashboard.
+type dashHabit struct {
+	Name      string
+	Completed bool
+	Streak    int
+}
+
 // dashNote represents a recently modified note.
 type dashNote struct {
 	Name    string
@@ -47,6 +54,9 @@ type Dashboard struct {
 
 	// Recent notes (top 6 by modification time)
 	recentNotes []dashNote
+
+	// Habits
+	todayHabits []dashHabit
 
 	// Writing activity (last 7 days)
 	weeklyWords   [7]int
@@ -104,6 +114,9 @@ func (d *Dashboard) scan() {
 	d.todayTasks = nil
 	d.tasksDue = 0
 	d.tasksDone = 0
+	d.overdueTasks = nil
+	d.overdueCount = 0
+	d.todayHabits = nil
 	d.recentNotes = nil
 	d.writingStreak = 0
 	for i := range d.weeklyWords {
@@ -222,6 +235,9 @@ func (d *Dashboard) scan() {
 	// Parse today's tasks from Tasks.md (or tasks.md).
 	d.parseTasks(todayStr)
 
+	// Parse today's habit status.
+	d.parseHabits(todayStr)
+
 	// Recent notes: sort by mod time descending, take top 6.
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].modTime.After(files[j].modTime)
@@ -325,6 +341,93 @@ func (d *Dashboard) parseTasks(todayStr string) {
 				d.tasksDone++
 			}
 		}
+	}
+}
+
+// parseHabits reads the Habits/habits.md file and extracts today's status.
+func (d *Dashboard) parseHabits(todayStr string) {
+	habitsPath := filepath.Join(d.vaultRoot, "Habits", "habits.md")
+	data, err := os.ReadFile(habitsPath)
+	if err != nil {
+		return
+	}
+	content := string(data)
+	lines := strings.Split(content, "\n")
+
+	// Parse habits from the table in ## Habits section
+	type habitInfo struct {
+		name   string
+		streak int
+	}
+	var habits []habitInfo
+	inHabits := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "## Habits" {
+			inHabits = true
+			continue
+		}
+		if strings.HasPrefix(trimmed, "## ") && inHabits {
+			break
+		}
+		if !inHabits || !strings.HasPrefix(trimmed, "|") {
+			continue
+		}
+		// Skip header/separator rows
+		if strings.Contains(trimmed, "---") || strings.Contains(trimmed, "Habit") {
+			continue
+		}
+		parts := strings.Split(trimmed, "|")
+		if len(parts) < 4 {
+			continue
+		}
+		name := strings.TrimSpace(parts[1])
+		streakStr := strings.TrimSpace(parts[3])
+		streak := 0
+		fmt.Sscanf(streakStr, "%d", &streak)
+		if name != "" {
+			habits = append(habits, habitInfo{name: name, streak: streak})
+		}
+	}
+
+	// Parse today's log to find completed habits
+	completed := make(map[string]bool)
+	inLog := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "## Log" {
+			inLog = true
+			continue
+		}
+		if strings.HasPrefix(trimmed, "## ") && inLog {
+			break
+		}
+		if !inLog || !strings.HasPrefix(trimmed, "|") {
+			continue
+		}
+		if strings.Contains(trimmed, "---") || strings.Contains(trimmed, "Date") {
+			continue
+		}
+		parts := strings.Split(trimmed, "|")
+		if len(parts) < 3 {
+			continue
+		}
+		date := strings.TrimSpace(parts[1])
+		if date == todayStr {
+			names := strings.Split(parts[2], ",")
+			for _, n := range names {
+				completed[strings.TrimSpace(n)] = true
+			}
+		}
+	}
+
+	// Build dashboard habit list
+	for _, h := range habits {
+		d.todayHabits = append(d.todayHabits, dashHabit{
+			Name:      h.name,
+			Completed: completed[h.name],
+			Streak:    h.streak,
+		})
 	}
 }
 
@@ -592,6 +695,25 @@ func (d Dashboard) View() string {
 
 	lines = append(lines, strings.Join(weekLines, "\n"))
 	lines = append(lines, "")
+
+	// --- Today's Habits ---
+	if len(d.todayHabits) > 0 {
+		lines = append(lines, sectionTitle.Render("  "+IconCalendarChar+" Today's Habits"))
+		for _, h := range d.todayHabits {
+			var icon string
+			if h.Completed {
+				icon = doneStyle.Render("[x]")
+			} else {
+				icon = todoStyle.Render("[ ]")
+			}
+			streakText := ""
+			if h.Streak > 0 {
+				streakText = dimSt.Render(fmt.Sprintf(" %dd", h.Streak))
+			}
+			lines = append(lines, "    "+icon+" "+labelStyle.Render(h.Name)+streakText)
+		}
+		lines = append(lines, "")
+	}
 
 	// --- Footer ---
 	lines = append(lines, dimSt.Render(strings.Repeat("\u2500", innerW-4)))
