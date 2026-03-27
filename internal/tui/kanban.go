@@ -485,15 +485,9 @@ func kbHasWipTag(text string) bool {
 	return false
 }
 
-// kbTruncate truncates s to maxLen characters, appending "..." if truncated.
+// kbTruncate truncates s to maxLen display width, using unicode-safe measurement.
 func kbTruncate(s string, maxLen int) string {
-	if maxLen < 4 {
-		maxLen = 4
-	}
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
+	return TruncateDisplay(s, maxLen)
 }
 
 // kbBaseName returns the file name from a path, without the .md extension.
