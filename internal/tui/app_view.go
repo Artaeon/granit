@@ -2125,6 +2125,69 @@ func (m *Model) dailyNoteContent(date, fallback string) string {
 		recurringTasks = strings.Join(lines, "\n")
 	}
 
+	// Build overdue tasks list
+	overdueTasks := ""
+	todayTasksList := ""
+	allTasks := ParseAllTasks(m.vault.Notes)
+	var overdueLines, todayLines []string
+	for _, task := range allTasks {
+		if task.Done {
+			continue
+		}
+		if tmIsOverdue(task.DueDate) {
+			overdueLines = append(overdueLines, "- [ ] "+tmCleanText(task.Text))
+		}
+		if task.DueDate == date {
+			todayLines = append(todayLines, "- [ ] "+tmCleanText(task.Text))
+		}
+	}
+	if len(overdueLines) > 0 {
+		overdueTasks = strings.Join(overdueLines, "\n")
+	}
+	if len(todayLines) > 0 {
+		todayTasksList = strings.Join(todayLines, "\n")
+	}
+
+	// Build today's habits
+	todayHabits := ""
+	habitsPath := filepath.Join(m.vault.Root, "Habits", "habits.md")
+	if data, err := os.ReadFile(habitsPath); err == nil {
+		inSection := false
+		var habitLines []string
+		for _, line := range strings.Split(string(data), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "## Habits" {
+				inSection = true
+				continue
+			}
+			if strings.HasPrefix(trimmed, "## ") && inSection {
+				break
+			}
+			if inSection && strings.HasPrefix(trimmed, "|") && !strings.Contains(trimmed, "---") && !strings.Contains(trimmed, "Habit") {
+				parts := strings.Split(trimmed, "|")
+				if len(parts) >= 2 {
+					name := strings.TrimSpace(parts[1])
+					if name != "" {
+						habitLines = append(habitLines, "- [ ] "+name)
+					}
+				}
+			}
+		}
+		if len(habitLines) > 0 {
+			todayHabits = strings.Join(habitLines, "\n")
+		}
+	}
+
+	// Build today's schedule from planner blocks
+	todaySchedule := ""
+	if blocks := m.calendar.plannerBlocks[date]; len(blocks) > 0 {
+		var schedLines []string
+		for _, pb := range blocks {
+			schedLines = append(schedLines, "- "+pb.StartTime+"-"+pb.EndTime+" "+pb.Text)
+		}
+		todaySchedule = strings.Join(schedLines, "\n")
+	}
+
 	replaceVars := func(content string) string {
 		content = strings.ReplaceAll(content, "{{date}}", date)
 		content = strings.ReplaceAll(content, "{{title}}", date)
@@ -2138,6 +2201,10 @@ func (m *Model) dailyNoteContent(date, fallback string) string {
 		content = strings.ReplaceAll(content, "{{streak}}", streak)
 		content = strings.ReplaceAll(content, "{{carry_forward}}", carryForward)
 		content = strings.ReplaceAll(content, "{{recurring_tasks}}", recurringTasks)
+		content = strings.ReplaceAll(content, "{{overdue_tasks}}", overdueTasks)
+		content = strings.ReplaceAll(content, "{{today_tasks}}", todayTasksList)
+		content = strings.ReplaceAll(content, "{{today_habits}}", todayHabits)
+		content = strings.ReplaceAll(content, "{{today_schedule}}", todaySchedule)
 		return content
 	}
 
