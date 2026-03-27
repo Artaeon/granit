@@ -584,14 +584,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.fileWatcher == nil || !m.fileWatcher.IsEnabled() {
 			return m, nil
 		}
-		// Rescan vault to pick up created/deleted files
-		_ = m.vault.Scan()
-		m.index = vault.NewIndex(m.vault)
-		m.index.Build()
-		paths := m.vault.SortedPaths()
-		m.sidebar.SetFiles(paths)
-		m.autocomplete.SetNotes(paths)
-		m.statusbar.SetNoteCount(m.vault.NoteCount())
+		// Refresh all components (vault, sidebar, calendar, task manager, etc.)
+		m.refreshComponents("")
 		var toastCmd tea.Cmd
 		// Check whether the currently open note was changed externally
 		for _, p := range msg.paths {
@@ -1876,12 +1870,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							}
 							newContent := strings.Join(lines, "\n")
 							_ = os.WriteFile(filepath.Join(m.vault.Root, notePath), []byte(newContent), 0644)
-							_ = m.vault.Scan()
-							m.index = vault.NewIndex(m.vault)
-							m.index.Build()
-							if notePath == m.activeNote {
-								m.editor.LoadContent(newContent, m.activeNote)
-							}
+							m.refreshComponents(notePath)
 						}
 					}
 				}
