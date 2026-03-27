@@ -140,6 +140,10 @@ type TaskManager struct {
 	// Subtask collapse state (key: "notePath:lineNum" of parent)
 	collapsed map[string]bool
 
+	// Bulk selection mode
+	selectMode bool
+	selected   map[string]bool // key: "notePath:lineNum"
+
 	// Consumed-once: jump result
 	jumpPath string
 	jumpLine int
@@ -186,6 +190,8 @@ func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.filterTag = ""
 	tm.filterPriority = -1
 	tm.collapsed = make(map[string]bool)
+	tm.selectMode = false
+	tm.selected = make(map[string]bool)
 	tm.jumpOK = false
 	tm.fileChanged = false
 	tm.lastChangedNote = ""
@@ -554,6 +560,48 @@ func (tm *TaskManager) doCyclePriority(task Task) {
 		return line
 	})
 	if ok {
+		tm.reparse()
+	}
+}
+
+// doBulkToggle toggles all selected tasks.
+func (tm *TaskManager) doBulkToggle() {
+	count := 0
+	for _, t := range tm.allTasks {
+		if tm.selected[taskKey(t)] {
+			tm.writeLineChange(t.NotePath, t.LineNum, func(line string) string {
+				if strings.Contains(line, "[ ]") {
+					return strings.Replace(line, "[ ]", "[x]", 1)
+				}
+				line = strings.Replace(line, "[x]", "[ ]", 1)
+				return strings.Replace(line, "[X]", "[ ]", 1)
+			})
+			count++
+		}
+	}
+	if count > 0 {
+		tm.statusMsg = fmt.Sprintf("Toggled %d tasks", count)
+		tm.selectMode = false
+		tm.selected = make(map[string]bool)
+		tm.reparse()
+	}
+}
+
+// doBulkSetDate sets a date on all selected tasks.
+func (tm *TaskManager) doBulkSetDate(dateStr string) {
+	count := 0
+	for _, t := range tm.allTasks {
+		if tm.selected[taskKey(t)] {
+			tm.writeLineChange(t.NotePath, t.LineNum, func(line string) string {
+				line = tmDueDateRe.ReplaceAllString(line, "")
+				line = strings.TrimRight(line, " ")
+				return line + " \U0001F4C5 " + dateStr
+			})
+			count++
+		}
+	}
+	if count > 0 {
+		tm.statusMsg = fmt.Sprintf("Set date on %d tasks", count)
 		tm.reparse()
 	}
 }
@@ -937,6 +985,11 @@ func tmCleanText(s string) string {
 	s = tmScheduleRe.ReplaceAllString(s, "")
 	s = tmTagRe.ReplaceAllString(s, "")
 	return strings.TrimSpace(s)
+}
+
+// taskKey returns a unique identifier for a task.
+func taskKey(t Task) string {
+	return fmt.Sprintf("%s:%d", t.NotePath, t.LineNum)
 }
 
 // isBlocked returns true if any of the task's dependencies are not yet done.
@@ -1449,6 +1502,61 @@ func (tm TaskManager) updateKanban(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	key := msg.String()
 
+	// Handle select mode
+	if tm.selectMode {
+		switch key {
+		case "esc":
+			tm.selectMode = false
+			tm.selected = make(map[string]bool)
+			tm.statusMsg = "Selection cleared"
+		case "v":
+			tm.selectMode = false
+			tm.selected = make(map[string]bool)
+		case " ":
+			if tm.cursor < len(tm.filtered) {
+				k := taskKey(tm.filtered[tm.cursor])
+				tm.selected[k] = !tm.selected[k]
+				if !tm.selected[k] {
+					delete(tm.selected, k)
+				}
+				// Auto-advance cursor
+				if tm.cursor < len(tm.filtered)-1 {
+					tm.cursor++
+				}
+			}
+		case "j", "down":
+			if tm.cursor < len(tm.filtered)-1 {
+				tm.cursor++
+				visH := tm.visibleHeight()
+				if tm.cursor >= tm.scroll+visH {
+					tm.scroll = tm.cursor - visH + 1
+				}
+			}
+		case "k", "up":
+			if tm.cursor > 0 {
+				tm.cursor--
+				if tm.cursor < tm.scroll {
+					tm.scroll = tm.cursor
+				}
+			}
+		case "x":
+			if len(tm.selected) > 0 {
+				tm.doBulkToggle()
+			}
+		case "d":
+			if len(tm.selected) > 0 {
+				now := time.Now()
+				tm.doBulkSetDate(now.AddDate(0, 0, 1).Format("2006-01-02"))
+				tm.selectMode = false
+				tm.selected = make(map[string]bool)
+			}
+		case "c":
+			tm.selected = make(map[string]bool)
+			tm.statusMsg = "Selection cleared"
+		}
+		return tm, nil
+	}
+
 	switch key {
 	case "esc", "q":
 		tm.active = false
@@ -1595,6 +1703,15 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			task := tm.filtered[tm.cursor]
 			tm.doCyclePriority(task)
 		}
+
+	// Select mode (bulk operations)
+	case "v":
+		tm.selectMode = true
+		tm.selected = make(map[string]bool)
+		if tm.cursor < len(tm.filtered) {
+			tm.selected[taskKey(tm.filtered[tm.cursor])] = true
+		}
+		tm.statusMsg = "SELECT MODE: space=select x=toggle d=date Esc=exit"
 
 	// Add dependency
 	case "b":
@@ -1809,6 +1926,10 @@ func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
 	}
 	if tm.sortMode != tmSortPriority {
 		filters += " " + filterStyle.Render("Sort:"+tmSortNames[tm.sortMode])
+	}
+	if tm.selectMode && len(tm.selected) > 0 {
+		filters += " " + lipgloss.NewStyle().Foreground(crust).Background(mauve).Padding(0, 1).
+			Render(fmt.Sprintf("%d selected", len(tm.selected)))
 	}
 
 	b.WriteString("  " + icon + title + stats + filters)
@@ -2025,6 +2146,16 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	}
 	displayText = TruncateDisplay(displayText, maxTextW)
 
+	// Selection indicator (in select mode)
+	selectStr := ""
+	if tm.selectMode {
+		if tm.selected[taskKey(task)] {
+			selectStr = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("[*] ")
+		} else {
+			selectStr = DimStyle.Render("[ ] ")
+		}
+	}
+
 	// Blocked indicator
 	blockedStr := ""
 	if len(task.DependsOn) > 0 && tm.isBlocked(task) {
@@ -2059,7 +2190,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		tagBadges += " " + lipgloss.NewStyle().Foreground(c).Render("#"+tag)
 	}
 
-	line := prefix + indentStr + collapseIndicator + blockedStr + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
+	line := prefix + selectStr + indentStr + collapseIndicator + blockedStr + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
 	if tagBadges != "" {
 		line += tagBadges
 	}
