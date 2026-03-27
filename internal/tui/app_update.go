@@ -1335,6 +1335,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.projectMode.IsActive() {
 			m.projectMode, _ = m.projectMode.Update(msg)
+			// Sync task toggles back to vault
+			if m.projectMode.WasFileChanged() {
+				m.refreshComponents("")
+			}
 			if !m.projectMode.IsActive() {
 				if notePath, ok := m.projectMode.GetSelectedNote(); ok {
 					m.loadNote(notePath)
@@ -1343,6 +1347,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if action, ok := m.projectMode.GetAction(); ok {
 					return m.executeCommand(action)
 				}
+				m.refreshComponents("")
 			}
 			return m, nil
 		}

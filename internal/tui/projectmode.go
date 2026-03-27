@@ -126,9 +126,10 @@ func (p Project) Progress() float64 {
 
 // projectTask is a parsed checkbox task relevant to a project.
 type projectTask struct {
-	Text   string
-	Done   bool
-	Source string
+	Text    string
+	Done    bool
+	Source  string
+	LineNum int // 1-based line number in source file
 }
 
 // projectNote is a note file discovered in the project folder.
@@ -196,6 +197,7 @@ type ProjectMode struct {
 	selectedNote string
 	hasNote      bool
 	action       CommandAction
+	fileChanged  bool // set when a task is toggled on disk
 }
 
 // NewProjectMode creates a new inactive ProjectMode overlay.
@@ -261,6 +263,46 @@ func (pm *ProjectMode) GetAction() (CommandAction, bool) {
 		return a, true
 	}
 	return CmdNone, false
+}
+
+// WasFileChanged returns true once after a task was toggled on disk.
+func (pm *ProjectMode) WasFileChanged() bool {
+	if pm.fileChanged {
+		pm.fileChanged = false
+		return true
+	}
+	return false
+}
+
+// toggleTask toggles the done state of a task in the dashboard and writes
+// the change back to the source file on disk.
+func (pm *ProjectMode) toggleTask(idx int) {
+	if idx < 0 || idx >= len(pm.dashTasks) {
+		return
+	}
+	task := &pm.dashTasks[idx]
+	absPath := filepath.Join(pm.vaultRoot, task.Source)
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	if task.LineNum < 1 || task.LineNum > len(lines) {
+		return
+	}
+	line := lines[task.LineNum-1]
+	if task.Done {
+		line = strings.Replace(line, "[x]", "[ ]", 1)
+		line = strings.Replace(line, "[X]", "[ ]", 1)
+	} else {
+		line = strings.Replace(line, "[ ]", "[x]", 1)
+	}
+	lines[task.LineNum-1] = line
+	if err := os.WriteFile(absPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+		return
+	}
+	task.Done = !task.Done
+	pm.fileChanged = true
 }
 
 // ---------------------------------------------------------------------------
@@ -388,7 +430,7 @@ func (pm *ProjectMode) scanTasksInFile(absPath, filter string, tasks *[]projectT
 	}
 	relPath, _ := filepath.Rel(pm.vaultRoot, absPath)
 	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
+	for lineIdx, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		var done bool
 		var taskText string
@@ -409,9 +451,10 @@ func (pm *ProjectMode) scanTasksInFile(absPath, filter string, tasks *[]projectT
 		}
 
 		*tasks = append(*tasks, projectTask{
-			Text:   taskText,
-			Done:   done,
-			Source: relPath,
+			Text:    taskText,
+			Done:    done,
+			Source:  relPath,
+			LineNum: lineIdx + 1, // 1-based
 		})
 	}
 }
@@ -786,6 +829,15 @@ func (pm ProjectMode) updateDashboard(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 		proj := &pm.projects[pm.selectedProj]
 		proj.Priority = (proj.Priority + 1) % len(projectPriorityLabels)
 		pm.saveProjects()
+	case " ", "x":
+		// Toggle task completion in the tasks section.
+		if pm.dashSection == 1 && len(pm.dashTasks) > 0 {
+			idx := pm.dashScroll
+			if idx >= len(pm.dashTasks) {
+				idx = len(pm.dashTasks) - 1
+			}
+			pm.toggleTask(idx)
+		}
 	}
 	return pm, nil
 }
@@ -1816,8 +1868,8 @@ func (pm ProjectMode) dashHelpBar() string {
 	}
 
 	return RenderHelpBar([]struct{ Key, Desc string }{
-		{"o", "open note"}, {"t", "tasks"}, {"N", "new note"}, {"g", "goals"},
-		{"n", "next action"}, {"p", "priority"}, {"Tab", "section"}, {"Esc", "back"},
+		{"o", "open note"}, {"t", "tasks"}, {"x", "toggle task"}, {"N", "new note"},
+		{"g", "goals"}, {"n", "next action"}, {"p", "priority"}, {"Tab", "section"}, {"Esc", "back"},
 	})
 }
 
