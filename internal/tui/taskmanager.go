@@ -79,6 +79,7 @@ const (
 	tmInputEstimate               // setting time estimate
 	tmInputNote                   // editing task note
 	tmInputSnooze                 // snooze picker
+	tmInputBatchReschedule        // batch reschedule overdue tasks
 )
 
 // ---------------------------------------------------------------------------
@@ -168,6 +169,10 @@ type TaskManager struct {
 	// Bulk selection mode
 	selectMode bool
 	selected   map[string]bool // key: "notePath:lineNum"
+
+	// Batch reschedule state
+	batchReschedule []Task
+	batchReschIdx   int
 
 	// Pinned tasks (persisted to .granit/pinned-tasks.json)
 	pinnedTasks map[string]bool
@@ -1602,6 +1607,8 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		return tm.updateNote(key)
 	case tmInputSnooze:
 		return tm.updateSnooze(key)
+	case tmInputBatchReschedule:
+		return tm.updateBatchReschedule(key)
 	}
 
 	return tm, nil
@@ -1726,6 +1733,40 @@ func (tm TaskManager) updateDependency(key string) (TaskManager, tea.Cmd) {
 		if len(key) == 1 || key == " " {
 			tm.inputBuf += key
 		}
+	}
+	return tm, nil
+}
+
+func (tm TaskManager) updateBatchReschedule(key string) (TaskManager, tea.Cmd) {
+	if tm.batchReschIdx >= len(tm.batchReschedule) {
+		tm.inputMode = tmInputNone
+		tm.statusMsg = "Batch reschedule complete"
+		tm.reparse()
+		return tm, nil
+	}
+	task := tm.batchReschedule[tm.batchReschIdx]
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+
+	switch key {
+	case "1": // tomorrow
+		tm.doSetDate(task, today.AddDate(0, 0, 1).Format("2006-01-02"))
+		tm.batchReschIdx++
+	case "2": // next week
+		tm.doSetDate(task, today.AddDate(0, 0, 7).Format("2006-01-02"))
+		tm.batchReschIdx++
+	case "s": // skip
+		tm.batchReschIdx++
+	case "esc":
+		tm.inputMode = tmInputNone
+		tm.reparse()
+		return tm, nil
+	}
+
+	if tm.batchReschIdx >= len(tm.batchReschedule) {
+		tm.inputMode = tmInputNone
+		tm.statusMsg = fmt.Sprintf("Rescheduled %d tasks", len(tm.batchReschedule))
+		tm.reparse()
 	}
 	return tm, nil
 }
@@ -2193,6 +2234,24 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		if tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
 			tm.doCyclePriority(task)
+		}
+
+	// Batch reschedule overdue (Today view)
+	case "R":
+		if tm.view == taskViewToday {
+			var overdue []Task
+			for _, t := range tm.filtered {
+				if tmIsOverdue(t.DueDate) {
+					overdue = append(overdue, t)
+				}
+			}
+			if len(overdue) > 0 {
+				tm.batchReschedule = overdue
+				tm.batchReschIdx = 0
+				tm.inputMode = tmInputBatchReschedule
+			} else {
+				tm.statusMsg = "No overdue tasks"
+			}
 		}
 
 	// Snooze task
@@ -2885,6 +2944,21 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 		b.WriteString("  " + promptStyle.Render("Depends on: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
 	case tmInputNote:
 		b.WriteString("  " + promptStyle.Render("Note: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
+	case tmInputBatchReschedule:
+		if tm.batchReschIdx < len(tm.batchReschedule) {
+			task := tm.batchReschedule[tm.batchReschIdx]
+			progress := fmt.Sprintf("[%d/%d] ", tm.batchReschIdx+1, len(tm.batchReschedule))
+			taskText := TruncateDisplay(tmCleanText(task.Text), w-20)
+			b.WriteString("  " + promptStyle.Render("Reschedule: ") + DimStyle.Render(progress) + lipgloss.NewStyle().Foreground(text).Render(taskText))
+			b.WriteString("\n")
+			ss := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+			ds := lipgloss.NewStyle().Foreground(overlay0)
+			b.WriteString("  " +
+				ss.Render("1") + ds.Render(":tomorrow ") +
+				ss.Render("2") + ds.Render(":+1week ") +
+				ss.Render("s") + ds.Render(":skip ") +
+				ss.Render("Esc") + ds.Render(":cancel"))
+		}
 	case tmInputSnooze:
 		b.WriteString("  " + promptStyle.Render("Snooze: "))
 		b.WriteString("\n")
