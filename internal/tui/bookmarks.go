@@ -213,6 +213,16 @@ func (bm Bookmarks) Update(msg tea.Msg) (Bookmarks, tea.Cmd) {
 				if bm.cursor >= len(bm.data.Reading) && bm.cursor > 0 {
 					bm.cursor--
 				}
+				visH := bm.height - 10
+				if visH < 1 {
+					visH = 1
+				}
+				if bm.cursor < bm.scroll {
+					bm.scroll = bm.cursor
+				}
+				if bm.cursor >= bm.scroll+visH {
+					bm.scroll = bm.cursor - visH + 1
+				}
 				bm.save()
 			}
 		case "p":

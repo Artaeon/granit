@@ -233,8 +233,9 @@ func (dr *DailyReview) applyReschedules() {
 		line += " \U0001F4C5 " + newDate
 		lines[task.LineNum-1] = line
 		absPath := filepath.Join(dr.vaultRoot, task.NotePath)
-		_ = os.WriteFile(absPath, []byte(strings.Join(lines, "\n")), 0644)
-		dr.fileChanged = true
+		if err := os.WriteFile(absPath, []byte(strings.Join(lines, "\n")), 0644); err == nil {
+			dr.fileChanged = true
+		}
 	}
 }
 
