@@ -95,6 +95,13 @@ var (
 	tmRecurTagRe   = regexp.MustCompile(`#(daily|weekly|monthly|3x-week)\b`)
 )
 
+// taskAction stores a single task line change for undo.
+type taskAction struct {
+	NotePath string
+	LineNum  int
+	OldLine  string
+}
+
 // ---------------------------------------------------------------------------
 // TaskManager overlay
 // ---------------------------------------------------------------------------
@@ -155,6 +162,9 @@ type TaskManager struct {
 	// Bulk selection mode
 	selectMode bool
 	selected   map[string]bool // key: "notePath:lineNum"
+
+	// Single-level undo for task actions
+	lastAction *taskAction
 
 	// Consumed-once: jump result
 	jumpPath string
@@ -603,6 +613,12 @@ func (tm *TaskManager) writeLineChange(notePath string, lineNum int, transform f
 	if lineNum < 1 || lineNum > len(lines) {
 		return false
 	}
+	// Save old line for undo
+	tm.lastAction = &taskAction{
+		NotePath: notePath,
+		LineNum:  lineNum,
+		OldLine:  lines[lineNum-1],
+	}
 	lines[lineNum-1] = transform(lines[lineNum-1])
 	newContent := strings.Join(lines, "\n")
 	note.Content = newContent
@@ -727,6 +743,24 @@ func (tm *TaskManager) doBulkSetDate(dateStr string) {
 	}
 	if count > 0 {
 		tm.statusMsg = fmt.Sprintf("Set date on %d tasks", count)
+		tm.reparse()
+	}
+}
+
+// doUndo restores the last modified task line to its previous state.
+func (tm *TaskManager) doUndo() {
+	if tm.lastAction == nil {
+		tm.statusMsg = "Nothing to undo"
+		return
+	}
+	act := tm.lastAction
+	tm.lastAction = nil // consume before writeLineChange sets a new one
+	ok := tm.writeLineChange(act.NotePath, act.LineNum, func(_ string) string {
+		return act.OldLine
+	})
+	if ok {
+		tm.lastAction = nil // clear the undo-of-undo
+		tm.statusMsg = "Undone"
 		tm.reparse()
 	}
 }
@@ -1930,6 +1964,10 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.doCyclePriority(task)
 		}
 
+	// Undo last action
+	case "u":
+		tm.doUndo()
+
 	// Set time estimate
 	case "E":
 		if tm.cursor < len(tm.filtered) {
@@ -2585,9 +2623,9 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 		}
 	default:
 		pairs = []struct{ Key, Desc string }{
-			{"j/k", "nav"}, {"x", "toggle"}, {"e", "expand"}, {"f", "focus"}, {"g", "go"}, {"a", "add"},
-			{"d", "date"}, {"E", "estimate"}, {"r", "reschedule"}, {"s", "sort"}, {"p", "prio"},
-			{"#", "tag"}, {"P", "filter prio"}, {"c", "clear"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
+			{"j/k", "nav"}, {"x", "toggle"}, {"u", "undo"}, {"e", "expand"}, {"f", "focus"}, {"g", "go"},
+			{"a", "add"}, {"d", "date"}, {"E", "estimate"}, {"r", "reschedule"}, {"s", "sort"},
+			{"p", "prio"}, {"#", "tag"}, {"P", "filter prio"}, {"c", "clear"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
 		}
 	}
 
