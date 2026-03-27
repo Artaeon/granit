@@ -1580,6 +1580,18 @@ func (pm ProjectMode) viewDashGoals(width int, proj Project) string {
 	}
 	b.WriteString("\n")
 
+	// Count milestones for burndown chart
+	totalMS := 0
+	doneMS := 0
+	for _, g := range proj.Goals {
+		totalMS += len(g.Milestones)
+		for _, m := range g.Milestones {
+			if m.Done {
+				doneMS++
+			}
+		}
+	}
+
 	if len(proj.Goals) == 0 {
 		b.WriteString("  " + DimStyle.Render("No goals yet - press 'g' to manage"))
 		b.WriteString("\n")
@@ -1636,8 +1648,118 @@ func (pm ProjectMode) viewDashGoals(width int, proj Project) string {
 			}
 		}
 	}
+
+	// Burndown chart (if project has milestones and dates)
+	if totalMS > 0 && proj.CreatedAt != "" && proj.DueDate != "" {
+		b.WriteString("\n")
+		b.WriteString(pm.renderBurndownChart(proj, totalMS, doneMS, width))
+	}
+
 	b.WriteString("\n")
 	return b.String()
+}
+
+// renderBurndownChart draws an ASCII burndown chart showing ideal vs actual progress.
+func (pm ProjectMode) renderBurndownChart(proj Project, totalMS, doneMS, width int) string {
+	var out strings.Builder
+
+	created, err1 := time.Parse("2006-01-02", proj.CreatedAt)
+	due, err2 := time.Parse("2006-01-02", proj.DueDate)
+	if err1 != nil || err2 != nil {
+		return ""
+	}
+
+	chartW := width - 12
+	if chartW < 20 {
+		chartW = 20
+	}
+	if chartW > 40 {
+		chartW = 40
+	}
+	chartH := 8
+
+	totalWeeks := int(due.Sub(created).Hours()/(24*7)) + 1
+	if totalWeeks < 2 {
+		totalWeeks = 2
+	}
+	currentWeek := int(time.Since(created).Hours()/(24*7)) + 1
+	if currentWeek > totalWeeks {
+		currentWeek = totalWeeks
+	}
+
+	remaining := totalMS - doneMS
+
+	out.WriteString("  " + lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("Burndown") + "\n")
+
+	// Draw chart rows (top = totalMS, bottom = 0)
+	for row := 0; row < chartH; row++ {
+		yVal := totalMS - (row * totalMS / (chartH - 1))
+		label := fmt.Sprintf("  %3d ", yVal)
+		out.WriteString(DimStyle.Render(label) + DimStyle.Render("│"))
+
+		for col := 0; col < chartW; col++ {
+			weekAtCol := col * totalWeeks / chartW
+
+			// Ideal burndown line: linear from totalMS to 0
+			idealY := totalMS - (weekAtCol * totalMS / totalWeeks)
+			// Actual: project from (0, totalMS) to (currentWeek, remaining)
+			actualY := totalMS
+			if currentWeek > 0 && weekAtCol <= currentWeek {
+				actualY = totalMS - ((totalMS - remaining) * weekAtCol / currentWeek)
+			}
+
+			idealRow := 0
+			if totalMS > 0 {
+				idealRow = (totalMS - idealY) * (chartH - 1) / totalMS
+			}
+			actualRow := 0
+			if totalMS > 0 {
+				actualRow = (totalMS - actualY) * (chartH - 1) / totalMS
+			}
+
+			if row == actualRow && weekAtCol <= currentWeek {
+				if remaining > idealY {
+					out.WriteString(lipgloss.NewStyle().Foreground(red).Render("*"))
+				} else {
+					out.WriteString(lipgloss.NewStyle().Foreground(green).Render("*"))
+				}
+			} else if row == idealRow {
+				out.WriteString(DimStyle.Render("·"))
+			} else {
+				out.WriteString(" ")
+			}
+		}
+		out.WriteString("\n")
+	}
+
+	// X-axis
+	out.WriteString(DimStyle.Render("       └" + strings.Repeat("─", chartW)))
+	out.WriteString("\n")
+	axisLabel := fmt.Sprintf("        wk1%"+fmt.Sprintf("%d", chartW-6)+"s", fmt.Sprintf("wk%d", totalWeeks))
+	out.WriteString(DimStyle.Render(axisLabel))
+	out.WriteString("\n")
+
+	// Pace indicator
+	idealRemaining := totalMS
+	if totalWeeks > 0 {
+		idealRemaining = totalMS - (currentWeek * totalMS / totalWeeks)
+	}
+	if idealRemaining < 0 {
+		idealRemaining = 0
+	}
+	diff := remaining - idealRemaining
+	if diff <= 0 {
+		out.WriteString("  " + lipgloss.NewStyle().Foreground(green).Bold(true).Render("On track"))
+	} else {
+		out.WriteString("  " + lipgloss.NewStyle().Foreground(red).Bold(true).
+			Render(fmt.Sprintf("Behind by %d milestone", diff)))
+		if diff > 1 {
+			out.WriteString(lipgloss.NewStyle().Foreground(red).Bold(true).Render("s"))
+		}
+	}
+	out.WriteString("\n")
+
+	return out.String()
 }
 
 func (pm ProjectMode) viewDashNotes(width int) string {
