@@ -590,6 +590,13 @@ func (m *Model) refreshComponents(changedPath string) {
 	}
 	m.calendar.SetNoteContents(noteContents)
 
+	// Directly refresh the task manager if it's currently active, so it
+	// picks up changes immediately instead of waiting for the needsRefresh
+	// flag to be checked on the next Update() cycle.
+	if m.taskManager.IsActive() {
+		m.taskManager.Refresh(m.vault)
+	}
+
 	// If the changed file is currently open in the editor, reload it
 	if changedPath != "" && changedPath == m.activeNote {
 		if note := m.vault.GetNote(changedPath); note != nil {
