@@ -47,10 +47,11 @@ const (
 type tmInputMode int
 
 const (
-	tmInputNone   tmInputMode = iota
-	tmInputAdd                // adding a new task
-	tmInputDate               // date picker
-	tmInputSearch             // filtering
+	tmInputNone       tmInputMode = iota
+	tmInputAdd                    // adding a new task
+	tmInputDate                   // date picker
+	tmInputSearch                 // filtering
+	tmInputReschedule             // quick reschedule picker
 )
 
 // ---------------------------------------------------------------------------
@@ -673,22 +674,26 @@ func (tm *TaskManager) rebuildFiltered() {
 }
 
 func (tm *TaskManager) filterToday() []Task {
-	var out []Task
+	var overdue, today []Task
 	for _, t := range tm.allTasks {
 		if t.Done {
 			continue
 		}
-		if tmIsToday(t.DueDate) || tmIsOverdue(t.DueDate) {
-			out = append(out, t)
+		if tmIsOverdue(t.DueDate) {
+			overdue = append(overdue, t)
+		} else if tmIsToday(t.DueDate) {
+			today = append(today, t)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Priority != out[j].Priority {
-			return out[i].Priority > out[j].Priority
-		}
-		return out[i].DueDate < out[j].DueDate
+	// Sort each group by priority descending
+	sort.Slice(overdue, func(i, j int) bool {
+		return overdue[i].Priority > overdue[j].Priority
 	})
-	return out
+	sort.Slice(today, func(i, j int) bool {
+		return today[i].Priority > today[j].Priority
+	})
+	// Overdue first, then today
+	return append(overdue, today...)
 }
 
 func (tm *TaskManager) filterUpcoming() []Task {
@@ -990,6 +995,8 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		return tm.updateAddInput(key)
 	case tmInputSearch:
 		return tm.updateSearchInput(key)
+	case tmInputReschedule:
+		return tm.updateReschedule(key)
 	}
 
 	return tm, nil
@@ -1050,6 +1057,37 @@ func (tm TaskManager) updateSearchInput(key string) (TaskManager, tea.Cmd) {
 		}
 		return tm, nil
 	}
+}
+
+func (tm TaskManager) updateReschedule(key string) (TaskManager, tea.Cmd) {
+	if tm.cursor >= len(tm.filtered) {
+		tm.inputMode = tmInputNone
+		return tm, nil
+	}
+	task := tm.filtered[tm.cursor]
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+
+	switch key {
+	case "1": // tomorrow
+		tm.inputMode = tmInputNone
+		tm.doSetDate(task, today.AddDate(0, 0, 1).Format("2006-01-02"))
+	case "2": // next Monday
+		tm.inputMode = tmInputNone
+		tm.doSetDate(task, tmNextMonday().Format("2006-01-02"))
+	case "3": // +1 week
+		tm.inputMode = tmInputNone
+		tm.doSetDate(task, today.AddDate(0, 0, 7).Format("2006-01-02"))
+	case "4": // +1 month
+		tm.inputMode = tmInputNone
+		tm.doSetDate(task, today.AddDate(0, 1, 0).Format("2006-01-02"))
+	case "5", "c": // custom → switch to date picker
+		tm.inputMode = tmInputDate
+		tm.datePickerDate = today.AddDate(0, 0, 1)
+	case "esc":
+		tm.inputMode = tmInputNone
+	}
+	return tm, nil
 }
 
 func (tm TaskManager) updateDatePicker(key string) (TaskManager, tea.Cmd) {
@@ -1347,6 +1385,12 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.doCyclePriority(task)
 		}
 
+	// Reschedule task
+	case "r":
+		if tm.cursor < len(tm.filtered) {
+			tm.inputMode = tmInputReschedule
+		}
+
 	// Search
 	case "/":
 		tm.inputMode = tmInputSearch
@@ -1607,6 +1651,28 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 	for i := tm.scroll; i < end; i++ {
 		task := tm.filtered[i]
 
+		// Today view: group overdue vs today
+		if tm.view == taskViewToday {
+			var group string
+			if tmIsOverdue(task.DueDate) {
+				group = "overdue"
+			} else {
+				group = "today"
+			}
+			if group != lastGroup {
+				if lastGroup != "" {
+					b.WriteString("\n")
+				}
+				if group == "overdue" {
+					b.WriteString("  " + lipgloss.NewStyle().Foreground(red).Bold(true).Render("OVERDUE"))
+				} else {
+					b.WriteString("  " + lipgloss.NewStyle().Foreground(green).Bold(true).Render("TODAY"))
+				}
+				b.WriteString("\n")
+				lastGroup = group
+			}
+		}
+
 		// Upcoming view: group by day
 		if tm.view == taskViewUpcoming && task.DueDate != "" {
 			group := task.DueDate
@@ -1791,6 +1857,18 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 			shortcutStyle.Render("Esc") + descStyle.Render(":cancel"))
 	case tmInputSearch:
 		b.WriteString("  " + promptStyle.Render("Filter: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
+	case tmInputReschedule:
+		b.WriteString("  " + promptStyle.Render("Reschedule: "))
+		b.WriteString("\n")
+		shortcutStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+		descStyle := lipgloss.NewStyle().Foreground(overlay0)
+		b.WriteString("  " +
+			shortcutStyle.Render("1") + descStyle.Render(":tomorrow ") +
+			shortcutStyle.Render("2") + descStyle.Render(":monday ") +
+			shortcutStyle.Render("3") + descStyle.Render(":+1week ") +
+			shortcutStyle.Render("4") + descStyle.Render(":+1month ") +
+			shortcutStyle.Render("5") + descStyle.Render(":custom ") +
+			shortcutStyle.Render("Esc") + descStyle.Render(":cancel"))
 	}
 	b.WriteString("\n")
 }
@@ -1815,8 +1893,8 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 	default:
 		pairs = []struct{ Key, Desc string }{
 			{"j/k", "nav"}, {"x", "toggle"}, {"g", "go"}, {"a", "add"},
-			{"d", "date"}, {"p", "prio"}, {"#", "tag"}, {"P", "filter prio"},
-			{"c", "clear"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
+			{"d", "date"}, {"r", "reschedule"}, {"p", "prio"}, {"#", "tag"},
+			{"P", "filter prio"}, {"c", "clear"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
 		}
 	}
 
