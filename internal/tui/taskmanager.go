@@ -29,6 +29,8 @@ type Task struct {
 	Tags          []string `json:"tags,omitempty"`
 	NotePath      string   `json:"note_path"`           // source note relative path
 	LineNum       int      `json:"line_num"`             // 1-based line number in source note
+	Indent        int      `json:"indent,omitempty"`     // 0=top-level, 1=subtask, 2=sub-subtask
+	ParentLine    int      `json:"parent_line,omitempty"` // LineNum of parent task, 0 if top-level
 }
 
 // taskView identifies which tab is active.
@@ -132,6 +134,9 @@ type TaskManager struct {
 	// Status message
 	statusMsg string
 
+	// Subtask collapse state (key: "notePath:lineNum" of parent)
+	collapsed map[string]bool
+
 	// Consumed-once: jump result
 	jumpPath string
 	jumpLine int
@@ -177,6 +182,7 @@ func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.statusMsg = ""
 	tm.filterTag = ""
 	tm.filterPriority = -1
+	tm.collapsed = make(map[string]bool)
 	tm.jumpOK = false
 	tm.fileChanged = false
 	tm.lastChangedNote = ""
@@ -265,6 +271,10 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 			continue
 		}
 		lines := strings.Split(note.Content, "\n")
+		// Track recent tasks per indent level for parent linkage.
+		// Key: indent level, value: LineNum of the most recent task at that level.
+		parentStack := make(map[int]int) // indent -> LineNum
+
 		for i, line := range lines {
 			trimmed := strings.TrimSpace(line)
 			if !strings.HasPrefix(trimmed, "- [") {
@@ -277,11 +287,36 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 			done := m[2] == "x" || m[2] == "X"
 			taskText := m[3][2:] // strip "] " prefix
 
+			// Determine indentation level from leading whitespace.
+			indent := 0
+			for _, ch := range line {
+				if ch == ' ' {
+					indent++
+				} else if ch == '\t' {
+					indent += 2
+				} else {
+					break
+				}
+			}
+			indentLevel := indent / 2 // 2 spaces per level
+
+			// Find parent: the most recent task at a lower indent level.
+			parentLine := 0
+			for lvl := indentLevel - 1; lvl >= 0; lvl-- {
+				if pl, ok := parentStack[lvl]; ok {
+					parentLine = pl
+					break
+				}
+			}
+			parentStack[indentLevel] = i + 1
+
 			t := Task{
-				Text:     taskText,
-				Done:     done,
-				NotePath: note.RelPath,
-				LineNum:  i + 1,
+				Text:       taskText,
+				Done:       done,
+				NotePath:   note.RelPath,
+				LineNum:    i + 1,
+				Indent:     indentLevel,
+				ParentLine: parentLine,
 			}
 
 			// Due date
@@ -680,6 +715,8 @@ func (tm *TaskManager) rebuildFiltered() {
 		if tm.sortMode != tmSortPriority {
 			tm.filtered = tm.applySortMode(tm.filtered)
 		}
+		// Hide children of collapsed parent tasks.
+		tm.filtered = tm.applyCollapseFilter(tm.filtered)
 	}
 	// Cache tab counts so renderTabs doesn't re-filter on every frame.
 	// Apply active tag/priority filters to counts so they reflect what
@@ -892,6 +929,34 @@ func tmCleanText(s string) string {
 	s = tmScheduleRe.ReplaceAllString(s, "")
 	s = tmTagRe.ReplaceAllString(s, "")
 	return strings.TrimSpace(s)
+}
+
+// applyCollapseFilter removes children of collapsed parent tasks.
+func (tm *TaskManager) applyCollapseFilter(tasks []Task) []Task {
+	if len(tm.collapsed) == 0 {
+		return tasks
+	}
+	var out []Task
+	for _, t := range tasks {
+		if t.ParentLine > 0 {
+			parentKey := fmt.Sprintf("%s:%d", t.NotePath, t.ParentLine)
+			if tm.collapsed[parentKey] {
+				continue
+			}
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// taskHasChildren returns true if any task in allTasks is a child of this task.
+func (tm *TaskManager) taskHasChildren(task Task) bool {
+	for _, t := range tm.allTasks {
+		if t.NotePath == task.NotePath && t.ParentLine == task.LineNum {
+			return true
+		}
+	}
+	return false
 }
 
 // applyActiveFilters applies the current tag and priority filters to a task
@@ -1471,6 +1536,17 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.doCyclePriority(task)
 		}
 
+	// Expand/collapse subtasks
+	case "e":
+		if tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			if tm.taskHasChildren(task) {
+				key := fmt.Sprintf("%s:%d", task.NotePath, task.LineNum)
+				tm.collapsed[key] = !tm.collapsed[key]
+				tm.rebuildFiltered()
+			}
+		}
+
 	// Sort mode
 	case "s":
 		tm.sortMode = (tm.sortMode + 1) % 5
@@ -1881,6 +1957,19 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	}
 	displayText = TruncateDisplay(displayText, maxTextW)
 
+	// Subtask indentation and collapse indicator
+	indentStr := ""
+	if task.Indent > 0 {
+		indentStr = strings.Repeat("  ", task.Indent) + DimStyle.Render("└ ")
+	}
+	collapseIndicator := ""
+	if tm.taskHasChildren(task) {
+		key := fmt.Sprintf("%s:%d", task.NotePath, task.LineNum)
+		if tm.collapsed[key] {
+			collapseIndicator = lipgloss.NewStyle().Foreground(overlay1).Render("[+] ")
+		}
+	}
+
 	// Build the line
 	prefix := "  "
 	if isSelected {
@@ -1895,7 +1984,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		tagBadges += " " + lipgloss.NewStyle().Foreground(c).Render("#"+tag)
 	}
 
-	line := prefix + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
+	line := prefix + indentStr + collapseIndicator + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
 	if tagBadges != "" {
 		line += tagBadges
 	}
@@ -1987,7 +2076,7 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 		}
 	default:
 		pairs = []struct{ Key, Desc string }{
-			{"j/k", "nav"}, {"x", "toggle"}, {"g", "go"}, {"a", "add"},
+			{"j/k", "nav"}, {"x", "toggle"}, {"e", "expand"}, {"g", "go"}, {"a", "add"},
 			{"d", "date"}, {"r", "reschedule"}, {"s", "sort"}, {"p", "prio"}, {"#", "tag"},
 			{"P", "filter prio"}, {"c", "clear"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
 		}
