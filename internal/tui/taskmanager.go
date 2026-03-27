@@ -134,6 +134,9 @@ type TaskManager struct {
 	// Cached tab counts (updated by rebuildFiltered)
 	tabCounts [6]int
 
+	// Cached blocked status (computed once in rebuildFiltered, not per-render)
+	blockedCache map[string]bool
+
 	// Status message
 	statusMsg string
 
@@ -780,6 +783,15 @@ func (tm *TaskManager) rebuildFiltered() {
 		// Hide children of collapsed parent tasks.
 		tm.filtered = tm.applyCollapseFilter(tm.filtered)
 	}
+	// Pre-compute blocked status for all filtered tasks so renderTaskRow
+	// doesn't run O(n*m) dependency checks on every frame.
+	tm.blockedCache = make(map[string]bool)
+	for _, t := range tm.filtered {
+		if len(t.DependsOn) > 0 {
+			tm.blockedCache[taskKey(t)] = tm.isBlocked(t)
+		}
+	}
+
 	// Cache tab counts so renderTabs doesn't re-filter on every frame.
 	// Apply active tag/priority filters to counts so they reflect what
 	// the user would actually see in each tab.
@@ -2182,9 +2194,9 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		prefixExtra += 4
 	}
 
-	// Blocked indicator
+	// Blocked indicator (uses pre-computed cache from rebuildFiltered)
 	blockedStr := ""
-	if len(task.DependsOn) > 0 && tm.isBlocked(task) {
+	if tm.blockedCache[taskKey(task)] {
 		blockedStr = lipgloss.NewStyle().Foreground(red).Render("🔒")
 		textStyle = lipgloss.NewStyle().Foreground(overlay0) // dim blocked tasks
 		prefixExtra += 2
