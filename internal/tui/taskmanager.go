@@ -29,9 +29,10 @@ type Task struct {
 	Tags          []string `json:"tags,omitempty"`
 	NotePath      string   `json:"note_path"`           // source note relative path
 	LineNum       int      `json:"line_num"`             // 1-based line number in source note
-	Indent        int      `json:"indent,omitempty"`      // 0=top-level, 1=subtask, 2=sub-subtask
-	ParentLine    int      `json:"parent_line,omitempty"` // LineNum of parent task, 0 if top-level
-	DependsOn     []string `json:"depends_on,omitempty"`  // dependency references (task text snippets)
+	Indent           int      `json:"indent,omitempty"`           // 0=top-level, 1=subtask, 2=sub-subtask
+	ParentLine       int      `json:"parent_line,omitempty"`      // LineNum of parent task, 0 if top-level
+	DependsOn        []string `json:"depends_on,omitempty"`       // dependency references (task text snippets)
+	EstimatedMinutes int      `json:"estimated_minutes,omitempty"` // time estimate in minutes
 }
 
 // taskView identifies which tab is active.
@@ -69,6 +70,7 @@ const (
 	tmInputSearch                 // filtering
 	tmInputReschedule             // quick reschedule picker
 	tmInputDependency             // adding a dependency
+	tmInputEstimate               // setting time estimate
 )
 
 // ---------------------------------------------------------------------------
@@ -85,6 +87,7 @@ var (
 	tmTagRe        = regexp.MustCompile(`#([A-Za-z0-9_/-]+)`)
 	tmScheduleRe   = regexp.MustCompile(`⏰\s*(\d{2}:\d{2}-\d{2}:\d{2})`)
 	tmDependsRe    = regexp.MustCompile(`depends:"([^"]+)"|depends:([^\s]+)`)
+	tmEstimateRe   = regexp.MustCompile(`~(\d+)(m|h)`)
 )
 
 // ---------------------------------------------------------------------------
@@ -380,6 +383,16 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 				if dep != "" {
 					t.DependsOn = append(t.DependsOn, dep)
 				}
+			}
+
+			// Time estimate (~30m, ~2h)
+			if em := tmEstimateRe.FindStringSubmatch(taskText); em != nil {
+				val := 0
+				fmt.Sscanf(em[1], "%d", &val)
+				if em[2] == "h" {
+					val *= 60
+				}
+				t.EstimatedMinutes = val
 			}
 
 			tasks = append(tasks, t)
@@ -1017,6 +1030,7 @@ func tmCleanText(s string) string {
 	s = tmScheduleRe.ReplaceAllString(s, "")
 	s = tmTagRe.ReplaceAllString(s, "")
 	s = tmDependsRe.ReplaceAllString(s, "")
+	s = tmEstimateRe.ReplaceAllString(s, "")
 	return strings.TrimSpace(s)
 }
 
@@ -1287,6 +1301,8 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		return tm.updateReschedule(key)
 	case tmInputDependency:
 		return tm.updateDependency(key)
+	case tmInputEstimate:
+		return tm.updateEstimate(key)
 	}
 
 	return tm, nil
@@ -1412,6 +1428,51 @@ func (tm TaskManager) updateDependency(key string) (TaskManager, tea.Cmd) {
 			tm.inputBuf += key
 		}
 	}
+	return tm, nil
+}
+
+func (tm TaskManager) updateEstimate(key string) (TaskManager, tea.Cmd) {
+	if tm.cursor >= len(tm.filtered) {
+		tm.inputMode = tmInputNone
+		return tm, nil
+	}
+	task := tm.filtered[tm.cursor]
+	var minutes int
+	switch key {
+	case "1":
+		minutes = 15
+	case "2":
+		minutes = 30
+	case "3":
+		minutes = 45
+	case "4":
+		minutes = 60
+	case "5":
+		minutes = 90
+	case "6":
+		minutes = 120
+	case "esc":
+		tm.inputMode = tmInputNone
+		return tm, nil
+	default:
+		return tm, nil
+	}
+
+	label := fmt.Sprintf("~%dm", minutes)
+	if minutes >= 60 && minutes%60 == 0 {
+		label = fmt.Sprintf("~%dh", minutes/60)
+	}
+
+	ok := tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+		line = tmEstimateRe.ReplaceAllString(line, "")
+		line = strings.TrimRight(line, " ")
+		return line + " " + label
+	})
+	if ok {
+		tm.statusMsg = "Estimate: " + label
+		tm.reparse()
+	}
+	tm.inputMode = tmInputNone
 	return tm, nil
 }
 
@@ -1765,6 +1826,12 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.doCyclePriority(task)
 		}
 
+	// Set time estimate
+	case "E":
+		if tm.cursor < len(tm.filtered) {
+			tm.inputMode = tmInputEstimate
+		}
+
 	// Focus session on current task
 	case "f":
 		if tm.cursor < len(tm.filtered) {
@@ -1984,6 +2051,28 @@ func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
 	stats := lipgloss.NewStyle().Foreground(overlay0).
 		Render(fmt.Sprintf("  %d/%d done", done, total))
 
+	// Workload estimate for Today view
+	if tm.view == taskViewToday {
+		totalMin := 0
+		for _, t := range tm.filtered {
+			if !t.Done {
+				totalMin += t.EstimatedMinutes
+			}
+		}
+		if totalMin > 0 {
+			var workload string
+			h, m := totalMin/60, totalMin%60
+			if h > 0 && m > 0 {
+				workload = fmt.Sprintf("~%dh%dm", h, m)
+			} else if h > 0 {
+				workload = fmt.Sprintf("~%dh", h)
+			} else {
+				workload = fmt.Sprintf("~%dm", m)
+			}
+			stats += lipgloss.NewStyle().Foreground(teal).Render("  " + workload)
+		}
+	}
+
 	// Active filter indicators
 	var filters string
 	filterStyle := lipgloss.NewStyle().Foreground(crust).Background(sapphire).Padding(0, 1)
@@ -2167,6 +2256,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	displayText = tmScheduleRe.ReplaceAllString(displayText, "")
 	displayText = tmTagRe.ReplaceAllString(displayText, "")
 	displayText = tmDependsRe.ReplaceAllString(displayText, "")
+	displayText = tmEstimateRe.ReplaceAllString(displayText, "")
 	displayText = strings.TrimSpace(displayText)
 
 	textStyle := lipgloss.NewStyle().Foreground(text)
@@ -2195,6 +2285,22 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 			Background(teal).
 			Padding(0, 1).
 			Render(task.ScheduledTime)
+	}
+
+	// Estimate badge
+	var estimateBadge string
+	estimateWidth := 0
+	if task.EstimatedMinutes > 0 {
+		label := fmt.Sprintf("~%dm", task.EstimatedMinutes)
+		if task.EstimatedMinutes >= 60 && task.EstimatedMinutes%60 == 0 {
+			label = fmt.Sprintf("~%dh", task.EstimatedMinutes/60)
+		} else if task.EstimatedMinutes > 60 {
+			label = fmt.Sprintf("~%dh%dm", task.EstimatedMinutes/60, task.EstimatedMinutes%60)
+		}
+		estimateBadge = lipgloss.NewStyle().
+			Foreground(crust).Background(sky).Padding(0, 1).
+			Render(label)
+		estimateWidth = len(label) + 3
 	}
 
 	// Source note badge
@@ -2245,7 +2351,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	for _, tag := range task.Tags {
 		tagWidth += len(tag) + 2 // "#" + tag + space
 	}
-	maxTextW := w - 30 - tagWidth - prefixExtra
+	maxTextW := w - 30 - tagWidth - prefixExtra - estimateWidth
 	if maxTextW < 10 {
 		maxTextW = 10
 	}
@@ -2268,6 +2374,9 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	line := prefix + selectStr + indentStr + collapseIndicator + blockedStr + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
 	if tagBadges != "" {
 		line += tagBadges
+	}
+	if estimateBadge != "" {
+		line += " " + estimateBadge
 	}
 	if scheduleBadge != "" {
 		line += " " + scheduleBadge
@@ -2324,6 +2433,19 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 		b.WriteString("  " + promptStyle.Render("Filter: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
 	case tmInputDependency:
 		b.WriteString("  " + promptStyle.Render("Depends on: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
+	case tmInputEstimate:
+		b.WriteString("  " + promptStyle.Render("Estimate: "))
+		b.WriteString("\n")
+		shortcutStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+		descStyle2 := lipgloss.NewStyle().Foreground(overlay0)
+		b.WriteString("  " +
+			shortcutStyle.Render("1") + descStyle2.Render(":15m ") +
+			shortcutStyle.Render("2") + descStyle2.Render(":30m ") +
+			shortcutStyle.Render("3") + descStyle2.Render(":45m ") +
+			shortcutStyle.Render("4") + descStyle2.Render(":1h ") +
+			shortcutStyle.Render("5") + descStyle2.Render(":1.5h ") +
+			shortcutStyle.Render("6") + descStyle2.Render(":2h ") +
+			shortcutStyle.Render("Esc") + descStyle2.Render(":cancel"))
 	case tmInputReschedule:
 		b.WriteString("  " + promptStyle.Render("Reschedule: "))
 		b.WriteString("\n")
@@ -2360,8 +2482,8 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 	default:
 		pairs = []struct{ Key, Desc string }{
 			{"j/k", "nav"}, {"x", "toggle"}, {"e", "expand"}, {"f", "focus"}, {"g", "go"}, {"a", "add"},
-			{"d", "date"}, {"r", "reschedule"}, {"s", "sort"}, {"p", "prio"}, {"#", "tag"},
-			{"P", "filter prio"}, {"c", "clear"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
+			{"d", "date"}, {"E", "estimate"}, {"r", "reschedule"}, {"s", "sort"}, {"p", "prio"},
+			{"#", "tag"}, {"P", "filter prio"}, {"c", "clear"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
 		}
 	}
 
