@@ -45,12 +45,13 @@ type Task struct {
 type taskView int
 
 const (
-	taskViewToday     taskView = iota // 0
-	taskViewUpcoming                  // 1
-	taskViewAll                       // 2
-	taskViewCompleted                 // 3
-	taskViewCalendar                  // 4
-	taskViewKanban                    // 5
+	taskViewToday      taskView = iota // 0
+	taskViewUpcoming                   // 1
+	taskViewAll                        // 2
+	taskViewCompleted                  // 3
+	taskViewCalendar                   // 4
+	taskViewKanban                     // 5
+	taskViewEisenhower                 // 6
 )
 
 // tmSortMode controls how tasks are sorted within a view.
@@ -155,7 +156,7 @@ type TaskManager struct {
 	filterPriority int    // -1 = no priority filter, 0-4 = filter to this level
 
 	// Cached tab counts (updated by rebuildFiltered)
-	tabCounts [6]int
+	tabCounts [7]int
 
 	// Cached blocked status (computed once in rebuildFiltered, not per-render)
 	blockedCache map[string]bool
@@ -1039,8 +1040,10 @@ func (tm *TaskManager) rebuildFiltered() {
 		tm.filtered = tm.filterCalendarDay()
 	case taskViewKanban:
 		tm.filtered = nil // kanban uses columns, not flat list
+	case taskViewEisenhower:
+		tm.filtered = nil // uses quadrants, not flat list
 	}
-	if tm.view != taskViewKanban {
+	if tm.view != taskViewKanban && tm.view != taskViewEisenhower {
 		// Apply active tag filter.
 		if tm.filterTag != "" {
 			tm.filtered = tm.applyTagFilter(tm.filtered)
@@ -1084,13 +1087,14 @@ func (tm *TaskManager) rebuildFiltered() {
 	// Cache tab counts so renderTabs doesn't re-filter on every frame.
 	// Apply active tag/priority filters to counts so they reflect what
 	// the user would actually see in each tab.
-	tm.tabCounts = [6]int{
+	tm.tabCounts = [7]int{
 		len(tm.applyActiveFilters(tm.filterToday())),
 		len(tm.applyActiveFilters(tm.filterUpcoming())),
 		len(tm.applyActiveFilters(tm.filterAll())),
 		len(tm.applyActiveFilters(tm.filterCompleted())),
 		-1, // calendar doesn't show count
 		-1, // kanban doesn't show count
+		-1, // eisenhower doesn't show count
 	}
 }
 
@@ -1959,7 +1963,7 @@ func (tm TaskManager) updateKanban(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case "6":
 		// Already on kanban
 	case "tab":
-		tm.view = (tm.view + 1) % 6
+		tm.view = (tm.view + 1) % 7
 		tm.switchView()
 
 	case "h", "left":
@@ -2113,9 +2117,12 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case "6":
 		tm.view = taskViewKanban
 		tm.switchView()
+	case "7":
+		tm.view = taskViewEisenhower
+		tm.switchView()
 
 	case "tab":
-		tm.view = (tm.view + 1) % 6
+		tm.view = (tm.view + 1) % 7
 		tm.switchView()
 
 	// Navigation
@@ -2486,6 +2493,8 @@ func (tm TaskManager) View() string {
 		tm.renderCalendarView(&b, innerW)
 	case taskViewKanban:
 		tm.renderKanbanView(&b, innerW)
+	case taskViewEisenhower:
+		tm.renderEisenhowerView(&b, innerW)
 	default:
 		tm.renderTaskList(&b, innerW)
 	}
@@ -2510,6 +2519,94 @@ func (tm TaskManager) View() string {
 		Background(mantle)
 
 	return border.Render(b.String())
+}
+
+// eisenhowerQuadrants returns tasks grouped into 4 quadrants.
+func (tm *TaskManager) eisenhowerQuadrants() [4][]Task {
+	var q [4][]Task
+	for _, t := range tm.allTasks {
+		if t.Done || tmIsSnoozed(t) {
+			continue
+		}
+		urgent := tmIsOverdue(t.DueDate) || tmIsToday(t.DueDate) || (t.DueDate != "" && tmDaysUntil(t.DueDate) <= 2)
+		important := t.Priority >= 3
+		switch {
+		case important && urgent:
+			q[0] = append(q[0], t)
+		case important && !urgent:
+			q[1] = append(q[1], t)
+		case !important && urgent:
+			q[2] = append(q[2], t)
+		default:
+			q[3] = append(q[3], t)
+		}
+	}
+	return q
+}
+
+func (tm *TaskManager) renderEisenhowerView(b *strings.Builder, w int) {
+	q := tm.eisenhowerQuadrants()
+	quadLabels := [4]string{"DO (urgent+important)", "SCHEDULE (important)", "DELEGATE (urgent)", "ELIMINATE (neither)"}
+	quadColors := [4]lipgloss.Color{red, blue, yellow, overlay0}
+	halfW := (w - 4) / 2
+	if halfW < 20 {
+		halfW = 20
+	}
+	maxItems := (tm.visibleHeight() - 4) / 2
+	if maxItems < 2 {
+		maxItems = 2
+	}
+
+	for row := 0; row < 2; row++ {
+		// Header row
+		left := lipgloss.NewStyle().Foreground(quadColors[row*2]).Bold(true).Render("  " + quadLabels[row*2])
+		right := lipgloss.NewStyle().Foreground(quadColors[row*2+1]).Bold(true).Render("  " + quadLabels[row*2+1])
+		leftPad := halfW - lipgloss.Width(left)
+		if leftPad < 1 {
+			leftPad = 1
+		}
+		b.WriteString(left + strings.Repeat(" ", leftPad) + right + "\n")
+
+		// Task rows
+		for i := 0; i < maxItems; i++ {
+			leftTask := ""
+			if i < len(q[row*2]) {
+				t := q[row*2][i]
+				leftTask = "  " + lipgloss.NewStyle().Foreground(quadColors[row*2]).Render(tmPriorityIcon(t.Priority)) +
+					" " + TruncateDisplay(tmCleanText(t.Text), halfW-6)
+			}
+			rightTask := ""
+			if i < len(q[row*2+1]) {
+				t := q[row*2+1][i]
+				rightTask = "  " + lipgloss.NewStyle().Foreground(quadColors[row*2+1]).Render(tmPriorityIcon(t.Priority)) +
+					" " + TruncateDisplay(tmCleanText(t.Text), halfW-6)
+			}
+			leftPad2 := halfW - lipgloss.Width(leftTask)
+			if leftPad2 < 1 {
+				leftPad2 = 1
+			}
+			b.WriteString(leftTask + strings.Repeat(" ", leftPad2) + rightTask + "\n")
+		}
+		// Show overflow count
+		leftOver := ""
+		if len(q[row*2]) > maxItems {
+			leftOver = DimStyle.Render(fmt.Sprintf("  +%d more", len(q[row*2])-maxItems))
+		}
+		rightOver := ""
+		if len(q[row*2+1]) > maxItems {
+			rightOver = DimStyle.Render(fmt.Sprintf("  +%d more", len(q[row*2+1])-maxItems))
+		}
+		if leftOver != "" || rightOver != "" {
+			lp := halfW - lipgloss.Width(leftOver)
+			if lp < 1 {
+				lp = 1
+			}
+			b.WriteString(leftOver + strings.Repeat(" ", lp) + rightOver + "\n")
+		}
+		if row == 0 {
+			b.WriteString(DimStyle.Render("  " + strings.Repeat("─", w-4)) + "\n")
+		}
+	}
 }
 
 func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
@@ -2591,6 +2688,7 @@ func (tm *TaskManager) renderTabs(b *strings.Builder, w int) {
 		"Done",
 		"Calendar",
 		"Kanban",
+		"Matrix",
 	}
 	counts := tm.tabCounts[:]
 
