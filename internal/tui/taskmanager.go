@@ -2154,25 +2154,16 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		Padding(0, 1).
 		Render(noteName)
 
-	// Truncate text if necessary (account for badges including tags)
-	tagWidth := 0
-	for _, tag := range task.Tags {
-		tagWidth += len(tag) + 2 // "#" + tag + space
-	}
-	maxTextW := w - 30 - tagWidth
-	if maxTextW < 10 {
-		maxTextW = 10
-	}
-	displayText = TruncateDisplay(displayText, maxTextW)
-
 	// Selection indicator (in select mode)
 	selectStr := ""
+	prefixExtra := 0
 	if tm.selectMode {
 		if tm.selected[taskKey(task)] {
 			selectStr = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("[*] ")
 		} else {
 			selectStr = DimStyle.Render("[ ] ")
 		}
+		prefixExtra += 4
 	}
 
 	// Blocked indicator
@@ -2180,20 +2171,34 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	if len(task.DependsOn) > 0 && tm.isBlocked(task) {
 		blockedStr = lipgloss.NewStyle().Foreground(red).Render("🔒")
 		textStyle = lipgloss.NewStyle().Foreground(overlay0) // dim blocked tasks
+		prefixExtra += 2
 	}
 
 	// Subtask indentation and collapse indicator
 	indentStr := ""
 	if task.Indent > 0 {
 		indentStr = strings.Repeat("  ", task.Indent) + DimStyle.Render("└ ")
+		prefixExtra += task.Indent*2 + 2
 	}
 	collapseIndicator := ""
 	if tm.taskHasChildren(task) {
 		key := fmt.Sprintf("%s:%d", task.NotePath, task.LineNum)
 		if tm.collapsed[key] {
 			collapseIndicator = lipgloss.NewStyle().Foreground(overlay1).Render("[+] ")
+			prefixExtra += 4
 		}
 	}
+
+	// Truncate text (account for all variable-width prefixes and badges)
+	tagWidth := 0
+	for _, tag := range task.Tags {
+		tagWidth += len(tag) + 2 // "#" + tag + space
+	}
+	maxTextW := w - 30 - tagWidth - prefixExtra
+	if maxTextW < 10 {
+		maxTextW = 10
+	}
+	displayText = TruncateDisplay(displayText, maxTextW)
 
 	// Build the line
 	prefix := "  "
