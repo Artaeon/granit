@@ -105,6 +105,10 @@ type TaskManager struct {
 	kanbanCursor [4]int   // cursor position within each column
 	kanbanScroll [4]int   // scroll position within each column
 
+	// Active filters (applied on top of view-specific filters)
+	filterTag      string // "" = no tag filter, "tagname" = filter to this tag
+	filterPriority int    // -1 = no priority filter, 0-4 = filter to this level
+
 	// Cached tab counts (updated by rebuildFiltered)
 	tabCounts [6]int
 
@@ -125,9 +129,10 @@ type TaskManager struct {
 func NewTaskManager() TaskManager {
 	now := time.Now()
 	return TaskManager{
-		calYear:  now.Year(),
-		calMonth: now.Month(),
-		calDay:   now.Day(),
+		calYear:        now.Year(),
+		calMonth:       now.Month(),
+		calDay:         now.Day(),
+		filterPriority: -1,
 	}
 }
 
@@ -153,6 +158,8 @@ func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.inputMode = tmInputNone
 	tm.inputBuf = ""
 	tm.statusMsg = ""
+	tm.filterTag = ""
+	tm.filterPriority = -1
 	tm.jumpOK = false
 	tm.fileChanged = false
 	tm.lastChangedNote = ""
@@ -616,6 +623,8 @@ func (tm *TaskManager) doKanbanMove(task Task, direction int) {
 func (tm *TaskManager) switchView() {
 	tm.inputMode = tmInputNone
 	tm.inputBuf = ""
+	tm.filterTag = ""
+	tm.filterPriority = -1
 	tm.rebuildFiltered()
 }
 
@@ -636,9 +645,19 @@ func (tm *TaskManager) rebuildFiltered() {
 	case taskViewKanban:
 		tm.filtered = nil // kanban uses columns, not flat list
 	}
-	// Skip search for kanban view (it uses columns, not the flat list).
-	if tm.view != taskViewKanban && tm.inputMode == tmInputSearch && tm.inputBuf != "" {
-		tm.filtered = tm.applySearch(tm.filtered)
+	if tm.view != taskViewKanban {
+		// Apply active tag filter.
+		if tm.filterTag != "" {
+			tm.filtered = tm.applyTagFilter(tm.filtered)
+		}
+		// Apply active priority filter.
+		if tm.filterPriority >= 0 {
+			tm.filtered = tm.applyPriorityFilter(tm.filtered)
+		}
+		// Apply text search.
+		if tm.inputMode == tmInputSearch && tm.inputBuf != "" {
+			tm.filtered = tm.applySearch(tm.filtered)
+		}
 	}
 	// Cache tab counts so renderTabs doesn't re-filter on every frame.
 	tm.tabCounts = [6]int{
@@ -758,6 +777,71 @@ func (tm *TaskManager) applySearch(tasks []Task) []Task {
 			strings.Contains(strings.ToLower(t.NotePath), query) {
 			out = append(out, t)
 		}
+	}
+	return out
+}
+
+func (tm *TaskManager) applyTagFilter(tasks []Task) []Task {
+	var out []Task
+	for _, t := range tasks {
+		for _, tag := range t.Tags {
+			if tag == tm.filterTag {
+				out = append(out, t)
+				break
+			}
+		}
+	}
+	return out
+}
+
+func (tm *TaskManager) applyPriorityFilter(tasks []Task) []Task {
+	var out []Task
+	for _, t := range tasks {
+		if t.Priority == tm.filterPriority {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// collectTags returns all unique tags across allTasks with their counts,
+// sorted by frequency descending.
+func (tm *TaskManager) collectTags() []struct {
+	Tag   string
+	Count int
+} {
+	counts := make(map[string]int)
+	for _, t := range tm.allTasks {
+		if t.Done {
+			continue
+		}
+		for _, tag := range t.Tags {
+			counts[tag]++
+		}
+	}
+	type tagCount struct {
+		Tag   string
+		Count int
+	}
+	result := make([]tagCount, 0, len(counts))
+	for tag, count := range counts {
+		result = append(result, tagCount{Tag: tag, Count: count})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Count != result[j].Count {
+			return result[i].Count > result[j].Count
+		}
+		return result[i].Tag < result[j].Tag
+	})
+	out := make([]struct {
+		Tag   string
+		Count int
+	}, len(result))
+	for i, tc := range result {
+		out[i] = struct {
+			Tag   string
+			Count int
+		}{Tag: tc.Tag, Count: tc.Count}
 	}
 	return out
 }
@@ -1233,6 +1317,73 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case "/":
 		tm.inputMode = tmInputSearch
 		tm.inputBuf = ""
+
+	// Tag filter: cycle through available tags
+	case "#":
+		tags := tm.collectTags()
+		if len(tags) == 0 {
+			tm.statusMsg = "No tags found"
+			break
+		}
+		if tm.filterTag == "" {
+			tm.filterTag = tags[0].Tag
+		} else {
+			// Find current tag and advance to next, or wrap to clear
+			found := false
+			for i, tc := range tags {
+				if tc.Tag == tm.filterTag {
+					if i+1 < len(tags) {
+						tm.filterTag = tags[i+1].Tag
+					} else {
+						tm.filterTag = "" // wrap around clears filter
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				tm.filterTag = tags[0].Tag
+			}
+		}
+		if tm.filterTag != "" {
+			tm.statusMsg = "Tag: #" + tm.filterTag
+		} else {
+			tm.statusMsg = "Tag filter cleared"
+		}
+		tm.rebuildFiltered()
+
+	// Priority filter: cycle none -> highest -> high -> medium -> low -> none
+	case "P":
+		switch tm.filterPriority {
+		case -1:
+			tm.filterPriority = 4
+		case 4:
+			tm.filterPriority = 3
+		case 3:
+			tm.filterPriority = 2
+		case 2:
+			tm.filterPriority = 1
+		case 1:
+			tm.filterPriority = 0
+		default:
+			tm.filterPriority = -1
+		}
+		prioNames := []string{"none", "low", "medium", "high", "highest"}
+		if tm.filterPriority >= 0 {
+			tm.statusMsg = "Priority: " + prioNames[tm.filterPriority]
+		} else {
+			tm.statusMsg = "Priority filter cleared"
+		}
+		tm.rebuildFiltered()
+
+	// Clear all active filters
+	case "c":
+		if tm.filterTag != "" || tm.filterPriority >= 0 {
+			tm.filterTag = ""
+			tm.filterPriority = -1
+			tm.statusMsg = "Filters cleared"
+			tm.rebuildFiltered()
+		}
 	}
 
 	return tm, nil
@@ -1335,7 +1486,18 @@ func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
 	stats := lipgloss.NewStyle().Foreground(overlay0).
 		Render(fmt.Sprintf("  %d/%d done", done, total))
 
-	b.WriteString("  " + icon + title + stats)
+	// Active filter indicators
+	var filters string
+	filterStyle := lipgloss.NewStyle().Foreground(crust).Background(sapphire).Padding(0, 1)
+	if tm.filterTag != "" {
+		filters += " " + filterStyle.Render("#"+tm.filterTag)
+	}
+	if tm.filterPriority >= 0 {
+		prioNames := []string{"none", "low", "med", "high", "highest"}
+		filters += " " + filterStyle.Render("P:"+prioNames[tm.filterPriority])
+	}
+
+	b.WriteString("  " + icon + title + stats + filters)
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", w-4)))
 	b.WriteString("\n")
@@ -1617,7 +1779,8 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 	default:
 		pairs = []struct{ Key, Desc string }{
 			{"j/k", "nav"}, {"x", "toggle"}, {"g", "go"}, {"a", "add"},
-			{"d", "date"}, {"p", "prio"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
+			{"d", "date"}, {"p", "prio"}, {"#", "tag"}, {"P", "filter prio"},
+			{"c", "clear"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
 		}
 	}
 
