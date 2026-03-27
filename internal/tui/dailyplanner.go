@@ -116,9 +116,10 @@ type DailyPlanner struct {
 
 	// State
 	focus  plannerPanel // 0=schedule, 1=unscheduled panel, 2=habits panel
-	adding bool
-	addBuf string
+	adding  bool
+	addBuf  string
 	addType blockType // block type being added
+	addSlots int      // number of 30-min slots for the block (1-6)
 
 	// Moving
 	moving   bool
@@ -474,7 +475,7 @@ func (dp DailyPlanner) updateAdding(msg tea.KeyMsg) (DailyPlanner, tea.Cmd) {
 		dp.addBuf = ""
 	case "enter":
 		if strings.TrimSpace(dp.addBuf) != "" {
-			dp.placeBlock(dp.cursor, strings.TrimSpace(dp.addBuf), dp.addType, 2)
+			dp.placeBlock(dp.cursor, strings.TrimSpace(dp.addBuf), dp.addType, dp.addSlots)
 			dp.modified = true
 			dp.recountProgress()
 		}
@@ -492,6 +493,14 @@ func (dp DailyPlanner) updateAdding(msg tea.KeyMsg) (DailyPlanner, tea.Cmd) {
 		dp.addType = blockBreak
 	case "4":
 		dp.addType = blockFocus
+	case "-":
+		if dp.addSlots > 1 {
+			dp.addSlots--
+		}
+	case "=", "+":
+		if dp.addSlots < 6 {
+			dp.addSlots++
+		}
 	default:
 		if len(msg.String()) == 1 || msg.String() == " " {
 			dp.addBuf += msg.String()
@@ -539,6 +548,7 @@ func (dp DailyPlanner) updateSchedule(msg tea.KeyMsg) (DailyPlanner, tea.Cmd) {
 		dp.adding = true
 		dp.addBuf = ""
 		dp.addType = blockTask
+		dp.addSlots = 2 // default 1 hour
 
 	case "d":
 		dp.deleteBlock(dp.cursor)
@@ -1118,9 +1128,15 @@ func (dp DailyPlanner) viewSchedule(width int) string {
 		inputStyle := lipgloss.NewStyle().Foreground(text)
 		typeLabel := blockTypeName(dp.addType)
 		typeLabelStyled := lipgloss.NewStyle().Foreground(blockColor(dp.addType, 0)).Render("[" + typeLabel + "]")
-		b.WriteString("  " + promptStyle.Render("New block: ") + inputStyle.Render(dp.addBuf) + lipgloss.NewStyle().Foreground(mauve).Render("_"))
+		durLabels := []string{"30m", "1h", "1.5h", "2h", "2.5h", "3h"}
+		durLabel := durLabels[0]
+		if dp.addSlots >= 1 && dp.addSlots <= 6 {
+			durLabel = durLabels[dp.addSlots-1]
+		}
+		durStyled := lipgloss.NewStyle().Foreground(peach).Bold(true).Render("(" + durLabel + ")")
+		b.WriteString("  " + promptStyle.Render("New block ") + durStyled + promptStyle.Render(": ") + inputStyle.Render(dp.addBuf) + lipgloss.NewStyle().Foreground(mauve).Render("_"))
 		b.WriteString("\n")
-		b.WriteString("  " + typeLabelStyled + DimStyle.Render("  1:task 2:event 3:break 4:focus"))
+		b.WriteString("  " + typeLabelStyled + DimStyle.Render("  1:task 2:event 3:break 4:focus  -/+:duration"))
 		b.WriteString("\n")
 	}
 
