@@ -39,9 +39,11 @@ type Dashboard struct {
 	totalFolders int
 
 	// Today's tasks
-	todayTasks []dashTask
-	tasksDue   int
-	tasksDone  int
+	todayTasks   []dashTask
+	tasksDue     int
+	tasksDone    int
+	overdueTasks []dashTask
+	overdueCount int
 
 	// Recent notes (top 6 by modification time)
 	recentNotes []dashNote
@@ -294,18 +296,23 @@ func (d *Dashboard) parseTasks(todayStr string) {
 		}
 
 		// Include tasks that mention today's date or have no date at all.
+		// Also detect overdue tasks (date before today, not done).
 		hasDate := false
 		for i := 0; i < len(taskText)-9; i++ {
 			if taskText[i] >= '0' && taskText[i] <= '9' {
 				chunk := taskText[i:]
 				if len(chunk) >= 10 && chunk[4] == '-' && chunk[7] == '-' {
+					dateStr := chunk[:10]
 					hasDate = true
-					if chunk[:10] == todayStr {
+					if dateStr == todayStr {
 						d.todayTasks = append(d.todayTasks, dashTask{Text: taskText, Done: done})
 						d.tasksDue++
 						if done {
 							d.tasksDone++
 						}
+					} else if dateStr < todayStr && !done {
+						d.overdueTasks = append(d.overdueTasks, dashTask{Text: taskText, Done: false})
+						d.overdueCount++
 					}
 					break
 				}
@@ -406,6 +413,29 @@ func (d Dashboard) View() string {
 	lines = append(lines, greetLine+strings.Repeat(" ", gap)+datePart)
 	lines = append(lines, dimSt.Render("  "+strings.Repeat("\u2500", innerW-4)))
 	lines = append(lines, "")
+
+	// --- Overdue warning ---
+	if d.overdueCount > 0 {
+		warnStyle := lipgloss.NewStyle().Foreground(red).Bold(true)
+		lines = append(lines, warnStyle.Render(fmt.Sprintf("  ⚠ %d OVERDUE TASK", d.overdueCount)+func() string {
+			if d.overdueCount > 1 {
+				return "S"
+			}
+			return ""
+		}()))
+		shown := d.overdueCount
+		if shown > 3 {
+			shown = 3
+		}
+		for i := 0; i < shown; i++ {
+			taskText := TruncateDisplay(d.overdueTasks[i].Text, innerW-8)
+			lines = append(lines, lipgloss.NewStyle().Foreground(red).Render("    • "+taskText))
+		}
+		if d.overdueCount > 3 {
+			lines = append(lines, dimSt.Render(fmt.Sprintf("    +%d more", d.overdueCount-3)))
+		}
+		lines = append(lines, "")
+	}
 
 	// --- Two-column: Today's Tasks | Recent Notes ---
 	halfW := (innerW - 4) / 2
