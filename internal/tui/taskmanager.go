@@ -75,6 +75,7 @@ const (
 	tmInputReschedule             // quick reschedule picker
 	tmInputDependency             // adding a dependency
 	tmInputEstimate               // setting time estimate
+	tmInputNote                   // editing task note
 )
 
 // ---------------------------------------------------------------------------
@@ -1565,6 +1566,8 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		return tm.updateDependency(key)
 	case tmInputEstimate:
 		return tm.updateEstimate(key)
+	case tmInputNote:
+		return tm.updateNote(key)
 	}
 
 	return tm, nil
@@ -1678,6 +1681,38 @@ func (tm TaskManager) updateDependency(key string) (TaskManager, tea.Cmd) {
 				tm.statusMsg = "Dependency added: " + dep
 				tm.reparse()
 			}
+		}
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+	case "backspace":
+		if len(tm.inputBuf) > 0 {
+			tm.inputBuf = tm.inputBuf[:len(tm.inputBuf)-1]
+		}
+	default:
+		if len(key) == 1 || key == " " {
+			tm.inputBuf += key
+		}
+	}
+	return tm, nil
+}
+
+func (tm TaskManager) updateNote(key string) (TaskManager, tea.Cmd) {
+	switch key {
+	case "esc":
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+	case "enter":
+		if tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			k := taskKey(task)
+			note := strings.TrimSpace(tm.inputBuf)
+			if note == "" {
+				delete(tm.taskNotes, k)
+			} else {
+				tm.taskNotes[k] = note
+			}
+			tm.saveTaskNotes()
+			tm.statusMsg = "Note saved"
 		}
 		tm.inputMode = tmInputNone
 		tm.inputBuf = ""
@@ -2086,6 +2121,14 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		if tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
 			tm.doCyclePriority(task)
+		}
+
+	// Task note
+	case "n":
+		if tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			tm.inputMode = tmInputNote
+			tm.inputBuf = tm.taskNotes[taskKey(task)]
 		}
 
 	// Pin/unpin task
@@ -2743,6 +2786,8 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 		b.WriteString("  " + promptStyle.Render("Filter: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
 	case tmInputDependency:
 		b.WriteString("  " + promptStyle.Render("Depends on: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
+	case tmInputNote:
+		b.WriteString("  " + promptStyle.Render("Note: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
 	case tmInputEstimate:
 		b.WriteString("  " + promptStyle.Render("Estimate: "))
 		b.WriteString("\n")
@@ -2791,9 +2836,10 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 		}
 	default:
 		pairs = []struct{ Key, Desc string }{
-			{"j/k", "nav"}, {"x", "toggle"}, {"u", "undo"}, {"e", "expand"}, {"f", "focus"}, {"g", "go"},
-			{"a", "add"}, {"d", "date"}, {"E", "estimate"}, {"r", "reschedule"}, {"s", "sort"},
-			{"p", "prio"}, {"#", "tag"}, {"P", "filter prio"}, {"c", "clear"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
+			{"j/k", "nav"}, {"x", "toggle"}, {"u", "undo"}, {"n", "note"}, {"e", "expand"}, {"f", "focus"},
+			{"g", "go"}, {"a", "add"}, {"d", "date"}, {"E", "estimate"}, {"r", "reschedule"}, {"s", "sort"},
+			{"W", "pin"}, {"A", "auto-prio"}, {"p", "prio"}, {"#", "tag"}, {"P", "filter prio"},
+			{"c", "clear"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
 		}
 	}
 
