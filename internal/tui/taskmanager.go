@@ -84,7 +84,7 @@ var (
 	tmPrioLowRe    = regexp.MustCompile(`\x{1F53D}`)   // 🔽
 	tmTagRe        = regexp.MustCompile(`#([A-Za-z0-9_/-]+)`)
 	tmScheduleRe   = regexp.MustCompile(`⏰\s*(\d{2}:\d{2}-\d{2}:\d{2})`)
-	tmDependsRe    = regexp.MustCompile(`depends:([^\s]+)`)
+	tmDependsRe    = regexp.MustCompile(`depends:"([^"]+)"|depends:([^\s]+)`)
 )
 
 // ---------------------------------------------------------------------------
@@ -354,9 +354,15 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 				t.Tags = append(t.Tags, tm[1])
 			}
 
-			// Dependencies
+			// Dependencies (supports depends:"multi word" and depends:single)
 			for _, dm := range tmDependsRe.FindAllStringSubmatch(taskText, -1) {
-				t.DependsOn = append(t.DependsOn, dm[1])
+				dep := dm[1] // quoted form
+				if dep == "" {
+					dep = dm[2] // unquoted form
+				}
+				if dep != "" {
+					t.DependsOn = append(t.DependsOn, dep)
+				}
 			}
 
 			tasks = append(tasks, t)
@@ -984,6 +990,7 @@ func tmCleanText(s string) string {
 	s = tmPrioLowRe.ReplaceAllString(s, "")
 	s = tmScheduleRe.ReplaceAllString(s, "")
 	s = tmTagRe.ReplaceAllString(s, "")
+	s = tmDependsRe.ReplaceAllString(s, "")
 	return strings.TrimSpace(s)
 }
 
@@ -993,6 +1000,8 @@ func taskKey(t Task) string {
 }
 
 // isBlocked returns true if any of the task's dependencies are not yet done.
+// Matching uses cleaned task text with prefix comparison to avoid false
+// positives from short substring matches.
 func (tm *TaskManager) isBlocked(task Task) bool {
 	if len(task.DependsOn) == 0 {
 		return false
@@ -1003,8 +1012,11 @@ func (tm *TaskManager) isBlocked(task Task) bool {
 			if t.Done {
 				continue
 			}
-			if strings.Contains(strings.ToLower(t.Text), depLower) {
-				return true // found an undone task matching the dependency
+			cleaned := strings.ToLower(tmCleanText(t.Text))
+			// Require the dependency to match the start of the task text
+			// or be an exact match, to avoid false positives.
+			if strings.HasPrefix(cleaned, depLower) || cleaned == depLower {
+				return true
 			}
 		}
 	}
@@ -1351,8 +1363,12 @@ func (tm TaskManager) updateDependency(key string) (TaskManager, tea.Cmd) {
 		dep := strings.TrimSpace(tm.inputBuf)
 		if dep != "" && tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
+			depStr := dep
+			if strings.Contains(dep, " ") {
+				depStr = `"` + dep + `"` // quote multi-word dependencies
+			}
 			ok := tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
-				return strings.TrimRight(line, " ") + " depends:" + dep
+				return strings.TrimRight(line, " ") + " depends:" + depStr
 			})
 			if ok {
 				tm.statusMsg = "Dependency added: " + dep
