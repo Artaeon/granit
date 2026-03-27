@@ -649,6 +649,10 @@ func (m Model) View() string {
 		overlay := m.standupGen.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.dailyReview.IsActive() {
+		overlay := m.dailyReview.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.noteHistory.IsActive() {
 		overlay := m.noteHistory.View()
 		view = m.overlayCenter(view, overlay)

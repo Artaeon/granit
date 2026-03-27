@@ -157,6 +157,7 @@ type Model struct {
 	habitTracker     HabitTracker
 	focusSession     FocusSession
 	standupGen       StandupGenerator
+	dailyReview      DailyReview
 	noteHistory      NoteHistory
 	smartConnect     SmartConnections
 	writingStats     WritingStats

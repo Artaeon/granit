@@ -108,6 +108,7 @@ const (
 	CmdHabitTracker
 	CmdFocusSession
 	CmdStandupGenerator
+	CmdDailyReview
 	CmdNoteHistory
 	CmdSmartConnections
 	CmdWritingStats
@@ -258,6 +259,7 @@ var AllCommands = []Command{
 	{Label: "Habit Tracker", Desc: "Daily habits, goals, streaks, and progress tracking", Shortcut: "", Action: CmdHabitTracker, Icon: &IconGraphChar},
 	{Label: "Focus Session", Desc: "Guided work session with timer, tasks, and scratchpad", Shortcut: "", Action: CmdFocusSession, Icon: &IconDailyChar},
 	{Label: "Daily Standup", Desc: "Auto-generate standup from git commits, tasks, and notes", Shortcut: "", Action: CmdStandupGenerator, Icon: &IconCalendarChar},
+	{Label: "Daily Review", Desc: "Guided end-of-day review: celebrate, reschedule, reflect", Shortcut: "", Action: CmdDailyReview, Icon: &IconOutlineChar},
 	{Label: "Note History", Desc: "Git version timeline and diff viewer for current note", Shortcut: "", Action: CmdNoteHistory, Icon: &IconOutlineChar},
 	{Label: "Smart Connections", Desc: "Find semantically related notes using content similarity", Shortcut: "", Action: CmdSmartConnections, Icon: &IconLinkChar},
 	{Label: "Writing Statistics", Desc: "Word counts, writing streaks, and productivity charts", Shortcut: "", Action: CmdWritingStats, Icon: &IconGraphChar},

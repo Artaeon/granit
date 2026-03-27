@@ -1093,6 +1093,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.dailyReview.IsActive() {
+			m.dailyReview, _ = m.dailyReview.Update(msg)
+			if m.dailyReview.WasFileChanged() {
+				m.refreshComponents("")
+			}
+			if !m.dailyReview.IsActive() {
+				m.refreshComponents("")
+			}
+			return m, nil
+		}
+
 		if m.noteHistory.IsActive() {
 			m.noteHistory, _ = m.noteHistory.Update(msg)
 			return m, nil

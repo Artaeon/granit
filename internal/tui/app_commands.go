@@ -952,6 +952,10 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.standupGen.SetSize(m.width, m.height)
 		m.standupGen.Open(m.vault.Root)
 
+	case CmdDailyReview:
+		m.dailyReview.SetSize(m.width, m.height)
+		m.dailyReview.Open(m.vault.Root, m.vault)
+
 	case CmdNoteHistory:
 		m.noteHistory.SetSize(m.width, m.height)
 		m.noteHistory.OpenForNote(m.vault.Root, m.activeNote)
