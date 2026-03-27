@@ -580,6 +580,9 @@ func (m *Model) refreshComponents(changedPath string) {
 	m.dueTodayCount = CountTasksDueToday(m.vault.Notes)
 	m.statusbar.SetDueTodayCount(m.dueTodayCount)
 
+	// Update inbox count
+	m.statusbar.SetInboxCount(countInboxItems(m.vault.Root))
+
 	// Update calendar daily notes and note contents
 	m.calendar.SetDailyNotes(paths)
 	noteContents := make(map[string]string)
@@ -606,6 +609,22 @@ func (m *Model) refreshComponents(changedPath string) {
 
 	m.tfidfDirty = true
 	m.needsRefresh = true
+}
+
+// countInboxItems reads Inbox.md and counts unchecked items.
+func countInboxItems(vaultRoot string) int {
+	data, err := os.ReadFile(filepath.Join(vaultRoot, "Inbox.md"))
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "- ") && !strings.HasPrefix(trimmed, "- [x]") && !strings.HasPrefix(trimmed, "- [X]") {
+			count++
+		}
+	}
+	return count
 }
 
 func (m *Model) syncConfigToComponents() {
