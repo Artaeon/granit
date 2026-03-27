@@ -43,6 +43,19 @@ const (
 	taskViewKanban                    // 5
 )
 
+// tmSortMode controls how tasks are sorted within a view.
+type tmSortMode int
+
+const (
+	tmSortPriority tmSortMode = iota // default: priority desc, then date
+	tmSortDueDate                    // due date asc, empty last
+	tmSortAlpha                      // alphabetical by cleaned text
+	tmSortSource                     // by source note path, then line
+	tmSortTag                        // by first tag alphabetically
+)
+
+var tmSortNames = []string{"priority", "due date", "A-Z", "source", "tag"}
+
 // inputMode tracks sub-modes.
 type tmInputMode int
 
@@ -92,6 +105,9 @@ type TaskManager struct {
 	// Input
 	inputMode tmInputMode
 	inputBuf  string
+
+	// Sort mode
+	sortMode tmSortMode
 
 	// Date picker state
 	datePickerDate time.Time // currently selected date in picker
@@ -659,6 +675,11 @@ func (tm *TaskManager) rebuildFiltered() {
 		if tm.inputMode == tmInputSearch && tm.inputBuf != "" {
 			tm.filtered = tm.applySearch(tm.filtered)
 		}
+		// Apply custom sort (only when not default priority sort,
+		// since view filters already sort by priority).
+		if tm.sortMode != tmSortPriority {
+			tm.filtered = tm.applySortMode(tm.filtered)
+		}
 	}
 	// Cache tab counts so renderTabs doesn't re-filter on every frame.
 	// Apply active tag/priority filters to counts so they reflect what
@@ -806,6 +827,71 @@ func (tm *TaskManager) applySearch(tasks []Task) []Task {
 		}
 	}
 	return out
+}
+
+// applySortMode re-sorts a task list according to the current sort mode.
+func (tm *TaskManager) applySortMode(tasks []Task) []Task {
+	out := make([]Task, len(tasks))
+	copy(out, tasks)
+	switch tm.sortMode {
+	case tmSortDueDate:
+		sort.Slice(out, func(i, j int) bool {
+			di, dj := out[i].DueDate, out[j].DueDate
+			if di == "" && dj == "" {
+				return out[i].Priority > out[j].Priority
+			}
+			if di == "" {
+				return false
+			}
+			if dj == "" {
+				return true
+			}
+			if di != dj {
+				return di < dj
+			}
+			return out[i].Priority > out[j].Priority
+		})
+	case tmSortAlpha:
+		sort.Slice(out, func(i, j int) bool {
+			ti := strings.ToLower(tmCleanText(out[i].Text))
+			tj := strings.ToLower(tmCleanText(out[j].Text))
+			return ti < tj
+		})
+	case tmSortSource:
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].NotePath != out[j].NotePath {
+				return out[i].NotePath < out[j].NotePath
+			}
+			return out[i].LineNum < out[j].LineNum
+		})
+	case tmSortTag:
+		sort.Slice(out, func(i, j int) bool {
+			ti, tj := "", ""
+			if len(out[i].Tags) > 0 {
+				ti = out[i].Tags[0]
+			}
+			if len(out[j].Tags) > 0 {
+				tj = out[j].Tags[0]
+			}
+			if ti != tj {
+				return ti < tj
+			}
+			return out[i].Priority > out[j].Priority
+		})
+	}
+	return out
+}
+
+// tmCleanText strips emoji markers and tags for sort comparison.
+func tmCleanText(s string) string {
+	s = tmDueDateRe.ReplaceAllString(s, "")
+	s = tmPrioHighestRe.ReplaceAllString(s, "")
+	s = tmPrioHighRe.ReplaceAllString(s, "")
+	s = tmPrioMedRe.ReplaceAllString(s, "")
+	s = tmPrioLowRe.ReplaceAllString(s, "")
+	s = tmScheduleRe.ReplaceAllString(s, "")
+	s = tmTagRe.ReplaceAllString(s, "")
+	return strings.TrimSpace(s)
 }
 
 // applyActiveFilters applies the current tag and priority filters to a task
@@ -1385,6 +1471,12 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.doCyclePriority(task)
 		}
 
+	// Sort mode
+	case "s":
+		tm.sortMode = (tm.sortMode + 1) % 5
+		tm.statusMsg = "Sort: " + tmSortNames[tm.sortMode]
+		tm.rebuildFiltered()
+
 	// Reschedule task
 	case "r":
 		if tm.cursor < len(tm.filtered) {
@@ -1571,6 +1663,9 @@ func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
 	if tm.filterPriority >= 0 {
 		prioNames := []string{"none", "low", "med", "high", "highest"}
 		filters += " " + filterStyle.Render("P:"+prioNames[tm.filterPriority])
+	}
+	if tm.sortMode != tmSortPriority {
+		filters += " " + filterStyle.Render("Sort:"+tmSortNames[tm.sortMode])
 	}
 
 	b.WriteString("  " + icon + title + stats + filters)
@@ -1893,7 +1988,7 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 	default:
 		pairs = []struct{ Key, Desc string }{
 			{"j/k", "nav"}, {"x", "toggle"}, {"g", "go"}, {"a", "add"},
-			{"d", "date"}, {"r", "reschedule"}, {"p", "prio"}, {"#", "tag"},
+			{"d", "date"}, {"r", "reschedule"}, {"s", "sort"}, {"p", "prio"}, {"#", "tag"},
 			{"P", "filter prio"}, {"c", "clear"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
 		}
 	}
