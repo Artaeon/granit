@@ -1709,8 +1709,12 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		Padding(0, 1).
 		Render(noteName)
 
-	// Truncate text if necessary
-	maxTextW := w - 30
+	// Truncate text if necessary (account for badges including tags)
+	tagWidth := 0
+	for _, tag := range task.Tags {
+		tagWidth += len(tag) + 2 // "#" + tag + space
+	}
+	maxTextW := w - 30 - tagWidth
 	if maxTextW < 10 {
 		maxTextW = 10
 	}
