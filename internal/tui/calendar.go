@@ -223,6 +223,10 @@ func (c *Calendar) SetNoteContents(notes map[string]string) {
 			}
 		}
 	}
+	// Keep agenda items in sync when task data changes.
+	if c.view == calViewAgenda {
+		c.rebuildAgendaItems()
+	}
 }
 
 func (c *Calendar) SelectedDate() string {
@@ -424,7 +428,7 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				c.view = calViewAgenda
 				c.agendaScroll = 0
 				c.agendaCursor = 0
-				c.agendaItems = nil
+				c.rebuildAgendaItems()
 			case calViewAgenda:
 				c.view = calViewMonth
 			case calViewYear:
@@ -856,6 +860,49 @@ func (c Calendar) renderMiniCalendar() string {
 // Agenda View (enhanced 14-day lookahead)
 // ---------------------------------------------------------------------------
 
+// rebuildAgendaItems builds the flat interactive-item list for the agenda view
+// and clamps cursor/scroll so they remain within valid bounds. This must be
+// called from pointer-receiver lifecycle methods (Update, SetNoteContents, …)
+// because viewAgenda() uses a value receiver and cannot persist state changes.
+func (c *Calendar) rebuildAgendaItems() {
+	lookAhead := 14
+	var items []agendaItem
+	sectionCount := 0
+
+	for d := 0; d < lookAhead; d++ {
+		day := c.today.AddDate(0, 0, d)
+		dateStr := day.Format("2006-01-02")
+		dayTasks := c.tasks[dateStr]
+
+		for ti := range dayTasks {
+			items = append(items, agendaItem{
+				itemType: "task",
+				dateStr:  dateStr,
+				index:    ti,
+			})
+		}
+		sectionCount++
+	}
+
+	c.agendaItems = items
+
+	// Clamp cursor
+	if c.agendaCursor >= len(items) {
+		c.agendaCursor = len(items) - 1
+	}
+	if c.agendaCursor < 0 {
+		c.agendaCursor = 0
+	}
+
+	// Clamp scroll
+	if c.agendaScroll >= sectionCount {
+		c.agendaScroll = sectionCount - 1
+	}
+	if c.agendaScroll < 0 {
+		c.agendaScroll = 0
+	}
+}
+
 func (c Calendar) viewAgenda() string {
 	width := c.width * 2 / 3
 	if width < 50 {
@@ -997,29 +1044,15 @@ func (c Calendar) viewAgenda() string {
 		sections = append(sections, section)
 	}
 
-	// Store agenda items for interaction
-	c.agendaItems = items
-
-	// Clamp agenda cursor
-	if c.agendaCursor >= len(items) {
-		c.agendaCursor = len(items) - 1
-	}
-	if c.agendaCursor < 0 {
-		c.agendaCursor = 0
-	}
+	// NOTE: agendaItems, agendaCursor, and agendaScroll are maintained by
+	// rebuildAgendaItems() which runs in pointer-receiver methods (Update,
+	// SetNoteContents, etc.). We must NOT assign to receiver fields here
+	// because viewAgenda uses a value receiver and changes would be lost.
 
 	// Apply scroll and render visible sections
 	maxLines := c.height - 14
 	if maxLines < 8 {
 		maxLines = 8
-	}
-
-	// Clamp scroll
-	if c.agendaScroll >= len(sections) {
-		c.agendaScroll = len(sections) - 1
-	}
-	if c.agendaScroll < 0 {
-		c.agendaScroll = 0
 	}
 
 	lineCount := 0
