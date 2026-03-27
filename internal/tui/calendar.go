@@ -119,7 +119,6 @@ type Calendar struct {
 	plannerBlocks map[string][]PlannerBlock
 
 	// Week grid cursor for time-grid navigation
-	weekGridCursorDay  int // 0-6 (column)
 	weekGridCursorHour int // 0-16 (row, hours 6-22)
 
 	// Agenda scroll offset and cursor for task toggling

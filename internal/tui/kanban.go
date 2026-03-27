@@ -166,7 +166,8 @@ func (kb *Kanban) SetTasks(noteContents map[string]string) {
 				continue // skip first (default) and last (done)
 			}
 			for _, tag := range kb.columnTags[col.Title] {
-				if kbHasWipTag(card.Text) || strings.Contains(strings.ToLower(card.Text), strings.ToLower(strings.TrimPrefix(tag, "#"))) {
+				tagLower := strings.ToLower(strings.TrimPrefix(tag, "#"))
+				if strings.Contains(strings.ToLower(card.Text), tagLower) {
 					kb.columns[colIdx].Cards = append(kb.columns[colIdx].Cards, card)
 					placed = true
 					break

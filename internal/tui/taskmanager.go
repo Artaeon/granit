@@ -1011,20 +1011,39 @@ func (tm *TaskManager) isBlocked(task Task) bool {
 	return false
 }
 
-// applyCollapseFilter removes children of collapsed parent tasks.
+// applyCollapseFilter removes children of collapsed parent tasks,
+// walking up the ancestor chain so grandchildren are also hidden.
 func (tm *TaskManager) applyCollapseFilter(tasks []Task) []Task {
 	if len(tm.collapsed) == 0 {
 		return tasks
 	}
+	// Build a lookup for parent lines within each note.
+	type noteLineKey struct {
+		path string
+		line int
+	}
+	parentOf := make(map[noteLineKey]int)
+	for _, t := range tm.allTasks {
+		if t.ParentLine > 0 {
+			parentOf[noteLineKey{t.NotePath, t.LineNum}] = t.ParentLine
+		}
+	}
+
 	var out []Task
 	for _, t := range tasks {
-		if t.ParentLine > 0 {
-			parentKey := fmt.Sprintf("%s:%d", t.NotePath, t.ParentLine)
-			if tm.collapsed[parentKey] {
-				continue
+		hidden := false
+		checkLine := t.ParentLine
+		for checkLine > 0 {
+			key := fmt.Sprintf("%s:%d", t.NotePath, checkLine)
+			if tm.collapsed[key] {
+				hidden = true
+				break
 			}
+			checkLine = parentOf[noteLineKey{t.NotePath, checkLine}]
 		}
-		out = append(out, t)
+		if !hidden {
+			out = append(out, t)
+		}
 	}
 	return out
 }
