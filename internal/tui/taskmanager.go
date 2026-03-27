@@ -771,6 +771,22 @@ func (tm *TaskManager) filterCalendarDay() []Task {
 
 func (tm *TaskManager) applySearch(tasks []Task) []Task {
 	query := strings.ToLower(tm.inputBuf)
+
+	// Support #tag queries: "#doing" matches tasks tagged with "doing".
+	if strings.HasPrefix(query, "#") && len(query) > 1 {
+		tagQuery := query[1:]
+		var out []Task
+		for _, t := range tasks {
+			for _, tag := range t.Tags {
+				if strings.Contains(strings.ToLower(tag), tagQuery) {
+					out = append(out, t)
+					break
+				}
+			}
+		}
+		return out
+	}
+
 	var out []Task
 	for _, t := range tasks {
 		if strings.Contains(strings.ToLower(t.Text), query) ||
