@@ -149,6 +149,11 @@ func TestBacklinksModeToggle(t *testing.T) {
 	if bl.mode != 1 {
 		t.Fatal("expected mode=1")
 	}
+	// Tab again -> mode 2 (suggested)
+	bl, _ = bl.Update(blKeyMsg("tab"))
+	if bl.mode != 2 {
+		t.Fatal("expected mode=2")
+	}
 	// Tab again -> back to mode 0
 	bl, _ = bl.Update(blKeyMsg("tab"))
 	if bl.mode != 0 {

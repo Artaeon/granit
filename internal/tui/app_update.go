@@ -2732,6 +2732,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case focusBacklinks:
 		m.backlinks, cmd = m.backlinks.Update(msg)
+		// Insert suggested link into editor
+		if linkPath, ok := m.backlinks.GetInsertLink(); ok {
+			linkName := strings.TrimSuffix(filepath.Base(linkPath), ".md")
+			m.editor.InsertText("[[" + linkName + "]]")
+			m.editor.modified = true
+			m.setFocus(focusEditor)
+		}
 	}
 
 	return m, cmd

@@ -870,6 +870,13 @@ func (m *Model) loadNoteWithoutBreadcrumb(relPath string) {
 	outgoing := m.buildOutgoingItems(m.index.GetOutgoingLinks(relPath))
 	m.backlinks.SetLinks(incoming, outgoing)
 
+	// Compute link suggestions from TF-IDF similarity
+	if m.tfidfIndex != nil {
+		existingLinks := m.index.GetOutgoingLinks(relPath)
+		suggestions := SuggestMissingLinks(m.tfidfIndex, relPath, existingLinks)
+		m.backlinks.SetSuggestions(suggestions)
+	}
+
 	m.bookmarks.AddRecent(relPath)
 }
 

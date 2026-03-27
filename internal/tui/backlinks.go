@@ -15,14 +15,19 @@ type BacklinkItem struct {
 }
 
 type Backlinks struct {
-	incoming []BacklinkItem
-	outgoing []BacklinkItem
-	cursor   int
-	focused  bool
-	height   int
-	width    int
-	mode     int // 0=incoming, 1=outgoing
-	scroll   int
+	incoming    []BacklinkItem
+	outgoing    []BacklinkItem
+	suggestions []SimilarNote // suggested links from TF-IDF similarity
+	cursor      int
+	focused     bool
+	height      int
+	width       int
+	mode        int // 0=incoming, 1=outgoing, 2=suggested
+	scroll      int
+
+	// Consumed-once: insert a suggested link
+	insertLink    string
+	wantInsert    bool
 }
 
 func NewBacklinks() Backlinks {
@@ -41,6 +46,20 @@ func (bl *Backlinks) SetLinks(incoming, outgoing []BacklinkItem) {
 	bl.scroll = 0
 }
 
+func (bl *Backlinks) SetSuggestions(suggestions []SimilarNote) {
+	bl.suggestions = suggestions
+}
+
+// GetInsertLink returns a link path to insert (consumed-once).
+func (bl *Backlinks) GetInsertLink() (string, bool) {
+	if !bl.wantInsert {
+		return "", false
+	}
+	path := bl.insertLink
+	bl.wantInsert = false
+	return path, true
+}
+
 // Selected returns the file path of the currently selected backlink item.
 func (bl *Backlinks) Selected() string {
 	items := bl.currentItems()
@@ -51,10 +70,23 @@ func (bl *Backlinks) Selected() string {
 }
 
 func (bl *Backlinks) currentItems() []BacklinkItem {
-	if bl.mode == 0 {
+	switch bl.mode {
+	case 1:
+		return bl.outgoing
+	case 2:
+		// Convert suggestions to BacklinkItems for unified rendering
+		items := make([]BacklinkItem, len(bl.suggestions))
+		for i, s := range bl.suggestions {
+			terms := ""
+			if len(s.CommonTerms) > 0 {
+				terms = strings.Join(s.CommonTerms, ", ")
+			}
+			items[i] = BacklinkItem{Path: s.Path, Context: terms}
+		}
+		return items
+	default:
 		return bl.incoming
 	}
-	return bl.outgoing
 }
 
 func (bl Backlinks) Update(msg tea.Msg) (Backlinks, tea.Cmd) {
@@ -82,9 +114,15 @@ func (bl Backlinks) Update(msg tea.Msg) (Backlinks, tea.Cmd) {
 				}
 			}
 		case "tab":
-			bl.mode = (bl.mode + 1) % 2
+			bl.mode = (bl.mode + 1) % 3
 			bl.cursor = 0
 			bl.scroll = 0
+		case "enter":
+			// In suggestions mode, insert the selected link
+			if bl.mode == 2 && bl.cursor < len(bl.suggestions) {
+				bl.insertLink = bl.suggestions[bl.cursor].Path
+				bl.wantInsert = true
+			}
 		}
 	}
 	return bl, nil
@@ -123,6 +161,7 @@ func (bl Backlinks) View() string {
 	// Tab header with pill style
 	inCount := len(bl.incoming)
 	outCount := len(bl.outgoing)
+	sugCount := len(bl.suggestions)
 
 	activeTabStyle := lipgloss.NewStyle().
 		Foreground(base).
@@ -135,16 +174,27 @@ func (bl Backlinks) View() string {
 		Background(surface0).
 		Padding(0, 1)
 
-	var inTab, outTab string
-	if bl.mode == 0 {
-		inTab = activeTabStyle.Render(formatTabLabel("Backlinks", inCount))
-		outTab = inactiveTabStyle.Render(formatTabLabel("Outgoing", outCount))
-	} else {
-		inTab = inactiveTabStyle.Render(formatTabLabel("Backlinks", inCount))
-		outTab = activeTabStyle.Render(formatTabLabel("Outgoing", outCount))
+	tabNames := []struct {
+		name  string
+		count int
+	}{
+		{"In", inCount},
+		{"Out", outCount},
+		{"Suggested", sugCount},
+	}
+	var tabs string
+	for i, t := range tabNames {
+		style := inactiveTabStyle
+		if bl.mode == i {
+			style = activeTabStyle
+		}
+		if i > 0 {
+			tabs += " "
+		}
+		tabs += style.Render(formatTabLabel(t.name, t.count))
 	}
 
-	b.WriteString(inTab + " " + outTab)
+	b.WriteString(tabs)
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", contentWidth)))
 	b.WriteString("\n")
