@@ -942,8 +942,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.statusbar.SetError("Error syncing task: " + err.Error())
 					}
 				}
-				// Refresh vault data after toggling tasks
-				_ = m.vault.Scan()
+				// Refresh all components after toggling tasks
+				m.refreshComponents("")
 				m.statusbar.SetMessage("Task toggled")
 			}
 			if date := m.calendar.SelectedDate(); date != "" {
