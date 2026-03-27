@@ -29,8 +29,9 @@ type Task struct {
 	Tags          []string `json:"tags,omitempty"`
 	NotePath      string   `json:"note_path"`           // source note relative path
 	LineNum       int      `json:"line_num"`             // 1-based line number in source note
-	Indent        int      `json:"indent,omitempty"`     // 0=top-level, 1=subtask, 2=sub-subtask
+	Indent        int      `json:"indent,omitempty"`      // 0=top-level, 1=subtask, 2=sub-subtask
 	ParentLine    int      `json:"parent_line,omitempty"` // LineNum of parent task, 0 if top-level
+	DependsOn     []string `json:"depends_on,omitempty"`  // dependency references (task text snippets)
 }
 
 // taskView identifies which tab is active.
@@ -67,6 +68,7 @@ const (
 	tmInputDate                   // date picker
 	tmInputSearch                 // filtering
 	tmInputReschedule             // quick reschedule picker
+	tmInputDependency             // adding a dependency
 )
 
 // ---------------------------------------------------------------------------
@@ -82,6 +84,7 @@ var (
 	tmPrioLowRe    = regexp.MustCompile(`\x{1F53D}`)   // 🔽
 	tmTagRe        = regexp.MustCompile(`#([A-Za-z0-9_/-]+)`)
 	tmScheduleRe   = regexp.MustCompile(`⏰\s*(\d{2}:\d{2}-\d{2}:\d{2})`)
+	tmDependsRe    = regexp.MustCompile(`depends:([^\s]+)`)
 )
 
 // ---------------------------------------------------------------------------
@@ -343,6 +346,11 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 			// Tags
 			for _, tm := range tmTagRe.FindAllStringSubmatch(taskText, -1) {
 				t.Tags = append(t.Tags, tm[1])
+			}
+
+			// Dependencies
+			for _, dm := range tmDependsRe.FindAllStringSubmatch(taskText, -1) {
+				t.DependsOn = append(t.DependsOn, dm[1])
 			}
 
 			tasks = append(tasks, t)
@@ -931,6 +939,25 @@ func tmCleanText(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// isBlocked returns true if any of the task's dependencies are not yet done.
+func (tm *TaskManager) isBlocked(task Task) bool {
+	if len(task.DependsOn) == 0 {
+		return false
+	}
+	for _, dep := range task.DependsOn {
+		depLower := strings.ToLower(dep)
+		for _, t := range tm.allTasks {
+			if t.Done {
+				continue
+			}
+			if strings.Contains(strings.ToLower(t.Text), depLower) {
+				return true // found an undone task matching the dependency
+			}
+		}
+	}
+	return false
+}
+
 // applyCollapseFilter removes children of collapsed parent tasks.
 func (tm *TaskManager) applyCollapseFilter(tasks []Task) []Task {
 	if len(tm.collapsed) == 0 {
@@ -1148,6 +1175,8 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		return tm.updateSearchInput(key)
 	case tmInputReschedule:
 		return tm.updateReschedule(key)
+	case tmInputDependency:
+		return tm.updateDependency(key)
 	}
 
 	return tm, nil
@@ -1237,6 +1266,37 @@ func (tm TaskManager) updateReschedule(key string) (TaskManager, tea.Cmd) {
 		tm.datePickerDate = today.AddDate(0, 0, 1)
 	case "esc":
 		tm.inputMode = tmInputNone
+	}
+	return tm, nil
+}
+
+func (tm TaskManager) updateDependency(key string) (TaskManager, tea.Cmd) {
+	switch key {
+	case "esc":
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+	case "enter":
+		dep := strings.TrimSpace(tm.inputBuf)
+		if dep != "" && tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			ok := tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+				return strings.TrimRight(line, " ") + " depends:" + dep
+			})
+			if ok {
+				tm.statusMsg = "Dependency added: " + dep
+				tm.reparse()
+			}
+		}
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+	case "backspace":
+		if len(tm.inputBuf) > 0 {
+			tm.inputBuf = tm.inputBuf[:len(tm.inputBuf)-1]
+		}
+	default:
+		if len(key) == 1 || key == " " {
+			tm.inputBuf += key
+		}
 	}
 	return tm, nil
 }
@@ -1534,6 +1594,13 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		if tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
 			tm.doCyclePriority(task)
+		}
+
+	// Add dependency
+	case "b":
+		if tm.cursor < len(tm.filtered) {
+			tm.inputMode = tmInputDependency
+			tm.inputBuf = ""
 		}
 
 	// Expand/collapse subtasks
@@ -1908,6 +1975,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	displayText = tmPrioLowRe.ReplaceAllString(displayText, "")
 	displayText = tmScheduleRe.ReplaceAllString(displayText, "")
 	displayText = tmTagRe.ReplaceAllString(displayText, "")
+	displayText = tmDependsRe.ReplaceAllString(displayText, "")
 	displayText = strings.TrimSpace(displayText)
 
 	textStyle := lipgloss.NewStyle().Foreground(text)
@@ -1957,6 +2025,13 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	}
 	displayText = TruncateDisplay(displayText, maxTextW)
 
+	// Blocked indicator
+	blockedStr := ""
+	if len(task.DependsOn) > 0 && tm.isBlocked(task) {
+		blockedStr = lipgloss.NewStyle().Foreground(red).Render("🔒")
+		textStyle = lipgloss.NewStyle().Foreground(overlay0) // dim blocked tasks
+	}
+
 	// Subtask indentation and collapse indicator
 	indentStr := ""
 	if task.Indent > 0 {
@@ -1984,7 +2059,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		tagBadges += " " + lipgloss.NewStyle().Foreground(c).Render("#"+tag)
 	}
 
-	line := prefix + indentStr + collapseIndicator + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
+	line := prefix + indentStr + collapseIndicator + blockedStr + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
 	if tagBadges != "" {
 		line += tagBadges
 	}
@@ -2041,6 +2116,8 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 			shortcutStyle.Render("Esc") + descStyle.Render(":cancel"))
 	case tmInputSearch:
 		b.WriteString("  " + promptStyle.Render("Filter: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
+	case tmInputDependency:
+		b.WriteString("  " + promptStyle.Render("Depends on: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
 	case tmInputReschedule:
 		b.WriteString("  " + promptStyle.Render("Reschedule: "))
 		b.WriteString("\n")
