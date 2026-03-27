@@ -4,12 +4,72 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+var (
+	qcDateRe = regexp.MustCompile(`@(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})\b`)
+	qcPrioRe = regexp.MustCompile(`!(low|med|medium|high|highest)\b`)
+)
+
+// parseInlineTaskSyntax extracts @date and !priority from task text,
+// returning cleaned text and markdown markers to append.
+func parseInlineTaskSyntax(text string) (string, string) {
+	var markers []string
+	clean := text
+
+	// Date: @today, @tomorrow, @monday, @YYYY-MM-DD
+	if m := qcDateRe.FindStringSubmatch(clean); m != nil {
+		dateStr := resolveRelativeDate(m[1])
+		markers = append(markers, "\U0001F4C5 "+dateStr)
+		clean = qcDateRe.ReplaceAllString(clean, "")
+	}
+
+	// Priority: !low, !med, !high, !highest
+	if m := qcPrioRe.FindStringSubmatch(clean); m != nil {
+		icons := map[string]string{
+			"low": "\U0001F53D", "med": "\U0001F53C", "medium": "\U0001F53C",
+			"high": "\u23EB", "highest": "\U0001F53A",
+		}
+		if icon, ok := icons[m[1]]; ok {
+			markers = append(markers, icon)
+		}
+		clean = qcPrioRe.ReplaceAllString(clean, "")
+	}
+
+	clean = strings.TrimSpace(clean)
+	return clean, strings.Join(markers, " ")
+}
+
+func resolveRelativeDate(ref string) string {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	switch strings.ToLower(ref) {
+	case "today":
+		return today.Format("2006-01-02")
+	case "tomorrow":
+		return today.AddDate(0, 0, 1).Format("2006-01-02")
+	default:
+		// Check weekday names
+		weekdays := map[string]time.Weekday{
+			"monday": time.Monday, "tuesday": time.Tuesday, "wednesday": time.Wednesday,
+			"thursday": time.Thursday, "friday": time.Friday, "saturday": time.Saturday, "sunday": time.Sunday,
+		}
+		if wd, ok := weekdays[strings.ToLower(ref)]; ok {
+			daysAhead := (int(wd) - int(today.Weekday()) + 7) % 7
+			if daysAhead == 0 {
+				daysAhead = 7
+			}
+			return today.AddDate(0, 0, daysAhead).Format("2006-01-02")
+		}
+		return ref // already YYYY-MM-DD
+	}
+}
 
 type QuickCapture struct {
 	active    bool
@@ -140,7 +200,11 @@ func (qc *QuickCapture) save() {
 
 	case 2: // Task
 		filePath = filepath.Join(qc.vaultRoot, "Tasks.md")
-		entry := fmt.Sprintf("\n- [ ] %s", text)
+		cleanText, markers := parseInlineTaskSyntax(text)
+		entry := fmt.Sprintf("\n- [ ] %s", cleanText)
+		if markers != "" {
+			entry += " " + markers
+		}
 		content = entry
 
 	case 3: // New note
