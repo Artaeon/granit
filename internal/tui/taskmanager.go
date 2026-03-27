@@ -1468,7 +1468,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	prioIcon := tmPriorityIcon(task.Priority)
 	prioStyled := lipgloss.NewStyle().Foreground(tmPriorityColor(task.Priority)).Render(prioIcon)
 
-	// Task text (strip emoji markers for cleaner display)
+	// Task text (strip emoji markers and tags for cleaner display)
 	displayText := task.Text
 	displayText = tmDueDateRe.ReplaceAllString(displayText, "")
 	displayText = tmPrioHighestRe.ReplaceAllString(displayText, "")
@@ -1476,6 +1476,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	displayText = tmPrioMedRe.ReplaceAllString(displayText, "")
 	displayText = tmPrioLowRe.ReplaceAllString(displayText, "")
 	displayText = tmScheduleRe.ReplaceAllString(displayText, "")
+	displayText = tmTagRe.ReplaceAllString(displayText, "")
 	displayText = strings.TrimSpace(displayText)
 
 	textStyle := lipgloss.NewStyle().Foreground(text)
@@ -1527,7 +1528,18 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		prefix = lipgloss.NewStyle().Foreground(mauve).Render("  " + ThemeAccentBar + " ")
 	}
 
+	// Tag badges
+	tagColors := []lipgloss.Color{sapphire, teal, lavender, pink, peach, sky}
+	var tagBadges string
+	for i, tag := range task.Tags {
+		c := tagColors[i%len(tagColors)]
+		tagBadges += " " + lipgloss.NewStyle().Foreground(c).Render("#"+tag)
+	}
+
 	line := prefix + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
+	if tagBadges != "" {
+		line += tagBadges
+	}
 	if scheduleBadge != "" {
 		line += " " + scheduleBadge
 	}
