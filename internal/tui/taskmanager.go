@@ -660,11 +660,13 @@ func (tm *TaskManager) rebuildFiltered() {
 		}
 	}
 	// Cache tab counts so renderTabs doesn't re-filter on every frame.
+	// Apply active tag/priority filters to counts so they reflect what
+	// the user would actually see in each tab.
 	tm.tabCounts = [6]int{
-		len(tm.filterToday()),
-		len(tm.filterUpcoming()),
-		len(tm.filterAll()),
-		len(tm.filterCompleted()),
+		len(tm.applyActiveFilters(tm.filterToday())),
+		len(tm.applyActiveFilters(tm.filterUpcoming())),
+		len(tm.applyActiveFilters(tm.filterAll())),
+		len(tm.applyActiveFilters(tm.filterCompleted())),
 		-1, // calendar doesn't show count
 		-1, // kanban doesn't show count
 	}
@@ -795,6 +797,18 @@ func (tm *TaskManager) applySearch(tasks []Task) []Task {
 		}
 	}
 	return out
+}
+
+// applyActiveFilters applies the current tag and priority filters to a task
+// list. Used both for the displayed list and for computing tab counts.
+func (tm *TaskManager) applyActiveFilters(tasks []Task) []Task {
+	if tm.filterTag != "" {
+		tasks = tm.applyTagFilter(tasks)
+	}
+	if tm.filterPriority >= 0 {
+		tasks = tm.applyPriorityFilter(tasks)
+	}
+	return tasks
 }
 
 func (tm *TaskManager) applyTagFilter(tasks []Task) []Task {
