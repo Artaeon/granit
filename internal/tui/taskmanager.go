@@ -607,6 +607,15 @@ func (tm *TaskManager) doKanbanMove(task Task, direction int) {
 // Filtering / sorting
 // ---------------------------------------------------------------------------
 
+// switchView clears any active search and rebuilds the filtered list for a
+// new view. Use this when changing tabs so stale search text doesn't silently
+// hide tasks in the destination view.
+func (tm *TaskManager) switchView() {
+	tm.inputMode = tmInputNone
+	tm.inputBuf = ""
+	tm.rebuildFiltered()
+}
+
 func (tm *TaskManager) rebuildFiltered() {
 	tm.cursor = 0
 	tm.scroll = 0
@@ -965,24 +974,24 @@ func (tm TaskManager) updateKanban(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 
 	case "1":
 		tm.view = taskViewToday
-		tm.rebuildFiltered()
+		tm.switchView()
 	case "2":
 		tm.view = taskViewUpcoming
-		tm.rebuildFiltered()
+		tm.switchView()
 	case "3":
 		tm.view = taskViewAll
-		tm.rebuildFiltered()
+		tm.switchView()
 	case "4":
 		tm.view = taskViewCompleted
-		tm.rebuildFiltered()
+		tm.switchView()
 	case "5":
 		tm.view = taskViewCalendar
-		tm.rebuildFiltered()
+		tm.switchView()
 	case "6":
 		// Already on kanban
 	case "tab":
 		tm.view = (tm.view + 1) % 6
-		tm.rebuildFiltered()
+		tm.switchView()
 
 	case "h", "left":
 		if tm.kanbanCol > 0 {
@@ -1064,26 +1073,26 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	// Tab switching with number keys
 	case "1":
 		tm.view = taskViewToday
-		tm.rebuildFiltered()
+		tm.switchView()
 	case "2":
 		tm.view = taskViewUpcoming
-		tm.rebuildFiltered()
+		tm.switchView()
 	case "3":
 		tm.view = taskViewAll
-		tm.rebuildFiltered()
+		tm.switchView()
 	case "4":
 		tm.view = taskViewCompleted
-		tm.rebuildFiltered()
+		tm.switchView()
 	case "5":
 		tm.view = taskViewCalendar
-		tm.rebuildFiltered()
+		tm.switchView()
 	case "6":
 		tm.view = taskViewKanban
-		tm.rebuildFiltered()
+		tm.switchView()
 
 	case "tab":
 		tm.view = (tm.view + 1) % 6
-		tm.rebuildFiltered()
+		tm.switchView()
 
 	// Navigation
 	case "up", "k":
