@@ -747,6 +747,64 @@ func (tm *TaskManager) doBulkSetDate(dateStr string) {
 	}
 }
 
+// suggestPriority uses heuristics to recommend a priority for a task.
+func suggestPriority(task Task, allTasks []Task) int {
+	score := 0
+	if tmIsOverdue(task.DueDate) {
+		score += 2
+	}
+	if tmIsToday(task.DueDate) {
+		score++
+	}
+	if task.DueDate != "" && tmDaysUntil(task.DueDate) <= 2 {
+		score++
+	}
+	// Check if this task blocks others
+	cleaned := strings.ToLower(tmCleanText(task.Text))
+	for _, t := range allTasks {
+		for _, dep := range t.DependsOn {
+			if strings.HasPrefix(cleaned, strings.ToLower(dep)) {
+				score++
+				break
+			}
+		}
+	}
+	if task.Project != "" {
+		score++
+	}
+	if task.DueDate == "" {
+		score--
+	}
+	switch {
+	case score >= 4:
+		return 4
+	case score >= 3:
+		return 3
+	case score >= 1:
+		return 2
+	default:
+		return 1
+	}
+}
+
+// doSetPriority sets a specific priority on a task (not cycling).
+func (tm *TaskManager) doSetPriority(task Task, newPrio int) {
+	ok := tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+		line = tmPrioHighestRe.ReplaceAllString(line, "")
+		line = tmPrioHighRe.ReplaceAllString(line, "")
+		line = tmPrioMedRe.ReplaceAllString(line, "")
+		line = tmPrioLowRe.ReplaceAllString(line, "")
+		line = strings.TrimRight(line, " ")
+		if newPrio > 0 {
+			line += " " + tmPriorityIcon(newPrio)
+		}
+		return line
+	})
+	if ok {
+		tm.reparse()
+	}
+}
+
 // doUndo restores the last modified task line to its previous state.
 func (tm *TaskManager) doUndo() {
 	if tm.lastAction == nil {
@@ -1962,6 +2020,20 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		if tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
 			tm.doCyclePriority(task)
+		}
+
+	// Auto-priority (heuristic)
+	case "A":
+		if tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			suggested := suggestPriority(task, tm.allTasks)
+			prioNames := []string{"none", "low", "medium", "high", "highest"}
+			if suggested != task.Priority {
+				tm.doSetPriority(task, suggested)
+				tm.statusMsg = "Auto-priority: " + prioNames[suggested]
+			} else {
+				tm.statusMsg = "Priority already optimal"
+			}
 		}
 
 	// Undo last action
