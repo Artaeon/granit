@@ -105,6 +105,9 @@ type TaskManager struct {
 	kanbanCursor [4]int   // cursor position within each column
 	kanbanScroll [4]int   // scroll position within each column
 
+	// Cached tab counts (updated by rebuildFiltered)
+	tabCounts [6]int
+
 	// Status message
 	statusMsg string
 
@@ -636,6 +639,15 @@ func (tm *TaskManager) rebuildFiltered() {
 	// Skip search for kanban view (it uses columns, not the flat list).
 	if tm.view != taskViewKanban && tm.inputMode == tmInputSearch && tm.inputBuf != "" {
 		tm.filtered = tm.applySearch(tm.filtered)
+	}
+	// Cache tab counts so renderTabs doesn't re-filter on every frame.
+	tm.tabCounts = [6]int{
+		len(tm.filterToday()),
+		len(tm.filterUpcoming()),
+		len(tm.filterAll()),
+		len(tm.filterCompleted()),
+		-1, // calendar doesn't show count
+		-1, // kanban doesn't show count
 	}
 }
 
@@ -1348,14 +1360,7 @@ func (tm *TaskManager) renderTabs(b *strings.Builder, w int) {
 		"Calendar",
 		"Kanban",
 	}
-	counts := []int{
-		len(tm.filterToday()),
-		len(tm.filterUpcoming()),
-		len(tm.filterAll()),
-		len(tm.filterCompleted()),
-		-1, // calendar doesn't show count
-		-1, // kanban doesn't show count
-	}
+	counts := tm.tabCounts[:]
 
 	var tabs []string
 	for i, name := range names {
