@@ -118,6 +118,10 @@ type Calendar struct {
 	// Planner block data (keyed by date "YYYY-MM-DD")
 	plannerBlocks map[string][]PlannerBlock
 
+	// Week grid cursor for time-grid navigation
+	weekGridCursorDay  int // 0-6 (column)
+	weekGridCursorHour int // 0-16 (row, hours 6-22)
+
 	// Agenda scroll offset and cursor for task toggling
 	agendaScroll int
 	agendaCursor int
@@ -615,19 +619,19 @@ func (c Calendar) viewMonth() string {
 // ---------------------------------------------------------------------------
 
 func (c Calendar) viewWeek() string {
-	width := c.width * 2 / 3
-	if width < 56 {
-		width = 56
+	width := c.width * 3 / 4
+	if width < 70 {
+		width = 70
 	}
-	if width > 76 {
-		width = 76
+	if width > 120 {
+		width = 120
 	}
 
 	var b strings.Builder
 
 	titleIcon := lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar)
 	titleText := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" Calendar")
-	viewLabel := DimStyle.Render(" [week]")
+	viewLabel := DimStyle.Render(" [week grid]")
 	b.WriteString("  " + titleIcon + titleText + viewLabel)
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("─", width-8)))
@@ -635,150 +639,112 @@ func (c Calendar) viewWeek() string {
 
 	// Find the Sunday of the cursor's week
 	weekStart := c.cursor.AddDate(0, 0, -int(c.cursor.Weekday()))
-
-	// Week header
 	weekEnd := weekStart.AddDate(0, 0, 6)
 	_, weekNum := c.cursor.ISOWeek()
 	weekLabel := fmt.Sprintf("Week %d: ", weekNum) + weekStart.Format("Jan 2") + " - " + weekEnd.Format("Jan 2, 2006")
 	b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(weekLabel))
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
-	// Build week detail and mini calendar side by side
-	miniCal := c.renderMiniCalendar()
-	miniLines := strings.Split(miniCal, "\n")
+	// Time grid layout: time column + 7 day columns
+	timeColW := 6
+	dayColW := (width - timeColW - 10) / 7
+	if dayColW < 8 {
+		dayColW = 8
+	}
 
+	// Day header row
+	headerRow := strings.Repeat(" ", timeColW)
 	dayNames := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
-
-	var weekLines []string
 	for i := 0; i < 7; i++ {
 		day := weekStart.AddDate(0, 0, i)
-		dateStr := day.Format("2006-01-02")
-		isToday := day.Equal(c.today)
-		isCursor := day.Equal(c.cursor)
-		hasNote := c.dailyNoteDates[dateStr]
-		hasEvent := c.dateHasEvent(day)
-		tasksDone, tasksTotal := c.taskStats(dateStr)
+		label := dayNames[i] + " " + day.Format("1/2")
+		style := lipgloss.NewStyle().Foreground(text).Bold(true)
+		if day.Equal(c.today) {
+			style = lipgloss.NewStyle().Foreground(green).Bold(true)
+		}
+		if day.Equal(c.cursor) {
+			style = lipgloss.NewStyle().Foreground(peach).Bold(true)
+		}
+		cell := style.Render(TruncateDisplay(label, dayColW-1))
+		headerRow += PadRight(cell, dayColW)
+	}
+	b.WriteString("  " + headerRow + "\n")
+	b.WriteString("  " + DimStyle.Render(strings.Repeat("─", width-8)) + "\n")
 
-		// Day header
-		dayLabel := dayNames[i] + " " + day.Format("Jan 2")
-		dayStyle := lipgloss.NewStyle().Foreground(text)
-		isWeekend := i == 0 || i == 6
-		if isWeekend {
-			dayStyle = lipgloss.NewStyle().Foreground(overlay0)
-		}
-		if isToday {
-			dayStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
-		}
-		if isCursor {
-			dayStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
-		}
-
-		prefix := "  "
-		if isCursor {
-			prefix = lipgloss.NewStyle().Foreground(mauve).Render("▸ ")
-		}
-
-		line := prefix + dayStyle.Render(dayLabel)
-
-		// Indicators
-		indicators := ""
-		if hasNote {
-			indicators += " " + lipgloss.NewStyle().Foreground(green).Render(IconDailyChar)
-		}
-		if hasEvent {
-			indicators += " " + lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar)
-		}
-		if tasksTotal > 0 {
-			taskColor := yellow
-			if tasksDone == tasksTotal {
-				taskColor = green
-			}
-			indicators += " " + lipgloss.NewStyle().Foreground(taskColor).Render(
-				fmt.Sprintf("[%d/%d]", tasksDone, tasksTotal))
-		}
-		dayPlannerBlocks := c.plannerBlocks[dateStr]
-		if len(dayPlannerBlocks) > 0 {
-			indicators += " " + lipgloss.NewStyle().Foreground(lavender).Render(
-				fmt.Sprintf("[P:%d]", len(dayPlannerBlocks)))
-		}
-
-		weekLines = append(weekLines, line+indicators)
-
-		// Show events, planner blocks, and tasks for cursor day
-		if isCursor {
-			dayEvents := c.eventsForDate(day)
-			for _, ev := range dayEvents {
-				timeStr := ""
-				if !ev.AllDay {
-					timeStr = ev.Date.Format("15:04") + " "
-				}
-				weekLines = append(weekLines, "    "+lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar+" ")+
-					DimStyle.Render(timeStr)+
-					lipgloss.NewStyle().Foreground(text).Render(ev.Title))
-			}
-			// Planner blocks for cursor day
-			for _, pb := range dayPlannerBlocks {
-				timeRange := pb.StartTime + "-" + pb.EndTime
-				tag := "[P]"
-				switch pb.BlockType {
-				case "break":
-					tag = "[B]"
-				case "focus":
-					tag = "[F]"
-				case "event":
-					tag = "[E]"
-				}
-				pbText := TruncateDisplay(pb.Text, width-30)
-				pbStyle := lipgloss.NewStyle().Foreground(lavender)
-				suffix := ""
-				if pb.Done {
-					pbStyle = lipgloss.NewStyle().Foreground(green).Strikethrough(true)
-					suffix = lipgloss.NewStyle().Foreground(green).Render(" ✓")
-				}
-				weekLines = append(weekLines, "    "+pbStyle.Render(timeRange+" "+tag+" "+pbText)+suffix)
-			}
-			dayTasks := c.tasks[dateStr]
-			for _, task := range dayTasks {
-				checkIcon := lipgloss.NewStyle().Foreground(yellow).Render("○")
-				if task.Done {
-					checkIcon = lipgloss.NewStyle().Foreground(green).Render("●")
-				}
-				taskText := TruncateDisplay(task.Text, width-30)
-				weekLines = append(weekLines, "    "+checkIcon+" "+lipgloss.NewStyle().Foreground(text).Render(taskText))
-			}
-		}
+	// Render time rows (6AM-10PM = hours 6-22, 17 rows)
+	maxRows := c.height - 16
+	if maxRows < 8 {
+		maxRows = 8
+	}
+	if maxRows > 17 {
+		maxRows = 17
 	}
 
-	// Combine week lines with mini calendar on the right
-	miniWidth := 24
-	weekColWidth := width - miniWidth - 6
-	if weekColWidth < 30 {
-		weekColWidth = 30
-	}
-
-	maxLines := len(weekLines)
-	if len(miniLines) > maxLines {
-		maxLines = len(miniLines)
-	}
-
-	for i := 0; i < maxLines; i++ {
-		wl := ""
-		if i < len(weekLines) {
-			wl = weekLines[i]
+	for row := 0; row < maxRows; row++ {
+		hour := row + 6
+		if hour > 22 {
+			break
 		}
-		ml := ""
-		if i < len(miniLines) {
-			ml = miniLines[i]
+		// Time label
+		timeLabel := fmt.Sprintf("%2d:00", hour)
+		if hour < 12 {
+			timeLabel = fmt.Sprintf("%2dAM ", hour)
+		} else if hour == 12 {
+			timeLabel = "12PM "
+		} else {
+			timeLabel = fmt.Sprintf("%2dPM ", hour-12)
+		}
+		timeSt := DimStyle.Render(timeLabel)
+
+		// Build cells for each day
+		cells := ""
+		for di := 0; di < 7; di++ {
+			day := weekStart.AddDate(0, 0, di)
+			dateStr := day.Format("2006-01-02")
+			hourStr := fmt.Sprintf("%02d", hour)
+			cellText := ""
+			cellColor := overlay0
+
+			// Check planner blocks for this hour
+			for _, pb := range c.plannerBlocks[dateStr] {
+				if len(pb.StartTime) >= 2 && pb.StartTime[:2] == hourStr {
+					cellText = pb.Text
+					cellColor = lavender
+					if pb.Done {
+						cellColor = green
+					}
+					break
+				}
+			}
+
+			// Check events for this hour
+			if cellText == "" {
+				for _, ev := range c.eventsForDate(day) {
+					if !ev.AllDay && ev.Date.Hour() == hour {
+						cellText = ev.Title
+						cellColor = blue
+						break
+					}
+				}
+			}
+
+			// Render cell
+			isCursorCell := day.Equal(c.cursor) && row == c.weekGridCursorHour
+			cellContent := ""
+			if cellText != "" {
+				cellContent = lipgloss.NewStyle().Foreground(cellColor).
+					Render(TruncateDisplay(cellText, dayColW-2))
+			} else {
+				cellContent = DimStyle.Render("·")
+			}
+			if isCursorCell {
+				cellContent = lipgloss.NewStyle().Background(surface0).
+					Render(PadRight(cellContent, dayColW-1))
+			}
+			cells += PadRight(cellContent, dayColW)
 		}
 
-		// Pad week line to column width
-		wlWidth := lipgloss.Width(wl)
-		padding := weekColWidth - wlWidth
-		if padding < 1 {
-			padding = 1
-		}
-		b.WriteString(wl + strings.Repeat(" ", padding) + ml)
-		b.WriteString("\n")
+		b.WriteString("  " + timeSt + cells + "\n")
 	}
 
 	// Quick add input
