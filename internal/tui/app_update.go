@@ -2523,6 +2523,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							if slashCol < 0 {
 								slashCol = 0
 							}
+							if m.editor.col > len(line) {
+								m.editor.col = len(line)
+							}
 							if slashCol < len(line) {
 								m.editor.content[m.editor.cursor] = line[:slashCol] + line[m.editor.col:]
 								m.editor.col = slashCol
@@ -2639,11 +2642,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Detect [[ for link completion
 			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "[" {
-				if m.linkCompleter != nil && !m.linkCompleter.IsActive() {
+				if m.linkCompleter != nil && !m.linkCompleter.IsActive() &&
+					m.editor.cursor < len(m.editor.content) {
 					// Check if the char before cursor is also [
 					curLine := m.editor.content[m.editor.cursor]
 					c := m.editor.col
-					if c >= 2 && curLine[c-2:c] == "[[" {
+					if c >= 2 && c <= len(curLine) && curLine[c-2:c] == "[[" {
 						m.linkCompleter.Activate(m.editor.cursor, m.editor.col)
 					}
 				}
@@ -2651,11 +2655,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Detect "/" at start of line or after space for slash menu
 			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "/" {
-				if m.slashMenu != nil && !m.slashMenu.IsActive() {
+				if m.slashMenu != nil && !m.slashMenu.IsActive() &&
+					m.editor.cursor < len(m.editor.content) {
 					curLine := m.editor.content[m.editor.cursor]
 					c := m.editor.col
 					// "/" is valid if at col 1 (just typed at start) or after a space
-					if c == 1 || (c >= 2 && curLine[c-2] == ' ') {
+					if c == 1 || (c >= 2 && c <= len(curLine) && curLine[c-2] == ' ') {
 						m.slashMenu.Activate(m.editor.cursor, m.editor.col)
 					}
 				}
