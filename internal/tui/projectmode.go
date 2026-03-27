@@ -1800,6 +1800,21 @@ func (pm ProjectMode) viewDashStats(width int) string {
 		b.WriteString(pm.statLine("Due Date", proj.DueDate, teal, width))
 	}
 
+	// Project health indicator
+	healthLabel, healthColor := pm.computeHealth(proj)
+	healthDot := lipgloss.NewStyle().Foreground(healthColor).Render("●")
+	healthText := lipgloss.NewStyle().Foreground(healthColor).Bold(true).Render(healthLabel)
+	b.WriteString("  " + healthDot + " " + healthText)
+
+	// Velocity
+	if proj.CreatedAt != "" {
+		velocity := pm.computeVelocity(proj)
+		if velocity > 0 {
+			b.WriteString("  " + DimStyle.Render(fmt.Sprintf("%.1f milestones/week", velocity)))
+		}
+	}
+	b.WriteString("\n\n")
+
 	// Time spent
 	if proj.TimeSpent > 0 {
 		b.WriteString(pm.statLine("Time Spent", formatTimeSpent(proj.TimeSpent), peach, width))
@@ -1839,6 +1854,75 @@ func (pm ProjectMode) viewDashStats(width int) string {
 	}
 
 	return b.String()
+}
+
+func (pm ProjectMode) computeVelocity(proj Project) float64 {
+	if proj.CreatedAt == "" {
+		return 0
+	}
+	created, err := time.Parse("2006-01-02", proj.CreatedAt)
+	if err != nil {
+		return 0
+	}
+	weeks := time.Since(created).Hours() / (24 * 7)
+	if weeks < 1 {
+		weeks = 1
+	}
+	doneMilestones := 0
+	for _, g := range proj.Goals {
+		for _, m := range g.Milestones {
+			if m.Done {
+				doneMilestones++
+			}
+		}
+	}
+	return float64(doneMilestones) / weeks
+}
+
+func (pm ProjectMode) computeHealth(proj Project) (string, lipgloss.Color) {
+	// Count overdue tasks
+	overdue := 0
+	total := len(pm.dashTasks)
+	for _, t := range pm.dashTasks {
+		if !t.Done && t.Source != "" {
+			// Simple heuristic: if task text contains a date that's past
+			overdue++ // count undone tasks as potentially at risk
+		}
+	}
+
+	progress := proj.Progress()
+
+	// Check pace if due date exists
+	if proj.DueDate != "" && proj.CreatedAt != "" {
+		due, err1 := time.Parse("2006-01-02", proj.DueDate)
+		created, err2 := time.Parse("2006-01-02", proj.CreatedAt)
+		if err1 == nil && err2 == nil {
+			totalDuration := due.Sub(created).Hours()
+			elapsed := time.Since(created).Hours()
+			if totalDuration > 0 {
+				expectedProgress := elapsed / totalDuration
+				if expectedProgress > 1 {
+					expectedProgress = 1
+				}
+				if progress < expectedProgress-0.2 {
+					return "Behind", red
+				}
+				if progress < expectedProgress-0.1 {
+					return "At Risk", yellow
+				}
+			}
+		}
+	}
+
+	// Fallback: check overdue ratio
+	if total > 0 {
+		overdueRatio := float64(overdue) / float64(total)
+		if overdueRatio > 0.5 {
+			return "At Risk", yellow
+		}
+	}
+
+	return "On Track", green
 }
 
 func (pm ProjectMode) statLine(label, value string, c lipgloss.Color, _ int) string {
