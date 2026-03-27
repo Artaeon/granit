@@ -633,7 +633,8 @@ func (tm *TaskManager) rebuildFiltered() {
 	case taskViewKanban:
 		tm.filtered = nil // kanban uses columns, not flat list
 	}
-	if tm.inputMode == tmInputSearch && tm.inputBuf != "" {
+	// Skip search for kanban view (it uses columns, not the flat list).
+	if tm.view != taskViewKanban && tm.inputMode == tmInputSearch && tm.inputBuf != "" {
 		tm.filtered = tm.applySearch(tm.filtered)
 	}
 }
