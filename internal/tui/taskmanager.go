@@ -37,6 +37,7 @@ type Task struct {
 	EstimatedMinutes int      `json:"estimated_minutes,omitempty"` // time estimate in minutes
 	Recurrence       string   `json:"recurrence,omitempty"`        // "daily", "weekly", "monthly", etc.
 	Project          string   `json:"project,omitempty"`           // matched project name
+	SnoozedUntil     string   `json:"snoozed_until,omitempty"`     // ISO "2006-01-02T15:04"
 	ActualMinutes    int      `json:"-"`                           // computed from time tracker, not serialized
 }
 
@@ -77,6 +78,7 @@ const (
 	tmInputDependency             // adding a dependency
 	tmInputEstimate               // setting time estimate
 	tmInputNote                   // editing task note
+	tmInputSnooze                 // snooze picker
 )
 
 // ---------------------------------------------------------------------------
@@ -96,6 +98,7 @@ var (
 	tmEstimateRe   = regexp.MustCompile(`~(\d+)(m|h)`)
 	tmRecurEmojiRe = regexp.MustCompile(`\x{1F501}\s*(daily|weekly|monthly|3x-week)`)
 	tmRecurTagRe   = regexp.MustCompile(`#(daily|weekly|monthly|3x-week)\b`)
+	tmSnoozeRe     = regexp.MustCompile(`snooze:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})`)
 )
 
 // taskAction stores a single task line change for undo.
@@ -417,6 +420,11 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 				t.Recurrence = rm[1]
 			} else if rm := tmRecurTagRe.FindStringSubmatch(taskText); rm != nil {
 				t.Recurrence = rm[1]
+			}
+
+			// Snooze
+			if sm := tmSnoozeRe.FindStringSubmatch(taskText); sm != nil {
+				t.SnoozedUntil = sm[1]
 			}
 
 			// Time estimate (~30m, ~2h)
@@ -1084,7 +1092,7 @@ func (tm *TaskManager) rebuildFiltered() {
 func (tm *TaskManager) filterToday() []Task {
 	var overdue, today []Task
 	for _, t := range tm.allTasks {
-		if t.Done {
+		if t.Done || tmIsSnoozed(t) {
 			continue
 		}
 		if tmIsOverdue(t.DueDate) {
@@ -1270,6 +1278,17 @@ func (tm *TaskManager) applySortMode(tasks []Task) []Task {
 }
 
 // tmCleanText strips emoji markers and tags for sort comparison.
+func tmIsSnoozed(task Task) bool {
+	if task.SnoozedUntil == "" {
+		return false
+	}
+	t, err := time.Parse("2006-01-02T15:04", task.SnoozedUntil)
+	if err != nil {
+		return false
+	}
+	return time.Now().Before(t)
+}
+
 func tmFormatMinutes(minutes int) string {
 	if minutes < 60 {
 		return fmt.Sprintf("%dm", minutes)
@@ -1291,6 +1310,7 @@ func tmCleanText(s string) string {
 	s = tmTagRe.ReplaceAllString(s, "")
 	s = tmDependsRe.ReplaceAllString(s, "")
 	s = tmEstimateRe.ReplaceAllString(s, "")
+	s = tmSnoozeRe.ReplaceAllString(s, "")
 	return strings.TrimSpace(s)
 }
 
@@ -1580,6 +1600,8 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		return tm.updateEstimate(key)
 	case tmInputNote:
 		return tm.updateNote(key)
+	case tmInputSnooze:
+		return tm.updateSnooze(key)
 	}
 
 	return tm, nil
@@ -1705,6 +1727,44 @@ func (tm TaskManager) updateDependency(key string) (TaskManager, tea.Cmd) {
 			tm.inputBuf += key
 		}
 	}
+	return tm, nil
+}
+
+func (tm TaskManager) updateSnooze(key string) (TaskManager, tea.Cmd) {
+	if tm.cursor >= len(tm.filtered) {
+		tm.inputMode = tmInputNone
+		return tm, nil
+	}
+	task := tm.filtered[tm.cursor]
+	now := time.Now()
+	var snoozeTime time.Time
+
+	switch key {
+	case "1": // 1 hour
+		snoozeTime = now.Add(1 * time.Hour)
+	case "2": // 4 hours
+		snoozeTime = now.Add(4 * time.Hour)
+	case "3": // tomorrow 9am
+		tomorrow := time.Date(now.Year(), now.Month(), now.Day()+1, 9, 0, 0, 0, time.Local)
+		snoozeTime = tomorrow
+	case "esc":
+		tm.inputMode = tmInputNone
+		return tm, nil
+	default:
+		return tm, nil
+	}
+
+	snoozeStr := snoozeTime.Format("2006-01-02T15:04")
+	ok := tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+		line = tmSnoozeRe.ReplaceAllString(line, "")
+		line = strings.TrimRight(line, " ")
+		return line + " snooze:" + snoozeStr
+	})
+	if ok {
+		tm.statusMsg = "Snoozed until " + snoozeTime.Format("Jan 2 15:04")
+		tm.reparse()
+	}
+	tm.inputMode = tmInputNone
 	return tm, nil
 }
 
@@ -2133,6 +2193,12 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		if tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
 			tm.doCyclePriority(task)
+		}
+
+	// Snooze task
+	case "z":
+		if tm.cursor < len(tm.filtered) {
+			tm.inputMode = tmInputSnooze
 		}
 
 	// Task note
@@ -2608,6 +2674,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	displayText = tmTagRe.ReplaceAllString(displayText, "")
 	displayText = tmDependsRe.ReplaceAllString(displayText, "")
 	displayText = tmEstimateRe.ReplaceAllString(displayText, "")
+	displayText = tmSnoozeRe.ReplaceAllString(displayText, "")
 	displayText = strings.TrimSpace(displayText)
 
 	textStyle := lipgloss.NewStyle().Foreground(text)
@@ -2818,6 +2885,16 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 		b.WriteString("  " + promptStyle.Render("Depends on: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
 	case tmInputNote:
 		b.WriteString("  " + promptStyle.Render("Note: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
+	case tmInputSnooze:
+		b.WriteString("  " + promptStyle.Render("Snooze: "))
+		b.WriteString("\n")
+		ss := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+		ds := lipgloss.NewStyle().Foreground(overlay0)
+		b.WriteString("  " +
+			ss.Render("1") + ds.Render(":1h ") +
+			ss.Render("2") + ds.Render(":4h ") +
+			ss.Render("3") + ds.Render(":tomorrow 9am ") +
+			ss.Render("Esc") + ds.Render(":cancel"))
 	case tmInputEstimate:
 		b.WriteString("  " + promptStyle.Render("Estimate: "))
 		b.WriteString("\n")
@@ -2866,10 +2943,11 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 		}
 	default:
 		pairs = []struct{ Key, Desc string }{
-			{"j/k", "nav"}, {"x", "toggle"}, {"u", "undo"}, {"n", "note"}, {"e", "expand"}, {"f", "focus"},
-			{"g", "go"}, {"a", "add"}, {"d", "date"}, {"E", "estimate"}, {"r", "reschedule"}, {"s", "sort"},
-			{"W", "pin"}, {"A", "auto-prio"}, {"p", "prio"}, {"#", "tag"}, {"P", "filter prio"},
-			{"c", "clear"}, {"/", "search"}, {"Tab", "view"}, {"Esc", "close"},
+			{"j/k", "nav"}, {"x", "toggle"}, {"u", "undo"}, {"n", "note"}, {"z", "snooze"},
+			{"e", "expand"}, {"f", "focus"}, {"g", "go"}, {"a", "add"}, {"d", "date"},
+			{"E", "estimate"}, {"r", "reschedule"}, {"s", "sort"}, {"W", "pin"}, {"A", "auto-prio"},
+			{"p", "prio"}, {"#", "tag"}, {"P", "filter prio"}, {"c", "clear"}, {"/", "search"},
+			{"Tab", "view"}, {"Esc", "close"},
 		}
 	}
 
