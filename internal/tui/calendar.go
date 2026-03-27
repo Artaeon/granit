@@ -700,13 +700,16 @@ func (c Calendar) viewWeek() string {
 		for di := 0; di < 7; di++ {
 			day := weekStart.AddDate(0, 0, di)
 			dateStr := day.Format("2006-01-02")
-			hourStr := fmt.Sprintf("%02d", hour)
 			cellText := ""
 			cellColor := overlay0
 
 			// Check planner blocks for this hour
 			for _, pb := range c.plannerBlocks[dateStr] {
-				if len(pb.StartTime) >= 2 && pb.StartTime[:2] == hourStr {
+				pbHour := 0
+				if len(pb.StartTime) >= 2 {
+					fmt.Sscanf(pb.StartTime, "%d", &pbHour)
+				}
+				if pbHour == hour {
 					cellText = pb.Text
 					cellColor = lavender
 					if pb.Done {

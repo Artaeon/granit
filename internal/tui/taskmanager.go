@@ -1524,7 +1524,7 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	// Handle select mode
 	if tm.selectMode {
 		switch key {
-		case "esc":
+		case "esc", "q":
 			tm.selectMode = false
 			tm.selected = make(map[string]bool)
 			tm.statusMsg = "Selection cleared"

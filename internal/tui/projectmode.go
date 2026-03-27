@@ -1735,7 +1735,12 @@ func (pm ProjectMode) renderBurndownChart(proj Project, totalMS, doneMS, width i
 	// X-axis
 	out.WriteString(DimStyle.Render("       └" + strings.Repeat("─", chartW)))
 	out.WriteString("\n")
-	axisLabel := fmt.Sprintf("        wk1%"+fmt.Sprintf("%d", chartW-6)+"s", fmt.Sprintf("wk%d", totalWeeks))
+	endLabel := fmt.Sprintf("wk%d", totalWeeks)
+	gap := chartW - 3 - len(endLabel) // 3 = len("wk1")
+	if gap < 1 {
+		gap = 1
+	}
+	axisLabel := "        wk1" + strings.Repeat(" ", gap) + endLabel
 	out.WriteString(DimStyle.Render(axisLabel))
 	out.WriteString("\n")
 
