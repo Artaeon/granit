@@ -724,6 +724,9 @@ func (tm *TaskManager) filterCalendarDay() []Task {
 	dateStr := fmt.Sprintf("%04d-%02d-%02d", tm.calYear, int(tm.calMonth), tm.calDay)
 	var out []Task
 	for _, t := range tm.allTasks {
+		if t.Done {
+			continue
+		}
 		if t.DueDate == dateStr {
 			out = append(out, t)
 		}
