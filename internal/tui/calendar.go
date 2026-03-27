@@ -258,6 +258,9 @@ type agendaItem struct {
 // SetPlannerBlocks stores planner schedule data keyed by date.
 func (c *Calendar) SetPlannerBlocks(blocks map[string][]PlannerBlock) {
 	c.plannerBlocks = blocks
+	if c.view == calViewAgenda {
+		c.rebuildAgendaItems()
+	}
 }
 
 // GetTaskToggles returns pending task toggles and clears them (consumed-once).
