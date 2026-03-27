@@ -644,6 +644,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 	case CmdKanban:
 		m.kanban.SetSize(m.width, m.height)
+		if len(m.config.KanbanColumns) > 0 {
+			m.kanban.Configure(m.config.KanbanColumns, m.config.KanbanColumnTags)
+		}
 		noteContents := make(map[string]string)
 		for _, p := range m.vault.SortedPaths() {
 			if note := m.vault.GetNote(p); note != nil {

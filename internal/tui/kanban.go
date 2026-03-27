@@ -27,17 +27,18 @@ type KanbanColumn struct {
 }
 
 // Kanban is an overlay component that displays tasks from vault notes as a
-// Kanban board with Backlog, In Progress, and Done columns.
+// Kanban board with configurable columns.
 type Kanban struct {
 	active bool
 	width  int
 	height int
 
-	columns    []KanbanColumn // default: "Backlog", "In Progress", "Done"
+	columns    []KanbanColumn // configurable columns
 	colCursor  int            // which column is selected
 	cardCursor int            // which card in the column is selected
 
-	allCards []KanbanCard // all parsed cards
+	allCards   []KanbanCard          // all parsed cards
+	columnTags map[string][]string   // column title -> list of tags that route cards there
 
 	// Drag state
 	dragging bool
@@ -58,6 +59,29 @@ func NewKanban() Kanban {
 			{Title: "In Progress"},
 			{Title: "Done"},
 		},
+		columnTags: map[string][]string{
+			"In Progress": {"#doing", "#wip"},
+		},
+	}
+}
+
+// Configure sets custom column names and tag mappings from config.
+func (kb *Kanban) Configure(columns []string, tagMap map[string]string) {
+	if len(columns) == 0 {
+		return
+	}
+	kb.columns = make([]KanbanColumn, len(columns))
+	for i, name := range columns {
+		kb.columns[i] = KanbanColumn{Title: name}
+	}
+	kb.columnTags = make(map[string][]string)
+	for col, tags := range tagMap {
+		for _, tag := range strings.Split(tags, ",") {
+			tag = strings.TrimSpace(tag)
+			if tag != "" {
+				kb.columnTags[col] = append(kb.columnTags[col], tag)
+			}
+		}
 	}
 }
 
@@ -124,17 +148,36 @@ func (kb *Kanban) SetTasks(noteContents map[string]string) {
 	}
 
 	// Distribute cards into columns.
-	kb.columns[0].Cards = nil // Backlog
-	kb.columns[1].Cards = nil // In Progress
-	kb.columns[2].Cards = nil // Done
+	for i := range kb.columns {
+		kb.columns[i].Cards = nil
+	}
+	lastCol := len(kb.columns) - 1
 
 	for _, card := range kb.allCards {
-		switch {
-		case card.Done:
-			kb.columns[2].Cards = append(kb.columns[2].Cards, card)
-		case kbHasWipTag(card.Text):
-			kb.columns[1].Cards = append(kb.columns[1].Cards, card)
-		default:
+		if card.Done {
+			// Done cards go to the last column.
+			kb.columns[lastCol].Cards = append(kb.columns[lastCol].Cards, card)
+			continue
+		}
+		// Check tag-based column assignment.
+		placed := false
+		for colIdx, col := range kb.columns {
+			if colIdx == 0 || colIdx == lastCol {
+				continue // skip first (default) and last (done)
+			}
+			for _, tag := range kb.columnTags[col.Title] {
+				if kbHasWipTag(card.Text) || strings.Contains(strings.ToLower(card.Text), strings.ToLower(strings.TrimPrefix(tag, "#"))) {
+					kb.columns[colIdx].Cards = append(kb.columns[colIdx].Cards, card)
+					placed = true
+					break
+				}
+			}
+			if placed {
+				break
+			}
+		}
+		if !placed {
+			// Default: first column (backlog).
 			kb.columns[0].Cards = append(kb.columns[0].Cards, card)
 		}
 	}
@@ -248,9 +291,9 @@ func (kb Kanban) View() string {
 		visibleCards = 2
 	}
 
-	// Column colors
-	colColors := []lipgloss.Color{blue, yellow, green}
-	colIcons := []string{"○", "◉", "●"}
+	// Column colors — cycle through a palette for any number of columns
+	colColorPalette := []lipgloss.Color{blue, yellow, green, peach, mauve, teal, lavender}
+	colIconPalette := []string{"○", "◉", "●", "◆", "★", "▸", "◇"}
 
 	// Render each column to a slice of lines
 	type colLines struct {
@@ -259,7 +302,9 @@ func (kb Kanban) View() string {
 	allCols := make([]colLines, numCols)
 	maxHeight := 0
 	for ci, col := range kb.columns {
-		rendered := kb.kbRenderColumn(ci, col, colWidth, visibleCards, colColors[ci], colIcons[ci])
+		cc := colColorPalette[ci%len(colColorPalette)]
+		ci2 := colIconPalette[ci%len(colIconPalette)]
+		rendered := kb.kbRenderColumn(ci, col, colWidth, visibleCards, cc, ci2)
 		lines := strings.Split(rendered, "\n")
 		allCols[ci] = colLines{lines: lines}
 		if len(lines) > maxHeight {

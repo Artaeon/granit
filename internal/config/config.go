@@ -74,6 +74,10 @@ type Config struct {
 	// Tutorial
 	TutorialCompleted bool `json:"tutorial_completed"`
 
+	// Kanban board configuration
+	KanbanColumns    []string          `json:"kanban_columns,omitempty"`     // column names (default: Backlog, In Progress, Done)
+	KanbanColumnTags map[string]string `json:"kanban_column_tags,omitempty"` // column -> tag list (e.g. "In Progress": "#doing,#wip")
+
 	// Core Plugins — toggle built-in modules on/off
 	CorePlugins map[string]bool `json:"core_plugins"`
 
