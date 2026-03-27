@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -163,6 +164,12 @@ type TaskManager struct {
 	selectMode bool
 	selected   map[string]bool // key: "notePath:lineNum"
 
+	// Pinned tasks (persisted to .granit/pinned-tasks.json)
+	pinnedTasks map[string]bool
+
+	// Task notes (persisted to .granit/task-notes.json)
+	taskNotes map[string]string
+
 	// Single-level undo for task actions
 	lastAction *taskAction
 
@@ -218,6 +225,8 @@ func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.collapsed = make(map[string]bool)
 	tm.selectMode = false
 	tm.selected = make(map[string]bool)
+	tm.loadPinnedTasks()
+	tm.loadTaskNotes()
 	tm.jumpOK = false
 	tm.fileChanged = false
 	tm.lastChangedNote = ""
@@ -747,6 +756,52 @@ func (tm *TaskManager) doBulkSetDate(dateStr string) {
 	}
 }
 
+// loadPinnedTasks reads pinned task keys from .granit/pinned-tasks.json.
+func (tm *TaskManager) loadPinnedTasks() {
+	tm.pinnedTasks = make(map[string]bool)
+	if tm.vault == nil {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(tm.vault.Root, ".granit", "pinned-tasks.json"))
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(data, &tm.pinnedTasks)
+}
+
+func (tm *TaskManager) savePinnedTasks() {
+	if tm.vault == nil {
+		return
+	}
+	dir := filepath.Join(tm.vault.Root, ".granit")
+	_ = os.MkdirAll(dir, 0755)
+	data, _ := json.MarshalIndent(tm.pinnedTasks, "", "  ")
+	_ = os.WriteFile(filepath.Join(dir, "pinned-tasks.json"), data, 0644)
+}
+
+// loadTaskNotes reads task notes from .granit/task-notes.json.
+func (tm *TaskManager) loadTaskNotes() {
+	tm.taskNotes = make(map[string]string)
+	if tm.vault == nil {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(tm.vault.Root, ".granit", "task-notes.json"))
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(data, &tm.taskNotes)
+}
+
+func (tm *TaskManager) saveTaskNotes() {
+	if tm.vault == nil {
+		return
+	}
+	dir := filepath.Join(tm.vault.Root, ".granit")
+	_ = os.MkdirAll(dir, 0755)
+	data, _ := json.MarshalIndent(tm.taskNotes, "", "  ")
+	_ = os.WriteFile(filepath.Join(dir, "task-notes.json"), data, 0644)
+}
+
 // suggestPriority uses heuristics to recommend a priority for a task.
 func suggestPriority(task Task, allTasks []Task) int {
 	score := 0
@@ -987,6 +1042,17 @@ func (tm *TaskManager) rebuildFiltered() {
 		// since view filters already sort by priority).
 		if tm.sortMode != tmSortPriority {
 			tm.filtered = tm.applySortMode(tm.filtered)
+		}
+		// Sort pinned tasks to the top.
+		if len(tm.pinnedTasks) > 0 {
+			sort.SliceStable(tm.filtered, func(i, j int) bool {
+				pi := tm.pinnedTasks[taskKey(tm.filtered[i])]
+				pj := tm.pinnedTasks[taskKey(tm.filtered[j])]
+				if pi != pj {
+					return pi
+				}
+				return false
+			})
 		}
 		// Hide children of collapsed parent tasks.
 		tm.filtered = tm.applyCollapseFilter(tm.filtered)
@@ -2022,6 +2088,22 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.doCyclePriority(task)
 		}
 
+	// Pin/unpin task
+	case "W":
+		if tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			key := taskKey(task)
+			if tm.pinnedTasks[key] {
+				delete(tm.pinnedTasks, key)
+				tm.statusMsg = "Unpinned"
+			} else {
+				tm.pinnedTasks[key] = true
+				tm.statusMsg = "Pinned"
+			}
+			tm.savePinnedTasks()
+			tm.rebuildFiltered()
+		}
+
 	// Auto-priority (heuristic)
 	case "A":
 		if tm.cursor < len(tm.filtered) {
@@ -2525,9 +2607,23 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		Padding(0, 1).
 		Render(noteName)
 
+	// Pin indicator
+	pinStr := ""
+	prefixExtra := 0
+	if tm.pinnedTasks[taskKey(task)] {
+		pinStr = lipgloss.NewStyle().Foreground(yellow).Render("\U0001F4CC ")
+		prefixExtra += 3
+	}
+
+	// Note indicator
+	noteStr := ""
+	if tm.taskNotes[taskKey(task)] != "" {
+		noteStr = lipgloss.NewStyle().Foreground(yellow).Render("\U0001F4DD ")
+		prefixExtra += 3
+	}
+
 	// Selection indicator (in select mode)
 	selectStr := ""
-	prefixExtra := 0
 	if tm.selectMode {
 		if tm.selected[taskKey(task)] {
 			selectStr = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("[*] ")
@@ -2585,7 +2681,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		tagBadges += " " + lipgloss.NewStyle().Foreground(c).Render("#"+tag)
 	}
 
-	line := prefix + selectStr + indentStr + collapseIndicator + blockedStr + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
+	line := prefix + pinStr + noteStr + selectStr + indentStr + collapseIndicator + blockedStr + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
 	if tagBadges != "" {
 		line += tagBadges
 	}
