@@ -88,20 +88,29 @@ Granit is a **free, open-source** personal knowledge management system built in 
 
 ### Task Management
 
-- Task Manager (`Ctrl+K`) -- 6 views: Today, Upcoming, All, Done, Calendar, Kanban
+- Task Manager (`Ctrl+K`) -- 7 views: Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower Matrix
 - 5 priority levels, date picker, cross-vault scanning
 - Subtask hierarchy -- indentation-based nesting with expand/collapse (`e`)
 - Task dependencies -- `depends:` syntax with blocked indicators
 - Time estimation -- `~30m` / `~2h` syntax with workload totals
+- Per-task time tracking -- actual logged time badge (green under estimate, red over)
 - Reschedule (`r`) -- quick move to tomorrow, next Monday, +1 week, +1 month
+- Batch reschedule (`R`) -- walk through all overdue tasks with quick date picks
+- Task snooze (`z`) -- hide for 1h, 4h, or tomorrow 9am; auto-reappears on expiry
+- Pinned tasks (`W`) -- pin to top of all views, persisted across sessions
+- Task notes (`n`) -- attach freeform notes to any task, with note icon indicator
+- Auto-priority (`A`) -- heuristic scorer based on deadline, dependencies, project
+- Undo (`u`) -- single-level undo for any task modification
 - Advanced sort (`s`) -- by priority, due date, A-Z, source, or tag
 - Bulk operations (`v`) -- select multiple tasks, batch toggle/date/priority
 - Tag and priority filters (`#`, `P`) with visual badges
 - Focus session launcher (`f`) -- start a timed session directly from a task
 - Recurring tasks -- daily, weekly, monthly auto-creation
 - Custom kanban columns -- configurable via settings with tag-based routing
+- Eisenhower Matrix -- 2x2 urgency/importance grid (DO / SCHEDULE / DELEGATE / ELIMINATE)
 - Overdue grouping -- Today view splits overdue (red) from today's tasks
 - Project matching -- auto-assign tasks to projects by folder or tag
+- Quick-add syntax -- `@tomorrow !high #tag ~1h` parsed from Ctrl+T quick capture
 - Task filtering by config -- exclude folders, require tags, hide completed
 - CLI task add: `granit todo "Ship v2.0" --due friday --priority high --tag release`
 
@@ -119,6 +128,7 @@ Granit is a **free, open-source** personal knowledge management system built in 
 
 - Habit tracker with 7-day streaks, pomodoro timer, focus sessions (25/45/60/90 min)
 - Daily planner with time-blocked schedule and multi-hour blocks (30m to 3h)
+- Smart daily note template -- `{{overdue_tasks}}`, `{{today_tasks}}`, `{{today_habits}}`, `{{today_schedule}}`
 - Daily review -- guided 5-phase end-of-day review with rescheduling
 - Weekly review -- structured weekly reflection overlay
 - Command palette (`Ctrl+X`) with 80+ commands
@@ -333,6 +343,12 @@ Run `granit help` for the full command reference.
 |-----|--------|
 | `j`/`k` | Navigate up/down |
 | `x` | Toggle task done/undone |
+| `u` | Undo last action |
+| `n` | Add/edit task note |
+| `z` | Snooze task (1h/4h/tomorrow) |
+| `W` | Pin/unpin task |
+| `A` | Auto-suggest priority |
+| `R` | Batch reschedule overdue (Today view) |
 | `e` | Expand/collapse subtasks |
 | `f` | Start focus session on task |
 | `g` | Jump to task source note |
@@ -348,7 +364,8 @@ Run `granit help` for the full command reference.
 | `P` | Cycle priority filter |
 | `c` | Clear all filters |
 | `/` | Search tasks |
-| `Tab` | Switch view (Today/Upcoming/All/Done/Calendar/Kanban) |
+| `Tab` | Switch view (Today/Upcoming/All/Done/Calendar/Kanban/Matrix) |
+| `1`-`7` | Jump to specific view |
 
 ### Vim Mode
 

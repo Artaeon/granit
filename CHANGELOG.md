@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Eisenhower Matrix** — 7th task manager view (`7` key); 2×2 grid (DO / SCHEDULE / DELEGATE / ELIMINATE) based on priority and due date proximity
+- **Batch reschedule** (`R` key) — walk through all overdue tasks one-by-one in Today view with quick date picks (tomorrow / +1 week / skip)
+- **Task snooze** (`z` key) — hide task for 1 hour, 4 hours, or until tomorrow 9 am; `snooze:YYYY-MM-DDTHH:MM` syntax; snoozed tasks auto-reappear when time expires
+- **Per-task time tracking display** — actual logged time shown as badge (green when under estimate, red when over); data from TimeTracker sessions
+- **Task notes** (`n` key) — add or edit a freeform note on any task; persisted to `.granit/task-notes.json`; note icon shown in task row
+- **Pinned tasks** (`W` key) — pin important tasks to the top of every view; persisted to `.granit/pinned-tasks.json`; pin icon shown in task row
+- **Auto-priority** (`A` key) — heuristic scorer: +2 overdue, +1 today, +1 due ≤ 2 days, +1 blocks others, +1 in project, −1 no date; maps to priority 1–4
+- **Quick-add inline syntax** — Ctrl+T quick capture now parses `@today`/`@tomorrow`/`@monday`, `!high`/`!low`/`!med`, `~30m`/`~2h` from task text
+- **Smart daily note template** — 4 new template variables: `{{overdue_tasks}}`, `{{today_tasks}}`, `{{today_habits}}`, `{{today_schedule}}`
+- **Undo last task action** (`u` key) — single-level undo for any task modification (toggle, date, priority, reschedule, dependency, etc.)
 - **Task reschedule** (`r` key) — quick move to tomorrow, next Monday, +1 week, +1 month, or custom date
 - **Advanced task sorting** (`s` key) — cycle between priority, due date, alphabetical, source note, and first tag
 - **Subtask hierarchy** — indentation-based parent/child nesting with expand/collapse (`e` key) and tree rendering

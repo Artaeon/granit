@@ -682,19 +682,28 @@ AI-powered optimal daily schedule generation. Analyzes your tasks, priorities, a
 
 ### Task Manager
 
-Full-featured task management with 6 views (Today, Upcoming, All, Done, Calendar, Kanban), 5 priority levels, due dates, and cross-vault scanning. Tasks are stored in `Tasks.md` and also parsed from all vault notes.
+Full-featured task management with 7 views (Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower Matrix), 5 priority levels, due dates, and cross-vault scanning. Tasks are stored in `Tasks.md` and also parsed from all vault notes.
 
 - **Access:** `Ctrl+K`
 - **Subtasks:** Indent tasks with spaces to create parent-child hierarchy. Press `e` to expand/collapse.
 - **Dependencies:** Add `depends:taskname` (or `depends:"multi word"`) to block a task until its dependency is done.
 - **Time Estimation:** Add `~30m` or `~2h` to task text. Press `E` for quick presets. Today view shows total workload.
+- **Time Tracking:** Actual logged time shown as colored badge next to estimate (green = under, red = over).
 - **Reschedule:** Press `r` for quick options: tomorrow, next Monday, +1 week, +1 month, or custom date.
+- **Batch Reschedule:** Press `R` in Today view to walk through all overdue tasks with quick date picks (1=tomorrow, 2=+1 week, s=skip).
+- **Snooze:** Press `z` to snooze a task (1=1 hour, 2=4 hours, 3=tomorrow 9am). Snoozed tasks are hidden until the time expires.
+- **Pinned Tasks:** Press `W` to pin/unpin. Pinned tasks sort to the top in all views. Persisted to `.granit/pinned-tasks.json`.
+- **Task Notes:** Press `n` to add or edit a freeform note on any task. Notes persist to `.granit/task-notes.json`. Note icon shown in row.
+- **Auto-Priority:** Press `A` to auto-suggest priority: +2 overdue, +1 today, +1 due ≤ 2 days, +1 blocks others, +1 in project, -1 no date.
+- **Undo:** Press `u` to undo the last task modification (toggle, date, priority, reschedule, etc.).
 - **Sort:** Press `s` to cycle: priority (default), due date, alphabetical, source note, or first tag.
 - **Bulk Ops:** Press `v` to enter select mode. Space selects tasks, `x` bulk-toggles, `d` bulk-sets dates.
 - **Filters:** `#` cycles tag filter, `P` cycles priority filter, `/` searches (supports `#tag` syntax), `c` clears.
 - **Focus:** Press `f` to start a focus session pre-loaded with the selected task.
 - **Overdue:** Today view groups tasks into OVERDUE (red) and TODAY (green) sections.
 - **Custom Kanban:** Configure columns via `kanban_columns` and `kanban_column_tags` in settings.
+- **Eisenhower Matrix:** Press `7` for 2×2 grid: DO (urgent+important), SCHEDULE (important), DELEGATE (urgent), ELIMINATE (neither).
+- **Quick-Add Syntax:** Ctrl+T quick capture parses `@today`/`@tomorrow`/`@monday`, `!high`/`!low`, `~30m`/`~2h` from text.
 - **Project Matching:** Tasks auto-assign to projects by folder path or tag.
 
 ### Daily Planner
@@ -704,6 +713,19 @@ Time-blocked daily schedule from 6am to 10pm in 30-minute slots. Supports multi-
 - **Access:** Command palette > "Daily Planner"
 - **Duration:** Press `-`/`+` when adding a block to adjust duration from 30 minutes to 3 hours.
 - **Example:** Block 9:00-11:00 for a 2-hour "Deep Work: Write Report" session.
+
+### Smart Daily Note Template
+
+Daily notes support 16 template variables that are auto-substituted when a note is created:
+
+- **Core:** `{{date}}`, `{{title}}`, `{{weekday}}`, `{{time}}`, `{{yesterday}}`, `{{tomorrow}}`
+- **Calendar:** `{{week_number}}`, `{{month_name}}`, `{{year}}`
+- **Tasks:** `{{overdue_tasks}}` (overdue task checkboxes), `{{today_tasks}}` (tasks due today), `{{carry_forward}}` (yesterday's incomplete tasks)
+- **Habits:** `{{today_habits}}` (habit checkboxes from Habits/habits.md)
+- **Schedule:** `{{today_schedule}}` (planner blocks for the date)
+- **Stats:** `{{streak}}` (consecutive daily note streak), `{{recurring_tasks}}` (configured recurring tasks)
+
+Custom templates can be set via `daily_note_template` in settings.
 
 ### Pomodoro Timer
 

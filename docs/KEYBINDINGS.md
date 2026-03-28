@@ -374,8 +374,8 @@ Enter Command mode by pressing `:` in Normal mode. Type a command and press `Ent
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Cycle views (Today / Upcoming / All / Done / Calendar / Kanban) |
-| `1`-`6` | Jump to specific view |
+| `Tab` | Cycle views (Today / Upcoming / All / Done / Calendar / Kanban / Matrix) |
+| `1`-`7` | Jump to specific view |
 | `j` / `k` | Navigate tasks |
 | `Esc`, `q` | Close task manager |
 
@@ -384,6 +384,12 @@ Enter Command mode by pressing `:` in Normal mode. Type a command and press `Ent
 | Key | Action |
 |-----|--------|
 | `x`, `Enter` | Toggle task done/undone |
+| `u` | Undo last task action (toggle, date, priority, etc.) |
+| `n` | Add/edit task note (Enter saves, Esc cancels) |
+| `z` | Snooze task (1=1h, 2=4h, 3=tomorrow 9am) |
+| `W` | Pin/unpin task (pinned tasks sort to top) |
+| `A` | Auto-suggest priority (heuristic based on deadline/deps/project) |
+| `R` | Batch reschedule all overdue tasks (Today view only) |
 | `a` | Add new task |
 | `g` | Jump to task source note |
 | `d` | Set/change due date (date picker) |
@@ -424,6 +430,13 @@ Enter Command mode by pressing `:` in Normal mode. Type a command and press `Ent
 | `>` / `<` | Move task to next/previous column |
 | `g` | Jump to task source note |
 | `a` | Add new task |
+
+### Eisenhower Matrix
+
+| Key | Action |
+|-----|--------|
+| `7` or `Tab` | Switch to Matrix view |
+| Read-only | 2×2 grid: DO (urgent+important), SCHEDULE (important), DELEGATE (urgent), ELIMINATE (neither) |
 
 ---
 
