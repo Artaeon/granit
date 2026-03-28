@@ -82,6 +82,8 @@ const (
 	tmInputSnooze                 // snooze picker
 	tmInputBatchReschedule        // batch reschedule overdue tasks
 	tmInputHelp                   // help overlay
+	tmInputTemplate               // template picker
+	tmInputTemplateName           // naming a new template
 )
 
 // ---------------------------------------------------------------------------
@@ -103,6 +105,12 @@ var (
 	tmRecurTagRe   = regexp.MustCompile(`#(daily|weekly|monthly|3x-week)\b`)
 	tmSnoozeRe     = regexp.MustCompile(`snooze:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})`)
 )
+
+// taskTemplate stores a reusable task definition.
+type taskTemplate struct {
+	Name string `json:"name"`
+	Text string `json:"text"` // full task text with markers (tags, priority, estimate)
+}
 
 // taskAction stores a single task line change for undo.
 type taskAction struct {
@@ -179,6 +187,9 @@ type TaskManager struct {
 	// Pinned tasks (persisted to .granit/pinned-tasks.json)
 	pinnedTasks map[string]bool
 
+	// Task templates (persisted to .granit/task-templates.json)
+	taskTemplates []taskTemplate
+
 	// Task notes (persisted to .granit/task-notes.json)
 	taskNotes map[string]string
 
@@ -239,6 +250,7 @@ func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.selected = make(map[string]bool)
 	tm.loadPinnedTasks()
 	tm.loadTaskNotes()
+	tm.loadTaskTemplates()
 	tm.jumpOK = false
 	tm.fileChanged = false
 	tm.lastChangedNote = ""
@@ -796,6 +808,28 @@ func (tm *TaskManager) doBulkSetDate(dateStr string) {
 		tm.statusMsg = fmt.Sprintf("Set date on %d tasks", count)
 		tm.reparse()
 	}
+}
+
+func (tm *TaskManager) loadTaskTemplates() {
+	tm.taskTemplates = nil
+	if tm.vault == nil {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(tm.vault.Root, ".granit", "task-templates.json"))
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(data, &tm.taskTemplates)
+}
+
+func (tm *TaskManager) saveTaskTemplates() {
+	if tm.vault == nil {
+		return
+	}
+	dir := filepath.Join(tm.vault.Root, ".granit")
+	_ = os.MkdirAll(dir, 0755)
+	data, _ := json.MarshalIndent(tm.taskTemplates, "", "  ")
+	_ = os.WriteFile(filepath.Join(dir, "task-templates.json"), data, 0644)
 }
 
 // loadPinnedTasks reads pinned task keys from .granit/pinned-tasks.json.
@@ -1651,6 +1685,10 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case tmInputHelp:
 		tm.inputMode = tmInputNone // any key closes help
 		return tm, nil
+	case tmInputTemplate:
+		return tm.updateTemplate(key)
+	case tmInputTemplateName:
+		return tm.updateTemplateName(key)
 	}
 
 	return tm, nil
@@ -1764,6 +1802,61 @@ func (tm TaskManager) updateDependency(key string) (TaskManager, tea.Cmd) {
 				tm.statusMsg = "Dependency added: " + dep
 				tm.reparse()
 			}
+		}
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+	case "backspace":
+		if len(tm.inputBuf) > 0 {
+			tm.inputBuf = tm.inputBuf[:len(tm.inputBuf)-1]
+		}
+	default:
+		if len(key) == 1 || key == " " {
+			tm.inputBuf += key
+		}
+	}
+	return tm, nil
+}
+
+func (tm TaskManager) updateTemplate(key string) (TaskManager, tea.Cmd) {
+	switch key {
+	case "esc":
+		tm.inputMode = tmInputNone
+	default:
+		// Number key selects template
+		if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
+			idx := int(key[0]-'1')
+			if idx < len(tm.taskTemplates) {
+				tmpl := tm.taskTemplates[idx]
+				tm.doAddTask(tmpl.Text)
+				tm.statusMsg = "Created from template: " + tmpl.Name
+				tm.inputMode = tmInputNone
+			}
+		}
+	}
+	return tm, nil
+}
+
+func (tm TaskManager) updateTemplateName(key string) (TaskManager, tea.Cmd) {
+	switch key {
+	case "esc":
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+	case "enter":
+		name := strings.TrimSpace(tm.inputBuf)
+		if name != "" && tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			// Store the full task text with all markers
+			text := tmTaskRe.FindStringSubmatch(strings.TrimSpace(task.Text))
+			taskLine := task.Text
+			if text != nil {
+				taskLine = text[3][2:] // strip "] " prefix
+			}
+			tm.taskTemplates = append(tm.taskTemplates, taskTemplate{
+				Name: name,
+				Text: taskLine,
+			})
+			tm.saveTaskTemplates()
+			tm.statusMsg = "Template saved: " + name
 		}
 		tm.inputMode = tmInputNone
 		tm.inputBuf = ""
@@ -2279,6 +2372,22 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		if tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
 			tm.doCyclePriority(task)
+		}
+
+	// Save task as template
+	case "T":
+		if tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			tm.inputMode = tmInputTemplateName
+			tm.inputBuf = tmCleanText(task.Text)
+		}
+
+	// Create task from template
+	case "t":
+		if len(tm.taskTemplates) > 0 {
+			tm.inputMode = tmInputTemplate
+		} else {
+			tm.statusMsg = "No templates (T to save one)"
 		}
 
 	// Help overlay
@@ -3168,6 +3277,18 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 				ss.Render("s") + ds.Render(":skip ") +
 				ss.Render("Esc") + ds.Render(":cancel"))
 		}
+	case tmInputTemplate:
+		b.WriteString("  " + promptStyle.Render("Create from template:") + "\n")
+		for i, tmpl := range tm.taskTemplates {
+			if i >= 9 {
+				break
+			}
+			numStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+			b.WriteString("    " + numStyle.Render(fmt.Sprintf("%d", i+1)) + " " + tmpl.Name + " — " + DimStyle.Render(TruncateDisplay(tmpl.Text, w-20)) + "\n")
+		}
+		b.WriteString("  " + DimStyle.Render("Esc:cancel"))
+	case tmInputTemplateName:
+		b.WriteString("  " + promptStyle.Render("Template name: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
 	case tmInputSnooze:
 		b.WriteString("  " + promptStyle.Render("Snooze: "))
 		b.WriteString("\n")
