@@ -810,6 +810,73 @@ func (tm *TaskManager) doBulkSetDate(dateStr string) {
 	}
 }
 
+// doArchive moves completed tasks older than 30 days from Tasks.md to Archive/tasks-YYYY-MM.md.
+func (tm *TaskManager) doArchive() int {
+	if tm.vault == nil {
+		return 0
+	}
+	tasksPath := filepath.Join(tm.vault.Root, "Tasks.md")
+	data, err := os.ReadFile(tasksPath)
+	if err != nil {
+		return 0
+	}
+	lines := strings.Split(string(data), "\n")
+	var kept, archived []string
+	now := time.Now()
+	cutoff := now.AddDate(0, 0, -30)
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		isCompleted := strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]")
+		shouldArchive := false
+
+		if isCompleted {
+			if dm := tmDueDateRe.FindStringSubmatch(line); dm != nil {
+				if dueDate, err := time.Parse("2006-01-02", dm[1]); err == nil {
+					if dueDate.Before(cutoff) {
+						shouldArchive = true
+					}
+				}
+			} else {
+				// Completed with no date: archive if it has been 30+ days
+				// (we can't know exactly, so archive all undated completed tasks)
+				shouldArchive = true
+			}
+		}
+
+		if shouldArchive {
+			archived = append(archived, line)
+		} else {
+			kept = append(kept, line)
+		}
+	}
+
+	if len(archived) == 0 {
+		return 0
+	}
+
+	// Write archive file
+	archiveDir := filepath.Join(tm.vault.Root, "Archive")
+	_ = os.MkdirAll(archiveDir, 0755)
+	archiveFile := filepath.Join(archiveDir, "tasks-"+now.Format("2006-01")+".md")
+	archiveContent := ""
+	if existing, err := os.ReadFile(archiveFile); err == nil {
+		archiveContent = string(existing)
+	}
+	archiveContent += "\n" + strings.Join(archived, "\n") + "\n"
+	_ = os.WriteFile(archiveFile, []byte(archiveContent), 0644)
+
+	// Write updated Tasks.md
+	_ = os.WriteFile(tasksPath, []byte(strings.Join(kept, "\n")), 0644)
+
+	// Re-scan vault
+	if note := tm.vault.GetNote("Tasks.md"); note != nil {
+		note.Content = strings.Join(kept, "\n")
+	}
+
+	return len(archived)
+}
+
 func (tm *TaskManager) loadTaskTemplates() {
 	tm.taskTemplates = nil
 	if tm.vault == nil {
@@ -2372,6 +2439,16 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		if tm.cursor < len(tm.filtered) {
 			task := tm.filtered[tm.cursor]
 			tm.doCyclePriority(task)
+		}
+
+	// Archive old completed tasks
+	case "X":
+		count := tm.doArchive()
+		if count > 0 {
+			tm.statusMsg = fmt.Sprintf("Archived %d completed tasks", count)
+			tm.reparse()
+		} else {
+			tm.statusMsg = "No tasks to archive"
 		}
 
 	// Save task as template
