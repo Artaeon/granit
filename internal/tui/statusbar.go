@@ -30,6 +30,7 @@ type StatusBar struct {
 	clockInStatus  string // e.g. "⏱ 1:23:45 · Project"
 	researchStatus string // e.g. "Researching: AI trends"
 	dueTodayCount  int
+	overdueCount   int
 	inboxCount     int
 	readingProgress int  // 0-100 percentage
 	viewMode        bool // whether currently in view mode
@@ -138,6 +139,10 @@ func (sb *StatusBar) SetResearchStatus(status string) {
 
 func (sb *StatusBar) SetDueTodayCount(count int) {
 	sb.dueTodayCount = count
+}
+
+func (sb *StatusBar) SetOverdueCount(count int) {
+	sb.overdueCount = count
 }
 
 func (sb *StatusBar) SetInboxCount(count int) {
@@ -250,6 +255,14 @@ func (sb StatusBar) View() string {
 			Render(sb.researchStatus)
 	}
 
+	// Overdue counter
+	overdueIndicator := ""
+	if sb.overdueCount > 0 {
+		overdueIndicator = lipgloss.NewStyle().
+			Background(red).Foreground(crust).Bold(true).Padding(0, 1).
+			Render(fmt.Sprintf("%d overdue", sb.overdueCount))
+	}
+
 	// Task counter
 	taskIndicator := ""
 	if sb.dueTodayCount > 0 {
@@ -313,7 +326,7 @@ func (sb StatusBar) View() string {
 
 	// Calculate gap
 	leftLen := lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) + lipgloss.Width(readingBar)
-	rightLen := lipgloss.Width(researchIndicator) + lipgloss.Width(inboxIndicator) + lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) + lipgloss.Width(pomoIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
+	rightLen := lipgloss.Width(researchIndicator) + lipgloss.Width(inboxIndicator) + lipgloss.Width(overdueIndicator) + lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) + lipgloss.Width(pomoIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	gap := sb.width - leftLen - rightLen
 	if gap < 0 {
 		gap = 0
@@ -323,7 +336,7 @@ func (sb StatusBar) View() string {
 		gapStr = StatusBarBg.Width(gap).Render(strings.Repeat(" ", gap))
 	}
 
-	bar := mode + fileSection + cursorPos + readingBar + gapStr + researchIndicator + inboxIndicator + taskIndicator + clockIndicator + pomoIndicator + aiIndicator + rightInfo
+	bar := mode + fileSection + cursorPos + readingBar + gapStr + researchIndicator + inboxIndicator + overdueIndicator + taskIndicator + clockIndicator + pomoIndicator + aiIndicator + rightInfo
 
 	// Help bar
 	helpItems := []struct{ key, desc string }{

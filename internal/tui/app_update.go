@@ -2213,6 +2213,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastSaveTime = time.Now()
 			m.dueTodayCount = CountTasksDueToday(m.vault.Notes)
 			m.statusbar.SetDueTodayCount(m.dueTodayCount)
+			m.statusbar.SetOverdueCount(CountOverdueTasks(m.vault.Notes))
 			return m, cmd
 
 		case "f1", "alt+1":

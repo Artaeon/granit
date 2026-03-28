@@ -325,6 +325,28 @@ func CountTasksDueToday(notes map[string]*vault.Note) int {
 	return count
 }
 
+// CountOverdueTasks counts how many unchecked tasks are past their due date.
+func CountOverdueTasks(notes map[string]*vault.Note) int {
+	count := 0
+	for _, note := range notes {
+		if note.Content == "" {
+			continue
+		}
+		for _, line := range strings.Split(note.Content, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if !strings.HasPrefix(trimmed, "- [ ]") {
+				continue
+			}
+			if dm := tmDueDateRe.FindStringSubmatch(line); dm != nil {
+				if tmIsOverdue(dm[1]) {
+					count++
+				}
+			}
+		}
+	}
+	return count
+}
+
 // ---------------------------------------------------------------------------
 // Parsing
 // ---------------------------------------------------------------------------

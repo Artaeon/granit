@@ -611,9 +611,10 @@ func (m *Model) refreshComponents(changedPath string) {
 	m.autocomplete.SetNotes(paths)
 	m.statusbar.SetNoteCount(m.vault.NoteCount())
 
-	// Update due-today count
+	// Update due-today and overdue counts
 	m.dueTodayCount = CountTasksDueToday(m.vault.Notes)
 	m.statusbar.SetDueTodayCount(m.dueTodayCount)
+	m.statusbar.SetOverdueCount(CountOverdueTasks(m.vault.Notes))
 
 	// Update inbox count
 	m.statusbar.SetInboxCount(countInboxItems(m.vault.Root))

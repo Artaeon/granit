@@ -370,6 +370,7 @@ func NewModel(vaultPath string) (Model, error) {
 	m.statusbar.SetNoteCount(v.NoteCount())
 	m.dueTodayCount = CountTasksDueToday(v.Notes)
 	m.statusbar.SetDueTodayCount(m.dueTodayCount)
+	m.statusbar.SetOverdueCount(CountOverdueTasks(v.Notes))
 	m.autocomplete.SetNotes(paths)
 	m.plugins.SetVaultPath(vaultPath)
 	m.pomodoro.SetVaultRoot(vaultPath)
