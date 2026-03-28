@@ -1636,6 +1636,9 @@ func (tm *TaskManager) kanbanColumns() [4][]Task {
 	var cols [4][]Task
 
 	for _, t := range tm.allTasks {
+		if tmIsSnoozed(t) {
+			continue
+		}
 		hasDoingTag := false
 		for _, tag := range t.Tags {
 			if tag == "doing" || tag == "inprogress" {
@@ -3656,6 +3659,8 @@ func (tm *TaskManager) renderKanbanCard(b *strings.Builder, task Task, isSelecte
 	displayText = tmPrioHighRe.ReplaceAllString(displayText, "")
 	displayText = tmPrioMedRe.ReplaceAllString(displayText, "")
 	displayText = tmPrioLowRe.ReplaceAllString(displayText, "")
+	displayText = tmEstimateRe.ReplaceAllString(displayText, "")
+	displayText = tmSnoozeRe.ReplaceAllString(displayText, "")
 	displayText = strings.TrimSpace(displayText)
 
 	maxTextW := w - 8

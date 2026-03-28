@@ -2192,6 +2192,28 @@ func (m *Model) dailyNoteContent(date, fallback string) string {
 		todaySchedule = strings.Join(schedLines, "\n")
 	}
 
+	// Build active goals summary
+	activeGoals := ""
+	gm := NewGoalsMode()
+	gm.vaultRoot = m.vault.Root
+	gm.loadGoals()
+	var goalLines []string
+	for _, g := range gm.goals {
+		if g.Status == GoalStatusActive {
+			line := "- " + g.Title
+			if len(g.Milestones) > 0 {
+				line += fmt.Sprintf(" (%d%%)", g.Progress())
+			}
+			if g.IsOverdue() {
+				line += " **OVERDUE**"
+			}
+			goalLines = append(goalLines, line)
+		}
+	}
+	if len(goalLines) > 0 {
+		activeGoals = strings.Join(goalLines, "\n")
+	}
+
 	replaceVars := func(content string) string {
 		content = strings.ReplaceAll(content, "{{date}}", date)
 		content = strings.ReplaceAll(content, "{{title}}", date)
@@ -2209,6 +2231,7 @@ func (m *Model) dailyNoteContent(date, fallback string) string {
 		content = strings.ReplaceAll(content, "{{today_tasks}}", todayTasksList)
 		content = strings.ReplaceAll(content, "{{today_habits}}", todayHabits)
 		content = strings.ReplaceAll(content, "{{today_schedule}}", todaySchedule)
+		content = strings.ReplaceAll(content, "{{active_goals}}", activeGoals)
 		return content
 	}
 

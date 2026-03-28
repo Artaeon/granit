@@ -308,6 +308,37 @@ func (gm *GoalsMode) restoreExpanded() {
 	gm.milestoneCur = 0
 }
 
+func (gm *GoalsMode) ensureVisible() {
+	maxVisible := gm.height - 12
+	if maxVisible < 3 {
+		maxVisible = 3
+	}
+	if gm.cursor < gm.scroll {
+		gm.scroll = gm.cursor
+	}
+	if gm.cursor >= gm.scroll+maxVisible {
+		gm.scroll = gm.cursor - maxVisible + 1
+	}
+}
+
+func (gm *GoalsMode) deleteGoal() {
+	if gm.cursor >= len(gm.filtered) {
+		return
+	}
+	goal := gm.filtered[gm.cursor]
+	idx := gm.findGoalIndex(goal.ID)
+	if idx < 0 {
+		return
+	}
+	gm.goals = append(gm.goals[:idx], gm.goals[idx+1:]...)
+	gm.saveGoals()
+	gm.rebuildFiltered()
+	if gm.cursor >= len(gm.filtered) && gm.cursor > 0 {
+		gm.cursor--
+	}
+	gm.statusMsg = "Goal deleted"
+}
+
 func (gm *GoalsMode) uniqueCategories() []string {
 	cats := make(map[string]bool)
 	for _, g := range gm.goals {
@@ -472,6 +503,10 @@ func (gm *GoalsMode) toggleMilestone() {
 		gm.goals[idx].Status = GoalStatusCompleted
 		gm.goals[idx].CompletedAt = time.Now().Format("2006-01-02")
 		gm.statusMsg = "All milestones done — goal completed!"
+		// Goal leaves active view, clear expanded state
+		gm.expanded = -1
+		gm.expandedID = ""
+		gm.milestoneCur = 0
 	}
 
 	gm.saveGoals()
@@ -543,6 +578,7 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			}
 		} else if gm.cursor < len(gm.filtered)-1 {
 			gm.cursor++
+			gm.ensureVisible()
 		}
 	case "k", "up":
 		if gm.expanded >= 0 {
@@ -551,6 +587,7 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			}
 		} else if gm.cursor > 0 {
 			gm.cursor--
+			gm.ensureVisible()
 		}
 
 	// Views
@@ -623,17 +660,41 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 		}
 
 	// Archive
-	case "D":
+	case "A":
 		gm.archiveGoal()
+
+	// Delete goal (permanent)
+	case "D":
+		if gm.expanded < 0 {
+			gm.deleteGoal()
+		}
 
 	// Pause / resume
 	case "p":
 		gm.togglePause()
 
-	// Delete milestone
+	// Delete milestone (when expanded) or delete goal
 	case "d":
 		if gm.expanded >= 0 {
 			gm.deleteMilestone()
+		}
+
+	// Edit title
+	case "e":
+		if gm.expanded < 0 && gm.cursor < len(gm.filtered) {
+			goal := gm.filtered[gm.cursor]
+			gm.input = goalInputTitle
+			gm.inputBuf = goal.Title
+			// Reuse title input but mark it as edit mode
+			gm.newGoalTitle = "__EDIT__"
+		}
+
+	// Edit description
+	case "E":
+		if gm.cursor < len(gm.filtered) {
+			goal := gm.filtered[gm.cursor]
+			gm.input = goalInputDescription
+			gm.inputBuf = goal.Description
 		}
 
 	// Edit notes
@@ -662,9 +723,31 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 		switch key {
 		case "esc":
 			gm.input = goalInputNone
+			gm.newGoalTitle = ""
 		case "enter":
-			gm.newGoalTitle = strings.TrimSpace(gm.inputBuf)
-			if gm.newGoalTitle != "" {
+			title := strings.TrimSpace(gm.inputBuf)
+			if title == "" {
+				break
+			}
+			if gm.newGoalTitle == "__EDIT__" {
+				// Edit existing goal title
+				if gm.cursor < len(gm.filtered) {
+					goal := gm.filtered[gm.cursor]
+					idx := gm.findGoalIndex(goal.ID)
+					if idx >= 0 {
+						gm.goals[idx].Title = title
+						gm.goals[idx].UpdatedAt = time.Now().Format("2006-01-02")
+						gm.saveGoals()
+						gm.rebuildFiltered()
+						gm.statusMsg = "Title updated"
+					}
+				}
+				gm.input = goalInputNone
+				gm.inputBuf = ""
+				gm.newGoalTitle = ""
+			} else {
+				// New goal flow: title → date → category
+				gm.newGoalTitle = title
 				gm.inputBuf = ""
 				gm.input = goalInputDate
 			}
@@ -723,6 +806,34 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 			text := strings.TrimSpace(gm.inputBuf)
 			if text != "" {
 				gm.addMilestone(text)
+			}
+			gm.input = goalInputNone
+			gm.inputBuf = ""
+		case "backspace":
+			if len(gm.inputBuf) > 0 {
+				gm.inputBuf = gm.inputBuf[:len(gm.inputBuf)-1]
+			}
+		default:
+			if len(key) == 1 || key == " " {
+				gm.inputBuf += key
+			}
+		}
+
+	case goalInputDescription:
+		switch key {
+		case "esc":
+			gm.input = goalInputNone
+		case "enter":
+			if gm.cursor < len(gm.filtered) {
+				goal := gm.filtered[gm.cursor]
+				idx := gm.findGoalIndex(goal.ID)
+				if idx >= 0 {
+					gm.goals[idx].Description = strings.TrimSpace(gm.inputBuf)
+					gm.goals[idx].UpdatedAt = time.Now().Format("2006-01-02")
+					gm.saveGoals()
+					gm.rebuildFiltered()
+					gm.statusMsg = "Description saved"
+				}
 			}
 			gm.input = goalInputNone
 			gm.inputBuf = ""
@@ -882,10 +993,24 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 
 	lastCategory := ""
 	lineCount := 0
+	startIdx := gm.scroll
+	if startIdx >= len(gm.filtered) {
+		startIdx = 0
+		gm.scroll = 0
+	}
 
-	for i, goal := range gm.filtered {
+	if startIdx > 0 {
+		b.WriteString("  " + DimStyle.Render(fmt.Sprintf("... %d above", startIdx)) + "\n")
+		lineCount++
+	}
+
+	for i := startIdx; i < len(gm.filtered); i++ {
+		goal := gm.filtered[i]
 		if lineCount >= maxH {
-			b.WriteString("\n  " + DimStyle.Render(fmt.Sprintf("+%d more", len(gm.filtered)-i)))
+			remaining := len(gm.filtered) - i
+			if remaining > 0 {
+				b.WriteString("\n  " + DimStyle.Render(fmt.Sprintf("+%d more (j to scroll)", remaining)))
+			}
 			break
 		}
 
@@ -970,8 +1095,12 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 
 		// Expanded milestones
 		if gm.expanded == i {
+			if goal.Description != "" {
+				b.WriteString("      " + lipgloss.NewStyle().Foreground(overlay1).Render(TruncateDisplay(goal.Description, w-10)) + "\n")
+				lineCount++
+			}
 			if goal.Notes != "" {
-				b.WriteString("      " + DimStyle.Render(TruncateDisplay(goal.Notes, w-10)) + "\n")
+				b.WriteString("      " + DimStyle.Render("\U0001F4DD "+TruncateDisplay(goal.Notes, w-10)) + "\n")
 				lineCount++
 			}
 			if len(goal.Milestones) == 0 {
@@ -1018,6 +1147,8 @@ func (gm *GoalsMode) renderInput(b *strings.Builder, w int) {
 		b.WriteString("  " + promptStyle.Render("Category (empty to skip): ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
 	case goalInputMilestone:
 		b.WriteString("\n  " + promptStyle.Render("Add Milestone: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
+	case goalInputDescription:
+		b.WriteString("\n  " + promptStyle.Render("Description: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
 	case goalInputNotes:
 		b.WriteString("\n  " + promptStyle.Render("Notes: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
 	}
@@ -1046,9 +1177,12 @@ func (gm *GoalsMode) renderHelp(b *strings.Builder, w int) {
 		{"Goal Actions", [][2]string{
 			{"a", "Create new goal (title → date → category)"},
 			{"x", "Toggle goal complete / toggle milestone"},
-			{"p", "Pause / resume goal"},
-			{"D", "Archive goal"},
+			{"e", "Edit goal title"},
+			{"E", "Edit goal description"},
 			{"n", "Edit goal notes"},
+			{"p", "Pause / resume goal"},
+			{"A", "Archive goal"},
+			{"D", "Delete goal permanently"},
 		}},
 		{"Milestones", [][2]string{
 			{"m", "Add milestone to current goal"},
@@ -1070,8 +1204,8 @@ func (gm *GoalsMode) renderHelp(b *strings.Builder, w int) {
 func (gm *GoalsMode) renderHelpBar(b *strings.Builder, w int) {
 	pairs := [][2]string{
 		{"j/k", "nav"}, {"a", "add"}, {"m", "milestone"}, {"x", "complete"},
-		{"p", "pause"}, {"D", "archive"}, {"n", "notes"}, {"?", "help"},
-		{"Tab", "view"}, {"Esc", "close"},
+		{"e", "edit"}, {"E", "desc"}, {"n", "notes"}, {"p", "pause"},
+		{"A", "archive"}, {"D", "delete"}, {"?", "help"}, {"Tab", "view"}, {"Esc", "close"},
 	}
 	var parts []string
 	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
