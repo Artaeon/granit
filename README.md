@@ -120,6 +120,12 @@ Granit is a **free, open-source** personal knowledge management system built in 
 
 ### Projects and Goals
 
+- **Goal Manager** (command palette > "Goals") -- standalone goal tracking with milestones
+  - 4 views: Active, By Category, Timeline, Completed
+  - Goal lifecycle: active → paused → completed → archived
+  - Milestone CRUD with auto-complete (all done → goal done)
+  - Categories, target dates, overdue detection, progress bars
+  - Goal notes, creation wizard (title → date → category)
 - Project Mode -- 9 categories with dashboards and completion stats
 - Goal tracking with milestones and progress bars
 - Project health dashboard -- velocity tracking, traffic-light status indicator

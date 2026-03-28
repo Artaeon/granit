@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Standalone Goals module** — first-class goal manager (command palette > "Goals") with 4 views (Active/Category/Timeline/Completed), milestone CRUD, goal lifecycle (active/paused/completed/archived), categories, target dates, overdue detection, progress bars, notes, creation wizard, and help overlay; stored in `.granit/goals.json`
 - **Task archiving** (`X` key) — move completed tasks older than 30 days from Tasks.md to `Archive/tasks-YYYY-MM.md`; undated completed tasks also archived
 - **Task templates** (`T`/`t` keys) — save any task as a reusable template (`T`), create from template (`t` + number); persisted to `.granit/task-templates.json`
 - **Natural language dates** — quick-add now parses `@next week`, `@next friday`, `@end of month`, `@in 3 days`, `@in 2 weeks`, `@next month`

@@ -711,6 +711,21 @@ Full-featured task management with 7 views (Today, Upcoming, All, Done, Calendar
 - **Status Bar:** Red "N overdue" badge shown in status bar when overdue tasks exist.
 - **Project Matching:** Tasks auto-assign to projects by folder path or tag.
 
+### Goal Manager
+
+Standalone goal tracking module independent of projects and habits. Goals have a full lifecycle (active → paused → completed → archived) with milestones, categories, target dates, and progress tracking.
+
+- **Access:** Command palette > "Goals"
+- **Views:** Active (all active/paused goals), By Category (grouped), Timeline (sorted by deadline), Completed (done/archived)
+- **Creation:** Press `a` for 3-step wizard: title → target date → category
+- **Milestones:** Press `m` to add. Enter/x toggles completion. When all milestones are done, goal auto-completes.
+- **Lifecycle:** `x` = complete/reactivate, `p` = pause/resume, `D` = archive
+- **Notes:** Press `n` to add freeform notes to any goal
+- **Progress:** Visual progress bar + percentage based on milestone completion
+- **Overdue:** Goals past their target date shown with red `!` indicator and overdue count in stats
+- **Storage:** `.granit/goals.json` with auto-incrementing IDs (G001, G002, etc.)
+- **Help:** Press `?` for full keybinding reference
+
 ### Daily Planner
 
 Time-blocked daily schedule from 6am to 10pm in 30-minute slots. Supports multi-hour blocks (30m to 3h). Syncs with tasks, calendar events, and habits. Shows a progress bar and supports launching focus sessions from time blocks.
