@@ -759,24 +759,47 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 		}
 
 	case goalInputDate:
+		now := time.Now()
+		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 		switch key {
 		case "esc":
 			gm.input = goalInputNone
-		case "enter":
-			gm.newGoalDate = strings.TrimSpace(gm.inputBuf)
+		case "enter", "0": // skip / no date
+			gm.newGoalDate = ""
 			gm.inputBuf = ""
 			gm.input = goalInputCategory
-		case "backspace":
-			if len(gm.inputBuf) > 0 {
-				gm.inputBuf = gm.inputBuf[:len(gm.inputBuf)-1]
-			}
-		default:
-			if len(key) == 1 || key == " " {
-				gm.inputBuf += key
-			}
+		case "1": // 1 month
+			gm.newGoalDate = today.AddDate(0, 1, 0).Format("2006-01-02")
+			gm.inputBuf = ""
+			gm.input = goalInputCategory
+		case "2": // 3 months
+			gm.newGoalDate = today.AddDate(0, 3, 0).Format("2006-01-02")
+			gm.inputBuf = ""
+			gm.input = goalInputCategory
+		case "3": // 6 months
+			gm.newGoalDate = today.AddDate(0, 6, 0).Format("2006-01-02")
+			gm.inputBuf = ""
+			gm.input = goalInputCategory
+		case "4": // 1 year
+			gm.newGoalDate = today.AddDate(1, 0, 0).Format("2006-01-02")
+			gm.inputBuf = ""
+			gm.input = goalInputCategory
+		case "5": // 2 years
+			gm.newGoalDate = today.AddDate(2, 0, 0).Format("2006-01-02")
+			gm.inputBuf = ""
+			gm.input = goalInputCategory
+		case "6": // 3 years
+			gm.newGoalDate = today.AddDate(3, 0, 0).Format("2006-01-02")
+			gm.inputBuf = ""
+			gm.input = goalInputCategory
+		case "7": // 5 years
+			gm.newGoalDate = today.AddDate(5, 0, 0).Format("2006-01-02")
+			gm.inputBuf = ""
+			gm.input = goalInputCategory
 		}
 
 	case goalInputCategory:
+		cats := gm.uniqueCategories()
 		switch key {
 		case "esc":
 			gm.input = goalInputNone
@@ -790,6 +813,17 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 				gm.inputBuf = gm.inputBuf[:len(gm.inputBuf)-1]
 			}
 		default:
+			// Number keys select existing categories
+			if len(key) == 1 && key[0] >= '1' && key[0] <= '9' && gm.inputBuf == "" {
+				idx := int(key[0] - '1')
+				if idx < len(cats) {
+					gm.newGoalCategory = cats[idx]
+					gm.addGoal(gm.newGoalTitle, gm.newGoalDate, gm.newGoalCategory)
+					gm.input = goalInputNone
+					gm.inputBuf = ""
+					break
+				}
+			}
 			if len(key) == 1 || key == " " {
 				gm.inputBuf += key
 			}
@@ -1145,15 +1179,35 @@ func (gm *GoalsMode) renderInput(b *strings.Builder, w int) {
 		b.WriteString("  " + promptStyle.Render("Title: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
 		b.WriteString("  " + hintStyle.Render("Enter to continue, Esc to cancel"))
 	case goalInputDate:
-		b.WriteString("\n  " + promptStyle.Render("New Goal: ") + gm.newGoalTitle + "\n")
-		b.WriteString("  " + promptStyle.Render("Target date (YYYY-MM-DD, empty to skip): ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
+		b.WriteString("\n  " + promptStyle.Render("New Goal: ") + gm.newGoalTitle + "\n\n")
+		b.WriteString("  " + promptStyle.Render("Target date:") + "\n\n")
+		ss := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+		ds := lipgloss.NewStyle().Foreground(text)
+		b.WriteString("  " + ss.Render("1") + ds.Render(" 1 month     ") + ss.Render("2") + ds.Render(" 3 months    ") + ss.Render("3") + ds.Render(" 6 months") + "\n")
+		b.WriteString("  " + ss.Render("4") + ds.Render(" 1 year      ") + ss.Render("5") + ds.Render(" 2 years     ") + ss.Render("6") + ds.Render(" 3 years") + "\n")
+		b.WriteString("  " + ss.Render("7") + ds.Render(" 5 years     ") + ss.Render("0") + ds.Render(" no deadline") + "\n\n")
+		b.WriteString("  " + hintStyle.Render("Pick a timeframe or Esc to cancel"))
 	case goalInputCategory:
-		b.WriteString("\n  " + promptStyle.Render("New Goal: ") + gm.newGoalTitle + "\n")
+		dateLbl := gm.newGoalDate
+		if dateLbl == "" {
+			dateLbl = "no deadline"
+		}
+		b.WriteString("\n  " + promptStyle.Render("New Goal: ") + gm.newGoalTitle + "  " + hintStyle.Render(dateLbl) + "\n\n")
 		cats := gm.uniqueCategories()
 		if len(cats) > 0 {
-			b.WriteString("  " + hintStyle.Render("Existing: "+strings.Join(cats, ", ")) + "\n")
+			b.WriteString("  " + promptStyle.Render("Pick a category:") + "\n\n")
+			ss := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+			ds := lipgloss.NewStyle().Foreground(text)
+			for i, c := range cats {
+				if i >= 9 {
+					break
+				}
+				b.WriteString("  " + ss.Render(fmt.Sprintf("%d", i+1)) + ds.Render(" "+c) + "\n")
+			}
+			b.WriteString("\n")
 		}
-		b.WriteString("  " + promptStyle.Render("Category (empty to skip): ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
+		b.WriteString("  " + promptStyle.Render("Or type new: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
+		b.WriteString("  " + hintStyle.Render("Enter to confirm, empty to skip"))
 	case goalInputMilestone:
 		b.WriteString("\n  " + promptStyle.Render("Add Milestone: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
 	case goalInputDescription:
