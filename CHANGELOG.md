@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Task archiving** (`X` key) — move completed tasks older than 30 days from Tasks.md to `Archive/tasks-YYYY-MM.md`; undated completed tasks also archived
+- **Task templates** (`T`/`t` keys) — save any task as a reusable template (`T`), create from template (`t` + number); persisted to `.granit/task-templates.json`
+- **Natural language dates** — quick-add now parses `@next week`, `@next friday`, `@end of month`, `@in 3 days`, `@in 2 weeks`, `@next month`
+- **Overdue status bar badge** — red "N overdue" badge in status bar alongside yellow "N due" badge; updates on save and refresh
+- **Task manager help overlay** (`?` key) — full keybinding reference organized into 5 sections (Navigation, Actions, Power Features, Filters, Bulk); any key closes
+- **10-deep undo stack** — `u` key now supports up to 10 consecutive undos; shows remaining count "Undone (3 more)"
+- **29 new tests** — comprehensive test coverage for auto-priority, snooze, Eisenhower quadrants, inline syntax, natural language dates, undo, pinned tasks, time tracking
 - **Eisenhower Matrix** — 7th task manager view (`7` key); 2×2 grid (DO / SCHEDULE / DELEGATE / ELIMINATE) based on priority and due date proximity
 - **Batch reschedule** (`R` key) — walk through all overdue tasks one-by-one in Today view with quick date picks (tomorrow / +1 week / skip)
 - **Task snooze** (`z` key) — hide task for 1 hour, 4 hours, or until tomorrow 9 am; `snooze:YYYY-MM-DDTHH:MM` syntax; snoozed tasks auto-reappear when time expires

@@ -695,7 +695,7 @@ Full-featured task management with 7 views (Today, Upcoming, All, Done, Calendar
 - **Pinned Tasks:** Press `W` to pin/unpin. Pinned tasks sort to the top in all views. Persisted to `.granit/pinned-tasks.json`.
 - **Task Notes:** Press `n` to add or edit a freeform note on any task. Notes persist to `.granit/task-notes.json`. Note icon shown in row.
 - **Auto-Priority:** Press `A` to auto-suggest priority: +2 overdue, +1 today, +1 due ≤ 2 days, +1 blocks others, +1 in project, -1 no date.
-- **Undo:** Press `u` to undo the last task modification (toggle, date, priority, reschedule, etc.).
+- **Undo:** Press `u` to undo task modifications (10-deep stack). Shows remaining count: "Undone (3 more)".
 - **Sort:** Press `s` to cycle: priority (default), due date, alphabetical, source note, or first tag.
 - **Bulk Ops:** Press `v` to enter select mode. Space selects tasks, `x` bulk-toggles, `d` bulk-sets dates.
 - **Filters:** `#` cycles tag filter, `P` cycles priority filter, `/` searches (supports `#tag` syntax), `c` clears.
@@ -704,6 +704,11 @@ Full-featured task management with 7 views (Today, Upcoming, All, Done, Calendar
 - **Custom Kanban:** Configure columns via `kanban_columns` and `kanban_column_tags` in settings.
 - **Eisenhower Matrix:** Press `7` for 2×2 grid: DO (urgent+important), SCHEDULE (important), DELEGATE (urgent), ELIMINATE (neither).
 - **Quick-Add Syntax:** Ctrl+T quick capture parses `@today`/`@tomorrow`/`@monday`, `!high`/`!low`, `~30m`/`~2h` from text.
+- **Natural Language Dates:** Quick-add also supports `@next week`, `@next friday`, `@end of month`, `@in 3 days`, `@in 2 weeks`.
+- **Task Templates:** Press `T` to save current task as a reusable template. Press `t` + number to create from template. Stored in `.granit/task-templates.json`.
+- **Task Archiving:** Press `X` to move completed tasks older than 30 days from Tasks.md to `Archive/tasks-YYYY-MM.md`.
+- **Help Overlay:** Press `?` for full keybinding reference organized into 5 sections.
+- **Status Bar:** Red "N overdue" badge shown in status bar when overdue tasks exist.
 - **Project Matching:** Tasks auto-assign to projects by folder path or tag.
 
 ### Daily Planner

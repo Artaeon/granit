@@ -384,7 +384,7 @@ Enter Command mode by pressing `:` in Normal mode. Type a command and press `Ent
 | Key | Action |
 |-----|--------|
 | `x`, `Enter` | Toggle task done/undone |
-| `u` | Undo last task action (toggle, date, priority, etc.) |
+| `u` | Undo task action (10-deep stack; toggle, date, priority, etc.) |
 | `n` | Add/edit task note (Enter saves, Esc cancels) |
 | `z` | Snooze task (1=1h, 2=4h, 3=tomorrow 9am) |
 | `W` | Pin/unpin task (pinned tasks sort to top) |
@@ -399,6 +399,10 @@ Enter Command mode by pressing `:` in Normal mode. Type a command and press `Ent
 | `e` | Expand/collapse subtasks |
 | `b` | Add task dependency |
 | `f` | Start focus session on task |
+| `T` | Save current task as reusable template |
+| `t` | Create task from template (1-9 to select) |
+| `X` | Archive completed tasks older than 30 days |
+| `?` | Show help overlay with all keybindings |
 
 ### Filtering & Sorting
 

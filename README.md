@@ -100,7 +100,9 @@ Granit is a **free, open-source** personal knowledge management system built in 
 - Pinned tasks (`W`) -- pin to top of all views, persisted across sessions
 - Task notes (`n`) -- attach freeform notes to any task, with note icon indicator
 - Auto-priority (`A`) -- heuristic scorer based on deadline, dependencies, project
-- Undo (`u`) -- single-level undo for any task modification
+- Undo (`u`) -- 10-deep undo stack for any task modification
+- Task templates (`T`/`t`) -- save tasks as reusable templates, create from template
+- Task archiving (`X`) -- move completed tasks >30 days old to Archive/
 - Advanced sort (`s`) -- by priority, due date, A-Z, source, or tag
 - Bulk operations (`v`) -- select multiple tasks, batch toggle/date/priority
 - Tag and priority filters (`#`, `P`) with visual badges
@@ -111,6 +113,8 @@ Granit is a **free, open-source** personal knowledge management system built in 
 - Overdue grouping -- Today view splits overdue (red) from today's tasks
 - Project matching -- auto-assign tasks to projects by folder or tag
 - Quick-add syntax -- `@tomorrow !high #tag ~1h` parsed from Ctrl+T quick capture
+- Natural language dates -- `@next week`, `@end of month`, `@in 3 days`, `@next friday`
+- Help overlay (`?`) -- full keybinding reference inside task manager
 - Task filtering by config -- exclude folders, require tags, hide completed
 - CLI task add: `granit todo "Ship v2.0" --due friday --priority high --tag release`
 
@@ -349,6 +353,10 @@ Run `granit help` for the full command reference.
 | `W` | Pin/unpin task |
 | `A` | Auto-suggest priority |
 | `R` | Batch reschedule overdue (Today view) |
+| `T` | Save current task as template |
+| `t` | Create task from template |
+| `X` | Archive completed tasks >30 days |
+| `?` | Help overlay (keybinding reference) |
 | `e` | Expand/collapse subtasks |
 | `f` | Start focus session on task |
 | `g` | Jump to task source note |
