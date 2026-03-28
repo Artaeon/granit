@@ -181,8 +181,8 @@ type TaskManager struct {
 	// Task notes (persisted to .granit/task-notes.json)
 	taskNotes map[string]string
 
-	// Single-level undo for task actions
-	lastAction *taskAction
+	// Undo stack (up to 10 actions)
+	undoStack []taskAction
 
 	// Consumed-once: jump result
 	jumpPath string
@@ -638,11 +638,14 @@ func (tm *TaskManager) writeLineChange(notePath string, lineNum int, transform f
 	if lineNum < 1 || lineNum > len(lines) {
 		return false
 	}
-	// Save old line for undo
-	tm.lastAction = &taskAction{
+	// Push old line onto undo stack (max 10)
+	tm.undoStack = append(tm.undoStack, taskAction{
 		NotePath: notePath,
 		LineNum:  lineNum,
 		OldLine:  lines[lineNum-1],
+	})
+	if len(tm.undoStack) > 10 {
+		tm.undoStack = tm.undoStack[len(tm.undoStack)-10:]
 	}
 	lines[lineNum-1] = transform(lines[lineNum-1])
 	newContent := strings.Join(lines, "\n")
@@ -878,18 +881,27 @@ func (tm *TaskManager) doSetPriority(task Task, newPrio int) {
 
 // doUndo restores the last modified task line to its previous state.
 func (tm *TaskManager) doUndo() {
-	if tm.lastAction == nil {
+	if len(tm.undoStack) == 0 {
 		tm.statusMsg = "Nothing to undo"
 		return
 	}
-	act := tm.lastAction
-	tm.lastAction = nil // consume before writeLineChange sets a new one
+	// Pop from stack
+	act := tm.undoStack[len(tm.undoStack)-1]
+	tm.undoStack = tm.undoStack[:len(tm.undoStack)-1]
 	ok := tm.writeLineChange(act.NotePath, act.LineNum, func(_ string) string {
 		return act.OldLine
 	})
 	if ok {
-		tm.lastAction = nil // clear the undo-of-undo
-		tm.statusMsg = "Undone"
+		// Remove the entry that writeLineChange just pushed (the undo itself)
+		if len(tm.undoStack) > 0 {
+			tm.undoStack = tm.undoStack[:len(tm.undoStack)-1]
+		}
+		remaining := len(tm.undoStack)
+		if remaining > 0 {
+			tm.statusMsg = fmt.Sprintf("Undone (%d more)", remaining)
+		} else {
+			tm.statusMsg = "Undone"
+		}
 		tm.reparse()
 	}
 }

@@ -692,8 +692,8 @@ func TestResolveRelativeDate_ISO(t *testing.T) {
 // Undo mechanism
 // ===========================================================================
 
-func TestUndo_NilAction(t *testing.T) {
-	tm := &TaskManager{lastAction: nil}
+func TestUndo_EmptyStack(t *testing.T) {
+	tm := &TaskManager{undoStack: nil}
 	tm.doUndo()
 	if tm.statusMsg != "Nothing to undo" {
 		t.Errorf("expected 'Nothing to undo', got %q", tm.statusMsg)
