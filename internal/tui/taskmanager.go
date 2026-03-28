@@ -81,6 +81,7 @@ const (
 	tmInputNote                   // editing task note
 	tmInputSnooze                 // snooze picker
 	tmInputBatchReschedule        // batch reschedule overdue tasks
+	tmInputHelp                   // help overlay
 )
 
 // ---------------------------------------------------------------------------
@@ -1625,6 +1626,9 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		return tm.updateSnooze(key)
 	case tmInputBatchReschedule:
 		return tm.updateBatchReschedule(key)
+	case tmInputHelp:
+		tm.inputMode = tmInputNone // any key closes help
+		return tm, nil
 	}
 
 	return tm, nil
@@ -2255,6 +2259,10 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.doCyclePriority(task)
 		}
 
+	// Help overlay
+	case "?":
+		tm.inputMode = tmInputHelp
+
 	// Batch reschedule overdue (Today view)
 	case "R":
 		if tm.view == taskViewToday {
@@ -2510,6 +2518,13 @@ func (tm TaskManager) View() string {
 	default:
 		tm.renderTaskList(&b, innerW)
 	}
+	// Help overlay replaces content
+	if tm.inputMode == tmInputHelp {
+		b.Reset()
+		tm.renderTitle(&b, innerW)
+		tm.renderTabs(&b, innerW)
+		tm.renderHelpOverlay(&b, innerW)
+	}
 
 	// Input bar (if active)
 	tm.renderInput(&b, innerW)
@@ -2619,6 +2634,68 @@ func (tm *TaskManager) renderEisenhowerView(b *strings.Builder, w int) {
 			b.WriteString(DimStyle.Render("  " + strings.Repeat("─", w-4)) + "\n")
 		}
 	}
+}
+
+func (tm *TaskManager) renderHelpOverlay(b *strings.Builder, w int) {
+	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true).Width(8)
+	descStyle := lipgloss.NewStyle().Foreground(text)
+	sectionStyle := lipgloss.NewStyle().Foreground(yellow).Bold(true)
+
+	b.WriteString("\n")
+	b.WriteString("  " + titleStyle.Render("Task Manager Keyboard Shortcuts") + "\n\n")
+
+	sections := []struct {
+		title string
+		keys  [][2]string
+	}{
+		{"Navigation", [][2]string{
+			{"j/k", "Move cursor up/down"},
+			{"Tab", "Cycle views (Today/Upcoming/All/Done/Calendar/Kanban/Matrix)"},
+			{"1-7", "Jump to specific view"},
+			{"g", "Jump to task source note"},
+			{"/", "Search tasks (#tag syntax supported)"},
+			{"Esc", "Close task manager"},
+		}},
+		{"Actions", [][2]string{
+			{"x", "Toggle task done/undone"},
+			{"a", "Add new task"},
+			{"d", "Set/change due date"},
+			{"r", "Reschedule (tomorrow/Monday/+1wk/+1mo/custom)"},
+			{"p", "Cycle priority (none/low/med/high/highest)"},
+			{"E", "Set time estimate (15m/30m/45m/1h/1.5h/2h)"},
+			{"e", "Expand/collapse subtasks"},
+			{"b", "Add task dependency"},
+			{"f", "Start focus session on task"},
+		}},
+		{"Power Features", [][2]string{
+			{"u", "Undo last action (10-deep stack)"},
+			{"n", "Add/edit task note"},
+			{"z", "Snooze task (1h/4h/tomorrow 9am)"},
+			{"W", "Pin/unpin task (pinned sort to top)"},
+			{"A", "Auto-suggest priority (heuristic)"},
+			{"R", "Batch reschedule all overdue (Today view)"},
+		}},
+		{"Filters & Sort", [][2]string{
+			{"#", "Cycle tag filter"},
+			{"P", "Cycle priority filter"},
+			{"s", "Cycle sort mode (priority/date/A-Z/source/tag)"},
+			{"c", "Clear all active filters"},
+		}},
+		{"Bulk Operations", [][2]string{
+			{"v", "Enter/exit select mode"},
+			{"Space", "Toggle selection (in select mode)"},
+		}},
+	}
+
+	for _, sec := range sections {
+		b.WriteString("  " + sectionStyle.Render(sec.title) + "\n")
+		for _, kv := range sec.keys {
+			b.WriteString("    " + keyStyle.Render(kv[0]) + descStyle.Render(kv[1]) + "\n")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("  " + DimStyle.Render("Press any key to close"))
 }
 
 func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
