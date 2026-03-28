@@ -309,10 +309,7 @@ func (gm *GoalsMode) restoreExpanded() {
 }
 
 func (gm *GoalsMode) ensureVisible() {
-	maxVisible := gm.height - 12
-	if maxVisible < 3 {
-		maxVisible = 3
-	}
+	maxVisible := gm.visibleHeight()
 	if gm.cursor < gm.scroll {
 		gm.scroll = gm.cursor
 	}
@@ -883,55 +880,70 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 // View
 // ---------------------------------------------------------------------------
 
+func (gm *GoalsMode) visibleHeight() int {
+	h := gm.height - 14 // title + tabs + stats + input + help + border/padding
+	if h < 5 {
+		h = 5
+	}
+	return h
+}
+
 func (gm *GoalsMode) View() string {
 	if !gm.active {
 		return ""
 	}
 
-	w := gm.width
-	if w < 40 {
-		w = 40
+	width := gm.width * 2 / 3
+	if width < 60 {
+		width = 60
 	}
+	if width > 100 {
+		width = 100
+	}
+	innerW := width - 8 // account for border + padding
 
 	var b strings.Builder
 
 	// Title bar
 	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	b.WriteString("  " + titleStyle.Render("Goals") + "\n")
+	b.WriteString(titleStyle.Render("Goals") + "\n")
 
 	// Tabs
-	gm.renderTabs(&b, w)
+	gm.renderTabs(&b, innerW)
 	b.WriteString("\n")
 
 	// Stats summary
-	gm.renderStats(&b, w)
+	gm.renderStats(&b, innerW)
 	b.WriteString("\n")
 
-	// Input mode
+	// View content
 	if gm.input == goalInputHelp {
-		gm.renderHelp(&b, w)
+		gm.renderHelp(&b, innerW)
 	} else if gm.input != goalInputNone {
-		gm.renderInput(&b, w)
+		gm.renderInput(&b, innerW)
 	} else {
-		// Goal list
-		gm.renderGoals(&b, w)
+		gm.renderGoals(&b, innerW)
 	}
 
 	// Status message
 	if gm.statusMsg != "" {
-		b.WriteString("\n  " + lipgloss.NewStyle().Foreground(green).Render(gm.statusMsg))
+		b.WriteString("\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(green).Render(gm.statusMsg))
 	}
 
 	// Help bar
 	b.WriteString("\n")
-	gm.renderHelpBar(&b, w)
+	gm.renderHelpBar(&b, innerW)
 
-	// Frame
-	frame := lipgloss.NewStyle().
-		Width(w).
-		Height(gm.height).
-		MaxHeight(gm.height)
-	return frame.Render(b.String())
+	// Bordered overlay (matches task manager style)
+	border := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(OverlayBorderColor).
+		Padding(1, 2).
+		Width(width).
+		Background(mantle)
+
+	return border.Render(b.String())
 }
 
 func (gm *GoalsMode) renderTabs(b *strings.Builder, w int) {
@@ -986,10 +998,7 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 		return
 	}
 
-	maxH := gm.height - 10
-	if maxH < 5 {
-		maxH = 5
-	}
+	maxH := gm.visibleHeight()
 
 	lastCategory := ""
 	lineCount := 0
