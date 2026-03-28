@@ -106,6 +106,39 @@ func (g Goal) DaysRemaining() int {
 	return int(target.Sub(today).Hours() / 24)
 }
 
+// TimeframeLabel returns a human-readable time remaining label.
+func (g Goal) TimeframeLabel() string {
+	days := g.DaysRemaining()
+	if days < 0 {
+		absDays := -days
+		if absDays < 30 {
+			return fmt.Sprintf("%dd overdue", absDays)
+		}
+		return fmt.Sprintf("%dmo overdue", absDays/30)
+	}
+	if days == 0 {
+		return "due today"
+	}
+	if days == 1 {
+		return "1d left"
+	}
+	if days < 14 {
+		return fmt.Sprintf("%dd left", days)
+	}
+	if days < 60 {
+		return fmt.Sprintf("%dw left", days/7)
+	}
+	if days < 365 {
+		return fmt.Sprintf("%dmo left", days/30)
+	}
+	years := days / 365
+	rem := (days % 365) / 30
+	if rem > 0 {
+		return fmt.Sprintf("%dy%dmo left", years, rem)
+	}
+	return fmt.Sprintf("%dy left", years)
+}
+
 // ---------------------------------------------------------------------------
 // Input modes
 // ---------------------------------------------------------------------------
@@ -994,13 +1027,15 @@ func (gm *GoalsMode) renderTabs(b *strings.Builder, w int) {
 }
 
 func (gm *GoalsMode) renderStats(b *strings.Builder, w int) {
-	active, completed, overdue := 0, 0, 0
+	active, paused, completed, overdue := 0, 0, 0, 0
 	totalProgress := 0
 	for _, g := range gm.goals {
 		switch g.Status {
-		case GoalStatusActive, GoalStatusPaused:
+		case GoalStatusActive:
 			active++
 			totalProgress += g.Progress()
+		case GoalStatusPaused:
+			paused++
 		case GoalStatusCompleted:
 			completed++
 		}
@@ -1013,22 +1048,36 @@ func (gm *GoalsMode) renderStats(b *strings.Builder, w int) {
 		avgProgress = totalProgress / active
 	}
 
-	statStyle := lipgloss.NewStyle().Foreground(text)
-	numStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+	ds := DimStyle
+	ns := lipgloss.NewStyle().Foreground(lavender).Bold(true)
 
-	stats := "  " +
-		numStyle.Render(fmt.Sprintf("%d", active)) + statStyle.Render(" active  ") +
-		numStyle.Render(fmt.Sprintf("%d", completed)) + statStyle.Render(" completed  ") +
-		numStyle.Render(fmt.Sprintf("%d%%", avgProgress)) + statStyle.Render(" avg progress")
-	if overdue > 0 {
-		stats += "  " + lipgloss.NewStyle().Foreground(red).Bold(true).Render(fmt.Sprintf("%d overdue", overdue))
+	var parts []string
+	parts = append(parts, ns.Render(fmt.Sprintf("%d", active))+ds.Render(" active"))
+	if paused > 0 {
+		parts = append(parts, ns.Render(fmt.Sprintf("%d", paused))+ds.Render(" paused"))
 	}
-	b.WriteString(stats)
+	parts = append(parts, ns.Render(fmt.Sprintf("%d", completed))+ds.Render(" done"))
+	if active > 0 {
+		parts = append(parts, ns.Render(fmt.Sprintf("%d%%", avgProgress))+ds.Render(" avg"))
+	}
+	if overdue > 0 {
+		parts = append(parts, lipgloss.NewStyle().Foreground(red).Bold(true).Render(fmt.Sprintf("%d overdue", overdue)))
+	}
+	b.WriteString("  " + strings.Join(parts, "  "))
 }
 
 func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 	if len(gm.filtered) == 0 {
-		b.WriteString("\n  " + DimStyle.Render("No goals yet. Press 'a' to create one."))
+		msg := "No goals yet. Press 'a' to create one."
+		switch gm.view {
+		case goalViewCompleted:
+			msg = "No completed goals yet."
+		case goalViewByCategory:
+			msg = "No active goals. Press 'a' to create one."
+		case goalViewTimeline:
+			msg = "No goals with deadlines. Press 'a' to create one."
+		}
+		b.WriteString("\n  " + DimStyle.Render(msg))
 		return
 	}
 
@@ -1068,22 +1117,26 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 			lineCount += 2
 		}
 
-		// Goal row
+		// Cursor
+		isCursor := i == gm.cursor
 		prefix := "  "
-		if i == gm.cursor && gm.expanded < 0 {
+		if isCursor && gm.expanded < 0 {
 			prefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("> ")
+		}
+		if gm.expanded == i {
+			prefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("\u25BC ")
 		}
 
 		// Status icon
 		var statusIcon string
 		switch goal.Status {
 		case GoalStatusCompleted:
-			statusIcon = lipgloss.NewStyle().Foreground(green).Render("\u2713 ")
+			statusIcon = lipgloss.NewStyle().Foreground(green).Bold(true).Render("\u2713 ")
 		case GoalStatusPaused:
 			statusIcon = lipgloss.NewStyle().Foreground(yellow).Render("\u23F8 ")
 		case GoalStatusActive:
 			if goal.IsOverdue() {
-				statusIcon = lipgloss.NewStyle().Foreground(red).Render("! ")
+				statusIcon = lipgloss.NewStyle().Foreground(red).Bold(true).Render("! ")
 			} else {
 				statusIcon = lipgloss.NewStyle().Foreground(blue).Render("\u25CB ")
 			}
@@ -1091,38 +1144,57 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 			statusIcon = DimStyle.Render("\u25CB ")
 		}
 
-		// Progress bar
+		// Progress
 		prog := goal.Progress()
 		barWidth := 10
 		filled := prog * barWidth / 100
 		if filled > barWidth {
 			filled = barWidth
 		}
-		bar := lipgloss.NewStyle().Foreground(green).Render(strings.Repeat("\u2588", filled)) +
+		// Bar color: green when on track, yellow <50%, red if overdue
+		barColor := green
+		if goal.IsOverdue() {
+			barColor = red
+		} else if prog < 50 && goal.TargetDate != "" && goal.DaysRemaining() < 30 {
+			barColor = yellow
+		}
+		bar := lipgloss.NewStyle().Foreground(barColor).Render(strings.Repeat("\u2588", filled)) +
 			DimStyle.Render(strings.Repeat("\u2591", barWidth-filled))
 
-		// Title
+		// Milestone count inline
+		msCount := ""
+		if len(goal.Milestones) > 0 {
+			msCount = DimStyle.Render(fmt.Sprintf(" %d/%d", goal.DoneCount(), len(goal.Milestones)))
+		}
+
+		// Title styling
 		titleStyle := lipgloss.NewStyle().Foreground(text)
-		if i == gm.cursor && gm.expanded < 0 {
+		if isCursor && gm.expanded < 0 {
 			titleStyle = titleStyle.Bold(true)
 		}
 		if goal.Status == GoalStatusCompleted {
 			titleStyle = titleStyle.Strikethrough(true).Foreground(overlay0)
 		}
+		if goal.Status == GoalStatusPaused {
+			titleStyle = titleStyle.Foreground(overlay1)
+		}
 
-		title := TruncateDisplay(goal.Title, w-40)
+		title := TruncateDisplay(goal.Title, w-45)
 
-		// Date badge
-		dateBadge := ""
+		// Timeframe badge (human-readable)
+		timeBadge := ""
 		if goal.TargetDate != "" {
+			label := goal.TimeframeLabel()
+			timeColor := overlay0
 			days := goal.DaysRemaining()
-			dateColor := overlay0
 			if days < 0 {
-				dateColor = red
-			} else if days <= 7 {
-				dateColor = yellow
+				timeColor = red
+			} else if days <= 14 {
+				timeColor = yellow
+			} else if days <= 90 {
+				timeColor = lavender
 			}
-			dateBadge = " " + lipgloss.NewStyle().Foreground(dateColor).Render(goal.TargetDate)
+			timeBadge = " " + lipgloss.NewStyle().Foreground(timeColor).Render(label)
 		}
 
 		// Category badge
@@ -1131,26 +1203,36 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 			catBadge = " " + lipgloss.NewStyle().Foreground(sapphire).Render("["+goal.Category+"]")
 		}
 
-		line := prefix + statusIcon + titleStyle.Render(title) + " " + bar +
-			" " + DimStyle.Render(fmt.Sprintf("%d%%", prog)) + dateBadge + catBadge
+		line := prefix + statusIcon + titleStyle.Render(title) + " " + bar + msCount + timeBadge + catBadge
 		b.WriteString(line + "\n")
 		lineCount++
 
-		// Expanded milestones
+		// Expanded detail
 		if gm.expanded == i {
-			if goal.Description != "" {
-				b.WriteString("      " + lipgloss.NewStyle().Foreground(overlay1).Render(TruncateDisplay(goal.Description, w-10)) + "\n")
+			// Read milestone data from goals (not filtered copy)
+			idx := gm.findGoalIndex(goal.ID)
+			if idx < 0 {
+				continue
+			}
+			goalData := gm.goals[idx]
+
+			if goalData.Description != "" {
+				b.WriteString("      " + lipgloss.NewStyle().Foreground(overlay1).Italic(true).Render(TruncateDisplay(goalData.Description, w-10)) + "\n")
 				lineCount++
 			}
-			if goal.Notes != "" {
-				b.WriteString("      " + DimStyle.Render("\U0001F4DD "+TruncateDisplay(goal.Notes, w-10)) + "\n")
+			if goalData.Notes != "" {
+				b.WriteString("      " + DimStyle.Render("\U0001F4DD "+TruncateDisplay(goalData.Notes, w-10)) + "\n")
 				lineCount++
 			}
-			if len(goal.Milestones) == 0 {
-				b.WriteString("      " + DimStyle.Render("No milestones. Press 'm' to add.") + "\n")
+			if goalData.CreatedAt != "" {
+				b.WriteString("      " + DimStyle.Render("Created: "+goalData.CreatedAt) + "\n")
 				lineCount++
 			}
-			for mi, ms := range goal.Milestones {
+			if len(goalData.Milestones) == 0 {
+				b.WriteString("      " + DimStyle.Render("No milestones yet. Press 'm' to add one.") + "\n")
+				lineCount++
+			}
+			for mi, ms := range goalData.Milestones {
 				mPrefix := "      "
 				if mi == gm.milestoneCur {
 					mPrefix = "    " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("> ")

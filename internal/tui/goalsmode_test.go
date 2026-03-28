@@ -1,6 +1,10 @@
 package tui
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestGoalProgress(t *testing.T) {
 	tests := []struct {
@@ -111,6 +115,45 @@ func TestGoalsModeRebuildFiltered(t *testing.T) {
 	gm.rebuildFiltered()
 	if len(gm.filtered) != 2 {
 		t.Errorf("goalViewCompleted: filtered = %d, want 2 (completed + archived)", len(gm.filtered))
+	}
+}
+
+func TestGoalTimeframeLabel(t *testing.T) {
+	tests := []struct {
+		name     string
+		days     int
+		contains string
+	}{
+		{"overdue", -5, "overdue"},
+		{"due today", 0, "due today"},
+		{"1 day left", 1, "1d left"},
+		{"7 days left", 7, "7d left"},
+		{"3 weeks left", 21, "w left"},
+		{"3 months left", 90, "mo left"},
+		{"1 year left", 365, "y left"},
+		{"1.5 years left", 548, "y"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+			target := today.AddDate(0, 0, tc.days)
+			g := Goal{TargetDate: target.Format("2006-01-02"), Status: GoalStatusActive}
+			got := g.TimeframeLabel()
+			if !strings.Contains(got, tc.contains) {
+				t.Errorf("TimeframeLabel() = %q, want to contain %q (days=%d)", got, tc.contains, tc.days)
+			}
+		})
+	}
+}
+
+func TestGoalTimeframeLabel_NoDate(t *testing.T) {
+	g := Goal{}
+	got := g.TimeframeLabel()
+	// DaysRemaining returns -1, so days < 0 triggers overdue path
+	// but for no-date goals this shouldn't be called; just verify no crash
+	if got == "" {
+		t.Error("TimeframeLabel() should return something even for no-date")
 	}
 }
 
