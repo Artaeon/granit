@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	qcDateRe = regexp.MustCompile(`@(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})\b`)
+	qcDateRe = regexp.MustCompile(`@(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|next month|next \w+|end of week|end of month|in \d+ \w+|\d{4}-\d{2}-\d{2})`)
 	qcPrioRe = regexp.MustCompile(`!(low|med|medium|high|highest)\b`)
 )
 
@@ -46,26 +46,71 @@ func parseInlineTaskSyntax(text string) (string, string) {
 	return clean, strings.Join(markers, " ")
 }
 
+var qcNLDateRe = regexp.MustCompile(`in\s+(\d+)\s+(days?|weeks?|months?)`)
+
 func resolveRelativeDate(ref string) string {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-	switch strings.ToLower(ref) {
+	lower := strings.ToLower(ref)
+	switch lower {
 	case "today":
 		return today.Format("2006-01-02")
 	case "tomorrow":
 		return today.AddDate(0, 0, 1).Format("2006-01-02")
+	case "next week":
+		// Next Monday
+		daysAhead := (int(time.Monday) - int(today.Weekday()) + 7) % 7
+		if daysAhead == 0 {
+			daysAhead = 7
+		}
+		return today.AddDate(0, 0, daysAhead).Format("2006-01-02")
+	case "next month":
+		return today.AddDate(0, 1, 0).Format("2006-01-02")
+	case "end of week":
+		daysAhead := (int(time.Friday) - int(today.Weekday()) + 7) % 7
+		if daysAhead == 0 {
+			daysAhead = 7
+		}
+		return today.AddDate(0, 0, daysAhead).Format("2006-01-02")
+	case "end of month":
+		firstOfNext := time.Date(today.Year(), today.Month()+1, 1, 0, 0, 0, 0, time.Local)
+		return firstOfNext.AddDate(0, 0, -1).Format("2006-01-02")
 	default:
-		// Check weekday names
+		// "in N days/weeks/months"
+		if m := qcNLDateRe.FindStringSubmatch(lower); m != nil {
+			n := 0
+			fmt.Sscanf(m[1], "%d", &n)
+			switch {
+			case strings.HasPrefix(m[2], "day"):
+				return today.AddDate(0, 0, n).Format("2006-01-02")
+			case strings.HasPrefix(m[2], "week"):
+				return today.AddDate(0, 0, n*7).Format("2006-01-02")
+			case strings.HasPrefix(m[2], "month"):
+				return today.AddDate(0, n, 0).Format("2006-01-02")
+			}
+		}
+		// Weekday names
 		weekdays := map[string]time.Weekday{
 			"monday": time.Monday, "tuesday": time.Tuesday, "wednesday": time.Wednesday,
 			"thursday": time.Thursday, "friday": time.Friday, "saturday": time.Saturday, "sunday": time.Sunday,
 		}
-		if wd, ok := weekdays[strings.ToLower(ref)]; ok {
+		if wd, ok := weekdays[lower]; ok {
 			daysAhead := (int(wd) - int(today.Weekday()) + 7) % 7
 			if daysAhead == 0 {
 				daysAhead = 7
 			}
 			return today.AddDate(0, 0, daysAhead).Format("2006-01-02")
+		}
+		// "next friday" etc.
+		if strings.HasPrefix(lower, "next ") {
+			dayName := strings.TrimPrefix(lower, "next ")
+			if wd, ok := weekdays[dayName]; ok {
+				daysAhead := (int(wd) - int(today.Weekday()) + 7) % 7
+				if daysAhead == 0 {
+					daysAhead = 7
+				}
+				return today.AddDate(0, 0, daysAhead).Format("2006-01-02")
+			}
 		}
 		return ref // already YYYY-MM-DD
 	}

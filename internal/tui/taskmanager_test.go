@@ -688,6 +688,34 @@ func TestResolveRelativeDate_ISO(t *testing.T) {
 	}
 }
 
+func TestResolveRelativeDate_NextWeek(t *testing.T) {
+	got := resolveRelativeDate("next week")
+	if len(got) != 10 || got[4] != '-' {
+		t.Errorf("resolveRelativeDate('next week') should return YYYY-MM-DD, got %q", got)
+	}
+}
+
+func TestResolveRelativeDate_EndOfMonth(t *testing.T) {
+	got := resolveRelativeDate("end of month")
+	if len(got) != 10 || got[4] != '-' {
+		t.Errorf("resolveRelativeDate('end of month') should return YYYY-MM-DD, got %q", got)
+	}
+}
+
+func TestResolveRelativeDate_InNDays(t *testing.T) {
+	got := resolveRelativeDate("in 3 days")
+	if len(got) != 10 || got[4] != '-' {
+		t.Errorf("resolveRelativeDate('in 3 days') should return YYYY-MM-DD, got %q", got)
+	}
+}
+
+func TestResolveRelativeDate_NextFriday(t *testing.T) {
+	got := resolveRelativeDate("next friday")
+	if len(got) != 10 || got[4] != '-' {
+		t.Errorf("resolveRelativeDate('next friday') should return YYYY-MM-DD, got %q", got)
+	}
+}
+
 // ===========================================================================
 // Undo mechanism
 // ===========================================================================
