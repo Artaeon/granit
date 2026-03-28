@@ -157,7 +157,8 @@ type GoalsMode struct {
 	inputBuf string
 
 	// Expanded goal state
-	expanded    int // index in filtered, -1 = none
+	expanded    int    // index in filtered, -1 = none
+	expandedID  string // ID of expanded goal (survives rebuildFiltered)
 	milestoneCur int
 
 	// New goal staging
@@ -193,6 +194,7 @@ func (gm *GoalsMode) Open(vaultRoot string) {
 	gm.input = goalInputNone
 	gm.inputBuf = ""
 	gm.expanded = -1
+	gm.expandedID = ""
 	gm.milestoneCur = 0
 	gm.statusMsg = ""
 	gm.loadGoals()
@@ -285,6 +287,25 @@ func (gm *GoalsMode) rebuildFiltered() {
 			}
 		}
 	}
+	gm.restoreExpanded()
+}
+
+// restoreExpanded re-finds the expanded goal by ID after a rebuild.
+func (gm *GoalsMode) restoreExpanded() {
+	if gm.expandedID == "" {
+		gm.expanded = -1
+		return
+	}
+	for i, g := range gm.filtered {
+		if g.ID == gm.expandedID {
+			gm.expanded = i
+			return
+		}
+	}
+	// Goal no longer in this view (e.g. completed/archived)
+	gm.expanded = -1
+	gm.expandedID = ""
+	gm.milestoneCur = 0
 }
 
 func (gm *GoalsMode) uniqueCategories() []string {
@@ -354,6 +375,9 @@ func (gm *GoalsMode) toggleComplete() {
 	gm.goals[idx].UpdatedAt = now
 	gm.saveGoals()
 	gm.rebuildFiltered()
+	if gm.cursor >= len(gm.filtered) && gm.cursor > 0 {
+		gm.cursor--
+	}
 }
 
 func (gm *GoalsMode) archiveGoal() {
@@ -499,10 +523,12 @@ func (gm GoalsMode) Update(msg tea.Msg) (GoalsMode, tea.Cmd) {
 }
 
 func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
+	gm.statusMsg = "" // clear on any keypress
 	switch key {
 	case "esc", "q":
 		if gm.expanded >= 0 {
 			gm.expanded = -1
+			gm.expandedID = ""
 			gm.milestoneCur = 0
 		} else {
 			gm.Close()
@@ -510,9 +536,9 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 
 	// Navigation
 	case "j", "down":
-		if gm.expanded >= 0 {
-			goal := gm.filtered[gm.expanded]
-			if gm.milestoneCur < len(goal.Milestones)-1 {
+		if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
+			idx := gm.findGoalIndex(gm.filtered[gm.expanded].ID)
+			if idx >= 0 && gm.milestoneCur < len(gm.goals[idx].Milestones)-1 {
 				gm.milestoneCur++
 			}
 		} else if gm.cursor < len(gm.filtered)-1 {
@@ -532,26 +558,31 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 		gm.view = (gm.view + 1) % 4
 		gm.cursor = 0
 		gm.expanded = -1
+		gm.expandedID = ""
 		gm.rebuildFiltered()
 	case "1":
 		gm.view = goalViewAll
 		gm.cursor = 0
 		gm.expanded = -1
+		gm.expandedID = ""
 		gm.rebuildFiltered()
 	case "2":
 		gm.view = goalViewByCategory
 		gm.cursor = 0
 		gm.expanded = -1
+		gm.expandedID = ""
 		gm.rebuildFiltered()
 	case "3":
 		gm.view = goalViewTimeline
 		gm.cursor = 0
 		gm.expanded = -1
+		gm.expandedID = ""
 		gm.rebuildFiltered()
 	case "4":
 		gm.view = goalViewCompleted
 		gm.cursor = 0
 		gm.expanded = -1
+		gm.expandedID = ""
 		gm.rebuildFiltered()
 
 	// Expand / collapse
@@ -560,6 +591,7 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			gm.toggleMilestone()
 		} else if gm.cursor < len(gm.filtered) {
 			gm.expanded = gm.cursor
+			gm.expandedID = gm.filtered[gm.cursor].ID
 			gm.milestoneCur = 0
 		}
 
@@ -584,6 +616,7 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 		if gm.expanded >= 0 || gm.cursor < len(gm.filtered) {
 			if gm.expanded < 0 {
 				gm.expanded = gm.cursor
+				gm.expandedID = gm.filtered[gm.cursor].ID
 			}
 			gm.input = goalInputMilestone
 			gm.inputBuf = ""

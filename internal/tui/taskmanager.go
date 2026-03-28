@@ -1260,7 +1260,7 @@ func (tm *TaskManager) filterToday() []Task {
 func (tm *TaskManager) filterUpcoming() []Task {
 	var out []Task
 	for _, t := range tm.allTasks {
-		if t.Done {
+		if t.Done || tmIsSnoozed(t) {
 			continue
 		}
 		if t.DueDate == "" {
@@ -1284,7 +1284,7 @@ func (tm *TaskManager) filterUpcoming() []Task {
 func (tm *TaskManager) filterAll() []Task {
 	var out []Task
 	for _, t := range tm.allTasks {
-		if t.Done {
+		if t.Done || tmIsSnoozed(t) {
 			continue
 		}
 		out = append(out, t)
