@@ -156,6 +156,7 @@ type Model struct {
 	aiTemplates      AITemplates
 	languageLearning LanguageLearning
 	habitTracker     HabitTracker
+	goalsMode        GoalsMode
 	focusSession     FocusSession
 	standupGen       StandupGenerator
 	dailyReview      DailyReview
@@ -343,6 +344,7 @@ func NewModel(vaultPath string) (Model, error) {
 		aiTemplates:      NewAITemplates(),
 		languageLearning: NewLanguageLearning(),
 		habitTracker:     NewHabitTracker(),
+		goalsMode:        NewGoalsMode(),
 		commandCenter:   NewCommandCenter(),
 		dailyPlanner:    NewDailyPlanner(),
 		aiScheduler:     NewAIScheduler(),

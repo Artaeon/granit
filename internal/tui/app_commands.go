@@ -1080,6 +1080,10 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.config.AIProvider, m.getAIModel(), m.config.OllamaURL,
 			m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
 
+	case CmdGoalsMode:
+		m.goalsMode.SetSize(m.width, m.height)
+		m.goalsMode.Open(m.vault.Root)
+
 	case CmdProjectDashboard:
 		m.projectDashboard.SetSize(m.width, m.height)
 		m.projectDashboard.Open(m.vault.Root, m.vault)

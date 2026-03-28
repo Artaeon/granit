@@ -153,6 +153,7 @@ const (
 	CmdWeeklyReview
 	CmdAIProjectPlanner
 	CmdProjectDashboard
+	CmdGoalsMode
 	CmdQuit
 )
 
@@ -306,6 +307,7 @@ var AllCommands = []Command{
 	{Label: "Reading List", Desc: "Track URLs and articles to read later", Shortcut: "", Action: CmdReadingList, Icon: &IconBookmarkChar},
 	{Label: "AI Project Planner", Desc: "Break down a project idea into phases, milestones, and tasks with AI", Shortcut: "", Action: CmdAIProjectPlanner, Icon: &IconBotChar},
 	{Label: "Project Dashboard", Desc: "Cross-project overview with progress, blockers, and deadlines", Shortcut: "", Action: CmdProjectDashboard, Icon: &IconFolderChar},
+	{Label: "Goals", Desc: "Standalone goal manager with milestones, categories, timelines, and progress tracking", Shortcut: "", Action: CmdGoalsMode, Icon: &IconBookmarkChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 

@@ -1133,6 +1133,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.goalsMode.IsActive() {
+			m.goalsMode, _ = m.goalsMode.Update(msg)
+			return m, nil
+		}
+
 		if m.focusSession.IsActive() {
 			var cmd tea.Cmd
 			m.focusSession, cmd = m.focusSession.Update(msg)

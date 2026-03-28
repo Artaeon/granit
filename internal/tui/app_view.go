@@ -693,6 +693,10 @@ func (m Model) View() string {
 		overlay := m.habitTracker.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.goalsMode.IsActive() {
+		overlay := m.goalsMode.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.focusSession.IsActive() {
 		overlay := m.focusSession.View()
 		view = m.overlayCenter(view, overlay)
