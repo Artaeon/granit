@@ -886,6 +886,34 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			gm.inputBuf = goal.Notes
 		}
 
+	// Reorder milestones
+	case "J":
+		if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
+			goal := gm.filtered[gm.expanded]
+			idx := gm.findGoalIndex(goal.ID)
+			if idx >= 0 && gm.milestoneCur < len(gm.goals[idx].Milestones)-1 {
+				ms := gm.goals[idx].Milestones
+				ms[gm.milestoneCur], ms[gm.milestoneCur+1] = ms[gm.milestoneCur+1], ms[gm.milestoneCur]
+				gm.milestoneCur++
+				gm.goals[idx].UpdatedAt = time.Now().Format("2006-01-02")
+				gm.saveGoals()
+				gm.rebuildFiltered()
+			}
+		}
+	case "K":
+		if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
+			goal := gm.filtered[gm.expanded]
+			idx := gm.findGoalIndex(goal.ID)
+			if idx >= 0 && gm.milestoneCur > 0 {
+				ms := gm.goals[idx].Milestones
+				ms[gm.milestoneCur], ms[gm.milestoneCur-1] = ms[gm.milestoneCur-1], ms[gm.milestoneCur]
+				gm.milestoneCur--
+				gm.goals[idx].UpdatedAt = time.Now().Format("2006-01-02")
+				gm.saveGoals()
+				gm.rebuildFiltered()
+			}
+		}
+
 	// Create task from milestone
 	case "t":
 		if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
