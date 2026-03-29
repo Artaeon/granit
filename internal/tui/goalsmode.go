@@ -214,6 +214,7 @@ const (
 	goalInputDescription        // editing description
 	goalInputReviewFreq         // setting review frequency
 	goalInputReview             // writing review reflection
+	goalInputMilestoneDue       // setting milestone due date
 	goalInputHelp               // showing help
 )
 
@@ -846,10 +847,17 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 	case "p":
 		gm.togglePause()
 
-	// Delete milestone (when expanded) or delete goal
+	// Delete milestone (when expanded)
 	case "d":
 		if gm.expanded >= 0 {
 			gm.deleteMilestone()
+		}
+
+	// Set milestone due date (when expanded)
+	case "!":
+		if gm.expanded >= 0 {
+			gm.input = goalInputMilestoneDue
+			gm.inputBuf = ""
 		}
 
 	// Edit title
@@ -1049,6 +1057,44 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 				gm.inputBuf += key
 			}
 		}
+
+	case goalInputMilestoneDue:
+		now := time.Now()
+		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+		var dueDate string
+		switch key {
+		case "esc":
+			gm.input = goalInputNone
+			return gm, nil
+		case "1":
+			dueDate = today.AddDate(0, 0, 7).Format("2006-01-02")
+		case "2":
+			dueDate = today.AddDate(0, 0, 14).Format("2006-01-02")
+		case "3":
+			dueDate = today.AddDate(0, 1, 0).Format("2006-01-02")
+		case "4":
+			dueDate = today.AddDate(0, 3, 0).Format("2006-01-02")
+		case "0":
+			dueDate = ""
+		default:
+			return gm, nil
+		}
+		if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
+			goal := gm.filtered[gm.expanded]
+			idx := gm.findGoalIndex(goal.ID)
+			if idx >= 0 && gm.milestoneCur >= 0 && gm.milestoneCur < len(gm.goals[idx].Milestones) {
+				gm.goals[idx].Milestones[gm.milestoneCur].DueDate = dueDate
+				gm.goals[idx].UpdatedAt = time.Now().Format("2006-01-02")
+				gm.saveGoals()
+				gm.rebuildFiltered()
+				if dueDate == "" {
+					gm.statusMsg = "Milestone date cleared"
+				} else {
+					gm.statusMsg = "Milestone due: " + dueDate
+				}
+			}
+		}
+		gm.input = goalInputNone
 
 	case goalInputReviewFreq:
 		switch key {
@@ -1495,7 +1541,19 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 					check = lipgloss.NewStyle().Foreground(green).Render("[x] ")
 					mStyle = mStyle.Strikethrough(true).Foreground(overlay0)
 				}
-				b.WriteString(mPrefix + check + mStyle.Render(ms.Text) + "\n")
+				dueLbl := ""
+				if ms.DueDate != "" {
+					dColor := overlay0
+					if d, err := time.Parse("2006-01-02", ms.DueDate); err == nil {
+						if time.Now().After(d) && !ms.Done {
+							dColor = red
+						} else if time.Now().AddDate(0, 0, 7).After(d) && !ms.Done {
+							dColor = yellow
+						}
+					}
+					dueLbl = " " + lipgloss.NewStyle().Foreground(dColor).Render(ms.DueDate)
+				}
+				b.WriteString(mPrefix + check + mStyle.Render(ms.Text) + dueLbl + "\n")
 				lineCount++
 			}
 		}
@@ -1544,6 +1602,14 @@ func (gm *GoalsMode) renderInput(b *strings.Builder, w int) {
 		b.WriteString("  " + hintStyle.Render("Enter to confirm, empty to skip"))
 	case goalInputMilestone:
 		b.WriteString("\n  " + promptStyle.Render("Add Milestone: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
+	case goalInputMilestoneDue:
+		b.WriteString("\n  " + promptStyle.Render("Milestone due date:") + "\n\n")
+		ss := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+		ds := lipgloss.NewStyle().Foreground(text)
+		b.WriteString("  " + ss.Render("1") + ds.Render(" 1 week   ") + ss.Render("2") + ds.Render(" 2 weeks") + "\n")
+		b.WriteString("  " + ss.Render("3") + ds.Render(" 1 month  ") + ss.Render("4") + ds.Render(" 3 months") + "\n")
+		b.WriteString("  " + ss.Render("0") + ds.Render(" clear date") + "\n\n")
+		b.WriteString("  " + hintStyle.Render("Pick a timeframe or Esc to cancel"))
 	case goalInputReviewFreq:
 		b.WriteString("\n  " + promptStyle.Render("Set review frequency:") + "\n\n")
 		ss := lipgloss.NewStyle().Foreground(lavender).Bold(true)
