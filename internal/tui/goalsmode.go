@@ -289,6 +289,10 @@ type GoalsMode struct {
 	newGoalDate     string
 	newGoalCategory string
 
+	// Confirmation prompt
+	confirmMsg    string // "Delete goal X?" — empty means no pending confirm
+	confirmAction func() // action to run on 'y'
+
 	statusMsg string
 }
 
@@ -761,6 +765,20 @@ func (gm GoalsMode) Update(msg tea.Msg) (GoalsMode, tea.Cmd) {
 
 func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 	gm.statusMsg = "" // clear on any keypress
+
+	// Handle pending confirmation
+	if gm.confirmMsg != "" {
+		switch key {
+		case "y", "Y":
+			if gm.confirmAction != nil {
+				gm.confirmAction()
+			}
+		}
+		gm.confirmMsg = ""
+		gm.confirmAction = nil
+		return gm, nil
+	}
+
 	switch key {
 	case "esc", "q":
 		if gm.expanded >= 0 {
@@ -861,14 +879,20 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			gm.inputBuf = ""
 		}
 
-	// Archive
+	// Archive (with confirmation)
 	case "A":
-		gm.archiveGoal()
+		if gm.cursor < len(gm.filtered) {
+			goal := gm.filtered[gm.cursor]
+			gm.confirmMsg = fmt.Sprintf("Archive goal \"%s\"? (y/n)", goal.Title)
+			gm.confirmAction = func() { gm.archiveGoal() }
+		}
 
-	// Delete goal (permanent)
+	// Delete goal (with confirmation)
 	case "D":
-		if gm.expanded < 0 {
-			gm.deleteGoal()
+		if gm.expanded < 0 && gm.cursor < len(gm.filtered) {
+			goal := gm.filtered[gm.cursor]
+			gm.confirmMsg = fmt.Sprintf("Permanently delete \"%s\"? (y/n)", goal.Title)
+			gm.confirmAction = func() { gm.deleteGoal() }
 		}
 
 	// Pause / resume
@@ -1335,6 +1359,12 @@ func (gm *GoalsMode) View() string {
 		gm.renderInput(&b, innerW)
 	} else {
 		gm.renderGoals(&b, innerW)
+	}
+
+	// Confirmation prompt
+	if gm.confirmMsg != "" {
+		b.WriteString("\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(red).Bold(true).Render(gm.confirmMsg))
 	}
 
 	// Status message

@@ -172,6 +172,10 @@ type TaskManager struct {
 	// Cached blocked status (computed once in rebuildFiltered, not per-render)
 	blockedCache map[string]bool
 
+	// Confirmation prompt for destructive actions
+	confirmMsg    string
+	confirmAction func()
+
 	// Snapshot of task for input modes (prevents cursor drift bugs)
 	inputTask *Task
 
@@ -2311,6 +2315,19 @@ func (tm TaskManager) updateKanban(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	key := msg.String()
 
+	// Handle pending confirmation
+	if tm.confirmMsg != "" {
+		switch key {
+		case "y", "Y":
+			if tm.confirmAction != nil {
+				tm.confirmAction()
+			}
+		}
+		tm.confirmMsg = ""
+		tm.confirmAction = nil
+		return tm, nil
+	}
+
 	// Handle select mode
 	if tm.selectMode {
 		switch key {
@@ -2516,14 +2533,17 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.doCyclePriority(task)
 		}
 
-	// Archive old completed tasks
+	// Archive old completed tasks (with confirmation)
 	case "X":
-		count := tm.doArchive()
-		if count > 0 {
-			tm.statusMsg = fmt.Sprintf("Archived %d completed tasks", count)
-			tm.reparse()
-		} else {
-			tm.statusMsg = "No tasks to archive"
+		tm.confirmMsg = "Archive all completed tasks >30 days? (y/n)"
+		tm.confirmAction = func() {
+			count := tm.doArchive()
+			if count > 0 {
+				tm.statusMsg = fmt.Sprintf("Archived %d completed tasks", count)
+				tm.reparse()
+			} else {
+				tm.statusMsg = "No tasks to archive"
+			}
 		}
 
 	// Save task as template
@@ -2813,6 +2833,12 @@ func (tm TaskManager) View() string {
 
 	// Input bar (if active)
 	tm.renderInput(&b, innerW)
+
+	// Confirmation prompt
+	if tm.confirmMsg != "" {
+		b.WriteString("\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(red).Bold(true).Render(tm.confirmMsg))
+	}
 
 	// Status message
 	if tm.statusMsg != "" {
