@@ -8,7 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Copy daily plan to clipboard** — press `c` in daily planner or command palette > "Copy Daily Plan"; formats schedule, tasks, habits, and active goals as shareable text
 - **Standalone Goals module** — first-class goal manager (command palette > "Goals") with 4 views (Active/Category/Timeline/Completed), milestone CRUD, goal lifecycle (active/paused/completed/archived), categories, target dates, overdue detection, progress bars, notes, creation wizard, and help overlay; stored in `.granit/goals.json`
+- **Goal Manager UX** — quick-pick date selection (1-7 keys for 1mo to 5yr), numbered category picker, human-readable timeframe badges ("3mo left"), color-coded progress bars, edit title (`e`), edit description (`E`), permanent delete (`D`), archive (`A`), inline milestone counts
+- **`{{active_goals}}` template variable** — daily notes can include active goals with progress percentage
 - **Task archiving** (`X` key) — move completed tasks older than 30 days from Tasks.md to `Archive/tasks-YYYY-MM.md`; undated completed tasks also archived
 - **Task templates** (`T`/`t` keys) — save any task as a reusable template (`T`), create from template (`t` + number); persisted to `.granit/task-templates.json`
 - **Natural language dates** — quick-add now parses `@next week`, `@next friday`, `@end of month`, `@in 3 days`, `@in 2 weeks`, `@next month`

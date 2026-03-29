@@ -719,10 +719,14 @@ Standalone goal tracking module independent of projects and habits. Goals have a
 - **Views:** Active (all active/paused goals), By Category (grouped), Timeline (sorted by deadline), Completed (done/archived)
 - **Creation:** Press `a` for 3-step wizard: title → target date → category
 - **Milestones:** Press `m` to add. Enter/x toggles completion. When all milestones are done, goal auto-completes.
-- **Lifecycle:** `x` = complete/reactivate, `p` = pause/resume, `D` = archive
-- **Notes:** Press `n` to add freeform notes to any goal
-- **Progress:** Visual progress bar + percentage based on milestone completion
-- **Overdue:** Goals past their target date shown with red `!` indicator and overdue count in stats
+- **Lifecycle:** `x` = complete/reactivate, `p` = pause/resume, `A` = archive, `D` = delete permanently
+- **Edit:** `e` = edit title, `E` = edit description, `n` = edit notes
+- **Date Selection:** Quick-pick: 1=1mo, 2=3mo, 3=6mo, 4=1yr, 5=2yr, 6=3yr, 7=5yr, 0=no deadline
+- **Category:** Pick existing by number or type a new one
+- **Milestones:** `m` = add, `Enter`/`x` = toggle, `d` = delete. Auto-completes goal when all done.
+- **Progress:** Color-coded bar (green=on track, yellow=behind, red=overdue) + milestone count (2/5)
+- **Timeframes:** Human-readable badges: "3mo left", "1y6mo left", "5d overdue"
+- **Overdue:** Red `!` indicator, overdue count in stats bar
 - **Storage:** `.granit/goals.json` with auto-incrementing IDs (G001, G002, etc.)
 - **Help:** Press `?` for full keybinding reference
 
@@ -731,6 +735,7 @@ Standalone goal tracking module independent of projects and habits. Goals have a
 Time-blocked daily schedule from 6am to 10pm in 30-minute slots. Supports multi-hour blocks (30m to 3h). Syncs with tasks, calendar events, and habits. Shows a progress bar and supports launching focus sessions from time blocks.
 
 - **Access:** Command palette > "Daily Planner"
+- **Copy Plan:** Press `c` to copy the full day plan to clipboard for sharing with colleagues
 - **Duration:** Press `-`/`+` when adding a block to adjust duration from 30 minutes to 3 hours.
 - **Example:** Block 9:00-11:00 for a 2-hour "Deep Work: Write Report" session.
 

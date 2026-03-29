@@ -138,7 +138,8 @@ Granit is a **free, open-source** personal knowledge management system built in 
 
 - Habit tracker with 7-day streaks, pomodoro timer, focus sessions (25/45/60/90 min)
 - Daily planner with time-blocked schedule and multi-hour blocks (30m to 3h)
-- Smart daily note template -- `{{overdue_tasks}}`, `{{today_tasks}}`, `{{today_habits}}`, `{{today_schedule}}`
+- Copy daily plan to clipboard (`c` in planner, or command palette > "Copy Daily Plan")
+- Smart daily note template -- `{{overdue_tasks}}`, `{{today_tasks}}`, `{{today_habits}}`, `{{today_schedule}}`, `{{active_goals}}`
 - Daily review -- guided 5-phase end-of-day review with rescheduling
 - Weekly review -- structured weekly reflection overlay
 - Command palette (`Ctrl+X`) with 80+ commands

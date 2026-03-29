@@ -1084,6 +1084,33 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.goalsMode.SetSize(m.width, m.height)
 		m.goalsMode.Open(m.vault.Root)
 
+	case CmdCopyDailyPlan:
+		// Build a plan summary using the planner's data without opening it
+		dp := NewDailyPlanner()
+		dp.SetSize(m.width, m.height)
+		tasks, events, habits := m.gatherPlannerData()
+		dp.Open(m.vault.Root, tasks, events, habits)
+		summary := dp.buildPlanSummary()
+		// Also append active goals
+		gm := NewGoalsMode()
+		gm.vaultRoot = m.vault.Root
+		gm.loadGoals()
+		var goalLines []string
+		for _, g := range gm.goals {
+			if g.Status == GoalStatusActive {
+				line := "  " + g.Title
+				if len(g.Milestones) > 0 {
+					line += fmt.Sprintf(" (%d%%)", g.Progress())
+				}
+				goalLines = append(goalLines, line)
+			}
+		}
+		if len(goalLines) > 0 {
+			summary += "\nGoals:\n" + strings.Join(goalLines, "\n") + "\n"
+		}
+		_ = ClipboardCopy(summary)
+		m.toast.Show("Daily plan copied to clipboard!", ToastSuccess)
+
 	case CmdProjectDashboard:
 		m.projectDashboard.SetSize(m.width, m.height)
 		m.projectDashboard.Open(m.vault.Root, m.vault)

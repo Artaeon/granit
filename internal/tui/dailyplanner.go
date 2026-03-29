@@ -629,9 +629,114 @@ func (dp DailyPlanner) updateSchedule(msg tea.KeyMsg) (DailyPlanner, tea.Cmd) {
 	case "s":
 		dp.saveToFile()
 		dp.modified = false
+
+	case "c":
+		summary := dp.buildPlanSummary()
+		_ = ClipboardCopy(summary)
 	}
 
 	return dp, nil
+}
+
+// buildPlanSummary formats the daily plan as shareable text for clipboard.
+func (dp *DailyPlanner) buildPlanSummary() string {
+	var b strings.Builder
+	dateStr := dp.date.Format("Monday, January 2, 2006")
+	b.WriteString(fmt.Sprintf("Daily Plan — %s\n", dateStr))
+	b.WriteString(strings.Repeat("─", 40) + "\n\n")
+
+	// Scheduled blocks (merge consecutive same-task blocks)
+	b.WriteString("Schedule:\n")
+	hasSchedule := false
+	i := 0
+	for i < len(dp.blocks) {
+		block := dp.blocks[i]
+		if block.TaskType == blockEmpty {
+			i++
+			continue
+		}
+		hasSchedule = true
+		startTime := fmt.Sprintf("%02d:%02d", block.Hour, map[bool]int{false: 0, true: 30}[block.HalfHour])
+		// Find span end
+		endIdx := i + 1
+		for endIdx < len(dp.blocks) && dp.blocks[endIdx].TaskText == block.TaskText && dp.blocks[endIdx].TaskType == block.TaskType {
+			endIdx++
+		}
+		endBlock := dp.blocks[endIdx-1]
+		endMin := 0
+		if endBlock.HalfHour {
+			endMin = 30
+		}
+		endHour := endBlock.Hour
+		endMin += 30
+		if endMin >= 60 {
+			endHour++
+			endMin = 0
+		}
+		endTime := fmt.Sprintf("%02d:%02d", endHour, endMin)
+
+		typeLabel := ""
+		switch block.TaskType {
+		case blockEvent:
+			typeLabel = " [event]"
+		case blockBreak:
+			typeLabel = " [break]"
+		case blockFocus:
+			typeLabel = " [focus]"
+		}
+		check := "  "
+		if block.Done {
+			check = "✓ "
+		}
+		b.WriteString(fmt.Sprintf("  %s%s–%s  %s%s\n", check, startTime, endTime, block.TaskText, typeLabel))
+		i = endIdx
+	}
+	if !hasSchedule {
+		b.WriteString("  (no blocks scheduled)\n")
+	}
+
+	// Unscheduled tasks
+	if len(dp.unscheduled) > 0 {
+		b.WriteString("\nTasks:\n")
+		for _, t := range dp.unscheduled {
+			check := "[ ] "
+			if t.Done {
+				check = "[x] "
+			}
+			prio := ""
+			switch t.Priority {
+			case 3:
+				prio = " (!)"
+			case 4:
+				prio = " (!!)"
+			}
+			b.WriteString(fmt.Sprintf("  %s%s%s\n", check, t.Text, prio))
+		}
+	}
+
+	// Habits
+	if len(dp.habits) > 0 {
+		b.WriteString("\nHabits:\n")
+		for _, h := range dp.habits {
+			check := "[ ] "
+			if h.Done {
+				check = "[x] "
+			}
+			streak := ""
+			if h.Streak > 0 {
+				streak = fmt.Sprintf(" (%d day streak)", h.Streak)
+			}
+			b.WriteString(fmt.Sprintf("  %s%s%s\n", check, h.Name, streak))
+		}
+	}
+
+	// Progress
+	if dp.totalCount > 0 {
+		pct := dp.doneCount * 100 / dp.totalCount
+		b.WriteString(fmt.Sprintf("\nProgress: %d/%d blocks done (%d%%)\n", dp.doneCount, dp.totalCount, pct))
+	}
+
+	return b.String()
 }
 
 // updateUnscheduled handles keystrokes on the unscheduled tasks panel.

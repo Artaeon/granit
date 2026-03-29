@@ -444,6 +444,47 @@ Enter Command mode by pressing `:` in Normal mode. Type a command and press `Ent
 
 ---
 
+## Goals Manager Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Navigate goals / milestones |
+| `Tab` | Cycle views (Active / By Category / Timeline / Completed) |
+| `1`-`4` | Jump to specific view |
+| `Enter` | Expand goal to show milestones / toggle milestone |
+| `a` | Create new goal (title → date → category wizard) |
+| `m` | Add milestone to current goal |
+| `x` | Toggle goal complete / toggle milestone done |
+| `e` | Edit goal title |
+| `E` | Edit goal description |
+| `n` | Edit goal notes |
+| `p` | Pause / resume goal |
+| `A` | Archive goal (soft delete) |
+| `D` | Delete goal permanently |
+| `d` | Delete milestone (when expanded) |
+| `?` | Help overlay with all keybindings |
+| `Esc` | Collapse goal / close overlay |
+
+---
+
+## Daily Planner Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Navigate time slots |
+| `a` | Add block (type with 1-4, duration with -/+) |
+| `d` | Delete block |
+| `Space` | Toggle block done |
+| `m` / `Enter` | Move block / assign unscheduled task |
+| `f` | Start focus session from block |
+| `c` | Copy daily plan to clipboard |
+| `s` | Save planner to file |
+| `[` / `]` | Previous / next day |
+| `Tab` | Switch panel (schedule / tasks / habits) |
+| `Esc` | Close planner |
+
+---
+
 ## Calendar Shortcuts
 
 | Key | Action |
