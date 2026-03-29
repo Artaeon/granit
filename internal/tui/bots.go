@@ -649,39 +649,53 @@ Be concise and actionable.`, noteName, content)
 }
 
 func (b *Bots) buildTitleSuggesterPrompt() string {
-	noteName := strings.TrimSuffix(b.currentPath, ".md")
+	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
 	content := b.currentBody
 	if len(content) > 2000 {
 		content = content[:2000]
 	}
+	tags := extractFrontmatterTags(b.currentBody)
+	tagLine := ""
+	if len(tags) > 0 {
+		tagLine = "\nTags: " + strings.Join(tags, ", ")
+	}
 
-	return fmt.Sprintf(`Suggest 5 alternative titles for this note. The current title is "%s".
+	return fmt.Sprintf(`Suggest 5 alternative titles for this note. Current title: "%s"%s
 
-Note content:
+Content:
 ---
 %s
 ---
 
-Respond with ONLY the suggested titles, one per line. Make them clear, descriptive, and concise.`, noteName, content)
+Rules:
+- Clear, descriptive, and concise (3-8 words)
+- Reflect the main topic, not just a detail
+- Use title case
+
+Respond with ONLY 5 titles, one per line.`, noteName, tagLine, content)
 }
 
 func (b *Bots) buildActionItemsPrompt() string {
+	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
 	content := b.currentBody
 	if len(content) > 3000 {
 		content = content[:3000]
 	}
 
-	return fmt.Sprintf(`Extract all action items, tasks, and things that need to be done from this note. Include both explicit todos (checkboxes) and implicit action items mentioned in the text.
+	return fmt.Sprintf(`Extract ALL action items from this meeting note / document. Include:
+- Explicit todos (checkboxes, "need to", "should", "will")
+- Implicit actions (decisions that require follow-up)
+- Deadlines mentioned
 
-Note content:
+Note: %s
 ---
 %s
 ---
 
-Format each item as:
-- [ ] action item description
+Format each as a markdown task:
+- [ ] Action description @person (if mentioned) by date (if mentioned)
 
-List ONLY the action items, nothing else.`, content)
+List ONLY the action items.`, noteName, content)
 }
 
 func (b *Bots) buildMOCGeneratorPrompt() string {
