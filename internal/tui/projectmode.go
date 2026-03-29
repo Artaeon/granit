@@ -629,6 +629,7 @@ func (pm *ProjectMode) filteredProjects() []int {
 	for i, p := range pm.projects {
 		if p.Status == "archived" && pm.categoryIdx != -1 {
 			// When filtering by category, skip archived unless specifically selected.
+			continue
 		}
 		if pm.categoryIdx == -1 {
 			indices = append(indices, i)

@@ -84,7 +84,7 @@ func (a *AutoSync) PullOnOpen() tea.Cmd {
 				file := strings.TrimSpace(line[3:])
 				if code == "UU" || code == "AA" {
 					if _, resolveErr := gitRun("checkout", "--theirs", file); resolveErr == nil {
-						gitRun("add", file)
+						_, _ = gitRun("add", file)
 						resolved++
 					}
 				}
@@ -93,13 +93,13 @@ func (a *AutoSync) PullOnOpen() tea.Cmd {
 
 		// Continue the rebase
 		if resolved > 0 {
-			gitRun("rebase", "--continue")
+			_, _ = gitRun("rebase", "--continue")
 			msg := fmt.Sprintf("auto-resolved %d conflict(s) (accepted newest)", resolved)
 			return autoSyncResultMsg{action: "pull", output: msg}
 		}
 
 		// If we couldn't resolve, abort the rebase to leave vault usable
-		gitRun("rebase", "--abort")
+		_, _ = gitRun("rebase", "--abort")
 		return autoSyncResultMsg{action: "pull", output: "conflict detected, rebase aborted", err: err}
 	}
 }

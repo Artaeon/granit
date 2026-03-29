@@ -384,7 +384,7 @@ func (d *Dashboard) parseHabits(todayStr string) {
 		name := strings.TrimSpace(parts[1])
 		streakStr := strings.TrimSpace(parts[3])
 		streak := 0
-		fmt.Sscanf(streakStr, "%d", &streak)
+		_, _ = fmt.Sscanf(streakStr, "%d", &streak)
 		if name != "" {
 			habits = append(habits, habitInfo{name: name, streak: streak})
 		}

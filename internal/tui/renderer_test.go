@@ -1708,9 +1708,7 @@ func TestRenderTableRightAlignedContent(t *testing.T) {
 		if strings.Contains(line, "42") {
 			// The 42 should be right-padded (spaces before it)
 			idx := strings.Index(line, "42")
-			if idx > 0 && line[idx-1] != ' ' {
-				// That's fine, as long as it's rendered
-			}
+			_ = idx // padding check — as long as it's rendered
 		}
 	}
 	if !strings.Contains(plain, "42") {
@@ -2159,7 +2157,7 @@ func TestRenderCalloutHasBorders(t *testing.T) {
 	// Should have top and bottom borders (─ characters beyond header)
 	borderCount := 0
 	for _, pl := range plainLines {
-		if strings.Contains(pl, "┃─") || strings.Contains(pl, "┃─") {
+		if strings.Contains(pl, "┃─") || strings.Contains(pl, "─┃") {
 			borderCount++
 		}
 	}

@@ -725,7 +725,7 @@ func (c Calendar) viewWeek() string {
 			break
 		}
 		// Time label
-		timeLabel := fmt.Sprintf("%2d:00", hour)
+		var timeLabel string
 		if hour < 12 {
 			timeLabel = fmt.Sprintf("%2dAM ", hour)
 		} else if hour == 12 {
@@ -747,7 +747,7 @@ func (c Calendar) viewWeek() string {
 			for _, pb := range c.plannerBlocks[dateStr] {
 				pbHour := 0
 				if len(pb.StartTime) >= 2 {
-					fmt.Sscanf(pb.StartTime, "%d", &pbHour)
+					_, _ = fmt.Sscanf(pb.StartTime, "%d", &pbHour)
 				}
 				if pbHour == hour {
 					cellText = pb.Text
@@ -823,67 +823,6 @@ func (c Calendar) viewWeek() string {
 		Background(mantle)
 
 	return border.Render(b.String())
-}
-
-// renderMiniCalendar builds a compact month calendar for use in the week view sidebar.
-func (c Calendar) renderMiniCalendar() string {
-	var b strings.Builder
-
-	year, month, _ := c.viewing.Date()
-	monthYear := c.viewing.Format("Jan 2006")
-
-	headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-12s", monthYear)))
-	b.WriteString("\n")
-
-	dayHeaderStyle := lipgloss.NewStyle().Foreground(subtext0)
-	b.WriteString(dayHeaderStyle.Render("  Su Mo Tu We Th Fr Sa"))
-	b.WriteString("\n")
-
-	firstOfMonth := time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
-	startWeekday := int(firstOfMonth.Weekday())
-	daysInMo := daysIn(month, year)
-
-	row := "  "
-	col := 0
-	for i := 0; i < startWeekday; i++ {
-		row += "   "
-		col++
-	}
-
-	for d := 1; d <= daysInMo; d++ {
-		dt := time.Date(year, month, d, 0, 0, 0, 0, time.Local)
-		isToday := dt.Equal(c.today)
-		isCursor := dt.Equal(c.cursor)
-
-		numStr := fmt.Sprintf("%2d", d)
-		switch {
-		case isCursor && isToday:
-			numStr = lipgloss.NewStyle().Background(green).Foreground(crust).Bold(true).Render(numStr)
-		case isToday:
-			numStr = lipgloss.NewStyle().Foreground(green).Bold(true).Render(numStr)
-		case isCursor:
-			numStr = lipgloss.NewStyle().Foreground(peach).Bold(true).Render(numStr)
-		default:
-			numStr = lipgloss.NewStyle().Foreground(overlay0).Render(numStr)
-		}
-		row += numStr + " "
-		col++
-
-		if col == 7 {
-			b.WriteString(row)
-			b.WriteString("\n")
-			row = "  "
-			col = 0
-		}
-	}
-
-	if col > 0 {
-		b.WriteString(row)
-		b.WriteString("\n")
-	}
-
-	return b.String()
 }
 
 // ---------------------------------------------------------------------------

@@ -185,7 +185,7 @@ func resolveConflictsNewest(vaultPath string, quiet bool) {
 	// Continue the rebase
 	if _, err := gitCmd(vaultPath, "rebase", "--continue"); err != nil {
 		// If rebase continue fails, try to just commit
-		gitCmd(vaultPath, "-c", "core.editor=true", "rebase", "--continue")
+		_, _ = gitCmd(vaultPath, "-c", "core.editor=true", "rebase", "--continue")
 	}
 }
 

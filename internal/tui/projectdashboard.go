@@ -367,9 +367,7 @@ func (pd ProjectDashboard) View() string {
 
 		for i, p := range pd.activeProjects {
 			card := pd.renderProjectCard(p, innerW, lineIdx == pd.cursor)
-			for _, cl := range strings.Split(card, "\n") {
-				lines = append(lines, cl)
-			}
+			lines = append(lines, strings.Split(card, "\n")...)
 			if i < len(pd.activeProjects)-1 {
 				lines = append(lines, "")
 			}
@@ -537,7 +535,7 @@ func (pd *ProjectDashboard) renderProjectCard(p Project, innerW int, selected bo
 
 	if p.DueDate != "" {
 		if due, err := time.Parse("2006-01-02", p.DueDate); err == nil {
-			daysLeft := int(math.Ceil(due.Sub(time.Now()).Hours() / 24))
+			daysLeft := int(math.Ceil(time.Until(due).Hours() / 24))
 			if daysLeft >= 0 && daysLeft <= 7 && daysLeft > 0 {
 				urgency := fmt.Sprintf("     \u26a0 Due in %d day", daysLeft)
 				if daysLeft > 1 {

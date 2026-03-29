@@ -403,7 +403,6 @@ func (pm PluginManager) viewList() string {
 		if pm.cursor < start {
 			start = pm.cursor
 		}
-		pm.scroll = start
 
 		end := start + visibleItems
 		if end > len(pm.plugins) {

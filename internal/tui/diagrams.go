@@ -394,8 +394,7 @@ func renderMovementDiagram(body []string, maxWidth int) []string {
 			}
 
 			rendered := "    "
-			runes := []rune(trimmed)
-			for _, ch := range runes {
+			for _, ch := range trimmed {
 				switch ch {
 				case '.':
 					rendered += gridStyle.Render(" · ")
@@ -1081,8 +1080,7 @@ func colorizeFigureLine(line string) string {
 	annotStyle := lipgloss.NewStyle().Foreground(overlay0)
 	curveStyle := lipgloss.NewStyle().Foreground(green)
 
-	runes := []rune(line)
-	for _, ch := range runes {
+	for _, ch := range line {
 		switch ch {
 		case '\u25CB': // ○
 			result.WriteString(headStyle.Render(string(ch)))

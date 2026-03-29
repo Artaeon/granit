@@ -381,5 +381,5 @@ func saveSessionToVault(vaultPath string, start, end time.Time, project string, 
 		return
 	}
 	defer f.Close()
-	f.WriteString(row)
+	_, _ = f.WriteString(row)
 }

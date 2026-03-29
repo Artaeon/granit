@@ -699,26 +699,6 @@ IMPORTANT:
 	return prompt
 }
 
-// buildVaultTitlesContext returns a formatted string listing all vault note titles
-// so Claude can create [[wikilinks]] to existing notes.
-func buildVaultTitlesContext(vaultTitles []string) string {
-	if len(vaultTitles) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	sb.WriteString("\n\nEXISTING VAULT NOTES (use [[Title]] to link to these):\n")
-	listed := vaultTitles
-	if len(listed) > 500 {
-		listed = listed[:500]
-		sb.WriteString(strings.Join(listed, "\n"))
-		sb.WriteString(fmt.Sprintf("\n... and %d more notes", len(vaultTitles)-500))
-	} else {
-		sb.WriteString(strings.Join(listed, "\n"))
-	}
-	sb.WriteString("\n")
-	return sb.String()
-}
-
 // buildFollowUpPrompt creates the prompt for follow-up research that builds
 // upon existing notes.
 func buildFollowUpPrompt(topic, vaultRoot string, depth, format int, existingContent, sourcePath string) string {

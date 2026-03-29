@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -485,17 +484,3 @@ func (c *ClockIn) NextReminder() (string, string) {
 	return bestText, bestTime
 }
 
-// ── String helpers ─────────────────────────────────────────────────
-
-func clockDurationStr(d time.Duration) string {
-	d = d.Truncate(time.Second)
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	if h > 0 {
-		return fmt.Sprintf("%dh %02dm", h, m)
-	}
-	return fmt.Sprintf("%dm", m)
-}
-
-// Suppress unused import warning for strings
-var _ = strings.TrimSpace

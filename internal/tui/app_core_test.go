@@ -546,10 +546,12 @@ func TestUpdateLayout_WriterLayout_NoSidebar(t *testing.T) {
 	m.config.Layout = "default"
 	m.updateLayout()
 
-	if m.editor.width >= defaultEditorWidth {
-		// Writer layout gives more space to editor by hiding sidebar
-		// If sidebar is visible in default, editor should be narrower
-		// This test verifies the layouts differ
+	// Writer layout gives more space to editor by hiding sidebar.
+	// If sidebar is visible in default, editor should be narrower.
+	// This verifies the layouts differ.
+	if m.editor.width < defaultEditorWidth {
+		t.Logf("default layout editor width (%d) is narrower than writer layout (%d), as expected",
+			m.editor.width, defaultEditorWidth)
 	}
 }
 

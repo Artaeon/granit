@@ -601,7 +601,7 @@ func (kg *KnowledgeGaps) analyzeStructure(notes []kgNoteInfo) {
 				kg.structureFindings = append(kg.structureFindings, GapFinding{
 					Type:     "structure",
 					Severity: 1,
-					Title:    fmt.Sprintf("Related notes in different folders"),
+					Title:    "Related notes in different folders",
 					Description: fmt.Sprintf(
 						"%s (in %s) and %s (in %s) share %d tags: %s",
 						notes[i].name, notes[i].folder,

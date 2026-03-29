@@ -180,11 +180,9 @@ func (wr *WeeklyReview) gatherWeekTasks(v *vault.Vault) {
 				}
 			}
 		}
-		// Also include tasks completed this week (no due date but done)
-		if task.Done && task.DueDate == "" {
-			// We cannot reliably determine when it was completed without git history,
-			// but include recent done tasks for the user to review
-		}
+		// TODO: Also include tasks completed this week (no due date but done).
+		// We cannot reliably determine when it was completed without git history,
+		// but include recent done tasks for the user to review.
 	}
 }
 
@@ -279,11 +277,10 @@ func (wr WeeklyReview) Update(msg tea.Msg) (WeeklyReview, tea.Cmd) {
 
 		// Task review: toggle tasks done
 		case "x", " ":
-			if wr.step == wrStepTasks && len(wr.incompleteTasks) > 0 {
-				if wr.inputBuf != "" {
-					// inputBuf stores selected index as string in tasks step
-				}
-			}
+			// TODO: implement task toggle in review step
+			// if wr.step == wrStepTasks && len(wr.incompleteTasks) > 0 {
+			//     parse inputBuf as selected index and toggle done
+			// }
 		case "up", "k":
 			// Scroll in tasks view (reuse inputBuf as cursor index)
 		case "down", "j":

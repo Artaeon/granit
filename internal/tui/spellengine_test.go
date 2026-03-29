@@ -137,7 +137,7 @@ func TestPersonalDictionary(t *testing.T) {
 	}
 
 	// Add to personal dictionary.
-	se.addToPersonal("granit")
+	_ = se.addToPersonal("granit")
 
 	// Now it should be skipped (recognized).
 	if !se.shouldSkipWord("granit") {

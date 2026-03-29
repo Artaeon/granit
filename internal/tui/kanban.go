@@ -601,26 +601,6 @@ func kbPriorityIcon(priority int) string {
 	}
 }
 
-// kbHasWipTag checks whether a task text contains a #wip or #doing tag.
-func kbHasWipTag(text string) bool {
-	lower := strings.ToLower(text)
-	for _, tag := range []string{"#wip", "#doing"} {
-		idx := strings.Index(lower, tag)
-		if idx < 0 {
-			continue
-		}
-		// Make sure the tag is word-bounded on the right.
-		end := idx + len(tag)
-		if end >= len(lower) {
-			return true
-		}
-		ch := lower[end]
-		if ch == ' ' || ch == '\t' || ch == ',' || ch == '.' || ch == ')' || ch == ']' {
-			return true
-		}
-	}
-	return false
-}
 
 // kbTruncate truncates s to maxLen display width, using unicode-safe measurement.
 func kbTruncate(s string, maxLen int) string {

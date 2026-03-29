@@ -412,9 +412,7 @@ func TestExportResultDismissesOnEsc(t *testing.T) {
 
 func TestExportEmptyContent(t *testing.T) {
 	html := markdownToHTML("")
-	if html == "" {
-		// Empty input can produce empty output — that's fine
-	}
+	_ = html // empty input can produce empty output — that's fine
 	// Should not panic
 	plain := exportStripMarkdown("")
 	_ = plain

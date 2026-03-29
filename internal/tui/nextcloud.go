@@ -332,9 +332,8 @@ func (nc *NextcloudSync) mkcolRemote(relDir string) error {
 // Push uploads all local markdown files to the remote.
 func (nc *NextcloudSync) Push() error {
 	// Ensure remote root exists.
-	if err := nc.mkcolRemote(""); err != nil {
-		// Ignore — root may already exist.
-	}
+	// Ignore error — root may already exist.
+	_ = nc.mkcolRemote("")
 
 	return filepath.Walk(nc.vaultRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -378,7 +377,7 @@ func (nc *NextcloudSync) Pull() error {
 			if pathErr != nil {
 				continue
 			}
-			os.MkdirAll(localDir, 0755)
+			_ = os.MkdirAll(localDir, 0755)
 			continue
 		}
 		if err := nc.downloadFile(rf.Path); err != nil {
@@ -488,16 +487,6 @@ type ncSyncResultMsg struct {
 }
 
 // ── TUI overlay ────────────────────────────────────────────────────────────
-
-type ncAction int
-
-const (
-	ncActionNone ncAction = iota
-	ncActionTestConn
-	ncActionPush
-	ncActionPull
-	ncActionSync
-)
 
 // NextcloudOverlay is the TUI panel for interacting with Nextcloud sync.
 type NextcloudOverlay struct {

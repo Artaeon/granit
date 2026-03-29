@@ -331,12 +331,8 @@ func (r Renderer) renderMathBlock(mathLines []string, contentWidth int) []string
 // parseTableCells splits a markdown table row into cells (trimming outer pipes).
 func parseTableCells(row string) []string {
 	row = strings.TrimSpace(row)
-	if strings.HasPrefix(row, "|") {
-		row = row[1:]
-	}
-	if strings.HasSuffix(row, "|") {
-		row = row[:len(row)-1]
-	}
+	row = strings.TrimPrefix(row, "|")
+	row = strings.TrimSuffix(row, "|")
 	parts := strings.Split(row, "|")
 	for i := range parts {
 		parts[i] = strings.TrimSpace(parts[i])
@@ -977,9 +973,7 @@ func (r Renderer) renderMarkdown(content string) []string {
 					if query != nil {
 						results := ExecuteDataviewQuery(query, r.vaultNotes)
 						rendered := RenderDataviewResults(results, query.Fields, contentWidth)
-						for _, rl := range strings.Split(rendered, "\n") {
-							result = append(result, rl)
-						}
+						result = append(result, strings.Split(rendered, "\n")...)
 					}
 					continue
 				}

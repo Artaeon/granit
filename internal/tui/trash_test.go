@@ -482,7 +482,7 @@ func TestTrashUpdateInactive(t *testing.T) {
 	tr := NewTrash(tmpDir)
 
 	// Update while inactive should be a no-op
-	tr, cmd := tr.Update(tea.KeyMsg{Type: tea.KeyDown})
+	_, cmd := tr.Update(tea.KeyMsg{Type: tea.KeyDown})
 	if cmd != nil {
 		t.Error("expected nil cmd when inactive")
 	}
