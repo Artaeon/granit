@@ -17,9 +17,9 @@
   <a href="#installation"><img src="https://img.shields.io/badge/Go-1.24+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License"></a>
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform">
-  <img src="https://img.shields.io/badge/TUI-164k%2B%20Lines-orange?style=for-the-badge" alt="Codebase">
-  <img src="https://img.shields.io/badge/Desktop-Wails%20v2-9B59B6?style=for-the-badge" alt="Desktop App">
-  <img src="https://img.shields.io/badge/Themes-40-purple?style=for-the-badge" alt="Themes">
+  <img src="https://img.shields.io/badge/Tests-1,971-green?style=for-the-badge" alt="Tests">
+  <img src="https://img.shields.io/badge/AI_Bots-12-purple?style=for-the-badge" alt="AI Bots">
+  <img src="https://img.shields.io/badge/166k%2B_Lines-Go-orange?style=for-the-badge" alt="Codebase">
 </p>
 
 <p align="center">
@@ -36,21 +36,26 @@
 
 ---
 
-Granit is a **free, open-source** personal knowledge management system built in Go. It runs as a full-featured **terminal TUI** or as a native **desktop application** (Wails v2 + Svelte). It reads and writes standard Markdown with YAML frontmatter and `[[wikilinks]]`, keeping your vault **fully compatible** with Obsidian, Logseq, and any other Markdown-based tool.
+Granit is a **free, open-source** knowledge management system built in Go. A single 32MB binary that replaces Obsidian ($96/yr), Notion ($120/yr), and Todoist ($48/yr). Your notes are plain Markdown files with `[[wikilinks]]` and YAML frontmatter -- **fully compatible** with Obsidian, Logseq, and any Markdown tool.
 
-**No Electron. No browser. No subscriptions. Just your terminal -- or a lightweight native window.**
+**No Electron. No browser. No subscriptions. No telemetry. Just your terminal.**
+
+```
+granit                          # open your vault
+granit note "ship the release"  # quick capture from shell
+granit sync                     # git pull + commit + push
+```
 
 | | |
 |---|---|
-| **240+ source files** | 164,000+ lines of Go |
-| **40 themes** | 33 dark + 7 light, plus custom theme editor |
-| **20+ AI features** | Ollama, OpenAI, Nous, Claude Code, or offline fallback |
-| **8 layouts** | Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, Research |
-| **16 core plugins** | Enable/disable modules individually |
-| **Full Vim mode** | Normal, Insert, Visual, Command -- ex commands, dot repeat, macros |
-| **Desktop app** | Wails v2 with Svelte frontend |
-| **Obsidian compatible** | `[[wikilinks]]`, YAML frontmatter, same folder structure |
-| **Zero telemetry** | Your data stays local. Always. |
+| **166,000+ lines of Go** | 1,971 tests, race-condition free |
+| **12 AI bots** | Ollama (local), OpenAI, Nous, or offline fallback |
+| **35 themes** | Catppuccin, Tokyo Night, Gruvbox, Nord, and 31 more |
+| **7 task views** | Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower |
+| **Full Vim mode** | Text objects, marks, macros, dot repeat, ex commands |
+| **Goal manager** | Milestones, reviews, sparklines, task linking, colors |
+| **Obsidian compatible** | `[[wikilinks]]`, backlinks, graph, canvas, templates |
+| **Zero dependencies** | Single static binary, works offline, syncs with git |
 
 ---
 
@@ -165,11 +170,16 @@ Granit is a **free, open-source** personal knowledge management system built in 
 
 ### AI Integration
 
-- **9 AI Bots** (`Ctrl+R`) -- tagger, linker, summarizer, Q&A, writing assistant, titles, action items, MOC generator, daily digest
-- AI Chat, AI Compose, Thread Weaver, Ghost Writer, Deep Dive Research (Claude Code)
-- AI Writing Coach, AI Smart Scheduler, Vault Refactor, Daily Briefing
-- Quiz Mode and Flashcards (SM-2 spaced repetition) for active recall
-- Providers: **Nous**, **Ollama**, **OpenAI**, or zero-setup offline fallback
+- **12 AI Bots** (`Ctrl+R`) -- all optimized for local qwen2.5:0.5b:
+  - Auto-Tagger (few-shot learning from vault), Link Suggester, Auto-Link Inserter
+  - Summarizer, Writing Coach, Title Suggester, Tone Adjuster
+  - Action Items Extractor, Flashcard Generator, MOC Generator
+  - Question Bot, Daily Digest
+- Ghost Writer -- inline completions with tag-aware context (Tab to accept)
+- AI Chat, AI Scheduler, Plan My Day, AI Project Planner
+- Deep Dive Research (Claude Code) for complex reasoning
+- Auto model management -- Ollama model auto-pulled on first launch
+- Providers: **Ollama** (default, local), **Nous**, **OpenAI**, or offline fallback
 
 ### Sync
 
@@ -252,28 +262,31 @@ The built binary will be in `desktop/build/bin/`.
 ## Quick Start
 
 ```bash
-# Launch vault selector:
+# Create a new vault (initializes git, folders, templates):
+granit init my-vault
+
+# Open it (auto-opens last vault next time):
+granit my-vault
+
+# From now on, just run:
 granit
 
-# Open a specific vault:
-granit ~/Notes
+# Quick capture from shell (no TUI needed):
+granit note "ship the release by Friday"
 
-# Create today's daily note:
-granit daily ~/Notes
-
-# Quick capture a thought:
-granit capture "Remember to review PR #42"
+# Sync with git remote:
+granit sync
 ```
 
 ### First Steps
 
-1. Run `granit` in any directory with `.md` files, or create a new vault from the selector.
-2. Use `Tab` or `F1`/`F2`/`F3` to switch between sidebar, editor, and backlinks.
-3. Press `Ctrl+N` to create a new note from 10+ templates.
-4. Type `[[` in the editor to start a wikilink with autocomplete.
-5. Press `Ctrl+E` to toggle between edit and rendered view.
-6. Press `Ctrl+X` to open the command palette -- access 70+ commands.
-7. Press `Ctrl+K` to open the task manager with Kanban board.
+1. Press `Ctrl+N` to create a new note from templates
+2. Type `[[` to insert a wikilink with autocomplete
+3. Press `Ctrl+K` to open the task manager (7 views)
+4. Press `Ctrl+/` to search across notes, tasks, goals, habits
+5. Press `Ctrl+X` for the command palette (80+ commands)
+6. Press `Ctrl+R` to use any of the 12 AI bots
+7. Press `Ctrl+,` to customize settings
 
 ---
 
