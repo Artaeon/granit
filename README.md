@@ -123,8 +123,10 @@ Granit is a **free, open-source** personal knowledge management system built in 
 - **Goal Manager** (command palette > "Goals") -- standalone goal tracking with milestones
   - 4 views: Active, By Category, Timeline, Completed
   - Goal lifecycle: active → paused → completed → archived
-  - Milestone CRUD with auto-complete (all done → goal done)
-  - Categories, target dates, overdue detection, progress bars
+  - Milestone CRUD with due dates (`!`), reordering (`J`/`K`), auto-complete
+  - Recurring reviews (weekly/monthly/quarterly) with progress sparkline
+  - Theme-aware colors (`C`), categories, target dates, overdue detection
+  - Goal-to-task linking (`t` creates task from milestone with `goal:ID`)
   - Goal notes, creation wizard (title → date → category)
 - Project Mode -- 9 categories with dashboards and completion stats
 - Goal tracking with milestones and progress bars
@@ -138,7 +140,9 @@ Granit is a **free, open-source** personal knowledge management system built in 
 
 - Habit tracker with 7-day streaks, pomodoro timer, focus sessions (25/45/60/90 min)
 - Daily planner with time-blocked schedule and multi-hour blocks (30m to 3h)
-- Copy daily plan to clipboard (`c` in planner, or command palette > "Copy Daily Plan")
+- Copy daily plan to clipboard (`c`) or export as markdown (`Shift+S` to Plans/)
+- Recurring tasks auto-create next instance on completion (daily/weekly/monthly)
+- Search Everything (`Ctrl+/`) -- fuzzy search across notes, tasks, goals, habits
 - Smart daily note template -- `{{overdue_tasks}}`, `{{today_tasks}}`, `{{today_habits}}`, `{{today_schedule}}`, `{{active_goals}}`
 - Daily review -- guided 5-phase end-of-day review with rescheduling
 - Weekly review -- structured weekly reflection overlay
@@ -336,6 +340,7 @@ Run `granit help` for the full command reference.
 | Key | Action |
 |-----|--------|
 | `Ctrl+X` | Command palette |
+| `Ctrl+/` | Search Everything (notes, tasks, goals, habits) |
 | `Ctrl+K` | Task manager |
 | `Ctrl+G` | Note graph |
 | `Ctrl+T` | Tag browser |

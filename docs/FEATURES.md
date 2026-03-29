@@ -723,8 +723,11 @@ Standalone goal tracking module independent of projects and habits. Goals have a
 - **Edit:** `e` = edit title, `E` = edit description, `n` = edit notes
 - **Date Selection:** Quick-pick: 1=1mo, 2=3mo, 3=6mo, 4=1yr, 5=2yr, 6=3yr, 7=5yr, 0=no deadline
 - **Category:** Pick existing by number or type a new one
-- **Milestones:** `m` = add, `Enter`/`x` = toggle, `d` = delete. Auto-completes goal when all done.
-- **Progress:** Color-coded bar (green=on track, yellow=behind, red=overdue) + milestone count (2/5)
+- **Milestones:** `m` = add, `Enter`/`x` = toggle, `d` = delete, `!` = set due date (1wk/2wk/1mo/3mo), `J`/`K` = reorder. Auto-completes goal when all done.
+- **Task Linking:** `t` creates a task from a milestone with `goal:ID` marker. Expanded view shows linked task counts.
+- **Reviews:** `r` sets review frequency (weekly/monthly/quarterly) or writes a review reflection when expanded. Review log with progress snapshots.
+- **Progress:** Color-coded bar + milestone count (2/5). Sparkline chart from review history (▁▂▃▄▅▆▇█).
+- **Colors:** `C` assigns one of 7 theme colors (blue/red/green/yellow/mauve/pink/teal) to status icon and bar.
 - **Timeframes:** Human-readable badges: "3mo left", "1y6mo left", "5d overdue"
 - **Overdue:** Red `!` indicator, overdue count in stats bar
 - **Storage:** `.granit/goals.json` with auto-incrementing IDs (G001, G002, etc.)
@@ -735,7 +738,9 @@ Standalone goal tracking module independent of projects and habits. Goals have a
 Time-blocked daily schedule from 6am to 10pm in 30-minute slots. Supports multi-hour blocks (30m to 3h). Syncs with tasks, calendar events, and habits. Shows a progress bar and supports launching focus sessions from time blocks.
 
 - **Access:** Command palette > "Daily Planner"
-- **Copy Plan:** Press `c` to copy the full day plan to clipboard for sharing with colleagues
+- **Copy Plan:** Press `c` to copy the full day plan (schedule, tasks, habits, active goals) to clipboard
+- **Export Plan:** Press `Shift+S` to save as `Plans/plan-YYYY-MM-DD.md` with frontmatter
+- **Goals Integration:** Active goals with progress shown in planner and included in copy/export
 - **Duration:** Press `-`/`+` when adding a block to adjust duration from 30 minutes to 3 hours.
 - **Example:** Block 9:00-11:00 for a 2-hour "Deep Work: Write Report" session.
 
@@ -751,6 +756,18 @@ Daily notes support 16 template variables that are auto-substituted when a note 
 - **Stats:** `{{streak}}` (consecutive daily note streak), `{{recurring_tasks}}` (configured recurring tasks)
 
 Custom templates can be set via `daily_note_template` in settings.
+
+### Search Everything
+
+Fuzzy search across all data types — notes, tasks, goals, and habits — in a single overlay.
+
+- **Access:** `Ctrl+/` or command palette > "Search Everything"
+- **Search:** Type to filter. Results ranked by fuzzy match score with start-of-string and consecutive-match bonuses.
+- **Results:** Grouped by type (NOTES/TASKS/GOALS/HABITS) with colored headers and icons.
+- **Navigation:** Up/down to move, Enter to open result (loads note, jumps to task, opens goals/habits).
+- **Note search:** Matches title and content (shows matching line snippet).
+- **Task search:** Matches cleaned task text with done/source context.
+- **Goal search:** Matches goal title and milestone text with status/timeframe.
 
 ### Pomodoro Timer
 
@@ -778,7 +795,8 @@ Per-note and per-task time tracking with pomodoro integration. View reports show
 Create tasks that automatically recur daily, weekly, or monthly. Manage all recurring tasks from a dedicated overlay.
 
 - **Access:** Command palette > "Recurring Tasks"
-- **Example:** Create a weekly "Review inbox" task that appears every Monday.
+- **Auto-Next:** When a recurring task is completed, the next instance is automatically created with the correct due date.
+- **Frequencies:** daily, weekly, monthly, 3x-week (Mon→Wed→Fri). 3x-week skips weekends.
 
 ### Habit & Goal Tracker
 

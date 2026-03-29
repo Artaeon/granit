@@ -29,6 +29,7 @@
 | `F3` | Focus the backlinks panel |
 | `Alt+Left` | Navigate back in history (browser-style) |
 | `Alt+Right` | Navigate forward in history |
+| `Ctrl+/` | Search Everything (notes, tasks, goals, habits) |
 | `Esc` | Close current overlay / return to sidebar |
 | `PgUp` | Scroll page up |
 | `PgDn` | Scroll page down |
@@ -462,6 +463,11 @@ Enter Command mode by pressing `:` in Normal mode. Type a command and press `Ent
 | `A` | Archive goal (soft delete) |
 | `D` | Delete goal permanently |
 | `d` | Delete milestone (when expanded) |
+| `!` | Set milestone due date (1=1wk, 2=2wk, 3=1mo, 4=3mo, 0=clear) |
+| `J` / `K` | Reorder milestone down / up |
+| `t` | Create task from milestone (links with goal:ID) |
+| `r` | Set review frequency / write review (when expanded) |
+| `C` | Set goal color (7 theme colors) |
 | `?` | Help overlay with all keybindings |
 | `Esc` | Collapse goal / close overlay |
 
@@ -477,7 +483,8 @@ Enter Command mode by pressing `:` in Normal mode. Type a command and press `Ent
 | `Space` | Toggle block done |
 | `m` / `Enter` | Move block / assign unscheduled task |
 | `f` | Start focus session from block |
-| `c` | Copy daily plan to clipboard |
+| `c` | Copy daily plan to clipboard (includes goals) |
+| `S` | Export plan as markdown to Plans/ folder |
 | `s` | Save planner to file |
 | `[` / `]` | Previous / next day |
 | `Tab` | Switch panel (schedule / tasks / habits) |

@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Universal search shortcut** (`Ctrl+/`) — global keyboard shortcut opens Search Everything overlay instantly
+- **Milestone due dates** (`!` key) — set due dates on individual milestones (1=1wk, 2=2wk, 3=1mo, 4=3mo); color-coded red/yellow when overdue or approaching
+- **Milestone reordering** (`J`/`K` keys) — move milestones up and down within a goal
+- **Goal progress sparkline** — expanded goals with 2+ reviews show ASCII sparkline chart (▁▂▃▄▅▆▇█) from review history
+- **Recurring task auto-creation** — completing a recurring task (daily/weekly/monthly/3x-week) automatically creates the next instance with updated due date
+- **Task-to-calendar sync** — tasks with due date markers now appear in calendar week grid (9AM badge) and agenda view alongside daily note tasks
+- **Active goals in daily planner** — planner shows active goals with progress; included in clipboard copy and markdown export
+- **Theme-aware goal colors** (`C` key) — assign one of 7 theme colors (blue/red/green/yellow/mauve/pink/teal) to goals; applied to status icon and progress bar
+- **Export daily plan as markdown** (`Shift+S`) — saves plan to `Plans/plan-YYYY-MM-DD.md` with frontmatter
+- **Onboarding tutorial update** — new page 7 covering the productivity suite (tasks, goals, planner, search)
 - **Copy daily plan to clipboard** — press `c` in daily planner or command palette > "Copy Daily Plan"; formats schedule, tasks, habits, and active goals as shareable text
 - **Standalone Goals module** — first-class goal manager (command palette > "Goals") with 4 views (Active/Category/Timeline/Completed), milestone CRUD, goal lifecycle (active/paused/completed/archived), categories, target dates, overdue detection, progress bars, notes, creation wizard, and help overlay; stored in `.granit/goals.json`
 - **Goal Manager UX** — quick-pick date selection (1-7 keys for 1mo to 5yr), numbered category picker, human-readable timeframe badges ("3mo left"), color-coded progress bars, edit title (`e`), edit description (`E`), permanent delete (`D`), archive (`A`), inline milestone counts
