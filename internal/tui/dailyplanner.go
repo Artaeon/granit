@@ -636,6 +636,9 @@ func (dp DailyPlanner) updateSchedule(msg tea.KeyMsg) (DailyPlanner, tea.Cmd) {
 	case "c":
 		summary := dp.buildPlanSummary()
 		_ = ClipboardCopy(summary)
+
+	case "S":
+		dp.exportPlanAsMarkdown()
 	}
 
 	return dp, nil
@@ -752,6 +755,18 @@ func (dp *DailyPlanner) buildPlanSummary() string {
 	}
 
 	return b.String()
+}
+
+// exportPlanAsMarkdown saves the daily plan summary to a markdown file.
+func (dp *DailyPlanner) exportPlanAsMarkdown() {
+	dir := filepath.Join(dp.vaultRoot, "Plans")
+	_ = os.MkdirAll(dir, 0755)
+	filename := "plan-" + dp.date.Format("2006-01-02") + ".md"
+	fp := filepath.Join(dir, filename)
+
+	summary := dp.buildPlanSummary()
+	content := "---\ntitle: " + dp.date.Format("Monday, January 2, 2006") + "\ndate: " + dp.date.Format("2006-01-02") + "\ntype: plan\ntags: [plan]\n---\n\n" + summary
+	_ = os.WriteFile(fp, []byte(content), 0644)
 }
 
 // updateUnscheduled handles keystrokes on the unscheduled tasks panel.
