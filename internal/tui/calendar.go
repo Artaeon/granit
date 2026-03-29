@@ -248,8 +248,17 @@ func (c *Calendar) SetNoteContents(notes map[string]string) {
 				LineNum:  lineIdx + 1, // 1-based
 			}
 			c.allTasks = append(c.allTasks, task)
-			if dateStr != "" {
-				c.tasks[dateStr] = append(c.tasks[dateStr], task)
+
+			// Place task in date bucket — from daily note filename or due date marker
+			taskDate := dateStr
+			if taskDate == "" {
+				if dm := tmDueDateRe.FindStringSubmatch(line); dm != nil {
+					taskDate = dm[1]
+					task.Date = taskDate
+				}
+			}
+			if taskDate != "" {
+				c.tasks[taskDate] = append(c.tasks[taskDate], task)
 			}
 		}
 	}
@@ -757,6 +766,25 @@ func (c Calendar) viewWeek() string {
 						cellText = ev.Title
 						cellColor = blue
 						break
+					}
+				}
+			}
+
+			// Show tasks with due dates in the first empty morning slot (9AM)
+			if cellText == "" && hour == 9 {
+				if dateTasks, ok := c.tasks[dateStr]; ok {
+					pending := 0
+					for _, t := range dateTasks {
+						if !t.Done {
+							pending++
+						}
+					}
+					if pending > 0 {
+						cellText = fmt.Sprintf("%d task", pending)
+						if pending > 1 {
+							cellText += "s"
+						}
+						cellColor = yellow
 					}
 				}
 			}
