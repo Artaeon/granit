@@ -26,7 +26,7 @@ type Tutorial struct {
 // NewTutorial returns a Tutorial in its default (inactive) state.
 func NewTutorial(cfg *config.Config) Tutorial {
 	return Tutorial{
-		totalPages: 6,
+		totalPages: 7,
 		cfg:        cfg,
 	}
 }
@@ -319,6 +319,8 @@ func (t Tutorial) pageContent(w int) (string, string) {
 		return t.pageGettingStarted(w)
 	case 5:
 		return t.pageShortcuts(w)
+	case 6:
+		return t.pageProductivity(w)
 	default:
 		return "Granit", ""
 	}
@@ -612,4 +614,62 @@ func (t Tutorial) pageShortcuts(w int) (string, string) {
 	b.WriteString(tutText(" to close and start using Granit."))
 
 	return "Keyboard Shortcuts", b.String()
+}
+
+// ── Page 7: Productivity ───────────────────────────────────────────────
+
+func (t Tutorial) pageProductivity(_ int) (string, string) {
+	var b strings.Builder
+
+	b.WriteString(tutText("Granit includes a full productivity suite for"))
+	b.WriteString("\n")
+	b.WriteString(tutText("managing tasks, goals, habits, and your daily plan."))
+	b.WriteString("\n\n")
+
+	b.WriteString(tutSection("Task Manager") + tutDim("  (Ctrl+K)"))
+	b.WriteString("\n")
+	b.WriteString(tutText("  7 views: Today, Upcoming, All, Done, Calendar, Kanban, Matrix"))
+	b.WriteString("\n")
+	b.WriteString(tutText("  Subtasks, dependencies, time estimation, snooze, templates"))
+	b.WriteString("\n")
+	b.WriteString(tutText("  Quick-add: ") + tutKey("Ctrl+T") + tutText(" with @date !priority #tag ~estimate"))
+	b.WriteString("\n\n")
+
+	b.WriteString(tutSection("Goal Manager") + tutDim("  (command palette > Goals)"))
+	b.WriteString("\n")
+	b.WriteString(tutText("  Track long-term goals with milestones and progress"))
+	b.WriteString("\n")
+	b.WriteString(tutText("  Recurring reviews (weekly/monthly/quarterly)"))
+	b.WriteString("\n")
+	b.WriteString(tutText("  Link milestones to tasks, assign colors, set due dates"))
+	b.WriteString("\n\n")
+
+	b.WriteString(tutSection("Daily Planner") + tutDim("  (command palette > Daily Planner)"))
+	b.WriteString("\n")
+	b.WriteString(tutText("  Time-blocked schedule from 6am to 10pm"))
+	b.WriteString("\n")
+	b.WriteString(tutText("  Copy plan to clipboard (") + tutKey("c") + tutText(") or export as markdown (") + tutKey("S") + tutText(")"))
+	b.WriteString("\n\n")
+
+	b.WriteString(tutSection("Search Everything") + tutDim("  (Ctrl+/)"))
+	b.WriteString("\n")
+	b.WriteString(tutText("  Fuzzy search across notes, tasks, goals, and habits"))
+	b.WriteString("\n\n")
+
+	b.WriteString(tutSection("Also available:"))
+	b.WriteString("\n")
+	b.WriteString(tutBinding("Ctrl+L", "Calendar with 5 views"))
+	b.WriteString("\n")
+	b.WriteString(tutBinding("Ctrl+X", "Command palette (80+ commands)"))
+	b.WriteString("\n")
+	b.WriteString(tutBinding("Ctrl+G", "Note graph"))
+	b.WriteString("\n")
+	b.WriteString(tutBinding("Ctrl+R", "AI bots"))
+	b.WriteString("\n\n")
+
+	b.WriteString(tutText("Press "))
+	b.WriteString(tutKey("Enter"))
+	b.WriteString(tutText(" to close and start using Granit."))
+
+	return "Productivity Suite", b.String()
 }
