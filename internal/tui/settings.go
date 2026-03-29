@@ -775,9 +775,17 @@ func (s Settings) View() string {
 		Foreground(mauve).
 		Bold(true).
 		Render("  " + IconSettingsChar + " Settings")
+	countLabel := DimStyle.Render(fmt.Sprintf("%d settings", len(s.visible)))
 	b.WriteString(title)
+	titleW := lipgloss.Width(title)
+	countW := lipgloss.Width(countLabel)
+	gap := width - 6 - titleW - countW
+	if gap < 1 {
+		gap = 1
+	}
+	b.WriteString(strings.Repeat(" ", gap) + countLabel)
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
+	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", width-6)))
 	b.WriteString("\n")
 
 	// Search bar
@@ -828,9 +836,16 @@ func (s Settings) View() string {
 
 		switch item.kind {
 		case "header":
-			// Category header with separator
 			headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-			b.WriteString(headerStyle.Render("  " + ThemeSeparator + ThemeSeparator + " " + label + " " + ThemeSeparator + ThemeSeparator))
+			lineStyle := lipgloss.NewStyle().Foreground(surface1)
+			headerText := " " + label + " "
+			lineLen := (width - 8 - len(headerText)) / 2
+			if lineLen < 2 {
+				lineLen = 2
+			}
+			b.WriteString(lineStyle.Render("  "+strings.Repeat("─", lineLen)) +
+				headerStyle.Render(headerText) +
+				lineStyle.Render(strings.Repeat("─", lineLen)))
 			b.WriteString("\n")
 			continue
 		case "bool":
@@ -896,12 +911,15 @@ func (s Settings) View() string {
 			padding = 1
 		}
 
-		line := "  " + label + strings.Repeat(" ", padding) + valueStr
+		prefix := "  "
+		if isSelected {
+			prefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("> ")
+		}
+		line := prefix + label + strings.Repeat(" ", padding) + valueStr
 
 		if isSelected {
 			b.WriteString(lipgloss.NewStyle().
 				Background(surface0).
-				Foreground(peach).
 				Bold(true).
 				Width(width - 6).
 				Render(line))
@@ -922,8 +940,15 @@ func (s Settings) View() string {
 
 	// No results message
 	if len(s.visible) == 0 && s.searchBuf != "" {
-		noMatch := DimStyle.Render("  No settings match your search.")
-		b.WriteString("\n" + noMatch + "\n")
+		b.WriteString("\n  " + DimStyle.Render("No settings match your search.") + "\n")
+	}
+
+	// Scroll indicators
+	if start > 0 {
+		b.WriteString(DimStyle.Render(fmt.Sprintf("  ... %d above", start)) + "\n")
+	}
+	if end < len(s.visible) {
+		b.WriteString(DimStyle.Render(fmt.Sprintf("  ... %d below", len(s.visible)-end)) + "\n")
 	}
 
 	// Setup status
@@ -938,18 +963,9 @@ func (s Settings) View() string {
 		b.WriteString(lipgloss.NewStyle().Foreground(statusColor).Render("  " + s.setupStatus))
 	}
 
-	// Footer
-	b.WriteString("\n")
-	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
-	b.WriteString("\n")
-	hints := "  Enter: toggle  /: search  Del: reset  Esc: close"
-	if s.searching {
-		hints = "  Type to filter  Enter: apply  Esc: cancel"
-	}
-	b.WriteString(DimStyle.Render(hints))
-	// Show modified indicator for current setting
+	// Selected item detail
 	item := s.currentItem()
-	if item != nil && item.kind != "action" {
+	if item != nil && item.kind != "header" && item.kind != "action" {
 		defVal := s.defaultValueForKey(item.key)
 		if defVal != nil {
 			modified := false
@@ -968,23 +984,32 @@ func (s Settings) View() string {
 				}
 			}
 			if modified {
-				b.WriteString("\n")
 				defStr := fmt.Sprintf("%v", defVal)
-				b.WriteString(DimStyle.Render("  * modified (default: " + defStr + ")  Del/Backspace: reset"))
+				b.WriteString("\n  " + lipgloss.NewStyle().Foreground(yellow).Render("modified") +
+					DimStyle.Render(" (default: "+defStr+")"))
 			}
 		}
 	}
 
 	// Help bar
-	b.WriteString("\n")
+	b.WriteString("\n\n")
 	ks := lipgloss.NewStyle().Foreground(lavender).Bold(true)
 	ds := DimStyle
-	helpParts := []string{
-		ks.Render("j/k") + ds.Render(":nav"),
-		ks.Render("Enter") + ds.Render(":edit"),
-		ks.Render("/") + ds.Render(":search"),
-		ks.Render("Del") + ds.Render(":reset"),
-		ks.Render("Esc") + ds.Render(":close"),
+	var helpParts []string
+	if s.searching {
+		helpParts = []string{
+			ds.Render("type to filter"),
+			ks.Render("Enter") + ds.Render(":apply"),
+			ks.Render("Esc") + ds.Render(":cancel"),
+		}
+	} else {
+		helpParts = []string{
+			ks.Render("j/k") + ds.Render(":nav"),
+			ks.Render("Enter") + ds.Render(":edit"),
+			ks.Render("/") + ds.Render(":search"),
+			ks.Render("Del") + ds.Render(":reset"),
+			ks.Render("Esc") + ds.Render(":close"),
+		}
 	}
 	b.WriteString("  " + strings.Join(helpParts, "  "))
 
