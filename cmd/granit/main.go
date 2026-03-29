@@ -126,6 +126,9 @@ func main() {
 	case "review":
 		runReview(os.Args[2:])
 
+	case "note":
+		runQuickNote(os.Args[2:])
+
 	case "capture":
 		runCapture()
 
@@ -160,6 +163,53 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func runQuickNote(args []string) {
+	if len(args) == 0 {
+		fmt.Println("Usage: granit note \"your thought here\" [--vault path]")
+		os.Exit(1)
+	}
+
+	// Parse text and optional --vault flag
+	text := args[0]
+	vaultPath := ""
+	for i, a := range args {
+		if a == "--vault" && i+1 < len(args) {
+			vaultPath = args[i+1]
+		}
+	}
+
+	// Resolve vault
+	if vaultPath == "" {
+		vl := config.LoadVaultList()
+		if last := vl.GetLastUsed(); last != "" {
+			vaultPath = last
+		} else if len(vl.Vaults) > 0 {
+			vaultPath = vl.Vaults[0].Path
+		} else {
+			vaultPath = "."
+		}
+	}
+
+	// Append to Inbox.md
+	inboxPath := filepath.Join(vaultPath, "Inbox.md")
+	now := time.Now()
+	entry := fmt.Sprintf("\n- %s %s — %s\n", now.Format("2006-01-02"), now.Format("15:04"), text)
+
+	f, err := os.OpenFile(inboxPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("Error opening Inbox.md: %v\n", err)
+		os.Exit(1)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(entry); err != nil {
+		fmt.Printf("Error writing: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Added to Inbox.md: %s\n", text)
 }
 
 func showVaultSelector() {
