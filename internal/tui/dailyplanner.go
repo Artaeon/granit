@@ -137,6 +137,9 @@ type DailyPlanner struct {
 	// File save
 	modified bool
 
+	// Active goals for display
+	activeGoals []Goal
+
 	// Pending task completions to sync back to source files
 	completedTasks []TaskCompletion
 }
@@ -727,6 +730,18 @@ func (dp *DailyPlanner) buildPlanSummary() string {
 				streak = fmt.Sprintf(" (%d day streak)", h.Streak)
 			}
 			b.WriteString(fmt.Sprintf("  %s%s%s\n", check, h.Name, streak))
+		}
+	}
+
+	// Active goals
+	if len(dp.activeGoals) > 0 {
+		b.WriteString("\nGoals:\n")
+		for _, g := range dp.activeGoals {
+			prog := ""
+			if len(g.Milestones) > 0 {
+				prog = fmt.Sprintf(" (%d%%)", g.Progress())
+			}
+			b.WriteString(fmt.Sprintf("  %s%s\n", g.Title, prog))
 		}
 	}
 

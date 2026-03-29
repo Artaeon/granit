@@ -1053,6 +1053,17 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.dailyPlanner.SetSize(m.width, m.height)
 		tasks, events, habits := m.gatherPlannerData()
 		m.dailyPlanner.Open(m.vault.Root, tasks, events, habits)
+		// Load active goals for display
+		gm := NewGoalsMode()
+		gm.vaultRoot = m.vault.Root
+		gm.loadGoals()
+		var activeGoals []Goal
+		for _, g := range gm.goals {
+			if g.Status == GoalStatusActive {
+				activeGoals = append(activeGoals, g)
+			}
+		}
+		m.dailyPlanner.activeGoals = activeGoals
 
 	case CmdAIScheduler:
 		m.aiScheduler.SetSize(m.width, m.height)
