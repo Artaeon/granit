@@ -1530,6 +1530,29 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 				b.WriteString("      " + DimStyle.Render(meta) + "\n")
 				lineCount++
 			}
+			// Progress chart from review log
+			if len(goalData.ReviewLog) >= 2 {
+				chartWidth := 20
+				if len(goalData.ReviewLog) < chartWidth {
+					chartWidth = len(goalData.ReviewLog)
+				}
+				start := len(goalData.ReviewLog) - chartWidth
+				bars := []rune("▁▂▃▄▅▆▇█")
+				var chartParts []string
+				for _, rev := range goalData.ReviewLog[start:] {
+					idx := rev.Progress * (len(bars) - 1) / 100
+					if idx < 0 {
+						idx = 0
+					}
+					if idx >= len(bars) {
+						idx = len(bars) - 1
+					}
+					chartParts = append(chartParts, lipgloss.NewStyle().Foreground(green).Render(string(bars[idx])))
+				}
+				b.WriteString("      " + DimStyle.Render("Progress: ") + strings.Join(chartParts, "") +
+					DimStyle.Render(fmt.Sprintf(" %d%%", goalData.Progress())) + "\n")
+				lineCount++
+			}
 			// Linked tasks
 			if taskDone, taskTotal := gm.linkedTaskStats(goalData.ID); taskTotal > 0 {
 				taskColor := green
