@@ -26,34 +26,24 @@ var (
 
 func main() {
 	if len(os.Args) < 2 {
-		// No arguments: show vault selector or open last-used vault
+		// No arguments: auto-open last vault, or show selector
 		vl := config.LoadVaultList()
 		if len(vl.Vaults) == 0 {
 			// No known vaults: use current directory
 			runTUI(".")
+		} else if last := vl.GetLastUsed(); last != "" {
+			// Auto-open last used vault
+			if info, err := os.Stat(last); err == nil && info.IsDir() {
+				runTUI(last)
+			} else {
+				// Last vault doesn't exist anymore, show selector
+				showVaultSelector()
+			}
+		} else if len(vl.Vaults) == 1 {
+			// Only one vault, open it directly
+			runTUI(vl.Vaults[0].Path)
 		} else {
-			// Show vault selector
-			vs := tui.NewVaultSelector()
-			p := tea.NewProgram(vs, tea.WithAltScreen())
-			finalModel, err := p.Run()
-			if err != nil {
-				fmt.Printf("Error: %v\n", err)
-				os.Exit(1)
-			}
-			vsModel, ok := finalModel.(tui.VaultSelector)
-			if !ok {
-				return
-			}
-			vsPtr := &vsModel
-			if !vsPtr.IsDone() {
-				// User quit without selecting
-				return
-			}
-			selected := vsPtr.SelectedVault()
-			if selected == "" {
-				return
-			}
-			runTUI(selected)
+			showVaultSelector()
 		}
 		return
 	}
@@ -170,6 +160,29 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func showVaultSelector() {
+	vs := tui.NewVaultSelector()
+	p := tea.NewProgram(vs, tea.WithAltScreen())
+	finalModel, err := p.Run()
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+	vsModel, ok := finalModel.(tui.VaultSelector)
+	if !ok {
+		return
+	}
+	vsPtr := &vsModel
+	if !vsPtr.IsDone() {
+		return
+	}
+	selected := vsPtr.SelectedVault()
+	if selected == "" {
+		return
+	}
+	runTUI(selected)
 }
 
 func printUsage() {
