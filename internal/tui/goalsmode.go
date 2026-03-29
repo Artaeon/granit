@@ -48,8 +48,18 @@ type Goal struct {
 	UpdatedAt   string          `json:"updated_at"`
 	CompletedAt string          `json:"completed_at,omitempty"`
 	Project     string          `json:"project,omitempty"` // linked project name
-	Milestones  []GoalMilestone `json:"milestones"`
-	Notes       string          `json:"notes,omitempty"`
+	Milestones      []GoalMilestone `json:"milestones"`
+	Notes           string          `json:"notes,omitempty"`
+	ReviewFrequency string          `json:"review_frequency,omitempty"` // "weekly", "monthly", "quarterly"
+	LastReviewed    string          `json:"last_reviewed,omitempty"`    // YYYY-MM-DD
+	ReviewLog       []GoalReview    `json:"review_log,omitempty"`
+}
+
+// GoalReview records a periodic check-in on a goal.
+type GoalReview struct {
+	Date     string `json:"date"`
+	Note     string `json:"note"`
+	Progress int    `json:"progress"` // snapshot at time of review
 }
 
 // Progress returns milestone completion percentage (0-100).
@@ -106,6 +116,55 @@ func (g Goal) DaysRemaining() int {
 	return int(target.Sub(today).Hours() / 24)
 }
 
+// IsDueForReview returns true if the goal's review period has elapsed.
+func (g Goal) IsDueForReview() bool {
+	if g.ReviewFrequency == "" || g.Status != GoalStatusActive {
+		return false
+	}
+	if g.LastReviewed == "" {
+		return true
+	}
+	last, err := time.Parse("2006-01-02", g.LastReviewed)
+	if err != nil {
+		return true
+	}
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	switch g.ReviewFrequency {
+	case "weekly":
+		return today.After(last.AddDate(0, 0, 7))
+	case "monthly":
+		return today.After(last.AddDate(0, 1, 0))
+	case "quarterly":
+		return today.After(last.AddDate(0, 3, 0))
+	}
+	return false
+}
+
+// NextReviewDate returns the next scheduled review date as YYYY-MM-DD.
+func (g Goal) NextReviewDate() string {
+	if g.ReviewFrequency == "" {
+		return ""
+	}
+	base := g.LastReviewed
+	if base == "" {
+		base = g.CreatedAt
+	}
+	last, err := time.Parse("2006-01-02", base)
+	if err != nil {
+		return ""
+	}
+	switch g.ReviewFrequency {
+	case "weekly":
+		return last.AddDate(0, 0, 7).Format("2006-01-02")
+	case "monthly":
+		return last.AddDate(0, 1, 0).Format("2006-01-02")
+	case "quarterly":
+		return last.AddDate(0, 3, 0).Format("2006-01-02")
+	}
+	return ""
+}
+
 // TimeframeLabel returns a human-readable time remaining label.
 func (g Goal) TimeframeLabel() string {
 	days := g.DaysRemaining()
@@ -153,6 +212,8 @@ const (
 	goalInputMilestone          // adding milestone
 	goalInputNotes              // editing notes
 	goalInputDescription        // editing description
+	goalInputReviewFreq         // setting review frequency
+	goalInputReview             // writing review reflection
 	goalInputHelp               // showing help
 )
 
@@ -349,6 +410,56 @@ func (gm *GoalsMode) ensureVisible() {
 	if gm.cursor >= gm.scroll+maxVisible {
 		gm.scroll = gm.cursor - maxVisible + 1
 	}
+}
+
+func (gm *GoalsMode) setReviewFrequency(freq string) {
+	if gm.cursor >= len(gm.filtered) {
+		return
+	}
+	goal := gm.filtered[gm.cursor]
+	idx := gm.findGoalIndex(goal.ID)
+	if idx < 0 {
+		return
+	}
+	now := time.Now().Format("2006-01-02")
+	gm.goals[idx].ReviewFrequency = freq
+	if freq != "" && gm.goals[idx].LastReviewed == "" {
+		gm.goals[idx].LastReviewed = now
+	}
+	if freq == "" {
+		gm.goals[idx].LastReviewed = ""
+	}
+	gm.goals[idx].UpdatedAt = now
+	gm.saveGoals()
+	gm.rebuildFiltered()
+	if freq == "" {
+		gm.statusMsg = "Reviews removed"
+	} else {
+		gm.statusMsg = "Review set: " + freq
+	}
+}
+
+func (gm *GoalsMode) submitReview(note string) {
+	if gm.expanded < 0 || gm.expanded >= len(gm.filtered) {
+		return
+	}
+	goal := gm.filtered[gm.expanded]
+	idx := gm.findGoalIndex(goal.ID)
+	if idx < 0 {
+		return
+	}
+	now := time.Now().Format("2006-01-02")
+	review := GoalReview{
+		Date:     now,
+		Note:     note,
+		Progress: gm.goals[idx].Progress(),
+	}
+	gm.goals[idx].ReviewLog = append(gm.goals[idx].ReviewLog, review)
+	gm.goals[idx].LastReviewed = now
+	gm.goals[idx].UpdatedAt = now
+	gm.saveGoals()
+	gm.rebuildFiltered()
+	gm.statusMsg = "Review logged"
 }
 
 func (gm *GoalsMode) deleteGoal() {
@@ -735,6 +846,19 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			gm.inputBuf = goal.Notes
 		}
 
+	// Set review frequency / write review
+	case "r":
+		if gm.cursor < len(gm.filtered) {
+			if gm.expanded >= 0 {
+				// Write review for expanded goal
+				gm.input = goalInputReview
+				gm.inputBuf = ""
+			} else {
+				// Set review frequency
+				gm.input = goalInputReviewFreq
+			}
+		}
+
 	// Help
 	case "?":
 		gm.input = goalInputHelp
@@ -871,6 +995,43 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 			if text != "" {
 				gm.addMilestone(text)
 			}
+			gm.input = goalInputNone
+			gm.inputBuf = ""
+		case "backspace":
+			if len(gm.inputBuf) > 0 {
+				gm.inputBuf = gm.inputBuf[:len(gm.inputBuf)-1]
+			}
+		default:
+			if len(key) == 1 || key == " " {
+				gm.inputBuf += key
+			}
+		}
+
+	case goalInputReviewFreq:
+		switch key {
+		case "esc":
+			gm.input = goalInputNone
+		case "1": // weekly
+			gm.setReviewFrequency("weekly")
+			gm.input = goalInputNone
+		case "2": // monthly
+			gm.setReviewFrequency("monthly")
+			gm.input = goalInputNone
+		case "3": // quarterly
+			gm.setReviewFrequency("quarterly")
+			gm.input = goalInputNone
+		case "0": // remove
+			gm.setReviewFrequency("")
+			gm.input = goalInputNone
+		}
+
+	case goalInputReview:
+		switch key {
+		case "esc":
+			gm.input = goalInputNone
+			gm.inputBuf = ""
+		case "enter":
+			gm.submitReview(strings.TrimSpace(gm.inputBuf))
 			gm.input = goalInputNone
 			gm.inputBuf = ""
 		case "backspace":
@@ -1063,6 +1224,15 @@ func (gm *GoalsMode) renderStats(b *strings.Builder, w int) {
 	if overdue > 0 {
 		parts = append(parts, lipgloss.NewStyle().Foreground(red).Bold(true).Render(fmt.Sprintf("%d overdue", overdue)))
 	}
+	reviewsDue := 0
+	for _, g := range gm.goals {
+		if g.IsDueForReview() {
+			reviewsDue++
+		}
+	}
+	if reviewsDue > 0 {
+		parts = append(parts, lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(fmt.Sprintf("%d review due", reviewsDue)))
+	}
 	b.WriteString("  " + strings.Join(parts, "  "))
 }
 
@@ -1203,7 +1373,15 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 			catBadge = " " + lipgloss.NewStyle().Foreground(sapphire).Render("["+goal.Category+"]")
 		}
 
-		line := prefix + statusIcon + titleStyle.Render(title) + " " + bar + msCount + timeBadge + catBadge
+		// Review indicator
+		reviewBadge := ""
+		if goal.IsDueForReview() {
+			reviewBadge = " " + lipgloss.NewStyle().Foreground(red).Bold(true).Render("[review due]")
+		} else if goal.ReviewFrequency != "" {
+			reviewBadge = " " + DimStyle.Render("["+goal.ReviewFrequency+"]")
+		}
+
+		line := prefix + statusIcon + titleStyle.Render(title) + " " + bar + msCount + timeBadge + reviewBadge + catBadge
 		b.WriteString(line + "\n")
 		lineCount++
 
@@ -1225,8 +1403,30 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 				lineCount++
 			}
 			if goalData.CreatedAt != "" {
-				b.WriteString("      " + DimStyle.Render("Created: "+goalData.CreatedAt) + "\n")
+				meta := "Created: " + goalData.CreatedAt
+				if goalData.ReviewFrequency != "" {
+					meta += "  Review: " + goalData.ReviewFrequency
+					if goalData.LastReviewed != "" {
+						meta += " (last: " + goalData.LastReviewed + ")"
+					}
+				}
+				b.WriteString("      " + DimStyle.Render(meta) + "\n")
 				lineCount++
+			}
+			// Recent reviews (last 3)
+			if len(goalData.ReviewLog) > 0 {
+				start := len(goalData.ReviewLog) - 3
+				if start < 0 {
+					start = 0
+				}
+				for _, rev := range goalData.ReviewLog[start:] {
+					revLine := fmt.Sprintf("      %s %d%% ", rev.Date, rev.Progress)
+					if rev.Note != "" {
+						revLine += DimStyle.Render(TruncateDisplay(rev.Note, w-30))
+					}
+					b.WriteString(lipgloss.NewStyle().Foreground(lavender).Render(revLine) + "\n")
+					lineCount++
+				}
 			}
 			if len(goalData.Milestones) == 0 {
 				b.WriteString("      " + DimStyle.Render("No milestones yet. Press 'm' to add one.") + "\n")
@@ -1292,6 +1492,16 @@ func (gm *GoalsMode) renderInput(b *strings.Builder, w int) {
 		b.WriteString("  " + hintStyle.Render("Enter to confirm, empty to skip"))
 	case goalInputMilestone:
 		b.WriteString("\n  " + promptStyle.Render("Add Milestone: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
+	case goalInputReviewFreq:
+		b.WriteString("\n  " + promptStyle.Render("Set review frequency:") + "\n\n")
+		ss := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+		ds := lipgloss.NewStyle().Foreground(text)
+		b.WriteString("  " + ss.Render("1") + ds.Render(" weekly   ") + ss.Render("2") + ds.Render(" monthly   ") + ss.Render("3") + ds.Render(" quarterly") + "\n")
+		b.WriteString("  " + ss.Render("0") + ds.Render(" remove reviews") + "\n\n")
+		b.WriteString("  " + hintStyle.Render("Pick a frequency or Esc to cancel"))
+	case goalInputReview:
+		b.WriteString("\n  " + promptStyle.Render("Review reflection: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
+		b.WriteString("  " + hintStyle.Render("Enter to save, Esc to cancel"))
 	case goalInputDescription:
 		b.WriteString("\n  " + promptStyle.Render("Description: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
 	case goalInputNotes:
@@ -1334,6 +1544,9 @@ func (gm *GoalsMode) renderHelp(b *strings.Builder, w int) {
 			{"d", "Delete milestone (when expanded)"},
 			{"Enter", "Toggle milestone completion"},
 		}},
+		{"Reviews", [][2]string{
+			{"r", "Set review frequency / write review (when expanded)"},
+		}},
 	}
 
 	for _, sec := range sections {
@@ -1350,7 +1563,7 @@ func (gm *GoalsMode) renderHelpBar(b *strings.Builder, w int) {
 	pairs := [][2]string{
 		{"j/k", "nav"}, {"a", "add"}, {"m", "milestone"}, {"x", "complete"},
 		{"e", "edit"}, {"E", "desc"}, {"n", "notes"}, {"p", "pause"},
-		{"A", "archive"}, {"D", "delete"}, {"?", "help"}, {"Tab", "view"}, {"Esc", "close"},
+		{"r", "review"}, {"A", "archive"}, {"D", "delete"}, {"?", "help"}, {"Tab", "view"}, {"Esc", "close"},
 	}
 	var parts []string
 	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)

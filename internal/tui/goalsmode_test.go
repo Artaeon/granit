@@ -157,6 +157,50 @@ func TestGoalTimeframeLabel_NoDate(t *testing.T) {
 	}
 }
 
+func TestGoalIsDueForReview_NeverReviewed(t *testing.T) {
+	g := Goal{Status: GoalStatusActive, ReviewFrequency: "weekly", LastReviewed: ""}
+	if !g.IsDueForReview() {
+		t.Error("goal with frequency but no last review should be due")
+	}
+}
+
+func TestGoalIsDueForReview_RecentlyReviewed(t *testing.T) {
+	g := Goal{Status: GoalStatusActive, ReviewFrequency: "weekly", LastReviewed: time.Now().Format("2006-01-02")}
+	if g.IsDueForReview() {
+		t.Error("goal reviewed today should not be due")
+	}
+}
+
+func TestGoalIsDueForReview_NoFrequency(t *testing.T) {
+	g := Goal{Status: GoalStatusActive, ReviewFrequency: ""}
+	if g.IsDueForReview() {
+		t.Error("goal with no frequency should not be due")
+	}
+}
+
+func TestGoalIsDueForReview_Completed(t *testing.T) {
+	g := Goal{Status: GoalStatusCompleted, ReviewFrequency: "weekly", LastReviewed: "2020-01-01"}
+	if g.IsDueForReview() {
+		t.Error("completed goal should not be due for review")
+	}
+}
+
+func TestGoalNextReviewDate(t *testing.T) {
+	today := time.Now().Format("2006-01-02")
+	g := Goal{ReviewFrequency: "monthly", LastReviewed: today}
+	next := g.NextReviewDate()
+	if next == "" || next <= today {
+		t.Errorf("NextReviewDate() = %q, should be after today", next)
+	}
+}
+
+func TestGoalNextReviewDate_NoFrequency(t *testing.T) {
+	g := Goal{}
+	if g.NextReviewDate() != "" {
+		t.Error("NextReviewDate() with no frequency should return empty")
+	}
+}
+
 func TestGoalsModeUniqueCategories(t *testing.T) {
 	gm := &GoalsMode{
 		goals: []Goal{
