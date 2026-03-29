@@ -42,6 +42,7 @@ type Goal struct {
 	Description string          `json:"description,omitempty"`
 	Status      GoalStatus      `json:"status"`
 	Category    string          `json:"category,omitempty"` // e.g. "Career", "Health", "Learning"
+	Color       string          `json:"color,omitempty"`  // "red","blue","green","yellow","mauve","pink","teal"
 	Tags        []string        `json:"tags,omitempty"`
 	TargetDate  string          `json:"target_date,omitempty"` // YYYY-MM-DD
 	CreatedAt   string          `json:"created_at"`
@@ -53,6 +54,28 @@ type Goal struct {
 	ReviewFrequency string          `json:"review_frequency,omitempty"` // "weekly", "monthly", "quarterly"
 	LastReviewed    string          `json:"last_reviewed,omitempty"`    // YYYY-MM-DD
 	ReviewLog       []GoalReview    `json:"review_log,omitempty"`
+}
+
+// goalColorMap returns the theme color for a goal color name.
+func goalColorMap(name string) lipgloss.Color {
+	switch name {
+	case "red":
+		return red
+	case "blue":
+		return blue
+	case "green":
+		return green
+	case "yellow":
+		return yellow
+	case "mauve":
+		return mauve
+	case "pink":
+		return pink
+	case "teal":
+		return teal
+	default:
+		return blue
+	}
 }
 
 // GoalReview records a periodic check-in on a goal.
@@ -215,6 +238,7 @@ const (
 	goalInputReviewFreq         // setting review frequency
 	goalInputReview             // writing review reflection
 	goalInputMilestoneDue       // setting milestone due date
+	goalInputColor              // setting goal color
 	goalInputHelp               // showing help
 )
 
@@ -886,6 +910,12 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			gm.inputBuf = goal.Notes
 		}
 
+	// Set goal color
+	case "C":
+		if gm.cursor < len(gm.filtered) {
+			gm.input = goalInputColor
+		}
+
 	// Reorder milestones
 	case "J":
 		if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
@@ -1084,6 +1114,40 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 			if len(key) == 1 || key == " " {
 				gm.inputBuf += key
 			}
+		}
+
+	case goalInputColor:
+		colors := []string{"blue", "red", "green", "yellow", "mauve", "pink", "teal"}
+		switch key {
+		case "esc":
+			gm.input = goalInputNone
+		case "1", "2", "3", "4", "5", "6", "7":
+			idx := int(key[0] - '1')
+			if idx < len(colors) && gm.cursor < len(gm.filtered) {
+				goal := gm.filtered[gm.cursor]
+				gi := gm.findGoalIndex(goal.ID)
+				if gi >= 0 {
+					gm.goals[gi].Color = colors[idx]
+					gm.goals[gi].UpdatedAt = time.Now().Format("2006-01-02")
+					gm.saveGoals()
+					gm.rebuildFiltered()
+					gm.statusMsg = "Color: " + colors[idx]
+				}
+			}
+			gm.input = goalInputNone
+		case "0":
+			if gm.cursor < len(gm.filtered) {
+				goal := gm.filtered[gm.cursor]
+				gi := gm.findGoalIndex(goal.ID)
+				if gi >= 0 {
+					gm.goals[gi].Color = ""
+					gm.goals[gi].UpdatedAt = time.Now().Format("2006-01-02")
+					gm.saveGoals()
+					gm.rebuildFiltered()
+					gm.statusMsg = "Color reset"
+				}
+			}
+			gm.input = goalInputNone
 		}
 
 	case goalInputMilestoneDue:
@@ -1425,7 +1489,11 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 			if goal.IsOverdue() {
 				statusIcon = lipgloss.NewStyle().Foreground(red).Bold(true).Render("! ")
 			} else {
-				statusIcon = lipgloss.NewStyle().Foreground(blue).Render("\u25CB ")
+				goalCol := blue
+				if goal.Color != "" {
+					goalCol = goalColorMap(goal.Color)
+				}
+				statusIcon = lipgloss.NewStyle().Foreground(goalCol).Render("\u25CB ")
 			}
 		default:
 			statusIcon = DimStyle.Render("\u25CB ")
@@ -1440,6 +1508,9 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 		}
 		// Bar color: green when on track, yellow <50%, red if overdue
 		barColor := green
+		if goal.Color != "" {
+			barColor = goalColorMap(goal.Color)
+		}
 		if goal.IsOverdue() {
 			barColor = red
 		} else if prog < 50 && goal.TargetDate != "" && goal.DaysRemaining() < 30 {
@@ -1653,6 +1724,19 @@ func (gm *GoalsMode) renderInput(b *strings.Builder, w int) {
 		b.WriteString("  " + hintStyle.Render("Enter to confirm, empty to skip"))
 	case goalInputMilestone:
 		b.WriteString("\n  " + promptStyle.Render("Add Milestone: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
+	case goalInputColor:
+		b.WriteString("\n  " + promptStyle.Render("Set goal color:") + "\n\n")
+		colors := []struct{ name string; color lipgloss.Color }{
+			{"blue", blue}, {"red", red}, {"green", green}, {"yellow", yellow},
+			{"mauve", mauve}, {"pink", pink}, {"teal", teal},
+		}
+		for i, c := range colors {
+			swatch := lipgloss.NewStyle().Foreground(c.color).Render("\u2588\u2588")
+			num := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(fmt.Sprintf("%d", i+1))
+			b.WriteString("  " + num + " " + swatch + " " + c.name + "\n")
+		}
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("0") + " reset\n\n")
+		b.WriteString("  " + hintStyle.Render("Pick a color or Esc to cancel"))
 	case goalInputMilestoneDue:
 		b.WriteString("\n  " + promptStyle.Render("Milestone due date:") + "\n\n")
 		ss := lipgloss.NewStyle().Foreground(lavender).Bold(true)
