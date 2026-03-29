@@ -230,7 +230,23 @@ func findRelevantNotes(query string, notes map[string]string, maxChars int) (con
 			score += len(matches)
 			// Bonus for keyword in note name.
 			if strings.Contains(lowerPath, kw) {
-				score += 3
+				score += 5
+			}
+			// Bonus for keyword in headings (higher signal)
+			for _, line := range strings.Split(body, "\n") {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "#") && kwRegexps[i].MatchString(trimmed) {
+					score += 3
+				}
+			}
+		}
+		// Bonus for tag matches
+		tags := extractFrontmatterTags(body)
+		for _, tag := range tags {
+			for _, kw := range keywords {
+				if strings.EqualFold(tag, kw) {
+					score += 4
+				}
 			}
 		}
 		if score > 0 {
