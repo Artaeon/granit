@@ -898,6 +898,12 @@ func (m *Model) loadNoteWithoutBreadcrumb(relPath string) {
 	m.statusbar.SetActiveNote(relPath)
 	if m.ghostWriter != nil {
 		m.ghostWriter.SetNoteTitle(relPath)
+		tags := extractFrontmatterTags(note.Content)
+		if len(tags) > 0 {
+			m.ghostWriter.SetNoteTags(strings.Join(tags, ", "))
+		} else {
+			m.ghostWriter.SetNoteTags("")
+		}
 	}
 	m.statusbar.SetWordCount(m.editor.GetWordCount())
 	m.viewScroll = 0

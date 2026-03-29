@@ -57,6 +57,7 @@ type GhostWriter struct {
 	contextLines int    // number of lines before cursor to send as context (default: 30)
 	maxTokens    int    // max tokens for completion (default: 50)
 	noteTitle    string // current note title for context
+	noteTags     string // comma-separated tags for topical grounding
 
 	// Internal: shuttled from OnEdit to debounce handler
 	contextBuf  string
@@ -120,6 +121,11 @@ func (gw *GhostWriter) SetConfig(provider, model, ollamaURL, apiKey string, nous
 // SetNoteTitle updates the note title used for ghost writer context.
 func (gw *GhostWriter) SetNoteTitle(title string) {
 	gw.noteTitle = title
+}
+
+// SetNoteTags updates the tags used for ghost writer context grounding.
+func (gw *GhostWriter) SetNoteTags(tags string) {
+	gw.noteTags = tags
 }
 
 // ---------------------------------------------------------------------------
@@ -254,7 +260,27 @@ func (gw *GhostWriter) buildContext(content []string, cursorLine, cursorCol int)
 	if gw.noteTitle != "" {
 		b.WriteString("# ")
 		b.WriteString(strings.TrimSuffix(gw.noteTitle, ".md"))
-		b.WriteString("\n\n")
+		b.WriteString("\n")
+	}
+
+	// Add tags for topical grounding (helps 0.5b stay on topic).
+	if gw.noteTags != "" {
+		b.WriteString("Tags: " + gw.noteTags + "\n")
+	}
+	b.WriteString("\n")
+
+	// Skip YAML frontmatter in context window.
+	fmEnd := 0
+	if len(content) > 0 && strings.TrimSpace(content[0]) == "---" {
+		for i := 1; i < len(content); i++ {
+			if strings.TrimSpace(content[i]) == "---" {
+				fmEnd = i + 1
+				break
+			}
+		}
+	}
+	if startLine < fmEnd {
+		startLine = fmEnd
 	}
 
 	// Find the nearest heading above the cursor (if outside context window).
