@@ -459,17 +459,75 @@ func (b *Bots) buildAutoTaggerPrompt() string {
 		content = content[:2000]
 	}
 
-	return fmt.Sprintf(`You are a note tagging assistant. Analyze the following note and suggest 3-5 relevant tags.
+	// Find 2-3 similar notes by shared words to provide few-shot examples.
+	examples := ""
+	type noteScore struct {
+		path string
+		tags []string
+		score int
+	}
+	currentWords := make(map[string]bool)
+	for _, w := range strings.Fields(strings.ToLower(noteName)) {
+		if len(w) > 3 {
+			currentWords[w] = true
+		}
+	}
+	var scored []noteScore
+	for path, body := range b.notes {
+		if path == b.currentPath {
+			continue
+		}
+		tags := extractFrontmatterTags(body)
+		if len(tags) == 0 {
+			continue
+		}
+		score := 0
+		lower := strings.ToLower(filepath.Base(path))
+		for w := range currentWords {
+			if strings.Contains(lower, w) {
+				score += 2
+			}
+		}
+		for _, tag := range tags {
+			for w := range currentWords {
+				if strings.Contains(strings.ToLower(tag), w) {
+					score++
+				}
+			}
+		}
+		if score > 0 {
+			scored = append(scored, noteScore{path, tags, score})
+		}
+	}
+	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
+	if len(scored) > 3 {
+		scored = scored[:3]
+	}
+	if len(scored) > 0 {
+		var exLines []string
+		for _, s := range scored {
+			name := strings.TrimSuffix(filepath.Base(s.path), ".md")
+			exLines = append(exLines, fmt.Sprintf("  %s -> %s", name, strings.Join(s.tags, ", ")))
+		}
+		examples = "\n\nExamples of how similar notes are tagged:\n" + strings.Join(exLines, "\n")
+	}
+
+	return fmt.Sprintf(`You are a note tagging assistant. Suggest 3-5 tags for this note. Prefer existing tags from the vault when they fit.
 
 Note title: %s
-Existing tags in vault: %s
+Existing tags in vault: %s%s
 
 Note content:
 ---
 %s
 ---
 
-Respond with ONLY a comma-separated list of tags (lowercase, no # prefix). Example: technology, programming, golang`, noteName, tagList, content)
+Rules:
+- Use existing vault tags when possible (reduces tag sprawl)
+- Tags should be specific and descriptive (not generic like "note" or "misc")
+- Lowercase, no # prefix
+
+Respond with ONLY a comma-separated list of tags.`, noteName, tagList, examples, content)
 }
 
 func (b *Bots) buildLinkSuggesterPrompt() string {
