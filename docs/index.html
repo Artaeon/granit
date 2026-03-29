@@ -4,1791 +4,642 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Granit — Terminal Knowledge Manager</title>
-  <meta name="description" content="A blazing-fast, AI-powered terminal knowledge manager. Fully Obsidian compatible, built with Go and Bubble Tea.">
+  <meta name="description" content="A blazing-fast, AI-powered terminal knowledge manager. Fully Obsidian compatible, built with Go.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    *, *::before, *::after {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #1e1e2e;
-      --bg-surface: #181825;
-      --bg-overlay: #11111b;
-      --bg-card: #252538;
-      --text: #cdd6f4;
-      --text-dim: #a6adc8;
-      --text-muted: #6c7086;
-      --accent: #cba6f7;
-      --blue: #89b4fa;
-      --green: #a6e3a1;
-      --peach: #fab387;
-      --red: #f38ba8;
-      --yellow: #f9e2af;
-      --teal: #94e2d5;
-      --border: #313244;
-      --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code", "Source Code Pro", ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace;
-      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --bg: #0a0a0f;
+      --bg-elevated: #111118;
+      --bg-card: #16161e;
+      --bg-glass: rgba(22, 22, 30, 0.7);
+      --text: #e4e4ed;
+      --text-secondary: #9898a8;
+      --text-muted: #5c5c6e;
+      --accent: #b48ead;
+      --accent-glow: rgba(180, 142, 173, 0.15);
+      --blue: #7aa2f7;
+      --green: #9ece6a;
+      --peach: #e0af68;
+      --red: #f7768e;
+      --teal: #73daca;
+      --border: rgba(255,255,255,0.06);
+      --border-hover: rgba(255,255,255,0.12);
+      --radius: 16px;
+      --radius-sm: 10px;
+      --mono: "JetBrains Mono", ui-monospace, monospace;
+      --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    html {
-      scroll-behavior: smooth;
-    }
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
 
     body {
-      background-color: var(--bg);
+      background: var(--bg);
       color: var(--text);
-      font-family: var(--font-sans);
+      font-family: var(--sans);
       line-height: 1.7;
       overflow-x: hidden;
     }
 
-    a {
-      color: var(--accent);
-      text-decoration: none;
-      transition: color 0.2s ease;
-    }
+    ::selection { background: rgba(180,142,173,0.3); color: #fff; }
 
-    a:hover {
-      color: var(--blue);
-    }
+    a { color: var(--accent); text-decoration: none; transition: color 0.2s; }
+    a:hover { color: var(--blue); }
 
-    /* ─── Scroll Fade-in Animations ─── */
-    @keyframes fadeInUp {
-      from {
-        opacity: 0;
-        transform: translateY(40px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .fade-in {
-      animation: fadeInUp 0.7s ease both;
-    }
-
-    .fade-in-delay-1 { animation-delay: 0.1s; }
-    .fade-in-delay-2 { animation-delay: 0.2s; }
-    .fade-in-delay-3 { animation-delay: 0.3s; }
-    .fade-in-delay-4 { animation-delay: 0.4s; }
-
-    /* ─── Navigation ─── */
-    nav {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      z-index: 100;
-      background: rgba(30, 30, 46, 0.85);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--border);
-      padding: 0.75rem 2rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    nav .logo {
-      font-family: var(--font-mono);
-      font-size: 1.1rem;
-      font-weight: 700;
-      color: var(--accent);
-      letter-spacing: 0.05em;
-      z-index: 102;
-    }
-
-    nav .nav-links {
-      display: flex;
-      gap: 1.5rem;
-      list-style: none;
-    }
-
-    nav .nav-links a {
-      color: var(--text-dim);
-      font-size: 0.9rem;
-      font-weight: 500;
-      transition: color 0.2s ease;
-    }
-
-    nav .nav-links a:hover {
-      color: var(--accent);
-    }
-
-    /* ─── Hamburger Menu (CSS-only) ─── */
-    .hamburger-toggle {
-      display: none;
-    }
-
-    .hamburger-label {
-      display: none;
-      flex-direction: column;
-      justify-content: center;
-      gap: 5px;
-      width: 28px;
-      height: 28px;
-      cursor: pointer;
-      z-index: 102;
-    }
-
-    .hamburger-label span {
-      display: block;
-      width: 100%;
-      height: 2px;
-      background: var(--text);
-      border-radius: 2px;
-      transition: transform 0.3s ease, opacity 0.3s ease;
-    }
-
-    .hamburger-toggle:checked ~ .hamburger-label span:nth-child(1) {
-      transform: rotate(45deg) translate(5px, 5px);
-    }
-
-    .hamburger-toggle:checked ~ .hamburger-label span:nth-child(2) {
+    /* ── Scroll Animations ── */
+    .reveal {
       opacity: 0;
+      transform: translateY(30px);
+      transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
     }
 
-    .hamburger-toggle:checked ~ .hamburger-label span:nth-child(3) {
-      transform: rotate(-45deg) translate(5px, -5px);
+    /* ── Navigation ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(10,10,15,0.8);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      font-family: var(--mono); font-weight: 700; font-size: 1.1rem;
+      color: var(--accent); letter-spacing: 0.05em;
+    }
+    .nav-links { list-style: none; display: flex; gap: 2rem; }
+    .nav-links a {
+      color: var(--text-secondary); font-size: 0.85rem; font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    /* Mobile Nav */
+    .nav-toggle { display: none; }
+    .hamburger {
+      display: none; cursor: pointer; flex-direction: column; gap: 5px;
+      width: 22px; height: 18px; justify-content: center;
+    }
+    .hamburger span {
+      display: block; height: 2px; background: var(--text-secondary);
+      border-radius: 2px; transition: all 0.3s ease;
+    }
+    .nav-toggle:checked ~ .hamburger span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
+    .nav-toggle:checked ~ .hamburger span:nth-child(2) { opacity: 0; }
+    .nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
+
+    .mobile-menu {
+      display: none; position: fixed; inset: 0; z-index: 99;
+      background: rgba(10,10,15,0.97); backdrop-filter: blur(20px);
+      flex-direction: column; align-items: center; justify-content: center; gap: 2.5rem;
+    }
+    .nav-toggle:checked ~ .mobile-menu { display: flex; }
+    .mobile-menu a {
+      color: var(--text); font-size: 1.4rem; font-weight: 600;
+      font-family: var(--mono);
     }
 
-    .mobile-nav-overlay {
-      display: none;
-    }
-
-    /* ─── Back to Top ─── */
-    .back-to-top {
-      position: fixed;
-      bottom: 2rem;
-      right: 2rem;
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      color: var(--accent);
-      font-size: 1.2rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-decoration: none;
-      z-index: 90;
-      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    }
-
-    .back-to-top:hover {
-      transform: translateY(-3px);
-      border-color: var(--accent);
-      box-shadow: 0 6px 20px rgba(203, 166, 247, 0.2);
-      color: var(--accent);
-    }
-
-    /* ─── Sections ─── */
-    section {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 5rem 2rem;
-    }
-
-    .section-title {
-      font-family: var(--font-mono);
-      font-size: 1.8rem;
-      font-weight: 700;
-      color: var(--text);
-      margin-bottom: 0.5rem;
-      text-align: center;
-    }
-
-    .section-title .accent {
-      color: var(--accent);
-    }
-
-    .section-subtitle {
-      color: var(--text-dim);
-      text-align: center;
-      margin-bottom: 3rem;
-      font-size: 1.05rem;
-    }
-
-    /* ─── Hero ─── */
+    /* ── Hero ── */
     .hero {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding-top: 4rem;
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; text-align: center;
+      padding: 8rem 2rem 6rem; position: relative;
     }
-
-    .hero-ascii {
-      font-family: var(--font-mono);
-      font-size: clamp(0.45rem, 1.8vw, 0.95rem);
-      line-height: 1.3;
-      color: var(--accent);
-      white-space: pre;
+    .hero::before {
+      content: ""; position: absolute; top: -20%; left: 50%; transform: translateX(-50%);
+      width: 600px; height: 600px; border-radius: 50%;
+      background: radial-gradient(circle, var(--accent-glow), transparent 70%);
+      pointer-events: none;
+    }
+    .hero-overline {
+      font-family: var(--mono); font-size: 0.8rem; font-weight: 500;
+      color: var(--accent); letter-spacing: 0.15em; text-transform: uppercase;
       margin-bottom: 1.5rem;
-      text-shadow: 0 0 30px rgba(203, 166, 247, 0.3);
     }
-
-    .hero-tagline {
-      font-size: clamp(1rem, 3vw, 1.5rem);
-      color: var(--text);
-      margin-bottom: 0.75rem;
-      font-weight: 600;
+    .hero h1 {
+      font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 700;
+      line-height: 1.1; max-width: 800px;
+      background: linear-gradient(135deg, var(--text) 0%, var(--text-secondary) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; margin-bottom: 1.5rem;
     }
-
-    .hero-sub {
-      color: var(--text-dim);
-      font-size: 1.05rem;
-      margin-bottom: 2.5rem;
-      max-width: 550px;
+    .hero p {
+      color: var(--text-secondary); font-size: 1.15rem; max-width: 560px;
+      line-height: 1.8; margin-bottom: 2.5rem;
     }
-
-    .hero-cursor {
-      display: inline-block;
-      width: 2px;
-      height: 1.1em;
-      background: var(--accent);
-      margin-left: 2px;
-      vertical-align: text-bottom;
-      animation: blink 1s step-end infinite;
-    }
-
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
-    }
-
-    .hero-buttons {
-      display: flex;
-      gap: 1rem;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-
+    .hero-buttons { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
     .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.75rem 1.75rem;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      transition: transform 0.15s ease, box-shadow 0.2s ease;
-      text-decoration: none;
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.85rem 2rem; border-radius: 12px; font-weight: 600;
+      font-size: 0.95rem; transition: all 0.3s ease;
     }
-
-    .btn:hover {
-      transform: translateY(-2px);
-    }
-
     .btn-primary {
-      background: var(--accent);
-      color: var(--bg-overlay);
+      background: var(--accent); color: #0a0a0f;
     }
-
-    .btn-primary:hover {
-      color: var(--bg-overlay);
-      box-shadow: 0 4px 20px rgba(203, 166, 247, 0.4);
-    }
-
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(180,142,173,0.3); color: #0a0a0f; }
     .btn-secondary {
-      background: transparent;
-      color: var(--text);
-      border: 1px solid var(--border);
+      background: var(--bg-card); color: var(--text); border: 1px solid var(--border);
     }
-
-    .btn-secondary:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-      box-shadow: 0 4px 20px rgba(203, 166, 247, 0.15);
-    }
-
+    .btn-secondary:hover { border-color: var(--border-hover); transform: translateY(-2px); color: var(--text); }
     .hero-badges {
-      display: flex;
-      gap: 1rem;
-      flex-wrap: wrap;
-      justify-content: center;
-      margin-top: 2.5rem;
+      display: flex; gap: 0.75rem; margin-top: 3rem; flex-wrap: wrap; justify-content: center;
     }
-
     .badge {
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      padding: 0.3rem 0.75rem;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      color: var(--text-dim);
+      font-family: var(--mono); font-size: 0.7rem; font-weight: 500;
+      color: var(--text-muted); padding: 0.35rem 0.9rem;
+      border: 1px solid var(--border); border-radius: 20px;
     }
 
-    /* ─── Features Grid ─── */
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1.25rem;
-    }
-
-    .feature-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.75rem;
-      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .feature-card:hover {
-      transform: translateY(-4px);
-      border-color: var(--accent);
-      box-shadow: 0 8px 30px rgba(203, 166, 247, 0.1);
-    }
-
-    .feature-icon {
-      font-size: 1.75rem;
-      margin-bottom: 0.75rem;
-      display: block;
-    }
-
-    .feature-card h3 {
-      font-family: var(--font-mono);
-      font-size: 1.05rem;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 0.5rem;
-    }
-
-    .feature-card p {
-      color: var(--text-dim);
-      font-size: 0.9rem;
-      line-height: 1.6;
-    }
-
-    .feature-card:nth-child(1) .feature-icon { color: var(--accent); }
-    .feature-card:nth-child(2) .feature-icon { color: var(--green); }
-    .feature-card:nth-child(3) .feature-icon { color: var(--peach); }
-    .feature-card:nth-child(4) .feature-icon { color: var(--blue); }
-    .feature-card:nth-child(5) .feature-icon { color: var(--red); }
-    .feature-card:nth-child(6) .feature-icon { color: var(--green); }
-    .feature-card:nth-child(7) .feature-icon { color: var(--peach); }
-    .feature-card:nth-child(8) .feature-icon { color: var(--accent); }
-    .feature-card:nth-child(9) .feature-icon { color: var(--blue); }
-
-    /* ─── Feature Showcase (Alternating Layout) ─── */
-    .showcase {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 3rem 2rem 5rem;
-    }
-
-    .showcase-item {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 3rem;
-      align-items: center;
-      margin-bottom: 5rem;
-    }
-
-    .showcase-item:last-child {
-      margin-bottom: 0;
-    }
-
-    .showcase-item.reverse {
-      direction: rtl;
-    }
-
-    .showcase-item.reverse > * {
-      direction: ltr;
-    }
-
-    .showcase-image {
-      background: var(--bg-overlay);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
-    }
-
-    .showcase-image img {
-      width: 100%;
-      height: auto;
-      display: block;
-    }
-
-    .showcase-text h3 {
-      font-family: var(--font-mono);
-      font-size: 1.4rem;
-      font-weight: 700;
-      color: var(--text);
-      margin-bottom: 0.75rem;
-    }
-
-    .showcase-text h3 .accent {
-      color: var(--accent);
-    }
-
-    .showcase-text p {
-      color: var(--text-dim);
-      font-size: 1rem;
+    /* ── Section ── */
+    section { padding: 7rem 2rem; max-width: 1200px; margin: 0 auto; }
+    .section-label {
+      font-family: var(--mono); font-size: 0.75rem; font-weight: 600;
+      color: var(--accent); letter-spacing: 0.15em; text-transform: uppercase;
       margin-bottom: 1rem;
-      line-height: 1.7;
+    }
+    .section-title {
+      font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 700;
+      line-height: 1.2; margin-bottom: 1rem;
+    }
+    .section-sub {
+      color: var(--text-secondary); font-size: 1.05rem; max-width: 600px;
+      line-height: 1.8; margin-bottom: 4rem;
     }
 
-    .showcase-text ul {
-      list-style: none;
-      padding: 0;
+    /* ── Feature Grid ── */
+    .features-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem;
+    }
+    .feature-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 2rem;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .feature-card:hover {
+      border-color: var(--border-hover); transform: translateY(-4px);
+      box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+    }
+    .feature-icon {
+      font-size: 1.8rem; display: block; margin-bottom: 1rem;
+    }
+    .feature-card h3 {
+      font-size: 1.05rem; font-weight: 600; margin-bottom: 0.5rem;
+    }
+    .feature-card p {
+      color: var(--text-secondary); font-size: 0.88rem; line-height: 1.6;
     }
 
-    .showcase-text ul li {
-      color: var(--text-dim);
-      font-size: 0.95rem;
-      padding: 0.3rem 0;
-      padding-left: 1.5rem;
-      position: relative;
-      line-height: 1.6;
+    /* ── Showcase ── */
+    .showcase-item {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 4rem;
+      align-items: center; margin-bottom: 6rem;
     }
-
-    .showcase-text ul li::before {
-      content: "\25b8";
-      color: var(--accent);
-      position: absolute;
-      left: 0;
-      font-size: 0.85rem;
-    }
-
-    /* ─── Comparison Table ─── */
-    .comparison {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 5rem 2rem;
-    }
-
-    .comparison-wrapper {
-      overflow-x: auto;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-    }
-
-    .comparison-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.9rem;
-      min-width: 500px;
-    }
-
-    .comparison-table thead th {
-      font-family: var(--font-mono);
-      font-weight: 700;
-      padding: 1rem 1.25rem;
-      text-align: center;
-      background: var(--bg-surface);
-      border-bottom: 2px solid var(--border);
-      color: var(--text);
-      white-space: nowrap;
-    }
-
-    .comparison-table thead th:first-child {
-      text-align: left;
-      color: var(--text-dim);
-    }
-
-    .comparison-table thead th.highlight {
-      color: var(--accent);
-      background: rgba(203, 166, 247, 0.08);
-    }
-
-    .comparison-table tbody td {
-      padding: 0.75rem 1.25rem;
-      text-align: center;
-      border-bottom: 1px solid var(--border);
-      color: var(--text-dim);
-    }
-
-    .comparison-table tbody td:first-child {
-      text-align: left;
-      font-family: var(--font-mono);
-      font-size: 0.85rem;
-      font-weight: 500;
-      color: var(--text);
-      white-space: nowrap;
-    }
-
-    .comparison-table tbody td.highlight {
-      background: rgba(203, 166, 247, 0.04);
-    }
-
-    .comparison-table tbody tr:last-child td {
-      border-bottom: none;
-    }
-
-    .comparison-table tbody tr:hover {
-      background: rgba(203, 166, 247, 0.03);
-    }
-
-    .check {
-      color: var(--green);
-      font-weight: 700;
-      font-size: 1.1rem;
-    }
-
-    .cross {
-      color: var(--red);
-      font-size: 1.1rem;
-      opacity: 0.6;
-    }
-
-    .partial {
-      color: var(--yellow);
-      font-size: 0.8rem;
-      font-family: var(--font-mono);
-    }
-
-    /* ─── Demo ─── */
-    .demo {
-      text-align: center;
-    }
-
-    .demo-container {
-      background: var(--bg-overlay);
-      border: 1px solid var(--border);
-      border-radius: 12px;
+    .showcase-item.reverse { direction: rtl; }
+    .showcase-item.reverse > * { direction: ltr; }
+    .showcase-visual {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 2rem; min-height: 280px;
+      display: flex; align-items: center; justify-content: center;
       overflow: hidden;
-      max-width: 900px;
-      margin: 0 auto;
+    }
+    .showcase-visual img {
+      width: 100%; height: auto; border-radius: var(--radius-sm);
+    }
+    .showcase-terminal {
+      font-family: var(--mono); font-size: 0.75rem; color: var(--text-secondary);
+      line-height: 1.7; white-space: pre; overflow: hidden;
+    }
+    .showcase-text h3 {
+      font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem;
+    }
+    .showcase-text p {
+      color: var(--text-secondary); font-size: 0.95rem; line-height: 1.8;
+      margin-bottom: 1.5rem;
+    }
+    .showcase-list {
+      list-style: none; display: flex; flex-direction: column; gap: 0.6rem;
+    }
+    .showcase-list li {
+      color: var(--text-secondary); font-size: 0.88rem;
+      padding-left: 1.5rem; position: relative;
+    }
+    .showcase-list li::before {
+      content: ""; position: absolute; left: 0; top: 0.55rem;
+      width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
     }
 
-    .demo-titlebar {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.75rem 1rem;
-      background: var(--bg-surface);
-      border-bottom: 1px solid var(--border);
+    /* ── Stats ── */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(6, 1fr); gap: 1rem;
     }
-
-    .demo-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-    }
-
-    .demo-dot:nth-child(1) { background: var(--red); }
-    .demo-dot:nth-child(2) { background: var(--peach); }
-    .demo-dot:nth-child(3) { background: var(--green); }
-
-    .demo-titlebar span {
-      margin-left: 0.5rem;
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      color: var(--text-muted);
-    }
-
-    .demo-container img {
-      width: 100%;
-      height: auto;
-      display: block;
-    }
-
-    .demo-caption {
-      color: var(--text-muted);
-      font-size: 0.9rem;
-      margin-top: 1rem;
-    }
-
-    /* ─── Stats ─── */
-    .stats-row {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1.25rem;
-      margin-top: 1rem;
-    }
-
     .stat-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 1.75rem 1rem;
       text-align: center;
-      padding: 2rem 1rem;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      transition: border-color 0.2s ease;
     }
-
-    .stat-card:hover {
-      border-color: var(--accent);
-    }
-
     .stat-number {
-      font-family: var(--font-mono);
-      font-size: 2rem;
-      font-weight: 700;
-      display: block;
-      margin-bottom: 0.25rem;
+      font-family: var(--mono); font-size: 1.8rem; font-weight: 700;
+      color: var(--text); display: block;
     }
-
-    .stat-card:nth-child(1) .stat-number { color: var(--accent); }
-    .stat-card:nth-child(2) .stat-number { color: var(--blue); }
-    .stat-card:nth-child(3) .stat-number { color: var(--peach); }
-    .stat-card:nth-child(4) .stat-number { color: var(--green); }
-    .stat-card:nth-child(5) .stat-number { color: var(--teal, #94e2d5); }
-    .stat-card:nth-child(6) .stat-number { color: var(--red); }
-
     .stat-label {
-      color: var(--text-dim);
-      font-size: 0.9rem;
+      color: var(--text-muted); font-size: 0.78rem; margin-top: 0.3rem;
     }
 
-    /* ─── Keyboard Shortcuts ─── */
-    .shortcuts {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 5rem 2rem;
-    }
-
+    /* ── Shortcuts ── */
     .shortcuts-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0.75rem;
-      max-width: 800px;
-      margin: 0 auto;
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;
     }
-
-    .shortcut-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0.85rem 1.25rem;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      transition: border-color 0.2s ease, transform 0.15s ease;
+    .shortcut-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 1.25rem;
+      display: flex; align-items: center; gap: 1rem;
+      transition: border-color 0.3s;
     }
-
-    .shortcut-item:hover {
-      border-color: var(--accent);
-      transform: translateX(4px);
-    }
-
-    .shortcut-label {
-      color: var(--text-dim);
-      font-size: 0.9rem;
-    }
-
+    .shortcut-card:hover { border-color: var(--border-hover); }
     .shortcut-keys {
-      display: flex;
-      gap: 0.3rem;
-      align-items: center;
+      display: flex; gap: 4px;
+    }
+    .shortcut-keys kbd {
+      font-family: var(--mono); font-size: 0.7rem; font-weight: 600;
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      padding: 0.3rem 0.55rem; border-radius: 6px; color: var(--text);
+    }
+    .shortcut-label {
+      font-size: 0.82rem; color: var(--text-secondary);
     }
 
-    kbd {
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      padding: 0.3rem 0.6rem;
-      background: var(--bg-overlay);
-      border: 1px solid var(--border);
-      border-bottom: 3px solid var(--border);
-      border-radius: 6px;
-      color: var(--accent);
-      white-space: nowrap;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-    }
-
-    .key-plus {
-      color: var(--text-muted);
-      font-size: 0.75rem;
-      font-family: var(--font-mono);
-    }
-
-    /* ─── Theme Showcase ─── */
-    .theme-showcase {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 5rem 2rem;
-    }
-
-    .theme-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1.25rem;
-    }
-
-    .theme-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.25rem;
-      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .theme-card:hover {
-      transform: translateY(-4px);
-      border-color: var(--accent);
-      box-shadow: 0 8px 30px rgba(203, 166, 247, 0.1);
-    }
-
-    .theme-card-name {
-      font-family: var(--font-mono);
-      font-size: 0.9rem;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 0.75rem;
-    }
-
-    .theme-palette {
-      display: flex;
-      gap: 4px;
-      height: 32px;
-      border-radius: 6px;
-      overflow: hidden;
-    }
-
-    .theme-palette .swatch {
-      flex: 1;
-      border-radius: 4px;
-    }
-
-    .theme-card-desc {
-      color: var(--text-muted);
-      font-size: 0.8rem;
-      margin-top: 0.6rem;
-    }
-
-    /* ─── Installation ─── */
-    .install-block {
-      max-width: 700px;
-      margin: 0 auto;
-    }
-
-    .install-method {
-      margin-bottom: 2rem;
-    }
-
-    .install-method h3 {
-      font-family: var(--font-mono);
-      font-size: 1rem;
-      color: var(--text-dim);
-      margin-bottom: 0.75rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .install-method h3 .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      display: inline-block;
-    }
-
+    /* ── Install ── */
+    .install-block { max-width: 640px; }
     .code-block {
-      position: relative;
-      background: var(--bg-overlay);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      overflow: hidden;
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 1.5rem;
     }
-
     .code-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0.6rem 1rem;
-      background: var(--bg-surface);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.6rem 1rem; background: var(--bg-card);
       border-bottom: 1px solid var(--border);
     }
-
-    .code-header span {
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      color: var(--text-muted);
+    .code-dots { display: flex; gap: 6px; }
+    .code-dots span {
+      width: 10px; height: 10px; border-radius: 50%;
     }
-
-    .copy-btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text-dim);
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      padding: 0.25rem 0.6rem;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.2s ease;
+    .code-lang {
+      font-family: var(--mono); font-size: 0.7rem; color: var(--text-muted);
     }
-
-    .copy-btn:hover {
-      border-color: var(--accent);
-      color: var(--accent);
+    .code-body {
+      padding: 1.25rem; font-family: var(--mono); font-size: 0.82rem;
+      color: var(--text-secondary); line-height: 1.8; overflow-x: auto;
     }
+    .code-body .cmd { color: var(--blue); }
+    .code-body .arg { color: var(--peach); }
+    .code-body .comment { color: var(--text-muted); }
 
-    .copy-btn.copied {
-      border-color: var(--green);
-      color: var(--green);
+    /* ── Comparison ── */
+    .comparison-table {
+      width: 100%; border-collapse: collapse;
+      font-size: 0.88rem; line-height: 1.6;
     }
-
-    .code-block pre {
-      padding: 1.25rem;
-      overflow-x: auto;
+    .comparison-table th {
+      text-align: left; padding: 1rem; font-weight: 600;
+      border-bottom: 1px solid var(--border); color: var(--text-secondary);
     }
-
-    .code-block code {
-      font-family: var(--font-mono);
-      font-size: 0.9rem;
-      line-height: 1.7;
-      color: var(--text);
+    .comparison-table th.hl { color: var(--accent); }
+    .comparison-table td {
+      padding: 0.85rem 1rem; border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
     }
+    .comparison-table td.hl { color: var(--text); }
+    .ck { color: var(--green); font-weight: 600; }
+    .cx { color: var(--red); }
+    .cp { color: var(--peach); }
 
-    .code-block .prompt {
-      color: var(--green);
-      user-select: none;
-    }
-
-    .code-block .comment {
-      color: var(--text-muted);
-    }
-
-    .code-block .cmd {
-      color: var(--blue);
-    }
-
-    .code-block .arg {
-      color: var(--peach);
-    }
-
-    /* ─── Documentation ─── */
+    /* ── Docs ── */
     .docs-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 1rem;
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;
     }
-
     .doc-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1.25rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.4rem;
-      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-      text-decoration: none;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 1.5rem;
+      transition: all 0.3s ease; text-decoration: none; display: block;
     }
-
     .doc-card:hover {
-      transform: translateY(-3px);
-      border-color: var(--accent);
-      box-shadow: 0 6px 20px rgba(203, 166, 247, 0.1);
-      color: var(--text);
+      border-color: var(--border-hover); transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
     }
-
-    .doc-card .doc-icon {
-      font-size: 1.5rem;
-    }
-
     .doc-card h4 {
-      font-family: var(--font-mono);
-      font-size: 0.9rem;
-      color: var(--text);
-      font-weight: 600;
+      font-family: var(--mono); font-size: 0.9rem; color: var(--text);
+      margin-bottom: 0.4rem;
     }
+    .doc-card p { color: var(--text-muted); font-size: 0.8rem; }
 
-    .doc-card p {
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      line-height: 1.4;
-    }
-
-    /* ─── Footer ─── */
+    /* ── Footer ── */
     footer {
-      border-top: 1px solid var(--border);
-      padding: 3rem 2rem;
-      text-align: center;
+      border-top: 1px solid var(--border); padding: 3rem 2rem;
+      text-align: center; color: var(--text-muted); font-size: 0.85rem;
     }
-
-    .footer-content {
-      max-width: 1100px;
-      margin: 0 auto;
-    }
-
     .footer-logo {
-      font-family: var(--font-mono);
-      font-size: 1.2rem;
-      font-weight: 700;
-      color: var(--accent);
-      margin-bottom: 0.75rem;
+      font-family: var(--mono); font-weight: 700; color: var(--accent);
+      font-size: 1.1rem; margin-bottom: 0.75rem;
     }
+    .footer-links { list-style: none; display: flex; gap: 2rem; justify-content: center; margin-top: 1rem; }
+    .footer-links a { color: var(--text-secondary); font-size: 0.85rem; }
 
-    .footer-text {
-      color: var(--text-muted);
-      font-size: 0.85rem;
-      line-height: 1.8;
-    }
-
-    .footer-links {
-      display: flex;
-      gap: 1.5rem;
-      justify-content: center;
-      margin-top: 1rem;
-      list-style: none;
-    }
-
-    .footer-links a {
-      color: var(--text-dim);
-      font-size: 0.85rem;
-    }
-
-    .footer-links a:hover {
-      color: var(--accent);
-    }
-
-    /* ─── Responsive ─── */
+    /* ── Responsive ── */
     @media (max-width: 900px) {
-      .features-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
-      .stats-row {
-        grid-template-columns: repeat(3, 1fr);
-      }
-
-      .docs-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
-      .theme-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
-      .showcase-item {
-        grid-template-columns: 1fr;
-        gap: 1.5rem;
-      }
-
-      .showcase-item.reverse {
-        direction: ltr;
-      }
-
-      .shortcuts-grid {
-        grid-template-columns: 1fr;
-      }
-
-      /* Hide desktop nav, show hamburger */
-      nav .nav-links {
-        display: none;
-      }
-
-      .hamburger-label {
-        display: flex;
-      }
-
-      .mobile-nav-overlay {
-        display: block;
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 101;
-        background: rgba(17, 17, 27, 0.97);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.3s ease;
-      }
-
-      .hamburger-toggle:checked ~ .mobile-nav-overlay {
-        opacity: 1;
-        pointer-events: auto;
-      }
-
-      .mobile-nav-menu {
-        list-style: none;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-        gap: 2rem;
-      }
-
-      .mobile-nav-menu a {
-        color: var(--text);
-        font-family: var(--font-mono);
-        font-size: 1.3rem;
-        font-weight: 600;
-        transition: color 0.2s ease;
-      }
-
-      .mobile-nav-menu a:hover {
-        color: var(--accent);
-      }
+      .nav-links { display: none; }
+      .hamburger { display: flex; }
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .showcase-item, .showcase-item.reverse { grid-template-columns: 1fr; gap: 2rem; direction: ltr; }
+      .stats-grid { grid-template-columns: repeat(3, 1fr); }
+      .shortcuts-grid { grid-template-columns: repeat(2, 1fr); }
+      .docs-grid { grid-template-columns: repeat(2, 1fr); }
     }
-
     @media (max-width: 600px) {
-      section,
-      .comparison,
-      .showcase,
-      .shortcuts,
-      .theme-showcase {
-        padding: 3.5rem 1.25rem;
-      }
-
-      .comparison-table {
-        font-size: 0.8rem;
-      }
-
-      .comparison-table thead th,
-      .comparison-table tbody td {
-        padding: 0.6rem 0.75rem;
-      }
-
-      .hero {
-        padding-top: 5rem;
-        min-height: auto;
-        padding-bottom: 3rem;
-      }
-
-      .hero-ascii {
-        font-size: clamp(0.35rem, 4vw, 0.55rem);
-      }
-
-      .features-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .stats-row {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 0.75rem;
-      }
-
-      .stat-card {
-        padding: 1.25rem 0.75rem;
-      }
-
-      .stat-number {
-        font-size: 1.5rem;
-      }
-
-      .docs-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .hero-buttons {
-        flex-direction: column;
-        align-items: center;
-      }
-
-      .btn {
-        width: 100%;
-        max-width: 280px;
-        justify-content: center;
-      }
-
-      .section-title {
-        font-size: 1.4rem;
-      }
-
-      .showcase-text h3 {
-        font-size: 1.15rem;
-      }
-
-      .theme-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .back-to-top {
-        bottom: 1.25rem;
-        right: 1.25rem;
-        width: 38px;
-        height: 38px;
-        font-size: 1rem;
-      }
-    }
-
-    /* ─── Scrollbar ─── */
-    ::-webkit-scrollbar {
-      width: 8px;
-    }
-
-    ::-webkit-scrollbar-track {
-      background: var(--bg-overlay);
-    }
-
-    ::-webkit-scrollbar-thumb {
-      background: var(--border);
-      border-radius: 4px;
-    }
-
-    ::-webkit-scrollbar-thumb:hover {
-      background: var(--text-muted);
-    }
-
-    /* ─── Selection ─── */
-    ::selection {
-      background: rgba(203, 166, 247, 0.3);
-      color: var(--text);
+      section { padding: 4rem 1.25rem; }
+      .hero { padding: 6rem 1.25rem 4rem; min-height: auto; }
+      .hero h1 { font-size: 2rem; }
+      .features-grid { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .shortcuts-grid { grid-template-columns: 1fr; }
+      .docs-grid { grid-template-columns: 1fr; }
+      .hero-buttons { flex-direction: column; width: 100%; }
+      .btn { width: 100%; justify-content: center; }
+      .comparison-table { font-size: 0.78rem; }
+      .comparison-table th, .comparison-table td { padding: 0.6rem 0.5rem; }
     }
   </style>
 </head>
 <body>
 
-  <!-- Navigation -->
+  <!-- Nav -->
   <nav>
-    <div class="logo">GRANIT</div>
+    <div class="nav-logo">GRANIT</div>
     <ul class="nav-links">
       <li><a href="#features">Features</a></li>
       <li><a href="#showcase">Showcase</a></li>
       <li><a href="#comparison">Compare</a></li>
-      <li><a href="#shortcuts">Keys</a></li>
-      <li><a href="#demo">Demo</a></li>
-      <li><a href="#installation">Installation</a></li>
-      <li><a href="#documentation">Docs</a></li>
+      <li><a href="#stats">Stats</a></li>
+      <li><a href="#installation">Install</a></li>
       <li><a href="https://github.com/artaeon/granit">GitHub</a></li>
     </ul>
-
-    <!-- Mobile hamburger (CSS-only) -->
-    <input type="checkbox" id="hamburger-toggle" class="hamburger-toggle" aria-label="Toggle navigation">
-    <label for="hamburger-toggle" class="hamburger-label" aria-label="Menu">
-      <span></span>
-      <span></span>
-      <span></span>
-    </label>
-    <div class="mobile-nav-overlay">
-      <ul class="mobile-nav-menu">
-        <li><a href="#features" onclick="document.getElementById('hamburger-toggle').checked=false">Features</a></li>
-        <li><a href="#showcase" onclick="document.getElementById('hamburger-toggle').checked=false">Showcase</a></li>
-        <li><a href="#comparison" onclick="document.getElementById('hamburger-toggle').checked=false">Compare</a></li>
-        <li><a href="#shortcuts" onclick="document.getElementById('hamburger-toggle').checked=false">Keys</a></li>
-        <li><a href="#demo" onclick="document.getElementById('hamburger-toggle').checked=false">Demo</a></li>
-        <li><a href="#installation" onclick="document.getElementById('hamburger-toggle').checked=false">Installation</a></li>
-        <li><a href="#documentation" onclick="document.getElementById('hamburger-toggle').checked=false">Docs</a></li>
-        <li><a href="https://github.com/artaeon/granit" onclick="document.getElementById('hamburger-toggle').checked=false">GitHub</a></li>
-      </ul>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <label for="nav-toggle" class="hamburger"><span></span><span></span><span></span></label>
+    <div class="mobile-menu">
+      <a href="#features" onclick="document.getElementById('nav-toggle').checked=false">Features</a>
+      <a href="#showcase" onclick="document.getElementById('nav-toggle').checked=false">Showcase</a>
+      <a href="#comparison" onclick="document.getElementById('nav-toggle').checked=false">Compare</a>
+      <a href="#stats" onclick="document.getElementById('nav-toggle').checked=false">Stats</a>
+      <a href="#installation" onclick="document.getElementById('nav-toggle').checked=false">Install</a>
+      <a href="https://github.com/artaeon/granit" onclick="document.getElementById('nav-toggle').checked=false">GitHub</a>
     </div>
   </nav>
 
   <!-- Hero -->
   <section class="hero">
-    <div class="hero-ascii" aria-label="GRANIT">
- ██████╗ ██████╗  █████╗ ███╗   ██╗██╗████████╗
-██╔════╝ ██╔══██╗██╔══██╗████╗  ██║██║╚══██╔══╝
-██║  ███╗██████╔╝███████║██╔██╗ ██║██║   ██║
-██║   ██║██╔══██╗██╔══██║██║╚██╗██║██║   ██║
-╚██████╔╝██║  ██║██║  ██║██║ ╚████║██║   ██║
- ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝   ╚═╝</div>
-    <h1 class="hero-tagline">A blazing-fast, AI-powered terminal knowledge manager<span class="hero-cursor"></span></h1>
-    <p class="hero-sub">Fully Obsidian compatible. No Electron. No browser. No subscriptions. Just your terminal.</p>
-    <div class="hero-buttons">
+    <p class="hero-overline reveal">Terminal-Native Knowledge Manager</p>
+    <h1 class="reveal">Your notes deserve<br>a faster home.</h1>
+    <p class="reveal">A blazing-fast, AI-powered knowledge manager built for the terminal. Fully Obsidian compatible. No Electron. No subscriptions. Just your keyboard.</p>
+    <div class="hero-buttons reveal">
       <a href="#installation" class="btn btn-primary">Get Started</a>
       <a href="https://github.com/artaeon/granit" class="btn btn-secondary">View on GitHub</a>
     </div>
-    <div class="hero-badges">
+    <div class="hero-badges reveal">
       <span class="badge">Go 1.24+</span>
       <span class="badge">MIT License</span>
       <span class="badge">Linux &amp; macOS</span>
-      <span class="badge">Active Development</span>
+      <span class="badge">166K+ Lines</span>
     </div>
   </section>
 
   <!-- Features -->
   <section id="features">
-    <h2 class="section-title fade-in"><span class="accent">//</span> Features</h2>
-    <p class="section-subtitle fade-in">Everything you need for knowledge management, built into your terminal.</p>
+    <p class="section-label reveal">Features</p>
+    <h2 class="section-title reveal">Everything you need.<br>Nothing you don't.</h2>
+    <p class="section-sub reveal">A complete productivity suite for notes, tasks, goals, and deep work.</p>
     <div class="features-grid">
-      <div class="feature-card fade-in fade-in-delay-1">
+      <div class="feature-card reveal">
         <span class="feature-icon">&#x2728;</span>
         <h3>AI-Powered</h3>
-        <p>20+ AI features with Ollama, OpenAI, and Claude Code support. Auto-tagging, summarization, link suggestions, and local offline fallback.</p>
+        <p>20+ AI features with Ollama, OpenAI, and Claude Code. Auto-tagging, summarization, link suggestions, and local offline fallback.</p>
       </div>
-      <div class="feature-card fade-in fade-in-delay-2">
+      <div class="feature-card reveal">
         <span class="feature-icon">&#x2328;&#xFE0F;</span>
-        <h3>Vim Mode</h3>
-        <p>Full modal editing with Normal, Insert, Visual, and Command modes. Dot repeat, macros, and everything you expect from Vim.</p>
+        <h3>Full Vim Mode</h3>
+        <p>Modal editing with text objects, marks, macros, search highlighting, dot repeat, and ex commands. Everything you expect from Vim.</p>
       </div>
-      <div class="feature-card fade-in fade-in-delay-3">
+      <div class="feature-card reveal">
         <span class="feature-icon">&#x1F3A8;</span>
         <h3>35 Themes</h3>
-        <p>29 dark and 6 light themes including Catppuccin, Tokyo Night, Gruvbox, Nord, and more. Plus a custom theme editor.</p>
+        <p>Catppuccin, Tokyo Night, Gruvbox, Nord, Dracula, and 30 more. Plus a custom theme editor to create your own palette.</p>
       </div>
-      <div class="feature-card fade-in fade-in-delay-1">
+      <div class="feature-card reveal">
         <span class="feature-icon">&#x2705;</span>
         <h3>Task Manager</h3>
-        <p>7 views including Kanban and Eisenhower Matrix. Subtasks, dependencies, snooze, templates, recurring auto-creation, and undo stack.</p>
+        <p>7 views including Kanban and Eisenhower Matrix. Subtasks, dependencies, snooze, templates, recurring auto-creation, and 10-deep undo.</p>
       </div>
-      <div class="feature-card fade-in fade-in-delay-2">
-        <span class="feature-icon">&#x1F500;</span>
-        <h3>Git Integration</h3>
-        <p>Built-in status, log, and diff views. Commit, push, and pull without leaving the TUI. Optional auto-sync on save.</p>
-      </div>
-      <div class="feature-card fade-in fade-in-delay-3">
-        <span class="feature-icon">&#x1F517;</span>
-        <h3>Obsidian Compatible</h3>
-        <p>Full support for [[wikilinks]], YAML frontmatter, and the same folder structure. Use your existing Obsidian vault as-is.</p>
-      </div>
-      <div class="feature-card fade-in fade-in-delay-1">
-        <span class="feature-icon">&#x1F4D0;</span>
-        <h3>8 Layouts</h3>
-        <p>Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, and Research modes. Adapt the UI to your current workflow.</p>
-      </div>
-      <div class="feature-card fade-in fade-in-delay-2">
-        <span class="feature-icon">&#x1F9E9;</span>
-        <h3>Plugin System</h3>
-        <p>Extend Granit with scripts and Lua plugins. 16 core plugins included. Hook into save, open, create, and delete events.</p>
-      </div>
-      <div class="feature-card fade-in fade-in-delay-3">
-        <span class="feature-icon">&#x1F512;</span>
-        <h3>Encryption</h3>
-        <p>AES-256-GCM encryption for sensitive notes. Secure your vault for safe syncing across devices without compromising privacy.</p>
-      </div>
-      <div class="feature-card fade-in fade-in-delay-1">
+      <div class="feature-card reveal">
         <span class="feature-icon">&#x1F3AF;</span>
         <h3>Goal Manager</h3>
         <p>Track long-term goals with milestones, due dates, recurring reviews, progress sparklines, theme colors, and task linking.</p>
       </div>
-      <div class="feature-card fade-in fade-in-delay-2">
+      <div class="feature-card reveal">
         <span class="feature-icon">&#x1F50D;</span>
         <h3>Search Everything</h3>
-        <p>Ctrl+/ opens fuzzy search across notes, tasks, goals, and habits. Ranked results with instant navigation.</p>
+        <p>Ctrl+/ opens fuzzy search across notes, tasks, goals, and habits. Ranked results with instant navigation to any item.</p>
       </div>
-      <div class="feature-card fade-in fade-in-delay-3">
+      <div class="feature-card reveal">
         <span class="feature-icon">&#x1F4C5;</span>
         <h3>Daily Planner</h3>
         <p>Time-blocked schedule with goal integration. Copy plan to clipboard or export as markdown for sharing with your team.</p>
       </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#x1F500;</span>
+        <h3>Git &amp; Nextcloud Sync</h3>
+        <p>Built-in git sync with auto-commit and conflict resolution. Nextcloud WebDAV bidirectional sync. Your data, your servers.</p>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#x1F517;</span>
+        <h3>Obsidian Compatible</h3>
+        <p>Full support for [[wikilinks]], YAML frontmatter, backlinks, and the same folder structure. Use your existing vault as-is.</p>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#x1F9E9;</span>
+        <h3>Plugin System</h3>
+        <p>Extend with scripts and Lua plugins. 16 core plugins included. Hook into save, open, create, and delete events.</p>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#x1F512;</span>
+        <h3>Encryption</h3>
+        <p>AES-256-GCM encryption for sensitive notes. Secure your vault for safe syncing across devices without compromising privacy.</p>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#x1F4D0;</span>
+        <h3>8 Layouts</h3>
+        <p>Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, and Research modes. Adapt the UI to your workflow.</p>
+      </div>
     </div>
   </section>
 
-  <!-- Feature Showcase -->
-  <div class="showcase" id="showcase">
-    <h2 class="section-title fade-in"><span class="accent">//</span> Feature Showcase</h2>
-    <p class="section-subtitle fade-in">A deeper look at what sets Granit apart.</p>
+  <!-- Showcase -->
+  <section id="showcase">
+    <p class="section-label reveal">Showcase</p>
+    <h2 class="section-title reveal">Built for how you work.</h2>
+    <p class="section-sub reveal">A deeper look at what makes Granit different.</p>
 
-    <!-- Editor in Action -->
-    <div class="showcase-item fade-in">
-      <div class="showcase-image">
-        <img src="../assets/editor.gif" alt="Granit editor in action" loading="lazy"
-             onerror="this.onerror=null;this.src='../assets/screenshot-editor.png';">
+    <div class="showcase-item reveal">
+      <div class="showcase-visual">
+        <img src="../assets/editor.gif" alt="Granit editor" loading="lazy" onerror="this.parentElement.innerHTML='<div class=showcase-terminal>  &#x2588; Granit Editor\n  &#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;\n  # My Notes\n  \n  - [[Wikilinks]] with autocomplete\n  - Multi-cursor editing\n  - Ghost Writer AI suggestions\n  - Syntax highlighting\n  - Heading folding</div>'">
       </div>
       <div class="showcase-text">
-        <h3><span class="accent">#</span> Editor in Action</h3>
-        <p>A fast, syntax-highlighted Markdown editor with multi-cursor support, wikilink autocomplete, and heading folding -- all in your terminal.</p>
-        <ul>
-          <li>Syntax-highlighted code blocks (Go, Python, JS, Rust, Shell)</li>
-          <li>Multi-cursor editing with Ctrl+D and column cursors</li>
-          <li>Ghost Writer: inline AI writing suggestions (Tab to accept)</li>
-          <li>18 built-in snippets for dates, todos, tables, and more</li>
-          <li>Rendered view mode with Mermaid diagrams and callouts</li>
+        <h3>A real editor, in your terminal.</h3>
+        <p>Syntax-highlighted Markdown with multi-cursor, wikilink autocomplete, Ghost Writer AI, and rendered view mode with Mermaid diagrams.</p>
+        <ul class="showcase-list">
+          <li>Multi-cursor editing with Ctrl+D</li>
+          <li>Ghost Writer: inline AI suggestions (Tab to accept)</li>
+          <li>18 built-in snippets and bracket auto-close</li>
+          <li>Rendered view mode with callouts and diagrams</li>
         </ul>
       </div>
     </div>
 
-    <!-- Task Manager -->
-    <div class="showcase-item reverse fade-in">
-      <div class="showcase-image">
-        <img src="../assets/screenshot-taskmanager.svg" alt="Granit Task Manager with Kanban board" loading="lazy">
+    <div class="showcase-item reverse reveal">
+      <div class="showcase-visual">
+        <img src="../assets/screenshot-taskmanager.svg" alt="Task Manager" loading="lazy" onerror="this.parentElement.innerHTML='<div class=showcase-terminal>  &#x2588; Task Manager\n  Today  Upcoming  All  Kanban  Matrix\n  &#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;\n  > [x] Ship v2.0 release   &#x2588;&#x2588;&#x2588; high\n    [ ] Write documentation  ~2h\n    [ ] Review PRs            &#x1F4CC;\n    [ ] Deploy staging        snoozed</div>'">
       </div>
       <div class="showcase-text">
-        <h3><span class="accent">#</span> Task Manager &amp; Goals</h3>
-        <p>Full productivity suite with task management, goal tracking, and daily planning -- all keyboard-driven.</p>
-        <ul>
-          <li>7 views: Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower Matrix</li>
-          <li>Subtasks, dependencies, snooze, templates, 10-deep undo stack</li>
-          <li>Recurring tasks auto-create next instance on completion</li>
-          <li>Goal manager with milestones, reviews, sparkline charts, and colors</li>
-          <li>Daily planner: copy to clipboard or export as markdown</li>
-          <li>Search Everything (Ctrl+/): fuzzy search across notes, tasks, goals</li>
+        <h3>Tasks, goals, and plans. Unified.</h3>
+        <p>7 task views, goal manager with milestones and reviews, daily planner with clipboard export, and Eisenhower Matrix.</p>
+        <ul class="showcase-list">
+          <li>Subtasks, dependencies, snooze, and templates</li>
+          <li>Recurring tasks auto-create on completion</li>
+          <li>Goal-to-task linking with progress tracking</li>
+          <li>Copy daily plan to clipboard for your team</li>
+          <li>Search Everything with Ctrl+/</li>
         </ul>
       </div>
     </div>
+  </section>
 
-    <!-- AI-Powered Features -->
-    <div class="showcase-item fade-in">
-      <div class="showcase-image">
-        <img src="../assets/screenshot-ai-bots.svg" alt="Granit AI bots and assistants" loading="lazy">
-      </div>
-      <div class="showcase-text">
-        <h3><span class="accent">#</span> AI-Powered Features</h3>
-        <p>9 specialized AI bots that understand your notes and help you think, write, and organize more effectively.</p>
-        <ul>
-          <li>Auto-Tagger: intelligent tag suggestions from note content</li>
-          <li>Link Suggester: discovers connections between your notes</li>
-          <li>Summarizer, Question Bot, and Writing Assistant</li>
-          <li>Works with Ollama (local), OpenAI, or a built-in offline fallback</li>
-          <li>Deep Dive Research agent via Claude Code integration</li>
-        </ul>
-      </div>
-    </div>
-
-    <!-- 35 Themes -->
-    <div class="showcase-item reverse fade-in">
-      <div class="showcase-image">
-        <img src="../assets/screenshot-themes.svg" alt="Granit theme selection showing 35 themes" loading="lazy">
-      </div>
-      <div class="showcase-text">
-        <h3><span class="accent">#</span> 35 Themes</h3>
-        <p>From Catppuccin Mocha to Synthwave 84, find a color palette that matches your aesthetic and environment.</p>
-        <ul>
-          <li>29 dark themes and 6 light themes included</li>
-          <li>Catppuccin, Tokyo Night, Gruvbox, Nord, Dracula, and more</li>
-          <li>Custom theme editor: create your own color palette</li>
-          <li>Hot-swap themes instantly from the settings overlay</li>
-          <li>Every UI element respects the active theme</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-
-  <!-- Comparison Table -->
-  <section class="comparison" id="comparison">
-    <h2 class="section-title fade-in"><span class="accent">//</span> Granit vs Obsidian</h2>
-    <p class="section-subtitle fade-in">A detailed, honest comparison. See exactly what you get -- and what you save.</p>
-    <div class="comparison-wrapper fade-in">
+  <!-- Comparison -->
+  <section id="comparison">
+    <p class="section-label reveal">Compare</p>
+    <h2 class="section-title reveal">Granit vs Obsidian</h2>
+    <p class="section-sub reveal">An honest, detailed comparison.</p>
+    <div class="reveal" style="overflow-x:auto">
       <table class="comparison-table">
-        <thead>
-          <tr>
-            <th>Feature</th>
-            <th class="highlight">Granit</th>
-            <th>Obsidian</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Feature</th><th class="hl">Granit</th><th>Obsidian</th></tr></thead>
         <tbody>
-          <tr>
-            <td>Price</td>
-            <td class="highlight"><span class="check">Free forever</span></td>
-            <td><span class="partial">$50/yr commercial + $8/mo sync + $14/mo AI</span></td>
-          </tr>
-          <tr>
-            <td>Terminal Native</td>
-            <td class="highlight"><span class="check">&#x2713;</span></td>
-            <td><span class="cross">&#x2717;</span></td>
-          </tr>
-          <tr>
-            <td>Vim Mode</td>
-            <td class="highlight"><span class="check">Full with macros</span></td>
-            <td><span class="partial">Plugin</span></td>
-          </tr>
-          <tr>
-            <td>AI Integration</td>
-            <td class="highlight"><span class="check">Built-in: Ollama / OpenAI / Claude</span></td>
-            <td><span class="partial">$14/mo add-on</span></td>
-          </tr>
-          <tr>
-            <td>Themes</td>
-            <td class="highlight"><span class="check">35 built-in + editor</span></td>
-            <td><span class="partial">Community</span></td>
-          </tr>
-          <tr>
-            <td>Speed</td>
-            <td class="highlight"><span class="check">Instant startup</span></td>
-            <td><span class="partial">Electron</span></td>
-          </tr>
-          <tr>
-            <td>Privacy</td>
-            <td class="highlight"><span class="check">100% local</span></td>
-            <td><span class="partial">Cloud optional</span></td>
-          </tr>
-          <tr>
-            <td>Open Source</td>
-            <td class="highlight"><span class="check">&#x2713;</span></td>
-            <td><span class="cross">&#x2717;</span></td>
-          </tr>
-          <tr>
-            <td>Task Manager</td>
-            <td class="highlight"><span class="check">Built-in, 7 views + Eisenhower</span></td>
-            <td><span class="partial">Plugin</span></td>
-          </tr>
-          <tr>
-            <td>Goal Tracking</td>
-            <td class="highlight"><span class="check">Built-in with milestones &amp; reviews</span></td>
-            <td><span class="cross">&#x2717;</span></td>
-          </tr>
-          <tr>
-            <td>Universal Search</td>
-            <td class="highlight"><span class="check">Notes + tasks + goals + habits</span></td>
-            <td><span class="partial">Notes only</span></td>
-          </tr>
-          <tr>
-            <td>Daily Planner</td>
-            <td class="highlight"><span class="check">Built-in with AI scheduler</span></td>
-            <td><span class="cross">&#x2717;</span></td>
-          </tr>
-          <tr>
-            <td>Language Learning</td>
-            <td class="highlight"><span class="check">Built-in</span></td>
-            <td><span class="cross">&#x2717;</span></td>
-          </tr>
-          <tr>
-            <td>Habit Tracker</td>
-            <td class="highlight"><span class="check">Built-in</span></td>
-            <td><span class="cross">&#x2717;</span></td>
-          </tr>
-          <tr>
-            <td>Research Agent</td>
-            <td class="highlight"><span class="check">Claude Code integration</span></td>
-            <td><span class="cross">&#x2717;</span></td>
-          </tr>
-          <tr>
-            <td>Encryption</td>
-            <td class="highlight"><span class="check">AES-256-GCM</span></td>
-            <td><span class="cross">No built-in</span></td>
-          </tr>
+          <tr><td>Price</td><td class="hl"><span class="ck">Free forever</span></td><td><span class="cp">$50/yr + $8/mo sync</span></td></tr>
+          <tr><td>Terminal Native</td><td class="hl"><span class="ck">&#x2713;</span></td><td><span class="cx">&#x2717;</span></td></tr>
+          <tr><td>Vim Mode</td><td class="hl"><span class="ck">Full with macros &amp; objects</span></td><td><span class="cp">Plugin</span></td></tr>
+          <tr><td>AI Integration</td><td class="hl"><span class="ck">Built-in: Ollama / OpenAI / Claude</span></td><td><span class="cp">$14/mo add-on</span></td></tr>
+          <tr><td>Task Manager</td><td class="hl"><span class="ck">7 views + Eisenhower</span></td><td><span class="cp">Plugin</span></td></tr>
+          <tr><td>Goal Tracking</td><td class="hl"><span class="ck">Built-in with reviews</span></td><td><span class="cx">&#x2717;</span></td></tr>
+          <tr><td>Universal Search</td><td class="hl"><span class="ck">Notes + tasks + goals</span></td><td><span class="cp">Notes only</span></td></tr>
+          <tr><td>Themes</td><td class="hl"><span class="ck">35 built-in + editor</span></td><td><span class="cp">Community</span></td></tr>
+          <tr><td>Open Source</td><td class="hl"><span class="ck">&#x2713;</span></td><td><span class="cx">&#x2717;</span></td></tr>
+          <tr><td>Speed</td><td class="hl"><span class="ck">Instant startup</span></td><td><span class="cp">Electron</span></td></tr>
         </tbody>
       </table>
     </div>
   </section>
 
-  <!-- Keyboard-First Design -->
-  <section class="shortcuts" id="shortcuts">
-    <h2 class="section-title fade-in"><span class="accent">//</span> Keyboard First</h2>
-    <p class="section-subtitle fade-in">Everything is one shortcut away. No mouse required.</p>
-    <div class="shortcuts-grid">
-      <div class="shortcut-item fade-in fade-in-delay-1">
-        <span class="shortcut-label">Command Palette</span>
-        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>X</kbd></div>
-      </div>
-      <div class="shortcut-item fade-in fade-in-delay-2">
-        <span class="shortcut-label">Quick Switcher</span>
-        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>J</kbd></div>
-      </div>
-      <div class="shortcut-item fade-in fade-in-delay-1">
-        <span class="shortcut-label">New Note</span>
-        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>N</kbd></div>
-      </div>
-      <div class="shortcut-item fade-in fade-in-delay-2">
-        <span class="shortcut-label">Find &amp; Replace</span>
-        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>F</kbd></div>
-      </div>
-      <div class="shortcut-item fade-in fade-in-delay-1">
-        <span class="shortcut-label">AI Bots</span>
-        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>R</kbd></div>
-      </div>
-      <div class="shortcut-item fade-in fade-in-delay-2">
-        <span class="shortcut-label">Task Manager</span>
-        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>K</kbd></div>
-      </div>
-      <div class="shortcut-item fade-in fade-in-delay-1">
-        <span class="shortcut-label">Search Everything</span>
-        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>/</kbd></div>
-      </div>
-      <div class="shortcut-item fade-in fade-in-delay-2">
-        <span class="shortcut-label">Focus / Zen Mode</span>
-        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>Z</kbd></div>
-      </div>
-      <div class="shortcut-item fade-in fade-in-delay-2">
-        <span class="shortcut-label">Calendar</span>
-        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>L</kbd></div>
-      </div>
-      <div class="shortcut-item fade-in fade-in-delay-1">
-        <span class="shortcut-label">Settings</span>
-        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>,</kbd></div>
-      </div>
-      <div class="shortcut-item fade-in fade-in-delay-2">
-        <span class="shortcut-label">Note Graph</span>
-        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>G</kbd></div>
-      </div>
-      <div class="shortcut-item fade-in fade-in-delay-1">
-        <span class="shortcut-label">Tag Browser</span>
-        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>T</kbd></div>
-      </div>
-      <div class="shortcut-item fade-in fade-in-delay-2">
-        <span class="shortcut-label">Bookmarks</span>
-        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>B</kbd></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Demo -->
-  <section id="demo" class="demo">
-    <h2 class="section-title fade-in"><span class="accent">//</span> See It in Action</h2>
-    <p class="section-subtitle fade-in">A full-featured knowledge manager running entirely in your terminal.</p>
-    <div class="demo-container fade-in">
-      <div class="demo-titlebar">
-        <span class="demo-dot"></span>
-        <span class="demo-dot"></span>
-        <span class="demo-dot"></span>
-        <span>granit ~/vault</span>
-      </div>
-      <img src="../assets/editor.gif" alt="Granit editor demo showing the TUI in action" loading="lazy">
-    </div>
-    <p class="demo-caption fade-in">The default 3-panel layout with sidebar, editor, and backlinks panel.</p>
-  </section>
-
-  <!-- Theme Showcase -->
-  <section class="theme-showcase" id="themes">
-    <h2 class="section-title fade-in"><span class="accent">//</span> Theme Variety</h2>
-    <p class="section-subtitle fade-in">35 built-in themes. Instantly switch from settings or create your own with the theme editor.</p>
-    <div class="theme-grid">
-      <div class="theme-card">
-        <div class="theme-card-name">Catppuccin Mocha</div>
-        <div class="theme-palette">
-          <div class="swatch" style="background: #1e1e2e;"></div>
-          <div class="swatch" style="background: #cba6f7;"></div>
-          <div class="swatch" style="background: #89b4fa;"></div>
-          <div class="swatch" style="background: #a6e3a1;"></div>
-          <div class="swatch" style="background: #fab387;"></div>
-          <div class="swatch" style="background: #f38ba8;"></div>
-        </div>
-        <div class="theme-card-desc">Warm, pastel dark (default)</div>
-      </div>
-      <div class="theme-card">
-        <div class="theme-card-name">Tokyo Night</div>
-        <div class="theme-palette">
-          <div class="swatch" style="background: #1a1b26;"></div>
-          <div class="swatch" style="background: #bb9af7;"></div>
-          <div class="swatch" style="background: #7aa2f7;"></div>
-          <div class="swatch" style="background: #9ece6a;"></div>
-          <div class="swatch" style="background: #ff9e64;"></div>
-          <div class="swatch" style="background: #f7768e;"></div>
-        </div>
-        <div class="theme-card-desc">Inspired by Tokyo at night</div>
-      </div>
-      <div class="theme-card">
-        <div class="theme-card-name">Gruvbox Dark</div>
-        <div class="theme-palette">
-          <div class="swatch" style="background: #282828;"></div>
-          <div class="swatch" style="background: #d3869b;"></div>
-          <div class="swatch" style="background: #83a598;"></div>
-          <div class="swatch" style="background: #b8bb26;"></div>
-          <div class="swatch" style="background: #fe8019;"></div>
-          <div class="swatch" style="background: #fb4934;"></div>
-        </div>
-        <div class="theme-card-desc">Retro, earthy warm tones</div>
-      </div>
-      <div class="theme-card">
-        <div class="theme-card-name">Nord</div>
-        <div class="theme-palette">
-          <div class="swatch" style="background: #2e3440;"></div>
-          <div class="swatch" style="background: #b48ead;"></div>
-          <div class="swatch" style="background: #81a1c1;"></div>
-          <div class="swatch" style="background: #a3be8c;"></div>
-          <div class="swatch" style="background: #d08770;"></div>
-          <div class="swatch" style="background: #bf616a;"></div>
-        </div>
-        <div class="theme-card-desc">Arctic, cool blue palette</div>
-      </div>
-      <div class="theme-card">
-        <div class="theme-card-name">Dracula</div>
-        <div class="theme-palette">
-          <div class="swatch" style="background: #282a36;"></div>
-          <div class="swatch" style="background: #bd93f9;"></div>
-          <div class="swatch" style="background: #8be9fd;"></div>
-          <div class="swatch" style="background: #50fa7b;"></div>
-          <div class="swatch" style="background: #ffb86c;"></div>
-          <div class="swatch" style="background: #ff5555;"></div>
-        </div>
-        <div class="theme-card-desc">Classic dark with vivid accents</div>
-      </div>
-      <div class="theme-card">
-        <div class="theme-card-name">Rose Pine</div>
-        <div class="theme-palette">
-          <div class="swatch" style="background: #191724;"></div>
-          <div class="swatch" style="background: #c4a7e7;"></div>
-          <div class="swatch" style="background: #9ccfd8;"></div>
-          <div class="swatch" style="background: #31748f;"></div>
-          <div class="swatch" style="background: #f6c177;"></div>
-          <div class="swatch" style="background: #eb6f92;"></div>
-        </div>
-        <div class="theme-card-desc">Muted, elegant dark</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- By the Numbers -->
+  <!-- Stats -->
   <section id="stats">
-    <h2 class="section-title fade-in"><span class="accent">//</span> By the Numbers</h2>
-    <p class="section-subtitle fade-in">A massive, well-tested codebase -- 100% free and open source.</p>
-    <div class="stats-row">
-      <div class="stat-card fade-in fade-in-delay-1">
-        <span class="stat-number">166,000+</span>
-        <span class="stat-label">Lines of Go</span>
-      </div>
-      <div class="stat-card fade-in fade-in-delay-2">
-        <span class="stat-number">1,971</span>
-        <span class="stat-label">Tests</span>
-      </div>
-      <div class="stat-card fade-in fade-in-delay-3">
-        <span class="stat-number">35</span>
-        <span class="stat-label">Themes</span>
-      </div>
-      <div class="stat-card fade-in fade-in-delay-1">
-        <span class="stat-number">80+</span>
-        <span class="stat-label">Commands</span>
-      </div>
-      <div class="stat-card fade-in fade-in-delay-2">
-        <span class="stat-number">9</span>
-        <span class="stat-label">AI Bots</span>
-      </div>
-      <div class="stat-card fade-in fade-in-delay-3">
-        <span class="stat-number">100%</span>
-        <span class="stat-label">Free &amp; Open Source</span>
-      </div>
+    <p class="section-label reveal">By the Numbers</p>
+    <h2 class="section-title reveal">A massive, well-tested codebase.</h2>
+    <p class="section-sub reveal">100% free and open source. Built with Go and Bubble Tea.</p>
+    <div class="stats-grid reveal">
+      <div class="stat-card"><span class="stat-number">166K+</span><span class="stat-label">Lines of Go</span></div>
+      <div class="stat-card"><span class="stat-number">1,971</span><span class="stat-label">Tests</span></div>
+      <div class="stat-card"><span class="stat-number">35</span><span class="stat-label">Themes</span></div>
+      <div class="stat-card"><span class="stat-number">80+</span><span class="stat-label">Commands</span></div>
+      <div class="stat-card"><span class="stat-number">9</span><span class="stat-label">AI Bots</span></div>
+      <div class="stat-card"><span class="stat-number">100%</span><span class="stat-label">Open Source</span></div>
+    </div>
+  </section>
+
+  <!-- Shortcuts -->
+  <section>
+    <p class="section-label reveal">Keyboard First</p>
+    <h2 class="section-title reveal">Everything is one shortcut away.</h2>
+    <p class="section-sub reveal">No mouse required. Every feature accessible via keyboard.</p>
+    <div class="shortcuts-grid reveal">
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>/</kbd></div><span class="shortcut-label">Search Everything</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>X</kbd></div><span class="shortcut-label">Command Palette</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>K</kbd></div><span class="shortcut-label">Task Manager</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>P</kbd></div><span class="shortcut-label">Quick Open</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>N</kbd></div><span class="shortcut-label">New Note</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>G</kbd></div><span class="shortcut-label">Note Graph</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>L</kbd></div><span class="shortcut-label">Calendar</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>R</kbd></div><span class="shortcut-label">AI Bots</span></div>
     </div>
   </section>
 
   <!-- Installation -->
   <section id="installation">
-    <h2 class="section-title fade-in"><span class="accent">//</span> Installation</h2>
-    <p class="section-subtitle fade-in">Up and running in under a minute. Pick your preferred method.</p>
-    <div class="install-block">
-      <div class="install-method fade-in">
-        <h3><span class="dot" style="background: var(--accent);"></span> Go Install (Recommended)</h3>
-        <div class="code-block">
-          <div class="code-header">
-            <span>bash</span>
-            <button class="copy-btn" onclick="copyCode(this, 'install-go')">Copy</button>
-          </div>
-          <pre><code id="install-go"><span class="prompt">$</span> <span class="cmd">go</span> <span class="arg">install</span> github.com/artaeon/granit/cmd/granit@latest</code></pre>
+    <p class="section-label reveal">Get Started</p>
+    <h2 class="section-title reveal">Install in seconds.</h2>
+    <p class="section-sub reveal">One command to get started. Works on Linux and macOS.</p>
+    <div class="install-block reveal">
+      <div class="code-block">
+        <div class="code-header">
+          <div class="code-dots"><span style="background:#f7768e"></span><span style="background:#e0af68"></span><span style="background:#9ece6a"></span></div>
+          <span class="code-lang">terminal</span>
         </div>
-      </div>
-      <div class="install-method fade-in">
-        <h3><span class="dot" style="background: var(--blue);"></span> Arch Linux (AUR)</h3>
-        <div class="code-block">
-          <div class="code-header">
-            <span>bash</span>
-            <button class="copy-btn" onclick="copyCode(this, 'install-aur')">Copy</button>
-          </div>
-          <pre><code id="install-aur"><span class="comment"># Stable release</span>
-<span class="prompt">$</span> <span class="cmd">yay</span> <span class="arg">-S</span> granit
+        <div class="code-body"><span class="comment"># Install with Go</span>
+<span class="cmd">go</span> <span class="arg">install</span> github.com/artaeon/granit/cmd/granit@latest
 
-<span class="comment"># Or latest git version</span>
-<span class="prompt">$</span> <span class="cmd">yay</span> <span class="arg">-S</span> granit-git</code></pre>
-        </div>
-      </div>
-      <div class="install-method fade-in">
-        <h3><span class="dot" style="background: var(--green);"></span> Build from Source</h3>
-        <div class="code-block">
-          <div class="code-header">
-            <span>bash</span>
-            <button class="copy-btn" onclick="copyCode(this, 'install-source')">Copy</button>
-          </div>
-          <pre><code id="install-source"><span class="prompt">$</span> <span class="cmd">git</span> <span class="arg">clone</span> https://github.com/artaeon/granit.git
-<span class="prompt">$</span> <span class="cmd">cd</span> granit
-<span class="prompt">$</span> <span class="cmd">go</span> <span class="arg">build</span> -o granit ./cmd/granit
-<span class="prompt">$</span> <span class="cmd">sudo</span> <span class="arg">mv</span> granit /usr/local/bin/</code></pre>
-        </div>
-      </div>
-      <div class="install-method fade-in">
-        <h3><span class="dot" style="background: var(--peach);"></span> Quick Start</h3>
-        <div class="code-block">
-          <div class="code-header">
-            <span>bash</span>
-            <button class="copy-btn" onclick="copyCode(this, 'install-run')">Copy</button>
-          </div>
-          <pre><code id="install-run"><span class="comment"># Open a vault directory</span>
-<span class="prompt">$</span> <span class="cmd">granit</span> <span class="arg">open</span> ~/my-vault
+<span class="comment"># Create your first vault</span>
+<span class="cmd">granit</span> <span class="arg">init</span> my-vault
 
-<span class="comment"># Or launch the vault selector</span>
-<span class="prompt">$</span> <span class="cmd">granit</span>
-
-<span class="comment"># Try the built-in demo vault</span>
-<span class="prompt">$</span> <span class="cmd">granit</span> <span class="arg">demo-vault</span></code></pre>
-        </div>
+<span class="comment"># Open it</span>
+<span class="cmd">granit</span> my-vault</div>
       </div>
     </div>
   </section>
 
-  <!-- Documentation -->
+  <!-- Docs -->
   <section id="documentation">
-    <h2 class="section-title fade-in"><span class="accent">//</span> Documentation</h2>
-    <p class="section-subtitle fade-in">Comprehensive guides covering every aspect of Granit.</p>
-    <div class="docs-grid">
-      <a href="FEATURES.md" class="doc-card fade-in fade-in-delay-1">
-        <span class="doc-icon">&#x1F4CB;</span>
-        <h4>Features</h4>
-        <p>Complete feature list and detailed descriptions.</p>
-      </a>
-      <a href="INSTALLATION.md" class="doc-card fade-in fade-in-delay-2">
-        <span class="doc-icon">&#x1F4E6;</span>
-        <h4>Installation</h4>
-        <p>Setup instructions for all platforms.</p>
-      </a>
-      <a href="AI-GUIDE.md" class="doc-card fade-in fade-in-delay-3">
-        <span class="doc-icon">&#x1F916;</span>
-        <h4>AI Guide</h4>
-        <p>Configure Ollama, OpenAI, and local AI.</p>
-      </a>
-      <a href="KEYBINDINGS.md" class="doc-card fade-in fade-in-delay-4">
-        <span class="doc-icon">&#x2328;&#xFE0F;</span>
-        <h4>Keybindings</h4>
-        <p>All keyboard shortcuts and Vim bindings.</p>
-      </a>
-      <a href="ARCHITECTURE.md" class="doc-card fade-in fade-in-delay-1">
-        <span class="doc-icon">&#x1F3D7;&#xFE0F;</span>
-        <h4>Architecture</h4>
-        <p>Codebase structure and design decisions.</p>
-      </a>
-      <a href="CONFIGURATION.md" class="doc-card fade-in fade-in-delay-2">
-        <span class="doc-icon">&#x2699;&#xFE0F;</span>
-        <h4>Configuration</h4>
-        <p>Settings, config files, and customization.</p>
-      </a>
-      <a href="PLUGINS.md" class="doc-card fade-in fade-in-delay-3">
-        <span class="doc-icon">&#x1F9E9;</span>
-        <h4>Plugins</h4>
-        <p>Plugin development and the hook system.</p>
-      </a>
-      <a href="THEMES.md" class="doc-card fade-in fade-in-delay-4">
-        <span class="doc-icon">&#x1F3A8;</span>
-        <h4>Themes</h4>
-        <p>All 35 themes and the custom theme editor.</p>
-      </a>
+    <p class="section-label reveal">Documentation</p>
+    <h2 class="section-title reveal">Learn more.</h2>
+    <div class="docs-grid reveal">
+      <a href="FEATURES.md" class="doc-card"><h4>Features Guide</h4><p>Complete feature documentation</p></a>
+      <a href="KEYBINDINGS.md" class="doc-card"><h4>Keyboard Shortcuts</h4><p>Every keybinding reference</p></a>
+      <a href="../CHANGELOG.md" class="doc-card"><h4>Changelog</h4><p>What's new in each release</p></a>
+      <a href="../README.md" class="doc-card"><h4>README</h4><p>Overview and quick start</p></a>
     </div>
   </section>
 
   <!-- Footer -->
   <footer>
-    <div class="footer-content">
-      <div class="footer-logo">GRANIT</div>
-      <p class="footer-text">
-        Released under the MIT License.<br>
-        Built with Go and <a href="https://github.com/charmbracelet/bubbletea">Bubble Tea</a>.
-      </p>
-      <ul class="footer-links">
-        <li><a href="https://github.com/artaeon/granit">GitHub</a></li>
-        <li><a href="https://github.com/artaeon/granit/issues">Issues</a></li>
-        <li><a href="https://github.com/artaeon/granit/releases">Releases</a></li>
-        <li><a href="#features">Features</a></li>
-        <li><a href="#documentation">Documentation</a></li>
-      </ul>
-    </div>
+    <div class="footer-logo">GRANIT</div>
+    <p>Built with Go and Bubble Tea. Designed for deep work.</p>
+    <ul class="footer-links">
+      <li><a href="https://github.com/artaeon/granit">GitHub</a></li>
+      <li><a href="https://github.com/artaeon/granit/issues">Issues</a></li>
+      <li><a href="../LICENSE">MIT License</a></li>
+    </ul>
   </footer>
 
-  <!-- Back to Top Button -->
-  <a href="#" class="back-to-top" aria-label="Back to top" title="Back to top">&uarr;</a>
-
   <script>
-    function copyCode(button, id) {
-      var el = document.getElementById(id);
-      var text = el.textContent.replace(/^\$ /gm, '').replace(/^# .*$/gm, '').trim();
-      navigator.clipboard.writeText(text).then(function() {
-        button.textContent = 'Copied!';
-        button.classList.add('copied');
-        setTimeout(function() {
-          button.textContent = 'Copy';
-          button.classList.remove('copied');
-        }, 2000);
+    // Intersection Observer for scroll animations
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
       });
-    }
-    // Intersection Observer for scroll-triggered animations
-    (function() {
-      var observer = new IntersectionObserver(function(entries) {
-        entries.forEach(function(entry) {
-          if (entry.isIntersecting) {
-            entry.target.style.animationPlayState = 'running';
-            observer.unobserve(entry.target);
-          }
-        });
-      }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+    }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
 
-      // Pause all animations initially, then trigger on scroll
-      document.querySelectorAll('.fade-in').forEach(function(el) {
-        el.style.animationPlayState = 'paused';
-        observer.observe(el);
-      });
-    })();
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
   </script>
-
 </body>
 </html>
