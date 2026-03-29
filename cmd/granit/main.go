@@ -437,6 +437,8 @@ KEYBOARD SHORTCUTS (TUI)
 }
 
 func runTUI(vaultPath string) {
+	startTime := time.Now()
+
 	// Register this vault in the vault list
 	vl := config.LoadVaultList()
 	vl.AddVault(vaultPath)
@@ -447,6 +449,11 @@ func runTUI(vaultPath string) {
 		fmt.Printf("Error opening vault: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Show startup time
+	loadDuration := time.Since(startTime)
+	noteCount := model.NoteCount()
+	model.SetStartupMessage(fmt.Sprintf("Loaded %d notes in %dms", noteCount, loadDuration.Milliseconds()))
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 

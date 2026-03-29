@@ -194,6 +194,9 @@ type Model struct {
 	rightPanelCalendar bool // toggle: show calendar panel instead of backlinks
 	dueTodayCount     int
 
+	// Startup message (e.g. "Loaded 247 notes in 12ms")
+	startupMsg string
+
 	// Cross-component refresh flag
 	needsRefresh bool
 	lastRefresh  time.Time
@@ -620,8 +623,27 @@ func (m *Model) loadNote(relPath string) {
 	}
 }
 
+// NoteCount returns the number of notes in the vault.
+func (m Model) NoteCount() int {
+	if m.vault == nil {
+		return 0
+	}
+	return m.vault.NoteCount()
+}
+
+// SetStartupMessage sets a message to show on the status bar at launch.
+func (m *Model) SetStartupMessage(msg string) {
+	m.startupMsg = msg
+}
+
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
+	if m.startupMsg != "" {
+		m.statusbar.SetMessage(m.startupMsg)
+		cmds = append(cmds, tea.Tick(3*time.Second, func(time.Time) tea.Msg {
+			return clearMessageMsg{}
+		}))
+	}
 	if m.showSplash {
 		cmds = append(cmds, m.splash.Init())
 	}
