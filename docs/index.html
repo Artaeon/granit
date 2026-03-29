@@ -1185,7 +1185,7 @@
       <a href="https://github.com/artaeon/granit" class="btn btn-secondary">View on GitHub</a>
     </div>
     <div class="hero-badges">
-      <span class="badge">Go 1.23+</span>
+      <span class="badge">Go 1.24+</span>
       <span class="badge">MIT License</span>
       <span class="badge">Linux &amp; macOS</span>
       <span class="badge">Active Development</span>
@@ -1215,7 +1215,7 @@
       <div class="feature-card fade-in fade-in-delay-1">
         <span class="feature-icon">&#x2705;</span>
         <h3>Task Manager</h3>
-        <p>Kanban boards, task priorities, daily planner, and AI smart scheduler. Track your work right alongside your notes.</p>
+        <p>7 views including Kanban and Eisenhower Matrix. Subtasks, dependencies, snooze, templates, recurring auto-creation, and undo stack.</p>
       </div>
       <div class="feature-card fade-in fade-in-delay-2">
         <span class="feature-icon">&#x1F500;</span>
@@ -1241,6 +1241,21 @@
         <span class="feature-icon">&#x1F512;</span>
         <h3>Encryption</h3>
         <p>AES-256-GCM encryption for sensitive notes. Secure your vault for safe syncing across devices without compromising privacy.</p>
+      </div>
+      <div class="feature-card fade-in fade-in-delay-1">
+        <span class="feature-icon">&#x1F3AF;</span>
+        <h3>Goal Manager</h3>
+        <p>Track long-term goals with milestones, due dates, recurring reviews, progress sparklines, theme colors, and task linking.</p>
+      </div>
+      <div class="feature-card fade-in fade-in-delay-2">
+        <span class="feature-icon">&#x1F50D;</span>
+        <h3>Search Everything</h3>
+        <p>Ctrl+/ opens fuzzy search across notes, tasks, goals, and habits. Ranked results with instant navigation.</p>
+      </div>
+      <div class="feature-card fade-in fade-in-delay-3">
+        <span class="feature-icon">&#x1F4C5;</span>
+        <h3>Daily Planner</h3>
+        <p>Time-blocked schedule with goal integration. Copy plan to clipboard or export as markdown for sharing with your team.</p>
       </div>
     </div>
   </section>
@@ -1275,14 +1290,15 @@
         <img src="../assets/screenshot-taskmanager.svg" alt="Granit Task Manager with Kanban board" loading="lazy">
       </div>
       <div class="showcase-text">
-        <h3><span class="accent">#</span> Task Manager &amp; Kanban</h3>
-        <p>Manage your tasks, projects, and priorities without leaving the terminal. A full Kanban board built right into your knowledge base.</p>
+        <h3><span class="accent">#</span> Task Manager &amp; Goals</h3>
+        <p>Full productivity suite with task management, goal tracking, and daily planning -- all keyboard-driven.</p>
         <ul>
-          <li>6 views: Today, Upcoming, All, Done, Calendar, Kanban</li>
-          <li>5 priority levels with color-coded indicators</li>
-          <li>Daily planner with time-blocked schedule view</li>
-          <li>AI smart scheduler that auto-assigns tasks to time slots</li>
-          <li>Parse tasks directly from your Markdown notes</li>
+          <li>7 views: Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower Matrix</li>
+          <li>Subtasks, dependencies, snooze, templates, 10-deep undo stack</li>
+          <li>Recurring tasks auto-create next instance on completion</li>
+          <li>Goal manager with milestones, reviews, sparkline charts, and colors</li>
+          <li>Daily planner: copy to clipboard or export as markdown</li>
+          <li>Search Everything (Ctrl+/): fuzzy search across notes, tasks, goals</li>
         </ul>
       </div>
     </div>
@@ -1380,8 +1396,18 @@
           </tr>
           <tr>
             <td>Task Manager</td>
-            <td class="highlight"><span class="check">Built-in, 6 views</span></td>
+            <td class="highlight"><span class="check">Built-in, 7 views + Eisenhower</span></td>
             <td><span class="partial">Plugin</span></td>
+          </tr>
+          <tr>
+            <td>Goal Tracking</td>
+            <td class="highlight"><span class="check">Built-in with milestones &amp; reviews</span></td>
+            <td><span class="cross">&#x2717;</span></td>
+          </tr>
+          <tr>
+            <td>Universal Search</td>
+            <td class="highlight"><span class="check">Notes + tasks + goals + habits</span></td>
+            <td><span class="partial">Notes only</span></td>
           </tr>
           <tr>
             <td>Daily Planner</td>
@@ -1443,6 +1469,10 @@
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>K</kbd></div>
       </div>
       <div class="shortcut-item fade-in fade-in-delay-1">
+        <span class="shortcut-label">Search Everything</span>
+        <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>/</kbd></div>
+      </div>
+      <div class="shortcut-item fade-in fade-in-delay-2">
         <span class="shortcut-label">Focus / Zen Mode</span>
         <div class="shortcut-keys"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>Z</kbd></div>
       </div>
@@ -1571,11 +1601,11 @@
     <p class="section-subtitle fade-in">A massive, well-tested codebase -- 100% free and open source.</p>
     <div class="stats-row">
       <div class="stat-card fade-in fade-in-delay-1">
-        <span class="stat-number">113,000+</span>
+        <span class="stat-number">166,000+</span>
         <span class="stat-label">Lines of Go</span>
       </div>
       <div class="stat-card fade-in fade-in-delay-2">
-        <span class="stat-number">1,438</span>
+        <span class="stat-number">1,971</span>
         <span class="stat-label">Tests</span>
       </div>
       <div class="stat-card fade-in fade-in-delay-3">
@@ -1583,7 +1613,7 @@
         <span class="stat-label">Themes</span>
       </div>
       <div class="stat-card fade-in fade-in-delay-1">
-        <span class="stat-number">140+</span>
+        <span class="stat-number">80+</span>
         <span class="stat-label">Commands</span>
       </div>
       <div class="stat-card fade-in fade-in-delay-2">
