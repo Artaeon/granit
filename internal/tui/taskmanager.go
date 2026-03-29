@@ -733,11 +733,65 @@ func (tm *TaskManager) doToggle(task Task) {
 	if ok {
 		if newDone {
 			tm.statusMsg = "Task completed"
+			// Auto-create next instance for recurring tasks
+			if task.Recurrence != "" {
+				tm.createNextRecurrence(task)
+			}
 		} else {
 			tm.statusMsg = "Task reopened"
 		}
 		tm.reparse()
 	}
+}
+
+// createNextRecurrence creates the next instance of a recurring task.
+func (tm *TaskManager) createNextRecurrence(task Task) {
+	if tm.vault == nil {
+		return
+	}
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	var nextDate time.Time
+	switch task.Recurrence {
+	case "daily":
+		nextDate = today.AddDate(0, 0, 1)
+	case "weekly":
+		nextDate = today.AddDate(0, 0, 7)
+	case "monthly":
+		nextDate = today.AddDate(0, 1, 0)
+	case "3x-week":
+		// Next occurrence: skip 2 days (Mon→Wed→Fri→Mon)
+		nextDate = today.AddDate(0, 0, 2)
+		if nextDate.Weekday() == time.Saturday {
+			nextDate = nextDate.AddDate(0, 0, 2)
+		} else if nextDate.Weekday() == time.Sunday {
+			nextDate = nextDate.AddDate(0, 0, 1)
+		}
+	default:
+		return
+	}
+
+	// Build new task line: unchecked version with new date
+	cleanText := tmCleanText(task.Text)
+	dateStr := nextDate.Format("2006-01-02")
+	newLine := fmt.Sprintf("- [ ] %s \U0001F4C5 %s", cleanText, dateStr)
+
+	// Preserve recurrence marker
+	if tmRecurEmojiRe.MatchString(task.Text) {
+		newLine += " \U0001F501 " + task.Recurrence
+	} else {
+		newLine += " #" + task.Recurrence
+	}
+
+	// Append to the same file
+	note := tm.vault.GetNote(task.NotePath)
+	if note == nil {
+		return
+	}
+	note.Content += "\n" + newLine
+	absPath := filepath.Join(tm.vault.Root, task.NotePath)
+	_ = os.WriteFile(absPath, []byte(note.Content), 0644)
+	tm.statusMsg = fmt.Sprintf("Task completed — next: %s", dateStr)
 }
 
 // doSetDate sets the due date on the task at the current cursor.
