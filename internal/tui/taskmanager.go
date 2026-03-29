@@ -478,7 +478,7 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 			// Time estimate (~30m, ~2h)
 			if em := tmEstimateRe.FindStringSubmatch(taskText); em != nil {
 				val := 0
-				fmt.Sscanf(em[1], "%d", &val)
+				_, _ = fmt.Sscanf(em[1], "%d", &val)
 				if em[2] == "h" {
 					val *= 60
 				}

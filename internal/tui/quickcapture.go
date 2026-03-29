@@ -79,7 +79,7 @@ func resolveRelativeDate(ref string) string {
 		// "in N days/weeks/months"
 		if m := qcNLDateRe.FindStringSubmatch(lower); m != nil {
 			n := 0
-			fmt.Sscanf(m[1], "%d", &n)
+			_, _ = fmt.Sscanf(m[1], "%d", &n)
 			switch {
 			case strings.HasPrefix(m[2], "day"):
 				return today.AddDate(0, 0, n).Format("2006-01-02")

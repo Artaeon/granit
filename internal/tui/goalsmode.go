@@ -334,7 +334,7 @@ func (gm *GoalsMode) nextID() string {
 	for _, g := range gm.goals {
 		if len(g.ID) > 1 && g.ID[0] == 'G' {
 			n := 0
-			fmt.Sscanf(g.ID[1:], "%d", &n)
+			_, _ = fmt.Sscanf(g.ID[1:], "%d", &n)
 			if n > max {
 				max = n
 			}
