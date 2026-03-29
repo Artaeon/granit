@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -174,6 +175,35 @@ tags: [meeting]
 		}
 	}
 
+	// Create essential folders
+	for _, dir := range []string{"Daily", "Habits", "Archive"} {
+		_ = os.MkdirAll(filepath.Join(absPath, dir), 0755)
+	}
+
+	// Create Tasks.md if it doesn't exist
+	tasksPath := filepath.Join(absPath, "Tasks.md")
+	if _, err := os.Stat(tasksPath); os.IsNotExist(err) {
+		tasksContent := "---\ntitle: Tasks\ndate: " + todayDate() + "\ntags: [tasks]\n---\n\n# Tasks\n\n- [ ] \n"
+		_ = os.WriteFile(tasksPath, []byte(tasksContent), 0644)
+	}
+
+	// Initialize git repository
+	gitInitialized := false
+	gitDir := filepath.Join(absPath, ".git")
+	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+		cmd := exec.Command("git", "-C", absPath, "init")
+		if err := cmd.Run(); err == nil {
+			gitInitialized = true
+		}
+	}
+
+	// Create .gitignore if it doesn't exist
+	gitignorePath := filepath.Join(absPath, ".gitignore")
+	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
+		gitignoreContent := ".granit/\n.DS_Store\n*.swp\n*.swo\n*~\n"
+		_ = os.WriteFile(gitignorePath, []byte(gitignoreContent), 0644)
+	}
+
 	// Register the vault
 	vl := config.LoadVaultList()
 	vl.AddVault(absPath)
@@ -187,16 +217,27 @@ tags: [meeting]
 	fmt.Println("  .granit/              Vault configuration directory")
 	fmt.Println("  .granit/plugins/      Local plugins directory")
 	fmt.Println("  .granit.json          Per-vault settings")
+	fmt.Println("  .gitignore            Git ignore rules")
 	fmt.Println("  Welcome.md            Getting started guide")
+	fmt.Println("  Tasks.md              Task management file")
+	fmt.Println("  Daily/                Daily notes folder")
+	fmt.Println("  Habits/               Habit tracking folder")
+	fmt.Println("  Archive/              Task archive folder")
 	fmt.Println("  templates/            Note templates")
-	fmt.Println("    Note.md")
-	fmt.Println("    Daily Note.md")
-	fmt.Println("    Meeting Notes.md")
+	if gitInitialized {
+		fmt.Println("  .git/                 Git repository (initialized)")
+	}
 	fmt.Println()
 	fmt.Printf("Next steps:\n")
 	fmt.Printf("  granit %s             Open your vault\n", vaultName)
 	fmt.Printf("  granit open %s        Same, explicit form\n", absPath)
 	fmt.Printf("  granit daily %s       Create today's daily note\n", absPath)
+	if gitInitialized {
+		fmt.Println()
+		fmt.Println("Git sync:")
+		fmt.Println("  git -C " + absPath + " remote add origin <url>")
+		fmt.Println("  granit sync " + vaultName + "            Sync with remote")
+	}
 }
 
 func todayDate() string {
