@@ -1076,6 +1076,15 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.planMyDay.SetSize(m.width, m.height)
 		tasks, events, habits, projects, yesterdayTasks := m.gatherPlanMyDayData()
 		m.planMyDay.SetClockedSessions(m.clockIn.SessionsForPlan())
+		// Load active goals for AI context
+		gm := NewGoalsMode()
+		gm.vaultRoot = m.vault.Root
+		gm.loadGoals()
+		for _, g := range gm.goals {
+			if g.Status == GoalStatusActive {
+				m.planMyDay.goals = append(m.planMyDay.goals, g)
+			}
+		}
 		cmd := m.planMyDay.Open(m.vault.Root, tasks, events, habits, projects, yesterdayTasks,
 			m.config.AIProvider, m.config.OllamaURL, m.config.OllamaModel,
 			m.config.OpenAIKey, m.config.OpenAIModel)

@@ -72,6 +72,7 @@ type PlanMyDay struct {
 	events   []PlannerEvent
 	habits   []habitEntry
 	projects []Project
+	goals    []Goal
 
 	// Yesterday's carry-forward tasks
 	yesterdayTasks []string
@@ -311,6 +312,27 @@ func (p PlanMyDay) buildPrompt() string {
 		b.WriteString("(none)\n")
 	}
 	b.WriteString("\n")
+
+	// Active goals
+	if len(p.goals) > 0 {
+		b.WriteString("### Active Goals:\n")
+		for _, g := range p.goals {
+			prog := ""
+			if len(g.Milestones) > 0 {
+				prog = fmt.Sprintf(" (%d%%)", g.Progress())
+			}
+			overdue := ""
+			if g.IsOverdue() {
+				overdue = " OVERDUE"
+			}
+			review := ""
+			if g.IsDueForReview() {
+				review = " [review due]"
+			}
+			b.WriteString(fmt.Sprintf("- %s%s%s%s\n", g.Title, prog, overdue, review))
+		}
+		b.WriteString("\n")
+	}
 
 	// Habits
 	b.WriteString("### Habits to Complete:\n")
