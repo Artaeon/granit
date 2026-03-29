@@ -38,6 +38,7 @@ type Task struct {
 	Recurrence       string   `json:"recurrence,omitempty"`        // "daily", "weekly", "monthly", etc.
 	Project          string   `json:"project,omitempty"`           // matched project name
 	SnoozedUntil     string   `json:"snoozed_until,omitempty"`     // ISO "2006-01-02T15:04"
+	GoalID           string   `json:"goal_id,omitempty"`           // linked goal e.g. "G001"
 	ActualMinutes    int      `json:"-"`                           // computed from time tracker, not serialized
 }
 
@@ -104,6 +105,7 @@ var (
 	tmRecurEmojiRe = regexp.MustCompile(`\x{1F501}\s*(daily|weekly|monthly|3x-week)`)
 	tmRecurTagRe   = regexp.MustCompile(`#(daily|weekly|monthly|3x-week)\b`)
 	tmSnoozeRe     = regexp.MustCompile(`snooze:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})`)
+	tmGoalIDRe     = regexp.MustCompile(`goal:(G\d{3,})`)
 )
 
 // taskTemplate stores a reusable task definition.
@@ -466,6 +468,11 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 			// Snooze
 			if sm := tmSnoozeRe.FindStringSubmatch(taskText); sm != nil {
 				t.SnoozedUntil = sm[1]
+			}
+
+			// Goal link
+			if gm := tmGoalIDRe.FindStringSubmatch(taskText); gm != nil {
+				t.GoalID = gm[1]
 			}
 
 			// Time estimate (~30m, ~2h)
@@ -1456,6 +1463,7 @@ func tmCleanText(s string) string {
 	s = tmDependsRe.ReplaceAllString(s, "")
 	s = tmEstimateRe.ReplaceAllString(s, "")
 	s = tmSnoozeRe.ReplaceAllString(s, "")
+	s = tmGoalIDRe.ReplaceAllString(s, "")
 	return strings.TrimSpace(s)
 }
 
@@ -3132,6 +3140,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	displayText = tmDependsRe.ReplaceAllString(displayText, "")
 	displayText = tmEstimateRe.ReplaceAllString(displayText, "")
 	displayText = tmSnoozeRe.ReplaceAllString(displayText, "")
+	displayText = tmGoalIDRe.ReplaceAllString(displayText, "")
 	displayText = strings.TrimSpace(displayText)
 
 	textStyle := lipgloss.NewStyle().Foreground(text)
@@ -3216,6 +3225,13 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		prefixExtra += 3
 	}
 
+	// Goal link indicator
+	goalStr := ""
+	if task.GoalID != "" {
+		goalStr = lipgloss.NewStyle().Foreground(sapphire).Render("\u2691 ")
+		prefixExtra += 2
+	}
+
 	// Selection indicator (in select mode)
 	selectStr := ""
 	if tm.selectMode {
@@ -3275,7 +3291,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		tagBadges += " " + lipgloss.NewStyle().Foreground(c).Render("#"+tag)
 	}
 
-	line := prefix + pinStr + noteStr + selectStr + indentStr + collapseIndicator + blockedStr + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
+	line := prefix + pinStr + noteStr + goalStr + selectStr + indentStr + collapseIndicator + blockedStr + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
 	if tagBadges != "" {
 		line += tagBadges
 	}
@@ -3661,6 +3677,7 @@ func (tm *TaskManager) renderKanbanCard(b *strings.Builder, task Task, isSelecte
 	displayText = tmPrioLowRe.ReplaceAllString(displayText, "")
 	displayText = tmEstimateRe.ReplaceAllString(displayText, "")
 	displayText = tmSnoozeRe.ReplaceAllString(displayText, "")
+	displayText = tmGoalIDRe.ReplaceAllString(displayText, "")
 	displayText = strings.TrimSpace(displayText)
 
 	maxTextW := w - 8

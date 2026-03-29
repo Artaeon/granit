@@ -241,6 +241,7 @@ type GoalsMode struct {
 	height int
 
 	vaultRoot string
+	allTasks  []Task // for linked task stats
 	goals     []Goal
 	filtered  []Goal // currently visible goals
 
@@ -279,9 +280,14 @@ func (gm *GoalsMode) SetSize(w, h int) {
 	gm.height = h
 }
 
-func (gm *GoalsMode) Open(vaultRoot string) {
+func (gm *GoalsMode) Open(vaultRoot string, tasks ...[]Task) {
 	gm.active = true
 	gm.vaultRoot = vaultRoot
+	if len(tasks) > 0 {
+		gm.allTasks = tasks[0]
+	} else {
+		gm.allTasks = nil
+	}
 	gm.view = goalViewAll
 	gm.cursor = 0
 	gm.scroll = 0
@@ -410,6 +416,32 @@ func (gm *GoalsMode) ensureVisible() {
 	if gm.cursor >= gm.scroll+maxVisible {
 		gm.scroll = gm.cursor - maxVisible + 1
 	}
+}
+
+// createTaskFromMilestone writes a new task to Tasks.md linked to the goal.
+func (gm *GoalsMode) createTaskFromMilestone(goal Goal, ms GoalMilestone) {
+	tasksPath := filepath.Join(gm.vaultRoot, "Tasks.md")
+	taskLine := fmt.Sprintf("\n- [ ] %s goal:%s", ms.Text, goal.ID)
+
+	existing, err := os.ReadFile(tasksPath)
+	if err != nil {
+		existing = []byte("# Tasks\n")
+	}
+	_ = os.WriteFile(tasksPath, append(existing, []byte(taskLine)...), 0644)
+	gm.statusMsg = "Task created: " + ms.Text
+}
+
+// linkedTaskStats returns done/total counts for tasks linked to a goal.
+func (gm *GoalsMode) linkedTaskStats(goalID string) (done, total int) {
+	for _, t := range gm.allTasks {
+		if t.GoalID == goalID {
+			total++
+			if t.Done {
+				done++
+			}
+		}
+	}
+	return
 }
 
 func (gm *GoalsMode) setReviewFrequency(freq string) {
@@ -844,6 +876,17 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			goal := gm.filtered[gm.cursor]
 			gm.input = goalInputNotes
 			gm.inputBuf = goal.Notes
+		}
+
+	// Create task from milestone
+	case "t":
+		if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
+			goal := gm.filtered[gm.expanded]
+			idx := gm.findGoalIndex(goal.ID)
+			if idx >= 0 && gm.milestoneCur >= 0 && gm.milestoneCur < len(gm.goals[idx].Milestones) {
+				ms := gm.goals[idx].Milestones[gm.milestoneCur]
+				gm.createTaskFromMilestone(gm.goals[idx], ms)
+			}
 		}
 
 	// Set review frequency / write review
@@ -1413,6 +1456,15 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 				b.WriteString("      " + DimStyle.Render(meta) + "\n")
 				lineCount++
 			}
+			// Linked tasks
+			if taskDone, taskTotal := gm.linkedTaskStats(goalData.ID); taskTotal > 0 {
+				taskColor := green
+				if taskDone < taskTotal {
+					taskColor = lavender
+				}
+				b.WriteString("      " + lipgloss.NewStyle().Foreground(taskColor).Render(fmt.Sprintf("Tasks: %d/%d done", taskDone, taskTotal)) + "\n")
+				lineCount++
+			}
 			// Recent reviews (last 3)
 			if len(goalData.ReviewLog) > 0 {
 				start := len(goalData.ReviewLog) - 3
@@ -1541,6 +1593,7 @@ func (gm *GoalsMode) renderHelp(b *strings.Builder, w int) {
 		}},
 		{"Milestones", [][2]string{
 			{"m", "Add milestone to current goal"},
+			{"t", "Create task from milestone (links to goal)"},
 			{"d", "Delete milestone (when expanded)"},
 			{"Enter", "Toggle milestone completion"},
 		}},
@@ -1563,7 +1616,7 @@ func (gm *GoalsMode) renderHelpBar(b *strings.Builder, w int) {
 	pairs := [][2]string{
 		{"j/k", "nav"}, {"a", "add"}, {"m", "milestone"}, {"x", "complete"},
 		{"e", "edit"}, {"E", "desc"}, {"n", "notes"}, {"p", "pause"},
-		{"r", "review"}, {"A", "archive"}, {"D", "delete"}, {"?", "help"}, {"Tab", "view"}, {"Esc", "close"},
+		{"t", "task"}, {"r", "review"}, {"A", "archive"}, {"D", "delete"}, {"?", "help"}, {"Tab", "view"}, {"Esc", "close"},
 	}
 	var parts []string
 	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)

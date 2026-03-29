@@ -1082,7 +1082,8 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdGoalsMode:
 		m.goalsMode.SetSize(m.width, m.height)
-		m.goalsMode.Open(m.vault.Root)
+		allTasks := ParseAllTasks(m.vault.Notes)
+		m.goalsMode.Open(m.vault.Root, allTasks)
 
 	case CmdCopyDailyPlan:
 		// Build a plan summary using the planner's data without opening it
