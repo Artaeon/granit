@@ -397,7 +397,12 @@ func (qc QuickCapture) View() string {
 		b.WriteString("\n\n")
 
 		// Help line
-		b.WriteString(DimStyle.Render("  Enter: save  Esc: cancel"))
+		ks := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+		ds := DimStyle
+		b.WriteString("  " + ks.Render("Enter") + ds.Render(":save") + "  " + ks.Render("Esc") + ds.Render(":cancel") + "  " + ks.Render("Tab") + ds.Render(":mode"))
+		if qc.mode == 2 { // Task mode
+			b.WriteString("\n  " + ds.Render("Syntax: @tomorrow !high #tag ~1h"))
+		}
 	}
 
 	border := lipgloss.NewStyle().

@@ -975,6 +975,19 @@ func (s Settings) View() string {
 		}
 	}
 
+	// Help bar
+	b.WriteString("\n")
+	ks := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+	ds := DimStyle
+	helpParts := []string{
+		ks.Render("j/k") + ds.Render(":nav"),
+		ks.Render("Enter") + ds.Render(":edit"),
+		ks.Render("/") + ds.Render(":search"),
+		ks.Render("Del") + ds.Render(":reset"),
+		ks.Render("Esc") + ds.Render(":close"),
+	}
+	b.WriteString("  " + strings.Join(helpParts, "  "))
+
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(OverlayBorderColor).

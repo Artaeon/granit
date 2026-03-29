@@ -424,9 +424,10 @@ func (wr WeeklyReview) View() string {
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(mauve).
+		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
-		Width(width)
+		Width(width).
+		Background(mantle)
 
 	return border.Render(b.String())
 }
