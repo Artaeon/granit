@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -521,14 +522,25 @@ func (b *Bots) buildSummarizerPrompt() string {
 		content = content[:3000]
 	}
 
-	return fmt.Sprintf(`Summarize the following note in 2-4 concise sentences. Focus on the key ideas and main points.
+	// Extract metadata for better grounding
+	tags := extractFrontmatterTags(b.currentBody)
+	tagLine := ""
+	if len(tags) > 0 {
+		tagLine = fmt.Sprintf("\nTags: %s", strings.Join(tags, ", "))
+	}
+	folder := ""
+	if dir := filepath.Dir(b.currentPath); dir != "." && dir != "" {
+		folder = fmt.Sprintf("\nFolder: %s", dir)
+	}
 
-Note: %s
+	return fmt.Sprintf(`Summarize the following note in 2-4 concise sentences. Focus on the key ideas and actionable points.
+
+Note: %s%s%s
 ---
 %s
 ---
 
-Provide ONLY the summary, no preamble.`, noteName, content)
+Provide ONLY the summary, no preamble.`, noteName, tagLine, folder, content)
 }
 
 func (b *Bots) buildQuestionPrompt() string {
