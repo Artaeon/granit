@@ -439,6 +439,9 @@ func (cm ClipManager) View() string {
 
 		for i := cm.scroll; i < end; i++ {
 			idx := cm.filtered[i]
+			if idx < 0 || idx >= len(cm.clips) {
+				continue
+			}
 			ce := cm.clips[idx]
 
 			// Section headers

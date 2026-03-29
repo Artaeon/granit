@@ -600,7 +600,7 @@ func (dp DailyPlanner) updateSchedule(msg tea.KeyMsg) (DailyPlanner, tea.Cmd) {
 			dp.recountProgress()
 		} else {
 			// Try to assign first unscheduled task to this slot
-			if len(dp.unscheduled) > 0 && dp.blocks[dp.cursor].TaskType == blockEmpty {
+			if len(dp.unscheduled) > 0 && dp.cursor >= 0 && dp.cursor < len(dp.blocks) && dp.blocks[dp.cursor].TaskType == blockEmpty {
 				task := dp.unscheduled[dp.unschedCursor]
 				dp.placeBlock(dp.cursor, task.Text, blockTask, 2)
 				dp.blocks[dp.cursor].Priority = task.Priority

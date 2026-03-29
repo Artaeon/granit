@@ -83,6 +83,13 @@ func (fs *FocusSession) Open(vaultRoot string) {
 	fs.vaultRoot = vaultRoot
 	fs.phase = fsPhaseSetup
 	fs.durIdx = 0
+	// Ensure durations are initialized (handles zero-value struct)
+	if len(fs.durations) == 0 {
+		fs.durations = []int{25, 45, 60, 90}
+	}
+	if len(fs.breakDurs) == 0 {
+		fs.breakDurs = []int{5, 10, 15}
+	}
 	fs.goalInput = ""
 	fs.setupField = 0
 	fs.scratchpad = ""
@@ -276,7 +283,11 @@ func (fs FocusSession) updateSetup(msg tea.KeyMsg) (FocusSession, tea.Cmd) {
 // startSession transitions from setup to active phase.
 func (fs FocusSession) startSession() (FocusSession, tea.Cmd) {
 	fs.phase = fsPhaseActive
-	fs.duration = time.Duration(fs.durations[fs.durIdx]) * time.Minute
+	dur := 25 // default fallback
+	if fs.durIdx >= 0 && fs.durIdx < len(fs.durations) {
+		dur = fs.durations[fs.durIdx]
+	}
+	fs.duration = time.Duration(dur) * time.Minute
 	fs.startTime = time.Now()
 	fs.elapsed = 0
 	fs.scratchpad = ""

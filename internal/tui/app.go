@@ -345,6 +345,7 @@ func NewModel(vaultPath string) (Model, error) {
 		aiTemplates:      NewAITemplates(),
 		languageLearning: NewLanguageLearning(),
 		habitTracker:     NewHabitTracker(),
+		focusSession:     NewFocusSession(),
 		goalsMode:        NewGoalsMode(),
 		universalSearch:  NewUniversalSearch(),
 		commandCenter:   NewCommandCenter(),
