@@ -650,6 +650,15 @@ func (m Model) Init() tea.Cmd {
 			}
 		}()
 	}
+	// Ollama: check availability and auto-pull model on startup
+	if m.config.AIProvider == "ollama" || m.config.AIProvider == "" {
+		ollamaURL := m.config.OllamaURL
+		ollamaModel := m.config.OllamaModel
+		cmds = append(cmds, func() tea.Msg {
+			msg := OllamaEnsureModel(ollamaURL, ollamaModel)
+			return ollamaStatusMsg{text: msg, ready: OllamaIsReady()}
+		})
+	}
 	// Background embedding index
 	if m.config.SemanticSearchEnabled && m.config.AIProvider != "local" {
 		if bgCmd := m.startSemanticBgIndex(); bgCmd != nil {

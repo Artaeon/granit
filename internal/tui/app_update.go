@@ -84,6 +84,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusbar.SetMessage("")
 		return m, nil
 
+	case ollamaStatusMsg:
+		if msg.ready {
+			m.toast.Show("AI ready: "+msg.text, ToastSuccess)
+		} else {
+			m.toast.Show(msg.text, ToastWarning)
+		}
+		return m, nil
+
 	case vimMacroReplayMsg:
 		if msg.idx >= len(msg.keys) {
 			if m.vimState != nil {
