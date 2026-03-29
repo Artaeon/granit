@@ -250,6 +250,7 @@ func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.collapsed = make(map[string]bool)
 	tm.selectMode = false
 	tm.selected = make(map[string]bool)
+	tm.undoStack = nil
 	tm.loadPinnedTasks()
 	tm.loadTaskNotes()
 	tm.loadTaskTemplates()
@@ -788,7 +789,7 @@ func (tm *TaskManager) createNextRecurrence(task Task) {
 	if note == nil {
 		return
 	}
-	note.Content += "\n" + newLine
+	note.Content += "\n" + newLine + "\n"
 	absPath := filepath.Join(tm.vault.Root, task.NotePath)
 	_ = os.WriteFile(absPath, []byte(note.Content), 0644)
 	tm.statusMsg = fmt.Sprintf("Task completed — next: %s", dateStr)
@@ -947,7 +948,9 @@ func (tm *TaskManager) loadTaskTemplates() {
 	if err != nil {
 		return
 	}
-	_ = json.Unmarshal(data, &tm.taskTemplates)
+	if err := json.Unmarshal(data, &tm.taskTemplates); err != nil {
+		tm.taskTemplates = nil
+	}
 }
 
 func (tm *TaskManager) saveTaskTemplates() {
@@ -970,7 +973,9 @@ func (tm *TaskManager) loadPinnedTasks() {
 	if err != nil {
 		return
 	}
-	_ = json.Unmarshal(data, &tm.pinnedTasks)
+	if err := json.Unmarshal(data, &tm.pinnedTasks); err != nil {
+		tm.pinnedTasks = make(map[string]bool)
+	}
 }
 
 func (tm *TaskManager) savePinnedTasks() {
@@ -993,7 +998,9 @@ func (tm *TaskManager) loadTaskNotes() {
 	if err != nil {
 		return
 	}
-	_ = json.Unmarshal(data, &tm.taskNotes)
+	if err := json.Unmarshal(data, &tm.taskNotes); err != nil {
+		tm.taskNotes = make(map[string]string)
+	}
 }
 
 func (tm *TaskManager) saveTaskNotes() {

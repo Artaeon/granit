@@ -344,7 +344,10 @@ func (gm *GoalsMode) loadGoals() {
 	if err != nil {
 		return
 	}
-	_ = json.Unmarshal(data, &gm.goals)
+	if err := json.Unmarshal(data, &gm.goals); err != nil {
+		// Corrupted JSON — start with empty goals rather than nil
+		gm.goals = []Goal{}
+	}
 }
 
 func (gm *GoalsMode) saveGoals() {
@@ -446,7 +449,7 @@ func (gm *GoalsMode) ensureVisible() {
 // createTaskFromMilestone writes a new task to Tasks.md linked to the goal.
 func (gm *GoalsMode) createTaskFromMilestone(goal Goal, ms GoalMilestone) {
 	tasksPath := filepath.Join(gm.vaultRoot, "Tasks.md")
-	taskLine := fmt.Sprintf("\n- [ ] %s goal:%s", ms.Text, goal.ID)
+	taskLine := fmt.Sprintf("\n- [ ] %s goal:%s\n", ms.Text, goal.ID)
 
 	existing, err := os.ReadFile(tasksPath)
 	if err != nil {
