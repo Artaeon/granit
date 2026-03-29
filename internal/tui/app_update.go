@@ -2339,6 +2339,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.commandPalette.Open()
 			return m, nil
 
+		case "ctrl+/":
+			m.universalSearch.SetSize(m.width, m.height)
+			allTasks := ParseAllTasks(m.vault.Notes)
+			gm := NewGoalsMode()
+			gm.vaultRoot = m.vault.Root
+			gm.loadGoals()
+			var habits []habitEntry
+			if m.habitTracker.habits != nil {
+				habits = m.habitTracker.habits
+			}
+			m.universalSearch.Open(m.vault.Notes, allTasks, gm.goals, habits)
+			return m, nil
+
 		case "ctrl+k":
 			m.taskManager.SetSize(m.width, m.height)
 			m.taskManager.config = m.config
