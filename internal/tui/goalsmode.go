@@ -281,6 +281,9 @@ type GoalsMode struct {
 	expandedID  string // ID of expanded goal (survives rebuildFiltered)
 	milestoneCur int
 
+	// Snapshot of target goal for input modes (prevents cursor drift)
+	inputGoalID string
+
 	// New goal staging
 	newGoalTitle    string
 	newGoalDate     string
@@ -473,11 +476,10 @@ func (gm *GoalsMode) linkedTaskStats(goalID string) (done, total int) {
 }
 
 func (gm *GoalsMode) setReviewFrequency(freq string) {
-	if gm.cursor >= len(gm.filtered) {
+	if gm.inputGoalID == "" {
 		return
 	}
-	goal := gm.filtered[gm.cursor]
-	idx := gm.findGoalIndex(goal.ID)
+	idx := gm.findGoalIndex(gm.inputGoalID)
 	if idx < 0 {
 		return
 	}
@@ -500,11 +502,10 @@ func (gm *GoalsMode) setReviewFrequency(freq string) {
 }
 
 func (gm *GoalsMode) submitReview(note string) {
-	if gm.expanded < 0 || gm.expanded >= len(gm.filtered) {
+	if gm.inputGoalID == "" {
 		return
 	}
-	goal := gm.filtered[gm.expanded]
-	idx := gm.findGoalIndex(goal.ID)
+	idx := gm.findGoalIndex(gm.inputGoalID)
 	if idx < 0 {
 		return
 	}
@@ -916,6 +917,7 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 	// Set goal color
 	case "C":
 		if gm.cursor < len(gm.filtered) {
+			gm.inputGoalID = gm.filtered[gm.cursor].ID
 			gm.input = goalInputColor
 		}
 
@@ -961,12 +963,12 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 	// Set review frequency / write review
 	case "r":
 		if gm.cursor < len(gm.filtered) {
+			gm.inputGoalID = gm.filtered[gm.cursor].ID
 			if gm.expanded >= 0 {
-				// Write review for expanded goal
+				gm.inputGoalID = gm.filtered[gm.expanded].ID
 				gm.input = goalInputReview
 				gm.inputBuf = ""
 			} else {
-				// Set review frequency
 				gm.input = goalInputReviewFreq
 			}
 		}
@@ -1126,9 +1128,8 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 			gm.input = goalInputNone
 		case "1", "2", "3", "4", "5", "6", "7":
 			idx := int(key[0] - '1')
-			if idx < len(colors) && gm.cursor < len(gm.filtered) {
-				goal := gm.filtered[gm.cursor]
-				gi := gm.findGoalIndex(goal.ID)
+			if idx < len(colors) && gm.inputGoalID != "" {
+				gi := gm.findGoalIndex(gm.inputGoalID)
 				if gi >= 0 {
 					gm.goals[gi].Color = colors[idx]
 					gm.goals[gi].UpdatedAt = time.Now().Format("2006-01-02")
@@ -1139,9 +1140,8 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 			}
 			gm.input = goalInputNone
 		case "0":
-			if gm.cursor < len(gm.filtered) {
-				goal := gm.filtered[gm.cursor]
-				gi := gm.findGoalIndex(goal.ID)
+			if gm.inputGoalID != "" {
+				gi := gm.findGoalIndex(gm.inputGoalID)
 				if gi >= 0 {
 					gm.goals[gi].Color = ""
 					gm.goals[gi].UpdatedAt = time.Now().Format("2006-01-02")

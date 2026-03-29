@@ -172,6 +172,9 @@ type TaskManager struct {
 	// Cached blocked status (computed once in rebuildFiltered, not per-render)
 	blockedCache map[string]bool
 
+	// Snapshot of task for input modes (prevents cursor drift bugs)
+	inputTask *Task
+
 	// Status message
 	statusMsg string
 
@@ -929,7 +932,7 @@ func (tm *TaskManager) doArchive() int {
 	_ = os.WriteFile(archiveFile, []byte(archiveContent), 0644)
 
 	// Write updated Tasks.md
-	_ = os.WriteFile(tasksPath, []byte(strings.Join(kept, "\n")), 0644)
+	_ = os.WriteFile(tasksPath, []byte(strings.Join(kept, "\n")+"\n"), 0644)
 
 	// Re-scan vault
 	if note := tm.vault.GetNote("Tasks.md"); note != nil {
@@ -2046,11 +2049,11 @@ func (tm TaskManager) updateBatchReschedule(key string) (TaskManager, tea.Cmd) {
 }
 
 func (tm TaskManager) updateSnooze(key string) (TaskManager, tea.Cmd) {
-	if tm.cursor >= len(tm.filtered) {
+	if tm.inputTask == nil {
 		tm.inputMode = tmInputNone
 		return tm, nil
 	}
-	task := tm.filtered[tm.cursor]
+	task := *tm.inputTask
 	now := time.Now()
 	var snoozeTime time.Time
 
@@ -2564,6 +2567,8 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	// Snooze task
 	case "z":
 		if tm.cursor < len(tm.filtered) {
+			t := tm.filtered[tm.cursor]
+			tm.inputTask = &t
 			tm.inputMode = tmInputSnooze
 		}
 
