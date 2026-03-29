@@ -1085,6 +1085,18 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		allTasks := ParseAllTasks(m.vault.Notes)
 		m.goalsMode.Open(m.vault.Root, allTasks)
 
+	case CmdUniversalSearch:
+		m.universalSearch.SetSize(m.width, m.height)
+		allTasks := ParseAllTasks(m.vault.Notes)
+		gm := NewGoalsMode()
+		gm.vaultRoot = m.vault.Root
+		gm.loadGoals()
+		var habits []habitEntry
+		if m.habitTracker.habits != nil {
+			habits = m.habitTracker.habits
+		}
+		m.universalSearch.Open(m.vault.Notes, allTasks, gm.goals, habits)
+
 	case CmdCopyDailyPlan:
 		// Build a plan summary using the planner's data without opening it
 		dp := NewDailyPlanner()

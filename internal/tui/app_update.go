@@ -1133,6 +1133,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.universalSearch.IsActive() {
+			m.universalSearch, _ = m.universalSearch.Update(msg)
+			if nav := m.universalSearch.NavResult(); nav != nil {
+				switch nav.Type {
+				case usResultNote:
+					m.loadNote(nav.NotePath)
+				case usResultTask:
+					m.loadNote(nav.NotePath)
+				case usResultGoal:
+					allTasks := ParseAllTasks(m.vault.Notes)
+					m.goalsMode.SetSize(m.width, m.height)
+					m.goalsMode.Open(m.vault.Root, allTasks)
+				case usResultHabit:
+					m.habitTracker.Open(m.vault.Root)
+					m.habitTracker.vault = m.vault
+				}
+			}
+			return m, nil
+		}
+
 		if m.goalsMode.IsActive() {
 			m.goalsMode, _ = m.goalsMode.Update(msg)
 			return m, nil
