@@ -96,6 +96,9 @@ const (
 	botTitleSuggester
 	botActionItems
 	botMOCGenerator
+	botAutoLinker
+	botFlashcardGen
+	botToneAdjuster
 )
 
 type botDescriptor struct {
@@ -114,6 +117,9 @@ var botList = []botDescriptor{
 	{botTitleSuggester, IconEditChar, "Title Suggester", "Suggest better titles (AI)"},
 	{botActionItems, IconOutlineChar, "Action Items", "Extract todos & action items (AI)"},
 	{botMOCGenerator, IconGraphChar, "MOC Generator", "Create a Map of Content (AI)"},
+	{botAutoLinker, IconSearchChar, "Auto-Link", "Find and suggest [[wikilinks]] to insert (AI)"},
+	{botFlashcardGen, IconBookmarkChar, "Flashcard Generator", "Generate Q&A flashcards from note (AI)"},
+	{botToneAdjuster, IconEditChar, "Tone Adjuster", "Rewrite selection as formal/casual/concise (AI)"},
 	{botDailyDigest, IconCalendarChar, "Daily Digest", "Summarize vault activity"},
 }
 
@@ -729,6 +735,87 @@ Generate a MOC in markdown format using [[wiki-links]] to link to notes. Group n
 
 type botsTickMsg struct{}
 
+func (b *Bots) buildAutoLinkerPrompt() string {
+	content := b.currentBody
+	if len(content) > 2000 {
+		content = content[:2000]
+	}
+
+	// Build list of existing note names for linking
+	var noteNames []string
+	for path := range b.notes {
+		name := strings.TrimSuffix(filepath.Base(path), ".md")
+		if name != strings.TrimSuffix(filepath.Base(b.currentPath), ".md") {
+			noteNames = append(noteNames, name)
+		}
+	}
+	sort.Strings(noteNames)
+	if len(noteNames) > 50 {
+		noteNames = noteNames[:50]
+	}
+
+	return fmt.Sprintf(`Find concepts in this note that match existing notes and should be linked with [[wikilinks]].
+
+Available notes to link to:
+%s
+
+Note content:
+---
+%s
+---
+
+For each match, output:
+LINK: original text -> [[Note Name]]
+
+Only suggest links where the concept clearly matches. Output ONLY the LINK lines.`, strings.Join(noteNames, ", "), content)
+}
+
+func (b *Bots) buildFlashcardPrompt() string {
+	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
+	content := b.currentBody
+	if len(content) > 2500 {
+		content = content[:2500]
+	}
+
+	return fmt.Sprintf(`Generate 5-8 flashcards (question and answer pairs) from this note. Focus on key facts, definitions, and concepts worth remembering.
+
+Note: %s
+---
+%s
+---
+
+Format each as:
+Q: question
+A: answer
+
+Make questions specific and answers concise (1-2 sentences).`, noteName, content)
+}
+
+func (b *Bots) buildToneAdjusterPrompt() string {
+	content := b.currentBody
+	if len(content) > 2000 {
+		content = content[:2000]
+	}
+
+	return fmt.Sprintf(`Rewrite the following text in three different tones. Keep the same meaning and information.
+
+Original:
+---
+%s
+---
+
+Provide three versions:
+
+FORMAL:
+(rewritten in professional, formal tone)
+
+CASUAL:
+(rewritten in friendly, conversational tone)
+
+CONCISE:
+(rewritten as briefly as possible, bullet points if appropriate)`, content)
+}
+
 func botsTickCmd() tea.Cmd {
 	return tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg {
 		return botsTickMsg{}
@@ -959,6 +1046,12 @@ func (b *Bots) buildPrompt() string {
 		return b.buildActionItemsPrompt()
 	case botMOCGenerator:
 		return b.buildMOCGeneratorPrompt()
+	case botAutoLinker:
+		return b.buildAutoLinkerPrompt()
+	case botFlashcardGen:
+		return b.buildFlashcardPrompt()
+	case botToneAdjuster:
+		return b.buildToneAdjusterPrompt()
 	}
 	return ""
 }
@@ -981,6 +1074,12 @@ func (b *Bots) runLocalBot() {
 		b.runLocalActionItems()
 	case botMOCGenerator:
 		b.runLocalMOCGenerator()
+	case botAutoLinker:
+		b.runLocalAutoLinker()
+	case botFlashcardGen:
+		b.runLocalFlashcardGen()
+	case botToneAdjuster:
+		b.runLocalToneAdjuster()
 	case botDailyDigest:
 		b.runDailyDigest()
 	}
@@ -2447,4 +2546,99 @@ func wordWrap(text string, width int) string {
 	}
 	lines = append(lines, current)
 	return strings.Join(lines, "\n")
+}
+
+// ---------------------------------------------------------------------------
+// Local fallbacks: Auto-Linker, Flashcard Generator, Tone Adjuster
+// ---------------------------------------------------------------------------
+
+func (b *Bots) runLocalAutoLinker() {
+	var result []string
+	result = append(result, lipgloss.NewStyle().Foreground(text).Bold(true).Render(
+		"  Auto-Link Suggestions (Local Analysis)"))
+	result = append(result, "")
+
+	currentName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
+	bodyLower := strings.ToLower(b.currentBody)
+
+	found := 0
+	for path := range b.notes {
+		name := strings.TrimSuffix(filepath.Base(path), ".md")
+		if name == currentName || len(name) < 3 {
+			continue
+		}
+		if strings.Contains(bodyLower, strings.ToLower(name)) {
+			// Check it's not already linked
+			if !strings.Contains(b.currentBody, "[["+name+"]]") {
+				result = append(result, lipgloss.NewStyle().Foreground(green).Render(
+					fmt.Sprintf("  LINK: %s -> [[%s]]", name, name)))
+				found++
+				if found >= 10 {
+					break
+				}
+			}
+		}
+	}
+	if found == 0 {
+		result = append(result, DimStyle.Render("  No link suggestions found."))
+	}
+
+	b.resultLines = result
+}
+
+func (b *Bots) runLocalFlashcardGen() {
+	var result []string
+	result = append(result, lipgloss.NewStyle().Foreground(text).Bold(true).Render(
+		"  Flashcards (Local Extraction)"))
+	result = append(result, "")
+
+	// Extract headings and first sentences as Q&A pairs
+	lines := strings.Split(b.currentBody, "\n")
+	cardNum := 0
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "## ") || strings.HasPrefix(trimmed, "### ") {
+			topic := strings.TrimLeft(trimmed, "# ")
+			// Find first non-empty line after heading
+			answer := ""
+			for j := i + 1; j < len(lines) && j < i+4; j++ {
+				a := strings.TrimSpace(lines[j])
+				if a != "" && !strings.HasPrefix(a, "#") {
+					answer = a
+					break
+				}
+			}
+			if answer != "" && len(answer) > 10 {
+				cardNum++
+				if len(answer) > 120 {
+					answer = answer[:120] + "..."
+				}
+				result = append(result, lipgloss.NewStyle().Foreground(blue).Render(
+					fmt.Sprintf("  Q%d: What is %s?", cardNum, topic)))
+				result = append(result, DimStyle.Render(
+					fmt.Sprintf("  A%d: %s", cardNum, answer)))
+				result = append(result, "")
+				if cardNum >= 8 {
+					break
+				}
+			}
+		}
+	}
+	if cardNum == 0 {
+		result = append(result, DimStyle.Render("  Add headings (##) to generate flashcards locally."))
+		result = append(result, DimStyle.Render("  Use Ollama for AI-powered flashcard generation."))
+	}
+
+	b.resultLines = result
+}
+
+func (b *Bots) runLocalToneAdjuster() {
+	var result []string
+	result = append(result, lipgloss.NewStyle().Foreground(text).Bold(true).Render(
+		"  Tone Adjustment (Local)"))
+	result = append(result, "")
+	result = append(result, DimStyle.Render("  Tone adjustment requires an AI provider (Ollama recommended)."))
+	result = append(result, DimStyle.Render("  Set ai_provider to 'ollama' in Settings (Ctrl+,)."))
+
+	b.resultLines = result
 }
