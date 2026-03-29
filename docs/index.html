@@ -59,6 +59,9 @@
       opacity: 1;
       transform: translateY(0);
     }
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.25s; }
 
     /* ── Navigation ── */
     nav {
@@ -110,13 +113,32 @@
     .hero {
       min-height: 100vh; display: flex; flex-direction: column;
       align-items: center; justify-content: center; text-align: center;
-      padding: 8rem 2rem 6rem; position: relative;
+      padding: 8rem 2rem 6rem; position: relative; overflow: hidden;
     }
     .hero::before {
-      content: ""; position: absolute; top: -20%; left: 50%; transform: translateX(-50%);
-      width: 600px; height: 600px; border-radius: 50%;
-      background: radial-gradient(circle, var(--accent-glow), transparent 70%);
-      pointer-events: none;
+      content: ""; position: absolute; top: -30%; left: 50%; transform: translateX(-50%);
+      width: 800px; height: 800px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(180,142,173,0.12) 0%, rgba(122,162,247,0.06) 40%, transparent 70%);
+      pointer-events: none; animation: heroGlow 8s ease-in-out infinite alternate;
+    }
+    .hero::after {
+      content: ""; position: absolute; bottom: -20%; right: -10%;
+      width: 500px; height: 500px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(122,162,247,0.08), transparent 70%);
+      pointer-events: none; animation: heroGlow 10s ease-in-out infinite alternate-reverse;
+    }
+    @keyframes heroGlow {
+      0% { opacity: 0.6; transform: translateX(-50%) scale(1); }
+      100% { opacity: 1; transform: translateX(-50%) scale(1.15); }
+    }
+    .hero-grid {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 70%);
     }
     .hero-overline {
       font-family: var(--mono); font-size: 0.8rem; font-weight: 500;
@@ -141,13 +163,20 @@
       font-size: 0.95rem; transition: all 0.3s ease;
     }
     .btn-primary {
-      background: var(--accent); color: #0a0a0f;
+      background: linear-gradient(135deg, var(--accent), #9a6ea8); color: #0a0a0f;
+      position: relative; overflow: hidden;
     }
-    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(180,142,173,0.3); color: #0a0a0f; }
+    .btn-primary::after {
+      content: ""; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+      background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,0.15) 50%, transparent 60%);
+      transform: rotate(25deg); transition: transform 0.6s;
+    }
+    .btn-primary:hover::after { transform: rotate(25deg) translateX(80%); }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(180,142,173,0.35); color: #0a0a0f; }
     .btn-secondary {
       background: var(--bg-card); color: var(--text); border: 1px solid var(--border);
     }
-    .btn-secondary:hover { border-color: var(--border-hover); transform: translateY(-2px); color: var(--text); }
+    .btn-secondary:hover { border-color: var(--accent); transform: translateY(-2px); color: var(--text); box-shadow: 0 8px 30px rgba(0,0,0,0.3); }
     .hero-badges {
       display: flex; gap: 0.75rem; margin-top: 3rem; flex-wrap: wrap; justify-content: center;
     }
@@ -155,6 +184,15 @@
       font-family: var(--mono); font-size: 0.7rem; font-weight: 500;
       color: var(--text-muted); padding: 0.35rem 0.9rem;
       border: 1px solid var(--border); border-radius: 20px;
+    }
+
+    /* ── Section Divider ── */
+    .divider {
+      max-width: 1200px; margin: 0 auto; padding: 0 2rem;
+    }
+    .divider::after {
+      content: ""; display: block; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
     }
 
     /* ── Section ── */
@@ -181,11 +219,18 @@
       background: var(--bg-card); border: 1px solid var(--border);
       border-radius: var(--radius); padding: 2rem;
       transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative; overflow: hidden;
+    }
+    .feature-card::before {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0; transition: opacity 0.4s;
     }
     .feature-card:hover {
-      border-color: var(--border-hover); transform: translateY(-4px);
-      box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+      border-color: var(--border-hover); transform: translateY(-6px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 40px var(--accent-glow);
     }
+    .feature-card:hover::before { opacity: 1; }
     .feature-icon {
       font-size: 1.8rem; display: block; margin-bottom: 1rem;
     }
@@ -207,7 +252,12 @@
       background: var(--bg-card); border: 1px solid var(--border);
       border-radius: var(--radius); padding: 2rem; min-height: 280px;
       display: flex; align-items: center; justify-content: center;
-      overflow: hidden;
+      overflow: hidden; position: relative;
+      transition: border-color 0.4s, box-shadow 0.4s;
+    }
+    .showcase-visual:hover {
+      border-color: rgba(180,142,173,0.2);
+      box-shadow: 0 0 60px rgba(180,142,173,0.08);
     }
     .showcase-visual img {
       width: 100%; height: auto; border-radius: var(--radius-sm);
@@ -242,11 +292,17 @@
     .stat-card {
       background: var(--bg-card); border: 1px solid var(--border);
       border-radius: var(--radius-sm); padding: 1.75rem 1rem;
-      text-align: center;
+      text-align: center; transition: all 0.3s ease;
+    }
+    .stat-card:hover {
+      border-color: var(--border-hover); transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
     }
     .stat-number {
       font-family: var(--mono); font-size: 1.8rem; font-weight: 700;
-      color: var(--text); display: block;
+      display: block;
+      background: linear-gradient(135deg, var(--text), var(--accent));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
     .stat-label {
       color: var(--text-muted); font-size: 0.78rem; margin-top: 0.3rem;
@@ -260,9 +316,12 @@
       background: var(--bg-card); border: 1px solid var(--border);
       border-radius: var(--radius-sm); padding: 1.25rem;
       display: flex; align-items: center; gap: 1rem;
-      transition: border-color 0.3s;
+      transition: all 0.3s ease;
     }
-    .shortcut-card:hover { border-color: var(--border-hover); }
+    .shortcut-card:hover {
+      border-color: var(--border-hover); transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
     .shortcut-keys {
       display: flex; gap: 4px;
     }
@@ -403,6 +462,7 @@
 
   <!-- Hero -->
   <section class="hero">
+    <div class="hero-grid"></div>
     <p class="hero-overline reveal">Terminal-Native Knowledge Manager</p>
     <h1 class="reveal">Your notes deserve<br>a faster home.</h1>
     <p class="reveal">A blazing-fast, AI-powered knowledge manager built for the terminal. Fully Obsidian compatible. No Electron. No subscriptions. Just your keyboard.</p>
@@ -418,23 +478,25 @@
     </div>
   </section>
 
+  <div class="divider"></div>
+
   <!-- Features -->
   <section id="features">
     <p class="section-label reveal">Features</p>
     <h2 class="section-title reveal">Everything you need.<br>Nothing you don't.</h2>
     <p class="section-sub reveal">A complete productivity suite for notes, tasks, goals, and deep work.</p>
     <div class="features-grid">
-      <div class="feature-card reveal">
+      <div class="feature-card reveal reveal-delay-1">
         <span class="feature-icon">&#x2728;</span>
         <h3>AI-Powered</h3>
         <p>20+ AI features with Ollama, OpenAI, and Claude Code. Auto-tagging, summarization, link suggestions, and local offline fallback.</p>
       </div>
-      <div class="feature-card reveal">
+      <div class="feature-card reveal reveal-delay-2">
         <span class="feature-icon">&#x2328;&#xFE0F;</span>
         <h3>Full Vim Mode</h3>
         <p>Modal editing with text objects, marks, macros, search highlighting, dot repeat, and ex commands. Everything you expect from Vim.</p>
       </div>
-      <div class="feature-card reveal">
+      <div class="feature-card reveal reveal-delay-3">
         <span class="feature-icon">&#x1F3A8;</span>
         <h3>35 Themes</h3>
         <p>Catppuccin, Tokyo Night, Gruvbox, Nord, Dracula, and 30 more. Plus a custom theme editor to create your own palette.</p>
@@ -487,6 +549,8 @@
     </div>
   </section>
 
+  <div class="divider"></div>
+
   <!-- Showcase -->
   <section id="showcase">
     <p class="section-label reveal">Showcase</p>
@@ -526,6 +590,8 @@
       </div>
     </div>
   </section>
+
+  <div class="divider"></div>
 
   <!-- Comparison -->
   <section id="comparison">
@@ -615,6 +681,19 @@
       <a href="KEYBINDINGS.md" class="doc-card"><h4>Keyboard Shortcuts</h4><p>Every keybinding reference</p></a>
       <a href="../CHANGELOG.md" class="doc-card"><h4>Changelog</h4><p>What's new in each release</p></a>
       <a href="../README.md" class="doc-card"><h4>README</h4><p>Overview and quick start</p></a>
+    </div>
+  </section>
+
+  <!-- CTA Banner -->
+  <section style="text-align:center; padding: 6rem 2rem;">
+    <div class="reveal" style="max-width:600px; margin:0 auto; padding:3rem; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); position:relative; overflow:hidden;">
+      <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, var(--blue), var(--accent), var(--peach));"></div>
+      <h2 style="font-size:1.6rem; font-weight:700; margin-bottom:0.75rem;">Ready to try Granit?</h2>
+      <p style="color:var(--text-secondary); margin-bottom:1.5rem; font-size:0.95rem;">Install in 10 seconds. Your existing Obsidian vault works out of the box.</p>
+      <div style="display:flex; gap:1rem; justify-content:center; flex-wrap:wrap;">
+        <a href="#installation" class="btn btn-primary">Get Started</a>
+        <a href="https://github.com/artaeon/granit" class="btn btn-secondary">Star on GitHub</a>
+      </div>
     </div>
   </section>
 
