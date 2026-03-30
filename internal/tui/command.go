@@ -156,6 +156,7 @@ const (
 	CmdGoalsMode
 	CmdCopyDailyPlan
 	CmdUniversalSearch
+	CmdIdeasBoard
 	CmdQuit
 )
 
@@ -312,6 +313,7 @@ var AllCommands = []Command{
 	{Label: "Goals", Desc: "Standalone goal manager with milestones, categories, timelines, and progress tracking", Shortcut: "", Action: CmdGoalsMode, Icon: &IconBookmarkChar},
 	{Label: "Copy Daily Plan", Desc: "Copy today's schedule, tasks, and habits to clipboard for sharing", Shortcut: "", Action: CmdCopyDailyPlan, Icon: &IconCalendarChar},
 	{Label: "Search Everything", Desc: "Search across notes, tasks, goals, and habits", Shortcut: "", Action: CmdUniversalSearch, Icon: &IconSearchChar},
+	{Label: "Ideas Board", Desc: "Kanban board for brainstorming — capture, explore, validate, and convert ideas to goals or tasks", Shortcut: "", Action: CmdIdeasBoard, Icon: &IconCanvasChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 

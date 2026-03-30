@@ -1105,6 +1105,10 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		allTasks := ParseAllTasks(m.vault.Notes)
 		m.goalsMode.Open(m.vault.Root, allTasks)
 
+	case CmdIdeasBoard:
+		m.ideasBoard.SetSize(m.width, m.height)
+		m.ideasBoard.Open(m.vault.Root)
+
 	case CmdUniversalSearch:
 		m.universalSearch.SetSize(m.width, m.height)
 		allTasks := ParseAllTasks(m.vault.Notes)

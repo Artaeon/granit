@@ -1161,6 +1161,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.ideasBoard.IsActive() {
+			m.ideasBoard, _ = m.ideasBoard.Update(msg)
+			return m, nil
+		}
+
 		if m.goalsMode.IsActive() {
 			m.goalsMode, _ = m.goalsMode.Update(msg)
 			return m, nil

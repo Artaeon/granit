@@ -158,6 +158,7 @@ type Model struct {
 	habitTracker     HabitTracker
 	goalsMode        GoalsMode
 	universalSearch  UniversalSearch
+	ideasBoard       IdeasBoard
 	focusSession     FocusSession
 	standupGen       StandupGenerator
 	dailyReview      DailyReview
@@ -351,6 +352,7 @@ func NewModel(vaultPath string) (Model, error) {
 		focusSession:     NewFocusSession(),
 		goalsMode:        NewGoalsMode(),
 		universalSearch:  NewUniversalSearch(),
+		ideasBoard:       NewIdeasBoard(),
 		commandCenter:   NewCommandCenter(),
 		dailyPlanner:    NewDailyPlanner(),
 		aiScheduler:     NewAIScheduler(),
