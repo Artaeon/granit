@@ -1163,11 +1163,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.ideasBoard.IsActive() {
 			m.ideasBoard, _ = m.ideasBoard.Update(msg)
+			if !m.ideasBoard.IsActive() && m.ideasBoard.WasFileChanged() {
+				m.refreshComponents("")
+			}
 			return m, nil
 		}
 
 		if m.goalsMode.IsActive() {
 			m.goalsMode, _ = m.goalsMode.Update(msg)
+			if !m.goalsMode.IsActive() && m.goalsMode.WasFileChanged() {
+				m.refreshComponents("")
+			}
 			return m, nil
 		}
 

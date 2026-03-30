@@ -88,7 +88,8 @@ type IdeasBoard struct {
 	confirmMsg    string
 	confirmAction func()
 
-	statusMsg string
+	statusMsg   string
+	fileChanged bool
 }
 
 func NewIdeasBoard() IdeasBoard {
@@ -116,6 +117,14 @@ func (ib *IdeasBoard) Open(vaultRoot string) {
 }
 
 func (ib *IdeasBoard) Close() { ib.active = false }
+
+func (ib *IdeasBoard) WasFileChanged() bool {
+	if ib.fileChanged {
+		ib.fileChanged = false
+		return true
+	}
+	return false
+}
 
 // ---------------------------------------------------------------------------
 // Storage
@@ -337,6 +346,7 @@ func (ib *IdeasBoard) convertToGoal() {
 	idea.UpdatedAt = time.Now().Format("2006-01-02")
 	ib.saveIdeas()
 	ib.statusMsg = "Converted to goal: " + goalID
+	ib.fileChanged = true
 }
 
 func (ib *IdeasBoard) convertToTask() {
@@ -357,6 +367,7 @@ func (ib *IdeasBoard) convertToTask() {
 	idea.UpdatedAt = time.Now().Format("2006-01-02")
 	ib.saveIdeas()
 	ib.statusMsg = "Converted to task"
+	ib.fileChanged = true
 }
 
 // ---------------------------------------------------------------------------

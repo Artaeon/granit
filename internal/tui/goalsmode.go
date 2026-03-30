@@ -293,7 +293,8 @@ type GoalsMode struct {
 	confirmMsg    string // "Delete goal X?" — empty means no pending confirm
 	confirmAction func() // action to run on 'y'
 
-	statusMsg string
+	statusMsg   string
+	fileChanged bool // set when Tasks.md is modified (createTaskFromMilestone)
 }
 
 // NewGoalsMode creates a new goals overlay.
@@ -467,6 +468,16 @@ func (gm *GoalsMode) createTaskFromMilestone(goal Goal, ms GoalMilestone) {
 	}
 	_ = os.WriteFile(tasksPath, append(existing, []byte(taskLine)...), 0644)
 	gm.statusMsg = "Task created: " + ms.Text
+	gm.fileChanged = true
+}
+
+// WasFileChanged returns true if the overlay modified vault files, then resets the flag.
+func (gm *GoalsMode) WasFileChanged() bool {
+	if gm.fileChanged {
+		gm.fileChanged = false
+		return true
+	}
+	return false
 }
 
 // linkedTaskStats returns done/total counts for tasks linked to a goal.
