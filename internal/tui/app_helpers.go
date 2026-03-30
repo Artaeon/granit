@@ -640,33 +640,21 @@ func (m *Model) refreshComponents(changedPath string) {
 		allCalEvents = append(allCalEvents, m.eventStore.ToCalendarEvents(start, end)...)
 	}
 
-	// ICS files: scan .granit/calendars/ and vault root for .ics files
-	icsLocations := []string{
-		filepath.Join(m.vault.Root, ".granit", "calendars"),
-		m.vault.Root,
-	}
-	seen := make(map[string]bool)
-	for _, dir := range icsLocations {
-		entries, err := os.ReadDir(dir)
+	// ICS files: recursively scan entire vault for .ics files
+	_ = filepath.Walk(m.vault.Root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(info.Name(), ".ics") {
+			return nil
+		}
+		icsEvents, err := ParseICSFile(path)
 		if err != nil {
-			continue
+			return nil
 		}
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".ics") {
-				continue
-			}
-			fullPath := filepath.Join(dir, e.Name())
-			if seen[fullPath] {
-				continue
-			}
-			seen[fullPath] = true
-			icsEvents, err := ParseICSFile(fullPath)
-			if err != nil {
-				continue
-			}
-			allCalEvents = append(allCalEvents, icsEvents...)
-		}
-	}
+		allCalEvents = append(allCalEvents, icsEvents...)
+		return nil
+	})
 
 	m.calendar.SetEvents(allCalEvents)
 
