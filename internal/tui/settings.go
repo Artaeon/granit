@@ -785,7 +785,7 @@ func (s Settings) View() string {
 	}
 	b.WriteString(strings.Repeat(" ", gap) + countLabel)
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", width-6)))
+	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
 	b.WriteString("\n")
 
 	// Search bar

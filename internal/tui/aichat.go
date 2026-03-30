@@ -709,7 +709,7 @@ func (ac AIChat) View() string {
 
 	// Title
 	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	b.WriteString(titleStyle.Render("  AI Chat"))
+	b.WriteString(titleStyle.Render("  " + IconSearchChar + " AI Chat"))
 	b.WriteString("  ")
 	providerInfo := fmt.Sprintf("[%s / %s]", ac.provider, ac.model)
 	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(providerInfo))

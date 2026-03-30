@@ -590,7 +590,7 @@ func (ib *IdeasBoard) View() string {
 
 	// Title
 	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	b.WriteString(titleStyle.Render("Ideas Board"))
+	b.WriteString(titleStyle.Render(IconCanvasChar+" Ideas Board"))
 
 	// Stats
 	total := len(ib.ideas)
@@ -695,7 +695,7 @@ func (ib *IdeasBoard) View() string {
 		// Selected idea detail
 		if idea := ib.selectedIdea(); idea != nil {
 			b.WriteString("\n")
-			b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerW)) + "\n")
+			b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)) + "\n")
 			detailTitle := lipgloss.NewStyle().Foreground(text).Bold(true).Render(idea.Title)
 			b.WriteString("  " + detailTitle)
 			if idea.Category != "" {

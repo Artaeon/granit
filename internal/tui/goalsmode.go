@@ -1342,7 +1342,7 @@ func (gm *GoalsMode) View() string {
 
 	// Title bar
 	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	b.WriteString(titleStyle.Render("Goals") + "\n")
+	b.WriteString(titleStyle.Render(IconBookmarkChar+" Goals") + "\n")
 
 	// Tabs
 	gm.renderTabs(&b, innerW)

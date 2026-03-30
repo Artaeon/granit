@@ -352,7 +352,7 @@ func (us *UniversalSearch) View() string {
 
 	// Title
 	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	b.WriteString(titleStyle.Render("Search Everything") + "\n\n")
+	b.WriteString(titleStyle.Render(IconSearchChar+" Search Everything") + "\n\n")
 
 	// Search input
 	promptStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
