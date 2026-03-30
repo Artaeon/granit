@@ -245,7 +245,7 @@ func (tm *TaskManager) SetSize(width, height int) {
 func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.active = true
 	tm.vault = v
-	tm.allTasks = ParseAllTasks(v.Notes)
+	tm.allTasks = FilterTasks(ParseAllTasks(v.Notes), tm.config)
 	tm.view = taskViewToday
 	tm.cursor = 0
 	tm.scroll = 0
@@ -714,7 +714,7 @@ func (tm *TaskManager) reparse() {
 	savedView := tm.view
 	savedCursor := tm.cursor
 	savedScroll := tm.scroll
-	tm.allTasks = ParseAllTasks(tm.vault.Notes)
+	tm.allTasks = FilterTasks(ParseAllTasks(tm.vault.Notes), tm.config)
 	tm.view = savedView
 	tm.rebuildFiltered()
 	tm.scroll = savedScroll
