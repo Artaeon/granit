@@ -351,21 +351,35 @@ func TestCalendar_PendingEventConsumedOnce(t *testing.T) {
 	c.SetSize(120, 40)
 	c.cursor = time.Date(2025, time.March, 10, 0, 0, 0, 0, time.Local)
 
-	// Press 'a' to enter add mode
+	// Press 'a' to enter event wizard
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
-	if !c.addingEvent {
-		t.Fatal("expected addingEvent to be true after pressing 'a'")
+	if c.eventEditMode != 1 {
+		t.Fatal("expected eventEditMode=1 after pressing 'a'")
 	}
 
-	// Type "Buy groceries"
+	// Type "Buy groceries" as title
 	for _, r := range "Buy groceries" {
 		c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
 
-	// Press enter to save
+	// Press enter → time step
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Press enter → skip time (all day)
+	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Press enter → skip duration
+	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Press enter → skip location
+	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Press 0 → no recurrence → saves
+	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("0")})
 
-	date, text, ok := c.PendingEvent()
+	ne := c.PendingNativeEvent()
+	if ne == nil {
+		t.Fatal("expected pending native event")
+	}
+	date := ne.Date
+	text := ne.Title
+	ok := true
 	if !ok {
 		t.Fatal("expected PendingEvent to return ok=true")
 	}
@@ -387,15 +401,14 @@ func TestCalendar_PendingEventEmptyText(t *testing.T) {
 	c := NewCalendar()
 	c.Open()
 
-	// Enter add mode
+	// Enter event wizard
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 
-	// Press enter with empty text
+	// Press enter with empty title → cancels
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	_, _, ok := c.PendingEvent()
-	if ok {
-		t.Error("expected PendingEvent to return ok=false for empty event text")
+	if c.eventEditMode != 0 {
+		t.Error("expected wizard to cancel on empty title")
 	}
 }
 
@@ -404,8 +417,8 @@ func TestCalendar_AddEventEscapeCancels(t *testing.T) {
 	c.Open()
 
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
-	if !c.addingEvent {
-		t.Fatal("expected addingEvent mode")
+	if c.eventEditMode != 1 {
+		t.Fatal("expected eventEditMode=1")
 	}
 
 	// Type something
@@ -415,11 +428,8 @@ func TestCalendar_AddEventEscapeCancels(t *testing.T) {
 
 	// Escape cancels
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if c.addingEvent {
-		t.Error("expected addingEvent to be false after Esc")
-	}
-	if c.eventInput != "" {
-		t.Error("expected eventInput to be empty after Esc")
+	if c.eventEditMode != 0 {
+		t.Error("expected eventEditMode=0 after Esc")
 	}
 
 	// No pending event
@@ -703,18 +713,18 @@ func TestCalendar_AddEventBackspace(t *testing.T) {
 
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 
-	// Type "abc"
+	// Type "abc" into wizard title
 	for _, r := range "abc" {
 		c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
-	if c.eventInput != "abc" {
-		t.Fatalf("expected eventInput='abc', got %q", c.eventInput)
+	if c.eventEditBuf != "abc" {
+		t.Fatalf("expected eventEditBuf='abc', got %q", c.eventEditBuf)
 	}
 
 	// Backspace
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyBackspace})
-	if c.eventInput != "ab" {
-		t.Errorf("expected eventInput='ab' after backspace, got %q", c.eventInput)
+	if c.eventEditBuf != "ab" {
+		t.Errorf("expected eventEditBuf='ab' after backspace, got %q", c.eventEditBuf)
 	}
 }
 

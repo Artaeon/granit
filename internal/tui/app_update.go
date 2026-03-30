@@ -938,6 +938,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.calendar, _ = m.calendar.Update(msg)
 			// Handle quick-add event: append task to daily note
+			// Handle full event creation from wizard
+			if ne := m.calendar.PendingNativeEvent(); ne != nil && m.eventStore != nil {
+				m.eventStore.Add(ne.Title, ne.Date, ne.StartTime, ne.EndTime,
+					ne.Location, ne.Description, ne.Color, ne.Recurrence, ne.AllDay)
+				m.refreshComponents("")
+				m.toast.Show("Event created: "+ne.Title, ToastSuccess)
+			}
+			// Handle event deletion
+			if delID := m.calendar.PendingDeleteID(); delID != "" && m.eventStore != nil {
+				if e := m.eventStore.Get(delID); e != nil {
+					m.eventStore.Delete(delID)
+					m.refreshComponents("")
+					m.toast.Show("Event deleted: "+e.Title, ToastSuccess)
+				}
+			}
 			if evDate, evText, ok := m.calendar.PendingEvent(); ok {
 				name := evDate + ".md"
 				folder := m.config.DailyNotesFolder

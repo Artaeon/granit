@@ -135,9 +135,27 @@ type Calendar struct {
 	addingEvent bool
 	eventInput  string
 
+	// Full event creation/editing
+	eventEditMode  int    // 0=none, 1=title, 2=time, 3=duration, 4=location, 5=recurrence, 6=color
+	eventEditID    string // "" for new event, "E001" for editing
+	eventEditTitle string
+	eventEditTime  string // HH:MM
+	eventEditDur   int    // minutes
+	eventEditLoc   string
+	eventEditRecur string // daily/weekly/monthly/yearly/""
+	eventEditColor string
+	eventEditBuf   string // current input buffer
+
 	// Pending event to be saved by app.go
 	pendingEventDate string
 	pendingEventText string
+
+	// Pending native event to save
+	pendingNativeEvent *NativeEvent
+
+	// Pending event deletion
+	pendingDeleteID string
+	confirmDelete   bool
 
 	// Task toggles pending consumption by app.go
 	taskToggles []TaskToggle
@@ -289,9 +307,10 @@ func (c *Calendar) PendingEvent() (string, string, bool) {
 
 // agendaItem is an interactive item in the agenda view that can be toggled.
 type agendaItem struct {
-	itemType string // "task", "planner"
+	itemType string // "task", "planner", "event"
 	dateStr  string
-	index    int // index within the day's tasks or planner blocks
+	index    int    // index within the day's tasks or planner blocks
+	eventID  string // native event ID (for editing/deletion)
 }
 
 // SetPlannerBlocks stores planner schedule data keyed by date.
@@ -340,6 +359,122 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				if len(msg.String()) == 1 || msg.String() == " " {
 					c.eventInput += msg.String()
 				}
+			}
+			return c, nil
+		}
+
+		// Full event creation/editing wizard
+		if c.eventEditMode > 0 {
+			switch msg.String() {
+			case "esc":
+				c.eventEditMode = 0
+			case "enter":
+				switch c.eventEditMode {
+				case 1: // Title → Time
+					c.eventEditTitle = strings.TrimSpace(c.eventEditBuf)
+					if c.eventEditTitle == "" {
+						c.eventEditMode = 0
+						break
+					}
+					c.eventEditBuf = ""
+					c.eventEditMode = 2
+				case 2: // Time → Duration
+					c.eventEditTime = strings.TrimSpace(c.eventEditBuf)
+					c.eventEditBuf = ""
+					c.eventEditMode = 3
+				case 3: // Duration → Location
+					if d := strings.TrimSpace(c.eventEditBuf); d != "" {
+						dur := 60
+						_, _ = fmt.Sscanf(d, "%d", &dur)
+						if dur > 0 {
+							c.eventEditDur = dur
+						}
+					}
+					c.eventEditBuf = ""
+					c.eventEditMode = 4
+				case 4: // Location → Recurrence
+					c.eventEditLoc = strings.TrimSpace(c.eventEditBuf)
+					c.eventEditBuf = ""
+					c.eventEditMode = 5
+				case 5: // Recurrence (pick) → save
+					c.eventEditMode = 0
+					c.saveEditedEvent()
+				}
+			case "1":
+				if c.eventEditMode == 5 {
+					c.eventEditRecur = "daily"
+					c.eventEditMode = 0
+					c.saveEditedEvent()
+				} else if c.eventEditMode == 3 {
+					c.eventEditDur = 30
+					c.eventEditBuf = ""
+					c.eventEditMode = 4
+				} else {
+					c.eventEditBuf += msg.String()
+				}
+			case "2":
+				if c.eventEditMode == 5 {
+					c.eventEditRecur = "weekly"
+					c.eventEditMode = 0
+					c.saveEditedEvent()
+				} else if c.eventEditMode == 3 {
+					c.eventEditDur = 60
+					c.eventEditBuf = ""
+					c.eventEditMode = 4
+				} else {
+					c.eventEditBuf += msg.String()
+				}
+			case "3":
+				if c.eventEditMode == 5 {
+					c.eventEditRecur = "monthly"
+					c.eventEditMode = 0
+					c.saveEditedEvent()
+				} else if c.eventEditMode == 3 {
+					c.eventEditDur = 90
+					c.eventEditBuf = ""
+					c.eventEditMode = 4
+				} else {
+					c.eventEditBuf += msg.String()
+				}
+			case "4":
+				if c.eventEditMode == 5 {
+					c.eventEditRecur = "yearly"
+					c.eventEditMode = 0
+					c.saveEditedEvent()
+				} else if c.eventEditMode == 3 {
+					c.eventEditDur = 120
+					c.eventEditBuf = ""
+					c.eventEditMode = 4
+				} else {
+					c.eventEditBuf += msg.String()
+				}
+			case "0":
+				if c.eventEditMode == 5 {
+					c.eventEditRecur = ""
+					c.eventEditMode = 0
+					c.saveEditedEvent()
+				} else {
+					c.eventEditBuf += msg.String()
+				}
+			case "backspace":
+				if len(c.eventEditBuf) > 0 {
+					c.eventEditBuf = c.eventEditBuf[:len(c.eventEditBuf)-1]
+				}
+			default:
+				if len(msg.String()) == 1 || msg.String() == " " {
+					c.eventEditBuf += msg.String()
+				}
+			}
+			return c, nil
+		}
+
+		// Handle delete confirmation
+		if c.confirmDelete {
+			if msg.String() == "y" || msg.String() == "Y" {
+				c.confirmDelete = false
+			} else {
+				c.confirmDelete = false
+				c.pendingDeleteID = ""
 			}
 			return c, nil
 		}
@@ -487,12 +622,65 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			}
 
 		case "a":
-			c.addingEvent = true
-			c.eventInput = ""
+			// Start full event creation wizard
+			c.eventEditMode = 1
+			c.eventEditID = ""
+			c.eventEditTitle = ""
+			c.eventEditTime = ""
+			c.eventEditDur = 60
+			c.eventEditLoc = ""
+			c.eventEditRecur = ""
+			c.eventEditColor = ""
+			c.eventEditBuf = ""
+
+		case "d":
+			// Delete event (in agenda view)
+			if c.view == calViewAgenda && c.agendaCursor >= 0 && c.agendaCursor < len(c.agendaItems) {
+				item := c.agendaItems[c.agendaCursor]
+				if item.eventID != "" {
+					c.confirmDelete = true
+					c.pendingDeleteID = item.eventID
+				}
+			}
 		}
 	}
 
 	return c, nil
+}
+
+func (c *Calendar) saveEditedEvent() {
+	dateStr := c.cursor.Format("2006-01-02")
+	endTime := ""
+	if c.eventEditTime != "" {
+		h, m := 0, 0
+		_, _ = fmt.Sscanf(c.eventEditTime, "%d:%d", &h, &m)
+		endMin := h*60 + m + c.eventEditDur
+		endTime = fmt.Sprintf("%02d:%02d", endMin/60, endMin%60)
+	}
+	allDay := c.eventEditTime == ""
+	c.pendingNativeEvent = &NativeEvent{
+		Title:       c.eventEditTitle,
+		Date:        dateStr,
+		StartTime:   c.eventEditTime,
+		EndTime:     endTime,
+		Location:    c.eventEditLoc,
+		Recurrence:  c.eventEditRecur,
+		AllDay:      allDay,
+	}
+}
+
+// PendingNativeEvent returns any event created via the wizard, then clears it.
+func (c *Calendar) PendingNativeEvent() *NativeEvent {
+	e := c.pendingNativeEvent
+	c.pendingNativeEvent = nil
+	return e
+}
+
+// PendingDeleteID returns the event ID to delete, then clears it.
+func (c *Calendar) PendingDeleteID() string {
+	id := c.pendingDeleteID
+	c.pendingDeleteID = ""
+	return id
 }
 
 func (c *Calendar) syncViewing() {
@@ -632,9 +820,16 @@ func (c Calendar) viewMonth() string {
 		b.WriteString("\n")
 	}
 
-	// Quick add input
-	if c.addingEvent {
+	// Event creation wizard
+	if c.eventEditMode > 0 {
+		c.renderEventWizard(&b, width)
+	} else if c.addingEvent {
 		c.renderQuickAdd(&b, width)
+	}
+
+	// Confirm delete
+	if c.confirmDelete {
+		c.renderConfirmDelete(&b)
 	}
 
 	// Cursor date info
@@ -1269,6 +1464,49 @@ func (c Calendar) renderYearMiniMonth(year int, month time.Month) string {
 	}
 
 	return b.String()
+}
+
+func (c Calendar) renderEventWizard(b *strings.Builder, width int) {
+	ps := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	is := lipgloss.NewStyle().Foreground(text)
+	ds := DimStyle
+	ss := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+
+	dateLabel := c.cursor.Format("Mon, Jan 2 2006")
+	b.WriteString("  " + ps.Render("New Event") + "  " + ds.Render(dateLabel) + "\n\n")
+
+	switch c.eventEditMode {
+	case 1: // Title
+		b.WriteString("  " + ps.Render("Title: ") + is.Render(c.eventEditBuf+"\u2588") + "\n")
+		b.WriteString("  " + ds.Render("Enter to continue, Esc to cancel"))
+	case 2: // Time
+		b.WriteString("  " + ds.Render("Title: "+c.eventEditTitle) + "\n")
+		b.WriteString("  " + ps.Render("Start time (HH:MM, empty for all-day): ") + is.Render(c.eventEditBuf+"\u2588") + "\n")
+	case 3: // Duration
+		b.WriteString("  " + ds.Render("Title: "+c.eventEditTitle) + "\n")
+		if c.eventEditTime != "" {
+			b.WriteString("  " + ds.Render("Time: "+c.eventEditTime) + "\n")
+		}
+		b.WriteString("  " + ps.Render("Duration:") + "\n")
+		b.WriteString("  " + ss.Render("1") + ds.Render(" 30min  ") + ss.Render("2") + ds.Render(" 1hr  ") +
+			ss.Render("3") + ds.Render(" 1.5hr  ") + ss.Render("4") + ds.Render(" 2hr") + "\n")
+		b.WriteString("  " + ds.Render("or type minutes: ") + is.Render(c.eventEditBuf+"\u2588") + "\n")
+	case 4: // Location
+		b.WriteString("  " + ds.Render("Title: "+c.eventEditTitle) + "\n")
+		b.WriteString("  " + ps.Render("Location (optional): ") + is.Render(c.eventEditBuf+"\u2588") + "\n")
+	case 5: // Recurrence
+		b.WriteString("  " + ds.Render("Title: "+c.eventEditTitle) + "\n")
+		b.WriteString("  " + ps.Render("Recurrence:") + "\n")
+		b.WriteString("  " + ss.Render("1") + ds.Render(" daily  ") + ss.Render("2") + ds.Render(" weekly  ") +
+			ss.Render("3") + ds.Render(" monthly  ") + ss.Render("4") + ds.Render(" yearly") + "\n")
+		b.WriteString("  " + ss.Render("0") + ds.Render(" none (one-time event)") + "\n")
+	}
+	b.WriteString("\n")
+}
+
+func (c Calendar) renderConfirmDelete(b *strings.Builder) {
+	b.WriteString("\n  " + lipgloss.NewStyle().Foreground(red).Bold(true).Render("Delete this event? (y/n)"))
+	b.WriteString("\n")
 }
 
 // ---------------------------------------------------------------------------
