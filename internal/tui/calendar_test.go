@@ -463,16 +463,22 @@ func TestCalendar_ViewCycling(t *testing.T) {
 		t.Errorf("expected calView3Day after second 'w', got %d", c.view)
 	}
 
-	// 'w' cycles 3day -> agenda
+	// 'w' cycles 3day -> 1day
+	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	if c.view != calView1Day {
+		t.Errorf("expected calView1Day after third 'w', got %d", c.view)
+	}
+
+	// 'w' cycles 1day -> agenda
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
 	if c.view != calViewAgenda {
-		t.Errorf("expected calViewAgenda after third 'w', got %d", c.view)
+		t.Errorf("expected calViewAgenda after fourth 'w', got %d", c.view)
 	}
 
 	// 'w' cycles agenda -> month
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
 	if c.view != calViewMonth {
-		t.Errorf("expected calViewMonth after fourth 'w', got %d", c.view)
+		t.Errorf("expected calViewMonth after fifth 'w', got %d", c.view)
 	}
 }
 

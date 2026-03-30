@@ -49,6 +49,7 @@ const (
 	calViewAgenda
 	calViewYear
 	calView3Day
+	calView1Day
 )
 
 // TaskItem represents a task extracted from notes.
@@ -597,13 +598,15 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			c.syncViewing()
 
 		case "w":
-			// Cycle through month -> week -> agenda (skip year, use y for that)
+			// Cycle through month -> week -> 3day -> 1day -> agenda
 			switch c.view {
 			case calViewMonth:
 				c.view = calViewWeek
 			case calViewWeek:
 				c.view = calView3Day
 			case calView3Day:
+				c.view = calView1Day
+			case calView1Day:
 				c.view = calViewAgenda
 				c.agendaScroll = 0
 				c.agendaCursor = 0
@@ -693,6 +696,8 @@ func (c Calendar) View() string {
 		return c.viewWeek()
 	case calView3Day:
 		return c.viewWeek() // reuse week grid for 3-day view
+	case calView1Day:
+		return c.view1Day()
 	case calViewAgenda:
 		return c.viewAgenda()
 	case calViewYear:
@@ -928,7 +933,14 @@ func (c Calendar) viewWeek() string {
 		} else {
 			timeLabel = fmt.Sprintf("%2dPM ", hour-12)
 		}
+		// Current time indicator
+		now := time.Now()
+		isCurrentHour := now.Hour() == hour &&
+			!c.cursor.Before(weekStart) && !c.cursor.After(weekEnd)
 		timeSt := DimStyle.Render(timeLabel)
+		if isCurrentHour {
+			timeSt = lipgloss.NewStyle().Foreground(green).Bold(true).Render(timeLabel)
+		}
 
 		// Build cells for each day
 		cells := ""
@@ -1065,6 +1077,154 @@ func (c *Calendar) rebuildAgendaItems() {
 	if c.agendaScroll < 0 {
 		c.agendaScroll = 0
 	}
+}
+
+func (c Calendar) view1Day() string {
+	width := c.width * 2 / 3
+	if width < 50 {
+		width = 50
+	}
+	if width > 90 {
+		width = 90
+	}
+
+	var b strings.Builder
+
+	titleIcon := lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar)
+	titleText := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" Calendar")
+	viewLabel := DimStyle.Render(" [day]")
+	b.WriteString("  " + titleIcon + titleText + viewLabel)
+	b.WriteString("\n")
+
+	// Date header
+	dayLabel := c.cursor.Format("Monday, January 2, 2006")
+	isToday := c.cursor.Equal(c.today)
+	dayStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	if isToday {
+		dayStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
+	}
+	b.WriteString("  " + dayStyle.Render(dayLabel))
+	if isToday {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(green).Render("(today)"))
+	}
+	b.WriteString("\n")
+	b.WriteString("  " + DimStyle.Render(strings.Repeat("─", width-8)) + "\n")
+
+	dateStr := c.cursor.Format("2006-01-02")
+	now := time.Now()
+	contentW := width - 14
+
+	// Time slots 6AM - 10PM
+	for hour := 6; hour <= 22; hour++ {
+		timeLabel := ""
+		if hour < 12 {
+			timeLabel = fmt.Sprintf("%2dAM", hour)
+		} else if hour == 12 {
+			timeLabel = "12PM"
+		} else {
+			timeLabel = fmt.Sprintf("%2dPM", hour-12)
+		}
+
+		// Current time indicator
+		isNow := now.Hour() == hour && isToday
+		if isNow {
+			timeSt := lipgloss.NewStyle().Foreground(green).Bold(true).Render(timeLabel + " ")
+			b.WriteString("  " + timeSt)
+		} else {
+			b.WriteString("  " + DimStyle.Render(timeLabel+" "))
+		}
+
+		// Find event/planner block at this hour
+		cellText := ""
+		cellColor := overlay0
+
+		for _, pb := range c.plannerBlocks[dateStr] {
+			pbHour := 0
+			if len(pb.StartTime) >= 2 {
+				_, _ = fmt.Sscanf(pb.StartTime, "%d", &pbHour)
+			}
+			if pbHour == hour {
+				cellText = pb.Text
+				cellColor = lavender
+				if pb.Done {
+					cellColor = green
+				}
+				break
+			}
+		}
+
+		if cellText == "" {
+			for _, ev := range c.eventsForDate(c.cursor) {
+				if !ev.AllDay && ev.Date.Hour() == hour {
+					cellText = ev.Title
+					if ev.Location != "" {
+						cellText += " @ " + ev.Location
+					}
+					cellColor = blue
+					break
+				}
+			}
+		}
+
+		if cellText != "" {
+			b.WriteString(lipgloss.NewStyle().Foreground(cellColor).Render(TruncateDisplay(cellText, contentW)))
+		} else if isNow {
+			b.WriteString(lipgloss.NewStyle().Foreground(red).Render(strings.Repeat("─", contentW)))
+		} else {
+			b.WriteString(DimStyle.Render("·"))
+		}
+		b.WriteString("\n")
+	}
+
+	// All-day events
+	allDayEvents := false
+	for _, ev := range c.eventsForDate(c.cursor) {
+		if ev.AllDay {
+			if !allDayEvents {
+				b.WriteString("\n  " + lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("All Day") + "\n")
+				allDayEvents = true
+			}
+			b.WriteString("  " + lipgloss.NewStyle().Foreground(blue).Render("  "+ev.Title) + "\n")
+		}
+	}
+
+	// Tasks due this day
+	if tasks, ok := c.tasks[dateStr]; ok && len(tasks) > 0 {
+		b.WriteString("\n  " + lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("Tasks") + "\n")
+		for _, t := range tasks {
+			check := DimStyle.Render("[ ] ")
+			if t.Done {
+				check = lipgloss.NewStyle().Foreground(green).Render("[x] ")
+			}
+			b.WriteString("  " + check + t.Text + "\n")
+		}
+	}
+
+	// Event creation wizard
+	if c.eventEditMode > 0 {
+		c.renderEventWizard(&b, width)
+	}
+
+	// Confirm delete
+	if c.confirmDelete {
+		c.renderConfirmDelete(&b)
+	}
+
+	// Help
+	b.WriteString("\n")
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"h/l", "prev/next day"}, {"w", "switch view"}, {"a", "add event"},
+		{"d", "delete"}, {"Esc", "close"},
+	}))
+
+	border := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(OverlayBorderColor).
+		Padding(1, 2).
+		Width(width).
+		Background(mantle)
+
+	return border.Render(b.String())
 }
 
 func (c Calendar) viewAgenda() string {
@@ -1773,6 +1933,12 @@ func daysIn(m time.Month, year int) int {
 // ICS Parsing
 // ---------------------------------------------------------------------------
 
+// icsEvent is an intermediate struct with recurrence info.
+type icsEvent struct {
+	CalendarEvent
+	rrule string // raw RRULE value
+}
+
 func ParseICSFile(path string) ([]CalendarEvent, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -1780,8 +1946,8 @@ func ParseICSFile(path string) ([]CalendarEvent, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	var events []CalendarEvent
-	var current *CalendarEvent
+	var parsed []icsEvent
+	var current *icsEvent
 	inEvent := false
 
 	scanner := bufio.NewScanner(f)
@@ -1790,13 +1956,13 @@ func ParseICSFile(path string) ([]CalendarEvent, error) {
 
 		if line == "BEGIN:VEVENT" {
 			inEvent = true
-			current = &CalendarEvent{}
+			current = &icsEvent{}
 			continue
 		}
 
 		if line == "END:VEVENT" {
 			if inEvent && current != nil {
-				events = append(events, *current)
+				parsed = append(parsed, *current)
 			}
 			inEvent = false
 			current = nil
@@ -1822,14 +1988,68 @@ func ParseICSFile(path string) ([]CalendarEvent, error) {
 		case "DTEND":
 			t, _ := parseICSTime(value)
 			current.EndDate = t
+		case "RRULE":
+			current.rrule = value
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return events, fmt.Errorf("read ics file: %w", err)
+		return nil, fmt.Errorf("read ics file: %w", err)
+	}
+
+	// Expand recurring events for the next 90 days
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	horizon := today.AddDate(0, 3, 0)
+
+	var events []CalendarEvent
+	for _, ie := range parsed {
+		if ie.rrule == "" {
+			events = append(events, ie.CalendarEvent)
+			continue
+		}
+		// Parse RRULE
+		freq := icsRRuleFreq(ie.rrule)
+		if freq == "" {
+			events = append(events, ie.CalendarEvent)
+			continue
+		}
+		// Generate occurrences
+		dur := ie.EndDate.Sub(ie.Date)
+		d := ie.Date
+		for !d.After(horizon) {
+			if !d.Before(today.AddDate(0, -1, 0)) {
+				ev := ie.CalendarEvent
+				ev.Date = time.Date(d.Year(), d.Month(), d.Day(),
+					ie.Date.Hour(), ie.Date.Minute(), 0, 0, time.Local)
+				ev.EndDate = ev.Date.Add(dur)
+				events = append(events, ev)
+			}
+			switch freq {
+			case "DAILY":
+				d = d.AddDate(0, 0, 1)
+			case "WEEKLY":
+				d = d.AddDate(0, 0, 7)
+			case "MONTHLY":
+				d = d.AddDate(0, 1, 0)
+			case "YEARLY":
+				d = d.AddDate(1, 0, 0)
+			default:
+				d = horizon.AddDate(0, 0, 1) // break
+			}
+		}
 	}
 
 	return events, nil
+}
+
+func icsRRuleFreq(rrule string) string {
+	for _, part := range strings.Split(rrule, ";") {
+		if strings.HasPrefix(part, "FREQ=") {
+			return strings.TrimPrefix(part, "FREQ=")
+		}
+	}
+	return ""
 }
 
 func icsKeyValue(line string) (string, string) {
