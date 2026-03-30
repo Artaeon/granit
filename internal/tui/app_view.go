@@ -1062,8 +1062,28 @@ func (m Model) renderViewMode() string {
 		contentWidth = 10
 	}
 
-	// Minimal header — just a thin separator (breadcrumb already shows the path)
-	b.WriteString(DimStyle.Render(strings.Repeat("─", contentWidth)))
+	// Header: reading mode indicator + progress
+	vmTotal := m.renderer.RenderLineCount(m.editor.GetContent())
+	vmVP := m.renderer.height - 4
+	if vmVP < 1 {
+		vmVP = 1
+	}
+	progress := 0
+	if vmTotal > vmVP {
+		progress = m.viewScroll * 100 / (vmTotal - vmVP)
+		if progress > 100 {
+			progress = 100
+		}
+	} else {
+		progress = 100
+	}
+	modeLabel := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" VIEW ")
+	progLabel := DimStyle.Render(fmt.Sprintf("%d%%", progress))
+	sepLen := contentWidth - lipgloss.Width(modeLabel) - lipgloss.Width(progLabel) - 2
+	if sepLen < 4 {
+		sepLen = 4
+	}
+	b.WriteString(modeLabel + DimStyle.Render(strings.Repeat("─", sepLen)) + progLabel)
 	b.WriteString("\n")
 
 	// Render markdown content

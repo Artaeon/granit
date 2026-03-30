@@ -2638,15 +2638,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewScroll++
 				m.updateReadingProgress()
 				return m, nil
-			case "pgup":
+			case "pgup", "ctrl+u":
 				m.viewScroll -= m.height / 2
 				if m.viewScroll < 0 {
 					m.viewScroll = 0
 				}
 				m.updateReadingProgress()
 				return m, nil
-			case "pgdown":
+			case "pgdown", "ctrl+d", " ":
 				m.viewScroll += m.height / 2
+				m.updateReadingProgress()
+				return m, nil
+			case "home", "g":
+				m.viewScroll = 0
+				m.updateReadingProgress()
+				return m, nil
+			case "end", "G":
+				totalLines := m.renderer.RenderLineCount(m.editor.GetContent())
+				vpH := m.renderer.height - 4
+				if vpH < 1 {
+					vpH = 1
+				}
+				m.viewScroll = totalLines - vpH
+				if m.viewScroll < 0 {
+					m.viewScroll = 0
+				}
 				m.updateReadingProgress()
 				return m, nil
 			}
