@@ -46,9 +46,11 @@ func runInit(targetPath string) {
 		os.Exit(1)
 	}
 	cfgPath := filepath.Join(absPath, ".granit.json")
-	if err := os.WriteFile(cfgPath, cfgData, 0644); err != nil {
-		fmt.Printf("Error writing config: %v\n", err)
-		os.Exit(1)
+	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+		if err := os.WriteFile(cfgPath, cfgData, 0644); err != nil {
+			fmt.Printf("Error writing config: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	// Create Welcome.md
@@ -102,9 +104,11 @@ your-vault/
 Happy note-taking!
 `
 	welcomePath := filepath.Join(absPath, "Welcome.md")
-	if err := os.WriteFile(welcomePath, []byte(welcomeContent), 0644); err != nil {
-		fmt.Printf("Error writing Welcome.md: %v\n", err)
-		os.Exit(1)
+	if _, err := os.Stat(welcomePath); os.IsNotExist(err) {
+		if err := os.WriteFile(welcomePath, []byte(welcomeContent), 0644); err != nil {
+			fmt.Printf("Error writing Welcome.md: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	// Create templates/ folder with default templates

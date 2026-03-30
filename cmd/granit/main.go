@@ -193,6 +193,12 @@ func runQuickNote(args []string) {
 	}
 
 	// Append to Inbox.md
+	// Verify vault path exists
+	if info, err := os.Stat(vaultPath); err != nil || !info.IsDir() {
+		fmt.Printf("Vault not found: %s\nRun: granit init %s\n", vaultPath, vaultPath)
+		os.Exit(1)
+	}
+
 	inboxPath := filepath.Join(vaultPath, "Inbox.md")
 	now := time.Now()
 	entry := fmt.Sprintf("\n- %s %s — %s\n", now.Format("2006-01-02"), now.Format("15:04"), text)
@@ -437,13 +443,12 @@ KEYBOARD SHORTCUTS (TUI)
 }
 
 func runTUI(vaultPath string) {
-	startTime := time.Now()
-
 	// Register this vault in the vault list
 	vl := config.LoadVaultList()
 	vl.AddVault(vaultPath)
 	config.SaveVaultList(vl)
 
+	startTime := time.Now()
 	model, err := tui.NewModel(vaultPath)
 	if err != nil {
 		fmt.Printf("Error opening vault: %v\n", err)
