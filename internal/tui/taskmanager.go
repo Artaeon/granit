@@ -966,7 +966,10 @@ func (tm *TaskManager) saveTaskTemplates() {
 	}
 	dir := filepath.Join(tm.vault.Root, ".granit")
 	_ = os.MkdirAll(dir, 0755)
-	data, _ := json.MarshalIndent(tm.taskTemplates, "", "  ")
+	data, err := json.MarshalIndent(tm.taskTemplates, "", "  ")
+	if err != nil {
+		return
+	}
 	_ = os.WriteFile(filepath.Join(dir, "task-templates.json"), data, 0644)
 }
 
@@ -991,7 +994,10 @@ func (tm *TaskManager) savePinnedTasks() {
 	}
 	dir := filepath.Join(tm.vault.Root, ".granit")
 	_ = os.MkdirAll(dir, 0755)
-	data, _ := json.MarshalIndent(tm.pinnedTasks, "", "  ")
+	data, err := json.MarshalIndent(tm.pinnedTasks, "", "  ")
+	if err != nil {
+		return
+	}
 	_ = os.WriteFile(filepath.Join(dir, "pinned-tasks.json"), data, 0644)
 }
 
@@ -1016,7 +1022,10 @@ func (tm *TaskManager) saveTaskNotes() {
 	}
 	dir := filepath.Join(tm.vault.Root, ".granit")
 	_ = os.MkdirAll(dir, 0755)
-	data, _ := json.MarshalIndent(tm.taskNotes, "", "  ")
+	data, err := json.MarshalIndent(tm.taskNotes, "", "  ")
+	if err != nil {
+		return
+	}
 	_ = os.WriteFile(filepath.Join(dir, "task-notes.json"), data, 0644)
 }
 

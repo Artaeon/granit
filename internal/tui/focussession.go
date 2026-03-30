@@ -196,7 +196,11 @@ func (fs FocusSession) handleTick() (FocusSession, tea.Cmd) {
 	case fsPhaseBreak:
 		if fs.breakActive {
 			fs.breakElapsed = now.Sub(fs.breakStart)
-			breakDur := time.Duration(fs.breakDurs[fs.breakIdx]) * time.Minute
+			breakMin := 5 // fallback
+			if fs.breakIdx >= 0 && fs.breakIdx < len(fs.breakDurs) {
+				breakMin = fs.breakDurs[fs.breakIdx]
+			}
+			breakDur := time.Duration(breakMin) * time.Minute
 			if fs.breakElapsed >= breakDur {
 				fs.breakElapsed = breakDur
 				fs.phase = fsPhaseReview
@@ -782,7 +786,11 @@ func (fs FocusSession) viewBreak(b *strings.Builder, width int) {
 
 	if fs.breakActive {
 		// Show break countdown
-		breakDur := time.Duration(fs.breakDurs[fs.breakIdx]) * time.Minute
+		breakMin := 5
+		if fs.breakIdx >= 0 && fs.breakIdx < len(fs.breakDurs) {
+			breakMin = fs.breakDurs[fs.breakIdx]
+		}
+		breakDur := time.Duration(breakMin) * time.Minute
 		breakRemaining := breakDur - fs.breakElapsed
 		if breakRemaining < 0 {
 			breakRemaining = 0

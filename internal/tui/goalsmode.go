@@ -360,7 +360,10 @@ func (gm *GoalsMode) loadGoals() {
 func (gm *GoalsMode) saveGoals() {
 	dir := filepath.Join(gm.vaultRoot, ".granit")
 	_ = os.MkdirAll(dir, 0755)
-	data, _ := json.MarshalIndent(gm.goals, "", "  ")
+	data, err := json.MarshalIndent(gm.goals, "", "  ")
+	if err != nil {
+		return // don't write corrupt data
+	}
 	_ = os.WriteFile(gm.goalsPath(), data, 0644)
 }
 

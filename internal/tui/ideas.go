@@ -139,7 +139,10 @@ func (ib *IdeasBoard) loadIdeas() {
 func (ib *IdeasBoard) saveIdeas() {
 	dir := filepath.Join(ib.vaultRoot, ".granit")
 	_ = os.MkdirAll(dir, 0755)
-	data, _ := json.MarshalIndent(ib.ideas, "", "  ")
+	data, err := json.MarshalIndent(ib.ideas, "", "  ")
+	if err != nil {
+		return
+	}
 	_ = os.WriteFile(ib.ideasPath(), data, 0644)
 }
 
