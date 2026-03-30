@@ -1011,6 +1011,13 @@ func (m Model) View() string {
 		}
 	}
 
+	// Clamp output to terminal height to prevent scrolling artifacts
+	lines := strings.Split(view, "\n")
+	if len(lines) > m.height {
+		lines = lines[:m.height]
+		view = strings.Join(lines, "\n")
+	}
+
 	return view
 }
 
