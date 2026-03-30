@@ -1950,9 +1950,19 @@ func ParseICSFile(path string) ([]CalendarEvent, error) {
 	var current *icsEvent
 	inEvent := false
 
+	// Read all lines and unfold (ICS continuation lines start with space/tab)
 	scanner := bufio.NewScanner(f)
+	var rawLines []string
 	for scanner.Scan() {
 		line := strings.TrimRight(scanner.Text(), "\r\n")
+		if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') && len(rawLines) > 0 {
+			rawLines[len(rawLines)-1] += line[1:] // unfold
+		} else {
+			rawLines = append(rawLines, line)
+		}
+	}
+
+	for _, line := range rawLines {
 
 		if line == "BEGIN:VEVENT" {
 			inEvent = true
@@ -2069,13 +2079,28 @@ func icsBaseProp(key string) string {
 
 func parseICSTime(value string) (time.Time, bool) {
 	value = strings.TrimSpace(value)
+	// UTC format: 20060102T150405Z
 	if t, err := time.Parse("20060102T150405Z", value); err == nil {
 		return t.Local(), false
 	}
+	// Local format: 20060102T150405
 	if t, err := time.Parse("20060102T150405", value); err == nil {
 		return t, false
 	}
+	// Date only: 20060102
 	if t, err := time.Parse("20060102", value); err == nil {
+		return t, true
+	}
+	// ISO format: 2006-01-02T15:04:05Z
+	if t, err := time.Parse(time.RFC3339, value); err == nil {
+		return t.Local(), false
+	}
+	// ISO without timezone: 2006-01-02T15:04:05
+	if t, err := time.Parse("2006-01-02T15:04:05", value); err == nil {
+		return t, false
+	}
+	// ISO date: 2006-01-02
+	if t, err := time.Parse("2006-01-02", value); err == nil {
 		return t, true
 	}
 	return time.Time{}, false
