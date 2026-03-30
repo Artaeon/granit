@@ -42,6 +42,7 @@ type Pomodoro struct {
 	state     PomodoroState
 	remaining time.Duration
 	total     time.Duration
+	paused    bool
 
 	// Config
 	workDuration   time.Duration // default 25min
@@ -156,6 +157,7 @@ func (p *Pomodoro) Start() {
 	p.state = PomodoroWork
 	p.remaining = p.workDuration
 	p.total = p.workDuration
+	p.paused = false
 	p.startTime = time.Now()
 	p.wordsWritten = 0
 
@@ -171,9 +173,19 @@ func (p *Pomodoro) Pause() {
 	if p.state == PomodoroIdle {
 		return
 	}
-	// We signal "paused" by negating remaining. A negative remaining means
-	// the timer is paused; ticks will not decrement it.
-	p.remaining = -p.remaining
+	// Toggle pause: negative remaining = paused, positive = running.
+	// Only negate if the sign change is meaningful (prevents double-toggle).
+	if p.paused {
+		if p.remaining < 0 {
+			p.remaining = -p.remaining
+		}
+		p.paused = false
+	} else {
+		if p.remaining > 0 {
+			p.remaining = -p.remaining
+		}
+		p.paused = true
+	}
 }
 
 // Skip advances to the next phase: work -> break, break -> idle (ready for
