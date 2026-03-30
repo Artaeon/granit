@@ -629,13 +629,46 @@ func (m *Model) refreshComponents(changedPath string) {
 	}
 	m.calendar.SetNoteContents(noteContents)
 
-	// Load native events into calendar
+	// Load all calendar events: native events + ICS files from vault
+	var allCalEvents []CalendarEvent
+
+	// Native events from EventStore
 	if m.eventStore != nil {
 		now := time.Now()
 		start := now.AddDate(0, -1, 0).Format("2006-01-02")
 		end := now.AddDate(0, 2, 0).Format("2006-01-02")
-		m.calendar.SetEvents(m.eventStore.ToCalendarEvents(start, end))
+		allCalEvents = append(allCalEvents, m.eventStore.ToCalendarEvents(start, end)...)
 	}
+
+	// ICS files: scan .granit/calendars/ and vault root for .ics files
+	icsLocations := []string{
+		filepath.Join(m.vault.Root, ".granit", "calendars"),
+		m.vault.Root,
+	}
+	seen := make(map[string]bool)
+	for _, dir := range icsLocations {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".ics") {
+				continue
+			}
+			fullPath := filepath.Join(dir, e.Name())
+			if seen[fullPath] {
+				continue
+			}
+			seen[fullPath] = true
+			icsEvents, err := ParseICSFile(fullPath)
+			if err != nil {
+				continue
+			}
+			allCalEvents = append(allCalEvents, icsEvents...)
+		}
+	}
+
+	m.calendar.SetEvents(allCalEvents)
 
 	// Directly refresh the task manager if it's currently active, so it
 	// picks up changes immediately instead of waiting for the needsRefresh
