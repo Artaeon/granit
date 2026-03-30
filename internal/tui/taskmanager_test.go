@@ -289,7 +289,8 @@ func TestFilterTasks_AllMode_NoFilter(t *testing.T) {
 		{Text: "a", NotePath: "notes/a.md"},
 		{Text: "b", NotePath: "notes/b.md"},
 	}
-	cfg := config.DefaultConfig() // TaskFilterMode = "all"
+	cfg := config.DefaultConfig()
+	cfg.TaskFilterMode = "all" // explicit all mode
 	got := FilterTasks(tasks, cfg)
 	if len(got) != 2 {
 		t.Errorf("expected 2 tasks, got %d", len(got))
@@ -336,6 +337,7 @@ func TestFilterTasks_ExcludeFolders(t *testing.T) {
 		{Text: "also exclude", NotePath: "templates/test.md"},
 	}
 	cfg := config.DefaultConfig()
+	cfg.TaskFilterMode = "all"
 	cfg.TaskExcludeFolders = []string{"Archive/", "templates/"}
 
 	got := FilterTasks(tasks, cfg)
@@ -353,6 +355,7 @@ func TestFilterTasks_ExcludeDone(t *testing.T) {
 		{Text: "done", Done: true, NotePath: "b.md"},
 	}
 	cfg := config.DefaultConfig()
+	cfg.TaskFilterMode = "all"
 	cfg.TaskExcludeDone = true
 
 	got := FilterTasks(tasks, cfg)
@@ -415,11 +418,11 @@ func TestFilterTasks_CombinedFilters(t *testing.T) {
 
 func TestFilterTasks_EmptyConfig(t *testing.T) {
 	tasks := []Task{
-		{Text: "a", Done: false, NotePath: "a.md"},
-		{Text: "b", Done: true, NotePath: "b.md"},
-		{Text: "c", Done: false, NotePath: "Archive/c.md"},
+		{Text: "a", Done: false, NotePath: "a.md", Tags: []string{"task"}},
+		{Text: "b", Done: true, NotePath: "b.md", Tags: []string{"task"}},
+		{Text: "c", Done: false, NotePath: "Archive/c.md", Tags: []string{"task"}},
 	}
-	cfg := config.DefaultConfig() // TaskFilterMode = "all", no excludes
+	cfg := config.DefaultConfig() // TaskFilterMode = "tagged", tags = ["task", "todo"]
 
 	got := FilterTasks(tasks, cfg)
 	if len(got) != len(tasks) {

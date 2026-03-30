@@ -12,7 +12,8 @@ type Sidebar struct {
 	files    []string
 	filtered []string
 	cursor   int
-	search   string
+	search    string
+	searching bool // true when actively typing in search
 	focused  bool
 	height   int
 	width    int
@@ -184,17 +185,10 @@ func (s Sidebar) Update(msg tea.Msg) (Sidebar, tea.Cmd) {
 		if s.treeView && s.search == "" {
 			// In tree mode, delegate most keys to file tree
 			switch msg.String() {
-			case "backspace":
-				// no-op in tree mode without search
+			case "/":
+				s.searching = true
+				s.treeView = false
 			default:
-				char := msg.String()
-				if len(char) == 1 && char[0] >= 32 && char[0] != ' ' {
-					// Start search mode in tree view
-					s.search += char
-					s.applyFilter()
-					s.treeView = false // temporarily switch to flat for search
-					return s, nil
-				}
 				s.fileTree = s.fileTree.Update(msg)
 			}
 			return s, nil
@@ -255,18 +249,25 @@ func (s Sidebar) Update(msg tea.Msg) (Sidebar, tea.Cmd) {
 			if s.cursor >= s.scroll+visibleHeight {
 				s.scroll = s.cursor - visibleHeight + 1
 			}
+		case "/":
+			s.searching = true
 		case "backspace":
-			if len(s.search) > 0 {
+			if s.searching && len(s.search) > 0 {
 				s.search = s.search[:len(s.search)-1]
 				s.applyFilter()
 			}
 		case "esc":
-			if s.search != "" {
+			if s.searching || s.search != "" {
+				s.searching = false
 				s.search = ""
 				s.applyFilter()
 			}
+		case "enter":
+			if s.searching {
+				s.searching = false // keep filter, exit search mode
+			}
 		default:
-			if len(msg.String()) == 1 && msg.String() >= " " {
+			if s.searching && len(msg.String()) == 1 && msg.String() >= " " {
 				s.search += msg.String()
 				s.applyFilter()
 			}

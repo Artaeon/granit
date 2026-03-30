@@ -584,10 +584,9 @@ func (m Model) View() string {
 	}
 
 	// Safety: truncate content to terminal height, preserving status bar at bottom.
-	// The status bar is the last 2 lines; if the view overflows, trim the content
-	// area instead of chopping off the status bar.
+	// Dynamically compute status bar height (2 normally, 3 with toast notification).
 	if viewLines := strings.Split(view, "\n"); len(viewLines) > m.height {
-		statusLines := 2
+		statusLines := strings.Count(m.statusbar.View(), "\n") + 1
 		if len(viewLines) >= statusLines {
 			contentLines := viewLines[:len(viewLines)-statusLines]
 			statusPart := viewLines[len(viewLines)-statusLines:]
