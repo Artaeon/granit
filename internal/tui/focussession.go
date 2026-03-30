@@ -531,7 +531,11 @@ func (fs FocusSession) viewSetup(b *strings.Builder, width int) {
 	}
 	b.WriteString("\n\n")
 
-	// Task selector (if tasks available)
+	// Task selector
+	if len(fs.tasks) == 0 {
+		b.WriteString("  " + DimStyle.Render("No tasks in Tasks.md — add with Ctrl+K or Ctrl+T"))
+		b.WriteString("\n\n")
+	}
 	if len(fs.tasks) > 0 {
 		b.WriteString("  " + sectionStyle.Render("Task (optional)"))
 		b.WriteString("\n")

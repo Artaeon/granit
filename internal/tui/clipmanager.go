@@ -536,13 +536,10 @@ func (cm ClipManager) View() string {
 
 	// Footer
 	b.WriteString("\n")
-	helpKeys := lipgloss.NewStyle().Foreground(surface0).Background(overlay0).Padding(0, 1)
-	helpDesc := DimStyle
-	b.WriteString("  ")
-	b.WriteString(helpKeys.Render("Enter") + helpDesc.Render(" paste") + "  ")
-	b.WriteString(helpKeys.Render("d") + helpDesc.Render(" delete") + "  ")
-	b.WriteString(helpKeys.Render("p") + helpDesc.Render(" pin") + "  ")
-	b.WriteString(helpKeys.Render("Esc") + helpDesc.Render(" close"))
+	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Enter", "paste"}, {"d", "delete"}, {"p", "pin"},
+		{"/", "search"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).

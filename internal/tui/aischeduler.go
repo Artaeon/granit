@@ -1186,7 +1186,9 @@ func (as AIScheduler) viewResult(width int) string {
 
 	buf.WriteString("\n")
 	buf.WriteString(DimStyle.Render("  " + strings.Repeat(string(ThemeSeparator), width-10)) + "\n")
-	buf.WriteString(DimStyle.Render("  Enter: apply to planner  r: regenerate  Esc: close"))
+	buf.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+		{"Enter", "apply"}, {"r", "regenerate"}, {"Esc", "close"},
+	}))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
