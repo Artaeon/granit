@@ -159,6 +159,7 @@ type Model struct {
 	goalsMode        GoalsMode
 	universalSearch  UniversalSearch
 	ideasBoard       IdeasBoard
+	eventStore       *EventStore
 	focusSession     FocusSession
 	standupGen       StandupGenerator
 	dailyReview      DailyReview
@@ -353,6 +354,7 @@ func NewModel(vaultPath string) (Model, error) {
 		goalsMode:        NewGoalsMode(),
 		universalSearch:  NewUniversalSearch(),
 		ideasBoard:       NewIdeasBoard(),
+		eventStore:       NewEventStore(vaultPath),
 		commandCenter:   NewCommandCenter(),
 		dailyPlanner:    NewDailyPlanner(),
 		aiScheduler:     NewAIScheduler(),

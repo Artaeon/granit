@@ -629,6 +629,14 @@ func (m *Model) refreshComponents(changedPath string) {
 	}
 	m.calendar.SetNoteContents(noteContents)
 
+	// Load native events into calendar
+	if m.eventStore != nil {
+		now := time.Now()
+		start := now.AddDate(0, -1, 0).Format("2006-01-02")
+		end := now.AddDate(0, 2, 0).Format("2006-01-02")
+		m.calendar.SetEvents(m.eventStore.ToCalendarEvents(start, end))
+	}
+
 	// Directly refresh the task manager if it's currently active, so it
 	// picks up changes immediately instead of waiting for the needsRefresh
 	// flag to be checked on the next Update() cycle.

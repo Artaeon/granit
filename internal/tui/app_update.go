@@ -963,10 +963,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					_, _ = f.WriteString("- [ ] " + evText + "\n")
 					_ = f.Close()
 				}
+				// Save as native event in event store
+				if m.eventStore != nil {
+					m.eventStore.Add(evText, evDate, "", "", "", "", "", "", true)
+				}
 				// Also add to planner file for the date
 				AddEventToPlannerFile(m.vault.Root, evDate, evText)
 				m.refreshComponents(name)
-				m.statusbar.SetMessage("Task added to " + evDate)
+				m.statusbar.SetMessage("Event added to " + evDate)
 			}
 			// Handle task toggles from the agenda view
 			if toggles := m.calendar.GetTaskToggles(); len(toggles) > 0 {
