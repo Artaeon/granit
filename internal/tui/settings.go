@@ -408,9 +408,9 @@ func (s *Settings) defaultValueForKey(key string) interface{} {
 	case "task_filter_mode":
 		return def.TaskFilterMode
 	case "task_required_tags":
-		return ""
+		return strings.Join(def.TaskRequiredTags, ", ")
 	case "task_exclude_folders":
-		return ""
+		return strings.Join(def.TaskExcludeFolders, ", ")
 	case "task_exclude_done":
 		return def.TaskExcludeDone
 	case "pomodoro_goal":
@@ -1045,7 +1045,7 @@ func (s Settings) View() string {
 	b.WriteString("  " + strings.Join(helpParts, "  "))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

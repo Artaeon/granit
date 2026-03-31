@@ -430,6 +430,14 @@ func ParseAllTasks(notes map[string]*vault.Note) []Task {
 			}
 
 			// Due date
+			// Infer due date from daily note filename
+			if t.DueDate == "" {
+				base := filepath.Base(note.RelPath)
+				base = strings.TrimSuffix(base, ".md")
+				if _, err := time.Parse("2006-01-02", base); err == nil {
+					t.DueDate = base
+				}
+			}
 			if dm := tmDueDateRe.FindStringSubmatch(taskText); dm != nil {
 				t.DueDate = dm[1]
 			}
@@ -517,9 +525,13 @@ func FilterTasks(tasks []Task, cfg config.Config) []Task {
 		if excluded {
 			continue
 		}
-		if cfg.TaskFilterMode == "tagged" && len(cfg.TaskRequiredTags) > 0 {
+		if cfg.TaskFilterMode == "tagged" {
+			reqTags := cfg.TaskRequiredTags
+			if len(reqTags) == 0 {
+				reqTags = []string{"task", "todo"}
+			}
 			hasTag := false
-			for _, reqTag := range cfg.TaskRequiredTags {
+			for _, reqTag := range reqTags {
 				for _, taskTag := range t.Tags {
 					if strings.EqualFold(taskTag, reqTag) {
 						hasTag = true
@@ -2861,7 +2873,7 @@ func (tm TaskManager) View() string {
 	tm.renderHelp(&b, innerW)
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -2938,7 +2950,7 @@ func (tm *TaskManager) renderEisenhowerView(b *strings.Builder, w int) {
 
 			boxStyle := lipgloss.NewStyle().
 				Width(colW).
-				Border(lipgloss.RoundedBorder()).
+				Border(PanelBorder).
 				BorderForeground(quadColors[idx]).
 				Padding(0, 1)
 
@@ -3201,6 +3213,19 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 		}
 
 		// Upcoming view: group by day
+			// All view: group by Note Path
+			if tm.view == taskViewAll || tm.view == taskViewCompleted {
+				group := task.NotePath
+				if group != lastGroup {
+					if lastGroup != "" {
+						b.WriteString("\n")
+					}
+					b.WriteString("  " + lipgloss.NewStyle().Foreground(crust).Background(sapphire).Bold(true).Padding(0, 1).Render(filepath.Base(group)))
+					b.WriteString("\n")
+					lastGroup = group
+				}
+			}
+
 		if tm.view == taskViewUpcoming && task.DueDate != "" {
 			group := task.DueDate
 			if group != lastGroup {
@@ -3758,7 +3783,7 @@ func (tm *TaskManager) renderKanbanView(b *strings.Builder, w int) {
 			emptyBox := lipgloss.NewStyle().
 			    Width(colWidth - 4).
 			    Height(3).
-			    BorderStyle(lipgloss.RoundedBorder()).
+			    BorderStyle(PanelBorder).
 			    BorderForeground(surface0).
 			    Align(lipgloss.Center).
 			    Render("Empty")
@@ -3799,7 +3824,7 @@ func (tm *TaskManager) renderKanbanCard(b *strings.Builder, task Task, isSelecte
 	if boxW < 10 { boxW = 10 }
 
 	boxStyle := lipgloss.NewStyle().
-	    Border(lipgloss.RoundedBorder()).
+	    Border(PanelBorder).
 	    BorderForeground(borderColor).
 	    Width(boxW).
 	    Padding(0, 1)
