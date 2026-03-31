@@ -1577,7 +1577,7 @@ func (dp DailyPlanner) viewHelp() string {
 
 // plannerDir returns the absolute path to the Planner directory in the vault.
 func (dp *DailyPlanner) plannerDir() string {
-	return filepath.Join(dp.vaultRoot, "Planner")
+	return filepath.Join(dp.vaultRoot, "Daily Planner")
 }
 
 // plannerFilePath returns the path for the current date's planner file.
@@ -1903,7 +1903,7 @@ func (dp *DailyPlanner) ApplyAISchedule(slots []schedulerSlot) {
 // available hour (after the last existing block, or 09:00 by default) and
 // given a 1-hour duration.
 func AddEventToPlannerFile(vaultRoot, dateStr, text string) {
-	plannerDir := filepath.Join(vaultRoot, "Planner")
+	plannerDir := filepath.Join(vaultRoot, "Daily Planner")
 	if err := os.MkdirAll(plannerDir, 0755); err != nil {
 		return
 	}
