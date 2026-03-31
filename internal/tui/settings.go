@@ -130,6 +130,7 @@ func (s *Settings) buildItems() {
 		{label: "Search Content by Default", key: "search_content", kind: "bool", value: s.config.SearchContentByDefault, category: catFiles, description: "full text search"},
 		{label: "Confirm Delete", key: "confirm_delete", kind: "bool", value: s.config.ConfirmDelete, category: catFiles, description: "ask before removing"},
 		{label: "Auto Refresh Vault", key: "auto_refresh", kind: "bool", value: s.config.AutoRefresh, category: catFiles, description: "reload on external change"},
+		{label: "Disabled Calendars (CSV)", key: "disabled_calendars", kind: "string", value: strings.Join(s.config.DisabledCalendars, ","), category: catFiles, description: "Hide these ICS files (comma-separated)"},
 
 		// ── Tasks ──
 		{label: "Task Filter Mode", key: "task_filter_mode", kind: "string", value: s.config.TaskFilterMode, options: []string{"all", "tagged", "folders"}, category: catTasks, description: "filter tasks: all checkboxes, only tagged, or by folder"},
@@ -698,6 +699,8 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.TaskRequiredTags = splitCommaTags(value.(string))
 	case "task_exclude_folders":
 		s.config.TaskExcludeFolders = splitCommaTags(value.(string))
+	case "disabled_calendars":
+		s.config.DisabledCalendars = splitCommaTags(value.(string))
 	case "task_exclude_done":
 		s.config.TaskExcludeDone = value.(bool)
 	case "pomodoro_goal":
