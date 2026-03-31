@@ -74,7 +74,7 @@ type timeBlock struct {
 type plannerPanel int
 
 const (
-	panelSchedule    plannerPanel = iota
+	panelSchedule plannerPanel = iota
 	panelUnscheduled
 	panelHabits
 )
@@ -101,7 +101,7 @@ type DailyPlanner struct {
 	vaultRoot string
 	date      time.Time
 
-	// Time grid (6:00 AM to 10:00 PM = 32 half-hour slots)
+	// Time grid (06:00 to 22:00 = 32 half-hour slots)
 	blocks []timeBlock
 	cursor int // which slot the cursor is on
 	scroll int
@@ -115,11 +115,11 @@ type DailyPlanner struct {
 	habitCursor int
 
 	// State
-	focus  plannerPanel // 0=schedule, 1=unscheduled panel, 2=habits panel
-	adding  bool
-	addBuf  string
-	addType blockType // block type being added
-	addSlots int      // number of 30-min slots for the block (1-6)
+	focus    plannerPanel // 0=schedule, 1=unscheduled panel, 2=habits panel
+	adding   bool
+	addBuf   string
+	addType  blockType // block type being added
+	addSlots int       // number of 30-min slots for the block (1-6)
 
 	// Moving
 	moving   bool
@@ -193,11 +193,16 @@ func (dp *DailyPlanner) Open(vaultRoot string, tasks []PlannerTask, events []Pla
 		dp.placeEvents(events)
 	}
 
-	// Populate unscheduled tasks: tasks due today that are not yet scheduled
+	// Populate unscheduled tasks: tasks due today or overdue, not yet scheduled
 	dp.unscheduled = nil
 	todayStr := dp.date.Format("2006-01-02")
 	for _, t := range tasks {
-		if t.DueDate == todayStr && !dp.isTextScheduled(t.Text) {
+		if t.Done {
+			continue
+		}
+		isDueToday := t.DueDate == todayStr
+		isOverdue := t.DueDate != "" && t.DueDate < todayStr
+		if (isDueToday || isOverdue) && !dp.isTextScheduled(t.Text) {
 			dp.unscheduled = append(dp.unscheduled, t)
 		}
 	}
@@ -1448,6 +1453,26 @@ func (dp DailyPlanner) viewRightPanel(width int) string {
 		}
 	}
 
+	// --- Active Goals ---
+	if len(dp.activeGoals) > 0 {
+		b.WriteString("\n")
+		goalIcon := lipgloss.NewStyle().Foreground(mauve).Render("◎")
+		goalTitle := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" Goals")
+		b.WriteString("  " + goalIcon + goalTitle)
+		b.WriteString("\n")
+		b.WriteString(DimStyle.Render("  " + strings.Repeat("─", width-4)))
+		b.WriteString("\n")
+		for _, g := range dp.activeGoals {
+			bullet := lipgloss.NewStyle().Foreground(mauve).Render("  ▸ ")
+			name := lipgloss.NewStyle().Foreground(text).Render(TruncateDisplay(g.Title, width-8))
+			b.WriteString(bullet + name)
+			if g.TargetDate != "" {
+				b.WriteString(DimStyle.Render(" (by " + g.TargetDate + ")"))
+			}
+			b.WriteString("\n")
+		}
+	}
+
 	return b.String()
 }
 
@@ -1538,8 +1563,9 @@ func (dp *DailyPlanner) recountDirect() {
 // viewHelp renders the keybinding help bar.
 func (dp DailyPlanner) viewHelp() string {
 	pairs := []struct{ Key, Desc string }{
-		{"a", "add"}, {"d", "delete"}, {"Enter", "assign"}, {"Tab", "panel"},
-		{"Space", "done"}, {"m", "move"}, {"f", "focus"}, {"s", "save"},
+		{"j/k", "move"}, {"Tab", "panel"}, {"a", "add"}, {"d", "delete"},
+		{"Enter", "assign"}, {"Space", "done"}, {"m", "move block"},
+		{"-/+", "resize"}, {"f", "focus"}, {"s", "save"},
 		{"[/]", "day"}, {"Esc", "close"},
 	}
 	return RenderHelpBar(pairs)
@@ -1709,7 +1735,7 @@ func (dp *DailyPlanner) loadFromFile() bool {
 
 // parseScheduleLine parses a line like:
 //
-//	- 09:00-10:30 | Fix auth bug | task | done
+//   - 09:00-10:30 | Fix auth bug | task | done
 func (dp *DailyPlanner) parseScheduleLine(line string) {
 	if !strings.HasPrefix(line, "- ") {
 		return
@@ -1760,7 +1786,7 @@ func (dp *DailyPlanner) parseScheduleLine(line string) {
 
 // parseHabitLine parses a line like:
 //
-//	- [x] Exercise (streak: 5)
+//   - [x] Exercise (streak: 5)
 func (dp *DailyPlanner) parseHabitLine(line string) {
 	if !strings.HasPrefix(line, "- [") {
 		return

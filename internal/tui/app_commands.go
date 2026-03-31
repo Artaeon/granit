@@ -14,6 +14,7 @@ import (
 	"github.com/artaeon/granit/internal/config"
 	"github.com/artaeon/granit/internal/vault"
 )
+
 func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case CmdOpenFile:
@@ -224,10 +225,10 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		m.calendar.SetNoteContents(noteContents)
 		m.calendar.SetPlannerBlocks(loadPlannerBlocks(m.vault.Root))
+		m.loadCalendarEvents()
 		// Load habit data for calendar views
 		ht := NewHabitTracker()
 		ht.Open(m.vault.Root)
-		ht.Close()
 		m.calendar.SetHabitData(ht.habits, ht.logs)
 		m.calendar.Open()
 	case CmdShowBots:
@@ -1322,36 +1323,45 @@ func (m *Model) gatherPlannerData() ([]PlannerTask, []PlannerEvent, []PlannerHab
 	var events []PlannerEvent
 	var habits []PlannerHabit
 
-	// Scan Tasks.md for tasks due today
-	tasksPath := filepath.Join(m.vault.Root, "Tasks.md")
-	if f, err := os.Open(tasksPath); err == nil {
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		for scanner.Scan() {
-			line := scanner.Text()
-			if taskPattern.MatchString(line) {
-				m2 := taskPattern.FindStringSubmatch(line)
-				done := m2[1] != " "
-				text := m2[2]
-				dueDate := ""
-				if dm := regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`).FindStringSubmatch(text); dm != nil {
-					dueDate = dm[1]
-				}
-				if dueDate == today || (dueDate != "" && dueDate <= today && !done) {
-					tasks = append(tasks, PlannerTask{
-						Text:     text,
-						Done:     done,
-						Priority: taskPriority(text),
-						DueDate:  dueDate,
-						Source:   "Tasks.md",
-						NotePath: "Tasks.md",
-						LineNum:  lineNum,
-					})
-				}
-			}
-			lineNum++
+	// Scan all vault notes for tasks due today, overdue, or from today's daily note
+	for _, p := range m.vault.SortedPaths() {
+		note := m.vault.GetNote(p)
+		if note == nil {
+			continue
 		}
-		_ = f.Close()
+		// Check if this is today's daily note (tasks without dates should be included)
+		base := strings.TrimSuffix(filepath.Base(p), ".md")
+		isTodayNote := base == today
+		for lineNum, line := range strings.Split(note.Content, "\n") {
+			if !tmTaskRe.MatchString(line) {
+				continue
+			}
+			m2 := tmTaskRe.FindStringSubmatch(line)
+			done := m2[2] != " "
+			// m2[3] is "] task text" — strip leading "] "
+			text := m2[3]
+			if len(text) > 2 {
+				text = text[2:]
+			}
+			dueDate := ""
+			if dm := tmDueDateRe.FindStringSubmatch(text); dm != nil {
+				dueDate = dm[1]
+			}
+			isDueToday := dueDate == today
+			isOverdue := dueDate != "" && dueDate < today && !done
+			isFromTodayNote := isTodayNote && dueDate == ""
+			if isDueToday || isOverdue || isFromTodayNote {
+				tasks = append(tasks, PlannerTask{
+					Text:     text,
+					Done:     done,
+					Priority: taskPriority(text),
+					DueDate:  dueDate,
+					Source:   filepath.Base(p),
+					NotePath: p,
+					LineNum:  lineNum,
+				})
+			}
+		}
 	}
 
 	// Scan calendar events for today
@@ -1385,16 +1395,25 @@ func (m *Model) gatherPlannerData() ([]PlannerTask, []PlannerEvent, []PlannerHab
 		}
 	}
 
-	// Scan habits
-	habitsDir := filepath.Join(m.vault.Root, "Habits")
-	if entries, err := os.ReadDir(habitsDir); err == nil {
-		for _, e := range entries {
-			if e.IsDir() || e.Name() == "goals.md" || e.Name() == "stats.md" {
-				continue
+	// Scan habits with completion status
+	ht := NewHabitTracker()
+	ht.vaultRoot = m.vault.Root
+	ht.loadHabits()
+	// Build set of habits completed today
+	todayCompleted := make(map[string]bool)
+	for _, log := range ht.logs {
+		if log.Date == today {
+			for _, name := range log.Completed {
+				todayCompleted[name] = true
 			}
-			name := strings.TrimSuffix(e.Name(), ".md")
-			habits = append(habits, PlannerHabit{Name: name})
 		}
+	}
+	for _, h := range ht.habits {
+		habits = append(habits, PlannerHabit{
+			Name:   h.Name,
+			Done:   todayCompleted[h.Name],
+			Streak: h.Streak,
+		})
 	}
 
 	return tasks, events, habits
@@ -1449,7 +1468,7 @@ func (m *Model) gatherPlanMyDayData() ([]Task, []PlannerEvent, []habitEntry, []P
 				done := m2[1] != " "
 				text := m2[2]
 				dueDate := ""
-				if dm := regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`).FindStringSubmatch(text); dm != nil {
+				if dm := tmDueDateRe.FindStringSubmatch(text); dm != nil {
 					dueDate = dm[1]
 				}
 				tasks = append(tasks, Task{
@@ -1481,7 +1500,7 @@ func (m *Model) gatherPlanMyDayData() ([]Task, []PlannerEvent, []habitEntry, []P
 				done := m2[1] != " "
 				text := m2[2]
 				dueDate := ""
-				if dm := regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`).FindStringSubmatch(text); dm != nil {
+				if dm := tmDueDateRe.FindStringSubmatch(text); dm != nil {
 					dueDate = dm[1]
 				}
 				// Include if due today/overdue, or if it's a recent note's task

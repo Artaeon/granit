@@ -86,11 +86,12 @@ export namespace main {
 	    endDate: string;
 	    location: string;
 	    allDay: boolean;
-	
+	    time: string;
+
 	    static createFrom(source: any = {}) {
 	        return new CalendarEventDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
@@ -98,6 +99,7 @@ export namespace main {
 	        this.endDate = source["endDate"];
 	        this.location = source["location"];
 	        this.allDay = source["allDay"];
+	        this.time = source["time"];
 	    }
 	}
 	export class CalendarData {
@@ -703,17 +705,33 @@ export namespace main {
 	    done: boolean;
 	    notePath: string;
 	    lineNum: number;
-	
+	    priority: number;
+	    dueDate: string;
+	    tags: string[];
+	    estimatedMinutes: number;
+	    scheduledTime: string;
+	    recurrence: string;
+	    goalId: string;
+	    snoozedUntil: string;
+
 	    static createFrom(source: any = {}) {
 	        return new TaskItem(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.text = source["text"];
 	        this.done = source["done"];
 	        this.notePath = source["notePath"];
 	        this.lineNum = source["lineNum"];
+	        this.priority = source["priority"];
+	        this.dueDate = source["dueDate"];
+	        this.tags = source["tags"];
+	        this.estimatedMinutes = source["estimatedMinutes"];
+	        this.scheduledTime = source["scheduledTime"];
+	        this.recurrence = source["recurrence"];
+	        this.goalId = source["goalId"];
+	        this.snoozedUntil = source["snoozedUntil"];
 	    }
 	}
 	export class TemplateInfo {

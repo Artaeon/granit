@@ -647,6 +647,7 @@
       <svelte:component this={mod.default} data={calendarData}
         on:navigate={async (e) => { calendarData = await api.getCalendarData(e.detail.year, e.detail.month) }}
         on:openNote={(e) => { closeOverlay('calendar'); navigateToPage(e.detail) }}
+        on:toggleTask={async (e) => { try { await api.toggleTask(e.detail.notePath, e.detail.lineNum); calendarData = await api.getCalendarData(new Date().getFullYear(), new Date().getMonth() + 1) } catch {} }}
         on:close={() => closeOverlay('calendar')} />
     {/await}
   {/if}

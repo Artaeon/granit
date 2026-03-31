@@ -13,13 +13,17 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// CalendarEvent represents a single event parsed from an .ics file.
+// CalendarEvent represents a single event parsed from an .ics file or native store.
 type CalendarEvent struct {
-	Title    string
-	Date     time.Time
-	EndDate  time.Time
-	Location string
-	AllDay   bool
+	Title       string
+	Date        time.Time
+	EndDate     time.Time
+	Location    string
+	Description string
+	AllDay      bool
+	ID          string // native event ID (empty for ICS events)
+	Color       string // "red", "blue", "green", "yellow", "mauve", "teal", "peach"
+	Recurrence  string // "daily", "weekly", "monthly", "yearly"
 }
 
 // PlannerBlock represents a scheduled block from the daily planner.
@@ -106,7 +110,7 @@ type Calendar struct {
 	cursor   time.Time // the currently highlighted date
 	viewing  time.Time // the month being displayed (year + month)
 	today    time.Time // today's date (year, month, day only)
-	selected string   // date the user confirmed with Enter ("2006-01-02"), empty otherwise
+	selected string    // date the user confirmed with Enter ("2006-01-02"), empty otherwise
 
 	dailyNoteDates map[string]bool // set of "2006-01-02" strings that have daily notes
 	events         []CalendarEvent
@@ -137,7 +141,7 @@ type Calendar struct {
 	eventInput  string
 
 	// Full event creation/editing
-	eventEditMode  int    // 0=none, 1=title, 2=time, 3=duration, 4=location, 5=recurrence, 6=color
+	eventEditMode  int    // 0=none, 1=title, 2=time, 3=duration, 4=location, 5=recurrence, 6=color, 7=description
 	eventEditID    string // "" for new event, "E001" for editing
 	eventEditTitle string
 	eventEditTime  string // HH:MM
@@ -145,6 +149,7 @@ type Calendar struct {
 	eventEditLoc   string
 	eventEditRecur string // daily/weekly/monthly/yearly/""
 	eventEditColor string
+	eventEditDesc  string
 	eventEditBuf   string // current input buffer
 
 	// Pending event to be saved by app.go
@@ -197,7 +202,7 @@ func (c *Calendar) Open() {
 	c.viewing = c.today
 }
 
-func (c *Calendar) Close()        { c.active = false }
+func (c *Calendar) Close()         { c.active = false }
 func (c *Calendar) IsActive() bool { return c.active }
 
 func (c *Calendar) SetDailyNotes(notes []string) {
@@ -397,15 +402,26 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 					c.eventEditLoc = strings.TrimSpace(c.eventEditBuf)
 					c.eventEditBuf = ""
 					c.eventEditMode = 5
-				case 5: // Recurrence (pick) → save
+				case 5: // Recurrence → Color
+					c.eventEditMode = 6
+					c.eventEditBuf = ""
+				case 6: // Color (skip) → Description
+					c.eventEditMode = 7
+					c.eventEditBuf = ""
+				case 7: // Description → save
+					c.eventEditDesc = strings.TrimSpace(c.eventEditBuf)
 					c.eventEditMode = 0
 					c.saveEditedEvent()
 				}
 			case "1":
 				if c.eventEditMode == 5 {
 					c.eventEditRecur = "daily"
-					c.eventEditMode = 0
-					c.saveEditedEvent()
+					c.eventEditMode = 6
+					c.eventEditBuf = ""
+				} else if c.eventEditMode == 6 {
+					c.eventEditColor = "red"
+					c.eventEditMode = 7
+					c.eventEditBuf = ""
 				} else if c.eventEditMode == 3 {
 					c.eventEditDur = 30
 					c.eventEditBuf = ""
@@ -416,8 +432,12 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			case "2":
 				if c.eventEditMode == 5 {
 					c.eventEditRecur = "weekly"
-					c.eventEditMode = 0
-					c.saveEditedEvent()
+					c.eventEditMode = 6
+					c.eventEditBuf = ""
+				} else if c.eventEditMode == 6 {
+					c.eventEditColor = "green"
+					c.eventEditMode = 7
+					c.eventEditBuf = ""
 				} else if c.eventEditMode == 3 {
 					c.eventEditDur = 60
 					c.eventEditBuf = ""
@@ -428,8 +448,12 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			case "3":
 				if c.eventEditMode == 5 {
 					c.eventEditRecur = "monthly"
-					c.eventEditMode = 0
-					c.saveEditedEvent()
+					c.eventEditMode = 6
+					c.eventEditBuf = ""
+				} else if c.eventEditMode == 6 {
+					c.eventEditColor = "yellow"
+					c.eventEditMode = 7
+					c.eventEditBuf = ""
 				} else if c.eventEditMode == 3 {
 					c.eventEditDur = 90
 					c.eventEditBuf = ""
@@ -440,8 +464,12 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			case "4":
 				if c.eventEditMode == 5 {
 					c.eventEditRecur = "yearly"
-					c.eventEditMode = 0
-					c.saveEditedEvent()
+					c.eventEditMode = 6
+					c.eventEditBuf = ""
+				} else if c.eventEditMode == 6 {
+					c.eventEditColor = "mauve"
+					c.eventEditMode = 7
+					c.eventEditBuf = ""
 				} else if c.eventEditMode == 3 {
 					c.eventEditDur = 120
 					c.eventEditBuf = ""
@@ -449,11 +477,31 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				} else {
 					c.eventEditBuf += msg.String()
 				}
+			case "5":
+				if c.eventEditMode == 6 {
+					c.eventEditColor = "teal"
+					c.eventEditMode = 7
+					c.eventEditBuf = ""
+				} else {
+					c.eventEditBuf += msg.String()
+				}
+			case "6":
+				if c.eventEditMode == 6 {
+					c.eventEditColor = "peach"
+					c.eventEditMode = 7
+					c.eventEditBuf = ""
+				} else {
+					c.eventEditBuf += msg.String()
+				}
 			case "0":
 				if c.eventEditMode == 5 {
 					c.eventEditRecur = ""
-					c.eventEditMode = 0
-					c.saveEditedEvent()
+					c.eventEditMode = 6
+					c.eventEditBuf = ""
+				} else if c.eventEditMode == 6 {
+					c.eventEditColor = ""
+					c.eventEditMode = 7
+					c.eventEditBuf = ""
 				} else {
 					c.eventEditBuf += msg.String()
 				}
@@ -634,6 +682,7 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			c.eventEditLoc = ""
 			c.eventEditRecur = ""
 			c.eventEditColor = ""
+			c.eventEditDesc = ""
 			c.eventEditBuf = ""
 
 		case "d":
@@ -663,10 +712,12 @@ func (c *Calendar) saveEditedEvent() {
 	allDay := c.eventEditTime == ""
 	c.pendingNativeEvent = &NativeEvent{
 		Title:       c.eventEditTitle,
+		Description: c.eventEditDesc,
 		Date:        dateStr,
 		StartTime:   c.eventEditTime,
 		EndTime:     endTime,
 		Location:    c.eventEditLoc,
+		Color:       c.eventEditColor,
 		Recurrence:  c.eventEditRecur,
 		AllDay:      allDay,
 	}
@@ -908,9 +959,45 @@ func (c Calendar) viewWeek() string {
 		headerRow += PadRight(cell, dayColW)
 	}
 	b.WriteString("  " + headerRow + "\n")
+
+	// All-day events row
+	hasAllDay := false
+	for di := 0; di < 7; di++ {
+		day := weekStart.AddDate(0, 0, di)
+		for _, ev := range c.eventsForDate(day) {
+			if ev.AllDay {
+				hasAllDay = true
+				break
+			}
+		}
+		if hasAllDay {
+			break
+		}
+	}
+	if hasAllDay {
+		allDayLabel := DimStyle.Render("all day ")
+		allDayCells := ""
+		for di := 0; di < 7; di++ {
+			day := weekStart.AddDate(0, 0, di)
+			cellText := ""
+			for _, ev := range c.eventsForDate(day) {
+				if ev.AllDay {
+					cellText = ev.Title
+					break
+				}
+			}
+			if cellText != "" {
+				allDayCells += lipgloss.NewStyle().Foreground(calEventColor(CalendarEvent{Color: "yellow"})).
+					Render(TruncateDisplay(cellText, dayColW-1))
+			}
+			allDayCells += strings.Repeat(" ", maxInt(0, dayColW-lipgloss.Width(TruncateDisplay(cellText, dayColW-1))))
+		}
+		b.WriteString("  " + allDayLabel + allDayCells + "\n")
+	}
+
 	b.WriteString("  " + DimStyle.Render(strings.Repeat("─", width-8)) + "\n")
 
-	// Render time rows (6AM-10PM = hours 6-22, 17 rows)
+	// Render time rows (06:00-22:00, 17 rows)
 	maxRows := c.height - 16
 	if maxRows < 8 {
 		maxRows = 8
@@ -924,15 +1011,8 @@ func (c Calendar) viewWeek() string {
 		if hour > 22 {
 			break
 		}
-		// Time label
-		var timeLabel string
-		if hour < 12 {
-			timeLabel = fmt.Sprintf("%2dAM ", hour)
-		} else if hour == 12 {
-			timeLabel = "12PM "
-		} else {
-			timeLabel = fmt.Sprintf("%2dPM ", hour-12)
-		}
+		// Time label (24h format)
+		timeLabel := fmt.Sprintf("%02d:00 ", hour)
 		// Current time indicator
 		now := time.Now()
 		isCurrentHour := now.Hour() == hour &&
@@ -966,18 +1046,43 @@ func (c Calendar) viewWeek() string {
 				}
 			}
 
-			// Check events for this hour
+			// Check events: show events that START at this hour, or SPAN into it
 			if cellText == "" {
+				evCount := 0
 				for _, ev := range c.eventsForDate(day) {
-					if !ev.AllDay && ev.Date.Hour() == hour {
-						cellText = ev.Title
-						cellColor = blue
-						break
+					if ev.AllDay {
+						continue
 					}
+					startHour := ev.Date.Hour()
+					endHour := startHour + 1
+					if !ev.EndDate.IsZero() {
+						endHour = ev.EndDate.Hour()
+						if ev.EndDate.Minute() > 0 {
+							endHour++
+						}
+					}
+					if startHour <= hour && hour < endHour {
+						evCount++
+						if cellText == "" {
+							if startHour == hour {
+								cellText = ev.Date.Format("15:04") + " " + ev.Title
+								if ev.Location != "" && dayColW > 20 {
+									cellText += " @" + ev.Location
+								}
+							} else {
+								// Continuation block
+								cellText = "│ " + ev.Title
+							}
+							cellColor = calEventColor(ev)
+						}
+					}
+				}
+				if evCount > 1 && cellText != "" {
+					cellText = TruncateDisplay(cellText, dayColW-6) + fmt.Sprintf(" +%d", evCount-1)
 				}
 			}
 
-			// Show tasks with due dates in the first empty morning slot (9AM)
+			// Show tasks with due dates in the first empty morning slot (09:00)
 			if cellText == "" && hour == 9 {
 				if dateTasks, ok := c.tasks[dateStr]; ok {
 					pending := 0
@@ -1048,9 +1153,27 @@ func (c *Calendar) rebuildAgendaItems() {
 	for d := 0; d < lookAhead; d++ {
 		day := c.today.AddDate(0, 0, d)
 		dateStr := day.Format("2006-01-02")
-		dayTasks := c.tasks[dateStr]
 
-		for ti := range dayTasks {
+		// Add events for this date
+		for _, ev := range c.eventsForDate(day) {
+			items = append(items, agendaItem{
+				itemType: "event",
+				dateStr:  dateStr,
+				eventID:  ev.ID,
+			})
+		}
+
+		// Add planner blocks for this date
+		for pi := range c.plannerBlocks[dateStr] {
+			items = append(items, agendaItem{
+				itemType: "planner",
+				dateStr:  dateStr,
+				index:    pi,
+			})
+		}
+
+		// Add tasks for this date
+		for ti := range c.tasks[dateStr] {
 			items = append(items, agendaItem{
 				itemType: "task",
 				dateStr:  dateStr,
@@ -1114,16 +1237,9 @@ func (c Calendar) view1Day() string {
 	now := time.Now()
 	contentW := width - 14
 
-	// Time slots 6AM - 10PM
+	// Time slots 06:00 - 22:00
 	for hour := 6; hour <= 22; hour++ {
-		timeLabel := ""
-		if hour < 12 {
-			timeLabel = fmt.Sprintf("%2dAM", hour)
-		} else if hour == 12 {
-			timeLabel = "12PM"
-		} else {
-			timeLabel = fmt.Sprintf("%2dPM", hour-12)
-		}
+		timeLabel := fmt.Sprintf("%02d:00", hour)
 
 		// Current time indicator
 		isNow := now.Hour() == hour && isToday
@@ -1154,15 +1270,40 @@ func (c Calendar) view1Day() string {
 		}
 
 		if cellText == "" {
+			evCount := 0
 			for _, ev := range c.eventsForDate(c.cursor) {
-				if !ev.AllDay && ev.Date.Hour() == hour {
-					cellText = ev.Title
-					if ev.Location != "" {
-						cellText += " @ " + ev.Location
-					}
-					cellColor = blue
-					break
+				if ev.AllDay {
+					continue
 				}
+				startHour := ev.Date.Hour()
+				endHour := startHour + 1
+				if !ev.EndDate.IsZero() {
+					endHour = ev.EndDate.Hour()
+					if ev.EndDate.Minute() > 0 {
+						endHour++
+					}
+				}
+				if startHour <= hour && hour < endHour {
+					evCount++
+					if cellText == "" {
+						if startHour == hour {
+							timeRange := ev.Date.Format("15:04")
+							if !ev.EndDate.IsZero() {
+								timeRange += "-" + ev.EndDate.Format("15:04")
+							}
+							cellText = timeRange + " " + ev.Title
+							if ev.Location != "" {
+								cellText += " @ " + ev.Location
+							}
+						} else {
+							cellText = "│ " + ev.Title
+						}
+						cellColor = calEventColor(ev)
+					}
+				}
+			}
+			if evCount > 1 && cellText != "" {
+				cellText += fmt.Sprintf(" +%d", evCount-1)
 			}
 		}
 
@@ -1184,7 +1325,7 @@ func (c Calendar) view1Day() string {
 				b.WriteString("\n  " + lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("All Day") + "\n")
 				allDayEvents = true
 			}
-			b.WriteString("  " + lipgloss.NewStyle().Foreground(blue).Render("  "+ev.Title) + "\n")
+			b.WriteString("  " + lipgloss.NewStyle().Foreground(calEventColor(ev)).Render("  "+ev.Title) + "\n")
 		}
 	}
 
@@ -1300,17 +1441,43 @@ func (c Calendar) viewAgenda() string {
 			section.items = append(section.items, -1)
 		}
 
-		// Events
+		// Events (interactive — can be selected and deleted)
 		for _, ev := range dayEvents {
 			timeStr := "all day"
 			if !ev.AllDay {
 				timeStr = ev.Date.Format("15:04")
+				if !ev.EndDate.IsZero() {
+					dur := ev.EndDate.Sub(ev.Date)
+					timeStr += "-" + ev.EndDate.Format("15:04")
+					if dur.Hours() >= 1 {
+						timeStr += fmt.Sprintf(" (%dh", int(dur.Hours()))
+						if int(dur.Minutes())%60 > 0 {
+							timeStr += fmt.Sprintf("%dm", int(dur.Minutes())%60)
+						}
+						timeStr += ")"
+					} else if dur.Minutes() > 0 {
+						timeStr += fmt.Sprintf(" (%dm)", int(dur.Minutes()))
+					}
+				}
 			}
-			section.lines = append(section.lines,
-				"    "+lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar+" ")+
-					DimStyle.Render(timeStr+" ")+
-					lipgloss.NewStyle().Foreground(text).Render(ev.Title))
-			section.items = append(section.items, -1)
+			evColor := calEventColor(ev)
+			itemIdx := len(items)
+			items = append(items, agendaItem{
+				itemType: "event",
+				dateStr:  dateStr,
+				eventID:  ev.ID,
+			})
+			evLine := "    " + lipgloss.NewStyle().Foreground(evColor).Render(IconCalendarChar+" ") +
+				DimStyle.Render(timeStr+" ") +
+				lipgloss.NewStyle().Foreground(text).Render(ev.Title)
+			if ev.Location != "" {
+				evLine += DimStyle.Render(" @ " + ev.Location)
+			}
+			if ev.Recurrence != "" {
+				evLine += lipgloss.NewStyle().Foreground(overlay1).Render(" ⟲" + ev.Recurrence)
+			}
+			section.lines = append(section.lines, evLine)
+			section.items = append(section.items, itemIdx)
 		}
 
 		// Planner blocks
@@ -1660,6 +1827,23 @@ func (c Calendar) renderEventWizard(b *strings.Builder, width int) {
 		b.WriteString("  " + ss.Render("1") + ds.Render(" daily  ") + ss.Render("2") + ds.Render(" weekly  ") +
 			ss.Render("3") + ds.Render(" monthly  ") + ss.Render("4") + ds.Render(" yearly") + "\n")
 		b.WriteString("  " + ss.Render("0") + ds.Render(" none (one-time event)") + "\n")
+	case 6: // Color
+		b.WriteString("  " + ds.Render("Title: "+c.eventEditTitle) + "\n")
+		b.WriteString("  " + ps.Render("Color:") + "\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(red).Render(ss.Render("1")+" red") + "  ")
+		b.WriteString(lipgloss.NewStyle().Foreground(green).Render(ss.Render("2")+" green") + "  ")
+		b.WriteString(lipgloss.NewStyle().Foreground(yellow).Render(ss.Render("3")+" yellow") + "  ")
+		b.WriteString(lipgloss.NewStyle().Foreground(mauve).Render(ss.Render("4")+" purple") + "\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(teal).Render(ss.Render("5")+" teal") + "  ")
+		b.WriteString(lipgloss.NewStyle().Foreground(peach).Render(ss.Render("6")+" orange") + "  ")
+		b.WriteString(ss.Render("0") + ds.Render(" default (blue)") + "\n")
+	case 7: // Description
+		b.WriteString("  " + ds.Render("Title: "+c.eventEditTitle) + "\n")
+		if c.eventEditColor != "" {
+			b.WriteString("  " + ds.Render("Color: "+c.eventEditColor) + "\n")
+		}
+		b.WriteString("  " + ps.Render("Description (optional): ") + is.Render(c.eventEditBuf+"\u2588") + "\n")
+		b.WriteString("  " + ds.Render("Enter to save, Esc to cancel"))
 	}
 	b.WriteString("\n")
 }
@@ -1710,21 +1894,35 @@ func (c Calendar) renderDateInfo(b *strings.Builder, width int) {
 			b.WriteString("\n")
 		} else {
 			for _, ev := range dayEvents {
-				bullet := lipgloss.NewStyle().Foreground(blue).Render("  " + IconCalendarChar + " ")
-				title := lipgloss.NewStyle().Foreground(text).Render(ev.Title)
+				evCol := calEventColor(ev)
+				bullet := lipgloss.NewStyle().Foreground(evCol).Render("  " + IconCalendarChar + " ")
+				title := lipgloss.NewStyle().Foreground(text).Bold(true).Render(ev.Title)
 				timeStr := ""
 				if !ev.AllDay {
-					timeStr = " (" + ev.Date.Format("15:04") + ")"
+					timeStr = ev.Date.Format("15:04")
+					if !ev.EndDate.IsZero() {
+						timeStr += "-" + ev.EndDate.Format("15:04")
+					}
+					timeStr = " (" + timeStr + ")"
 				} else {
 					timeStr = " (all day)"
 				}
 				timePart := DimStyle.Render(timeStr)
 				b.WriteString(bullet + title + timePart)
-				if ev.Location != "" {
-					loc := DimStyle.Render("      @ " + ev.Location)
-					b.WriteString("\n" + loc)
-				}
 				b.WriteString("\n")
+				if ev.Location != "" {
+					b.WriteString(DimStyle.Render("      @ "+ev.Location) + "\n")
+				}
+				if ev.Recurrence != "" {
+					b.WriteString(lipgloss.NewStyle().Foreground(overlay1).Render("      ⟲ "+ev.Recurrence) + "\n")
+				}
+				if ev.Description != "" {
+					desc := ev.Description
+					if len(desc) > 60 {
+						desc = desc[:57] + "..."
+					}
+					b.WriteString(DimStyle.Render("      "+desc) + "\n")
+				}
 			}
 		}
 	} else {
@@ -1736,28 +1934,46 @@ func (c Calendar) renderDateInfo(b *strings.Builder, width int) {
 
 		if len(dayEvents) > 0 || hasNote || tasksTotal > 0 || len(dayPlannerBlocks) > 0 {
 			b.WriteString("\n")
+			dateLabel := lipgloss.NewStyle().Foreground(mauve).Bold(true).
+				Render("  " + c.cursor.Format("Mon Jan 2"))
+			b.WriteString(dateLabel)
+			b.WriteString("\n")
 			if hasNote {
 				dot := lipgloss.NewStyle().Foreground(green).Render("  " + IconDailyChar + " ")
-				b.WriteString(dot + lipgloss.NewStyle().Foreground(text).Render("Daily note exists"))
+				b.WriteString(dot + lipgloss.NewStyle().Foreground(text).Render("Daily note"))
 				b.WriteString("\n")
 			}
-			if len(dayEvents) > 0 {
-				dot := lipgloss.NewStyle().Foreground(blue).Render("  " + IconCalendarChar + " ")
-				count := fmt.Sprintf("%d event", len(dayEvents))
-				if len(dayEvents) > 1 {
-					count += "s"
+			// Show event titles inline (Google Calendar style)
+			for i, ev := range dayEvents {
+				if i >= 4 {
+					more := DimStyle.Render(fmt.Sprintf("    +%d more events", len(dayEvents)-4))
+					b.WriteString(more + "\n")
+					break
 				}
-				b.WriteString(dot + lipgloss.NewStyle().Foreground(text).Render(count))
+				bullet := lipgloss.NewStyle().Foreground(blue).Render("  " + IconCalendarChar + " ")
+				timeStr := ""
+				if !ev.AllDay {
+					timeStr = ev.Date.Format("15:04") + " "
+				}
+				timePart := lipgloss.NewStyle().Foreground(overlay1).Render(timeStr)
+				title := lipgloss.NewStyle().Foreground(text).Render(ev.Title)
+				b.WriteString(bullet + timePart + title)
+				if ev.Location != "" {
+					b.WriteString(DimStyle.Render(" @ " + ev.Location))
+				}
 				b.WriteString("\n")
 			}
 			if len(dayPlannerBlocks) > 0 {
-				dot := lipgloss.NewStyle().Foreground(lavender).Render("  ▪ ")
-				count := fmt.Sprintf("%d planner block", len(dayPlannerBlocks))
-				if len(dayPlannerBlocks) > 1 {
-					count += "s"
+				for i, pb := range dayPlannerBlocks {
+					if i >= 3 {
+						more := DimStyle.Render(fmt.Sprintf("    +%d more blocks", len(dayPlannerBlocks)-3))
+						b.WriteString(more + "\n")
+						break
+					}
+					dot := lipgloss.NewStyle().Foreground(lavender).Render("  ▪ ")
+					timeStr := lipgloss.NewStyle().Foreground(overlay1).Render(pb.StartTime + "-" + pb.EndTime + " ")
+					b.WriteString(dot + timeStr + lipgloss.NewStyle().Foreground(text).Render(pb.Text) + "\n")
 				}
-				b.WriteString(dot + lipgloss.NewStyle().Foreground(text).Render(count))
-				b.WriteString("\n")
 			}
 			if tasksTotal > 0 {
 				taskColor := yellow
@@ -1778,10 +1994,20 @@ func (c Calendar) renderFooter(b *strings.Builder, width int) {
 	b.WriteString(lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", width-8)))
 	b.WriteString("\n")
 
-	pairs := []struct{ Key, Desc string }{
-		{"hjkl", "nav"}, {"[]", "month"}, {"w", "view"}, {"t", "today"},
-		{"Enter", "open"}, {"a", "add"}, {"Space", "toggle"},
-		{"y", "year"}, {"e", "events"}, {"Esc", "close"},
+	var pairs []struct{ Key, Desc string }
+	switch c.view {
+	case calViewAgenda:
+		pairs = []struct{ Key, Desc string }{
+			{"j/k", "move"}, {"[]", "month"}, {"w", "view"}, {"t", "today"},
+			{"Space", "toggle"}, {"a", "add"}, {"d", "delete"},
+			{"Enter", "open"}, {"Esc", "close"},
+		}
+	default:
+		pairs = []struct{ Key, Desc string }{
+			{"hjkl", "nav"}, {"[]", "month"}, {"w", "view"}, {"t", "today"},
+			{"a", "add"}, {"Enter", "open"}, {"e", "events"},
+			{"y", "year"}, {"Esc", "close"},
+		}
 	}
 	b.WriteString(RenderHelpBar(pairs))
 }
@@ -1927,6 +2153,26 @@ func (c Calendar) eventsForDate(dt time.Time) []CalendarEvent {
 
 func daysIn(m time.Month, year int) int {
 	return time.Date(year, m+1, 0, 0, 0, 0, 0, time.UTC).Day()
+}
+
+// calEventColor returns a lipgloss color based on a CalendarEvent's color name.
+func calEventColor(ev CalendarEvent) lipgloss.Color {
+	switch ev.Color {
+	case "red":
+		return red
+	case "green":
+		return green
+	case "yellow":
+		return yellow
+	case "mauve":
+		return mauve
+	case "teal":
+		return teal
+	case "peach":
+		return peach
+	default:
+		return blue
+	}
 }
 
 // ---------------------------------------------------------------------------

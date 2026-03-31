@@ -370,8 +370,12 @@ func TestCalendar_PendingEventConsumedOnce(t *testing.T) {
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	// Press enter → skip location
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	// Press 0 → no recurrence → saves
+	// Press 0 → no recurrence → color step
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("0")})
+	// Press 0 → default color → description step
+	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("0")})
+	// Press enter → skip description → saves
+	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	ne := c.PendingNativeEvent()
 	if ne == nil {

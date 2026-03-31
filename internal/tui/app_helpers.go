@@ -12,6 +12,7 @@ import (
 
 	"github.com/artaeon/granit/internal/vault"
 )
+
 func (m *Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+p":
@@ -597,6 +598,29 @@ func (m *Model) syncPomodoroCompletions() {
 	m.refreshComponents("")
 }
 
+// loadCalendarEvents gathers native events + ICS files and sets them on the calendar.
+func (m *Model) loadCalendarEvents() {
+	var calEvents []CalendarEvent
+	if m.eventStore != nil {
+		now := time.Now()
+		start := now.AddDate(0, -1, 0).Format("2006-01-02")
+		end := now.AddDate(0, 3, 0).Format("2006-01-02")
+		calEvents = append(calEvents, m.eventStore.ToCalendarEvents(start, end)...)
+	}
+	_ = filepath.Walk(m.vault.Root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(info.Name(), ".ics") {
+			if icsEvts, err := ParseICSFile(path); err == nil {
+				calEvents = append(calEvents, icsEvts...)
+			}
+		}
+		return nil
+	})
+	m.calendar.SetEvents(calEvents)
+}
+
 // after any file has been modified by an overlay. If changedPath is non-empty
 // and matches the currently open note, the editor is reloaded too.
 func (m *Model) refreshComponents(changedPath string) {
@@ -630,33 +654,7 @@ func (m *Model) refreshComponents(changedPath string) {
 	m.calendar.SetNoteContents(noteContents)
 
 	// Load all calendar events: native events + ICS files from vault
-	var allCalEvents []CalendarEvent
-
-	// Native events from EventStore
-	if m.eventStore != nil {
-		now := time.Now()
-		start := now.AddDate(0, -1, 0).Format("2006-01-02")
-		end := now.AddDate(0, 2, 0).Format("2006-01-02")
-		allCalEvents = append(allCalEvents, m.eventStore.ToCalendarEvents(start, end)...)
-	}
-
-	// ICS files: recursively scan entire vault for .ics files
-	_ = filepath.Walk(m.vault.Root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(info.Name(), ".ics") {
-			return nil
-		}
-		icsEvents, err := ParseICSFile(path)
-		if err != nil {
-			return nil
-		}
-		allCalEvents = append(allCalEvents, icsEvents...)
-		return nil
-	})
-
-	m.calendar.SetEvents(allCalEvents)
+	m.loadCalendarEvents()
 
 	// Directly refresh the task manager if it's currently active, so it
 	// picks up changes immediately instead of waiting for the needsRefresh

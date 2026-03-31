@@ -23,17 +23,17 @@ import (
 
 // Task represents a single task extracted from a markdown note.
 type Task struct {
-	Text          string   `json:"text"`
-	Done          bool     `json:"done"`
-	DueDate       string   `json:"due_date"`           // "2006-01-02" or ""
-	Priority      int      `json:"priority"`            // 0=none, 1=low, 2=medium, 3=high, 4=highest
-	ScheduledTime string   `json:"scheduled_time,omitempty"` // "HH:MM-HH:MM" or "" — set by AI scheduler
-	Tags          []string `json:"tags,omitempty"`
-	NotePath      string   `json:"note_path"`           // source note relative path
-	LineNum       int      `json:"line_num"`             // 1-based line number in source note
-	Indent           int      `json:"indent,omitempty"`           // 0=top-level, 1=subtask, 2=sub-subtask
-	ParentLine       int      `json:"parent_line,omitempty"`      // LineNum of parent task, 0 if top-level
-	DependsOn        []string `json:"depends_on,omitempty"`       // dependency references (task text snippets)
+	Text             string   `json:"text"`
+	Done             bool     `json:"done"`
+	DueDate          string   `json:"due_date"`                 // "2006-01-02" or ""
+	Priority         int      `json:"priority"`                 // 0=none, 1=low, 2=medium, 3=high, 4=highest
+	ScheduledTime    string   `json:"scheduled_time,omitempty"` // "HH:MM-HH:MM" or "" — set by AI scheduler
+	Tags             []string `json:"tags,omitempty"`
+	NotePath         string   `json:"note_path"`                   // source note relative path
+	LineNum          int      `json:"line_num"`                    // 1-based line number in source note
+	Indent           int      `json:"indent,omitempty"`            // 0=top-level, 1=subtask, 2=sub-subtask
+	ParentLine       int      `json:"parent_line,omitempty"`       // LineNum of parent task, 0 if top-level
+	DependsOn        []string `json:"depends_on,omitempty"`        // dependency references (task text snippets)
 	EstimatedMinutes int      `json:"estimated_minutes,omitempty"` // time estimate in minutes
 	Recurrence       string   `json:"recurrence,omitempty"`        // "daily", "weekly", "monthly", etc.
 	Project          string   `json:"project,omitempty"`           // matched project name
@@ -72,19 +72,19 @@ var tmSortNames = []string{"priority", "due date", "A-Z", "source", "tag"}
 type tmInputMode int
 
 const (
-	tmInputNone       tmInputMode = iota
-	tmInputAdd                    // adding a new task
-	tmInputDate                   // date picker
-	tmInputSearch                 // filtering
-	tmInputReschedule             // quick reschedule picker
-	tmInputDependency             // adding a dependency
-	tmInputEstimate               // setting time estimate
-	tmInputNote                   // editing task note
-	tmInputSnooze                 // snooze picker
-	tmInputBatchReschedule        // batch reschedule overdue tasks
-	tmInputHelp                   // help overlay
-	tmInputTemplate               // template picker
-	tmInputTemplateName           // naming a new template
+	tmInputNone            tmInputMode = iota
+	tmInputAdd                         // adding a new task
+	tmInputDate                        // date picker
+	tmInputSearch                      // filtering
+	tmInputReschedule                  // quick reschedule picker
+	tmInputDependency                  // adding a dependency
+	tmInputEstimate                    // setting time estimate
+	tmInputNote                        // editing task note
+	tmInputSnooze                      // snooze picker
+	tmInputBatchReschedule             // batch reschedule overdue tasks
+	tmInputHelp                        // help overlay
+	tmInputTemplate                    // template picker
+	tmInputTemplateName                // naming a new template
 )
 
 // ---------------------------------------------------------------------------
@@ -92,20 +92,20 @@ const (
 // ---------------------------------------------------------------------------
 
 var (
-	tmTaskRe       = regexp.MustCompile(`^(\s*- \[)([ xX])(\] .+)`)
-	tmDueDateRe    = regexp.MustCompile(`\x{1F4C5}\s*(\d{4}-\d{2}-\d{2})`)
-	tmPrioHighestRe = regexp.MustCompile(`\x{1F53A}`)  // 🔺
-	tmPrioHighRe   = regexp.MustCompile(`\x{23EB}`)    // ⏫
-	tmPrioMedRe    = regexp.MustCompile(`\x{1F53C}`)   // 🔼
-	tmPrioLowRe    = regexp.MustCompile(`\x{1F53D}`)   // 🔽
-	tmTagRe        = regexp.MustCompile(`#([A-Za-z0-9_/-]+)`)
-	tmScheduleRe   = regexp.MustCompile(`⏰\s*(\d{2}:\d{2}-\d{2}:\d{2})`)
-	tmDependsRe    = regexp.MustCompile(`depends:"([^"]+)"|depends:([^\s]+)`)
-	tmEstimateRe   = regexp.MustCompile(`~(\d+)(m|h)`)
-	tmRecurEmojiRe = regexp.MustCompile(`\x{1F501}\s*(daily|weekly|monthly|3x-week)`)
-	tmRecurTagRe   = regexp.MustCompile(`#(daily|weekly|monthly|3x-week)\b`)
-	tmSnoozeRe     = regexp.MustCompile(`snooze:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})`)
-	tmGoalIDRe     = regexp.MustCompile(`goal:(G\d{3,})`)
+	tmTaskRe        = regexp.MustCompile(`^(\s*- \[)([ xX])(\] .+)`)
+	tmDueDateRe     = regexp.MustCompile(`\x{1F4C5}\s*(\d{4}-\d{2}-\d{2})`)
+	tmPrioHighestRe = regexp.MustCompile(`\x{1F53A}`) // 🔺
+	tmPrioHighRe    = regexp.MustCompile(`\x{23EB}`)  // ⏫
+	tmPrioMedRe     = regexp.MustCompile(`\x{1F53C}`) // 🔼
+	tmPrioLowRe     = regexp.MustCompile(`\x{1F53D}`) // 🔽
+	tmTagRe         = regexp.MustCompile(`#([A-Za-z0-9_/-]+)`)
+	tmScheduleRe    = regexp.MustCompile(`⏰\s*(\d{2}:\d{2}-\d{2}:\d{2})`)
+	tmDependsRe     = regexp.MustCompile(`depends:"([^"]+)"|depends:([^\s]+)`)
+	tmEstimateRe    = regexp.MustCompile(`~(\d+)(m|h)`)
+	tmRecurEmojiRe  = regexp.MustCompile(`\x{1F501}\s*(daily|weekly|monthly|3x-week)`)
+	tmRecurTagRe    = regexp.MustCompile(`#(daily|weekly|monthly|3x-week)\b`)
+	tmSnoozeRe      = regexp.MustCompile(`snooze:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})`)
+	tmGoalIDRe      = regexp.MustCompile(`goal:(G\d{3,})`)
 )
 
 // taskTemplate stores a reusable task definition.
@@ -132,10 +132,10 @@ type TaskManager struct {
 	height int
 
 	// Data
-	vault     *vault.Vault
-	config    config.Config
-	allTasks  []Task
-	filtered  []Task // currently displayed tasks
+	vault    *vault.Vault
+	config   config.Config
+	allTasks []Task
+	filtered []Task // currently displayed tasks
 
 	// Navigation
 	view   taskView
@@ -158,9 +158,9 @@ type TaskManager struct {
 	calDay   int // selected day (1-based), 0 = none
 
 	// Kanban state
-	kanbanCol    int      // 0-3: which column cursor is in
-	kanbanCursor [4]int   // cursor position within each column
-	kanbanScroll [4]int   // scroll position within each column
+	kanbanCol    int    // 0-3: which column cursor is in
+	kanbanCursor [4]int // cursor position within each column
+	kanbanScroll [4]int // scroll position within each column
 
 	// Active filters (applied on top of view-specific filters)
 	filterTag      string // "" = no tag filter, "tagname" = filter to this tag
@@ -215,7 +215,7 @@ type TaskManager struct {
 	hasFocusReq bool
 
 	// File change tracking
-	fileChanged    bool
+	fileChanged     bool
 	lastChangedNote string // path of most recently modified note
 }
 
@@ -284,7 +284,7 @@ func (tm *TaskManager) Close() {
 // manager is still open, so the displayed task list stays current.
 func (tm *TaskManager) Refresh(v *vault.Vault) {
 	tm.vault = v
-	tm.allTasks = ParseAllTasks(v.Notes)
+	tm.allTasks = FilterTasks(ParseAllTasks(v.Notes), tm.config)
 	tm.rebuildFiltered()
 	if tm.cursor >= len(tm.filtered) {
 		tm.cursor = maxInt(0, len(tm.filtered)-1)
@@ -599,7 +599,6 @@ func tmIsOverdue(dateStr string) bool {
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	return t.Before(today)
 }
-
 
 func tmDaysUntil(dateStr string) int {
 	if dateStr == "" {
@@ -1979,7 +1978,7 @@ func (tm TaskManager) updateTemplate(key string) (TaskManager, tea.Cmd) {
 	default:
 		// Number key selects template
 		if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
-			idx := int(key[0]-'1')
+			idx := int(key[0] - '1')
 			if idx < len(tm.taskTemplates) {
 				tmpl := tm.taskTemplates[idx]
 				tm.doAddTask(tmpl.Text)
@@ -2951,7 +2950,7 @@ func (tm *TaskManager) renderEisenhowerView(b *strings.Builder, w int) {
 			b.WriteString(leftOver + strings.Repeat(" ", lp) + rightOver + "\n")
 		}
 		if row == 0 {
-			b.WriteString(DimStyle.Render("  " + strings.Repeat("─", w-4)) + "\n")
+			b.WriteString(DimStyle.Render("  "+strings.Repeat("─", w-4)) + "\n")
 		}
 	}
 }
@@ -3015,6 +3014,33 @@ func (tm *TaskManager) renderHelpOverlay(b *strings.Builder, w int) {
 		}
 		b.WriteString("\n")
 	}
+
+	// Task syntax reference
+	syntaxKeyStyle := lipgloss.NewStyle().Foreground(teal).Width(20)
+	b.WriteString("  " + sectionStyle.Render("Task Syntax") + "\n")
+	syntaxItems := [][2]string{
+		{"- [ ] / - [x]", "Task checkbox (incomplete / complete)"},
+		{"📅 2026-04-01", "Due date"},
+		{"🔺 ⏫ 🔼 🔽", "Priority (highest / high / medium / low)"},
+		{"#tag", "Tag (use multiple, e.g. #work #urgent)"},
+		{"~30m / ~2h", "Time estimate"},
+		{"⏰ 09:00-10:30", "Scheduled time block"},
+		{"🔁 daily", "Recurrence (daily/weekly/monthly/3x-week)"},
+		{"depends:\"task\"", "Task dependency (blocks until done)"},
+		{"goal:G001", "Link to goal"},
+		{"snooze:...T09:00", "Snooze until date+time"},
+	}
+	for _, kv := range syntaxItems {
+		b.WriteString("    " + syntaxKeyStyle.Render(kv[0]) + descStyle.Render(kv[1]) + "\n")
+	}
+	b.WriteString("\n")
+	b.WriteString("  " + sectionStyle.Render("Subtasks") + "\n")
+	b.WriteString("    " + descStyle.Render("Indent with 2 spaces to create subtasks:") + "\n")
+	b.WriteString("    " + lipgloss.NewStyle().Foreground(text).Render("  - [ ] Parent task") + "\n")
+	b.WriteString("    " + lipgloss.NewStyle().Foreground(text).Render("    - [ ] Subtask (2 spaces deeper)") + "\n\n")
+	b.WriteString("  " + sectionStyle.Render("Example") + "\n")
+	b.WriteString("    " + lipgloss.NewStyle().Foreground(text).Render("- [ ] Ship v2.0 📅 2026-04-01 🔺 #release ~2h goal:G001") + "\n\n")
+
 	b.WriteString("  " + DimStyle.Render("Press any key to close"))
 }
 
@@ -3033,8 +3059,8 @@ func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
 	stats := lipgloss.NewStyle().Foreground(overlay0).
 		Render(fmt.Sprintf("  %d/%d done", done, total))
 
-	// Workload estimate for Today view
-	if tm.view == taskViewToday {
+	// Workload estimate for Today and Upcoming views
+	if tm.view == taskViewToday || tm.view == taskViewUpcoming || tm.view == taskViewAll {
 		totalMin := 0
 		for _, t := range tm.filtered {
 			if !t.Done {

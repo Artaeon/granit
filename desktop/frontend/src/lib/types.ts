@@ -68,6 +68,14 @@ export interface TaskItem {
   done: boolean
   notePath: string
   lineNum: number
+  priority: number           // 0=none, 1=low, 2=med, 3=high, 4=highest
+  dueDate: string            // "YYYY-MM-DD" or ""
+  tags: string[]             // e.g. ["work", "urgent"]
+  estimatedMinutes: number   // from ~30m or ~2h
+  scheduledTime: string      // "HH:MM-HH:MM" or ""
+  recurrence: string         // "daily", "weekly", etc. or ""
+  goalId: string             // "G001" or ""
+  snoozedUntil: string       // "YYYY-MM-DDTHH:MM" or ""
 }
 
 export interface ProjectMilestone {

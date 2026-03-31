@@ -214,8 +214,9 @@ func (p PlanMyDay) buildPrompt() string {
 	var b strings.Builder
 
 	now := time.Now()
-	b.WriteString(fmt.Sprintf("You are a productivity coach planning someone's day. Today is %s, %s.\n\n",
-		now.Format("2006-01-02"), now.Weekday().String()))
+	currentTime := now.Format("15:04")
+	b.WriteString(fmt.Sprintf("You are a productivity coach planning someone's day. Today is %s, %s. The current time is %s.\n\n",
+		now.Format("2006-01-02"), now.Weekday().String(), currentTime))
 
 	b.WriteString("## Context\n\n")
 
@@ -355,12 +356,16 @@ func (p PlanMyDay) buildPrompt() string {
 	}
 
 	// Instructions
-	b.WriteString(`## Instructions
+	b.WriteString(fmt.Sprintf(`## Instructions
 
-Create an optimized daily schedule. Consider:
+Create an optimized daily schedule starting from the CURRENT TIME (%s).
+Do NOT schedule anything before %s — the day is already in progress.
+Only plan for the remaining hours until end of day (~18:00).
+
+Consider:
 1. Start with most important/urgent tasks (eat the frog)
 2. Group similar tasks together (batching)
-3. Schedule deep work in morning, admin in afternoon
+3. Schedule deep work first, admin tasks later
 4. Include breaks every 90 minutes
 5. Leave buffer time for unexpected things
 6. Ensure habits get done
@@ -380,7 +385,7 @@ FOCUS_ORDER:
 3. Task name
 
 ADVICE: {2-3 sentences of personalized productivity advice for today}
-`)
+`, currentTime, currentTime))
 
 	return b.String()
 }
@@ -614,6 +619,23 @@ func (p *PlanMyDay) parseAIResponse(response string) {
 		}
 	}
 
+	// Filter out past time slots — keep only slots starting from now onwards.
+	// If the AI returned some future slots, drop the past ones.
+	// If ALL slots are in the past, keep them (test scenario / edge case).
+	now := time.Now()
+	currentMin := now.Hour()*60 + now.Minute()
+	var futureSlots []daySlot
+	for _, slot := range p.schedule {
+		sh, sm := 0, 0
+		_, _ = fmt.Sscanf(slot.Start, "%d:%d", &sh, &sm)
+		if sh*60+sm >= currentMin-15 { // allow 15-min grace period
+			futureSlots = append(futureSlots, slot)
+		}
+	}
+	if len(futureSlots) > 0 {
+		p.schedule = futureSlots
+	}
+
 	// Fall back to local if parsing failed
 	if len(p.schedule) == 0 {
 		p.generateLocalPlan()
@@ -659,10 +681,31 @@ func (p *PlanMyDay) generateLocalPlan() {
 		return scored[i].score > scored[j].score
 	})
 
-	workStart := 8 * 60  // 08:00 in minutes
-	workEnd := 18 * 60   // 18:00 in minutes
+	// Start from current time (rounded up to next 15-min boundary), end at 18:00
+	now := time.Now()
+	currentMin := now.Hour()*60 + now.Minute()
+	workStart := ((currentMin + 14) / 15) * 15 // round up to next 15m
+	if workStart < 8*60 {
+		workStart = 8 * 60 // don't start before 08:00
+	}
+	workEnd := 18 * 60 // 18:00 in minutes
+	if workStart >= workEnd {
+		// Day is over — generate a minimal "wind down" schedule
+		p.schedule = []daySlot{{
+			Start: fmt.Sprintf("%02d:%02d", workStart/60, workStart%60),
+			End:   fmt.Sprintf("%02d:%02d", (workStart+30)/60, (workStart+30)%60),
+			Task:  "Review today & plan tomorrow",
+			Type:  "review",
+		}}
+		return
+	}
 	lunchStart := 12 * 60
 	lunchEnd := 13 * 60
+	if lunchEnd <= workStart {
+		// Lunch already passed — no lunch break needed
+		lunchStart = workEnd
+		lunchEnd = workEnd
+	}
 
 	type timeRange struct{ start, end int }
 	var occupied []timeRange

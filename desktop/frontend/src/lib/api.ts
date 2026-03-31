@@ -87,6 +87,9 @@ export const purgeFromTrash = (item: string): Promise<void> => call(() => api().
 
 // Calendar
 export const getCalendarData = (year: number, month: number): Promise<any> => call(() => api().GetCalendarData(year, month))
+export const createCalendarEvent = (title: string, date: string, startTime: string, endTime: string, location: string, description: string, color: string, recurrence: string, allDay: boolean): Promise<string> =>
+  call(() => api().CreateCalendarEvent(title, date, startTime, endTime, location, description, color, recurrence, allDay), '')
+export const deleteCalendarEvent = (eventId: string): Promise<void> => call(() => api().DeleteCalendarEvent(eventId))
 
 // Bots
 export const getBotList = (): Promise<any[]> => call(() => api().GetBotList(), [])

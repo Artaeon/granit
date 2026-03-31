@@ -1,102 +1,186 @@
+<!-- svelte-ignore a11y-click-events-have-key-events -->
+<!-- svelte-ignore a11y-no-static-element-interactions -->
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
-  import { getCalendarData, getHabits, saveHabits } from './api'
+  import { getCalendarData, getHabits, saveHabits, getAllTasks, toggleTask as apiToggleTask } from './api'
+  import type { TaskItem } from './types'
   const dispatch = createEventDispatcher()
 
-  interface PlannerItem {
-    id: string
+  interface TimeSlot {
+    hour: number
+    half: boolean     // false = :00, true = :30
     text: string
+    type: 'empty' | 'task' | 'event' | 'break'
     done: boolean
-    priority: number // 0=none, 1=low, 2=med, 3=high
-    block: string // 'morning' | 'afternoon' | 'evening'
+    priority: number
+    notePath: string
+    lineNum: number
   }
 
-  let items: PlannerItem[] = []
-  let newTaskText = ''
-  let newTaskBlock = 'morning'
-  let newTaskPriority = 0
-  let showAddInput = false
+  // State
+  let slots: TimeSlot[] = []
+  let unscheduled: TaskItem[] = []
   let calendarEvents: any[] = []
-  let vaultTasks: any[] = []
+  let addingAt = -1
+  let addBuf = ''
+  let addType: 'task' | 'break' = 'task'
+  let loaded = false
 
   const today = new Date()
   const todayStr = today.toISOString().slice(0, 10)
   const todayFormatted = today.toLocaleDateString('en', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  const currentHour = today.getHours()
+  const currentMinute = today.getMinutes()
 
-  const blocks = [
-    { key: 'morning', label: 'Morning', icon: '☀️', hours: '6:00 - 12:00', color: 'var(--ctp-yellow)' },
-    { key: 'afternoon', label: 'Afternoon', icon: '🌤️', hours: '12:00 - 17:00', color: 'var(--ctp-peach)' },
-    { key: 'evening', label: 'Evening', icon: '🌙', hours: '17:00 - 22:00', color: 'var(--ctp-mauve)' },
-  ]
-
-  const priorities = [
-    { value: 0, label: 'None', color: 'var(--ctp-overlay0)' },
-    { value: 1, label: 'Low', color: 'var(--ctp-blue)' },
-    { value: 2, label: 'Medium', color: 'var(--ctp-yellow)' },
-    { value: 3, label: 'High', color: 'var(--ctp-red)' },
-  ]
-
-  function itemsForBlock(block: string): PlannerItem[] {
-    return items.filter(i => i.block === block).sort((a, b) => b.priority - a.priority)
+  // 32 half-hour slots: 06:00 to 21:30
+  function initSlots(): TimeSlot[] {
+    const result: TimeSlot[] = []
+    for (let h = 6; h <= 21; h++) {
+      result.push({ hour: h, half: false, text: '', type: 'empty', done: false, priority: 0, notePath: '', lineNum: 0 })
+      result.push({ hour: h, half: true,  text: '', type: 'empty', done: false, priority: 0, notePath: '', lineNum: 0 })
+    }
+    return result
   }
 
-  function addTask() {
-    const text = newTaskText.trim()
-    if (!text) return
-    items = [...items, {
-      id: Date.now().toString(36),
-      text,
-      done: false,
-      priority: newTaskPriority,
-      block: newTaskBlock,
-    }]
-    newTaskText = ''
-    newTaskPriority = 0
-    showAddInput = false
+  function slotTime(s: TimeSlot): string {
+    const hh = String(s.hour).padStart(2, '0')
+    const mm = s.half ? '30' : '00'
+    return `${hh}:${mm}`
+  }
+
+  function fmtSlotTime(s: TimeSlot): string {
+    return s.half ? '' : `${String(s.hour).padStart(2, '0')}:00`
+  }
+
+  function slotIndex(hour: number, half: boolean): number {
+    return (hour - 6) * 2 + (half ? 1 : 0)
+  }
+
+  function currentSlotIndex(): number {
+    const idx = slotIndex(currentHour, currentMinute >= 30)
+    return Math.max(0, Math.min(idx, slots.length - 1))
+  }
+
+  // Priority helpers
+  const priColors: Record<number, string> = {
+    4: 'var(--ctp-red)', 3: 'var(--ctp-peach)', 2: 'var(--ctp-yellow)', 1: 'var(--ctp-blue)',
+  }
+  function priColor(p: number) { return priColors[p] || 'var(--ctp-overlay0)' }
+
+  // Stats
+  $: filledSlots = slots.filter(s => s.type !== 'empty')
+  $: doneSlots = filledSlots.filter(s => s.done)
+  $: totalMinutes = filledSlots.length * 30
+  $: doneMinutes = doneSlots.length * 30
+  $: progressPct = filledSlots.length > 0 ? Math.round((doneSlots.length / filledSlots.length) * 100) : 0
+  $: unscheduledCount = unscheduled.length
+  $: workloadStr = totalMinutes >= 60 ? `${Math.floor(totalMinutes/60)}h${totalMinutes%60 ? totalMinutes%60 + 'm' : ''}` : `${totalMinutes}m`
+
+  // Actions
+  function toggleSlot(idx: number) {
+    slots[idx].done = !slots[idx].done
+    slots = [...slots]
     savePlanner()
   }
 
-  function toggleItem(id: string) {
-    items = items.map(i => i.id === id ? { ...i, done: !i.done } : i)
+  function clearSlot(idx: number) {
+    slots[idx] = { ...slots[idx], text: '', type: 'empty', done: false, priority: 0, notePath: '', lineNum: 0 }
+    slots = [...slots]
     savePlanner()
   }
 
-  function deleteItem(id: string) {
-    items = items.filter(i => i.id !== id)
+  function addToSlot(idx: number) {
+    const text = addBuf.trim()
+    if (!text) { addingAt = -1; return }
+    slots[idx] = { ...slots[idx], text, type: addType, done: false, priority: 0 }
+    slots = [...slots]
+    addBuf = ''
+    addingAt = -1
     savePlanner()
   }
 
-  function priorityColor(p: number): string {
-    return priorities[p]?.color || 'var(--ctp-overlay0)'
+  function scheduleTask(task: TaskItem, idx: number) {
+    slots[idx] = {
+      ...slots[idx],
+      text: task.text.replace(/📅\s*\d{4}-\d{2}-\d{2}/g, '').replace(/[🔺⏫🔼🔽⏰🔁]/g, '').replace(/~\d+(m|h)/g, '').replace(/\s{2,}/g, ' ').trim(),
+      type: 'task',
+      done: task.done,
+      priority: task.priority || 0,
+      notePath: task.notePath,
+      lineNum: task.lineNum,
+    }
+    unscheduled = unscheduled.filter(t => t !== task)
+    slots = [...slots]
+    savePlanner()
   }
 
-  function priorityLabel(p: number): string {
-    return priorities[p]?.label || ''
+  async function toggleVaultTask(task: TaskItem) {
+    try {
+      await apiToggleTask(task.notePath, task.lineNum)
+      task.done = !task.done
+      unscheduled = [...unscheduled]
+    } catch (e) { console.error('toggle failed', e) }
   }
 
+  // Load / Save
   async function loadPlanner() {
-    // Load calendar events for today
-    try {
-      const calData = await getCalendarData(today.getFullYear(), today.getMonth() + 1)
-      if (calData?.events) {
-        calendarEvents = calData.events.filter((e: any) => e.date === todayStr)
-      }
-      // Load tasks from vault for today
-      if (calData?.tasks?.[todayStr]) {
-        vaultTasks = calData.tasks[todayStr]
-      }
-    } catch { /* ignore */ }
+    slots = initSlots()
 
-    // Load saved planner data
+    // Load saved state first
     try {
-      const raw = await getHabits() // reuse storage
+      const raw = await getHabits()
       if (raw) {
         const parsed = JSON.parse(raw)
-        if (parsed._planner?.[todayStr]) {
-          items = parsed._planner[todayStr]
+        if (parsed._planner?.[todayStr]?.slots) {
+          const saved = parsed._planner[todayStr].slots as TimeSlot[]
+          for (let i = 0; i < Math.min(saved.length, slots.length); i++) {
+            if (saved[i]?.text) {
+              slots[i] = { ...slots[i], ...saved[i] }
+            }
+          }
         }
       }
     } catch { /* ignore */ }
+
+    // Load calendar events
+    try {
+      const calData = await getCalendarData(today.getFullYear(), today.getMonth() + 1)
+      if (calData?.events) {
+        calendarEvents = (calData.events as any[]).filter((e: any) => (e.date || '').substring(0, 10) === todayStr)
+        // Place timed events into slots
+        for (const ev of calendarEvents) {
+          const t = ev.time || (ev.date?.length > 10 ? ev.date.substring(11, 16) : '')
+          if (t && !ev.allDay) {
+            const [hh, mm] = t.split(':').map(Number)
+            if (hh >= 6 && hh <= 21) {
+              const idx = slotIndex(hh, mm >= 30)
+              if (idx >= 0 && idx < slots.length && slots[idx].type === 'empty') {
+                slots[idx] = { ...slots[idx], text: ev.title + (ev.location ? ` @ ${ev.location}` : ''), type: 'event', done: false, priority: 0 }
+              }
+            }
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Load vault tasks for today/overdue → unscheduled panel
+    try {
+      const allTasks = await getAllTasks()
+      if (Array.isArray(allTasks)) {
+        const scheduledTexts = new Set(slots.filter(s => s.text).map(s => s.text))
+        unscheduled = allTasks.filter(t => {
+          if (t.done) return false
+          const due = t.dueDate || ''
+          if (due !== todayStr && !(due !== '' && due < todayStr)) return false
+          // Skip if already scheduled
+          const clean = t.text.replace(/📅\s*\d{4}-\d{2}-\d{2}/g, '').replace(/[🔺⏫🔼🔽⏰🔁]/g, '').replace(/~\d+(m|h)/g, '').replace(/\s{2,}/g, ' ').trim()
+          return !scheduledTexts.has(clean) && !scheduledTexts.has(t.text)
+        }).sort((a, b) => (b.priority || 0) - (a.priority || 0))
+      }
+    } catch { /* ignore */ }
+
+    slots = [...slots]
+    loaded = true
   }
 
   async function savePlanner() {
@@ -108,152 +192,183 @@
         if (Array.isArray(data)) data = { _habits: data }
       } catch { /* ignore */ }
       if (!data._planner) data._planner = {}
-      data._planner[todayStr] = items
+      data._planner[todayStr] = { slots }
       await saveHabits(JSON.stringify(data))
     } catch { /* ignore */ }
   }
 
-  $: completedCount = items.filter(i => i.done).length
-  $: totalCount = items.length
+  // Drag state for scheduling unscheduled tasks
+  let dragTask: TaskItem | null = null
+
+  function handleDrop(idx: number) {
+    if (dragTask && slots[idx].type === 'empty') {
+      scheduleTask(dragTask, idx)
+    }
+    dragTask = null
+  }
 
   onMount(() => { loadPlanner() })
 </script>
 
-<!-- svelte-ignore a11y-click-events-have-key-events -->
-<!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="fixed inset-0 z-50 flex justify-center pt-[6%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
-  <div class="w-full max-w-2xl bg-ctp-mantle rounded-xl border border-ctp-surface0 shadow-2xl flex flex-col overflow-hidden" style="max-height:85vh">
+<div class="fixed inset-0 z-50 flex justify-center items-start pt-[2%]" style="background:rgba(17,17,27,0.55);backdrop-filter:blur(8px)" on:click|self={() => dispatch('close')}>
+  <div class="w-full max-w-4xl h-[92vh] bg-ctp-mantle rounded-xl shadow-2xl flex flex-col overflow-hidden"
+    style="border: 1px solid color-mix(in srgb, var(--ctp-surface0) 50%, transparent)">
+
     <!-- Header -->
-    <div class="flex items-center justify-between px-4 py-3 border-b border-ctp-surface0">
-      <div>
-        <div class="flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-blue)" stroke-width="1.5" stroke-linecap="round">
-            <rect x="2" y="2" width="12" height="12" rx="2" /><path d="M2 6h12M6 2v12" />
-          </svg>
-          <span class="text-sm font-semibold text-ctp-blue">Daily Planner</span>
-        </div>
-        <div class="text-[13px] text-ctp-overlay1 mt-0.5 ml-6">{todayFormatted}</div>
-      </div>
+    <div class="flex items-center justify-between px-5 py-3" style="border-bottom: 1px solid color-mix(in srgb, var(--ctp-surface0) 40%, transparent)">
       <div class="flex items-center gap-3">
-        {#if totalCount > 0}
-          <span class="text-[13px] text-ctp-overlay1">{completedCount}/{totalCount} done</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-blue)" stroke-width="1.5" stroke-linecap="round">
+          <rect x="2" y="2" width="12" height="12" rx="2" /><path d="M2 6h12M6 2v12" />
+        </svg>
+        <div>
+          <span class="text-[15px] font-semibold text-ctp-text">Daily Planner</span>
+          <span class="text-[12px] text-ctp-overlay1 ml-2">{todayFormatted}</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 text-[12px]">
+        {#if filledSlots.length > 0}
+          <span class="text-ctp-overlay1">{workloadStr} planned</span>
+          <div class="flex items-center gap-1.5">
+            <div class="w-20 h-1.5 bg-ctp-surface0 rounded-full overflow-hidden">
+              <div class="h-full rounded-full transition-all" style="width:{progressPct}%; background:var(--ctp-green)"></div>
+            </div>
+            <span class="text-ctp-green font-medium">{progressPct}%</span>
+          </div>
         {/if}
-        <kbd class="text-[12px] text-ctp-overlay1 bg-ctp-surface0 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1 transition-colors"
-          on:click={() => dispatch('close')}>esc</kbd>
+        {#if unscheduledCount > 0}
+          <span class="text-ctp-yellow">{unscheduledCount} unscheduled</span>
+        {/if}
+        <kbd class="text-ctp-overlay1 bg-ctp-surface0/50 px-1.5 py-0.5 rounded cursor-pointer hover:bg-ctp-surface1" on:click={() => dispatch('close')}>esc</kbd>
       </div>
     </div>
 
-    <!-- Content -->
-    <div class="flex-1 overflow-y-auto p-4 space-y-4">
-      <!-- Calendar events for today -->
-      {#if calendarEvents.length > 0}
-        <div class="bg-ctp-base rounded-lg p-3 border border-ctp-surface0">
-          <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wider mb-2 font-medium">Calendar Events</div>
-          {#each calendarEvents as ev}
-            <div class="flex items-center gap-2 py-1">
-              <span class="w-1.5 h-1.5 rounded-full bg-ctp-sapphire flex-shrink-0"></span>
-              <span class="text-xs text-ctp-text">{ev.title}</span>
-              {#if ev.time}
-                <span class="text-[12px] text-ctp-overlay1 ml-auto">{ev.time}</span>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      {/if}
+    <!-- Body: time grid + sidebar -->
+    <div class="flex flex-1 min-h-0">
 
-      <!-- Vault tasks due today -->
-      {#if vaultTasks.length > 0}
-        <div class="bg-ctp-base rounded-lg p-3 border border-ctp-surface0">
-          <div class="text-[12px] text-ctp-overlay1 uppercase tracking-wider mb-2 font-medium">Vault Tasks Due Today</div>
-          {#each vaultTasks as task}
-            <div class="flex items-center gap-2 py-1">
-              <input type="checkbox" checked={task.done}
-                on:change={() => dispatch('toggleTask', { notePath: task.notePath, lineNum: task.lineNum })}
-                class="accent-ctp-mauve" />
-              <span class="text-xs text-ctp-text" class:line-through={task.done} class:opacity-50={task.done}>{task.text}</span>
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      <!-- Time blocks -->
-      {#each blocks as block}
-        <div class="bg-ctp-base rounded-lg border border-ctp-surface0 overflow-hidden">
-          <div class="flex items-center gap-2 px-3 py-2 border-b border-ctp-surface0/50">
-            <span class="text-sm">{block.icon}</span>
-            <span class="text-xs font-semibold" style="color: {block.color}">{block.label}</span>
-            <span class="text-[12px] text-ctp-overlay1 ml-1">{block.hours}</span>
-            <span class="text-[12px] text-ctp-overlay1 ml-auto">{itemsForBlock(block.key).length} items</span>
-          </div>
-
-          <div class="p-2">
-            {#if itemsForBlock(block.key).length === 0}
-              <div class="text-[13px] text-ctp-overlay1 py-2 px-2">No tasks scheduled</div>
-            {/if}
-
-            {#each itemsForBlock(block.key) as item}
-              <div class="flex items-center gap-2 py-1.5 px-2 hover:bg-ctp-surface0/30 rounded-md group transition-colors">
-                <button on:click={() => toggleItem(item.id)}
-                  class="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border transition-colors
-                    {item.done ? 'bg-ctp-green border-ctp-green' : 'border-ctp-surface2 hover:border-ctp-overlay0'}">
-                  {#if item.done}
-                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-crust)" stroke-width="2.5" stroke-linecap="round">
-                      <path d="M3 8l3 3 7-7" />
-                    </svg>
-                  {/if}
-                </button>
-
-                {#if item.priority > 0}
-                  <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background: {priorityColor(item.priority)}" title={priorityLabel(item.priority)}></span>
-                {/if}
-
-                <span class="text-xs text-ctp-text flex-1" class:line-through={item.done} class:opacity-50={item.done}>{item.text}</span>
-
-                <button on:click={() => deleteItem(item.id)}
-                  class="text-[12px] text-ctp-overlay1 hover:text-ctp-red opacity-0 group-hover:opacity-100 transition-opacity px-1">&times;</button>
-              </div>
+      <!-- Time grid -->
+      <div class="flex-1 overflow-y-auto" id="planner-grid">
+        <!-- All-day events -->
+        {#if calendarEvents.some(e => e.allDay)}
+          <div class="px-5 py-2" style="border-bottom: 1px solid color-mix(in srgb, var(--ctp-surface0) 30%, transparent)">
+            <div class="text-[10px] text-ctp-overlay0 uppercase tracking-wider mb-1">All Day</div>
+            {#each calendarEvents.filter(e => e.allDay) as ev}
+              <div class="text-[12px] bg-ctp-sapphire/20 text-ctp-sapphire rounded-md px-2 py-1 mb-1">{ev.title}</div>
             {/each}
           </div>
-        </div>
-      {/each}
-    </div>
+        {/if}
 
-    <!-- Add task -->
-    <div class="px-4 py-3 border-t border-ctp-surface0">
-      {#if showAddInput}
-        <form on:submit|preventDefault={addTask} class="space-y-2">
-          <input bind:value={newTaskText}
-            placeholder="What needs to be done?"
-            class="w-full bg-ctp-surface0 text-ctp-text text-sm px-3 py-1.5 rounded-lg border border-ctp-surface1 focus:border-ctp-mauve focus:outline-none placeholder:text-ctp-surface2"
-            autofocus />
-          <div class="flex items-center gap-2">
-            <select bind:value={newTaskBlock}
-              class="bg-ctp-surface0 text-ctp-text text-xs px-2 py-1 rounded border border-ctp-surface1 focus:outline-none">
-              {#each blocks as b}
-                <option value={b.key}>{b.label}</option>
-              {/each}
-            </select>
-            <select bind:value={newTaskPriority}
-              class="bg-ctp-surface0 text-ctp-text text-xs px-2 py-1 rounded border border-ctp-surface1 focus:outline-none">
-              {#each priorities as p}
-                <option value={p.value}>{p.label}</option>
-              {/each}
-            </select>
-            <div class="flex-1"></div>
-            <button type="submit" class="px-3 py-1 bg-ctp-blue text-ctp-crust text-xs font-medium rounded-lg hover:opacity-90 transition-opacity">Add</button>
-            <button type="button" on:click={() => { showAddInput = false; newTaskText = '' }}
-              class="px-3 py-1 bg-ctp-surface0 text-ctp-overlay1 text-xs rounded-lg hover:bg-ctp-surface1 transition-colors">Cancel</button>
+        <!-- Half-hour slots -->
+        {#each slots as slot, idx}
+          {@const isNow = slot.hour === currentHour && ((slot.half && currentMinute >= 30) || (!slot.half && currentMinute < 30))}
+          <div class="flex group relative"
+            style="height: 2.25rem; border-bottom: 1px solid color-mix(in srgb, var(--ctp-surface0) {slot.half ? '10' : '25'}%, transparent);
+              {isNow ? 'background: color-mix(in srgb, var(--ctp-blue) 5%, transparent)' : ''}"
+            on:dragover|preventDefault
+            on:drop|preventDefault={() => handleDrop(idx)}>
+
+            <!-- Time label -->
+            <div class="w-16 flex-shrink-0 text-right pr-3 -mt-2 text-[11px] text-ctp-overlay0">
+              {fmtSlotTime(slot)}
+            </div>
+
+            <!-- Current time indicator -->
+            {#if isNow && !slot.half && currentMinute < 30}
+              <div class="absolute left-16 right-0 z-20 pointer-events-none" style="top: {(currentMinute / 30) * 100}%">
+                <div class="flex items-center">
+                  <div class="w-2 h-2 rounded-full bg-ctp-red -ml-1"></div>
+                  <div class="flex-1 border-t-2 border-ctp-red"></div>
+                </div>
+              </div>
+            {/if}
+
+            <!-- Slot content -->
+            <div class="flex-1 flex items-center px-2 min-w-0"
+              style="border-left: 1px solid color-mix(in srgb, var(--ctp-surface0) 20%, transparent)">
+
+              {#if addingAt === idx}
+                <form on:submit|preventDefault={() => addToSlot(idx)} class="flex items-center gap-2 w-full">
+                  <input bind:value={addBuf} placeholder="Task or break..." autofocus
+                    class="flex-1 bg-transparent text-[12px] text-ctp-text outline-none placeholder:text-ctp-surface2" />
+                  <select bind:value={addType} class="text-[10px] bg-ctp-surface0 text-ctp-text rounded px-1 py-0.5 border-none outline-none">
+                    <option value="task">Task</option>
+                    <option value="break">Break</option>
+                  </select>
+                  <button type="submit" class="text-[10px] text-ctp-blue">Add</button>
+                  <button type="button" on:click={() => addingAt = -1} class="text-[10px] text-ctp-overlay1">Cancel</button>
+                </form>
+
+              {:else if slot.type !== 'empty'}
+                <button on:click={() => toggleSlot(idx)}
+                  class="w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0 border transition-colors mr-2
+                    {slot.done ? 'bg-ctp-green border-ctp-green' : 'border-ctp-surface2 hover:border-ctp-overlay0'}">
+                  {#if slot.done}<svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-crust)" stroke-width="3" stroke-linecap="round"><path d="M3 8l3 3 7-7" /></svg>{/if}
+                </button>
+                {#if slot.priority > 0}
+                  <span class="w-1.5 h-1.5 rounded-full flex-shrink-0 mr-1" style="background:{priColor(slot.priority)}"></span>
+                {/if}
+                <span class="text-[12px] truncate mr-1
+                  {slot.type === 'event' ? 'text-ctp-sapphire' : slot.type === 'break' ? 'text-ctp-overlay1 italic' : 'text-ctp-text'}
+                  {slot.done ? 'line-through opacity-40' : ''}">{slot.text}</span>
+                <button on:click={() => clearSlot(idx)}
+                  class="text-[11px] text-ctp-overlay1 hover:text-ctp-red opacity-0 group-hover:opacity-100 transition-opacity ml-auto flex-shrink-0">&times;</button>
+
+              {:else}
+                <button on:click={() => { addingAt = idx; addBuf = '' }}
+                  class="w-full h-full flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span class="text-[11px] text-ctp-overlay0">+ Add</span>
+                </button>
+              {/if}
+            </div>
           </div>
-        </form>
-      {:else}
-        <button on:click={() => showAddInput = true}
-          class="flex items-center gap-1.5 text-xs text-ctp-overlay1 hover:text-ctp-blue transition-colors">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-            <path d="M8 3v10M3 8h10" />
-          </svg>
-          Add task to planner
-        </button>
-      {/if}
+        {/each}
+      </div>
+
+      <!-- Sidebar: unscheduled tasks -->
+      <div class="w-64 flex flex-col min-h-0" style="border-left: 1px solid color-mix(in srgb, var(--ctp-surface0) 30%, transparent)">
+        <div class="px-3 py-2.5" style="border-bottom: 1px solid color-mix(in srgb, var(--ctp-surface0) 30%, transparent)">
+          <div class="text-[11px] text-ctp-overlay0 uppercase tracking-wider font-medium">Unscheduled Tasks</div>
+          <div class="text-[10px] text-ctp-overlay0 mt-0.5">Drag to schedule</div>
+        </div>
+        <div class="flex-1 overflow-y-auto p-2">
+          {#if unscheduled.length === 0 && loaded}
+            <div class="text-[12px] text-ctp-overlay1 text-center py-6">All tasks scheduled</div>
+          {/if}
+          {#each unscheduled as task}
+            {@const est = task.estimatedMinutes}
+            <div class="flex items-start gap-1.5 py-1.5 px-2 rounded-md hover:bg-ctp-surface0/30 transition-colors cursor-grab"
+              draggable="true"
+              on:dragstart={() => dragTask = task}>
+              <button on:click={() => toggleVaultTask(task)}
+                class="w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0 border mt-0.5 transition-colors
+                  {task.done ? 'bg-ctp-green border-ctp-green' : 'border-ctp-surface2 hover:border-ctp-overlay0'}">
+                {#if task.done}<svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-crust)" stroke-width="3" stroke-linecap="round"><path d="M3 8l3 3 7-7" /></svg>{/if}
+              </button>
+              <div class="flex-1 min-w-0">
+                <div class="text-[11px] text-ctp-text leading-tight truncate" class:line-through={task.done} class:opacity-40={task.done}>
+                  {task.text.replace(/📅\s*\d{4}-\d{2}-\d{2}/g, '').replace(/[🔺⏫🔼🔽⏰🔁]/g, '').replace(/~\d+(m|h)/g, '').replace(/\s{2,}/g, ' ').trim()}
+                </div>
+                <div class="flex items-center gap-1.5 mt-0.5">
+                  {#if task.priority > 0}
+                    <span class="w-1.5 h-1.5 rounded-full" style="background:{priColor(task.priority)}"></span>
+                  {/if}
+                  {#if est}
+                    <span class="text-[9px] text-ctp-teal">{est >= 60 ? Math.floor(est/60) + 'h' + (est%60 ? est%60 + 'm' : '') : est + 'm'}</span>
+                  {/if}
+                  {#if task.dueDate && task.dueDate < todayStr}
+                    <span class="text-[9px] text-ctp-red font-medium">overdue</span>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          {/each}
+        </div>
+
+        <!-- Syntax hint -->
+        <div class="px-3 py-2 text-[10px] text-ctp-overlay0" style="border-top: 1px solid color-mix(in srgb, var(--ctp-surface0) 25%, transparent)">
+          <div class="font-medium mb-0.5">Task syntax</div>
+          <div><code class="text-ctp-text">📅</code> due &middot; <code class="text-ctp-red">🔺</code><code class="text-ctp-peach">⏫</code><code class="text-ctp-yellow">🔼</code><code class="text-ctp-blue">🔽</code> priority &middot; <code class="text-ctp-teal">~30m</code> estimate</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>

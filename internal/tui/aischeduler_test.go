@@ -1005,8 +1005,8 @@ func TestAISchedulerBuildPrompt(t *testing.T) {
 	})
 
 	t.Run("contains work hours", func(t *testing.T) {
-		if !strings.Contains(prompt, "09:00-17:00") {
-			t.Error("prompt should contain work hours")
+		if !strings.Contains(prompt, "until 17:00") {
+			t.Error("prompt should contain work end hour")
 		}
 	})
 

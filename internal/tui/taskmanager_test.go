@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/artaeon/granit/internal/config"
 	"github.com/artaeon/granit/internal/vault"
@@ -110,9 +112,9 @@ func TestMatchTasksToProjects_TaskFilterCaseInsensitive(t *testing.T) {
 
 func TestRecurrenceParsing(t *testing.T) {
 	tests := []struct {
-		name       string
-		line       string
-		wantRecur  string
+		name      string
+		line      string
+		wantRecur string
 	}{
 		{
 			name:      "emoji daily",
@@ -587,11 +589,11 @@ func TestTmFormatMinutes(t *testing.T) {
 func TestEisenhowerQuadrants(t *testing.T) {
 	tm := &TaskManager{
 		allTasks: []Task{
-			{Text: "urgent important", Priority: 4, DueDate: "2020-01-01", Done: false}, // Q1: overdue + high prio
-			{Text: "important", Priority: 3, DueDate: "2099-12-31", Done: false},         // Q2: high prio + far date
-			{Text: "urgent low", Priority: 1, DueDate: "2020-01-01", Done: false},         // Q3: overdue + low prio
-			{Text: "neither", Priority: 1, DueDate: "2099-12-31", Done: false},            // Q4: low prio + far date
-			{Text: "done", Priority: 4, DueDate: "2020-01-01", Done: true},                // excluded
+			{Text: "urgent important", Priority: 4, DueDate: "2020-01-01", Done: false},             // Q1: overdue + high prio
+			{Text: "important", Priority: 3, DueDate: "2099-12-31", Done: false},                    // Q2: high prio + far date
+			{Text: "urgent low", Priority: 1, DueDate: "2020-01-01", Done: false},                   // Q3: overdue + low prio
+			{Text: "neither", Priority: 1, DueDate: "2099-12-31", Done: false},                      // Q4: low prio + far date
+			{Text: "done", Priority: 4, DueDate: "2020-01-01", Done: true},                          // excluded
 			{Text: "snoozed", Priority: 4, DueDate: "2020-01-01", SnoozedUntil: "2099-12-31T23:59"}, // excluded
 		},
 	}
@@ -789,10 +791,10 @@ func TestTaskKey(t *testing.T) {
 func TestTaskTimeMap(t *testing.T) {
 	tt := &TimeTracker{
 		entries: []timeEntry{
-			{TaskText: "write tests", Duration: 30 * 60_000_000_000},  // 30 min in nanoseconds
-			{TaskText: "write tests", Duration: 15 * 60_000_000_000},  // 15 min
-			{TaskText: "review code", Duration: 60 * 60_000_000_000},  // 60 min
-			{TaskText: "", Duration: 10 * 60_000_000_000},             // no task, excluded
+			{TaskText: "write tests", Duration: 30 * 60_000_000_000}, // 30 min in nanoseconds
+			{TaskText: "write tests", Duration: 15 * 60_000_000_000}, // 15 min
+			{TaskText: "review code", Duration: 60 * 60_000_000_000}, // 60 min
+			{TaskText: "", Duration: 10 * 60_000_000_000},            // no task, excluded
 		},
 	}
 	m := tt.TaskTimeMap()
@@ -804,5 +806,502 @@ func TestTaskTimeMap(t *testing.T) {
 	}
 	if _, ok := m[""]; ok {
 		t.Error("empty task text should be excluded")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ParseAllTasks – metadata field extraction
+// ---------------------------------------------------------------------------
+
+func makeVaultNote(content string) map[string]*vault.Note {
+	return map[string]*vault.Note{
+		"test.md": {Content: content},
+	}
+}
+
+func TestParseAllTasks_EstimateMinutes(t *testing.T) {
+	notes := makeVaultNote("- [ ] Quick fix ~15m\n- [ ] Big feature ~3h")
+	tasks := ParseAllTasks(notes)
+	if len(tasks) != 2 {
+		t.Fatalf("got %d tasks, want 2", len(tasks))
+	}
+	if tasks[0].EstimatedMinutes != 15 {
+		t.Errorf("task 0 estimate = %d, want 15", tasks[0].EstimatedMinutes)
+	}
+	if tasks[1].EstimatedMinutes != 180 {
+		t.Errorf("task 1 estimate = %d, want 180", tasks[1].EstimatedMinutes)
+	}
+}
+
+func TestParseAllTasks_ScheduledTime(t *testing.T) {
+	notes := makeVaultNote("- [ ] Meeting ⏰ 09:00-10:30")
+	tasks := ParseAllTasks(notes)
+	if len(tasks) != 1 {
+		t.Fatalf("got %d tasks, want 1", len(tasks))
+	}
+	if tasks[0].ScheduledTime != "09:00-10:30" {
+		t.Errorf("scheduled = %q, want %q", tasks[0].ScheduledTime, "09:00-10:30")
+	}
+}
+
+func TestParseAllTasks_GoalID(t *testing.T) {
+	notes := makeVaultNote("- [ ] Ship feature goal:G042")
+	tasks := ParseAllTasks(notes)
+	if len(tasks) != 1 {
+		t.Fatalf("got %d tasks, want 1", len(tasks))
+	}
+	if tasks[0].GoalID != "G042" {
+		t.Errorf("goalID = %q, want %q", tasks[0].GoalID, "G042")
+	}
+}
+
+func TestParseAllTasks_DependsOn(t *testing.T) {
+	notes := makeVaultNote(`- [ ] Deploy depends:"Run tests"`)
+	tasks := ParseAllTasks(notes)
+	if len(tasks) != 1 {
+		t.Fatalf("got %d tasks, want 1", len(tasks))
+	}
+	if len(tasks[0].DependsOn) != 1 || tasks[0].DependsOn[0] != "Run tests" {
+		t.Errorf("depends = %v, want [Run tests]", tasks[0].DependsOn)
+	}
+}
+
+func TestParseAllTasks_MultipleMetadata(t *testing.T) {
+	notes := makeVaultNote("- [ ] Big task 📅 2026-04-01 🔺 #work ~2h ⏰ 14:00-16:00 goal:G001")
+	tasks := ParseAllTasks(notes)
+	if len(tasks) != 1 {
+		t.Fatalf("got %d tasks, want 1", len(tasks))
+	}
+	tk := tasks[0]
+	if tk.DueDate != "2026-04-01" {
+		t.Errorf("dueDate = %q, want 2026-04-01", tk.DueDate)
+	}
+	if tk.Priority != 4 {
+		t.Errorf("priority = %d, want 4", tk.Priority)
+	}
+	if tk.EstimatedMinutes != 120 {
+		t.Errorf("estimate = %d, want 120", tk.EstimatedMinutes)
+	}
+	if tk.ScheduledTime != "14:00-16:00" {
+		t.Errorf("scheduled = %q, want 14:00-16:00", tk.ScheduledTime)
+	}
+	if tk.GoalID != "G001" {
+		t.Errorf("goalID = %q, want G001", tk.GoalID)
+	}
+	found := false
+	for _, tag := range tk.Tags {
+		if tag == "work" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("tags = %v, want to contain 'work'", tk.Tags)
+	}
+}
+
+func TestParseAllTasks_Subtasks(t *testing.T) {
+	notes := makeVaultNote("- [ ] Parent\n  - [ ] Child\n    - [ ] Grandchild")
+	tasks := ParseAllTasks(notes)
+	if len(tasks) != 3 {
+		t.Fatalf("got %d tasks, want 3", len(tasks))
+	}
+	if tasks[0].Indent != 0 {
+		t.Errorf("parent indent = %d, want 0", tasks[0].Indent)
+	}
+	if tasks[1].Indent != 1 {
+		t.Errorf("child indent = %d, want 1", tasks[1].Indent)
+	}
+	if tasks[2].Indent != 2 {
+		t.Errorf("grandchild indent = %d, want 2", tasks[2].Indent)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ICS parsing
+// ---------------------------------------------------------------------------
+
+func TestParseICSFile_DateFormats(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool // allDay
+	}{
+		{"20260401T140000Z", false},
+		{"20260401T140000", false},
+		{"20260401", true},
+		{"2026-04-01T14:00:00Z", false},
+		{"2026-04-01T14:00:00", false},
+		{"2026-04-01", true},
+	}
+	for _, tc := range tests {
+		parsed, allDay := parseICSTime(tc.input)
+		if parsed.IsZero() {
+			t.Errorf("parseICSTime(%q) returned zero time", tc.input)
+			continue
+		}
+		if allDay != tc.want {
+			t.Errorf("parseICSTime(%q) allDay = %v, want %v", tc.input, allDay, tc.want)
+		}
+	}
+}
+
+func TestParseICSFile_LineUnfolding(t *testing.T) {
+	// RFC 5545: continuation lines start with space or tab
+	ics := "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:Very long\r\n  event title\r\nDTSTART:20260401T100000Z\r\nDTEND:20260401T110000Z\r\nEND:VEVENT\r\nEND:VCALENDAR"
+	// Write temp file
+	tmpDir := t.TempDir()
+	path := tmpDir + "/test.ics"
+	if err := writeTestFile(path, ics); err != nil {
+		t.Fatal(err)
+	}
+	events, err := ParseICSFile(path)
+	if err != nil {
+		t.Fatalf("ParseICSFile error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if events[0].Title != "Very long event title" {
+		t.Errorf("title = %q, want %q", events[0].Title, "Very long event title")
+	}
+}
+
+func TestParseICSFile_RRULEDaily(t *testing.T) {
+	ics := "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Standup\nDTSTART:20260101T090000\nDTEND:20260101T093000\nRRULE:FREQ=DAILY\nEND:VEVENT\nEND:VCALENDAR"
+	tmpDir := t.TempDir()
+	path := tmpDir + "/test.ics"
+	if err := writeTestFile(path, ics); err != nil {
+		t.Fatal(err)
+	}
+	events, err := ParseICSFile(path)
+	if err != nil {
+		t.Fatalf("ParseICSFile error: %v", err)
+	}
+	// Should have many occurrences (daily for ~90 days)
+	if len(events) < 30 {
+		t.Errorf("got %d events from daily RRULE, want at least 30", len(events))
+	}
+	// All should have same title
+	for _, ev := range events {
+		if ev.Title != "Standup" {
+			t.Errorf("event title = %q, want Standup", ev.Title)
+			break
+		}
+	}
+}
+
+func TestParseICSFile_RRULEWeekly(t *testing.T) {
+	ics := "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Weekly sync\nDTSTART:20260101T140000\nDTEND:20260101T150000\nRRULE:FREQ=WEEKLY\nEND:VEVENT\nEND:VCALENDAR"
+	tmpDir := t.TempDir()
+	path := tmpDir + "/test.ics"
+	if err := writeTestFile(path, ics); err != nil {
+		t.Fatal(err)
+	}
+	events, err := ParseICSFile(path)
+	if err != nil {
+		t.Fatalf("ParseICSFile error: %v", err)
+	}
+	// Weekly for ~90 days = ~13 occurrences
+	if len(events) < 5 {
+		t.Errorf("got %d events from weekly RRULE, want at least 5", len(events))
+	}
+}
+
+func TestIcsRRuleFreq(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"FREQ=DAILY", "DAILY"},
+		{"FREQ=WEEKLY;BYDAY=MO", "WEEKLY"},
+		{"FREQ=MONTHLY;INTERVAL=2", "MONTHLY"},
+		{"FREQ=YEARLY", "YEARLY"},
+		{"BYDAY=MO", ""},
+	}
+	for _, tc := range tests {
+		got := icsRRuleFreq(tc.input)
+		if got != tc.want {
+			t.Errorf("icsRRuleFreq(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func writeTestFile(path, content string) error {
+	return writeFile(path, []byte(content))
+}
+
+func writeFile(path string, data []byte) error {
+	f, err := createFile(path)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	f.Close()
+	return err
+}
+
+func createFile(path string) (*os.File, error) {
+	return os.Create(path)
+}
+
+// ---------------------------------------------------------------------------
+// Refresh applies FilterTasks
+// ---------------------------------------------------------------------------
+
+func TestRefresh_AppliesFilterTasks(t *testing.T) {
+	notes := map[string]*vault.Note{
+		"test.md": {Content: "- [ ] Tagged #task\n- [ ] Untagged task"},
+	}
+	tm := NewTaskManager()
+	tm.config = config.Config{
+		TaskFilterMode:   "tagged",
+		TaskRequiredTags: []string{"task"},
+	}
+	v := &vault.Vault{Notes: notes}
+	tm.Open(v)
+	// Open should filter: only 1 task with #task tag
+	if len(tm.allTasks) != 1 {
+		t.Errorf("after Open: got %d tasks, want 1", len(tm.allTasks))
+	}
+
+	// Refresh should also filter
+	tm.Refresh(v)
+	if len(tm.allTasks) != 1 {
+		t.Errorf("after Refresh: got %d tasks, want 1", len(tm.allTasks))
+	}
+	if tm.allTasks[0].Tags[0] != "task" {
+		t.Errorf("task tag = %q, want 'task'", tm.allTasks[0].Tags[0])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ParseAllTasks – recurrence emoji variant
+// ---------------------------------------------------------------------------
+
+func TestParseAllTasks_RecurrenceEmoji(t *testing.T) {
+	notes := makeVaultNote("- [ ] Standup 🔁 daily\n- [ ] Review 🔁 weekly\n- [ ] Report 🔁 monthly\n- [ ] Gym 🔁 3x-week")
+	tasks := ParseAllTasks(notes)
+	if len(tasks) != 4 {
+		t.Fatalf("got %d tasks, want 4", len(tasks))
+	}
+	want := []string{"daily", "weekly", "monthly", "3x-week"}
+	for i, w := range want {
+		if tasks[i].Recurrence != w {
+			t.Errorf("task %d recurrence = %q, want %q", i, tasks[i].Recurrence, w)
+		}
+	}
+}
+
+func TestParseAllTasks_RecurrenceTagVariant(t *testing.T) {
+	notes := makeVaultNote("- [ ] Standup #daily\n- [ ] Review #weekly")
+	tasks := ParseAllTasks(notes)
+	if len(tasks) != 2 {
+		t.Fatalf("got %d tasks, want 2", len(tasks))
+	}
+	if tasks[0].Recurrence != "daily" {
+		t.Errorf("task 0 recurrence = %q, want daily", tasks[0].Recurrence)
+	}
+	if tasks[1].Recurrence != "weekly" {
+		t.Errorf("task 1 recurrence = %q, want weekly", tasks[1].Recurrence)
+	}
+}
+
+func TestParseAllTasks_NoMetadata(t *testing.T) {
+	notes := makeVaultNote("- [ ] Simple task\n- [x] Done task")
+	tasks := ParseAllTasks(notes)
+	if len(tasks) != 2 {
+		t.Fatalf("got %d tasks, want 2", len(tasks))
+	}
+	tk := tasks[0]
+	if tk.Done {
+		t.Error("task 0 should not be done")
+	}
+	if tk.Priority != 0 {
+		t.Errorf("priority = %d, want 0", tk.Priority)
+	}
+	if tk.DueDate != "" {
+		t.Errorf("dueDate = %q, want empty", tk.DueDate)
+	}
+	if tk.EstimatedMinutes != 0 {
+		t.Errorf("estimate = %d, want 0", tk.EstimatedMinutes)
+	}
+	if tk.ScheduledTime != "" {
+		t.Errorf("scheduledTime = %q, want empty", tk.ScheduledTime)
+	}
+	if tk.GoalID != "" {
+		t.Errorf("goalID = %q, want empty", tk.GoalID)
+	}
+	if tasks[1].Done != true {
+		t.Error("task 1 should be done")
+	}
+}
+
+func TestParseAllTasks_Snooze(t *testing.T) {
+	notes := makeVaultNote("- [ ] Snoozed task snooze:2099-12-31T14:00")
+	tasks := ParseAllTasks(notes)
+	if len(tasks) != 1 {
+		t.Fatalf("got %d tasks, want 1", len(tasks))
+	}
+	if tasks[0].SnoozedUntil != "2099-12-31T14:00" {
+		t.Errorf("snoozedUntil = %q, want 2099-12-31T14:00", tasks[0].SnoozedUntil)
+	}
+}
+
+func TestParseAllTasks_NotePath(t *testing.T) {
+	notes := map[string]*vault.Note{
+		"projects/work.md":    {Content: "- [ ] Work task", RelPath: "projects/work.md"},
+		"daily/2026-04-01.md": {Content: "- [ ] Daily task", RelPath: "daily/2026-04-01.md"},
+	}
+	tasks := ParseAllTasks(notes)
+	if len(tasks) != 2 {
+		t.Fatalf("got %d tasks, want 2", len(tasks))
+	}
+	paths := map[string]bool{}
+	for _, tk := range tasks {
+		paths[tk.NotePath] = true
+	}
+	if !paths["projects/work.md"] {
+		t.Error("missing task from projects/work.md")
+	}
+	if !paths["daily/2026-04-01.md"] {
+		t.Error("missing task from daily/2026-04-01.md")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FilterTasks – snoozed tasks
+// ---------------------------------------------------------------------------
+
+func TestFilterAll_ExcludesSnoozed(t *testing.T) {
+	notes := makeVaultNote("- [ ] Normal task\n- [ ] Snoozed snooze:2099-12-31T14:00")
+	tm := NewTaskManager()
+	tm.config = config.Config{TaskFilterMode: "all"}
+	v := &vault.Vault{Notes: notes}
+	tm.Open(v)
+	// filterAll should exclude snoozed tasks
+	all := tm.filterAll()
+	if len(all) != 1 {
+		t.Errorf("filterAll got %d tasks, want 1 (snoozed excluded)", len(all))
+	}
+	if len(all) > 0 && all[0].SnoozedUntil != "" {
+		t.Error("snoozed task should not appear in filterAll")
+	}
+}
+
+func TestFilterToday_ExcludesSnoozed(t *testing.T) {
+	today := time.Now().Format("2006-01-02")
+	notes := makeVaultNote("- [ ] Today task 📅 " + today + "\n- [ ] Snoozed today 📅 " + today + " snooze:2099-12-31T14:00")
+	tm := NewTaskManager()
+	tm.config = config.Config{TaskFilterMode: "all"}
+	v := &vault.Vault{Notes: notes}
+	tm.Open(v)
+	todayTasks := tm.filterToday()
+	if len(todayTasks) != 1 {
+		t.Errorf("filterToday got %d tasks, want 1", len(todayTasks))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ICS – edge cases
+// ---------------------------------------------------------------------------
+
+func TestParseICSFile_MultipleEvents(t *testing.T) {
+	ics := "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Event 1\nDTSTART:20260401T090000\nEND:VEVENT\nBEGIN:VEVENT\nSUMMARY:Event 2\nDTSTART:20260401T140000\nEND:VEVENT\nEND:VCALENDAR"
+	tmpDir := t.TempDir()
+	path := tmpDir + "/test.ics"
+	if err := writeTestFile(path, ics); err != nil {
+		t.Fatal(err)
+	}
+	events, err := ParseICSFile(path)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(events) != 2 {
+		t.Errorf("got %d events, want 2", len(events))
+	}
+}
+
+func TestParseICSFile_EventWithLocation(t *testing.T) {
+	ics := "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Meeting\nDTSTART:20260401T100000\nLOCATION:Room 42\nEND:VEVENT\nEND:VCALENDAR"
+	tmpDir := t.TempDir()
+	path := tmpDir + "/test.ics"
+	if err := writeTestFile(path, ics); err != nil {
+		t.Fatal(err)
+	}
+	events, err := ParseICSFile(path)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(events) != 1 || events[0].Location != "Room 42" {
+		t.Errorf("location = %q, want 'Room 42'", events[0].Location)
+	}
+}
+
+func TestParseICSFile_AllDayEvent(t *testing.T) {
+	ics := "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Holiday\nDTSTART:20260401\nEND:VEVENT\nEND:VCALENDAR"
+	tmpDir := t.TempDir()
+	path := tmpDir + "/test.ics"
+	if err := writeTestFile(path, ics); err != nil {
+		t.Fatal(err)
+	}
+	events, err := ParseICSFile(path)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if !events[0].AllDay {
+		t.Error("expected AllDay=true for date-only DTSTART")
+	}
+}
+
+func TestParseICSFile_DurationPreserved(t *testing.T) {
+	ics := "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Long meeting\nDTSTART:20260401T090000\nDTEND:20260401T120000\nEND:VEVENT\nEND:VCALENDAR"
+	tmpDir := t.TempDir()
+	path := tmpDir + "/test.ics"
+	if err := writeTestFile(path, ics); err != nil {
+		t.Fatal(err)
+	}
+	events, err := ParseICSFile(path)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	dur := events[0].EndDate.Sub(events[0].Date)
+	if dur.Hours() != 3 {
+		t.Errorf("duration = %v, want 3h", dur)
+	}
+}
+
+func TestParseICSFile_EmptyFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := tmpDir + "/empty.ics"
+	if err := writeTestFile(path, ""); err != nil {
+		t.Fatal(err)
+	}
+	events, err := ParseICSFile(path)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(events) != 0 {
+		t.Errorf("got %d events from empty file, want 0", len(events))
+	}
+}
+
+func TestParseICSFile_RRULEMonthly(t *testing.T) {
+	ics := "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Monthly review\nDTSTART:20260101T100000\nDTEND:20260101T110000\nRRULE:FREQ=MONTHLY\nEND:VEVENT\nEND:VCALENDAR"
+	tmpDir := t.TempDir()
+	path := tmpDir + "/test.ics"
+	if err := writeTestFile(path, ics); err != nil {
+		t.Fatal(err)
+	}
+	events, err := ParseICSFile(path)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(events) < 2 {
+		t.Errorf("got %d events from monthly RRULE, want at least 2", len(events))
 	}
 }

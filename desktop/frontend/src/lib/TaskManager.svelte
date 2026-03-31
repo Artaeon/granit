@@ -10,6 +10,7 @@
   let error = ''
   let view: 'today' | 'upcoming' | 'all' | 'completed' | 'by-file' | 'by-priority' = 'today'
   let searchQuery = ''
+  let showSyntaxHelp = false
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') dispatch('close')
@@ -39,8 +40,10 @@
     }
   }
 
-  // Task metadata extraction
-  function extractPriority(text: string): number {
+  // Task metadata — prefer server-provided fields, fall back to text extraction.
+  function extractPriority(t: TaskItem): number {
+    if (t.priority != null && t.priority > 0) return t.priority
+    const text = t.text
     if (text.includes('\u{1F53A}') || text.includes('!!')) return 4
     if (text.includes('\u{23EB}')) return 3
     if (text.includes('\u{1F53C}') || /(?<!\w)!(?!\!)/.test(text)) return 2
@@ -48,16 +51,16 @@
     return 0
   }
 
-  function extractDueDate(text: string): string | null {
-    const m = text.match(/📅\s*(\d{4}-\d{2}-\d{2})/)
+  function extractDueDate(t: TaskItem): string | null {
+    if (t.dueDate) return t.dueDate
+    const m = t.text.match(/📅\s*(\d{4}-\d{2}-\d{2})/)
     if (m) return m[1]
-    const m2 = text.match(/due:\s*(\d{4}-\d{2}-\d{2})/i)
-    if (m2) return m2[1]
     return null
   }
 
-  function extractTags(text: string): string[] {
-    const matches = text.match(/#[a-zA-Z][\w\-\/]*/g)
+  function extractTags(t: TaskItem): string[] {
+    if (t.tags && t.tags.length > 0) return t.tags.map(tag => '#' + tag)
+    const matches = t.text.match(/#[a-zA-Z][\w\-\/]*/g)
     return matches || []
   }
 
@@ -65,9 +68,21 @@
     return text
       .replace(/📅\s*\d{4}-\d{2}-\d{2}/g, '')
       .replace(/due:\s*\d{4}-\d{2}-\d{2}/gi, '')
-      .replace(/[🔺⏫🔼🔽⏰]/g, '')
+      .replace(/[🔺⏫🔼🔽⏰🔁]/g, '')
+      .replace(/~\d+(m|h)/g, '')
+      .replace(/snooze:\S+/g, '')
+      .replace(/depends:"[^"]*"|depends:\S+/g, '')
+      .replace(/goal:G\d{3,}/g, '')
+      .replace(/#(daily|weekly|monthly|3x-week)\b/g, '')
+      .replace(/\s(daily|weekly|monthly|3x-week)\s/g, ' ')
       .replace(/\s{2,}/g, ' ')
       .trim()
+  }
+
+  function fmtEstimate(mins: number): string {
+    if (!mins) return ''
+    if (mins >= 60) { const h = Math.floor(mins / 60), m = mins % 60; return m ? `${h}h${m}m` : `${h}h` }
+    return `${mins}m`
   }
 
   const todayStr = new Date().toISOString().split('T')[0]
@@ -93,12 +108,12 @@
         const q = searchQuery.toLowerCase()
         if (!t.text.toLowerCase().includes(q) && !t.notePath.toLowerCase().includes(q)) return false
       }
-      const due = extractDueDate(t.text)
+      const due = extractDueDate(t)
       switch (view) {
-        case 'today': return !t.done && (isToday(due) || isOverdue(due) || !due)
+        case 'today': return !t.done && (isToday(due) || isOverdue(due))
         case 'upcoming': return !t.done && (isUpcoming(due) || isToday(due) || isOverdue(due))
         case 'completed': return t.done
-        case 'all': case 'by-file': case 'by-priority': return true
+        case 'all': case 'by-file': case 'by-priority': return !t.done
         default: return true
       }
     })
@@ -111,10 +126,10 @@
       // Default: done last, then by priority, then by due date
       if (a.done !== b.done) return a.done ? 1 : -1
       if (view === 'by-priority') {
-        const pa = extractPriority(a.text), pb = extractPriority(b.text)
+        const pa = extractPriority(a), pb = extractPriority(b)
         if (pa !== pb) return pb - pa
       }
-      const da = extractDueDate(a.text), db = extractDueDate(b.text)
+      const da = extractDueDate(a), db = extractDueDate(b)
       if (da && db) {
         if (da !== db) return da.localeCompare(db)
       } else if (da) {
@@ -122,14 +137,14 @@
       } else if (db) {
         return 1
       }
-      return extractPriority(b.text) - extractPriority(a.text)
+      return extractPriority(b) - extractPriority(a)
     })
 
   // Stats
   $: pendingCount = tasks.filter(t => !t.done).length
   $: completedCount = tasks.filter(t => t.done).length
-  $: overdueCount = tasks.filter(t => !t.done && isOverdue(extractDueDate(t.text))).length
-  $: todayCount = tasks.filter(t => !t.done && (isToday(extractDueDate(t.text)) || isOverdue(extractDueDate(t.text)))).length
+  $: overdueCount = tasks.filter(t => !t.done && isOverdue(extractDueDate(t))).length
+  $: todayCount = tasks.filter(t => !t.done && (isToday(extractDueDate(t)) || isOverdue(extractDueDate(t)))).length
 
   // Groups for by-file view
   $: groups = (() => {
@@ -262,8 +277,8 @@
                 <span class="text-[11px] text-ctp-overlay0 ml-auto">{group.tasks.length}</span>
               </button>
               {#each group.tasks as task}
-                {@const pri = extractPriority(task.text)}
-                {@const due = extractDueDate(task.text)}
+                {@const pri = extractPriority(task)}
+                {@const due = extractDueDate(task)}
                 {@const pb = priorityBadge(pri)}
                 {@const db = dueBadge(due)}
                 <div class="task-row pl-10">
@@ -271,7 +286,9 @@
                     {#if task.done}<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--ctp-crust)" stroke-width="2.5" stroke-linecap="round"><path d="M3 8l3.5 3.5L13 5" /></svg>{/if}
                   </button>
                   <span class="flex-1 text-[13px] text-ctp-text truncate" class:line-through={task.done} class:opacity-40={task.done}>{cleanText(task.text)}</span>
-                  {#each extractTags(task.text) as tag}<span class="tag">{tag}</span>{/each}
+                  {#each extractTags(task) as tag}<span class="tag">{tag}</span>{/each}
+                  {#if task.estimatedMinutes}<span class="badge" style="color:var(--ctp-teal);background:color-mix(in srgb, var(--ctp-teal) 12%, transparent)">{fmtEstimate(task.estimatedMinutes)}</span>{/if}
+                  {#if task.recurrence}<span class="badge" style="color:var(--ctp-mauve);background:color-mix(in srgb, var(--ctp-mauve) 12%, transparent)">🔁 {task.recurrence}</span>{/if}
                   {#if db.label}<span class="badge" style="color:{db.color};background:color-mix(in srgb, {db.color} 12%, transparent)">{db.label}</span>{/if}
                   {#if pb.label}<span class="badge" style="color:{pb.color};background:color-mix(in srgb, {pb.color} 12%, transparent)">{pb.label}</span>{/if}
                 </div>
@@ -280,8 +297,8 @@
           {/each}
         {:else}
           {#each filtered as task}
-            {@const pri = extractPriority(task.text)}
-            {@const due = extractDueDate(task.text)}
+            {@const pri = extractPriority(task)}
+            {@const due = extractDueDate(task)}
             {@const pb = priorityBadge(pri)}
             {@const db = dueBadge(due)}
             <div class="task-row px-5">
@@ -293,7 +310,9 @@
                 <button class="text-[11px] text-ctp-overlay0 hover:text-ctp-blue transition-colors truncate block"
                   on:click={() => dispatch('openNote', task.notePath)}>{noteName(task.notePath)}</button>
               </div>
-              {#each extractTags(task.text) as tag}<span class="tag">{tag}</span>{/each}
+              {#each extractTags(task) as tag}<span class="tag">{tag}</span>{/each}
+              {#if task.estimatedMinutes}<span class="badge" style="color:var(--ctp-teal);background:color-mix(in srgb, var(--ctp-teal) 12%, transparent)">{fmtEstimate(task.estimatedMinutes)}</span>{/if}
+              {#if task.recurrence}<span class="badge" style="color:var(--ctp-mauve);background:color-mix(in srgb, var(--ctp-mauve) 12%, transparent)">🔁 {task.recurrence}</span>{/if}
               {#if db.label}<span class="badge" style="color:{db.color};background:color-mix(in srgb, {db.color} 12%, transparent)">{db.label}</span>{/if}
               {#if pb.label}<span class="badge" style="color:{pb.color};background:color-mix(in srgb, {pb.color} 12%, transparent)">{pb.label}</span>{/if}
             </div>
@@ -302,12 +321,50 @@
       </div>
     {/if}
 
+    <!-- Syntax help panel -->
+    {#if showSyntaxHelp}
+      <div class="px-5 py-3 text-[12px] text-ctp-subtext0"
+        style="border-top: 1px solid color-mix(in srgb, var(--ctp-surface0) 30%, transparent); background: color-mix(in srgb, var(--ctp-base) 60%, transparent)">
+        <div class="grid grid-cols-2 gap-x-6 gap-y-1.5">
+          <div class="text-[11px] text-ctp-overlay0 uppercase tracking-wider font-medium col-span-2 mb-0.5">Task Format</div>
+          <div><code class="text-ctp-text">- [ ]</code> / <code class="text-ctp-text">- [x]</code> <span class="text-ctp-overlay0 ml-1">Checkbox</span></div>
+          <div><code class="text-ctp-text">📅 2026-04-01</code> <span class="text-ctp-overlay0 ml-1">Due date</span></div>
+
+          <div class="text-[11px] text-ctp-overlay0 uppercase tracking-wider font-medium col-span-2 mt-1.5 mb-0.5">Priority</div>
+          <div class="col-span-2"><code class="text-ctp-red">🔺</code> highest <code class="text-ctp-peach ml-2">⏫</code> high <code class="text-ctp-yellow ml-2">🔼</code> medium <code class="text-ctp-blue ml-2">🔽</code> low</div>
+
+          <div class="text-[11px] text-ctp-overlay0 uppercase tracking-wider font-medium col-span-2 mt-1.5 mb-0.5">Metadata</div>
+          <div><code class="text-ctp-teal">#tag</code> <span class="text-ctp-overlay0 ml-1">Tag (use multiple)</span></div>
+          <div><code class="text-ctp-teal">~30m</code> / <code class="text-ctp-teal">~2h</code> <span class="text-ctp-overlay0 ml-1">Time estimate</span></div>
+          <div><code class="text-ctp-text">⏰ 09:00-10:30</code> <span class="text-ctp-overlay0 ml-1">Scheduled time block</span></div>
+          <div><code class="text-ctp-mauve">🔁 daily</code> <span class="text-ctp-overlay0 ml-1">Recurrence</span></div>
+          <div><code class="text-ctp-text">depends:"task name"</code> <span class="text-ctp-overlay0 ml-1">Dependency</span></div>
+          <div><code class="text-ctp-text">goal:G001</code> <span class="text-ctp-overlay0 ml-1">Link to goal</span></div>
+          <div><code class="text-ctp-text">snooze:2026-04-01T09:00</code> <span class="text-ctp-overlay0 ml-1">Snooze</span></div>
+
+          <div class="text-[11px] text-ctp-overlay0 uppercase tracking-wider font-medium col-span-2 mt-1.5 mb-0.5">Recurrence Options</div>
+          <div class="col-span-2"><code class="text-ctp-mauve">🔁 daily</code> &middot; <code class="text-ctp-mauve">🔁 weekly</code> &middot; <code class="text-ctp-mauve">🔁 monthly</code> &middot; <code class="text-ctp-mauve">🔁 3x-week</code> &middot; or use tags: <code class="text-ctp-teal">#daily</code> <code class="text-ctp-teal">#weekly</code></div>
+
+          <div class="text-[11px] text-ctp-overlay0 uppercase tracking-wider font-medium col-span-2 mt-1.5 mb-0.5">Subtasks</div>
+          <div class="col-span-2">Indent with 2 spaces: <code class="text-ctp-text">&nbsp;&nbsp;- [ ] Sub-task</code> <span class="text-ctp-overlay0">nested under parent</span></div>
+
+          <div class="col-span-2 mt-2 pt-2" style="border-top: 1px solid color-mix(in srgb, var(--ctp-surface0) 25%, transparent)">
+            <span class="text-ctp-overlay0">Example:</span> <code class="text-ctp-text">- [ ] Ship v2.0 📅 2026-04-01 🔺 #release ~2h goal:G001</code>
+          </div>
+        </div>
+      </div>
+    {/if}
+
     <!-- Footer -->
     <div class="px-5 py-2 flex items-center gap-4 text-[11px] text-ctp-overlay0"
       style="border-top: 1px solid color-mix(in srgb, var(--ctp-surface0) 30%, transparent)">
-      <span>Priority: <code class="text-ctp-red">🔺</code> urgent <code class="text-ctp-peach">⏫</code> high <code class="text-ctp-yellow">🔼</code> med <code class="text-ctp-blue">🔽</code> low</span>
-      <span>Due: <code class="text-ctp-subtext0">📅 2026-04-01</code></span>
-      <span>Tags: <code class="text-ctp-teal">#project</code></span>
+      <span><code class="text-ctp-red">🔺</code><code class="text-ctp-peach">⏫</code><code class="text-ctp-yellow">🔼</code><code class="text-ctp-blue">🔽</code> priority</span>
+      <span><code class="text-ctp-subtext0">📅</code> due</span>
+      <span><code class="text-ctp-teal">#tag</code></span>
+      <span><code class="text-ctp-teal">~30m</code> est.</span>
+      <span><code class="text-ctp-mauve">🔁</code> recur</span>
+      <button class="ml-auto text-ctp-overlay1 hover:text-ctp-blue transition-colors"
+        on:click={() => showSyntaxHelp = !showSyntaxHelp}>{showSyntaxHelp ? 'Hide syntax' : '? Syntax'}</button>
     </div>
   </div>
 </div>

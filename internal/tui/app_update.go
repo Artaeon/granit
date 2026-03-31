@@ -2449,6 +2449,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.calendar.SetNoteContents(noteContents)
 			m.calendar.SetPlannerBlocks(loadPlannerBlocks(m.vault.Root))
+			m.loadCalendarEvents()
+			ht := NewHabitTracker()
+			ht.Open(m.vault.Root)
+			m.calendar.SetHabitData(ht.habits, ht.logs)
 			m.calendar.Open()
 			return m, nil
 

@@ -23,7 +23,7 @@ type NativeEvent struct {
 	StartTime   string `json:"start_time"` // HH:MM (empty for all-day)
 	EndTime     string `json:"end_time"`   // HH:MM
 	Location    string `json:"location,omitempty"`
-	Color       string `json:"color,omitempty"`    // red, blue, green, yellow, mauve, teal
+	Color       string `json:"color,omitempty"`      // red, blue, green, yellow, mauve, teal
 	Recurrence  string `json:"recurrence,omitempty"` // daily, weekly, monthly, yearly
 	AllDay      bool   `json:"all_day,omitempty"`
 	CreatedAt   string `json:"created_at"`
@@ -50,11 +50,15 @@ func (e NativeEvent) ToCalendarEvent() CalendarEvent {
 	}
 	endT := t.Add(time.Duration(e.Duration()) * time.Minute)
 	return CalendarEvent{
-		Title:    e.Title,
-		Date:     t,
-		EndDate:  endT,
-		Location: e.Location,
-		AllDay:   e.AllDay,
+		Title:       e.Title,
+		Date:        t,
+		EndDate:     endT,
+		Location:    e.Location,
+		Description: e.Description,
+		AllDay:      e.AllDay,
+		ID:          e.ID,
+		Color:       e.Color,
+		Recurrence:  e.Recurrence,
 	}
 }
 

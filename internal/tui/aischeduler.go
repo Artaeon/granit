@@ -309,7 +309,8 @@ func aiSchedulerTickCmd() tea.Cmd {
 func (as AIScheduler) buildSchedulerPrompt() string {
 	var b strings.Builder
 
-	b.WriteString("You are a productivity scheduler. Given these tasks and constraints, create an optimal daily schedule.\n\n")
+	now := time.Now()
+	b.WriteString(fmt.Sprintf("You are a productivity scheduler. Current time: %s. Given these tasks and constraints, create an optimal schedule for the REMAINING day.\n\n", now.Format("15:04")))
 
 	b.WriteString("Tasks (priority 1-4, 4=highest):\n")
 	for _, t := range as.tasks {
@@ -332,16 +333,22 @@ func (as AIScheduler) buildSchedulerPrompt() string {
 		}
 	}
 
+	startHour := now.Hour()
+	if startHour < as.prefs.WorkStart {
+		startHour = as.prefs.WorkStart
+	}
 	b.WriteString("\nConstraints:\n")
-	b.WriteString(fmt.Sprintf("- Work hours: %02d:00-%02d:00\n", as.prefs.WorkStart, as.prefs.WorkEnd))
-	b.WriteString(fmt.Sprintf("- Lunch: %02d:00-%02d:%02d\n", as.prefs.LunchStart,
-		as.prefs.LunchStart+as.prefs.LunchDuration/60, as.prefs.LunchDuration%60))
+	b.WriteString(fmt.Sprintf("- Schedule from NOW (%s) until %02d:00 — do NOT schedule before current time\n", now.Format("15:04"), as.prefs.WorkEnd))
+	if now.Hour() < as.prefs.LunchStart+as.prefs.LunchDuration/60 {
+		b.WriteString(fmt.Sprintf("- Lunch: %02d:00-%02d:%02d\n", as.prefs.LunchStart,
+			as.prefs.LunchStart+as.prefs.LunchDuration/60, as.prefs.LunchDuration%60))
+	}
 	b.WriteString(fmt.Sprintf("- Take 10min break every %dmin of work\n", as.prefs.BreakEvery))
 	b.WriteString(fmt.Sprintf("- Focus blocks: minimum %d minutes\n", as.prefs.FocusBlockMin))
 
 	b.WriteString("\nOutput format (one per line):\n")
 	b.WriteString("HH:MM-HH:MM | Task name | type\n")
-	b.WriteString("Example: 08:00-09:30 | Fix auth bug | task\n\n")
+	b.WriteString(fmt.Sprintf("Example: %s-%02d:30 | Fix auth bug | task\n\n", now.Format("15:04"), startHour+1))
 	b.WriteString("Types: task, event, break, lunch\n")
 	b.WriteString("Prioritize urgent and high-priority tasks in morning hours. Group similar tasks together. End the day with low-priority tasks.\n")
 
@@ -422,8 +429,8 @@ func (as *AIScheduler) generateLocalSchedule() {
 		return di < dj
 	})
 
-	workStart := as.prefs.WorkStart * 60  // in minutes from midnight
-	workEnd := as.prefs.WorkEnd * 60      // in minutes from midnight
+	workStart := as.prefs.WorkStart * 60 // in minutes from midnight
+	workEnd := as.prefs.WorkEnd * 60     // in minutes from midnight
 	lunchStart := as.prefs.LunchStart * 60
 	lunchEnd := lunchStart + as.prefs.LunchDuration
 	breakEvery := as.prefs.BreakEvery
@@ -879,7 +886,6 @@ func (as AIScheduler) overlayWidth() int {
 	return w
 }
 
-
 // ---------------------------------------------------------------------------
 // View: setup phase
 // ---------------------------------------------------------------------------
@@ -943,7 +949,7 @@ func (as AIScheduler) viewSetup(width int) string {
 
 	// Tasks section
 	buf.WriteString(lipgloss.NewStyle().Foreground(blue).Bold(true).Render("  Tasks to schedule:") + "\n")
-	buf.WriteString(DimStyle.Render("  " + strings.Repeat(string(ThemeSeparator), width-10)) + "\n")
+	buf.WriteString(DimStyle.Render("  "+strings.Repeat(string(ThemeSeparator), width-10)) + "\n")
 
 	if len(as.tasks) == 0 {
 		buf.WriteString(DimStyle.Render("  No pending tasks found.") + "\n")
@@ -1022,7 +1028,7 @@ func (as AIScheduler) viewSetup(width int) string {
 	}
 
 	buf.WriteString("\n")
-	buf.WriteString(DimStyle.Render("  " + strings.Repeat(string(ThemeSeparator), width-10)) + "\n")
+	buf.WriteString(DimStyle.Render("  "+strings.Repeat(string(ThemeSeparator), width-10)) + "\n")
 	helpLine := "  Tab: next  </>: adjust  e: edit est.  Enter: generate"
 	buf.WriteString(DimStyle.Render(helpLine))
 
@@ -1108,7 +1114,7 @@ func (as AIScheduler) viewResult(width int) string {
 
 	buf.WriteString(lipgloss.NewStyle().Foreground(blue).Bold(true).
 		Render("  Suggested Schedule:") + "\n")
-	buf.WriteString(DimStyle.Render("  " + strings.Repeat(string(ThemeSeparator), width-10)) + "\n")
+	buf.WriteString(DimStyle.Render("  "+strings.Repeat(string(ThemeSeparator), width-10)) + "\n")
 
 	if len(as.schedule) == 0 {
 		buf.WriteString(DimStyle.Render("  No schedule could be generated.") + "\n")
@@ -1185,7 +1191,7 @@ func (as AIScheduler) viewResult(width int) string {
 		as.countScheduledTasks(), taskMins/60, taskMins%60)) + "\n")
 
 	buf.WriteString("\n")
-	buf.WriteString(DimStyle.Render("  " + strings.Repeat(string(ThemeSeparator), width-10)) + "\n")
+	buf.WriteString(DimStyle.Render("  "+strings.Repeat(string(ThemeSeparator), width-10)) + "\n")
 	buf.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
 		{"Enter", "apply"}, {"r", "regenerate"}, {"Esc", "close"},
 	}))

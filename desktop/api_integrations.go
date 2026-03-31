@@ -536,8 +536,8 @@ func doOllamaRequest(url, model, prompt string) (string, error) {
 // OpenAI HTTP
 
 type openaiReq struct {
-	Model    string         `json:"model"`
-	Messages []openaiMsg    `json:"messages"`
+	Model    string      `json:"model"`
+	Messages []openaiMsg `json:"messages"`
 }
 
 type openaiMsg struct {
@@ -925,19 +925,24 @@ type CalendarTask struct {
 }
 
 type CalendarEventDTO struct {
-	Title    string `json:"title"`
-	Date     string `json:"date"`
-	EndDate  string `json:"endDate"`
-	Location string `json:"location"`
-	AllDay   bool   `json:"allDay"`
+	ID          string `json:"id"` // "E001" for native events, "" for ICS events
+	Title       string `json:"title"`
+	Date        string `json:"date"`    // "YYYY-MM-DD" (all-day) or "YYYY-MM-DDT15:04" (timed)
+	EndDate     string `json:"endDate"` // same format as Date
+	Location    string `json:"location"`
+	Description string `json:"description"` // event description/notes
+	Color       string `json:"color"`       // "red", "blue", "green", "yellow", "mauve", "teal"
+	Recurrence  string `json:"recurrence"`  // "daily", "weekly", "monthly", "yearly", ""
+	AllDay      bool   `json:"allDay"`
+	Time        string `json:"time"` // "15:04" for timed events, "" for all-day
 }
 
 type CalendarData struct {
-	Year       int                        `json:"year"`
-	Month      int                        `json:"month"`
-	DailyNotes []string                   `json:"dailyNotes"`
-	Tasks      map[string][]CalendarTask  `json:"tasks"`
-	Events     []CalendarEventDTO         `json:"events"`
+	Year       int                       `json:"year"`
+	Month      int                       `json:"month"`
+	DailyNotes []string                  `json:"dailyNotes"`
+	Tasks      map[string][]CalendarTask `json:"tasks"`
+	Events     []CalendarEventDTO        `json:"events"`
 }
 
 var taskPattern = regexp.MustCompile(`^- \[([ xX])\] (.+)`)
@@ -946,12 +951,14 @@ func (a *GranitApp) GetCalendarData(year, month int) *CalendarData {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	if a.vault == nil {
-		return &CalendarData{Year: year, Month: month, Tasks: make(map[string][]CalendarTask)}
+		return &CalendarData{Year: year, Month: month, DailyNotes: []string{}, Tasks: make(map[string][]CalendarTask), Events: []CalendarEventDTO{}}
 	}
 
 	data := &CalendarData{
 		Year: year, Month: month,
-		Tasks: make(map[string][]CalendarTask),
+		DailyNotes: []string{},
+		Tasks:      make(map[string][]CalendarTask),
+		Events:     []CalendarEventDTO{},
 	}
 
 	for _, p := range a.vault.SortedPaths() {
@@ -1000,7 +1007,194 @@ func (a *GranitApp) GetCalendarData(year, month int) *CalendarData {
 	// Parse .ics files
 	data.Events = a.parseICSFiles()
 
+	// Load native events from .granit/events.json
+	data.Events = append(data.Events, a.loadNativeEvents()...)
+
 	return data
+}
+
+// loadNativeEvents reads native events from .granit/events.json and converts
+// them to CalendarEventDTO, expanding recurring events.
+func (a *GranitApp) loadNativeEvents() []CalendarEventDTO {
+	eventsPath := filepath.Join(a.vaultRoot, ".granit", "events.json")
+	data, err := os.ReadFile(eventsPath)
+	if err != nil {
+		return nil
+	}
+	type nativeEvent struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Date        string `json:"date"`
+		StartTime   string `json:"start_time"`
+		EndTime     string `json:"end_time"`
+		Location    string `json:"location"`
+		Color       string `json:"color"`
+		Recurrence  string `json:"recurrence"`
+		AllDay      bool   `json:"all_day"`
+	}
+	var raw []nativeEvent
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	horizon := today.AddDate(0, 3, 0)
+
+	var events []CalendarEventDTO
+	for _, ne := range raw {
+		dto := CalendarEventDTO{
+			ID:          ne.ID,
+			Title:       ne.Title,
+			Description: ne.Description,
+			Location:    ne.Location,
+			Color:       ne.Color,
+			Recurrence:  ne.Recurrence,
+			AllDay:      ne.AllDay,
+		}
+		if ne.AllDay || ne.StartTime == "" {
+			dto.Date = ne.Date
+			dto.EndDate = ne.Date
+		} else {
+			dto.Date = ne.Date + "T" + ne.StartTime
+			dto.Time = ne.StartTime
+			if ne.EndTime != "" {
+				dto.EndDate = ne.Date + "T" + ne.EndTime
+			}
+		}
+
+		if ne.Recurrence == "" {
+			events = append(events, dto)
+			continue
+		}
+		// Expand recurring events
+		startDate, err := time.Parse("2006-01-02", ne.Date)
+		if err != nil {
+			events = append(events, dto)
+			continue
+		}
+		d := startDate
+		for !d.After(horizon) {
+			if !d.Before(today.AddDate(0, -1, 0)) {
+				ev := dto
+				ds := d.Format("2006-01-02")
+				if ne.AllDay || ne.StartTime == "" {
+					ev.Date = ds
+					ev.EndDate = ds
+				} else {
+					ev.Date = ds + "T" + ne.StartTime
+					if ne.EndTime != "" {
+						ev.EndDate = ds + "T" + ne.EndTime
+					}
+				}
+				events = append(events, ev)
+			}
+			switch ne.Recurrence {
+			case "daily":
+				d = d.AddDate(0, 0, 1)
+			case "weekly":
+				d = d.AddDate(0, 0, 7)
+			case "monthly":
+				d = d.AddDate(0, 1, 0)
+			case "yearly":
+				d = d.AddDate(1, 0, 0)
+			default:
+				d = horizon.AddDate(0, 0, 1)
+			}
+		}
+	}
+	return events
+}
+
+// CreateCalendarEvent creates a new native calendar event.
+func (a *GranitApp) CreateCalendarEvent(title, date, startTime, endTime, location, description, color, recurrence string, allDay bool) (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.vaultRoot == "" {
+		return "", fmt.Errorf("no vault open")
+	}
+	eventsPath := filepath.Join(a.vaultRoot, ".granit", "events.json")
+	data, _ := os.ReadFile(eventsPath)
+	var events []json.RawMessage
+	if len(data) > 0 {
+		_ = json.Unmarshal(data, &events)
+	}
+	// Generate next ID
+	maxID := 0
+	for _, raw := range events {
+		var e struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(raw, &e)
+		if len(e.ID) > 1 && e.ID[0] == 'E' {
+			n := 0
+			fmt.Sscanf(e.ID[1:], "%d", &n)
+			if n > maxID {
+				maxID = n
+			}
+		}
+	}
+	id := fmt.Sprintf("E%03d", maxID+1)
+
+	newEvent := map[string]interface{}{
+		"id":          id,
+		"title":       title,
+		"date":        date,
+		"start_time":  startTime,
+		"end_time":    endTime,
+		"location":    location,
+		"description": description,
+		"color":       color,
+		"recurrence":  recurrence,
+		"all_day":     allDay,
+		"created_at":  time.Now().Format("2006-01-02"),
+	}
+	rawNew, _ := json.Marshal(newEvent)
+	events = append(events, rawNew)
+
+	dir := filepath.Join(a.vaultRoot, ".granit")
+	_ = os.MkdirAll(dir, 0755)
+	out, _ := json.MarshalIndent(events, "", "  ")
+	if err := atomicWriteFile(eventsPath, out, 0644); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// DeleteCalendarEvent removes a native event by ID.
+func (a *GranitApp) DeleteCalendarEvent(eventID string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.vaultRoot == "" {
+		return fmt.Errorf("no vault open")
+	}
+	eventsPath := filepath.Join(a.vaultRoot, ".granit", "events.json")
+	data, err := os.ReadFile(eventsPath)
+	if err != nil {
+		return fmt.Errorf("no events file")
+	}
+	var events []json.RawMessage
+	_ = json.Unmarshal(data, &events)
+
+	found := false
+	var filtered []json.RawMessage
+	for _, raw := range events {
+		var e struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(raw, &e)
+		if e.ID == eventID {
+			found = true
+			continue
+		}
+		filtered = append(filtered, raw)
+	}
+	if !found {
+		return fmt.Errorf("event not found: %s", eventID)
+	}
+	out, _ := json.MarshalIndent(filtered, "", "  ")
+	return atomicWriteFile(eventsPath, out, 0644)
 }
 
 func taskPriority(text string) int {
@@ -1057,9 +1251,21 @@ func (a *GranitApp) ToggleTask(notePath string, lineNum int) error {
 
 func (a *GranitApp) parseICSFiles() []CalendarEventDTO {
 	var events []CalendarEventDTO
+
+	// Walk the vault, but allow .granit/calendars/ through while skipping
+	// other dot directories.
 	filepath.Walk(a.vaultRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			if info != nil && info.IsDir() && strings.HasPrefix(info.Name(), ".") {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			name := info.Name()
+			if strings.HasPrefix(name, ".") && name != ".granit" {
+				return filepath.SkipDir
+			}
+			// Inside .granit, only descend into calendars/
+			rel, _ := filepath.Rel(a.vaultRoot, path)
+			if strings.HasPrefix(rel, ".granit") && rel != ".granit" && rel != filepath.Join(".granit", "calendars") {
 				return filepath.SkipDir
 			}
 			return nil
@@ -1077,22 +1283,29 @@ func (a *GranitApp) parseICSFiles() []CalendarEventDTO {
 	return events
 }
 
-func parseICSContent(content string) []CalendarEventDTO {
-	var events []CalendarEventDTO
-	lines := strings.Split(content, "\n")
-	inEvent := false
-	var current CalendarEventDTO
+// icsEventRaw holds a parsed VEVENT before recurring expansion.
+type icsEventRaw struct {
+	CalendarEventDTO
+	rrule string
+}
 
-	for _, line := range lines {
-		line = strings.TrimRight(line, "\r")
+func parseICSContent(content string) []CalendarEventDTO {
+	// Unfold continuation lines (RFC 5545: lines starting with space/tab).
+	rawLines := unfoldICSLines(content)
+
+	var parsed []icsEventRaw
+	inEvent := false
+	var current icsEventRaw
+
+	for _, line := range rawLines {
 		if line == "BEGIN:VEVENT" {
 			inEvent = true
-			current = CalendarEventDTO{}
+			current = icsEventRaw{}
 			continue
 		}
 		if line == "END:VEVENT" {
-			if inEvent && current.Title != "" {
-				events = append(events, current)
+			if inEvent {
+				parsed = append(parsed, current)
 			}
 			inEvent = false
 			continue
@@ -1116,22 +1329,113 @@ func parseICSContent(content string) []CalendarEventDTO {
 		case "LOCATION":
 			current.Location = value
 		case "DTSTART":
-			t, allDay := parseICSTime(value)
+			t, allDay := parseICSTimeFull(value)
 			if !t.IsZero() {
-				current.Date = t.Format("2006-01-02")
+				if allDay {
+					current.Date = t.Format("2006-01-02")
+				} else {
+					current.Date = t.Format("2006-01-02T15:04")
+					current.Time = t.Format("15:04")
+				}
 				current.AllDay = allDay
 			}
 		case "DTEND":
-			t, _ := parseICSTime(value)
+			t, allDay := parseICSTimeFull(value)
 			if !t.IsZero() {
-				current.EndDate = t.Format("2006-01-02")
+				if allDay {
+					current.EndDate = t.Format("2006-01-02")
+				} else {
+					current.EndDate = t.Format("2006-01-02T15:04")
+				}
+			}
+		case "RRULE":
+			current.rrule = value
+		}
+	}
+
+	// Expand recurring events for 90 days.
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	horizon := today.AddDate(0, 3, 0)
+
+	var events []CalendarEventDTO
+	for _, ie := range parsed {
+		if ie.rrule == "" {
+			events = append(events, ie.CalendarEventDTO)
+			continue
+		}
+		freq := icsRRuleFreqDesktop(ie.rrule)
+		if freq == "" {
+			events = append(events, ie.CalendarEventDTO)
+			continue
+		}
+		startTime := parseICSDateStr(ie.Date)
+		endTime := parseICSDateStr(ie.EndDate)
+		dur := endTime.Sub(startTime)
+		d := startTime
+		for !d.After(horizon) {
+			if !d.Before(today.AddDate(0, -1, 0)) {
+				ev := ie.CalendarEventDTO
+				if ie.AllDay {
+					ev.Date = d.Format("2006-01-02")
+					ev.EndDate = d.Add(dur).Format("2006-01-02")
+				} else {
+					ev.Date = d.Format("2006-01-02T15:04")
+					ev.EndDate = d.Add(dur).Format("2006-01-02T15:04")
+				}
+				events = append(events, ev)
+			}
+			switch freq {
+			case "DAILY":
+				d = d.AddDate(0, 0, 1)
+			case "WEEKLY":
+				d = d.AddDate(0, 0, 7)
+			case "MONTHLY":
+				d = d.AddDate(0, 1, 0)
+			case "YEARLY":
+				d = d.AddDate(1, 0, 0)
+			default:
+				d = horizon.AddDate(0, 0, 1)
 			}
 		}
 	}
+
 	return events
 }
 
-func parseICSTime(value string) (time.Time, bool) {
+func unfoldICSLines(content string) []string {
+	var lines []string
+	for _, raw := range strings.Split(content, "\n") {
+		line := strings.TrimRight(raw, "\r")
+		if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') && len(lines) > 0 {
+			lines[len(lines)-1] += line[1:]
+		} else {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+func icsRRuleFreqDesktop(rrule string) string {
+	for _, part := range strings.Split(rrule, ";") {
+		if strings.HasPrefix(part, "FREQ=") {
+			return strings.TrimPrefix(part, "FREQ=")
+		}
+	}
+	return ""
+}
+
+func parseICSDateStr(s string) time.Time {
+	if t, err := time.Parse("2006-01-02T15:04", s); err == nil {
+		return t
+	}
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		return t
+	}
+	return time.Time{}
+}
+
+func parseICSTimeFull(value string) (time.Time, bool) {
 	if t, err := time.Parse("20060102T150405Z", value); err == nil {
 		return t.Local(), false
 	}
@@ -1139,6 +1443,15 @@ func parseICSTime(value string) (time.Time, bool) {
 		return t, false
 	}
 	if t, err := time.Parse("20060102", value); err == nil {
+		return t, true
+	}
+	if t, err := time.Parse("2006-01-02T15:04:05Z", value); err == nil {
+		return t.Local(), false
+	}
+	if t, err := time.Parse("2006-01-02T15:04:05", value); err == nil {
+		return t, false
+	}
+	if t, err := time.Parse("2006-01-02", value); err == nil {
 		return t, true
 	}
 	return time.Time{}, false
