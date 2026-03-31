@@ -390,7 +390,7 @@ func (vs VaultSelector) viewList() string {
 	list.WriteString(lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", innerWidth)))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(surface1).
 		Padding(1, 2).
 		Width(panelWidth).
@@ -474,7 +474,7 @@ func (vs VaultSelector) viewPathInput() string {
 	panel.WriteString("\n")
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(panelWidth).
@@ -553,7 +553,7 @@ func (vs VaultSelector) viewNameInput() string {
 	panel.WriteString("\n")
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(panelWidth).

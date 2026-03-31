@@ -588,7 +588,7 @@ func (sc SpellChecker) View() string {
 	b.WriteString(DimStyle.Render("  d: add to dictionary  Esc: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

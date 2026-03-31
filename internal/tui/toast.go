@@ -127,7 +127,7 @@ func (t *Toast) View() string {
 		content := " " + iconStyled + msgStyled + " "
 
 		border := lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
+			BorderStyle(PanelBorder).
 			BorderForeground(accentColor).
 			Background(mantle).
 			Padding(0, 1).

@@ -365,7 +365,7 @@ func (gr GlobalReplace) View() string {
 	b.WriteString(DimStyle.Render(footer2))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

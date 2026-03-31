@@ -1007,7 +1007,7 @@ func (wc WritingCoach) viewSetup(width int) string {
 	buf.WriteString(DimStyle.Render("  j/k: mode  s: toggle soul note  Enter: analyze  Esc: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -1057,7 +1057,7 @@ func (wc WritingCoach) viewAnalyzing(width int) string {
 	buf.WriteString(DimStyle.Render("  Esc: cancel"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -1211,7 +1211,7 @@ func (wc WritingCoach) viewResults(width int) string {
 	buf.WriteString(DimStyle.Render("  j/k: navigate  Enter: use suggestion  Esc: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

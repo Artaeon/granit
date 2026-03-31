@@ -1038,7 +1038,7 @@ func (as AIScheduler) viewSetup(width int) string {
 	}
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -1083,7 +1083,7 @@ func (as AIScheduler) viewGenerating(width int) string {
 	buf.WriteString(DimStyle.Render("  Esc: cancel"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -1197,7 +1197,7 @@ func (as AIScheduler) viewResult(width int) string {
 	}))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -1245,7 +1245,7 @@ func (as AIScheduler) viewApplied(width int) string {
 	buf.WriteString(DimStyle.Render("  Enter/Esc: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

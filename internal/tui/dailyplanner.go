@@ -1149,7 +1149,7 @@ func (dp DailyPlanner) View() string {
 	out.WriteString(helpLine)
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(outerWidth).

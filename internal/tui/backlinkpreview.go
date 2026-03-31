@@ -275,7 +275,7 @@ func (bp BacklinkPreview) View() string {
 	content := strings.Join(rows, "\n")
 
 	popup := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(PanelBorder).
 		BorderForeground(lavender).
 		Background(surface0).
 		Padding(0, 1).

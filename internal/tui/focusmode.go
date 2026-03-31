@@ -209,7 +209,7 @@ func (f *FocusMode) RenderEditor(editorView string, wordCount int) string {
 
 	// --- focused panel style ---
 	panel := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Foreground(text).
 		Width(colWidth).

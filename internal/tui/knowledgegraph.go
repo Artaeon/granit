@@ -385,7 +385,7 @@ func (kg KnowledgeGraph) View() string {
 	b.WriteString(DimStyle.Render("  1-5: switch view  j/k: scroll  Esc: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

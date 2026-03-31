@@ -253,7 +253,7 @@ func (qs QuickSwitch) View() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  ↑↓/jk: navigate  Enter: open  Esc/Tab: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(lavender).
 		Padding(1, 2).
 		Width(panelWidth).

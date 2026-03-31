@@ -794,7 +794,7 @@ func (ac AIChat) View() string {
 
 	// Wrap in panel border.
 	panel := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(panelWidth).

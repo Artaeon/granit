@@ -1393,7 +1393,7 @@ func (gm *GoalsMode) View() string {
 
 	// Bordered overlay (matches task manager style)
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

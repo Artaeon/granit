@@ -2215,7 +2215,7 @@ func (b Bots) viewList(width int) string {
 	buf.WriteString(DimStyle.Render("  ↑↓: select  Enter: run  Esc: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(sapphire).
 		Padding(1, 2).
 		Width(width).
@@ -2260,7 +2260,7 @@ func (b Bots) viewInput(width int) string {
 	buf.WriteString(DimStyle.Render("  Enter: search  Esc: back"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(sapphire).
 		Padding(1, 2).
 		Width(width).
@@ -2310,7 +2310,7 @@ func (b Bots) viewLoading(width int) string {
 	buf.WriteString(DimStyle.Render("  Esc: cancel"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(sapphire).
 		Padding(1, 2).
 		Width(width).
@@ -2388,7 +2388,7 @@ func (b Bots) viewResults(width int) string {
 	}
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(sapphire).
 		Padding(1, 2).
 		Width(width).

@@ -71,7 +71,7 @@ func ResolveBorder() lipgloss.Border {
 	case "hidden":
 		return lipgloss.HiddenBorder()
 	default:
-		return lipgloss.RoundedBorder()
+		return PanelBorder
 	}
 }
 

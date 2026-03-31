@@ -2293,7 +2293,7 @@ func (pm ProjectMode) editHelpBar() string {
 
 func (pm ProjectMode) wrapBorder(content string, width int, borderColor lipgloss.Color) string {
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(borderColor).
 		Padding(1, 2).
 		Width(width).

@@ -426,7 +426,7 @@ func (ws WritingStats) View() string {
 	b.WriteString(DimStyle.Render("  1/2/3: tabs  Tab: next  j/k: scroll  Esc: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

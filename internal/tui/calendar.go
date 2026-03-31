@@ -915,7 +915,7 @@ func (c Calendar) viewMonth() string {
 	c.renderFooter(&b, width)
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -1148,7 +1148,7 @@ func (c Calendar) viewWeek() string {
 	c.renderFooter(&b, width)
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -1379,7 +1379,7 @@ func (c Calendar) view1Day() string {
 	}))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -1622,7 +1622,7 @@ func (c Calendar) viewAgenda() string {
 	c.renderFooter(&b, width)
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -1716,7 +1716,7 @@ func (c Calendar) viewYear() string {
 	c.renderFooter(&b, width)
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

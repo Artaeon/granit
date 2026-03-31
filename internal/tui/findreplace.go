@@ -466,7 +466,7 @@ func (fr FindReplace) View() string {
 	}
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(borderColor).
 		Padding(1, 2).
 		Width(width).

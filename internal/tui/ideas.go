@@ -758,7 +758,7 @@ func (ib *IdeasBoard) View() string {
 	b.WriteString("  " + strings.Join(pairs, " "))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

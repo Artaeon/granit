@@ -340,7 +340,7 @@ func (lc *LinkCompleter) Render(maxWidth, maxHeight int) string {
 	content := strings.Join(rows, "\n")
 
 	popup := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(PanelBorder).
 		BorderForeground(surface1).
 		Background(mantle).
 		Padding(0, 1).

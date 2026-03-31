@@ -1035,7 +1035,7 @@ func (nls NLSearch) viewInput() string {
 	b.WriteString(DimStyle.Render("  Enter: search  Esc: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -1095,7 +1095,7 @@ func (nls NLSearch) viewSearching() string {
 	b.WriteString(DimStyle.Render("  Esc: cancel"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -1282,7 +1282,7 @@ func (nls NLSearch) viewResults() string {
 	b.WriteString(DimStyle.Render("  j/k: navigate  Enter: open  Esc: back  q: close" + posStr))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

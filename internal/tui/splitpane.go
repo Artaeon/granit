@@ -329,7 +329,7 @@ func (sp SplitPane) View() string {
 	content := body + "\n" + footer
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Width(sp.width - 2).
 		Height(sp.height - 2).

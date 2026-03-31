@@ -572,7 +572,7 @@ func (wc WebClipper) View() string {
 		b.WriteString(helpKeys.Render("Esc") + helpDesc.Render(" cancel"))
 
 		border := lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
+			BorderStyle(PanelBorder).
 			BorderForeground(OverlayBorderColor).
 			Padding(1, 2).
 			Width(width).
@@ -700,7 +700,7 @@ func (wc WebClipper) View() string {
 	}
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

@@ -426,7 +426,7 @@ func (us *UniversalSearch) View() string {
 	b.WriteString("\n  " + DimStyle.Render("Enter:open  Esc:close  ↑/↓:navigate"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

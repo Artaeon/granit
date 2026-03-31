@@ -731,7 +731,7 @@ func (n NextcloudOverlay) View() string {
 	body += "\n\n" + lipgloss.NewStyle().Foreground(overlay0).Render("  esc/q close  tab/arrows navigate  enter select")
 
 	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(PanelBorder).
 		BorderForeground(mauve).
 		Padding(1, 2).
 		Width(w).

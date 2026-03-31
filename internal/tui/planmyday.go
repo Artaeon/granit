@@ -1372,7 +1372,7 @@ func (p PlanMyDay) viewApplied(width int) string {
 
 func (p PlanMyDay) wrapBorder(content string, width int) string {
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

@@ -456,7 +456,7 @@ func (rt RecurringTasks) View() string {
 		rt.viewForm(&b, width, "Edit Recurring Task")
 	}
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

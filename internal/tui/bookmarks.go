@@ -414,7 +414,7 @@ func (bm Bookmarks) View() string {
 	b.WriteString(RenderHelpBar(pairs))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

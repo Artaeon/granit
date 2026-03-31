@@ -506,7 +506,7 @@ func (cc CommandCenter) View() string {
 	b.WriteString(cc.renderHelp())
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -546,7 +546,7 @@ func (cc CommandCenter) viewNow(innerW int) string {
 	}
 
 	cardStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(0, 1).
 		Width(innerW - 4)

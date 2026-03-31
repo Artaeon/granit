@@ -473,7 +473,7 @@ func (t Templates) View() string {
 	b.WriteString(DimStyle.Render("  Enter: select template  Esc: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

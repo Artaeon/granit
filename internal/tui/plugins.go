@@ -480,7 +480,7 @@ func (pm PluginManager) viewList() string {
 	b.WriteString(DimStyle.Render("  Enter: toggle  r: run  d: details  i: install  Esc: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -594,7 +594,7 @@ func (pm PluginManager) viewDetail() string {
 	b.WriteString(DimStyle.Render("  Enter: run command  Esc: back"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -953,7 +953,7 @@ func (pm PluginManager) viewRegistry() string {
 	b.WriteString(DimStyle.Render("  Enter: install  Esc: back"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

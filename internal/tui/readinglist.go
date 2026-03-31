@@ -510,7 +510,7 @@ func (rl ReadingList) View() string {
 	b.WriteString(strings.Join(keys, dimStyle.Render("  ")))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(mauve).
 		Padding(1, 2).
 		Width(width)

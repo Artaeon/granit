@@ -471,7 +471,7 @@ func (w *Workspace) viewSaveMode(innerW int) string {
 // wrapBorder wraps content in the standard overlay border.
 func (w *Workspace) wrapBorder(width int, content string) string {
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

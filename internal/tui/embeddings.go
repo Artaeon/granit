@@ -1155,7 +1155,7 @@ func (ss *SemanticSearch) View() string {
 	b.WriteString(DimStyle.Render(footer))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(panelWidth).

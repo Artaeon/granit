@@ -239,7 +239,7 @@ func (h HelpOverlay) View() string {
 	b.WriteString(DimStyle.Render("  j/k: scroll  Esc/F5/q: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

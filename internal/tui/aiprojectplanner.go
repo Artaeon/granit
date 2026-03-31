@@ -811,7 +811,7 @@ func (ap AIProjectPlanner) View() string {
 	}
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(mauve).
 		Padding(1, 2).
 		Width(width)

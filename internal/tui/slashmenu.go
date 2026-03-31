@@ -298,7 +298,7 @@ func (sm *SlashMenu) View() string {
 	body := strings.Join(rows, "\n")
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(surface1).
 		Padding(0, 1).
 		Width(menuInner + 4) // +4 for padding

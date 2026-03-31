@@ -495,7 +495,7 @@ func (s StandupGenerator) viewScanning(width int) string {
 	b.WriteString(lipgloss.NewStyle().Foreground(yellow).Render("  Scanning vault..."))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -603,7 +603,7 @@ func (s StandupGenerator) viewPreview(width int) string {
 	b.WriteString(DimStyle.Render("  e: edit  s/Enter: save  j/k: scroll  Esc: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -700,7 +700,7 @@ func (s StandupGenerator) viewEdit(width int) string {
 	b.WriteString(DimStyle.Render("  Tab: next section  Shift+Tab: prev  Esc: back to preview"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
@@ -731,7 +731,7 @@ func (s StandupGenerator) viewSaved(width int) string {
 	b.WriteString(DimStyle.Render("  Enter/Esc: close"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).

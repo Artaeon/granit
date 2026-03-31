@@ -185,7 +185,7 @@ func (a Autocomplete) View() string {
 	content := strings.Join(rows, "\n")
 
 	popup := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(PanelBorder).
 		BorderForeground(overlay0).
 		Background(mantle).
 		Padding(0, 1).

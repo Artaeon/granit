@@ -665,7 +665,7 @@ func (fc Flashcards) viewDeck() string {
 	}
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(w).
@@ -769,7 +769,7 @@ func (fc Flashcards) viewReview() string {
 	}
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(w).
@@ -908,7 +908,7 @@ func (fc Flashcards) viewStats() string {
 	b.WriteString(DimStyle.Render("  j/k: scroll  s/Esc: back"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(w).
