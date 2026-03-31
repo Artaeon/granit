@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"path/filepath"
+	"os"
+	"github.com/artaeon/granit/internal/vault"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -56,6 +59,7 @@ type settingItem struct {
 
 type Settings struct {
 	config  config.Config
+	vault   *vault.Vault
 	items   []settingItem
 	visible []int // indices into items that are currently visible (after filtering)
 	cursor  int   // index into visible
@@ -75,9 +79,12 @@ type Settings struct {
 	setupStatus  string
 }
 
-func NewSettings(cfg config.Config) Settings {
+func NewSettings(cfg config.Config, v *vault.Vault) Settings {
+	if len(cfg.DisabledCalendars) == 0 { cfg.DisabledCalendars = []string{} }
+
 	s := Settings{
 		config: cfg,
+		vault:  v,
 	}
 	s.buildItems()
 	s.rebuildVisible()
@@ -85,6 +92,27 @@ func NewSettings(cfg config.Config) Settings {
 }
 
 func (s *Settings) buildItems() {
+	var icsItems []settingItem
+	if s.vault != nil {
+		_ = filepath.Walk(s.vault.Root, func(p string, info os.FileInfo, err error) error {
+			if err == nil && !info.IsDir() && strings.HasSuffix(info.Name(), ".ics") {
+				isDisabled := false
+				for _, dc := range s.config.DisabledCalendars {
+					if dc == info.Name() { isDisabled = true; break }
+				}
+				icsItems = append(icsItems, settingItem{
+					label: "Show " + info.Name(),
+					key: "cal_" + info.Name(),
+					kind: "bool",
+					value: !isDisabled,
+					category: catFiles,
+					description: "Toggle calendar visibility",
+				})
+			}
+			return nil
+		})
+	}
+
 	s.items = []settingItem{
 		// ── Appearance ──
 		{label: "Theme", key: "theme", kind: "string", value: s.config.Theme, options: ThemeNames(), category: catAppearance, description: "color scheme palette"},
@@ -130,7 +158,7 @@ func (s *Settings) buildItems() {
 		{label: "Search Content by Default", key: "search_content", kind: "bool", value: s.config.SearchContentByDefault, category: catFiles, description: "full text search"},
 		{label: "Confirm Delete", key: "confirm_delete", kind: "bool", value: s.config.ConfirmDelete, category: catFiles, description: "ask before removing"},
 		{label: "Auto Refresh Vault", key: "auto_refresh", kind: "bool", value: s.config.AutoRefresh, category: catFiles, description: "reload on external change"},
-		{label: "Disabled Calendars (CSV)", key: "disabled_calendars", kind: "string", value: strings.Join(s.config.DisabledCalendars, ","), category: catFiles, description: "Hide these ICS files (comma-separated)"},
+		
 
 		// ── Tasks ──
 		{label: "Task Filter Mode", key: "task_filter_mode", kind: "string", value: s.config.TaskFilterMode, options: []string{"all", "tagged", "folders"}, category: catTasks, description: "filter tasks: all checkboxes, only tagged, or by folder"},

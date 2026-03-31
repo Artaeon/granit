@@ -281,7 +281,7 @@ func NewModel(vaultPath string) (Model, error) {
 		config:         cfg,
 		focus:          focusSidebar,
 		commandPalette: NewCommandPalette(),
-		settings:       NewSettings(cfg),
+		settings:       NewSettings(cfg, v),
 		graphView:      NewGraphView(v, idx),
 		tagBrowser:     NewTagBrowser(v),
 		helpOverlay:    NewHelpOverlay(),

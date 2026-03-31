@@ -2895,67 +2895,64 @@ func (tm *TaskManager) eisenhowerQuadrants() [4][]Task {
 
 func (tm *TaskManager) renderEisenhowerView(b *strings.Builder, w int) {
 	q := tm.eisenhowerQuadrants()
-	quadLabels := [4]string{"DO (urgent+important)", "SCHEDULE (important)", "DELEGATE (urgent)", "ELIMINATE (neither)"}
+	quadLabels := [4]string{" DO (urgent+important) ", " SCHEDULE (important) ", " DELEGATE (urgent) ", " ELIMINATE (neither) "}
 	quadColors := [4]lipgloss.Color{red, blue, yellow, overlay0}
-	halfW := (w - 4) / 2
-	if halfW < 20 {
-		halfW = 20
-	}
-	maxItems := (tm.visibleHeight() - 4) / 2
-	if maxItems < 2 {
-		maxItems = 2
-	}
+	
+	colW := (w - 4) / 2
+	if colW < 20 { colW = 20 }
+	
+	visH := tm.visibleHeight()
+	maxItems := (visH - 8) / 2
+	if maxItems < 2 { maxItems = 2 }
 
-	for row := 0; row < 2; row++ {
-		// Header row
-		left := lipgloss.NewStyle().Foreground(quadColors[row*2]).Bold(true).Render("  " + quadLabels[row*2])
-		right := lipgloss.NewStyle().Foreground(quadColors[row*2+1]).Bold(true).Render("  " + quadLabels[row*2+1])
-		leftPad := halfW - lipgloss.Width(left)
-		if leftPad < 1 {
-			leftPad = 1
-		}
-		b.WriteString(left + strings.Repeat(" ", leftPad) + right + "\n")
+	var rows []string
+	for r := 0; r < 2; r++ {
+		var top, bottom strings.Builder
+		for c := 0; c < 2; c++ {
+			idx := r*2 + c
+			var build strings.Builder
+			
+			// Label
+			headerStyle := lipgloss.NewStyle().
+				Foreground(crust).
+				Background(quadColors[idx]).
+				Bold(true).
+				MarginBottom(1)
+			build.WriteString(headerStyle.Render(quadLabels[idx]) + "\n")
 
-		// Task rows
-		for i := 0; i < maxItems; i++ {
-			leftTask := ""
-			if i < len(q[row*2]) {
-				t := q[row*2][i]
-				leftTask = "  " + lipgloss.NewStyle().Foreground(quadColors[row*2]).Render(tmPriorityIcon(t.Priority)) +
-					" " + TruncateDisplay(tmCleanText(t.Text), halfW-6)
+			for i := 0; i < maxItems; i++ {
+				if i < len(q[idx]) {
+					t := q[idx][i]
+					taskStr := lipgloss.NewStyle().Foreground(quadColors[idx]).Render(tmPriorityIcon(t.Priority)) + " " + TruncateDisplay(tmCleanText(t.Text), colW-6)
+					build.WriteString(taskStr + "\n")
+				} else {
+					build.WriteString("\n")
+				}
 			}
-			rightTask := ""
-			if i < len(q[row*2+1]) {
-				t := q[row*2+1][i]
-				rightTask = "  " + lipgloss.NewStyle().Foreground(quadColors[row*2+1]).Render(tmPriorityIcon(t.Priority)) +
-					" " + TruncateDisplay(tmCleanText(t.Text), halfW-6)
+
+			if len(q[idx]) > maxItems {
+				build.WriteString(DimStyle.Render(fmt.Sprintf("+%d more", len(q[idx])-maxItems)) + "\n")
+			} else {
+				build.WriteString("\n")
 			}
-			leftPad2 := halfW - lipgloss.Width(leftTask)
-			if leftPad2 < 1 {
-				leftPad2 = 1
+
+			boxStyle := lipgloss.NewStyle().
+				Width(colW).
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(quadColors[idx]).
+				Padding(0, 1)
+
+			if c == 0 {
+				top.WriteString(boxStyle.Render(build.String()))
+			} else {
+				bottom.WriteString(boxStyle.Render(build.String()))
 			}
-			b.WriteString(leftTask + strings.Repeat(" ", leftPad2) + rightTask + "\n")
 		}
-		// Show overflow count
-		leftOver := ""
-		if len(q[row*2]) > maxItems {
-			leftOver = DimStyle.Render(fmt.Sprintf("  +%d more", len(q[row*2])-maxItems))
-		}
-		rightOver := ""
-		if len(q[row*2+1]) > maxItems {
-			rightOver = DimStyle.Render(fmt.Sprintf("  +%d more", len(q[row*2+1])-maxItems))
-		}
-		if leftOver != "" || rightOver != "" {
-			lp := halfW - lipgloss.Width(leftOver)
-			if lp < 1 {
-				lp = 1
-			}
-			b.WriteString(leftOver + strings.Repeat(" ", lp) + rightOver + "\n")
-		}
-		if row == 0 {
-			b.WriteString(DimStyle.Render("  "+strings.Repeat("─", w-4)) + "\n")
-		}
+		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, top.String(), bottom.String()))
 	}
+	
+	b.WriteString(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	b.WriteString("\n")
 }
 
 func (tm *TaskManager) renderHelpOverlay(b *strings.Builder, w int) {
@@ -3194,9 +3191,9 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 					b.WriteString("\n")
 				}
 				if group == "overdue" {
-					b.WriteString("  " + lipgloss.NewStyle().Foreground(red).Bold(true).Render("OVERDUE"))
+					b.WriteString("  " + lipgloss.NewStyle().Foreground(crust).Background(red).Bold(true).Padding(0, 1).Render("OVERDUE"))
 				} else {
-					b.WriteString("  " + lipgloss.NewStyle().Foreground(green).Bold(true).Render("TODAY"))
+					b.WriteString("  " + lipgloss.NewStyle().Foreground(crust).Background(green).Bold(true).Padding(0, 1).Render("TODAY"))
 				}
 				b.WriteString("\n")
 				lastGroup = group
@@ -3215,7 +3212,7 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 				if tmIsToday(group) {
 					dayLabel += " (today)"
 				}
-				b.WriteString("  " + lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(dayLabel))
+				b.WriteString("  " + lipgloss.NewStyle().Foreground(crust).Background(lavender).Bold(true).Padding(0, 1).Render(dayLabel))
 				b.WriteString("\n")
 				lastGroup = group
 			}
@@ -3421,23 +3418,37 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		tagBadges += " " + lipgloss.NewStyle().Foreground(c).Render("#"+tag)
 	}
 
-	line := prefix + pinStr + noteStr + goalStr + selectStr + indentStr + collapseIndicator + blockedStr + checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
-	if tagBadges != "" {
-		line += tagBadges
-	}
-	if estimateBadge != "" {
-		line += " " + estimateBadge
-	}
-	if actualBadge != "" {
-		line += " " + actualBadge
-	}
-	if scheduleBadge != "" {
-		line += " " + scheduleBadge
-	}
-	if dueBadge != "" {
-		line += " " + dueBadge
-	}
-	line += " " + noteLabel
+leftSideTokens := []string{prefix + pinStr + noteStr + goalStr + selectStr + indentStr + collapseIndicator + blockedStr + checkbox, prioStyled, textStyle.Render(displayText)}
+        if tagBadges != "" {
+                leftSideTokens = append(leftSideTokens, tagBadges)
+        }
+        leftSide := strings.Join(leftSideTokens, " ")
+
+        rightSideTokens := []string{}
+        if estimateBadge != "" {
+                rightSideTokens = append(rightSideTokens, estimateBadge)
+        }
+        if actualBadge != "" {
+                rightSideTokens = append(rightSideTokens, actualBadge)
+        }
+        if scheduleBadge != "" {
+                rightSideTokens = append(rightSideTokens, scheduleBadge)
+        }
+        if dueBadge != "" {
+                rightSideTokens = append(rightSideTokens, dueBadge)
+        }
+        rightSideTokens = append(rightSideTokens, noteLabel)
+        rightSide := strings.Join(rightSideTokens, " ")
+
+        leftW := lipgloss.Width(leftSide)
+        rightW := lipgloss.Width(rightSide)
+        
+        spacing := w - leftW - rightW - 2
+        if spacing < 1 {
+                spacing = 1
+        }
+
+        line := leftSide + strings.Repeat(" ", spacing) + rightSide
 
 	if isSelected {
 		b.WriteString(lipgloss.NewStyle().
@@ -3723,62 +3734,57 @@ func (tm *TaskManager) renderKanbanView(b *strings.Builder, w int) {
 	colColors := []lipgloss.Color{overlay1, blue, peach, green}
 
 	colWidth := w / 4
-	if colWidth < 15 {
-		colWidth = 15
-	}
-
+	if colWidth < 20 { colWidth = 20 }
 	visH := tm.kanbanVisibleHeight()
 
-	// Render each column
 	var colViews []string
 	for c := 0; c < 4; c++ {
 		var cb strings.Builder
 		isActiveCol := c == tm.kanbanCol
 
-		// Column header
-		headerStyle := lipgloss.NewStyle().Foreground(colColors[c]).Bold(true)
-		countStr := fmt.Sprintf(" %d", len(cols[c]))
-		countStyle := lipgloss.NewStyle().Foreground(overlay0)
-		header := headerStyle.Render(colNames[c]) + countStyle.Render(countStr)
-		cb.WriteString(header)
-		cb.WriteString("\n")
-
-		// Separator
-		sepColor := overlay0
+		/* Header */
+		countStr := fmt.Sprintf(" %d ", len(cols[c]))
+		countStyle := lipgloss.NewStyle().Foreground(surface0).Background(base).Padding(0, 1).MarginLeft(1).Bold(true)
+		headerStyle := lipgloss.NewStyle().Foreground(colColors[c]).Bold(true).PaddingBottom(1)
+		
 		if isActiveCol {
-			sepColor = colColors[c]
+			countStyle = countStyle.Background(colColors[c]).Foreground(base)
 		}
-		cb.WriteString(lipgloss.NewStyle().Foreground(sepColor).Render(strings.Repeat("\u2500", colWidth-2)))
-		cb.WriteString("\n")
 
-		// Tasks
+		cb.WriteString(headerStyle.Render(colNames[c]) + countStyle.Render(countStr) + "\n")
+
+		/* Content */
 		if len(cols[c]) == 0 {
-			cb.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("(empty)"))
-			cb.WriteString("\n")
+			emptyBox := lipgloss.NewStyle().
+			    Width(colWidth - 4).
+			    Height(3).
+			    BorderStyle(lipgloss.RoundedBorder()).
+			    BorderForeground(surface0).
+			    Align(lipgloss.Center).
+			    Render("Empty")
+			cb.WriteString(emptyBox + "\n")
 		} else {
 			start := tm.kanbanScroll[c]
 			end := start + visH
-			if end > len(cols[c]) {
-				end = len(cols[c])
-			}
+			if end > len(cols[c]) { end = len(cols[c]) }
 			for i := start; i < end; i++ {
-				task := cols[c][i]
 				isSelected := isActiveCol && i == tm.kanbanCursor[c]
-				tm.renderKanbanCard(&cb, task, isSelected, colWidth-2)
+				tm.renderKanbanCard(&cb, cols[c][i], isSelected, colWidth-4)
 				cb.WriteString("\n")
 			}
-			// Scroll indicator
-			if len(cols[c]) > visH {
-				pos := fmt.Sprintf("%d/%d", tm.kanbanCursor[c]+1, len(cols[c]))
-				cb.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(pos))
-				cb.WriteString("\n")
+			if end < len(cols[c]) {
+				cb.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(fmt.Sprintf("\u2193 %d more", len(cols[c])-end)) + "\n")
 			}
 		}
 
-		colView := lipgloss.NewStyle().
-			Width(colWidth).
-			Render(cb.String())
-		colViews = append(colViews, colView)
+		colStyle := lipgloss.NewStyle().Width(colWidth - 2).Padding(0, 1)
+		if isActiveCol {
+			colStyle = colStyle.Border(lipgloss.NormalBorder(), false, true, false, true).BorderForeground(surface1).Padding(0, 0)
+		} else {
+		    colStyle = colStyle.Border(lipgloss.NormalBorder(), false, true, false, false).BorderForeground(surface0)
+		}
+
+		colViews = append(colViews, colStyle.Render(cb.String()))
 	}
 
 	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, colViews...))
@@ -3786,69 +3792,73 @@ func (tm *TaskManager) renderKanbanView(b *strings.Builder, w int) {
 }
 
 func (tm *TaskManager) renderKanbanCard(b *strings.Builder, task Task, isSelected bool, w int) {
-	// Checkbox
-	var checkbox string
-	if task.Done {
-		checkbox = lipgloss.NewStyle().Foreground(green).Render("[x]")
-	} else {
-		checkbox = lipgloss.NewStyle().Foreground(overlay0).Render("[ ]")
+	borderColor := surface0
+	if isSelected { borderColor = lavender }
+	
+	boxW := w
+	if boxW < 10 { boxW = 10 }
+
+	boxStyle := lipgloss.NewStyle().
+	    Border(lipgloss.RoundedBorder()).
+	    BorderForeground(borderColor).
+	    Width(boxW).
+	    Padding(0, 1)
+
+	if isSelected { 
+	    boxStyle = boxStyle.Background(surface0).BorderForeground(lavender) 
 	}
 
-	// Priority
+	var contentBuilder strings.Builder
+
+	/* Priority & Due Date */
 	prioIcon := tmPriorityIcon(task.Priority)
-	prioStyled := lipgloss.NewStyle().Foreground(tmPriorityColor(task.Priority)).Render(prioIcon)
-
-	// Task text
-	displayText := task.Text
-	displayText = tmDueDateRe.ReplaceAllString(displayText, "")
-	displayText = tmPrioHighestRe.ReplaceAllString(displayText, "")
-	displayText = tmPrioHighRe.ReplaceAllString(displayText, "")
-	displayText = tmPrioMedRe.ReplaceAllString(displayText, "")
-	displayText = tmPrioLowRe.ReplaceAllString(displayText, "")
-	displayText = tmEstimateRe.ReplaceAllString(displayText, "")
-	displayText = tmSnoozeRe.ReplaceAllString(displayText, "")
-	displayText = tmGoalIDRe.ReplaceAllString(displayText, "")
-	displayText = strings.TrimSpace(displayText)
-
-	maxTextW := w - 8
-	if maxTextW < 5 {
-		maxTextW = 5
-	}
-	runes := []rune(displayText)
-	if len(runes) > maxTextW {
-		displayText = string(runes[:maxTextW-1]) + "\u2026"
+	prioColor := tmPriorityColor(task.Priority)
+	if prioIcon != "" {
+		contentBuilder.WriteString(lipgloss.NewStyle().Foreground(prioColor).Render(prioIcon) + " ")
 	}
 
-	textStyle := lipgloss.NewStyle().Foreground(text)
-	if task.Done {
-		textStyle = lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true)
-	}
-
-	line := checkbox + " " + prioStyled + " " + textStyle.Render(displayText)
-
-	// Due date badge (compact)
 	if task.DueDate != "" {
 		dueLabel := tmFormatDue(task.DueDate)
-		var dueBadge string
-		if tmIsOverdue(task.DueDate) {
-			dueBadge = lipgloss.NewStyle().Foreground(red).Render(dueLabel)
-		} else if tmIsToday(task.DueDate) {
-			dueBadge = lipgloss.NewStyle().Foreground(yellow).Render(dueLabel)
-		} else {
-			dueBadge = lipgloss.NewStyle().Foreground(overlay0).Render(dueLabel)
-		}
-		line += " " + dueBadge
-	}
-
-	if isSelected {
-		prefix := lipgloss.NewStyle().Foreground(mauve).Render(ThemeAccentBar + " ")
-		b.WriteString(lipgloss.NewStyle().
-			Background(surface0).
-			Width(w).
-			Render(prefix + line))
+		dueColor := overlay0
+		if tmIsOverdue(task.DueDate) { dueColor = red } else if tmIsToday(task.DueDate) { dueColor = yellow }
+		contentBuilder.WriteString(lipgloss.NewStyle().Foreground(dueColor).Render("⏰ " + dueLabel))
 	} else {
-		b.WriteString("  " + line)
+	    contentBuilder.WriteString(lipgloss.NewStyle().Foreground(surface0).Render("⏰ No Date"))
 	}
+	contentBuilder.WriteString("\n")
+
+	/* Title */
+	displayText := tmCleanText(task.Text)
+	runes := []rune(displayText)
+	maxTextW := boxW - 2 
+	if maxTextW < 1 { maxTextW = 1 }
+	if len(runes) > maxTextW*2 { displayText = string(runes[:maxTextW*2-3]) + "..." }
+	
+	textStyle := lipgloss.NewStyle().Foreground(text).Width(maxTextW)
+	if task.Done { textStyle = textStyle.Foreground(overlay0).Strikethrough(true) }
+	
+	contentBuilder.WriteString(textStyle.Render(displayText) + "\n")
+	
+	/* Status & Badge */
+	checkbox := lipgloss.NewStyle().Foreground(overlay0).Render("[ ]")
+	if task.Done { checkbox = lipgloss.NewStyle().Foreground(green).Render("[✓]") }
+	
+	projectBadge := ""
+	if task.Project != "" { projectBadge = lipgloss.NewStyle().Foreground(blue).Render("#" + task.Project) }
+
+    bottomLine := checkbox
+    if projectBadge != "" {
+        padLen := maxTextW - lipgloss.Width(checkbox) - lipgloss.Width(projectBadge)
+        if padLen > 0 {
+            bottomLine += strings.Repeat(" ", padLen) + projectBadge
+        } else {
+            bottomLine += " " + projectBadge
+        }
+    }
+	contentBuilder.WriteString(bottomLine)
+
+	b.WriteString(boxStyle.Render(contentBuilder.String()))
 }
+
 // UI configuration updated.
 // Enhanced UI for Tasks
