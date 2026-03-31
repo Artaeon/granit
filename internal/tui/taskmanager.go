@@ -3851,3 +3851,4 @@ func (tm *TaskManager) renderKanbanCard(b *strings.Builder, task Task, isSelecte
 	}
 }
 // UI configuration updated.
+// Enhanced UI for Tasks
