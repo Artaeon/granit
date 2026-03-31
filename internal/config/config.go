@@ -15,6 +15,10 @@ type Config struct {
 	Theme    string `json:"theme"`
 	ShowHelp bool   `json:"show_help"`
 
+	// Calendar
+	DisabledCalendars []string `json:"disabled_calendars"`
+
+
 	// Vault settings
 	DailyNotesFolder    string   `json:"daily_notes_folder"`
 	DailyNoteTemplate   string   `json:"daily_note_template"`

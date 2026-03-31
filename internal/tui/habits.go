@@ -1050,25 +1050,24 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 		checked := ht.isTodayCompleted(h.Name)
 		checkbox := lipgloss.NewStyle().Foreground(yellow).Render("[ ]")
 		if checked {
-			checkbox = lipgloss.NewStyle().Foreground(green).Render("[x]")
-		}
+                        checkbox = lipgloss.NewStyle().Foreground(green).Bold(true).Render("[✓]")
+                }
 
-		nameW := innerW - 40
-		if nameW < 10 {
-			nameW = 10
-		}
-		name := TruncateDisplay(h.Name, nameW)
+                nameW := innerW - 40
+                if nameW < 10 {
+                        nameW = 10
+                }
+                name := TruncateDisplay(h.Name, nameW)
 
-		cursor := "  "
-		nameStyle := labelStyle
-		if i == ht.cursor {
-			cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("> ")
-			nameStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
-		}
+                cursor := "  "
+                nameStyle := labelStyle
+                if i == ht.cursor {
+                        cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▶ ")
+                        nameStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
+                }
 
-		streak := ht.streakBlocks(h.Name)
-		streakNum := streakStyle.Render(fmt.Sprintf(" %dd", h.Streak))
-
+                streak := ht.streakBlocks(h.Name)
+                streakNum := streakStyle.Render(fmt.Sprintf(" %d🔥", h.Streak))
 		line := cursor + checkbox + " " + nameStyle.Render(PadRight(name, nameW)) + " " + streak + streakNum
 		lines = append(lines, line)
 	}
@@ -1129,12 +1128,12 @@ func (ht HabitTracker) viewGoals(innerW int) string {
 			for mi, ms := range g.Milestones {
 				check := lipgloss.NewStyle().Foreground(yellow).Render("[ ]")
 				if ms.Done {
-					check = lipgloss.NewStyle().Foreground(green).Render("[x]")
+					check = lipgloss.NewStyle().Foreground(green).Bold(true).Render("[✓]")
 				}
 				msCursor := "      "
 				msStyle := labelStyle
 				if mi == ht.milestoneCur {
-					msCursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("    > ")
+					msCursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("    ▶ ")
 					msStyle = lipgloss.NewStyle().Foreground(peach)
 				}
 				lines = append(lines, msCursor+check+" "+msStyle.Render(ms.Text))
