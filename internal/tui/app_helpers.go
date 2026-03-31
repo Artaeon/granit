@@ -612,6 +612,17 @@ func (m *Model) loadCalendarEvents() {
 			return nil
 		}
 		if strings.HasSuffix(info.Name(), ".ics") {
+			disabled := false
+			for _, dc := range m.config.DisabledCalendars {
+				dc = strings.TrimSpace(dc)
+				if dc != "" && (strings.Contains(info.Name(), dc) || strings.Contains(path, dc)) {
+					disabled = true
+					break
+				}
+			}
+			if disabled {
+				return nil
+			}
 			if icsEvts, err := ParseICSFile(path); err == nil {
 				calEvents = append(calEvents, icsEvts...)
 			}
