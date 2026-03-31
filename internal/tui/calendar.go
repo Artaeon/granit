@@ -645,8 +645,8 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			c.cursor = c.today
 			c.syncViewing()
 
-		case "w":
-			// Cycle through month -> week -> 3day -> 1day -> agenda
+		case "w", "v":
+			// Cycle through month -> week -> 3day -> 1day -> agenda -> year -> month
 			switch c.view {
 			case calViewMonth:
 				c.view = calViewWeek
@@ -660,8 +660,28 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				c.agendaCursor = 0
 				c.rebuildAgendaItems()
 			case calViewAgenda:
-				c.view = calViewMonth
+				c.view = calViewYear
 			case calViewYear:
+				c.view = calViewMonth
+			}
+
+		case "W", "V":
+			// Cycle backwards
+			switch c.view {
+			case calViewMonth:
+				c.view = calViewYear
+			case calViewYear:
+				c.view = calViewAgenda
+				c.agendaScroll = 0
+				c.agendaCursor = 0
+				c.rebuildAgendaItems()
+			case calViewAgenda:
+				c.view = calView1Day
+			case calView1Day:
+				c.view = calView3Day
+			case calView3Day:
+				c.view = calViewWeek
+			case calViewWeek:
 				c.view = calViewMonth
 			}
 
@@ -776,7 +796,7 @@ func (c Calendar) viewMonth() string {
 	// Title
 	titleIcon := lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar)
 	titleText := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" Calendar")
-	viewLabel := DimStyle.Render(" [month]")
+	viewLabel := DimStyle.Render(" [Month] (press 'v' to change view)")
 	b.WriteString("  " + titleIcon + titleText + viewLabel)
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("─", width-8)))

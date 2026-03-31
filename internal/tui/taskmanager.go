@@ -2422,6 +2422,9 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case "tab":
 		tm.view = (tm.view + 1) % 7
 		tm.switchView()
+	case "shift+tab", "backtab":
+		tm.view = (tm.view - 1 + 7) % 7
+		tm.switchView()
 
 	// Navigation
 	case "up", "k":
@@ -2962,7 +2965,7 @@ func (tm *TaskManager) renderHelpOverlay(b *strings.Builder, w int) {
 	sectionStyle := lipgloss.NewStyle().Foreground(yellow).Bold(true)
 
 	b.WriteString("\n")
-	b.WriteString("  " + titleStyle.Render("Task Manager Keyboard Shortcuts") + "\n\n")
+	b.WriteString("  " + titleStyle.Render("📋 Task Manager Keyboard Shortcuts") + "\n\n")
 
 	sections := []struct {
 		title string
