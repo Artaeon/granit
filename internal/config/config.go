@@ -119,6 +119,7 @@ func DefaultConfig() Config {
 		},
 		Theme:                  "catppuccin-mocha",
 		ShowHelp:               true,
+		GitAutoSync:            true,
 		DailyNotesFolder:       "",
 		DailyNoteTemplate:      "",
 		DailyRecurringTasks:    []string{},

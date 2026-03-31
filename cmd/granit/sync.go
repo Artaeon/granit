@@ -23,13 +23,27 @@ func runSync(args []string) {
 		exitError("Not a valid directory: %s", vaultPath)
 	}
 
-	// Check if it's a git repo
-	if !isGitRepo(vaultPath) {
-		exitError("Not a git repository: %s\nInitialize with: git -C %s init", vaultPath, vaultPath)
-	}
-
 	quiet := hasFlag("--quiet") || hasFlag("-q")
 	dryRun := hasFlag("--dry-run")
+
+	// Auto-initialize git if not a repo
+	if !isGitRepo(vaultPath) {
+		if !quiet {
+			fmt.Print("  Initializing git repository...")
+		}
+		if !dryRun {
+			if _, err := gitCmd(vaultPath, "init"); err != nil {
+				exitError("Failed to initialize git: %v", err)
+			}
+			gitignorePath := vaultPath + "/.gitignore"
+			if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
+				_ = os.WriteFile(gitignorePath, []byte(".granit/\n.DS_Store\n*.swp\n*.swo\n*~\n"), 0644)
+			}
+		}
+		if !quiet {
+			fmt.Println(" done.")
+		}
+	}
 
 	if !quiet {
 		fmt.Printf("Syncing vault: %s\n", vaultPath)

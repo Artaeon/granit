@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -107,8 +108,20 @@ func (a *AutoSync) PullOnOpen() tea.Cmd {
 // CommitAndPush stages all changes, commits with a timestamped message,
 // and pushes to the remote. Returns a tea.Cmd that runs asynchronously.
 func (a *AutoSync) CommitAndPush() tea.Cmd {
-	if !a.enabled || !a.isGitRepo() {
+	if !a.enabled {
 		return nil
+	}
+	if !a.isGitRepo() {
+		// Auto-init git for the vault
+		cmd := exec.Command("git", "-C", a.vaultPath, "init")
+		if err := cmd.Run(); err != nil {
+			return nil
+		}
+		// Create .gitignore if missing
+		gitignorePath := a.vaultPath + "/.gitignore"
+		if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
+			_ = os.WriteFile(gitignorePath, []byte(".granit/\n.DS_Store\n*.swp\n*.swo\n*~\n"), 0644)
+		}
 	}
 	vaultPath := a.vaultPath
 	return func() tea.Msg {
