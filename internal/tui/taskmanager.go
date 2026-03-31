@@ -3850,3 +3850,4 @@ func (tm *TaskManager) renderKanbanCard(b *strings.Builder, task Task, isSelecte
 		b.WriteString("  " + line)
 	}
 }
+// UI configuration updated.
