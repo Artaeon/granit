@@ -850,9 +850,9 @@ func (s Settings) View() string {
 			continue
 		case "bool":
 			if item.value.(bool) {
-				valueStr = lipgloss.NewStyle().Foreground(green).Render("● ON")
+				valueStr = lipgloss.NewStyle().Foreground(green).Render("[ ON ]")
 			} else {
-				valueStr = lipgloss.NewStyle().Foreground(red).Render("○ OFF")
+				valueStr = lipgloss.NewStyle().Foreground(red).Render("[ OFF ]")
 			}
 			// Show reset indicator if value differs from default
 			defVal := s.defaultValueForKey(item.key)
@@ -913,9 +913,9 @@ func (s Settings) View() string {
 
 		prefix := "  "
 		if isSelected {
-			prefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("> ")
+			prefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▶ ")
 		}
-		line := prefix + label + strings.Repeat(" ", padding) + valueStr
+		line := prefix + label + strings.Repeat(" ", padding+4) + valueStr
 
 		if isSelected {
 			b.WriteString(lipgloss.NewStyle().

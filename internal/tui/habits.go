@@ -1063,7 +1063,7 @@ func (ht HabitTracker) viewHabits(innerW int) string {
                 nameStyle := labelStyle
                 if i == ht.cursor {
                         cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▶ ")
-                        nameStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
+                        nameStyle = lipgloss.NewStyle().Foreground(peach).Bold(true).Underline(true)
                 }
 
                 streak := ht.streakBlocks(h.Name)
@@ -1106,7 +1106,7 @@ func (ht HabitTracker) viewGoals(innerW int) string {
 		cursor := "  "
 		nameStyle := sectionStyle
 		if ci == ht.cursor && ht.goalExpanded < 0 {
-			cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("> ")
+			cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▶ ")
 			nameStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
 		}
 
@@ -1122,21 +1122,30 @@ func (ht HabitTracker) viewGoals(innerW int) string {
 			dateStyle.Render("Target: "+g.TargetDate),
 			bar,
 			lipgloss.NewStyle().Foreground(peach).Bold(true).Render(fmt.Sprintf("%d%%", prog))))
-
 		// Show milestones if expanded
 		if ht.goalExpanded == gi {
 			for mi, ms := range g.Milestones {
-				check := lipgloss.NewStyle().Foreground(yellow).Render("[ ]")
-				if ms.Done {
-					check = lipgloss.NewStyle().Foreground(green).Bold(true).Render("[✓]")
-				}
-				msCursor := "      "
+				check := lipgloss.NewStyle().Foreground(overlay1).Render("○")
 				msStyle := labelStyle
-				if mi == ht.milestoneCur {
-					msCursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("    ▶ ")
-					msStyle = lipgloss.NewStyle().Foreground(peach)
+				if ms.Done {
+					check = lipgloss.NewStyle().Foreground(green).Bold(true).Render("●")
+					msStyle = lipgloss.NewStyle().Foreground(surface1).Strikethrough(true)
 				}
-				lines = append(lines, msCursor+check+" "+msStyle.Render(ms.Text))
+				treePrefix := lipgloss.NewStyle().Foreground(surface2).Render("    ├─")
+				if mi == len(g.Milestones)-1 {
+					treePrefix = lipgloss.NewStyle().Foreground(surface2).Render("    └─")
+				}
+				msCursor := "  "
+				msStyle = labelStyle
+				if mi == ht.milestoneCur {
+					msCursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▶ ")
+					if ms.Done {
+						msStyle = lipgloss.NewStyle().Foreground(peach).Strikethrough(true)
+					} else {
+						msStyle = lipgloss.NewStyle().Foreground(peach).Bold(true)
+					}
+				}
+				lines = append(lines, treePrefix+" "+msCursor+check+" "+msStyle.Render(ms.Text))
 			}
 		}
 		lines = append(lines, "")
@@ -1310,6 +1319,6 @@ func habitProgressBar(pct int, width int) string {
 	empty := width - filled
 	bar := lipgloss.NewStyle().Foreground(green).Render(strings.Repeat("█", filled)) +
 		lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("░", empty))
-	return "[" + bar + "]"
+	return bar
 }
 
