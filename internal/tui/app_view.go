@@ -1042,14 +1042,28 @@ func (m Model) overlayTopRight(bg, overlay string) string {
 	result := make([]string, len(bgLines))
 	copy(result, bgLines)
 
+	shadowColor := lipgloss.Color("#11111B")
+	shadowStyle := lipgloss.NewStyle().Background(shadowColor).Foreground(shadowColor)
+
 	pad := strings.Repeat(" ", startX)
 	for i, overlayLine := range overlayLines {
 		y := startY + i
 		if y >= len(result) {
 			break
 		}
-		right := ansiSkipCols(result[y], startX+lipgloss.Width(overlayLine))
-		result[y] = pad + overlayLine + right
+		overlayW := lipgloss.Width(overlayLine)
+		rightOffset := startX + overlayW
+		rightFill := "  "
+		right := ansiSkipCols(result[y], rightOffset+2)
+		result[y] = pad + overlayLine + shadowStyle.Render(rightFill) + right
+	}
+	
+	bottomY := startY + len(overlayLines)
+	if bottomY < len(result) {
+		bottomPad := strings.Repeat(" ", startX+2)
+		bottomFill := strings.Repeat(" ", overlayWidth)
+		right := ansiSkipCols(result[bottomY], startX+2+overlayWidth)
+		result[bottomY] = bottomPad + shadowStyle.Render(bottomFill) + right
 	}
 
 	return strings.Join(result, "\n")
@@ -1248,7 +1262,7 @@ func (m Model) renderSearchOverlay() string {
 	}
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(mauve).
 		Padding(1, 2).
 		Width(width).
@@ -1279,7 +1293,7 @@ func (m Model) renderNewNoteOverlay() string {
 	b.WriteString(DimStyle.Render("  Enter to create, Esc to cancel"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(green).
 		Padding(1, 2).
 		Width(width).
@@ -1310,7 +1324,7 @@ func (m Model) renderExtractNoteOverlay() string {
 	b.WriteString(DimStyle.Render("  Enter to extract, Esc to cancel"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(blue).
 		Padding(1, 2).
 		Width(width).
@@ -1337,7 +1351,7 @@ func (m Model) renderConfirmDeleteOverlay() string {
 	b.WriteString(DimStyle.Render("  y/Enter: confirm  n/Esc: cancel"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(red).
 		Padding(1, 2).
 		Width(width).
@@ -1365,7 +1379,7 @@ func (m Model) renderPendingReloadOverlay() string {
 	b.WriteString(DimStyle.Render("  y: reload (discard changes)  n/Esc: keep editing"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(peach).
 		Padding(1, 2).
 		Width(width).
@@ -1612,7 +1626,7 @@ func (m Model) renderNewFolderOverlay() string {
 	b.WriteString(DimStyle.Render("  Use / for nested folders (e.g. projects/web)"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(peach).
 		Padding(1, 2).
 		Width(width).
@@ -1675,7 +1689,7 @@ func (m Model) renderMoveFileOverlay() string {
 	b.WriteString(DimStyle.Render("  Enter: move here  Esc: cancel"))
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(blue).
 		Padding(1, 2).
 		Width(width).
@@ -1709,14 +1723,28 @@ func (m Model) overlayCenter(bg, overlay string) string {
 	result := make([]string, len(bgLines))
 	copy(result, bgLines)
 
+	shadowColor := lipgloss.Color("#11111B")
+	shadowStyle := lipgloss.NewStyle().Background(shadowColor).Foreground(shadowColor)
+
 	pad := strings.Repeat(" ", startX)
 	for i, overlayLine := range overlayLines {
 		y := startY + i
 		if y >= len(result) {
 			break
 		}
-		right := ansiSkipCols(result[y], startX+lipgloss.Width(overlayLine))
-		result[y] = pad + overlayLine + right
+		overlayW := lipgloss.Width(overlayLine)
+		rightOffset := startX + overlayW
+		rightFill := "  "
+		right := ansiSkipCols(result[y], rightOffset+2)
+		result[y] = pad + overlayLine + shadowStyle.Render(rightFill) + right
+	}
+	
+	bottomY := startY + len(overlayLines)
+	if bottomY < len(result) {
+		bottomPad := strings.Repeat(" ", startX+2)
+		bottomFill := strings.Repeat(" ", overlayWidth)
+		right := ansiSkipCols(result[bottomY], startX+2+overlayWidth)
+		result[bottomY] = bottomPad + shadowStyle.Render(bottomFill) + right
 	}
 
 	return strings.Join(result, "\n")

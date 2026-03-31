@@ -581,10 +581,11 @@ func (cp CommandPalette) View() string {
 	}
 
 	border := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
+		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 1).
-		Width(width)
+		Width(width).
+		Background(base)
 
 	return border.Render(b.String())
 }
