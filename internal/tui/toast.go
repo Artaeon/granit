@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -94,15 +93,23 @@ func (t *Toast) HasItems() bool {
 	return len(t.items) > 0
 }
 
+func toastStyle(level ToastLevel) (icon string, color lipgloss.Color) {
+	switch level {
+	case ToastSuccess:
+		return "✓", green
+	case ToastWarning:
+		return "⚠", yellow
+	case ToastError:
+		return "✗", red
+	default:
+		return "ℹ", blue
+	}
+}
+
 // View renders the toast notifications as a vertical stack.
 func (t *Toast) View() string {
 	if len(t.items) == 0 {
 		return ""
-	}
-
-	maxWidth := 50
-	if t.width > 0 && t.width/3 > maxWidth {
-		maxWidth = t.width / 3
 	}
 
 	var lines []string
@@ -113,6 +120,7 @@ func (t *Toast) View() string {
 	}
 
 	for _, item := range t.items[start:] {
+		// ensure accent color and icon matches toast type
 		icon, accentColor := toastStyle(item.Level)
 
 		iconStyled := lipgloss.NewStyle().
@@ -122,34 +130,32 @@ func (t *Toast) View() string {
 
 		msgStyled := lipgloss.NewStyle().
 			Foreground(text).
-			Render(" " + item.Message)
+			Render(item.Message)
 
-		content := " " + iconStyled + msgStyled + " "
+		timeStyled := lipgloss.NewStyle().
+			Foreground(surface2).
+			Render("now")
 
-		border := lipgloss.NewStyle().
-			BorderStyle(PanelBorder).
+		content := lipgloss.JoinHorizontal(lipgloss.Left,
+			iconStyled,
+			"  ",
+			msgStyled,
+			"  ",
+			timeStyled,
+		)
+
+		toastBox := lipgloss.NewStyle().
+			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(accentColor).
 			Background(mantle).
 			Padding(0, 1).
-			MaxWidth(maxWidth)
+			MarginBottom(1).
+			Render(content)
 
-		lines = append(lines, border.Render(content))
+		lines = append(lines, toastBox)
 	}
 
-	return strings.Join(lines, "\n")
-}
-
-func toastStyle(level ToastLevel) (icon string, color lipgloss.Color) {
-	switch level {
-	case ToastSuccess:
-		return "OK", green
-	case ToastWarning:
-		return "!!", yellow
-	case ToastError:
-		return "XX", red
-	default:
-		return ">>", blue
-	}
+	return lipgloss.JoinVertical(lipgloss.Right, lines...)
 }
 
 func (t *Toast) expireAfter(d time.Duration) tea.Cmd {
