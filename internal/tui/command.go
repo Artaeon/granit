@@ -488,7 +488,6 @@ func (cp CommandPalette) View() string {
 			shortcutStr := ""
 			if cmd.Shortcut != "" { shortcutStr = " " + cmd.Shortcut + " " }
 
-			// Convert to rune slice for safe slicing
 			descRunes := []rune(" - " + cmd.Desc)
 			leftBase := icon + cmd.Label
 			leftBaseW := lipgloss.Width(leftBase)
@@ -525,8 +524,7 @@ func (cp CommandPalette) View() string {
 				
 				rowContents := leftCol + strings.Repeat(" ", pad) + rightCol
 				rowStyle := lipgloss.NewStyle().
-					Background(surface0).
-					Width(innerW)
+					Background(surface0)
 				b.WriteString(rowStyle.Render(rowContents) + "\n")
 			} else {
 				leftCol := "   " + lipgloss.NewStyle().Foreground(overlay0).Render(icon)
@@ -544,8 +542,7 @@ func (cp CommandPalette) View() string {
 				if pad < 0 { pad = 0 }
 				
 				rowContents := leftCol + strings.Repeat(" ", pad) + rightCol
-				rowStyle := lipgloss.NewStyle().Width(innerW)
-				b.WriteString(rowStyle.Render(rowContents) + "\n")
+				b.WriteString(rowContents + "\n")
 			}
 		}
 
