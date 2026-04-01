@@ -63,12 +63,15 @@ type AIProjectPlanner struct {
 	inputFocus int // 0=name, 1=desc
 
 	// AI config
-	provider  string
-	model     string
-	ollamaURL string
-	apiKey    string
-	nousURL   string
-	nousAPIKey string
+	provider      string
+	model         string
+	ollamaURL     string
+	apiKey        string
+	nousURL       string
+	nousAPIKey    string
+	nerveBinary   string
+	nerveModel    string
+	nerveProvider string
 	vaultRoot  string
 	vaultTitles []string
 
@@ -106,7 +109,7 @@ func (ap *AIProjectPlanner) SetSize(w, h int) {
 // Open activates the overlay.
 func (ap *AIProjectPlanner) Open(vaultRoot string, vaultTitles []string,
 	provider, model, ollamaURL, apiKey, nousURL, nousAPIKey string,
-	projects []Project, goals []Goal) {
+	projects []Project, goals []Goal, nerveOpts ...string) {
 	ap.active = true
 	ap.state = plannerInput
 	ap.nameInput = ""
@@ -135,6 +138,15 @@ func (ap *AIProjectPlanner) Open(vaultRoot string, vaultTitles []string,
 		ap.nousURL = "http://localhost:3333"
 	}
 	ap.nousAPIKey = nousAPIKey
+	if len(nerveOpts) > 0 {
+		ap.nerveBinary = nerveOpts[0]
+	}
+	if len(nerveOpts) > 1 {
+		ap.nerveModel = nerveOpts[1]
+	}
+	if len(nerveOpts) > 2 {
+		ap.nerveProvider = nerveOpts[2]
+	}
 }
 
 // Close deactivates the overlay.
@@ -357,6 +369,17 @@ func aiPlannerNous(nousURL, nousAPIKey, prompt string) tea.Cmd {
 	return func() tea.Msg {
 		client := NewNousClient(nousURL, nousAPIKey)
 		resp, err := client.Chat(prompt)
+		if err != nil {
+			return aiPlannerResultMsg{err: err}
+		}
+		return aiPlannerResultMsg{response: resp}
+	}
+}
+
+func aiPlannerNerve(binary, model, provider, prompt string) tea.Cmd {
+	return func() tea.Msg {
+		client := NewNerveClient(binary, model, provider)
+		resp, err := client.Chat("", prompt, 120*time.Second)
 		if err != nil {
 			return aiPlannerResultMsg{err: err}
 		}
@@ -796,6 +819,11 @@ func (ap AIProjectPlanner) startGeneration() (AIProjectPlanner, tea.Cmd) {
 	case "nous":
 		return ap, tea.Batch(
 			aiPlannerNous(ap.nousURL, ap.nousAPIKey, prompt),
+			aiPlannerTickCmd(),
+		)
+	case "nerve":
+		return ap, tea.Batch(
+			aiPlannerNerve(ap.nerveBinary, ap.nerveModel, ap.nerveProvider, prompt),
 			aiPlannerTickCmd(),
 		)
 	case "claude":

@@ -72,12 +72,15 @@ type VaultRefactor struct {
 	allPaths []string
 
 	// AI config
-	provider   string
-	model      string
-	ollamaURL  string
-	apiKey     string
-	nousURL    string
-	nousAPIKey string
+	provider      string
+	model         string
+	ollamaURL     string
+	apiKey        string
+	nousURL       string
+	nousAPIKey    string
+	nerveBinary   string
+	nerveModel    string
+	nerveProvider string
 
 	// result to be consumed by app
 	resultPlan  string
@@ -118,6 +121,15 @@ func (vr *VaultRefactor) SetConfig(provider, model, ollamaURL, apiKey string, no
 	}
 	if len(nousOpts) > 1 {
 		vr.nousAPIKey = nousOpts[1]
+	}
+	if len(nousOpts) > 2 {
+		vr.nerveBinary = nousOpts[2]
+	}
+	if len(nousOpts) > 3 {
+		vr.nerveModel = nousOpts[3]
+	}
+	if len(nousOpts) > 4 {
+		vr.nerveProvider = nousOpts[4]
 	}
 }
 
@@ -229,6 +241,9 @@ func (vr *VaultRefactor) startRefactor() tea.Cmd {
 	apiKey := vr.apiKey
 	nousURL := vr.nousURL
 	nousAPIKey := vr.nousAPIKey
+	nerveBinary := vr.nerveBinary
+	nerveModel := vr.nerveModel
+	nerveProvider := vr.nerveProvider
 
 	return func() tea.Msg {
 		switch provider {
@@ -237,6 +252,10 @@ func (vr *VaultRefactor) startRefactor() tea.Cmd {
 		case "nous":
 			client := NewNousClient(nousURL, nousAPIKey)
 			resp, err := client.Chat(prompt)
+			return vaultRefactorResultMsg{plan: resp, err: err}
+		case "nerve":
+			client := NewNerveClient(nerveBinary, nerveModel, nerveProvider)
+			resp, err := client.Chat("You are a knowledge management expert that helps organize note vaults. Be precise and follow the output format exactly.", prompt, 180*time.Second)
 			return vaultRefactorResultMsg{plan: resp, err: err}
 		default:
 			return doRefactorOllama(ollamaURL, model, prompt)

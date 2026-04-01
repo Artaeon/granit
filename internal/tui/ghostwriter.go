@@ -40,12 +40,15 @@ type GhostWriter struct {
 	enabled bool
 
 	// AI config
-	provider   string
-	model      string
-	ollamaURL  string
-	apiKey     string
-	nousURL    string
-	nousAPIKey string
+	provider      string
+	model         string
+	ollamaURL     string
+	apiKey        string
+	nousURL       string
+	nousAPIKey    string
+	nerveBinary   string
+	nerveModel    string
+	nerveProvider string
 
 	// State
 	suggestion string    // the current ghost text suggestion
@@ -115,6 +118,15 @@ func (gw *GhostWriter) SetConfig(provider, model, ollamaURL, apiKey string, nous
 	}
 	if len(nousOpts) > 1 {
 		gw.nousAPIKey = nousOpts[1]
+	}
+	if len(nousOpts) > 2 {
+		gw.nerveBinary = nousOpts[2]
+	}
+	if len(nousOpts) > 3 {
+		gw.nerveModel = nousOpts[3]
+	}
+	if len(nousOpts) > 4 {
+		gw.nerveProvider = nousOpts[4]
 	}
 }
 
@@ -375,6 +387,9 @@ func (gw *GhostWriter) requestCompletion(context string) tea.Cmd {
 
 	nousURL := gw.nousURL
 	nousAPIKey := gw.nousAPIKey
+	nerveBinary := gw.nerveBinary
+	nerveModel := gw.nerveModel
+	nerveProvider := gw.nerveProvider
 
 	return func() tea.Msg {
 		var raw string
@@ -385,6 +400,8 @@ func (gw *GhostWriter) requestCompletion(context string) tea.Cmd {
 			raw, err = ghostCallOpenAI(apiKey, model, context, maxTokens)
 		case "nous":
 			raw, err = ghostCallNous(nousURL, nousAPIKey, context)
+		case "nerve":
+			raw, err = ghostCallNerve(nerveBinary, nerveModel, nerveProvider, context)
 		default: // "ollama"
 			raw, err = ghostCallOllama(ollamaURL, model, context, maxTokens)
 		}
@@ -505,6 +522,16 @@ func ghostCallOpenAI(apiKey, model, context string, maxTokens int) (string, erro
 	}
 
 	return oaiResp.Choices[0].Message.Content, nil
+}
+
+func ghostCallNerve(binary, model, provider, context string) (string, error) {
+	client := NewNerveClient(binary, model, provider)
+	prompt := "Continue the following text naturally. Only output the continuation, no explanation.\n\n" + context
+	resp, err := client.Chat("", prompt, 30*time.Second)
+	if err != nil {
+		return "", fmt.Errorf("Ghost Writer: %v", err)
+	}
+	return resp, nil
 }
 
 func ghostCallNous(url, apiKey, context string) (string, error) {

@@ -75,12 +75,15 @@ type AIChat struct {
 	input        string
 	scroll       int
 	loading      bool
-	provider     string // "ollama", "openai", or "nous"
-	model        string
-	ollamaURL    string
-	apiKey       string
-	nousURL      string
-	nousAPIKey   string
+	provider      string // "ollama", "openai", "nous", or "nerve"
+	model         string
+	ollamaURL     string
+	apiKey        string
+	nousURL       string
+	nousAPIKey    string
+	nerveBinary   string
+	nerveModel    string
+	nerveProvider string
 	noteContents map[string]string
 	maxContext   int
 
@@ -158,6 +161,15 @@ func (ac *AIChat) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts 
 	}
 	if len(nousOpts) > 1 {
 		ac.nousAPIKey = nousOpts[1]
+	}
+	if len(nousOpts) > 2 {
+		ac.nerveBinary = nousOpts[2]
+	}
+	if len(nousOpts) > 3 {
+		ac.nerveModel = nousOpts[3]
+	}
+	if len(nousOpts) > 4 {
+		ac.nerveProvider = nousOpts[4]
 	}
 }
 
@@ -468,6 +480,19 @@ func sendToNous(url, apiKey, userMsg string) tea.Cmd {
 	}
 }
 
+// sendToNerve creates a tea.Cmd that calls the nerve binary and returns an
+// aiChatResultMsg.
+func sendToNerve(binary, model, provider, userMsg string) tea.Cmd {
+	return func() tea.Msg {
+		client := NewNerveClient(binary, model, provider)
+		resp, err := client.Chat(aiChatSystemPrompt, userMsg, 120*time.Second)
+		if err != nil {
+			return aiChatResultMsg{err: err}
+		}
+		return aiChatResultMsg{response: resp}
+	}
+}
+
 // localChatFallback provides a keyword-based response when no AI provider
 // is available. It returns the matched note excerpts as the "answer".
 func localChatFallback(query string, usedNotes []string, contextText string) tea.Cmd {
@@ -583,6 +608,8 @@ func (ac AIChat) Update(msg tea.Msg) (AIChat, tea.Cmd) {
 				cmd = sendToOpenAI(ac.apiKey, ac.model, convMsgs, aiChatSystemPrompt)
 			case "nous":
 				cmd = sendToNous(ac.nousURL, ac.nousAPIKey, userMsg)
+			case "nerve":
+				cmd = sendToNerve(ac.nerveBinary, ac.nerveModel, ac.nerveProvider, userMsg)
 			case "local":
 				// Local fallback: return matched note excerpts directly.
 				cmd = localChatFallback(trimmed, usedNotes, contextText)

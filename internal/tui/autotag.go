@@ -24,12 +24,15 @@ type AutoTagger struct {
 	enabled bool
 
 	// AI config
-	provider   string
-	model      string
-	ollamaURL  string
-	apiKey     string
-	nousURL    string
-	nousAPIKey string
+	provider      string
+	model         string
+	ollamaURL     string
+	apiKey        string
+	nousURL       string
+	nousAPIKey    string
+	nerveBinary   string
+	nerveModel    string
+	nerveProvider string
 
 	// Existing tags in the vault for consistency
 	vaultTags []string
@@ -79,6 +82,15 @@ func (at *AutoTagger) SetConfig(provider, model, ollamaURL, apiKey string, nousO
 	if len(nousOpts) > 1 {
 		at.nousAPIKey = nousOpts[1]
 	}
+	if len(nousOpts) > 2 {
+		at.nerveBinary = nousOpts[2]
+	}
+	if len(nousOpts) > 3 {
+		at.nerveModel = nousOpts[3]
+	}
+	if len(nousOpts) > 4 {
+		at.nerveProvider = nousOpts[4]
+	}
 }
 
 // SetVaultTags provides the set of tags already present in the vault so the
@@ -112,6 +124,9 @@ func (at *AutoTagger) TagNote(content string) tea.Cmd {
 	apiKey := at.apiKey
 	nousURL := at.nousURL
 	nousAPIKey := at.nousAPIKey
+	nerveBinary := at.nerveBinary
+	nerveModel := at.nerveModel
+	nerveProvider := at.nerveProvider
 
 	return func() tea.Msg {
 		var response string
@@ -123,6 +138,9 @@ func (at *AutoTagger) TagNote(content string) tea.Cmd {
 		case "nous":
 			client := NewNousClient(nousURL, nousAPIKey)
 			response, err = client.Chat(systemPrompt + "\n\n" + userPrompt)
+		case "nerve":
+			client := NewNerveClient(nerveBinary, nerveModel, nerveProvider)
+			response, err = client.Chat(systemPrompt, userPrompt, 30*time.Second)
 		default: // "ollama"
 			response, err = atCallOllama(ollamaURL, model, systemPrompt, userPrompt)
 		}
@@ -350,12 +368,15 @@ type NoteChat struct {
 	loading     bool
 	loadingTick int
 
-	provider   string
-	model      string
-	ollamaURL  string
-	apiKey     string
-	nousURL    string
-	nousAPIKey string
+	provider      string
+	model         string
+	ollamaURL     string
+	apiKey        string
+	nousURL       string
+	nousAPIKey    string
+	nerveBinary   string
+	nerveModel    string
+	nerveProvider string
 }
 
 // NewNoteChat creates an empty NoteChat with sensible defaults.
@@ -422,6 +443,15 @@ func (nc *NoteChat) SetConfig(provider, model, ollamaURL, apiKey string, nousOpt
 	}
 	if len(nousOpts) > 1 {
 		nc.nousAPIKey = nousOpts[1]
+	}
+	if len(nousOpts) > 2 {
+		nc.nerveBinary = nousOpts[2]
+	}
+	if len(nousOpts) > 3 {
+		nc.nerveModel = nousOpts[3]
+	}
+	if len(nousOpts) > 4 {
+		nc.nerveProvider = nousOpts[4]
 	}
 }
 
@@ -547,6 +577,25 @@ func ncSendToNous(url, apiKey, systemPrompt string, history []noteChatMessage) t
 		}
 		client := NewNousClient(url, apiKey)
 		resp, err := client.Chat(prompt.String())
+		if err != nil {
+			return noteChatResultMsg{err: err}
+		}
+		return noteChatResultMsg{content: resp}
+	}
+}
+
+func ncSendToNerve(binary, model, provider, systemPrompt string, history []noteChatMessage) tea.Cmd {
+	return func() tea.Msg {
+		// Build combined user prompt from history
+		var userPrompt strings.Builder
+		for _, m := range history {
+			if m.Role == "system" {
+				continue
+			}
+			userPrompt.WriteString(m.Role + ": " + m.Content + "\n")
+		}
+		client := NewNerveClient(binary, model, provider)
+		resp, err := client.Chat(systemPrompt, userPrompt.String(), 120*time.Second)
 		if err != nil {
 			return noteChatResultMsg{err: err}
 		}
@@ -690,6 +739,8 @@ func (nc NoteChat) Update(msg tea.Msg) (NoteChat, tea.Cmd) {
 				cmd = ncSendToOpenAI(nc.apiKey, nc.model, systemPrompt, nc.messages)
 			case "nous":
 				cmd = ncSendToNous(nc.nousURL, nc.nousAPIKey, systemPrompt, nc.messages)
+			case "nerve":
+				cmd = ncSendToNerve(nc.nerveBinary, nc.nerveModel, nc.nerveProvider, systemPrompt, nc.messages)
 			default: // "ollama"
 				cmd = ncSendToOllama(nc.ollamaURL, nc.model, systemPrompt, nc.messages)
 			}

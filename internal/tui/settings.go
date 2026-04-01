@@ -136,7 +136,7 @@ func (s *Settings) buildItems() {
 		{label: "Inline Spell Check", key: "spell_check", kind: "bool", value: s.config.SpellCheck, category: catEditor, description: "highlight misspelled words"},
 
 		// ── AI ──
-		{label: "AI Provider", key: "ai_provider", kind: "string", value: s.config.AIProvider, options: []string{"local", "ollama", "openai", "nous"}, category: catAI, description: "language model backend"},
+		{label: "AI Provider", key: "ai_provider", kind: "string", value: s.config.AIProvider, options: []string{"local", "ollama", "openai", "nous", "nerve"}, category: catAI, description: "language model backend"},
 		{label: "Ollama Model", key: "ollama_model", kind: "string", value: s.config.OllamaModel, options: []string{"qwen2.5:0.5b", "qwen2.5:1.5b", "qwen2.5:3b", "phi3:mini", "phi3.5:3.8b", "gemma2:2b", "tinyllama", "llama3.2", "llama3.2:1b", "mistral", "gemma2"}, category: catAI, description: "local LLM model name"},
 		{label: "Ollama URL", key: "ollama_url", kind: "string", value: s.config.OllamaURL, category: catAI, description: "server endpoint address"},
 		{label: ">> Setup Ollama (install + model)", key: "setup_ollama", kind: "action", value: "run", category: catAI, description: "wizard install configure"},
@@ -144,6 +144,9 @@ func (s *Settings) buildItems() {
 		{label: "OpenAI Model", key: "openai_model", kind: "string", value: s.config.OpenAIModel, options: []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1-nano"}, category: catAI, description: "GPT model version"},
 		{label: "Nous URL", key: "nous_url", kind: "string", value: s.config.NousURL, category: catAI, description: "local Nous AI server endpoint"},
 		{label: "Nous API Key", key: "nous_api_key", kind: "string", value: s.config.NousAPIKey, category: catAI, description: "optional Nous authentication key"},
+		{label: "Nerve Binary", key: "nerve_binary", kind: "string", value: s.config.NerveBinary, category: catAI, description: "path to nerve chat binary"},
+		{label: "Nerve Model", key: "nerve_model", kind: "string", value: s.config.NerveModel, category: catAI, description: "model for nerve AI provider"},
+		{label: "Nerve Provider", key: "nerve_provider", kind: "string", value: s.config.NerveProvider, options: []string{"", "claude_code", "ollama", "openai", "openrouter", "copilot"}, category: catAI, description: "nerve internal AI backend"},
 		{label: "Background Bots (auto-analyze)", key: "background_bots", kind: "bool", value: s.config.BackgroundBots, category: catAI, description: "automatic analysis on save"},
 		{label: "Ghost Writer (AI completions)", key: "ghost_writer", kind: "bool", value: s.config.GhostWriter, category: catAI, description: "inline writing suggestions"},
 		{label: "Semantic Search (embedding index)", key: "semantic_search_enabled", kind: "bool", value: s.config.SemanticSearchEnabled, category: catAI, description: "background vector embedding index for meaning-based search"},
@@ -389,6 +392,12 @@ func (s *Settings) defaultValueForKey(key string) interface{} {
 		return def.NousURL
 	case "nous_api_key":
 		return def.NousAPIKey
+	case "nerve_binary":
+		return def.NerveBinary
+	case "nerve_model":
+		return def.NerveModel
+	case "nerve_provider":
+		return def.NerveProvider
 	case "background_bots":
 		return def.BackgroundBots
 	case "confirm_delete":
@@ -709,6 +718,12 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.NousURL = value.(string)
 	case "nous_api_key":
 		s.config.NousAPIKey = value.(string)
+	case "nerve_binary":
+		s.config.NerveBinary = value.(string)
+	case "nerve_model":
+		s.config.NerveModel = value.(string)
+	case "nerve_provider":
+		s.config.NerveProvider = value.(string)
 	case "background_bots":
 		s.config.BackgroundBots = value.(bool)
 	case "git_auto_sync":

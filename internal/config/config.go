@@ -52,13 +52,16 @@ type Config struct {
 	GitAutoSync     bool `json:"git_auto_sync"`
 
 	// AI / Bots
-	AIProvider  string `json:"ai_provider"`  // "local", "ollama", "openai", "nous"
+	AIProvider  string `json:"ai_provider"`  // "local", "ollama", "openai", "nous", "nerve"
 	OllamaModel string `json:"ollama_model"` // e.g. "qwen2.5:0.5b", "phi3:mini"
 	OllamaURL   string `json:"ollama_url"`   // e.g. "http://localhost:11434"
 	OpenAIKey   string `json:"openai_key"`   // API key for OpenAI
 	OpenAIModel string `json:"openai_model"` // e.g. "gpt-4o-mini", "gpt-4o"
 	NousURL     string `json:"nous_url"`     // e.g. "http://localhost:3333"
 	NousAPIKey  string `json:"nous_api_key"` // optional API key for Nous
+	NerveBinary string `json:"nerve_binary"` // path to nerve binary (default: "nerve")
+	NerveModel  string `json:"nerve_model"`  // model for nerve (e.g. "sonnet", "llama3.2")
+	NerveProvider string `json:"nerve_provider"` // nerve's internal provider (e.g. "ollama", "claude_code")
 	BackgroundBots        bool `json:"background_bots"`         // auto-analyze on save
 	AutoTag               bool `json:"auto_tag"`                // auto-tag notes on save
 	GhostWriter           bool `json:"ghost_writer"`            // inline AI writing suggestions
@@ -153,6 +156,9 @@ func DefaultConfig() Config {
 		OpenAIModel:            "gpt-4o-mini",
 		NousURL:                "http://localhost:3333",
 		NousAPIKey:             "",
+		NerveBinary:            "nerve",
+		NerveModel:             "",
+		NerveProvider:          "",
 		BackgroundBots:         false,
 		ShowHiddenFiles:        false,
 		SortBy:                 "name",

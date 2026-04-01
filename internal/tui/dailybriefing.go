@@ -88,12 +88,15 @@ type DailyBriefing struct {
 	todayPath   string   // path to today's daily note
 
 	// AI config
-	provider   string
-	model      string
-	ollamaURL  string
-	apiKey     string
-	nousURL    string
-	nousAPIKey string
+	provider      string
+	model         string
+	ollamaURL     string
+	apiKey        string
+	nousURL       string
+	nousAPIKey    string
+	nerveBinary   string
+	nerveModel    string
+	nerveProvider string
 
 	// result to write into daily note
 	resultContent string
@@ -135,6 +138,15 @@ func (db *DailyBriefing) SetConfig(provider, model, ollamaURL, apiKey string, no
 	}
 	if len(nousOpts) > 1 {
 		db.nousAPIKey = nousOpts[1]
+	}
+	if len(nousOpts) > 2 {
+		db.nerveBinary = nousOpts[2]
+	}
+	if len(nousOpts) > 3 {
+		db.nerveModel = nousOpts[3]
+	}
+	if len(nousOpts) > 4 {
+		db.nerveProvider = nousOpts[4]
 	}
 }
 
@@ -230,6 +242,9 @@ func (db *DailyBriefing) startBriefing() tea.Cmd {
 	apiKey := db.apiKey
 	nousURL := db.nousURL
 	nousAPIKey := db.nousAPIKey
+	nerveBinary := db.nerveBinary
+	nerveModel := db.nerveModel
+	nerveProvider := db.nerveProvider
 
 	return func() tea.Msg {
 		switch provider {
@@ -238,6 +253,10 @@ func (db *DailyBriefing) startBriefing() tea.Cmd {
 		case "nous":
 			client := NewNousClient(nousURL, nousAPIKey)
 			resp, err := client.Chat(prompt)
+			return briefingResultMsg{content: resp, err: err}
+		case "nerve":
+			client := NewNerveClient(nerveBinary, nerveModel, nerveProvider)
+			resp, err := client.Chat(deepCovenPrompt, prompt, 120*time.Second)
 			return briefingResultMsg{content: resp, err: err}
 		default:
 			return doBriefingOllama(ollamaURL, model, prompt)

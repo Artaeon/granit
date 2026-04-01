@@ -728,7 +728,7 @@ func (m *Model) syncConfigToComponents() {
 	m.autoSync.SetEnabled(m.config.GitAutoSync)
 	if m.ghostWriter != nil {
 		m.ghostWriter.SetEnabled(m.config.GhostWriter)
-		m.ghostWriter.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
+		m.ghostWriter.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey, m.config.NerveBinary, m.config.NerveModel, m.config.NerveProvider)
 	}
 	if m.autoTagger != nil {
 		m.autoTagger.SetEnabled(m.config.AutoTag)
@@ -1334,7 +1334,7 @@ func (m *Model) startSemanticBgIndex() tea.Cmd {
 		return nil
 	}
 	m.semanticSearch.SetVaultPath(m.vault.Root)
-	m.semanticSearch.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
+	m.semanticSearch.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey, m.config.NerveBinary, m.config.NerveModel, m.config.NerveProvider)
 	noteContents := make(map[string]string)
 	for _, p := range m.vault.SortedPaths() {
 		if note := m.vault.GetNote(p); note != nil {
