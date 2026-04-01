@@ -325,6 +325,20 @@ func (tm *TaskManager) ActiveNotePath() string {
 	return tm.lastChangedNote
 }
 
+// taskDueDate returns the due date for a task line, checking both the 📅 emoji
+// and the daily note filename (e.g. 2026-03-31.md). Matches ParseAllTasks logic.
+func taskDueDate(line string, notePath string) string {
+	if dm := tmDueDateRe.FindStringSubmatch(line); dm != nil {
+		return dm[1]
+	}
+	base := filepath.Base(notePath)
+	base = strings.TrimSuffix(base, ".md")
+	if _, err := time.Parse("2006-01-02", base); err == nil {
+		return base
+	}
+	return ""
+}
+
 // CountTasksDueToday returns the number of incomplete tasks due today or overdue.
 func CountTasksDueToday(notes map[string]*vault.Note) int {
 	count := 0
@@ -337,8 +351,8 @@ func CountTasksDueToday(notes map[string]*vault.Note) int {
 			if !strings.HasPrefix(trimmed, "- [ ]") {
 				continue
 			}
-			if dm := tmDueDateRe.FindStringSubmatch(line); dm != nil {
-				if tmIsToday(dm[1]) || tmIsOverdue(dm[1]) {
+			if d := taskDueDate(line, note.RelPath); d != "" {
+				if tmIsToday(d) || tmIsOverdue(d) {
 					count++
 				}
 			}
@@ -359,8 +373,8 @@ func CountOverdueTasks(notes map[string]*vault.Note) int {
 			if !strings.HasPrefix(trimmed, "- [ ]") {
 				continue
 			}
-			if dm := tmDueDateRe.FindStringSubmatch(line); dm != nil {
-				if tmIsOverdue(dm[1]) {
+			if d := taskDueDate(line, note.RelPath); d != "" {
+				if tmIsOverdue(d) {
 					count++
 				}
 			}

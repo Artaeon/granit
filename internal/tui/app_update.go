@@ -2548,6 +2548,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.openDailyNote()
 			return m, nil
 
+		case "alt+h":
+			return m.executeCommand(CmdDashboard)
+
 		case "alt+p":
 			return m.executeCommand(CmdPlanMyDay)
 

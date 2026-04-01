@@ -274,6 +274,11 @@ func (pm *ProjectMode) Close() {
 	pm.active = false
 }
 
+// GetProjects returns the current list of projects.
+func (pm *ProjectMode) GetProjects() []Project {
+	return pm.projects
+}
+
 // GetSelectedNote returns the note path the user chose and resets the flag.
 func (pm *ProjectMode) GetSelectedNote() (string, bool) {
 	if !pm.hasNote {

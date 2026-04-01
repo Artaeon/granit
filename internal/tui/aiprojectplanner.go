@@ -72,6 +72,10 @@ type AIProjectPlanner struct {
 	vaultRoot  string
 	vaultTitles []string
 
+	// Existing context for AI
+	existingProjects []Project
+	existingGoals    []Goal
+
 	// Generated
 	generatedPlan string
 	parsedProject Project
@@ -101,7 +105,8 @@ func (ap *AIProjectPlanner) SetSize(w, h int) {
 
 // Open activates the overlay.
 func (ap *AIProjectPlanner) Open(vaultRoot string, vaultTitles []string,
-	provider, model, ollamaURL, apiKey, nousURL, nousAPIKey string) {
+	provider, model, ollamaURL, apiKey, nousURL, nousAPIKey string,
+	projects []Project, goals []Goal) {
 	ap.active = true
 	ap.state = plannerInput
 	ap.nameInput = ""
@@ -109,6 +114,8 @@ func (ap *AIProjectPlanner) Open(vaultRoot string, vaultTitles []string,
 	ap.inputFocus = 0
 	ap.vaultRoot = vaultRoot
 	ap.vaultTitles = vaultTitles
+	ap.existingProjects = projects
+	ap.existingGoals = goals
 	ap.generatedPlan = ""
 	ap.parsedProject = Project{}
 	ap.parsedTasks = nil
@@ -151,6 +158,34 @@ func (ap AIProjectPlanner) buildPrompt() string {
 	b.WriteString("You are a project planning assistant. Break down the following project idea into a structured plan.\n\n")
 	b.WriteString(fmt.Sprintf("PROJECT NAME: %s\n", ap.nameInput))
 	b.WriteString(fmt.Sprintf("DESCRIPTION: %s\n\n", ap.descInput))
+
+	if len(ap.existingProjects) > 0 {
+		b.WriteString("Existing projects (avoid duplicates, build on these where relevant):\n")
+		limit := len(ap.existingProjects)
+		if limit > 10 {
+			limit = 10
+		}
+		for _, p := range ap.existingProjects[:limit] {
+			status := p.Status
+			if status == "" {
+				status = "active"
+			}
+			b.WriteString(fmt.Sprintf("- %s [%s] %s\n", p.Name, status, p.Category))
+		}
+		b.WriteString("\n")
+	}
+
+	if len(ap.existingGoals) > 0 {
+		b.WriteString("Existing goals (link to these where relevant):\n")
+		limit := len(ap.existingGoals)
+		if limit > 10 {
+			limit = 10
+		}
+		for _, g := range ap.existingGoals[:limit] {
+			b.WriteString(fmt.Sprintf("- %s [%s] %s\n", g.Title, string(g.Status), g.Category))
+		}
+		b.WriteString("\n")
+	}
 
 	if len(ap.vaultTitles) > 0 {
 		b.WriteString("Existing notes in the vault (for context on user's interests):\n")
@@ -588,6 +623,42 @@ func (ap *AIProjectPlanner) saveProjectAndTasks() error {
 				return fmt.Errorf("failed to write tasks note: %w", err)
 			}
 		}
+	}
+
+	// Auto-create a Goal linked to this project
+	goalFile := filepath.Join(ap.vaultRoot, ".granit", "goals.json")
+	var goals []Goal
+	if data, err := os.ReadFile(goalFile); err == nil {
+		_ = json.Unmarshal(data, &goals)
+	}
+
+	now := time.Now().Format("2006-01-02")
+	var milestones []GoalMilestone
+	for _, g := range ap.parsedProject.Goals {
+		for _, ms := range g.Milestones {
+			milestones = append(milestones, GoalMilestone{Text: g.Title + ": " + ms.Text})
+		}
+	}
+
+	newGoal := Goal{
+		ID:          fmt.Sprintf("goal-%d", time.Now().UnixNano()),
+		Title:       ap.parsedProject.Name,
+		Description: ap.parsedProject.Description,
+		Status:      GoalStatusActive,
+		Category:    ap.parsedProject.Category,
+		Tags:        ap.parsedProject.Tags,
+		Project:     ap.parsedProject.Name,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		Milestones:  milestones,
+	}
+	if ap.parsedProject.DueDate != "" {
+		newGoal.TargetDate = ap.parsedProject.DueDate
+	}
+
+	goals = append(goals, newGoal)
+	if gdata, err := json.MarshalIndent(goals, "", "  "); err == nil {
+		_ = os.WriteFile(goalFile, gdata, 0644)
 	}
 
 	return nil

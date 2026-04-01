@@ -63,6 +63,14 @@ type Dashboard struct {
 	weekDays      [7]string
 	writingStreak int
 
+	// Projects & Goals summary
+	activeProjects int
+	totalProjects  int
+	activeGoals    int
+	totalGoals     int
+	projectNames   []string // top active project names
+	goalNames      []string // top active goal names
+
 	// Quick actions result
 	action CommandAction
 
@@ -81,11 +89,38 @@ func (d *Dashboard) SetSize(w, h int) {
 }
 
 // Open activates the dashboard and scans the vault for data.
-func (d *Dashboard) Open(vaultRoot string) {
+func (d *Dashboard) Open(vaultRoot string, projects []Project, goals []Goal) {
 	d.active = true
 	d.vaultRoot = vaultRoot
 	d.scroll = 0
 	d.action = CmdNone
+
+	// Summarise projects
+	d.totalProjects = len(projects)
+	d.activeProjects = 0
+	d.projectNames = nil
+	for _, p := range projects {
+		if p.Status == "" || p.Status == "active" {
+			d.activeProjects++
+			if len(d.projectNames) < 5 {
+				d.projectNames = append(d.projectNames, p.Name)
+			}
+		}
+	}
+
+	// Summarise goals
+	d.totalGoals = len(goals)
+	d.activeGoals = 0
+	d.goalNames = nil
+	for _, g := range goals {
+		if g.Status == GoalStatusActive {
+			d.activeGoals++
+			if len(d.goalNames) < 5 {
+				d.goalNames = append(d.goalNames, g.Title)
+			}
+		}
+	}
+
 	d.scan()
 }
 
@@ -273,75 +308,62 @@ func (d *Dashboard) scan() {
 	}
 }
 
-// parseTasks reads Tasks.md and extracts items for today.
+// parseTasks scans all vault notes for tasks using the same logic as the task manager.
 func (d *Dashboard) parseTasks(todayStr string) {
-	candidates := []string{
-		filepath.Join(d.vaultRoot, "Tasks.md"),
-		filepath.Join(d.vaultRoot, "tasks.md"),
-		filepath.Join(d.vaultRoot, "TODO.md"),
-		filepath.Join(d.vaultRoot, "todo.md"),
-	}
-
-	var content string
-	for _, p := range candidates {
-		data, err := os.ReadFile(p)
-		if err == nil {
-			content = string(data)
-			break
+	// Walk all .md files and parse tasks the same way as the task manager
+	_ = filepath.Walk(d.vaultRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			if info != nil && info.IsDir() && strings.HasPrefix(info.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
 		}
-	}
-	if content == "" {
-		return
-	}
-
-	for _, line := range strings.Split(content, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, "- [") {
-			continue
+		if !strings.HasSuffix(info.Name(), ".md") {
+			return nil
 		}
 
-		done := false
-		var taskText string
-		if strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]") {
-			done = true
-			taskText = strings.TrimSpace(trimmed[5:])
-		} else if strings.HasPrefix(trimmed, "- [ ]") {
-			taskText = strings.TrimSpace(trimmed[5:])
-		} else {
-			continue
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
 		}
 
-		// Include tasks that mention today's date or have no date at all.
-		// Also detect overdue tasks (date before today, not done).
-		hasDate := false
-		for i := 0; i < len(taskText)-9; i++ {
-			if taskText[i] >= '0' && taskText[i] <= '9' {
-				chunk := taskText[i:]
-				if len(chunk) >= 10 && chunk[4] == '-' && chunk[7] == '-' {
-					dateStr := chunk[:10]
-					hasDate = true
-					if dateStr == todayStr {
-						d.todayTasks = append(d.todayTasks, dashTask{Text: taskText, Done: done})
-						d.tasksDue++
-						if done {
-							d.tasksDone++
-						}
-					} else if dateStr < todayStr && !done {
-						d.overdueTasks = append(d.overdueTasks, dashTask{Text: taskText, Done: false})
-						d.overdueCount++
-					}
-					break
+		relPath, _ := filepath.Rel(d.vaultRoot, path)
+		content := string(data)
+
+		for _, line := range strings.Split(content, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if !strings.HasPrefix(trimmed, "- [") {
+				continue
+			}
+
+			done := false
+			var taskText string
+			if strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]") {
+				done = true
+				taskText = strings.TrimSpace(trimmed[5:])
+			} else if strings.HasPrefix(trimmed, "- [ ]") {
+				taskText = strings.TrimSpace(trimmed[5:])
+			} else {
+				continue
+			}
+
+			dueDate := taskDueDate(line, relPath)
+			if dueDate == "" {
+				continue
+			}
+			if dueDate == todayStr {
+				d.todayTasks = append(d.todayTasks, dashTask{Text: taskText, Done: done})
+				d.tasksDue++
+				if done {
+					d.tasksDone++
 				}
+			} else if dueDate < todayStr && !done {
+				d.overdueTasks = append(d.overdueTasks, dashTask{Text: taskText, Done: false})
+				d.overdueCount++
 			}
 		}
-		if !hasDate {
-			d.todayTasks = append(d.todayTasks, dashTask{Text: taskText, Done: done})
-			d.tasksDue++
-			if done {
-				d.tasksDone++
-			}
-		}
-	}
+		return nil
+	})
 }
 
 // parseHabits reads the Habits/habits.md file and extracts today's status.
@@ -459,6 +481,12 @@ func (d Dashboard) Update(msg tea.Msg) (Dashboard, tea.Cmd) {
 			d.active = false
 		case "f":
 			d.action = CmdFocusSession
+			d.active = false
+		case "p":
+			d.action = CmdProjectMode
+			d.active = false
+		case "g":
+			d.action = CmdGoalsMode
 			d.active = false
 		case "j", "down":
 			d.scroll++
@@ -715,11 +743,40 @@ func (d Dashboard) View() string {
 		lines = append(lines, "")
 	}
 
+	// --- Projects & Goals ---
+	if d.totalProjects > 0 || d.totalGoals > 0 {
+		var projLines []string
+		projLines = append(projLines, sectionTitle.Render(IconFolderChar+" Projects"))
+		projLines = append(projLines, dimSt.Render(strings.Repeat("\u2500", halfW-4)))
+		projLines = append(projLines, fmt.Sprintf("  %s active / %s total",
+			numStyle.Render(smallNum(d.activeProjects)),
+			dimSt.Render(smallNum(d.totalProjects))))
+		for _, name := range d.projectNames {
+			projLines = append(projLines, "  "+labelStyle.Render(IconFolderChar)+" "+labelStyle.Render(TruncateDisplay(name, halfW-6)))
+		}
+		projPanel := lipgloss.NewStyle().Width(halfW).Render(strings.Join(projLines, "\n"))
+
+		var goalLines []string
+		goalLines = append(goalLines, sectionTitle.Render(IconGraphChar+" Goals"))
+		goalLines = append(goalLines, dimSt.Render(strings.Repeat("\u2500", halfW-4)))
+		goalLines = append(goalLines, fmt.Sprintf("  %s active / %s total",
+			numStyle.Render(smallNum(d.activeGoals)),
+			dimSt.Render(smallNum(d.totalGoals))))
+		for _, name := range d.goalNames {
+			goalLines = append(goalLines, "  "+labelStyle.Render(IconGraphChar)+" "+labelStyle.Render(TruncateDisplay(name, halfW-6)))
+		}
+		goalPanel := lipgloss.NewStyle().Width(halfW).Render(strings.Join(goalLines, "\n"))
+
+		row3 := lipgloss.JoinHorizontal(lipgloss.Top, projPanel, "  ", goalPanel)
+		lines = append(lines, row3)
+		lines = append(lines, "")
+	}
+
 	// --- Footer ---
 	lines = append(lines, dimSt.Render(strings.Repeat("\u2500", innerW-4)))
 	lines = append(lines, RenderHelpBar([]struct{ Key, Desc string }{
-		{"n", "new note"}, {"t", "tasks"}, {"c", "calendar"},
-		{"s", "standup"}, {"d", "daily"}, {"f", "focus"}, {"Esc", "close"},
+		{"n", "new note"}, {"t", "tasks"}, {"p", "projects"},
+		{"g", "goals"}, {"d", "daily"}, {"f", "focus"}, {"Esc", "close"},
 	}))
 
 	// Assemble with scrolling.

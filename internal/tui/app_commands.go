@@ -1007,7 +1007,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdDashboard:
 		m.dashboard.SetSize(m.width, m.height)
-		m.dashboard.Open(m.vault.Root)
+		m.dashboard.Open(m.vault.Root, m.projectMode.GetProjects(), m.goalsMode.GetGoals())
 
 	case CmdMindMap:
 		m.mindMap.SetSize(m.width, m.height)
@@ -1099,7 +1099,8 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		m.aiProjectPlanner.Open(m.vault.Root, titles,
 			m.config.AIProvider, m.getAIModel(), m.config.OllamaURL,
-			m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey)
+			m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey,
+			m.projectMode.GetProjects(), m.goalsMode.GetGoals())
 
 	case CmdGoalsMode:
 		m.goalsMode.SetSize(m.width, m.height)

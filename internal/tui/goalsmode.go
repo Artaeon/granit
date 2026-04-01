@@ -338,6 +338,11 @@ func (gm *GoalsMode) Close() {
 	gm.active = false
 }
 
+// GetGoals returns the current list of goals.
+func (gm *GoalsMode) GetGoals() []Goal {
+	return gm.goals
+}
+
 // ---------------------------------------------------------------------------
 // Storage
 // ---------------------------------------------------------------------------
