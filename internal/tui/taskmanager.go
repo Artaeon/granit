@@ -326,10 +326,14 @@ func (tm *TaskManager) ActiveNotePath() string {
 }
 
 // CountTasksDueToday returns the number of incomplete tasks due today or overdue.
-// Uses ParseAllTasks to ensure counts match the task manager exactly.
 func CountTasksDueToday(notes map[string]*vault.Note) int {
+	return CountTasksDueTodayFromList(ParseAllTasks(notes))
+}
+
+// CountTasksDueTodayFromList counts from a pre-parsed task list.
+func CountTasksDueTodayFromList(tasks []Task) int {
 	count := 0
-	for _, t := range ParseAllTasks(notes) {
+	for _, t := range tasks {
 		if !t.Done && t.DueDate != "" && (tmIsToday(t.DueDate) || tmIsOverdue(t.DueDate)) {
 			count++
 		}
@@ -338,10 +342,14 @@ func CountTasksDueToday(notes map[string]*vault.Note) int {
 }
 
 // CountOverdueTasks counts how many unchecked tasks are past their due date.
-// Uses ParseAllTasks to ensure counts match the task manager exactly.
 func CountOverdueTasks(notes map[string]*vault.Note) int {
+	return CountOverdueTasksFromList(ParseAllTasks(notes))
+}
+
+// CountOverdueTasksFromList counts from a pre-parsed task list.
+func CountOverdueTasksFromList(tasks []Task) int {
 	count := 0
-	for _, t := range ParseAllTasks(notes) {
+	for _, t := range tasks {
 		if !t.Done && t.DueDate != "" && tmIsOverdue(t.DueDate) {
 			count++
 		}

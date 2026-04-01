@@ -72,6 +72,9 @@ type Dashboard struct {
 	projectNames   []string // top active project names
 	goalNames      []string // top active goal names
 
+	// Daily scripture (cached on open)
+	dailyScripture Scripture
+
 	// Business/Revenue metrics
 	bizTasksDone  int // completed tasks tagged #revenue/#client/#business this week
 	bizTasksTotal int // total such tasks this week
@@ -127,6 +130,7 @@ func (d *Dashboard) Open(vaultRoot string, projects []Project, goals []Goal) {
 		}
 	}
 
+	d.dailyScripture = DailyScripture(vaultRoot)
 	d.scan()
 }
 
@@ -520,7 +524,6 @@ func (d Dashboard) Update(msg tea.Msg) (Dashboard, tea.Cmd) {
 func (d *Dashboard) parseBusinessMetrics(now time.Time) {
 	bizTags := []string{"#revenue", "#client", "#business", "#sales", "#invoice"}
 	weekStart := now.AddDate(0, 0, -int(now.Weekday()))
-	weekStartStr := weekStart.Format("2006-01-02")
 
 	_ = filepath.Walk(d.vaultRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
@@ -561,7 +564,6 @@ func (d *Dashboard) parseBusinessMetrics(now time.Time) {
 				d.bizTasksDone++
 			}
 		}
-		_ = weekStartStr // used for context only
 		return nil
 	})
 }
@@ -612,12 +614,11 @@ func (d Dashboard) View() string {
 	lines = append(lines, dimSt.Render("  "+strings.Repeat("\u2500", innerW-4)))
 
 	// --- Daily Scripture ---
-	scripture := DailyScripture(d.vaultRoot)
 	verseStyle := lipgloss.NewStyle().Foreground(lavender).Italic(true)
 	refStyle := lipgloss.NewStyle().Foreground(overlay0)
-	verseTxt := TruncateDisplay(scripture.Text, innerW-6)
+	verseTxt := TruncateDisplay(d.dailyScripture.Text, innerW-6)
 	lines = append(lines, verseStyle.Render("  "+verseTxt))
-	lines = append(lines, refStyle.Render("  "+scripture.Source))
+	lines = append(lines, refStyle.Render("  "+d.dailyScripture.Source))
 	lines = append(lines, "")
 
 	// --- Overdue warning ---

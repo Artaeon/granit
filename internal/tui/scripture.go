@@ -83,7 +83,7 @@ func defaultScriptures() []Scripture {
 		{Text: "No discipline seems pleasant at the time, but painful. Later on, however, it produces a harvest of righteousness and peace for those who have been trained by it.", Source: "Hebrews 12:11"},
 		{Text: "The plans of the diligent lead to profit as surely as haste leads to poverty.", Source: "Proverbs 21:5"},
 		{Text: "Whatever your hand finds to do, do it with all your might.", Source: "Ecclesiastes 9:10"},
-		{Text: "Have I not commanded you? Be strong and courageous. Do not be terrified; do not be discouraged.", Source: "Joshua 1:9"},
+		{Text: "The righteous are as bold as a lion.", Source: "Proverbs 28:1"},
 		{Text: "He who is faithful in a very little thing is faithful also in much.", Source: "Luke 16:10"},
 		{Text: "And let us not grow weary of doing good, for in due season we will reap, if we do not give up.", Source: "Galatians 6:9"},
 		{Text: "Iron sharpens iron, and one man sharpens another.", Source: "Proverbs 27:17"},

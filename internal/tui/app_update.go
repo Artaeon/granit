@@ -1658,6 +1658,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.weeklyReview.IsActive() {
 			m.weeklyReview, _ = m.weeklyReview.Update(msg)
+			if m.weeklyReview.WasFileChanged() {
+				m.refreshComponents("")
+			}
 			return m, nil
 		}
 
@@ -2286,9 +2289,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			cmd := m.saveCurrentNote()
 			m.lastSaveTime = time.Now()
-			m.dueTodayCount = CountTasksDueToday(m.vault.Notes)
+			saveTasks := ParseAllTasks(m.vault.Notes)
+			m.dueTodayCount = CountTasksDueTodayFromList(saveTasks)
 			m.statusbar.SetDueTodayCount(m.dueTodayCount)
-			m.statusbar.SetOverdueCount(CountOverdueTasks(m.vault.Notes))
+			m.statusbar.SetOverdueCount(CountOverdueTasksFromList(saveTasks))
 			return m, cmd
 
 		case "f1", "alt+1":

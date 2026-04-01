@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os/exec"
 	"time"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // NerveClient wraps calls to the nerve binary for AI chat completions.
@@ -66,29 +64,3 @@ func (nc *NerveClient) Chat(systemPrompt, userPrompt string, timeout time.Durati
 	return stdout.String(), nil
 }
 
-// ChatCmd returns a bubbletea Cmd that calls nerve asynchronously.
-// The result is delivered as a nerveResponseMsg.
-func (nc *NerveClient) ChatCmd(systemPrompt, userPrompt string) tea.Cmd {
-	return func() tea.Msg {
-		resp, err := nc.Chat(systemPrompt, userPrompt, 120*time.Second)
-		if err != nil {
-			return nerveResponseMsg{err: err}
-		}
-		return nerveResponseMsg{text: resp}
-	}
-}
-
-// nerveResponseMsg carries a nerve response back to the bubbletea update loop.
-type nerveResponseMsg struct {
-	text string
-	err  error
-}
-
-// IsNerveAvailable checks if the nerve binary exists on PATH.
-func IsNerveAvailable(binary string) bool {
-	if binary == "" {
-		binary = "nerve"
-	}
-	_, err := exec.LookPath(binary)
-	return err == nil
-}

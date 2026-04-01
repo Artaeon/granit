@@ -760,7 +760,6 @@ func (kb *Kanban) kbMoveCardForward() {
 	if kb.cardCursor >= len(col.Cards) && kb.cardCursor > 0 {
 		kb.cardCursor--
 	}
-	kb.saveState()
 }
 
 // kbMoveCardBackward moves the selected card from the current column to the previous one.
@@ -781,7 +780,6 @@ func (kb *Kanban) kbMoveCardBackward() {
 	if kb.cardCursor >= len(col.Cards) && kb.cardCursor > 0 {
 		kb.cardCursor--
 	}
-	kb.saveState()
 }
 
 // kbToggleDone toggles the Done state of the selected card and records the
