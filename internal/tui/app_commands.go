@@ -653,6 +653,8 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		if len(m.config.KanbanColumns) > 0 {
 			m.kanban.Configure(m.config.KanbanColumns, m.config.KanbanColumnTags)
 		}
+		// Load saved state BEFORE distributing cards so positions are restored
+		m.kanban.Open(m.vault.Root)
 		noteContents := make(map[string]string)
 		for _, p := range m.vault.SortedPaths() {
 			if note := m.vault.GetNote(p); note != nil {
@@ -667,7 +669,6 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		pm.loadProjects()
 		MatchTasksToProjects(allTasks, pm.projects)
 		m.kanban.SetTaskProjects(allTasks)
-		m.kanban.Open(m.vault.Root)
 	case CmdZettelNote:
 		if m.zettelkasten != nil {
 			name := m.zettelkasten.GenerateNoteName("Untitled")
