@@ -791,12 +791,12 @@ func themePreview(themeName string) string {
 }
 
 func (s Settings) View() string {
-	width := s.width * 2 / 3
-	if width < 50 {
-		width = 50
+	width := s.width * 3 / 4
+	if width < 60 {
+		width = 60
 	}
-	if width > 80 {
-		width = 80
+	if width > 120 {
+		width = 120
 	}
 
 	var b strings.Builder

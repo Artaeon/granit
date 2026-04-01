@@ -1052,18 +1052,35 @@ func (m Model) overlayTopRight(bg, overlay string) string {
 			break
 		}
 		overlayW := lipgloss.Width(overlayLine)
-		rightOffset := startX + overlayW
-		rightFill := "  "
-		right := ansiSkipCols(result[y], rightOffset+2)
-		result[y] = pad + overlayLine + shadowStyle.Render(rightFill) + right
+		marginLen := overlayWidth - overlayW
+		if marginLen < 0 {
+			marginLen = 0
+		}
+		margin := strings.Repeat(" ", marginLen)
+
+		rightFill := ""
+		skipRight := startX + overlayWidth
+		if i > 0 {
+			rightFill = "  "
+			skipRight += 2
+		}
+		
+		right := ansiSkipCols(result[y], skipRight)
+		lineStr := pad + overlayLine + margin
+		if rightFill != "" {
+			lineStr += shadowStyle.Render(rightFill)
+		}
+		result[y] = lineStr + right
 	}
 	
 	bottomY := startY + len(overlayLines)
 	if bottomY < len(result) {
-		bottomPad := strings.Repeat(" ", startX+2)
+		if overlayWidth > 0 {
+			bottomPad := strings.Repeat(" ", startX+2)
 		bottomFill := strings.Repeat(" ", overlayWidth)
 		right := ansiSkipCols(result[bottomY], startX+2+overlayWidth)
 		result[bottomY] = bottomPad + shadowStyle.Render(bottomFill) + right
+		}
 	}
 
 	return strings.Join(result, "\n")
@@ -1733,18 +1750,35 @@ func (m Model) overlayCenter(bg, overlay string) string {
 			break
 		}
 		overlayW := lipgloss.Width(overlayLine)
-		rightOffset := startX + overlayW
-		rightFill := "  "
-		right := ansiSkipCols(result[y], rightOffset+2)
-		result[y] = pad + overlayLine + shadowStyle.Render(rightFill) + right
+		marginLen := overlayWidth - overlayW
+		if marginLen < 0 {
+			marginLen = 0
+		}
+		margin := strings.Repeat(" ", marginLen)
+
+		rightFill := ""
+		skipRight := startX + overlayWidth
+		if i > 0 {
+			rightFill = "  "
+			skipRight += 2
+		}
+		
+		right := ansiSkipCols(result[y], skipRight)
+		lineStr := pad + overlayLine + margin
+		if rightFill != "" {
+			lineStr += shadowStyle.Render(rightFill)
+		}
+		result[y] = lineStr + right
 	}
 	
 	bottomY := startY + len(overlayLines)
 	if bottomY < len(result) {
-		bottomPad := strings.Repeat(" ", startX+2)
+		if overlayWidth > 0 {
+			bottomPad := strings.Repeat(" ", startX+2)
 		bottomFill := strings.Repeat(" ", overlayWidth)
 		right := ansiSkipCols(result[bottomY], startX+2+overlayWidth)
 		result[bottomY] = bottomPad + shadowStyle.Render(bottomFill) + right
+		}
 	}
 
 	return strings.Join(result, "\n")

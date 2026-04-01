@@ -733,11 +733,11 @@ func (r Renderer) renderEmbedLine(line string, maxChars int) string {
 
 	// Checkboxes
 	if strings.HasPrefix(line, "- [ ] ") {
-		return lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("☐ ") +
+		return lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(" ") +
 			lipgloss.NewStyle().Foreground(text).Render(line[6:])
 	}
 	if strings.HasPrefix(line, "- [x] ") {
-		return lipgloss.NewStyle().Foreground(green).Bold(true).Render("☑ ") +
+		return lipgloss.NewStyle().Foreground(green).Bold(true).Render(" ") +
 			lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true).Render(line[6:])
 	}
 
@@ -1115,9 +1115,8 @@ func (r Renderer) renderMarkdown(content string) []string {
 			result = append(result, "")
 			switch r.viewStyle {
 			case "reading":
-				// Clean, large heading — no background bar
 				styled := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(hText)
-				underline := lipgloss.NewStyle().Foreground(mauve).Render("  " + strings.Repeat("━", lipgloss.Width(hText)+2))
+				underline := lipgloss.NewStyle().Foreground(mauve).Render("  " + strings.Repeat("━", lipgloss.Width(hText)+4))
 				result = append(result, "  "+styled)
 				result = append(result, underline)
 			case "minimal":
@@ -1125,12 +1124,13 @@ func (r Renderer) renderMarkdown(content string) []string {
 				result = append(result, "  "+styled)
 			default:
 				barStyle := lipgloss.NewStyle().
-					Foreground(crust).
-					Background(mauve).
+					Foreground(mauve).
 					Bold(true).
+					Underline(true).
+					Align(lipgloss.Center).
 					Width(contentWidth).
-					Padding(0, 2)
-				result = append(result, barStyle.Render(hText))
+					Padding(1, 2)
+				result = append(result, barStyle.Render("   "+hText+"   "))
 			}
 			result = append(result, "")
 			continue
@@ -1148,8 +1148,8 @@ func (r Renderer) renderMarkdown(content string) []string {
 				styled := lipgloss.NewStyle().Foreground(subtext1).Bold(true).Render(hText)
 				result = append(result, "  "+styled)
 			default:
-				bar := lipgloss.NewStyle().Foreground(blue).Bold(true).Render("┃ ")
-				styled := lipgloss.NewStyle().Foreground(blue).Bold(true).Render(hText)
+				bar := lipgloss.NewStyle().Foreground(blue).Bold(true).Render("⯁ ")
+					styled := lipgloss.NewStyle().Foreground(blue).Bold(true).Underline(true).Render(hText)
 				result = append(result, "  "+bar+styled)
 			}
 			result = append(result, "")
@@ -1230,10 +1230,7 @@ func (r Renderer) renderMarkdown(content string) []string {
 			bar = "  "
 			for d := 0; d < depth; d++ {
 				colorIdx := d % len(quoteColors)
-				barChar := "┃"
-				if d > 0 {
-					barChar = "│"
-				}
+				barChar := "▋"
 				bar += lipgloss.NewStyle().Foreground(quoteColors[colorIdx]).Render(barChar) + " "
 			}
 

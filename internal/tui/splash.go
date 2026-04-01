@@ -16,10 +16,12 @@ var splashLogo = []string{
 	"  ██║   ██║██╔══██╗██╔══██║██║╚██╗██║██║   ██║   ",
 	"  ╚██████╔╝██║  ██║██║  ██║██║ ╚████║██║   ██║   ",
 	"   ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝   ╚═╝",
+	"                                                 ",
+	"          KNOWLEDGE GRAPH ENGINE MODULE          ",
 }
 
 // Particle characters for the sparkle effect around the logo
-var sparkleChars = []string{"·", "✦", "✧", "◆", "◇", "⟡", "∗", "⊹", "⋆"}
+var sparkleChars = []string{"⚡", "✦", "✧", "※", "◇", "⟡", "✨", "⊹", "⋆", "★", "✴"}
 
 type splashTickMsg struct{}
 
@@ -79,7 +81,7 @@ func (s SplashModel) IsDone() bool {
 
 // splashGradientColors returns a gradient slice cycling through theme accent colors.
 func splashGradientColors() []lipgloss.Color {
-	return []lipgloss.Color{mauve, blue, sapphire, teal, green, yellow, peach, red, pink, mauve}
+	return []lipgloss.Color{sapphire, blue, teal, green, yellow, peach, red, mauve, pink, lavender}
 }
 
 // splashColorAt picks a gradient color based on position and animation offset.
