@@ -842,14 +842,22 @@ func (s Settings) View() string {
 	if s.searching || s.searchBuf != "" {
 		extraLines = 2
 	}
-	visibleItems := s.height - 10 - extraLines
+	// Reserve lines for: border(2) + padding(2) + header(2) + gap(1) + footer(5) + selected extras(2)
+	visibleItems := s.height - 14 - extraLines
 	if visibleItems < 5 {
 		visibleItems = 5
 	}
 
-	start := 0
-	if s.cursor >= visibleItems {
-		start = s.cursor - visibleItems + 1
+	// Keep cursor centered in the visible window
+	start := s.cursor - visibleItems/2
+	if start < 0 {
+		start = 0
+	}
+	if start+visibleItems > len(s.visible) {
+		start = len(s.visible) - visibleItems
+		if start < 0 {
+			start = 0
+		}
 	}
 
 	end := start + visibleItems
