@@ -424,6 +424,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case gmAIResultMsg:
+		if m.goalsMode.IsActive() {
+			var cmd tea.Cmd
+			m.goalsMode, cmd = m.goalsMode.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case tmAIResultMsg:
+		if m.taskManager.IsActive() {
+			var cmd tea.Cmd
+			m.taskManager, cmd = m.taskManager.Update(msg)
+			if m.taskManager.WasFileChanged() {
+				m.refreshComponents(m.taskManager.ActiveNotePath())
+			}
+			return m, cmd
+		}
+		return m, nil
+
 	case briefingResultMsg, briefingTickMsg:
 		if m.dailyBriefing.IsActive() {
 			var cmd tea.Cmd

@@ -824,6 +824,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		m.taskManager.SetSize(m.width, m.height)
 		m.taskManager.config = m.config
+		m.taskManager.SetAIConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey, m.config.NerveBinary, m.config.NerveModel, m.config.NerveProvider)
 		m.taskManager.Open(m.vault)
 		// Enrich tasks with project associations
 		pm := NewProjectMode()
@@ -1122,6 +1123,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdGoalsMode:
 		m.goalsMode.SetSize(m.width, m.height)
+		m.goalsMode.SetAIConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey, m.config.NerveBinary, m.config.NerveModel, m.config.NerveProvider)
 		allTasks := ParseAllTasks(m.vault.Notes)
 		m.goalsMode.Open(m.vault.Root, allTasks)
 

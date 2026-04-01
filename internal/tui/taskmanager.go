@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -217,6 +219,19 @@ type TaskManager struct {
 	// File change tracking
 	fileChanged     bool
 	lastChangedNote string // path of most recently modified note
+
+	// AI config
+	aiProvider    string
+	aiModel       string
+	aiOllamaURL   string
+	aiAPIKey      string
+	aiNousURL     string
+	aiNousAPIKey  string
+	aiNerveBinary string
+	aiNerveModel  string
+	aiNerveProvider string
+	aiPending     bool   // waiting for AI response
+	aiStatusMsg   string // temporary AI status
 }
 
 // NewTaskManager creates a new TaskManager overlay.
@@ -1068,6 +1083,212 @@ func suggestPriority(task Task, allTasks []Task) int {
 	}
 }
 
+// SetAIConfig stores AI provider configuration for task AI features.
+func (tm *TaskManager) SetAIConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
+	tm.aiProvider = provider
+	tm.aiModel = model
+	tm.aiOllamaURL = ollamaURL
+	tm.aiAPIKey = apiKey
+	if len(nousOpts) > 0 && nousOpts[0] != "" {
+		tm.aiNousURL = nousOpts[0]
+	}
+	if len(nousOpts) > 1 {
+		tm.aiNousAPIKey = nousOpts[1]
+	}
+	if len(nousOpts) > 2 {
+		tm.aiNerveBinary = nousOpts[2]
+	}
+	if len(nousOpts) > 3 {
+		tm.aiNerveModel = nousOpts[3]
+	}
+	if len(nousOpts) > 4 {
+		tm.aiNerveProvider = nousOpts[4]
+	}
+}
+
+// aiBreakdownTask sends the task to an LLM to generate subtasks.
+func (tm *TaskManager) aiBreakdownTask(task Task) tea.Cmd {
+	prompt := fmt.Sprintf(
+		"Break down this task into 3-7 concrete, actionable subtasks.\n"+
+			"Task: %s\n"+
+			"Context: project=%s, priority=%d, due=%s\n\n"+
+			"Respond with ONLY a list of subtasks, one per line, each starting with '- [ ] '. "+
+			"Keep each subtask short and specific. No explanations, no numbering, just the checklist.",
+		task.Text, task.Project, task.Priority, task.DueDate,
+	)
+
+	provider := tm.aiProvider
+	return func() tea.Msg {
+		var resp string
+		var err error
+
+		switch provider {
+		case "openai":
+			resp, err = tmAICall(tm.aiAPIKey, tm.aiModel, "http", prompt)
+		case "nerve":
+			client := NewNerveClient(tm.aiNerveBinary, tm.aiNerveModel, tm.aiNerveProvider)
+			resp, err = client.Chat("You are a task planning assistant. Be concise.", prompt, 60*time.Second)
+		case "nous":
+			client := NewNousClient(tm.aiNousURL, tm.aiNousAPIKey)
+			resp, err = client.Chat(prompt)
+		default: // ollama
+			url := tm.aiOllamaURL
+			if url == "" {
+				url = "http://localhost:11434"
+			}
+			model := tm.aiModel
+			if model == "" {
+				model = "qwen2.5:0.5b"
+			}
+			resp, err = tmCallOllama(url, model, prompt)
+		}
+
+		if err != nil {
+			return tmAIResultMsg{err: err}
+		}
+		return tmAIResultMsg{
+			subtasks: parseSubtasks(resp),
+			taskPath: task.NotePath,
+			taskLine: task.LineNum,
+		}
+	}
+}
+
+type tmAIResultMsg struct {
+	subtasks []string
+	taskPath string
+	taskLine int
+	err      error
+}
+
+// parseSubtasks extracts "- [ ] ..." lines from AI response.
+func parseSubtasks(response string) []string {
+	var subtasks []string
+	for _, line := range strings.Split(response, "\n") {
+		trimmed := strings.TrimSpace(line)
+		// Accept lines that look like task items
+		if strings.HasPrefix(trimmed, "- [ ] ") {
+			subtasks = append(subtasks, strings.TrimSpace(trimmed[6:]))
+		} else if strings.HasPrefix(trimmed, "- ") && !strings.HasPrefix(trimmed, "- [") {
+			// Also accept "- text" without checkbox
+			subtasks = append(subtasks, strings.TrimSpace(trimmed[2:]))
+		}
+	}
+	return subtasks
+}
+
+// insertSubtasks writes subtasks as indented items below the parent task line.
+func (tm *TaskManager) insertSubtasks(notePath string, parentLine int, subtasks []string) {
+	if tm.vault == nil || len(subtasks) == 0 {
+		return
+	}
+	absPath := filepath.Join(tm.vault.Root, notePath)
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	idx := parentLine - 1
+	if idx < 0 || idx >= len(lines) {
+		return
+	}
+
+	// Determine parent indent
+	parentIndent := 0
+	for _, ch := range lines[idx] {
+		if ch == ' ' {
+			parentIndent++
+		} else {
+			break
+		}
+	}
+	childIndent := strings.Repeat(" ", parentIndent+2)
+
+	// Build subtask lines
+	var newLines []string
+	for _, st := range subtasks {
+		newLines = append(newLines, childIndent+"- [ ] "+st)
+	}
+
+	// Insert after parent line
+	result := make([]string, 0, len(lines)+len(newLines))
+	result = append(result, lines[:idx+1]...)
+	result = append(result, newLines...)
+	result = append(result, lines[idx+1:]...)
+
+	_ = os.WriteFile(absPath, []byte(strings.Join(result, "\n")), 0644)
+	tm.fileChanged = true
+	tm.lastChangedNote = notePath
+}
+
+// tmCallOllama makes a simple Ollama generate call.
+func tmCallOllama(url, model, prompt string) (string, error) {
+	type req struct {
+		Model  string `json:"model"`
+		Prompt string `json:"prompt"`
+		Stream bool   `json:"stream"`
+	}
+	body, _ := json.Marshal(req{Model: model, Prompt: prompt, Stream: false})
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Post(url+"/api/generate", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("ollama: %w", err)
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Response string `json:"response"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("ollama decode: %w", err)
+	}
+	return result.Response, nil
+}
+
+// tmAICall makes a simple OpenAI chat call.
+func tmAICall(apiKey, model, _ string, prompt string) (string, error) {
+	if model == "" {
+		model = "gpt-4o-mini"
+	}
+	type msg struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	type req struct {
+		Model    string `json:"model"`
+		Messages []msg  `json:"messages"`
+	}
+	body, _ := json.Marshal(req{Model: model, Messages: []msg{
+		{Role: "system", Content: "You are a task planning assistant. Be concise."},
+		{Role: "user", Content: prompt},
+	}})
+	client := &http.Client{Timeout: 60 * time.Second}
+	r, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := client.Do(r)
+	if err != nil {
+		return "", fmt.Errorf("openai: %w", err)
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+	if len(result.Choices) > 0 {
+		return result.Choices[0].Message.Content, nil
+	}
+	return "", fmt.Errorf("no response from openai")
+}
+
 // doSetPriority sets a specific priority on a task (not cycling).
 func (tm *TaskManager) doSetPriority(task Task, newPrio int) {
 	ok := tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
@@ -1798,6 +2019,19 @@ func (tm TaskManager) Update(msg tea.Msg) (TaskManager, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case tmAIResultMsg:
+		tm.aiPending = false
+		if msg.err != nil {
+			tm.statusMsg = "AI error: " + msg.err.Error()
+		} else if len(msg.subtasks) > 0 {
+			tm.insertSubtasks(msg.taskPath, msg.taskLine, msg.subtasks)
+			tm.reparse()
+			tm.statusMsg = fmt.Sprintf("Added %d subtasks", len(msg.subtasks))
+		} else {
+			tm.statusMsg = "AI returned no subtasks"
+		}
+		return tm, nil
+
 	case tea.KeyMsg:
 		// Clear status message on any keypress
 		tm.statusMsg = ""
@@ -2638,6 +2872,17 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 				tm.statusMsg = "Auto-priority: " + prioNames[suggested]
 			} else {
 				tm.statusMsg = "Priority already optimal"
+			}
+		}
+
+	// AI breakdown — split task into subtasks
+	case "S":
+		if tm.cursor < len(tm.filtered) && !tm.aiPending && tm.aiProvider != "local" && tm.aiProvider != "" {
+			task := tm.filtered[tm.cursor]
+			if !task.Done {
+				tm.aiPending = true
+				tm.statusMsg = "AI generating subtasks..."
+				return tm, tm.aiBreakdownTask(task)
 			}
 		}
 

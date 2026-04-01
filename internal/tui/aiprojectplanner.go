@@ -78,6 +78,9 @@ type AIProjectPlanner struct {
 	// Existing context for AI
 	existingProjects []Project
 	existingGoals    []Goal
+	overdueCount     int
+	dueTodayCount    int
+	totalActiveTasks int
 
 	// Generated
 	generatedPlan string
@@ -119,6 +122,15 @@ func (ap *AIProjectPlanner) Open(vaultRoot string, vaultTitles []string,
 	ap.vaultTitles = vaultTitles
 	ap.existingProjects = projects
 	ap.existingGoals = goals
+	// Calculate current workload for AI context
+	ap.overdueCount = 0
+	ap.dueTodayCount = 0
+	ap.totalActiveTasks = 0
+	for _, p := range projects {
+		if p.Status == "" || p.Status == "active" {
+			ap.totalActiveTasks += p.TasksTotal - p.TasksDone
+		}
+	}
 	ap.generatedPlan = ""
 	ap.parsedProject = Project{}
 	ap.parsedTasks = nil
@@ -170,6 +182,18 @@ func (ap AIProjectPlanner) buildPrompt() string {
 	b.WriteString("You are a project planning assistant. Break down the following project idea into a structured plan.\n\n")
 	b.WriteString(fmt.Sprintf("PROJECT NAME: %s\n", ap.nameInput))
 	b.WriteString(fmt.Sprintf("DESCRIPTION: %s\n\n", ap.descInput))
+
+	// Current workload context
+	activeProjects := 0
+	for _, p := range ap.existingProjects {
+		if p.Status == "" || p.Status == "active" {
+			activeProjects++
+		}
+	}
+	if activeProjects > 0 || ap.totalActiveTasks > 0 {
+		b.WriteString(fmt.Sprintf("Current workload: %d active projects, ~%d open tasks across all projects.\n", activeProjects, ap.totalActiveTasks))
+		b.WriteString("Keep this in mind when setting realistic timelines — don't overload the user.\n\n")
+	}
 
 	if len(ap.existingProjects) > 0 {
 		b.WriteString("Existing projects (avoid duplicates, build on these where relevant):\n")

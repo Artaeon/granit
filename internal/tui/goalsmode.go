@@ -295,6 +295,18 @@ type GoalsMode struct {
 
 	statusMsg   string
 	fileChanged bool // set when Tasks.md is modified (createTaskFromMilestone)
+
+	// AI config
+	aiProvider      string
+	aiModel         string
+	aiOllamaURL     string
+	aiAPIKey        string
+	aiNousURL       string
+	aiNousAPIKey    string
+	aiNerveBinary   string
+	aiNerveModel    string
+	aiNerveProvider string
+	aiPending       bool
 }
 
 // NewGoalsMode creates a new goals overlay.
@@ -371,6 +383,77 @@ func (gm *GoalsMode) saveGoals() {
 		return // don't write corrupt data
 	}
 	_ = os.WriteFile(gm.goalsPath(), data, 0644)
+}
+
+// SetAIConfig stores AI provider configuration for goal AI features.
+func (gm *GoalsMode) SetAIConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
+	gm.aiProvider = provider
+	gm.aiModel = model
+	gm.aiOllamaURL = ollamaURL
+	gm.aiAPIKey = apiKey
+	if len(nousOpts) > 0 && nousOpts[0] != "" { gm.aiNousURL = nousOpts[0] }
+	if len(nousOpts) > 1 { gm.aiNousAPIKey = nousOpts[1] }
+	if len(nousOpts) > 2 { gm.aiNerveBinary = nousOpts[2] }
+	if len(nousOpts) > 3 { gm.aiNerveModel = nousOpts[3] }
+	if len(nousOpts) > 4 { gm.aiNerveProvider = nousOpts[4] }
+}
+
+type gmAIResultMsg struct {
+	milestones []GoalMilestone
+	goalID     string
+	err        error
+}
+
+// aiGenerateMilestones sends a goal to the LLM to generate milestones.
+func (gm *GoalsMode) aiGenerateMilestones(goal Goal) tea.Cmd {
+	prompt := fmt.Sprintf(
+		"Create 4-8 specific, measurable milestones for this goal.\n"+
+			"Goal: %s\nDescription: %s\nCategory: %s\nTarget date: %s\n\n"+
+			"Respond with ONLY a list of milestones, one per line, each starting with '- [ ] '. "+
+			"Make each milestone concrete and actionable. Include rough timeframes if the target date is set. No explanations.",
+		goal.Title, goal.Description, goal.Category, goal.TargetDate,
+	)
+
+	return func() tea.Msg {
+		var resp string
+		var err error
+
+		switch gm.aiProvider {
+		case "openai":
+			resp, err = tmAICall(gm.aiAPIKey, gm.aiModel, "", prompt)
+		case "nerve":
+			client := NewNerveClient(gm.aiNerveBinary, gm.aiNerveModel, gm.aiNerveProvider)
+			resp, err = client.Chat("You are a goal planning assistant. Be concrete and actionable.", prompt, 60*time.Second)
+		case "nous":
+			client := NewNousClient(gm.aiNousURL, gm.aiNousAPIKey)
+			resp, err = client.Chat(prompt)
+		default: // ollama
+			url := gm.aiOllamaURL
+			if url == "" { url = "http://localhost:11434" }
+			model := gm.aiModel
+			if model == "" { model = "qwen2.5:0.5b" }
+			resp, err = tmCallOllama(url, model, prompt)
+		}
+
+		if err != nil {
+			return gmAIResultMsg{err: err, goalID: goal.ID}
+		}
+
+		var milestones []GoalMilestone
+		for _, line := range strings.Split(resp, "\n") {
+			trimmed := strings.TrimSpace(line)
+			text := ""
+			if strings.HasPrefix(trimmed, "- [ ] ") {
+				text = strings.TrimSpace(trimmed[6:])
+			} else if strings.HasPrefix(trimmed, "- ") && !strings.HasPrefix(trimmed, "- [") {
+				text = strings.TrimSpace(trimmed[2:])
+			}
+			if text != "" {
+				milestones = append(milestones, GoalMilestone{Text: text})
+			}
+		}
+		return gmAIResultMsg{milestones: milestones, goalID: goal.ID}
+	}
 }
 
 func (gm *GoalsMode) nextID() string {
@@ -772,6 +855,23 @@ func (gm GoalsMode) Update(msg tea.Msg) (GoalsMode, tea.Cmd) {
 		return gm, nil
 	}
 	switch msg := msg.(type) {
+	case gmAIResultMsg:
+		gm.aiPending = false
+		if msg.err != nil {
+			gm.statusMsg = "AI error: " + msg.err.Error()
+		} else if len(msg.milestones) > 0 {
+			for i := range gm.goals {
+				if gm.goals[i].ID == msg.goalID {
+					gm.goals[i].Milestones = append(gm.goals[i].Milestones, msg.milestones...)
+					gm.saveGoals()
+					break
+				}
+			}
+			gm.statusMsg = fmt.Sprintf("Added %d milestones", len(msg.milestones))
+		} else {
+			gm.statusMsg = "AI returned no milestones"
+		}
+		return gm, nil
 	case tea.KeyMsg:
 		key := msg.String()
 		if gm.input != goalInputNone {
@@ -955,6 +1055,15 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			goal := gm.filtered[gm.cursor]
 			gm.input = goalInputNotes
 			gm.inputBuf = goal.Notes
+		}
+
+	// AI generate milestones
+	case "G":
+		if gm.cursor < len(gm.filtered) && !gm.aiPending && gm.aiProvider != "local" && gm.aiProvider != "" {
+			goal := gm.filtered[gm.cursor]
+			gm.aiPending = true
+			gm.statusMsg = "AI generating milestones..."
+			return gm, gm.aiGenerateMilestones(goal)
 		}
 
 	// Set goal color
