@@ -297,16 +297,8 @@ type GoalsMode struct {
 	fileChanged bool // set when Tasks.md is modified (createTaskFromMilestone)
 
 	// AI config
-	aiProvider      string
-	aiModel         string
-	aiOllamaURL     string
-	aiAPIKey        string
-	aiNousURL       string
-	aiNousAPIKey    string
-	aiNerveBinary   string
-	aiNerveModel    string
-	aiNerveProvider string
-	aiPending       bool
+	ai        AIConfig
+	aiPending bool
 }
 
 // NewGoalsMode creates a new goals overlay.
@@ -385,19 +377,6 @@ func (gm *GoalsMode) saveGoals() {
 	_ = os.WriteFile(gm.goalsPath(), data, 0644)
 }
 
-// SetAIConfig stores AI provider configuration for goal AI features.
-func (gm *GoalsMode) SetAIConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
-	gm.aiProvider = provider
-	gm.aiModel = model
-	gm.aiOllamaURL = ollamaURL
-	gm.aiAPIKey = apiKey
-	if len(nousOpts) > 0 && nousOpts[0] != "" { gm.aiNousURL = nousOpts[0] }
-	if len(nousOpts) > 1 { gm.aiNousAPIKey = nousOpts[1] }
-	if len(nousOpts) > 2 { gm.aiNerveBinary = nousOpts[2] }
-	if len(nousOpts) > 3 { gm.aiNerveModel = nousOpts[3] }
-	if len(nousOpts) > 4 { gm.aiNerveProvider = nousOpts[4] }
-}
-
 type gmAIResultMsg struct {
 	milestones []GoalMilestone
 	goalID     string
@@ -414,24 +393,23 @@ func (gm *GoalsMode) aiGenerateMilestones(goal Goal) tea.Cmd {
 		goal.Title, goal.Description, goal.Category, goal.TargetDate,
 	)
 
+	ai := gm.ai
 	return func() tea.Msg {
 		var resp string
 		var err error
 
-		switch gm.aiProvider {
+		switch ai.Provider {
 		case "openai":
-			resp, err = tmAICall(gm.aiAPIKey, gm.aiModel, "", prompt)
+			resp, err = tmAICall(ai.APIKey, ai.Model, "", prompt)
 		case "nerve":
-			client := NewNerveClient(gm.aiNerveBinary, gm.aiNerveModel, gm.aiNerveProvider)
+			client := ai.NewNerve()
 			resp, err = client.Chat("You are a goal planning assistant. Be concrete and actionable.", prompt, 60*time.Second)
 		case "nous":
-			client := NewNousClient(gm.aiNousURL, gm.aiNousAPIKey)
+			client := ai.NewNous()
 			resp, err = client.Chat(prompt)
 		default: // ollama
-			url := gm.aiOllamaURL
-			if url == "" { url = "http://localhost:11434" }
-			model := gm.aiModel
-			if model == "" { model = "qwen2.5:0.5b" }
+			url := ai.OllamaEndpoint()
+			model := ai.ModelOrDefault("qwen2.5:0.5b")
 			resp, err = tmCallOllama(url, model, prompt)
 		}
 
@@ -1059,7 +1037,7 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 
 	// AI generate milestones
 	case "G":
-		if gm.cursor < len(gm.filtered) && !gm.aiPending && gm.aiProvider != "local" && gm.aiProvider != "" {
+		if gm.cursor < len(gm.filtered) && !gm.aiPending && gm.ai.Provider != "local" && gm.ai.Provider != "" {
 			goal := gm.filtered[gm.cursor]
 			gm.aiPending = true
 			gm.statusMsg = "AI generating milestones..."

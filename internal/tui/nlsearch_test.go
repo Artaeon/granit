@@ -17,26 +17,20 @@ func TestNewNLSearch(t *testing.T) {
 	nls := NewNLSearch()
 
 	t.Run("defaults to local provider", func(t *testing.T) {
-		if nls.aiProvider != "local" {
-			t.Errorf("expected aiProvider 'local', got %q", nls.aiProvider)
+		if nls.ai.Provider != "local" {
+			t.Errorf("expected ai.Provider 'local', got %q", nls.ai.Provider)
 		}
 	})
 
 	t.Run("default ollama URL", func(t *testing.T) {
-		if nls.ollamaURL != "http://localhost:11434" {
-			t.Errorf("expected default ollamaURL, got %q", nls.ollamaURL)
+		if nls.ai.OllamaURL != "http://localhost:11434" {
+			t.Errorf("expected default OllamaURL, got %q", nls.ai.OllamaURL)
 		}
 	})
 
-	t.Run("default ollama model", func(t *testing.T) {
-		if nls.ollamaModel != "llama3.2" {
-			t.Errorf("expected default ollamaModel 'llama3.2', got %q", nls.ollamaModel)
-		}
-	})
-
-	t.Run("default openai model", func(t *testing.T) {
-		if nls.openaiModel != "gpt-4o-mini" {
-			t.Errorf("expected default openaiModel 'gpt-4o-mini', got %q", nls.openaiModel)
+	t.Run("default model", func(t *testing.T) {
+		if nls.ai.Model != "llama3.2" {
+			t.Errorf("expected default Model 'llama3.2', got %q", nls.ai.Model)
 		}
 	})
 
@@ -66,7 +60,7 @@ func TestNLSearchOpen(t *testing.T) {
 	writeTestNote(t, tmpDir, "note1.md", "# First Note\nSome content about testing.")
 	writeTestNote(t, tmpDir, "note2.md", "# Second Note\nAnother note about Go programming.")
 
-	nls.Open(tmpDir, "local", "", "", "", "")
+	nls.Open(tmpDir, AIConfig{Provider: "local"})
 
 	t.Run("becomes active", func(t *testing.T) {
 		if !nls.IsActive() {
@@ -176,7 +170,7 @@ func TestBuildNoteIndex(t *testing.T) {
 	writeTestNote(t, tmpDir, "readme.txt", "Not markdown")
 
 	nls := NewNLSearch()
-	nls.Open(tmpDir, "local", "", "", "", "")
+	nls.Open(tmpDir, AIConfig{Provider: "local"})
 
 	t.Run("indexes only markdown files", func(t *testing.T) {
 		for _, entry := range nls.noteIndex {
@@ -1110,7 +1104,7 @@ func TestLocalSearchWithFilesystem(t *testing.T) {
 	writeTestNote(t, tmpDir, "recipes.md", "# Italian Recipes\nPasta with tomato sauce and basil.\n#cooking #italian")
 
 	nls := NewNLSearch()
-	nls.Open(tmpDir, "local", "", "", "", "")
+	nls.Open(tmpDir, AIConfig{Provider: "local"})
 
 	t.Run("finds programming notes", func(t *testing.T) {
 		nls.query = "programming language"

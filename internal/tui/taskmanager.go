@@ -221,17 +221,9 @@ type TaskManager struct {
 	lastChangedNote string // path of most recently modified note
 
 	// AI config
-	aiProvider    string
-	aiModel       string
-	aiOllamaURL   string
-	aiAPIKey      string
-	aiNousURL     string
-	aiNousAPIKey  string
-	aiNerveBinary string
-	aiNerveModel  string
-	aiNerveProvider string
-	aiPending     bool   // waiting for AI response
-	aiStatusMsg   string // temporary AI status
+	ai          AIConfig
+	aiPending   bool   // waiting for AI response
+	aiStatusMsg string // temporary AI status
 }
 
 // NewTaskManager creates a new TaskManager overlay.
@@ -1083,29 +1075,6 @@ func suggestPriority(task Task, allTasks []Task) int {
 	}
 }
 
-// SetAIConfig stores AI provider configuration for task AI features.
-func (tm *TaskManager) SetAIConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
-	tm.aiProvider = provider
-	tm.aiModel = model
-	tm.aiOllamaURL = ollamaURL
-	tm.aiAPIKey = apiKey
-	if len(nousOpts) > 0 && nousOpts[0] != "" {
-		tm.aiNousURL = nousOpts[0]
-	}
-	if len(nousOpts) > 1 {
-		tm.aiNousAPIKey = nousOpts[1]
-	}
-	if len(nousOpts) > 2 {
-		tm.aiNerveBinary = nousOpts[2]
-	}
-	if len(nousOpts) > 3 {
-		tm.aiNerveModel = nousOpts[3]
-	}
-	if len(nousOpts) > 4 {
-		tm.aiNerveProvider = nousOpts[4]
-	}
-}
-
 // aiBreakdownTask sends the task to an LLM to generate subtasks.
 func (tm *TaskManager) aiBreakdownTask(task Task) tea.Cmd {
 	prompt := fmt.Sprintf(
@@ -1117,29 +1086,23 @@ func (tm *TaskManager) aiBreakdownTask(task Task) tea.Cmd {
 		task.Text, task.Project, task.Priority, task.DueDate,
 	)
 
-	provider := tm.aiProvider
+	ai := tm.ai
 	return func() tea.Msg {
 		var resp string
 		var err error
 
-		switch provider {
+		switch ai.Provider {
 		case "openai":
-			resp, err = tmAICall(tm.aiAPIKey, tm.aiModel, "http", prompt)
+			resp, err = tmAICall(ai.APIKey, ai.Model, "http", prompt)
 		case "nerve":
-			client := NewNerveClient(tm.aiNerveBinary, tm.aiNerveModel, tm.aiNerveProvider)
+			client := ai.NewNerve()
 			resp, err = client.Chat("You are a task planning assistant. Be concise.", prompt, 60*time.Second)
 		case "nous":
-			client := NewNousClient(tm.aiNousURL, tm.aiNousAPIKey)
+			client := ai.NewNous()
 			resp, err = client.Chat(prompt)
 		default: // ollama
-			url := tm.aiOllamaURL
-			if url == "" {
-				url = "http://localhost:11434"
-			}
-			model := tm.aiModel
-			if model == "" {
-				model = "qwen2.5:0.5b"
-			}
+			url := ai.OllamaEndpoint()
+			model := ai.ModelOrDefault("qwen2.5:0.5b")
 			resp, err = tmCallOllama(url, model, prompt)
 		}
 
@@ -2877,7 +2840,7 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 
 	// AI breakdown — split task into subtasks
 	case "S":
-		if tm.cursor < len(tm.filtered) && !tm.aiPending && tm.aiProvider != "local" && tm.aiProvider != "" {
+		if tm.cursor < len(tm.filtered) && !tm.aiPending && tm.ai.Provider != "local" && tm.ai.Provider != "" {
 			task := tm.filtered[tm.cursor]
 			if !task.Done {
 				tm.aiPending = true

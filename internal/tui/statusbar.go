@@ -24,8 +24,7 @@ type StatusBar struct {
 	lineNum    int
 	colNum     int
 	wordCount  int
-	aiProvider     string // "local", "ollama", "openai"
-	aiModel        string
+	ai AIConfig
 	pomodoroStatus string // e.g. "🍅 12:34"
 	clockInStatus  string // e.g. "⏱ 1:23:45 · Project"
 	researchStatus string // e.g. "Researching: AI trends"
@@ -121,8 +120,8 @@ func (sb *StatusBar) SetWordCount(count int) {
 }
 
 func (sb *StatusBar) SetAIStatus(provider, model string) {
-	sb.aiProvider = provider
-	sb.aiModel = model
+	sb.ai.Provider = provider
+	sb.ai.Model = model
 }
 
 func (sb *StatusBar) SetPomodoroStatus(status string) {
@@ -239,15 +238,15 @@ func (sb StatusBar) View() string {
 
 	// AI indicator
 	aiIndicator := ""
-	switch sb.aiProvider {
+	switch sb.ai.Provider {
 	case "ollama":
 		aiIndicator = lipgloss.NewStyle().
 			Background(green).Foreground(crust).Bold(true).Padding(0, 1).
-			Render(IconBotChar + " " + sb.aiModel)
+			Render(IconBotChar + " " + sb.ai.Model)
 	case "openai":
 		aiIndicator = lipgloss.NewStyle().
 			Background(blue).Foreground(crust).Bold(true).Padding(0, 1).
-			Render(IconBotChar + " " + sb.aiModel)
+			Render(IconBotChar + " " + sb.ai.Model)
 	}
 
 	// Pomodoro indicator

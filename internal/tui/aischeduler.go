@@ -103,11 +103,7 @@ type AIScheduler struct {
 	prefs  SchedulerPrefs
 
 	// AI config
-	aiProvider  string
-	ollamaURL   string
-	ollamaModel string
-	openaiKey   string
-	openaiModel string
+	ai AIConfig
 
 	// Setup UI
 	setupField  int    // 0=workStart, 1=workEnd, 2=lunchStart, 3=focusBlock, 4=breakEvery
@@ -155,9 +151,7 @@ func (as *AIScheduler) SetSize(w, h int) {
 }
 
 // Open initialises the scheduler overlay with tasks, events, and AI config.
-func (as *AIScheduler) Open(vaultRoot string, tasks []SchedulerTask, events []SchedulerEvent,
-	aiProvider, ollamaURL, ollamaModel, openaiKey, openaiModel string) {
-
+func (as *AIScheduler) Open(vaultRoot string, tasks []SchedulerTask, events []SchedulerEvent, cfg AIConfig) {
 	as.active = true
 	as.vaultRoot = vaultRoot
 	as.phase = 0
@@ -172,7 +166,6 @@ func (as *AIScheduler) Open(vaultRoot string, tasks []SchedulerTask, events []Sc
 	as.generating = false
 	as.spinner = 0
 
-	// Copy tasks (only incomplete ones)
 	as.tasks = nil
 	for _, t := range tasks {
 		if !t.Done {
@@ -180,25 +173,7 @@ func (as *AIScheduler) Open(vaultRoot string, tasks []SchedulerTask, events []Sc
 		}
 	}
 	as.events = events
-
-	// AI config
-	as.aiProvider = aiProvider
-	if as.aiProvider == "" {
-		as.aiProvider = "local"
-	}
-	as.ollamaURL = ollamaURL
-	if as.ollamaURL == "" {
-		as.ollamaURL = "http://localhost:11434"
-	}
-	as.ollamaModel = ollamaModel
-	if as.ollamaModel == "" {
-		as.ollamaModel = "qwen2.5:0.5b"
-	}
-	as.openaiKey = openaiKey
-	as.openaiModel = openaiModel
-	if as.openaiModel == "" {
-		as.openaiModel = "gpt-4o-mini"
-	}
+	as.ai = cfg
 }
 
 // Close deactivates the overlay.
@@ -791,7 +766,7 @@ func (as AIScheduler) startGeneration() (AIScheduler, tea.Cmd) {
 		return as, nil
 	}
 
-	useAI := as.aiProvider == "ollama" || as.aiProvider == "openai"
+	useAI := as.ai.Provider == "ollama" || as.ai.Provider == "openai"
 
 	if useAI {
 		as.phase = 1
@@ -801,15 +776,15 @@ func (as AIScheduler) startGeneration() (AIScheduler, tea.Cmd) {
 
 		prompt := as.buildSchedulerPrompt()
 
-		if as.aiProvider == "openai" && as.openaiKey != "" {
+		if as.ai.Provider == "openai" && as.ai.APIKey != "" {
 			return as, tea.Batch(
-				aiSchedulerOpenAI(as.openaiKey, as.openaiModel, prompt),
+				aiSchedulerOpenAI(as.ai.APIKey, as.ai.Model, prompt),
 				aiSchedulerTickCmd(),
 			)
 		}
 
 		return as, tea.Batch(
-			aiSchedulerOllama(as.ollamaURL, as.ollamaModel, prompt),
+			aiSchedulerOllama(as.ai.OllamaURL, as.ai.Model, prompt),
 			aiSchedulerTickCmd(),
 		)
 	}
@@ -904,12 +879,12 @@ func (as AIScheduler) viewSetup(width int) string {
 	// AI provider indicator
 	providerLabel := "Local Algorithm"
 	providerColor := overlay1
-	switch as.aiProvider {
+	switch as.ai.Provider {
 	case "ollama":
-		providerLabel = "Ollama: " + as.ollamaModel
+		providerLabel = "Ollama: " + as.ai.Model
 		providerColor = green
 	case "openai":
-		providerLabel = "OpenAI: " + as.openaiModel
+		providerLabel = "OpenAI: " + as.ai.Model
 		providerColor = green
 	}
 	buf.WriteString(lipgloss.NewStyle().Foreground(providerColor).Render("  "+IconBotChar+" "+providerLabel) + "\n\n")
@@ -1065,11 +1040,11 @@ func (as AIScheduler) viewGenerating(width int) string {
 	frame := spinFrames[as.spinner%len(spinFrames)]
 
 	providerLabel := "local algorithm"
-	switch as.aiProvider {
+	switch as.ai.Provider {
 	case "ollama":
-		providerLabel = "Ollama (" + as.ollamaModel + ")"
+		providerLabel = "Ollama (" + as.ai.Model + ")"
 	case "openai":
-		providerLabel = "OpenAI (" + as.openaiModel + ")"
+		providerLabel = "OpenAI (" + as.ai.Model + ")"
 	}
 
 	buf.WriteString(lipgloss.NewStyle().Foreground(yellow).Bold(true).

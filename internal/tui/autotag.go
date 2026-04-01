@@ -24,15 +24,7 @@ type AutoTagger struct {
 	enabled bool
 
 	// AI config
-	provider      string
-	model         string
-	ollamaURL     string
-	apiKey        string
-	nousURL       string
-	nousAPIKey    string
-	nerveBinary   string
-	nerveModel    string
-	nerveProvider string
+	ai AIConfig
 
 	// Existing tags in the vault for consistency
 	vaultTags []string
@@ -47,10 +39,12 @@ type autoTagResultMsg struct {
 // NewAutoTagger creates an AutoTagger with sensible defaults.
 func NewAutoTagger() *AutoTagger {
 	return &AutoTagger{
-		enabled:   false,
-		provider:  "ollama",
-		model:     "llama3.2",
-		ollamaURL: "http://localhost:11434",
+		enabled: false,
+		ai: AIConfig{
+			Provider:  "ollama",
+			Model:     "llama3.2",
+			OllamaURL: "http://localhost:11434",
+		},
 	}
 }
 
@@ -62,35 +56,6 @@ func (at *AutoTagger) SetEnabled(enabled bool) {
 // IsEnabled reports whether the auto-tagger is active.
 func (at *AutoTagger) IsEnabled() bool {
 	return at.enabled
-}
-
-// SetConfig configures the AI provider and connection details.
-func (at *AutoTagger) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
-	if provider != "" {
-		at.provider = provider
-	}
-	if model != "" {
-		at.model = model
-	}
-	if ollamaURL != "" {
-		at.ollamaURL = ollamaURL
-	}
-	at.apiKey = apiKey
-	if len(nousOpts) > 0 && nousOpts[0] != "" {
-		at.nousURL = nousOpts[0]
-	}
-	if len(nousOpts) > 1 {
-		at.nousAPIKey = nousOpts[1]
-	}
-	if len(nousOpts) > 2 {
-		at.nerveBinary = nousOpts[2]
-	}
-	if len(nousOpts) > 3 {
-		at.nerveModel = nousOpts[3]
-	}
-	if len(nousOpts) > 4 {
-		at.nerveProvider = nousOpts[4]
-	}
 }
 
 // SetVaultTags provides the set of tags already present in the vault so the
@@ -118,31 +83,25 @@ func (at *AutoTagger) TagNote(content string) tea.Cmd {
 		systemPrompt += " Prefer tags from this existing list when applicable: " + strings.Join(at.vaultTags, ", ")
 	}
 
-	provider := at.provider
-	model := at.model
-	ollamaURL := at.ollamaURL
-	apiKey := at.apiKey
-	nousURL := at.nousURL
-	nousAPIKey := at.nousAPIKey
-	nerveBinary := at.nerveBinary
-	nerveModel := at.nerveModel
-	nerveProvider := at.nerveProvider
+	ai := at.ai
 
 	return func() tea.Msg {
 		var response string
 		var err error
 
-		switch provider {
+		switch ai.Provider {
 		case "openai":
-			response, err = atCallOpenAI(apiKey, model, systemPrompt, userPrompt)
+			response, err = atCallOpenAI(ai.APIKey, ai.Model, systemPrompt, userPrompt)
 		case "nous":
-			client := NewNousClient(nousURL, nousAPIKey)
+			client := ai.NewNous()
 			response, err = client.Chat(systemPrompt + "\n\n" + userPrompt)
 		case "nerve":
-			client := NewNerveClient(nerveBinary, nerveModel, nerveProvider)
+			client := ai.NewNerve()
 			response, err = client.Chat(systemPrompt, userPrompt, 30*time.Second)
 		default: // "ollama"
-			response, err = atCallOllama(ollamaURL, model, systemPrompt, userPrompt)
+			url := ai.OllamaEndpoint()
+			model := ai.ModelOrDefault("llama3.2")
+			response, err = atCallOllama(url, model, systemPrompt, userPrompt)
 		}
 
 		if err != nil {
@@ -368,23 +327,17 @@ type NoteChat struct {
 	loading     bool
 	loadingTick int
 
-	provider      string
-	model         string
-	ollamaURL     string
-	apiKey        string
-	nousURL       string
-	nousAPIKey    string
-	nerveBinary   string
-	nerveModel    string
-	nerveProvider string
+	ai AIConfig
 }
 
 // NewNoteChat creates an empty NoteChat with sensible defaults.
 func NewNoteChat() NoteChat {
 	return NoteChat{
-		provider:  "ollama",
-		model:     "llama3.2",
-		ollamaURL: "http://localhost:11434",
+		ai: AIConfig{
+			Provider:  "ollama",
+			Model:     "llama3.2",
+			OllamaURL: "http://localhost:11434",
+		},
 	}
 }
 
@@ -424,35 +377,6 @@ func (nc *NoteChat) Close() {
 func (nc *NoteChat) SetSize(w, h int) {
 	nc.width = w
 	nc.height = h
-}
-
-// SetConfig configures the AI provider and connection details.
-func (nc *NoteChat) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
-	if provider != "" {
-		nc.provider = provider
-	}
-	if model != "" {
-		nc.model = model
-	}
-	if ollamaURL != "" {
-		nc.ollamaURL = ollamaURL
-	}
-	nc.apiKey = apiKey
-	if len(nousOpts) > 0 && nousOpts[0] != "" {
-		nc.nousURL = nousOpts[0]
-	}
-	if len(nousOpts) > 1 {
-		nc.nousAPIKey = nousOpts[1]
-	}
-	if len(nousOpts) > 2 {
-		nc.nerveBinary = nousOpts[2]
-	}
-	if len(nousOpts) > 3 {
-		nc.nerveModel = nousOpts[3]
-	}
-	if len(nousOpts) > 4 {
-		nc.nerveProvider = nousOpts[4]
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -734,15 +658,17 @@ func (nc NoteChat) Update(msg tea.Msg) (NoteChat, tea.Cmd) {
 			systemPrompt := ncBuildSystemPrompt(nc.notePath, nc.noteContent)
 
 			var cmd tea.Cmd
-			switch nc.provider {
+			switch nc.ai.Provider {
 			case "openai":
-				cmd = ncSendToOpenAI(nc.apiKey, nc.model, systemPrompt, nc.messages)
+				cmd = ncSendToOpenAI(nc.ai.APIKey, nc.ai.Model, systemPrompt, nc.messages)
 			case "nous":
-				cmd = ncSendToNous(nc.nousURL, nc.nousAPIKey, systemPrompt, nc.messages)
+				cmd = ncSendToNous(nc.ai.NousURL, nc.ai.NousAPIKey, systemPrompt, nc.messages)
 			case "nerve":
-				cmd = ncSendToNerve(nc.nerveBinary, nc.nerveModel, nc.nerveProvider, systemPrompt, nc.messages)
+				cmd = ncSendToNerve(nc.ai.NerveBinary, nc.ai.NerveModel, nc.ai.NerveProvider, systemPrompt, nc.messages)
 			default: // "ollama"
-				cmd = ncSendToOllama(nc.ollamaURL, nc.model, systemPrompt, nc.messages)
+				url := nc.ai.OllamaEndpoint()
+				model := nc.ai.ModelOrDefault("llama3.2")
+				cmd = ncSendToOllama(url, model, systemPrompt, nc.messages)
 			}
 
 			return nc, tea.Batch(cmd, noteChatTick())

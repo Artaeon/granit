@@ -88,15 +88,7 @@ type DailyBriefing struct {
 	todayPath   string   // path to today's daily note
 
 	// AI config
-	provider      string
-	model         string
-	ollamaURL     string
-	apiKey        string
-	nousURL       string
-	nousAPIKey    string
-	nerveBinary   string
-	nerveModel    string
-	nerveProvider string
+	ai AIConfig
 
 	// result to write into daily note
 	resultContent string
@@ -126,28 +118,6 @@ func (db *DailyBriefing) Close() { db.active = false }
 func (db *DailyBriefing) SetSize(w, h int) {
 	db.width = w
 	db.height = h
-}
-
-func (db *DailyBriefing) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
-	db.provider = provider
-	db.model = model
-	db.ollamaURL = ollamaURL
-	db.apiKey = apiKey
-	if len(nousOpts) > 0 && nousOpts[0] != "" {
-		db.nousURL = nousOpts[0]
-	}
-	if len(nousOpts) > 1 {
-		db.nousAPIKey = nousOpts[1]
-	}
-	if len(nousOpts) > 2 {
-		db.nerveBinary = nousOpts[2]
-	}
-	if len(nousOpts) > 3 {
-		db.nerveModel = nousOpts[3]
-	}
-	if len(nousOpts) > 4 {
-		db.nerveProvider = nousOpts[4]
-	}
 }
 
 func (db *DailyBriefing) SetVaultData(notes map[string]string, recentPaths []string, todayPath string) {
@@ -236,30 +206,24 @@ func (db *DailyBriefing) buildPrompt() string {
 
 func (db *DailyBriefing) startBriefing() tea.Cmd {
 	prompt := db.buildPrompt()
-	provider := db.provider
-	model := db.model
-	ollamaURL := db.ollamaURL
-	apiKey := db.apiKey
-	nousURL := db.nousURL
-	nousAPIKey := db.nousAPIKey
-	nerveBinary := db.nerveBinary
-	nerveModel := db.nerveModel
-	nerveProvider := db.nerveProvider
+	ai := db.ai
 
 	return func() tea.Msg {
-		switch provider {
+		switch ai.Provider {
 		case "openai":
-			return doBriefingOpenAI(apiKey, model, prompt)
+			return doBriefingOpenAI(ai.APIKey, ai.Model, prompt)
 		case "nous":
-			client := NewNousClient(nousURL, nousAPIKey)
+			client := ai.NewNous()
 			resp, err := client.Chat(prompt)
 			return briefingResultMsg{content: resp, err: err}
 		case "nerve":
-			client := NewNerveClient(nerveBinary, nerveModel, nerveProvider)
+			client := ai.NewNerve()
 			resp, err := client.Chat(deepCovenPrompt, prompt, 120*time.Second)
 			return briefingResultMsg{content: resp, err: err}
 		default:
-			return doBriefingOllama(ollamaURL, model, prompt)
+			url := ai.OllamaEndpoint()
+			model := ai.ModelOrDefault("llama3.2")
+			return doBriefingOllama(url, model, prompt)
 		}
 	}
 }

@@ -84,11 +84,7 @@ type PlanMyDay struct {
 	advice     string   // personalized AI advice
 
 	// Config
-	aiProvider  string
-	ollamaModel string
-	ollamaURL   string
-	openaiKey   string
-	openaiModel string
+	ai AIConfig
 
 	scroll    int
 	vaultRoot string
@@ -131,7 +127,7 @@ func (p *PlanMyDay) Open(
 	habits []habitEntry,
 	projects []Project,
 	yesterdayTasks []string,
-	aiProvider, ollamaURL, ollamaModel, openaiKey, openaiModel string,
+	cfg AIConfig,
 ) tea.Cmd {
 	p.active = true
 	p.vaultRoot = vaultRoot
@@ -159,22 +155,15 @@ func (p *PlanMyDay) Open(
 	p.advice = ""
 
 	// AI config
-	p.aiProvider = aiProvider
-	if p.aiProvider == "" {
-		p.aiProvider = "local"
+	p.ai = cfg
+	if p.ai.Provider == "" {
+		p.ai.Provider = "local"
 	}
-	p.ollamaURL = ollamaURL
-	if p.ollamaURL == "" {
-		p.ollamaURL = "http://localhost:11434"
+	if p.ai.OllamaURL == "" {
+		p.ai.OllamaURL = "http://localhost:11434"
 	}
-	p.ollamaModel = ollamaModel
-	if p.ollamaModel == "" {
-		p.ollamaModel = "qwen2.5:0.5b"
-	}
-	p.openaiKey = openaiKey
-	p.openaiModel = openaiModel
-	if p.openaiModel == "" {
-		p.openaiModel = "gpt-4o-mini"
+	if p.ai.Model == "" {
+		p.ai.Model = "qwen2.5:0.5b"
 	}
 
 	// Start gathering animation, auto-advance after delay
@@ -970,7 +959,7 @@ func (p PlanMyDay) Update(msg tea.Msg) (PlanMyDay, tea.Cmd) {
 }
 
 func (p PlanMyDay) startPlanning() (PlanMyDay, tea.Cmd) {
-	useAI := p.aiProvider == "ollama" || p.aiProvider == "openai"
+	useAI := p.ai.Provider == "ollama" || p.ai.Provider == "openai"
 
 	if useAI {
 		p.phase = 1
@@ -978,15 +967,15 @@ func (p PlanMyDay) startPlanning() (PlanMyDay, tea.Cmd) {
 
 		prompt := p.buildPrompt()
 
-		if p.aiProvider == "openai" && p.openaiKey != "" {
+		if p.ai.Provider == "openai" && p.ai.APIKey != "" {
 			return p, tea.Batch(
-				planMyDayOpenAI(p.openaiKey, p.openaiModel, prompt),
+				planMyDayOpenAI(p.ai.APIKey, p.ai.Model, prompt),
 				planMyDayTickCmd(),
 			)
 		}
 
 		return p, tea.Batch(
-			planMyDayOllama(p.ollamaURL, p.ollamaModel, prompt),
+			planMyDayOllama(p.ai.OllamaURL, p.ai.Model, prompt),
 			planMyDayTickCmd(),
 		)
 	}
@@ -1140,11 +1129,11 @@ func (p PlanMyDay) viewPlanning(width int) string {
 	spinner := lipgloss.NewStyle().Foreground(mauve).Render(frames[p.spinnerTick%len(frames)])
 
 	providerLabel := "local algorithm"
-	switch p.aiProvider {
+	switch p.ai.Provider {
 	case "ollama":
-		providerLabel = "Ollama (" + p.ollamaModel + ")"
+		providerLabel = "Ollama (" + p.ai.Model + ")"
 	case "openai":
-		providerLabel = "OpenAI (" + p.openaiModel + ")"
+		providerLabel = "OpenAI (" + p.ai.Model + ")"
 	}
 
 	b.WriteString("  " + spinner + lipgloss.NewStyle().Foreground(yellow).Bold(true).

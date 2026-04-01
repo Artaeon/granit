@@ -48,15 +48,7 @@ type ThreadWeaver struct {
 	style int // 0=essay, 1=summary, 2=comparison, 3=outline
 
 	// AI config
-	provider      string
-	model         string
-	ollamaURL     string
-	apiKey        string
-	nousURL       string
-	nousAPIKey    string
-	nerveBinary   string
-	nerveModel    string
-	nerveProvider string
+	ai AIConfig
 
 	// Generation state
 	loading     bool
@@ -85,9 +77,11 @@ type ThreadWeaver struct {
 
 func NewThreadWeaver() ThreadWeaver {
 	return ThreadWeaver{
-		provider:  "ollama",
-		model:     "llama3.2",
-		ollamaURL: "http://localhost:11434",
+		ai: AIConfig{
+			Provider:  "ollama",
+			Model:     "llama3.2",
+			OllamaURL: "http://localhost:11434",
+		},
 	}
 }
 
@@ -129,37 +123,6 @@ func (tw *ThreadWeaver) SetSize(w, h int) {
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
-
-func (tw *ThreadWeaver) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
-	tw.provider = provider
-	if tw.provider == "" {
-		tw.provider = "ollama"
-	}
-	tw.model = model
-	if tw.model == "" {
-		tw.model = "llama3.2"
-	}
-	tw.ollamaURL = ollamaURL
-	if tw.ollamaURL == "" {
-		tw.ollamaURL = "http://localhost:11434"
-	}
-	tw.apiKey = apiKey
-	if len(nousOpts) > 0 && nousOpts[0] != "" {
-		tw.nousURL = nousOpts[0]
-	}
-	if len(nousOpts) > 1 {
-		tw.nousAPIKey = nousOpts[1]
-	}
-	if len(nousOpts) > 2 {
-		tw.nerveBinary = nousOpts[2]
-	}
-	if len(nousOpts) > 3 {
-		tw.nerveModel = nousOpts[3]
-	}
-	if len(nousOpts) > 4 {
-		tw.nerveProvider = nousOpts[4]
-	}
-}
 
 func (tw *ThreadWeaver) SetNotes(paths []string, contents map[string]string) {
 	tw.allNotes = paths
@@ -299,30 +262,24 @@ func (tw *ThreadWeaver) buildUserPrompt() string {
 func (tw *ThreadWeaver) generate() tea.Cmd {
 	systemPrompt := tw.buildSystemPrompt()
 	userPrompt := tw.buildUserPrompt()
-	provider := tw.provider
-	model := tw.model
-	ollamaURL := tw.ollamaURL
-	apiKey := tw.apiKey
-	nousURL := tw.nousURL
-	nousAPIKey := tw.nousAPIKey
-	nerveBinary := tw.nerveBinary
-	nerveModel := tw.nerveModel
-	nerveProvider := tw.nerveProvider
+	ai := tw.ai
 
 	return func() tea.Msg {
-		switch provider {
+		switch ai.Provider {
 		case "openai":
-			return twCallOpenAI(apiKey, model, systemPrompt, userPrompt)
+			return twCallOpenAI(ai.APIKey, ai.Model, systemPrompt, userPrompt)
 		case "nous":
-			client := NewNousClient(nousURL, nousAPIKey)
+			client := ai.NewNous()
 			resp, err := client.Chat(systemPrompt + "\n\n" + userPrompt)
 			return threadWeaverResultMsg{content: resp, err: err}
 		case "nerve":
-			client := NewNerveClient(nerveBinary, nerveModel, nerveProvider)
+			client := ai.NewNerve()
 			resp, err := client.Chat(systemPrompt, userPrompt, 120*time.Second)
 			return threadWeaverResultMsg{content: resp, err: err}
 		default:
-			return twCallOllama(ollamaURL, model, systemPrompt, userPrompt)
+			url := ai.OllamaEndpoint()
+			model := ai.ModelOrDefault("llama3.2")
+			return twCallOllama(url, model, systemPrompt, userPrompt)
 		}
 	}
 }
@@ -960,7 +917,7 @@ func (tw ThreadWeaver) viewGenerating(width int) string {
 	b.WriteString("\n\n")
 
 	providerDisplay := lipgloss.NewStyle().Foreground(overlay0)
-	b.WriteString("  " + providerDisplay.Render("Provider: "+tw.provider+"  Model: "+tw.model))
+	b.WriteString("  " + providerDisplay.Render("Provider: "+tw.ai.Provider+"  Model: "+tw.ai.Model))
 
 	return b.String()
 }

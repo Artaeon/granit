@@ -63,16 +63,8 @@ type AIProjectPlanner struct {
 	inputFocus int // 0=name, 1=desc
 
 	// AI config
-	provider      string
-	model         string
-	ollamaURL     string
-	apiKey        string
-	nousURL       string
-	nousAPIKey    string
-	nerveBinary   string
-	nerveModel    string
-	nerveProvider string
-	vaultRoot  string
+	ai        AIConfig
+	vaultRoot string
 	vaultTitles []string
 
 	// Existing context for AI
@@ -111,8 +103,7 @@ func (ap *AIProjectPlanner) SetSize(w, h int) {
 
 // Open activates the overlay.
 func (ap *AIProjectPlanner) Open(vaultRoot string, vaultTitles []string,
-	provider, model, ollamaURL, apiKey, nousURL, nousAPIKey string,
-	projects []Project, goals []Goal, nerveOpts ...string) {
+	cfg AIConfig, projects []Project, goals []Goal) {
 	ap.active = true
 	ap.state = plannerInput
 	ap.nameInput = ""
@@ -138,26 +129,12 @@ func (ap *AIProjectPlanner) Open(vaultRoot string, vaultTitles []string,
 	ap.reviewScroll = 0
 	ap.spinnerTick = 0
 
-	ap.provider = provider
-	ap.model = model
-	ap.ollamaURL = ollamaURL
-	if ap.ollamaURL == "" {
-		ap.ollamaURL = "http://localhost:11434"
+	ap.ai = cfg
+	if ap.ai.OllamaURL == "" {
+		ap.ai.OllamaURL = "http://localhost:11434"
 	}
-	ap.apiKey = apiKey
-	ap.nousURL = nousURL
-	if ap.nousURL == "" {
-		ap.nousURL = "http://localhost:3333"
-	}
-	ap.nousAPIKey = nousAPIKey
-	if len(nerveOpts) > 0 {
-		ap.nerveBinary = nerveOpts[0]
-	}
-	if len(nerveOpts) > 1 {
-		ap.nerveModel = nerveOpts[1]
-	}
-	if len(nerveOpts) > 2 {
-		ap.nerveProvider = nerveOpts[2]
+	if ap.ai.NousURL == "" {
+		ap.ai.NousURL = "http://localhost:3333"
 	}
 }
 
@@ -817,37 +794,31 @@ func (ap AIProjectPlanner) startGeneration() (AIProjectPlanner, tea.Cmd) {
 
 	prompt := ap.buildPrompt()
 
-	switch ap.provider {
+	switch ap.ai.Provider {
 	case "openai":
-		if ap.apiKey != "" {
-			model := ap.model
-			if model == "" {
-				model = "gpt-4o-mini"
-			}
+		if ap.ai.APIKey != "" {
+			model := ap.ai.ModelOrDefault("gpt-4o-mini")
 			return ap, tea.Batch(
-				aiPlannerOpenAI(ap.apiKey, model, prompt),
+				aiPlannerOpenAI(ap.ai.APIKey, model, prompt),
 				aiPlannerTickCmd(),
 			)
 		}
 		// Fall through to ollama
 		fallthrough
 	case "ollama":
-		model := ap.model
-		if model == "" {
-			model = "qwen2.5:0.5b"
-		}
+		model := ap.ai.ModelOrDefault("qwen2.5:0.5b")
 		return ap, tea.Batch(
-			aiPlannerOllama(ap.ollamaURL, model, prompt),
+			aiPlannerOllama(ap.ai.OllamaEndpoint(), model, prompt),
 			aiPlannerTickCmd(),
 		)
 	case "nous":
 		return ap, tea.Batch(
-			aiPlannerNous(ap.nousURL, ap.nousAPIKey, prompt),
+			aiPlannerNous(ap.ai.NousURL, ap.ai.NousAPIKey, prompt),
 			aiPlannerTickCmd(),
 		)
 	case "nerve":
 		return ap, tea.Batch(
-			aiPlannerNerve(ap.nerveBinary, ap.nerveModel, ap.nerveProvider, prompt),
+			aiPlannerNerve(ap.ai.NerveBinary, ap.ai.NerveModel, ap.ai.NerveProvider, prompt),
 			aiPlannerTickCmd(),
 		)
 	case "claude":
@@ -857,12 +828,9 @@ func (ap AIProjectPlanner) startGeneration() (AIProjectPlanner, tea.Cmd) {
 		)
 	default:
 		// local/fallback — try ollama
-		model := ap.model
-		if model == "" {
-			model = "qwen2.5:0.5b"
-		}
+		model := ap.ai.ModelOrDefault("qwen2.5:0.5b")
 		return ap, tea.Batch(
-			aiPlannerOllama(ap.ollamaURL, model, prompt),
+			aiPlannerOllama(ap.ai.OllamaEndpoint(), model, prompt),
 			aiPlannerTickCmd(),
 		)
 	}
@@ -994,7 +962,7 @@ func (ap AIProjectPlanner) viewGenerating(b *strings.Builder, _ int) {
 	b.WriteString("\n\n")
 	b.WriteString(dimStyle.Render(fmt.Sprintf("Project: %s", ap.nameInput)))
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render(fmt.Sprintf("Provider: %s", ap.provider)))
+	b.WriteString(dimStyle.Render(fmt.Sprintf("Provider: %s", ap.ai.Provider)))
 	b.WriteString("\n\n")
 	b.WriteString(dimStyle.Render("Esc=cancel"))
 }

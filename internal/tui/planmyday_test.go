@@ -51,7 +51,7 @@ func TestPlanMyDayOpenCloseIsActive(t *testing.T) {
 		t.Error("expected IsActive false before Open")
 	}
 
-	cmd := p.Open("/tmp/vault", nil, nil, nil, nil, nil, "local", "", "", "", "")
+	cmd := p.Open("/tmp/vault", nil, nil, nil, nil, nil, AIConfig{Provider: "local"})
 	if !p.IsActive() {
 		t.Error("expected IsActive true after Open")
 	}
@@ -82,7 +82,7 @@ func TestPlanMyDayOpenResetsState(t *testing.T) {
 	p.scroll = 10
 	p.loadingTick = 5
 
-	p.Open("/tmp", nil, nil, nil, nil, nil, "", "", "", "", "")
+	p.Open("/tmp", nil, nil, nil, nil, nil, AIConfig{})
 
 	if p.shouldApply {
 		t.Error("Open should reset shouldApply")
@@ -118,19 +118,16 @@ func TestPlanMyDayOpenResetsState(t *testing.T) {
 
 func TestPlanMyDayOpenDefaults(t *testing.T) {
 	p := NewPlanMyDay()
-	p.Open("/tmp", nil, nil, nil, nil, nil, "", "", "", "", "")
+	p.Open("/tmp", nil, nil, nil, nil, nil, AIConfig{})
 
-	if p.aiProvider != "local" {
-		t.Errorf("expected aiProvider 'local', got %q", p.aiProvider)
+	if p.ai.Provider != "local" {
+		t.Errorf("expected ai.Provider 'local', got %q", p.ai.Provider)
 	}
-	if p.ollamaURL != "http://localhost:11434" {
-		t.Errorf("expected default ollamaURL, got %q", p.ollamaURL)
+	if p.ai.OllamaURL != "http://localhost:11434" {
+		t.Errorf("expected default OllamaURL, got %q", p.ai.OllamaURL)
 	}
-	if p.ollamaModel != "qwen2.5:0.5b" {
-		t.Errorf("expected default ollamaModel, got %q", p.ollamaModel)
-	}
-	if p.openaiModel != "gpt-4o-mini" {
-		t.Errorf("expected default openaiModel, got %q", p.openaiModel)
+	if p.ai.Model != "qwen2.5:0.5b" {
+		t.Errorf("expected default Model, got %q", p.ai.Model)
 	}
 }
 
@@ -615,7 +612,7 @@ func TestPlanMyDayParseAIResponseEmpty(t *testing.T) {
 
 func TestPlanMyDayPhaseTransitionGatherToLocal(t *testing.T) {
 	p := NewPlanMyDay()
-	p.Open("/tmp", nil, nil, nil, nil, nil, "local", "", "", "", "")
+	p.Open("/tmp", nil, nil, nil, nil, nil, AIConfig{Provider: "local"})
 
 	// Simulate gather complete
 	p2, _ := p.Update(planMyDayGatherMsg{})
@@ -921,7 +918,7 @@ func TestPlanMyDayViewSmoke(t *testing.T) {
 	}
 
 	// Phase 0
-	p.Open("/tmp", nil, nil, nil, nil, nil, "local", "", "", "", "")
+	p.Open("/tmp", nil, nil, nil, nil, nil, AIConfig{Provider: "local"})
 	v = p.View()
 	if v == "" {
 		t.Error("expected non-empty view for phase 0")

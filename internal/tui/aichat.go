@@ -75,15 +75,7 @@ type AIChat struct {
 	input        string
 	scroll       int
 	loading      bool
-	provider      string // "ollama", "openai", "nous", or "nerve"
-	model         string
-	ollamaURL     string
-	apiKey        string
-	nousURL       string
-	nousAPIKey    string
-	nerveBinary   string
-	nerveModel    string
-	nerveProvider string
+	ai            AIConfig
 	noteContents map[string]string
 	maxContext   int
 
@@ -95,10 +87,12 @@ type AIChat struct {
 // NewAIChat creates a new AIChat with sensible defaults.
 func NewAIChat() AIChat {
 	return AIChat{
-		provider:   "ollama",
-		model:      "llama3.2",
-		ollamaURL:  "http://localhost:11434",
-		maxContext:  4000,
+		ai: AIConfig{
+			Provider:  "ollama",
+			Model:     "llama3.2",
+			OllamaURL: "http://localhost:11434",
+		},
+		maxContext: 4000,
 	}
 }
 
@@ -138,39 +132,6 @@ func (ac *AIChat) Close() {
 func (ac *AIChat) SetSize(width, height int) {
 	ac.width = width
 	ac.height = height
-}
-
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-
-// SetConfig configures the AI provider and connection details.
-func (ac *AIChat) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
-	if provider != "" {
-		ac.provider = provider
-	}
-	if model != "" {
-		ac.model = model
-	}
-	if ollamaURL != "" {
-		ac.ollamaURL = ollamaURL
-	}
-	ac.apiKey = apiKey
-	if len(nousOpts) > 0 && nousOpts[0] != "" {
-		ac.nousURL = nousOpts[0]
-	}
-	if len(nousOpts) > 1 {
-		ac.nousAPIKey = nousOpts[1]
-	}
-	if len(nousOpts) > 2 {
-		ac.nerveBinary = nousOpts[2]
-	}
-	if len(nousOpts) > 3 {
-		ac.nerveModel = nousOpts[3]
-	}
-	if len(nousOpts) > 4 {
-		ac.nerveProvider = nousOpts[4]
-	}
 }
 
 // SetNotes provides the vault contents for context lookup.
@@ -595,7 +556,7 @@ func (ac AIChat) Update(msg tea.Msg) (AIChat, tea.Cmd) {
 
 			// Dispatch to AI provider.
 			var cmd tea.Cmd
-			switch ac.provider {
+			switch ac.ai.Provider {
 			case "openai":
 				// For OpenAI, build full conversation with context injected
 				// into the latest user message.
@@ -605,16 +566,32 @@ func (ac AIChat) Update(msg tea.Msg) (AIChat, tea.Cmd) {
 				if len(convMsgs) > 0 {
 					convMsgs[len(convMsgs)-1].Content = userMsg
 				}
-				cmd = sendToOpenAI(ac.apiKey, ac.model, convMsgs, aiChatSystemPrompt)
+				cmd = sendToOpenAI(ac.ai.APIKey, ac.ai.Model, convMsgs, aiChatSystemPrompt)
 			case "nous":
-				cmd = sendToNous(ac.nousURL, ac.nousAPIKey, userMsg)
+				client := ac.ai.NewNous()
+				cmd = func() tea.Msg {
+					resp, err := client.Chat(userMsg)
+					if err != nil {
+						return aiChatResultMsg{err: err}
+					}
+					return aiChatResultMsg{response: resp}
+				}
 			case "nerve":
-				cmd = sendToNerve(ac.nerveBinary, ac.nerveModel, ac.nerveProvider, userMsg)
+				client := ac.ai.NewNerve()
+				cmd = func() tea.Msg {
+					resp, err := client.Chat(aiChatSystemPrompt, userMsg, 120*time.Second)
+					if err != nil {
+						return aiChatResultMsg{err: err}
+					}
+					return aiChatResultMsg{response: resp}
+				}
 			case "local":
 				// Local fallback: return matched note excerpts directly.
 				cmd = localChatFallback(trimmed, usedNotes, contextText)
 			default: // "ollama"
-				cmd = sendToOllama(ac.ollamaURL, ac.model, aiChatSystemPrompt, userMsg)
+				url := ac.ai.OllamaEndpoint()
+				model := ac.ai.ModelOrDefault("llama3.2")
+				cmd = sendToOllama(url, model, aiChatSystemPrompt, userMsg)
 			}
 
 			return ac, tea.Batch(cmd, aiChatTick())
@@ -738,7 +715,7 @@ func (ac AIChat) View() string {
 	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 	b.WriteString(titleStyle.Render("  " + IconSearchChar + " AI Chat"))
 	b.WriteString("  ")
-	providerInfo := fmt.Sprintf("[%s / %s]", ac.provider, ac.model)
+	providerInfo := fmt.Sprintf("[%s / %s]", ac.ai.Provider, ac.ai.Model)
 	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(providerInfo))
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(strings.Repeat("-", innerWidth)))

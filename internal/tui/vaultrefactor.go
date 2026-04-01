@@ -72,15 +72,7 @@ type VaultRefactor struct {
 	allPaths []string
 
 	// AI config
-	provider      string
-	model         string
-	ollamaURL     string
-	apiKey        string
-	nousURL       string
-	nousAPIKey    string
-	nerveBinary   string
-	nerveModel    string
-	nerveProvider string
+	ai AIConfig
 
 	// result to be consumed by app
 	resultPlan  string
@@ -109,28 +101,6 @@ func (vr *VaultRefactor) Close() { vr.active = false }
 func (vr *VaultRefactor) SetSize(w, h int) {
 	vr.width = w
 	vr.height = h
-}
-
-func (vr *VaultRefactor) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
-	vr.provider = provider
-	vr.model = model
-	vr.ollamaURL = ollamaURL
-	vr.apiKey = apiKey
-	if len(nousOpts) > 0 && nousOpts[0] != "" {
-		vr.nousURL = nousOpts[0]
-	}
-	if len(nousOpts) > 1 {
-		vr.nousAPIKey = nousOpts[1]
-	}
-	if len(nousOpts) > 2 {
-		vr.nerveBinary = nousOpts[2]
-	}
-	if len(nousOpts) > 3 {
-		vr.nerveModel = nousOpts[3]
-	}
-	if len(nousOpts) > 4 {
-		vr.nerveProvider = nousOpts[4]
-	}
 }
 
 func (vr *VaultRefactor) SetVaultData(notes map[string]string, tags map[string][]string, allPaths []string) {
@@ -235,30 +205,24 @@ Rules:
 
 func (vr *VaultRefactor) startRefactor() tea.Cmd {
 	prompt := vr.buildPrompt()
-	provider := vr.provider
-	model := vr.model
-	ollamaURL := vr.ollamaURL
-	apiKey := vr.apiKey
-	nousURL := vr.nousURL
-	nousAPIKey := vr.nousAPIKey
-	nerveBinary := vr.nerveBinary
-	nerveModel := vr.nerveModel
-	nerveProvider := vr.nerveProvider
+	ai := vr.ai
 
 	return func() tea.Msg {
-		switch provider {
+		switch ai.Provider {
 		case "openai":
-			return doRefactorOpenAI(apiKey, model, prompt)
+			return doRefactorOpenAI(ai.APIKey, ai.Model, prompt)
 		case "nous":
-			client := NewNousClient(nousURL, nousAPIKey)
+			client := ai.NewNous()
 			resp, err := client.Chat(prompt)
 			return vaultRefactorResultMsg{plan: resp, err: err}
 		case "nerve":
-			client := NewNerveClient(nerveBinary, nerveModel, nerveProvider)
+			client := ai.NewNerve()
 			resp, err := client.Chat("You are a knowledge management expert that helps organize note vaults. Be precise and follow the output format exactly.", prompt, 180*time.Second)
 			return vaultRefactorResultMsg{plan: resp, err: err}
 		default:
-			return doRefactorOllama(ollamaURL, model, prompt)
+			url := ai.OllamaEndpoint()
+			model := ai.ModelOrDefault("llama3.2")
+			return doRefactorOllama(url, model, prompt)
 		}
 	}
 }

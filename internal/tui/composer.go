@@ -42,15 +42,7 @@ type Composer struct {
 	loading          bool
 	done             bool // generation complete
 
-	provider      string // "ollama", "openai", "nous", or "nerve"
-	model         string
-	ollamaURL     string
-	apiKey        string
-	nousURL       string
-	nousAPIKey    string
-	nerveBinary   string
-	nerveModel    string
-	nerveProvider string
+	ai AIConfig
 
 	existingNotes []string            // vault note names for wikilink suggestions
 	noteContents  map[string]string   // vault note contents for context
@@ -73,9 +65,11 @@ type Composer struct {
 
 func NewComposer() Composer {
 	return Composer{
-		provider:  "ollama",
-		model:     "llama3.2",
-		ollamaURL: "http://localhost:11434",
+		ai: AIConfig{
+			Provider:  "ollama",
+			Model:     "llama3.2",
+			OllamaURL: "http://localhost:11434",
+		},
 	}
 }
 
@@ -108,41 +102,6 @@ func (c *Composer) Close() {
 func (c *Composer) SetSize(width, height int) {
 	c.width = width
 	c.height = height
-}
-
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-
-func (c *Composer) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
-	c.provider = provider
-	if c.provider == "" {
-		c.provider = "ollama"
-	}
-	c.model = model
-	if c.model == "" {
-		c.model = "llama3.2"
-	}
-	c.ollamaURL = ollamaURL
-	if c.ollamaURL == "" {
-		c.ollamaURL = "http://localhost:11434"
-	}
-	c.apiKey = apiKey
-	if len(nousOpts) > 0 && nousOpts[0] != "" {
-		c.nousURL = nousOpts[0]
-	}
-	if len(nousOpts) > 1 {
-		c.nousAPIKey = nousOpts[1]
-	}
-	if len(nousOpts) > 2 {
-		c.nerveBinary = nousOpts[2]
-	}
-	if len(nousOpts) > 3 {
-		c.nerveModel = nousOpts[3]
-	}
-	if len(nousOpts) > 4 {
-		c.nerveProvider = nousOpts[4]
-	}
 }
 
 func (c *Composer) SetExistingNotes(notes []string) {
@@ -245,30 +204,24 @@ func (c *Composer) buildSystemPrompt() string {
 func (c *Composer) generateNote() tea.Cmd {
 	systemPrompt := c.buildSystemPrompt()
 	userPrompt := c.prompt
-	provider := c.provider
-	model := c.model
-	ollamaURL := c.ollamaURL
-	apiKey := c.apiKey
-	nousURL := c.nousURL
-	nousAPIKey := c.nousAPIKey
-	nerveBinary := c.nerveBinary
-	nerveModel := c.nerveModel
-	nerveProvider := c.nerveProvider
+	ai := c.ai
 
 	return func() tea.Msg {
-		switch provider {
+		switch ai.Provider {
 		case "openai":
-			return doComposerOpenAI(apiKey, model, systemPrompt, userPrompt)
+			return doComposerOpenAI(ai.APIKey, ai.Model, systemPrompt, userPrompt)
 		case "nous":
-			client := NewNousClient(nousURL, nousAPIKey)
+			client := ai.NewNous()
 			resp, err := client.Chat(systemPrompt + "\n\n" + userPrompt)
 			return composerResultMsg{content: resp, err: err}
 		case "nerve":
-			client := NewNerveClient(nerveBinary, nerveModel, nerveProvider)
+			client := ai.NewNerve()
 			resp, err := client.Chat(systemPrompt, userPrompt, 120*time.Second)
 			return composerResultMsg{content: resp, err: err}
 		default: // "ollama"
-			return doComposerOllama(ollamaURL, model, systemPrompt, userPrompt)
+			url := ai.OllamaEndpoint()
+			model := ai.ModelOrDefault("llama3.2")
+			return doComposerOllama(url, model, systemPrompt, userPrompt)
 		}
 	}
 }
@@ -682,7 +635,7 @@ func (c Composer) viewLoading(width int) string {
 	b.WriteString("\n\n")
 
 	providerDisplay := lipgloss.NewStyle().Foreground(overlay0)
-	b.WriteString("  " + providerDisplay.Render("Provider: "+c.provider+"  Model: "+c.model))
+	b.WriteString("  " + providerDisplay.Render("Provider: "+c.ai.Provider+"  Model: "+c.ai.Model))
 
 	return b.String()
 }

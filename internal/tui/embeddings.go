@@ -66,10 +66,7 @@ type SemanticSearch struct {
 	vaultPath string
 
 	// AI config
-	provider  string
-	model     string
-	ollamaURL string
-	apiKey    string
+	ai AIConfig
 
 	noteContents map[string]string
 
@@ -150,9 +147,11 @@ type openaiEmbeddingResponse struct {
 // NewSemanticSearch returns a zero-value SemanticSearch ready for use.
 func NewSemanticSearch() *SemanticSearch {
 	return &SemanticSearch{
-		provider:  "ollama",
-		model:     "nomic-embed-text",
-		ollamaURL: "http://localhost:11434",
+		ai: AIConfig{
+			Provider:  "ollama",
+			Model:     "nomic-embed-text",
+			OllamaURL: "http://localhost:11434",
+		},
 	}
 }
 
@@ -191,16 +190,8 @@ func (ss *SemanticSearch) SetSize(w, h int) {
 }
 
 // SetConfig updates the AI provider configuration.
-func (ss *SemanticSearch) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
-	ss.provider = provider
-	if model != "" {
-		ss.model = model
-	}
-	if ollamaURL != "" {
-		ss.ollamaURL = ollamaURL
-	}
-	ss.apiKey = apiKey
-	// Nous opts accepted for API compatibility but not used for embeddings.
+func (ss *SemanticSearch) SetConfig(cfg AIConfig) {
+	ss.ai = cfg
 }
 
 // SetNotes provides the note contents used for building the index.
@@ -472,7 +463,7 @@ func (ss *SemanticSearch) needsRebuild() bool {
 	if ss.index == nil {
 		return true
 	}
-	if ss.index.Model != ss.model {
+	if ss.index.Model != ss.ai.Model {
 		return true
 	}
 	allVecs := indexAllVecs(ss.index)
@@ -505,10 +496,10 @@ func (ss *SemanticSearch) startBuild() tea.Cmd {
 	for k, v := range ss.noteContents {
 		notes[k] = v
 	}
-	provider := ss.provider
-	model := ss.model
-	ollamaURL := ss.ollamaURL
-	apiKey := ss.apiKey
+	provider := ss.ai.Provider
+	model := ss.ai.Model
+	ollamaURL := ss.ai.OllamaURL
+	apiKey := ss.ai.APIKey
 	vaultPath := ss.vaultPath
 
 	// Snapshot existing entries that are still valid (same model, path exists,
@@ -625,10 +616,10 @@ func (ss *SemanticSearch) StartBackgroundIndex(notes map[string]string) tea.Cmd 
 	ss.bgMu.Unlock()
 
 	// Snapshot everything we need.
-	provider := ss.provider
-	model := ss.model
-	ollamaURL := ss.ollamaURL
-	apiKey := ss.apiKey
+	provider := ss.ai.Provider
+	model := ss.ai.Model
+	ollamaURL := ss.ai.OllamaURL
+	apiKey := ss.ai.APIKey
 	vaultPath := ss.vaultPath
 
 	// Load or create index.
@@ -785,10 +776,10 @@ func (ss *SemanticSearch) IsBgIndexing() bool {
 
 func (ss *SemanticSearch) startSearch() tea.Cmd {
 	query := ss.query
-	provider := ss.provider
-	model := ss.model
-	ollamaURL := ss.ollamaURL
-	apiKey := ss.apiKey
+	provider := ss.ai.Provider
+	model := ss.ai.Model
+	ollamaURL := ss.ai.OllamaURL
+	apiKey := ss.ai.APIKey
 
 	// Snapshot the index and note contents.
 	idx := ss.index

@@ -67,11 +67,7 @@ type WritingCoach struct {
 	spinner int
 
 	// AI config
-	aiProvider  string
-	ollamaURL   string
-	ollamaModel string
-	openaiKey   string
-	openaiModel string
+	ai AIConfig
 
 	// Analysis mode: 0=clarity, 1=structure, 2=style, 3=full
 	analysisMode int
@@ -94,17 +90,13 @@ func (wc *WritingCoach) SetSize(w, h int) {
 }
 
 // Open activates the writing coach overlay and loads the soul note if present.
-func (wc *WritingCoach) Open(vaultRoot, noteContent, notePath string, aiProvider, ollamaURL, ollamaModel, openaiKey, openaiModel string) {
+func (wc *WritingCoach) Open(vaultRoot, noteContent, notePath string, cfg AIConfig) {
 	wc.active = true
 	wc.phase = 0
 	wc.vaultRoot = vaultRoot
 	wc.noteContent = noteContent
 	wc.notePath = notePath
-	wc.aiProvider = aiProvider
-	wc.ollamaURL = ollamaURL
-	wc.ollamaModel = ollamaModel
-	wc.openaiKey = openaiKey
-	wc.openaiModel = openaiModel
+	wc.ai = cfg
 	wc.analysisMode = 3 // default to full review
 	wc.cursor = 0
 	wc.scroll = 0
@@ -862,7 +854,7 @@ func (wc WritingCoach) visibleItems() int {
 // ---------------------------------------------------------------------------
 
 func (wc WritingCoach) startAnalysis() (WritingCoach, tea.Cmd) {
-	if wc.aiProvider == "ollama" || wc.aiProvider == "openai" {
+	if wc.ai.Provider == "ollama" || wc.ai.Provider == "openai" {
 		wc.phase = 1
 		wc.spinner = 0
 		wc.feedback = nil
@@ -872,15 +864,15 @@ func (wc WritingCoach) startAnalysis() (WritingCoach, tea.Cmd) {
 
 		prompt := wc.buildPrompt()
 
-		if wc.aiProvider == "openai" && wc.openaiKey != "" {
+		if wc.ai.Provider == "openai" && wc.ai.APIKey != "" {
 			return wc, tea.Batch(
-				callWritingCoachOpenAI(wc.openaiKey, wc.openaiModel, prompt),
+				callWritingCoachOpenAI(wc.ai.APIKey, wc.ai.Model, prompt),
 				writingCoachTickCmd(),
 			)
 		}
 
 		return wc, tea.Batch(
-			callWritingCoachOllama(wc.ollamaURL, wc.ollamaModel, prompt),
+			callWritingCoachOllama(wc.ai.OllamaURL, wc.ai.Model, prompt),
 			writingCoachTickCmd(),
 		)
 	}
@@ -937,12 +929,12 @@ func (wc WritingCoach) viewSetup(width int) string {
 	// AI provider
 	providerLabel := "Local Analysis"
 	providerColor := overlay0
-	switch wc.aiProvider {
+	switch wc.ai.Provider {
 	case "ollama":
-		providerLabel = "Ollama: " + wc.ollamaModel
+		providerLabel = "Ollama: " + wc.ai.Model
 		providerColor = green
 	case "openai":
-		providerLabel = "OpenAI: " + wc.openaiModel
+		providerLabel = "OpenAI: " + wc.ai.Model
 		providerColor = blue
 	}
 	providerLine := lipgloss.NewStyle().Foreground(providerColor).Render(
@@ -1034,11 +1026,11 @@ func (wc WritingCoach) viewAnalyzing(width int) string {
 	spinner := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(frame)
 
 	var providerLabel string
-	switch wc.aiProvider {
+	switch wc.ai.Provider {
 	case "ollama":
-		providerLabel = "Ollama (" + wc.ollamaModel + ")"
+		providerLabel = "Ollama (" + wc.ai.Model + ")"
 	case "openai":
-		providerLabel = "OpenAI (" + wc.openaiModel + ")"
+		providerLabel = "OpenAI (" + wc.ai.Model + ")"
 	default:
 		providerLabel = "local analysis"
 	}

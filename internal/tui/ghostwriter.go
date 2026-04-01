@@ -40,15 +40,7 @@ type GhostWriter struct {
 	enabled bool
 
 	// AI config
-	provider      string
-	model         string
-	ollamaURL     string
-	apiKey        string
-	nousURL       string
-	nousAPIKey    string
-	nerveBinary   string
-	nerveModel    string
-	nerveProvider string
+	ai AIConfig
 
 	// State
 	suggestion string    // the current ghost text suggestion
@@ -73,10 +65,12 @@ type GhostWriter struct {
 // NewGhostWriter creates a GhostWriter with sensible defaults.
 func NewGhostWriter() *GhostWriter {
 	return &GhostWriter{
-		enabled:      false,
-		provider:     "ollama",
-		model:        "llama3.2",
-		ollamaURL:    "http://localhost:11434",
+		enabled: false,
+		ai: AIConfig{
+			Provider:  "ollama",
+			Model:     "llama3.2",
+			OllamaURL: "http://localhost:11434",
+		},
 		debounceMs:   800,
 		contextLines: 30,
 		maxTokens:    50,
@@ -99,35 +93,6 @@ func (gw *GhostWriter) SetEnabled(enabled bool) {
 // IsEnabled returns whether the ghost writer is active.
 func (gw *GhostWriter) IsEnabled() bool {
 	return gw.enabled
-}
-
-// SetConfig sets the AI provider configuration.
-func (gw *GhostWriter) SetConfig(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
-	if provider != "" {
-		gw.provider = provider
-	}
-	if model != "" {
-		gw.model = model
-	}
-	if ollamaURL != "" {
-		gw.ollamaURL = ollamaURL
-	}
-	gw.apiKey = apiKey
-	if len(nousOpts) > 0 && nousOpts[0] != "" {
-		gw.nousURL = nousOpts[0]
-	}
-	if len(nousOpts) > 1 {
-		gw.nousAPIKey = nousOpts[1]
-	}
-	if len(nousOpts) > 2 {
-		gw.nerveBinary = nousOpts[2]
-	}
-	if len(nousOpts) > 3 {
-		gw.nerveModel = nousOpts[3]
-	}
-	if len(nousOpts) > 4 {
-		gw.nerveProvider = nousOpts[4]
-	}
 }
 
 // SetNoteTitle updates the note title used for ghost writer context.
@@ -379,31 +344,24 @@ type ghostOpenAIError struct {
 // requestCompletion returns a tea.Cmd that calls the configured AI provider
 // and sends back a ghostSuggestionMsg with the cleaned-up completion.
 func (gw *GhostWriter) requestCompletion(context string) tea.Cmd {
-	provider := gw.provider
-	model := gw.model
-	ollamaURL := gw.ollamaURL
-	apiKey := gw.apiKey
+	ai := gw.ai
 	maxTokens := gw.maxTokens
-
-	nousURL := gw.nousURL
-	nousAPIKey := gw.nousAPIKey
-	nerveBinary := gw.nerveBinary
-	nerveModel := gw.nerveModel
-	nerveProvider := gw.nerveProvider
 
 	return func() tea.Msg {
 		var raw string
 		var err error
 
-		switch provider {
+		switch ai.Provider {
 		case "openai":
-			raw, err = ghostCallOpenAI(apiKey, model, context, maxTokens)
+			raw, err = ghostCallOpenAI(ai.APIKey, ai.Model, context, maxTokens)
 		case "nous":
-			raw, err = ghostCallNous(nousURL, nousAPIKey, context)
+			raw, err = ghostCallNous(ai.NousURL, ai.NousAPIKey, context)
 		case "nerve":
-			raw, err = ghostCallNerve(nerveBinary, nerveModel, nerveProvider, context)
+			raw, err = ghostCallNerve(ai.NerveBinary, ai.NerveModel, ai.NerveProvider, context)
 		default: // "ollama"
-			raw, err = ghostCallOllama(ollamaURL, model, context, maxTokens)
+			url := ai.OllamaEndpoint()
+			model := ai.ModelOrDefault("llama3.2")
+			raw, err = ghostCallOllama(url, model, context, maxTokens)
 		}
 
 		if err != nil {

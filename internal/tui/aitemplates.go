@@ -91,15 +91,7 @@ type AITemplates struct {
 	customInput string // used when template type is "Custom"
 
 	// AI config (set via Open)
-	provider      string
-	model         string
-	ollamaURL     string
-	apiKey        string
-	nousURL       string
-	nousAPIKey    string
-	nerveBinary   string
-	nerveModel    string
-	nerveProvider string
+	ai AIConfig
 
 	// Generated content
 	generatedContent string
@@ -130,7 +122,7 @@ func NewAITemplates() AITemplates {
 func (a AITemplates) IsActive() bool { return a.active }
 
 // Open activates the overlay and stores the AI configuration.
-func (a *AITemplates) Open(provider, model, ollamaURL, apiKey string, nousOpts ...string) {
+func (a *AITemplates) OpenWithAI(cfg AIConfig) {
 	a.active = true
 	a.state = aitStateTypeSelect
 	a.cursor = 0
@@ -146,33 +138,15 @@ func (a *AITemplates) Open(provider, model, ollamaURL, apiKey string, nousOpts .
 	a.resultTitle = ""
 	a.resultContent = ""
 
-	a.provider = provider
-	if a.provider == "" {
-		a.provider = "local"
+	a.ai = cfg
+	if a.ai.Provider == "" {
+		a.ai.Provider = "local"
 	}
-	a.model = model
-	if a.model == "" {
-		a.model = "llama3.2"
+	if a.ai.Model == "" {
+		a.ai.Model = "llama3.2"
 	}
-	a.ollamaURL = ollamaURL
-	if a.ollamaURL == "" {
-		a.ollamaURL = "http://localhost:11434"
-	}
-	a.apiKey = apiKey
-	if len(nousOpts) > 0 && nousOpts[0] != "" {
-		a.nousURL = nousOpts[0]
-	}
-	if len(nousOpts) > 1 {
-		a.nousAPIKey = nousOpts[1]
-	}
-	if len(nousOpts) > 2 {
-		a.nerveBinary = nousOpts[2]
-	}
-	if len(nousOpts) > 3 {
-		a.nerveModel = nousOpts[3]
-	}
-	if len(nousOpts) > 4 {
-		a.nerveProvider = nousOpts[4]
+	if a.ai.OllamaURL == "" {
+		a.ai.OllamaURL = "http://localhost:11434"
 	}
 }
 
@@ -801,28 +775,22 @@ type: note
 
 func (a *AITemplates) generateContent() tea.Cmd {
 	prompt := a.buildPrompt()
-	provider := a.provider
-	model := a.model
-	ollamaURL := a.ollamaURL
-	apiKey := a.apiKey
-	nousURL := a.nousURL
-	nousAPIKey := a.nousAPIKey
-	nerveBinary := a.nerveBinary
-	nerveModel := a.nerveModel
-	nerveProvider := a.nerveProvider
+	ai := a.ai
 
 	return func() tea.Msg {
-		switch provider {
+		switch ai.Provider {
 		case "openai":
-			return doAITemplateOpenAI(apiKey, model, prompt)
+			return doAITemplateOpenAI(ai.APIKey, ai.Model, prompt)
 		case "ollama":
-			return doAITemplateOllama(ollamaURL, model, prompt)
+			url := ai.OllamaEndpoint()
+			model := ai.ModelOrDefault("llama3.2")
+			return doAITemplateOllama(url, model, prompt)
 		case "nous":
-			client := NewNousClient(nousURL, nousAPIKey)
+			client := ai.NewNous()
 			resp, err := client.Chat(prompt)
 			return aiTemplateResultMsg{content: resp, err: err}
 		case "nerve":
-			client := NewNerveClient(nerveBinary, nerveModel, nerveProvider)
+			client := ai.NewNerve()
 			resp, err := client.Chat("", prompt, 120*time.Second)
 			return aiTemplateResultMsg{content: resp, err: err}
 		default:
@@ -1078,7 +1046,7 @@ func (a AITemplates) updateTopicInput(msg tea.KeyMsg) (AITemplates, tea.Cmd) {
 			return a, nil
 		}
 		// Start generation
-		if a.provider == "local" {
+		if a.ai.Provider == "local" {
 			a.generatedContent = a.generateLocalFallback()
 			a.generatedTitle = aiTemplateTitleFromTopic(a.topicInput)
 			a.state = aitStatePreview
@@ -1121,7 +1089,7 @@ func (a AITemplates) updatePreview(msg tea.KeyMsg) (AITemplates, tea.Cmd) {
 		return a, nil
 	case "r":
 		// Regenerate
-		if a.provider == "local" {
+		if a.ai.Provider == "local" {
 			a.generatedContent = a.generateLocalFallback()
 			a.scroll = 0
 			return a, nil
@@ -1334,7 +1302,7 @@ func (a AITemplates) viewGenerating(width int) string {
 	b.WriteString("\n\n")
 
 	providerDisplay := lipgloss.NewStyle().Foreground(overlay0)
-	b.WriteString("  " + providerDisplay.Render("Provider: "+a.provider+"  Model: "+a.model))
+	b.WriteString("  " + providerDisplay.Render("Provider: "+a.ai.Provider+"  Model: "+a.ai.Model))
 
 	return b.String()
 }
@@ -1413,7 +1381,7 @@ func (a AITemplates) viewPreview(width int) string {
 // ---------------------------------------------------------------------------
 
 func (a AITemplates) providerBadge() string {
-	switch a.provider {
+	switch a.ai.Provider {
 	case "ollama":
 		return lipgloss.NewStyle().Foreground(green).Render("[ollama]")
 	case "openai":

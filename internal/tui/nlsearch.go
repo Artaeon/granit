@@ -71,11 +71,7 @@ type NLSearch struct {
 	spinner int
 
 	// AI configuration
-	aiProvider  string
-	ollamaURL   string
-	ollamaModel string
-	openaiKey   string
-	openaiModel string
+	ai AIConfig
 
 	// Consumed-once selected note
 	selectedNote string
@@ -89,10 +85,11 @@ type NLSearch struct {
 // NewNLSearch creates a new NLSearch overlay with sensible defaults.
 func NewNLSearch() NLSearch {
 	return NLSearch{
-		aiProvider:  "local",
-		ollamaURL:   "http://localhost:11434",
-		ollamaModel: "llama3.2",
-		openaiModel: "gpt-4o-mini",
+		ai: AIConfig{
+			Provider:  "local",
+			OllamaURL: "http://localhost:11434",
+			Model:     "llama3.2",
+		},
 	}
 }
 
@@ -107,7 +104,7 @@ func (nls *NLSearch) SetSize(w, h int) {
 }
 
 // Open activates the NL search overlay and builds the note index.
-func (nls *NLSearch) Open(vaultRoot string, aiProvider, ollamaURL, ollamaModel, openaiKey, openaiModel string) {
+func (nls *NLSearch) Open(vaultRoot string, cfg AIConfig) {
 	nls.active = true
 	nls.vaultRoot = vaultRoot
 	nls.query = ""
@@ -120,22 +117,15 @@ func (nls *NLSearch) Open(vaultRoot string, aiProvider, ollamaURL, ollamaModel, 
 	nls.hasResult = false
 
 	// AI config
-	nls.aiProvider = aiProvider
-	if nls.aiProvider == "" {
-		nls.aiProvider = "local"
+	nls.ai = cfg
+	if nls.ai.Provider == "" {
+		nls.ai.Provider = "local"
 	}
-	nls.ollamaURL = ollamaURL
-	if nls.ollamaURL == "" {
-		nls.ollamaURL = "http://localhost:11434"
+	if nls.ai.OllamaURL == "" {
+		nls.ai.OllamaURL = "http://localhost:11434"
 	}
-	nls.ollamaModel = ollamaModel
-	if nls.ollamaModel == "" {
-		nls.ollamaModel = "llama3.2"
-	}
-	nls.openaiKey = openaiKey
-	nls.openaiModel = openaiModel
-	if nls.openaiModel == "" {
-		nls.openaiModel = "gpt-4o-mini"
+	if nls.ai.Model == "" {
+		nls.ai.Model = "llama3.2"
 	}
 
 	// Build index
@@ -746,18 +736,18 @@ func (nls NLSearch) startSearch() (NLSearch, tea.Cmd) {
 	nls.cursor = 0
 	nls.scroll = 0
 
-	if nls.aiProvider == "ollama" {
+	if nls.ai.Provider == "ollama" {
 		prompt := nls.buildSearchPrompt()
 		return nls, tea.Batch(
-			callNLSearchOllama(nls.ollamaURL, nls.ollamaModel, prompt),
+			callNLSearchOllama(nls.ai.OllamaURL, nls.ai.Model, prompt),
 			nlSearchTickCmd(),
 		)
 	}
 
-	if nls.aiProvider == "openai" && nls.openaiKey != "" {
+	if nls.ai.Provider == "openai" && nls.ai.APIKey != "" {
 		prompt := nls.buildSearchPrompt()
 		return nls, tea.Batch(
-			callNLSearchOpenAI(nls.openaiKey, nls.openaiModel, prompt),
+			callNLSearchOpenAI(nls.ai.APIKey, nls.ai.Model, prompt),
 			nlSearchTickCmd(),
 		)
 	}
@@ -978,12 +968,12 @@ func (nls NLSearch) viewInput() string {
 	// Provider badge
 	providerLabel := "Local Analysis"
 	providerColor := overlay0
-	switch nls.aiProvider {
+	switch nls.ai.Provider {
 	case "ollama":
-		providerLabel = "Ollama: " + nls.ollamaModel
+		providerLabel = "Ollama: " + nls.ai.Model
 		providerColor = green
 	case "openai":
-		providerLabel = "OpenAI: " + nls.openaiModel
+		providerLabel = "OpenAI: " + nls.ai.Model
 		providerColor = blue
 	}
 	providerBadge := lipgloss.NewStyle().Foreground(providerColor).Render(
@@ -1074,12 +1064,12 @@ func (nls NLSearch) viewSearching() string {
 
 	thinkingLabel := "Searching with local analysis..."
 	connectLabel := ""
-	switch nls.aiProvider {
+	switch nls.ai.Provider {
 	case "ollama":
-		thinkingLabel = "Searching with " + nls.ollamaModel + "..."
-		connectLabel = "Connecting to Ollama at " + nls.ollamaURL
+		thinkingLabel = "Searching with " + nls.ai.Model + "..."
+		connectLabel = "Connecting to Ollama at " + nls.ai.OllamaURL
 	case "openai":
-		thinkingLabel = "Searching with " + nls.openaiModel + "..."
+		thinkingLabel = "Searching with " + nls.ai.Model + "..."
 		connectLabel = "Connecting to OpenAI API..."
 	}
 	b.WriteString("  " + spinnerStyled + " " + lipgloss.NewStyle().Foreground(text).Render(thinkingLabel))
@@ -1126,15 +1116,15 @@ func (nls NLSearch) viewResults() string {
 	b.WriteString("\n")
 
 	// Provider info
-	switch nls.aiProvider {
+	switch nls.ai.Provider {
 	case "ollama":
 		providerInfo := lipgloss.NewStyle().Foreground(green).Render(
-			"  " + IconBotChar + " Powered by Ollama: " + nls.ollamaModel)
+			"  " + IconBotChar + " Powered by Ollama: " + nls.ai.Model)
 		b.WriteString(providerInfo)
 		b.WriteString("\n")
 	case "openai":
 		providerInfo := lipgloss.NewStyle().Foreground(blue).Render(
-			"  " + IconBotChar + " Powered by OpenAI: " + nls.openaiModel)
+			"  " + IconBotChar + " Powered by OpenAI: " + nls.ai.Model)
 		b.WriteString(providerInfo)
 		b.WriteString("\n")
 	default:

@@ -1190,6 +1190,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case usResultGoal:
 					allTasks := ParseAllTasks(m.vault.Notes)
 					m.goalsMode.SetSize(m.width, m.height)
+					m.goalsMode.ai = m.aiConfig()
 					m.goalsMode.Open(m.vault.Root, allTasks)
 				case usResultHabit:
 					m.habitTracker.Open(m.vault.Root)
@@ -2428,6 +2429,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+k":
 			m.taskManager.SetSize(m.width, m.height)
 			m.taskManager.config = m.config
+			m.taskManager.ai = m.aiConfig()
 			m.taskManager.Open(m.vault)
 			return m, nil
 
@@ -2493,7 +2495,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+r":
 			m.bots.SetSize(m.width, m.height)
-			m.bots.SetAIConfig(m.config.AIProvider, m.config.OllamaModel, m.config.OllamaURL, m.config.OpenAIKey, m.config.OpenAIModel, m.config.NousURL, m.config.NousAPIKey)
+			m.bots.SetAIConfig(m.aiConfig())
 			noteContents := make(map[string]string)
 			tagMap := make(map[string][]string)
 			for _, p := range m.vault.SortedPaths() {

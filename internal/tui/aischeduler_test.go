@@ -83,7 +83,7 @@ func TestAISchedulerOpenClose(t *testing.T) {
 		{Title: "Standup", Time: "09:00", Duration: 15},
 	}
 
-	as.Open("/vault", tasks, events, "local", "", "", "", "")
+	as.Open("/vault", tasks, events, AIConfig{Provider: "local"})
 
 	t.Run("active after open", func(t *testing.T) {
 		if !as.IsActive() {
@@ -109,26 +109,20 @@ func TestAISchedulerOpenClose(t *testing.T) {
 	})
 
 	t.Run("default provider is local", func(t *testing.T) {
-		if as.aiProvider != "local" {
-			t.Errorf("expected provider 'local', got %q", as.aiProvider)
+		if as.ai.Provider != "local" {
+			t.Errorf("expected provider 'local', got %q", as.ai.Provider)
 		}
 	})
 
 	t.Run("default ollama URL", func(t *testing.T) {
-		if as.ollamaURL != "http://localhost:11434" {
-			t.Errorf("unexpected ollamaURL %q", as.ollamaURL)
+		if as.ai.OllamaURL != "http://localhost:11434" {
+			t.Errorf("unexpected OllamaURL %q", as.ai.OllamaURL)
 		}
 	})
 
-	t.Run("default ollama model", func(t *testing.T) {
-		if as.ollamaModel != "qwen2.5:0.5b" {
-			t.Errorf("unexpected ollamaModel %q", as.ollamaModel)
-		}
-	})
-
-	t.Run("default openai model", func(t *testing.T) {
-		if as.openaiModel != "gpt-4o-mini" {
-			t.Errorf("unexpected openaiModel %q", as.openaiModel)
+	t.Run("default model", func(t *testing.T) {
+		if as.ai.Model != "qwen2.5:0.5b" {
+			t.Errorf("unexpected Model %q", as.ai.Model)
 		}
 	})
 
@@ -146,7 +140,7 @@ func TestAISchedulerOpenAllDoneTasks(t *testing.T) {
 		{Text: "Done 1", Priority: 1, Done: true},
 		{Text: "Done 2", Priority: 2, Done: true},
 	}
-	as.Open("/vault", tasks, nil, "", "", "", "", "")
+	as.Open("/vault", tasks, nil, AIConfig{})
 
 	if len(as.tasks) != 0 {
 		t.Errorf("expected 0 tasks when all are done, got %d", len(as.tasks))

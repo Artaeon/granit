@@ -223,13 +223,7 @@ type Bots struct {
 	activeBot botKind
 
 	// AI config
-	aiProvider  string // "local", "ollama", "openai", or "nous"
-	ollamaModel string
-	ollamaURL   string
-	openaiKey   string
-	openaiModel string
-	nousURL     string
-	nousAPIKey  string
+	ai AIConfig
 
 	// Loading animation
 	loadingTick int
@@ -237,9 +231,11 @@ type Bots struct {
 
 func NewBots() Bots {
 	return Bots{
-		aiProvider:  "local",
-		ollamaModel: "llama3.2",
-		ollamaURL:   "http://localhost:11434",
+		ai: AIConfig{
+			Provider:  "local",
+			Model:     "llama3.2",
+			OllamaURL: "http://localhost:11434",
+		},
 	}
 }
 
@@ -248,29 +244,11 @@ func (b *Bots) SetSize(width, height int) {
 	b.height = height
 }
 
-func (b *Bots) SetAIConfig(provider, ollamaModel, ollamaURL, openaiKey, openaiModel, nousURL, nousAPIKey string) {
-	b.aiProvider = provider
-	if b.aiProvider == "" {
-		b.aiProvider = "local"
+func (b *Bots) SetAIConfig(cfg AIConfig) {
+	b.ai = cfg
+	if b.ai.Provider == "" {
+		b.ai.Provider = "local"
 	}
-	b.ollamaModel = ollamaModel
-	if b.ollamaModel == "" {
-		b.ollamaModel = "qwen2.5:0.5b"
-	}
-	b.ollamaURL = ollamaURL
-	if b.ollamaURL == "" {
-		b.ollamaURL = "http://localhost:11434"
-	}
-	b.openaiKey = openaiKey
-	b.openaiModel = openaiModel
-	if b.openaiModel == "" {
-		b.openaiModel = "gpt-4o-mini"
-	}
-	b.nousURL = nousURL
-	if b.nousURL == "" {
-		b.nousURL = "http://localhost:3333"
-	}
-	b.nousAPIKey = nousAPIKey
 }
 
 func (b *Bots) Open() {
@@ -853,7 +831,7 @@ func (b Bots) Update(msg tea.Msg) (Bots, tea.Cmd) {
 			b.state = botsStateResults
 			return b, nil
 		}
-		b.processAIResponse(msg.response, "Ollama: "+b.ollamaModel)
+		b.processAIResponse(msg.response, "Ollama: "+b.ai.Model)
 		b.state = botsStateResults
 		return b, nil
 
@@ -872,7 +850,7 @@ func (b Bots) Update(msg tea.Msg) (Bots, tea.Cmd) {
 			b.state = botsStateResults
 			return b, nil
 		}
-		b.processAIResponse(msg.response, "OpenAI: "+b.openaiModel)
+		b.processAIResponse(msg.response, "OpenAI: "+b.ai.Model)
 		b.state = botsStateResults
 		return b, nil
 
@@ -982,7 +960,7 @@ func (b Bots) updateResults(msg tea.KeyMsg) (Bots, tea.Cmd) {
 
 // startBot decides whether to use Ollama, OpenAI, or local analysis
 func (b Bots) startBot() (Bots, tea.Cmd) {
-	useAI := (b.aiProvider == "ollama" || b.aiProvider == "openai" || b.aiProvider == "nous") && b.activeBot != botDailyDigest
+	useAI := (b.ai.Provider == "ollama" || b.ai.Provider == "openai" || b.ai.Provider == "nous") && b.activeBot != botDailyDigest
 
 	if useAI {
 		b.state = botsStateLoading
@@ -998,22 +976,22 @@ func (b Bots) startBot() (Bots, tea.Cmd) {
 			return b, nil
 		}
 
-		if b.aiProvider == "openai" && b.openaiKey != "" {
+		if b.ai.Provider == "openai" && b.ai.APIKey != "" {
 			return b, tea.Batch(
-				callOpenAIForBot(b.openaiKey, b.openaiModel, prompt, b.activeBot),
+				callOpenAIForBot(b.ai.APIKey, b.ai.Model, prompt, b.activeBot),
 				botsTickCmd(),
 			)
 		}
 
-		if b.aiProvider == "nous" {
+		if b.ai.Provider == "nous" {
 			return b, tea.Batch(
-				callNousForBot(b.nousURL, b.nousAPIKey, prompt, b.activeBot),
+				callNousForBot(b.ai.NousURL, b.ai.NousAPIKey, prompt, b.activeBot),
 				botsTickCmd(),
 			)
 		}
 
 		return b, tea.Batch(
-			callOllamaForBot(b.ollamaURL, b.ollamaModel, prompt, b.activeBot),
+			callOllamaForBot(b.ai.OllamaURL, b.ai.Model, prompt, b.activeBot),
 			botsTickCmd(),
 		)
 	}
@@ -2158,12 +2136,12 @@ func (b Bots) viewList(width int) string {
 	// Show AI provider status
 	providerLabel := "Local Analysis"
 	providerColor := overlay1
-	switch b.aiProvider {
+	switch b.ai.Provider {
 	case "ollama":
-		providerLabel = "Ollama: " + b.ollamaModel
+		providerLabel = "Ollama: " + b.ai.Model
 		providerColor = green
 	case "openai":
-		providerLabel = "OpenAI: " + b.openaiModel
+		providerLabel = "OpenAI: " + b.ai.Model
 		providerColor = green
 	case "nous":
 		providerLabel = "Nous (local)"
@@ -2246,12 +2224,12 @@ func (b Bots) viewInput(width int) string {
 	buf.WriteString("\n\n")
 	buf.WriteString(DimStyle.Render("  " + strings.Repeat("─", width-10)))
 	buf.WriteString("\n")
-	switch b.aiProvider {
+	switch b.ai.Provider {
 	case "ollama":
-		buf.WriteString(DimStyle.Render("  AI will answer using Ollama: " + b.ollamaModel))
+		buf.WriteString(DimStyle.Render("  AI will answer using Ollama: " + b.ai.Model))
 		buf.WriteString("\n")
 	case "openai":
-		buf.WriteString(DimStyle.Render("  AI will answer using OpenAI: " + b.openaiModel))
+		buf.WriteString(DimStyle.Render("  AI will answer using OpenAI: " + b.ai.Model))
 		buf.WriteString("\n")
 	case "nous":
 		buf.WriteString(DimStyle.Render("  AI will answer using Nous (local)"))
@@ -2294,14 +2272,14 @@ func (b Bots) viewLoading(width int) string {
 	frame := spinFrames[b.loadingTick%len(spinFrames)]
 	spinner := lipgloss.NewStyle().Foreground(sapphire).Bold(true).Render(frame)
 
-	thinkingLabel := "Thinking with " + b.ollamaModel + "..."
-	connectLabel := "Connecting to Ollama at " + b.ollamaURL
-	if b.aiProvider == "openai" {
-		thinkingLabel = "Thinking with " + b.openaiModel + "..."
+	thinkingLabel := "Thinking with " + b.ai.Model + "..."
+	connectLabel := "Connecting to Ollama at " + b.ai.OllamaURL
+	if b.ai.Provider == "openai" {
+		thinkingLabel = "Thinking with " + b.ai.Model + "..."
 		connectLabel = "Connecting to OpenAI API..."
-	} else if b.aiProvider == "nous" {
+	} else if b.ai.Provider == "nous" {
 		thinkingLabel = "Thinking with Nous..."
-		connectLabel = "Connecting to Nous at " + b.nousURL
+		connectLabel = "Connecting to Nous at " + b.ai.NousURL
 	}
 	buf.WriteString("  " + spinner + " " + lipgloss.NewStyle().Foreground(text).Render(thinkingLabel))
 	buf.WriteString("\n\n")

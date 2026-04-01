@@ -729,7 +729,7 @@ func (m *Model) syncConfigToComponents() {
 	m.autoSync.SetEnabled(m.config.GitAutoSync)
 	if m.ghostWriter != nil {
 		m.ghostWriter.SetEnabled(m.config.GhostWriter)
-		m.ghostWriter.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey, m.config.NerveBinary, m.config.NerveModel, m.config.NerveProvider)
+		m.ghostWriter.ai = m.aiConfig()
 	}
 	if m.autoTagger != nil {
 		m.autoTagger.SetEnabled(m.config.AutoTag)
@@ -1298,6 +1298,20 @@ func (m *Model) getAIModel() string {
 	}
 }
 
+func (m Model) aiConfig() AIConfig {
+	return AIConfig{
+		Provider:      m.config.AIProvider,
+		Model:         m.getAIModel(),
+		OllamaURL:     m.config.OllamaURL,
+		APIKey:        m.config.OpenAIKey,
+		NousURL:       m.config.NousURL,
+		NousAPIKey:    m.config.NousAPIKey,
+		NerveBinary:   m.config.NerveBinary,
+		NerveModel:    m.config.NerveModel,
+		NerveProvider: m.config.NerveProvider,
+	}
+}
+
 func (m *Model) buildBacklinkItems(paths []string, targetNote string) []BacklinkItem {
 	var items []BacklinkItem
 	baseName := strings.TrimSuffix(filepath.Base(targetNote), ".md")
@@ -1335,7 +1349,8 @@ func (m *Model) startSemanticBgIndex() tea.Cmd {
 		return nil
 	}
 	m.semanticSearch.SetVaultPath(m.vault.Root)
-	m.semanticSearch.SetConfig(m.config.AIProvider, m.getAIModel(), m.config.OllamaURL, m.config.OpenAIKey, m.config.NousURL, m.config.NousAPIKey, m.config.NerveBinary, m.config.NerveModel, m.config.NerveProvider)
+	cfg := m.aiConfig()
+	m.semanticSearch.SetConfig(cfg)
 	noteContents := make(map[string]string)
 	for _, p := range m.vault.SortedPaths() {
 		if note := m.vault.GetNote(p); note != nil {
