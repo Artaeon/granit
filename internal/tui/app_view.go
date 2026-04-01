@@ -1045,7 +1045,6 @@ func (m Model) overlayTopRight(bg, overlay string) string {
 	shadowColor := lipgloss.Color("#11111B")
 	shadowStyle := lipgloss.NewStyle().Background(shadowColor).Foreground(shadowColor)
 
-	pad := strings.Repeat(" ", startX)
 	for i, overlayLine := range overlayLines {
 		y := startY + i
 		if y >= len(result) {
@@ -1065,8 +1064,9 @@ func (m Model) overlayTopRight(bg, overlay string) string {
 			skipRight += 2
 		}
 		
+		left := ansiTakeCols(result[y], startX)
 		right := ansiSkipCols(result[y], skipRight)
-		lineStr := pad + overlayLine + margin
+		lineStr := left + overlayLine + margin
 		if rightFill != "" {
 			lineStr += shadowStyle.Render(rightFill)
 		}
@@ -1743,7 +1743,6 @@ func (m Model) overlayCenter(bg, overlay string) string {
 	shadowColor := lipgloss.Color("#11111B")
 	shadowStyle := lipgloss.NewStyle().Background(shadowColor).Foreground(shadowColor)
 
-	pad := strings.Repeat(" ", startX)
 	for i, overlayLine := range overlayLines {
 		y := startY + i
 		if y >= len(result) {
@@ -1763,8 +1762,9 @@ func (m Model) overlayCenter(bg, overlay string) string {
 			skipRight += 2
 		}
 		
+		left := ansiTakeCols(result[y], startX)
 		right := ansiSkipCols(result[y], skipRight)
-		lineStr := pad + overlayLine + margin
+		lineStr := left + overlayLine + margin
 		if rightFill != "" {
 			lineStr += shadowStyle.Render(rightFill)
 		}
@@ -1782,6 +1782,36 @@ func (m Model) overlayCenter(bg, overlay string) string {
 	}
 
 	return strings.Join(result, "\n")
+}
+
+
+// ansiTakeCols returns the prefix of s up to n visual columns.
+func ansiTakeCols(s string, n int) string {
+	width := 0
+	i := 0
+	for i < len(s) && width < n {
+		if s[i] == '\x1b' {
+			// Skip entire ANSI escape sequence
+			j := i + 1
+			if j < len(s) && s[j] == '[' {
+				j++
+				for j < len(s) && s[j] != 'm' && s[j] != 'H' && s[j] != 'J' && s[j] != 'K' {
+					j++
+				}
+				if j < len(s) {
+					j++
+				}
+			}
+			i = j
+		} else {
+			width++
+			i++
+		}
+	}
+	if i >= len(s) {
+		return s
+	}
+	return s[:i] + "\x1b[0m"
 }
 
 // ansiSkipCols returns the suffix of s after skipping n visual columns.

@@ -439,30 +439,42 @@ func (cp CommandPalette) Update(msg tea.Msg) (CommandPalette, tea.Cmd) {
 
 func (cp CommandPalette) View() string {
 	width := cp.width * 2 / 5
-	if width < 55 {
-		width = 55
+	if width < 70 {
+		width = 70
 	}
-	if width > 80 {
-		width = 80
+	if width > 100 {
+		width = 100
 	}
 
-	innerW := width - 6
+	innerW := width - 4
 
 	var b strings.Builder
 
-	// Search input — clean, prominent
-	promptStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	searchBg := lipgloss.NewStyle().
-		Background(surface0).
-		Foreground(text).
-		Width(innerW - 2).
-		Padding(0, 1)
-	cursor := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("│")
-	b.WriteString(searchBg.Render(promptStyle.Render("> ") + cp.query + cursor))
+	// --- Search Header ---
+	promptStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" " + IconSearchChar + " ")
+	
+	queryStyle := lipgloss.NewStyle().Foreground(text)
+	placeholderStyle := lipgloss.NewStyle().Foreground(surface1).Italic(true)
+	
+	displayQuery := cp.query
+	if displayQuery == "" {
+		displayQuery = placeholderStyle.Render("Search commands...")
+	} else {
+		displayQuery = queryStyle.Render(displayQuery)
+	}
+	
+	cursorStyle := lipgloss.NewStyle().Foreground(blue).Bold(true).Render("▌")
+	
+	header := lipgloss.NewStyle().Padding(0, 1).Render(promptStyle + displayQuery + cursorStyle)
+	b.WriteString(header)
+	b.WriteString("\n")
+	
+	// Divider
+	b.WriteString(lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("─", innerW)))
 	b.WriteString("\n")
 
-	// Results
-	maxVisible := cp.height/2 - 4
+	// --- Results ---
+	maxVisible := cp.height/2 - 5
 	if maxVisible < 8 {
 		maxVisible = 8
 	}
@@ -472,7 +484,7 @@ func (cp CommandPalette) View() string {
 
 	if len(cp.filtered) == 0 {
 		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Italic(true).Render("  No matching commands"))
+		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Italic(true).Padding(0, 2).Render("No matching commands found"))
 		b.WriteString("\n")
 	} else {
 		start := 0
@@ -490,103 +502,109 @@ func (cp CommandPalette) View() string {
 		for i := start; i < end; i++ {
 			cmd := cp.filtered[i]
 
-			// Icon
 			icon := "  "
 			if cmd.Icon != nil {
 				icon = *cmd.Icon + " "
 			}
 
-			// Shortcut badge (right-aligned)
+			// Format shortcut
 			shortcutStr := ""
 			if cmd.Shortcut != "" {
-				shortcutStr = lipgloss.NewStyle().
-					Foreground(overlay0).
-					Background(surface0).
-					Render(" " + cmd.Shortcut + " ")
+				shortcutStr = " " + cmd.Shortcut + " "
 			}
 
+			// Pre-calculate widths
+			iconW := lipgloss.Width(icon) + 2
+			labelW := lipgloss.Width(cmd.Label)
+			shortcutW := lipgloss.Width(shortcutStr)
+
+			descPrefix := " - "
+			descW := lipgloss.Width(cmd.Desc) + lipgloss.Width(descPrefix)
+			
+			availableDesc := innerW - iconW - labelW - shortcutW - 6
+			displayDesc := ""
+			
+			if availableDesc > 5 {
+				if descW > availableDesc {
+				    displayDesc = descPrefix + cmd.Desc[:maxInt(0, availableDesc-4)] + "…"
+				} else {
+					displayDesc = descPrefix + cmd.Desc
+				}
+			}
+
+			var lineStr string
+			
 			if i == cp.cursor {
-				accentBar := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(ThemeAccentBar)
-				nameStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-				descStyle := lipgloss.NewStyle().Foreground(overlay0)
-				iconStyle := lipgloss.NewStyle().Foreground(mauve)
-
-				left := accentBar + " " + iconStyle.Render(icon) + nameStyle.Render(cmd.Label)
-				desc := descStyle.Render("  " + cmd.Desc)
-
-				// Truncate desc if line too long
-				leftW := lipgloss.Width(left)
-				shortcutW := lipgloss.Width(shortcutStr)
-				available := innerW - leftW - shortcutW - 1
-				if available > 4 {
-					if lipgloss.Width(desc) > available {
-						desc = descStyle.Render("  " + cmd.Desc[:maxInt(0, available-4)] + "…")
-					}
-				} else {
-					desc = ""
+				rowBg := surface0
+				
+				accent := lipgloss.NewStyle().Foreground(mauve).Bold(true).Background(rowBg).Render(ThemeAccentBar + " ")
+				iconStyle := lipgloss.NewStyle().Foreground(mauve).Background(rowBg)
+				iconLabel := iconStyle.Render(icon) + lipgloss.NewStyle().Foreground(text).Bold(true).Background(rowBg).Render(cmd.Label)
+				descPart := lipgloss.NewStyle().Foreground(overlay0).Background(rowBg).Render(displayDesc)
+				
+				shortcutFmt := ""
+				if cmd.Shortcut != "" {
+					shortcutFmt = lipgloss.NewStyle().Foreground(crust).Background(mauve).Bold(true).Render(shortcutStr)
 				}
-
-				line := left + desc
-				if shortcutStr != "" {
-					gap := innerW - lipgloss.Width(line) - shortcutW
-					if gap < 1 {
-						gap = 1
-					}
-					line += strings.Repeat(" ", gap) + shortcutStr
-				}
-
-				// Full-row highlight
-				lineW := lipgloss.Width(line)
+				
+				leftSide := accent + iconLabel + descPart
+				leftSideW := lipgloss.Width(leftSide)
+				
+				gapLen := innerW - leftSideW - lipgloss.Width(shortcutFmt)
+				if gapLen < 0 { gapLen = 0 }
+				
+				gapAndRight := lipgloss.NewStyle().Background(rowBg).Render(strings.Repeat(" ", gapLen)) + shortcutFmt
+				
+				lineStr = leftSide + gapAndRight
+				lineW := lipgloss.Width(lineStr)
 				if lineW < innerW {
-					line += lipgloss.NewStyle().Background(surface0).Render(strings.Repeat(" ", innerW-lineW))
+				    lineStr += lipgloss.NewStyle().Background(rowBg).Render(strings.Repeat(" ", innerW - lineW))
 				}
-				b.WriteString(line)
 			} else {
-				iconStyle := lipgloss.NewStyle().Foreground(blue)
-				nameStyle := lipgloss.NewStyle().Foreground(text)
-				descStyle := lipgloss.NewStyle().Foreground(overlay0)
-
-				left := "  " + iconStyle.Render(icon) + nameStyle.Render(cmd.Label)
-				desc := descStyle.Render("  " + cmd.Desc)
-
-				leftW := lipgloss.Width(left)
-				shortcutW := lipgloss.Width(shortcutStr)
-				available := innerW - leftW - shortcutW - 1
-				if available > 4 {
-					if lipgloss.Width(desc) > available {
-						desc = descStyle.Render("  " + cmd.Desc[:maxInt(0, available-4)] + "…")
-					}
-				} else {
-					desc = ""
+				accent := lipgloss.NewStyle().Render("  ")
+				iconStyle := lipgloss.NewStyle().Foreground(overlay0)
+				iconLabel := iconStyle.Render(icon) + lipgloss.NewStyle().Foreground(subtext0).Render(cmd.Label)
+				descPart := lipgloss.NewStyle().Foreground(surface1).Render(displayDesc)
+				
+				shortcutFmt := ""
+				if cmd.Shortcut != "" {
+					shortcutFmt = lipgloss.NewStyle().Foreground(overlay0).Background(surface0).Render(shortcutStr)
 				}
-
-				line := left + desc
-				if shortcutStr != "" {
-					gap := innerW - lipgloss.Width(line) - shortcutW
-					if gap < 1 {
-						gap = 1
-					}
-					line += strings.Repeat(" ", gap) + shortcutStr
-				}
-				b.WriteString(line)
+				
+				leftSide := accent + iconLabel + descPart
+				leftSideW := lipgloss.Width(leftSide)
+				
+				gapLen := innerW - leftSideW - lipgloss.Width(shortcutFmt)
+				if gapLen < 0 { gapLen = 0 }
+				
+				gapAndRight := strings.Repeat(" ", gapLen) + shortcutFmt
+				lineStr = leftSide + gapAndRight
 			}
-			b.WriteString("\n")
+
+			b.WriteString(lineStr + "\n")
 		}
 
-		// Scroll indicator
-		if len(cp.filtered) > maxVisible {
-			pos := fmt.Sprintf("  %d/%d", cp.cursor+1, len(cp.filtered))
-			b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(pos))
-		}
+		b.WriteString(lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("─", innerW)))
+		b.WriteString("\n")
+		
+		helpText := " ↑/↓ Navigate • ↵ Select • Esc Close"
+		posText := fmt.Sprintf("%d/%d ", cp.cursor+1, len(cp.filtered))
+		
+		footerLeft := lipgloss.NewStyle().Foreground(overlay0).Render(helpText)
+		footerRight := lipgloss.NewStyle().Foreground(overlay0).Render(posText)
+		
+		gap := innerW - lipgloss.Width(footerLeft) - lipgloss.Width(footerRight)
+		if gap < 0 { gap = 0 }
+		
+		b.WriteString(footerLeft + strings.Repeat(" ", gap) + footerRight)
 	}
 
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
-		Padding(1, 1).
+		Padding(1, 2).
 		Width(width).
 		Background(base)
 
 	return border.Render(b.String())
 }
-

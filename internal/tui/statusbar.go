@@ -165,18 +165,37 @@ func (sb *StatusBar) SetViewMode(active bool) {
 
 func (sb StatusBar) View() string {
 	// Mode badge
-	modeColors := map[string]lipgloss.Color{
-		"FILES":   green,
-		"EDIT":    mauve,
-		"VIEW":    green,
-		"LINKS":   blue,
-		"SEARCH":  yellow,
-		"COMMAND": peach,
-	}
-	modeColor, ok := modeColors[sb.mode]
-	if !ok {
+	modeColor := mauve
+	switch sb.mode {
+	case "FILES":
+		modeColor = green
+	case "EDIT":
 		modeColor = mauve
+	case "VIEW":
+		modeColor = green
+	case "LINKS":
+		modeColor = blue
+	case "SEARCH":
+		modeColor = yellow
+	case "COMMAND":
+		modeColor = peach
+	case "VIM:NORMAL":
+		modeColor = blue
+	case "VIM:INSERT":
+		modeColor = green
+	case "VIM:VISUAL":
+		modeColor = peach
+	case "VIM:COMMAND":
+		modeColor = yellow
 	}
+
+	if strings.HasPrefix(sb.mode, "VIM:") {
+		// e.g. VIM:REPLACE or something unhandled
+		if modeColor == mauve {
+			modeColor = pink
+		}
+	}
+
 	modeStyle := lipgloss.NewStyle().
 		Background(modeColor).
 		Foreground(crust).
