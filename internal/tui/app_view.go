@@ -9,9 +9,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 
 	"github.com/artaeon/granit/internal/vault"
 )
@@ -1799,7 +1801,6 @@ func ansiTakeCols(s string, n int) string {
 	i := 0
 	for i < len(s) && width < n {
 		if s[i] == '\x1b' {
-			// Skip entire ANSI escape sequence
 			j := i + 1
 			if j < len(s) && s[j] == '[' {
 				j++
@@ -1812,8 +1813,13 @@ func ansiTakeCols(s string, n int) string {
 			}
 			i = j
 		} else {
-			width++
-			i++
+			r, size := utf8.DecodeRuneInString(s[i:])
+			w := runewidth.RuneWidth(r)
+			if width+w > n {
+				break
+			}
+			width += w
+			i += size
 		}
 	}
 	if i >= len(s) {
@@ -1830,7 +1836,6 @@ func ansiSkipCols(s string, n int) string {
 	i := 0
 	for i < len(s) && width < n {
 		if s[i] == '\x1b' {
-			// Skip entire ANSI escape sequence
 			j := i + 1
 			if j < len(s) && s[j] == '[' {
 				j++
@@ -1843,8 +1848,9 @@ func ansiSkipCols(s string, n int) string {
 			}
 			i = j
 		} else {
-			width++
-			i++
+			r, size := utf8.DecodeRuneInString(s[i:])
+			width += runewidth.RuneWidth(r)
+			i += size
 		}
 	}
 	if i >= len(s) {
