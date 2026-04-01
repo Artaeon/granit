@@ -325,59 +325,25 @@ func (tm *TaskManager) ActiveNotePath() string {
 	return tm.lastChangedNote
 }
 
-// taskDueDate returns the due date for a task line, checking both the 📅 emoji
-// and the daily note filename (e.g. 2026-03-31.md). Matches ParseAllTasks logic.
-func taskDueDate(line string, notePath string) string {
-	if dm := tmDueDateRe.FindStringSubmatch(line); dm != nil {
-		return dm[1]
-	}
-	base := filepath.Base(notePath)
-	base = strings.TrimSuffix(base, ".md")
-	if _, err := time.Parse("2006-01-02", base); err == nil {
-		return base
-	}
-	return ""
-}
-
 // CountTasksDueToday returns the number of incomplete tasks due today or overdue.
+// Uses ParseAllTasks to ensure counts match the task manager exactly.
 func CountTasksDueToday(notes map[string]*vault.Note) int {
 	count := 0
-	for _, note := range notes {
-		if note.Content == "" {
-			continue
-		}
-		for _, line := range strings.Split(note.Content, "\n") {
-			trimmed := strings.TrimSpace(line)
-			if !strings.HasPrefix(trimmed, "- [ ]") {
-				continue
-			}
-			if d := taskDueDate(line, note.RelPath); d != "" {
-				if tmIsToday(d) || tmIsOverdue(d) {
-					count++
-				}
-			}
+	for _, t := range ParseAllTasks(notes) {
+		if !t.Done && t.DueDate != "" && (tmIsToday(t.DueDate) || tmIsOverdue(t.DueDate)) {
+			count++
 		}
 	}
 	return count
 }
 
 // CountOverdueTasks counts how many unchecked tasks are past their due date.
+// Uses ParseAllTasks to ensure counts match the task manager exactly.
 func CountOverdueTasks(notes map[string]*vault.Note) int {
 	count := 0
-	for _, note := range notes {
-		if note.Content == "" {
-			continue
-		}
-		for _, line := range strings.Split(note.Content, "\n") {
-			trimmed := strings.TrimSpace(line)
-			if !strings.HasPrefix(trimmed, "- [ ]") {
-				continue
-			}
-			if d := taskDueDate(line, note.RelPath); d != "" {
-				if tmIsOverdue(d) {
-					count++
-				}
-			}
+	for _, t := range ParseAllTasks(notes) {
+		if !t.Done && t.DueDate != "" && tmIsOverdue(t.DueDate) {
+			count++
 		}
 	}
 	return count

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -308,9 +309,11 @@ func (d *Dashboard) scan() {
 	}
 }
 
-// parseTasks scans all vault notes for tasks using the same logic as the task manager.
+// parseTasks scans all vault notes for tasks using the same regex as the task manager.
 func (d *Dashboard) parseTasks(todayStr string) {
-	// Walk all .md files and parse tasks the same way as the task manager
+	dueDateRe := regexp.MustCompile(`\x{1F4C5}\s*(\d{4}-\d{2}-\d{2})`)
+	taskRe := regexp.MustCompile(`^\s*- \[([ xX])\] (.+)`)
+
 	_ = filepath.Walk(d.vaultRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			if info != nil && info.IsDir() && strings.HasPrefix(info.Name(), ".") {
@@ -327,30 +330,32 @@ func (d *Dashboard) parseTasks(todayStr string) {
 			return nil
 		}
 
-		relPath, _ := filepath.Rel(d.vaultRoot, path)
-		content := string(data)
+		// Infer due date from daily note filename
+		noteDateStr := ""
+		base := strings.TrimSuffix(info.Name(), ".md")
+		if _, parseErr := time.Parse("2006-01-02", base); parseErr == nil {
+			noteDateStr = base
+		}
 
-		for _, line := range strings.Split(content, "\n") {
-			trimmed := strings.TrimSpace(line)
-			if !strings.HasPrefix(trimmed, "- [") {
+		for _, line := range strings.Split(string(data), "\n") {
+			m := taskRe.FindStringSubmatch(line)
+			if m == nil {
 				continue
 			}
+			done := m[1] == "x" || m[1] == "X"
+			taskText := m[2]
 
-			done := false
-			var taskText string
-			if strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]") {
-				done = true
-				taskText = strings.TrimSpace(trimmed[5:])
-			} else if strings.HasPrefix(trimmed, "- [ ]") {
-				taskText = strings.TrimSpace(trimmed[5:])
-			} else {
-				continue
+			// Find due date: explicit emoji takes priority, then daily note filename
+			dueDate := ""
+			if dm := dueDateRe.FindStringSubmatch(taskText); dm != nil {
+				dueDate = dm[1]
+			} else if noteDateStr != "" {
+				dueDate = noteDateStr
 			}
-
-			dueDate := taskDueDate(line, relPath)
 			if dueDate == "" {
 				continue
 			}
+
 			if dueDate == todayStr {
 				d.todayTasks = append(d.todayTasks, dashTask{Text: taskText, Done: done})
 				d.tasksDue++
