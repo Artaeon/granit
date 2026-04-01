@@ -439,172 +439,133 @@ func (cp CommandPalette) Update(msg tea.Msg) (CommandPalette, tea.Cmd) {
 
 func (cp CommandPalette) View() string {
 	width := cp.width * 2 / 5
-	if width < 70 {
-		width = 70
+	if width < 60 {
+		width = 60
 	}
 	if width > 100 {
 		width = 100
 	}
 
 	innerW := width - 4
-
 	var b strings.Builder
 
-	// --- Search Header ---
-	promptStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" " + IconSearchChar + " ")
-	
+	// Header
+	promptStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 	queryStyle := lipgloss.NewStyle().Foreground(text)
 	placeholderStyle := lipgloss.NewStyle().Foreground(surface1).Italic(true)
-	
+
 	displayQuery := cp.query
 	if displayQuery == "" {
 		displayQuery = placeholderStyle.Render("Search commands...")
 	} else {
 		displayQuery = queryStyle.Render(displayQuery)
 	}
-	
-	cursorStyle := lipgloss.NewStyle().Foreground(blue).Bold(true).Render("▌")
-	
-	header := lipgloss.NewStyle().Padding(0, 1).Render(promptStyle + displayQuery + cursorStyle)
-	b.WriteString(header)
-	b.WriteString("\n")
-	
-	// Divider
-	b.WriteString(lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("─", innerW)))
-	b.WriteString("\n")
 
-	// --- Results ---
+	cursor := lipgloss.NewStyle().Foreground(blue).Bold(true).Render("▌")
+	headerStr := promptStyle.Render(" " + IconSearchChar + " ") + displayQuery + cursor
+	b.WriteString(lipgloss.NewStyle().Padding(0, 1).Render(headerStr) + "\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("─", innerW)) + "\n")
+
+	// Results
 	maxVisible := cp.height/2 - 5
-	if maxVisible < 8 {
-		maxVisible = 8
-	}
-	if maxVisible > 18 {
-		maxVisible = 18
-	}
+	if maxVisible < 8 { maxVisible = 8 }
+	if maxVisible > 18 { maxVisible = 18 }
 
 	if len(cp.filtered) == 0 {
-		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Italic(true).Padding(0, 2).Render("No matching commands found"))
-		b.WriteString("\n")
+		b.WriteString("\n" + lipgloss.NewStyle().Foreground(overlay0).Italic(true).Padding(0, 2).Render("No matching commands found") + "\n")
 	} else {
 		start := 0
-		if cp.cursor >= start+maxVisible {
-			start = cp.cursor - maxVisible + 1
-		}
-		if cp.cursor < start {
-			start = cp.cursor
-		}
+		if cp.cursor >= start+maxVisible { start = cp.cursor - maxVisible + 1 }
+		if cp.cursor < start { start = cp.cursor }
 		end := start + maxVisible
-		if end > len(cp.filtered) {
-			end = len(cp.filtered)
-		}
+		if end > len(cp.filtered) { end = len(cp.filtered) }
 
 		for i := start; i < end; i++ {
 			cmd := cp.filtered[i]
-
 			icon := "  "
-			if cmd.Icon != nil {
-				icon = *cmd.Icon + " "
-			}
+			if cmd.Icon != nil { icon = *cmd.Icon + " " }
 
-			// Format shortcut
 			shortcutStr := ""
-			if cmd.Shortcut != "" {
-				shortcutStr = " " + cmd.Shortcut + " "
-			}
+			if cmd.Shortcut != "" { shortcutStr = " " + cmd.Shortcut + " " }
 
-			// Pre-calculate widths
-			iconW := lipgloss.Width(icon) + 2
-			labelW := lipgloss.Width(cmd.Label)
+			// Convert to rune slice for safe slicing
+			descRunes := []rune(" - " + cmd.Desc)
+			leftBase := icon + cmd.Label
+			leftBaseW := lipgloss.Width(leftBase)
 			shortcutW := lipgloss.Width(shortcutStr)
 
-			descPrefix := " - "
-			descW := lipgloss.Width(cmd.Desc) + lipgloss.Width(descPrefix)
-			
-			availableDesc := innerW - iconW - labelW - shortcutW - 6
-			displayDesc := ""
-			
-			if availableDesc > 5 {
-				if descW > availableDesc {
-				    displayDesc = descPrefix + cmd.Desc[:maxInt(0, availableDesc-4)] + "…"
-				} else {
-					displayDesc = descPrefix + cmd.Desc
-				}
+			availableDesc := innerW - leftBaseW - shortcutW - 4
+			displayDesc := string(descRunes)
+			if availableDesc > 2 && len(descRunes) > availableDesc {
+				displayDesc = string(descRunes[:availableDesc-1]) + "…"
+			} else if availableDesc <= 2 {
+				displayDesc = ""
 			}
 
-			var lineStr string
-			
 			if i == cp.cursor {
-				rowBg := surface0
-				
-				accent := lipgloss.NewStyle().Foreground(mauve).Bold(true).Background(rowBg).Render(ThemeAccentBar + " ")
-				iconStyle := lipgloss.NewStyle().Foreground(mauve).Background(rowBg)
-				iconLabel := iconStyle.Render(icon) + lipgloss.NewStyle().Foreground(text).Bold(true).Background(rowBg).Render(cmd.Label)
-				descPart := lipgloss.NewStyle().Foreground(overlay0).Background(rowBg).Render(displayDesc)
-				
-				shortcutFmt := ""
-				if cmd.Shortcut != "" {
-					shortcutFmt = lipgloss.NewStyle().Foreground(crust).Background(mauve).Bold(true).Render(shortcutStr)
-				}
-				
-				leftSide := accent + iconLabel + descPart
-				leftSideW := lipgloss.Width(leftSide)
-				
-				gapLen := innerW - leftSideW - lipgloss.Width(shortcutFmt)
-				if gapLen < 0 { gapLen = 0 }
-				
-				gapAndRight := lipgloss.NewStyle().Background(rowBg).Render(strings.Repeat(" ", gapLen)) + shortcutFmt
-				
-				lineStr = leftSide + gapAndRight
-				lineW := lipgloss.Width(lineStr)
-				if lineW < innerW {
-				    lineStr += lipgloss.NewStyle().Background(rowBg).Render(strings.Repeat(" ", innerW - lineW))
-				}
-			} else {
-				accent := lipgloss.NewStyle().Render("  ")
-				iconStyle := lipgloss.NewStyle().Foreground(overlay0)
-				iconLabel := iconStyle.Render(icon) + lipgloss.NewStyle().Foreground(subtext0).Render(cmd.Label)
-				descPart := lipgloss.NewStyle().Foreground(surface1).Render(displayDesc)
-				
-				shortcutFmt := ""
-				if cmd.Shortcut != "" {
-					shortcutFmt = lipgloss.NewStyle().Foreground(overlay0).Background(surface0).Render(shortcutStr)
-				}
-				
-				leftSide := accent + iconLabel + descPart
-				leftSideW := lipgloss.Width(leftSide)
-				
-				gapLen := innerW - leftSideW - lipgloss.Width(shortcutFmt)
-				if gapLen < 0 { gapLen = 0 }
-				
-				gapAndRight := strings.Repeat(" ", gapLen) + shortcutFmt
-				lineStr = leftSide + gapAndRight
-			}
+				leftCol := lipgloss.NewStyle().
+					Foreground(mauve).
+					Bold(true).
+					Render(ThemeAccentBar + " ")
+				leftCol += lipgloss.NewStyle().Foreground(mauve).Render(icon)
+				leftCol += lipgloss.NewStyle().Foreground(text).Bold(true).Render(cmd.Label)
+				leftCol += lipgloss.NewStyle().Foreground(overlay0).Render(displayDesc)
 
-			b.WriteString(lineStr + "\n")
+				rightCol := lipgloss.NewStyle().
+					Foreground(crust).
+					Background(mauve).
+					Bold(true).
+					Render(shortcutStr)
+
+				// Let Lipgloss handle the width and background perfectly
+				leftWidth := lipgloss.Width(leftCol)
+				rightWidth := lipgloss.Width(rightCol)
+				pad := innerW - leftWidth - rightWidth
+				if pad < 0 { pad = 0 }
+				
+				rowContents := leftCol + strings.Repeat(" ", pad) + rightCol
+				rowStyle := lipgloss.NewStyle().
+					Background(surface0).
+					Width(innerW)
+				b.WriteString(rowStyle.Render(rowContents) + "\n")
+			} else {
+				leftCol := "   " + lipgloss.NewStyle().Foreground(overlay0).Render(icon)
+				leftCol += lipgloss.NewStyle().Foreground(subtext0).Render(cmd.Label)
+				leftCol += lipgloss.NewStyle().Foreground(surface1).Render(displayDesc)
+
+				rightCol := ""
+				if shortcutStr != "" {
+					rightCol = lipgloss.NewStyle().Foreground(overlay0).Render(shortcutStr)
+				}
+
+				leftWidth := lipgloss.Width(leftCol)
+				rightWidth := lipgloss.Width(rightCol)
+				pad := innerW - leftWidth - rightWidth
+				if pad < 0 { pad = 0 }
+				
+				rowContents := leftCol + strings.Repeat(" ", pad) + rightCol
+				rowStyle := lipgloss.NewStyle().Width(innerW)
+				b.WriteString(rowStyle.Render(rowContents) + "\n")
+			}
 		}
 
-		b.WriteString(lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("─", innerW)))
-		b.WriteString("\n")
-		
+		b.WriteString(lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("─", innerW)) + "\n")
+
 		helpText := " ↑/↓ Navigate • ↵ Select • Esc Close"
 		posText := fmt.Sprintf("%d/%d ", cp.cursor+1, len(cp.filtered))
-		
+
 		footerLeft := lipgloss.NewStyle().Foreground(overlay0).Render(helpText)
 		footerRight := lipgloss.NewStyle().Foreground(overlay0).Render(posText)
-		
 		gap := innerW - lipgloss.Width(footerLeft) - lipgloss.Width(footerRight)
 		if gap < 0 { gap = 0 }
-		
 		b.WriteString(footerLeft + strings.Repeat(" ", gap) + footerRight)
 	}
 
-	border := lipgloss.NewStyle().
+	return lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
-		Background(base)
-
-	return border.Render(b.String())
+		Background(base).
+		Render(b.String())
 }
