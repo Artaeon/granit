@@ -667,7 +667,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		pm.loadProjects()
 		MatchTasksToProjects(allTasks, pm.projects)
 		m.kanban.SetTaskProjects(allTasks)
-		m.kanban.Open()
+		m.kanban.Open(m.vault.Root)
 	case CmdZettelNote:
 		if m.zettelkasten != nil {
 			name := m.zettelkasten.GenerateNoteName("Untitled")

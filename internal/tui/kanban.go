@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -8,6 +11,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// kbCardState stores which column a card has been manually assigned to.
+type kbCardState struct {
+	Source string `json:"source"` // note path
+	Line   int    `json:"line"`   // line number
+	Column string `json:"column"` // column title
+}
 
 // Kanban-local regex patterns (mirrors taskmanager patterns).
 var (
@@ -42,9 +52,10 @@ type KanbanColumn struct {
 // Kanban is an overlay component that displays tasks from vault notes as a
 // Kanban board with configurable columns.
 type Kanban struct {
-	active bool
-	width  int
-	height int
+	active    bool
+	width     int
+	height    int
+	vaultRoot string
 
 	columns    []KanbanColumn // configurable columns
 	colCursor  int            // which column is selected
@@ -52,6 +63,7 @@ type Kanban struct {
 
 	allCards   []KanbanCard          // all parsed cards
 	columnTags map[string][]string   // column title -> list of tags that route cards there
+	savedState []kbCardState         // persisted column assignments
 
 	// Drag state
 	dragging bool
@@ -102,17 +114,55 @@ func (kb *Kanban) Configure(columns []string, tagMap map[string]string) {
 func (kb *Kanban) IsActive() bool { return kb.active }
 
 // Open activates the Kanban overlay.
-func (kb *Kanban) Open() {
+func (kb *Kanban) Open(vaultRoot string) {
 	kb.active = true
+	kb.vaultRoot = vaultRoot
 	kb.colCursor = 0
 	kb.cardCursor = 0
 	kb.dragging = false
 	kb.dragCard = nil
 	kb.pendingToggle = false
+	kb.loadState()
 }
 
-// Close deactivates the Kanban overlay.
-func (kb *Kanban) Close() { kb.active = false }
+// Close deactivates the Kanban overlay and saves state.
+func (kb *Kanban) Close() {
+	kb.saveState()
+	kb.active = false
+}
+
+func (kb *Kanban) statePath() string {
+	return filepath.Join(kb.vaultRoot, ".granit", "kanban-state.json")
+}
+
+func (kb *Kanban) loadState() {
+	kb.savedState = nil
+	data, err := os.ReadFile(kb.statePath())
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(data, &kb.savedState)
+}
+
+func (kb *Kanban) saveState() {
+	var state []kbCardState
+	for _, col := range kb.columns {
+		for _, card := range col.Cards {
+			state = append(state, kbCardState{
+				Source: card.Source,
+				Line:   card.Line,
+				Column: col.Title,
+			})
+		}
+	}
+	dir := filepath.Dir(kb.statePath())
+	_ = os.MkdirAll(dir, 0755)
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(kb.statePath(), data, 0644)
+}
 
 // SetSize stores the available terminal dimensions for rendering.
 func (kb *Kanban) SetSize(w, h int) {
@@ -177,23 +227,45 @@ func (kb *Kanban) SetTasks(noteContents map[string]string) {
 		}
 	}
 
+	// Build lookup from saved state for manual column assignments.
+	savedCol := make(map[string]string) // "source:line" -> column title
+	for _, s := range kb.savedState {
+		savedCol[s.Source+":"+kbItoa(s.Line)] = s.Column
+	}
+
 	// Distribute cards into columns.
 	for i := range kb.columns {
 		kb.columns[i].Cards = nil
 	}
 	lastCol := len(kb.columns) - 1
 
+	// Build column name → index map
+	colIndex := make(map[string]int)
+	for i, col := range kb.columns {
+		colIndex[col.Title] = i
+	}
+
 	for _, card := range kb.allCards {
+		// 1. Done cards always go to the last column
 		if card.Done {
-			// Done cards go to the last column.
 			kb.columns[lastCol].Cards = append(kb.columns[lastCol].Cards, card)
 			continue
 		}
-		// Check tag-based column assignment.
+
+		// 2. Check saved column assignment (from previous manual moves)
+		key := card.Source + ":" + kbItoa(card.Line)
+		if colName, ok := savedCol[key]; ok {
+			if idx, exists := colIndex[colName]; exists && idx != lastCol {
+				kb.columns[idx].Cards = append(kb.columns[idx].Cards, card)
+				continue
+			}
+		}
+
+		// 3. Check tag-based column assignment
 		placed := false
 		for colIdx, col := range kb.columns {
 			if colIdx == 0 || colIdx == lastCol {
-				continue // skip first (default) and last (done)
+				continue
 			}
 			for _, tag := range kb.columnTags[col.Title] {
 				tagLower := strings.ToLower(strings.TrimPrefix(tag, "#"))
@@ -688,6 +760,7 @@ func (kb *Kanban) kbMoveCardForward() {
 	if kb.cardCursor >= len(col.Cards) && kb.cardCursor > 0 {
 		kb.cardCursor--
 	}
+	kb.saveState()
 }
 
 // kbMoveCardBackward moves the selected card from the current column to the previous one.
@@ -708,6 +781,7 @@ func (kb *Kanban) kbMoveCardBackward() {
 	if kb.cardCursor >= len(col.Cards) && kb.cardCursor > 0 {
 		kb.cardCursor--
 	}
+	kb.saveState()
 }
 
 // kbToggleDone toggles the Done state of the selected card and records the
