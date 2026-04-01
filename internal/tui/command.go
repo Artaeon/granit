@@ -157,6 +157,9 @@ const (
 	CmdCopyDailyPlan
 	CmdUniversalSearch
 	CmdIdeasBoard
+	CmdDailyJot
+	CmdMorningRoutine
+	CmdEveningReview
 	CmdQuit
 )
 
@@ -314,6 +317,9 @@ var AllCommands = []Command{
 	{Label: "Copy Daily Plan", Desc: "Copy today's schedule, tasks, and habits to clipboard for sharing", Shortcut: "", Action: CmdCopyDailyPlan, Icon: &IconCalendarChar},
 	{Label: "Search Everything", Desc: "Search across notes, tasks, goals, and habits", Shortcut: "", Action: CmdUniversalSearch, Icon: &IconSearchChar},
 	{Label: "Ideas Board", Desc: "Kanban board for brainstorming — capture, explore, validate, and convert ideas to goals or tasks", Shortcut: "", Action: CmdIdeasBoard, Icon: &IconCanvasChar},
+	{Label: "Daily Jot", Desc: "Quick time-stamped bullets — scroll through today, yesterday, and beyond", Shortcut: "Alt+J", Action: CmdDailyJot, Icon: &IconEditChar},
+	{Label: "Morning Routine", Desc: "Start your day — scripture, briefing, plan, top priorities", Shortcut: "Alt+M", Action: CmdMorningRoutine, Icon: &IconDailyChar},
+	{Label: "Evening Review", Desc: "End your day — accomplishments, overdue audit, gratitude, tomorrow's focus", Shortcut: "Alt+E", Action: CmdEveningReview, Icon: &IconCalendarChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 

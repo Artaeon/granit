@@ -34,10 +34,12 @@ type WeeklyReview struct {
 	step      weeklyReviewStep
 
 	// Data from vault
-	completedTasks []Task
+	completedTasks  []Task
 	incompleteTasks []Task
-	weekYear       int
-	weekNum        int
+	taskCursor      int
+	fileChanged     bool
+	weekYear        int
+	weekNum         int
 
 	// User inputs
 	wins     string
@@ -180,9 +182,10 @@ func (wr *WeeklyReview) gatherWeekTasks(v *vault.Vault) {
 				}
 			}
 		}
-		// TODO: Also include tasks completed this week (no due date but done).
-		// We cannot reliably determine when it was completed without git history,
-		// but include recent done tasks for the user to review.
+		// Include done tasks without due dates that are in recently modified files
+		if task.Done && task.DueDate == "" {
+			wr.completedTasks = append(wr.completedTasks, task)
+		}
 	}
 }
 
@@ -277,14 +280,26 @@ func (wr WeeklyReview) Update(msg tea.Msg) (WeeklyReview, tea.Cmd) {
 
 		// Task review: toggle tasks done
 		case "x", " ":
-			// TODO: implement task toggle in review step
-			// if wr.step == wrStepTasks && len(wr.incompleteTasks) > 0 {
-			//     parse inputBuf as selected index and toggle done
-			// }
+			if wr.step == wrStepTasks && len(wr.incompleteTasks) > 0 && wr.taskCursor < len(wr.incompleteTasks) {
+				task := wr.incompleteTasks[wr.taskCursor]
+				if toggleTaskInFile(filepath.Join(wr.vaultRoot, task.NotePath), task.LineNum) {
+					wr.incompleteTasks[wr.taskCursor].Done = true
+					wr.completedTasks = append(wr.completedTasks, wr.incompleteTasks[wr.taskCursor])
+					wr.incompleteTasks = append(wr.incompleteTasks[:wr.taskCursor], wr.incompleteTasks[wr.taskCursor+1:]...)
+					if wr.taskCursor >= len(wr.incompleteTasks) && wr.taskCursor > 0 {
+						wr.taskCursor--
+					}
+					wr.fileChanged = true
+				}
+			}
 		case "up", "k":
-			// Scroll in tasks view (reuse inputBuf as cursor index)
+			if wr.step == wrStepTasks && wr.taskCursor > 0 {
+				wr.taskCursor--
+			}
 		case "down", "j":
-			// Scroll in tasks view
+			if wr.step == wrStepTasks && wr.taskCursor < len(wr.incompleteTasks)-1 {
+				wr.taskCursor++
+			}
 		}
 	}
 	return wr, nil
@@ -571,4 +586,35 @@ func (wr WeeklyReview) viewSummary(w int) string {
 	b.WriteString("\n")
 
 	return b.String()
+}
+
+// WasFileChanged returns true if a task was toggled during the review.
+func (wr *WeeklyReview) WasFileChanged() bool {
+	if wr.fileChanged {
+		wr.fileChanged = false
+		return true
+	}
+	return false
+}
+
+// toggleTaskInFile toggles a checkbox at the given line number in a file.
+func toggleTaskInFile(filePath string, lineNum int) bool {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(string(data), "\n")
+	idx := lineNum - 1
+	if idx < 0 || idx >= len(lines) {
+		return false
+	}
+	line := lines[idx]
+	if strings.Contains(line, "[ ]") {
+		lines[idx] = strings.Replace(line, "[ ]", "[x]", 1)
+	} else if strings.Contains(line, "[x]") || strings.Contains(line, "[X]") {
+		lines[idx] = strings.Replace(strings.Replace(line, "[x]", "[ ]", 1), "[X]", "[ ]", 1)
+	} else {
+		return false
+	}
+	return os.WriteFile(filePath, []byte(strings.Join(lines, "\n")), 0644) == nil
 }

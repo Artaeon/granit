@@ -986,6 +986,22 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.dailyReview.SetSize(m.width, m.height)
 		m.dailyReview.Open(m.vault.Root, m.vault)
 
+	case CmdDailyJot:
+		m.dailyJot.SetSize(m.width, m.height)
+		noteNames := make([]string, 0, len(m.vault.Notes))
+		for k := range m.vault.Notes {
+			noteNames = append(noteNames, strings.TrimSuffix(filepath.Base(k), ".md"))
+		}
+		m.dailyJot.Open(m.vault.Root, "Jots", noteNames, 14)
+
+	case CmdMorningRoutine:
+		// Morning Warrior Routine: opens daily briefing flow
+		return m.executeCommand(CmdDailyBriefing)
+
+	case CmdEveningReview:
+		m.dailyReview.SetSize(m.width, m.height)
+		m.dailyReview.Open(m.vault.Root, m.vault)
+
 	case CmdNoteHistory:
 		m.noteHistory.SetSize(m.width, m.height)
 		m.noteHistory.OpenForNote(m.vault.Root, m.activeNote)

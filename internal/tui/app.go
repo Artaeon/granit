@@ -172,6 +172,7 @@ type Model struct {
 	journalPrompts   JournalPrompts
 	clipManager      ClipManager
 	dailyPlanner     DailyPlanner
+	dailyJot         DailyJot
 	aiScheduler      AIScheduler
 	recurringTasks   RecurringTasks
 	notePreview      NotePreview
@@ -357,6 +358,7 @@ func NewModel(vaultPath string) (Model, error) {
 		eventStore:       NewEventStore(vaultPath),
 		commandCenter:   NewCommandCenter(),
 		dailyPlanner:    NewDailyPlanner(),
+		dailyJot:        NewDailyJot(),
 		aiScheduler:     NewAIScheduler(),
 		planMyDay:       NewPlanMyDay(),
 		clockIn:         NewClockIn(vaultPath),

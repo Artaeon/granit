@@ -72,6 +72,11 @@ type Dashboard struct {
 	projectNames   []string // top active project names
 	goalNames      []string // top active goal names
 
+	// Business/Revenue metrics
+	bizTasksDone  int // completed tasks tagged #revenue/#client/#business this week
+	bizTasksTotal int // total such tasks this week
+	bizHoursWeek  float64 // hours tracked on business tasks this week
+
 	// Quick actions result
 	action CommandAction
 
@@ -155,6 +160,9 @@ func (d *Dashboard) scan() {
 	d.todayHabits = nil
 	d.recentNotes = nil
 	d.writingStreak = 0
+	d.bizTasksDone = 0
+	d.bizTasksTotal = 0
+	d.bizHoursWeek = 0
 	for i := range d.weeklyWords {
 		d.weeklyWords[i] = 0
 	}
@@ -273,6 +281,9 @@ func (d *Dashboard) scan() {
 
 	// Parse today's habit status.
 	d.parseHabits(todayStr)
+
+	// Scan business-tagged tasks from this week.
+	d.parseBusinessMetrics(now)
 
 	// Recent notes: sort by mod time descending, take top 6.
 	sort.Slice(files, func(i, j int) bool {
@@ -504,6 +515,57 @@ func (d Dashboard) Update(msg tea.Msg) (Dashboard, tea.Cmd) {
 	return d, nil
 }
 
+// parseBusinessMetrics scans vault for tasks tagged with business-related tags
+// completed this week to give a revenue/productivity pulse.
+func (d *Dashboard) parseBusinessMetrics(now time.Time) {
+	bizTags := []string{"#revenue", "#client", "#business", "#sales", "#invoice"}
+	weekStart := now.AddDate(0, 0, -int(now.Weekday()))
+	weekStartStr := weekStart.Format("2006-01-02")
+
+	_ = filepath.Walk(d.vaultRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			if info != nil && info.IsDir() && strings.HasPrefix(info.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(info.Name(), ".md") {
+			return nil
+		}
+		// Only scan files modified this week
+		if info.ModTime().Before(weekStart) {
+			return nil
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if !strings.HasPrefix(trimmed, "- [") {
+				continue
+			}
+			lower := strings.ToLower(trimmed)
+			isBiz := false
+			for _, tag := range bizTags {
+				if strings.Contains(lower, tag) {
+					isBiz = true
+					break
+				}
+			}
+			if !isBiz {
+				continue
+			}
+			d.bizTasksTotal++
+			if strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]") {
+				d.bizTasksDone++
+			}
+		}
+		_ = weekStartStr // used for context only
+		return nil
+	})
+}
+
 // View renders the dashboard overlay.
 func (d Dashboard) View() string {
 	panelWidth := d.width * 9 / 10
@@ -548,6 +610,14 @@ func (d Dashboard) View() string {
 	}
 	lines = append(lines, greetLine+strings.Repeat(" ", gap)+datePart)
 	lines = append(lines, dimSt.Render("  "+strings.Repeat("\u2500", innerW-4)))
+
+	// --- Daily Scripture ---
+	scripture := DailyScripture(d.vaultRoot)
+	verseStyle := lipgloss.NewStyle().Foreground(lavender).Italic(true)
+	refStyle := lipgloss.NewStyle().Foreground(overlay0)
+	verseTxt := TruncateDisplay(scripture.Text, innerW-6)
+	lines = append(lines, verseStyle.Render("  "+verseTxt))
+	lines = append(lines, refStyle.Render("  "+scripture.Source))
 	lines = append(lines, "")
 
 	// --- Overdue warning ---
@@ -774,6 +844,27 @@ func (d Dashboard) View() string {
 
 		row3 := lipgloss.JoinHorizontal(lipgloss.Top, projPanel, "  ", goalPanel)
 		lines = append(lines, row3)
+		lines = append(lines, "")
+	}
+
+	// --- Business Pulse ---
+	if d.bizTasksTotal > 0 {
+		bizStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
+		lines = append(lines, bizStyle.Render("  "+IconGraphChar+" Business Pulse (this week)"))
+		lines = append(lines, dimSt.Render("  "+strings.Repeat("\u2500", innerW-6)))
+		lines = append(lines, fmt.Sprintf("  %s/%s tasks completed",
+			numStyle.Render(smallNum(d.bizTasksDone)),
+			dimSt.Render(smallNum(d.bizTasksTotal))))
+		pct := 0
+		if d.bizTasksTotal > 0 {
+			pct = d.bizTasksDone * 100 / d.bizTasksTotal
+		}
+		barW := 20
+		filled := barW * pct / 100
+		bar := lipgloss.NewStyle().Foreground(green).Render(strings.Repeat("\u2588", filled)) +
+			lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2591", barW-filled))
+		lines = append(lines, "  "+bar+" "+numStyle.Render(fmt.Sprintf("%d%%", pct)))
+		lines = append(lines, dimSt.Render("  Tag tasks with #revenue #client #business"))
 		lines = append(lines, "")
 	}
 

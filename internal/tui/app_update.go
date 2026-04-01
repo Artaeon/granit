@@ -1225,6 +1225,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.dailyJot.IsActive() {
+			m.dailyJot, _ = m.dailyJot.Update(msg)
+			if !m.dailyJot.IsActive() {
+				if notePath := m.dailyJot.GetPromotedNote(); notePath != "" {
+					m.loadNote(notePath)
+					m.setSidebarCursorToFile(notePath)
+				}
+				m.refreshComponents("")
+			}
+			return m, nil
+		}
+
 		if m.noteHistory.IsActive() {
 			m.noteHistory, _ = m.noteHistory.Update(msg)
 			return m, nil
@@ -2550,6 +2562,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "alt+h":
 			return m.executeCommand(CmdDashboard)
+
+		case "alt+j":
+			return m.executeCommand(CmdDailyJot)
+
+		case "alt+m":
+			return m.executeCommand(CmdMorningRoutine)
+
+		case "alt+e":
+			return m.executeCommand(CmdEveningReview)
 
 		case "alt+p":
 			return m.executeCommand(CmdPlanMyDay)
