@@ -162,18 +162,25 @@ func (m Model) View() string {
 		editorWidth = 30
 	}
 
-	// Focus-aware borders
-	sidebarBorderColor := surface1
-	editorBorderColor := surface1
-	backlinksBorderColor := surface1
+	// Focus-aware active/inactive styling (Border, Dimming, Thickness)
+	sidebarBorderColor := surface0
+	editorBorderColor := surface0
+	backlinksBorderColor := surface0
+
+	sidebarBorder := lipgloss.NormalBorder()
+	editorBorder := lipgloss.NormalBorder()
+	backlinksBorder := lipgloss.NormalBorder()
 
 	switch m.focus {
 	case focusSidebar:
 		sidebarBorderColor = FocusedBorderColor
+		sidebarBorder = lipgloss.RoundedBorder()
 	case focusEditor:
 		editorBorderColor = FocusedBorderColor
+		editorBorder = lipgloss.ThickBorder() // thicker!
 	case focusBacklinks:
 		backlinksBorderColor = FocusedBorderColor
+		backlinksBorder = lipgloss.RoundedBorder()
 	}
 
 	// Tab bar
@@ -211,6 +218,7 @@ func (m Model) View() string {
 	}
 
 	editor := EditorStyle.
+		BorderStyle(editorBorder).
 		BorderForeground(editorBorderColor).
 		Width(editorWidth).
 		Height(contentHeight).
@@ -226,7 +234,7 @@ func (m Model) View() string {
 		case "minimal":
 			content = editor
 		case "writer":
-			sidebar := SidebarStyle.
+			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).
 				Width(sidebarWidth).
 				Height(contentHeight).
@@ -247,7 +255,7 @@ func (m Model) View() string {
 					Render(m.calendarPanel.View())
 				content = lipgloss.JoinHorizontal(lipgloss.Top, editor, calPanel)
 			} else {
-				backlinks := BacklinksStyle.
+				backlinks := BacklinksStyle.BorderStyle(backlinksBorder).
 					BorderForeground(backlinksBorderColor).
 					Width(backlinksWidth).
 					Height(contentHeight).
@@ -279,7 +287,7 @@ func (m Model) View() string {
 		case "dashboard": // 4-panel: sidebar | editor | outline | backlinks
 			var leftPanels, rightPanels []string
 			if sidebarWidth > 0 {
-				sidebar := SidebarStyle.
+				sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 					BorderForeground(sidebarBorderColor).
 					Width(sidebarWidth).
 					Height(contentHeight).
@@ -301,7 +309,7 @@ func (m Model) View() string {
 				rightPanels = append(rightPanels, outlinePanel)
 			}
 			if backlinksWidth > 0 {
-				backlinks := BacklinksStyle.
+				backlinks := BacklinksStyle.BorderStyle(backlinksBorder).
 					BorderForeground(backlinksBorderColor).
 					Width(backlinksWidth).
 					Height(contentHeight).
@@ -312,7 +320,7 @@ func (m Model) View() string {
 			panels = append(panels, rightPanels...)
 			content = lipgloss.JoinHorizontal(lipgloss.Top, panels...)
 		case "taskboard":
-			sidebar := SidebarStyle.
+			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).
 				Width(sidebarWidth).
 				Height(contentHeight).
@@ -430,7 +438,7 @@ func (m Model) View() string {
 
 			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, tbEditor, taskPanel)
 		case "research":
-			sidebar := SidebarStyle.
+			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).
 				Width(sidebarWidth).
 				Height(contentHeight).
@@ -536,7 +544,7 @@ func (m Model) View() string {
 
 			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rsEditor, notesPanel)
 		default: // "default" - 3-panel (with optional calendar toggle)
-			sidebar := SidebarStyle.
+			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).
 				Width(sidebarWidth).
 				Height(contentHeight).
@@ -555,7 +563,7 @@ func (m Model) View() string {
 					content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, editor, calPanel)
 				}
 			} else {
-				backlinks := BacklinksStyle.
+				backlinks := BacklinksStyle.BorderStyle(backlinksBorder).
 					BorderForeground(backlinksBorderColor).
 					Width(backlinksWidth).
 					Height(contentHeight).
