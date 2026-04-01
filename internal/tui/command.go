@@ -446,7 +446,14 @@ func (cp CommandPalette) View() string {
 		width = 100
 	}
 
-	innerW := width - 4
+	// PanelBorder = 2 chars (1 left, 1 right)
+	// Padding(1, 2) = 4 chars (2 left, 2 right)
+	// Total overhead = 6 chars
+	innerW := width - 6
+	if innerW < 10 {
+		innerW = 10
+	}
+
 	var b strings.Builder
 
 	// Header
@@ -489,11 +496,16 @@ func (cp CommandPalette) View() string {
 			if cmd.Shortcut != "" { shortcutStr = " " + cmd.Shortcut + " " }
 
 			descRunes := []rune(" - " + cmd.Desc)
-			leftBase := icon + cmd.Label
+			
+			// Width of purely the left base prefix and right suffix
+			leftBase := "   " + icon + cmd.Label
+			if i == cp.cursor {
+				leftBase = "  " + icon + cmd.Label // The accent bar makes it 2 wide instead of 3 spaces
+			}
 			leftBaseW := lipgloss.Width(leftBase)
 			shortcutW := lipgloss.Width(shortcutStr)
 
-			availableDesc := innerW - leftBaseW - shortcutW - 4
+			availableDesc := innerW - leftBaseW - shortcutW
 			displayDesc := string(descRunes)
 			if availableDesc > 2 && len(descRunes) > availableDesc {
 				displayDesc = string(descRunes[:availableDesc-1]) + "…"
@@ -516,16 +528,16 @@ func (cp CommandPalette) View() string {
 					Bold(true).
 					Render(shortcutStr)
 
-				// Let Lipgloss handle the width and background perfectly
+				// Because ANSI sequences don't count towards width, we use Lipgloss to measure
 				leftWidth := lipgloss.Width(leftCol)
 				rightWidth := lipgloss.Width(rightCol)
 				pad := innerW - leftWidth - rightWidth
 				if pad < 0 { pad = 0 }
 				
 				rowContents := leftCol + strings.Repeat(" ", pad) + rightCol
-				rowStyle := lipgloss.NewStyle().
-					Background(surface0)
-				b.WriteString(rowStyle.Render(rowContents) + "\n")
+				
+				// Apply uniform background directly directly to the entire exact-sized string
+				b.WriteString(lipgloss.NewStyle().Background(surface0).Render(rowContents) + "\n")
 			} else {
 				leftCol := "   " + lipgloss.NewStyle().Foreground(overlay0).Render(icon)
 				leftCol += lipgloss.NewStyle().Foreground(subtext0).Render(cmd.Label)
