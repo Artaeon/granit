@@ -54,6 +54,12 @@ type GhostWriter struct {
 	noteTitle    string // current note title for context
 	noteTags     string // comma-separated tags for topical grounding
 
+	// Vault-grounded suggestions: note path -> content (set externally)
+	vaultNotes map[string]string
+
+	// Accept-and-continue: flag set after accepting a suggestion
+	acceptedJustNow bool
+
 	// Internal: shuttled from OnEdit to debounce handler
 	contextBuf  string
 	requestTime time.Time
@@ -72,7 +78,7 @@ func NewGhostWriter() *GhostWriter {
 			OllamaURL: "http://localhost:11434",
 		},
 		debounceMs:   800,
-		contextLines: 30,
+		contextLines: 50,
 		maxTokens:    50,
 	}
 }
@@ -105,6 +111,11 @@ func (gw *GhostWriter) SetNoteTags(tags string) {
 	gw.noteTags = tags
 }
 
+// SetVaultNotes provides vault note titles and content for grounded suggestions.
+func (gw *GhostWriter) SetVaultNotes(notes map[string]string) {
+	gw.vaultNotes = notes
+}
+
 // ---------------------------------------------------------------------------
 // Suggestion accessors
 // ---------------------------------------------------------------------------
@@ -116,12 +127,24 @@ func (gw *GhostWriter) GetSuggestion() string {
 }
 
 // Accept returns the current suggestion and clears the internal state. The
-// caller should insert the returned text at the cursor position.
+// caller should insert the returned text at the cursor position. It also sets
+// acceptedJustNow so the caller can trigger an immediate follow-up request.
 func (gw *GhostWriter) Accept() string {
 	s := gw.suggestion
 	gw.suggestion = ""
 	gw.pending = false
+	gw.acceptedJustNow = true
 	return s
+}
+
+// ShouldAutoRequest returns true once after a suggestion was accepted, allowing
+// the caller to immediately trigger a new completion without waiting for debounce.
+func (gw *GhostWriter) ShouldAutoRequest() bool {
+	if gw.acceptedJustNow {
+		gw.acceptedJustNow = false
+		return true
+	}
+	return false
 }
 
 // Dismiss clears the current suggestion without inserting it.
@@ -246,6 +269,25 @@ func (gw *GhostWriter) buildContext(content []string, cursorLine, cursorCol int)
 	}
 	b.WriteString("\n")
 
+	// Document outline — all headings for structural awareness.
+	if outline := gw.buildOutline(content); outline != "" {
+		b.WriteString("[Document Outline]\n")
+		b.WriteString(outline)
+		b.WriteString("\n\n")
+	}
+
+	// Vault-grounded context — find the most relevant vault note by keyword
+	// overlap with the current line.
+	if len(gw.vaultNotes) > 0 && cursorLine < len(content) {
+		if title, snippet := gw.findRelatedVaultNote(content[cursorLine]); title != "" {
+			b.WriteString("[Related Note: ")
+			b.WriteString(title)
+			b.WriteString("]\n")
+			b.WriteString(snippet)
+			b.WriteString("\n\n")
+		}
+	}
+
 	// Skip YAML frontmatter in context window.
 	fmEnd := 0
 	if len(content) > 0 && strings.TrimSpace(content[0]) == "---" {
@@ -290,6 +332,54 @@ func (gw *GhostWriter) buildContext(content []string, cursorLine, cursorCol int)
 	b.WriteString(line[:col])
 
 	gw.contextBuf = b.String()
+}
+
+// buildOutline extracts all heading lines (starting with #) from the content.
+func (gw *GhostWriter) buildOutline(content []string) string {
+	var headings []string
+	for _, line := range content {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			headings = append(headings, trimmed)
+		}
+	}
+	return strings.Join(headings, "\n")
+}
+
+// findRelatedVaultNote returns the vault note title and a snippet (first 200
+// chars of content) whose title has the most keyword overlap with the given
+// line. Returns empty strings if no match is found.
+func (gw *GhostWriter) findRelatedVaultNote(currentLine string) (string, string) {
+	words := strings.Fields(strings.ToLower(currentLine))
+	if len(words) == 0 {
+		return "", ""
+	}
+
+	bestTitle := ""
+	bestScore := 0
+	for title := range gw.vaultNotes {
+		titleLower := strings.ToLower(title)
+		score := 0
+		for _, w := range words {
+			if len(w) >= 3 && strings.Contains(titleLower, w) {
+				score++
+			}
+		}
+		if score > bestScore {
+			bestScore = score
+			bestTitle = title
+		}
+	}
+
+	if bestScore == 0 {
+		return "", ""
+	}
+
+	snippet := gw.vaultNotes[bestTitle]
+	if len(snippet) > 200 {
+		snippet = snippet[:200] + "..."
+	}
+	return bestTitle, snippet
 }
 
 // ---------------------------------------------------------------------------
