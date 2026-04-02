@@ -114,15 +114,15 @@ func TestAISchedulerOpenClose(t *testing.T) {
 		}
 	})
 
-	t.Run("default ollama URL", func(t *testing.T) {
-		if as.ai.OllamaURL != "http://localhost:11434" {
-			t.Errorf("unexpected OllamaURL %q", as.ai.OllamaURL)
+	t.Run("default ollama URL via helper", func(t *testing.T) {
+		if as.ai.OllamaEndpoint() != "http://localhost:11434" {
+			t.Errorf("unexpected OllamaEndpoint %q", as.ai.OllamaEndpoint())
 		}
 	})
 
-	t.Run("default model", func(t *testing.T) {
-		if as.ai.Model != "qwen2.5:0.5b" {
-			t.Errorf("unexpected Model %q", as.ai.Model)
+	t.Run("default model via helper", func(t *testing.T) {
+		if as.ai.ModelOrDefault("qwen2.5:0.5b") != "qwen2.5:0.5b" {
+			t.Errorf("unexpected ModelOrDefault %q", as.ai.ModelOrDefault("qwen2.5:0.5b"))
 		}
 	})
 
