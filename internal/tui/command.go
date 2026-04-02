@@ -119,6 +119,7 @@ const (
 	CmdClipManager
 	CmdDailyPlanner
 	CmdAIScheduler
+	CmdTaskTriage
 	CmdRecurringTasks
 	CmdNotePreview
 	CmdScratchpad
@@ -286,6 +287,7 @@ var AllCommands = []Command{
 	{Label: "Smart Paste (URL to Link)", Desc: "Paste URL as markdown link with selected text", Shortcut: "Ctrl+V", Action: CmdSmartPaste, Icon: &IconLinkChar},
 	{Label: "Daily Planner", Desc: "Time-blocked daily schedule with tasks, events, habits", Shortcut: "", Action: CmdDailyPlanner, Icon: &IconCalendarChar},
 	{Label: "AI Smart Scheduler", Desc: "AI-powered optimal schedule generation", Shortcut: "", Action: CmdAIScheduler, Icon: &IconBotChar},
+	{Label: "Smart Task Triage", Desc: "AI-powered daily task prioritization", Shortcut: "", Action: CmdTaskTriage, Icon: &IconBotChar},
 	{Label: "Plan My Day", Desc: "One-click AI daily plan with schedule, goals, and advice", Shortcut: "Alt+P", Action: CmdPlanMyDay, Icon: &IconBotChar},
 	{Label: "Recurring Tasks", Desc: "Manage daily/weekly/monthly recurring tasks", Shortcut: "", Action: CmdRecurringTasks, Icon: &IconCalendarChar},
 	{Label: "Note Preview", Desc: "Preview the note under cursor", Shortcut: "", Action: CmdNotePreview, Icon: &IconViewChar},
