@@ -1322,6 +1322,22 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.readingList.SetSize(m.width, m.height)
 		m.readingList.Open(m.vault.Root)
 
+	case CmdBlogDraft:
+		m.blogDraft.SetSize(m.width, m.height)
+		m.blogDraft.Open(m.vault.Root, m.aiConfig())
+
+	case CmdTaskTriage:
+		m.taskTriage.SetSize(m.width, m.height)
+		allTasks := ParseAllTasks(m.vault.Notes)
+		var activeGoals []Goal
+		for _, g := range m.goalsMode.goals {
+			if g.Status == GoalStatusActive {
+				activeGoals = append(activeGoals, g)
+			}
+		}
+		cmd := m.taskTriage.Open(m.vault.Root, allTasks, activeGoals, m.aiConfig())
+		return m, cmd
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}

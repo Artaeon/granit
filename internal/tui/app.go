@@ -192,6 +192,8 @@ type Model struct {
 	readingList       ReadingList
 	aiProjectPlanner  AIProjectPlanner
 	projectDashboard  ProjectDashboard
+	blogDraft         BlogDraft
+	taskTriage        TaskTriage
 	nextcloudOverlay  NextcloudOverlay
 	calendarPanel     CalendarPanel
 	rightPanelCalendar bool // toggle: show calendar panel instead of backlinks

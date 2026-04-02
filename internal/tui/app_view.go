@@ -774,6 +774,14 @@ func (m Model) View() string {
 		overlay := m.aiProjectPlanner.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.blogDraft.IsActive() {
+		overlay := m.blogDraft.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.taskTriage.IsActive() {
+		overlay := m.taskTriage.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.recurringTasks.IsActive() {
 		overlay := m.recurringTasks.View()
 		view = m.overlayCenter(view, overlay)
