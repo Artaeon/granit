@@ -270,7 +270,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case aiChatResultMsg, aiChatTickMsg:
+	case aiChatResultMsg, aiChatTickMsg, streamChunkMsg, streamDoneMsg:
 		if m.aiChat.IsActive() {
 			var cmd tea.Cmd
 			m.aiChat, cmd = m.aiChat.Update(msg)

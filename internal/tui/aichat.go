@@ -1,11 +1,7 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"regexp"
 	"sort"
 	"strings"
@@ -14,6 +10,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// aiChatStreamTag identifies streaming messages belonging to AIChat.
+const aiChatStreamTag = "aichat"
 
 // ---------------------------------------------------------------------------
 // Chat message types
@@ -82,6 +81,11 @@ type AIChat struct {
 	// Track which notes were used for context in the last answer
 	lastContextNotes []string
 	loadingTick      int
+
+	// Streaming state
+	streaming bool
+	streamBuf strings.Builder
+	streamCh  <-chan tea.Msg
 }
 
 // NewAIChat creates a new AIChat with sensible defaults.
@@ -112,6 +116,9 @@ func (ac *AIChat) Open() {
 	ac.scroll = 0
 	ac.loading = false
 	ac.loadingTick = 0
+	ac.streaming = false
+	ac.streamBuf.Reset()
+	ac.streamCh = nil
 	if len(ac.messages) == 0 {
 		ac.messages = []ChatMessage{
 			{
@@ -318,141 +325,8 @@ func extractFrontmatterTags(body string) []string {
 }
 
 // ---------------------------------------------------------------------------
-// AI calling
+// AI calling (non-streaming fallbacks)
 // ---------------------------------------------------------------------------
-
-// sendToOllama creates a tea.Cmd that calls the Ollama generate API and
-// returns an aiChatResultMsg.
-func sendToOllama(url, model, systemPrompt, userMsg string) tea.Cmd {
-	return func() tea.Msg {
-		fullPrompt := fmt.Sprintf("System: %s\n\nUser: %s", systemPrompt, userMsg)
-
-		reqBody := ollamaRequest{
-			Model:  model,
-			Prompt: fullPrompt,
-			Stream: false,
-		}
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return aiChatResultMsg{err: err}
-		}
-
-		client := &http.Client{Timeout: 120 * time.Second}
-		resp, err := client.Post(url+"/api/generate", "application/json", bytes.NewReader(data))
-		if err != nil {
-			return aiChatResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s — is it running? Try: ollama serve", url)}
-		}
-		if resp != nil && resp.Body != nil {
-			defer resp.Body.Close()
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return aiChatResultMsg{err: err}
-		}
-
-		if resp.StatusCode != 200 {
-			return aiChatResultMsg{err: fmt.Errorf("Ollama error (status %d). Check model is pulled: ollama pull %s", resp.StatusCode, model)}
-		}
-
-		var olResp ollamaResponse
-		if err := json.Unmarshal(body, &olResp); err != nil {
-			return aiChatResultMsg{err: err}
-		}
-
-		return aiChatResultMsg{response: olResp.Response}
-	}
-}
-
-// sendToOpenAI creates a tea.Cmd that calls the OpenAI chat completions API
-// and returns an aiChatResultMsg.
-func sendToOpenAI(apiKey, model string, chatMessages []ChatMessage, systemPrompt string) tea.Cmd {
-	return func() tea.Msg {
-		var msgs []openaiMessage
-		msgs = append(msgs, openaiMessage{Role: "system", Content: systemPrompt})
-		for _, m := range chatMessages {
-			if m.Role == "system" {
-				continue
-			}
-			msgs = append(msgs, openaiMessage{Role: m.Role, Content: m.Content})
-		}
-
-		reqBody := openaiRequest{
-			Model:    model,
-			Messages: msgs,
-		}
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return aiChatResultMsg{err: err}
-		}
-
-		client := &http.Client{Timeout: 60 * time.Second}
-		req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-		if err != nil {
-			return aiChatResultMsg{err: err}
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return aiChatResultMsg{err: fmt.Errorf("cannot reach OpenAI API — check your internet connection")}
-		}
-		if resp != nil && resp.Body != nil {
-			defer resp.Body.Close()
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return aiChatResultMsg{err: err}
-		}
-
-		var oaiResp openaiResponse
-		if err := json.Unmarshal(body, &oaiResp); err != nil {
-			return aiChatResultMsg{err: err}
-		}
-
-		if oaiResp.Error != nil {
-			hint := oaiResp.Error.Message
-			if strings.Contains(hint, "auth") || strings.Contains(hint, "key") {
-				hint += " — check your API key in Settings (Ctrl+,)"
-			}
-			return aiChatResultMsg{err: fmt.Errorf("OpenAI: %s", hint)}
-		}
-
-		if len(oaiResp.Choices) == 0 {
-			return aiChatResultMsg{err: fmt.Errorf("OpenAI returned an empty response — try a different model in Settings (Ctrl+,)")}
-		}
-
-		return aiChatResultMsg{response: oaiResp.Choices[0].Message.Content}
-	}
-}
-
-// sendToNous creates a tea.Cmd that calls the Nous chat API and returns an
-// aiChatResultMsg.
-func sendToNous(url, apiKey, userMsg string) tea.Cmd {
-	return func() tea.Msg {
-		client := NewNousClient(url, apiKey)
-		resp, err := client.Chat(userMsg)
-		if err != nil {
-			return aiChatResultMsg{err: err}
-		}
-		return aiChatResultMsg{response: resp}
-	}
-}
-
-// sendToNerve creates a tea.Cmd that calls the nerve binary and returns an
-// aiChatResultMsg.
-func sendToNerve(binary, model, provider, userMsg string) tea.Cmd {
-	return func() tea.Msg {
-		client := NewNerveClient(binary, model, provider)
-		resp, err := client.Chat(aiChatSystemPrompt, userMsg, 120*time.Second)
-		if err != nil {
-			return aiChatResultMsg{err: err}
-		}
-		return aiChatResultMsg{response: resp}
-	}
-}
 
 // localChatFallback provides a keyword-based response when no AI provider
 // is available. It returns the matched note excerpts as the "answer".
@@ -498,7 +372,48 @@ func (ac AIChat) Update(msg tea.Msg) (AIChat, tea.Cmd) {
 			return ac, aiChatTick()
 		}
 
+	case streamChunkMsg:
+		if msg.tag != aiChatStreamTag || !ac.streaming {
+			return ac, nil
+		}
+		ac.streamBuf.WriteString(msg.text)
+		// Update the last assistant message in-place with partial content.
+		if len(ac.messages) > 0 && ac.messages[len(ac.messages)-1].Role == "assistant" {
+			ac.messages[len(ac.messages)-1].Content = ac.streamBuf.String()
+		}
+		ac.scroll = ac.maxScroll()
+		// Read next chunk from the channel.
+		return ac, streamCmd(ac.streamCh)
+
+	case streamDoneMsg:
+		if msg.tag != aiChatStreamTag || !ac.streaming {
+			return ac, nil
+		}
+		ac.streaming = false
+		ac.loading = false
+		ac.streamCh = nil
+		if msg.err != nil {
+			// If we already have a partial assistant message, replace it with the error.
+			if len(ac.messages) > 0 && ac.messages[len(ac.messages)-1].Role == "assistant" {
+				ac.messages[len(ac.messages)-1] = ChatMessage{
+					Role:    "system",
+					Content: fmt.Sprintf("Error: %v\n\nTip: Set AI provider to \"local\" in Settings (Ctrl+,) for offline keyword search.", msg.err),
+					Time:    time.Now(),
+				}
+			} else {
+				ac.messages = append(ac.messages, ChatMessage{
+					Role:    "system",
+					Content: fmt.Sprintf("Error: %v\n\nTip: Set AI provider to \"local\" in Settings (Ctrl+,) for offline keyword search.", msg.err),
+					Time:    time.Now(),
+				})
+			}
+		}
+		// Final content is already in the assistant message from chunk handling.
+		ac.scroll = ac.maxScroll()
+		return ac, nil
+
 	case aiChatResultMsg:
+		// Legacy non-streaming result (used by local fallback).
 		ac.loading = false
 		if msg.err != nil {
 			ac.messages = append(ac.messages, ChatMessage{
@@ -555,46 +470,26 @@ func (ac AIChat) Update(msg tea.Msg) (AIChat, tea.Cmd) {
 			}
 
 			// Dispatch to AI provider.
-			var cmd tea.Cmd
-			switch ac.ai.Provider {
-			case "openai":
-				// For OpenAI, build full conversation with context injected
-				// into the latest user message.
-				convMsgs := make([]ChatMessage, len(ac.messages))
-				copy(convMsgs, ac.messages)
-				// Replace the last user message content with the context-enriched version.
-				if len(convMsgs) > 0 {
-					convMsgs[len(convMsgs)-1].Content = userMsg
-				}
-				cmd = sendToOpenAI(ac.ai.APIKey, ac.ai.Model, convMsgs, aiChatSystemPrompt)
-			case "nous":
-				client := ac.ai.NewNous()
-				cmd = func() tea.Msg {
-					resp, err := client.Chat(userMsg)
-					if err != nil {
-						return aiChatResultMsg{err: err}
-					}
-					return aiChatResultMsg{response: resp}
-				}
-			case "nerve":
-				client := ac.ai.NewNerve()
-				cmd = func() tea.Msg {
-					resp, err := client.Chat(aiChatSystemPrompt, userMsg, 120*time.Second)
-					if err != nil {
-						return aiChatResultMsg{err: err}
-					}
-					return aiChatResultMsg{response: resp}
-				}
-			case "local":
-				// Local fallback: return matched note excerpts directly.
-				cmd = localChatFallback(trimmed, usedNotes, contextText)
-			default: // "ollama"
-				url := ac.ai.OllamaEndpoint()
-				model := ac.ai.ModelOrDefault("llama3.2")
-				cmd = sendToOllama(url, model, aiChatSystemPrompt, userMsg)
+			if ac.ai.Provider == "local" {
+				// Local fallback: return matched note excerpts directly (no streaming).
+				cmd := localChatFallback(trimmed, usedNotes, contextText)
+				return ac, tea.Batch(cmd, aiChatTick())
 			}
 
-			return ac, tea.Batch(cmd, aiChatTick())
+			// Use streaming for all AI providers.
+			ac.streaming = true
+			ac.streamBuf.Reset()
+
+			// Add a placeholder assistant message that will be updated in-place.
+			ac.messages = append(ac.messages, ChatMessage{
+				Role:    "assistant",
+				Content: "",
+				Time:    time.Now(),
+			})
+
+			ac.streamCh = sendToAIStreaming(ac.ai, aiChatSystemPrompt, userMsg, aiChatStreamTag)
+
+			return ac, tea.Batch(streamCmd(ac.streamCh), aiChatTick())
 
 		case "up":
 			if ac.scroll > 0 {
@@ -729,18 +624,21 @@ func (ac AIChat) View() string {
 		rendered := ac.renderMessage(m, innerWidth)
 		messageLines = append(messageLines, rendered)
 
-		// Context notes shown after the last assistant message
-		if m.Role == "assistant" && i == len(ac.messages)-1 && len(ac.lastContextNotes) > 0 {
+		// Context notes shown after the last assistant message (only when not streaming)
+		if m.Role == "assistant" && i == len(ac.messages)-1 && len(ac.lastContextNotes) > 0 && !ac.streaming {
 			contextLine := lipgloss.NewStyle().Foreground(overlay0).Italic(true).Render("  Sources: " + strings.Join(ac.lastContextNotes, ", "))
 			messageLines = append(messageLines, contextLine)
 		}
 	}
 
-	// Loading indicator
-	if ac.loading {
+	// Loading indicator (only show when waiting before first token arrives)
+	if ac.loading && !ac.streaming {
 		dots := strings.Repeat(".", (ac.loadingTick%3)+1)
 		loadingLine := lipgloss.NewStyle().Foreground(blue).Italic(true).Render("  Thinking" + dots)
 		messageLines = append(messageLines, loadingLine)
+	} else if ac.streaming {
+		cursor := lipgloss.NewStyle().Foreground(blue).Render("▍")
+		messageLines = append(messageLines, cursor)
 	}
 
 	// Flatten to individual terminal lines for scrolling.
@@ -786,7 +684,11 @@ func (ac AIChat) View() string {
 	b.WriteString("\n")
 
 	// Help bar.
-	if ac.loading {
+	if ac.streaming {
+		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+			{"...", "streaming"}, {"Esc", "close"},
+		}))
+	} else if ac.loading {
 		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
 			{"...", "waiting"}, {"Esc", "close"},
 		}))
