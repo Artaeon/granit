@@ -330,6 +330,9 @@ func blogOllama(url, model, systemPrompt, userPrompt string) (string, error) {
 	}
 
 	if resp.StatusCode != 200 {
+		if resp.StatusCode == 404 {
+			return "", fmt.Errorf("model %q not found — run: ollama pull %s", model, model)
+		}
 		return "", fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body))
 	}
 
