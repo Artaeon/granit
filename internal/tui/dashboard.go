@@ -183,7 +183,7 @@ func (d *Dashboard) scan() {
 	now := time.Now()
 	todayStr := now.Format("2006-01-02")
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	weekStart := now.AddDate(0, 0, -int(now.Weekday()))
+	weekStart := todayStart.AddDate(0, 0, -int(now.Weekday()))
 	tagSet := make(map[string]struct{})
 
 	// Regexes for task parsing.
