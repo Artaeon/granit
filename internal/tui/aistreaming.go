@@ -225,6 +225,12 @@ func streamOpenAI(apiKey, model, systemPrompt, userPrompt, tag string) <-chan te
 		}
 		defer resp.Body.Close()
 
+		if resp.StatusCode != 200 {
+			body, _ := io.ReadAll(resp.Body)
+			ch <- streamDoneMsg{tag: tag, err: fmt.Errorf("OpenAI error %d: %s", resp.StatusCode, string(body))}
+			return
+		}
+
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 
@@ -252,6 +258,11 @@ func streamOpenAI(apiKey, model, systemPrompt, userPrompt, tag string) <-chan te
 			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 				ch <- streamChunkMsg{text: chunk.Choices[0].Delta.Content, tag: tag}
 			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			ch <- streamDoneMsg{tag: tag, err: err}
+			return
 		}
 
 		ch <- streamDoneMsg{tag: tag}

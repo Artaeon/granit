@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -151,7 +152,6 @@ func (tt *TaskTriage) Close() { tt.active = false }
 func (tt *TaskTriage) computeStaleTasks() {
 	tt.staleTasks = nil
 	now := time.Now()
-	today := now.Format("2006-01-02")
 
 	for _, t := range tt.allTasks {
 		if t.Done {
@@ -183,7 +183,7 @@ func (tt *TaskTriage) computeStaleTasks() {
 		// Tasks with no due date — check source file modification time
 		// as a heuristic for how long the task has existed
 		if t.NotePath != "" && tt.vaultRoot != "" {
-			fullPath := tt.vaultRoot + "/" + t.NotePath
+			fullPath := filepath.Join(tt.vaultRoot, t.NotePath)
 			info, err := os.Stat(fullPath)
 			if err == nil {
 				daysOld := int(now.Sub(info.ModTime()).Hours() / 24)
@@ -205,7 +205,6 @@ func (tt *TaskTriage) computeStaleTasks() {
 			}
 		}
 
-		_ = today // reference
 	}
 }
 

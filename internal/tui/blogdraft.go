@@ -197,6 +197,9 @@ func (bd BlogDraft) buildOutlinePrompt() (string, string) {
 }
 
 func (bd BlogDraft) buildSectionPrompt(sectionIdx int) (string, string) {
+	if sectionIdx < 0 || sectionIdx >= len(bd.sections) {
+		return "You are a blog writer.", "Draft a blog section."
+	}
 	systemPrompt := fmt.Sprintf(
 		"You are a skilled blog writer. Draft one section of a blog post.\n"+
 			"Write in a %s tone for a %s audience.\n"+

@@ -113,6 +113,9 @@ func (gw *GhostWriter) SetNoteTags(tags string) {
 
 // SetVaultNotes provides vault note titles and content for grounded suggestions.
 func (gw *GhostWriter) SetVaultNotes(notes map[string]string) {
+	if notes == nil {
+		notes = make(map[string]string)
+	}
 	gw.vaultNotes = notes
 }
 
