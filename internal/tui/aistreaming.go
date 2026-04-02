@@ -59,11 +59,15 @@ func streamOllamaChat(baseURL, model, systemPrompt, userPrompt, tag string) <-ch
 			messages = append([]message{{Role: "system", Content: systemPrompt}}, messages...)
 		}
 
-		reqBody, _ := json.Marshal(map[string]interface{}{
+		reqBody, err := json.Marshal(map[string]interface{}{
 			"model":    model,
 			"messages": messages,
 			"stream":   true,
 		})
+		if err != nil {
+			ch <- streamDoneMsg{tag: tag, err: fmt.Errorf("failed to build request: %w", err)}
+			return
+		}
 
 		client := &http.Client{Timeout: 5 * time.Minute}
 		resp, err := client.Post(baseURL+"/api/chat", "application/json", bytes.NewReader(reqBody))
@@ -118,74 +122,6 @@ func streamOllamaChat(baseURL, model, systemPrompt, userPrompt, tag string) <-ch
 	return ch
 }
 
-// streamOllamaGenerate sends a streaming request to Ollama's /api/generate endpoint.
-func streamOllamaGenerate(baseURL, model, prompt, tag string) <-chan tea.Msg {
-	ch := make(chan tea.Msg, 64)
-
-	go func() {
-		defer close(ch)
-
-		if baseURL == "" {
-			baseURL = "http://localhost:11434"
-		}
-
-		reqBody, _ := json.Marshal(map[string]interface{}{
-			"model":  model,
-			"prompt": prompt,
-			"stream": true,
-		})
-
-		client := &http.Client{Timeout: 5 * time.Minute}
-		resp, err := client.Post(baseURL+"/api/generate", "application/json", bytes.NewReader(reqBody))
-		if err != nil {
-			ch <- streamDoneMsg{tag: tag, err: fmt.Errorf("cannot connect to Ollama at %s — is it running? Try: ollama serve", baseURL)}
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != 200 {
-			body, _ := io.ReadAll(resp.Body)
-			ch <- streamDoneMsg{tag: tag, err: fmt.Errorf("Ollama error %d: %s", resp.StatusCode, string(body))}
-			return
-		}
-
-		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-
-		for scanner.Scan() {
-			line := scanner.Bytes()
-			if len(line) == 0 {
-				continue
-			}
-
-			var chunk struct {
-				Response string `json:"response"`
-				Done     bool   `json:"done"`
-			}
-			if err := json.Unmarshal(line, &chunk); err != nil {
-				continue
-			}
-
-			if chunk.Response != "" {
-				ch <- streamChunkMsg{text: chunk.Response, tag: tag}
-			}
-
-			if chunk.Done {
-				break
-			}
-		}
-
-		if err := scanner.Err(); err != nil {
-			ch <- streamDoneMsg{tag: tag, err: err}
-			return
-		}
-
-		ch <- streamDoneMsg{tag: tag}
-	}()
-
-	return ch
-}
-
 // streamOpenAI sends a streaming request to OpenAI's chat completions endpoint.
 func streamOpenAI(apiKey, model, systemPrompt, userPrompt, tag string) <-chan tea.Msg {
 	ch := make(chan tea.Msg, 64)
@@ -203,11 +139,15 @@ func streamOpenAI(apiKey, model, systemPrompt, userPrompt, tag string) <-chan te
 			messages = append([]message{{Role: "system", Content: systemPrompt}}, messages...)
 		}
 
-		reqBody, _ := json.Marshal(map[string]interface{}{
+		reqBody, err := json.Marshal(map[string]interface{}{
 			"model":    model,
 			"messages": messages,
 			"stream":   true,
 		})
+		if err != nil {
+			ch <- streamDoneMsg{tag: tag, err: fmt.Errorf("failed to build request: %w", err)}
+			return
+		}
 
 		req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(reqBody))
 		if err != nil {

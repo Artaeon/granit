@@ -188,12 +188,13 @@ func (tt *TaskTriage) computeStaleTasks() {
 			if err == nil {
 				daysOld := int(now.Sub(info.ModTime()).Hours() / 24)
 				if daysOld > 14 {
-					suggestion := "finish"
-					if daysOld > 60 {
+					var suggestion string
+					switch {
+					case daysOld > 60:
 						suggestion = "delete"
-					} else if daysOld > 30 {
+					case daysOld > 30:
 						suggestion = "delegate"
-					} else {
+					default:
 						suggestion = "break down"
 					}
 					tt.staleTasks = append(tt.staleTasks, staleTaskInfo{

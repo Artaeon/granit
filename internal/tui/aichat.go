@@ -130,9 +130,12 @@ func (ac *AIChat) Open() {
 	}
 }
 
-// Close deactivates the chat overlay.
+// Close deactivates the chat overlay and resets streaming state.
 func (ac *AIChat) Close() {
 	ac.active = false
+	ac.streaming = false
+	ac.loading = false
+	ac.streamCh = nil
 }
 
 // SetSize updates the available dimensions for the overlay.
