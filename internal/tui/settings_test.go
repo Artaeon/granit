@@ -12,7 +12,7 @@ import (
 
 func TestNewSettings_InitialState(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	if s.IsActive() {
 		t.Error("NewSettings should not be active initially")
@@ -34,7 +34,7 @@ func TestNewSettings_InitialState(t *testing.T) {
 
 func TestNewSettings_HasItems(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	if len(s.items) == 0 {
 		t.Fatal("NewSettings should have settings items")
@@ -48,7 +48,7 @@ func TestNewSettings_HasItems(t *testing.T) {
 
 func TestSettings_ToggleActivation(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	if s.IsActive() {
 		t.Error("should start inactive")
@@ -67,7 +67,7 @@ func TestSettings_ToggleActivation(t *testing.T) {
 
 func TestSettings_ToggleResetsState(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	// Activate and modify state
 	s.Toggle()
@@ -99,7 +99,7 @@ func TestSettings_ToggleResetsState(t *testing.T) {
 
 func TestSettings_SetSize(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	s.SetSize(100, 50)
 	if s.width != 100 {
@@ -122,7 +122,7 @@ func TestSettings_SetSize(t *testing.T) {
 
 func TestSettings_NavigateDown(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 	s.Toggle()
 	s.SetSize(120, 60)
 
@@ -137,7 +137,7 @@ func TestSettings_NavigateDown(t *testing.T) {
 
 func TestSettings_NavigateUp(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 	s.Toggle()
 	s.SetSize(120, 60)
 
@@ -155,7 +155,7 @@ func TestSettings_NavigateUp(t *testing.T) {
 
 func TestSettings_NavigateUpAtTop(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 	s.Toggle()
 	s.SetSize(120, 60)
 
@@ -175,7 +175,7 @@ func TestSettings_NavigateUpAtTop(t *testing.T) {
 
 func TestSettings_NavigateDownWithArrowKey(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 	s.Toggle()
 	s.SetSize(120, 60)
 
@@ -192,7 +192,7 @@ func TestSettings_NavigateDownWithArrowKey(t *testing.T) {
 
 func TestSettings_CategoriesPresent(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	expectedCategories := []string{"Appearance", "Editor", "AI", "Files", "Plugins", "Advanced"}
 	categoryFound := make(map[string]bool)
@@ -212,7 +212,7 @@ func TestSettings_CategoriesPresent(t *testing.T) {
 
 func TestSettings_HeadersInVisibleList(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	headerCount := 0
 	for _, idx := range s.visible {
@@ -228,7 +228,7 @@ func TestSettings_HeadersInVisibleList(t *testing.T) {
 
 func TestSettings_CursorSkipsHeaders(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 	s.Toggle()
 
 	// After Toggle, cursor should not be on a header
@@ -244,7 +244,7 @@ func TestSettings_CursorSkipsHeaders(t *testing.T) {
 
 func TestSettings_DefaultValueForKey_Theme(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	val := s.defaultValueForKey("theme")
 	if val != "catppuccin-mocha" {
@@ -254,7 +254,7 @@ func TestSettings_DefaultValueForKey_Theme(t *testing.T) {
 
 func TestSettings_DefaultValueForKey_VimMode(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	val := s.defaultValueForKey("vim_mode")
 	if val != false {
@@ -264,7 +264,7 @@ func TestSettings_DefaultValueForKey_VimMode(t *testing.T) {
 
 func TestSettings_DefaultValueForKey_WordWrap(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	val := s.defaultValueForKey("word_wrap")
 	if val != false {
@@ -274,7 +274,7 @@ func TestSettings_DefaultValueForKey_WordWrap(t *testing.T) {
 
 func TestSettings_DefaultValueForKey_TabSize(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	val := s.defaultValueForKey("tab_size")
 	if val != 4 {
@@ -284,7 +284,7 @@ func TestSettings_DefaultValueForKey_TabSize(t *testing.T) {
 
 func TestSettings_DefaultValueForKey_LineNumbers(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	val := s.defaultValueForKey("line_numbers")
 	if val != true {
@@ -294,7 +294,7 @@ func TestSettings_DefaultValueForKey_LineNumbers(t *testing.T) {
 
 func TestSettings_DefaultValueForKey_ShowSplash(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	val := s.defaultValueForKey("show_splash")
 	if val != true {
@@ -304,7 +304,7 @@ func TestSettings_DefaultValueForKey_ShowSplash(t *testing.T) {
 
 func TestSettings_DefaultValueForKey_AutoCloseBrackets(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	val := s.defaultValueForKey("auto_close_brackets")
 	if val != true {
@@ -314,7 +314,7 @@ func TestSettings_DefaultValueForKey_AutoCloseBrackets(t *testing.T) {
 
 func TestSettings_DefaultValueForKey_AIProvider(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	val := s.defaultValueForKey("ai_provider")
 	if val != "local" {
@@ -324,7 +324,7 @@ func TestSettings_DefaultValueForKey_AIProvider(t *testing.T) {
 
 func TestSettings_DefaultValueForKey_SortBy(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	val := s.defaultValueForKey("sort_by")
 	if val != "name" {
@@ -334,7 +334,7 @@ func TestSettings_DefaultValueForKey_SortBy(t *testing.T) {
 
 func TestSettings_DefaultValueForKey_CorePlugin(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	val := s.defaultValueForKey("cp_calendar")
 	if val != true {
@@ -344,7 +344,7 @@ func TestSettings_DefaultValueForKey_CorePlugin(t *testing.T) {
 
 func TestSettings_DefaultValueForKey_UnknownKey(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	val := s.defaultValueForKey("nonexistent_key_xyz")
 	if val != nil {
@@ -354,7 +354,7 @@ func TestSettings_DefaultValueForKey_UnknownKey(t *testing.T) {
 
 func TestSettings_DefaultValueForKey_ConfirmDelete(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	val := s.defaultValueForKey("confirm_delete")
 	if val != true {
@@ -364,7 +364,7 @@ func TestSettings_DefaultValueForKey_ConfirmDelete(t *testing.T) {
 
 func TestSettings_DefaultValueForKey_OllamaURL(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	val := s.defaultValueForKey("ollama_url")
 	if val != "http://localhost:11434" {
@@ -376,7 +376,7 @@ func TestSettings_DefaultValueForKey_OllamaURL(t *testing.T) {
 
 func TestSettings_ApplyValue_BoolToggle(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	// vim_mode defaults to false
 	s.applyValue("vim_mode", true)
@@ -392,7 +392,7 @@ func TestSettings_ApplyValue_BoolToggle(t *testing.T) {
 
 func TestSettings_ApplyValue_StringValue(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	s.applyValue("theme", "nord")
 	if s.config.Theme != "nord" {
@@ -402,7 +402,7 @@ func TestSettings_ApplyValue_StringValue(t *testing.T) {
 
 func TestSettings_ApplyValue_Layout(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	s.applyValue("layout", "writer")
 	if s.config.Layout != "writer" {
@@ -412,7 +412,7 @@ func TestSettings_ApplyValue_Layout(t *testing.T) {
 
 func TestSettings_ApplyValue_SortBy(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	s.applyValue("sort_by", "modified")
 	if s.config.SortBy != "modified" {
@@ -422,7 +422,7 @@ func TestSettings_ApplyValue_SortBy(t *testing.T) {
 
 func TestSettings_ApplyValue_AIProvider(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	s.applyValue("ai_provider", "ollama")
 	if s.config.AIProvider != "ollama" {
@@ -457,7 +457,7 @@ func TestSettings_ApplyValue_BoolSettings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
 			cfg := config.DefaultConfig()
-			s := NewSettings(cfg)
+			s := NewSettings(cfg, nil)
 
 			s.applyValue(tt.key, true)
 			if !tt.check(s.config) {
@@ -496,7 +496,7 @@ func TestSettings_ApplyValue_StringSettings(t *testing.T) {
 		}
 		t.Run(tt.key, func(t *testing.T) {
 			cfg := config.DefaultConfig()
-			s := NewSettings(cfg)
+			s := NewSettings(cfg, nil)
 
 			s.applyValue(tt.key, tt.val)
 			got := tt.check(s.config)
@@ -509,7 +509,7 @@ func TestSettings_ApplyValue_StringSettings(t *testing.T) {
 
 func TestSettings_ApplyValue_CorePlugin(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	s.applyValue("cp_calendar", false)
 	if s.config.CorePlugins["calendar"] {
@@ -525,7 +525,7 @@ func TestSettings_ApplyValue_CorePlugin(t *testing.T) {
 func TestSettings_ApplyValue_CorePlugin_NilMap(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.CorePlugins = nil
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	// Should not panic and should create the map
 	s.applyValue("cp_flashcards", false)
@@ -541,7 +541,7 @@ func TestSettings_ApplyValue_CorePlugin_NilMap(t *testing.T) {
 
 func TestSettings_SearchMode(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 	s.Toggle()
 	s.SetSize(120, 60)
 
@@ -555,7 +555,7 @@ func TestSettings_SearchMode(t *testing.T) {
 
 func TestSettings_SearchFiltering(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 	s.Toggle()
 	s.SetSize(120, 60)
 
@@ -588,7 +588,7 @@ func TestSettings_SearchFiltering(t *testing.T) {
 
 func TestSettings_SearchEscClearsSearch(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 	s.Toggle()
 	s.SetSize(120, 60)
 
@@ -609,7 +609,7 @@ func TestSettings_SearchEscClearsSearch(t *testing.T) {
 
 func TestSettings_SearchBackspace(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 	s.Toggle()
 	s.SetSize(120, 60)
 
@@ -660,7 +660,7 @@ func TestSettingsFuzzyMatch_EmptyPattern(t *testing.T) {
 func TestSettings_GetConfig(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Theme = "nord"
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	got := s.GetConfig()
 	if got.Theme != "nord" {
@@ -670,7 +670,7 @@ func TestSettings_GetConfig(t *testing.T) {
 
 func TestSettings_GetConfigReflectsChanges(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	s.applyValue("vim_mode", true)
 	got := s.GetConfig()
@@ -683,7 +683,7 @@ func TestSettings_GetConfigReflectsChanges(t *testing.T) {
 
 func TestSettings_CurrentItemNotNilAfterToggle(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 	s.Toggle()
 
 	item := s.currentItem()
@@ -699,7 +699,7 @@ func TestSettings_CurrentItemNotNilAfterToggle(t *testing.T) {
 
 func TestSettings_EscClosesWhenNotSearching(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 	s.Toggle()
 	s.SetSize(120, 60)
 
@@ -737,7 +737,7 @@ func TestIntToStr(t *testing.T) {
 
 func TestSettings_UpdateWhenInactive(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 	// Not toggled, so inactive
 
 	s2, cmd := s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
@@ -756,7 +756,7 @@ func TestSettings_UpdateWhenInactive(t *testing.T) {
 
 func TestSettings_NoDuplicateItems(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	seen := make(map[string]bool)
 	for _, item := range s.items {
@@ -776,7 +776,7 @@ func TestSettings_NoDuplicateItems(t *testing.T) {
 
 func TestSettings_AllCategoriesHaveItems(t *testing.T) {
 	cfg := config.DefaultConfig()
-	s := NewSettings(cfg)
+	s := NewSettings(cfg, nil)
 
 	categoryItems := make(map[string]int)
 	for _, item := range s.items {

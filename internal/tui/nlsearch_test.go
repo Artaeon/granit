@@ -101,17 +101,17 @@ func TestNLSearchOpen(t *testing.T) {
 
 	t.Run("empty provider defaults to local", func(t *testing.T) {
 		nls2 := NewNLSearch()
-		nls2.Open(tmpDir, "", "", "", "", "")
-		if nls2.aiProvider != "local" {
-			t.Errorf("expected 'local' for empty provider, got %q", nls2.aiProvider)
+		nls2.Open(tmpDir, AIConfig{})
+		if nls2.ai.Provider != "local" {
+			t.Errorf("expected 'local' for empty provider, got %q", nls2.ai.Provider)
 		}
 	})
 
 	t.Run("empty ollama URL defaults", func(t *testing.T) {
 		nls2 := NewNLSearch()
-		nls2.Open(tmpDir, "ollama", "", "", "", "")
-		if nls2.ollamaURL != "http://localhost:11434" {
-			t.Errorf("expected default ollama URL, got %q", nls2.ollamaURL)
+		nls2.Open(tmpDir, AIConfig{Provider: "ollama"})
+		if nls2.ai.OllamaURL != "http://localhost:11434" {
+			t.Errorf("expected default ollama URL, got %q", nls2.ai.OllamaURL)
 		}
 	})
 }
@@ -248,7 +248,7 @@ func TestBuildNoteIndex(t *testing.T) {
 		longContent := strings.Repeat("abcdefghij", 30) // 300 chars
 		writeTestNote(t, longDir, "long.md", longContent)
 		nls2 := NewNLSearch()
-		nls2.Open(longDir, "local", "", "", "", "")
+		nls2.Open(longDir, AIConfig{Provider: "local"})
 		for _, entry := range nls2.noteIndex {
 			if len(entry.Content) > 200 {
 				t.Errorf("content preview exceeds 200 chars: %d", len(entry.Content))

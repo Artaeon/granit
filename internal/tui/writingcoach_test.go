@@ -32,7 +32,7 @@ func TestWritingCoach_Open_ActivatesAndSetsDefaults(t *testing.T) {
 	wc := NewWritingCoach()
 	vault := t.TempDir()
 
-	wc.Open(vault, "Hello world.", "notes/test.md", "local", "", "", "", "")
+	wc.Open(vault, "Hello world.", "notes/test.md", AIConfig{Provider: "local"})
 
 	if !wc.IsActive() {
 		t.Error("Open should activate the coach")
@@ -469,7 +469,7 @@ func TestWritingCoach_Open_LoadsSoulNote(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(soulDir, "soul-note.md"), []byte(soulContent), 0644)
 
 	wc := NewWritingCoach()
-	wc.Open(vault, "Test content.", "test.md", "local", "", "", "", "")
+	wc.Open(vault, "Test content.", "test.md", AIConfig{Provider: "local"})
 
 	if !wc.hasSoulNote {
 		t.Error("expected hasSoulNote=true when soul-note.md exists")
@@ -483,7 +483,7 @@ func TestWritingCoach_Open_NoSoulNote(t *testing.T) {
 	vault := t.TempDir()
 
 	wc := NewWritingCoach()
-	wc.Open(vault, "Test content.", "test.md", "local", "", "", "", "")
+	wc.Open(vault, "Test content.", "test.md", AIConfig{Provider: "local"})
 
 	if wc.hasSoulNote {
 		t.Error("expected hasSoulNote=false when soul-note.md doesn't exist")

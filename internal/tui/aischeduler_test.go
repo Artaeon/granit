@@ -686,7 +686,7 @@ func TestAISchedulerAllTasksCompleted(t *testing.T) {
 		{Text: "Done 1", Priority: 4, Estimated: 60, Done: true},
 		{Text: "Done 2", Priority: 3, Estimated: 45, Done: true},
 	}
-	as.Open("/vault", tasks, nil, "local", "", "", "", "")
+	as.Open("/vault", tasks, nil, AIConfig{Provider: "local"})
 
 	if len(as.tasks) != 0 {
 		t.Errorf("expected 0 tasks after filtering done, got %d", len(as.tasks))
@@ -1051,7 +1051,7 @@ func TestAISchedulerCountScheduledTasks(t *testing.T) {
 func TestAISchedulerStartGenerationLocal(t *testing.T) {
 	as := NewAIScheduler()
 	as.active = true
-	as.aiProvider = "local"
+	as.ai = AIConfig{Provider: "local"}
 	as.tasks = []SchedulerTask{
 		{Text: "Task A", Priority: 3, Estimated: 60},
 		{Text: "Task B", Priority: 2, Estimated: 45},
