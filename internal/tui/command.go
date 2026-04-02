@@ -160,6 +160,7 @@ const (
 	CmdDailyJot
 	CmdMorningRoutine
 	CmdEveningReview
+	CmdBlogDraft
 	CmdQuit
 )
 
@@ -320,6 +321,7 @@ var AllCommands = []Command{
 	{Label: "Daily Jot", Desc: "Quick time-stamped bullets — scroll through today, yesterday, and beyond", Shortcut: "Alt+J", Action: CmdDailyJot, Icon: &IconEditChar},
 	{Label: "Morning Routine", Desc: "Start your day — scripture, briefing, plan, top priorities", Shortcut: "Alt+M", Action: CmdMorningRoutine, Icon: &IconDailyChar},
 	{Label: "Evening Review", Desc: "End your day — accomplishments, overdue audit, gratitude, tomorrow's focus", Shortcut: "Alt+E", Action: CmdEveningReview, Icon: &IconCalendarChar},
+	{Label: "Blog Draft", Desc: "Multi-stage AI blog post writer", Shortcut: "", Action: CmdBlogDraft, Icon: &IconEditChar},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit},
 }
 
