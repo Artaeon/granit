@@ -120,8 +120,6 @@ func (bd BlogDraft) IsActive() bool { return bd.active }
 
 func (bd *BlogDraft) Open(vaultRoot string, ai AIConfig) {
 	bd.active = true
-	bd.width = 0
-	bd.height = 0
 	bd.ai = ai
 	if bd.ai.OllamaURL == "" {
 		bd.ai.OllamaURL = "http://localhost:11434"
@@ -923,8 +921,8 @@ func (bd BlogDraft) viewLoading(b *strings.Builder, _ int) {
 
 func (bd BlogDraft) viewInput(b *strings.Builder, innerW int) {
 	labelStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	inputBg := lipgloss.NewStyle().Background(surface0).Foreground(text).Width(innerW - 2).Padding(0, 1)
-	activeBg := lipgloss.NewStyle().Background(surface1).Foreground(text).Width(innerW - 2).Padding(0, 1)
+	inputBg := lipgloss.NewStyle().Background(surface0).Foreground(text).Width(innerW-2).Padding(0, 1)
+	activeBg := lipgloss.NewStyle().Background(surface1).Foreground(text).Width(innerW-2).Padding(0, 1)
 	cursor := "\u2588"
 	dimStyle := lipgloss.NewStyle().Foreground(overlay0)
 	errStyle := lipgloss.NewStyle().Foreground(red)
@@ -1099,8 +1097,8 @@ func (bd BlogDraft) viewDrafting(b *strings.Builder, innerW int) {
 
 func (bd BlogDraft) viewReview(b *strings.Builder, innerW int) {
 	labelStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	inputBg := lipgloss.NewStyle().Background(surface0).Foreground(text).Width(innerW - 2).Padding(0, 1)
-	activeBg := lipgloss.NewStyle().Background(surface1).Foreground(text).Width(innerW - 2).Padding(0, 1)
+	inputBg := lipgloss.NewStyle().Background(surface0).Foreground(text).Width(innerW-2).Padding(0, 1)
+	activeBg := lipgloss.NewStyle().Background(surface1).Foreground(text).Width(innerW-2).Padding(0, 1)
 	dimStyle := lipgloss.NewStyle().Foreground(overlay0)
 	headingStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
 	contentStyle := lipgloss.NewStyle().Foreground(text)

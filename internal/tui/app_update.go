@@ -1524,45 +1524,45 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.blogDraft.IsActive() {
-				var cmd tea.Cmd
-				m.blogDraft, cmd = m.blogDraft.Update(msg)
-				if !m.blogDraft.IsActive() {
-					if title, content, ok := m.blogDraft.GetResult(); ok {
-						name := title
-						if !strings.HasSuffix(name, ".md") {
-							name += ".md"
-						}
-						path := filepath.Join(m.vault.Root, name)
-						if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
-							if err := os.WriteFile(path, []byte(content), 0644); err == nil {
-								if err := m.vault.Scan(); err != nil {
-									log.Printf("warning: vault scan failed: %v", err)
-								}
-								m.index = vault.NewIndex(m.vault)
-								m.index.Build()
-								paths := m.vault.SortedPaths()
-								m.sidebar.SetFiles(paths)
-								m.autocomplete.SetNotes(paths)
-								m.statusbar.SetNoteCount(m.vault.NoteCount())
-								m.loadNote(name)
-								m.setSidebarCursorToFile(name)
-								m.setFocus(focusEditor)
-								m.statusbar.SetMessage("Blog post created: " + name)
-							}
-						}
-						return m, m.clearMessageAfter(3 * time.Second)
+			var cmd tea.Cmd
+			m.blogDraft, cmd = m.blogDraft.Update(msg)
+			if !m.blogDraft.IsActive() {
+				if title, content, ok := m.blogDraft.GetResult(); ok {
+					name := title
+					if !strings.HasSuffix(name, ".md") {
+						name += ".md"
 					}
+					path := filepath.Join(m.vault.Root, name)
+					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
+						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+							if err := m.vault.Scan(); err != nil {
+								log.Printf("warning: vault scan failed: %v", err)
+							}
+							m.index = vault.NewIndex(m.vault)
+							m.index.Build()
+							paths := m.vault.SortedPaths()
+							m.sidebar.SetFiles(paths)
+							m.autocomplete.SetNotes(paths)
+							m.statusbar.SetNoteCount(m.vault.NoteCount())
+							m.loadNote(name)
+							m.setSidebarCursorToFile(name)
+							m.setFocus(focusEditor)
+							m.statusbar.SetMessage("Blog post created: " + name)
+						}
+					}
+					return m, m.clearMessageAfter(3 * time.Second)
 				}
-				return m, cmd
 			}
+			return m, cmd
+		}
 
-			if m.taskTriage.IsActive() {
-				var cmd tea.Cmd
-				m.taskTriage, cmd = m.taskTriage.Update(msg)
-				return m, cmd
-			}
+		if m.taskTriage.IsActive() {
+			var cmd tea.Cmd
+			m.taskTriage, cmd = m.taskTriage.Update(msg)
+			return m, cmd
+		}
 
-			if m.recurringTasks.IsActive() {
+		if m.recurringTasks.IsActive() {
 			m.recurringTasks, _ = m.recurringTasks.Update(msg)
 			if !m.recurringTasks.IsActive() {
 				if count, ok := m.recurringTasks.GetCreatedCount(); ok && count > 0 {
