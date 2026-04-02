@@ -299,6 +299,10 @@ type GoalsMode struct {
 	// AI config
 	ai        AIConfig
 	aiPending bool
+
+	// AI review result
+	reviewText   string // last AI review text
+	reviewGoalID string // goal ID the review belongs to
 }
 
 // NewGoalsMode creates a new goals overlay.
@@ -432,6 +436,207 @@ func (gm *GoalsMode) aiGenerateMilestones(goal Goal) tea.Cmd {
 		}
 		return gmAIResultMsg{milestones: milestones, goalID: goal.ID}
 	}
+}
+
+// gmAIReviewMsg carries an AI review of a goal.
+type gmAIReviewMsg struct {
+	review string
+	err    error
+	goalID string
+}
+
+// aiReviewGoal sends a goal to the LLM for an honest assessment.
+func (gm *GoalsMode) aiReviewGoal(goal Goal) tea.Cmd {
+	// Build milestone list
+	var msLines []string
+	for _, ms := range goal.Milestones {
+		check := "[ ]"
+		if ms.Done {
+			check = "[x]"
+		}
+		msLines = append(msLines, fmt.Sprintf("  %s %s", check, ms.Text))
+	}
+	msText := "(none)"
+	if len(msLines) > 0 {
+		msText = strings.Join(msLines, "\n")
+	}
+	targetDate := goal.TargetDate
+	if targetDate == "" {
+		targetDate = "(not set)"
+	}
+
+	prompt := fmt.Sprintf(
+		"You are DEEPCOVEN, a direct and honest personal assistant.\n"+
+			"Review this goal and provide a brief, actionable assessment.\n\n"+
+			"GOAL: %s\nDESCRIPTION: %s\nSTATUS: %s\nCREATED: %s\nTARGET DATE: %s\nPROGRESS: %d%%\nMILESTONES:\n%s\n\n"+
+			"Give a 3-5 line assessment covering:\n"+
+			"1. Progress vs timeline (are they on track?)\n"+
+			"2. What's the most important next action?\n"+
+			"3. One honest observation (encouragement or reality check)\n\n"+
+			"Be direct. No filler.",
+		goal.Title, goal.Description, string(goal.Status), goal.CreatedAt, targetDate, goal.Progress(), msText,
+	)
+
+	ai := gm.ai
+	return func() tea.Msg {
+		var resp string
+		var err error
+
+		switch ai.Provider {
+		case "openai":
+			resp, err = tmAICall(ai.APIKey, ai.Model, "", prompt)
+		case "nerve":
+			client := ai.NewNerve()
+			resp, err = client.Chat("You are DEEPCOVEN, a direct and honest personal assistant.", prompt, 60*time.Second)
+		case "nous":
+			client := ai.NewNous()
+			resp, err = client.Chat(prompt)
+		default: // ollama
+			url := ai.OllamaEndpoint()
+			model := ai.ModelOrDefault("qwen2.5:0.5b")
+			resp, err = tmCallOllama(url, model, prompt)
+		}
+
+		return gmAIReviewMsg{review: strings.TrimSpace(resp), err: err, goalID: goal.ID}
+	}
+}
+
+// gmAIDecomposeMsg carries AI decomposition results for a goal.
+type gmAIDecomposeMsg struct {
+	milestones []GoalMilestone
+	category   string
+	targetDate string
+	tags       []string
+	err        error
+	goalID     string
+}
+
+// aiDecomposeGoal sends a goal to the LLM for full decomposition.
+func (gm *GoalsMode) aiDecomposeGoal(goal Goal) tea.Cmd {
+	today := time.Now().Format("2006-01-02")
+	desc := goal.Description
+	if desc == "" {
+		desc = "(none)"
+	}
+	prompt := fmt.Sprintf(
+		"Break down this goal into actionable milestones with realistic dates.\n\n"+
+			"GOAL: %s\nDESCRIPTION: %s\nTODAY: %s\n\n"+
+			"Respond in this exact format:\n"+
+			"CATEGORY: {one of: Career, Health, Learning, Creative, Financial, Social, Personal}\n"+
+			"TARGET: {YYYY-MM-DD suggested completion date}\n"+
+			"TAGS: {comma-separated tags}\n"+
+			"MILESTONES:\n"+
+			"- {milestone text} | {YYYY-MM-DD due date}\n"+
+			"- {milestone text} | {YYYY-MM-DD due date}\n"+
+			"...\n\n"+
+			"Generate 4-8 milestones. Space dates realistically.",
+		goal.Title, desc, today,
+	)
+
+	ai := gm.ai
+	return func() tea.Msg {
+		var resp string
+		var err error
+
+		switch ai.Provider {
+		case "openai":
+			resp, err = tmAICall(ai.APIKey, ai.Model, "", prompt)
+		case "nerve":
+			client := ai.NewNerve()
+			resp, err = client.Chat("You are a goal planning assistant. Be concrete and actionable.", prompt, 60*time.Second)
+		case "nous":
+			client := ai.NewNous()
+			resp, err = client.Chat(prompt)
+		default: // ollama
+			url := ai.OllamaEndpoint()
+			model := ai.ModelOrDefault("qwen2.5:0.5b")
+			resp, err = tmCallOllama(url, model, prompt)
+		}
+
+		if err != nil {
+			return gmAIDecomposeMsg{err: err, goalID: goal.ID}
+		}
+
+		var category, targetDate string
+		var tags []string
+		var milestones []GoalMilestone
+
+		for _, line := range strings.Split(resp, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "CATEGORY:") {
+				category = strings.TrimSpace(trimmed[len("CATEGORY:"):])
+			} else if strings.HasPrefix(trimmed, "TARGET:") {
+				td := strings.TrimSpace(trimmed[len("TARGET:"):])
+				// Validate date format
+				if _, parseErr := time.Parse("2006-01-02", td); parseErr == nil {
+					targetDate = td
+				}
+			} else if strings.HasPrefix(trimmed, "TAGS:") {
+				raw := strings.TrimSpace(trimmed[len("TAGS:"):])
+				for _, t := range strings.Split(raw, ",") {
+					t = strings.TrimSpace(t)
+					if t != "" {
+						tags = append(tags, t)
+					}
+				}
+			} else if strings.HasPrefix(trimmed, "- ") {
+				// Parse milestone: "- text | YYYY-MM-DD"
+				msText := strings.TrimSpace(trimmed[2:])
+				dueDate := ""
+				if idx := strings.LastIndex(msText, "|"); idx >= 0 {
+					datePart := strings.TrimSpace(msText[idx+1:])
+					if _, parseErr := time.Parse("2006-01-02", datePart); parseErr == nil {
+						dueDate = datePart
+					}
+					msText = strings.TrimSpace(msText[:idx])
+				}
+				// Strip checkbox prefix if present
+				msText = strings.TrimPrefix(msText, "[ ] ")
+				msText = strings.TrimPrefix(msText, "[x] ")
+				if msText != "" {
+					milestones = append(milestones, GoalMilestone{
+						Text:    msText,
+						DueDate: dueDate,
+					})
+				}
+			}
+		}
+
+		return gmAIDecomposeMsg{
+			milestones: milestones,
+			category:   category,
+			targetDate: targetDate,
+			tags:       tags,
+			goalID:     goal.ID,
+		}
+	}
+}
+
+// staleWarning returns a warning string for goals that need attention.
+func staleWarning(g Goal) string {
+	if g.Status != GoalStatusActive {
+		return ""
+	}
+	created, err := time.Parse("2006-01-02", g.CreatedAt)
+	if err != nil {
+		return ""
+	}
+	now := time.Now()
+	daysSinceCreated := int(now.Sub(created).Hours() / 24)
+
+	if g.IsOverdue() {
+		return "Overdue \u2014 review timeline or archive"
+	}
+	if g.IsDueForReview() {
+		return "Review due \u2014 press R"
+	}
+	if daysSinceCreated > 14 && len(g.Milestones) == 0 {
+		return "No milestones yet \u2014 press D to break this down"
+	}
+	if daysSinceCreated > 21 && g.Progress() == 0 {
+		return "No progress in 3 weeks \u2014 still relevant?"
+	}
+	return ""
 }
 
 func (gm *GoalsMode) nextID() string {
@@ -850,6 +1055,61 @@ func (gm GoalsMode) Update(msg tea.Msg) (GoalsMode, tea.Cmd) {
 			gm.statusMsg = "AI returned no milestones"
 		}
 		return gm, nil
+	case gmAIReviewMsg:
+		gm.aiPending = false
+		if msg.err != nil {
+			gm.statusMsg = "AI error: " + msg.err.Error()
+		} else {
+			gm.reviewText = msg.review
+			gm.reviewGoalID = msg.goalID
+			gm.statusMsg = "AI review ready"
+		}
+		return gm, nil
+	case gmAIDecomposeMsg:
+		gm.aiPending = false
+		if msg.err != nil {
+			gm.statusMsg = "AI error: " + msg.err.Error()
+		} else {
+			for i := range gm.goals {
+				if gm.goals[i].ID == msg.goalID {
+					if len(msg.milestones) > 0 {
+						gm.goals[i].Milestones = append(gm.goals[i].Milestones, msg.milestones...)
+					}
+					if msg.category != "" && gm.goals[i].Category == "" {
+						gm.goals[i].Category = msg.category
+					}
+					if msg.targetDate != "" && gm.goals[i].TargetDate == "" {
+						gm.goals[i].TargetDate = msg.targetDate
+					}
+					if len(msg.tags) > 0 && len(gm.goals[i].Tags) == 0 {
+						gm.goals[i].Tags = msg.tags
+					}
+					gm.goals[i].UpdatedAt = time.Now().Format("2006-01-02")
+					gm.saveGoals()
+					break
+				}
+			}
+			parts := []string{}
+			if len(msg.milestones) > 0 {
+				parts = append(parts, fmt.Sprintf("%d milestones", len(msg.milestones)))
+			}
+			if msg.category != "" {
+				parts = append(parts, "category")
+			}
+			if msg.targetDate != "" {
+				parts = append(parts, "target date")
+			}
+			if len(msg.tags) > 0 {
+				parts = append(parts, "tags")
+			}
+			if len(parts) > 0 {
+				gm.statusMsg = "AI decomposed: " + strings.Join(parts, ", ")
+			} else {
+				gm.statusMsg = "AI returned no decomposition"
+			}
+			gm.rebuildFiltered()
+		}
+		return gm, nil
 	case tea.KeyMsg:
 		key := msg.String()
 		if gm.input != goalInputNone {
@@ -984,9 +1244,17 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			gm.confirmAction = func() { gm.archiveGoal() }
 		}
 
-	// Delete goal (with confirmation)
+	// Delete goal (with confirmation) / AI decompose (when expanded, no milestones)
 	case "D":
-		if gm.expanded < 0 && gm.cursor < len(gm.filtered) {
+		if gm.expanded >= 0 && gm.expanded < len(gm.filtered) && !gm.aiPending && gm.ai.Provider != "local" && gm.ai.Provider != "" {
+			goal := gm.filtered[gm.expanded]
+			idx := gm.findGoalIndex(goal.ID)
+			if idx >= 0 && len(gm.goals[idx].Milestones) == 0 {
+				gm.aiPending = true
+				gm.statusMsg = "AI decomposing goal..."
+				return gm, gm.aiDecomposeGoal(gm.goals[idx])
+			}
+		} else if gm.expanded < 0 && gm.cursor < len(gm.filtered) {
 			goal := gm.filtered[gm.cursor]
 			gm.confirmMsg = fmt.Sprintf("Permanently delete \"%s\"? (y/n)", goal.Title)
 			gm.confirmAction = func() { gm.deleteGoal() }
@@ -1100,6 +1368,18 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 				gm.inputBuf = ""
 			} else {
 				gm.input = goalInputReviewFreq
+			}
+		}
+
+	// AI review goal (when expanded)
+	case "R":
+		if gm.expanded >= 0 && gm.expanded < len(gm.filtered) && !gm.aiPending && gm.ai.Provider != "local" && gm.ai.Provider != "" {
+			goal := gm.filtered[gm.expanded]
+			idx := gm.findGoalIndex(goal.ID)
+			if idx >= 0 {
+				gm.aiPending = true
+				gm.statusMsg = "AI reviewing goal..."
+				return gm, gm.aiReviewGoal(gm.goals[idx])
 			}
 		}
 
@@ -1712,6 +1992,14 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 		b.WriteString(line + "\n")
 		lineCount++
 
+		// Stale warning (shown below goal title in list view)
+		if gm.expanded != i {
+			if warn := staleWarning(goal); warn != "" {
+				b.WriteString("      " + lipgloss.NewStyle().Foreground(yellow).Faint(true).Render(warn) + "\n")
+				lineCount++
+			}
+		}
+
 		// Expanded detail
 		if gm.expanded == i {
 			// Read milestone data from goals (not filtered copy)
@@ -1816,6 +2104,21 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 				}
 				b.WriteString(mPrefix + check + mStyle.Render(ms.Text) + dueLbl + "\n")
 				lineCount++
+			}
+			// AI review text (shown below milestones)
+			if gm.reviewText != "" && gm.reviewGoalID == goalData.ID {
+				reviewStyle := lipgloss.NewStyle().Foreground(lavender).Italic(true)
+				b.WriteString("\n")
+				lineCount++
+				b.WriteString("      " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("AI Review:") + "\n")
+				lineCount++
+				for _, rl := range strings.Split(gm.reviewText, "\n") {
+					rl = strings.TrimSpace(rl)
+					if rl != "" {
+						b.WriteString("      " + reviewStyle.Render(TruncateDisplay(rl, w-10)) + "\n")
+						lineCount++
+					}
+				}
 			}
 		}
 	}
@@ -1940,6 +2243,11 @@ func (gm *GoalsMode) renderHelp(b *strings.Builder, w int) {
 		{"Reviews", [][2]string{
 			{"r", "Set review frequency / write review (when expanded)"},
 		}},
+		{"AI (when expanded)", [][2]string{
+			{"R", "AI review goal (honest assessment)"},
+			{"D", "AI decompose goal (when no milestones)"},
+			{"G", "AI generate milestones"},
+		}},
 	}
 
 	for _, sec := range sections {
@@ -1956,8 +2264,22 @@ func (gm *GoalsMode) renderHelpBar(b *strings.Builder, w int) {
 	pairs := [][2]string{
 		{"j/k", "nav"}, {"a", "add"}, {"m", "milestone"}, {"x", "complete"},
 		{"e", "edit"}, {"E", "desc"}, {"n", "notes"}, {"p", "pause"},
-		{"t", "task"}, {"r", "review"}, {"A", "archive"}, {"D", "delete"}, {"?", "help"}, {"Tab", "view"}, {"Esc", "close"},
+		{"t", "task"}, {"r", "review"}, {"A", "archive"},
 	}
+	// Context-sensitive AI shortcuts
+	if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
+		goal := gm.filtered[gm.expanded]
+		idx := gm.findGoalIndex(goal.ID)
+		if idx >= 0 {
+			pairs = append(pairs, [2]string{"R", "AI review"})
+			if len(gm.goals[idx].Milestones) == 0 {
+				pairs = append(pairs, [2]string{"D", "AI decompose"})
+			}
+		}
+	} else {
+		pairs = append(pairs, [2]string{"D", "delete"})
+	}
+	pairs = append(pairs, [2]string{"?", "help"}, [2]string{"Tab", "view"}, [2]string{"Esc", "close"})
 	var parts []string
 	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
 	for _, p := range pairs {
