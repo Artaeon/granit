@@ -80,6 +80,9 @@ type Dashboard struct {
 	bizTasksTotal int // total such tasks this week
 	bizHoursWeek  float64 // hours tracked on business tasks this week
 
+	// Today's edit count (files modified today)
+	todayEditCount int
+
 	// Quick actions result
 	action CommandAction
 
@@ -149,8 +152,9 @@ func (d *Dashboard) GetAction() (CommandAction, bool) {
 	return CmdNone, false
 }
 
-// scan walks the vault directory to collect stats, tasks, recent notes,
-// and weekly writing activity.
+// scan walks the vault directory once to collect all dashboard data: stats,
+// tasks, business metrics, today's edit count, recent notes, and weekly
+// writing activity.
 func (d *Dashboard) scan() {
 	d.totalNotes = 0
 	d.totalWords = 0
@@ -167,6 +171,7 @@ func (d *Dashboard) scan() {
 	d.bizTasksDone = 0
 	d.bizTasksTotal = 0
 	d.bizHoursWeek = 0
+	d.todayEditCount = 0
 	for i := range d.weeklyWords {
 		d.weeklyWords[i] = 0
 	}
@@ -177,7 +182,16 @@ func (d *Dashboard) scan() {
 
 	now := time.Now()
 	todayStr := now.Format("2006-01-02")
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	weekStart := now.AddDate(0, 0, -int(now.Weekday()))
 	tagSet := make(map[string]struct{})
+
+	// Regexes for task parsing.
+	taskRe := regexp.MustCompile(`^\s*- \[([ xX])\] (.+)`)
+	dueDateRe := regexp.MustCompile(`\x{1F4C5}\s*(\d{4}-\d{2}-\d{2})`)
+
+	// Business tags to match.
+	bizTags := []string{"#revenue", "#client", "#business", "#sales", "#invoice"}
 
 	type fileEntry struct {
 		path    string
@@ -215,6 +229,12 @@ func (d *Dashboard) scan() {
 		}
 
 		d.totalNotes++
+		modTime := info.ModTime()
+
+		// Today's edit count.
+		if !modTime.Before(todayStart) {
+			d.todayEditCount++
+		}
 
 		data, readErr := os.ReadFile(path)
 		if readErr != nil {
@@ -224,10 +244,21 @@ func (d *Dashboard) scan() {
 		words := len(strings.Fields(content))
 		d.totalWords += words
 
-		// Collect tags (#tag patterns).
+		// Infer due date from daily note filename (YYYY-MM-DD.md).
+		noteDateStr := ""
+		base := strings.TrimSuffix(name, ".md")
+		if _, parseErr := time.Parse("2006-01-02", base); parseErr == nil {
+			noteDateStr = base
+		}
+
+		// Whether this file was modified this week (for business metrics).
+		modifiedThisWeek := !modTime.Before(weekStart)
+
+		// Process each line: tags, tasks, and business metrics in one pass.
 		for _, line := range strings.Split(content, "\n") {
 			trimmed := strings.TrimSpace(line)
-			// Scan for inline #tags
+
+			// --- Tag collection ---
 			for i := 0; i < len(trimmed); i++ {
 				if trimmed[i] == '#' {
 					// Must be at start of string or preceded by whitespace.
@@ -260,15 +291,57 @@ func (d *Dashboard) scan() {
 					}
 				}
 			}
+
+			// --- Task parsing (today + overdue) ---
+			if m := taskRe.FindStringSubmatch(line); m != nil {
+				done := m[1] == "x" || m[1] == "X"
+				taskText := m[2]
+
+				// Find due date: explicit emoji takes priority, then daily note filename.
+				dueDate := ""
+				if dm := dueDateRe.FindStringSubmatch(taskText); dm != nil {
+					dueDate = dm[1]
+				} else if noteDateStr != "" {
+					dueDate = noteDateStr
+				}
+
+				if dueDate == todayStr {
+					d.todayTasks = append(d.todayTasks, dashTask{Text: taskText, Done: done})
+					d.tasksDue++
+					if done {
+						d.tasksDone++
+					}
+				} else if dueDate != "" && dueDate < todayStr && !done {
+					d.overdueTasks = append(d.overdueTasks, dashTask{Text: taskText, Done: false})
+					d.overdueCount++
+				}
+			}
+
+			// --- Business metrics (tasks with biz tags, modified this week) ---
+			if modifiedThisWeek && strings.HasPrefix(trimmed, "- [") {
+				lower := strings.ToLower(trimmed)
+				isBiz := false
+				for _, tag := range bizTags {
+					if strings.Contains(lower, tag) {
+						isBiz = true
+						break
+					}
+				}
+				if isBiz {
+					d.bizTasksTotal++
+					if strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]") {
+						d.bizTasksDone++
+					}
+				}
+			}
 		}
 
 		// File info for recency / weekly stats.
-		modTime := info.ModTime()
 		files = append(files, fileEntry{path: path, modTime: modTime, words: words})
 
 		// Weekly word counts — bucket by day offset.
 		for i := 0; i < 7; i++ {
-			dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -(6 - i))
+			dayStart := todayStart.AddDate(0, 0, -(6 - i))
 			dayEnd := dayStart.AddDate(0, 0, 1)
 			if !modTime.Before(dayStart) && modTime.Before(dayEnd) {
 				d.weeklyWords[i] += words
@@ -280,14 +353,8 @@ func (d *Dashboard) scan() {
 
 	d.totalTags = len(tagSet)
 
-	// Parse today's tasks from Tasks.md (or tasks.md).
-	d.parseTasks(todayStr)
-
-	// Parse today's habit status.
+	// Parse today's habit status (reads a single specific file, not a vault walk).
 	d.parseHabits(todayStr)
-
-	// Scan business-tagged tasks from this week.
-	d.parseBusinessMetrics(now)
 
 	// Recent notes: sort by mod time descending, take top 6.
 	sort.Slice(files, func(i, j int) bool {
@@ -322,68 +389,6 @@ func (d *Dashboard) scan() {
 			break
 		}
 	}
-}
-
-// parseTasks scans all vault notes for tasks using the same regex as the task manager.
-func (d *Dashboard) parseTasks(todayStr string) {
-	dueDateRe := regexp.MustCompile(`\x{1F4C5}\s*(\d{4}-\d{2}-\d{2})`)
-	taskRe := regexp.MustCompile(`^\s*- \[([ xX])\] (.+)`)
-
-	_ = filepath.Walk(d.vaultRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			if info != nil && info.IsDir() && strings.HasPrefix(info.Name(), ".") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(info.Name(), ".md") {
-			return nil
-		}
-
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return nil
-		}
-
-		// Infer due date from daily note filename
-		noteDateStr := ""
-		base := strings.TrimSuffix(info.Name(), ".md")
-		if _, parseErr := time.Parse("2006-01-02", base); parseErr == nil {
-			noteDateStr = base
-		}
-
-		for _, line := range strings.Split(string(data), "\n") {
-			m := taskRe.FindStringSubmatch(line)
-			if m == nil {
-				continue
-			}
-			done := m[1] == "x" || m[1] == "X"
-			taskText := m[2]
-
-			// Find due date: explicit emoji takes priority, then daily note filename
-			dueDate := ""
-			if dm := dueDateRe.FindStringSubmatch(taskText); dm != nil {
-				dueDate = dm[1]
-			} else if noteDateStr != "" {
-				dueDate = noteDateStr
-			}
-			if dueDate == "" {
-				continue
-			}
-
-			if dueDate == todayStr {
-				d.todayTasks = append(d.todayTasks, dashTask{Text: taskText, Done: done})
-				d.tasksDue++
-				if done {
-					d.tasksDone++
-				}
-			} else if dueDate < todayStr && !done {
-				d.overdueTasks = append(d.overdueTasks, dashTask{Text: taskText, Done: false})
-				d.overdueCount++
-			}
-		}
-		return nil
-	})
 }
 
 // parseHabits reads the Habits/habits.md file and extracts today's status.
@@ -517,55 +522,6 @@ func (d Dashboard) Update(msg tea.Msg) (Dashboard, tea.Cmd) {
 		}
 	}
 	return d, nil
-}
-
-// parseBusinessMetrics scans vault for tasks tagged with business-related tags
-// completed this week to give a revenue/productivity pulse.
-func (d *Dashboard) parseBusinessMetrics(now time.Time) {
-	bizTags := []string{"#revenue", "#client", "#business", "#sales", "#invoice"}
-	weekStart := now.AddDate(0, 0, -int(now.Weekday()))
-
-	_ = filepath.Walk(d.vaultRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			if info != nil && info.IsDir() && strings.HasPrefix(info.Name(), ".") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(info.Name(), ".md") {
-			return nil
-		}
-		// Only scan files modified this week
-		if info.ModTime().Before(weekStart) {
-			return nil
-		}
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return nil
-		}
-		for _, line := range strings.Split(string(data), "\n") {
-			trimmed := strings.TrimSpace(line)
-			if !strings.HasPrefix(trimmed, "- [") {
-				continue
-			}
-			lower := strings.ToLower(trimmed)
-			isBiz := false
-			for _, tag := range bizTags {
-				if strings.Contains(lower, tag) {
-					isBiz = true
-					break
-				}
-			}
-			if !isBiz {
-				continue
-			}
-			d.bizTasksTotal++
-			if strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]") {
-				d.bizTasksDone++
-			}
-		}
-		return nil
-	})
 }
 
 // View renders the dashboard overlay.
@@ -740,20 +696,9 @@ func (d Dashboard) View() string {
 	}
 	streakLines = append(streakLines, streakBar)
 
-	// Activity score (notes modified today).
-	todayCount := 0
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	_ = filepath.Walk(d.vaultRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".md") {
-			return nil
-		}
-		if !info.ModTime().Before(todayStart) {
-			todayCount++
-		}
-		return nil
-	})
+	// Activity score (notes modified today — computed in scan()).
 	streakLines = append(streakLines, fmt.Sprintf("  Today:   %s notes edited",
-		numStyle.Render(smallNum(todayCount))))
+		numStyle.Render(smallNum(d.todayEditCount))))
 
 	streakPanel := lipgloss.NewStyle().
 		Width(halfW).
