@@ -12,6 +12,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// ghostHTTPClient is the shared HTTP client for Ghost Writer completions.
+var ghostHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
 // ---------------------------------------------------------------------------
 // Ghost text suggestion messages
 // ---------------------------------------------------------------------------
@@ -493,8 +496,7 @@ func ghostCallOllama(url, model, context string, maxTokens int) (string, error) 
 		return "", err
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Post(url+"/api/generate", "application/json", bytes.NewReader(data))
+	resp, err := ghostHTTPClient.Post(url+"/api/generate", "application/json", bytes.NewReader(data))
 	if err != nil {
 		return "", fmt.Errorf("Ghost Writer: cannot connect to Ollama at %s — is it running? Try: ollama serve", url)
 	}
@@ -539,7 +541,6 @@ func ghostCallOpenAI(apiKey, model, context string, maxTokens int) (string, erro
 		return "", err
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
 	if err != nil {
 		return "", err
@@ -547,7 +548,7 @@ func ghostCallOpenAI(apiKey, model, context string, maxTokens int) (string, erro
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	resp, err := client.Do(req)
+	resp, err := ghostHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("Ghost Writer: cannot reach OpenAI API — check your internet connection")
 	}
