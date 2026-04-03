@@ -387,6 +387,7 @@ func NewModel(vaultPath string) (Model, error) {
 	m.dueTodayCount = CountTasksDueToday(v.Notes)
 	m.statusbar.SetDueTodayCount(m.dueTodayCount)
 	m.statusbar.SetOverdueCount(CountOverdueTasks(v.Notes))
+	m.checkDayPlanned()
 	m.autocomplete.SetNotes(paths)
 	m.plugins.SetVaultPath(vaultPath)
 	m.pomodoro.SetVaultRoot(vaultPath)
@@ -658,6 +659,10 @@ func (m Model) Init() tea.Cmd {
 	// Auto git sync: pull on open
 	if pullCmd := m.autoSync.PullOnOpen(); pullCmd != nil {
 		cmds = append(cmds, pullCmd)
+	}
+	// Check initial git status for status bar indicator
+	if gitCmd := m.autoSync.CheckStatus(); gitCmd != nil {
+		cmds = append(cmds, gitCmd)
 	}
 	// File watcher
 	if m.fileWatcher != nil && m.fileWatcher.IsEnabled() {

@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/base64"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -1422,6 +1423,40 @@ func (m *Model) triggerExitSplash() tea.Cmd {
 	}
 	// Save scroll positions for session persistence
 	m.saveScrollCache(m.vault.Root)
+	// Auto-commit on exit if git sync is enabled
+	if m.config.GitAutoSync && m.autoSync.isGitRepo() {
+		gitIn := func(args ...string) (string, error) {
+			fullArgs := append([]string{"-C", m.vault.Root}, args...)
+			cmd := exec.Command("git", fullArgs...)
+			out, err := cmd.CombinedOutput()
+			return string(out), err
+		}
+		status, err := gitIn("status", "--porcelain")
+		if err == nil && strings.TrimSpace(status) != "" {
+			for _, line := range strings.Split(strings.TrimSpace(status), "\n") {
+				if len(line) < 3 {
+					continue
+				}
+				code := strings.TrimSpace(line[:2])
+				file := strings.TrimSpace(line[3:])
+				if file == "" {
+					continue
+				}
+				gitIn("add", file)
+				var msg string
+				switch {
+				case code == "??" || code == "A":
+					msg = "vault: add " + file
+				case code == "D":
+					msg = "vault: remove " + file
+				default:
+					msg = "vault: update " + file
+				}
+				gitIn("commit", "-m", msg)
+			}
+			gitIn("push", "--quiet")
+		}
+	}
 	// Unload Ollama model to free resources
 	if m.config.AIProvider == "ollama" {
 		stopOllama(m.config.OllamaModel)
@@ -1437,4 +1472,28 @@ func (m Model) clearMessageAfter(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg {
 		return clearMessageMsg{}
 	})
+}
+
+// checkDayPlanned looks at today's daily note and marks the day as planned
+// if it already contains a planning section (e.g. from a previous morning
+// routine or plan-my-day run).
+func (m *Model) checkDayPlanned() {
+	today := time.Now().Format("2006-01-02")
+	for _, note := range m.vault.SortedPaths() {
+		if !strings.Contains(note, today) {
+			continue
+		}
+		n := m.vault.GetNote(note)
+		if n == nil {
+			continue
+		}
+		content := n.Content
+		if strings.Contains(content, "## Schedule") ||
+			strings.Contains(content, "## Today's Focus") ||
+			strings.Contains(content, "## Morning Briefing") ||
+			strings.Contains(content, "## Active Threads") {
+			m.statusbar.SetDayPlanned(true)
+			return
+		}
+	}
 }

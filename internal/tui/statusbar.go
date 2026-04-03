@@ -33,6 +33,9 @@ type StatusBar struct {
 	inboxCount     int
 	readingProgress int  // 0-100 percentage
 	viewMode        bool // whether currently in view mode
+	dayPlanned      bool // true once morning routine or plan my day has been run
+	gitStatus       string // e.g. "✓ synced", "● 3 changed", "⚠ no git"
+	gitInitialized  bool
 }
 
 func NewStatusBar() StatusBar {
@@ -162,6 +165,18 @@ func (sb *StatusBar) SetViewMode(active bool) {
 	sb.viewMode = active
 }
 
+func (sb *StatusBar) SetDayPlanned(planned bool) {
+	sb.dayPlanned = planned
+}
+
+func (sb *StatusBar) SetGitStatus(status string) {
+	sb.gitStatus = status
+}
+
+func (sb *StatusBar) SetGitInitialized(init bool) {
+	sb.gitInitialized = init
+}
+
 func (sb StatusBar) View() string {
 	// Mode badge
 	modeColor := mauve
@@ -265,6 +280,26 @@ func (sb StatusBar) View() string {
 			Render(sb.clockInStatus)
 	}
 
+	// Git indicator
+	gitIndicator := ""
+	if !sb.gitInitialized {
+		gitIndicator = lipgloss.NewStyle().
+			Background(yellow).Foreground(crust).Bold(true).Padding(0, 1).
+			Render("⚠ no git")
+	} else if sb.gitStatus != "" {
+		gitBg := green
+		if sb.gitStatus != "synced" {
+			gitBg = peach
+		}
+		label := "✓ " + sb.gitStatus
+		if sb.gitStatus != "synced" {
+			label = "● " + sb.gitStatus
+		}
+		gitIndicator = lipgloss.NewStyle().
+			Background(gitBg).Foreground(crust).Bold(true).Padding(0, 1).
+			Render(label)
+	}
+
 	// Research indicator
 	researchIndicator := ""
 	if sb.researchStatus != "" {
@@ -289,6 +324,14 @@ func (sb StatusBar) View() string {
 			Render(fmt.Sprintf("%d due", sb.dueTodayCount))
 	}
 
+	// Plan-your-day nudge (hidden once morning routine or plan my day has been run)
+	planIndicator := ""
+	if !sb.dayPlanned {
+		planIndicator = lipgloss.NewStyle().
+			Background(mauve).Foreground(crust).Bold(true).Padding(0, 1).
+			Render("Alt+M plan day")
+	}
+
 	inboxIndicator := ""
 	if sb.inboxCount > 0 {
 		inboxIndicator = lipgloss.NewStyle().
@@ -306,17 +349,25 @@ func (sb StatusBar) View() string {
 	// Truncate to prevent overflow on narrow terminals
 	totalUsed := func() int {
 		return lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) +
-			lipgloss.Width(readingBar) + lipgloss.Width(researchIndicator) +
+			lipgloss.Width(readingBar) + lipgloss.Width(planIndicator) +
+			lipgloss.Width(researchIndicator) +
 			lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) +
-			lipgloss.Width(pomoIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
+			lipgloss.Width(pomoIndicator) + lipgloss.Width(gitIndicator) +
+			lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	}
 
-	// Step 1: If too wide, hide least important indicators (reading progress, AI badge)
+	// Step 1: If too wide, hide least important indicators (plan nudge, reading progress, AI badge, git)
+	if totalUsed() > sb.width {
+		planIndicator = ""
+	}
 	if totalUsed() > sb.width {
 		readingBar = ""
 	}
 	if totalUsed() > sb.width {
 		aiIndicator = ""
+	}
+	if totalUsed() > sb.width {
+		gitIndicator = ""
 	}
 
 	// Step 2: If still too wide, truncate the file section with "..."
@@ -344,7 +395,7 @@ func (sb StatusBar) View() string {
 
 	// Calculate gap
 	leftLen := lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) + lipgloss.Width(readingBar)
-	rightLen := lipgloss.Width(researchIndicator) + lipgloss.Width(inboxIndicator) + lipgloss.Width(overdueIndicator) + lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) + lipgloss.Width(pomoIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
+	rightLen := lipgloss.Width(researchIndicator) + lipgloss.Width(planIndicator) + lipgloss.Width(inboxIndicator) + lipgloss.Width(overdueIndicator) + lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) + lipgloss.Width(pomoIndicator) + lipgloss.Width(gitIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	gap := sb.width - leftLen - rightLen
 	if gap < 0 {
 		gap = 0
@@ -354,7 +405,7 @@ func (sb StatusBar) View() string {
 		gapStr = StatusBarBg.Width(gap).Render(strings.Repeat(" ", gap))
 	}
 
-	bar := mode + fileSection + cursorPos + readingBar + gapStr + researchIndicator + inboxIndicator + overdueIndicator + taskIndicator + clockIndicator + pomoIndicator + aiIndicator + rightInfo
+	bar := mode + fileSection + cursorPos + readingBar + gapStr + researchIndicator + planIndicator + inboxIndicator + overdueIndicator + taskIndicator + clockIndicator + pomoIndicator + gitIndicator + aiIndicator + rightInfo
 
 	// Help bar
 	helpItems := []struct{ key, desc string }{
@@ -363,6 +414,7 @@ func (sb StatusBar) View() string {
 		{"Ctrl+N", "new"},
 		{"Ctrl+S", "save"},
 		{"Ctrl+K", "tasks"},
+		{"Alt+M", "morning"},
 		{"Ctrl+X", "cmds"},
 		{"Ctrl+Q", "quit"},
 	}

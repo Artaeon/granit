@@ -202,7 +202,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusbar.SetMessage("Git: auto-synced")
 		}
 		if msg.action != "" {
-			return m, m.clearMessageAfter(3 * time.Second)
+			// Refresh git status indicator after sync completes
+			return m, tea.Batch(m.clearMessageAfter(3*time.Second), m.autoSync.CheckStatus())
+		}
+		return m, nil
+
+	case gitStatusMsg:
+		m.statusbar.SetGitInitialized(msg.isGitRepo)
+		if !msg.isGitRepo {
+			m.statusbar.SetGitStatus("no git")
+		} else if msg.isSynced {
+			m.statusbar.SetGitStatus("synced")
+		} else {
+			m.statusbar.SetGitStatus(fmt.Sprintf("%d changed", msg.changed))
 		}
 		return m, nil
 
@@ -450,6 +462,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.dailyBriefing.IsActive() {
 				if content, ok := m.dailyBriefing.GetResult(); ok {
 					m.writeBriefingToDailyNote(content)
+					m.statusbar.SetDayPlanned(true)
 				}
 			}
 			return m, cmd
@@ -506,6 +519,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case planMyDayResultMsg:
 		if m.planMyDay.IsActive() {
+			if msg.err == nil {
+				m.statusbar.SetDayPlanned(true)
+			}
 			var cmd tea.Cmd
 			m.planMyDay, cmd = m.planMyDay.Update(msg)
 			return m, cmd
