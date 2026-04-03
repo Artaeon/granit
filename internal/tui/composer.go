@@ -1,11 +1,7 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -207,150 +203,9 @@ func (c *Composer) generateNote() tea.Cmd {
 	ai := c.ai
 
 	return func() tea.Msg {
-		switch ai.Provider {
-		case "openai":
-			return doComposerOpenAI(ai.APIKey, ai.Model, systemPrompt, userPrompt)
-		case "nous":
-			client := ai.NewNous()
-			resp, err := client.Chat(systemPrompt + "\n\n" + userPrompt)
-			return composerResultMsg{content: resp, err: err}
-		case "nerve":
-			client := ai.NewNerve()
-			resp, err := client.Chat(systemPrompt, userPrompt, 120*time.Second)
-			return composerResultMsg{content: resp, err: err}
-		default: // "ollama"
-			url := ai.OllamaEndpoint()
-			model := ai.ModelOrDefault("llama3.2")
-			return doComposerOllama(url, model, systemPrompt, userPrompt)
-		}
+		resp, err := ai.Chat(systemPrompt, userPrompt)
+		return composerResultMsg{content: resp, err: err}
 	}
-}
-
-func doComposerOllama(url, model, systemPrompt, userPrompt string) composerResultMsg {
-	type ollamaMsg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	type ollamaChatReq struct {
-		Model    string      `json:"model"`
-		Messages []ollamaMsg `json:"messages"`
-		Stream   bool        `json:"stream"`
-	}
-	type ollamaChatResp struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-		Error string `json:"error,omitempty"`
-	}
-
-	reqBody := ollamaChatReq{
-		Model: model,
-		Messages: []ollamaMsg{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
-		Stream: false,
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return composerResultMsg{err: err}
-	}
-
-	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Post(url+"/api/chat", "application/json", bytes.NewReader(data))
-	if err != nil {
-		return composerResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)}
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return composerResultMsg{err: err}
-	}
-
-	if resp.StatusCode != 200 {
-		return composerResultMsg{err: fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body))}
-	}
-
-	var chatResp ollamaChatResp
-	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return composerResultMsg{err: err}
-	}
-
-	if chatResp.Error != "" {
-		return composerResultMsg{err: fmt.Errorf("Ollama error: %s", chatResp.Error)}
-	}
-
-	return composerResultMsg{content: chatResp.Message.Content}
-}
-
-func doComposerOpenAI(apiKey, model, systemPrompt, userPrompt string) composerResultMsg {
-	type msg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	type req struct {
-		Model    string `json:"model"`
-		Messages []msg  `json:"messages"`
-	}
-	type resp struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-
-	reqBody := req{
-		Model: model,
-		Messages: []msg{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return composerResultMsg{err: err}
-	}
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	httpReq, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-	if err != nil {
-		return composerResultMsg{err: err}
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-
-	httpResp, err := client.Do(httpReq)
-	if err != nil {
-		return composerResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
-	}
-	defer httpResp.Body.Close()
-
-	body, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return composerResultMsg{err: err}
-	}
-
-	var openaiResp resp
-	if err := json.Unmarshal(body, &openaiResp); err != nil {
-		return composerResultMsg{err: err}
-	}
-
-	if openaiResp.Error != nil {
-		return composerResultMsg{err: fmt.Errorf("OpenAI error: %s", openaiResp.Error.Message)}
-	}
-
-	if len(openaiResp.Choices) == 0 {
-		return composerResultMsg{err: fmt.Errorf("OpenAI returned no choices")}
-	}
-
-	return composerResultMsg{content: openaiResp.Choices[0].Message.Content}
 }
 
 // ---------------------------------------------------------------------------
