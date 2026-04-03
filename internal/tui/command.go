@@ -107,6 +107,7 @@ const (
 	CmdLayoutCockpit
 	CmdLayoutStacked
 	CmdLayoutPreview
+	CmdLayoutPresenter
 	CmdCycleLayout
 	CmdLayoutPicker
 	CmdBlogPublish

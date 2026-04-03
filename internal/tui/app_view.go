@@ -598,6 +598,31 @@ func (m Model) View() string {
 					content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, focusEditor)
 				}
 			}
+		case "presenter":
+			// Full-width centered rendered markdown, no borders
+			maxW := 100
+			renderW := m.width - 4
+			if renderW > maxW {
+				renderW = maxW
+			}
+			m.renderer.SetSize(renderW, contentHeight+2)
+			rendered := m.renderer.Render(m.editor.GetContent(), m.viewScroll)
+
+			presenterPanel := lipgloss.NewStyle().
+				Width(renderW).
+				Height(contentHeight + 2).
+				Background(base).
+				Padding(0, 2).
+				Render(rendered)
+
+			leftPad := (m.width - renderW - 4) / 2
+			if leftPad < 0 {
+				leftPad = 0
+			}
+			content = lipgloss.NewStyle().
+				PaddingLeft(leftPad).
+				Height(contentHeight + 2).
+				Render(presenterPanel)
 		case "preview":
 			// Editor on left, rendered markdown preview on right
 			halfW := (m.width - 4) / 2

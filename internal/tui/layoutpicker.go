@@ -208,6 +208,8 @@ func layoutDisplayName(layout string) string {
 		return "Focus"
 	case LayoutPreview:
 		return "Preview"
+	case LayoutPresenter:
+		return "Presenter"
 	default:
 		return layout
 	}
@@ -422,6 +424,16 @@ func layoutPreview(layout string, width int) string {
 			box("Editor", halfW, h),
 			box("Preview", halfW, h),
 		))
+	case LayoutPresenter:
+		padW := width / 6
+		centerW := width - padW*2
+		centerBox := box("Rendered View", centerW, h)
+		padStr := strings.Repeat(" ", padW)
+		var lines []string
+		for _, l := range centerBox {
+			lines = append(lines, padStr+l)
+		}
+		return style.Render(strings.Join(lines, "\n"))
 	default:
 		return style.Render(joinH(box("Editor", width, h)))
 	}
