@@ -638,11 +638,19 @@ func (m Model) View() string {
 		// Pomodoro and clock-in status indicators in status bar
 		m.statusbar.SetPomodoroStatus(m.pomodoro.StatusString())
 		m.statusbar.SetClockInStatus(m.clockIn.StatusString())
-		status := m.statusbar.View()
-		if breadcrumbBar != "" {
-			view = lipgloss.JoinVertical(lipgloss.Left, content, breadcrumbBar, status)
+		if layout == "zen" || layout == "minimal" || layout == "presenter" {
+			// Minimal status for zen/presenter: just filename + word count, no help bar
+			zenInfo := lipgloss.NewStyle().Foreground(surface1).Render(
+				"  " + m.activeNote + "  " + fmt.Sprintf("%d words", m.editor.GetWordCount()))
+			zenBar := lipgloss.NewStyle().Background(surface0).Width(m.width).Render(zenInfo)
+			view = lipgloss.JoinVertical(lipgloss.Left, content, zenBar)
 		} else {
-			view = lipgloss.JoinVertical(lipgloss.Left, content, status)
+			status := m.statusbar.View()
+			if breadcrumbBar != "" {
+				view = lipgloss.JoinVertical(lipgloss.Left, content, breadcrumbBar, status)
+			} else {
+				view = lipgloss.JoinVertical(lipgloss.Left, content, status)
+			}
 		}
 	}
 
