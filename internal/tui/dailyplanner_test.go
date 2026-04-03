@@ -1314,7 +1314,7 @@ func TestLoadFromFile_NoFile(t *testing.T) {
 func TestPlannerFilePath(t *testing.T) {
 	dp := newTestPlanner(t)
 	fp := dp.plannerFilePath()
-	expected := filepath.Join(dp.vaultRoot, "Planner", "2026-03-08.md")
+	expected := filepath.Join(dp.vaultRoot, "Daily Planner", "2026-03-08.md")
 	if fp != expected {
 		t.Errorf("plannerFilePath = %q, want %q", fp, expected)
 	}
@@ -1323,7 +1323,7 @@ func TestPlannerFilePath(t *testing.T) {
 func TestPlannerDir(t *testing.T) {
 	dp := newTestPlanner(t)
 	dir := dp.plannerDir()
-	expected := filepath.Join(dp.vaultRoot, "Planner")
+	expected := filepath.Join(dp.vaultRoot, "Daily Planner")
 	if dir != expected {
 		t.Errorf("plannerDir = %q, want %q", dir, expected)
 	}
