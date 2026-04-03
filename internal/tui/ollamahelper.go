@@ -88,9 +88,12 @@ func OllamaPullModel(baseURL, model string) error {
 		model = "qwen2.5:0.5b"
 	}
 
-	reqBody := fmt.Sprintf(`{"name":"%s","stream":false}`, model)
+	reqBody, err := json.Marshal(map[string]interface{}{"name": model, "stream": false})
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
 	client := &http.Client{Timeout: 300 * time.Second} // pulls can take a while
-	resp, err := client.Post(baseURL+"/api/pull", "application/json", strings.NewReader(reqBody))
+	resp, err := client.Post(baseURL+"/api/pull", "application/json", strings.NewReader(string(reqBody)))
 	if err != nil {
 		return fmt.Errorf("pull failed: %w", err)
 	}
