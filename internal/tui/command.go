@@ -165,12 +165,28 @@ const (
 	CmdQuit
 )
 
+// Command categories for palette grouping.
+const (
+	CatNavigation  = "Navigation & Files"
+	CatEditor      = "Editor"
+	CatSearch      = "Search"
+	CatKnowledge   = "Knowledge Graph"
+	CatAI          = "AI & Analysis"
+	CatTasks       = "Tasks & Planning"
+	CatDaily       = "Daily & Calendar"
+	CatProjects    = "Projects & Goals"
+	CatLearning    = "Learning"
+	CatPublish     = "Publish & Sync"
+	CatSettings    = "Settings & System"
+)
+
 type Command struct {
 	Label    string
 	Desc     string
 	Shortcut string
 	Action   CommandAction
 	Icon     *string // pointer to icon char variable (nil = no icon)
+	Category string  // palette grouping category
 }
 
 var AllCommands = []Command{
