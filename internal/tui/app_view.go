@@ -282,7 +282,7 @@ func (m Model) View() string {
 			}
 			content = lipgloss.NewStyle().
 				PaddingLeft(leftPad).
-				Height(contentHeight + 2).
+				Height(contentHeight).
 				Render(zenEditor)
 		case "dashboard": // 4-panel: sidebar | editor | outline | backlinks
 			var leftPanels, rightPanels []string
@@ -780,12 +780,12 @@ func (m Model) View() string {
 			if renderW < 30 {
 				renderW = 30
 			}
-			m.renderer.SetSize(renderW, contentHeight+2)
+			m.renderer.SetSize(renderW, contentHeight)
 			rendered := m.renderer.Render(m.editor.GetContent(), m.viewScroll)
 
 			presenterPanel := lipgloss.NewStyle().
 				Width(renderW).
-				Height(contentHeight + 2).
+				Height(contentHeight).
 				Background(base).
 				Padding(0, 2).
 				Render(rendered)
@@ -796,7 +796,7 @@ func (m Model) View() string {
 			}
 			content = lipgloss.NewStyle().
 				PaddingLeft(leftPad).
-				Height(contentHeight + 2).
+				Height(contentHeight).
 				Render(presenterPanel)
 		case "preview":
 			// Editor on left, rendered markdown preview on right
