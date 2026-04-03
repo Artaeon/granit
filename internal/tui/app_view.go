@@ -545,6 +545,77 @@ func (m Model) View() string {
 				Render(editorPanel)
 
 			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rsEditor, notesPanel)
+		case "cornell":
+			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
+				BorderForeground(sidebarBorderColor).
+				Width(sidebarWidth).
+				Height(contentHeight).
+				Render(m.sidebar.View())
+
+			// Vertical split: editor (2/3) over notes panel (1/3)
+			topHeight := contentHeight * 2 / 3
+			bottomHeight := contentHeight - topHeight - 2 // -2 for border
+			rightWidth := m.width - sidebarWidth - 4       // -4 for borders
+			if rightWidth < 30 {
+				rightWidth = 30
+			}
+
+			topEditor := EditorStyle.
+				BorderStyle(editorBorder).
+				BorderForeground(editorBorderColor).
+				Width(rightWidth).
+				Height(topHeight).
+				Render(editorPanel)
+
+			// Build notes panel content: outline + backlinks
+			var cornellNotes strings.Builder
+			cornellNotes.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  NOTES & SUMMARY"))
+			cornellNotes.WriteString("\n")
+			cornellNotes.WriteString(DimStyle.Render(strings.Repeat("─", rightWidth-4)))
+			cornellNotes.WriteString("\n")
+
+			// Outline headings
+			cornellNotes.WriteString(lipgloss.NewStyle().Foreground(blue).Bold(true).Render("  Outline") + "\n")
+			for _, line := range m.editor.content {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "# ") {
+					cornellNotes.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(trimmed) + "\n")
+				} else if strings.HasPrefix(trimmed, "## ") {
+					cornellNotes.WriteString("    " + lipgloss.NewStyle().Foreground(blue).Render(trimmed) + "\n")
+				} else if strings.HasPrefix(trimmed, "### ") {
+					cornellNotes.WriteString("      " + lipgloss.NewStyle().Foreground(teal).Render(trimmed) + "\n")
+				}
+			}
+
+			// Backlinks
+			cornellNotes.WriteString("\n" + lipgloss.NewStyle().Foreground(green).Bold(true).Render("  Backlinks") + "\n")
+			if m.activeNote != "" {
+				bls := m.index.GetBacklinks(m.activeNote)
+				if len(bls) == 0 {
+					cornellNotes.WriteString("  " + DimStyle.Render("none") + "\n")
+				}
+				for _, bl := range bls {
+					name := filepath.Base(bl)
+					name = strings.TrimSuffix(name, ".md")
+					cornellNotes.WriteString("  " + lipgloss.NewStyle().Foreground(green).Render("← " + name) + "\n")
+				}
+			}
+
+			bottomPanel := lipgloss.NewStyle().
+				BorderStyle(PanelBorder).
+				BorderForeground(surface1).
+				Width(rightWidth).
+				Height(bottomHeight).
+				Background(base).
+				Padding(0, 1).
+				Render(cornellNotes.String())
+
+			rightSide := lipgloss.JoinVertical(lipgloss.Left, topEditor, bottomPanel)
+			if m.config.SidebarPosition == "right" {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, rightSide, sidebar)
+			} else {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightSide)
+			}
 		default: // "default" - 3-panel (with optional calendar toggle)
 			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).

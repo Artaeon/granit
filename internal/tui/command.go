@@ -102,6 +102,7 @@ const (
 	CmdLayoutTaskboard
 	CmdLayoutResearch
 	CmdLayoutCalendar
+	CmdLayoutCornell
 	CmdBlogPublish
 	CmdGlobalReplace
 	CmdAITemplate
@@ -363,6 +364,7 @@ var AllCommands = []Command{
 	{Label: "Taskboard Layout", Desc: "Sidebar + editor + task summary panel", Shortcut: "", Action: CmdLayoutTaskboard, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Research Layout", Desc: "Sidebar + editor + research notes panel", Shortcut: "", Action: CmdLayoutResearch, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Calendar Layout", Desc: "Sidebar + editor + calendar panel", Shortcut: "", Action: CmdLayoutCalendar, Icon: &IconViewChar, Category: CatSettings},
+	{Label: "Cornell Layout", Desc: "Sidebar + editor over notes panel — study layout", Shortcut: "", Action: CmdLayoutCornell, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Refresh Vault", Desc: "Rescan vault for changes", Shortcut: "", Action: CmdRefreshVault, Category: CatSettings},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit, Category: CatSettings},

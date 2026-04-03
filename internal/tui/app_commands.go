@@ -856,7 +856,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.themeEditor.SetSize(m.width, m.height)
 		m.themeEditor.Open(m.config.Theme)
 
-	case CmdLayoutDefault, CmdLayoutWriter, CmdLayoutMinimal, CmdLayoutReading, CmdLayoutDashboard, CmdLayoutZen, CmdLayoutTaskboard, CmdLayoutResearch, CmdLayoutCalendar:
+	case CmdLayoutDefault, CmdLayoutWriter, CmdLayoutMinimal, CmdLayoutReading, CmdLayoutDashboard, CmdLayoutZen, CmdLayoutTaskboard, CmdLayoutResearch, CmdLayoutCalendar, CmdLayoutCornell:
 		switch action {
 		case CmdLayoutDefault:
 			m.config.Layout = LayoutDefault
@@ -885,6 +885,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		case CmdLayoutCalendar:
 			m.config.Layout = LayoutCalendar
 			m.statusbar.SetMessage("Layout: Calendar (sidebar + editor + calendar)")
+		case CmdLayoutCornell:
+			m.config.Layout = LayoutCornell
+			m.statusbar.SetMessage("Layout: Cornell (editor + notes study layout)")
 		}
 		// Fix focus if current panel is hidden in new layout
 		if !LayoutHasSidebar(m.config.Layout) && m.focus == focusSidebar {
