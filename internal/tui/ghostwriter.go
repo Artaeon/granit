@@ -1,19 +1,13 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// ghostHTTPClient is the shared HTTP client for Ghost Writer completions.
-var ghostHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 // ---------------------------------------------------------------------------
 // Ghost text suggestion messages
@@ -395,72 +389,24 @@ func (gw *GhostWriter) findRelatedVaultNote(currentLine string) (string, string)
 // AI request
 // ---------------------------------------------------------------------------
 
-// ghostOllamaRequest is the JSON body for Ollama /api/generate.
-type ghostOllamaRequest struct {
-	Model   string             `json:"model"`
-	Prompt  string             `json:"prompt"`
-	Stream  bool               `json:"stream"`
-	Options ghostOllamaOptions `json:"options"`
-}
-
-type ghostOllamaOptions struct {
-	NumPredict  int     `json:"num_predict"`
-	Temperature float64 `json:"temperature"`
-}
-
-type ghostOllamaResponse struct {
-	Response string `json:"response"`
-}
-
-// ghostOpenAIRequest is the JSON body for OpenAI /v1/chat/completions.
-type ghostOpenAIRequest struct {
-	Model       string               `json:"model"`
-	Messages    []ghostOpenAIMessage `json:"messages"`
-	MaxTokens   int                  `json:"max_tokens"`
-	Temperature float64              `json:"temperature"`
-}
-
-type ghostOpenAIMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type ghostOpenAIResponse struct {
-	Choices []ghostOpenAIChoice `json:"choices"`
-	Error   *ghostOpenAIError   `json:"error,omitempty"`
-}
-
-type ghostOpenAIChoice struct {
-	Message struct {
-		Content string `json:"content"`
-	} `json:"message"`
-}
-
-type ghostOpenAIError struct {
-	Message string `json:"message"`
-}
-
 // requestCompletion returns a tea.Cmd that calls the configured AI provider
 // and sends back a ghostSuggestionMsg with the cleaned-up completion.
 func (gw *GhostWriter) requestCompletion(context string) tea.Cmd {
 	ai := gw.ai
-	maxTokens := gw.maxTokens
 
 	return func() tea.Msg {
 		var raw string
 		var err error
 
+		systemPrompt := "Continue the text naturally. Only output the continuation, no explanation."
+
 		switch ai.Provider {
-		case "openai":
-			raw, err = ghostCallOpenAI(ai.APIKey, ai.Model, context, maxTokens)
 		case "nous":
 			raw, err = ghostCallNous(ai.NousURL, ai.NousAPIKey, context)
 		case "nerve":
 			raw, err = ghostCallNerve(ai.NerveBinary, ai.NerveModel, ai.NerveProvider, context)
-		default: // "ollama"
-			url := ai.OllamaEndpoint()
-			model := ai.ModelOrDefault("llama3.2")
-			raw, err = ghostCallOllama(url, model, context, maxTokens)
+		default: // "ollama", "openai"
+			raw, err = ai.Chat(systemPrompt, context)
 		}
 
 		if err != nil {
@@ -474,109 +420,6 @@ func (gw *GhostWriter) requestCompletion(context string) tea.Cmd {
 
 		return ghostSuggestionMsg{text: cleaned}
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Provider calls
-// ---------------------------------------------------------------------------
-
-func ghostCallOllama(url, model, context string, maxTokens int) (string, error) {
-	reqBody := ghostOllamaRequest{
-		Model:  model,
-		Prompt: context,
-		Stream: false,
-		Options: ghostOllamaOptions{
-			NumPredict:  maxTokens,
-			Temperature: 0.3,
-		},
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := ghostHTTPClient.Post(url+"/api/generate", "application/json", bytes.NewReader(data))
-	if err != nil {
-		return "", fmt.Errorf("Ghost Writer: cannot connect to Ollama at %s — is it running? Try: ollama serve", url)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("Ghost Writer: Ollama error (status %d) — check model is pulled: ollama pull %s", resp.StatusCode, model)
-	}
-
-	var olResp ghostOllamaResponse
-	if err := json.Unmarshal(body, &olResp); err != nil {
-		return "", err
-	}
-
-	return olResp.Response, nil
-}
-
-func ghostCallOpenAI(apiKey, model, context string, maxTokens int) (string, error) {
-	reqBody := ghostOpenAIRequest{
-		Model: model,
-		Messages: []ghostOpenAIMessage{
-			{
-				Role:    "system",
-				Content: "Continue the text naturally. Only output the continuation, no explanation.",
-			},
-			{
-				Role:    "user",
-				Content: context,
-			},
-		},
-		MaxTokens:   maxTokens,
-		Temperature: 0.3,
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	resp, err := ghostHTTPClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("Ghost Writer: cannot reach OpenAI API — check your internet connection")
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	var oaiResp ghostOpenAIResponse
-	if err := json.Unmarshal(body, &oaiResp); err != nil {
-		return "", err
-	}
-
-	if oaiResp.Error != nil {
-		hint := oaiResp.Error.Message
-		if strings.Contains(hint, "auth") || strings.Contains(hint, "key") {
-			hint += " — check your API key in Settings (Ctrl+,)"
-		}
-		return "", fmt.Errorf("Ghost Writer: OpenAI: %s", hint)
-	}
-
-	if len(oaiResp.Choices) == 0 {
-		return "", fmt.Errorf("Ghost Writer: OpenAI returned an empty response")
-	}
-
-	return oaiResp.Choices[0].Message.Content, nil
 }
 
 func ghostCallNerve(binary, model, provider, context string) (string, error) {
