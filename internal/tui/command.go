@@ -105,6 +105,7 @@ const (
 	CmdLayoutCornell
 	CmdLayoutFocus
 	CmdCycleLayout
+	CmdLayoutPicker
 	CmdBlogPublish
 	CmdGlobalReplace
 	CmdAITemplate
@@ -357,18 +358,8 @@ var AllCommands = []Command{
 	{Label: "Lua Scripts", Desc: "Run Lua scripts from vault or global dir", Shortcut: "", Action: CmdRunLuaScript, Icon: &IconBotChar, Category: CatSettings},
 	{Label: "Import Obsidian Config", Desc: "Import settings from .obsidian/ directory", Shortcut: "", Action: CmdImportObsidian, Icon: &IconSettingsChar, Category: CatSettings},
 	{Label: "Workspaces", Desc: "Save and restore named workspace layouts", Shortcut: "", Action: CmdWorkspaces, Icon: &IconViewChar, Category: CatSettings},
-	{Label: "Default Layout", Desc: "3-panel: sidebar, editor, backlinks", Shortcut: "", Action: CmdLayoutDefault, Icon: &IconViewChar, Category: CatSettings},
-	{Label: "Writer Layout", Desc: "2-panel: sidebar, editor", Shortcut: "", Action: CmdLayoutWriter, Icon: &IconViewChar, Category: CatSettings},
-	{Label: "Minimal Layout", Desc: "Editor only", Shortcut: "", Action: CmdLayoutMinimal, Icon: &IconViewChar, Category: CatSettings},
-	{Label: "Reading Layout", Desc: "Editor + backlinks, no sidebar", Shortcut: "", Action: CmdLayoutReading, Icon: &IconViewChar, Category: CatSettings},
-	{Label: "Dashboard Layout", Desc: "4-panel: sidebar, editor, outline, backlinks", Shortcut: "", Action: CmdLayoutDashboard, Icon: &IconViewChar, Category: CatSettings},
-	{Label: "Zen Layout", Desc: "Centered editor, no chrome — distraction-free", Shortcut: "", Action: CmdLayoutZen, Icon: &IconViewChar, Category: CatSettings},
-	{Label: "Taskboard Layout", Desc: "Sidebar + editor + task summary panel", Shortcut: "", Action: CmdLayoutTaskboard, Icon: &IconViewChar, Category: CatSettings},
-	{Label: "Research Layout", Desc: "Sidebar + editor + research notes panel", Shortcut: "", Action: CmdLayoutResearch, Icon: &IconViewChar, Category: CatSettings},
-	{Label: "Calendar Layout", Desc: "Sidebar + editor + calendar panel", Shortcut: "", Action: CmdLayoutCalendar, Icon: &IconViewChar, Category: CatSettings},
-	{Label: "Cornell Layout", Desc: "Sidebar + editor over notes panel — study layout", Shortcut: "", Action: CmdLayoutCornell, Icon: &IconViewChar, Category: CatSettings},
-	{Label: "Focus Layout", Desc: "Sidebar + wide centered editor (focused writing)", Shortcut: "", Action: CmdLayoutFocus, Icon: &IconViewChar, Category: CatSettings},
-	{Label: "Cycle Layout", Desc: "Switch to next layout", Shortcut: "Alt+L", Action: CmdCycleLayout, Icon: &IconViewChar, Category: CatSettings},
+	{Label: "Layout Picker", Desc: "Browse and preview all layouts with visual diagrams", Shortcut: "Alt+L", Action: CmdLayoutPicker, Icon: &IconViewChar, Category: CatSettings},
+	{Label: "Cycle Layout", Desc: "Switch to next layout quickly", Shortcut: "", Action: CmdCycleLayout, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Refresh Vault", Desc: "Rescan vault for changes", Shortcut: "", Action: CmdRefreshVault, Category: CatSettings},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit, Category: CatSettings},

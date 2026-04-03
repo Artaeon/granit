@@ -925,6 +925,10 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		m.updateLayout()
 
+	case CmdLayoutPicker:
+		m.layoutPicker.SetSize(m.width, m.height)
+		m.layoutPicker.Open(m.config.Layout)
+
 	case CmdToggleSidebar:
 		if LayoutHasSidebar(m.config.Layout) {
 			// Hide sidebar: switch to a layout without it

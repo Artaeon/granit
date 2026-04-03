@@ -2135,6 +2135,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		if m.layoutPicker.IsActive() {
+			var cmd tea.Cmd
+			m.layoutPicker, cmd = m.layoutPicker.Update(msg)
+			if !m.layoutPicker.IsActive() {
+				if selected, ok := m.layoutPicker.GetResult(); ok {
+					m.config.Layout = selected
+					m.statusbar.SetMessage("Layout: " + LayoutDescription(selected))
+					if !LayoutHasSidebar(m.config.Layout) && m.focus == focusSidebar {
+						m.setFocus(focusEditor)
+					}
+					if !LayoutHasBacklinks(m.config.Layout) && m.focus == focusBacklinks {
+						m.setFocus(focusEditor)
+					}
+					m.updateLayout()
+				}
+			}
+			return m, cmd
+		}
+
 		if m.imageManager.IsActive() {
 			var cmd tea.Cmd
 			m.imageManager, cmd = m.imageManager.Update(msg)
@@ -2694,7 +2713,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.executeCommand(CmdMorningRoutine)
 
 		case "alt+l":
-			return m.executeCommand(CmdCycleLayout)
+			return m.executeCommand(CmdLayoutPicker)
 
 		case "alt+e":
 			return m.executeCommand(CmdDailyReview)

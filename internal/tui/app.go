@@ -150,6 +150,7 @@ type Model struct {
 	research        ResearchAgent
 	imageManager    ImageManager
 	themeEditor     ThemeEditor
+	layoutPicker    LayoutPicker
 	linkAssist      LinkAssist
 	taskManager     TaskManager
 	blogPublisher    BlogPublisher
@@ -347,6 +348,7 @@ func NewModel(vaultPath string) (Model, error) {
 		research:        NewResearchAgent(),
 		imageManager:    NewImageManager(),
 		themeEditor:     NewThemeEditor(),
+		layoutPicker:    NewLayoutPicker(),
 		linkAssist:      NewLinkAssist(),
 		taskManager:     NewTaskManager(),
 		blogPublisher:    NewBlogPublisher(),

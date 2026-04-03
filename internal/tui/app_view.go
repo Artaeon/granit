@@ -1065,6 +1065,10 @@ func (m Model) View() string {
 		overlay := m.themeEditor.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.layoutPicker.IsActive() {
+		overlay := m.layoutPicker.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.imageManager.IsActive() {
 		overlay := m.imageManager.View()
 		view = m.overlayCenter(view, overlay)
