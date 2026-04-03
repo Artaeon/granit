@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -105,8 +104,8 @@ func (a *AutoSync) PullOnOpen() tea.Cmd {
 	}
 }
 
-// CommitAndPush stages all changes, commits with a timestamped message,
-// and pushes to the remote. Returns a tea.Cmd that runs asynchronously.
+// CommitAndPush commits each changed file individually with a descriptive message,
+// then pushes all commits to the remote. Returns a tea.Cmd that runs asynchronously.
 func (a *AutoSync) CommitAndPush() tea.Cmd {
 	if !a.enabled {
 		return nil
@@ -142,24 +141,88 @@ func (a *AutoSync) CommitAndPush() tea.Cmd {
 			return autoSyncResultMsg{action: "commit", output: "nothing to commit"}
 		}
 
-		// Stage all changes
-		if _, err := gitIn("add", "-A"); err != nil {
-			return autoSyncResultMsg{action: "commit", err: fmt.Errorf("git add: %w", err)}
+		// Commit each changed file individually
+		committed := 0
+		for _, line := range strings.Split(strings.TrimSpace(status), "\n") {
+			if len(line) < 3 {
+				continue
+			}
+			code := strings.TrimSpace(line[:2])
+			file := strings.TrimSpace(line[3:])
+			if file == "" {
+				continue
+			}
+
+			// Stage the individual file
+			if _, err := gitIn("add", file); err != nil {
+				continue
+			}
+
+			// Determine commit message based on status code
+			var msg string
+			switch {
+			case code == "??" || code == "A":
+				msg = "vault: add " + file
+			case code == "D":
+				msg = "vault: remove " + file
+			case code == "R":
+				msg = "vault: rename " + file
+			default:
+				msg = "vault: update " + file
+			}
+
+			if _, err := gitIn("commit", "-m", msg); err != nil {
+				continue
+			}
+			committed++
 		}
 
-		// Commit with timestamp
-		msg := fmt.Sprintf("vault: auto-save %s", time.Now().Format("2006-01-02 15:04:05"))
-		if _, err := gitIn("commit", "-m", msg); err != nil {
-			return autoSyncResultMsg{action: "commit", err: fmt.Errorf("git commit: %w", err)}
+		if committed == 0 {
+			return autoSyncResultMsg{action: "commit", output: "nothing to commit"}
 		}
 
 		// Try to push (non-fatal if it fails — no remote configured, etc.)
 		out, pushErr := gitIn("push", "--quiet")
 		if pushErr != nil {
-			// Push failed but commit succeeded
-			return autoSyncResultMsg{action: "push", output: "committed (push failed: " + strings.TrimSpace(out) + ")"}
+			// Push failed but commit(s) succeeded
+			return autoSyncResultMsg{action: "push", output: fmt.Sprintf("committed %d file(s) (push failed: %s)", committed, strings.TrimSpace(out))}
 		}
 
 		return autoSyncResultMsg{action: "push", output: "synced"}
+	}
+}
+
+// gitStatusMsg carries a snapshot of the vault's git status for the status bar.
+type gitStatusMsg struct {
+	changed   int
+	isGitRepo bool
+	isSynced  bool
+}
+
+// CheckStatus returns a tea.Cmd that checks the current git status of the vault
+// and sends a gitStatusMsg with the results.
+func (a *AutoSync) CheckStatus() tea.Cmd {
+	if a.vaultPath == "" {
+		return nil
+	}
+	vaultPath := a.vaultPath
+	return func() tea.Msg {
+		// Check if git repo
+		cmd := exec.Command("git", "-C", vaultPath, "rev-parse", "--is-inside-work-tree")
+		out, err := cmd.Output()
+		if err != nil || strings.TrimSpace(string(out)) != "true" {
+			return gitStatusMsg{isGitRepo: false}
+		}
+		// Count changed files
+		cmd2 := exec.Command("git", "-C", vaultPath, "status", "--porcelain")
+		out2, _ := cmd2.Output()
+		lines := strings.Split(strings.TrimSpace(string(out2)), "\n")
+		changed := 0
+		for _, l := range lines {
+			if strings.TrimSpace(l) != "" {
+				changed++
+			}
+		}
+		return gitStatusMsg{isGitRepo: true, isSynced: changed == 0, changed: changed}
 	}
 }
