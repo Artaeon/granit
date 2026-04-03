@@ -21,8 +21,15 @@ const (
 	wrStepWins                             // 1 — what went well
 	wrStepLessons                          // 2 — what did I learn
 	wrStepNext                             // 3 — top 3 priorities
-	wrStepSummary                          // 4 — compiled review
+	wrStepAI                               // 4 — AI synthesis
+	wrStepSummary                          // 5 — compiled review
 )
+
+// weeklyReviewAIMsg carries the AI-generated weekly review synthesis.
+type weeklyReviewAIMsg struct {
+	synthesis string
+	err       error
+}
 
 // WeeklyReview is a guided weekly review workflow overlay.
 type WeeklyReview struct {
@@ -48,6 +55,10 @@ type WeeklyReview struct {
 
 	// Text editing state
 	inputBuf string
+
+	// AI integration
+	ai          AIConfig
+	aiSynthesis string
 
 	// Save state
 	saved bool
@@ -189,6 +200,57 @@ func (wr *WeeklyReview) gatherWeekTasks(v *vault.Vault) {
 	}
 }
 
+// aiWeeklySynthesisCmd sends the week's data to the LLM for synthesis.
+func (wr *WeeklyReview) aiWeeklySynthesisCmd() tea.Cmd {
+	ai := wr.ai
+	completed := make([]Task, len(wr.completedTasks))
+	copy(completed, wr.completedTasks)
+	incomplete := make([]Task, len(wr.incompleteTasks))
+	copy(incomplete, wr.incompleteTasks)
+	wins := wr.wins
+	lessons := wr.lessons
+	nextWeek := wr.nextWeek
+
+	return func() tea.Msg {
+		var sb strings.Builder
+		sb.WriteString("COMPLETED THIS WEEK:\n")
+		for _, t := range completed {
+			sb.WriteString(fmt.Sprintf("- %s\n", t.Text))
+		}
+		if len(completed) == 0 {
+			sb.WriteString("- (none)\n")
+		}
+		sb.WriteString("\nINCOMPLETE:\n")
+		for _, t := range incomplete {
+			sb.WriteString(fmt.Sprintf("- %s\n", t.Text))
+		}
+		if len(incomplete) == 0 {
+			sb.WriteString("- (none)\n")
+		}
+		if wins != "" {
+			sb.WriteString(fmt.Sprintf("\nWINS:\n%s\n", wins))
+		}
+		if lessons != "" {
+			sb.WriteString(fmt.Sprintf("\nLESSONS:\n%s\n", lessons))
+		}
+		if nextWeek != "" {
+			sb.WriteString(fmt.Sprintf("\nNEXT WEEK PRIORITIES:\n%s\n", nextWeek))
+		}
+
+		systemPrompt := "You are DEEPCOVEN, a direct and honest weekly review coach.\n\n" +
+			"Given the completed tasks, incomplete tasks, wins, lessons, and next-week priorities:\n" +
+			"1. WEEK SCORE: Rate this week 1-10 with 1-line justification\n" +
+			"2. PATTERN: What habit or pattern defined this week (positive or negative)\n" +
+			"3. CARRY-FORWARD: What unfinished work MUST happen next week\n" +
+			"4. GOAL ALIGNMENT: Are the week's activities aligned with stated priorities?\n" +
+			"5. CHALLENGE: One specific challenge for next week\n\n" +
+			"Keep it under 10 lines. Be direct and actionable."
+
+		resp, err := ai.Chat(systemPrompt, sb.String())
+		return weeklyReviewAIMsg{synthesis: strings.TrimSpace(resp), err: err}
+	}
+}
+
 // saveReview writes the review to a markdown file.
 func (wr *WeeklyReview) saveReview() {
 	dir := filepath.Join(wr.vaultRoot, "Reviews")
@@ -250,8 +312,31 @@ func (wr WeeklyReview) Update(msg tea.Msg) (WeeklyReview, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case weeklyReviewAIMsg:
+		if msg.err != nil {
+			wr.aiSynthesis = "AI unavailable: " + msg.err.Error()
+		} else {
+			wr.aiSynthesis = msg.synthesis
+		}
+		return wr, nil
 	case tea.KeyMsg:
 		key := msg.String()
+
+		// AI step key handling
+		if wr.step == wrStepAI {
+			switch key {
+			case "esc", "enter", "tab":
+				wr.step = wrStepSummary
+				wr.prepareStep()
+			case "j", "down":
+				wr.taskCursor++
+			case "k", "up":
+				if wr.taskCursor > 0 {
+					wr.taskCursor--
+				}
+			}
+			return wr, nil
+		}
 
 		// Text input steps
 		if wr.step == wrStepWins || wr.step == wrStepLessons || wr.step == wrStepNext {
@@ -268,7 +353,22 @@ func (wr WeeklyReview) Update(msg tea.Msg) (WeeklyReview, tea.Cmd) {
 				wr.Close()
 				return wr, nil
 			}
+			if wr.step == wrStepAI {
+				wr.step = wrStepSummary
+				wr.prepareStep()
+				return wr, nil
+			}
 			wr.step++
+			// Skip AI step if no provider configured
+			if wr.step == wrStepAI {
+				if wr.ai.Provider == "" || wr.ai.Provider == "local" {
+					wr.step = wrStepSummary
+				} else {
+					wr.aiSynthesis = ""
+					wr.prepareStep()
+					return wr, wr.aiWeeklySynthesisCmd()
+				}
+			}
 			wr.prepareStep()
 			return wr, nil
 		case "shift+tab":
@@ -392,7 +492,7 @@ func (wr WeeklyReview) View() string {
 	b.WriteString("\n")
 
 	// Progress indicator
-	steps := []string{"Tasks", "Wins", "Lessons", "Next Week", "Summary"}
+	steps := []string{"Tasks", "Wins", "Lessons", "Next Week", "AI Synthesis", "Summary"}
 	var stepParts []string
 	for i, s := range steps {
 		if i == int(wr.step) {
@@ -416,6 +516,8 @@ func (wr WeeklyReview) View() string {
 		b.WriteString(wr.viewTextInput("What did I learn?", innerW))
 	case wrStepNext:
 		b.WriteString(wr.viewTextInput("Top 3 priorities for next week?", innerW))
+	case wrStepAI:
+		b.WriteString(wr.viewAISynthesis(innerW))
 	case wrStepSummary:
 		b.WriteString(wr.viewSummary(innerW))
 	}
@@ -539,6 +641,32 @@ func (wr WeeklyReview) viewTextInput(prompt string, w int) string {
 }
 
 // viewSummary renders the compiled review.
+func (wr WeeklyReview) viewAISynthesis(w int) string {
+	var b strings.Builder
+	headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	bodyStyle := lipgloss.NewStyle().Foreground(lavender).Italic(true)
+	subhStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+
+	b.WriteString(headerStyle.Render(IconBotChar+" DEEPCOVEN — Weekly Synthesis") + "\n\n")
+
+	if wr.aiSynthesis == "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(mauve).Render("  Analyzing your week...") + "\n")
+		return b.String()
+	}
+
+	for _, line := range strings.Split(wr.aiSynthesis, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			b.WriteString("\n")
+		} else if strings.HasPrefix(trimmed, "##") {
+			b.WriteString(subhStyle.Render(strings.TrimLeft(trimmed, "# ")) + "\n")
+		} else {
+			b.WriteString(bodyStyle.Render(TruncateDisplay(trimmed, w-4)) + "\n")
+		}
+	}
+	return b.String()
+}
+
 func (wr WeeklyReview) viewSummary(w int) string {
 	var b strings.Builder
 

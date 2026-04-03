@@ -1384,6 +1384,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		return m, m.clearMessageAfter(5 * time.Second)
 
 	case CmdWeeklyReview:
+		m.weeklyReview.ai = m.aiConfig()
 		m.weeklyReview.SetSize(m.width, m.height)
 		m.weeklyReview.Open(m.vault.Root, m.vault)
 
