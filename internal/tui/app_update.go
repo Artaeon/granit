@@ -444,6 +444,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case pmAIInsightMsg:
+		if m.projectMode.IsActive() {
+			var cmd tea.Cmd
+			m.projectMode, cmd = m.projectMode.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case tmAIResultMsg:
 		if m.taskManager.IsActive() {
 			var cmd tea.Cmd

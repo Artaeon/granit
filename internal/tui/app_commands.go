@@ -1253,6 +1253,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.scratchpad.Open(m.vault.Root)
 
 	case CmdProjectMode:
+		m.projectMode.ai = m.aiConfig()
 		m.projectMode.SetSize(m.width, m.height)
 		m.projectMode.Open(m.vault.Root)
 

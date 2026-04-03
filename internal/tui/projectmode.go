@@ -14,6 +14,15 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// AI Messages
+// ---------------------------------------------------------------------------
+
+type pmAIInsightMsg struct {
+	insight string
+	err     error
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -223,6 +232,12 @@ type ProjectMode struct {
 	editDueDate    string
 	editNextAction string
 
+	// AI integration
+	ai          AIConfig
+	aiPending   bool
+	aiInsight   string
+	showInsight bool
+
 	// Consumed-once outputs
 	selectedNote string
 	hasNote      bool
@@ -365,6 +380,63 @@ func (pm *ProjectMode) saveProjects() {
 		return
 	}
 	_ = os.WriteFile(pm.projectsFilePath(), data, 0644)
+}
+
+// ---------------------------------------------------------------------------
+// AI Insights
+// ---------------------------------------------------------------------------
+
+// aiProjectInsight sends the selected project to the LLM for health analysis.
+func (pm *ProjectMode) aiProjectInsight() tea.Cmd {
+	if pm.selectedProj < 0 || pm.selectedProj >= len(pm.projects) {
+		return nil
+	}
+	ai := pm.ai
+	proj := pm.projects[pm.selectedProj]
+
+	return func() tea.Msg {
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("PROJECT: %s\n", proj.Name))
+		sb.WriteString(fmt.Sprintf("Description: %s\n", proj.Description))
+		sb.WriteString(fmt.Sprintf("Category: %s | Status: %s | Priority: %d\n", proj.Category, proj.Status, proj.Priority))
+		if proj.DueDate != "" {
+			sb.WriteString(fmt.Sprintf("Due: %s\n", proj.DueDate))
+		}
+		sb.WriteString(fmt.Sprintf("Tasks: %d done / %d total\n", proj.TasksDone, proj.TasksTotal))
+		if proj.NextAction != "" {
+			sb.WriteString(fmt.Sprintf("Next action: %s\n", proj.NextAction))
+		}
+		sb.WriteString(fmt.Sprintf("Time spent: %d minutes\n", proj.TimeSpent))
+
+		if len(proj.Goals) > 0 {
+			sb.WriteString("\nGOALS:\n")
+			for _, g := range proj.Goals {
+				done := 0
+				for _, ms := range g.Milestones {
+					if ms.Done {
+						done++
+					}
+				}
+				status := "[ ]"
+				if g.Done {
+					status = "[x]"
+				}
+				sb.WriteString(fmt.Sprintf("  %s %s (milestones: %d/%d)\n", status, g.Title, done, len(g.Milestones)))
+			}
+		}
+
+		systemPrompt := "You are DEEPCOVEN, a direct and honest project management advisor.\n\n" +
+			"Analyze this project and provide:\n" +
+			"1. HEALTH STATUS: Green/Yellow/Red with 1-line justification\n" +
+			"2. KEY RISKS: What could derail this project (2-3 bullets)\n" +
+			"3. NEXT ACTIONS: The 3 most impactful things to do right now\n" +
+			"4. BLOCKERS: Anything that appears stalled or blocked\n" +
+			"5. TIMELINE CHECK: Is the project on track for its deadline?\n\n" +
+			"Be specific. Reference actual tasks and milestones. No filler."
+
+		resp, err := ai.Chat(systemPrompt, sb.String())
+		return pmAIInsightMsg{insight: strings.TrimSpace(resp), err: err}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -709,6 +781,15 @@ func (pm ProjectMode) Update(msg tea.Msg) (ProjectMode, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case pmAIInsightMsg:
+		pm.aiPending = false
+		if msg.err != nil {
+			pm.aiInsight = "AI error: " + msg.err.Error()
+		} else {
+			pm.aiInsight = msg.insight
+		}
+		pm.showInsight = true
+		return pm, nil
 	case tea.KeyMsg:
 		switch pm.phase {
 		case pmPhaseList:
@@ -814,6 +895,11 @@ func (pm ProjectMode) updateDashboard(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 
 	switch key {
 	case "esc":
+		if pm.showInsight {
+			pm.showInsight = false
+			pm.aiInsight = ""
+			return pm, nil
+		}
 		pm.phase = pmPhaseList
 		pm.dashSection = 0
 		pm.dashScroll = 0
@@ -882,6 +968,13 @@ func (pm ProjectMode) updateDashboard(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 				idx = len(pm.dashTasks) - 1
 			}
 			pm.toggleTask(idx)
+		}
+	case "I":
+		// AI project insights.
+		if !pm.aiPending && pm.ai.Provider != "local" && pm.ai.Provider != "" {
+			pm.aiPending = true
+			pm.showInsight = false
+			return pm, pm.aiProjectInsight()
 		}
 	}
 	return pm, nil
@@ -1546,6 +1639,28 @@ func (pm ProjectMode) viewDashboard() string {
 		b.WriteString(pm.viewDashStats(width))
 	}
 
+	// AI insight panel
+	if pm.showInsight && pm.aiInsight != "" {
+		b.WriteString("\n")
+		headStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+		bodyStyle := lipgloss.NewStyle().Foreground(lavender).Italic(true)
+		subhStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+		b.WriteString("  " + headStyle.Render(IconBotChar+" AI Project Insights") + "\n\n")
+		for _, line := range strings.Split(pm.aiInsight, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				b.WriteString("\n")
+			} else if strings.HasPrefix(trimmed, "##") {
+				b.WriteString("  " + subhStyle.Render(strings.TrimLeft(trimmed, "# ")) + "\n")
+			} else {
+				b.WriteString("  " + bodyStyle.Render(TruncateDisplay(trimmed, width-10)) + "\n")
+			}
+		}
+		b.WriteString("\n  " + DimStyle.Render("Esc to dismiss") + "\n")
+	} else if pm.aiPending {
+		b.WriteString("\n  " + lipgloss.NewStyle().Foreground(mauve).Render("  AI analyzing project...") + "\n")
+	}
+
 	// Input prompt (if active)
 	if pm.dashInput {
 		b.WriteString("\n")
@@ -2145,7 +2260,7 @@ func (pm ProjectMode) dashHelpBar() string {
 
 	return RenderHelpBar([]struct{ Key, Desc string }{
 		{"o", "open note"}, {"t", "tasks"}, {"x", "toggle task"}, {"N", "new note"},
-		{"g", "goals"}, {"n", "next action"}, {"p", "priority"}, {"Tab", "section"}, {"Esc", "back"},
+		{"g", "goals"}, {"n", "next action"}, {"p", "priority"}, {"I", "AI insights"}, {"Tab", "section"}, {"Esc", "back"},
 	})
 }
 
