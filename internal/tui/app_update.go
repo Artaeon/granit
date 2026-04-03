@@ -475,6 +475,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case morningDevotionalMsg, morningBriefingMsg, morningPlanMsg, morningTickMsg:
+		if m.morningRoutine.IsActive() {
+			var cmd tea.Cmd
+			m.morningRoutine, cmd = m.morningRoutine.Update(msg)
+			if !m.morningRoutine.IsActive() && m.morningRoutine.phase == morningComplete {
+				m.statusbar.SetDayPlanned(true)
+			}
+			return m, cmd
+		}
+		return m, nil
+
 	case autoLinkSuggestMsg:
 		if msg.err == nil && len(msg.suggestions) > 0 {
 			links := make([]string, len(msg.suggestions))
@@ -2102,6 +2113,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.devotional.IsActive() {
 			var cmd tea.Cmd
 			m.devotional, cmd = m.devotional.Update(msg)
+			return m, cmd
+		}
+
+		if m.morningRoutine.IsActive() {
+			var cmd tea.Cmd
+			m.morningRoutine, cmd = m.morningRoutine.Update(msg)
+			if !m.morningRoutine.IsActive() {
+				m.statusbar.SetDayPlanned(true)
+			}
 			return m, cmd
 		}
 

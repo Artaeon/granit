@@ -1112,6 +1112,10 @@ func (m Model) View() string {
 		overlay := m.devotional.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.morningRoutine.IsActive() {
+		overlay := m.morningRoutine.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.dailyJot.IsActive() {
 		overlay := m.dailyJot.View()
 		view = m.overlayCenter(view, overlay)

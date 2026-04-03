@@ -132,9 +132,10 @@ type Model struct {
 	zettelkasten  *ZettelkastenGenerator
 
 	// AI features
-	vaultRefactor  VaultRefactor
-	dailyBriefing  DailyBriefing
-	devotional     Devotional
+	vaultRefactor   VaultRefactor
+	dailyBriefing   DailyBriefing
+	devotional      Devotional
+	morningRoutine  MorningRoutine
 
 	// Encryption & preview
 	encryption      Encryption

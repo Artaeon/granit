@@ -1080,8 +1080,20 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.dailyJot.Open(m.vault.Root, "Jots", noteNames, 14)
 
 	case CmdMorningRoutine:
-		// Morning Warrior Routine: opens daily briefing flow
-		return m.executeCommand(CmdDailyBriefing)
+		m.morningRoutine.SetSize(m.width, m.height)
+		noteContents := make(map[string]string)
+		for _, p := range m.vault.SortedPaths() {
+			if note := m.vault.GetNote(p); note != nil {
+				noteContents[p] = note.Content
+			}
+		}
+		tasks, events, habits, projects, yesterdayTasks := m.gatherPlanMyDayData()
+		goals := m.goalsMode.GetGoals()
+		cmd := m.morningRoutine.Open(m.vault.Root, m.aiConfig(), goals,
+			noteContents, m.vault.SortedPaths(),
+			tasks, events, habits, projects, yesterdayTasks,
+			m.statusbar.dayPlanned)
+		return m, cmd
 
 	case CmdEveningReview:
 		// Consolidated into CmdDailyReview
