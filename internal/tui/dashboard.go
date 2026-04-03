@@ -57,7 +57,8 @@ type Dashboard struct {
 	recentNotes []dashNote
 
 	// Habits
-	todayHabits []dashHabit
+	todayHabits      []dashHabit
+	habitFileContent string // cached during vault walk to avoid re-reading
 
 	// Writing activity (last 7 days)
 	weeklyWords   [7]int
@@ -244,6 +245,12 @@ func (d *Dashboard) scan() {
 		words := len(strings.Fields(content))
 		d.totalWords += words
 
+		// Cache habits file content to avoid a second read in parseHabits.
+		rel, _ := filepath.Rel(d.vaultRoot, path)
+		if rel == filepath.Join("Habits", "habits.md") {
+			d.habitFileContent = content
+		}
+
 		// Infer due date from daily note filename (YYYY-MM-DD.md).
 		noteDateStr := ""
 		base := strings.TrimSuffix(name, ".md")
@@ -391,14 +398,17 @@ func (d *Dashboard) scan() {
 	}
 }
 
-// parseHabits reads the Habits/habits.md file and extracts today's status.
+// parseHabits extracts today's habit status from the cached habits file content.
 func (d *Dashboard) parseHabits(todayStr string) {
-	habitsPath := filepath.Join(d.vaultRoot, "Habits", "habits.md")
-	data, err := os.ReadFile(habitsPath)
-	if err != nil {
-		return
+	content := d.habitFileContent
+	if content == "" {
+		// Fallback: file wasn't encountered during vault walk
+		data, err := os.ReadFile(filepath.Join(d.vaultRoot, "Habits", "habits.md"))
+		if err != nil {
+			return
+		}
+		content = string(data)
 	}
-	content := string(data)
 	lines := strings.Split(content, "\n")
 
 	// Parse habits from the table in ## Habits section
