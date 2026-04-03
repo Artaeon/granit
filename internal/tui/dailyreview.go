@@ -210,7 +210,10 @@ func (dr DailyReview) Update(msg tea.Msg) (DailyReview, tea.Cmd) {
 			case "esc", "enter", "q":
 				dr.phase = reviewSaved
 			case "j", "down":
-				dr.scroll++
+				lines := strings.Split(dr.aiSummary, "\n")
+				if len(lines) > 0 && dr.scroll < len(lines)-1 {
+					dr.scroll++
+				}
 			case "k", "up":
 				if dr.scroll > 0 {
 					dr.scroll--
@@ -569,7 +572,14 @@ func (dr DailyReview) viewAISummary(b *strings.Builder, w int) {
 		return
 	}
 
-	for _, line := range strings.Split(dr.aiSummary, "\n") {
+	lines := strings.Split(dr.aiSummary, "\n")
+	start := dr.scroll
+	if start > len(lines) {
+		start = len(lines)
+	}
+	visible := lines[start:]
+
+	for _, line := range visible {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			b.WriteString("\n")
