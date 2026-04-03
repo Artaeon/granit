@@ -1,11 +1,7 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -774,145 +770,15 @@ type: note
 // ---------------------------------------------------------------------------
 
 func (a *AITemplates) generateContent() tea.Cmd {
-	prompt := a.buildPrompt()
+	systemPrompt := "You are a note-taking assistant. Generate well-structured markdown notes with YAML frontmatter. Be thorough and informative."
+	userPrompt := a.buildPrompt()
 	ai := a.ai
 
 	return func() tea.Msg {
-		switch ai.Provider {
-		case "openai":
-			return doAITemplateOpenAI(ai.APIKey, ai.Model, prompt)
-		case "ollama":
-			url := ai.OllamaEndpoint()
-			model := ai.ModelOrDefault("llama3.2")
-			return doAITemplateOllama(url, model, prompt)
-		case "nous":
-			client := ai.NewNous()
-			resp, err := client.Chat(prompt)
-			return aiTemplateResultMsg{content: resp, err: err}
-		case "nerve":
-			client := ai.NewNerve()
-			resp, err := client.Chat("", prompt, 120*time.Second)
-			return aiTemplateResultMsg{content: resp, err: err}
-		default:
-			// local — should not reach here since local is handled synchronously
-			return aiTemplateResultMsg{content: "", err: fmt.Errorf("local provider handled synchronously")}
-		}
+		resp, err := ai.Chat(systemPrompt, userPrompt)
+		return aiTemplateResultMsg{content: resp, err: err}
 	}
 }
-
-func doAITemplateOllama(url, model, prompt string) aiTemplateResultMsg {
-	type ollamaReq struct {
-		Model  string `json:"model"`
-		Prompt string `json:"prompt"`
-		Stream bool   `json:"stream"`
-	}
-	type ollamaResp struct {
-		Response string `json:"response"`
-	}
-
-	reqBody := ollamaReq{
-		Model:  model,
-		Prompt: prompt,
-		Stream: false,
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return aiTemplateResultMsg{err: err}
-	}
-
-	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Post(url+"/api/generate", "application/json", bytes.NewReader(data))
-	if err != nil {
-		return aiTemplateResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)}
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return aiTemplateResultMsg{err: err}
-	}
-
-	if resp.StatusCode != 200 {
-		return aiTemplateResultMsg{err: fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, string(body))}
-	}
-
-	var ollamaResponse ollamaResp
-	if err := json.Unmarshal(body, &ollamaResponse); err != nil {
-		return aiTemplateResultMsg{err: err}
-	}
-
-	return aiTemplateResultMsg{content: ollamaResponse.Response}
-}
-
-func doAITemplateOpenAI(apiKey, model, prompt string) aiTemplateResultMsg {
-	type msg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	type req struct {
-		Model    string `json:"model"`
-		Messages []msg  `json:"messages"`
-	}
-	type resp struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-
-	reqBody := req{
-		Model: model,
-		Messages: []msg{
-			{Role: "system", Content: "You are a note-taking assistant. Generate well-structured markdown notes with YAML frontmatter. Be thorough and informative."},
-			{Role: "user", Content: prompt},
-		},
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return aiTemplateResultMsg{err: err}
-	}
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	httpReq, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-	if err != nil {
-		return aiTemplateResultMsg{err: err}
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-
-	httpResp, err := client.Do(httpReq)
-	if err != nil {
-		return aiTemplateResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
-	}
-	defer httpResp.Body.Close()
-
-	body, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return aiTemplateResultMsg{err: err}
-	}
-
-	var openaiResp resp
-	if err := json.Unmarshal(body, &openaiResp); err != nil {
-		return aiTemplateResultMsg{err: err}
-	}
-
-	if openaiResp.Error != nil {
-		return aiTemplateResultMsg{err: fmt.Errorf("OpenAI error: %s", openaiResp.Error.Message)}
-	}
-
-	if len(openaiResp.Choices) == 0 {
-		return aiTemplateResultMsg{err: fmt.Errorf("OpenAI returned no choices")}
-	}
-
-	return aiTemplateResultMsg{content: openaiResp.Choices[0].Message.Content}
-}
-
 // ---------------------------------------------------------------------------
 // Title derivation
 // ---------------------------------------------------------------------------
