@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License"></a>
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/Tests-1,971-green?style=for-the-badge" alt="Tests">
-  <img src="https://img.shields.io/badge/AI_Bots-12-purple?style=for-the-badge" alt="AI Bots">
+  <img src="https://img.shields.io/badge/AI_Features-24-purple?style=for-the-badge" alt="AI Features">
   <img src="https://img.shields.io/badge/166k%2B_Lines-Go-orange?style=for-the-badge" alt="Codebase">
 </p>
 
@@ -49,7 +49,7 @@ granit sync                     # git pull + commit + push
 | | |
 |---|---|
 | **166,000+ lines of Go** | 1,971 tests, race-condition free |
-| **12 AI bots** | Ollama (local), OpenAI, Nous, or offline fallback |
+| **24 AI features** | 12 bots + goal coach, project insights, devotional, and more |
 | **35 themes** | Catppuccin, Tokyo Night, Gruvbox, Nord, and 31 more |
 | **7 task views** | Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower |
 | **Full Vim mode** | Text objects, marks, macros, dot repeat, ex commands |
@@ -135,6 +135,8 @@ granit sync                     # git pull + commit + push
   - Goal notes, creation wizard (title → date → category)
 - Project Mode -- 9 categories with dashboards and completion stats
 - Goal tracking with milestones and progress bars
+- **AI Goal Coach** -- holistic analysis of all goals: velocity, stalled detection, priority recommendations (`I` key in Goals)
+- **AI Project Insights** -- DEEPCOVEN-powered project health analysis: risks, blockers, next actions (`I` key in Projects)
 - Project health dashboard -- velocity tracking, traffic-light status indicator
 - Goal burndown charts -- ASCII chart with ideal vs actual milestone pace
 - Cross-project dashboard -- overview of all projects with health indicators
@@ -149,9 +151,10 @@ granit sync                     # git pull + commit + push
 - Recurring tasks auto-create next instance on completion (daily/weekly/monthly)
 - Search Everything (`Ctrl+/`) -- fuzzy search across notes, tasks, goals, habits
 - Smart daily note template -- `{{overdue_tasks}}`, `{{today_tasks}}`, `{{today_habits}}`, `{{today_schedule}}`, `{{active_goals}}`
-- Daily review -- guided 5-phase end-of-day review with rescheduling
-- Weekly review -- structured weekly reflection overlay
-- Command palette (`Ctrl+X`) with 80+ commands
+- Daily review -- guided end-of-day review with rescheduling and **AI-powered summary** (DEEPCOVEN)
+- Weekly review -- structured weekly reflection with **AI-powered synthesis** (week score, patterns, goal alignment)
+- **AI Scripture Devotional** -- personal reflection connecting daily verse to active goals
+- Command palette (`Ctrl+X`) with 145+ commands
 - Scratchpad overlay for quick floating notes (auto-saved)
 - Quick capture with inbox count badge in status bar
 - Journal prompts (100+), clipboard manager (50-entry history)
@@ -177,9 +180,16 @@ granit sync                     # git pull + commit + push
   - Question Bot, Daily Digest
 - Ghost Writer -- inline completions with tag-aware context (Tab to accept)
 - AI Chat, AI Scheduler, Plan My Day, AI Project Planner
+- **AI Goal Coach** -- holistic analysis across all goals with velocity tracking and priority recommendations
+- **AI Project Insights** -- project health, risks, blockers, and next actions
+- **AI Daily Review** -- end-of-day summary: win of the day, patterns, tomorrow's priority
+- **AI Weekly Review** -- week score, carry-forward, goal alignment check
+- **AI Scripture Devotional** -- personal reflection connecting daily verse to active goals
+- Smart Task Triage -- AI-powered daily prioritization with stale task detection
 - Deep Dive Research (Claude Code) for complex reasoning
 - Auto model management -- Ollama model auto-pulled on first launch
 - Providers: **Ollama** (default, local), **Nous**, **OpenAI**, or offline fallback
+- All AI features use the DEEPCOVEN persona -- direct, honest, action-oriented
 
 ### Sync
 
@@ -284,7 +294,7 @@ granit sync
 2. Type `[[` to insert a wikilink with autocomplete
 3. Press `Ctrl+K` to open the task manager (7 views)
 4. Press `Ctrl+/` to search across notes, tasks, goals, habits
-5. Press `Ctrl+X` for the command palette (80+ commands)
+5. Press `Ctrl+X` for the command palette (145+ commands)
 6. Press `Ctrl+R` to use any of the 12 AI bots
 7. Press `Ctrl+,` to customize settings
 
@@ -481,7 +491,7 @@ Granit uses layered JSON configuration. Per-vault settings override global setti
 
 All settings are editable from the built-in settings panel (`Ctrl+,`).
 
-Key options: `theme` (40 themes), `layout` (8 layouts), `vim_mode`, `auto_save`, `ai_provider` (`local`/`ollama`/`openai`/`nous`), `ghost_writer`, `auto_tag`, `git_auto_sync`, `spell_check`, `icon_theme` (`unicode`/`nerd`/`emoji`/`ascii`), `pomodoro_goal`, `nextcloud_auto_sync`.
+Key options: `theme` (40 themes), `layout` (13 layouts), `vim_mode`, `auto_save`, `ai_provider` (`local`/`ollama`/`openai`/`nous`), `ghost_writer`, `auto_tag`, `git_auto_sync`, `spell_check`, `icon_theme` (`unicode`/`nerd`/`emoji`/`ascii`), `pomodoro_goal`, `nextcloud_auto_sync`.
 
 Environment variables: `GRANIT_VAULT` (default vault path), `EDITOR` (external editor).
 

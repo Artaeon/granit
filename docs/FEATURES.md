@@ -457,7 +457,7 @@ Fetch a URL, convert the web page to Markdown, and save it as a new note in the 
 
 ## AI-Powered Features
 
-Granit includes **20+ AI features** that work with three providers:
+Granit includes **24+ AI features** that work with three providers:
 
 | Provider | Description | Setup |
 |----------|-------------|-------|
@@ -890,6 +890,41 @@ AI-optimized daily planning. Gathers tasks, calendar events, habits, projects, a
 
 - **Access:** Command palette > "Plan My Day"
 - **Example:** AI analyzes your 8 tasks, 2 meetings, and 3 habits, then generates: "9:00 Deep Work — Write Report (highest priority), 10:30 Meeting — Team Standup, 11:00 Review — PR #42..."
+
+### AI Goal Coach
+
+Holistic AI analysis of all active goals. DEEPCOVEN evaluates velocity, identifies stalled goals, detects competing priorities, and recommends a priority order with honest feedback.
+
+- **Access:** Goals overlay > press `I`
+- **Example:** "Goal 'Learn Rust' is stalled (0 milestones in 14 days). Pause it or set a specific deadline. Focus on 'Ship v2.0' first — it's 3 days from deadline at 40%."
+
+### AI Project Insights
+
+DEEPCOVEN-powered project health analysis. Evaluates status (green/yellow/red), identifies risks and blockers, suggests next actions, and checks timeline feasibility.
+
+- **Access:** Projects > Dashboard > press `I`
+- **Example:** "HEALTH: Yellow — 60% tasks done but deadline is in 5 days. RISK: No progress on Phase 3 milestones. NEXT: Close the 2 blocked PRs before starting new features."
+
+### AI Daily Review Summary
+
+After the reflection phase of the daily review, DEEPCOVEN generates a personalized end-of-day summary: win of the day, recurring patterns, tomorrow's #1 priority, and an honest note.
+
+- **Access:** Automatic — appears after the reflection step in Daily Review (`Alt+E`). Skips if no AI configured.
+- **Example:** "WIN: Shipped the parser refactor. PATTERN: You keep rescheduling documentation tasks. TOMORROW: Write the API docs before anything else."
+
+### AI Weekly Review Synthesis
+
+After entering next-week priorities, DEEPCOVEN generates a weekly synthesis: week score (1-10), patterns, carry-forward items, goal alignment check, and a challenge for next week.
+
+- **Access:** Automatic — appears after priorities step in Weekly Review. Skips if no AI configured.
+- **Example:** "SCORE: 7/10 — Strong coding week but health goals neglected. PATTERN: Deep work sessions are productive; meetings fragment afternoons."
+
+### AI Scripture Devotional
+
+Personal AI reflection connecting the daily scripture verse to the user's active goals and current focus. Includes verse insight, today's application, prayer focus, and a concrete action item.
+
+- **Access:** Command palette > "AI Scripture Devotional"
+- **Example:** Given Proverbs 16:3 and goals "Launch product" and "Exercise daily", generates a reflection about committing plans to the Lord with specific connections to each goal.
 
 ### Clock / Time Tracking (CLI)
 

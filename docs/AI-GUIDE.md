@@ -350,6 +350,11 @@ Generates a weekly review by analyzing recently modified notes via Claude Code:
 | AI Smart Scheduler | Command palette | All | Optimal schedule generation |
 | Vault Refactor | Command palette | All | AI reorganization suggestions |
 | Daily Briefing | Command palette | All | Morning summary |
+| AI Goal Coach | Goals > `I` key | All | Holistic goal analysis and priority recommendations |
+| AI Project Insights | Projects > Dashboard > `I` key | All | Project health, risks, and next actions |
+| AI Daily Review | Daily Review (Alt+E) | All | End-of-day summary after reflection |
+| AI Weekly Review | Weekly Review | All | Week score, patterns, goal alignment |
+| AI Scripture Devotional | Command palette | All | Personal verse reflection tied to goals |
 | Quiz Mode | Command palette | All | Auto-generated quizzes |
 | Flashcards | Command palette | All | Spaced repetition study |
 | Learning Dashboard | Command palette | All | Study progress tracking |
