@@ -544,7 +544,7 @@ func TestSyncWriteScheduleMarker(t *testing.T) {
 // blocks are correctly reconstructed.
 func TestSyncParsePlannerFile(t *testing.T) {
 	dir := t.TempDir()
-	plannerDir := filepath.Join(dir, "Planner")
+	plannerDir := filepath.Join(dir, "Daily Planner")
 	if err := os.MkdirAll(plannerDir, 0755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
