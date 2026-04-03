@@ -444,6 +444,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case dailyReviewAIMsg:
+		if m.dailyReview.IsActive() {
+			m.dailyReview, _ = m.dailyReview.Update(msg)
+			return m, nil
+		}
+		return m, nil
+
 	case pmAIInsightMsg:
 		if m.projectMode.IsActive() {
 			var cmd tea.Cmd

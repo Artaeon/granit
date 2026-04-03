@@ -17,12 +17,19 @@ import (
 type reviewPhase int
 
 const (
-	reviewCompleted reviewPhase = iota // show completed tasks
-	reviewOverdue                      // reschedule overdue tasks
-	reviewPlan                         // plan tomorrow
-	reviewReflect                      // free-text reflection
-	reviewSaved                        // confirmation
+	reviewCompleted  reviewPhase = iota // show completed tasks
+	reviewOverdue                       // reschedule overdue tasks
+	reviewPlan                          // plan tomorrow
+	reviewReflect                       // free-text reflection
+	reviewAISummary                     // AI-generated day summary
+	reviewSaved                         // confirmation
 )
+
+// dailyReviewAIMsg carries the AI-generated daily review summary.
+type dailyReviewAIMsg struct {
+	summary string
+	err     error
+}
 
 // DailyReview is a guided end-of-day review overlay.
 type DailyReview struct {
@@ -46,6 +53,10 @@ type DailyReview struct {
 
 	// Phase 4: reflection
 	reflectBuf string
+
+	// AI integration
+	ai        AIConfig
+	aiSummary string
 
 	// For writing changes back
 	vault       *vault.Vault
@@ -178,6 +189,11 @@ func (dr DailyReview) Update(msg tea.Msg) (DailyReview, tea.Cmd) {
 				dr.phase = reviewPlan
 			case "enter":
 				dr.saveReview()
+				if dr.ai.Provider != "" && dr.ai.Provider != "local" {
+					dr.phase = reviewAISummary
+					dr.aiSummary = ""
+					return dr, dr.aiDailySummaryCmd()
+				}
 				dr.phase = reviewSaved
 			case "backspace":
 				if len(dr.reflectBuf) > 0 {
@@ -189,9 +205,29 @@ func (dr DailyReview) Update(msg tea.Msg) (DailyReview, tea.Cmd) {
 				}
 			}
 
+		case reviewAISummary:
+			switch key {
+			case "esc", "enter", "q":
+				dr.phase = reviewSaved
+			case "j", "down":
+				dr.scroll++
+			case "k", "up":
+				if dr.scroll > 0 {
+					dr.scroll--
+				}
+			}
+
 		case reviewSaved:
 			dr.active = false
 		}
+
+	case dailyReviewAIMsg:
+		if msg.err != nil {
+			dr.aiSummary = "AI unavailable: " + msg.err.Error()
+		} else {
+			dr.aiSummary = msg.summary
+		}
+		dr.scroll = 0
 	}
 	return dr, nil
 }
@@ -236,6 +272,60 @@ func (dr *DailyReview) applyReschedules() {
 		if err := os.WriteFile(absPath, []byte(strings.Join(lines, "\n")), 0644); err == nil {
 			dr.fileChanged = true
 		}
+	}
+}
+
+// aiDailySummaryCmd sends the day's data to the LLM for a summary.
+func (dr *DailyReview) aiDailySummaryCmd() tea.Cmd {
+	ai := dr.ai
+	completed := make([]Task, len(dr.completed))
+	copy(completed, dr.completed)
+	overdue := make([]Task, len(dr.overdue))
+	copy(overdue, dr.overdue)
+	reflection := dr.reflectBuf
+	rescheduleMap := make(map[int]string)
+	for k, v := range dr.rescheduleMap {
+		rescheduleMap[k] = v
+	}
+
+	return func() tea.Msg {
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("Date: %s\n\n", time.Now().Format("2006-01-02")))
+
+		sb.WriteString("COMPLETED TODAY:\n")
+		for _, t := range completed {
+			sb.WriteString(fmt.Sprintf("- %s\n", t.Text))
+		}
+		if len(completed) == 0 {
+			sb.WriteString("- (none)\n")
+		}
+
+		sb.WriteString("\nOVERDUE/RESCHEDULED:\n")
+		for i, t := range overdue {
+			action := rescheduleMap[i]
+			if action == "" {
+				action = "no action"
+			}
+			sb.WriteString(fmt.Sprintf("- %s [%s]\n", t.Text, action))
+		}
+		if len(overdue) == 0 {
+			sb.WriteString("- (none)\n")
+		}
+
+		if reflection != "" {
+			sb.WriteString(fmt.Sprintf("\nUSER REFLECTION:\n%s\n", reflection))
+		}
+
+		systemPrompt := "You are DEEPCOVEN, a direct and honest end-of-day coach.\n\n" +
+			"Based on what was completed, rescheduled, and the user's reflection:\n" +
+			"1. WIN OF THE DAY: The single most impactful thing accomplished\n" +
+			"2. PATTERN: Any recurring theme (momentum, procrastination, overcommitment)\n" +
+			"3. TOMORROW'S PRIORITY: The #1 thing to tackle first tomorrow\n" +
+			"4. HONEST NOTE: 1 sentence of encouragement or reality check\n\n" +
+			"Keep it under 8 lines total. Be direct."
+
+		resp, err := ai.Chat(systemPrompt, sb.String())
+		return dailyReviewAIMsg{summary: strings.TrimSpace(resp), err: err}
 	}
 }
 
@@ -300,7 +390,7 @@ func (dr DailyReview) View() string {
 	// Title
 	icon := lipgloss.NewStyle().Foreground(blue).Render(IconOutlineChar)
 	title := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" Daily Review")
-	phaseNames := []string{"Completed", "Overdue", "Plan", "Reflect", "Saved"}
+	phaseNames := []string{"Completed", "Overdue", "Plan", "Reflect", "AI Summary", "Saved"}
 	phaseLabel := DimStyle.Render("  [" + phaseNames[dr.phase] + "]")
 	b.WriteString("  " + icon + title + phaseLabel)
 	b.WriteString("\n")
@@ -316,6 +406,8 @@ func (dr DailyReview) View() string {
 		dr.viewPlan(&b, innerW)
 	case reviewReflect:
 		dr.viewReflect(&b, innerW)
+	case reviewAISummary:
+		dr.viewAISummary(&b, innerW)
 	case reviewSaved:
 		dr.viewSaved(&b, innerW)
 	}
@@ -341,6 +433,10 @@ func (dr DailyReview) View() string {
 	case reviewReflect:
 		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
 			{"Enter", "save"}, {"Esc", "back"},
+		}))
+	case reviewAISummary:
+		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
+			{"Enter", "done"}, {"j/k", "scroll"},
 		}))
 	case reviewSaved:
 		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
@@ -459,6 +555,30 @@ func (dr DailyReview) viewReflect(b *strings.Builder, w int) {
 	inputStyle := lipgloss.NewStyle().Foreground(text).Background(surface0).Padding(0, 1)
 	b.WriteString("  " + promptStyle.Render("> ") + inputStyle.Render(dr.reflectBuf+"\u2588"))
 	b.WriteString("\n")
+}
+
+func (dr DailyReview) viewAISummary(b *strings.Builder, w int) {
+	headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	bodyStyle := lipgloss.NewStyle().Foreground(lavender).Italic(true)
+	subhStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+
+	b.WriteString("  " + headerStyle.Render(IconBotChar+" DEEPCOVEN — Day Summary") + "\n\n")
+
+	if dr.aiSummary == "" {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Render("Analyzing your day...") + "\n")
+		return
+	}
+
+	for _, line := range strings.Split(dr.aiSummary, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			b.WriteString("\n")
+		} else if strings.HasPrefix(trimmed, "##") {
+			b.WriteString("  " + subhStyle.Render(strings.TrimLeft(trimmed, "# ")) + "\n")
+		} else {
+			b.WriteString("  " + bodyStyle.Render(TruncateDisplay(trimmed, w-6)) + "\n")
+		}
+	}
 }
 
 func (dr DailyReview) viewSaved(b *strings.Builder, _ int) {

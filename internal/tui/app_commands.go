@@ -1053,6 +1053,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.standupGen.Open(m.vault.Root)
 
 	case CmdDailyReview:
+		m.dailyReview.ai = m.aiConfig()
 		m.dailyReview.SetSize(m.width, m.height)
 		m.dailyReview.Open(m.vault.Root, m.vault)
 
