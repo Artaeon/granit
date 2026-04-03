@@ -1,11 +1,8 @@
 package tui
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -247,146 +244,6 @@ Rules:
 // ---------------------------------------------------------------------------
 // AI HTTP calls
 // ---------------------------------------------------------------------------
-
-func aiPlannerOllama(url, model, prompt string) tea.Cmd {
-	return func() tea.Msg {
-		type msg struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		}
-		type req struct {
-			Model    string `json:"model"`
-			Messages []msg  `json:"messages"`
-			Stream   bool   `json:"stream"`
-		}
-
-		reqBody := req{
-			Model: model,
-			Messages: []msg{
-				{Role: "system", Content: "You are a project planning assistant. Always respond in the exact format requested."},
-				{Role: "user", Content: prompt},
-			},
-			Stream: false,
-		}
-
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return aiPlannerResultMsg{err: err}
-		}
-		client := &http.Client{Timeout: 120 * time.Second}
-		resp, err := client.Post(url+"/api/chat", "application/json", bytes.NewReader(data))
-		if err != nil {
-			return aiPlannerResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)}
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return aiPlannerResultMsg{err: fmt.Errorf("failed to read response: %w", err)}
-		}
-
-		var chatResp struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-			Error string `json:"error,omitempty"`
-		}
-		if err := json.Unmarshal(body, &chatResp); err != nil {
-			return aiPlannerResultMsg{err: fmt.Errorf("failed to decode Ollama response: %w", err)}
-		}
-		if chatResp.Error != "" {
-			return aiPlannerResultMsg{err: fmt.Errorf("Ollama: %s", chatResp.Error)}
-		}
-		return aiPlannerResultMsg{response: chatResp.Message.Content}
-	}
-}
-
-func aiPlannerOpenAI(apiKey, model, prompt string) tea.Cmd {
-	return func() tea.Msg {
-		type msg struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		}
-		type req struct {
-			Model    string `json:"model"`
-			Messages []msg  `json:"messages"`
-		}
-
-		reqBody := req{
-			Model: model,
-			Messages: []msg{
-				{Role: "system", Content: "You are a project planning assistant. Always respond in the exact format requested."},
-				{Role: "user", Content: prompt},
-			},
-		}
-
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return aiPlannerResultMsg{err: err}
-		}
-		httpReq, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-		if err != nil {
-			return aiPlannerResultMsg{err: err}
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-
-		client := &http.Client{Timeout: 60 * time.Second}
-		resp, err := client.Do(httpReq)
-		if err != nil {
-			return aiPlannerResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return aiPlannerResultMsg{err: fmt.Errorf("failed to read response: %w", err)}
-		}
-
-		var chatResp struct {
-			Choices []struct {
-				Message struct {
-					Content string `json:"content"`
-				} `json:"message"`
-			} `json:"choices"`
-			Error *struct {
-				Message string `json:"message"`
-			} `json:"error"`
-		}
-		if err := json.Unmarshal(body, &chatResp); err != nil {
-			return aiPlannerResultMsg{err: fmt.Errorf("failed to decode OpenAI response: %w", err)}
-		}
-		if chatResp.Error != nil {
-			return aiPlannerResultMsg{err: fmt.Errorf("OpenAI: %s", chatResp.Error.Message)}
-		}
-		if len(chatResp.Choices) == 0 {
-			return aiPlannerResultMsg{err: fmt.Errorf("OpenAI returned no response")}
-		}
-		return aiPlannerResultMsg{response: chatResp.Choices[0].Message.Content}
-	}
-}
-
-func aiPlannerNous(nousURL, nousAPIKey, prompt string) tea.Cmd {
-	return func() tea.Msg {
-		client := NewNousClient(nousURL, nousAPIKey)
-		resp, err := client.Chat(prompt)
-		if err != nil {
-			return aiPlannerResultMsg{err: err}
-		}
-		return aiPlannerResultMsg{response: resp}
-	}
-}
-
-func aiPlannerNerve(binary, model, provider, prompt string) tea.Cmd {
-	return func() tea.Msg {
-		client := NewNerveClient(binary, model, provider)
-		resp, err := client.Chat("", prompt, 120*time.Second)
-		if err != nil {
-			return aiPlannerResultMsg{err: err}
-		}
-		return aiPlannerResultMsg{response: resp}
-	}
-}
 
 func aiPlannerClaude(prompt string) tea.Cmd {
 	return func() tea.Msg {
@@ -794,46 +651,20 @@ func (ap AIProjectPlanner) startGeneration() (AIProjectPlanner, tea.Cmd) {
 
 	prompt := ap.buildPrompt()
 
-	switch ap.ai.Provider {
-	case "openai":
-		if ap.ai.APIKey != "" {
-			model := ap.ai.ModelOrDefault("gpt-4o-mini")
-			return ap, tea.Batch(
-				aiPlannerOpenAI(ap.ai.APIKey, model, prompt),
-				aiPlannerTickCmd(),
-			)
-		}
-		// Fall through to ollama
-		fallthrough
-	case "ollama":
-		model := ap.ai.ModelOrDefault("qwen2.5:0.5b")
-		return ap, tea.Batch(
-			aiPlannerOllama(ap.ai.OllamaEndpoint(), model, prompt),
-			aiPlannerTickCmd(),
-		)
-	case "nous":
-		return ap, tea.Batch(
-			aiPlannerNous(ap.ai.NousURL, ap.ai.NousAPIKey, prompt),
-			aiPlannerTickCmd(),
-		)
-	case "nerve":
-		return ap, tea.Batch(
-			aiPlannerNerve(ap.ai.NerveBinary, ap.ai.NerveModel, ap.ai.NerveProvider, prompt),
-			aiPlannerTickCmd(),
-		)
-	case "claude":
+	if ap.ai.Provider == "claude" {
 		return ap, tea.Batch(
 			aiPlannerClaude(prompt),
 			aiPlannerTickCmd(),
 		)
-	default:
-		// local/fallback — try ollama
-		model := ap.ai.ModelOrDefault("qwen2.5:0.5b")
-		return ap, tea.Batch(
-			aiPlannerOllama(ap.ai.OllamaEndpoint(), model, prompt),
-			aiPlannerTickCmd(),
-		)
 	}
+
+	systemPrompt := "You are a project planning assistant. Always respond in the exact format requested."
+	ai := ap.ai
+	cmd := func() tea.Msg {
+		resp, err := ai.Chat(systemPrompt, prompt)
+		return aiPlannerResultMsg{response: resp, err: err}
+	}
+	return ap, tea.Batch(cmd, aiPlannerTickCmd())
 }
 
 func (ap AIProjectPlanner) updateReview(msg tea.KeyMsg) (AIProjectPlanner, tea.Cmd) {
