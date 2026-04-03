@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -27,7 +28,17 @@ const (
 )
 
 // ollamaState caches the connection state to avoid repeated checks.
-var ollamaState = ollamaUnknown
+var (
+	ollamaState = ollamaUnknown
+	ollamaMu    sync.RWMutex
+)
+
+// setOllamaState updates the cached state under the write lock.
+func setOllamaState(s ollamaStatus) {
+	ollamaMu.Lock()
+	ollamaState = s
+	ollamaMu.Unlock()
+}
 
 // OllamaCheck tests if Ollama is running and the configured model is available.
 // Returns a user-friendly status message and whether AI is ready to use.
@@ -43,14 +54,14 @@ func OllamaCheck(baseURL, model string) (string, bool) {
 	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get(baseURL + "/api/tags")
 	if err != nil {
-		ollamaState = ollamaNoServer
+		setOllamaState(ollamaNoServer)
 		return "Ollama not running. Install: curl -fsSL https://ollama.ai/install.sh | sh", false
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		ollamaState = ollamaNoServer
+		setOllamaState(ollamaNoServer)
 		return "Ollama not responding", false
 	}
 
@@ -61,7 +72,7 @@ func OllamaCheck(baseURL, model string) (string, bool) {
 		} `json:"models"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		ollamaState = ollamaNoServer
+		setOllamaState(ollamaNoServer)
 		return "Ollama response error", false
 	}
 
@@ -69,12 +80,12 @@ func OllamaCheck(baseURL, model string) (string, bool) {
 	for _, m := range result.Models {
 		// Match "qwen2.5:0.5b" or "qwen2.5:0.5b-instruct" etc.
 		if m.Name == model || strings.HasPrefix(m.Name, model) {
-			ollamaState = ollamaReady
+			setOllamaState(ollamaReady)
 			return fmt.Sprintf("Ready (%s)", model), true
 		}
 	}
 
-	ollamaState = ollamaNoModel
+	setOllamaState(ollamaNoModel)
 	return fmt.Sprintf("Model %s not found. Run: ollama pull %s", model, model), false
 }
 
@@ -103,12 +114,14 @@ func OllamaPullModel(baseURL, model string) error {
 		return fmt.Errorf("pull returned status %d", resp.StatusCode)
 	}
 
-	ollamaState = ollamaReady
+	setOllamaState(ollamaReady)
 	return nil
 }
 
 // OllamaIsReady returns true if the last check found Ollama ready.
 func OllamaIsReady() bool {
+	ollamaMu.RLock()
+	defer ollamaMu.RUnlock()
 	return ollamaState == ollamaReady
 }
 
@@ -120,12 +133,15 @@ func OllamaEnsureModel(baseURL, model string) string {
 		return msg
 	}
 
-	if ollamaState == ollamaNoServer {
+	ollamaMu.RLock()
+	noServer := ollamaState == ollamaNoServer
+	ollamaMu.RUnlock()
+	if noServer {
 		return msg // can't auto-pull without server
 	}
 
 	// Server running but model missing — try to pull
-	ollamaState = ollamaPulling
+	setOllamaState(ollamaPulling)
 	if err := OllamaPullModel(baseURL, model); err != nil {
 		return fmt.Sprintf("Auto-pull failed: %v", err)
 	}
