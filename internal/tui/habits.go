@@ -93,8 +93,72 @@ type HabitTracker struct {
 	// Delete confirmation
 	confirmDelete bool
 
+	// AI Coach
+	ai        AIConfig
+	aiPending bool
+	coachText string
+	showCoach bool
+
 	// Vault reference for syncing habit completions to tasks
 	vault *vault.Vault
+}
+
+// habitAICoachMsg carries a holistic AI analysis of habit patterns.
+type habitAICoachMsg struct {
+	analysis string
+	err      error
+}
+
+// aiHabitCoach sends habit data to the LLM for pattern analysis.
+func (ht *HabitTracker) aiHabitCoach() tea.Cmd {
+	ai := ht.ai
+	habits := make([]habitEntry, len(ht.habits))
+	copy(habits, ht.habits)
+	logs := make([]habitLog, len(ht.logs))
+	for i, l := range ht.logs {
+		logs[i] = habitLog{Date: l.Date, Completed: make([]string, len(l.Completed))}
+		copy(logs[i].Completed, l.Completed)
+	}
+
+	return func() tea.Msg {
+		now := time.Now()
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("Today: %s (%s)\n\n", now.Format("2006-01-02"), now.Weekday()))
+
+		sb.WriteString("HABITS:\n")
+		for _, h := range habits {
+			sb.WriteString(fmt.Sprintf("- %s (streak: %d, created: %s)\n", h.Name, h.Streak, h.Created))
+		}
+
+		sb.WriteString("\nRECENT LOG (last 14 days):\n")
+		cutoff := now.AddDate(0, 0, -14).Format("2006-01-02")
+		for _, log := range logs {
+			if log.Date >= cutoff {
+				completed := "(none)"
+				if len(log.Completed) > 0 {
+					completed = strings.Join(log.Completed, ", ")
+				}
+				sb.WriteString(fmt.Sprintf("  %s: %s\n", log.Date, completed))
+			}
+		}
+
+		systemPrompt := "You are DEEPCOVEN, a direct and honest habit coach.\n\n" +
+			"Analyze the user's habit tracking data. Look for:\n" +
+			"1. Consistency patterns — which habits stick, which don't\n" +
+			"2. Day-of-week trends — when do they fall off?\n" +
+			"3. Streak health — are streaks growing or resetting?\n" +
+			"4. Missing habits — any obvious gaps in their routine?\n" +
+			"5. Quick wins to build momentum\n\n" +
+			"Be brutally honest. No filler. Format as:\n" +
+			"## Habit Health Report\n" +
+			"### Strong Habits\n- {habit}: {why it's working}\n" +
+			"### Struggling Habits\n- {habit}: {what's wrong and what to do}\n" +
+			"### Patterns\n{1-2 observations about when/how they complete habits}\n" +
+			"### Coach's Note\n{2-3 sentences of honest, actionable advice}"
+
+		resp, err := ai.Chat(systemPrompt, sb.String())
+		return habitAICoachMsg{analysis: strings.TrimSpace(resp), err: err}
+	}
 }
 
 // NewHabitTracker creates a new HabitTracker overlay.
@@ -675,12 +739,30 @@ func (ht HabitTracker) completedGoalCount() int {
 
 // ── Update ───────────────────────────────────────────────────────
 
-// Update handles key messages for the habit tracker overlay.
-func (ht HabitTracker) Update(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
+// Update handles messages for the habit tracker overlay.
+func (ht HabitTracker) Update(msg tea.Msg) (HabitTracker, tea.Cmd) {
 	if !ht.active {
 		return ht, nil
 	}
 
+	switch msg := msg.(type) {
+	case habitAICoachMsg:
+		ht.aiPending = false
+		if msg.err != nil {
+			ht.coachText = "AI error: " + msg.err.Error()
+			ht.showCoach = true
+		} else {
+			ht.coachText = msg.analysis
+			ht.showCoach = true
+		}
+		return ht, nil
+	case tea.KeyMsg:
+		return ht.updateKeys(msg)
+	}
+	return ht, nil
+}
+
+func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 	key := msg.String()
 
 	// Handle input mode first
@@ -702,13 +784,23 @@ func (ht HabitTracker) Update(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 
 	switch key {
 	case "esc":
-		if ht.goalExpanded >= 0 && ht.tab == 1 {
+		if ht.showCoach {
+			ht.showCoach = false
+			ht.coachText = ""
+		} else if ht.goalExpanded >= 0 && ht.tab == 1 {
 			ht.goalExpanded = -1
 			ht.milestoneCur = 0
 		} else {
 			ht.active = false
 		}
 		return ht, nil
+
+	case "I":
+		if !ht.aiPending && ht.ai.Provider != "local" && ht.ai.Provider != "" && len(ht.habits) > 0 {
+			ht.aiPending = true
+			ht.showCoach = false
+			return ht, ht.aiHabitCoach()
+		}
 
 	case "tab":
 		ht.tab = (ht.tab + 1) % 3
@@ -984,13 +1076,17 @@ func (ht HabitTracker) View() string {
 	b.WriteString("\n\n")
 
 	// Content based on active tab
-	switch ht.tab {
-	case 0:
-		b.WriteString(ht.viewHabits(innerW))
-	case 1:
-		b.WriteString(ht.viewGoals(innerW))
-	case 2:
-		b.WriteString(ht.viewStats(innerW))
+	if ht.showCoach {
+		ht.renderCoach(&b, innerW)
+	} else {
+		switch ht.tab {
+		case 0:
+			b.WriteString(ht.viewHabits(innerW))
+		case 1:
+			b.WriteString(ht.viewGoals(innerW))
+		case 2:
+			b.WriteString(ht.viewStats(innerW))
+		}
 	}
 
 	// Footer
@@ -1304,7 +1400,32 @@ func (ht HabitTracker) renderHelp() string {
 			{"Tab/1-3", "switch"}, {"Esc", "close"},
 		}
 	}
+	pairs = append(pairs, struct{ Key, Desc string }{"I", "AI coach"})
 	return RenderHelpBar(pairs)
+}
+
+func (ht HabitTracker) renderCoach(b *strings.Builder, w int) {
+	headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	bodyStyle := lipgloss.NewStyle().Foreground(lavender).Italic(true)
+	headingStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+
+	b.WriteString(headerStyle.Render("  "+IconBotChar+" AI Habit Coach") + "\n\n")
+
+	for _, line := range strings.Split(ht.coachText, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			b.WriteString("\n")
+			continue
+		}
+		if strings.HasPrefix(trimmed, "##") {
+			heading := strings.TrimLeft(trimmed, "# ")
+			b.WriteString("  " + headingStyle.Render(heading) + "\n")
+		} else {
+			b.WriteString("  " + bodyStyle.Render(TruncateDisplay(trimmed, w-6)) + "\n")
+		}
+	}
+	b.WriteString("\n")
+	b.WriteString("  " + DimStyle.Render("Esc to dismiss"))
 }
 
 // habitProgressBar renders a progress bar with block characters.

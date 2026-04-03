@@ -1045,6 +1045,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdHabitTracker:
 		if m.config.CorePluginEnabled("habit_tracker") {
+			m.habitTracker.ai = m.aiConfig()
 			m.habitTracker.SetSize(m.width, m.height)
 			m.habitTracker.vault = m.vault
 			m.habitTracker.Open(m.vault.Root)

@@ -444,6 +444,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case habitAICoachMsg:
+		if m.habitTracker.IsActive() {
+			var cmd tea.Cmd
+			m.habitTracker, cmd = m.habitTracker.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case devotionalResultMsg, devotionalTickMsg:
 		if m.devotional.IsActive() {
 			var cmd tea.Cmd
