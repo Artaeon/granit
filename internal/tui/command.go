@@ -77,7 +77,7 @@ const (
 	CmdKanban
 	CmdZettelNote
 	CmdVaultRefactor
-	CmdDailyBriefing
+	CmdDailyBriefing // canonical: Morning Routine (Alt+M) dispatches here
 	CmdEncryptNote
 	CmdGitHistory
 	CmdWorkspaces
