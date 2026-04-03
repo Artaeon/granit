@@ -1,10 +1,7 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -270,93 +267,6 @@ func (wc WritingCoach) buildPrompt() string {
 	sb.WriteString("\n---\n")
 
 	return sb.String()
-}
-
-func callWritingCoachOllama(url, model, prompt string) tea.Cmd {
-	return func() tea.Msg {
-		reqBody := ollamaRequest{
-			Model:  model,
-			Prompt: prompt,
-			Stream: false,
-		}
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return writingCoachResultMsg{err: err}
-		}
-
-		client := &http.Client{Timeout: 120 * time.Second}
-		resp, err := client.Post(url+"/api/generate", "application/json", bytes.NewReader(data))
-		if err != nil {
-			return writingCoachResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)}
-		}
-		defer resp.Body.Close()
-
-		var buf bytes.Buffer
-		if _, err := buf.ReadFrom(resp.Body); err != nil {
-			return writingCoachResultMsg{err: err}
-		}
-
-		if resp.StatusCode != 200 {
-			return writingCoachResultMsg{err: fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, buf.String())}
-		}
-
-		var olResp ollamaResponse
-		if err := json.Unmarshal(buf.Bytes(), &olResp); err != nil {
-			return writingCoachResultMsg{err: err}
-		}
-
-		return writingCoachResultMsg{response: olResp.Response}
-	}
-}
-
-func callWritingCoachOpenAI(apiKey, model, prompt string) tea.Cmd {
-	return func() tea.Msg {
-		reqBody := openaiRequest{
-			Model: model,
-			Messages: []openaiMessage{
-				{Role: "system", Content: "You are a writing coach. Be specific and actionable in your feedback."},
-				{Role: "user", Content: prompt},
-			},
-		}
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return writingCoachResultMsg{err: err}
-		}
-
-		client := &http.Client{Timeout: 60 * time.Second}
-		req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-		if err != nil {
-			return writingCoachResultMsg{err: err}
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return writingCoachResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
-		}
-		defer resp.Body.Close()
-
-		var buf bytes.Buffer
-		if _, err := buf.ReadFrom(resp.Body); err != nil {
-			return writingCoachResultMsg{err: err}
-		}
-
-		var oaiResp openaiResponse
-		if err := json.Unmarshal(buf.Bytes(), &oaiResp); err != nil {
-			return writingCoachResultMsg{err: err}
-		}
-
-		if oaiResp.Error != nil {
-			return writingCoachResultMsg{err: fmt.Errorf("OpenAI error: %s", oaiResp.Error.Message)}
-		}
-
-		if len(oaiResp.Choices) == 0 {
-			return writingCoachResultMsg{err: fmt.Errorf("OpenAI returned no choices")}
-		}
-
-		return writingCoachResultMsg{response: oaiResp.Choices[0].Message.Content}
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -854,7 +764,7 @@ func (wc WritingCoach) visibleItems() int {
 // ---------------------------------------------------------------------------
 
 func (wc WritingCoach) startAnalysis() (WritingCoach, tea.Cmd) {
-	if wc.ai.Provider == "ollama" || wc.ai.Provider == "openai" {
+	if wc.ai.Provider != "" && wc.ai.Provider != "local" {
 		wc.phase = 1
 		wc.spinner = 0
 		wc.feedback = nil
@@ -862,19 +772,16 @@ func (wc WritingCoach) startAnalysis() (WritingCoach, tea.Cmd) {
 		wc.scroll = 0
 		wc.hasResult = false
 
-		prompt := wc.buildPrompt()
+		systemPrompt := "You are a writing coach. Be specific and actionable in your feedback."
+		userPrompt := wc.buildPrompt()
+		ai := wc.ai
 
-		if wc.ai.Provider == "openai" && wc.ai.APIKey != "" {
-			return wc, tea.Batch(
-				callWritingCoachOpenAI(wc.ai.APIKey, wc.ai.Model, prompt),
-				writingCoachTickCmd(),
-			)
+		cmd := func() tea.Msg {
+			resp, err := ai.Chat(systemPrompt, userPrompt)
+			return writingCoachResultMsg{response: resp, err: err}
 		}
 
-		return wc, tea.Batch(
-			callWritingCoachOllama(wc.ai.OllamaURL, wc.ai.Model, prompt),
-			writingCoachTickCmd(),
-		)
+		return wc, tea.Batch(cmd, writingCoachTickCmd())
 	}
 
 	// Local analysis
