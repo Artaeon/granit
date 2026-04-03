@@ -1,11 +1,7 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -204,133 +200,14 @@ Rules:
 // ---------------------------------------------------------------------------
 
 func (vr *VaultRefactor) startRefactor() tea.Cmd {
-	prompt := vr.buildPrompt()
+	systemPrompt := "You are a knowledge management expert that helps organize note vaults. Be precise and follow the output format exactly."
+	userPrompt := vr.buildPrompt()
 	ai := vr.ai
 
 	return func() tea.Msg {
-		switch ai.Provider {
-		case "openai":
-			return doRefactorOpenAI(ai.APIKey, ai.Model, prompt)
-		case "nous":
-			client := ai.NewNous()
-			resp, err := client.Chat(prompt)
-			return vaultRefactorResultMsg{plan: resp, err: err}
-		case "nerve":
-			client := ai.NewNerve()
-			resp, err := client.Chat("You are a knowledge management expert that helps organize note vaults. Be precise and follow the output format exactly.", prompt, 180*time.Second)
-			return vaultRefactorResultMsg{plan: resp, err: err}
-		default:
-			url := ai.OllamaEndpoint()
-			model := ai.ModelOrDefault("llama3.2")
-			return doRefactorOllama(url, model, prompt)
-		}
+		resp, err := ai.Chat(systemPrompt, userPrompt)
+		return vaultRefactorResultMsg{plan: resp, err: err}
 	}
-}
-
-func doRefactorOllama(url, model, prompt string) vaultRefactorResultMsg {
-	type msg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	type req struct {
-		Model    string `json:"model"`
-		Messages []msg  `json:"messages"`
-		Stream   bool   `json:"stream"`
-	}
-	type resp struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-		Error string `json:"error,omitempty"`
-	}
-
-	reqBody := req{
-		Model: model,
-		Messages: []msg{
-			{Role: "system", Content: "You are a knowledge management expert that helps organize note vaults. Be precise and follow the output format exactly."},
-			{Role: "user", Content: prompt},
-		},
-		Stream: false,
-	}
-
-	data, _ := json.Marshal(reqBody)
-	client := &http.Client{Timeout: 180 * time.Second}
-	httpResp, err := client.Post(url+"/api/chat", "application/json", bytes.NewReader(data))
-	if err != nil {
-		return vaultRefactorResultMsg{err: fmt.Errorf("cannot connect to Ollama: %w", err)}
-	}
-	defer httpResp.Body.Close()
-
-	body, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return vaultRefactorResultMsg{err: err}
-	}
-
-	var chatResp resp
-	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return vaultRefactorResultMsg{err: err}
-	}
-	if chatResp.Error != "" {
-		return vaultRefactorResultMsg{err: fmt.Errorf("Ollama: %s", chatResp.Error)}
-	}
-
-	return vaultRefactorResultMsg{plan: chatResp.Message.Content}
-}
-
-func doRefactorOpenAI(apiKey, model, prompt string) vaultRefactorResultMsg {
-	type msg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	type req struct {
-		Model    string `json:"model"`
-		Messages []msg  `json:"messages"`
-	}
-	type resp struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-
-	reqBody := req{
-		Model: model,
-		Messages: []msg{
-			{Role: "system", Content: "You are a knowledge management expert that helps organize note vaults. Be precise and follow the output format exactly."},
-			{Role: "user", Content: prompt},
-		},
-	}
-
-	data, _ := json.Marshal(reqBody)
-	client := &http.Client{Timeout: 120 * time.Second}
-	httpReq, _ := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-
-	httpResp, err := client.Do(httpReq)
-	if err != nil {
-		return vaultRefactorResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
-	}
-	defer httpResp.Body.Close()
-
-	body, _ := io.ReadAll(httpResp.Body)
-
-	var chatResp resp
-	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return vaultRefactorResultMsg{err: err}
-	}
-	if chatResp.Error != nil {
-		return vaultRefactorResultMsg{err: fmt.Errorf("OpenAI: %s", chatResp.Error.Message)}
-	}
-	if len(chatResp.Choices) == 0 {
-		return vaultRefactorResultMsg{err: fmt.Errorf("OpenAI returned no response")}
-	}
-
-	return vaultRefactorResultMsg{plan: chatResp.Choices[0].Message.Content}
 }
 
 // ---------------------------------------------------------------------------
