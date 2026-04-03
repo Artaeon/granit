@@ -71,10 +71,11 @@ func (at *AutoTagger) TagNote(content string) tea.Cmd {
 		return nil
 	}
 
-	// Truncate to first 1500 characters for speed.
+	// Truncate to first 1500 runes for speed (rune-based for UTF-8 safety).
 	userPrompt := content
-	if len(userPrompt) > 1500 {
-		userPrompt = userPrompt[:1500]
+	if len([]rune(userPrompt)) > 1500 {
+		runes := []rune(userPrompt)
+		userPrompt = string(runes[:1500])
 	}
 
 	// Build system prompt.
@@ -651,6 +652,10 @@ func (nc NoteChat) Update(msg tea.Msg) (NoteChat, tea.Cmd) {
 				Content: trimmed,
 				Time:    time.Now(),
 			})
+			// Cap message history to prevent unbounded growth
+			if len(nc.messages) > 200 {
+				nc.messages = nc.messages[len(nc.messages)-200:]
+			}
 			nc.input = ""
 			nc.loading = true
 			nc.loadingTick = 0
