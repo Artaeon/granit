@@ -1,13 +1,8 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -293,177 +288,6 @@ TIME: {estimated minutes}
 }
 
 // ---------------------------------------------------------------------------
-// AI HTTP calls
-// ---------------------------------------------------------------------------
-
-func triageOllama(url, model, systemPrompt, userPrompt string) tea.Cmd {
-	return func() tea.Msg {
-		type msg struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		}
-		type req struct {
-			Model    string `json:"model"`
-			Messages []msg  `json:"messages"`
-			Stream   bool   `json:"stream"`
-		}
-
-		reqBody := req{
-			Model: model,
-			Messages: []msg{
-				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: userPrompt},
-			},
-			Stream: false,
-		}
-
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return triageResultMsg{err: err}
-		}
-		client := &http.Client{Timeout: 120 * time.Second}
-		resp, err := client.Post(url+"/api/chat", "application/json", bytes.NewReader(data))
-		if err != nil {
-			return triageResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)}
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return triageResultMsg{err: fmt.Errorf("failed to read response: %w", err)}
-		}
-
-		var chatResp struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-			Error string `json:"error,omitempty"`
-		}
-		if err := json.Unmarshal(body, &chatResp); err != nil {
-			return triageResultMsg{err: fmt.Errorf("failed to decode Ollama response: %w", err)}
-		}
-		if chatResp.Error != "" {
-			return triageResultMsg{err: fmt.Errorf("Ollama: %s", chatResp.Error)}
-		}
-		recs := parseTriageResponse(chatResp.Message.Content)
-		return triageResultMsg{recommendations: recs}
-	}
-}
-
-func triageOpenAI(apiKey, model, systemPrompt, userPrompt string) tea.Cmd {
-	return func() tea.Msg {
-		type msg struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		}
-		type req struct {
-			Model    string `json:"model"`
-			Messages []msg  `json:"messages"`
-		}
-
-		reqBody := req{
-			Model: model,
-			Messages: []msg{
-				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: userPrompt},
-			},
-		}
-
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return triageResultMsg{err: err}
-		}
-		httpReq, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-		if err != nil {
-			return triageResultMsg{err: err}
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-
-		client := &http.Client{Timeout: 60 * time.Second}
-		resp, err := client.Do(httpReq)
-		if err != nil {
-			return triageResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return triageResultMsg{err: fmt.Errorf("failed to read response: %w", err)}
-		}
-
-		var chatResp struct {
-			Choices []struct {
-				Message struct {
-					Content string `json:"content"`
-				} `json:"message"`
-			} `json:"choices"`
-			Error *struct {
-				Message string `json:"message"`
-			} `json:"error"`
-		}
-		if err := json.Unmarshal(body, &chatResp); err != nil {
-			return triageResultMsg{err: fmt.Errorf("failed to decode OpenAI response: %w", err)}
-		}
-		if chatResp.Error != nil {
-			return triageResultMsg{err: fmt.Errorf("OpenAI: %s", chatResp.Error.Message)}
-		}
-		if len(chatResp.Choices) == 0 {
-			return triageResultMsg{err: fmt.Errorf("OpenAI returned no response")}
-		}
-		recs := parseTriageResponse(chatResp.Choices[0].Message.Content)
-		return triageResultMsg{recommendations: recs}
-	}
-}
-
-func triageNous(nousURL, nousAPIKey, systemPrompt, userPrompt string) tea.Cmd {
-	return func() tea.Msg {
-		client := NewNousClient(nousURL, nousAPIKey)
-		resp, err := client.Chat(systemPrompt + "\n\n" + userPrompt)
-		if err != nil {
-			return triageResultMsg{err: err}
-		}
-		recs := parseTriageResponse(resp)
-		return triageResultMsg{recommendations: recs}
-	}
-}
-
-func triageNerve(binary, model, provider, systemPrompt, userPrompt string) tea.Cmd {
-	return func() tea.Msg {
-		client := NewNerveClient(binary, model, provider)
-		resp, err := client.Chat(systemPrompt, userPrompt, 120*time.Second)
-		if err != nil {
-			return triageResultMsg{err: err}
-		}
-		recs := parseTriageResponse(resp)
-		return triageResultMsg{recommendations: recs}
-	}
-}
-
-func triageClaude(systemPrompt, userPrompt string) tea.Cmd {
-	return func() tea.Msg {
-		claudePath := findClaude()
-		if claudePath == "" {
-			return triageResultMsg{err: fmt.Errorf("claude CLI not found - install Claude Code first")}
-		}
-
-		prompt := systemPrompt + "\n\n" + userPrompt
-		cmd := exec.Command(claudePath,
-			"-p", prompt,
-			"--output-format", "text",
-		)
-		cmd.Env = append(cmd.Environ(), "CLAUDECODE=")
-
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			return triageResultMsg{err: fmt.Errorf("claude CLI error: %w\n%s", err, string(output))}
-		}
-		recs := parseTriageResponse(string(output))
-		return triageResultMsg{recommendations: recs}
-	}
-}
-
-// ---------------------------------------------------------------------------
 // AI dispatch
 // ---------------------------------------------------------------------------
 
@@ -474,31 +298,16 @@ func (tt *TaskTriage) triageCmd() tea.Cmd {
 		}
 	}
 
+	ai := tt.ai
 	systemPrompt, userPrompt := tt.buildPrompt()
 
-	switch tt.ai.Provider {
-	case "openai":
-		if tt.ai.APIKey != "" {
-			model := tt.ai.ModelOrDefault("gpt-4o-mini")
-			return triageOpenAI(tt.ai.APIKey, model, systemPrompt, userPrompt)
+	return func() tea.Msg {
+		resp, err := ai.Chat(systemPrompt, userPrompt)
+		if err != nil {
+			return triageResultMsg{err: err}
 		}
-		// Fall through to ollama
-		fallthrough
-	case "ollama":
-		model := tt.ai.ModelOrDefault("qwen2.5:0.5b")
-		return triageOllama(tt.ai.OllamaEndpoint(), model, systemPrompt, userPrompt)
-	case "nous":
-		return triageNous(tt.ai.NousURL, tt.ai.NousAPIKey, systemPrompt, userPrompt)
-	case "nerve":
-		return triageNerve(tt.ai.NerveBinary, tt.ai.NerveModel, tt.ai.NerveProvider, systemPrompt, userPrompt)
-	case "claude":
-		return triageClaude(systemPrompt, userPrompt)
-	default:
-		// local fallback
-		return func() tea.Msg {
-			recs := tt.localFallback()
-			return triageResultMsg{recommendations: recs}
-		}
+		recs := parseTriageResponse(resp)
+		return triageResultMsg{recommendations: recs}
 	}
 }
 
