@@ -33,6 +33,12 @@ var (
 	ollamaMu    sync.RWMutex
 )
 
+// Shared HTTP clients for Ollama operations.
+var (
+	ollamaCheckClient = &http.Client{Timeout: 2 * time.Second}
+	ollamaPullClient  = &http.Client{Timeout: 300 * time.Second}
+)
+
 // setOllamaState updates the cached state under the write lock.
 func setOllamaState(s ollamaStatus) {
 	ollamaMu.Lock()
@@ -51,8 +57,7 @@ func OllamaCheck(baseURL, model string) (string, bool) {
 	}
 
 	// Check if server is running
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(baseURL + "/api/tags")
+	resp, err := ollamaCheckClient.Get(baseURL + "/api/tags")
 	if err != nil {
 		setOllamaState(ollamaNoServer)
 		return "Ollama not running. Install: curl -fsSL https://ollama.ai/install.sh | sh", false
@@ -103,8 +108,7 @@ func OllamaPullModel(baseURL, model string) error {
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
-	client := &http.Client{Timeout: 300 * time.Second} // pulls can take a while
-	resp, err := client.Post(baseURL+"/api/pull", "application/json", strings.NewReader(string(reqBody)))
+	resp, err := ollamaPullClient.Post(baseURL+"/api/pull", "application/json", strings.NewReader(string(reqBody)))
 	if err != nil {
 		return fmt.Errorf("pull failed: %w", err)
 	}
