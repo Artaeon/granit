@@ -598,6 +598,71 @@ func (m Model) View() string {
 					content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, focusEditor)
 				}
 			}
+		case "widescreen":
+			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
+				BorderForeground(sidebarBorderColor).
+				Width(sidebarWidth).
+				Height(contentHeight).
+				Render(m.sidebar.View())
+
+			// Panel widths
+			outW := m.width / 8
+			if outW < 16 {
+				outW = 16
+			}
+			if outW > 22 {
+				outW = 22
+			}
+			blW := m.width / 7
+			if blW < 18 {
+				blW = 18
+			}
+			if blW > 25 {
+				blW = 25
+			}
+			calW := m.width / 7
+			if calW < 20 {
+				calW = 20
+			}
+			if calW > 28 {
+				calW = 28
+			}
+
+			wsEditorWidth := m.width - sidebarWidth - outW - blW - calW - 10
+			if wsEditorWidth < 30 {
+				wsEditorWidth = 30
+			}
+
+			outlinePanelContent := m.outline.RenderPanel(m.editor.GetContent(), outW, contentHeight)
+			outlinePanel := lipgloss.NewStyle().
+				BorderStyle(PanelBorder).
+				BorderForeground(surface1).
+				Width(outW).
+				Height(contentHeight).
+				Render(outlinePanelContent)
+
+			wsEditor := EditorStyle.
+				BorderStyle(editorBorder).
+				BorderForeground(editorBorderColor).
+				Width(wsEditorWidth).
+				Height(contentHeight).
+				Render(editorPanel)
+
+			backlinks := BacklinksStyle.BorderStyle(backlinksBorder).
+				BorderForeground(backlinksBorderColor).
+				Width(blW).
+				Height(contentHeight).
+				Render(m.backlinks.View())
+
+			m.calendarPanel.SetSize(calW, contentHeight)
+			calPanel := lipgloss.NewStyle().
+				BorderStyle(PanelBorder).
+				BorderForeground(surface1).
+				Width(calW).
+				Height(contentHeight).
+				Render(m.calendarPanel.View())
+
+			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, outlinePanel, wsEditor, backlinks, calPanel)
 		case "kanban":
 			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).

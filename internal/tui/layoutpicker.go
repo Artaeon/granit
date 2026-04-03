@@ -212,6 +212,8 @@ func layoutDisplayName(layout string) string {
 		return "Presenter"
 	case LayoutKanban:
 		return "Kanban"
+	case LayoutWidescreen:
+		return "Widescreen"
 	default:
 		return layout
 	}
@@ -227,6 +229,8 @@ func panelCountLabel(count int) string {
 		return "3 panels"
 	case 4:
 		return "4 panels"
+	case 5:
+		return "5 panels"
 	default:
 		return ""
 	}
@@ -446,6 +450,19 @@ func layoutPreview(layout string, width int) string {
 			box("Files", sideW, h),
 			box("Editor", edW, h),
 			box("Kanban", kbW, h),
+		))
+	case LayoutWidescreen:
+		smallW := width / 8
+		if smallW < 6 {
+			smallW = 6
+		}
+		edW := width - sideW - smallW*3
+		return style.Render(joinH(
+			box("Files", sideW, h),
+			box("Outline", smallW, h),
+			box("Editor", edW, h),
+			box("Links", smallW, h),
+			box("Calendar", smallW, h),
 		))
 	default:
 		return style.Render(joinH(box("Editor", width, h)))

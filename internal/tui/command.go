@@ -109,6 +109,7 @@ const (
 	CmdLayoutPreview
 	CmdLayoutPresenter
 	CmdLayoutKanban
+	CmdLayoutWidescreen
 	CmdCycleLayout
 	CmdLayoutPicker
 	CmdBlogPublish
