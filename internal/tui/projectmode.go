@@ -393,6 +393,14 @@ func (pm *ProjectMode) aiProjectInsight() tea.Cmd {
 	}
 	ai := pm.ai
 	proj := pm.projects[pm.selectedProj]
+	// Deep copy goals to avoid sharing slice backing arrays with the main goroutine.
+	goalsCopy := make([]ProjectGoal, len(proj.Goals))
+	for i, g := range proj.Goals {
+		goalsCopy[i] = g
+		goalsCopy[i].Milestones = make([]ProjectMilestone, len(g.Milestones))
+		copy(goalsCopy[i].Milestones, g.Milestones)
+	}
+	proj.Goals = goalsCopy
 
 	return func() tea.Msg {
 		var sb strings.Builder

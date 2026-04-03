@@ -359,10 +359,10 @@ func (m *Model) updateLayout() {
 	} else if m.width < 160 {
 		// Not wide enough for 4+ panels — fall back to 3-panel or less
 		switch layout {
-		case "dashboard", "cockpit", "stacked":
+		case "dashboard", "cockpit", "stacked", "widescreen":
 			layout = "default"
-		case "widescreen":
-			layout = "default"
+		case "taskboard", "kanban":
+			layout = "writer"
 		}
 	}
 
