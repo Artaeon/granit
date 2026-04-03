@@ -84,11 +84,6 @@ func (d *Devotional) Open(vaultRoot string, ai AIConfig, goals []Goal) tea.Cmd {
 	return tea.Batch(d.generateCmd(), devotionalTickCmd())
 }
 
-// Close deactivates the overlay.
-func (d *Devotional) Close() {
-	d.active = false
-}
-
 // Update handles messages.
 func (d Devotional) Update(msg tea.Msg) (Devotional, tea.Cmd) {
 	if !d.active {
@@ -117,9 +112,9 @@ func (d Devotional) Update(msg tea.Msg) (Devotional, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc", "q":
-			d.Close()
+			d.active = false
 		case "j", "down":
-			if d.scroll < len(d.lines)-1 {
+			if len(d.lines) > 0 && d.scroll < len(d.lines)-1 {
 				d.scroll++
 			}
 		case "k", "up":
@@ -215,8 +210,8 @@ func (d Devotional) View() string {
 		}
 
 		visible := d.lines
-		if d.scroll > 0 && d.scroll < len(visible) {
-			visible = visible[d.scroll:]
+		if d.scroll > 0 && d.scroll < len(d.lines) {
+			visible = d.lines[d.scroll:]
 		}
 		if len(visible) > maxLines {
 			visible = visible[:maxLines]
