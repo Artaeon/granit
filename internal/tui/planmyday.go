@@ -1,11 +1,7 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"regexp"
 	"sort"
 	"strconv"
@@ -391,128 +387,6 @@ func priorityLabel(pri int) string {
 		return "low"
 	default:
 		return "none"
-	}
-}
-
-// ---------------------------------------------------------------------------
-// AI HTTP calls
-// ---------------------------------------------------------------------------
-
-func planMyDayOllama(url, model, prompt string) tea.Cmd {
-	return func() tea.Msg {
-		type msg struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		}
-		type req struct {
-			Model    string `json:"model"`
-			Messages []msg  `json:"messages"`
-			Stream   bool   `json:"stream"`
-		}
-
-		reqBody := req{
-			Model: model,
-			Messages: []msg{
-				{Role: "system", Content: "You are a productivity coach that creates optimized daily schedules. Always respond in the exact format requested."},
-				{Role: "user", Content: prompt},
-			},
-			Stream: false,
-		}
-
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return planMyDayResultMsg{err: err}
-		}
-		client := &http.Client{Timeout: 120 * time.Second}
-		resp, err := client.Post(url+"/api/chat", "application/json", bytes.NewReader(data))
-		if err != nil {
-			return planMyDayResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)}
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return planMyDayResultMsg{err: fmt.Errorf("failed to read response: %w", err)}
-		}
-
-		var chatResp struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-			Error string `json:"error,omitempty"`
-		}
-		if err := json.Unmarshal(body, &chatResp); err != nil {
-			return planMyDayResultMsg{err: fmt.Errorf("failed to decode Ollama response: %w", err)}
-		}
-		if chatResp.Error != "" {
-			return planMyDayResultMsg{err: fmt.Errorf("Ollama: %s", chatResp.Error)}
-		}
-		return planMyDayResultMsg{response: chatResp.Message.Content}
-	}
-}
-
-func planMyDayOpenAI(apiKey, model, prompt string) tea.Cmd {
-	return func() tea.Msg {
-		type msg struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		}
-		type req struct {
-			Model    string `json:"model"`
-			Messages []msg  `json:"messages"`
-		}
-
-		reqBody := req{
-			Model: model,
-			Messages: []msg{
-				{Role: "system", Content: "You are a productivity coach that creates optimized daily schedules. Always respond in the exact format requested."},
-				{Role: "user", Content: prompt},
-			},
-		}
-
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return planMyDayResultMsg{err: err}
-		}
-		httpReq, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-		if err != nil {
-			return planMyDayResultMsg{err: err}
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-
-		client := &http.Client{Timeout: 60 * time.Second}
-		resp, err := client.Do(httpReq)
-		if err != nil {
-			return planMyDayResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return planMyDayResultMsg{err: fmt.Errorf("failed to read response: %w", err)}
-		}
-
-		var chatResp struct {
-			Choices []struct {
-				Message struct {
-					Content string `json:"content"`
-				} `json:"message"`
-			} `json:"choices"`
-			Error *struct {
-				Message string `json:"message"`
-			} `json:"error"`
-		}
-		if err := json.Unmarshal(body, &chatResp); err != nil {
-			return planMyDayResultMsg{err: fmt.Errorf("failed to decode OpenAI response: %w", err)}
-		}
-		if chatResp.Error != nil {
-			return planMyDayResultMsg{err: fmt.Errorf("OpenAI: %s", chatResp.Error.Message)}
-		}
-		if len(chatResp.Choices) == 0 {
-			return planMyDayResultMsg{err: fmt.Errorf("OpenAI returned no response")}
-		}
-		return planMyDayResultMsg{response: chatResp.Choices[0].Message.Content}
 	}
 }
 
@@ -959,25 +833,22 @@ func (p PlanMyDay) Update(msg tea.Msg) (PlanMyDay, tea.Cmd) {
 }
 
 func (p PlanMyDay) startPlanning() (PlanMyDay, tea.Cmd) {
-	useAI := p.ai.Provider == "ollama" || p.ai.Provider == "openai"
+	useAI := p.ai.Provider != "" && p.ai.Provider != "local"
 
 	if useAI {
 		p.phase = 1
 		p.spinnerTick = 0
 
-		prompt := p.buildPrompt()
+		systemPrompt := "You are a productivity coach that creates optimized daily schedules. Always respond in the exact format requested."
+		userPrompt := p.buildPrompt()
+		ai := p.ai
 
-		if p.ai.Provider == "openai" && p.ai.APIKey != "" {
-			return p, tea.Batch(
-				planMyDayOpenAI(p.ai.APIKey, p.ai.Model, prompt),
-				planMyDayTickCmd(),
-			)
+		cmd := func() tea.Msg {
+			resp, err := ai.Chat(systemPrompt, userPrompt)
+			return planMyDayResultMsg{response: resp, err: err}
 		}
 
-		return p, tea.Batch(
-			planMyDayOllama(p.ai.OllamaURL, p.ai.Model, prompt),
-			planMyDayTickCmd(),
-		)
+		return p, tea.Batch(cmd, planMyDayTickCmd())
 	}
 
 	// Local fallback
