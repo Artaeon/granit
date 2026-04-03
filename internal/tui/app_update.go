@@ -2427,10 +2427,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			cmd := m.saveCurrentNote()
 			m.lastSaveTime = time.Now()
-			saveTasks := ParseAllTasks(m.vault.Notes)
-			m.dueTodayCount = CountTasksDueTodayFromList(saveTasks)
+			m.cachedTasks = ParseAllTasks(m.vault.Notes)
+			m.dueTodayCount = CountTasksDueTodayFromList(m.cachedTasks)
 			m.statusbar.SetDueTodayCount(m.dueTodayCount)
-			m.statusbar.SetOverdueCount(CountOverdueTasksFromList(saveTasks))
+			m.statusbar.SetOverdueCount(CountOverdueTasksFromList(m.cachedTasks))
 			return m, cmd
 
 		case "f1", "alt+1":

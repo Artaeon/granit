@@ -199,6 +199,7 @@ type Model struct {
 	calendarPanel     CalendarPanel
 	rightPanelCalendar bool // toggle: show calendar panel instead of backlinks
 	dueTodayCount     int
+	cachedTasks       []Task // cached ParseAllTasks result, refreshed on vault changes
 
 	// Startup message (e.g. "Loaded 247 notes in 12ms")
 	startupMsg string
@@ -386,9 +387,10 @@ func NewModel(vaultPath string) (Model, error) {
 	m.tutorial.vaultRoot = vaultPath
 	m.statusbar.SetVaultPath(vaultPath)
 	m.statusbar.SetNoteCount(v.NoteCount())
-	m.dueTodayCount = CountTasksDueToday(v.Notes)
+	m.cachedTasks = ParseAllTasks(v.Notes)
+	m.dueTodayCount = CountTasksDueTodayFromList(m.cachedTasks)
 	m.statusbar.SetDueTodayCount(m.dueTodayCount)
-	m.statusbar.SetOverdueCount(CountOverdueTasks(v.Notes))
+	m.statusbar.SetOverdueCount(CountOverdueTasksFromList(m.cachedTasks))
 	m.checkDayPlanned()
 	m.autocomplete.SetNotes(paths)
 	m.plugins.SetVaultPath(vaultPath)
