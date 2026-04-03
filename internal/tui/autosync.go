@@ -147,10 +147,17 @@ func (a *AutoSync) CommitAndPush() tea.Cmd {
 			if len(line) < 3 {
 				continue
 			}
-			code := strings.TrimSpace(line[:2])
+			code := line[:2] // 2-char status code, don't trim (spaces are meaningful)
 			file := strings.TrimSpace(line[3:])
 			if file == "" {
 				continue
+			}
+
+			// Handle renames: porcelain format is "R  old -> new"
+			if strings.HasPrefix(code, "R") {
+				if idx := strings.Index(file, " -> "); idx >= 0 {
+					file = file[idx+4:] // use the new filename
+				}
 			}
 
 			// Stage the individual file
@@ -159,13 +166,14 @@ func (a *AutoSync) CommitAndPush() tea.Cmd {
 			}
 
 			// Determine commit message based on status code
+			trimCode := strings.TrimSpace(code)
 			var msg string
 			switch {
-			case code == "??" || code == "A":
+			case trimCode == "??" || strings.Contains(code, "A"):
 				msg = "vault: add " + file
-			case code == "D":
+			case strings.Contains(code, "D"):
 				msg = "vault: remove " + file
-			case code == "R":
+			case strings.HasPrefix(code, "R"):
 				msg = "vault: rename " + file
 			default:
 				msg = "vault: update " + file

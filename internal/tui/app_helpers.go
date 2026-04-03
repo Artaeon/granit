@@ -1428,6 +1428,7 @@ func (m *Model) triggerExitSplash() tea.Cmd {
 		gitIn := func(args ...string) (string, error) {
 			fullArgs := append([]string{"-C", m.vault.Root}, args...)
 			cmd := exec.Command("git", fullArgs...)
+			cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 			out, err := cmd.CombinedOutput()
 			return string(out), err
 		}
@@ -1437,18 +1438,29 @@ func (m *Model) triggerExitSplash() tea.Cmd {
 				if len(line) < 3 {
 					continue
 				}
-				code := strings.TrimSpace(line[:2])
+				code := line[:2] // don't trim — spaces are meaningful in porcelain status
 				file := strings.TrimSpace(line[3:])
 				if file == "" {
 					continue
 				}
-				gitIn("add", file)
+				// Handle renames: porcelain format is "R  old -> new"
+				if strings.HasPrefix(code, "R") {
+					if idx := strings.Index(file, " -> "); idx >= 0 {
+						file = file[idx+4:]
+					}
+				}
+				if _, err := gitIn("add", file); err != nil {
+					continue
+				}
+				trimCode := strings.TrimSpace(code)
 				var msg string
 				switch {
-				case code == "??" || code == "A":
+				case trimCode == "??" || strings.Contains(code, "A"):
 					msg = "vault: add " + file
-				case code == "D":
+				case strings.Contains(code, "D"):
 					msg = "vault: remove " + file
+				case strings.HasPrefix(code, "R"):
+					msg = "vault: rename " + file
 				default:
 					msg = "vault: update " + file
 				}
