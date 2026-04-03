@@ -499,11 +499,11 @@ func TestHabitProgressBar_Zero(t *testing.T) {
 	if bar == "" {
 		t.Fatal("progress bar should not be empty")
 	}
-	// Should start with '[' and end with ']'
-	if bar[0] != '[' {
-		t.Error("progress bar should start with '['")
+	// 0% should be all empty blocks
+	plain := stripAnsiCodes(bar)
+	if !strings.Contains(plain, "░") {
+		t.Error("0% progress bar should contain empty block chars")
 	}
-	// The last character may be after ANSI codes, so check contains ']'
 }
 
 func TestHabitProgressBar_Full(t *testing.T) {
