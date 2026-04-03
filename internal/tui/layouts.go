@@ -28,7 +28,6 @@ func AllLayouts() []string {
 	return []string{
 		LayoutDefault,
 		LayoutWriter,
-		LayoutMinimal,
 		LayoutReading,
 		LayoutDashboard,
 		LayoutZen,
@@ -48,7 +47,7 @@ func LayoutDescription(layout string) string {
 	case LayoutWriter:
 		return "Sidebar + Editor (2-panel)"
 	case LayoutMinimal:
-		return "Editor only (1-panel)"
+		return "Centered editor, no chrome (distraction-free)"
 	case LayoutReading:
 		return "Editor + Backlinks, no sidebar (2-panel)"
 	case LayoutDashboard:

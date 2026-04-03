@@ -192,8 +192,6 @@ func layoutDisplayName(layout string) string {
 		return "Default"
 	case LayoutWriter:
 		return "Writer"
-	case LayoutMinimal:
-		return "Minimal"
 	case LayoutReading:
 		return "Reading"
 	case LayoutDashboard:
@@ -315,10 +313,6 @@ func layoutPreview(layout string, width int) string {
 		return style.Render(joinH(
 			box("Files", sideW, h),
 			box("Editor", edW, h),
-		))
-	case LayoutMinimal:
-		return style.Render(joinH(
-			box("Editor", width, h),
 		))
 	case LayoutReading:
 		edW := width - sideW

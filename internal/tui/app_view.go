@@ -233,8 +233,6 @@ func (m Model) View() string {
 	} else {
 		var content string
 		switch layout {
-		case "minimal":
-			content = editor
 		case "writer":
 			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).
@@ -264,7 +262,7 @@ func (m Model) View() string {
 					Render(m.backlinks.View())
 				content = lipgloss.JoinHorizontal(lipgloss.Top, editor, backlinks)
 			}
-		case "zen":
+		case "minimal", "zen":
 			// Centered editor with constrained width, no borders
 			maxContentWidth := 82
 			if editorWidth > maxContentWidth {

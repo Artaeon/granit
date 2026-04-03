@@ -865,8 +865,8 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.config.Layout = LayoutWriter
 			m.statusbar.SetMessage("Layout: Writer (2-panel)")
 		case CmdLayoutMinimal:
-			m.config.Layout = LayoutMinimal
-			m.statusbar.SetMessage("Layout: Minimal (editor only)")
+			m.config.Layout = LayoutZen
+			m.statusbar.SetMessage("Layout: Zen (distraction-free)")
 		case CmdLayoutReading:
 			m.config.Layout = LayoutReading
 			m.statusbar.SetMessage("Layout: Reading (editor + backlinks)")
