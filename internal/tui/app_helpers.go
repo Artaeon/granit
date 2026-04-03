@@ -343,18 +343,25 @@ func (m *Model) updateLayout() {
 		// Very narrow — editor only (mobile-friendly)
 		layout = "minimal"
 	} else if m.width < 120 {
-		// Medium — drop backlinks/sidebar when space is tight
+		// Medium — drop multi-panel layouts to 2-panel or less
 		switch layout {
-		case "default":
+		case "default", "research":
 			layout = "writer"
-		case "reading":
+		case "reading", "cornell", "preview":
 			layout = "minimal"
-		case "dashboard", "taskboard", "research":
+		case "dashboard", "taskboard", "cockpit", "stacked", "kanban", "widescreen":
 			layout = "writer"
+		case "focus":
+			layout = "minimal"
+		case "presenter":
+			layout = "minimal"
 		}
 	} else if m.width < 160 {
-		// Not wide enough for 4 panels — fall back to default 3-panel
-		if layout == "dashboard" {
+		// Not wide enough for 4+ panels — fall back to 3-panel or less
+		switch layout {
+		case "dashboard", "cockpit", "stacked":
+			layout = "default"
+		case "widescreen":
 			layout = "default"
 		}
 	}
