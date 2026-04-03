@@ -1,10 +1,7 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"regexp"
 	"sort"
 	"strconv"
@@ -186,89 +183,6 @@ func (as *AIScheduler) GetSchedule() ([]schedulerSlot, bool) {
 		return as.schedule, true
 	}
 	return nil, false
-}
-
-// ---------------------------------------------------------------------------
-// AI HTTP calls
-// ---------------------------------------------------------------------------
-
-func aiSchedulerOllama(url, model, prompt string) tea.Cmd {
-	return func() tea.Msg {
-		payload := map[string]interface{}{
-			"model":  model,
-			"prompt": prompt,
-			"stream": false,
-		}
-		body, err := json.Marshal(payload)
-		if err != nil {
-			return aiSchedulerResultMsg{err: err}
-		}
-		client := &http.Client{Timeout: 120 * time.Second}
-		resp, err := client.Post(url+"/api/generate", "application/json", bytes.NewReader(body))
-		if err != nil {
-			return aiSchedulerResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)}
-		}
-		if resp != nil && resp.Body != nil {
-			defer resp.Body.Close()
-		}
-		var result struct {
-			Response string `json:"response"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return aiSchedulerResultMsg{err: fmt.Errorf("failed to decode Ollama response: %w", err)}
-		}
-		return aiSchedulerResultMsg{response: result.Response}
-	}
-}
-
-func aiSchedulerOpenAI(apiKey, model, prompt string) tea.Cmd {
-	return func() tea.Msg {
-		payload := map[string]interface{}{
-			"model": model,
-			"messages": []map[string]string{
-				{"role": "system", "content": "You are a productivity scheduling assistant."},
-				{"role": "user", "content": prompt},
-			},
-		}
-		body, err := json.Marshal(payload)
-		if err != nil {
-			return aiSchedulerResultMsg{err: err}
-		}
-		req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(body))
-		if err != nil {
-			return aiSchedulerResultMsg{err: err}
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-		client := &http.Client{Timeout: 60 * time.Second}
-		resp, err := client.Do(req)
-		if err != nil {
-			return aiSchedulerResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
-		}
-		if resp != nil && resp.Body != nil {
-			defer resp.Body.Close()
-		}
-		var result struct {
-			Choices []struct {
-				Message struct {
-					Content string `json:"content"`
-				} `json:"message"`
-			} `json:"choices"`
-			Error *struct {
-				Message string `json:"message"`
-			} `json:"error"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return aiSchedulerResultMsg{err: fmt.Errorf("failed to decode OpenAI response: %w", err)}
-		}
-		if result.Error != nil {
-			return aiSchedulerResultMsg{err: fmt.Errorf("OpenAI error: %s", result.Error.Message)}
-		}
-		if len(result.Choices) > 0 {
-			return aiSchedulerResultMsg{response: result.Choices[0].Message.Content}
-		}
-		return aiSchedulerResultMsg{err: fmt.Errorf("no response from OpenAI")}
-	}
 }
 
 func aiSchedulerTickCmd() tea.Cmd {
@@ -766,7 +680,7 @@ func (as AIScheduler) startGeneration() (AIScheduler, tea.Cmd) {
 		return as, nil
 	}
 
-	useAI := as.ai.Provider == "ollama" || as.ai.Provider == "openai"
+	useAI := as.ai.Provider != "" && as.ai.Provider != "local"
 
 	if useAI {
 		as.phase = 1
@@ -774,19 +688,16 @@ func (as AIScheduler) startGeneration() (AIScheduler, tea.Cmd) {
 		as.spinner = 0
 		as.statusMsg = ""
 
-		prompt := as.buildSchedulerPrompt()
+		systemPrompt := "You are a productivity scheduling assistant."
+		userPrompt := as.buildSchedulerPrompt()
+		ai := as.ai
 
-		if as.ai.Provider == "openai" && as.ai.APIKey != "" {
-			return as, tea.Batch(
-				aiSchedulerOpenAI(as.ai.APIKey, as.ai.Model, prompt),
-				aiSchedulerTickCmd(),
-			)
+		cmd := func() tea.Msg {
+			resp, err := ai.Chat(systemPrompt, userPrompt)
+			return aiSchedulerResultMsg{response: resp, err: err}
 		}
 
-		return as, tea.Batch(
-			aiSchedulerOllama(as.ai.OllamaURL, as.ai.Model, prompt),
-			aiSchedulerTickCmd(),
-		)
+		return as, tea.Batch(cmd, aiSchedulerTickCmd())
 	}
 
 	// Local algorithm
