@@ -1,10 +1,7 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -234,135 +231,6 @@ func nlSearchTickCmd() tea.Cmd {
 	return tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg {
 		return nlSearchTickMsg{}
 	})
-}
-
-// ---------------------------------------------------------------------------
-// AI API calls
-// ---------------------------------------------------------------------------
-
-// nlSearchOllamaRequest is the request body for Ollama /api/generate.
-type nlSearchOllamaRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Stream bool   `json:"stream"`
-}
-
-// nlSearchOllamaResponse is the response from Ollama /api/generate.
-type nlSearchOllamaResponse struct {
-	Response string `json:"response"`
-}
-
-// nlSearchOpenAIRequest is the request body for OpenAI chat completions.
-type nlSearchOpenAIRequest struct {
-	Model    string                  `json:"model"`
-	Messages []nlSearchOpenAIMessage `json:"messages"`
-}
-
-// nlSearchOpenAIMessage is a single message in the OpenAI chat format.
-type nlSearchOpenAIMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-// nlSearchOpenAIResponse is the response from OpenAI chat completions.
-type nlSearchOpenAIResponse struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-func callNLSearchOllama(url, model, prompt string) tea.Cmd {
-	return func() tea.Msg {
-		reqBody := nlSearchOllamaRequest{
-			Model:  model,
-			Prompt: prompt,
-			Stream: false,
-		}
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return nlSearchResultMsg{err: err}
-		}
-
-		client := &http.Client{Timeout: 120 * time.Second}
-		resp, err := client.Post(url+"/api/generate", "application/json", bytes.NewReader(data))
-		if err != nil {
-			return nlSearchResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)}
-		}
-		defer resp.Body.Close()
-
-		var buf bytes.Buffer
-		_, err = buf.ReadFrom(resp.Body)
-		if err != nil {
-			return nlSearchResultMsg{err: err}
-		}
-
-		if resp.StatusCode != 200 {
-			return nlSearchResultMsg{err: fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, buf.String())}
-		}
-
-		var ollamaResp nlSearchOllamaResponse
-		if err := json.Unmarshal(buf.Bytes(), &ollamaResp); err != nil {
-			return nlSearchResultMsg{err: err}
-		}
-
-		return nlSearchResultMsg{response: ollamaResp.Response}
-	}
-}
-
-func callNLSearchOpenAI(apiKey, model, prompt string) tea.Cmd {
-	return func() tea.Msg {
-		reqBody := nlSearchOpenAIRequest{
-			Model: model,
-			Messages: []nlSearchOpenAIMessage{
-				{Role: "system", Content: "You are a helpful note-taking assistant. Be concise and actionable."},
-				{Role: "user", Content: prompt},
-			},
-		}
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return nlSearchResultMsg{err: err}
-		}
-
-		client := &http.Client{Timeout: 60 * time.Second}
-		req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-		if err != nil {
-			return nlSearchResultMsg{err: err}
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return nlSearchResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
-		}
-		defer resp.Body.Close()
-
-		var buf bytes.Buffer
-		_, err = buf.ReadFrom(resp.Body)
-		if err != nil {
-			return nlSearchResultMsg{err: err}
-		}
-
-		var openaiResp nlSearchOpenAIResponse
-		if err := json.Unmarshal(buf.Bytes(), &openaiResp); err != nil {
-			return nlSearchResultMsg{err: err}
-		}
-
-		if openaiResp.Error != nil {
-			return nlSearchResultMsg{err: fmt.Errorf("OpenAI error: %s", openaiResp.Error.Message)}
-		}
-
-		if len(openaiResp.Choices) == 0 {
-			return nlSearchResultMsg{err: fmt.Errorf("OpenAI returned no choices")}
-		}
-
-		return nlSearchResultMsg{response: openaiResp.Choices[0].Message.Content}
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -736,20 +604,17 @@ func (nls NLSearch) startSearch() (NLSearch, tea.Cmd) {
 	nls.cursor = 0
 	nls.scroll = 0
 
-	if nls.ai.Provider == "ollama" {
-		prompt := nls.buildSearchPrompt()
-		return nls, tea.Batch(
-			callNLSearchOllama(nls.ai.OllamaURL, nls.ai.Model, prompt),
-			nlSearchTickCmd(),
-		)
-	}
+	if nls.ai.Provider != "" && nls.ai.Provider != "local" {
+		systemPrompt := "You are a helpful note-taking assistant. Be concise and actionable."
+		userPrompt := nls.buildSearchPrompt()
+		ai := nls.ai
 
-	if nls.ai.Provider == "openai" && nls.ai.APIKey != "" {
-		prompt := nls.buildSearchPrompt()
-		return nls, tea.Batch(
-			callNLSearchOpenAI(nls.ai.APIKey, nls.ai.Model, prompt),
-			nlSearchTickCmd(),
-		)
+		cmd := func() tea.Msg {
+			resp, err := ai.Chat(systemPrompt, userPrompt)
+			return nlSearchResultMsg{response: resp, err: err}
+		}
+
+		return nls, tea.Batch(cmd, nlSearchTickCmd())
 	}
 
 	// Local fallback — no async needed
