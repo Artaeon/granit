@@ -1,11 +1,7 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -209,139 +205,12 @@ func (db *DailyBriefing) startBriefing() tea.Cmd {
 	ai := db.ai
 
 	return func() tea.Msg {
-		switch ai.Provider {
-		case "openai":
-			return doBriefingOpenAI(ai.APIKey, ai.Model, prompt)
-		case "nous":
-			client := ai.NewNous()
-			resp, err := client.Chat(prompt)
-			return briefingResultMsg{content: resp, err: err}
-		case "nerve":
-			client := ai.NewNerve()
-			resp, err := client.Chat(deepCovenPrompt, prompt, 120*time.Second)
-			return briefingResultMsg{content: resp, err: err}
-		default:
-			url := ai.OllamaEndpoint()
-			model := ai.ModelOrDefault("llama3.2")
-			return doBriefingOllama(url, model, prompt)
+		resp, err := ai.Chat(deepCovenPrompt, prompt)
+		if err != nil {
+			return briefingResultMsg{err: err}
 		}
+		return briefingResultMsg{content: resp}
 	}
-}
-
-func doBriefingOllama(url, model, prompt string) briefingResultMsg {
-	type msg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	type req struct {
-		Model    string `json:"model"`
-		Messages []msg  `json:"messages"`
-		Stream   bool   `json:"stream"`
-	}
-	type resp struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-		Error string `json:"error,omitempty"`
-	}
-
-	reqBody := req{
-		Model: model,
-		Messages: []msg{
-			{Role: "system", Content: deepCovenPrompt},
-			{Role: "user", Content: prompt},
-		},
-		Stream: false,
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return briefingResultMsg{err: err}
-	}
-	client := &http.Client{Timeout: 120 * time.Second}
-	httpResp, err := client.Post(url+"/api/chat", "application/json", bytes.NewReader(data))
-	if err != nil {
-		return briefingResultMsg{err: fmt.Errorf("cannot connect to Ollama: %w", err)}
-	}
-	defer httpResp.Body.Close()
-
-	body, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return briefingResultMsg{err: err}
-	}
-
-	var chatResp resp
-	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return briefingResultMsg{err: err}
-	}
-	if chatResp.Error != "" {
-		return briefingResultMsg{err: fmt.Errorf("Ollama: %s", chatResp.Error)}
-	}
-	return briefingResultMsg{content: chatResp.Message.Content}
-}
-
-func doBriefingOpenAI(apiKey, model, prompt string) briefingResultMsg {
-	type msg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	type req struct {
-		Model    string `json:"model"`
-		Messages []msg  `json:"messages"`
-	}
-	type resp struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-
-	reqBody := req{
-		Model: model,
-		Messages: []msg{
-			{Role: "system", Content: deepCovenPrompt},
-			{Role: "user", Content: prompt},
-		},
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return briefingResultMsg{err: err}
-	}
-	client := &http.Client{Timeout: 60 * time.Second}
-	httpReq, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-	if err != nil {
-		return briefingResultMsg{err: err}
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-
-	httpResp, err := client.Do(httpReq)
-	if err != nil {
-		return briefingResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
-	}
-	defer httpResp.Body.Close()
-
-	body, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return briefingResultMsg{err: fmt.Errorf("read response: %w", err)}
-	}
-
-	var chatResp resp
-	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return briefingResultMsg{err: err}
-	}
-	if chatResp.Error != nil {
-		return briefingResultMsg{err: fmt.Errorf("OpenAI: %s", chatResp.Error.Message)}
-	}
-	if len(chatResp.Choices) == 0 {
-		return briefingResultMsg{err: fmt.Errorf("OpenAI returned no response")}
-	}
-	return briefingResultMsg{content: chatResp.Choices[0].Message.Content}
 }
 
 // ---------------------------------------------------------------------------
