@@ -1001,8 +1001,8 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		return m.executeCommand(CmdDailyBriefing)
 
 	case CmdEveningReview:
-		m.dailyReview.SetSize(m.width, m.height)
-		m.dailyReview.Open(m.vault.Root, m.vault)
+		// Consolidated into CmdDailyReview
+		return m.executeCommand(CmdDailyReview)
 
 	case CmdNoteHistory:
 		m.noteHistory.SetSize(m.width, m.height)
