@@ -26,6 +26,7 @@ const (
 	LayoutStacked   = "stacked"
 	LayoutPreview   = "preview"
 	LayoutPresenter = "presenter"
+	LayoutKanban    = "kanban"
 )
 
 // AllLayouts returns every valid layout name in display order.
@@ -42,6 +43,7 @@ func AllLayouts() []string {
 		LayoutFocus,
 		LayoutPreview,
 		LayoutPresenter,
+		LayoutKanban,
 	}
 }
 
@@ -74,6 +76,8 @@ func LayoutDescription(layout string) string {
 		return "Editor + live markdown preview side by side"
 	case LayoutPresenter:
 		return "Full-screen rendered markdown — presentation mode"
+	case LayoutKanban:
+		return "Sidebar + Editor + mini Kanban board"
 	default:
 		return "Unknown layout"
 	}
@@ -108,6 +112,8 @@ func LayoutPanelCount(layout string) int {
 		return 2
 	case LayoutPresenter:
 		return 1
+	case LayoutKanban:
+		return 3
 	default:
 		return 3
 	}
@@ -126,7 +132,7 @@ func LayoutHasSidebar(layout string) bool {
 // LayoutHasBacklinks reports whether the layout includes the backlinks panel.
 func LayoutHasBacklinks(layout string) bool {
 	switch layout {
-	case LayoutWriter, LayoutMinimal, LayoutZen, LayoutTaskboard, LayoutCalendar, LayoutCockpit, LayoutStacked, LayoutCornell, LayoutFocus, LayoutPreview, LayoutPresenter:
+	case LayoutWriter, LayoutMinimal, LayoutZen, LayoutTaskboard, LayoutCalendar, LayoutCockpit, LayoutStacked, LayoutCornell, LayoutFocus, LayoutPreview, LayoutPresenter, LayoutKanban:
 		return false
 	default:
 		return true

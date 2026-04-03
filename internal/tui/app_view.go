@@ -598,6 +598,105 @@ func (m Model) View() string {
 					content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, focusEditor)
 				}
 			}
+		case "kanban":
+			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
+				BorderForeground(sidebarBorderColor).
+				Width(sidebarWidth).
+				Height(contentHeight).
+				Render(m.sidebar.View())
+
+			kbWidth := m.width / 3
+			if kbWidth < 30 {
+				kbWidth = 30
+			}
+			if kbWidth > 50 {
+				kbWidth = 50
+			}
+
+			// Build mini kanban: 3 columns (Todo, Doing, Done)
+			colW := (kbWidth - 6) / 3
+			if colW < 8 {
+				colW = 8
+			}
+
+			var todoBuf, doingBuf, doneBuf strings.Builder
+			todoBuf.WriteString(lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(" Todo") + "\n")
+			todoBuf.WriteString(DimStyle.Render(strings.Repeat("─", colW-2)) + "\n")
+			doingBuf.WriteString(lipgloss.NewStyle().Foreground(blue).Bold(true).Render(" Doing") + "\n")
+			doingBuf.WriteString(DimStyle.Render(strings.Repeat("─", colW-2)) + "\n")
+			doneBuf.WriteString(lipgloss.NewStyle().Foreground(green).Bold(true).Render(" Done") + "\n")
+			doneBuf.WriteString(DimStyle.Render(strings.Repeat("─", colW-2)) + "\n")
+
+			todoCount, doingCount, doneCount := 0, 0, 0
+			for _, p := range m.vault.SortedPaths() {
+				note := m.vault.GetNote(p)
+				if note == nil {
+					continue
+				}
+				for _, line := range strings.Split(note.Content, "\n") {
+					trimmed := strings.TrimSpace(line)
+					if strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]") {
+						doneCount++
+						if doneCount <= 8 {
+							text := strings.TrimSpace(trimmed[5:])
+							text = TruncateDisplay(text, colW-3)
+							doneBuf.WriteString(lipgloss.NewStyle().Foreground(green).Render(" ✓ "+text) + "\n")
+						}
+					} else if strings.HasPrefix(trimmed, "- [ ]") {
+						text := strings.TrimSpace(trimmed[5:])
+						// Check for #doing or #wip tag
+						if strings.Contains(text, "#doing") || strings.Contains(text, "#wip") || strings.Contains(text, "#progress") {
+							doingCount++
+							if doingCount <= 8 {
+								text = TruncateDisplay(text, colW-3)
+								doingBuf.WriteString(lipgloss.NewStyle().Foreground(blue).Render(" ◉ "+text) + "\n")
+							}
+						} else {
+							todoCount++
+							if todoCount <= 8 {
+								text = TruncateDisplay(text, colW-3)
+								todoBuf.WriteString(lipgloss.NewStyle().Foreground(yellow).Render(" ○ "+text) + "\n")
+							}
+						}
+					}
+				}
+			}
+
+			// Count footers
+			todoBuf.WriteString("\n" + DimStyle.Render(fmt.Sprintf(" %d items", todoCount)) + "\n")
+			doingBuf.WriteString("\n" + DimStyle.Render(fmt.Sprintf(" %d items", doingCount)) + "\n")
+			doneBuf.WriteString("\n" + DimStyle.Render(fmt.Sprintf(" %d items", doneCount)) + "\n")
+
+			todoCol := lipgloss.NewStyle().Width(colW).Render(todoBuf.String())
+			doingCol := lipgloss.NewStyle().Width(colW).Render(doingBuf.String())
+			doneCol := lipgloss.NewStyle().Width(colW).Render(doneBuf.String())
+
+			kbContent := lipgloss.JoinHorizontal(lipgloss.Top, todoCol, doingCol, doneCol)
+			kbPanel := lipgloss.NewStyle().
+				BorderStyle(PanelBorder).
+				BorderForeground(surface1).
+				Width(kbWidth).
+				Height(contentHeight).
+				Background(base).
+				Padding(0, 1).
+				Render(kbContent)
+
+			kbEditorWidth := m.width - sidebarWidth - kbWidth - 6
+			if kbEditorWidth < 30 {
+				kbEditorWidth = 30
+			}
+			kbEditor := EditorStyle.
+				BorderStyle(editorBorder).
+				BorderForeground(editorBorderColor).
+				Width(kbEditorWidth).
+				Height(contentHeight).
+				Render(editorPanel)
+
+			if m.config.SidebarPosition == "right" {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, kbPanel, kbEditor, sidebar)
+			} else {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, kbEditor, kbPanel)
+			}
 		case "presenter":
 			// Full-width centered rendered markdown, no borders
 			maxW := 100

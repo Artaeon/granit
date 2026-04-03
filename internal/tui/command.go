@@ -108,6 +108,7 @@ const (
 	CmdLayoutStacked
 	CmdLayoutPreview
 	CmdLayoutPresenter
+	CmdLayoutKanban
 	CmdCycleLayout
 	CmdLayoutPicker
 	CmdBlogPublish

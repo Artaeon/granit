@@ -210,6 +210,8 @@ func layoutDisplayName(layout string) string {
 		return "Preview"
 	case LayoutPresenter:
 		return "Presenter"
+	case LayoutKanban:
+		return "Kanban"
 	default:
 		return layout
 	}
@@ -434,6 +436,17 @@ func layoutPreview(layout string, width int) string {
 			lines = append(lines, padStr+l)
 		}
 		return style.Render(strings.Join(lines, "\n"))
+	case LayoutKanban:
+		kbW := width / 3
+		if kbW < 10 {
+			kbW = 10
+		}
+		edW := width - sideW - kbW
+		return style.Render(joinH(
+			box("Files", sideW, h),
+			box("Editor", edW, h),
+			box("Kanban", kbW, h),
+		))
 	default:
 		return style.Render(joinH(box("Editor", width, h)))
 	}
