@@ -118,7 +118,7 @@ const (
 	CmdJournalPrompts
 	CmdClipManager
 	CmdDailyPlanner
-	CmdAIScheduler
+	CmdAIScheduler // deprecated: use CmdPlanMyDay
 	CmdTaskTriage
 	CmdRecurringTasks
 	CmdNotePreview
