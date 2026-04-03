@@ -17,6 +17,15 @@ import (
 
 	"github.com/artaeon/granit/internal/vault"
 )
+// renderSidebarPanel renders the file sidebar with the given border style and dimensions.
+func (m Model) renderSidebarPanel(border lipgloss.Border, borderColor lipgloss.TerminalColor, w, h int) string {
+	return SidebarStyle.BorderStyle(border).
+		BorderForeground(borderColor).
+		Width(w).
+		Height(h).
+		Render(m.sidebar.View())
+}
+
 func (m Model) View() string {
 	// Splash screen
 	if m.showSplash {
@@ -68,40 +77,16 @@ func (m Model) View() string {
 	calPanelWidth := 0
 
 	if showSidebar {
-		sidebarWidth = m.width / 5
-		if sidebarWidth < 22 {
-			sidebarWidth = 22
-		}
-		if sidebarWidth > 35 {
-			sidebarWidth = 35
-		}
+		sidebarWidth = clampInt(m.width/5, 22, 35)
 	}
 	if showBacklinks {
-		backlinksWidth = m.width / 5
-		if backlinksWidth < 22 {
-			backlinksWidth = 22
-		}
-		if backlinksWidth > 30 {
-			backlinksWidth = 30
-		}
+		backlinksWidth = clampInt(m.width/5, 22, 30)
 	}
 	if showCalPanel {
-		calPanelWidth = m.width / 4
-		if calPanelWidth < 28 {
-			calPanelWidth = 28
-		}
-		if calPanelWidth > 35 {
-			calPanelWidth = 35
-		}
+		calPanelWidth = clampInt(m.width/4, 28, 35)
 	}
 	if showOutline {
-		outlineWidth = m.width / 7
-		if outlineWidth < 18 {
-			outlineWidth = 18
-		}
-		if outlineWidth > 25 {
-			outlineWidth = 25
-		}
+		outlineWidth = clampInt(m.width/7, 18, 25)
 	}
 
 	panelBorders := 0
@@ -234,11 +219,7 @@ func (m Model) View() string {
 		var content string
 		switch layout {
 		case "writer":
-			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
-				BorderForeground(sidebarBorderColor).
-				Width(sidebarWidth).
-				Height(contentHeight).
-				Render(m.sidebar.View())
+			sidebar := m.renderSidebarPanel(sidebarBorder, sidebarBorderColor, sidebarWidth, contentHeight)
 			if m.config.SidebarPosition == "right" {
 				content = lipgloss.JoinHorizontal(lipgloss.Top, editor, sidebar)
 			} else {
@@ -320,20 +301,10 @@ func (m Model) View() string {
 			panels = append(panels, rightPanels...)
 			content = lipgloss.JoinHorizontal(lipgloss.Top, panels...)
 		case "taskboard", "calendar", "cockpit":
-			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
-				BorderForeground(sidebarBorderColor).
-				Width(sidebarWidth).
-				Height(contentHeight).
-				Render(m.sidebar.View())
+			sidebar := m.renderSidebarPanel(sidebarBorder, sidebarBorderColor, sidebarWidth, contentHeight)
 
 			// Right panel: calendar + tasks stacked vertically
-			rightWidth := m.width / 4
-			if rightWidth < 28 {
-				rightWidth = 28
-			}
-			if rightWidth > 40 {
-				rightWidth = 40
-			}
+			rightWidth := clampInt(m.width/4, 28, 40)
 
 			topHeight := contentHeight / 2
 			botHeight := contentHeight - topHeight - 2
@@ -356,7 +327,7 @@ func (m Model) View() string {
 			taskBuf.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  TASKS") + "\n")
 			taskBuf.WriteString(DimStyle.Render(strings.Repeat("─", rightWidth-4)) + "\n")
 
-			allTasks := ParseAllTasks(m.vault.Notes)
+			allTasks := m.cachedTasks
 			overdueCount := 0
 			todayCount := 0
 			upcomingCount := 0
@@ -435,11 +406,7 @@ func (m Model) View() string {
 				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, cpEditor, rightSide)
 			}
 		case "stacked":
-			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
-				BorderForeground(sidebarBorderColor).
-				Width(sidebarWidth).
-				Height(contentHeight).
-				Render(m.sidebar.View())
+			sidebar := m.renderSidebarPanel(sidebarBorder, sidebarBorderColor, sidebarWidth, contentHeight)
 
 			rightWidth := m.width - sidebarWidth - 4
 			if rightWidth < 30 {
@@ -492,11 +459,7 @@ func (m Model) View() string {
 				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightSide)
 			}
 		case "cornell":
-			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
-				BorderForeground(sidebarBorderColor).
-				Width(sidebarWidth).
-				Height(contentHeight).
-				Render(m.sidebar.View())
+			sidebar := m.renderSidebarPanel(sidebarBorder, sidebarBorderColor, sidebarWidth, contentHeight)
 
 			// Vertical split: editor (2/3) over notes panel (1/3)
 			topHeight := contentHeight * 2 / 3
@@ -525,7 +488,7 @@ func (m Model) View() string {
 
 			// Outline headings
 			cornellNotes.WriteString(lipgloss.NewStyle().Foreground(blue).Bold(true).Render("  Outline") + "\n")
-			for _, line := range m.editor.content {
+			for _, line := range strings.Split(m.editor.GetContent(), "\n") {
 				trimmed := strings.TrimSpace(line)
 				if strings.HasPrefix(trimmed, "# ") {
 					cornellNotes.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(trimmed) + "\n")
@@ -566,11 +529,7 @@ func (m Model) View() string {
 				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightSide)
 			}
 		case "focus":
-			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
-				BorderForeground(sidebarBorderColor).
-				Width(sidebarWidth).
-				Height(contentHeight).
-				Render(m.sidebar.View())
+			sidebar := m.renderSidebarPanel(sidebarBorder, sidebarBorderColor, sidebarWidth, contentHeight)
 
 			// Wide centered editor (max 100 chars), no backlinks
 			focusEditorWidth := m.width - sidebarWidth - 4
@@ -608,34 +567,12 @@ func (m Model) View() string {
 				}
 			}
 		case "widescreen":
-			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
-				BorderForeground(sidebarBorderColor).
-				Width(sidebarWidth).
-				Height(contentHeight).
-				Render(m.sidebar.View())
+			sidebar := m.renderSidebarPanel(sidebarBorder, sidebarBorderColor, sidebarWidth, contentHeight)
 
 			// Panel widths
-			outW := m.width / 8
-			if outW < 16 {
-				outW = 16
-			}
-			if outW > 22 {
-				outW = 22
-			}
-			blW := m.width / 7
-			if blW < 18 {
-				blW = 18
-			}
-			if blW > 25 {
-				blW = 25
-			}
-			calW := m.width / 7
-			if calW < 20 {
-				calW = 20
-			}
-			if calW > 28 {
-				calW = 28
-			}
+			outW := clampInt(m.width/8, 16, 22)
+			blW := clampInt(m.width/7, 18, 25)
+			calW := clampInt(m.width/7, 20, 28)
 
 			wsEditorWidth := m.width - sidebarWidth - outW - blW - calW - 10
 			if wsEditorWidth < 30 {
@@ -673,19 +610,9 @@ func (m Model) View() string {
 
 			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, outlinePanel, wsEditor, backlinks, calPanel)
 		case "kanban":
-			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
-				BorderForeground(sidebarBorderColor).
-				Width(sidebarWidth).
-				Height(contentHeight).
-				Render(m.sidebar.View())
+			sidebar := m.renderSidebarPanel(sidebarBorder, sidebarBorderColor, sidebarWidth, contentHeight)
 
-			kbWidth := m.width / 3
-			if kbWidth < 30 {
-				kbWidth = 30
-			}
-			if kbWidth > 50 {
-				kbWidth = 50
-			}
+			kbWidth := clampInt(m.width/3, 30, 50)
 
 			// Build mini kanban: 3 columns (Todo, Doing, Done)
 			colW := (kbWidth - 6) / 3
@@ -693,8 +620,8 @@ func (m Model) View() string {
 				colW = 8
 			}
 
-			// Use real task parser
-			kbTasks := ParseAllTasks(m.vault.Notes)
+			// Use cached task data (refreshed on save/vault change)
+			kbTasks := m.cachedTasks
 
 			var todoBuf, doingBuf, doneBuf strings.Builder
 			todoBuf.WriteString(lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(" Todo") + "\n")
@@ -825,11 +752,7 @@ func (m Model) View() string {
 
 			content = lipgloss.JoinHorizontal(lipgloss.Top, previewEditor, previewPanel)
 		default: // "default", "research" - 3-panel (with optional calendar toggle)
-			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
-				BorderForeground(sidebarBorderColor).
-				Width(sidebarWidth).
-				Height(contentHeight).
-				Render(m.sidebar.View())
+			sidebar := m.renderSidebarPanel(sidebarBorder, sidebarBorderColor, sidebarWidth, contentHeight)
 			if showCalPanel {
 				m.calendarPanel.SetSize(calPanelWidth, contentHeight)
 				calPanel := lipgloss.NewStyle().
