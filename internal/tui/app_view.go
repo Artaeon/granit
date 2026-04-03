@@ -428,6 +428,63 @@ func (m Model) View() string {
 			} else {
 				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, cpEditor, rightSide)
 			}
+		case "stacked":
+			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
+				BorderForeground(sidebarBorderColor).
+				Width(sidebarWidth).
+				Height(contentHeight).
+				Render(m.sidebar.View())
+
+			rightWidth := m.width - sidebarWidth - 4
+			if rightWidth < 30 {
+				rightWidth = 30
+			}
+
+			stTopHeight := contentHeight * 2 / 3
+			stBotHeight := contentHeight - stTopHeight - 2
+			if stBotHeight < 4 {
+				stBotHeight = 4
+			}
+
+			topEditor := EditorStyle.
+				BorderStyle(editorBorder).
+				BorderForeground(editorBorderColor).
+				Width(rightWidth).
+				Height(stTopHeight).
+				Render(editorPanel)
+
+			// Bottom: outline left, backlinks right
+			outW := rightWidth / 3
+			if outW < 15 {
+				outW = 15
+			}
+			blW := rightWidth - outW - 2
+			if blW < 15 {
+				blW = 15
+			}
+
+			outlinePanelContent := m.outline.RenderPanel(m.editor.GetContent(), outW, stBotHeight)
+			outlinePanel := lipgloss.NewStyle().
+				BorderStyle(PanelBorder).
+				BorderForeground(surface1).
+				Width(outW).
+				Height(stBotHeight).
+				Render(outlinePanelContent)
+
+			backlinksPanel := BacklinksStyle.BorderStyle(backlinksBorder).
+				BorderForeground(backlinksBorderColor).
+				Width(blW).
+				Height(stBotHeight).
+				Render(m.backlinks.View())
+
+			bottomBar := lipgloss.JoinHorizontal(lipgloss.Top, outlinePanel, backlinksPanel)
+			rightSide := lipgloss.JoinVertical(lipgloss.Left, topEditor, bottomBar)
+
+			if m.config.SidebarPosition == "right" {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, rightSide, sidebar)
+			} else {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightSide)
+			}
 		case "cornell":
 			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).

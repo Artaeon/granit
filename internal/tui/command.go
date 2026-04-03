@@ -105,6 +105,7 @@ const (
 	CmdLayoutCornell
 	CmdLayoutFocus
 	CmdLayoutCockpit
+	CmdLayoutStacked
 	CmdCycleLayout
 	CmdLayoutPicker
 	CmdBlogPublish

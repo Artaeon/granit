@@ -200,6 +200,8 @@ func layoutDisplayName(layout string) string {
 		return "Zen"
 	case LayoutCockpit:
 		return "Cockpit"
+	case LayoutStacked:
+		return "Stacked"
 	case LayoutCornell:
 		return "Cornell"
 	case LayoutFocus:
@@ -368,6 +370,32 @@ func layoutPreview(layout string, width int) string {
 		rightBot := box("Tasks", rightW, botH)
 		rightLines := append(rightTop, rightBot...)
 		return style.Render(joinH(sideBox, edBox, rightLines))
+	case LayoutStacked:
+		edW := width - sideW
+		topH := h * 2 / 3
+		if topH < 4 {
+			topH = 4
+		}
+		botH := h - topH
+		outW := edW / 3
+		blW := edW - outW
+		topBox := box("Editor", edW, topH)
+		botLeft := box("Outline", outW, botH)
+		botRight := box("Links", blW, botH)
+		var rightBot []string
+		for i := 0; i < len(botLeft); i++ {
+			left := ""
+			right := ""
+			if i < len(botLeft) {
+				left = botLeft[i]
+			}
+			if i < len(botRight) {
+				right = botRight[i]
+			}
+			rightBot = append(rightBot, left+right)
+		}
+		rightLines := append(topBox, rightBot...)
+		return style.Render(joinH(box("Files", sideW, h), rightLines))
 	case LayoutCornell:
 		edW := width - sideW
 		topH := h * 2 / 3

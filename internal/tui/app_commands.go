@@ -856,7 +856,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.themeEditor.SetSize(m.width, m.height)
 		m.themeEditor.Open(m.config.Theme)
 
-	case CmdLayoutDefault, CmdLayoutWriter, CmdLayoutMinimal, CmdLayoutReading, CmdLayoutDashboard, CmdLayoutZen, CmdLayoutTaskboard, CmdLayoutResearch, CmdLayoutCalendar, CmdLayoutCornell, CmdLayoutFocus, CmdLayoutCockpit:
+	case CmdLayoutDefault, CmdLayoutWriter, CmdLayoutMinimal, CmdLayoutReading, CmdLayoutDashboard, CmdLayoutZen, CmdLayoutTaskboard, CmdLayoutResearch, CmdLayoutCalendar, CmdLayoutCornell, CmdLayoutFocus, CmdLayoutCockpit, CmdLayoutStacked:
 		switch action {
 		case CmdLayoutDefault:
 			m.config.Layout = LayoutDefault
@@ -894,6 +894,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		case CmdLayoutCockpit:
 			m.config.Layout = LayoutCockpit
 			m.statusbar.SetMessage("Layout: Cockpit (sidebar + editor + calendar & tasks)")
+		case CmdLayoutStacked:
+			m.config.Layout = LayoutStacked
+			m.statusbar.SetMessage("Layout: Stacked (editor over outline & backlinks)")
 		}
 		// Fix focus if current panel is hidden in new layout
 		if !LayoutHasSidebar(m.config.Layout) && m.focus == focusSidebar {
