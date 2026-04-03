@@ -348,57 +348,61 @@ func (m Model) View() string {
 				Height(topHeight).
 				Render(calContent)
 
-			// Tasks section
+			// Tasks section — use the real task parser
 			var taskBuf strings.Builder
 			taskBuf.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  TASKS") + "\n")
-			taskBuf.WriteString(DimStyle.Render(strings.Repeat("\u2500", rightWidth-4)) + "\n")
+			taskBuf.WriteString(DimStyle.Render(strings.Repeat("─", rightWidth-4)) + "\n")
 
-			today := time.Now().Format("2006-01-02")
+			allTasks := ParseAllTasks(m.vault.Notes)
 			overdueCount := 0
 			todayCount := 0
-			// Scan vault for tasks
-			for _, p := range m.vault.SortedPaths() {
-				note := m.vault.GetNote(p)
-				if note == nil {
+			upcomingCount := 0
+
+			taskBuf.WriteString(lipgloss.NewStyle().Foreground(red).Bold(true).Render("  Overdue") + "\n")
+			for _, t := range allTasks {
+				if t.Done || t.DueDate == "" {
 					continue
 				}
-				for _, line := range strings.Split(note.Content, "\n") {
-					trimmed := strings.TrimSpace(line)
-					if !strings.HasPrefix(trimmed, "- [ ]") {
-						continue
+				if tmIsOverdue(t.DueDate) {
+					overdueCount++
+					if overdueCount <= 5 {
+						text := TruncateDisplay(tmCleanText(t.Text), rightWidth-8)
+						taskBuf.WriteString("  " + lipgloss.NewStyle().Foreground(red).Render("✗ "+text) + "\n")
 					}
-					taskText := strings.TrimSpace(trimmed[5:])
-					if idx := strings.Index(trimmed, "\U0001f4c5 "); idx >= 0 {
-						dateStr := trimmed[idx+len("\U0001f4c5 "):]
-						if len(dateStr) >= 10 {
-							dueDate := dateStr[:10]
-							// Clean task text (remove emoji date)
-							if eIdx := strings.Index(taskText, " \U0001f4c5"); eIdx >= 0 {
-								taskText = taskText[:eIdx]
-							}
-							taskText = TruncateDisplay(taskText, rightWidth-8)
-							if dueDate < today {
-								overdueCount++
-								if overdueCount <= 5 {
-									taskBuf.WriteString("  " + lipgloss.NewStyle().Foreground(red).Render("\u2717 "+taskText) + "\n")
-								}
-							} else if dueDate == today {
-								todayCount++
-								if todayCount <= 5 {
-									taskBuf.WriteString("  " + lipgloss.NewStyle().Foreground(yellow).Render("\u25cb "+taskText) + "\n")
-								}
-							}
-						}
-					}
+				} else if tmIsToday(t.DueDate) {
+					todayCount++
+				} else {
+					upcomingCount++
 				}
 			}
-			if overdueCount == 0 && todayCount == 0 {
-				taskBuf.WriteString("  " + DimStyle.Render("no tasks due") + "\n")
+			if overdueCount == 0 {
+				taskBuf.WriteString("  " + DimStyle.Render("none") + "\n")
 			}
-			taskBuf.WriteString("\n" + DimStyle.Render(strings.Repeat("\u2500", rightWidth-4)) + "\n")
-			taskBuf.WriteString(fmt.Sprintf("  %s %d overdue  %s %d today",
-				lipgloss.NewStyle().Foreground(red).Render("\u25cf"), overdueCount,
-				lipgloss.NewStyle().Foreground(yellow).Render("\u25cf"), todayCount) + "\n")
+			if overdueCount > 5 {
+				taskBuf.WriteString("  " + DimStyle.Render(fmt.Sprintf("  +%d more", overdueCount-5)) + "\n")
+			}
+
+			taskBuf.WriteString("\n" + lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("  Today") + "\n")
+			shown := 0
+			for _, t := range allTasks {
+				if t.Done || t.DueDate == "" || !tmIsToday(t.DueDate) {
+					continue
+				}
+				shown++
+				if shown <= 5 {
+					text := TruncateDisplay(tmCleanText(t.Text), rightWidth-8)
+					taskBuf.WriteString("  " + lipgloss.NewStyle().Foreground(yellow).Render("○ "+text) + "\n")
+				}
+			}
+			if shown == 0 {
+				taskBuf.WriteString("  " + DimStyle.Render("none") + "\n")
+			}
+
+			taskBuf.WriteString("\n" + DimStyle.Render(strings.Repeat("─", rightWidth-4)) + "\n")
+			taskBuf.WriteString(fmt.Sprintf("  %s %d overdue  %s %d today  %s %d upcoming",
+				lipgloss.NewStyle().Foreground(red).Render("●"), overdueCount,
+				lipgloss.NewStyle().Foreground(yellow).Render("●"), todayCount,
+				lipgloss.NewStyle().Foreground(green).Render("●"), upcomingCount) + "\n")
 
 			taskPanel := lipgloss.NewStyle().
 				BorderStyle(PanelBorder).
@@ -684,6 +688,9 @@ func (m Model) View() string {
 				colW = 8
 			}
 
+			// Use real task parser
+			kbTasks := ParseAllTasks(m.vault.Notes)
+
 			var todoBuf, doingBuf, doneBuf strings.Builder
 			todoBuf.WriteString(lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(" Todo") + "\n")
 			todoBuf.WriteString(DimStyle.Render(strings.Repeat("─", colW-2)) + "\n")
@@ -693,35 +700,31 @@ func (m Model) View() string {
 			doneBuf.WriteString(DimStyle.Render(strings.Repeat("─", colW-2)) + "\n")
 
 			todoCount, doingCount, doneCount := 0, 0, 0
-			for _, p := range m.vault.SortedPaths() {
-				note := m.vault.GetNote(p)
-				if note == nil {
-					continue
-				}
-				for _, line := range strings.Split(note.Content, "\n") {
-					trimmed := strings.TrimSpace(line)
-					if strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]") {
-						doneCount++
-						if doneCount <= 8 {
-							text := strings.TrimSpace(trimmed[5:])
-							text = TruncateDisplay(text, colW-3)
-							doneBuf.WriteString(lipgloss.NewStyle().Foreground(green).Render(" ✓ "+text) + "\n")
+			for _, t := range kbTasks {
+				text := TruncateDisplay(tmCleanText(t.Text), colW-3)
+				if t.Done {
+					doneCount++
+					if doneCount <= 8 {
+						doneBuf.WriteString(lipgloss.NewStyle().Foreground(green).Render(" ✓ "+text) + "\n")
+					}
+				} else {
+					// Check for #doing or #wip tag
+					isDoing := false
+					for _, tag := range t.Tags {
+						if tag == "doing" || tag == "wip" || tag == "progress" {
+							isDoing = true
+							break
 						}
-					} else if strings.HasPrefix(trimmed, "- [ ]") {
-						text := strings.TrimSpace(trimmed[5:])
-						// Check for #doing or #wip tag
-						if strings.Contains(text, "#doing") || strings.Contains(text, "#wip") || strings.Contains(text, "#progress") {
-							doingCount++
-							if doingCount <= 8 {
-								text = TruncateDisplay(text, colW-3)
-								doingBuf.WriteString(lipgloss.NewStyle().Foreground(blue).Render(" ◉ "+text) + "\n")
-							}
-						} else {
-							todoCount++
-							if todoCount <= 8 {
-								text = TruncateDisplay(text, colW-3)
-								todoBuf.WriteString(lipgloss.NewStyle().Foreground(yellow).Render(" ○ "+text) + "\n")
-							}
+					}
+					if isDoing {
+						doingCount++
+						if doingCount <= 8 {
+							doingBuf.WriteString(lipgloss.NewStyle().Foreground(blue).Render(" ◉ "+text) + "\n")
+						}
+					} else {
+						todoCount++
+						if todoCount <= 8 {
+							todoBuf.WriteString(lipgloss.NewStyle().Foreground(yellow).Render(" ○ "+text) + "\n")
 						}
 					}
 				}
