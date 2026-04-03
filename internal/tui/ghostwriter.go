@@ -353,6 +353,9 @@ func (gw *GhostWriter) buildOutline(content []string) string {
 // chars of content) whose title has the most keyword overlap with the given
 // line. Returns empty strings if no match is found.
 func (gw *GhostWriter) findRelatedVaultNote(currentLine string) (string, string) {
+	if gw.vaultNotes == nil {
+		return "", ""
+	}
 	words := strings.Fields(strings.ToLower(currentLine))
 	if len(words) == 0 {
 		return "", ""
