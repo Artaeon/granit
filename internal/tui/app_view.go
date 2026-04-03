@@ -268,11 +268,7 @@ func (m Model) View() string {
 		case "dashboard": // 4-panel: sidebar | editor | outline | backlinks
 			var leftPanels, rightPanels []string
 			if sidebarWidth > 0 {
-				sidebar := SidebarStyle.BorderStyle(sidebarBorder).
-					BorderForeground(sidebarBorderColor).
-					Width(sidebarWidth).
-					Height(contentHeight).
-					Render(m.sidebar.View())
+				sidebar := m.renderSidebarPanel(sidebarBorder, sidebarBorderColor, sidebarWidth, contentHeight)
 				if m.config.SidebarPosition == "right" {
 					rightPanels = append(rightPanels, sidebar)
 				} else {
