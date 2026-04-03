@@ -220,6 +220,11 @@ func (c *Calendar) SetEvents(events []CalendarEvent) {
 	c.events = events
 }
 
+// GetEvents returns the currently loaded calendar events.
+func (c Calendar) GetEvents() []CalendarEvent {
+	return c.events
+}
+
 // SetHabitData stores habit entries and logs for enriched calendar views.
 func (c *Calendar) SetHabitData(entries []habitEntry, logs []habitLog) {
 	c.habitEntries = entries

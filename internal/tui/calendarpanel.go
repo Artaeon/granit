@@ -22,6 +22,7 @@ type CalendarPanel struct {
 	now            time.Time
 	plannerBlocks  []PlannerBlock      // today's planner blocks
 	upcomingTasks  []calendarPanelTask // tasks due today/tomorrow
+	todayEvents    []CalendarEvent     // ICS calendar events for today
 	daysWithEvents map[int]bool        // day-of-month -> has events
 	vaultRoot      string
 }
@@ -52,6 +53,34 @@ func (cp *CalendarPanel) SetSize(width, height int) {
 // SetVaultRoot stores the vault root path for loading data.
 func (cp *CalendarPanel) SetVaultRoot(root string) {
 	cp.vaultRoot = root
+}
+
+// SetEvents provides calendar events (from ICS files and native store).
+func (cp *CalendarPanel) SetEvents(events []CalendarEvent) {
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	tomorrowStart := todayStart.Add(24 * time.Hour)
+	year, month, _ := now.Date()
+
+	cp.todayEvents = nil
+	for _, ev := range events {
+		// Mark days with events in the mini calendar
+		if ev.Date.Year() == year && ev.Date.Month() == month {
+			cp.daysWithEvents[ev.Date.Day()] = true
+		}
+
+		// Collect today's events
+		if !ev.Date.Before(todayStart) && ev.Date.Before(tomorrowStart) {
+			cp.todayEvents = append(cp.todayEvents, ev)
+		} else if ev.AllDay && ev.Date.Year() == year && ev.Date.Month() == month && ev.Date.Day() == now.Day() {
+			cp.todayEvents = append(cp.todayEvents, ev)
+		}
+	}
+
+	// Sort today's events by time
+	sort.Slice(cp.todayEvents, func(i, j int) bool {
+		return cp.todayEvents[i].Date.Before(cp.todayEvents[j].Date)
+	})
 }
 
 // Refresh reloads planner blocks and tasks from the vault.
@@ -202,6 +231,29 @@ func (cp CalendarPanel) View() string {
 	} else {
 		for _, block := range cp.plannerBlocks {
 			b.WriteString(cp.renderScheduleBlock(block, contentWidth))
+			b.WriteString("\n")
+		}
+	}
+
+	// Calendar events (ICS)
+	if len(cp.todayEvents) > 0 {
+		b.WriteString("\n")
+		b.WriteString(DimStyle.Render(strings.Repeat("\u2500", contentWidth)))
+		b.WriteString("\n")
+
+		evTitle := lipgloss.NewStyle().Foreground(peach).Bold(true)
+		b.WriteString(evTitle.Render("  Events"))
+		b.WriteString("\n")
+
+		evTimeStyle := lipgloss.NewStyle().Foreground(lavender)
+		evNameStyle := lipgloss.NewStyle().Foreground(text)
+		for _, ev := range cp.todayEvents {
+			timeStr := ev.Date.Format("15:04")
+			if ev.AllDay {
+				timeStr = "all day"
+			}
+			title := TruncateDisplay(ev.Title, contentWidth-12)
+			b.WriteString("  " + evTimeStyle.Render(timeStr) + " " + evNameStyle.Render(title))
 			b.WriteString("\n")
 		}
 	}

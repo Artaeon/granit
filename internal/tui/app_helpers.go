@@ -977,7 +977,7 @@ func (m *Model) loadNoteWithoutBreadcrumb(relPath string) {
 	m.bookmarks.AddRecent(relPath)
 }
 
-// refreshCalendarPanel reloads planner blocks and tasks into the calendar panel.
+// refreshCalendarPanel reloads planner blocks, ICS events, and tasks into the calendar panel.
 func (m *Model) refreshCalendarPanel() {
 	m.calendarPanel.SetVaultRoot(m.vault.Root)
 	noteContents := make(map[string]string)
@@ -987,6 +987,8 @@ func (m *Model) refreshCalendarPanel() {
 		}
 	}
 	m.calendarPanel.Refresh(loadPlannerBlocks(m.vault.Root), noteContents)
+	// Feed ICS events into the panel so cockpit layout shows calendar events
+	m.calendarPanel.SetEvents(m.calendar.GetEvents())
 }
 
 func (m *Model) applyVimResult(r VimResult) tea.Cmd {
