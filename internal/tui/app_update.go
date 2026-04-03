@@ -802,7 +802,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case ollamaResultMsg:
+	case botAIResultMsg:
 		if m.bots.IsActive() {
 			var cmd tea.Cmd
 			m.bots, cmd = m.bots.Update(msg)
@@ -818,14 +818,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				_ = m.config.Save()
 				m.renderer.SetViewStyle(m.config.ViewStyle)
 			}
-		}
-		return m, nil
-
-	case openaiResultMsg:
-		if m.bots.IsActive() {
-			var cmd tea.Cmd
-			m.bots, cmd = m.bots.Update(msg)
-			return m, cmd
 		}
 		return m, nil
 

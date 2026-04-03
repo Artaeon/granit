@@ -1,11 +1,7 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -27,54 +23,8 @@ type BotResult struct {
 	NotePath string   // which note this applies to
 }
 
-// ---------------------------------------------------------------------------
-// Ollama API types
-// ---------------------------------------------------------------------------
-
-type ollamaRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Stream bool   `json:"stream"`
-}
-
-type ollamaResponse struct {
-	Response string `json:"response"`
-}
-
-// ollamaResultMsg carries the response from Ollama back to Update.
-type ollamaResultMsg struct {
-	response string
-	err      error
-	botKind  botKind
-}
-
-// ---------------------------------------------------------------------------
-// OpenAI API types
-// ---------------------------------------------------------------------------
-
-type openaiRequest struct {
-	Model    string          `json:"model"`
-	Messages []openaiMessage `json:"messages"`
-}
-
-type openaiMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type openaiResponse struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-// openaiResultMsg carries the response from OpenAI back to Update.
-type openaiResultMsg struct {
+// botAIResultMsg carries the AI response back to Update (unified for all providers).
+type botAIResultMsg struct {
 	response string
 	err      error
 	botKind  botKind
@@ -284,129 +234,14 @@ func (b *Bots) GetResult() BotResult {
 }
 
 // ---------------------------------------------------------------------------
-// Ollama API calls
+// AI call (unified via AIConfig.Chat)
 // ---------------------------------------------------------------------------
 
-
-func callOllamaForBot(url, model, prompt string, kind botKind) tea.Cmd {
+func callAIForBot(ai AIConfig, prompt string, kind botKind) tea.Cmd {
 	return func() tea.Msg {
-		return doOllamaRequest(url, model, prompt, kind)
+		resp, err := ai.Chat("You are a helpful note-taking assistant. Be concise and actionable.", prompt)
+		return botAIResultMsg{response: resp, err: err, botKind: kind}
 	}
-}
-
-func callOpenAIForBot(apiKey, model, prompt string, kind botKind) tea.Cmd {
-	return func() tea.Msg {
-		return doOpenAIRequest(apiKey, model, prompt, kind)
-	}
-}
-
-// nousResultMsg carries the response from Nous back to Update.
-type nousResultMsg struct {
-	response string
-	err      error
-	botKind  botKind
-}
-
-func callNousForBot(url, apiKey, prompt string, kind botKind) tea.Cmd {
-	return func() tea.Msg {
-		client := NewNousClient(url, apiKey)
-		resp, err := client.Chat(prompt)
-		if err != nil {
-			return nousResultMsg{err: err, botKind: kind}
-		}
-		return nousResultMsg{response: resp, botKind: kind}
-	}
-}
-
-func doOpenAIRequest(apiKey, model, prompt string, kind botKind) openaiResultMsg {
-	reqBody := openaiRequest{
-		Model: model,
-		Messages: []openaiMessage{
-			{Role: "system", Content: "You are a helpful note-taking assistant. Be concise and actionable."},
-			{Role: "user", Content: prompt},
-		},
-	}
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return openaiResultMsg{err: err, botKind: kind}
-	}
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-	if err != nil {
-		return openaiResultMsg{err: err, botKind: kind}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return openaiResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err), botKind: kind}
-	}
-	if resp != nil && resp.Body != nil {
-		defer resp.Body.Close()
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return openaiResultMsg{err: err, botKind: kind}
-	}
-
-	var openaiResp openaiResponse
-	if err := json.Unmarshal(body, &openaiResp); err != nil {
-		return openaiResultMsg{err: err, botKind: kind}
-	}
-
-	if openaiResp.Error != nil {
-		hint := openaiResp.Error.Message
-		if strings.Contains(hint, "auth") || strings.Contains(hint, "key") {
-			hint += " — check your API key in Settings (Ctrl+,)"
-		}
-		return openaiResultMsg{err: fmt.Errorf("OpenAI: %s", hint), botKind: kind}
-	}
-
-	if len(openaiResp.Choices) == 0 {
-		return openaiResultMsg{err: fmt.Errorf("OpenAI returned an empty response — try a different model in Settings (Ctrl+,)"), botKind: kind}
-	}
-
-	return openaiResultMsg{response: openaiResp.Choices[0].Message.Content, botKind: kind}
-}
-
-func doOllamaRequest(url, model, prompt string, kind botKind) ollamaResultMsg {
-	reqBody := ollamaRequest{
-		Model:  model,
-		Prompt: prompt,
-		Stream: false,
-	}
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return ollamaResultMsg{err: err, botKind: kind}
-	}
-
-	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Post(url+"/api/generate", "application/json", bytes.NewReader(data))
-	if err != nil {
-		return ollamaResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s — is it running? Try: ollama serve", url), botKind: kind}
-	}
-	if resp != nil && resp.Body != nil {
-		defer resp.Body.Close()
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return ollamaResultMsg{err: err, botKind: kind}
-	}
-
-	if resp.StatusCode != 200 {
-		return ollamaResultMsg{err: fmt.Errorf("Ollama error (status %d) — check model is pulled: ollama pull <model>", resp.StatusCode), botKind: kind}
-	}
-
-	var ollamaResp ollamaResponse
-	if err := json.Unmarshal(body, &ollamaResp); err != nil {
-		return ollamaResultMsg{err: err, botKind: kind}
-	}
-
-	return ollamaResultMsg{response: ollamaResp.Response, botKind: kind}
 }
 
 // ---------------------------------------------------------------------------
@@ -816,14 +651,14 @@ func (b Bots) Update(msg tea.Msg) (Bots, tea.Cmd) {
 			return b, botsTickCmd()
 		}
 
-	case ollamaResultMsg:
+	case botAIResultMsg:
 		if b.state != botsStateLoading {
 			return b, nil
 		}
 		if msg.err != nil {
 			var lines []string
 			lines = append(lines, lipgloss.NewStyle().Foreground(yellow).Render(
-				"  "+IconBookmarkChar+" Ollama unavailable, using local analysis"))
+				"  "+IconBookmarkChar+" AI unavailable, using local analysis"))
 			lines = append(lines, DimStyle.Render("  "+msg.err.Error()))
 			lines = append(lines, "")
 			b.runLocalBot()
@@ -831,45 +666,8 @@ func (b Bots) Update(msg tea.Msg) (Bots, tea.Cmd) {
 			b.state = botsStateResults
 			return b, nil
 		}
-		b.processAIResponse(msg.response, "Ollama: "+b.ai.Model)
-		b.state = botsStateResults
-		return b, nil
-
-	case openaiResultMsg:
-		if b.state != botsStateLoading {
-			return b, nil
-		}
-		if msg.err != nil {
-			var lines []string
-			lines = append(lines, lipgloss.NewStyle().Foreground(yellow).Render(
-				"  "+IconBookmarkChar+" OpenAI unavailable, using local analysis"))
-			lines = append(lines, DimStyle.Render("  "+msg.err.Error()))
-			lines = append(lines, "")
-			b.runLocalBot()
-			b.resultLines = append(lines, b.resultLines...)
-			b.state = botsStateResults
-			return b, nil
-		}
-		b.processAIResponse(msg.response, "OpenAI: "+b.ai.Model)
-		b.state = botsStateResults
-		return b, nil
-
-	case nousResultMsg:
-		if b.state != botsStateLoading {
-			return b, nil
-		}
-		if msg.err != nil {
-			var lines []string
-			lines = append(lines, lipgloss.NewStyle().Foreground(yellow).Render(
-				"  "+IconBookmarkChar+" Nous unavailable, using local analysis"))
-			lines = append(lines, DimStyle.Render("  "+msg.err.Error()))
-			lines = append(lines, "")
-			b.runLocalBot()
-			b.resultLines = append(lines, b.resultLines...)
-			b.state = botsStateResults
-			return b, nil
-		}
-		b.processAIResponse(msg.response, "Nous")
+		providerLabel := b.ai.Provider + ": " + b.ai.Model
+		b.processAIResponse(msg.response, providerLabel)
 		b.state = botsStateResults
 		return b, nil
 
@@ -976,22 +774,8 @@ func (b Bots) startBot() (Bots, tea.Cmd) {
 			return b, nil
 		}
 
-		if b.ai.Provider == "openai" && b.ai.APIKey != "" {
-			return b, tea.Batch(
-				callOpenAIForBot(b.ai.APIKey, b.ai.Model, prompt, b.activeBot),
-				botsTickCmd(),
-			)
-		}
-
-		if b.ai.Provider == "nous" {
-			return b, tea.Batch(
-				callNousForBot(b.ai.NousURL, b.ai.NousAPIKey, prompt, b.activeBot),
-				botsTickCmd(),
-			)
-		}
-
 		return b, tea.Batch(
-			callOllamaForBot(b.ai.OllamaURL, b.ai.Model, prompt, b.activeBot),
+			callAIForBot(b.ai, prompt, b.activeBot),
 			botsTickCmd(),
 		)
 	}
