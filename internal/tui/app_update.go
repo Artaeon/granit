@@ -2141,6 +2141,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.setFocus(focusEditor)
 					}
 					m.updateLayout()
+					_ = m.config.Save()
 				}
 			}
 			return m, cmd

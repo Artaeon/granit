@@ -919,6 +919,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.setFocus(focusEditor)
 		}
 		m.updateLayout()
+		_ = m.config.Save()
 
 	case CmdCycleLayout:
 		layouts := AllLayouts()
@@ -943,6 +944,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.setFocus(focusEditor)
 		}
 		m.updateLayout()
+		_ = m.config.Save()
 
 	case CmdLayoutPicker:
 		m.layoutPicker.SetSize(m.width, m.height)
@@ -976,6 +978,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.statusbar.SetMessage("Sidebar shown")
 		}
 		m.updateLayout()
+		_ = m.config.Save()
 
 	case CmdResearchAgent:
 		if !m.config.CorePluginEnabled("research_agent") {
