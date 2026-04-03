@@ -254,7 +254,10 @@ func doBriefingOllama(url, model, prompt string) briefingResultMsg {
 		Stream: false,
 	}
 
-	data, _ := json.Marshal(reqBody)
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return briefingResultMsg{err: err}
+	}
 	client := &http.Client{Timeout: 120 * time.Second}
 	httpResp, err := client.Post(url+"/api/chat", "application/json", bytes.NewReader(data))
 	if err != nil {
@@ -305,9 +308,15 @@ func doBriefingOpenAI(apiKey, model, prompt string) briefingResultMsg {
 		},
 	}
 
-	data, _ := json.Marshal(reqBody)
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return briefingResultMsg{err: err}
+	}
 	client := &http.Client{Timeout: 60 * time.Second}
-	httpReq, _ := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
+	httpReq, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
+	if err != nil {
+		return briefingResultMsg{err: err}
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 
@@ -317,7 +326,10 @@ func doBriefingOpenAI(apiKey, model, prompt string) briefingResultMsg {
 	}
 	defer httpResp.Body.Close()
 
-	body, _ := io.ReadAll(httpResp.Body)
+	body, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return briefingResultMsg{err: fmt.Errorf("read response: %w", err)}
+	}
 
 	var chatResp resp
 	if err := json.Unmarshal(body, &chatResp); err != nil {
