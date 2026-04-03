@@ -598,6 +598,32 @@ func (m Model) View() string {
 					content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, focusEditor)
 				}
 			}
+		case "preview":
+			// Editor on left, rendered markdown preview on right
+			halfW := (m.width - 4) / 2
+			if halfW < 30 {
+				halfW = 30
+			}
+
+			previewEditor := EditorStyle.
+				BorderStyle(editorBorder).
+				BorderForeground(editorBorderColor).
+				Width(halfW).
+				Height(contentHeight).
+				Render(editorPanel)
+
+			// Render markdown preview
+			m.renderer.SetSize(halfW-2, contentHeight)
+			rendered := m.renderer.Render(m.editor.GetContent(), m.viewScroll)
+			previewPanel := lipgloss.NewStyle().
+				BorderStyle(PanelBorder).
+				BorderForeground(surface1).
+				Width(halfW).
+				Height(contentHeight).
+				Background(base).
+				Render(rendered)
+
+			content = lipgloss.JoinHorizontal(lipgloss.Top, previewEditor, previewPanel)
 		default: // "default", "research" - 3-panel (with optional calendar toggle)
 			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).

@@ -206,6 +206,8 @@ func layoutDisplayName(layout string) string {
 		return "Cornell"
 	case LayoutFocus:
 		return "Focus"
+	case LayoutPreview:
+		return "Preview"
 	default:
 		return layout
 	}
@@ -413,6 +415,12 @@ func layoutPreview(layout string, width int) string {
 		return style.Render(joinH(
 			box("Files", sideW, topH+botH),
 			strings.Split(rightSide, "\n"),
+		))
+	case LayoutPreview:
+		halfW := width / 2
+		return style.Render(joinH(
+			box("Editor", halfW, h),
+			box("Preview", halfW, h),
 		))
 	default:
 		return style.Render(joinH(box("Editor", width, h)))
