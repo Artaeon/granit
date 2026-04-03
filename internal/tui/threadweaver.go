@@ -1,11 +1,7 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
@@ -265,162 +261,9 @@ func (tw *ThreadWeaver) generate() tea.Cmd {
 	ai := tw.ai
 
 	return func() tea.Msg {
-		switch ai.Provider {
-		case "openai":
-			return twCallOpenAI(ai.APIKey, ai.Model, systemPrompt, userPrompt)
-		case "nous":
-			client := ai.NewNous()
-			resp, err := client.Chat(systemPrompt + "\n\n" + userPrompt)
-			return threadWeaverResultMsg{content: resp, err: err}
-		case "nerve":
-			client := ai.NewNerve()
-			resp, err := client.Chat(systemPrompt, userPrompt, 120*time.Second)
-			return threadWeaverResultMsg{content: resp, err: err}
-		default:
-			url := ai.OllamaEndpoint()
-			model := ai.ModelOrDefault("llama3.2")
-			return twCallOllama(url, model, systemPrompt, userPrompt)
-		}
+		resp, err := ai.Chat(systemPrompt, userPrompt)
+		return threadWeaverResultMsg{content: resp, err: err}
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Ollama API
-// ---------------------------------------------------------------------------
-
-type twOllamaMsg struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type twOllamaReq struct {
-	Model    string        `json:"model"`
-	Messages []twOllamaMsg `json:"messages"`
-	Stream   bool          `json:"stream"`
-}
-
-type twOllamaResp struct {
-	Message struct {
-		Content string `json:"content"`
-	} `json:"message"`
-	Error string `json:"error,omitempty"`
-}
-
-func twCallOllama(url, model, systemPrompt, userPrompt string) threadWeaverResultMsg {
-	reqBody := twOllamaReq{
-		Model: model,
-		Messages: []twOllamaMsg{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
-		Stream: false,
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return threadWeaverResultMsg{err: err}
-	}
-
-	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Post(url+"/api/chat", "application/json", bytes.NewReader(data))
-	if err != nil {
-		return threadWeaverResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)}
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return threadWeaverResultMsg{err: err}
-	}
-
-	if resp.StatusCode != 200 {
-		return threadWeaverResultMsg{err: fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body))}
-	}
-
-	var chatResp twOllamaResp
-	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return threadWeaverResultMsg{err: err}
-	}
-
-	if chatResp.Error != "" {
-		return threadWeaverResultMsg{err: fmt.Errorf("Ollama error: %s", chatResp.Error)}
-	}
-
-	return threadWeaverResultMsg{content: chatResp.Message.Content}
-}
-
-// ---------------------------------------------------------------------------
-// OpenAI API
-// ---------------------------------------------------------------------------
-
-type twOpenAIMsg struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type twOpenAIReq struct {
-	Model    string        `json:"model"`
-	Messages []twOpenAIMsg `json:"messages"`
-}
-
-type twOpenAIResp struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-func twCallOpenAI(apiKey, model, systemPrompt, userPrompt string) threadWeaverResultMsg {
-	reqBody := twOpenAIReq{
-		Model: model,
-		Messages: []twOpenAIMsg{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return threadWeaverResultMsg{err: err}
-	}
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	httpReq, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-	if err != nil {
-		return threadWeaverResultMsg{err: err}
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-
-	httpResp, err := client.Do(httpReq)
-	if err != nil {
-		return threadWeaverResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
-	}
-	defer httpResp.Body.Close()
-
-	body, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return threadWeaverResultMsg{err: err}
-	}
-
-	var openaiResp twOpenAIResp
-	if err := json.Unmarshal(body, &openaiResp); err != nil {
-		return threadWeaverResultMsg{err: err}
-	}
-
-	if openaiResp.Error != nil {
-		return threadWeaverResultMsg{err: fmt.Errorf("OpenAI error: %s", openaiResp.Error.Message)}
-	}
-
-	if len(openaiResp.Choices) == 0 {
-		return threadWeaverResultMsg{err: fmt.Errorf("OpenAI returned no choices")}
-	}
-
-	return threadWeaverResultMsg{content: openaiResp.Choices[0].Message.Content}
 }
 
 // ---------------------------------------------------------------------------
