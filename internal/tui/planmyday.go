@@ -95,6 +95,11 @@ type PlanMyDay struct {
 	// Clocked sessions for display
 	clockedSessions []clockPlanSlot
 
+	// Streaming
+	streaming bool
+	streamBuf strings.Builder
+	streamCh  <-chan tea.Msg
+
 	// Animation
 	loadingTick int
 	spinnerTick int
@@ -789,12 +794,31 @@ func (p PlanMyDay) Update(msg tea.Msg) (PlanMyDay, tea.Cmd) {
 			return p, planMyDayTickCmd()
 		}
 
+	case streamChunkMsg:
+		if msg.tag == "planmyday" && p.streaming {
+			p.streamBuf.WriteString(msg.text)
+			return p, streamCmd(p.streamCh)
+		}
+
+	case streamDoneMsg:
+		if msg.tag == "planmyday" && p.streaming {
+			p.streaming = false
+			if msg.err != nil {
+				p.generateLocalPlan()
+			} else {
+				p.parseAIResponse(p.streamBuf.String())
+			}
+			p.phase = 2
+			p.scroll = 0
+			return p, nil
+		}
+
 	case planMyDayResultMsg:
+		// Legacy: used by local fallback if ever reached
 		if p.phase != 1 {
 			return p, nil
 		}
 		if msg.err != nil {
-			// AI failed, fall back to local
 			p.generateLocalPlan()
 		} else {
 			p.parseAIResponse(msg.response)
@@ -838,17 +862,14 @@ func (p PlanMyDay) startPlanning() (PlanMyDay, tea.Cmd) {
 	if useAI {
 		p.phase = 1
 		p.spinnerTick = 0
+		p.streaming = true
+		p.streamBuf.Reset()
 
 		systemPrompt := "You are a productivity coach that creates optimized daily schedules. Always respond in the exact format requested."
 		userPrompt := p.buildPrompt()
-		ai := p.ai
 
-		cmd := func() tea.Msg {
-			resp, err := ai.Chat(systemPrompt, userPrompt)
-			return planMyDayResultMsg{response: resp, err: err}
-		}
-
-		return p, tea.Batch(cmd, planMyDayTickCmd())
+		p.streamCh = sendToAIStreaming(p.ai, systemPrompt, userPrompt, "planmyday")
+		return p, tea.Batch(streamCmd(p.streamCh), planMyDayTickCmd())
 	}
 
 	// Local fallback

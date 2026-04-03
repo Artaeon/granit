@@ -282,11 +282,42 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case aiChatResultMsg, aiChatTickMsg, streamChunkMsg, streamDoneMsg:
+	case aiChatResultMsg, aiChatTickMsg:
 		if m.aiChat.IsActive() {
 			var cmd tea.Cmd
 			m.aiChat, cmd = m.aiChat.Update(msg)
 			return m, cmd
+		}
+		return m, nil
+
+	case streamChunkMsg, streamDoneMsg:
+		// Route streaming messages by tag to the correct overlay.
+		var tag string
+		switch m := msg.(type) {
+		case streamChunkMsg:
+			tag = m.tag
+		case streamDoneMsg:
+			tag = m.tag
+		}
+		switch tag {
+		case "planmyday":
+			if m.planMyDay.IsActive() {
+				var cmd tea.Cmd
+				m.planMyDay, cmd = m.planMyDay.Update(msg)
+				return m, cmd
+			}
+		case "tasktriage":
+			if m.taskTriage.IsActive() {
+				var cmd tea.Cmd
+				m.taskTriage, cmd = m.taskTriage.Update(msg)
+				return m, cmd
+			}
+		default: // "aichat" and any others
+			if m.aiChat.IsActive() {
+				var cmd tea.Cmd
+				m.aiChat, cmd = m.aiChat.Update(msg)
+				return m, cmd
+			}
 		}
 		return m, nil
 

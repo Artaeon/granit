@@ -81,6 +81,11 @@ type TaskTriage struct {
 	loading     bool
 	loadingTick int
 
+	// Streaming
+	streaming bool
+	streamBuf strings.Builder
+	streamCh  <-chan tea.Msg
+
 	errMsg string
 }
 
@@ -298,9 +303,18 @@ func (tt *TaskTriage) triageCmd() tea.Cmd {
 		}
 	}
 
-	ai := tt.ai
 	systemPrompt, userPrompt := tt.buildPrompt()
 
+	// Use streaming if AI is configured
+	if tt.ai.Provider != "" && tt.ai.Provider != "local" {
+		tt.streaming = true
+		tt.streamBuf.Reset()
+		tt.streamCh = sendToAIStreaming(tt.ai, systemPrompt, userPrompt, "tasktriage")
+		return streamCmd(tt.streamCh)
+	}
+
+	// Blocking fallback for local provider
+	ai := tt.ai
 	return func() tea.Msg {
 		resp, err := ai.Chat(systemPrompt, userPrompt)
 		if err != nil {
@@ -503,10 +517,35 @@ func (tt TaskTriage) Update(msg tea.Msg) (TaskTriage, tea.Cmd) {
 			return tt, triageTickCmd()
 		}
 
+	case streamChunkMsg:
+		if msg.tag == "tasktriage" && tt.streaming {
+			tt.streamBuf.WriteString(msg.text)
+			return tt, streamCmd(tt.streamCh)
+		}
+
+	case streamDoneMsg:
+		if msg.tag == "tasktriage" && tt.streaming {
+			tt.streaming = false
+			tt.loading = false
+			if msg.err != nil {
+				tt.errMsg = msg.err.Error()
+				tt.recommendations = tt.localFallback()
+			} else {
+				recs := parseTriageResponse(tt.streamBuf.String())
+				tt.recommendations = recs
+				if len(tt.recommendations) == 0 {
+					tt.recommendations = tt.localFallback()
+				}
+			}
+			tt.phase = 1
+			tt.cursor = 0
+			tt.scroll = 0
+			return tt, nil
+		}
+
 	case triageResultMsg:
 		tt.loading = false
 		if msg.err != nil {
-			// AI failed, fall back to local
 			tt.errMsg = msg.err.Error()
 			tt.recommendations = tt.localFallback()
 		} else {
