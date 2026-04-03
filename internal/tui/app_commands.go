@@ -100,6 +100,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.statusbar.SetViewMode(false)
 		}
 	case CmdSettings:
+		m.settings.SetConfig(m.config)
 		m.settings.SetSize(m.width, m.height)
 		m.settings.Toggle()
 	case CmdFocusEditor:

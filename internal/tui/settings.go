@@ -441,6 +441,10 @@ func (s *Settings) GetConfig() config.Config {
 	return s.config
 }
 
+func (s *Settings) SetConfig(cfg config.Config) {
+	s.config = cfg
+}
+
 func (s *Settings) Toggle() {
 	s.active = !s.active
 	if s.active {

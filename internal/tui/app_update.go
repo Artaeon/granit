@@ -2487,6 +2487,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "ctrl+,":
+			m.settings.SetConfig(m.config)
 			m.settings.SetSize(m.width, m.height)
 			m.settings.Toggle()
 			return m, nil
