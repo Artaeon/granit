@@ -457,7 +457,7 @@ Fetch a URL, convert the web page to Markdown, and save it as a new note in the 
 
 ## AI-Powered Features
 
-Granit includes **24+ AI features** that work with three providers:
+Granit includes **25+ AI features** that work with four providers:
 
 | Provider | Description | Setup |
 |----------|-------------|-------|

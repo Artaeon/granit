@@ -1,13 +1,13 @@
 # Granit — Theme Reference
 
-> Complete reference for all 35 built-in themes, the theme editor, and custom theme creation.
+> Complete reference for all 38 built-in themes, the theme editor, and custom theme creation.
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [Dark Themes (29)](#dark-themes-29)
+- [Dark Themes (32)](#dark-themes-32)
 - [Light Themes (6)](#light-themes-6)
 - [Theme Editor](#theme-editor)
 - [Custom Theme JSON Format](#custom-theme-json-format)
@@ -19,7 +19,7 @@
 
 ## Overview
 
-Granit ships with **35 built-in themes** (29 dark, 6 light) and supports user-created custom themes. Themes control all 16 color roles and 5 style properties throughout the entire UI.
+Granit ships with **38 built-in themes** (32 dark, 6 light) and supports user-created custom themes. Themes control all 16 color roles and 5 style properties throughout the entire UI.
 
 - **Switch themes:** Settings (`Ctrl+,`) > "Theme"
 - **Edit themes live:** Command palette > "Theme Editor"

@@ -1,6 +1,6 @@
 # Granit — AI Setup & Usage Guide
 
-> Complete guide to configuring and using Granit's 20+ AI-powered features.
+> Complete guide to configuring and using Granit's 25+ AI-powered features.
 
 ---
 

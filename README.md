@@ -17,9 +17,9 @@
   <a href="#installation"><img src="https://img.shields.io/badge/Go-1.24+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License"></a>
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform">
-  <img src="https://img.shields.io/badge/Tests-1,971-green?style=for-the-badge" alt="Tests">
-  <img src="https://img.shields.io/badge/AI_Features-24-purple?style=for-the-badge" alt="AI Features">
-  <img src="https://img.shields.io/badge/166k%2B_Lines-Go-orange?style=for-the-badge" alt="Codebase">
+  <img src="https://img.shields.io/badge/Tests-1,855-green?style=for-the-badge" alt="Tests">
+  <img src="https://img.shields.io/badge/AI_Features-25+-purple?style=for-the-badge" alt="AI Features">
+  <img src="https://img.shields.io/badge/168k%2B_Lines-Go-orange?style=for-the-badge" alt="Codebase">
 </p>
 
 <p align="center">
@@ -48,9 +48,9 @@ granit sync                     # git pull + commit + push
 
 | | |
 |---|---|
-| **166,000+ lines of Go** | 1,971 tests, race-condition free |
-| **24 AI features** | 12 bots + goal coach, project insights, devotional, and more |
-| **35 themes** | Catppuccin, Tokyo Night, Gruvbox, Nord, and 31 more |
+| **168,000+ lines of Go** | 1,855 tests, race-condition free |
+| **25+ AI features** | 12 bots + goal coach, project insights, devotional, and more |
+| **38 themes** | Catppuccin, Tokyo Night, Gruvbox, Nord, and 34 more |
 | **7 task views** | Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower |
 | **Full Vim mode** | Text objects, marks, macros, dot repeat, ex commands |
 | **Goal manager** | Milestones, reviews, sparklines, task linking, colors |
@@ -165,9 +165,10 @@ granit sync                     # git pull + commit + push
 
 ### Calendar
 
-- Month, week, 3-day, agenda, and year views (`Ctrl+L`)
+- 6 views: Month, week, 3-day, 1-day, agenda, and year (`Ctrl+L`)
 - Week time grid -- hourly rows with 7 day columns showing events and planner blocks
-- Calendar sidebar panel
+- Calendar sidebar panel with ICS events, planner blocks, and upcoming tasks
+- ICS file support with `disabled_calendars` filtering per calendar
 - Task badges on calendar dates
 - Quick event creation from calendar
 
@@ -491,7 +492,7 @@ Granit uses layered JSON configuration. Per-vault settings override global setti
 
 All settings are editable from the built-in settings panel (`Ctrl+,`).
 
-Key options: `theme` (40 themes), `layout` (13 layouts), `vim_mode`, `auto_save`, `ai_provider` (`local`/`ollama`/`openai`/`nous`), `ghost_writer`, `auto_tag`, `git_auto_sync`, `spell_check`, `icon_theme` (`unicode`/`nerd`/`emoji`/`ascii`), `pomodoro_goal`, `nextcloud_auto_sync`.
+Key options: `theme` (38 themes), `layout` (13 layouts), `vim_mode`, `auto_save`, `ai_provider` (`local`/`ollama`/`openai`/`nous`), `ghost_writer`, `auto_tag`, `git_auto_sync`, `spell_check`, `icon_theme` (`unicode`/`nerd`/`emoji`/`ascii`), `pomodoro_goal`, `nextcloud_auto_sync`.
 
 Environment variables: `GRANIT_VAULT` (default vault path), `EDITOR` (external editor).
 
@@ -505,7 +506,7 @@ Granit is a Go monolith with two frontends sharing the same core packages.
 cmd/granit/        CLI entry point and subcommands
 internal/config/   JSON configuration (global + per-vault)
 internal/vault/    Vault scanning, Markdown parser, backlink index
-internal/tui/      Terminal UI -- 188 source files on Bubble Tea
+internal/tui/      Terminal UI -- 214 Go files (148 source + 66 test) on Bubble Tea
 desktop/           Wails v2 desktop app (Go API + Svelte frontend)
 ```
 

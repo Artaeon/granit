@@ -53,13 +53,13 @@ granit/
 │       │
 │       │── Styling & Theming
 │       ├── styles.go               Global mutable style/color variables, icon themes
-│       ├── themes.go               35 built-in Theme structs + ApplyTheme()
+│       ├── themes.go               38 built-in Theme structs + ApplyTheme()
 │       ├── customtheme.go          Custom theme JSON loading/saving
 │       ├── themeeditor.go          Live theme editor overlay
-│       ├── layouts.go              8 panel layout definitions + helpers
+│       ├── layouts.go              13 panel layout definitions + helpers + Alt+L picker
 │       │
 │       │── Navigation & Search
-│       ├── command.go              Command palette (80+ commands) with fuzzy filter
+│       ├── command.go              Command palette (145+ commands, 11 categories) with fuzzy filter
 │       ├── quickswitch.go          Fast file switcher (Ctrl+J)
 │       ├── contentsearch.go        Full-text vault search
 │       ├── globalreplace.go        Global search & replace across vault
@@ -131,9 +131,10 @@ granit/
 │       ├── projectmode.go          Project management overlay
 │       ├── writingstats.go         Writing statistics with charts
 │       │
-│       │── AI Features
-│       ├── bots.go                 9 AI bots (Ollama/OpenAI/local)
-│       ├── aichat.go               Vault-wide AI chat
+│       │── AI Features (25+ features, all via AIConfig.Chat())
+│       ├── aiconfig.go             Shared AIConfig struct + Chat() hub (Ollama/OpenAI/Nous/Nerve)
+│       ├── bots.go                 12 AI bots (Ollama/OpenAI/local)
+│       ├── aichat.go               Vault-wide AI chat with context search
 │       ├── composer.go             AI note composer
 │       ├── threadweaver.go         Multi-note AI synthesis
 │       ├── autotag.go              Auto-tagger + note chat
@@ -142,7 +143,12 @@ granit/
 │       ├── knowledgegraph.go       Knowledge graph AI analysis
 │       ├── similarity.go           TF-IDF note similarity
 │       ├── vaultrefactor.go        AI vault reorganization
-│       ├── dailybriefing.go        AI morning briefing
+│       ├── dailybriefing.go        DEEPCOVEN morning briefing
+│       ├── devotional.go           AI scripture devotional (goals + daily verse)
+│       ├── tasktriage.go           Smart task triage with stale detection
+│       ├── planmyday.go            AI daily schedule generation
+│       ├── aischeduler.go          AI schedule optimizer with preferences
+│       ├── blogdraft.go            Multi-stage AI blog writer
 │       ├── aitemplates.go          AI template generator (9 types)
 │       ├── research.go             Claude Code research agent + analyzer
 │       ├── writingcoach.go         AI writing coach + persona
@@ -536,34 +542,43 @@ Plugin output is parsed line by line:
 
 ### Provider Architecture
 
-Each AI-powered feature checks the configured provider and dispatches accordingly:
+All AI features route through the centralized `AIConfig.Chat(systemPrompt, userPrompt)` method in `aiconfig.go`:
 
 ```go
-switch m.config.AIProvider {
-case "ollama":
-    return queryOllamaCmd(prompt, m.config.OllamaURL, m.config.OllamaModel, botKind)
-case "openai":
-    return queryOpenAICmd(prompt, m.config.OpenAIKey, m.config.OpenAIModel, botKind)
-default:
-    return localAnalysisCmd(content, botKind)
+func (c AIConfig) Chat(systemPrompt, userPrompt string) (string, error) {
+    switch c.Provider {
+    case "openai":
+        return c.chatOpenAI(systemPrompt, userPrompt)
+    case "nous":
+        return c.NewNous().Chat(prompt)
+    case "nerve":
+        return c.NewNerve().Chat(systemPrompt, userPrompt, 120*time.Second)
+    default: // "ollama", "local"
+        return c.chatOllama(systemPrompt, userPrompt)
+    }
 }
 ```
+
+Shared HTTP clients (`aiHTTPClient`, `ghostHTTPClient`) provide connection pooling across all AI calls.
 
 ### Ollama HTTP Protocol
 
 ```
-POST {ollama_url}/api/generate
+POST {ollama_url}/api/chat
 Content-Type: application/json
 
 {
-  "model": "qwen2.5:0.5b",
-  "prompt": "...",
+  "model": "qwen2.5:1.5b",
+  "messages": [
+    {"role": "system", "content": "..."},
+    {"role": "user", "content": "..."}
+  ],
   "stream": false
 }
 
 Response:
 {
-  "response": "..."
+  "message": {"content": "..."}
 }
 ```
 
@@ -740,18 +755,23 @@ Custom themes override built-in themes with the same name.
 
 ### Layout Definitions
 
-8 layouts define different panel arrangements:
+13 layouts define different panel arrangements, selectable via `Alt+L` picker with ASCII previews:
 
-| Layout | Panels | Sidebar | Backlinks | Outline |
-|--------|--------|---------|-----------|---------|
-| `default` | 3 | Yes | Yes | No |
-| `writer` | 2 | Yes | No | No |
-| `minimal` | 1 | No | No | No |
-| `reading` | 2 | No | Yes | No |
-| `dashboard` | 4 | Yes | Yes | Yes |
-| `zen` | 1 | No | No | No |
-| `taskboard` | 3 | Yes | No | No |
-| `research` | 3 | Yes | No | No |
+| Layout | Panels | Description |
+|--------|--------|-------------|
+| `default` | 3 | Sidebar + Editor + Backlinks |
+| `writer` | 2 | Sidebar + Editor |
+| `reading` | 2 | Editor + Backlinks (no sidebar) |
+| `dashboard` | 4 | Sidebar + Editor + Outline + Backlinks |
+| `zen` | 1 | Centered editor, no chrome |
+| `cockpit` | 4 | Sidebar + Editor + Calendar & Tasks |
+| `stacked` | 4 | Sidebar + Editor + bottom panels (IDE-like) |
+| `cornell` | 2 | Editor + Notes panel (study layout) |
+| `focus` | 2 | Sidebar + wide centered editor |
+| `preview` | 2 | Editor + live markdown preview |
+| `presenter` | 1 | Full-screen rendered markdown |
+| `kanban` | 3 | Sidebar + Editor + mini Kanban board |
+| `widescreen` | 5 | Sidebar + Outline + Editor + Backlinks + Calendar |
 
 ### Layout Helpers
 
@@ -770,8 +790,9 @@ Granit automatically adjusts the layout based on terminal width:
 | Terminal Width | Behavior |
 |---------------|----------|
 | < 80 columns | Forces Minimal layout (editor only) |
-| 80-119 columns | Forces Writer layout (sidebar + editor) |
-| 120+ columns | Uses configured layout |
+| 80-119 columns | Multi-panel layouts downgraded to Writer or Minimal |
+| 120-159 columns | 4+ panel layouts (dashboard, cockpit, stacked, widescreen) downgraded to Default |
+| 160+ columns | Uses configured layout as-is |
 
 This ensures usability on any terminal size, including mobile terminals.
 

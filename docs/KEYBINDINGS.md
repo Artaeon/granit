@@ -45,7 +45,7 @@
 | `Ctrl+S` | Save current note |
 | `Ctrl+V` | Paste from system clipboard |
 | `F4` | Rename current note |
-| `Ctrl+X` | Open command palette (all 80+ commands) |
+| `Ctrl+X` | Open command palette (145+ commands, 11 categories) |
 | `Ctrl+Q` | Quit Granit |
 | `Ctrl+C` | Quit Granit |
 

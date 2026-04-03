@@ -113,7 +113,7 @@ internal/tui/
   sidebar.go                 File tree sidebar with fuzzy search
   filetree.go                Collapsible folder hierarchy
   styles.go                  Package-level color vars and style definitions
-  themes.go                  Theme structs (28 built-in themes)
+  themes.go                  Theme structs (38 built-in themes)
   command.go                 Command palette (Ctrl+X)
   settings.go                Settings overlay (Ctrl+,)
   bots.go                    AI bots: Ollama + OpenAI + local fallback

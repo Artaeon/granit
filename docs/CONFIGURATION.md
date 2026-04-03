@@ -81,9 +81,9 @@ All other settings (AI provider, vim mode, etc.) come from the global config or 
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `theme` | string | `"catppuccin-mocha"` | Color theme name (35 built-in + custom) |
+| `theme` | string | `"catppuccin-mocha"` | Color theme name (38 built-in + custom) |
 | `icon_theme` | string | `"unicode"` | Icon set: `"unicode"`, `"nerd"`, `"emoji"`, `"ascii"` |
-| `layout` | string | `"default"` | Panel layout: `"default"`, `"writer"`, `"minimal"`, `"reading"`, `"dashboard"`, `"zen"`, `"taskboard"`, `"research"` |
+| `layout` | string | `"default"` | Panel layout (13 options): `"default"`, `"writer"`, `"reading"`, `"dashboard"`, `"zen"`, `"cockpit"`, `"stacked"`, `"cornell"`, `"focus"`, `"preview"`, `"presenter"`, `"kanban"`, `"widescreen"` |
 | `sidebar_position` | string | `"left"` | Sidebar placement: `"left"` or `"right"` |
 | `show_icons` | bool | `true` | Show file type icons in sidebar |
 | `compact_mode` | bool | `false` | Reduce padding and spacing |

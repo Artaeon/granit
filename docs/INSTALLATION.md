@@ -24,7 +24,7 @@
 
 | Requirement | Version | Notes |
 |-------------|---------|-------|
-| **Go** | 1.23+ | [Install Go](https://go.dev/doc/install) |
+| **Go** | 1.24+ | [Install Go](https://go.dev/doc/install) |
 | **Git** | Any recent version | For cloning and git features |
 | **OS** | Linux or macOS | Windows support planned |
 
@@ -32,7 +32,7 @@ Verify your Go installation:
 
 ```bash
 go version
-# Expected: go version go1.23.x linux/amd64 (or similar)
+# Expected: go version go1.24.x linux/amd64 (or similar)
 ```
 
 If Go is not in your PATH, you may need to add it:
@@ -400,7 +400,7 @@ source ~/.bashrc
 
 ### Build Errors
 
-1. Verify Go version: `go version` (need 1.23+)
+1. Verify Go version: `go version` (need 1.24+)
 2. Ensure modules are downloaded: `go mod download`
 3. Clear module cache if corrupted: `go clean -modcache && go mod download`
 
