@@ -303,6 +303,10 @@ type GoalsMode struct {
 	// AI review result
 	reviewText   string // last AI review text
 	reviewGoalID string // goal ID the review belongs to
+
+	// AI coach (holistic goal analysis)
+	coachText string
+	showCoach bool
 }
 
 // NewGoalsMode creates a new goals overlay.
@@ -560,6 +564,66 @@ func (gm *GoalsMode) aiDecomposeGoal(goal Goal) tea.Cmd {
 			tags:       tags,
 			goalID:     goal.ID,
 		}
+	}
+}
+
+// gmAICoachMsg carries a holistic AI analysis of all goals.
+type gmAICoachMsg struct {
+	analysis string
+	err      error
+}
+
+// aiGoalCoach sends all goals to the LLM for holistic analysis.
+func (gm *GoalsMode) aiGoalCoach() tea.Cmd {
+	ai := gm.ai
+	goals := make([]Goal, len(gm.goals))
+	copy(goals, gm.goals)
+
+	return func() tea.Msg {
+		now := time.Now()
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("Today: %s\n\n", now.Format("2006-01-02")))
+
+		for _, g := range goals {
+			progress := g.Progress()
+			doneCount := g.DoneCount()
+			totalMs := len(g.Milestones)
+
+			sb.WriteString(fmt.Sprintf("GOAL: %s\n", g.Title))
+			sb.WriteString(fmt.Sprintf("  Status: %s | Category: %s | Progress: %d%%\n", string(g.Status), g.Category, progress))
+			sb.WriteString(fmt.Sprintf("  Milestones: %d/%d done\n", doneCount, totalMs))
+			if g.TargetDate != "" {
+				sb.WriteString(fmt.Sprintf("  Target: %s", g.TargetDate))
+				if g.IsOverdue() {
+					sb.WriteString(" (OVERDUE)")
+				}
+				sb.WriteString("\n")
+			}
+			if g.CreatedAt != "" {
+				sb.WriteString(fmt.Sprintf("  Created: %s\n", g.CreatedAt))
+			}
+			if g.LastReviewed != "" {
+				sb.WriteString(fmt.Sprintf("  Last reviewed: %s\n", g.LastReviewed))
+			}
+			sb.WriteString("\n")
+		}
+
+		systemPrompt := "You are DEEPCOVEN, a direct and honest personal goal coach.\n\n" +
+			"Analyze ALL of the user's goals holistically. Look for:\n" +
+			"1. Goals competing for the same time/energy\n" +
+			"2. Stalled goals that need attention or should be paused\n" +
+			"3. Goals off-track vs their target dates\n" +
+			"4. Priority adjustments based on deadline proximity and progress\n" +
+			"5. Quick wins that could build momentum\n\n" +
+			"Be brutally honest. No filler. Format as:\n" +
+			"## Goal Health Report\n" +
+			"### On Track\n- {goal}: {1 line status}\n" +
+			"### Needs Attention\n- {goal}: {what's wrong and what to do}\n" +
+			"### Recommended Priority Order\n1. {goal} — {why first}\n" +
+			"### Coach's Note\n{1-2 sentences of honest, actionable advice}"
+
+		resp, err := ai.Chat(systemPrompt, sb.String())
+		return gmAICoachMsg{analysis: strings.TrimSpace(resp), err: err}
 	}
 }
 
@@ -1061,6 +1125,16 @@ func (gm GoalsMode) Update(msg tea.Msg) (GoalsMode, tea.Cmd) {
 			gm.rebuildFiltered()
 		}
 		return gm, nil
+	case gmAICoachMsg:
+		gm.aiPending = false
+		if msg.err != nil {
+			gm.statusMsg = "AI error: " + msg.err.Error()
+		} else {
+			gm.coachText = msg.analysis
+			gm.showCoach = true
+			gm.statusMsg = "Goal coach ready"
+		}
+		return gm, nil
 	case tea.KeyMsg:
 		key := msg.String()
 		if gm.input != goalInputNone {
@@ -1089,7 +1163,10 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 
 	switch key {
 	case "esc", "q":
-		if gm.expanded >= 0 {
+		if gm.showCoach {
+			gm.showCoach = false
+			gm.coachText = ""
+		} else if gm.expanded >= 0 {
 			gm.expanded = -1
 			gm.expandedID = ""
 			gm.milestoneCur = 0
@@ -1252,6 +1329,15 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			goal := gm.filtered[gm.cursor]
 			gm.input = goalInputNotes
 			gm.inputBuf = goal.Notes
+		}
+
+	// AI goal coach (holistic analysis)
+	case "I":
+		if !gm.aiPending && gm.ai.Provider != "local" && gm.ai.Provider != "" && len(gm.goals) > 0 {
+			gm.aiPending = true
+			gm.showCoach = false
+			gm.statusMsg = "AI analyzing all goals..."
+			return gm, gm.aiGoalCoach()
 		}
 
 	// AI generate milestones
@@ -1690,7 +1776,9 @@ func (gm *GoalsMode) View() string {
 	b.WriteString("\n")
 
 	// View content
-	if gm.input == goalInputHelp {
+	if gm.showCoach {
+		gm.renderCoach(&b, innerW)
+	} else if gm.input == goalInputHelp {
 		gm.renderHelp(&b, innerW)
 	} else if gm.input != goalInputNone {
 		gm.renderInput(&b, innerW)
@@ -2211,6 +2299,30 @@ func (gm *GoalsMode) renderHelp(b *strings.Builder, w int) {
 	b.WriteString("  " + DimStyle.Render("Press any key to close"))
 }
 
+func (gm *GoalsMode) renderCoach(b *strings.Builder, w int) {
+	headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	bodyStyle := lipgloss.NewStyle().Foreground(lavender).Italic(true)
+	headingStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+
+	b.WriteString(headerStyle.Render("  "+IconBotChar+" AI Goal Coach") + "\n\n")
+
+	for _, line := range strings.Split(gm.coachText, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			b.WriteString("\n")
+			continue
+		}
+		if strings.HasPrefix(trimmed, "##") {
+			heading := strings.TrimLeft(trimmed, "# ")
+			b.WriteString("  " + headingStyle.Render(heading) + "\n")
+		} else {
+			b.WriteString("  " + bodyStyle.Render(TruncateDisplay(trimmed, w-6)) + "\n")
+		}
+	}
+	b.WriteString("\n")
+	b.WriteString("  " + DimStyle.Render("Esc to dismiss"))
+}
+
 func (gm *GoalsMode) renderHelpBar(b *strings.Builder, w int) {
 	pairs := [][2]string{
 		{"j/k", "nav"}, {"a", "add"}, {"m", "milestone"}, {"x", "complete"},
@@ -2230,7 +2342,7 @@ func (gm *GoalsMode) renderHelpBar(b *strings.Builder, w int) {
 	} else {
 		pairs = append(pairs, [2]string{"D", "delete"})
 	}
-	pairs = append(pairs, [2]string{"?", "help"}, [2]string{"Tab", "view"}, [2]string{"Esc", "close"})
+	pairs = append(pairs, [2]string{"I", "AI coach"}, [2]string{"?", "help"}, [2]string{"Tab", "view"}, [2]string{"Esc", "close"})
 	var parts []string
 	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
 	for _, p := range pairs {

@@ -436,7 +436,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case gmAIResultMsg, gmAIReviewMsg, gmAIDecomposeMsg:
+	case gmAIResultMsg, gmAIReviewMsg, gmAIDecomposeMsg, gmAICoachMsg:
 		if m.goalsMode.IsActive() {
 			var cmd tea.Cmd
 			m.goalsMode, cmd = m.goalsMode.Update(msg)
