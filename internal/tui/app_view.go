@@ -616,6 +616,48 @@ func (m Model) View() string {
 			} else {
 				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightSide)
 			}
+		case "focus":
+			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
+				BorderForeground(sidebarBorderColor).
+				Width(sidebarWidth).
+				Height(contentHeight).
+				Render(m.sidebar.View())
+
+			// Wide centered editor (max 100 chars), no backlinks
+			focusEditorWidth := m.width - sidebarWidth - 4
+			maxFocusWidth := 100
+			if focusEditorWidth > maxFocusWidth {
+				leftPad := (focusEditorWidth - maxFocusWidth) / 2
+				focusEditor := lipgloss.NewStyle().
+					Width(maxFocusWidth).
+					Height(contentHeight).
+					Background(base).
+					Padding(0, 1).
+					Render(editorPanel)
+				rightArea := lipgloss.NewStyle().
+					PaddingLeft(leftPad).
+					Width(focusEditorWidth).
+					Height(contentHeight + 2).
+					Render(focusEditor)
+				if m.config.SidebarPosition == "right" {
+					content = lipgloss.JoinHorizontal(lipgloss.Top, rightArea, sidebar)
+				} else {
+					content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightArea)
+				}
+			} else {
+				// Terminal too narrow for centering — just use full width
+				focusEditor := EditorStyle.
+					BorderStyle(editorBorder).
+					BorderForeground(editorBorderColor).
+					Width(focusEditorWidth).
+					Height(contentHeight).
+					Render(editorPanel)
+				if m.config.SidebarPosition == "right" {
+					content = lipgloss.JoinHorizontal(lipgloss.Top, focusEditor, sidebar)
+				} else {
+					content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, focusEditor)
+				}
+			}
 		default: // "default" - 3-panel (with optional calendar toggle)
 			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).
