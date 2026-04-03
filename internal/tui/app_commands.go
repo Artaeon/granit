@@ -856,7 +856,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.themeEditor.SetSize(m.width, m.height)
 		m.themeEditor.Open(m.config.Theme)
 
-	case CmdLayoutDefault, CmdLayoutWriter, CmdLayoutMinimal, CmdLayoutReading, CmdLayoutDashboard, CmdLayoutZen, CmdLayoutTaskboard, CmdLayoutResearch, CmdLayoutCalendar, CmdLayoutCornell, CmdLayoutFocus:
+	case CmdLayoutDefault, CmdLayoutWriter, CmdLayoutMinimal, CmdLayoutReading, CmdLayoutDashboard, CmdLayoutZen, CmdLayoutTaskboard, CmdLayoutResearch, CmdLayoutCalendar, CmdLayoutCornell, CmdLayoutFocus, CmdLayoutCockpit:
 		switch action {
 		case CmdLayoutDefault:
 			m.config.Layout = LayoutDefault
@@ -877,20 +877,23 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.config.Layout = LayoutZen
 			m.statusbar.SetMessage("Layout: Zen (distraction-free)")
 		case CmdLayoutTaskboard:
-			m.config.Layout = LayoutTaskboard
-			m.statusbar.SetMessage("Layout: Taskboard (sidebar + editor + tasks)")
+			m.config.Layout = LayoutCockpit
+			m.statusbar.SetMessage("Layout: Cockpit (sidebar + editor + calendar & tasks)")
 		case CmdLayoutResearch:
 			m.config.Layout = LayoutDefault
 			m.statusbar.SetMessage("Layout: Default (3-panel)")
 		case CmdLayoutCalendar:
-			m.config.Layout = LayoutCalendar
-			m.statusbar.SetMessage("Layout: Calendar (sidebar + editor + calendar)")
+			m.config.Layout = LayoutCockpit
+			m.statusbar.SetMessage("Layout: Cockpit (sidebar + editor + calendar & tasks)")
 		case CmdLayoutCornell:
 			m.config.Layout = LayoutCornell
 			m.statusbar.SetMessage("Layout: Cornell (editor + notes study layout)")
 		case CmdLayoutFocus:
 			m.config.Layout = LayoutFocus
 			m.statusbar.SetMessage("Layout: Focus (sidebar + wide centered editor)")
+		case CmdLayoutCockpit:
+			m.config.Layout = LayoutCockpit
+			m.statusbar.SetMessage("Layout: Cockpit (sidebar + editor + calendar & tasks)")
 		}
 		// Fix focus if current panel is hidden in new layout
 		if !LayoutHasSidebar(m.config.Layout) && m.focus == focusSidebar {

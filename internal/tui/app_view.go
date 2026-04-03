@@ -319,124 +319,115 @@ func (m Model) View() string {
 			panels := append(leftPanels, editor)
 			panels = append(panels, rightPanels...)
 			content = lipgloss.JoinHorizontal(lipgloss.Top, panels...)
-		case "taskboard":
+		case "taskboard", "calendar", "cockpit":
 			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).
 				Width(sidebarWidth).
 				Height(contentHeight).
 				Render(m.sidebar.View())
 
-			// Task summary panel
-			taskPanelWidth := m.width / 4
-			if taskPanelWidth < 25 {
-				taskPanelWidth = 25
+			// Right panel: calendar + tasks stacked vertically
+			rightWidth := m.width / 4
+			if rightWidth < 28 {
+				rightWidth = 28
 			}
-			if taskPanelWidth > 40 {
-				taskPanelWidth = 40
+			if rightWidth > 40 {
+				rightWidth = 40
 			}
 
-			var taskContent strings.Builder
-			taskContent.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  TASKS"))
-			taskContent.WriteString("\n")
-			taskContent.WriteString(DimStyle.Render(strings.Repeat("\u2500", taskPanelWidth-4)))
-			taskContent.WriteString("\n\n")
+			topHeight := contentHeight / 2
+			botHeight := contentHeight - topHeight - 2
 
-			// Read Tasks.md
+			// Calendar section
+			m.calendarPanel.SetSize(rightWidth, topHeight)
+			calContent := m.calendarPanel.View()
+			calPanel := lipgloss.NewStyle().
+				BorderStyle(PanelBorder).
+				BorderForeground(surface1).
+				Width(rightWidth).
+				Height(topHeight).
+				Render(calContent)
+
+			// Tasks section
+			var taskBuf strings.Builder
+			taskBuf.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  TASKS") + "\n")
+			taskBuf.WriteString(DimStyle.Render(strings.Repeat("\u2500", rightWidth-4)) + "\n")
+
 			today := time.Now().Format("2006-01-02")
-			tasksPath := filepath.Join(m.vault.Root, "Tasks.md")
-			taskLines := []string{}
-			if data, err := os.ReadFile(tasksPath); err == nil {
-				taskLines = strings.Split(string(data), "\n")
-			}
-
-			// Show overdue and today's tasks
 			overdueCount := 0
 			todayCount := 0
-			upcomingCount := 0
-
-			taskContent.WriteString(lipgloss.NewStyle().Foreground(red).Bold(true).Render("  Overdue") + "\n")
-			for _, line := range taskLines {
-				trimmed := strings.TrimSpace(line)
-				if !strings.HasPrefix(trimmed, "- [ ]") {
+			// Scan vault for tasks
+			for _, p := range m.vault.SortedPaths() {
+				note := m.vault.GetNote(p)
+				if note == nil {
 					continue
 				}
-				if idx := strings.Index(trimmed, "\U0001f4c5 "); idx >= 0 {
-					dateStr := trimmed[idx+len("\U0001f4c5 "):]
-					if len(dateStr) >= 10 {
-						dueDate := dateStr[:10]
-						taskText := strings.TrimSpace(trimmed[5:])
-						if eIdx := strings.Index(taskText, " \U0001f4c5"); eIdx >= 0 {
-							taskText = taskText[:eIdx]
-						}
-						taskText = TruncateDisplay(taskText, taskPanelWidth-8)
-						if dueDate < today {
-							overdueCount++
-							taskContent.WriteString("  " + lipgloss.NewStyle().Foreground(red).Render("\u2717 "+taskText) + "\n")
-						} else if dueDate == today {
-							todayCount++
-						} else {
-							upcomingCount++
+				for _, line := range strings.Split(note.Content, "\n") {
+					trimmed := strings.TrimSpace(line)
+					if !strings.HasPrefix(trimmed, "- [ ]") {
+						continue
+					}
+					taskText := strings.TrimSpace(trimmed[5:])
+					if idx := strings.Index(trimmed, "\U0001f4c5 "); idx >= 0 {
+						dateStr := trimmed[idx+len("\U0001f4c5 "):]
+						if len(dateStr) >= 10 {
+							dueDate := dateStr[:10]
+							// Clean task text (remove emoji date)
+							if eIdx := strings.Index(taskText, " \U0001f4c5"); eIdx >= 0 {
+								taskText = taskText[:eIdx]
+							}
+							taskText = TruncateDisplay(taskText, rightWidth-8)
+							if dueDate < today {
+								overdueCount++
+								if overdueCount <= 5 {
+									taskBuf.WriteString("  " + lipgloss.NewStyle().Foreground(red).Render("\u2717 "+taskText) + "\n")
+								}
+							} else if dueDate == today {
+								todayCount++
+								if todayCount <= 5 {
+									taskBuf.WriteString("  " + lipgloss.NewStyle().Foreground(yellow).Render("\u25cb "+taskText) + "\n")
+								}
+							}
 						}
 					}
 				}
 			}
-			if overdueCount == 0 {
-				taskContent.WriteString("  " + DimStyle.Render("none") + "\n")
+			if overdueCount == 0 && todayCount == 0 {
+				taskBuf.WriteString("  " + DimStyle.Render("no tasks due") + "\n")
 			}
-
-			taskContent.WriteString("\n" + lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("  Today") + "\n")
-			for _, line := range taskLines {
-				trimmed := strings.TrimSpace(line)
-				if !strings.HasPrefix(trimmed, "- [ ]") {
-					continue
-				}
-				if idx := strings.Index(trimmed, "\U0001f4c5 "); idx >= 0 {
-					dateStr := trimmed[idx+len("\U0001f4c5 "):]
-					if len(dateStr) >= 10 {
-						dueDate := dateStr[:10]
-						taskText := strings.TrimSpace(trimmed[5:])
-						if eIdx := strings.Index(taskText, " \U0001f4c5"); eIdx >= 0 {
-							taskText = taskText[:eIdx]
-						}
-						taskText = TruncateDisplay(taskText, taskPanelWidth-8)
-						if dueDate == today {
-							taskContent.WriteString("  " + lipgloss.NewStyle().Foreground(yellow).Render("\u25cb "+taskText) + "\n")
-						}
-					}
-				}
-			}
-			if todayCount == 0 {
-				taskContent.WriteString("  " + DimStyle.Render("none") + "\n")
-			}
-
-			// Stats
-			taskContent.WriteString("\n" + DimStyle.Render(strings.Repeat("\u2500", taskPanelWidth-4)) + "\n")
-			taskContent.WriteString(fmt.Sprintf("  %s %d overdue  %s %d today  %s %d upcoming\n",
+			taskBuf.WriteString("\n" + DimStyle.Render(strings.Repeat("\u2500", rightWidth-4)) + "\n")
+			taskBuf.WriteString(fmt.Sprintf("  %s %d overdue  %s %d today",
 				lipgloss.NewStyle().Foreground(red).Render("\u25cf"), overdueCount,
-				lipgloss.NewStyle().Foreground(yellow).Render("\u25cf"), todayCount,
-				lipgloss.NewStyle().Foreground(green).Render("\u25cf"), upcomingCount))
+				lipgloss.NewStyle().Foreground(yellow).Render("\u25cf"), todayCount) + "\n")
 
 			taskPanel := lipgloss.NewStyle().
 				BorderStyle(PanelBorder).
 				BorderForeground(surface1).
-				Width(taskPanelWidth).
-				Height(contentHeight).
+				Width(rightWidth).
+				Height(botHeight).
 				Background(base).
 				Padding(0, 1).
-				Render(taskContent.String())
+				Render(taskBuf.String())
+
+			rightSide := lipgloss.JoinVertical(lipgloss.Left, calPanel, taskPanel)
 
 			// Adjust editor width
-			tbEditorWidth := m.width - sidebarWidth - taskPanelWidth - 6
-			if tbEditorWidth < 30 {
-				tbEditorWidth = 30
+			cpEditorWidth := m.width - sidebarWidth - rightWidth - 6
+			if cpEditorWidth < 30 {
+				cpEditorWidth = 30
 			}
-			tbEditor := EditorStyle.
+			cpEditor := EditorStyle.
+				BorderStyle(editorBorder).
 				BorderForeground(editorBorderColor).
-				Width(tbEditorWidth).
+				Width(cpEditorWidth).
 				Height(contentHeight).
 				Render(editorPanel)
 
-			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, tbEditor, taskPanel)
+			if m.config.SidebarPosition == "right" {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, rightSide, cpEditor, sidebar)
+			} else {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, cpEditor, rightSide)
+			}
 		case "cornell":
 			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).

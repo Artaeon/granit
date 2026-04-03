@@ -5,10 +5,11 @@ package tui
 // To wire these in app.go:
 //   - "default"   — 3-panel: sidebar | editor | backlinks
 //   - "writer"    — 2-panel: sidebar | editor (no backlinks)
-//   - "minimal"   — 1-panel: editor only
+//   - "minimal"   — alias for zen (backward compat)
 //   - "reading"   — 2-panel: editor (wide) | backlinks (no sidebar)
 //   - "dashboard" — 4-panel: sidebar | editor | outline | backlinks
 //   - "zen"       — 1-panel: centered editor, no chrome (distraction-free)
+//   - "cockpit"   — 4-panel: sidebar | editor | calendar & tasks
 const (
 	LayoutDefault   = "default"
 	LayoutWriter    = "writer"
@@ -21,6 +22,7 @@ const (
 	LayoutCalendar  = "calendar"
 	LayoutCornell   = "cornell"
 	LayoutFocus     = "focus"
+	LayoutCockpit   = "cockpit"
 )
 
 // AllLayouts returns every valid layout name in display order.
@@ -31,8 +33,7 @@ func AllLayouts() []string {
 		LayoutReading,
 		LayoutDashboard,
 		LayoutZen,
-		LayoutTaskboard,
-		LayoutCalendar,
+		LayoutCockpit,
 		LayoutCornell,
 		LayoutFocus,
 	}
@@ -53,12 +54,10 @@ func LayoutDescription(layout string) string {
 		return "Sidebar + Editor + Outline + Backlinks (4-panel)"
 	case LayoutZen:
 		return "Centered editor, no chrome (distraction-free)"
-	case LayoutTaskboard:
-		return "Sidebar + Editor + Task summary (3-panel)"
+	case LayoutTaskboard, LayoutCalendar, LayoutCockpit:
+		return "Sidebar + Editor + Calendar & Tasks (command center)"
 	case LayoutResearch:
 		return "Sidebar + Editor + Backlinks (3-panel)"
-	case LayoutCalendar:
-		return "Sidebar + Editor + Calendar/Schedule (3-panel)"
 	case LayoutCornell:
 		return "Editor + Notes panel (vertical study layout)"
 	case LayoutFocus:
@@ -83,11 +82,9 @@ func LayoutPanelCount(layout string) int {
 		return 4
 	case LayoutZen:
 		return 1
-	case LayoutTaskboard:
-		return 3
+	case LayoutTaskboard, LayoutCalendar, LayoutCockpit:
+		return 4
 	case LayoutResearch:
-		return 3
-	case LayoutCalendar:
 		return 3
 	case LayoutCornell:
 		return 2
@@ -111,7 +108,7 @@ func LayoutHasSidebar(layout string) bool {
 // LayoutHasBacklinks reports whether the layout includes the backlinks panel.
 func LayoutHasBacklinks(layout string) bool {
 	switch layout {
-	case LayoutWriter, LayoutMinimal, LayoutZen, LayoutTaskboard, LayoutCalendar, LayoutCornell, LayoutFocus:
+	case LayoutWriter, LayoutMinimal, LayoutZen, LayoutTaskboard, LayoutCalendar, LayoutCockpit, LayoutCornell, LayoutFocus:
 		return false
 	default:
 		return true
@@ -120,7 +117,7 @@ func LayoutHasBacklinks(layout string) bool {
 
 // LayoutHasCalendarPanel reports whether the layout includes the calendar side panel.
 func LayoutHasCalendarPanel(layout string) bool {
-	return layout == LayoutCalendar
+	return false // cockpit renders its own calendar; standalone calendar layout is retired
 }
 
 // LayoutHasOutline reports whether the layout includes a persistent outline panel.

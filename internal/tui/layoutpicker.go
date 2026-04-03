@@ -198,10 +198,8 @@ func layoutDisplayName(layout string) string {
 		return "Dashboard"
 	case LayoutZen:
 		return "Zen"
-	case LayoutTaskboard:
-		return "Taskboard"
-	case LayoutCalendar:
-		return "Calendar"
+	case LayoutCockpit:
+		return "Cockpit"
 	case LayoutCornell:
 		return "Cornell"
 	case LayoutFocus:
@@ -356,28 +354,20 @@ func layoutPreview(layout string, width int) string {
 		// Combine with sidebar
 		sideBox := box("Files", sideW, h)
 		return style.Render(joinH(sideBox, centerLines))
-	case LayoutTaskboard:
-		taskW := width / 4
-		if taskW < 8 {
-			taskW = 8
+	case LayoutCockpit:
+		rightW := width / 4
+		if rightW < 10 {
+			rightW = 10
 		}
-		edW := width - sideW - taskW
-		return style.Render(joinH(
-			box("Files", sideW, h),
-			box("Editor", edW, h),
-			box("Tasks", taskW, h),
-		))
-	case LayoutCalendar:
-		calW := width / 4
-		if calW < 8 {
-			calW = 8
-		}
-		edW := width - sideW - calW
-		return style.Render(joinH(
-			box("Files", sideW, h),
-			box("Editor", edW, h),
-			box("Calendar", calW, h),
-		))
+		edW := width - sideW - rightW
+		topH := h / 2
+		botH := h - topH
+		sideBox := box("Files", sideW, h)
+		edBox := box("Editor", edW, h)
+		rightTop := box("Calendar", rightW, topH)
+		rightBot := box("Tasks", rightW, botH)
+		rightLines := append(rightTop, rightBot...)
+		return style.Render(joinH(sideBox, edBox, rightLines))
 	case LayoutCornell:
 		edW := width - sideW
 		topH := h * 2 / 3
