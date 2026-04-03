@@ -337,6 +337,9 @@ func (m Model) View() string {
 
 			topHeight := contentHeight / 2
 			botHeight := contentHeight - topHeight - 2
+			if botHeight < 4 {
+				botHeight = 4
+			}
 
 			// Calendar section
 			m.calendarPanel.SetSize(rightWidth, topHeight)
@@ -358,44 +361,43 @@ func (m Model) View() string {
 			todayCount := 0
 			upcomingCount := 0
 
-			taskBuf.WriteString(lipgloss.NewStyle().Foreground(red).Bold(true).Render("  Overdue") + "\n")
+			// Categorize tasks in a single pass
+			var overdueLines, todayLines []string
 			for _, t := range allTasks {
 				if t.Done || t.DueDate == "" {
 					continue
 				}
+				text := TruncateDisplay(tmCleanText(t.Text), rightWidth-8)
 				if tmIsOverdue(t.DueDate) {
 					overdueCount++
 					if overdueCount <= 5 {
-						text := TruncateDisplay(tmCleanText(t.Text), rightWidth-8)
-						taskBuf.WriteString("  " + lipgloss.NewStyle().Foreground(red).Render("✗ "+text) + "\n")
+						overdueLines = append(overdueLines, "  "+lipgloss.NewStyle().Foreground(red).Render("✗ "+text))
 					}
 				} else if tmIsToday(t.DueDate) {
 					todayCount++
+					if todayCount <= 5 {
+						todayLines = append(todayLines, "  "+lipgloss.NewStyle().Foreground(yellow).Render("○ "+text))
+					}
 				} else {
 					upcomingCount++
 				}
 			}
-			if overdueCount == 0 {
+
+			taskBuf.WriteString(lipgloss.NewStyle().Foreground(red).Bold(true).Render("  Overdue") + "\n")
+			if len(overdueLines) == 0 {
 				taskBuf.WriteString("  " + DimStyle.Render("none") + "\n")
-			}
-			if overdueCount > 5 {
-				taskBuf.WriteString("  " + DimStyle.Render(fmt.Sprintf("  +%d more", overdueCount-5)) + "\n")
+			} else {
+				taskBuf.WriteString(strings.Join(overdueLines, "\n") + "\n")
+				if overdueCount > 5 {
+					taskBuf.WriteString("  " + DimStyle.Render(fmt.Sprintf("  +%d more", overdueCount-5)) + "\n")
+				}
 			}
 
 			taskBuf.WriteString("\n" + lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("  Today") + "\n")
-			shown := 0
-			for _, t := range allTasks {
-				if t.Done || t.DueDate == "" || !tmIsToday(t.DueDate) {
-					continue
-				}
-				shown++
-				if shown <= 5 {
-					text := TruncateDisplay(tmCleanText(t.Text), rightWidth-8)
-					taskBuf.WriteString("  " + lipgloss.NewStyle().Foreground(yellow).Render("○ "+text) + "\n")
-				}
-			}
-			if shown == 0 {
+			if len(todayLines) == 0 {
 				taskBuf.WriteString("  " + DimStyle.Render("none") + "\n")
+			} else {
+				taskBuf.WriteString(strings.Join(todayLines, "\n") + "\n")
 			}
 
 			taskBuf.WriteString("\n" + DimStyle.Render(strings.Repeat("─", rightWidth-4)) + "\n")
@@ -499,7 +501,10 @@ func (m Model) View() string {
 			// Vertical split: editor (2/3) over notes panel (1/3)
 			topHeight := contentHeight * 2 / 3
 			bottomHeight := contentHeight - topHeight - 2 // -2 for border
-			rightWidth := m.width - sidebarWidth - 4       // -4 for borders
+			if bottomHeight < 4 {
+				bottomHeight = 4
+			}
+			rightWidth := m.width - sidebarWidth - 4 // -4 for borders
 			if rightWidth < 30 {
 				rightWidth = 30
 			}
@@ -581,7 +586,7 @@ func (m Model) View() string {
 				rightArea := lipgloss.NewStyle().
 					PaddingLeft(leftPad).
 					Width(focusEditorWidth).
-					Height(contentHeight + 2).
+					Height(contentHeight).
 					Render(focusEditor)
 				if m.config.SidebarPosition == "right" {
 					content = lipgloss.JoinHorizontal(lipgloss.Top, rightArea, sidebar)
@@ -771,6 +776,9 @@ func (m Model) View() string {
 			renderW := m.width - 4
 			if renderW > maxW {
 				renderW = maxW
+			}
+			if renderW < 30 {
+				renderW = 30
 			}
 			m.renderer.SetSize(renderW, contentHeight+2)
 			rendered := m.renderer.Render(m.editor.GetContent(), m.viewScroll)
