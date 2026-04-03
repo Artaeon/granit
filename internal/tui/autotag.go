@@ -1,11 +1,7 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
@@ -87,24 +83,7 @@ func (at *AutoTagger) TagNote(content string) tea.Cmd {
 	ai := at.ai
 
 	return func() tea.Msg {
-		var response string
-		var err error
-
-		switch ai.Provider {
-		case "openai":
-			response, err = atCallOpenAI(ai.APIKey, ai.Model, systemPrompt, userPrompt)
-		case "nous":
-			client := ai.NewNous()
-			response, err = client.Chat(systemPrompt + "\n\n" + userPrompt)
-		case "nerve":
-			client := ai.NewNerve()
-			response, err = client.Chat(systemPrompt, userPrompt, 30*time.Second)
-		default: // "ollama"
-			url := ai.OllamaEndpoint()
-			model := ai.ModelOrDefault("llama3.2")
-			response, err = atCallOllama(url, model, systemPrompt, userPrompt)
-		}
-
+		response, err := ai.Chat(systemPrompt, userPrompt)
 		if err != nil {
 			return autoTagResultMsg{err: err}
 		}
@@ -117,149 +96,6 @@ func (at *AutoTagger) TagNote(content string) tea.Cmd {
 // ParseSuggestedTags extracts tags from a raw AI response string.
 func (at *AutoTagger) ParseSuggestedTags(response string) []string {
 	return atParseSuggestedTags(response)
-}
-
-// ---------------------------------------------------------------------------
-// AutoTagger — Ollama API types & call
-// ---------------------------------------------------------------------------
-
-type atOllamaChatMsg struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type atOllamaChatReq struct {
-	Model    string            `json:"model"`
-	Messages []atOllamaChatMsg `json:"messages"`
-	Stream   bool              `json:"stream"`
-}
-
-type atOllamaChatResp struct {
-	Message struct {
-		Content string `json:"content"`
-	} `json:"message"`
-	Error string `json:"error,omitempty"`
-}
-
-func atCallOllama(url, model, systemPrompt, userPrompt string) (string, error) {
-	reqBody := atOllamaChatReq{
-		Model: model,
-		Messages: []atOllamaChatMsg{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
-		Stream: false,
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Post(url+"/api/chat", "application/json", bytes.NewReader(data))
-	if err != nil {
-		return "", fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var chatResp atOllamaChatResp
-	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return "", err
-	}
-
-	if chatResp.Error != "" {
-		return "", fmt.Errorf("ollama error: %s", chatResp.Error)
-	}
-
-	return chatResp.Message.Content, nil
-}
-
-// ---------------------------------------------------------------------------
-// AutoTagger — OpenAI API types & call
-// ---------------------------------------------------------------------------
-
-type atOpenAIMsg struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type atOpenAIReq struct {
-	Model       string        `json:"model"`
-	Messages    []atOpenAIMsg `json:"messages"`
-	MaxTokens   int           `json:"max_tokens"`
-	Temperature float64       `json:"temperature"`
-}
-
-type atOpenAIResp struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-func atCallOpenAI(apiKey, model, systemPrompt, userPrompt string) (string, error) {
-	reqBody := atOpenAIReq{
-		Model: model,
-		Messages: []atOpenAIMsg{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
-		MaxTokens:   50,
-		Temperature: 0.3,
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("cannot connect to OpenAI: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	var oaiResp atOpenAIResp
-	if err := json.Unmarshal(body, &oaiResp); err != nil {
-		return "", err
-	}
-
-	if oaiResp.Error != nil {
-		return "", fmt.Errorf("OpenAI error: %s", oaiResp.Error.Message)
-	}
-
-	if len(oaiResp.Choices) == 0 {
-		return "", fmt.Errorf("OpenAI returned no choices")
-	}
-
-	return oaiResp.Choices[0].Message.Content, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -384,46 +220,6 @@ func (nc *NoteChat) SetSize(w, h int) {
 // NoteChat — AI calling helpers
 // ---------------------------------------------------------------------------
 
-// ncOllamaMsg is the message format for the Ollama chat API.
-type ncOllamaMsg struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type ncOllamaChatReq struct {
-	Model    string        `json:"model"`
-	Messages []ncOllamaMsg `json:"messages"`
-	Stream   bool          `json:"stream"`
-}
-
-type ncOllamaChatResp struct {
-	Message struct {
-		Content string `json:"content"`
-	} `json:"message"`
-	Error string `json:"error,omitempty"`
-}
-
-type ncOpenAIMsg struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type ncOpenAIReq struct {
-	Model    string        `json:"model"`
-	Messages []ncOpenAIMsg `json:"messages"`
-}
-
-type ncOpenAIResp struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
 // ncBuildSystemPrompt returns the system prompt for note-focused chat.
 func ncBuildSystemPrompt(notePath, noteContent string) string {
 	return fmt.Sprintf(
@@ -432,157 +228,6 @@ func ncBuildSystemPrompt(notePath, noteContent string) string {
 			"Answer questions about this note. Be specific and reference parts of the note.",
 		notePath, noteContent,
 	)
-}
-
-// ncSendToOllama calls the Ollama chat API with the full conversation.
-func ncSendToOllama(url, model, systemPrompt string, history []noteChatMessage) tea.Cmd {
-	return func() tea.Msg {
-		var msgs []ncOllamaMsg
-		msgs = append(msgs, ncOllamaMsg{Role: "system", Content: systemPrompt})
-		for _, m := range history {
-			if m.Role == "system" {
-				continue
-			}
-			msgs = append(msgs, ncOllamaMsg{Role: m.Role, Content: m.Content})
-		}
-
-		reqBody := ncOllamaChatReq{
-			Model:    model,
-			Messages: msgs,
-			Stream:   false,
-		}
-
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return noteChatResultMsg{err: err}
-		}
-
-		client := &http.Client{Timeout: 120 * time.Second}
-		resp, err := client.Post(url+"/api/chat", "application/json", bytes.NewReader(data))
-		if err != nil {
-			return noteChatResultMsg{err: fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)}
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return noteChatResultMsg{err: err}
-		}
-
-		if resp.StatusCode != 200 {
-			return noteChatResultMsg{err: fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body))}
-		}
-
-		var chatResp ncOllamaChatResp
-		if err := json.Unmarshal(body, &chatResp); err != nil {
-			return noteChatResultMsg{err: err}
-		}
-
-		if chatResp.Error != "" {
-			return noteChatResultMsg{err: fmt.Errorf("Ollama error: %s", chatResp.Error)}
-		}
-
-		return noteChatResultMsg{content: chatResp.Message.Content}
-	}
-}
-
-// ncSendToOpenAI calls the OpenAI chat completions API with the full
-// conversation history.
-func ncSendToNous(url, apiKey, systemPrompt string, history []noteChatMessage) tea.Cmd {
-	return func() tea.Msg {
-		// Build combined prompt from system + history
-		var prompt strings.Builder
-		prompt.WriteString(systemPrompt)
-		prompt.WriteString("\n\n")
-		for _, m := range history {
-			if m.Role == "system" {
-				continue
-			}
-			prompt.WriteString(m.Role + ": " + m.Content + "\n")
-		}
-		client := NewNousClient(url, apiKey)
-		resp, err := client.Chat(prompt.String())
-		if err != nil {
-			return noteChatResultMsg{err: err}
-		}
-		return noteChatResultMsg{content: resp}
-	}
-}
-
-func ncSendToNerve(binary, model, provider, systemPrompt string, history []noteChatMessage) tea.Cmd {
-	return func() tea.Msg {
-		// Build combined user prompt from history
-		var userPrompt strings.Builder
-		for _, m := range history {
-			if m.Role == "system" {
-				continue
-			}
-			userPrompt.WriteString(m.Role + ": " + m.Content + "\n")
-		}
-		client := NewNerveClient(binary, model, provider)
-		resp, err := client.Chat(systemPrompt, userPrompt.String(), 120*time.Second)
-		if err != nil {
-			return noteChatResultMsg{err: err}
-		}
-		return noteChatResultMsg{content: resp}
-	}
-}
-
-func ncSendToOpenAI(apiKey, model, systemPrompt string, history []noteChatMessage) tea.Cmd {
-	return func() tea.Msg {
-		var msgs []ncOpenAIMsg
-		msgs = append(msgs, ncOpenAIMsg{Role: "system", Content: systemPrompt})
-		for _, m := range history {
-			if m.Role == "system" {
-				continue
-			}
-			msgs = append(msgs, ncOpenAIMsg{Role: m.Role, Content: m.Content})
-		}
-
-		reqBody := ncOpenAIReq{
-			Model:    model,
-			Messages: msgs,
-		}
-
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return noteChatResultMsg{err: err}
-		}
-
-		client := &http.Client{Timeout: 60 * time.Second}
-		req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-		if err != nil {
-			return noteChatResultMsg{err: err}
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return noteChatResultMsg{err: fmt.Errorf("cannot connect to OpenAI: %w", err)}
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return noteChatResultMsg{err: err}
-		}
-
-		var oaiResp ncOpenAIResp
-		if err := json.Unmarshal(body, &oaiResp); err != nil {
-			return noteChatResultMsg{err: err}
-		}
-
-		if oaiResp.Error != nil {
-			return noteChatResultMsg{err: fmt.Errorf("OpenAI error: %s", oaiResp.Error.Message)}
-		}
-
-		if len(oaiResp.Choices) == 0 {
-			return noteChatResultMsg{err: fmt.Errorf("OpenAI returned no choices")}
-		}
-
-		return noteChatResultMsg{content: oaiResp.Choices[0].Message.Content}
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -662,18 +307,18 @@ func (nc NoteChat) Update(msg tea.Msg) (NoteChat, tea.Cmd) {
 
 			systemPrompt := ncBuildSystemPrompt(nc.notePath, nc.noteContent)
 
-			var cmd tea.Cmd
-			switch nc.ai.Provider {
-			case "openai":
-				cmd = ncSendToOpenAI(nc.ai.APIKey, nc.ai.Model, systemPrompt, nc.messages)
-			case "nous":
-				cmd = ncSendToNous(nc.ai.NousURL, nc.ai.NousAPIKey, systemPrompt, nc.messages)
-			case "nerve":
-				cmd = ncSendToNerve(nc.ai.NerveBinary, nc.ai.NerveModel, nc.ai.NerveProvider, systemPrompt, nc.messages)
-			default: // "ollama"
-				url := nc.ai.OllamaEndpoint()
-				model := nc.ai.ModelOrDefault("llama3.2")
-				cmd = ncSendToOllama(url, model, systemPrompt, nc.messages)
+			// Build combined user prompt from conversation history.
+			var userBuf strings.Builder
+			for _, m := range nc.messages {
+				if m.Role == "system" {
+					continue
+				}
+				userBuf.WriteString(m.Role + ": " + m.Content + "\n")
+			}
+			ai := nc.ai
+			cmd := func() tea.Msg {
+				resp, err := ai.Chat(systemPrompt, userBuf.String())
+				return noteChatResultMsg{content: resp, err: err}
 			}
 
 			return nc, tea.Batch(cmd, noteChatTick())
