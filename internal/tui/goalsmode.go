@@ -576,8 +576,17 @@ type gmAICoachMsg struct {
 // aiGoalCoach sends all goals to the LLM for holistic analysis.
 func (gm *GoalsMode) aiGoalCoach() tea.Cmd {
 	ai := gm.ai
+	// Deep copy goals to avoid sharing slice backing arrays with the main goroutine.
 	goals := make([]Goal, len(gm.goals))
-	copy(goals, gm.goals)
+	for i, g := range gm.goals {
+		goals[i] = g
+		goals[i].Milestones = make([]GoalMilestone, len(g.Milestones))
+		copy(goals[i].Milestones, g.Milestones)
+		goals[i].ReviewLog = make([]GoalReview, len(g.ReviewLog))
+		copy(goals[i].ReviewLog, g.ReviewLog)
+		goals[i].Tags = make([]string, len(g.Tags))
+		copy(goals[i].Tags, g.Tags)
+	}
 
 	return func() tea.Msg {
 		now := time.Now()
