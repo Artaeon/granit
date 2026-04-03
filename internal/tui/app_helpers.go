@@ -742,6 +742,10 @@ func (m *Model) syncConfigToComponents() {
 	if m.autoTagger != nil {
 		m.autoTagger.SetEnabled(m.config.AutoTag)
 	}
+	if m.autoLinkSuggest != nil {
+		// Link suggestions are enabled when AI is configured (not local/empty)
+		m.autoLinkSuggest.SetEnabled(m.config.AIProvider != "" && m.config.AIProvider != "local")
+	}
 	if m.vimState != nil {
 		m.vimState.SetEnabled(m.config.VimMode)
 	}

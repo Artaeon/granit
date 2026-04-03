@@ -118,7 +118,8 @@ type Model struct {
 	ghostWriter    *GhostWriter
 	threadWeaver   ThreadWeaver
 	noteChat       NoteChat
-	autoTagger     *AutoTagger
+	autoTagger      *AutoTagger
+	autoLinkSuggest *AutoLinkSuggest
 	// Batch 2 features
 	vimState      *VimState
 	fileWatcher   *FileWatcher
@@ -327,7 +328,8 @@ func NewModel(vaultPath string) (Model, error) {
 		ghostWriter:    NewGhostWriter(),
 		threadWeaver:   NewThreadWeaver(),
 		noteChat:       NewNoteChat(),
-		autoTagger:     NewAutoTagger(),
+		autoTagger:      NewAutoTagger(),
+		autoLinkSuggest: NewAutoLinkSuggest(),
 		vimState:       NewVimState(),
 		fileWatcher:    NewFileWatcher(vaultPath),
 		breadcrumb:     NewBreadcrumb(),

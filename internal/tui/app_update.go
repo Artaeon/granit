@@ -444,6 +444,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case autoLinkSuggestMsg:
+		if msg.err == nil && len(msg.suggestions) > 0 {
+			links := make([]string, len(msg.suggestions))
+			for i, s := range msg.suggestions {
+				links[i] = "[[" + s + "]]"
+			}
+			if m.toast != nil {
+				toastCmd := m.toast.ShowInfo("Link suggestions: " + strings.Join(links, ", "))
+				return m, toastCmd
+			}
+		}
+		return m, nil
+
 	case habitAICoachMsg:
 		if m.habitTracker.IsActive() {
 			var cmd tea.Cmd

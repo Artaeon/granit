@@ -53,7 +53,14 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.autoTagger.SetVaultTags(existingTags)
 			tagCmd = m.autoTagger.TagNote(m.editor.GetContent())
 		}
-		return m, tea.Batch(cmd, hookCmd, syncCmd, tagCmd)
+		// AI link suggestions on save
+		var linkCmd tea.Cmd
+		if m.autoLinkSuggest != nil && m.autoLinkSuggest.IsEnabled() {
+			m.autoLinkSuggest.ai = m.aiConfig()
+			linkCmd = m.autoLinkSuggest.SuggestLinks(
+				m.editor.GetContent(), m.vault.SortedPaths(), m.activeNote)
+		}
+		return m, tea.Batch(cmd, hookCmd, syncCmd, tagCmd, linkCmd)
 	case CmdDailyNote:
 		m.openDailyNote()
 	case CmdPrevDailyNote:
