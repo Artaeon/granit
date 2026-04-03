@@ -59,6 +59,7 @@ type WeeklyReview struct {
 	// AI integration
 	ai          AIConfig
 	aiSynthesis string
+	aiScroll    int
 
 	// Save state
 	saved bool
@@ -329,10 +330,13 @@ func (wr WeeklyReview) Update(msg tea.Msg) (WeeklyReview, tea.Cmd) {
 				wr.step = wrStepSummary
 				wr.prepareStep()
 			case "j", "down":
-				wr.taskCursor++
+				lines := strings.Split(wr.aiSynthesis, "\n")
+				if len(lines) > 0 && wr.aiScroll < len(lines)-1 {
+					wr.aiScroll++
+				}
 			case "k", "up":
-				if wr.taskCursor > 0 {
-					wr.taskCursor--
+				if wr.aiScroll > 0 {
+					wr.aiScroll--
 				}
 			}
 			return wr, nil
@@ -422,6 +426,7 @@ func (wr WeeklyReview) updateTextInput(msg tea.KeyMsg) (WeeklyReview, tea.Cmd) {
 				wr.step = wrStepSummary
 			} else {
 				wr.aiSynthesis = ""
+				wr.aiScroll = 0
 				wr.prepareStep()
 				return wr, wr.aiWeeklySynthesisCmd()
 			}
@@ -663,7 +668,12 @@ func (wr WeeklyReview) viewAISynthesis(w int) string {
 		return b.String()
 	}
 
-	for _, line := range strings.Split(wr.aiSynthesis, "\n") {
+	lines := strings.Split(wr.aiSynthesis, "\n")
+	start := wr.aiScroll
+	if start > len(lines) {
+		start = len(lines)
+	}
+	for _, line := range lines[start:] {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			b.WriteString("\n")
