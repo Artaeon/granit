@@ -53,8 +53,8 @@ func TestRenderHeadingH2(t *testing.T) {
 	if !strings.Contains(plain, "Section Title") {
 		t.Errorf("H2 should contain heading text, got:\n%s", plain)
 	}
-	if !strings.Contains(plain, "\u2503") {
-		t.Errorf("H2 should have accent bar character, got:\n%s", plain)
+	if !strings.Contains(plain, "\u2BC1") {
+		t.Errorf("H2 should have diamond marker character, got:\n%s", plain)
 	}
 }
 
@@ -261,7 +261,7 @@ func TestRenderBlockquote(t *testing.T) {
 	if !strings.Contains(plain, "This is a quote") {
 		t.Errorf("Blockquote should contain text, got:\n%s", plain)
 	}
-	if !strings.Contains(plain, "\u2503") {
+	if !strings.Contains(plain, "\u258B") {
 		t.Errorf("Blockquote should have bar character, got:\n%s", plain)
 	}
 }
@@ -1525,7 +1525,7 @@ func TestRenderBareGreaterThan(t *testing.T) {
 		t.Errorf("Bare > should still render the text content, got:\n%s", plain)
 	}
 	// Should have blockquote bar
-	if !strings.Contains(plain, "\u2503") {
+	if !strings.Contains(plain, "\u258B") {
 		t.Errorf("Bare > is treated as blockquote, should have bar, got:\n%s", plain)
 	}
 }
