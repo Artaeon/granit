@@ -1,10 +1,8 @@
 package tui
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -1088,24 +1086,7 @@ func (tm *TaskManager) aiBreakdownTask(task Task) tea.Cmd {
 
 	ai := tm.ai
 	return func() tea.Msg {
-		var resp string
-		var err error
-
-		switch ai.Provider {
-		case "openai":
-			resp, err = tmAICall(ai.APIKey, ai.Model, "http", prompt)
-		case "nerve":
-			client := ai.NewNerve()
-			resp, err = client.Chat("You are a task planning assistant. Be concise.", prompt, 60*time.Second)
-		case "nous":
-			client := ai.NewNous()
-			resp, err = client.Chat(prompt)
-		default: // ollama
-			url := ai.OllamaEndpoint()
-			model := ai.ModelOrDefault("qwen2.5:0.5b")
-			resp, err = tmCallOllama(url, model, prompt)
-		}
-
+		resp, err := ai.Chat("You are a task planning assistant. Be concise.", prompt)
 		if err != nil {
 			return tmAIResultMsg{err: err}
 		}
@@ -1182,74 +1163,6 @@ func (tm *TaskManager) insertSubtasks(notePath string, parentLine int, subtasks 
 	_ = os.WriteFile(absPath, []byte(strings.Join(result, "\n")), 0644)
 	tm.fileChanged = true
 	tm.lastChangedNote = notePath
-}
-
-// tmCallOllama makes a simple Ollama generate call.
-func tmCallOllama(url, model, prompt string) (string, error) {
-	type req struct {
-		Model  string `json:"model"`
-		Prompt string `json:"prompt"`
-		Stream bool   `json:"stream"`
-	}
-	body, _ := json.Marshal(req{Model: model, Prompt: prompt, Stream: false})
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Post(url+"/api/generate", "application/json", bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("ollama: %w", err)
-	}
-	defer resp.Body.Close()
-	var result struct {
-		Response string `json:"response"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("ollama decode: %w", err)
-	}
-	return result.Response, nil
-}
-
-// tmAICall makes a simple OpenAI chat call.
-func tmAICall(apiKey, model, _ string, prompt string) (string, error) {
-	if model == "" {
-		model = "gpt-4o-mini"
-	}
-	type msg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	type req struct {
-		Model    string `json:"model"`
-		Messages []msg  `json:"messages"`
-	}
-	body, _ := json.Marshal(req{Model: model, Messages: []msg{
-		{Role: "system", Content: "You are a task planning assistant. Be concise."},
-		{Role: "user", Content: prompt},
-	}})
-	client := &http.Client{Timeout: 60 * time.Second}
-	r, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Authorization", "Bearer "+apiKey)
-	resp, err := client.Do(r)
-	if err != nil {
-		return "", fmt.Errorf("openai: %w", err)
-	}
-	defer resp.Body.Close()
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
-	}
-	if len(result.Choices) > 0 {
-		return result.Choices[0].Message.Content, nil
-	}
-	return "", fmt.Errorf("no response from openai")
 }
 
 // doSetPriority sets a specific priority on a task (not cycling).

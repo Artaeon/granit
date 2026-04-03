@@ -399,23 +399,7 @@ func (gm *GoalsMode) aiGenerateMilestones(goal Goal) tea.Cmd {
 
 	ai := gm.ai
 	return func() tea.Msg {
-		var resp string
-		var err error
-
-		switch ai.Provider {
-		case "openai":
-			resp, err = tmAICall(ai.APIKey, ai.Model, "", prompt)
-		case "nerve":
-			client := ai.NewNerve()
-			resp, err = client.Chat("You are a goal planning assistant. Be concrete and actionable.", prompt, 60*time.Second)
-		case "nous":
-			client := ai.NewNous()
-			resp, err = client.Chat(prompt)
-		default: // ollama
-			url := ai.OllamaEndpoint()
-			model := ai.ModelOrDefault("qwen2.5:0.5b")
-			resp, err = tmCallOllama(url, model, prompt)
-		}
+		resp, err := ai.Chat("You are a goal planning assistant. Be concrete and actionable.", prompt)
 
 		if err != nil {
 			return gmAIResultMsg{err: err, goalID: goal.ID}
@@ -479,24 +463,7 @@ func (gm *GoalsMode) aiReviewGoal(goal Goal) tea.Cmd {
 
 	ai := gm.ai
 	return func() tea.Msg {
-		var resp string
-		var err error
-
-		switch ai.Provider {
-		case "openai":
-			resp, err = tmAICall(ai.APIKey, ai.Model, "", prompt)
-		case "nerve":
-			client := ai.NewNerve()
-			resp, err = client.Chat("You are DEEPCOVEN, a direct and honest personal assistant.", prompt, 60*time.Second)
-		case "nous":
-			client := ai.NewNous()
-			resp, err = client.Chat(prompt)
-		default: // ollama
-			url := ai.OllamaEndpoint()
-			model := ai.ModelOrDefault("qwen2.5:0.5b")
-			resp, err = tmCallOllama(url, model, prompt)
-		}
-
+		resp, err := ai.Chat("You are DEEPCOVEN, a direct and honest personal assistant.", prompt)
 		return gmAIReviewMsg{review: strings.TrimSpace(resp), err: err, goalID: goal.ID}
 	}
 }
@@ -535,23 +502,7 @@ func (gm *GoalsMode) aiDecomposeGoal(goal Goal) tea.Cmd {
 
 	ai := gm.ai
 	return func() tea.Msg {
-		var resp string
-		var err error
-
-		switch ai.Provider {
-		case "openai":
-			resp, err = tmAICall(ai.APIKey, ai.Model, "", prompt)
-		case "nerve":
-			client := ai.NewNerve()
-			resp, err = client.Chat("You are a goal planning assistant. Be concrete and actionable.", prompt, 60*time.Second)
-		case "nous":
-			client := ai.NewNous()
-			resp, err = client.Chat(prompt)
-		default: // ollama
-			url := ai.OllamaEndpoint()
-			model := ai.ModelOrDefault("qwen2.5:0.5b")
-			resp, err = tmCallOllama(url, model, prompt)
-		}
+		resp, err := ai.Chat("You are a goal planning assistant. Be concrete and actionable.", prompt)
 
 		if err != nil {
 			return gmAIDecomposeMsg{err: err, goalID: goal.ID}
