@@ -1,11 +1,7 @@
 package tui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -278,144 +274,9 @@ func (bd BlogDraft) draftSection(sectionIdx int) tea.Cmd {
 
 // blogCallAI dispatches to the configured provider and returns the response.
 func blogCallAI(ai AIConfig, systemPrompt, userPrompt string) (string, error) {
-	switch ai.Provider {
-	case "openai":
-		return blogOpenAI(ai.APIKey, ai.ModelOrDefault("gpt-4o-mini"), systemPrompt, userPrompt)
-	case "nous":
-		client := ai.NewNous()
-		return client.Chat(systemPrompt + "\n\n" + userPrompt)
-	case "nerve":
-		client := ai.NewNerve()
-		return client.Chat(systemPrompt, userPrompt, 120*time.Second)
-	default: // "ollama"
-		return blogOllama(ai.OllamaEndpoint(), ai.ModelOrDefault("llama3.2"), systemPrompt, userPrompt)
-	}
+	return ai.Chat(systemPrompt, userPrompt)
 }
 
-func blogOllama(url, model, systemPrompt, userPrompt string) (string, error) {
-	type ollamaMsg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	type ollamaChatReq struct {
-		Model    string      `json:"model"`
-		Messages []ollamaMsg `json:"messages"`
-		Stream   bool        `json:"stream"`
-	}
-
-	reqBody := ollamaChatReq{
-		Model: model,
-		Messages: []ollamaMsg{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
-		Stream: false,
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Post(url+"/api/chat", "application/json", bytes.NewReader(data))
-	if err != nil {
-		return "", fmt.Errorf("cannot connect to Ollama at %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	if resp.StatusCode != 200 {
-		if resp.StatusCode == 404 {
-			return "", fmt.Errorf("model %q not found — run: ollama pull %s", model, model)
-		}
-		return "", fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var chatResp struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-		Error string `json:"error,omitempty"`
-	}
-	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return "", err
-	}
-	if chatResp.Error != "" {
-		return "", fmt.Errorf("Ollama error: %s", chatResp.Error)
-	}
-
-	return chatResp.Message.Content, nil
-}
-
-func blogOpenAI(apiKey, model, systemPrompt, userPrompt string) (string, error) {
-	type msg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	type req struct {
-		Model    string `json:"model"`
-		Messages []msg  `json:"messages"`
-	}
-
-	reqBody := req{
-		Model: model,
-		Messages: []msg{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
-	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	httpReq, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(data))
-	if err != nil {
-		return "", err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-
-	httpResp, err := client.Do(httpReq)
-	if err != nil {
-		return "", fmt.Errorf("cannot connect to OpenAI: %w", err)
-	}
-	defer httpResp.Body.Close()
-
-	body, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	var openaiResp struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(body, &openaiResp); err != nil {
-		return "", err
-	}
-	if openaiResp.Error != nil {
-		return "", fmt.Errorf("OpenAI error: %s", openaiResp.Error.Message)
-	}
-	if len(openaiResp.Choices) == 0 {
-		return "", fmt.Errorf("OpenAI returned no choices")
-	}
-
-	return openaiResp.Choices[0].Message.Content, nil
-}
 
 // ---------------------------------------------------------------------------
 // Outline parser
