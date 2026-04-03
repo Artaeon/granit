@@ -410,9 +410,23 @@ func (cp *CommandPalette) filterCommands() {
 		return
 	}
 	query := strings.ToLower(cp.query)
+
+	// Support "category:" prefix filtering (e.g. "ai:", "search:", "daily:")
+	var catFilter string
+	if idx := strings.Index(query, ":"); idx > 0 {
+		catFilter = query[:idx]
+		query = strings.TrimSpace(query[idx+1:])
+	}
+
 	cp.filtered = nil
 	for _, cmd := range AllCommands {
-		if cmdFuzzyMatch(strings.ToLower(cmd.Label), query) ||
+		if catFilter != "" {
+			if !cmdFuzzyMatch(strings.ToLower(cmd.Category), catFilter) {
+				continue
+			}
+		}
+		if query == "" ||
+			cmdFuzzyMatch(strings.ToLower(cmd.Label), query) ||
 			cmdFuzzyMatch(strings.ToLower(cmd.Desc), query) {
 			cp.filtered = append(cp.filtered, cmd)
 		}
