@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -117,7 +118,7 @@ func (a *AutoSync) CommitAndPush() tea.Cmd {
 			return nil
 		}
 		// Create .gitignore if missing
-		gitignorePath := a.vaultPath + "/.gitignore"
+		gitignorePath := filepath.Join(a.vaultPath, ".gitignore")
 		if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
 			_ = os.WriteFile(gitignorePath, []byte(".granit/\n.DS_Store\n*.swp\n*.swo\n*~\n"), 0644)
 		}

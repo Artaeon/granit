@@ -349,11 +349,12 @@ func (sb StatusBar) View() string {
 	// Truncate to prevent overflow on narrow terminals
 	totalUsed := func() int {
 		return lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) +
-			lipgloss.Width(readingBar) + lipgloss.Width(planIndicator) +
-			lipgloss.Width(researchIndicator) +
-			lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) +
-			lipgloss.Width(pomoIndicator) + lipgloss.Width(gitIndicator) +
-			lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
+			lipgloss.Width(readingBar) + lipgloss.Width(researchIndicator) +
+			lipgloss.Width(planIndicator) + lipgloss.Width(inboxIndicator) +
+			lipgloss.Width(overdueIndicator) + lipgloss.Width(taskIndicator) +
+			lipgloss.Width(clockIndicator) + lipgloss.Width(pomoIndicator) +
+			lipgloss.Width(gitIndicator) + lipgloss.Width(aiIndicator) +
+			lipgloss.Width(rightInfo)
 	}
 
 	// Step 1: If too wide, hide least important indicators (plan nudge, reading progress, AI badge, git)
