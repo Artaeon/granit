@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+// aiHTTPClient is the shared HTTP client for AI chat requests (Ollama, OpenAI).
+// Reusing a single client enables connection pooling and avoids per-request overhead.
+var aiHTTPClient = &http.Client{Timeout: 3 * time.Minute}
+
 // chatMessage is used for building chat API request bodies.
 type chatMessage struct {
 	Role    string `json:"role"`
@@ -110,8 +114,7 @@ func (c AIConfig) chatOllama(systemPrompt, userPrompt string) (string, error) {
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	client := &http.Client{Timeout: 3 * time.Minute}
-	resp, err := client.Post(url+"/api/chat", "application/json", bytes.NewReader(reqBody))
+	resp, err := aiHTTPClient.Post(url+"/api/chat", "application/json", bytes.NewReader(reqBody))
 	if err != nil {
 		return "", fmt.Errorf("cannot connect to Ollama at %s — is it running? Try: ollama serve", url)
 	}
@@ -171,8 +174,7 @@ func (c AIConfig) chatOpenAI(systemPrompt, userPrompt string) (string, error) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 
-	client := &http.Client{Timeout: 3 * time.Minute}
-	resp, err := client.Do(req)
+	resp, err := aiHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("cannot reach OpenAI API — check your internet connection")
 	}
