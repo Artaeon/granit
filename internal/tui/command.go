@@ -98,6 +98,10 @@ const (
 	CmdLayoutMinimal
 	CmdLayoutReading
 	CmdLayoutDashboard
+	CmdLayoutZen
+	CmdLayoutTaskboard
+	CmdLayoutResearch
+	CmdLayoutCalendar
 	CmdBlogPublish
 	CmdGlobalReplace
 	CmdAITemplate
@@ -355,6 +359,10 @@ var AllCommands = []Command{
 	{Label: "Minimal Layout", Desc: "Editor only", Shortcut: "", Action: CmdLayoutMinimal, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Reading Layout", Desc: "Editor + backlinks, no sidebar", Shortcut: "", Action: CmdLayoutReading, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Dashboard Layout", Desc: "4-panel: sidebar, editor, outline, backlinks", Shortcut: "", Action: CmdLayoutDashboard, Icon: &IconViewChar, Category: CatSettings},
+	{Label: "Zen Layout", Desc: "Centered editor, no chrome — distraction-free", Shortcut: "", Action: CmdLayoutZen, Icon: &IconViewChar, Category: CatSettings},
+	{Label: "Taskboard Layout", Desc: "Sidebar + editor + task summary panel", Shortcut: "", Action: CmdLayoutTaskboard, Icon: &IconViewChar, Category: CatSettings},
+	{Label: "Research Layout", Desc: "Sidebar + editor + research notes panel", Shortcut: "", Action: CmdLayoutResearch, Icon: &IconViewChar, Category: CatSettings},
+	{Label: "Calendar Layout", Desc: "Sidebar + editor + calendar panel", Shortcut: "", Action: CmdLayoutCalendar, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Refresh Vault", Desc: "Rescan vault for changes", Shortcut: "", Action: CmdRefreshVault, Category: CatSettings},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit, Category: CatSettings},
