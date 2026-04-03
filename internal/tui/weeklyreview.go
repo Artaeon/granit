@@ -353,11 +353,6 @@ func (wr WeeklyReview) Update(msg tea.Msg) (WeeklyReview, tea.Cmd) {
 				wr.Close()
 				return wr, nil
 			}
-			if wr.step == wrStepAI {
-				wr.step = wrStepSummary
-				wr.prepareStep()
-				return wr, nil
-			}
 			wr.step++
 			// Skip AI step if no provider configured
 			if wr.step == wrStepAI {
@@ -374,6 +369,10 @@ func (wr WeeklyReview) Update(msg tea.Msg) (WeeklyReview, tea.Cmd) {
 		case "shift+tab":
 			if wr.step > 0 {
 				wr.step--
+				// Skip AI step backward if no provider configured
+				if wr.step == wrStepAI && (wr.ai.Provider == "" || wr.ai.Provider == "local") {
+					wr.step--
+				}
 				wr.prepareStep()
 			}
 			return wr, nil
@@ -417,6 +416,16 @@ func (wr WeeklyReview) updateTextInput(msg tea.KeyMsg) (WeeklyReview, tea.Cmd) {
 		// Save current input and advance
 		wr.commitInput()
 		wr.step++
+		// Skip AI step if no provider configured, or start AI call
+		if wr.step == wrStepAI {
+			if wr.ai.Provider == "" || wr.ai.Provider == "local" {
+				wr.step = wrStepSummary
+			} else {
+				wr.aiSynthesis = ""
+				wr.prepareStep()
+				return wr, wr.aiWeeklySynthesisCmd()
+			}
+		}
 		wr.prepareStep()
 		return wr, nil
 	case "shift+tab":
