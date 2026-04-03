@@ -2,11 +2,14 @@ package tui
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -1233,5 +1236,64 @@ func TestProjectStatuses_Count(t *testing.T) {
 func TestProjectColorNames_Count(t *testing.T) {
 	if len(projectColorNames) != 11 {
 		t.Errorf("expected 11 color names, got %d", len(projectColorNames))
+	}
+}
+
+// ── AI Project Insights ────────────────────────────────────────
+
+func TestProjectMode_InsightMsg_SetsText(t *testing.T) {
+	pm := NewProjectMode()
+	pm.active = true
+	pm.aiPending = true
+
+	pm, _ = pm.Update(pmAIInsightMsg{insight: "HEALTH: Green"})
+
+	if pm.aiPending {
+		t.Error("aiPending should be false after insight msg")
+	}
+	if !pm.showInsight {
+		t.Error("showInsight should be true")
+	}
+	if pm.aiInsight != "HEALTH: Green" {
+		t.Errorf("unexpected aiInsight: %q", pm.aiInsight)
+	}
+}
+
+func TestProjectMode_InsightMsg_Error(t *testing.T) {
+	pm := NewProjectMode()
+	pm.active = true
+	pm.aiPending = true
+
+	pm, _ = pm.Update(pmAIInsightMsg{err: fmt.Errorf("offline")})
+
+	if pm.aiPending {
+		t.Error("aiPending should be false after error")
+	}
+	if !pm.showInsight {
+		t.Error("showInsight should be true even on error to display message")
+	}
+	if !strings.Contains(pm.aiInsight, "offline") {
+		t.Errorf("aiInsight should contain error: %q", pm.aiInsight)
+	}
+}
+
+func TestProjectMode_InsightEscDismisses(t *testing.T) {
+	vaultRoot := createProjectVault(t)
+	pm := NewProjectMode()
+	pm.Open(vaultRoot)
+	// Add a project and enter dashboard
+	pm.projects = []Project{{Name: "Test", Status: "active"}}
+	pm.selectedProj = 0
+	pm.phase = pmPhaseDashboard
+	pm.showInsight = true
+	pm.aiInsight = "some insight"
+
+	pm, _ = pm.updateDashboard(tea.KeyMsg{Type: tea.KeyEsc})
+
+	if pm.showInsight {
+		t.Error("Esc should dismiss insight")
+	}
+	if pm.aiInsight != "" {
+		t.Error("aiInsight should be cleared on dismiss")
 	}
 }

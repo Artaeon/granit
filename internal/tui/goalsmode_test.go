@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -213,5 +214,77 @@ func TestGoalsModeUniqueCategories(t *testing.T) {
 	cats := gm.uniqueCategories()
 	if len(cats) != 2 {
 		t.Errorf("uniqueCategories() = %v, want 2 categories", cats)
+	}
+}
+
+// ── AI Goal Coach ──────────────────────────────────────────────
+
+func TestGoalsMode_CoachMsg_SetsText(t *testing.T) {
+	gm := NewGoalsMode()
+	gm.active = true
+	gm.aiPending = true
+
+	gm, _ = gm.Update(gmAICoachMsg{analysis: "## Report\nAll good"})
+
+	if gm.aiPending {
+		t.Error("aiPending should be false after coach msg")
+	}
+	if !gm.showCoach {
+		t.Error("showCoach should be true after successful coach msg")
+	}
+	if gm.coachText != "## Report\nAll good" {
+		t.Errorf("unexpected coachText: %q", gm.coachText)
+	}
+}
+
+func TestGoalsMode_CoachMsg_Error(t *testing.T) {
+	gm := NewGoalsMode()
+	gm.active = true
+	gm.aiPending = true
+
+	gm, _ = gm.Update(gmAICoachMsg{err: fmt.Errorf("timeout")})
+
+	if gm.aiPending {
+		t.Error("aiPending should be false after error")
+	}
+	if gm.showCoach {
+		t.Error("showCoach should be false on error")
+	}
+	if !strings.Contains(gm.statusMsg, "timeout") {
+		t.Errorf("statusMsg should contain error: %q", gm.statusMsg)
+	}
+}
+
+func TestGoalsMode_CoachEscDismisses(t *testing.T) {
+	gm := NewGoalsMode()
+	gm.active = true
+	gm.showCoach = true
+	gm.coachText = "some analysis"
+
+	gm, _ = gm.updateNormal("esc")
+
+	if gm.showCoach {
+		t.Error("Esc should dismiss coach")
+	}
+	if gm.coachText != "" {
+		t.Error("coachText should be cleared on dismiss")
+	}
+	if !gm.IsActive() {
+		t.Error("goals should still be active after dismissing coach")
+	}
+}
+
+func TestGoalsMode_CoachRenderNotPanic(t *testing.T) {
+	gm := NewGoalsMode()
+	gm.active = true
+	gm.showCoach = true
+	gm.coachText = ""
+	gm.width = 80
+	gm.height = 40
+
+	// Should not panic with empty coach text
+	view := gm.View()
+	if view == "" {
+		t.Error("View should not be empty when active")
 	}
 }
