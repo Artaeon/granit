@@ -136,6 +136,7 @@ func (ac *AIChat) Close() {
 	ac.streaming = false
 	ac.loading = false
 	ac.streamCh = nil
+	ac.messages = nil
 }
 
 // SetSize updates the available dimensions for the overlay.
@@ -456,6 +457,10 @@ func (ac AIChat) Update(msg tea.Msg) (AIChat, tea.Cmd) {
 				Content: trimmed,
 				Time:    time.Now(),
 			})
+			// Cap message history to prevent unbounded growth
+			if len(ac.messages) > 200 {
+				ac.messages = ac.messages[len(ac.messages)-200:]
+			}
 			ac.input = ""
 			ac.loading = true
 			ac.loadingTick = 0
