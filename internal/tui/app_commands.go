@@ -880,8 +880,8 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.config.Layout = LayoutTaskboard
 			m.statusbar.SetMessage("Layout: Taskboard (sidebar + editor + tasks)")
 		case CmdLayoutResearch:
-			m.config.Layout = LayoutResearch
-			m.statusbar.SetMessage("Layout: Research (sidebar + editor + notes)")
+			m.config.Layout = LayoutDefault
+			m.statusbar.SetMessage("Layout: Default (3-panel)")
 		case CmdLayoutCalendar:
 			m.config.Layout = LayoutCalendar
 			m.statusbar.SetMessage("Layout: Calendar (sidebar + editor + calendar)")

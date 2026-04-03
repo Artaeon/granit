@@ -32,7 +32,6 @@ func AllLayouts() []string {
 		LayoutDashboard,
 		LayoutZen,
 		LayoutTaskboard,
-		LayoutResearch,
 		LayoutCalendar,
 		LayoutCornell,
 		LayoutFocus,
@@ -57,7 +56,7 @@ func LayoutDescription(layout string) string {
 	case LayoutTaskboard:
 		return "Sidebar + Editor + Task summary (3-panel)"
 	case LayoutResearch:
-		return "Sidebar + Editor + Notes panel (3-panel)"
+		return "Sidebar + Editor + Backlinks (3-panel)"
 	case LayoutCalendar:
 		return "Sidebar + Editor + Calendar/Schedule (3-panel)"
 	case LayoutCornell:
@@ -112,7 +111,7 @@ func LayoutHasSidebar(layout string) bool {
 // LayoutHasBacklinks reports whether the layout includes the backlinks panel.
 func LayoutHasBacklinks(layout string) bool {
 	switch layout {
-	case LayoutWriter, LayoutMinimal, LayoutZen, LayoutTaskboard, LayoutResearch, LayoutCalendar, LayoutCornell, LayoutFocus:
+	case LayoutWriter, LayoutMinimal, LayoutZen, LayoutTaskboard, LayoutCalendar, LayoutCornell, LayoutFocus:
 		return false
 	default:
 		return true

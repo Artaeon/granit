@@ -200,8 +200,6 @@ func layoutDisplayName(layout string) string {
 		return "Zen"
 	case LayoutTaskboard:
 		return "Taskboard"
-	case LayoutResearch:
-		return "Research"
 	case LayoutCalendar:
 		return "Calendar"
 	case LayoutCornell:
@@ -368,17 +366,6 @@ func layoutPreview(layout string, width int) string {
 			box("Files", sideW, h),
 			box("Editor", edW, h),
 			box("Tasks", taskW, h),
-		))
-	case LayoutResearch:
-		notesW := width / 4
-		if notesW < 8 {
-			notesW = 8
-		}
-		edW := width - sideW - notesW
-		return style.Render(joinH(
-			box("Files", sideW, h),
-			box("Editor", edW, h),
-			box("Notes", notesW, h),
 		))
 	case LayoutCalendar:
 		calW := width / 4

@@ -437,112 +437,6 @@ func (m Model) View() string {
 				Render(editorPanel)
 
 			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, tbEditor, taskPanel)
-		case "research":
-			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
-				BorderForeground(sidebarBorderColor).
-				Width(sidebarWidth).
-				Height(contentHeight).
-				Render(m.sidebar.View())
-
-			// Research/notes panel
-			notesPanelWidth := m.width / 4
-			if notesPanelWidth < 25 {
-				notesPanelWidth = 25
-			}
-			if notesPanelWidth > 40 {
-				notesPanelWidth = 40
-			}
-
-			var notesContent strings.Builder
-			notesContent.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  RESEARCH"))
-			notesContent.WriteString("\n")
-			notesContent.WriteString(DimStyle.Render(strings.Repeat("\u2500", notesPanelWidth-4)))
-			notesContent.WriteString("\n\n")
-
-			// Recent notes
-			notesContent.WriteString(lipgloss.NewStyle().Foreground(blue).Bold(true).Render("  Recent Notes") + "\n")
-			paths := m.vault.SortedPaths()
-			type recentNote struct {
-				path  string
-				words int
-			}
-			var recents []recentNote
-			for _, p := range paths {
-				note := m.vault.GetNote(p)
-				if note == nil {
-					continue
-				}
-				words := len(strings.Fields(note.Content))
-				recents = append(recents, recentNote{path: p, words: words})
-			}
-			// Show up to 20 recent notes
-			shown := 0
-			for i := len(recents) - 1; i >= 0 && shown < 20; i-- {
-				r := recents[i]
-				name := filepath.Base(r.path)
-				name = strings.TrimSuffix(name, ".md")
-				name = TruncateDisplay(name, notesPanelWidth-12)
-				style := lipgloss.NewStyle().Foreground(text)
-				if r.path == m.activeNote {
-					style = style.Foreground(mauve).Bold(true)
-				}
-				wordStr := DimStyle.Render(fmt.Sprintf(" %dw", r.words))
-				notesContent.WriteString("  " + style.Render("\u00b7 "+name) + wordStr + "\n")
-				shown++
-			}
-
-			// Backlinks of current note
-			notesContent.WriteString("\n" + lipgloss.NewStyle().Foreground(green).Bold(true).Render("  Backlinks") + "\n")
-			if m.activeNote != "" {
-				backlinks := m.index.GetBacklinks(m.activeNote)
-				if len(backlinks) == 0 {
-					notesContent.WriteString("  " + DimStyle.Render("none") + "\n")
-				}
-				for _, bl := range backlinks {
-					name := filepath.Base(bl)
-					name = strings.TrimSuffix(name, ".md")
-					if len(name) > notesPanelWidth-8 {
-						name = name[:notesPanelWidth-11] + "..."
-					}
-					notesContent.WriteString("  " + lipgloss.NewStyle().Foreground(green).Render("\u2190 "+name) + "\n")
-				}
-			}
-
-			// Outgoing links
-			notesContent.WriteString("\n" + lipgloss.NewStyle().Foreground(blue).Bold(true).Render("  Links") + "\n")
-			if m.activeNote != "" {
-				note := m.vault.GetNote(m.activeNote)
-				if note != nil && len(note.Links) > 0 {
-					for _, link := range note.Links {
-						link = TruncateDisplay(link, notesPanelWidth-8)
-						notesContent.WriteString("  " + lipgloss.NewStyle().Foreground(blue).Render("\u2192 "+link) + "\n")
-					}
-				} else {
-					notesContent.WriteString("  " + DimStyle.Render("none") + "\n")
-				}
-			}
-
-			notesPanel := lipgloss.NewStyle().
-				BorderStyle(PanelBorder).
-				BorderForeground(surface1).
-				Width(notesPanelWidth).
-				Height(contentHeight).
-				Background(base).
-				Padding(0, 1).
-				Render(notesContent.String())
-
-			// Adjust editor width
-			rsEditorWidth := m.width - sidebarWidth - notesPanelWidth - 6
-			if rsEditorWidth < 30 {
-				rsEditorWidth = 30
-			}
-			rsEditor := EditorStyle.
-				BorderForeground(editorBorderColor).
-				Width(rsEditorWidth).
-				Height(contentHeight).
-				Render(editorPanel)
-
-			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rsEditor, notesPanel)
 		case "cornell":
 			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).
@@ -656,7 +550,7 @@ func (m Model) View() string {
 					content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, focusEditor)
 				}
 			}
-		default: // "default" - 3-panel (with optional calendar toggle)
+		default: // "default", "research" - 3-panel (with optional calendar toggle)
 			sidebar := SidebarStyle.BorderStyle(sidebarBorder).
 				BorderForeground(sidebarBorderColor).
 				Width(sidebarWidth).
