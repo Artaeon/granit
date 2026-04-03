@@ -741,6 +741,12 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.dailyBriefing.SetVaultData(noteContents, m.vault.SortedPaths(), todayPath)
 		m.dailyBriefing.Open()
 
+	case CmdDevotional:
+		m.devotional.SetSize(m.width, m.height)
+		goals := m.goalsMode.GetGoals()
+		cmd := m.devotional.Open(m.vault.Root, m.aiConfig(), goals)
+		return m, cmd
+
 	case CmdEncryptNote:
 		if m.activeNote != "" {
 			m.encryption.SetSize(m.width, m.height)

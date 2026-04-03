@@ -444,6 +444,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case devotionalResultMsg, devotionalTickMsg:
+		if m.devotional.IsActive() {
+			var cmd tea.Cmd
+			m.devotional, cmd = m.devotional.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case weeklyReviewAIMsg:
 		if m.weeklyReview.IsActive() {
 			m.weeklyReview, _ = m.weeklyReview.Update(msg)
@@ -2036,6 +2044,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.writeBriefingToDailyNote(content)
 				}
 			}
+			return m, cmd
+		}
+
+		if m.devotional.IsActive() {
+			var cmd tea.Cmd
+			m.devotional, cmd = m.devotional.Update(msg)
 			return m, cmd
 		}
 

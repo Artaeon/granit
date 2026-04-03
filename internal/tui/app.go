@@ -133,6 +133,7 @@ type Model struct {
 	// AI features
 	vaultRefactor  VaultRefactor
 	dailyBriefing  DailyBriefing
+	devotional     Devotional
 
 	// Encryption & preview
 	encryption      Encryption

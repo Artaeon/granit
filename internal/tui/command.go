@@ -176,6 +176,7 @@ const (
 	CmdMorningRoutine
 	CmdEveningReview
 	CmdBlogDraft
+	CmdDevotional
 	CmdQuit
 )
 
@@ -325,6 +326,7 @@ var AllCommands = []Command{
 	{Label: "Weekly Note", Desc: "Open or create this week's note", Shortcut: "Alt+W", Action: CmdWeeklyNote, Icon: &IconCalendarChar, Category: CatDaily},
 	{Label: "Calendar", Desc: "Calendar view with daily notes", Shortcut: "Ctrl+L", Action: CmdShowCalendar, Icon: &IconCalendarChar, Category: CatDaily},
 	{Label: "Daily Jot", Desc: "Quick time-stamped bullets — scroll through today, yesterday, and beyond", Shortcut: "Alt+J", Action: CmdDailyJot, Icon: &IconEditChar, Category: CatDaily},
+	{Label: "AI Scripture Devotional", Desc: "Personal reflection connecting today's verse to your goals", Shortcut: "", Action: CmdDevotional, Icon: &IconBotChar, Category: CatDaily},
 	{Label: "Daily Standup", Desc: "Auto-generate standup from git commits, tasks, and notes", Shortcut: "", Action: CmdStandupGenerator, Icon: &IconCalendarChar, Category: CatDaily},
 	{Label: "Daily Digest", Desc: "Generate weekly review from recent vault activity", Shortcut: "", Action: CmdDailyDigest, Icon: &IconCalendarChar, Category: CatDaily},
 	{Label: "Weekly Review", Desc: "Guided weekly review with tasks, wins, lessons, priorities", Shortcut: "", Action: CmdWeeklyReview, Icon: &IconCalendarChar, Category: CatDaily},
