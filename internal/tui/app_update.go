@@ -2693,6 +2693,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "alt+m":
 			return m.executeCommand(CmdMorningRoutine)
 
+		case "alt+l":
+			return m.executeCommand(CmdCycleLayout)
+
 		case "alt+e":
 			return m.executeCommand(CmdDailyReview)
 

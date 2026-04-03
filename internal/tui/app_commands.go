@@ -901,6 +901,30 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		m.updateLayout()
 
+	case CmdCycleLayout:
+		layouts := AllLayouts()
+		current := m.config.Layout
+		if current == "" {
+			current = LayoutDefault
+		}
+		nextIdx := 0
+		for i, l := range layouts {
+			if l == current {
+				nextIdx = (i + 1) % len(layouts)
+				break
+			}
+		}
+		m.config.Layout = layouts[nextIdx]
+		m.statusbar.SetMessage("Layout: " + LayoutDescription(m.config.Layout))
+		// Safety: move focus if current panel is hidden
+		if !LayoutHasSidebar(m.config.Layout) && m.focus == focusSidebar {
+			m.setFocus(focusEditor)
+		}
+		if !LayoutHasBacklinks(m.config.Layout) && m.focus == focusBacklinks {
+			m.setFocus(focusEditor)
+		}
+		m.updateLayout()
+
 	case CmdToggleSidebar:
 		if LayoutHasSidebar(m.config.Layout) {
 			// Hide sidebar: switch to a layout without it

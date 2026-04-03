@@ -104,6 +104,7 @@ const (
 	CmdLayoutCalendar
 	CmdLayoutCornell
 	CmdLayoutFocus
+	CmdCycleLayout
 	CmdBlogPublish
 	CmdGlobalReplace
 	CmdAITemplate
@@ -367,6 +368,7 @@ var AllCommands = []Command{
 	{Label: "Calendar Layout", Desc: "Sidebar + editor + calendar panel", Shortcut: "", Action: CmdLayoutCalendar, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Cornell Layout", Desc: "Sidebar + editor over notes panel — study layout", Shortcut: "", Action: CmdLayoutCornell, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Focus Layout", Desc: "Sidebar + wide centered editor (focused writing)", Shortcut: "", Action: CmdLayoutFocus, Icon: &IconViewChar, Category: CatSettings},
+	{Label: "Cycle Layout", Desc: "Switch to next layout", Shortcut: "Alt+L", Action: CmdCycleLayout, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Refresh Vault", Desc: "Rescan vault for changes", Shortcut: "", Action: CmdRefreshVault, Category: CatSettings},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit, Category: CatSettings},
