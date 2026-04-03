@@ -518,28 +518,65 @@ func (cp CommandPalette) View() string {
 
 	// Results
 	maxVisible := cp.height/2 - 5
-	if maxVisible < 8 { maxVisible = 8 }
-	if maxVisible > 18 { maxVisible = 18 }
+	if maxVisible < 8 {
+		maxVisible = 8
+	}
+	if maxVisible > 18 {
+		maxVisible = 18
+	}
+
+	showCategories := cp.query == ""
 
 	if len(cp.filtered) == 0 {
 		b.WriteString("\n" + lipgloss.NewStyle().Foreground(overlay0).Italic(true).Padding(0, 2).Render("No matching commands found") + "\n")
 	} else {
 		start := 0
-		if cp.cursor >= start+maxVisible { start = cp.cursor - maxVisible + 1 }
-		if cp.cursor < start { start = cp.cursor }
+		if cp.cursor >= start+maxVisible {
+			start = cp.cursor - maxVisible + 1
+		}
+		if cp.cursor < start {
+			start = cp.cursor
+		}
 		end := start + maxVisible
-		if end > len(cp.filtered) { end = len(cp.filtered) }
+		if end > len(cp.filtered) {
+			end = len(cp.filtered)
+		}
 
 		for i := start; i < end; i++ {
 			cmd := cp.filtered[i]
+
+			// Category header: show when browsing (no query) and category changes
+			if showCategories && cmd.Category != "" {
+				showHeader := i == start
+				if !showHeader && i > 0 && cp.filtered[i-1].Category != cmd.Category {
+					showHeader = true
+				}
+				if showHeader {
+					label := " " + cmd.Category + " "
+					headerW := lipgloss.Width(label) + 4 // "── " prefix + " " suffix
+					trail := innerW - headerW
+					if trail < 0 {
+						trail = 0
+					}
+					catLine := lipgloss.NewStyle().Foreground(surface1).Render("── ") +
+						lipgloss.NewStyle().Foreground(overlay0).Bold(true).Render(cmd.Category) +
+						lipgloss.NewStyle().Foreground(surface1).Render(" " + strings.Repeat("─", trail))
+					b.WriteString(catLine + "\n")
+				}
+			}
+
 			icon := "  "
-			if cmd.Icon != nil { icon = *cmd.Icon + " " }
+			if cmd.Icon != nil {
+				icon = *cmd.Icon + " "
+			}
 
 			shortcutStr := ""
-			if cmd.Shortcut != "" { shortcutStr = " " + cmd.Shortcut + " " }
+			if cmd.Shortcut != "" {
+				shortcutStr = " " + cmd.Shortcut + " "
+			}
 
 			descRunes := []rune(" - " + cmd.Desc)
-			
+
 			// Width of purely the left base prefix and right suffix
 			leftBase := "   " + icon + cmd.Label
 			if i == cp.cursor {
@@ -571,15 +608,14 @@ func (cp CommandPalette) View() string {
 					Bold(true).
 					Render(shortcutStr)
 
-				// Because ANSI sequences don't count towards width, we use Lipgloss to measure
 				leftWidth := lipgloss.Width(leftCol)
 				rightWidth := lipgloss.Width(rightCol)
 				pad := innerW - leftWidth - rightWidth
-				if pad < 0 { pad = 0 }
-				
+				if pad < 0 {
+					pad = 0
+				}
+
 				rowContents := leftCol + strings.Repeat(" ", pad) + rightCol
-				
-				// Apply uniform background directly directly to the entire exact-sized string
 				b.WriteString(lipgloss.NewStyle().Background(surface0).Render(rowContents) + "\n")
 			} else {
 				leftCol := "   " + lipgloss.NewStyle().Foreground(overlay0).Render(icon)
@@ -594,8 +630,10 @@ func (cp CommandPalette) View() string {
 				leftWidth := lipgloss.Width(leftCol)
 				rightWidth := lipgloss.Width(rightCol)
 				pad := innerW - leftWidth - rightWidth
-				if pad < 0 { pad = 0 }
-				
+				if pad < 0 {
+					pad = 0
+				}
+
 				rowContents := leftCol + strings.Repeat(" ", pad) + rightCol
 				b.WriteString(rowContents + "\n")
 			}
@@ -609,7 +647,9 @@ func (cp CommandPalette) View() string {
 		footerLeft := lipgloss.NewStyle().Foreground(overlay0).Render(helpText)
 		footerRight := lipgloss.NewStyle().Foreground(overlay0).Render(posText)
 		gap := innerW - lipgloss.Width(footerLeft) - lipgloss.Width(footerRight)
-		if gap < 0 { gap = 0 }
+		if gap < 0 {
+			gap = 0
+		}
 		b.WriteString(footerLeft + strings.Repeat(" ", gap) + footerRight)
 	}
 
