@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -24,7 +26,17 @@ type AutoTagger struct {
 
 	// Existing tags in the vault for consistency
 	vaultTags []string
+
+	// inFlight is true while an AI request is running — prevents pile-up
+	// on rapid saves with slow local models.
+	inFlight bool
 }
+
+// SetInFlight marks whether a request is currently running.
+func (at *AutoTagger) SetInFlight(v bool) { at.inFlight = v }
+
+// IsInFlight reports whether a request is currently running.
+func (at *AutoTagger) IsInFlight() bool { return at.inFlight }
 
 // autoTagResultMsg carries suggested tags back to the Update loop.
 type autoTagResultMsg struct {
@@ -38,7 +50,7 @@ func NewAutoTagger() *AutoTagger {
 		enabled: false,
 		ai: AIConfig{
 			Provider:  "ollama",
-			Model:     "llama3.2",
+			Model:     "qwen2.5:0.5b",
 			OllamaURL: "http://localhost:11434",
 		},
 	}
@@ -66,24 +78,56 @@ func (at *AutoTagger) TagNote(content string) tea.Cmd {
 	if !at.enabled {
 		return nil
 	}
+	if at.inFlight {
+		return nil
+	}
 
-	// Truncate to first 1500 runes for speed (rune-based for UTF-8 safety).
+	// Truncate for speed — use less for small models.
+	maxRunes := 1500
+	if at.ai.IsSmallModel() {
+		maxRunes = 600
+	}
 	userPrompt := content
-	if len([]rune(userPrompt)) > 1500 {
+	if len([]rune(userPrompt)) > maxRunes {
 		runes := []rune(userPrompt)
-		userPrompt = string(runes[:1500])
+		userPrompt = string(runes[:maxRunes])
 	}
 
 	// Build system prompt.
 	systemPrompt := "You are a note classifier. Given a note's content, suggest 2-5 relevant tags. Return ONLY a comma-separated list of lowercase tags, nothing else."
 	if len(at.vaultTags) > 0 {
-		systemPrompt += " Prefer tags from this existing list when applicable: " + strings.Join(at.vaultTags, ", ")
+		// Cap tag list size to avoid bloating the system prompt on large vaults.
+		tagLimit := 80
+		if at.ai.IsSmallModel() {
+			tagLimit = 30
+		}
+		tags := at.vaultTags
+		if len(tags) > tagLimit {
+			tags = tags[:tagLimit]
+		}
+		systemPrompt += " Prefer tags from this existing list when applicable: " + strings.Join(tags, ", ")
 	}
 
+	// Bail out if the prompt still wouldn't fit — avoids silently sending a
+	// truncated prompt the model can't reason about.
+	if fits, _, _ := at.ai.PromptFitsContext(systemPrompt, userPrompt); !fits {
+		return nil
+	}
+
+	at.inFlight = true
 	ai := at.ai
 
 	return func() tea.Msg {
-		response, err := ai.Chat(systemPrompt, userPrompt)
+		// Auto-tagging runs on save. Cap the deadline so a hung request
+		// doesn't block subsequent auto-tag attempts forever.
+		deadline := 45 * time.Second
+		if ai.IsSmallModel() {
+			deadline = 90 * time.Second
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), deadline)
+		defer cancel()
+
+		response, err := ai.ChatShortCtx(ctx, systemPrompt, userPrompt)
 		if err != nil {
 			return autoTagResultMsg{err: err}
 		}
@@ -103,8 +147,8 @@ func (at *AutoTagger) ParseSuggestedTags(response string) []string {
 // ---------------------------------------------------------------------------
 
 // atParseSuggestedTags splits a comma-separated AI response into clean tags.
-// Each tag is lowercased and stripped of non-alphanumeric characters (hyphens
-// are preserved).
+// Each tag is lowercased and stripped of special characters. Unicode letters,
+// digits, and hyphens are preserved to support non-English tags.
 func atParseSuggestedTags(response string) []string {
 	parts := strings.Split(response, ",")
 	var tags []string
@@ -112,10 +156,10 @@ func atParseSuggestedTags(response string) []string {
 		t := strings.TrimSpace(p)
 		t = strings.ToLower(t)
 
-		// Remove any character that is not alphanumeric or hyphen.
+		// Remove characters that aren't letters, digits, or hyphens.
 		var cleaned strings.Builder
 		for _, ch := range t {
-			if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' {
+			if unicode.IsLetter(ch) || unicode.IsDigit(ch) || ch == '-' {
 				cleaned.WriteRune(ch)
 			}
 		}
@@ -172,7 +216,7 @@ func NewNoteChat() NoteChat {
 	return NoteChat{
 		ai: AIConfig{
 			Provider:  "ollama",
-			Model:     "llama3.2",
+			Model:     "qwen2.5:0.5b",
 			OllamaURL: "http://localhost:11434",
 		},
 	}
@@ -221,12 +265,21 @@ func (nc *NoteChat) SetSize(w, h int) {
 // ---------------------------------------------------------------------------
 
 // ncBuildSystemPrompt returns the system prompt for note-focused chat.
-func ncBuildSystemPrompt(notePath, noteContent string) string {
+// Content is truncated to avoid exceeding model context limits.
+func ncBuildSystemPrompt(notePath, noteContent string, ai AIConfig) string {
+	content := noteContent
+	maxContent := 6000
+	if ai.IsSmallModel() {
+		maxContent = 1500
+	}
+	if len(content) > maxContent {
+		content = content[:maxContent] + "\n... (truncated)"
+	}
 	return fmt.Sprintf(
 		"You are an assistant helping the user understand and work with a specific note. "+
-			"The note is titled '%s'. Here is the full content:\n\n%s\n\n"+
+			"The note is titled '%s'. Here is the content:\n\n%s\n\n"+
 			"Answer questions about this note. Be specific and reference parts of the note.",
-		notePath, noteContent,
+		notePath, content,
 	)
 }
 
@@ -305,15 +358,34 @@ func (nc NoteChat) Update(msg tea.Msg) (NoteChat, tea.Cmd) {
 			nc.loading = true
 			nc.loadingTick = 0
 
-			systemPrompt := ncBuildSystemPrompt(nc.notePath, nc.noteContent)
+			systemPrompt := ncBuildSystemPrompt(nc.notePath, nc.noteContent, nc.ai)
 
 			// Build combined user prompt from conversation history.
-			var userBuf strings.Builder
+			// Include most recent messages first to preserve context continuity.
+			maxHistory := 4000
+			if nc.ai.IsSmallModel() {
+				maxHistory = 1000
+			}
+			// Collect non-system messages, then take as many recent ones as fit.
+			var entries []string
 			for _, m := range nc.messages {
 				if m.Role == "system" {
 					continue
 				}
-				userBuf.WriteString(m.Role + ": " + m.Content + "\n")
+				entries = append(entries, m.Role+": "+m.Content+"\n")
+			}
+			totalLen := 0
+			startIdx := len(entries)
+			for i := len(entries) - 1; i >= 0; i-- {
+				if totalLen+len(entries[i]) > maxHistory {
+					break
+				}
+				totalLen += len(entries[i])
+				startIdx = i
+			}
+			var userBuf strings.Builder
+			for i := startIdx; i < len(entries); i++ {
+				userBuf.WriteString(entries[i])
 			}
 			ai := nc.ai
 			cmd := func() tea.Msg {

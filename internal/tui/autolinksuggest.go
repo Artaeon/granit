@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -14,9 +16,17 @@ type autoLinkSuggestMsg struct {
 
 // AutoLinkSuggest generates AI-powered wikilink suggestions on save.
 type AutoLinkSuggest struct {
-	enabled bool
-	ai      AIConfig
+	enabled  bool
+	ai       AIConfig
+	inFlight bool
 }
+
+// SetInFlight marks whether a request is currently running so callers can
+// skip re-triggering on rapid saves.
+func (als *AutoLinkSuggest) SetInFlight(v bool) { als.inFlight = v }
+
+// IsInFlight reports whether a request is currently running.
+func (als *AutoLinkSuggest) IsInFlight() bool { return als.inFlight }
 
 // NewAutoLinkSuggest creates a new AutoLinkSuggest.
 func NewAutoLinkSuggest() *AutoLinkSuggest {
@@ -38,21 +48,32 @@ func (als *AutoLinkSuggest) SuggestLinks(content string, noteNames []string, cur
 	if len(noteNames) == 0 {
 		return nil
 	}
+	// Skip if a previous request is still running — prevents request pile-up
+	// on rapid saves with slow small models.
+	if als.inFlight {
+		return nil
+	}
 
 	ai := als.ai
 
-	// Truncate content for the prompt.
+	// Truncate content for the prompt — use less for small models.
+	maxRunes := 2000
+	maxCandidates := 200
+	if ai.IsSmallModel() {
+		maxRunes = 600
+		maxCandidates = 40
+	}
 	runes := []rune(content)
-	if len(runes) > 2000 {
-		runes = runes[:2000]
+	if len(runes) > maxRunes {
+		runes = runes[:maxRunes]
 	}
 	snippet := string(runes)
 
-	// Build candidate list (exclude current note, limit to 200).
+	// Build candidate list (exclude current note).
 	var candidates []string
 	for _, n := range noteNames {
 		name := strings.TrimSuffix(n, ".md")
-		if n != currentNote && len(candidates) < 200 {
+		if n != currentNote && len(candidates) < maxCandidates {
 			candidates = append(candidates, name)
 		}
 	}
@@ -61,13 +82,25 @@ func (als *AutoLinkSuggest) SuggestLinks(content string, noteNames []string, cur
 	}
 
 	candidateList := strings.Join(candidates, ", ")
+	systemPrompt := "You are a note connection assistant. Given a note's content and a list of other note names, suggest 1-3 notes that should be linked with [[wikilinks]]. Return ONLY a comma-separated list of note names, nothing else. If no good links exist, return NONE."
+	userPrompt := "NOTE CONTENT:\n" + snippet + "\n\nAVAILABLE NOTES:\n" + candidateList
+
+	// Skip if the prompt wouldn't fit in the model's context.
+	if fits, _, _ := ai.PromptFitsContext(systemPrompt, userPrompt); !fits {
+		return nil
+	}
+
+	als.inFlight = true
 
 	return func() tea.Msg {
-		systemPrompt := "You are a note connection assistant. Given a note's content and a list of other note names, suggest 1-3 notes that should be linked with [[wikilinks]]. Return ONLY a comma-separated list of note names, nothing else. If no good links exist, return NONE."
+		deadline := 45 * time.Second
+		if ai.IsSmallModel() {
+			deadline = 90 * time.Second
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), deadline)
+		defer cancel()
 
-		userPrompt := "NOTE CONTENT:\n" + snippet + "\n\nAVAILABLE NOTES:\n" + candidateList
-
-		resp, err := ai.Chat(systemPrompt, userPrompt)
+		resp, err := ai.ChatShortCtx(ctx, systemPrompt, userPrompt)
 		if err != nil {
 			return autoLinkSuggestMsg{err: err}
 		}
