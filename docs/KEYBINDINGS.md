@@ -321,11 +321,43 @@ Enter Command mode by pressing `:` in Normal mode. Type a command and press `Ent
 
 ### AI Bots (`Ctrl+R`)
 
+19 AI bots organized into 6 categories (Summarize, Writing, Analysis, Organize, Learning, Vault).
+
+**Bot list:**
+
 | Key | Action |
 |-----|--------|
-| `Up` / `Down` | Select bot |
+| `Up` / `k` | Select previous bot (wraps at top) |
+| `Down` / `j` | Select next bot (wraps at bottom) |
+| `Home` | Jump to first bot |
+| `End` | Jump to last bot |
 | `Enter` | Run selected bot |
-| `Esc` | Close bots panel |
+| `1`–`9` | Quick-pick first nine visible bots |
+| type any letter | Type-to-filter the list (searches name + description) |
+| `Backspace` | Remove last filter character |
+| `Esc` | Clear filter if set, otherwise close |
+
+**Bot results:**
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Scroll down / up |
+| `Down` / `Up` | Scroll down / up |
+| `pgdn` / `ctrl+d` | Page down |
+| `pgup` / `ctrl+u` | Page up |
+| `g` / `home` | Jump to top |
+| `G` / `end` | Jump to bottom |
+| `c` / `y` | Copy raw AI response to system clipboard |
+| `s` | Save result as a note in `<vault>/Bots/` with frontmatter |
+| `r` | Re-run the same bot (great for retrying on small models) |
+| `Enter` | Apply result (tags/links) or close |
+| `Esc` | Back to bot list |
+
+**Bot loading screen:**
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Cancel the in-flight AI request (actually aborts HTTP, not just UI) |
 
 ### Export
 

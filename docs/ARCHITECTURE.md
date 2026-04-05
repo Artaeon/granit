@@ -133,7 +133,7 @@ granit/
 │       │
 │       │── AI Features (25+ features, all via AIConfig.Chat())
 │       ├── aiconfig.go             Shared AIConfig struct + Chat() hub (Ollama/OpenAI/Nous/Nerve)
-│       ├── bots.go                 12 AI bots (Ollama/OpenAI/local)
+│       ├── bots.go                 19 AI bots in 6 categories (Ollama/OpenAI/local)
 │       ├── aichat.go               Vault-wide AI chat with context search
 │       ├── composer.go             AI note composer
 │       ├── threadweaver.go         Multi-note AI synthesis

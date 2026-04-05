@@ -49,7 +49,7 @@ granit sync                     # git pull + commit + push
 | | |
 |---|---|
 | **168,000+ lines of Go** | 1,855 tests, race-condition free |
-| **25+ AI features** | 12 bots + goal coach, project insights, devotional, and more |
+| **25+ AI features** | 19 bots + goal coach, project insights, devotional, and more |
 | **38 themes** | Catppuccin, Tokyo Night, Gruvbox, Nord, and 34 more |
 | **7 task views** | Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower |
 | **Full Vim mode** | Text objects, marks, macros, dot repeat, ex commands |
@@ -174,12 +174,15 @@ granit sync                     # git pull + commit + push
 
 ### AI Integration
 
-- **12 AI Bots** (`Ctrl+R`) -- all optimized for local qwen2.5:0.5b:
-  - Auto-Tagger (few-shot learning from vault), Link Suggester, Auto-Link Inserter
-  - Summarizer, Writing Coach, Title Suggester, Tone Adjuster
-  - Action Items Extractor, Flashcard Generator, MOC Generator
-  - Question Bot, Daily Digest
-- Ghost Writer -- inline completions with tag-aware context (Tab to accept)
+- **19 AI Bots** (`Ctrl+R`) organized in 6 categories -- optimized for local small models:
+  - **SUMMARIZE**: TL;DR, Summarizer, Explain Simply
+  - **WRITING**: Title Suggester, Writing Assistant, Tone Adjuster, Expand
+  - **ANALYSIS**: Question Bot, Counter-Argument, Pros & Cons, Action Items
+  - **ORGANIZE**: Auto-Tagger, Link Suggester, Auto-Link, Outline Generator
+  - **LEARNING**: Flashcard Generator, Key Terms
+  - **VAULT**: MOC Generator, Daily Digest
+- **Bot workflow** -- type-to-filter, number-key quick-pick (1-9), remember-last-used, wrap-around navigation, copy-to-clipboard (`c`), save-to-note (`s`), re-run bot (`r`)
+- Ghost Writer -- inline completions with tag-aware context, 32-entry completion cache, debounce tuned for small models (Tab to accept)
 - AI Chat, AI Scheduler, Plan My Day, AI Project Planner
 - **AI Goal Coach** -- holistic analysis across all goals with velocity tracking and priority recommendations
 - **AI Project Insights** -- project health, risks, blockers, and next actions
@@ -188,8 +191,14 @@ granit sync                     # git pull + commit + push
 - **AI Scripture Devotional** -- personal reflection connecting daily verse to active goals
 - Smart Task Triage -- AI-powered daily prioritization with stale task detection
 - Deep Dive Research (Claude Code) for complex reasoning
-- Auto model management -- Ollama model auto-pulled on first launch
 - Providers: **Ollama** (default, local), **Nous**, **OpenAI**, or offline fallback
+- **Production-grade reliability stack**:
+  - Small-model auto-detection (0.5B–3B) with adapted prompts, temperature, and context limits
+  - Real HTTP cancellation via `context.Context` — Esc actually aborts
+  - Automatic retry on transient errors, hard per-request deadlines, in-flight guards
+  - Token-budget fit checks, empty-response fallbacks, word-boundary truncation
+  - Ghostwriter completion cache, elapsed time on every loading screen
+- Auto model management -- Ollama model auto-pulled on first launch
 - All AI features use the DEEPCOVEN persona -- direct, honest, action-oriented
 
 ### Sync
@@ -296,7 +305,7 @@ granit sync
 3. Press `Ctrl+K` to open the task manager (7 views)
 4. Press `Ctrl+/` to search across notes, tasks, goals, habits
 5. Press `Ctrl+X` for the command palette (145+ commands)
-6. Press `Ctrl+R` to use any of the 12 AI bots
+6. Press `Ctrl+R` to use any of the 19 AI bots (type to filter, 1-9 for quick pick)
 7. Press `Ctrl+,` to customize settings
 
 ---

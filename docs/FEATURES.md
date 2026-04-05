@@ -464,25 +464,34 @@ Granit includes **25+ AI features** that work with four providers:
 | **Local** | Keyword matching, stopword filtering, topic detection — no network, no API keys | Works out of the box |
 | **Ollama** | Local LLM via HTTP API — recommended for privacy | Install Ollama + pull a model |
 | **OpenAI** | Cloud API with GPT models | Set API key in config |
+| **Nous / Nerve** | Alternative local LLM backends | See AI-GUIDE.md |
 
-See [AI-GUIDE.md](AI-GUIDE.md) for detailed setup instructions.
+All AI features share a **production-grade reliability stack**: small-model auto-detection (0.5B–3B), automatic retry on transient errors, real HTTP cancellation via `context.Context`, hard per-request deadlines, in-flight guards for auto-save features, token-budget fit checks, empty-response fallbacks, word-boundary truncation, ghostwriter completion cache, and elapsed time display on every loading screen.
 
-### 9 AI Bots (`Ctrl+R`)
+See [AI-GUIDE.md](AI-GUIDE.md) for detailed setup instructions and the full bot reference.
 
-| Bot | What It Does |
-|-----|-------------|
-| **Auto-Tagger** | Analyzes note content and suggests relevant tags |
-| **Link Suggester** | Finds other notes that should be linked from the current one |
-| **Summarizer** | Generates a concise summary of the current note |
-| **Question Bot** | Generates questions about the note content for study/review |
-| **Writing Assistant** | Suggests improvements to writing style, clarity, and structure |
-| **Title Suggester** | Proposes better titles based on note content |
-| **Action Items** | Extracts actionable tasks from meeting notes or prose |
-| **MOC Generator** | Creates a Map of Content linking related notes together |
-| **Daily Digest** | Summarizes recent vault activity and changes |
+### 19 AI Bots (`Ctrl+R`)
 
-- **Access:** `Ctrl+R` to open the bots panel; select a bot and press Enter
-- **Example:** Run the Auto-Tagger on a new note and it suggests `#python`, `#tutorial`, `#beginner`.
+Organized into 6 semantic categories. Every bot is small-model-aware (automatically detects Ollama models ≤3B and adapts prompt size, temperature, and context limits).
+
+| Category | Bots |
+|---|---|
+| **SUMMARIZE** | **TL;DR** — one-sentence summary • **Summarizer** — 2-4 sentence summary • **Explain Simply** — rewrites for a 12-year-old |
+| **WRITING** | **Title Suggester** — 5 alternative titles • **Writing Assistant** — readability + improvements • **Tone Adjuster** — formal/casual/concise rewrites • **Expand** — flesh out a terse note |
+| **ANALYSIS** | **Question Bot** — answer questions from your vault • **Counter-Argument** — devil's advocate opposing views • **Pros & Cons** — decision-analysis list • **Action Items** — extract todos |
+| **ORGANIZE** | **Auto-Tagger** — suggest tags with few-shot learning • **Link Suggester** — find related notes • **Auto-Link** — find `[[wikilinks]]` to insert • **Outline Generator** — hierarchical outline |
+| **LEARNING** | **Flashcard Generator** — Q&A pairs • **Key Terms** — glossary extraction |
+| **VAULT** | **MOC Generator** — Map of Content for vault • **Daily Digest** — vault activity summary (local-only) |
+
+**Bot workflow:**
+- **`Ctrl+R`** opens the overlay
+- **Type to filter** the list by name or description
+- **`1`–`9`** quick-pick the first nine visible bots
+- **`Enter`** runs the selected bot (cursor remembers last-used)
+- **Results view:** `c` copies to clipboard, `s` saves as a vault note with frontmatter, `r` re-runs the bot, `j/k g/G` scroll, `Esc` back
+- **Loading screen:** shows elapsed time, animated progress bar, slow-model hints; `Esc` actually cancels the HTTP request
+
+See [AI-GUIDE.md](AI-GUIDE.md) for the full bot reference and reliability details.
 
 ### AI Chat
 

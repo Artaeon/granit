@@ -6,7 +6,82 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added
+### Added — AI Reliability & Quality Overhaul
+
+#### AI infrastructure
+
+- **Small-model auto-detection** — `AIConfig.IsSmallModel()` identifies models ≤3B parameters by suffix (`0.5b`, `1b`, `1.5b`, `2b`, `3b`) or family name (`tinyllama`, `phi3:mini`, `gemma:2b`, etc.). Every AI feature adapts prompt size, system prompts, temperature, and context limits when a small model is detected.
+- **Temperature tuning** — small models get `temperature: 0.3` for focused, deterministic output; larger models get `0.7` for creativity.
+- **`num_ctx` / `num_predict` tuning** — small models get 2048/512; larger models get 4096/1024. Sent as Ollama options on every request so small models don't silently truncate context.
+- **`ChatShort` / `chatOllamaCtx`** — dedicated short-response API with `num_predict: 64` for ghostwriter, auto-tagger, and auto-link suggest. 4-8× faster on small models.
+- **Retry on transient errors** — `Chat`, `ChatShort`, and streaming all retry once with a 500ms backoff on connection refused, timeout, EOF, reset. Permanent errors (bad API key, missing model) are not retried.
+- **Real HTTP cancellation via `context.Context`** — `sendToAIStreamingCtx` returns both the channel and a `context.CancelFunc`. Pressing Esc in AI Chat, Plan My Day, or Task Triage aborts the actual HTTP request, freeing the local model CPU/GPU immediately.
+- **Hard per-request deadlines** — ghostwriter 15s/30s, auto-tag/auto-link 45s/90s, bots 3min. A stuck Ollama can't lock the UI forever.
+- **In-flight guards** — auto-tagger and auto-link suggest skip new requests while a previous one is running, preventing pile-up on rapid saves.
+- **Token-budget fit checks** — `EstimateTokens` and `PromptFitsContext` let auto-features skip oversized prompts gracefully instead of silently overflowing the context window.
+- **Empty-response fallback** — when a small model returns an empty/whitespace-only response, bots fall back to local analysis with a clear yellow warning.
+- **Word-boundary truncation** — new `truncateAtBoundary` helper used across all content truncation. No more mid-word cuts that confuse small models.
+- **Ghostwriter completion cache** — 32-entry FIFO cache keyed by context. Backspacing and retyping the same content is a zero-latency cache hit. Invalidated on model change.
+- **Elapsed time display** — every AI loading screen (bots, aichat, planmyday, tasktriage, devotional, morningroutine, dailybriefing, composer, blogdraft, threadweaver, vaultrefactor, aitemplates, writingcoach) shows elapsed seconds with slow-model hints after 15s / 30s.
+- **Streaming retry** — streaming paths also retry the initial connection once on transient failures.
+
+#### Bots — from 11 to 19
+
+New bots added:
+- **TL;DR** — one-sentence summary capturing the single most important idea
+- **Explain Simply** — rewrites for a curious 12-year-old using everyday analogies
+- **Outline Generator** — hierarchical outline with markdown headings and bullets (local fallback extracts existing headings)
+- **Key Terms** — glossary of 5-10 key terms with 1-sentence definitions grounded in the note's context
+- **Counter-Argument** — 3-5 strong opposing viewpoints to sharpen thinking (devil's advocate)
+- **Pros & Cons** — structured decision-analysis list with color-coded green pros and red cons
+- **Expand** — flesh out a terse note with detail while preserving author's voice
+
+#### Bot UX polish
+
+- **6 semantic categories** — SUMMARIZE, WRITING, ANALYSIS, ORGANIZE, LEARNING, VAULT, rendered as bold section headers
+- **Type-to-filter** — just start typing in the bot list to filter by name or description (case-insensitive); `Esc` clears the filter
+- **Number-key quick-pick** — press `1`–`9` to run the first nine visible bots instantly
+- **Remember last-used bot** — cursor automatically positions on the most recently used bot when the overlay opens
+- **Wrap-around navigation** — `↑` at the top wraps to the last item; `↓` at the bottom wraps to first
+- **Home/End navigation** in bot list
+- **Results navigation** — `pgup`/`pgdn`/`ctrl+u`/`ctrl+d` for page scrolling, `g`/`home` top, `G`/`end` bottom, `r` to re-run the same bot (invaluable for small-model retries)
+- **Copy to clipboard** (`c` or `y`) — copies raw AI response via xclip/xsel/wl-copy/pbcopy
+- **Save to note** (`s`) — writes result to `<vault>/Bots/<note>-<bot>-<timestamp>.md` with full YAML frontmatter (source wikilink, bot name, provider, model, `ai-generated` tag)
+- **Results header metadata** — shows model name + elapsed time (`qwen2.5:0.5b • 4.2s`)
+- **Animated "comet" progress bar** during loading with category pill and yellow elapsed time
+- **Per-bot system prompts** — each of 19 bots gets a role-specific system prompt with a compact small-model variant
+
+#### Git overlay
+
+- **Fixed: vault path** — `GitOverlay` now accepts the vault root via `Open(vaultRoot)` and passes it to every `git` invocation as `cmd.Dir`. Launching granit from anywhere and hitting the Git overlay now finds the repo correctly (was broken for vaults in subdirectories).
+- **Unicode commit messages** — commit input now accepts emoji, accented characters, and all non-ASCII text (was ASCII-only due to byte-length check).
+
+#### Editor
+
+- **Unicode input** — the editor now correctly handles multi-byte UTF-8 characters for typing (emoji, accented letters, CJK). Rune-aware length check replaces the byte-length check that silently dropped non-ASCII input.
+
+#### Prompt quality (all features)
+
+- **Small-model prompt variants** for 20+ features: bots, devotional, morningroutine, dailybriefing, dailyreview, weeklyreview, goalsmode, habits, projectmode, composer, blogdraft, writingcoach, nlsearch, aiprojectplanner, tasktriage, planmyday, devotional, and more.
+- **Per-bot system prompts** replace the generic "helpful assistant" prompt with role-specific instructions (tagger, summarizer, title generator, devil's advocate, etc.)
+- **Deterministic map iteration** — Question Bot and MOC Generator sort vault paths before iterating so Go's random map order doesn't produce inconsistent results.
+- **Multi-line YAML tag parsing** — `extractFrontmatterTags` now handles Obsidian's `tags:\n  - foo\n  - bar` format in addition to inline `[a, b]` and `a, b, c`.
+- **Unicode tag support** — `atParseSuggestedTags` preserves accented letters and digits via `unicode.IsLetter`/`IsDigit` instead of stripping to ASCII.
+- **Robust list-item parsing** — shared `stripListPrefix` regex handles `1.`, `1)`, `1:`, `- `, `* `, `• ` consistently in title/link suggester output parsing.
+- **Tag deduplication** — auto-tagger de-dupes case-insensitively and handles both comma- and newline-separated output.
+- **Sentence-boundary detection in ghostwriter** — completion cleanup only breaks at `. ` followed by ≥4-letter word then uppercase, preserving "Dr. Smith", "e.g.", "Mr.", "Ph.D", "etc.".
+- **Whole-word matching in ghostwriter** — `findRelatedVaultNote` tokenizes titles on word boundaries and requires a minimum match score, eliminating spurious matches like "test" → "contest".
+- **AI chat keyword filter** — preserves domain abbreviations (`ai`, `ml`, `ui`, `ux`, `os`, `db`, `go`, `js`, `ts`, `py`).
+- **Ollama model matching** — tightened so configuring `phi` no longer silently matches `phi3.5:mini`; uses explicit `:` / `-` boundary check.
+
+#### Tests
+
+- **`aiconfig_test.go`** — 11 test functions covering `IsSmallModel`, `MaxPromptContext`, `OllamaOptions`, `OllamaOptionsShort`, `TruncateAtBoundary` (+ property test), `EstimateTokens`, `PromptFitsContext`, `IsTransientAIError`, `ModelOrDefault`, `OllamaEndpoint`.
+- **`ai_helpers_test.go`** — 11 test functions covering `StripListPrefix`, `AtParseSuggestedTags` (with unicode), `ExtractFrontmatterTags` (all three YAML formats), `GhostCleanCompletion`, ghostwriter cache LRU/hit/miss/invalidation, bot filtering, per-bot system prompt coverage, category integrity, wrap-around navigation.
+- **~100 new assertions** — caught 2 real bugs during development (quoted YAML inline-list trim order; "Dr. Smith" sentence-boundary false positive).
+- **Race detector clean** — full TUI package passes under `go test -race`.
+
+### Added — previous
 
 - **Universal search shortcut** (`Ctrl+/`) — global keyboard shortcut opens Search Everything overlay instantly
 - **Milestone due dates** (`!` key) — set due dates on individual milestones (1=1wk, 2=2wk, 3=1mo, 4=3mo); color-coded red/yellow when overdue or approaching
