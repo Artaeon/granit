@@ -1271,7 +1271,8 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			}
 		default:
 			char := msg.String()
-			if len(char) == 1 && char[0] >= 32 {
+			charRunes := []rune(char)
+			if len(charRunes) == 1 && charRunes[0] >= 32 {
 				// Replace selection with typed character if active
 				if e.selectionActive {
 					e.DeleteSelection()
