@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -15,8 +16,9 @@ import (
 
 // ghostSuggestionMsg carries the AI completion back to the caller.
 type ghostSuggestionMsg struct {
-	text string
-	err  error
+	text       string
+	err        error
+	contextKey string // cache key so the handler can store the result
 }
 
 // ghostDebounceMsg is sent after the debounce delay to check whether a
@@ -63,6 +65,51 @@ type GhostWriter struct {
 
 	// Last error from AI provider (cleared on next successful suggestion)
 	lastError string
+
+	// Completion cache — maps context hash → cleaned suggestion.
+	// When the user backspaces and retypes the same content, we reuse the
+	// prior completion instead of calling the AI again. Bounded in size.
+	cache     map[string]string
+	cacheKeys []string // insertion order for simple FIFO eviction
+}
+
+const ghostCacheMaxEntries = 32
+
+// SetAI updates the AI configuration and invalidates the completion cache
+// if the provider or model has changed (different model → different style).
+func (gw *GhostWriter) SetAI(cfg AIConfig) {
+	if cfg.Provider != gw.ai.Provider || cfg.Model != gw.ai.Model {
+		gw.cache = nil
+		gw.cacheKeys = nil
+	}
+	gw.ai = cfg
+}
+
+// cacheGet returns a cached completion for the given context, if any.
+func (gw *GhostWriter) cacheGet(key string) (string, bool) {
+	if gw.cache == nil {
+		return "", false
+	}
+	v, ok := gw.cache[key]
+	return v, ok
+}
+
+// cachePut stores a completion, evicting the oldest entry if at capacity.
+func (gw *GhostWriter) cachePut(key, value string) {
+	if gw.cache == nil {
+		gw.cache = make(map[string]string, ghostCacheMaxEntries)
+	}
+	if _, exists := gw.cache[key]; exists {
+		gw.cache[key] = value
+		return
+	}
+	if len(gw.cacheKeys) >= ghostCacheMaxEntries {
+		oldest := gw.cacheKeys[0]
+		delete(gw.cache, oldest)
+		gw.cacheKeys = gw.cacheKeys[1:]
+	}
+	gw.cache[key] = value
+	gw.cacheKeys = append(gw.cacheKeys, key)
 }
 
 // NewGhostWriter creates a GhostWriter with sensible defaults.
@@ -71,7 +118,7 @@ func NewGhostWriter() *GhostWriter {
 		enabled: false,
 		ai: AIConfig{
 			Provider:  "ollama",
-			Model:     "llama3.2",
+			Model:     "qwen2.5:0.5b",
 			OllamaURL: "http://localhost:11434",
 		},
 		debounceMs:   800,
@@ -177,9 +224,15 @@ func (gw *GhostWriter) OnEdit(content []string, cursorLine, cursorCol int) tea.C
 	// Build and store context for the upcoming debounce handler.
 	gw.buildContext(content, cursorLine, cursorCol)
 
-	// Capture values for the closure.
+	// Capture values for the closure. Small models benefit from a longer
+	// debounce since they are slower — avoids firing requests that will
+	// be superseded before they return.
 	editTime := gw.lastEdit
-	debounce := time.Duration(gw.debounceMs) * time.Millisecond
+	debounceMs := gw.debounceMs
+	if gw.ai.IsSmallModel() && debounceMs < 1500 {
+		debounceMs = 1500
+	}
+	debounce := time.Duration(debounceMs) * time.Millisecond
 
 	return func() tea.Msg {
 		time.Sleep(debounce)
@@ -206,6 +259,13 @@ func (gw *GhostWriter) HandleMsg(msg tea.Msg) tea.Cmd {
 			if gw.contextBuf == "" {
 				return nil
 			}
+			// Check cache first — avoids a round-trip when the user
+			// backspaced and retyped the same content.
+			if cached, ok := gw.cacheGet(gw.contextBuf); ok {
+				gw.suggestion = cached
+				gw.lastError = ""
+				return nil
+			}
 			gw.pending = true
 			gw.requestTime = gw.lastEdit
 			return gw.requestCompletion(gw.contextBuf)
@@ -222,6 +282,10 @@ func (gw *GhostWriter) HandleMsg(msg tea.Msg) tea.Cmd {
 		// the request was in flight.
 		if gw.requestTime.Equal(gw.lastEdit) {
 			gw.suggestion = msg.text
+		}
+		// Cache regardless of staleness so future typing can reuse it.
+		if msg.contextKey != "" && msg.text != "" {
+			gw.cachePut(msg.contextKey, msg.text)
 		}
 	}
 
@@ -249,7 +313,12 @@ func (gw *GhostWriter) buildContext(content []string, cursorLine, cursorCol int)
 	}
 
 	// Determine the range of lines to include (up to contextLines before cursor).
-	startLine := cursorLine - gw.contextLines
+	// Small models benefit from less context — faster inference, better focus.
+	ctxLines := gw.contextLines
+	if gw.ai.IsSmallModel() && ctxLines > 15 {
+		ctxLines = 15
+	}
+	startLine := cursorLine - ctxLines
 	if startLine < 0 {
 		startLine = 0
 	}
@@ -346,9 +415,10 @@ func (gw *GhostWriter) buildOutline(content []string) string {
 	return strings.Join(headings, "\n")
 }
 
-// findRelatedVaultNote returns the vault note title and a snippet (first 200
-// chars of content) whose title has the most keyword overlap with the given
-// line. Returns empty strings if no match is found.
+// findRelatedVaultNote returns the vault note title and a snippet whose title
+// best matches the given line. Uses whole-word matching to avoid false
+// positives like "test" matching "testing" or "contest". Returns empty
+// strings if no strong match is found.
 func (gw *GhostWriter) findRelatedVaultNote(currentLine string) (string, string) {
 	if gw.vaultNotes == nil {
 		return "", ""
@@ -357,14 +427,36 @@ func (gw *GhostWriter) findRelatedVaultNote(currentLine string) (string, string)
 	if len(words) == 0 {
 		return "", ""
 	}
+	// Filter to meaningful words.
+	var keywords []string
+	for _, w := range words {
+		w = strings.Trim(w, ".,;:!?\"'()[]{}#-")
+		if len(w) >= 4 && !aiChatStopwords[w] {
+			keywords = append(keywords, w)
+		}
+	}
+	if len(keywords) == 0 {
+		return "", ""
+	}
 
 	bestTitle := ""
 	bestScore := 0
 	for title := range gw.vaultNotes {
-		titleLower := strings.ToLower(title)
+		// Tokenize title on non-letter boundaries for whole-word matching.
+		titleWords := make(map[string]bool)
+		for _, tw := range strings.FieldsFunc(strings.ToLower(title), func(r rune) bool {
+			return r == ' ' || r == '-' || r == '_' || r == '.' || r == '/'
+		}) {
+			if len(tw) >= 3 {
+				titleWords[tw] = true
+			}
+		}
 		score := 0
-		for _, w := range words {
-			if len(w) >= 3 && strings.Contains(titleLower, w) {
+		for _, w := range keywords {
+			if titleWords[w] {
+				score += 2
+			} else if strings.Contains(strings.ToLower(title), w) {
+				// Weak substring match still counts, but less.
 				score++
 			}
 		}
@@ -374,13 +466,14 @@ func (gw *GhostWriter) findRelatedVaultNote(currentLine string) (string, string)
 		}
 	}
 
-	if bestScore == 0 {
+	// Require at least one strong (whole-word) match to avoid weak noise.
+	if bestScore < 2 {
 		return "", ""
 	}
 
 	snippet := gw.vaultNotes[bestTitle]
 	if len(snippet) > 200 {
-		snippet = snippet[:200] + "..."
+		snippet = truncateAtBoundary(snippet, 200) + "..."
 	}
 	return bestTitle, snippet
 }
@@ -391,8 +484,9 @@ func (gw *GhostWriter) findRelatedVaultNote(currentLine string) (string, string)
 
 // requestCompletion returns a tea.Cmd that calls the configured AI provider
 // and sends back a ghostSuggestionMsg with the cleaned-up completion.
-func (gw *GhostWriter) requestCompletion(context string) tea.Cmd {
+func (gw *GhostWriter) requestCompletion(noteCtx string) tea.Cmd {
 	ai := gw.ai
+	cacheKey := noteCtx
 
 	return func() tea.Msg {
 		var raw string
@@ -400,25 +494,34 @@ func (gw *GhostWriter) requestCompletion(context string) tea.Cmd {
 
 		systemPrompt := "Continue the text naturally. Only output the continuation, no explanation."
 
+		// Hard cap per-completion so slow models don't pile up stale requests.
+		// Small models get more headroom.
+		deadline := 15 * time.Second
+		if ai.IsSmallModel() {
+			deadline = 30 * time.Second
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), deadline)
+		defer cancel()
+
 		switch ai.Provider {
 		case "nous":
-			raw, err = ghostCallNous(ai.NousURL, ai.NousAPIKey, context)
+			raw, err = ghostCallNous(ai.NousURL, ai.NousAPIKey, noteCtx)
 		case "nerve":
-			raw, err = ghostCallNerve(ai.NerveBinary, ai.NerveModel, ai.NerveProvider, context)
+			raw, err = ghostCallNerve(ai.NerveBinary, ai.NerveModel, ai.NerveProvider, noteCtx)
 		default: // "ollama", "openai"
-			raw, err = ai.Chat(systemPrompt, context)
+			raw, err = ai.ChatShortCtx(ctx, systemPrompt, noteCtx)
 		}
 
 		if err != nil {
-			return ghostSuggestionMsg{err: err}
+			return ghostSuggestionMsg{err: err, contextKey: cacheKey}
 		}
 
 		cleaned := ghostCleanCompletion(raw)
 		if cleaned == "" {
-			return ghostSuggestionMsg{err: fmt.Errorf("empty completion")}
+			return ghostSuggestionMsg{err: fmt.Errorf("empty completion"), contextKey: cacheKey}
 		}
 
-		return ghostSuggestionMsg{text: cleaned}
+		return ghostSuggestionMsg{text: cleaned, contextKey: cacheKey}
 	}
 }
 
@@ -459,9 +562,27 @@ func ghostCleanCompletion(raw string) string {
 		s = s[:idx]
 	}
 
-	// Stop at the first ". " (period followed by space) — keep the period.
-	if idx := strings.Index(s, ". "); idx >= 0 {
-		s = s[:idx+1]
+	// Stop at a sentence boundary — ". " followed by an uppercase letter,
+	// but only when the word before the period is ≥4 letters long (so that
+	// abbreviations like "Dr.", "Mr.", "e.g." don't trigger a premature cut).
+	for i := 0; i < len(s)-2; i++ {
+		if s[i] != '.' || s[i+1] != ' ' || s[i+2] < 'A' || s[i+2] > 'Z' {
+			continue
+		}
+		// Count contiguous letters immediately before the period.
+		letters := 0
+		for j := i - 1; j >= 0; j-- {
+			c := s[j]
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+				letters++
+			} else {
+				break
+			}
+		}
+		if letters >= 4 {
+			s = s[:i+1]
+			break
+		}
 	}
 
 	return strings.TrimSpace(s)
