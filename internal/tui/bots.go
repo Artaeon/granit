@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -10,6 +13,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// listPrefixRegex matches common list item prefixes: "1.", "1)", "1:", "- ", "* ", "• "
+var listPrefixRegex = regexp.MustCompile(`^(\d+[.):\-]|[-*•])\s+`)
+
+// stripListPrefix removes common list item markers from the start of a line.
+func stripListPrefix(line string) string {
+	return listPrefixRegex.ReplaceAllString(strings.TrimSpace(line), "")
+}
 
 // ---------------------------------------------------------------------------
 // BotResult – returned to the caller after a bot finishes
@@ -49,28 +60,67 @@ const (
 	botAutoLinker
 	botFlashcardGen
 	botToneAdjuster
+	botOutliner
+	botExplainSimple
+	botKeyTerms
+	botCounterArgument
+	botTLDR
+	botProsCons
+	botExpand
 )
 
 type botDescriptor struct {
-	kind botKind
-	icon string
-	name string
-	desc string
+	kind     botKind
+	icon     string
+	name     string
+	desc     string
+	category string
 }
 
+// Bot categories are shown as section headers in the list view.
+const (
+	catSummarize = "Summarize"
+	catWriting   = "Writing"
+	catAnalysis  = "Analysis"
+	catOrganize  = "Organize"
+	catLearning  = "Learning"
+	catVault     = "Vault"
+)
+
+// categoryOrder controls the display order of category sections.
+var categoryOrder = []string{catSummarize, catWriting, catAnalysis, catOrganize, catLearning, catVault}
+
 var botList = []botDescriptor{
-	{botAutoTagger, IconTagChar, "Auto-Tagger", "Suggest tags for current note (AI)"},
-	{botLinkSuggester, IconSearchChar, "Link Suggester", "Find related notes (AI)"},
-	{botSummarizer, IconFileChar, "Summarizer", "Create a brief summary (AI)"},
-	{botQuestionBot, IconSearchChar, "Question Bot", "Ask questions about your notes (AI)"},
-	{botWritingAssistant, IconBookmarkChar, "Writing Assistant", "Suggest improvements (AI)"},
-	{botTitleSuggester, IconEditChar, "Title Suggester", "Suggest better titles (AI)"},
-	{botActionItems, IconOutlineChar, "Action Items", "Extract todos & action items (AI)"},
-	{botMOCGenerator, IconGraphChar, "MOC Generator", "Create a Map of Content (AI)"},
-	{botAutoLinker, IconSearchChar, "Auto-Link", "Find and suggest [[wikilinks]] to insert (AI)"},
-	{botFlashcardGen, IconBookmarkChar, "Flashcard Generator", "Generate Q&A flashcards from note (AI)"},
-	{botToneAdjuster, IconEditChar, "Tone Adjuster", "Rewrite selection as formal/casual/concise (AI)"},
-	{botDailyDigest, IconCalendarChar, "Daily Digest", "Summarize vault activity"},
+	// Summarize
+	{botTLDR, IconFileChar, "TL;DR", "One-sentence summary of the note (AI)", catSummarize},
+	{botSummarizer, IconFileChar, "Summarizer", "Create a brief summary (AI)", catSummarize},
+	{botExplainSimple, IconBookmarkChar, "Explain Simply", "Explain the note like I'm 5 (AI)", catSummarize},
+
+	// Writing
+	{botTitleSuggester, IconEditChar, "Title Suggester", "Suggest better titles (AI)", catWriting},
+	{botWritingAssistant, IconBookmarkChar, "Writing Assistant", "Suggest improvements (AI)", catWriting},
+	{botToneAdjuster, IconEditChar, "Tone Adjuster", "Rewrite selection as formal/casual/concise (AI)", catWriting},
+	{botExpand, IconEditChar, "Expand", "Flesh out a terse note with more detail (AI)", catWriting},
+
+	// Analysis
+	{botQuestionBot, IconSearchChar, "Question Bot", "Ask questions about your notes (AI)", catAnalysis},
+	{botCounterArgument, IconSearchChar, "Counter-Argument", "Generate opposing viewpoints to sharpen thinking (AI)", catAnalysis},
+	{botProsCons, IconOutlineChar, "Pros & Cons", "Generate a pros/cons list for decision-making (AI)", catAnalysis},
+	{botActionItems, IconOutlineChar, "Action Items", "Extract todos & action items (AI)", catAnalysis},
+
+	// Organize
+	{botAutoTagger, IconTagChar, "Auto-Tagger", "Suggest tags for current note (AI)", catOrganize},
+	{botLinkSuggester, IconSearchChar, "Link Suggester", "Find related notes (AI)", catOrganize},
+	{botAutoLinker, IconSearchChar, "Auto-Link", "Find and suggest [[wikilinks]] to insert (AI)", catOrganize},
+	{botOutliner, IconOutlineChar, "Outline Generator", "Build a structured outline from note (AI)", catOrganize},
+
+	// Learning
+	{botFlashcardGen, IconBookmarkChar, "Flashcard Generator", "Generate Q&A flashcards from note (AI)", catLearning},
+	{botKeyTerms, IconTagChar, "Key Terms", "Extract glossary of key terms & definitions (AI)", catLearning},
+
+	// Vault
+	{botMOCGenerator, IconGraphChar, "MOC Generator", "Create a Map of Content (AI)", catVault},
+	{botDailyDigest, IconCalendarChar, "Daily Digest", "Summarize vault activity", catVault},
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +205,9 @@ type Bots struct {
 	cursor int
 	scroll int
 
+	// Type-ahead filter for the bot list
+	filter string
+
 	// Vault data
 	notes       map[string]string
 	tags        map[string][]string
@@ -168,22 +221,35 @@ type Bots struct {
 	resultLines   []string
 	resultReady   bool
 	pendingResult BotResult
+	// Raw AI response text, used for clipboard copy / save-to-note actions.
+	rawResponse string
+	// Transient status message shown in the results footer (e.g. "Copied!")
+	statusMsg string
 
 	// Which bot was run
 	activeBot botKind
+	// Most recently used bot, used to prefill the cursor on next open.
+	lastBot botKind
+	lastBotSet bool
+
+	// Vault root (used by save-to-note)
+	vaultRoot string
 
 	// AI config
 	ai AIConfig
 
 	// Loading animation
-	loadingTick int
+	loadingTick  int
+	loadingStart time.Time
+	// Elapsed time of the last completed request (ms), shown in results header.
+	lastElapsed time.Duration
 }
 
 func NewBots() Bots {
 	return Bots{
 		ai: AIConfig{
 			Provider:  "local",
-			Model:     "llama3.2",
+			Model:     "qwen2.5:0.5b",
 			OllamaURL: "http://localhost:11434",
 		},
 	}
@@ -201,12 +267,28 @@ func (b *Bots) SetAIConfig(cfg AIConfig) {
 	}
 }
 
+// SetVaultRoot provides the vault root so save-to-note actions know where
+// to write the generated file.
+func (b *Bots) SetVaultRoot(root string) {
+	b.vaultRoot = root
+}
+
 func (b *Bots) Open() {
 	b.active = true
 	b.state = botsStateList
 	b.cursor = 0
 	b.scroll = 0
+	b.filter = ""
 	b.resultLines = nil
+	// Restore cursor on the most recently used bot.
+	if b.lastBotSet {
+		for i, bd := range botList {
+			if bd.kind == b.lastBot {
+				b.cursor = i
+				break
+			}
+		}
+	}
 	b.resultReady = false
 	b.pendingResult = BotResult{}
 	b.questionInput = ""
@@ -237,9 +319,87 @@ func (b *Bots) GetResult() BotResult {
 // AI call (unified via AIConfig.Chat)
 // ---------------------------------------------------------------------------
 
+// botSystemPrompt returns a role-specific system prompt for the given bot.
+// Small models get a minimal version that emphasizes format compliance.
+func botSystemPrompt(kind botKind, small bool) string {
+	if small {
+		switch kind {
+		case botAutoTagger:
+			return "You are a tagger. Output only a comma-separated list of lowercase tags."
+		case botTitleSuggester:
+			return "You are a title generator. Output only titles, one per line."
+		case botActionItems:
+			return "You are an action-item extractor. Output only markdown tasks (- [ ] ...)."
+		case botSummarizer:
+			return "You are a summarizer. Output only the summary, no preamble."
+		case botFlashcardGen:
+			return "You are a flashcard generator. Output only Q:/A: pairs."
+		case botToneAdjuster:
+			return "You are a rewriter. Output only the rewritten versions with FORMAL/CASUAL/CONCISE labels."
+		case botOutliner:
+			return "You are an outliner. Output only markdown headings and bullets. No preamble."
+		case botExplainSimple:
+			return "Explain simply for a 12-year-old. Short sentences, no jargon."
+		case botKeyTerms:
+			return "Extract key terms. Output only TERM: definition pairs, one per line."
+		case botCounterArgument:
+			return "Generate counter-arguments. Output only CLAIM/COUNTER pairs."
+		case botTLDR:
+			return "Output one sentence. No preamble, no quotes."
+		case botProsCons:
+			return "Output only PROS: and CONS: sections with bullet points."
+		case botExpand:
+			return "Expand the note with detail. Output markdown only, no preamble."
+		}
+		return "Follow the format exactly. Be concise. No explanations."
+	}
+	switch kind {
+	case botAutoTagger:
+		return "You are a tagging assistant for a personal knowledge base. Suggest concise, reusable tags. Follow the requested output format exactly."
+	case botLinkSuggester, botAutoLinker:
+		return "You are a note linking assistant. Identify strong conceptual matches between notes. Follow the requested output format exactly."
+	case botSummarizer:
+		return "You are a summarization assistant. Capture key ideas faithfully and concisely."
+	case botQuestionBot:
+		return "You are a knowledge assistant. Answer from the provided notes only. If the answer isn't in the notes, say so."
+	case botWritingAssistant:
+		return "You are a writing coach. Provide specific, actionable feedback."
+	case botTitleSuggester:
+		return "You are a title generator. Create clear, descriptive titles. Follow the requested output format exactly."
+	case botActionItems:
+		return "You are an action-item extractor. Return concrete tasks in markdown checkbox format."
+	case botMOCGenerator:
+		return "You are an information architect. Create well-organized Maps of Content."
+	case botFlashcardGen:
+		return "You are a flashcard generator focused on durable, specific Q/A pairs."
+	case botToneAdjuster:
+		return "You are a rewriting assistant. Preserve meaning, only change style."
+	case botOutliner:
+		return "You are an information architect. Produce a clean hierarchical outline using markdown headings and bullets."
+	case botExplainSimple:
+		return "You are a science communicator. Explain complex ideas using simple words and everyday analogies."
+	case botKeyTerms:
+		return "You are a glossary builder. Extract key terms and write concise, accurate definitions from the note's own context."
+	case botCounterArgument:
+		return "You are a devil's advocate. Surface strong, intellectually honest counter-arguments to sharpen the author's thinking."
+	case botTLDR:
+		return "You are a summarization assistant producing single-sentence TL;DRs. Capture the single most important idea, nothing more."
+	case botProsCons:
+		return "You are a decision analysis assistant. Produce balanced, specific pros and cons lists."
+	case botExpand:
+		return "You are an expansion assistant. Flesh out terse notes with useful detail while preserving the author's voice and structure."
+	}
+	return "You are a helpful note-taking assistant. Be concise and actionable. Follow the requested output format exactly."
+}
+
 func callAIForBot(ai AIConfig, prompt string, kind botKind) tea.Cmd {
 	return func() tea.Msg {
-		resp, err := ai.Chat("You are a helpful note-taking assistant. Be concise and actionable.", prompt)
+		systemPrompt := botSystemPrompt(kind, ai.IsSmallModel())
+		// Hard 3-minute cap per bot request so a stuck model doesn't leave
+		// the loading overlay spinning forever.
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		resp, err := ai.ChatCtx(ctx, systemPrompt, prompt)
 		return botAIResultMsg{response: resp, err: err, botKind: kind}
 	}
 }
@@ -274,9 +434,11 @@ func (b *Bots) buildAutoTaggerPrompt() string {
 	}
 
 	content := b.currentBody
-	if len(content) > 2000 {
-		content = content[:2000]
+	maxContent := 2000
+	if b.ai.IsSmallModel() {
+		maxContent = 800
 	}
+	content = truncateAtBoundary(content, maxContent)
 
 	// Find 2-3 similar notes by shared words to provide few-shot examples.
 	examples := ""
@@ -352,12 +514,18 @@ Respond with ONLY a comma-separated list of tags.`, noteName, tagList, examples,
 func (b *Bots) buildLinkSuggesterPrompt() string {
 	noteName := strings.TrimSuffix(b.currentPath, ".md")
 	content := b.currentBody
-	if len(content) > 1500 {
-		content = content[:1500]
+	maxContent := 1500
+	if b.ai.IsSmallModel() {
+		maxContent = 600
 	}
+	content = truncateAtBoundary(content, maxContent)
 
 	// Build a brief index of other notes — include all titles, with
-	// content previews for the first 30 to give the AI enough context.
+	// content previews for the first N to give the AI enough context.
+	maxPreviews := 30
+	if b.ai.IsSmallModel() {
+		maxPreviews = 10
+	}
 	var noteIndex strings.Builder
 	count := 0
 	for path, body := range b.notes {
@@ -365,7 +533,7 @@ func (b *Bots) buildLinkSuggesterPrompt() string {
 			continue
 		}
 		name := strings.TrimSuffix(path, ".md")
-		if count < 30 {
+		if count < maxPreviews {
 			preview := body
 			if len(preview) > 200 {
 				preview = preview[:200]
@@ -395,9 +563,11 @@ Respond with ONLY the note names (one per line) that should be linked to the cur
 func (b *Bots) buildSummarizerPrompt() string {
 	noteName := strings.TrimSuffix(b.currentPath, ".md")
 	content := b.currentBody
-	if len(content) > 3000 {
-		content = content[:3000]
+	maxContent := 3000
+	if b.ai.IsSmallModel() {
+		maxContent = 1200
 	}
+	content = truncateAtBoundary(content, maxContent)
 
 	// Extract metadata for better grounding
 	tags := extractFrontmatterTags(b.currentBody)
@@ -422,17 +592,28 @@ Provide ONLY the summary, no preamble.`, noteName, tagLine, folder, content)
 
 func (b *Bots) buildQuestionPrompt() string {
 	// Build context from all notes (trimmed)
+	maxTotal := 6000
+	maxPerNote := 500
+	if b.ai.IsSmallModel() {
+		maxTotal = 2000
+		maxPerNote = 200
+	}
+	// Sort paths for deterministic iteration order.
+	paths := make([]string, 0, len(b.notes))
+	for p := range b.notes {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+
 	var context strings.Builder
 	totalLen := 0
-	for path, body := range b.notes {
-		if totalLen > 6000 {
+	for _, path := range paths {
+		if totalLen > maxTotal {
 			break
 		}
+		body := b.notes[path]
 		name := strings.TrimSuffix(path, ".md")
-		preview := body
-		if len(preview) > 500 {
-			preview = preview[:500]
-		}
+		preview := truncateAtBoundary(body, maxPerNote)
 		context.WriteString(fmt.Sprintf("## %s\n%s\n\n", name, preview))
 		totalLen += len(preview)
 	}
@@ -450,9 +631,11 @@ Answer concisely based on what's in the notes. If the answer isn't in the notes,
 func (b *Bots) buildWritingAssistantPrompt() string {
 	noteName := strings.TrimSuffix(b.currentPath, ".md")
 	content := b.currentBody
-	if len(content) > 3000 {
-		content = content[:3000]
+	maxContent := 3000
+	if b.ai.IsSmallModel() {
+		maxContent = 1200
 	}
+	content = truncateAtBoundary(content, maxContent)
 
 	return fmt.Sprintf(`Analyze the following note for writing quality. Provide:
 1. A brief readability assessment (word count, sentence structure)
@@ -470,9 +653,11 @@ Be concise and actionable.`, noteName, content)
 func (b *Bots) buildTitleSuggesterPrompt() string {
 	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
 	content := b.currentBody
-	if len(content) > 2000 {
-		content = content[:2000]
+	maxContent := 2000
+	if b.ai.IsSmallModel() {
+		maxContent = 800
 	}
+	content = truncateAtBoundary(content, maxContent)
 	tags := extractFrontmatterTags(b.currentBody)
 	tagLine := ""
 	if len(tags) > 0 {
@@ -497,9 +682,11 @@ Respond with ONLY 5 titles, one per line.`, noteName, tagLine, content)
 func (b *Bots) buildActionItemsPrompt() string {
 	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
 	content := b.currentBody
-	if len(content) > 3000 {
-		content = content[:3000]
+	maxContent := 3000
+	if b.ai.IsSmallModel() {
+		maxContent = 1200
 	}
+	content = truncateAtBoundary(content, maxContent)
 
 	return fmt.Sprintf(`Extract ALL action items from this meeting note / document. Include:
 - Explicit todos (checkboxes, "need to", "should", "will")
@@ -519,16 +706,24 @@ List ONLY the action items.`, noteName, content)
 
 func (b *Bots) buildMOCGeneratorPrompt() string {
 	var noteIndex strings.Builder
+	maxNotes := 30
+	if b.ai.IsSmallModel() {
+		maxNotes = 15
+	}
+	// Sort paths for deterministic output.
+	paths := make([]string, 0, len(b.notes))
+	for p := range b.notes {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
 	count := 0
-	for path, body := range b.notes {
-		if count >= 30 {
+	for _, path := range paths {
+		if count >= maxNotes {
 			break
 		}
+		body := b.notes[path]
 		name := strings.TrimSuffix(path, ".md")
-		preview := body
-		if len(preview) > 150 {
-			preview = preview[:150]
-		}
+		preview := truncateAtBoundary(body, 150)
 		preview = strings.ReplaceAll(preview, "\n", " ")
 		noteIndex.WriteString(fmt.Sprintf("- %s: %s\n", name, preview))
 		count++
@@ -539,7 +734,7 @@ func (b *Bots) buildMOCGeneratorPrompt() string {
 Notes in vault:
 %s
 
-Generate a MOC in markdown format using [[wiki-links]] to link to notes. Group notes into 3-6 categories with headings. Include ALL notes.`, noteIndex.String())
+Generate a MOC in markdown format using [[wiki-links]] to link to notes. Group notes into 3-6 categories with headings.`, noteIndex.String())
 }
 
 // ---------------------------------------------------------------------------
@@ -550,9 +745,11 @@ type botsTickMsg struct{}
 
 func (b *Bots) buildAutoLinkerPrompt() string {
 	content := b.currentBody
-	if len(content) > 2000 {
-		content = content[:2000]
+	maxContent := 2000
+	if b.ai.IsSmallModel() {
+		maxContent = 800
 	}
+	content = truncateAtBoundary(content, maxContent)
 
 	// Build list of existing note names for linking
 	var noteNames []string
@@ -586,9 +783,11 @@ Only suggest links where the concept clearly matches. Output ONLY the LINK lines
 func (b *Bots) buildFlashcardPrompt() string {
 	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
 	content := b.currentBody
-	if len(content) > 2500 {
-		content = content[:2500]
+	maxContent := 2500
+	if b.ai.IsSmallModel() {
+		maxContent = 1000
 	}
+	content = truncateAtBoundary(content, maxContent)
 
 	return fmt.Sprintf(`Generate 5-8 flashcards (question and answer pairs) from this note. Focus on key facts, definitions, and concepts worth remembering.
 
@@ -606,9 +805,11 @@ Make questions specific and answers concise (1-2 sentences).`, noteName, content
 
 func (b *Bots) buildToneAdjusterPrompt() string {
 	content := b.currentBody
-	if len(content) > 2000 {
-		content = content[:2000]
+	maxContent := 2000
+	if b.ai.IsSmallModel() {
+		maxContent = 800
 	}
+	content = truncateAtBoundary(content, maxContent)
 
 	return fmt.Sprintf(`Rewrite the following text in three different tones. Keep the same meaning and information.
 
@@ -627,6 +828,163 @@ CASUAL:
 
 CONCISE:
 (rewritten as briefly as possible, bullet points if appropriate)`, content)
+}
+
+func (b *Bots) buildOutlinerPrompt() string {
+	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
+	content := b.currentBody
+	maxContent := 3000
+	if b.ai.IsSmallModel() {
+		maxContent = 1200
+	}
+	content = truncateAtBoundary(content, maxContent)
+
+	return fmt.Sprintf(`Generate a structured hierarchical outline for this note. Use markdown headings (##, ###) and bullet points.
+
+Note: %s
+---
+%s
+---
+
+Rules:
+- Start with 2-5 top-level sections (## headings)
+- Add 2-4 sub-points per section as bullet points
+- Keep each point short (1 line)
+- Cover the main ideas, not every detail
+
+Output ONLY the outline in markdown, no preamble.`, noteName, content)
+}
+
+func (b *Bots) buildExplainSimplePrompt() string {
+	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
+	content := b.currentBody
+	maxContent := 2500
+	if b.ai.IsSmallModel() {
+		maxContent = 1000
+	}
+	content = truncateAtBoundary(content, maxContent)
+
+	return fmt.Sprintf(`Explain the following note as if to a curious 12-year-old. Use simple words, everyday analogies, and short sentences. Avoid jargon.
+
+Note: %s
+---
+%s
+---
+
+Write 3-5 short paragraphs. Start directly with the explanation, no preamble.`, noteName, content)
+}
+
+func (b *Bots) buildKeyTermsPrompt() string {
+	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
+	content := b.currentBody
+	maxContent := 2500
+	if b.ai.IsSmallModel() {
+		maxContent = 1000
+	}
+	content = truncateAtBoundary(content, maxContent)
+
+	return fmt.Sprintf(`Extract the key terms from this note and write a brief definition for each. Focus on domain-specific terms, proper nouns, and concepts that might need clarification.
+
+Note: %s
+---
+%s
+---
+
+Format each as:
+TERM: Brief 1-sentence definition grounded in the note's context.
+
+Output 5-10 entries. Only entries that are actually in the note.`, noteName, content)
+}
+
+func (b *Bots) buildTLDRPrompt() string {
+	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
+	content := b.currentBody
+	maxContent := 3000
+	if b.ai.IsSmallModel() {
+		maxContent = 1200
+	}
+	content = truncateAtBoundary(content, maxContent)
+
+	return fmt.Sprintf(`Write a single-sentence TL;DR for this note. It should be the shortest possible capture of the most important idea.
+
+Note: %s
+---
+%s
+---
+
+Output ONLY the one-sentence summary. No preamble, no quotes, no explanation.`, noteName, content)
+}
+
+func (b *Bots) buildProsConsPrompt() string {
+	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
+	content := b.currentBody
+	maxContent := 2500
+	if b.ai.IsSmallModel() {
+		maxContent = 1000
+	}
+	content = truncateAtBoundary(content, maxContent)
+
+	return fmt.Sprintf(`Generate a pros and cons list for the topic of this note. Identify the main decision or option being discussed and list its benefits and drawbacks.
+
+Note: %s
+---
+%s
+---
+
+Format:
+PROS:
+- pro 1
+- pro 2
+- pro 3
+
+CONS:
+- con 1
+- con 2
+- con 3
+
+Aim for 3-5 items per side. Be specific, not generic.`, noteName, content)
+}
+
+func (b *Bots) buildExpandPrompt() string {
+	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
+	content := b.currentBody
+	maxContent := 2000
+	if b.ai.IsSmallModel() {
+		maxContent = 800
+	}
+	content = truncateAtBoundary(content, maxContent)
+
+	return fmt.Sprintf(`Take this terse or incomplete note and expand it with additional detail, context, and examples. Preserve the author's voice and the original structure. Do not add information that contradicts what's already written.
+
+Note: %s
+---
+%s
+---
+
+Output the expanded version as markdown. No preamble.`, noteName, content)
+}
+
+func (b *Bots) buildCounterArgumentPrompt() string {
+	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
+	content := b.currentBody
+	maxContent := 2500
+	if b.ai.IsSmallModel() {
+		maxContent = 1000
+	}
+	content = truncateAtBoundary(content, maxContent)
+
+	return fmt.Sprintf(`Read the following note and generate 3-5 strong counter-arguments or opposing viewpoints to its main claims. Help the author sharpen their thinking by surfacing blind spots.
+
+Note: %s
+---
+%s
+---
+
+Format each as:
+- CLAIM: [the original claim being challenged]
+  COUNTER: [the opposing viewpoint in 1-2 sentences]
+
+Be intellectually honest. Prefer strong counters over weak ones.`, noteName, content)
 }
 
 func botsTickCmd() tea.Cmd {
@@ -666,7 +1024,21 @@ func (b Bots) Update(msg tea.Msg) (Bots, tea.Cmd) {
 			b.state = botsStateResults
 			return b, nil
 		}
+		// If the AI returned an empty response, fall back to local analysis
+		// with a clear note so the user knows what happened.
+		if strings.TrimSpace(msg.response) == "" {
+			var lines []string
+			lines = append(lines, lipgloss.NewStyle().Foreground(yellow).Render(
+				"  "+IconBookmarkChar+" AI returned an empty response — using local analysis"))
+			lines = append(lines, "")
+			b.runLocalBot()
+			b.resultLines = append(lines, b.resultLines...)
+			b.state = botsStateResults
+			return b, nil
+		}
 		providerLabel := b.ai.Provider + ": " + b.ai.Model
+		b.lastElapsed = time.Since(b.loadingStart)
+		b.rawResponse = msg.response
 		b.processAIResponse(msg.response, providerLabel)
 		b.state = botsStateResults
 		return b, nil
@@ -689,27 +1061,99 @@ func (b Bots) Update(msg tea.Msg) (Bots, tea.Cmd) {
 	return b, nil
 }
 
+// filteredBots returns the bots matching the current filter string.
+// An empty filter returns the full list.
+func (b Bots) filteredBots() []botDescriptor {
+	if b.filter == "" {
+		return botList
+	}
+	needle := strings.ToLower(b.filter)
+	var out []botDescriptor
+	for _, bd := range botList {
+		if strings.Contains(strings.ToLower(bd.name), needle) ||
+			strings.Contains(strings.ToLower(bd.desc), needle) {
+			out = append(out, bd)
+		}
+	}
+	return out
+}
+
 func (b Bots) updateList(msg tea.KeyMsg) (Bots, tea.Cmd) {
-	switch msg.String() {
+	visible := b.filteredBots()
+	key := msg.String()
+	switch key {
 	case "esc":
+		if b.filter != "" {
+			b.filter = ""
+			b.cursor = 0
+			return b, nil
+		}
 		b.active = false
 	case "up", "k":
 		if b.cursor > 0 {
 			b.cursor--
+		} else if len(visible) > 0 {
+			// Wrap to last item.
+			b.cursor = len(visible) - 1
 		}
 	case "down", "j":
-		if b.cursor < len(botList)-1 {
+		if b.cursor < len(visible)-1 {
 			b.cursor++
+		} else if len(visible) > 0 {
+			// Wrap to first item.
+			b.cursor = 0
+		}
+	case "home":
+		b.cursor = 0
+	case "end":
+		if len(visible) > 0 {
+			b.cursor = len(visible) - 1
 		}
 	case "enter":
-		if b.cursor >= 0 && b.cursor < len(botList) {
-			b.activeBot = botList[b.cursor].kind
+		if b.cursor >= 0 && b.cursor < len(visible) {
+			b.activeBot = visible[b.cursor].kind
+			b.lastBot = b.activeBot
+			b.lastBotSet = true
 			if b.activeBot == botQuestionBot {
 				b.state = botsStateInput
 				b.questionInput = ""
 			} else {
 				return b.startBot()
 			}
+		}
+	case "backspace":
+		if len(b.filter) > 0 {
+			runes := []rune(b.filter)
+			b.filter = string(runes[:len(runes)-1])
+			b.cursor = 0
+		}
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		// Number-key hotkeys: only when not filtering (digits are rare in
+		// bot names, and we want digits to be usable as filter input too,
+		// but prefer hotkey behavior when filter is empty).
+		if b.filter == "" {
+			idx := int(key[0] - '1')
+			if idx >= 0 && idx < len(visible) {
+				b.activeBot = visible[idx].kind
+				b.lastBot = b.activeBot
+				b.lastBotSet = true
+				if b.activeBot == botQuestionBot {
+					b.state = botsStateInput
+					b.questionInput = ""
+					return b, nil
+				}
+				return b.startBot()
+			}
+			return b, nil
+		}
+		// Filter mode: digits become part of the filter.
+		b.filter += key
+		b.cursor = 0
+	default:
+		// Type-ahead: single printable character adds to filter.
+		if len(key) == 1 && key[0] >= 32 && key[0] < 127 {
+			b.filter += key
+			b.cursor = 0
 		}
 	}
 	return b, nil
@@ -736,17 +1180,68 @@ func (b Bots) updateInput(msg tea.KeyMsg) (Bots, tea.Cmd) {
 }
 
 func (b Bots) updateResults(msg tea.KeyMsg) (Bots, tea.Cmd) {
+	// Approximate visible height for page-wise scrolling.
+	page := b.height - 12
+	if page < 5 {
+		page = 5
+	}
+	maxScroll := len(b.resultLines) - page
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+
 	switch msg.String() {
 	case "esc":
 		b.state = botsStateList
 		b.scroll = 0
 		b.resultLines = nil
+		b.statusMsg = ""
 	case "up", "k":
 		if b.scroll > 0 {
 			b.scroll--
 		}
 	case "down", "j":
-		b.scroll++
+		if b.scroll < maxScroll {
+			b.scroll++
+		}
+	case "pgup", "ctrl+u":
+		b.scroll -= page
+		if b.scroll < 0 {
+			b.scroll = 0
+		}
+	case "pgdown", "ctrl+d":
+		b.scroll += page
+		if b.scroll > maxScroll {
+			b.scroll = maxScroll
+		}
+	case "g", "home":
+		b.scroll = 0
+	case "G", "end":
+		b.scroll = maxScroll
+	case "r":
+		// Re-run the same bot — useful when a small model produced a
+		// weird response and the user wants another attempt.
+		if b.activeBot != botDailyDigest {
+			return b.startBot()
+		}
+	case "c", "y":
+		// Copy raw response to system clipboard.
+		if b.rawResponse != "" {
+			if err := ClipboardCopy(b.rawResponse); err != nil {
+				b.statusMsg = "Copy failed: " + err.Error()
+			} else {
+				b.statusMsg = "Copied to clipboard"
+			}
+		}
+	case "s":
+		// Save result as a new note in the vault.
+		if b.rawResponse != "" && b.vaultRoot != "" {
+			if path, err := b.saveResultToNote(); err != nil {
+				b.statusMsg = "Save failed: " + err.Error()
+			} else {
+				b.statusMsg = "Saved to " + path
+			}
+		}
 	case "enter":
 		if b.resultReady {
 			b.active = false
@@ -756,6 +1251,51 @@ func (b Bots) updateResults(msg tea.KeyMsg) (Bots, tea.Cmd) {
 	return b, nil
 }
 
+// saveResultToNote writes the raw AI response to a new markdown file in the
+// vault's "Bots" subdirectory and returns the relative path.
+func (b *Bots) saveResultToNote() (string, error) {
+	dir := filepath.Join(b.vaultRoot, "Bots")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	noteName := strings.TrimSuffix(filepath.Base(b.currentPath), ".md")
+	if noteName == "" {
+		noteName = "note"
+	}
+	// Find the bot's human-readable name for the filename.
+	botName := "bot"
+	for _, bd := range botList {
+		if bd.kind == b.activeBot {
+			botName = strings.ReplaceAll(strings.ToLower(bd.name), " ", "-")
+			break
+		}
+	}
+	timestamp := time.Now().Format("2006-01-02-150405")
+	filename := fmt.Sprintf("%s-%s-%s.md", noteName, botName, timestamp)
+	fullPath := filepath.Join(dir, filename)
+
+	// Build note with frontmatter for context.
+	var buf strings.Builder
+	buf.WriteString("---\n")
+	buf.WriteString(fmt.Sprintf("title: %s (%s)\n", noteName, botName))
+	buf.WriteString(fmt.Sprintf("date: %s\n", time.Now().Format("2006-01-02")))
+	buf.WriteString(fmt.Sprintf("source-note: \"[[%s]]\"\n", noteName))
+	buf.WriteString(fmt.Sprintf("bot: %s\n", botName))
+	buf.WriteString(fmt.Sprintf("ai-provider: %s\n", b.ai.Provider))
+	if b.ai.Model != "" {
+		buf.WriteString(fmt.Sprintf("ai-model: %s\n", b.ai.Model))
+	}
+	buf.WriteString("tags: [ai-generated]\n")
+	buf.WriteString("---\n\n")
+	buf.WriteString(b.rawResponse)
+	buf.WriteString("\n")
+
+	if err := os.WriteFile(fullPath, []byte(buf.String()), 0o644); err != nil {
+		return "", err
+	}
+	return filepath.Join("Bots", filename), nil
+}
+
 // startBot decides whether to use Ollama, OpenAI, or local analysis
 func (b Bots) startBot() (Bots, tea.Cmd) {
 	useAI := (b.ai.Provider == "ollama" || b.ai.Provider == "openai" || b.ai.Provider == "nous") && b.activeBot != botDailyDigest
@@ -763,7 +1303,10 @@ func (b Bots) startBot() (Bots, tea.Cmd) {
 	if useAI {
 		b.state = botsStateLoading
 		b.loadingTick = 0
+		b.loadingStart = time.Now()
 		b.resultLines = nil
+		b.rawResponse = ""
+		b.statusMsg = ""
 		b.pendingResult = BotResult{Action: "none", NotePath: b.currentPath}
 
 		prompt := b.buildPrompt()
@@ -814,6 +1357,20 @@ func (b *Bots) buildPrompt() string {
 		return b.buildFlashcardPrompt()
 	case botToneAdjuster:
 		return b.buildToneAdjusterPrompt()
+	case botOutliner:
+		return b.buildOutlinerPrompt()
+	case botExplainSimple:
+		return b.buildExplainSimplePrompt()
+	case botKeyTerms:
+		return b.buildKeyTermsPrompt()
+	case botCounterArgument:
+		return b.buildCounterArgumentPrompt()
+	case botTLDR:
+		return b.buildTLDRPrompt()
+	case botProsCons:
+		return b.buildProsConsPrompt()
+	case botExpand:
+		return b.buildExpandPrompt()
 	}
 	return ""
 }
@@ -842,9 +1399,45 @@ func (b *Bots) runLocalBot() {
 		b.runLocalFlashcardGen()
 	case botToneAdjuster:
 		b.runLocalToneAdjuster()
+	case botOutliner:
+		b.runLocalOutliner()
+	case botExplainSimple, botKeyTerms, botCounterArgument, botTLDR, botProsCons, botExpand:
+		b.runLocalRequiresAI()
 	case botDailyDigest:
 		b.runDailyDigest()
 	}
+}
+
+// runLocalRequiresAI shows a message that the bot requires an AI provider.
+func (b *Bots) runLocalRequiresAI() {
+	b.resultLines = []string{
+		"",
+		lipgloss.NewStyle().Foreground(yellow).Render("  " + IconBookmarkChar + " This bot requires an AI provider."),
+		"",
+		DimStyle.Render("  Configure Ollama, OpenAI, or Nous in Settings (Ctrl+,)"),
+		DimStyle.Render("  or install Ollama: curl -fsSL https://ollama.ai/install.sh | sh"),
+	}
+}
+
+// runLocalOutliner builds a simple outline from markdown headings found in the note.
+func (b *Bots) runLocalOutliner() {
+	var lines []string
+	lines = append(lines, lipgloss.NewStyle().Foreground(text).Render("  Outline (from existing headings):"))
+	lines = append(lines, "")
+	found := 0
+	for _, line := range strings.Split(b.currentBody, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "# ") || strings.HasPrefix(trimmed, "## ") ||
+			strings.HasPrefix(trimmed, "### ") || strings.HasPrefix(trimmed, "#### ") {
+			style := lipgloss.NewStyle().Foreground(blue).Bold(true)
+			lines = append(lines, "  "+style.Render(trimmed))
+			found++
+		}
+	}
+	if found == 0 {
+		lines = append(lines, DimStyle.Render("  (no headings found — enable AI for a structured outline)"))
+	}
+	b.resultLines = lines
 }
 
 // processAIResponse parses the AI response for the active bot
@@ -861,18 +1454,23 @@ func (b *Bots) processAIResponse(response string, providerLabel string) {
 			"Powered by "+providerLabel))
 		lines = append(lines, "")
 
-		// Parse comma-separated tags
+		// Parse comma-separated tags, de-duplicating case-insensitively.
+		// Also handle newline-separated output as a fallback.
+		raw := strings.ReplaceAll(response, "\n", ",")
+		seen := make(map[string]bool)
 		var resultTags []string
-		for _, part := range strings.Split(response, ",") {
+		for _, part := range strings.Split(raw, ",") {
 			tag := strings.TrimSpace(part)
-			tag = strings.Trim(tag, "#\"'`")
+			tag = strings.Trim(tag, "#\"'`[]")
 			tag = strings.ToLower(tag)
-			if tag != "" && len(tag) < 30 {
-				resultTags = append(resultTags, tag)
-				bullet := lipgloss.NewStyle().Foreground(green).Render("  " + IconTagChar)
-				tagStr := lipgloss.NewStyle().Foreground(blue).Bold(true).Render(" #" + tag)
-				lines = append(lines, bullet+tagStr)
+			if tag == "" || len(tag) >= 30 || seen[tag] {
+				continue
 			}
+			seen[tag] = true
+			resultTags = append(resultTags, tag)
+			bullet := lipgloss.NewStyle().Foreground(green).Render("  " + IconTagChar)
+			tagStr := lipgloss.NewStyle().Foreground(blue).Bold(true).Render(" #" + tag)
+			lines = append(lines, bullet+tagStr)
 		}
 
 		b.resultLines = lines
@@ -899,7 +1497,7 @@ func (b *Bots) processAIResponse(response string, providerLabel string) {
 			if line == "" {
 				continue
 			}
-			line = strings.TrimLeft(line, "0123456789.-) ")
+			line = stripListPrefix(line)
 			if line == "" {
 				continue
 			}
@@ -907,7 +1505,9 @@ func (b *Bots) processAIResponse(response string, providerLabel string) {
 			linkLine := lipgloss.NewStyle().Foreground(blue).Render(" " + line)
 			lines = append(lines, bullet+linkLine)
 
-			// Extract note name for linking
+			// Extract note name for linking. Handle "-", "—", "→" separators.
+			line = strings.ReplaceAll(line, " — ", " - ")
+			line = strings.ReplaceAll(line, " → ", " - ")
 			parts := strings.SplitN(line, " - ", 2)
 			if len(parts) > 0 {
 				name := strings.TrimSpace(parts[0])
@@ -998,7 +1598,7 @@ func (b *Bots) processAIResponse(response string, providerLabel string) {
 			if respLine == "" {
 				continue
 			}
-			respLine = strings.TrimLeft(respLine, "0123456789.-) ")
+			respLine = stripListPrefix(respLine)
 			if respLine == "" {
 				continue
 			}
@@ -1021,7 +1621,7 @@ func (b *Bots) processAIResponse(response string, providerLabel string) {
 			if respLine == "" {
 				continue
 			}
-			if strings.HasPrefix(respLine, "- [ ]") || strings.HasPrefix(respLine, "- [x]") {
+			if (strings.HasPrefix(respLine, "- [ ]") || strings.HasPrefix(respLine, "- [x]")) && len(respLine) > 6 {
 				bullet := lipgloss.NewStyle().Foreground(yellow).Render("  " + IconOutlineChar)
 				task := lipgloss.NewStyle().Foreground(text).Render(" " + respLine[6:])
 				lines = append(lines, bullet+task)
@@ -1065,6 +1665,258 @@ func (b *Bots) processAIResponse(response string, providerLabel string) {
 			}
 			b.resultReady = true
 		}
+
+	case botAutoLinker:
+		var lines []string
+		lines = append(lines, lipgloss.NewStyle().Foreground(text).Render(
+			fmt.Sprintf("  AI wikilink suggestions for \"%s\":", noteName)))
+		lines = append(lines, aiIcon+" "+lipgloss.NewStyle().Foreground(sapphire).Italic(true).Render(
+			"Powered by "+providerLabel))
+		lines = append(lines, "")
+		for _, respLine := range strings.Split(response, "\n") {
+			respLine = strings.TrimSpace(respLine)
+			if respLine == "" {
+				continue
+			}
+			lines = append(lines, "  "+lipgloss.NewStyle().Foreground(text).Render(respLine))
+		}
+		b.resultLines = lines
+
+	case botFlashcardGen:
+		var lines []string
+		lines = append(lines, lipgloss.NewStyle().Foreground(text).Render(
+			fmt.Sprintf("  AI flashcards for \"%s\":", noteName)))
+		lines = append(lines, aiIcon+" "+lipgloss.NewStyle().Foreground(sapphire).Italic(true).Render(
+			"Powered by "+providerLabel))
+		lines = append(lines, "")
+		for _, respLine := range strings.Split(response, "\n") {
+			respLine = strings.TrimSpace(respLine)
+			if respLine == "" {
+				lines = append(lines, "")
+				continue
+			}
+			if strings.HasPrefix(respLine, "Q:") {
+				lines = append(lines, "  "+lipgloss.NewStyle().Foreground(blue).Bold(true).Render(respLine))
+			} else if strings.HasPrefix(respLine, "A:") {
+				lines = append(lines, "  "+lipgloss.NewStyle().Foreground(green).Render(respLine))
+			} else {
+				lines = append(lines, "  "+lipgloss.NewStyle().Foreground(text).Render(respLine))
+			}
+		}
+		b.resultLines = lines
+
+	case botToneAdjuster:
+		var lines []string
+		lines = append(lines, lipgloss.NewStyle().Foreground(text).Render("  AI tone adjustments:"))
+		lines = append(lines, aiIcon+" "+lipgloss.NewStyle().Foreground(sapphire).Italic(true).Render(
+			"Powered by "+providerLabel))
+		lines = append(lines, "")
+		for _, respLine := range strings.Split(response, "\n") {
+			respLine = strings.TrimSpace(respLine)
+			if respLine == "" {
+				lines = append(lines, "")
+				continue
+			}
+			if strings.HasPrefix(respLine, "FORMAL:") || strings.HasPrefix(respLine, "CASUAL:") || strings.HasPrefix(respLine, "CONCISE:") {
+				lines = append(lines, "  "+lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(respLine))
+			} else {
+				wrapped := wordWrap(respLine, b.overlayInnerWidth()-4)
+				for _, wl := range strings.Split(wrapped, "\n") {
+					lines = append(lines, "  "+lipgloss.NewStyle().Foreground(text).Render(wl))
+				}
+			}
+		}
+		b.resultLines = lines
+
+	case botOutliner:
+		var lines []string
+		lines = append(lines, lipgloss.NewStyle().Foreground(text).Render(
+			fmt.Sprintf("  AI outline for \"%s\":", noteName)))
+		lines = append(lines, aiIcon+" "+lipgloss.NewStyle().Foreground(sapphire).Italic(true).Render(
+			"Powered by "+providerLabel))
+		lines = append(lines, "")
+		for _, respLine := range strings.Split(response, "\n") {
+			if respLine == "" {
+				lines = append(lines, "")
+				continue
+			}
+			trimmed := strings.TrimSpace(respLine)
+			if strings.HasPrefix(trimmed, "#") {
+				lines = append(lines, "  "+lipgloss.NewStyle().Foreground(blue).Bold(true).Render(trimmed))
+			} else {
+				lines = append(lines, "  "+lipgloss.NewStyle().Foreground(text).Render(trimmed))
+			}
+		}
+		b.resultLines = lines
+		if strings.TrimSpace(response) != "" {
+			b.pendingResult = BotResult{Action: "summary", Summary: response, NotePath: b.currentPath}
+			b.resultReady = true
+		}
+
+	case botExplainSimple:
+		var lines []string
+		lines = append(lines, lipgloss.NewStyle().Foreground(text).Render(
+			fmt.Sprintf("  Simple explanation of \"%s\":", noteName)))
+		lines = append(lines, aiIcon+" "+lipgloss.NewStyle().Foreground(sapphire).Italic(true).Render(
+			"Powered by "+providerLabel))
+		lines = append(lines, "")
+		wrapped := wordWrap(response, b.overlayInnerWidth()-4)
+		for _, wl := range strings.Split(wrapped, "\n") {
+			lines = append(lines, "  "+lipgloss.NewStyle().Foreground(text).Render(wl))
+		}
+		b.resultLines = lines
+		if strings.TrimSpace(response) != "" {
+			b.pendingResult = BotResult{Action: "summary", Summary: response, NotePath: b.currentPath}
+			b.resultReady = true
+		}
+
+	case botKeyTerms:
+		var lines []string
+		lines = append(lines, lipgloss.NewStyle().Foreground(text).Render(
+			fmt.Sprintf("  Key terms in \"%s\":", noteName)))
+		lines = append(lines, aiIcon+" "+lipgloss.NewStyle().Foreground(sapphire).Italic(true).Render(
+			"Powered by "+providerLabel))
+		lines = append(lines, "")
+		for _, respLine := range strings.Split(response, "\n") {
+			respLine = strings.TrimSpace(respLine)
+			if respLine == "" {
+				lines = append(lines, "")
+				continue
+			}
+			// Parse "TERM: definition" format.
+			if idx := strings.Index(respLine, ":"); idx > 0 && idx < 60 {
+				term := strings.TrimSpace(respLine[:idx])
+				def := strings.TrimSpace(respLine[idx+1:])
+				termStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(term)
+				defStyle := lipgloss.NewStyle().Foreground(text).Render(" — " + def)
+				wrapped := wordWrap("  "+termStyle+defStyle, b.overlayInnerWidth()-4)
+				for _, wl := range strings.Split(wrapped, "\n") {
+					lines = append(lines, wl)
+				}
+			} else {
+				lines = append(lines, "  "+lipgloss.NewStyle().Foreground(text).Render(respLine))
+			}
+		}
+		b.resultLines = lines
+
+	case botTLDR:
+		var lines []string
+		lines = append(lines, lipgloss.NewStyle().Foreground(text).Render(
+			fmt.Sprintf("  TL;DR of \"%s\":", noteName)))
+		lines = append(lines, aiIcon+" "+lipgloss.NewStyle().Foreground(sapphire).Italic(true).Render(
+			"Powered by "+providerLabel))
+		lines = append(lines, "")
+		summary := strings.TrimSpace(response)
+		summary = strings.Trim(summary, "\"'`")
+		wrapped := wordWrap(summary, b.overlayInnerWidth()-4)
+		for _, wl := range strings.Split(wrapped, "\n") {
+			lines = append(lines, "  "+lipgloss.NewStyle().Foreground(text).Bold(true).Render(wl))
+		}
+		b.resultLines = lines
+		if summary != "" {
+			b.pendingResult = BotResult{Action: "summary", Summary: summary, NotePath: b.currentPath}
+			b.resultReady = true
+		}
+
+	case botProsCons:
+		var lines []string
+		lines = append(lines, lipgloss.NewStyle().Foreground(text).Render(
+			fmt.Sprintf("  Pros & Cons for \"%s\":", noteName)))
+		lines = append(lines, aiIcon+" "+lipgloss.NewStyle().Foreground(sapphire).Italic(true).Render(
+			"Powered by "+providerLabel))
+		lines = append(lines, "")
+		inPros := false
+		inCons := false
+		for _, respLine := range strings.Split(response, "\n") {
+			trimmed := strings.TrimSpace(respLine)
+			if trimmed == "" {
+				lines = append(lines, "")
+				continue
+			}
+			upper := strings.ToUpper(trimmed)
+			if strings.HasPrefix(upper, "PROS") {
+				inPros = true
+				inCons = false
+				lines = append(lines, "  "+lipgloss.NewStyle().Foreground(green).Bold(true).Render("PROS:"))
+				continue
+			}
+			if strings.HasPrefix(upper, "CONS") {
+				inPros = false
+				inCons = true
+				lines = append(lines, "")
+				lines = append(lines, "  "+lipgloss.NewStyle().Foreground(red).Bold(true).Render("CONS:"))
+				continue
+			}
+			cleaned := stripListPrefix(trimmed)
+			if cleaned == "" {
+				continue
+			}
+			var style lipgloss.Style
+			switch {
+			case inPros:
+				style = lipgloss.NewStyle().Foreground(green)
+			case inCons:
+				style = lipgloss.NewStyle().Foreground(red)
+			default:
+				style = lipgloss.NewStyle().Foreground(text)
+			}
+			lines = append(lines, "    • "+style.Render(cleaned))
+		}
+		b.resultLines = lines
+
+	case botExpand:
+		var lines []string
+		lines = append(lines, lipgloss.NewStyle().Foreground(text).Render(
+			fmt.Sprintf("  Expanded \"%s\":", noteName)))
+		lines = append(lines, aiIcon+" "+lipgloss.NewStyle().Foreground(sapphire).Italic(true).Render(
+			"Powered by "+providerLabel))
+		lines = append(lines, "")
+		for _, respLine := range strings.Split(response, "\n") {
+			if respLine == "" {
+				lines = append(lines, "")
+				continue
+			}
+			trimmed := strings.TrimSpace(respLine)
+			if strings.HasPrefix(trimmed, "#") {
+				lines = append(lines, "  "+lipgloss.NewStyle().Foreground(blue).Bold(true).Render(trimmed))
+			} else {
+				wrapped := wordWrap(trimmed, b.overlayInnerWidth()-4)
+				for _, wl := range strings.Split(wrapped, "\n") {
+					lines = append(lines, "  "+lipgloss.NewStyle().Foreground(text).Render(wl))
+				}
+			}
+		}
+		b.resultLines = lines
+		if strings.TrimSpace(response) != "" {
+			b.pendingResult = BotResult{Action: "summary", Summary: response, NotePath: b.currentPath}
+			b.resultReady = true
+		}
+
+	case botCounterArgument:
+		var lines []string
+		lines = append(lines, lipgloss.NewStyle().Foreground(text).Render(
+			fmt.Sprintf("  Counter-arguments for \"%s\":", noteName)))
+		lines = append(lines, aiIcon+" "+lipgloss.NewStyle().Foreground(sapphire).Italic(true).Render(
+			"Powered by "+providerLabel))
+		lines = append(lines, "")
+		for _, respLine := range strings.Split(response, "\n") {
+			if respLine == "" {
+				lines = append(lines, "")
+				continue
+			}
+			trimmed := strings.TrimSpace(respLine)
+			if strings.HasPrefix(trimmed, "- CLAIM:") || strings.HasPrefix(trimmed, "CLAIM:") {
+				lines = append(lines, "  "+lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(trimmed))
+			} else if strings.HasPrefix(trimmed, "COUNTER:") || strings.HasPrefix(trimmed, "- COUNTER:") {
+				lines = append(lines, "  "+lipgloss.NewStyle().Foreground(red).Render(trimmed))
+			} else {
+				wrapped := wordWrap(trimmed, b.overlayInnerWidth()-6)
+				for _, wl := range strings.Split(wrapped, "\n") {
+					lines = append(lines, "    "+lipgloss.NewStyle().Foreground(text).Render(wl))
+				}
+			}
+		}
+		b.resultLines = lines
 	}
 }
 
@@ -1937,44 +2789,76 @@ func (b Bots) viewList(width int) string {
 
 	buf.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
 	buf.WriteString("\n\n")
-	buf.WriteString(DimStyle.Render("  Select a bot:"))
+	if b.filter != "" {
+		filterLabel := lipgloss.NewStyle().Foreground(yellow).Render("  Filter: ")
+		filterText := lipgloss.NewStyle().Foreground(peach).Bold(true).Render(b.filter)
+		buf.WriteString(filterLabel + filterText + DimStyle.Render("  (Esc to clear)"))
+	} else {
+		buf.WriteString(DimStyle.Render("  Select a bot (type to filter):"))
+	}
 	buf.WriteString("\n\n")
 
-	for i, bd := range botList {
+	visible := b.filteredBots()
+	if len(visible) == 0 {
+		buf.WriteString(DimStyle.Render("    (no bots match \"" + b.filter + "\")"))
+		buf.WriteString("\n")
+	}
+
+	// Render grouped by category. Headers are shown only when the filter
+	// is empty (filtered view is a flat list to emphasize results).
+	currentCat := ""
+	showCategories := b.filter == ""
+	for i, bd := range visible {
 		icon := bd.icon
 		name := bd.name
 		desc := bd.desc
 
+		if showCategories && bd.category != currentCat {
+			if currentCat != "" {
+				buf.WriteString("\n")
+			}
+			currentCat = bd.category
+			catStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  " + strings.ToUpper(bd.category))
+			buf.WriteString(catStyle)
+			buf.WriteString("\n")
+		}
+
+		// Show hotkey number for the first 9 bots (1-9).
+		hotkey := "  "
+		if i < 9 {
+			hotkey = lipgloss.NewStyle().Foreground(overlay1).Render(fmt.Sprintf(" %d", i+1))
+		}
+
 		if i == b.cursor {
-			pointer := lipgloss.NewStyle().Foreground(sapphire).Bold(true).Render("  ▸ ")
+			pointer := lipgloss.NewStyle().Foreground(sapphire).Bold(true).Render("▸ ")
 			nameStyled := lipgloss.NewStyle().Foreground(peach).Bold(true).Render(icon + " " + name)
 			buf.WriteString(lipgloss.NewStyle().
 				Background(surface0).
 				Width(width - 6).
-				Render(pointer + nameStyled))
+				Render(hotkey + " " + pointer + nameStyled))
 			buf.WriteString("\n")
 			descStyled := lipgloss.NewStyle().
 				Background(surface0).
 				Foreground(overlay1).
 				Width(width - 6).
-				Render("      " + desc)
+				Render("       " + desc)
 			buf.WriteString(descStyled)
 		} else {
-			nameStyled := lipgloss.NewStyle().Foreground(text).Render("    " + icon + " " + name)
+			nameStyled := lipgloss.NewStyle().Foreground(text).Render(hotkey + "   " + icon + " " + name)
 			buf.WriteString(nameStyled)
 			buf.WriteString("\n")
-			buf.WriteString(DimStyle.Render("      " + desc))
+			buf.WriteString(DimStyle.Render("       " + desc))
 		}
 
-		if i < len(botList)-1 {
-			buf.WriteString("\n\n")
+		if i < len(visible)-1 {
+			buf.WriteString("\n")
 		}
 	}
 
 	buf.WriteString("\n\n")
 	buf.WriteString(DimStyle.Render("  " + strings.Repeat("─", width-10)))
 	buf.WriteString("\n")
-	buf.WriteString(DimStyle.Render("  ↑↓: select  Enter: run  Esc: close"))
+	buf.WriteString(DimStyle.Render("  ↑↓: select  Enter: run  1-9: quick pick  type: filter  Esc: close"))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
@@ -2042,11 +2926,19 @@ func (b Bots) viewLoading(width int) string {
 		}
 	}
 
-	title := lipgloss.NewStyle().
+	// Title with category pill
+	titleText := lipgloss.NewStyle().
 		Foreground(sapphire).
 		Bold(true).
 		Render("  " + bd.icon + " " + bd.name)
-	buf.WriteString(title)
+	catPill := ""
+	if bd.category != "" {
+		catPill = " " + lipgloss.NewStyle().
+			Foreground(crust).
+			Background(mauve).
+			Render(" " + bd.category + " ")
+	}
+	buf.WriteString(titleText + catPill)
 	buf.WriteString("\n")
 	buf.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
 	buf.WriteString("\n\n")
@@ -2056,18 +2948,46 @@ func (b Bots) viewLoading(width int) string {
 	frame := spinFrames[b.loadingTick%len(spinFrames)]
 	spinner := lipgloss.NewStyle().Foreground(sapphire).Bold(true).Render(frame)
 
-	thinkingLabel := "Thinking with " + b.ai.Model + "..."
+	elapsed := time.Since(b.loadingStart).Truncate(time.Second)
+	elapsedStr := lipgloss.NewStyle().Foreground(yellow).Render(fmt.Sprintf(" %s", elapsed))
+	thinkingLabel := "Thinking with " + b.ai.Model
 	connectLabel := "Connecting to Ollama at " + b.ai.OllamaURL
 	if b.ai.Provider == "openai" {
-		thinkingLabel = "Thinking with " + b.ai.Model + "..."
+		thinkingLabel = "Thinking with " + b.ai.Model
 		connectLabel = "Connecting to OpenAI API..."
 	} else if b.ai.Provider == "nous" {
-		thinkingLabel = "Thinking with Nous..."
+		thinkingLabel = "Thinking with Nous"
 		connectLabel = "Connecting to Nous at " + b.ai.NousURL
 	}
-	buf.WriteString("  " + spinner + " " + lipgloss.NewStyle().Foreground(text).Render(thinkingLabel))
+	buf.WriteString("  " + spinner + " " + lipgloss.NewStyle().Foreground(text).Render(thinkingLabel) + elapsedStr)
 	buf.WriteString("\n\n")
+
+	// Animated progress bar (indeterminate, just moves) to add visual life.
+	barWidth := width - 12
+	if barWidth < 10 {
+		barWidth = 10
+	}
+	pos := b.loadingTick % (barWidth + 6)
+	var bar strings.Builder
+	for i := 0; i < barWidth; i++ {
+		// Draw a moving "comet" of 3 filled blocks.
+		if i >= pos-2 && i <= pos {
+			bar.WriteString("█")
+		} else {
+			bar.WriteString("░")
+		}
+	}
+	buf.WriteString("  " + lipgloss.NewStyle().Foreground(sapphire).Render(bar.String()))
+	buf.WriteString("\n\n")
+
 	buf.WriteString(DimStyle.Render("  " + connectLabel))
+	if elapsed > 15*time.Second && b.ai.IsSmallModel() {
+		buf.WriteString("\n")
+		buf.WriteString(DimStyle.Render("  Small models can be slow — consider a larger model for complex tasks"))
+	} else if elapsed > 30*time.Second {
+		buf.WriteString("\n")
+		buf.WriteString(DimStyle.Render("  Taking longer than usual — check if Ollama is responsive"))
+	}
 	buf.WriteString("\n\n")
 	buf.WriteString(DimStyle.Render("  Esc: cancel"))
 
@@ -2097,6 +3017,16 @@ func (b Bots) viewResults(width int) string {
 		Bold(true).
 		Render("  " + bd.icon + " " + bd.name + " Results")
 	buf.WriteString(title)
+	// Metadata line: model + elapsed time.
+	if b.lastElapsed > 0 {
+		metaParts := []string{}
+		if b.ai.Model != "" && b.ai.Provider != "local" {
+			metaParts = append(metaParts, b.ai.Model)
+		}
+		metaParts = append(metaParts, fmt.Sprintf("%.1fs", b.lastElapsed.Seconds()))
+		meta := DimStyle.Render("  " + strings.Join(metaParts, " • "))
+		buf.WriteString(meta)
+	}
 	buf.WriteString("\n")
 	buf.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
 	buf.WriteString("\n")
@@ -2130,6 +3060,16 @@ func (b Bots) viewResults(width int) string {
 	buf.WriteString(DimStyle.Render("  " + strings.Repeat("─", width-10)))
 	buf.WriteString("\n")
 
+	// Transient status line (e.g. "Copied to clipboard", "Saved to Bots/...").
+	if b.statusMsg != "" {
+		buf.WriteString(lipgloss.NewStyle().Foreground(green).Bold(true).Render("  " + b.statusMsg))
+		buf.WriteString("\n")
+	}
+
+	actions := "c:copy  s:save  r:re-run"
+	if b.rawResponse == "" {
+		actions = "r:re-run"
+	}
 	if b.resultReady {
 		actionHint := ""
 		switch b.pendingResult.Action {
@@ -2138,15 +3078,17 @@ func (b Bots) viewResults(width int) string {
 		case "link":
 			actionHint = "Enter: insert link"
 		case "summary":
-			actionHint = "Enter: copy summary"
+			actionHint = "Enter: close"
 		}
+		parts := []string{}
 		if actionHint != "" {
-			buf.WriteString(DimStyle.Render("  " + actionHint + "  Esc: back"))
-		} else {
-			buf.WriteString(DimStyle.Render("  Esc: back"))
+			parts = append(parts, actionHint)
 		}
+		parts = append(parts, actions, "j/k g/G: scroll", "Esc: back")
+		buf.WriteString(DimStyle.Render("  " + strings.Join(parts, "  ")))
 	} else {
-		buf.WriteString(DimStyle.Render("  j/k: scroll  Esc: back"))
+		parts := []string{actions, "j/k g/G: scroll", "Esc: back"}
+		buf.WriteString(DimStyle.Render("  " + strings.Join(parts, "  ")))
 	}
 
 	border := lipgloss.NewStyle().
