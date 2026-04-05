@@ -76,7 +76,8 @@ type DailyBriefing struct {
 	briefing    string   // generated briefing text
 	briefLines  []string // for display
 	scroll      int
-	loadingTick int
+	loadingTick   int
+	loadingStart  time.Time
 
 	// vault context
 	notes       map[string]string
@@ -147,18 +148,24 @@ func (db *DailyBriefing) buildPrompt() string {
 		sb.WriteString(fmt.Sprintf("The user said their goal for today is: \"%s\"\nIncorporate this into the briefing and help them plan around it.\n\n", db.userGoal))
 	}
 
-	// Recent notes (last 10)
+	// Recent notes — less for small models.
+	maxNotes := 10
+	maxPreview := 300
+	if db.ai.IsSmallModel() {
+		maxNotes = 5
+		maxPreview = 150
+	}
 	sb.WriteString("RECENT NOTES (most recently modified):\n")
 	limit := len(db.recentPaths)
-	if limit > 10 {
-		limit = 10
+	if limit > maxNotes {
+		limit = maxNotes
 	}
 	for i := 0; i < limit; i++ {
 		path := db.recentPaths[i]
 		content := db.notes[path]
 		preview := strings.ReplaceAll(content, "\n", " ")
-		if len(preview) > 300 {
-			preview = preview[:300]
+		if len(preview) > maxPreview {
+			preview = preview[:maxPreview]
 		}
 		sb.WriteString(fmt.Sprintf("\n--- %s ---\n%s\n", strings.TrimSuffix(path, ".md"), preview))
 	}
@@ -171,6 +178,10 @@ func (db *DailyBriefing) buildPrompt() string {
 	}
 
 	// Extract all open tasks across recent notes
+	maxTasks := 20
+	if db.ai.IsSmallModel() {
+		maxTasks = 10
+	}
 	sb.WriteString("\nOPEN TASKS FOUND IN VAULT:\n")
 	taskCount := 0
 	for _, path := range db.recentPaths {
@@ -180,12 +191,12 @@ func (db *DailyBriefing) buildPrompt() string {
 			if strings.HasPrefix(trimmed, "- [ ]") {
 				sb.WriteString(fmt.Sprintf("  %s (from %s)\n", trimmed, strings.TrimSuffix(path, ".md")))
 				taskCount++
-				if taskCount >= 20 {
+				if taskCount >= maxTasks {
 					break
 				}
 			}
 		}
-		if taskCount >= 20 {
+		if taskCount >= maxTasks {
 			break
 		}
 	}
@@ -205,7 +216,12 @@ func (db *DailyBriefing) startBriefing() tea.Cmd {
 	ai := db.ai
 
 	return func() tea.Msg {
-		resp, err := ai.Chat(deepCovenPrompt, prompt)
+		sysPrompt := deepCovenPrompt
+		if ai.IsSmallModel() {
+			sysPrompt = "Generate a brief morning briefing. List: 1) Active topics (2-3), " +
+				"2) Open tasks, 3) Today's focus (1-2 items). Be concise, no preamble."
+		}
+		resp, err := ai.Chat(sysPrompt, prompt)
 		if err != nil {
 			return briefingResultMsg{err: err}
 		}
@@ -255,6 +271,7 @@ func (db DailyBriefing) Update(msg tea.Msg) (DailyBriefing, tea.Cmd) {
 			case "enter":
 				db.state = briefingStateLoading
 				db.loadingTick = 0
+				db.loadingStart = time.Now()
 				return db, tea.Batch(db.startBriefing(), briefingTickCmd())
 			case "backspace":
 				if len(db.userGoal) > 0 {
@@ -369,8 +386,9 @@ func (db DailyBriefing) View() string {
 	case briefingStateLoading:
 		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 		spinner := lipgloss.NewStyle().Foreground(mauve).Render(frames[db.loadingTick%len(frames)])
+		elapsed := time.Since(db.loadingStart).Truncate(time.Second)
 		b.WriteString("\n")
-		b.WriteString("  " + spinner + lipgloss.NewStyle().Foreground(text).Render(" DeepCoven is analyzing your vault..."))
+		b.WriteString("  " + spinner + lipgloss.NewStyle().Foreground(text).Render(fmt.Sprintf(" DeepCoven is analyzing your vault... (%s)", elapsed)))
 		b.WriteString("\n\n")
 		b.WriteString(DimStyle.Render("  Reviewing recent notes, tasks, and connections."))
 

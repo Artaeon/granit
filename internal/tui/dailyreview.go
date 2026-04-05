@@ -319,13 +319,19 @@ func (dr *DailyReview) aiDailySummaryCmd() tea.Cmd {
 			sb.WriteString(fmt.Sprintf("\nUSER REFLECTION:\n%s\n", reflection))
 		}
 
-		systemPrompt := "You are DEEPCOVEN, a direct and honest end-of-day coach.\n\n" +
-			"Based on what was completed, rescheduled, and the user's reflection:\n" +
-			"1. WIN OF THE DAY: The single most impactful thing accomplished\n" +
-			"2. PATTERN: Any recurring theme (momentum, procrastination, overcommitment)\n" +
-			"3. TOMORROW'S PRIORITY: The #1 thing to tackle first tomorrow\n" +
-			"4. HONEST NOTE: 1 sentence of encouragement or reality check\n\n" +
-			"Keep it under 8 lines total. Be direct."
+		var systemPrompt string
+		if ai.IsSmallModel() {
+			systemPrompt = "End-of-day review. Format:\n" +
+				"WIN: one thing\nPATTERN: one observation\nTOMORROW: one priority\nNOTE: one sentence"
+		} else {
+			systemPrompt = "You are DEEPCOVEN, a direct and honest end-of-day coach.\n\n" +
+				"Based on what was completed, rescheduled, and the user's reflection:\n" +
+				"1. WIN OF THE DAY: The single most impactful thing accomplished\n" +
+				"2. PATTERN: Any recurring theme (momentum, procrastination, overcommitment)\n" +
+				"3. TOMORROW'S PRIORITY: The #1 thing to tackle first tomorrow\n" +
+				"4. HONEST NOTE: 1 sentence of encouragement or reality check\n\n" +
+				"Keep it under 8 lines total. Be direct."
+		}
 
 		resp, err := ai.Chat(systemPrompt, sb.String())
 		return dailyReviewAIMsg{summary: strings.TrimSpace(resp), err: err}

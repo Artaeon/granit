@@ -48,7 +48,8 @@ type Devotional struct {
 
 	// State
 	loading     bool
-	loadingTick int
+	loadingTick   int
+	loadingStart  time.Time
 	reflection  string
 	lines       []string
 	scroll      int
@@ -77,6 +78,7 @@ func (d *Devotional) Open(vaultRoot string, ai AIConfig, goals []Goal) tea.Cmd {
 	d.goals = goals
 	d.loading = true
 	d.loadingTick = 0
+	d.loadingStart = time.Now()
 	d.reflection = ""
 	d.lines = nil
 	d.scroll = 0
@@ -152,16 +154,23 @@ func (d *Devotional) generateCmd() tea.Cmd {
 			}
 		}
 
-		systemPrompt := "You are DEEPCOVEN, a faith-informed personal advisor. " +
-			"The user starts each day with a scripture verse. " +
-			"Connect this verse to their current life context and goals.\n\n" +
-			"Generate a brief personal devotional reflection:\n\n" +
-			"1. VERSE INSIGHT: What is the core truth of this verse? (2 sentences)\n" +
-			"2. TODAY'S APPLICATION: How does this verse speak to what the user is working on? " +
-			"Connect it to their specific goals and challenges.\n" +
-			"3. PRAYER FOCUS: A single sentence the user can carry through their day.\n" +
-			"4. ACTION: One concrete thing to do today that lives out this verse.\n\n" +
-			"Keep it personal, grounded, and under 12 lines. Reference specific goals by name."
+		var systemPrompt string
+		if ai.IsSmallModel() {
+			systemPrompt = "Write a short devotional reflection on the given verse. " +
+				"Include: 1) What the verse means, 2) How to apply it today, " +
+				"3) A prayer, 4) One action step. Keep it under 8 lines."
+		} else {
+			systemPrompt = "You are DEEPCOVEN, a faith-informed personal advisor. " +
+				"The user starts each day with a scripture verse. " +
+				"Connect this verse to their current life context and goals.\n\n" +
+				"Generate a brief personal devotional reflection:\n\n" +
+				"1. VERSE INSIGHT: What is the core truth of this verse? (2 sentences)\n" +
+				"2. TODAY'S APPLICATION: How does this verse speak to what the user is working on? " +
+				"Connect it to their specific goals and challenges.\n" +
+				"3. PRAYER FOCUS: A single sentence the user can carry through their day.\n" +
+				"4. ACTION: One concrete thing to do today that lives out this verse.\n\n" +
+				"Keep it personal, grounded, and under 12 lines. Reference specific goals by name."
+		}
 
 		resp, err := ai.Chat(systemPrompt, sb.String())
 		return devotionalResultMsg{reflection: strings.TrimSpace(resp), err: err}
@@ -199,7 +208,8 @@ func (d Devotional) View() string {
 	if d.loading {
 		spinChars := []string{"\u25CB", "\u25D4", "\u25D1", "\u25D5", "\u25CF"}
 		spin := spinChars[d.loadingTick%len(spinChars)]
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Render(spin+" Reflecting on this verse...") + "\n")
+		elapsed := time.Since(d.loadingStart).Truncate(time.Second)
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Render(spin+" Reflecting on this verse..."+fmt.Sprintf(" (%s)", elapsed)) + "\n")
 	} else if d.reflection != "" {
 		bodyStyle := lipgloss.NewStyle().Foreground(text)
 		headStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)

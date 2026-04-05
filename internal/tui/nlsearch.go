@@ -85,7 +85,7 @@ func NewNLSearch() NLSearch {
 		ai: AIConfig{
 			Provider:  "local",
 			OllamaURL: "http://localhost:11434",
-			Model:     "llama3.2",
+			Model:     "qwen2.5:0.5b",
 		},
 	}
 }
@@ -238,15 +238,20 @@ func nlSearchTickCmd() tea.Cmd {
 // ---------------------------------------------------------------------------
 
 func (nls NLSearch) buildSearchPrompt() string {
+	// Reduce note count and preview size for small models.
+	maxNotes := 100
+	maxPreview := 100
+	if nls.ai.IsSmallModel() {
+		maxNotes = 40
+		maxPreview = 60
+	}
 	var noteList strings.Builder
 	for i, entry := range nls.noteIndex {
-		if i >= 100 {
+		if i >= maxNotes {
 			break
 		}
 		preview := strings.ReplaceAll(entry.Content, "\n", " ")
-		if len(preview) > 100 {
-			preview = preview[:100]
-		}
+		preview = truncateAtBoundary(preview, maxPreview)
 		tagStr := ""
 		if len(entry.Tags) > 0 {
 			tagStr = " [" + strings.Join(entry.Tags, ", ") + "]"
@@ -605,7 +610,10 @@ func (nls NLSearch) startSearch() (NLSearch, tea.Cmd) {
 	nls.scroll = 0
 
 	if nls.ai.Provider != "" && nls.ai.Provider != "local" {
-		systemPrompt := "You are a helpful note-taking assistant. Be concise and actionable."
+		systemPrompt := "You are a note search assistant. Return results in the exact format requested, one per line."
+		if nls.ai.IsSmallModel() {
+			systemPrompt = "Return matching notes as PATH | REASON, one per line. No other text."
+		}
 		userPrompt := nls.buildSearchPrompt()
 		ai := nls.ai
 

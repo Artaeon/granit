@@ -64,8 +64,9 @@ type MorningRoutine struct {
 	scroll int
 
 	// Loading state
-	loading     bool
-	loadingTick int
+	loading      bool
+	loadingTick  int
+	loadingStart time.Time
 
 	// Step results
 	scripture  Scripture
@@ -139,6 +140,7 @@ func (mr *MorningRoutine) Open(
 	mr.priorities = nil
 	mr.loading = true
 	mr.loadingTick = 0
+	mr.loadingStart = time.Now()
 	mr.scripture = DailyScripture(vaultRoot)
 
 	return tea.Batch(mr.startDevotional(), morningTickCmd())
@@ -216,6 +218,7 @@ func (mr MorningRoutine) advancePhase() (MorningRoutine, tea.Cmd) {
 	mr.scroll = 0
 	mr.loading = true
 	mr.loadingTick = 0
+	mr.loadingStart = time.Now()
 
 	switch mr.phase {
 	case morningDevotional:
@@ -273,9 +276,14 @@ func (mr *MorningRoutine) startDevotional() tea.Cmd {
 				}
 			}
 		}
-		systemPrompt := "You are DEEPCOVEN, a faith-informed personal advisor. " +
-			"Connect this verse to the user's goals. " +
-			"Give: verse insight (2 sentences), today's application, prayer focus, and one action. Under 10 lines."
+		var systemPrompt string
+		if ai.IsSmallModel() {
+			systemPrompt = "Reflect on the verse briefly. Give insight, application, prayer, and one action. Under 6 lines."
+		} else {
+			systemPrompt = "You are DEEPCOVEN, a faith-informed personal advisor. " +
+				"Connect this verse to the user's goals. " +
+				"Give: verse insight (2 sentences), today's application, prayer focus, and one action. Under 10 lines."
+		}
 		resp, err := ai.Chat(systemPrompt, sb.String())
 		return morningDevotionalMsg{reflection: strings.TrimSpace(resp), err: err}
 	}
@@ -290,11 +298,19 @@ func (mr *MorningRoutine) startBriefing() tea.Cmd {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("Today: %s\n\n", time.Now().Format("2006-01-02")))
 
-		// Recent notes (up to 10)
+		// Recent notes — less for small models.
+		maxNotes := 10
+		maxPreview := 300
+		maxTasks := 20
+		if ai.IsSmallModel() {
+			maxNotes = 5
+			maxPreview = 150
+			maxTasks = 10
+		}
 		count := 0
 		sb.WriteString("RECENT NOTES:\n")
 		for _, p := range notePaths {
-			if count >= 10 {
+			if count >= maxNotes {
 				break
 			}
 			content := noteContents[p]
@@ -302,8 +318,8 @@ func (mr *MorningRoutine) startBriefing() tea.Cmd {
 				continue
 			}
 			preview := content
-			if len([]rune(preview)) > 300 {
-				preview = string([]rune(preview)[:300])
+			if len([]rune(preview)) > maxPreview {
+				preview = string([]rune(preview)[:maxPreview])
 			}
 			sb.WriteString(fmt.Sprintf("### %s\n%s\n\n", p, preview))
 			count++
@@ -314,7 +330,7 @@ func (mr *MorningRoutine) startBriefing() tea.Cmd {
 		taskCount := 0
 		for _, p := range notePaths {
 			for _, line := range strings.Split(noteContents[p], "\n") {
-				if strings.Contains(line, "- [ ]") && taskCount < 20 {
+				if strings.Contains(line, "- [ ]") && taskCount < maxTasks {
 					sb.WriteString(strings.TrimSpace(line) + "\n")
 					taskCount++
 				}
@@ -322,6 +338,10 @@ func (mr *MorningRoutine) startBriefing() tea.Cmd {
 		}
 
 		systemPrompt := deepCovenPrompt
+		if ai.IsSmallModel() {
+			systemPrompt = "Summarize recent notes and tasks. List: 1) Active topics (2-3), " +
+				"2) Open tasks, 3) Today's focus. Be concise."
+		}
 		resp, err := ai.Chat(systemPrompt, sb.String())
 		return morningBriefingMsg{content: strings.TrimSpace(resp), err: err}
 	}
@@ -344,9 +364,13 @@ func (mr *MorningRoutine) startPlan() tea.Cmd {
 		sb.WriteString(fmt.Sprintf("Current time: %s %s\n", now.Format("15:04"), now.Weekday()))
 		sb.WriteString("Plan my remaining day. Create a time-blocked schedule.\n\n")
 
+		maxPlanTasks := 20
+		if ai.IsSmallModel() {
+			maxPlanTasks = 10
+		}
 		sb.WriteString("TASKS:\n")
 		for i, t := range tasks {
-			if i >= 20 || t.Done {
+			if i >= maxPlanTasks || t.Done {
 				continue
 			}
 			due := ""
@@ -372,9 +396,14 @@ func (mr *MorningRoutine) startPlan() tea.Cmd {
 			}
 		}
 
-		systemPrompt := "You are a productivity coach. Create an optimized daily schedule.\n\n" +
-			"Format:\nTOP_GOAL: {one sentence}\n\nSCHEDULE:\nHH:MM-HH:MM | Task | type\n\n" +
-			"FOCUS_ORDER:\n1. Task\n2. Task\n3. Task\n\nADVICE: {2-3 sentences}"
+		var systemPrompt string
+		if ai.IsSmallModel() {
+			systemPrompt = "Create a daily schedule.\nFormat:\nTOP_GOAL: goal\nSCHEDULE:\nHH:MM-HH:MM | Task | type\nFOCUS_ORDER:\n1. Task\nADVICE: advice"
+		} else {
+			systemPrompt = "You are a productivity coach. Create an optimized daily schedule.\n\n" +
+				"Format:\nTOP_GOAL: {one sentence}\n\nSCHEDULE:\nHH:MM-HH:MM | Task | type\n\n" +
+				"FOCUS_ORDER:\n1. Task\n2. Task\n3. Task\n\nADVICE: {2-3 sentences}"
+		}
 
 		resp, err := ai.Chat(systemPrompt, sb.String())
 		return morningPlanMsg{response: strings.TrimSpace(resp), err: err}
@@ -498,7 +527,8 @@ func (mr MorningRoutine) viewDevotional(b *strings.Builder, w int) {
 	if mr.loading {
 		spinChars := []string{"\u25CB", "\u25D4", "\u25D1", "\u25D5", "\u25CF"}
 		spin := spinChars[mr.loadingTick%len(spinChars)]
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Render(spin+" Reflecting on this verse...") + "\n")
+		elapsed := time.Since(mr.loadingStart).Truncate(time.Second)
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Render(spin+" Reflecting on this verse..."+fmt.Sprintf(" (%s)", elapsed)) + "\n")
 		return
 	}
 
@@ -521,7 +551,8 @@ func (mr MorningRoutine) viewBriefing(b *strings.Builder, w int) {
 	if mr.loading {
 		spinChars := []string{"\u25CB", "\u25D4", "\u25D1", "\u25D5", "\u25CF"}
 		spin := spinChars[mr.loadingTick%len(spinChars)]
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Render(spin+" DEEPCOVEN is analyzing your vault...") + "\n")
+		elapsed := time.Since(mr.loadingStart).Truncate(time.Second)
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Render(spin+" DEEPCOVEN is analyzing your vault..."+fmt.Sprintf(" (%s)", elapsed)) + "\n")
 		return
 	}
 
@@ -544,7 +575,8 @@ func (mr MorningRoutine) viewPlan(b *strings.Builder, w int) {
 	if mr.loading {
 		spinChars := []string{"\u25CB", "\u25D4", "\u25D1", "\u25D5", "\u25CF"}
 		spin := spinChars[mr.loadingTick%len(spinChars)]
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Render(spin+" Planning your day...") + "\n")
+		elapsed := time.Since(mr.loadingStart).Truncate(time.Second)
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Render(spin+" Planning your day..."+fmt.Sprintf(" (%s)", elapsed)) + "\n")
 		return
 	}
 

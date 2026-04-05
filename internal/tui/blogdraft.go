@@ -88,8 +88,9 @@ type BlogDraft struct {
 	scroll int
 
 	// AI state
-	loading     bool
-	loadingTick int
+	loading      bool
+	loadingTick  int
+	loadingStart time.Time
 
 	// Result
 	resultReady   bool
@@ -139,6 +140,7 @@ func (bd *BlogDraft) Open(vaultRoot string, ai AIConfig) {
 	bd.scroll = 0
 	bd.loading = false
 	bd.loadingTick = 0
+	bd.loadingStart = time.Now()
 	bd.resultReady = false
 	bd.resultTitle = ""
 	bd.resultContent = ""
@@ -215,11 +217,16 @@ func (bd BlogDraft) buildSectionPrompt(sectionIdx int) (string, string) {
 	}
 	userBuf.WriteString("\n")
 
-	// Previous sections (truncated to last 500 chars)
+	// Previous sections — keep the tail so the model has recent context.
+	// Small models get less to avoid overflow.
+	maxPrev := 500
+	if bd.ai.IsSmallModel() {
+		maxPrev = 200
+	}
 	if bd.fullDraft != "" {
 		prev := bd.fullDraft
-		if len(prev) > 500 {
-			prev = prev[len(prev)-500:]
+		if len(prev) > maxPrev {
+			prev = prev[len(prev)-maxPrev:]
 		}
 		userBuf.WriteString("PREVIOUS SECTIONS:\n")
 		userBuf.WriteString(prev)
@@ -430,6 +437,7 @@ func (bd BlogDraft) updateInput(msg tea.KeyMsg) (BlogDraft, tea.Cmd) {
 		}
 		bd.loading = true
 		bd.loadingTick = 0
+		bd.loadingStart = time.Now()
 		bd.errMsg = ""
 		return bd, tea.Batch(bd.generateOutline(), blogTickCmd())
 
@@ -552,6 +560,7 @@ func (bd BlogDraft) updateOutline(msg tea.KeyMsg) (BlogDraft, tea.Cmd) {
 		bd.stage = blogStageDrafting
 		bd.loading = true
 		bd.loadingTick = 0
+		bd.loadingStart = time.Now()
 		bd.errMsg = ""
 		return bd, tea.Batch(bd.draftSection(0), blogTickCmd())
 	}
@@ -583,6 +592,7 @@ func (bd BlogDraft) updateDrafting(msg tea.KeyMsg) (BlogDraft, tea.Cmd) {
 			bd.draftBuf = ""
 			bd.loading = true
 			bd.loadingTick = 0
+			bd.loadingStart = time.Now()
 			bd.errMsg = ""
 			return bd, tea.Batch(bd.draftSection(bd.currentSection), blogTickCmd())
 		}
@@ -601,6 +611,7 @@ func (bd BlogDraft) updateDrafting(msg tea.KeyMsg) (BlogDraft, tea.Cmd) {
 		// Regenerate current section
 		bd.loading = true
 		bd.loadingTick = 0
+		bd.loadingStart = time.Now()
 		bd.errMsg = ""
 		return bd, tea.Batch(bd.draftSection(bd.currentSection), blogTickCmd())
 
@@ -774,7 +785,8 @@ func (bd BlogDraft) viewLoading(b *strings.Builder, _ int) {
 		label = "Generating..."
 	}
 
-	b.WriteString(spinStyle.Render(frame + " " + label))
+	elapsed := time.Since(bd.loadingStart).Truncate(time.Second)
+	b.WriteString(spinStyle.Render(frame+" "+label) + dimStyle.Render(fmt.Sprintf("  %s", elapsed)))
 	b.WriteString("\n\n")
 	b.WriteString(dimStyle.Render(fmt.Sprintf("Topic: %s", bd.topic)))
 	b.WriteString("\n")

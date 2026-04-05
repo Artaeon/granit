@@ -617,19 +617,29 @@ func (gm *GoalsMode) aiGoalCoach() tea.Cmd {
 			sb.WriteString("\n")
 		}
 
-		systemPrompt := "You are DEEPCOVEN, a direct and honest personal goal coach.\n\n" +
-			"Analyze ALL of the user's goals holistically. Look for:\n" +
-			"1. Goals competing for the same time/energy\n" +
-			"2. Stalled goals that need attention or should be paused\n" +
-			"3. Goals off-track vs their target dates\n" +
-			"4. Priority adjustments based on deadline proximity and progress\n" +
-			"5. Quick wins that could build momentum\n\n" +
-			"Be brutally honest. No filler. Format as:\n" +
-			"## Goal Health Report\n" +
-			"### On Track\n- {goal}: {1 line status}\n" +
-			"### Needs Attention\n- {goal}: {what's wrong and what to do}\n" +
-			"### Recommended Priority Order\n1. {goal} — {why first}\n" +
-			"### Coach's Note\n{1-2 sentences of honest, actionable advice}"
+		var systemPrompt string
+		if ai.IsSmallModel() {
+			systemPrompt = "Analyze the user's goals. Format as:\n" +
+				"## Goal Health Report\n" +
+				"### On Track\n- goal: status\n" +
+				"### Needs Attention\n- goal: what's wrong\n" +
+				"### Recommended Priority Order\n1. goal — why\n" +
+				"### Coach's Note\nshort honest advice"
+		} else {
+			systemPrompt = "You are DEEPCOVEN, a direct and honest personal goal coach.\n\n" +
+				"Analyze ALL of the user's goals holistically. Look for:\n" +
+				"1. Goals competing for the same time/energy\n" +
+				"2. Stalled goals that need attention or should be paused\n" +
+				"3. Goals off-track vs their target dates\n" +
+				"4. Priority adjustments based on deadline proximity and progress\n" +
+				"5. Quick wins that could build momentum\n\n" +
+				"Be brutally honest. No filler. Format as:\n" +
+				"## Goal Health Report\n" +
+				"### On Track\n- {goal}: {1 line status}\n" +
+				"### Needs Attention\n- {goal}: {what's wrong and what to do}\n" +
+				"### Recommended Priority Order\n1. {goal} — {why first}\n" +
+				"### Coach's Note\n{1-2 sentences of honest, actionable advice}"
+		}
 
 		resp, err := ai.Chat(systemPrompt, sb.String())
 		return gmAICoachMsg{analysis: strings.TrimSpace(resp), err: err}

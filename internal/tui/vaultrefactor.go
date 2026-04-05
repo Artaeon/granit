@@ -59,8 +59,9 @@ type VaultRefactor struct {
 	state       int
 	plan        string   // raw AI output
 	planLines   []string // split for display
-	scroll      int
-	loadingTick int
+	scroll       int
+	loadingTick  int
+	loadingStart time.Time
 
 	// vault data
 	notes    map[string]string
@@ -88,6 +89,7 @@ func (vr *VaultRefactor) Open() {
 	vr.planLines = nil
 	vr.scroll = 0
 	vr.loadingTick = 0
+	vr.loadingStart = time.Time{}
 	vr.resultReady = false
 	vr.resultPlan = ""
 }
@@ -252,6 +254,7 @@ func (vr VaultRefactor) Update(msg tea.Msg) (VaultRefactor, tea.Cmd) {
 			case "enter", "y":
 				vr.state = refactorStateLoading
 				vr.loadingTick = 0
+				vr.loadingStart = time.Now()
 				return vr, tea.Batch(vr.startRefactor(), vaultRefactorTickCmd())
 			case "n", "q":
 				vr.active = false
@@ -387,7 +390,8 @@ func (vr VaultRefactor) View() string {
 		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 		spinner := lipgloss.NewStyle().Foreground(mauve).Render(frames[vr.loadingTick%len(frames)])
 		b.WriteString("\n")
-		b.WriteString("  " + spinner + lipgloss.NewStyle().Foreground(text).Render(" Analyzing vault structure..."))
+		elapsed := time.Since(vr.loadingStart).Truncate(time.Second)
+		b.WriteString("  " + spinner + lipgloss.NewStyle().Foreground(text).Render(" Analyzing vault structure...") + DimStyle.Render(fmt.Sprintf(" %s", elapsed)))
 		b.WriteString("\n\n")
 		b.WriteString(DimStyle.Render("  This may take a moment for large vaults."))
 		b.WriteString("\n")

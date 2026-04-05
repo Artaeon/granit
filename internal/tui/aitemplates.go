@@ -94,7 +94,8 @@ type AITemplates struct {
 	generatedTitle   string
 
 	// Loading animation
-	loadingTick int
+	loadingTick  int
+	loadingStart time.Time
 
 	// Error
 	errMsg string
@@ -129,6 +130,7 @@ func (a *AITemplates) OpenWithAI(cfg AIConfig) {
 	a.generatedContent = ""
 	a.generatedTitle = ""
 	a.loadingTick = 0
+	a.loadingStart = time.Time{}
 	a.errMsg = ""
 	a.resultReady = false
 	a.resultTitle = ""
@@ -921,6 +923,7 @@ func (a AITemplates) updateTopicInput(msg tea.KeyMsg) (AITemplates, tea.Cmd) {
 		}
 		a.state = aitStateGenerating
 		a.loadingTick = 0
+		a.loadingStart = time.Now()
 		a.errMsg = ""
 		return a, tea.Batch(a.generateContent(), aiTemplateTickCmd())
 	case "backspace":
@@ -962,6 +965,7 @@ func (a AITemplates) updatePreview(msg tea.KeyMsg) (AITemplates, tea.Cmd) {
 		}
 		a.state = aitStateGenerating
 		a.loadingTick = 0
+		a.loadingStart = time.Now()
 		a.generatedContent = ""
 		a.errMsg = ""
 		return a, tea.Batch(a.generateContent(), aiTemplateTickCmd())
@@ -1159,8 +1163,9 @@ func (a AITemplates) viewGenerating(width int) string {
 	spinner := []string{"\u280b", "\u2819", "\u2838", "\u2834", "\u2826", "\u2807"}
 	frame := spinner[a.loadingTick%len(spinner)]
 
+	elapsed := time.Since(a.loadingStart).Truncate(time.Second)
 	loadStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
-	b.WriteString("  " + loadStyle.Render(frame+" Generating "+strings.ToLower(typeName)+"..."))
+	b.WriteString("  " + loadStyle.Render(frame+" Generating "+strings.ToLower(typeName)+"...") + DimStyle.Render(fmt.Sprintf(" %s", elapsed)))
 	b.WriteString("\n\n")
 
 	promptDisplay := lipgloss.NewStyle().Foreground(overlay0).Italic(true)

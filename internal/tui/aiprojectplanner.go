@@ -169,11 +169,21 @@ func (ap AIProjectPlanner) buildPrompt() string {
 		b.WriteString("Keep this in mind when setting realistic timelines — don't overload the user.\n\n")
 	}
 
+	// Small models get a tighter context budget.
+	maxProjects := 10
+	maxGoals := 10
+	maxVaultTitles := 30
+	if ap.ai.IsSmallModel() {
+		maxProjects = 5
+		maxGoals = 5
+		maxVaultTitles = 10
+	}
+
 	if len(ap.existingProjects) > 0 {
 		b.WriteString("Existing projects (avoid duplicates, build on these where relevant):\n")
 		limit := len(ap.existingProjects)
-		if limit > 10 {
-			limit = 10
+		if limit > maxProjects {
+			limit = maxProjects
 		}
 		for _, p := range ap.existingProjects[:limit] {
 			status := p.Status
@@ -188,8 +198,8 @@ func (ap AIProjectPlanner) buildPrompt() string {
 	if len(ap.existingGoals) > 0 {
 		b.WriteString("Existing goals (link to these where relevant):\n")
 		limit := len(ap.existingGoals)
-		if limit > 10 {
-			limit = 10
+		if limit > maxGoals {
+			limit = maxGoals
 		}
 		for _, g := range ap.existingGoals[:limit] {
 			b.WriteString(fmt.Sprintf("- %s [%s] %s\n", g.Title, string(g.Status), g.Category))
@@ -200,8 +210,8 @@ func (ap AIProjectPlanner) buildPrompt() string {
 	if len(ap.vaultTitles) > 0 {
 		b.WriteString("Existing notes in the vault (for context on user's interests):\n")
 		limit := len(ap.vaultTitles)
-		if limit > 30 {
-			limit = 30
+		if limit > maxVaultTitles {
+			limit = maxVaultTitles
 		}
 		for _, t := range ap.vaultTitles[:limit] {
 			b.WriteString(fmt.Sprintf("- %s\n", t))

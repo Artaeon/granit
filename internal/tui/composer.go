@@ -53,7 +53,8 @@ type Composer struct {
 	resultReady   bool
 
 	// loading animation
-	loadingTick int
+	loadingTick  int
+	loadingStart time.Time
 
 	// error message
 	errMsg string
@@ -63,7 +64,7 @@ func NewComposer() Composer {
 	return Composer{
 		ai: AIConfig{
 			Provider:  "ollama",
-			Model:     "llama3.2",
+			Model:     "qwen2.5:0.5b",
 			OllamaURL: "http://localhost:11434",
 		},
 	}
@@ -88,6 +89,7 @@ func (c *Composer) Open() {
 	c.resultTitle = ""
 	c.resultContent = ""
 	c.loadingTick = 0
+	c.loadingStart = time.Time{}
 	c.errMsg = ""
 }
 
@@ -129,11 +131,22 @@ func (c *Composer) GetResult() (title, content string, ok bool) {
 // ---------------------------------------------------------------------------
 
 func (c *Composer) buildSystemPrompt() string {
+	// Small models get a shorter note list and fewer context examples
+	// to stay within their effective context window.
+	maxNoteList := 50
+	maxContextNotes := 5
+	maxPreview := 300
+	if c.ai.IsSmallModel() {
+		maxNoteList = 20
+		maxContextNotes = 3
+		maxPreview = 150
+	}
+
 	noteList := ""
 	if len(c.existingNotes) > 0 {
 		limit := len(c.existingNotes)
-		if limit > 50 {
-			limit = 50
+		if limit > maxNoteList {
+			limit = maxNoteList
 		}
 		noteList = strings.Join(c.existingNotes[:limit], ", ")
 	}
@@ -167,22 +180,23 @@ func (c *Composer) buildSystemPrompt() string {
 				}
 			}
 		}
-		// Take top 5 relevant notes
+		// Take top N relevant notes
 		var contextBuf strings.Builder
 		contextBuf.WriteString("\n\nRELEVANT EXISTING NOTES (use these for context and wikilinks):\n")
-		limit := 5
+		limit := maxContextNotes
 		if len(matches) < limit {
 			limit = len(matches)
 		}
 		for i := 0; i < limit; i++ {
-			preview := c.noteContents[matches[i].path]
-			if len(preview) > 300 {
-				preview = preview[:300]
-			}
+			preview := truncateAtBoundary(c.noteContents[matches[i].path], maxPreview)
 			preview = strings.ReplaceAll(preview, "\n", " ")
 			contextBuf.WriteString(fmt.Sprintf("- [[%s]]: %s\n", strings.TrimSuffix(matches[i].path, ".md"), preview))
 		}
 		vaultContext = contextBuf.String()
+	}
+
+	if c.ai.IsSmallModel() {
+		return "Generate a markdown note about the given topic. Include YAML frontmatter (title, date, tags), headings, bullet points. Use [[wikilinks]] to: " + noteList + vaultContext
 	}
 
 	sys := "You are a note-taking assistant. Generate a well-structured markdown note about the given topic. Include: " +
@@ -284,6 +298,7 @@ func (c Composer) updateInput(msg tea.KeyMsg) (Composer, tea.Cmd) {
 		}
 		c.loading = true
 		c.loadingTick = 0
+		c.loadingStart = time.Now()
 		c.errMsg = ""
 		return c, tea.Batch(c.generateNote(), composerTickCmd())
 	case "backspace":
@@ -318,6 +333,7 @@ func (c Composer) updatePreview(msg tea.KeyMsg) (Composer, tea.Cmd) {
 		// Regenerate
 		c.loading = true
 		c.loadingTick = 0
+		c.loadingStart = time.Now()
 		c.done = false
 		c.generatedContent = ""
 		c.errMsg = ""
@@ -481,8 +497,9 @@ func (c Composer) viewLoading(width int) string {
 	spinner := []string{"\u280b", "\u2819", "\u2838", "\u2834", "\u2826", "\u2807"}
 	frame := spinner[c.loadingTick%len(spinner)]
 
+	elapsed := time.Since(c.loadingStart).Truncate(time.Second)
 	loadStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
-	b.WriteString("  " + loadStyle.Render(frame+" Generating note..."))
+	b.WriteString("  " + loadStyle.Render(fmt.Sprintf("%s Generating note... %s", frame, elapsed)))
 	b.WriteString("\n\n")
 
 	promptDisplay := lipgloss.NewStyle().Foreground(overlay0).Italic(true)

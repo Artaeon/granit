@@ -227,13 +227,13 @@ func (wc WritingCoach) buildPrompt() string {
 
 	// System context
 	sb.WriteString("You are a writing coach. ")
+	personaMax := 1500
+	if wc.ai.IsSmallModel() {
+		personaMax = 500
+	}
 	if wc.hasSoulNote && wc.soulNote != "" {
 		sb.WriteString("Adopt this persona and style:\n")
-		persona := wc.soulNote
-		if len(persona) > 1500 {
-			persona = persona[:1500]
-		}
-		sb.WriteString(persona)
+		sb.WriteString(truncateAtBoundary(wc.soulNote, personaMax))
 		sb.WriteString("\n\n")
 	}
 
@@ -258,10 +258,11 @@ func (wc WritingCoach) buildPrompt() string {
 	sb.WriteString("LINE_REF: approximate line number or range, or \"general\" if not line-specific.\n")
 	sb.WriteString("Do NOT include any other text, headers, or explanations. Only output the feedback lines.\n\n")
 
-	content := wc.noteContent
-	if len(content) > 4000 {
-		content = content[:4000]
+	maxContent := 4000
+	if wc.ai.IsSmallModel() {
+		maxContent = 1500
 	}
+	content := truncateAtBoundary(wc.noteContent, maxContent)
 	sb.WriteString("Text to analyze:\n---\n")
 	sb.WriteString(content)
 	sb.WriteString("\n---\n")
@@ -772,7 +773,10 @@ func (wc WritingCoach) startAnalysis() (WritingCoach, tea.Cmd) {
 		wc.scroll = 0
 		wc.hasResult = false
 
-		systemPrompt := "You are a writing coach. Be specific and actionable in your feedback."
+		systemPrompt := "You are a writing coach. Be specific and actionable in your feedback. Follow the requested output format exactly."
+		if wc.ai.IsSmallModel() {
+			systemPrompt = "You are a writing coach. Output only the feedback lines in the exact format requested. No explanations."
+		}
 		userPrompt := wc.buildPrompt()
 		ai := wc.ai
 

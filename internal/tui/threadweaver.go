@@ -47,8 +47,9 @@ type ThreadWeaver struct {
 	ai AIConfig
 
 	// Generation state
-	loading     bool
-	loadingTick int
+	loading      bool
+	loadingTick  int
+	loadingStart time.Time
 	generated   string
 	title       string
 
@@ -75,7 +76,7 @@ func NewThreadWeaver() ThreadWeaver {
 	return ThreadWeaver{
 		ai: AIConfig{
 			Provider:  "ollama",
-			Model:     "llama3.2",
+			Model:     "qwen2.5:0.5b",
 			OllamaURL: "http://localhost:11434",
 		},
 	}
@@ -96,6 +97,7 @@ func (tw *ThreadWeaver) Open() {
 	tw.style = 0
 	tw.loading = false
 	tw.loadingTick = 0
+	tw.loadingStart = time.Time{}
 	tw.generated = ""
 	tw.title = ""
 	tw.scroll = 0
@@ -410,6 +412,7 @@ func (tw ThreadWeaver) updateConfigure(msg tea.KeyMsg) (ThreadWeaver, tea.Cmd) {
 		tw.mode = 2
 		tw.loading = true
 		tw.loadingTick = 0
+		tw.loadingStart = time.Now()
 		tw.errMsg = ""
 		return tw, tea.Batch(tw.generate(), twTickCmd())
 	}
@@ -463,6 +466,7 @@ func (tw ThreadWeaver) updatePreview(msg tea.KeyMsg) (ThreadWeaver, tea.Cmd) {
 		tw.mode = 2
 		tw.loading = true
 		tw.loadingTick = 0
+		tw.loadingStart = time.Now()
 		tw.generated = ""
 		tw.errMsg = ""
 		return tw, tea.Batch(tw.generate(), twTickCmd())
@@ -741,8 +745,9 @@ func (tw ThreadWeaver) viewGenerating(width int) string {
 	spinner := []string{"\u280b", "\u2819", "\u2838", "\u2834", "\u2826", "\u2807"}
 	frame := spinner[tw.loadingTick%len(spinner)]
 
+	elapsed := time.Since(tw.loadingStart).Truncate(time.Second)
 	loadStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
-	b.WriteString("  " + loadStyle.Render(frame+" Weaving threads..."))
+	b.WriteString("  " + loadStyle.Render(frame+" Weaving threads...") + DimStyle.Render(fmt.Sprintf(" %s", elapsed)))
 	b.WriteString("\n\n")
 
 	b.WriteString(DimStyle.Render("  Synthesizing notes:"))
