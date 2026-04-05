@@ -242,6 +242,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdShowBots:
 		m.bots.SetSize(m.width, m.height)
 		m.bots.SetAIConfig(m.aiConfig())
+		m.bots.SetVaultRoot(m.vault.Root)
 		noteContents := make(map[string]string)
 		tagMap := make(map[string][]string)
 		for _, p := range m.vault.SortedPaths() {
@@ -275,7 +276,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.export.Open(m.activeNote, m.editor.GetContent(), m.vault.Root)
 	case CmdGitOverlay:
 		m.git.SetSize(m.width, m.height)
-		return m, m.git.Open()
+		return m, m.git.Open(m.vault.Root)
 	case CmdPluginManager:
 		m.plugins.SetSize(m.width, m.height)
 		m.plugins.Open()
@@ -530,7 +531,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		if m.ghostWriter != nil {
 			m.ghostWriter.SetEnabled(!m.ghostWriter.IsEnabled())
 			if m.ghostWriter.IsEnabled() {
-				m.ghostWriter.ai = m.aiConfig()
+				m.ghostWriter.SetAI(m.aiConfig())
 				m.statusbar.SetMessage("Ghost Writer enabled")
 			} else {
 				m.statusbar.SetMessage("Ghost Writer disabled")

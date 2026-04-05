@@ -487,6 +487,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case autoLinkSuggestMsg:
+		if m.autoLinkSuggest != nil {
+			m.autoLinkSuggest.SetInFlight(false)
+		}
 		if msg.err == nil && len(msg.suggestions) > 0 {
 			links := make([]string, len(msg.suggestions))
 			for i, s := range msg.suggestions {
@@ -790,6 +793,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case autoTagResultMsg:
+		if m.autoTagger != nil {
+			m.autoTagger.SetInFlight(false)
+		}
 		if msg.err == nil && len(msg.tags) > 0 {
 			m.applyTagsToNote(msg.tags)
 			m.statusbar.SetMessage("Auto-tagged: " + strings.Join(msg.tags, ", "))
@@ -2716,6 +2722,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+r":
 			m.bots.SetSize(m.width, m.height)
 			m.bots.SetAIConfig(m.aiConfig())
+			m.bots.SetVaultRoot(m.vault.Root)
 			noteContents := make(map[string]string)
 			tagMap := make(map[string][]string)
 			for _, p := range m.vault.SortedPaths() {

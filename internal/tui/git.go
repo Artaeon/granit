@@ -37,6 +37,7 @@ type GitOverlay struct {
 	commitMsg   string
 	commitMode  bool
 	errorMsg    string
+	vaultRoot   string
 }
 
 func NewGitOverlay() GitOverlay {
@@ -47,8 +48,9 @@ func (g *GitOverlay) IsActive() bool {
 	return g.active
 }
 
-func (g *GitOverlay) Open() tea.Cmd {
+func (g *GitOverlay) Open(vaultRoot string) tea.Cmd {
 	g.active = true
+	g.vaultRoot = vaultRoot
 	g.state = gitStateStatus
 	g.cursor = 0
 	g.scroll = 0
@@ -71,24 +73,27 @@ func (g *GitOverlay) SetSize(width, height int) {
 
 // refreshStatus runs git status --porcelain synchronously and populates statusLines.
 func (g *GitOverlay) refreshStatus() tea.Cmd {
+	dir := g.vaultRoot
 	return func() tea.Msg {
-		out, err := runGitCmd("status", "--porcelain")
+		out, err := runGitCmd(dir, "status", "--porcelain")
 		return gitCmdResultMsg{action: "status", output: out, err: err}
 	}
 }
 
 // refreshLog runs git log --oneline -20 synchronously.
 func (g *GitOverlay) refreshLog() tea.Cmd {
+	dir := g.vaultRoot
 	return func() tea.Msg {
-		out, err := runGitCmd("log", "--oneline", "-20")
+		out, err := runGitCmd(dir, "log", "--oneline", "-20")
 		return gitCmdResultMsg{action: "log", output: out, err: err}
 	}
 }
 
 // refreshDiff runs git diff synchronously.
 func (g *GitOverlay) refreshDiff() tea.Cmd {
+	dir := g.vaultRoot
 	return func() tea.Msg {
-		out, err := runGitCmd("diff")
+		out, err := runGitCmd(dir, "diff")
 		return gitCmdResultMsg{action: "diff", output: out, err: err}
 	}
 }
@@ -178,24 +183,27 @@ func (g GitOverlay) updateCommitMode(msg tea.KeyMsg) (GitOverlay, tea.Cmd) {
 	case "enter":
 		if g.commitMsg != "" {
 			commitMsg := g.commitMsg
+			dir := g.vaultRoot
 			return g, func() tea.Msg {
 				// git add -A && git commit -m "message"
-				if _, err := runGitCmd("add", "-A"); err != nil {
+				if _, err := runGitCmd(dir, "add", "-A"); err != nil {
 					return gitCmdResultMsg{action: "commit", err: fmt.Errorf("add: %w", err)}
 				}
-				out, err := runGitCmd("commit", "-m", commitMsg)
+				out, err := runGitCmd(dir, "commit", "-m", commitMsg)
 				return gitCmdResultMsg{action: "commit", output: out, err: err}
 			}
 		}
 		return g, nil
 	case "backspace":
 		if len(g.commitMsg) > 0 {
-			g.commitMsg = g.commitMsg[:len(g.commitMsg)-1]
+			runes := []rune(g.commitMsg)
+			g.commitMsg = string(runes[:len(runes)-1])
 		}
 		return g, nil
 	default:
 		ch := msg.String()
-		if len(ch) == 1 && ch[0] >= 32 {
+		runes := []rune(ch)
+		if len(runes) == 1 && runes[0] >= 32 {
 			g.commitMsg += ch
 		}
 		return g, nil
@@ -269,13 +277,15 @@ func (g GitOverlay) updateNormal(msg tea.KeyMsg) (GitOverlay, tea.Cmd) {
 		g.errorMsg = ""
 		return g, nil
 	case "p":
+		dir := g.vaultRoot
 		return g, func() tea.Msg {
-			out, err := runGitCmd("push")
+			out, err := runGitCmd(dir, "push")
 			return gitCmdResultMsg{action: "push", output: out, err: err}
 		}
 	case "P":
+		dir := g.vaultRoot
 		return g, func() tea.Msg {
-			out, err := runGitCmd("pull")
+			out, err := runGitCmd(dir, "pull")
 			return gitCmdResultMsg{action: "pull", output: out, err: err}
 		}
 	case "r":
@@ -503,9 +513,13 @@ func (g GitOverlay) renderDiffLines() []string {
 	return out
 }
 
-// runGitCmd executes a git command and returns its combined output.
-func runGitCmd(args ...string) (string, error) {
+// runGitCmd executes a git command in the given directory and returns its combined output.
+// If dir is empty, the process working directory is used.
+func runGitCmd(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

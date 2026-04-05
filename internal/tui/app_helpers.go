@@ -737,7 +737,7 @@ func (m *Model) syncConfigToComponents() {
 	m.autoSync.SetEnabled(m.config.GitAutoSync)
 	if m.ghostWriter != nil {
 		m.ghostWriter.SetEnabled(m.config.GhostWriter)
-		m.ghostWriter.ai = m.aiConfig()
+		m.ghostWriter.SetAI(m.aiConfig())
 	}
 	if m.autoTagger != nil {
 		m.autoTagger.SetEnabled(m.config.AutoTag)
