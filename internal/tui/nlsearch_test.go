@@ -29,8 +29,8 @@ func TestNewNLSearch(t *testing.T) {
 	})
 
 	t.Run("default model", func(t *testing.T) {
-		if nls.ai.Model != "llama3.2" {
-			t.Errorf("expected default Model 'llama3.2', got %q", nls.ai.Model)
+		if nls.ai.Model != "qwen2.5:0.5b" {
+			t.Errorf("expected default Model 'qwen2.5:0.5b', got %q", nls.ai.Model)
 		}
 	})
 
