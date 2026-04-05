@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -81,12 +82,21 @@ func OllamaCheck(baseURL, model string) (string, bool) {
 		return "Ollama response error", false
 	}
 
-	// Check if our model is available
+	// Check if our model is available.
+	// Match exactly, or with a ":" or "-" suffix (e.g. "qwen2.5:0.5b" matches
+	// "qwen2.5:0.5b-instruct"). This avoids false positives like "phi" matching
+	// "phi3" when the user configured just "phi".
 	for _, m := range result.Models {
-		// Match "qwen2.5:0.5b" or "qwen2.5:0.5b-instruct" etc.
-		if m.Name == model || strings.HasPrefix(m.Name, model) {
+		if m.Name == model {
 			setOllamaState(ollamaReady)
 			return fmt.Sprintf("Ready (%s)", model), true
+		}
+		if strings.HasPrefix(m.Name, model) && len(m.Name) > len(model) {
+			next := m.Name[len(model)]
+			if next == ':' || next == '-' {
+				setOllamaState(ollamaReady)
+				return fmt.Sprintf("Ready (%s)", model), true
+			}
 		}
 	}
 
@@ -108,7 +118,7 @@ func OllamaPullModel(baseURL, model string) error {
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
-	resp, err := ollamaPullClient.Post(baseURL+"/api/pull", "application/json", strings.NewReader(string(reqBody)))
+	resp, err := ollamaPullClient.Post(baseURL+"/api/pull", "application/json", bytes.NewReader(reqBody))
 	if err != nil {
 		return fmt.Errorf("pull failed: %w", err)
 	}
