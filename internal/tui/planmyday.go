@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"sort"
@@ -96,13 +97,15 @@ type PlanMyDay struct {
 	clockedSessions []clockPlanSlot
 
 	// Streaming
-	streaming bool
-	streamBuf strings.Builder
-	streamCh  <-chan tea.Msg
+	streaming    bool
+	streamBuf    strings.Builder
+	streamCh     <-chan tea.Msg
+	streamCancel context.CancelFunc
 
 	// Animation
-	loadingTick int
-	spinnerTick int
+	loadingTick  int
+	spinnerTick  int
+	loadingStart time.Time
 }
 
 // NewPlanMyDay creates a new PlanMyDay overlay.
@@ -136,6 +139,7 @@ func (p *PlanMyDay) Open(
 	p.scroll = 0
 	p.loadingTick = 0
 	p.spinnerTick = 0
+	p.loadingStart = time.Now()
 	p.shouldApply = false
 	p.appliedSchedule = nil
 	p.appliedGoal = ""
@@ -441,10 +445,17 @@ func (p *PlanMyDay) parseAIResponse(response string) {
 			if m == nil {
 				continue
 			}
-			sh, _ := strconv.Atoi(m[1])
-			sm, _ := strconv.Atoi(m[2])
-			eh, _ := strconv.Atoi(m[3])
-			em, _ := strconv.Atoi(m[4])
+			sh, err1 := strconv.Atoi(m[1])
+			sm, err2 := strconv.Atoi(m[2])
+			eh, err3 := strconv.Atoi(m[3])
+			em, err4 := strconv.Atoi(m[4])
+			if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
+				continue
+			}
+			// Validate time ranges
+			if sh > 23 || sm > 59 || eh > 23 || em > 59 {
+				continue
+			}
 			taskName := strings.TrimSpace(m[5])
 			slotType := strings.ToLower(strings.TrimSpace(m[6]))
 			project := ""
@@ -507,6 +518,9 @@ func (p *PlanMyDay) parseAIResponse(response string) {
 	// Fall back to local if parsing failed
 	if len(p.schedule) == 0 {
 		p.generateLocalPlan()
+		if p.advice == "" {
+			p.advice = "(AI output could not be parsed — showing locally generated schedule)"
+		}
 	}
 }
 
@@ -803,6 +817,10 @@ func (p PlanMyDay) Update(msg tea.Msg) (PlanMyDay, tea.Cmd) {
 	case streamDoneMsg:
 		if msg.tag == "planmyday" && p.streaming {
 			p.streaming = false
+			if p.streamCancel != nil {
+				p.streamCancel()
+				p.streamCancel = nil
+			}
 			if msg.err != nil {
 				p.generateLocalPlan()
 			} else {
@@ -837,8 +855,14 @@ func (p PlanMyDay) Update(msg tea.Msg) (PlanMyDay, tea.Cmd) {
 			return p, nil
 
 		case 1:
-			// Planning phase — only Esc to cancel
+			// Planning phase — Esc cancels the in-flight stream and closes.
 			if msg.String() == "esc" {
+				if p.streamCancel != nil {
+					p.streamCancel()
+					p.streamCancel = nil
+				}
+				p.streaming = false
+				p.streamCh = nil
 				p.active = false
 			}
 			return p, nil
@@ -868,7 +892,7 @@ func (p PlanMyDay) startPlanning() (PlanMyDay, tea.Cmd) {
 		systemPrompt := "You are a productivity coach that creates optimized daily schedules. Always respond in the exact format requested."
 		userPrompt := p.buildPrompt()
 
-		p.streamCh = sendToAIStreaming(p.ai, systemPrompt, userPrompt, "planmyday")
+		p.streamCh, p.streamCancel = sendToAIStreamingCtx(context.Background(), p.ai, systemPrompt, userPrompt, "planmyday")
 		return p, tea.Batch(streamCmd(p.streamCh), planMyDayTickCmd())
 	}
 
@@ -968,7 +992,8 @@ func (p PlanMyDay) viewGathering(width int) string {
 	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	spinner := lipgloss.NewStyle().Foreground(mauve).Render(frames[p.loadingTick%len(frames)])
 
-	b.WriteString("  " + spinner + lipgloss.NewStyle().Foreground(text).Bold(true).Render(" Gathering your data..."))
+	elapsed := time.Since(p.loadingStart).Truncate(time.Second)
+	b.WriteString("  " + spinner + lipgloss.NewStyle().Foreground(text).Bold(true).Render(fmt.Sprintf(" Gathering your data... (%s)", elapsed)))
 	b.WriteString("\n\n")
 
 	// Show what's being collected
@@ -1028,8 +1053,9 @@ func (p PlanMyDay) viewPlanning(width int) string {
 		providerLabel = "OpenAI (" + p.ai.Model + ")"
 	}
 
+	elapsed := time.Since(p.loadingStart).Truncate(time.Second)
 	b.WriteString("  " + spinner + lipgloss.NewStyle().Foreground(yellow).Bold(true).
-		Render(" Creating your optimal schedule..."))
+		Render(fmt.Sprintf(" Creating your optimal schedule... (%s)", elapsed)))
 	b.WriteString("\n\n")
 	b.WriteString(DimStyle.Render(fmt.Sprintf("  Using %s", providerLabel)))
 	b.WriteString("\n")

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -78,13 +79,15 @@ type TaskTriage struct {
 	tab    int // 0=today's focus, 1=stale tasks
 
 	// Loading
-	loading     bool
-	loadingTick int
+	loading      bool
+	loadingTick  int
+	loadingStart time.Time
 
 	// Streaming
-	streaming bool
-	streamBuf strings.Builder
-	streamCh  <-chan tea.Msg
+	streaming    bool
+	streamBuf    strings.Builder
+	streamCh     <-chan tea.Msg
+	streamCancel context.CancelFunc
 
 	errMsg string
 }
@@ -114,6 +117,7 @@ func (tt *TaskTriage) Open(vaultRoot string, tasks []Task, goals []Goal, cfg AIC
 	tt.tab = 0
 	tt.loading = true
 	tt.loadingTick = 0
+	tt.loadingStart = time.Now()
 	tt.errMsg = ""
 	tt.recommendations = nil
 	tt.staleTasks = nil
@@ -216,16 +220,25 @@ func (tt *TaskTriage) computeStaleTasks() {
 func (tt *TaskTriage) buildPrompt() (string, string) {
 	now := time.Now()
 
-	systemPrompt := "You are a productivity coach. Analyze the user's open tasks and suggest the top 5 tasks they should focus on today. Be specific about WHY each task matters today."
+	var systemPrompt string
+	if tt.ai.IsSmallModel() {
+		systemPrompt = "Pick the 5 most important tasks for today. For each: TASK: name, REASON: why, PRIORITY: 1-5, TIME: minutes. Separate with ---"
+	} else {
+		systemPrompt = "You are a productivity coach. Analyze the user's open tasks and suggest the top 5 tasks they should focus on today. Be specific about WHY each task matters today."
+	}
 
 	var b strings.Builder
 
 	b.WriteString(fmt.Sprintf("TODAY: %s, %s\n\n", now.Format("2006-01-02"), now.Weekday().String()))
 
+	maxTasks := 50
+	if tt.ai.IsSmallModel() {
+		maxTasks = 20
+	}
 	b.WriteString("OPEN TASKS:\n")
 	for i, t := range tt.allTasks {
-		if i >= 50 {
-			b.WriteString(fmt.Sprintf("... and %d more tasks\n", len(tt.allTasks)-50))
+		if i >= maxTasks {
+			b.WriteString(fmt.Sprintf("... and %d more tasks\n", len(tt.allTasks)-maxTasks))
 			break
 		}
 		line := fmt.Sprintf("%d. %s", i+1, t.Text)
@@ -309,7 +322,7 @@ func (tt *TaskTriage) triageCmd() tea.Cmd {
 	if tt.ai.Provider != "" && tt.ai.Provider != "local" {
 		tt.streaming = true
 		tt.streamBuf.Reset()
-		tt.streamCh = sendToAIStreaming(tt.ai, systemPrompt, userPrompt, "tasktriage")
+		tt.streamCh, tt.streamCancel = sendToAIStreamingCtx(context.Background(), tt.ai, systemPrompt, userPrompt, "tasktriage")
 		return streamCmd(tt.streamCh)
 	}
 
@@ -527,6 +540,10 @@ func (tt TaskTriage) Update(msg tea.Msg) (TaskTriage, tea.Cmd) {
 		if msg.tag == "tasktriage" && tt.streaming {
 			tt.streaming = false
 			tt.loading = false
+			if tt.streamCancel != nil {
+				tt.streamCancel()
+				tt.streamCancel = nil
+			}
 			if msg.err != nil {
 				tt.errMsg = msg.err.Error()
 				tt.recommendations = tt.localFallback()
@@ -562,8 +579,15 @@ func (tt TaskTriage) Update(msg tea.Msg) (TaskTriage, tea.Cmd) {
 	case tea.KeyMsg:
 		switch tt.phase {
 		case 0:
-			// Loading phase — only esc
+			// Loading phase — Esc cancels the in-flight stream and closes.
 			if msg.String() == "esc" {
+				if tt.streamCancel != nil {
+					tt.streamCancel()
+					tt.streamCancel = nil
+				}
+				tt.streaming = false
+				tt.streamCh = nil
+				tt.loading = false
 				tt.active = false
 			}
 			return tt, nil
@@ -704,8 +728,9 @@ func (tt TaskTriage) viewLoading(width int) string {
 		providerLabel = "Claude Code"
 	}
 
+	elapsed := time.Since(tt.loadingStart).Truncate(time.Second)
 	buf.WriteString(lipgloss.NewStyle().Foreground(yellow).Bold(true).
-		Render(fmt.Sprintf("  %s Analyzing your tasks with %s...", frame, providerLabel)))
+		Render(fmt.Sprintf("  %s Analyzing your tasks with %s... (%s)", frame, providerLabel, elapsed)))
 	buf.WriteString("\n\n")
 	buf.WriteString(DimStyle.Render(fmt.Sprintf("  %d open tasks to triage", len(tt.allTasks))))
 	if len(tt.activeGoals) > 0 {
