@@ -107,12 +107,12 @@ func (s *Settings) buildItems() {
 					if dc == info.Name() { isDisabled = true; break }
 				}
 				icsItems = append(icsItems, settingItem{
-					label: "Show " + info.Name(),
+					label: "Calendar: " + info.Name(),
 					key: "cal_" + info.Name(),
 					kind: "bool",
 					value: !isDisabled,
 					category: catFiles,
-					description: "Toggle calendar visibility",
+					description: "toggle ICS calendar file visibility events",
 				})
 			}
 			return nil
