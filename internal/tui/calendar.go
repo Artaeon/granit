@@ -979,6 +979,7 @@ func (c Calendar) viewWeek() string {
 	}
 
 	// Day header row
+	sepChar := lipgloss.NewStyle().Foreground(surface0).Render("│")
 	headerRow := strings.Repeat(" ", timeColW)
 	dayNamesShort := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
 	dayNamesFull := []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
@@ -990,14 +991,15 @@ func (c Calendar) viewWeek() string {
 		}
 		label := dayName + " " + day.Format("2")
 		style := lipgloss.NewStyle().Foreground(surface2)
-		if day.Equal(c.today) {
+		if sameDay(day, c.today) {
 			style = lipgloss.NewStyle().Foreground(green).Bold(true)
+			label = "● " + label
 		}
-		if day.Equal(c.cursor) {
+		if sameDay(day, c.cursor) {
 			style = lipgloss.NewStyle().Background(surface0).Foreground(mauve).Bold(true)
 		}
-		cell := style.Render(TruncateDisplay(label, dayColW-1))
-		headerRow += PadRight(cell, dayColW)
+		cell := style.Render(TruncateDisplay(label, dayColW-2))
+		headerRow += sepChar + PadRight(cell, dayColW-1)
 	}
 	b.WriteString("  " + headerRow + "\n")
 	b.WriteString("  " + lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("─", width-8)) + "\n")
@@ -1039,8 +1041,8 @@ func (c Calendar) viewWeek() string {
 
 	b.WriteString("  " + DimStyle.Render(strings.Repeat("─", width-8)) + "\n")
 
-	// Render time rows (5:00-23:00, up to 19 rows)
-	maxRows := c.height - 14
+	// Render time rows — use as much vertical space as available
+	maxRows := c.height - 10
 	if maxRows < 8 {
 		maxRows = 8
 	}
@@ -1057,14 +1059,12 @@ func (c Calendar) viewWeek() string {
 			break
 		}
 		// Time label (24h format)
-		timeLabel := fmt.Sprintf("%02d:00 ", hour)
-		// Current time indicator
 		now := time.Now()
-		isCurrentHour := now.Hour() == hour &&
-			!c.cursor.Before(weekStart) && !c.cursor.After(weekEnd)
-		timeSt := DimStyle.Render(timeLabel)
+		isCurrentHour := now.Hour() == hour
+		timeSt := DimStyle.Render(fmt.Sprintf("%02d:00 ", hour))
 		if isCurrentHour {
-			timeSt = lipgloss.NewStyle().Foreground(green).Bold(true).Render(timeLabel)
+			timeSt = lipgloss.NewStyle().Foreground(green).Bold(true).
+				Render(fmt.Sprintf("▸%02d:%02d", now.Hour(), now.Minute()))
 		}
 
 		// Build cells for each day
@@ -1149,24 +1149,30 @@ func (c Calendar) viewWeek() string {
 			}
 
 			// Render cell
-			isCursorCell := day.Equal(c.cursor) && row == c.weekGridCursorHour
+			isCursorCell := sameDay(day, c.cursor) && row == c.weekGridCursorHour
+			isToday := sameDay(day, c.today)
 			cellContent := ""
 			if cellText != "" {
-				cellContent = lipgloss.NewStyle().Foreground(cellColor).
-					Render(TruncateDisplay(cellText, dayColW-2))
+				// Event block: subtle background to make it stand out
+				blockStyle := lipgloss.NewStyle().Foreground(cellColor).Background(surface0)
+				if isToday {
+					blockStyle = blockStyle.Background(surface1)
+				}
+				cellContent = blockStyle.Render(PadRight(TruncateDisplay(cellText, dayColW-3), dayColW-2))
+			} else if isToday {
+				// Empty cell in today's column gets a subtle tint
+				cellContent = lipgloss.NewStyle().Background(surface0).
+					Render(strings.Repeat(" ", dayColW-2))
 			}
 			if isCursorCell {
+				cursorStyle := lipgloss.NewStyle().Background(surface1).Foreground(mauve).Bold(true)
 				if cellContent == "" {
-					cellContent = lipgloss.NewStyle().Background(surface0).Foreground(mauve).
-						Render("▎")
+					cellContent = cursorStyle.Render(PadRight("▎", dayColW-2))
 				} else {
-					cellContent = lipgloss.NewStyle().Background(surface0).
-						Render(PadRight(cellContent, dayColW-1))
+					cellContent = cursorStyle.Render(PadRight(TruncateDisplay(cellText, dayColW-3), dayColW-2))
 				}
 			}
-			// Column separator
-			sep := lipgloss.NewStyle().Foreground(surface0).Render("│")
-			cells += sep + PadRight(cellContent, dayColW-1)
+			cells += sepChar + PadRight(cellContent, dayColW-1)
 		}
 
 		b.WriteString("  " + timeSt + cells + "\n")
@@ -2234,6 +2240,13 @@ func calEventColor(ev CalendarEvent) lipgloss.Color {
 	default:
 		return blue
 	}
+}
+
+// sameDay returns true if two times are on the same calendar date.
+func sameDay(a, b time.Time) bool {
+	y1, m1, d1 := a.Date()
+	y2, m2, d2 := b.Date()
+	return y1 == y2 && m1 == m2 && d1 == d2
 }
 
 // ---------------------------------------------------------------------------
