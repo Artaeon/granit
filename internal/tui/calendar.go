@@ -935,56 +935,60 @@ func (c Calendar) viewMonth() string {
 // ---------------------------------------------------------------------------
 
 func (c Calendar) viewWeek() string {
-	width := c.width * 3 / 4
+	width := c.width * 9 / 10
 	if width < 70 {
 		width = 70
 	}
-	if width > 120 {
-		width = 120
+	if width > 180 {
+		width = 180
 	}
 
 	var b strings.Builder
 
-	titleIcon := lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar)
-	titleText := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" Calendar")
-	viewLabel := DimStyle.Render(" [week grid]")
-	b.WriteString("  " + titleIcon + titleText + viewLabel)
-	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  " + strings.Repeat("─", width-8)))
-	b.WriteString("\n")
-
-	// Find the Sunday of the cursor's week
+	// Compact header: week range left, view label right
 	weekStart := c.cursor.AddDate(0, 0, -int(c.cursor.Weekday()))
 	weekEnd := weekStart.AddDate(0, 0, 6)
 	_, weekNum := c.cursor.ISOWeek()
-	weekLabel := fmt.Sprintf("Week %d: ", weekNum) + weekStart.Format("Jan 2") + " - " + weekEnd.Format("Jan 2, 2006")
-	b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(weekLabel))
+	weekLabel := fmt.Sprintf("W%d  %s – %s", weekNum, weekStart.Format("Jan 2"), weekEnd.Format("Jan 2, 2006"))
+	headerLeft := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  " + weekLabel)
+	headerRight := DimStyle.Render("week ")
+	headerGap := width - lipgloss.Width(headerLeft) - lipgloss.Width(headerRight) - 4
+	if headerGap < 1 {
+		headerGap = 1
+	}
+	b.WriteString(headerLeft + strings.Repeat(" ", headerGap) + headerRight)
 	b.WriteString("\n")
 
 	// Time grid layout: time column + 7 day columns
 	timeColW := 6
-	dayColW := (width - timeColW - 10) / 7
-	if dayColW < 8 {
-		dayColW = 8
+	dayColW := (width - timeColW - 8) / 7
+	if dayColW < 10 {
+		dayColW = 10
 	}
 
 	// Day header row
 	headerRow := strings.Repeat(" ", timeColW)
-	dayNames := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
+	dayNamesShort := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
+	dayNamesFull := []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
 	for i := 0; i < 7; i++ {
 		day := weekStart.AddDate(0, 0, i)
-		label := dayNames[i] + " " + day.Format("1/2")
-		style := lipgloss.NewStyle().Foreground(text).Bold(true)
+		dayName := dayNamesShort[i]
+		if dayColW >= 14 {
+			dayName = dayNamesFull[i]
+		}
+		label := dayName + " " + day.Format("2")
+		style := lipgloss.NewStyle().Foreground(surface2)
 		if day.Equal(c.today) {
 			style = lipgloss.NewStyle().Foreground(green).Bold(true)
 		}
 		if day.Equal(c.cursor) {
-			style = lipgloss.NewStyle().Foreground(peach).Bold(true)
+			style = lipgloss.NewStyle().Background(surface0).Foreground(mauve).Bold(true)
 		}
 		cell := style.Render(TruncateDisplay(label, dayColW-1))
 		headerRow += PadRight(cell, dayColW)
 	}
 	b.WriteString("  " + headerRow + "\n")
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("─", width-8)) + "\n")
 
 	// All-day events row
 	hasAllDay := false
@@ -1023,18 +1027,21 @@ func (c Calendar) viewWeek() string {
 
 	b.WriteString("  " + DimStyle.Render(strings.Repeat("─", width-8)) + "\n")
 
-	// Render time rows (06:00-22:00, 17 rows)
-	maxRows := c.height - 16
+	// Render time rows (5:00-23:00, up to 19 rows)
+	maxRows := c.height - 14
 	if maxRows < 8 {
 		maxRows = 8
 	}
-	if maxRows > 17 {
-		maxRows = 17
+	startHour := 5
+	endHour := startHour + maxRows
+	if endHour > 23 {
+		endHour = 23
+		maxRows = endHour - startHour
 	}
 
 	for row := 0; row < maxRows; row++ {
-		hour := row + 6
-		if hour > 22 {
+		hour := row + startHour
+		if hour > 23 {
 			break
 		}
 		// Time label (24h format)
@@ -1158,6 +1165,7 @@ func (c Calendar) viewWeek() string {
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
+		MaxHeight(c.height - 2).
 		Background(mantle)
 
 	return border.Render(b.String())
@@ -2031,8 +2039,8 @@ func (c Calendar) renderFooter(b *strings.Builder, width int) {
 	default:
 		pairs = []struct{ Key, Desc string }{
 			{"hjkl", "nav"}, {"[]", "month"}, {"w", "view"}, {"t", "today"},
-			{"a", "add"}, {"Enter", "open"}, {"e", "events"},
-			{"y", "year"}, {"Esc", "close"},
+			{"a", "add event"}, {"Enter", "open"}, {"e", "events"},
+			{"Esc", "close"},
 		}
 	}
 	b.WriteString(RenderHelpBar(pairs))
