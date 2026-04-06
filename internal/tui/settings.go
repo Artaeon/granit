@@ -942,8 +942,9 @@ func (s Settings) View() string {
 	if s.searching || s.searchBuf != "" {
 		extraLines = 2
 	}
-	// Reserve lines for: border(2) + padding(2) + header(2) + gap(1) + help(3) + statusbar(3)
-	visibleItems := s.height - 13 - extraLines
+	// Reserve: border(2) + padding(2) + header(2) + gap(1) + help(3) +
+	// scroll indicators(2) + modified/status(3) + statusbar(3)
+	visibleItems := s.height - 18 - extraLines
 	if visibleItems < 5 {
 		visibleItems = 5
 	}
@@ -1161,6 +1162,7 @@ func (s Settings) View() string {
 		BorderForeground(OverlayBorderColor).
 		Padding(1, 2).
 		Width(width).
+		MaxHeight(s.height - 4).
 		Background(mantle)
 
 	return border.Render(b.String())
