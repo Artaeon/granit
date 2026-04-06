@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // streamChunkMsg carries a single token/chunk from a streaming AI response.
@@ -363,5 +364,33 @@ func sendToAIStreamingCtx(parent context.Context, ai AIConfig, systemPrompt, use
 		url := ai.OllamaEndpoint()
 		model := ai.ModelOrDefault("qwen2.5:0.5b")
 		return streamOllamaChat(ctx, url, model, systemPrompt, userPrompt, tag, ai.ollamaOptions()), cancel
+	}
+}
+
+// renderStreamPreview renders a tail window of streaming AI output into the
+// given builder. Used by overlays to show live progress during AI generation.
+func renderStreamPreview(b *strings.Builder, preview string, height, width int) {
+	if preview == "" {
+		return
+	}
+	b.WriteString(DimStyle.Render("  ── AI output ──"))
+	b.WriteString("\n")
+	maxLines := height - 16
+	if maxLines < 4 {
+		maxLines = 4
+	}
+	lines := strings.Split(preview, "\n")
+	start := 0
+	if len(lines) > maxLines {
+		start = len(lines) - maxLines
+	}
+	lineStyle := lipgloss.NewStyle().Foreground(overlay0)
+	maxW := width - 8
+	for _, line := range lines[start:] {
+		if len(line) > maxW {
+			line = line[:maxW]
+		}
+		b.WriteString("  " + lineStyle.Render(line))
+		b.WriteString("\n")
 	}
 }

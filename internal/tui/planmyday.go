@@ -1168,28 +1168,7 @@ func (p PlanMyDay) viewPlanning(width int) string {
 		taskCount, len(p.events), len(p.habits))))
 	b.WriteString("\n\n")
 
-	// Show streaming preview so the user sees progress
-	if preview := p.streamBuf.String(); preview != "" {
-		b.WriteString(DimStyle.Render("  ── AI output ──"))
-		b.WriteString("\n")
-		maxLines := (p.height - 16)
-		if maxLines < 4 {
-			maxLines = 4
-		}
-		lines := strings.Split(preview, "\n")
-		start := 0
-		if len(lines) > maxLines {
-			start = len(lines) - maxLines
-		}
-		for _, line := range lines[start:] {
-			truncated := line
-			if len(truncated) > width-8 {
-				truncated = truncated[:width-8]
-			}
-			b.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).Render(truncated))
-			b.WriteString("\n")
-		}
-	}
+	renderStreamPreview(&b, p.streamBuf.String(), p.height, width)
 
 	b.WriteString(DimStyle.Render("  Esc: cancel"))
 

@@ -1556,22 +1556,14 @@ func (r Renderer) renderMarkdown(content string) []string {
 // wrapParagraph renders inline markdown first, then wraps the rendered output
 // by visual width. This ensures formatting spans like **bold** that cross word
 // boundaries are rendered correctly before wrapping.
-// stripInlineMarkers removes bold/italic markdown markers from text
-// so heading text doesn't show literal **text** or *text*.
+// stripInlineMarkers removes paired bold/italic/strikethrough markers
+// from heading text so it doesn't show literal **text** or *text*.
 func stripInlineMarkers(s string) string {
 	s = strings.ReplaceAll(s, "***", "")
 	s = strings.ReplaceAll(s, "**", "")
 	s = strings.ReplaceAll(s, "~~", "")
-	// Single * only if paired (italic) — just strip all remaining single *
-	// that aren't part of a list marker at line start.
-	out := strings.Builder{}
-	for i := 0; i < len(s); i++ {
-		if s[i] == '*' {
-			continue
-		}
-		out.WriteByte(s[i])
-	}
-	return out.String()
+	s = strings.ReplaceAll(s, "__", "")
+	return s
 }
 
 func (r Renderer) wrapParagraph(text string, maxWidth int) []string {

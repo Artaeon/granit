@@ -734,28 +734,7 @@ func (tt TaskTriage) viewLoading(width int) string {
 	}
 	buf.WriteString("\n\n")
 
-	// Show streaming preview so the user sees progress
-	if preview := tt.streamBuf.String(); preview != "" {
-		buf.WriteString(DimStyle.Render("  ── AI output ──"))
-		buf.WriteString("\n")
-		maxLines := (tt.height - 16)
-		if maxLines < 4 {
-			maxLines = 4
-		}
-		lines := strings.Split(preview, "\n")
-		start := 0
-		if len(lines) > maxLines {
-			start = len(lines) - maxLines
-		}
-		for _, line := range lines[start:] {
-			truncated := line
-			if len(truncated) > width-8 {
-				truncated = truncated[:width-8]
-			}
-			buf.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).Render(truncated))
-			buf.WriteString("\n")
-		}
-	}
+	renderStreamPreview(&buf, tt.streamBuf.String(), tt.height, width)
 
 	buf.WriteString(DimStyle.Render("  Esc: cancel"))
 

@@ -675,7 +675,11 @@ func (m *Model) refreshComponents(changedPath string) {
 
 	// Load all calendar events: native events + ICS files from vault
 	m.loadCalendarEvents()
-	m.refreshCalendarPanel()
+	// Only refresh the calendar panel when calendar-related files change
+	// to avoid unnecessary vault walks on every component refresh.
+	if changedPath == "" || strings.HasSuffix(changedPath, ".ics") || strings.Contains(changedPath, "Planner") {
+		m.refreshCalendarPanel()
+	}
 
 	// Directly refresh the task manager if it's currently active, so it
 	// picks up changes immediately instead of waiting for the needsRefresh
