@@ -935,25 +935,37 @@ func (r Renderer) renderMarkdown(content string) []string {
 			if trimmed == "---" {
 				fmDone = true
 				inFrontmatter = false
-				// Render collected frontmatter as a styled block
+				// Render collected frontmatter as a subtle metadata block
 				if len(fmLines) > 0 {
-					fmBorder := lipgloss.NewStyle().
-						Foreground(overlay0).
-						Render("  ┌" + strings.Repeat("─", contentWidth-4) + "┐")
-					result = append(result, fmBorder)
-					for _, fl := range fmLines {
-						parts := strings.SplitN(fl, ":", 2)
-						if len(parts) == 2 {
-							key := lipgloss.NewStyle().Foreground(blue).Bold(true).Render(strings.TrimSpace(parts[0]))
-							val := lipgloss.NewStyle().Foreground(text).Render(strings.TrimSpace(parts[1]))
-							fmLine := "  │ " + key + ": " + val
-							result = append(result, fmLine)
+					if r.viewStyle == "reading" {
+						// Reading mode: minimal, just dim key: value lines
+						for _, fl := range fmLines {
+							parts := strings.SplitN(fl, ":", 2)
+							if len(parts) == 2 {
+								key := lipgloss.NewStyle().Foreground(surface2).Render(strings.TrimSpace(parts[0]))
+								val := lipgloss.NewStyle().Foreground(overlay0).Render(strings.TrimSpace(parts[1]))
+								result = append(result, "  "+key+": "+val)
+							}
 						}
+					} else {
+						fmBorder := lipgloss.NewStyle().
+							Foreground(overlay0).
+							Render("  ┌" + strings.Repeat("─", contentWidth-4) + "┐")
+						result = append(result, fmBorder)
+						for _, fl := range fmLines {
+							parts := strings.SplitN(fl, ":", 2)
+							if len(parts) == 2 {
+								key := lipgloss.NewStyle().Foreground(blue).Bold(true).Render(strings.TrimSpace(parts[0]))
+								val := lipgloss.NewStyle().Foreground(text).Render(strings.TrimSpace(parts[1]))
+								fmLine := "  │ " + key + ": " + val
+								result = append(result, fmLine)
+							}
+						}
+						fmBorderBottom := lipgloss.NewStyle().
+							Foreground(overlay0).
+							Render("  └" + strings.Repeat("─", contentWidth-4) + "┘")
+						result = append(result, fmBorderBottom)
 					}
-					fmBorderBottom := lipgloss.NewStyle().
-						Foreground(overlay0).
-						Render("  └" + strings.Repeat("─", contentWidth-4) + "┘")
-					result = append(result, fmBorderBottom)
 					result = append(result, "")
 				}
 				continue
@@ -1105,15 +1117,22 @@ func (r Renderer) renderMarkdown(content string) []string {
 			} else if trimmed == "___" {
 				hrChar = "━"
 			}
-			leftStyle := lipgloss.NewStyle().Foreground(surface1)
-			accentStyle := lipgloss.NewStyle().Foreground(overlay0)
-			diamond := accentStyle.Render(" ◆ ")
-			halfWidth := (contentWidth - 8) / 2
-			if halfWidth < 2 {
-				halfWidth = 2
+			ruleStyle := lipgloss.NewStyle().Foreground(surface1)
+			if r.viewStyle == "reading" {
+				// Clean, simple rule for reading mode
+				result = append(result, "")
+				result = append(result, "    "+ruleStyle.Render(strings.Repeat(hrChar, contentWidth-8)))
+				result = append(result, "")
+			} else {
+				accentStyle := lipgloss.NewStyle().Foreground(overlay0)
+				diamond := accentStyle.Render(" ◆ ")
+				halfWidth := (contentWidth - 8) / 2
+				if halfWidth < 2 {
+					halfWidth = 2
+				}
+				rule := "  " + ruleStyle.Render(strings.Repeat(hrChar, halfWidth)) + diamond + ruleStyle.Render(strings.Repeat(hrChar, halfWidth))
+				result = append(result, rule)
 			}
-			rule := "  " + leftStyle.Render(strings.Repeat(hrChar, halfWidth)) + diamond + leftStyle.Render(strings.Repeat(hrChar, halfWidth))
-			result = append(result, rule)
 			continue
 		}
 
@@ -1124,22 +1143,9 @@ func (r Renderer) renderMarkdown(content string) []string {
 			switch r.viewStyle {
 			case "reading":
 				styled := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(hText)
-				styledW := lipgloss.Width(styled)
-				pad := (contentWidth - styledW) / 2
-				if pad < 0 {
-					pad = 0
-				}
-				result = append(result, strings.Repeat(" ", pad)+styled)
-				// Decorative divider centered below
-				divider := "── ◆ ──"
-				divStyled := lipgloss.NewStyle().Foreground(surface1).Render(divider)
-				divW := lipgloss.Width(divStyled)
-				divPad := (contentWidth - divW) / 2
-				if divPad < 0 {
-					divPad = 0
-				}
-				result = append(result, strings.Repeat(" ", divPad)+divStyled)
-				result = append(result, "")
+				result = append(result, "    "+styled)
+				underline := lipgloss.NewStyle().Foreground(surface1).Render("    " + strings.Repeat("─", len(hText)+2))
+				result = append(result, underline)
 			case "minimal":
 				styled := lipgloss.NewStyle().Foreground(text).Bold(true).Render(hText)
 				result = append(result, "  "+styled)

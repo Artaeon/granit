@@ -2602,11 +2602,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+e":
 			m.viewMode = !m.viewMode
 			if m.viewMode {
+				m.renderer.SetViewStyle("reading")
 				m.statusbar.SetMode("VIEW")
 				m.statusbar.SetViewMode(true)
 				m.viewScroll = 0
 				m.updateReadingProgress()
 			} else {
+				m.renderer.SetViewStyle(m.config.ViewStyle)
 				m.statusbar.SetMode("EDIT")
 				m.statusbar.SetViewMode(false)
 			}
