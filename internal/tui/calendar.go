@@ -556,6 +556,10 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				} else if c.agendaScroll > 0 {
 					c.agendaScroll--
 				}
+			} else if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
+				if c.weekGridCursorHour > 0 {
+					c.weekGridCursorHour--
+				}
 			} else {
 				c.cursor = c.cursor.AddDate(0, 0, -7)
 				c.syncViewing()
@@ -566,6 +570,14 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 					c.agendaCursor++
 				} else {
 					c.agendaScroll++
+				}
+			} else if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
+				maxHour := c.height - 15
+				if maxHour > 17 {
+					maxHour = 17
+				}
+				if c.weekGridCursorHour < maxHour {
+					c.weekGridCursorHour++
 				}
 			} else {
 				c.cursor = c.cursor.AddDate(0, 0, 7)
@@ -938,12 +950,9 @@ func (c Calendar) viewMonth() string {
 // ---------------------------------------------------------------------------
 
 func (c Calendar) viewWeek() string {
-	width := c.width * 9 / 10
+	width := c.width - 4
 	if width < 70 {
 		width = 70
-	}
-	if width > 180 {
-		width = 180
 	}
 
 	var b strings.Builder
@@ -1101,13 +1110,15 @@ func (c Calendar) viewWeek() string {
 						evCount++
 						if cellText == "" {
 							if startHour == hour {
-								cellText = ev.Date.Format("15:04") + " " + ev.Title
-								if ev.Location != "" && dayColW > 20 {
-									cellText += " @" + ev.Location
+								// Show just minutes if not on the hour, else just title
+								if ev.Date.Minute() > 0 {
+									cellText = ev.Date.Format(":04") + " " + ev.Title
+								} else {
+									cellText = ev.Title
 								}
 							} else {
 								// Continuation block
-								cellText = "│ " + ev.Title
+								cellText = "  " + ev.Title
 							}
 							cellColor = calEventColor(ev)
 						}
@@ -2046,6 +2057,11 @@ func (c Calendar) renderFooter(b *strings.Builder, width int) {
 			{"j/k", "move"}, {"[]", "month"}, {"w", "view"}, {"t", "today"},
 			{"Space", "toggle"}, {"a", "add"}, {"d", "delete"},
 			{"Enter", "open"}, {"Esc", "close"},
+		}
+	case calViewWeek, calView3Day, calView1Day:
+		pairs = []struct{ Key, Desc string }{
+			{"←→", "day"}, {"↑↓", "hour"}, {"[]", "month"}, {"w", "view"},
+			{"t", "today"}, {"a", "add"}, {"e", "events"}, {"Esc", "close"},
 		}
 	default:
 		pairs = []struct{ Key, Desc string }{
