@@ -351,25 +351,35 @@ func (c *Calendar) SetPlannerBlocks(blocks map[string][]PlannerBlock) {
 
 // writePlannerBlock appends a scheduled block to the planner file for the given date.
 func writePlannerBlock(vaultRoot, date string, block PlannerBlock) {
+	if vaultRoot == "" {
+		return
+	}
 	dir := filepath.Join(vaultRoot, "Planner")
-	os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return
+	}
 	path := filepath.Join(dir, date+".md")
 
-	line := fmt.Sprintf("- %s-%s | %s | %s", block.StartTime, block.EndTime, block.Text, block.BlockType)
+	line := fmt.Sprintf("- %s-%s | %s | %s\n", block.StartTime, block.EndTime, block.Text, block.BlockType)
 
-	// Read existing file or create new
 	content, err := os.ReadFile(path)
 	if err != nil {
-		// Create new planner file
-		content = []byte("---\ndate: " + date + "\n---\n\n## Schedule\n")
+		// Create new planner file with the block
+		content = []byte("---\ndate: " + date + "\n---\n\n## Schedule\n" + line)
+		_ = os.WriteFile(path, content, 0644)
+		return
 	}
 
-	// Append the block line
-	if !bytes.Contains(content, []byte("## Schedule")) {
-		content = append(content, []byte("\n## Schedule\n")...)
+	// Insert block after "## Schedule" line
+	scheduleHeader := "## Schedule\n"
+	idx := bytes.Index(content, []byte(scheduleHeader))
+	if idx < 0 {
+		content = append(content, []byte("\n"+scheduleHeader+line)...)
+	} else {
+		insertAt := idx + len(scheduleHeader)
+		content = append(content[:insertAt], append([]byte(line), content[insertAt:]...)...)
 	}
-	content = append(content, []byte(line+"\n")...)
-	os.WriteFile(path, content, 0644)
+	_ = os.WriteFile(path, content, 0644)
 }
 
 // GetTaskToggles returns pending task toggles and clears them (consumed-once).
@@ -1107,9 +1117,7 @@ func (c Calendar) viewWeek() string {
 			}
 			prog := g.Progress()
 			color := yellow
-			if g.Color != "" {
-				color = goalColorMap(g.Color)
-			} else if prog >= 75 {
+			if prog >= 75 {
 				color = green
 			} else if prog < 25 {
 				color = red
