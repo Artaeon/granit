@@ -827,10 +827,13 @@ func (bp *BlogPublisher) viewConfig(b *strings.Builder, innerW int) {
 			displayVal = "(none)"
 		}
 
-		// Mask token fields
 		isTokenField := (bp.target == "medium" && i == 0) || (bp.target == "github" && i == 0)
 		if isTokenField && f.value != "" && !bp.editing {
-			displayVal = strings.Repeat("*", min(len(f.value), 8)) + "..." + f.value[max(0, len(f.value)-4):]
+			if len(f.value) > 4 {
+				displayVal = "••••••" + f.value[len(f.value)-4:]
+			} else {
+				displayVal = "••••••"
+			}
 		}
 
 		// Status field for Medium — show as toggleable
@@ -838,7 +841,11 @@ func (bp *BlogPublisher) viewConfig(b *strings.Builder, innerW int) {
 
 		if bp.editing && bp.cursor == i && !isStatusField {
 			cursor := lipgloss.NewStyle().Foreground(peach).Render("\u2588")
-			line := prefix + labelStyle.Render(f.label) + editingStyle.Render(bp.editBuf) + cursor
+			editDisplay := bp.editBuf
+			if isTokenField && len(editDisplay) > 0 {
+				editDisplay = strings.Repeat("•", len(editDisplay))
+			}
+			line := prefix + labelStyle.Render(f.label) + editingStyle.Render(editDisplay) + cursor
 			b.WriteString(lipgloss.NewStyle().
 				Background(surface0).
 				Width(innerW).
