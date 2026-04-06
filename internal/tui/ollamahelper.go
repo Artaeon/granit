@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -32,6 +35,13 @@ const (
 var (
 	ollamaState = ollamaUnknown
 	ollamaMu    sync.RWMutex
+)
+
+// ollamaProc tracks the ollama serve process started by granit so we can
+// stop it cleanly on exit and avoid zombie processes.
+var (
+	ollamaProc   *os.Process
+	ollamaProcMu sync.Mutex
 )
 
 // Shared HTTP clients for Ollama operations.
@@ -137,6 +147,85 @@ func OllamaIsReady() bool {
 	ollamaMu.RLock()
 	defer ollamaMu.RUnlock()
 	return ollamaState == ollamaReady
+}
+
+// OllamaStartServer starts "ollama serve" in the background and waits until
+// the server is reachable. The process is tracked so it can be stopped
+// cleanly on exit via OllamaStopServer. Returns a user-friendly status
+// message and whether the server is now running.
+func OllamaStartServer(baseURL string) (string, bool) {
+	if baseURL == "" {
+		baseURL = "http://localhost:11434"
+	}
+
+	// Already running?
+	if resp, err := ollamaCheckClient.Get(baseURL + "/api/tags"); err == nil {
+		resp.Body.Close()
+		return "Ollama is already running", true
+	}
+
+	// Check binary exists
+	ollamaPath, err := exec.LookPath("ollama")
+	if err != nil {
+		return "Ollama not installed. Use Setup Ollama first.", false
+	}
+
+	cmd := exec.Command(ollamaPath, "serve")
+	// Put the process in its own process group so we can kill it cleanly
+	// without affecting granit itself.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Sprintf("Failed to start ollama: %v", err), false
+	}
+
+	ollamaProcMu.Lock()
+	ollamaProc = cmd.Process
+	ollamaProcMu.Unlock()
+
+	// Reap the child in the background to prevent zombies.
+	go func() {
+		_ = cmd.Wait()
+		ollamaProcMu.Lock()
+		if ollamaProc != nil && ollamaProc.Pid == cmd.Process.Pid {
+			ollamaProc = nil
+		}
+		ollamaProcMu.Unlock()
+	}()
+
+	// Wait for the server to become reachable (up to 8 seconds).
+	for i := 0; i < 16; i++ {
+		time.Sleep(500 * time.Millisecond)
+		if resp, err := ollamaCheckClient.Get(baseURL + "/api/tags"); err == nil {
+			resp.Body.Close()
+			return "Ollama started", true
+		}
+	}
+
+	return "Ollama started but not yet responding — try again shortly", false
+}
+
+// OllamaStopServer stops the ollama serve process that was started by
+// OllamaStartServer. It sends SIGTERM so ollama can shut down gracefully.
+// This is a no-op if we didn't start the process.
+func OllamaStopServer() {
+	ollamaProcMu.Lock()
+	proc := ollamaProc
+	ollamaProc = nil
+	ollamaProcMu.Unlock()
+
+	if proc == nil {
+		return
+	}
+	// Kill the entire process group to catch any children ollama may have spawned.
+	_ = syscall.Kill(-proc.Pid, syscall.SIGTERM)
+}
+
+// OllamaWeStartedServer returns true if granit launched the ollama serve process.
+func OllamaWeStartedServer() bool {
+	ollamaProcMu.Lock()
+	defer ollamaProcMu.Unlock()
+	return ollamaProc != nil
 }
 
 // OllamaEnsureModel checks availability and auto-pulls if needed.
