@@ -79,7 +79,15 @@ func streamOllamaChat(ctx context.Context, baseURL, model, systemPrompt, userPro
 			return
 		}
 
-		client := &http.Client{Timeout: 5 * time.Minute}
+		timeout := 5 * time.Minute
+		// Small models (num_ctx <= 2048) should respond faster with their
+		// reduced context; a shorter timeout gives quicker feedback on failure.
+		if numCtx, ok := options["num_ctx"]; ok {
+			if v, ok := numCtx.(int); ok && v <= 2048 {
+				timeout = 90 * time.Second
+			}
+		}
+		client := &http.Client{Timeout: timeout}
 		// Retry the initial connection once on transient failures — small
 		// HTTP hiccups shouldn't kill a streaming request before it starts.
 		doPost := func() (*http.Response, error) {

@@ -186,6 +186,17 @@ func (c AIConfig) ollamaOptionsShort() map[string]interface{} {
 	return opts
 }
 
+// isTimeoutOnSmallModel returns true if the error is a timeout and the
+// model is small. Retrying a timeout on a small model just doubles the
+// wait — the prompt is likely too large for the model to handle quickly.
+func (c AIConfig) isTimeoutOnSmallModel(err error) bool {
+	if !c.IsSmallModel() || err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded")
+}
+
 // isTransientAIError returns true if the error looks like a transient
 // connection issue that could succeed on retry (as opposed to a permanent
 // configuration problem like a missing model or bad API key).
@@ -213,9 +224,11 @@ func isTransientAIError(err error) bool {
 // It returns the response text or an error. This is the shared entry
 // point — all AI features should use this instead of making HTTP calls
 // directly. Transient errors are retried once with a short backoff.
+// Timeouts are not retried for small models since they indicate the
+// prompt is too large for the model to process in time.
 func (c AIConfig) Chat(systemPrompt, userPrompt string) (string, error) {
 	resp, err := c.chatOnce(systemPrompt, userPrompt)
-	if err != nil && isTransientAIError(err) {
+	if err != nil && isTransientAIError(err) && !c.isTimeoutOnSmallModel(err) {
 		time.Sleep(500 * time.Millisecond)
 		resp, err = c.chatOnce(systemPrompt, userPrompt)
 	}
@@ -228,7 +241,7 @@ func (c AIConfig) Chat(systemPrompt, userPrompt string) (string, error) {
 func (c AIConfig) ChatCtx(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
 	if c.Provider == "ollama" || c.Provider == "local" || c.Provider == "" {
 		resp, err := c.chatOllamaCtx(ctx, systemPrompt, userPrompt, c.ollamaOptions())
-		if err != nil && isTransientAIError(err) && ctx.Err() == nil {
+		if err != nil && isTransientAIError(err) && !c.isTimeoutOnSmallModel(err) && ctx.Err() == nil {
 			time.Sleep(500 * time.Millisecond)
 			resp, err = c.chatOllamaCtx(ctx, systemPrompt, userPrompt, c.ollamaOptions())
 		}
@@ -268,7 +281,7 @@ func (c AIConfig) ChatShort(systemPrompt, userPrompt string) (string, error) {
 // If the context has a deadline, the HTTP request is aborted when it expires.
 func (c AIConfig) ChatShortCtx(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
 	resp, err := c.chatShortOnce(ctx, systemPrompt, userPrompt)
-	if err != nil && isTransientAIError(err) && ctx.Err() == nil {
+	if err != nil && isTransientAIError(err) && !c.isTimeoutOnSmallModel(err) && ctx.Err() == nil {
 		time.Sleep(500 * time.Millisecond)
 		resp, err = c.chatShortOnce(ctx, systemPrompt, userPrompt)
 	}

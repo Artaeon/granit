@@ -205,6 +205,100 @@ func (p *PlanMyDay) GetAppliedPlan() ([]daySlot, string, []string, string, bool)
 // ---------------------------------------------------------------------------
 
 func (p PlanMyDay) buildPrompt() string {
+	if p.ai.IsSmallModel() {
+		return p.buildSmallPrompt()
+	}
+	return p.buildFullPrompt()
+}
+
+// buildSmallPrompt creates a compact prompt that fits within a small model's
+// ~1500 token input budget. Only the most relevant data is included.
+func (p PlanMyDay) buildSmallPrompt() string {
+	var b strings.Builder
+
+	now := time.Now()
+	ct := now.Format("15:04")
+
+	b.WriteString(fmt.Sprintf("Plan a schedule from %s until 18:00. Today: %s %s.\n\n",
+		ct, now.Format("2006-01-02"), now.Weekday().String()))
+
+	// Only tasks due today/overdue + high priority — max 10
+	today := now.Format("2006-01-02")
+	b.WriteString("Tasks:\n")
+	count := 0
+	for _, t := range p.tasks {
+		if t.Done {
+			continue
+		}
+		urgent := t.DueDate != "" && t.DueDate <= today
+		highPri := t.Priority >= 3
+		if !urgent && !highPri {
+			continue
+		}
+		b.WriteString(fmt.Sprintf("- %s (P%d", t.Text, t.Priority))
+		if t.DueDate != "" {
+			b.WriteString(", " + t.DueDate)
+		}
+		b.WriteString(")\n")
+		count++
+		if count >= 10 {
+			break
+		}
+	}
+	// Fill remaining slots with other tasks
+	if count < 10 {
+		for _, t := range p.tasks {
+			if t.Done || (t.DueDate != "" && t.DueDate <= today) || t.Priority >= 3 {
+				continue
+			}
+			b.WriteString(fmt.Sprintf("- %s (P%d)\n", t.Text, t.Priority))
+			count++
+			if count >= 10 {
+				break
+			}
+		}
+	}
+	if count == 0 {
+		b.WriteString("(none)\n")
+	}
+
+	// Calendar events (max 5)
+	if len(p.events) > 0 {
+		b.WriteString("\nEvents:\n")
+		for i, ev := range p.events {
+			if i >= 5 {
+				break
+			}
+			timeStr := ev.Time
+			if timeStr == "" {
+				timeStr = "all-day"
+			}
+			b.WriteString(fmt.Sprintf("- %s %s\n", ev.Title, timeStr))
+		}
+	}
+
+	b.WriteString(fmt.Sprintf(`
+Respond EXACTLY:
+
+TOP_GOAL: one sentence
+
+SCHEDULE:
+HH:MM-HH:MM | Task | type | project
+(types: deep-work, admin, meeting, break, habit)
+
+FOCUS_ORDER:
+1. Task
+2. Task
+3. Task
+
+ADVICE: one sentence
+`))
+
+	return b.String()
+}
+
+// buildFullPrompt creates the full prompt for larger models.
+func (p PlanMyDay) buildFullPrompt() string {
 	var b strings.Builder
 
 	now := time.Now()
@@ -890,6 +984,9 @@ func (p PlanMyDay) startPlanning() (PlanMyDay, tea.Cmd) {
 		p.streamBuf.Reset()
 
 		systemPrompt := "You are a productivity coach that creates optimized daily schedules. Always respond in the exact format requested."
+		if p.ai.IsSmallModel() {
+			systemPrompt = "Create a daily schedule. Use the exact format requested."
+		}
 		userPrompt := p.buildPrompt()
 
 		p.streamCh, p.streamCancel = sendToAIStreamingCtx(context.Background(), p.ai, systemPrompt, userPrompt, "planmyday")
@@ -1070,6 +1167,30 @@ func (p PlanMyDay) viewPlanning(width int) string {
 	b.WriteString(DimStyle.Render(fmt.Sprintf("  Analyzing %d tasks, %d events, %d habits",
 		taskCount, len(p.events), len(p.habits))))
 	b.WriteString("\n\n")
+
+	// Show streaming preview so the user sees progress
+	if preview := p.streamBuf.String(); preview != "" {
+		b.WriteString(DimStyle.Render("  ── AI output ──"))
+		b.WriteString("\n")
+		maxLines := (p.height - 16)
+		if maxLines < 4 {
+			maxLines = 4
+		}
+		lines := strings.Split(preview, "\n")
+		start := 0
+		if len(lines) > maxLines {
+			start = len(lines) - maxLines
+		}
+		for _, line := range lines[start:] {
+			truncated := line
+			if len(truncated) > width-8 {
+				truncated = truncated[:width-8]
+			}
+			b.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).Render(truncated))
+			b.WriteString("\n")
+		}
+	}
+
 	b.WriteString(DimStyle.Render("  Esc: cancel"))
 
 	return p.wrapBorder(b.String(), width)

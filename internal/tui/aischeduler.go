@@ -199,10 +199,19 @@ func (as AIScheduler) buildSchedulerPrompt() string {
 	var b strings.Builder
 
 	now := time.Now()
+
+	maxTasks := len(as.tasks)
+	if as.ai.IsSmallModel() && maxTasks > 10 {
+		maxTasks = 10
+	}
+
 	b.WriteString(fmt.Sprintf("You are a productivity scheduler. Current time: %s. Given these tasks and constraints, create an optimal schedule for the REMAINING day.\n\n", now.Format("15:04")))
 
 	b.WriteString("Tasks (priority 1-4, 4=highest):\n")
-	for _, t := range as.tasks {
+	for i, t := range as.tasks {
+		if i >= maxTasks {
+			break
+		}
 		est := t.Estimated
 		if est == 0 {
 			est = 60
@@ -217,7 +226,14 @@ func (as AIScheduler) buildSchedulerPrompt() string {
 
 	if len(as.events) > 0 {
 		b.WriteString("\nFixed events:\n")
-		for _, e := range as.events {
+		maxEvents := len(as.events)
+		if as.ai.IsSmallModel() && maxEvents > 5 {
+			maxEvents = 5
+		}
+		for i, e := range as.events {
+			if i >= maxEvents {
+				break
+			}
 			b.WriteString(fmt.Sprintf("- %s at %s (%dmin)\n", e.Title, e.Time, e.Duration))
 		}
 	}

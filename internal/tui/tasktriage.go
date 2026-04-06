@@ -260,44 +260,40 @@ func (tt *TaskTriage) buildPrompt() (string, string) {
 		b.WriteString(line + "\n")
 	}
 
-	if len(tt.activeGoals) > 0 {
-		b.WriteString("\nACTIVE GOALS:\n")
-		for _, g := range tt.activeGoals {
-			progress := 0
-			if len(g.Milestones) > 0 {
-				done := 0
-				for _, m := range g.Milestones {
-					if m.Done {
-						done++
+	if !tt.ai.IsSmallModel() {
+		if len(tt.activeGoals) > 0 {
+			b.WriteString("\nACTIVE GOALS:\n")
+			for _, g := range tt.activeGoals {
+				progress := 0
+				if len(g.Milestones) > 0 {
+					done := 0
+					for _, m := range g.Milestones {
+						if m.Done {
+							done++
+						}
 					}
+					progress = done * 100 / len(g.Milestones)
 				}
-				progress = done * 100 / len(g.Milestones)
+				b.WriteString(fmt.Sprintf("- %s (%d%% complete)\n", g.Title, progress))
 			}
-			b.WriteString(fmt.Sprintf("- %s (%d%% complete)\n", g.Title, progress))
 		}
-	}
 
-	b.WriteString("\nTODAY'S SCHEDULE:\n")
-	if len(tt.todayEvents) > 0 {
-		for _, ev := range tt.todayEvents {
-			b.WriteString("- " + ev + "\n")
+		b.WriteString("\nTODAY'S SCHEDULE:\n")
+		if len(tt.todayEvents) > 0 {
+			for _, ev := range tt.todayEvents {
+				b.WriteString("- " + ev + "\n")
+			}
+		} else {
+			b.WriteString("No events scheduled\n")
 		}
-	} else {
-		b.WriteString("No events scheduled\n")
 	}
 
 	b.WriteString(`
-Pick the 5 most important tasks for today. Consider:
-- Overdue tasks (highest urgency)
-- Tasks due today or tomorrow
-- Tasks that align with active goals
-- Quick wins that can build momentum
-- Context: what meetings/events affect the day
-
-Format each recommendation EXACTLY like this:
+Pick the 5 most important tasks for today.
+Format each EXACTLY:
 TASK: {exact task text}
-REASON: {1-line why this matters today}
-PRIORITY: {1-5, where 5 is most critical}
+REASON: {1-line why}
+PRIORITY: {1-5, 5=most critical}
 TIME: {estimated minutes}
 ---
 `)
@@ -737,6 +733,30 @@ func (tt TaskTriage) viewLoading(width int) string {
 		buf.WriteString(DimStyle.Render(fmt.Sprintf(", %d active goals", len(tt.activeGoals))))
 	}
 	buf.WriteString("\n\n")
+
+	// Show streaming preview so the user sees progress
+	if preview := tt.streamBuf.String(); preview != "" {
+		buf.WriteString(DimStyle.Render("  ── AI output ──"))
+		buf.WriteString("\n")
+		maxLines := (tt.height - 16)
+		if maxLines < 4 {
+			maxLines = 4
+		}
+		lines := strings.Split(preview, "\n")
+		start := 0
+		if len(lines) > maxLines {
+			start = len(lines) - maxLines
+		}
+		for _, line := range lines[start:] {
+			truncated := line
+			if len(truncated) > width-8 {
+				truncated = truncated[:width-8]
+			}
+			buf.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).Render(truncated))
+			buf.WriteString("\n")
+		}
+	}
+
 	buf.WriteString(DimStyle.Render("  Esc: cancel"))
 
 	return tt.renderBorder(buf.String(), width)
