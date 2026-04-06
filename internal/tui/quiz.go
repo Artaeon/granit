@@ -193,49 +193,82 @@ func generateDefinitionQuestions(source string, lines []string) []QuizQuestion {
 	return qs
 }
 
-// generateFillBlankQuestions picks sentences that contain bold or key terms
-// and blanks them out.
+// generateFillBlankQuestions picks sentences that contain bold, italic, or
+// definition-list key terms and blanks them out.
 func generateFillBlankQuestions(source string, lines []string) []QuizQuestion {
 	var qs []QuizQuestion
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "-") {
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
 
-		// Look for **bold** terms to blank out
-		startBold := strings.Index(trimmed, "**")
-		if startBold < 0 {
-			continue
-		}
-		after := trimmed[startBold+2:]
-		endBold := strings.Index(after, "**")
-		if endBold < 0 {
-			continue
+		// Try **bold** terms first.
+		if startBold := strings.Index(trimmed, "**"); startBold >= 0 {
+			after := trimmed[startBold+2:]
+			if endBold := strings.Index(after, "**"); endBold >= 0 {
+				term := after[:endBold]
+				if len(term) >= 2 && len(term) <= 60 {
+					blanked := trimmed[:startBold] + "______" + trimmed[startBold+2+endBold+2:]
+					blanked = strings.ReplaceAll(blanked, "**", "")
+					blanked = strings.ReplaceAll(blanked, "*", "")
+					qs = append(qs, QuizQuestion{
+						Type:     "fill_blank",
+						Question: blanked,
+						Answer:   term,
+						Source:   source,
+					})
+					continue
+				}
+			}
 		}
 
-		term := after[:endBold]
-		if len(term) < 2 || len(term) > 60 {
-			continue
+		// Try *italic* terms (single asterisk, not bold).
+		if !strings.Contains(trimmed, "**") {
+			if startItalic := strings.Index(trimmed, "*"); startItalic >= 0 {
+				after := trimmed[startItalic+1:]
+				if endItalic := strings.Index(after, "*"); endItalic > 0 {
+					term := after[:endItalic]
+					if len(term) >= 2 && len(term) <= 60 {
+						blanked := trimmed[:startItalic] + "______" + trimmed[startItalic+1+endItalic+1:]
+						blanked = strings.ReplaceAll(blanked, "*", "")
+						qs = append(qs, QuizQuestion{
+							Type:     "fill_blank",
+							Question: blanked,
+							Answer:   term,
+							Source:   source,
+						})
+						continue
+					}
+				}
+			}
 		}
 
-		blanked := trimmed[:startBold] + "______" + trimmed[startBold+2+endBold+2:]
-		// Strip remaining markdown bold markers for cleanliness
-		blanked = strings.ReplaceAll(blanked, "**", "")
-
-		qs = append(qs, QuizQuestion{
-			Type:     "fill_blank",
-			Question: blanked,
-			Answer:   term,
-			Source:   source,
-		})
+		// Try definition list terms: "- term :: definition" — blank the term.
+		if strings.HasPrefix(trimmed, "- ") && strings.Contains(trimmed, " :: ") {
+			parts := strings.SplitN(trimmed[2:], " :: ", 2)
+			if len(parts) == 2 {
+				term := strings.TrimSpace(parts[0])
+				def := strings.TrimSpace(parts[1])
+				if len(term) >= 2 && len(term) <= 60 && def != "" {
+					blanked := "- ______ :: " + def
+					qs = append(qs, QuizQuestion{
+						Type:     "fill_blank",
+						Question: blanked,
+						Answer:   term,
+						Source:   source,
+					})
+				}
+			}
+		}
 	}
 
 	return qs
 }
 
 // generateTrueFalseQuestions creates true/false statements from note content.
+// Roughly half are true (verbatim) and half are false (negated).
 func generateTrueFalseQuestions(source string, lines []string) []QuizQuestion {
 	var qs []QuizQuestion
 
@@ -257,9 +290,21 @@ func generateTrueFalseQuestions(source string, lines []string) []QuizQuestion {
 		}
 	}
 
-	for _, s := range sentences {
+	for i, s := range sentences {
 		if len(qs) >= 5 {
 			break
+		}
+		// Alternate true and false questions for diversity.
+		if i%2 == 1 {
+			if negated, ok := negateSentence(s); ok {
+				qs = append(qs, QuizQuestion{
+					Type:     "true_false",
+					Question: fmt.Sprintf("True or False: %s", negated),
+					Answer:   "false",
+					Source:   source,
+				})
+				continue
+			}
 		}
 		qs = append(qs, QuizQuestion{
 			Type:     "true_false",
@@ -270,6 +315,39 @@ func generateTrueFalseQuestions(source string, lines []string) []QuizQuestion {
 	}
 
 	return qs
+}
+
+// negateSentence attempts to negate a sentence by inserting "not" after common
+// verbs or replacing key positive words. Returns the negated string and true
+// if a negation was applied.
+func negateSentence(s string) (string, bool) {
+	lower := strings.ToLower(s)
+
+	// Try inserting "not" after common verbs/auxiliaries.
+	verbs := []string{" is ", " are ", " was ", " were ", " can ", " will ", " has ", " have ", " does ", " do ", " should ", " must ", " could ", " would "}
+	for _, v := range verbs {
+		idx := strings.Index(lower, v)
+		if idx >= 0 {
+			insertAt := idx + len(v)
+			return s[:insertAt] + "not " + s[insertAt:], true
+		}
+	}
+
+	// Try replacing "always" with "never" and vice-versa.
+	replacements := [][2]string{
+		{"always", "never"},
+		{"all", "no"},
+		{"every", "no"},
+	}
+	for _, r := range replacements {
+		if strings.Contains(lower, r[0]) {
+			// Perform case-insensitive replacement of the first occurrence.
+			idx := strings.Index(lower, r[0])
+			return s[:idx] + r[1] + s[idx+len(r[0]):], true
+		}
+	}
+
+	return s, false
 }
 
 // generateMultipleChoiceQuestions builds questions from lists in the note.
