@@ -242,6 +242,14 @@ func (bp BlogPublisher) updateConfig(msg tea.KeyMsg) (BlogPublisher, tea.Cmd) {
 	case "enter":
 		publishRow := bp.configPublishRow()
 		if bp.cursor == publishRow {
+			// Validate required fields before publishing
+			if errMsg := bp.validateConfig(); errMsg != "" {
+				bp.screen = blogScreenResult
+				bp.done = true
+				bp.err = fmt.Errorf("%s", errMsg)
+				bp.status = "Error: " + errMsg
+				return bp, nil
+			}
 			// Start publishing
 			bp.screen = blogScreenPublishing
 			bp.status = "Publishing..."
@@ -364,6 +372,24 @@ func (bp *BlogPublisher) configPublishRow() int {
 	return len(bp.configFields())
 }
 
+// validateConfig checks that required fields are filled in before publishing.
+// Returns an error message string, or "" if everything looks good.
+func (bp *BlogPublisher) validateConfig() string {
+	if bp.target == "medium" {
+		if strings.TrimSpace(bp.mediumToken) == "" {
+			return "Medium API token is required"
+		}
+	} else {
+		if strings.TrimSpace(bp.ghToken) == "" {
+			return "GitHub API token is required"
+		}
+		if strings.TrimSpace(bp.ghRepo) == "" {
+			return "GitHub repository (owner/repo) is required"
+		}
+	}
+	return ""
+}
+
 // ---------------------------------------------------------------------------
 // Publish commands
 // ---------------------------------------------------------------------------
@@ -446,6 +472,18 @@ func (bp *BlogPublisher) extractTags() []string {
 	return nil
 }
 
+// extractAPIErrorMessage tries to pull a human-readable message from a JSON
+// API error body.  Falls back to "HTTP <code>" when the body cannot be parsed.
+func extractAPIErrorMessage(body []byte, statusCode int) string {
+	var result struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &result) == nil && result.Message != "" {
+		return result.Message
+	}
+	return fmt.Sprintf("HTTP %d", statusCode)
+}
+
 // ---------------------------------------------------------------------------
 // HTTP retry with exponential backoff
 // ---------------------------------------------------------------------------
@@ -504,7 +542,7 @@ func blogPublishMedium(token, title, content, publishStatus string, tags []strin
 	}
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("medium API error (%d): %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("Medium API error: %s", extractAPIErrorMessage(body, resp.StatusCode))
 	}
 
 	var userResp struct {
@@ -560,7 +598,7 @@ func blogPublishMedium(token, title, content, publishStatus string, tags []strin
 	}
 
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		return "", fmt.Errorf("medium API error (%d): %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("Medium API error: %s", extractAPIErrorMessage(body, resp.StatusCode))
 	}
 
 	var postResp struct {
@@ -631,12 +669,20 @@ func blogPublishGitHub(token, repo, branch, dirPath, title, content string) (str
 		var fileResp struct {
 			SHA string `json:"sha"`
 		}
-		body, _ := io.ReadAll(resp.Body)
-		if err := json.Unmarshal(body, &fileResp); err == nil && fileResp.SHA != "" {
-			existingSHA = fileResp.SHA
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return "", fmt.Errorf("read file-check response: %w", readErr)
 		}
+		if err := json.Unmarshal(body, &fileResp); err != nil {
+			return "", fmt.Errorf("parse file-check response: %w", err)
+		}
+		existingSHA = fileResp.SHA
+	} else if resp.StatusCode != 404 {
+		// 404 is expected for new files; anything else is unexpected
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("check existing file: %s", extractAPIErrorMessage(body, resp.StatusCode))
 	} else {
-		// Drain the body for non-200 responses
+		// Drain the body for 404
 		_, _ = io.ReadAll(resp.Body)
 	}
 
@@ -678,7 +724,7 @@ func blogPublishGitHub(token, repo, branch, dirPath, title, content string) (str
 	}
 
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		return "", fmt.Errorf("GitHub API error (%d): %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("GitHub API error: %s", extractAPIErrorMessage(body, resp.StatusCode))
 	}
 
 	var putResp struct {
