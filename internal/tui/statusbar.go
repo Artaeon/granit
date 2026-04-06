@@ -323,9 +323,13 @@ func (sb StatusBar) View() string {
 	}
 
 	// ── Vault info ───────────────────────────────────────────────────
+	vaultLabel := sb.vaultPath
+	if sb.noteCount > 0 {
+		vaultLabel = fmt.Sprintf("%d notes  %s", sb.noteCount, sb.vaultPath)
+	}
 	rightInfo := lipgloss.NewStyle().
 		Background(mantle).Foreground(surface2).Padding(0, 1).
-		Render(sb.vaultPath)
+		Render(vaultLabel)
 
 	// ── Overflow handling ────────────────────────────────────────────
 	totalUsed := func() int {
