@@ -579,6 +579,24 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 				s.cursor++
 				s.skipHeaderForward()
 			}
+		case "pgup", "ctrl+u":
+			s.cursor -= 10
+			if s.cursor < 0 {
+				s.cursor = 0
+			}
+			s.skipHeaderForward()
+		case "pgdown", "ctrl+d":
+			s.cursor += 10
+			if s.cursor >= len(s.visible) {
+				s.cursor = len(s.visible) - 1
+			}
+			s.skipHeaderBackward()
+		case "home", "g":
+			s.cursor = 0
+			s.skipHeaderForward()
+		case "end", "G":
+			s.cursor = len(s.visible) - 1
+			s.skipHeaderBackward()
 		case "backspace", "delete":
 			// Reset current setting to default
 			item := s.currentItem()
@@ -924,8 +942,8 @@ func (s Settings) View() string {
 	if s.searching || s.searchBuf != "" {
 		extraLines = 2
 	}
-	// Reserve lines for: border(2) + padding(2) + header(2) + gap(1) + footer(5) + selected extras(2)
-	visibleItems := s.height - 14 - extraLines
+	// Reserve lines for: border(2) + padding(2) + header(2) + gap(1) + help(3) + statusbar(3)
+	visibleItems := s.height - 13 - extraLines
 	if visibleItems < 5 {
 		visibleItems = 5
 	}
@@ -1129,6 +1147,7 @@ func (s Settings) View() string {
 	} else {
 		helpParts = []string{
 			ks.Render("j/k") + ds.Render(":nav"),
+			ks.Render("PgUp/Dn") + ds.Render(":page"),
 			ks.Render("Enter") + ds.Render(":edit"),
 			ks.Render("/") + ds.Render(":search"),
 			ks.Render("Del") + ds.Render(":reset"),
