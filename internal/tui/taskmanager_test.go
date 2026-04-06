@@ -933,9 +933,9 @@ func TestParseICSFile_DateFormats(t *testing.T) {
 		{"2026-04-01", true},
 	}
 	for _, tc := range tests {
-		parsed, allDay := parseICSTime(tc.input)
-		if parsed.IsZero() {
-			t.Errorf("parseICSTime(%q) returned zero time", tc.input)
+		parsed, allDay, err := parseICSTime(tc.input)
+		if err != nil || parsed.IsZero() {
+			t.Errorf("parseICSTime(%q) returned error or zero time: %v", tc.input, err)
 			continue
 		}
 		if allDay != tc.want {
@@ -1006,21 +1006,25 @@ func TestParseICSFile_RRULEWeekly(t *testing.T) {
 	}
 }
 
-func TestIcsRRuleFreq(t *testing.T) {
+func TestParseICSRRule(t *testing.T) {
 	tests := []struct {
-		input string
-		want  string
+		input    string
+		wantFreq string
+		wantInt  int
 	}{
-		{"FREQ=DAILY", "DAILY"},
-		{"FREQ=WEEKLY;BYDAY=MO", "WEEKLY"},
-		{"FREQ=MONTHLY;INTERVAL=2", "MONTHLY"},
-		{"FREQ=YEARLY", "YEARLY"},
-		{"BYDAY=MO", ""},
+		{"FREQ=DAILY", "DAILY", 1},
+		{"FREQ=WEEKLY;BYDAY=MO", "WEEKLY", 1},
+		{"FREQ=MONTHLY;INTERVAL=2", "MONTHLY", 2},
+		{"FREQ=YEARLY", "YEARLY", 1},
+		{"BYDAY=MO", "", 1},
 	}
 	for _, tc := range tests {
-		got := icsRRuleFreq(tc.input)
-		if got != tc.want {
-			t.Errorf("icsRRuleFreq(%q) = %q, want %q", tc.input, got, tc.want)
+		freq, interval, _, _ := parseICSRRule(tc.input)
+		if freq != tc.wantFreq {
+			t.Errorf("parseICSRRule(%q) freq = %q, want %q", tc.input, freq, tc.wantFreq)
+		}
+		if interval != tc.wantInt {
+			t.Errorf("parseICSRRule(%q) interval = %d, want %d", tc.input, interval, tc.wantInt)
 		}
 	}
 }
