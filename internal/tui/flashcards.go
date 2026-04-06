@@ -275,6 +275,9 @@ type Flashcards struct {
 
 	// Stats
 	scroll int
+
+	// Status feedback
+	statusMsg string
 }
 
 func NewFlashcards(vaultPath string) Flashcards {
@@ -361,23 +364,31 @@ func (fc *Flashcards) SaveProgress(vaultPath string) {
 	p := fc.progressPath(vaultPath)
 	dir := filepath.Dir(p)
 	if err := os.MkdirAll(dir, 0755); err != nil {
+		fc.statusMsg = "Failed to save progress: " + err.Error()
 		return
 	}
 	data, err := json.MarshalIndent(fc.progress, "", "  ")
 	if err != nil {
+		fc.statusMsg = "Failed to save progress: " + err.Error()
 		return
 	}
-	_ = os.WriteFile(p, data, 0644)
+	if err := os.WriteFile(p, data, 0644); err != nil {
+		fc.statusMsg = "Failed to save progress: " + err.Error()
+	}
 }
 
 func (fc *Flashcards) LoadProgress(vaultPath string) {
 	p := fc.progressPath(vaultPath)
 	data, err := os.ReadFile(p)
 	if err != nil {
+		// File doesn't exist yet — not an error.
 		return
 	}
 	var prog flashcardProgress
 	if err := json.Unmarshal(data, &prog); err != nil {
+		// Corrupted progress file — warn user and continue with empty progress.
+		fc.statusMsg = fmt.Sprintf("Warning: flashcard progress file is corrupted (%s) — starting fresh", err)
+		fc.progress = flashcardProgress{Cards: make(map[string]*Flashcard)}
 		return
 	}
 	if prog.Cards == nil {
@@ -524,6 +535,7 @@ func (fc Flashcards) Update(msg tea.Msg) (Flashcards, tea.Cmd) {
 
 		switch fc.mode {
 		case fcModeDeck:
+			fc.statusMsg = "" // clear on any key press
 			switch key {
 			case "esc", "q":
 				fc.active = false
@@ -657,6 +669,12 @@ func (fc Flashcards) viewDeck() string {
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", w-8)))
 	b.WriteString("\n")
+
+	if fc.statusMsg != "" {
+		warnStyle := lipgloss.NewStyle().Foreground(yellow)
+		b.WriteString(warnStyle.Render("  " + fc.statusMsg))
+		b.WriteString("\n")
+	}
 
 	if dueCount > 0 {
 		b.WriteString(DimStyle.Render("  Enter: start review  s: stats  Esc: close"))
