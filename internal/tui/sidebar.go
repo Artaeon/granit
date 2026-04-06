@@ -387,7 +387,11 @@ func (s Sidebar) View() string {
 			iconSpace = " "
 		}
 
-		maxNameLen := contentWidth - len(indent) - 4
+		iconW := 0
+		if icon != "" {
+			iconW = lipgloss.Width(icon) + 1 // +1 for iconSpace
+		}
+		maxNameLen := contentWidth - lipgloss.Width(indent) - iconW - 3
 		if maxNameLen < 5 {
 			maxNameLen = 5
 		}
@@ -396,6 +400,7 @@ func (s Sidebar) View() string {
 		if i == s.cursor && s.focused {
 			// Selected item: accent bar + highlighted background
 			accentBar := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(ThemeAccentBar)
+			accentW := lipgloss.Width(accentBar)
 			nameStyle := lipgloss.NewStyle().
 				Background(surface0).
 				Foreground(mauve).
@@ -407,8 +412,9 @@ func (s Sidebar) View() string {
 			} else {
 				renderedName = nameStyle.Render(displayName)
 			}
-			line := accentBar + nameStyle.Render(indent+icon+iconSpace) + renderedName
-			b.WriteString(lipgloss.NewStyle().Background(surface0).Width(contentWidth).Render(line))
+			inner := nameStyle.Render(indent+icon+iconSpace) + renderedName
+			line := accentBar + lipgloss.NewStyle().Background(surface0).Width(contentWidth-accentW).Render(inner)
+			b.WriteString(line)
 		} else {
 			var renderedName string
 			if s.search != "" {

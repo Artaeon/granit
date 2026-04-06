@@ -474,18 +474,18 @@ func (ft FileTree) renderNode(node *TreeNode, maxWidth int) string {
 	// File node.
 	displayName := strings.TrimSuffix(node.Name, ".md")
 
-	maxNameLen := maxWidth - (node.Depth*2 + 4)
-	if maxNameLen < 5 {
-		maxNameLen = 5
-	}
-	displayName = TruncateDisplay(displayName, maxNameLen)
-
 	icon := lipgloss.NewStyle().Foreground(blue).Render(IconFileChar)
 	if isDailyNote(node.Name) {
 		icon = lipgloss.NewStyle().Foreground(green).Render(IconDailyChar)
 	} else if isWeeklyNote(node.Name) {
 		icon = lipgloss.NewStyle().Foreground(sapphire).Render(IconCalendarChar)
 	}
+	iconW := lipgloss.Width(icon) + 1 // icon + space
+	maxNameLen := maxWidth - (node.Depth*2 + iconW + 2)
+	if maxNameLen < 5 {
+		maxNameLen = 5
+	}
+	displayName = TruncateDisplay(displayName, maxNameLen)
 
 	return indent + icon + " " + NormalItemStyle.Render(displayName)
 }
@@ -504,11 +504,6 @@ func (ft FileTree) renderNodePlain(node *TreeNode, maxWidth int) string {
 	}
 
 	displayName := strings.TrimSuffix(node.Name, ".md")
-	maxNameLen := maxWidth - (node.Depth*2 + 4)
-	if maxNameLen < 5 {
-		maxNameLen = 5
-	}
-	displayName = TruncateDisplay(displayName, maxNameLen)
 
 	iconChar := IconFileChar
 	if isDailyNote(node.Name) {
@@ -516,6 +511,12 @@ func (ft FileTree) renderNodePlain(node *TreeNode, maxWidth int) string {
 	} else if isWeeklyNote(node.Name) {
 		iconChar = IconCalendarChar
 	}
+	iconW := lipgloss.Width(iconChar) + 1 // icon + space
+	maxNameLen := maxWidth - (node.Depth*2 + iconW + 2)
+	if maxNameLen < 5 {
+		maxNameLen = 5
+	}
+	displayName = TruncateDisplay(displayName, maxNameLen)
 
 	return indent + iconChar + " " + displayName
 }
