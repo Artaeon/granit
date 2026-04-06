@@ -1553,9 +1553,6 @@ func (r Renderer) renderMarkdown(content string) []string {
 	return result
 }
 
-// wrapParagraph renders inline markdown first, then wraps the rendered output
-// by visual width. This ensures formatting spans like **bold** that cross word
-// boundaries are rendered correctly before wrapping.
 // stripInlineMarkers removes paired bold/italic/strikethrough markers
 // from heading text so it doesn't show literal **text** or *text*.
 func stripInlineMarkers(s string) string {
@@ -1566,6 +1563,9 @@ func stripInlineMarkers(s string) string {
 	return s
 }
 
+// wrapParagraph renders inline markdown first, then wraps the rendered output
+// by visual width. This ensures formatting spans like **bold** that cross word
+// boundaries are rendered correctly before wrapping.
 func (r Renderer) wrapParagraph(text string, maxWidth int) []string {
 	if maxWidth <= 0 {
 		maxWidth = 60
