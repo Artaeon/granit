@@ -185,23 +185,15 @@ func (m Model) View() string {
 		editorContent = m.editor.View()
 	}
 
-	// Folder-path breadcrumb (between tab bar and editor)
-	breadcrumbStr := renderBreadcrumb(m.activeNote, editorWidth)
-
-	// Zen layout hides tab bar and breadcrumb for distraction-free writing
+	// Zen layout hides tab bar for distraction-free writing
 	if layout == "zen" {
 		tabBarStr = ""
-		breadcrumbStr = ""
 	}
 
-	// Combine tab bar + breadcrumb + editor
+	// Combine tab bar + editor
 	editorPanel := editorContent
-	if tabBarStr != "" && breadcrumbStr != "" {
-		editorPanel = tabBarStr + "\n" + breadcrumbStr + "\n" + editorContent
-	} else if tabBarStr != "" {
+	if tabBarStr != "" {
 		editorPanel = tabBarStr + "\n" + editorContent
-	} else if breadcrumbStr != "" {
-		editorPanel = breadcrumbStr + "\n" + editorContent
 	}
 
 	editor := EditorStyle.
@@ -1333,7 +1325,7 @@ func (m Model) renderViewMode() string {
 		contentWidth = 10
 	}
 
-	// Header: reading mode indicator + progress
+	// Header: reading bar with title, reading time, and progress
 	vmTotal := m.renderer.RenderLineCount(m.editor.GetContent())
 	vmVP := m.renderer.height - 4
 	if vmVP < 1 {
@@ -1348,78 +1340,32 @@ func (m Model) renderViewMode() string {
 	} else {
 		progress = 100
 	}
-	modeLabel := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" VIEW ")
-	progLabel := DimStyle.Render(fmt.Sprintf("%d%%", progress))
-	sepLen := contentWidth - lipgloss.Width(modeLabel) - lipgloss.Width(progLabel) - 2
-	if sepLen < 4 {
-		sepLen = 4
+
+	// Progress bar: thin line with filled portion
+	barWidth := contentWidth - 2
+	if barWidth < 10 {
+		barWidth = 10
 	}
-	b.WriteString(modeLabel + DimStyle.Render(strings.Repeat("─", sepLen)) + progLabel)
+	filled := barWidth * progress / 100
+	barStyle := lipgloss.NewStyle().Foreground(mauve)
+	dimBar := lipgloss.NewStyle().Foreground(surface0)
+	b.WriteString(" " + barStyle.Render(strings.Repeat("━", filled)) + dimBar.Render(strings.Repeat("─", barWidth-filled)))
 	b.WriteString("\n")
 
-	// Render markdown content
 	rendered := m.renderer.Render(m.editor.GetContent(), m.viewScroll)
-
-	// Add scroll position indicator on the right edge
-	vmTotalLines := m.renderer.RenderLineCount(m.editor.GetContent())
-	vmViewportH := m.renderer.height - 4
-	if vmViewportH < 1 {
-		vmViewportH = 1
-	}
-
-	renderedLines := strings.Split(rendered, "\n")
-
-	// Clamp each line width to prevent overflow when EditorStyle wraps.
-	// Lines wider than contentWidth cause garbled rendering with overlays.
-	maxLineW := contentWidth - 2
-	if maxLineW < 10 {
-		maxLineW = 10
-	}
-	for i, rl := range renderedLines {
-		w := lipgloss.Width(rl)
-		if w > maxLineW {
-			// Truncate using plain text (ANSI-aware truncation is too complex;
-			// the renderer should ideally produce lines within budget already).
-			plain := stripAnsi(rl)
-			renderedLines[i] = TruncateDisplay(plain, maxLineW)
-		}
-	}
-
-	trackHeight := len(renderedLines)
-	if trackHeight > 0 && vmTotalLines > vmViewportH {
-		thumbSize := maxInt(1, trackHeight*vmViewportH/vmTotalLines)
-		if thumbSize > trackHeight {
-			thumbSize = trackHeight
-		}
-		vmMaxScroll := vmTotalLines - vmViewportH
-		thumbPos := 0
-		if vmMaxScroll > 0 {
-			thumbPos = m.viewScroll * (trackHeight - thumbSize) / vmMaxScroll
-		}
-		if thumbPos+thumbSize > trackHeight {
-			thumbPos = trackHeight - thumbSize
-		}
-		if thumbPos < 0 {
-			thumbPos = 0
-		}
-
-		trackStyle := lipgloss.NewStyle().Foreground(surface0)
-		thumbStyle := lipgloss.NewStyle().Foreground(mauve)
-
-		for i := 0; i < trackHeight; i++ {
-			var indicator string
-			if i >= thumbPos && i < thumbPos+thumbSize {
-				indicator = thumbStyle.Render("\u2588")
-			} else {
-				indicator = trackStyle.Render("\u2502")
-			}
-			renderedLines[i] = renderedLines[i] + " " + indicator
-		}
-	}
-
-	b.WriteString(strings.Join(renderedLines, "\n"))
+	b.WriteString(rendered)
 
 	return b.String()
+}
+
+// estimateReadingTime returns a human-friendly reading time estimate.
+func estimateReadingTime(content string) string {
+	words := len(strings.Fields(content))
+	minutes := words / 200
+	if minutes < 1 {
+		return "< 1 min read"
+	}
+	return fmt.Sprintf("%d min read", minutes)
 }
 
 // updateReadingProgress calculates the reading progress percentage

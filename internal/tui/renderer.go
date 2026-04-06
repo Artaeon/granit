@@ -898,6 +898,14 @@ func (r Renderer) renderMarkdown(content string) []string {
 	if contentWidth < 20 {
 		contentWidth = 20
 	}
+	// Reading style: cap line width for comfortable reading and add
+	// left margin so text appears centered in the panel.
+	readingMargin := ""
+	if r.viewStyle == "reading" && contentWidth > 88 {
+		margin := (contentWidth - 88) / 2
+		contentWidth = 88
+		readingMargin = strings.Repeat(" ", margin)
+	}
 
 	lines := strings.Split(content, "\n")
 	inFrontmatter := false
@@ -1111,14 +1119,27 @@ func (r Renderer) renderMarkdown(content string) []string {
 
 		// Headings
 		if strings.HasPrefix(trimmed, "# ") {
-			hText := strings.TrimPrefix(trimmed, "# ")
+			hText := stripInlineMarkers(strings.TrimPrefix(trimmed, "# "))
 			result = append(result, "")
 			switch r.viewStyle {
 			case "reading":
 				styled := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(hText)
-				underline := lipgloss.NewStyle().Foreground(mauve).Render("  " + strings.Repeat("━", lipgloss.Width(hText)+4))
-				result = append(result, "  "+styled)
-				result = append(result, underline)
+				styledW := lipgloss.Width(styled)
+				pad := (contentWidth - styledW) / 2
+				if pad < 0 {
+					pad = 0
+				}
+				result = append(result, strings.Repeat(" ", pad)+styled)
+				// Decorative divider centered below
+				divider := "── ◆ ──"
+				divStyled := lipgloss.NewStyle().Foreground(surface1).Render(divider)
+				divW := lipgloss.Width(divStyled)
+				divPad := (contentWidth - divW) / 2
+				if divPad < 0 {
+					divPad = 0
+				}
+				result = append(result, strings.Repeat(" ", divPad)+divStyled)
+				result = append(result, "")
 			case "minimal":
 				styled := lipgloss.NewStyle().Foreground(text).Bold(true).Render(hText)
 				result = append(result, "  "+styled)
@@ -1136,13 +1157,13 @@ func (r Renderer) renderMarkdown(content string) []string {
 			continue
 		}
 		if strings.HasPrefix(trimmed, "## ") {
-			hText := strings.TrimPrefix(trimmed, "## ")
+			hText := stripInlineMarkers(strings.TrimPrefix(trimmed, "## "))
 			result = append(result, "")
 			switch r.viewStyle {
 			case "reading":
 				styled := lipgloss.NewStyle().Foreground(blue).Bold(true).Render(hText)
-				underline := lipgloss.NewStyle().Foreground(surface1).Render("  " + strings.Repeat("─", lipgloss.Width(hText)+2))
-				result = append(result, "  "+styled)
+				underline := lipgloss.NewStyle().Foreground(surface1).Render("    " + strings.Repeat("─", len(hText)+2))
+				result = append(result, "    "+styled)
 				result = append(result, underline)
 			case "minimal":
 				styled := lipgloss.NewStyle().Foreground(subtext1).Bold(true).Render(hText)
@@ -1156,12 +1177,12 @@ func (r Renderer) renderMarkdown(content string) []string {
 			continue
 		}
 		if strings.HasPrefix(trimmed, "### ") {
-			hText := strings.TrimPrefix(trimmed, "### ")
+			hText := stripInlineMarkers(strings.TrimPrefix(trimmed, "### "))
 			result = append(result, "")
 			switch r.viewStyle {
 			case "reading":
 				styled := lipgloss.NewStyle().Foreground(sapphire).Bold(true).Render(hText)
-				result = append(result, "  "+styled)
+				result = append(result, "    "+styled)
 			case "minimal":
 				styled := lipgloss.NewStyle().Foreground(overlay2).Bold(true).Render(hText)
 				result = append(result, "  "+styled)
@@ -1173,7 +1194,7 @@ func (r Renderer) renderMarkdown(content string) []string {
 			continue
 		}
 		if strings.HasPrefix(trimmed, "#### ") {
-			hText := strings.TrimPrefix(trimmed, "#### ")
+			hText := stripInlineMarkers(strings.TrimPrefix(trimmed, "#### "))
 			styled := lipgloss.NewStyle().
 				Foreground(teal).
 				Bold(true).
@@ -1481,10 +1502,23 @@ func (r Renderer) renderMarkdown(content string) []string {
 			line = nextRaw
 		}
 		paraSegments = append(paraSegments, currentSeg)
-		for _, seg := range paraSegments {
-			wrapped := r.wrapParagraph(seg, contentWidth-4)
+		readingPad := ""
+		wrapWidth := contentWidth - 4
+		if r.viewStyle == "reading" {
+			readingPad = "  "
+			wrapWidth = contentWidth - 6
+			if wrapWidth < 10 {
+				wrapWidth = 10
+			}
+		}
+		for si, seg := range paraSegments {
+			wrapped := r.wrapParagraph(seg, wrapWidth)
 			for _, wl := range wrapped {
-				result = append(result, "  "+wl)
+				result = append(result, "  "+readingPad+wl)
+			}
+			// Extra blank line between paragraph segments for reading style
+			if r.viewStyle == "reading" && si < len(paraSegments)-1 {
+				result = append(result, "")
 			}
 		}
 	}
@@ -1507,12 +1541,39 @@ func (r Renderer) renderMarkdown(content string) []string {
 		}
 	}
 
+	// Apply reading margin to center content in wide terminals.
+	if readingMargin != "" {
+		for i, line := range result {
+			if line != "" {
+				result[i] = readingMargin + line
+			}
+		}
+	}
+
 	return result
 }
 
 // wrapParagraph renders inline markdown first, then wraps the rendered output
 // by visual width. This ensures formatting spans like **bold** that cross word
 // boundaries are rendered correctly before wrapping.
+// stripInlineMarkers removes bold/italic markdown markers from text
+// so heading text doesn't show literal **text** or *text*.
+func stripInlineMarkers(s string) string {
+	s = strings.ReplaceAll(s, "***", "")
+	s = strings.ReplaceAll(s, "**", "")
+	s = strings.ReplaceAll(s, "~~", "")
+	// Single * only if paired (italic) — just strip all remaining single *
+	// that aren't part of a list marker at line start.
+	out := strings.Builder{}
+	for i := 0; i < len(s); i++ {
+		if s[i] == '*' {
+			continue
+		}
+		out.WriteByte(s[i])
+	}
+	return out.String()
+}
+
 func (r Renderer) wrapParagraph(text string, maxWidth int) []string {
 	if maxWidth <= 0 {
 		maxWidth = 60
