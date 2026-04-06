@@ -147,7 +147,7 @@ func LayoutHasBacklinks(layout string) bool {
 
 // LayoutHasCalendarPanel reports whether the layout includes the calendar side panel.
 func LayoutHasCalendarPanel(layout string) bool {
-	return false // cockpit renders its own calendar; standalone calendar layout is retired
+	return layout == "cockpit" || layout == "widescreen"
 }
 
 // LayoutHasOutline reports whether the layout includes a persistent outline panel.

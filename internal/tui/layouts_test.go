@@ -7,17 +7,17 @@ import "testing"
 // ---------------------------------------------------------------------------
 
 func TestLayoutCalendar_HasCalendarPanel(t *testing.T) {
-	// Calendar layout was merged into Cockpit; LayoutHasCalendarPanel now
-	// returns false for all layouts (cockpit renders its own calendar).
-	for _, layout := range AllLayouts() {
+	// Cockpit and widescreen have calendar panels.
+	if !LayoutHasCalendarPanel("cockpit") {
+		t.Error("expected LayoutHasCalendarPanel to return true for cockpit")
+	}
+	if !LayoutHasCalendarPanel("widescreen") {
+		t.Error("expected LayoutHasCalendarPanel to return true for widescreen")
+	}
+	// Other layouts should not.
+	for _, layout := range []string{"default", "writer", "zen", "reading", "dashboard"} {
 		if LayoutHasCalendarPanel(layout) {
 			t.Errorf("expected LayoutHasCalendarPanel to return false for %q", layout)
-		}
-	}
-	// Backward-compat constants should also return false
-	for _, layout := range []string{LayoutCalendar, LayoutTaskboard} {
-		if LayoutHasCalendarPanel(layout) {
-			t.Errorf("expected LayoutHasCalendarPanel to return false for deprecated %q", layout)
 		}
 	}
 }

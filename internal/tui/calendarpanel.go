@@ -205,75 +205,50 @@ func (cp CalendarPanel) View() string {
 	}
 
 	var b strings.Builder
-
-	// Title
-	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	b.WriteString(titleStyle.Render("  CALENDAR"))
-	b.WriteString("\n")
-	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", contentWidth)))
-	b.WriteString("\n")
+	sepStyle := lipgloss.NewStyle().Foreground(surface0)
+	sep := sepStyle.Render(strings.Repeat("─", contentWidth))
+	sectionTitle := func(icon, title string, color lipgloss.Color) {
+		b.WriteString(sep + "\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(color).Bold(true).Render("  " + icon + " " + title))
+		b.WriteString("\n")
+	}
 
 	// Mini month calendar
 	b.WriteString(cp.renderMiniCalendar(contentWidth))
-	b.WriteString("\n")
 
-	// Separator
-	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", contentWidth)))
-	b.WriteString("\n")
-
-	// Today's schedule
-	scheduleTitle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	b.WriteString(scheduleTitle.Render("  Today's Schedule"))
-	b.WriteString("\n")
-
-	if len(cp.plannerBlocks) == 0 {
-		b.WriteString("  " + DimStyle.Render("No scheduled blocks") + "\n")
+	// Today's events (ICS)
+	sectionTitle("◆", "Events", peach)
+	if len(cp.todayEvents) == 0 {
+		b.WriteString("  " + DimStyle.Render("No events today") + "\n")
 	} else {
-		for _, block := range cp.plannerBlocks {
-			b.WriteString(cp.renderScheduleBlock(block, contentWidth))
-			b.WriteString("\n")
-		}
-	}
-
-	// Calendar events (ICS)
-	if len(cp.todayEvents) > 0 {
-		b.WriteString("\n")
-		b.WriteString(DimStyle.Render(strings.Repeat("\u2500", contentWidth)))
-		b.WriteString("\n")
-
-		evTitle := lipgloss.NewStyle().Foreground(peach).Bold(true)
-		b.WriteString(evTitle.Render("  Events"))
-		b.WriteString("\n")
-
-		evTimeStyle := lipgloss.NewStyle().Foreground(lavender)
+		evTimeStyle := lipgloss.NewStyle().Foreground(overlay0)
 		evNameStyle := lipgloss.NewStyle().Foreground(text)
 		for _, ev := range cp.todayEvents {
 			timeStr := ev.Date.Format("15:04")
 			if ev.AllDay {
-				timeStr = "all day"
+				timeStr = "     "
 			}
 			title := TruncateDisplay(ev.Title, contentWidth-12)
-			b.WriteString("  " + evTimeStyle.Render(timeStr) + " " + evNameStyle.Render(title))
-			b.WriteString("\n")
+			b.WriteString("  " + evTimeStyle.Render(timeStr) + " " + evNameStyle.Render(title) + "\n")
 		}
 	}
 
-	b.WriteString("\n")
-	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", contentWidth)))
-	b.WriteString("\n")
+	// Today's schedule (planner blocks)
+	if len(cp.plannerBlocks) > 0 {
+		sectionTitle("▸", "Schedule", blue)
+		for _, block := range cp.plannerBlocks {
+			b.WriteString(cp.renderScheduleBlock(block, contentWidth) + "\n")
+		}
+	}
 
 	// Upcoming tasks
-	upcomingTitle := lipgloss.NewStyle().Foreground(green).Bold(true)
-	b.WriteString(upcomingTitle.Render("  Upcoming Tasks"))
-	b.WriteString("\n")
-
+	sectionTitle("○", "Tasks", green)
 	if len(cp.upcomingTasks) == 0 {
 		b.WriteString("  " + DimStyle.Render("No tasks due") + "\n")
 	} else {
 		todayStr := cp.now.Format("2006-01-02")
 		for _, task := range cp.upcomingTasks {
-			b.WriteString(cp.renderTask(task, todayStr, contentWidth))
-			b.WriteString("\n")
+			b.WriteString(cp.renderTask(task, todayStr, contentWidth) + "\n")
 		}
 	}
 
@@ -286,24 +261,22 @@ func (cp CalendarPanel) renderMiniCalendar(width int) string {
 
 	year, month, today := cp.now.Date()
 
-	// Month + year header, centered
+	// Month + year header with today's date
 	monthHeader := fmt.Sprintf("%s %d", month.String()[:3], year)
-	headerStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
-	padLen := (width - len(monthHeader)) / 2
-	if padLen < 0 {
-		padLen = 0
+	todayLabel := fmt.Sprintf("%s %d", cp.now.Weekday().String()[:3], today)
+	headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	todayStyle := lipgloss.NewStyle().Foreground(overlay0)
+	gap := width - len(monthHeader) - len(todayLabel) - 4
+	if gap < 1 {
+		gap = 1
 	}
-	b.WriteString(strings.Repeat(" ", padLen) + headerStyle.Render(monthHeader))
+	b.WriteString("  " + headerStyle.Render(monthHeader) + strings.Repeat(" ", gap) + todayStyle.Render(todayLabel))
 	b.WriteString("\n")
 
 	// Day-of-week header
 	dayHeaders := "Mo Tu We Th Fr Sa Su"
-	dayHeaderStyle := lipgloss.NewStyle().Foreground(overlay0)
-	headerPad := (width - len(dayHeaders)) / 2
-	if headerPad < 0 {
-		headerPad = 0
-	}
-	b.WriteString(strings.Repeat(" ", headerPad) + dayHeaderStyle.Render(dayHeaders))
+	dayHeaderStyle := lipgloss.NewStyle().Foreground(surface2)
+	b.WriteString("  " + dayHeaderStyle.Render(dayHeaders))
 	b.WriteString("\n")
 
 	// First day of month
@@ -318,17 +291,12 @@ func (cp CalendarPanel) renderMiniCalendar(width int) string {
 
 	daysInMonth := time.Date(year, month+1, 0, 0, 0, 0, 0, cp.now.Location()).Day()
 
-	todayStyle := lipgloss.NewStyle().Foreground(base).Background(mauve).Bold(true)
+	todayStyle = lipgloss.NewStyle().Foreground(base).Background(mauve).Bold(true)
 	normalStyle := lipgloss.NewStyle().Foreground(text)
 	eventDotStyle := lipgloss.NewStyle().Foreground(blue)
 
 	var line strings.Builder
-	// Leading padding for first week
-	linePad := (width - len(dayHeaders)) / 2
-	if linePad < 0 {
-		linePad = 0
-	}
-	line.WriteString(strings.Repeat(" ", linePad))
+	line.WriteString("  ")
 	for i := 0; i < weekday; i++ {
 		line.WriteString("   ")
 	}
@@ -358,7 +326,7 @@ func (cp CalendarPanel) renderMiniCalendar(width int) string {
 			b.WriteString(line.String())
 			b.WriteString("\n")
 			line.Reset()
-			line.WriteString(strings.Repeat(" ", linePad))
+			line.WriteString("  ")
 			weekday = 0
 		}
 	}
