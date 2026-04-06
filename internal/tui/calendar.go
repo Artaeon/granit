@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -2263,11 +2264,17 @@ func ParseICSFile(path string) ([]CalendarEvent, error) {
 		case "LOCATION":
 			current.Location = value
 		case "DTSTART":
-			t, allDay := parseICSTime(value)
+			t, allDay, err := parseICSTime(value)
+			if err != nil {
+				continue
+			}
 			current.Date = t
 			current.AllDay = allDay
 		case "DTEND":
-			t, _ := parseICSTime(value)
+			t, _, err := parseICSTime(value)
+			if err != nil {
+				continue
+			}
 			current.EndDate = t
 		case "RRULE":
 			current.rrule = value
@@ -2290,7 +2297,7 @@ func ParseICSFile(path string) ([]CalendarEvent, error) {
 			continue
 		}
 		// Parse RRULE
-		freq := icsRRuleFreq(ie.rrule)
+		freq, interval, count, until := parseICSRRule(ie.rrule)
 		if freq == "" {
 			events = append(events, ie.CalendarEvent)
 			continue
@@ -2298,7 +2305,14 @@ func ParseICSFile(path string) ([]CalendarEvent, error) {
 		// Generate occurrences
 		dur := ie.EndDate.Sub(ie.Date)
 		d := ie.Date
+		occurrences := 0
 		for !d.After(horizon) {
+			if count > 0 && occurrences >= count {
+				break
+			}
+			if !until.IsZero() && d.After(until) {
+				break
+			}
 			if !d.Before(today.AddDate(0, -1, 0)) {
 				ev := ie.CalendarEvent
 				ev.Date = time.Date(d.Year(), d.Month(), d.Day(),
@@ -2306,15 +2320,16 @@ func ParseICSFile(path string) ([]CalendarEvent, error) {
 				ev.EndDate = ev.Date.Add(dur)
 				events = append(events, ev)
 			}
+			occurrences++
 			switch freq {
 			case "DAILY":
-				d = d.AddDate(0, 0, 1)
+				d = d.AddDate(0, 0, interval)
 			case "WEEKLY":
-				d = d.AddDate(0, 0, 7)
+				d = d.AddDate(0, 0, 7*interval)
 			case "MONTHLY":
-				d = d.AddDate(0, 1, 0)
+				d = d.AddDate(0, interval, 0)
 			case "YEARLY":
-				d = d.AddDate(1, 0, 0)
+				d = d.AddDate(interval, 0, 0)
 			default:
 				d = horizon.AddDate(0, 0, 1) // break
 			}
@@ -2324,13 +2339,28 @@ func ParseICSFile(path string) ([]CalendarEvent, error) {
 	return events, nil
 }
 
-func icsRRuleFreq(rrule string) string {
+func parseICSRRule(rrule string) (freq string, interval int, count int, until time.Time) {
+	interval = 1 // default interval
 	for _, part := range strings.Split(rrule, ";") {
-		if strings.HasPrefix(part, "FREQ=") {
-			return strings.TrimPrefix(part, "FREQ=")
+		switch {
+		case strings.HasPrefix(part, "FREQ="):
+			freq = strings.TrimPrefix(part, "FREQ=")
+		case strings.HasPrefix(part, "INTERVAL="):
+			if n, err := strconv.Atoi(strings.TrimPrefix(part, "INTERVAL=")); err == nil && n > 0 {
+				interval = n
+			}
+		case strings.HasPrefix(part, "COUNT="):
+			if n, err := strconv.Atoi(strings.TrimPrefix(part, "COUNT=")); err == nil && n > 0 {
+				count = n
+			}
+		case strings.HasPrefix(part, "UNTIL="):
+			val := strings.TrimPrefix(part, "UNTIL=")
+			if t, _, err := parseICSTime(val); err == nil {
+				until = t
+			}
 		}
 	}
-	return ""
+	return
 }
 
 func icsKeyValue(line string) (string, string) {
@@ -2348,33 +2378,33 @@ func icsBaseProp(key string) string {
 	return key
 }
 
-func parseICSTime(value string) (time.Time, bool) {
+func parseICSTime(value string) (time.Time, bool, error) {
 	value = strings.TrimSpace(value)
 	// UTC format: 20060102T150405Z
 	if t, err := time.Parse("20060102T150405Z", value); err == nil {
-		return t.Local(), false
+		return t.Local(), false, nil
 	}
 	// Local format: 20060102T150405
 	if t, err := time.Parse("20060102T150405", value); err == nil {
-		return t, false
+		return t, false, nil
 	}
 	// Date only: 20060102
 	if t, err := time.Parse("20060102", value); err == nil {
-		return t, true
+		return t, true, nil
 	}
 	// ISO format: 2006-01-02T15:04:05Z
 	if t, err := time.Parse(time.RFC3339, value); err == nil {
-		return t.Local(), false
+		return t.Local(), false, nil
 	}
 	// ISO without timezone: 2006-01-02T15:04:05
 	if t, err := time.Parse("2006-01-02T15:04:05", value); err == nil {
-		return t, false
+		return t, false, nil
 	}
 	// ISO date: 2006-01-02
 	if t, err := time.Parse("2006-01-02", value); err == nil {
-		return t, true
+		return t, true, nil
 	}
-	return time.Time{}, false
+	return time.Time{}, false, fmt.Errorf("unrecognized ICS time format: %q", value)
 }
 // UI configuration updated.
 // Grid/Timeline UI implemented
