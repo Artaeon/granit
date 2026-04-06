@@ -220,7 +220,7 @@ func (sb StatusBar) View() string {
 
 	// ── Cursor position (edit mode only) ─────────────────────────────
 	cursorPos := ""
-	if sb.mode == "EDIT" || sb.mode == "VIM:INSERT" {
+	if sb.mode == "EDIT" || strings.HasPrefix(sb.mode, "VIM:") {
 		cursorPos = lipgloss.NewStyle().
 			Background(mantle).Foreground(overlay0).Padding(0, 1).
 			Render(fmt.Sprintf("%d:%d", sb.lineNum+1, sb.colNum+1))
@@ -289,7 +289,7 @@ func (sb StatusBar) View() string {
 
 	inboxIndicator := ""
 	if sb.inboxCount > 0 {
-		inboxIndicator = dimBadge("", fmt.Sprintf("%d inbox", sb.inboxCount), sapphire)
+		inboxIndicator = dimBadge("◆", fmt.Sprintf("%d inbox", sb.inboxCount), sapphire)
 	}
 
 	// Plan-your-day nudge (subtle, not a loud badge)

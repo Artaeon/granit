@@ -1358,16 +1358,6 @@ func (m Model) renderViewMode() string {
 	return b.String()
 }
 
-// estimateReadingTime returns a human-friendly reading time estimate.
-func estimateReadingTime(content string) string {
-	words := len(strings.Fields(content))
-	minutes := words / 200
-	if minutes < 1 {
-		return "< 1 min read"
-	}
-	return fmt.Sprintf("%d min read", minutes)
-}
-
 // updateReadingProgress calculates the reading progress percentage
 // based on the current scroll position and total rendered lines.
 func (m *Model) updateReadingProgress() {
