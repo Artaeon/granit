@@ -68,25 +68,36 @@ func themeToJSON(t Theme) jsonTheme {
 }
 
 // jsonToTheme converts a JSON-deserialized form back to a Theme.
+// Empty color fields fall back to the catppuccin-mocha defaults so that
+// a partial custom-theme JSON never produces invisible/broken UI.
 func jsonToTheme(jt jsonTheme) Theme {
+	fb := builtinThemes["catppuccin-mocha"] // fallback palette
+
+	colorOrFallback := func(val string, def lipgloss.Color) lipgloss.Color {
+		if val != "" {
+			return lipgloss.Color(val)
+		}
+		return def
+	}
+
 	t := Theme{
 		Name:          jt.Name,
-		Primary:       lipgloss.Color(jt.Primary),
-		Secondary:     lipgloss.Color(jt.Secondary),
-		Accent:        lipgloss.Color(jt.Accent),
-		Warning:       lipgloss.Color(jt.Warning),
-		Success:       lipgloss.Color(jt.Success),
-		Error:         lipgloss.Color(jt.Error),
-		Info:          lipgloss.Color(jt.Info),
-		Text:          lipgloss.Color(jt.Text),
-		Subtext:       lipgloss.Color(jt.Subtext),
-		Dim:           lipgloss.Color(jt.Dim),
-		Surface2:      lipgloss.Color(jt.Surface2),
-		Surface1:      lipgloss.Color(jt.Surface1),
-		Surface0:      lipgloss.Color(jt.Surface0),
-		Base:          lipgloss.Color(jt.Base),
-		Mantle:        lipgloss.Color(jt.Mantle),
-		Crust:         lipgloss.Color(jt.Crust),
+		Primary:       colorOrFallback(jt.Primary, fb.Primary),
+		Secondary:     colorOrFallback(jt.Secondary, fb.Secondary),
+		Accent:        colorOrFallback(jt.Accent, fb.Accent),
+		Warning:       colorOrFallback(jt.Warning, fb.Warning),
+		Success:       colorOrFallback(jt.Success, fb.Success),
+		Error:         colorOrFallback(jt.Error, fb.Error),
+		Info:          colorOrFallback(jt.Info, fb.Info),
+		Text:          colorOrFallback(jt.Text, fb.Text),
+		Subtext:       colorOrFallback(jt.Subtext, fb.Subtext),
+		Dim:           colorOrFallback(jt.Dim, fb.Dim),
+		Surface2:      colorOrFallback(jt.Surface2, fb.Surface2),
+		Surface1:      colorOrFallback(jt.Surface1, fb.Surface1),
+		Surface0:      colorOrFallback(jt.Surface0, fb.Surface0),
+		Base:          colorOrFallback(jt.Base, fb.Base),
+		Mantle:        colorOrFallback(jt.Mantle, fb.Mantle),
+		Crust:         colorOrFallback(jt.Crust, fb.Crust),
 		LinkUnderline: jt.LinkUnderline,
 	}
 	if jt.Border != "" {
