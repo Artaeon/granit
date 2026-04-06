@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,12 +60,13 @@ const (
 
 // TaskItem represents a task extracted from notes.
 type TaskItem struct {
-	Text     string
-	Done     bool
-	NotePath string
-	Date     string // YYYY-MM-DD if associated with a daily note
-	Priority int    // 0=none, 1=low, 2=medium, 3=high, 4=highest
-	LineNum  int    // 1-based line number in source note
+	Text             string
+	Done             bool
+	NotePath         string
+	Date             string // YYYY-MM-DD if associated with a daily note
+	Priority         int    // 0=none, 1=low, 2=medium, 3=high, 4=highest
+	LineNum          int    // 1-based line number in source note
+	EstimatedMinutes int    // time estimate in minutes (0 = unknown)
 }
 
 var taskPattern = regexp.MustCompile(`^- \[([ xX])\] (.+)`)
@@ -166,6 +168,17 @@ type Calendar struct {
 
 	// Task toggles pending consumption by app.go
 	taskToggles []TaskToggle
+
+	// Goals integration
+	activeGoals []Goal
+	vaultRoot   string
+
+	// Task time-blocking
+	timeBlockMode   bool
+	timeBlockTasks  []TaskItem
+	timeBlockCursor int
+	timeBlockDate   string
+	timeBlockHour   int
 }
 
 // NewCalendar creates a new Calendar overlay.
@@ -186,6 +199,9 @@ func (c *Calendar) SetSize(width, height int) {
 	c.width = width
 	c.height = height
 }
+
+func (c *Calendar) SetActiveGoals(goals []Goal) { c.activeGoals = goals }
+func (c *Calendar) SetVaultRoot(root string)     { c.vaultRoot = root }
 
 func (c *Calendar) Open() {
 	c.active = true
@@ -333,6 +349,29 @@ func (c *Calendar) SetPlannerBlocks(blocks map[string][]PlannerBlock) {
 	}
 }
 
+// writePlannerBlock appends a scheduled block to the planner file for the given date.
+func writePlannerBlock(vaultRoot, date string, block PlannerBlock) {
+	dir := filepath.Join(vaultRoot, "Planner")
+	os.MkdirAll(dir, 0755)
+	path := filepath.Join(dir, date+".md")
+
+	line := fmt.Sprintf("- %s-%s | %s | %s", block.StartTime, block.EndTime, block.Text, block.BlockType)
+
+	// Read existing file or create new
+	content, err := os.ReadFile(path)
+	if err != nil {
+		// Create new planner file
+		content = []byte("---\ndate: " + date + "\n---\n\n## Schedule\n")
+	}
+
+	// Append the block line
+	if !bytes.Contains(content, []byte("## Schedule")) {
+		content = append(content, []byte("\n## Schedule\n")...)
+	}
+	content = append(content, []byte(line+"\n")...)
+	os.WriteFile(path, content, 0644)
+}
+
 // GetTaskToggles returns pending task toggles and clears them (consumed-once).
 func (c *Calendar) GetTaskToggles() []TaskToggle {
 	if len(c.taskToggles) == 0 {
@@ -370,6 +409,44 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			default:
 				if len(msg.String()) == 1 || msg.String() == " " {
 					c.eventInput += msg.String()
+				}
+			}
+			return c, nil
+		}
+
+		// Task time-blocking picker
+		if c.timeBlockMode {
+			switch msg.String() {
+			case "esc":
+				c.timeBlockMode = false
+			case "up", "k":
+				if c.timeBlockCursor > 0 {
+					c.timeBlockCursor--
+				}
+			case "down", "j":
+				if c.timeBlockCursor < len(c.timeBlockTasks)-1 {
+					c.timeBlockCursor++
+				}
+			case "enter":
+				if c.timeBlockCursor < len(c.timeBlockTasks) {
+					task := c.timeBlockTasks[c.timeBlockCursor]
+					dur := task.EstimatedMinutes
+					if dur <= 0 {
+						dur = 60
+					}
+					endHour := c.timeBlockHour + dur/60
+					endMin := dur % 60
+					block := PlannerBlock{
+						StartTime: fmt.Sprintf("%02d:00", c.timeBlockHour),
+						EndTime:   fmt.Sprintf("%02d:%02d", endHour, endMin),
+						Text:      task.Text,
+						BlockType: "task",
+					}
+					// Add to in-memory planner blocks
+					c.plannerBlocks[c.timeBlockDate] = append(c.plannerBlocks[c.timeBlockDate], block)
+					// Write to planner file
+					writePlannerBlock(c.vaultRoot, c.timeBlockDate, block)
+					c.timeBlockMode = false
 				}
 			}
 			return c, nil
@@ -723,6 +800,23 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			c.eventEditDesc = ""
 			c.eventEditBuf = ""
 
+		case "b":
+			if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
+				c.timeBlockMode = true
+				c.timeBlockCursor = 0
+				weekStart := c.cursor.AddDate(0, 0, -int(c.cursor.Weekday()))
+				c.timeBlockDate = c.cursor.Format("2006-01-02")
+				c.timeBlockHour = c.weekGridCursorHour + 5 // startHour is 5
+				// Collect candidate tasks: incomplete, due this week or overdue
+				c.timeBlockTasks = nil
+				weekEnd := weekStart.AddDate(0, 0, 7).Format("2006-01-02")
+				for _, t := range c.allTasks {
+					if !t.Done && (t.Date <= weekEnd || t.Date == "") {
+						c.timeBlockTasks = append(c.timeBlockTasks, t)
+					}
+				}
+			}
+
 		case "d":
 			// Delete event (in agenda view)
 			if c.view == calViewAgenda && c.agendaCursor >= 0 && c.agendaCursor < len(c.agendaItems) {
@@ -1004,6 +1098,29 @@ func (c Calendar) viewWeek() string {
 	b.WriteString("  " + headerRow + "\n")
 	b.WriteString("  " + lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("─", width-8)) + "\n")
 
+	// Active goals strip
+	if len(c.activeGoals) > 0 {
+		goalsLine := "  " + DimStyle.Render("Goals: ")
+		for i, g := range c.activeGoals {
+			if i >= 4 {
+				break
+			}
+			prog := g.Progress()
+			color := yellow
+			if g.Color != "" {
+				color = goalColorMap(g.Color)
+			} else if prog >= 75 {
+				color = green
+			} else if prog < 25 {
+				color = red
+			}
+			badge := lipgloss.NewStyle().Foreground(color).Render(
+				fmt.Sprintf("[%s %d%%]", TruncateDisplay(g.Title, 12), prog))
+			goalsLine += badge + " "
+		}
+		b.WriteString(goalsLine + "\n")
+	}
+
 	// All-day events row
 	hasAllDay := false
 	for di := 0; di < 7; di++ {
@@ -1185,6 +1302,41 @@ func (c Calendar) viewWeek() string {
 
 	// Event creation wizard
 	c.renderEventWizard(&b, width)
+
+	// Task time-blocking picker
+	if c.timeBlockMode && len(c.timeBlockTasks) > 0 {
+		b.WriteString("\n")
+		sepStyle := lipgloss.NewStyle().Foreground(surface0)
+		b.WriteString("  " + sepStyle.Render(strings.Repeat("─", width-8)) + "\n")
+		titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+		b.WriteString(titleStyle.Render(fmt.Sprintf("  Block task at %02d:00 on %s", c.timeBlockHour, c.timeBlockDate)) + "\n")
+
+		maxShow := 8
+		start := 0
+		if c.timeBlockCursor >= maxShow {
+			start = c.timeBlockCursor - maxShow + 1
+		}
+		end := start + maxShow
+		if end > len(c.timeBlockTasks) {
+			end = len(c.timeBlockTasks)
+		}
+
+		for i := start; i < end; i++ {
+			t := c.timeBlockTasks[i]
+			prefix := "  "
+			style := DimStyle
+			if i == c.timeBlockCursor {
+				prefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▸ ")
+				style = lipgloss.NewStyle().Foreground(text)
+			}
+			dur := ""
+			if t.EstimatedMinutes > 0 {
+				dur = fmt.Sprintf(" (%dm)", t.EstimatedMinutes)
+			}
+			b.WriteString("  " + prefix + style.Render(TruncateDisplay(t.Text, width-20)) + DimStyle.Render(dur) + "\n")
+		}
+		b.WriteString("  " + DimStyle.Render("Enter:block  Esc:cancel") + "\n")
+	}
 
 	c.renderFooter(&b, width)
 
@@ -2067,7 +2219,7 @@ func (c Calendar) renderFooter(b *strings.Builder, width int) {
 	case calViewWeek, calView3Day, calView1Day:
 		pairs = []struct{ Key, Desc string }{
 			{"←→", "day"}, {"↑↓", "hour"}, {"[]", "month"}, {"w", "view"},
-			{"t", "today"}, {"a", "add"}, {"e", "events"}, {"Esc", "close"},
+			{"t", "today"}, {"a", "add"}, {"b", "block"}, {"e", "events"}, {"Esc", "close"},
 		}
 	default:
 		pairs = []struct{ Key, Desc string }{

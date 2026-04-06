@@ -225,6 +225,8 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.canvas.Open()
 	case CmdShowCalendar:
 		m.calendar.SetSize(m.width, m.height)
+		m.calendar.SetVaultRoot(m.vault.Root)
+		m.calendar.SetActiveGoals(loadActiveGoals(m.vault.Root))
 		noteContents := make(map[string]string)
 		for _, p := range m.vault.SortedPaths() {
 			if note := m.vault.GetNote(p); note != nil {

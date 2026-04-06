@@ -2716,6 +2716,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+l":
 			m.calendar.SetSize(m.width, m.height)
+			m.calendar.SetVaultRoot(m.vault.Root)
+			m.calendar.SetActiveGoals(loadActiveGoals(m.vault.Root))
 			// Pass note contents for task parsing
 			noteContents := make(map[string]string)
 			for _, p := range m.vault.SortedPaths() {
