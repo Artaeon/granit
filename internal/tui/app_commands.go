@@ -234,6 +234,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.calendar.SetNoteContents(noteContents)
 		m.calendar.SetPlannerBlocks(loadPlannerBlocks(m.vault.Root))
 		m.loadCalendarEvents()
+		m.refreshCalendarPanel()
 		// Load habit data for calendar views
 		ht := NewHabitTracker()
 		ht.Open(m.vault.Root)
