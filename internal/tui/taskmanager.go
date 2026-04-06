@@ -2895,7 +2895,8 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 }
 
 func (tm *TaskManager) visibleHeight() int {
-	h := tm.height - 14
+	// Reserve: border(2) + padding(2) + title(2) + tabs(2) + input/status(2) + help bar(2) + gaps(4)
+	h := tm.height - 18
 	if h < 3 {
 		h = 3
 	}
@@ -2903,7 +2904,7 @@ func (tm *TaskManager) visibleHeight() int {
 }
 
 func (tm *TaskManager) kanbanVisibleHeight() int {
-	h := tm.height - 12
+	h := tm.height - 16
 	if h < 3 {
 		h = 3
 	}
