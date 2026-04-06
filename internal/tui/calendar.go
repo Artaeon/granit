@@ -917,6 +917,9 @@ func (c Calendar) viewMonth() string {
 	// Cursor date info
 	c.renderDateInfo(&b, width)
 
+	// Event creation wizard
+	c.renderEventWizard(&b, width)
+
 	// Footer
 	c.renderFooter(&b, width)
 
@@ -1140,14 +1143,19 @@ func (c Calendar) viewWeek() string {
 			if cellText != "" {
 				cellContent = lipgloss.NewStyle().Foreground(cellColor).
 					Render(TruncateDisplay(cellText, dayColW-2))
-			} else {
-				cellContent = DimStyle.Render("·")
 			}
 			if isCursorCell {
-				cellContent = lipgloss.NewStyle().Background(surface0).
-					Render(PadRight(cellContent, dayColW-1))
+				if cellContent == "" {
+					cellContent = lipgloss.NewStyle().Background(surface0).Foreground(mauve).
+						Render("▎")
+				} else {
+					cellContent = lipgloss.NewStyle().Background(surface0).
+						Render(PadRight(cellContent, dayColW-1))
+				}
 			}
-			cells += PadRight(cellContent, dayColW)
+			// Column separator
+			sep := lipgloss.NewStyle().Foreground(surface0).Render("│")
+			cells += sep + PadRight(cellContent, dayColW-1)
 		}
 
 		b.WriteString("  " + timeSt + cells + "\n")
@@ -1157,6 +1165,9 @@ func (c Calendar) viewWeek() string {
 	if c.addingEvent {
 		c.renderQuickAdd(&b, width)
 	}
+
+	// Event creation wizard
+	c.renderEventWizard(&b, width)
 
 	c.renderFooter(&b, width)
 
