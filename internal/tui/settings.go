@@ -942,9 +942,10 @@ func (s Settings) View() string {
 	if s.searching || s.searchBuf != "" {
 		extraLines = 2
 	}
-	// Reserve: border(2) + padding(2) + header(2) + gap(1) + help(3) +
-	// scroll indicators(2) + modified/status(3) + statusbar(3)
-	visibleItems := s.height - 18 - extraLines
+	// The overlay has border(2) + padding(2) + header(2) + gap(1) +
+	// footer area(~6) + the app's own statusbar+helpbar(~4) = ~17 lines
+	// of overhead. Use height * 2/3 as a safe max for the item window.
+	visibleItems := s.height*2/3 - extraLines
 	if visibleItems < 5 {
 		visibleItems = 5
 	}
