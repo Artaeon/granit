@@ -483,13 +483,17 @@ func tbTruncName(name string, maxLen int) string {
 
 // tbRenderTab renders a single tab label with the appropriate styling.
 func tbRenderTab(entry TabEntry, isActive bool, isMoving bool) string {
-	name := tbTruncName(tbBaseName(entry.Path), 14)
+	maxName := 14
+	if entry.Pinned || entry.Modified {
+		maxName -= 2
+	}
+	name := tbTruncName(tbBaseName(entry.Path), maxName)
 
 	var parts []string
 
 	// Pin indicator
 	if entry.Pinned {
-		pinIcon := lipgloss.NewStyle().Foreground(peach).Render("*")
+		pinIcon := lipgloss.NewStyle().Foreground(peach).Render("◆")
 		parts = append(parts, pinIcon)
 	}
 
@@ -520,7 +524,7 @@ func tbRenderTab(entry TabEntry, isActive bool, isMoving bool) string {
 	// Modified indicator (dot)
 	if entry.Modified {
 		dotStyle := lipgloss.NewStyle().Foreground(yellow).Bold(true)
-		parts = append(parts, dotStyle.Render("*"))
+		parts = append(parts, dotStyle.Render("●"))
 	}
 
 	// Close indicator for non-pinned tabs
@@ -568,7 +572,10 @@ func (tb *TabBar) Render(width int, activeNote string) string {
 	}
 
 	// Clear move highlight after 500ms
-	isHighlightActive := tb.moveHighlight >= 0 && time.Since(tb.moveHighTime) < 500*time.Millisecond
+	if tb.moveHighlight >= 0 && time.Since(tb.moveHighTime) >= 500*time.Millisecond {
+		tb.moveHighlight = -1
+	}
+	isHighlightActive := tb.moveHighlight >= 0
 
 	// Pre-render all tabs to measure widths for scroll calculation
 	type tabInfo struct {

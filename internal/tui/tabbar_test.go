@@ -619,9 +619,9 @@ func TestRenderPinnedIndicator(t *testing.T) {
 	tb.PinTab("pinned.md")
 
 	rendered := tb.Render(80, "pinned.md")
-	// Pinned tabs show a "*" indicator.
-	if !strings.Contains(rendered, "*") {
-		t.Error("expected pin indicator '*' in rendered output")
+	// Pinned tabs show a "◆" indicator.
+	if !strings.Contains(rendered, "◆") {
+		t.Error("expected pin indicator '◆' in rendered output")
 	}
 	// Pinned tabs should not have the close "x" indicator.
 	if strings.Contains(rendered, " x") {
@@ -644,9 +644,9 @@ func TestRenderModifiedIndicator(t *testing.T) {
 	tb.SetModified("dirty.md", true)
 
 	rendered := tb.Render(80, "dirty.md")
-	// Modified shows a styled "*" dot.
-	if !strings.Contains(rendered, "*") {
-		t.Error("expected modified indicator '*' in rendered output")
+	// Modified shows a styled "●" dot.
+	if !strings.Contains(rendered, "●") {
+		t.Error("expected modified indicator '●' in rendered output")
 	}
 }
 
