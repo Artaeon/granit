@@ -363,6 +363,25 @@ func (gm *GoalsMode) goalsPath() string {
 	return filepath.Join(gm.vaultRoot, ".granit", "goals.json")
 }
 
+// loadActiveGoals reads .granit/goals.json and returns only the active goals.
+func loadActiveGoals(vaultRoot string) []Goal {
+	data, err := os.ReadFile(filepath.Join(vaultRoot, ".granit", "goals.json"))
+	if err != nil {
+		return nil
+	}
+	var all []Goal
+	if err := json.Unmarshal(data, &all); err != nil {
+		return nil
+	}
+	var active []Goal
+	for _, g := range all {
+		if g.Status == GoalStatusActive {
+			active = append(active, g)
+		}
+	}
+	return active
+}
+
 func (gm *GoalsMode) loadGoals() {
 	gm.goals = nil
 	data, err := os.ReadFile(gm.goalsPath())
