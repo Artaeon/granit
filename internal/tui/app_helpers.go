@@ -675,6 +675,7 @@ func (m *Model) refreshComponents(changedPath string) {
 
 	// Load all calendar events: native events + ICS files from vault
 	m.loadCalendarEvents()
+	m.refreshCalendarPanel()
 
 	// Directly refresh the task manager if it's currently active, so it
 	// picks up changes immediately instead of waiting for the needsRefresh
@@ -1486,6 +1487,7 @@ func (m *Model) triggerExitSplash() tea.Cmd {
 	if m.config.AIProvider == "ollama" {
 		stopOllama(m.config.OllamaModel)
 	}
+	OllamaStopServer()
 	m.showExitSplash = true
 	m.exitSplash = NewExitSplash(m.vault.NoteCount(), time.Since(m.sessionStart))
 	m.exitSplash.width = m.width

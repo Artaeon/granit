@@ -920,6 +920,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case ollamaStartMsg:
+		if m.settings.IsActive() {
+			m.settings, _ = m.settings.Update(msg)
+		}
+		if msg.success {
+			m.toast.Show(msg.message, ToastSuccess)
+		} else {
+			m.toast.Show(msg.message, ToastWarning)
+		}
+		return m, nil
+
 	case pluginCmdResultMsg:
 		if msg.err != nil {
 			m.statusbar.SetError("Plugin error: " + msg.err.Error())
@@ -2713,6 +2724,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.calendar.SetNoteContents(noteContents)
 			m.calendar.SetPlannerBlocks(loadPlannerBlocks(m.vault.Root))
 			m.loadCalendarEvents()
+			m.refreshCalendarPanel()
 			ht := NewHabitTracker()
 			ht.Open(m.vault.Root)
 			m.calendar.SetHabitData(ht.habits, ht.logs)

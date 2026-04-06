@@ -21,6 +21,12 @@ type ollamaSetupMsg struct {
 	message string
 }
 
+// ollamaStartMsg carries the result of starting the Ollama server.
+type ollamaStartMsg struct {
+	success bool
+	message string
+}
+
 // Settings category constants
 const (
 	catAppearance = "Appearance"
@@ -140,6 +146,7 @@ func (s *Settings) buildItems() {
 		{label: "Ollama Model", key: "ollama_model", kind: "string", value: s.config.OllamaModel, options: []string{"qwen2.5:0.5b", "qwen2.5:1.5b", "qwen2.5:3b", "phi3:mini", "phi3.5:3.8b", "gemma2:2b", "tinyllama", "llama3.2", "llama3.2:1b", "mistral", "gemma2"}, category: catAI, description: "local LLM model name"},
 		{label: "Ollama URL", key: "ollama_url", kind: "string", value: s.config.OllamaURL, category: catAI, description: "server endpoint address"},
 		{label: ">> Setup Ollama (install + model)", key: "setup_ollama", kind: "action", value: "run", category: catAI, description: "wizard install configure"},
+		{label: ">> Start Ollama Server", key: "start_ollama", kind: "action", value: "run", category: catAI, description: "start stop ollama serve local AI"},
 		{label: "OpenAI API Key", key: "openai_key", kind: "string", value: s.config.OpenAIKey, category: catAI, description: "secret token authentication"},
 		{label: "OpenAI Model", key: "openai_model", kind: "string", value: s.config.OpenAIModel, options: []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1-nano"}, category: catAI, description: "GPT model version"},
 		{label: "Nous URL", key: "nous_url", kind: "string", value: s.config.NousURL, category: catAI, description: "local Nous AI server endpoint"},
@@ -201,6 +208,9 @@ func (s *Settings) buildItems() {
 		{label: "Git Auto Sync", key: "git_auto_sync", kind: "bool", value: s.config.GitAutoSync, category: catAdvanced, description: "auto commit push pull"},
 		{label: "Auto-Tag on Save", key: "auto_tag", kind: "bool", value: s.config.AutoTag, category: catAdvanced, description: "automatic tag extraction"},
 	}
+
+	// Append discovered ICS calendar toggles to the Files category
+	s.items = append(s.items, icsItems...)
 }
 
 func (s *Settings) corePluginVal(name string) bool {
@@ -482,6 +492,10 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 			s.setupStatus = msg.message
 		}
 		return s, nil
+	case ollamaStartMsg:
+		s.setupRunning = false
+		s.setupStatus = msg.message
+		return s, nil
 	case tea.KeyMsg:
 		// ── Search mode input ──
 		if s.searching {
@@ -612,6 +626,21 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 					s.setupStatus = "Checking for Ollama..."
 					return s, s.runOllamaSetup()
 				}
+				if item.key == "start_ollama" && !s.setupRunning {
+					if OllamaWeStartedServer() {
+						// Already running — stop it instead
+						s.setupRunning = true
+						s.setupStatus = "Stopping Ollama..."
+						return s, func() tea.Msg {
+							OllamaStopServer()
+							setOllamaState(ollamaNoServer)
+							return ollamaStartMsg{success: true, message: "Ollama stopped"}
+						}
+					}
+					s.setupRunning = true
+					s.setupStatus = "Starting Ollama..."
+					return s, s.runOllamaStart()
+				}
 			}
 		}
 	}
@@ -652,6 +681,22 @@ func (s *Settings) runOllamaSetup() tea.Cmd {
 			success: true,
 			message: "Ollama installed with model " + model,
 		}
+	}
+}
+
+func (s *Settings) runOllamaStart() tea.Cmd {
+	url := s.config.OllamaURL
+	model := s.config.OllamaModel
+	return func() tea.Msg {
+		msg, ok := OllamaStartServer(url)
+		if !ok {
+			return ollamaStartMsg{success: false, message: msg}
+		}
+		if model != "" {
+			ensureMsg := OllamaEnsureModel(url, model)
+			return ollamaStartMsg{success: OllamaIsReady(), message: msg + " — " + ensureMsg}
+		}
+		return ollamaStartMsg{success: true, message: msg}
 	}
 }
 
@@ -770,6 +815,24 @@ func (s *Settings) applyValue(key string, value interface{}) {
 				s.config.CorePlugins = config.DefaultCorePlugins()
 			}
 			s.config.CorePlugins[pluginName] = value.(bool)
+		}
+		// Handle calendar ICS file toggles (cal_*)
+		if strings.HasPrefix(key, "cal_") {
+			fileName := strings.TrimPrefix(key, "cal_")
+			enabled := value.(bool)
+			if enabled {
+				// Remove from disabled list
+				var filtered []string
+				for _, dc := range s.config.DisabledCalendars {
+					if dc != fileName {
+						filtered = append(filtered, dc)
+					}
+				}
+				s.config.DisabledCalendars = filtered
+			} else {
+				// Add to disabled list
+				s.config.DisabledCalendars = append(s.config.DisabledCalendars, fileName)
+			}
 		}
 	}
 }
@@ -949,8 +1012,11 @@ func (s Settings) View() string {
 				}
 			}
 		case "action":
-			if s.setupRunning && item.key == "setup_ollama" {
+			if s.setupRunning && (item.key == "setup_ollama" || item.key == "start_ollama") {
 				valueStr = lipgloss.NewStyle().Foreground(yellow).Render("running...")
+			} else if item.key == "start_ollama" && OllamaWeStartedServer() {
+				label = ">> Stop Ollama Server"
+				valueStr = lipgloss.NewStyle().Foreground(green).Render("[running]")
 			} else {
 				valueStr = lipgloss.NewStyle().Foreground(sapphire).Render("[run]")
 			}
