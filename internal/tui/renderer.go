@@ -898,13 +898,13 @@ func (r Renderer) renderMarkdown(content string) []string {
 	if contentWidth < 20 {
 		contentWidth = 20
 	}
-	// Reading style: cap line width for comfortable reading and add
-	// left margin so text appears centered in the panel.
+	// Reading style: cap line width for comfortable reading with a
+	// small left margin. Wider than typical book columns but prevents
+	// lines from spanning the full terminal on ultrawide screens.
 	readingMargin := ""
-	if r.viewStyle == "reading" && contentWidth > 88 {
-		margin := (contentWidth - 88) / 2
-		contentWidth = 88
-		readingMargin = strings.Repeat(" ", margin)
+	if r.viewStyle == "reading" && contentWidth > 100 {
+		contentWidth = 100
+		readingMargin = "    "
 	}
 
 	lines := strings.Split(content, "\n")
