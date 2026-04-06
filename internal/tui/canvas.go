@@ -108,6 +108,9 @@ type Canvas struct {
 
 	// Vault path for persistence
 	vaultPath string
+
+	// Status message shown temporarily after errors
+	statusMsg string
 }
 
 // NewCanvas returns an initialised, inactive Canvas.
@@ -148,6 +151,7 @@ func (c *Canvas) Save() {
 
 	dir := filepath.Dir(fp)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
+		c.statusMsg = fmt.Sprintf("Save error: %v", err)
 		return
 	}
 
@@ -163,9 +167,12 @@ func (c *Canvas) Save() {
 
 	raw, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
+		c.statusMsg = fmt.Sprintf("Save error: %v", err)
 		return
 	}
-	_ = os.WriteFile(fp, raw, 0o600)
+	if err := os.WriteFile(fp, raw, 0o600); err != nil {
+		c.statusMsg = fmt.Sprintf("Save error: %v", err)
+	}
 }
 
 // Load restores canvas state from disk.
@@ -177,11 +184,15 @@ func (c *Canvas) Load() {
 
 	raw, err := os.ReadFile(fp)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			c.statusMsg = fmt.Sprintf("Load error: %v", err)
+		}
 		return
 	}
 
 	var data canvasFileData
 	if err := json.Unmarshal(raw, &data); err != nil {
+		c.statusMsg = fmt.Sprintf("Load error: corrupt canvas file")
 		return
 	}
 
@@ -299,6 +310,8 @@ func (c Canvas) Update(msg tea.Msg) (Canvas, tea.Cmd) {
 	if !c.active {
 		return c, nil
 	}
+
+	c.statusMsg = ""
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -636,6 +649,10 @@ func (c Canvas) View() string {
 		info := DimStyle.Render("  " + smallNum(len(c.cards)) + " cards  " +
 			smallNum(len(c.connections)) + " connections")
 		b.WriteString(info + "\n")
+	}
+
+	if c.statusMsg != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(red).Render("  " + c.statusMsg) + "\n")
 	}
 
 	// Build the 2-D grid and render rows
