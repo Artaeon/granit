@@ -178,13 +178,11 @@ func (sb *StatusBar) SetGitInitialized(init bool) {
 }
 
 func (sb StatusBar) View() string {
-	// Mode badge
+	// ── Mode badge ───────────────────────────────────────────────────
 	modeColor := mauve
 	switch sb.mode {
 	case "FILES":
 		modeColor = green
-	case "EDIT":
-		modeColor = mauve
 	case "VIEW":
 		modeColor = green
 	case "LINKS":
@@ -202,23 +200,15 @@ func (sb StatusBar) View() string {
 	case "VIM:COMMAND":
 		modeColor = yellow
 	}
-
-	if strings.HasPrefix(sb.mode, "VIM:") {
-		// e.g. VIM:REPLACE or something unhandled
-		if modeColor == mauve {
-			modeColor = pink
-		}
+	if strings.HasPrefix(sb.mode, "VIM:") && modeColor == mauve {
+		modeColor = pink
 	}
 
-	modeStyle := lipgloss.NewStyle().
-		Background(modeColor).
-		Foreground(crust).
-		Bold(true).
-		Padding(0, 1)
+	mode := lipgloss.NewStyle().
+		Background(modeColor).Foreground(crust).Bold(true).Padding(0, 1).
+		Render(sb.mode)
 
-	mode := modeStyle.Render(" " + sb.mode + " ")
-
-	// File section
+	// ── File section ─────────────────────────────────────────────────
 	fileIcon := IconMd
 	if strings.Contains(sb.activeNote, "/") {
 		fileIcon = IconFolder
@@ -228,227 +218,228 @@ func (sb StatusBar) View() string {
 	}
 	fileSection := StatusFileStyle.Render(fileIcon + " " + sb.activeNote)
 
-	// Cursor position
+	// ── Cursor position (edit mode only) ─────────────────────────────
 	cursorPos := ""
-	if sb.mode == "EDIT" {
-		cursorPos = StatusInfoStyle.Render(fmt.Sprintf("Ln %d, Col %d", sb.lineNum+1, sb.colNum+1))
+	if sb.mode == "EDIT" || sb.mode == "VIM:INSERT" {
+		cursorPos = lipgloss.NewStyle().
+			Background(mantle).Foreground(overlay0).Padding(0, 1).
+			Render(fmt.Sprintf("%d:%d", sb.lineNum+1, sb.colNum+1))
 	}
 
-	// Reading progress bar (view mode only)
+	// ── Word count ───────────────────────────────────────────────────
+	wordInfo := ""
+	if sb.wordCount > 0 {
+		wordInfo = lipgloss.NewStyle().
+			Background(mantle).Foreground(overlay0).Padding(0, 1).
+			Render(fmt.Sprintf("%dw", sb.wordCount))
+	}
+
+	// ── Reading progress (view mode) ─────────────────────────────────
 	readingBar := ""
 	if sb.viewMode {
-		barWidth := 10
+		barWidth := 8
 		filled := barWidth * sb.readingProgress / 100
 		empty := barWidth - filled
-		barStr := strings.Repeat("\u2588", filled) + strings.Repeat("\u2591", empty)
-		progressLabel := fmt.Sprintf(" %d%%", sb.readingProgress)
-
-		barStyle := lipgloss.NewStyle().Foreground(mauve)
-		labelStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-		bgStyle := lipgloss.NewStyle().Background(surface0).Padding(0, 1)
-		readingBar = bgStyle.Render(
-			labelStyle.Render("Reading: ") + barStyle.Render(barStr) + labelStyle.Render(progressLabel),
+		barStr := strings.Repeat("━", filled) + strings.Repeat("─", empty)
+		readingBar = lipgloss.NewStyle().Background(mantle).Padding(0, 1).Render(
+			lipgloss.NewStyle().Foreground(mauve).Render(barStr) +
+				lipgloss.NewStyle().Foreground(overlay0).Render(fmt.Sprintf(" %d%%", sb.readingProgress)),
 		)
 	}
 
-	// AI indicator
-	aiIndicator := ""
-	switch sb.ai.Provider {
-	case "ollama":
-		aiIndicator = lipgloss.NewStyle().
-			Background(green).Foreground(crust).Bold(true).Padding(0, 1).
-			Render(IconBotChar + " " + sb.ai.Model)
-	case "openai":
-		aiIndicator = lipgloss.NewStyle().
-			Background(blue).Foreground(crust).Bold(true).Padding(0, 1).
-			Render(IconBotChar + " " + sb.ai.Model)
+	// ── Right-side indicators (subtle style for non-urgent) ──────────
+	dimBadge := func(icon string, label string, fg lipgloss.Color) string {
+		return lipgloss.NewStyle().
+			Background(mantle).Foreground(fg).Padding(0, 1).
+			Render(icon + " " + label)
+	}
+	alertBadge := func(label string, bg lipgloss.Color) string {
+		return lipgloss.NewStyle().
+			Background(bg).Foreground(crust).Bold(true).Padding(0, 1).
+			Render(label)
 	}
 
-	// Pomodoro indicator
+	// Active indicators (high priority — colored badges)
+	overdueIndicator := ""
+	if sb.overdueCount > 0 {
+		overdueIndicator = alertBadge(fmt.Sprintf("%d overdue", sb.overdueCount), red)
+	}
+
+	taskIndicator := ""
+	if sb.dueTodayCount > 0 {
+		taskIndicator = alertBadge(fmt.Sprintf("%d due", sb.dueTodayCount), yellow)
+	}
+
+	// Pomodoro & clock-in (medium priority — colored badges)
 	pomoIndicator := ""
 	if sb.pomodoroStatus != "" {
-		pomoIndicator = lipgloss.NewStyle().
-			Background(peach).Foreground(crust).Bold(true).Padding(0, 1).
-			Render(sb.pomodoroStatus)
+		pomoIndicator = alertBadge(sb.pomodoroStatus, peach)
 	}
 
-	// Clock-in indicator
 	clockIndicator := ""
 	if sb.clockInStatus != "" {
-		clockIndicator = lipgloss.NewStyle().
-			Background(teal).Foreground(crust).Bold(true).Padding(0, 1).
-			Render(sb.clockInStatus)
-	}
-
-	// Git indicator
-	gitIndicator := ""
-	if !sb.gitInitialized {
-		gitIndicator = lipgloss.NewStyle().
-			Background(yellow).Foreground(crust).Bold(true).Padding(0, 1).
-			Render("⚠ no git")
-	} else if sb.gitStatus != "" {
-		gitBg := green
-		if sb.gitStatus != "synced" {
-			gitBg = peach
-		}
-		label := "✓ " + sb.gitStatus
-		if sb.gitStatus != "synced" {
-			label = "● " + sb.gitStatus
-		}
-		gitIndicator = lipgloss.NewStyle().
-			Background(gitBg).Foreground(crust).Bold(true).Padding(0, 1).
-			Render(label)
+		clockIndicator = alertBadge(sb.clockInStatus, teal)
 	}
 
 	// Research indicator
 	researchIndicator := ""
 	if sb.researchStatus != "" {
-		researchIndicator = lipgloss.NewStyle().
-			Background(lavender).Foreground(crust).Bold(true).Padding(0, 1).
-			Render(sb.researchStatus)
-	}
-
-	// Overdue counter
-	overdueIndicator := ""
-	if sb.overdueCount > 0 {
-		overdueIndicator = lipgloss.NewStyle().
-			Background(red).Foreground(crust).Bold(true).Padding(0, 1).
-			Render(fmt.Sprintf("%d overdue", sb.overdueCount))
-	}
-
-	// Task counter
-	taskIndicator := ""
-	if sb.dueTodayCount > 0 {
-		taskIndicator = lipgloss.NewStyle().
-			Background(yellow).Foreground(crust).Bold(true).Padding(0, 1).
-			Render(fmt.Sprintf("%d due", sb.dueTodayCount))
-	}
-
-	// Plan-your-day nudge (hidden once morning routine or plan my day has been run)
-	planIndicator := ""
-	if !sb.dayPlanned {
-		planIndicator = lipgloss.NewStyle().
-			Background(mauve).Foreground(crust).Bold(true).Padding(0, 1).
-			Render("Alt+M plan day")
+		researchIndicator = alertBadge(sb.researchStatus, lavender)
 	}
 
 	inboxIndicator := ""
 	if sb.inboxCount > 0 {
-		inboxIndicator = lipgloss.NewStyle().
-			Background(sapphire).Foreground(crust).Bold(true).Padding(0, 1).
-			Render(fmt.Sprintf("%d inbox", sb.inboxCount))
+		inboxIndicator = dimBadge("", fmt.Sprintf("%d inbox", sb.inboxCount), sapphire)
 	}
 
-	// Right side info
-	wordInfo := ""
-	if sb.wordCount > 0 {
-		wordInfo = fmt.Sprintf("%d words  ", sb.wordCount)
+	// Plan-your-day nudge (subtle, not a loud badge)
+	planIndicator := ""
+	if !sb.dayPlanned {
+		planIndicator = dimBadge("◇", "plan day", mauve)
 	}
-	rightInfo := StatusInfoStyle.Render(fmt.Sprintf("%s%d notes  %s", wordInfo, sb.noteCount, sb.vaultPath))
 
-	// Truncate to prevent overflow on narrow terminals
+	// Git (subtle)
+	gitIndicator := ""
+	if !sb.gitInitialized {
+		gitIndicator = dimBadge("⚠", "no git", yellow)
+	} else if sb.gitStatus != "" {
+		icon := "✓"
+		color := green
+		if sb.gitStatus != "synced" {
+			icon = "●"
+			color = peach
+		}
+		gitIndicator = dimBadge(icon, sb.gitStatus, color)
+	}
+
+	// AI (subtle)
+	aiIndicator := ""
+	if sb.ai.Provider == "ollama" || sb.ai.Provider == "openai" {
+		color := green
+		if sb.ai.Provider == "openai" {
+			color = blue
+		}
+		aiIndicator = dimBadge(IconBotChar, sb.ai.Model, color)
+	}
+
+	// ── Vault info ───────────────────────────────────────────────────
+	rightInfo := lipgloss.NewStyle().
+		Background(mantle).Foreground(surface2).Padding(0, 1).
+		Render(sb.vaultPath)
+
+	// ── Overflow handling ────────────────────────────────────────────
 	totalUsed := func() int {
 		return lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) +
-			lipgloss.Width(readingBar) + lipgloss.Width(researchIndicator) +
-			lipgloss.Width(planIndicator) + lipgloss.Width(inboxIndicator) +
-			lipgloss.Width(overdueIndicator) + lipgloss.Width(taskIndicator) +
-			lipgloss.Width(clockIndicator) + lipgloss.Width(pomoIndicator) +
-			lipgloss.Width(gitIndicator) + lipgloss.Width(aiIndicator) +
-			lipgloss.Width(rightInfo)
+			lipgloss.Width(wordInfo) + lipgloss.Width(readingBar) +
+			lipgloss.Width(researchIndicator) + lipgloss.Width(planIndicator) +
+			lipgloss.Width(inboxIndicator) + lipgloss.Width(overdueIndicator) +
+			lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) +
+			lipgloss.Width(pomoIndicator) + lipgloss.Width(gitIndicator) +
+			lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	}
 
-	// Step 1: If too wide, hide least important indicators (plan nudge, reading progress, AI badge, git)
-	if totalUsed() > sb.width {
-		planIndicator = ""
-	}
-	if totalUsed() > sb.width {
-		readingBar = ""
-	}
-	if totalUsed() > sb.width {
-		aiIndicator = ""
-	}
-	if totalUsed() > sb.width {
-		gitIndicator = ""
-	}
+	if totalUsed() > sb.width { planIndicator = "" }
+	if totalUsed() > sb.width { readingBar = "" }
+	if totalUsed() > sb.width { wordInfo = "" }
+	if totalUsed() > sb.width { aiIndicator = "" }
+	if totalUsed() > sb.width { gitIndicator = "" }
+	if totalUsed() > sb.width { rightInfo = "" }
 
-	// Step 2: If still too wide, truncate the file section with "..."
 	if totalUsed() > sb.width {
 		overhead := totalUsed() - sb.width
 		plainFile := fileIcon + " " + sb.activeNote
-		if lipgloss.Width(plainFile) > overhead+4 {
-			// Truncate by runes to avoid cutting multi-byte characters
-			runes := []rune(plainFile)
-			cut := len(runes)
-			for lipgloss.Width(string(runes[:cut])) > lipgloss.Width(plainFile)-overhead-3 && cut > 0 {
-				cut--
-			}
-			plainFile = string(runes[:cut]) + "..."
+		runes := []rune(plainFile)
+		cut := len(runes)
+		for cut > 0 && lipgloss.Width(string(runes[:cut])) > lipgloss.Width(plainFile)-overhead-3 {
+			cut--
+		}
+		if cut > 0 {
+			plainFile = string(runes[:cut]) + "…"
 		} else {
-			plainFile = "..."
+			plainFile = "…"
 		}
 		fileSection = StatusFileStyle.Render(plainFile)
 	}
 
-	// Step 3: If still too wide, drop the right info section
-	if totalUsed() > sb.width {
-		rightInfo = ""
-	}
-
-	// Calculate gap
-	leftLen := lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) + lipgloss.Width(readingBar)
-	rightLen := lipgloss.Width(researchIndicator) + lipgloss.Width(planIndicator) + lipgloss.Width(inboxIndicator) + lipgloss.Width(overdueIndicator) + lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) + lipgloss.Width(pomoIndicator) + lipgloss.Width(gitIndicator) + lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
+	// ── Layout: left | gap | right ───────────────────────────────────
+	leftLen := lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) + lipgloss.Width(wordInfo) + lipgloss.Width(readingBar)
+	rightLen := lipgloss.Width(researchIndicator) + lipgloss.Width(planIndicator) +
+		lipgloss.Width(inboxIndicator) + lipgloss.Width(overdueIndicator) +
+		lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) +
+		lipgloss.Width(pomoIndicator) + lipgloss.Width(gitIndicator) +
+		lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	gap := sb.width - leftLen - rightLen
 	if gap < 0 {
 		gap = 0
 	}
-	gapStr := ""
-	if gap > 0 {
-		gapStr = StatusBarBg.Width(gap).Render(strings.Repeat(" ", gap))
-	}
+	gapStr := StatusBarBg.Width(gap).Render(strings.Repeat(" ", gap))
 
-	bar := mode + fileSection + cursorPos + readingBar + gapStr + researchIndicator + planIndicator + inboxIndicator + overdueIndicator + taskIndicator + clockIndicator + pomoIndicator + gitIndicator + aiIndicator + rightInfo
+	// Separator line above status bar for visual distinction
+	sepLine := lipgloss.NewStyle().Foreground(surface0).Width(sb.width).
+		Render(strings.Repeat("─", sb.width))
 
-	// Help bar
-	helpItems := []struct{ key, desc string }{
-		{"Tab", "panel"},
-		{"Ctrl+P", "search"},
-		{"Ctrl+N", "new"},
-		{"Ctrl+S", "save"},
-		{"Ctrl+K", "tasks"},
-		{"Alt+M", "morning"},
-		{"Ctrl+X", "cmds"},
-		{"Ctrl+Q", "quit"},
+	bar := sepLine + "\n" + mode + fileSection + cursorPos + wordInfo + readingBar + gapStr +
+		researchIndicator + planIndicator + inboxIndicator +
+		overdueIndicator + taskIndicator + clockIndicator + pomoIndicator +
+		gitIndicator + aiIndicator + rightInfo
+
+	// ── Help bar ─────────────────────────────────────────────────────
+	var helpItems []struct{ key, desc string }
+	switch {
+	case sb.mode == "FILES":
+		helpItems = []struct{ key, desc string }{
+			{"Enter", "open"}, {"n", "new"}, {"d", "delete"}, {"r", "rename"},
+			{"/", "search"}, {"Tab", "editor"}, {"Ctrl+Q", "quit"},
+		}
+	case sb.mode == "EDIT":
+		helpItems = []struct{ key, desc string }{
+			{"Ctrl+S", "save"}, {"Ctrl+E", "view"}, {"Ctrl+P", "search"},
+			{"Ctrl+K", "tasks"}, {"Ctrl+X", "cmds"}, {"Tab", "panel"}, {"Ctrl+Q", "quit"},
+		}
+	case sb.mode == "VIEW":
+		helpItems = []struct{ key, desc string }{
+			{"j/k", "scroll"}, {"space", "page"}, {"Ctrl+E", "edit"},
+			{"Ctrl+P", "search"}, {"Tab", "panel"}, {"Ctrl+Q", "quit"},
+		}
+	case sb.mode == "LINKS":
+		helpItems = []struct{ key, desc string }{
+			{"Enter", "open"}, {"j/k", "nav"}, {"Tab", "editor"}, {"Ctrl+Q", "quit"},
+		}
+	case strings.HasPrefix(sb.mode, "VIM:"):
+		helpItems = []struct{ key, desc string }{
+			{":w", "save"}, {":q", "quit"}, {"Ctrl+E", "view"},
+			{"Ctrl+P", "search"}, {"Ctrl+K", "tasks"}, {"Ctrl+X", "cmds"},
+		}
+	default:
+		helpItems = []struct{ key, desc string }{
+			{"Tab", "panel"}, {"Ctrl+P", "search"}, {"Ctrl+N", "new"},
+			{"Ctrl+S", "save"}, {"Ctrl+K", "tasks"}, {"Alt+M", "morning"},
+			{"Ctrl+X", "cmds"}, {"Ctrl+Q", "quit"},
+		}
 	}
 
 	var helpParts []string
 	for _, item := range helpItems {
 		helpParts = append(helpParts,
-			HelpKeyStyle.Render(item.key)+" "+HelpDescStyle.Render(item.desc))
+			HelpKeyStyle.Render(item.key)+HelpDescStyle.Render(" "+item.desc))
 	}
-	helpBar := HelpBarStyle.Width(sb.width).Render(strings.Join(helpParts, "  "))
+	helpBar := HelpBarStyle.Width(sb.width).Render(strings.Join(helpParts, "   "))
 
 	if toast, ok := sb.topStatusToast(); ok {
 		var msgStyle lipgloss.Style
 		switch toast.priority {
 		case ToastError:
 			msgStyle = lipgloss.NewStyle().
-				Background(red).
-				Foreground(crust).
-				Bold(true).
-				Padding(0, 1).
-				Width(sb.width)
+				Background(red).Foreground(crust).Bold(true).
+				Padding(0, 1).Width(sb.width)
 		case ToastWarning:
 			msgStyle = lipgloss.NewStyle().
-				Background(yellow).
-				Foreground(crust).
-				Padding(0, 1).
-				Width(sb.width)
+				Background(yellow).Foreground(crust).
+				Padding(0, 1).Width(sb.width)
 		default:
 			msgStyle = lipgloss.NewStyle().
-				Background(surface0).
-				Foreground(yellow).
-				Padding(0, 1).
-				Width(sb.width)
+				Background(surface0).Foreground(text).
+				Padding(0, 1).Width(sb.width)
 		}
 		return bar + "\n" + msgStyle.Render(" "+toast.text) + "\n" + helpBar
 	}
