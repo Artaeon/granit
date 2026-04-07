@@ -53,7 +53,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, cmd
 		}
-		return m, nil
+		// Don't swallow other messages (e.g. gitStatusMsg, autoSyncResultMsg)
+		// — let them fall through to the main switch so background commands
+		// dispatched during Init() are processed while the splash is visible.
 	}
 
 	// Exit splash handling
