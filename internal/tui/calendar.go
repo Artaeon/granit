@@ -446,6 +446,10 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 					}
 					endHour := c.timeBlockHour + dur/60
 					endMin := dur % 60
+					if endHour > 23 {
+						endHour = 23
+						endMin = 59
+					}
 					block := PlannerBlock{
 						StartTime: fmt.Sprintf("%02d:00", c.timeBlockHour),
 						EndTime:   fmt.Sprintf("%02d:%02d", endHour, endMin),
@@ -659,11 +663,11 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 					c.agendaScroll++
 				}
 			} else if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
-				maxHour := c.height - 15
-				if maxHour > 17 {
-					maxHour = 17
+				maxHour := c.height - 10
+				if maxHour > 18 {
+					maxHour = 18 // 5:00 to 23:00
 				}
-				if c.weekGridCursorHour < maxHour {
+				if c.weekGridCursorHour < maxHour-1 {
 					c.weekGridCursorHour++
 				}
 			} else {
