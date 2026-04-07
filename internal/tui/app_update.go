@@ -35,7 +35,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.pendingDailyNote = false
 				m.openDailyNote()
 			}
-			return m, nil
+			return m, m.autoSync.CheckStatus()
 		case splashTickMsg:
 			var cmd tea.Cmd
 			m.splash, cmd = m.splash.Update(msg)
@@ -49,7 +49,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.pendingDailyNote = false
 					m.openDailyNote()
 				}
-				return m, nil
+				return m, m.autoSync.CheckStatus()
 			}
 			return m, cmd
 		}
