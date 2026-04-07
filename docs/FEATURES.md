@@ -343,10 +343,17 @@ Features include 5 priority levels, due dates with a date picker, dedicated `Tas
 
 ### Calendar View
 
-Month, week, and agenda views tied to daily notes. Year view, 14-day agenda, task badges, quick event creation, and week numbers.
+Full-featured calendar with 6 views: month, week, 3-day, 1-day, agenda, and year. The weekly view uses the full terminal width with hourly time slots, event blocks with background cards, and today's column highlighted.
 
 - **Access:** `Ctrl+L`
-- **Example:** Navigate to March 2026, see dots on days that have daily notes, and press Enter to open or create a daily note.
+- **Navigation:** `←/→` days, `↑/↓` hours (week view) or weeks (month view), `[/]` months, `w` cycle views
+- **Task time-blocking:** Press `b` to assign a task to the selected time slot
+- **Event creation:** Press `a` for the step-by-step wizard (title → time → duration → location → recurrence → color → description)
+- **Weekly milestones:** Press `g` to create a milestone linked to an active goal
+- **Goals integration:** Active goals shown as progress bar badges in the week header
+- **Daily focus:** Plan My Day's top goal shown in the day header
+- **ICS support:** Auto-loads `.ics` files from vault; per-file toggle in Settings > Files
+- **Calendar panel:** Compact sidebar widget for cockpit/widescreen layouts, auto-loads events on startup
 
 ### Timeline View
 

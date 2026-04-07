@@ -526,16 +526,30 @@ Enter Command mode by pressing `:` in Normal mode. Type a command and press `Ent
 
 ## Calendar Shortcuts
 
+### Navigation
+
 | Key | Action |
 |-----|--------|
-| `Left` / `Right` | Previous / next day |
-| `Up` / `Down` | Previous / next week |
-| `Tab` | Switch between Month / Week / Agenda views |
-| `Enter` | Open or create daily note for selected date |
-| `n` | Quick add event |
+| `Left` / `Right` (`h` / `l`) | Previous / next day |
+| `Up` / `Down` (`k` / `j`) | Previous / next hour (week/3-day/1-day views) |
+| `Up` / `Down` (`k` / `j`) | Previous / next week (month view) |
 | `[` / `]` | Previous / next month |
+| `{` / `}` | Previous / next year |
 | `t` | Jump to today |
-| `y` | Toggle year view |
+| `w` / `v` | Cycle views forward (month → week → 3-day → 1-day → agenda → year) |
+| `W` / `V` | Cycle views backward |
+
+### Actions
+
+| Key | Action |
+|-----|--------|
+| `a` | Event creation wizard (title → time → duration → location → recurrence → color → description) |
+| `b` | Task time-blocking — pick a task and assign it to the selected time slot |
+| `g` | Create weekly milestone — pick a goal, enter milestone text (due end of week) |
+| `e` | Toggle event panel |
+| `Enter` | Open or create daily note for selected date |
+| `Space` | Toggle task completion (agenda view) |
+| `d` | Delete event (agenda view) |
 | `Esc` | Close calendar |
 
 ---

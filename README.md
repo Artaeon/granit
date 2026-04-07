@@ -77,7 +77,8 @@ granit sync                     # git pull + commit + push
 - Multi-cursor editing, heading folding, split pane view, visual table editor
 - Find and replace in-file and global across the vault
 - Ghost Writer -- inline AI writing suggestions (Tab to accept)
-- 18 built-in snippets, wikilink `[[` autocomplete, rendered view mode (`Ctrl+E`)
+- 18 built-in snippets, wikilink `[[` autocomplete
+- **Reading mode** (`Ctrl+E`) -- optimized reading view with 100-char column width, clean heading styles, progress bar, and distraction-free rendering
 - Mermaid diagram rendering, auto-close brackets, smart indentation
 
 ### Knowledge Management
@@ -166,11 +167,20 @@ granit sync                     # git pull + commit + push
 ### Calendar
 
 - 6 views: Month, week, 3-day, 1-day, agenda, and year (`Ctrl+L`)
-- Week time grid -- hourly rows with 7 day columns showing events and planner blocks
-- Calendar sidebar panel with ICS events, planner blocks, and upcoming tasks
-- ICS file support with `disabled_calendars` filtering per calendar
+- **Full-width weekly view** -- hourly time grid using the full terminal width with column separators
+- **Today's column highlighted** -- subtle background tint with `●` indicator and current time line (`▸HH:MM`)
+- **Event blocks** -- events render with background cards (like kanban), type-colored (task=blue, break=green, focus=peach)
+- **Hour-by-hour navigation** -- `↑/↓` moves between hours, `←/→` changes days, `[/]` changes weeks
+- **Task time-blocking** (`b`) -- assign tasks to time slots directly from the weekly view; writes to planner file
+- **Event creation wizard** (`a`) -- step-by-step form: title → time → duration → location → recurrence → color → description
+- **Goals integration** -- active goals shown as progress bar badges in the week header
+- **Weekly milestone creation** (`g`) -- create a milestone linked to an existing goal, due end of week
+- **Daily focus display** -- shows Plan My Day's top goal in the day header (from `## Focus` planner section)
+- Calendar sidebar panel with ICS events, planner blocks, and upcoming tasks (auto-loads on startup for cockpit/widescreen)
+- ICS file support with per-file toggle in Settings > Files
+- ICS parsing: RRULE supports FREQ, COUNT, UNTIL, INTERVAL; error reporting for malformed dates
+- Task completion toggle (`Space`) in agenda view
 - Task badges on calendar dates
-- Quick event creation from calendar
 
 ### AI Integration
 

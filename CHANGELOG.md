@@ -6,6 +6,79 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Calendar, Reading View, and UI Polish
+
+#### Calendar overhaul
+- **Full-width weekly view** using the entire terminal width with column separators between days
+- **Hour-by-hour navigation** — `↑/↓` moves between time slots, `←/→` changes days
+- **Today's column highlighted** — subtle background tint on all cells with `●` header indicator
+- **Current time line** — green dashed `╌╌╌` marker with exact `▸HH:MM` across the grid
+- **Event blocks** — events render with background cards, type-colored (task=blue, break=green, focus=peach)
+- **Task time-blocking** (`b`) — pick from tasks due this week and assign to a time slot; writes to planner file
+- **Event creation wizard** (`a`) — visible step-by-step form (title → time → duration → location → recurrence → color → description)
+- **Goals strip** — active goals shown as mini progress bar badges `████░░` in the week header
+- **Weekly milestone creation** (`g`) — create a milestone linked to an existing goal with end-of-week due date
+- **Daily focus from Plan My Day** — `## Focus` section in planner files; shows top goal in calendar day headers
+- **Calendar panel auto-loads ICS events** on startup for cockpit and widescreen layouts
+- **ICS per-file toggles** in Settings > Files — show/hide individual `.ics` calendars
+- **ICS parsing improvements** — RRULE supports COUNT, UNTIL, INTERVAL; error reporting for malformed dates
+
+#### Reading view (`Ctrl+E`)
+- **Auto-enables reading style** when entering view mode (was using "default" style)
+- **Reading column** — 100 char max width with left margin on wide terminals
+- **Clean headings** — strips bold/italic markers, simple underlines
+- **Frontmatter** — dim key:value pairs instead of bordered box
+- **Horizontal rules** — simple line without diamond decoration
+- **Progress bar** — thin mauve/dim bar at top of reading view
+
+#### Status bar
+- **Context-aware help bar** — different keybindings for FILES, EDIT, VIEW, LINKS, and VIM modes
+- **Separator line** — visual distinction between editor and status bar
+- **Two-tier indicators** — alert badges (colored) for urgent items, dim badges for informational
+- **Compact cursor position** — `line:col` format for all VIM modes
+
+#### Splash screens
+- **Startup** — logo reveal, expanding rule, typewriter tagline, vault info, ready check
+- **Exit** — logo fade, session stats, clean goodbye
+- Faster animations (25/35 ticks instead of 40/50)
+
+#### Tab bar
+- **Distinct indicators** — pin `◆` and modified `●` (were both `*`)
+- **Move highlight timeout** — resets after 500ms
+- **Smart truncation** — accounts for indicator width
+
+#### Themes
+- Fixed 8 themes for color differentiation (solarized, rose-pine, nightfox, iceberg, cobalt2, poimandres, vitesse-dark, ayu-light)
+- Surface hierarchy fixes (solarized had identical Surface0/1/2)
+- Custom theme JSON fallback validation for missing color fields
+- Separator standardization (dashed → solid in rose-pine, poimandres)
+
+#### Sidebar / Explorer
+- Fixed width calculations using `lipgloss.Width()` for emoji icon support
+- Accent bar positioning no longer overflows selection highlight
+
+#### Error handling
+- **Canvas** — save/load errors shown as dismissible status messages
+- **Blog publisher** — token masking, API error parsing, field validation before publish
+- **Flashcards** — corrupted progress file warning with graceful fallback
+- **Quiz** — true/false questions now generate both true and false answers
+
+#### AI improvements
+- **Small-model prompt optimization** for PlanMyDay, TaskTriage, AIScheduler
+- **Skip retry on timeout** for small models (was doubling wait time)
+- **90-second streaming timeout** for small models (was 5 minutes)
+- **Live streaming preview** — AI output visible token-by-token during PlanMyDay and TaskTriage
+- **Ollama server management** — start/stop from Settings with process tracking and zombie prevention
+
+#### Infrastructure
+- `loadActiveGoals()` shared helper for goal data access
+- `loadPlannerBlocks()` now returns daily focus data alongside planner blocks
+- `renderStreamPreview()` shared helper for streaming AI output display
+- `stripInlineMarkers()` for heading text cleanup
+- `sameDay()` helper for date comparison
+- Settings page navigation (PgUp/PgDn, Home/End)
+- Task manager height reservation fix for help bar visibility
+
 ### Added — AI Reliability & Quality Overhaul
 
 #### AI infrastructure
