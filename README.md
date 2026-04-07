@@ -10,35 +10,31 @@
 </p>
 
 <p align="center">
-  <strong>A blazing-fast, AI-powered knowledge manager for terminal and desktop -- fully Obsidian compatible</strong>
+  <strong>Terminal-native knowledge manager with AI, calendar, goals, and tasks -- fully Obsidian compatible</strong>
 </p>
 
 <p align="center">
   <a href="#installation"><img src="https://img.shields.io/badge/Go-1.24+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License"></a>
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform">
-  <img src="https://img.shields.io/badge/Tests-1,855-green?style=for-the-badge" alt="Tests">
-  <img src="https://img.shields.io/badge/AI_Features-25+-purple?style=for-the-badge" alt="AI Features">
-  <img src="https://img.shields.io/badge/168k%2B_Lines-Go-orange?style=for-the-badge" alt="Codebase">
+  <img src="https://img.shields.io/badge/Themes-38-purple?style=for-the-badge" alt="Themes">
 </p>
 
 <p align="center">
   <a href="#features">Features</a> &bull;
   <a href="#installation">Installation</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
-  <a href="#cli-commands">CLI Commands</a> &bull;
   <a href="#keyboard-shortcuts">Shortcuts</a> &bull;
   <a href="#ai-setup">AI Setup</a> &bull;
-  <a href="#nextcloud-sync">Nextcloud Sync</a> &bull;
   <a href="#configuration">Config</a> &bull;
-  <a href="#architecture">Architecture</a>
+  <a href="docs/">Documentation</a>
 </p>
 
 ---
 
-Granit is a **free, open-source** knowledge management system built in Go. A single 32MB binary that replaces Obsidian ($96/yr), Notion ($120/yr), and Todoist ($48/yr). Your notes are plain Markdown files with `[[wikilinks]]` and YAML frontmatter -- **fully compatible** with Obsidian, Logseq, and any Markdown tool.
+Granit is a **free, open-source** knowledge management system built entirely in Go. A single 32 MB binary that replaces Obsidian, Notion, and Todoist. Your notes are plain Markdown files with `[[wikilinks]]` and YAML frontmatter -- **fully compatible** with Obsidian, Logseq, and any Markdown editor.
 
-**No Electron. No browser. No subscriptions. No telemetry. Just your terminal.**
+**No Electron. No browser. No subscriptions. No telemetry.**
 
 ```
 granit                          # open your vault
@@ -46,25 +42,20 @@ granit note "ship the release"  # quick capture from shell
 granit sync                     # git pull + commit + push
 ```
 
-| | |
-|---|---|
-| **168,000+ lines of Go** | 1,855 tests, race-condition free |
-| **25+ AI features** | 19 bots + goal coach, project insights, devotional, and more |
-| **38 themes** | Catppuccin, Tokyo Night, Gruvbox, Nord, and 34 more |
-| **7 task views** | Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower |
-| **Full Vim mode** | Text objects, marks, macros, dot repeat, ex commands |
-| **Goal manager** | Milestones, reviews, sparklines, task linking, colors |
-| **Obsidian compatible** | `[[wikilinks]]`, backlinks, graph, canvas, templates |
-| **Zero dependencies** | Single static binary, works offline, syncs with git |
-
 ---
 
-## Screenshots
+## Why Granit
 
-<p align="center">
-  <img src="assets/hero.gif" alt="Granit TUI" width="800"><br>
-  <sub>Terminal UI -- the desktop app (Wails v2 + Svelte) provides the same features in a native window</sub>
-</p>
+| | |
+|---|---|
+| **Full Vim mode** | Modal editing with text objects, macros, dot repeat, and ex commands |
+| **25+ AI features** | 19 bots, goal coach, task triage, plan my day -- works with local models |
+| **Calendar with time-blocking** | Weekly grid, goal tracking, task scheduling, ICS sync |
+| **7 task views** | Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower Matrix |
+| **Goal manager** | Milestones with due dates, reviews, progress sparklines, AI coaching |
+| **38 themes** | Catppuccin, Tokyo Night, Gruvbox, Nord, Dracula, and 33 more |
+| **Obsidian compatible** | `[[wikilinks]]`, backlinks, graph, canvas, dataview queries |
+| **Zero dependencies** | Single static binary, works offline, syncs with git or Nextcloud |
 
 ---
 
@@ -75,471 +66,201 @@ granit sync                     # git pull + commit + push
 - Syntax-highlighted Markdown with Chroma (200+ languages)
 - Full Vim modal editing -- Normal, Insert, Visual, Command modes with macros and dot repeat
 - Multi-cursor editing, heading folding, split pane view, visual table editor
-- Find and replace in-file and global across the vault
 - Ghost Writer -- inline AI writing suggestions (Tab to accept)
-- 18 built-in snippets, wikilink `[[` autocomplete
-- **Reading mode** (`Ctrl+E`) -- optimized reading view with 100-char column width, clean heading styles, progress bar, and distraction-free rendering
+- **Reading mode** (`Ctrl+E`) -- distraction-free view with reading-width column, clean headings, progress bar
+- Find and replace (in-file and global), 18 built-in snippets, `[[` autocomplete
 - Mermaid diagram rendering, auto-close brackets, smart indentation
+
+### Calendar
+
+- 6 views: month, week, 3-day, 1-day, agenda, year (`Ctrl+L`)
+- **Full-width weekly grid** -- hourly time slots with column separators, today highlighted
+- **Current time marker** -- green `▸HH:MM` line across the grid
+- **Task time-blocking** (`b`) -- assign tasks to time slots, writes to planner file
+- **Event creation wizard** (`a`) -- title, time, duration, location, recurrence, color, description
+- **Goals integration** -- active goals as progress badges in the week header
+- **Weekly milestones** (`g`) -- create a milestone linked to an existing goal
+- **Daily focus** -- Plan My Day's top goal shown in day headers
+- **ICS calendar sync** -- auto-loads `.ics` files, per-file toggle in settings, RRULE support
+- Calendar sidebar panel for cockpit and widescreen layouts
+
+### Tasks
+
+- Task Manager (`Ctrl+K`) -- 7 views: Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower
+- 5 priority levels, due dates, time estimates (`~30m`), subtask hierarchy, dependencies
+- Reschedule, batch reschedule, snooze, pin, undo (10-deep stack), task templates
+- Bulk operations, tag/priority filters, focus session launcher, recurring tasks
+- Natural language dates (`@next week`, `@friday`), quick-add syntax (`!high #tag ~1h`)
+- CLI: `granit todo "Ship v2.0" --due friday --priority high --tag release`
+
+### Goals and Projects
+
+- **Goal Manager** -- active, paused, completed, archived lifecycle with milestones
+- Milestone CRUD with due dates, reordering, auto-complete, goal-to-task linking
+- Recurring reviews (weekly/monthly/quarterly) with progress sparklines
+- **AI Goal Coach** -- velocity tracking, stalled detection, priority recommendations
+- **AI Project Insights** -- health analysis, risks, blockers, next actions
+- Project dashboards, burndown charts, daily standup generator
 
 ### Knowledge Management
 
 - `[[Wikilinks]]` with autocomplete, backlinks panel, and note graph (`Ctrl+G`)
-- Tag browser (`Ctrl+T`), note outline (`Ctrl+O`), bookmarks and recents (`Ctrl+B`)
-- Reading list with progress tracking (to-read / reading / completed) and star ratings
-- Link suggestions -- TF-IDF similarity-powered "Suggested" tab in backlinks panel
-- Smart Connections, semantic search (AI embeddings), Knowledge Graph AI
-- Dataview queries -- SQL-like: `TABLE title, tags FROM "folder" WHERE tags CONTAINS "project" SORT date DESC`
-- Mind map view, canvas/whiteboard (`Ctrl+W`), Zettelkasten ID generator
-- Note versioning timeline with git-powered diffs and snapshot restore
-
-### Task Management
-
-- Task Manager (`Ctrl+K`) -- 7 views: Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower Matrix
-- 5 priority levels, date picker, cross-vault scanning
-- Subtask hierarchy -- indentation-based nesting with expand/collapse (`e`)
-- Task dependencies -- `depends:` syntax with blocked indicators
-- Time estimation -- `~30m` / `~2h` syntax with workload totals
-- Per-task time tracking -- actual logged time badge (green under estimate, red over)
-- Reschedule (`r`) -- quick move to tomorrow, next Monday, +1 week, +1 month
-- Batch reschedule (`R`) -- walk through all overdue tasks with quick date picks
-- Task snooze (`z`) -- hide for 1h, 4h, or tomorrow 9am; auto-reappears on expiry
-- Pinned tasks (`W`) -- pin to top of all views, persisted across sessions
-- Task notes (`n`) -- attach freeform notes to any task, with note icon indicator
-- Auto-priority (`A`) -- heuristic scorer based on deadline, dependencies, project
-- Undo (`u`) -- 10-deep undo stack for any task modification
-- Task templates (`T`/`t`) -- save tasks as reusable templates, create from template
-- Task archiving (`X`) -- move completed tasks >30 days old to Archive/
-- Advanced sort (`s`) -- by priority, due date, A-Z, source, or tag
-- Bulk operations (`v`) -- select multiple tasks, batch toggle/date/priority
-- Tag and priority filters (`#`, `P`) with visual badges
-- Focus session launcher (`f`) -- start a timed session directly from a task
-- Recurring tasks -- daily, weekly, monthly auto-creation
-- Custom kanban columns -- configurable via settings with tag-based routing
-- Eisenhower Matrix -- 2x2 urgency/importance grid (DO / SCHEDULE / DELEGATE / ELIMINATE)
-- Overdue grouping -- Today view splits overdue (red) from today's tasks
-- Project matching -- auto-assign tasks to projects by folder or tag
-- Quick-add syntax -- `@tomorrow !high #tag ~1h` parsed from Ctrl+T quick capture
-- Natural language dates -- `@next week`, `@end of month`, `@in 3 days`, `@next friday`
-- Help overlay (`?`) -- full keybinding reference inside task manager
-- Task filtering by config -- exclude folders, require tags, hide completed
-- CLI task add: `granit todo "Ship v2.0" --due friday --priority high --tag release`
-
-### Projects and Goals
-
-- **Goal Manager** (command palette > "Goals") -- standalone goal tracking with milestones
-  - 4 views: Active, By Category, Timeline, Completed
-  - Goal lifecycle: active → paused → completed → archived
-  - Milestone CRUD with due dates (`!`), reordering (`J`/`K`), auto-complete
-  - Recurring reviews (weekly/monthly/quarterly) with progress sparkline
-  - Theme-aware colors (`C`), categories, target dates, overdue detection
-  - Goal-to-task linking (`t` creates task from milestone with `goal:ID`)
-  - Goal notes, creation wizard (title → date → category)
-- Project Mode -- 9 categories with dashboards and completion stats
-- Goal tracking with milestones and progress bars
-- **AI Goal Coach** -- holistic analysis of all goals: velocity, stalled detection, priority recommendations (`I` key in Goals)
-- **AI Project Insights** -- DEEPCOVEN-powered project health analysis: risks, blockers, next actions (`I` key in Projects)
-- Project health dashboard -- velocity tracking, traffic-light status indicator
-- Goal burndown charts -- ASCII chart with ideal vs actual milestone pace
-- Cross-project dashboard -- overview of all projects with health indicators
-- AI project planner -- automated project breakdown with milestones
-- Daily standup generator from git commits, modified notes, and completed tasks
-
-### Habits and Productivity
-
-- Habit tracker with 7-day streaks, pomodoro timer, focus sessions (25/45/60/90 min)
-- Daily planner with time-blocked schedule and multi-hour blocks (30m to 3h)
-- Copy daily plan to clipboard (`c`) or export as markdown (`Shift+S` to Plans/)
-- Recurring tasks auto-create next instance on completion (daily/weekly/monthly)
-- Search Everything (`Ctrl+/`) -- fuzzy search across notes, tasks, goals, habits
-- Smart daily note template -- `{{overdue_tasks}}`, `{{today_tasks}}`, `{{today_habits}}`, `{{today_schedule}}`, `{{active_goals}}`
-- Daily review -- guided end-of-day review with rescheduling and **AI-powered summary** (DEEPCOVEN)
-- Weekly review -- structured weekly reflection with **AI-powered synthesis** (week score, patterns, goal alignment)
-- **AI Scripture Devotional** -- personal reflection connecting daily verse to active goals
-- Command palette (`Ctrl+X`) with 145+ commands
-- Scratchpad overlay for quick floating notes (auto-saved)
-- Quick capture with inbox count badge in status bar
-- Journal prompts (100+), clipboard manager (50-entry history)
-- Clock in/out time tracking with project tags and weekly logs
-- Workspace snapshots -- save and restore named TUI layouts
-- Reminders with daily/weekdays/once scheduling
-- Dashboard -- overdue warnings, habit widget, writing streaks, quick stats
-
-### Calendar
-
-- 6 views: Month, week, 3-day, 1-day, agenda, and year (`Ctrl+L`)
-- **Full-width weekly view** -- hourly time grid using the full terminal width with column separators
-- **Today's column highlighted** -- subtle background tint with `●` indicator and current time line (`▸HH:MM`)
-- **Event blocks** -- events render with background cards (like kanban), type-colored (task=blue, break=green, focus=peach)
-- **Hour-by-hour navigation** -- `↑/↓` moves between hours, `←/→` changes days, `[/]` changes weeks
-- **Task time-blocking** (`b`) -- assign tasks to time slots directly from the weekly view; writes to planner file
-- **Event creation wizard** (`a`) -- step-by-step form: title → time → duration → location → recurrence → color → description
-- **Goals integration** -- active goals shown as progress bar badges in the week header
-- **Weekly milestone creation** (`g`) -- create a milestone linked to an existing goal, due end of week
-- **Daily focus display** -- shows Plan My Day's top goal in the day header (from `## Focus` planner section)
-- Calendar sidebar panel with ICS events, planner blocks, and upcoming tasks (auto-loads on startup for cockpit/widescreen)
-- ICS file support with per-file toggle in Settings > Files
-- ICS parsing: RRULE supports FREQ, COUNT, UNTIL, INTERVAL; error reporting for malformed dates
-- Task completion toggle (`Space`) in agenda view
-- Task badges on calendar dates
+- Tag browser, note outline, bookmarks, reading list with progress tracking
+- Semantic search (AI embeddings), dataview queries, mind map view
+- Canvas/whiteboard, Zettelkasten ID generator, note versioning with git diffs
 
 ### AI Integration
 
-- **19 AI Bots** (`Ctrl+R`) organized in 6 categories -- optimized for local small models:
-  - **SUMMARIZE**: TL;DR, Summarizer, Explain Simply
-  - **WRITING**: Title Suggester, Writing Assistant, Tone Adjuster, Expand
-  - **ANALYSIS**: Question Bot, Counter-Argument, Pros & Cons, Action Items
-  - **ORGANIZE**: Auto-Tagger, Link Suggester, Auto-Link, Outline Generator
-  - **LEARNING**: Flashcard Generator, Key Terms
-  - **VAULT**: MOC Generator, Daily Digest
-- **Bot workflow** -- type-to-filter, number-key quick-pick (1-9), remember-last-used, wrap-around navigation, copy-to-clipboard (`c`), save-to-note (`s`), re-run bot (`r`)
-- Ghost Writer -- inline completions with tag-aware context, 32-entry completion cache, debounce tuned for small models (Tab to accept)
-- AI Chat, AI Scheduler, Plan My Day, AI Project Planner
-- **AI Goal Coach** -- holistic analysis across all goals with velocity tracking and priority recommendations
-- **AI Project Insights** -- project health, risks, blockers, and next actions
-- **AI Daily Review** -- end-of-day summary: win of the day, patterns, tomorrow's priority
-- **AI Weekly Review** -- week score, carry-forward, goal alignment check
-- **AI Scripture Devotional** -- personal reflection connecting daily verse to active goals
-- Smart Task Triage -- AI-powered daily prioritization with stale task detection
-- Deep Dive Research (Claude Code) for complex reasoning
-- Providers: **Ollama** (default, local), **Nous**, **OpenAI**, or offline fallback
-- **Production-grade reliability stack**:
-  - Small-model auto-detection (0.5B–3B) with adapted prompts, temperature, and context limits
-  - Real HTTP cancellation via `context.Context` — Esc actually aborts
-  - Automatic retry on transient errors, hard per-request deadlines, in-flight guards
-  - Token-budget fit checks, empty-response fallbacks, word-boundary truncation
-  - Ghostwriter completion cache, elapsed time on every loading screen
-- Auto model management -- Ollama model auto-pulled on first launch
-- All AI features use the DEEPCOVEN persona -- direct, honest, action-oriented
+- **19 AI Bots** (`Ctrl+R`) in 6 categories -- all optimized for small local models (0.5B-3B)
+- Plan My Day, AI Scheduler, Smart Task Triage, Writing Coach, Daily/Weekly Review
+- Ghost Writer with 32-entry completion cache
+- Providers: **Ollama** (local, default), **OpenAI**, **Nous**, or offline fallback
+- **Ollama management** -- install, start/stop, and pull models from settings
+- Production reliability: auto-retry, HTTP cancellation, timeout handling, token-budget checks
 
-### Sync
+### Habits and Productivity
 
+- Habit tracker with streaks, pomodoro timer, focus sessions (25/45/60/90 min)
+- Daily planner with time-blocked schedule, daily/weekly review with AI synthesis
+- Smart daily note templates with 15+ variables (`{{overdue_tasks}}`, `{{active_goals}}`, etc.)
+- Command palette (`Ctrl+X`) with 145+ commands, scratchpad, clipboard manager
+- Clock in/out time tracking, journal prompts, reminders, workspace snapshots
+
+### Sync and Export
+
+- **Git** -- built-in overlay with status, log, diff, commit, push, pull; `granit sync` CLI
 - **Nextcloud** WebDAV sync with auto-sync option
-- **Git integration** -- built-in overlay with status, log, diff, commit, push, pull
-- `granit sync` -- pull, commit, push in one CLI command
-- Per-note git history with colored diffs and version restore
+- Export to HTML, PDF (pandoc), plain text; blog publisher (Medium, GitHub)
+- Note encryption (AES-256-GCM), import from other formats
 
-### Study and Language Learning
+### Customization
 
-- Flashcards with SM-2 spaced repetition, auto-generated quizzes
-- Language learning -- vocabulary tracker for 9 languages with practice mode
-- Learning dashboard with streaks, mastery tracking, and level distribution
-
-### Import, Export, and Publishing
-
-- Import from other note formats
-- Trash/recycle bin with restore for deleted notes
-- Export to HTML, plain text, or PDF (via pandoc); bulk export entire vault
-- Static site publisher with search, tag pages, and wikilink resolution
-- Blog publisher -- Medium and GitHub with token persistence
-- Note encryption -- AES-256-GCM with PBKDF2
-
-### Desktop App
-
-- Native desktop application built with **Wails v2**
-- **Svelte** frontend with reactive UI components
-- Full feature parity with the TUI -- same Go backend
-- File tree sidebar, editor, overlays, and keyboard shortcuts
+- **38 themes** including 5 accessibility themes (high-contrast, deuteranopia, protanopia, tritanopia)
+- Live theme editor with 16 color roles and custom theme JSON
+- **13 layouts** -- default, writer, reading, dashboard, zen, cockpit, stacked, cornell, focus, preview, presenter, kanban, widescreen
+- 4 icon themes (unicode, nerd font, emoji, ASCII), 16 core plugins
+- Language-agnostic plugin system with Lua scripting API
 
 ---
 
 ## Installation
 
-### Requirements
-
-- **Go 1.24+** ([install Go](https://go.dev/doc/install))
-- **Git** (for cloning and git features)
-- Linux or macOS
-
-### TUI (Terminal)
-
 ```bash
+# Clone and install
 git clone https://github.com/artaeon/granit.git
 cd granit
 go install ./cmd/granit/
-```
 
-Make sure `~/go/bin` is in your PATH:
-
-```bash
+# Ensure ~/go/bin is in your PATH
 export PATH="$HOME/go/bin:$PATH"
 ```
 
-### Desktop App (Wails)
+**Requirements:** Go 1.24+, Git, Linux or macOS.
 
-```bash
-# Install Wails CLI
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
+**Optional:** [Ollama](https://ollama.ai) (local AI), aspell (spell check), pandoc (PDF export), xclip/wl-copy (clipboard).
 
-# Build the desktop app
-cd granit/desktop
-wails build
-```
-
-The built binary will be in `desktop/build/bin/`.
-
-### Optional Dependencies
-
-| Tool | Purpose |
-|------|---------|
-| **Ollama** | Local AI models |
-| **aspell** / **hunspell** | Spell checking |
-| **pandoc** | PDF export |
-| **xclip** / **wl-copy** | System clipboard (Linux) |
-| **Claude Code** | Deep Dive research agent |
+See [docs/INSTALLATION.md](docs/INSTALLATION.md) for desktop app, AUR package, and cross-compilation.
 
 ---
 
 ## Quick Start
 
 ```bash
-# Create a new vault (initializes git, folders, templates):
-granit init my-vault
-
-# Open it (auto-opens last vault next time):
-granit my-vault
-
-# From now on, just run:
-granit
-
-# Quick capture from shell (no TUI needed):
-granit note "ship the release by Friday"
-
-# Sync with git remote:
-granit sync
+granit init my-vault    # create a new vault
+granit my-vault         # open it
+granit                  # re-opens last vault
 ```
 
-### First Steps
-
-1. Press `Ctrl+N` to create a new note from templates
-2. Type `[[` to insert a wikilink with autocomplete
-3. Press `Ctrl+K` to open the task manager (7 views)
-4. Press `Ctrl+/` to search across notes, tasks, goals, habits
-5. Press `Ctrl+X` for the command palette (145+ commands)
-6. Press `Ctrl+R` to use any of the 19 AI bots (type to filter, 1-9 for quick pick)
-7. Press `Ctrl+,` to customize settings
-
----
-
-## CLI Commands
-
-| Command | Description |
-|---------|-------------|
-| `granit` | Launch vault selector |
-| `granit <path>` | Open a vault directly |
-| `granit init [path]` | Initialize a new vault |
-| `granit daily [path]` | Create/open today's daily note |
-| `granit today [path]` | Print today's dashboard (`--json`) |
-| `granit review [path]` | Daily review (`--week`, `--markdown`, `--save`) |
-| `granit search <query>` | Search vault content (`--regex`, `--json`) |
-| `granit todo <text>` | Add task (`--due`, `--priority`, `--tag`) |
-| `granit capture <text>` | Quick-capture to inbox.md |
-| `granit sync [path]` | Pull, commit, push (`--dry-run`, `-m "msg"`) |
-| `granit clock in/out/log` | Time tracking with project tags |
-| `granit remind "text"` | Set reminders (`--at HH:MM`, `--daily`) |
-| `granit serve [path]` | Serve vault as read-only website |
-| `granit list [path]` | List vault notes (`--json`, `--paths`, `--tags`) |
-| `granit query <filter>` | Query notes by tag, folder, or frontmatter (`--json`) |
-| `granit import <source>` | Import notes from other formats (`--from`) |
-| `granit export [path]` | Export to HTML, text, or JSON |
-| `granit backup [path]` | Create timestamped zip backup |
-| `granit plugin list` | Plugin management |
-| `granit config` | Show configuration |
-| `granit man` | Generate man page |
-| `granit completion bash` | Shell completions (bash/zsh/fish) |
-
-Run `granit help` for the full command reference.
+**First steps:**
+1. `Ctrl+N` -- create a new note
+2. `Ctrl+K` -- open task manager
+3. `Ctrl+L` -- open calendar
+4. `Ctrl+R` -- use AI bots
+5. `Ctrl+X` -- command palette (145+ commands)
+6. `Ctrl+,` -- settings
 
 ---
 
 ## Keyboard Shortcuts
 
-### Navigation
-
 | Key | Action |
 |-----|--------|
-| `Tab` / `Shift+Tab` | Cycle between panels |
-| `F1` (`Alt+1`) / `F2` (`Alt+2`) / `F3` (`Alt+3`) | Focus sidebar / editor / backlinks |
-| `F4` | Rename current note |
-| `F5` (`Alt+?`) | Help overlay |
-| `Esc` | Close overlay / return to sidebar |
-| `Ctrl+P` | Quick open (fuzzy file search) |
-| `Ctrl+J` | Quick switch files |
-| `Ctrl+N` | Create new note |
-| `Ctrl+1`--`Ctrl+9` | Switch to tab by number |
-
-### Editor
-
-| Key | Action |
-|-----|--------|
+| `Tab` | Cycle panels |
+| `Ctrl+P` | Quick open (fuzzy search) |
+| `Ctrl+N` | New note |
 | `Ctrl+S` | Save |
-| `Ctrl+E` | Toggle view/edit mode |
-| `Ctrl+U` / `Ctrl+Y` | Undo / Redo |
-| `Ctrl+F` / `Ctrl+H` | Find / Find and replace |
-| `Ctrl+D` | Multi-cursor: select word / next occurrence |
-| `Alt+F` | Toggle fold at cursor |
-
-### Views and Tools
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+X` | Command palette |
-| `Ctrl+/` | Search Everything (notes, tasks, goals, habits) |
+| `Ctrl+E` | Toggle reading mode |
 | `Ctrl+K` | Task manager |
-| `Ctrl+G` | Note graph |
-| `Ctrl+T` | Tag browser |
-| `Ctrl+O` | Note outline |
-| `Ctrl+B` | Bookmarks and recent |
 | `Ctrl+L` | Calendar |
 | `Ctrl+R` | AI bots |
-| `Ctrl+W` | Canvas / whiteboard |
-| `Ctrl+Z` | Focus / zen mode |
+| `Ctrl+G` | Note graph |
+| `Ctrl+X` | Command palette |
 | `Ctrl+,` | Settings |
 | `Ctrl+Q` | Quit |
 
-### Task Manager (`Ctrl+K`)
-
-| Key | Action |
-|-----|--------|
-| `j`/`k` | Navigate up/down |
-| `x` | Toggle task done/undone |
-| `u` | Undo last action |
-| `n` | Add/edit task note |
-| `z` | Snooze task (1h/4h/tomorrow) |
-| `W` | Pin/unpin task |
-| `A` | Auto-suggest priority |
-| `R` | Batch reschedule overdue (Today view) |
-| `T` | Save current task as template |
-| `t` | Create task from template |
-| `X` | Archive completed tasks >30 days |
-| `?` | Help overlay (keybinding reference) |
-| `e` | Expand/collapse subtasks |
-| `f` | Start focus session on task |
-| `g` | Jump to task source note |
-| `a` | Add new task |
-| `d` | Set due date |
-| `r` | Reschedule (tomorrow/Monday/+1wk/+1mo) |
-| `E` | Set time estimate (15m-2h) |
-| `s` | Cycle sort mode (priority/date/A-Z/source/tag) |
-| `b` | Add dependency |
-| `v` | Enter bulk select mode |
-| `p` | Cycle priority |
-| `#` | Cycle tag filter |
-| `P` | Cycle priority filter |
-| `c` | Clear all filters |
-| `/` | Search tasks |
-| `Tab` | Switch view (Today/Upcoming/All/Done/Calendar/Kanban/Matrix) |
-| `1`-`7` | Jump to specific view |
-
-### Vim Mode
-
-When enabled, the editor supports full modal keybindings: `hjkl` movement, `dd`/`yy`/`p`, `w`/`b`/`e` word motion, `i`/`a`/`o` insert, `.` dot repeat, `q`+register macros, visual selection, and ex commands (`:w`, `:wq`, `:s/old/new/g`, `:%s`, `:set wrap`, `:{line}`).
+See [docs/KEYBINDINGS.md](docs/KEYBINDINGS.md) for the complete reference (Vim mode, task manager, calendar, canvas, goals).
 
 ---
 
 ## AI Setup
 
-Granit supports four AI providers. The **local** fallback works offline with no setup.
-
-### Ollama (Recommended)
+### Ollama (recommended, local)
 
 ```bash
 curl -fsSL https://ollama.ai/install.sh | sh
-ollama pull qwen2.5:0.5b   # 4 GB RAM -- use larger models with more RAM
+ollama pull qwen2.5:0.5b
 ollama serve
 ```
 
-Or use the built-in wizard: Settings (`Ctrl+,`) > Setup Ollama.
+Or use the built-in wizard: `Ctrl+,` > Setup Ollama. You can also start/stop Ollama directly from settings.
 
 ### OpenAI
 
-Set in `~/.config/granit/config.json`:
-
 ```json
-{
-  "ai_provider": "openai",
-  "openai_key": "sk-...",
-  "openai_model": "gpt-4o-mini"
-}
+{ "ai_provider": "openai", "openai_key": "sk-...", "openai_model": "gpt-4o-mini" }
 ```
 
-### Nous (Local Server)
-
-```json
-{
-  "ai_provider": "nous",
-  "nous_url": "http://localhost:3333",
-  "nous_api_key": ""
-}
-```
-
-### Claude Code (Research)
-
-The Deep Dive Research feature uses Claude Code as a research agent. Requires `claude` in PATH.
-
----
-
-## Nextcloud Sync
-
-Granit can sync your vault via Nextcloud WebDAV.
-
-Configure in `~/.config/granit/config.json` or via Settings (`Ctrl+,`):
-
-```json
-{
-  "nextcloud_url": "https://your-nextcloud.example.com",
-  "nextcloud_user": "username",
-  "nextcloud_pass": "app-password",
-  "nextcloud_path": "Notes",
-  "nextcloud_auto_sync": false
-}
-```
-
-Generate an app password in Nextcloud under Settings > Security > Devices & sessions. Set `nextcloud_auto_sync` to `true` to sync automatically on save and open.
+See [docs/AI-GUIDE.md](docs/AI-GUIDE.md) for all providers and troubleshooting.
 
 ---
 
 ## Configuration
 
-Granit uses layered JSON configuration. Per-vault settings override global settings.
+Layered JSON configuration. Per-vault settings override global.
 
 | Scope | Path |
 |-------|------|
 | Global | `~/.config/granit/config.json` |
 | Per-vault | `<vault>/.granit.json` |
-| Vault registry | `~/.config/granit/vaults.json` |
-| Plugins | `~/.config/granit/plugins/` or `<vault>/.granit/plugins/` |
+| Custom themes | `~/.config/granit/themes/` |
+| Plugins | `~/.config/granit/plugins/` |
 
-All settings are editable from the built-in settings panel (`Ctrl+,`).
+All settings editable from `Ctrl+,`. Key options: `theme`, `layout`, `vim_mode`, `ai_provider`, `ghost_writer`, `auto_save`.
 
-Key options: `theme` (38 themes), `layout` (13 layouts), `vim_mode`, `auto_save`, `ai_provider` (`local`/`ollama`/`openai`/`nous`), `ghost_writer`, `auto_tag`, `git_auto_sync`, `spell_check`, `icon_theme` (`unicode`/`nerd`/`emoji`/`ascii`), `pomodoro_goal`, `nextcloud_auto_sync`.
-
-Environment variables: `GRANIT_VAULT` (default vault path), `EDITOR` (external editor).
+See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the full reference.
 
 ---
 
-## Architecture
+## Documentation
 
-Granit is a Go monolith with two frontends sharing the same core packages.
-
-```
-cmd/granit/        CLI entry point and subcommands
-internal/config/   JSON configuration (global + per-vault)
-internal/vault/    Vault scanning, Markdown parser, backlink index
-internal/tui/      Terminal UI -- 214 Go files (148 source + 66 test) on Bubble Tea
-desktop/           Wails v2 desktop app (Go API + Svelte frontend)
-```
-
-The **TUI** is built on [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss). The **desktop app** uses [Wails v2](https://wails.io/) with a Svelte frontend calling the same Go backend via bindings. A **Lua scripting engine** and **plugin system** (16 core plugins, language-agnostic scripts) provide extensibility.
+| Document | Description |
+|----------|-------------|
+| [Features](docs/FEATURES.md) | Complete feature guide |
+| [Keybindings](docs/KEYBINDINGS.md) | All keyboard shortcuts |
+| [AI Guide](docs/AI-GUIDE.md) | AI setup, providers, bots |
+| [Configuration](docs/CONFIGURATION.md) | All config options |
+| [Themes](docs/THEMES.md) | 38 themes + custom theme guide |
+| [Installation](docs/INSTALLATION.md) | Build, install, dependencies |
+| [Plugins](docs/PLUGINS.md) | Plugin development guide |
+| [Architecture](docs/ARCHITECTURE.md) | Codebase structure |
+| [Changelog](CHANGELOG.md) | Version history |
 
 ---
 
 ## License
 
-Granit is released under the [MIT License](LICENSE).
-
----
+MIT License. See [LICENSE](LICENSE).
 
 <p align="center">
-  <strong>Granit</strong> -- your knowledge, your terminal, your rules.<br>
-  <sub>Free and open source. No telemetry. No subscriptions. Your data stays local.</sub>
+  <sub>Your knowledge. Your terminal. Your rules.</sub>
 </p>
