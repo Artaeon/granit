@@ -1061,13 +1061,15 @@ func (c Calendar) viewWeek() string {
 
 	var b strings.Builder
 
-	// Compact header: week range left, view label right
+	// Header: week info left, current date + view label right
 	weekStart := c.cursor.AddDate(0, 0, -int(c.cursor.Weekday()))
 	weekEnd := weekStart.AddDate(0, 0, 6)
 	_, weekNum := c.cursor.ISOWeek()
 	weekLabel := fmt.Sprintf("W%d  %s – %s", weekNum, weekStart.Format("Jan 2"), weekEnd.Format("Jan 2, 2006"))
 	headerLeft := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  " + weekLabel)
-	headerRight := DimStyle.Render("week ")
+	now := time.Now()
+	todayLabel := lipgloss.NewStyle().Foreground(green).Render(now.Format("Mon 15:04"))
+	headerRight := todayLabel + DimStyle.Render("  week")
 	headerGap := width - lipgloss.Width(headerLeft) - lipgloss.Width(headerRight) - 4
 	if headerGap < 1 {
 		headerGap = 1
@@ -1110,9 +1112,9 @@ func (c Calendar) viewWeek() string {
 
 	// Active goals strip
 	if len(c.activeGoals) > 0 {
-		goalsLine := "  " + DimStyle.Render("Goals: ")
+		goalsLine := "  "
 		for i, g := range c.activeGoals {
-			if i >= 4 {
+			if i >= 5 {
 				break
 			}
 			prog := g.Progress()
@@ -1120,10 +1122,16 @@ func (c Calendar) viewWeek() string {
 			if prog >= 75 {
 				color = green
 			} else if prog < 25 {
-				color = red
+				color = peach
 			}
-			badge := lipgloss.NewStyle().Foreground(color).Render(
-				fmt.Sprintf("[%s %d%%]", TruncateDisplay(g.Title, 12), prog))
+			// Mini progress bar: ████░░ 45%
+			barW := 4
+			filled := barW * prog / 100
+			bar := strings.Repeat("█", filled) + strings.Repeat("░", barW-filled)
+			title := TruncateDisplay(g.Title, 14)
+			badge := lipgloss.NewStyle().Background(surface0).Padding(0, 1).Render(
+				lipgloss.NewStyle().Foreground(color).Render(bar) + " " +
+					lipgloss.NewStyle().Foreground(text).Render(title))
 			goalsLine += badge + " "
 		}
 		b.WriteString(goalsLine + "\n")
@@ -1184,7 +1192,6 @@ func (c Calendar) viewWeek() string {
 			break
 		}
 		// Time label (24h format)
-		now := time.Now()
 		isCurrentHour := now.Hour() == hour
 		timeSt := DimStyle.Render(fmt.Sprintf("%02d:00 ", hour))
 		if isCurrentHour {
@@ -1208,9 +1215,18 @@ func (c Calendar) viewWeek() string {
 				}
 				if pbHour == hour {
 					cellText = pb.Text
-					cellColor = lavender
-					if pb.Done {
+					switch pb.BlockType {
+					case "task":
+						cellColor = blue
+					case "break":
 						cellColor = green
+					case "focus":
+						cellColor = peach
+					default:
+						cellColor = lavender
+					}
+					if pb.Done {
+						cellColor = surface2
 					}
 					break
 				}
@@ -1235,15 +1251,13 @@ func (c Calendar) viewWeek() string {
 						evCount++
 						if cellText == "" {
 							if startHour == hour {
-								// Show just minutes if not on the hour, else just title
 								if ev.Date.Minute() > 0 {
 									cellText = ev.Date.Format(":04") + " " + ev.Title
 								} else {
 									cellText = ev.Title
 								}
 							} else {
-								// Continuation block
-								cellText = "  " + ev.Title
+								cellText = "  ┊ " + ev.Title
 							}
 							cellColor = calEventColor(ev)
 						}
@@ -1301,6 +1315,14 @@ func (c Calendar) viewWeek() string {
 		}
 
 		b.WriteString("  " + timeSt + cells + "\n")
+
+		// Current time horizontal line marker
+		if isCurrentHour {
+			minutes := now.Minute()
+			lineLabel := lipgloss.NewStyle().Foreground(green).Render(fmt.Sprintf("  %02d:%02d", now.Hour(), minutes))
+			lineRest := lipgloss.NewStyle().Foreground(green).Render(strings.Repeat("╌", width-12))
+			b.WriteString(lineLabel + lineRest + "\n")
+		}
 	}
 
 	// Quick add input
