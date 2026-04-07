@@ -404,6 +404,46 @@ func (gm *GoalsMode) saveGoals() {
 	_ = os.WriteFile(gm.goalsPath(), data, 0644)
 }
 
+// loadAllGoals reads all goals from the goals.json file.
+func loadAllGoals(vaultRoot string) []Goal {
+	data, err := os.ReadFile(filepath.Join(vaultRoot, ".granit", "goals.json"))
+	if err != nil {
+		return nil
+	}
+	var all []Goal
+	if err := json.Unmarshal(data, &all); err != nil {
+		return nil
+	}
+	return all
+}
+
+// saveAllGoals writes all goals back to the goals.json file.
+func saveAllGoals(vaultRoot string, goals []Goal) {
+	dir := filepath.Join(vaultRoot, ".granit")
+	_ = os.MkdirAll(dir, 0755)
+	data, err := json.MarshalIndent(goals, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(dir, "goals.json"), data, 0644)
+}
+
+// addMilestoneToGoal appends a new milestone to the specified goal.
+func addMilestoneToGoal(vaultRoot, goalID, text, dueDate string) {
+	goals := loadAllGoals(vaultRoot)
+	for i, g := range goals {
+		if g.ID == goalID {
+			goals[i].Milestones = append(goals[i].Milestones, GoalMilestone{
+				Text:    text,
+				DueDate: dueDate,
+			})
+			goals[i].UpdatedAt = time.Now().Format(time.RFC3339)
+			break
+		}
+	}
+	saveAllGoals(vaultRoot, goals)
+}
+
 type gmAIResultMsg struct {
 	milestones []GoalMilestone
 	goalID     string

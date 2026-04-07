@@ -28,6 +28,12 @@ type CalendarEvent struct {
 	Recurrence  string // "daily", "weekly", "monthly", "yearly"
 }
 
+// DailyFocus holds the top goal and focus items for a given day.
+type DailyFocus struct {
+	TopGoal    string
+	FocusItems []string
+}
+
 // PlannerBlock represents a scheduled block from the daily planner.
 type PlannerBlock struct {
 	Date      string // YYYY-MM-DD
@@ -179,6 +185,16 @@ type Calendar struct {
 	timeBlockCursor int
 	timeBlockDate   string
 	timeBlockHour   int
+
+	// Daily focus data (keyed by date "YYYY-MM-DD")
+	dailyGoals map[string]DailyFocus
+
+	// Weekly milestone creation
+	weekMilestoneMode   bool
+	weekMilestoneCursor int
+	weekMilestoneStep   int    // 0=pick goal, 1=enter milestone text
+	weekMilestoneBuf    string
+	weekMilestoneGoalID string
 }
 
 // NewCalendar creates a new Calendar overlay.
@@ -202,6 +218,19 @@ func (c *Calendar) SetSize(width, height int) {
 
 func (c *Calendar) SetActiveGoals(goals []Goal) { c.activeGoals = goals }
 func (c *Calendar) SetVaultRoot(root string)     { c.vaultRoot = root }
+
+// SetDailyFocus stores focus data for a given date.
+func (c *Calendar) SetDailyFocus(date string, focus DailyFocus) {
+	if c.dailyGoals == nil {
+		c.dailyGoals = make(map[string]DailyFocus)
+	}
+	c.dailyGoals[date] = focus
+}
+
+// SetAllDailyFocus replaces all daily focus data.
+func (c *Calendar) SetAllDailyFocus(all map[string]DailyFocus) {
+	c.dailyGoals = all
+}
 
 func (c *Calendar) Open() {
 	c.active = true
@@ -419,6 +448,48 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			default:
 				if len(msg.String()) == 1 || msg.String() == " " {
 					c.eventInput += msg.String()
+				}
+			}
+			return c, nil
+		}
+
+		// Weekly milestone creation mode
+		if c.weekMilestoneMode {
+			switch msg.String() {
+			case "esc":
+				c.weekMilestoneMode = false
+			case "up", "k":
+				if c.weekMilestoneStep == 0 && c.weekMilestoneCursor > 0 {
+					c.weekMilestoneCursor--
+				}
+			case "down", "j":
+				if c.weekMilestoneStep == 0 && c.weekMilestoneCursor < len(c.activeGoals)-1 {
+					c.weekMilestoneCursor++
+				}
+			case "enter":
+				if c.weekMilestoneStep == 0 {
+					// Selected a goal, now enter milestone text
+					c.weekMilestoneGoalID = c.activeGoals[c.weekMilestoneCursor].ID
+					c.weekMilestoneStep = 1
+					c.weekMilestoneBuf = ""
+				} else if c.weekMilestoneStep == 1 && c.weekMilestoneBuf != "" {
+					// Save milestone — due date is end of the cursor's week
+					endOfWeek := c.cursor.AddDate(0, 0, 6-int(c.cursor.Weekday()))
+					addMilestoneToGoal(c.vaultRoot, c.weekMilestoneGoalID, c.weekMilestoneBuf,
+						endOfWeek.Format("2006-01-02"))
+					c.activeGoals = loadActiveGoals(c.vaultRoot) // reload
+					c.weekMilestoneMode = false
+				}
+			case "backspace":
+				if c.weekMilestoneStep == 1 && len(c.weekMilestoneBuf) > 0 {
+					c.weekMilestoneBuf = c.weekMilestoneBuf[:len(c.weekMilestoneBuf)-1]
+				}
+			default:
+				if c.weekMilestoneStep == 1 {
+					ch := msg.String()
+					if len(ch) == 1 {
+						c.weekMilestoneBuf += ch
+					}
 				}
 			}
 			return c, nil
@@ -831,6 +902,15 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				}
 			}
 
+		case "g":
+			if len(c.activeGoals) > 0 {
+				c.weekMilestoneMode = true
+				c.weekMilestoneCursor = 0
+				c.weekMilestoneStep = 0
+				c.weekMilestoneBuf = ""
+				c.weekMilestoneGoalID = ""
+			}
+
 		case "d":
 			// Delete event (in agenda view)
 			if c.view == calViewAgenda && c.agendaCursor >= 0 && c.agendaCursor < len(c.agendaItems) {
@@ -1114,6 +1194,13 @@ func (c Calendar) viewWeek() string {
 	b.WriteString("  " + headerRow + "\n")
 	b.WriteString("  " + lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("─", width-8)) + "\n")
 
+	// Daily focus for selected day
+	cursorDate := c.cursor.Format("2006-01-02")
+	if focus, ok := c.dailyGoals[cursorDate]; ok && focus.TopGoal != "" {
+		focusStyle := lipgloss.NewStyle().Foreground(green).Italic(true)
+		b.WriteString("  " + focusStyle.Render("\u25b8 "+TruncateDisplay(focus.TopGoal, width-10)) + "\n")
+	}
+
 	// Active goals strip
 	if len(c.activeGoals) > 0 {
 		goalsLine := "  "
@@ -1370,6 +1457,52 @@ func (c Calendar) viewWeek() string {
 			b.WriteString("  " + prefix + style.Render(TruncateDisplay(t.Text, width-20)) + DimStyle.Render(dur) + "\n")
 		}
 		b.WriteString("  " + DimStyle.Render("Enter:block  Esc:cancel") + "\n")
+	}
+
+	// Weekly milestone creation picker
+	if c.weekMilestoneMode && len(c.activeGoals) > 0 {
+		b.WriteString("\n")
+		sepStyle := lipgloss.NewStyle().Foreground(surface0)
+		b.WriteString("  " + sepStyle.Render(strings.Repeat("\u2500", width-8)) + "\n")
+		titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+		if c.weekMilestoneStep == 0 {
+			b.WriteString(titleStyle.Render("  Add milestone \u2014 select goal:") + "\n")
+			maxShow := 8
+			start := 0
+			if c.weekMilestoneCursor >= maxShow {
+				start = c.weekMilestoneCursor - maxShow + 1
+			}
+			end := start + maxShow
+			if end > len(c.activeGoals) {
+				end = len(c.activeGoals)
+			}
+			for i := start; i < end; i++ {
+				g := c.activeGoals[i]
+				prefix := "  "
+				style := DimStyle
+				if i == c.weekMilestoneCursor {
+					prefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("\u25b8 ")
+					style = lipgloss.NewStyle().Foreground(text)
+				}
+				prog := fmt.Sprintf(" (%d%%)", g.Progress())
+				b.WriteString("  " + prefix + style.Render(TruncateDisplay(g.Title, width-20)) + DimStyle.Render(prog) + "\n")
+			}
+			b.WriteString("  " + DimStyle.Render("Enter:select  Esc:cancel") + "\n")
+		} else {
+			// Find the selected goal title
+			goalTitle := ""
+			for _, g := range c.activeGoals {
+				if g.ID == c.weekMilestoneGoalID {
+					goalTitle = g.Title
+					break
+				}
+			}
+			b.WriteString(titleStyle.Render("  Milestone for: "+TruncateDisplay(goalTitle, width-24)) + "\n")
+			inputStyle := lipgloss.NewStyle().Foreground(text).Background(surface0).Padding(0, 1)
+			cursor := lipgloss.NewStyle().Foreground(mauve).Render("\u2588")
+			b.WriteString("  " + inputStyle.Render(c.weekMilestoneBuf+cursor) + "\n")
+			b.WriteString("  " + DimStyle.Render("Enter:save  Esc:cancel") + "\n")
+		}
 	}
 
 	c.renderFooter(&b, width)
@@ -2253,7 +2386,7 @@ func (c Calendar) renderFooter(b *strings.Builder, width int) {
 	case calViewWeek, calView3Day, calView1Day:
 		pairs = []struct{ Key, Desc string }{
 			{"←→", "day"}, {"↑↓", "hour"}, {"[]", "month"}, {"w", "view"},
-			{"t", "today"}, {"a", "add"}, {"b", "block"}, {"e", "events"}, {"Esc", "close"},
+			{"t", "today"}, {"a", "add"}, {"b", "block"}, {"g", "goal"}, {"e", "events"}, {"Esc", "close"},
 		}
 	default:
 		pairs = []struct{ Key, Desc string }{

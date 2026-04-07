@@ -995,7 +995,8 @@ func (m *Model) refreshCalendarPanel() {
 			noteContents[p] = note.Content
 		}
 	}
-	m.calendarPanel.Refresh(loadPlannerBlocks(m.vault.Root), noteContents)
+	helperBlocks, _ := loadPlannerBlocks(m.vault.Root)
+	m.calendarPanel.Refresh(helperBlocks, noteContents)
 	// Feed ICS events into the panel so cockpit layout shows calendar events
 	m.calendarPanel.SetEvents(m.calendar.GetEvents())
 }

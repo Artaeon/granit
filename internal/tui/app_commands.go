@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -234,7 +235,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.calendar.SetNoteContents(noteContents)
-		m.calendar.SetPlannerBlocks(loadPlannerBlocks(m.vault.Root))
+		plannerBlocks, dailyFocus := loadPlannerBlocks(m.vault.Root)
+		m.calendar.SetPlannerBlocks(plannerBlocks)
+		m.calendar.SetAllDailyFocus(dailyFocus)
 		m.loadCalendarEvents()
 		m.refreshCalendarPanel()
 		// Load habit data for calendar views
@@ -1706,6 +1709,9 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 		return
 	}
 
+	// Write focus data to planner file
+	writePlannerFocus(m.vault.Root, today, topGoal, focusOrder)
+
 	_ = m.vault.Scan()
 	m.index.Build()
 	paths := m.vault.SortedPaths()
@@ -1717,14 +1723,47 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 	m.setFocus(focusEditor)
 }
 
+// writePlannerFocus writes or updates the ## Focus section in the planner file for the given date.
+func writePlannerFocus(vaultRoot, date, topGoal string, focusItems []string) {
+	dir := filepath.Join(vaultRoot, "Planner")
+	_ = os.MkdirAll(dir, 0755)
+	path := filepath.Join(dir, date+".md")
+
+	var section strings.Builder
+	section.WriteString("## Focus\n")
+	if topGoal != "" {
+		section.WriteString("- Top goal: " + topGoal + "\n")
+	}
+	for _, item := range focusItems {
+		section.WriteString("- " + item + "\n")
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		content = []byte("---\ndate: " + date + "\n---\n\n")
+	}
+	// Remove existing ## Focus section if present
+	if idx := bytes.Index(content, []byte("## Focus")); idx >= 0 {
+		end := bytes.Index(content[idx+1:], []byte("\n## "))
+		if end >= 0 {
+			content = append(content[:idx], content[idx+1+end+1:]...)
+		} else {
+			content = content[:idx]
+		}
+	}
+	content = append(content, []byte("\n"+section.String())...)
+	_ = os.WriteFile(path, content, 0644)
+}
+
 // loadPlannerBlocks scans the Planner/ directory for schedule files and
-// returns all blocks keyed by date string ("YYYY-MM-DD").
-func loadPlannerBlocks(vaultRoot string) map[string][]PlannerBlock {
+// returns all blocks keyed by date string ("YYYY-MM-DD") plus daily focus data.
+func loadPlannerBlocks(vaultRoot string) (map[string][]PlannerBlock, map[string]DailyFocus) {
 	result := make(map[string][]PlannerBlock)
+	focusResult := make(map[string]DailyFocus)
 	plannerDir := filepath.Join(vaultRoot, "Planner")
 	entries, err := os.ReadDir(plannerDir)
 	if err != nil {
-		return result
+		return result, focusResult
 	}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
@@ -1741,14 +1780,32 @@ func loadPlannerBlocks(vaultRoot string) map[string][]PlannerBlock {
 		}
 		scanner := bufio.NewScanner(f)
 		inSchedule := false
+		inFocus := false
+		var focusItems []string
+		var topGoal string
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
 			if line == "## Schedule" {
 				inSchedule = true
+				inFocus = false
+				continue
+			}
+			if line == "## Focus" {
+				inSchedule = false
+				inFocus = true
 				continue
 			}
 			if strings.HasPrefix(line, "## ") {
 				inSchedule = false
+				inFocus = false
+				continue
+			}
+			if inFocus {
+				if strings.HasPrefix(line, "- Top goal: ") {
+					topGoal = strings.TrimPrefix(line, "- Top goal: ")
+				} else if strings.HasPrefix(line, "- ") {
+					focusItems = append(focusItems, strings.TrimPrefix(line, "- "))
+				}
 				continue
 			}
 			if !inSchedule || !strings.HasPrefix(line, "- ") {
@@ -1778,8 +1835,11 @@ func loadPlannerBlocks(vaultRoot string) map[string][]PlannerBlock {
 			result[dateStr] = append(result[dateStr], pb)
 		}
 		_ = f.Close()
+		if topGoal != "" || len(focusItems) > 0 {
+			focusResult[dateStr] = DailyFocus{TopGoal: topGoal, FocusItems: focusItems}
+		}
 	}
-	return result
+	return result, focusResult
 }
 
 // updateTaskScheduleInFile annotates matching task lines in Tasks.md with a

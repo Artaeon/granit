@@ -1622,6 +1622,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.planMyDay.IsActive() {
 				if sched, goal, focus, advice, ok := m.planMyDay.GetAppliedPlan(); ok && len(sched) > 0 {
 					m.writePlanMyDayToDailyNote(sched, goal, focus, advice)
+					m.calendar.SetDailyFocus(time.Now().Format("2006-01-02"), DailyFocus{
+						TopGoal:    goal,
+						FocusItems: focus,
+					})
 					m.refreshComponents("")
 					m.statusbar.SetMessage("Day plan applied to daily note")
 				}
@@ -2726,7 +2730,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.calendar.SetNoteContents(noteContents)
-			m.calendar.SetPlannerBlocks(loadPlannerBlocks(m.vault.Root))
+			plannerBlocks, dailyFocus := loadPlannerBlocks(m.vault.Root)
+			m.calendar.SetPlannerBlocks(plannerBlocks)
+			m.calendar.SetAllDailyFocus(dailyFocus)
 			m.loadCalendarEvents()
 			m.refreshCalendarPanel()
 			ht := NewHabitTracker()
@@ -2891,7 +2897,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						noteContents[p] = note.Content
 					}
 				}
-				m.calendarPanel.Refresh(loadPlannerBlocks(m.vault.Root), noteContents)
+				panelBlocks, _ := loadPlannerBlocks(m.vault.Root)
+				m.calendarPanel.Refresh(panelBlocks, noteContents)
 				m.statusbar.SetMessage("Calendar panel enabled (Alt+Shift+C to toggle)")
 			} else {
 				m.statusbar.SetMessage("Backlinks panel restored (Alt+Shift+C to toggle)")
