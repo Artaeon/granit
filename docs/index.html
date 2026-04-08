@@ -4,10 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Granit — Terminal Knowledge Manager</title>
-  <meta name="description" content="A blazing-fast, AI-powered terminal knowledge manager. Fully Obsidian compatible, built with Go.">
+  <meta name="description" content="A blazing-fast, AI-powered terminal knowledge manager. Notes, tasks, goals, habits, calendar, and 23 AI bots in one binary. Fully Obsidian compatible. Free and open source.">
+  <meta name="keywords" content="terminal, knowledge manager, note-taking, TUI, Go, Obsidian alternative, task manager, AI, local AI, Ollama, open source">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -62,6 +63,7 @@
     .reveal-delay-1 { transition-delay: 0.1s; }
     .reveal-delay-2 { transition-delay: 0.2s; }
     .reveal-delay-3 { transition-delay: 0.25s; }
+    .reveal-delay-4 { transition-delay: 0.3s; }
 
     /* ── Navigation ── */
     .nav {
@@ -146,6 +148,7 @@
     .mobile-menu.open a:nth-child(5) { transition-delay: 0.24s; }
     .mobile-menu.open a:nth-child(6) { transition-delay: 0.28s; }
     .mobile-menu.open a:nth-child(7) { transition-delay: 0.32s; }
+    .mobile-menu.open a:nth-child(8) { transition-delay: 0.36s; }
     .mobile-menu a:hover { color: var(--accent); }
     .mobile-menu .mobile-cta {
       margin-top: 1.5rem; padding: 0.8rem 2.5rem;
@@ -191,15 +194,19 @@
       margin-bottom: 1.5rem;
     }
     .hero h1 {
-      font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 700;
+      font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 800;
       line-height: 1.1; max-width: 800px;
       background: linear-gradient(135deg, var(--text) 0%, var(--text-secondary) 100%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
       background-clip: text; margin-bottom: 1.5rem;
     }
-    .hero p {
-      color: var(--text-secondary); font-size: 1.15rem; max-width: 560px;
-      line-height: 1.8; margin-bottom: 2.5rem;
+    .hero-sub {
+      color: var(--text-secondary); font-size: 1.2rem; max-width: 620px;
+      line-height: 1.8; margin-bottom: 1rem;
+    }
+    .hero-detail {
+      color: var(--text-muted); font-size: 0.95rem; max-width: 560px;
+      line-height: 1.7; margin-bottom: 2.5rem;
     }
     .hero-buttons { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
     .btn {
@@ -285,6 +292,12 @@
     .feature-card p {
       color: var(--text-secondary); font-size: 0.88rem; line-height: 1.6;
     }
+    .feature-card .feature-tag {
+      display: inline-block; margin-top: 0.75rem;
+      font-family: var(--mono); font-size: 0.65rem; font-weight: 600;
+      color: var(--accent); padding: 0.2rem 0.6rem;
+      border: 1px solid rgba(180,142,173,0.2); border-radius: 6px;
+    }
 
     /* ── Showcase ── */
     .showcase-item {
@@ -328,6 +341,70 @@
     .showcase-list li::before {
       content: ""; position: absolute; left: 0; top: 0.55rem;
       width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+    }
+
+    /* ── Use Cases / Personas ── */
+    .personas-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem;
+    }
+    .persona-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 2rem 2.25rem;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .persona-card:hover {
+      border-color: var(--border-hover); transform: translateY(-4px);
+      box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+    }
+    .persona-icon {
+      font-size: 1.5rem; margin-bottom: 0.75rem; display: block;
+    }
+    .persona-card h3 {
+      font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem;
+    }
+    .persona-card p {
+      color: var(--text-secondary); font-size: 0.88rem; line-height: 1.7;
+    }
+
+    /* ── Day in the Life ── */
+    .timeline {
+      position: relative; padding-left: 2.5rem; max-width: 700px;
+    }
+    .timeline::before {
+      content: ""; position: absolute; left: 0.75rem; top: 0; bottom: 0;
+      width: 2px; background: linear-gradient(180deg, var(--accent), var(--blue), var(--green), var(--peach));
+      border-radius: 2px;
+    }
+    .timeline-item {
+      position: relative; margin-bottom: 2.5rem;
+    }
+    .timeline-item::before {
+      content: ""; position: absolute; left: -1.85rem; top: 0.4rem;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--bg); border: 2px solid var(--accent);
+    }
+    .timeline-item:nth-child(2)::before { border-color: var(--blue); }
+    .timeline-item:nth-child(3)::before { border-color: var(--green); }
+    .timeline-item:nth-child(4)::before { border-color: var(--peach); }
+    .timeline-item:nth-child(5)::before { border-color: var(--teal); }
+    .timeline-time {
+      font-family: var(--mono); font-size: 0.75rem; font-weight: 600;
+      color: var(--accent); margin-bottom: 0.25rem;
+    }
+    .timeline-item:nth-child(2) .timeline-time { color: var(--blue); }
+    .timeline-item:nth-child(3) .timeline-time { color: var(--green); }
+    .timeline-item:nth-child(4) .timeline-time { color: var(--peach); }
+    .timeline-item:nth-child(5) .timeline-time { color: var(--teal); }
+    .timeline-title {
+      font-size: 1rem; font-weight: 600; margin-bottom: 0.3rem;
+    }
+    .timeline-desc {
+      color: var(--text-secondary); font-size: 0.88rem; line-height: 1.6;
+    }
+    .timeline-kbd {
+      font-family: var(--mono); font-size: 0.72rem; font-weight: 600;
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      padding: 0.15rem 0.4rem; border-radius: 4px; color: var(--text);
     }
 
     /* ── Stats ── */
@@ -379,6 +456,25 @@
       font-size: 0.82rem; color: var(--text-secondary);
     }
 
+    /* ── Comparison ── */
+    .comparison-table {
+      width: 100%; border-collapse: collapse;
+      font-size: 0.88rem; line-height: 1.6;
+    }
+    .comparison-table th {
+      text-align: left; padding: 1rem; font-weight: 600;
+      border-bottom: 1px solid var(--border); color: var(--text-secondary);
+    }
+    .comparison-table th.hl { color: var(--accent); }
+    .comparison-table td {
+      padding: 0.85rem 1rem; border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+    .comparison-table td.hl { color: var(--text); }
+    .ck { color: var(--green); font-weight: 600; }
+    .cx { color: var(--red); }
+    .cp { color: var(--peach); }
+
     /* ── Install ── */
     .install-block { max-width: 640px; }
     .code-block {
@@ -405,25 +501,6 @@
     .code-body .arg { color: var(--peach); }
     .code-body .comment { color: var(--text-muted); }
 
-    /* ── Comparison ── */
-    .comparison-table {
-      width: 100%; border-collapse: collapse;
-      font-size: 0.88rem; line-height: 1.6;
-    }
-    .comparison-table th {
-      text-align: left; padding: 1rem; font-weight: 600;
-      border-bottom: 1px solid var(--border); color: var(--text-secondary);
-    }
-    .comparison-table th.hl { color: var(--accent); }
-    .comparison-table td {
-      padding: 0.85rem 1rem; border-bottom: 1px solid var(--border);
-      color: var(--text-secondary);
-    }
-    .comparison-table td.hl { color: var(--text); }
-    .ck { color: var(--green); font-weight: 600; }
-    .cx { color: var(--red); }
-    .cp { color: var(--peach); }
-
     /* ── Docs ── */
     .docs-grid {
       display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;
@@ -443,6 +520,22 @@
     }
     .doc-card p { color: var(--text-muted); font-size: 0.8rem; }
 
+    /* ── Philosophy ── */
+    .philosophy-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+    }
+    .philosophy-item h3 {
+      font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+    .philosophy-item p {
+      color: var(--text-secondary); font-size: 0.88rem; line-height: 1.7;
+    }
+    .philosophy-item .phi-accent {
+      display: inline-block; width: 32px; height: 3px;
+      background: var(--accent); border-radius: 2px; margin-bottom: 1rem;
+    }
+
     /* ── Footer ── */
     footer {
       border-top: 1px solid var(--border); padding: 3rem 2rem;
@@ -454,6 +547,10 @@
     }
     .footer-links { list-style: none; display: flex; gap: 2rem; justify-content: center; margin-top: 1rem; }
     .footer-links a { color: var(--text-secondary); font-size: 0.85rem; }
+    .footer-tagline {
+      color: var(--text-muted); font-size: 0.85rem; margin-top: 1.5rem;
+      font-family: var(--mono);
+    }
 
     /* ── Responsive ── */
     @media (max-width: 900px) {
@@ -464,6 +561,8 @@
       .stats-grid { grid-template-columns: repeat(3, 1fr); }
       .shortcuts-grid { grid-template-columns: repeat(2, 1fr); }
       .docs-grid { grid-template-columns: repeat(2, 1fr); }
+      .personas-grid { grid-template-columns: 1fr; }
+      .philosophy-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 600px) {
       section { padding: 4rem 1.25rem; }
@@ -490,9 +589,9 @@
       <ul class="nav-links">
         <li><a href="#features">Features</a></li>
         <li><a href="#showcase">Showcase</a></li>
+        <li><a href="#use-cases">Use Cases</a></li>
         <li><a href="#comparison">Compare</a></li>
-        <li><a href="#stats">Stats</a></li>
-        <li><a href="#documentation">Docs</a></li>
+        <li><a href="#daily-workflow">Workflow</a></li>
         <li><a href="https://github.com/artaeon/granit">GitHub</a></li>
         <li><a href="#installation" class="nav-cta">Get Started</a></li>
       </ul>
@@ -506,9 +605,10 @@
   <div class="mobile-menu" id="mobile-menu">
     <a href="#features">Features</a>
     <a href="#showcase">Showcase</a>
+    <a href="#use-cases">Use Cases</a>
     <a href="#comparison">Compare</a>
+    <a href="#daily-workflow">Workflow</a>
     <a href="#stats">Stats</a>
-    <a href="#documentation">Docs</a>
     <a href="https://github.com/artaeon/granit">GitHub</a>
     <a href="#installation" class="mobile-cta">Get Started</a>
   </div>
@@ -516,22 +616,22 @@
   <!-- Hero -->
   <section class="hero">
     <div class="hero-grid"></div>
-    <p class="hero-overline reveal">Terminal-Native Knowledge Manager</p>
-    <h1 class="reveal">Your notes deserve<br>a faster home.</h1>
-    <p class="reveal">A 32MB binary that replaces Obsidian, Notion, and Todoist. 19 AI bots run locally. 1,971 tests. Zero telemetry. Just your terminal.</p>
+    <p class="hero-overline reveal">Open Source &middot; Terminal Native &middot; AI Powered</p>
+    <h1 class="reveal">Your second brain,<br>in your terminal.</h1>
+    <p class="hero-sub reveal">Notes, tasks, goals, habits, calendar, and 23 AI bots. One 32 MB binary that replaces Obsidian, Notion, and Todoist.</p>
+    <p class="hero-detail reveal">Fully Obsidian compatible. Runs locally. Syncs with git. Free forever.</p>
 
     <!-- Terminal mockup -->
-    <div class="reveal" style="max-width:520px; width:100%; margin: 2rem auto;">
+    <div class="reveal" style="max-width:560px; width:100%; margin: 1.5rem auto;">
       <div class="code-block">
         <div class="code-header">
           <div class="code-dots"><span style="background:#f7768e"></span><span style="background:#e0af68"></span><span style="background:#9ece6a"></span></div>
           <span class="code-lang">~</span>
         </div>
-        <div class="code-body"><span class="cmd">$</span> <span class="arg">granit</span> init my-vault
-<span style="color:var(--green)">Initialized new Granit vault: my-vault</span>
-
-<span class="cmd">$</span> <span class="arg">granit</span>
-<span style="color:var(--text-muted)">Loaded 247 notes in 12ms</span></div>
+        <div class="code-body"><span class="cmd">$</span> <span class="arg">go install</span> github.com/artaeon/granit/cmd/granit@latest
+<span class="cmd">$</span> <span class="arg">granit</span> ~/notes
+<span style="color:var(--green)">Loaded 247 notes in 12ms</span>
+<span style="color:var(--text-muted)"># Alt+M morning routine  |  Ctrl+K tasks  |  Ctrl+R AI bots</span></div>
       </div>
     </div>
 
@@ -543,8 +643,8 @@
       <span class="badge">Go 1.24+</span>
       <span class="badge">MIT License</span>
       <span class="badge">Linux &amp; macOS</span>
-      <span class="badge">166K+ Lines</span>
-      <span class="badge">1,971 Tests</span>
+      <span class="badge">187K+ Lines of Go</span>
+      <span class="badge">2,072 Tests</span>
     </div>
   </section>
 
@@ -558,63 +658,93 @@
     <div class="features-grid">
       <div class="feature-card reveal reveal-delay-1">
         <span class="feature-icon">&#x2728;</span>
-        <h3>19 AI Bots</h3>
-        <p>Auto-tagger, auto-linker, summarizer, flashcards, writing coach, deep dive research, and more. Runs locally on qwen2.5:0.5b via Ollama.</p>
+        <h3>23 AI Bots</h3>
+        <p>Auto-tagger, auto-linker, summarizer, flashcards, writing coach, deep dive research agent, plan my day, and more. All optimized for small local models.</p>
+        <span class="feature-tag">Ollama / OpenAI / Claude</span>
       </div>
       <div class="feature-card reveal reveal-delay-2">
         <span class="feature-icon">&#x2328;&#xFE0F;</span>
         <h3>Full Vim Mode</h3>
-        <p>Modal editing with text objects, marks, macros, search highlighting, dot repeat, and ex commands. Everything you expect from Vim.</p>
+        <p>Modal editing with text objects, marks, macros, registers, dot repeat, search highlighting, and ex commands. Everything you expect from Vim.</p>
+        <span class="feature-tag">168 commands</span>
       </div>
       <div class="feature-card reveal reveal-delay-3">
         <span class="feature-icon">&#x1F3A8;</span>
-        <h3>38 Themes</h3>
-        <p>Catppuccin, Tokyo Night, Gruvbox, Nord, Dracula, and 33 more. Plus 5 accessibility themes and a live theme editor.</p>
+        <h3>40 Themes</h3>
+        <p>Catppuccin, Tokyo Night, Gruvbox, Nord, Dracula, and 35 more. Plus accessibility themes and a live theme editor with 16 color roles.</p>
+        <span class="feature-tag">+ custom themes</span>
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x2705;</span>
         <h3>Task Manager</h3>
-        <p>7 views including Kanban and Eisenhower Matrix. Subtasks, dependencies, snooze, templates, recurring auto-creation, and 10-deep undo.</p>
+        <p>7 views including Kanban and Eisenhower Matrix. Subtasks, dependencies, snooze, templates, recurring auto-creation, natural language dates, and 10-deep undo.</p>
+        <span class="feature-tag">Ctrl+K</span>
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x1F3AF;</span>
-        <h3>Goal Manager</h3>
-        <p>Track long-term goals with milestones, due dates, recurring reviews, progress sparklines, and AI coaching with velocity tracking.</p>
+        <h3>Goals &amp; Projects</h3>
+        <p>Track long-term goals with milestones, due dates, recurring reviews, progress sparklines, burndown charts, and AI coaching with velocity tracking.</p>
+        <span class="feature-tag">AI goal coach</span>
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x1F4C5;</span>
         <h3>Calendar</h3>
-        <p>6 views: month, week, 3-day, day, agenda, year. Time-blocking, event wizard, ICS sync, goal badges, and daily focus.</p>
+        <p>6 views: month, week, 3-day, day, agenda, year. Full-width weekly grid with time-blocking, event wizard, ICS sync, and goal badges.</p>
+        <span class="feature-tag">Ctrl+L</span>
       </div>
       <div class="feature-card reveal">
-        <span class="feature-icon">&#x1F50D;</span>
-        <h3>Universal Search</h3>
-        <p>Fuzzy search across notes, tasks, goals, and habits. Ranked results with instant navigation. Content search and regex support.</p>
+        <span class="feature-icon">&#x1F4C2;</span>
+        <h3>Smart Explorer</h3>
+        <p>Hierarchical file tree with persistent collapse state, fuzzy search, Vim-style navigation, and daily/weekly note markers. z to collapse all, Z to expand all.</p>
+        <span class="feature-tag">session persistent</span>
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x1F500;</span>
         <h3>Git &amp; Nextcloud Sync</h3>
-        <p>Built-in git overlay with status, log, diff, commit, push, pull, and author config. Nextcloud WebDAV bidirectional sync.</p>
+        <p>Built-in git overlay with status, log, diff, commit, push, pull, and author config. Nextcloud WebDAV bidirectional sync. One-command CLI sync.</p>
+        <span class="feature-tag">granit sync</span>
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x1F517;</span>
         <h3>Obsidian Compatible</h3>
-        <p>Full support for [[wikilinks]], YAML frontmatter, backlinks, note graph, canvas, and dataview queries. Use your existing vault.</p>
+        <p>Full support for [[wikilinks]], YAML frontmatter, backlinks, note graph, canvas, and dataview queries. Point Granit at your existing vault.</p>
+        <span class="feature-tag">zero migration</span>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#x1F50D;</span>
+        <h3>Universal Search</h3>
+        <p>Fuzzy search across notes, tasks, goals, and habits. Semantic search with AI embeddings. Content search and regex. Ranked results with instant navigation.</p>
+        <span class="feature-tag">Ctrl+/</span>
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x1F9E9;</span>
         <h3>Plugin System</h3>
-        <p>16 core plugins included. Extend with Lua scripts. Hook into save, open, create, and delete events.</p>
+        <p>16 core plugins included. Extend Granit with Lua scripts. Hook into save, open, create, and delete events. Build your own workflows.</p>
+        <span class="feature-tag">Lua API</span>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#x1F4D0;</span>
+        <h3>17 Layouts</h3>
+        <p>Default, writer, reading, dashboard, zen, cockpit, research, calendar, cornell, focus, preview, presenter, kanban, widescreen, and more. Switch instantly with Alt+L.</p>
+        <span class="feature-tag">Alt+L</span>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#x2615;</span>
+        <h3>Morning Routine</h3>
+        <p>Start each day with scripture, set a goal, select tasks, toggle habits, and write your thoughts. Everything saved to your daily note automatically.</p>
+        <span class="feature-tag">Alt+M</span>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#x1F525;</span>
+        <h3>Habits &amp; Streaks</h3>
+        <p>Track daily and weekly habits with streak counters, completion history, and visual charts. Integrated with morning routine and dashboard.</p>
+        <span class="feature-tag">Alt+H</span>
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x1F512;</span>
         <h3>Encryption</h3>
-        <p>AES-256-GCM encryption for sensitive notes. Secure your vault for safe syncing across devices without compromising privacy.</p>
-      </div>
-      <div class="feature-card reveal">
-        <span class="feature-icon">&#x1F4D0;</span>
-        <h3>13 Layouts</h3>
-        <p>Default, writer, reading, dashboard, zen, cockpit, stacked, cornell, focus, preview, presenter, kanban, widescreen. Alt+L to pick.</p>
+        <p>AES-256-GCM encryption for sensitive notes. Encrypt individual notes and sync safely across devices without compromising privacy.</p>
+        <span class="feature-tag">per-note</span>
       </div>
     </div>
   </section>
@@ -624,21 +754,22 @@
   <!-- Showcase -->
   <section id="showcase">
     <p class="section-label reveal">Showcase</p>
-    <h2 class="section-title reveal">Built for how you work.</h2>
-    <p class="section-sub reveal">A deeper look at what makes Granit different.</p>
+    <h2 class="section-title reveal">Built for how you actually work.</h2>
+    <p class="section-sub reveal">A deeper look at what makes Granit different from everything else.</p>
 
     <div class="showcase-item reveal">
       <div class="showcase-visual">
-        <img src="../assets/editor.gif" alt="Granit editor" loading="lazy" onerror="this.parentElement.innerHTML='<div class=showcase-terminal>  &#x2588; Granit Editor\n  &#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;\n  # My Notes\n  \n  - [[Wikilinks]] with autocomplete\n  - Multi-cursor editing\n  - Ghost Writer AI suggestions\n  - Syntax highlighting\n  - Heading folding</div>'">
+        <img src="../assets/editor.gif" alt="Granit editor" loading="lazy" onerror="this.parentElement.innerHTML='<div class=showcase-terminal>  &#x2588; Granit Editor\n  &#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;\n  # My Notes\n  \n  - [[Wikilinks]] with autocomplete\n  - Multi-cursor editing (Ctrl+D)\n  - Ghost Writer AI suggestions\n  - 200+ language highlighting\n  - Mermaid diagrams</div>'">
       </div>
       <div class="showcase-text">
         <h3>A real editor, in your terminal.</h3>
-        <p>Syntax-highlighted Markdown with multi-cursor, wikilink autocomplete, Ghost Writer AI, and rendered view mode with Mermaid diagrams.</p>
+        <p>Not a toy. Full syntax highlighting for 200+ languages, multi-cursor editing, wikilink autocomplete, Ghost Writer AI suggestions, and a rendered reading mode with Mermaid diagrams and callout blocks.</p>
         <ul class="showcase-list">
-          <li>Multi-cursor editing with Ctrl+D</li>
-          <li>Ghost Writer: inline AI suggestions (Tab to accept)</li>
-          <li>18 built-in snippets and bracket auto-close</li>
-          <li>Rendered view mode with callouts and diagrams</li>
+          <li>Multi-cursor editing with Ctrl+D and Ctrl+Shift+Up/Down</li>
+          <li>Ghost Writer: inline AI suggestions, Tab to accept</li>
+          <li>Full Vim mode with macros, marks, and dot repeat</li>
+          <li>18 built-in snippets, smart bracket auto-close</li>
+          <li>Find and replace with regex, in-file and global</li>
         </ul>
       </div>
     </div>
@@ -649,14 +780,98 @@
       </div>
       <div class="showcase-text">
         <h3>Tasks, goals, and plans. Unified.</h3>
-        <p>7 task views, goal manager with milestones and reviews, daily planner with clipboard export, and Eisenhower Matrix.</p>
+        <p>Your tasks live inside your notes. Granit finds them all, gives you 7 views to organize them, and connects them to goals with milestones, reviews, and AI coaching. No separate app needed.</p>
         <ul class="showcase-list">
-          <li>Subtasks, dependencies, snooze, and templates</li>
-          <li>Recurring tasks auto-create on completion</li>
-          <li>Goal-to-task linking with progress tracking</li>
+          <li>7 views: Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower</li>
+          <li>Subtasks, dependencies, snooze, pin, and templates</li>
+          <li>Natural language dates: <code>@next week</code>, <code>@friday</code></li>
+          <li>Goal manager with milestones and progress sparklines</li>
           <li>AI-powered task triage and priority suggestions</li>
-          <li>Universal search across notes, tasks, and goals</li>
         </ul>
+      </div>
+    </div>
+
+    <div class="showcase-item reveal">
+      <div class="showcase-visual">
+        <img src="../assets/calendar.gif" alt="Calendar" loading="lazy" onerror="this.parentElement.innerHTML='<div class=showcase-terminal>  &#x2588; Calendar &mdash; Week View\n  &#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;\n  Mon    Tue    Wed    Thu    Fri\n  09:00  &#x2588;&#x2588;&#x2588;   .      &#x2588;&#x2588;    .  \n  10:00  .      &#x2588;&#x2588;&#x2588;   .      &#x2588;&#x2588;&#x2588;\n  >10:30 ............now............\n  11:00  .      .      &#x2588;&#x2588;    .</div>'">
+      </div>
+      <div class="showcase-text">
+        <h3>A calendar that lives in your terminal.</h3>
+        <p>Six views from year overview to hourly day planner. Time-block your tasks, import ICS calendars, track goal milestones, and create events with a guided wizard -- all without leaving the keyboard.</p>
+        <ul class="showcase-list">
+          <li>Month, week, 3-day, day, agenda, and year views</li>
+          <li>Time-blocking: assign tasks to hourly slots</li>
+          <li>ICS calendar sync with RRULE recurrence support</li>
+          <li>Event wizard with title, time, duration, color, and recurrence</li>
+          <li>Goal badges and daily focus in week headers</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Use Cases -->
+  <section id="use-cases">
+    <p class="section-label reveal">Who is it for?</p>
+    <h2 class="section-title reveal">Built for people who think<br>in plain text.</h2>
+    <p class="section-sub reveal">Whether you're writing code, writing prose, or writing your thesis -- Granit adapts to how you work.</p>
+    <div class="personas-grid">
+      <div class="persona-card reveal reveal-delay-1">
+        <span class="persona-icon">&#x1F4BB;</span>
+        <h3>Developers &amp; Engineers</h3>
+        <p>You live in the terminal. Your IDE, git, and builds are there. Granit fits right in -- tmux split, SSH session, or standalone. Capture ideas with <code>granit note</code> without leaving your flow. Git sync keeps everything versioned.</p>
+      </div>
+      <div class="persona-card reveal reveal-delay-2">
+        <span class="persona-icon">&#x1F393;</span>
+        <h3>Researchers &amp; Students</h3>
+        <p>Build a knowledge graph with [[wikilinks]]. Generate flashcards from your notes with AI. Semantic search finds connections you didn't know existed. Track your reading list with progress bars.</p>
+      </div>
+      <div class="persona-card reveal reveal-delay-3">
+        <span class="persona-icon">&#x270D;&#xFE0F;</span>
+        <h3>Writers &amp; Creators</h3>
+        <p>Focus Mode strips away everything except your words. Ghost Writer offers inline AI suggestions. 17 layouts for drafting, editing, and outlining. Export to HTML, PDF, or publish to Medium and GitHub Pages.</p>
+      </div>
+      <div class="persona-card reveal reveal-delay-4">
+        <span class="persona-icon">&#x1F3C6;</span>
+        <h3>Productivity Enthusiasts</h3>
+        <p>Morning routine, evening review, habit streaks, Pomodoro timer, Eisenhower Matrix, Kanban boards, goal milestones, clock-in/out time tracking -- all in one place. No subscriptions.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- A Day with Granit -->
+  <section id="daily-workflow">
+    <p class="section-label reveal">Daily Workflow</p>
+    <h2 class="section-title reveal">A day with Granit.</h2>
+    <p class="section-sub reveal">Granit isn't just a note app. It's a system for your entire day.</p>
+    <div class="timeline reveal">
+      <div class="timeline-item">
+        <div class="timeline-time">6:30 AM &mdash; Morning Routine</div>
+        <div class="timeline-title">Plan your day with intention</div>
+        <div class="timeline-desc">Press <span class="timeline-kbd">Alt+M</span>. Read a scripture verse. Set your daily goal. Select tasks from your vault. Toggle today's habits. Write a quick thought. Everything saves to your daily note.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">9:00 AM &mdash; Deep Work</div>
+        <div class="timeline-title">Capture without context-switching</div>
+        <div class="timeline-desc">An idea hits mid-flow. Without leaving your terminal: <code>granit note "Consider event sourcing for audit trail"</code>. Done. Back to code. The Deep Dive Research Agent (<span class="timeline-kbd">Alt+R</span>) runs in the background.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">12:00 PM &mdash; Quick Capture</div>
+        <div class="timeline-title">Tasks from anywhere</div>
+        <div class="timeline-desc">Lunch meeting produced action items. Fire off <code>granit todo "Draft migration guide" --due friday</code> from any terminal. Press <span class="timeline-kbd">Alt+J</span> for quick timestamped jots throughout the day.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">3:00 PM &mdash; Calendar &amp; Focus</div>
+        <div class="timeline-title">Time-block and execute</div>
+        <div class="timeline-desc">Check your calendar with <span class="timeline-kbd">Ctrl+L</span>. Time-block the afternoon. Start a focus session with Pomodoro timer. <span class="timeline-kbd">Ctrl+Z</span> for distraction-free zen mode.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">5:30 PM &mdash; Review &amp; Sync</div>
+        <div class="timeline-title">Reflect and prepare for tomorrow</div>
+        <div class="timeline-desc">Press <span class="timeline-kbd">Alt+E</span> for the evening review. See what you accomplished, audit overdue tasks, plan tomorrow. Then <code>granit sync</code> commits and pushes everything.</div>
       </div>
     </div>
   </section>
@@ -666,28 +881,35 @@
   <!-- Comparison -->
   <section id="comparison">
     <p class="section-label reveal">Compare</p>
-    <h2 class="section-title reveal">Granit vs Obsidian</h2>
-    <p class="section-sub reveal">An honest, detailed comparison.</p>
+    <h2 class="section-title reveal">Granit vs the alternatives.</h2>
+    <p class="section-sub reveal">An honest comparison. We think the numbers speak for themselves.</p>
     <div class="reveal" style="overflow-x:auto">
       <table class="comparison-table">
-        <thead><tr><th>Feature</th><th class="hl">Granit</th><th>Obsidian</th></tr></thead>
+        <thead><tr><th>Feature</th><th class="hl">Granit</th><th>Obsidian</th><th>Notion</th></tr></thead>
         <tbody>
-          <tr><td>Price</td><td class="hl"><span class="ck">Free forever</span></td><td><span class="cp">$50/yr + $8/mo sync</span></td></tr>
-          <tr><td>Terminal Native</td><td class="hl"><span class="ck">&#x2713;</span></td><td><span class="cx">&#x2717;</span></td></tr>
-          <tr><td>Vim Mode</td><td class="hl"><span class="ck">Full with macros &amp; objects</span></td><td><span class="cp">Plugin</span></td></tr>
-          <tr><td>AI Integration</td><td class="hl"><span class="ck">19 bots: Ollama / OpenAI / Claude</span></td><td><span class="cp">$14/mo add-on</span></td></tr>
-          <tr><td>Task Manager</td><td class="hl"><span class="ck">7 views + Eisenhower</span></td><td><span class="cp">Plugin</span></td></tr>
-          <tr><td>Calendar</td><td class="hl"><span class="ck">6 views + time-blocking</span></td><td><span class="cp">Plugin</span></td></tr>
-          <tr><td>Goal Tracking</td><td class="hl"><span class="ck">Built-in with AI coaching</span></td><td><span class="cx">&#x2717;</span></td></tr>
-          <tr><td>Universal Search</td><td class="hl"><span class="ck">Notes + tasks + goals</span></td><td><span class="cp">Notes only</span></td></tr>
-          <tr><td>Themes</td><td class="hl"><span class="ck">38 built-in + editor</span></td><td><span class="cp">Community</span></td></tr>
-          <tr><td>Layouts</td><td class="hl"><span class="ck">13 built-in</span></td><td><span class="cp">Plugin</span></td></tr>
-          <tr><td>Open Source</td><td class="hl"><span class="ck">&#x2713; MIT</span></td><td><span class="cx">&#x2717;</span></td></tr>
-          <tr><td>Startup Speed</td><td class="hl"><span class="ck">Instant (~12ms)</span></td><td><span class="cp">Electron (~2s)</span></td></tr>
+          <tr><td>Price</td><td class="hl"><span class="ck">Free forever (MIT)</span></td><td><span class="cp">$50/yr + $8/mo sync</span></td><td><span class="cp">$8-10/mo</span></td></tr>
+          <tr><td>Open source</td><td class="hl"><span class="ck">&#x2713; MIT</span></td><td><span class="cx">&#x2717;</span></td><td><span class="cx">&#x2717;</span></td></tr>
+          <tr><td>Terminal native</td><td class="hl"><span class="ck">&#x2713;</span></td><td><span class="cx">Electron</span></td><td><span class="cx">Web</span></td></tr>
+          <tr><td>Startup time</td><td class="hl"><span class="ck">~12ms</span></td><td><span class="cp">~2s</span></td><td><span class="cp">~3s</span></td></tr>
+          <tr><td>Memory usage</td><td class="hl"><span class="ck">~30 MB</span></td><td><span class="cp">~500 MB</span></td><td><span class="cp">~500 MB</span></td></tr>
+          <tr><td>Binary size</td><td class="hl"><span class="ck">~32 MB</span></td><td><span class="cp">~300 MB</span></td><td><span class="cp">N/A</span></td></tr>
+          <tr><td>Vim mode</td><td class="hl"><span class="ck">Full (macros, objects, marks)</span></td><td><span class="cp">Plugin</span></td><td><span class="cx">&#x2717;</span></td></tr>
+          <tr><td>AI integration</td><td class="hl"><span class="ck">23 bots, local or cloud</span></td><td><span class="cp">$14/mo add-on</span></td><td><span class="cp">Cloud only</span></td></tr>
+          <tr><td>Task manager</td><td class="hl"><span class="ck">7 views + Eisenhower + Kanban</span></td><td><span class="cp">Plugin</span></td><td><span class="ck">Built-in</span></td></tr>
+          <tr><td>Calendar</td><td class="hl"><span class="ck">6 views + time-blocking</span></td><td><span class="cp">Plugin</span></td><td><span class="ck">Built-in</span></td></tr>
+          <tr><td>Goal tracking</td><td class="hl"><span class="ck">Built-in + AI coaching</span></td><td><span class="cx">&#x2717;</span></td><td><span class="cx">&#x2717;</span></td></tr>
+          <tr><td>Habit tracking</td><td class="hl"><span class="ck">Built-in with streaks</span></td><td><span class="cx">&#x2717;</span></td><td><span class="cp">Template</span></td></tr>
+          <tr><td>Daily routines</td><td class="hl"><span class="ck">Morning + Evening + Jot</span></td><td><span class="cx">&#x2717;</span></td><td><span class="cx">&#x2717;</span></td></tr>
+          <tr><td>Themes</td><td class="hl"><span class="ck">40 built-in + editor</span></td><td><span class="cp">Community</span></td><td><span class="cp">Limited</span></td></tr>
+          <tr><td>Layouts</td><td class="hl"><span class="ck">17 built-in</span></td><td><span class="cp">1</span></td><td><span class="cp">1</span></td></tr>
+          <tr><td>Works offline</td><td class="hl"><span class="ck">Always</span></td><td><span class="cp">Paid sync</span></td><td><span class="cx">&#x2717;</span></td></tr>
+          <tr><td>Data format</td><td class="hl"><span class="ck">Plain Markdown</span></td><td><span class="ck">Plain Markdown</span></td><td><span class="cx">Proprietary</span></td></tr>
         </tbody>
       </table>
     </div>
   </section>
+
+  <div class="divider"></div>
 
   <!-- Stats -->
   <section id="stats">
@@ -695,20 +917,22 @@
     <h2 class="section-title reveal">A massive, well-tested codebase.</h2>
     <p class="section-sub reveal">100% free and open source. Built with Go and Bubble Tea.</p>
     <div class="stats-grid reveal">
-      <div class="stat-card"><span class="stat-number">166K+</span><span class="stat-label">Lines of Go</span></div>
-      <div class="stat-card"><span class="stat-number">1,971</span><span class="stat-label">Tests</span></div>
-      <div class="stat-card"><span class="stat-number">38</span><span class="stat-label">Themes</span></div>
-      <div class="stat-card"><span class="stat-number">145+</span><span class="stat-label">Commands</span></div>
-      <div class="stat-card"><span class="stat-number">19</span><span class="stat-label">AI Bots</span></div>
-      <div class="stat-card"><span class="stat-number">13</span><span class="stat-label">Layouts</span></div>
+      <div class="stat-card"><span class="stat-number">187K+</span><span class="stat-label">Lines of Go</span></div>
+      <div class="stat-card"><span class="stat-number">2,072</span><span class="stat-label">Tests</span></div>
+      <div class="stat-card"><span class="stat-number">40</span><span class="stat-label">Themes</span></div>
+      <div class="stat-card"><span class="stat-number">168</span><span class="stat-label">Commands</span></div>
+      <div class="stat-card"><span class="stat-number">23</span><span class="stat-label">AI Bots</span></div>
+      <div class="stat-card"><span class="stat-number">17</span><span class="stat-label">Layouts</span></div>
     </div>
   </section>
+
+  <div class="divider"></div>
 
   <!-- Shortcuts -->
   <section>
     <p class="section-label reveal">Keyboard First</p>
     <h2 class="section-title reveal">Everything is one shortcut away.</h2>
-    <p class="section-sub reveal">No mouse required. Every feature accessible via keyboard.</p>
+    <p class="section-sub reveal">No mouse required. 168 commands, all accessible via keyboard. Press Ctrl+X to search them all.</p>
     <div class="shortcuts-grid reveal">
       <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>X</kbd></div><span class="shortcut-label">Command Palette</span></div>
       <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>P</kbd></div><span class="shortcut-label">Quick Open</span></div>
@@ -718,14 +942,61 @@
       <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>G</kbd></div><span class="shortcut-label">Note Graph</span></div>
       <div class="shortcut-card"><div class="shortcut-keys"><kbd>Alt</kbd><kbd>M</kbd></div><span class="shortcut-label">Morning Routine</span></div>
       <div class="shortcut-card"><div class="shortcut-keys"><kbd>Alt</kbd><kbd>L</kbd></div><span class="shortcut-label">Layout Picker</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>Tab</kbd></div><span class="shortcut-label">Next Tab</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>/</kbd></div><span class="shortcut-label">Search Explorer</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>z</kbd></div><span class="shortcut-label">Collapse All Folders</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>Z</kbd></div><span class="shortcut-label">Zen Mode</span></div>
     </div>
   </section>
+
+  <div class="divider"></div>
+
+  <!-- Philosophy -->
+  <section>
+    <p class="section-label reveal">Philosophy</p>
+    <h2 class="section-title reveal">What we believe.</h2>
+    <p class="section-sub reveal">The principles behind every design decision in Granit.</p>
+    <div class="philosophy-grid reveal">
+      <div class="philosophy-item">
+        <div class="phi-accent"></div>
+        <h3>Your data is yours</h3>
+        <p>Plain Markdown files in a folder. No proprietary database, no cloud lock-in, no account required. Move your notes to any app, any time. Git gives you version history for free.</p>
+      </div>
+      <div class="philosophy-item">
+        <div class="phi-accent" style="background:var(--blue)"></div>
+        <h3>Speed is a feature</h3>
+        <p>Granit loads in 12ms because your tools should never make you wait. No Electron, no browser engine, no JavaScript bundle. Just native Go compiled to a single binary.</p>
+      </div>
+      <div class="philosophy-item">
+        <div class="phi-accent" style="background:var(--green)"></div>
+        <h3>AI should be private</h3>
+        <p>Every AI feature works with local models via Ollama. Your notes never leave your machine unless you choose to use a cloud provider. A 0.5B model on CPU is enough for most features.</p>
+      </div>
+      <div class="philosophy-item">
+        <div class="phi-accent" style="background:var(--peach)"></div>
+        <h3>One tool, not ten</h3>
+        <p>Notes, tasks, goals, habits, calendar, journal, and AI in one place. No context-switching between Obsidian, Todoist, Notion, and Google Calendar. Everything is connected.</p>
+      </div>
+      <div class="philosophy-item">
+        <div class="phi-accent" style="background:var(--teal)"></div>
+        <h3>Keyboard-first, always</h3>
+        <p>Every feature is reachable without a mouse. 168 commands in the palette. Full Vim mode. 17 layouts. The terminal is your most powerful interface -- we build for it.</p>
+      </div>
+      <div class="philosophy-item">
+        <div class="phi-accent" style="background:var(--red)"></div>
+        <h3>Free means free</h3>
+        <p>MIT license. No "Pro" tier, no per-seat pricing, no feature gates, no telemetry. The full feature set, forever. We believe the best tools should be accessible to everyone.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
 
   <!-- Installation -->
   <section id="installation">
     <p class="section-label reveal">Get Started</p>
     <h2 class="section-title reveal">Install in seconds.</h2>
-    <p class="section-sub reveal">One command to get started. Works on Linux and macOS.</p>
+    <p class="section-sub reveal">One command to get started. Works on Linux and macOS. Your existing Obsidian vault works out of the box.</p>
     <div class="install-block reveal">
       <div class="code-block">
         <div class="code-header">
@@ -738,26 +1009,33 @@
 <span class="comment"># Create your first vault</span>
 <span class="cmd">granit</span> <span class="arg">init</span> my-vault
 
-<span class="comment"># Open it</span>
-<span class="cmd">granit</span> my-vault</div>
+<span class="comment"># Or open an existing Obsidian vault</span>
+<span class="cmd">granit</span> ~/Documents/ObsidianVault
+
+<span class="comment"># Quick capture from anywhere</span>
+<span class="cmd">granit</span> <span class="arg">note</span> "My first note from the terminal"
+<span class="cmd">granit</span> <span class="arg">todo</span> "Try all 23 AI bots" --priority high</div>
       </div>
       <p style="color:var(--text-secondary); font-size:0.9rem; margin-top:1rem;">
         <strong style="color:var(--text)">Requirements:</strong> Go 1.24+, Git, Linux or macOS<br>
-        <strong style="color:var(--text)">Optional:</strong> <a href="https://ollama.ai">Ollama</a> (local AI), aspell (spell check), pandoc (PDF export)
+        <strong style="color:var(--text)">Optional:</strong> <a href="https://ollama.ai">Ollama</a> (local AI), aspell (spell check), pandoc (PDF export), <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code</a> (research agent)
       </p>
     </div>
   </section>
+
+  <div class="divider"></div>
 
   <!-- Docs -->
   <section id="documentation">
     <p class="section-label reveal">Documentation</p>
     <h2 class="section-title reveal">Learn more.</h2>
+    <p class="section-sub reveal">Comprehensive documentation for every feature, shortcut, and configuration option.</p>
     <div class="docs-grid reveal">
       <a href="FEATURES.md" class="doc-card"><h4>Features Guide</h4><p>Complete feature documentation</p></a>
-      <a href="KEYBINDINGS.md" class="doc-card"><h4>Keyboard Shortcuts</h4><p>Every keybinding reference</p></a>
-      <a href="AI-GUIDE.md" class="doc-card"><h4>AI Guide</h4><p>Setup, providers, all 19 bots</p></a>
+      <a href="KEYBINDINGS.md" class="doc-card"><h4>Keyboard Shortcuts</h4><p>Every keybinding by context</p></a>
+      <a href="AI-GUIDE.md" class="doc-card"><h4>AI Guide</h4><p>Setup, providers, all 23 bots</p></a>
       <a href="CONFIGURATION.md" class="doc-card"><h4>Configuration</h4><p>All settings and options</p></a>
-      <a href="THEMES.md" class="doc-card"><h4>Themes</h4><p>38 themes + custom editor</p></a>
+      <a href="THEMES.md" class="doc-card"><h4>Themes</h4><p>40 themes + custom editor</p></a>
       <a href="PLUGINS.md" class="doc-card"><h4>Plugins</h4><p>Plugin development + Lua API</p></a>
       <a href="ARCHITECTURE.md" class="doc-card"><h4>Architecture</h4><p>Codebase design overview</p></a>
       <a href="../CHANGELOG.md" class="doc-card"><h4>Changelog</h4><p>Version history</p></a>
@@ -766,10 +1044,11 @@
 
   <!-- CTA Banner -->
   <section style="text-align:center; padding: 6rem 2rem;">
-    <div class="reveal" style="max-width:600px; margin:0 auto; padding:3rem; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); position:relative; overflow:hidden;">
+    <div class="reveal" style="max-width:640px; margin:0 auto; padding:3rem; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); position:relative; overflow:hidden;">
       <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, var(--blue), var(--accent), var(--peach));"></div>
       <h2 style="font-size:1.6rem; font-weight:700; margin-bottom:0.75rem;">Ready to try Granit?</h2>
-      <p style="color:var(--text-secondary); margin-bottom:1.5rem; font-size:0.95rem;">Install in 10 seconds. Your existing Obsidian vault works out of the box.</p>
+      <p style="color:var(--text-secondary); margin-bottom:0.5rem; font-size:0.95rem;">Install in 10 seconds. Your existing Obsidian vault works out of the box.</p>
+      <p style="color:var(--text-muted); margin-bottom:1.5rem; font-size:0.85rem;">Free forever. MIT license. No account required.</p>
       <div style="display:flex; gap:1rem; justify-content:center; flex-wrap:wrap;">
         <a href="#installation" class="btn btn-primary">Get Started</a>
         <a href="https://github.com/artaeon/granit" class="btn btn-secondary">Star on GitHub</a>
@@ -787,6 +1066,7 @@
       <li><a href="https://github.com/artaeon/granit/discussions">Discussions</a></li>
       <li><a href="../LICENSE">MIT License</a></li>
     </ul>
+    <p class="footer-tagline">Your knowledge. Your terminal. Your rules.</p>
   </footer>
 
   <script>
