@@ -331,7 +331,7 @@ func (s Sidebar) View() string {
 		b.WriteString(s.fileTree.View())
 		if s.focused {
 			b.WriteString("\n")
-			b.WriteString(DimStyle.Render("  z:collapse  Z:expand  ←→:fold"))
+			b.WriteString(DimStyle.Render("  z:collapse all  Z:expand all  /:search"))
 		}
 		return b.String()
 	}
