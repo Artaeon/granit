@@ -477,15 +477,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case morningDevotionalMsg, morningBriefingMsg, morningPlanMsg, morningTickMsg:
+	case morningPlanSavedMsg:
 		if m.morningRoutine.IsActive() {
 			var cmd tea.Cmd
 			m.morningRoutine, cmd = m.morningRoutine.Update(msg)
-			if !m.morningRoutine.IsActive() && m.morningRoutine.phase == morningComplete {
-				m.statusbar.SetDayPlanned(true)
-			}
 			return m, cmd
 		}
+		// Refresh vault to pick up the new/updated daily note
+		_ = m.vault.Scan()
+		m.index.Build()
+		m.sidebar.SetFiles(m.vault.SortedPaths())
+		m.statusbar.SetNoteCount(m.vault.NoteCount())
 		return m, nil
 
 	case autoLinkSuggestMsg:
@@ -2158,7 +2160,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.morningRoutine, cmd = m.morningRoutine.Update(msg)
 			if !m.morningRoutine.IsActive() {
-				m.statusbar.SetDayPlanned(true)
+				if m.morningRoutine.phase == morningComplete {
+					m.statusbar.SetDayPlanned(true)
+					// Refresh vault to pick up daily note changes
+					_ = m.vault.Scan()
+					m.index.Build()
+					m.sidebar.SetFiles(m.vault.SortedPaths())
+					m.statusbar.SetNoteCount(m.vault.NoteCount())
+				}
 			}
 			return m, cmd
 		}
