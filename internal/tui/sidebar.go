@@ -294,7 +294,8 @@ func (s Sidebar) View() string {
 	b.WriteString("\n")
 
 	// Search bar with styled input field
-	if s.search != "" || s.focused {
+	if s.searching || s.search != "" {
+		// Active search mode — show input with cursor
 		searchBg := lipgloss.NewStyle().
 			Background(surface0).
 			Foreground(text).
@@ -302,13 +303,12 @@ func (s Sidebar) View() string {
 			Padding(0, 1)
 		searchIcon := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" > ")
 		searchText := s.search
-		if s.focused && s.search == "" {
-			searchText = lipgloss.NewStyle().Foreground(surface2).Render("filter...")
-		}
 		cursor := lipgloss.NewStyle().Foreground(mauve).Render("|")
 		b.WriteString(searchIcon + searchBg.Render(searchText+cursor))
 	} else {
-		b.WriteString(lipgloss.NewStyle().Foreground(surface2).Render("  > filter..."))
+		// Tree mode or unfocused — show dimmed placeholder (press / to search)
+		placeholder := "  / filter..."
+		b.WriteString(lipgloss.NewStyle().Foreground(surface2).Render(placeholder))
 	}
 	b.WriteString("\n")
 
