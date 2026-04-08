@@ -1170,6 +1170,10 @@ func (m Model) View() string {
 		overlay := m.research.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.statusTray.IsActive() {
+		overlay := m.statusTray.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.weeklyReview.IsActive() {
 		overlay := m.weeklyReview.View()
 		view = m.overlayCenter(view, overlay)

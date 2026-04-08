@@ -794,6 +794,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case statusTrayActionMsg:
+		switch msg.action {
+		case trayActionGit:
+			m.git.SetSize(m.width, m.height)
+			return m, m.git.Open(m.vault.Root)
+		case trayActionResearch:
+			m.research.SetSize(m.width, m.height)
+			if m.research.IsRunning() {
+				m.research.Reopen()
+			} else {
+				m.research.Open(m.vault.Root)
+			}
+		}
+		return m, nil
+
 	case autoTagResultMsg:
 		if m.autoTagger != nil {
 			m.autoTagger.SetInFlight(false)
@@ -2287,6 +2302,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.editor.modified = true
 				}
 			}
+			return m, cmd
+		}
+
+		if m.statusTray.IsActive() {
+			var cmd tea.Cmd
+			m.statusTray, cmd = m.statusTray.Update(msg)
 			return m, cmd
 		}
 

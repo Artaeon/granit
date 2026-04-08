@@ -151,6 +151,7 @@ type Model struct {
 	frontmatterEdit FrontmatterEditor
 	foldState       FoldState
 	research        ResearchAgent
+	statusTray      StatusTray
 	imageManager    ImageManager
 	themeEditor     ThemeEditor
 	layoutPicker    LayoutPicker
@@ -351,6 +352,7 @@ func NewModel(vaultPath string) (Model, error) {
 		frontmatterEdit: NewFrontmatterEditor(),
 		foldState:       NewFoldState(),
 		research:        NewResearchAgent(),
+		statusTray:      NewStatusTray(),
 		imageManager:    NewImageManager(),
 		themeEditor:     NewThemeEditor(),
 		layoutPicker:    NewLayoutPicker(),

@@ -177,6 +177,7 @@ const (
 	CmdEveningReview
 	CmdBlogDraft
 	CmdDevotional
+	CmdStatusTray
 	CmdQuit
 )
 
@@ -369,6 +370,7 @@ var AllCommands = []Command{
 	{Label: "Layout Picker", Desc: "Browse and preview all layouts with visual diagrams", Shortcut: "Alt+L", Action: CmdLayoutPicker, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Cycle Layout", Desc: "Switch to next layout quickly", Shortcut: "", Action: CmdCycleLayout, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar, Category: CatSettings},
+	{Label: "Status Tray", Desc: "Expanded view of all status bar indicators and background tasks", Shortcut: "", Action: CmdStatusTray, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Refresh Vault", Desc: "Rescan vault for changes", Shortcut: "", Action: CmdRefreshVault, Category: CatSettings},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit, Category: CatSettings},
 }

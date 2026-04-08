@@ -283,6 +283,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdGitOverlay:
 		m.git.SetSize(m.width, m.height)
 		return m, m.git.Open(m.vault.Root)
+	case CmdStatusTray:
+		m.statusTray.SetSize(m.width, m.height)
+		m.statusTray.Open(m.statusbar, m.research.IsRunning(), m.research.StatusText())
 	case CmdPluginManager:
 		m.plugins.SetSize(m.width, m.height)
 		m.plugins.Open()
