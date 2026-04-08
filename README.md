@@ -56,6 +56,17 @@ granit sync                     # git pull + commit + push
 granit today                    # print today's tasks and habits
 ```
 
+> **How much are you paying for productivity tools?**
+>
+> | Tool | Monthly Cost | What Granit Replaces |
+> |------|-------------|---------------------|
+> | Obsidian Sync + Publish | $16/mo | Notes, wikilinks, graph, canvas, sync |
+> | Obsidian AI | $14/mo | 23 local AI bots, free |
+> | Todoist Pro | $5/mo | Task manager with 7 views + Eisenhower + Kanban |
+> | Notion | $10/mo | Database, calendar, kanban, wiki |
+> | Habitica / Streaks | $5/mo | Habit tracker with streaks |
+> | **Total** | **$50/mo** | **Granit: $0/mo, forever** |
+
 ---
 
 ## Why Granit?
@@ -716,6 +727,77 @@ go test ./internal/tui/ -run TestName
 
 ---
 
+## Frequently Asked Questions
+
+<details>
+<summary><strong>Can I use my existing Obsidian vault?</strong></summary>
+
+Yes. Point Granit at your Obsidian vault directory and everything works: `[[wikilinks]]`, backlinks, YAML frontmatter, tags, daily notes, and canvas files. You don't need to migrate, convert, or change anything. Both apps can use the same vault simultaneously.
+</details>
+
+<details>
+<summary><strong>Does Granit require an internet connection?</strong></summary>
+
+No. Granit works fully offline. AI features use local models via Ollama (also offline). Cloud AI providers (OpenAI, Claude) are optional. Git and Nextcloud sync only connect when you explicitly run sync.
+</details>
+
+<details>
+<summary><strong>How does Granit compare to Neovim with plugins?</strong></summary>
+
+Granit gives you a fully integrated system out of the box -- no plugin hunting, no configuration hell, no breaking updates. Tasks, calendar, goals, habits, AI, and daily routines all work together seamlessly. Think of it as Neovim's editing DNA combined with Notion's feature set, in a single binary.
+</details>
+
+<details>
+<summary><strong>What AI models work with Granit?</strong></summary>
+
+Any Ollama-compatible model works. We recommend `qwen2.5:0.5b` for fast, lightweight AI on CPU. Larger models like `llama3.1:8b` or `mistral:7b` give better results for writing and planning tasks. OpenAI models (GPT-4o, GPT-4o-mini) also work. The Deep Dive Research Agent uses Claude Code.
+</details>
+
+<details>
+<summary><strong>Is there a GUI / desktop version?</strong></summary>
+
+Yes. Granit includes a Wails-based desktop app (Go + Svelte) in the `desktop/` directory. However, the terminal version is the primary interface and most actively developed. See [docs/INSTALLATION.md](docs/INSTALLATION.md) for desktop build instructions.
+</details>
+
+<details>
+<summary><strong>How do I sync between devices?</strong></summary>
+
+Three options: (1) `granit sync` uses git -- pull, commit, push in one command. (2) Nextcloud WebDAV sync is built-in. (3) Any folder-based sync (Dropbox, Syncthing, rsync) works since notes are plain files. Git is recommended because it gives you version history and conflict resolution.
+</details>
+
+<details>
+<summary><strong>Can I write plugins?</strong></summary>
+
+Yes. Granit has a Lua scripting API and 16 core plugins included. Plugins can hook into save, open, create, and delete events. See [docs/PLUGINS.md](docs/PLUGINS.md) for the full API reference and examples.
+</details>
+
+<details>
+<summary><strong>What terminals work best?</strong></summary>
+
+Any terminal with 256-color support works. Recommended: Alacritty, Kitty, Ghostty, WezTerm, or iTerm2. Works well in tmux and screen. Nerd Font icons are supported but optional (Unicode icons are the default).
+</details>
+
+---
+
+## Roadmap
+
+Granit is actively developed. Here's what's coming:
+
+- [ ] **Mobile companion app** -- read and capture on the go, sync via git
+- [ ] **Collaborative editing** -- real-time shared vaults over WebSocket
+- [ ] **PDF annotation** -- highlight and annotate PDFs inline
+- [ ] **Spaced repetition** -- integrated SRS with the flashcard generator
+- [ ] **Email integration** -- clip emails to notes, send notes as email
+- [ ] **Voice notes** -- record and transcribe with Whisper
+- [ ] **Advanced dataview** -- SQL-like queries across all vault metadata
+- [ ] **Web clipper** -- save web pages as clean Markdown
+- [ ] **Multi-vault search** -- search across all vaults from one interface
+- [ ] **Theme marketplace** -- share and discover community themes
+
+Want to help? See [Contributing](#contributing) or browse [open issues](https://github.com/artaeon/granit/issues).
+
+---
+
 ## Acknowledgments
 
 Built with these excellent open-source projects:
@@ -735,8 +817,18 @@ MIT License. See [LICENSE](LICENSE).
 
 <p align="center">
   <strong>Your knowledge. Your terminal. Your rules.</strong>
-  <br><br>
-  <a href="#installation">Get Started</a> &bull;
+</p>
+
+<p align="center">
+  <a href="#installation"><img src="https://img.shields.io/badge/GET%20STARTED-Install%20Now-b48ead?style=for-the-badge" alt="Get Started"></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/artaeon/granit/issues">Report a Bug</a> &bull;
-  <a href="https://github.com/artaeon/granit/discussions">Discussions</a>
+  <a href="https://github.com/artaeon/granit/discussions">Discussions</a> &bull;
+  <a href="https://github.com/artaeon/granit">Star on GitHub</a>
+</p>
+
+<p align="center">
+  <sub>If Granit helps you, consider giving it a star. It helps others discover the project.</sub>
 </p>
