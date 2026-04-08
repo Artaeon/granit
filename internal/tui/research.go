@@ -1128,13 +1128,8 @@ func (r ResearchAgent) Update(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 		return r.updateInput(msg)
 	case researchRunning:
 		if msg.String() == "esc" {
-			// Cancel the running research process
-			if r.cancelFunc != nil {
-				r.cancelFunc()
-				r.cancelFunc = nil
-			}
-			r.phase = researchInput
-			r.running = false
+			// Close overlay — research keeps running in background
+			r.active = false
 			return r, nil
 		}
 		return r, nil
