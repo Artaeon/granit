@@ -284,12 +284,29 @@ granit sync               # commit and push changes
 |-----|--------|
 | `Tab` / `Shift+Tab` | Cycle between panels |
 | `F1` / `F2` / `F3` | Focus sidebar / editor / backlinks |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Cycle between open tabs |
+| `Ctrl+1-9` | Jump to tab by position |
 | `Ctrl+P` | Quick open (fuzzy file search) |
 | `Ctrl+J` | Quick switch between recent files |
 | `Ctrl+N` | New note with template picker |
 | `Ctrl+S` | Save current note |
 | `Ctrl+E` | Toggle edit / reading mode |
 | `Ctrl+Q` | Quit |
+
+### Explorer / Sidebar
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` / `↑` / `↓` | Navigate up / down |
+| `Enter` / `Space` | Open file or expand/collapse folder |
+| `Left` / `h` | Collapse folder or go to parent |
+| `Right` / `l` | Expand folder or enter directory |
+| `z` | Collapse all folders |
+| `Z` | Expand all folders |
+| `/` | Search / filter files |
+| `Esc` | Clear search, return to tree |
+
+> Folder state persists across sessions automatically.
 
 ### Overlays and Tools
 
@@ -324,7 +341,7 @@ granit sync               # commit and push changes
 
 | Key | Action |
 |-----|--------|
-| `Alt+M` | Morning routine / plan my day |
+| `Alt+M` | Morning routine — scripture, goal, tasks, habits, thoughts |
 | `Alt+J` | Daily jot |
 | `Alt+E` | Evening review |
 | `Alt+H` | Dashboard |
