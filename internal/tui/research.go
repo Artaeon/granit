@@ -1937,7 +1937,7 @@ func (r ResearchAgent) viewRunning(innerW int) string {
 	b.WriteString(infoStyle.Render("  " + timeDesc))
 	b.WriteString("\n\n")
 
-	b.WriteString(DimStyle.Render("  Esc cancel"))
+	b.WriteString(DimStyle.Render("  Esc close  Ctrl+C cancel"))
 
 	return b.String()
 }
