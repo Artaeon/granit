@@ -1790,9 +1790,7 @@ func (b *Bots) processAIResponse(response string, providerLabel string) {
 				termStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(term)
 				defStyle := lipgloss.NewStyle().Foreground(text).Render(" — " + def)
 				wrapped := wordWrap("  "+termStyle+defStyle, b.overlayInnerWidth()-4)
-				for _, wl := range strings.Split(wrapped, "\n") {
-					lines = append(lines, wl)
-				}
+				lines = append(lines, strings.Split(wrapped, "\n")...)
 			} else {
 				lines = append(lines, "  "+lipgloss.NewStyle().Foreground(text).Render(respLine))
 			}

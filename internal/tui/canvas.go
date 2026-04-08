@@ -192,7 +192,7 @@ func (c *Canvas) Load() {
 
 	var data canvasFileData
 	if err := json.Unmarshal(raw, &data); err != nil {
-		c.statusMsg = fmt.Sprintf("Load error: corrupt canvas file")
+		c.statusMsg = "Load error: corrupt canvas file"
 		return
 	}
 

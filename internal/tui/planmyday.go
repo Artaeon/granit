@@ -277,7 +277,7 @@ func (p PlanMyDay) buildSmallPrompt() string {
 		}
 	}
 
-	b.WriteString(fmt.Sprintf(`
+	b.WriteString(`
 Respond EXACTLY:
 
 TOP_GOAL: one sentence
@@ -292,7 +292,7 @@ FOCUS_ORDER:
 3. Task
 
 ADVICE: one sentence
-`))
+`)
 
 	return b.String()
 }
