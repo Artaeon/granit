@@ -64,50 +64,95 @@
     .reveal-delay-3 { transition-delay: 0.25s; }
 
     /* ── Navigation ── */
-    nav {
+    .nav {
       position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-      background: rgba(10,10,15,0.8);
+      background: rgba(10,10,15,0.85);
       backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
       border-bottom: 1px solid var(--border);
-      padding: 0 2rem;
       height: 56px;
+    }
+    .nav-inner {
+      max-width: 1200px; margin: 0 auto;
+      padding: 0 1.5rem; height: 100%;
       display: flex; align-items: center; justify-content: space-between;
     }
     .nav-logo {
       font-family: var(--mono); font-weight: 700; font-size: 1.1rem;
       color: var(--accent); letter-spacing: 0.05em;
+      text-decoration: none; z-index: 102;
     }
-    .nav-links { list-style: none; display: flex; gap: 2rem; }
+    .nav-links {
+      list-style: none; display: flex; gap: 2rem; align-items: center;
+    }
     .nav-links a {
       color: var(--text-secondary); font-size: 0.85rem; font-weight: 500;
       transition: color 0.2s;
     }
     .nav-links a:hover { color: var(--text); }
+    .nav-cta {
+      font-size: 0.8rem !important; font-weight: 600 !important;
+      color: var(--bg) !important; background: var(--accent);
+      padding: 0.45rem 1.1rem; border-radius: 8px;
+      transition: transform 0.2s, box-shadow 0.2s, background 0.2s !important;
+    }
+    .nav-cta:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(180,142,173,0.3);
+      color: var(--bg) !important; background: #c49fbc;
+    }
 
-    /* Mobile Nav */
-    .nav-toggle { display: none; }
-    .hamburger {
-      display: none; cursor: pointer; flex-direction: column; gap: 5px;
-      width: 22px; height: 18px; justify-content: center;
+    /* ── Mobile Nav ── */
+    .nav-hamburger {
+      display: none; cursor: pointer; z-index: 102;
+      width: 24px; height: 18px; position: relative;
+      background: none; border: none; padding: 0;
     }
-    .hamburger span {
-      display: block; height: 2px; background: var(--text-secondary);
-      border-radius: 2px; transition: all 0.3s ease;
+    .nav-hamburger span {
+      display: block; position: absolute; left: 0; right: 0;
+      height: 2px; background: var(--text-secondary);
+      border-radius: 2px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .nav-toggle:checked ~ .hamburger span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
-    .nav-toggle:checked ~ .hamburger span:nth-child(2) { opacity: 0; }
-    .nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
+    .nav-hamburger span:nth-child(1) { top: 0; }
+    .nav-hamburger span:nth-child(2) { top: 8px; }
+    .nav-hamburger span:nth-child(3) { top: 16px; }
+    .nav-hamburger.open span:nth-child(1) { top: 8px; transform: rotate(45deg); }
+    .nav-hamburger.open span:nth-child(2) { opacity: 0; }
+    .nav-hamburger.open span:nth-child(3) { top: 8px; transform: rotate(-45deg); }
 
     .mobile-menu {
-      display: none; position: fixed; inset: 0; z-index: 99;
-      background: rgba(10,10,15,0.97); backdrop-filter: blur(20px);
-      flex-direction: column; align-items: center; justify-content: center; gap: 2.5rem;
+      position: fixed; inset: 0; z-index: 101;
+      background: rgba(10,10,15,0.98); backdrop-filter: blur(24px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+      opacity: 0; visibility: hidden;
+      transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.35s;
     }
-    .nav-toggle:checked ~ .mobile-menu { display: flex; }
+    .mobile-menu.open {
+      opacity: 1; visibility: visible;
+    }
     .mobile-menu a {
-      color: var(--text); font-size: 1.4rem; font-weight: 600;
-      font-family: var(--mono);
+      color: var(--text); font-size: 1.3rem; font-weight: 600;
+      font-family: var(--mono); letter-spacing: 0.02em;
+      padding: 1rem 2rem;
+      opacity: 0; transform: translateY(12px);
+      transition: opacity 0.3s ease, transform 0.3s ease, color 0.2s;
     }
+    .mobile-menu.open a {
+      opacity: 1; transform: translateY(0);
+    }
+    .mobile-menu.open a:nth-child(1) { transition-delay: 0.08s; }
+    .mobile-menu.open a:nth-child(2) { transition-delay: 0.12s; }
+    .mobile-menu.open a:nth-child(3) { transition-delay: 0.16s; }
+    .mobile-menu.open a:nth-child(4) { transition-delay: 0.20s; }
+    .mobile-menu.open a:nth-child(5) { transition-delay: 0.24s; }
+    .mobile-menu.open a:nth-child(6) { transition-delay: 0.28s; }
+    .mobile-menu.open a:nth-child(7) { transition-delay: 0.32s; }
+    .mobile-menu a:hover { color: var(--accent); }
+    .mobile-menu .mobile-cta {
+      margin-top: 1.5rem; padding: 0.8rem 2.5rem;
+      background: var(--accent); color: var(--bg) !important;
+      border-radius: 10px; font-size: 1rem;
+    }
+    .mobile-menu .mobile-cta:hover { background: #c49fbc; }
 
     /* ── Hero ── */
     .hero {
@@ -413,7 +458,7 @@
     /* ── Responsive ── */
     @media (max-width: 900px) {
       .nav-links { display: none; }
-      .hamburger { display: flex; }
+      .nav-hamburger { display: block; }
       .features-grid { grid-template-columns: repeat(2, 1fr); }
       .showcase-item, .showcase-item.reverse { grid-template-columns: 1fr; gap: 2rem; direction: ltr; }
       .stats-grid { grid-template-columns: repeat(3, 1fr); }
@@ -432,40 +477,48 @@
       .btn { width: 100%; justify-content: center; }
       .comparison-table { font-size: 0.78rem; }
       .comparison-table th, .comparison-table td { padding: 0.6rem 0.5rem; }
+      .footer-links { flex-direction: column; gap: 0.75rem; }
     }
   </style>
 </head>
 <body>
 
   <!-- Nav -->
-  <nav>
-    <div class="nav-logo">GRANIT</div>
-    <ul class="nav-links">
-      <li><a href="#features">Features</a></li>
-      <li><a href="#showcase">Showcase</a></li>
-      <li><a href="#comparison">Compare</a></li>
-      <li><a href="#stats">Stats</a></li>
-      <li><a href="#installation">Install</a></li>
-      <li><a href="https://github.com/artaeon/granit">GitHub</a></li>
-    </ul>
-    <input type="checkbox" id="nav-toggle" class="nav-toggle">
-    <label for="nav-toggle" class="hamburger"><span></span><span></span><span></span></label>
-    <div class="mobile-menu">
-      <a href="#features" onclick="document.getElementById('nav-toggle').checked=false">Features</a>
-      <a href="#showcase" onclick="document.getElementById('nav-toggle').checked=false">Showcase</a>
-      <a href="#comparison" onclick="document.getElementById('nav-toggle').checked=false">Compare</a>
-      <a href="#stats" onclick="document.getElementById('nav-toggle').checked=false">Stats</a>
-      <a href="#installation" onclick="document.getElementById('nav-toggle').checked=false">Install</a>
-      <a href="https://github.com/artaeon/granit" onclick="document.getElementById('nav-toggle').checked=false">GitHub</a>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">GRANIT</a>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#showcase">Showcase</a></li>
+        <li><a href="#comparison">Compare</a></li>
+        <li><a href="#stats">Stats</a></li>
+        <li><a href="#documentation">Docs</a></li>
+        <li><a href="https://github.com/artaeon/granit">GitHub</a></li>
+        <li><a href="#installation" class="nav-cta">Get Started</a></li>
+      </ul>
+      <button class="nav-hamburger" id="hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
     </div>
   </nav>
+
+  <!-- Mobile Menu -->
+  <div class="mobile-menu" id="mobile-menu">
+    <a href="#features">Features</a>
+    <a href="#showcase">Showcase</a>
+    <a href="#comparison">Compare</a>
+    <a href="#stats">Stats</a>
+    <a href="#documentation">Docs</a>
+    <a href="https://github.com/artaeon/granit">GitHub</a>
+    <a href="#installation" class="mobile-cta">Get Started</a>
+  </div>
 
   <!-- Hero -->
   <section class="hero">
     <div class="hero-grid"></div>
     <p class="hero-overline reveal">Terminal-Native Knowledge Manager</p>
     <h1 class="reveal">Your notes deserve<br>a faster home.</h1>
-    <p class="reveal">A 32MB binary that replaces Obsidian, Notion, and Todoist. 12 AI bots run locally. 1,971 tests. Zero telemetry. Just your terminal.</p>
+    <p class="reveal">A 32MB binary that replaces Obsidian, Notion, and Todoist. 19 AI bots run locally. 1,971 tests. Zero telemetry. Just your terminal.</p>
 
     <!-- Terminal mockup -->
     <div class="reveal" style="max-width:520px; width:100%; margin: 2rem auto;">
@@ -505,8 +558,8 @@
     <div class="features-grid">
       <div class="feature-card reveal reveal-delay-1">
         <span class="feature-icon">&#x2728;</span>
-        <h3>12 AI Bots</h3>
-        <p>Auto-tagger, auto-linker, summarizer, flashcards, tone adjuster, writing coach, and more. Runs locally on qwen2.5:0.5b. Auto-pulls model on first launch.</p>
+        <h3>19 AI Bots</h3>
+        <p>Auto-tagger, auto-linker, summarizer, flashcards, writing coach, deep dive research, and more. Runs locally on qwen2.5:0.5b via Ollama.</p>
       </div>
       <div class="feature-card reveal reveal-delay-2">
         <span class="feature-icon">&#x2328;&#xFE0F;</span>
@@ -515,8 +568,8 @@
       </div>
       <div class="feature-card reveal reveal-delay-3">
         <span class="feature-icon">&#x1F3A8;</span>
-        <h3>35 Themes</h3>
-        <p>Catppuccin, Tokyo Night, Gruvbox, Nord, Dracula, and 30 more. Plus a custom theme editor to create your own palette.</p>
+        <h3>38 Themes</h3>
+        <p>Catppuccin, Tokyo Night, Gruvbox, Nord, Dracula, and 33 more. Plus 5 accessibility themes and a live theme editor.</p>
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x2705;</span>
@@ -526,32 +579,32 @@
       <div class="feature-card reveal">
         <span class="feature-icon">&#x1F3AF;</span>
         <h3>Goal Manager</h3>
-        <p>Track long-term goals with milestones, due dates, recurring reviews, progress sparklines, theme colors, and task linking.</p>
-      </div>
-      <div class="feature-card reveal">
-        <span class="feature-icon">&#x1F50D;</span>
-        <h3>Search Everything</h3>
-        <p>Ctrl+/ opens fuzzy search across notes, tasks, goals, and habits. Ranked results with instant navigation to any item.</p>
+        <p>Track long-term goals with milestones, due dates, recurring reviews, progress sparklines, and AI coaching with velocity tracking.</p>
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x1F4C5;</span>
-        <h3>Daily Planner</h3>
-        <p>Time-blocked schedule with goal integration. Copy plan to clipboard or export as markdown for sharing with your team.</p>
+        <h3>Calendar</h3>
+        <p>6 views: month, week, 3-day, day, agenda, year. Time-blocking, event wizard, ICS sync, goal badges, and daily focus.</p>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#x1F50D;</span>
+        <h3>Universal Search</h3>
+        <p>Fuzzy search across notes, tasks, goals, and habits. Ranked results with instant navigation. Content search and regex support.</p>
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x1F500;</span>
         <h3>Git &amp; Nextcloud Sync</h3>
-        <p>Built-in git sync with auto-commit and conflict resolution. Nextcloud WebDAV bidirectional sync. Your data, your servers.</p>
+        <p>Built-in git overlay with status, log, diff, commit, push, pull, and author config. Nextcloud WebDAV bidirectional sync.</p>
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x1F517;</span>
         <h3>Obsidian Compatible</h3>
-        <p>Full support for [[wikilinks]], YAML frontmatter, backlinks, and the same folder structure. Use your existing vault as-is.</p>
+        <p>Full support for [[wikilinks]], YAML frontmatter, backlinks, note graph, canvas, and dataview queries. Use your existing vault.</p>
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x1F9E9;</span>
         <h3>Plugin System</h3>
-        <p>Extend with scripts and Lua plugins. 16 core plugins included. Hook into save, open, create, and delete events.</p>
+        <p>16 core plugins included. Extend with Lua scripts. Hook into save, open, create, and delete events.</p>
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x1F512;</span>
@@ -560,8 +613,8 @@
       </div>
       <div class="feature-card reveal">
         <span class="feature-icon">&#x1F4D0;</span>
-        <h3>8 Layouts</h3>
-        <p>Default, Writer, Minimal, Reading, Dashboard, Zen, Taskboard, and Research modes. Adapt the UI to your workflow.</p>
+        <h3>13 Layouts</h3>
+        <p>Default, writer, reading, dashboard, zen, cockpit, stacked, cornell, focus, preview, presenter, kanban, widescreen. Alt+L to pick.</p>
       </div>
     </div>
   </section>
@@ -592,7 +645,7 @@
 
     <div class="showcase-item reverse reveal">
       <div class="showcase-visual">
-        <img src="../assets/screenshot-taskmanager.svg" alt="Task Manager" loading="lazy" onerror="this.parentElement.innerHTML='<div class=showcase-terminal>  &#x2588; Task Manager\n  Today  Upcoming  All  Kanban  Matrix\n  &#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;\n  > [x] Ship v2.0 release   &#x2588;&#x2588;&#x2588; high\n    [ ] Write documentation  ~2h\n    [ ] Review PRs            &#x1F4CC;\n    [ ] Deploy staging        snoozed</div>'">
+        <img src="../assets/task-manager.gif" alt="Task Manager" loading="lazy" onerror="this.parentElement.innerHTML='<div class=showcase-terminal>  &#x2588; Task Manager\n  Today  Upcoming  All  Kanban  Matrix\n  &#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;\n  > [x] Ship v2.0 release   &#x2588;&#x2588;&#x2588; high\n    [ ] Write documentation  ~2h\n    [ ] Review PRs            &#x1F4CC;\n    [ ] Deploy staging        snoozed</div>'">
       </div>
       <div class="showcase-text">
         <h3>Tasks, goals, and plans. Unified.</h3>
@@ -601,8 +654,8 @@
           <li>Subtasks, dependencies, snooze, and templates</li>
           <li>Recurring tasks auto-create on completion</li>
           <li>Goal-to-task linking with progress tracking</li>
-          <li>Copy daily plan to clipboard for your team</li>
-          <li>Search Everything with Ctrl+/</li>
+          <li>AI-powered task triage and priority suggestions</li>
+          <li>Universal search across notes, tasks, and goals</li>
         </ul>
       </div>
     </div>
@@ -622,13 +675,15 @@
           <tr><td>Price</td><td class="hl"><span class="ck">Free forever</span></td><td><span class="cp">$50/yr + $8/mo sync</span></td></tr>
           <tr><td>Terminal Native</td><td class="hl"><span class="ck">&#x2713;</span></td><td><span class="cx">&#x2717;</span></td></tr>
           <tr><td>Vim Mode</td><td class="hl"><span class="ck">Full with macros &amp; objects</span></td><td><span class="cp">Plugin</span></td></tr>
-          <tr><td>AI Integration</td><td class="hl"><span class="ck">Built-in: Ollama / OpenAI / Claude</span></td><td><span class="cp">$14/mo add-on</span></td></tr>
+          <tr><td>AI Integration</td><td class="hl"><span class="ck">19 bots: Ollama / OpenAI / Claude</span></td><td><span class="cp">$14/mo add-on</span></td></tr>
           <tr><td>Task Manager</td><td class="hl"><span class="ck">7 views + Eisenhower</span></td><td><span class="cp">Plugin</span></td></tr>
-          <tr><td>Goal Tracking</td><td class="hl"><span class="ck">Built-in with reviews</span></td><td><span class="cx">&#x2717;</span></td></tr>
+          <tr><td>Calendar</td><td class="hl"><span class="ck">6 views + time-blocking</span></td><td><span class="cp">Plugin</span></td></tr>
+          <tr><td>Goal Tracking</td><td class="hl"><span class="ck">Built-in with AI coaching</span></td><td><span class="cx">&#x2717;</span></td></tr>
           <tr><td>Universal Search</td><td class="hl"><span class="ck">Notes + tasks + goals</span></td><td><span class="cp">Notes only</span></td></tr>
-          <tr><td>Themes</td><td class="hl"><span class="ck">35 built-in + editor</span></td><td><span class="cp">Community</span></td></tr>
-          <tr><td>Open Source</td><td class="hl"><span class="ck">&#x2713;</span></td><td><span class="cx">&#x2717;</span></td></tr>
-          <tr><td>Speed</td><td class="hl"><span class="ck">Instant startup</span></td><td><span class="cp">Electron</span></td></tr>
+          <tr><td>Themes</td><td class="hl"><span class="ck">38 built-in + editor</span></td><td><span class="cp">Community</span></td></tr>
+          <tr><td>Layouts</td><td class="hl"><span class="ck">13 built-in</span></td><td><span class="cp">Plugin</span></td></tr>
+          <tr><td>Open Source</td><td class="hl"><span class="ck">&#x2713; MIT</span></td><td><span class="cx">&#x2717;</span></td></tr>
+          <tr><td>Startup Speed</td><td class="hl"><span class="ck">Instant (~12ms)</span></td><td><span class="cp">Electron (~2s)</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -642,10 +697,10 @@
     <div class="stats-grid reveal">
       <div class="stat-card"><span class="stat-number">166K+</span><span class="stat-label">Lines of Go</span></div>
       <div class="stat-card"><span class="stat-number">1,971</span><span class="stat-label">Tests</span></div>
-      <div class="stat-card"><span class="stat-number">35</span><span class="stat-label">Themes</span></div>
-      <div class="stat-card"><span class="stat-number">80+</span><span class="stat-label">Commands</span></div>
-      <div class="stat-card"><span class="stat-number">9</span><span class="stat-label">AI Bots</span></div>
-      <div class="stat-card"><span class="stat-number">100%</span><span class="stat-label">Open Source</span></div>
+      <div class="stat-card"><span class="stat-number">38</span><span class="stat-label">Themes</span></div>
+      <div class="stat-card"><span class="stat-number">145+</span><span class="stat-label">Commands</span></div>
+      <div class="stat-card"><span class="stat-number">19</span><span class="stat-label">AI Bots</span></div>
+      <div class="stat-card"><span class="stat-number">13</span><span class="stat-label">Layouts</span></div>
     </div>
   </section>
 
@@ -655,14 +710,14 @@
     <h2 class="section-title reveal">Everything is one shortcut away.</h2>
     <p class="section-sub reveal">No mouse required. Every feature accessible via keyboard.</p>
     <div class="shortcuts-grid reveal">
-      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>/</kbd></div><span class="shortcut-label">Search Everything</span></div>
       <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>X</kbd></div><span class="shortcut-label">Command Palette</span></div>
-      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>K</kbd></div><span class="shortcut-label">Task Manager</span></div>
       <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>P</kbd></div><span class="shortcut-label">Quick Open</span></div>
-      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>N</kbd></div><span class="shortcut-label">New Note</span></div>
-      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>G</kbd></div><span class="shortcut-label">Note Graph</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>K</kbd></div><span class="shortcut-label">Task Manager</span></div>
       <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>L</kbd></div><span class="shortcut-label">Calendar</span></div>
       <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>R</kbd></div><span class="shortcut-label">AI Bots</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>G</kbd></div><span class="shortcut-label">Note Graph</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Alt</kbd><kbd>M</kbd></div><span class="shortcut-label">Morning Routine</span></div>
+      <div class="shortcut-card"><div class="shortcut-keys"><kbd>Alt</kbd><kbd>L</kbd></div><span class="shortcut-label">Layout Picker</span></div>
     </div>
   </section>
 
@@ -686,6 +741,10 @@
 <span class="comment"># Open it</span>
 <span class="cmd">granit</span> my-vault</div>
       </div>
+      <p style="color:var(--text-secondary); font-size:0.9rem; margin-top:1rem;">
+        <strong style="color:var(--text)">Requirements:</strong> Go 1.24+, Git, Linux or macOS<br>
+        <strong style="color:var(--text)">Optional:</strong> <a href="https://ollama.ai">Ollama</a> (local AI), aspell (spell check), pandoc (PDF export)
+      </p>
     </div>
   </section>
 
@@ -696,8 +755,12 @@
     <div class="docs-grid reveal">
       <a href="FEATURES.md" class="doc-card"><h4>Features Guide</h4><p>Complete feature documentation</p></a>
       <a href="KEYBINDINGS.md" class="doc-card"><h4>Keyboard Shortcuts</h4><p>Every keybinding reference</p></a>
-      <a href="../CHANGELOG.md" class="doc-card"><h4>Changelog</h4><p>What's new in each release</p></a>
-      <a href="../README.md" class="doc-card"><h4>README</h4><p>Overview and quick start</p></a>
+      <a href="AI-GUIDE.md" class="doc-card"><h4>AI Guide</h4><p>Setup, providers, all 19 bots</p></a>
+      <a href="CONFIGURATION.md" class="doc-card"><h4>Configuration</h4><p>All settings and options</p></a>
+      <a href="THEMES.md" class="doc-card"><h4>Themes</h4><p>38 themes + custom editor</p></a>
+      <a href="PLUGINS.md" class="doc-card"><h4>Plugins</h4><p>Plugin development + Lua API</p></a>
+      <a href="ARCHITECTURE.md" class="doc-card"><h4>Architecture</h4><p>Codebase design overview</p></a>
+      <a href="../CHANGELOG.md" class="doc-card"><h4>Changelog</h4><p>Version history</p></a>
     </div>
   </section>
 
@@ -721,6 +784,7 @@
     <ul class="footer-links">
       <li><a href="https://github.com/artaeon/granit">GitHub</a></li>
       <li><a href="https://github.com/artaeon/granit/issues">Issues</a></li>
+      <li><a href="https://github.com/artaeon/granit/discussions">Discussions</a></li>
       <li><a href="../LICENSE">MIT License</a></li>
     </ul>
   </footer>
@@ -734,8 +798,25 @@
         }
       });
     }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
-
     document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    // Mobile menu
+    const hamburger = document.getElementById('hamburger');
+    const mobileMenu = document.getElementById('mobile-menu');
+
+    hamburger.addEventListener('click', () => {
+      hamburger.classList.toggle('open');
+      mobileMenu.classList.toggle('open');
+      document.body.style.overflow = mobileMenu.classList.contains('open') ? 'hidden' : '';
+    });
+
+    mobileMenu.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        hamburger.classList.remove('open');
+        mobileMenu.classList.remove('open');
+        document.body.style.overflow = '';
+      });
+    });
   </script>
 </body>
 </html>
