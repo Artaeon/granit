@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -10,52 +12,31 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Phases
+// Phases — interactive, question-driven daily planning
 // ---------------------------------------------------------------------------
 
 type morningPhase int
 
 const (
-	morningDevotional morningPhase = iota // Step 1: Scripture + reflection
-	morningBriefing                       // Step 2: DEEPCOVEN briefing
-	morningPlan                           // Step 3: Plan My Day
-	morningPriorities                     // Step 4: Confirm top 3 priorities
+	morningScripture  morningPhase = iota // Step 1: Bible quote
+	morningGoal                           // Step 2: Set today's goal
+	morningTasks                          // Step 3: Select/create tasks
+	morningHabits                         // Step 4: Select habits
+	morningThoughts                       // Step 5: Reflection note
+	morningSummary                        // Step 6: Overview + save
 	morningComplete                       // Done
 )
 
-// ---------------------------------------------------------------------------
-// Messages
-// ---------------------------------------------------------------------------
-
-type morningDevotionalMsg struct {
-	reflection string
-	err        error
-}
-
-type morningBriefingMsg struct {
-	content string
-	err     error
-}
-
-type morningPlanMsg struct {
-	response string
-	err      error
-}
-
-type morningTickMsg struct{}
-
-func morningTickCmd() tea.Cmd {
-	return tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg {
-		return morningTickMsg{}
-	})
-}
+// morningPlanSavedMsg is sent after the daily note has been written.
+type morningPlanSavedMsg struct{}
 
 // ---------------------------------------------------------------------------
 // Overlay
 // ---------------------------------------------------------------------------
 
-// MorningRoutine is a guided 4-step morning ritual that chains scripture
-// devotional, DEEPCOVEN briefing, plan-my-day, and priority confirmation.
+// MorningRoutine is a guided interactive daily planning workflow.
+// No AI calls — just scripture, questions, selections, and a summary
+// that gets saved to the daily note.
 type MorningRoutine struct {
 	active bool
 	width  int
@@ -63,32 +44,35 @@ type MorningRoutine struct {
 	phase  morningPhase
 	scroll int
 
-	// Loading state
-	loading      bool
-	loadingTick  int
-	loadingStart time.Time
+	// Step 1: Scripture
+	scripture Scripture
 
-	// Step results
-	scripture  Scripture
-	reflection string // devotional AI reflection
-	briefing   string // DEEPCOVEN morning briefing
-	planResult string // raw AI plan response
-	priorities []string
+	// Step 2: Goal
+	todayGoal string
 
-	// Data gathered at open
-	vaultRoot     string
-	ai            AIConfig
-	goals         []Goal
-	noteContents  map[string]string
-	notePaths     []string
-	tasks         []Task
-	events        []PlannerEvent
-	habits        []habitEntry
-	projects      []Project
-	yesterdayTasks []string
+	// Step 3: Tasks — select from existing + create new
+	allTasks      []Task           // all open tasks from vault
+	taskSelected  []bool           // toggle state per task
+	taskCursor    int              // cursor position in task list
+	newTaskInput  string           // text for creating a new task
+	taskAddMode   bool             // currently typing a new task
+	createdTasks  []string         // tasks created during this session
 
-	// Per-session "already done" tracking
-	dayPlanned bool // passed from statusbar at open time
+	// Step 4: Habits
+	allHabits     []habitEntry
+	habitSelected []bool
+	habitCursor   int
+
+	// Step 5: Thoughts
+	thoughts string
+
+	// Vault data
+	vaultRoot string
+	goals     []Goal
+	events    []PlannerEvent
+
+	// Config
+	dailyNotesFolder string
 }
 
 // NewMorningRoutine creates a new MorningRoutine overlay.
@@ -105,45 +89,88 @@ func (mr *MorningRoutine) SetSize(w, h int) {
 	mr.height = h
 }
 
-// Open gathers all data and starts the first AI step.
+// Open initialises the morning routine with gathered vault data.
 func (mr *MorningRoutine) Open(
 	vaultRoot string,
-	ai AIConfig,
+	_ AIConfig, // kept for call-site compat, unused
 	goals []Goal,
-	noteContents map[string]string,
-	notePaths []string,
+	_ map[string]string, // noteContents — unused
+	_ []string, // notePaths — unused
 	tasks []Task,
 	events []PlannerEvent,
 	habits []habitEntry,
-	projects []Project,
-	yesterdayTasks []string,
-	dayPlanned bool,
+	_ []Project,
+	_ []string, // yesterdayTasks — unused
+	_ bool, // dayPlanned — unused
 ) tea.Cmd {
 	mr.active = true
 	mr.vaultRoot = vaultRoot
-	mr.ai = ai
 	mr.goals = goals
-	mr.noteContents = noteContents
-	mr.notePaths = notePaths
-	mr.tasks = tasks
 	mr.events = events
-	mr.habits = habits
-	mr.projects = projects
-	mr.yesterdayTasks = yesterdayTasks
-	mr.dayPlanned = dayPlanned
 
-	mr.phase = morningDevotional
+	mr.phase = morningScripture
 	mr.scroll = 0
-	mr.reflection = ""
-	mr.briefing = ""
-	mr.planResult = ""
-	mr.priorities = nil
-	mr.loading = true
-	mr.loadingTick = 0
-	mr.loadingStart = time.Now()
 	mr.scripture = DailyScripture(vaultRoot)
 
-	return tea.Batch(mr.startDevotional(), morningTickCmd())
+	// Goal
+	mr.todayGoal = ""
+
+	// Tasks — collect open tasks due today or overdue or high priority
+	mr.allTasks = nil
+	today := time.Now().Format("2006-01-02")
+	for _, t := range tasks {
+		if t.Done {
+			continue
+		}
+		isRelevant := t.DueDate == today ||
+			(t.DueDate != "" && t.DueDate < today) ||
+			t.Priority >= 3
+		if isRelevant {
+			mr.allTasks = append(mr.allTasks, t)
+		}
+	}
+	// Also add tasks due in next 2 days
+	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	dayAfter := time.Now().AddDate(0, 0, 2).Format("2006-01-02")
+	for _, t := range tasks {
+		if t.Done {
+			continue
+		}
+		if t.DueDate == tomorrow || t.DueDate == dayAfter {
+			// Check not already added
+			alreadyAdded := false
+			for _, existing := range mr.allTasks {
+				if existing.Text == t.Text && existing.NotePath == t.NotePath {
+					alreadyAdded = true
+					break
+				}
+			}
+			if !alreadyAdded {
+				mr.allTasks = append(mr.allTasks, t)
+			}
+		}
+	}
+	mr.taskSelected = make([]bool, len(mr.allTasks))
+	// Pre-select overdue and due-today tasks
+	for i, t := range mr.allTasks {
+		if t.DueDate != "" && t.DueDate <= today {
+			mr.taskSelected[i] = true
+		}
+	}
+	mr.taskCursor = 0
+	mr.newTaskInput = ""
+	mr.taskAddMode = false
+	mr.createdTasks = nil
+
+	// Habits
+	mr.allHabits = habits
+	mr.habitSelected = make([]bool, len(habits))
+	mr.habitCursor = 0
+
+	// Thoughts
+	mr.thoughts = ""
+
+	return nil
 }
 
 // Update handles messages.
@@ -153,289 +180,302 @@ func (mr MorningRoutine) Update(msg tea.Msg) (MorningRoutine, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
-	case morningDevotionalMsg:
-		mr.loading = false
-		if msg.err != nil {
-			mr.reflection = "AI unavailable: " + msg.err.Error()
-		} else {
-			mr.reflection = msg.reflection
-		}
-		return mr, nil
-
-	case morningBriefingMsg:
-		mr.loading = false
-		if msg.err != nil {
-			mr.briefing = "AI unavailable: " + msg.err.Error()
-		} else {
-			mr.briefing = msg.content
-		}
-		return mr, nil
-
-	case morningPlanMsg:
-		mr.loading = false
-		if msg.err != nil {
-			mr.planResult = "AI unavailable: " + msg.err.Error()
-		} else {
-			mr.planResult = msg.response
-			mr.extractPriorities()
-		}
-		return mr, nil
-
-	case morningTickMsg:
-		if mr.loading {
-			mr.loadingTick++
-			return mr, morningTickCmd()
-		}
+	case morningPlanSavedMsg:
 		return mr, nil
 
 	case tea.KeyMsg:
-		key := msg.String()
-		switch key {
-		case "q":
-			mr.active = false
+		switch mr.phase {
+		case morningScripture:
+			return mr.updateScripture(msg)
+		case morningGoal:
+			return mr.updateGoal(msg)
+		case morningTasks:
+			return mr.updateTasks(msg)
+		case morningHabits:
+			return mr.updateHabits(msg)
+		case morningThoughts:
+			return mr.updateThoughts(msg)
+		case morningSummary:
+			return mr.updateSummary(msg)
+		case morningComplete:
+			if msg.String() == "enter" || msg.String() == "esc" || msg.String() == "q" {
+				mr.active = false
+			}
 			return mr, nil
-		case "esc":
-			// Skip current step
-			return mr.advancePhase()
-		case "enter":
-			if mr.loading {
-				return mr, nil // can't advance while loading
-			}
-			return mr.advancePhase()
-		case "j", "down":
-			mr.scroll++
-		case "k", "up":
-			if mr.scroll > 0 {
-				mr.scroll--
-			}
 		}
 	}
 	return mr, nil
 }
 
-// advancePhase moves to the next step, starting its AI call.
-func (mr MorningRoutine) advancePhase() (MorningRoutine, tea.Cmd) {
-	mr.scroll = 0
-	mr.loading = true
-	mr.loadingTick = 0
-	mr.loadingStart = time.Now()
+// ---------------------------------------------------------------------------
+// Phase updates
+// ---------------------------------------------------------------------------
 
-	switch mr.phase {
-	case morningDevotional:
-		mr.phase = morningBriefing
-		return mr, tea.Batch(mr.startBriefing(), morningTickCmd())
-	case morningBriefing:
-		if mr.dayPlanned {
-			// Plan already done, skip to priorities
-			mr.phase = morningPriorities
-			mr.loading = false
-			if len(mr.priorities) == 0 {
-				mr.priorities = []string{"(set your top priorities)"}
-			}
-			return mr, nil
-		}
-		mr.phase = morningPlan
-		return mr, tea.Batch(mr.startPlan(), morningTickCmd())
-	case morningPlan:
-		mr.phase = morningPriorities
-		mr.loading = false
-		if len(mr.priorities) == 0 {
-			mr.priorities = []string{"(set your top priorities)"}
-		}
-		return mr, nil
-	case morningPriorities:
-		mr.phase = morningComplete
-		mr.loading = false
-		return mr, nil
-	case morningComplete:
+func (mr MorningRoutine) updateScripture(msg tea.KeyMsg) (MorningRoutine, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		mr.phase = morningGoal
+		mr.scroll = 0
+	case "esc", "q":
 		mr.active = false
-		return mr, nil
+	}
+	return mr, nil
+}
+
+func (mr MorningRoutine) updateGoal(msg tea.KeyMsg) (MorningRoutine, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		mr.phase = morningTasks
+		mr.scroll = 0
+	case "esc":
+		mr.phase = morningTasks
+		mr.scroll = 0
+	case "backspace":
+		if len(mr.todayGoal) > 0 {
+			runes := []rune(mr.todayGoal)
+			mr.todayGoal = string(runes[:len(runes)-1])
+		}
+	default:
+		ch := msg.String()
+		if len(ch) == 1 && ch[0] >= 32 {
+			mr.todayGoal += ch
+		} else if ch == "space" {
+			mr.todayGoal += " "
+		}
+	}
+	return mr, nil
+}
+
+func (mr MorningRoutine) updateTasks(msg tea.KeyMsg) (MorningRoutine, tea.Cmd) {
+	if mr.taskAddMode {
+		return mr.updateTaskAdd(msg)
+	}
+
+	totalItems := len(mr.allTasks) + len(mr.createdTasks)
+	switch msg.String() {
+	case "enter":
+		mr.phase = morningHabits
+		mr.scroll = 0
+	case "esc":
+		mr.phase = morningHabits
+		mr.scroll = 0
+	case "j", "down":
+		if mr.taskCursor < totalItems-1 {
+			mr.taskCursor++
+		}
+	case "k", "up":
+		if mr.taskCursor > 0 {
+			mr.taskCursor--
+		}
+	case " ":
+		// Toggle task selection
+		if mr.taskCursor < len(mr.allTasks) {
+			mr.taskSelected[mr.taskCursor] = !mr.taskSelected[mr.taskCursor]
+		}
+		// Created tasks are always selected, no toggle
+	case "a":
+		mr.taskAddMode = true
+		mr.newTaskInput = ""
+	}
+	return mr, nil
+}
+
+func (mr MorningRoutine) updateTaskAdd(msg tea.KeyMsg) (MorningRoutine, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		if mr.newTaskInput != "" {
+			mr.createdTasks = append(mr.createdTasks, mr.newTaskInput)
+			mr.newTaskInput = ""
+		}
+		mr.taskAddMode = false
+	case "esc":
+		mr.taskAddMode = false
+		mr.newTaskInput = ""
+	case "backspace":
+		if len(mr.newTaskInput) > 0 {
+			runes := []rune(mr.newTaskInput)
+			mr.newTaskInput = string(runes[:len(runes)-1])
+		}
+	default:
+		ch := msg.String()
+		if len(ch) == 1 && ch[0] >= 32 {
+			mr.newTaskInput += ch
+		} else if ch == "space" {
+			mr.newTaskInput += " "
+		}
+	}
+	return mr, nil
+}
+
+func (mr MorningRoutine) updateHabits(msg tea.KeyMsg) (MorningRoutine, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		mr.phase = morningThoughts
+		mr.scroll = 0
+	case "esc":
+		mr.phase = morningThoughts
+		mr.scroll = 0
+	case "j", "down":
+		if mr.habitCursor < len(mr.allHabits)-1 {
+			mr.habitCursor++
+		}
+	case "k", "up":
+		if mr.habitCursor > 0 {
+			mr.habitCursor--
+		}
+	case " ":
+		if mr.habitCursor < len(mr.habitSelected) {
+			mr.habitSelected[mr.habitCursor] = !mr.habitSelected[mr.habitCursor]
+		}
+	}
+	return mr, nil
+}
+
+func (mr MorningRoutine) updateThoughts(msg tea.KeyMsg) (MorningRoutine, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		mr.phase = morningSummary
+		mr.scroll = 0
+	case "esc":
+		mr.phase = morningSummary
+		mr.scroll = 0
+	case "backspace":
+		if len(mr.thoughts) > 0 {
+			runes := []rune(mr.thoughts)
+			mr.thoughts = string(runes[:len(runes)-1])
+		}
+	default:
+		ch := msg.String()
+		if len(ch) == 1 && ch[0] >= 32 {
+			mr.thoughts += ch
+		} else if ch == "space" {
+			mr.thoughts += " "
+		}
+	}
+	return mr, nil
+}
+
+func (mr MorningRoutine) updateSummary(msg tea.KeyMsg) (MorningRoutine, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		// Save to daily note and close
+		mr.phase = morningComplete
+		return mr, mr.saveToDailyNote()
+	case "esc", "q":
+		mr.active = false
+	case "j", "down":
+		mr.scroll++
+	case "k", "up":
+		if mr.scroll > 0 {
+			mr.scroll--
+		}
 	}
 	return mr, nil
 }
 
 // ---------------------------------------------------------------------------
-// AI steps
+// Save to daily note
 // ---------------------------------------------------------------------------
 
-func (mr *MorningRoutine) startDevotional() tea.Cmd {
-	ai := mr.ai
-	scripture := mr.scripture
-	goals := make([]Goal, len(mr.goals))
-	copy(goals, mr.goals)
+func (mr *MorningRoutine) saveToDailyNote() tea.Cmd {
+	vaultRoot := mr.vaultRoot
+	folder := mr.dailyNotesFolder
+	content := mr.buildDailyPlanMarkdown()
 
 	return func() tea.Msg {
-		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("TODAY: %s\n", time.Now().Format("Monday, January 2, 2006")))
-		sb.WriteString(fmt.Sprintf("SCRIPTURE: \"%s\" -- %s\n", scripture.Text, scripture.Source))
-		if len(goals) > 0 {
-			sb.WriteString("\nACTIVE GOALS:\n")
-			for _, g := range goals {
-				if g.Status == GoalStatusActive {
-					sb.WriteString(fmt.Sprintf("- %s (%d%%)\n", g.Title, g.Progress()))
-				}
-			}
+		today := time.Now().Format("2006-01-02")
+		dailyName := today + ".md"
+		if folder != "" {
+			dailyName = filepath.Join(folder, dailyName)
 		}
-		var systemPrompt string
-		if ai.IsSmallModel() {
-			systemPrompt = "Reflect on the verse briefly. Give insight, application, prayer, and one action. Under 6 lines."
+		dailyPath := filepath.Join(vaultRoot, dailyName)
+
+		existing, err := os.ReadFile(dailyPath)
+		if err != nil {
+			// Create new daily note — ensure directory exists
+			if mkErr := os.MkdirAll(filepath.Dir(dailyPath), 0755); mkErr != nil {
+				return morningPlanSavedMsg{}
+			}
+			weekday := time.Now().Weekday().String()
+			header := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s — %s\n\n",
+				today, today, weekday)
+			if writeErr := os.WriteFile(dailyPath, []byte(header+content), 0644); writeErr != nil {
+				return morningPlanSavedMsg{}
+			}
 		} else {
-			systemPrompt = "You are DEEPCOVEN, a faith-informed personal advisor. " +
-				"Connect this verse to the user's goals. " +
-				"Give: verse insight (2 sentences), today's application, prayer focus, and one action. Under 10 lines."
+			// Append to existing daily note
+			newContent := string(existing) + "\n\n" + content
+			_ = os.WriteFile(dailyPath, []byte(newContent), 0644)
 		}
-		resp, err := ai.Chat(systemPrompt, sb.String())
-		return morningDevotionalMsg{reflection: strings.TrimSpace(resp), err: err}
+		return morningPlanSavedMsg{}
 	}
 }
 
-func (mr *MorningRoutine) startBriefing() tea.Cmd {
-	ai := mr.ai
-	noteContents := mr.noteContents
-	notePaths := mr.notePaths
+func (mr *MorningRoutine) buildDailyPlanMarkdown() string {
+	var b strings.Builder
+	today := time.Now().Format("Monday, January 2, 2006")
 
-	return func() tea.Msg {
-		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("Today: %s\n\n", time.Now().Format("2006-01-02")))
+	b.WriteString(fmt.Sprintf("## Daily Plan — %s\n\n", today))
 
-		// Recent notes — less for small models.
-		maxNotes := 10
-		maxPreview := 300
-		maxTasks := 20
-		if ai.IsSmallModel() {
-			maxNotes = 5
-			maxPreview = 150
-			maxTasks = 10
-		}
-		count := 0
-		sb.WriteString("RECENT NOTES:\n")
-		for _, p := range notePaths {
-			if count >= maxNotes {
-				break
-			}
-			content := noteContents[p]
-			if content == "" {
-				continue
-			}
-			preview := content
-			if len([]rune(preview)) > maxPreview {
-				preview = string([]rune(preview)[:maxPreview])
-			}
-			sb.WriteString(fmt.Sprintf("### %s\n%s\n\n", p, preview))
-			count++
-		}
+	// Scripture
+	b.WriteString(fmt.Sprintf("> *\"%s\"* — %s\n\n", mr.scripture.Text, mr.scripture.Source))
 
-		// Open tasks
-		sb.WriteString("OPEN TASKS:\n")
-		taskCount := 0
-		for _, p := range notePaths {
-			for _, line := range strings.Split(noteContents[p], "\n") {
-				if strings.Contains(line, "- [ ]") && taskCount < maxTasks {
-					sb.WriteString(strings.TrimSpace(line) + "\n")
-					taskCount++
-				}
-			}
-		}
-
-		systemPrompt := deepCovenPrompt
-		if ai.IsSmallModel() {
-			systemPrompt = "Summarize recent notes and tasks. List: 1) Active topics (2-3), " +
-				"2) Open tasks, 3) Today's focus. Be concise."
-		}
-		resp, err := ai.Chat(systemPrompt, sb.String())
-		return morningBriefingMsg{content: strings.TrimSpace(resp), err: err}
+	// Goal
+	if mr.todayGoal != "" {
+		b.WriteString(fmt.Sprintf("### Today's Goal\n\n**%s**\n\n", mr.todayGoal))
 	}
+
+	// Tasks
+	selectedTasks := mr.getSelectedTasks()
+	if len(selectedTasks) > 0 {
+		b.WriteString("### Tasks\n\n")
+		for _, t := range selectedTasks {
+			b.WriteString(fmt.Sprintf("- [ ] %s\n", t))
+		}
+		b.WriteString("\n")
+	}
+
+	// Habits
+	selectedHabits := mr.getSelectedHabits()
+	if len(selectedHabits) > 0 {
+		b.WriteString("### Habits\n\n")
+		for _, h := range selectedHabits {
+			b.WriteString(fmt.Sprintf("- [ ] %s\n", h))
+		}
+		b.WriteString("\n")
+	}
+
+	// Thoughts
+	if mr.thoughts != "" {
+		b.WriteString(fmt.Sprintf("### Thoughts\n\n%s\n\n", mr.thoughts))
+	}
+
+	return b.String()
 }
 
-func (mr *MorningRoutine) startPlan() tea.Cmd {
-	ai := mr.ai
-	tasks := make([]Task, len(mr.tasks))
-	copy(tasks, mr.tasks)
-	events := make([]PlannerEvent, len(mr.events))
-	copy(events, mr.events)
-	habits := make([]habitEntry, len(mr.habits))
-	copy(habits, mr.habits)
-	goals := make([]Goal, len(mr.goals))
-	copy(goals, mr.goals)
-
-	return func() tea.Msg {
-		now := time.Now()
-		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("Current time: %s %s\n", now.Format("15:04"), now.Weekday()))
-		sb.WriteString("Plan my remaining day. Create a time-blocked schedule.\n\n")
-
-		maxPlanTasks := 20
-		if ai.IsSmallModel() {
-			maxPlanTasks = 10
-		}
-		sb.WriteString("TASKS:\n")
-		for i, t := range tasks {
-			if i >= maxPlanTasks || t.Done {
-				continue
-			}
-			due := ""
+func (mr *MorningRoutine) getSelectedTasks() []string {
+	var result []string
+	for i, t := range mr.allTasks {
+		if mr.taskSelected[i] {
+			label := t.Text
 			if t.DueDate != "" {
-				due = " (due: " + t.DueDate + ")"
+				label += " (due: " + t.DueDate + ")"
 			}
-			sb.WriteString(fmt.Sprintf("- [P%d] %s%s\n", t.Priority, t.Text, due))
+			result = append(result, label)
 		}
-
-		if len(events) > 0 {
-			sb.WriteString("\nEVENTS:\n")
-			for _, e := range events {
-				sb.WriteString(fmt.Sprintf("- %s (%s, %dmin)\n", e.Title, e.Time, e.Duration))
-			}
-		}
-
-		if len(goals) > 0 {
-			sb.WriteString("\nACTIVE GOALS:\n")
-			for _, g := range goals {
-				if g.Status == GoalStatusActive {
-					sb.WriteString(fmt.Sprintf("- %s (%d%%)\n", g.Title, g.Progress()))
-				}
-			}
-		}
-
-		var systemPrompt string
-		if ai.IsSmallModel() {
-			systemPrompt = "Create a daily schedule.\nFormat:\nTOP_GOAL: goal\nSCHEDULE:\nHH:MM-HH:MM | Task | type\nFOCUS_ORDER:\n1. Task\nADVICE: advice"
-		} else {
-			systemPrompt = "You are a productivity coach. Create an optimized daily schedule.\n\n" +
-				"Format:\nTOP_GOAL: {one sentence}\n\nSCHEDULE:\nHH:MM-HH:MM | Task | type\n\n" +
-				"FOCUS_ORDER:\n1. Task\n2. Task\n3. Task\n\nADVICE: {2-3 sentences}"
-		}
-
-		resp, err := ai.Chat(systemPrompt, sb.String())
-		return morningPlanMsg{response: strings.TrimSpace(resp), err: err}
 	}
+	result = append(result, mr.createdTasks...)
+	return result
 }
 
-func (mr *MorningRoutine) extractPriorities() {
-	mr.priorities = nil
-	inFocus := false
-	for _, line := range strings.Split(mr.planResult, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "FOCUS_ORDER") {
-			inFocus = true
-			continue
-		}
-		if inFocus {
-			if trimmed == "" || strings.HasPrefix(trimmed, "ADVICE") || strings.HasPrefix(trimmed, "SCHEDULE") {
-				break
-			}
-			// Strip "1. " prefix
-			cleaned := trimmed
-			if len(cleaned) > 2 && cleaned[1] == '.' {
-				cleaned = strings.TrimSpace(cleaned[2:])
-			}
-			if cleaned != "" {
-				mr.priorities = append(mr.priorities, cleaned)
-			}
+func (mr *MorningRoutine) getSelectedHabits() []string {
+	var result []string
+	for i, h := range mr.allHabits {
+		if mr.habitSelected[i] {
+			result = append(result, h.Name)
 		}
 	}
-	if len(mr.priorities) > 5 {
-		mr.priorities = mr.priorities[:5]
-	}
+	return result
 }
 
 // ---------------------------------------------------------------------------
@@ -460,17 +500,18 @@ func (mr MorningRoutine) View() string {
 
 	// Header with progress
 	headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	stepNames := []string{"Devotional", "Briefing", "Plan", "Priorities", "Complete"}
+	stepNames := []string{"Scripture", "Goal", "Tasks", "Habits", "Thoughts", "Summary", "Done"}
 	stepNum := int(mr.phase) + 1
-	if stepNum > 4 {
-		stepNum = 4
+	totalSteps := 6
+	if stepNum > totalSteps {
+		stepNum = totalSteps
 	}
-	progress := fmt.Sprintf("Step %d/4", stepNum)
-	b.WriteString("  " + headerStyle.Render(IconBotChar+" Morning Warrior") + "  " +
-		DimStyle.Render(progress+" -- "+stepNames[mr.phase]) + "\n")
+	progress := fmt.Sprintf("Step %d/%d", stepNum, totalSteps)
+	b.WriteString("  " + headerStyle.Render("Plan My Day") + "  " +
+		DimStyle.Render(progress+" — "+stepNames[mr.phase]) + "\n")
 
 	// Progress bar
-	filled := int(mr.phase) * innerW / 4
+	filled := int(mr.phase) * innerW / totalSteps
 	if filled > innerW {
 		filled = innerW
 	}
@@ -480,14 +521,18 @@ func (mr MorningRoutine) View() string {
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", innerW-4)) + "\n\n")
 
 	switch mr.phase {
-	case morningDevotional:
-		mr.viewDevotional(&b, innerW)
-	case morningBriefing:
-		mr.viewBriefing(&b, innerW)
-	case morningPlan:
-		mr.viewPlan(&b, innerW)
-	case morningPriorities:
-		mr.viewPriorities(&b, innerW)
+	case morningScripture:
+		mr.viewScripture(&b, innerW)
+	case morningGoal:
+		mr.viewGoal(&b, innerW)
+	case morningTasks:
+		mr.viewTasks(&b, innerW)
+	case morningHabits:
+		mr.viewHabits(&b, innerW)
+	case morningThoughts:
+		mr.viewThoughts(&b, innerW)
+	case morningSummary:
+		mr.viewSummary(&b, innerW)
 	case morningComplete:
 		mr.viewComplete(&b, innerW)
 	}
@@ -495,15 +540,7 @@ func (mr MorningRoutine) View() string {
 	// Help bar
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", innerW-4)) + "\n")
-	if mr.phase == morningComplete {
-		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
-			{"Enter", "close"},
-		}))
-	} else {
-		b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
-			{"Enter", "next"}, {"Esc", "skip"}, {"q", "close"}, {"j/k", "scroll"},
-		}))
-	}
+	b.WriteString(mr.helpBar())
 
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
@@ -515,105 +552,273 @@ func (mr MorningRoutine) View() string {
 	return border.Render(b.String())
 }
 
-func (mr MorningRoutine) viewDevotional(b *strings.Builder, w int) {
+func (mr MorningRoutine) helpBar() string {
+	switch mr.phase {
+	case morningScripture:
+		return DimStyle.Render("  Enter next  Esc close")
+	case morningGoal:
+		return DimStyle.Render("  Type your goal  Enter next  Esc skip")
+	case morningTasks:
+		if mr.taskAddMode {
+			return DimStyle.Render("  Type task name  Enter add  Esc cancel")
+		}
+		return DimStyle.Render("  j/k move  Space toggle  a add task  Enter next  Esc skip")
+	case morningHabits:
+		return DimStyle.Render("  j/k move  Space toggle  Enter next  Esc skip")
+	case morningThoughts:
+		return DimStyle.Render("  Type your thoughts  Enter next  Esc skip")
+	case morningSummary:
+		return DimStyle.Render("  Enter save to daily note  j/k scroll  Esc close")
+	case morningComplete:
+		return DimStyle.Render("  Enter close")
+	}
+	return ""
+}
+
+// ---------------------------------------------------------------------------
+// Phase views
+// ---------------------------------------------------------------------------
+
+func (mr MorningRoutine) viewScripture(b *strings.Builder, w int) {
 	verseStyle := lipgloss.NewStyle().Foreground(lavender).Italic(true)
 	refStyle := lipgloss.NewStyle().Foreground(overlay1)
-	headStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	bodyStyle := lipgloss.NewStyle().Foreground(text)
 
-	b.WriteString("  " + verseStyle.Render(TruncateDisplay(mr.scripture.Text, w-6)) + "\n")
-	b.WriteString("  " + refStyle.Render("-- "+mr.scripture.Source) + "\n\n")
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(blue).Bold(true).Render("Today's Scripture") + "\n\n")
 
-	if mr.loading {
-		spinChars := []string{"\u25CB", "\u25D4", "\u25D1", "\u25D5", "\u25CF"}
-		spin := spinChars[mr.loadingTick%len(spinChars)]
-		elapsed := time.Since(mr.loadingStart).Truncate(time.Second)
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Render(spin+" Reflecting on this verse..."+fmt.Sprintf(" (%s)", elapsed)) + "\n")
-		return
+	// Word-wrap the verse text
+	wrappedLines := morningWordWrap(mr.scripture.Text, w-6)
+	for _, wl := range wrappedLines {
+		b.WriteString("  " + verseStyle.Render(wl) + "\n")
+	}
+	b.WriteString("\n")
+	b.WriteString("  " + refStyle.Render("— "+mr.scripture.Source) + "\n\n")
+	b.WriteString("  " + DimStyle.Render("Take a moment to reflect, then press Enter.") + "\n")
+}
+
+func (mr MorningRoutine) viewGoal(b *strings.Builder, _ int) {
+	questionStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+	inputStyle := lipgloss.NewStyle().Foreground(text)
+
+	b.WriteString("  " + questionStyle.Render("What is your main goal for today?") + "\n\n")
+
+	// Show active goals as context
+	hasGoals := false
+	for _, g := range mr.goals {
+		if g.Status == GoalStatusActive {
+			if !hasGoals {
+				b.WriteString("  " + DimStyle.Render("Active goals:") + "\n")
+				hasGoals = true
+			}
+			b.WriteString("  " + DimStyle.Render(fmt.Sprintf("  %s (%d%%)", g.Title, g.Progress())) + "\n")
+		}
+	}
+	if hasGoals {
+		b.WriteString("\n")
 	}
 
-	for _, line := range strings.Split(mr.reflection, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			b.WriteString("\n")
-		} else if strings.HasPrefix(trimmed, "##") {
-			b.WriteString("  " + headStyle.Render(strings.TrimLeft(trimmed, "# ")) + "\n")
-		} else {
-			b.WriteString("  " + bodyStyle.Render(TruncateDisplay(trimmed, w-6)) + "\n")
+	b.WriteString("  " + inputStyle.Render(mr.todayGoal) + DimStyle.Render("_") + "\n")
+}
+
+func (mr MorningRoutine) viewTasks(b *strings.Builder, w int) {
+	questionStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+	selectedStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+	unselectedStyle := lipgloss.NewStyle().Foreground(overlay0)
+	cursorStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	dueStyle := lipgloss.NewStyle().Foreground(peach)
+
+	b.WriteString("  " + questionStyle.Render("Select the tasks you want to accomplish today") + "\n\n")
+
+	if len(mr.allTasks) == 0 && len(mr.createdTasks) == 0 {
+		b.WriteString("  " + DimStyle.Render("No pending tasks found. Press 'a' to add one.") + "\n")
+	}
+
+	today := time.Now().Format("2006-01-02")
+	for i, t := range mr.allTasks {
+		prefix := "  "
+		if i == mr.taskCursor {
+			prefix = cursorStyle.Render("> ")
 		}
+
+		checkbox := unselectedStyle.Render("[ ] ")
+		textStyle := unselectedStyle
+		if mr.taskSelected[i] {
+			checkbox = selectedStyle.Render("[x] ")
+			textStyle = lipgloss.NewStyle().Foreground(text)
+		}
+
+		label := TruncateDisplay(t.Text, w-14)
+		suffix := ""
+		if t.DueDate != "" && t.DueDate < today {
+			suffix = dueStyle.Render(" overdue")
+		} else if t.DueDate == today {
+			suffix = dueStyle.Render(" today")
+		} else if t.DueDate != "" {
+			suffix = DimStyle.Render(" " + t.DueDate)
+		}
+		if t.Priority >= 3 {
+			suffix += lipgloss.NewStyle().Foreground(red).Render(" !")
+		}
+
+		b.WriteString(prefix + checkbox + textStyle.Render(label) + suffix + "\n")
+	}
+
+	// Created tasks
+	for i, t := range mr.createdTasks {
+		idx := len(mr.allTasks) + i
+		prefix := "  "
+		if idx == mr.taskCursor {
+			prefix = cursorStyle.Render("> ")
+		}
+		checkbox := selectedStyle.Render("[+] ")
+		b.WriteString(prefix + checkbox + lipgloss.NewStyle().Foreground(green).Render(TruncateDisplay(t, w-14)) + "\n")
+	}
+
+	// Add mode
+	if mr.taskAddMode {
+		b.WriteString("\n")
+		promptStyle := lipgloss.NewStyle().Foreground(yellow).Bold(true)
+		b.WriteString("  " + promptStyle.Render("New task: ") + mr.newTaskInput + DimStyle.Render("_") + "\n")
 	}
 }
 
-func (mr MorningRoutine) viewBriefing(b *strings.Builder, w int) {
-	headStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	bodyStyle := lipgloss.NewStyle().Foreground(text)
+func (mr MorningRoutine) viewHabits(b *strings.Builder, _ int) {
+	questionStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+	selectedStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+	unselectedStyle := lipgloss.NewStyle().Foreground(overlay0)
+	cursorStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	streakStyle := lipgloss.NewStyle().Foreground(peach)
 
-	if mr.loading {
-		spinChars := []string{"\u25CB", "\u25D4", "\u25D1", "\u25D5", "\u25CF"}
-		spin := spinChars[mr.loadingTick%len(spinChars)]
-		elapsed := time.Since(mr.loadingStart).Truncate(time.Second)
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Render(spin+" DEEPCOVEN is analyzing your vault..."+fmt.Sprintf(" (%s)", elapsed)) + "\n")
+	b.WriteString("  " + questionStyle.Render("Which habits will you do today?") + "\n\n")
+
+	if len(mr.allHabits) == 0 {
+		b.WriteString("  " + DimStyle.Render("No habits tracked yet.") + "\n")
+		b.WriteString("  " + DimStyle.Render("Use the Habit Tracker to add habits.") + "\n")
 		return
 	}
 
-	for _, line := range strings.Split(mr.briefing, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			b.WriteString("\n")
-		} else if strings.HasPrefix(trimmed, "##") {
-			b.WriteString("  " + headStyle.Render(strings.TrimLeft(trimmed, "# ")) + "\n")
-		} else {
-			b.WriteString("  " + bodyStyle.Render(TruncateDisplay(trimmed, w-6)) + "\n")
+	for i, h := range mr.allHabits {
+		prefix := "  "
+		if i == mr.habitCursor {
+			prefix = cursorStyle.Render("> ")
 		}
+
+		checkbox := unselectedStyle.Render("[ ] ")
+		textStyle := unselectedStyle
+		if mr.habitSelected[i] {
+			checkbox = selectedStyle.Render("[x] ")
+			textStyle = lipgloss.NewStyle().Foreground(text)
+		}
+
+		streak := ""
+		if h.Streak > 0 {
+			streak = streakStyle.Render(fmt.Sprintf(" %dd streak", h.Streak))
+		}
+
+		b.WriteString(prefix + checkbox + textStyle.Render(h.Name) + streak + "\n")
 	}
 }
 
-func (mr MorningRoutine) viewPlan(b *strings.Builder, w int) {
-	headStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
-	bodyStyle := lipgloss.NewStyle().Foreground(text)
+func (mr MorningRoutine) viewThoughts(b *strings.Builder, _ int) {
+	questionStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+	inputStyle := lipgloss.NewStyle().Foreground(text)
 
-	if mr.loading {
-		spinChars := []string{"\u25CB", "\u25D4", "\u25D1", "\u25D5", "\u25CF"}
-		spin := spinChars[mr.loadingTick%len(spinChars)]
-		elapsed := time.Since(mr.loadingStart).Truncate(time.Second)
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Render(spin+" Planning your day..."+fmt.Sprintf(" (%s)", elapsed)) + "\n")
-		return
-	}
-
-	for _, line := range strings.Split(mr.planResult, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			b.WriteString("\n")
-		} else if strings.HasPrefix(trimmed, "##") || strings.HasPrefix(trimmed, "SCHEDULE") ||
-			strings.HasPrefix(trimmed, "TOP_GOAL") || strings.HasPrefix(trimmed, "FOCUS_ORDER") ||
-			strings.HasPrefix(trimmed, "ADVICE") {
-			b.WriteString("  " + headStyle.Render(trimmed) + "\n")
-		} else {
-			b.WriteString("  " + bodyStyle.Render(TruncateDisplay(trimmed, w-6)) + "\n")
-		}
-	}
+	b.WriteString("  " + questionStyle.Render("Any thoughts or intentions for today?") + "\n\n")
+	b.WriteString("  " + DimStyle.Render("(optional — a note to your future self)") + "\n\n")
+	b.WriteString("  " + inputStyle.Render(mr.thoughts) + DimStyle.Render("_") + "\n")
 }
 
-func (mr MorningRoutine) viewPriorities(b *strings.Builder, w int) {
-	headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	itemStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+func (mr MorningRoutine) viewSummary(b *strings.Builder, w int) {
+	titleStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
+	labelStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	itemStyle := lipgloss.NewStyle().Foreground(text)
+	verseStyle := lipgloss.NewStyle().Foreground(lavender).Italic(true)
 
-	b.WriteString("  " + headerStyle.Render("Today's Top Priorities") + "\n\n")
+	b.WriteString("  " + titleStyle.Render("Your Day at a Glance") + "\n\n")
 
-	for i, p := range mr.priorities {
-		b.WriteString(fmt.Sprintf("  %s %s\n",
-			itemStyle.Render(fmt.Sprintf("%d.", i+1)),
-			lipgloss.NewStyle().Foreground(text).Render(p)))
+	// Scripture
+	truncVerse := TruncateDisplay(mr.scripture.Text, w-10)
+	b.WriteString("  " + verseStyle.Render(truncVerse) + "\n")
+	b.WriteString("  " + DimStyle.Render("— "+mr.scripture.Source) + "\n\n")
+
+	// Goal
+	if mr.todayGoal != "" {
+		b.WriteString("  " + labelStyle.Render("Goal: ") + itemStyle.Render(mr.todayGoal) + "\n\n")
 	}
-	if len(mr.priorities) == 0 {
-		b.WriteString("  " + DimStyle.Render("No priorities extracted from plan") + "\n")
+
+	// Tasks
+	selectedTasks := mr.getSelectedTasks()
+	if len(selectedTasks) > 0 {
+		b.WriteString("  " + labelStyle.Render(fmt.Sprintf("Tasks (%d)", len(selectedTasks))) + "\n")
+		for _, t := range selectedTasks {
+			b.WriteString("  " + itemStyle.Render("  - "+TruncateDisplay(t, w-10)) + "\n")
+		}
+		b.WriteString("\n")
 	}
-	b.WriteString("\n  " + DimStyle.Render("Press Enter to finish your morning routine"))
+
+	// Habits
+	selectedHabits := mr.getSelectedHabits()
+	if len(selectedHabits) > 0 {
+		b.WriteString("  " + labelStyle.Render(fmt.Sprintf("Habits (%d)", len(selectedHabits))) + "\n")
+		for _, h := range selectedHabits {
+			b.WriteString("  " + itemStyle.Render("  - "+h) + "\n")
+		}
+		b.WriteString("\n")
+	}
+
+	// Calendar events
+	if len(mr.events) > 0 {
+		b.WriteString("  " + labelStyle.Render(fmt.Sprintf("Events (%d)", len(mr.events))) + "\n")
+		for _, e := range mr.events {
+			b.WriteString("  " + DimStyle.Render(fmt.Sprintf("  - %s (%s, %dmin)", e.Title, e.Time, e.Duration)) + "\n")
+		}
+		b.WriteString("\n")
+	}
+
+	// Thoughts
+	if mr.thoughts != "" {
+		b.WriteString("  " + labelStyle.Render("Thoughts") + "\n")
+		b.WriteString("  " + DimStyle.Render("  "+mr.thoughts) + "\n\n")
+	}
+
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(green).Render("Press Enter to save this plan to your daily note.") + "\n")
 }
 
 func (mr MorningRoutine) viewComplete(b *strings.Builder, _ int) {
 	successStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
-	b.WriteString("  " + successStyle.Render("Morning routine complete!") + "\n\n")
-	b.WriteString("  " + DimStyle.Render("You've reviewed your devotional, briefing, and plan.") + "\n")
-	b.WriteString("  " + DimStyle.Render("Go make today count.") + "\n")
+	b.WriteString("  " + successStyle.Render("Day planned!") + "\n\n")
+
+	selected := len(mr.getSelectedTasks())
+	habits := len(mr.getSelectedHabits())
+	b.WriteString("  " + DimStyle.Render(fmt.Sprintf("Saved to daily note: %d tasks, %d habits", selected, habits)) + "\n")
+	if mr.todayGoal != "" {
+		b.WriteString("  " + DimStyle.Render("Goal: "+mr.todayGoal) + "\n")
+	}
+	b.WriteString("\n  " + DimStyle.Render("Go make today count.") + "\n")
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// morningWordWrap splits text into lines that fit within maxWidth characters.
+func morningWordWrap(text string, maxWidth int) []string {
+	if maxWidth <= 0 {
+		return []string{text}
+	}
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return nil
+	}
+	var lines []string
+	current := words[0]
+	for _, w := range words[1:] {
+		if len(current)+1+len(w) > maxWidth {
+			lines = append(lines, current)
+			current = w
+		} else {
+			current += " " + w
+		}
+	}
+	lines = append(lines, current)
+	return lines
 }
