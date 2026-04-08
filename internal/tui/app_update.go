@@ -2814,6 +2814,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
+		case "ctrl+tab":
+			// Cycle to next tab
+			if m.tabBar != nil {
+				if path := m.tabBar.NextTab(); path != "" && path != m.activeNote {
+					m.loadNote(path)
+					m.setSidebarCursorToFile(path)
+				}
+			}
+			return m, nil
+
+		case "ctrl+shift+tab":
+			// Cycle to previous tab
+			if m.tabBar != nil {
+				if path := m.tabBar.PrevTab(); path != "" && path != m.activeNote {
+					m.loadNote(path)
+					m.setSidebarCursorToFile(path)
+				}
+			}
+			return m, nil
+
 		case "ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4", "ctrl+5",
 			"ctrl+6", "ctrl+7", "ctrl+8", "ctrl+9":
 			if m.tabBar != nil {
