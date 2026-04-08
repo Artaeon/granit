@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -441,6 +443,78 @@ func (ft *FileTree) setAllExpanded(expanded bool) {
 	}
 	walk(ft.root)
 	ft.root.Expanded = true // root always expanded
+}
+
+// explorerState is the JSON-serialisable representation of folder expansion.
+type explorerState struct {
+	CollapsedDirs []string `json:"collapsed_dirs"`
+}
+
+// SaveState persists the set of collapsed directories to .granit/explorer.json.
+func (ft *FileTree) SaveState(vaultPath string) {
+	if vaultPath == "" || ft.root == nil {
+		return
+	}
+	dir := filepath.Join(vaultPath, ".granit")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return
+	}
+	var collapsed []string
+	var walk func(node *TreeNode)
+	walk = func(node *TreeNode) {
+		if node.IsDir && !node.Expanded {
+			collapsed = append(collapsed, node.Path)
+		}
+		for _, c := range node.Children {
+			walk(c)
+		}
+	}
+	walk(ft.root)
+
+	raw, err := json.MarshalIndent(explorerState{CollapsedDirs: collapsed}, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(dir, "explorer.json"), raw, 0o600)
+}
+
+// LoadState restores collapsed directory state from .granit/explorer.json.
+// It must be called after SetFiles so the tree has been built.
+func (ft *FileTree) LoadState(vaultPath string) {
+	if vaultPath == "" || ft.root == nil {
+		return
+	}
+	fp := filepath.Join(vaultPath, ".granit", "explorer.json")
+	raw, err := os.ReadFile(fp)
+	if err != nil {
+		return
+	}
+	var state explorerState
+	if err := json.Unmarshal(raw, &state); err != nil {
+		_ = os.Remove(fp)
+		return
+	}
+	collapsed := make(map[string]bool, len(state.CollapsedDirs))
+	for _, d := range state.CollapsedDirs {
+		collapsed[d] = true
+	}
+	var apply func(node *TreeNode)
+	apply = func(node *TreeNode) {
+		if node.IsDir {
+			if collapsed[node.Path] {
+				node.Expanded = false
+			} else {
+				node.Expanded = true
+			}
+		}
+		for _, c := range node.Children {
+			apply(c)
+		}
+	}
+	ft.root.Expanded = true
+	apply(ft.root)
+	ft.rebuild()
+	ft.clampCursor()
 }
 
 // isDailyNote returns true when the file name matches YYYY-MM-DD.

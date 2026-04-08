@@ -1440,6 +1440,8 @@ func (m *Model) triggerExitSplash() tea.Cmd {
 	if m.tabBar != nil {
 		m.tabBar.SaveTabs(m.vault.Root)
 	}
+	// Save explorer (folder collapse) state for session persistence
+	m.sidebar.SaveExplorerState(m.vault.Root)
 	// Save scroll positions for session persistence
 	m.saveScrollCache(m.vault.Root)
 	// Auto-commit on exit if git sync is enabled

@@ -67,6 +67,16 @@ func (s *Sidebar) SetFiles(files []string) {
 	s.fileTree.SetFiles(files)
 }
 
+// SaveExplorerState persists folder expansion state to disk.
+func (s *Sidebar) SaveExplorerState(vaultPath string) {
+	s.fileTree.SaveState(vaultPath)
+}
+
+// LoadExplorerState restores folder expansion state from disk.
+func (s *Sidebar) LoadExplorerState(vaultPath string) {
+	s.fileTree.LoadState(vaultPath)
+}
+
 func (s *Sidebar) applyFilter() {
 	if s.search == "" {
 		if s.showHidden {

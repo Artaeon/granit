@@ -490,6 +490,9 @@ func NewModel(vaultPath string) (Model, error) {
 	// Restore scroll position cache from previous session
 	m.scrollCache = loadScrollCache(vaultPath)
 
+	// Restore persisted explorer (folder collapse) state
+	m.sidebar.LoadExplorerState(vaultPath)
+
 	// Restore persisted tabs from previous session
 	if m.tabBar != nil {
 		validPaths := make(map[string]bool, len(paths))
