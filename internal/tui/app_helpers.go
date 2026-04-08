@@ -1485,9 +1485,9 @@ func (m *Model) triggerExitSplash() tea.Cmd {
 				default:
 					msg = "vault: update " + file
 				}
-				gitIn("commit", "-m", msg)
+				_, _ = gitIn("commit", "-m", msg)
 			}
-			gitIn("push", "--quiet")
+			_, _ = gitIn("push", "--quiet")
 		}
 	}
 	// Unload Ollama model to free resources
