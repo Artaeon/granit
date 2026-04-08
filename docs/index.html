@@ -536,6 +536,97 @@
       background: var(--accent); border-radius: 2px; margin-bottom: 1rem;
     }
 
+    /* ── FAQ ── */
+    .faq-list { max-width: 720px; }
+    .faq-item {
+      border-bottom: 1px solid var(--border);
+    }
+    .faq-item:last-child { border-bottom: none; }
+    .faq-q {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.25rem 0; cursor: pointer; gap: 1rem;
+      font-size: 1rem; font-weight: 600; color: var(--text);
+      background: none; border: none; width: 100%; text-align: left;
+      font-family: var(--sans); transition: color 0.2s;
+    }
+    .faq-q:hover { color: var(--accent); }
+    .faq-arrow {
+      font-size: 0.8rem; color: var(--text-muted);
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      flex-shrink: 0;
+    }
+    .faq-item.open .faq-arrow { transform: rotate(180deg); }
+    .faq-a {
+      max-height: 0; overflow: hidden;
+      transition: max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1), padding 0.3s;
+      padding: 0 0;
+    }
+    .faq-item.open .faq-a {
+      max-height: 300px; padding: 0 0 1.25rem 0;
+    }
+    .faq-a p {
+      color: var(--text-secondary); font-size: 0.9rem; line-height: 1.7;
+    }
+
+    /* ── Cost Banner ── */
+    .cost-banner {
+      background: linear-gradient(135deg, rgba(180,142,173,0.08), rgba(122,162,247,0.08));
+      border: 1px solid rgba(180,142,173,0.15);
+      border-radius: var(--radius); padding: 2.5rem;
+      text-align: center; max-width: 700px; margin: 0 auto;
+    }
+    .cost-banner h3 {
+      font-size: 1.3rem; font-weight: 700; margin-bottom: 0.5rem;
+    }
+    .cost-banner .cost-compare {
+      display: flex; justify-content: center; align-items: baseline;
+      gap: 1.5rem; margin: 1.5rem 0; flex-wrap: wrap;
+    }
+    .cost-old {
+      font-family: var(--mono); font-size: 2rem; font-weight: 700;
+      color: var(--red); text-decoration: line-through;
+      text-decoration-thickness: 3px;
+    }
+    .cost-arrow { font-size: 1.5rem; color: var(--text-muted); }
+    .cost-new {
+      font-family: var(--mono); font-size: 2.5rem; font-weight: 800;
+      background: linear-gradient(135deg, var(--green), var(--teal));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .cost-detail {
+      color: var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;
+    }
+
+    /* ── Open Source ── */
+    .oss-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+      text-align: center;
+    }
+    .oss-item h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.4rem; }
+    .oss-item p { color: var(--text-secondary); font-size: 0.85rem; line-height: 1.6; }
+    .oss-icon {
+      font-size: 2rem; display: block; margin-bottom: 0.75rem;
+    }
+
+    /* ── Typing animation ── */
+    .typing-cursor {
+      display: inline-block; width: 8px; height: 1.1em;
+      background: var(--accent); margin-left: 2px;
+      animation: blink 1s step-end infinite; vertical-align: text-bottom;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    /* ── Mid CTA ── */
+    .mid-cta {
+      text-align: center; padding: 3rem 0;
+    }
+    .mid-cta p {
+      color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 1.25rem;
+    }
+
     /* ── Footer ── */
     footer {
       border-top: 1px solid var(--border); padding: 3rem 2rem;
@@ -563,6 +654,7 @@
       .docs-grid { grid-template-columns: repeat(2, 1fr); }
       .personas-grid { grid-template-columns: 1fr; }
       .philosophy-grid { grid-template-columns: 1fr; }
+      .oss-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 600px) {
       section { padding: 4rem 1.25rem; }
@@ -628,10 +720,7 @@
           <div class="code-dots"><span style="background:#f7768e"></span><span style="background:#e0af68"></span><span style="background:#9ece6a"></span></div>
           <span class="code-lang">~</span>
         </div>
-        <div class="code-body"><span class="cmd">$</span> <span class="arg">go install</span> github.com/artaeon/granit/cmd/granit@latest
-<span class="cmd">$</span> <span class="arg">granit</span> ~/notes
-<span style="color:var(--green)">Loaded 247 notes in 12ms</span>
-<span style="color:var(--text-muted)"># Alt+M morning routine  |  Ctrl+K tasks  |  Ctrl+R AI bots</span></div>
+        <div class="code-body" id="hero-terminal"></div>
       </div>
     </div>
 
@@ -811,6 +900,22 @@
 
   <div class="divider"></div>
 
+  <!-- Cost Banner -->
+  <section style="padding: 5rem 2rem;">
+    <div class="cost-banner reveal">
+      <h3>Stop paying for five different apps.</h3>
+      <p style="color:var(--text-secondary); font-size:0.95rem;">Obsidian Sync + AI + Todoist + Notion + Habitica</p>
+      <div class="cost-compare">
+        <span class="cost-old">$50/mo</span>
+        <span class="cost-arrow">&rarr;</span>
+        <span class="cost-new">$0/mo</span>
+      </div>
+      <p class="cost-detail">Granit replaces them all. Free forever. MIT license. No account required.</p>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
   <!-- Use Cases -->
   <section id="use-cases">
     <p class="section-label reveal">Who is it for?</p>
@@ -873,6 +978,16 @@
         <div class="timeline-title">Reflect and prepare for tomorrow</div>
         <div class="timeline-desc">Press <span class="timeline-kbd">Alt+E</span> for the evening review. See what you accomplished, audit overdue tasks, plan tomorrow. Then <code>granit sync</code> commits and pushes everything.</div>
       </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Mid CTA -->
+  <section style="padding: 4rem 2rem;">
+    <div class="mid-cta reveal">
+      <p>Ready to replace your entire productivity stack with one binary?</p>
+      <a href="#installation" class="btn btn-primary">Install Granit</a>
     </div>
   </section>
 
@@ -1042,6 +1157,92 @@
     </div>
   </section>
 
+  <!-- FAQ -->
+  <section id="faq">
+    <p class="section-label reveal">FAQ</p>
+    <h2 class="section-title reveal">Common questions.</h2>
+    <p class="section-sub reveal">Everything you need to know before getting started.</p>
+    <div class="faq-list reveal">
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.parentElement.classList.toggle('open')">
+          Can I use my existing Obsidian vault?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-a"><p>Yes. Point Granit at your Obsidian vault directory and everything works: [[wikilinks]], backlinks, YAML frontmatter, tags, daily notes, and canvas files. You don't need to migrate, convert, or change anything. Both apps can use the same vault simultaneously.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.parentElement.classList.toggle('open')">
+          Does Granit need an internet connection?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-a"><p>No. Granit works fully offline. AI features run locally via Ollama. Cloud providers (OpenAI, Claude) are optional. Sync only connects when you explicitly run it.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.parentElement.classList.toggle('open')">
+          How does Granit compare to Neovim with plugins?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-a"><p>Granit gives you a fully integrated system out of the box -- no plugin hunting, no configuration, no breaking updates. Tasks, calendar, goals, habits, AI, and daily routines all work together. Think of it as Neovim's editing DNA combined with Notion's feature set, in a single binary.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.parentElement.classList.toggle('open')">
+          What AI models work best?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-a"><p>Any Ollama-compatible model works. We recommend qwen2.5:0.5b for fast, lightweight AI on CPU. Larger models (llama3.1:8b, mistral:7b) improve writing and planning quality. OpenAI models (GPT-4o-mini) also work. The Deep Dive Research Agent uses Claude Code.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.parentElement.classList.toggle('open')">
+          How do I sync between devices?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-a"><p>Three options: (1) <code>granit sync</code> uses git &mdash; pull, commit, push in one command. (2) Nextcloud WebDAV sync is built-in. (3) Any folder sync (Dropbox, Syncthing, rsync) works since notes are plain files.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.parentElement.classList.toggle('open')">
+          Is there a mobile version?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-a"><p>Not yet, but it's on the roadmap. In the meantime, you can access your notes on mobile through any Markdown editor that supports your sync method (git, Nextcloud, Dropbox). Obsidian Mobile works perfectly since Granit vaults are fully Obsidian compatible.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.parentElement.classList.toggle('open')">
+          What terminals work best?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-a"><p>Any terminal with 256-color support. Recommended: Alacritty, Kitty, Ghostty, WezTerm, or iTerm2. Works well in tmux and screen. Nerd Font icons are supported but optional.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Open Source -->
+  <section>
+    <p class="section-label reveal">Open Source</p>
+    <h2 class="section-title reveal">Built in the open.</h2>
+    <p class="section-sub reveal">Granit is MIT-licensed. Every line of code is public. Contributions welcome.</p>
+    <div class="oss-grid reveal">
+      <div class="oss-item">
+        <span class="oss-icon">&#x1F4DC;</span>
+        <h3>MIT License</h3>
+        <p>Use Granit for anything -- personal, commercial, educational. Fork it. Modify it. Distribute it. No restrictions.</p>
+      </div>
+      <div class="oss-item">
+        <span class="oss-icon">&#x1F91D;</span>
+        <h3>Contributions Welcome</h3>
+        <p>Add themes, AI bots, plugins, or documentation. Every PR makes Granit better for everyone. New contributors start with good-first-issue tags.</p>
+      </div>
+      <div class="oss-item">
+        <span class="oss-icon">&#x1F30D;</span>
+        <h3>No Vendor Lock-in</h3>
+        <p>Plain Markdown files. Standard git sync. If you ever leave, your data comes with you. No export needed. No proprietary format. No account to delete.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
   <!-- CTA Banner -->
   <section style="text-align:center; padding: 6rem 2rem;">
     <div class="reveal" style="max-width:640px; margin:0 auto; padding:3rem; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); position:relative; overflow:hidden;">
@@ -1097,6 +1298,103 @@
         document.body.style.overflow = '';
       });
     });
+
+    // Animated typing effect for hero terminal
+    (function() {
+      const el = document.getElementById('hero-terminal');
+      if (!el) return;
+      const lines = [
+        { text: '$ go install github.com/artaeon/granit/cmd/granit@latest', delay: 25, pause: 600 },
+        { text: '$ granit ~/notes', delay: 40, pause: 400 },
+        { text: '\x1b[green]Loaded 247 notes in 12ms\x1b[/green]', delay: 8, pause: 300 },
+        { text: '', delay: 0, pause: 200 },
+        { text: '\x1b[muted]# Alt+M morning routine  |  Ctrl+K tasks  |  Ctrl+R AI bots\x1b[/muted]', delay: 5, pause: 0 }
+      ];
+
+      function colorize(text) {
+        return text
+          .replace(/\x1b\[green\](.*?)\x1b\[\/green\]/g, '<span style="color:var(--green)">$1</span>')
+          .replace(/\x1b\[muted\](.*?)\x1b\[\/muted\]/g, '<span style="color:var(--text-muted)">$1</span>')
+          .replace(/^\$ (\S+)/, '<span class="cmd">$</span> <span class="arg">$1</span>');
+      }
+
+      let lineIdx = 0, charIdx = 0, output = '';
+      const cursor = '<span class="typing-cursor"></span>';
+
+      function type() {
+        if (lineIdx >= lines.length) {
+          el.innerHTML = output;
+          return;
+        }
+        const line = lines[lineIdx];
+        const raw = line.text.replace(/\x1b\[\/?[a-z]+\]/g, '');
+
+        if (charIdx <= raw.length) {
+          // Build partial line showing raw chars typed so far
+          let partial = '';
+          let rawI = 0, fullI = 0;
+          const full = line.text;
+          while (rawI < charIdx && fullI < full.length) {
+            if (full[fullI] === '\x1b') {
+              // skip escape sequence in counting
+              const end = full.indexOf(']', fullI);
+              fullI = end + 1;
+              continue;
+            }
+            rawI++;
+            fullI++;
+          }
+          partial = colorize(full.substring(0, fullI));
+          el.innerHTML = output + partial + cursor;
+          charIdx++;
+          setTimeout(type, line.delay);
+        } else {
+          output += colorize(line.text) + '\n';
+          lineIdx++;
+          charIdx = 0;
+          setTimeout(type, line.pause);
+        }
+      }
+
+      // Start typing when hero is visible
+      const heroObs = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          heroObs.disconnect();
+          setTimeout(type, 800);
+        }
+      }, { threshold: 0.3 });
+      heroObs.observe(el.closest('.hero') || el);
+    })();
+
+    // Animated stat counters
+    (function() {
+      const counters = document.querySelectorAll('.stat-number');
+      const counterObs = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          const el = entry.target;
+          if (el.dataset.animated) return;
+          el.dataset.animated = 'true';
+          const text = el.textContent;
+          const match = text.match(/^([\d,]+)/);
+          if (!match) return;
+          const target = parseInt(match[1].replace(/,/g, ''));
+          const suffix = text.replace(/^[\d,]+/, '');
+          const duration = 1500;
+          const start = performance.now();
+          function animate(now) {
+            const elapsed = now - start;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            const current = Math.round(target * eased);
+            el.textContent = current.toLocaleString() + suffix;
+            if (progress < 1) requestAnimationFrame(animate);
+          }
+          requestAnimationFrame(animate);
+        });
+      }, { threshold: 0.5 });
+      counters.forEach(c => counterObs.observe(c));
+    })();
   </script>
 </body>
 </html>
