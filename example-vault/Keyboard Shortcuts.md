@@ -34,7 +34,7 @@ created: 2024-01-01
 
 ## Quick Access
 - `Ctrl+P` — Quick open (fuzzy file search)
-- `Ctrl+X` — Command palette (145+ commands)
+- `Ctrl+X` — Command palette (168 commands)
 - `Ctrl+J` — Quick switch between recent files
 - `Ctrl+N` — New note with template picker
 

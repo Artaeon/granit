@@ -48,7 +48,7 @@
 | `Ctrl+S` | Save current note |
 | `Ctrl+V` | Paste from system clipboard |
 | `F4` | Rename current note |
-| `Ctrl+X` | Open command palette (145+ commands, 11 categories) |
+| `Ctrl+X` | Open command palette (168 commands, 11 categories) |
 | `Ctrl+Q` | Quit Granit |
 | `Ctrl+C` | Quit Granit |
 
@@ -348,7 +348,7 @@ Enter Command mode by pressing `:` in Normal mode. Type a command and press `Ent
 
 ### AI Bots (`Ctrl+R`)
 
-19 AI bots organized into 6 categories (Summarize, Writing, Analysis, Organize, Learning, Vault).
+23 AI bots organized into 6 categories (Summarize, Writing, Analysis, Organize, Learning, Vault).
 
 **Bot list:**
 
