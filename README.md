@@ -140,14 +140,21 @@ Granit is MIT-licensed and free forever. Sync through a shared git repo or Nextc
 
 ### Editor
 
+Granit's editor isn't a glorified textarea -- it's a real code-grade text editor built for Markdown.
+
 - Syntax-highlighted Markdown with Chroma (200+ languages in fenced code blocks)
 - Full Vim modal editing -- Normal, Insert, Visual, Command modes with macros, marks, registers, and dot repeat
-- Multi-cursor editing (`Ctrl+D`), heading folding, split pane view, visual table editor
+- Multi-cursor editing (`Ctrl+D` to select next occurrence, `Ctrl+Shift+Up/Down` to add cursors)
+- Heading folding, split pane view, visual table editor
 - Ghost Writer -- inline AI writing suggestions (Tab to accept) with 32-entry completion cache
 - **Reading mode** (`Ctrl+E`) -- distraction-free rendered view with reading-width column, progress bar, and smooth scrolling
-- Find and replace (in-file and global), 18 built-in snippets, `[[` autocomplete, smart bracket auto-close
+- Find and replace (in-file and global with regex), 18 built-in snippets, smart bracket auto-close
+- `[[` wikilink autocomplete with fuzzy matching across all vault files
 - Mermaid diagram rendering, footnotes, callout blocks, transclusion, and smart indentation
-- Spell checking (aspell), clipboard manager, and undo/redo with unlimited history
+- Spell checking (aspell), clipboard manager with history, and unlimited undo/redo
+- Word count, reading time, and writing statistics in the status bar
+
+> **Vim Mode:** If you're a Vim user, Granit feels like home. Normal, Insert, Visual, and Command modes. Text objects (`diw`, `ci"`, `da(`), macros (`q` to record, `@` to play), marks (`m` + letter), search highlighting with `n`/`N`, dot repeat, `:%s` substitution, and more. Toggle with `Ctrl+,` > Vim Mode or the command palette.
 
 ### Calendar
 
@@ -164,13 +171,31 @@ Granit is MIT-licensed and free forever. Sync through a shared git repo or Nextc
 
 ### Tasks
 
-- Task Manager (`Ctrl+K`) -- 7 views: Today, Upcoming, All, Done, Calendar, Kanban, Eisenhower Matrix
+Tasks live inside your notes as Markdown checkboxes. Granit finds them all and gives you powerful views to organize them.
+
+- Task Manager (`Ctrl+K`) -- 7 views:
+
+  | View | What it shows |
+  |------|--------------|
+  | **Today** | Due today + overdue, sorted by priority |
+  | **Upcoming** | Next 7 days grouped by date |
+  | **All** | Every task with filters and sort |
+  | **Done** | Completed tasks with completion dates |
+  | **Calendar** | Tasks on a date grid |
+  | **Kanban** | Drag between columns by status |
+  | **Eisenhower** | 2x2 urgent/important matrix |
+
 - 5 priority levels, due dates, time estimates (`~30m`), subtask hierarchy, dependencies
 - Reschedule, batch reschedule, snooze, pin, undo (10-deep stack), task templates
-- Bulk operations, tag/priority filters, focus session launcher, recurring tasks with auto-creation
-- Natural language dates (`@next week`, `@friday`), quick-add syntax (`!high #tag ~1h`)
-- Task triage with AI-powered priority suggestions
-- CLI: `granit todo "Ship v2.0" --due friday --priority high --tag release`
+- Bulk operations, tag/priority filters, focus session launcher
+- Recurring tasks with auto-creation on completion
+- Natural language dates (`@next week`, `@friday`, `@in 3 days`), quick-add syntax (`!high #tag ~1h`)
+- **AI task triage** -- suggest priorities based on deadlines, dependencies, and workload
+- CLI quick capture:
+  ```bash
+  granit todo "Ship v2.0" --due friday --priority high --tag release
+  granit todo "Buy groceries" --due today --tag personal
+  ```
 
 ### Goals and Projects
 
@@ -183,25 +208,45 @@ Granit is MIT-licensed and free forever. Sync through a shared git repo or Nextc
 
 ### Knowledge Management
 
+Your notes are not just files -- they're a connected knowledge graph.
+
 - `[[Wikilinks]]` with real-time autocomplete, backlinks panel, and interactive note graph (`Ctrl+G`)
-- Tag browser, note outline, bookmarks, reading list with progress tracking
-- Semantic search (AI embeddings), dataview queries, mind map view
-- Canvas/whiteboard with nodes, connections, and spatial layout
-- Zettelkasten ID generator, note versioning with git diffs
-- Smart connections (AI-powered related notes), knowledge gaps analysis
-- Thread Weaver for connecting disparate notes into narratives
-- Auto-linker suggests `[[links]]` you might have missed
+- **Tag browser** (`Ctrl+T`) -- browse all tags with note counts, drill into tagged notes
+- **Note outline** (`Ctrl+O`) -- jump to any heading in the current note
+- **Bookmarks** (`Ctrl+B`) -- starred notes and recently opened, with quick navigation
+- **Reading list** -- track books, papers, and articles with progress bars and notes
+- Semantic search with AI embeddings -- find notes by meaning, not just keywords
+- **Dataview queries** -- filter and display notes based on frontmatter metadata
+- Canvas/whiteboard with nodes, connections, and spatial layout for visual thinking
+- Zettelkasten ID generator for structured note-taking workflows
+- Note versioning with git diffs -- see how any note changed over time
+- **Smart connections** -- AI finds related notes you didn't explicitly link
+- **Knowledge gaps analysis** -- AI identifies topics you've referenced but never written about
+- **Thread Weaver** -- connects disparate notes into coherent narratives
+- **Auto-linker** -- suggests `[[links]]` you might have missed based on content analysis
 
 ### AI Integration
 
-- **23 AI Bots** (`Ctrl+R`) in 6 categories -- all optimized for small local models (0.5B-3B parameters)
-- **Deep Dive Research Agent** -- runs Claude Code in the background to research topics and create structured notes in your vault
-- Plan My Day, AI Scheduler, Smart Task Triage, Writing Coach, Daily/Weekly Review
-- Ghost Writer with 32-entry completion cache for inline suggestions
-- Auto-tagger, auto-linker, summarizer, flashcard generator, tone adjuster, action item extractor, key terms, pros/cons, expand, TLDR, counter-argument, and more
-- Providers: **Ollama** (local, default), **OpenAI**, **Nous**, or offline fallback
-- **Ollama management** -- install, start/stop, and pull models directly from settings
-- Production reliability: auto-retry, HTTP cancellation, timeout handling, token-budget checks
+Granit treats AI as a built-in utility, not a paid add-on. Every bot is optimized for small models that run on CPU.
+
+- **23 AI Bots** (`Ctrl+R`) in 6 categories:
+
+  | Category | Bots |
+  |----------|------|
+  | **Writing** | Summarizer, tone adjuster, writing coach, ghost writer, expand, TLDR |
+  | **Organization** | Auto-tagger, auto-linker, flashcard generator, action items, outliner, MOC generator |
+  | **Research** | Deep dive agent, note enhancer, vault analyzer, daily digest, key terms |
+  | **Planning** | Plan my day, task triage, AI scheduler, goal coach, standup generator |
+  | **Analysis** | Smart connections, knowledge gaps, project insights, counter-argument, pros/cons |
+  | **Learning** | Explain simply, question generator, flashcards, key concepts |
+
+- **Deep Dive Research Agent** -- runs Claude Code in the background to research topics and create structured notes in your vault. Status indicator in the status bar. ESC to minimize, Ctrl+C to cancel.
+- **Ghost Writer** -- inline AI suggestions as you type, Tab to accept. 32-entry completion cache ensures fast suggestions even with slow models.
+- Providers: **Ollama** (local, default), **OpenAI**, **Nous**, or offline fallback with graceful degradation
+- **Ollama management** -- install, start/stop, and pull models directly from Granit's settings panel
+- Production reliability: auto-retry with exponential backoff, HTTP cancellation, timeout handling, token-budget checks, and per-bot system prompts with small-model variants
+
+> **Privacy first:** When using Ollama, your notes never leave your machine. All AI processing happens locally. The 0.5B parameter `qwen2.5:0.5b` model runs on any CPU and handles auto-tagging, summarization, and flashcard generation well. Upgrade to 3B-7B for better writing and planning quality.
 
 ### Habits and Daily Routines
 
@@ -233,12 +278,40 @@ Granit is MIT-licensed and free forever. Sync through a shared git repo or Nextc
 
 ### Customization
 
-- **40 themes** including accessibility themes (high-contrast, deuteranopia, protanopia, tritanopia)
-- Live theme editor with 16 color roles and custom theme JSON export
-- **17 layouts** -- default, writer, minimal, reading, dashboard, zen, taskboard, research, calendar, cornell, focus, cockpit, stacked, preview, presenter, kanban, widescreen
-- 4 icon themes (unicode, nerd font, emoji, ASCII), 16 core plugins
-- Language-agnostic plugin system with Lua scripting API
+Granit is deeply configurable. Every visual element can be changed without touching code.
+
+- **40 themes** including 5 accessibility themes (high-contrast, deuteranopia, protanopia, tritanopia, monochrome)
+  - Popular themes: Catppuccin Mocha/Latte/Frappe/Macchiato, Tokyo Night, Gruvbox, Nord, Dracula, Rosepine, Solarized, One Dark, Kanagawa, Everforest, and more
+- **Live theme editor** -- customize all 16 color roles in real-time and export as custom JSON
+- **17 layouts** with instant switching (`Alt+L`):
+
+  | Layout | Best for |
+  |--------|----------|
+  | Default | General note-taking with sidebar + editor + backlinks |
+  | Writer | Centered editor with generous margins |
+  | Zen | Distraction-free, no panels |
+  | Dashboard | Sidebar + editor + calendar panel |
+  | Cockpit | Compact layout with status tray |
+  | Kanban | Task manager focused with board view |
+  | Cornell | Cornell note-taking method layout |
+  | Widescreen | Optimized for ultra-wide monitors |
+  | + 9 more | Reading, focus, preview, presenter, research, etc. |
+
+- 4 icon themes: unicode (default), nerd font, emoji, ASCII
+- 16 core plugins with Lua scripting API for custom workflows
 - Command palette (`Ctrl+X`) with 168 commands across 11 categories
+- Per-vault configuration overrides -- different themes and settings per vault
+
+### Testing & Reliability
+
+Granit is one of the most thoroughly tested TUI applications in the Go ecosystem.
+
+- **2,072 test cases** covering editor operations, task parsing, calendar logic, AI integration, configuration, vault scanning, and more
+- Tests run on every commit with `go test ./...`
+- Edge case coverage: Unicode handling, large file performance, concurrent vault access, malformed Markdown, empty vaults
+- AI bots include fallback paths for offline/error scenarios -- Granit never crashes because an AI request failed
+- Configuration migration handles schema changes across versions
+- File watcher detects external changes (edits from other apps) and reloads gracefully
 
 ---
 
