@@ -288,12 +288,15 @@ When launching `granit` without arguments, a full-screen vault selector shows re
 - **Access:** Run `granit` with no arguments
 - **Example:** See "Personal Notes (last: 2026-03-07)" and "Work Wiki (last: 2026-03-05)" — select one with Enter.
 
-### File Tree Sidebar
+### File Tree Explorer
 
-A hierarchical file browser with folder expand/collapse, file type icons, and fuzzy search filtering. Type to search across all filenames.
+A hierarchical file browser with folder expand/collapse, file type icons, and fuzzy search filtering. Folder collapse state persists across sessions.
 
-- **Access:** `F1` to focus; type to filter; `Enter` to open; arrow keys to navigate
-- **Example:** Type "meet" to filter the sidebar to only show files matching "meet".
+- **Access:** `F1` to focus; `j`/`k` to navigate; `Enter`/`Space` to open file or toggle folder; `Left`/`Right` to collapse/expand
+- **Folder operations:** `z` collapse all, `Z` expand all
+- **Search:** Press `/` to enter search mode; fuzzy-matches across all filenames
+- **Tab switching:** `Ctrl+Tab` / `Ctrl+Shift+Tab` to cycle between open tabs
+- **Example:** Press `z` to collapse all folders, then expand only the ones you need. State is saved automatically.
 
 ### Fuzzy Search
 
