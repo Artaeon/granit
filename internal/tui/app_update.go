@@ -2985,8 +2985,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if selected != "" {
 					m.loadNote(selected)
 					m.setFocus(focusEditor)
+					return m, nil
 				}
-				return m, nil
+				// No file selected (directory node) — fall through so the
+				// sidebar/filetree can handle enter to toggle expand/collapse.
 			}
 			if m.focus == focusBacklinks {
 				selected := m.backlinks.Selected()
