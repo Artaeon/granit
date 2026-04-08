@@ -38,6 +38,12 @@ type GitOverlay struct {
 	commitMode  bool
 	errorMsg    string
 	vaultRoot   string
+
+	// User identity configuration mode
+	userMode      bool // editing user.name / user.email
+	userField     int  // 0=name, 1=email
+	userName      string
+	userEmail     string
 }
 
 func NewGitOverlay() GitOverlay {
@@ -56,7 +62,15 @@ func (g *GitOverlay) Open(vaultRoot string) tea.Cmd {
 	g.scroll = 0
 	g.commitMode = false
 	g.commitMsg = ""
+	g.userMode = false
 	g.errorMsg = ""
+	// Load current git user identity from repo config
+	if name, err := runGitCmd(vaultRoot, "config", "user.name"); err == nil {
+		g.userName = strings.TrimSpace(name)
+	}
+	if email, err := runGitCmd(vaultRoot, "config", "user.email"); err == nil {
+		g.userEmail = strings.TrimSpace(email)
+	}
 	return g.RefreshAll()
 }
 
@@ -113,6 +127,9 @@ func (g GitOverlay) Update(msg tea.Msg) (GitOverlay, tea.Cmd) {
 		return g.handleCmdResult(msg)
 
 	case tea.KeyMsg:
+		if g.userMode {
+			return g.updateUserMode(msg)
+		}
 		if g.commitMode {
 			return g.updateCommitMode(msg)
 		}
@@ -291,8 +308,75 @@ func (g GitOverlay) updateNormal(msg tea.KeyMsg) (GitOverlay, tea.Cmd) {
 	case "r":
 		// Manual refresh
 		return g, g.RefreshAll()
+	case "u":
+		// Enter user identity config mode
+		g.userMode = true
+		g.userField = 0
+		g.errorMsg = ""
+		return g, nil
 	}
 	return g, nil
+}
+
+func (g GitOverlay) updateUserMode(msg tea.KeyMsg) (GitOverlay, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		g.userMode = false
+		return g, nil
+	case "tab":
+		g.userField = (g.userField + 1) % 2
+		return g, nil
+	case "shift+tab":
+		g.userField = (g.userField + 1) % 2
+		return g, nil
+	case "enter":
+		// Save user identity to local git config
+		dir := g.vaultRoot
+		name := g.userName
+		email := g.userEmail
+		g.userMode = false
+		return g, func() tea.Msg {
+			var errParts []string
+			if name != "" {
+				if _, err := runGitCmd(dir, "config", "user.name", name); err != nil {
+					errParts = append(errParts, "name: "+err.Error())
+				}
+			}
+			if email != "" {
+				if _, err := runGitCmd(dir, "config", "user.email", email); err != nil {
+					errParts = append(errParts, "email: "+err.Error())
+				}
+			}
+			if len(errParts) > 0 {
+				return gitCmdResultMsg{action: "status", err: fmt.Errorf("config: %s", strings.Join(errParts, "; "))}
+			}
+			return gitCmdResultMsg{action: "status", output: ""}
+		}
+	case "backspace":
+		if g.userField == 0 && len(g.userName) > 0 {
+			runes := []rune(g.userName)
+			g.userName = string(runes[:len(runes)-1])
+		} else if g.userField == 1 && len(g.userEmail) > 0 {
+			runes := []rune(g.userEmail)
+			g.userEmail = string(runes[:len(runes)-1])
+		}
+		return g, nil
+	default:
+		ch := msg.String()
+		runes := []rune(ch)
+		if len(runes) == 1 && runes[0] >= 32 {
+			if g.userField == 0 {
+				g.userName += ch
+			} else {
+				g.userEmail += ch
+			}
+		} else if ch == "space" {
+			if g.userField == 0 {
+				g.userName += " "
+			}
+		}
+		return g, nil
+	}
 }
 
 func (g GitOverlay) View() string {
@@ -388,6 +472,35 @@ func (g GitOverlay) View() string {
 		}
 	}
 
+	// User config mode
+	if g.userMode {
+		b.WriteString("\n")
+		labelStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+		activeStyle := lipgloss.NewStyle().Foreground(yellow).Bold(true)
+		valueStyle := lipgloss.NewStyle().Foreground(text)
+
+		nameLabel := labelStyle.Render("  Name:  ")
+		emailLabel := labelStyle.Render("  Email: ")
+		if g.userField == 0 {
+			nameLabel = activeStyle.Render("▸ Name:  ")
+		}
+		if g.userField == 1 {
+			emailLabel = activeStyle.Render("▸ Email: ")
+		}
+
+		nameCursor := ""
+		emailCursor := ""
+		if g.userField == 0 {
+			nameCursor = DimStyle.Render("_")
+		}
+		if g.userField == 1 {
+			emailCursor = DimStyle.Render("_")
+		}
+
+		b.WriteString(nameLabel + valueStyle.Render(g.userName) + nameCursor + "\n")
+		b.WriteString(emailLabel + valueStyle.Render(g.userEmail) + emailCursor + "\n")
+	}
+
 	// Commit mode input
 	if g.commitMode {
 		b.WriteString("\n")
@@ -396,14 +509,29 @@ func (g GitOverlay) View() string {
 		b.WriteString(g.commitMsg + DimStyle.Render("_"))
 	}
 
+	// User identity line (when not in user mode)
+	if !g.userMode && !g.commitMode && (g.userName != "" || g.userEmail != "") {
+		b.WriteString("\n")
+		id := "  " + DimStyle.Render("Author: ")
+		if g.userName != "" {
+			id += DimStyle.Render(g.userName)
+		}
+		if g.userEmail != "" {
+			id += DimStyle.Render(" <" + g.userEmail + ">")
+		}
+		b.WriteString(id)
+	}
+
 	// Footer
 	b.WriteString("\n\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("─", width-6)))
 	b.WriteString("\n")
-	if g.commitMode {
+	if g.userMode {
+		b.WriteString(DimStyle.Render("  Tab: switch field  Enter: save  Esc: cancel"))
+	} else if g.commitMode {
 		b.WriteString(DimStyle.Render("  Enter: commit  Esc: cancel"))
 	} else {
-		b.WriteString(DimStyle.Render("  1/2/3: views  tab: cycle  c: commit  p: push  P: pull  r: refresh  Esc: close"))
+		b.WriteString(DimStyle.Render("  1/2/3: views  tab: cycle  c: commit  u: author  p: push  P: pull  r: refresh  Esc: close"))
 	}
 
 	border := lipgloss.NewStyle().
