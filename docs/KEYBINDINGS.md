@@ -24,9 +24,12 @@
 |-----|--------|
 | `Tab` | Cycle focus to next panel (sidebar → editor → backlinks) |
 | `Shift+Tab` | Cycle focus to previous panel |
-| `F1` | Focus the file sidebar |
-| `F2` | Focus the editor |
-| `F3` | Focus the backlinks panel |
+| `F1` / `Alt+1` | Focus the file sidebar |
+| `F2` / `Alt+2` | Focus the editor |
+| `F3` / `Alt+3` | Focus the backlinks panel |
+| `Ctrl+Tab` | Switch to next open tab |
+| `Ctrl+Shift+Tab` | Switch to previous open tab |
+| `Ctrl+1-9` | Jump to tab by position |
 | `Alt+Left` | Navigate back in history (browser-style) |
 | `Alt+Right` | Navigate forward in history |
 | `Ctrl+/` | Search Everything (notes, tasks, goals, habits) |
@@ -249,15 +252,39 @@ Enter Command mode by pressing `:` in Normal mode. Type a command and press `Ent
 | `Esc` | Close palette |
 | `Backspace` | Delete last filter character |
 
-### Sidebar (Focused)
+### Explorer / Sidebar (Focused)
+
+**Tree Navigation:**
 
 | Key | Action |
 |-----|--------|
-| Type text | Fuzzy filter file list |
 | `Up` / `k` | Move cursor up |
 | `Down` / `j` | Move cursor down |
-| `Enter` | Open selected file or expand/collapse folder |
-| `Esc` | Clear search filter |
+| `Enter` / `Space` | Open file — or expand/collapse folder |
+| `Left` / `h` | Collapse folder or go to parent |
+| `Right` / `l` | Expand folder or enter directory |
+| `g` / `Home` | Jump to first item |
+| `G` / `End` | Jump to last item |
+| `PgUp` / `Ctrl+U` | Scroll half page up |
+| `PgDn` / `Ctrl+D` | Scroll half page down |
+
+**Folder Operations:**
+
+| Key | Action |
+|-----|--------|
+| `z` | Collapse all folders |
+| `Z` | Expand all folders |
+
+**Search:**
+
+| Key | Action |
+|-----|--------|
+| `/` | Enter search mode (fuzzy filter files) |
+| `Backspace` | Delete search character |
+| `Enter` | Exit search (keep filter) |
+| `Esc` | Clear search and return to tree |
+
+> Folder collapse state persists across sessions in `.granit/explorer.json`.
 
 ### Settings (`Ctrl+,`)
 
