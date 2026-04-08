@@ -319,7 +319,7 @@ var AllCommands = []Command{
 
 	// ── Daily & Calendar ──
 	{Label: "Dashboard", Desc: "Vault home screen with tasks, notes, stats, and streaks", Shortcut: "Alt+H", Action: CmdDashboard, Icon: &IconDailyChar, Category: CatDaily},
-	{Label: "Morning Routine", Desc: "Start your day — scripture, briefing, plan, top priorities", Shortcut: "Alt+M", Action: CmdMorningRoutine, Icon: &IconDailyChar, Category: CatDaily},
+	{Label: "Morning Routine", Desc: "Plan your day — scripture, goal, tasks, habits, and thoughts", Shortcut: "Alt+M", Action: CmdMorningRoutine, Icon: &IconDailyChar, Category: CatDaily},
 	{Label: "Daily Review", Desc: "End-of-day review: celebrate, reschedule, reflect", Shortcut: "Alt+E", Action: CmdDailyReview, Icon: &IconOutlineChar, Category: CatDaily},
 	{Label: "Daily Note", Desc: "Open or create today's daily note", Shortcut: "Alt+D", Action: CmdDailyNote, Icon: &IconDailyChar, Category: CatDaily},
 	{Label: "Previous Daily Note", Desc: "Navigate to the previous daily note", Shortcut: "Alt+[", Action: CmdPrevDailyNote, Icon: &IconDailyChar, Category: CatDaily},
