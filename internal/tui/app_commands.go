@@ -1548,39 +1548,6 @@ func (m *Model) gatherPlannerData() ([]PlannerTask, []PlannerEvent, []PlannerHab
 	return tasks, events, habits
 }
 
-// gatherSchedulerData collects tasks and events for the AI scheduler.
-func (m *Model) gatherSchedulerData() ([]SchedulerTask, []SchedulerEvent) {
-	plannerTasks, plannerEvents, _ := m.gatherPlannerData()
-
-	var tasks []SchedulerTask
-	for _, t := range plannerTasks {
-		if t.Done {
-			continue // skip completed tasks — nothing to schedule
-		}
-		tasks = append(tasks, SchedulerTask{
-			Text:     t.Text,
-			Priority: t.Priority,
-			DueDate:  t.DueDate,
-			Done:     false,
-		})
-	}
-
-	var events []SchedulerEvent
-	for _, e := range plannerEvents {
-		dur := e.Duration
-		if dur <= 0 {
-			dur = 60
-		}
-		events = append(events, SchedulerEvent{
-			Title:    e.Title,
-			Time:     e.Time,
-			Duration: dur,
-		})
-	}
-
-	return tasks, events
-}
-
 // gatherPlanMyDayData collects all data needed by the Plan My Day overlay.
 func (m *Model) gatherPlanMyDayData() ([]Task, []PlannerEvent, []habitEntry, []Project, []string) {
 	// Tasks: gather from the task manager's scanning logic

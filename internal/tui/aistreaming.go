@@ -294,18 +294,7 @@ func streamOpenAI(ctx context.Context, apiKey, model, systemPrompt, userPrompt, 
 	return ch
 }
 
-// sendToAIStreaming dispatches a streaming AI request to the configured provider.
-// It returns a channel of tea.Msg values. For providers that don't support
-// streaming (nous, nerve), it falls back to a single response sent as one
-// chunk followed by done.
-//
-// Callers that need to cancel mid-request should use sendToAIStreamingCtx.
-func sendToAIStreaming(ai AIConfig, systemPrompt, userPrompt, tag string) <-chan tea.Msg {
-	ch, _ := sendToAIStreamingCtx(context.Background(), ai, systemPrompt, userPrompt, tag)
-	return ch
-}
-
-// sendToAIStreamingCtx is like sendToAIStreaming but returns a cancel function
+// sendToAIStreamingCtx dispatches a streaming AI request and returns a cancel function
 // the caller can invoke to abort an in-flight request. For HTTP providers
 // (ollama, openai) this aborts the actual network request, freeing the local
 // model resources immediately.

@@ -359,13 +359,9 @@ func (c AIConfig) chatOllamaCtx(ctx context.Context, systemPrompt, userPrompt st
 	return chatResp.Message.Content, nil
 }
 
-// chatOllama sends a non-streaming chat request to Ollama's /api/chat endpoint.
-func (c AIConfig) chatOllama(systemPrompt, userPrompt string) (string, error) {
-	return c.chatOllamaWithOptions(systemPrompt, userPrompt, c.ollamaOptions())
-}
-
-// chatOllamaWithOptions is like chatOllama but uses caller-supplied options
-// (e.g. for short-form completions with a smaller num_predict).
+// chatOllamaWithOptions sends a non-streaming chat request to Ollama's
+// /api/chat endpoint using caller-supplied options (e.g. for short-form
+// completions with a smaller num_predict).
 func (c AIConfig) chatOllamaWithOptions(systemPrompt, userPrompt string, options map[string]interface{}) (string, error) {
 	url := c.OllamaEndpoint()
 	model := c.ModelOrDefault("qwen2.5:0.5b")

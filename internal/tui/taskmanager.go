@@ -220,8 +220,7 @@ type TaskManager struct {
 
 	// AI config
 	ai          AIConfig
-	aiPending   bool   // waiting for AI response
-	aiStatusMsg string // temporary AI status
+	aiPending bool // waiting for AI response
 }
 
 // NewTaskManager creates a new TaskManager overlay.

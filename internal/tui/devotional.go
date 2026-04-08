@@ -44,8 +44,6 @@ type Devotional struct {
 	vaultRoot  string
 	scripture  Scripture
 	goals      []Goal
-	todayFocus string
-
 	// State
 	loading     bool
 	loadingTick   int
