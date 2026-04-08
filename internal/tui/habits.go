@@ -1232,17 +1232,15 @@ func (ht HabitTracker) viewGoals(innerW int) string {
 		if ht.goalExpanded == gi {
 			for mi, ms := range g.Milestones {
 				check := lipgloss.NewStyle().Foreground(overlay1).Render("○")
-				msStyle := labelStyle
 				if ms.Done {
 					check = lipgloss.NewStyle().Foreground(green).Bold(true).Render("●")
-					msStyle = lipgloss.NewStyle().Foreground(surface1).Strikethrough(true)
 				}
 				treePrefix := lipgloss.NewStyle().Foreground(surface2).Render("    ├─")
 				if mi == len(g.Milestones)-1 {
 					treePrefix = lipgloss.NewStyle().Foreground(surface2).Render("    └─")
 				}
 				msCursor := "  "
-				msStyle = labelStyle
+				msStyle := labelStyle
 				if mi == ht.milestoneCur {
 					msCursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▶ ")
 					if ms.Done {
