@@ -871,11 +871,12 @@ func (s *Settings) applyEdit() {
 				n = n*10 + int(ch-'0')
 			}
 		}
-		if n > 0 {
+		if n >= 0 && s.editBuf != "" {
 			item.value = n
 			if item.key == "tab_size" {
 				s.config.Editor.TabSize = n
 			}
+			s.applyValue(item.key, n)
 		}
 	}
 }
