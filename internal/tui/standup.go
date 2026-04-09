@@ -322,6 +322,10 @@ func (s *StandupGenerator) generate() {
 
 // save writes the standup note to Standups/YYYY-MM-DD.md.
 func (s *StandupGenerator) save() {
+	if s.vaultRoot == "" {
+		s.statusMsg = "Error: no vault root set"
+		return
+	}
 	dir := filepath.Join(s.vaultRoot, "Standups")
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		_ = os.MkdirAll(dir, 0o755)
