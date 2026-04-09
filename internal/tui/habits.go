@@ -217,6 +217,9 @@ func (ht HabitTracker) habitsDir() string {
 
 // ensureDir creates the Habits directory if needed.
 func (ht HabitTracker) ensureDir() {
+	if ht.vaultRoot == "" {
+		return
+	}
 	dir := ht.habitsDir()
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		_ = os.MkdirAll(dir, 0o755)

@@ -1714,26 +1714,42 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 }
 
 // replaceDailySection replaces an existing markdown section (identified by its
-// ## heading) in content, or appends it if no such section exists. This
+// ## heading prefix) in content, or appends it if no such section exists. This
 // prevents duplicate sections when the user runs Plan My Day / Morning Routine
 // multiple times on the same daily note.
-// The heading is matched at a line boundary and must be followed by a newline
-// or EOF to avoid false positives (e.g. "## Daily Planning" matching "## Daily Plan").
+// The heading is matched as a line prefix at a line boundary. For example,
+// heading "## Daily Plan" matches "## Daily Plan — Monday, April 7, 2026"
+// but NOT "## Daily Planning" (requires the heading to be followed by a
+// newline, " ", or EOF — not a word character).
 func replaceDailySection(existing, newSection, heading string) string {
-	// Find heading at a line boundary: either at start of string or after \n
+	// Find heading at a line boundary: either at start of string or after \n.
+	// The heading can be followed by a newline, " — ...", or EOF.
 	idx := -1
-	for _, prefix := range []string{heading + "\n", heading + "\r\n"} {
-		if i := strings.Index(existing, prefix); i >= 0 && (i == 0 || existing[i-1] == '\n') {
-			idx = i
+	for i := 0; i < len(existing); {
+		pos := strings.Index(existing[i:], heading)
+		if pos < 0 {
 			break
 		}
-	}
-	// Also check if heading is at the very end of the file (no trailing newline)
-	if idx < 0 && strings.HasSuffix(existing, heading) {
-		i := len(existing) - len(heading)
-		if i == 0 || existing[i-1] == '\n' {
-			idx = i
+		pos += i // absolute position
+		// Must be at line boundary (start of string or after \n)
+		if pos > 0 && existing[pos-1] != '\n' {
+			i = pos + 1
+			continue
 		}
+		// After the heading, must be newline, " " (e.g. " — date"), "\r\n", or EOF
+		afterIdx := pos + len(heading)
+		if afterIdx >= len(existing) {
+			// Heading at EOF
+			idx = pos
+			break
+		}
+		ch := existing[afterIdx]
+		if ch == '\n' || ch == '\r' || ch == ' ' {
+			idx = pos
+			break
+		}
+		// Not a valid match (e.g. "## Daily Planning") — skip
+		i = pos + 1
 	}
 	if idx < 0 {
 		// Section doesn't exist yet — append

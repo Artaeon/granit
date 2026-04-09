@@ -297,6 +297,9 @@ func (c *ClockIn) loadClockData() clockInData {
 }
 
 func (c *ClockIn) saveClockData(data clockInData) {
+	if c.vaultPath == "" {
+		return
+	}
 	dir := filepath.Join(c.vaultPath, ".granit")
 	_ = os.MkdirAll(dir, 0755)
 	raw, _ := json.MarshalIndent(data, "", "  ")

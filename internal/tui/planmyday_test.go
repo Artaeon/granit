@@ -1173,6 +1173,47 @@ func TestReplaceDailySectionNoFalsePositive(t *testing.T) {
 	}
 }
 
+func TestReplaceDailySectionWithDateSuffix(t *testing.T) {
+	// Morning routine generates "## Daily Plan — Wednesday, April 9, 2026"
+	// but searches for "## Daily Plan". Must match the line with date suffix.
+	existing := "# 2026-04-09\n\n## Daily Plan — Wednesday, April 9, 2026\n\n### Tasks\n\n- [ ] Old task\n\n## Notes\n\nSome notes.\n"
+	section := "## Daily Plan — Wednesday, April 9, 2026\n\n### Tasks\n\n- [ ] New task\n"
+	result := replaceDailySection(existing, section, "## Daily Plan")
+
+	if strings.Count(result, "## Daily Plan") != 1 {
+		t.Errorf("expected exactly 1 Daily Plan section, got %d in:\n%s", strings.Count(result, "## Daily Plan"), result)
+	}
+	if !strings.Contains(result, "New task") {
+		t.Error("new task should be present")
+	}
+	if strings.Contains(result, "Old task") {
+		t.Error("old task should be replaced")
+	}
+	if !strings.Contains(result, "## Notes") {
+		t.Error("Notes section after Daily Plan should be preserved")
+	}
+	if !strings.Contains(result, "Some notes.") {
+		t.Error("Notes content should be preserved")
+	}
+}
+
+func TestReplaceDailySectionDateSuffixNoFalsePositive(t *testing.T) {
+	// "## Daily Planning Notes" should NOT be matched by "## Daily Plan"
+	existing := "# 2026-04-09\n\n## Daily Planning Notes\n\nPlanning content.\n"
+	section := "## Daily Plan — Thursday, April 9, 2026\n\n- [ ] Task\n"
+	result := replaceDailySection(existing, section, "## Daily Plan")
+
+	if !strings.Contains(result, "## Daily Planning Notes") {
+		t.Error("Daily Planning Notes heading should be preserved")
+	}
+	if !strings.Contains(result, "Planning content.") {
+		t.Error("Planning content should be preserved")
+	}
+	if !strings.Contains(result, "## Daily Plan —") {
+		t.Error("new section should be appended")
+	}
+}
+
 // errTest is a small sentinel error for testing.
 var errTest = &testError{}
 

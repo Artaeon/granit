@@ -764,6 +764,9 @@ func (dp *DailyPlanner) buildPlanSummary() string {
 
 // exportPlanAsMarkdown saves the daily plan summary to a markdown file.
 func (dp *DailyPlanner) exportPlanAsMarkdown() {
+	if dp.vaultRoot == "" {
+		return
+	}
 	dir := filepath.Join(dp.vaultRoot, "Plans")
 	_ = os.MkdirAll(dir, 0755)
 	filename := "plan-" + dp.date.Format("2006-01-02") + ".md"

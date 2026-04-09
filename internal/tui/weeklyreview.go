@@ -312,6 +312,10 @@ func (wr *WeeklyReview) saveReview() {
 	// Timestamp
 	b.WriteString(fmt.Sprintf("---\n*Generated: %s*\n", time.Now().Format("2006-01-02 15:04")))
 
+	if wr.vaultRoot == "" {
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(wr.reviewPath()), 0o755)
 	_ = os.WriteFile(wr.reviewPath(), []byte(b.String()), 0o644)
 	wr.saved = true
 }
