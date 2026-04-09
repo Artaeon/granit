@@ -118,6 +118,12 @@ func (le *LuaEngine) executeScript(L *lua.LState, script LuaScript, notePath, no
 			name += ".md"
 		}
 		path := filepath.Join(le.vaultPath, name)
+		// Validate path stays within vault (prevent path traversal)
+		if !strings.HasPrefix(filepath.Clean(path), filepath.Clean(le.vaultPath)) {
+			L.Push(lua.LNil)
+			L.Push(lua.LString("path traversal not allowed"))
+			return 2
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			L.Push(lua.LNil)
@@ -156,6 +162,12 @@ func (le *LuaEngine) executeScript(L *lua.LState, script LuaScript, notePath, no
 			name += ".md"
 		}
 		path := filepath.Join(le.vaultPath, name)
+		// Validate path stays within vault (prevent path traversal)
+		if !strings.HasPrefix(filepath.Clean(path), filepath.Clean(le.vaultPath)) {
+			L.Push(lua.LFalse)
+			L.Push(lua.LString("path traversal not allowed"))
+			return 2
+		}
 		_ = os.MkdirAll(filepath.Dir(path), 0755)
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			L.Push(lua.LFalse)
