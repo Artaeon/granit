@@ -1157,6 +1157,22 @@ func TestReplaceDailySectionReplaceAtEnd(t *testing.T) {
 	}
 }
 
+func TestReplaceDailySectionNoFalsePositive(t *testing.T) {
+	// "## Daily Planning" should NOT match "## Daily Plan"
+	existing := "# 2026-04-09\n\n## Daily Planning\n\nMy planning notes.\n"
+	section := "## Daily Plan\n\n- [ ] Task 1\n"
+	result := replaceDailySection(existing, section, "## Daily Plan")
+	if !strings.Contains(result, "My planning notes.") {
+		t.Error("unrelated section should be preserved")
+	}
+	if !strings.Contains(result, "## Daily Planning") {
+		t.Error("similar-but-different heading should be preserved")
+	}
+	if strings.Count(result, "## Daily Plan\n") != 1 {
+		t.Errorf("new section should appear exactly once")
+	}
+}
+
 // errTest is a small sentinel error for testing.
 var errTest = &testError{}
 

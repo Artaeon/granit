@@ -1717,8 +1717,24 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 // ## heading) in content, or appends it if no such section exists. This
 // prevents duplicate sections when the user runs Plan My Day / Morning Routine
 // multiple times on the same daily note.
+// The heading is matched at a line boundary and must be followed by a newline
+// or EOF to avoid false positives (e.g. "## Daily Planning" matching "## Daily Plan").
 func replaceDailySection(existing, newSection, heading string) string {
-	idx := strings.Index(existing, heading)
+	// Find heading at a line boundary: either at start of string or after \n
+	idx := -1
+	for _, prefix := range []string{heading + "\n", heading + "\r\n"} {
+		if i := strings.Index(existing, prefix); i >= 0 && (i == 0 || existing[i-1] == '\n') {
+			idx = i
+			break
+		}
+	}
+	// Also check if heading is at the very end of the file (no trailing newline)
+	if idx < 0 && strings.HasSuffix(existing, heading) {
+		i := len(existing) - len(heading)
+		if i == 0 || existing[i-1] == '\n' {
+			idx = i
+		}
+	}
 	if idx < 0 {
 		// Section doesn't exist yet — append
 		return strings.TrimRight(existing, "\n") + "\n\n" + newSection
