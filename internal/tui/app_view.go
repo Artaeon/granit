@@ -2353,16 +2353,25 @@ func (m *Model) applyWorkspaceLayout(layout *WorkspaceLayout) {
 func (m *Model) writeBriefingToDailyNote(briefingContent string) {
 	today := time.Now().Format("2006-01-02")
 	dailyName := today + ".md"
+	folder := m.config.DailyNotesFolder
+	if folder != "" {
+		dailyName = filepath.Join(folder, dailyName)
+	}
 	dailyPath := filepath.Join(m.vault.Root, dailyName)
 
 	existing, err := os.ReadFile(dailyPath)
 	var writeErr error
 	if err != nil {
+		if mkErr := os.MkdirAll(filepath.Dir(dailyPath), 0755); mkErr != nil {
+			m.statusbar.SetMessage("Failed to create daily note folder: " + mkErr.Error())
+			return
+		}
 		fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s — {{weekday}}\n\n%s\n", today, today, briefingContent)
 		content := m.dailyNoteContent(today, fallback)
 		writeErr = os.WriteFile(dailyPath, []byte(content), 0644)
 	} else {
-		newContent := string(existing) + "\n\n---\n\n" + briefingContent + "\n"
+		// Use replaceDailySection to prevent duplicate briefings on re-run
+		newContent := replaceDailySection(string(existing), briefingContent, "## Morning Briefing")
 		writeErr = os.WriteFile(dailyPath, []byte(newContent), 0644)
 	}
 	if writeErr != nil {
