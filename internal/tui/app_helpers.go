@@ -837,7 +837,9 @@ func (m *Model) applyTagsToNote(tags []string) {
 		}
 	}
 
-	// No frontmatter — create one with tags
+	// No valid frontmatter found — create one with tags.
+	// If content starts with an orphaned "---" (no closing), strip it first
+	// to avoid producing malformed double-separator YAML.
 	var sortedTags []string
 	seen := make(map[string]bool)
 	for _, t := range tags {
@@ -848,7 +850,12 @@ func (m *Model) applyTagsToNote(tags []string) {
 	}
 	sort.Strings(sortedTags)
 	frontmatter := "---\ntags: [" + strings.Join(sortedTags, ", ") + "]\n---\n"
-	newContent := frontmatter + content
+	body := content
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+		// Orphaned opening --- with no closing --- — skip it
+		body = strings.Join(lines[1:], "\n")
+	}
+	newContent := frontmatter + body
 	m.editor.LoadContent(newContent, m.activeNote)
 	m.editor.modified = true
 	if err := os.WriteFile(filepath.Join(m.vault.Root, m.activeNote), []byte(newContent), 0644); err != nil {
