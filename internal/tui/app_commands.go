@@ -755,6 +755,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		today := time.Now().Format("2006-01-02")
 		todayPath := today + ".md"
+		if m.config.DailyNotesFolder != "" {
+			todayPath = filepath.Join(m.config.DailyNotesFolder, todayPath)
+		}
 		m.dailyBriefing.SetVaultData(noteContents, m.vault.SortedPaths(), todayPath)
 		m.dailyBriefing.Open()
 
