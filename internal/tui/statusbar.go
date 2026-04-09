@@ -398,15 +398,15 @@ func (sb StatusBar) View() string {
 		}
 	case sb.mode == "EDIT":
 		helpItems = []struct{ key, desc string }{
-			{"Ctrl+S", "save"}, {"Ctrl+E", "view"}, {"Ctrl+P", "quick open"},
-			{"Ctrl+K", "tasks"}, {"Ctrl+R", "AI bots"}, {"Ctrl+X", "cmds"},
-			{"F5", "help"}, {"Tab", "panel"}, {"Ctrl+Q", "quit"},
+			{"Ctrl+S", "save"}, {"Ctrl+W", "close tab"}, {"Ctrl+E", "view"},
+			{"Ctrl+P", "quick open"}, {"Ctrl+K", "tasks"}, {"Ctrl+R", "AI bots"},
+			{"Ctrl+X", "cmds"}, {"F5", "help"}, {"Ctrl+Q", "quit"},
 		}
 	case sb.mode == "VIEW":
 		helpItems = []struct{ key, desc string }{
 			{"j/k", "scroll"}, {"space", "page"}, {"Ctrl+E", "edit"},
-			{"Ctrl+P", "quick open"}, {"Ctrl+X", "cmds"}, {"F5", "help"},
-			{"Tab", "panel"}, {"Ctrl+Q", "quit"},
+			{"Ctrl+W", "close tab"}, {"Ctrl+P", "quick open"}, {"Ctrl+X", "cmds"},
+			{"F5", "help"}, {"Ctrl+Q", "quit"},
 		}
 	case sb.mode == "LINKS":
 		helpItems = []struct{ key, desc string }{
@@ -415,14 +415,14 @@ func (sb StatusBar) View() string {
 	case strings.HasPrefix(sb.mode, "VIM:"):
 		helpItems = []struct{ key, desc string }{
 			{":w", "save"}, {":q", "quit"}, {"Ctrl+E", "view"},
-			{"Ctrl+P", "quick open"}, {"Ctrl+K", "tasks"}, {"Ctrl+R", "AI bots"},
-			{"Ctrl+X", "cmds"}, {"F5", "help"},
+			{"Ctrl+W", "close tab"}, {"Ctrl+P", "quick open"}, {"Ctrl+K", "tasks"},
+			{"Ctrl+R", "AI bots"}, {"Ctrl+X", "cmds"}, {"F5", "help"},
 		}
 	default:
 		helpItems = []struct{ key, desc string }{
-			{"Tab", "panel"}, {"Ctrl+P", "quick open"}, {"Ctrl+N", "new"},
-			{"Ctrl+S", "save"}, {"Ctrl+K", "tasks"}, {"Ctrl+X", "cmds"},
-			{"F5", "help"}, {"Ctrl+Q", "quit"},
+			{"Tab", "panel"}, {"Ctrl+P", "quick open"}, {"Ctrl+W", "close tab"},
+			{"Ctrl+N", "new"}, {"Ctrl+S", "save"}, {"Ctrl+K", "tasks"},
+			{"Ctrl+X", "cmds"}, {"F5", "help"}, {"Ctrl+Q", "quit"},
 		}
 	}
 

@@ -486,13 +486,15 @@ func TestPlanMyDayParseAIResponseValid(t *testing.T) {
 		{Text: "Write report", Priority: 3},
 	}
 
+	// Use late-night times so the time-of-day filter inside parseAIResponse
+	// never drops any slots regardless of when this test runs.
 	response := `TOP_GOAL: Complete the quarterly report
 
 SCHEDULE:
-08:00-09:30 | Write report | deep-work | Project Alpha
-09:30-09:45 | Break | break
-09:45-10:30 | Review emails | admin
-12:00-13:00 | Lunch | break
+22:00-22:30 | Write report | deep-work | Project Alpha
+22:30-22:45 | Break | break
+22:45-23:15 | Review emails | admin
+23:15-23:45 | Lunch | break
 
 FOCUS_ORDER:
 1. Write report
@@ -511,8 +513,8 @@ ADVICE: Start with the report while your energy is high. Batch email checking to
 
 	// Check first slot
 	slot := p.schedule[0]
-	if slot.Start != "08:00" || slot.End != "09:30" {
-		t.Errorf("expected 08:00-09:30, got %s-%s", slot.Start, slot.End)
+	if slot.Start != "22:00" || slot.End != "22:30" {
+		t.Errorf("expected 22:00-22:30, got %s-%s", slot.Start, slot.End)
 	}
 	if slot.Task != "Write report" {
 		t.Errorf("expected 'Write report', got %q", slot.Task)

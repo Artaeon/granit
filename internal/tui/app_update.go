@@ -2746,8 +2746,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "ctrl+w":
-			m.canvas.SetSize(m.width, m.height)
-			m.canvas.Open()
+			// Close active tab
+			if m.tabBar != nil {
+				next := m.tabBar.CloseActive()
+				if next != "" {
+					m.loadNote(next)
+					m.setSidebarCursorToFile(next)
+				} else {
+					m.activeNote = ""
+					m.editor.SetContent("")
+					m.editor.filePath = ""
+					m.statusbar.SetActiveNote("")
+				}
+			}
 			return m, nil
 
 		case "ctrl+l":
