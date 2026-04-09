@@ -405,7 +405,9 @@ func (mr *MorningRoutine) saveToDailyNote() tea.Cmd {
 		} else {
 			// Replace existing "## Daily Plan" section or append if not present
 			newContent := replaceDailySection(string(existing), content, "## Daily Plan")
-			_ = os.WriteFile(dailyPath, []byte(newContent), 0644)
+			if writeErr := os.WriteFile(dailyPath, []byte(newContent), 0644); writeErr != nil {
+				return morningPlanSavedMsg{}
+			}
 		}
 		return morningPlanSavedMsg{}
 	}
@@ -459,7 +461,10 @@ func (mr *MorningRoutine) getSelectedTasks() []string {
 		if mr.taskSelected[i] {
 			label := t.Text
 			if t.DueDate != "" {
-				label += " (due: " + t.DueDate + ")"
+				dueSuffix := " (due: " + t.DueDate + ")"
+				if !strings.HasSuffix(label, dueSuffix) {
+					label += dueSuffix
+				}
 			}
 			result = append(result, label)
 		}

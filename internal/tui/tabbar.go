@@ -180,7 +180,11 @@ func (tb *TabBar) NextTab() string {
 	if len(tb.tabs) == 0 {
 		return ""
 	}
-	tb.activeIdx = (tb.activeIdx + 1) % len(tb.tabs)
+	if tb.activeIdx < 0 {
+		tb.activeIdx = 0
+	} else {
+		tb.activeIdx = (tb.activeIdx + 1) % len(tb.tabs)
+	}
 	return tb.tabs[tb.activeIdx].Path
 }
 

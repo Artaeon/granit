@@ -1753,7 +1753,9 @@ func replaceDailySection(existing, newSection, heading string) string {
 // writePlannerFocus writes or updates the ## Focus section in the planner file for the given date.
 func writePlannerFocus(vaultRoot, date, topGoal string, focusItems []string) {
 	dir := filepath.Join(vaultRoot, "Planner")
-	_ = os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return
+	}
 	path := filepath.Join(dir, date+".md")
 
 	var section strings.Builder
@@ -1779,7 +1781,7 @@ func writePlannerFocus(vaultRoot, date, topGoal string, focusItems []string) {
 		}
 	}
 	content = append(content, []byte("\n"+section.String())...)
-	_ = os.WriteFile(path, content, 0644)
+	_ = os.WriteFile(path, content, 0644) // best-effort; planner UI refreshes on next load
 }
 
 // loadPlannerBlocks scans the Planner/ directory for schedule files and
