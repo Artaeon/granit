@@ -174,6 +174,12 @@ func (t *Trash) RestoreFile() string {
 		return ""
 	}
 
+	// If a file already exists at the destination, rename it to avoid data loss.
+	if _, statErr := os.Stat(dstPath); statErr == nil {
+		backup := dstPath + ".bak"
+		_ = os.Rename(dstPath, backup)
+	}
+
 	data, err := os.ReadFile(srcPath)
 	if err != nil {
 		return ""
