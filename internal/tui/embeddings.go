@@ -298,6 +298,8 @@ func indexAllVecs(idx *EmbeddingIndex) map[string][]float64 {
 // MarkNoteStale marks a note's cached embedding as stale so that it will be
 // re-embedded on the next background index pass.
 func (ss *SemanticSearch) MarkNoteStale(notePath string) {
+	ss.bgMu.Lock()
+	defer ss.bgMu.Unlock()
 	if ss.index == nil {
 		return
 	}
@@ -615,15 +617,17 @@ func (ss *SemanticSearch) StartBackgroundIndex(notes map[string]string) tea.Cmd 
 	ss.bgIndexing = true
 	ss.bgMu.Unlock()
 
-	// Snapshot everything we need.
+	// Snapshot everything we need under lock to avoid races with main thread.
+	ss.bgMu.Lock()
 	provider := ss.ai.Provider
 	model := ss.ai.Model
 	ollamaURL := ss.ai.OllamaURL
 	apiKey := ss.ai.APIKey
 	vaultPath := ss.vaultPath
+	idx := ss.index
+	ss.bgMu.Unlock()
 
 	// Load or create index.
-	idx := ss.index
 	if idx == nil && vaultPath != "" {
 		idx = LoadIndex(vaultPath)
 	}
