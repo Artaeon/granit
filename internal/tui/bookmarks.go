@@ -145,6 +145,9 @@ func (bm *Bookmarks) load() {
 }
 
 func (bm *Bookmarks) save() {
+	if bm.vaultRoot == "" {
+		return
+	}
 	data, err := json.MarshalIndent(bm.data, "", "  ")
 	if err != nil {
 		return

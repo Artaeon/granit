@@ -315,6 +315,9 @@ func (c *ClockIn) loadReminders() {
 }
 
 func (c *ClockIn) saveRemindersFile() {
+	if c.vaultPath == "" {
+		return
+	}
 	dir := filepath.Join(c.vaultPath, ".granit")
 	_ = os.MkdirAll(dir, 0755)
 	raw, _ := json.MarshalIndent(c.reminders, "", "  ")
@@ -342,6 +345,9 @@ func (c *ClockIn) loadTodaySessions() {
 }
 
 func (c *ClockIn) saveSessionNote(start, end time.Time, project string, elapsed time.Duration) {
+	if c.vaultPath == "" {
+		return
+	}
 	dir := filepath.Join(c.vaultPath, "Timetracking")
 	_ = os.MkdirAll(dir, 0755)
 	dateStr := start.Format("2006-01-02")
