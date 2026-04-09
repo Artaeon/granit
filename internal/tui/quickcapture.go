@@ -273,7 +273,19 @@ func (qc *QuickCapture) save() {
 	}
 
 	if qc.mode == 3 {
-		// New note: write full content
+		// New note: avoid overwriting existing files
+		if _, statErr := os.Stat(filePath); statErr == nil {
+			// File exists — append a numeric suffix
+			ext := filepath.Ext(filePath)
+			base := strings.TrimSuffix(filePath, ext)
+			for n := 1; n < 100; n++ {
+				candidate := fmt.Sprintf("%s-%d%s", base, n, ext)
+				if _, err := os.Stat(candidate); os.IsNotExist(err) {
+					filePath = candidate
+					break
+				}
+			}
+		}
 		err := os.WriteFile(filePath, []byte(content+"\n"), 0644)
 		if err != nil {
 			qc.statusMsg = "Error: " + err.Error()
