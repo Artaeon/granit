@@ -549,7 +549,9 @@ func (dp DailyPlanner) updateSchedule(msg tea.KeyMsg) (DailyPlanner, tea.Cmd) {
 		dp.cursor = 0
 		dp.scroll = 0
 	case "G":
-		dp.cursor = len(dp.blocks) - 1
+		if len(dp.blocks) > 0 {
+			dp.cursor = len(dp.blocks) - 1
+		}
 		dp.adjustScroll()
 
 	case "a":
@@ -1067,6 +1069,8 @@ func (dp *DailyPlanner) reloadDay() {
 	dp.cursor = 0
 	dp.scroll = 0
 	dp.unscheduled = nil
+	dp.unschedCursor = 0
+	dp.habitCursor = 0
 	dp.moving = false
 	dp.moveFrom = -1
 	dp.adding = false
