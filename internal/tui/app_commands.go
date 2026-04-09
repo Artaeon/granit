@@ -1690,8 +1690,8 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 		content := m.dailyNoteContent(today, fallback)
 		writeErr = os.WriteFile(dailyPath, []byte(content), 0644)
 	} else {
-		// Append to existing daily note
-		newContent := string(existing) + "\n\n" + planContent
+		// Replace existing "## Day Plan" section or append if not present
+		newContent := replaceDailySection(string(existing), planContent, "## Day Plan")
 		writeErr = os.WriteFile(dailyPath, []byte(newContent), 0644)
 	}
 	if writeErr != nil {
@@ -1711,6 +1711,27 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 	m.loadNote(dailyName)
 	m.setSidebarCursorToFile(dailyName)
 	m.setFocus(focusEditor)
+}
+
+// replaceDailySection replaces an existing markdown section (identified by its
+// ## heading) in content, or appends it if no such section exists. This
+// prevents duplicate sections when the user runs Plan My Day / Morning Routine
+// multiple times on the same daily note.
+func replaceDailySection(existing, newSection, heading string) string {
+	idx := strings.Index(existing, heading)
+	if idx < 0 {
+		// Section doesn't exist yet — append
+		return strings.TrimRight(existing, "\n") + "\n\n" + newSection
+	}
+	// Find the end of this section (next ## heading or EOF)
+	rest := existing[idx+len(heading):]
+	end := strings.Index(rest, "\n## ")
+	if end >= 0 {
+		// Keep content after this section
+		return strings.TrimRight(existing[:idx], "\n") + "\n\n" + newSection + "\n" + strings.TrimLeft(rest[end+1:], "\n")
+	}
+	// Section runs to end of file — replace everything from heading onwards
+	return strings.TrimRight(existing[:idx], "\n") + "\n\n" + newSection
 }
 
 // writePlannerFocus writes or updates the ## Focus section in the planner file for the given date.

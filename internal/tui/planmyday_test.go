@@ -1108,6 +1108,55 @@ func TestPlanMyDayInnerWidth(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// replaceDailySection — deduplication helper
+// ---------------------------------------------------------------------------
+
+func TestReplaceDailySectionAppendNew(t *testing.T) {
+	existing := "# 2026-04-09\n\nSome content here."
+	section := "## Daily Plan\n\n- [ ] Task 1\n"
+	result := replaceDailySection(existing, section, "## Daily Plan")
+	if !strings.Contains(result, "Some content here.") {
+		t.Error("existing content should be preserved")
+	}
+	if strings.Count(result, "## Daily Plan") != 1 {
+		t.Error("section should appear exactly once")
+	}
+}
+
+func TestReplaceDailySectionReplaceExisting(t *testing.T) {
+	existing := "# 2026-04-09\n\n## Daily Plan\n\n- [ ] Old task\n\n## Notes\n\nMy notes."
+	section := "## Daily Plan\n\n- [ ] New task\n"
+	result := replaceDailySection(existing, section, "## Daily Plan")
+	if strings.Contains(result, "Old task") {
+		t.Error("old section content should be replaced")
+	}
+	if !strings.Contains(result, "New task") {
+		t.Error("new section content should be present")
+	}
+	if !strings.Contains(result, "My notes.") {
+		t.Error("content after replaced section should be preserved")
+	}
+	if strings.Count(result, "## Daily Plan") != 1 {
+		t.Errorf("section should appear exactly once, got %d", strings.Count(result, "## Daily Plan"))
+	}
+}
+
+func TestReplaceDailySectionReplaceAtEnd(t *testing.T) {
+	existing := "# 2026-04-09\n\n## Daily Plan\n\n- [ ] Old task\n"
+	section := "## Daily Plan\n\n- [ ] New task\n"
+	result := replaceDailySection(existing, section, "## Daily Plan")
+	if strings.Contains(result, "Old task") {
+		t.Error("old section content should be replaced")
+	}
+	if !strings.Contains(result, "New task") {
+		t.Error("new section content should be present")
+	}
+	if strings.Count(result, "## Daily Plan") != 1 {
+		t.Errorf("section should appear exactly once, got %d", strings.Count(result, "## Daily Plan"))
+	}
+}
+
 // errTest is a small sentinel error for testing.
 var errTest = &testError{}
 

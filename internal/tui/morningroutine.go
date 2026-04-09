@@ -403,8 +403,8 @@ func (mr *MorningRoutine) saveToDailyNote() tea.Cmd {
 				return morningPlanSavedMsg{}
 			}
 		} else {
-			// Append to existing daily note
-			newContent := string(existing) + "\n\n" + content
+			// Replace existing "## Daily Plan" section or append if not present
+			newContent := replaceDailySection(string(existing), content, "## Daily Plan")
 			_ = os.WriteFile(dailyPath, []byte(newContent), 0644)
 		}
 		return morningPlanSavedMsg{}
