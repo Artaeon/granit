@@ -18,7 +18,7 @@ const (
 	PomodoroIdle       PomodoroState = iota
 	PomodoroWork
 	PomodoroShortBreak
-	PomodoroBreakonLong
+	PomodoroLongBreak
 )
 
 // QueueTask represents a single task in the focus queue.
@@ -54,7 +54,7 @@ type Pomodoro struct {
 	sessionsToday int
 	totalSessions int
 	wordsWritten  int
-	wordsAtStart  int
+	wordsAtStart  int // -1 = uninitialized
 	notesEdited   map[string]bool
 
 	// History
@@ -104,6 +104,7 @@ func NewPomodoro() Pomodoro {
 		shortBreak:     5 * time.Minute,
 		longBreak:      15 * time.Minute,
 		longBreakAfter: 4,
+		wordsAtStart:   -1,
 		notesEdited:    make(map[string]bool),
 		taskTimeLog:    make(map[string]int),
 		showQueue:      true,
@@ -195,7 +196,7 @@ func (p *Pomodoro) Skip() {
 	case PomodoroWork:
 		p.finishWorkSession()
 		p.startBreak()
-	case PomodoroShortBreak, PomodoroBreakonLong:
+	case PomodoroShortBreak, PomodoroLongBreak:
 		p.state = PomodoroIdle
 		p.remaining = 0
 		p.total = 0
@@ -206,7 +207,7 @@ func (p *Pomodoro) Skip() {
 // during this session can be computed.
 func (p *Pomodoro) UpdateWordCount(count int) {
 	if p.state == PomodoroWork {
-		if p.wordsAtStart == 0 {
+		if p.wordsAtStart < 0 {
 			p.wordsAtStart = count
 		}
 		p.wordsWritten = count - p.wordsAtStart
@@ -312,7 +313,7 @@ func (p *Pomodoro) AdvanceQueue() bool {
 			p.total = p.workDuration
 			p.startTime = time.Now()
 			p.wordsWritten = 0
-			p.wordsAtStart = 0
+			p.wordsAtStart = -1
 			p.notesEdited = make(map[string]bool)
 			return true
 		}
@@ -376,7 +377,7 @@ func (p *Pomodoro) StatusString() string {
 			base += " \u00b7 " + taskLabel
 		}
 		return base
-	case PomodoroShortBreak, PomodoroBreakonLong:
+	case PomodoroShortBreak, PomodoroLongBreak:
 		return fmt.Sprintf("\u2615 %d:%02d", mins, secs) // coffee emoji
 	}
 	return ""
@@ -403,7 +404,7 @@ func (p Pomodoro) Update(msg tea.Msg) (Pomodoro, tea.Cmd) {
 				p.trackElapsedOnCurrentTask()
 				p.finishWorkSession()
 				p.startBreak()
-			case PomodoroShortBreak, PomodoroBreakonLong:
+			case PomodoroShortBreak, PomodoroLongBreak:
 				p.state = PomodoroIdle
 			}
 			if p.state != PomodoroIdle {
@@ -555,7 +556,7 @@ func (p Pomodoro) View() string {
 		stateLabel = lipgloss.NewStyle().Foreground(green).Bold(true).Render("FOCUS")
 	case PomodoroShortBreak:
 		stateLabel = lipgloss.NewStyle().Foreground(blue).Bold(true).Render("SHORT BREAK")
-	case PomodoroBreakonLong:
+	case PomodoroLongBreak:
 		stateLabel = lipgloss.NewStyle().Foreground(peach).Bold(true).Render("LONG BREAK")
 	}
 	statePad := (width - 4 - lipgloss.Width(stateLabel)) / 2
@@ -938,14 +939,14 @@ func (p *Pomodoro) finishWorkSession() {
 
 	// Reset per-session counters
 	p.wordsWritten = 0
-	p.wordsAtStart = 0
+	p.wordsAtStart = -1
 	p.notesEdited = make(map[string]bool)
 }
 
 // startBreak begins the appropriate break phase based on session count.
 func (p *Pomodoro) startBreak() {
 	if p.sessionsToday%p.longBreakAfter == 0 {
-		p.state = PomodoroBreakonLong
+		p.state = PomodoroLongBreak
 		p.remaining = p.longBreak
 		p.total = p.longBreak
 	} else {

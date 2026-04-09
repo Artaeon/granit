@@ -570,7 +570,7 @@ func TestPomodoro_StatusString_Break(t *testing.T) {
 
 func TestPomodoro_StatusString_LongBreak(t *testing.T) {
 	p := NewPomodoro()
-	p.state = PomodoroBreakonLong
+	p.state = PomodoroLongBreak
 	p.remaining = 10 * time.Minute
 
 	s := p.StatusString()
@@ -922,6 +922,44 @@ func TestPomodoro_GetCompletedTasks(t *testing.T) {
 	result2 := p.GetCompletedTasks()
 	if result2 != nil {
 		t.Errorf("expected nil on second GetCompletedTasks call, got %v", result2)
+	}
+}
+
+func TestPomodoro_WordCountFromEmpty(t *testing.T) {
+	p := NewPomodoro()
+	p.state = PomodoroWork
+	p.remaining = 25 * time.Minute
+	p.total = 25 * time.Minute
+
+	// Simulate starting with empty note (0 words)
+	p.UpdateWordCount(0)
+	if p.wordsAtStart != 0 {
+		t.Errorf("expected wordsAtStart=0, got %d", p.wordsAtStart)
+	}
+
+	// User writes 10 words
+	p.UpdateWordCount(10)
+	if p.wordsWritten != 10 {
+		t.Errorf("expected wordsWritten=10, got %d", p.wordsWritten)
+	}
+
+	// Continues writing
+	p.UpdateWordCount(25)
+	if p.wordsWritten != 25 {
+		t.Errorf("expected wordsWritten=25, got %d", p.wordsWritten)
+	}
+}
+
+func TestPomodoro_WordCountResetBetweenSessions(t *testing.T) {
+	p := NewPomodoro()
+	p.state = PomodoroWork
+	p.remaining = 25 * time.Minute
+	p.total = 25 * time.Minute
+
+	p.UpdateWordCount(50) // note already has 50 words
+	p.UpdateWordCount(60) // user writes 10 more
+	if p.wordsWritten != 10 {
+		t.Errorf("expected 10 words written, got %d", p.wordsWritten)
 	}
 }
 

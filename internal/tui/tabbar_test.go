@@ -915,3 +915,70 @@ func TestWorkflowNavigateAndReorder(t *testing.T) {
 		t.Errorf("expected wraparound to b.md, got %q", tb.GetActive())
 	}
 }
+
+func TestNextTabAfterCloseAll(t *testing.T) {
+	tb := NewTabBar()
+	tb.AddTab("a.md")
+	tb.AddTab("b.md")
+	tb.CloseAll()
+
+	// activeIdx is now -1; NextTab should recover to first tab if re-added
+	tb.AddTab("c.md")
+	path := tb.NextTab()
+	if path != "c.md" {
+		t.Errorf("expected c.md after NextTab from negative index, got %q", path)
+	}
+}
+
+func TestNextTabNegativeIndex(t *testing.T) {
+	tb := NewTabBar()
+	tb.AddTab("a.md")
+	tb.AddTab("b.md")
+	tb.activeIdx = -1 // simulate invalid state
+
+	path := tb.NextTab()
+	if path != "a.md" {
+		t.Errorf("expected a.md (idx 0) when recovering from negative activeIdx, got %q", path)
+	}
+	if tb.activeIdx != 0 {
+		t.Errorf("expected activeIdx=0, got %d", tb.activeIdx)
+	}
+}
+
+func TestCloseAllEmptyTabBar(t *testing.T) {
+	tb := NewTabBar()
+	tb.CloseAll() // should not panic
+	if len(tb.Tabs()) != 0 {
+		t.Errorf("expected 0 tabs, got %d", len(tb.Tabs()))
+	}
+}
+
+func TestCloseAllWithPinnedTabs(t *testing.T) {
+	tb := NewTabBar()
+	tb.AddTab("a.md")
+	tb.AddTab("b.md")
+	tb.PinTab("a.md")
+	tb.CloseAll()
+
+	if len(tb.Tabs()) != 0 {
+		t.Errorf("expected 0 tabs after CloseAll (even pinned), got %d", len(tb.Tabs()))
+	}
+}
+
+func TestReopenAfterClose(t *testing.T) {
+	tb := NewTabBar()
+	tb.AddTab("a.md")
+	tb.AddTab("b.md")
+	tb.CloseActive() // closes b.md
+
+	reopened := tb.ReopenLast()
+	if reopened != "b.md" {
+		t.Errorf("expected b.md from reopen, got %q", reopened)
+	}
+
+	// Reopen again should be empty
+	reopened = tb.ReopenLast()
+	if reopened != "" {
+		t.Errorf("expected empty on second reopen, got %q", reopened)
+	}
+}
