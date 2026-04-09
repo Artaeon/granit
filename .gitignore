@@ -24,10 +24,12 @@
 .granit-bookmarks.json
 .granit/
 
-# Stray test files in project root
+# Stray test/runtime files
 /Thisisatest.md
 /testtest.md
 /testtetbdgfb.md
+**/Reviews/daily-*.md
+**/FocusSessions/
 
 # OS
 .DS_Store

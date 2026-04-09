@@ -378,8 +378,13 @@ func (dr *DailyReview) saveReview() {
 	}
 
 	// Save to Reviews directory
+	if dr.vaultRoot == "" {
+		return
+	}
 	reviewDir := filepath.Join(dr.vaultRoot, "Reviews")
-	_ = os.MkdirAll(reviewDir, 0755)
+	if err := os.MkdirAll(reviewDir, 0755); err != nil {
+		return
+	}
 	filename := filepath.Join(reviewDir, "daily-"+dateStr+".md")
 	_ = os.WriteFile(filename, []byte(b.String()), 0644)
 }
