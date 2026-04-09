@@ -146,6 +146,8 @@ const (
 	CmdShowTutorial
 	CmdMacroRecord
 	CmdMacroPlay
+	CmdCloseTab
+	CmdCloseAllTabs
 	CmdCloseOtherTabs
 	CmdCloseTabsToRight
 	CmdTogglePinTab
@@ -223,6 +225,8 @@ var AllCommands = []Command{
 	{Label: "Pin Note", Desc: "Pin current note as a tab", Shortcut: "", Action: CmdPinNote, Icon: &IconBookmarkChar, Category: CatNavigation},
 	{Label: "Unpin Note", Desc: "Unpin current note", Shortcut: "", Action: CmdUnpinNote, Icon: &IconBookmarkChar, Category: CatNavigation},
 	{Label: "Pin/Unpin Tab", Desc: "Toggle pin on active tab", Shortcut: "", Action: CmdTogglePinTab, Icon: &IconBookmarkChar, Category: CatNavigation},
+	{Label: "Close Tab", Desc: "Close the active tab", Shortcut: "", Action: CmdCloseTab, Icon: &IconFileChar, Category: CatNavigation},
+	{Label: "Close All Tabs", Desc: "Close all tabs and show welcome screen", Shortcut: "", Action: CmdCloseAllTabs, Icon: &IconFileChar, Category: CatNavigation},
 	{Label: "Close Other Tabs", Desc: "Close all tabs except the active one", Shortcut: "", Action: CmdCloseOtherTabs, Icon: &IconFileChar, Category: CatNavigation},
 	{Label: "Close Tabs to the Right", Desc: "Close tabs after the active one", Shortcut: "", Action: CmdCloseTabsToRight, Icon: &IconFileChar, Category: CatNavigation},
 	{Label: "Reopen Closed Tab", Desc: "Reopen the last closed tab", Shortcut: "", Action: CmdReopenClosedTab, Icon: &IconFileChar, Category: CatNavigation},

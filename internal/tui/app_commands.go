@@ -1342,6 +1342,31 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.tutorial.SetSize(m.width, m.height)
 		m.tutorial.Open()
 
+	case CmdCloseTab:
+		if m.tabBar != nil {
+			next := m.tabBar.CloseActive()
+			if next != "" {
+				m.loadNote(next)
+				m.setSidebarCursorToFile(next)
+			} else {
+				m.activeNote = ""
+				m.editor.SetContent("")
+				m.editor.filePath = ""
+				m.statusbar.SetActiveNote("")
+			}
+			return m, nil
+		}
+
+	case CmdCloseAllTabs:
+		if m.tabBar != nil {
+			m.tabBar.CloseAll()
+			m.activeNote = ""
+			m.editor.SetContent("")
+			m.editor.filePath = ""
+			m.statusbar.SetActiveNote("")
+			return m, nil
+		}
+
 	case CmdCloseOtherTabs:
 		if m.tabBar != nil {
 			m.tabBar.CloseOthers()

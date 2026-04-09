@@ -337,6 +337,15 @@ func (tb *TabBar) CloseToRight() {
 	}
 }
 
+// CloseAll closes every tab (including pinned) and resets the tab bar.
+func (tb *TabBar) CloseAll() {
+	for _, t := range tb.tabs {
+		tb.pushClosed(t.Path)
+	}
+	tb.tabs = nil
+	tb.activeIdx = -1
+}
+
 // ---------------------------------------------------------------------------
 // Tab scroll
 // ---------------------------------------------------------------------------

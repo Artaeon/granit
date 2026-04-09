@@ -177,9 +177,11 @@ func (m Model) View() string {
 		tabBarStr = m.tabBar.Render(editorWidth, m.activeNote)
 	}
 
-	// Editor: view mode or edit mode
+	// Editor: view mode, edit mode, or welcome screen
 	var editorContent string
-	if m.viewMode {
+	if m.activeNote == "" {
+		editorContent = m.renderWelcomeScreen(editorWidth, contentHeight)
+	} else if m.viewMode {
 		editorContent = m.renderViewMode()
 	} else {
 		editorContent = m.editor.View()
@@ -1388,6 +1390,84 @@ func (m *Model) updateReadingProgress() {
 		percent = 100
 	}
 	m.statusbar.SetReadingProgress(percent)
+}
+
+// renderWelcomeScreen shows a help screen when no note is open.
+func (m Model) renderWelcomeScreen(width, height int) string {
+	contentWidth := width - 4
+	if contentWidth < 20 {
+		contentWidth = 20
+	}
+
+	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	headingStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+	keyStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(subtext0)
+	dimStyle := lipgloss.NewStyle().Foreground(overlay0)
+
+	renderSection := func(items []struct{ key, desc string }) string {
+		var s strings.Builder
+		for _, item := range items {
+			s.WriteString(fmt.Sprintf("  %s  %s\n",
+				keyStyle.Render(fmt.Sprintf("%-12s", item.key)),
+				descStyle.Render(item.desc)))
+		}
+		return s.String()
+	}
+
+	var b strings.Builder
+
+	// Center content vertically
+	contentLines := 26
+	topPad := (height - contentLines) / 3
+	if topPad < 1 {
+		topPad = 1
+	}
+	for i := 0; i < topPad; i++ {
+		b.WriteString("\n")
+	}
+
+	// Title
+	b.WriteString("  " + titleStyle.Render("Welcome to Granit") + "\n")
+	b.WriteString("  " + dimStyle.Render("Your terminal-native note-taking system") + "\n\n")
+
+	// Getting started
+	b.WriteString("  " + headingStyle.Render("Getting Started") + "\n")
+	b.WriteString("  " + dimStyle.Render(strings.Repeat("─", 36)) + "\n")
+	b.WriteString(renderSection([]struct{ key, desc string }{
+		{"Ctrl+N", "Create a new note"},
+		{"Enter", "Open selected note in explorer"},
+		{"/", "Search files in explorer"},
+		{"Ctrl+P", "Quick open (search all notes)"},
+		{"Alt+D", "Open today's daily note"},
+	}))
+
+	b.WriteString("\n")
+	b.WriteString("  " + headingStyle.Render("Navigation") + "\n")
+	b.WriteString("  " + dimStyle.Render(strings.Repeat("─", 36)) + "\n")
+	b.WriteString(renderSection([]struct{ key, desc string }{
+		{"Tab", "Switch between panels"},
+		{"Ctrl+E", "Toggle edit / view mode"},
+		{"Ctrl+K", "Open task manager"},
+		{"Ctrl+X", "Open command palette"},
+		{"Ctrl+R", "Open AI bots"},
+		{"F5", "Show all keyboard shortcuts"},
+	}))
+
+	b.WriteString("\n")
+	b.WriteString("  " + headingStyle.Render("Explorer") + "\n")
+	b.WriteString("  " + dimStyle.Render(strings.Repeat("─", 36)) + "\n")
+	b.WriteString(renderSection([]struct{ key, desc string }{
+		{"z / Z", "Collapse / expand all folders"},
+		{"\u2190 / \u2192", "Fold / unfold folder"},
+		{"n", "New note  |  d  Delete note"},
+		{"r", "Rename note"},
+	}))
+
+	b.WriteString("\n")
+	b.WriteString("  " + dimStyle.Render("Select a note from the explorer or press Ctrl+N to get started.") + "\n")
+
+	return b.String()
 }
 
 func (m Model) renderSearchOverlay() string {
