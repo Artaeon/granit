@@ -191,6 +191,21 @@ func (al *AutoLinker) FindUnlinkedMentions(content string, currentNote string) [
 	var suggestions []LinkSuggestion
 	seen := make(map[string]bool)
 
+	// Pre-pass: mark lines inside fenced code blocks (``` or ~~~)
+	inFencedBlock := make(map[int]bool)
+	fenced := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			fenced = !fenced
+			inFencedBlock[i] = true
+			continue
+		}
+		if fenced {
+			inFencedBlock[i] = true
+		}
+	}
+
 	currentBase := strings.TrimSuffix(currentNote, ".md")
 	if idx := strings.LastIndex(currentBase, "/"); idx >= 0 {
 		currentBase = currentBase[idx+1:]
@@ -198,6 +213,9 @@ func (al *AutoLinker) FindUnlinkedMentions(content string, currentNote string) [
 	currentBaseLower := strings.ToLower(currentBase)
 
 	for lineNum, line := range lines {
+		if inFencedBlock[lineNum] {
+			continue
+		}
 		lineLower := strings.ToLower(line)
 
 		for i, nameLower := range al.noteNames {
