@@ -1068,6 +1068,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.habitTracker.ai = m.aiConfig()
 			m.habitTracker.SetSize(m.width, m.height)
 			m.habitTracker.vault = m.vault
+			m.habitTracker.dailyNotesFolder = m.config.DailyNotesFolder
 			m.habitTracker.Open(m.vault.Root)
 		}
 

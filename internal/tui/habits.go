@@ -73,8 +73,9 @@ type HabitTracker struct {
 	width  int
 	height int
 
-	vaultRoot string
-	tab       int // 0=habits, 1=goals, 2=stats
+	vaultRoot       string
+	dailyNotesFolder string // from config, e.g. "Jots"
+	tab             int    // 0=habits, 1=goals, 2=stats
 	cursor    int
 	scroll    int
 
@@ -530,16 +531,7 @@ func (ht *HabitTracker) SyncHabitToTasks(habitName string, v *vault.Vault) {
 	}
 
 	today := time.Now().Format("2006-01-02")
-	// Patterns for daily notes / jots that might contain today's tasks.
-	todayPatterns := []string{
-		today + ".md",                           // YYYY-MM-DD.md
-		"Daily/" + today + ".md",                // Daily/YYYY-MM-DD.md
-		"Journal/" + today + ".md",              // Journal/YYYY-MM-DD.md
-		"daily/" + today + ".md",                // daily/YYYY-MM-DD.md
-		"journal/" + today + ".md",              // journal/YYYY-MM-DD.md
-		"Jots/" + today + ".md",                 // Jots/YYYY-MM-DD.md
-		"jots/" + today + ".md",                 // jots/YYYY-MM-DD.md
-	}
+	todayPatterns := ht.dailyNotePatterns(today)
 
 	unchecked := "- [ ] " + habitName
 	checked := "- [x] " + habitName
@@ -576,15 +568,7 @@ func (ht *HabitTracker) UnsyncHabitFromTasks(habitName string, v *vault.Vault) {
 	}
 
 	today := time.Now().Format("2006-01-02")
-	todayPatterns := []string{
-		today + ".md",
-		"Daily/" + today + ".md",
-		"Journal/" + today + ".md",
-		"daily/" + today + ".md",
-		"journal/" + today + ".md",
-		"Jots/" + today + ".md",
-		"jots/" + today + ".md",
-	}
+	todayPatterns := ht.dailyNotePatterns(today)
 
 	checked := "- [x] " + habitName
 	unchecked := "- [ ] " + habitName
@@ -609,6 +593,25 @@ func (ht *HabitTracker) UnsyncHabitFromTasks(habitName string, v *vault.Vault) {
 		}
 		return
 	}
+}
+
+// dailyNotePatterns returns paths to search for today's daily note, prioritizing
+// the configured daily notes folder if set.
+func (ht HabitTracker) dailyNotePatterns(today string) []string {
+	var patterns []string
+	if ht.dailyNotesFolder != "" {
+		patterns = append(patterns, filepath.Join(ht.dailyNotesFolder, today+".md"))
+	}
+	patterns = append(patterns,
+		today+".md",
+		"Daily/"+today+".md",
+		"Journal/"+today+".md",
+		"daily/"+today+".md",
+		"journal/"+today+".md",
+		"Jots/"+today+".md",
+		"jots/"+today+".md",
+	)
+	return patterns
 }
 
 // streakBlocks returns a colored 7-day visual for a habit.

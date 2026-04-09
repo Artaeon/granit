@@ -1374,6 +1374,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.goalsMode.ai = m.aiConfig()
 					m.goalsMode.Open(m.vault.Root, allTasks)
 				case usResultHabit:
+					m.habitTracker.dailyNotesFolder = m.config.DailyNotesFolder
 					m.habitTracker.Open(m.vault.Root)
 					m.habitTracker.vault = m.vault
 				}
@@ -1798,6 +1799,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.projectMode.Open(m.vault.Root)
 				}
 				if habitName := m.commandCenter.ToggledHabit(); habitName != "" {
+					m.habitTracker.dailyNotesFolder = m.config.DailyNotesFolder
 					m.habitTracker.Open(m.vault.Root)
 					m.habitTracker.toggleToday(habitName)
 					m.habitTracker.Close()
@@ -1829,6 +1831,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.projectMode.Open(m.vault.Root)
 				}
 				if habitName := m.commandCenter.ToggledHabit(); habitName != "" {
+					m.habitTracker.dailyNotesFolder = m.config.DailyNotesFolder
 					m.habitTracker.Open(m.vault.Root)
 					m.habitTracker.toggleToday(habitName)
 					m.habitTracker.Close()
