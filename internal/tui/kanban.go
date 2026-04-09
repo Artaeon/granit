@@ -370,6 +370,9 @@ func (kb Kanban) Update(msg tea.Msg) (Kanban, tea.Cmd) {
 				kb.cardCursor--
 			}
 		case "down", "j":
+			if kb.colCursor < 0 || kb.colCursor >= len(kb.columns) {
+				break
+			}
 			col := kb.columns[kb.colCursor]
 			if kb.cardCursor < len(col.Cards)-1 {
 				kb.cardCursor++
@@ -733,6 +736,10 @@ func (kb *Kanban) kbClampCursors() {
 
 // kbClampCardCursor ensures cardCursor is within bounds for the current column.
 func (kb *Kanban) kbClampCardCursor() {
+	if kb.colCursor < 0 || kb.colCursor >= len(kb.columns) {
+		kb.cardCursor = 0
+		return
+	}
 	col := kb.columns[kb.colCursor]
 	if kb.cardCursor >= len(col.Cards) {
 		kb.cardCursor = len(col.Cards) - 1
