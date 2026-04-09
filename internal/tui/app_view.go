@@ -1394,11 +1394,6 @@ func (m *Model) updateReadingProgress() {
 
 // renderWelcomeScreen shows a help screen when no note is open.
 func (m Model) renderWelcomeScreen(width, height int) string {
-	contentWidth := width - 4
-	if contentWidth < 20 {
-		contentWidth = 20
-	}
-
 	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 	headingStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
 	keyStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
