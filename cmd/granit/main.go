@@ -610,9 +610,16 @@ func runDaily(vaultPath string) {
 	tomorrow := now.AddDate(0, 0, 1).Format("2006-01-02")
 	_, week := now.ISOWeek()
 	filename := today + ".md"
+
+	// Respect configured daily notes folder
+	cfg := config.LoadForVault(vaultPath)
+	if cfg.DailyNotesFolder != "" {
+		filename = filepath.Join(cfg.DailyNotesFolder, filename)
+	}
 	dailyPath := filepath.Join(vaultPath, filename)
 
 	if _, err := os.Stat(dailyPath); os.IsNotExist(err) {
+		_ = os.MkdirAll(filepath.Dir(dailyPath), 0755)
 		content := fmt.Sprintf(`---
 date: %s
 type: daily
