@@ -830,7 +830,10 @@ func (gm *GoalsMode) createTaskFromMilestone(goal Goal, ms GoalMilestone) {
 	if err != nil {
 		existing = []byte("# Tasks\n")
 	}
-	_ = os.WriteFile(tasksPath, append(existing, []byte(taskLine)...), 0644)
+	if err := os.WriteFile(tasksPath, append(existing, []byte(taskLine)...), 0644); err != nil {
+		gm.statusMsg = "Failed to create task: " + err.Error()
+		return
+	}
 	gm.statusMsg = "Task created: " + ms.Text
 	gm.fileChanged = true
 }
