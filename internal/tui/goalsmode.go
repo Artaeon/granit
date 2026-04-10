@@ -417,15 +417,19 @@ func loadAllGoals(vaultRoot string) []Goal {
 	return all
 }
 
-// saveAllGoals writes all goals back to the goals.json file.
-func saveAllGoals(vaultRoot string, goals []Goal) {
+// saveAllGoals writes all goals back to the goals.json file using an
+// atomic tmp+rename so a crash mid-write cannot truncate the user's
+// goal history. Returns true on success.
+func saveAllGoals(vaultRoot string, goals []Goal) bool {
 	dir := filepath.Join(vaultRoot, ".granit")
-	_ = os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return false
+	}
 	data, err := json.MarshalIndent(goals, "", "  ")
 	if err != nil {
-		return
+		return false
 	}
-	_ = os.WriteFile(filepath.Join(dir, "goals.json"), data, 0644)
+	return atomicWriteNote(filepath.Join(dir, "goals.json"), string(data)) == nil
 }
 
 // addMilestoneToGoal appends a new milestone to the specified goal.

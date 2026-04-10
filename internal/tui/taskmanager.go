@@ -973,7 +973,7 @@ func (tm *TaskManager) saveTaskTemplates() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(dir, "task-templates.json"), data, 0644)
+	_ = atomicWriteNote(filepath.Join(dir, "task-templates.json"), string(data))
 }
 
 // loadPinnedTasks reads pinned task keys from .granit/pinned-tasks.json.
@@ -1001,7 +1001,7 @@ func (tm *TaskManager) savePinnedTasks() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(dir, "pinned-tasks.json"), data, 0644)
+	_ = atomicWriteNote(filepath.Join(dir, "pinned-tasks.json"), string(data))
 }
 
 // loadTaskNotes reads task notes from .granit/task-notes.json.
@@ -1029,7 +1029,7 @@ func (tm *TaskManager) saveTaskNotes() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(dir, "task-notes.json"), data, 0644)
+	_ = atomicWriteNote(filepath.Join(dir, "task-notes.json"), string(data))
 }
 
 // suggestPriority uses heuristics to recommend a priority for a task.
