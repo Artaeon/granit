@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -35,9 +36,11 @@ func runSync(args []string) {
 			if _, err := gitCmd(vaultPath, "init"); err != nil {
 				exitError("Failed to initialize git: %v", err)
 			}
-			gitignorePath := vaultPath + "/.gitignore"
+			gitignorePath := filepath.Join(vaultPath, ".gitignore")
 			if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
-				_ = os.WriteFile(gitignorePath, []byte(".granit/\n.DS_Store\n*.swp\n*.swo\n*~\n"), 0644)
+				if err := os.WriteFile(gitignorePath, []byte(".granit/\n.DS_Store\n*.swp\n*.swo\n*~\n"), 0644); err != nil {
+					fmt.Fprintf(os.Stderr, "warning: failed to create .gitignore: %v\n", err)
+				}
 			}
 		}
 		if !quiet {

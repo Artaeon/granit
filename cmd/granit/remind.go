@@ -230,12 +230,22 @@ func loadReminders(vaultPath string) []reminder {
 
 func saveReminders(vaultPath string, reminders []reminder) {
 	dir := filepath.Join(vaultPath, ".granit")
-	_ = os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		exitError("Error creating reminders dir: %v", err)
+	}
 	raw, err := json.MarshalIndent(reminders, "", "  ")
 	if err != nil {
 		exitError("Error saving reminders: %v", err)
 	}
-	if err := os.WriteFile(remindersPath(vaultPath), raw, 0644); err != nil {
+	// Atomic write so a crash mid-save cannot truncate reminders.json.
+	path := remindersPath(vaultPath)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0644); err != nil {
+		_ = os.Remove(tmp)
+		exitError("Error writing reminders: %v", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
 		exitError("Error writing reminders: %v", err)
 	}
 }

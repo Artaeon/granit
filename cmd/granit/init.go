@@ -181,14 +181,18 @@ tags: [meeting]
 
 	// Create essential folders
 	for _, dir := range []string{"Daily", "Habits", "Archive"} {
-		_ = os.MkdirAll(filepath.Join(absPath, dir), 0755)
+		if err := os.MkdirAll(filepath.Join(absPath, dir), 0755); err != nil {
+			exitError("Error creating %s/: %v", dir, err)
+		}
 	}
 
 	// Create Tasks.md if it doesn't exist
 	tasksPath := filepath.Join(absPath, "Tasks.md")
 	if _, err := os.Stat(tasksPath); os.IsNotExist(err) {
 		tasksContent := "---\ntitle: Tasks\ndate: " + todayDate() + "\ntags: [tasks]\n---\n\n# Tasks\n\n- [ ] \n"
-		_ = os.WriteFile(tasksPath, []byte(tasksContent), 0644)
+		if err := os.WriteFile(tasksPath, []byte(tasksContent), 0644); err != nil {
+			exitError("Error creating Tasks.md: %v", err)
+		}
 	}
 
 	// Initialize git repository
@@ -205,7 +209,9 @@ tags: [meeting]
 	gitignorePath := filepath.Join(absPath, ".gitignore")
 	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
 		gitignoreContent := ".granit/\n.DS_Store\n*.swp\n*.swo\n*~\n"
-		_ = os.WriteFile(gitignorePath, []byte(gitignoreContent), 0644)
+		if err := os.WriteFile(gitignorePath, []byte(gitignoreContent), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to create .gitignore: %v\n", err)
+		}
 	}
 
 	// Register the vault
