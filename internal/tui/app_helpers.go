@@ -349,7 +349,7 @@ func (m *Model) updateLayout() {
 			layout = "writer"
 		case "reading", "cornell", "preview":
 			layout = "minimal"
-		case "dashboard", "taskboard", "cockpit", "stacked", "kanban", "widescreen":
+		case "dashboard", "cockpit", "stacked", "kanban", "widescreen":
 			layout = "writer"
 		case "focus":
 			layout = "minimal"
@@ -361,7 +361,7 @@ func (m *Model) updateLayout() {
 		switch layout {
 		case "dashboard", "cockpit", "stacked", "widescreen":
 			layout = "default"
-		case "taskboard", "kanban":
+		case "kanban":
 			layout = "writer"
 		}
 	}
@@ -454,8 +454,8 @@ func (m *Model) updateLayout() {
 
 	editorWidth := m.width - sidebarWidth - backlinksWidth - outlineWidth - panelBorders - 2
 
-	// Taskboard and research layouts have an extra right panel
-	if layout == "taskboard" || layout == "research" {
+	// Research layout has an extra right panel
+	if layout == "research" {
 		extraPanelWidth := m.width / 4
 		if extraPanelWidth < 25 {
 			extraPanelWidth = 25

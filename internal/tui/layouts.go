@@ -11,21 +11,19 @@ package tui
 //   - "zen"       — 1-panel: centered editor, no chrome (distraction-free)
 //   - "cockpit"   — 4-panel: sidebar | editor | calendar & tasks
 const (
-	LayoutDefault   = "default"
-	LayoutWriter    = "writer"
-	LayoutMinimal   = "minimal"
-	LayoutReading   = "reading"
-	LayoutDashboard = "dashboard"
-	LayoutZen       = "zen"
-	LayoutTaskboard = "taskboard"
-	LayoutResearch  = "research"
-	LayoutCalendar  = "calendar"
-	LayoutCornell   = "cornell"
-	LayoutFocus     = "focus"
-	LayoutCockpit   = "cockpit"
-	LayoutStacked   = "stacked"
-	LayoutPreview   = "preview"
-	LayoutPresenter = "presenter"
+	LayoutDefault    = "default"
+	LayoutWriter     = "writer"
+	LayoutMinimal    = "minimal"
+	LayoutReading    = "reading"
+	LayoutDashboard  = "dashboard"
+	LayoutZen        = "zen"
+	LayoutResearch   = "research"
+	LayoutCornell    = "cornell"
+	LayoutFocus      = "focus"
+	LayoutCockpit    = "cockpit"
+	LayoutStacked    = "stacked"
+	LayoutPreview    = "preview"
+	LayoutPresenter  = "presenter"
 	LayoutKanban     = "kanban"
 	LayoutWidescreen = "widescreen"
 )
@@ -64,7 +62,7 @@ func LayoutDescription(layout string) string {
 		return "Sidebar + Editor + Outline + Backlinks (4-panel)"
 	case LayoutZen:
 		return "Centered editor, no chrome (distraction-free)"
-	case LayoutTaskboard, LayoutCalendar, LayoutCockpit:
+	case LayoutCockpit:
 		return "Sidebar + Editor + Calendar & Tasks (command center)"
 	case LayoutResearch:
 		return "Sidebar + Editor + Backlinks (3-panel)"
@@ -102,7 +100,7 @@ func LayoutPanelCount(layout string) int {
 		return 4
 	case LayoutZen:
 		return 1
-	case LayoutTaskboard, LayoutCalendar, LayoutCockpit:
+	case LayoutCockpit:
 		return 4
 	case LayoutStacked:
 		return 4
@@ -138,7 +136,7 @@ func LayoutHasSidebar(layout string) bool {
 // LayoutHasBacklinks reports whether the layout includes the backlinks panel.
 func LayoutHasBacklinks(layout string) bool {
 	switch layout {
-	case LayoutWriter, LayoutMinimal, LayoutZen, LayoutTaskboard, LayoutCalendar, LayoutCockpit, LayoutStacked, LayoutCornell, LayoutFocus, LayoutPreview, LayoutPresenter, LayoutKanban, LayoutWidescreen:
+	case LayoutWriter, LayoutMinimal, LayoutZen, LayoutCockpit, LayoutStacked, LayoutCornell, LayoutFocus, LayoutPreview, LayoutPresenter, LayoutKanban, LayoutWidescreen:
 		return false
 	default:
 		return true

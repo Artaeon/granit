@@ -98,9 +98,7 @@ const (
 	CmdLayoutReading
 	CmdLayoutDashboard
 	CmdLayoutZen
-	CmdLayoutTaskboard
 	CmdLayoutResearch
-	CmdLayoutCalendar
 	CmdLayoutCornell
 	CmdLayoutFocus
 	CmdLayoutCockpit

@@ -883,7 +883,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.themeEditor.SetSize(m.width, m.height)
 		m.themeEditor.Open(m.config.Theme)
 
-	case CmdLayoutDefault, CmdLayoutWriter, CmdLayoutMinimal, CmdLayoutReading, CmdLayoutDashboard, CmdLayoutZen, CmdLayoutTaskboard, CmdLayoutResearch, CmdLayoutCalendar, CmdLayoutCornell, CmdLayoutFocus, CmdLayoutCockpit, CmdLayoutStacked, CmdLayoutPreview, CmdLayoutPresenter, CmdLayoutKanban, CmdLayoutWidescreen:
+	case CmdLayoutDefault, CmdLayoutWriter, CmdLayoutMinimal, CmdLayoutReading, CmdLayoutDashboard, CmdLayoutZen, CmdLayoutResearch, CmdLayoutCornell, CmdLayoutFocus, CmdLayoutCockpit, CmdLayoutStacked, CmdLayoutPreview, CmdLayoutPresenter, CmdLayoutKanban, CmdLayoutWidescreen:
 		switch action {
 		case CmdLayoutDefault:
 			m.config.Layout = LayoutDefault
@@ -903,15 +903,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		case CmdLayoutZen:
 			m.config.Layout = LayoutZen
 			m.statusbar.SetMessage("Layout: Zen (distraction-free)")
-		case CmdLayoutTaskboard:
-			m.config.Layout = LayoutCockpit
-			m.statusbar.SetMessage("Layout: Cockpit (sidebar + editor + calendar & tasks)")
 		case CmdLayoutResearch:
 			m.config.Layout = LayoutDefault
 			m.statusbar.SetMessage("Layout: Default (3-panel)")
-		case CmdLayoutCalendar:
-			m.config.Layout = LayoutCockpit
-			m.statusbar.SetMessage("Layout: Cockpit (sidebar + editor + calendar & tasks)")
 		case CmdLayoutCornell:
 			m.config.Layout = LayoutCornell
 			m.statusbar.SetMessage("Layout: Cornell (editor + notes study layout)")

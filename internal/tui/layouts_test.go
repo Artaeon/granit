@@ -23,13 +23,10 @@ func TestLayoutCalendar_HasCalendarPanel(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// LayoutHasBacklinks — calendar and cockpit should not have backlinks
+// LayoutHasBacklinks — cockpit should not have a backlinks panel
 // ---------------------------------------------------------------------------
 
-func TestLayoutCalendar_NoBacklinks(t *testing.T) {
-	if LayoutHasBacklinks(LayoutCalendar) {
-		t.Error("expected LayoutHasBacklinks to return false for 'calendar' layout")
-	}
+func TestLayoutCockpit_NoBacklinks(t *testing.T) {
 	if LayoutHasBacklinks(LayoutCockpit) {
 		t.Error("expected LayoutHasBacklinks to return false for 'cockpit' layout")
 	}
@@ -52,12 +49,19 @@ func TestAllLayouts_IncludesCockpit(t *testing.T) {
 	if !found {
 		t.Errorf("expected AllLayouts to contain %q, got %v", LayoutCockpit, layouts)
 	}
+}
 
-	// Calendar and taskboard should NOT be in AllLayouts (merged into cockpit)
-	for _, deprecated := range []string{LayoutCalendar, LayoutTaskboard} {
-		for _, l := range layouts {
-			if l == deprecated {
-				t.Errorf("expected AllLayouts to NOT contain deprecated %q", deprecated)
+// ---------------------------------------------------------------------------
+// Legacy 'calendar' and 'taskboard' layouts must not appear in AllLayouts.
+// They were merged into cockpit and a runtime migration in NewModel rewrites
+// stored config values, so the constants no longer exist.
+// ---------------------------------------------------------------------------
+
+func TestAllLayouts_DropsRetiredLayouts(t *testing.T) {
+	for _, retired := range []string{"calendar", "taskboard"} {
+		for _, l := range AllLayouts() {
+			if l == retired {
+				t.Errorf("expected AllLayouts to NOT contain retired %q", retired)
 			}
 		}
 	}
