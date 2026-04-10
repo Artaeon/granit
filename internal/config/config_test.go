@@ -1023,3 +1023,80 @@ func writeTestJSON(t *testing.T, path string, v interface{}) {
 		t.Fatalf("failed to write %s: %v", path, err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// atomicWriteFile — temp+rename, no leftover .tmp on success
+// ---------------------------------------------------------------------------
+
+func TestAtomicWriteFile_LeavesNoTmp(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+
+	if err := atomicWriteFile(path, []byte(`{"x":1}`), 0600); err != nil {
+		t.Fatalf("atomicWriteFile failed: %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	if string(got) != `{"x":1}` {
+		t.Errorf("unexpected content: %q", got)
+	}
+
+	// Ensure no .tmp file is left behind
+	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
+		t.Errorf("expected .tmp to be cleaned up, stat err = %v", err)
+	}
+}
+
+func TestAtomicWriteFile_OverwritesExisting(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+
+	if err := os.WriteFile(path, []byte("old"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWriteFile(path, []byte("new"), 0600); err != nil {
+		t.Fatalf("atomicWriteFile failed: %v", err)
+	}
+
+	got, _ := os.ReadFile(path)
+	if string(got) != "new" {
+		t.Errorf("expected 'new', got %q", got)
+	}
+}
+
+// Regression: Save() must use atomic write so a crash mid-write
+// cannot leave the user's settings file truncated.
+func TestConfigSave_IsAtomic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := DefaultConfig()
+	cfg.SetFilePath(path)
+	cfg.Theme = "dracula"
+
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// No .tmp file should remain after a successful Save.
+	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
+		t.Errorf("Save left a .tmp file behind: %v", err)
+	}
+
+	// Reload and confirm the value round-tripped.
+	cfg2 := DefaultConfig()
+	cfg2.SetFilePath(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	if err := json.Unmarshal(data, &cfg2); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if cfg2.Theme != "dracula" {
+		t.Errorf("expected theme 'dracula', got %q", cfg2.Theme)
+	}
+}

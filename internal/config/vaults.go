@@ -54,7 +54,7 @@ func SaveVaultList(vl VaultList) {
 		log.Printf("warning: failed to marshal vault list: %v", err)
 		return
 	}
-	if err := os.WriteFile(vaultsPath(), data, 0600); err != nil {
+	if err := atomicWriteFile(vaultsPath(), data, 0600); err != nil {
 		log.Printf("warning: failed to write vault list: %v", err)
 	}
 }

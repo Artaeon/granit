@@ -279,7 +279,7 @@ func (c Config) Save() error {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0600)
+	return atomicWriteFile(path, data, 0600)
 }
 
 func (c Config) SaveToVault(vaultRoot string) error {
@@ -294,5 +294,22 @@ func (c Config) SaveToVault(vaultRoot string) error {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0600)
+	return atomicWriteFile(path, data, 0600)
+}
+
+// atomicWriteFile writes data to path atomically by first writing to a
+// temporary file in the same directory, then renaming it into place. This
+// prevents leaving a partial or zero-byte file on disk if the process is
+// interrupted (crash, power loss, OOM kill) mid-write.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, perm); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
