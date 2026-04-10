@@ -383,25 +383,13 @@ func loadActiveGoals(vaultRoot string) []Goal {
 }
 
 func (gm *GoalsMode) loadGoals() {
-	gm.goals = nil
-	data, err := os.ReadFile(gm.goalsPath())
-	if err != nil {
-		return
-	}
-	if err := json.Unmarshal(data, &gm.goals); err != nil {
-		// Corrupted JSON — start with empty goals rather than nil
-		gm.goals = []Goal{}
-	}
+	// loadAllGoals returns nil for both missing and corrupt files; the
+	// rest of GoalsMode handles a nil slice as the empty state.
+	gm.goals = loadAllGoals(gm.vaultRoot)
 }
 
 func (gm *GoalsMode) saveGoals() {
-	dir := filepath.Join(gm.vaultRoot, ".granit")
-	_ = os.MkdirAll(dir, 0755)
-	data, err := json.MarshalIndent(gm.goals, "", "  ")
-	if err != nil {
-		return // don't write corrupt data
-	}
-	_ = os.WriteFile(gm.goalsPath(), data, 0o600)
+	saveAllGoals(gm.vaultRoot, gm.goals)
 }
 
 // loadAllGoals reads all goals from the goals.json file.
