@@ -399,9 +399,17 @@ func (e Encryption) Update(msg tea.Msg) (Encryption, tea.Cmd) {
 					e.input = TrimLastRune(e.input)
 				}
 			default:
-				if len(key) == 1 && key[0] >= 32 {
-					e.input += key
-				} else if key == "space" {
+				// Accept any printable rune (including multi-byte UTF-8)
+				// rather than only single-byte ASCII. Lets users use
+				// accented characters, emoji, or CJK in their passphrase.
+				// Use msg.Runes (the literal typed runes) so special-key
+				// names like "esc"/"enter" do not leak into the input.
+				for _, r := range msg.Runes {
+					if r >= 32 && r != 127 {
+						e.input += string(r)
+					}
+				}
+				if key == "space" {
 					e.input += " "
 				}
 			}
@@ -438,9 +446,15 @@ func (e Encryption) Update(msg tea.Msg) (Encryption, tea.Cmd) {
 					e.confirm = TrimLastRune(e.confirm)
 				}
 			default:
-				if len(key) == 1 && key[0] >= 32 {
-					e.confirm += key
-				} else if key == "space" {
+				// Accept any printable rune for the passphrase confirmation
+				// so it can match an entered passphrase that used multi-byte
+				// characters. Use msg.Runes (the literal typed runes).
+				for _, r := range msg.Runes {
+					if r >= 32 && r != 127 {
+						e.confirm += string(r)
+					}
+				}
+				if key == "space" {
 					e.confirm += " "
 				}
 			}

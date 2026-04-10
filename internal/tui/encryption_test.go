@@ -1,6 +1,10 @@
 package tui
 
-import "testing"
+import (
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 func TestEncryption_RoundTrip(t *testing.T) {
 	e := NewEncryption()
@@ -143,5 +147,63 @@ func TestEncryption_EmptyContent(t *testing.T) {
 	}
 	if decrypted != "" {
 		t.Errorf("expected empty, got %q", decrypted)
+	}
+}
+
+// Regression: a passphrase containing multi-byte runes (accented chars,
+// emoji, CJK) used to be silently rejected by the input handler because
+// the default case only accepted single-byte ASCII. Now the handler reads
+// from msg.Runes so any printable rune is accepted.
+func TestEncryption_PassphraseInputAcceptsMultibyte(t *testing.T) {
+	e := NewEncryption()
+	e.active = true
+	e.mode = encModeEnterPassphrase
+
+	// Simulate the user typing a 3-rune multi-byte passphrase.
+	for _, r := range []rune{'c', 'a', 'f', 'é', '🔥'} {
+		e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	if e.input != "café🔥" {
+		t.Errorf("expected input %q, got %q", "café🔥", e.input)
+	}
+}
+
+// Regression: special-key strings like "esc"/"enter" must NOT leak into
+// the passphrase input as if they were three printable characters.
+func TestEncryption_PassphraseInputIgnoresSpecialKeyNames(t *testing.T) {
+	e := NewEncryption()
+	e.active = true
+	e.mode = encModeEnterPassphrase
+
+	// "tab" is a special key with no Runes; bubbletea would emit it with an
+	// empty Runes slice. Our handler must not append "t","a","b".
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyTab, Runes: nil})
+	if e.input != "" {
+		t.Errorf("special key leaked into input: %q", e.input)
+	}
+}
+
+// Regression: a passphrase set with multi-byte runes must round-trip
+// through encrypt/decrypt without loss.
+func TestEncryption_MultibytePassphraseRoundTrip(t *testing.T) {
+	e := NewEncryption()
+	e.SetPassphrase("café 🔥 naïve") // multi-byte passphrase
+
+	plaintext := "secret message"
+	ciphertext, err := e.EncryptContent(plaintext)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Use a fresh decryptor with the same passphrase.
+	d := NewEncryption()
+	d.SetPassphrase("café 🔥 naïve")
+	got, err := d.DecryptContent(ciphertext)
+	if err != nil {
+		t.Fatalf("decrypt with same multi-byte passphrase failed: %v", err)
+	}
+	if got != plaintext {
+		t.Errorf("plaintext lost: got %q, want %q", got, plaintext)
 	}
 }
