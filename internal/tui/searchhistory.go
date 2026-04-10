@@ -41,13 +41,13 @@ func loadSearchHistory(vaultRoot string) SearchHistory {
 // saveSearchHistory writes the search history to disk.
 func saveSearchHistory(vaultRoot string, h SearchHistory) {
 	dir := filepath.Join(vaultRoot, ".granit")
-	_ = os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0o755)
 
 	data, err := json.MarshalIndent(h, "", "  ")
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(searchHistoryPath(vaultRoot), data, 0600)
+	_ = atomicWriteState(searchHistoryPath(vaultRoot), data)
 }
 
 // appendToHistory adds a query to a history slice if it is non-empty and
