@@ -1189,10 +1189,6 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		m.dailyPlanner.activeGoals = activeGoals
 
-	case CmdAIScheduler:
-		// Consolidated into Plan My Day
-		return m.executeCommand(CmdPlanMyDay)
-
 	case CmdPlanMyDay:
 		m.planMyDay.SetSize(m.width, m.height)
 		tasks, events, habits, projects, yesterdayTasks := m.gatherPlanMyDayData()
