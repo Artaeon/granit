@@ -928,7 +928,7 @@ func (a AITemplates) updateTopicInput(msg tea.KeyMsg) (AITemplates, tea.Cmd) {
 		return a, tea.Batch(a.generateContent(), aiTemplateTickCmd())
 	case "backspace":
 		if len(a.topicInput) > 0 {
-			a.topicInput = a.topicInput[:len(a.topicInput)-1]
+			a.topicInput = TrimLastRune(a.topicInput)
 		}
 	case "ctrl+u":
 		a.topicInput = ""

@@ -933,7 +933,7 @@ func (ss *SemanticSearch) Update(msg tea.Msg) (*SemanticSearch, tea.Cmd) {
 				return ss, nil
 			}
 			if len(ss.query) > 0 {
-				ss.query = ss.query[:len(ss.query)-1]
+				ss.query = TrimLastRune(ss.query)
 			}
 			return ss, nil
 

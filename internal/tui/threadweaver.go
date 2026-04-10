@@ -366,7 +366,7 @@ func (tw ThreadWeaver) updateSelectNotes(msg tea.KeyMsg) (ThreadWeaver, tea.Cmd)
 
 	case "backspace":
 		if len(tw.query) > 0 {
-			tw.query = tw.query[:len(tw.query)-1]
+			tw.query = TrimLastRune(tw.query)
 			tw.filterNotes()
 		}
 		return tw, nil
@@ -508,7 +508,7 @@ func (tw ThreadWeaver) updateTitleEdit(msg tea.KeyMsg) (ThreadWeaver, tea.Cmd) {
 		return tw, nil
 	case "backspace":
 		if len(tw.title) > 0 {
-			tw.title = tw.title[:len(tw.title)-1]
+			tw.title = TrimLastRune(tw.title)
 		}
 		return tw, nil
 	case "ctrl+u":

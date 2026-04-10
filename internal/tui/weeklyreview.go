@@ -459,7 +459,7 @@ func (wr WeeklyReview) updateTextInput(msg tea.KeyMsg) (WeeklyReview, tea.Cmd) {
 		return wr, nil
 	case "backspace":
 		if len(wr.inputBuf) > 0 {
-			wr.inputBuf = wr.inputBuf[:len(wr.inputBuf)-1]
+			wr.inputBuf = TrimLastRune(wr.inputBuf)
 		}
 		return wr, nil
 	default:

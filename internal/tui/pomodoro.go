@@ -516,7 +516,7 @@ func (p Pomodoro) updateAddTask(msg tea.KeyMsg) (Pomodoro, tea.Cmd) {
 		return p, nil
 	case "backspace":
 		if len(p.addTaskInput) > 0 {
-			p.addTaskInput = p.addTaskInput[:len(p.addTaskInput)-1]
+			p.addTaskInput = TrimLastRune(p.addTaskInput)
 		}
 		return p, nil
 	default:

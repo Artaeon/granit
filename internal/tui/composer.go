@@ -303,7 +303,7 @@ func (c Composer) updateInput(msg tea.KeyMsg) (Composer, tea.Cmd) {
 		return c, tea.Batch(c.generateNote(), composerTickCmd())
 	case "backspace":
 		if len(c.prompt) > 0 {
-			c.prompt = c.prompt[:len(c.prompt)-1]
+			c.prompt = TrimLastRune(c.prompt)
 		}
 	case "ctrl+u":
 		c.prompt = ""
@@ -375,7 +375,7 @@ func (c Composer) updateTitle(msg tea.KeyMsg) (Composer, tea.Cmd) {
 		return c, nil
 	case "backspace":
 		if len(c.title) > 0 {
-			c.title = c.title[:len(c.title)-1]
+			c.title = TrimLastRune(c.title)
 		}
 	case "ctrl+u":
 		c.title = ""

@@ -187,7 +187,7 @@ func (te ThemeEditor) Update(msg tea.Msg) (ThemeEditor, tea.Cmd) {
 				te.nameBuf = ""
 			case "backspace":
 				if len(te.nameBuf) > 0 {
-					te.nameBuf = te.nameBuf[:len(te.nameBuf)-1]
+					te.nameBuf = TrimLastRune(te.nameBuf)
 				}
 			default:
 				if len(key) == 1 && key[0] >= 32 {
@@ -213,7 +213,7 @@ func (te ThemeEditor) Update(msg tea.Msg) (ThemeEditor, tea.Cmd) {
 				te.editBuf = ""
 			case "backspace":
 				if len(te.editBuf) > 0 {
-					te.editBuf = te.editBuf[:len(te.editBuf)-1]
+					te.editBuf = TrimLastRune(te.editBuf)
 				}
 			default:
 				if len(key) == 1 && key[0] >= 32 && len(te.editBuf) < 7 {

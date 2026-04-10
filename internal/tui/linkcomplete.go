@@ -91,7 +91,7 @@ func (lc *LinkCompleter) AddChar(ch string) {
 // RemoveChar removes the last character from the query (backspace).
 func (lc *LinkCompleter) RemoveChar() {
 	if len(lc.query) > 0 {
-		lc.query = lc.query[:len(lc.query)-1]
+		lc.query = TrimLastRune(lc.query)
 		lc.refilter()
 	}
 }

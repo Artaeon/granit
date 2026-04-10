@@ -443,7 +443,7 @@ func (bd BlogDraft) updateInput(msg tea.KeyMsg) (BlogDraft, tea.Cmd) {
 
 	case "backspace":
 		if bd.focusField == 0 && len(bd.topic) > 0 {
-			bd.topic = bd.topic[:len(bd.topic)-1]
+			bd.topic = TrimLastRune(bd.topic)
 		}
 		return bd, nil
 
@@ -490,7 +490,7 @@ func (bd BlogDraft) updateOutline(msg tea.KeyMsg) (BlogDraft, tea.Cmd) {
 			return bd, nil
 		case "backspace":
 			if len(bd.editBuf) > 0 {
-				bd.editBuf = bd.editBuf[:len(bd.editBuf)-1]
+				bd.editBuf = TrimLastRune(bd.editBuf)
 			}
 			return bd, nil
 		default:
@@ -663,9 +663,9 @@ func (bd BlogDraft) updateReview(msg tea.KeyMsg) (BlogDraft, tea.Cmd) {
 
 	case "backspace":
 		if bd.focusField == 0 && len(bd.title) > 0 {
-			bd.title = bd.title[:len(bd.title)-1]
+			bd.title = TrimLastRune(bd.title)
 		} else if bd.focusField == 1 && len(bd.tags) > 0 {
-			bd.tags = bd.tags[:len(bd.tags)-1]
+			bd.tags = TrimLastRune(bd.tags)
 		}
 		return bd, nil
 

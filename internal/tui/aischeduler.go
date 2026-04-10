@@ -549,7 +549,7 @@ func (as AIScheduler) updateSetup(msg tea.KeyMsg) (AIScheduler, tea.Cmd) {
 			as.estimateBuf = ""
 		case "backspace":
 			if len(as.estimateBuf) > 0 {
-				as.estimateBuf = as.estimateBuf[:len(as.estimateBuf)-1]
+				as.estimateBuf = TrimLastRune(as.estimateBuf)
 			}
 		default:
 			if len(key) == 1 && key[0] >= '0' && key[0] <= '9' && len(as.estimateBuf) < 4 {

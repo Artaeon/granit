@@ -312,7 +312,7 @@ func (rl ReadingList) updateInput(msg tea.KeyMsg) (ReadingList, tea.Cmd) {
 		return rl, nil
 	case "backspace":
 		if len(rl.inputBuf) > 0 {
-			rl.inputBuf = rl.inputBuf[:len(rl.inputBuf)-1]
+			rl.inputBuf = TrimLastRune(rl.inputBuf)
 		}
 		return rl, nil
 	default:

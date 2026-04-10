@@ -602,7 +602,7 @@ func (ac AIChat) Update(msg tea.Msg) (AIChat, tea.Cmd) {
 
 		case "backspace":
 			if len(ac.input) > 0 {
-				ac.input = ac.input[:len(ac.input)-1]
+				ac.input = TrimLastRune(ac.input)
 			}
 
 		case "ctrl+u":

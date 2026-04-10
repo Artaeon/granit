@@ -1009,7 +1009,7 @@ func (ht HabitTracker) updateInput(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 				ht.inputValue = parts[0] + "|" + parts[1][:len(parts[1])-1]
 			}
 		} else if len(ht.inputValue) > 0 {
-			ht.inputValue = ht.inputValue[:len(ht.inputValue)-1]
+			ht.inputValue = TrimLastRune(ht.inputValue)
 		}
 		return ht, nil
 

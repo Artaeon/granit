@@ -443,7 +443,7 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				c.eventInput = ""
 			case "backspace":
 				if len(c.eventInput) > 0 {
-					c.eventInput = c.eventInput[:len(c.eventInput)-1]
+					c.eventInput = TrimLastRune(c.eventInput)
 				}
 			default:
 				if len(msg.String()) == 1 || msg.String() == " " {
@@ -482,7 +482,7 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				}
 			case "backspace":
 				if c.weekMilestoneStep == 1 && len(c.weekMilestoneBuf) > 0 {
-					c.weekMilestoneBuf = c.weekMilestoneBuf[:len(c.weekMilestoneBuf)-1]
+					c.weekMilestoneBuf = TrimLastRune(c.weekMilestoneBuf)
 				}
 			default:
 				if c.weekMilestoneStep == 1 {
@@ -675,7 +675,7 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				}
 			case "backspace":
 				if len(c.eventEditBuf) > 0 {
-					c.eventEditBuf = c.eventEditBuf[:len(c.eventEditBuf)-1]
+					c.eventEditBuf = TrimLastRune(c.eventEditBuf)
 				}
 			default:
 				if len(msg.String()) == 1 || msg.String() == " " {

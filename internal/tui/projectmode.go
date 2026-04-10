@@ -1038,7 +1038,7 @@ func (pm ProjectMode) updateDashInput(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 		pm.dashInputKind = ""
 	case "backspace":
 		if len(pm.dashInputBuf) > 0 {
-			pm.dashInputBuf = pm.dashInputBuf[:len(pm.dashInputBuf)-1]
+			pm.dashInputBuf = TrimLastRune(pm.dashInputBuf)
 		}
 	default:
 		if len(key) == 1 {
@@ -1224,27 +1224,27 @@ func (pm *ProjectMode) editBackspace() {
 	switch pm.editField {
 	case 0:
 		if len(pm.editName) > 0 {
-			pm.editName = pm.editName[:len(pm.editName)-1]
+			pm.editName = TrimLastRune(pm.editName)
 		}
 	case 1:
 		if len(pm.editDesc) > 0 {
-			pm.editDesc = pm.editDesc[:len(pm.editDesc)-1]
+			pm.editDesc = TrimLastRune(pm.editDesc)
 		}
 	case 2:
 		if len(pm.editFolder) > 0 {
-			pm.editFolder = pm.editFolder[:len(pm.editFolder)-1]
+			pm.editFolder = TrimLastRune(pm.editFolder)
 		}
 	case 4:
 		if len(pm.editTags) > 0 {
-			pm.editTags = pm.editTags[:len(pm.editTags)-1]
+			pm.editTags = TrimLastRune(pm.editTags)
 		}
 	case 8: // due date
 		if len(pm.editDueDate) > 0 {
-			pm.editDueDate = pm.editDueDate[:len(pm.editDueDate)-1]
+			pm.editDueDate = TrimLastRune(pm.editDueDate)
 		}
 	case 9: // next action
 		if len(pm.editNextAction) > 0 {
-			pm.editNextAction = pm.editNextAction[:len(pm.editNextAction)-1]
+			pm.editNextAction = TrimLastRune(pm.editNextAction)
 		}
 	}
 }

@@ -512,7 +512,7 @@ func (ib IdeasBoard) updateInput(key string) (IdeasBoard, tea.Cmd) {
 			ib.inputBuf = ""
 		case "backspace":
 			if len(ib.inputBuf) > 0 {
-				ib.inputBuf = ib.inputBuf[:len(ib.inputBuf)-1]
+				ib.inputBuf = TrimLastRune(ib.inputBuf)
 			}
 		default:
 			if len(key) == 1 || key == " " {
@@ -540,7 +540,7 @@ func (ib IdeasBoard) updateInput(key string) (IdeasBoard, tea.Cmd) {
 			ib.inputBuf = ""
 		case "backspace":
 			if len(ib.inputBuf) > 0 {
-				ib.inputBuf = ib.inputBuf[:len(ib.inputBuf)-1]
+				ib.inputBuf = TrimLastRune(ib.inputBuf)
 			}
 		default:
 			if len(key) == 1 || key == " " {

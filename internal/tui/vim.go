@@ -310,7 +310,7 @@ func (vs *VimState) handleCommand(key string, content []string, cursor int) VimR
 		return vs.executeCommand(content, cursor)
 	case "backspace":
 		if len(vs.cmdBuf) > 0 {
-			vs.cmdBuf = vs.cmdBuf[:len(vs.cmdBuf)-1]
+			vs.cmdBuf = TrimLastRune(vs.cmdBuf)
 		}
 		if len(vs.cmdBuf) == 0 {
 			vs.mode = VimNormal
@@ -1016,7 +1016,7 @@ func (vs *VimState) handleSearch(key string, content []string, cursor, col int) 
 		return vs.jumpToNearestMatch(content, cursor, col, vs.searchForward)
 	case "backspace":
 		if len(vs.searchBuf) > 0 {
-			vs.searchBuf = vs.searchBuf[:len(vs.searchBuf)-1]
+			vs.searchBuf = TrimLastRune(vs.searchBuf)
 		}
 		if len(vs.searchBuf) == 0 {
 			prompt := "/"

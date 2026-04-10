@@ -313,7 +313,7 @@ func (us UniversalSearch) Update(msg tea.Msg) (UniversalSearch, tea.Cmd) {
 			}
 		case "backspace":
 			if len(us.query) > 0 {
-				us.query = us.query[:len(us.query)-1]
+				us.query = TrimLastRune(us.query)
 				us.cursor = 0
 				us.scroll = 0
 				us.search()

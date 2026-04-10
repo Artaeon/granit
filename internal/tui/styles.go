@@ -294,6 +294,18 @@ var (
 // Using the primary accent (mauve) ensures visual consistency across views.
 var OverlayBorderColor = mauve
 
+// TrimLastRune removes the final UTF-8 rune from s and returns the result.
+// Use this for backspace handling on text input fields — slicing by byte
+// (s[:len(s)-1]) corrupts multi-byte runes like emoji or accented characters.
+// Returns the empty string if s has no runes.
+func TrimLastRune(s string) string {
+	if s == "" {
+		return ""
+	}
+	r := []rune(s)
+	return string(r[:len(r)-1])
+}
+
 // TruncateDisplay truncates a string to maxWidth using lipgloss.Width()
 // for accurate display-width measurement (handles wide unicode/emoji).
 // Returns the original string if it fits within maxWidth.

@@ -491,7 +491,7 @@ func (dp DailyPlanner) updateAdding(msg tea.KeyMsg) (DailyPlanner, tea.Cmd) {
 		dp.addBuf = ""
 	case "backspace":
 		if len(dp.addBuf) > 0 {
-			dp.addBuf = dp.addBuf[:len(dp.addBuf)-1]
+			dp.addBuf = TrimLastRune(dp.addBuf)
 		}
 	case "1":
 		dp.addType = blockTask

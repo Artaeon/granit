@@ -551,7 +551,7 @@ func (q QuizMode) updateQuestion(key string, km tea.KeyMsg) (QuizMode, tea.Cmd) 
 			q.submitAnswer(q.inputBuf)
 		case "backspace":
 			if len(q.inputBuf) > 0 {
-				q.inputBuf = q.inputBuf[:len(q.inputBuf)-1]
+				q.inputBuf = TrimLastRune(q.inputBuf)
 			}
 		default:
 			// Accept printable characters

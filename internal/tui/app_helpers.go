@@ -39,7 +39,7 @@ func (m *Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "backspace":
 		if len(m.searchQuery) > 0 {
-			m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
+			m.searchQuery = TrimLastRune(m.searchQuery)
 			m.filterSearch()
 		}
 		return m, nil
@@ -142,7 +142,7 @@ func (m *Model) updateNewNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(nil, m.clearMessageAfter(2*time.Second))
 	case "backspace":
 		if len(m.newNoteName) > 0 {
-			m.newNoteName = m.newNoteName[:len(m.newNoteName)-1]
+			m.newNoteName = TrimLastRune(m.newNoteName)
 		}
 		return m, nil
 	default:
@@ -203,7 +203,7 @@ func (m *Model) updateExtractNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.clearMessageAfter(2 * time.Second)
 	case "backspace":
 		if len(m.extractName) > 0 {
-			m.extractName = m.extractName[:len(m.extractName)-1]
+			m.extractName = TrimLastRune(m.extractName)
 		}
 		return m, nil
 	default:

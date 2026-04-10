@@ -182,10 +182,10 @@ func (gr GlobalReplace) Update(msg tea.Msg) (GlobalReplace, tea.Cmd) {
 
 		case "backspace":
 			if gr.focusField == 0 && len(gr.findQuery) > 0 {
-				gr.findQuery = gr.findQuery[:len(gr.findQuery)-1]
+				gr.findQuery = TrimLastRune(gr.findQuery)
 				gr.search()
 			} else if gr.focusField == 1 && len(gr.replaceText) > 0 {
-				gr.replaceText = gr.replaceText[:len(gr.replaceText)-1]
+				gr.replaceText = TrimLastRune(gr.replaceText)
 			}
 			return gr, nil
 

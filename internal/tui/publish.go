@@ -210,7 +210,7 @@ func (p Publisher) updateEditing(msg tea.KeyMsg) (Publisher, tea.Cmd) {
 		return p, nil
 	case "backspace":
 		if len(p.editBuf) > 0 {
-			p.editBuf = p.editBuf[:len(p.editBuf)-1]
+			p.editBuf = TrimLastRune(p.editBuf)
 		}
 		return p, nil
 	case "ctrl+u":

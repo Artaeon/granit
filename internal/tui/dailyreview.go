@@ -197,7 +197,7 @@ func (dr DailyReview) Update(msg tea.Msg) (DailyReview, tea.Cmd) {
 				dr.phase = reviewSaved
 			case "backspace":
 				if len(dr.reflectBuf) > 0 {
-					dr.reflectBuf = dr.reflectBuf[:len(dr.reflectBuf)-1]
+					dr.reflectBuf = TrimLastRune(dr.reflectBuf)
 				}
 			default:
 				if len(key) == 1 || key == " " {

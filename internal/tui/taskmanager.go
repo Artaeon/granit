@@ -1974,7 +1974,7 @@ func (tm TaskManager) updateAddInput(key string) (TaskManager, tea.Cmd) {
 
 	case "backspace":
 		if len(tm.inputBuf) > 0 {
-			tm.inputBuf = tm.inputBuf[:len(tm.inputBuf)-1]
+			tm.inputBuf = TrimLastRune(tm.inputBuf)
 		}
 		return tm, nil
 
@@ -2000,7 +2000,7 @@ func (tm TaskManager) updateSearchInput(key string) (TaskManager, tea.Cmd) {
 
 	case "backspace":
 		if len(tm.inputBuf) > 0 {
-			tm.inputBuf = tm.inputBuf[:len(tm.inputBuf)-1]
+			tm.inputBuf = TrimLastRune(tm.inputBuf)
 			tm.rebuildFiltered()
 		}
 		return tm, nil
@@ -2070,7 +2070,7 @@ func (tm TaskManager) updateDependency(key string) (TaskManager, tea.Cmd) {
 		tm.inputBuf = ""
 	case "backspace":
 		if len(tm.inputBuf) > 0 {
-			tm.inputBuf = tm.inputBuf[:len(tm.inputBuf)-1]
+			tm.inputBuf = TrimLastRune(tm.inputBuf)
 		}
 	default:
 		if len(key) == 1 || key == " " {
@@ -2125,7 +2125,7 @@ func (tm TaskManager) updateTemplateName(key string) (TaskManager, tea.Cmd) {
 		tm.inputBuf = ""
 	case "backspace":
 		if len(tm.inputBuf) > 0 {
-			tm.inputBuf = tm.inputBuf[:len(tm.inputBuf)-1]
+			tm.inputBuf = TrimLastRune(tm.inputBuf)
 		}
 	default:
 		if len(key) == 1 || key == " " {
@@ -2229,7 +2229,7 @@ func (tm TaskManager) updateNote(key string) (TaskManager, tea.Cmd) {
 		tm.inputBuf = ""
 	case "backspace":
 		if len(tm.inputBuf) > 0 {
-			tm.inputBuf = tm.inputBuf[:len(tm.inputBuf)-1]
+			tm.inputBuf = TrimLastRune(tm.inputBuf)
 		}
 	default:
 		if len(key) == 1 || key == " " {

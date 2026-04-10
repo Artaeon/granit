@@ -497,7 +497,7 @@ func (cp CommandPalette) Update(msg tea.Msg) (CommandPalette, tea.Cmd) {
 			return cp, nil
 		case "backspace":
 			if len(cp.query) > 0 {
-				cp.query = cp.query[:len(cp.query)-1]
+				cp.query = TrimLastRune(cp.query)
 				cp.filterCommands()
 			}
 			return cp, nil

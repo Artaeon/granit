@@ -286,7 +286,7 @@ func (bp BlogPublisher) updateEditing(msg tea.KeyMsg) (BlogPublisher, tea.Cmd) {
 		bp.editBuf = ""
 	case "backspace":
 		if len(bp.editBuf) > 0 {
-			bp.editBuf = bp.editBuf[:len(bp.editBuf)-1]
+			bp.editBuf = TrimLastRune(bp.editBuf)
 		}
 	case "ctrl+u":
 		bp.editBuf = ""

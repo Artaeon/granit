@@ -212,7 +212,7 @@ func (cs ContentSearch) Update(msg tea.Msg) (ContentSearch, tea.Cmd) {
 
 		case "backspace":
 			if len(cs.query) > 0 {
-				cs.query = cs.query[:len(cs.query)-1]
+				cs.query = TrimLastRune(cs.query)
 				cs.historyIdx = -1
 				cs.search()
 			}

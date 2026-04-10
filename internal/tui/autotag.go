@@ -410,7 +410,7 @@ func (nc NoteChat) Update(msg tea.Msg) (NoteChat, tea.Cmd) {
 
 		case "backspace":
 			if len(nc.input) > 0 {
-				nc.input = nc.input[:len(nc.input)-1]
+				nc.input = TrimLastRune(nc.input)
 			}
 
 		default:

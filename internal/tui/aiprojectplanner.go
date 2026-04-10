@@ -635,9 +635,9 @@ func (ap AIProjectPlanner) updateInput(msg tea.KeyMsg) (AIProjectPlanner, tea.Cm
 
 	case "backspace":
 		if ap.inputFocus == 0 && len(ap.nameInput) > 0 {
-			ap.nameInput = ap.nameInput[:len(ap.nameInput)-1]
+			ap.nameInput = TrimLastRune(ap.nameInput)
 		} else if ap.inputFocus == 1 && len(ap.descInput) > 0 {
-			ap.descInput = ap.descInput[:len(ap.descInput)-1]
+			ap.descInput = TrimLastRune(ap.descInput)
 		}
 		return ap, nil
 

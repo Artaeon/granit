@@ -199,7 +199,7 @@ func (te TableEditor) updateEditing(key string, msg tea.KeyMsg) (TableEditor, te
 		te.editBuf = ""
 	case "backspace":
 		if len(te.editBuf) > 0 {
-			te.editBuf = te.editBuf[:len(te.editBuf)-1]
+			te.editBuf = TrimLastRune(te.editBuf)
 		}
 	case "left", "right", "up", "down", "tab", "shift+tab":
 		// Ignore navigation keys while editing

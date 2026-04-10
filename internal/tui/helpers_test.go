@@ -3,7 +3,50 @@ package tui
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
+
+// ── TrimLastRune ────────────────────────────────────────────────
+
+func TestTrimLastRune_ASCII(t *testing.T) {
+	if got := TrimLastRune("hello"); got != "hell" {
+		t.Errorf("expected %q, got %q", "hell", got)
+	}
+}
+
+func TestTrimLastRune_Empty(t *testing.T) {
+	if got := TrimLastRune(""); got != "" {
+		t.Errorf("expected empty string, got %q", got)
+	}
+}
+
+func TestTrimLastRune_TwoByteRune(t *testing.T) {
+	// 'é' is 2 bytes (0xC3 0xA9). Byte slicing would corrupt it.
+	got := TrimLastRune("café")
+	if got != "caf" {
+		t.Errorf("expected %q, got %q", "caf", got)
+	}
+	if !utf8.ValidString(got) {
+		t.Errorf("result is not valid UTF-8: %q", got)
+	}
+}
+
+func TestTrimLastRune_FourByteRune(t *testing.T) {
+	// '🌟' is a 4-byte rune.
+	got := TrimLastRune("hi 🌟")
+	if got != "hi " {
+		t.Errorf("expected %q, got %q", "hi ", got)
+	}
+	if !utf8.ValidString(got) {
+		t.Errorf("result is not valid UTF-8: %q", got)
+	}
+}
+
+func TestTrimLastRune_SingleRune(t *testing.T) {
+	if got := TrimLastRune("✓"); got != "" {
+		t.Errorf("expected empty string, got %q", got)
+	}
+}
 
 // ── TruncateDisplay ─────────────────────────────────────────────
 

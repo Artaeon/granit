@@ -1220,7 +1220,7 @@ func (r ResearchAgent) updateInputResearch(msg tea.KeyMsg) (ResearchAgent, tea.C
 		return r, nil
 	case "backspace":
 		if r.focusField == 0 && len(r.topic) > 0 {
-			r.topic = r.topic[:len(r.topic)-1]
+			r.topic = TrimLastRune(r.topic)
 		}
 		return r, nil
 	default:

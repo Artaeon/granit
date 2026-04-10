@@ -298,7 +298,7 @@ func (fe FrontmatterEditor) updateEditing(msg tea.KeyMsg) (FrontmatterEditor, te
 		fe.editBuf = ""
 	case "backspace":
 		if len(fe.editBuf) > 0 {
-			fe.editBuf = fe.editBuf[:len(fe.editBuf)-1]
+			fe.editBuf = TrimLastRune(fe.editBuf)
 		}
 	default:
 		ch := msg.String()
@@ -325,7 +325,7 @@ func (fe FrontmatterEditor) updateAddingKey(msg tea.KeyMsg) (FrontmatterEditor, 
 		fe.addKeyBuf = ""
 	case "backspace":
 		if len(fe.addKeyBuf) > 0 {
-			fe.addKeyBuf = fe.addKeyBuf[:len(fe.addKeyBuf)-1]
+			fe.addKeyBuf = TrimLastRune(fe.addKeyBuf)
 		}
 	default:
 		ch := msg.String()

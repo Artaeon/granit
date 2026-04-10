@@ -204,7 +204,7 @@ func (sp SplitPane) updatePicker(msg tea.KeyMsg) (SplitPane, tea.Cmd) {
 
 	case "backspace":
 		if len(sp.pickQuery) > 0 {
-			sp.pickQuery = sp.pickQuery[:len(sp.pickQuery)-1]
+			sp.pickQuery = TrimLastRune(sp.pickQuery)
 			sp.pickCursor = 0
 			sp.filterNotes()
 		}

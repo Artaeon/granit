@@ -1809,7 +1809,7 @@ func (m Model) updateNewFolder(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.clearMessageAfter(2 * time.Second)
 	case "backspace":
 		if len(m.newFolderName) > 0 {
-			m.newFolderName = m.newFolderName[:len(m.newFolderName)-1]
+			m.newFolderName = TrimLastRune(m.newFolderName)
 		}
 		return m, nil
 	default:

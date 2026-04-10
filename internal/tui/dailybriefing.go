@@ -275,7 +275,7 @@ func (db DailyBriefing) Update(msg tea.Msg) (DailyBriefing, tea.Cmd) {
 				return db, tea.Batch(db.startBriefing(), briefingTickCmd())
 			case "backspace":
 				if len(db.userGoal) > 0 {
-					db.userGoal = db.userGoal[:len(db.userGoal)-1]
+					db.userGoal = TrimLastRune(db.userGoal)
 				}
 			default:
 				char := msg.String()

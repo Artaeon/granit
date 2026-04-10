@@ -1549,7 +1549,7 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 			}
 		case "backspace":
 			if len(gm.inputBuf) > 0 {
-				gm.inputBuf = gm.inputBuf[:len(gm.inputBuf)-1]
+				gm.inputBuf = TrimLastRune(gm.inputBuf)
 			}
 		default:
 			if len(key) == 1 || key == " " {
@@ -1609,7 +1609,7 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 			gm.inputBuf = ""
 		case "backspace":
 			if len(gm.inputBuf) > 0 {
-				gm.inputBuf = gm.inputBuf[:len(gm.inputBuf)-1]
+				gm.inputBuf = TrimLastRune(gm.inputBuf)
 			}
 		default:
 			// Number keys select existing categories
@@ -1641,7 +1641,7 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 			gm.inputBuf = ""
 		case "backspace":
 			if len(gm.inputBuf) > 0 {
-				gm.inputBuf = gm.inputBuf[:len(gm.inputBuf)-1]
+				gm.inputBuf = TrimLastRune(gm.inputBuf)
 			}
 		default:
 			if len(key) == 1 || key == " " {
@@ -1748,7 +1748,7 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 			gm.inputBuf = ""
 		case "backspace":
 			if len(gm.inputBuf) > 0 {
-				gm.inputBuf = gm.inputBuf[:len(gm.inputBuf)-1]
+				gm.inputBuf = TrimLastRune(gm.inputBuf)
 			}
 		default:
 			if len(key) == 1 || key == " " {
@@ -1776,7 +1776,7 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 			gm.inputBuf = ""
 		case "backspace":
 			if len(gm.inputBuf) > 0 {
-				gm.inputBuf = gm.inputBuf[:len(gm.inputBuf)-1]
+				gm.inputBuf = TrimLastRune(gm.inputBuf)
 			}
 		default:
 			if len(key) == 1 || key == " " {
@@ -1804,7 +1804,7 @@ func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 			gm.inputBuf = ""
 		case "backspace":
 			if len(gm.inputBuf) > 0 {
-				gm.inputBuf = gm.inputBuf[:len(gm.inputBuf)-1]
+				gm.inputBuf = TrimLastRune(gm.inputBuf)
 			}
 		default:
 			if len(key) == 1 || key == " " {

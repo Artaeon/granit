@@ -704,7 +704,7 @@ func (nls NLSearch) updateInput(msg tea.KeyMsg) (NLSearch, tea.Cmd) {
 		}
 	case "backspace":
 		if len(nls.query) > 0 {
-			nls.query = nls.query[:len(nls.query)-1]
+			nls.query = TrimLastRune(nls.query)
 		}
 	case "ctrl+u":
 		nls.query = ""

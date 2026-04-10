@@ -159,7 +159,7 @@ func (vs VaultSelector) updatePathInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "backspace":
 		if len(vs.input) > 0 {
-			vs.input = vs.input[:len(vs.input)-1]
+			vs.input = TrimLastRune(vs.input)
 		}
 
 	case "ctrl+u":
@@ -215,7 +215,7 @@ func (vs VaultSelector) updateNameInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "backspace":
 		if len(vs.input) > 0 {
-			vs.input = vs.input[:len(vs.input)-1]
+			vs.input = TrimLastRune(vs.input)
 		}
 
 	case "ctrl+u":

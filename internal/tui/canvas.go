@@ -456,7 +456,7 @@ func (c Canvas) updateInput(msg tea.KeyMsg) (Canvas, tea.Cmd) {
 		c.mode = canvasModeNormal
 	case "backspace":
 		if len(c.inputBuf) > 0 {
-			c.inputBuf = c.inputBuf[:len(c.inputBuf)-1]
+			c.inputBuf = TrimLastRune(c.inputBuf)
 		}
 	default:
 		ch := msg.String()

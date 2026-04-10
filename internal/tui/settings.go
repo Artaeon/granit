@@ -512,7 +512,7 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 				s.rebuildVisible()
 			case "backspace":
 				if len(s.searchBuf) > 0 {
-					s.searchBuf = s.searchBuf[:len(s.searchBuf)-1]
+					s.searchBuf = TrimLastRune(s.searchBuf)
 					s.cursor = 0
 					s.buildItems()
 					s.rebuildVisible()
@@ -541,7 +541,7 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 				s.editBuf = ""
 			case "backspace":
 				if len(s.editBuf) > 0 {
-					s.editBuf = s.editBuf[:len(s.editBuf)-1]
+					s.editBuf = TrimLastRune(s.editBuf)
 				}
 			default:
 				char := msg.String()

@@ -396,7 +396,7 @@ func (e Encryption) Update(msg tea.Msg) (Encryption, tea.Cmd) {
 				}
 			case "backspace":
 				if len(e.input) > 0 {
-					e.input = e.input[:len(e.input)-1]
+					e.input = TrimLastRune(e.input)
 				}
 			default:
 				if len(key) == 1 && key[0] >= 32 {
@@ -435,7 +435,7 @@ func (e Encryption) Update(msg tea.Msg) (Encryption, tea.Cmd) {
 				}
 			case "backspace":
 				if len(e.confirm) > 0 {
-					e.confirm = e.confirm[:len(e.confirm)-1]
+					e.confirm = TrimLastRune(e.confirm)
 				}
 			default:
 				if len(key) == 1 && key[0] >= 32 {

@@ -437,7 +437,7 @@ func (ll LanguageLearning) updatePractice(msg tea.KeyMsg) (LanguageLearning, tea
 		ll.submitAnswer()
 	case "backspace":
 		if len(ll.practiceInput) > 0 {
-			ll.practiceInput = ll.practiceInput[:len(ll.practiceInput)-1]
+			ll.practiceInput = TrimLastRune(ll.practiceInput)
 		}
 	default:
 		if len(key) == 1 || key == " " {

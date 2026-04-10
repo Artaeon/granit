@@ -425,7 +425,7 @@ func (jp JournalPrompts) updateWriteMode(msg tea.KeyMsg) (JournalPrompts, tea.Cm
 		jp.saveEntry()
 	case "backspace":
 		if len(jp.response) > 0 {
-			jp.response = jp.response[:len(jp.response)-1]
+			jp.response = TrimLastRune(jp.response)
 		}
 	case "enter":
 		jp.response += "\n"

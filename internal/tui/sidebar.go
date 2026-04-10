@@ -263,7 +263,7 @@ func (s Sidebar) Update(msg tea.Msg) (Sidebar, tea.Cmd) {
 			s.searching = true
 		case "backspace":
 			if s.searching && len(s.search) > 0 {
-				s.search = s.search[:len(s.search)-1]
+				s.search = TrimLastRune(s.search)
 				s.applyFilter()
 			}
 		case "esc":

@@ -185,7 +185,7 @@ func (vs VaultSwitch) updateAddInput(msg tea.KeyMsg) (VaultSwitch, tea.Cmd) {
 
 	case "backspace":
 		if len(vs.addInput) > 0 {
-			vs.addInput = vs.addInput[:len(vs.addInput)-1]
+			vs.addInput = TrimLastRune(vs.addInput)
 		}
 
 	case "ctrl+u":

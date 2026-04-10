@@ -291,11 +291,11 @@ func (fr FindReplace) Update(msg tea.Msg) (FindReplace, tea.Cmd) {
 			return fr, nil
 		case "backspace":
 			if fr.focusField == 0 && len(fr.findQuery) > 0 {
-				fr.findQuery = fr.findQuery[:len(fr.findQuery)-1]
+				fr.findQuery = TrimLastRune(fr.findQuery)
 				fr.historyIdx = -1
 				fr.savedQuery = ""
 			} else if fr.focusField == 1 && len(fr.replaceText) > 0 {
-				fr.replaceText = fr.replaceText[:len(fr.replaceText)-1]
+				fr.replaceText = TrimLastRune(fr.replaceText)
 			}
 			return fr, nil
 		default:

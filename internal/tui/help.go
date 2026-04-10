@@ -692,7 +692,7 @@ func (h HelpOverlay) Update(msg tea.Msg) (HelpOverlay, tea.Cmd) {
 				}
 			case "backspace":
 				if len(h.query) > 0 {
-					h.query = h.query[:len(h.query)-1]
+					h.query = TrimLastRune(h.query)
 					h.scroll = 0
 				}
 			case "enter":

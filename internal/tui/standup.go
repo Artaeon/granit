@@ -419,7 +419,7 @@ func (s StandupGenerator) updateEdit(msg tea.KeyMsg) (StandupGenerator, tea.Cmd)
 		s.editBuf += "\n"
 	case "backspace":
 		if len(s.editBuf) > 0 {
-			s.editBuf = s.editBuf[:len(s.editBuf)-1]
+			s.editBuf = TrimLastRune(s.editBuf)
 		}
 	default:
 		if len(msg.String()) == 1 || msg.String() == " " {

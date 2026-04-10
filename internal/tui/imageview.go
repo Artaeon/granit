@@ -415,7 +415,7 @@ func (im ImageManager) Update(msg tea.Msg) (ImageManager, tea.Cmd) {
 				im.doImport()
 			case "backspace":
 				if len(im.importBuf) > 0 {
-					im.importBuf = im.importBuf[:len(im.importBuf)-1]
+					im.importBuf = TrimLastRune(im.importBuf)
 				}
 			default:
 				if len(key) == 1 && key[0] >= 32 {

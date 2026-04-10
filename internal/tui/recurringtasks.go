@@ -367,7 +367,7 @@ func (rt RecurringTasks) updateForm(msg tea.KeyMsg) RecurringTasks {
 		switch key {
 		case "backspace":
 			if len(rt.inputText) > 0 {
-				rt.inputText = rt.inputText[:len(rt.inputText)-1]
+				rt.inputText = TrimLastRune(rt.inputText)
 			}
 		case "left", "right":
 			// ignore cursor movement in text field

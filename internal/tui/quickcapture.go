@@ -206,7 +206,7 @@ func (qc QuickCapture) Update(msg tea.Msg) (QuickCapture, tea.Cmd) {
 			return qc, nil
 		case "backspace":
 			if len(qc.input) > 0 {
-				qc.input = qc.input[:len(qc.input)-1]
+				qc.input = TrimLastRune(qc.input)
 			}
 			return qc, nil
 		default:

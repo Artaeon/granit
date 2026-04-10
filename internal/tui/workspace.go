@@ -214,7 +214,7 @@ func (w Workspace) Update(msg tea.Msg) (Workspace, tea.Cmd) {
 				}
 			case "backspace":
 				if len(w.saveName) > 0 {
-					w.saveName = w.saveName[:len(w.saveName)-1]
+					w.saveName = TrimLastRune(w.saveName)
 				}
 			default:
 				if len(key) == 1 {
@@ -242,7 +242,7 @@ func (w Workspace) Update(msg tea.Msg) (Workspace, tea.Cmd) {
 				w.renameBuf = ""
 			case "backspace":
 				if len(w.renameBuf) > 0 {
-					w.renameBuf = w.renameBuf[:len(w.renameBuf)-1]
+					w.renameBuf = TrimLastRune(w.renameBuf)
 				}
 			default:
 				if len(key) == 1 {

@@ -149,7 +149,7 @@ func (sm *SlashMenu) HandleKey(key string) (insert string, consumed bool, closed
 
 	case "backspace":
 		if len(sm.query) > 0 {
-			sm.query = sm.query[:len(sm.query)-1]
+			sm.query = TrimLastRune(sm.query)
 			sm.filterMatches()
 			return "", true, false
 		}
