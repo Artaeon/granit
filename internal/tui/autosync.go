@@ -72,19 +72,24 @@ func (a *AutoSync) PullOnOpen() tea.Cmd {
 			return autoSyncResultMsg{action: "pull", output: out, err: err}
 		}
 
-		// Auto-resolve conflicts by accepting the newest (theirs) version
+		// Auto-resolve conflicts by accepting the newest (remote) version.
+		// IMPORTANT: during a rebase the terminology is inverted compared
+		// to a regular merge — "ours" is the upstream side being rebased
+		// onto and "theirs" is the local commit being replayed. So the
+		// upstream/remote version is accessed via --ours, not --theirs.
 		resolved := 0
 		status, statusErr := gitRun("status", "--porcelain")
 		if statusErr == nil {
-			for _, line := range strings.Split(status, "\n") {
-				line = strings.TrimSpace(line)
+			// Trim only trailing newlines so the leading space in porcelain
+			// status codes (e.g. " M file") is preserved.
+			for _, line := range strings.Split(strings.TrimRight(status, "\n"), "\n") {
 				if len(line) < 3 {
 					continue
 				}
 				code := line[:2]
 				file := strings.TrimSpace(line[3:])
 				if code == "UU" || code == "AA" {
-					if _, resolveErr := gitRun("checkout", "--theirs", file); resolveErr == nil {
+					if _, resolveErr := gitRun("checkout", "--ours", file); resolveErr == nil {
 						_, _ = gitRun("add", file)
 						resolved++
 					}
@@ -142,9 +147,12 @@ func (a *AutoSync) CommitAndPush() tea.Cmd {
 			return autoSyncResultMsg{action: "commit", output: "nothing to commit"}
 		}
 
-		// Commit each changed file individually
+		// Commit each changed file individually. Only trim trailing newlines
+		// so the leading space in porcelain status codes (e.g. " M file") is
+		// preserved — TrimSpace would chop it off and corrupt code/file
+		// indexing for modified-but-not-staged entries.
 		committed := 0
-		for _, line := range strings.Split(strings.TrimSpace(status), "\n") {
+		for _, line := range strings.Split(strings.TrimRight(status, "\n"), "\n") {
 			if len(line) < 3 {
 				continue
 			}
