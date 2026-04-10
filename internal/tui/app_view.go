@@ -2232,8 +2232,17 @@ func (m *Model) applyEncryptionResult(result EncryptionResult) {
 		}
 		newName := m.encryption.EncryptedName(m.activeNote)
 		newPath := filepath.Join(m.vault.Root, newName)
-		if err := os.WriteFile(newPath, []byte(encrypted), 0644); err != nil {
-			m.statusbar.SetError("Failed to write encrypted file")
+		// Atomic write: tmp + rename. If interrupted partway through, neither
+		// the encrypted nor the plaintext copy is lost.
+		tmpPath := newPath + ".tmp"
+		if err := os.WriteFile(tmpPath, []byte(encrypted), 0644); err != nil {
+			_ = os.Remove(tmpPath)
+			m.statusbar.SetError("Failed to write encrypted file: " + err.Error())
+			return
+		}
+		if err := os.Rename(tmpPath, newPath); err != nil {
+			_ = os.Remove(tmpPath)
+			m.statusbar.SetError("Failed to write encrypted file: " + err.Error())
 			return
 		}
 		// Remove the original unencrypted file
@@ -2262,8 +2271,17 @@ func (m *Model) applyEncryptionResult(result EncryptionResult) {
 		}
 		newName := m.encryption.DecryptedName(m.activeNote)
 		newPath := filepath.Join(m.vault.Root, newName)
-		if err := os.WriteFile(newPath, []byte(decrypted), 0644); err != nil {
-			m.statusbar.SetError("Failed to write decrypted file")
+		// Atomic write: tmp + rename so a partial write cannot leave a
+		// truncated plaintext file while we delete the ciphertext below.
+		tmpPath := newPath + ".tmp"
+		if err := os.WriteFile(tmpPath, []byte(decrypted), 0644); err != nil {
+			_ = os.Remove(tmpPath)
+			m.statusbar.SetError("Failed to write decrypted file: " + err.Error())
+			return
+		}
+		if err := os.Rename(tmpPath, newPath); err != nil {
+			_ = os.Remove(tmpPath)
+			m.statusbar.SetError("Failed to write decrypted file: " + err.Error())
 			return
 		}
 		// Remove the encrypted file
