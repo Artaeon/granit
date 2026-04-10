@@ -113,3 +113,32 @@ func TestKanban_WipTagRouting(t *testing.T) {
 		t.Errorf("expected 1 done card, got %d", len(kb.columns[2].Cards))
 	}
 }
+
+// Regression: pressing 'x' on an empty kanban must not panic.
+func TestKanban_ToggleDone_EmptyDoesNotPanic(t *testing.T) {
+	kb := NewKanban()
+	// Force columns to be empty so colCursor=0 indexes nothing.
+	kb.columns = nil
+	kb.colCursor = 0
+	kb.cardCursor = 0
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("kbToggleDone panicked on empty kanban: %v", r)
+		}
+	}()
+	kb.kbToggleDone()
+}
+
+// Regression: invalid colCursor must not panic kbToggleDone.
+func TestKanban_ToggleDone_InvalidCursorDoesNotPanic(t *testing.T) {
+	kb := NewKanban()
+	noteContents := map[string]string{"a.md": "- [ ] task"}
+	kb.SetTasks(noteContents)
+	kb.colCursor = -1
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("kbToggleDone panicked with negative colCursor: %v", r)
+		}
+	}()
+	kb.kbToggleDone()
+}

@@ -792,8 +792,11 @@ func (kb *Kanban) kbMoveCardBackward() {
 // kbToggleDone toggles the Done state of the selected card and records the
 // toggle result so the host can update the source note.
 func (kb *Kanban) kbToggleDone() {
+	if kb.colCursor < 0 || kb.colCursor >= len(kb.columns) {
+		return
+	}
 	col := &kb.columns[kb.colCursor]
-	if len(col.Cards) == 0 || kb.cardCursor >= len(col.Cards) {
+	if kb.cardCursor < 0 || kb.cardCursor >= len(col.Cards) {
 		return
 	}
 
