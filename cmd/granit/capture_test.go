@@ -294,3 +294,50 @@ func TestIsTerminal_InTestEnvironment(t *testing.T) {
 	// We just verify the function doesn't panic.
 	_ = isTerminal()
 }
+
+// ---------------------------------------------------------------------------
+// checkTargetInVault — path traversal guard
+// ---------------------------------------------------------------------------
+
+func TestCheckTargetInVault_NormalFile(t *testing.T) {
+	vault := t.TempDir()
+	target := filepath.Join(vault, "Tasks.md")
+	if err := checkTargetInVault(vault, target); err != nil {
+		t.Errorf("normal file should be allowed: %v", err)
+	}
+}
+
+func TestCheckTargetInVault_NestedFile(t *testing.T) {
+	vault := t.TempDir()
+	target := filepath.Join(vault, "subfolder", "notes.md")
+	if err := checkTargetInVault(vault, target); err != nil {
+		t.Errorf("nested file should be allowed: %v", err)
+	}
+}
+
+func TestCheckTargetInVault_RejectsParentTraversal(t *testing.T) {
+	vault := t.TempDir()
+	// Simulate the bug: --file ../../etc/passwd joined onto vault
+	target := filepath.Join(vault, "..", "..", "etc", "passwd")
+	if err := checkTargetInVault(vault, target); err == nil {
+		t.Errorf("expected error for parent-traversal target %q", target)
+	}
+}
+
+func TestCheckTargetInVault_RejectsAbsoluteOutsideVault(t *testing.T) {
+	vault := t.TempDir()
+	// An absolute path outside the vault must be rejected.
+	if err := checkTargetInVault(vault, "/tmp/somewhere/else.md"); err == nil {
+		// Skip if /tmp happens to be the vault parent (unlikely but possible)
+		if !strings.HasPrefix("/tmp/somewhere/else.md", vault) {
+			t.Errorf("expected error for absolute path outside vault")
+		}
+	}
+}
+
+func TestCheckTargetInVault_AllowsVaultRootItself(t *testing.T) {
+	vault := t.TempDir()
+	if err := checkTargetInVault(vault, vault); err != nil {
+		t.Errorf("vault root itself should be allowed, got %v", err)
+	}
+}

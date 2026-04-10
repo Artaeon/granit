@@ -97,19 +97,34 @@ func appendCapture(vaultPath, targetPath, text string) {
 	fmt.Printf("Captured to %s\n", rel)
 }
 
-// runCapture handles "granit capture <text>" — appends text to inbox with timestamp.
-func validateTargetInVault(vaultPath, targetPath string) {
+// checkTargetInVault returns nil if targetPath resolves to a location inside
+// vaultPath, otherwise returns a descriptive error. Pure function — safe to
+// test without spawning subprocesses.
+func checkTargetInVault(vaultPath, targetPath string) error {
 	absVault, err := filepath.Abs(vaultPath)
 	if err != nil {
-		exitError("Error resolving vault path: %v", err)
+		return fmt.Errorf("resolving vault path: %w", err)
 	}
 	absTarget, err := filepath.Abs(targetPath)
 	if err != nil {
-		exitError("Error resolving target path: %v", err)
+		return fmt.Errorf("resolving target path: %w", err)
 	}
 	rel, err := filepath.Rel(absVault, absTarget)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		exitError("Target file %q is outside the vault directory", targetPath)
+	if err != nil {
+		return fmt.Errorf("computing relative path: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("target file %q is outside the vault directory", targetPath)
+	}
+	return nil
+}
+
+// validateTargetInVault is the CLI wrapper around checkTargetInVault that
+// terminates the process on failure. Keep production call sites using this;
+// tests should call checkTargetInVault directly.
+func validateTargetInVault(vaultPath, targetPath string) {
+	if err := checkTargetInVault(vaultPath, targetPath); err != nil {
+		exitError("%v", err)
 	}
 }
 

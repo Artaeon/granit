@@ -617,6 +617,8 @@ func runDaily(vaultPath string) {
 		filename = filepath.Join(cfg.DailyNotesFolder, filename)
 	}
 	dailyPath := filepath.Join(vaultPath, filename)
+	// Reject configurations that escape the vault (e.g. "../etc").
+	validateTargetInVault(vaultPath, dailyPath)
 
 	if _, err := os.Stat(dailyPath); os.IsNotExist(err) {
 		_ = os.MkdirAll(filepath.Dir(dailyPath), 0755)

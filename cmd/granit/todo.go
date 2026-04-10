@@ -20,6 +20,8 @@ func runTodo(args []string) {
 		targetFile = f
 	}
 	targetPath := filepath.Join(vaultPath, targetFile)
+	// Reject paths that escape the vault (e.g. --file ../../etc/passwd).
+	validateTargetInVault(vaultPath, targetPath)
 
 	// Collect task text from positional args
 	text := collectTodoText(args)
