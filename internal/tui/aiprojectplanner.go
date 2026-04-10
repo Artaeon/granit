@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -449,22 +448,9 @@ func (ap *AIProjectPlanner) parseAIResponse(response string) {
 // saveProjectAndTasks saves the project to projects.json and creates a task
 // note inside the project folder.
 func (ap *AIProjectPlanner) saveProjectAndTasks() error {
-	// Load existing projects
-	projFile := filepath.Join(ap.vaultRoot, ".granit", "projects.json")
-	var projects []Project
-	if data, err := os.ReadFile(projFile); err == nil {
-		_ = json.Unmarshal(data, &projects)
-	}
-
-	// Append and save
-	projects = append(projects, ap.parsedProject)
-	dir := filepath.Dir(projFile)
-	_ = os.MkdirAll(dir, 0755)
-	data, err := json.MarshalIndent(projects, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal projects: %w", err)
-	}
-	if err := os.WriteFile(projFile, data, 0o600); err != nil {
+	// Append the parsed project to the shared store.
+	projects := append(LoadProjects(ap.vaultRoot), ap.parsedProject)
+	if err := SaveProjects(ap.vaultRoot, projects); err != nil {
 		return fmt.Errorf("failed to write projects: %w", err)
 	}
 
@@ -516,13 +502,8 @@ func (ap *AIProjectPlanner) saveProjectAndTasks() error {
 		}
 	}
 
-	// Auto-create a Goal linked to this project
-	goalFile := filepath.Join(ap.vaultRoot, ".granit", "goals.json")
-	var goals []Goal
-	if data, err := os.ReadFile(goalFile); err == nil {
-		_ = json.Unmarshal(data, &goals)
-	}
-
+	// Auto-create a Goal linked to this project, sharing the goalsmode
+	// store so the new entry shows up in Goals Mode and the dashboard.
 	now := time.Now().Format("2006-01-02")
 	var milestones []GoalMilestone
 	for _, g := range ap.parsedProject.Goals {
@@ -547,10 +528,7 @@ func (ap *AIProjectPlanner) saveProjectAndTasks() error {
 		newGoal.TargetDate = ap.parsedProject.DueDate
 	}
 
-	goals = append(goals, newGoal)
-	if gdata, err := json.MarshalIndent(goals, "", "  "); err == nil {
-		_ = os.WriteFile(goalFile, gdata, 0o600)
-	}
+	saveAllGoals(ap.vaultRoot, append(loadAllGoals(ap.vaultRoot), newGoal))
 
 	return nil
 }
