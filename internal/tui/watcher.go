@@ -90,8 +90,9 @@ func (fw *FileWatcher) Start() tea.Cmd {
 	return fw.waitForEvent()
 }
 
-// Stop closes the underlying fsnotify watcher and signals the background
-// goroutine to exit. Safe to call multiple times.
+// Stop closes the underlying fsnotify watcher, cancels any pending debounce
+// timer, and signals the background goroutine to exit. Safe to call multiple
+// times. After Stop returns, no further flush() will run.
 func (fw *FileWatcher) Stop() {
 	select {
 	case <-fw.stopChan:
@@ -99,6 +100,13 @@ func (fw *FileWatcher) Stop() {
 	default:
 		close(fw.stopChan)
 	}
+	// Cancel any pending debounce timer so flush() does not fire after Stop.
+	fw.mu.Lock()
+	if fw.timer != nil {
+		fw.timer.Stop()
+		fw.timer = nil
+	}
+	fw.mu.Unlock()
 	if fw.watcher != nil {
 		_ = fw.watcher.Close()
 	}

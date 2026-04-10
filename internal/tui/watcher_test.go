@@ -194,3 +194,75 @@ func TestFileWatcher_NewDirectoryWatched(t *testing.T) {
 		t.Error("expected a change message for file in new subdirectory, got none")
 	}
 }
+
+// Regression: Stop() must cancel any pending debounce timer so flush()
+// cannot fire after the watcher has been stopped. Previously the timer
+// was left running and would push a final fileChangeMsg onto eventChan
+// long after Stop returned.
+func TestFileWatcher_StopCancelsPendingTimer(t *testing.T) {
+	dir := t.TempDir()
+	fw := NewFileWatcher(dir)
+	fw.debounce = 200 * time.Millisecond
+	cmd := fw.Start()
+	if cmd == nil {
+		t.Skip("fsnotify not available in this environment")
+	}
+
+	// Trigger a change so a debounce timer is scheduled.
+	if err := os.WriteFile(filepath.Join(dir, "n.md"), []byte("hi"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Give fsnotify a moment to deliver the create event and schedule the timer.
+	time.Sleep(50 * time.Millisecond)
+
+	fw.mu.Lock()
+	hadTimer := fw.timer != nil
+	fw.mu.Unlock()
+	if !hadTimer {
+		t.Skip("event did not arrive in time; environment too slow for this test")
+	}
+
+	// Stop must clear the timer immediately.
+	fw.Stop()
+	fw.mu.Lock()
+	leftover := fw.timer
+	fw.mu.Unlock()
+	if leftover != nil {
+		t.Error("Stop() left a pending debounce timer in fw.timer")
+	}
+
+	// Wait long enough that any leftover timer would have fired.
+	time.Sleep(300 * time.Millisecond)
+
+	// eventChan should be empty (or only hold one buffered event from before
+	// stop). The important property is that no new event arrives AFTER stop.
+	select {
+	case <-fw.eventChan:
+		// One pre-stop event is allowed by the buffered channel.
+	default:
+	}
+	// Confirm a second event does not appear (would indicate a flush after stop).
+	select {
+	case msg := <-fw.eventChan:
+		t.Errorf("flush ran after Stop(): got message %+v", msg)
+	default:
+	}
+}
+
+// Regression: Stop() is documented as safe to call multiple times.
+func TestFileWatcher_StopIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	fw := NewFileWatcher(dir)
+	if cmd := fw.Start(); cmd == nil {
+		t.Skip("fsnotify not available")
+	}
+	fw.Stop()
+	// Second stop must not panic on close-of-closed-channel.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("second Stop() panicked: %v", r)
+		}
+	}()
+	fw.Stop()
+}
