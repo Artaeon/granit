@@ -551,13 +551,16 @@ ADVICE: Start with the report while your energy is high. Batch email checking to
 func TestPlanMyDayParseAIResponseMalformed(t *testing.T) {
 	p := NewPlanMyDay()
 
+	// Use late-evening times so the test is independent of when in the day it runs.
+	// parseAIResponse filters out slots whose end is in the past; 23:xx slots are
+	// only filtered between 23:00 and midnight, mirroring the existing convention.
 	response := `TOP_GOAL: Do stuff
 
 SCHEDULE:
-08:00-09:00 | Valid task | deep-work
+23:00-23:30 | Valid task | deep-work
 This is not a valid schedule line
 Another bad line without pipes
-09:00-09:30 | Another valid | admin
+23:30-23:59 | Another valid | admin
 
 FOCUS_ORDER:
 1. First
