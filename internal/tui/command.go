@@ -23,7 +23,6 @@ const (
 	CmdFocusEditor
 	CmdFocusSidebar
 	CmdFocusBacklinks
-	CmdSearchInFile // deprecated: use CmdFindInFile (kept for backward compat)
 	CmdRefreshVault
 	CmdDeleteNote
 	CmdRenameNote

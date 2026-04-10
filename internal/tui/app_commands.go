@@ -186,7 +186,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
-	case CmdFindInFile, CmdSearchInFile:
+	case CmdFindInFile:
 		m.findReplace.SetSize(m.width, m.height)
 		m.findReplace.OpenFind(m.vault.Root)
 		m.findReplace.UpdateMatches(m.editor.content)
