@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -360,26 +359,15 @@ func (pm *ProjectMode) toggleTask(idx int) {
 // ---------------------------------------------------------------------------
 
 func (pm *ProjectMode) projectsFilePath() string {
-	return filepath.Join(pm.vaultRoot, ".granit", "projects.json")
+	return projectsStatePath(pm.vaultRoot)
 }
 
 func (pm *ProjectMode) loadProjects() {
-	pm.projects = nil
-	data, err := os.ReadFile(pm.projectsFilePath())
-	if err != nil {
-		return
-	}
-	_ = json.Unmarshal(data, &pm.projects)
+	pm.projects = LoadProjects(pm.vaultRoot)
 }
 
 func (pm *ProjectMode) saveProjects() {
-	dir := filepath.Dir(pm.projectsFilePath())
-	_ = os.MkdirAll(dir, 0755)
-	data, err := json.MarshalIndent(pm.projects, "", "  ")
-	if err != nil {
-		return
-	}
-	_ = os.WriteFile(pm.projectsFilePath(), data, 0o600)
+	_ = SaveProjects(pm.vaultRoot, pm.projects)
 }
 
 // ---------------------------------------------------------------------------

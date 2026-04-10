@@ -1,11 +1,8 @@
 package tui
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -85,11 +82,7 @@ func (pd *ProjectDashboard) Open(vaultRoot string, v *vault.Vault) {
 	pd.selectedProject = ""
 
 	// Load projects from .granit/projects.json.
-	pd.projects = nil
-	projPath := filepath.Join(vaultRoot, ".granit", "projects.json")
-	if data, err := os.ReadFile(projPath); err == nil {
-		_ = json.Unmarshal(data, &pd.projects)
-	}
+	pd.projects = LoadProjects(vaultRoot)
 
 	// Parse all tasks from vault notes.
 	pd.allTasks = ParseAllTasks(v.Notes)
