@@ -172,7 +172,6 @@ const (
 	CmdIdeasBoard
 	CmdDailyJot
 	CmdMorningRoutine
-	CmdEveningReview
 	CmdBlogDraft
 	CmdDevotional
 	CmdStatusTray

@@ -1095,10 +1095,6 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		cmd := m.morningRoutine.Open(m.vault.Root, goals, tasks, events, habits)
 		return m, cmd
 
-	case CmdEveningReview:
-		// Consolidated into CmdDailyReview
-		return m.executeCommand(CmdDailyReview)
-
 	case CmdNoteHistory:
 		m.noteHistory.SetSize(m.width, m.height)
 		m.noteHistory.OpenForNote(m.vault.Root, m.activeNote)
