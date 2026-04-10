@@ -12,9 +12,19 @@ import (
 	"time"
 )
 
-// aiHTTPClient is the shared HTTP client for AI chat requests (Ollama, OpenAI).
-// Reusing a single client enables connection pooling and avoids per-request overhead.
+// aiHTTPClient is the shared HTTP client for one-shot AI chat requests
+// (Ollama, OpenAI). Reusing a single client enables connection pooling
+// and avoids per-request overhead. The 3-minute Timeout caps the total
+// round-trip including body read, which is appropriate for non-streaming
+// calls.
 var aiHTTPClient = &http.Client{Timeout: 3 * time.Minute}
+
+// aiStreamingClient is the shared HTTP client for *streaming* AI requests.
+// Streaming responses can run for many minutes while the model generates
+// output, so client.Timeout would cut them off mid-stream. Cancellation is
+// handled via the request context instead — the caller passes ctx and
+// cancel propagates through the connection.
+var aiStreamingClient = &http.Client{}
 
 // chatMessage is used for building chat API request bodies.
 type chatMessage struct {

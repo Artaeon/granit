@@ -80,24 +80,28 @@ func streamOllamaChat(ctx context.Context, baseURL, model, systemPrompt, userPro
 			return
 		}
 
-		timeout := 5 * time.Minute
-		// Small models (num_ctx <= 2048) should respond faster with their
-		// reduced context; a shorter timeout gives quicker feedback on failure.
+		// Streams use the shared aiStreamingClient (no client-level timeout)
+		// and rely on ctx for cancellation. Small models still get a tighter
+		// per-stream deadline because their reduced context window means a
+		// successful response should arrive promptly — if it doesn't, the
+		// model is likely stuck and we want to bail.
+		streamCtx := ctx
 		if numCtx, ok := options["num_ctx"]; ok {
 			if v, ok := numCtx.(int); ok && v <= 2048 {
-				timeout = 90 * time.Second
+				var cancelStream context.CancelFunc
+				streamCtx, cancelStream = context.WithTimeout(ctx, 90*time.Second)
+				defer cancelStream()
 			}
 		}
-		client := &http.Client{Timeout: timeout}
 		// Retry the initial connection once on transient failures — small
 		// HTTP hiccups shouldn't kill a streaming request before it starts.
 		doPost := func() (*http.Response, error) {
-			req, reqErr := http.NewRequestWithContext(ctx, "POST", baseURL+"/api/chat", bytes.NewReader(reqBody))
+			req, reqErr := http.NewRequestWithContext(streamCtx, "POST", baseURL+"/api/chat", bytes.NewReader(reqBody))
 			if reqErr != nil {
 				return nil, reqErr
 			}
 			req.Header.Set("Content-Type", "application/json")
-			return client.Do(req)
+			return aiStreamingClient.Do(req)
 		}
 		var resp *http.Response
 		resp, err = doPost()
@@ -209,7 +213,6 @@ func streamOpenAI(ctx context.Context, apiKey, model, systemPrompt, userPrompt, 
 			return
 		}
 
-		client := &http.Client{Timeout: 5 * time.Minute}
 		doPost := func() (*http.Response, error) {
 			req, reqErr := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(reqBody))
 			if reqErr != nil {
@@ -217,7 +220,7 @@ func streamOpenAI(ctx context.Context, apiKey, model, systemPrompt, userPrompt, 
 			}
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Authorization", "Bearer "+apiKey)
-			return client.Do(req)
+			return aiStreamingClient.Do(req)
 		}
 		var resp *http.Response
 		resp, err = doPost()
@@ -318,7 +321,7 @@ func sendToAIStreamingCtx(parent context.Context, ai AIConfig, systemPrompt, use
 			if systemPrompt != "" {
 				prompt = systemPrompt + "\n\n" + userPrompt
 			}
-			resp, err := client.Chat(prompt)
+			resp, err := client.ChatCtx(ctx, prompt)
 			if ctx.Err() != nil {
 				return
 			}
@@ -336,7 +339,7 @@ func sendToAIStreamingCtx(parent context.Context, ai AIConfig, systemPrompt, use
 		go func() {
 			defer close(ch)
 			client := ai.NewNerve()
-			resp, err := client.Chat(systemPrompt, userPrompt, 120*time.Second)
+			resp, err := client.ChatCtx(ctx, systemPrompt, userPrompt)
 			if ctx.Err() != nil {
 				return
 			}
