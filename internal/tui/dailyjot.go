@@ -703,7 +703,8 @@ func (dj *DailyJot) promoteJot(dayIdx, entryIdx int) {
 	b.WriteString("# " + title + "\n\n")
 	b.WriteString("Promoted from Daily Jot (" + dj.days[dayIdx].Date + " " + e.Time + ")\n")
 
-	if err := os.WriteFile(notePath, []byte(b.String()), 0644); err != nil {
+	// Atomic write so a partial promote leaves the original jot untouched.
+	if err := atomicWriteNote(notePath, b.String()); err != nil {
 		dj.statusMsg = "Error: " + err.Error()
 		return
 	}

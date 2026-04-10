@@ -375,7 +375,10 @@ func (b Backup) View() string {
 
 // CreateBackup creates a timestamped zip archive of the vault, including all
 // .md files and the .granit/ config directory but skipping .git/,
-// .granit/backups/, and .granit-trash/.
+// .granit/backups/, and .granit-trash/. The zip is written atomically: a
+// sibling .tmp file is built up first and only renamed into place once the
+// archive is closed cleanly, so an interrupted backup never leaves a
+// truncated or unreadable zip in the backups folder.
 func CreateBackup(vaultPath string) error {
 	backupDir := filepath.Join(vaultPath, ".granit", "backups")
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
@@ -385,15 +388,22 @@ func CreateBackup(vaultPath string) error {
 	stamp := time.Now().Format("2006-01-02_150405")
 	zipName := fmt.Sprintf("backup_%s.zip", stamp)
 	zipPath := filepath.Join(backupDir, zipName)
+	tmpPath := zipPath + ".tmp"
 
-	zipFile, err := os.Create(zipPath)
+	zipFile, err := os.Create(tmpPath)
 	if err != nil {
 		return fmt.Errorf("create zip: %w", err)
 	}
-	defer func() { _ = zipFile.Close() }()
+	// On any error path below, remove the tmp file. On success we explicitly
+	// rename and then this defer cleans up nothing.
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
 
 	w := zip.NewWriter(zipFile)
-	defer func() { _ = w.Close() }()
 
 	err = filepath.Walk(vaultPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -448,11 +458,22 @@ func CreateBackup(vaultPath string) error {
 	})
 
 	if err != nil {
-		// Clean up partial zip on error.
-		_ = os.Remove(zipPath)
 		return fmt.Errorf("walk vault: %w", err)
 	}
 
+	// Finalize the archive: close the zip writer (flushes the central
+	// directory) and the underlying file before renaming. If either close
+	// fails the tmp file is cleaned up by the deferred cleanup above.
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("close zip: %w", err)
+	}
+	if err := zipFile.Close(); err != nil {
+		return fmt.Errorf("close backup file: %w", err)
+	}
+	if err := os.Rename(tmpPath, zipPath); err != nil {
+		return fmt.Errorf("finalize backup: %w", err)
+	}
+	cleanup = false
 	return nil
 }
 
@@ -491,16 +512,29 @@ func RestoreBackup(vaultPath string, backupPath string) error {
 			return err
 		}
 
-		outFile, err := os.Create(destPath)
+		// Atomic per-file extract: write to a sibling .tmp then rename. If
+		// the restore is interrupted partway through a file, the existing
+		// note on disk is preserved instead of being half-overwritten.
+		tmpDest := destPath + ".tmp"
+		outFile, err := os.Create(tmpDest)
 		if err != nil {
 			_ = rc.Close()
 			return err
 		}
 
 		_, err = io.Copy(outFile, rc)
-		_ = outFile.Close()
+		closeErr := outFile.Close()
 		_ = rc.Close()
 		if err != nil {
+			_ = os.Remove(tmpDest)
+			return err
+		}
+		if closeErr != nil {
+			_ = os.Remove(tmpDest)
+			return closeErr
+		}
+		if err := os.Rename(tmpDest, destPath); err != nil {
+			_ = os.Remove(tmpDest)
 			return err
 		}
 	}

@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -151,5 +152,58 @@ func TestPersonalDictionary(t *testing.T) {
 	}
 	if string(data) != "granit\n" {
 		t.Errorf("personal dictionary file content = %q; want \"granit\\n\"", string(data))
+	}
+}
+
+// Regression: savePersonalDict must be atomic — no leftover .tmp file on
+// success and the dictionary must round-trip even with multi-byte words.
+func TestSpellEngine_SavePersonalDict_Atomic(t *testing.T) {
+	dir := t.TempDir()
+	se := &spellEngine{
+		personal:      map[string]bool{"café": true, "naïve": true, "granit": true},
+		sessionIgnore: map[string]bool{},
+		personalPath:  filepath.Join(dir, "personal.dict"),
+	}
+
+	if err := se.savePersonalDict(); err != nil {
+		t.Fatalf("savePersonalDict failed: %v", err)
+	}
+
+	// No .tmp file should be left behind.
+	if _, err := os.Stat(se.personalPath + ".tmp"); !os.IsNotExist(err) {
+		t.Errorf("expected .tmp to be cleaned up, stat err = %v", err)
+	}
+
+	// Multi-byte words must round-trip cleanly.
+	data, err := os.ReadFile(se.personalPath)
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	for _, want := range []string{"café", "naïve", "granit"} {
+		if !strings.Contains(string(data), want+"\n") {
+			t.Errorf("expected personal dict to contain %q, got %q", want, data)
+		}
+	}
+}
+
+// Regression: a successful save must overwrite a previous dict, not
+// duplicate or append.
+func TestSpellEngine_SavePersonalDict_OverwritesExisting(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "personal.dict")
+	if err := os.WriteFile(path, []byte("oldword\nstale\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	se := &spellEngine{
+		personal:      map[string]bool{"newword": true},
+		sessionIgnore: map[string]bool{},
+		personalPath:  path,
+	}
+	if err := se.savePersonalDict(); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(path)
+	if string(got) != "newword\n" {
+		t.Errorf("expected only 'newword', got %q", got)
 	}
 }

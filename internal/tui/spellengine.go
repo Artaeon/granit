@@ -152,7 +152,10 @@ func (se *spellEngine) loadPersonalDict() {
 	}
 }
 
-// savePersonalDict writes the personal dictionary to disk.
+// savePersonalDict writes the personal dictionary to disk atomically. Uses
+// tmp + rename so an interrupted write cannot leave the user with an empty
+// dictionary file (os.Create truncates immediately, so a crash mid-loop
+// would otherwise wipe every previously-saved custom word).
 func (se *spellEngine) savePersonalDict() error {
 	if err := os.MkdirAll(filepath.Dir(se.personalPath), 0700); err != nil {
 		return err
@@ -164,14 +167,20 @@ func (se *spellEngine) savePersonalDict() error {
 	}
 	sort.Strings(words)
 
-	f, err := os.Create(se.personalPath)
-	if err != nil {
+	var buf strings.Builder
+	for _, w := range words {
+		buf.WriteString(w)
+		buf.WriteByte('\n')
+	}
+
+	tmp := se.personalPath + ".tmp"
+	if err := os.WriteFile(tmp, []byte(buf.String()), 0600); err != nil {
+		_ = os.Remove(tmp)
 		return err
 	}
-	defer func() { _ = f.Close() }()
-
-	for _, w := range words {
-		_, _ = f.WriteString(w + "\n")
+	if err := os.Rename(tmp, se.personalPath); err != nil {
+		_ = os.Remove(tmp)
+		return err
 	}
 	return nil
 }
