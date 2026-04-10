@@ -23,18 +23,87 @@ func ParseWikiLinks(content string) []string {
 	return links
 }
 
+// frontmatterBounds locates the opening and closing fences of a YAML
+// frontmatter block. It only considers content that starts with "---\n"
+// (a literal opening fence followed by a newline) and requires the block
+// between the fences to contain at least one "key: value" line. Returns
+// (blockStart, blockEnd, bodyStart, true) where content[blockStart:blockEnd]
+// is the YAML body between the fences and content[bodyStart:] is everything
+// after the closing fence. Returns ok=false if no real frontmatter is present.
+//
+// The "at least one key:value" requirement is what prevents StripFrontmatter
+// from eating content in notes that legitimately begin with a "---" horizontal
+// rule and happen to contain another "---" further down.
+func frontmatterBounds(content string) (blockStart, blockEnd, bodyStart int, ok bool) {
+	if !strings.HasPrefix(content, "---\n") {
+		return 0, 0, 0, false
+	}
+	blockStart = 4 // skip "---\n"
+	// Find a closing fence that is "\n---\n" or "\n---" at end-of-string.
+	rest := content[blockStart:]
+	idx := strings.Index(rest, "\n---")
+	if idx == -1 {
+		return 0, 0, 0, false
+	}
+	blockEnd = blockStart + idx + 1 // include the trailing newline of the YAML body
+	afterClose := blockStart + idx + len("\n---")
+	// Closing fence must be followed by newline or be at EOF.
+	switch {
+	case afterClose == len(content):
+		bodyStart = afterClose
+	case content[afterClose] == '\n':
+		bodyStart = afterClose + 1
+	default:
+		return 0, 0, 0, false
+	}
+	// Require at least one valid key:value line so a pair of "---"
+	// horizontal rules around prose is not mistaken for frontmatter.
+	if !hasFrontmatterKV(content[blockStart:blockEnd]) {
+		return 0, 0, 0, false
+	}
+	return blockStart, blockEnd, bodyStart, true
+}
+
+// hasFrontmatterKV reports whether the given block contains at least one
+// "key: value" line where the key is a non-empty identifier-style token.
+func hasFrontmatterKV(block string) bool {
+	for _, line := range strings.Split(block, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		colonIdx := strings.Index(line, ":")
+		if colonIdx <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:colonIdx])
+		if key == "" {
+			continue
+		}
+		// Key must look like a YAML identifier (letters, digits, _ , -).
+		valid := true
+		for _, r := range key {
+			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+				(r >= '0' && r <= '9') || r == '_' || r == '-') {
+				valid = false
+				break
+			}
+		}
+		if valid {
+			return true
+		}
+	}
+	return false
+}
+
 func ParseFrontmatter(content string) map[string]interface{} {
 	fm := make(map[string]interface{})
-	if !strings.HasPrefix(content, "---") {
+	blockStart, blockEnd, _, ok := frontmatterBounds(content)
+	if !ok {
 		return fm
 	}
 
-	end := strings.Index(content[3:], "---")
-	if end == -1 {
-		return fm
-	}
-
-	block := content[3 : 3+end]
+	block := content[blockStart:blockEnd]
 	lines := strings.Split(strings.TrimSpace(block), "\n")
 	for _, line := range lines {
 		parts := strings.SplitN(line, ":", 2)
@@ -59,12 +128,9 @@ func ParseFrontmatter(content string) map[string]interface{} {
 }
 
 func StripFrontmatter(content string) string {
-	if !strings.HasPrefix(content, "---") {
+	_, _, bodyStart, ok := frontmatterBounds(content)
+	if !ok {
 		return content
 	}
-	end := strings.Index(content[3:], "---")
-	if end == -1 {
-		return content
-	}
-	return strings.TrimSpace(content[3+end+3:])
+	return strings.TrimSpace(content[bodyStart:])
 }

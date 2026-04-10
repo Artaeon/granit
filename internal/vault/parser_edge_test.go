@@ -252,3 +252,41 @@ func TestStripFrontmatter_NoFrontmatter(t *testing.T) {
 		})
 	}
 }
+
+// Regression: content that starts with --- but is NOT real frontmatter
+// (no key:value lines) must not have its prefix eaten by StripFrontmatter.
+// Previously this lost real body content because the parser treated any
+// second --- as the closing delimiter.
+func TestStripFrontmatter_StartsWithHorizontalRuleNotFrontmatter(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "two horizontal rules and body",
+			content: "---\nbody starts here\n---\nactually no, that was a hr\n---\nfinal body",
+		},
+		{
+			name:    "content opens with hr then plain text",
+			content: "---\nJust prose with a leading hr.\n---\nMore prose",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := StripFrontmatter(tt.content)
+			if result != tt.content {
+				t.Errorf("StripFrontmatter ate content from a non-frontmatter file:\n  in: %q\n out: %q", tt.content, result)
+			}
+		})
+	}
+}
+
+// Regression: ParseFrontmatter must NOT return non-empty fm for content
+// that opens with --- but has no key:value pairs.
+func TestParseFrontmatter_StartsWithHorizontalRuleNotFrontmatter(t *testing.T) {
+	content := "---\nbody starts here\n---\nrest of body"
+	fm := ParseFrontmatter(content)
+	if len(fm) != 0 {
+		t.Errorf("expected empty frontmatter for hr-prefixed content, got %v", fm)
+	}
+}
