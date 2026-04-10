@@ -422,14 +422,14 @@ func loadAllGoals(vaultRoot string) []Goal {
 // goal history. Returns true on success.
 func saveAllGoals(vaultRoot string, goals []Goal) bool {
 	dir := filepath.Join(vaultRoot, ".granit")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return false
 	}
 	data, err := json.MarshalIndent(goals, "", "  ")
 	if err != nil {
 		return false
 	}
-	return atomicWriteNote(filepath.Join(dir, "goals.json"), string(data)) == nil
+	return atomicWriteState(filepath.Join(dir, "goals.json"), data) == nil
 }
 
 // addMilestoneToGoal appends a new milestone to the specified goal.

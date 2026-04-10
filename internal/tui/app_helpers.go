@@ -891,8 +891,24 @@ func (m Model) saveCurrentNote() tea.Cmd {
 // interrupted (crash, power loss, OOM kill) mid-write. All call sites that
 // persist user note content should go through this helper.
 func atomicWriteNote(path, content string) error {
+	return atomicWriteWithPerm(path, []byte(content), 0o644)
+}
+
+// atomicWriteState is the equivalent of atomicWriteNote for internal state
+// files under .granit/. State files contain personal data (clock sessions,
+// goals, projects, kanban state, etc.) and should not be world-readable on
+// shared machines, so this helper uses 0o600 perms.
+func atomicWriteState(path string, data []byte) error {
+	return atomicWriteWithPerm(path, data, 0o600)
+}
+
+// atomicWriteWithPerm writes data to a sibling .tmp file then renames it
+// over the destination. The rename is atomic on POSIX filesystems, so a
+// crash mid-write leaves either the old contents or the new contents but
+// never a truncated file.
+func atomicWriteWithPerm(path string, data []byte, perm os.FileMode) error {
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(tmp, data, perm); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
