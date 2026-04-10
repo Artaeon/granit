@@ -261,6 +261,12 @@ type Model struct {
 
 func NewModel(vaultPath string) (Model, error) {
 	cfg := config.LoadForVault(vaultPath)
+	// Migrate retired layout names to their replacement. The "calendar" and
+	// "taskboard" layouts were merged into "cockpit"; users with older
+	// settings.json files would otherwise hit the unknown-layout fallback.
+	if cfg.Layout == "calendar" || cfg.Layout == "taskboard" {
+		cfg.Layout = LayoutCockpit
+	}
 	ApplyTheme(cfg.Theme)
 	ApplyIconTheme(cfg.IconTheme)
 
