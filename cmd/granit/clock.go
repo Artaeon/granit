@@ -127,7 +127,9 @@ func runClockOut(args []string) {
 	saveClockData(vaultPath, data)
 
 	// Also save to vault timetracking note
-	saveSessionToVault(vaultPath, start, time.Now(), label, elapsed)
+	if err := saveSessionToVault(vaultPath, start, time.Now(), label, elapsed); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to update timelog: %v\n", err)
+	}
 
 	fmt.Printf("Clocked out: %s — %s\n", label, formatDuration(elapsed))
 }
@@ -318,12 +320,23 @@ func loadClockData(vaultPath string) clockData {
 
 func saveClockData(vaultPath string, data clockData) {
 	dir := filepath.Join(vaultPath, ".granit")
-	_ = os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		exitError("Error creating clock dir: %v", err)
+	}
 	raw, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		exitError("Error saving clock data: %v", err)
 	}
-	if err := os.WriteFile(clockDataPath(vaultPath), raw, 0644); err != nil {
+	// Atomic write so a crash mid-save cannot truncate clock.json and lose
+	// the user's entire clock-in history.
+	path := clockDataPath(vaultPath)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0644); err != nil {
+		_ = os.Remove(tmp)
+		exitError("Error writing clock data: %v", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
 		exitError("Error writing clock data: %v", err)
 	}
 }
@@ -356,9 +369,14 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%ds", s)
 }
 
-func saveSessionToVault(vaultPath string, start, end time.Time, project string, elapsed time.Duration) {
+// saveSessionToVault appends a session row to the daily timelog markdown
+// file. Returns an error so the caller can surface failures rather than
+// silently dropping the user's clocked-out session.
+func saveSessionToVault(vaultPath string, start, end time.Time, project string, elapsed time.Duration) error {
 	dir := filepath.Join(vaultPath, "Timetracking")
-	_ = os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create timelog dir: %w", err)
+	}
 	dateStr := start.Format("2006-01-02")
 	filePath := filepath.Join(dir, dateStr+".md")
 
@@ -368,7 +386,7 @@ func saveSessionToVault(vaultPath string, start, end time.Time, project string, 
 		header := fmt.Sprintf("---\ntitle: Time Log %s\ndate: %s\ntype: timelog\ntags: [timelog]\n---\n\n# Time Log — %s (%s)\n\n| Start | End | Project | Duration |\n|-------|-----|---------|----------|\n",
 			dateStr, dateStr, dateStr, weekday)
 		if err := os.WriteFile(filePath, []byte(header), 0644); err != nil {
-			return
+			return fmt.Errorf("write timelog header: %w", err)
 		}
 	}
 
@@ -378,8 +396,11 @@ func saveSessionToVault(vaultPath string, start, end time.Time, project string, 
 
 	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		return
+		return fmt.Errorf("open timelog: %w", err)
 	}
-	defer f.Close()
-	_, _ = f.WriteString(row)
+	defer func() { _ = f.Close() }()
+	if _, err := f.WriteString(row); err != nil {
+		return fmt.Errorf("append timelog row: %w", err)
+	}
+	return nil
 }
