@@ -1090,12 +1090,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdMorningRoutine:
 		m.morningRoutine.SetSize(m.width, m.height)
 		m.morningRoutine.dailyNotesFolder = m.config.DailyNotesFolder
-		tasks, events, habits, projects, yesterdayTasks := m.gatherPlanMyDayData()
+		tasks, events, habits, _, _ := m.gatherPlanMyDayData()
 		goals := m.goalsMode.GetGoals()
-		cmd := m.morningRoutine.Open(m.vault.Root, m.aiConfig(), goals,
-			nil, nil,
-			tasks, events, habits, projects, yesterdayTasks,
-			false)
+		cmd := m.morningRoutine.Open(m.vault.Root, goals, tasks, events, habits)
 		return m, cmd
 
 	case CmdEveningReview:

@@ -92,16 +92,10 @@ func (mr *MorningRoutine) SetSize(w, h int) {
 // Open initialises the morning routine with gathered vault data.
 func (mr *MorningRoutine) Open(
 	vaultRoot string,
-	_ AIConfig, // kept for call-site compat, unused
 	goals []Goal,
-	_ map[string]string, // noteContents — unused
-	_ []string, // notePaths — unused
 	tasks []Task,
 	events []PlannerEvent,
 	habits []habitEntry,
-	_ []Project,
-	_ []string, // yesterdayTasks — unused
-	_ bool, // dayPlanned — unused
 ) tea.Cmd {
 	mr.active = true
 	mr.vaultRoot = vaultRoot
