@@ -597,7 +597,7 @@ func (m *Model) syncPomodoroCompletions() {
 					lines[tc.LineNum] = strings.Replace(lines[tc.LineNum], "- [x]", "- [ ]", 1)
 				}
 				newContent := strings.Join(lines, "\n")
-				if err := os.WriteFile(filepath.Join(m.vault.Root, tc.NotePath), []byte(newContent), 0644); err != nil {
+				if err := atomicWriteNote(filepath.Join(m.vault.Root, tc.NotePath), newContent); err != nil {
 					m.statusbar.SetError("Error syncing pomodoro task: " + err.Error())
 				}
 			}
@@ -824,8 +824,8 @@ func (m *Model) applyTagsToNote(tags []string) {
 			newContent := strings.Join(lines, "\n")
 			m.editor.LoadContent(newContent, m.activeNote)
 			m.editor.modified = true
-			// Save directly to disk
-			if err := os.WriteFile(filepath.Join(m.vault.Root, m.activeNote), []byte(newContent), 0644); err != nil {
+			// Atomic save: write to temp file then rename to avoid partial writes on crash
+			if err := atomicWriteNote(filepath.Join(m.vault.Root, m.activeNote), newContent); err != nil {
 				m.statusbar.SetMessage("Failed to save tags: " + err.Error())
 				return
 			}
@@ -858,7 +858,7 @@ func (m *Model) applyTagsToNote(tags []string) {
 	newContent := frontmatter + body
 	m.editor.LoadContent(newContent, m.activeNote)
 	m.editor.modified = true
-	if err := os.WriteFile(filepath.Join(m.vault.Root, m.activeNote), []byte(newContent), 0644); err != nil {
+	if err := atomicWriteNote(filepath.Join(m.vault.Root, m.activeNote), newContent); err != nil {
 		m.statusbar.SetMessage("Failed to save tags: " + err.Error())
 		return
 	}
@@ -874,14 +874,7 @@ func (m Model) saveCurrentNote() tea.Cmd {
 		}
 		content := m.editor.GetContent()
 		path := filepath.Join(m.vault.Root, m.activeNote)
-		// Atomic save: write to temp file then rename to avoid partial writes on crash
-		tmpPath := path + ".tmp"
-		if err := os.WriteFile(tmpPath, []byte(content), 0644); err != nil {
-			_ = os.Remove(tmpPath)
-			return saveResultMsg{err: err}
-		}
-		if err := os.Rename(tmpPath, path); err != nil {
-			_ = os.Remove(tmpPath)
+		if err := atomicWriteNote(path, content); err != nil {
 			return saveResultMsg{err: err}
 		}
 		// Incrementally update the search index for the saved file
@@ -890,6 +883,24 @@ func (m Model) saveCurrentNote() tea.Cmd {
 		}
 		return saveResultMsg{err: nil}
 	}
+}
+
+// atomicWriteNote writes the given content to a note path atomically by
+// writing to a sibling .tmp file and then renaming it into place. This
+// prevents leaving a zero-byte or truncated note on disk if the process is
+// interrupted (crash, power loss, OOM kill) mid-write. All call sites that
+// persist user note content should go through this helper.
+func atomicWriteNote(path, content string) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(content), 0644); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // tryExpandSnippet checks if the word before the cursor (before the space just typed)

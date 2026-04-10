@@ -125,15 +125,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.config.AutoSave && msg.editTime.Equal(m.lastEditTime) && m.editor.modified && m.activeNote != "" {
 			content := m.editor.GetContent()
 			path := filepath.Join(m.vault.Root, m.activeNote)
-			// Atomic write: temp file + rename to prevent corruption on crash
-			tmpPath := path + ".tmp"
-			if err := os.WriteFile(tmpPath, []byte(content), 0644); err != nil {
-				_ = os.Remove(tmpPath)
-				m.statusbar.SetMessage("Autosave failed: " + err.Error())
-				return m, m.clearMessageAfter(5 * time.Second)
-			}
-			if err := os.Rename(tmpPath, path); err != nil {
-				_ = os.Remove(tmpPath)
+			if err := atomicWriteNote(path, content); err != nil {
 				m.statusbar.SetMessage("Autosave failed: " + err.Error())
 				return m, m.clearMessageAfter(5 * time.Second)
 			}
@@ -1788,8 +1780,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							if task.LineNum >= 0 && task.LineNum < len(lines) {
 								lines[task.LineNum] = strings.Replace(lines[task.LineNum], "- [ ]", "- [x]", 1)
 								newContent := strings.Join(lines, "\n")
-								_ = os.WriteFile(filepath.Join(m.vault.Root, task.NotePath), []byte(newContent), 0644)
-								m.refreshComponents(task.NotePath)
+								if err := atomicWriteNote(filepath.Join(m.vault.Root, task.NotePath), newContent); err != nil {
+									m.statusbar.SetError("Failed to mark task done: " + err.Error())
+								} else {
+									m.refreshComponents(task.NotePath)
+								}
 							}
 						}
 					}
@@ -1819,8 +1814,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							if task.LineNum >= 0 && task.LineNum < len(lines) {
 								lines[task.LineNum] = strings.Replace(lines[task.LineNum], "- [ ]", "- [x]", 1)
 								newContent := strings.Join(lines, "\n")
-								_ = os.WriteFile(filepath.Join(m.vault.Root, task.NotePath), []byte(newContent), 0644)
-								m.refreshComponents(task.NotePath)
+								if err := atomicWriteNote(filepath.Join(m.vault.Root, task.NotePath), newContent); err != nil {
+									m.statusbar.SetError("Failed to mark task done: " + err.Error())
+								} else {
+									m.refreshComponents(task.NotePath)
+								}
 							}
 						}
 					}
@@ -2389,8 +2387,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								lines[line] = strings.Replace(lines[line], "- [x]", "- [ ]", 1)
 							}
 							newContent := strings.Join(lines, "\n")
-							_ = os.WriteFile(filepath.Join(m.vault.Root, notePath), []byte(newContent), 0644)
-							m.refreshComponents(notePath)
+							if err := atomicWriteNote(filepath.Join(m.vault.Root, notePath), newContent); err != nil {
+								m.statusbar.SetError("Failed to update task: " + err.Error())
+							} else {
+								m.refreshComponents(notePath)
+							}
 						}
 					}
 				}
