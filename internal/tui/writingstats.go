@@ -308,7 +308,7 @@ func (ws *WritingStats) saveDailyLog() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(ws.statsFilePath(), data, 0644)
+	_ = os.WriteFile(ws.statsFilePath(), data, 0o600)
 }
 
 // Update handles key messages while the overlay is active.

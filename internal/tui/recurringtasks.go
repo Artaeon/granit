@@ -124,7 +124,7 @@ func (rt *RecurringTasks) save() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(rt.configPath(), data, 0644)
+	_ = os.WriteFile(rt.configPath(), data, 0o600)
 }
 
 // ----- auto-create logic -----

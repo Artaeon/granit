@@ -379,7 +379,7 @@ func (pm *ProjectMode) saveProjects() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(pm.projectsFilePath(), data, 0644)
+	_ = os.WriteFile(pm.projectsFilePath(), data, 0o600)
 }
 
 // ---------------------------------------------------------------------------

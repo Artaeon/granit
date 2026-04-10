@@ -152,7 +152,7 @@ func (bm *Bookmarks) save() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(bm.dataPath(), data, 0644)
+	_ = os.WriteFile(bm.dataPath(), data, 0o600)
 }
 
 func (bm Bookmarks) Update(msg tea.Msg) (Bookmarks, tea.Cmd) {

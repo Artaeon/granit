@@ -161,7 +161,7 @@ func (kb *Kanban) saveState() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(kb.statePath(), data, 0644)
+	_ = os.WriteFile(kb.statePath(), data, 0o600)
 }
 
 // SetSize stores the available terminal dimensions for rendering.

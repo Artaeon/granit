@@ -100,7 +100,7 @@ func (es *EventStore) save() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(es.path(), data, 0644)
+	_ = os.WriteFile(es.path(), data, 0o600)
 }
 
 func (es *EventStore) nextID() string {

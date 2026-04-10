@@ -372,7 +372,7 @@ func (fc *Flashcards) SaveProgress(vaultPath string) {
 		fc.statusMsg = "Failed to save progress: " + err.Error()
 		return
 	}
-	if err := os.WriteFile(p, data, 0644); err != nil {
+	if err := os.WriteFile(p, data, 0o600); err != nil {
 		fc.statusMsg = "Failed to save progress: " + err.Error()
 	}
 }

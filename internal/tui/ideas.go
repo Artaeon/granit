@@ -152,7 +152,7 @@ func (ib *IdeasBoard) saveIdeas() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(ib.ideasPath(), data, 0644)
+	_ = os.WriteFile(ib.ideasPath(), data, 0o600)
 }
 
 func (ib *IdeasBoard) nextID() string {

@@ -464,7 +464,7 @@ func (ap *AIProjectPlanner) saveProjectAndTasks() error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal projects: %w", err)
 	}
-	if err := os.WriteFile(projFile, data, 0644); err != nil {
+	if err := os.WriteFile(projFile, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write projects: %w", err)
 	}
 
@@ -549,7 +549,7 @@ func (ap *AIProjectPlanner) saveProjectAndTasks() error {
 
 	goals = append(goals, newGoal)
 	if gdata, err := json.MarshalIndent(goals, "", "  "); err == nil {
-		_ = os.WriteFile(goalFile, gdata, 0644)
+		_ = os.WriteFile(goalFile, gdata, 0o600)
 	}
 
 	return nil

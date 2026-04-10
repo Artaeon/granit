@@ -199,7 +199,7 @@ func SaveStats(vaultPath string, stats LearnStats) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(p, data, 0644)
+	_ = os.WriteFile(p, data, 0o600)
 }
 
 // LoadStats reads learn stats from disk, returning zero-value on error.

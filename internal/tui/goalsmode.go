@@ -401,7 +401,7 @@ func (gm *GoalsMode) saveGoals() {
 	if err != nil {
 		return // don't write corrupt data
 	}
-	_ = os.WriteFile(gm.goalsPath(), data, 0644)
+	_ = os.WriteFile(gm.goalsPath(), data, 0o600)
 }
 
 // loadAllGoals reads all goals from the goals.json file.

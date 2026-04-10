@@ -303,7 +303,7 @@ func (c *ClockIn) saveClockData(data clockInData) {
 	dir := filepath.Join(c.vaultPath, ".granit")
 	_ = os.MkdirAll(dir, 0755)
 	raw, _ := json.MarshalIndent(data, "", "  ")
-	_ = os.WriteFile(filepath.Join(dir, "clock.json"), raw, 0644)
+	_ = os.WriteFile(filepath.Join(dir, "clock.json"), raw, 0o600)
 }
 
 func (c *ClockIn) loadReminders() {
@@ -321,7 +321,7 @@ func (c *ClockIn) saveRemindersFile() {
 	dir := filepath.Join(c.vaultPath, ".granit")
 	_ = os.MkdirAll(dir, 0755)
 	raw, _ := json.MarshalIndent(c.reminders, "", "  ")
-	_ = os.WriteFile(filepath.Join(dir, "reminders.json"), raw, 0644)
+	_ = os.WriteFile(filepath.Join(dir, "reminders.json"), raw, 0o600)
 }
 
 func (c *ClockIn) loadTodaySessions() {

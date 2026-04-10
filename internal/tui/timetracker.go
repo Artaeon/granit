@@ -155,7 +155,7 @@ func (tt *TimeTracker) saveEntries() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(tt.storagePath(), data, 0644)
+	_ = os.WriteFile(tt.storagePath(), data, 0o600)
 }
 
 // ----- Timer Control -----
