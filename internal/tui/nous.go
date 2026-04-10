@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -69,6 +70,13 @@ type nousStatusResponse struct {
 
 // Chat sends a message and returns the response text.
 func (nc *NousClient) Chat(message string) (string, error) {
+	return nc.ChatCtx(context.Background(), message)
+}
+
+// ChatCtx is like Chat but cancels the underlying HTTP request when ctx
+// is done. Callers with a deadline (e.g. ghost writer) can use this to
+// drop slow requests instead of waiting for the client's own timeout.
+func (nc *NousClient) ChatCtx(ctx context.Context, message string) (string, error) {
 	reqBody := nousChatRequest{
 		Message: message,
 	}
@@ -77,7 +85,7 @@ func (nc *NousClient) Chat(message string) (string, error) {
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", nc.baseURL+"/api/chat", bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, "POST", nc.baseURL+"/api/chat", bytes.NewReader(data))
 	if err != nil {
 		return "", err
 	}

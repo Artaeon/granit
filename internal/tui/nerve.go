@@ -29,10 +29,15 @@ func (nc *NerveClient) Chat(systemPrompt, userPrompt string, timeout time.Durati
 	if timeout == 0 {
 		timeout = 120 * time.Second
 	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	return nc.ChatCtx(ctx, systemPrompt, userPrompt)
+}
 
+// ChatCtx is like Chat but honors the supplied context, so callers can
+// cancel a slow nerve subprocess from the outside (e.g. ghost writer
+// dropping a stale completion request).
+func (nc *NerveClient) ChatCtx(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
 	args := []string{"--stdin", "-n"}
 	if nc.Provider != "" {
 		args = append(args, "--provider", nc.Provider)

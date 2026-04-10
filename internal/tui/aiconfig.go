@@ -237,21 +237,25 @@ func (c AIConfig) Chat(systemPrompt, userPrompt string) (string, error) {
 
 // ChatCtx is like Chat but honors a context with optional deadline.
 // For Ollama, the HTTP request is aborted when ctx expires, freeing the
-// local model. Non-HTTP providers fall through to the legacy Chat path.
+// local model. Nous and Nerve also honor ctx via their ChatCtx methods.
 func (c AIConfig) ChatCtx(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
-	if c.Provider == "ollama" || c.Provider == "local" || c.Provider == "" {
-		resp, err := c.chatOllamaCtx(ctx, systemPrompt, userPrompt, c.ollamaOptions())
-		if err != nil && isTransientAIError(err) && !c.isTimeoutOnSmallModel(err) && ctx.Err() == nil {
-			time.Sleep(500 * time.Millisecond)
-			resp, err = c.chatOllamaCtx(ctx, systemPrompt, userPrompt, c.ollamaOptions())
-		}
-		return resp, err
+	resp, err := c.chatOnceCtx(ctx, systemPrompt, userPrompt)
+	if err != nil && isTransientAIError(err) && !c.isTimeoutOnSmallModel(err) && ctx.Err() == nil {
+		time.Sleep(500 * time.Millisecond)
+		resp, err = c.chatOnceCtx(ctx, systemPrompt, userPrompt)
 	}
-	return c.Chat(systemPrompt, userPrompt)
+	return resp, err
 }
 
 // chatOnce performs a single chat request without retries.
 func (c AIConfig) chatOnce(systemPrompt, userPrompt string) (string, error) {
+	return c.chatOnceCtx(context.Background(), systemPrompt, userPrompt)
+}
+
+// chatOnceCtx is the context-aware variant of chatOnce. All providers
+// route through here so a single deadline can cancel an in-flight call
+// regardless of which provider is configured.
+func (c AIConfig) chatOnceCtx(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
 	switch c.Provider {
 	case "openai":
 		return c.chatOpenAI(systemPrompt, userPrompt)
@@ -261,12 +265,12 @@ func (c AIConfig) chatOnce(systemPrompt, userPrompt string) (string, error) {
 		if systemPrompt != "" {
 			prompt = systemPrompt + "\n\n" + userPrompt
 		}
-		return client.Chat(prompt)
+		return client.ChatCtx(ctx, prompt)
 	case "nerve":
 		client := c.NewNerve()
-		return client.Chat(systemPrompt, userPrompt, 120*time.Second)
+		return client.ChatCtx(ctx, systemPrompt, userPrompt)
 	default: // "ollama", "local"
-		return c.chatOllamaWithOptions(systemPrompt, userPrompt, c.ollamaOptions())
+		return c.chatOllamaCtx(ctx, systemPrompt, userPrompt, c.ollamaOptions())
 	}
 }
 
@@ -292,8 +296,9 @@ func (c AIConfig) chatShortOnce(ctx context.Context, systemPrompt, userPrompt st
 	if c.Provider == "ollama" || c.Provider == "local" || c.Provider == "" {
 		return c.chatOllamaCtx(ctx, systemPrompt, userPrompt, c.ollamaOptionsShort())
 	}
-	// Other providers don't expose an easy token limit — fall through.
-	return c.chatOnce(systemPrompt, userPrompt)
+	// Other providers don't expose an easy token limit — fall through to
+	// the unified context-aware path so the deadline still applies.
+	return c.chatOnceCtx(ctx, systemPrompt, userPrompt)
 }
 
 // chatOllamaCtx is the context-aware variant of chatOllamaWithOptions. The

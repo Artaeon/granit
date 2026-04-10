@@ -503,17 +503,10 @@ func (gw *GhostWriter) requestCompletion(noteCtx string) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), deadline)
 		defer cancel()
 
-		switch ai.Provider {
-		case "nous":
-			raw, err = ghostCallNous(ai.NousURL, ai.NousAPIKey, noteCtx)
-		case "nerve":
-			raw, err = ghostCallNerve(ai.NerveBinary, ai.NerveModel, ai.NerveProvider, noteCtx)
-		default: // "ollama", "openai"
-			raw, err = ai.ChatShortCtx(ctx, systemPrompt, noteCtx)
-		}
+		raw, err = ai.ChatShortCtx(ctx, systemPrompt, noteCtx)
 
 		if err != nil {
-			return ghostSuggestionMsg{err: err, contextKey: cacheKey}
+			return ghostSuggestionMsg{err: fmt.Errorf("Ghost Writer: %v", err), contextKey: cacheKey}
 		}
 
 		cleaned := ghostCleanCompletion(raw)
@@ -523,26 +516,6 @@ func (gw *GhostWriter) requestCompletion(noteCtx string) tea.Cmd {
 
 		return ghostSuggestionMsg{text: cleaned, contextKey: cacheKey}
 	}
-}
-
-func ghostCallNerve(binary, model, provider, context string) (string, error) {
-	client := NewNerveClient(binary, model, provider)
-	prompt := "Continue the following text naturally. Only output the continuation, no explanation.\n\n" + context
-	resp, err := client.Chat("", prompt, 30*time.Second)
-	if err != nil {
-		return "", fmt.Errorf("Ghost Writer: %v", err)
-	}
-	return resp, nil
-}
-
-func ghostCallNous(url, apiKey, context string) (string, error) {
-	client := NewNousClient(url, apiKey)
-	prompt := "Continue the following text naturally. Only output the continuation, no explanation.\n\n" + context
-	resp, err := client.Chat(prompt)
-	if err != nil {
-		return "", fmt.Errorf("Ghost Writer: %v", err)
-	}
-	return resp, nil
 }
 
 // ---------------------------------------------------------------------------
