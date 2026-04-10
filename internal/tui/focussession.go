@@ -269,7 +269,8 @@ func (fs FocusSession) updateSetup(msg tea.KeyMsg) (FocusSession, tea.Cmd) {
 
 	case "backspace":
 		if fs.setupField == 1 && len(fs.goalInput) > 0 {
-			fs.goalInput = fs.goalInput[:len(fs.goalInput)-1]
+			r := []rune(fs.goalInput)
+			fs.goalInput = string(r[:len(r)-1])
 		}
 		return fs, nil
 
@@ -330,7 +331,8 @@ func (fs FocusSession) updateActive(msg tea.KeyMsg) (FocusSession, tea.Cmd) {
 
 	case "backspace":
 		if len(fs.scratchpad) > 0 {
-			fs.scratchpad = fs.scratchpad[:len(fs.scratchpad)-1]
+			r := []rune(fs.scratchpad)
+			fs.scratchpad = string(r[:len(r)-1])
 		}
 		return fs, nil
 

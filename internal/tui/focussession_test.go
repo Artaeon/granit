@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestFocusSession_NewDefaults(t *testing.T) {
@@ -115,5 +118,40 @@ func TestFocusSession_SaveMultipleSessions(t *testing.T) {
 	count := strings.Count(string(data), "## Session")
 	if count != 2 {
 		t.Errorf("expected 2 session entries, got %d", count)
+	}
+}
+
+// Regression: backspace on a multi-byte rune must remove the whole rune
+// (not just one byte) and leave a valid UTF-8 string.
+func TestFocusSession_BackspaceMultibyteGoal(t *testing.T) {
+	fs := NewFocusSession()
+	fs.Open(t.TempDir())
+	fs.setupField = 1
+	fs.goalInput = "café" // 'é' is 2 bytes in UTF-8
+
+	fs, _ = fs.updateSetup(tea.KeyMsg{Type: tea.KeyBackspace})
+
+	if fs.goalInput != "caf" {
+		t.Errorf("expected 'caf' after backspace, got %q", fs.goalInput)
+	}
+	if !utf8.ValidString(fs.goalInput) {
+		t.Errorf("goalInput is not valid UTF-8: %q", fs.goalInput)
+	}
+}
+
+// Regression: backspace on the active-phase scratchpad must be rune-aware.
+func TestFocusSession_BackspaceMultibyteScratchpad(t *testing.T) {
+	fs := NewFocusSession()
+	fs.Open(t.TempDir())
+	fs.phase = fsPhaseActive
+	fs.scratchpad = "hi 🌟" // 4-byte rune at the end
+
+	fs, _ = fs.updateActive(tea.KeyMsg{Type: tea.KeyBackspace})
+
+	if fs.scratchpad != "hi " {
+		t.Errorf("expected 'hi ' after backspace, got %q", fs.scratchpad)
+	}
+	if !utf8.ValidString(fs.scratchpad) {
+		t.Errorf("scratchpad is not valid UTF-8: %q", fs.scratchpad)
 	}
 }
