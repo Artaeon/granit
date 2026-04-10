@@ -430,8 +430,8 @@ func (d *Dashboard) parseHabits(todayStr string) {
 		if !inHabits || !strings.HasPrefix(trimmed, "|") {
 			continue
 		}
-		// Skip header/separator rows
-		if strings.Contains(trimmed, "---") || strings.Contains(trimmed, "Habit") {
+		// Skip separator rows like |---|---|---|
+		if strings.Contains(trimmed, "---") {
 			continue
 		}
 		parts := strings.Split(trimmed, "|")
@@ -439,6 +439,11 @@ func (d *Dashboard) parseHabits(todayStr string) {
 			continue
 		}
 		name := strings.TrimSpace(parts[1])
+		// Skip the header row by exact-matching the first cell
+		// (using Contains here would drop habits whose name contains "Habit").
+		if strings.EqualFold(name, "habit") {
+			continue
+		}
 		streakStr := strings.TrimSpace(parts[3])
 		streak := 0
 		_, _ = fmt.Sscanf(streakStr, "%d", &streak)
@@ -462,7 +467,7 @@ func (d *Dashboard) parseHabits(todayStr string) {
 		if !inLog || !strings.HasPrefix(trimmed, "|") {
 			continue
 		}
-		if strings.Contains(trimmed, "---") || strings.Contains(trimmed, "Date") {
+		if strings.Contains(trimmed, "---") {
 			continue
 		}
 		parts := strings.Split(trimmed, "|")
@@ -470,6 +475,10 @@ func (d *Dashboard) parseHabits(todayStr string) {
 			continue
 		}
 		date := strings.TrimSpace(parts[1])
+		// Skip the header row by exact-matching the first cell.
+		if strings.EqualFold(date, "date") {
+			continue
+		}
 		if date == todayStr {
 			names := strings.Split(parts[2], ",")
 			for _, n := range names {
