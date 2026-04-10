@@ -80,3 +80,100 @@ func TestStripFrontmatterNoFrontmatter(t *testing.T) {
 		t.Errorf("expected content unchanged, got '%s'", body)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// frontmatterBounds — strict-mode regression coverage
+// ---------------------------------------------------------------------------
+
+func TestFrontmatterBounds_RequiresOpeningNewline(t *testing.T) {
+	// "---" without a newline (e.g. content begins with literal "---title")
+	// must not be treated as frontmatter.
+	content := "---title: oops\n---\nbody"
+	_, _, _, ok := frontmatterBounds(content)
+	if ok {
+		t.Error("frontmatter without proper '---\\n' opening should be rejected")
+	}
+}
+
+func TestFrontmatterBounds_AcceptsValidFrontmatter(t *testing.T) {
+	content := "---\ntitle: Test\ntags: [a]\n---\nbody"
+	bs, be, body, ok := frontmatterBounds(content)
+	if !ok {
+		t.Fatal("valid frontmatter rejected")
+	}
+	block := content[bs:be]
+	if !contains(block, "title: Test") {
+		t.Errorf("block missing title field: %q", block)
+	}
+	if content[body:] != "body" {
+		t.Errorf("body wrong: %q", content[body:])
+	}
+}
+
+func TestFrontmatterBounds_RejectsBlockWithoutKeyValue(t *testing.T) {
+	// Two horizontal rules around prose with no "key: value" line.
+	content := "---\njust some prose between rules\n---\nbody"
+	_, _, _, ok := frontmatterBounds(content)
+	if ok {
+		t.Error("block without key:value should not be frontmatter")
+	}
+}
+
+func TestFrontmatterBounds_AcceptsClosingFenceAtEOF(t *testing.T) {
+	content := "---\ntitle: x\n---"
+	_, _, _, ok := frontmatterBounds(content)
+	if !ok {
+		t.Error("closing --- at EOF should be accepted")
+	}
+}
+
+func TestFrontmatterBounds_RejectsTextAfterClosingFence(t *testing.T) {
+	// "---abc" must NOT be treated as a closing fence.
+	content := "---\ntitle: x\n---abc"
+	_, _, _, ok := frontmatterBounds(content)
+	if ok {
+		t.Error("'---abc' should not match closing fence")
+	}
+}
+
+func TestParseFrontmatter_ArrayValue(t *testing.T) {
+	content := "---\ntags: [alpha, beta, gamma]\n---\nbody"
+	fm := ParseFrontmatter(content)
+	tags, ok := fm["tags"].([]string)
+	if !ok {
+		t.Fatalf("tags not parsed as []string, got %T", fm["tags"])
+	}
+	if len(tags) != 3 || tags[0] != "alpha" || tags[2] != "gamma" {
+		t.Errorf("tags wrong: %v", tags)
+	}
+}
+
+func TestParseFrontmatter_ValueWithColon(t *testing.T) {
+	// SplitN limit 2 means a value containing ':' is preserved.
+	content := "---\ntitle: foo: bar\n---\nbody"
+	fm := ParseFrontmatter(content)
+	if fm["title"] != "foo: bar" {
+		t.Errorf("expected 'foo: bar', got %v", fm["title"])
+	}
+}
+
+func TestParseFrontmatter_KeyWithDashOrUnderscore(t *testing.T) {
+	content := "---\nlast_modified: 2026-04-10\nrelated-notes: [a, b]\n---\nbody"
+	fm := ParseFrontmatter(content)
+	if fm["last_modified"] != "2026-04-10" {
+		t.Errorf("underscore key not parsed: %v", fm["last_modified"])
+	}
+	if _, ok := fm["related-notes"].([]string); !ok {
+		t.Errorf("hyphen key not parsed: %v", fm["related-notes"])
+	}
+}
+
+// helper used by frontmatter tests
+func contains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}

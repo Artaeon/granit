@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -286,5 +288,115 @@ func TestGoalsMode_CoachRenderNotPanic(t *testing.T) {
 	view := gm.View()
 	if view == "" {
 		t.Error("View should not be empty when active")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// saveAllGoals — atomic save (regression for non-atomic write)
+// ---------------------------------------------------------------------------
+
+func TestSaveAllGoals_RoundTrip(t *testing.T) {
+	vault := t.TempDir()
+
+	goals := []Goal{
+		{ID: "g1", Title: "Ship granit", Status: GoalStatusActive},
+		{ID: "g2", Title: "Read more", Status: GoalStatusActive,
+			Milestones: []GoalMilestone{{Text: "Book 1", Done: true}, {Text: "Book 2"}}},
+	}
+	if !saveAllGoals(vault, goals) {
+		t.Fatal("saveAllGoals returned false")
+	}
+
+	loaded := loadAllGoals(vault)
+	if len(loaded) != 2 {
+		t.Fatalf("expected 2 goals, got %d", len(loaded))
+	}
+	if loaded[0].Title != "Ship granit" {
+		t.Errorf("first goal lost title: %q", loaded[0].Title)
+	}
+	if len(loaded[1].Milestones) != 2 {
+		t.Errorf("second goal lost milestones: %v", loaded[1].Milestones)
+	}
+}
+
+// Regression: saveAllGoals must use atomic write — no leftover .tmp file.
+func TestSaveAllGoals_AtomicNoTmp(t *testing.T) {
+	vault := t.TempDir()
+	if !saveAllGoals(vault, []Goal{{ID: "x", Title: "y"}}) {
+		t.Fatal("save failed")
+	}
+	tmp := filepath.Join(vault, ".granit", "goals.json.tmp")
+	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
+		t.Errorf("expected no .tmp file, stat err = %v", err)
+	}
+}
+
+func TestSaveAllGoals_OverwritesPrevious(t *testing.T) {
+	vault := t.TempDir()
+	saveAllGoals(vault, []Goal{{ID: "old", Title: "Old goal"}})
+	saveAllGoals(vault, []Goal{{ID: "new", Title: "New goal"}})
+
+	loaded := loadAllGoals(vault)
+	if len(loaded) != 1 {
+		t.Fatalf("expected 1 goal after overwrite, got %d", len(loaded))
+	}
+	if loaded[0].Title != "New goal" {
+		t.Errorf("expected 'New goal', got %q", loaded[0].Title)
+	}
+}
+
+func TestSaveAllGoals_EmptyList(t *testing.T) {
+	vault := t.TempDir()
+	if !saveAllGoals(vault, []Goal{}) {
+		t.Fatal("expected save to succeed for empty list")
+	}
+	loaded := loadAllGoals(vault)
+	if len(loaded) != 0 {
+		t.Errorf("expected 0 goals, got %d", len(loaded))
+	}
+}
+
+func TestLoadAllGoals_MissingFile(t *testing.T) {
+	vault := t.TempDir()
+	loaded := loadAllGoals(vault)
+	if len(loaded) != 0 {
+		t.Errorf("expected empty result for missing file, got %d", len(loaded))
+	}
+}
+
+// Regression: malformed goals.json must not crash; load returns empty.
+func TestLoadAllGoals_MalformedJSON(t *testing.T) {
+	vault := t.TempDir()
+	dir := filepath.Join(vault, ".granit")
+	_ = os.MkdirAll(dir, 0755)
+	_ = os.WriteFile(filepath.Join(dir, "goals.json"), []byte("{not json"), 0644)
+
+	loaded := loadAllGoals(vault)
+	if loaded != nil && len(loaded) != 0 {
+		t.Errorf("expected empty result for malformed JSON, got %v", loaded)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// addMilestoneToGoal
+// ---------------------------------------------------------------------------
+
+func TestAddMilestoneToGoal_AppendsAndPersists(t *testing.T) {
+	vault := t.TempDir()
+	saveAllGoals(vault, []Goal{
+		{ID: "g1", Title: "Goal 1"},
+	})
+
+	addMilestoneToGoal(vault, "g1", "First step", "2026-04-15")
+
+	loaded := loadAllGoals(vault)
+	if len(loaded) != 1 {
+		t.Fatalf("expected 1 goal, got %d", len(loaded))
+	}
+	if len(loaded[0].Milestones) != 1 {
+		t.Fatalf("expected 1 milestone, got %d", len(loaded[0].Milestones))
+	}
+	if loaded[0].Milestones[0].Text != "First step" {
+		t.Errorf("milestone text wrong: %q", loaded[0].Milestones[0].Text)
 	}
 }
