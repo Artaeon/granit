@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -677,52 +678,65 @@ func (e *Editor) HasMultiCursors() bool {
 
 // wordUnderCursor returns the word under the main cursor position and its
 // start column index. A word is a contiguous run of letters, digits, or
-// underscores.
+// underscores. Returns the word and its starting byte offset on the current
+// line. Operates on byte offsets so that multi-byte runes (emoji, accented
+// characters, CJK) on the line do not produce wrong matches or out-of-range
+// slicing.
 func (e *Editor) wordUnderCursor() (string, int) {
 	if e.cursor >= len(e.content) {
 		return "", 0
 	}
-	runes := []rune(e.content[e.cursor])
-	if len(runes) == 0 || e.col > len(runes) {
+	line := e.content[e.cursor]
+	if len(line) == 0 || e.col > len(line) {
 		return "", 0
 	}
 	col := e.col
-	if col >= len(runes) {
-		col = len(runes) - 1
+	if col == len(line) && col > 0 {
+		// Cursor is just past end-of-line; back up one rune.
+		_, sz := utf8.DecodeLastRuneInString(line[:col])
+		col -= sz
 	}
 	if col < 0 {
 		return "", 0
 	}
-	r := runes[col]
-	if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
-		// Try one position to the left (cursor may be just past the word)
-		if col > 0 {
-			col--
-			r = runes[col]
-			if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
-				return "", 0
-			}
-		} else {
+	r, _ := utf8.DecodeRuneInString(line[col:])
+	if !isWordRune(r) {
+		// Cursor sits on whitespace/punctuation; try one rune to the left.
+		if col == 0 {
+			return "", 0
+		}
+		_, sz := utf8.DecodeLastRuneInString(line[:col])
+		col -= sz
+		r, _ = utf8.DecodeRuneInString(line[col:])
+		if !isWordRune(r) {
 			return "", 0
 		}
 	}
+	// Walk backward to the start of the word.
 	start := col
 	for start > 0 {
-		r := runes[start-1]
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
+		pr, sz := utf8.DecodeLastRuneInString(line[:start])
+		if !isWordRune(pr) {
 			break
 		}
-		start--
+		start -= sz
 	}
+	// Walk forward to the end of the word.
 	end := col
-	for end < len(runes)-1 {
-		r := runes[end+1]
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
+	for end < len(line) {
+		nr, sz := utf8.DecodeRuneInString(line[end:])
+		if !isWordRune(nr) {
 			break
 		}
-		end++
+		end += sz
 	}
-	return string(runes[start : end+1]), start
+	return line[start:end], start
+}
+
+// isWordRune reports whether r is part of an identifier-style word (letters,
+// digits, underscore).
+func isWordRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
 }
 
 
@@ -1398,25 +1412,27 @@ func (e *Editor) findNextWholeWord(word string, startLine, startCol int, existin
 }
 
 // isWholeWord checks if the substring at line[col:col+length] is a whole word.
-// col and length are rune indices.
+// col and length are byte offsets, matching the editor's cursor model. Uses
+// utf8.DecodeLastRune / DecodeRune so the boundary checks work correctly when
+// the line contains multi-byte runes (emoji, accented characters, CJK).
 func (e *Editor) isWholeWord(lineIdx, col, length int) bool {
 	if lineIdx >= len(e.content) {
 		return false
 	}
-	runes := []rune(e.content[lineIdx])
-	if col+length > len(runes) {
+	line := e.content[lineIdx]
+	if col < 0 || col+length > len(line) {
 		return false
 	}
 	if col > 0 {
-		r := runes[col-1]
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
+		r, _ := utf8.DecodeLastRuneInString(line[:col])
+		if r == utf8.RuneError || unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
 			return false
 		}
 	}
 	end := col + length
-	if end < len(runes) {
-		r := runes[end]
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
+	if end < len(line) {
+		r, _ := utf8.DecodeRuneInString(line[end:])
+		if r == utf8.RuneError || unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
 			return false
 		}
 	}

@@ -388,6 +388,57 @@ func TestWordUnderCursor_Underscore(t *testing.T) {
 	}
 }
 
+// Regression: a word that follows a multi-byte rune must still be found.
+// Previously isWholeWord treated col as a rune index but the editor stores
+// it as a byte offset, which made findNextWholeWord miss any match where
+// strings.Index returned a byte offset > rune count of the prefix.
+func TestFindNextWholeWord_AfterMultibytePrefix(t *testing.T) {
+	e := focusedEditor()
+	// "café" is 5 bytes (é = 2 bytes), so "hello" starts at byte 6.
+	e.LoadContent("café hello world", "/test.md")
+	e.focused = true
+
+	pos, ok := e.findNextWholeWord("hello", 0, 0, nil)
+	if !ok {
+		t.Fatal("expected to find 'hello' after multi-byte prefix")
+	}
+	if pos.Line != 0 || pos.Col != 6 {
+		t.Errorf("expected (0, 6), got (%d, %d)", pos.Line, pos.Col)
+	}
+}
+
+// Regression: wordUnderCursor must work when the cursor's byte offset places
+// it inside a word that follows a multi-byte rune.
+func TestWordUnderCursor_AfterMultibyte(t *testing.T) {
+	e := focusedEditor()
+	e.LoadContent("café word", "/test.md")
+	e.focused = true
+
+	// "word" starts at byte 6. Place cursor on the 'o' (byte 7).
+	e.cursor = 0
+	e.col = 7
+	word, start := e.wordUnderCursor()
+	if word != "word" {
+		t.Errorf("expected 'word', got %q", word)
+	}
+	if start != 6 {
+		t.Errorf("expected start byte 6, got %d", start)
+	}
+}
+
+// Regression: isWholeWord must accept a match whose byte position lies past
+// a multi-byte rune. This test pins down the previous "10 > 10 → reject" bug.
+func TestIsWholeWord_AfterMultibyte(t *testing.T) {
+	e := focusedEditor()
+	e.LoadContent("café hello", "/test.md")
+	e.focused = true
+
+	// "hello" lives at byte 6, length 5 bytes.
+	if !e.isWholeWord(0, 6, 5) {
+		t.Error("expected isWholeWord to return true for 'hello' after 'café '")
+	}
+}
+
 // ===========================================================================
 // findAndAddNextOccurrence tests
 // ===========================================================================
