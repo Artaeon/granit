@@ -173,14 +173,21 @@ func (kg *KnowledgeGraph) findClusters() {
 			}
 		}
 		if len(component) >= 2 {
-			// Count internal links
+			// Build a membership set for the component so the inner
+			// "is link an internal note?" check is O(1) instead of O(n).
+			// The previous code did three nested loops over `component`
+			// (per-note × per-link × per-other) which was O(n³) on
+			// component size — large clusters made this dominate the
+			// build time.
+			members := make(map[string]struct{}, len(component))
+			for _, n := range component {
+				members[n] = struct{}{}
+			}
 			internalLinks := 0
 			for _, n := range component {
 				for _, link := range kg.noteLinks[n] {
-					for _, other := range component {
-						if link == other {
-							internalLinks++
-						}
+					if _, ok := members[link]; ok {
+						internalLinks++
 					}
 				}
 			}
