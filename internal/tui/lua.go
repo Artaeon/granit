@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,23 +59,35 @@ func (le *LuaEngine) GetScripts() []LuaScript {
 	return le.scripts
 }
 
-// RunScript executes a Lua script with the given context.
+// RunScript executes a Lua script with a 5-second execution budget.
+//
+// Cancellation is delegated to gopher-lua's SetContext: when the context
+// expires, gopher-lua interrupts the next instruction and DoFile/DoString
+// returns a context error. This avoids the previous design where the main
+// goroutine called L.Close() out from under a still-running background
+// goroutine — that was a use-after-free on the LState plus a double-close
+// once the deferred Close also ran.
 func (le *LuaEngine) RunScript(script LuaScript, notePath, noteContent string, noteMeta map[string]string) LuaResult {
 	L := lua.NewState(lua.Options{SkipOpenLibs: false})
 	defer L.Close()
 
-	// Set a 5-second execution limit
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	L.SetContext(ctx)
+
 	done := make(chan LuaResult, 1)
 	go func() {
-		result := le.executeScript(L, script, notePath, noteContent, noteMeta)
-		done <- result
+		done <- le.executeScript(L, script, notePath, noteContent, noteMeta)
 	}()
 
 	select {
 	case result := <-done:
 		return result
-	case <-time.After(5 * time.Second):
-		L.Close()
+	case <-ctx.Done():
+		// Wait for the goroutine to actually unwind so the deferred
+		// L.Close() doesn't race against an in-flight executeScript.
+		// gopher-lua surfaces the context error on the next instruction.
+		<-done
 		return LuaResult{Error: fmt.Errorf("script timed out after 5 seconds")}
 	}
 }
