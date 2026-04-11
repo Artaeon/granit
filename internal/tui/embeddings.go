@@ -315,6 +315,17 @@ func (ss *SemanticSearch) MarkNoteStale(notePath string) {
 // Embedding generation helpers
 // ---------------------------------------------------------------------------
 
+// Shared HTTP clients for embedding requests. Both endpoints are infrequent
+// (one call per stale note during a build, then quiet) but creating a fresh
+// http.Client per request defeats connection pooling and leaks file
+// descriptors when many notes are indexed in a row. The Ollama timeout is
+// generous because local CPUs can take 30+ seconds per call on cold start;
+// the OpenAI timeout is shorter because the network is the only variable.
+var (
+	embeddingOllamaClient = &http.Client{Timeout: 120 * time.Second}
+	embeddingOpenAIClient = &http.Client{Timeout: 60 * time.Second}
+)
+
 // getEmbedding calls the configured AI provider to produce a vector for text.
 func getEmbedding(provider, model, ollamaURL, apiKey, text string) ([]float64, error) {
 	switch provider {
@@ -335,8 +346,7 @@ func getOllamaEmbedding(url, model, text string) ([]float64, error) {
 		return nil, err
 	}
 
-	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Post(url+"/api/embed", "application/json", bytes.NewReader(data))
+	resp, err := embeddingOllamaClient.Post(url+"/api/embed", "application/json", bytes.NewReader(data))
 	if err != nil {
 		if resp != nil && resp.Body != nil {
 			resp.Body.Close()
@@ -376,7 +386,6 @@ func getOpenAIEmbedding(apiKey, model, text string) ([]float64, error) {
 		return nil, err
 	}
 
-	client := &http.Client{Timeout: 60 * time.Second}
 	req, err := http.NewRequest("POST", "https://api.openai.com/v1/embeddings", bytes.NewReader(data))
 	if err != nil {
 		return nil, err
@@ -384,7 +393,7 @@ func getOpenAIEmbedding(apiKey, model, text string) ([]float64, error) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	resp, err := client.Do(req)
+	resp, err := embeddingOpenAIClient.Do(req)
 	if err != nil {
 		if resp != nil && resp.Body != nil {
 			resp.Body.Close()
