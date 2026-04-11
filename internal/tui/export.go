@@ -131,18 +131,22 @@ func (e *ExportOverlay) exportHTML() {
 		e.result = "Error: no note is open"
 		return
 	}
-	html := markdownToHTML(e.noteContent)
 	baseName := strings.TrimSuffix(e.notePath, filepath.Ext(e.notePath))
-	outPath := filepath.Join(e.vaultRoot, baseName+".html")
+	outPath, err := resolveVaultPath(e.vaultRoot, baseName+".html")
+	if err != nil {
+		e.result = "Error: " + err.Error()
+		return
+	}
 
-	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
+	html := markdownToHTML(e.noteContent)
+	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 		e.result = "Error: " + err.Error()
 		return
 	}
 
 	title := strings.TrimSuffix(filepath.Base(e.notePath), filepath.Ext(e.notePath))
 	fullHTML := wrapHTML(title, html)
-	if err := os.WriteFile(outPath, []byte(fullHTML), 0644); err != nil {
+	if err := atomicWriteNote(outPath, fullHTML); err != nil {
 		e.result = "Error: " + err.Error()
 		return
 	}
@@ -154,16 +158,20 @@ func (e *ExportOverlay) exportPlainText() {
 		e.result = "Error: no note is open"
 		return
 	}
-	plain := exportStripMarkdown(e.noteContent)
 	baseName := strings.TrimSuffix(e.notePath, filepath.Ext(e.notePath))
-	outPath := filepath.Join(e.vaultRoot, baseName+".txt")
-
-	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
+	outPath, err := resolveVaultPath(e.vaultRoot, baseName+".txt")
+	if err != nil {
 		e.result = "Error: " + err.Error()
 		return
 	}
 
-	if err := os.WriteFile(outPath, []byte(plain), 0644); err != nil {
+	plain := exportStripMarkdown(e.noteContent)
+	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+		e.result = "Error: " + err.Error()
+		return
+	}
+
+	if err := atomicWriteNote(outPath, plain); err != nil {
 		e.result = "Error: " + err.Error()
 		return
 	}
@@ -182,11 +190,19 @@ func (e *ExportOverlay) exportPDF() {
 		return
 	}
 
-	inputPath := filepath.Join(e.vaultRoot, e.notePath)
+	inputPath, err := resolveVaultPath(e.vaultRoot, e.notePath)
+	if err != nil {
+		e.result = "Error: " + err.Error()
+		return
+	}
 	baseName := strings.TrimSuffix(e.notePath, filepath.Ext(e.notePath))
-	outPath := filepath.Join(e.vaultRoot, baseName+".pdf")
+	outPath, err := resolveVaultPath(e.vaultRoot, baseName+".pdf")
+	if err != nil {
+		e.result = "Error: " + err.Error()
+		return
+	}
 
-	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 		e.result = "Error: " + err.Error()
 		return
 	}
@@ -205,7 +221,7 @@ func (e *ExportOverlay) exportPDF() {
 
 func (e *ExportOverlay) exportAllHTML() {
 	exportDir := filepath.Join(e.vaultRoot, "_export")
-	if err := os.MkdirAll(exportDir, 0755); err != nil {
+	if err := os.MkdirAll(exportDir, 0o755); err != nil {
 		e.result = "Error: " + err.Error()
 		return
 	}
@@ -228,7 +244,16 @@ func (e *ExportOverlay) exportAllHTML() {
 			return nil
 		}
 
-		relPath, _ := filepath.Rel(e.vaultRoot, path)
+		// If filepath.Rel fails (e.g., paths on different drives on
+		// Windows, or weirdly mounted filesystems) the previous code
+		// silently used the original absolute path as relPath, which
+		// then produced a malformed filepath.Join(exportDir, /abs/...)
+		// — a path that escapes the export directory entirely. Skip
+		// the file instead.
+		relPath, relErr := filepath.Rel(e.vaultRoot, path)
+		if relErr != nil {
+			return nil
+		}
 		content, readErr := os.ReadFile(path)
 		if readErr != nil {
 			return nil
@@ -239,11 +264,16 @@ func (e *ExportOverlay) exportAllHTML() {
 		fullHTML := wrapHTML(title, html)
 
 		outName := strings.TrimSuffix(relPath, ".md") + ".html"
-		outPath := filepath.Join(exportDir, outName)
-		if mkErr := os.MkdirAll(filepath.Dir(outPath), 0755); mkErr != nil {
+		// Re-check after Join: a malicious or odd relPath like
+		// "../escape.md" would otherwise land outside exportDir.
+		outPath, resolveErr := resolveVaultPath(exportDir, outName)
+		if resolveErr != nil {
 			return nil
 		}
-		if wErr := os.WriteFile(outPath, []byte(fullHTML), 0644); wErr != nil {
+		if mkErr := os.MkdirAll(filepath.Dir(outPath), 0o755); mkErr != nil {
+			return nil
+		}
+		if wErr := atomicWriteNote(outPath, fullHTML); wErr != nil {
 			return nil
 		}
 
@@ -267,7 +297,7 @@ func (e *ExportOverlay) exportAllHTML() {
 
 	indexHTML := wrapHTML("Vault Export", indexBody.String())
 	indexPath := filepath.Join(exportDir, "index.html")
-	if err := os.WriteFile(indexPath, []byte(indexHTML), 0644); err != nil {
+	if err := atomicWriteNote(indexPath, indexHTML); err != nil {
 		e.result = "Error: " + err.Error()
 		return
 	}
