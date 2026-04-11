@@ -689,14 +689,21 @@ func (m Model) Init() tea.Cmd {
 	}
 	// Clock-in timer and reminder tick loop
 	cmds = append(cmds, m.clockIn.StartTicking())
-	// Nous: auto-ingest vault notes on startup
+	// Nous: auto-ingest vault notes on startup. Snapshot the notes map
+	// into a fresh map BEFORE launching the goroutine — passing
+	// m.vault.Notes directly would let the goroutine iterate the same
+	// map the main loop is mutating (note saves, deletes, watcher
+	// reloads), which is a runtime panic in Go.
 	if m.config.AIProvider == "nous" {
-		notes := m.vault.Notes
+		snapshot := make(map[string]*vault.Note, len(m.vault.Notes))
+		for path, note := range m.vault.Notes {
+			snapshot[path] = note
+		}
 		nousURL := m.config.NousURL
 		nousAPIKey := m.config.NousAPIKey
 		go func() {
 			client := NewNousClient(nousURL, nousAPIKey)
-			count, err := client.IngestVault(notes)
+			count, err := client.IngestVault(snapshot)
 			if err != nil {
 				log.Printf("Nous ingest failed: %v", err)
 			} else {
