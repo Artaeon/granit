@@ -466,11 +466,13 @@ func (mm *MindMap) scanVaultLinks() map[string][]string {
 	return result
 }
 
-// readNoteContent reads a note from disk by its path.
+// readNoteContent reads a note from disk by its path. Relative paths are
+// resolved against the vault root and validated to ensure they cannot
+// escape the vault. Absolute paths are required to point inside the vault.
 func (mm *MindMap) readNoteContent(notePath string) string {
-	fullPath := notePath
-	if !filepath.IsAbs(notePath) {
-		fullPath = filepath.Join(mm.vaultRoot, notePath)
+	fullPath, err := resolveVaultPath(mm.vaultRoot, notePath)
+	if err != nil {
+		return ""
 	}
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
