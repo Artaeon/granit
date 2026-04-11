@@ -384,7 +384,7 @@ func writePlannerBlock(vaultRoot, date string, block PlannerBlock) {
 		return
 	}
 	dir := filepath.Join(vaultRoot, "Planner")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
 	path := filepath.Join(dir, date+".md")
@@ -395,7 +395,7 @@ func writePlannerBlock(vaultRoot, date string, block PlannerBlock) {
 	if err != nil {
 		// Create new planner file with the block
 		content = []byte("---\ndate: " + date + "\n---\n\n## Schedule\n" + line)
-		_ = os.WriteFile(path, content, 0644)
+		_ = atomicWriteNote(path, string(content))
 		return
 	}
 
@@ -408,7 +408,7 @@ func writePlannerBlock(vaultRoot, date string, block PlannerBlock) {
 		insertAt := idx + len(scheduleHeader)
 		content = append(content[:insertAt], append([]byte(line), content[insertAt:]...)...)
 	}
-	_ = os.WriteFile(path, content, 0644)
+	_ = atomicWriteNote(path, string(content))
 }
 
 // GetTaskToggles returns pending task toggles and clears them (consumed-once).
