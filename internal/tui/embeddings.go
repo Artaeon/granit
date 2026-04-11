@@ -225,14 +225,14 @@ func SaveIndex(vaultPath string, idx *EmbeddingIndex) error {
 		return nil
 	}
 	dir := filepath.Join(vaultPath, ".granit")
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	data, err := json.Marshal(idx)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "embeddings.json"), data, 0600)
+	return atomicWriteState(filepath.Join(dir, "embeddings.json"), data)
 }
 
 // LoadIndex reads the embedding index from <vaultPath>/.granit/embeddings.json.
