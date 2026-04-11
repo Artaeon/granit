@@ -861,15 +861,21 @@ func (c Canvas) renderGrid(gw, gh int) []string {
 		default:
 			// Normal 3-line card
 			dtNormal := titleWithConn
-			if dtRunes := []rune(dtNormal); len(dtRunes) > innerW {
+			dtRunes := []rune(dtNormal)
+			if len(dtRunes) > innerW {
 				if innerW > 3 {
 					dtNormal = string(dtRunes[:innerW-3]) + "..."
 				} else {
 					dtNormal = string(dtRunes[:innerW])
 				}
+				dtRunes = []rune(dtNormal)
 			}
-			for len([]rune(dtNormal)) < innerW {
-				dtNormal += " "
+			// Pad in one allocation rather than appending one space per
+			// missing rune in a loop — the previous code was O(n²) on
+			// the card width because every iteration re-built the rune
+			// slice and re-allocated the string.
+			if pad := innerW - len(dtRunes); pad > 0 {
+				dtNormal += strings.Repeat(" ", pad)
 			}
 
 			titleColor := text
