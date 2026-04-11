@@ -354,14 +354,10 @@ func (ib *IdeasBoard) convertToTask() {
 	if idea == nil {
 		return
 	}
-	// Append task to Tasks.md
-	tasksPath := filepath.Join(ib.vaultRoot, "Tasks.md")
-	entry := fmt.Sprintf("\n- [ ] %s\n", idea.Title)
-	existing, err := os.ReadFile(tasksPath)
-	if err != nil {
-		existing = []byte("# Tasks\n")
+	if err := appendTaskLine(ib.vaultRoot, "- [ ] "+idea.Title); err != nil {
+		ib.statusMsg = "Failed to convert: " + err.Error()
+		return
 	}
-	_ = os.WriteFile(tasksPath, append(existing, []byte(entry)...), 0644)
 	idea.ConvertedTo = "task"
 	idea.Stage = IdeaInProgress
 	idea.UpdatedAt = time.Now().Format("2006-01-02")
