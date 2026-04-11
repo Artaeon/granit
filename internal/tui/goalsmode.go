@@ -815,14 +815,8 @@ func (gm *GoalsMode) ensureVisible() {
 
 // createTaskFromMilestone writes a new task to Tasks.md linked to the goal.
 func (gm *GoalsMode) createTaskFromMilestone(goal Goal, ms GoalMilestone) {
-	tasksPath := filepath.Join(gm.vaultRoot, "Tasks.md")
-	taskLine := fmt.Sprintf("\n- [ ] %s goal:%s\n", ms.Text, goal.ID)
-
-	existing, err := os.ReadFile(tasksPath)
-	if err != nil {
-		existing = []byte("# Tasks\n")
-	}
-	if err := os.WriteFile(tasksPath, append(existing, []byte(taskLine)...), 0644); err != nil {
+	taskLine := fmt.Sprintf("- [ ] %s goal:%s", ms.Text, goal.ID)
+	if err := appendTaskLine(gm.vaultRoot, taskLine); err != nil {
 		gm.statusMsg = "Failed to create task: " + err.Error()
 		return
 	}
