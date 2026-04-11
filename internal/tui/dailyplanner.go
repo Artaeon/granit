@@ -770,13 +770,13 @@ func (dp *DailyPlanner) exportPlanAsMarkdown() {
 		return
 	}
 	dir := filepath.Join(dp.vaultRoot, "Plans")
-	_ = os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0o755)
 	filename := "plan-" + dp.date.Format("2006-01-02") + ".md"
 	fp := filepath.Join(dir, filename)
 
 	summary := dp.buildPlanSummary()
 	content := "---\ntitle: " + dp.date.Format("Monday, January 2, 2006") + "\ndate: " + dp.date.Format("2006-01-02") + "\ntype: plan\ntags: [plan]\n---\n\n" + summary
-	_ = os.WriteFile(fp, []byte(content), 0644)
+	_ = atomicWriteNote(fp, content)
 }
 
 // updateUnscheduled handles keystrokes on the unscheduled tasks panel.
@@ -1977,7 +1977,7 @@ func AddEventToPlannerFile(vaultRoot, dateStr, text string) {
 		content.WriteString("---\n\n")
 		content.WriteString("## Schedule\n\n")
 		content.WriteString(newLine)
-		_ = os.WriteFile(fp, []byte(content.String()), 0644)
+		_ = atomicWriteNote(fp, content.String())
 		return
 	}
 
@@ -2014,6 +2014,6 @@ func AddEventToPlannerFile(vaultRoot, dateStr, text string) {
 	newLines = append(newLines, lines[:insertIdx]...)
 	newLines = append(newLines, strings.TrimRight(newLine, "\n"))
 	newLines = append(newLines, lines[insertIdx:]...)
-	_ = os.WriteFile(fp, []byte(strings.Join(newLines, "\n")), 0644)
+	_ = atomicWriteNote(fp, strings.Join(newLines, "\n"))
 }
 // UI configuration updated.

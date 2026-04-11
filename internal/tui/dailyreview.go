@@ -272,7 +272,7 @@ func (dr *DailyReview) applyReschedules() {
 		line += " \U0001F4C5 " + newDate
 		lines[task.LineNum-1] = line
 		absPath := filepath.Join(dr.vaultRoot, task.NotePath)
-		if err := os.WriteFile(absPath, []byte(strings.Join(lines, "\n")), 0644); err == nil {
+		if err := atomicWriteNote(absPath, strings.Join(lines, "\n")); err == nil {
 			dr.fileChanged = true
 		}
 	}
@@ -382,11 +382,11 @@ func (dr *DailyReview) saveReview() {
 		return
 	}
 	reviewDir := filepath.Join(dr.vaultRoot, "Reviews")
-	if err := os.MkdirAll(reviewDir, 0755); err != nil {
+	if err := os.MkdirAll(reviewDir, 0o755); err != nil {
 		return
 	}
 	filename := filepath.Join(reviewDir, "daily-"+dateStr+".md")
-	_ = os.WriteFile(filename, []byte(b.String()), 0644)
+	_ = atomicWriteNote(filename, b.String())
 }
 
 func (dr DailyReview) View() string {

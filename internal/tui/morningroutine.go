@@ -387,19 +387,19 @@ func (mr *MorningRoutine) saveToDailyNote() tea.Cmd {
 		existing, err := os.ReadFile(dailyPath)
 		if err != nil {
 			// Create new daily note — ensure directory exists
-			if mkErr := os.MkdirAll(filepath.Dir(dailyPath), 0755); mkErr != nil {
+			if mkErr := os.MkdirAll(filepath.Dir(dailyPath), 0o755); mkErr != nil {
 				return morningPlanSavedMsg{}
 			}
 			weekday := time.Now().Weekday().String()
 			header := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s — %s\n\n",
 				today, today, weekday)
-			if writeErr := os.WriteFile(dailyPath, []byte(header+content), 0644); writeErr != nil {
+			if writeErr := atomicWriteNote(dailyPath, header+content); writeErr != nil {
 				return morningPlanSavedMsg{}
 			}
 		} else {
 			// Replace existing "## Daily Plan" section or append if not present
 			newContent := replaceDailySection(string(existing), content, "## Daily Plan")
-			if writeErr := os.WriteFile(dailyPath, []byte(newContent), 0644); writeErr != nil {
+			if writeErr := atomicWriteNote(dailyPath, newContent); writeErr != nil {
 				return morningPlanSavedMsg{}
 			}
 		}
