@@ -764,6 +764,27 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 		return e, nil
 	}
 
+	// Normalise content/cursor invariants before any case body runs.
+	// Every case below assumes len(e.content) >= 1 and the cursor is in
+	// range, but content can be reset to nil by external loads or by
+	// truncation paths that forget to reseed. Doing it once at the top
+	// is cheaper than guarding every indexing site individually.
+	if len(e.content) == 0 {
+		e.content = []string{""}
+	}
+	if e.cursor < 0 {
+		e.cursor = 0
+	}
+	if e.cursor >= len(e.content) {
+		e.cursor = len(e.content) - 1
+	}
+	if e.col < 0 {
+		e.col = 0
+	}
+	if curLineLen := len(e.content[e.cursor]); e.col > curLineLen {
+		e.col = curLineLen
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
