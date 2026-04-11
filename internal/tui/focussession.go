@@ -399,9 +399,73 @@ func (fs FocusSession) updateReview(msg tea.KeyMsg) (FocusSession, tea.Cmd) {
 		fs.saveSession()
 		fs.active = false
 		return fs, nil
+
+	case "n", "N":
+		// Save the current session and immediately start a new one
+		// without closing the overlay. This is the fix for the
+		// "I have to go back to the task manager to start again"
+		// flow — the user can now save and restart in one keypress.
+		// resetForNewSession reseeds setup state but keeps the
+		// vault root and the loaded task list so the user picks
+		// up exactly where they left off.
+		fs.saveSession()
+		fs.resetForNewSession()
+		return fs, nil
+
+	case "r", "R":
+		// Save and restart with the SAME task and goal pre-selected,
+		// for the common case of "do another pomodoro on this task".
+		// Skips the task picker and lands on the duration field.
+		prevTask := fs.sessionTask
+		prevGoal := fs.sessionGoal
+		fs.saveSession()
+		fs.resetForNewSession()
+		fs.sessionTask = prevTask
+		fs.goalInput = prevGoal
+		if prevTask != "" {
+			// Preselect the matching task in the loaded list so the
+			// next session is bound to the same task entry.
+			for i, t := range fs.tasks {
+				if t == prevTask {
+					fs.taskIdx = i
+					break
+				}
+			}
+			fs.setupField = 1 // jump straight to duration/goal
+		}
+		return fs, nil
 	}
 
 	return fs, nil
+}
+
+// resetForNewSession reseeds the transient session state so the overlay can
+// run another session without being closed and reopened. The vault root and
+// the cached task list are preserved — the user is dropped back into the
+// setup phase with a clean scratchpad, no goal text, and no task selected.
+func (fs *FocusSession) resetForNewSession() {
+	fs.phase = fsPhaseSetup
+	fs.setupField = 0
+	fs.goalInput = ""
+	fs.scratchpad = ""
+	fs.paused = false
+	fs.elapsed = 0
+	fs.duration = 0
+	fs.startTime = time.Time{}
+	fs.breakIdx = 0
+	fs.breakStart = time.Time{}
+	fs.breakElapsed = 0
+	fs.breakActive = false
+	fs.sessionGoal = ""
+	fs.sessionNotes = ""
+	fs.totalElapsed = 0
+	fs.sessionTask = ""
+	fs.taskIdx = -1
+	fs.taskScroll = 0
+	// Refresh the task list — a previous session may have completed
+	// tasks via other code paths, and an `n` between sessions is a
+	// natural moment to pick up vault changes.
+	fs.loadTasks()
 }
 
 // tick returns a command that sends a focusSessionTickMsg after 1 second.
@@ -412,7 +476,13 @@ func (fs FocusSession) tick() tea.Cmd {
 }
 
 // saveSession writes the session log entry to FocusSessions/YYYY-MM-DD.md.
+// Uses read+atomic-rewrite (rather than O_APPEND OpenFile) so a crash
+// mid-write cannot leave a half-written entry behind, matching the
+// pattern used by clockin and the other vault writers.
 func (fs *FocusSession) saveSession() {
+	if fs.vaultRoot == "" {
+		return
+	}
 	dir := filepath.Join(fs.vaultRoot, "FocusSessions")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
@@ -421,19 +491,6 @@ func (fs *FocusSession) saveSession() {
 	now := time.Now()
 	filename := now.Format("2006-01-02") + ".md"
 	filePath := filepath.Join(dir, filename)
-
-	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-
-	// Check if file is new (empty) to write a header
-	info, _ := f.Stat()
-	if info != nil && info.Size() == 0 {
-		header := fmt.Sprintf("# Focus Sessions - %s\n\n", now.Format("2006-01-02"))
-		_, _ = f.WriteString(header)
-	}
 
 	endTime := fs.startTime.Add(fs.totalElapsed)
 	durMinutes := int(fs.totalElapsed.Minutes())
@@ -461,7 +518,19 @@ func (fs *FocusSession) saveSession() {
 	}
 	entry.WriteString("\n")
 
-	_, _ = f.WriteString(entry.String())
+	// Read existing content (if any) and append the new entry. A missing
+	// file is seeded with a daily header.
+	existing, err := os.ReadFile(filePath)
+	if err != nil && !os.IsNotExist(err) {
+		return
+	}
+	if len(existing) == 0 {
+		existing = []byte(fmt.Sprintf("# Focus Sessions - %s\n\n", now.Format("2006-01-02")))
+	}
+	if existing[len(existing)-1] != '\n' {
+		existing = append(existing, '\n')
+	}
+	_ = atomicWriteNote(filePath, string(existing)+entry.String())
 }
 
 // View renders the FocusSession overlay.
@@ -937,5 +1006,8 @@ func (fs FocusSession) viewReview(b *strings.Builder, width int) {
 
 	// Controls
 	ctrlStyle := lipgloss.NewStyle().Foreground(overlay1)
-	b.WriteString(ctrlStyle.Render("  Enter: save & close  Esc: close without saving"))
+	b.WriteString(ctrlStyle.Render("  Enter: save & close  "))
+	b.WriteString(ctrlStyle.Render("n: save & new  "))
+	b.WriteString(ctrlStyle.Render("r: save & repeat task  "))
+	b.WriteString(ctrlStyle.Render("Esc: discard"))
 }
