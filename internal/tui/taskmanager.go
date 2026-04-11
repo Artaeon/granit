@@ -887,9 +887,8 @@ func (tm *TaskManager) doArchive() int {
 	if tm.vault == nil {
 		return 0
 	}
-	tasksPath := filepath.Join(tm.vault.Root, "Tasks.md")
-	data, err := os.ReadFile(tasksPath)
-	if err != nil {
+	data, err := readTasksFile(tm.vault.Root)
+	if err != nil || len(data) == 0 {
 		return 0
 	}
 	lines := strings.Split(string(data), "\n")
@@ -939,7 +938,7 @@ func (tm *TaskManager) doArchive() int {
 	_ = os.WriteFile(archiveFile, []byte(archiveContent), 0644)
 
 	// Write updated Tasks.md
-	_ = os.WriteFile(tasksPath, []byte(strings.Join(kept, "\n")+"\n"), 0644)
+	_ = writeTasksFile(tm.vault.Root, []byte(strings.Join(kept, "\n")+"\n"))
 
 	// Re-scan vault
 	if note := tm.vault.GetNote("Tasks.md"); note != nil {
