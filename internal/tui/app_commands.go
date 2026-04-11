@@ -1878,9 +1878,8 @@ func loadPlannerBlocks(vaultRoot string) (map[string][]PlannerBlock, map[string]
 // schedule marker (⏰ HH:MM-HH:MM).  If the line already has a marker it is
 // replaced with the new times.
 func updateTaskScheduleInFile(vaultRoot, taskText, startTime, endTime string) {
-	tasksPath := filepath.Join(vaultRoot, "Tasks.md")
-	data, err := os.ReadFile(tasksPath)
-	if err != nil {
+	data, err := readTasksFile(vaultRoot)
+	if err != nil || len(data) == 0 {
 		return
 	}
 
@@ -1915,6 +1914,6 @@ func updateTaskScheduleInFile(vaultRoot, taskText, startTime, endTime string) {
 	}
 
 	if changed {
-		_ = os.WriteFile(tasksPath, []byte(strings.Join(lines, "\n")), 0644)
+		_ = writeTasksFile(vaultRoot, []byte(strings.Join(lines, "\n")))
 	}
 }
