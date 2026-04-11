@@ -284,6 +284,33 @@ func migrateIndex(idx *EmbeddingIndex) {
 	idx.Version = 2
 }
 
+// copyEmbeddingIndex returns a deep copy of idx (or nil if idx is nil) that
+// the caller can mutate without racing the original. The vector slices
+// inside each entry are NOT copied — they are immutable once written, so
+// sharing them is safe and avoids a large allocation per build.
+func copyEmbeddingIndex(idx *EmbeddingIndex) *EmbeddingIndex {
+	if idx == nil {
+		return nil
+	}
+	dup := &EmbeddingIndex{
+		Model:   idx.Model,
+		Version: idx.Version,
+	}
+	if idx.Entries != nil {
+		dup.Entries = make(map[string]EmbeddingEntry, len(idx.Entries))
+		for k, v := range idx.Entries {
+			dup.Entries[k] = v
+		}
+	}
+	if idx.Embeddings != nil {
+		dup.Embeddings = make(map[string][]float64, len(idx.Embeddings))
+		for k, v := range idx.Embeddings {
+			dup.Embeddings[k] = v
+		}
+	}
+	return dup
+}
+
 // indexAllVecs returns all path->vector pairs from the index, preferring v2
 // Entries over legacy Embeddings.
 func indexAllVecs(idx *EmbeddingIndex) map[string][]float64 {
@@ -624,10 +651,20 @@ func semanticTick() tea.Cmd {
 // bar can show "Building search index: 42/500 notes...".
 func (ss *SemanticSearch) StartBackgroundIndex(notes map[string]string) tea.Cmd {
 	// Single critical section: acquire the bgMu once, check the flag,
-	// snapshot every field we need, and release. The previous version
-	// did this as two separate lock/unlock cycles which was harmless
-	// but obscured the invariant — every field read here is consistent
-	// with the bgIndexing=true write because they happen under one lock.
+	// snapshot every field we need, and DEEP-COPY the index entries.
+	//
+	// The previous version captured ss.index by pointer, so the goroutine
+	// and a concurrent MarkNoteStale (which also touches ss.index.Entries
+	// under bgMu) shared the same map. The goroutine releases bgMu before
+	// migrateIndex/the iteration loop runs, so MarkNoteStale could mutate
+	// the entries map while migrateIndex was iterating it — a concurrent
+	// map read+write that Go panics on.
+	//
+	// Copying the entries here means the goroutine never touches the
+	// shared ss.index after this point; it builds a fresh EmbeddingIndex
+	// and SaveIndex writes that out. MarkNoteStale stays correct because
+	// it operates on the live ss.index that the next build will load
+	// from disk via LoadIndex.
 	ss.bgMu.Lock()
 	if ss.bgIndexing {
 		ss.bgMu.Unlock()
@@ -639,10 +676,11 @@ func (ss *SemanticSearch) StartBackgroundIndex(notes map[string]string) tea.Cmd 
 	ollamaURL := ss.ai.OllamaURL
 	apiKey := ss.ai.APIKey
 	vaultPath := ss.vaultPath
-	idx := ss.index
+	idx := copyEmbeddingIndex(ss.index)
 	ss.bgMu.Unlock()
 
-	// Load or create index.
+	// Load or create index. Copy the on-disk version too so the goroutine
+	// never touches anything reachable from the main loop.
 	if idx == nil && vaultPath != "" {
 		idx = LoadIndex(vaultPath)
 	}
