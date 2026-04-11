@@ -163,18 +163,7 @@ func (rt *RecurringTasks) isDue(task *RecurringTask, today time.Time) bool {
 }
 
 func (rt *RecurringTasks) appendToTasksFile(text, dateStr string) {
-	tasksPath := filepath.Join(rt.vaultRoot, "Tasks.md")
-	line := fmt.Sprintf("- [ ] %s 📅 %s\n", text, dateStr)
-	if _, err := os.Stat(tasksPath); os.IsNotExist(err) {
-		_ = os.WriteFile(tasksPath, []byte("# Tasks\n\n"+line), 0644)
-		return
-	}
-	f, err := os.OpenFile(tasksPath, os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-	_, _ = f.WriteString(line)
+	_ = appendTaskLine(rt.vaultRoot, fmt.Sprintf("- [ ] %s 📅 %s", text, dateStr))
 }
 
 // ----- add / edit helpers -----
