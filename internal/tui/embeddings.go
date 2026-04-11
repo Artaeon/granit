@@ -236,7 +236,9 @@ func SaveIndex(vaultPath string, idx *EmbeddingIndex) error {
 }
 
 // LoadIndex reads the embedding index from <vaultPath>/.granit/embeddings.json.
-// Returns nil if the file does not exist or cannot be parsed.
+// Returns nil if the file does not exist or cannot be parsed. A v1 index
+// (Embeddings map without per-entry hashes) is migrated to v2 in-place
+// before returning so callers never have to think about the on-disk shape.
 func LoadIndex(vaultPath string) *EmbeddingIndex {
 	path := filepath.Join(vaultPath, ".granit", "embeddings.json")
 	data, err := os.ReadFile(path)
@@ -246,6 +248,9 @@ func LoadIndex(vaultPath string) *EmbeddingIndex {
 	var idx EmbeddingIndex
 	if err := json.Unmarshal(data, &idx); err != nil {
 		return nil
+	}
+	if idx.Version < 2 || len(idx.Embeddings) > 0 {
+		migrateIndex(&idx)
 	}
 	return &idx
 }
