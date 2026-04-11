@@ -351,8 +351,11 @@ func (te ThemeEditor) View() string {
 			Render("\u2588\u2588")
 
 		label := r.label
-		for len(label) < labelWidth {
-			label += " "
+		// Pad in one allocation rather than appending one space per
+		// missing byte in a loop (the previous code was O(n²) on
+		// labelWidth).
+		if pad := labelWidth - len(label); pad > 0 {
+			label += strings.Repeat(" ", pad)
 		}
 
 		if i == te.cursor {
