@@ -59,12 +59,18 @@ func writeTasksFile(vaultRoot string, data []byte) error {
 // appendTaskLine adds a single task line to Tasks.md. The taskLine should be
 // the bare line content (no surrounding newlines) — appendTaskLine ensures the
 // file ends in a newline before the new line is appended, so callers don't
-// have to think about trailing-newline normalisation.
+// have to think about trailing-newline normalisation. Any stray leading or
+// trailing newlines on taskLine are stripped, so legacy callers that passed
+// "\n- [ ] foo\n" don't accidentally accumulate blank lines on each call.
 //
 // If Tasks.md does not exist yet it is created with a "# Tasks" header so the
 // first task drops into a sensibly structured file.
 func appendTaskLine(vaultRoot, taskLine string) error {
-	if vaultRoot == "" || taskLine == "" {
+	if vaultRoot == "" {
+		return nil
+	}
+	cleaned := strings.Trim(taskLine, "\n")
+	if cleaned == "" {
 		return nil
 	}
 	existing, err := readTasksFile(vaultRoot)
@@ -82,7 +88,7 @@ func appendTaskLine(vaultRoot, taskLine string) error {
 			buf.WriteByte('\n')
 		}
 	}
-	buf.WriteString(strings.TrimRight(taskLine, "\n"))
+	buf.WriteString(cleaned)
 	buf.WriteByte('\n')
 	return writeTasksFile(vaultRoot, []byte(buf.String()))
 }
