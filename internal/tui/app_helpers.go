@@ -1489,7 +1489,13 @@ func (m *Model) triggerExitSplash() tea.Cmd {
 		}
 		status, err := gitIn("status", "--porcelain")
 		if err == nil && strings.TrimSpace(status) != "" {
-			for _, line := range strings.Split(strings.TrimSpace(status), "\n") {
+			// Trim ONLY trailing newlines so the leading space in
+			// porcelain status codes (e.g. " M file") is preserved.
+			// strings.TrimSpace would chop the leading space off the
+			// first line and corrupt the (code, file) split for that
+			// entry, silently mis-attributing the commit. This is the
+			// same bug previously fixed in autosync.go.
+			for _, line := range strings.Split(strings.TrimRight(status, "\n"), "\n") {
 				if len(line) < 3 {
 					continue
 				}
