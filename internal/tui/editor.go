@@ -307,12 +307,31 @@ func (e *Editor) InsertText(text string) {
 	e.saveSnapshot()
 	e.rebuildBlockCaches()
 
+	// Defensive guards: every other entry point that empties content
+	// re-seeds it with []string{""}, but a paste with no surrounding
+	// edit could in principle be the first call after a load that
+	// returned an empty slice, and a stale cursor from a previous
+	// content shape would index out of bounds. Normalise both before
+	// the splice.
+	if len(e.content) == 0 {
+		e.content = []string{""}
+	}
+	if e.cursor < 0 {
+		e.cursor = 0
+	}
+	if e.cursor >= len(e.content) {
+		e.cursor = len(e.content) - 1
+	}
+
 	// Batch insert: split text into lines and splice into content
 	lines := strings.Split(text, "\n")
 
 	curLine := e.content[e.cursor]
 	if e.col > len(curLine) {
 		e.col = len(curLine)
+	}
+	if e.col < 0 {
+		e.col = 0
 	}
 	before := curLine[:e.col]
 	after := curLine[e.col:]
