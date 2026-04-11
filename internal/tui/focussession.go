@@ -125,8 +125,7 @@ func (fs *FocusSession) SetSize(w, h int) {
 // loadTasks reads incomplete tasks from Tasks.md in the vault root.
 func (fs *FocusSession) loadTasks() {
 	fs.tasks = nil
-	taskFile := filepath.Join(fs.vaultRoot, "Tasks.md")
-	f, err := os.Open(taskFile)
+	f, err := os.Open(tasksFilePath(fs.vaultRoot))
 	if err != nil {
 		return
 	}

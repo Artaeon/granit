@@ -517,8 +517,7 @@ func (pm *ProjectMode) scanProjectTasks(proj Project) []projectTask {
 	}
 
 	// Check vault-root Tasks.md
-	tasksFile := filepath.Join(pm.vaultRoot, "Tasks.md")
-	pm.scanTasksInFile(tasksFile, filter, &tasks)
+	pm.scanTasksInFile(tasksFilePath(pm.vaultRoot), filter, &tasks)
 
 	return tasks
 }
