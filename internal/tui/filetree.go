@@ -213,6 +213,17 @@ func (ft FileTree) Update(msg tea.KeyMsg) FileTree {
 	if len(ft.visible) == 0 {
 		return ft
 	}
+	// Clamp the cursor before any case body indexes ft.visible. The
+	// cursor can drift out of range when the visible slice shrinks
+	// between updates (e.g. an external Reload after a file delete,
+	// or a parent collapse) without the cursor being clamped at the
+	// time of the mutation.
+	if ft.cursor < 0 {
+		ft.cursor = 0
+	}
+	if ft.cursor >= len(ft.visible) {
+		ft.cursor = len(ft.visible) - 1
+	}
 
 	vh := ft.viewHeight()
 
