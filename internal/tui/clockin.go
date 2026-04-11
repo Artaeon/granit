@@ -48,9 +48,10 @@ type ClockIn struct {
 	elapsed   time.Duration
 
 	// Reminders
-	reminders     []clockInReminder
-	lastCheckMin  string // "HH:MM" of last reminder check to avoid duplicates
-	firedToday    map[string]bool
+	reminders    []clockInReminder
+	lastCheckMin string // "HH:MM" of last reminder check to avoid duplicates
+	firedToday   map[string]bool
+	firedDate    string // YYYY-MM-DD that firedToday was last reset for
 
 	// Today's completed sessions (for display)
 	todaySessions []clockInSession
@@ -210,6 +211,7 @@ func (c *ClockIn) tickSlow() tea.Cmd {
 func (c *ClockIn) checkReminders() tea.Cmd {
 	now := time.Now()
 	currentMin := now.Format("15:04")
+	currentDate := now.Format("2006-01-02")
 
 	// Only check once per minute
 	if currentMin == c.lastCheckMin {
@@ -217,9 +219,15 @@ func (c *ClockIn) checkReminders() tea.Cmd {
 	}
 	c.lastCheckMin = currentMin
 
-	// Reset fired map at midnight
-	if currentMin == "00:00" {
+	// Reset fired map whenever the date changes. The previous code only
+	// reset on the exact minute "00:00", which silently broke any setup
+	// where the tick loop missed midnight (laptop suspended, granit not
+	// running across midnight, OS clock jump). After the miss, every
+	// reminder for the day was considered "already fired" and never
+	// triggered again until the next process restart.
+	if currentDate != c.firedDate {
 		c.firedToday = make(map[string]bool)
+		c.firedDate = currentDate
 	}
 
 	for i, r := range c.reminders {
