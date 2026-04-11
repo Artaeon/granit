@@ -176,8 +176,7 @@ func (s *StandupGenerator) scanModifiedFiles() {
 
 // scanTasks parses Tasks.md for completed and open tasks.
 func (s *StandupGenerator) scanTasks() {
-	tasksPath := filepath.Join(s.vaultRoot, "Tasks.md")
-	f, err := os.Open(tasksPath)
+	f, err := os.Open(tasksFilePath(s.vaultRoot))
 	if err != nil {
 		return
 	}

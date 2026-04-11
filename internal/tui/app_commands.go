@@ -1565,8 +1565,7 @@ func (m *Model) gatherPlanMyDayData() ([]Task, []PlannerEvent, []habitEntry, []P
 	// Tasks: gather from the task manager's scanning logic
 	var tasks []Task
 	today := time.Now().Format("2006-01-02")
-	tasksPath := filepath.Join(m.vault.Root, "Tasks.md")
-	if f, err := os.Open(tasksPath); err == nil {
+	if f, err := os.Open(tasksFilePath(m.vault.Root)); err == nil {
 		scanner := bufio.NewScanner(f)
 		lineNum := 0
 		for scanner.Scan() {
