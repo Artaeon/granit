@@ -359,20 +359,21 @@ func (gm *GoalsMode) GetGoals() []Goal {
 // Storage
 // ---------------------------------------------------------------------------
 
+// goalsStatePath returns the canonical path to the goals.json state file.
+// Two prior call sites (loadActiveGoals and loadAllGoals) duplicated this
+// filepath.Join, so any future relocation needed two coordinated edits.
+// Centralising it here means renames are a single change.
+func goalsStatePath(vaultRoot string) string {
+	return filepath.Join(vaultRoot, ".granit", "goals.json")
+}
+
 func (gm *GoalsMode) goalsPath() string {
-	return filepath.Join(gm.vaultRoot, ".granit", "goals.json")
+	return goalsStatePath(gm.vaultRoot)
 }
 
 // loadActiveGoals reads .granit/goals.json and returns only the active goals.
 func loadActiveGoals(vaultRoot string) []Goal {
-	data, err := os.ReadFile(filepath.Join(vaultRoot, ".granit", "goals.json"))
-	if err != nil {
-		return nil
-	}
-	var all []Goal
-	if err := json.Unmarshal(data, &all); err != nil {
-		return nil
-	}
+	all := loadAllGoals(vaultRoot)
 	var active []Goal
 	for _, g := range all {
 		if g.Status == GoalStatusActive {
@@ -394,7 +395,7 @@ func (gm *GoalsMode) saveGoals() {
 
 // loadAllGoals reads all goals from the goals.json file.
 func loadAllGoals(vaultRoot string) []Goal {
-	data, err := os.ReadFile(filepath.Join(vaultRoot, ".granit", "goals.json"))
+	data, err := os.ReadFile(goalsStatePath(vaultRoot))
 	if err != nil {
 		return nil
 	}
@@ -417,7 +418,7 @@ func saveAllGoals(vaultRoot string, goals []Goal) bool {
 	if err != nil {
 		return false
 	}
-	return atomicWriteState(filepath.Join(dir, "goals.json"), data) == nil
+	return atomicWriteState(goalsStatePath(vaultRoot), data) == nil
 }
 
 // addMilestoneToGoal appends a new milestone to the specified goal.
