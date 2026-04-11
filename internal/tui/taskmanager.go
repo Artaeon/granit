@@ -1223,31 +1223,20 @@ func (tm *TaskManager) doAddTask(taskText string) {
 	}
 
 	targetPath := "Tasks.md"
-	absPath := filepath.Join(tm.vault.Root, targetPath)
-
+	if err := appendTaskLine(tm.vault.Root, taskLine); err != nil {
+		return
+	}
+	// Sync the in-memory vault note with what we just wrote so the
+	// re-parse below sees the new task.
 	note := tm.vault.GetNote(targetPath)
 	if note == nil {
-		// Create Tasks.md with header
-		header := "# Tasks\n\n"
-		if err := os.WriteFile(absPath, []byte(header), 0644); err != nil {
-			return
-		}
-		// Re-scan to pick up the new file
 		_ = tm.vault.Scan()
 		note = tm.vault.GetNote(targetPath)
-		if note == nil {
-			return
+	}
+	if note != nil {
+		if data, err := readTasksFile(tm.vault.Root); err == nil {
+			note.Content = string(data)
 		}
-	}
-
-	newContent := note.Content
-	if !strings.HasSuffix(newContent, "\n") {
-		newContent += "\n"
-	}
-	newContent += taskLine + "\n"
-	note.Content = newContent
-	if err := os.WriteFile(absPath, []byte(newContent), 0644); err != nil {
-		return
 	}
 
 	tm.fileChanged = true
