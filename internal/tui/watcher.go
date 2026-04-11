@@ -179,8 +179,20 @@ func (fw *FileWatcher) loop() {
 }
 
 // flush is called by the debounce timer. It drains the pending map and pushes
-// a single fileChangeMsg onto eventChan.
+// a single fileChangeMsg onto eventChan. It is a no-op once Stop has been
+// called, even if the timer had already fired and spawned this goroutine
+// before Stop ran — time.AfterFunc cannot cancel an in-flight callback, so
+// the stop check has to live here.
 func (fw *FileWatcher) flush() {
+	// Cheap stop-check before doing any work. This is best-effort: stopChan
+	// could still be closed between this check and the send below, which is
+	// why the send also selects on stopChan.
+	select {
+	case <-fw.stopChan:
+		return
+	default:
+	}
+
 	fw.mu.Lock()
 	if len(fw.pending) == 0 {
 		fw.mu.Unlock()
@@ -199,8 +211,13 @@ func (fw *FileWatcher) flush() {
 	fw.pending = make(map[string]fsnotify.Op)
 	fw.mu.Unlock()
 
-	// Non-blocking send: drop if channel already has an event queued.
+	// Non-blocking send: drop if channel already has an event queued, and
+	// also drop if Stop has been called between the check above and now so
+	// we don't deliver a stale event after the watcher is supposed to be
+	// inert.
 	select {
+	case <-fw.stopChan:
+		return
 	case fw.eventChan <- msg:
 	default:
 	}
