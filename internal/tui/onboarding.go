@@ -69,14 +69,6 @@ func (o *Onboarding) MarkComplete() {
 	}
 }
 
-// ShouldShow returns true when the onboarding sentinel file does not yet exist,
-// meaning the user has never completed (or skipped) the tutorial.
-func ShouldShowOnboarding() bool {
-	p := filepath.Join(config.ConfigDir(), onboardingDoneFile)
-	_, err := os.Stat(p)
-	return os.IsNotExist(err)
-}
-
 // Update handles key events for navigating between onboarding steps.
 func (o Onboarding) Update(msg tea.Msg) (Onboarding, tea.Cmd) {
 	if !o.active {

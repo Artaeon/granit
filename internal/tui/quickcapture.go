@@ -129,10 +129,6 @@ type QuickCapture struct {
 	resultPath string
 }
 
-func NewQuickCapture() QuickCapture {
-	return QuickCapture{}
-}
-
 func (qc *QuickCapture) SetSize(width, height int) {
 	qc.width = width
 	qc.height = height

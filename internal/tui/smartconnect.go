@@ -58,10 +58,6 @@ type SmartConnections struct {
 	wantInsert bool
 }
 
-func NewSmartConnections() SmartConnections {
-	return SmartConnections{}
-}
-
 func (sc SmartConnections) IsActive() bool {
 	return sc.active
 }
