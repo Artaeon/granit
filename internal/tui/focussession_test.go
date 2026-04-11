@@ -155,3 +155,143 @@ func TestFocusSession_BackspaceMultibyteScratchpad(t *testing.T) {
 		t.Errorf("scratchpad is not valid UTF-8: %q", fs.scratchpad)
 	}
 }
+
+// Pressing 'n' in the review phase should save the current session AND
+// reopen the setup phase with a clean slate, so the user can start
+// another focus session without having to navigate back to the task
+// manager. This is the fix for the "I have to start over from the
+// task manager every time" complaint.
+func TestFocusSession_ReviewN_SavesAndRestartsInSetup(t *testing.T) {
+	dir := t.TempDir()
+	fs := NewFocusSession()
+	fs.Open(dir)
+
+	// Pretend a session just finished.
+	fs.phase = fsPhaseReview
+	fs.startTime = time.Now().Add(-25 * time.Minute)
+	fs.totalElapsed = 25 * time.Minute
+	fs.sessionGoal = "Write tests"
+	fs.sessionTask = "Testing"
+	fs.sessionNotes = "First session done."
+	fs.scratchpad = "First session done."
+	fs.goalInput = "Write tests"
+	fs.taskIdx = 0
+
+	fs, _ = fs.updateReview(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+
+	if !fs.IsActive() {
+		t.Fatal("overlay should remain active after 'n'")
+	}
+	if fs.phase != fsPhaseSetup {
+		t.Errorf("expected setup phase after 'n', got %d", fs.phase)
+	}
+	if fs.sessionTask != "" || fs.sessionGoal != "" || fs.scratchpad != "" {
+		t.Errorf("transient state should be cleared, got task=%q goal=%q scratch=%q",
+			fs.sessionTask, fs.sessionGoal, fs.scratchpad)
+	}
+	if fs.taskIdx != -1 {
+		t.Errorf("taskIdx should reset to -1, got %d", fs.taskIdx)
+	}
+
+	// First session should still be on disk.
+	today := time.Now().Format("2006-01-02")
+	data, err := os.ReadFile(filepath.Join(dir, "FocusSessions", today+".md"))
+	if err != nil {
+		t.Fatalf("session file not created: %v", err)
+	}
+	if !strings.Contains(string(data), "Goal: Write tests") {
+		t.Error("first session not persisted before restart")
+	}
+}
+
+// Pressing 'r' in the review phase should save and restart with the SAME
+// task pre-selected, so the user can do another pomodoro on the same
+// item without having to pick it again.
+func TestFocusSession_ReviewR_SavesAndRepeatsSameTask(t *testing.T) {
+	dir := t.TempDir()
+	// Seed Tasks.md so loadTasks finds something to match against.
+	if err := os.WriteFile(filepath.Join(dir, "Tasks.md"),
+		[]byte("# Tasks\n\n- [ ] Refactor parser\n- [ ] Write blog post\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fs := NewFocusSession()
+	fs.Open(dir)
+	fs.phase = fsPhaseReview
+	fs.startTime = time.Now().Add(-25 * time.Minute)
+	fs.totalElapsed = 25 * time.Minute
+	fs.sessionTask = "Refactor parser"
+	fs.sessionGoal = "Refactor parser"
+	fs.sessionNotes = "Made progress."
+
+	fs, _ = fs.updateReview(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+
+	if !fs.IsActive() {
+		t.Fatal("overlay should remain active after 'r'")
+	}
+	if fs.phase != fsPhaseSetup {
+		t.Errorf("expected setup phase after 'r', got %d", fs.phase)
+	}
+	if fs.sessionTask != "Refactor parser" {
+		t.Errorf("expected sessionTask preserved, got %q", fs.sessionTask)
+	}
+	if fs.goalInput != "Refactor parser" {
+		t.Errorf("expected goalInput preserved, got %q", fs.goalInput)
+	}
+	// taskIdx should point at the matching task in the loaded list so
+	// "start" binds the new session to the same entry.
+	if fs.taskIdx < 0 || fs.taskIdx >= len(fs.tasks) || fs.tasks[fs.taskIdx] != "Refactor parser" {
+		t.Errorf("expected taskIdx to point at 'Refactor parser', got idx=%d list=%v",
+			fs.taskIdx, fs.tasks)
+	}
+	// User should land on the duration/goal field, not the task picker.
+	if fs.setupField != 1 {
+		t.Errorf("expected setupField=1 (duration/goal), got %d", fs.setupField)
+	}
+}
+
+// Esc in the review phase still discards without saving.
+func TestFocusSession_ReviewEsc_ClosesWithoutSaving(t *testing.T) {
+	dir := t.TempDir()
+	fs := NewFocusSession()
+	fs.Open(dir)
+	fs.phase = fsPhaseReview
+	fs.startTime = time.Now()
+	fs.totalElapsed = 10 * time.Minute
+	fs.sessionGoal = "Discarded"
+
+	fs, _ = fs.updateReview(tea.KeyMsg{Type: tea.KeyEsc})
+
+	if fs.IsActive() {
+		t.Error("expected overlay closed after Esc")
+	}
+	today := time.Now().Format("2006-01-02")
+	if _, err := os.Stat(filepath.Join(dir, "FocusSessions", today+".md")); !os.IsNotExist(err) {
+		t.Error("Esc should not have written a session file")
+	}
+}
+
+// Enter in the review phase saves and closes (existing contract).
+func TestFocusSession_ReviewEnter_SavesAndCloses(t *testing.T) {
+	dir := t.TempDir()
+	fs := NewFocusSession()
+	fs.Open(dir)
+	fs.phase = fsPhaseReview
+	fs.startTime = time.Now().Add(-15 * time.Minute)
+	fs.totalElapsed = 15 * time.Minute
+	fs.sessionGoal = "Final"
+
+	fs, _ = fs.updateReview(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if fs.IsActive() {
+		t.Error("expected overlay closed after Enter")
+	}
+	today := time.Now().Format("2006-01-02")
+	data, err := os.ReadFile(filepath.Join(dir, "FocusSessions", today+".md"))
+	if err != nil {
+		t.Fatalf("session file not created: %v", err)
+	}
+	if !strings.Contains(string(data), "Final") {
+		t.Error("session goal not persisted")
+	}
+}
