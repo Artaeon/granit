@@ -172,7 +172,7 @@ func LoadCustomThemes(configDir string) map[string]Theme {
 // SaveCustomTheme writes a theme as JSON into the custom themes directory.
 func SaveCustomTheme(configDir string, theme Theme) error {
 	dir := themesDir(configDir)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 
@@ -183,7 +183,7 @@ func SaveCustomTheme(configDir string, theme Theme) error {
 	}
 
 	filename := strings.ReplaceAll(strings.ToLower(theme.Name), " ", "-") + ".json"
-	return os.WriteFile(filepath.Join(dir, filename), data, 0600)
+	return atomicWriteState(filepath.Join(dir, filename), data)
 }
 
 // ExportTheme serializes a named theme (built-in or custom) to pretty JSON.
