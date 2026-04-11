@@ -623,16 +623,17 @@ func semanticTick() tea.Cmd {
 // this runs silently and reports progress via semanticBgIndexMsg so the status
 // bar can show "Building search index: 42/500 notes...".
 func (ss *SemanticSearch) StartBackgroundIndex(notes map[string]string) tea.Cmd {
+	// Single critical section: acquire the bgMu once, check the flag,
+	// snapshot every field we need, and release. The previous version
+	// did this as two separate lock/unlock cycles which was harmless
+	// but obscured the invariant — every field read here is consistent
+	// with the bgIndexing=true write because they happen under one lock.
 	ss.bgMu.Lock()
 	if ss.bgIndexing {
 		ss.bgMu.Unlock()
 		return nil // already running
 	}
 	ss.bgIndexing = true
-	ss.bgMu.Unlock()
-
-	// Snapshot everything we need under lock to avoid races with main thread.
-	ss.bgMu.Lock()
 	provider := ss.ai.Provider
 	model := ss.ai.Model
 	ollamaURL := ss.ai.OllamaURL
