@@ -359,16 +359,11 @@ func (c *ClockIn) saveSessionNote(start, end time.Time, project string, elapsed 
 		return
 	}
 	dir := filepath.Join(c.vaultPath, "Timetracking")
-	_ = os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
 	dateStr := start.Format("2006-01-02")
 	filePath := filepath.Join(dir, dateStr+".md")
-
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		weekday := start.Weekday().String()
-		header := fmt.Sprintf("---\ntitle: Time Log %s\ndate: %s\ntype: timelog\ntags: [timelog]\n---\n\n# Time Log — %s (%s)\n\n| Start | End | Project | Duration |\n|-------|-----|---------|----------|\n",
-			dateStr, dateStr, dateStr, weekday)
-		_ = os.WriteFile(filePath, []byte(header), 0644)
-	}
 
 	dur := elapsed.Truncate(time.Second)
 	h := int(dur.Hours())
@@ -384,12 +379,25 @@ func (c *ClockIn) saveSessionNote(start, end time.Time, project string, elapsed 
 	row := fmt.Sprintf("| %s | %s | %s | %s |\n",
 		start.Format("15:04"), end.Format("15:04"), project, durStr)
 
-	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
+	// Read the existing file (or seed with a header) and atomically
+	// rewrite with the new row appended. This avoids the previous
+	// pattern of one os.WriteFile for the header plus one O_APPEND
+	// OpenFile for the row, which left a window where a crash could
+	// leave a half-written row at the end of the file.
+	existing, err := os.ReadFile(filePath)
 	if err != nil {
-		return
+		if !os.IsNotExist(err) {
+			return
+		}
+		weekday := start.Weekday().String()
+		header := fmt.Sprintf("---\ntitle: Time Log %s\ndate: %s\ntype: timelog\ntags: [timelog]\n---\n\n# Time Log — %s (%s)\n\n| Start | End | Project | Duration |\n|-------|-----|---------|----------|\n",
+			dateStr, dateStr, dateStr, weekday)
+		existing = []byte(header)
 	}
-	defer f.Close()
-	_, _ = f.WriteString(row)
+	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
+		existing = append(existing, '\n')
+	}
+	_ = atomicWriteNote(filePath, string(existing)+row)
 }
 
 // ── PlanMyDay integration ──────────────────────────────────────────
