@@ -95,12 +95,12 @@ func (es *EventStore) load() {
 
 func (es *EventStore) save() {
 	dir := filepath.Join(es.vaultRoot, ".granit")
-	_ = os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0o755)
 	data, err := json.MarshalIndent(es.events, "", "  ")
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(es.path(), data, 0o600)
+	_ = atomicWriteState(es.path(), data)
 }
 
 func (es *EventStore) nextID() string {

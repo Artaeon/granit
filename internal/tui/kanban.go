@@ -156,12 +156,12 @@ func (kb *Kanban) saveState() {
 		}
 	}
 	dir := filepath.Dir(kb.statePath())
-	_ = os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0o755)
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(kb.statePath(), data, 0o600)
+	_ = atomicWriteState(kb.statePath(), data)
 }
 
 // SetSize stores the available terminal dimensions for rendering.

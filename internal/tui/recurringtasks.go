@@ -117,14 +117,14 @@ func (rt *RecurringTasks) load() {
 
 func (rt *RecurringTasks) save() {
 	dir := filepath.Join(rt.vaultRoot, ".granit")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
 	data, err := json.MarshalIndent(rt.tasks, "", "  ")
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(rt.configPath(), data, 0o600)
+	_ = atomicWriteState(rt.configPath(), data)
 }
 
 // ----- auto-create logic -----

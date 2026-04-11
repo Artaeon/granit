@@ -345,8 +345,7 @@ func (pm *PluginManager) saveManifest(idx int) {
 	if err != nil {
 		return
 	}
-	path := filepath.Join(p.Dir, "plugin.json")
-	_ = os.WriteFile(path, data, 0600)
+	_ = atomicWriteState(filepath.Join(p.Dir, "plugin.json"), data)
 }
 
 // ---------------------------------------------------------------------------

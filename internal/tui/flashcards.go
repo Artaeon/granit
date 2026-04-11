@@ -363,7 +363,7 @@ func (fc *Flashcards) progressPath(vaultPath string) string {
 func (fc *Flashcards) SaveProgress(vaultPath string) {
 	p := fc.progressPath(vaultPath)
 	dir := filepath.Dir(p)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		fc.statusMsg = "Failed to save progress: " + err.Error()
 		return
 	}
@@ -372,7 +372,7 @@ func (fc *Flashcards) SaveProgress(vaultPath string) {
 		fc.statusMsg = "Failed to save progress: " + err.Error()
 		return
 	}
-	if err := os.WriteFile(p, data, 0o600); err != nil {
+	if err := atomicWriteState(p, data); err != nil {
 		fc.statusMsg = "Failed to save progress: " + err.Error()
 	}
 }

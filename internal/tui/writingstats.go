@@ -301,14 +301,14 @@ func (ws *WritingStats) loadDailyLog() {
 // if necessary.
 func (ws *WritingStats) saveDailyLog() {
 	dir := filepath.Join(ws.vaultRoot, ".granit")
-	_ = os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0o755)
 
 	sd := writingStatsData{Days: ws.dailyWords}
 	data, err := json.MarshalIndent(sd, "", "  ")
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(ws.statsFilePath(), data, 0o600)
+	_ = atomicWriteState(ws.statsFilePath(), data)
 }
 
 // Update handles key messages while the overlay is active.

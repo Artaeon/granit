@@ -192,14 +192,14 @@ func statsPath(vaultPath string) string {
 func SaveStats(vaultPath string, stats LearnStats) {
 	p := statsPath(vaultPath)
 	dir := filepath.Dir(p)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
 	data, err := json.MarshalIndent(stats, "", "  ")
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(p, data, 0o600)
+	_ = atomicWriteState(p, data)
 }
 
 // LoadStats reads learn stats from disk, returning zero-value on error.

@@ -148,14 +148,14 @@ func (tt *TimeTracker) loadEntries() {
 // saveEntries writes all time entries to disk.
 func (tt *TimeTracker) saveEntries() {
 	dir := filepath.Dir(tt.storagePath())
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
 	data, err := json.MarshalIndent(tt.entries, "", "  ")
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(tt.storagePath(), data, 0o600)
+	_ = atomicWriteState(tt.storagePath(), data)
 }
 
 // ----- Timer Control -----
