@@ -389,10 +389,7 @@ func (sp SplitPane) renderPicker(width, visH int) string {
 	for i := startIdx; i < endIdx; i++ {
 		note := sp.filteredNotes[i]
 		// Truncate to fit
-		display := note
-		if len(display) > width-2 {
-			display = display[:width-5] + "..."
-		}
+		display := TruncateDisplay(note, width-2)
 
 		if i == sp.pickCursor {
 			line := SelectedItemStyle.Render("> " + display)

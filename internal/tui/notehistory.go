@@ -636,11 +636,7 @@ func (nh NoteHistory) viewDiff() string {
 		fileStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
 
 		for i := scroll; i < endLine; i++ {
-			line := lines[i]
-			// Truncate long lines
-			if len(line) > innerW-4 {
-				line = line[:innerW-7] + "..."
-			}
+			line := TruncateDisplay(lines[i], innerW-4)
 
 			var styled string
 			switch {
@@ -749,10 +745,8 @@ func (nh NoteHistory) viewSnapshot() string {
 			trimmed := strings.TrimSpace(line)
 
 			// Truncate long lines
-			if len(line) > innerW-4 {
-				line = line[:innerW-7] + "..."
-				trimmed = strings.TrimSpace(line)
-			}
+			line = TruncateDisplay(line, innerW-4)
+			trimmed = strings.TrimSpace(line)
 
 			var styled string
 			switch {

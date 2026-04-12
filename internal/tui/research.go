@@ -1709,10 +1709,7 @@ func (r ResearchAgent) viewInputDailyDigest(innerW int) string {
 				}
 				break
 			}
-			name := strings.TrimSuffix(filepath.Base(path), ".md")
-			if len(name) > innerW-8 {
-				name = name[:innerW-9] + "…"
-			}
+			name := TruncateDisplay(strings.TrimSuffix(filepath.Base(path), ".md"), innerW-8)
 			b.WriteString(DimStyle.Render("    " + name))
 			b.WriteString("\n")
 			shown++
@@ -1769,9 +1766,7 @@ func (r ResearchAgent) enhancerPreview(maxWidth int) string {
 		if trimmed == "" {
 			continue
 		}
-		if len(trimmed) > maxWidth {
-			trimmed = trimmed[:maxWidth-1] + "…"
-		}
+		trimmed = TruncateDisplay(trimmed, maxWidth)
 		preview = append(preview, "  "+trimmed)
 		if len(preview) >= maxLines {
 			break
@@ -1811,9 +1806,7 @@ func (r ResearchAgent) contextPreview(maxWidth int) string {
 			continue
 		}
 		// Truncate long lines
-		if len(trimmed) > maxWidth {
-			trimmed = trimmed[:maxWidth-1] + "…"
-		}
+		trimmed = TruncateDisplay(trimmed, maxWidth)
 		preview = append(preview, "  "+trimmed)
 		if len(preview) >= maxLines {
 			break
@@ -2107,9 +2100,7 @@ func (r ResearchAgent) viewError(innerW int) string {
 				b.WriteString("\n")
 				break
 			}
-			if len(line) > innerW-4 {
-				line = line[:innerW-4]
-			}
+			line = TruncateDisplay(line, innerW-4)
 			b.WriteString(DimStyle.Render("  " + line))
 			b.WriteString("\n")
 		}
@@ -2325,9 +2316,7 @@ func (r ResearchAgent) assistPreview(maxWidth int) string {
 		if trimmed == "" {
 			continue
 		}
-		if len(trimmed) > maxWidth {
-			trimmed = trimmed[:maxWidth-1] + "…"
-		}
+		trimmed = TruncateDisplay(trimmed, maxWidth)
 		preview = append(preview, "  "+trimmed)
 		if len(preview) >= maxLines {
 			break

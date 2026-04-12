@@ -599,10 +599,7 @@ func (wr WeeklyReview) viewTasks(w int) string {
 			break
 		}
 		b.WriteString(lipgloss.NewStyle().Foreground(green).Render("  [x] "))
-		display := t.Text
-		if len(display) > w-10 {
-			display = display[:w-13] + "..."
-		}
+		display := TruncateDisplay(t.Text, w-10)
 		b.WriteString(dimStyle.Render(display))
 		b.WriteString("\n")
 	}
@@ -619,10 +616,7 @@ func (wr WeeklyReview) viewTasks(w int) string {
 			break
 		}
 		b.WriteString(lipgloss.NewStyle().Foreground(peach).Render("  [ ] "))
-		display := t.Text
-		if len(display) > w-10 {
-			display = display[:w-13] + "..."
-		}
+		display := TruncateDisplay(t.Text, w-10)
 		b.WriteString(textStyle.Render(display))
 		b.WriteString("\n")
 	}

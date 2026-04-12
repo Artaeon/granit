@@ -899,10 +899,7 @@ func (q QuizMode) viewResults(w int) string {
 		if !a.Correct {
 			mark = lipgloss.NewStyle().Foreground(red).Render("\u2718")
 		}
-		qText := q.session.Questions[i].Question
-		if len(qText) > w-10 {
-			qText = qText[:w-13] + "..."
-		}
+		qText := TruncateDisplay(q.session.Questions[i].Question, w-10)
 		lines = append(lines, fmt.Sprintf("  %s %s", mark, DimStyle.Render(qText)))
 	}
 
