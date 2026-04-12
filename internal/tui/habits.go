@@ -353,7 +353,7 @@ func (ht *HabitTracker) saveHabits() {
 		b.WriteString(fmt.Sprintf("| %s | %s |\n", log.Date, strings.Join(log.Completed, ", ")))
 	}
 
-	_ = os.WriteFile(filepath.Join(ht.habitsDir(), "habits.md"), []byte(b.String()), 0o644)
+	_ = atomicWriteNote(filepath.Join(ht.habitsDir(), "habits.md"), b.String())
 }
 
 func (ht *HabitTracker) loadGoals() {
@@ -469,7 +469,7 @@ func (ht *HabitTracker) saveGoals() {
 		b.WriteString("\n")
 	}
 
-	_ = os.WriteFile(filepath.Join(ht.habitsDir(), "goals.md"), []byte(b.String()), 0o644)
+	_ = atomicWriteNote(filepath.Join(ht.habitsDir(), "goals.md"), b.String())
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -713,14 +713,17 @@ func (ht HabitTracker) longestStreak(habitName string) int {
 	for i := 1; i < len(dates); i++ {
 		prev, _ := time.Parse("2006-01-02", dates[i-1])
 		curr, _ := time.Parse("2006-01-02", dates[i])
-		if curr.Sub(prev).Hours() <= 24 {
+		// Use calendar day difference: consecutive days have exactly 1 day between them.
+		if curr.Equal(prev.AddDate(0, 0, 1)) {
 			current++
 			if current > longest {
 				longest = current
 			}
-		} else {
+		} else if !curr.Equal(prev) {
+			// Different day but not consecutive — streak breaks.
 			current = 1
 		}
+		// Same day (duplicate log entries) — no change to streak.
 	}
 	return longest
 }
@@ -840,7 +843,7 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 		ht.scroll = 0
 
 	case "up", "k":
-		if ht.tab == 1 && ht.goalExpanded >= 0 {
+		if ht.tab == 1 && ht.goalExpanded >= 0 && ht.goalExpanded < len(ht.goals) {
 			if ht.milestoneCur > 0 {
 				ht.milestoneCur--
 			}
@@ -851,14 +854,14 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 		}
 
 	case "down", "j":
-		if ht.tab == 1 && ht.goalExpanded >= 0 {
+		if ht.tab == 1 && ht.goalExpanded >= 0 && ht.goalExpanded < len(ht.goals) {
 			g := ht.goals[ht.goalExpanded]
 			if ht.milestoneCur < len(g.Milestones)-1 {
 				ht.milestoneCur++
 			}
 		} else {
 			max := ht.maxCursor()
-			if ht.cursor < max-1 {
+			if ht.cursor < max {
 				ht.cursor++
 			}
 		}
@@ -878,7 +881,7 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 				}
 			}
 		case 1: // Toggle milestone or expand goal
-			if ht.goalExpanded >= 0 {
+			if ht.goalExpanded >= 0 && ht.goalExpanded < len(ht.goals) {
 				g := &ht.goals[ht.goalExpanded]
 				if ht.milestoneCur < len(g.Milestones) {
 					g.Milestones[ht.milestoneCur].Done = !g.Milestones[ht.milestoneCur].Done
