@@ -467,7 +467,7 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 					c.weekMilestoneCursor++
 				}
 			case "enter":
-				if c.weekMilestoneStep == 0 {
+				if c.weekMilestoneStep == 0 && c.weekMilestoneCursor < len(c.activeGoals) {
 					// Selected a goal, now enter milestone text
 					c.weekMilestoneGoalID = c.activeGoals[c.weekMilestoneCursor].ID
 					c.weekMilestoneStep = 1
@@ -1024,11 +1024,11 @@ func (c Calendar) viewMonth() string {
 	wkStyle := lipgloss.NewStyle().Foreground(surface1)
 	dayHeaderStyle := lipgloss.NewStyle().Foreground(subtext0).Bold(true)
 	weekendHeaderStyle := lipgloss.NewStyle().Foreground(overlay0).Bold(true)
-	dayNames := []string{"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"}
+	dayNames := []string{"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"}
 	var dayRow strings.Builder
 	dayRow.WriteString("  " + wkStyle.Render("Wk") + " ")
 	for i, d := range dayNames {
-		if i == 0 || i == 6 { // weekend
+		if i == 5 || i == 6 { // weekend (Saturday, Sunday)
 			dayRow.WriteString(weekendHeaderStyle.Render(fmt.Sprintf("%4s", d)))
 		} else {
 			dayRow.WriteString(dayHeaderStyle.Render(fmt.Sprintf("%4s", d)))
@@ -1037,10 +1037,11 @@ func (c Calendar) viewMonth() string {
 	b.WriteString(dayRow.String())
 	b.WriteString("\n")
 
-	// Calendar grid
+	// Calendar grid (Monday-first, matching sidebar calendar panel)
 	year, month, _ := c.viewing.Date()
 	firstOfMonth := time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
-	startWeekday := int(firstOfMonth.Weekday())
+	// Convert Go's Sunday=0 weekday to Monday=0: Sun→6, Mon→0, Tue→1, ...
+	startWeekday := (int(firstOfMonth.Weekday()) + 6) % 7
 	daysInMonth := daysIn(month, year)
 
 	prevMonth := firstOfMonth.AddDate(0, 0, -1)
@@ -1054,7 +1055,7 @@ func (c Calendar) viewMonth() string {
 
 	for i := 0; i < startWeekday; i++ {
 		day := prevDays - startWeekday + 1 + i
-		isWeekend := i == 0 || i == 6
+		isWeekend := i == 5 || i == 6
 		cell := c.renderDayCell(day, false, false, false, false, 0, 0, false, true, isWeekend)
 		row += cell
 		col++
@@ -1092,7 +1093,7 @@ func (c Calendar) viewMonth() string {
 	if col > 0 {
 		nextDay := 1
 		for col < 7 {
-			isWeekend := col == 0 || col == 6
+			isWeekend := col == 5 || col == 6
 			cell := c.renderDayCell(nextDay, false, false, false, false, 0, 0, false, true, isWeekend)
 			row += cell
 			col++
