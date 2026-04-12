@@ -1455,7 +1455,7 @@ func (r ResearchAgent) updateNoteSelection(msg tea.KeyMsg) (ResearchAgent, tea.C
 		r.selectingNotes = false
 		r.noteFilter = ""
 		return r, nil
-	case "up", "k":
+	case "up":
 		if r.noteCursor > 0 {
 			r.noteCursor--
 			if r.noteCursor < r.noteScroll {
@@ -1463,7 +1463,7 @@ func (r ResearchAgent) updateNoteSelection(msg tea.KeyMsg) (ResearchAgent, tea.C
 			}
 		}
 		return r, nil
-	case "down", "j":
+	case "down":
 		if r.noteCursor < len(r.filteredNotes)-1 {
 			r.noteCursor++
 			maxVis := r.notePickerMaxVisible()
@@ -1976,7 +1976,7 @@ func (r ResearchAgent) viewNoteSelection(innerW int) string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  Space toggle  Ctrl+A all  j/k nav  Enter done  Esc back"))
+	b.WriteString(DimStyle.Render("  Space toggle  Ctrl+A all  ↑↓ nav  Enter done  Esc back"))
 
 	return b.String()
 }
