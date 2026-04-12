@@ -553,7 +553,7 @@ func (ht *HabitTracker) SyncHabitToTasks(habitName string, v *vault.Vault) {
 		}
 
 		// Write back to disk and update the in-memory note.
-		if err := os.WriteFile(note.Path, []byte(newContent), 0o644); err == nil {
+		if err := atomicWriteNote(note.Path, newContent); err == nil {
 			note.Content = newContent
 		}
 		return // Only update the first matching note.
@@ -588,7 +588,7 @@ func (ht *HabitTracker) UnsyncHabitFromTasks(habitName string, v *vault.Vault) {
 			continue
 		}
 
-		if err := os.WriteFile(note.Path, []byte(newContent), 0o644); err == nil {
+		if err := atomicWriteNote(note.Path, newContent); err == nil {
 			note.Content = newContent
 		}
 		return

@@ -316,7 +316,7 @@ func (wr *WeeklyReview) saveReview() {
 		return
 	}
 	_ = os.MkdirAll(filepath.Dir(wr.reviewPath()), 0o755)
-	_ = os.WriteFile(wr.reviewPath(), []byte(b.String()), 0o644)
+	_ = atomicWriteNote(wr.reviewPath(), b.String())
 	wr.saved = true
 }
 
@@ -771,5 +771,5 @@ func toggleTaskInFile(filePath string, lineNum int) bool {
 	} else {
 		return false
 	}
-	return os.WriteFile(filePath, []byte(strings.Join(lines, "\n")), 0644) == nil
+	return atomicWriteNote(filePath, strings.Join(lines, "\n")) == nil
 }

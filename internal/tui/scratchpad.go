@@ -110,7 +110,7 @@ func (s *Scratchpad) save() {
 	_ = os.MkdirAll(filepath.Dir(path), 0755)
 
 	data := strings.Join(s.content, "\n")
-	_ = os.WriteFile(path, []byte(data), 0o600)
+	_ = atomicWriteState(path, []byte(data))
 }
 
 // ---------------------------------------------------------------------------

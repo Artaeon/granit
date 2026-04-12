@@ -175,7 +175,7 @@ func (ll *LanguageLearning) saveVocabulary() {
 		b.WriteString(fmt.Sprintf("| %s | %s | %s | %d | %s | %d |\n",
 			v.Word, v.Translation, v.Language, v.Level, v.LastReviewed, v.Correct))
 	}
-	_ = os.WriteFile(ll.vocabPath(), []byte(b.String()), 0644)
+	_ = atomicWriteNote(ll.vocabPath(), b.String())
 }
 
 func (ll *LanguageLearning) loadGrammarFiles() {
@@ -633,7 +633,7 @@ level: beginner
 
 `, language, topic, topic)
 
-	_ = os.WriteFile(path, []byte(content), 0644)
+	_ = atomicWriteNote(path, content)
 }
 
 func (ll LanguageLearning) contentHeight() int {

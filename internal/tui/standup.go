@@ -348,8 +348,7 @@ func (s *StandupGenerator) save() {
 	content.WriteString("## Blockers\n\n")
 	content.WriteString(s.blockers + "\n")
 
-	err := os.WriteFile(filename, []byte(content.String()), 0o644)
-	if err != nil {
+	if err := atomicWriteNote(filename, content.String()); err != nil {
 		s.statusMsg = "Error: " + err.Error()
 		return
 	}

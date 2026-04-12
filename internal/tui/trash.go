@@ -133,7 +133,7 @@ func (t *Trash) MoveToTrash(relPath string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(dstPath, data, 0644); err != nil {
+	if err := atomicWriteNote(dstPath, string(data)); err != nil {
 		return err
 	}
 	if err := os.Remove(srcPath); err != nil {
@@ -152,7 +152,7 @@ func (t *Trash) MoveToTrash(relPath string) error {
 		return err
 	}
 	sidecarPath := filepath.Join(dir, trashName+".json")
-	return os.WriteFile(sidecarPath, sidecar, 0644)
+	return atomicWriteState(sidecarPath, sidecar)
 }
 
 // RestoreFile moves the currently selected trash item back to its original
@@ -184,7 +184,7 @@ func (t *Trash) RestoreFile() string {
 	if err != nil {
 		return ""
 	}
-	if err := os.WriteFile(dstPath, data, 0644); err != nil {
+	if err := atomicWriteNote(dstPath, string(data)); err != nil {
 		return ""
 	}
 
