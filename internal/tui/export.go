@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"html"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -291,7 +292,8 @@ func (e *ExportOverlay) exportAllHTML() {
 	indexBody.WriteString("<h1>Vault Export</h1>\n<ul>\n")
 	for _, name := range exported {
 		displayName := strings.TrimSuffix(name, ".html")
-		indexBody.WriteString(fmt.Sprintf("  <li><a href=\"%s\">%s</a></li>\n", name, displayName))
+		indexBody.WriteString(fmt.Sprintf("  <li><a href=\"%s\">%s</a></li>\n",
+			html.EscapeString(name), html.EscapeString(displayName)))
 	}
 	indexBody.WriteString("</ul>\n")
 
