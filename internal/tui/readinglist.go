@@ -441,9 +441,7 @@ func (rl ReadingList) View() string {
 			if display == "" {
 				display = item.URL
 			}
-			if len(display) > innerW-20 {
-				display = display[:innerW-23] + "..."
-			}
+			display = TruncateDisplay(display, innerW-20)
 
 			// Priority badge
 			prioStr := ""
