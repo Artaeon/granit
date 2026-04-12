@@ -311,6 +311,7 @@ func (p *Pomodoro) AdvanceQueue() bool {
 			p.state = PomodoroWork
 			p.remaining = p.workDuration
 			p.total = p.workDuration
+			p.paused = false
 			p.startTime = time.Now()
 			p.wordsWritten = 0
 			p.wordsAtStart = -1
@@ -971,21 +972,6 @@ func (p *Pomodoro) logSessionEntry(task, project string, durationMin int, comple
 	filename := now.Format("2006-01-02") + ".md"
 	filePath := filepath.Join(dir, filename)
 
-	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-
-	// Write header if file is new
-	info, _ := f.Stat()
-	if info != nil && info.Size() == 0 {
-		header := fmt.Sprintf("# Focus Sessions - %s\n\n", now.Format("2006-01-02"))
-		if _, err := f.WriteString(header); err != nil {
-			return
-		}
-	}
-
 	pomodoroCount := durationMin / int(p.workDuration.Minutes())
 	if pomodoroCount < 1 {
 		pomodoroCount = 1
@@ -1006,7 +992,16 @@ func (p *Pomodoro) logSessionEntry(task, project string, durationMin int, comple
 	entry.WriteString(fmt.Sprintf("- Status: %s\n", status))
 	entry.WriteString("\n")
 
-	if _, err := f.WriteString(entry.String()); err != nil {
+	// Read existing content (if any) and append the new entry atomically.
+	existing, err := os.ReadFile(filePath)
+	if err != nil && !os.IsNotExist(err) {
 		return
 	}
+	if len(existing) == 0 {
+		existing = []byte(fmt.Sprintf("# Focus Sessions - %s\n\n", now.Format("2006-01-02")))
+	}
+	if existing[len(existing)-1] != '\n' {
+		existing = append(existing, '\n')
+	}
+	_ = atomicWriteNote(filePath, string(existing)+entry.String())
 }
