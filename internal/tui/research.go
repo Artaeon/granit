@@ -1214,26 +1214,42 @@ func (r ResearchAgent) updateInput(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
 }
 
 // updateInputResearch handles input for Deep Dive and Follow-Up modes.
-// Focus fields: 0=topic, 1=depth, 2=format, 3=profile, 4=source, 5=run button
+// Focus fields: 0=topic, 1=depth, 2=format, 3=profile, 4=source, 5=context, 6=save, 7=run button
 func (r ResearchAgent) updateInputResearch(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
+	// If note selection sub-view is active, delegate to it
+	if r.selectingNotes {
+		return r.updateNoteSelection(msg)
+	}
+
+	numFields := 8
+
 	switch msg.String() {
 	case "esc":
 		r.active = false
 		return r, nil
 	case "tab":
-		r.focusField = (r.focusField + 1) % 6
+		r.focusField = (r.focusField + 1) % numFields
 		return r, nil
 	case "shift+tab":
-		r.focusField = (r.focusField + 5) % 6
+		r.focusField = (r.focusField + numFields - 1) % numFields
 		return r, nil
 	case "enter":
-		if r.focusField == 5 && r.topic != "" {
+		if r.focusField == 7 && r.topic != "" {
 			r.phase = researchRunning
 			r.running = true
 			r.startTime = time.Now()
 			return r, tea.Batch(r.runResearch(), r.tickElapsed())
 		}
-		if r.focusField < 5 {
+		// Open note picker when context mode is "selected" and user presses Enter
+		if r.focusField == 5 && r.contextMode == 2 {
+			r.selectingNotes = true
+			r.noteCursor = 0
+			r.noteScroll = 0
+			r.noteFilter = ""
+			r.filteredNotes = r.allVaultPaths
+			return r, nil
+		}
+		if r.focusField < 7 {
 			r.focusField++
 		}
 		return r, nil
@@ -1246,6 +1262,10 @@ func (r ResearchAgent) updateInputResearch(msg tea.KeyMsg) (ResearchAgent, tea.C
 			r.profile--
 		} else if r.focusField == 4 && r.sourceFilter > 0 {
 			r.sourceFilter--
+		} else if r.focusField == 5 && r.contextMode > 0 {
+			r.contextMode--
+		} else if r.focusField == 6 && r.saveMode > 0 {
+			r.saveMode--
 		}
 		return r, nil
 	case "right":
@@ -1257,11 +1277,17 @@ func (r ResearchAgent) updateInputResearch(msg tea.KeyMsg) (ResearchAgent, tea.C
 			r.profile++
 		} else if r.focusField == 4 && r.sourceFilter < 3 {
 			r.sourceFilter++
+		} else if r.focusField == 5 && r.contextMode < 2 {
+			r.contextMode++
+		} else if r.focusField == 6 && r.saveMode < 3 {
+			r.saveMode++
 		}
 		return r, nil
 	case "backspace":
 		if r.focusField == 0 && len(r.topic) > 0 {
 			r.topic = TrimLastRune(r.topic)
+		} else if r.focusField == 6 && r.saveMode == 3 && len(r.customSavePath) > 0 {
+			r.customSavePath = TrimLastRune(r.customSavePath)
 		}
 		return r, nil
 	default:
@@ -1272,9 +1298,119 @@ func (r ResearchAgent) updateInputResearch(msg tea.KeyMsg) (ResearchAgent, tea.C
 			} else if ch == "space" {
 				r.topic += " "
 			}
+		} else if r.focusField == 6 && r.saveMode == 3 {
+			ch := msg.String()
+			if len(ch) == 1 && ch[0] >= 32 {
+				r.customSavePath += ch
+			} else if ch == "space" {
+				r.customSavePath += " "
+			}
 		}
 		return r, nil
 	}
+}
+
+// updateNoteSelection handles input for the multi-select note picker sub-view.
+func (r ResearchAgent) updateNoteSelection(msg tea.KeyMsg) (ResearchAgent, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		r.selectingNotes = false
+		r.noteFilter = ""
+		return r, nil
+	case "enter":
+		r.selectingNotes = false
+		r.noteFilter = ""
+		return r, nil
+	case "up", "k":
+		if r.noteCursor > 0 {
+			r.noteCursor--
+			if r.noteCursor < r.noteScroll {
+				r.noteScroll = r.noteCursor
+			}
+		}
+		return r, nil
+	case "down", "j":
+		if r.noteCursor < len(r.filteredNotes)-1 {
+			r.noteCursor++
+			maxVis := r.notePickerMaxVisible()
+			if r.noteCursor >= r.noteScroll+maxVis {
+				r.noteScroll = r.noteCursor - maxVis + 1
+			}
+		}
+		return r, nil
+	case " ":
+		// Toggle selection of current note
+		if r.noteCursor < len(r.filteredNotes) {
+			p := r.filteredNotes[r.noteCursor]
+			if r.selectedNotes[p] {
+				delete(r.selectedNotes, p)
+			} else {
+				r.selectedNotes[p] = true
+			}
+		}
+		return r, nil
+	case "ctrl+a":
+		// Select/deselect all filtered notes
+		allSelected := true
+		for _, p := range r.filteredNotes {
+			if !r.selectedNotes[p] {
+				allSelected = false
+				break
+			}
+		}
+		if allSelected {
+			for _, p := range r.filteredNotes {
+				delete(r.selectedNotes, p)
+			}
+		} else {
+			for _, p := range r.filteredNotes {
+				r.selectedNotes[p] = true
+			}
+		}
+		return r, nil
+	case "backspace":
+		if len(r.noteFilter) > 0 {
+			r.noteFilter = TrimLastRune(r.noteFilter)
+			r.refilterNotes()
+		}
+		return r, nil
+	default:
+		ch := msg.String()
+		if len(ch) == 1 && ch[0] >= 32 {
+			r.noteFilter += ch
+			r.refilterNotes()
+		} else if ch == "space" {
+			// space is toggle, not filter character
+		}
+		return r, nil
+	}
+}
+
+// refilterNotes updates filteredNotes based on noteFilter.
+func (r *ResearchAgent) refilterNotes() {
+	if r.noteFilter == "" {
+		r.filteredNotes = r.allVaultPaths
+	} else {
+		query := strings.ToLower(r.noteFilter)
+		r.filteredNotes = nil
+		for _, p := range r.allVaultPaths {
+			name := strings.ToLower(strings.TrimSuffix(filepath.Base(p), ".md"))
+			if strings.Contains(name, query) || strings.Contains(strings.ToLower(p), query) {
+				r.filteredNotes = append(r.filteredNotes, p)
+			}
+		}
+	}
+	r.noteCursor = 0
+	r.noteScroll = 0
+}
+
+// notePickerMaxVisible returns how many notes can be shown in the picker.
+func (r ResearchAgent) notePickerMaxVisible() int {
+	max := r.height/2 - 8
+	if max < 5 {
+		max = 5
+	}
+	return max
 }
 
 // updateInputVaultAnalyzer handles input for vault analyzer mode.
@@ -1448,6 +1584,11 @@ func (r ResearchAgent) viewInput(innerW int) string {
 
 // viewInputResearch renders the input form for Deep Dive and Follow-Up modes.
 func (r ResearchAgent) viewInputResearch(innerW int) string {
+	// If note selection sub-view is active, render it instead
+	if r.selectingNotes {
+		return r.viewNoteSelection(innerW)
+	}
+
 	var b strings.Builder
 
 	// Title — changes based on mode
@@ -1537,11 +1678,64 @@ func (r ResearchAgent) viewInputResearch(innerW int) string {
 	b.WriteString(r.renderRadio(sourceLabels, sourceDescs, r.sourceFilter, r.focusField == 4, innerW))
 	b.WriteString("\n\n")
 
+	// ── Context ──
+	ctxLabels := []string{"None", "Whole Vault", "Select Notes"}
+	ctxDescs := []string{"web only", "all titles", "pick notes"}
+	b.WriteString(r.fieldLabel("Context", 5) + "\n")
+	b.WriteString(r.renderRadio(ctxLabels, ctxDescs, r.contextMode, r.focusField == 5, innerW))
+	if r.contextMode == 2 && len(r.selectedNotes) > 0 {
+		b.WriteString("\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(green).
+			Render(fmt.Sprintf("  %d notes selected", len(r.selectedNotes))))
+	} else if r.contextMode == 2 && r.focusField == 5 {
+		b.WriteString("\n")
+		b.WriteString("  " + DimStyle.Render("  Enter to pick notes"))
+	} else if r.contextMode == 1 {
+		b.WriteString("\n")
+		b.WriteString("  " + DimStyle.Render(fmt.Sprintf("  %d vault titles as context", len(r.allVaultPaths))))
+	}
+	b.WriteString("\n\n")
+
+	// ── Save To ──
+	saveLabels := []string{"Research/", "Current", "Auto", "Custom"}
+	saveDescs := []string{"default", "note dir", "Claude decides", "type path"}
+	b.WriteString(r.fieldLabel("Save To", 6) + "\n")
+	b.WriteString(r.renderRadio(saveLabels, saveDescs, r.saveMode, r.focusField == 6, innerW))
+	if r.saveMode == 3 {
+		// Show custom path input
+		b.WriteString("\n")
+		pathText := r.customSavePath
+		if r.focusField == 6 {
+			pathText += "█"
+		}
+		if pathText == "" && r.focusField != 6 {
+			pathText = DimStyle.Render("subfolder path...")
+		}
+		pathBox := lipgloss.NewStyle().
+			Background(surface0).
+			Foreground(text).
+			Width(inputW).
+			Padding(0, 1).
+			Render(pathText)
+		b.WriteString("  " + pathBox)
+	} else if r.saveMode == 1 && r.activeNotePath != "" {
+		b.WriteString("\n")
+		dir := filepath.Dir(r.activeNotePath)
+		if dir == "." {
+			dir = "(vault root)"
+		}
+		b.WriteString("  " + DimStyle.Render("  "+dir))
+	} else if r.saveMode == 2 {
+		b.WriteString("\n")
+		b.WriteString("  " + DimStyle.Render("  Claude picks the best location"))
+	}
+	b.WriteString("\n\n")
+
 	// ── Button ──
 	if r.topic != "" {
 		btnColor := surface0
 		btnFg := text
-		if r.focusField == 5 {
+		if r.focusField == 7 {
 			btnColor = green
 			btnFg = mantle
 		}
@@ -1552,7 +1746,7 @@ func (r ResearchAgent) viewInputResearch(innerW int) string {
 		btn := lipgloss.NewStyle().
 			Background(btnColor).
 			Foreground(btnFg).
-			Bold(r.focusField == 5).
+			Bold(r.focusField == 7).
 			Padding(0, 3).
 			Render(btnLabel)
 		b.WriteString("  " + btn)
@@ -1563,6 +1757,92 @@ func (r ResearchAgent) viewInputResearch(innerW int) string {
 
 	// ── Help ──
 	b.WriteString(DimStyle.Render("  Tab switch  ←→ option  Enter confirm  Esc close"))
+
+	return b.String()
+}
+
+// viewNoteSelection renders the multi-select note picker sub-view.
+func (r ResearchAgent) viewNoteSelection(innerW int) string {
+	var b strings.Builder
+
+	b.WriteString(lipgloss.NewStyle().Foreground(lavender).Bold(true).
+		Render("  Select Context Notes"))
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
+	b.WriteString("\n\n")
+
+	// Filter input
+	filterText := r.noteFilter
+	if filterText == "" {
+		filterText = DimStyle.Render("type to filter...")
+	}
+	filterBox := lipgloss.NewStyle().
+		Background(surface0).
+		Foreground(text).
+		Width(innerW - 4).
+		Padding(0, 1).
+		Render("  " + filterText + "█")
+	b.WriteString("  " + filterBox + "\n\n")
+
+	// Selection count
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(green).
+		Render(fmt.Sprintf("%d selected", len(r.selectedNotes))))
+	b.WriteString("  " + DimStyle.Render(fmt.Sprintf("/ %d notes", len(r.filteredNotes))))
+	b.WriteString("\n\n")
+
+	// Note list
+	maxVisible := r.notePickerMaxVisible()
+	if len(r.filteredNotes) == 0 {
+		b.WriteString("  " + DimStyle.Render("No matching notes"))
+		b.WriteString("\n")
+	} else {
+		end := r.noteScroll + maxVisible
+		if end > len(r.filteredNotes) {
+			end = len(r.filteredNotes)
+		}
+
+		for i := r.noteScroll; i < end; i++ {
+			p := r.filteredNotes[i]
+			name := strings.TrimSuffix(filepath.Base(p), ".md")
+			dir := filepath.Dir(p)
+
+			// Truncate long names
+			maxName := innerW - 10
+			if maxName < 20 {
+				maxName = 20
+			}
+			name = TruncateDisplay(name, maxName)
+
+			// Checkbox
+			check := "[ ]"
+			if r.selectedNotes[p] {
+				check = lipgloss.NewStyle().Foreground(green).Render("[x]")
+			}
+
+			if i == r.noteCursor {
+				b.WriteString("  " + lipgloss.NewStyle().Foreground(peach).Render(ThemeAccentBar) + " ")
+				b.WriteString(check + " ")
+				b.WriteString(lipgloss.NewStyle().Foreground(peach).Bold(true).Render(name))
+				b.WriteString("\n")
+				if dir != "." {
+					b.WriteString("        " + DimStyle.Render(dir))
+					b.WriteString("\n")
+				}
+			} else {
+				b.WriteString("    " + check + " ")
+				b.WriteString(lipgloss.NewStyle().Foreground(text).Render(name))
+				b.WriteString("\n")
+			}
+		}
+
+		if len(r.filteredNotes) > maxVisible {
+			b.WriteString(DimStyle.Render(fmt.Sprintf("\n  %d/%d shown", maxVisible, len(r.filteredNotes))))
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(DimStyle.Render("  Space toggle  Ctrl+A all  j/k nav  Enter done  Esc back"))
 
 	return b.String()
 }
