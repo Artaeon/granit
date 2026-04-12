@@ -486,7 +486,7 @@ func (ft *FileTree) SaveState(vaultPath string) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(dir, "explorer.json"), raw, 0o600)
+	_ = atomicWriteState(filepath.Join(dir, "explorer.json"), raw)
 }
 
 // LoadState restores collapsed directory state from .granit/explorer.json.

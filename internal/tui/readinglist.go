@@ -130,7 +130,7 @@ func (rl *ReadingList) saveItems() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(rl.readingListPath(), raw, 0o600)
+	_ = atomicWriteState(rl.readingListPath(), raw)
 }
 
 // filtered returns items for the current tab, sorted and filtered.

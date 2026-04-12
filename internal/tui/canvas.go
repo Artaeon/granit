@@ -170,7 +170,7 @@ func (c *Canvas) Save() {
 		c.statusMsg = fmt.Sprintf("Save error: %v", err)
 		return
 	}
-	if err := os.WriteFile(fp, raw, 0o600); err != nil {
+	if err := atomicWriteState(fp, raw); err != nil {
 		c.statusMsg = fmt.Sprintf("Save error: %v", err)
 	}
 }

@@ -413,7 +413,7 @@ func (tb *TabBar) SaveTabs(vaultPath string) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(dir, "tabs.json"), raw, 0o600)
+	_ = atomicWriteState(filepath.Join(dir, "tabs.json"), raw)
 }
 
 // LoadTabs restores tabs from <vaultPath>/.granit/tabs.json.
