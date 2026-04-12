@@ -1117,9 +1117,6 @@ func (c Calendar) viewMonth() string {
 	// Cursor date info
 	c.renderDateInfo(&b, width)
 
-	// Event creation wizard
-	c.renderEventWizard(&b, width)
-
 	// Footer
 	c.renderFooter(&b, width)
 
