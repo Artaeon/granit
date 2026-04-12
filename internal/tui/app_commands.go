@@ -82,7 +82,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 				return m, m.clearMessageAfter(5 * time.Second)
 			}
 			content := m.weeklyNoteContent(year, week)
-			if err := os.WriteFile(wPath, []byte(content), 0644); err != nil {
+			if err := atomicWriteNote(wPath, content); err != nil {
 				m.statusbar.SetMessage("Failed to create weekly note: " + err.Error())
 				return m, m.clearMessageAfter(5 * time.Second)
 			}
@@ -694,7 +694,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			title := strings.TrimSuffix(name, ".md")
 			content := m.zettelkasten.GenerateTemplate(title)
 			path := filepath.Join(m.vault.Root, name)
-			if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+			if err := atomicWriteNote(path, content); err == nil {
 				_ = m.vault.Scan()
 				m.index = vault.NewIndex(m.vault)
 				m.index.Build()
@@ -1674,11 +1674,11 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 		}
 		fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n%s", today, today, planContent)
 		content := m.dailyNoteContent(today, fallback)
-		writeErr = os.WriteFile(dailyPath, []byte(content), 0644)
+		writeErr = atomicWriteNote(dailyPath, content)
 	} else {
 		// Replace existing "## Day Plan" section or append if not present
 		newContent := replaceDailySection(string(existing), planContent, "## Day Plan")
-		writeErr = os.WriteFile(dailyPath, []byte(newContent), 0644)
+		writeErr = atomicWriteNote(dailyPath, newContent)
 	}
 	if writeErr != nil {
 		m.statusbar.SetMessage("Failed to write day plan: " + writeErr.Error())
@@ -1783,7 +1783,7 @@ func writePlannerFocus(vaultRoot, date, topGoal string, focusItems []string) {
 		}
 	}
 	content = append(content, []byte("\n"+section.String())...)
-	_ = os.WriteFile(path, content, 0644) // best-effort; planner UI refreshes on next load
+	_ = atomicWriteNote(path, string(content)) // best-effort; planner UI refreshes on next load
 }
 
 // loadPlannerBlocks scans the Planner/ directory for schedule files and

@@ -125,7 +125,7 @@ func (m *Model) updateNewNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 
 			if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
-				if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+				if err := atomicWriteNote(path, content); err == nil {
 					_ = m.vault.Scan()
 					m.index = vault.NewIndex(m.vault)
 					m.index.Build()
@@ -184,7 +184,7 @@ func (m *Model) updateExtractNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			content := "---\ntitle: " + title + "\ndate: " + time.Now().Format("2006-01-02") + "\ntags: []\n---\n\n" + sel + "\n"
 
 			if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
-				if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+				if err := atomicWriteNote(path, content); err == nil {
 					m.editor.DeleteSelection()
 					m.editor.InsertText("[[" + title + "]]")
 					m.saveCurrentNote()()

@@ -2205,14 +2205,14 @@ func (m *Model) addTagsToFile(path string, tags []string) {
 				newLines = append(newLines, lines[:fmEnd]...)
 				newLines = append(newLines, tagLine)
 				newLines = append(newLines, lines[fmEnd:]...)
-				_ = os.WriteFile(path, []byte(strings.Join(newLines, "\n")), 0644)
+				_ = atomicWriteNote(path, strings.Join(newLines, "\n"))
 			}
 			return
 		}
 	}
 
 	fm := "---\ntags: [" + strings.Join(tags, ", ") + "]\n---\n\n"
-	_ = os.WriteFile(path, []byte(fm+content), 0644)
+	_ = atomicWriteNote(path, fm+content)
 }
 
 // applyEncryptionResult handles the result of an encrypt/decrypt operation.
@@ -2387,11 +2387,11 @@ func (m *Model) writeBriefingToDailyNote(briefingContent string) {
 		}
 		fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s — {{weekday}}\n\n%s\n", today, today, briefingContent)
 		content := m.dailyNoteContent(today, fallback)
-		writeErr = os.WriteFile(dailyPath, []byte(content), 0644)
+		writeErr = atomicWriteNote(dailyPath, content)
 	} else {
 		// Use replaceDailySection to prevent duplicate briefings on re-run
 		newContent := replaceDailySection(string(existing), briefingContent, "## Morning Briefing")
-		writeErr = os.WriteFile(dailyPath, []byte(newContent), 0644)
+		writeErr = atomicWriteNote(dailyPath, newContent)
 	}
 	if writeErr != nil {
 		m.statusbar.SetMessage("Failed to write daily briefing: " + writeErr.Error())
@@ -2449,7 +2449,7 @@ func (m *Model) openDailyNote() {
 		}
 		fallback := m.buildDailyFallback(today)
 		content := m.dailyNoteContent(today, fallback)
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		if err := atomicWriteNote(path, content); err != nil {
 			m.statusbar.SetMessage("Failed to create daily note: " + err.Error())
 			return
 		}
