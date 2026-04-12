@@ -856,7 +856,7 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 	case "down", "j":
 		if ht.tab == 1 && ht.goalExpanded >= 0 && ht.goalExpanded < len(ht.goals) {
 			g := ht.goals[ht.goalExpanded]
-			if ht.milestoneCur < len(g.Milestones)-1 {
+			if len(g.Milestones) > 0 && ht.milestoneCur < len(g.Milestones)-1 {
 				ht.milestoneCur++
 			}
 		} else {
@@ -907,7 +907,7 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 		}
 
 	case "m":
-		if ht.tab == 1 && ht.goalExpanded >= 0 {
+		if ht.tab == 1 && ht.goalExpanded >= 0 && ht.goalExpanded < len(ht.goals) {
 			ht.inputMode = habitInputNewMilestone
 			ht.inputValue = ""
 		}
@@ -919,7 +919,7 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 				ht.confirmDelete = true
 			}
 		case 1:
-			if ht.goalExpanded >= 0 {
+			if ht.goalExpanded >= 0 && ht.goalExpanded < len(ht.goals) {
 				ht.confirmDelete = true
 			} else {
 				active := ht.activeGoals()
@@ -952,6 +952,8 @@ func (ht HabitTracker) updateInput(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 
 		switch ht.inputMode {
 		case habitInputNewHabit:
+			// Strip pipe characters to prevent markdown table corruption.
+			val = strings.ReplaceAll(val, "|", "-")
 			ht.habits = append(ht.habits, habitEntry{
 				Name:    val,
 				Created: todayStr(),
