@@ -609,6 +609,9 @@ func (d Dashboard) View() string {
 		if shown > 3 {
 			shown = 3
 		}
+		if shown > len(d.overdueTasks) {
+			shown = len(d.overdueTasks)
+		}
 		for i := 0; i < shown; i++ {
 			taskText := TruncateDisplay(d.overdueTasks[i].Text, innerW-8)
 			lines = append(lines, lipgloss.NewStyle().Foreground(red).Render("    • "+taskText))
@@ -823,6 +826,9 @@ func (d Dashboard) View() string {
 		pct := 0
 		if d.bizTasksTotal > 0 {
 			pct = d.bizTasksDone * 100 / d.bizTasksTotal
+			if pct > 100 {
+				pct = 100
+			}
 		}
 		barW := 20
 		filled := barW * pct / 100
