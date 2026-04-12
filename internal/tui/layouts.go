@@ -33,9 +33,11 @@ func AllLayouts() []string {
 	return []string{
 		LayoutDefault,
 		LayoutWriter,
+		LayoutMinimal,
 		LayoutReading,
 		LayoutDashboard,
 		LayoutZen,
+		LayoutResearch,
 		LayoutCockpit,
 		LayoutStacked,
 		LayoutCornell,
