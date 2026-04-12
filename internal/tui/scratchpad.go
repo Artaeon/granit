@@ -119,6 +119,9 @@ func (s *Scratchpad) save() {
 
 // clampCursor ensures the cursor stays within valid content bounds.
 func (s *Scratchpad) clampCursor() {
+	if len(s.content) == 0 {
+		s.content = []string{""}
+	}
 	if s.cursorLine < 0 {
 		s.cursorLine = 0
 	}

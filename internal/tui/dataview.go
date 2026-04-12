@@ -239,15 +239,18 @@ func (d *DataviewOverlay) executeQuery() {
 }
 
 func (d *DataviewOverlay) selectCurrentResult() {
+	if d.cursor < 0 {
+		return
+	}
 	switch d.result.Mode {
 	case DVModeTable, DVModeList:
-		if len(d.result.Rows) > 0 && d.cursor < len(d.result.Rows) {
+		if d.cursor < len(d.result.Rows) {
 			d.selectedNote = d.result.Rows[d.cursor].NotePath
 			d.hasResult = true
 			d.active = false
 		}
 	case DVModeTask:
-		if len(d.result.Tasks) > 0 && d.cursor < len(d.result.Tasks) {
+		if d.cursor < len(d.result.Tasks) {
 			d.selectedNote = d.result.Tasks[d.cursor].NotePath
 			d.hasResult = true
 			d.active = false
