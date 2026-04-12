@@ -2947,6 +2947,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "alt+b":
+			// Habit tracker
+			return m.executeCommand(CmdHabitTracker)
+
+		case "alt+t":
+			// Time tracker
+			return m.executeCommand(CmdTimeTracker)
+
+		case "alt+i":
+			// Quick capture (inbox)
+			return m.executeCommand(CmdQuickCapture)
+
 		case "alt+s":
 			// Quick focus session
 			return m.executeCommand(CmdFocusSession)

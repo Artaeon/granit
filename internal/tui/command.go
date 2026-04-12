@@ -226,7 +226,7 @@ var AllCommands = []Command{
 	{Label: "Close Tabs to the Right", Desc: "Close tabs after the active one", Shortcut: "", Action: CmdCloseTabsToRight, Icon: &IconFileChar, Category: CatNavigation},
 	{Label: "Reopen Closed Tab", Desc: "Reopen the last closed tab", Shortcut: "", Action: CmdReopenClosedTab, Icon: &IconFileChar, Category: CatNavigation},
 	{Label: "Trash", Desc: "View and restore deleted notes", Shortcut: "", Action: CmdShowTrash, Icon: &IconTrashChar, Category: CatNavigation},
-	{Label: "Quick Capture", Desc: "Jot down a quick thought to inbox, daily, or tasks", Shortcut: "", Action: CmdQuickCapture, Icon: &IconNewChar, Category: CatNavigation},
+	{Label: "Quick Capture", Desc: "Jot down a quick thought to inbox, daily, or tasks", Shortcut: "Alt+I", Action: CmdQuickCapture, Icon: &IconNewChar, Category: CatNavigation},
 	{Label: "Web Clipper", Desc: "Save a web page as a markdown note", Shortcut: "", Action: CmdWebClip, Icon: &IconSaveChar, Category: CatNavigation},
 
 	// ── Editor ──
@@ -313,7 +313,7 @@ var AllCommands = []Command{
 	{Label: "Focus Session", Desc: "Guided work session with timer, tasks, and scratchpad", Shortcut: "", Action: CmdFocusSession, Icon: &IconDailyChar, Category: CatTasks},
 	{Label: "Clock In", Desc: "Start a work session timer", Shortcut: "", Action: CmdClockIn, Icon: &IconDailyChar, Category: CatTasks},
 	{Label: "Clock Out", Desc: "Stop work session and log time", Shortcut: "", Action: CmdClockOut, Icon: &IconDailyChar, Category: CatTasks},
-	{Label: "Time Tracker", Desc: "Track time per note/task with pomodoro stats", Shortcut: "", Action: CmdTimeTracker, Icon: &IconDailyChar, Category: CatTasks},
+	{Label: "Time Tracker", Desc: "Track time per note/task with pomodoro stats", Shortcut: "Alt+T", Action: CmdTimeTracker, Icon: &IconDailyChar, Category: CatTasks},
 	{Label: "Copy Daily Plan", Desc: "Copy today's schedule, tasks, and habits to clipboard for sharing", Shortcut: "", Action: CmdCopyDailyPlan, Icon: &IconCalendarChar, Category: CatTasks},
 
 	// ── Daily & Calendar ──
@@ -344,7 +344,7 @@ var AllCommands = []Command{
 	{Label: "Quiz Mode", Desc: "Test your knowledge with auto-generated quizzes", Shortcut: "", Action: CmdQuizMode, Icon: &IconHelpChar, Category: CatLearning},
 	{Label: "Learning Dashboard", Desc: "Track study progress, streaks, mastery", Shortcut: "", Action: CmdLearnDashboard, Icon: &IconGraphChar, Category: CatLearning},
 	{Label: "Language Learning", Desc: "Vocabulary tracker, practice sessions, grammar notes", Shortcut: "", Action: CmdLanguageLearning, Icon: &IconBookmarkChar, Category: CatLearning},
-	{Label: "Habit Tracker", Desc: "Daily habits, goals, streaks, and progress tracking", Shortcut: "", Action: CmdHabitTracker, Icon: &IconGraphChar, Category: CatLearning},
+	{Label: "Habit Tracker", Desc: "Daily habits, goals, streaks, and progress tracking", Shortcut: "Alt+B", Action: CmdHabitTracker, Icon: &IconGraphChar, Category: CatLearning},
 	{Label: "Reading List", Desc: "Track URLs and articles to read later", Shortcut: "", Action: CmdReadingList, Icon: &IconBookmarkChar, Category: CatLearning},
 
 	// ── Publish & Sync ──
