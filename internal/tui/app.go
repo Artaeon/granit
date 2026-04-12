@@ -267,7 +267,8 @@ func NewModel(vaultPath string) (Model, error) {
 	if cfg.Layout == "calendar" || cfg.Layout == "taskboard" {
 		cfg.Layout = LayoutCockpit
 	}
-	ApplyTheme(cfg.Theme)
+	themeName := ResolveThemeName(cfg.Theme, cfg.AutoDarkMode, cfg.DarkTheme, cfg.LightTheme)
+	ApplyTheme(themeName)
 	ApplyIconTheme(cfg.IconTheme)
 
 	v, err := vault.NewVault(vaultPath)
