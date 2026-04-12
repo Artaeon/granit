@@ -12,8 +12,11 @@ type Config struct {
 	Editor EditorConfig `json:"editor"`
 
 	// Appearance
-	Theme    string `json:"theme"`
-	ShowHelp bool   `json:"show_help"`
+	Theme        string `json:"theme"`
+	AutoDarkMode bool   `json:"auto_dark_mode"`
+	DarkTheme    string `json:"dark_theme"`
+	LightTheme   string `json:"light_theme"`
+	ShowHelp     bool   `json:"show_help"`
 
 	// Calendar
 	DisabledCalendars []string `json:"disabled_calendars"`
@@ -125,6 +128,9 @@ func DefaultConfig() Config {
 			AutoIndent: true,
 		},
 		Theme:                  "catppuccin-mocha",
+		AutoDarkMode:           false,
+		DarkTheme:              "catppuccin-mocha",
+		LightTheme:             "catppuccin-latte",
 		ShowHelp:               true,
 		GitAutoSync:            true,
 		DailyNotesFolder:       "",
