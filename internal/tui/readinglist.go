@@ -259,8 +259,13 @@ func (rl ReadingList) updateInput(msg tea.KeyMsg) (ReadingList, tea.Cmd) {
 	key := msg.String()
 	switch key {
 	case "esc":
+		// Clean up partial item if we're mid-way through the 2-step add flow.
+		if rl.inputMode == rlInputAdd && rl.inputStep == 1 && len(rl.items) > 0 {
+			rl.items = rl.items[:len(rl.items)-1]
+		}
 		rl.inputMode = rlInputNone
 		rl.inputBuf = ""
+		rl.inputStep = 0
 		return rl, nil
 	case "enter":
 		switch rl.inputMode {
