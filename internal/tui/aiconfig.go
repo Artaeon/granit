@@ -268,7 +268,7 @@ func (c AIConfig) chatOnce(systemPrompt, userPrompt string) (string, error) {
 func (c AIConfig) chatOnceCtx(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
 	switch c.Provider {
 	case "openai":
-		return c.chatOpenAI(systemPrompt, userPrompt)
+		return c.chatOpenAI(ctx, systemPrompt, userPrompt)
 	case "nous":
 		client := c.NewNous()
 		prompt := userPrompt
@@ -430,7 +430,7 @@ func (c AIConfig) chatOllamaWithOptions(systemPrompt, userPrompt string, options
 }
 
 // chatOpenAI sends a non-streaming chat request to OpenAI's API.
-func (c AIConfig) chatOpenAI(systemPrompt, userPrompt string) (string, error) {
+func (c AIConfig) chatOpenAI(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
 	if c.APIKey == "" {
 		return "", fmt.Errorf("OpenAI API key not configured — set it in Settings (Ctrl+,)")
 	}
@@ -449,7 +449,7 @@ func (c AIConfig) chatOpenAI(systemPrompt, userPrompt string) (string, error) {
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(reqBody))
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
