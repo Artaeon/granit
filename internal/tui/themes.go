@@ -1127,3 +1127,23 @@ func ApplyTheme(name string) {
 	// Invalidate syntax highlight cache so code blocks pick up new colors.
 	InvalidateChromaCache()
 }
+
+// ResolveThemeName returns the effective theme name for the given config.
+// When AutoDarkMode is enabled it queries the terminal background via
+// lipgloss.HasDarkBackground() and returns DarkTheme or LightTheme
+// accordingly; otherwise it returns the static Theme field.
+func ResolveThemeName(theme string, autoDarkMode bool, darkTheme, lightTheme string) string {
+	if !autoDarkMode {
+		return theme
+	}
+	if lipgloss.HasDarkBackground() {
+		if darkTheme != "" {
+			return darkTheme
+		}
+		return "catppuccin-mocha"
+	}
+	if lightTheme != "" {
+		return lightTheme
+	}
+	return "catppuccin-latte"
+}
