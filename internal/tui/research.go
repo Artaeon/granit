@@ -101,6 +101,21 @@ type ResearchAgent struct {
 	assistNotePath    string   // relative path of the target note
 	assistNoteContent string   // content of the target note
 	assistVaultTitles []string // all vault note titles (without .md) for wikilink context
+
+	// Context selection — which notes to feed Claude as background knowledge
+	contextMode    int             // 0=none, 1=whole vault (titles), 2=selected notes (content)
+	allVaultPaths  []string        // all vault note relative paths (for note picker)
+	selectedNotes  map[string]bool // set of selected note paths (for context mode 2)
+	selectingNotes bool            // sub-state: note picker is active
+	noteCursor     int             // cursor position in note picker
+	noteScroll     int             // scroll offset in note picker
+	noteFilter     string          // search/filter text in note picker
+	filteredNotes  []string        // filtered note paths (recomputed on filter change)
+
+	// Save location — where research output is written
+	saveMode       int    // 0=research folder, 1=current folder, 2=auto (Claude decides), 3=custom
+	customSavePath string // user-typed subfolder for custom mode
+	activeNotePath string // path of currently open note (for "current folder" option)
 }
 
 // NewResearchAgent creates a new research agent overlay.
@@ -164,7 +179,7 @@ func (r *ResearchAgent) SetSize(w, h int) {
 }
 
 // Open activates the research overlay.
-func (r *ResearchAgent) Open(vaultRoot string) {
+func (r *ResearchAgent) Open(vaultRoot string, allVaultPaths []string, activeNotePath string) {
 	r.active = true
 	r.phase = researchInput
 	r.topic = ""
@@ -185,11 +200,26 @@ func (r *ResearchAgent) Open(vaultRoot string) {
 	r.enhanceNoteContent = ""
 	r.enhanceVaultNames = nil
 	r.recentNotes = nil
+
+	// Context selection
+	r.contextMode = 0
+	r.allVaultPaths = allVaultPaths
+	r.selectedNotes = make(map[string]bool)
+	r.selectingNotes = false
+	r.noteCursor = 0
+	r.noteScroll = 0
+	r.noteFilter = ""
+	r.filteredNotes = allVaultPaths
+
+	// Save location
+	r.saveMode = 0
+	r.customSavePath = ""
+	r.activeNotePath = activeNotePath
 }
 
 // OpenFollowUp activates the research overlay in follow-up mode, pre-filling
 // the topic from the note title and storing existing content as context.
-func (r *ResearchAgent) OpenFollowUp(vaultRoot, notePath, noteContent string) {
+func (r *ResearchAgent) OpenFollowUp(vaultRoot, notePath, noteContent string, allVaultPaths []string) {
 	r.active = true
 	r.phase = researchInput
 	r.output = ""
@@ -213,6 +243,21 @@ func (r *ResearchAgent) OpenFollowUp(vaultRoot, notePath, noteContent string) {
 	r.enhanceNoteContent = ""
 	r.enhanceVaultNames = nil
 	r.recentNotes = nil
+
+	// Context selection
+	r.contextMode = 0
+	r.allVaultPaths = allVaultPaths
+	r.selectedNotes = make(map[string]bool)
+	r.selectingNotes = false
+	r.noteCursor = 0
+	r.noteScroll = 0
+	r.noteFilter = ""
+	r.filteredNotes = allVaultPaths
+
+	// Save location
+	r.saveMode = 0
+	r.customSavePath = ""
+	r.activeNotePath = notePath
 
 	// Pre-fill topic from note filename (strip .md extension)
 	name := strings.TrimSuffix(filepath.Base(notePath), ".md")

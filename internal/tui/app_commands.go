@@ -1009,13 +1009,13 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			// Reopen to show progress
 			m.research.Reopen()
 		} else {
-			m.research.Open(m.vault.Root)
+			m.research.Open(m.vault.Root, m.vault.SortedPaths(), m.activeNote)
 		}
 
 	case CmdResearchFollowUp:
 		if m.activeNote != "" && !m.research.IsRunning() {
 			m.research.SetSize(m.width, m.height)
-			m.research.OpenFollowUp(m.vault.Root, m.activeNote, m.editor.GetContent())
+			m.research.OpenFollowUp(m.vault.Root, m.activeNote, m.editor.GetContent(), m.vault.SortedPaths())
 		}
 
 	case CmdAITemplate:

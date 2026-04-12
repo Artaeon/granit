@@ -798,7 +798,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.research.IsRunning() {
 				m.research.Reopen()
 			} else {
-				m.research.Open(m.vault.Root)
+				m.research.Open(m.vault.Root, m.vault.SortedPaths(), m.activeNote)
 			}
 		}
 		return m, nil
@@ -2941,7 +2941,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.research.OpenNoteEnhance(m.vault.Root, m.activeNote, m.editor.GetContent(), m.vault.SortedPaths())
 			} else if !m.research.IsRunning() {
 				m.research.SetSize(m.width, m.height)
-				m.research.Open(m.vault.Root)
+				m.research.Open(m.vault.Root, m.vault.SortedPaths(), m.activeNote)
 			}
 			return m, nil
 
