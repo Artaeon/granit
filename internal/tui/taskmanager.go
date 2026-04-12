@@ -2351,10 +2351,17 @@ func (tm TaskManager) updateKanban(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case "h", "left":
 		if tm.kanbanCol > 0 {
 			tm.kanbanCol--
+			// Clamp cursor to new column's size.
+			if n := len(cols[tm.kanbanCol]); n > 0 && tm.kanbanCursor[tm.kanbanCol] >= n {
+				tm.kanbanCursor[tm.kanbanCol] = n - 1
+			}
 		}
 	case "l", "right":
 		if tm.kanbanCol < 3 {
 			tm.kanbanCol++
+			if n := len(cols[tm.kanbanCol]); n > 0 && tm.kanbanCursor[tm.kanbanCol] >= n {
+				tm.kanbanCursor[tm.kanbanCol] = n - 1
+			}
 		}
 
 	case "j", "down":
