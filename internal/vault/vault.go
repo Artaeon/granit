@@ -42,7 +42,7 @@ func (v *Vault) Scan() error {
 	v.Notes = make(map[string]*Note)
 	err := filepath.Walk(v.Root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return nil // skip inaccessible paths
 		}
 		// Skip hidden directories (.obsidian, .git, etc.)
 		if info.IsDir() && strings.HasPrefix(info.Name(), ".") {
@@ -61,7 +61,7 @@ func (v *Vault) Scan() error {
 		}
 		content, err := os.ReadFile(path)
 		if err != nil {
-			return err
+			return nil // skip unreadable files (locked, permission denied)
 		}
 
 		note := &Note{
