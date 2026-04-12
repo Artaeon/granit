@@ -122,6 +122,9 @@ func (s *Settings) buildItems() {
 	s.items = []settingItem{
 		// ── Appearance ──
 		{label: "Theme", key: "theme", kind: "string", value: s.config.Theme, options: ThemeNames(), category: catAppearance, description: "color scheme palette"},
+		{label: "Auto Dark Mode", key: "auto_dark_mode", kind: "bool", value: s.config.AutoDarkMode, category: catAppearance, description: "auto switch theme by terminal background"},
+		{label: "Dark Theme", key: "dark_theme", kind: "string", value: s.config.DarkTheme, options: ThemeNames(), category: catAppearance, description: "theme for dark terminals"},
+		{label: "Light Theme", key: "light_theme", kind: "string", value: s.config.LightTheme, options: ThemeNames(), category: catAppearance, description: "theme for light terminals"},
 		{label: "Icon Theme", key: "icon_theme", kind: "string", value: s.config.IconTheme, options: []string{"unicode", "nerd", "emoji", "ascii"}, category: catAppearance, description: "icon set style"},
 		{label: "Layout", key: "layout", kind: "string", value: s.config.Layout, options: AllLayouts(), category: catAppearance, description: "panel arrangement"},
 		{label: "View Style", key: "view_style", kind: "string", value: s.config.ViewStyle, options: []string{"default", "reading", "minimal"}, category: catAppearance, description: "Ctrl+E view mode style"},
@@ -746,8 +749,28 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.WeeklyNoteTemplate = value.(string)
 	case "theme":
 		s.config.Theme = value.(string)
-		ApplyTheme(s.config.Theme)
+		themeName := ResolveThemeName(s.config.Theme, s.config.AutoDarkMode, s.config.DarkTheme, s.config.LightTheme)
+		ApplyTheme(themeName)
 		ApplyIconTheme(s.config.IconTheme)
+	case "auto_dark_mode":
+		s.config.AutoDarkMode = value.(bool)
+		themeName := ResolveThemeName(s.config.Theme, s.config.AutoDarkMode, s.config.DarkTheme, s.config.LightTheme)
+		ApplyTheme(themeName)
+		ApplyIconTheme(s.config.IconTheme)
+	case "dark_theme":
+		s.config.DarkTheme = value.(string)
+		if s.config.AutoDarkMode {
+			themeName := ResolveThemeName(s.config.Theme, s.config.AutoDarkMode, s.config.DarkTheme, s.config.LightTheme)
+			ApplyTheme(themeName)
+			ApplyIconTheme(s.config.IconTheme)
+		}
+	case "light_theme":
+		s.config.LightTheme = value.(string)
+		if s.config.AutoDarkMode {
+			themeName := ResolveThemeName(s.config.Theme, s.config.AutoDarkMode, s.config.DarkTheme, s.config.LightTheme)
+			ApplyTheme(themeName)
+			ApplyIconTheme(s.config.IconTheme)
+		}
 	case "icon_theme":
 		s.config.IconTheme = value.(string)
 		ApplyIconTheme(s.config.IconTheme)
