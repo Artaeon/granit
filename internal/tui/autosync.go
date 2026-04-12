@@ -125,7 +125,7 @@ func (a *AutoSync) CommitAndPush() tea.Cmd {
 		// Create .gitignore if missing
 		gitignorePath := filepath.Join(a.vaultPath, ".gitignore")
 		if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
-			_ = os.WriteFile(gitignorePath, []byte(".granit/\n.DS_Store\n*.swp\n*.swo\n*~\n"), 0644)
+			_ = atomicWriteNote(gitignorePath, ".granit/\n.DS_Store\n*.swp\n*.swo\n*~\n")
 		}
 	}
 	vaultPath := a.vaultPath

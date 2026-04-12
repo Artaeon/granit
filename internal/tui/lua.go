@@ -182,7 +182,7 @@ func (le *LuaEngine) executeScript(L *lua.LState, script LuaScript, notePath, no
 			return 2
 		}
 		_ = os.MkdirAll(filepath.Dir(path), 0755)
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		if err := atomicWriteNote(path, content); err != nil {
 			L.Push(lua.LFalse)
 			L.Push(lua.LString(err.Error()))
 			return 2

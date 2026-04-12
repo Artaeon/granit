@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -574,7 +573,7 @@ func (gr *GlobalReplace) writeFile(relPath, content string) {
 		return
 	}
 	absPath := filepath.Join(gr.vault.Root, relPath)
-	if err := os.WriteFile(absPath, []byte(content), 0644); err != nil {
+	if err := atomicWriteNote(absPath, content); err != nil {
 		return
 	}
 

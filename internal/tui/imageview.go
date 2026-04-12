@@ -545,15 +545,23 @@ func (im *ImageManager) doImport() {
 	}
 	defer func() { _ = src.Close() }()
 
-	dst, err := os.Create(destPath)
+	tmpPath := destPath + ".tmp"
+	dst, err := os.Create(tmpPath)
 	if err != nil {
 		im.statusMsg = "Cannot create: " + err.Error()
 		return
 	}
-	defer func() { _ = dst.Close() }()
 
-	if _, err := io.Copy(dst, src); err != nil {
-		im.statusMsg = "Copy failed: " + err.Error()
+	if _, cpErr := io.Copy(dst, src); cpErr != nil {
+		_ = dst.Close()
+		_ = os.Remove(tmpPath)
+		im.statusMsg = "Copy failed: " + cpErr.Error()
+		return
+	}
+	_ = dst.Close()
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+		im.statusMsg = "Import failed: " + err.Error()
 		return
 	}
 

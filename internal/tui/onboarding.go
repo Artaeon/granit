@@ -920,7 +920,7 @@ Use ` + "`Ctrl+X`" + ` → "Projects" to manage projects with goals and mileston
 		if _, err := os.Stat(p); err == nil {
 			continue // already exists, skip
 		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		if err := atomicWriteNote(p, content); err != nil {
 			return err
 		}
 	}

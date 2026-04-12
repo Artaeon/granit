@@ -1666,12 +1666,7 @@ func (dp *DailyPlanner) saveToFile() {
 		}
 	}
 
-	f, err := os.Create(dp.plannerFilePath())
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-	_, _ = f.WriteString(b.String())
+	_ = atomicWriteNote(dp.plannerFilePath(), b.String())
 }
 
 // slotTimeEnd returns the end time for a slot (i.e. the start of the next
