@@ -430,7 +430,7 @@ func (fc *Flashcards) newCards() int {
 func (fc *Flashcards) masteredCards() int {
 	count := 0
 	for _, c := range fc.cards {
-		if c.Interval >= 21 { // 3+ weeks interval = mastered
+		if c.Interval > 21 && c.EaseFactor >= 2.5 {
 			count++
 		}
 	}
