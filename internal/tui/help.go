@@ -133,6 +133,7 @@ var helpSections = []helpSection{
 			{"Alt+M", "Morning Routine — scripture, goal, tasks, habits, thoughts"},
 			{"Alt+E", "Evening Review — reflect on accomplishments, plan tomorrow"},
 			{"Alt+P", "Plan My Day — AI generates your daily schedule"},
+			{"Alt+S", "Focus Session — timed work with goals and scratchpad"},
 			{"Alt+W", "Open this week's note"},
 			{"Alt+[", "Navigate to previous daily note"},
 			{"Alt+]", "Navigate to next daily note"},

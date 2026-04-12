@@ -2945,6 +2945,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "alt+s":
+			// Quick focus session
+			return m.executeCommand(CmdFocusSession)
+
 		case "alt+w":
 			// Weekly note
 			return m.executeCommand(CmdWeeklyNote)
