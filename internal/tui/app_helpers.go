@@ -568,6 +568,15 @@ func (m *Model) updateLayout() {
 	m.habitTracker.SetSize(m.width, m.height)
 	m.vaultRefactor.SetSize(m.width, m.height)
 	m.dailyBriefing.SetSize(m.width, m.height)
+	m.goalsMode.SetSize(m.width, m.height)
+	m.ideasBoard.SetSize(m.width, m.height)
+	m.readingList.SetSize(m.width, m.height)
+	m.blogDraft.SetSize(m.width, m.height)
+	m.taskTriage.SetSize(m.width, m.height)
+	m.aiProjectPlanner.SetSize(m.width, m.height)
+	m.dailyReview.SetSize(m.width, m.height)
+	m.morningRoutine.SetSize(m.width, m.height)
+	m.dailyJot.SetSize(m.width, m.height)
 }
 
 // refreshComponents re-scans the vault and updates all dependent components
