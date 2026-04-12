@@ -578,6 +578,9 @@ func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCard
 		if isActiveCol && kb.cardCursor >= visibleCards {
 			scrollOffset = kb.cardCursor - visibleCards + 1
 		}
+		if scrollOffset > len(col.Cards) {
+			scrollOffset = len(col.Cards)
+		}
 
 		end := scrollOffset + visibleCards
 		if end > len(col.Cards) {
@@ -725,6 +728,11 @@ func kbItoa(n int) string {
 
 // kbClampCursors ensures both colCursor and cardCursor are within bounds.
 func (kb *Kanban) kbClampCursors() {
+	if len(kb.columns) == 0 {
+		kb.colCursor = 0
+		kb.cardCursor = 0
+		return
+	}
 	if kb.colCursor < 0 {
 		kb.colCursor = 0
 	}
