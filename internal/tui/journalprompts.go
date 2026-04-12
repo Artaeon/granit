@@ -290,7 +290,7 @@ func (jp *JournalPrompts) saveEntry() tea.Cmd {
 
 	today := time.Now().Format("2006-01-02")
 	journalDir := filepath.Join(jp.vaultRoot, "Journal")
-	if err := os.MkdirAll(journalDir, 0755); err != nil {
+	if err := os.MkdirAll(journalDir, 0o755); err != nil {
 		jp.statusMsg = "Error: " + err.Error()
 		return nil
 	}
@@ -301,31 +301,33 @@ func (jp *JournalPrompts) saveEntry() tea.Cmd {
 	heading := fmt.Sprintf("## %s: %s", jp.currentPrompt.Category, jp.currentPrompt.Text)
 	entryBody := heading + "\n\n" + jp.response + "\n"
 
-	// Check if file already exists
+	// Atomic read-modify-write to prevent data loss on concurrent saves.
 	existing, err := os.ReadFile(filePath)
-	if err == nil && len(existing) > 0 {
-		// Append new entry with separator
-		content := string(existing)
+	if err != nil && !os.IsNotExist(err) {
+		jp.statusMsg = "Error: " + err.Error()
+		return nil
+	}
+
+	var content string
+	if len(existing) > 0 {
+		content = string(existing)
 		if !strings.HasSuffix(content, "\n") {
 			content += "\n"
 		}
 		content += "\n---\n\n" + entryBody
-		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-			jp.statusMsg = "Error: " + err.Error()
-			return nil
-		}
 	} else {
-		// Create new file with frontmatter
 		var b strings.Builder
 		b.WriteString("---\n")
 		b.WriteString("date: " + today + "\n")
 		b.WriteString("type: journal\n")
 		b.WriteString("---\n\n")
 		b.WriteString(entryBody)
-		if err := os.WriteFile(filePath, []byte(b.String()), 0644); err != nil {
-			jp.statusMsg = "Error: " + err.Error()
-			return nil
-		}
+		content = b.String()
+	}
+
+	if err := atomicWriteNote(filePath, content); err != nil {
+		jp.statusMsg = "Error: " + err.Error()
+		return nil
 	}
 
 	jp.saved = true
