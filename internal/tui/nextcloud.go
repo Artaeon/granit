@@ -295,14 +295,21 @@ func (nc *NextcloudSync) downloadFile(relPath string) error {
 	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
 		return err
 	}
-	out, err := os.Create(absPath)
+	// Atomic download: write to .tmp then rename to prevent partial files.
+	tmpPath := absPath + ".tmp"
+	out, err := os.Create(tmpPath)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
 	if _, copyErr := io.Copy(out, resp.Body); copyErr != nil {
-		os.Remove(absPath)
+		_ = out.Close()
+		_ = os.Remove(tmpPath)
 		return copyErr
+	}
+	_ = out.Close()
+	if err := os.Rename(tmpPath, absPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
 	}
 	return nil
 }
