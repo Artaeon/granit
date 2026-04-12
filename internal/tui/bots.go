@@ -1290,7 +1290,7 @@ func (b *Bots) saveResultToNote() (string, error) {
 	buf.WriteString(b.rawResponse)
 	buf.WriteString("\n")
 
-	if err := os.WriteFile(fullPath, []byte(buf.String()), 0o644); err != nil {
+	if err := atomicWriteNote(fullPath, buf.String()); err != nil {
 		return "", err
 	}
 	return filepath.Join("Bots", filename), nil

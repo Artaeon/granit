@@ -704,7 +704,7 @@ func (tm *TaskManager) writeLineChange(notePath string, lineNum int, transform f
 	newContent := strings.Join(lines, "\n")
 	note.Content = newContent
 	absPath := filepath.Join(tm.vault.Root, notePath)
-	if err := os.WriteFile(absPath, []byte(newContent), 0644); err != nil {
+	if err := atomicWriteNote(absPath, newContent); err != nil {
 		return false
 	}
 	tm.fileChanged = true
@@ -801,7 +801,7 @@ func (tm *TaskManager) createNextRecurrence(task Task) {
 	}
 	note.Content += "\n" + newLine + "\n"
 	absPath := filepath.Join(tm.vault.Root, task.NotePath)
-	_ = os.WriteFile(absPath, []byte(note.Content), 0644)
+	_ = atomicWriteNote(absPath, note.Content)
 	tm.statusMsg = fmt.Sprintf("Task completed — next: %s", dateStr)
 }
 
@@ -935,7 +935,7 @@ func (tm *TaskManager) doArchive() int {
 		archiveContent = string(existing)
 	}
 	archiveContent += "\n" + strings.Join(archived, "\n") + "\n"
-	_ = os.WriteFile(archiveFile, []byte(archiveContent), 0644)
+	_ = atomicWriteNote(archiveFile, archiveContent)
 
 	// Write updated Tasks.md
 	_ = writeTasksFile(tm.vault.Root, []byte(strings.Join(kept, "\n")+"\n"))
@@ -1158,7 +1158,7 @@ func (tm *TaskManager) insertSubtasks(notePath string, parentLine int, subtasks 
 	result = append(result, newLines...)
 	result = append(result, lines[idx+1:]...)
 
-	_ = os.WriteFile(absPath, []byte(strings.Join(result, "\n")), 0644)
+	_ = atomicWriteNote(absPath, strings.Join(result, "\n"))
 	tm.fileChanged = true
 	tm.lastChangedNote = notePath
 }

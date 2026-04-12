@@ -1075,19 +1075,15 @@ func appendResearchLog(vaultRoot, topic string, depth, format, profile, sourceFi
 	line := fmt.Sprintf("- [%s] **%s** — %s, %s, %s — %d notes created — %s\n",
 		date, topic, depthStr, formatStr, profileStr, noteCount, elapsedStr)
 
-	// Create the file with a header if it doesn't exist
-	if _, err := os.Stat(logPath); os.IsNotExist(err) {
-		header := "---\ndate: " + time.Now().Format("2006-01-02") + "\ntype: research-log\ntags: [research, log, meta]\n---\n\n# Research Log\n\n"
-		_ = os.WriteFile(logPath, []byte(header+line), 0644)
+	// Read existing log content (if any) and append the new entry atomically.
+	existing, err := os.ReadFile(logPath)
+	if err != nil && !os.IsNotExist(err) {
 		return
 	}
-
-	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return
+	if len(existing) == 0 {
+		existing = []byte("---\ndate: " + time.Now().Format("2006-01-02") + "\ntype: research-log\ntags: [research, log, meta]\n---\n\n# Research Log\n\n")
 	}
-	defer func() { _ = f.Close() }()
-	_, _ = f.WriteString(line)
+	_ = atomicWriteNote(logPath, string(existing)+line)
 }
 
 // parseCreatedFiles extracts file paths from Claude's output.

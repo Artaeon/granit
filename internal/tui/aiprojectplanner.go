@@ -496,7 +496,7 @@ func (ap *AIProjectPlanner) saveProjectAndTasks() error {
 			}
 
 			taskFile := filepath.Join(absFolder, "tasks.md")
-			if err := os.WriteFile(taskFile, []byte(b.String()), 0644); err != nil {
+			if err := atomicWriteNote(taskFile, b.String()); err != nil {
 				return fmt.Errorf("failed to write tasks note: %w", err)
 			}
 		}

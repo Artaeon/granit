@@ -347,7 +347,7 @@ func (pm *ProjectMode) toggleTask(idx int) {
 		line = strings.Replace(line, "[ ]", "[x]", 1)
 	}
 	lines[task.LineNum-1] = line
-	if err := os.WriteFile(absPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+	if err := atomicWriteNote(absPath, strings.Join(lines, "\n")); err != nil {
 		return
 	}
 	task.Done = !task.Done
@@ -966,7 +966,7 @@ func (pm ProjectMode) updateDashboard(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 			absPath := filepath.Join(pm.vaultRoot, newPath)
 			dir := filepath.Dir(absPath)
 			_ = os.MkdirAll(dir, 0755)
-			_ = os.WriteFile(absPath, []byte("# New Note\n\n"), 0644)
+			_ = atomicWriteNote(absPath, "# New Note\n\n")
 			pm.selectedNote = newPath
 			pm.hasNote = true
 			pm.active = false
