@@ -122,7 +122,10 @@ func (g Goal) IsOverdue() bool {
 	if err != nil {
 		return false
 	}
-	return time.Now().After(target)
+	// Compare against today's midnight so "today" is not yet overdue.
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	return today.After(target)
 }
 
 // DaysRemaining returns days until target date (-1 if no date set).
@@ -1254,7 +1257,7 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			gm.ensureVisible()
 		}
 	case "k", "up":
-		if gm.expanded >= 0 {
+		if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
 			if gm.milestoneCur > 0 {
 				gm.milestoneCur--
 			}
@@ -1467,7 +1470,7 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 	case "r":
 		if gm.cursor < len(gm.filtered) {
 			gm.inputGoalID = gm.filtered[gm.cursor].ID
-			if gm.expanded >= 0 {
+			if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
 				gm.inputGoalID = gm.filtered[gm.expanded].ID
 				gm.input = goalInputReview
 				gm.inputBuf = ""
@@ -2201,9 +2204,11 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 				if ms.DueDate != "" {
 					dColor := overlay0
 					if d, err := time.Parse("2006-01-02", ms.DueDate); err == nil {
-						if time.Now().After(d) && !ms.Done {
+						now := time.Now()
+						today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+						if today.After(d) && !ms.Done {
 							dColor = red
-						} else if time.Now().AddDate(0, 0, 7).After(d) && !ms.Done {
+						} else if today.AddDate(0, 0, 7).After(d) && !ms.Done {
 							dColor = yellow
 						}
 					}
