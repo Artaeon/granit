@@ -828,13 +828,13 @@ func installRegistryPlugin(rp RegistryPlugin) error {
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), manifestData, 0600); err != nil {
+	if err := atomicWriteState(filepath.Join(pluginDir, "plugin.json"), manifestData); err != nil {
 		return fmt.Errorf("write manifest: %w", err)
 	}
 
 	// Write script
 	scriptPath := filepath.Join(pluginDir, rp.ScriptName)
-	if err := os.WriteFile(scriptPath, []byte(rp.ScriptBody), 0700); err != nil {
+	if err := atomicWriteWithPerm(scriptPath, []byte(rp.ScriptBody), 0o700); err != nil {
 		return fmt.Errorf("write script: %w", err)
 	}
 
