@@ -537,6 +537,19 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 	assistNoteContent := r.assistNoteContent
 	assistVaultTitles := r.assistVaultTitles
 
+	// Capture context and save location settings
+	contextMode := r.contextMode
+	saveMode := r.saveMode
+	customSavePath := r.customSavePath
+	activeNotePath := r.activeNotePath
+	allVaultPaths := r.allVaultPaths
+
+	// Build selected notes content map (reads from disk in the closure)
+	selectedNotePaths := make([]string, 0, len(r.selectedNotes))
+	for p := range r.selectedNotes {
+		selectedNotePaths = append(selectedNotePaths, p)
+	}
+
 	// Create a context with 10-minute timeout for the research process
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	r.cancelFunc = cancel
@@ -551,10 +564,25 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 			}
 		}
 
+		// Resolve save folder
+		saveFolder := resolveSaveFolder(vaultRoot, topic, activeNotePath, saveMode, customSavePath)
+
+		// Build context notes map by reading selected note files
+		var contextNotes map[string]string
+		if contextMode == 2 && len(selectedNotePaths) > 0 {
+			contextNotes = make(map[string]string, len(selectedNotePaths))
+			for _, p := range selectedNotePaths {
+				data, err := os.ReadFile(filepath.Join(vaultRoot, p))
+				if err == nil {
+					contextNotes[p] = string(data)
+				}
+			}
+		}
+
 		var prompt string
 		switch mode {
 		case modeFollowUp:
-			prompt = buildFollowUpPrompt(topic, vaultRoot, depth, format, followUpContext, followUpSource)
+			prompt = buildFollowUpPrompt(topic, vaultRoot, saveFolder, depth, format, contextMode, followUpContext, followUpSource, contextNotes, allVaultPaths)
 		case modeVaultAnalyzer:
 			prompt = buildVaultAnalyzerPrompt(vaultRoot, vaultNoteList, depth)
 		case modeNoteEnhancer:
@@ -569,9 +597,9 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 			prompt = buildNoteEnhancePrompt(vaultRoot, assistNotePath, assistNoteContent, assistVaultTitles)
 		default:
 			if followUp {
-				prompt = buildFollowUpPrompt(topic, vaultRoot, depth, format, followUpContext, followUpSource)
+				prompt = buildFollowUpPrompt(topic, vaultRoot, saveFolder, depth, format, contextMode, followUpContext, followUpSource, contextNotes, allVaultPaths)
 			} else {
-				prompt = buildResearchPrompt(topic, vaultRoot, depth, format, profile, sourceFilter)
+				prompt = buildResearchPrompt(topic, vaultRoot, saveFolder, depth, format, profile, sourceFilter, contextMode, contextNotes, allVaultPaths)
 			}
 		}
 
@@ -618,16 +646,91 @@ func (r *ResearchAgent) runResearch() tea.Cmd {
 	}
 }
 
-// buildResearchPrompt creates the prompt for Claude Code.
-func buildResearchPrompt(topic, vaultRoot string, depth, format, profile, sourceFilter int) string {
-	today := time.Now().Format("2006-01-02")
-
+// resolveSaveFolder determines the output folder for research notes based on save mode.
+func resolveSaveFolder(vaultRoot, topic, activeNotePath string, saveMode int, customPath string) string {
 	safeTopic := strings.ReplaceAll(topic, "/", "-")
 	safeTopic = strings.ReplaceAll(safeTopic, "\\", "-")
 	if len(safeTopic) > 50 {
 		safeTopic = safeTopic[:50]
 	}
-	folder := filepath.Join(vaultRoot, "Research", fmt.Sprintf("%s %s", safeTopic, today))
+	today := time.Now().Format("2006-01-02")
+
+	switch saveMode {
+	case 1: // Current folder
+		if activeNotePath != "" {
+			dir := filepath.Dir(activeNotePath)
+			if dir == "." {
+				return filepath.Join(vaultRoot, fmt.Sprintf("%s %s", safeTopic, today))
+			}
+			return filepath.Join(vaultRoot, dir, fmt.Sprintf("%s %s", safeTopic, today))
+		}
+		return filepath.Join(vaultRoot, "Research", fmt.Sprintf("%s %s", safeTopic, today))
+	case 2: // Auto — Claude decides
+		return "" // empty signals Claude should pick
+	case 3: // Custom
+		if customPath != "" {
+			return filepath.Join(vaultRoot, customPath, fmt.Sprintf("%s %s", safeTopic, today))
+		}
+		return filepath.Join(vaultRoot, "Research", fmt.Sprintf("%s %s", safeTopic, today))
+	default: // 0 = Research folder
+		return filepath.Join(vaultRoot, "Research", fmt.Sprintf("%s %s", safeTopic, today))
+	}
+}
+
+// buildContextSection builds the vault context section for a research prompt.
+func buildContextSection(contextMode int, contextNotes map[string]string, vaultTitles []string) string {
+	switch contextMode {
+	case 1: // Whole vault — pass titles only
+		if len(vaultTitles) == 0 {
+			return ""
+		}
+		titles := make([]string, 0, len(vaultTitles))
+		for _, t := range vaultTitles {
+			titles = append(titles, strings.TrimSuffix(filepath.Base(t), ".md"))
+		}
+		if len(titles) > 300 {
+			return "\n\nEXISTING VAULT NOTES (for wikilink references and context):\n" +
+				strings.Join(titles[:300], "\n") +
+				fmt.Sprintf("\n... and %d more", len(titles)-300) +
+				"\n\nUse [[wikilinks]] to link to these existing notes where topics overlap."
+		}
+		return "\n\nEXISTING VAULT NOTES (for wikilink references and context):\n" +
+			strings.Join(titles, "\n") +
+			"\n\nUse [[wikilinks]] to link to these existing notes where topics overlap."
+	case 2: // Selected notes — pass titles and content
+		if len(contextNotes) == 0 {
+			return ""
+		}
+		var ctx strings.Builder
+		ctx.WriteString("\n\nCONTEXT NOTES (selected by the user — use these as background knowledge):\n")
+		totalLen := 0
+		for path, content := range contextNotes {
+			name := strings.TrimSuffix(filepath.Base(path), ".md")
+			snippet := content
+			// Keep total context under ~40KB
+			if totalLen+len(snippet) > 40000 {
+				remaining := 40000 - totalLen
+				if remaining > 500 {
+					snippet = snippet[:remaining] + "\n[... truncated ...]"
+				} else {
+					ctx.WriteString(fmt.Sprintf("\n... and more notes (truncated to fit prompt limits)\n"))
+					break
+				}
+			}
+			ctx.WriteString(fmt.Sprintf("\n--- %s (%s) ---\n%s\n", name, path, snippet))
+			totalLen += len(snippet)
+		}
+		ctx.WriteString("\nUse these notes as context. Reference them with [[wikilinks]] where relevant.")
+		ctx.WriteString("\nBuild upon and connect to the knowledge in these notes.")
+		return ctx.String()
+	default:
+		return ""
+	}
+}
+
+// buildResearchPrompt creates the prompt for Claude Code.
+func buildResearchPrompt(topic, vaultRoot, saveFolder string, depth, format, profile, sourceFilter, contextMode int, contextNotes map[string]string, vaultTitles []string) string {
+	today := time.Now().Format("2006-01-02")
 
 	var noteCount string
 	switch depth {
@@ -707,6 +810,18 @@ Use [[wikilinks]] extensively.`
 		sourceInstr = "SOURCE FOCUS: Use any reliable sources — web articles, documentation, papers, books, etc."
 	}
 
+	// Save location instructions
+	var folderInstr string
+	if saveFolder == "" {
+		// Auto mode — Claude decides
+		folderInstr = fmt.Sprintf(`Choose the most appropriate location within the vault (%s) to save the research notes.
+Consider the topic and existing vault structure. Create a subfolder with a descriptive name.
+Use your judgment — if there's an existing folder that fits, use a subfolder within it.
+Otherwise, create a new folder at the vault root.`, vaultRoot)
+	} else {
+		folderInstr = fmt.Sprintf("Create the notes in the folder: %s\nCreate the folder if it doesn't exist.", saveFolder)
+	}
+
 	prompt := fmt.Sprintf(`You are a research assistant creating structured knowledge notes.
 
 TOPIC: %s
@@ -717,8 +832,8 @@ TOPIC: %s
 
 INSTRUCTIONS:
 1. Research this topic thoroughly using web search to find current, accurate information.
-2. Create %s in the folder: %s
-3. Create the folder if it doesn't exist.
+2. Create %s.
+3. %s
 4. %s
 
 FORMAT for each note:
@@ -731,8 +846,11 @@ IMPORTANT:
 - Create ALL files using the Write tool
 - The _Index.md hub note should be created LAST and link to everything
 - Each filename should be descriptive (e.g., "Concept - Neural Networks.md")
-- Do NOT create files outside the research folder
-- After creating all files, list the files you created`, topic, profileInstr, sourceInstr, noteCount, folder, formatInstr, today)
+- Do NOT create files outside the designated folder
+- After creating all files, list the files you created`, topic, profileInstr, sourceInstr, noteCount, folderInstr, formatInstr, today)
+
+	// Append vault context based on context mode
+	prompt += buildContextSection(contextMode, contextNotes, vaultTitles)
 
 	// Append project context from CLAUDE.md and .claude/settings.json
 	prompt += loadProjectContext(vaultRoot)
@@ -746,11 +864,15 @@ IMPORTANT:
 
 // buildFollowUpPrompt creates the prompt for follow-up research that builds
 // upon existing notes.
-func buildFollowUpPrompt(topic, vaultRoot string, depth, format int, existingContent, sourcePath string) string {
+func buildFollowUpPrompt(topic, vaultRoot, saveFolder string, depth, format, contextMode int, existingContent, sourcePath string, contextNotes map[string]string, vaultTitles []string) string {
 	today := time.Now().Format("2006-01-02")
 
-	// Determine the folder — reuse the existing Research folder from the source note
-	folder := filepath.Join(vaultRoot, filepath.Dir(sourcePath))
+	// Determine the folder — use saveFolder if provided, else reuse existing folder
+	folder := saveFolder
+	if folder == "" {
+		// Auto mode or default — reuse the source note's folder
+		folder = filepath.Join(vaultRoot, filepath.Dir(sourcePath))
+	}
 
 	var noteCount string
 	switch depth {
@@ -787,6 +909,15 @@ Use [[wikilinks]] extensively.`
 		contextSnippet = contextSnippet[:8000] + "\n\n[... content truncated for brevity ...]"
 	}
 
+	// Save location instructions
+	var folderInstr string
+	if saveFolder == "" {
+		folderInstr = fmt.Sprintf(`Choose the most appropriate location within the vault to save the follow-up notes.
+Consider the source note's location (%s) and the topic. You may reuse the source note's folder or create a new subfolder.`, filepath.Dir(sourcePath))
+	} else {
+		folderInstr = fmt.Sprintf("Create the notes in the folder: %s\nCreate the folder if it doesn't exist.", folder)
+	}
+
 	prompt := fmt.Sprintf(`You are a research assistant performing FOLLOW-UP research to go deeper on an existing topic.
 
 TOPIC: %s
@@ -804,9 +935,10 @@ INSTRUCTIONS:
    - Deeper technical details, edge cases, or advanced concepts
    - Related topics, connections, and cross-disciplinary insights
    - Counterarguments, criticisms, or alternative perspectives
-3. Create %s in the folder: %s
-4. Do NOT duplicate content that already exists in the folder — check existing files first.
-5. %s
+3. Create %s.
+4. %s
+5. Do NOT duplicate content that already exists — check existing files first.
+6. %s
 
 FORMAT for each note:
 - Start with YAML frontmatter: ---\ndate: %s\ntype: research\ntags: [research, follow-up, <relevant-tags>]\nsource: <url-if-applicable>\n---
@@ -819,9 +951,11 @@ IMPORTANT:
 - Create ALL new files using the Write tool
 - Read the existing _Index.md first, then UPDATE it to include links to your new notes (keep all existing links intact)
 - Each new filename should be descriptive (e.g., "Concept - Advanced Neural Architectures.md")
-- Do NOT create files outside the research folder
 - Do NOT overwrite existing notes — only create NEW ones and update _Index.md
-- After creating all files, list the new files you created`, topic, sourcePath, contextSnippet, noteCount, folder, formatInstr, today)
+- After creating all files, list the new files you created`, topic, sourcePath, contextSnippet, noteCount, folderInstr, formatInstr, today)
+
+	// Append vault context based on context mode
+	prompt += buildContextSection(contextMode, contextNotes, vaultTitles)
 
 	// Append project context from CLAUDE.md and .claude/settings.json
 	prompt += loadProjectContext(vaultRoot)
