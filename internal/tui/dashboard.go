@@ -81,6 +81,12 @@ type Dashboard struct {
 	bizTasksTotal int // total such tasks this week
 	bizHoursWeek  float64 // hours tracked on business tasks this week
 
+	// Productivity Pulse (aggregated from FocusSessions + TimeTracker)
+	focusMinToday  int    // total focus minutes today (from FocusSessions file)
+	focusSessions  int    // number of focus/pomodoro sessions today
+	nextDeadline   string // soonest upcoming task due date text
+	nextDeadlineDays int  // days until next deadline (-1 = none)
+
 	// Today's edit count (files modified today)
 	todayEditCount int
 
@@ -136,6 +142,7 @@ func (d *Dashboard) Open(vaultRoot string, projects []Project, goals []Goal) {
 
 	d.dailyScripture = DailyScripture(vaultRoot)
 	d.scan()
+	d.scanProductivity()
 }
 
 // Close deactivates the dashboard overlay.
@@ -173,6 +180,10 @@ func (d *Dashboard) scan() {
 	d.bizTasksTotal = 0
 	d.bizHoursWeek = 0
 	d.todayEditCount = 0
+	d.focusMinToday = 0
+	d.focusSessions = 0
+	d.nextDeadline = ""
+	d.nextDeadlineDays = -1
 	for i := range d.weeklyWords {
 		d.weeklyWords[i] = 0
 	}
@@ -322,6 +333,18 @@ func (d *Dashboard) scan() {
 					d.overdueTasks = append(d.overdueTasks, dashTask{Text: taskText, Done: false})
 					d.overdueCount++
 				}
+				// Track soonest upcoming deadline.
+				if dueDate > todayStr && !done {
+					if dt, err := time.Parse("2006-01-02", dueDate); err == nil {
+						days := int(dt.Sub(todayStart).Hours() / 24)
+						if d.nextDeadlineDays < 0 || days < d.nextDeadlineDays {
+							d.nextDeadlineDays = days
+							// Clean the task text for display (strip date emoji).
+							label := dueDateRe.ReplaceAllString(taskText, "")
+							d.nextDeadline = strings.TrimSpace(label)
+						}
+					}
+				}
 			}
 
 			// --- Business metrics (tasks with biz tags, modified this week) ---
@@ -394,6 +417,33 @@ func (d *Dashboard) scan() {
 			}
 		} else if d.writingStreak > 0 {
 			break
+		}
+	}
+}
+
+// scanProductivity reads today's FocusSessions file and timetracker data
+// to populate the Productivity Pulse section.
+func (d *Dashboard) scanProductivity() {
+	if d.vaultRoot == "" {
+		return
+	}
+	todayStr := time.Now().Format("2006-01-02")
+	fp := filepath.Join(d.vaultRoot, "FocusSessions", todayStr+".md")
+	data, err := os.ReadFile(fp)
+	if err != nil {
+		return
+	}
+	durationRe := regexp.MustCompile(`Duration:\s*(\d+)\s*min`)
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "## Session") {
+			d.focusSessions++
+		}
+		if m := durationRe.FindStringSubmatch(trimmed); m != nil {
+			var v int
+			if _, err := fmt.Sscanf(m[1], "%d", &v); err == nil {
+				d.focusMinToday += v
+			}
 		}
 	}
 }
@@ -836,6 +886,45 @@ func (d Dashboard) View() string {
 			lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("\u2591", barW-filled))
 		lines = append(lines, "  "+bar+" "+numStyle.Render(fmt.Sprintf("%d%%", pct)))
 		lines = append(lines, dimSt.Render("  Tag tasks with #revenue #client #business"))
+		lines = append(lines, "")
+	}
+
+	// --- Productivity Pulse ---
+	if d.focusSessions > 0 || d.nextDeadlineDays >= 0 {
+		lines = append(lines, sectionTitle.Render("\u26A1 Productivity Pulse"))
+		lines = append(lines, dimSt.Render(strings.Repeat("\u2500", innerW-4)))
+
+		if d.focusSessions > 0 {
+			hours := d.focusMinToday / 60
+			mins := d.focusMinToday % 60
+			var timeStr string
+			if hours > 0 {
+				timeStr = fmt.Sprintf("%dh %dm", hours, mins)
+			} else {
+				timeStr = fmt.Sprintf("%d min", mins)
+			}
+			lines = append(lines, fmt.Sprintf("  %s focus time today (%s sessions)",
+				numStyle.Render(timeStr),
+				numStyle.Render(smallNum(d.focusSessions))))
+		}
+
+		if d.nextDeadlineDays >= 0 && d.nextDeadline != "" {
+			deadlineLabel := TruncateDisplay(d.nextDeadline, innerW-30)
+			var urgency string
+			switch {
+			case d.nextDeadlineDays <= 1:
+				urgency = lipgloss.NewStyle().Foreground(red).Bold(true).Render(
+					fmt.Sprintf("tomorrow"))
+			case d.nextDeadlineDays <= 3:
+				urgency = lipgloss.NewStyle().Foreground(peach).Render(
+					fmt.Sprintf("%d days", d.nextDeadlineDays))
+			default:
+				urgency = dimSt.Render(fmt.Sprintf("%d days", d.nextDeadlineDays))
+			}
+			lines = append(lines, fmt.Sprintf("  %s %s in %s",
+				lipgloss.NewStyle().Foreground(yellow).Render("\u23F3"),
+				labelStyle.Render(deadlineLabel), urgency))
+		}
 		lines = append(lines, "")
 	}
 
