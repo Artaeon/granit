@@ -314,6 +314,7 @@ func (fs FocusSession) updateActive(msg tea.KeyMsg) (FocusSession, tea.Cmd) {
 		// End session early, go to review
 		fs.totalElapsed = fs.elapsed
 		fs.sessionNotes = fs.scratchpad
+		fs.sessionGoal = fs.goalInput
 		fs.phase = fsPhaseReview
 		return fs, nil
 
