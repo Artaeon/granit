@@ -236,15 +236,14 @@ func OllamaEnsureModel(baseURL, model string) string {
 		return msg
 	}
 
-	ollamaMu.RLock()
-	noServer := ollamaState == ollamaNoServer
-	ollamaMu.RUnlock()
-	if noServer {
+	// Atomically check state and transition to pulling to avoid TOCTOU race.
+	ollamaMu.Lock()
+	if ollamaState == ollamaNoServer {
+		ollamaMu.Unlock()
 		return msg // can't auto-pull without server
 	}
-
-	// Server running but model missing — try to pull
-	setOllamaState(ollamaPulling)
+	ollamaState = ollamaPulling
+	ollamaMu.Unlock()
 	if err := OllamaPullModel(baseURL, model); err != nil {
 		return fmt.Sprintf("Auto-pull failed: %v", err)
 	}
