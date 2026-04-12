@@ -273,12 +273,22 @@ func (c *Canvas) cardHeightForZoom() int {
 	}
 }
 
+// cardDisplayWidth returns the effective rendered width for a card,
+// applying the minimum width override so selection matches drawing.
+func cardDisplayWidth(w int) int {
+	if w < canvasCardMinWidth {
+		return canvasCardWidth
+	}
+	return w
+}
+
 // cardAtCursor returns the index of the card whose bounding box contains the
 // cursor, or -1 if none.
 func (c *Canvas) cardAtCursor() int {
 	ch := c.cardHeightForZoom()
 	for i, card := range c.cards {
-		if c.cursorX >= card.X && c.cursorX < card.X+card.Width &&
+		cw := cardDisplayWidth(card.Width)
+		if c.cursorX >= card.X && c.cursorX < card.X+cw &&
 			c.cursorY >= card.Y && c.cursorY < card.Y+ch {
 			return i
 		}
@@ -737,10 +747,7 @@ func (c Canvas) renderGrid(gw, gh int) []string {
 			borderColor = peach
 		}
 
-		cw := card.Width
-		if cw < canvasCardMinWidth {
-			cw = canvasCardWidth
-		}
+		cw := cardDisplayWidth(card.Width)
 
 		// Connection indicators: show linked card indices
 		connIndicator := ""
