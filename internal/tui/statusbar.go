@@ -25,8 +25,9 @@ type StatusBar struct {
 	colNum     int
 	wordCount  int
 	ai AIConfig
-	pomodoroStatus string // e.g. "🍅 12:34"
-	clockInStatus  string // e.g. "⏱ 1:23:45 · Project"
+	pomodoroStatus     string // e.g. "🍅 12:34"
+	focusSessionStatus string // e.g. "◉ 12:34"
+	clockInStatus      string // e.g. "⏱ 1:23:45 · Project"
 	researchStatus string // e.g. "Researching: AI trends"
 	dueTodayCount  int
 	overdueCount   int
@@ -129,6 +130,10 @@ func (sb *StatusBar) SetAIStatus(provider, model string) {
 
 func (sb *StatusBar) SetPomodoroStatus(status string) {
 	sb.pomodoroStatus = status
+}
+
+func (sb *StatusBar) SetFocusSessionStatus(status string) {
+	sb.focusSessionStatus = status
 }
 
 func (sb *StatusBar) SetClockInStatus(status string) {
@@ -270,10 +275,15 @@ func (sb StatusBar) View() string {
 		taskIndicator = alertBadge(fmt.Sprintf("%d due", sb.dueTodayCount), yellow)
 	}
 
-	// Pomodoro & clock-in (medium priority — colored badges)
+	// Pomodoro, focus session & clock-in (medium priority — colored badges)
 	pomoIndicator := ""
 	if sb.pomodoroStatus != "" {
 		pomoIndicator = alertBadge(sb.pomodoroStatus, peach)
+	}
+
+	focusIndicator := ""
+	if sb.focusSessionStatus != "" {
+		focusIndicator = alertBadge(sb.focusSessionStatus, mauve)
 	}
 
 	clockIndicator := ""
@@ -338,7 +348,8 @@ func (sb StatusBar) View() string {
 			lipgloss.Width(researchIndicator) + lipgloss.Width(planIndicator) +
 			lipgloss.Width(inboxIndicator) + lipgloss.Width(overdueIndicator) +
 			lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) +
-			lipgloss.Width(pomoIndicator) + lipgloss.Width(gitIndicator) +
+			lipgloss.Width(pomoIndicator) + lipgloss.Width(focusIndicator) +
+			lipgloss.Width(gitIndicator) +
 			lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	}
 
@@ -370,7 +381,8 @@ func (sb StatusBar) View() string {
 	rightLen := lipgloss.Width(researchIndicator) + lipgloss.Width(planIndicator) +
 		lipgloss.Width(inboxIndicator) + lipgloss.Width(overdueIndicator) +
 		lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) +
-		lipgloss.Width(pomoIndicator) + lipgloss.Width(gitIndicator) +
+		lipgloss.Width(pomoIndicator) + lipgloss.Width(focusIndicator) +
+		lipgloss.Width(gitIndicator) +
 		lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	gap := sb.width - leftLen - rightLen
 	if gap < 0 {
@@ -384,7 +396,7 @@ func (sb StatusBar) View() string {
 
 	bar := sepLine + "\n" + mode + fileSection + cursorPos + wordInfo + readingBar + gapStr +
 		researchIndicator + planIndicator + inboxIndicator +
-		overdueIndicator + taskIndicator + clockIndicator + pomoIndicator +
+		overdueIndicator + taskIndicator + clockIndicator + pomoIndicator + focusIndicator +
 		gitIndicator + aiIndicator + rightInfo
 
 	// ── Help bar ─────────────────────────────────────────────────────

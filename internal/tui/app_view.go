@@ -776,6 +776,7 @@ func (m Model) View() string {
 		}
 		// Pomodoro and clock-in status indicators in status bar
 		m.statusbar.SetPomodoroStatus(m.pomodoro.StatusString())
+		m.statusbar.SetFocusSessionStatus(m.focusSession.StatusString())
 		m.statusbar.SetClockInStatus(m.clockIn.StatusString())
 		if layout == "zen" || layout == "minimal" || layout == "presenter" {
 			// Minimal status for zen/presenter: just filename + word count, no help bar

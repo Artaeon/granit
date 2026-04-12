@@ -77,6 +77,31 @@ func (fs FocusSession) IsActive() bool {
 	return fs.active
 }
 
+// StatusString returns a short status line for the status bar.
+// Returns "" when no session is actively running.
+func (fs FocusSession) StatusString() string {
+	if !fs.active {
+		return ""
+	}
+	switch fs.phase {
+	case fsPhaseActive:
+		remaining := fs.duration - fs.elapsed
+		if remaining < 0 {
+			remaining = 0
+		}
+		mins := int(remaining.Minutes())
+		secs := int(remaining.Seconds()) % 60
+		label := fmt.Sprintf("\u25C9 %d:%02d", mins, secs)
+		if fs.paused {
+			label += " paused"
+		}
+		return label
+	case fsPhaseBreak:
+		return "\u25C9 break"
+	}
+	return ""
+}
+
 // Open activates the focus session overlay and resets to the setup phase.
 func (fs *FocusSession) Open(vaultRoot string) {
 	fs.active = true
