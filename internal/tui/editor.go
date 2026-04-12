@@ -471,7 +471,7 @@ func (e *Editor) Undo() {
 	}
 	e.redoStack = append(e.redoStack, current)
 	if len(e.redoStack) > 100 {
-		e.redoStack = e.redoStack[len(e.redoStack)-100:]
+		e.redoStack = e.redoStack[1:] // Remove oldest
 	}
 
 	// Pop from undo stack and restore (deep copy to avoid corrupting history)
@@ -503,7 +503,7 @@ func (e *Editor) Redo() {
 	}
 	e.undoStack = append(e.undoStack, current)
 	if len(e.undoStack) > 100 {
-		e.undoStack = e.undoStack[len(e.undoStack)-100:]
+		e.undoStack = e.undoStack[1:] // Remove oldest
 	}
 
 	// Pop from redo stack and restore (deep copy to avoid corrupting history)
@@ -1307,7 +1307,10 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 				e.modified = true
 				e.rebuildBlockCaches()
 			} else {
-				// Single cursor tab insertion
+				// Single cursor tab insertion — delete selection first if active
+				if e.selectionActive {
+					e.DeleteSelection()
+				}
 				var tabStr string
 				var advance int
 				if e.insertTabs {
