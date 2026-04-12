@@ -86,6 +86,7 @@ func (sb *StatusBar) SetError(msg string) {
 }
 
 // pushStatusToast adds a message to the queue. Duplicates are ignored.
+// The queue is capped at 32 entries to prevent unbounded growth.
 func (sb *StatusBar) pushStatusToast(text string, priority ToastLevel) {
 	for _, t := range sb.messages {
 		if t.text == text && t.priority == priority {
@@ -93,6 +94,9 @@ func (sb *StatusBar) pushStatusToast(text string, priority ToastLevel) {
 		}
 	}
 	sb.messages = append(sb.messages, statusToast{text: text, priority: priority})
+	if len(sb.messages) > 32 {
+		sb.messages = sb.messages[len(sb.messages)-32:]
+	}
 }
 
 // topStatusToast returns the highest-priority message in the queue.
