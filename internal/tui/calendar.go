@@ -264,6 +264,9 @@ func (c *Calendar) SetDailyNotes(notes []string) {
 
 func (c *Calendar) SetEvents(events []CalendarEvent) {
 	c.events = events
+	if c.view == calViewAgenda {
+		c.rebuildAgendaItems()
+	}
 }
 
 // GetEvents returns the currently loaded calendar events.
