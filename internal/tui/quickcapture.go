@@ -271,32 +271,35 @@ func (qc *QuickCapture) save() {
 	if qc.mode == 3 {
 		// New note: avoid overwriting existing files
 		if _, statErr := os.Stat(filePath); statErr == nil {
-			// File exists — append a numeric suffix
 			ext := filepath.Ext(filePath)
 			base := strings.TrimSuffix(filePath, ext)
+			found := false
 			for n := 1; n < 100; n++ {
 				candidate := fmt.Sprintf("%s-%d%s", base, n, ext)
 				if _, err := os.Stat(candidate); os.IsNotExist(err) {
 					filePath = candidate
+					found = true
 					break
 				}
 			}
+			if !found {
+				// Fallback: use timestamp to guarantee uniqueness.
+				filePath = fmt.Sprintf("%s-%d%s", base, time.Now().UnixNano(), ext)
+			}
 		}
-		err := os.WriteFile(filePath, []byte(content+"\n"), 0644)
-		if err != nil {
+		if err := atomicWriteNote(filePath, content+"\n"); err != nil {
 			qc.statusMsg = "Error: " + err.Error()
 			return
 		}
 	} else {
-		// Append to existing file
-		f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
+		// Append to existing file atomically (read + append + write).
+		existing, err := os.ReadFile(filePath)
+		if err != nil && !os.IsNotExist(err) {
 			qc.statusMsg = "Error: " + err.Error()
 			return
 		}
-		_, err = f.WriteString(content)
-		_ = f.Close()
-		if err != nil {
+		merged := string(existing) + content
+		if err := atomicWriteNote(filePath, merged); err != nil {
 			qc.statusMsg = "Error: " + err.Error()
 			return
 		}
