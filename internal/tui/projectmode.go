@@ -844,6 +844,11 @@ func (pm ProjectMode) updateList(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 			idx := filtered[pm.cursor]
 			pm.projects[idx].Status = "archived"
 			pm.saveProjects()
+			// Clamp cursor after archiving shrinks the filtered list.
+			newFiltered := pm.filteredProjects()
+			if pm.cursor >= len(newFiltered) {
+				pm.cursor = max(0, len(newFiltered)-1)
+			}
 		}
 	case "tab":
 		pm.categoryIdx++
