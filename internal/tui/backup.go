@@ -488,10 +488,9 @@ func RestoreBackup(vaultPath string, backupPath string) error {
 	defer func() { _ = r.Close() }()
 
 	for _, f := range r.File {
-		destPath := filepath.Join(vaultPath, f.Name)
-
-		// Prevent path traversal attacks.
-		if !strings.HasPrefix(filepath.Clean(destPath), filepath.Clean(vaultPath)+string(filepath.Separator)) {
+		// Prevent path traversal attacks using the shared vault-path guard.
+		destPath, err := resolveVaultPath(vaultPath, f.Name)
+		if err != nil {
 			continue
 		}
 
