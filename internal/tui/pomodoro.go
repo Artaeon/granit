@@ -81,6 +81,9 @@ type Pomodoro struct {
 	// Completed tasks to sync back to source files (consumed-once by app)
 	completedTasks []TaskCompletion
 
+	// Pending time records to sync to TimeTracker (consumed-once by app)
+	pendingTimeRecords []pomodoroTimeRecord
+
 	// Daily session goal
 	pomodoroGoal int // target sessions per day, 0 means use config default
 }
@@ -150,6 +153,23 @@ func (p *Pomodoro) GetCompletedTasks() []TaskCompletion {
 	}
 	result := p.completedTasks
 	p.completedTasks = nil
+	return result
+}
+
+// pomodoroTimeRecord holds a completed work session's data for syncing
+// to the central TimeTracker.
+type pomodoroTimeRecord struct {
+	Task     string
+	Duration time.Duration
+}
+
+// GetTimeRecords returns and clears pending time records. Consumed-once pattern.
+func (p *Pomodoro) GetTimeRecords() []pomodoroTimeRecord {
+	if len(p.pendingTimeRecords) == 0 {
+		return nil
+	}
+	result := p.pendingTimeRecords
+	p.pendingTimeRecords = nil
 	return result
 }
 
@@ -929,13 +949,17 @@ func (p *Pomodoro) finishWorkSession() {
 	}
 	p.sessionLog = append(p.sessionLog, session)
 
-	// Log non-queue session to file
+	// Log non-queue session to file and queue TimeTracker record
 	if p.currentTask != "" {
 		project := ""
 		if qt := p.CurrentQueueTask(); qt != nil {
 			project = qt.Project
 		}
 		p.logSessionEntry(p.currentTask, project, int(p.workDuration.Minutes()), false)
+		p.pendingTimeRecords = append(p.pendingTimeRecords, pomodoroTimeRecord{
+			Task:     p.currentTask,
+			Duration: p.workDuration,
+		})
 	}
 
 	// Reset per-session counters

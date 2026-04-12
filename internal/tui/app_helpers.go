@@ -606,6 +606,15 @@ func (m *Model) syncPomodoroCompletions() {
 	m.refreshComponents("")
 }
 
+// syncPomodoroTimeRecords consumes pending time records from the pomodoro timer
+// and forwards them to the central TimeTracker for unified time reporting.
+func (m *Model) syncPomodoroTimeRecords() {
+	records := m.pomodoro.GetTimeRecords()
+	for _, rec := range records {
+		m.timeTracker.RecordPomodoro("", rec.Task)
+	}
+}
+
 // loadCalendarEvents gathers native events + ICS files and sets them on the calendar.
 func (m *Model) loadCalendarEvents() {
 	var calEvents []CalendarEvent
