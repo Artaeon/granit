@@ -328,7 +328,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
-						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+						if err := atomicWriteNote(path, content); err == nil {
 							if err := m.vault.Scan(); err != nil {
 								log.Printf("warning: vault scan failed: %v", err)
 							}
@@ -387,7 +387,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
-						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+						if err := atomicWriteNote(path, content); err == nil {
 							if err := m.vault.Scan(); err != nil {
 								log.Printf("warning: vault scan failed: %v", err)
 							}
@@ -442,7 +442,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					content := msg.output
 					if content != "" && m.activeNote != "" {
 						path := filepath.Join(m.vault.Root, m.activeNote)
-						if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+						if err := atomicWriteNote(path, content); err != nil {
 							m.statusbar.SetMessage("Git restore failed: " + err.Error())
 							return m, m.clearMessageAfter(5 * time.Second)
 						}
@@ -665,7 +665,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
-						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+						if err := atomicWriteNote(path, content); err == nil {
 							if err := m.vault.Scan(); err != nil {
 								log.Printf("warning: vault scan failed: %v", err)
 							}
@@ -1160,16 +1160,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					fallback := m.buildDailyFallback(evDate)
 					content := m.dailyNoteContent(evDate, fallback)
-					if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+					if err := atomicWriteNote(path, content); err != nil {
 						m.statusbar.SetMessage("Error creating daily note: " + err.Error())
 						return m, nil
 					}
 				}
-				// Append the task line
-				f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
-				if err == nil {
-					_, _ = f.WriteString("- [ ] " + evText + "\n")
-					_ = f.Close()
+				// Append the task line atomically.
+				if existing, readErr := os.ReadFile(path); readErr == nil {
+					_ = atomicWriteNote(path, string(existing)+"- [ ] "+evText+"\n")
 				}
 				// Save as native event in event store
 				if m.eventStore != nil {
@@ -1206,7 +1204,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						line = strings.Replace(line, "[X]", "[ ]", 1)
 					}
 					lines[toggle.LineNum-1] = line
-					if err := os.WriteFile(absPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+					if err := atomicWriteNote(absPath, strings.Join(lines, "\n")); err != nil {
 						m.statusbar.SetError("Error syncing task: " + err.Error())
 					}
 				}
@@ -1229,7 +1227,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					fallback := m.buildDailyFallback(date)
 					content := m.dailyNoteContent(date, fallback)
-					if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+					if err := atomicWriteNote(path, content); err != nil {
 						m.statusbar.SetMessage("Error creating daily note: " + err.Error())
 						return m, nil
 					}
@@ -1327,7 +1325,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					fileName := title + ".md"
 					relPath := fileName
 					absPath := filepath.Join(m.vault.Root, relPath)
-					if err := os.WriteFile(absPath, []byte(content), 0644); err == nil {
+					if err := atomicWriteNote(absPath, content); err == nil {
 						if err := m.vault.Scan(); err != nil {
 							log.Printf("warning: vault scan failed: %v", err)
 						}
@@ -1548,7 +1546,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								lines[tc.LineNum] = strings.Replace(lines[tc.LineNum], "- [x]", "- [ ]", 1)
 							}
 							newContent := strings.Join(lines, "\n")
-							if err := os.WriteFile(filepath.Join(m.vault.Root, tc.NotePath), []byte(newContent), 0644); err != nil {
+							if err := atomicWriteNote(filepath.Join(m.vault.Root, tc.NotePath), newContent); err != nil {
 								m.statusbar.SetError("Error syncing task: " + err.Error())
 							}
 						}
@@ -1669,7 +1667,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
-						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+						if err := atomicWriteNote(path, content); err == nil {
 							if err := m.vault.Scan(); err != nil {
 								log.Printf("warning: vault scan failed: %v", err)
 							}
@@ -2007,7 +2005,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
-						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+						if err := atomicWriteNote(path, content); err == nil {
 							if err := m.vault.Scan(); err != nil {
 								log.Printf("warning: vault scan failed: %v", err)
 							}
@@ -2102,7 +2100,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
-						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+						if err := atomicWriteNote(path, content); err == nil {
 							if err := m.vault.Scan(); err != nil {
 								log.Printf("warning: vault scan failed: %v", err)
 							}
@@ -2429,7 +2427,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					path := filepath.Join(m.vault.Root, name)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
-						if err := os.WriteFile(path, []byte(content), 0644); err == nil {
+						if err := atomicWriteNote(path, content); err == nil {
 							if err := m.vault.Scan(); err != nil {
 								log.Printf("warning: vault scan failed: %v", err)
 							}
