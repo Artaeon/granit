@@ -923,7 +923,19 @@ func (pm ProjectMode) updateDashboard(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 			pm.dashScroll--
 		}
 	case "down", "j":
-		pm.dashScroll++
+		// Clamp scroll to the current section's item count.
+		var sectionLen int
+		switch pm.dashSection {
+		case 0:
+			sectionLen = len(pm.dashNotes)
+		case 1:
+			sectionLen = len(pm.dashTasks)
+		default:
+			sectionLen = 0
+		}
+		if pm.dashScroll < sectionLen-1 {
+			pm.dashScroll++
+		}
 	case "o":
 		// Open selected note from the notes section.
 		if pm.dashSection == 0 && len(pm.dashNotes) == 0 {
@@ -2108,7 +2120,7 @@ func (pm ProjectMode) viewDashStats(width int) string {
 	b.WriteString("  " + bar + empty + "\n\n")
 
 	// Priority
-	if proj.Priority > 0 {
+	if proj.Priority > 0 && proj.Priority < len(projectPriorityLabels) {
 		b.WriteString(pm.statLine("Priority", projectPriorityLabels[proj.Priority], peach, width))
 	}
 
@@ -2358,11 +2370,11 @@ func (pm ProjectMode) viewEdit() string {
 			}
 			content := valueStr
 			if content == "" && !active {
-				content = DimStyle.Render("(empty)")
+				content = "(empty)"
 			}
-			maxW := width - 12
-			if len(content) > maxW {
-				content = content[:maxW]
+			content = TruncateDisplay(content, width-12)
+			if valueStr == "" && !active {
+				content = DimStyle.Render(content)
 			}
 			b.WriteString("    " + inputStyle.Render(content) + cursor + "\n\n")
 		}
