@@ -172,7 +172,7 @@ func (s *Sidebar) Selected() string {
 	if s.treeView && s.search == "" {
 		return s.fileTree.Selected()
 	}
-	if len(s.filtered) == 0 {
+	if len(s.filtered) == 0 || s.cursor >= len(s.filtered) {
 		return ""
 	}
 	return s.filtered[s.cursor]
