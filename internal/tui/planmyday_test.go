@@ -173,8 +173,11 @@ func TestPlanMyDayLocalPlanEmpty(t *testing.T) {
 				hasReview = true
 			}
 		}
-		if !hasLunch {
-			t.Error("expected lunch block in empty schedule")
+		// Lunch is only placed if workStart < 13:00 (lunch hour hasn't passed)
+		now := time.Now()
+		beforeLunch := now.Hour()*60+now.Minute() < 12*60+45
+		if beforeLunch && !hasLunch {
+			t.Error("expected lunch block in empty schedule (before lunch hour)")
 		}
 		if !hasReview {
 			t.Error("expected daily review block in empty schedule")

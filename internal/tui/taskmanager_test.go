@@ -583,41 +583,65 @@ func TestTmFormatMinutes(t *testing.T) {
 }
 
 // ===========================================================================
-// Eisenhower quadrants
+// Quick-edit parsers
 // ===========================================================================
 
-func TestEisenhowerQuadrants(t *testing.T) {
-	tm := &TaskManager{
-		allTasks: []Task{
-			{Text: "urgent important", Priority: 4, DueDate: "2020-01-01", Done: false},             // Q1: overdue + high prio
-			{Text: "important", Priority: 3, DueDate: "2099-12-31", Done: false},                    // Q2: high prio + far date
-			{Text: "urgent low", Priority: 1, DueDate: "2020-01-01", Done: false},                   // Q3: overdue + low prio
-			{Text: "neither", Priority: 1, DueDate: "2099-12-31", Done: false},                      // Q4: low prio + far date
-			{Text: "done", Priority: 4, DueDate: "2020-01-01", Done: true},                          // excluded
-			{Text: "snoozed", Priority: 4, DueDate: "2020-01-01", SnoozedUntil: "2099-12-31T23:59"}, // excluded
-		},
+func TestParseEstimateSpec(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int
+	}{
+		{"30m", 30},
+		{"2h", 120},
+		{"1h30m", 90},
+		{"0m", 0}, // parses but yields 0
+		{"", 0},
+		{"garbage", 0},
+		{"3d", 0}, // days not supported
 	}
-	q := tm.eisenhowerQuadrants()
-	if len(q[0]) != 1 || q[0][0].Text != "urgent important" {
-		t.Errorf("Q1 (DO) should have 'urgent important', got %v", q[0])
-	}
-	if len(q[1]) != 1 || q[1][0].Text != "important" {
-		t.Errorf("Q2 (SCHEDULE) should have 'important', got %v", q[1])
-	}
-	if len(q[2]) != 1 || q[2][0].Text != "urgent low" {
-		t.Errorf("Q3 (DELEGATE) should have 'urgent low', got %v", q[2])
-	}
-	if len(q[3]) != 1 || q[3][0].Text != "neither" {
-		t.Errorf("Q4 (ELIMINATE) should have 'neither', got %v", q[3])
+	for _, tc := range cases {
+		if got := parseEstimateSpec(tc.in); got != tc.want {
+			t.Errorf("parseEstimateSpec(%q) = %d, want %d", tc.in, got, tc.want)
+		}
 	}
 }
 
-func TestEisenhowerQuadrants_Empty(t *testing.T) {
-	tm := &TaskManager{allTasks: nil}
-	q := tm.eisenhowerQuadrants()
-	for i := 0; i < 4; i++ {
-		if len(q[i]) != 0 {
-			t.Errorf("Q%d should be empty, got %d", i+1, len(q[i]))
+func TestParseQuickEditDate(t *testing.T) {
+	// Only check static inputs (absolute + unparseable); relative dates
+	// (today/tomorrow/+Nd) depend on wall clock.
+	if got := parseQuickEditDate("2026-04-15"); got != "2026-04-15" {
+		t.Errorf("absolute date: got %q", got)
+	}
+	if got := parseQuickEditDate("garbage"); got != "" {
+		t.Errorf("garbage: got %q, want empty", got)
+	}
+	if got := parseQuickEditDate("+xd"); got != "" {
+		t.Errorf("+xd: got %q, want empty", got)
+	}
+}
+
+// ===========================================================================
+// fuzzyMatch subsequence matching (shared helper from sidebar.go)
+// ===========================================================================
+
+func TestFuzzyMatch(t *testing.T) {
+	cases := []struct {
+		haystack, needle string
+		want             bool
+	}{
+		{"buy groceries", "bygr", true}, // subsequence with gaps
+		{"buy groceries", "buy", true},  // contiguous substring
+		{"buy groceries", "groc", true},
+		{"buy groceries", "ceries", true},
+		{"buy groceries", "", true}, // empty needle always matches
+		{"buy groceries", "xyz", false},
+		{"buy groceries", "gbo", false}, // wrong order rejected
+		{"abc", "abcd", false},          // needle longer than haystack
+	}
+	for _, tc := range cases {
+		got := fuzzyMatch(tc.haystack, tc.needle)
+		if got != tc.want {
+			t.Errorf("fuzzyMatch(%q, %q) = %v, want %v", tc.haystack, tc.needle, got, tc.want)
 		}
 	}
 }

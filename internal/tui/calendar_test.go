@@ -729,18 +729,18 @@ func TestCalendar_AddEventBackspace(t *testing.T) {
 
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 
-	// Type "abc" into wizard title
+	// Type "abc" into the Title field (focused by default when form opens).
 	for _, r := range "abc" {
 		c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
-	if c.eventEditBuf != "abc" {
-		t.Fatalf("expected eventEditBuf='abc', got %q", c.eventEditBuf)
+	if c.eventEditTitle != "abc" {
+		t.Fatalf("expected eventEditTitle='abc', got %q", c.eventEditTitle)
 	}
 
 	// Backspace
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyBackspace})
-	if c.eventEditBuf != "ab" {
-		t.Errorf("expected eventEditBuf='ab' after backspace, got %q", c.eventEditBuf)
+	if c.eventEditTitle != "ab" {
+		t.Errorf("expected eventEditTitle='ab' after backspace, got %q", c.eventEditTitle)
 	}
 }
 
