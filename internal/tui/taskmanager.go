@@ -89,6 +89,7 @@ const (
 	tmInputTemplateName                // naming a new template
 	tmInputFilter                      // unified filter input — parses #tag, p:level, sort:mode, search text
 	tmInputQuickEdit                   // single-line quick edit on cursor task: p:N, d:YYYY-MM-DD, ~30m
+	tmInputTimeBlock                   // assign task to a time block: 1=morning 2=midday 3=afternoon 4=evening
 )
 
 // ---------------------------------------------------------------------------
@@ -1404,30 +1405,64 @@ func (tm *TaskManager) rebuildFiltered() {
 }
 
 func (tm *TaskManager) filterToday() []Task {
-	var overdue, today, tomorrow []Task
+	var overdue []Task
+	var morning, midday, afternoon, evening []Task // scheduled by time block
+	var unscheduledToday, tomorrow []Task
+
 	for _, t := range tm.allTasks {
 		if t.Done || tmIsSnoozed(t) {
 			continue
 		}
 		if tmIsOverdue(t.DueDate) {
 			overdue = append(overdue, t)
+		} else if t.ScheduledTime != "" && tmIsToday(t.DueDate) {
+			// Sort into time blocks based on scheduled start hour
+			parts := strings.SplitN(t.ScheduledTime, "-", 2)
+			if len(parts) >= 1 {
+				h, _ := parseHHMM(parts[0])
+				switch {
+				case h < 10:
+					morning = append(morning, t)
+				case h < 14:
+					midday = append(midday, t)
+				case h < 18:
+					afternoon = append(afternoon, t)
+				default:
+					evening = append(evening, t)
+				}
+			}
 		} else if tmIsToday(t.DueDate) {
-			today = append(today, t)
+			unscheduledToday = append(unscheduledToday, t)
 		} else if t.DueDate != "" && tmDaysUntil(t.DueDate) == 1 {
 			tomorrow = append(tomorrow, t)
 		}
 	}
+
 	byPriority := func(s []Task) {
-		sort.Slice(s, func(i, j int) bool {
-			return s[i].Priority > s[j].Priority
-		})
+		sort.Slice(s, func(i, j int) bool { return s[i].Priority > s[j].Priority })
+	}
+	// Sort by schedule time within blocks
+	bySchedule := func(s []Task) {
+		sort.Slice(s, func(i, j int) bool { return s[i].ScheduledTime < s[j].ScheduledTime })
 	}
 	byPriority(overdue)
-	byPriority(today)
+	bySchedule(morning)
+	bySchedule(midday)
+	bySchedule(afternoon)
+	bySchedule(evening)
+	byPriority(unscheduledToday)
 	byPriority(tomorrow)
-	// Overdue → today → tomorrow
-	out := append(overdue, today...)
-	return append(out, tomorrow...)
+
+	// Order: overdue → morning → midday → afternoon → evening → unscheduled today → tomorrow
+	var out []Task
+	out = append(out, overdue...)
+	out = append(out, morning...)
+	out = append(out, midday...)
+	out = append(out, afternoon...)
+	out = append(out, evening...)
+	out = append(out, unscheduledToday...)
+	out = append(out, tomorrow...)
+	return out
 }
 
 func (tm *TaskManager) filterUpcoming() []Task {
@@ -1953,9 +1988,91 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		return tm.updateFilterInput(key)
 	case tmInputQuickEdit:
 		return tm.updateQuickEditInput(key)
+	case tmInputTimeBlock:
+		return tm.updateTimeBlock(key)
 	}
 
 	return tm, nil
+}
+
+// updateTimeBlock handles the time-block assignment picker.
+// 1=Morning(06:00-10:00), 2=Midday(10:00-14:00), 3=Afternoon(14:00-18:00), 4=Evening(18:00-22:00)
+func (tm TaskManager) updateTimeBlock(key string) (TaskManager, tea.Cmd) {
+	type blockDef struct {
+		start string
+		end   string
+		label string
+	}
+	blocks := map[string]blockDef{
+		"1": {"06:00", "10:00", "Morning"},
+		"2": {"10:00", "14:00", "Midday"},
+		"3": {"14:00", "18:00", "Afternoon"},
+		"4": {"18:00", "22:00", "Evening"},
+		"0": {"", "", "Clear"}, // remove time block
+	}
+
+	switch key {
+	case "esc":
+		tm.inputMode = tmInputNone
+		return tm, nil
+	case "1", "2", "3", "4", "0":
+		if tm.inputTask == nil {
+			tm.inputMode = tmInputNone
+			return tm, nil
+		}
+		blk := blocks[key]
+		task := *tm.inputTask
+		if blk.start == "" {
+			// Clear the schedule
+			tm.removeScheduleMarker(task)
+			tm.statusMsg = "Time block cleared"
+		} else {
+			// Find a specific slot within the block based on task estimate
+			est := task.EstimatedMinutes
+			if est <= 0 {
+				est = 60 // default 1h
+			}
+			// Place at the start of the block
+			startH, startM := parseHHMM(blk.start)
+			endMins := startH*60 + startM + est
+			endStr := fmtTimeSlot(endMins)
+			tm.assignSchedule(task, blk.start, endStr)
+			tm.statusMsg = fmt.Sprintf("Scheduled for %s (%s–%s)", blk.label, blk.start, endStr)
+		}
+		tm.inputMode = tmInputNone
+		tm.reparse()
+		return tm, nil
+	}
+	return tm, nil
+}
+
+// assignSchedule sets the ⏰ marker on a task in its source file.
+func (tm *TaskManager) assignSchedule(task Task, startTime, endTime string) {
+	updateTaskScheduleInFile(tm.vault.Root, task.Text, startTime, endTime)
+	tm.fileChanged = true
+	tm.lastChangedNote = task.NotePath
+}
+
+// removeScheduleMarker removes the ⏰ marker from a task in its source file.
+func (tm *TaskManager) removeScheduleMarker(task Task) {
+	data, err := os.ReadFile(filepath.Join(tm.vault.Root, task.NotePath))
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	changed := false
+	for i, line := range lines {
+		if i+1 == task.LineNum && tmScheduleRe.MatchString(line) {
+			lines[i] = tmScheduleRe.ReplaceAllString(line, "")
+			changed = true
+			break
+		}
+	}
+	if changed {
+		_ = atomicWriteNote(filepath.Join(tm.vault.Root, task.NotePath), strings.Join(lines, "\n"))
+		tm.fileChanged = true
+		tm.lastChangedNote = task.NotePath
+	}
 }
 
 func (tm TaskManager) updateAddInput(key string) (TaskManager, tea.Cmd) {
@@ -3047,6 +3164,14 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case "E":
 		if tm.cursor < len(tm.filtered) {
 			tm.inputMode = tmInputEstimate
+		}
+
+	// Time-block assignment (B = Block schedule)
+	case "B":
+		if tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			tm.inputTask = &task
+			tm.inputMode = tmInputTimeBlock
 		}
 
 	// Focus session on current task

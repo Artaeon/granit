@@ -438,15 +438,31 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 	for i := tm.scroll; i < end; i++ {
 		task := tm.filtered[i]
 
-		// Today view: group overdue → today → tomorrow with colored section headers
+		// Today view: group by overdue/today/tomorrow, with scheduled tasks
+		// shown under their time block label
 		if tm.view == taskViewToday {
 			var group string
-			switch {
-			case tmIsOverdue(task.DueDate):
+			if tmIsOverdue(task.DueDate) {
 				group = "overdue"
-			case tmIsToday(task.DueDate):
+			} else if task.ScheduledTime != "" {
+				// Group by time block based on scheduled start time
+				parts := strings.SplitN(task.ScheduledTime, "-", 2)
+				if len(parts) >= 1 {
+					h, _ := parseHHMM(parts[0])
+					switch {
+					case h < 10:
+						group = "morning"
+					case h < 14:
+						group = "midday"
+					case h < 18:
+						group = "afternoon"
+					default:
+						group = "evening"
+					}
+				}
+			} else if tmIsToday(task.DueDate) {
 				group = "today"
-			default:
+			} else {
 				group = "tomorrow"
 			}
 			if group != lastGroup {
@@ -461,12 +477,26 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 						continue
 					}
 					var fg string
-					switch {
-					case tmIsOverdue(ft.DueDate):
+					if tmIsOverdue(ft.DueDate) {
 						fg = "overdue"
-					case tmIsToday(ft.DueDate):
+					} else if ft.ScheduledTime != "" {
+						fParts := strings.SplitN(ft.ScheduledTime, "-", 2)
+						if len(fParts) >= 1 {
+							fh, _ := parseHHMM(fParts[0])
+							switch {
+							case fh < 10:
+								fg = "morning"
+							case fh < 14:
+								fg = "midday"
+							case fh < 18:
+								fg = "afternoon"
+							default:
+								fg = "evening"
+							}
+						}
+					} else if tmIsToday(ft.DueDate) {
 						fg = "today"
-					default:
+					} else {
 						fg = "tomorrow"
 					}
 					if fg == group {
@@ -480,16 +510,28 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 				}
 				countStr := fmt.Sprintf("  %d tasks%s", groupCount, estStr)
 
-				// Colored separator line with label (like calendar time blocks)
+				// Colored separator line with label (matching calendar time blocks)
 				var sectionColor lipgloss.Color
 				var sectionLabel string
 				switch group {
 				case "overdue":
 					sectionColor = red
 					sectionLabel = "OVERDUE"
+				case "morning":
+					sectionColor = lavender
+					sectionLabel = "MORNING (06–10)"
+				case "midday":
+					sectionColor = sapphire
+					sectionLabel = "MIDDAY (10–14)"
+				case "afternoon":
+					sectionColor = peach
+					sectionLabel = "AFTERNOON (14–18)"
+				case "evening":
+					sectionColor = teal
+					sectionLabel = "EVENING (18–22)"
 				case "today":
 					sectionColor = green
-					sectionLabel = "TODAY"
+					sectionLabel = "TODAY (unscheduled)"
 				case "tomorrow":
 					sectionColor = lavender
 					sectionLabel = "TOMORROW"
@@ -751,10 +793,19 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		prefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▸")
 	}
 
+	// Small scheduled time indicator before task text
+	schedBadge := ""
+	if task.ScheduledTime != "" && !task.Done {
+		parts := strings.SplitN(task.ScheduledTime, "-", 2)
+		if len(parts) >= 1 {
+			schedBadge = lipgloss.NewStyle().Foreground(teal).Render(parts[0] + " ")
+		}
+	}
+
 	leftSide := strings.Join([]string{
 		"  " + prioBar + prefix + selectStr + indentStr + collapseIndicator + blockedStr + checkbox,
 		prioStyled,
-		textStyle.Render(displayText) + estBadge + hintDots,
+		schedBadge + textStyle.Render(displayText) + estBadge + hintDots,
 	}, " ")
 
 	rightSide := dueBadge
@@ -1069,6 +1120,18 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 		}
 		b.WriteString("  " + promptStyle.Render(label+" ") + inputStyle.Render(tm.inputBuf+"\u2588"))
 		b.WriteString("\n  " + DimStyle.Render("Tokens: p:high · d:tomorrow · d:2026-05-01 · d:+3d · ~30m · ~1h30m"))
+	case tmInputTimeBlock:
+		b.WriteString("  " + promptStyle.Render("Schedule to time block:"))
+		b.WriteString("\n")
+		ss := lipgloss.NewStyle().Bold(true)
+		ds := lipgloss.NewStyle().Foreground(overlay0)
+		b.WriteString("  " +
+			ss.Foreground(lavender).Render("1") + ds.Render(":Morning (06–10) ") +
+			ss.Foreground(sapphire).Render("2") + ds.Render(":Midday (10–14) ") +
+			ss.Foreground(peach).Render("3") + ds.Render(":Afternoon (14–18) ") +
+			ss.Foreground(teal).Render("4") + ds.Render(":Evening (18–22) ") +
+			ss.Foreground(overlay0).Render("0") + ds.Render(":Clear ") +
+			ds.Render("Esc:cancel"))
 	case tmInputDependency:
 		b.WriteString("  " + promptStyle.Render("Depends on: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
 	case tmInputNote:
@@ -1159,8 +1222,8 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 	default:
 		pairs = []struct{ Key, Desc string }{
 			{"j/k", "nav"}, {"x", "done"}, {"a", "add"}, {"d", "date"}, {"p", "prio"},
-			{"r", "reschedule"}, {"E", "estimate"}, {"/", "search"}, {"s", "sort"},
-			{"?", "help"}, {"Tab", "view"}, {"Esc", "close"},
+			{"B", "time block"}, {"r", "reschedule"}, {"E", "estimate"},
+			{"/", "search"}, {"?", "help"}, {"Tab", "view"}, {"Esc", "close"},
 		}
 	}
 
