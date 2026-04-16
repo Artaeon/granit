@@ -2026,6 +2026,13 @@ func (tm TaskManager) updateTimeBlock(key string) (TaskManager, tea.Cmd) {
 		if blk.start == "" {
 			// Clear the schedule
 			tm.removeScheduleMarker(task)
+			// Update in-memory task immediately
+			for i := range tm.allTasks {
+				if tm.allTasks[i].NotePath == task.NotePath && tm.allTasks[i].LineNum == task.LineNum {
+					tm.allTasks[i].ScheduledTime = ""
+					break
+				}
+			}
 			tm.statusMsg = "Time block cleared"
 		} else {
 			// Find a specific slot within the block based on task estimate
@@ -2033,15 +2040,23 @@ func (tm TaskManager) updateTimeBlock(key string) (TaskManager, tea.Cmd) {
 			if est <= 0 {
 				est = 60 // default 1h
 			}
-			// Place at the start of the block
 			startH, startM := parseHHMM(blk.start)
 			endMins := startH*60 + startM + est
 			endStr := fmtTimeSlot(endMins)
+			schedStr := blk.start + "-" + endStr
 			tm.assignSchedule(task, blk.start, endStr)
+			// Update in-memory task immediately so UI reflects the change
+			// without waiting for vault rescan
+			for i := range tm.allTasks {
+				if tm.allTasks[i].NotePath == task.NotePath && tm.allTasks[i].LineNum == task.LineNum {
+					tm.allTasks[i].ScheduledTime = schedStr
+					break
+				}
+			}
 			tm.statusMsg = fmt.Sprintf("Scheduled for %s (%s–%s)", blk.label, blk.start, endStr)
 		}
 		tm.inputMode = tmInputNone
-		tm.reparse()
+		tm.rebuildFiltered() // rebuild with updated in-memory data
 		return tm, nil
 	}
 	return tm, nil
