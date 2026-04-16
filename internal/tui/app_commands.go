@@ -1,12 +1,9 @@
 package tui
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -1090,9 +1087,16 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdMorningRoutine:
 		m.morningRoutine.SetSize(m.width, m.height)
 		m.morningRoutine.dailyNotesFolder = m.config.DailyNotesFolder
-		tasks, events, habits, _, _ := m.gatherPlanMyDayData()
+		m.loadCalendarEvents() // ensure calendar data is fresh
+		tasks, events, habits, projects, yesterdayTasks := m.gatherPlanMyDayData()
 		goals := m.goalsMode.GetGoals()
-		cmd := m.morningRoutine.Open(m.vault.Root, goals, tasks, events, habits)
+		// Load existing planner blocks and daily focus so morning routine can see
+		// what's already scheduled and pre-populate the daily goal.
+		plannerBlocks, dailyFocus := loadPlannerBlocks(m.vault.Root)
+		today := time.Now().Format("2006-01-02")
+		todayBlocks := plannerBlocks[today]
+		todayFocus := dailyFocus[today]
+		cmd := m.morningRoutine.Open(m.vault.Root, goals, tasks, events, habits, projects, yesterdayTasks, todayBlocks, todayFocus)
 		return m, cmd
 
 	case CmdNoteHistory:
@@ -1162,6 +1166,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdDailyPlanner:
 		m.dailyPlanner.SetSize(m.width, m.height)
+		m.loadCalendarEvents()
 		tasks, events, habits := m.gatherPlannerData()
 		m.dailyPlanner.Open(m.vault.Root, tasks, events, habits)
 		// Load active goals for display
@@ -1178,6 +1183,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdPlanMyDay:
 		m.planMyDay.SetSize(m.width, m.height)
+		m.loadCalendarEvents() // ensure calendar data is fresh
 		tasks, events, habits, projects, yesterdayTasks := m.gatherPlanMyDayData()
 		m.planMyDay.SetClockedSessions(m.clockIn.SessionsForPlan())
 		// Load active goals for AI context
@@ -1505,51 +1511,21 @@ func (m *Model) gatherPlannerData() ([]PlannerTask, []PlannerEvent, []PlannerHab
 		}
 	}
 
-	// Scan calendar events for today
-	icsDir := filepath.Join(m.vault.Root, ".granit", "calendars")
-	if entries, err := os.ReadDir(icsDir); err == nil {
-		for _, e := range entries {
-			if !strings.HasSuffix(e.Name(), ".ics") {
-				continue
-			}
-			calEvents, err := ParseICSFile(filepath.Join(icsDir, e.Name()))
-			if err != nil {
-				continue
-			}
-			for _, ev := range calEvents {
-				if ev.Date.Format("2006-01-02") == today {
-					dur := 60
-					if !ev.EndDate.IsZero() {
-						dur = int(ev.EndDate.Sub(ev.Date).Minutes())
-					}
-					timeStr := ""
-					if !ev.AllDay {
-						timeStr = ev.Date.Format("15:04")
-					}
-					events = append(events, PlannerEvent{
-						Title:    ev.Title,
-						Time:     timeStr,
-						Duration: dur,
-					})
-				}
-			}
-		}
-	}
+	// Calendar events — use shared helper for today's events (handles multi-day)
+	events = gatherTodayEvents(m.calendar.GetEvents())
 
-	// Scan habits with completion status
-	ht := NewHabitTracker()
-	ht.vaultRoot = m.vault.Root
-	ht.loadHabits()
-	// Build set of habits completed today
+	// Scan habits with completion status — use app's tracker, refreshed from disk
+	m.habitTracker.vaultRoot = m.vault.Root
+	m.habitTracker.loadHabits()
 	todayCompleted := make(map[string]bool)
-	for _, log := range ht.logs {
+	for _, log := range m.habitTracker.logs {
 		if log.Date == today {
 			for _, name := range log.Completed {
 				todayCompleted[name] = true
 			}
 		}
 	}
-	for _, h := range ht.habits {
+	for _, h := range m.habitTracker.habits {
 		habits = append(habits, PlannerHabit{
 			Name:   h.Name,
 			Done:   todayCompleted[h.Name],
@@ -1562,85 +1538,24 @@ func (m *Model) gatherPlannerData() ([]PlannerTask, []PlannerEvent, []PlannerHab
 
 // gatherPlanMyDayData collects all data needed by the Plan My Day overlay.
 func (m *Model) gatherPlanMyDayData() ([]Task, []PlannerEvent, []habitEntry, []Project, []string) {
-	// Tasks: gather from the task manager's scanning logic
-	var tasks []Task
-	today := time.Now().Format("2006-01-02")
-	if f, err := os.Open(tasksFilePath(m.vault.Root)); err == nil {
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		for scanner.Scan() {
-			line := scanner.Text()
-			if taskPattern.MatchString(line) {
-				m2 := taskPattern.FindStringSubmatch(line)
-				done := m2[1] != " "
-				text := m2[2]
-				dueDate := ""
-				if dm := tmDueDateRe.FindStringSubmatch(text); dm != nil {
-					dueDate = dm[1]
-				}
-				tasks = append(tasks, Task{
-					Text:     text,
-					Done:     done,
-					Priority: taskPriority(text),
-					DueDate:  dueDate,
-					NotePath: "Tasks.md",
-					LineNum:  lineNum,
-				})
-			}
-			lineNum++
-		}
-		_ = f.Close()
-	}
+	// Use the canonical task parser — same as TaskManager uses.
+	// Refresh the cache so we have the latest from disk.
+	m.cachedTasks = ParseAllTasks(m.vault.Notes)
+	tasks := m.cachedTasks
 
-	// Also scan all vault notes for tasks
-	for _, p := range m.vault.SortedPaths() {
-		if p == "Tasks.md" {
-			continue
-		}
-		note := m.vault.GetNote(p)
-		if note == nil {
-			continue
-		}
-		for lineNum, line := range strings.Split(note.Content, "\n") {
-			if taskPattern.MatchString(line) {
-				m2 := taskPattern.FindStringSubmatch(line)
-				done := m2[1] != " "
-				text := m2[2]
-				dueDate := ""
-				if dm := tmDueDateRe.FindStringSubmatch(text); dm != nil {
-					dueDate = dm[1]
-				}
-				// Include if due today/overdue, or if it's a recent note's task
-				if dueDate == today || (dueDate != "" && dueDate <= today && !done) || dueDate == "" {
-					tasks = append(tasks, Task{
-						Text:     text,
-						Done:     done,
-						Priority: taskPriority(text),
-						DueDate:  dueDate,
-						NotePath: p,
-						LineNum:  lineNum,
-					})
-				}
-			}
-		}
-	}
+	// Calendar events — use shared helper (handles multi-day events)
+	events := gatherTodayEvents(m.calendar.GetEvents())
 
-	// Calendar events
-	_, events, _ := m.gatherPlannerData()
+	// Habits — use app's tracker, refreshed from disk
+	m.habitTracker.vaultRoot = m.vault.Root
+	m.habitTracker.loadHabits()
+	habits := m.habitTracker.habits
 
-	// Habits
-	var habits []habitEntry
-	ht := NewHabitTracker()
-	ht.vaultRoot = m.vault.Root
-	ht.loadHabits()
-	habits = ht.habits
-
-	// Projects
-	pm := NewProjectMode()
-	pm.vaultRoot = m.vault.Root
-	pm.loadProjects()
+	// Projects — use app's project mode, refreshed from disk
+	m.projectMode.vaultRoot = m.vault.Root
+	m.projectMode.loadProjects()
 	var projects []Project
-	for _, proj := range pm.projects {
+	for _, proj := range m.projectMode.projects {
 		if proj.Status == "active" {
 			projects = append(projects, proj)
 		}
@@ -1685,6 +1600,16 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 		return
 	}
 
+	// Write schedule as planner blocks so calendar can show them
+	for _, slot := range schedule {
+		writePlannerBlock(m.vault.Root, today, PlannerBlock{
+			StartTime: slot.Start,
+			EndTime:   slot.End,
+			Text:      slot.Task,
+			BlockType: slot.Type,
+		})
+	}
+
 	// Write focus data to planner file
 	writePlannerFocus(m.vault.Root, today, topGoal, focusOrder)
 
@@ -1699,220 +1624,7 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 	m.setFocus(focusEditor)
 }
 
-// replaceDailySection replaces an existing markdown section (identified by its
-// ## heading prefix) in content, or appends it if no such section exists. This
-// prevents duplicate sections when the user runs Plan My Day / Morning Routine
-// multiple times on the same daily note.
-// The heading is matched as a line prefix at a line boundary. For example,
-// heading "## Daily Plan" matches "## Daily Plan — Monday, April 7, 2026"
-// but NOT "## Daily Planning" (requires the heading to be followed by a
-// newline, " ", or EOF — not a word character).
-func replaceDailySection(existing, newSection, heading string) string {
-	// Find heading at a line boundary: either at start of string or after \n.
-	// The heading can be followed by a newline, " — ...", or EOF.
-	idx := -1
-	for i := 0; i < len(existing); {
-		pos := strings.Index(existing[i:], heading)
-		if pos < 0 {
-			break
-		}
-		pos += i // absolute position
-		// Must be at line boundary (start of string or after \n)
-		if pos > 0 && existing[pos-1] != '\n' {
-			i = pos + 1
-			continue
-		}
-		// After the heading, must be newline, " " (e.g. " — date"), "\r\n", or EOF
-		afterIdx := pos + len(heading)
-		if afterIdx >= len(existing) {
-			// Heading at EOF
-			idx = pos
-			break
-		}
-		ch := existing[afterIdx]
-		if ch == '\n' || ch == '\r' || ch == ' ' {
-			idx = pos
-			break
-		}
-		// Not a valid match (e.g. "## Daily Planning") — skip
-		i = pos + 1
-	}
-	if idx < 0 {
-		// Section doesn't exist yet — append
-		return strings.TrimRight(existing, "\n") + "\n\n" + newSection
-	}
-	// Find the end of this section (next ## heading or EOF)
-	rest := existing[idx+len(heading):]
-	end := strings.Index(rest, "\n## ")
-	if end >= 0 {
-		// Keep content after this section
-		return strings.TrimRight(existing[:idx], "\n") + "\n\n" + newSection + "\n" + strings.TrimLeft(rest[end+1:], "\n")
-	}
-	// Section runs to end of file — replace everything from heading onwards
-	return strings.TrimRight(existing[:idx], "\n") + "\n\n" + newSection
-}
-
-// writePlannerFocus writes or updates the ## Focus section in the planner file for the given date.
-func writePlannerFocus(vaultRoot, date, topGoal string, focusItems []string) {
-	dir := filepath.Join(vaultRoot, "Planner")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return
-	}
-	path := filepath.Join(dir, date+".md")
-
-	var section strings.Builder
-	section.WriteString("## Focus\n")
-	if topGoal != "" {
-		section.WriteString("- Top goal: " + topGoal + "\n")
-	}
-	for _, item := range focusItems {
-		section.WriteString("- " + item + "\n")
-	}
-
-	content, err := os.ReadFile(path)
-	if err != nil {
-		content = []byte("---\ndate: " + date + "\n---\n\n")
-	}
-	// Remove existing ## Focus section if present
-	if idx := bytes.Index(content, []byte("## Focus")); idx >= 0 {
-		end := bytes.Index(content[idx+1:], []byte("\n## "))
-		if end >= 0 {
-			content = append(content[:idx], content[idx+1+end+1:]...)
-		} else {
-			content = content[:idx]
-		}
-	}
-	content = append(content, []byte("\n"+section.String())...)
-	_ = atomicWriteNote(path, string(content)) // best-effort; planner UI refreshes on next load
-}
-
-// loadPlannerBlocks scans the Planner/ directory for schedule files and
-// returns all blocks keyed by date string ("YYYY-MM-DD") plus daily focus data.
-func loadPlannerBlocks(vaultRoot string) (map[string][]PlannerBlock, map[string]DailyFocus) {
-	result := make(map[string][]PlannerBlock)
-	focusResult := make(map[string]DailyFocus)
-	plannerDir := filepath.Join(vaultRoot, "Planner")
-	entries, err := os.ReadDir(plannerDir)
-	if err != nil {
-		return result, focusResult
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		dateStr := strings.TrimSuffix(e.Name(), ".md")
-		if _, parseErr := time.Parse("2006-01-02", dateStr); parseErr != nil {
-			continue
-		}
-		fp := filepath.Join(plannerDir, e.Name())
-		f, err := os.Open(fp)
-		if err != nil {
-			continue
-		}
-		scanner := bufio.NewScanner(f)
-		inSchedule := false
-		inFocus := false
-		var focusItems []string
-		var topGoal string
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line == "## Schedule" {
-				inSchedule = true
-				inFocus = false
-				continue
-			}
-			if line == "## Focus" {
-				inSchedule = false
-				inFocus = true
-				continue
-			}
-			if strings.HasPrefix(line, "## ") {
-				inSchedule = false
-				inFocus = false
-				continue
-			}
-			if inFocus {
-				if strings.HasPrefix(line, "- Top goal: ") {
-					topGoal = strings.TrimPrefix(line, "- Top goal: ")
-				} else if strings.HasPrefix(line, "- ") {
-					focusItems = append(focusItems, strings.TrimPrefix(line, "- "))
-				}
-				continue
-			}
-			if !inSchedule || !strings.HasPrefix(line, "- ") {
-				continue
-			}
-			// Parse: - HH:MM-HH:MM | text | type [ | done]
-			trimmed := strings.TrimPrefix(line, "- ")
-			parts := strings.Split(trimmed, " | ")
-			if len(parts) < 3 {
-				continue
-			}
-			timeRange := strings.TrimSpace(parts[0])
-			timeParts := strings.Split(timeRange, "-")
-			if len(timeParts) != 2 {
-				continue
-			}
-			pb := PlannerBlock{
-				Date:      dateStr,
-				StartTime: strings.TrimSpace(timeParts[0]),
-				EndTime:   strings.TrimSpace(timeParts[1]),
-				Text:      strings.TrimSpace(parts[1]),
-				BlockType: strings.TrimSpace(strings.ToLower(parts[2])),
-			}
-			if len(parts) >= 4 && strings.TrimSpace(parts[3]) == "done" {
-				pb.Done = true
-			}
-			result[dateStr] = append(result[dateStr], pb)
-		}
-		_ = f.Close()
-		if topGoal != "" || len(focusItems) > 0 {
-			focusResult[dateStr] = DailyFocus{TopGoal: topGoal, FocusItems: focusItems}
-		}
-	}
-	return result, focusResult
-}
-
-// updateTaskScheduleInFile annotates matching task lines in Tasks.md with a
-// schedule marker (⏰ HH:MM-HH:MM).  If the line already has a marker it is
-// replaced with the new times.
-func updateTaskScheduleInFile(vaultRoot, taskText, startTime, endTime string) {
-	data, err := readTasksFile(vaultRoot)
-	if err != nil || len(data) == 0 {
-		return
-	}
-
-	scheduleMarkerRe := regexp.MustCompile(`\s*⏰\s*\d{2}:\d{2}-\d{2}:\d{2}`)
-	marker := " ⏰ " + startTime + "-" + endTime
-
-	// Normalise the task text for matching: trim emoji markers and whitespace.
-	normalise := func(s string) string {
-		s = scheduleMarkerRe.ReplaceAllString(s, "")
-		return strings.TrimSpace(s)
-	}
-	needle := normalise(taskText)
-
-	lines := strings.Split(string(data), "\n")
-	changed := false
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, "- [") {
-			continue
-		}
-		// Extract task text from the checkbox line.
-		if idx := strings.Index(trimmed, "] "); idx >= 0 {
-			lineTask := normalise(trimmed[idx+2:])
-			if lineTask == needle {
-				// Remove any existing marker first.
-				cleaned := scheduleMarkerRe.ReplaceAllString(line, "")
-				lines[i] = cleaned + marker
-				changed = true
-				break // one match is enough
-			}
-		}
-	}
-
-	if changed {
-		_ = writeTasksFile(vaultRoot, []byte(strings.Join(lines, "\n")))
-	}
-}
+// loadPlannerBlocks, writePlannerFocus, writePlannerBlock, replaceDailySection,
+// updateTaskScheduleInFile, slotToMinutes, fmtTimeSlot, and gatherTodayEvents
+// are in planner_io.go.
+// GenerateLocalSchedule and FormatDayPlanMarkdown are in schedule.go.
