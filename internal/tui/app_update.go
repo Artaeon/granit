@@ -475,11 +475,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.morningRoutine, cmd = m.morningRoutine.Update(msg)
 			return m, cmd
 		}
-		// Refresh vault to pick up the new/updated daily note
-		_ = m.vault.Scan()
-		m.index.Build()
-		m.sidebar.SetFiles(m.vault.SortedPaths())
-		m.statusbar.SetNoteCount(m.vault.NoteCount())
+		// Full refresh so calendar picks up new planner blocks, focus, and daily note
+		m.refreshComponents("")
 		return m, nil
 
 	case autoLinkSuggestMsg:
