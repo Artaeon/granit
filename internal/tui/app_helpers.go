@@ -625,9 +625,11 @@ func (m *Model) syncPomodoroTimeRecords() {
 }
 
 // loadCalendarEvents gathers native events + ICS files and sets them on the calendar.
+// Reloads the EventStore from disk so mid-session event changes are visible.
 func (m *Model) loadCalendarEvents() {
 	var calEvents []CalendarEvent
 	if m.eventStore != nil {
+		m.eventStore.load() // refresh from disk so new/edited events appear
 		now := time.Now()
 		start := now.AddDate(0, -1, 0).Format("2006-01-02")
 		end := now.AddDate(0, 3, 0).Format("2006-01-02")
@@ -655,7 +657,18 @@ func (m *Model) loadCalendarEvents() {
 		}
 		return nil
 	})
-	m.calendar.SetEvents(calEvents)
+	// De-duplicate: same event can appear in both ICS and native store.
+	// Key on (title, date-hour-minute, end-hour-minute) to catch duplicates.
+	seen := make(map[string]bool, len(calEvents))
+	deduped := calEvents[:0]
+	for _, ev := range calEvents {
+		key := ev.Title + "|" + ev.Date.Format("2006-01-02T15:04") + "|" + ev.EndDate.Format("15:04")
+		if !seen[key] {
+			seen[key] = true
+			deduped = append(deduped, ev)
+		}
+	}
+	m.calendar.SetEvents(deduped)
 }
 
 // after any file has been modified by an overlay. If changedPath is non-empty
@@ -693,10 +706,20 @@ func (m *Model) refreshComponents(changedPath string) {
 
 	// Load all calendar events: native events + ICS files from vault
 	m.loadCalendarEvents()
-	// Only refresh the calendar panel when calendar-related files change
-	// to avoid unnecessary vault walks on every component refresh.
+
+	// Refresh habit data on calendar — reload the app's tracker from disk
+	m.habitTracker.vaultRoot = m.vault.Root
+	m.habitTracker.loadHabits()
+	m.calendar.SetHabitData(m.habitTracker.habits, m.habitTracker.logs)
+
+	// Refresh planner blocks + daily focus on calendar (loaded once, shared)
+	plannerBlocks, dailyFocus := loadPlannerBlocks(m.vault.Root)
+	m.calendar.SetPlannerBlocks(plannerBlocks)
+	m.calendar.SetAllDailyFocus(dailyFocus)
+
+	// Refresh calendar panel — pass already-loaded blocks to avoid double I/O
 	if changedPath == "" || strings.HasSuffix(changedPath, ".ics") || strings.Contains(changedPath, "Planner") {
-		m.refreshCalendarPanel()
+		m.refreshCalendarPanelWith(plannerBlocks)
 	}
 
 	// Directly refresh the task manager if it's currently active, so it
@@ -1038,8 +1061,14 @@ func (m *Model) loadNoteWithoutBreadcrumb(relPath string) {
 	m.bookmarks.AddRecent(relPath)
 }
 
-// refreshCalendarPanel reloads planner blocks, ICS events, and tasks into the calendar panel.
+// refreshCalendarPanel reloads planner blocks from disk and refreshes the panel.
 func (m *Model) refreshCalendarPanel() {
+	blocks, _ := loadPlannerBlocks(m.vault.Root)
+	m.refreshCalendarPanelWith(blocks)
+}
+
+// refreshCalendarPanelWith refreshes the calendar panel using pre-loaded blocks.
+func (m *Model) refreshCalendarPanelWith(blocks map[string][]PlannerBlock) {
 	m.calendarPanel.SetVaultRoot(m.vault.Root)
 	noteContents := make(map[string]string)
 	for _, p := range m.vault.SortedPaths() {
@@ -1047,9 +1076,7 @@ func (m *Model) refreshCalendarPanel() {
 			noteContents[p] = note.Content
 		}
 	}
-	helperBlocks, _ := loadPlannerBlocks(m.vault.Root)
-	m.calendarPanel.Refresh(helperBlocks, noteContents)
-	// Feed ICS events into the panel so cockpit layout shows calendar events
+	m.calendarPanel.Refresh(blocks, noteContents)
 	m.calendarPanel.SetEvents(m.calendar.GetEvents())
 }
 
