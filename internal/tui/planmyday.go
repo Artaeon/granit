@@ -219,7 +219,7 @@ func (p PlanMyDay) buildSmallPrompt() string {
 	now := time.Now()
 	ct := now.Format("15:04")
 
-	b.WriteString(fmt.Sprintf("Plan a schedule from %s until 18:00. Today: %s %s.\n\n",
+	b.WriteString(fmt.Sprintf("Plan a schedule from %s until 22:00. Today: %s %s.\n\n",
 		ct, now.Format("2006-01-02"), now.Weekday().String()))
 
 	// Only tasks due today/overdue + high priority — max 10
@@ -448,7 +448,7 @@ func (p PlanMyDay) buildFullPrompt() string {
 
 Create an optimized daily schedule starting from the CURRENT TIME (%s).
 Do NOT schedule anything before %s — the day is already in progress.
-Only plan for the remaining hours until end of day (~18:00).
+Plan for the remaining hours until 22:00 (include evening habits, review, wind-down).
 
 Consider:
 1. Start with most important/urgent tasks (eat the frog)
@@ -626,7 +626,7 @@ func (p *PlanMyDay) generateLocalPlan() {
 	p.schedule = nil
 	p.focusOrder = nil
 
-	// Sort tasks by priority (highest first), then by due date
+	// Build task list sorted by priority/urgency score
 	type scoredTask struct {
 		task  Task
 		score int
@@ -639,13 +639,11 @@ func (p *PlanMyDay) generateLocalPlan() {
 			continue
 		}
 		s := t.Priority * 100
-		// Boost for due today or overdue
 		if t.DueDate == today {
 			s += 500
 		} else if t.DueDate != "" && t.DueDate < today {
 			s += 600
 		} else if t.DueDate != "" {
-			// Within 3 days
 			threeDays := time.Now().AddDate(0, 0, 3).Format("2006-01-02")
 			if t.DueDate <= threeDays {
 				s += 200
@@ -657,200 +655,41 @@ func (p *PlanMyDay) generateLocalPlan() {
 		return scored[i].score > scored[j].score
 	})
 
-	// Start from current time (rounded up to next 15-min boundary), end at 18:00
-	now := time.Now()
-	currentMin := now.Hour()*60 + now.Minute()
-	workStart := ((currentMin + 14) / 15) * 15 // round up to next 15m
-	if workStart < 8*60 {
-		workStart = 8 * 60 // don't start before 08:00
-	}
-	workEnd := 18 * 60 // 18:00 in minutes
-	if workStart >= workEnd {
-		// Day is over — generate a minimal "wind down" schedule
-		p.schedule = []daySlot{{
-			Start: fmt.Sprintf("%02d:%02d", workStart/60, workStart%60),
-			End:   fmt.Sprintf("%02d:%02d", (workStart+30)/60, (workStart+30)%60),
-			Task:  "Review today & plan tomorrow",
-			Type:  "review",
-		}}
-		return
-	}
-	lunchStart := 12 * 60
-	lunchEnd := 13 * 60
-	if lunchEnd <= workStart {
-		// Lunch already passed — no lunch break needed
-		lunchStart = workEnd
-		lunchEnd = workEnd
-	}
-
-	type timeRange struct{ start, end int }
-	var occupied []timeRange
-
-	// Place calendar events first
-	for _, ev := range p.events {
-		if ev.Time == "" {
-			continue
-		}
-		parts := strings.Split(ev.Time, ":")
-		if len(parts) != 2 {
-			continue
-		}
-		h, _ := strconv.Atoi(parts[0])
-		m, _ := strconv.Atoi(parts[1])
-		start := h*60 + m
-		dur := ev.Duration
-		if dur <= 0 {
-			dur = 60
-		}
-		end := start + dur
-		occupied = append(occupied, timeRange{start, end})
-		p.schedule = append(p.schedule, daySlot{
-			Start:    fmt.Sprintf("%02d:%02d", start/60, start%60),
-			End:      fmt.Sprintf("%02d:%02d", end/60, end%60),
-			Task:     ev.Title,
-			Type:     "meeting",
-			Priority: 0,
-		})
-	}
-
-	// Place lunch
-	occupied = append(occupied, timeRange{lunchStart, lunchEnd})
-	p.schedule = append(p.schedule, daySlot{
-		Start: "12:00",
-		End:   "13:00",
-		Task:  "Lunch",
-		Type:  "break",
-	})
-
-	isOccupied := func(start, end int) bool {
-		for _, o := range occupied {
-			if start < o.end && end > o.start {
-				return true
-			}
-		}
-		return false
-	}
-
-	findSlot := func(duration int) (int, bool) {
-		for pos := workStart; pos+duration <= workEnd; pos += 5 {
-			if !isOccupied(pos, pos+duration) {
-				return pos, true
-			}
-		}
-		return 0, false
-	}
-
-	workMinsSinceBreak := 0
-
+	// Build ScheduleTask list for the shared generator
+	var scheduleTasks []ScheduleTask
 	for i, st := range scored {
 		if i >= 12 {
-			break // Don't overschedule
+			break
 		}
-
-		// Break every 90 min
-		if workMinsSinceBreak >= 90 {
-			breakStart, found := findSlot(15)
-			if found {
-				occupied = append(occupied, timeRange{breakStart, breakStart + 15})
-				p.schedule = append(p.schedule, daySlot{
-					Start: fmt.Sprintf("%02d:%02d", breakStart/60, breakStart%60),
-					End:   fmt.Sprintf("%02d:%02d", (breakStart+15)/60, (breakStart+15)%60),
-					Task:  "Break",
-					Type:  "break",
-				})
-				workMinsSinceBreak = 0
+		est := st.task.EstimatedMinutes
+		if est <= 0 {
+			switch {
+			case st.task.Priority >= 3:
+				est = 90
+			case st.task.Priority >= 2:
+				est = 60
+			default:
+				est = 30
 			}
 		}
-
-		// Determine slot type and duration
-		var dur int
-		slotType := "deep-work"
-		if i >= len(scored)/2 {
-			slotType = "admin"
-		}
-		// Longer blocks for high priority
-		if st.task.Priority >= 3 {
-			dur = 90
-		} else if st.task.Priority >= 2 {
-			dur = 60
-		} else {
-			dur = 30
-		}
-
-		taskStart, found := findSlot(dur)
-		if !found {
-			// Try a shorter slot
-			dur = 30
-			taskStart, found = findSlot(dur)
-			if !found {
-				continue
-			}
-		}
-
-		occupied = append(occupied, timeRange{taskStart, taskStart + dur})
-
-		// Find project for this task
-		project := ""
-		for _, proj := range p.projects {
-			if proj.Status != "active" {
-				continue
-			}
-			if proj.TaskFilter != "" && strings.Contains(strings.ToLower(st.task.Text), strings.ToLower(proj.TaskFilter)) {
-				project = proj.Name
-				break
-			}
-			for _, tag := range proj.Tags {
-				if strings.Contains(strings.ToLower(st.task.Text), strings.ToLower(tag)) {
-					project = proj.Name
-					break
-				}
-			}
-		}
-
-		p.schedule = append(p.schedule, daySlot{
-			Start:    fmt.Sprintf("%02d:%02d", taskStart/60, taskStart%60),
-			End:      fmt.Sprintf("%02d:%02d", (taskStart+dur)/60, (taskStart+dur)%60),
-			Task:     st.task.Text,
-			Type:     slotType,
-			Priority: st.task.Priority,
-			Project:  project,
-		})
-
-		workMinsSinceBreak += dur
-	}
-
-	// Reserve time for habits at end of day
-	if len(p.habits) > 0 {
-		habitStart, found := findSlot(30)
-		if found {
-			occupied = append(occupied, timeRange{habitStart, habitStart + 30})
-			habitNames := make([]string, 0, len(p.habits))
-			for _, h := range p.habits {
-				habitNames = append(habitNames, h.Name)
-			}
-			p.schedule = append(p.schedule, daySlot{
-				Start: fmt.Sprintf("%02d:%02d", habitStart/60, habitStart%60),
-				End:   fmt.Sprintf("%02d:%02d", (habitStart+30)/60, (habitStart+30)%60),
-				Task:  "Habits: " + strings.Join(habitNames, ", "),
-				Type:  "habit",
-			})
-		}
-	}
-
-	// End-of-day review
-	reviewStart, found := findSlot(30)
-	if found {
-		p.schedule = append(p.schedule, daySlot{
-			Start: fmt.Sprintf("%02d:%02d", reviewStart/60, reviewStart%60),
-			End:   fmt.Sprintf("%02d:%02d", (reviewStart+30)/60, (reviewStart+30)%60),
-			Task:  "Daily review",
-			Type:  "review",
+		scheduleTasks = append(scheduleTasks, ScheduleTask{
+			Text: st.task.Text, Priority: st.task.Priority, Estimate: est,
 		})
 	}
 
-	// Sort schedule by start time
-	sort.SliceStable(p.schedule, func(i, j int) bool {
-		return p.schedule[i].Start < p.schedule[j].Start
+	// Gather habit names
+	var habitNames []string
+	for _, h := range p.habits {
+		habitNames = append(habitNames, h.Name)
+	}
+
+	// Use the shared schedule generator
+	p.schedule = GenerateLocalSchedule(ScheduleInput{
+		Tasks:    scheduleTasks,
+		Events:   p.events,
+		Habits:   habitNames,
+		Projects: p.projects,
+		WorkEnd:  22 * 60,
 	})
 
 	// Set top goal = highest priority task
@@ -942,15 +781,15 @@ func (p PlanMyDay) Update(msg tea.Msg) (PlanMyDay, tea.Cmd) {
 	case tea.KeyMsg:
 		switch p.phase {
 		case 0:
-			// Gathering phase — only Esc to cancel
-			if msg.String() == "esc" {
+			// Gathering phase — Esc/q to cancel
+			if msg.String() == "esc" || msg.String() == "q" {
 				p.active = false
 			}
 			return p, nil
 
 		case 1:
-			// Planning phase — Esc cancels the in-flight stream and closes.
-			if msg.String() == "esc" {
+			// Planning phase — Esc/q cancels the in-flight stream and closes.
+			if msg.String() == "esc" || msg.String() == "q" {
 				if p.streamCancel != nil {
 					p.streamCancel()
 					p.streamCancel = nil
@@ -965,7 +804,7 @@ func (p PlanMyDay) Update(msg tea.Msg) (PlanMyDay, tea.Cmd) {
 			return p.updateResult(msg)
 
 		case 3:
-			if msg.String() == "enter" || msg.String() == "esc" {
+			if msg.String() == "enter" || msg.String() == "esc" || msg.String() == "q" {
 				p.active = false
 			}
 			return p, nil
@@ -1002,7 +841,7 @@ func (p PlanMyDay) startPlanning() (PlanMyDay, tea.Cmd) {
 
 func (p PlanMyDay) updateResult(msg tea.KeyMsg) (PlanMyDay, tea.Cmd) {
 	switch msg.String() {
-	case "esc":
+	case "esc", "q":
 		p.active = false
 	case "up", "k":
 		if p.scroll > 0 {
@@ -1186,15 +1025,60 @@ func (p PlanMyDay) viewResult(width int) string {
 	// Title
 	lines = append(lines, p.titleBar(width))
 
-	// Top goal
+	// ── Top goal ───────────────────────────────────────────────────────────
 	if p.topGoal != "" {
-		goalIcon := lipgloss.NewStyle().Foreground(red).Bold(true).Render("  TARGET ")
-		goalText := lipgloss.NewStyle().Foreground(text).Bold(true).Render(p.topGoal)
-		lines = append(lines, goalIcon+goalText)
+		goalPill := makePill(red, "TARGET")
+		goalText := lipgloss.NewStyle().Foreground(text).Bold(true).Render(" " + p.topGoal)
+		lines = append(lines, "  "+goalPill+goalText)
 		lines = append(lines, "")
 	}
 
-	// Clocked sessions section (if any)
+	// ── Day summary bar ────────────────────────────────────────────────────
+	taskCount := 0
+	deepWorkMins := 0
+	breakMins := 0
+	meetingMins := 0
+	for _, s := range p.schedule {
+		startMin := slotToMinutes(s.Start)
+		endMin := slotToMinutes(s.End)
+		dur := endMin - startMin
+		if dur < 0 {
+			dur = 0
+		}
+		switch s.Type {
+		case "break":
+			breakMins += dur
+		case "meeting":
+			meetingMins += dur
+			taskCount++
+		default:
+			deepWorkMins += dur
+			taskCount++
+		}
+	}
+	var summaryParts []string
+	summaryParts = append(summaryParts, lipgloss.NewStyle().Foreground(blue).Bold(true).
+		Render(fmt.Sprintf("%d items", taskCount)))
+	if deepWorkMins > 0 {
+		summaryParts = append(summaryParts, lipgloss.NewStyle().Foreground(peach).
+			Render(fmt.Sprintf("%dh%02dm work", deepWorkMins/60, deepWorkMins%60)))
+	}
+	if meetingMins > 0 {
+		summaryParts = append(summaryParts, lipgloss.NewStyle().Foreground(lavender).
+			Render(fmt.Sprintf("%dh%02dm meetings", meetingMins/60, meetingMins%60)))
+	}
+	if breakMins > 0 {
+		breakLabel := fmt.Sprintf("%dm breaks", breakMins)
+		if breakMins >= 60 {
+			breakLabel = fmt.Sprintf("%dh%02dm breaks", breakMins/60, breakMins%60)
+		}
+		summaryParts = append(summaryParts, lipgloss.NewStyle().Foreground(green).
+			Render(breakLabel))
+	}
+	lines = append(lines, "  "+strings.Join(summaryParts, DimStyle.Render(" · ")))
+	lines = append(lines, "")
+
+	// ── Clocked sessions ───────────────────────────────────────────────────
 	if len(p.clockedSessions) > 0 {
 		clockTitle := lipgloss.NewStyle().Foreground(teal).Bold(true).Render("  CLOCKED TIME")
 		lines = append(lines, clockTitle)
@@ -1220,63 +1104,7 @@ func (p PlanMyDay) viewResult(width int) string {
 		lines = append(lines, "")
 	}
 
-	// Schedule section
-	schedTitle := lipgloss.NewStyle().Foreground(blue).Bold(true).Render("  SCHEDULE")
-	lines = append(lines, schedTitle)
-	lines = append(lines, DimStyle.Render("  "+strings.Repeat(ThemeSeparator, innerW-4)))
-
-	for _, slot := range p.schedule {
-		timeStr := lipgloss.NewStyle().Foreground(teal).Render(slot.Start + "-" + slot.End)
-
-		// Type icon and color
-		var typeIcon string
-		var taskStyle lipgloss.Style
-		switch slot.Type {
-		case "deep-work":
-			typeIcon = daySlotPriorityIcon(slot.Priority)
-			taskStyle = lipgloss.NewStyle().Foreground(text).Bold(true)
-		case "admin":
-			typeIcon = lipgloss.NewStyle().Foreground(blue).Render("  ")
-			taskStyle = lipgloss.NewStyle().Foreground(text)
-		case "meeting":
-			typeIcon = lipgloss.NewStyle().Foreground(lavender).Render(IconCalendarChar + " ")
-			taskStyle = lipgloss.NewStyle().Foreground(lavender)
-		case "break":
-			typeIcon = lipgloss.NewStyle().Foreground(green).Render("  ")
-			taskStyle = lipgloss.NewStyle().Foreground(overlay0).Italic(true)
-		case "habit":
-			typeIcon = lipgloss.NewStyle().Foreground(green).Render(IconGraphChar + " ")
-			taskStyle = lipgloss.NewStyle().Foreground(green)
-		case "review":
-			typeIcon = lipgloss.NewStyle().Foreground(peach).Render(IconEditChar + " ")
-			taskStyle = lipgloss.NewStyle().Foreground(peach)
-		default:
-			typeIcon = "  "
-			taskStyle = lipgloss.NewStyle().Foreground(text)
-		}
-
-		taskName := slot.Task
-		maxNameLen := innerW - 28
-		if maxNameLen < 10 {
-			maxNameLen = 10
-		}
-		if r := []rune(taskName); len(r) > maxNameLen {
-			taskName = string(r[:maxNameLen-3]) + "..."
-		}
-
-		typeTag := DimStyle.Render(" [" + slot.Type + "]")
-		projTag := ""
-		if slot.Project != "" {
-			projTag = lipgloss.NewStyle().Foreground(sapphire).Render(" " + slot.Project)
-		}
-
-		line := "  " + timeStr + "  " + typeIcon + taskStyle.Render(taskName) + typeTag + projTag
-		lines = append(lines, line)
-	}
-
-	lines = append(lines, "")
-
-	// Focus order
+	// ── Focus order ────────────────────────────────────────────────────────
 	if len(p.focusOrder) > 0 {
 		focusTitle := lipgloss.NewStyle().Foreground(peach).Bold(true).Render("  FOCUS ORDER")
 		lines = append(lines, focusTitle)
@@ -1288,12 +1116,11 @@ func (p PlanMyDay) viewResult(width int) string {
 		lines = append(lines, "")
 	}
 
-	// Advice
+	// ── Advice ─────────────────────────────────────────────────────────────
 	if p.advice != "" {
 		adviceTitle := lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("  ADVICE")
 		lines = append(lines, adviceTitle)
 		lines = append(lines, DimStyle.Render("  "+strings.Repeat(ThemeSeparator, innerW-4)))
-		// Word-wrap the advice text
 		wrapped := planWrap(p.advice, innerW-4)
 		for _, wl := range strings.Split(wrapped, "\n") {
 			lines = append(lines, "  "+lipgloss.NewStyle().Foreground(text).Italic(true).Render(wl))
@@ -1301,7 +1128,229 @@ func (p PlanMyDay) viewResult(width int) string {
 		lines = append(lines, "")
 	}
 
-	// Footer
+	// ── DAILY TIMELINE ─────────────────────────────────────────────────────
+	// The crown jewel: a visual half-hour timeline from now until 22:00 showing
+	// every scheduled block as colored bars, synced with tasks, events, goals.
+	if len(p.schedule) > 0 {
+	timelineTitle := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  DAILY TIMELINE")
+	lines = append(lines, timelineTitle)
+	lines = append(lines, DimStyle.Render("  "+strings.Repeat(ThemeSeparator, innerW-4)))
+
+	now := time.Now()
+	nowMins := now.Hour()*60 + now.Minute()
+	// Start from current hour (or schedule start), end at 22:00
+	timelineStart := (nowMins / 60) * 60 // round down to hour
+	if len(p.schedule) > 0 {
+		firstSlotMin := slotToMinutes(p.schedule[0].Start)
+		if firstSlotMin < timelineStart {
+			timelineStart = (firstSlotMin / 60) * 60
+		}
+	}
+	if timelineStart < 6*60 {
+		timelineStart = 6 * 60
+	}
+	timelineEnd := 22 * 60 // 22:00
+
+	contentW := innerW - 12
+	if contentW < 20 {
+		contentW = 20
+	}
+
+	nowLineDrawn := false
+	for mins := timelineStart; mins < timelineEnd; mins += 30 {
+		hour := mins / 60
+		half := mins % 60
+		isTopHalf := half == 0
+
+		// Time label
+		var timeSt string
+		isNowSlot := nowMins >= mins && nowMins < mins+30
+		if isTopHalf {
+			if isNowSlot {
+				timeSt = lipgloss.NewStyle().Foreground(green).Bold(true).
+					Render(fmt.Sprintf("  ▸%02d:%02d ", now.Hour(), now.Minute()))
+			} else {
+				timeSt = DimStyle.Render(fmt.Sprintf("  %02d:00  ", hour))
+			}
+		} else {
+			if isNowSlot {
+				timeSt = lipgloss.NewStyle().Foreground(green).Bold(true).
+					Render(fmt.Sprintf("  ▸%02d:%02d ", now.Hour(), now.Minute()))
+			} else {
+				timeSt = DimStyle.Render("     :30  ")
+			}
+		}
+
+		// Find which schedule slot covers this half-hour
+		var activeSlot *daySlot
+		overlapCount := 0
+		for i := range p.schedule {
+			s := &p.schedule[i]
+			sMin := slotToMinutes(s.Start)
+			eMin := slotToMinutes(s.End)
+			if sMin < mins+30 && eMin > mins {
+				overlapCount++
+				if activeSlot == nil {
+					activeSlot = s
+				}
+			}
+		}
+
+		if activeSlot != nil {
+			sMin := slotToMinutes(activeSlot.Start)
+			isStart := sMin >= mins && sMin < mins+30
+
+			// Pick color by type
+			var blockColor lipgloss.Color
+			switch activeSlot.Type {
+			case "deep-work":
+				blockColor = blue
+			case "admin":
+				blockColor = sapphire
+			case "meeting":
+				blockColor = lavender
+			case "break":
+				blockColor = green
+			case "habit":
+				blockColor = teal
+			case "review":
+				blockColor = peach
+			default:
+				blockColor = blue
+			}
+
+			inner := contentW - 2
+			if inner < 4 {
+				inner = 4
+			}
+
+			var label string
+			if isStart {
+				timeRange := activeSlot.Start + "–" + activeSlot.End
+				label = timeRange + "  " + activeSlot.Task
+				if activeSlot.Project != "" {
+					label += "  [" + activeSlot.Project + "]"
+				}
+				if overlapCount > 1 {
+					label = TruncateDisplay(label, inner-4) + fmt.Sprintf(" +%d", overlapCount-1)
+				}
+			} else {
+				// Continuation bar
+				label = "▏"
+			}
+
+			label = TruncateDisplay(label, inner)
+			padLen := inner - lipgloss.Width(label)
+			if padLen < 0 {
+				padLen = 0
+			}
+			label += strings.Repeat(" ", padLen)
+
+			blockStyle := lipgloss.NewStyle().Foreground(crust).Background(blockColor)
+			if isStart {
+				blockStyle = blockStyle.Bold(true)
+			}
+			lines = append(lines, timeSt+blockStyle.Render(" "+label+" "))
+		} else if isTopHalf {
+			lines = append(lines, timeSt+DimStyle.Render("┊"))
+		} else {
+			lines = append(lines, timeSt+DimStyle.Render("·"))
+		}
+
+		// Current-time indicator
+		if !nowLineDrawn && isNowSlot {
+			nowLineDrawn = true
+			nowLabel := lipgloss.NewStyle().Foreground(red).Bold(true).
+				Render(fmt.Sprintf("  %02d:%02d  ", now.Hour(), now.Minute()))
+			nowLine := lipgloss.NewStyle().Foreground(red).Bold(true).
+				Render(strings.Repeat("━", contentW))
+			lines = append(lines, nowLabel+nowLine)
+		}
+	}
+
+	// Timeline legend
+	legend := "  " +
+		lipgloss.NewStyle().Foreground(blue).Render("█") + " work " +
+		lipgloss.NewStyle().Foreground(sapphire).Render("█") + " admin " +
+		lipgloss.NewStyle().Foreground(lavender).Render("█") + " meeting " +
+		lipgloss.NewStyle().Foreground(green).Render("█") + " break " +
+		lipgloss.NewStyle().Foreground(teal).Render("█") + " habit " +
+		lipgloss.NewStyle().Foreground(peach).Render("█") + " review"
+	lines = append(lines, legend)
+	lines = append(lines, "")
+	} // end if len(p.schedule) > 0
+
+	// ── Project breakdown ──────────────────────────────────────────────────
+	projectMins := make(map[string]int)
+	for _, s := range p.schedule {
+		if s.Project == "" || s.Type == "break" {
+			continue
+		}
+		dur := slotToMinutes(s.End) - slotToMinutes(s.Start)
+		if dur > 0 {
+			projectMins[s.Project] += dur
+		}
+	}
+	if len(projectMins) > 0 {
+		projTitle := lipgloss.NewStyle().Foreground(sapphire).Bold(true).Render("  PROJECTS")
+		lines = append(lines, projTitle)
+		lines = append(lines, DimStyle.Render("  "+strings.Repeat(ThemeSeparator, innerW-4)))
+
+		// Sort by time descending
+		type projEntry struct {
+			name string
+			mins int
+		}
+		var projList []projEntry
+		for name, mins := range projectMins {
+			projList = append(projList, projEntry{name, mins})
+		}
+		sort.Slice(projList, func(i, j int) bool {
+			return projList[i].mins > projList[j].mins
+		})
+		for _, pe := range projList {
+			barW := 10
+			maxMins := projList[0].mins
+			filled := barW * pe.mins / maxMins
+			bar := lipgloss.NewStyle().Foreground(sapphire).Render(strings.Repeat("█", filled)) +
+				lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("░", barW-filled))
+			durStr := ""
+			if pe.mins >= 60 {
+				durStr = fmt.Sprintf("%dh%02dm", pe.mins/60, pe.mins%60)
+			} else {
+				durStr = fmt.Sprintf("%dm", pe.mins)
+			}
+			lines = append(lines, "  "+bar+" "+
+				lipgloss.NewStyle().Foreground(text).Render(pe.name)+" "+
+				DimStyle.Render(durStr))
+		}
+		lines = append(lines, "")
+	}
+
+	// ── Active goals ───────────────────────────────────────────────────────
+	if len(p.goals) > 0 {
+		goalsTitle := lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("  GOALS")
+		lines = append(lines, goalsTitle)
+		lines = append(lines, DimStyle.Render("  "+strings.Repeat(ThemeSeparator, innerW-4)))
+		for i, g := range p.goals {
+			if i >= 5 {
+				lines = append(lines, DimStyle.Render(fmt.Sprintf("  +%d more", len(p.goals)-5)))
+				break
+			}
+			prog := g.Progress()
+			barW := 6
+			filled := barW * prog / 100
+			bar := lipgloss.NewStyle().Foreground(green).Render(strings.Repeat("█", filled)) +
+				lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat("░", barW-filled))
+			progStr := fmt.Sprintf("%3d%%", prog)
+			title := TruncateDisplay(g.Title, innerW-20)
+			lines = append(lines, "  "+bar+" "+lipgloss.NewStyle().Foreground(overlay0).Render(progStr)+" "+
+				lipgloss.NewStyle().Foreground(text).Render(title))
+		}
+		lines = append(lines, "")
+	}
+
+	// ── Footer ─────────────────────────────────────────────────────────────
 	lines = append(lines, DimStyle.Render("  "+strings.Repeat(ThemeSeparator, innerW-4)))
 	lines = append(lines, DimStyle.Render("  Enter: apply to daily note  j/k: scroll  Esc: close"))
 
@@ -1332,6 +1381,8 @@ func (p PlanMyDay) viewResult(width int) string {
 	return p.wrapBorder(b.String(), width)
 }
 
+// slotToMinutes and FormatDayPlanMarkdown are now in planner_io.go / schedule.go.
+
 // ---------------------------------------------------------------------------
 // View: applied phase (phase 3)
 // ---------------------------------------------------------------------------
@@ -1341,30 +1392,53 @@ func (p PlanMyDay) viewApplied(width int) string {
 	b.WriteString(p.titleBar(width))
 	b.WriteString("\n")
 
-	b.WriteString(lipgloss.NewStyle().Foreground(green).Bold(true).
-		Render("  Day plan applied to daily note!"))
+	// Success banner
+	successPill := makePill(green, "APPLIED")
+	b.WriteString("  " + successPill + lipgloss.NewStyle().Foreground(green).Bold(true).Render(" Day plan written to daily note!"))
 	b.WriteString("\n\n")
 
+	// Stats
 	taskCount := 0
+	totalMins := 0
 	for _, s := range p.schedule {
 		if s.Type != "break" {
 			taskCount++
 		}
+		dur := slotToMinutes(s.End) - slotToMinutes(s.Start)
+		if dur > 0 {
+			totalMins += dur
+		}
 	}
 	b.WriteString(lipgloss.NewStyle().Foreground(text).
 		Render(fmt.Sprintf("  %d items scheduled", taskCount)))
+	if totalMins > 0 {
+		b.WriteString(DimStyle.Render(fmt.Sprintf(" · %dh%02dm planned", totalMins/60, totalMins%60)))
+	}
 	b.WriteString("\n")
 
 	if p.topGoal != "" {
-		b.WriteString(lipgloss.NewStyle().Foreground(teal).
-			Render(fmt.Sprintf("  Top goal: %s", p.topGoal)))
+		goalPill := makePill(peach, "GOAL")
+		b.WriteString("  " + goalPill + " " + lipgloss.NewStyle().Foreground(text).Render(p.topGoal))
 		b.WriteString("\n")
 	}
 
 	if len(p.schedule) > 0 {
-		b.WriteString(DimStyle.Render(fmt.Sprintf("  %s - %s",
-			p.schedule[0].Start, p.schedule[len(p.schedule)-1].End)))
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(teal).Render(
+			p.schedule[0].Start+" → "+p.schedule[len(p.schedule)-1].End))
 		b.WriteString("\n")
+	}
+
+	// Show top 3 focus items
+	if len(p.focusOrder) > 0 {
+		b.WriteString("\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(peach).Bold(true).Render("Focus:") + "\n")
+		for i, item := range p.focusOrder {
+			if i >= 3 {
+				break
+			}
+			num := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(fmt.Sprintf("  %d. ", i+1))
+			b.WriteString(num + lipgloss.NewStyle().Foreground(text).Render(TruncateDisplay(item, width-14)) + "\n")
+		}
 	}
 
 	b.WriteString("\n")
@@ -1423,36 +1497,4 @@ func planWrap(text string, maxWidth int) string {
 	return strings.Join(lines, "\n")
 }
 
-// FormatDayPlanMarkdown generates the markdown content for the daily note.
-func FormatDayPlanMarkdown(schedule []daySlot, topGoal string, focusOrder []string, advice string) string {
-	var b strings.Builder
-
-	b.WriteString("## Day Plan\n\n")
-
-	if topGoal != "" {
-		b.WriteString("**Today's Goal:** " + topGoal + "\n\n")
-	}
-
-	b.WriteString("### Schedule\n\n")
-	b.WriteString("| Time | Task | Type |\n")
-	b.WriteString("|------|------|------|\n")
-	for _, slot := range schedule {
-		b.WriteString(fmt.Sprintf("| %s-%s | %s | %s |\n", slot.Start, slot.End, slot.Task, slot.Type))
-	}
-	b.WriteString("\n")
-
-	if len(focusOrder) > 0 {
-		b.WriteString("### Focus Order\n\n")
-		for i, item := range focusOrder {
-			b.WriteString(fmt.Sprintf("%d. %s\n", i+1, item))
-		}
-		b.WriteString("\n")
-	}
-
-	if advice != "" {
-		b.WriteString("### Advice\n\n")
-		b.WriteString("> " + advice + "\n\n")
-	}
-
-	return b.String()
-}
+// FormatDayPlanMarkdown is now in schedule.go.
