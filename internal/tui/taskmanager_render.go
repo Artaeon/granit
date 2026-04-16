@@ -41,22 +41,13 @@ func (tm *TaskManager) kanbanVisibleHeight() int {
 
 // View renders the task manager overlay.
 func (tm TaskManager) View() string {
-	width := tm.width * 2 / 3
-	if width < 60 {
-		width = 60
+	// Use wider layout — match calendar's full-width feel
+	width := tm.width - 2
+	if width < 80 {
+		width = 80
 	}
-	if width > 100 {
-		width = 100
-	}
-	// Kanban needs more width
-	if tm.view == taskViewKanban {
-		width = tm.width * 4 / 5
-		if width < 80 {
-			width = 80
-		}
-		if width > 140 {
-			width = 140
-		}
+	if width > 160 {
+		width = 160
 	}
 
 	innerW := width - 8 // account for border + padding
@@ -409,20 +400,28 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 	if len(tm.filtered) == 0 {
 		emptyMsg := "No tasks"
 		hint := "Press 'a' to add a task"
+		icon := "📋"
 		switch tm.view {
 		case taskViewToday:
-			emptyMsg = "Nothing on the plan — no overdue, today, or tomorrow tasks"
+			emptyMsg = "Nothing on the plan"
+			hint = "No overdue, today, or tomorrow tasks — press 'a' to add one"
+			icon = "✨"
 		case taskViewUpcoming:
 			emptyMsg = "No upcoming tasks this week"
+			hint = "Tasks with due dates in the next 14 days appear here"
+			icon = "📅"
 		case taskViewCompleted:
 			emptyMsg = "No completed tasks"
 			hint = "Complete a task with 'x' to see it here"
+			icon = "✅"
 		case taskViewAll:
 			emptyMsg = "No tasks in vault"
+			icon = "📝"
 		}
-		b.WriteString(DimStyle.Render("  " + emptyMsg))
 		b.WriteString("\n")
-		b.WriteString(DimStyle.Render("  " + hint))
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).Render(icon+" "+emptyMsg))
+		b.WriteString("\n")
+		b.WriteString("  " + DimStyle.Render(hint))
 		b.WriteString("\n")
 		return
 	}
@@ -439,7 +438,7 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 	for i := tm.scroll; i < end; i++ {
 		task := tm.filtered[i]
 
-		// Today view: group overdue → today → tomorrow with task counts per section
+		// Today view: group overdue → today → tomorrow with colored section headers
 		if tm.view == taskViewToday {
 			var group string
 			switch {
@@ -454,7 +453,7 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 				if lastGroup != "" {
 					b.WriteString("\n")
 				}
-				// Count tasks in this group
+				// Count tasks and estimate in this group
 				groupCount := 0
 				groupEst := 0
 				for _, ft := range tm.filtered {
@@ -475,44 +474,57 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 						groupEst += ft.EstimatedMinutes
 					}
 				}
-				countBadge := ""
-				if groupCount > 0 {
-					estStr := ""
-					if groupEst > 0 {
-						if groupEst >= 60 {
-							estStr = fmt.Sprintf(" ~%dh%02dm", groupEst/60, groupEst%60)
-						} else {
-							estStr = fmt.Sprintf(" ~%dm", groupEst)
-						}
-					}
-					countBadge = DimStyle.Render(fmt.Sprintf("  %d tasks%s", groupCount, estStr))
+				estStr := ""
+				if groupEst > 0 {
+					estStr = " " + FormatMinutes(groupEst)
 				}
+				countStr := fmt.Sprintf("  %d tasks%s", groupCount, estStr)
+
+				// Colored separator line with label (like calendar time blocks)
+				var sectionColor lipgloss.Color
+				var sectionLabel string
 				switch group {
 				case "overdue":
-					b.WriteString("  " + makePill(red, "OVERDUE") + countBadge)
+					sectionColor = red
+					sectionLabel = "OVERDUE"
 				case "today":
-					b.WriteString("  " + makePill(green, "TODAY") + countBadge)
+					sectionColor = green
+					sectionLabel = "TODAY"
 				case "tomorrow":
-					b.WriteString("  " + makePill(lavender, "TOMORROW") + countBadge)
+					sectionColor = lavender
+					sectionLabel = "TOMORROW"
 				}
-				b.WriteString("\n")
+				label := lipgloss.NewStyle().Foreground(sectionColor).Bold(true).Render(" " + sectionLabel + " ")
+				count := DimStyle.Render(countStr + " ")
+				sepLen := w - lipgloss.Width(label) - lipgloss.Width(count) - 4
+				if sepLen < 2 {
+					sepLen = 2
+				}
+				sep := lipgloss.NewStyle().Foreground(sectionColor).Render(strings.Repeat("─", sepLen))
+				b.WriteString("  " + label + count + sep + "\n")
 				lastGroup = group
 			}
 		}
 
-		// Upcoming view: group by day
-			// All view: group by Note Path
-			if tm.view == taskViewAll || tm.view == taskViewCompleted {
-				group := task.NotePath
-				if group != lastGroup {
-					if lastGroup != "" {
-						b.WriteString("\n")
-					}
-					b.WriteString("  " + makePill(sapphire, filepath.Base(group)))
+		// All view: group by Note Path
+		if tm.view == taskViewAll || tm.view == taskViewCompleted {
+			group := task.NotePath
+			if group != lastGroup {
+				if lastGroup != "" {
 					b.WriteString("\n")
-					lastGroup = group
 				}
+				fileName := filepath.Base(group)
+				label := lipgloss.NewStyle().Foreground(sapphire).Bold(true).
+					Render(" " + fileName + " ")
+				sepLen := w - lipgloss.Width(label) - 4
+				if sepLen < 2 {
+					sepLen = 2
+				}
+				sep := lipgloss.NewStyle().Foreground(sapphire).Render(strings.Repeat("─", sepLen))
+				b.WriteString("  " + label + sep + "\n")
+				lastGroup = group
 			}
+		}
 
 		if tm.view == taskViewUpcoming && task.DueDate != "" {
 			group := task.DueDate
@@ -523,23 +535,35 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 				dt, _ := time.Parse("2006-01-02", group)
 				dayLabel := dt.Format("Monday, Jan 2")
 				daysAway := tmDaysUntil(group)
-				bg := lavender
+				sectionColor := lavender
 				suffix := ""
 				switch {
 				case tmIsOverdue(group):
-					bg = red
+					sectionColor = red
 					suffix = " (overdue)"
 				case tmIsToday(group):
-					bg = green
+					sectionColor = green
 					suffix = " (today)"
 				case daysAway == 1:
-					bg = lavender
+					sectionColor = lavender
 					suffix = " (tomorrow)"
-				case daysAway <= 7:
+				case daysAway <= 3:
+					sectionColor = sapphire
 					suffix = fmt.Sprintf(" (in %d days)", daysAway)
+				case daysAway <= 7:
+					sectionColor = blue
+					suffix = fmt.Sprintf(" (in %d days)", daysAway)
+				default:
+					sectionColor = overlay1
 				}
-				b.WriteString("  " + makePill(bg, dayLabel+suffix))
-				b.WriteString("\n")
+				label := lipgloss.NewStyle().Foreground(sectionColor).Bold(true).
+					Render(" " + dayLabel + suffix + " ")
+				sepLen := w - lipgloss.Width(label) - 4
+				if sepLen < 2 {
+					sepLen = 2
+				}
+				sep := lipgloss.NewStyle().Foreground(sectionColor).Render(strings.Repeat("─", sepLen))
+				b.WriteString("  " + label + sep + "\n")
 				lastGroup = group
 			}
 		}
@@ -715,14 +739,20 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	}
 	displayText = TruncateDisplay(displayText, maxTextW)
 
-	// Build the line
-	prefix := "  "
+	// Build the line with colored priority bar on the left edge
+	prioBarColor := tmPriorityColor(task.Priority)
+	if task.Done {
+		prioBarColor = surface1
+	}
+	prioBar := lipgloss.NewStyle().Foreground(prioBarColor).Render("▎")
+
+	prefix := " "
 	if isSelected {
-		prefix = lipgloss.NewStyle().Foreground(mauve).Render("  " + ThemeAccentBar + " ")
+		prefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▸")
 	}
 
 	leftSide := strings.Join([]string{
-		prefix + selectStr + indentStr + collapseIndicator + blockedStr + checkbox,
+		"  " + prioBar + prefix + selectStr + indentStr + collapseIndicator + blockedStr + checkbox,
 		prioStyled,
 		textStyle.Render(displayText) + estBadge + hintDots,
 	}, " ")
@@ -845,11 +875,22 @@ func (tm *TaskManager) renderMiniTimeline(b *strings.Builder, w int) {
 		if endMin <= startMin {
 			continue
 		}
-		col := blue
+		// Color by time block (matching calendar)
+		var col lipgloss.Color
+		startHour := sH
+		switch {
+		case startHour < 10:
+			col = lipgloss.Color("#7B6BA6") // morning purple
+		case startHour < 15:
+			col = lipgloss.Color("#5B7EA8") // midday blue
+		case startHour < 20:
+			col = lipgloss.Color("#B8875A") // afternoon amber
+		default:
+			col = lipgloss.Color("#5A9E9E") // evening teal
+		}
+		// High priority gets accent color override
 		if t.Priority >= 3 {
 			col = peach
-		} else if t.Priority >= 2 {
-			col = yellow
 		}
 		// Clean display text
 		cleanText := tmDueDateRe.ReplaceAllString(t.Text, "")
@@ -865,9 +906,13 @@ func (tm *TaskManager) renderMiniTimeline(b *strings.Builder, w int) {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  " + strings.Repeat("─", w-4)))
-	b.WriteString("\n")
-	b.WriteString("  " + lipgloss.NewStyle().Foreground(teal).Bold(true).Render("Today's Timeline") + "\n")
+	// Timeline header with colored separator (matching calendar style)
+	label := lipgloss.NewStyle().Foreground(teal).Bold(true).Render(" TODAY'S SCHEDULE ")
+	sepLen := w - lipgloss.Width(label) - 6
+	if sepLen < 2 {
+		sepLen = 2
+	}
+	b.WriteString("  " + label + lipgloss.NewStyle().Foreground(teal).Render(strings.Repeat("─", sepLen)) + "\n")
 
 	// Render compact timeline: each hour is a fixed width
 	rangeStart := 8 * 60  // 08:00
@@ -1113,11 +1158,9 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 		}
 	default:
 		pairs = []struct{ Key, Desc string }{
-			{"j/k", "nav"}, {"x", "toggle"}, {"u", "undo"}, {"n", "note"}, {"z", "snooze"},
-			{"e", "expand"}, {"f", "focus"}, {"g", "go"}, {"a", "add"}, {"d", "date"},
-			{"E", "estimate"}, {"r", "reschedule"}, {"s", "sort"}, {"W", "pin"}, {"A", "auto-prio"},
-			{"p", "prio"}, {"#", "tag"}, {"P", "filter prio"}, {"c", "clear"}, {"/", "search"},
-			{"Tab", "view"}, {"Esc", "close"},
+			{"j/k", "nav"}, {"x", "done"}, {"a", "add"}, {"d", "date"}, {"p", "prio"},
+			{"r", "reschedule"}, {"E", "estimate"}, {"/", "search"}, {"s", "sort"},
+			{"?", "help"}, {"Tab", "view"}, {"Esc", "close"},
 		}
 	}
 
