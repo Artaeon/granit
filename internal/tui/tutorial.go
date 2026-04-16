@@ -628,9 +628,9 @@ func (t Tutorial) pageProductivity(_ int) (string, string) {
 
 	b.WriteString(tutSection("Task Manager") + tutDim("  (Ctrl+K)"))
 	b.WriteString("\n")
-	b.WriteString(tutText("  7 views: Today, Upcoming, All, Done, Calendar, Kanban, Matrix"))
+	b.WriteString(tutText("  6 views: Plan (with mini timeline), Upcoming, All, Done, Calendar, Kanban"))
 	b.WriteString("\n")
-	b.WriteString(tutText("  Subtasks, dependencies, time estimation, snooze, templates"))
+	b.WriteString(tutText("  Subtasks, dependencies, time estimation, snooze, templates, quick-edit"))
 	b.WriteString("\n")
 	b.WriteString(tutText("  Quick-add: ") + tutKey("Ctrl+T") + tutText(" with @date !priority #tag ~estimate"))
 	b.WriteString("\n\n")
@@ -658,7 +658,7 @@ func (t Tutorial) pageProductivity(_ int) (string, string) {
 
 	b.WriteString(tutSection("Also available:"))
 	b.WriteString("\n")
-	b.WriteString(tutBinding("Ctrl+L", "Calendar with 5 views"))
+	b.WriteString(tutBinding("Ctrl+L", "Calendar with 6 views (½hr grid, event editing)"))
 	b.WriteString("\n")
 	b.WriteString(tutBinding("Ctrl+X", "Command palette (80+ commands)"))
 	b.WriteString("\n")
