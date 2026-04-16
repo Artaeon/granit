@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,14 +47,15 @@ type Task struct {
 type taskView int
 
 const (
-	taskViewToday      taskView = iota // 0
-	taskViewUpcoming                   // 1
-	taskViewAll                        // 2
-	taskViewCompleted                  // 3
-	taskViewCalendar                   // 4
-	taskViewKanban                     // 5
-	taskViewEisenhower                 // 6
+	taskViewToday     taskView = iota // 0
+	taskViewUpcoming                  // 1
+	taskViewAll                       // 2
+	taskViewCompleted                 // 3
+	taskViewCalendar                  // 4
+	taskViewKanban                    // 5
 )
+
+const taskViewCount = 6
 
 // tmSortMode controls how tasks are sorted within a view.
 type tmSortMode int
@@ -85,6 +87,8 @@ const (
 	tmInputHelp                        // help overlay
 	tmInputTemplate                    // template picker
 	tmInputTemplateName                // naming a new template
+	tmInputFilter                      // unified filter input — parses #tag, p:level, sort:mode, search text
+	tmInputQuickEdit                   // single-line quick edit on cursor task: p:N, d:YYYY-MM-DD, ~30m
 )
 
 // ---------------------------------------------------------------------------
@@ -165,9 +169,10 @@ type TaskManager struct {
 	// Active filters (applied on top of view-specific filters)
 	filterTag      string // "" = no tag filter, "tagname" = filter to this tag
 	filterPriority int    // -1 = no priority filter, 0-4 = filter to this level
+	searchTerm     string // "" = no search, otherwise substring or "#tag" query
 
 	// Cached tab counts (updated by rebuildFiltered)
-	tabCounts [7]int
+	tabCounts [taskViewCount]int
 
 	// Cached blocked status (computed once in rebuildFiltered, not per-render)
 	blockedCache map[string]bool
@@ -1343,10 +1348,8 @@ func (tm *TaskManager) rebuildFiltered() {
 		tm.filtered = tm.filterCalendarDay()
 	case taskViewKanban:
 		tm.filtered = nil // kanban uses columns, not flat list
-	case taskViewEisenhower:
-		tm.filtered = nil // uses quadrants, not flat list
 	}
-	if tm.view != taskViewKanban && tm.view != taskViewEisenhower {
+	if tm.view != taskViewKanban {
 		// Apply active tag filter.
 		if tm.filterTag != "" {
 			tm.filtered = tm.applyTagFilter(tm.filtered)
@@ -1355,8 +1358,8 @@ func (tm *TaskManager) rebuildFiltered() {
 		if tm.filterPriority >= 0 {
 			tm.filtered = tm.applyPriorityFilter(tm.filtered)
 		}
-		// Apply text search.
-		if tm.inputMode == tmInputSearch && tm.inputBuf != "" {
+		// Apply persistent text search (set by either search mode or filter mode).
+		if tm.searchTerm != "" {
 			tm.filtered = tm.applySearch(tm.filtered)
 		}
 		// Apply custom sort (only when not default priority sort,
@@ -1390,19 +1393,18 @@ func (tm *TaskManager) rebuildFiltered() {
 	// Cache tab counts so renderTabs doesn't re-filter on every frame.
 	// Apply active tag/priority filters to counts so they reflect what
 	// the user would actually see in each tab.
-	tm.tabCounts = [7]int{
+	tm.tabCounts = [taskViewCount]int{
 		len(tm.applyActiveFilters(tm.filterToday())),
 		len(tm.applyActiveFilters(tm.filterUpcoming())),
 		len(tm.applyActiveFilters(tm.filterAll())),
 		len(tm.applyActiveFilters(tm.filterCompleted())),
 		-1, // calendar doesn't show count
 		-1, // kanban doesn't show count
-		-1, // eisenhower doesn't show count
 	}
 }
 
 func (tm *TaskManager) filterToday() []Task {
-	var overdue, today []Task
+	var overdue, today, tomorrow []Task
 	for _, t := range tm.allTasks {
 		if t.Done || tmIsSnoozed(t) {
 			continue
@@ -1411,17 +1413,21 @@ func (tm *TaskManager) filterToday() []Task {
 			overdue = append(overdue, t)
 		} else if tmIsToday(t.DueDate) {
 			today = append(today, t)
+		} else if t.DueDate != "" && tmDaysUntil(t.DueDate) == 1 {
+			tomorrow = append(tomorrow, t)
 		}
 	}
-	// Sort each group by priority descending
-	sort.Slice(overdue, func(i, j int) bool {
-		return overdue[i].Priority > overdue[j].Priority
-	})
-	sort.Slice(today, func(i, j int) bool {
-		return today[i].Priority > today[j].Priority
-	})
-	// Overdue first, then today
-	return append(overdue, today...)
+	byPriority := func(s []Task) {
+		sort.Slice(s, func(i, j int) bool {
+			return s[i].Priority > s[j].Priority
+		})
+	}
+	byPriority(overdue)
+	byPriority(today)
+	byPriority(tomorrow)
+	// Overdue → today → tomorrow
+	out := append(overdue, today...)
+	return append(out, tomorrow...)
 }
 
 func (tm *TaskManager) filterUpcoming() []Task {
@@ -1505,7 +1511,10 @@ func (tm *TaskManager) filterCalendarDay() []Task {
 }
 
 func (tm *TaskManager) applySearch(tasks []Task) []Task {
-	query := strings.ToLower(tm.inputBuf)
+	query := strings.ToLower(strings.TrimSpace(tm.searchTerm))
+	if query == "" {
+		return tasks
+	}
 
 	// Support #tag queries: "#doing" matches tasks tagged with "doing".
 	if strings.HasPrefix(query, "#") {
@@ -1517,7 +1526,7 @@ func (tm *TaskManager) applySearch(tasks []Task) []Task {
 		var out []Task
 		for _, t := range tasks {
 			for _, tag := range t.Tags {
-				if strings.Contains(strings.ToLower(tag), tagQuery) {
+				if fuzzyMatch(strings.ToLower(tag), tagQuery) {
 					out = append(out, t)
 					break
 				}
@@ -1528,8 +1537,8 @@ func (tm *TaskManager) applySearch(tasks []Task) []Task {
 
 	var out []Task
 	for _, t := range tasks {
-		if strings.Contains(strings.ToLower(t.Text), query) ||
-			strings.Contains(strings.ToLower(t.NotePath), query) {
+		hay := strings.ToLower(t.Text + " " + t.NotePath)
+		if fuzzyMatch(hay, query) {
 			out = append(out, t)
 		}
 	}
@@ -1940,6 +1949,10 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		return tm.updateTemplate(key)
 	case tmInputTemplateName:
 		return tm.updateTemplateName(key)
+	case tmInputFilter:
+		return tm.updateFilterInput(key)
+	case tmInputQuickEdit:
+		return tm.updateQuickEditInput(key)
 	}
 
 	return tm, nil
@@ -1977,18 +1990,23 @@ func (tm TaskManager) updateAddInput(key string) (TaskManager, tea.Cmd) {
 func (tm TaskManager) updateSearchInput(key string) (TaskManager, tea.Cmd) {
 	switch key {
 	case "esc":
+		// Esc cancels the search and clears it.
 		tm.inputMode = tmInputNone
 		tm.inputBuf = ""
+		tm.searchTerm = ""
 		tm.rebuildFiltered()
 		return tm, nil
 
 	case "enter":
-		// Keep search active, just confirm
+		// Enter commits the search and exits the input — search stays visible
+		// as a badge in the title bar and can be cleared with `c`.
+		tm.inputMode = tmInputNone
 		return tm, nil
 
 	case "backspace":
 		if len(tm.inputBuf) > 0 {
 			tm.inputBuf = TrimLastRune(tm.inputBuf)
+			tm.searchTerm = tm.inputBuf
 			tm.rebuildFiltered()
 		}
 		return tm, nil
@@ -1996,10 +2014,278 @@ func (tm TaskManager) updateSearchInput(key string) (TaskManager, tea.Cmd) {
 	default:
 		if len(key) == 1 || key == " " {
 			tm.inputBuf += key
+			tm.searchTerm = tm.inputBuf
 			tm.rebuildFiltered()
 		}
 		return tm, nil
 	}
+}
+
+// updateFilterInput collects a unified filter query. On Enter it parses the
+// buffer into tag / priority / sort / search filters and applies them.
+// Query grammar (whitespace-separated tokens, any order):
+//
+//	#tag          → set tag filter
+//	p:<level>     → set priority filter (none|low|med|high|highest or 0-4)
+//	sort:<mode>   → set sort (priority|due|az|source|tag)
+//	-             → anything else becomes search text (joined with spaces)
+func (tm TaskManager) updateFilterInput(key string) (TaskManager, tea.Cmd) {
+	switch key {
+	case "esc":
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+		return tm, nil
+
+	case "enter":
+		tm.applyFilterQuery(tm.inputBuf)
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+		return tm, nil
+
+	case "backspace":
+		if len(tm.inputBuf) > 0 {
+			tm.inputBuf = TrimLastRune(tm.inputBuf)
+		}
+		return tm, nil
+
+	default:
+		if len(key) == 1 || key == " " {
+			tm.inputBuf += key
+		}
+		return tm, nil
+	}
+}
+
+// applyFilterQuery parses a unified filter string and sets the resulting
+// filters on tm. An empty query clears all filters.
+func (tm *TaskManager) applyFilterQuery(query string) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		tm.filterTag = ""
+		tm.filterPriority = -1
+		tm.sortMode = tmSortPriority
+		tm.statusMsg = "Filters cleared"
+		tm.rebuildFiltered()
+		return
+	}
+
+	tm.filterTag = ""
+	tm.filterPriority = -1
+	tm.sortMode = tmSortPriority
+	var searchTerms []string
+	var applied []string
+
+	priorityLevels := map[string]int{
+		"none": 0, "low": 1, "med": 2, "medium": 2, "high": 3, "highest": 4,
+		"0": 0, "1": 1, "2": 2, "3": 3, "4": 4,
+	}
+	sortModes := map[string]tmSortMode{
+		"priority": tmSortPriority,
+		"due":      tmSortDueDate,
+		"duedate":  tmSortDueDate,
+		"az":       tmSortAlpha,
+		"alpha":    tmSortAlpha,
+		"source":   tmSortSource,
+		"tag":      tmSortTag,
+	}
+
+	for _, tok := range strings.Fields(query) {
+		switch {
+		case strings.HasPrefix(tok, "#") && len(tok) > 1:
+			tm.filterTag = tok[1:]
+			applied = append(applied, "tag="+tm.filterTag)
+		case strings.HasPrefix(tok, "p:"):
+			if lvl, ok := priorityLevels[strings.ToLower(tok[2:])]; ok {
+				tm.filterPriority = lvl
+				applied = append(applied, "p="+tok[2:])
+			}
+		case strings.HasPrefix(tok, "sort:"):
+			if mode, ok := sortModes[strings.ToLower(tok[5:])]; ok {
+				tm.sortMode = mode
+				applied = append(applied, "sort="+tok[5:])
+			}
+		default:
+			searchTerms = append(searchTerms, tok)
+		}
+	}
+
+	if len(searchTerms) > 0 {
+		tm.searchTerm = strings.Join(searchTerms, " ")
+		applied = append(applied, "search="+tm.searchTerm)
+	} else {
+		tm.searchTerm = ""
+	}
+
+	tm.rebuildFiltered()
+	if len(applied) > 0 {
+		tm.statusMsg = "Applied: " + strings.Join(applied, " ")
+	} else {
+		tm.statusMsg = "No filters applied (bad query)"
+	}
+}
+
+// updateQuickEditInput collects a compact one-line edit query and applies it
+// to the cursor task on Enter. See applyQuickEdit for the grammar.
+func (tm TaskManager) updateQuickEditInput(key string) (TaskManager, tea.Cmd) {
+	switch key {
+	case "esc":
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+		return tm, nil
+
+	case "enter":
+		tm.applyQuickEdit(tm.inputBuf)
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+		return tm, nil
+
+	case "backspace":
+		if len(tm.inputBuf) > 0 {
+			tm.inputBuf = TrimLastRune(tm.inputBuf)
+		}
+		return tm, nil
+
+	default:
+		if len(key) == 1 || key == " " {
+			tm.inputBuf += key
+		}
+		return tm, nil
+	}
+}
+
+// applyQuickEdit parses a compact edit expression and applies it to the cursor
+// task in-place. Grammar (whitespace-separated tokens):
+//
+//	p:<N|name>    priority 0-4 or none/low/med/high/highest
+//	d:<date>      due date: YYYY-MM-DD, today, tomorrow, +Nd
+//	~<dur>        time estimate: 30m, 2h, 1h30m
+//
+// Unknown tokens are ignored. Sets statusMsg so the user sees what landed.
+func (tm *TaskManager) applyQuickEdit(query string) {
+	query = strings.TrimSpace(query)
+	if query == "" || tm.cursor >= len(tm.filtered) {
+		return
+	}
+	task := tm.filtered[tm.cursor]
+
+	priorityLevels := map[string]int{
+		"none": 0, "low": 1, "med": 2, "medium": 2, "high": 3, "highest": 4,
+		"0": 0, "1": 1, "2": 2, "3": 3, "4": 4,
+	}
+
+	var applied []string
+	var targetPriority = -1
+	var targetDueDate string
+	var targetEstimateMins int
+
+	for _, tok := range strings.Fields(query) {
+		switch {
+		case strings.HasPrefix(tok, "p:"):
+			if lvl, ok := priorityLevels[strings.ToLower(tok[2:])]; ok {
+				targetPriority = lvl
+				applied = append(applied, "p="+tok[2:])
+			}
+		case strings.HasPrefix(tok, "d:"):
+			if d := parseQuickEditDate(tok[2:]); d != "" {
+				targetDueDate = d
+				applied = append(applied, "d="+d)
+			}
+		case strings.HasPrefix(tok, "~"):
+			if m := parseEstimateSpec(tok[1:]); m > 0 {
+				targetEstimateMins = m
+				applied = append(applied, fmt.Sprintf("~%dm", m))
+			}
+		}
+	}
+
+	if len(applied) == 0 {
+		tm.statusMsg = "Nothing to apply (try: p:high d:tomorrow ~30m)"
+		return
+	}
+
+	ok := tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+		if targetPriority >= 0 {
+			line = tmPrioHighestRe.ReplaceAllString(line, "")
+			line = tmPrioHighRe.ReplaceAllString(line, "")
+			line = tmPrioMedRe.ReplaceAllString(line, "")
+			line = tmPrioLowRe.ReplaceAllString(line, "")
+			line = strings.TrimRight(line, " ")
+			if targetPriority > 0 {
+				line += " " + tmPriorityIcon(targetPriority)
+			}
+		}
+		if targetDueDate != "" {
+			line = tmDueDateRe.ReplaceAllString(line, "")
+			line = strings.TrimRight(line, " ")
+			line += " \U0001F4C5 " + targetDueDate
+		}
+		if targetEstimateMins > 0 {
+			line = tmEstimateRe.ReplaceAllString(line, "")
+			line = strings.TrimRight(line, " ")
+			var label string
+			switch {
+			case targetEstimateMins < 60:
+				label = fmt.Sprintf("~%dm", targetEstimateMins)
+			case targetEstimateMins%60 == 0:
+				label = fmt.Sprintf("~%dh", targetEstimateMins/60)
+			default:
+				label = fmt.Sprintf("~%dh%dm", targetEstimateMins/60, targetEstimateMins%60)
+			}
+			line += " " + label
+		}
+		return line
+	})
+	if ok {
+		tm.reparse()
+		tm.statusMsg = "Updated: " + strings.Join(applied, " ")
+	} else {
+		tm.statusMsg = "Failed to write task"
+	}
+}
+
+// parseQuickEditDate accepts shorthand date specs and returns a YYYY-MM-DD
+// string, or "" when the input doesn't parse.
+func parseQuickEditDate(spec string) string {
+	spec = strings.TrimSpace(strings.ToLower(spec))
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	switch spec {
+	case "today":
+		return today.Format("2006-01-02")
+	case "tomorrow":
+		return today.AddDate(0, 0, 1).Format("2006-01-02")
+	}
+	// Absolute YYYY-MM-DD
+	if t, err := time.Parse("2006-01-02", spec); err == nil {
+		return t.Format("2006-01-02")
+	}
+	// +Nd shorthand
+	if strings.HasPrefix(spec, "+") && strings.HasSuffix(spec, "d") {
+		n, err := strconv.Atoi(spec[1 : len(spec)-1])
+		if err == nil && n > 0 {
+			return today.AddDate(0, 0, n).Format("2006-01-02")
+		}
+	}
+	return ""
+}
+
+// parseEstimateSpec parses "30m", "2h", "1h30m" → total minutes. Returns 0
+// when the input doesn't match.
+var quickEditEstRe = regexp.MustCompile(`^(?:(\d+)h)?(?:(\d+)m)?$`)
+
+func parseEstimateSpec(spec string) int {
+	m := quickEditEstRe.FindStringSubmatch(strings.TrimSpace(spec))
+	if m == nil {
+		return 0
+	}
+	var h, mins int
+	if m[1] != "" {
+		h, _ = strconv.Atoi(m[1])
+	}
+	if m[2] != "" {
+		mins, _ = strconv.Atoi(m[2])
+	}
+	return h*60 + mins
 }
 
 func (tm TaskManager) updateReschedule(key string) (TaskManager, tea.Cmd) {
@@ -2345,7 +2631,7 @@ func (tm TaskManager) updateKanban(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case "6":
 		// Already on kanban
 	case "tab":
-		tm.view = (tm.view + 1) % 7
+		tm.view = (tm.view + 1) % taskViewCount
 		tm.switchView()
 
 	case "h", "left":
@@ -2519,15 +2805,12 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case "6":
 		tm.view = taskViewKanban
 		tm.switchView()
-	case "7":
-		tm.view = taskViewEisenhower
-		tm.switchView()
 
 	case "tab":
-		tm.view = (tm.view + 1) % 7
+		tm.view = (tm.view + 1) % taskViewCount
 		tm.switchView()
 	case "shift+tab", "backtab":
-		tm.view = (tm.view - 1 + 7) % 7
+		tm.view = (tm.view - 1 + taskViewCount) % taskViewCount
 		tm.switchView()
 
 	// Navigation
@@ -2877,1117 +3160,28 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 
 	// Clear all active filters
 	case "c":
-		if tm.filterTag != "" || tm.filterPriority >= 0 {
+		if tm.filterTag != "" || tm.filterPriority >= 0 || tm.searchTerm != "" || tm.sortMode != tmSortPriority {
 			tm.filterTag = ""
 			tm.filterPriority = -1
+			tm.searchTerm = ""
+			tm.sortMode = tmSortPriority
 			tm.statusMsg = "Filters cleared"
 			tm.rebuildFiltered()
+		}
+
+	// Unified filter prompt — set multiple filters in one input.
+	case "F":
+		tm.inputMode = tmInputFilter
+		tm.inputBuf = ""
+
+	// Quick edit — single-line popover to adjust priority/due/estimate at once.
+	case ".":
+		if tm.cursor < len(tm.filtered) {
+			tm.inputMode = tmInputQuickEdit
+			tm.inputBuf = ""
 		}
 	}
 
 	return tm, nil
 }
 
-func (tm *TaskManager) visibleHeight() int {
-	// Reserve: border(2) + padding(2) + title(2) + tabs(2) + input/status(2) + help bar(2) + gaps(4)
-	h := tm.height - 18
-	if h < 3 {
-		h = 3
-	}
-	return h
-}
-
-func (tm *TaskManager) kanbanVisibleHeight() int {
-	h := tm.height - 16
-	if h < 3 {
-		h = 3
-	}
-	return h
-}
-
-// ---------------------------------------------------------------------------
-// View
-// ---------------------------------------------------------------------------
-
-// View renders the task manager overlay.
-func (tm TaskManager) View() string {
-	width := tm.width * 2 / 3
-	if width < 60 {
-		width = 60
-	}
-	if width > 100 {
-		width = 100
-	}
-	// Kanban needs more width
-	if tm.view == taskViewKanban {
-		width = tm.width * 4 / 5
-		if width < 80 {
-			width = 80
-		}
-		if width > 140 {
-			width = 140
-		}
-	}
-
-	innerW := width - 8 // account for border + padding
-
-	var b strings.Builder
-
-	// Title bar
-	tm.renderTitle(&b, innerW)
-
-	// Tab bar
-	tm.renderTabs(&b, innerW)
-
-	// View content
-	switch tm.view {
-	case taskViewCalendar:
-		tm.renderCalendarView(&b, innerW)
-	case taskViewKanban:
-		tm.renderKanbanView(&b, innerW)
-	case taskViewEisenhower:
-		tm.renderEisenhowerView(&b, innerW)
-	default:
-		tm.renderTaskList(&b, innerW)
-	}
-	// Help overlay replaces content
-	if tm.inputMode == tmInputHelp {
-		b.Reset()
-		tm.renderTitle(&b, innerW)
-		tm.renderTabs(&b, innerW)
-		tm.renderHelpOverlay(&b, innerW)
-	}
-
-	// Input bar (if active)
-	tm.renderInput(&b, innerW)
-
-	// Confirmation prompt
-	if tm.confirmMsg != "" {
-		b.WriteString("\n")
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(red).Bold(true).Render(tm.confirmMsg))
-	}
-
-	// Status message
-	if tm.statusMsg != "" {
-		b.WriteString("\n")
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(green).Render(tm.statusMsg))
-	}
-
-	// Help bar
-	tm.renderHelp(&b, innerW)
-
-	border := lipgloss.NewStyle().
-		BorderStyle(PanelBorder).
-		BorderForeground(OverlayBorderColor).
-		Padding(1, 2).
-		Width(width).
-		Background(mantle)
-
-	return border.Render(b.String())
-}
-
-// eisenhowerQuadrants returns tasks grouped into 4 quadrants.
-func (tm *TaskManager) eisenhowerQuadrants() [4][]Task {
-	var q [4][]Task
-	for _, t := range tm.allTasks {
-		if t.Done || tmIsSnoozed(t) {
-			continue
-		}
-		urgent := tmIsOverdue(t.DueDate) || tmIsToday(t.DueDate) || (t.DueDate != "" && tmDaysUntil(t.DueDate) <= 2)
-		important := t.Priority >= 3
-		switch {
-		case important && urgent:
-			q[0] = append(q[0], t)
-		case important && !urgent:
-			q[1] = append(q[1], t)
-		case !important && urgent:
-			q[2] = append(q[2], t)
-		default:
-			q[3] = append(q[3], t)
-		}
-	}
-	return q
-}
-
-func (tm *TaskManager) renderEisenhowerView(b *strings.Builder, w int) {
-	q := tm.eisenhowerQuadrants()
-	quadLabels := [4]string{" DO (urgent+important) ", " SCHEDULE (important) ", " DELEGATE (urgent) ", " ELIMINATE (neither) "}
-	quadColors := [4]lipgloss.Color{red, blue, yellow, overlay0}
-	
-	colW := (w - 4) / 2
-	if colW < 20 { colW = 20 }
-	
-	visH := tm.visibleHeight()
-	maxItems := (visH - 8) / 2
-	if maxItems < 2 { maxItems = 2 }
-
-	var rows []string
-	for r := 0; r < 2; r++ {
-		var top, bottom strings.Builder
-		for c := 0; c < 2; c++ {
-			idx := r*2 + c
-			var build strings.Builder
-			
-			// Label
-			headerStyle := lipgloss.NewStyle().
-				Foreground(crust).
-				Background(quadColors[idx]).
-				Bold(true).
-				MarginBottom(1)
-			build.WriteString(headerStyle.Render(quadLabels[idx]) + "\n")
-
-			for i := 0; i < maxItems; i++ {
-				if i < len(q[idx]) {
-					t := q[idx][i]
-					taskStr := lipgloss.NewStyle().Foreground(quadColors[idx]).Render(tmPriorityIcon(t.Priority)) + " " + TruncateDisplay(tmCleanText(t.Text), colW-6)
-					build.WriteString(taskStr + "\n")
-				} else {
-					build.WriteString("\n")
-				}
-			}
-
-			if len(q[idx]) > maxItems {
-				build.WriteString(DimStyle.Render(fmt.Sprintf("+%d more", len(q[idx])-maxItems)) + "\n")
-			} else {
-				build.WriteString("\n")
-			}
-
-			boxStyle := lipgloss.NewStyle().
-				Width(colW).
-				Border(PanelBorder).
-				BorderForeground(quadColors[idx]).
-				Padding(0, 1)
-
-			if c == 0 {
-				top.WriteString(boxStyle.Render(build.String()))
-			} else {
-				bottom.WriteString(boxStyle.Render(build.String()))
-			}
-		}
-		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, top.String(), bottom.String()))
-	}
-	
-	b.WriteString(lipgloss.JoinVertical(lipgloss.Left, rows...))
-	b.WriteString("\n")
-}
-
-func (tm *TaskManager) renderHelpOverlay(b *strings.Builder, w int) {
-	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true).Width(8)
-	descStyle := lipgloss.NewStyle().Foreground(text)
-	sectionStyle := lipgloss.NewStyle().Foreground(yellow).Bold(true)
-
-	b.WriteString("\n")
-	b.WriteString("  " + titleStyle.Render("📋 Task Manager Keyboard Shortcuts") + "\n\n")
-
-	sections := []struct {
-		title string
-		keys  [][2]string
-	}{
-		{"Navigation", [][2]string{
-			{"j/k", "Move cursor up/down"},
-			{"Tab", "Cycle views (Today/Upcoming/All/Done/Calendar/Kanban/Matrix)"},
-			{"1-7", "Jump to specific view"},
-			{"g", "Jump to task source note"},
-			{"/", "Search tasks (#tag syntax supported)"},
-			{"Esc", "Close task manager"},
-		}},
-		{"Actions", [][2]string{
-			{"x", "Toggle task done/undone"},
-			{"a", "Add new task"},
-			{"d", "Set/change due date"},
-			{"r", "Reschedule (tomorrow/Monday/+1wk/+1mo/custom)"},
-			{"p", "Cycle priority (none/low/med/high/highest)"},
-			{"E", "Set time estimate (15m/30m/45m/1h/1.5h/2h)"},
-			{"e", "Expand/collapse subtasks"},
-			{"b", "Add task dependency"},
-			{"f", "Start focus session on task"},
-		}},
-		{"Power Features", [][2]string{
-			{"u", "Undo last action (10-deep stack)"},
-			{"n", "Add/edit task note"},
-			{"z", "Snooze task (1h/4h/tomorrow 9am)"},
-			{"W", "Pin/unpin task (pinned sort to top)"},
-			{"A", "Auto-suggest priority (heuristic)"},
-			{"R", "Batch reschedule all overdue (Today view)"},
-		}},
-		{"Filters & Sort", [][2]string{
-			{"#", "Cycle tag filter"},
-			{"P", "Cycle priority filter"},
-			{"s", "Cycle sort mode (priority/date/A-Z/source/tag)"},
-			{"c", "Clear all active filters"},
-		}},
-		{"Bulk Operations", [][2]string{
-			{"v", "Enter/exit select mode"},
-			{"Space", "Toggle selection (in select mode)"},
-		}},
-	}
-
-	for _, sec := range sections {
-		b.WriteString("  " + sectionStyle.Render(sec.title) + "\n")
-		for _, kv := range sec.keys {
-			b.WriteString("    " + keyStyle.Render(kv[0]) + descStyle.Render(kv[1]) + "\n")
-		}
-		b.WriteString("\n")
-	}
-
-	// Task syntax reference
-	syntaxKeyStyle := lipgloss.NewStyle().Foreground(teal).Width(20)
-	b.WriteString("  " + sectionStyle.Render("Task Syntax") + "\n")
-	syntaxItems := [][2]string{
-		{"- [ ] / - [x]", "Task checkbox (incomplete / complete)"},
-		{"📅 2026-04-01", "Due date"},
-		{"🔺 ⏫ 🔼 🔽", "Priority (highest / high / medium / low)"},
-		{"#tag", "Tag (use multiple, e.g. #work #urgent)"},
-		{"~30m / ~2h", "Time estimate"},
-		{"⏰ 09:00-10:30", "Scheduled time block"},
-		{"🔁 daily", "Recurrence (daily/weekly/monthly/3x-week)"},
-		{"depends:\"task\"", "Task dependency (blocks until done)"},
-		{"goal:G001", "Link to goal"},
-		{"snooze:...T09:00", "Snooze until date+time"},
-	}
-	for _, kv := range syntaxItems {
-		b.WriteString("    " + syntaxKeyStyle.Render(kv[0]) + descStyle.Render(kv[1]) + "\n")
-	}
-	b.WriteString("\n")
-	b.WriteString("  " + sectionStyle.Render("Subtasks") + "\n")
-	b.WriteString("    " + descStyle.Render("Indent with 2 spaces to create subtasks:") + "\n")
-	b.WriteString("    " + lipgloss.NewStyle().Foreground(text).Render("  - [ ] Parent task") + "\n")
-	b.WriteString("    " + lipgloss.NewStyle().Foreground(text).Render("    - [ ] Subtask (2 spaces deeper)") + "\n\n")
-	b.WriteString("  " + sectionStyle.Render("Example") + "\n")
-	b.WriteString("    " + lipgloss.NewStyle().Foreground(text).Render("- [ ] Ship v2.0 📅 2026-04-01 🔺 #release ~2h goal:G001") + "\n\n")
-
-	b.WriteString("  " + DimStyle.Render("Press any key to close"))
-}
-
-func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
-	icon := lipgloss.NewStyle().Foreground(blue).Render(IconOutlineChar)
-	title := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" Tasks")
-
-	total := 0
-	done := 0
-	for _, t := range tm.allTasks {
-		total++
-		if t.Done {
-			done++
-		}
-	}
-	stats := lipgloss.NewStyle().Foreground(overlay0).
-		Render(fmt.Sprintf("  %d/%d done", done, total))
-
-	// Workload estimate for Today and Upcoming views
-	if tm.view == taskViewToday || tm.view == taskViewUpcoming || tm.view == taskViewAll {
-		totalMin := 0
-		for _, t := range tm.filtered {
-			if !t.Done {
-				totalMin += t.EstimatedMinutes
-			}
-		}
-		if totalMin > 0 {
-			var workload string
-			h, m := totalMin/60, totalMin%60
-			if h > 0 && m > 0 {
-				workload = fmt.Sprintf("~%dh%dm", h, m)
-			} else if h > 0 {
-				workload = fmt.Sprintf("~%dh", h)
-			} else {
-				workload = fmt.Sprintf("~%dm", m)
-			}
-			stats += lipgloss.NewStyle().Foreground(teal).Render("  " + workload)
-		}
-	}
-
-	// Active filter indicators
-	var filters string
-	filterStyle := lipgloss.NewStyle().Foreground(crust).Background(sapphire).Padding(0, 1)
-	if tm.filterTag != "" {
-		filters += " " + filterStyle.Render("#"+tm.filterTag)
-	}
-	if tm.filterPriority >= 0 {
-		prioNames := []string{"none", "low", "med", "high", "highest"}
-		filters += " " + filterStyle.Render("P:"+prioNames[tm.filterPriority])
-	}
-	if tm.sortMode != tmSortPriority {
-		filters += " " + filterStyle.Render("Sort:"+tmSortNames[tm.sortMode])
-	}
-	if tm.selectMode && len(tm.selected) > 0 {
-		filters += " " + lipgloss.NewStyle().Foreground(crust).Background(mauve).Padding(0, 1).
-			Render(fmt.Sprintf("%d selected", len(tm.selected)))
-	}
-
-	b.WriteString("  " + icon + title + stats + filters)
-	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", w-4)))
-	b.WriteString("\n")
-}
-
-func (tm *TaskManager) renderTabs(b *strings.Builder, w int) {
-	activeStyle := lipgloss.NewStyle().
-		Foreground(crust).
-		Background(mauve).
-		Bold(true).
-		Padding(0, 1)
-	inactiveStyle := lipgloss.NewStyle().
-		Foreground(overlay0).
-		Background(surface0).
-		Padding(0, 1)
-
-	names := []string{
-		"Today",
-		"Upcoming",
-		"All",
-		"Done",
-		"Calendar",
-		"Kanban",
-		"Matrix",
-	}
-	counts := tm.tabCounts[:]
-
-	var tabs []string
-	for i, name := range names {
-		label := fmt.Sprintf("%d:%s", i+1, name)
-		if counts[i] >= 0 {
-			label += fmt.Sprintf(" %d", counts[i])
-		}
-		if taskView(i) == tm.view {
-			tabs = append(tabs, activeStyle.Render(label))
-		} else {
-			tabs = append(tabs, inactiveStyle.Render(label))
-		}
-	}
-
-	b.WriteString("  " + strings.Join(tabs, " "))
-	b.WriteString("\n\n")
-}
-
-func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
-	if len(tm.filtered) == 0 {
-		emptyMsg := "No tasks"
-		hint := "Press 'a' to add a task"
-		switch tm.view {
-		case taskViewToday:
-			emptyMsg = "No tasks due today"
-		case taskViewUpcoming:
-			emptyMsg = "No upcoming tasks this week"
-		case taskViewCompleted:
-			emptyMsg = "No completed tasks"
-			hint = "Complete a task with 'x' to see it here"
-		case taskViewAll:
-			emptyMsg = "No tasks in vault"
-		}
-		b.WriteString(DimStyle.Render("  " + emptyMsg))
-		b.WriteString("\n")
-		b.WriteString(DimStyle.Render("  " + hint))
-		b.WriteString("\n")
-		return
-	}
-
-	visH := tm.visibleHeight()
-	end := tm.scroll + visH
-	if end > len(tm.filtered) {
-		end = len(tm.filtered)
-	}
-
-	// Group header tracking for upcoming view
-	lastGroup := ""
-
-	for i := tm.scroll; i < end; i++ {
-		task := tm.filtered[i]
-
-		// Today view: group overdue vs today
-		if tm.view == taskViewToday {
-			var group string
-			if tmIsOverdue(task.DueDate) {
-				group = "overdue"
-			} else {
-				group = "today"
-			}
-			if group != lastGroup {
-				if lastGroup != "" {
-					b.WriteString("\n")
-				}
-				if group == "overdue" {
-					b.WriteString("  " + lipgloss.NewStyle().Foreground(crust).Background(red).Bold(true).Padding(0, 1).Render("OVERDUE"))
-				} else {
-					b.WriteString("  " + lipgloss.NewStyle().Foreground(crust).Background(green).Bold(true).Padding(0, 1).Render("TODAY"))
-				}
-				b.WriteString("\n")
-				lastGroup = group
-			}
-		}
-
-		// Upcoming view: group by day
-			// All view: group by Note Path
-			if tm.view == taskViewAll || tm.view == taskViewCompleted {
-				group := task.NotePath
-				if group != lastGroup {
-					if lastGroup != "" {
-						b.WriteString("\n")
-					}
-					b.WriteString("  " + lipgloss.NewStyle().Foreground(crust).Background(sapphire).Bold(true).Padding(0, 1).Render(filepath.Base(group)))
-					b.WriteString("\n")
-					lastGroup = group
-				}
-			}
-
-		if tm.view == taskViewUpcoming && task.DueDate != "" {
-			group := task.DueDate
-			if group != lastGroup {
-				if lastGroup != "" {
-					b.WriteString("\n")
-				}
-				dt, _ := time.Parse("2006-01-02", group)
-				dayLabel := dt.Format("Monday, Jan 2")
-				if tmIsToday(group) {
-					dayLabel += " (today)"
-				}
-				b.WriteString("  " + lipgloss.NewStyle().Foreground(crust).Background(lavender).Bold(true).Padding(0, 1).Render(dayLabel))
-				b.WriteString("\n")
-				lastGroup = group
-			}
-		}
-
-		tm.renderTaskRow(b, i, task, w)
-		if i < end-1 {
-			b.WriteString("\n")
-		}
-	}
-	b.WriteString("\n")
-
-	// Scroll indicator
-	if len(tm.filtered) > visH {
-		pos := ""
-		if tm.scroll > 0 {
-			pos += "\u25B2 " // ▲
-		}
-		pos += fmt.Sprintf("%d/%d", tm.cursor+1, len(tm.filtered))
-		if end < len(tm.filtered) {
-			pos += " \u25BC" // ▼
-		}
-		b.WriteString(DimStyle.Render("  " + pos))
-		b.WriteString("\n")
-	}
-}
-
-func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w int) {
-	isSelected := idx == tm.cursor
-
-	// Checkbox
-	var checkbox string
-	if task.Done {
-		checkbox = lipgloss.NewStyle().Foreground(green).Render("[x]")
-	} else {
-		checkbox = lipgloss.NewStyle().Foreground(overlay0).Render("[ ]")
-	}
-
-	// Priority indicator
-	prioIcon := tmPriorityIcon(task.Priority)
-	prioStyled := lipgloss.NewStyle().Foreground(tmPriorityColor(task.Priority)).Render(prioIcon)
-
-	// Task text (strip emoji markers and tags for cleaner display)
-	displayText := task.Text
-	displayText = tmDueDateRe.ReplaceAllString(displayText, "")
-	displayText = tmPrioHighestRe.ReplaceAllString(displayText, "")
-	displayText = tmPrioHighRe.ReplaceAllString(displayText, "")
-	displayText = tmPrioMedRe.ReplaceAllString(displayText, "")
-	displayText = tmPrioLowRe.ReplaceAllString(displayText, "")
-	displayText = tmScheduleRe.ReplaceAllString(displayText, "")
-	displayText = tmTagRe.ReplaceAllString(displayText, "")
-	displayText = tmDependsRe.ReplaceAllString(displayText, "")
-	displayText = tmEstimateRe.ReplaceAllString(displayText, "")
-	displayText = tmSnoozeRe.ReplaceAllString(displayText, "")
-	displayText = tmGoalIDRe.ReplaceAllString(displayText, "")
-	displayText = strings.TrimSpace(displayText)
-
-	textStyle := lipgloss.NewStyle().Foreground(text)
-	if task.Done {
-		textStyle = lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true)
-	}
-
-	// Due date badge
-	var dueBadge string
-	if task.DueDate != "" {
-		dueLabel := tmFormatDue(task.DueDate)
-		if tmIsOverdue(task.DueDate) {
-			dueBadge = lipgloss.NewStyle().Foreground(crust).Background(red).Padding(0, 1).Render(dueLabel)
-		} else if tmIsToday(task.DueDate) {
-			dueBadge = lipgloss.NewStyle().Foreground(crust).Background(yellow).Padding(0, 1).Render(dueLabel)
-		} else {
-			dueBadge = lipgloss.NewStyle().Foreground(crust).Background(surface1).Padding(0, 1).Render(dueLabel)
-		}
-	}
-
-	// Scheduled time badge (from AI scheduler)
-	var scheduleBadge string
-	if task.ScheduledTime != "" {
-		scheduleBadge = lipgloss.NewStyle().
-			Foreground(crust).
-			Background(teal).
-			Padding(0, 1).
-			Render(task.ScheduledTime)
-	}
-
-	// Estimate badge
-	var estimateBadge string
-	estimateWidth := 0
-	if task.EstimatedMinutes > 0 {
-		label := fmt.Sprintf("~%dm", task.EstimatedMinutes)
-		if task.EstimatedMinutes >= 60 && task.EstimatedMinutes%60 == 0 {
-			label = fmt.Sprintf("~%dh", task.EstimatedMinutes/60)
-		} else if task.EstimatedMinutes > 60 {
-			label = fmt.Sprintf("~%dh%dm", task.EstimatedMinutes/60, task.EstimatedMinutes%60)
-		}
-		estimateBadge = lipgloss.NewStyle().
-			Foreground(crust).Background(sky).Padding(0, 1).
-			Render(label)
-		estimateWidth = len(label) + 3
-	}
-
-	// Actual time badge (from time tracker)
-	var actualBadge string
-	actualWidth := 0
-	if task.ActualMinutes > 0 {
-		label := tmFormatMinutes(task.ActualMinutes)
-		badgeColor := green
-		if task.EstimatedMinutes > 0 && task.ActualMinutes > task.EstimatedMinutes {
-			badgeColor = red
-		}
-		actualBadge = lipgloss.NewStyle().
-			Foreground(crust).Background(badgeColor).Padding(0, 1).
-			Render(label)
-		actualWidth = len(label) + 3
-	}
-
-	// Source note badge
-	noteName := strings.TrimSuffix(filepath.Base(task.NotePath), ".md")
-	noteLabel := lipgloss.NewStyle().
-		Foreground(text).
-		Background(surface1).
-		Padding(0, 1).
-		Render(noteName)
-
-	// Pin indicator
-	pinStr := ""
-	prefixExtra := 0
-	if tm.pinnedTasks[taskKey(task)] {
-		pinStr = lipgloss.NewStyle().Foreground(yellow).Render("\U0001F4CC ")
-		prefixExtra += 3
-	}
-
-	// Note indicator
-	noteStr := ""
-	if tm.taskNotes[taskKey(task)] != "" {
-		noteStr = lipgloss.NewStyle().Foreground(yellow).Render("\U0001F4DD ")
-		prefixExtra += 3
-	}
-
-	// Goal link indicator
-	goalStr := ""
-	if task.GoalID != "" {
-		goalStr = lipgloss.NewStyle().Foreground(sapphire).Render("\u2691 ")
-		prefixExtra += 2
-	}
-
-	// Selection indicator (in select mode)
-	selectStr := ""
-	if tm.selectMode {
-		if tm.selected[taskKey(task)] {
-			selectStr = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("[*] ")
-		} else {
-			selectStr = DimStyle.Render("[ ] ")
-		}
-		prefixExtra += 4
-	}
-
-	// Blocked indicator (uses pre-computed cache from rebuildFiltered)
-	blockedStr := ""
-	if tm.blockedCache[taskKey(task)] {
-		blockedStr = lipgloss.NewStyle().Foreground(red).Render("🔒")
-		textStyle = lipgloss.NewStyle().Foreground(overlay0) // dim blocked tasks
-		prefixExtra += 2
-	}
-
-	// Subtask indentation and collapse indicator
-	indentStr := ""
-	if task.Indent > 0 {
-		indentStr = strings.Repeat("  ", task.Indent) + DimStyle.Render("└ ")
-		prefixExtra += task.Indent*2 + 2
-	}
-	collapseIndicator := ""
-	if tm.taskHasChildren(task) {
-		key := fmt.Sprintf("%s:%d", task.NotePath, task.LineNum)
-		if tm.collapsed[key] {
-			collapseIndicator = lipgloss.NewStyle().Foreground(overlay1).Render("[+] ")
-			prefixExtra += 4
-		}
-	}
-
-	// Truncate text (account for all variable-width prefixes and badges)
-	tagWidth := 0
-	for _, tag := range task.Tags {
-		tagWidth += len(tag) + 2 // "#" + tag + space
-	}
-	maxTextW := w - 30 - tagWidth - prefixExtra - estimateWidth - actualWidth
-	if maxTextW < 10 {
-		maxTextW = 10
-	}
-	displayText = TruncateDisplay(displayText, maxTextW)
-
-	// Build the line
-	prefix := "  "
-	if isSelected {
-		prefix = lipgloss.NewStyle().Foreground(mauve).Render("  " + ThemeAccentBar + " ")
-	}
-
-	// Tag badges
-	tagColors := []lipgloss.Color{sapphire, teal, lavender, pink, peach, sky}
-	var tagBadges string
-	for i, tag := range task.Tags {
-		c := tagColors[i%len(tagColors)]
-		tagBadges += " " + lipgloss.NewStyle().Foreground(c).Render("#"+tag)
-	}
-
-leftSideTokens := []string{prefix + pinStr + noteStr + goalStr + selectStr + indentStr + collapseIndicator + blockedStr + checkbox, prioStyled, textStyle.Render(displayText)}
-        if tagBadges != "" {
-                leftSideTokens = append(leftSideTokens, tagBadges)
-        }
-        leftSide := strings.Join(leftSideTokens, " ")
-
-        rightSideTokens := []string{}
-        if estimateBadge != "" {
-                rightSideTokens = append(rightSideTokens, estimateBadge)
-        }
-        if actualBadge != "" {
-                rightSideTokens = append(rightSideTokens, actualBadge)
-        }
-        if scheduleBadge != "" {
-                rightSideTokens = append(rightSideTokens, scheduleBadge)
-        }
-        if dueBadge != "" {
-                rightSideTokens = append(rightSideTokens, dueBadge)
-        }
-        rightSideTokens = append(rightSideTokens, noteLabel)
-        rightSide := strings.Join(rightSideTokens, " ")
-
-        leftW := lipgloss.Width(leftSide)
-        rightW := lipgloss.Width(rightSide)
-        
-        spacing := w - leftW - rightW - 2
-        if spacing < 1 {
-                spacing = 1
-        }
-
-        line := leftSide + strings.Repeat(" ", spacing) + rightSide
-
-	if isSelected {
-		b.WriteString(lipgloss.NewStyle().
-			Background(surface0).
-			Width(w).
-			Render(line))
-	} else {
-		b.WriteString(line)
-	}
-}
-
-func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
-	if tm.inputMode == tmInputNone {
-		return
-	}
-
-	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", w-4)))
-	b.WriteString("\n")
-
-	promptStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	inputStyle := lipgloss.NewStyle().Foreground(text).Background(surface0).Padding(0, 1)
-
-	switch tm.inputMode {
-	case tmInputAdd:
-		b.WriteString("  " + promptStyle.Render("New task: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
-	case tmInputDate:
-		// Date picker display
-		preview := tmFormatDateLong(tm.datePickerDate)
-		dateStr := tm.datePickerDate.Format("2006-01-02")
-		b.WriteString("  " + promptStyle.Render("Due: ") +
-			lipgloss.NewStyle().Foreground(text).Bold(true).Render(preview))
-		b.WriteString("\n")
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).Render(dateStr))
-		b.WriteString("\n")
-		shortcutStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-		descStyle := lipgloss.NewStyle().Foreground(overlay0)
-		b.WriteString("  " +
-			shortcutStyle.Render("t") + descStyle.Render(":today ") +
-			shortcutStyle.Render("m") + descStyle.Render(":tomorrow ") +
-			shortcutStyle.Render("w") + descStyle.Render(":monday ") +
-			shortcutStyle.Render("+/-") + descStyle.Render(":adjust ") +
-			shortcutStyle.Render("Enter") + descStyle.Render(":set ") +
-			shortcutStyle.Render("Esc") + descStyle.Render(":cancel"))
-	case tmInputSearch:
-		b.WriteString("  " + promptStyle.Render("Filter: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
-	case tmInputDependency:
-		b.WriteString("  " + promptStyle.Render("Depends on: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
-	case tmInputNote:
-		b.WriteString("  " + promptStyle.Render("Note: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
-	case tmInputBatchReschedule:
-		if tm.batchReschIdx < len(tm.batchReschedule) {
-			task := tm.batchReschedule[tm.batchReschIdx]
-			progress := fmt.Sprintf("[%d/%d] ", tm.batchReschIdx+1, len(tm.batchReschedule))
-			taskText := TruncateDisplay(tmCleanText(task.Text), w-20)
-			b.WriteString("  " + promptStyle.Render("Reschedule: ") + DimStyle.Render(progress) + lipgloss.NewStyle().Foreground(text).Render(taskText))
-			b.WriteString("\n")
-			ss := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-			ds := lipgloss.NewStyle().Foreground(overlay0)
-			b.WriteString("  " +
-				ss.Render("1") + ds.Render(":tomorrow ") +
-				ss.Render("2") + ds.Render(":+1week ") +
-				ss.Render("s") + ds.Render(":skip ") +
-				ss.Render("Esc") + ds.Render(":cancel"))
-		}
-	case tmInputTemplate:
-		b.WriteString("  " + promptStyle.Render("Create from template:") + "\n")
-		for i, tmpl := range tm.taskTemplates {
-			if i >= 9 {
-				break
-			}
-			numStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-			b.WriteString("    " + numStyle.Render(fmt.Sprintf("%d", i+1)) + " " + tmpl.Name + " — " + DimStyle.Render(TruncateDisplay(tmpl.Text, w-20)) + "\n")
-		}
-		b.WriteString("  " + DimStyle.Render("Esc:cancel"))
-	case tmInputTemplateName:
-		b.WriteString("  " + promptStyle.Render("Template name: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
-	case tmInputSnooze:
-		b.WriteString("  " + promptStyle.Render("Snooze: "))
-		b.WriteString("\n")
-		ss := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-		ds := lipgloss.NewStyle().Foreground(overlay0)
-		b.WriteString("  " +
-			ss.Render("1") + ds.Render(":1h ") +
-			ss.Render("2") + ds.Render(":4h ") +
-			ss.Render("3") + ds.Render(":tomorrow 9am ") +
-			ss.Render("Esc") + ds.Render(":cancel"))
-	case tmInputEstimate:
-		b.WriteString("  " + promptStyle.Render("Estimate: "))
-		b.WriteString("\n")
-		shortcutStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-		descStyle2 := lipgloss.NewStyle().Foreground(overlay0)
-		b.WriteString("  " +
-			shortcutStyle.Render("1") + descStyle2.Render(":15m ") +
-			shortcutStyle.Render("2") + descStyle2.Render(":30m ") +
-			shortcutStyle.Render("3") + descStyle2.Render(":45m ") +
-			shortcutStyle.Render("4") + descStyle2.Render(":1h ") +
-			shortcutStyle.Render("5") + descStyle2.Render(":1.5h ") +
-			shortcutStyle.Render("6") + descStyle2.Render(":2h ") +
-			shortcutStyle.Render("Esc") + descStyle2.Render(":cancel"))
-	case tmInputReschedule:
-		b.WriteString("  " + promptStyle.Render("Reschedule: "))
-		b.WriteString("\n")
-		shortcutStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
-		descStyle := lipgloss.NewStyle().Foreground(overlay0)
-		b.WriteString("  " +
-			shortcutStyle.Render("1") + descStyle.Render(":tomorrow ") +
-			shortcutStyle.Render("2") + descStyle.Render(":monday ") +
-			shortcutStyle.Render("3") + descStyle.Render(":+1week ") +
-			shortcutStyle.Render("4") + descStyle.Render(":+1month ") +
-			shortcutStyle.Render("5") + descStyle.Render(":custom ") +
-			shortcutStyle.Render("Esc") + descStyle.Render(":cancel"))
-	}
-	b.WriteString("\n")
-}
-
-func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
-	b.WriteString("\n")
-	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", w-4)))
-	b.WriteString("\n")
-
-	var pairs []struct{ Key, Desc string }
-	switch tm.view {
-	case taskViewCalendar:
-		pairs = []struct{ Key, Desc string }{
-			{"h/l", "month"}, {"j/k", "day"}, {"x", "toggle"},
-			{"g", "go"}, {"a", "add"}, {"Tab", "view"}, {"Esc", "close"},
-		}
-	case taskViewKanban:
-		pairs = []struct{ Key, Desc string }{
-			{"h/l", "col"}, {"j/k", "nav"}, {"x", "toggle"}, {">/<", "move"},
-			{"g", "go"}, {"a", "add"}, {"Tab", "view"}, {"Esc", "close"},
-		}
-	default:
-		pairs = []struct{ Key, Desc string }{
-			{"j/k", "nav"}, {"x", "toggle"}, {"u", "undo"}, {"n", "note"}, {"z", "snooze"},
-			{"e", "expand"}, {"f", "focus"}, {"g", "go"}, {"a", "add"}, {"d", "date"},
-			{"E", "estimate"}, {"r", "reschedule"}, {"s", "sort"}, {"W", "pin"}, {"A", "auto-prio"},
-			{"p", "prio"}, {"#", "tag"}, {"P", "filter prio"}, {"c", "clear"}, {"/", "search"},
-			{"Tab", "view"}, {"Esc", "close"},
-		}
-	}
-
-	b.WriteString(RenderHelpBar(pairs))
-}
-
-// ---------------------------------------------------------------------------
-// Calendar sub-view
-// ---------------------------------------------------------------------------
-
-func (tm *TaskManager) renderCalendarView(b *strings.Builder, w int) {
-	// Month header
-	monthName := time.Month(tm.calMonth).String()
-	monthYear := fmt.Sprintf("%s %d", monthName, tm.calYear)
-	navLeft := lipgloss.NewStyle().Foreground(overlay1).Render("\u25C0 ")
-	navRight := lipgloss.NewStyle().Foreground(overlay1).Render(" \u25B6")
-	header := navLeft + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(monthYear) + navRight
-	headerPad := (28 - lipgloss.Width(header)) / 2
-	if headerPad < 0 {
-		headerPad = 0
-	}
-	b.WriteString("  " + strings.Repeat(" ", headerPad) + header)
-	b.WriteString("\n\n")
-
-	// Day-of-week header
-	dayNames := []string{"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"}
-	dayHeaderStyle := lipgloss.NewStyle().Foreground(subtext0).Bold(true)
-	b.WriteString("  ")
-	for _, d := range dayNames {
-		b.WriteString(dayHeaderStyle.Render(fmt.Sprintf("%4s", d)))
-	}
-	b.WriteString("\n")
-
-	// Calendar grid
-	firstOfMonth := time.Date(tm.calYear, tm.calMonth, 1, 0, 0, 0, 0, time.Local)
-	startWeekday := int(firstOfMonth.Weekday())
-	totalDays := tmDaysInMonth(tm.calYear, tm.calMonth)
-	todayStr := tmToday()
-
-	row := "  "
-	col := 0
-
-	// Leading blanks
-	for i := 0; i < startWeekday; i++ {
-		row += "    "
-		col++
-	}
-
-	for d := 1; d <= totalDays; d++ {
-		dateStr := fmt.Sprintf("%04d-%02d-%02d", tm.calYear, int(tm.calMonth), d)
-
-		// Count tasks for this day
-		count := 0
-		for _, t := range tm.allTasks {
-			if t.DueDate == dateStr {
-				count++
-			}
-		}
-
-		dayStr := fmt.Sprintf("%2d", d)
-		isCursor := d == tm.calDay
-		isToday := dateStr == todayStr
-
-		var cell string
-		switch {
-		case isCursor && isToday:
-			cell = lipgloss.NewStyle().Foreground(crust).Background(peach).Bold(true).Render(dayStr)
-		case isCursor:
-			cell = lipgloss.NewStyle().Foreground(crust).Background(mauve).Bold(true).Render(dayStr)
-		case isToday:
-			cell = lipgloss.NewStyle().Foreground(peach).Bold(true).Render(dayStr)
-		case count > 0:
-			cell = lipgloss.NewStyle().Foreground(blue).Render(dayStr)
-		default:
-			cell = lipgloss.NewStyle().Foreground(text).Render(dayStr)
-		}
-
-		// Task count badge
-		badge := " "
-		if count > 0 {
-			badge = lipgloss.NewStyle().Foreground(green).Render(fmt.Sprintf("%d", count))
-		}
-
-		row += " " + cell + badge
-		col++
-
-		if col == 7 {
-			b.WriteString(row + "\n")
-			row = "  "
-			col = 0
-		}
-	}
-
-	if col > 0 {
-		b.WriteString(row + "\n")
-	}
-	b.WriteString("\n")
-
-	// Selected day's tasks
-	dateLabel := fmt.Sprintf("%04d-%02d-%02d", tm.calYear, int(tm.calMonth), tm.calDay)
-	dt, _ := time.Parse("2006-01-02", dateLabel)
-	dayTitle := dt.Format("Monday, Jan 2")
-	b.WriteString("  " + lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(dayTitle))
-	b.WriteString("\n")
-	calW := w - 4
-	if calW < 10 {
-		calW = 10
-	}
-	b.WriteString(DimStyle.Render("  " + strings.Repeat("\u2500", calW)))
-	b.WriteString("\n")
-
-	if len(tm.filtered) == 0 {
-		b.WriteString(DimStyle.Render("  No tasks for this day"))
-		b.WriteString("\n")
-		b.WriteString(DimStyle.Render("  Press 'a' to add a task"))
-		b.WriteString("\n")
-	} else {
-		visH := tm.visibleHeight() - 12 // reserve space for calendar grid
-		if visH < 3 {
-			visH = 3
-		}
-		end := tm.scroll + visH
-		if end > len(tm.filtered) {
-			end = len(tm.filtered)
-		}
-		for i := tm.scroll; i < end; i++ {
-			tm.renderTaskRow(b, i, tm.filtered[i], w)
-			if i < end-1 {
-				b.WriteString("\n")
-			}
-		}
-		b.WriteString("\n")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Kanban view
-// ---------------------------------------------------------------------------
-
-func (tm *TaskManager) renderKanbanView(b *strings.Builder, w int) {
-	cols := tm.kanbanColumns()
-	colNames := []string{"Backlog", "Todo", "In Progress", "Done"}
-	colColors := []lipgloss.Color{overlay1, blue, peach, green}
-
-	colWidth := w / 4
-	if colWidth < 20 { colWidth = 20 }
-	visH := tm.kanbanVisibleHeight()
-
-	var colViews []string
-	for c := 0; c < 4; c++ {
-		var cb strings.Builder
-		isActiveCol := c == tm.kanbanCol
-
-		/* Header */
-		countStr := fmt.Sprintf(" %d ", len(cols[c]))
-		countStyle := lipgloss.NewStyle().Foreground(surface0).Background(base).Padding(0, 1).MarginLeft(1).Bold(true)
-		headerStyle := lipgloss.NewStyle().Foreground(colColors[c]).Bold(true).PaddingBottom(1)
-		
-		if isActiveCol {
-			countStyle = countStyle.Background(colColors[c]).Foreground(base)
-		}
-
-		cb.WriteString(headerStyle.Render(colNames[c]) + countStyle.Render(countStr) + "\n")
-
-		/* Content */
-		if len(cols[c]) == 0 {
-			emptyBox := lipgloss.NewStyle().
-			    Width(colWidth - 4).
-			    Height(3).
-			    BorderStyle(PanelBorder).
-			    BorderForeground(surface0).
-			    Align(lipgloss.Center).
-			    Render("Empty")
-			cb.WriteString(emptyBox + "\n")
-		} else {
-			start := tm.kanbanScroll[c]
-			end := start + visH
-			if end > len(cols[c]) { end = len(cols[c]) }
-			for i := start; i < end; i++ {
-				isSelected := isActiveCol && i == tm.kanbanCursor[c]
-				tm.renderKanbanCard(&cb, cols[c][i], isSelected, colWidth-4)
-				cb.WriteString("\n")
-			}
-			if end < len(cols[c]) {
-				cb.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(fmt.Sprintf("\u2193 %d more", len(cols[c])-end)) + "\n")
-			}
-		}
-
-		colStyle := lipgloss.NewStyle().Width(colWidth - 2).Padding(0, 1)
-		if isActiveCol {
-			colStyle = colStyle.Border(lipgloss.NormalBorder(), false, true, false, true).BorderForeground(surface1).Padding(0, 0)
-		} else {
-		    colStyle = colStyle.Border(lipgloss.NormalBorder(), false, true, false, false).BorderForeground(surface0)
-		}
-
-		colViews = append(colViews, colStyle.Render(cb.String()))
-	}
-
-	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, colViews...))
-	b.WriteString("\n")
-}
-
-func (tm *TaskManager) renderKanbanCard(b *strings.Builder, task Task, isSelected bool, w int) {
-	borderColor := surface0
-	if isSelected { borderColor = lavender }
-	
-	boxW := w
-	if boxW < 10 { boxW = 10 }
-
-	boxStyle := lipgloss.NewStyle().
-	    Border(PanelBorder).
-	    BorderForeground(borderColor).
-	    Width(boxW).
-	    Padding(0, 1)
-
-	if isSelected { 
-	    boxStyle = boxStyle.Background(surface0).BorderForeground(lavender) 
-	}
-
-	var contentBuilder strings.Builder
-
-	/* Priority & Due Date */
-	prioIcon := tmPriorityIcon(task.Priority)
-	prioColor := tmPriorityColor(task.Priority)
-	if prioIcon != "" {
-		contentBuilder.WriteString(lipgloss.NewStyle().Foreground(prioColor).Render(prioIcon) + " ")
-	}
-
-	if task.DueDate != "" {
-		dueLabel := tmFormatDue(task.DueDate)
-		dueColor := overlay0
-		if tmIsOverdue(task.DueDate) { dueColor = red } else if tmIsToday(task.DueDate) { dueColor = yellow }
-		contentBuilder.WriteString(lipgloss.NewStyle().Foreground(dueColor).Render("⏰ " + dueLabel))
-	} else {
-	    contentBuilder.WriteString(lipgloss.NewStyle().Foreground(surface0).Render("⏰ No Date"))
-	}
-	contentBuilder.WriteString("\n")
-
-	/* Title */
-	displayText := tmCleanText(task.Text)
-	runes := []rune(displayText)
-	maxTextW := boxW - 2 
-	if maxTextW < 1 { maxTextW = 1 }
-	if len(runes) > maxTextW*2 { displayText = string(runes[:maxTextW*2-3]) + "..." }
-	
-	textStyle := lipgloss.NewStyle().Foreground(text).Width(maxTextW)
-	if task.Done { textStyle = textStyle.Foreground(overlay0).Strikethrough(true) }
-	
-	contentBuilder.WriteString(textStyle.Render(displayText) + "\n")
-	
-	/* Status & Badge */
-	checkbox := lipgloss.NewStyle().Foreground(overlay0).Render("[ ]")
-	if task.Done { checkbox = lipgloss.NewStyle().Foreground(green).Render("[✓]") }
-	
-	projectBadge := ""
-	if task.Project != "" { projectBadge = lipgloss.NewStyle().Foreground(blue).Render("#" + task.Project) }
-
-    bottomLine := checkbox
-    if projectBadge != "" {
-        padLen := maxTextW - lipgloss.Width(checkbox) - lipgloss.Width(projectBadge)
-        if padLen > 0 {
-            bottomLine += strings.Repeat(" ", padLen) + projectBadge
-        } else {
-            bottomLine += " " + projectBadge
-        }
-    }
-	contentBuilder.WriteString(bottomLine)
-
-	b.WriteString(boxStyle.Render(contentBuilder.String()))
-}
-
-// UI configuration updated.
-// Enhanced UI for Tasks
