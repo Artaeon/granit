@@ -1415,8 +1415,9 @@ func (tm *TaskManager) filterToday() []Task {
 		}
 		if tmIsOverdue(t.DueDate) {
 			overdue = append(overdue, t)
-		} else if t.ScheduledTime != "" && tmIsToday(t.DueDate) {
-			// Sort into time blocks based on scheduled start hour
+		} else if t.ScheduledTime != "" {
+			// Any task with a schedule time goes into a time block,
+			// regardless of due date (scheduling implies "today").
 			parts := strings.SplitN(t.ScheduledTime, "-", 2)
 			if len(parts) >= 1 {
 				h, _ := parseHHMM(parts[0])
