@@ -204,7 +204,10 @@ func TestQuickSwitch_NavigationUpDown(t *testing.T) {
 	}
 }
 
-func TestQuickSwitch_NavigationJK(t *testing.T) {
+func TestQuickSwitch_NavigationCtrlJK(t *testing.T) {
+	// Arrow keys + Ctrl+J/K + Ctrl+N/P navigate; raw j/k fall into the
+	// query so users can search for files containing those letters
+	// (e.g. "jot", "kanban").
 	now := time.Now()
 	modTimes := map[string]time.Time{
 		"a.md": now,
@@ -213,16 +216,33 @@ func TestQuickSwitch_NavigationJK(t *testing.T) {
 	qs := NewQuickSwitch()
 	qs.Open(nil, nil, []string{"a.md", "b.md"}, stubModTime(modTimes))
 
-	// j = down
-	qs, _ = qs.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	qs, _ = qs.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
 	if qs.cursor != 1 {
-		t.Errorf("expected cursor=1 after 'j', got %d", qs.cursor)
+		t.Errorf("expected cursor=1 after Ctrl+J, got %d", qs.cursor)
 	}
 
-	// k = up
-	qs, _ = qs.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	qs, _ = qs.Update(tea.KeyMsg{Type: tea.KeyCtrlK})
 	if qs.cursor != 0 {
-		t.Errorf("expected cursor=0 after 'k', got %d", qs.cursor)
+		t.Errorf("expected cursor=0 after Ctrl+K, got %d", qs.cursor)
+	}
+}
+
+func TestQuickSwitch_RawJKTypeIntoQuery(t *testing.T) {
+	now := time.Now()
+	modTimes := map[string]time.Time{
+		"jot.md":    now,
+		"kanban.md": now.Add(-time.Hour),
+		"other.md":  now.Add(-2 * time.Hour),
+	}
+	qs := NewQuickSwitch()
+	qs.Open(nil, nil, []string{"jot.md", "kanban.md", "other.md"}, stubModTime(modTimes))
+
+	qs, _ = qs.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	if qs.query != "j" {
+		t.Errorf("expected query 'j', got %q", qs.query)
+	}
+	if len(qs.items) == 0 || qs.items[0].path != "jot.md" {
+		t.Errorf("expected jot.md to top the filtered list, got %+v", qs.items)
 	}
 }
 
@@ -426,5 +446,46 @@ func TestQuickSwitch_ViewNoPanic(t *testing.T) {
 	v = qs.View()
 	if v == "" {
 		t.Error("expected non-empty view with items")
+	}
+}
+
+func TestQuickSwitch_FuzzyFilterByBasename(t *testing.T) {
+	now := time.Now()
+	modTimes := map[string]time.Time{
+		"projects/granit.md":  now,
+		"projects/grafana.md": now,
+		"random/notes.md":     now,
+	}
+	qs := NewQuickSwitch()
+	qs.Open(nil, nil, []string{"projects/granit.md", "projects/grafana.md", "random/notes.md"}, stubModTime(modTimes))
+
+	// Type "gran" — both grafana and granit fuzzy-match, granit is the
+	// stronger fit (4 contiguous chars at start of basename).
+	for _, ch := range "gran" {
+		qs, _ = qs.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+	}
+	if len(qs.items) < 1 || qs.items[0].path != "projects/granit.md" {
+		t.Errorf("expected granit first for 'gran', got %+v", qs.items)
+	}
+	for _, it := range qs.items {
+		if it.path == "random/notes.md" {
+			t.Errorf("non-matching item appeared in filtered list: %+v", qs.items)
+		}
+	}
+}
+
+func TestQuickSwitch_BackspaceShrinksQuery(t *testing.T) {
+	now := time.Now()
+	qs := NewQuickSwitch()
+	qs.Open(nil, nil, []string{"alpha.md"}, stubModTime(map[string]time.Time{"alpha.md": now}))
+
+	qs, _ = qs.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	qs, _ = qs.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	if qs.query != "ab" {
+		t.Fatalf("expected query 'ab', got %q", qs.query)
+	}
+	qs, _ = qs.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	if qs.query != "a" {
+		t.Errorf("expected query 'a' after backspace, got %q", qs.query)
 	}
 }

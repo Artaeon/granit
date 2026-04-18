@@ -19,8 +19,10 @@ type quickSwitchItem struct {
 
 type QuickSwitch struct {
 	active bool
-	items  []quickSwitchItem
+	all    []quickSwitchItem // unfiltered, in display order from Open()
+	items  []quickSwitchItem // filtered view shown to the user
 	cursor int
+	query  string
 	width  int
 	height int
 	result string
@@ -42,6 +44,8 @@ func (qs *QuickSwitch) Open(recentFiles []string, starredFiles []string, allPath
 	qs.active = true
 	qs.cursor = 0
 	qs.result = ""
+	qs.query = ""
+	qs.all = nil
 	qs.items = nil
 
 	seen := make(map[string]bool)
@@ -54,7 +58,7 @@ func (qs *QuickSwitch) Open(recentFiles []string, starredFiles []string, allPath
 		}
 		seen[path] = true
 		mt := getModTime(path)
-		qs.items = append(qs.items, quickSwitchItem{
+		qs.all = append(qs.all, quickSwitchItem{
 			path:    path,
 			modTime: formatRelativeTime(now, mt),
 			starred: starred,
@@ -95,6 +99,57 @@ func (qs *QuickSwitch) Open(recentFiles []string, starredFiles []string, allPath
 	for _, entry := range remaining {
 		addItem(entry.path, starredSet[entry.path])
 	}
+
+	qs.applyFilter()
+}
+
+// applyFilter rebuilds qs.items from qs.all according to the current
+// query. Empty query keeps the original Open() ordering (starred →
+// recent → modtime). With a query, items are scored by fuzzy match on
+// the file basename + path; non-matches are dropped, matches sort by
+// score with starred status as a soft tie-breaker.
+func (qs *QuickSwitch) applyFilter() {
+	if qs.query == "" {
+		qs.items = make([]quickSwitchItem, len(qs.all))
+		copy(qs.items, qs.all)
+		if qs.cursor >= len(qs.items) {
+			qs.cursor = maxInt(0, len(qs.items)-1)
+		}
+		return
+	}
+	q := strings.ToLower(qs.query)
+	type scored struct {
+		item  quickSwitchItem
+		score int
+	}
+	var hits []scored
+	for _, it := range qs.all {
+		base := strings.ToLower(strings.TrimSuffix(filepath.Base(it.path), ".md"))
+		full := strings.ToLower(it.path)
+		// Basename matches outrank deep-path matches: people remember the
+		// note title, not where it lives in the folder tree.
+		s := cmdFuzzyScore(base, q)
+		if pathScore := cmdFuzzyScore(full, q) / 3; pathScore > s {
+			s = pathScore
+		}
+		if s == 0 {
+			continue
+		}
+		if it.starred {
+			s += 30 // small boost; doesn't override a strong fuzzy hit
+		}
+		hits = append(hits, scored{it, s})
+	}
+	sort.SliceStable(hits, func(i, j int) bool {
+		return hits[i].score > hits[j].score
+	})
+	qs.items = make([]quickSwitchItem, len(hits))
+	for i, h := range hits {
+		qs.items[i] = h.item
+	}
+	if qs.cursor >= len(qs.items) {
+		qs.cursor = maxInt(0, len(qs.items)-1)
+	}
 }
 
 func (qs *QuickSwitch) Close() {
@@ -122,11 +177,11 @@ func (qs QuickSwitch) Update(msg tea.Msg) (QuickSwitch, tea.Cmd) {
 		switch msg.String() {
 		case "esc", "tab":
 			qs.active = false
-		case "up", "k":
+		case "up", "ctrl+k", "ctrl+p":
 			if qs.cursor > 0 {
 				qs.cursor--
 			}
-		case "down", "j":
+		case "down", "ctrl+j", "ctrl+n":
 			if qs.cursor < len(qs.items)-1 {
 				qs.cursor++
 			}
@@ -137,6 +192,23 @@ func (qs QuickSwitch) Update(msg tea.Msg) (QuickSwitch, tea.Cmd) {
 			if len(qs.items) > 0 && qs.cursor < len(qs.items) {
 				qs.result = qs.items[qs.cursor].path
 				qs.active = false
+			}
+		case "backspace":
+			if len(qs.query) > 0 {
+				qs.query = TrimLastRune(qs.query)
+				qs.cursor = 0
+				qs.applyFilter()
+			}
+		default:
+			// Printable characters narrow the result set. j/k as raw
+			// chars are intentionally treated as typed input, not
+			// navigation — vim-style nav lives on Ctrl+J/Ctrl+N so the
+			// query field can include those letters in note titles.
+			char := msg.String()
+			if len(char) == 1 && char[0] >= 32 && char[0] < 127 {
+				qs.query += char
+				qs.cursor = 0
+				qs.applyFilter()
 			}
 		}
 	}
@@ -157,13 +229,21 @@ func (qs QuickSwitch) View() string {
 
 	var b strings.Builder
 
-	// Title
+	// Title + live query field
 	title := lipgloss.NewStyle().
 		Foreground(mauve).
 		Bold(true).
 		Render("  Quick Switch")
 	b.WriteString(title)
 	b.WriteString("\n")
+	queryDisplay := qs.query
+	if queryDisplay == "" {
+		queryDisplay = lipgloss.NewStyle().Foreground(overlay0).Render("type to filter…")
+	} else {
+		queryDisplay = lipgloss.NewStyle().Foreground(text).Render(queryDisplay) +
+			lipgloss.NewStyle().Foreground(mauve).Blink(true).Render("▍")
+	}
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).Render("›") + " " + queryDisplay + "\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(strings.Repeat("─", innerWidth)))
 	b.WriteString("\n")
 
@@ -250,7 +330,7 @@ func (qs QuickSwitch) View() string {
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render(strings.Repeat("─", innerWidth)))
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  ↑↓/jk: navigate  Enter: open  Esc/Tab: close"))
+	b.WriteString(lipgloss.NewStyle().Foreground(overlay0).Render("  type to filter  ↑↓/Ctrl+N/P navigate  Enter open  Esc close"))
 
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
