@@ -2017,6 +2017,13 @@ func (tm TaskManager) updateTimeBlock(key string) (TaskManager, tea.Cmd) {
 		}
 		blk := blocks[key]
 		task := *tm.inputTask
+		// Done tasks can't be scheduled — their block would orphan in the
+		// Plan view (filtered out) but still appear on the calendar.
+		if blk.start != "" && task.Done {
+			tm.inputMode = tmInputNone
+			tm.statusMsg = "Task already done — can't schedule a completed task"
+			return tm, nil
+		}
 		if blk.start == "" {
 			// Clear the schedule
 			tm.removeScheduleMarker(task)
