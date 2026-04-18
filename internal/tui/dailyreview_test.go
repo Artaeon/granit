@@ -136,3 +136,40 @@ var errDRTest = &drTestError{}
 type drTestError struct{}
 
 func (e *drTestError) Error() string { return "test error" }
+
+// ---------------------------------------------------------------------------
+// summarizeDayTime — planned vs actual aggregation for Time Audit section
+// ---------------------------------------------------------------------------
+
+func TestSummarizeDayTime_AggregatesPlannedAndActual(t *testing.T) {
+	blocks := []PlannerBlock{
+		{StartTime: "09:00", EndTime: "10:00", BlockType: "task"},
+		{StartTime: "10:30", EndTime: "11:15", BlockType: "focus"},
+		{StartTime: "11:00", EndTime: "11:25", BlockType: "pomodoro"},
+		{StartTime: "11:30", EndTime: "11:55", BlockType: "pomodoro"},
+		{StartTime: "12:00", EndTime: "13:00", BlockType: "break"},        // ignored
+		{StartTime: "14:00", EndTime: "14:30", BlockType: "admin"},
+	}
+	planned, actual, pomodoros := summarizeDayTime(blocks)
+	if planned != 60+45+30 { // task + focus + admin
+		t.Errorf("planned = %d, want %d", planned, 60+45+30)
+	}
+	if actual != 25+25 {
+		t.Errorf("actual = %d, want %d", actual, 25+25)
+	}
+	if pomodoros != 2 {
+		t.Errorf("pomodoros = %d, want 2", pomodoros)
+	}
+}
+
+func TestSummarizeDayTime_IgnoresInvertedOrZeroRanges(t *testing.T) {
+	blocks := []PlannerBlock{
+		{StartTime: "10:00", EndTime: "10:00", BlockType: "task"}, // zero
+		{StartTime: "11:00", EndTime: "10:00", BlockType: "task"}, // inverted
+		{StartTime: "09:00", EndTime: "10:00", BlockType: "task"}, // valid
+	}
+	planned, _, _ := summarizeDayTime(blocks)
+	if planned != 60 {
+		t.Errorf("planned = %d, want 60 (invalid ranges should be skipped)", planned)
+	}
+}

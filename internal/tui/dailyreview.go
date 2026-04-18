@@ -58,6 +58,12 @@ type DailyReview struct {
 	ai        AIConfig
 	aiSummary string
 
+	// Time audit — planned vs actual from today's planner file.
+	// Populated in Open; rendered alongside the completed-tasks view.
+	plannedMinutes int
+	actualMinutes  int
+	pomodoroCount  int
+
 	// For writing changes back
 	vault       *vault.Vault
 	fileChanged bool
@@ -105,6 +111,31 @@ func (dr *DailyReview) Open(vaultRoot string, v *vault.Vault) {
 			dr.tomorrow = append(dr.tomorrow, t)
 		}
 	}
+
+	dr.plannedMinutes, dr.actualMinutes, dr.pomodoroCount =
+		summarizeDayTime(readPlannerScheduleBlocks(vaultRoot, now.Format("2006-01-02")))
+}
+
+// summarizeDayTime returns (plannedMinutes, actualMinutes, pomodoroCount)
+// from a day's planner blocks. Planned = task-like kinds (task, focus,
+// deep-work, admin); actual = "pomodoro" blocks (which finishWorkSession
+// appends when a pomodoro completes). Split into a free function for
+// testability.
+func summarizeDayTime(blocks []PlannerBlock) (planned, actual, pomodoros int) {
+	for _, b := range blocks {
+		dur := slotToMinutes(b.EndTime) - slotToMinutes(b.StartTime)
+		if dur <= 0 {
+			continue
+		}
+		switch strings.ToLower(b.BlockType) {
+		case "task", "focus", "deep-work", "deep_work", "admin":
+			planned += dur
+		case "pomodoro":
+			actual += dur
+			pomodoros++
+		}
+	}
+	return
 }
 
 // WasFileChanged returns true (consumed-once) if files were modified.
@@ -487,6 +518,67 @@ func (dr DailyReview) viewCompleted(b *strings.Builder, w int) {
 			b.WriteString("\n")
 		}
 	}
+
+	dr.renderTimeAudit(b, w)
+}
+
+// renderTimeAudit prints a planned-vs-actual block using the planner data
+// loaded in Open. Hidden when the day has no tracked time at all — a
+// user who doesn't use the pomodoro timer shouldn't see a zero-sized
+// progress bar on their review.
+func (dr DailyReview) renderTimeAudit(b *strings.Builder, w int) {
+	if dr.plannedMinutes == 0 && dr.actualMinutes == 0 {
+		return
+	}
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(mauve).Bold(true).
+		Render("  Time Audit"))
+	b.WriteString("\n\n")
+
+	fmtDuration := func(mins int) string {
+		h := mins / 60
+		m := mins % 60
+		if h == 0 {
+			return fmt.Sprintf("%dm", m)
+		}
+		if m == 0 {
+			return fmt.Sprintf("%dh", h)
+		}
+		return fmt.Sprintf("%dh %dm", h, m)
+	}
+
+	plannedLine := fmt.Sprintf("  Planned: %s", fmtDuration(dr.plannedMinutes))
+	actualLine := fmt.Sprintf("  Focused: %s  (%d pomodoro%s)",
+		fmtDuration(dr.actualMinutes), dr.pomodoroCount, plural(dr.pomodoroCount))
+	b.WriteString(lipgloss.NewStyle().Foreground(blue).Render(plannedLine))
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(red).Render(actualLine))
+	b.WriteString("\n")
+
+	// Utilization bar — only meaningful when there was a plan to compare to.
+	if dr.plannedMinutes > 0 {
+		ratio := float64(dr.actualMinutes) / float64(dr.plannedMinutes)
+		if ratio > 1 {
+			ratio = 1
+		}
+		barW := w - 20
+		if barW < 10 {
+			barW = 10
+		}
+		filled := int(ratio * float64(barW))
+		bar := strings.Repeat("█", filled) + strings.Repeat("░", barW-filled)
+		pct := int(ratio*100 + 0.5)
+		b.WriteString("  ")
+		b.WriteString(lipgloss.NewStyle().Foreground(peach).Render(bar))
+		b.WriteString(fmt.Sprintf("  %d%%\n", pct))
+	}
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func (dr DailyReview) viewOverdue(b *strings.Builder, w int) {
