@@ -25,12 +25,10 @@ type LinkAssistItem struct {
 // It analyzes the current note's text and finds mentions of other note titles
 // that aren't already linked.
 type LinkAssist struct {
-	active      bool
+	OverlayBase
 	suggestions []LinkAssistItem
 	cursor      int
 	scroll      int
-	width       int
-	height      int
 	applyResult []LinkAssistItem
 	hasResult   bool
 }
@@ -40,21 +38,10 @@ func NewLinkAssist() LinkAssist {
 	return LinkAssist{}
 }
 
-// IsActive returns whether the link assist overlay is currently visible.
-func (la *LinkAssist) IsActive() bool {
-	return la.active
-}
-
-// SetSize updates the available dimensions for the overlay.
-func (la *LinkAssist) SetSize(width, height int) {
-	la.width = width
-	la.height = height
-}
-
 // Open analyzes the content for unlinked mentions of other notes and populates
 // the suggestion list.
 func (la *LinkAssist) Open(content string, notePaths []string, currentNote string) {
-	la.active = true
+	la.Activate()
 	la.cursor = 0
 	la.scroll = 0
 	la.suggestions = nil
@@ -169,11 +156,6 @@ func (la *LinkAssist) Open(content string, notePaths []string, currentNote strin
 		}
 		return la.suggestions[i].ColStart < la.suggestions[j].ColStart
 	})
-}
-
-// Close hides the link assist overlay without applying.
-func (la *LinkAssist) Close() {
-	la.active = false
 }
 
 // GetApplyResult returns the accepted suggestions (consumed-once pattern).
