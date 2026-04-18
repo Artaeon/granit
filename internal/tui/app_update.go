@@ -1169,14 +1169,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				// Append the task line atomically.
 				if existing, readErr := os.ReadFile(path); readErr == nil {
-					_ = atomicWriteNote(path, string(existing)+"- [ ] "+evText+"\n")
+					if writeErr := atomicWriteNote(path, string(existing)+"- [ ] "+evText+"\n"); writeErr != nil {
+						m.reportError("append event to daily note", writeErr)
+					}
 				}
 				// Save as native event in event store
 				if m.eventStore != nil {
 					m.eventStore.Add(evText, evDate, "", "", "", "", "", "", true)
 				}
 				// Also add to planner file for the date
-				AddEventToPlannerFile(m.vault.Root, evDate, evText)
+				m.reportError("add event to planner", AddEventToPlannerFile(m.vault.Root, evDate, evText))
 				m.refreshComponents(name)
 				m.statusbar.SetMessage("Event added to " + evDate)
 			}
@@ -1526,6 +1528,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.needsRefresh = false
 			}
 			m.dailyPlanner, _ = m.dailyPlanner.Update(msg)
+			m.reportError("save daily plan", m.dailyPlanner.ConsumeSaveError())
 
 			// Sync completed tasks back to source files
 			if completions := m.dailyPlanner.GetCompletedTasks(); len(completions) > 0 {

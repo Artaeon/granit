@@ -148,6 +148,23 @@ type DailyPlanner struct {
 
 	// Pending task completions to sync back to source files
 	completedTasks []TaskCompletion
+
+	// lastSaveErr stores the most recent persistence error. Consumed
+	// once by the host Model after Update so it can route through
+	// reportError.
+	lastSaveErr error
+}
+
+// ConsumeSaveError returns and clears the last planner-file write error,
+// if any. The host Model calls this after each Update so save failures
+// land in the statusbar instead of being silently lost.
+func (dp *DailyPlanner) ConsumeSaveError() error {
+	if dp == nil {
+		return nil
+	}
+	err := dp.lastSaveErr
+	dp.lastSaveErr = nil
+	return err
 }
 
 // ---------------------------------------------------------------------------
@@ -782,7 +799,9 @@ func (dp *DailyPlanner) exportPlanAsMarkdown() {
 
 	summary := dp.buildPlanSummary()
 	content := "---\ntitle: " + dp.date.Format("Monday, January 2, 2006") + "\ndate: " + dp.date.Format("2006-01-02") + "\ntype: plan\ntags: [plan]\n---\n\n" + summary
-	_ = atomicWriteNote(fp, content)
+	if err := atomicWriteNote(fp, content); err != nil {
+		dp.lastSaveErr = err
+	}
 }
 
 // updateUnscheduled handles keystrokes on the unscheduled tasks panel.
@@ -1672,7 +1691,9 @@ func (dp *DailyPlanner) saveToFile() {
 		}
 	}
 
-	_ = atomicWriteNote(dp.plannerFilePath(), b.String())
+	if err := atomicWriteNote(dp.plannerFilePath(), b.String()); err != nil {
+		dp.lastSaveErr = err
+	}
 }
 
 // slotTimeEnd returns the end time for a slot (i.e. the start of the next
@@ -1910,10 +1931,10 @@ func (dp *DailyPlanner) ApplyAISchedule(slots []schedulerSlot) {
 // frontmatter and a schedule section.  The event is placed at the next
 // available hour (after the last existing block, or 09:00 by default) and
 // given a 1-hour duration.
-func AddEventToPlannerFile(vaultRoot, dateStr, text string) {
+func AddEventToPlannerFile(vaultRoot, dateStr, text string) error {
 	plannerDir := filepath.Join(vaultRoot, "Daily Planner")
 	if err := os.MkdirAll(plannerDir, 0755); err != nil {
-		return
+		return err
 	}
 
 	fp := filepath.Join(plannerDir, dateStr+".md")
@@ -1978,14 +1999,13 @@ func AddEventToPlannerFile(vaultRoot, dateStr, text string) {
 		content.WriteString("---\n\n")
 		content.WriteString("## Schedule\n\n")
 		content.WriteString(newLine)
-		_ = atomicWriteNote(fp, content.String())
-		return
+		return atomicWriteNote(fp, content.String())
 	}
 
 	// File exists — append into the ## Schedule section.
 	data, err := os.ReadFile(fp)
 	if err != nil {
-		return
+		return err
 	}
 	lines := strings.Split(string(data), "\n")
 
@@ -2015,6 +2035,6 @@ func AddEventToPlannerFile(vaultRoot, dateStr, text string) {
 	newLines = append(newLines, lines[:insertIdx]...)
 	newLines = append(newLines, strings.TrimRight(newLine, "\n"))
 	newLines = append(newLines, lines[insertIdx:]...)
-	_ = atomicWriteNote(fp, strings.Join(newLines, "\n"))
+	return atomicWriteNote(fp, strings.Join(newLines, "\n"))
 }
 // UI configuration updated.
