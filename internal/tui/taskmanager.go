@@ -2107,22 +2107,35 @@ func (tm *TaskManager) findFreeSlot(blockStart, blockEnd, duration int, exclude 
 	return blockStart
 }
 
-// assignSchedule sets the ⏰ marker on a task in its source file.
-// Uses writeLineChange so the vault cache stays in sync with disk.
+// assignSchedule sets the ⏰ marker on the task's source line AND mirrors
+// the time block into today's Planner/{date}.md so the Calendar view sees
+// it. The source-side write goes through writeLineChange to keep the
+// vault cache and undo stack consistent; the planner-side write goes
+// through UpsertPlannerBlock (idempotent — re-scheduling replaces,
+// doesn't duplicate).
 func (tm *TaskManager) assignSchedule(task Task, startTime, endTime string) {
 	marker := " ⏰ " + startTime + "-" + endTime
 	tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
 		cleaned := tmScheduleRe.ReplaceAllString(line, "")
 		return strings.TrimRight(cleaned, " ") + marker
 	})
+	ref := ScheduleRef{NotePath: task.NotePath, LineNum: task.LineNum, Text: task.Text}
+	today := time.Now().Format("2006-01-02")
+	_ = UpsertPlannerBlock(tm.vault.Root, today, ref, PlannerBlock{
+		Date: today, StartTime: startTime, EndTime: endTime,
+		Text: task.Text, BlockType: "task", SourceRef: ref,
+	})
 }
 
-// removeScheduleMarker removes the ⏰ marker from a task in its source file.
-// Uses writeLineChange so the vault cache stays in sync with disk.
+// removeScheduleMarker clears the ⏰ marker from the task's source line AND
+// removes the mirrored planner block from today's Planner file.
 func (tm *TaskManager) removeScheduleMarker(task Task) {
 	tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
 		return tmScheduleRe.ReplaceAllString(line, "")
 	})
+	ref := ScheduleRef{NotePath: task.NotePath, LineNum: task.LineNum, Text: task.Text}
+	today := time.Now().Format("2006-01-02")
+	_ = RemovePlannerBlock(tm.vault.Root, today, ref)
 }
 
 func (tm TaskManager) updateAddInput(key string) (TaskManager, tea.Cmd) {

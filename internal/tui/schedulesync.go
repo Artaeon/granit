@@ -70,7 +70,7 @@ func SetTaskSchedule(vaultRoot, date string, ref ScheduleRef, start, end, blockT
 		BlockType: blockType,
 		SourceRef: ref,
 	}
-	if err := upsertPlannerBlock(vaultRoot, date, ref, block); err != nil && firstErr == nil {
+	if err := UpsertPlannerBlock(vaultRoot, date, ref, block); err != nil && firstErr == nil {
 		firstErr = err
 	}
 	return firstErr
@@ -88,7 +88,7 @@ func ClearTaskSchedule(vaultRoot, date string, ref ScheduleRef) error {
 		firstErr = err
 	}
 	if date != "" {
-		if err := removePlannerBlock(vaultRoot, date, ref); err != nil && firstErr == nil {
+		if err := RemovePlannerBlock(vaultRoot, date, ref); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -242,9 +242,11 @@ func normalizeBlockText(s string) string {
 	return strings.TrimSpace(schedMarkerRe.ReplaceAllString(s, ""))
 }
 
-// upsertPlannerBlock writes block into Planner/{date}.md, replacing any
+// UpsertPlannerBlock writes block into Planner/{date}.md, replacing any
 // existing block that matches ref. Blocks are kept sorted by start time.
-func upsertPlannerBlock(vaultRoot, date string, ref ScheduleRef, block PlannerBlock) error {
+// Callers that already own the source-file write (e.g. TaskManager's
+// undo-aware writeLineChange) can use this to update just the planner side.
+func UpsertPlannerBlock(vaultRoot, date string, ref ScheduleRef, block PlannerBlock) error {
 	blocks := readPlannerScheduleBlocks(vaultRoot, date)
 	replaced := false
 	for i, b := range blocks {
@@ -261,9 +263,9 @@ func upsertPlannerBlock(vaultRoot, date string, ref ScheduleRef, block PlannerBl
 	return writePlannerScheduleBlocks(vaultRoot, date, blocks)
 }
 
-// removePlannerBlock removes any block matching ref from Planner/{date}.md.
+// RemovePlannerBlock removes any block matching ref from Planner/{date}.md.
 // Returns nil if nothing matched (absence is success).
-func removePlannerBlock(vaultRoot, date string, ref ScheduleRef) error {
+func RemovePlannerBlock(vaultRoot, date string, ref ScheduleRef) error {
 	blocks := readPlannerScheduleBlocks(vaultRoot, date)
 	kept := blocks[:0]
 	removed := false

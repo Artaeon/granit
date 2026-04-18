@@ -199,7 +199,7 @@ func TestUpsertPlannerBlock_PreservesOtherSections(t *testing.T) {
 		"Planner/2026-04-18.md": "---\ndate: 2026-04-18\n---\n\n## Focus\n- Top goal: Ship\n- Review PR\n\n## Schedule\n- 09:00-10:00 | Old | task\n",
 	})
 
-	err := upsertPlannerBlock(root, "2026-04-18", ScheduleRef{Text: "New"}, PlannerBlock{
+	err := UpsertPlannerBlock(root, "2026-04-18", ScheduleRef{Text: "New"}, PlannerBlock{
 		Date: "2026-04-18", StartTime: "11:00", EndTime: "12:00", Text: "New", BlockType: "task",
 	})
 	if err != nil {

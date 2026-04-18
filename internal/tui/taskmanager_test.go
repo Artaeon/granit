@@ -1382,6 +1382,57 @@ func TestAssignSchedule_WritesToCorrectFile(t *testing.T) {
 	if !strings.Contains(note.Content, "⏰ 14:00-15:00") {
 		t.Errorf("vault cache missing schedule marker:\n%s", note.Content)
 	}
+
+	// Verify the planner block was mirrored so the calendar will see it.
+	today := time.Now().Format("2006-01-02")
+	plan, err := os.ReadFile(tmpDir + "/Planner/" + today + ".md")
+	if err != nil {
+		t.Fatalf("planner file not created: %v", err)
+	}
+	if !strings.Contains(string(plan), "14:00-15:00 | Deploy v2.0 | task") {
+		t.Errorf("planner missing mirrored block:\n%s", plan)
+	}
+	if !strings.Contains(string(plan), "@projects/work.md:3") {
+		t.Errorf("planner block missing source ref:\n%s", plan)
+	}
+}
+
+func TestAssignSchedule_Reschedule_RemovesOldPlannerBlock(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(tmpDir+"/projects", 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := "# Work\n\n- [ ] Ship\n"
+	projectFile := tmpDir + "/projects/work.md"
+	if err := os.WriteFile(projectFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	v := &vault.Vault{Root: tmpDir}
+	v.Notes = map[string]*vault.Note{
+		"projects/work.md": {Path: projectFile, RelPath: "projects/work.md", Content: content},
+	}
+	tm := &TaskManager{vault: v}
+	task := Task{Text: "Ship", NotePath: "projects/work.md", LineNum: 3}
+
+	tm.assignSchedule(task, "09:00", "10:00")
+	// Re-read to pick up the updated line (including the ⏰ marker).
+	task.Text = "Ship"
+	tm.assignSchedule(task, "14:00", "15:00")
+
+	today := time.Now().Format("2006-01-02")
+	plan, err := os.ReadFile(tmpDir + "/Planner/" + today + ".md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(plan), "| Ship |") != 1 {
+		t.Errorf("expected 1 Ship block after reschedule, got:\n%s", plan)
+	}
+	if !strings.Contains(string(plan), "14:00-15:00") {
+		t.Errorf("new time not present:\n%s", plan)
+	}
+	if strings.Contains(string(plan), "09:00-10:00") {
+		t.Errorf("old time should have been replaced:\n%s", plan)
+	}
 }
 
 func TestRemoveScheduleMarker_UpdatesVaultCache(t *testing.T) {
@@ -1409,6 +1460,14 @@ func TestRemoveScheduleMarker_UpdatesVaultCache(t *testing.T) {
 		ScheduledTime: "09:00-10:00",
 	}
 
+	// Pre-create a planner block so we can verify it's removed too.
+	today := time.Now().Format("2006-01-02")
+	ref := ScheduleRef{NotePath: "Tasks.md", LineNum: 3, Text: "Meeting"}
+	_ = UpsertPlannerBlock(tmpDir, today, ref, PlannerBlock{
+		Date: today, StartTime: "09:00", EndTime: "10:00",
+		Text: "Meeting", BlockType: "task", SourceRef: ref,
+	})
+
 	tm.removeScheduleMarker(task)
 
 	// Verify disk
@@ -1424,6 +1483,15 @@ func TestRemoveScheduleMarker_UpdatesVaultCache(t *testing.T) {
 	note := v.Notes["Tasks.md"]
 	if strings.Contains(note.Content, "⏰") {
 		t.Errorf("vault cache still has schedule marker:\n%s", note.Content)
+	}
+
+	// Verify the mirrored planner block was also removed.
+	plan, err := os.ReadFile(tmpDir + "/Planner/" + today + ".md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(plan), "Meeting") {
+		t.Errorf("planner block not removed:\n%s", plan)
 	}
 }
 
