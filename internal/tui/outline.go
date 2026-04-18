@@ -14,26 +14,19 @@ type OutlineItem struct {
 }
 
 type Outline struct {
-	active  bool
-	items   []OutlineItem
-	cursor  int
-	scroll  int
-	width   int
-	height  int
-	result  int // line number to jump to, -1 if none
+	OverlayBase
+	items  []OutlineItem
+	cursor int
+	scroll int
+	result int // line number to jump to, -1 if none
 }
 
 func NewOutline() Outline {
 	return Outline{result: -1}
 }
 
-func (o *Outline) SetSize(width, height int) {
-	o.width = width
-	o.height = height
-}
-
 func (o *Outline) Open(content string) {
-	o.active = true
+	o.Activate()
 	o.cursor = 0
 	o.scroll = 0
 	o.result = -1
@@ -41,14 +34,6 @@ func (o *Outline) Open(content string) {
 	if o.cursor >= len(o.items) {
 		o.cursor = maxInt(0, len(o.items)-1)
 	}
-}
-
-func (o *Outline) Close() {
-	o.active = false
-}
-
-func (o *Outline) IsActive() bool {
-	return o.active
 }
 
 func (o *Outline) JumpToLine() int {

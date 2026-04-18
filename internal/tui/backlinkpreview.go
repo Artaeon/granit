@@ -15,9 +15,7 @@ const (
 // BacklinkPreview shows a floating popup with the content of a wikilinked
 // note when the editor cursor rests on a [[wikilink]].
 type BacklinkPreview struct {
-	active       bool
-	width        int
-	height       int
+	OverlayBase
 
 	// Current preview
 	linkTarget   string // the note name inside [[ ]]
@@ -25,27 +23,16 @@ type BacklinkPreview struct {
 	previewLines int    // number of lines in preview
 
 	// Position hints
-	cursorLine   int // editor line where the link is
-	cursorCol    int // editor column
+	cursorLine int // editor line where the link is
+	cursorCol  int // editor column
 
 	// Scroll within preview
-	scroll       int
+	scroll int
 }
 
 // NewBacklinkPreview returns a zero-value BacklinkPreview ready for use.
 func NewBacklinkPreview() BacklinkPreview {
 	return BacklinkPreview{}
-}
-
-// IsActive reports whether the preview popup is currently visible.
-func (bp *BacklinkPreview) IsActive() bool {
-	return bp.active
-}
-
-// SetSize updates the available terminal dimensions for layout calculations.
-func (bp *BacklinkPreview) SetSize(w, h int) {
-	bp.width = w
-	bp.height = h
 }
 
 // Update checks whether the cursor is on a wikilink and, if so, loads a

@@ -12,9 +12,7 @@ import (
 // FocusMode provides a distraction-free writing experience by centering the
 // editor in a narrow column and hiding the sidebar and backlinks panel.
 type FocusMode struct {
-	active      bool
-	width       int
-	height      int
+	OverlayBase
 	targetWords int // optional word count goal (0 = no goal)
 	startWords  int // word count when focus mode started
 
@@ -31,32 +29,22 @@ func NewFocusMode() FocusMode {
 	return FocusMode{}
 }
 
-// SetSize updates the available terminal dimensions.
-func (f *FocusMode) SetSize(width, height int) {
-	f.width = width
-	f.height = height
-}
-
 // Open activates focus mode, recording the current word count so that
 // progress toward a target can be measured.
 func (f *FocusMode) Open(currentWordCount int) {
-	f.active = true
+	f.Activate()
 	f.startWords = currentWordCount
 	f.settingGoal = false
 	f.goalInput = ""
 	f.goalReached = false
 }
 
-// Close deactivates focus mode.
+// Close deactivates focus mode and resets the goal-input state; we
+// override OverlayBase.Close so the transient input buffers clear too.
 func (f *FocusMode) Close() {
-	f.active = false
+	f.OverlayBase.Close()
 	f.settingGoal = false
 	f.goalInput = ""
-}
-
-// IsActive reports whether focus mode is currently engaged.
-func (f *FocusMode) IsActive() bool {
-	return f.active
 }
 
 // IsSettingGoal reports whether the goal-input prompt is open.

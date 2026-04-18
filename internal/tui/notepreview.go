@@ -12,9 +12,7 @@ import (
 // The user can scroll through the first few lines of content and optionally
 // press Enter to open the note in the editor.
 type NotePreview struct {
-	active       bool
-	width        int
-	height       int
+	OverlayBase
 	title        string
 	content      string
 	notePath     string
@@ -34,17 +32,10 @@ func NewNotePreview() NotePreview {
 	return NotePreview{}
 }
 
-// SetSize updates the available screen dimensions so the overlay can
-// adapt its panel size.
-func (np *NotePreview) SetSize(w, h int) {
-	np.width = w
-	np.height = h
-}
-
 // Open populates the preview with a note's path, title, and content.
 // Only the first notePreviewMaxLines lines of content are kept.
 func (np *NotePreview) Open(notePath, title, content string) {
-	np.active = true
+	np.Activate()
 	np.notePath = notePath
 	np.title = title
 	np.content = content
@@ -56,16 +47,6 @@ func (np *NotePreview) Open(notePath, title, content string) {
 		allLines = allLines[:notePreviewMaxLines]
 	}
 	np.lines = allLines
-}
-
-// Close hides the preview overlay.
-func (np *NotePreview) Close() {
-	np.active = false
-}
-
-// IsActive reports whether the preview overlay is currently visible.
-func (np NotePreview) IsActive() bool {
-	return np.active
 }
 
 // GetSelectedNote returns the note path the user chose to open (by
