@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -434,35 +435,103 @@ func (cp *CommandPalette) filterCommands() {
 		query = strings.TrimSpace(query[idx+1:])
 	}
 
-	cp.filtered = nil
+	type scored struct {
+		cmd   Command
+		score int
+	}
+	var hits []scored
 	for _, cmd := range AllCommands {
-		if catFilter != "" {
-			if !cmdFuzzyMatch(strings.ToLower(cmd.Category), catFilter) {
-				continue
-			}
+		if catFilter != "" && cmdFuzzyScore(strings.ToLower(cmd.Category), catFilter) <= 0 {
+			continue
 		}
-		if query == "" ||
-			cmdFuzzyMatch(strings.ToLower(cmd.Label), query) ||
-			cmdFuzzyMatch(strings.ToLower(cmd.Desc), query) {
-			cp.filtered = append(cp.filtered, cmd)
+		if query == "" {
+			hits = append(hits, scored{cmd, 0})
+			continue
 		}
+		labelScore := cmdFuzzyScore(strings.ToLower(cmd.Label), query)
+		// Label matches outrank description matches; the intent is "find
+		// commands by name," not "find commands whose help text mentions X."
+		descScore := cmdFuzzyScore(strings.ToLower(cmd.Desc), query) / 4
+		score := labelScore
+		if descScore > score {
+			score = descScore
+		}
+		if score > 0 {
+			hits = append(hits, scored{cmd, score})
+		}
+	}
+
+	// Stable sort by score descending — preserves AllCommands order among
+	// ties so categories stay grouped when the user is browsing.
+	sort.SliceStable(hits, func(i, j int) bool {
+		return hits[i].score > hits[j].score
+	})
+
+	cp.filtered = make([]Command, len(hits))
+	for i, h := range hits {
+		cp.filtered[i] = h.cmd
 	}
 	if cp.cursor >= len(cp.filtered) {
 		cp.cursor = maxInt(0, len(cp.filtered)-1)
 	}
 }
 
-// cmdFuzzyMatch performs a fuzzy substring match for command filtering.
-// This is separate from the sidebar's fuzzyMatch to keep the command palette
-// self-contained and allow independent tuning of matching behavior.
+// cmdFuzzyMatch reports whether pattern matches str as a fuzzy subsequence.
+// Thin compatibility shim over cmdFuzzyScore for callers (and existing
+// tests) that only care about match/no-match.
 func cmdFuzzyMatch(str, pattern string) bool {
-	pi := 0
-	for si := 0; si < len(str) && pi < len(pattern); si++ {
-		if str[si] == pattern[pi] {
-			pi++
-		}
+	return cmdFuzzyScore(str, pattern) > 0
+}
+
+// cmdFuzzyScore returns a relevance score for matching pattern against str.
+// Returns 0 when pattern can't be matched as an in-order subsequence; higher
+// scores rank the result higher. The scorer rewards:
+//
+//   - Exact equality (1000) — typing the full label in lowercase
+//   - Prefix match     (700 + length bonus) — "task" → "Task Manager"
+//   - Word-boundary    (+40 per char) — "tm" → "Task Manager"
+//   - Consecutive runs (+15 per char) — adjacency beats sparse hits
+//   - Match position   (+20 - position) — earlier matches outrank later
+//
+// Designed so a label-prefix query always outranks a sparse mid-string hit;
+// "ai" should put "AI Chat" before "Auto-Link Suggester," not the reverse.
+func cmdFuzzyScore(str, pattern string) int {
+	if pattern == "" {
+		return 1
 	}
-	return pi == len(pattern)
+	if str == pattern {
+		return 1000
+	}
+	if strings.HasPrefix(str, pattern) {
+		return 700 + len(pattern)
+	}
+
+	score := 0
+	pi := 0
+	prevMatched := false
+	for si := 0; si < len(str) && pi < len(pattern); si++ {
+		if str[si] != pattern[pi] {
+			prevMatched = false
+			continue
+		}
+		// Per-char bonuses.
+		score += 10
+		if si == 0 || str[si-1] == ' ' || str[si-1] == '-' || str[si-1] == '_' {
+			score += 40 // word boundary
+		}
+		if prevMatched {
+			score += 15 // consecutive run
+		}
+		if pi == 0 && si < 20 {
+			score += 20 - si // earlier first-match wins
+		}
+		prevMatched = true
+		pi++
+	}
+	if pi != len(pattern) {
+		return 0 // not all pattern chars consumed
+	}
+	return score
 }
 
 func (cp CommandPalette) Update(msg tea.Msg) (CommandPalette, tea.Cmd) {

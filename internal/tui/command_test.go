@@ -1,6 +1,9 @@
 package tui
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // ── cmdFuzzyMatch ──
 
@@ -310,4 +313,54 @@ func toLower(s string) string {
 		result[i] = c
 	}
 	return string(result)
+}
+
+// ── cmdFuzzyScore — ranking semantics ──
+
+func TestCmdFuzzyScore_ExactBeatsEverything(t *testing.T) {
+	exact := cmdFuzzyScore("daily note", "daily note")
+	prefix := cmdFuzzyScore("daily note overlay", "daily note")
+	if exact <= prefix {
+		t.Errorf("exact (%d) should beat prefix (%d)", exact, prefix)
+	}
+}
+
+func TestCmdFuzzyScore_PrefixBeatsMidStringFuzzy(t *testing.T) {
+	prefix := cmdFuzzyScore("task manager", "ta")
+	mid := cmdFuzzyScore("auto-link suggester", "ta") // 'a' then 't' as subseq
+	if prefix <= mid {
+		t.Errorf("prefix (%d) should beat mid-string fuzzy (%d)", prefix, mid)
+	}
+}
+
+func TestCmdFuzzyScore_WordBoundaryBoost(t *testing.T) {
+	// "tm" matches both, but "task manager" has 'm' at a word boundary.
+	wordBoundary := cmdFuzzyScore("task manager", "tm")
+	midstring := cmdFuzzyScore("automaticshrub", "tm") // 't' and 'm' inside one word
+	if wordBoundary <= midstring {
+		t.Errorf("word-boundary match (%d) should beat mid-word fuzzy (%d)", wordBoundary, midstring)
+	}
+}
+
+func TestCmdFuzzyScore_NoMatchReturnsZero(t *testing.T) {
+	if got := cmdFuzzyScore("daily note", "xyz"); got != 0 {
+		t.Errorf("expected 0 for non-match, got %d", got)
+	}
+}
+
+// ── filterCommands — ranking integration ──
+
+func TestFilterCommands_RanksLabelMatchesAboveDescMatches(t *testing.T) {
+	// "task" should put "Task Manager" (label hit) above any command whose
+	// description happens to mention task.
+	cp := NewCommandPalette()
+	cp.query = "task"
+	cp.filterCommands()
+	if len(cp.filtered) == 0 {
+		t.Fatal("expected at least one match")
+	}
+	first := cp.filtered[0]
+	if !strings.Contains(strings.ToLower(first.Label), "task") {
+		t.Errorf("first result label should contain 'task', got %q", first.Label)
+	}
 }
