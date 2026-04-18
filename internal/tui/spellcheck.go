@@ -34,9 +34,7 @@ type spellCheckTickMsg struct {
 // a built-in dictionary fallback. It presents an overlay for reviewing and
 // applying corrections, and supports inline highlighting of misspelled words.
 type SpellChecker struct {
-	active      bool
-	width       int
-	height      int
+	OverlayBase
 	words       []MisspelledWord
 	cursor      int
 	scroll      int
@@ -262,14 +260,9 @@ func findWordCol(originalLines []string, lineIdx int, word string, aspellOffset 
 	return 0
 }
 
-// IsActive reports whether the spell check overlay is currently open.
-func (sc *SpellChecker) IsActive() bool {
-	return sc.active
-}
-
 // Open runs a spell check on content and opens the overlay to display results.
 func (sc *SpellChecker) Open(content string) {
-	sc.active = true
+	sc.Activate()
 	sc.cursor = 0
 	sc.scroll = 0
 	sc.replacement = ""
@@ -280,17 +273,6 @@ func (sc *SpellChecker) Open(content string) {
 	if len(sc.words) > 0 {
 		sc.selected = &sc.words[0]
 	}
-}
-
-// Close dismisses the spell check overlay.
-func (sc *SpellChecker) Close() {
-	sc.active = false
-}
-
-// SetSize updates the available dimensions for rendering the overlay.
-func (sc *SpellChecker) SetSize(w, h int) {
-	sc.width = w
-	sc.height = h
 }
 
 // GetCorrection returns the most recently applied correction. After reading
