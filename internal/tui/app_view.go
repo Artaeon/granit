@@ -2228,7 +2228,7 @@ func (m *Model) applyEncryptionResult(result EncryptionResult) {
 	case encActionEncrypt:
 		encrypted, err := m.encryption.EncryptContent(content)
 		if err != nil {
-			m.statusbar.SetError("Encryption failed: " + err.Error())
+			m.reportError("encrypt note", err)
 			return
 		}
 		newName := m.encryption.EncryptedName(m.activeNote)
@@ -2238,12 +2238,12 @@ func (m *Model) applyEncryptionResult(result EncryptionResult) {
 		tmpPath := newPath + ".tmp"
 		if err := os.WriteFile(tmpPath, []byte(encrypted), 0644); err != nil {
 			_ = os.Remove(tmpPath)
-			m.statusbar.SetError("Failed to write encrypted file: " + err.Error())
+			m.reportError("write encrypted file", err)
 			return
 		}
 		if err := os.Rename(tmpPath, newPath); err != nil {
 			_ = os.Remove(tmpPath)
-			m.statusbar.SetError("Failed to write encrypted file: " + err.Error())
+			m.reportError("write encrypted file", err)
 			return
 		}
 		// Remove the original unencrypted file
@@ -2277,12 +2277,12 @@ func (m *Model) applyEncryptionResult(result EncryptionResult) {
 		tmpPath := newPath + ".tmp"
 		if err := os.WriteFile(tmpPath, []byte(decrypted), 0644); err != nil {
 			_ = os.Remove(tmpPath)
-			m.statusbar.SetError("Failed to write decrypted file: " + err.Error())
+			m.reportError("write decrypted file", err)
 			return
 		}
 		if err := os.Rename(tmpPath, newPath); err != nil {
 			_ = os.Remove(tmpPath)
-			m.statusbar.SetError("Failed to write decrypted file: " + err.Error())
+			m.reportError("write decrypted file", err)
 			return
 		}
 		// Remove the encrypted file

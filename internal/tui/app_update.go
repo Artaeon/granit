@@ -180,7 +180,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case autoSyncResultMsg:
 		if msg.err != nil {
-			m.statusbar.SetError("Git sync error: " + msg.err.Error())
+			m.reportError("git sync", msg.err)
 		} else if msg.action == "pull" && msg.output != "" {
 			trimmed := strings.TrimSpace(msg.output)
 			if trimmed != "" && trimmed != "Already up to date." {
@@ -747,7 +747,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.research.errorMsg = msg.err.Error()
 				m.research.output = msg.output
 				m.research.elapsed = time.Since(m.research.startTime).Truncate(time.Second).String()
-				m.statusbar.SetError("Research failed: " + msg.err.Error())
+				m.reportError("research", msg.err)
 			} else {
 				m.research.phase = researchDone
 				m.research.elapsed = time.Since(m.research.startTime).Truncate(time.Second).String()
@@ -946,7 +946,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pluginCmdResultMsg:
 		if msg.err != nil {
-			m.statusbar.SetError("Plugin error: " + msg.err.Error())
+			m.reportError("plugin", msg.err)
 		} else {
 			m.handlePluginOutput(msg.pluginName, msg.output)
 		}
