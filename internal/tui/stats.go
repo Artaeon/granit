@@ -12,11 +12,9 @@ import (
 )
 
 type VaultStats struct {
-	active     bool
+	OverlayBase
 	vault      *vault.Vault
 	index      *vault.Index
-	width      int
-	height     int
 	scroll     int
 
 	totalNotes     int
@@ -43,23 +41,10 @@ func NewVaultStats(v *vault.Vault, idx *vault.Index) VaultStats {
 	}
 }
 
-func (vs *VaultStats) SetSize(width, height int) {
-	vs.width = width
-	vs.height = height
-}
-
 func (vs *VaultStats) Open() {
-	vs.active = true
+	vs.Activate()
 	vs.scroll = 0
 	vs.compute()
-}
-
-func (vs *VaultStats) Close() {
-	vs.active = false
-}
-
-func (vs *VaultStats) IsActive() bool {
-	return vs.active
 }
 
 func (vs *VaultStats) compute() {
