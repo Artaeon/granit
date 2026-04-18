@@ -13,6 +13,60 @@ import (
 // Calendar rendering — all view methods extracted from calendar.go
 // ---------------------------------------------------------------------------
 
+// plannerBlockTag returns the 3-char "[X]" prefix used in the agenda view
+// to distinguish block kinds at a glance.
+func plannerBlockTag(blockType string) string {
+	switch strings.ToLower(blockType) {
+	case "task", "deep-work", "deep_work":
+		return "[T]"
+	case "focus":
+		return "[F]"
+	case "break", "lunch":
+		return "[B]"
+	case "meeting", "event":
+		return "[E]"
+	case "admin":
+		return "[A]"
+	case "habit":
+		return "[H]"
+	case "review":
+		return "[R]"
+	case "pomodoro":
+		return "[🍅]"
+	}
+	return "[P]"
+}
+
+// plannerBlockColor picks the background color for a planner block by its
+// type tag. Covers every kind emitted by the schedule generators
+// (taskmanager, PlanMyDay, AI scheduler, MorningRoutine) so no slot ever
+// falls through to the grey default unless it really is uncategorised.
+// Done blocks render in surface2 regardless of type.
+func plannerBlockColor(blockType string, done bool) lipgloss.Color {
+	if done {
+		return surface2
+	}
+	switch strings.ToLower(blockType) {
+	case "task", "deep-work", "deep_work":
+		return blue
+	case "focus":
+		return peach
+	case "break", "lunch":
+		return green
+	case "meeting", "event":
+		return lavender
+	case "admin":
+		return overlay1
+	case "habit":
+		return teal
+	case "review":
+		return mauve
+	case "pomodoro":
+		return red
+	}
+	return lavender
+}
+
 func (c Calendar) viewMonth() string {
 	width := c.width * 2 / 3
 	if width < 86 {
@@ -460,20 +514,8 @@ func (c Calendar) viewWeek() string {
 			if endMin <= startMin {
 				endMin = startMin + 60
 			}
-			col := lavender
-			switch pb.BlockType {
-			case "task":
-				col = blue
-			case "break":
-				col = green
-			case "focus":
-				col = peach
-			}
-			if pb.Done {
-				col = surface2
-			}
 			entries = append(entries, weekEntry{
-				kind: "planner", title: pb.Text, color: col,
+				kind: "planner", title: pb.Text, color: plannerBlockColor(pb.BlockType, pb.Done),
 				startMin: startMin, endMin: endMin,
 			})
 		}
@@ -1104,20 +1146,8 @@ func (c Calendar) view1Day() string {
 		if endMin <= startMin {
 			endMin = startMin + 60
 		}
-		col := lavender
-		switch pb.BlockType {
-		case "task":
-			col = blue
-		case "break":
-			col = green
-		case "focus":
-			col = peach
-		}
-		if pb.Done {
-			col = surface2
-		}
 		entries = append(entries, activeEntry{
-			kind: "planner", title: pb.Text, color: col,
+			kind: "planner", title: pb.Text, color: plannerBlockColor(pb.BlockType, pb.Done),
 			startMin: startMin, endMin: endMin,
 		})
 	}
@@ -1402,17 +1432,9 @@ func (c Calendar) viewAgenda() string {
 		// Planner blocks
 		for _, pb := range dayPlannerBlocks {
 			timeRange := pb.StartTime + "-" + pb.EndTime
-			tag := "[P]"
-			switch pb.BlockType {
-			case "break":
-				tag = "[B]"
-			case "focus":
-				tag = "[F]"
-			case "event":
-				tag = "[E]"
-			}
+			tag := plannerBlockTag(pb.BlockType)
 			pbText := TruncateDisplay(pb.Text, width-22)
-			pbStyle := lipgloss.NewStyle().Foreground(lavender)
+			pbStyle := lipgloss.NewStyle().Foreground(plannerBlockColor(pb.BlockType, false))
 			doneMarker := ""
 			if pb.Done {
 				pbStyle = lipgloss.NewStyle().Foreground(green).Strikethrough(true)
