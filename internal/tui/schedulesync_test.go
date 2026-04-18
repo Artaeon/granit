@@ -340,24 +340,28 @@ func TestAppendPlannerBlock_KeepsOverlappingEntries(t *testing.T) {
 }
 
 func TestAppendPlannerBlock_RepeatsDontCollapse(t *testing.T) {
-	// Two pomodoros on the same task at different start times — the append
-	// contract is "never collapse," which lets the calendar show both.
+	// Two pomodoros on the same task at adjacent start times. The append
+	// contract is "never collapse, sort by start" — the calendar shows
+	// both as separate actual-work entries.
 	root := t.TempDir()
-	for _, start := range []string{"09:00", "09:30"} {
+	pairs := [][2]string{{"09:00", "09:25"}, {"09:30", "09:55"}}
+	for _, p := range pairs {
 		if err := AppendPlannerBlock(root, "2026-04-18", PlannerBlock{
-			Date: "2026-04-18", StartTime: start, EndTime: start + "+25",
+			Date: "2026-04-18", StartTime: p[0], EndTime: p[1],
 			Text: "Repeat", BlockType: "pomodoro", Done: true,
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	// (The ghost "+25" end times are intentionally malformed so validTimeRange
-	// would reject them as schedule entries — but the AppendPlannerBlock
-	// primitive does no validation. Realistic callers write valid ranges;
-	// this asserts only that duplicates aren't collapsed.)
 	blocks := readPlannerScheduleBlocks(root, "2026-04-18")
 	if len(blocks) != 2 {
-		t.Errorf("expected 2 pomodoro entries, got %d", len(blocks))
+		t.Fatalf("expected 2 pomodoro entries, got %d: %+v", len(blocks), blocks)
+	}
+	if blocks[0].StartTime != "09:00" || blocks[1].StartTime != "09:30" {
+		t.Errorf("blocks not sorted by start time: %+v", blocks)
+	}
+	if blocks[0].EndTime != "09:25" || blocks[1].EndTime != "09:55" {
+		t.Errorf("end times not preserved through round-trip: %+v", blocks)
 	}
 }
 

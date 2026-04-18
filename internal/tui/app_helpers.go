@@ -588,32 +588,52 @@ func (m *Model) syncPomodoroCompletions() {
 		return
 	}
 	for _, tc := range completions {
-		if tc.NotePath == "" || tc.LineNum < 1 {
-			continue
-		}
-		if note := m.vault.GetNote(tc.NotePath); note != nil {
-			lines := strings.Split(note.Content, "\n")
-			idx := tc.LineNum - 1 // TaskCompletion.LineNum is 1-based
-			if idx < len(lines) {
-				line := lines[idx]
-				hasMarker := strings.Contains(line, "- [ ]") || strings.Contains(line, "- [x]")
-				hasText := tc.Text == "" || strings.Contains(line, tc.Text)
-				if !hasMarker || !hasText {
-					continue
-				}
-				if tc.Done {
-					lines[idx] = strings.Replace(lines[idx], "- [ ]", "- [x]", 1)
-				} else {
-					lines[idx] = strings.Replace(lines[idx], "- [x]", "- [ ]", 1)
-				}
-				newContent := strings.Join(lines, "\n")
-				if err := atomicWriteNote(filepath.Join(m.vault.Root, tc.NotePath), newContent); err != nil {
-					m.statusbar.SetError("Error syncing pomodoro task: " + err.Error())
-				}
-			}
+		if err := applyTaskCompletion(m.vault.Root, m.vault.GetNote(tc.NotePath), tc); err != nil {
+			m.statusbar.SetError("Error syncing pomodoro task: " + err.Error())
 		}
 	}
 	m.refreshComponents("")
+}
+
+// applyTaskCompletion toggles the markdown checkbox on tc.LineNum (1-based)
+// of the given note, atomically writing the result back to disk. The note's
+// in-memory Content is also updated so subsequent reads through the vault
+// cache see the change before the next rescan.
+//
+// Returns nil — and does not write — when:
+//   - note is nil (NotePath unknown to the vault)
+//   - tc.LineNum is zero/negative or past EOF
+//   - the target line lacks "- [ ]" / "- [x]" (stale ref)
+//   - tc.Text is set but absent from the line (probable line-number drift)
+//
+// All four are silent skips, not errors: the sync runs after every tick
+// and a transient mismatch shouldn't paint the statusbar red.
+func applyTaskCompletion(vaultRoot string, note *vault.Note, tc TaskCompletion) error {
+	if note == nil || tc.NotePath == "" || tc.LineNum < 1 {
+		return nil
+	}
+	lines := strings.Split(note.Content, "\n")
+	idx := tc.LineNum - 1
+	if idx >= len(lines) {
+		return nil
+	}
+	line := lines[idx]
+	hasMarker := strings.Contains(line, "- [ ]") || strings.Contains(line, "- [x]")
+	hasText := tc.Text == "" || strings.Contains(line, tc.Text)
+	if !hasMarker || !hasText {
+		return nil
+	}
+	if tc.Done {
+		lines[idx] = strings.Replace(line, "- [ ]", "- [x]", 1)
+	} else {
+		lines[idx] = strings.Replace(line, "- [x]", "- [ ]", 1)
+	}
+	if lines[idx] == line {
+		return nil // already in target state
+	}
+	newContent := strings.Join(lines, "\n")
+	note.Content = newContent
+	return atomicWriteNote(filepath.Join(vaultRoot, tc.NotePath), newContent)
 }
 
 // syncPomodoroTimeRecords consumes pending time records from the pomodoro timer

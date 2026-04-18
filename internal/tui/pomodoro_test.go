@@ -1,10 +1,15 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/artaeon/granit/internal/vault"
 )
 
 // ---------------------------------------------------------------------------
@@ -1129,5 +1134,84 @@ func TestPomodoro_StartForCurrentBlock_NoOpWhenAlreadyRunning(t *testing.T) {
 	}
 	if len(p.queue) != 0 {
 		t.Errorf("queue must not be replaced while a session is active, got %+v", p.queue)
+	}
+}
+
+// applyTaskCompletion is the shared helper used by both pomodoro and
+// daily-planner sync paths. These tests pin the 1-based LineNum
+// semantics against real files (sync_test.go's round-trip tests would
+// pass under either 0- or 1-based).
+
+func TestApplyTaskCompletion_TogglesRightLine(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "Tasks.md")
+	content := "# Tasks\n\n- [ ] First\n- [ ] Second\n- [ ] Third\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	note := &vault.Note{Path: path, RelPath: "Tasks.md", Content: content}
+
+	// Toggle "Second" (line 4 in 1-based numbering).
+	tc := TaskCompletion{NotePath: "Tasks.md", LineNum: 4, Text: "Second", Done: true}
+	if err := applyTaskCompletion(root, note, tc); err != nil {
+		t.Fatalf("applyTaskCompletion: %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(string(got), "\n"), "\n")
+	if !strings.Contains(lines[3], "[x] Second") {
+		t.Errorf("Second not toggled: %q", lines[3])
+	}
+	if strings.Contains(lines[2], "[x]") || strings.Contains(lines[4], "[x]") {
+		t.Errorf("wrong line toggled — lines: %+v", lines)
+	}
+	if !strings.Contains(note.Content, "[x] Second") {
+		t.Errorf("vault cache not updated:\n%s", note.Content)
+	}
+}
+
+func TestApplyTaskCompletion_SkipsWhenTextDrifted(t *testing.T) {
+	// Line at LineNum is a task but its text doesn't match — the safety
+	// guard prevents toggling the wrong task.
+	root := t.TempDir()
+	path := filepath.Join(root, "Tasks.md")
+	content := "- [ ] Different task\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	note := &vault.Note{Path: path, RelPath: "Tasks.md", Content: content}
+
+	tc := TaskCompletion{NotePath: "Tasks.md", LineNum: 1, Text: "Original task", Done: true}
+	if err := applyTaskCompletion(root, note, tc); err != nil {
+		t.Fatalf("applyTaskCompletion: %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), "[x]") {
+		t.Errorf("text mismatch should have prevented toggle:\n%s", got)
+	}
+}
+
+func TestApplyTaskCompletion_NoOpOnMissingNote(t *testing.T) {
+	tc := TaskCompletion{NotePath: "Missing.md", LineNum: 1, Done: true}
+	if err := applyTaskCompletion(t.TempDir(), nil, tc); err != nil {
+		t.Errorf("nil note should be silent no-op, got: %v", err)
+	}
+}
+
+func TestApplyTaskCompletion_NoOpOnZeroOrNegativeLineNum(t *testing.T) {
+	root := t.TempDir()
+	note := &vault.Note{Path: filepath.Join(root, "x.md"), RelPath: "x.md", Content: "- [ ] X\n"}
+	for _, line := range []int{0, -1, -99} {
+		tc := TaskCompletion{NotePath: "x.md", LineNum: line, Text: "X", Done: true}
+		if err := applyTaskCompletion(root, note, tc); err != nil {
+			t.Errorf("LineNum=%d should be silent no-op, got: %v", line, err)
+		}
 	}
 }
