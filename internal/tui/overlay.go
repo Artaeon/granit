@@ -2,26 +2,26 @@ package tui
 
 // Shared overlay contract.
 //
-// 103 overlays in internal/tui all re-implement some subset of the same
-// shape: an `active bool` flag plus `SetSize`, `IsActive`, `Close`, and
-// an `Open` entry point. ~1,500 lines of that boilerplate repeat
-// across the codebase, and the lack of a declared interface means
-// app_update.go's 144-branch dispatch can't even collapse to a loop.
+// ~108 overlays in internal/tui originally re-implemented some subset
+// of the same shape: an `active bool` flag plus `SetSize`, `IsActive`,
+// `Close`, and an `Open` entry point. The lack of a declared interface
+// meant app_update.go's dispatch (200+ `IsActive()` branches) couldn't
+// collapse to a loop.
 //
 // This file introduces the interface and an OverlayBase embed so the
 // next refactor pass — or a new overlay written today — has a single,
-// documented shape to follow. No existing overlay is forced to migrate;
-// the helpers are opt-in. Future callers that want to treat overlays
-// uniformly (e.g. "is anything active?", "close the topmost overlay")
-// can type-assert against the interface.
+// documented shape to follow. Migration is incremental: each overlay
+// moves to OverlayBase in its own commit. Future callers that want to
+// treat overlays uniformly (e.g. "is anything active?", "close the
+// topmost overlay") can type-assert against the interface.
 //
 // Keeping Update/View off the interface *for now* is deliberate:
 // bubbletea's value-receiver pattern for those two methods means every
 // overlay's Update returns its own concrete type (e.g.
 // `func (k Kanban) Update(msg tea.Msg) (Kanban, tea.Cmd)`), and
-// unifying those into an interface would mean rewriting the 109 Update
-// methods to return `Overlay`. That's the "big lever" refactor, not
-// this commit. This commit lays the groundwork.
+// unifying those into an interface would mean rewriting every
+// overlay's Update to return `Overlay`. That's the "big lever"
+// refactor, not part of the initial contract.
 
 // Overlay is the minimal contract every overlay in internal/tui ought
 // to satisfy. Update and View are intentionally NOT part of the
