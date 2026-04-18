@@ -348,7 +348,12 @@ func (kb Kanban) Update(msg tea.Msg) (Kanban, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "esc":
+		case "esc", "q":
+			// q is the same convention used across granit's nav-only
+			// overlays (calendar, kanban-style modals, dashboards). Safe
+			// here because Kanban has no free-form text input — typing
+			// 'q' anywhere else in the overlay routes to a labelled
+			// keybinding (column nav uses h/l, card nav uses j/k).
 			kb.active = false
 			return kb, nil
 

@@ -357,12 +357,32 @@ func (sb StatusBar) View() string {
 			lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	}
 
-	if totalUsed() > sb.width { planIndicator = "" }
-	if totalUsed() > sb.width { readingBar = "" }
-	if totalUsed() > sb.width { wordInfo = "" }
-	if totalUsed() > sb.width { aiIndicator = "" }
-	if totalUsed() > sb.width { gitIndicator = "" }
-	if totalUsed() > sb.width { rightInfo = "" }
+	// Drop order goes from most-disposable to most-critical so the user
+	// keeps seeing what matters when the terminal narrows. Git status and
+	// the AI indicator stay visible until the very end — losing them
+	// silently used to leave users uncertain whether their commits had
+	// synced or which model the AI was using.
+	drops := []*string{
+		&readingBar,        // visual only; redundant in EDIT mode
+		&wordInfo,          // nice-to-have
+		&planIndicator,     // ephemeral nudge
+		&inboxIndicator,    // passive count
+		&focusIndicator,    // active session — but represented in pomo too
+		&pomoIndicator,     // active session
+		&clockIndicator,    // active session
+		&taskIndicator,     // important but specific
+		&overdueIndicator,  // important but specific
+		&researchIndicator, // active session
+		&aiIndicator,       // critical — keep as long as possible
+		&gitIndicator,      // critical
+		&rightInfo,         // primary identity
+	}
+	for _, d := range drops {
+		if totalUsed() <= sb.width {
+			break
+		}
+		*d = ""
+	}
 
 	if totalUsed() > sb.width {
 		overhead := totalUsed() - sb.width
