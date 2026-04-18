@@ -29,9 +29,7 @@ type historyEntry struct {
 // NoteHistory shows git history for the currently active note with a visual
 // timeline and inline diff viewer / snapshot viewer.
 type NoteHistory struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 	notePath  string
 
@@ -56,14 +54,9 @@ func NewNoteHistory() NoteHistory {
 	return NoteHistory{}
 }
 
-// IsActive returns whether the note history overlay is currently visible.
-func (nh NoteHistory) IsActive() bool {
-	return nh.active
-}
-
 // OpenForNote activates the overlay for a specific note and fetches its git log.
 func (nh *NoteHistory) OpenForNote(vaultRoot, notePath string) {
-	nh.active = true
+	nh.Activate()
 	nh.vaultRoot = vaultRoot
 	nh.notePath = notePath
 	nh.entries = nil
@@ -75,12 +68,6 @@ func (nh *NoteHistory) OpenForNote(vaultRoot, notePath string) {
 	nh.contentScroll = 0
 	nh.statusMsg = ""
 	nh.noGit = false
-}
-
-// SetSize updates the available dimensions for the overlay.
-func (nh *NoteHistory) SetSize(w, h int) {
-	nh.width = w
-	nh.height = h
 }
 
 // FetchLog returns a tea.Cmd that asynchronously fetches git log for the note.
