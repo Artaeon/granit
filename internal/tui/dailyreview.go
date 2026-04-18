@@ -127,10 +127,10 @@ func summarizeDayTime(blocks []PlannerBlock) (planned, actual, pomodoros int) {
 		if dur <= 0 {
 			continue
 		}
-		switch strings.ToLower(b.BlockType) {
-		case "task", "focus", "deep-work", "deep_work", "admin":
+		switch kind := NormaliseBlockType(b.BlockType); {
+		case kind.IsTaskLike():
 			planned += dur
-		case "pomodoro":
+		case kind == BlockTypePomodoro:
 			actual += dur
 			pomodoros++
 		}

@@ -14,24 +14,26 @@ import (
 // ---------------------------------------------------------------------------
 
 // plannerBlockTag returns the 3-char "[X]" prefix used in the agenda view
-// to distinguish block kinds at a glance.
+// to distinguish block kinds at a glance. Routes through
+// NormaliseBlockType so aliases ("deep_work" vs "deep-work") collapse
+// to the canonical form before the switch.
 func plannerBlockTag(blockType string) string {
-	switch strings.ToLower(blockType) {
-	case "task", "deep-work", "deep_work":
+	switch NormaliseBlockType(blockType) {
+	case BlockTypeTask, BlockTypeDeepWork:
 		return "[T]"
-	case "focus":
+	case BlockTypeFocus:
 		return "[F]"
-	case "break", "lunch":
+	case BlockTypeBreak, BlockTypeLunch:
 		return "[B]"
-	case "meeting", "event":
+	case BlockTypeMeeting, BlockTypeEvent:
 		return "[E]"
-	case "admin":
+	case BlockTypeAdmin:
 		return "[A]"
-	case "habit":
+	case BlockTypeHabit:
 		return "[H]"
-	case "review":
+	case BlockTypeReview:
 		return "[R]"
-	case "pomodoro":
+	case BlockTypePomodoro:
 		// Lowercase 'p' so it's visually distinct from the default "[P]"
 		// (unknown kind). The block already renders red via
 		// plannerBlockColor, which is the primary differentiator.
@@ -51,22 +53,22 @@ func plannerBlockColor(blockType string, done bool) lipgloss.Color {
 	if done {
 		return surface2
 	}
-	switch strings.ToLower(blockType) {
-	case "task", "deep-work", "deep_work":
+	switch NormaliseBlockType(blockType) {
+	case BlockTypeTask, BlockTypeDeepWork:
 		return blue
-	case "focus":
+	case BlockTypeFocus:
 		return peach
-	case "break", "lunch":
+	case BlockTypeBreak, BlockTypeLunch:
 		return green
-	case "meeting", "event":
+	case BlockTypeMeeting, BlockTypeEvent:
 		return lavender
-	case "admin":
+	case BlockTypeAdmin:
 		return overlay1
-	case "habit":
+	case BlockTypeHabit:
 		return teal
-	case "review":
+	case BlockTypeReview:
 		return mauve
-	case "pomodoro":
+	case BlockTypePomodoro:
 		return red
 	}
 	return lavender
