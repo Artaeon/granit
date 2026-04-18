@@ -41,9 +41,7 @@ const (
 
 // RecurringTasks is the overlay component for managing recurring task rules.
 type RecurringTasks struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 
 	tasks  []RecurringTask
@@ -67,15 +65,9 @@ var freqLabels = []string{"daily", "weekly", "monthly"}
 // NewRecurringTasks creates a new RecurringTasks component.
 func NewRecurringTasks() RecurringTasks { return RecurringTasks{} }
 
-// IsActive returns whether the recurring tasks overlay is visible.
-func (rt RecurringTasks) IsActive() bool { return rt.active }
-
-// SetSize updates the available dimensions for the overlay.
-func (rt *RecurringTasks) SetSize(w, h int) { rt.width = w; rt.height = h }
-
 // Open activates the overlay, loads tasks from disk, and runs CheckAndCreate.
 func (rt *RecurringTasks) Open(vaultRoot string) {
-	rt.active = true
+	rt.Activate()
 	rt.vaultRoot = vaultRoot
 	rt.cursor = 0
 	rt.scroll = 0
