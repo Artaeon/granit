@@ -372,7 +372,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.clearMessageAfter(3 * time.Second)
 
 	case tutorialSaveErrMsg:
-		m.statusbar.SetMessage("Failed to save tutorial state: " + msg.err.Error())
+		m.reportError("save tutorial state", msg.err)
 		return m, m.clearMessageAfter(3 * time.Second)
 
 	case threadWeaverResultMsg, threadWeaverTickMsg:
@@ -1156,13 +1156,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				path := filepath.Join(m.vault.Root, name)
 				if _, err := os.Stat(path); os.IsNotExist(err) {
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-						m.statusbar.SetMessage("Error creating directory: " + err.Error())
+						m.reportError("create daily note folder", err)
 						return m, nil
 					}
 					fallback := m.buildDailyFallback(evDate)
 					content := m.dailyNoteContent(evDate, fallback)
 					if err := atomicWriteNote(path, content); err != nil {
-						m.statusbar.SetMessage("Error creating daily note: " + err.Error())
+						m.reportError("create daily note", err)
 						return m, nil
 					}
 				}
@@ -1223,13 +1223,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				path := filepath.Join(m.vault.Root, name)
 				if _, err := os.Stat(path); os.IsNotExist(err) {
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-						m.statusbar.SetMessage("Error creating directory: " + err.Error())
+						m.reportError("create daily note folder", err)
 						return m, nil
 					}
 					fallback := m.buildDailyFallback(date)
 					content := m.dailyNoteContent(date, fallback)
 					if err := atomicWriteNote(path, content); err != nil {
-						m.statusbar.SetMessage("Error creating daily note: " + err.Error())
+						m.reportError("create daily note", err)
 						return m, nil
 					}
 					m.refreshComponents(name)
@@ -2347,7 +2347,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Relaunch with new vault
 					newModel, err := NewModel(vaultPath)
 					if err != nil {
-						m.statusbar.SetMessage("Failed to open vault: " + err.Error())
+						m.reportError("open vault", err)
 						return m, m.clearMessageAfter(5 * time.Second)
 					}
 					newModel.width = m.width

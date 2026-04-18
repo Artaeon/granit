@@ -75,12 +75,12 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		wPath := filepath.Join(m.vault.Root, wName)
 		if _, err := os.Stat(wPath); os.IsNotExist(err) {
 			if err := os.MkdirAll(filepath.Dir(wPath), 0755); err != nil {
-				m.statusbar.SetMessage("Failed to create weekly note folder: " + err.Error())
+				m.reportError("create weekly note folder", err)
 				return m, m.clearMessageAfter(5 * time.Second)
 			}
 			content := m.weeklyNoteContent(year, week)
 			if err := atomicWriteNote(wPath, content); err != nil {
-				m.statusbar.SetMessage("Failed to create weekly note: " + err.Error())
+				m.reportError("create weekly note", err)
 				return m, m.clearMessageAfter(5 * time.Second)
 			}
 			_ = m.vault.Scan()
@@ -1601,7 +1601,7 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 	if err != nil {
 		// Create new daily note with plan
 		if err := os.MkdirAll(filepath.Dir(dailyPath), 0755); err != nil {
-			m.statusbar.SetMessage("Failed to create daily note folder: " + err.Error())
+			m.reportError("create daily note folder", err)
 			return
 		}
 		fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s\n\n%s", today, today, planContent)
@@ -1613,7 +1613,7 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 		writeErr = atomicWriteNote(dailyPath, newContent)
 	}
 	if writeErr != nil {
-		m.statusbar.SetMessage("Failed to write day plan: " + writeErr.Error())
+		m.reportError("write day plan", writeErr)
 		return
 	}
 

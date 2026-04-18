@@ -2382,7 +2382,7 @@ func (m *Model) writeBriefingToDailyNote(briefingContent string) {
 	var writeErr error
 	if err != nil {
 		if mkErr := os.MkdirAll(filepath.Dir(dailyPath), 0755); mkErr != nil {
-			m.statusbar.SetMessage("Failed to create daily note folder: " + mkErr.Error())
+			m.reportError("create daily note folder", mkErr)
 			return
 		}
 		fallback := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s — {{weekday}}\n\n%s\n", today, today, briefingContent)
@@ -2394,7 +2394,7 @@ func (m *Model) writeBriefingToDailyNote(briefingContent string) {
 		writeErr = atomicWriteNote(dailyPath, newContent)
 	}
 	if writeErr != nil {
-		m.statusbar.SetMessage("Failed to write daily briefing: " + writeErr.Error())
+		m.reportError("write daily briefing", writeErr)
 		return
 	}
 
@@ -2444,13 +2444,13 @@ func (m *Model) openDailyNote() {
 	path := filepath.Join(m.vault.Root, name)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			m.statusbar.SetMessage("Failed to create daily note folder: " + err.Error())
+			m.reportError("create daily note folder", err)
 			return
 		}
 		fallback := m.buildDailyFallback(today)
 		content := m.dailyNoteContent(today, fallback)
 		if err := atomicWriteNote(path, content); err != nil {
-			m.statusbar.SetMessage("Failed to create daily note: " + err.Error())
+			m.reportError("create daily note", err)
 			return
 		}
 		_ = m.vault.Scan()

@@ -581,7 +581,7 @@ func (m *Model) saveScrollCache(vaultRoot string) {
 		return
 	}
 	if err := atomicWriteState(filepath.Join(dir, "viewport.json"), raw); err != nil {
-		m.statusbar.SetMessage("Failed to save scroll cache: " + err.Error())
+		m.reportError("save scroll cache", err)
 	}
 }
 

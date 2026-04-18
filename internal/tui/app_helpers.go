@@ -1003,7 +1003,7 @@ func (m *Model) applyTagsToNote(tags []string) {
 			m.editor.modified = true
 			// Atomic save: write to temp file then rename to avoid partial writes on crash
 			if err := atomicWriteNote(filepath.Join(m.vault.Root, m.activeNote), newContent); err != nil {
-				m.statusbar.SetMessage("Failed to save tags: " + err.Error())
+				m.reportError("save tags", err)
 				return
 			}
 			// Re-scan vault for updated tags
@@ -1036,7 +1036,7 @@ func (m *Model) applyTagsToNote(tags []string) {
 	m.editor.LoadContent(newContent, m.activeNote)
 	m.editor.modified = true
 	if err := atomicWriteNote(filepath.Join(m.vault.Root, m.activeNote), newContent); err != nil {
-		m.statusbar.SetMessage("Failed to save tags: " + err.Error())
+		m.reportError("save tags", err)
 		return
 	}
 	_ = m.vault.Scan()
