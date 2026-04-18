@@ -1569,14 +1569,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.dailyPlanner.Open(m.vault.Root, tasks, nil, habits)
 					m.dailyPlanner.ApplyAISchedule(slots)
 
-					// Persist schedule markers to Tasks.md
+					// Route every slot through the unified schedule layer so
+					// both the ⏰ marker on the source task AND the planner
+					// block land together. Non-task slots (break, lunch)
+					// only get a planner block — they have no source line.
+					today := time.Now().Format("2006-01-02")
 					for _, slot := range slots {
-						if slot.Type != "task" {
-							continue
-						}
 						start := fmt.Sprintf("%02d:%02d", slot.StartHour, slot.StartMin)
 						end := fmt.Sprintf("%02d:%02d", slot.EndHour, slot.EndMin)
-						updateTaskScheduleInFile(m.vault.Root, slot.Task, start, end)
+						ref := scheduleRefForSlotText(slot.Task, m.taskManager.allTasks)
+						if isTaskSlot(slot.Type) && ref.hasLocation() {
+							_ = SetTaskSchedule(m.vault.Root, today, ref, start, end, slot.Type)
+						} else {
+							_ = UpsertPlannerBlock(m.vault.Root, today, ScheduleRef{Text: slot.Task}, PlannerBlock{
+								Date: today, StartTime: start, EndTime: end,
+								Text: slot.Task, BlockType: slot.Type, SourceRef: ref,
+							})
+						}
 					}
 
 					// Auto-save planner so calendar can load the schedule

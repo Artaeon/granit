@@ -1600,14 +1600,23 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 		return
 	}
 
-	// Write schedule as planner blocks so calendar can show them
+	// Write schedule blocks through the unified schedule layer. For task-like
+	// slots, locate the source Task (by text) so the ⏰ marker lands on the
+	// same line TaskManager reads from — otherwise the task's Plan view
+	// would still show it as unscheduled after the AI ran.
 	for _, slot := range schedule {
-		writePlannerBlock(m.vault.Root, today, PlannerBlock{
-			StartTime: slot.Start,
-			EndTime:   slot.End,
-			Text:      slot.Task,
-			BlockType: slot.Type,
-		})
+		ref := scheduleRefForSlotText(slot.Task, m.cachedTasks)
+		block := PlannerBlock{
+			Date: today, StartTime: slot.Start, EndTime: slot.End,
+			Text: slot.Task, BlockType: slot.Type, SourceRef: ref,
+		}
+		if isTaskSlot(slot.Type) && ref.hasLocation() {
+			_ = SetTaskSchedule(m.vault.Root, today, ref, slot.Start, slot.End, slot.Type)
+		} else {
+			// Non-task blocks (Lunch, Break, Review, Meeting) only live on the
+			// planner side — there's no source task line to annotate.
+			_ = UpsertPlannerBlock(m.vault.Root, today, ScheduleRef{Text: slot.Task}, block)
+		}
 	}
 
 	// Write focus data to planner file
@@ -1624,7 +1633,8 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 	m.setFocus(focusEditor)
 }
 
-// loadPlannerBlocks, writePlannerFocus, writePlannerBlock, replaceDailySection,
+// loadPlannerBlocks, writePlannerFocus, replaceDailySection,
 // updateTaskScheduleInFile, slotToMinutes, fmtTimeSlot, and gatherTodayEvents
-// are in planner_io.go.
+// are in planner_io.go. The unified schedule-write API
+// (SetTaskSchedule / UpsertPlannerBlock / …) lives in schedulesync.go.
 // GenerateLocalSchedule and FormatDayPlanMarkdown are in schedule.go.

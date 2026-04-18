@@ -16,38 +16,6 @@ import (
 // daily note section management, and task schedule annotation.
 // ---------------------------------------------------------------------------
 
-// writePlannerBlock appends a single schedule block to the planner file for
-// the given date. Creates the file with frontmatter if it doesn't exist.
-func writePlannerBlock(vaultRoot, date string, block PlannerBlock) {
-	if vaultRoot == "" {
-		return
-	}
-	dir := filepath.Join(vaultRoot, "Planner")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return
-	}
-	path := filepath.Join(dir, date+".md")
-
-	line := fmt.Sprintf("- %s-%s | %s | %s\n", block.StartTime, block.EndTime, block.Text, block.BlockType)
-
-	content, err := os.ReadFile(path)
-	if err != nil {
-		content = []byte("---\ndate: " + date + "\n---\n\n## Schedule\n" + line)
-		_ = atomicWriteNote(path, string(content))
-		return
-	}
-
-	scheduleHeader := "## Schedule\n"
-	idx := bytes.Index(content, []byte(scheduleHeader))
-	if idx < 0 {
-		content = append(content, []byte("\n"+scheduleHeader+line)...)
-	} else {
-		insertAt := idx + len(scheduleHeader)
-		content = append(content[:insertAt], append([]byte(line), content[insertAt:]...)...)
-	}
-	_ = atomicWriteNote(path, string(content))
-}
-
 // writePlannerFocus writes or updates the ## Focus section in the planner file
 // for the given date. Replaces any existing Focus section.
 func writePlannerFocus(vaultRoot, date, topGoal string, focusItems []string) {

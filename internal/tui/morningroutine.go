@@ -494,6 +494,10 @@ func (mr *MorningRoutine) saveToDailyNote() tea.Cmd {
 	copy(schedule, mr.schedule)
 	todayGoal := mr.todayGoal
 	selectedTasks := mr.getSelectedTasks()
+	// Snapshot the task list so the goroutine can resolve slot→source refs
+	// without racing against a concurrent vault rescan.
+	allTasks := make([]Task, len(mr.allTasks))
+	copy(allTasks, mr.allTasks)
 	// Capture created tasks to persist them to Tasks.md
 	createdTasks := make([]string, len(mr.createdTasks))
 	copy(createdTasks, mr.createdTasks)
@@ -522,14 +526,19 @@ func (mr *MorningRoutine) saveToDailyNote() tea.Cmd {
 			_ = atomicWriteNote(dailyPath, newContent)
 		}
 
-		// Write schedule as planner blocks so the calendar can see them
+		// Route each slot through the unified schedule layer so task-slots
+		// also get a ⏰ marker on their source line. Non-task kinds (break,
+		// lunch, meeting, habit, review) only land in the planner file.
 		for _, slot := range schedule {
-			writePlannerBlock(vaultRoot, today, PlannerBlock{
-				StartTime: slot.Start,
-				EndTime:   slot.End,
-				Text:      slot.Task,
-				BlockType: slot.Type,
-			})
+			ref := scheduleRefForSlotText(slot.Task, allTasks)
+			if isTaskSlot(slot.Type) && ref.hasLocation() {
+				_ = SetTaskSchedule(vaultRoot, today, ref, slot.Start, slot.End, slot.Type)
+			} else {
+				_ = UpsertPlannerBlock(vaultRoot, today, ScheduleRef{Text: slot.Task}, PlannerBlock{
+					Date: today, StartTime: slot.Start, EndTime: slot.End,
+					Text: slot.Task, BlockType: slot.Type, SourceRef: ref,
+				})
+			}
 		}
 
 		// Write daily focus so calendar shows the goal

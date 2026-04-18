@@ -282,6 +282,45 @@ func RemovePlannerBlock(vaultRoot, date string, ref ScheduleRef) error {
 	return writePlannerScheduleBlocks(vaultRoot, date, kept)
 }
 
+// isTaskSlot reports whether a daySlot.Type (or planner BlockType) describes
+// a user task that should carry a ⏰ marker on its source line. Non-task
+// kinds like "break", "meeting", "habit", "review" only exist on the
+// planner side and have no source task to annotate.
+func isTaskSlot(slotType string) bool {
+	switch strings.ToLower(slotType) {
+	case "task", "deep-work", "deep_work", "admin", "focus":
+		return true
+	}
+	return false
+}
+
+// scheduleRefForSlotText resolves a slot's task text back to a source-task
+// reference by matching against the parsed task list. Returns a text-only
+// ref when nothing matches (caller should treat the slot as planner-only).
+// Matching is fuzzy: exact text wins, then either-direction containment —
+// the AI scheduler sometimes trims or paraphrases task text.
+func scheduleRefForSlotText(taskText string, tasks []Task) ScheduleRef {
+	if taskText == "" {
+		return ScheduleRef{}
+	}
+	needle := normalizeBlockText(taskText)
+	for _, t := range tasks {
+		if normalizeBlockText(t.Text) == needle {
+			return ScheduleRef{NotePath: t.NotePath, LineNum: t.LineNum, Text: t.Text}
+		}
+	}
+	for _, t := range tasks {
+		norm := normalizeBlockText(t.Text)
+		if norm == "" {
+			continue
+		}
+		if strings.Contains(norm, needle) || strings.Contains(needle, norm) {
+			return ScheduleRef{NotePath: t.NotePath, LineNum: t.LineNum, Text: t.Text}
+		}
+	}
+	return ScheduleRef{Text: taskText}
+}
+
 func sortBlocksByStart(blocks []PlannerBlock) {
 	sort.SliceStable(blocks, func(i, j int) bool {
 		return slotToMinutes(blocks[i].StartTime) < slotToMinutes(blocks[j].StartTime)
