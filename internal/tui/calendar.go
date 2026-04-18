@@ -830,10 +830,68 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
 				c.unscheduleBlockAtCursor()
 			}
+
+		case ",":
+			if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
+				c.shiftBlockAtCursor(-15)
+			}
+		case ".":
+			if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
+				c.shiftBlockAtCursor(15)
+			}
 		}
 	}
 
 	return c, nil
+}
+
+// shiftBlockAtCursor moves the first planner block that overlaps the grid
+// cursor by delta minutes (positive = later, negative = earlier), clamped
+// to [00:00, 23:59). Duration is preserved. Routes through the unified
+// schedule layer so the source task's ⏰ marker moves with the block.
+// No-op when no block is under the cursor.
+func (c *Calendar) shiftBlockAtCursor(deltaMin int) {
+	dateStr := c.cursor.Format("2006-01-02")
+	sH := c.weekGridStartHourFor()
+	cursorSlotMin := (sH+c.weekGridCursorHour/2)*60 + (c.weekGridCursorHour%2)*30
+
+	blocks := c.plannerBlocks[dateStr]
+	for i, pb := range blocks {
+		startMin := slotToMinutes(pb.StartTime)
+		endMin := slotToMinutes(pb.EndTime)
+		if endMin <= startMin {
+			endMin = startMin + 60
+		}
+		if !(startMin < cursorSlotMin+30 && endMin > cursorSlotMin) {
+			continue
+		}
+		newStart := startMin + deltaMin
+		newEnd := endMin + deltaMin
+		if newStart < 0 || newEnd > 24*60-1 {
+			return // clamped out of range — refuse rather than wrap
+		}
+		startStr := fmtTimeSlot(newStart)
+		endStr := fmtTimeSlot(newEnd)
+
+		ref := pb.SourceRef
+		if ref.Text == "" {
+			ref.Text = pb.Text
+		}
+		updated := pb
+		updated.StartTime = startStr
+		updated.EndTime = endStr
+
+		if ref.hasLocation() {
+			// Task-backed: route through the combined API so the source ⏰
+			// marker moves too. Block type carries over.
+			_ = SetTaskSchedule(c.vaultRoot, dateStr, ref, startStr, endStr, pb.BlockType)
+		} else {
+			_ = UpsertPlannerBlock(c.vaultRoot, dateStr, ref, updated)
+		}
+		blocks[i] = updated
+		c.plannerBlocks[dateStr] = blocks
+		return
+	}
 }
 
 // unscheduleBlockAtCursor removes the first planner block that overlaps

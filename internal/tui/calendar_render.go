@@ -2044,7 +2044,7 @@ func (c Calendar) renderFooter(b *strings.Builder, width int) {
 		pairs = []struct{ Key, Desc string }{
 			{"←→", "day"}, {"↑↓", "½hr"}, {"[]", "month"}, {"w", "view"},
 			{"t", "today"}, {"a", "add"}, {"e", "edit"}, {"d", "del-evt"},
-			{"b", "block"}, {"D", "unsched"}, {"Esc", "close"},
+			{"b", "block"}, {",.", "shift ±15m"}, {"D", "unsched"}, {"Esc", "close"},
 		}
 	default:
 		pairs = []struct{ Key, Desc string }{

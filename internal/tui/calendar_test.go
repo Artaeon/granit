@@ -1031,6 +1031,66 @@ func TestCalendar_UnscheduleBlockAtCursor_ClearsTaskAndPlanner(t *testing.T) {
 	}
 }
 
+func TestCalendar_ShiftBlockAtCursor_MovesBothSurfaces(t *testing.T) {
+	root := newTestVault(t, map[string]string{
+		"Tasks.md": "# Tasks\n\n- [ ] Write ⏰ 09:00-10:00\n",
+	})
+	today := time.Now().Format("2006-01-02")
+	ref := ScheduleRef{NotePath: "Tasks.md", LineNum: 3, Text: "Write"}
+	_ = UpsertPlannerBlock(root, today, ref, PlannerBlock{
+		Date: today, StartTime: "09:00", EndTime: "10:00",
+		Text: "Write", BlockType: "task", SourceRef: ref,
+	})
+
+	c := NewCalendar()
+	c.vaultRoot = root
+	c.view = calView1Day
+	c.cursor = time.Now()
+	c.plannerBlocks = map[string][]PlannerBlock{
+		today: {{
+			Date: today, StartTime: "09:00", EndTime: "10:00",
+			Text: "Write", BlockType: "task", SourceRef: ref,
+		}},
+	}
+	c.weekGridCursorHour = 6 // 09:00 when grid starts at 06:00
+
+	c.shiftBlockAtCursor(15) // push 15 minutes later
+
+	if got := c.plannerBlocks[today][0].StartTime; got != "09:15" {
+		t.Errorf("in-memory start not shifted: got %q want 09:15", got)
+	}
+	plan := readFile(t, root+"/Planner/"+today+".md")
+	if !strings.Contains(plan, "09:15-10:15 | Write | task") {
+		t.Errorf("planner block not shifted on disk:\n%s", plan)
+	}
+	src := readFile(t, root+"/Tasks.md")
+	if !strings.Contains(src, "⏰ 09:15-10:15") {
+		t.Errorf("source ⏰ marker not shifted:\n%s", src)
+	}
+}
+
+func TestCalendar_ShiftBlockAtCursor_ClampsBeforeMidnight(t *testing.T) {
+	root := t.TempDir()
+	today := time.Now().Format("2006-01-02")
+	c := NewCalendar()
+	c.vaultRoot = root
+	c.view = calView1Day
+	c.cursor = time.Now()
+	c.plannerBlocks = map[string][]PlannerBlock{
+		today: {{
+			Date: today, StartTime: "00:00", EndTime: "00:30",
+			Text: "Early", BlockType: "task",
+		}},
+	}
+	c.weekGridCursorHour = 0 // cursor at start
+
+	// Attempt to shift before midnight — must be a no-op.
+	c.shiftBlockAtCursor(-15)
+	if got := c.plannerBlocks[today][0].StartTime; got != "00:00" {
+		t.Errorf("expected clamp no-op, got %q", got)
+	}
+}
+
 func TestCalendar_UnscheduleBlockAtCursor_NoOpWhenNothingSelected(t *testing.T) {
 	root := t.TempDir()
 	c := NewCalendar()
