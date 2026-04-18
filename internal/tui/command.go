@@ -385,12 +385,15 @@ type CommandPalette struct {
 	width    int
 	height   int
 	result   CommandAction
+	history  *CommandHistory
 }
 
 func NewCommandPalette() CommandPalette {
-	return CommandPalette{
-		filtered: AllCommands,
+	cp := CommandPalette{
+		history: LoadCommandHistory(),
 	}
+	cp.filtered = cp.rankedAllCommands()
+	return cp
 }
 
 func (cp *CommandPalette) SetSize(width, height int) {
@@ -401,9 +404,26 @@ func (cp *CommandPalette) SetSize(width, height int) {
 func (cp *CommandPalette) Open() {
 	cp.active = true
 	cp.query = ""
-	cp.filtered = AllCommands
+	cp.filtered = cp.rankedAllCommands()
 	cp.cursor = 0
 	cp.result = CmdNone
+}
+
+// rankedAllCommands returns AllCommands sorted with most-frecent commands
+// first. Untracked commands keep their declaration order. This is what the
+// palette shows immediately on Open() — your last-used / most-used
+// commands are one Enter away.
+func (cp *CommandPalette) rankedAllCommands() []Command {
+	out := make([]Command, len(AllCommands))
+	copy(out, AllCommands)
+	if cp.history == nil {
+		return out
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return cp.history.FrecencyScore(out[i].Action) >
+			cp.history.FrecencyScore(out[j].Action)
+	})
+	return out
 }
 
 func (cp *CommandPalette) Close() {
@@ -423,7 +443,7 @@ func (cp *CommandPalette) Result() CommandAction {
 
 func (cp *CommandPalette) filterCommands() {
 	if cp.query == "" {
-		cp.filtered = AllCommands
+		cp.filtered = cp.rankedAllCommands()
 		return
 	}
 	query := strings.ToLower(cp.query)
@@ -457,6 +477,11 @@ func (cp *CommandPalette) filterCommands() {
 			score = descScore
 		}
 		if score > 0 {
+			// Frecency adds a modest boost (capped ~200) so frequently-used
+			// commands tie-break toward the top without ever flipping the
+			// fuzzy ranking — typing a specific query still finds what you
+			// asked for, even if it's never been used before.
+			score += cp.history.FrecencyScore(cmd.Action)
 			hits = append(hits, scored{cmd, score})
 		}
 	}
@@ -548,6 +573,8 @@ func (cp CommandPalette) Update(msg tea.Msg) (CommandPalette, tea.Cmd) {
 		case "enter":
 			if len(cp.filtered) > 0 && cp.cursor < len(cp.filtered) {
 				cp.result = cp.filtered[cp.cursor].Action
+				cp.history.Record(cp.filtered[cp.cursor].Action)
+				cp.history.Save()
 			}
 			cp.active = false
 			return cp, nil
