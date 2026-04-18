@@ -205,13 +205,11 @@ func taskLineLikelyMatches(line, refText string) bool {
 	if refText == "" {
 		return true
 	}
-	trimmed := strings.TrimSpace(line)
-	idx := strings.Index(trimmed, "] ")
-	if idx < 0 {
+	lineText, ok := taskLineText(line)
+	if !ok {
 		return false
 	}
-	lineText := strings.TrimSpace(schedMarkerRe.ReplaceAllString(trimmed[idx+2:], ""))
-	want := strings.TrimSpace(schedMarkerRe.ReplaceAllString(refText, ""))
+	want := normalizeBlockText(refText)
 	if lineText == "" || want == "" {
 		return false
 	}
@@ -230,26 +228,19 @@ func transformTaskLineByText(path, needle string, transform func(string) string)
 	if err != nil {
 		return false
 	}
-	want := strings.TrimSpace(schedMarkerRe.ReplaceAllString(needle, ""))
+	want := normalizeBlockText(needle)
 	lines := strings.Split(string(data), "\n")
 	for i, line := range lines {
-		if !isTaskLine(line) {
+		text, ok := taskLineText(line)
+		if !ok || text != want {
 			continue
 		}
-		trimmed := strings.TrimSpace(line)
-		idx := strings.Index(trimmed, "] ")
-		if idx < 0 {
-			continue
+		newLine := transform(line)
+		if newLine == line {
+			return true // already correct
 		}
-		lineTask := strings.TrimSpace(schedMarkerRe.ReplaceAllString(trimmed[idx+2:], ""))
-		if lineTask == want {
-			newLine := transform(line)
-			if newLine == line {
-				return true // already correct
-			}
-			lines[i] = newLine
-			return atomicWriteNote(path, strings.Join(lines, "\n")) == nil
-		}
+		lines[i] = newLine
+		return atomicWriteNote(path, strings.Join(lines, "\n")) == nil
 	}
 	return false
 }
@@ -260,6 +251,25 @@ func isTaskLine(line string) bool {
 	return strings.HasPrefix(trimmed, "- [ ]") ||
 		strings.HasPrefix(trimmed, "- [x]") ||
 		strings.HasPrefix(trimmed, "- [X]")
+}
+
+// taskLineText extracts the normalised task text from a markdown task
+// line ("- [ ] Ship v1 ⏰ 09:00-10:00" → "Ship v1"). Returns false for
+// lines that aren't tasks so callers can skip them in a single branch.
+//
+// Shared by transformTaskLineByText and other call sites that need to
+// recover the identity of a task line stripped of its status checkbox
+// and time marker.
+func taskLineText(line string) (string, bool) {
+	if !isTaskLine(line) {
+		return "", false
+	}
+	trimmed := strings.TrimSpace(line)
+	idx := strings.Index(trimmed, "] ")
+	if idx < 0 {
+		return "", false
+	}
+	return normalizeBlockText(trimmed[idx+2:]), true
 }
 
 // walkVaultMarkdown walks .md files under vaultRoot (skipping hidden dirs)
