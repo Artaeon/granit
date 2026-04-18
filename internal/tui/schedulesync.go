@@ -119,51 +119,66 @@ func validTimeRange(start, end string) bool {
 var schedMarkerRe = regexp.MustCompile(`\s*⏰\s*\d{2}:\d{2}-\d{2}:\d{2}`)
 
 // writeTaskScheduleMarker replaces (or adds) the ⏰ marker on a task line.
-// Prefers ref.NotePath+LineNum (fast, precise); falls back to vault-wide
-// text search when the location is unknown. Returns an error if the ref
-// carries neither a valid location nor a findable text match — silent
-// success would let the planner-side write create an orphan block.
+// Prefers ref.NotePath+LineNum; if that line no longer looks like a task
+// (stale ref — a block got inserted above, file was edited) falls back
+// to a text search within the same file, then vault-wide.
 func writeTaskScheduleMarker(vaultRoot string, ref ScheduleRef, start, end string) error {
-	marker := " ⏰ " + start + "-" + end
-	set := func(line string) string {
+	return transformTaskLine(vaultRoot, ref, func(line string) string {
 		cleaned := schedMarkerRe.ReplaceAllString(line, "")
-		return strings.TrimRight(cleaned, " ") + marker
-	}
+		return strings.TrimRight(cleaned, " ") + " ⏰ " + start + "-" + end
+	})
+}
 
+// clearTaskScheduleMarker strips the ⏰ marker from a task line.
+func clearTaskScheduleMarker(vaultRoot string, ref ScheduleRef) error {
+	return transformTaskLine(vaultRoot, ref, func(line string) string {
+		return schedMarkerRe.ReplaceAllString(line, "")
+	})
+}
+
+// transformTaskLine applies transform to the task line identified by ref.
+// Resolution order:
+//  1. ref.NotePath+LineNum — if the line at that position still looks like
+//     a task ("- [ ]" or "- [x]" prefix), use it directly.
+//  2. ref.Text in the ref's own file — a nearby insertion shifts line
+//     numbers; stays within the same file so we don't grab a collision
+//     from an unrelated note.
+//  3. ref.Text anywhere in the vault — final defensive walk.
+//
+// Returns an error when no step succeeds, so the caller can distinguish
+// "schedule written" from "schedule silently dropped."
+func transformTaskLine(vaultRoot string, ref ScheduleRef, transform func(string) string) error {
 	if ref.hasLocation() {
-		return editLineAt(vaultRoot, ref.NotePath, ref.LineNum, set)
+		path := filepath.Join(vaultRoot, ref.NotePath)
+		if data, err := os.ReadFile(path); err == nil {
+			lines := strings.Split(string(data), "\n")
+			if ref.LineNum >= 1 && ref.LineNum <= len(lines) && isTaskLine(lines[ref.LineNum-1]) {
+				newLine := transform(lines[ref.LineNum-1])
+				if newLine != lines[ref.LineNum-1] {
+					lines[ref.LineNum-1] = newLine
+					if err := atomicWriteNote(path, strings.Join(lines, "\n")); err != nil {
+						return err
+					}
+				}
+				return nil
+			}
+			// Stale ref: try same-file text search before widening.
+			if ref.Text != "" {
+				if transformTaskLineByText(path, ref.Text, transform) {
+					return nil
+				}
+			}
+		}
 	}
 	if ref.Text == "" {
 		return fmt.Errorf("schedule: ref has neither location nor text")
 	}
-	// Text-only fallback: walk the vault for the first task line whose
-	// normalised text matches. Defensive — existing call sites resolve a
-	// location before calling this path, so reaching here usually means
-	// a slot text that no current task matches.
-	needle := strings.TrimSpace(schedMarkerRe.ReplaceAllString(ref.Text, ""))
+	// Vault-wide fallback.
 	found := false
 	_ = walkVaultMarkdown(vaultRoot, func(path string) bool {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return false
-		}
-		lines := strings.Split(string(data), "\n")
-		for i, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if !strings.HasPrefix(trimmed, "- [") {
-				continue
-			}
-			idx := strings.Index(trimmed, "] ")
-			if idx < 0 {
-				continue
-			}
-			lineTask := strings.TrimSpace(schedMarkerRe.ReplaceAllString(trimmed[idx+2:], ""))
-			if lineTask == needle {
-				lines[i] = set(line)
-				_ = atomicWriteNote(path, strings.Join(lines, "\n"))
-				found = true
-				return true
-			}
+		if transformTaskLineByText(path, ref.Text, transform) {
+			found = true
+			return true
 		}
 		return false
 	})
@@ -173,66 +188,43 @@ func writeTaskScheduleMarker(vaultRoot string, ref ScheduleRef, start, end strin
 	return nil
 }
 
-// clearTaskScheduleMarker strips the ⏰ marker from a task line.
-func clearTaskScheduleMarker(vaultRoot string, ref ScheduleRef) error {
-	clr := func(line string) string {
-		return schedMarkerRe.ReplaceAllString(line, "")
-	}
-	if ref.hasLocation() {
-		return editLineAt(vaultRoot, ref.NotePath, ref.LineNum, clr)
-	}
-	if ref.Text == "" {
-		return fmt.Errorf("schedule: ref has neither location nor text")
-	}
-	needle := strings.TrimSpace(schedMarkerRe.ReplaceAllString(ref.Text, ""))
-	return walkVaultMarkdown(vaultRoot, func(path string) bool {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return false
-		}
-		lines := strings.Split(string(data), "\n")
-		for i, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if !strings.HasPrefix(trimmed, "- [") {
-				continue
-			}
-			idx := strings.Index(trimmed, "] ")
-			if idx < 0 {
-				continue
-			}
-			lineTask := strings.TrimSpace(schedMarkerRe.ReplaceAllString(trimmed[idx+2:], ""))
-			if lineTask == needle {
-				lines[i] = clr(line)
-				_ = atomicWriteNote(path, strings.Join(lines, "\n"))
-				return true
-			}
-		}
+// transformTaskLineByText scans path for a task line whose normalised
+// text matches needle and applies transform. Returns true on match.
+func transformTaskLineByText(path, needle string, transform func(string) string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
 		return false
-	})
+	}
+	want := strings.TrimSpace(schedMarkerRe.ReplaceAllString(needle, ""))
+	lines := strings.Split(string(data), "\n")
+	for i, line := range lines {
+		if !isTaskLine(line) {
+			continue
+		}
+		trimmed := strings.TrimSpace(line)
+		idx := strings.Index(trimmed, "] ")
+		if idx < 0 {
+			continue
+		}
+		lineTask := strings.TrimSpace(schedMarkerRe.ReplaceAllString(trimmed[idx+2:], ""))
+		if lineTask == want {
+			newLine := transform(line)
+			if newLine == line {
+				return true // already correct
+			}
+			lines[i] = newLine
+			return atomicWriteNote(path, strings.Join(lines, "\n")) == nil
+		}
+	}
+	return false
 }
 
-// editLineAt applies transform to lineNum (1-indexed) of path and writes
-// atomically. Returns nil if the file or line does not exist — a stale
-// ref shouldn't abort a larger operation.
-func editLineAt(vaultRoot, notePath string, lineNum int, transform func(string) string) error {
-	full := filepath.Join(vaultRoot, notePath)
-	data, err := os.ReadFile(full)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	lines := strings.Split(string(data), "\n")
-	if lineNum < 1 || lineNum > len(lines) {
-		return nil
-	}
-	newLine := transform(lines[lineNum-1])
-	if newLine == lines[lineNum-1] {
-		return nil
-	}
-	lines[lineNum-1] = newLine
-	return atomicWriteNote(full, strings.Join(lines, "\n"))
+// isTaskLine returns true for markdown task rows ("- [ ]" or "- [x]").
+func isTaskLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return strings.HasPrefix(trimmed, "- [ ]") ||
+		strings.HasPrefix(trimmed, "- [x]") ||
+		strings.HasPrefix(trimmed, "- [X]")
 }
 
 // walkVaultMarkdown walks .md files under vaultRoot (skipping hidden dirs)

@@ -533,13 +533,50 @@ func TestScheduleRefForSlotText_NoMatch_ReturnsTextOnly(t *testing.T) {
 	}
 }
 
-func TestWriteTaskScheduleMarker_StaleRef_DoesNotError(t *testing.T) {
+func TestWriteTaskScheduleMarker_StaleRef_FallsBackToSameFileTextSearch(t *testing.T) {
+	// Classic stale-ref scenario: the task used to be on line 3, but a
+	// block was inserted above and it's now on line 5. The ScheduleRef
+	// still says LineNum=3. The marker must land on the correct task,
+	// not on line 3 (which now holds a prose line).
 	root := newTestVault(t, map[string]string{
-		"notes.md": "- [ ] Only\n",
+		"notes.md": "# Project\n\nSome intro prose got inserted here.\n\n- [ ] Ship\n",
 	})
-	// Line num beyond file length — should be a no-op, not an error.
-	ref := ScheduleRef{NotePath: "notes.md", LineNum: 99, Text: "Only"}
-	if err := writeTaskScheduleMarker(root, ref, "09:00", "10:00"); err != nil {
-		t.Errorf("stale ref should be no-op, got: %v", err)
+	stale := ScheduleRef{NotePath: "notes.md", LineNum: 3, Text: "Ship"}
+	if err := writeTaskScheduleMarker(root, stale, "09:00", "10:00"); err != nil {
+		t.Fatalf("stale ref: %v", err)
+	}
+	content := readFile(t, filepath.Join(root, "notes.md"))
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	if strings.Contains(lines[2], "⏰") {
+		t.Errorf("marker landed on wrong line (line 3, prose): %q", lines[2])
+	}
+	if !strings.Contains(lines[4], "⏰ 09:00-10:00") {
+		t.Errorf("marker did not fall through to task line: %q", lines[4])
+	}
+}
+
+func TestWriteTaskScheduleMarker_StaleRefNoTextMatch_ReturnsError(t *testing.T) {
+	// Line is stale AND the text doesn't match anything — must fail
+	// loudly rather than silently accept.
+	root := newTestVault(t, map[string]string{
+		"notes.md": "# no tasks here\n",
+	})
+	ref := ScheduleRef{NotePath: "notes.md", LineNum: 99, Text: "Nothing matches this"}
+	if err := writeTaskScheduleMarker(root, ref, "09:00", "10:00"); err == nil {
+		t.Error("expected error for stale ref with no text match, got nil")
+	}
+}
+
+func TestClearTaskScheduleMarker_StaleRef_FindsByText(t *testing.T) {
+	root := newTestVault(t, map[string]string{
+		"notes.md": "# Project\n\nInserted prose.\n\n- [ ] Ship ⏰ 09:00-10:00\n",
+	})
+	stale := ScheduleRef{NotePath: "notes.md", LineNum: 3, Text: "Ship"}
+	if err := clearTaskScheduleMarker(root, stale); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	content := readFile(t, filepath.Join(root, "notes.md"))
+	if strings.Contains(content, "⏰") {
+		t.Errorf("marker not cleared via text fallback:\n%s", content)
 	}
 }
