@@ -227,6 +227,24 @@ type TaskManager struct {
 	// AI config
 	ai          AIConfig
 	aiPending bool // waiting for AI response
+
+	// lastSaveErr stores the most recent error from saving
+	// task-templates.json, pinned-tasks.json, or task-notes.json so the
+	// host Model can surface it via reportError. Consumed once.
+	lastSaveErr error
+}
+
+// ConsumeSaveError returns and clears the last persistence error, if any.
+// The host Model calls this after each Update and routes non-nil errors
+// through reportError so the user sees that pinned/template/note state
+// didn't save.
+func (tm *TaskManager) ConsumeSaveError() error {
+	if tm == nil {
+		return nil
+	}
+	err := tm.lastSaveErr
+	tm.lastSaveErr = nil
+	return err
 }
 
 // NewTaskManager creates a new TaskManager overlay.
@@ -995,7 +1013,9 @@ func (tm *TaskManager) saveTaskTemplates() {
 	if err != nil {
 		return
 	}
-	_ = atomicWriteNote(filepath.Join(dir, "task-templates.json"), string(data))
+	if err := atomicWriteNote(filepath.Join(dir, "task-templates.json"), string(data)); err != nil {
+		tm.lastSaveErr = err
+	}
 }
 
 // loadPinnedTasks reads pinned task keys from .granit/pinned-tasks.json.
@@ -1023,7 +1043,9 @@ func (tm *TaskManager) savePinnedTasks() {
 	if err != nil {
 		return
 	}
-	_ = atomicWriteNote(filepath.Join(dir, "pinned-tasks.json"), string(data))
+	if err := atomicWriteNote(filepath.Join(dir, "pinned-tasks.json"), string(data)); err != nil {
+		tm.lastSaveErr = err
+	}
 }
 
 // loadTaskNotes reads task notes from .granit/task-notes.json.
@@ -1051,7 +1073,9 @@ func (tm *TaskManager) saveTaskNotes() {
 	if err != nil {
 		return
 	}
-	_ = atomicWriteNote(filepath.Join(dir, "task-notes.json"), string(data))
+	if err := atomicWriteNote(filepath.Join(dir, "task-notes.json"), string(data)); err != nil {
+		tm.lastSaveErr = err
+	}
 }
 
 // suggestPriority uses heuristics to recommend a priority for a task.

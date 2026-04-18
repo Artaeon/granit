@@ -542,6 +542,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.taskManager.IsActive() {
 			var cmd tea.Cmd
 			m.taskManager, cmd = m.taskManager.Update(msg)
+			m.reportError("save task state", m.taskManager.ConsumeSaveError())
 			if m.taskManager.WasFileChanged() {
 				m.refreshComponents(m.taskManager.ActiveNotePath())
 			}
@@ -2243,6 +2244,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			var cmd tea.Cmd
 			m.taskManager, cmd = m.taskManager.Update(msg)
+			m.reportError("save task state", m.taskManager.ConsumeSaveError())
 			// Check if task manager wrote any files
 			if m.taskManager.WasFileChanged() {
 				changedNote := m.taskManager.ActiveNotePath()
