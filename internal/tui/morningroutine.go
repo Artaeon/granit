@@ -580,7 +580,7 @@ func (mr *MorningRoutine) saveToDailyNote() tea.Cmd {
 		}
 
 		// Write daily focus so calendar shows the goal
-		writePlannerFocus(vaultRoot, today, todayGoal, selectedTasks)
+		recordErr("write planner focus", writePlannerFocus(vaultRoot, today, todayGoal, selectedTasks))
 
 		// Persist newly created tasks to Tasks.md so they appear in the task manager
 		for _, ct := range createdTasks {

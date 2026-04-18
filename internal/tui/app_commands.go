@@ -1647,7 +1647,7 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 	}
 
 	// Write focus data to planner file
-	writePlannerFocus(m.vault.Root, today, topGoal, focusOrder)
+	m.reportError("write planner focus", writePlannerFocus(m.vault.Root, today, topGoal, focusOrder))
 
 	_ = m.vault.Scan()
 	m.index.Build()

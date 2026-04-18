@@ -1240,7 +1240,9 @@ func TestPlanMyDay_Open_LoadsExistingPlan_SkipsToResultPhase(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	writePlannerFocus(root, date, "Ship the release", []string{"Deploy", "Email"})
+	if err := writePlannerFocus(root, date, "Ship the release", []string{"Deploy", "Email"}); err != nil {
+		t.Fatalf("writePlannerFocus: %v", err)
+	}
 
 	p := NewPlanMyDay()
 	_ = p.Open(root, nil, nil, nil, nil, nil, AIConfig{})

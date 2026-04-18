@@ -18,10 +18,10 @@ import (
 
 // writePlannerFocus writes or updates the ## Focus section in the planner file
 // for the given date. Replaces any existing Focus section.
-func writePlannerFocus(vaultRoot, date, topGoal string, focusItems []string) {
+func writePlannerFocus(vaultRoot, date, topGoal string, focusItems []string) error {
 	dir := filepath.Join(vaultRoot, "Planner")
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return
+		return err
 	}
 	path := filepath.Join(dir, date+".md")
 
@@ -47,7 +47,7 @@ func writePlannerFocus(vaultRoot, date, topGoal string, focusItems []string) {
 		}
 	}
 	content = append(content, []byte("\n"+section.String())...)
-	_ = atomicWriteNote(path, string(content))
+	return atomicWriteNote(path, string(content))
 }
 
 // readPlannerScheduleBlocks parses the ## Schedule section of a single

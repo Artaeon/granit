@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1257,12 +1258,15 @@ func appendResearchLog(vaultRoot, topic string, depth, format, profile, sourceFi
 	// Read existing log content (if any) and append the new entry atomically.
 	existing, err := os.ReadFile(logPath)
 	if err != nil && !os.IsNotExist(err) {
+		log.Printf("granit: research log read failed: %v", err)
 		return
 	}
 	if len(existing) == 0 {
 		existing = []byte("---\ndate: " + time.Now().Format("2006-01-02") + "\ntype: research-log\ntags: [research, log, meta]\n---\n\n# Research Log\n\n")
 	}
-	_ = atomicWriteNote(logPath, string(existing)+line)
+	if err := atomicWriteNote(logPath, string(existing)+line); err != nil {
+		log.Printf("granit: research log write failed: %v", err)
+	}
 }
 
 // parseCreatedFiles extracts file paths from Claude's output.
