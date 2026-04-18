@@ -311,8 +311,10 @@ func (c AIConfig) chatShortOnce(ctx context.Context, systemPrompt, userPrompt st
 	return c.chatOnceCtx(ctx, systemPrompt, userPrompt)
 }
 
-// chatOllamaCtx is the context-aware variant of chatOllamaWithOptions. The
-// HTTP request is cancelled when ctx is done, freeing the local model.
+// chatOllamaCtx sends a non-streaming chat request to Ollama's /api/chat
+// endpoint with caller-supplied generation options (temperature,
+// num_predict, etc.). The HTTP request is cancelled when ctx is done so
+// the local model frees its slot promptly.
 func (c AIConfig) chatOllamaCtx(ctx context.Context, systemPrompt, userPrompt string, options map[string]interface{}) (string, error) {
 	url := c.OllamaEndpoint()
 	model := c.ModelOrDefault("qwen2.5:0.5b")
@@ -343,61 +345,6 @@ func (c AIConfig) chatOllamaCtx(ctx context.Context, systemPrompt, userPrompt st
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return "", err
 		}
-		return "", fmt.Errorf("cannot connect to Ollama at %s — is it running? Try: ollama serve", url)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != 200 {
-		if resp.StatusCode == 404 {
-			return "", fmt.Errorf("model %q not found — run: ollama pull %s", model, model)
-		}
-		return "", fmt.Errorf("Ollama error %d: %s", resp.StatusCode, string(body))
-	}
-
-	var chatResp struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-		Error string `json:"error,omitempty"`
-	}
-	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return "", fmt.Errorf("parse response: %w", err)
-	}
-	if chatResp.Error != "" {
-		return "", fmt.Errorf("Ollama: %s", chatResp.Error)
-	}
-	return chatResp.Message.Content, nil
-}
-
-// chatOllamaWithOptions sends a non-streaming chat request to Ollama's
-// /api/chat endpoint using caller-supplied options (e.g. for short-form
-// completions with a smaller num_predict).
-func (c AIConfig) chatOllamaWithOptions(systemPrompt, userPrompt string, options map[string]interface{}) (string, error) {
-	url := c.OllamaEndpoint()
-	model := c.ModelOrDefault("qwen2.5:0.5b")
-
-	messages := []chatMessage{{Role: "user", Content: userPrompt}}
-	if systemPrompt != "" {
-		messages = append([]chatMessage{{Role: "system", Content: systemPrompt}}, messages...)
-	}
-
-	reqBody, err := json.Marshal(map[string]interface{}{
-		"model":    model,
-		"messages": messages,
-		"stream":   false,
-		"options":  options,
-	})
-	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
-	}
-
-	resp, err := aiHTTPClient.Post(url+"/api/chat", "application/json", bytes.NewReader(reqBody))
-	if err != nil {
 		return "", fmt.Errorf("cannot connect to Ollama at %s — is it running? Try: ollama serve", url)
 	}
 	defer resp.Body.Close()

@@ -19,10 +19,6 @@ func parseHHMM(s string) (int, int) {
 	return h, m
 }
 
-// hhmmToMinutes converts "HH:MM" to minutes from midnight.
-// Alias for slotToMinutes (in planner_io.go) but more descriptive.
-var hhmmToMinutes = slotToMinutes
-
 // makePill renders a small colored badge pill: colored background, crust text, bold.
 // Used consistently across all overlays for OVERDUE/TODAY/FOCUS/TARGET/etc. labels.
 func makePill(bg lipgloss.Color, label string) string {

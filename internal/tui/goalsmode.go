@@ -370,10 +370,6 @@ func goalsStatePath(vaultRoot string) string {
 	return filepath.Join(vaultRoot, ".granit", "goals.json")
 }
 
-func (gm *GoalsMode) goalsPath() string {
-	return goalsStatePath(gm.vaultRoot)
-}
-
 // loadActiveGoals reads .granit/goals.json and returns only the active goals.
 func loadActiveGoals(vaultRoot string) []Goal {
 	all := loadAllGoals(vaultRoot)
