@@ -70,6 +70,21 @@ type DailyReview struct {
 
 	scroll    int
 	statusMsg string
+
+	// lastSaveErr stores the most recent Reviews/daily-*.md write error
+	// so the host Model can surface it via reportError. Consumed once.
+	lastSaveErr error
+}
+
+// ConsumeSaveError returns and clears the last daily-review write error.
+// The host Model calls this after each Update.
+func (dr *DailyReview) ConsumeSaveError() error {
+	if dr == nil {
+		return nil
+	}
+	err := dr.lastSaveErr
+	dr.lastSaveErr = nil
+	return err
 }
 
 func (dr DailyReview) IsActive() bool { return dr.active }
@@ -417,7 +432,9 @@ func (dr *DailyReview) saveReview() {
 		return
 	}
 	filename := filepath.Join(reviewDir, "daily-"+dateStr+".md")
-	_ = atomicWriteNote(filename, b.String())
+	if err := atomicWriteNote(filename, b.String()); err != nil {
+		dr.lastSaveErr = err
+	}
 }
 
 func (dr DailyReview) View() string {

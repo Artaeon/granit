@@ -63,6 +63,21 @@ type WeeklyReview struct {
 
 	// Save state
 	saved bool
+
+	// lastSaveErr stores the most recent Reviews/weekly-*.md write error
+	// so the host Model can surface it via reportError. Consumed once.
+	lastSaveErr error
+}
+
+// ConsumeSaveError returns and clears the last weekly-review write
+// error. The host Model calls this after each Update.
+func (wr *WeeklyReview) ConsumeSaveError() error {
+	if wr == nil {
+		return nil
+	}
+	err := wr.lastSaveErr
+	wr.lastSaveErr = nil
+	return err
 }
 
 // NewWeeklyReview returns a WeeklyReview in its default (inactive) state.
@@ -315,8 +330,14 @@ func (wr *WeeklyReview) saveReview() {
 	if wr.vaultRoot == "" {
 		return
 	}
-	_ = os.MkdirAll(filepath.Dir(wr.reviewPath()), 0o755)
-	_ = atomicWriteNote(wr.reviewPath(), b.String())
+	if err := os.MkdirAll(filepath.Dir(wr.reviewPath()), 0o755); err != nil {
+		wr.lastSaveErr = err
+		return
+	}
+	if err := atomicWriteNote(wr.reviewPath(), b.String()); err != nil {
+		wr.lastSaveErr = err
+		return
+	}
 	wr.saved = true
 }
 

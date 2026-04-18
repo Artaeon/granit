@@ -519,6 +519,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case weeklyReviewAIMsg:
 		if m.weeklyReview.IsActive() {
 			m.weeklyReview, _ = m.weeklyReview.Update(msg)
+			m.reportError("save weekly review", m.weeklyReview.ConsumeSaveError())
 			return m, nil
 		}
 		return m, nil
@@ -526,6 +527,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dailyReviewAIMsg:
 		if m.dailyReview.IsActive() {
 			m.dailyReview, _ = m.dailyReview.Update(msg)
+			m.reportError("save daily review", m.dailyReview.ConsumeSaveError())
 			return m, nil
 		}
 		return m, nil
@@ -1419,6 +1421,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.dailyReview.IsActive() {
 			m.dailyReview, _ = m.dailyReview.Update(msg)
+			m.reportError("save daily review", m.dailyReview.ConsumeSaveError())
 			if m.dailyReview.WasFileChanged() {
 				m.refreshComponents("")
 			}
@@ -1906,6 +1909,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.weeklyReview.IsActive() {
 			m.weeklyReview, _ = m.weeklyReview.Update(msg)
+			m.reportError("save weekly review", m.weeklyReview.ConsumeSaveError())
 			if m.weeklyReview.WasFileChanged() {
 				m.refreshComponents("")
 			}
