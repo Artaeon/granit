@@ -72,6 +72,22 @@ type LanguageLearning struct {
 
 	// Dashboard
 	dashScroll int
+
+	// lastSaveErr stores the most recent vocabulary or grammar-file
+	// write error so the host Model can surface it via reportError.
+	// Consumed once.
+	lastSaveErr error
+}
+
+// ConsumeSaveError returns and clears the last language-learning write
+// error. The host Model calls this after each Update.
+func (ll *LanguageLearning) ConsumeSaveError() error {
+	if ll == nil {
+		return nil
+	}
+	err := ll.lastSaveErr
+	ll.lastSaveErr = nil
+	return err
 }
 
 var langChoices = []string{
@@ -175,7 +191,9 @@ func (ll *LanguageLearning) saveVocabulary() {
 		b.WriteString(fmt.Sprintf("| %s | %s | %s | %d | %s | %d |\n",
 			v.Word, v.Translation, v.Language, v.Level, v.LastReviewed, v.Correct))
 	}
-	_ = atomicWriteNote(ll.vocabPath(), b.String())
+	if err := atomicWriteNote(ll.vocabPath(), b.String()); err != nil {
+		ll.lastSaveErr = err
+	}
 }
 
 func (ll *LanguageLearning) loadGrammarFiles() {
@@ -633,7 +651,9 @@ level: beginner
 
 `, language, topic, topic)
 
-	_ = atomicWriteNote(path, content)
+	if err := atomicWriteNote(path, content); err != nil {
+		ll.lastSaveErr = err
+	}
 }
 
 func (ll LanguageLearning) contentHeight() int {

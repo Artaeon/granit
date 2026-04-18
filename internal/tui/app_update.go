@@ -1353,6 +1353,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.languageLearning.IsActive() {
 			m.languageLearning, _ = m.languageLearning.Update(msg)
+			m.reportError("save language-learning data", m.languageLearning.ConsumeSaveError())
 			return m, nil
 		}
 

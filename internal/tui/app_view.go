@@ -2178,6 +2178,7 @@ func (m *Model) applyVaultRefactor(plan string) {
 func (m *Model) addTagsToFile(path string, tags []string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
+		m.reportError("add tags (read)", err)
 		return
 	}
 	content := string(data)
@@ -2205,14 +2206,14 @@ func (m *Model) addTagsToFile(path string, tags []string) {
 				newLines = append(newLines, lines[:fmEnd]...)
 				newLines = append(newLines, tagLine)
 				newLines = append(newLines, lines[fmEnd:]...)
-				_ = atomicWriteNote(path, strings.Join(newLines, "\n"))
+				m.reportError("add tags", atomicWriteNote(path, strings.Join(newLines, "\n")))
 			}
 			return
 		}
 	}
 
 	fm := "---\ntags: [" + strings.Join(tags, ", ") + "]\n---\n\n"
-	_ = atomicWriteNote(path, fm+content)
+	m.reportError("add tags", atomicWriteNote(path, fm+content))
 }
 
 // applyEncryptionResult handles the result of an encrypt/decrypt operation.
