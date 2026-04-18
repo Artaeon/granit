@@ -82,6 +82,103 @@ func writePlannerFocus(vaultRoot, date, topGoal string, focusItems []string) {
 	_ = atomicWriteNote(path, string(content))
 }
 
+// readPlannerScheduleBlocks parses the ## Schedule section of a single
+// Planner/{date}.md file and returns its blocks. Missing file yields an
+// empty slice (not an error) — a new day simply has no schedule yet.
+func readPlannerScheduleBlocks(vaultRoot, date string) []PlannerBlock {
+	path := filepath.Join(vaultRoot, "Planner", date+".md")
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	var blocks []PlannerBlock
+	scanner := bufio.NewScanner(f)
+	inSchedule := false
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "## Schedule" {
+			inSchedule = true
+			continue
+		}
+		if strings.HasPrefix(line, "## ") {
+			inSchedule = false
+			continue
+		}
+		if !inSchedule || !strings.HasPrefix(line, "- ") {
+			continue
+		}
+		if b, ok := parseScheduleBlockLine(line, date); ok {
+			blocks = append(blocks, b)
+		}
+	}
+	return blocks
+}
+
+// parseScheduleBlockLine parses a "- HH:MM-HH:MM | text | type [| done]" line.
+func parseScheduleBlockLine(line, date string) (PlannerBlock, bool) {
+	trimmed := strings.TrimPrefix(line, "- ")
+	parts := strings.Split(trimmed, " | ")
+	if len(parts) < 3 {
+		return PlannerBlock{}, false
+	}
+	timeParts := strings.Split(strings.TrimSpace(parts[0]), "-")
+	if len(timeParts) != 2 {
+		return PlannerBlock{}, false
+	}
+	b := PlannerBlock{
+		Date:      date,
+		StartTime: strings.TrimSpace(timeParts[0]),
+		EndTime:   strings.TrimSpace(timeParts[1]),
+		Text:      strings.TrimSpace(parts[1]),
+		BlockType: strings.TrimSpace(strings.ToLower(parts[2])),
+	}
+	if len(parts) >= 4 && strings.TrimSpace(parts[3]) == "done" {
+		b.Done = true
+	}
+	return b, true
+}
+
+// formatScheduleBlockLine renders a PlannerBlock as its "- ..." line form.
+func formatScheduleBlockLine(b PlannerBlock) string {
+	suffix := ""
+	if b.Done {
+		suffix = " | done"
+	}
+	return fmt.Sprintf("- %s-%s | %s | %s%s", b.StartTime, b.EndTime, b.Text, b.BlockType, suffix)
+}
+
+// writePlannerScheduleBlocks replaces the ## Schedule section of
+// Planner/{date}.md with the given blocks (preserving all other sections).
+// Creates the file with frontmatter if it does not exist.
+func writePlannerScheduleBlocks(vaultRoot, date string, blocks []PlannerBlock) error {
+	if vaultRoot == "" || date == "" {
+		return fmt.Errorf("planner: vault root or date empty")
+	}
+	dir := filepath.Join(vaultRoot, "Planner")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, date+".md")
+
+	var body strings.Builder
+	body.WriteString("## Schedule\n")
+	for _, b := range blocks {
+		body.WriteString(formatScheduleBlockLine(b))
+		body.WriteString("\n")
+	}
+
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		// New file: frontmatter + schedule section.
+		content := "---\ndate: " + date + "\n---\n\n" + body.String()
+		return atomicWriteNote(path, content)
+	}
+	updated := replaceDailySection(string(existing), body.String(), "## Schedule")
+	return atomicWriteNote(path, updated)
+}
+
 // loadPlannerBlocks scans the Planner/ directory for schedule files and
 // returns all blocks keyed by date string ("YYYY-MM-DD") plus daily focus data.
 func loadPlannerBlocks(vaultRoot string) (map[string][]PlannerBlock, map[string]DailyFocus) {
