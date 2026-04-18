@@ -310,6 +310,121 @@ func TestSetTaskSchedule_PreciseMatch_WhenTextIsDuplicated(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// AppendPlannerBlock — overlap-preserving writer for actual-work entries
+// ---------------------------------------------------------------------------
+
+func TestAppendPlannerBlock_KeepsOverlappingEntries(t *testing.T) {
+	root := t.TempDir()
+	// Seed a planned task.
+	ref := ScheduleRef{NotePath: "Tasks.md", LineNum: 3, Text: "Deep work"}
+	_ = UpsertPlannerBlock(root, "2026-04-18", ref, PlannerBlock{
+		Date: "2026-04-18", StartTime: "09:00", EndTime: "10:00",
+		Text: "Deep work", BlockType: "task", SourceRef: ref,
+	})
+	// Log an actual pomodoro session that overlaps — must not be coalesced.
+	if err := AppendPlannerBlock(root, "2026-04-18", PlannerBlock{
+		Date: "2026-04-18", StartTime: "09:05", EndTime: "09:30",
+		Text: "Deep work", BlockType: "pomodoro", Done: true, SourceRef: ref,
+	}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	blocks := readPlannerScheduleBlocks(root, "2026-04-18")
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 blocks (plan + actual), got %d: %+v", len(blocks), blocks)
+	}
+	kinds := []string{blocks[0].BlockType, blocks[1].BlockType}
+	if !(kinds[0] == "task" && kinds[1] == "pomodoro") {
+		t.Errorf("expected task before pomodoro (by start time), got %v", kinds)
+	}
+}
+
+func TestAppendPlannerBlock_RepeatsDontCollapse(t *testing.T) {
+	// Two pomodoros on the same task at different start times — the append
+	// contract is "never collapse," which lets the calendar show both.
+	root := t.TempDir()
+	for _, start := range []string{"09:00", "09:30"} {
+		if err := AppendPlannerBlock(root, "2026-04-18", PlannerBlock{
+			Date: "2026-04-18", StartTime: start, EndTime: start + "+25",
+			Text: "Repeat", BlockType: "pomodoro", Done: true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// (The ghost "+25" end times are intentionally malformed so validTimeRange
+	// would reject them as schedule entries — but the AppendPlannerBlock
+	// primitive does no validation. Realistic callers write valid ranges;
+	// this asserts only that duplicates aren't collapsed.)
+	blocks := readPlannerScheduleBlocks(root, "2026-04-18")
+	if len(blocks) != 2 {
+		t.Errorf("expected 2 pomodoro entries, got %d", len(blocks))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// parseSourceRefSuffix — negative cases
+// ---------------------------------------------------------------------------
+
+func TestParseSourceRefSuffix_Rejects(t *testing.T) {
+	cases := []struct {
+		in     string
+		wantOK bool
+	}{
+		{"notes.md:5", true},
+		{":5", false},          // empty path
+		{"notes.md:", false},   // empty line
+		{"notes.md:abc", false}, // non-numeric
+		{"notes.md:0", false},  // zero line (1-based)
+		{"notes.md:-3", false}, // negative
+		{"notes.md", false},    // no colon
+	}
+	for _, tc := range cases {
+		_, ok := parseSourceRefSuffix(tc.in)
+		if ok != tc.wantOK {
+			t.Errorf("parseSourceRefSuffix(%q) ok = %v, want %v", tc.in, ok, tc.wantOK)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Full round-trip: schedule from "task manager" → observe in planner →
+// clear from "calendar" → confirm source is clean. Uses the primitives
+// directly since the higher-level overlays need TUI plumbing.
+// ---------------------------------------------------------------------------
+
+func TestSchedule_RoundTrip_SetThenClear(t *testing.T) {
+	root := newTestVault(t, map[string]string{
+		"projects/work.md": "- [ ] Ship v3\n",
+	})
+	ref := ScheduleRef{NotePath: "projects/work.md", LineNum: 1, Text: "Ship v3"}
+	date := "2026-04-18"
+
+	if err := SetTaskSchedule(root, date, ref, "09:00", "10:00", "task"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	// Source has marker; planner has block with round-tripped ref.
+	src := readFile(t, filepath.Join(root, "projects/work.md"))
+	if !strings.Contains(src, "⏰ 09:00-10:00") {
+		t.Fatalf("source missing marker:\n%s", src)
+	}
+	blocks := readPlannerScheduleBlocks(root, date)
+	if len(blocks) != 1 || !blocks[0].SourceRef.hasLocation() {
+		t.Fatalf("planner not set up correctly: %+v", blocks)
+	}
+
+	if err := ClearTaskSchedule(root, date, blocks[0].SourceRef); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	// Both surfaces clean.
+	src = readFile(t, filepath.Join(root, "projects/work.md"))
+	if strings.Contains(src, "⏰") {
+		t.Errorf("source marker not cleared:\n%s", src)
+	}
+	if blocks := readPlannerScheduleBlocks(root, date); len(blocks) != 0 {
+		t.Errorf("planner block not removed, got %+v", blocks)
+	}
+}
+
 func TestParseScheduleBlockLine_BackCompatWithoutRef(t *testing.T) {
 	// Existing planner files written before SourceRef must still parse.
 	b, ok := parseScheduleBlockLine("- 09:00-10:00 | Task | task", "2026-04-18")
