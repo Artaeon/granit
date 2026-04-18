@@ -84,13 +84,28 @@ func (v *Vault) Scan() error {
 		return err
 	}
 
-	// Build or rebuild the full-text search index
+	// Build or rebuild the full-text search index. Try to load a saved
+	// snapshot first — on a large vault that lets search land usable
+	// without paying the rebuild cost on every launch. The snapshot
+	// might be slightly stale (files modified externally between
+	// sessions) but is overwritten by Save below once the rebuild has
+	// run. Build is unconditional so the in-memory index is always in
+	// sync with the just-walked file content; the load is purely a
+	// "you can search immediately if startup is interrupted" buffer.
 	if v.SearchIndex == nil {
 		v.SearchIndex = NewSearchIndex()
+		_ = v.SearchIndex.Load(v.searchIndexPath())
 	}
 	v.SearchIndex.Build(v)
+	_ = v.SearchIndex.Save(v.searchIndexPath())
 
 	return nil
+}
+
+// searchIndexPath returns the canonical on-disk location for the saved
+// search-index snapshot.
+func (v *Vault) searchIndexPath() string {
+	return filepath.Join(v.Root, ".granit", "search-index.gob")
 }
 
 // ScanFast collects only file paths, mod times, and sizes without reading
