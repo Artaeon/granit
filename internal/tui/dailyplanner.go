@@ -25,7 +25,7 @@ type PlannerTask struct {
 	DueDate  string // YYYY-MM-DD
 	Source   string // which file it came from
 	NotePath string // relative path to source note (for bidirectional sync)
-	LineNum  int    // 0-based line number in the source note
+	LineNum  int    // 1-based line number in source note (matches Task.LineNum)
 }
 
 // PlannerEvent represents a calendar event for the planner.

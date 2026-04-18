@@ -567,15 +567,7 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 					c.agendaScroll++
 				}
 			} else if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
-				// Half-hour grid: max rows = (endHour - startHour) * 2
-				maxSlots := (c.height - 14)
-				if maxSlots < 16 {
-					maxSlots = 16
-				}
-				if maxSlots > 34 { // 17 hours * 2
-					maxSlots = 34
-				}
-				if c.weekGridCursorHour < maxSlots-1 {
+				if c.weekGridCursorHour < c.maxGridSlots()-1 {
 					c.weekGridCursorHour++
 				}
 			} else {
@@ -852,6 +844,20 @@ func (c *Calendar) cursorSlotMinutes() int {
 	return (sH+c.weekGridCursorHour/2)*60 + (c.weekGridCursorHour%2)*30
 }
 
+// maxGridSlots mirrors the bound used by the j/k navigation handler so
+// programmatic cursor moves (e.g. shiftBlockAtCursor) can't drive the
+// cursor past the visible grid. Half-hour rows; 17 hours max.
+func (c *Calendar) maxGridSlots() int {
+	maxSlots := c.height - 14
+	if maxSlots < 16 {
+		maxSlots = 16
+	}
+	if maxSlots > 34 {
+		maxSlots = 34
+	}
+	return maxSlots
+}
+
 // blockAtCursor returns the index and pointer to the planner block the
 // grid cursor is on, or (-1, nil) if no block overlaps. When multiple
 // blocks overlap the cursor slot, the "primary" planned block is preferred
@@ -928,9 +934,16 @@ func (c *Calendar) shiftBlockAtCursor(deltaMin int) {
 
 	// Keep the grid cursor on the block so the next ',' / '.' still targets
 	// it. Half-hour grid index = (newStart / 30) - (gridStartHour * 2).
+	// Clamp to [0, maxGridSlots-1] so a shift past the visible window
+	// (e.g. block dragged to 22:00 on a 06:00-start grid) leaves the
+	// cursor on the last visible row instead of off-screen.
 	gridStartMin := c.weekGridStartHourFor() * 60
 	if newStart >= gridStartMin {
-		c.weekGridCursorHour = (newStart - gridStartMin) / 30
+		idx := (newStart - gridStartMin) / 30
+		if max := c.maxGridSlots() - 1; idx > max {
+			idx = max
+		}
+		c.weekGridCursorHour = idx
 	}
 }
 

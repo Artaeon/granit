@@ -1116,6 +1116,28 @@ func TestCalendar_BlockAtCursor_PrefersNonPomodoro(t *testing.T) {
 	}
 }
 
+func TestCalendar_ShiftBlockAtCursor_ClampsCursorToVisibleGrid(t *testing.T) {
+	root := t.TempDir()
+	today := time.Now().Format("2006-01-02")
+	c := NewCalendar()
+	c.vaultRoot = root
+	c.view = calView1Day
+	c.cursor = time.Now()
+	// Smallest possible grid (height too small means maxGridSlots clamps
+	// to 16). Place a block at the very end of the day.
+	c.height = 20
+	c.plannerBlocks = map[string][]PlannerBlock{
+		today: {{StartTime: "13:00", EndTime: "14:00", BlockType: "task", Text: "Late"}},
+	}
+	c.weekGridCursorHour = 14 // ≈ 13:00 if grid starts at 06:00
+
+	c.shiftBlockAtCursor(60 * 9) // push to 22:00 — past visible window
+
+	if got, max := c.weekGridCursorHour, c.maxGridSlots()-1; got > max {
+		t.Errorf("cursor not clamped: got %d, max %d", got, max)
+	}
+}
+
 func TestCalendar_ShiftBlockAtCursor_CursorFollowsBlock(t *testing.T) {
 	root := t.TempDir()
 	today := time.Now().Format("2006-01-02")
