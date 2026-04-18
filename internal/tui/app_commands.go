@@ -452,7 +452,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.autoLinker.SetNotes(m.vault.SortedPaths())
 			suggestions := m.autoLinker.FindUnlinkedMentions(m.editor.GetContent(), m.activeNote)
 			if len(suggestions) > 0 {
-				m.statusbar.SetMessage(fmt.Sprintf("Found %d unlinked mentions", len(suggestions)))
+				m.reportInfo("Found %d unlinked mentions", len(suggestions))
 				// Apply first suggestion as demo, or show count
 			} else {
 				m.statusbar.SetMessage("No unlinked mentions found")

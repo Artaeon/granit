@@ -23,8 +23,6 @@ package tui
 // methods to return `Overlay`. That's the "big lever" refactor, not
 // this commit. This commit lays the groundwork.
 
-import tea "github.com/charmbracelet/bubbletea"
-
 // Overlay is the minimal contract every overlay in internal/tui ought
 // to satisfy. Update and View are intentionally NOT part of the
 // interface — see the file-header comment. New overlay code should
@@ -86,8 +84,3 @@ func (o *OverlayBase) Height() int { return o.height }
 // Compile-time assertion that OverlayBase satisfies Overlay. Rebuilding
 // will fail loudly if the interface or the embed drift apart.
 var _ Overlay = (*OverlayBase)(nil)
-
-// silenceUnusedImport keeps the bubbletea import reserved for the next
-// phase of this refactor (when Update enters the interface). Without
-// it Go would flag the import as unused in the interim commit.
-var _ = tea.KeyMsg{}

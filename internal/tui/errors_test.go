@@ -7,12 +7,17 @@ import (
 
 func TestReportError_NilIsNoOp(t *testing.T) {
 	m := &Model{statusbar: NewStatusBar()}
-	// Should not panic, should not set any error. The statusbar will
-	// not have an error marker set.
 	m.reportError("save note", nil)
-	// There's no public "GetError" but the helper's contract is just
-	// "don't touch the statusbar on nil" — covered by this test running
-	// without panicking and the next test observing a proper set.
+	// Contract: a nil err must leave the statusbar completely
+	// untouched. If a future refactor starts calling SetError("") on
+	// nil, this assertion catches it.
+	view := m.statusbar.View()
+	if containsText(view, "save note") {
+		t.Errorf("nil err should not render a context prefix, got %q", view)
+	}
+	if containsText(view, "error") || containsText(view, "failed") {
+		t.Errorf("nil err should not style the bar as an error, got %q", view)
+	}
 }
 
 func TestReportError_FormatsContextBeforeErrorMessage(t *testing.T) {

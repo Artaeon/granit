@@ -1694,7 +1694,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.index.Build()
 					m.sidebar.SetFiles(m.vault.SortedPaths())
-					m.statusbar.SetMessage(fmt.Sprintf("%d recurring tasks created", count))
+					m.reportInfo("%d recurring tasks created", count)
 				}
 			}
 			return m, nil
@@ -2269,7 +2269,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					content = applyLinkSuggestions(content, suggestions)
 					m.editor.LoadContent(content, m.editor.filePath)
 					m.editor.modified = true
-					m.statusbar.SetMessage(fmt.Sprintf("Linked %d mentions", len(suggestions)))
+					m.reportInfo("Linked %d mentions", len(suggestions))
 				}
 			}
 			return m, cmd

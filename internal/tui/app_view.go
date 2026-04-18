@@ -1716,7 +1716,7 @@ func (m *Model) doReplaceAll() {
 		m.editor.modified = true
 		m.editor.countWords()
 		m.findReplace.UpdateMatches(m.editor.content)
-		m.statusbar.SetMessage(fmt.Sprintf("Replaced %d occurrences", count))
+		m.reportInfo("Replaced %d occurrences", count)
 	}
 }
 
@@ -1760,7 +1760,7 @@ func (m *Model) doReplaceRegex(pattern, replacement string, replaceAll bool) {
 		m.editor.modified = true
 		m.editor.countWords()
 		m.findReplace.UpdateMatches(m.editor.content)
-		m.statusbar.SetMessage(fmt.Sprintf("Replaced %d occurrences", count))
+		m.reportInfo("Replaced %d occurrences", count)
 	}
 }
 
