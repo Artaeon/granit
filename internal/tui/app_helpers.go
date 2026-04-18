@@ -590,7 +590,7 @@ func (m *Model) syncPomodoroCompletions() {
 	}
 	for _, tc := range completions {
 		if err := applyTaskCompletion(m.vault.Root, m.vault.GetNote(tc.NotePath), tc); err != nil {
-			m.statusbar.SetError("Error syncing pomodoro task: " + err.Error())
+			m.reportError("sync pomodoro task", err)
 		}
 	}
 	m.refreshComponents("")
@@ -633,7 +633,7 @@ func (m *Model) kanbanWriteLine(notePath string, line int, transform func(string
 	lines[line] = transform(lines[line])
 	newContent := strings.Join(lines, "\n")
 	if err := atomicWriteNote(filepath.Join(m.vault.Root, notePath), newContent); err != nil {
-		m.statusbar.SetError("Kanban write failed: " + err.Error())
+		m.reportError("kanban write", err)
 		return
 	}
 	note.Content = newContent
@@ -653,7 +653,7 @@ func (m *Model) kanbanDeleteLine(notePath string, line int) {
 	lines = append(lines[:line], lines[line+1:]...)
 	newContent := strings.Join(lines, "\n")
 	if err := atomicWriteNote(filepath.Join(m.vault.Root, notePath), newContent); err != nil {
-		m.statusbar.SetError("Kanban delete failed: " + err.Error())
+		m.reportError("kanban delete", err)
 		return
 	}
 	note.Content = newContent

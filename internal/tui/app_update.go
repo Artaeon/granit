@@ -1202,7 +1202,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					lines[toggle.LineNum-1] = line
 					if err := atomicWriteNote(absPath, strings.Join(lines, "\n")); err != nil {
-						m.statusbar.SetError("Error syncing task: " + err.Error())
+						m.reportError("sync task", err)
 					}
 				}
 				// Refresh all components after toggling tasks
@@ -1525,7 +1525,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if completions := m.dailyPlanner.GetCompletedTasks(); len(completions) > 0 {
 				for _, tc := range completions {
 					if err := applyTaskCompletion(m.vault.Root, m.vault.GetNote(tc.NotePath), tc); err != nil {
-						m.statusbar.SetError("Error syncing task: " + err.Error())
+						m.reportError("sync task", err)
 					}
 				}
 				m.refreshComponents("")
@@ -1767,7 +1767,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								lines[idx] = strings.Replace(lines[idx], "- [ ]", "- [x]", 1)
 								newContent := strings.Join(lines, "\n")
 								if err := atomicWriteNote(filepath.Join(m.vault.Root, task.NotePath), newContent); err != nil {
-									m.statusbar.SetError("Failed to mark task done: " + err.Error())
+									m.reportError("mark task done", err)
 								} else {
 									m.refreshComponents(task.NotePath)
 								}
@@ -1802,7 +1802,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								lines[idx] = strings.Replace(lines[idx], "- [ ]", "- [x]", 1)
 								newContent := strings.Join(lines, "\n")
 								if err := atomicWriteNote(filepath.Join(m.vault.Root, task.NotePath), newContent); err != nil {
-									m.statusbar.SetError("Failed to mark task done: " + err.Error())
+									m.reportError("mark task done", err)
 								} else {
 									m.refreshComponents(task.NotePath)
 								}
