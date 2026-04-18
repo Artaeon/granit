@@ -278,14 +278,35 @@ func (s *StandupGenerator) generate() {
 		}
 	}
 
+	// Yesterday: pomodoro sessions logged by the focus timer (Phase 3
+	// plumbing — every completed work block lands as a "pomodoro" entry
+	// in Planner/{date}.md). Surfaces actual focus time even when the
+	// task wasn't itself marked done.
+	yesterdayDate := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	for _, b := range readPlannerScheduleBlocks(s.vaultRoot, yesterdayDate) {
+		if strings.EqualFold(b.BlockType, "pomodoro") && b.Done {
+			yb.WriteString("- focused on: " + b.Text + "\n")
+		}
+	}
+
 	if yb.Len() == 0 {
 		yb.WriteString("- (no activity found)\n")
 	}
 
 	s.yesterday = strings.TrimRight(yb.String(), "\n")
 
-	// Today: open tasks + recently modified notes
+	// Today: pre-fill from the planner schedule first (the user's actual
+	// plan), then fall back to open Tasks.md tasks + recently modified
+	// notes for additional context.
 	var tb strings.Builder
+
+	todayDate := time.Now().Format("2006-01-02")
+	for _, b := range readPlannerScheduleBlocks(s.vaultRoot, todayDate) {
+		switch strings.ToLower(b.BlockType) {
+		case "task", "deep-work", "deep_work", "focus", "admin":
+			tb.WriteString("- " + b.Text + "\n")
+		}
+	}
 
 	if len(s.todayTasks) > 0 {
 		for _, t := range s.todayTasks {
