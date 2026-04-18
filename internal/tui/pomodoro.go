@@ -192,12 +192,21 @@ func (p *Pomodoro) Start() {
 // "now" on today's date and starts a work session. Returns the block's
 // text (for a confirmation message) or "" if there is no block right now.
 //
+// No-op when the timer is already running: replacing the queue mid-
+// session would silently discard the in-flight pomodoro's elapsed time
+// and never call finishWorkSession. The current task's text is returned
+// instead so the caller can show a "session already running" message
+// that still identifies what's active.
+//
 // Wired through the unified schedule layer so any source the user
 // scheduled from — Task Manager, Calendar, PlanMyDay, MorningRoutine —
 // ends up as a runnable pomodoro with the right source ref.
 func (p *Pomodoro) StartForCurrentBlock(vaultRoot string) string {
 	if vaultRoot == "" {
 		return ""
+	}
+	if p.IsRunning() {
+		return p.currentTask
 	}
 	now := time.Now()
 	date := now.Format("2006-01-02")

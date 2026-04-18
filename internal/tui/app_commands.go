@@ -579,9 +579,13 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.pomodoro.SetSize(m.width, m.height)
 		m.pomodoro.SetVaultRoot(m.vault.Root)
 		m.pomodoro.Open()
-		if task := m.pomodoro.StartForCurrentBlock(m.vault.Root); task != "" {
+		alreadyRunning := m.pomodoro.IsRunning()
+		switch task := m.pomodoro.StartForCurrentBlock(m.vault.Root); {
+		case task != "" && alreadyRunning:
+			m.statusbar.SetMessage("⏸ Pomodoro already running for: " + task)
+		case task != "":
 			m.statusbar.SetMessage("▶ Pomodoro started for: " + task)
-		} else {
+		default:
 			m.statusbar.SetMessage("No block scheduled right now — queue is empty")
 		}
 		return m, m.clearMessageAfter(3 * time.Second)

@@ -1095,3 +1095,39 @@ func TestPomodoro_CompletedTaskLineNum_Is1Based(t *testing.T) {
 		t.Errorf("TaskCompletion.LineNum = %d, want 3 (1-based)", completions[0].LineNum)
 	}
 }
+
+func TestPomodoro_StartForCurrentBlock_NoOpWhenAlreadyRunning(t *testing.T) {
+	root := t.TempDir()
+	// Seed a block covering "now".
+	now := time.Now()
+	date := now.Format("2006-01-02")
+	start := now.Add(-10 * time.Minute)
+	end := now.Add(20 * time.Minute)
+	_ = UpsertPlannerBlock(root, date, ScheduleRef{Text: "Current"}, PlannerBlock{
+		Date: date, StartTime: start.Format("15:04"), EndTime: end.Format("15:04"),
+		Text: "Current", BlockType: "task",
+	})
+
+	p := NewPomodoro()
+	// Simulate an already-running session on a different task.
+	p.state = PomodoroWork
+	p.remaining = 10 * time.Minute
+	p.currentTask = "Already running"
+	origTask := p.currentTask
+	origState := p.state
+
+	got := p.StartForCurrentBlock(root)
+
+	if got != "Already running" {
+		t.Errorf("expected current task text back, got %q", got)
+	}
+	if p.currentTask != origTask {
+		t.Errorf("in-flight task overwritten: got %q, want %q", p.currentTask, origTask)
+	}
+	if p.state != origState {
+		t.Errorf("in-flight state reset: got %v, want %v", p.state, origState)
+	}
+	if len(p.queue) != 0 {
+		t.Errorf("queue must not be replaced while a session is active, got %+v", p.queue)
+	}
+}
