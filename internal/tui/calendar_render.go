@@ -32,7 +32,12 @@ func plannerBlockTag(blockType string) string {
 	case "review":
 		return "[R]"
 	case "pomodoro":
-		return "[🍅]"
+		// Lowercase 'p' so it's visually distinct from the default "[P]"
+		// (unknown kind). The block already renders red via
+		// plannerBlockColor, which is the primary differentiator.
+		// ASCII-only keeps column math predictable across terminal fonts —
+		// the tomato emoji was 2-cells wide in several font stacks.
+		return "[p]"
 	}
 	return "[P]"
 }
