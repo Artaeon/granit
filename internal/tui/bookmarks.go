@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,7 +127,9 @@ func (bm *Bookmarks) load() {
 	if err != nil {
 		return
 	}
-	_ = json.Unmarshal(data, &bm.data)
+	if err := json.Unmarshal(data, &bm.data); err != nil {
+		log.Printf("granit: bookmarks.json corrupt (%v) — resetting to empty", err)
+	}
 }
 
 func (bm *Bookmarks) save() {

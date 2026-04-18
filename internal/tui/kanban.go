@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -162,7 +163,9 @@ func (kb *Kanban) loadState() {
 	if err != nil {
 		return
 	}
-	_ = json.Unmarshal(data, &kb.savedState)
+	if err := json.Unmarshal(data, &kb.savedState); err != nil {
+		log.Printf("granit: kanban-state.json corrupt (%v) — resetting column assignments", err)
+	}
 }
 
 func (kb *Kanban) saveState() {

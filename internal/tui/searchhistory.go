@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -27,7 +28,9 @@ func loadSearchHistory(vaultRoot string) SearchHistory {
 	if err != nil {
 		return h
 	}
-	_ = json.Unmarshal(data, &h)
+	if err := json.Unmarshal(data, &h); err != nil {
+		log.Printf("granit: search-history.json corrupt (%v) — resetting", err)
+	}
 	// Enforce caps on load
 	if len(h.ContentSearch) > maxSearchHistory {
 		h.ContentSearch = h.ContentSearch[len(h.ContentSearch)-maxSearchHistory:]

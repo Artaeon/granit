@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -172,7 +173,9 @@ func (w *Workspace) loadWorkspaces() {
 	if err != nil {
 		return
 	}
-	_ = json.Unmarshal(data, &w.layouts)
+	if err := json.Unmarshal(data, &w.layouts); err != nil {
+		log.Printf("granit: workspaces.json corrupt (%v) — resetting layouts", err)
+	}
 }
 
 func (w *Workspace) saveWorkspaces() {

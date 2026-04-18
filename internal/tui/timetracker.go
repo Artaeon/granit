@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -142,7 +143,9 @@ func (tt *TimeTracker) loadEntries() {
 	if err != nil {
 		return
 	}
-	_ = json.Unmarshal(data, &tt.entries)
+	if err := json.Unmarshal(data, &tt.entries); err != nil {
+		log.Printf("granit: time-tracker entries corrupt (%v) — resetting", err)
+	}
 }
 
 // saveEntries writes all time entries to disk.

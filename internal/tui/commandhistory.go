@@ -14,6 +14,7 @@ package tui
 
 import (
 	"encoding/json"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -53,7 +54,9 @@ func LoadCommandHistory() *CommandHistory {
 	if err != nil {
 		return h
 	}
-	_ = json.Unmarshal(data, h)
+	if err := json.Unmarshal(data, h); err != nil {
+		log.Printf("granit: command-history.json corrupt (%v) — starting fresh", err)
+	}
 	if h.Usage == nil {
 		h.Usage = map[string]commandUsage{}
 	}

@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,7 +105,9 @@ func (rt *RecurringTasks) load() {
 	if err != nil {
 		return
 	}
-	_ = json.Unmarshal(data, &rt.tasks)
+	if err := json.Unmarshal(data, &rt.tasks); err != nil {
+		log.Printf("granit: recurring-tasks.json corrupt (%v) — resetting", err)
+	}
 }
 
 func (rt *RecurringTasks) save() {

@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -317,7 +318,9 @@ func (c *ClockIn) loadClockData() clockInData {
 	if err != nil {
 		return data
 	}
-	_ = json.Unmarshal(raw, &data)
+	if err := json.Unmarshal(raw, &data); err != nil {
+		log.Printf("granit: clock.json corrupt (%v) — ignoring previous sessions", err)
+	}
 	return data
 }
 
@@ -343,7 +346,9 @@ func (c *ClockIn) loadReminders() {
 	if err != nil {
 		return
 	}
-	_ = json.Unmarshal(raw, &c.reminders)
+	if err := json.Unmarshal(raw, &c.reminders); err != nil {
+		log.Printf("granit: reminders.json corrupt (%v) — resetting reminders", err)
+	}
 }
 
 func (c *ClockIn) saveRemindersFile() {

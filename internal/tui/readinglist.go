@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -116,7 +117,9 @@ func (rl *ReadingList) loadItems() {
 	if err != nil {
 		return
 	}
-	_ = json.Unmarshal(raw, &rl.items)
+	if err := json.Unmarshal(raw, &rl.items); err != nil {
+		log.Printf("granit: reading-list.json corrupt (%v) — resetting reading list", err)
+	}
 }
 
 // saveItems writes items to JSON.
