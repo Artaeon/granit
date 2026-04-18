@@ -503,6 +503,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.habitTracker.IsActive() {
 			var cmd tea.Cmd
 			m.habitTracker, cmd = m.habitTracker.Update(msg)
+			m.reportError("save habits", m.habitTracker.ConsumeSaveError())
 			return m, cmd
 		}
 		return m, nil
@@ -1349,6 +1350,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.habitTracker.IsActive() {
 			m.habitTracker, _ = m.habitTracker.Update(msg)
+			m.reportError("save habits", m.habitTracker.ConsumeSaveError())
 			return m, nil
 		}
 

@@ -102,6 +102,22 @@ type HabitTracker struct {
 
 	// Vault reference for syncing habit completions to tasks
 	vault *vault.Vault
+
+	// lastSaveErr stores the most recent persistence error so the host
+	// Model can surface it via reportError. Consumed once.
+	lastSaveErr error
+}
+
+// ConsumeSaveError returns and clears the last persistence error, if any.
+// The host Model calls this after each Update and routes non-nil errors
+// through reportError so the user sees that habit/goal data didn't save.
+func (ht *HabitTracker) ConsumeSaveError() error {
+	if ht == nil {
+		return nil
+	}
+	err := ht.lastSaveErr
+	ht.lastSaveErr = nil
+	return err
 }
 
 // habitAICoachMsg carries a holistic AI analysis of habit patterns.
@@ -353,7 +369,9 @@ func (ht *HabitTracker) saveHabits() {
 		b.WriteString(fmt.Sprintf("| %s | %s |\n", log.Date, strings.Join(log.Completed, ", ")))
 	}
 
-	_ = atomicWriteNote(filepath.Join(ht.habitsDir(), "habits.md"), b.String())
+	if err := atomicWriteNote(filepath.Join(ht.habitsDir(), "habits.md"), b.String()); err != nil {
+		ht.lastSaveErr = err
+	}
 }
 
 func (ht *HabitTracker) loadGoals() {
@@ -469,7 +487,9 @@ func (ht *HabitTracker) saveGoals() {
 		b.WriteString("\n")
 	}
 
-	_ = atomicWriteNote(filepath.Join(ht.habitsDir(), "goals.md"), b.String())
+	if err := atomicWriteNote(filepath.Join(ht.habitsDir(), "goals.md"), b.String()); err != nil {
+		ht.lastSaveErr = err
+	}
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
