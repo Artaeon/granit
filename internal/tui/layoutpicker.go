@@ -9,9 +9,7 @@ import (
 
 // LayoutPicker is an overlay that lets the user browse, preview, and select layouts.
 type LayoutPicker struct {
-	active  bool
-	width   int
-	height  int
+	OverlayBase
 	cursor  int
 	current string // layout active before opening (for live preview)
 	result  string // consumed-once selected layout
@@ -21,13 +19,8 @@ func NewLayoutPicker() LayoutPicker {
 	return LayoutPicker{}
 }
 
-func (lp *LayoutPicker) SetSize(w, h int) {
-	lp.width = w
-	lp.height = h
-}
-
 func (lp *LayoutPicker) Open(currentLayout string) {
-	lp.active = true
+	lp.Activate()
 	lp.current = currentLayout
 	lp.result = ""
 	// Position cursor on current layout
@@ -38,14 +31,6 @@ func (lp *LayoutPicker) Open(currentLayout string) {
 			break
 		}
 	}
-}
-
-func (lp *LayoutPicker) Close() {
-	lp.active = false
-}
-
-func (lp *LayoutPicker) IsActive() bool {
-	return lp.active
 }
 
 // GetResult returns the selected layout (consumed once).
