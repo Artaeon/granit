@@ -18,9 +18,7 @@ type colorRole struct {
 
 // ThemeEditor is an overlay for creating and editing color themes.
 type ThemeEditor struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	// The theme being edited (copy, not pointer to live theme)
 	theme    Theme
@@ -50,18 +48,9 @@ func NewThemeEditor() ThemeEditor {
 	}
 }
 
-func (te *ThemeEditor) IsActive() bool {
-	return te.active
-}
-
-func (te *ThemeEditor) SetSize(width, height int) {
-	te.width = width
-	te.height = height
-}
-
 // Open opens the theme editor with the currently active theme as a starting point.
 func (te *ThemeEditor) Open(currentThemeName string) {
-	te.active = true
+	te.Activate()
 	te.cursor = 0
 	te.editing = false
 	te.editBuf = ""
@@ -73,8 +62,9 @@ func (te *ThemeEditor) Open(currentThemeName string) {
 	te.syncRolesFromTheme()
 }
 
+// Close deactivates the theme editor and clears edit/naming state.
 func (te *ThemeEditor) Close() {
-	te.active = false
+	te.OverlayBase.Close()
 	te.editing = false
 	te.naming = false
 }
