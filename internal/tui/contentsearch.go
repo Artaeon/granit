@@ -287,12 +287,23 @@ func (cs ContentSearch) View() string {
 	// Results area
 	if cs.query == "" {
 		b.WriteString("\n")
-		hint := "  Type to search across all notes..."
 		if cs.filenameMode {
-			hint = "  Type to search filenames..."
+			b.WriteString(DimStyle.Render("  Type to search filenames..."))
+			b.WriteString("\n")
+		} else {
+			b.WriteString(DimStyle.Render("  Type to search across all notes..."))
+			b.WriteString("\n\n")
+			b.WriteString(DimStyle.Render("  Operators:"))
+			b.WriteString("\n")
+			b.WriteString(DimStyle.Render(`    tag:work          require #work in the file`))
+			b.WriteString("\n")
+			b.WriteString(DimStyle.Render(`    path:projects/    restrict to a folder`))
+			b.WriteString("\n")
+			b.WriteString(DimStyle.Render(`    -draft            exclude this term`))
+			b.WriteString("\n")
+			b.WriteString(DimStyle.Render(`    "exact phrase"    require literal phrase`))
+			b.WriteString("\n")
 		}
-		b.WriteString(DimStyle.Render(hint))
-		b.WriteString("\n")
 	} else if len(cs.results) == 0 {
 		b.WriteString("\n")
 		b.WriteString(DimStyle.Render("  No matches found"))
