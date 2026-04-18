@@ -2043,7 +2043,8 @@ func (c Calendar) renderFooter(b *strings.Builder, width int) {
 	case calViewWeek, calView3Day, calView1Day:
 		pairs = []struct{ Key, Desc string }{
 			{"←→", "day"}, {"↑↓", "½hr"}, {"[]", "month"}, {"w", "view"},
-			{"t", "today"}, {"a", "add"}, {"e", "edit"}, {"d", "delete"}, {"b", "block"}, {"Esc", "close"},
+			{"t", "today"}, {"a", "add"}, {"e", "edit"}, {"d", "del-evt"},
+			{"b", "block"}, {"D", "unsched"}, {"Esc", "close"},
 		}
 	default:
 		pairs = []struct{ Key, Desc string }{

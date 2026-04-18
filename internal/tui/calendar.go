@@ -814,10 +814,55 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 					}
 				}
 			}
+
+		case "D":
+			// Unschedule the planner block under the cursor. If the block
+			// was produced from a task (SourceRef set), route through the
+			// schedule layer so the task's ⏰ marker is cleared too.
+			if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
+				c.unscheduleBlockAtCursor()
+			}
 		}
 	}
 
 	return c, nil
+}
+
+// unscheduleBlockAtCursor removes the first planner block that overlaps
+// the current week/day grid cursor. If the block's SourceRef points to a
+// real task, the task's ⏰ marker is cleared too (via ClearTaskSchedule);
+// otherwise only the planner-side entry is removed. Mutates both the
+// in-memory plannerBlocks cache and disk.
+func (c *Calendar) unscheduleBlockAtCursor() {
+	dateStr := c.cursor.Format("2006-01-02")
+	sH := c.weekGridStartHourFor()
+	cursorSlotMin := (sH+c.weekGridCursorHour/2)*60 + (c.weekGridCursorHour%2)*30
+
+	blocks := c.plannerBlocks[dateStr]
+	for i, pb := range blocks {
+		startMin := slotToMinutes(pb.StartTime)
+		endMin := slotToMinutes(pb.EndTime)
+		if endMin <= startMin {
+			endMin = startMin + 60
+		}
+		if !(startMin < cursorSlotMin+30 && endMin > cursorSlotMin) {
+			continue
+		}
+		// Found the block under the cursor. Dispatch to the appropriate
+		// cleanup path based on whether we know the source task line.
+		ref := pb.SourceRef
+		if ref.Text == "" {
+			ref.Text = pb.Text
+		}
+		if ref.hasLocation() {
+			_ = ClearTaskSchedule(c.vaultRoot, dateStr, ref)
+		} else {
+			_ = RemovePlannerBlock(c.vaultRoot, dateStr, ref)
+		}
+		// Drop from the in-memory cache so the view updates immediately.
+		c.plannerBlocks[dateStr] = append(blocks[:i], blocks[i+1:]...)
+		return
+	}
 }
 
 // Event form fields, indexed 0..eventFormCount-1.

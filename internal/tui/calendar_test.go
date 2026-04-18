@@ -980,3 +980,65 @@ func TestCalendarPanel_ViewWithTasks(t *testing.T) {
 		t.Error("should not show 'No tasks due' when tasks exist")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// unscheduleBlockAtCursor — 'D' key in day/week views removes a planner block
+// and propagates cleanup to the source task when a SourceRef is present.
+// ---------------------------------------------------------------------------
+
+func TestCalendar_UnscheduleBlockAtCursor_ClearsTaskAndPlanner(t *testing.T) {
+	root := newTestVault(t, map[string]string{
+		"Tasks.md": "# Tasks\n\n- [ ] Write report ⏰ 09:00-10:00\n",
+	})
+	today := time.Now().Format("2006-01-02")
+	ref := ScheduleRef{NotePath: "Tasks.md", LineNum: 3, Text: "Write report"}
+	// Seed a planner block so the Calendar has something at the cursor.
+	if err := UpsertPlannerBlock(root, today, ref, PlannerBlock{
+		Date: today, StartTime: "09:00", EndTime: "10:00",
+		Text: "Write report", BlockType: "task", SourceRef: ref,
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	c := NewCalendar()
+	c.vaultRoot = root
+	c.view = calView1Day
+	c.cursor = time.Now()
+	c.plannerBlocks = map[string][]PlannerBlock{
+		today: {
+			{
+				Date: today, StartTime: "09:00", EndTime: "10:00",
+				Text: "Write report", BlockType: "task", SourceRef: ref,
+			},
+		},
+	}
+	// Put the grid cursor somewhere inside 09:00-10:00. weekGridStartHourFor
+	// returns 6 by default, so half-hour row 6 corresponds to 09:00.
+	c.weekGridCursorHour = 6
+
+	c.unscheduleBlockAtCursor()
+
+	if got := len(c.plannerBlocks[today]); got != 0 {
+		t.Errorf("expected in-memory blocks cleared, got %d", got)
+	}
+	plan := readFile(t, root+"/Planner/"+today+".md")
+	if strings.Contains(plan, "Write report") {
+		t.Errorf("planner block not removed from disk:\n%s", plan)
+	}
+	src := readFile(t, root+"/Tasks.md")
+	if strings.Contains(src, "⏰") {
+		t.Errorf("source ⏰ marker not cleared:\n%s", src)
+	}
+}
+
+func TestCalendar_UnscheduleBlockAtCursor_NoOpWhenNothingSelected(t *testing.T) {
+	root := t.TempDir()
+	c := NewCalendar()
+	c.vaultRoot = root
+	c.view = calView1Day
+	c.cursor = time.Now()
+	c.plannerBlocks = map[string][]PlannerBlock{}
+	c.weekGridCursorHour = 6
+	// Must not panic or error.
+	c.unscheduleBlockAtCursor()
+}
