@@ -959,14 +959,20 @@ func (pm ProjectMode) updateDashboard(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 		pm.dashInputKind = "next_action"
 		pm.dashInputBuf = pm.projects[pm.selectedProj].NextAction
 	case "N":
-		// Create new note in project folder.
+		// Create new note in project folder. Don't switch to it on
+		// failure — leaving the user on a "loaded" path that isn't on
+		// disk would silently lose their first edit.
 		proj := pm.projects[pm.selectedProj]
 		if proj.Folder != "" {
 			newPath := filepath.Join(proj.Folder, fmt.Sprintf("Untitled %s.md", time.Now().Format("2006-01-02 15-04")))
 			absPath := filepath.Join(pm.vaultRoot, newPath)
 			dir := filepath.Dir(absPath)
-			_ = os.MkdirAll(dir, 0755)
-			_ = atomicWriteNote(absPath, "# New Note\n\n")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				break
+			}
+			if err := atomicWriteNote(absPath, "# New Note\n\n"); err != nil {
+				break
+			}
 			pm.selectedNote = newPath
 			pm.hasNote = true
 			pm.active = false

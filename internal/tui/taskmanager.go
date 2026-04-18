@@ -807,7 +807,10 @@ func (tm *TaskManager) createNextRecurrence(task Task) {
 	}
 	note.Content += "\n" + newLine + "\n"
 	absPath := filepath.Join(tm.vault.Root, task.NotePath)
-	_ = atomicWriteNote(absPath, note.Content)
+	if err := atomicWriteNote(absPath, note.Content); err != nil {
+		tm.statusMsg = "recurrence re-create failed: " + err.Error()
+		return
+	}
 	tm.statusMsg = fmt.Sprintf("Task completed — next: %s", dateStr)
 }
 
@@ -932,19 +935,33 @@ func (tm *TaskManager) doArchive() int {
 		return 0
 	}
 
-	// Write archive file
+	// Write the archive file FIRST. If this fails we must NOT truncate
+	// Tasks.md — losing the archive write while keeping the truncation
+	// silently destroys completed-task history. Surface the error and
+	// return 0 so the caller doesn't claim work was archived.
 	archiveDir := filepath.Join(tm.vault.Root, "Archive")
-	_ = os.MkdirAll(archiveDir, 0755)
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+		tm.statusMsg = "archive failed: " + err.Error()
+		return 0
+	}
 	archiveFile := filepath.Join(archiveDir, "tasks-"+now.Format("2006-01")+".md")
 	archiveContent := ""
 	if existing, err := os.ReadFile(archiveFile); err == nil {
 		archiveContent = string(existing)
 	}
 	archiveContent += "\n" + strings.Join(archived, "\n") + "\n"
-	_ = atomicWriteNote(archiveFile, archiveContent)
+	if err := atomicWriteNote(archiveFile, archiveContent); err != nil {
+		tm.statusMsg = "archive write failed: " + err.Error()
+		return 0
+	}
 
-	// Write updated Tasks.md
-	_ = writeTasksFile(tm.vault.Root, []byte(strings.Join(kept, "\n")+"\n"))
+	// Archive is durable; safe to truncate the source. A failure here
+	// means the archive has the rows AND the source still does — at most
+	// duplication on next archive pass, never loss.
+	if err := writeTasksFile(tm.vault.Root, []byte(strings.Join(kept, "\n")+"\n")); err != nil {
+		tm.statusMsg = "tasks rewrite failed (archive saved): " + err.Error()
+		return 0
+	}
 
 	// Re-scan vault
 	if note := tm.vault.GetNote("Tasks.md"); note != nil {
@@ -1164,7 +1181,10 @@ func (tm *TaskManager) insertSubtasks(notePath string, parentLine int, subtasks 
 	result = append(result, newLines...)
 	result = append(result, lines[idx+1:]...)
 
-	_ = atomicWriteNote(absPath, strings.Join(result, "\n"))
+	if err := atomicWriteNote(absPath, strings.Join(result, "\n")); err != nil {
+		tm.statusMsg = "subtask insert failed: " + err.Error()
+		return
+	}
 	tm.fileChanged = true
 	tm.lastChangedNote = notePath
 }
