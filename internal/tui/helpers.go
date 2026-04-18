@@ -12,11 +12,16 @@ import (
 // Shared helpers — reusable across all TUI components to eliminate redundancy
 // ---------------------------------------------------------------------------
 
-// parseHHMM parses "HH:MM" into (hours, minutes). Returns (0, 0) on failure.
+// parseHHMM parses "HH:MM" into (hours, minutes). Returns (0, 0) on
+// invalid input. Built on parseSlot so the validation rules (24-hour
+// wrap, 0..59 minutes, single colon) stay consistent with the strict
+// schedule-line parser; only the return shape differs.
 func parseHHMM(s string) (int, int) {
-	h, m := 0, 0
-	_, _ = fmt.Sscanf(s, "%d:%d", &h, &m)
-	return h, m
+	mins, ok := parseSlot(s)
+	if !ok {
+		return 0, 0
+	}
+	return mins / 60, mins % 60
 }
 
 // makePill renders a small colored badge pill: colored background, crust text, bold.
