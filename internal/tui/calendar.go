@@ -845,90 +845,117 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 	return c, nil
 }
 
-// shiftBlockAtCursor moves the first planner block that overlaps the grid
-// cursor by delta minutes (positive = later, negative = earlier), clamped
-// to [00:00, 23:59). Duration is preserved. Routes through the unified
+// cursorSlotMinutes returns the minute-of-day the grid cursor points at,
+// for week/3-day/1-day views. Only meaningful in those views.
+func (c *Calendar) cursorSlotMinutes() int {
+	sH := c.weekGridStartHourFor()
+	return (sH+c.weekGridCursorHour/2)*60 + (c.weekGridCursorHour%2)*30
+}
+
+// blockAtCursor returns the index and pointer to the planner block the
+// grid cursor is on, or (-1, nil) if no block overlaps. When multiple
+// blocks overlap the cursor slot, the "primary" planned block is preferred
+// over "pomodoro" (actual-work) entries — a user pressing D or ',' on a
+// slot where both a plan and a session exist almost always means the plan.
+func (c *Calendar) blockAtCursor(dateStr string) (int, *PlannerBlock) {
+	cursorSlotMin := c.cursorSlotMinutes()
+	blocks := c.plannerBlocks[dateStr]
+	var firstMatch = -1
+	for i := range blocks {
+		pb := &blocks[i]
+		startMin := slotToMinutes(pb.StartTime)
+		endMin := slotToMinutes(pb.EndTime)
+		if endMin <= startMin {
+			endMin = startMin + 60
+		}
+		if !(startMin < cursorSlotMin+30 && endMin > cursorSlotMin) {
+			continue
+		}
+		if firstMatch == -1 {
+			firstMatch = i
+		}
+		// Prefer any non-pomodoro overlap; pomodoro blocks are a read-only
+		// audit trail and editing them isn't what the user asked for.
+		if !strings.EqualFold(pb.BlockType, "pomodoro") {
+			return i, pb
+		}
+	}
+	if firstMatch >= 0 {
+		return firstMatch, &blocks[firstMatch]
+	}
+	return -1, nil
+}
+
+// shiftBlockAtCursor moves the planner block under the grid cursor by
+// delta minutes (positive = later, negative = earlier), clamped to
+// [00:00, 23:59). Duration is preserved. Routes through the unified
 // schedule layer so the source task's ⏰ marker moves with the block.
+// The grid cursor tracks the moved block so repeated shifts stay anchored.
 // No-op when no block is under the cursor.
 func (c *Calendar) shiftBlockAtCursor(deltaMin int) {
 	dateStr := c.cursor.Format("2006-01-02")
-	sH := c.weekGridStartHourFor()
-	cursorSlotMin := (sH+c.weekGridCursorHour/2)*60 + (c.weekGridCursorHour%2)*30
-
-	blocks := c.plannerBlocks[dateStr]
-	for i, pb := range blocks {
-		startMin := slotToMinutes(pb.StartTime)
-		endMin := slotToMinutes(pb.EndTime)
-		if endMin <= startMin {
-			endMin = startMin + 60
-		}
-		if !(startMin < cursorSlotMin+30 && endMin > cursorSlotMin) {
-			continue
-		}
-		newStart := startMin + deltaMin
-		newEnd := endMin + deltaMin
-		if newStart < 0 || newEnd > 24*60-1 {
-			return // clamped out of range — refuse rather than wrap
-		}
-		startStr := fmtTimeSlot(newStart)
-		endStr := fmtTimeSlot(newEnd)
-
-		ref := pb.SourceRef
-		if ref.Text == "" {
-			ref.Text = pb.Text
-		}
-		updated := pb
-		updated.StartTime = startStr
-		updated.EndTime = endStr
-
-		if ref.hasLocation() {
-			// Task-backed: route through the combined API so the source ⏰
-			// marker moves too. Block type carries over.
-			_ = SetTaskSchedule(c.vaultRoot, dateStr, ref, startStr, endStr, pb.BlockType)
-		} else {
-			_ = UpsertPlannerBlock(c.vaultRoot, dateStr, ref, updated)
-		}
-		blocks[i] = updated
-		c.plannerBlocks[dateStr] = blocks
+	i, pb := c.blockAtCursor(dateStr)
+	if pb == nil {
 		return
+	}
+	startMin := slotToMinutes(pb.StartTime)
+	endMin := slotToMinutes(pb.EndTime)
+	if endMin <= startMin {
+		endMin = startMin + 60
+	}
+	newStart := startMin + deltaMin
+	newEnd := endMin + deltaMin
+	if newStart < 0 || newEnd > 24*60-1 {
+		return // clamped out of range — refuse rather than wrap
+	}
+	startStr := fmtTimeSlot(newStart)
+	endStr := fmtTimeSlot(newEnd)
+
+	ref := pb.SourceRef
+	if ref.Text == "" {
+		ref.Text = pb.Text
+	}
+	updated := *pb
+	updated.StartTime = startStr
+	updated.EndTime = endStr
+
+	if ref.hasLocation() {
+		_ = SetTaskSchedule(c.vaultRoot, dateStr, ref, startStr, endStr, pb.BlockType)
+	} else {
+		_ = UpsertPlannerBlock(c.vaultRoot, dateStr, ref, updated)
+	}
+	c.plannerBlocks[dateStr][i] = updated
+
+	// Keep the grid cursor on the block so the next ',' / '.' still targets
+	// it. Half-hour grid index = (newStart / 30) - (gridStartHour * 2).
+	gridStartMin := c.weekGridStartHourFor() * 60
+	if newStart >= gridStartMin {
+		c.weekGridCursorHour = (newStart - gridStartMin) / 30
 	}
 }
 
-// unscheduleBlockAtCursor removes the first planner block that overlaps
-// the current week/day grid cursor. If the block's SourceRef points to a
-// real task, the task's ⏰ marker is cleared too (via ClearTaskSchedule);
-// otherwise only the planner-side entry is removed. Mutates both the
-// in-memory plannerBlocks cache and disk.
+// unscheduleBlockAtCursor removes the planner block under the grid cursor.
+// If the block's SourceRef points to a real task, the task's ⏰ marker is
+// cleared too (via ClearTaskSchedule); otherwise only the planner-side
+// entry is removed. Mutates both the in-memory plannerBlocks cache and
+// disk.
 func (c *Calendar) unscheduleBlockAtCursor() {
 	dateStr := c.cursor.Format("2006-01-02")
-	sH := c.weekGridStartHourFor()
-	cursorSlotMin := (sH+c.weekGridCursorHour/2)*60 + (c.weekGridCursorHour%2)*30
-
-	blocks := c.plannerBlocks[dateStr]
-	for i, pb := range blocks {
-		startMin := slotToMinutes(pb.StartTime)
-		endMin := slotToMinutes(pb.EndTime)
-		if endMin <= startMin {
-			endMin = startMin + 60
-		}
-		if !(startMin < cursorSlotMin+30 && endMin > cursorSlotMin) {
-			continue
-		}
-		// Found the block under the cursor. Dispatch to the appropriate
-		// cleanup path based on whether we know the source task line.
-		ref := pb.SourceRef
-		if ref.Text == "" {
-			ref.Text = pb.Text
-		}
-		if ref.hasLocation() {
-			_ = ClearTaskSchedule(c.vaultRoot, dateStr, ref)
-		} else {
-			_ = RemovePlannerBlock(c.vaultRoot, dateStr, ref)
-		}
-		// Drop from the in-memory cache so the view updates immediately.
-		c.plannerBlocks[dateStr] = append(blocks[:i], blocks[i+1:]...)
+	i, pb := c.blockAtCursor(dateStr)
+	if pb == nil {
 		return
 	}
+	ref := pb.SourceRef
+	if ref.Text == "" {
+		ref.Text = pb.Text
+	}
+	if ref.hasLocation() {
+		_ = ClearTaskSchedule(c.vaultRoot, dateStr, ref)
+	} else {
+		_ = RemovePlannerBlock(c.vaultRoot, dateStr, ref)
+	}
+	blocks := c.plannerBlocks[dateStr]
+	c.plannerBlocks[dateStr] = append(blocks[:i], blocks[i+1:]...)
 }
 
 // Event form fields, indexed 0..eventFormCount-1.

@@ -1091,6 +1091,54 @@ func TestCalendar_ShiftBlockAtCursor_ClampsBeforeMidnight(t *testing.T) {
 	}
 }
 
+func TestCalendar_BlockAtCursor_PrefersNonPomodoro(t *testing.T) {
+	today := time.Now().Format("2006-01-02")
+	c := NewCalendar()
+	c.view = calView1Day
+	c.cursor = time.Now()
+	// Two overlapping blocks at the same time — a planned task and a
+	// completed pomodoro session. The cursor action (D/,/.) should target
+	// the plan, not the audit trail.
+	c.plannerBlocks = map[string][]PlannerBlock{
+		today: {
+			{StartTime: "09:00", EndTime: "09:25", BlockType: "pomodoro", Text: "Session", Done: true},
+			{StartTime: "09:00", EndTime: "10:00", BlockType: "task", Text: "Planned"},
+		},
+	}
+	c.weekGridCursorHour = 6 // 09:00 (grid starts at 06:00 by default)
+
+	_, pb := c.blockAtCursor(today)
+	if pb == nil {
+		t.Fatal("expected a block at cursor")
+	}
+	if pb.BlockType != "task" {
+		t.Errorf("expected task block, got %q (pomodoro should not win)", pb.BlockType)
+	}
+}
+
+func TestCalendar_ShiftBlockAtCursor_CursorFollowsBlock(t *testing.T) {
+	root := t.TempDir()
+	today := time.Now().Format("2006-01-02")
+	c := NewCalendar()
+	c.vaultRoot = root
+	c.view = calView1Day
+	c.cursor = time.Now()
+	c.plannerBlocks = map[string][]PlannerBlock{
+		today: {{StartTime: "09:00", EndTime: "10:00", BlockType: "task", Text: "Move me"}},
+	}
+	c.weekGridCursorHour = 6 // 09:00 when grid starts at 06:00
+
+	c.shiftBlockAtCursor(30) // push to 09:30
+
+	if got := c.plannerBlocks[today][0].StartTime; got != "09:30" {
+		t.Fatalf("block start not shifted: %q", got)
+	}
+	// Cursor must track the block so a second shift still hits it.
+	if got := c.cursorSlotMinutes(); got != 9*60+30 {
+		t.Errorf("cursor did not follow block: at %d mins, want %d", got, 9*60+30)
+	}
+}
+
 func TestCalendar_UnscheduleBlockAtCursor_NoOpWhenNothingSelected(t *testing.T) {
 	root := t.TempDir()
 	c := NewCalendar()
