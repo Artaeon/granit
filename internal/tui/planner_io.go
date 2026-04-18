@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -303,71 +302,6 @@ func replaceDailySection(existing, newSection, heading string) string {
 		return strings.TrimRight(existing[:idx], "\n") + "\n\n" + newSection + "\n" + strings.TrimLeft(rest[end+1:], "\n")
 	}
 	return strings.TrimRight(existing[:idx], "\n") + "\n\n" + newSection
-}
-
-// updateTaskScheduleInFile annotates matching task lines with a schedule
-// marker (⏰ HH:MM-HH:MM). Searches Tasks.md first, then all .md files in
-// the vault root. Replaces existing markers.
-func updateTaskScheduleInFile(vaultRoot, taskText, startTime, endTime string) {
-	scheduleMarkerRe := regexp.MustCompile(`\s*⏰\s*\d{2}:\d{2}-\d{2}:\d{2}`)
-	marker := " ⏰ " + startTime + "-" + endTime
-
-	normalise := func(s string) string {
-		s = scheduleMarkerRe.ReplaceAllString(s, "")
-		return strings.TrimSpace(s)
-	}
-	needle := normalise(taskText)
-
-	// tryFile attempts to find and annotate the task in a single file.
-	tryFile := func(path string) bool {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return false
-		}
-		lines := strings.Split(string(data), "\n")
-		for i, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if !strings.HasPrefix(trimmed, "- [") {
-				continue
-			}
-			if idx := strings.Index(trimmed, "] "); idx >= 0 {
-				lineTask := normalise(trimmed[idx+2:])
-				if lineTask == needle {
-					cleaned := scheduleMarkerRe.ReplaceAllString(line, "")
-					lines[i] = cleaned + marker
-					_ = atomicWriteNote(path, strings.Join(lines, "\n"))
-					return true
-				}
-			}
-		}
-		return false
-	}
-
-	// Try Tasks.md first (most likely location).
-	tasksPath := tasksFilePath(vaultRoot)
-	if tasksPath != "" && tryFile(tasksPath) {
-		return
-	}
-
-	// Fall back to scanning all .md files in the vault.
-	_ = filepath.Walk(vaultRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if info.IsDir() && strings.HasPrefix(info.Name(), ".") {
-			return filepath.SkipDir
-		}
-		if info.IsDir() || !strings.HasSuffix(strings.ToLower(info.Name()), ".md") {
-			return nil
-		}
-		if path == tasksPath {
-			return nil // already tried
-		}
-		if tryFile(path) {
-			return filepath.SkipAll // found it, stop walking
-		}
-		return nil
-	})
 }
 
 // slotToMinutes converts "HH:MM" to minutes from midnight.

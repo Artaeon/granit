@@ -120,7 +120,9 @@ var schedMarkerRe = regexp.MustCompile(`\s*⏰\s*\d{2}:\d{2}-\d{2}:\d{2}`)
 
 // writeTaskScheduleMarker replaces (or adds) the ⏰ marker on a task line.
 // Prefers ref.NotePath+LineNum (fast, precise); falls back to vault-wide
-// text search when the location is unknown.
+// text search when the location is unknown. Returns an error if the ref
+// carries neither a valid location nor a findable text match — silent
+// success would let the planner-side write create an orphan block.
 func writeTaskScheduleMarker(vaultRoot string, ref ScheduleRef, start, end string) error {
 	marker := " ⏰ " + start + "-" + end
 	set := func(line string) string {
@@ -134,7 +136,40 @@ func writeTaskScheduleMarker(vaultRoot string, ref ScheduleRef, start, end strin
 	if ref.Text == "" {
 		return fmt.Errorf("schedule: ref has neither location nor text")
 	}
-	updateTaskScheduleInFile(vaultRoot, ref.Text, start, end)
+	// Text-only fallback: walk the vault for the first task line whose
+	// normalised text matches. Defensive — existing call sites resolve a
+	// location before calling this path, so reaching here usually means
+	// a slot text that no current task matches.
+	needle := strings.TrimSpace(schedMarkerRe.ReplaceAllString(ref.Text, ""))
+	found := false
+	_ = walkVaultMarkdown(vaultRoot, func(path string) bool {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return false
+		}
+		lines := strings.Split(string(data), "\n")
+		for i, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if !strings.HasPrefix(trimmed, "- [") {
+				continue
+			}
+			idx := strings.Index(trimmed, "] ")
+			if idx < 0 {
+				continue
+			}
+			lineTask := strings.TrimSpace(schedMarkerRe.ReplaceAllString(trimmed[idx+2:], ""))
+			if lineTask == needle {
+				lines[i] = set(line)
+				_ = atomicWriteNote(path, strings.Join(lines, "\n"))
+				found = true
+				return true
+			}
+		}
+		return false
+	})
+	if !found {
+		return fmt.Errorf("schedule: no task line matches %q", ref.Text)
+	}
 	return nil
 }
 
