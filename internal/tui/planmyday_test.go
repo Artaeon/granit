@@ -1226,3 +1226,60 @@ var errTest = &testError{}
 type testError struct{}
 
 func (e *testError) Error() string { return "test error" }
+
+// ── Open: load existing plan from Planner/{date}.md (Phase 4 unification) ──
+
+func TestPlanMyDay_Open_LoadsExistingPlan_SkipsToResultPhase(t *testing.T) {
+	root := t.TempDir()
+	date := time.Now().Format("2006-01-02")
+	// Seed a planner file as if the user already ran Plan My Day today.
+	ref := ScheduleRef{Text: "Deploy"}
+	if err := UpsertPlannerBlock(root, date, ref, PlannerBlock{
+		Date: date, StartTime: "09:00", EndTime: "10:00",
+		Text: "Deploy", BlockType: "task",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	writePlannerFocus(root, date, "Ship the release", []string{"Deploy", "Email"})
+
+	p := NewPlanMyDay()
+	_ = p.Open(root, nil, nil, nil, nil, nil, AIConfig{})
+
+	if p.phase != 2 {
+		t.Errorf("expected phase=2 (result), got %d", p.phase)
+	}
+	if len(p.schedule) != 1 || p.schedule[0].Task != "Deploy" {
+		t.Errorf("schedule not loaded: %+v", p.schedule)
+	}
+	if p.topGoal != "Ship the release" {
+		t.Errorf("topGoal not loaded: %q", p.topGoal)
+	}
+	if len(p.focusOrder) != 2 || p.focusOrder[0] != "Deploy" {
+		t.Errorf("focusOrder not loaded: %+v", p.focusOrder)
+	}
+}
+
+func TestPlanMyDay_Open_NoExistingPlan_StartsGather(t *testing.T) {
+	p := NewPlanMyDay()
+	_ = p.Open(t.TempDir(), nil, nil, nil, nil, nil, AIConfig{})
+	if p.phase != 0 {
+		t.Errorf("expected phase=0 (gather), got %d", p.phase)
+	}
+}
+
+func TestPlanMyDay_RegenerateKey_ResetsAndStartsGather(t *testing.T) {
+	p := NewPlanMyDay()
+	p.active = true
+	p.phase = 2
+	p.schedule = []daySlot{{Start: "09:00", End: "10:00", Task: "Old"}}
+	p.topGoal = "Stale goal"
+
+	p, _ = p.updateResult(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+
+	if p.phase != 0 {
+		t.Errorf("expected phase reset to 0, got %d", p.phase)
+	}
+	if len(p.schedule) != 0 || p.topGoal != "" {
+		t.Errorf("regenerate did not clear cached plan: %+v / %q", p.schedule, p.topGoal)
+	}
+}

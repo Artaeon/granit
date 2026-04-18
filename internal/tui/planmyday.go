@@ -171,8 +171,51 @@ func (p *PlanMyDay) Open(
 		p.ai.Model = "qwen2.5:0.5b"
 	}
 
+	// If today's plan was already generated (this session or a previous
+	// one), load it from Planner/{date}.md and jump straight to the
+	// result phase. The user can then review, edit blocks via the
+	// calendar, or regenerate from scratch — no need to burn AI tokens
+	// on every overlay re-open.
+	if p.loadExistingPlan() {
+		p.phase = 2
+		return planMyDayTickCmd()
+	}
+
 	// Start gathering animation, auto-advance after delay
 	return tea.Batch(planMyDayGatherCmd(), planMyDayTickCmd())
+}
+
+// loadExistingPlan populates p.schedule / p.topGoal / p.focusOrder from
+// today's Planner file if a non-empty schedule is on disk. Returns true
+// when a plan was loaded. Used by Open to skip the gather→AI dance when
+// the user is just re-visiting an already-applied plan.
+func (p *PlanMyDay) loadExistingPlan() bool {
+	if p.vaultRoot == "" {
+		return false
+	}
+	date := time.Now().Format("2006-01-02")
+	blocks := readPlannerScheduleBlocks(p.vaultRoot, date)
+	if len(blocks) == 0 {
+		return false
+	}
+	p.schedule = make([]daySlot, 0, len(blocks))
+	for _, b := range blocks {
+		p.schedule = append(p.schedule, daySlot{
+			Start: b.StartTime,
+			End:   b.EndTime,
+			Task:  b.Text,
+			Type:  b.BlockType,
+		})
+	}
+	// Pull focus / top goal from the same file. Reuse the directory-scan
+	// loader since it already parses ## Focus into DailyFocus.
+	if _, focusByDate := loadPlannerBlocks(p.vaultRoot); focusByDate != nil {
+		if f, ok := focusByDate[date]; ok {
+			p.topGoal = f.TopGoal
+			p.focusOrder = f.FocusItems
+		}
+	}
+	return true
 }
 
 // Close deactivates the overlay.
@@ -853,6 +896,19 @@ func (p PlanMyDay) updateResult(msg tea.KeyMsg) (PlanMyDay, tea.Cmd) {
 		if p.scroll > 200 {
 			p.scroll = 200
 		}
+	case "r", "R":
+		// Regenerate: drop the cached plan and re-run the AI flow.
+		// Useful when the user reviews a stale plan loaded from disk.
+		p.schedule = nil
+		p.focusOrder = nil
+		p.topGoal = ""
+		p.advice = ""
+		p.phase = 0
+		p.scroll = 0
+		p.loadingTick = 0
+		p.spinnerTick = 0
+		p.loadingStart = time.Now()
+		return p, tea.Batch(planMyDayGatherCmd(), planMyDayTickCmd())
 	case "enter":
 		// Apply to daily note
 		p.shouldApply = true
@@ -1352,7 +1408,7 @@ func (p PlanMyDay) viewResult(width int) string {
 
 	// ── Footer ─────────────────────────────────────────────────────────────
 	lines = append(lines, DimStyle.Render("  "+strings.Repeat(ThemeSeparator, innerW-4)))
-	lines = append(lines, DimStyle.Render("  Enter: apply to daily note  j/k: scroll  Esc: close"))
+	lines = append(lines, DimStyle.Render("  Enter: apply  R: regenerate  j/k: scroll  Esc: close"))
 
 	// Scrollable output
 	visH := p.height - 8
