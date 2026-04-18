@@ -492,16 +492,21 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 						endHour = 23
 						endMin = 59
 					}
-					block := PlannerBlock{
-						StartTime: fmt.Sprintf("%02d:00", c.timeBlockHour),
-						EndTime:   fmt.Sprintf("%02d:%02d", endHour, endMin),
-						Text:      task.Text,
-						BlockType: "task",
+					start := fmt.Sprintf("%02d:00", c.timeBlockHour)
+					end := fmt.Sprintf("%02d:%02d", endHour, endMin)
+					ref := ScheduleRef{
+						NotePath: task.NotePath,
+						LineNum:  task.LineNum,
+						Text:     task.Text,
 					}
-					// Add to in-memory planner blocks
-					c.plannerBlocks[c.timeBlockDate] = append(c.plannerBlocks[c.timeBlockDate], block)
-					// Write to planner file
-					writePlannerBlock(c.vaultRoot, c.timeBlockDate, block)
+					// Route through the unified schedule layer so the ⏰ marker
+					// also lands on the source task line (previously only the
+					// planner block was written — TaskManager never saw it).
+					_ = SetTaskSchedule(c.vaultRoot, c.timeBlockDate, ref, start, end, "task")
+					c.plannerBlocks[c.timeBlockDate] = append(c.plannerBlocks[c.timeBlockDate], PlannerBlock{
+						Date: c.timeBlockDate, StartTime: start, EndTime: end,
+						Text: task.Text, BlockType: "task", SourceRef: ref,
+					})
 					c.timeBlockMode = false
 				}
 			}
