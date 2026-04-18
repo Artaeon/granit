@@ -51,6 +51,10 @@ type ContentSearch struct {
 	noteContents map[string]string  // relPath -> content (fallback)
 	searchIndex  *vault.SearchIndex // inverted index for fast search
 	vaultRoot    string
+
+	// Parsed operator query — refreshed on each search() call so post-
+	// filtering doesn't need to re-tokenise per result.
+	parsed SearchQuery
 }
 
 // NewContentSearch returns a zero-value ContentSearch ready for use.
@@ -388,6 +392,16 @@ func (cs *ContentSearch) search() {
 		return
 	}
 
+	// Parse operators (tag:, path:, -exclude, "phrase") — only in plain
+	// mode. In regex mode the query is treated as a literal regex so
+	// "tag:foo" would just be the literal pattern; mixing operators with
+	// regex isn't a useful contract.
+	if cs.regexMode {
+		cs.parsed = SearchQuery{Raw: cs.query}
+	} else {
+		cs.parsed = ParseSearchQuery(cs.query)
+	}
+
 	// Fast path: use the inverted search index if available
 	if cs.searchIndex != nil && cs.searchIndex.IsReady() {
 		cs.searchIndexed()
@@ -398,22 +412,83 @@ func (cs *ContentSearch) search() {
 	cs.searchLinear()
 }
 
-// searchIndexed uses the vault's inverted index for fast full-text search.
-func (cs *ContentSearch) searchIndexed() {
-	indexed := cs.searchIndex.Search(cs.query)
-
-	limit := cs.maxResults
-	if len(indexed) > limit {
-		indexed = indexed[:limit]
+// passesOperatorFilters returns true when the candidate file (path +
+// content) satisfies every operator in the parsed query. Used by both
+// searchIndexed and searchLinear after their primary match step.
+func (cs *ContentSearch) passesOperatorFilters(path string) bool {
+	if !cs.parsed.HasOperators() {
+		return true
 	}
+	if !cs.parsed.MatchesPath(path) {
+		return false
+	}
+	content, ok := cs.noteContents[path]
+	if !ok {
+		return cs.parsed.MatchesPath(path) &&
+			len(cs.parsed.Tags) == 0 &&
+			len(cs.parsed.Excludes) == 0 &&
+			len(cs.parsed.Phrases) == 0
+	}
+	return cs.parsed.MatchesTags(content) &&
+		cs.parsed.MatchesExcludes(content) &&
+		cs.parsed.MatchesPhrases(content)
+}
 
-	cs.results = make([]ContentSearchResult, len(indexed))
-	for i, r := range indexed {
-		cs.results[i] = ContentSearchResult{
+// searchIndexed uses the vault's inverted index for fast full-text search.
+// The index doesn't itself understand the query operators (tag:, path:,
+// -exclude, "phrase") — it sees the plain query — so operator filters
+// run as a post-step on each candidate result.
+func (cs *ContentSearch) searchIndexed() {
+	plain := cs.query
+	if cs.parsed.HasOperators() {
+		plain = cs.parsed.PlainQuery()
+	}
+	if plain == "" {
+		// Operator-only query (e.g. "tag:work") with no terms — fall back
+		// to a linear scan that only checks operators per file.
+		cs.searchOperatorsOnly()
+		return
+	}
+	indexed := cs.searchIndex.Search(plain)
+
+	cs.results = cs.results[:0]
+	for _, r := range indexed {
+		if !cs.passesOperatorFilters(r.Path) {
+			continue
+		}
+		cs.results = append(cs.results, ContentSearchResult{
 			FilePath: r.Path,
 			Line:     r.Line,
 			Col:      r.Column,
 			Context:  r.MatchLine,
+		})
+		if len(cs.results) >= cs.maxResults {
+			break
+		}
+	}
+}
+
+// searchOperatorsOnly handles queries that contain only operators (e.g.
+// "tag:work"), no free-form terms — the inverted index has nothing to
+// look up so we sweep the noteContents map directly.
+func (cs *ContentSearch) searchOperatorsOnly() {
+	paths := make([]string, 0, len(cs.noteContents))
+	for p := range cs.noteContents {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		if !cs.passesOperatorFilters(path) {
+			continue
+		}
+		cs.results = append(cs.results, ContentSearchResult{
+			FilePath: path,
+			Line:     0,
+			Col:      0,
+			Context:  path,
+		})
+		if len(cs.results) >= cs.maxResults {
+			return
 		}
 	}
 }
@@ -466,13 +541,27 @@ func (cs *ContentSearch) searchFilenames() {
 
 // searchPlain performs case-insensitive plain-text search.
 func (cs *ContentSearch) searchPlain(paths []string) {
-	lowerQuery := strings.ToLower(cs.query)
+	// When operators are present, the term-only portion drives the line
+	// match; an empty term-portion means "find files matching only the
+	// operators" — handled by searchOperatorsOnly via searchIndexed.
+	termQuery := cs.query
+	if cs.parsed.HasOperators() {
+		termQuery = cs.parsed.PlainQuery()
+	}
+	if termQuery == "" {
+		cs.searchOperatorsOnly()
+		return
+	}
+	lowerQuery := strings.ToLower(termQuery)
 
 	// Two passes: first collect exact-case matches, then case-insensitive-only.
 	var exact []ContentSearchResult
 	var fuzzy []ContentSearchResult
 
 	for _, path := range paths {
+		if !cs.passesOperatorFilters(path) {
+			continue
+		}
 		content := cs.noteContents[path]
 		lines := strings.Split(content, "\n")
 
@@ -491,7 +580,7 @@ func (cs *ContentSearch) searchPlain(paths []string) {
 			}
 
 			// Check if there's an exact-case match too.
-			if strings.Contains(line, cs.query) {
+			if strings.Contains(line, termQuery) {
 				exact = append(exact, result)
 			} else {
 				fuzzy = append(fuzzy, result)

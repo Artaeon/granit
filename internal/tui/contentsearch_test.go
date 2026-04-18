@@ -147,3 +147,81 @@ func TestContentSearch_ExactCaseFirst(t *testing.T) {
 		t.Errorf("expected exact case match first, got %q", cs.results[0].Context)
 	}
 }
+
+// ── Operator-driven search ──
+
+func TestContentSearch_TagFilter(t *testing.T) {
+	cs := NewContentSearch()
+	cs.noteContents = map[string]string{
+		"projects/work.md": "ship the feature\n#work",
+		"random/notes.md":  "ship the feature\n#personal",
+	}
+	cs.query = "ship tag:work"
+	cs.search()
+
+	if len(cs.results) != 1 || cs.results[0].FilePath != "projects/work.md" {
+		t.Errorf("expected only the #work note, got %+v", cs.results)
+	}
+}
+
+func TestContentSearch_PathFilter(t *testing.T) {
+	cs := NewContentSearch()
+	cs.noteContents = map[string]string{
+		"projects/work.md": "deploy the change",
+		"random/notes.md":  "deploy the change",
+	}
+	cs.query = "deploy path:projects/"
+	cs.search()
+
+	if len(cs.results) != 1 || cs.results[0].FilePath != "projects/work.md" {
+		t.Errorf("expected projects/ only, got %+v", cs.results)
+	}
+}
+
+func TestContentSearch_ExcludeOperator(t *testing.T) {
+	cs := NewContentSearch()
+	cs.noteContents = map[string]string{
+		"a.md": "ship the polish",
+		"b.md": "ship the draft",
+	}
+	cs.query = "ship -draft"
+	cs.search()
+
+	if len(cs.results) != 1 || cs.results[0].FilePath != "a.md" {
+		t.Errorf("expected only a.md (no draft), got %+v", cs.results)
+	}
+}
+
+func TestContentSearch_PhraseOperator(t *testing.T) {
+	cs := NewContentSearch()
+	cs.noteContents = map[string]string{
+		"a.md": "we shipped the feature on Tuesday",
+		"b.md": "we shipped Tuesday's feature",
+	}
+	cs.query = `"shipped the feature"`
+	cs.search()
+
+	if len(cs.results) != 1 || cs.results[0].FilePath != "a.md" {
+		t.Errorf("expected exact-phrase to match only a.md, got %+v", cs.results)
+	}
+}
+
+func TestContentSearch_OperatorOnly_NoTerms(t *testing.T) {
+	// "tag:work" alone — no term query. Must list every #work file.
+	cs := NewContentSearch()
+	cs.noteContents = map[string]string{
+		"a.md": "#work plus other text",
+		"b.md": "no tag here",
+		"c.md": "another #work file",
+	}
+	cs.query = "tag:work"
+	cs.search()
+
+	paths := map[string]bool{}
+	for _, r := range cs.results {
+		paths[r.FilePath] = true
+	}
+	if !paths["a.md"] || !paths["c.md"] || paths["b.md"] {
+		t.Errorf("expected a.md+c.md, not b.md; got %+v", paths)
+	}
+}
