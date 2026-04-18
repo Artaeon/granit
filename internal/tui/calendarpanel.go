@@ -343,20 +343,10 @@ func (cp CalendarPanel) renderMiniCalendar(width int) string {
 func (cp CalendarPanel) renderScheduleBlock(block PlannerBlock, width int) string {
 	timeStr := block.StartTime
 
-	// Block indicator color by type
-	var blockColor lipgloss.Color
-	switch block.BlockType {
-	case "task":
-		blockColor = blue
-	case "event":
-		blockColor = mauve
-	case "break":
-		blockColor = green
-	case "focus":
-		blockColor = peach
-	default:
-		blockColor = text
-	}
+	// Block indicator color by type — route through plannerBlockColor
+	// so every kind emitted by the schedule generators gets the same
+	// color here as in the main calendar grid and agenda view.
+	blockColor := plannerBlockColor(block.BlockType, block.Done)
 
 	indicator := lipgloss.NewStyle().Foreground(blockColor).Render("\u2588")
 	timeStyle := lipgloss.NewStyle().Foreground(overlay0)

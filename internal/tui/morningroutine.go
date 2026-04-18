@@ -933,15 +933,7 @@ func (mr MorningRoutine) viewOverview(b *strings.Builder, w int) {
 				break
 			}
 			timeStr := lipgloss.NewStyle().Foreground(teal).Render(pb.StartTime + "–" + pb.EndTime)
-			typeCol := lavender
-			switch pb.BlockType {
-			case "task":
-				typeCol = blue
-			case "break":
-				typeCol = green
-			case "focus":
-				typeCol = peach
-			}
+			typeCol := plannerBlockColor(pb.BlockType, pb.Done)
 			typeTag := lipgloss.NewStyle().Foreground(typeCol).Render(" [" + string(pb.BlockType) + "]")
 			doneTag := ""
 			if pb.Done {
@@ -1336,18 +1328,23 @@ func (mr MorningRoutine) viewSummary(b *strings.Builder, w int) {
 				isStart := sMin >= mins && sMin < mins+30
 
 				var blockColor lipgloss.Color
-				switch activeSlot.Type {
-				case "deep-work":
+				// Route through NormaliseBlockType so aliases ("deep_work"
+				// variants) map to the same canonical case. The color
+				// palette differs slightly from plannerBlockColor on
+				// purpose — "admin" is sapphire here to stand out against
+				// the morning-routine's subtler chrome.
+				switch NormaliseBlockType(activeSlot.Type) {
+				case BlockTypeDeepWork, BlockTypeTask:
 					blockColor = blue
-				case "admin":
+				case BlockTypeAdmin:
 					blockColor = sapphire
-				case "meeting":
+				case BlockTypeMeeting, BlockTypeEvent:
 					blockColor = lavender
-				case "break":
+				case BlockTypeBreak, BlockTypeLunch:
 					blockColor = green
-				case "habit":
+				case BlockTypeHabit:
 					blockColor = teal
-				case "review":
+				case BlockTypeReview:
 					blockColor = peach
 				default:
 					blockColor = blue
