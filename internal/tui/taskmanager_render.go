@@ -438,33 +438,9 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 	for i := tm.scroll; i < end; i++ {
 		task := tm.filtered[i]
 
-		// Today view: group by overdue/today/tomorrow, with scheduled tasks
-		// shown under their time block label
+		// Today view: group headers by time block / overdue / today / tomorrow.
 		if tm.view == taskViewToday {
-			var group string
-			if tmIsOverdue(task.DueDate) {
-				group = "overdue"
-			} else if task.ScheduledTime != "" {
-				// Group by time block based on scheduled start time
-				parts := strings.SplitN(task.ScheduledTime, "-", 2)
-				if len(parts) >= 1 {
-					h, _ := parseHHMM(parts[0])
-					switch {
-					case h < 10:
-						group = "morning"
-					case h < 14:
-						group = "midday"
-					case h < 18:
-						group = "afternoon"
-					default:
-						group = "evening"
-					}
-				}
-			} else if tmIsToday(task.DueDate) {
-				group = "today"
-			} else {
-				group = "tomorrow"
-			}
+			group := timeBlockGroup(task)
 			if group != lastGroup {
 				if lastGroup != "" {
 					b.WriteString("\n")
@@ -476,30 +452,7 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 					if ft.Done {
 						continue
 					}
-					var fg string
-					if tmIsOverdue(ft.DueDate) {
-						fg = "overdue"
-					} else if ft.ScheduledTime != "" {
-						fParts := strings.SplitN(ft.ScheduledTime, "-", 2)
-						if len(fParts) >= 1 {
-							fh, _ := parseHHMM(fParts[0])
-							switch {
-							case fh < 10:
-								fg = "morning"
-							case fh < 14:
-								fg = "midday"
-							case fh < 18:
-								fg = "afternoon"
-							default:
-								fg = "evening"
-							}
-						}
-					} else if tmIsToday(ft.DueDate) {
-						fg = "today"
-					} else {
-						fg = "tomorrow"
-					}
-					if fg == group {
+					if timeBlockGroup(ft) == group {
 						groupCount++
 						groupEst += ft.EstimatedMinutes
 					}
@@ -1123,14 +1076,57 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 	case tmInputTimeBlock:
 		b.WriteString("  " + promptStyle.Render("Schedule to time block:"))
 		b.WriteString("\n")
+
+		// Compute load per block for context
+		type blkInfo struct {
+			key      string
+			label    string
+			hours    string
+			color    lipgloss.Color
+			startMin int
+			endMin   int
+		}
+		blkDefs := []blkInfo{
+			{"1", "Morning", "06–10", lavender, 360, 600},
+			{"2", "Midday", "10–14", sapphire, 600, 840},
+			{"3", "Afternoon", "14–18", peach, 840, 1080},
+			{"4", "Evening", "18–22", teal, 1080, 1320},
+		}
 		ss := lipgloss.NewStyle().Bold(true)
 		ds := lipgloss.NewStyle().Foreground(overlay0)
+		for _, bi := range blkDefs {
+			count := 0
+			totalEst := 0
+			for _, t := range tm.allTasks {
+				if t.Done || t.ScheduledTime == "" {
+					continue
+				}
+				parts := strings.SplitN(t.ScheduledTime, "-", 2)
+				if len(parts) < 1 {
+					continue
+				}
+				sh, sm := parseHHMM(parts[0])
+				sMins := sh*60 + sm
+				if sMins >= bi.startMin && sMins < bi.endMin {
+					count++
+					est := t.EstimatedMinutes
+					if est <= 0 {
+						est = 60
+					}
+					totalEst += est
+				}
+			}
+			load := ""
+			if count > 0 {
+				load = fmt.Sprintf(" %dt %s", count, FormatMinutes(totalEst))
+			}
+			b.WriteString("  " +
+				ss.Foreground(bi.color).Render(bi.key) +
+				ds.Render(":"+bi.label+" ("+bi.hours+")") +
+				lipgloss.NewStyle().Foreground(bi.color).Render(load) + "\n")
+		}
 		b.WriteString("  " +
-			ss.Foreground(lavender).Render("1") + ds.Render(":Morning (06–10) ") +
-			ss.Foreground(sapphire).Render("2") + ds.Render(":Midday (10–14) ") +
-			ss.Foreground(peach).Render("3") + ds.Render(":Afternoon (14–18) ") +
-			ss.Foreground(teal).Render("4") + ds.Render(":Evening (18–22) ") +
-			ss.Foreground(overlay0).Render("0") + ds.Render(":Clear ") +
+			ss.Foreground(overlay0).Render("0") + ds.Render(":Clear  ") +
 			ds.Render("Esc:cancel"))
 	case tmInputDependency:
 		b.WriteString("  " + promptStyle.Render("Depends on: ") + inputStyle.Render(tm.inputBuf+"\u2588"))

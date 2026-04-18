@@ -92,6 +92,42 @@ func PriorityColor(p int) lipgloss.Color {
 }
 
 // ---------------------------------------------------------------------------
+// Time-block helpers
+// ---------------------------------------------------------------------------
+
+// timeBlockGroup classifies a task into a Plan view group based on its
+// ScheduledTime and DueDate. Returns one of: "morning", "midday",
+// "afternoon", "evening", "overdue", "today", "tomorrow", or "".
+func timeBlockGroup(t Task) string {
+	if t.ScheduledTime != "" {
+		parts := strings.SplitN(t.ScheduledTime, "-", 2)
+		if len(parts) >= 1 {
+			h, _ := parseHHMM(parts[0])
+			switch {
+			case h < 10:
+				return "morning"
+			case h < 14:
+				return "midday"
+			case h < 18:
+				return "afternoon"
+			default:
+				return "evening"
+			}
+		}
+	}
+	if tmIsOverdue(t.DueDate) {
+		return "overdue"
+	}
+	if tmIsToday(t.DueDate) {
+		return "today"
+	}
+	if t.DueDate != "" && tmDaysUntil(t.DueDate) == 1 {
+		return "tomorrow"
+	}
+	return ""
+}
+
+// ---------------------------------------------------------------------------
 // String helpers
 // ---------------------------------------------------------------------------
 

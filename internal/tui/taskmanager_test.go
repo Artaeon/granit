@@ -1333,3 +1333,128 @@ func TestParseICSFile_RRULEMonthly(t *testing.T) {
 		t.Errorf("got %d events from monthly RRULE, want at least 2", len(events))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Time-block scheduling
+// ---------------------------------------------------------------------------
+
+func TestAssignSchedule_WritesToCorrectFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Create a task in a non-Tasks.md file
+	projectFile := tmpDir + "/projects/work.md"
+	if err := os.MkdirAll(tmpDir+"/projects", 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := "# Work\n\n- [ ] Deploy v2.0\n- [ ] Write docs\n"
+	if err := os.WriteFile(projectFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	v := &vault.Vault{Root: tmpDir}
+	v.Notes = map[string]*vault.Note{
+		"projects/work.md": {
+			Path:    projectFile,
+			RelPath: "projects/work.md",
+			Content: content,
+		},
+	}
+
+	tm := &TaskManager{vault: v}
+	task := Task{
+		Text:     "Deploy v2.0",
+		NotePath: "projects/work.md",
+		LineNum:  3,
+	}
+
+	tm.assignSchedule(task, "14:00", "15:00")
+
+	// Verify the file on disk has the marker
+	data, err := os.ReadFile(projectFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "⏰ 14:00-15:00") {
+		t.Errorf("file content missing schedule marker:\n%s", data)
+	}
+
+	// Verify the vault cache was also updated
+	note := v.Notes["projects/work.md"]
+	if !strings.Contains(note.Content, "⏰ 14:00-15:00") {
+		t.Errorf("vault cache missing schedule marker:\n%s", note.Content)
+	}
+}
+
+func TestRemoveScheduleMarker_UpdatesVaultCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	content := "# Tasks\n\n- [ ] Meeting ⏰ 09:00-10:00\n"
+	tasksFile := tmpDir + "/Tasks.md"
+	if err := os.WriteFile(tasksFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	v := &vault.Vault{Root: tmpDir}
+	v.Notes = map[string]*vault.Note{
+		"Tasks.md": {
+			Path:    tasksFile,
+			RelPath: "Tasks.md",
+			Content: content,
+		},
+	}
+
+	tm := &TaskManager{vault: v}
+	task := Task{
+		Text:          "Meeting ⏰ 09:00-10:00",
+		NotePath:      "Tasks.md",
+		LineNum:       3,
+		ScheduledTime: "09:00-10:00",
+	}
+
+	tm.removeScheduleMarker(task)
+
+	// Verify disk
+	data, err := os.ReadFile(tasksFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "⏰") {
+		t.Errorf("file still has schedule marker:\n%s", data)
+	}
+
+	// Verify vault cache
+	note := v.Notes["Tasks.md"]
+	if strings.Contains(note.Content, "⏰") {
+		t.Errorf("vault cache still has schedule marker:\n%s", note.Content)
+	}
+}
+
+func TestTimeBlockGroup(t *testing.T) {
+	today := time.Now().Format("2006-01-02")
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+
+	tests := []struct {
+		name string
+		task Task
+		want string
+	}{
+		{"scheduled morning", Task{ScheduledTime: "08:00-09:00"}, "morning"},
+		{"scheduled midday", Task{ScheduledTime: "11:00-12:00"}, "midday"},
+		{"scheduled afternoon", Task{ScheduledTime: "15:00-16:00"}, "afternoon"},
+		{"scheduled evening", Task{ScheduledTime: "19:00-20:00"}, "evening"},
+		{"overdue unscheduled", Task{DueDate: yesterday}, "overdue"},
+		{"today unscheduled", Task{DueDate: today}, "today"},
+		{"tomorrow", Task{DueDate: tomorrow}, "tomorrow"},
+		{"no date no schedule", Task{}, ""},
+		// Scheduled overdue task should go to time block, not overdue
+		{"scheduled overdue", Task{DueDate: yesterday, ScheduledTime: "14:00-15:00"}, "afternoon"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := timeBlockGroup(tc.task)
+			if got != tc.want {
+				t.Errorf("timeBlockGroup(%v) = %q, want %q", tc.task, got, tc.want)
+			}
+		})
+	}
+}

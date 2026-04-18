@@ -1413,28 +1413,20 @@ func (tm *TaskManager) filterToday() []Task {
 		if t.Done || tmIsSnoozed(t) {
 			continue
 		}
-		if tmIsOverdue(t.DueDate) {
+		switch timeBlockGroup(t) {
+		case "morning":
+			morning = append(morning, t)
+		case "midday":
+			midday = append(midday, t)
+		case "afternoon":
+			afternoon = append(afternoon, t)
+		case "evening":
+			evening = append(evening, t)
+		case "overdue":
 			overdue = append(overdue, t)
-		} else if t.ScheduledTime != "" {
-			// Any task with a schedule time goes into a time block,
-			// regardless of due date (scheduling implies "today").
-			parts := strings.SplitN(t.ScheduledTime, "-", 2)
-			if len(parts) >= 1 {
-				h, _ := parseHHMM(parts[0])
-				switch {
-				case h < 10:
-					morning = append(morning, t)
-				case h < 14:
-					midday = append(midday, t)
-				case h < 18:
-					afternoon = append(afternoon, t)
-				default:
-					evening = append(evening, t)
-				}
-			}
-		} else if tmIsToday(t.DueDate) {
+		case "today":
 			unscheduledToday = append(unscheduledToday, t)
-		} else if t.DueDate != "" && tmDaysUntil(t.DueDate) == 1 {
+		case "tomorrow":
 			tomorrow = append(tomorrow, t)
 		}
 	}
@@ -2000,16 +1992,18 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 // 1=Morning(06:00-10:00), 2=Midday(10:00-14:00), 3=Afternoon(14:00-18:00), 4=Evening(18:00-22:00)
 func (tm TaskManager) updateTimeBlock(key string) (TaskManager, tea.Cmd) {
 	type blockDef struct {
-		start string
-		end   string
-		label string
+		start    string
+		end      string
+		label    string
+		startMin int
+		endMin   int
 	}
 	blocks := map[string]blockDef{
-		"1": {"06:00", "10:00", "Morning"},
-		"2": {"10:00", "14:00", "Midday"},
-		"3": {"14:00", "18:00", "Afternoon"},
-		"4": {"18:00", "22:00", "Evening"},
-		"0": {"", "", "Clear"}, // remove time block
+		"1": {"06:00", "10:00", "Morning", 360, 600},
+		"2": {"10:00", "14:00", "Midday", 600, 840},
+		"3": {"14:00", "18:00", "Afternoon", 840, 1080},
+		"4": {"18:00", "22:00", "Evening", 1080, 1320},
+		"0": {"", "", "Clear", 0, 0},
 	}
 
 	switch key {
@@ -2035,25 +2029,28 @@ func (tm TaskManager) updateTimeBlock(key string) (TaskManager, tea.Cmd) {
 			}
 			tm.statusMsg = "Time block cleared"
 		} else {
-			// Find a specific slot within the block based on task estimate
 			est := task.EstimatedMinutes
 			if est <= 0 {
 				est = 60 // default 1h
 			}
-			startH, startM := parseHHMM(blk.start)
-			endMins := startH*60 + startM + est
-			endStr := fmtTimeSlot(endMins)
-			schedStr := blk.start + "-" + endStr
-			tm.assignSchedule(task, blk.start, endStr)
+			// Find the next free slot within this block by scanning existing tasks
+			slotStart := tm.findFreeSlot(blk.startMin, blk.endMin, est, task)
+			slotEnd := slotStart + est
+			if slotEnd > blk.endMin {
+				slotEnd = blk.endMin
+			}
+			startStr := fmtTimeSlot(slotStart)
+			endStr := fmtTimeSlot(slotEnd)
+			schedStr := startStr + "-" + endStr
+			tm.assignSchedule(task, startStr, endStr)
 			// Update in-memory task immediately so UI reflects the change
-			// without waiting for vault rescan
 			for i := range tm.allTasks {
 				if tm.allTasks[i].NotePath == task.NotePath && tm.allTasks[i].LineNum == task.LineNum {
 					tm.allTasks[i].ScheduledTime = schedStr
 					break
 				}
 			}
-			tm.statusMsg = fmt.Sprintf("Scheduled for %s (%s–%s)", blk.label, blk.start, endStr)
+			tm.statusMsg = fmt.Sprintf("Scheduled for %s (%s–%s)", blk.label, startStr, endStr)
 		}
 		tm.inputMode = tmInputNone
 		tm.rebuildFiltered() // rebuild with updated in-memory data
@@ -2062,33 +2059,70 @@ func (tm TaskManager) updateTimeBlock(key string) (TaskManager, tea.Cmd) {
 	return tm, nil
 }
 
+// findFreeSlot scans existing scheduled tasks to find the earliest free
+// slot of the given duration within [blockStart, blockEnd) minutes.
+// Excludes the task being scheduled (identified by NotePath+LineNum).
+func (tm *TaskManager) findFreeSlot(blockStart, blockEnd, duration int, exclude Task) int {
+	// Collect occupied intervals in this block
+	type interval struct{ start, end int }
+	var occupied []interval
+	for _, t := range tm.allTasks {
+		if t.Done || t.ScheduledTime == "" {
+			continue
+		}
+		if t.NotePath == exclude.NotePath && t.LineNum == exclude.LineNum {
+			continue
+		}
+		parts := strings.SplitN(t.ScheduledTime, "-", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		sh, sm := parseHHMM(parts[0])
+		eh, em := parseHHMM(parts[1])
+		s := sh*60 + sm
+		e := eh*60 + em
+		// Only consider intervals overlapping this block
+		if e > blockStart && s < blockEnd {
+			occupied = append(occupied, interval{s, e})
+		}
+	}
+	// Sort by start time
+	sort.Slice(occupied, func(i, j int) bool { return occupied[i].start < occupied[j].start })
+
+	// Walk forward from blockStart looking for a gap of at least `duration`
+	cursor := blockStart
+	for _, iv := range occupied {
+		if cursor+duration <= iv.start {
+			return cursor // found a gap before this interval
+		}
+		if iv.end > cursor {
+			cursor = iv.end
+		}
+	}
+	// Check if remaining space after all intervals fits
+	if cursor+duration <= blockEnd {
+		return cursor
+	}
+	// Block is full — place at blockStart anyway (overlap, but user chose it)
+	return blockStart
+}
+
 // assignSchedule sets the ⏰ marker on a task in its source file.
+// Uses writeLineChange so the vault cache stays in sync with disk.
 func (tm *TaskManager) assignSchedule(task Task, startTime, endTime string) {
-	updateTaskScheduleInFile(tm.vault.Root, task.Text, startTime, endTime)
-	tm.fileChanged = true
-	tm.lastChangedNote = task.NotePath
+	marker := " ⏰ " + startTime + "-" + endTime
+	tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+		cleaned := tmScheduleRe.ReplaceAllString(line, "")
+		return strings.TrimRight(cleaned, " ") + marker
+	})
 }
 
 // removeScheduleMarker removes the ⏰ marker from a task in its source file.
+// Uses writeLineChange so the vault cache stays in sync with disk.
 func (tm *TaskManager) removeScheduleMarker(task Task) {
-	data, err := os.ReadFile(filepath.Join(tm.vault.Root, task.NotePath))
-	if err != nil {
-		return
-	}
-	lines := strings.Split(string(data), "\n")
-	changed := false
-	for i, line := range lines {
-		if i+1 == task.LineNum && tmScheduleRe.MatchString(line) {
-			lines[i] = tmScheduleRe.ReplaceAllString(line, "")
-			changed = true
-			break
-		}
-	}
-	if changed {
-		_ = atomicWriteNote(filepath.Join(tm.vault.Root, task.NotePath), strings.Join(lines, "\n"))
-		tm.fileChanged = true
-		tm.lastChangedNote = task.NotePath
-	}
+	tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+		return tmScheduleRe.ReplaceAllString(line, "")
+	})
 }
 
 func (tm TaskManager) updateAddInput(key string) (TaskManager, tea.Cmd) {

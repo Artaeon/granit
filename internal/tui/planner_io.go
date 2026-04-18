@@ -206,14 +206,10 @@ func replaceDailySection(existing, newSection, heading string) string {
 	return strings.TrimRight(existing[:idx], "\n") + "\n\n" + newSection
 }
 
-// updateTaskScheduleInFile annotates matching task lines in Tasks.md with a
-// schedule marker (clock HH:MM-HH:MM). Replaces existing markers.
+// updateTaskScheduleInFile annotates matching task lines with a schedule
+// marker (⏰ HH:MM-HH:MM). Searches Tasks.md first, then all .md files in
+// the vault root. Replaces existing markers.
 func updateTaskScheduleInFile(vaultRoot, taskText, startTime, endTime string) {
-	data, err := readTasksFile(vaultRoot)
-	if err != nil || len(data) == 0 {
-		return
-	}
-
 	scheduleMarkerRe := regexp.MustCompile(`\s*⏰\s*\d{2}:\d{2}-\d{2}:\d{2}`)
 	marker := " ⏰ " + startTime + "-" + endTime
 
@@ -223,27 +219,56 @@ func updateTaskScheduleInFile(vaultRoot, taskText, startTime, endTime string) {
 	}
 	needle := normalise(taskText)
 
-	lines := strings.Split(string(data), "\n")
-	changed := false
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, "- [") {
-			continue
+	// tryFile attempts to find and annotate the task in a single file.
+	tryFile := func(path string) bool {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return false
 		}
-		if idx := strings.Index(trimmed, "] "); idx >= 0 {
-			lineTask := normalise(trimmed[idx+2:])
-			if lineTask == needle {
-				cleaned := scheduleMarkerRe.ReplaceAllString(line, "")
-				lines[i] = cleaned + marker
-				changed = true
-				break
+		lines := strings.Split(string(data), "\n")
+		for i, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if !strings.HasPrefix(trimmed, "- [") {
+				continue
+			}
+			if idx := strings.Index(trimmed, "] "); idx >= 0 {
+				lineTask := normalise(trimmed[idx+2:])
+				if lineTask == needle {
+					cleaned := scheduleMarkerRe.ReplaceAllString(line, "")
+					lines[i] = cleaned + marker
+					_ = atomicWriteNote(path, strings.Join(lines, "\n"))
+					return true
+				}
 			}
 		}
+		return false
 	}
 
-	if changed {
-		_ = writeTasksFile(vaultRoot, []byte(strings.Join(lines, "\n")))
+	// Try Tasks.md first (most likely location).
+	tasksPath := tasksFilePath(vaultRoot)
+	if tasksPath != "" && tryFile(tasksPath) {
+		return
 	}
+
+	// Fall back to scanning all .md files in the vault.
+	_ = filepath.Walk(vaultRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() && strings.HasPrefix(info.Name(), ".") {
+			return filepath.SkipDir
+		}
+		if info.IsDir() || !strings.HasSuffix(strings.ToLower(info.Name()), ".md") {
+			return nil
+		}
+		if path == tasksPath {
+			return nil // already tried
+		}
+		if tryFile(path) {
+			return filepath.SkipAll // found it, stop walking
+		}
+		return nil
+	})
 }
 
 // slotToMinutes converts "HH:MM" to minutes from midnight.
