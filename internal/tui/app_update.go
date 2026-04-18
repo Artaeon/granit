@@ -470,6 +470,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case morningPlanSavedMsg:
+		// Surface any persistence failure — silent _ = swallows used to
+		// hide lost writes entirely. Partial-save is reported but we
+		// still refresh so the user sees whatever *did* persist.
+		m.reportError("save morning plan", msg.Err)
 		if m.morningRoutine.IsActive() {
 			var cmd tea.Cmd
 			m.morningRoutine, cmd = m.morningRoutine.Update(msg)

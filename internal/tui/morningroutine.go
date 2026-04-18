@@ -30,7 +30,11 @@ const (
 )
 
 // morningPlanSavedMsg is sent after the daily note has been written.
-type morningPlanSavedMsg struct{}
+// Err carries the first write failure encountered — the host surfaces
+// it via reportError on receipt. A partially-saved plan (daily note
+// ok, one planner block fail) sets Err to the first failure; further
+// writes still run so best-effort persistence is preserved.
+type morningPlanSavedMsg struct{ Err error }
 
 // ---------------------------------------------------------------------------
 // Overlay
@@ -533,20 +537,29 @@ func (mr *MorningRoutine) saveToDailyNote() tea.Cmd {
 		}
 		dailyPath := filepath.Join(vaultRoot, dailyName)
 
+		// firstErr captures the first failure encountered. Best-effort
+		// semantics — subsequent writes keep running so the user gets
+		// as much of their plan persisted as possible.
+		var firstErr error
+		recordErr := func(ctx string, err error) {
+			if err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("%s: %w", ctx, err)
+			}
+		}
+
 		existing, err := os.ReadFile(dailyPath)
 		if err != nil {
 			// Create new daily note — ensure directory exists
 			if mkErr := os.MkdirAll(filepath.Dir(dailyPath), 0o755); mkErr != nil {
-				return morningPlanSavedMsg{}
+				return morningPlanSavedMsg{Err: fmt.Errorf("create daily note folder: %w", mkErr)}
 			}
 			weekday := time.Now().Weekday().String()
 			header := fmt.Sprintf("---\ndate: %s\ntype: daily\ntags: [daily]\n---\n\n# %s — %s\n\n",
 				today, today, weekday)
-			_ = atomicWriteNote(dailyPath, header+content)
+			recordErr("write daily note", atomicWriteNote(dailyPath, header+content))
 		} else {
-			// Replace existing "## Daily Plan" section or append if not present
 			newContent := replaceDailySection(string(existing), content, "## Daily Plan")
-			_ = atomicWriteNote(dailyPath, newContent)
+			recordErr("update daily note", atomicWriteNote(dailyPath, newContent))
 		}
 
 		// Route each slot through the unified schedule layer so task-slots
@@ -555,12 +568,12 @@ func (mr *MorningRoutine) saveToDailyNote() tea.Cmd {
 		for _, slot := range schedule {
 			ref := scheduleRefForSlotText(slot.Task, allTasks)
 			if isTaskSlot(slot.Type) && ref.hasLocation() {
-				_ = SetTaskSchedule(vaultRoot, today, ref, slot.Start, slot.End, slot.Type)
+				recordErr("schedule slot", SetTaskSchedule(vaultRoot, today, ref, slot.Start, slot.End, slot.Type))
 			} else {
-				_ = UpsertPlannerBlock(vaultRoot, today, ScheduleRef{Text: slot.Task}, PlannerBlock{
+				recordErr("upsert planner block", UpsertPlannerBlock(vaultRoot, today, ScheduleRef{Text: slot.Task}, PlannerBlock{
 					Date: today, StartTime: slot.Start, EndTime: slot.End,
 					Text: slot.Task, BlockType: slot.Type, SourceRef: ref,
-				})
+				}))
 			}
 		}
 
@@ -569,10 +582,10 @@ func (mr *MorningRoutine) saveToDailyNote() tea.Cmd {
 
 		// Persist newly created tasks to Tasks.md so they appear in the task manager
 		for _, ct := range createdTasks {
-			_ = appendTaskLine(vaultRoot, "- [ ] "+ct)
+			recordErr("append created task", appendTaskLine(vaultRoot, "- [ ] "+ct))
 		}
 
-		return morningPlanSavedMsg{}
+		return morningPlanSavedMsg{Err: firstErr}
 	}
 }
 
