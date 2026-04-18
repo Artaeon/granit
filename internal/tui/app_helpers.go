@@ -786,8 +786,14 @@ func (m *Model) loadCalendarEvents() {
 // after any file has been modified by an overlay. If changedPath is non-empty
 // and matches the currently open note, the editor is reloaded too.
 func (m *Model) refreshComponents(changedPath string) {
+	// When two saves land within the debounce window, the full rescan
+	// skips — but the active-note reload + backlinks refresh MUST still
+	// run or the editor/backlinks panel show stale content. The
+	// expensive work (vault scan, task re-parse, calendar reload) is
+	// rate-limited; the cheap single-file refresh always happens.
 	if time.Since(m.lastRefresh) < 500*time.Millisecond {
-		return // Skip redundant refresh
+		m.refreshActiveNoteState(changedPath)
+		return
 	}
 	m.lastRefresh = time.Now()
 	_ = m.vault.Scan()
@@ -841,15 +847,33 @@ func (m *Model) refreshComponents(changedPath string) {
 		m.taskManager.Refresh(m.vault)
 	}
 
-	// If the changed file is currently open in the editor, reload it
-	if changedPath != "" && changedPath == m.activeNote {
-		if note := m.vault.GetNote(changedPath); note != nil {
-			m.editor.LoadContent(note.Content, m.editor.filePath)
-		}
-	}
+	m.refreshActiveNoteState(changedPath)
 
 	m.tfidfDirty = true
 	m.needsRefresh = true
+}
+
+// refreshActiveNoteState handles the per-file refresh that must happen
+// even when the full rescan is debounced: reload the editor buffer if
+// the changed file is currently open, and rebuild the backlinks panel
+// so link adds/removals show up immediately.
+//
+// Safe to call multiple times — it's cheap single-file work, not a
+// vault rescan.
+func (m *Model) refreshActiveNoteState(changedPath string) {
+	if changedPath == "" || changedPath != m.activeNote {
+		return
+	}
+	if note := m.vault.GetNote(changedPath); note != nil {
+		m.editor.LoadContent(note.Content, m.editor.filePath)
+	}
+	// Backlinks for the active note go stale when the user edits
+	// either side of a [[wikilink]]. The editor.modified flow used to
+	// leave the panel showing the pre-save state until the user
+	// navigated away and back.
+	incoming := m.buildBacklinkItems(m.index.GetBacklinks(changedPath), changedPath)
+	outgoing := m.buildOutgoingItems(m.index.GetOutgoingLinks(changedPath))
+	m.backlinks.SetLinks(incoming, outgoing)
 }
 
 // countInboxItems reads Inbox.md and counts unchecked items.
