@@ -340,6 +340,44 @@ func TestParseScheduleBlockLine_BackCompatWithoutRef(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// CurrentPlannerBlock — powers Pomodoro's "start for current block" flow
+// ---------------------------------------------------------------------------
+
+func TestCurrentPlannerBlock_FindsOverlappingBlock(t *testing.T) {
+	root := newTestVault(t, map[string]string{
+		"Planner/2026-04-18.md": "## Schedule\n- 09:00-10:00 | Morning task | task\n- 11:00-12:00 | Deep work | deep-work\n",
+	})
+	// 11:30 → should match the second block.
+	got := CurrentPlannerBlock(root, "2026-04-18", 11*60+30)
+	if got == nil {
+		t.Fatal("expected a block, got nil")
+	}
+	if got.Text != "Deep work" {
+		t.Errorf("expected Deep work, got %q", got.Text)
+	}
+}
+
+func TestCurrentPlannerBlock_NilBetweenBlocks(t *testing.T) {
+	root := newTestVault(t, map[string]string{
+		"Planner/2026-04-18.md": "## Schedule\n- 09:00-10:00 | A | task\n- 11:00-12:00 | B | task\n",
+	})
+	// 10:30 falls in the gap.
+	if got := CurrentPlannerBlock(root, "2026-04-18", 10*60+30); got != nil {
+		t.Errorf("expected nil in gap, got %+v", got)
+	}
+}
+
+func TestCurrentPlannerBlock_EndIsExclusive(t *testing.T) {
+	// Exactly-at-end must not match — a 09:00-10:00 block is over at 10:00.
+	root := newTestVault(t, map[string]string{
+		"Planner/2026-04-18.md": "## Schedule\n- 09:00-10:00 | A | task\n",
+	})
+	if got := CurrentPlannerBlock(root, "2026-04-18", 10*60); got != nil {
+		t.Errorf("end of range should be exclusive, got %+v", got)
+	}
+}
+
 func TestWriteTaskScheduleMarker_StaleRef_DoesNotError(t *testing.T) {
 	root := newTestVault(t, map[string]string{
 		"notes.md": "- [ ] Only\n",

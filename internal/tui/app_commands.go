@@ -572,6 +572,19 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.pomodoro.SetSize(m.width, m.height)
 		m.pomodoro.SetVaultRoot(m.vault.Root)
 		m.pomodoro.Open()
+	case CmdPomodoroNow:
+		if !m.config.CorePluginEnabled("pomodoro") {
+			break
+		}
+		m.pomodoro.SetSize(m.width, m.height)
+		m.pomodoro.SetVaultRoot(m.vault.Root)
+		m.pomodoro.Open()
+		if task := m.pomodoro.StartForCurrentBlock(m.vault.Root); task != "" {
+			m.statusbar.SetMessage("▶ Pomodoro started for: " + task)
+		} else {
+			m.statusbar.SetMessage("No block scheduled right now — queue is empty")
+		}
+		return m, m.clearMessageAfter(3 * time.Second)
 	case CmdWebClip:
 		m.webClipper.SetSize(m.width, m.height)
 		// Prompt user for URL — for now open with empty URL (they type in overlay)

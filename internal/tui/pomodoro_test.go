@@ -964,3 +964,50 @@ func TestPomodoro_WordCountResetBetweenSessions(t *testing.T) {
 }
 
 // containsSubstring is defined in focusmode_test.go (same package)
+
+// ---------------------------------------------------------------------------
+// StartForCurrentBlock — seeds queue from today's scheduled block
+// ---------------------------------------------------------------------------
+
+func TestPomodoro_StartForCurrentBlock_ReturnsEmptyWhenNothingScheduled(t *testing.T) {
+	root := t.TempDir()
+	p := NewPomodoro()
+	if got := p.StartForCurrentBlock(root); got != "" {
+		t.Errorf("expected empty result, got %q", got)
+	}
+	if p.state == PomodoroWork {
+		t.Error("pomodoro should not have started when no block exists")
+	}
+}
+
+func TestPomodoro_StartForCurrentBlock_SeedsQueueFromOverlappingBlock(t *testing.T) {
+	root := t.TempDir()
+	// Write a planner block that covers "now" ± 30 min.
+	now := time.Now()
+	start := now.Add(-10 * time.Minute)
+	end := now.Add(20 * time.Minute)
+	ref := ScheduleRef{NotePath: "Tasks.md", LineNum: 3, Text: "Ship feature"}
+	date := now.Format("2006-01-02")
+	if err := UpsertPlannerBlock(root, date, ref, PlannerBlock{
+		Date: date,
+		StartTime: start.Format("15:04"), EndTime: end.Format("15:04"),
+		Text: "Ship feature", BlockType: "task", SourceRef: ref,
+	}); err != nil {
+		t.Fatalf("seed block: %v", err)
+	}
+
+	p := NewPomodoro()
+	result := p.StartForCurrentBlock(root)
+	if result != "Ship feature" {
+		t.Errorf("expected task text, got %q", result)
+	}
+	if p.state != PomodoroWork {
+		t.Errorf("expected state PomodoroWork, got %d", p.state)
+	}
+	if len(p.queue) != 1 || p.queue[0].Text != "Ship feature" {
+		t.Errorf("queue not seeded: %+v", p.queue)
+	}
+	if p.queue[0].SourcePath != "Tasks.md" || p.queue[0].SourceLine != 3 {
+		t.Errorf("source ref not propagated: %+v", p.queue[0])
+	}
+}

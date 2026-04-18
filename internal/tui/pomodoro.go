@@ -188,6 +188,39 @@ func (p *Pomodoro) Start() {
 	}
 }
 
+// StartForCurrentBlock seeds the queue from the planner block containing
+// "now" on today's date and starts a work session. Returns the block's
+// text (for a confirmation message) or "" if there is no block right now.
+//
+// Wired through the unified schedule layer so any source the user
+// scheduled from — Task Manager, Calendar, PlanMyDay, MorningRoutine —
+// ends up as a runnable pomodoro with the right source ref.
+func (p *Pomodoro) StartForCurrentBlock(vaultRoot string) string {
+	if vaultRoot == "" {
+		return ""
+	}
+	now := time.Now()
+	date := now.Format("2006-01-02")
+	nowMins := now.Hour()*60 + now.Minute()
+	block := CurrentPlannerBlock(vaultRoot, date, nowMins)
+	if block == nil {
+		return ""
+	}
+	// Estimated minutes = block duration, clamped to a positive value.
+	est := slotToMinutes(block.EndTime) - slotToMinutes(block.StartTime)
+	if est <= 0 {
+		est = int(p.workDuration.Minutes())
+	}
+	p.SetQueue([]QueueTask{{
+		Text:       block.Text,
+		Estimated:  est,
+		SourcePath: block.SourceRef.NotePath,
+		SourceLine: block.SourceRef.LineNum,
+	}})
+	p.Start()
+	return block.Text
+}
+
 // Pause toggles the timer between running and paused. When paused the state
 // is preserved but ticks stop being consumed.
 func (p *Pomodoro) Pause() {

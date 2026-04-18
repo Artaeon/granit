@@ -67,6 +67,7 @@ const (
 	CmdNoteChat
 	CmdToggleGhostWriter
 	CmdPomodoro
+	CmdPomodoroNow
 	CmdWebClip
 	CmdToggleVim
 	CmdPinNote
@@ -310,6 +311,7 @@ var AllCommands = []Command{
 	{Label: "Daily Planner", Desc: "Time-blocked daily schedule with tasks, events, habits", Shortcut: "", Action: CmdDailyPlanner, Icon: &IconCalendarChar, Category: CatTasks},
 	{Label: "Recurring Tasks", Desc: "Manage daily/weekly/monthly recurring tasks", Shortcut: "", Action: CmdRecurringTasks, Icon: &IconCalendarChar, Category: CatTasks},
 	{Label: "Pomodoro Timer", Desc: "Focus timer with writing stats", Shortcut: "", Action: CmdPomodoro, Icon: &IconDailyChar, Category: CatTasks},
+	{Label: "Pomodoro: Now", Desc: "Start a pomodoro for the currently scheduled time block", Shortcut: "", Action: CmdPomodoroNow, Icon: &IconDailyChar, Category: CatTasks},
 	{Label: "Focus Session", Desc: "Guided work session with timer, tasks, and scratchpad", Shortcut: "", Action: CmdFocusSession, Icon: &IconDailyChar, Category: CatTasks},
 	{Label: "Clock In", Desc: "Start a work session timer", Shortcut: "", Action: CmdClockIn, Icon: &IconDailyChar, Category: CatTasks},
 	{Label: "Clock Out", Desc: "Stop work session and log time", Shortcut: "", Action: CmdClockOut, Icon: &IconDailyChar, Category: CatTasks},

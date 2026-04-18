@@ -282,6 +282,26 @@ func RemovePlannerBlock(vaultRoot, date string, ref ScheduleRef) error {
 	return writePlannerScheduleBlocks(vaultRoot, date, kept)
 }
 
+// CurrentPlannerBlock returns the planner block containing nowMins (minutes
+// from midnight) in Planner/{date}.md, or nil if no block is active. Ties
+// are broken in file order (the first matching block wins). Callers like
+// the pomodoro timer use this to answer "what should I be working on
+// right now?" against the day's planned schedule.
+func CurrentPlannerBlock(vaultRoot, date string, nowMins int) *PlannerBlock {
+	for _, b := range readPlannerScheduleBlocks(vaultRoot, date) {
+		startMin := slotToMinutes(b.StartTime)
+		endMin := slotToMinutes(b.EndTime)
+		if endMin <= startMin {
+			continue
+		}
+		if nowMins >= startMin && nowMins < endMin {
+			block := b
+			return &block
+		}
+	}
+	return nil
+}
+
 // isTaskSlot reports whether a daySlot.Type (or planner BlockType) describes
 // a user task that should carry a ⏰ marker on its source line. Non-task
 // kinds like "break", "meeting", "habit", "review" only exist on the
