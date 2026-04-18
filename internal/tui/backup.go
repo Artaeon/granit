@@ -25,9 +25,7 @@ type BackupEntry struct {
 // Backup provides an overlay for creating, restoring, and managing vault
 // backup archives stored as timestamped zip files in .granit/backups/.
 type Backup struct {
-	active        bool
-	width         int
-	height        int
+	OverlayBase
 	vaultPath     string
 	backups       []BackupEntry
 	cursor        int
@@ -47,14 +45,9 @@ func NewBackup() Backup {
 	}
 }
 
-// IsActive returns whether the backup overlay is currently visible.
-func (b Backup) IsActive() bool {
-	return b.active
-}
-
 // Open activates the overlay and scans the backups directory.
 func (b *Backup) Open(vaultPath string) {
-	b.active = true
+	b.Activate()
 	b.vaultPath = vaultPath
 	b.cursor = 0
 	b.scroll = 0
@@ -62,17 +55,6 @@ func (b *Backup) Open(vaultPath string) {
 	b.confirmAction = ""
 	b.message = ""
 	b.scanBackups()
-}
-
-// Close hides the backup overlay.
-func (b *Backup) Close() {
-	b.active = false
-}
-
-// SetSize updates the available dimensions for the overlay.
-func (b *Backup) SetSize(w, h int) {
-	b.width = w
-	b.height = h
 }
 
 // backupDir returns the absolute path to the .granit/backups/ directory.
