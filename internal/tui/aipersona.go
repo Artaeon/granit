@@ -48,6 +48,41 @@ func DeepCovenSystem(role, task string) string {
 	return intro + "\n\n" + task
 }
 
+// validateAIMarkdownResponse reports a non-empty reason string when the
+// AI returned content that doesn't look like the markdown-with-
+// frontmatter format we asked for. Empty return value means the
+// response is plausibly usable.
+//
+// Heuristics (deliberately conservative — false negatives are fine, we
+// only want to catch the obvious failures the user would silently get
+// stuck with):
+//   - Empty / whitespace-only response
+//   - Suspiciously short (< 40 chars after trimming)
+//   - Doesn't contain "---" anywhere (no frontmatter delimiter at all)
+//   - Looks like a refusal / model excuse
+func validateAIMarkdownResponse(s string) string {
+	t := strings.TrimSpace(s)
+	if t == "" {
+		return "empty"
+	}
+	if len(t) < 40 {
+		return "too short"
+	}
+	if !strings.Contains(t, "---") {
+		return "no frontmatter delimiter"
+	}
+	lower := strings.ToLower(t)
+	for _, refusal := range []string{
+		"i cannot", "i can't", "i'm sorry", "i am sorry", "as an ai",
+		"i'm unable", "i am unable",
+	} {
+		if strings.Contains(lower, refusal) {
+			return "refusal-style response"
+		}
+	}
+	return ""
+}
+
 // DeepCovenLongPreamble is the verbose 4-line manifesto used by the
 // daily-briefing prompt. Other overlays generally don't need this much —
 // they have their own structured-output requirements. Kept here so a

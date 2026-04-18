@@ -832,11 +832,21 @@ func (a AITemplates) Update(msg tea.Msg) (AITemplates, tea.Cmd) {
 			a.scroll = 0
 			return a, nil
 		}
-		a.generatedContent = msg.content
+		// Validate the AI response. The prompt asks for YAML frontmatter
+		// followed by markdown; a blank or refusal-style response would
+		// previously be silently set as the user's note content. Surface
+		// the issue and fall back to a known-good local skeleton so the
+		// user always gets something usable + sees why the AI didn't help.
+		if reason := validateAIMarkdownResponse(msg.content); reason != "" {
+			a.errMsg = "AI returned malformed content (" + reason + ") — using local fallback"
+			a.generatedContent = a.generateLocalFallback()
+		} else {
+			a.generatedContent = msg.content
+			a.errMsg = ""
+		}
 		a.generatedTitle = aiTemplateTitleFromTopic(a.topicInput)
 		a.state = aitStatePreview
 		a.scroll = 0
-		a.errMsg = ""
 		return a, nil
 
 	case aiTemplateTickMsg:
