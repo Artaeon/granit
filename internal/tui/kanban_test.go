@@ -2,6 +2,8 @@ package tui
 
 import (
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // ---------------------------------------------------------------------------
@@ -141,4 +143,127 @@ func TestKanban_ToggleDone_InvalidCursorDoesNotPanic(t *testing.T) {
 		}
 	}()
 	kb.kbToggleDone()
+}
+
+// ── New cursor actions: open / delete / priority cycle ──
+
+func TestKanban_OpenKey_QueuesOpenRequestAndCloses(t *testing.T) {
+	kb := NewKanban()
+	kb.active = true
+	kb.colCursor = 0
+	kb.cardCursor = 0
+	kb.columns[0].Cards = []KanbanCard{{Text: "Ship", Source: "Tasks.md", Line: 5}}
+
+	kb, _ = kb.Update(teaKey('o'))
+
+	if kb.active {
+		t.Error("o should close the overlay")
+	}
+	notePath, line, ok := kb.GetOpenRequest()
+	if !ok || notePath != "Tasks.md" || line != 5 {
+		t.Errorf("expected open(Tasks.md:5), got (%q, %d, %v)", notePath, line, ok)
+	}
+}
+
+func TestKanban_DeleteKey_QueuesDeleteRequest(t *testing.T) {
+	kb := NewKanban()
+	kb.active = true
+	kb.colCursor = 0
+	kb.cardCursor = 0
+	kb.columns[0].Cards = []KanbanCard{{Text: "Drop me", Source: "Tasks.md", Line: 9}}
+
+	kb, _ = kb.Update(teaKey('d'))
+
+	if !kb.active {
+		t.Error("d should NOT close the overlay (user keeps editing)")
+	}
+	notePath, line, text, ok := kb.GetDeleteRequest()
+	if !ok || notePath != "Tasks.md" || line != 9 || text != "Drop me" {
+		t.Errorf("expected delete(Tasks.md:9, 'Drop me'), got (%q, %d, %q, %v)", notePath, line, text, ok)
+	}
+}
+
+func TestKanban_PriorityKey_CyclesPriorityAndQueuesUpdate(t *testing.T) {
+	kb := NewKanban()
+	kb.active = true
+	kb.colCursor = 0
+	kb.cardCursor = 0
+	kb.columns[0].Cards = []KanbanCard{{Text: "Plan", Source: "Tasks.md", Line: 3, Priority: 2}}
+
+	kb, _ = kb.Update(teaKey('p'))
+
+	if got := kb.columns[0].Cards[0].Priority; got != 3 {
+		t.Errorf("expected priority cycled to 3 (med→high), got %d", got)
+	}
+	notePath, line, level, ok := kb.GetPriorityRequest()
+	if !ok || notePath != "Tasks.md" || line != 3 || level != 3 {
+		t.Errorf("expected priority(Tasks.md:3, 3), got (%q, %d, %d, %v)", notePath, line, level, ok)
+	}
+}
+
+func TestKanban_PriorityCycle_WrapsToZero(t *testing.T) {
+	kb := NewKanban()
+	kb.active = true
+	kb.colCursor = 0
+	kb.cardCursor = 0
+	kb.columns[0].Cards = []KanbanCard{{Text: "Last", Priority: 4}}
+
+	kb, _ = kb.Update(teaKey('p'))
+
+	if got := kb.columns[0].Cards[0].Priority; got != 0 {
+		t.Errorf("highest (4) should wrap to none (0), got %d", got)
+	}
+}
+
+func TestKanban_HasPendingActions_TracksAllKinds(t *testing.T) {
+	kb := NewKanban()
+	if kb.HasPendingActions() {
+		t.Error("fresh kanban should have no pending actions")
+	}
+	kb.pendingDelete = true
+	if !kb.HasPendingActions() {
+		t.Error("should detect pending delete")
+	}
+	_ , _, _, _ = kb.GetDeleteRequest() // drain
+	if kb.HasPendingActions() {
+		t.Error("should be empty after drain")
+	}
+}
+
+// ── setTaskLinePriority — line rewriting ──
+
+func TestSetTaskLinePriority_AddsAndStripsEmoji(t *testing.T) {
+	original := "- [ ] Ship the release"
+	withHigh := setTaskLinePriority(original, 3)
+	if !contains(withHigh, "⏫") {
+		t.Errorf("level 3 should add ⏫, got %q", withHigh)
+	}
+	cleared := setTaskLinePriority(withHigh, 0)
+	if contains(cleared, "⏫") {
+		t.Errorf("level 0 should strip the emoji, got %q", cleared)
+	}
+	// Cycling from highest to medium should swap, not append.
+	withHighest := setTaskLinePriority(original, 4)
+	withMed := setTaskLinePriority(withHighest, 2)
+	if contains(withMed, "🔺") {
+		t.Errorf("med should strip prior 🔺, got %q", withMed)
+	}
+	if !contains(withMed, "🔼") {
+		t.Errorf("med should add 🔼, got %q", withMed)
+	}
+}
+
+// teaKey builds a single-rune key message for tests.
+func teaKey(r rune) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}} }
+
+// contains is a tiny stand-in for strings.Contains used by these tests.
+func contains(s, substr string) bool { return len(s) >= len(substr) && (substr == "" || stringsIndex(s, substr) >= 0) }
+
+func stringsIndex(s, substr string) int {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
 }

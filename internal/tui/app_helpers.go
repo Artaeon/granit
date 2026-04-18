@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -593,6 +594,96 @@ func (m *Model) syncPomodoroCompletions() {
 		}
 	}
 	m.refreshComponents("")
+}
+
+// applyKanbanActions drains every consumer-pending Kanban action and
+// applies its mutation to the source note. Called on every Kanban
+// Update tick so changes (toggle, delete, priority cycle) take effect
+// immediately, instead of only on overlay close.
+func (m *Model) applyKanbanActions() {
+	if notePath, line, newDone, ok := m.kanban.GetToggleResult(); ok {
+		m.kanbanWriteLine(notePath, line, func(text string) string {
+			if newDone {
+				return strings.Replace(text, "- [ ]", "- [x]", 1)
+			}
+			return strings.Replace(text, "- [x]", "- [ ]", 1)
+		})
+	}
+	if notePath, line, _, ok := m.kanban.GetDeleteRequest(); ok {
+		m.kanbanDeleteLine(notePath, line)
+	}
+	if notePath, line, newLevel, ok := m.kanban.GetPriorityRequest(); ok {
+		m.kanbanWriteLine(notePath, line, func(text string) string {
+			return setTaskLinePriority(text, newLevel)
+		})
+	}
+}
+
+// kanbanWriteLine applies transform to a 0-based line number in notePath
+// and persists the result. No-op if the path or line is missing.
+func (m *Model) kanbanWriteLine(notePath string, line int, transform func(string) string) {
+	note := m.vault.GetNote(notePath)
+	if note == nil {
+		return
+	}
+	lines := strings.Split(note.Content, "\n")
+	if line < 0 || line >= len(lines) {
+		return
+	}
+	lines[line] = transform(lines[line])
+	newContent := strings.Join(lines, "\n")
+	if err := atomicWriteNote(filepath.Join(m.vault.Root, notePath), newContent); err != nil {
+		m.statusbar.SetError("Kanban write failed: " + err.Error())
+		return
+	}
+	note.Content = newContent
+	m.refreshComponents(notePath)
+}
+
+// kanbanDeleteLine removes the given 0-based line and persists the file.
+func (m *Model) kanbanDeleteLine(notePath string, line int) {
+	note := m.vault.GetNote(notePath)
+	if note == nil {
+		return
+	}
+	lines := strings.Split(note.Content, "\n")
+	if line < 0 || line >= len(lines) {
+		return
+	}
+	lines = append(lines[:line], lines[line+1:]...)
+	newContent := strings.Join(lines, "\n")
+	if err := atomicWriteNote(filepath.Join(m.vault.Root, notePath), newContent); err != nil {
+		m.statusbar.SetError("Kanban delete failed: " + err.Error())
+		return
+	}
+	note.Content = newContent
+	m.refreshComponents(notePath)
+}
+
+// setTaskLinePriority rewrites a markdown task line to carry the priority
+// emoji for newLevel (1=low, 2=med, 3=high, 4=highest, 0=clear). Strips
+// any existing priority emoji first so the marker doesn't accumulate.
+func setTaskLinePriority(line string, newLevel int) string {
+	stripped := line
+	for _, re := range []*regexp.Regexp{kbPrioHighestRe, kbPrioHighRe, kbPrioMedRe, kbPrioLowRe} {
+		stripped = re.ReplaceAllString(stripped, "")
+	}
+	stripped = strings.TrimRight(stripped, " ")
+	icon := ""
+	switch newLevel {
+	case 4:
+		icon = "\U0001F53A" // 🔺
+	case 3:
+		icon = "\u23EB" // ⏫
+	case 2:
+		icon = "\U0001F53C" // 🔼
+	case 1:
+		icon = "\U0001F53D" // 🔽
+	}
+	if icon == "" {
+		return stripped
+	}
+	return stripped + " " + icon
 }
 
 // applyTaskCompletion toggles the markdown checkbox on tc.LineNum (1-based)

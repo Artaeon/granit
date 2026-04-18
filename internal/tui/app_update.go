@@ -2370,28 +2370,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
-		if m.kanban.IsActive() {
+		if m.kanban.IsActive() || m.kanban.HasPendingActions() {
 			var cmd tea.Cmd
-			m.kanban, cmd = m.kanban.Update(msg)
+			if m.kanban.IsActive() {
+				m.kanban, cmd = m.kanban.Update(msg)
+			}
+			// Drain pending kanban actions on every tick — toggles, deletes,
+			// and priority cycles take effect immediately so the user sees
+			// the change without having to close+reopen.
+			m.applyKanbanActions()
+			// On close, also handle the open-source request which jumps the
+			// editor to the card's note line.
 			if !m.kanban.IsActive() {
-				// Check if user toggled a task
-				if notePath, line, newDone, ok := m.kanban.GetToggleResult(); ok {
-					// Update the source note
-					if note := m.vault.GetNote(notePath); note != nil {
-						lines := strings.Split(note.Content, "\n")
-						if line >= 0 && line < len(lines) {
-							if newDone {
-								lines[line] = strings.Replace(lines[line], "- [ ]", "- [x]", 1)
-							} else {
-								lines[line] = strings.Replace(lines[line], "- [x]", "- [ ]", 1)
-							}
-							newContent := strings.Join(lines, "\n")
-							if err := atomicWriteNote(filepath.Join(m.vault.Root, notePath), newContent); err != nil {
-								m.statusbar.SetError("Failed to update task: " + err.Error())
-							} else {
-								m.refreshComponents(notePath)
-							}
-						}
+				if notePath, line, ok := m.kanban.GetOpenRequest(); ok {
+					m.loadNote(notePath)
+					if line > 0 {
+						m.editor.SetCursorPosition(line-1, 0)
 					}
 				}
 			}

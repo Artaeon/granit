@@ -69,11 +69,32 @@ type Kanban struct {
 	dragging bool
 	dragCard *KanbanCard
 
-	// Toggle result — consumed by the host after Update
+	// Toggle result — consumed by the host on every Update tick so the
+	// source file is updated mid-session, not only after the overlay
+	// closes.
 	pendingToggle  bool
 	toggleNotePath string
 	toggleLine     int
 	toggleNewDone  bool
+
+	// Open-source request — set by 'o'. Host closes the overlay and
+	// opens the note in the editor.
+	pendingOpen     bool
+	openNotePath    string
+	openLine        int
+
+	// Delete request — set by 'd'. Host removes the source line atomically.
+	pendingDelete    bool
+	deleteNotePath   string
+	deleteLine       int
+	deleteCardText   string
+
+	// Priority cycle request — set by 'p'. Host updates the priority
+	// emoji on the source line in place.
+	pendingPriority    bool
+	priorityNotePath   string
+	priorityLine       int
+	priorityNewLevel   int // 0..4, what to set on disk
 }
 
 // NewKanban creates a new Kanban overlay with the three default columns.
@@ -326,6 +347,13 @@ func (kb *Kanban) SetTaskProjects(tasks []Task) {
 	}
 }
 
+// HasPendingActions reports whether any consumer-pending action is set.
+// Used by the host to decide whether to drain Kanban results on a tick
+// even when the overlay isn't focused (e.g. immediately after close).
+func (kb *Kanban) HasPendingActions() bool {
+	return kb.pendingToggle || kb.pendingOpen || kb.pendingDelete || kb.pendingPriority
+}
+
 // GetToggleResult returns a pending toggle action, if any.
 // The caller should update the source note content accordingly.
 func (kb *Kanban) GetToggleResult() (notePath string, line int, newDone bool, ok bool) {
@@ -334,6 +362,39 @@ func (kb *Kanban) GetToggleResult() (notePath string, line int, newDone bool, ok
 	}
 	kb.pendingToggle = false
 	return kb.toggleNotePath, kb.toggleLine, kb.toggleNewDone, true
+}
+
+// GetOpenRequest returns a pending "open source note" action, if any.
+// Set by pressing 'o' on a card. The host should close the overlay and
+// load the note into the editor.
+func (kb *Kanban) GetOpenRequest() (notePath string, line int, ok bool) {
+	if !kb.pendingOpen {
+		return "", 0, false
+	}
+	kb.pendingOpen = false
+	return kb.openNotePath, kb.openLine, true
+}
+
+// GetDeleteRequest returns a pending card-deletion action, if any.
+// Set by pressing 'd' on a card. The host should remove the line from
+// the source note.
+func (kb *Kanban) GetDeleteRequest() (notePath string, line int, cardText string, ok bool) {
+	if !kb.pendingDelete {
+		return "", 0, "", false
+	}
+	kb.pendingDelete = false
+	return kb.deleteNotePath, kb.deleteLine, kb.deleteCardText, true
+}
+
+// GetPriorityRequest returns a pending priority-cycle action, if any.
+// Set by pressing 'p' on a card. The host should rewrite the source
+// line with the new priority emoji (or strip it for level 0).
+func (kb *Kanban) GetPriorityRequest() (notePath string, line int, newLevel int, ok bool) {
+	if !kb.pendingPriority {
+		return "", 0, 0, false
+	}
+	kb.pendingPriority = false
+	return kb.priorityNotePath, kb.priorityLine, kb.priorityNewLevel, true
 }
 
 // ---------------------------------------------------------------------------
@@ -394,10 +455,54 @@ func (kb Kanban) Update(msg tea.Msg) (Kanban, tea.Cmd) {
 		// Toggle done state
 		case "x":
 			kb.kbToggleDone()
+
+		// Open the source note in the editor (jump-to-edit). Closes the
+		// overlay so the editor takes the foreground.
+		case "o":
+			if card := kb.currentCard(); card != nil {
+				kb.pendingOpen = true
+				kb.openNotePath = card.Source
+				kb.openLine = card.Line
+				kb.active = false
+			}
+
+		// Delete the source line for this card.
+		case "d":
+			if card := kb.currentCard(); card != nil {
+				kb.pendingDelete = true
+				kb.deleteNotePath = card.Source
+				kb.deleteLine = card.Line
+				kb.deleteCardText = card.Text
+			}
+
+		// Cycle the priority of the current card (none → low → med → high
+		// → highest → none). Mutates the in-memory card so the change is
+		// immediately visible; the host writes the source line.
+		case "p":
+			if card := kb.currentCard(); card != nil {
+				newLevel := (card.Priority + 1) % 5
+				card.Priority = newLevel
+				kb.pendingPriority = true
+				kb.priorityNotePath = card.Source
+				kb.priorityLine = card.Line
+				kb.priorityNewLevel = newLevel
+			}
 		}
 	}
 
 	return kb, nil
+}
+
+// currentCard returns a pointer to the card under the cursor, or nil.
+func (kb *Kanban) currentCard() *KanbanCard {
+	if kb.colCursor < 0 || kb.colCursor >= len(kb.columns) {
+		return nil
+	}
+	col := &kb.columns[kb.colCursor]
+	if kb.cardCursor < 0 || kb.cardCursor >= len(col.Cards) {
+		return nil
+	}
+	return &col.Cards[kb.cardCursor]
 }
 
 // ---------------------------------------------------------------------------
@@ -524,8 +629,9 @@ func (kb Kanban) View() string {
 
 	// Footer with keybinds
 	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
-		{"←→", "column"}, {"↑↓", "card"}, {"m", "move →"}, {"M", "move ←"},
-		{"x", "toggle"}, {"Esc", "close"},
+		{"←→", "column"}, {"↑↓", "card"}, {"m/M", "move ↔"},
+		{"x", "toggle"}, {"o", "open"}, {"p", "priority"}, {"d", "delete"},
+		{"Esc", "close"},
 	}))
 
 	border := lipgloss.NewStyle().
