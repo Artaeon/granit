@@ -160,7 +160,7 @@ func NewDailyPlanner() DailyPlanner {
 }
 
 // IsActive reports whether the daily planner overlay is visible.
-func (dp DailyPlanner) IsActive() bool {
+func (dp *DailyPlanner) IsActive() bool {
 	return dp.active
 }
 
@@ -254,7 +254,7 @@ func (dp *DailyPlanner) GetCompletedTasks() []TaskCompletion {
 
 // HasPendingSync reports whether there are task completions waiting to be
 // synced back to source files.
-func (dp DailyPlanner) HasPendingSync() bool {
+func (dp *DailyPlanner) HasPendingSync() bool {
 	return len(dp.completedTasks) > 0
 }
 
@@ -361,7 +361,7 @@ func (dp *DailyPlanner) slotTime(idx int) string {
 }
 
 // visibleSlots returns how many slots fit on screen.
-func (dp DailyPlanner) visibleSlots() int {
+func (dp *DailyPlanner) visibleSlots() int {
 	h := dp.height - 14
 	if h < 8 {
 		h = 8
