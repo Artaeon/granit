@@ -1011,3 +1011,62 @@ func TestPomodoro_StartForCurrentBlock_SeedsQueueFromOverlappingBlock(t *testing
 		t.Errorf("source ref not propagated: %+v", p.queue[0])
 	}
 }
+
+func TestPomodoro_FinishWorkSession_AppendsPomodoroBlock(t *testing.T) {
+	root := t.TempDir()
+	p := NewPomodoro()
+	p.SetVaultRoot(root)
+
+	// Simulate a completed work session for a known task.
+	sessionStart := time.Now().Add(-25 * time.Minute)
+	p.startTime = sessionStart
+	p.currentTask = "Write docs"
+	p.finishWorkSession()
+
+	date := sessionStart.Format("2006-01-02")
+	blocks := readPlannerScheduleBlocks(root, date)
+	found := false
+	for _, b := range blocks {
+		if b.BlockType == "pomodoro" && b.Text == "Write docs" && b.Done {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected pomodoro block for completed session, got %+v", blocks)
+	}
+}
+
+func TestPomodoro_FinishWorkSession_NoOpWithoutVaultRoot(t *testing.T) {
+	p := NewPomodoro()
+	p.startTime = time.Now()
+	p.currentTask = "X"
+	// vaultRoot unset — must not panic or write.
+	p.finishWorkSession()
+}
+
+func TestPomodoro_FinishWorkSession_AppendsDoesNotCollapseRepeats(t *testing.T) {
+	root := t.TempDir()
+	p := NewPomodoro()
+	p.SetVaultRoot(root)
+
+	now := time.Now()
+	date := now.Format("2006-01-02")
+	// Two sessions on the same task 30 minutes apart.
+	p.startTime = now.Add(-60 * time.Minute)
+	p.currentTask = "Repeat task"
+	p.finishWorkSession()
+	p.startTime = now.Add(-30 * time.Minute)
+	p.currentTask = "Repeat task"
+	p.finishWorkSession()
+
+	count := 0
+	for _, b := range readPlannerScheduleBlocks(root, date) {
+		if b.BlockType == "pomodoro" && b.Text == "Repeat task" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Errorf("expected 2 pomodoro blocks for repeated task, got %d", count)
+	}
+}

@@ -263,6 +263,18 @@ func UpsertPlannerBlock(vaultRoot, date string, ref ScheduleRef, block PlannerBl
 	return writePlannerScheduleBlocks(vaultRoot, date, blocks)
 }
 
+// AppendPlannerBlock adds block to Planner/{date}.md without attempting to
+// match or replace an existing entry. Use this when two overlapping blocks
+// are meaningful — e.g. a "task" block (planned) and a "pomodoro" block
+// (actual focus session) on the same time range. Blocks are kept sorted
+// by start time.
+func AppendPlannerBlock(vaultRoot, date string, block PlannerBlock) error {
+	blocks := readPlannerScheduleBlocks(vaultRoot, date)
+	blocks = append(blocks, block)
+	sortBlocksByStart(blocks)
+	return writePlannerScheduleBlocks(vaultRoot, date, blocks)
+}
+
 // RemovePlannerBlock removes any block matching ref from Planner/{date}.md.
 // Returns nil if nothing matched (absence is success).
 func RemovePlannerBlock(vaultRoot, date string, ref ScheduleRef) error {

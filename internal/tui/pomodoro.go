@@ -993,12 +993,48 @@ func (p *Pomodoro) finishWorkSession() {
 			Task:     p.currentTask,
 			Duration: p.workDuration,
 		})
+		p.logPomodoroSessionToPlanner(session)
 	}
 
 	// Reset per-session counters
 	p.wordsWritten = 0
 	p.wordsAtStart = -1
 	p.notesEdited = make(map[string]bool)
+}
+
+// logPomodoroSessionToPlanner appends a "pomodoro" block to today's planner
+// file covering [session.Start, session.Start+session.Duration]. Uses
+// AppendPlannerBlock so multiple sessions on the same task don't collapse
+// — each pomodoro is its own actual-work entry on the calendar, distinct
+// from any task/focus block that was planned for that time.
+//
+// No-op when vaultRoot is unset (unit-test / disabled persistence).
+func (p *Pomodoro) logPomodoroSessionToPlanner(session pomodoroSession) {
+	if p.vaultRoot == "" {
+		return
+	}
+	end := session.Start.Add(session.Duration)
+	date := session.Start.Format("2006-01-02")
+	// Cross-midnight sessions are rare; if they happen, truncate at 23:59
+	// so the block stays in the starting date's file.
+	if end.Day() != session.Start.Day() {
+		end = time.Date(session.Start.Year(), session.Start.Month(),
+			session.Start.Day(), 23, 59, 0, 0, session.Start.Location())
+	}
+	ref := ScheduleRef{Text: session.Task}
+	if qt := p.CurrentQueueTask(); qt != nil && qt.SourcePath != "" {
+		ref.NotePath = qt.SourcePath
+		ref.LineNum = qt.SourceLine
+	}
+	_ = AppendPlannerBlock(p.vaultRoot, date, PlannerBlock{
+		Date:      date,
+		StartTime: session.Start.Format("15:04"),
+		EndTime:   end.Format("15:04"),
+		Text:      session.Task,
+		BlockType: "pomodoro",
+		Done:      true,
+		SourceRef: ref,
+	})
 }
 
 // startBreak begins the appropriate break phase based on session count.
