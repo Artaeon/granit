@@ -690,16 +690,12 @@ func (m Model) Init() tea.Cmd {
 	}
 	// Clock-in timer and reminder tick loop
 	cmds = append(cmds, m.clockIn.StartTicking())
-	// Nous: auto-ingest vault notes on startup. Snapshot the notes map
-	// into a fresh map BEFORE launching the goroutine — passing
-	// m.vault.Notes directly would let the goroutine iterate the same
-	// map the main loop is mutating (note saves, deletes, watcher
-	// reloads), which is a runtime panic in Go.
+	// Nous: auto-ingest vault notes on startup. Vault.SnapshotNotes
+	// gives the goroutine its own map so the main loop's concurrent
+	// save/delete traffic doesn't panic under Go's "concurrent map
+	// read and write" check.
 	if m.config.AIProvider == "nous" {
-		snapshot := make(map[string]*vault.Note, len(m.vault.Notes))
-		for path, note := range m.vault.Notes {
-			snapshot[path] = note
-		}
+		snapshot := m.vault.SnapshotNotes()
 		nousURL := m.config.NousURL
 		nousAPIKey := m.config.NousAPIKey
 		go func() {

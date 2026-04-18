@@ -80,3 +80,42 @@ func TestScanSkipsHiddenDirs(t *testing.T) {
 		t.Errorf("expected 1 note (hidden dir skipped), got %d", v.NoteCount())
 	}
 }
+
+// ── SnapshotNotes — goroutine safety ──
+
+func TestVault_SnapshotNotes_ReturnsIndependentMap(t *testing.T) {
+	v := &Vault{Root: "/tmp", Notes: map[string]*Note{
+		"a.md": {Path: "/tmp/a.md", RelPath: "a.md"},
+		"b.md": {Path: "/tmp/b.md", RelPath: "b.md"},
+	}}
+	snap := v.SnapshotNotes()
+
+	if len(snap) != 2 {
+		t.Fatalf("snapshot has %d entries, want 2", len(snap))
+	}
+	// Mutating the snapshot must not affect the live Notes map — the
+	// whole point is to let a goroutine iterate without racing.
+	delete(snap, "a.md")
+	snap["c.md"] = &Note{}
+
+	if _, ok := v.Notes["a.md"]; !ok {
+		t.Error("snapshot deletion leaked into live Notes")
+	}
+	if _, ok := v.Notes["c.md"]; ok {
+		t.Error("snapshot insertion leaked into live Notes")
+	}
+}
+
+func TestVault_SnapshotNotes_HandlesEmpty(t *testing.T) {
+	v := &Vault{Notes: map[string]*Note{}}
+	if got := v.SnapshotNotes(); len(got) != 0 {
+		t.Errorf("empty vault snapshot should be empty, got %d entries", len(got))
+	}
+}
+
+func TestVault_SnapshotNotes_HandlesNilSource(t *testing.T) {
+	v := &Vault{}
+	if got := v.SnapshotNotes(); got == nil {
+		t.Error("nil-source snapshot should return an empty non-nil map")
+	}
+}

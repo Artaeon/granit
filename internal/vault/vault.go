@@ -177,6 +177,25 @@ func (v *Vault) NoteCount() int {
 	return len(v.Notes)
 }
 
+// SnapshotNotes returns a shallow copy of the Notes map so a goroutine
+// can iterate it without racing against concurrent save/rename/delete
+// traffic on the main loop.
+//
+// Go's runtime panics on concurrent read+write of a map (not a data
+// race we can survive) so any long-running background job that walks
+// Notes MUST use this method rather than the raw field. The returned
+// map is decoupled — adding or removing entries on it doesn't affect
+// the live Vault — but the *Note values are shared; callers must only
+// read note fields they know the main loop doesn't mutate in-place
+// (Content is rewritten on save, so don't retain Content references).
+func (v *Vault) SnapshotNotes() map[string]*Note {
+	snap := make(map[string]*Note, len(v.Notes))
+	for k, n := range v.Notes {
+		snap[k] = n
+	}
+	return snap
+}
+
 func (v *Vault) SortedPaths() []string {
 	paths := make([]string, 0, len(v.Notes))
 	for p := range v.Notes {
