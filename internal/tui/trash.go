@@ -22,12 +22,10 @@ type TrashItem struct {
 
 // Trash provides a recycle-bin overlay for deleted notes.
 type Trash struct {
-	active    bool
+	OverlayBase
 	items     []TrashItem
 	cursor    int
 	scroll    int
-	width     int
-	height    int
 	vaultRoot string
 	result    string // restore action result path
 	doRestore bool
@@ -41,32 +39,16 @@ func NewTrash(vaultRoot string) Trash {
 	}
 }
 
-// SetSize updates the available dimensions for the overlay.
-func (t *Trash) SetSize(width, height int) {
-	t.width = width
-	t.height = height
-}
-
-// IsActive returns whether the trash overlay is currently visible.
-func (t *Trash) IsActive() bool {
-	return t.active
-}
-
 // Open scans the .granit-trash/ folder and populates the item list sorted
 // by deletion date (newest first).
 func (t *Trash) Open() {
-	t.active = true
+	t.Activate()
 	t.cursor = 0
 	t.scroll = 0
 	t.result = ""
 	t.doRestore = false
 	t.doPurge = false
 	t.scanTrash()
-}
-
-// Close hides the trash overlay.
-func (t *Trash) Close() {
-	t.active = false
 }
 
 // trashDir returns the absolute path to .granit-trash/.
