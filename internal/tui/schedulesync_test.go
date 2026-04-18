@@ -378,6 +378,46 @@ func TestCurrentPlannerBlock_EndIsExclusive(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// scheduleRefForSlotText — exact beats fuzzy; fuzzy prefers longest match
+// ---------------------------------------------------------------------------
+
+func TestScheduleRefForSlotText_ExactBeatsContainment(t *testing.T) {
+	tasks := []Task{
+		{Text: "Review PR description", NotePath: "a.md", LineNum: 1},
+		{Text: "Review", NotePath: "b.md", LineNum: 2},
+	}
+	ref := scheduleRefForSlotText("Review", tasks)
+	if ref.NotePath != "b.md" || ref.LineNum != 2 {
+		t.Errorf("expected exact match (b.md:2), got %+v", ref)
+	}
+}
+
+func TestScheduleRefForSlotText_PrefersLongestContainment(t *testing.T) {
+	// No exact match — fuzzy path. "Review" (shorter) appears first but
+	// "Review PR description" (longer) is the better match.
+	tasks := []Task{
+		{Text: "Review notes", NotePath: "a.md", LineNum: 1},
+		{Text: "Review PR description carefully", NotePath: "b.md", LineNum: 2},
+	}
+	ref := scheduleRefForSlotText("Review PR description", tasks)
+	if ref.NotePath != "b.md" {
+		t.Errorf("expected longest match (b.md), got %+v", ref)
+	}
+}
+
+func TestScheduleRefForSlotText_NoMatch_ReturnsTextOnly(t *testing.T) {
+	ref := scheduleRefForSlotText("Does not exist", []Task{
+		{Text: "Unrelated", NotePath: "a.md", LineNum: 1},
+	})
+	if ref.hasLocation() {
+		t.Errorf("unexpected location match: %+v", ref)
+	}
+	if ref.Text != "Does not exist" {
+		t.Errorf("expected text-only fallback, got %+v", ref)
+	}
+}
+
 func TestWriteTaskScheduleMarker_StaleRef_DoesNotError(t *testing.T) {
 	root := newTestVault(t, map[string]string{
 		"notes.md": "- [ ] Only\n",

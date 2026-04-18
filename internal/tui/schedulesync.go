@@ -329,8 +329,14 @@ func isTaskSlot(slotType string) bool {
 // scheduleRefForSlotText resolves a slot's task text back to a source-task
 // reference by matching against the parsed task list. Returns a text-only
 // ref when nothing matches (caller should treat the slot as planner-only).
-// Matching is fuzzy: exact text wins, then either-direction containment —
-// the AI scheduler sometimes trims or paraphrases task text.
+//
+// Matching order:
+//  1. Exact normalised-text equality.
+//  2. Either-direction substring containment — the AI scheduler sometimes
+//     trims or paraphrases task text. Among candidates, the longest
+//     match wins so "Review" doesn't beat "Review PR description" when
+//     both contain the needle. Result order is then stable (task file
+//     order) and doesn't flip across re-scans.
 func scheduleRefForSlotText(taskText string, tasks []Task) ScheduleRef {
 	if taskText == "" {
 		return ScheduleRef{}
@@ -341,14 +347,24 @@ func scheduleRefForSlotText(taskText string, tasks []Task) ScheduleRef {
 			return ScheduleRef{NotePath: t.NotePath, LineNum: t.LineNum, Text: t.Text}
 		}
 	}
-	for _, t := range tasks {
+	best := -1
+	bestLen := 0
+	for i, t := range tasks {
 		norm := normalizeBlockText(t.Text)
 		if norm == "" {
 			continue
 		}
-		if strings.Contains(norm, needle) || strings.Contains(needle, norm) {
-			return ScheduleRef{NotePath: t.NotePath, LineNum: t.LineNum, Text: t.Text}
+		if !(strings.Contains(norm, needle) || strings.Contains(needle, norm)) {
+			continue
 		}
+		if len(norm) > bestLen {
+			best = i
+			bestLen = len(norm)
+		}
+	}
+	if best >= 0 {
+		t := tasks[best]
+		return ScheduleRef{NotePath: t.NotePath, LineNum: t.LineNum, Text: t.Text}
 	}
 	return ScheduleRef{Text: taskText}
 }
