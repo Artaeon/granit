@@ -116,7 +116,11 @@ func readPlannerScheduleBlocks(vaultRoot, date string) []PlannerBlock {
 	return blocks
 }
 
-// parseScheduleBlockLine parses a "- HH:MM-HH:MM | text | type [| done]" line.
+// parseScheduleBlockLine parses a "- HH:MM-HH:MM | text | type [| done] [| @ref]" line.
+// Trailing fields beyond type are order-independent flags:
+//
+//	"done"                 → block is completed
+//	"@notepath:lineNum"    → source-task reference (optional; for matching)
 func parseScheduleBlockLine(line, date string) (PlannerBlock, bool) {
 	trimmed := strings.TrimPrefix(line, "- ")
 	parts := strings.Split(trimmed, " | ")
@@ -134,19 +138,49 @@ func parseScheduleBlockLine(line, date string) (PlannerBlock, bool) {
 		Text:      strings.TrimSpace(parts[1]),
 		BlockType: strings.TrimSpace(strings.ToLower(parts[2])),
 	}
-	if len(parts) >= 4 && strings.TrimSpace(parts[3]) == "done" {
-		b.Done = true
+	for _, extra := range parts[3:] {
+		extra = strings.TrimSpace(extra)
+		switch {
+		case extra == "done":
+			b.Done = true
+		case strings.HasPrefix(extra, "@"):
+			if ref, ok := parseSourceRefSuffix(extra[1:]); ok {
+				ref.Text = b.Text
+				b.SourceRef = ref
+			}
+		}
 	}
 	return b, true
 }
 
+// parseSourceRefSuffix parses "notepath:lineNum" into a ScheduleRef. Returns
+// false if the shape is wrong.
+func parseSourceRefSuffix(s string) (ScheduleRef, bool) {
+	// Walk from the end — note paths may contain colons on exotic filesystems,
+	// but line numbers are always trailing digits after the last colon.
+	i := strings.LastIndex(s, ":")
+	if i <= 0 || i == len(s)-1 {
+		return ScheduleRef{}, false
+	}
+	path := s[:i]
+	lineStr := s[i+1:]
+	var line int
+	if _, err := fmt.Sscanf(lineStr, "%d", &line); err != nil || line < 1 {
+		return ScheduleRef{}, false
+	}
+	return ScheduleRef{NotePath: path, LineNum: line}, true
+}
+
 // formatScheduleBlockLine renders a PlannerBlock as its "- ..." line form.
 func formatScheduleBlockLine(b PlannerBlock) string {
-	suffix := ""
+	var suffix strings.Builder
 	if b.Done {
-		suffix = " | done"
+		suffix.WriteString(" | done")
 	}
-	return fmt.Sprintf("- %s-%s | %s | %s%s", b.StartTime, b.EndTime, b.Text, b.BlockType, suffix)
+	if b.SourceRef.hasLocation() {
+		fmt.Fprintf(&suffix, " | @%s:%d", b.SourceRef.NotePath, b.SourceRef.LineNum)
+	}
+	return fmt.Sprintf("- %s-%s | %s | %s%s", b.StartTime, b.EndTime, b.Text, b.BlockType, suffix.String())
 }
 
 // writePlannerScheduleBlocks replaces the ## Schedule section of

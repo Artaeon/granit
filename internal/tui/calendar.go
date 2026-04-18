@@ -32,6 +32,8 @@ type DailyFocus struct {
 }
 
 // PlannerBlock represents a scheduled block from the daily planner.
+// SourceRef, when set, identifies the task line that produced this block so
+// upsert/remove can match precisely even when multiple tasks share text.
 type PlannerBlock struct {
 	Date      string // YYYY-MM-DD
 	StartTime string // HH:MM
@@ -39,6 +41,7 @@ type PlannerBlock struct {
 	Text      string
 	BlockType string // task, event, break, focus
 	Done      bool
+	SourceRef ScheduleRef // optional — empty for hand-written / event blocks
 }
 
 // TaskToggle represents a task whose completion state was toggled in the calendar.

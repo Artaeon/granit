@@ -261,6 +261,85 @@ func TestWriteTaskScheduleMarker_PreciseRef_TargetsExactLine(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// SourceRef round-trip — precise match when task text collides
+// ---------------------------------------------------------------------------
+
+func TestSetTaskSchedule_RoundTripsSourceRef(t *testing.T) {
+	root := newTestVault(t, map[string]string{
+		"projects/work.md": "- [ ] Deploy\n",
+	})
+	ref := ScheduleRef{NotePath: "projects/work.md", LineNum: 1, Text: "Deploy"}
+	if err := SetTaskSchedule(root, "2026-04-18", ref, "09:00", "10:00", "task"); err != nil {
+		t.Fatal(err)
+	}
+	plan := readFile(t, filepath.Join(root, "Planner", "2026-04-18.md"))
+	if !strings.Contains(plan, "@projects/work.md:1") {
+		t.Errorf("planner did not round-trip source ref:\n%s", plan)
+	}
+	// Re-parse and confirm the block carries the ref back.
+	blocks := readPlannerScheduleBlocks(root, "2026-04-18")
+	if len(blocks) != 1 {
+		t.Fatalf("got %d blocks, want 1", len(blocks))
+	}
+	if blocks[0].SourceRef.NotePath != "projects/work.md" || blocks[0].SourceRef.LineNum != 1 {
+		t.Errorf("parsed ref mismatch: %+v", blocks[0].SourceRef)
+	}
+}
+
+func TestSetTaskSchedule_PreciseMatch_WhenTextIsDuplicated(t *testing.T) {
+	// Two notes both contain a task with identical text. Scheduling each one
+	// must produce two distinct planner blocks — text matching alone would
+	// collapse them.
+	root := newTestVault(t, map[string]string{
+		"projects/a.md": "- [ ] Review\n",
+		"projects/b.md": "- [ ] Review\n",
+	})
+	refA := ScheduleRef{NotePath: "projects/a.md", LineNum: 1, Text: "Review"}
+	refB := ScheduleRef{NotePath: "projects/b.md", LineNum: 1, Text: "Review"}
+	if err := SetTaskSchedule(root, "2026-04-18", refA, "09:00", "10:00", "task"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetTaskSchedule(root, "2026-04-18", refB, "14:00", "15:00", "task"); err != nil {
+		t.Fatal(err)
+	}
+	blocks := readPlannerScheduleBlocks(root, "2026-04-18")
+	if len(blocks) != 2 {
+		plan := readFile(t, filepath.Join(root, "Planner", "2026-04-18.md"))
+		t.Fatalf("got %d blocks, want 2:\n%s", len(blocks), plan)
+	}
+}
+
+func TestParseScheduleBlockLine_BackCompatWithoutRef(t *testing.T) {
+	// Existing planner files written before SourceRef must still parse.
+	b, ok := parseScheduleBlockLine("- 09:00-10:00 | Task | task", "2026-04-18")
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if b.SourceRef.hasLocation() {
+		t.Errorf("expected empty SourceRef, got %+v", b.SourceRef)
+	}
+	if b.Done {
+		t.Errorf("expected Done=false")
+	}
+
+	// done flag still works
+	b, _ = parseScheduleBlockLine("- 09:00-10:00 | Task | task | done", "2026-04-18")
+	if !b.Done {
+		t.Error("done flag lost")
+	}
+
+	// done + ref in either order
+	b, _ = parseScheduleBlockLine("- 09:00-10:00 | Task | task | done | @notes.md:5", "2026-04-18")
+	if !b.Done || b.SourceRef.NotePath != "notes.md" || b.SourceRef.LineNum != 5 {
+		t.Errorf("done+ref combo: %+v", b)
+	}
+	b, _ = parseScheduleBlockLine("- 09:00-10:00 | Task | task | @notes.md:5 | done", "2026-04-18")
+	if !b.Done || b.SourceRef.NotePath != "notes.md" || b.SourceRef.LineNum != 5 {
+		t.Errorf("ref+done combo: %+v", b)
+	}
+}
+
 func TestWriteTaskScheduleMarker_StaleRef_DoesNotError(t *testing.T) {
 	root := newTestVault(t, map[string]string{
 		"notes.md": "- [ ] Only\n",

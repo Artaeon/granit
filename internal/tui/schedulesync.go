@@ -68,6 +68,7 @@ func SetTaskSchedule(vaultRoot, date string, ref ScheduleRef, start, end, blockT
 		EndTime:   end,
 		Text:      ref.Text,
 		BlockType: blockType,
+		SourceRef: ref,
 	}
 	if err := upsertPlannerBlock(vaultRoot, date, ref, block); err != nil && firstErr == nil {
 		firstErr = err
@@ -225,9 +226,12 @@ func walkVaultMarkdown(vaultRoot string, visit func(path string) bool) error {
 // ---------------------------------------------------------------------------
 
 // blockMatchesRef returns true if a parsed planner block refers to the
-// same logical task as ref. For now matching is purely by normalised text;
-// when PlannerBlock carries an explicit SourceRef we'll prefer that.
+// same logical task as ref. Precise match (NotePath+LineNum) wins; we fall
+// back to normalised text when the block has no recorded source ref.
 func blockMatchesRef(b PlannerBlock, ref ScheduleRef) bool {
+	if ref.hasLocation() && b.SourceRef.hasLocation() {
+		return b.SourceRef.NotePath == ref.NotePath && b.SourceRef.LineNum == ref.LineNum
+	}
 	if ref.Text == "" {
 		return false
 	}
