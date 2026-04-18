@@ -11,13 +11,11 @@ import (
 )
 
 type TagBrowser struct {
-	active   bool
+	OverlayBase
 	vault    *vault.Vault
 	tags     []tagEntry
 	cursor   int
 	scroll   int
-	width    int
-	height   int
 	mode     int // 0=tag list, 1=notes for selected tag
 	selected string // selected tag
 	notes    []string // notes for selected tag
@@ -36,27 +34,14 @@ func NewTagBrowser(v *vault.Vault) TagBrowser {
 	}
 }
 
-func (t *TagBrowser) SetSize(width, height int) {
-	t.width = width
-	t.height = height
-}
-
 func (t *TagBrowser) Open() {
-	t.active = true
+	t.Activate()
 	t.cursor = 0
 	t.scroll = 0
 	t.mode = 0
 	t.selected = ""
 	t.result = ""
 	t.collectTags()
-}
-
-func (t *TagBrowser) Close() {
-	t.active = false
-}
-
-func (t *TagBrowser) IsActive() bool {
-	return t.active
 }
 
 func (t *TagBrowser) SelectedNote() string {
