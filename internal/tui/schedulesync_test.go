@@ -369,6 +369,46 @@ func TestAppendPlannerBlock_RepeatsDontCollapse(t *testing.T) {
 // parseSourceRefSuffix — negative cases
 // ---------------------------------------------------------------------------
 
+func TestParseSlot_AcceptsValid(t *testing.T) {
+	cases := map[string]int{
+		"00:00": 0,
+		"09:30": 9*60 + 30,
+		"23:59": 23*60 + 59,
+	}
+	for in, want := range cases {
+		got, ok := parseSlot(in)
+		if !ok || got != want {
+			t.Errorf("parseSlot(%q) = (%d, %v); want (%d, true)", in, got, ok, want)
+		}
+	}
+}
+
+func TestParseSlot_RejectsMalformed(t *testing.T) {
+	for _, in := range []string{
+		"", "abc", "12", "12:", ":30", "12:abc", "abc:30",
+		"24:00", "12:60", "-1:00", "12:-5", "12:00:00",
+	} {
+		if _, ok := parseSlot(in); ok {
+			t.Errorf("parseSlot(%q) should reject", in)
+		}
+	}
+}
+
+func TestParseScheduleBlockLine_RejectsBadTimeRange(t *testing.T) {
+	// Malformed start/end must NOT silently parse as midnight blocks.
+	cases := []string{
+		"- abc-def | task | task",
+		"- 09:00-25:00 | task | task",
+		"- 12:60-13:00 | task | task",
+		"- :-: | task | task",
+	}
+	for _, line := range cases {
+		if _, ok := parseScheduleBlockLine(line, "2026-04-18"); ok {
+			t.Errorf("expected rejection of %q", line)
+		}
+	}
+}
+
 func TestParseSourceRefSuffix_Rejects(t *testing.T) {
 	cases := []struct {
 		in     string

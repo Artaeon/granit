@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -98,10 +99,20 @@ func parseScheduleBlockLine(line, date string) (PlannerBlock, bool) {
 	if len(timeParts) != 2 {
 		return PlannerBlock{}, false
 	}
+	startStr := strings.TrimSpace(timeParts[0])
+	endStr := strings.TrimSpace(timeParts[1])
+	// Reject malformed times at the parser boundary so they don't become
+	// silent midnight blocks downstream.
+	if _, ok := parseSlot(startStr); !ok {
+		return PlannerBlock{}, false
+	}
+	if _, ok := parseSlot(endStr); !ok {
+		return PlannerBlock{}, false
+	}
 	b := PlannerBlock{
 		Date:      date,
-		StartTime: strings.TrimSpace(timeParts[0]),
-		EndTime:   strings.TrimSpace(timeParts[1]),
+		StartTime: startStr,
+		EndTime:   endStr,
 		Text:      strings.TrimSpace(parts[1]),
 		BlockType: strings.TrimSpace(strings.ToLower(parts[2])),
 	}
@@ -304,15 +315,34 @@ func replaceDailySection(existing, newSection, heading string) string {
 	return strings.TrimRight(existing[:idx], "\n") + "\n\n" + newSection
 }
 
-// slotToMinutes converts "HH:MM" to minutes from midnight.
-func slotToMinutes(s string) int {
+// parseSlot strictly parses "HH:MM" into total minutes-from-midnight.
+// Returns ok=false for anything that isn't two non-negative ints
+// separated by a single colon, with hours 0..23 and minutes 0..59.
+// Used at parser boundaries (parseScheduleBlockLine) to reject malformed
+// schedule lines before they enter the system as silent midnights.
+func parseSlot(s string) (int, bool) {
 	parts := strings.SplitN(s, ":", 2)
-	if len(parts) != 2 {
-		return 0
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return 0, false
 	}
-	h, m := 0, 0
-	_, _ = fmt.Sscanf(s, "%d:%d", &h, &m)
-	return h*60 + m
+	h, err := strconv.Atoi(parts[0])
+	if err != nil || h < 0 || h > 23 {
+		return 0, false
+	}
+	m, err := strconv.Atoi(parts[1])
+	if err != nil || m < 0 || m > 59 {
+		return 0, false
+	}
+	return h*60 + m, true
+}
+
+// slotToMinutes converts "HH:MM" to minutes from midnight, returning 0
+// for malformed input. Lenient — meant for in-tree callers that already
+// hold parser-validated strings. New code that handles user/external
+// input should use parseSlot directly.
+func slotToMinutes(s string) int {
+	n, _ := parseSlot(s)
+	return n
 }
 
 // fmtTimeSlot formats minutes-from-midnight as "HH:MM".
