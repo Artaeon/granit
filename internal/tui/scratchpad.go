@@ -14,9 +14,7 @@ import (
 // Content is automatically saved to <vaultRoot>/.granit/scratchpad.md on close
 // and reloaded on open, so it survives between sessions.
 type Scratchpad struct {
-	active     bool
-	width      int
-	height     int
+	OverlayBase
 	vaultRoot  string
 	content    []string // lines of text
 	cursorLine int
@@ -33,21 +31,10 @@ func NewScratchpad() Scratchpad {
 	}
 }
 
-// IsActive reports whether the scratchpad overlay is currently visible.
-func (s Scratchpad) IsActive() bool {
-	return s.active
-}
-
-// SetSize updates the available terminal dimensions for the overlay.
-func (s *Scratchpad) SetSize(w, h int) {
-	s.width = w
-	s.height = h
-}
-
 // Open activates the scratchpad and loads persisted content from disk.
 // If the scratchpad file does not yet exist it is created with empty content.
 func (s *Scratchpad) Open(vaultRoot string) {
-	s.active = true
+	s.Activate()
 	s.vaultRoot = vaultRoot
 	s.cursorLine = 0
 	s.cursorCol = 0
@@ -57,10 +44,11 @@ func (s *Scratchpad) Open(vaultRoot string) {
 	s.load()
 }
 
-// Close saves content to disk and deactivates the overlay.
+// Close saves content to disk and deactivates the overlay. Overrides
+// OverlayBase.Close so the save happens before deactivation.
 func (s *Scratchpad) Close() {
 	s.save()
-	s.active = false
+	s.OverlayBase.Close()
 }
 
 // GetContent returns the full scratchpad text as a single string with lines

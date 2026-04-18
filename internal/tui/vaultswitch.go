@@ -16,9 +16,7 @@ import (
 // vaults without restarting. It loads the vault list from the global config,
 // allows navigation, removal, and adding new vault paths.
 type VaultSwitch struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	vaults config.VaultList
 	cursor int
@@ -38,20 +36,9 @@ func NewVaultSwitch() VaultSwitch {
 	return VaultSwitch{}
 }
 
-// IsActive reports whether the vault switch overlay is visible.
-func (vs VaultSwitch) IsActive() bool {
-	return vs.active
-}
-
-// SetSize updates the available terminal dimensions for the overlay.
-func (vs *VaultSwitch) SetSize(w, h int) {
-	vs.width = w
-	vs.height = h
-}
-
 // Open loads the vault list from config and activates the overlay.
 func (vs *VaultSwitch) Open() {
-	vs.active = true
+	vs.Activate()
 	vs.vaults = config.LoadVaultList()
 	vs.cursor = 0
 	vs.scroll = 0
@@ -59,11 +46,6 @@ func (vs *VaultSwitch) Open() {
 	vs.addInput = ""
 	vs.selectedPath = ""
 	vs.selected = false
-}
-
-// Close hides the overlay.
-func (vs *VaultSwitch) Close() {
-	vs.active = false
 }
 
 // GetSelectedVault returns the path of the vault the user chose and resets the

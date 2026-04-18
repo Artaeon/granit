@@ -11,9 +11,7 @@ import (
 // StatusTray is an overlay that shows expanded status bar information
 // with the ability to jump to related overlays for details.
 type StatusTray struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 	cursor int
 	scroll int
 
@@ -46,18 +44,9 @@ func NewStatusTray() StatusTray {
 	return StatusTray{}
 }
 
-func (t StatusTray) IsActive() bool {
-	return t.active
-}
-
-func (t *StatusTray) SetSize(w, h int) {
-	t.width = w
-	t.height = h
-}
-
 // Open populates the tray with current status snapshots and activates it.
 func (t *StatusTray) Open(sb StatusBar, researchRunning bool, researchStatus string) {
-	t.active = true
+	t.Activate()
 	t.cursor = 0
 	t.scroll = 0
 	t.gitInitialized = sb.gitInitialized

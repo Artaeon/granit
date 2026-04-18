@@ -9,13 +9,11 @@ import (
 )
 
 type FindReplace struct {
-	active      bool
+	OverlayBase
 	findQuery   string
 	replaceText string
 	matches     []FindMatch
 	matchIdx    int
-	width       int
-	height      int
 	mode        int // 0=find, 1=replace
 	focusField  int // 0=find field, 1=replace field
 	resultLine  int // line to jump to
@@ -44,11 +42,6 @@ type FindMatch struct {
 
 func NewFindReplace() FindReplace {
 	return FindReplace{resultLine: -1, historyIdx: -1}
-}
-
-func (fr *FindReplace) SetSize(width, height int) {
-	fr.width = width
-	fr.height = height
 }
 
 func (fr *FindReplace) OpenFind(vaultRoot string) {
@@ -89,14 +82,6 @@ func (fr *FindReplace) OpenReplace(vaultRoot string) {
 	fr.previewScroll = 0
 	h := loadSearchHistory(vaultRoot)
 	fr.history = h.FindReplace
-}
-
-func (fr *FindReplace) Close() {
-	fr.active = false
-}
-
-func (fr *FindReplace) IsActive() bool {
-	return fr.active
 }
 
 // IsRegexMode reports whether regex search is enabled.
