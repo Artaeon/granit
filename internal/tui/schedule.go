@@ -59,7 +59,13 @@ func GenerateLocalSchedule(input ScheduleInput) []daySlot {
 		workEnd = 22 * 60
 	}
 	if workStart >= workEnd {
-		return nil
+		// Invoked after the configured end-of-day (e.g. running Plan My Day
+		// at 22:30 with WorkEnd=22:00): widen the window by one slot so we
+		// still emit the daily review instead of returning nothing at all.
+		workEnd = workStart + 15
+		if workEnd > 24*60 {
+			return nil
+		}
 	}
 
 	type timeRange struct{ start, end int }
