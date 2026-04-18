@@ -1621,8 +1621,9 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 	// slots, locate the source Task (by text) so the ⏰ marker lands on the
 	// same line TaskManager reads from — otherwise the task's Plan view
 	// would still show it as unscheduled after the AI ran.
+	matcher := newTaskTextMatcher(m.cachedTasks)
 	for _, slot := range schedule {
-		ref := scheduleRefForSlotText(slot.Task, m.cachedTasks)
+		ref := matcher.Find(slot.Task)
 		kind := NormaliseBlockType(slot.Type)
 		block := PlannerBlock{
 			Date: today, StartTime: slot.Start, EndTime: slot.End,

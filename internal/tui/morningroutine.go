@@ -565,8 +565,9 @@ func (mr *MorningRoutine) saveToDailyNote() tea.Cmd {
 		// Route each slot through the unified schedule layer so task-slots
 		// also get a ⏰ marker on their source line. Non-task kinds (break,
 		// lunch, meeting, habit, review) only land in the planner file.
+		matcher := newTaskTextMatcher(allTasks)
 		for _, slot := range schedule {
-			ref := scheduleRefForSlotText(slot.Task, allTasks)
+			ref := matcher.Find(slot.Task)
 			kind := NormaliseBlockType(slot.Type)
 			if kind.IsTaskLike() && ref.hasLocation() {
 				recordErr("schedule slot", SetTaskSchedule(vaultRoot, today, ref, slot.Start, slot.End, kind))

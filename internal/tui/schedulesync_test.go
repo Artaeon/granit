@@ -565,6 +565,57 @@ func TestScheduleRefForSlotText_PrefersLongestContainment(t *testing.T) {
 	}
 }
 
+func TestTaskTextMatcher_ExactBeatsFuzzy_AmortisedPath(t *testing.T) {
+	// Same semantics as scheduleRefForSlotText, but through the cached
+	// matcher used by apply loops.
+	tasks := []Task{
+		{Text: "Review PR description", NotePath: "a.md", LineNum: 1},
+		{Text: "Review", NotePath: "b.md", LineNum: 2},
+	}
+	m := newTaskTextMatcher(tasks)
+	if ref := m.Find("Review"); ref.NotePath != "b.md" {
+		t.Errorf("exact match should win, got %+v", ref)
+	}
+	if ref := m.Find("Review PR description"); ref.NotePath != "a.md" {
+		t.Errorf("exact match should win on longer text too, got %+v", ref)
+	}
+}
+
+func TestTaskTextMatcher_FuzzyPrefersLongest(t *testing.T) {
+	// No exact match for the query — fuzzy picks the longest containing
+	// task.
+	tasks := []Task{
+		{Text: "Review notes", NotePath: "a.md"},
+		{Text: "Review PR description carefully", NotePath: "b.md"},
+	}
+	m := newTaskTextMatcher(tasks)
+	if ref := m.Find("Review PR description"); ref.NotePath != "b.md" {
+		t.Errorf("expected longest fuzzy match (b.md), got %+v", ref)
+	}
+}
+
+func TestTaskTextMatcher_NoMatchReturnsTextOnly(t *testing.T) {
+	m := newTaskTextMatcher([]Task{{Text: "Unrelated", NotePath: "a.md"}})
+	ref := m.Find("Does not exist")
+	if ref.hasLocation() {
+		t.Errorf("expected text-only ref, got %+v", ref)
+	}
+	if ref.Text != "Does not exist" {
+		t.Errorf("expected text preserved, got %q", ref.Text)
+	}
+}
+
+func TestTaskTextMatcher_NilAndEmptyInputs(t *testing.T) {
+	var m *taskTextMatcher
+	if ref := m.Find("x"); ref.Text != "" {
+		t.Errorf("nil matcher should return zero ref, got %+v", ref)
+	}
+	m2 := newTaskTextMatcher(nil)
+	if ref := m2.Find(""); ref.Text != "" {
+		t.Errorf("empty query should return zero ref, got %+v", ref)
+	}
+}
+
 func TestScheduleRefForSlotText_NoMatch_ReturnsTextOnly(t *testing.T) {
 	ref := scheduleRefForSlotText("Does not exist", []Task{
 		{Text: "Unrelated", NotePath: "a.md", LineNum: 1},

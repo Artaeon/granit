@@ -409,20 +409,63 @@ func isTaskSlot(slotType string) bool {
 //     match wins so "Review" doesn't beat "Review PR description" when
 //     both contain the needle. Result order is then stable (task file
 //     order) and doesn't flip across re-scans.
+//
+// For loop callers (apply a whole schedule), prefer
+// newTaskTextMatcher(tasks).Find(text) so the normalisation and exact-
+// match index build once instead of per-slot.
 func scheduleRefForSlotText(taskText string, tasks []Task) ScheduleRef {
-	if taskText == "" {
+	return newTaskTextMatcher(tasks).Find(taskText)
+}
+
+// taskTextMatcher is an amortised version of scheduleRefForSlotText. Build
+// once per apply-loop, call Find per slot — exact-match is an O(1) map
+// lookup instead of the original O(N) scan. Fuzzy fallback still iterates
+// but in practice most slots hit the exact index.
+type taskTextMatcher struct {
+	tasks []Task
+	// exact maps normalised task text to the first matching task
+	// index. First-wins keeps deterministic ordering when multiple
+	// tasks have identical normalised text.
+	exact map[string]int
+	// norms caches normalised text per task index so the fuzzy pass
+	// doesn't re-run the regex on every call.
+	norms []string
+}
+
+// newTaskTextMatcher prepares the exact-match index and norm cache.
+func newTaskTextMatcher(tasks []Task) *taskTextMatcher {
+	m := &taskTextMatcher{
+		tasks: tasks,
+		exact: make(map[string]int, len(tasks)),
+		norms: make([]string, len(tasks)),
+	}
+	for i, t := range tasks {
+		norm := normalizeBlockText(t.Text)
+		m.norms[i] = norm
+		if norm == "" {
+			continue
+		}
+		if _, exists := m.exact[norm]; !exists {
+			m.exact[norm] = i
+		}
+	}
+	return m
+}
+
+// Find returns the ScheduleRef matching taskText with the same precedence
+// rules as scheduleRefForSlotText.
+func (m *taskTextMatcher) Find(taskText string) ScheduleRef {
+	if taskText == "" || m == nil {
 		return ScheduleRef{}
 	}
 	needle := normalizeBlockText(taskText)
-	for _, t := range tasks {
-		if normalizeBlockText(t.Text) == needle {
-			return ScheduleRef{NotePath: t.NotePath, LineNum: t.LineNum, Text: t.Text}
-		}
+	if i, ok := m.exact[needle]; ok {
+		t := m.tasks[i]
+		return ScheduleRef{NotePath: t.NotePath, LineNum: t.LineNum, Text: t.Text}
 	}
 	best := -1
 	bestLen := 0
-	for i, t := range tasks {
-		norm := normalizeBlockText(t.Text)
+	for i, norm := range m.norms {
 		if norm == "" {
 			continue
 		}
@@ -435,7 +478,7 @@ func scheduleRefForSlotText(taskText string, tasks []Task) ScheduleRef {
 		}
 	}
 	if best >= 0 {
-		t := tasks[best]
+		t := m.tasks[best]
 		return ScheduleRef{NotePath: t.NotePath, LineNum: t.LineNum, Text: t.Text}
 	}
 	return ScheduleRef{Text: taskText}

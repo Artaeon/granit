@@ -1557,10 +1557,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// block land together. Non-task slots (break, lunch)
 					// only get a planner block — they have no source line.
 					today := time.Now().Format("2006-01-02")
+					matcher := newTaskTextMatcher(m.taskManager.allTasks)
 					for _, slot := range slots {
 						start := fmt.Sprintf("%02d:%02d", slot.StartHour, slot.StartMin)
 						end := fmt.Sprintf("%02d:%02d", slot.EndHour, slot.EndMin)
-						ref := scheduleRefForSlotText(slot.Task, m.taskManager.allTasks)
+						ref := matcher.Find(slot.Task)
 						kind := NormaliseBlockType(slot.Type)
 						if kind.IsTaskLike() && ref.hasLocation() {
 							_ = SetTaskSchedule(m.vault.Root, today, ref, start, end, kind)
