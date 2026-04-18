@@ -27,12 +27,10 @@ type BookmarkData struct {
 }
 
 type Bookmarks struct {
-	active     bool
+	OverlayBase
 	data       BookmarkData
 	cursor     int
 	scroll     int
-	width      int
-	height     int
 	mode       int // 0=starred, 1=recent, 2=reading
 	result     string
 	vaultRoot  string
@@ -49,24 +47,11 @@ func NewBookmarks(vaultRoot string) Bookmarks {
 	return bm
 }
 
-func (bm *Bookmarks) SetSize(width, height int) {
-	bm.width = width
-	bm.height = height
-}
-
 func (bm *Bookmarks) Open() {
-	bm.active = true
+	bm.Activate()
 	bm.cursor = 0
 	bm.scroll = 0
 	bm.result = ""
-}
-
-func (bm *Bookmarks) Close() {
-	bm.active = false
-}
-
-func (bm *Bookmarks) IsActive() bool {
-	return bm.active
 }
 
 func (bm *Bookmarks) SelectedNote() string {
