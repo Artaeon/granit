@@ -742,11 +742,12 @@ func (nh NoteHistory) viewSnapshot() string {
 
 		for i := scroll; i < endLine; i++ {
 			line := lines[i]
-			trimmed := strings.TrimSpace(line)
 
-			// Truncate long lines
+			// Truncate long lines, then derive trimmed once on the
+			// truncated form (the prior raw-line trim was dead — it was
+			// overwritten before any read).
 			line = TruncateDisplay(line, innerW-4)
-			trimmed = strings.TrimSpace(line)
+			trimmed := strings.TrimSpace(line)
 
 			var styled string
 			switch {

@@ -530,7 +530,9 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 				dt, _ := time.Parse("2006-01-02", group)
 				dayLabel := dt.Format("Monday, Jan 2")
 				daysAway := tmDaysUntil(group)
-				sectionColor := lavender
+				// Every switch arm assigns sectionColor; no fall-through
+				// default needed beyond the explicit overlay1 below.
+				var sectionColor lipgloss.Color
 				suffix := ""
 				switch {
 				case tmIsOverdue(group):

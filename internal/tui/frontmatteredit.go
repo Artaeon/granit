@@ -606,7 +606,10 @@ func (fe FrontmatterEditor) viewPresetMenu(innerWidth int) string {
 		} else {
 			st := lipgloss.NewStyle().Foreground(text)
 			if exists {
-				st = DimStyle.Copy().Strikethrough(true)
+				// lipgloss styles are value types; assignment + chained
+				// modifier produces a fresh style without mutating the
+				// shared DimStyle. (The deprecated .Copy() did the same.)
+				st = DimStyle.Strikethrough(true)
 			}
 			b.WriteString("    " + st.Render(label))
 		}

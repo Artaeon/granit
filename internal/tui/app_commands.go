@@ -1650,8 +1650,5 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 	m.setFocus(focusEditor)
 }
 
-// loadPlannerBlocks, writePlannerFocus, replaceDailySection,
-// updateTaskScheduleInFile, slotToMinutes, fmtTimeSlot, and gatherTodayEvents
-// are in planner_io.go. The unified schedule-write API
+// Planner I/O lives in planner_io.go; the unified schedule-write API
 // (SetTaskSchedule / UpsertPlannerBlock / …) lives in schedulesync.go.
-// GenerateLocalSchedule and FormatDayPlanMarkdown are in schedule.go.
