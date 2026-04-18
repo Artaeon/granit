@@ -86,6 +86,22 @@ type Pomodoro struct {
 
 	// Daily session goal
 	pomodoroGoal int // target sessions per day, 0 means use config default
+
+	// lastSaveErr stores the most recent error from writing a session
+	// entry to FocusSessions/*.md so the host Model can surface it via
+	// reportError. Consumed once.
+	lastSaveErr error
+}
+
+// ConsumeSaveError returns and clears the last pomodoro session-log
+// write error, if any. The host Model calls this after each Update.
+func (p *Pomodoro) ConsumeSaveError() error {
+	if p == nil {
+		return nil
+	}
+	err := p.lastSaveErr
+	p.lastSaveErr = nil
+	return err
 }
 
 type pomodoroSession struct {
@@ -1112,5 +1128,7 @@ func (p *Pomodoro) logSessionEntry(task, project string, durationMin int, comple
 	if existing[len(existing)-1] != '\n' {
 		existing = append(existing, '\n')
 	}
-	_ = atomicWriteNote(filePath, string(existing)+entry.String())
+	if err := atomicWriteNote(filePath, string(existing)+entry.String()); err != nil {
+		p.lastSaveErr = err
+	}
 }

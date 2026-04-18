@@ -584,6 +584,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.focusSession.IsActive() {
 			var cmd tea.Cmd
 			m.focusSession, cmd = m.focusSession.Update(msg)
+			m.reportError("save focus session", m.focusSession.ConsumeSaveError())
 			return m, cmd
 		}
 		return m, nil
@@ -885,6 +886,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pomodoroTickMsg:
 		var cmd tea.Cmd
 		m.pomodoro, cmd = m.pomodoro.Update(msg)
+		m.reportError("save pomodoro session", m.pomodoro.ConsumeSaveError())
 		m.syncPomodoroCompletions()
 		m.syncPomodoroTimeRecords()
 		return m, cmd
@@ -1399,6 +1401,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.focusSession.IsActive() {
 			var cmd tea.Cmd
 			m.focusSession, cmd = m.focusSession.Update(msg)
+			m.reportError("save focus session", m.focusSession.ConsumeSaveError())
 			return m, cmd
 		}
 
@@ -2409,6 +2412,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.pomodoro.IsActive() {
 			var cmd tea.Cmd
 			m.pomodoro, cmd = m.pomodoro.Update(msg)
+			m.reportError("save pomodoro session", m.pomodoro.ConsumeSaveError())
 			m.syncPomodoroCompletions()
 			m.syncPomodoroTimeRecords()
 			return m, cmd

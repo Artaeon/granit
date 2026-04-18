@@ -61,6 +61,21 @@ type FocusSession struct {
 	sessionNotes string
 	totalElapsed time.Duration
 	sessionTask  string
+
+	// lastSaveErr stores the most recent FocusSessions/*.md write error
+	// so the host Model can surface it via reportError. Consumed once.
+	lastSaveErr error
+}
+
+// ConsumeSaveError returns and clears the last focus-session log write
+// error, if any. The host Model calls this after each Update.
+func (fs *FocusSession) ConsumeSaveError() error {
+	if fs == nil {
+		return nil
+	}
+	err := fs.lastSaveErr
+	fs.lastSaveErr = nil
+	return err
 }
 
 // NewFocusSession creates a FocusSession in its default (inactive) state.
@@ -556,7 +571,9 @@ func (fs *FocusSession) saveSession() {
 	if existing[len(existing)-1] != '\n' {
 		existing = append(existing, '\n')
 	}
-	_ = atomicWriteNote(filePath, string(existing)+entry.String())
+	if err := atomicWriteNote(filePath, string(existing)+entry.String()); err != nil {
+		fs.lastSaveErr = err
+	}
 }
 
 // View renders the FocusSession overlay.
