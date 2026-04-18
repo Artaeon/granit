@@ -117,9 +117,7 @@ func resolveRelativeDate(ref string) string {
 }
 
 type QuickCapture struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 
 	input     string
@@ -129,27 +127,14 @@ type QuickCapture struct {
 	resultPath string
 }
 
-func (qc *QuickCapture) SetSize(width, height int) {
-	qc.width = width
-	qc.height = height
-}
-
 func (qc *QuickCapture) Open(vaultRoot string) {
-	qc.active = true
+	qc.Activate()
 	qc.vaultRoot = vaultRoot
 	qc.input = ""
 	qc.mode = 0
 	qc.saved = false
 	qc.statusMsg = ""
 	qc.resultPath = ""
-}
-
-func (qc *QuickCapture) Close() {
-	qc.active = false
-}
-
-func (qc QuickCapture) IsActive() bool {
-	return qc.active
 }
 
 // GetResult returns the file path that was written to (consumed-once pattern).
