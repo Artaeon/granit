@@ -509,8 +509,7 @@ func (gm *GoalsMode) aiReviewGoal(goal Goal) tea.Cmd {
 	}
 
 	prompt := fmt.Sprintf(
-		"You are DEEPCOVEN, a direct and honest personal assistant.\n"+
-			"Review this goal and provide a brief, actionable assessment.\n\n"+
+		"Review this goal and provide a brief, actionable assessment.\n\n"+
 			"GOAL: %s\nDESCRIPTION: %s\nSTATUS: %s\nCREATED: %s\nTARGET DATE: %s\nPROGRESS: %d%%\nMILESTONES:\n%s\n\n"+
 			"Give a 3-5 line assessment covering:\n"+
 			"1. Progress vs timeline (are they on track?)\n"+
@@ -522,7 +521,7 @@ func (gm *GoalsMode) aiReviewGoal(goal Goal) tea.Cmd {
 
 	ai := gm.ai
 	return func() tea.Msg {
-		resp, err := ai.Chat("You are DEEPCOVEN, a direct and honest personal assistant.", prompt)
+		resp, err := ai.Chat(DeepCovenIntro("personal assistant"), prompt)
 		return gmAIReviewMsg{review: strings.TrimSpace(resp), err: err, goalID: goal.ID}
 	}
 }
@@ -681,19 +680,19 @@ func (gm *GoalsMode) aiGoalCoach() tea.Cmd {
 				"### Recommended Priority Order\n1. goal — why\n" +
 				"### Coach's Note\nshort honest advice"
 		} else {
-			systemPrompt = "You are DEEPCOVEN, a direct and honest personal goal coach.\n\n" +
-				"Analyze ALL of the user's goals holistically. Look for:\n" +
-				"1. Goals competing for the same time/energy\n" +
-				"2. Stalled goals that need attention or should be paused\n" +
-				"3. Goals off-track vs their target dates\n" +
-				"4. Priority adjustments based on deadline proximity and progress\n" +
-				"5. Quick wins that could build momentum\n\n" +
-				"Be brutally honest. No filler. Format as:\n" +
-				"## Goal Health Report\n" +
-				"### On Track\n- {goal}: {1 line status}\n" +
-				"### Needs Attention\n- {goal}: {what's wrong and what to do}\n" +
-				"### Recommended Priority Order\n1. {goal} — {why first}\n" +
-				"### Coach's Note\n{1-2 sentences of honest, actionable advice}"
+			systemPrompt = DeepCovenSystem("personal goal coach",
+				"Analyze ALL of the user's goals holistically. Look for:\n"+
+					"1. Goals competing for the same time/energy\n"+
+					"2. Stalled goals that need attention or should be paused\n"+
+					"3. Goals off-track vs their target dates\n"+
+					"4. Priority adjustments based on deadline proximity and progress\n"+
+					"5. Quick wins that could build momentum\n\n"+
+					"Be brutally honest. No filler. Format as:\n"+
+					"## Goal Health Report\n"+
+					"### On Track\n- {goal}: {1 line status}\n"+
+					"### Needs Attention\n- {goal}: {what's wrong and what to do}\n"+
+					"### Recommended Priority Order\n1. {goal} — {why first}\n"+
+					"### Coach's Note\n{1-2 sentences of honest, actionable advice}")
 		}
 
 		resp, err := ai.Chat(systemPrompt, sb.String())

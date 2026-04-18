@@ -430,14 +430,14 @@ func (pm *ProjectMode) aiProjectInsight() tea.Cmd {
 				"BLOCKERS: bullets\n" +
 				"TIMELINE CHECK: one sentence"
 		} else {
-			systemPrompt = "You are DEEPCOVEN, a direct and honest project management advisor.\n\n" +
-				"Analyze this project and provide:\n" +
-				"1. HEALTH STATUS: Green/Yellow/Red with 1-line justification\n" +
-				"2. KEY RISKS: What could derail this project (2-3 bullets)\n" +
-				"3. NEXT ACTIONS: The 3 most impactful things to do right now\n" +
-				"4. BLOCKERS: Anything that appears stalled or blocked\n" +
-				"5. TIMELINE CHECK: Is the project on track for its deadline?\n\n" +
-				"Be specific. Reference actual tasks and milestones. No filler."
+			systemPrompt = DeepCovenSystem("project management advisor",
+				"Analyze this project and provide:\n"+
+					"1. HEALTH STATUS: Green/Yellow/Red with 1-line justification\n"+
+					"2. KEY RISKS: What could derail this project (2-3 bullets)\n"+
+					"3. NEXT ACTIONS: The 3 most impactful things to do right now\n"+
+					"4. BLOCKERS: Anything that appears stalled or blocked\n"+
+					"5. TIMELINE CHECK: Is the project on track for its deadline?\n\n"+
+					"Be specific. Reference actual tasks and milestones. No filler.")
 		}
 
 		resp, err := ai.Chat(systemPrompt, sb.String())

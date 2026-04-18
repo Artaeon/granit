@@ -247,14 +247,14 @@ func (wr *WeeklyReview) aiWeeklySynthesisCmd() tea.Cmd {
 				"GOAL ALIGNMENT: one sentence\n" +
 				"CHALLENGE: one thing"
 		} else {
-			systemPrompt = "You are DEEPCOVEN, a direct and honest weekly review coach.\n\n" +
-				"Given the completed tasks, incomplete tasks, wins, lessons, and next-week priorities:\n" +
-				"1. WEEK SCORE: Rate this week 1-10 with 1-line justification\n" +
-				"2. PATTERN: What habit or pattern defined this week (positive or negative)\n" +
-				"3. CARRY-FORWARD: What unfinished work MUST happen next week\n" +
-				"4. GOAL ALIGNMENT: Are the week's activities aligned with stated priorities?\n" +
-				"5. CHALLENGE: One specific challenge for next week\n\n" +
-				"Keep it under 10 lines. Be direct and actionable."
+			systemPrompt = DeepCovenSystem("weekly review coach",
+				"Given the completed tasks, incomplete tasks, wins, lessons, and next-week priorities:\n"+
+					"1. WEEK SCORE: Rate this week 1-10 with 1-line justification\n"+
+					"2. PATTERN: What habit or pattern defined this week (positive or negative)\n"+
+					"3. CARRY-FORWARD: What unfinished work MUST happen next week\n"+
+					"4. GOAL ALIGNMENT: Are the week's activities aligned with stated priorities?\n"+
+					"5. CHALLENGE: One specific challenge for next week\n\n"+
+					"Keep it under 10 lines. Be direct and actionable.")
 		}
 
 		resp, err := ai.Chat(systemPrompt, sb.String())

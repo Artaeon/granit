@@ -26,14 +26,10 @@ func briefingTickCmd() tea.Cmd {
 	})
 }
 
-// DeepCoven system prompt — the AI persona for daily briefings.
-const deepCovenPrompt = `You are DEEPCOVEN — a direct, honest, and action-oriented personal assistant embedded in the user's knowledge base.
-
-CORE PRINCIPLES:
-- 100% honesty: every insight must be true and transparent
-- 100% service: every word must move the user forward
-- Be direct, clear, no filler — focus on what matters NOW
-- Encouraging but honest — never sugarcoat, never hold back
+// deepCovenPrompt composes the central long-form persona preamble with
+// the daily-briefing's task-specific output spec. Lives as a var rather
+// than const so it can use the package-level concat at init time.
+var deepCovenPrompt = DeepCovenLongPreamble + `
 
 YOUR TASK: Generate a morning briefing based on the user's recent notes, open tasks, and vault activity.
 

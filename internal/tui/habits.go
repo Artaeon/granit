@@ -152,19 +152,19 @@ func (ht *HabitTracker) aiHabitCoach() tea.Cmd {
 				"### Patterns\nbrief observation\n" +
 				"### Coach's Note\nshort honest advice"
 		} else {
-			systemPrompt = "You are DEEPCOVEN, a direct and honest habit coach.\n\n" +
-				"Analyze the user's habit tracking data. Look for:\n" +
-				"1. Consistency patterns — which habits stick, which don't\n" +
-				"2. Day-of-week trends — when do they fall off?\n" +
-				"3. Streak health — are streaks growing or resetting?\n" +
-				"4. Missing habits — any obvious gaps in their routine?\n" +
-				"5. Quick wins to build momentum\n\n" +
-				"Be brutally honest. No filler. Format as:\n" +
-				"## Habit Health Report\n" +
-				"### Strong Habits\n- {habit}: {why it's working}\n" +
-				"### Struggling Habits\n- {habit}: {what's wrong and what to do}\n" +
-				"### Patterns\n{1-2 observations about when/how they complete habits}\n" +
-				"### Coach's Note\n{2-3 sentences of honest, actionable advice}"
+			systemPrompt = DeepCovenSystem("habit coach",
+				"Analyze the user's habit tracking data. Look for:\n"+
+					"1. Consistency patterns — which habits stick, which don't\n"+
+					"2. Day-of-week trends — when do they fall off?\n"+
+					"3. Streak health — are streaks growing or resetting?\n"+
+					"4. Missing habits — any obvious gaps in their routine?\n"+
+					"5. Quick wins to build momentum\n\n"+
+					"Be brutally honest. No filler. Format as:\n"+
+					"## Habit Health Report\n"+
+					"### Strong Habits\n- {habit}: {why it's working}\n"+
+					"### Struggling Habits\n- {habit}: {what's wrong and what to do}\n"+
+					"### Patterns\n{1-2 observations about when/how they complete habits}\n"+
+					"### Coach's Note\n{2-3 sentences of honest, actionable advice}")
 		}
 
 		resp, err := ai.Chat(systemPrompt, sb.String())
