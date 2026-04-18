@@ -17,8 +17,8 @@ import (
 // to distinguish block kinds at a glance. Routes through
 // NormaliseBlockType so aliases ("deep_work" vs "deep-work") collapse
 // to the canonical form before the switch.
-func plannerBlockTag(blockType string) string {
-	switch NormaliseBlockType(blockType) {
+func plannerBlockTag(blockType BlockType) string {
+	switch NormaliseBlockType(string(blockType)) {
 	case BlockTypeTask, BlockTypeDeepWork:
 		return "[T]"
 	case BlockTypeFocus:
@@ -49,11 +49,11 @@ func plannerBlockTag(blockType string) string {
 // (taskmanager, PlanMyDay, AI scheduler, MorningRoutine) so no slot ever
 // falls through to the grey default unless it really is uncategorised.
 // Done blocks render in surface2 regardless of type.
-func plannerBlockColor(blockType string, done bool) lipgloss.Color {
+func plannerBlockColor(blockType BlockType, done bool) lipgloss.Color {
 	if done {
 		return surface2
 	}
-	switch NormaliseBlockType(blockType) {
+	switch NormaliseBlockType(string(blockType)) {
 	case BlockTypeTask, BlockTypeDeepWork:
 		return blue
 	case BlockTypeFocus:

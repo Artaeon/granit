@@ -47,7 +47,7 @@ func (r ScheduleRef) hasLocation() bool {
 //
 // On partial failure it returns the first error but still attempts both
 // writes — a half-updated state is better than silent divergence.
-func SetTaskSchedule(vaultRoot, date string, ref ScheduleRef, start, end, blockType string) error {
+func SetTaskSchedule(vaultRoot, date string, ref ScheduleRef, start, end string, blockType BlockType) error {
 	if vaultRoot == "" {
 		return fmt.Errorf("schedule: empty vault root")
 	}

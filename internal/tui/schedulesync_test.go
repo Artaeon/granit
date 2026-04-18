@@ -333,8 +333,8 @@ func TestAppendPlannerBlock_KeepsOverlappingEntries(t *testing.T) {
 	if len(blocks) != 2 {
 		t.Fatalf("expected 2 blocks (plan + actual), got %d: %+v", len(blocks), blocks)
 	}
-	kinds := []string{blocks[0].BlockType, blocks[1].BlockType}
-	if !(kinds[0] == "task" && kinds[1] == "pomodoro") {
+	kinds := []BlockType{blocks[0].BlockType, blocks[1].BlockType}
+	if !(kinds[0] == BlockTypeTask && kinds[1] == BlockTypePomodoro) {
 		t.Errorf("expected task before pomodoro (by start time), got %v", kinds)
 	}
 }

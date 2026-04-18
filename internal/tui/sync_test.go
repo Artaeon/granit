@@ -374,7 +374,7 @@ func TestSyncFlow_PlannerBlockToCalendar(t *testing.T) {
 		"StartTime": block.StartTime,
 		"EndTime":   block.EndTime,
 		"Text":      block.Text,
-		"BlockType": block.BlockType,
+		"BlockType": string(block.BlockType),
 	}
 
 	for field, val := range requiredFields {
@@ -384,7 +384,9 @@ func TestSyncFlow_PlannerBlockToCalendar(t *testing.T) {
 	}
 
 	// Verify type is a valid calendar block type
-	validTypes := map[string]bool{"task": true, "event": true, "break": true, "focus": true}
+	validTypes := map[BlockType]bool{
+		BlockTypeTask: true, BlockTypeEvent: true, BlockTypeBreak: true, BlockTypeFocus: true,
+	}
 	if !validTypes[block.BlockType] {
 		t.Errorf("BlockType %q is not a valid calendar block type", block.BlockType)
 	}
@@ -428,7 +430,7 @@ func TestSyncFlow_SchedulerSlotStructure(t *testing.T) {
 		StartTime: "09:00",
 		EndTime:   "10:30",
 		Text:      slot.Task,
-		BlockType: slot.Type,
+		BlockType: NormaliseBlockType(slot.Type),
 		Done:      false,
 	}
 	if pb.Text != slot.Task {

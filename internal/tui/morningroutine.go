@@ -567,12 +567,13 @@ func (mr *MorningRoutine) saveToDailyNote() tea.Cmd {
 		// lunch, meeting, habit, review) only land in the planner file.
 		for _, slot := range schedule {
 			ref := scheduleRefForSlotText(slot.Task, allTasks)
-			if isTaskSlot(slot.Type) && ref.hasLocation() {
-				recordErr("schedule slot", SetTaskSchedule(vaultRoot, today, ref, slot.Start, slot.End, slot.Type))
+			kind := NormaliseBlockType(slot.Type)
+			if kind.IsTaskLike() && ref.hasLocation() {
+				recordErr("schedule slot", SetTaskSchedule(vaultRoot, today, ref, slot.Start, slot.End, kind))
 			} else {
 				recordErr("upsert planner block", UpsertPlannerBlock(vaultRoot, today, ScheduleRef{Text: slot.Task}, PlannerBlock{
 					Date: today, StartTime: slot.Start, EndTime: slot.End,
-					Text: slot.Task, BlockType: slot.Type, SourceRef: ref,
+					Text: slot.Task, BlockType: kind, SourceRef: ref,
 				}))
 			}
 		}
@@ -941,7 +942,7 @@ func (mr MorningRoutine) viewOverview(b *strings.Builder, w int) {
 			case "focus":
 				typeCol = peach
 			}
-			typeTag := lipgloss.NewStyle().Foreground(typeCol).Render(" [" + pb.BlockType + "]")
+			typeTag := lipgloss.NewStyle().Foreground(typeCol).Render(" [" + string(pb.BlockType) + "]")
 			doneTag := ""
 			if pb.Done {
 				doneTag = lipgloss.NewStyle().Foreground(green).Render(" ✓")

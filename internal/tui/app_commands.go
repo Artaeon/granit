@@ -1623,12 +1623,13 @@ func (m *Model) writePlanMyDayToDailyNote(schedule []daySlot, topGoal string, fo
 	// would still show it as unscheduled after the AI ran.
 	for _, slot := range schedule {
 		ref := scheduleRefForSlotText(slot.Task, m.cachedTasks)
+		kind := NormaliseBlockType(slot.Type)
 		block := PlannerBlock{
 			Date: today, StartTime: slot.Start, EndTime: slot.End,
-			Text: slot.Task, BlockType: slot.Type, SourceRef: ref,
+			Text: slot.Task, BlockType: kind, SourceRef: ref,
 		}
-		if isTaskSlot(slot.Type) && ref.hasLocation() {
-			_ = SetTaskSchedule(m.vault.Root, today, ref, slot.Start, slot.End, slot.Type)
+		if kind.IsTaskLike() && ref.hasLocation() {
+			_ = SetTaskSchedule(m.vault.Root, today, ref, slot.Start, slot.End, kind)
 		} else {
 			// Non-task blocks (Lunch, Break, Review, Meeting) only live on the
 			// planner side — there's no source task line to annotate.

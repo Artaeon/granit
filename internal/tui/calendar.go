@@ -39,7 +39,7 @@ type PlannerBlock struct {
 	StartTime string // HH:MM
 	EndTime   string // HH:MM
 	Text      string
-	BlockType string // task, event, break, focus
+	BlockType BlockType // canonical kind; see blocktype.go for constants
 	Done      bool
 	SourceRef ScheduleRef // optional — empty for hand-written / event blocks
 }
@@ -882,7 +882,7 @@ func (c *Calendar) blockAtCursor(dateStr string) (int, *PlannerBlock) {
 		}
 		// Prefer any non-pomodoro overlap; pomodoro blocks are a read-only
 		// audit trail and editing them isn't what the user asked for.
-		if !strings.EqualFold(pb.BlockType, "pomodoro") {
+		if pb.BlockType != BlockTypePomodoro {
 			return i, pb
 		}
 	}

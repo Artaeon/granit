@@ -204,7 +204,7 @@ func (p *PlanMyDay) loadExistingPlan() bool {
 			Start: b.StartTime,
 			End:   b.EndTime,
 			Task:  b.Text,
-			Type:  b.BlockType,
+			Type:  string(b.BlockType),
 		})
 	}
 	// Pull focus / top goal from the same file. Reuse the directory-scan

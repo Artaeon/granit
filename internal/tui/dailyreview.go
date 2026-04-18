@@ -127,7 +127,7 @@ func summarizeDayTime(blocks []PlannerBlock) (planned, actual, pomodoros int) {
 		if dur <= 0 {
 			continue
 		}
-		switch kind := NormaliseBlockType(b.BlockType); {
+		switch kind := NormaliseBlockType(string(b.BlockType)); {
 		case kind.IsTaskLike():
 			planned += dur
 		case kind == BlockTypePomodoro:

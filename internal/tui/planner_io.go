@@ -114,7 +114,9 @@ func parseScheduleBlockLine(line, date string) (PlannerBlock, bool) {
 		StartTime: startStr,
 		EndTime:   endStr,
 		Text:      strings.TrimSpace(parts[1]),
-		BlockType: strings.TrimSpace(strings.ToLower(parts[2])),
+		// Normalise on ingest so downstream switch-on-BlockType is a
+		// plain equality check against canonical constants.
+		BlockType: NormaliseBlockType(parts[2]),
 	}
 	for _, extra := range parts[3:] {
 		extra = strings.TrimSpace(extra)
@@ -262,7 +264,7 @@ func loadPlannerBlocks(vaultRoot string) (map[string][]PlannerBlock, map[string]
 				StartTime: strings.TrimSpace(timeParts[0]),
 				EndTime:   strings.TrimSpace(timeParts[1]),
 				Text:      strings.TrimSpace(parts[1]),
-				BlockType: strings.TrimSpace(strings.ToLower(parts[2])),
+				BlockType: NormaliseBlockType(parts[2]),
 			}
 			if len(parts) >= 4 && strings.TrimSpace(parts[3]) == "done" {
 				pb.Done = true

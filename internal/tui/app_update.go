@@ -1561,12 +1561,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						start := fmt.Sprintf("%02d:%02d", slot.StartHour, slot.StartMin)
 						end := fmt.Sprintf("%02d:%02d", slot.EndHour, slot.EndMin)
 						ref := scheduleRefForSlotText(slot.Task, m.taskManager.allTasks)
-						if isTaskSlot(slot.Type) && ref.hasLocation() {
-							_ = SetTaskSchedule(m.vault.Root, today, ref, start, end, slot.Type)
+						kind := NormaliseBlockType(slot.Type)
+						if kind.IsTaskLike() && ref.hasLocation() {
+							_ = SetTaskSchedule(m.vault.Root, today, ref, start, end, kind)
 						} else {
 							_ = UpsertPlannerBlock(m.vault.Root, today, ScheduleRef{Text: slot.Task}, PlannerBlock{
 								Date: today, StartTime: start, EndTime: end,
-								Text: slot.Task, BlockType: slot.Type, SourceRef: ref,
+								Text: slot.Task, BlockType: kind, SourceRef: ref,
 							})
 						}
 					}
