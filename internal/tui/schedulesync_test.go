@@ -567,6 +567,44 @@ func TestWriteTaskScheduleMarker_StaleRefNoTextMatch_ReturnsError(t *testing.T) 
 	}
 }
 
+func TestWriteTaskScheduleMarker_PreciseLineButForeignTask_FallsBackToText(t *testing.T) {
+	// Original task "Ship v1" was on line 3. A different task got inserted
+	// at line 3, pushing "Ship v1" to line 4. The precise ref must NOT
+	// write the marker onto the foreign task — it must find "Ship v1" by
+	// text in the same file.
+	root := newTestVault(t, map[string]string{
+		"notes.md": "# Project\n\n- [ ] Different new task\n- [ ] Ship v1\n",
+	})
+	stale := ScheduleRef{NotePath: "notes.md", LineNum: 3, Text: "Ship v1"}
+	if err := writeTaskScheduleMarker(root, stale, "09:00", "10:00"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	content := readFile(t, filepath.Join(root, "notes.md"))
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	if strings.Contains(lines[2], "⏰") {
+		t.Errorf("marker landed on the foreign task at line 3: %q", lines[2])
+	}
+	if !strings.Contains(lines[3], "⏰ 09:00-10:00") {
+		t.Errorf("marker did not reach the renamed line 4: %q", lines[3])
+	}
+}
+
+func TestWriteTaskScheduleMarker_PreciseLineWithRename_StillWritesThere(t *testing.T) {
+	// The user renamed "Ship v1" → "Ship v1.1" in place. LineNum is still
+	// valid; the precise path should accept the rename via containment.
+	root := newTestVault(t, map[string]string{
+		"notes.md": "- [ ] Ship v1.1\n",
+	})
+	ref := ScheduleRef{NotePath: "notes.md", LineNum: 1, Text: "Ship v1"}
+	if err := writeTaskScheduleMarker(root, ref, "09:00", "10:00"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	content := readFile(t, filepath.Join(root, "notes.md"))
+	if !strings.Contains(content, "Ship v1.1 ⏰ 09:00-10:00") {
+		t.Errorf("rename should still write to the same line:\n%s", content)
+	}
+}
+
 func TestClearTaskScheduleMarker_StaleRef_FindsByText(t *testing.T) {
 	root := newTestVault(t, map[string]string{
 		"notes.md": "# Project\n\nInserted prose.\n\n- [ ] Ship ⏰ 09:00-10:00\n",

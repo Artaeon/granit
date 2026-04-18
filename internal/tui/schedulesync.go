@@ -153,16 +153,24 @@ func transformTaskLine(vaultRoot string, ref ScheduleRef, transform func(string)
 		if data, err := os.ReadFile(path); err == nil {
 			lines := strings.Split(string(data), "\n")
 			if ref.LineNum >= 1 && ref.LineNum <= len(lines) && isTaskLine(lines[ref.LineNum-1]) {
-				newLine := transform(lines[ref.LineNum-1])
-				if newLine != lines[ref.LineNum-1] {
-					lines[ref.LineNum-1] = newLine
-					if err := atomicWriteNote(path, strings.Join(lines, "\n")); err != nil {
-						return err
+				// The line is a task — but is it OUR task? When ref.Text is
+				// set, accept the line only if its text plausibly matches.
+				// In-place renames change the text but typically share a
+				// substring (containment in either direction). A foreign
+				// task inserted at this line will share nothing.
+				if ref.Text == "" || taskLineLikelyMatches(lines[ref.LineNum-1], ref.Text) {
+					newLine := transform(lines[ref.LineNum-1])
+					if newLine != lines[ref.LineNum-1] {
+						lines[ref.LineNum-1] = newLine
+						if err := atomicWriteNote(path, strings.Join(lines, "\n")); err != nil {
+							return err
+						}
 					}
+					return nil
 				}
-				return nil
 			}
-			// Stale ref: try same-file text search before widening.
+			// Stale ref (line gone, not a task, or different task): try
+			// same-file text search before widening.
 			if ref.Text != "" {
 				if transformTaskLineByText(path, ref.Text, transform) {
 					return nil
@@ -186,6 +194,33 @@ func transformTaskLine(vaultRoot string, ref ScheduleRef, transform func(string)
 		return fmt.Errorf("schedule: no task line matches %q", ref.Text)
 	}
 	return nil
+}
+
+// taskLineLikelyMatches reports whether a task-shaped line plausibly
+// represents the same logical task as refText. Used to detect "different
+// task got inserted at this line" without rejecting "user renamed the
+// task in place." Empty refText is permissive (returns true) — callers
+// are expected to handle that case.
+func taskLineLikelyMatches(line, refText string) bool {
+	if refText == "" {
+		return true
+	}
+	trimmed := strings.TrimSpace(line)
+	idx := strings.Index(trimmed, "] ")
+	if idx < 0 {
+		return false
+	}
+	lineText := strings.TrimSpace(schedMarkerRe.ReplaceAllString(trimmed[idx+2:], ""))
+	want := strings.TrimSpace(schedMarkerRe.ReplaceAllString(refText, ""))
+	if lineText == "" || want == "" {
+		return false
+	}
+	if lineText == want {
+		return true
+	}
+	// Either-direction containment tolerates in-place edits ("Ship v1" →
+	// "Ship v1.1") while rejecting unrelated text ("Different task").
+	return strings.Contains(lineText, want) || strings.Contains(want, lineText)
 }
 
 // transformTaskLineByText scans path for a task line whose normalised
