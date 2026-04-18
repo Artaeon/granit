@@ -1215,3 +1215,30 @@ func TestApplyTaskCompletion_NoOpOnZeroOrNegativeLineNum(t *testing.T) {
 		}
 	}
 }
+
+func TestPomodoro_StartForCurrentBlock_AllowsRestartFromBreak(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	date := now.Format("2006-01-02")
+	_ = UpsertPlannerBlock(root, date, ScheduleRef{Text: "Next thing"}, PlannerBlock{
+		Date: date, StartTime: now.Add(-5 * time.Minute).Format("15:04"),
+		EndTime: now.Add(20 * time.Minute).Format("15:04"),
+		Text:    "Next thing", BlockType: "task",
+	})
+
+	p := NewPomodoro()
+	// On a short break — IsRunning() returns true but the user wanting
+	// to skip the break and start the next block immediately should
+	// be honoured.
+	p.state = PomodoroShortBreak
+	p.remaining = 5 * time.Minute
+
+	got := p.StartForCurrentBlock(root)
+
+	if got != "Next thing" {
+		t.Errorf("expected next-block text, got %q", got)
+	}
+	if p.state != PomodoroWork {
+		t.Errorf("expected break to be replaced by work, got state %v", p.state)
+	}
+}

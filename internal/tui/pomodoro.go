@@ -188,15 +188,22 @@ func (p *Pomodoro) Start() {
 	}
 }
 
+// IsInWork reports whether the timer is actively in a Work session.
+// Distinct from IsRunning, which also returns true during breaks.
+func (p *Pomodoro) IsInWork() bool { return p.state == PomodoroWork }
+
 // StartForCurrentBlock seeds the queue from the planner block containing
 // "now" on today's date and starts a work session. Returns the block's
 // text (for a confirmation message) or "" if there is no block right now.
 //
-// No-op when the timer is already running: replacing the queue mid-
-// session would silently discard the in-flight pomodoro's elapsed time
-// and never call finishWorkSession. The current task's text is returned
-// instead so the caller can show a "session already running" message
-// that still identifies what's active.
+// No-op when actively in a Work session: replacing the queue mid-pomodoro
+// would silently discard the in-flight elapsed time and never call
+// finishWorkSession. The current task's text is returned so the caller
+// can show "already running" while leaving the timer alone.
+//
+// Breaks and idle DO allow re-seed and restart — pressing Pomodoro:Now
+// while on a break is the natural way to "skip the break and start the
+// next block now."
 //
 // Wired through the unified schedule layer so any source the user
 // scheduled from — Task Manager, Calendar, PlanMyDay, MorningRoutine —
@@ -205,7 +212,7 @@ func (p *Pomodoro) StartForCurrentBlock(vaultRoot string) string {
 	if vaultRoot == "" {
 		return ""
 	}
-	if p.IsRunning() {
+	if p.state == PomodoroWork {
 		return p.currentTask
 	}
 	now := time.Now()

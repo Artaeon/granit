@@ -579,9 +579,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.pomodoro.SetSize(m.width, m.height)
 		m.pomodoro.SetVaultRoot(m.vault.Root)
 		m.pomodoro.Open()
-		alreadyRunning := m.pomodoro.IsRunning()
+		alreadyInWork := m.pomodoro.IsInWork()
 		switch task := m.pomodoro.StartForCurrentBlock(m.vault.Root); {
-		case task != "" && alreadyRunning:
+		case task != "" && alreadyInWork:
 			m.statusbar.SetMessage("⏸ Pomodoro already running for: " + task)
 		case task != "":
 			m.statusbar.SetMessage("▶ Pomodoro started for: " + task)
