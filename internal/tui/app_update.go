@@ -1524,23 +1524,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Sync completed tasks back to source files
 			if completions := m.dailyPlanner.GetCompletedTasks(); len(completions) > 0 {
 				for _, tc := range completions {
-					if tc.NotePath == "" {
+					if tc.NotePath == "" || tc.LineNum < 1 {
 						continue
 					}
 					if note := m.vault.GetNote(tc.NotePath); note != nil {
 						lines := strings.Split(note.Content, "\n")
-						if tc.LineNum >= 0 && tc.LineNum < len(lines) {
+						idx := tc.LineNum - 1 // TaskCompletion.LineNum is 1-based
+						if idx < len(lines) {
 							// Validate that the line still contains the expected task marker and text
-							line := lines[tc.LineNum]
+							line := lines[idx]
 							hasMarker := strings.Contains(line, "- [ ]") || strings.Contains(line, "- [x]")
 							hasText := tc.Text == "" || strings.Contains(line, tc.Text)
 							if !hasMarker || !hasText {
 								continue
 							}
 							if tc.Done {
-								lines[tc.LineNum] = strings.Replace(lines[tc.LineNum], "- [ ]", "- [x]", 1)
+								lines[idx] = strings.Replace(lines[idx], "- [ ]", "- [x]", 1)
 							} else {
-								lines[tc.LineNum] = strings.Replace(lines[tc.LineNum], "- [x]", "- [ ]", 1)
+								lines[idx] = strings.Replace(lines[idx], "- [x]", "- [ ]", 1)
 							}
 							newContent := strings.Join(lines, "\n")
 							if err := atomicWriteNote(filepath.Join(m.vault.Root, tc.NotePath), newContent); err != nil {
@@ -1778,12 +1779,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if task := m.commandCenter.CompletedTask(); task != nil {
-					// Toggle task done in source note.
-					if task.NotePath != "" {
+					// Toggle task done in source note. Task.LineNum is 1-based
+					// (see internal/tui/taskmanager.go:34), so we index with -1.
+					if task.NotePath != "" && task.LineNum >= 1 {
 						if note := m.vault.GetNote(task.NotePath); note != nil {
 							lines := strings.Split(note.Content, "\n")
-							if task.LineNum >= 0 && task.LineNum < len(lines) {
-								lines[task.LineNum] = strings.Replace(lines[task.LineNum], "- [ ]", "- [x]", 1)
+							idx := task.LineNum - 1
+							if idx < len(lines) {
+								lines[idx] = strings.Replace(lines[idx], "- [ ]", "- [x]", 1)
 								newContent := strings.Join(lines, "\n")
 								if err := atomicWriteNote(filepath.Join(m.vault.Root, task.NotePath), newContent); err != nil {
 									m.statusbar.SetError("Failed to mark task done: " + err.Error())
@@ -1813,11 +1816,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if task := m.commandCenter.CompletedTask(); task != nil {
-					if task.NotePath != "" {
+					if task.NotePath != "" && task.LineNum >= 1 {
 						if note := m.vault.GetNote(task.NotePath); note != nil {
 							lines := strings.Split(note.Content, "\n")
-							if task.LineNum >= 0 && task.LineNum < len(lines) {
-								lines[task.LineNum] = strings.Replace(lines[task.LineNum], "- [ ]", "- [x]", 1)
+							idx := task.LineNum - 1 // Task.LineNum is 1-based
+							if idx < len(lines) {
+								lines[idx] = strings.Replace(lines[idx], "- [ ]", "- [x]", 1)
 								newContent := strings.Join(lines, "\n")
 								if err := atomicWriteNote(filepath.Join(m.vault.Root, task.NotePath), newContent); err != nil {
 									m.statusbar.SetError("Failed to mark task done: " + err.Error())

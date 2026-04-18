@@ -588,22 +588,23 @@ func (m *Model) syncPomodoroCompletions() {
 		return
 	}
 	for _, tc := range completions {
-		if tc.NotePath == "" {
+		if tc.NotePath == "" || tc.LineNum < 1 {
 			continue
 		}
 		if note := m.vault.GetNote(tc.NotePath); note != nil {
 			lines := strings.Split(note.Content, "\n")
-			if tc.LineNum >= 0 && tc.LineNum < len(lines) {
-				line := lines[tc.LineNum]
+			idx := tc.LineNum - 1 // TaskCompletion.LineNum is 1-based
+			if idx < len(lines) {
+				line := lines[idx]
 				hasMarker := strings.Contains(line, "- [ ]") || strings.Contains(line, "- [x]")
 				hasText := tc.Text == "" || strings.Contains(line, tc.Text)
 				if !hasMarker || !hasText {
 					continue
 				}
 				if tc.Done {
-					lines[tc.LineNum] = strings.Replace(lines[tc.LineNum], "- [ ]", "- [x]", 1)
+					lines[idx] = strings.Replace(lines[idx], "- [ ]", "- [x]", 1)
 				} else {
-					lines[tc.LineNum] = strings.Replace(lines[tc.LineNum], "- [x]", "- [ ]", 1)
+					lines[idx] = strings.Replace(lines[idx], "- [x]", "- [ ]", 1)
 				}
 				newContent := strings.Join(lines, "\n")
 				if err := atomicWriteNote(filepath.Join(m.vault.Root, tc.NotePath), newContent); err != nil {

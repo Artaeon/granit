@@ -30,7 +30,7 @@ type QueueTask struct {
 	Elapsed    int    // actual minutes spent
 	Done       bool
 	SourcePath string // relative path to source note (for bidirectional sync)
-	SourceLine int    // 0-based line number in source note
+	SourceLine int    // 1-based line number in source note (matches Task.LineNum)
 }
 
 // Pomodoro implements an overlay Pomodoro timer with writing stats tracking.

@@ -1070,3 +1070,28 @@ func TestPomodoro_FinishWorkSession_AppendsDoesNotCollapseRepeats(t *testing.T) 
 		t.Errorf("expected 2 pomodoro blocks for repeated task, got %d", count)
 	}
 }
+
+// Regression: TaskCompletion.LineNum is 1-based end-to-end. A producer
+// that follows Task.LineNum conventions (AdvanceQueue → completedTasks)
+// and a consumer that indexes lines[tc.LineNum-1] must agree on semantics.
+// Previously the field comment said "0-based" while every producer passed
+// 1-based values — the mismatch meant the sync silently no-op'd (safety
+// guard hid the bug). This test pins the convention.
+func TestPomodoro_CompletedTaskLineNum_Is1Based(t *testing.T) {
+	p := NewPomodoro()
+	p.SetQueue([]QueueTask{{
+		Text:       "Ship it",
+		SourcePath: "Tasks.md",
+		SourceLine: 3, // 1-based: "the third line of Tasks.md"
+	}})
+	p.currentTask = "Ship it"
+	p.AdvanceQueue()
+
+	completions := p.GetCompletedTasks()
+	if len(completions) != 1 {
+		t.Fatalf("expected 1 completion, got %d", len(completions))
+	}
+	if completions[0].LineNum != 3 {
+		t.Errorf("TaskCompletion.LineNum = %d, want 3 (1-based)", completions[0].LineNum)
+	}
+}

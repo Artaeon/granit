@@ -67,7 +67,7 @@ type timeBlock struct {
 	Color      lipgloss.Color // color for rendering the block
 	Priority   int            // priority for task blocks (0-4)
 	SourcePath string         // relative path to source note (for bidirectional sync)
-	SourceLine int            // 0-based line number in the source note
+	SourceLine int            // 1-based line number in source note (matches Task.LineNum)
 }
 
 // plannerPanel tracks which sub-panel has focus.
@@ -85,9 +85,15 @@ const (
 
 // TaskCompletion records a task toggle that should be synced back to its
 // source file (e.g. Tasks.md).
+//
+// LineNum is 1-based to match Task.LineNum — producers pass that value
+// directly, and consumers (app_update.go, app_helpers.go) must index with
+// LineNum-1. Historically the field was documented 0-based, but every
+// producer in the codebase has always passed 1-based values; the field
+// comment is now aligned with reality.
 type TaskCompletion struct {
 	NotePath string
-	LineNum  int
+	LineNum  int // 1-based
 	Text     string
 	Done     bool
 }
