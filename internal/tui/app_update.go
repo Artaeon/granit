@@ -2174,6 +2174,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.sidebar.SetFiles(m.vault.SortedPaths())
 					m.statusbar.SetNoteCount(m.vault.NoteCount())
 				}
+				// If the user pressed P on the complete screen, continue
+				// into Plan My Day so the AI can refine today's schedule
+				// with the goal, tasks, and habits just captured.
+				if m.morningRoutine.ConsumeAIRefineRequest() {
+					var planModel tea.Model
+					var planCmd tea.Cmd
+					planModel, planCmd = m.executeCommand(CmdPlanMyDay)
+					if mm, ok := planModel.(Model); ok {
+						m = mm
+					}
+					return m, tea.Batch(cmd, planCmd)
+				}
 			}
 			return m, cmd
 		}

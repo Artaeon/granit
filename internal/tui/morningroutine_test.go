@@ -3,6 +3,8 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // ---------------------------------------------------------------------------
@@ -212,5 +214,44 @@ func TestBuildDailyPlanMarkdown_TasksWithExistingDueSuffix(t *testing.T) {
 	count := strings.Count(md, "(due: 2026-04-09)")
 	if count != 1 {
 		t.Errorf("expected 1 due suffix occurrence, got %d in:\n%s", count, md)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AI refine handoff — pressing 'P' on the complete screen flags the host
+// to continue into Plan My Day.
+// ---------------------------------------------------------------------------
+
+func TestMorningRoutine_AIRefine_PressP_FlagsAndCloses(t *testing.T) {
+	mr := NewMorningRoutine()
+	mr.active = true
+	mr.phase = morningComplete
+
+	mr, _ = mr.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+
+	if mr.active {
+		t.Error("pressing P should close the overlay")
+	}
+	if !mr.ConsumeAIRefineRequest() {
+		t.Error("expected AI refine flag set after pressing P")
+	}
+	// Second call must return false — consumed-once semantics.
+	if mr.ConsumeAIRefineRequest() {
+		t.Error("flag should be cleared after first consume")
+	}
+}
+
+func TestMorningRoutine_AIRefine_PressEnter_ClosesWithoutFlag(t *testing.T) {
+	mr := NewMorningRoutine()
+	mr.active = true
+	mr.phase = morningComplete
+
+	mr, _ = mr.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if mr.active {
+		t.Error("enter should close the overlay")
+	}
+	if mr.ConsumeAIRefineRequest() {
+		t.Error("enter must not set the AI refine flag")
 	}
 }

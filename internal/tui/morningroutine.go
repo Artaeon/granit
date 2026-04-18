@@ -85,6 +85,23 @@ type MorningRoutine struct {
 
 	// Config
 	dailyNotesFolder string
+
+	// aiRefineRequested is set when the user presses 'p' on the complete
+	// screen, asking to hand off to Plan My Day for AI refinement. The
+	// host (app_update.go) consumes it via ConsumeAIRefineRequest() after
+	// the overlay closes. This keeps the overlay stateless wrt. other
+	// overlays and avoids chaining them directly.
+	aiRefineRequested bool
+}
+
+// ConsumeAIRefineRequest returns true (consumed-once) if the user asked to
+// continue into Plan My Day after the morning routine ended.
+func (mr *MorningRoutine) ConsumeAIRefineRequest() bool {
+	if mr.aiRefineRequested {
+		mr.aiRefineRequested = false
+		return true
+	}
+	return false
 }
 
 // NewMorningRoutine creates a new MorningRoutine overlay.
@@ -231,7 +248,13 @@ func (mr MorningRoutine) Update(msg tea.Msg) (MorningRoutine, tea.Cmd) {
 		case morningSummary:
 			return mr.updateSummary(msg)
 		case morningComplete:
-			if msg.String() == "enter" || msg.String() == "esc" || msg.String() == "q" {
+			switch msg.String() {
+			case "p", "P":
+				// Hand off to Plan My Day: close this overlay and flag so
+				// the host opens the AI planner with today's context.
+				mr.aiRefineRequested = true
+				mr.active = false
+			case "enter", "esc", "q":
 				mr.active = false
 			}
 			return mr, nil
@@ -1427,6 +1450,9 @@ func (mr MorningRoutine) viewComplete(b *strings.Builder, _ int) {
 		b.WriteString("  " + goalPill + " " + lipgloss.NewStyle().Foreground(text).Render(mr.todayGoal) + "\n")
 	}
 	b.WriteString("\n  " + DimStyle.Render("Go make today count.") + "\n")
+	b.WriteString("\n  " + lipgloss.NewStyle().Foreground(mauve).Render(
+		"P") + DimStyle.Render(" refine with AI  ") +
+		lipgloss.NewStyle().Foreground(mauve).Render("Enter") + DimStyle.Render(" close") + "\n")
 }
 
 // ---------------------------------------------------------------------------
