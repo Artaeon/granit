@@ -2,20 +2,16 @@ package tui
 
 // Unified error-reporting surface for the TUI layer.
 //
-// Before this file, error handling across internal/tui was a patchwork:
+// Before this file, error handling across internal/tui was a patchwork
+// of direct m.statusbar.SetError / SetMessage calls (plus overlay-local
+// errMsg fields and stray log.Printf lines) with no single entry point,
+// so debug logging and user-visible status drifted apart: some errors
+// got both, some got neither, some only got a silent `_ =` discard.
 //
-//   - 298 direct m.statusbar.SetError / SetMessage calls
-//   - 63 overlay-local errMsg/error fields the user only sees when the
-//     overlay is still open
-//   - 22 log.Printf debug lines in background goroutines
-//   - An uncounted number of `_ =` discards on operations whose
-//     failure mattered (fixed case-by-case in commit 97b1b6b)
-//
-// No single entry point meant debug logging and user-visible status
-// drifted apart: some errors got both, some got neither, some only got
-// a silent discard. reportError and reportInfo route through one place
-// so any future change (telemetry, log aggregation, toast promotion)
-// lands in one spot.
+// reportError and reportInfo route through one place so any future
+// change (telemetry, log aggregation, toast promotion) lands in one
+// spot. The migration is ongoing — direct statusbar.Set* calls still
+// exist, but all *error* paths should funnel through reportError.
 
 import (
 	"fmt"
