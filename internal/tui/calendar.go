@@ -707,12 +707,20 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			}
 
 		case "a":
-			// Open the full event creation form focused on Title.
+			// Open the full event creation form focused on Title. In time-grid
+			// views, pre-fill Time from the grid cursor so "press a on a slot"
+			// creates an event at that hour (most users expect this — the
+			// previous all-day default meant re-typing the time every time).
 			c.eventEditMode = 1
 			c.eventEditField = efTitle
 			c.eventEditID = ""
 			c.eventEditTitle = ""
 			c.eventEditTime = ""
+			if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
+				sH := c.weekGridStartHourFor()
+				cursorMin := (sH+c.weekGridCursorHour/2)*60 + (c.weekGridCursorHour%2)*30
+				c.eventEditTime = fmt.Sprintf("%02d:%02d", cursorMin/60, cursorMin%60)
+			}
 			c.eventEditDur = 60
 			c.eventEditDurBuf = "60"
 			c.eventEditLoc = ""
