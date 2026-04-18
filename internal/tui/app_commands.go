@@ -555,7 +555,11 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			project = m.activeNote
 		}
 		cmd := m.clockIn.ClockInCmd(project)
-		m.statusbar.SetMessage("Clocked in")
+		if err := m.clockIn.ConsumeSaveError(); err != nil {
+			m.reportError("save clock-in", err)
+		} else {
+			m.statusbar.SetMessage("Clocked in")
+		}
 		return m, tea.Batch(cmd, m.clearMessageAfter(2*time.Second))
 	case CmdClockOut:
 		if !m.clockIn.IsActive() {
@@ -563,7 +567,11 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			return m, m.clearMessageAfter(2 * time.Second)
 		}
 		m.clockIn.ClockOutCmd()
-		m.statusbar.SetMessage("Clocked out — session saved to Timetracking/")
+		if err := m.clockIn.ConsumeSaveError(); err != nil {
+			m.reportError("save clock-out", err)
+		} else {
+			m.statusbar.SetMessage("Clocked out — session saved to Timetracking/")
+		}
 		return m, m.clearMessageAfter(3 * time.Second)
 	case CmdPomodoro:
 		if !m.config.CorePluginEnabled("pomodoro") {

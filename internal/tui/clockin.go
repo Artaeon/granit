@@ -56,6 +56,23 @@ type ClockIn struct {
 	// Today's completed sessions (for display)
 	todaySessions []clockInSession
 	todayTotal    time.Duration
+
+	// lastSaveErr stores the most recent clock.json / reminders.json /
+	// timelog-note write error so the host Model can surface it via
+	// reportError. Consumed once.
+	lastSaveErr error
+}
+
+// ConsumeSaveError returns and clears the last clock-in persistence
+// error, if any. The host Model calls this after clock-in/out commands
+// and routes non-nil errors through reportError.
+func (c *ClockIn) ConsumeSaveError() error {
+	if c == nil {
+		return nil
+	}
+	err := c.lastSaveErr
+	c.lastSaveErr = nil
+	return err
 }
 
 // NewClockIn creates a new ClockIn component.
@@ -316,7 +333,9 @@ func (c *ClockIn) saveClockData(data clockInData) {
 	if err != nil {
 		return
 	}
-	_ = atomicWriteState(filepath.Join(dir, "clock.json"), raw)
+	if err := atomicWriteState(filepath.Join(dir, "clock.json"), raw); err != nil {
+		c.lastSaveErr = err
+	}
 }
 
 func (c *ClockIn) loadReminders() {
@@ -339,7 +358,9 @@ func (c *ClockIn) saveRemindersFile() {
 	if err != nil {
 		return
 	}
-	_ = atomicWriteState(filepath.Join(dir, "reminders.json"), raw)
+	if err := atomicWriteState(filepath.Join(dir, "reminders.json"), raw); err != nil {
+		c.lastSaveErr = err
+	}
 }
 
 func (c *ClockIn) loadTodaySessions() {
@@ -405,7 +426,9 @@ func (c *ClockIn) saveSessionNote(start, end time.Time, project string, elapsed 
 	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
 		existing = append(existing, '\n')
 	}
-	_ = atomicWriteNote(filePath, string(existing)+row)
+	if err := atomicWriteNote(filePath, string(existing)+row); err != nil {
+		c.lastSaveErr = err
+	}
 }
 
 // ── PlanMyDay integration ──────────────────────────────────────────

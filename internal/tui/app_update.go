@@ -892,6 +892,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case clockInTickMsg:
 		var cmd tea.Cmd
 		m.clockIn, cmd = m.clockIn.Update(msg)
+		m.reportError("save clock-in state", m.clockIn.ConsumeSaveError())
 		return m, cmd
 
 	case clockInReminderMsg:
