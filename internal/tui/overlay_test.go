@@ -3,10 +3,9 @@ package tui
 import "testing"
 
 // dummyOverlay demonstrates the minimum migration: embed OverlayBase,
-// inherit the contract, add domain-specific fields.
+// inherit the contract, and extend with domain-specific fields.
 type dummyOverlay struct {
 	OverlayBase
-	count int
 }
 
 func TestOverlayBase_DefaultStateIsInactive(t *testing.T) {

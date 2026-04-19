@@ -386,18 +386,6 @@ func CurrentPlannerBlock(vaultRoot, date string, nowMins int) *PlannerBlock {
 	return nil
 }
 
-// isTaskSlot reports whether a daySlot.Type (or planner BlockType) describes
-// a user task that should carry a ⏰ marker on its source line. Non-task
-// kinds like "break", "meeting", "habit", "review" only exist on the
-// planner side and have no source task to annotate.
-//
-// Thin wrapper over BlockType.IsTaskLike — the shared typed-enum is
-// the source of truth; this function remains for the string-typed
-// call sites that haven't migrated yet.
-func isTaskSlot(slotType string) bool {
-	return NormaliseBlockType(slotType).IsTaskLike()
-}
-
 // scheduleRefForSlotText resolves a slot's task text back to a source-task
 // reference by matching against the parsed task list. Returns a text-only
 // ref when nothing matches (caller should treat the slot as planner-only).
