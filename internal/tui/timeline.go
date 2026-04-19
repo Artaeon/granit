@@ -35,9 +35,7 @@ const (
 
 // Timeline is a chronological overlay showing all notes grouped by day/week/month.
 type Timeline struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	// Data
 	groups  []TimelineGroup
@@ -58,25 +56,9 @@ func NewTimeline() Timeline {
 	return Timeline{}
 }
 
-// IsActive reports whether the timeline overlay is visible.
-func (t Timeline) IsActive() bool {
-	return t.active
-}
-
-// SetSize updates the available terminal dimensions.
-func (t *Timeline) SetSize(w, h int) {
-	t.width = w
-	t.height = h
-}
-
-// Close hides the overlay.
-func (t *Timeline) Close() {
-	t.active = false
-}
-
 // Open receives note data, sorts it, groups it, and activates the overlay.
 func (t *Timeline) Open(notes map[string]TimelineEntry) {
-	t.active = true
+	t.Activate()
 	t.cursor = 0
 	t.scroll = 0
 	t.selectedNote = ""
