@@ -33,9 +33,7 @@ func devotionalTickCmd() tea.Cmd {
 // Devotional generates a personal AI reflection connecting the daily scripture
 // to the user's active goals and current focus.
 type Devotional struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	// AI config
 	ai AIConfig
@@ -58,18 +56,9 @@ func NewDevotional() Devotional {
 	return Devotional{}
 }
 
-// IsActive reports whether the devotional overlay is visible.
-func (d Devotional) IsActive() bool { return d.active }
-
-// SetSize updates the available terminal dimensions.
-func (d *Devotional) SetSize(w, h int) {
-	d.width = w
-	d.height = h
-}
-
 // Open loads the daily scripture, gathers goals, and starts the AI call.
 func (d *Devotional) Open(vaultRoot string, ai AIConfig, goals []Goal) tea.Cmd {
-	d.active = true
+	d.Activate()
 	d.vaultRoot = vaultRoot
 	d.ai = ai
 	d.scripture = DailyScripture(vaultRoot)
