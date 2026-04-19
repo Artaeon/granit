@@ -497,9 +497,7 @@ type ncSyncResultMsg struct {
 
 // NextcloudOverlay is the TUI panel for interacting with Nextcloud sync.
 type NextcloudOverlay struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	cursor    int
 	message   string
 	msgStyle  string // "ok", "err", "info"
@@ -519,24 +517,13 @@ func NewNextcloudOverlay() NextcloudOverlay {
 	return NextcloudOverlay{}
 }
 
-func (n NextcloudOverlay) IsActive() bool { return n.active }
-
 func (n *NextcloudOverlay) Open(cfg config.Config, vaultRoot string) {
-	n.active = true
+	n.Activate()
 	n.cursor = 0
 	n.config = cfg
 	n.vaultRoot = vaultRoot
 	n.message = ""
 	n.running = false
-}
-
-func (n *NextcloudOverlay) Close() {
-	n.active = false
-}
-
-func (n *NextcloudOverlay) SetSize(w, h int) {
-	n.width = w
-	n.height = h
 }
 
 func (n *NextcloudOverlay) Update(msg tea.Msg) (NextcloudOverlay, tea.Cmd) {
