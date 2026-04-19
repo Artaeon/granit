@@ -372,7 +372,7 @@ func TestLoadAllGoals_MalformedJSON(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(dir, "goals.json"), []byte("{not json"), 0644)
 
 	loaded := loadAllGoals(vault)
-	if loaded != nil && len(loaded) != 0 {
+	if len(loaded) != 0 {
 		t.Errorf("expected empty result for malformed JSON, got %v", loaded)
 	}
 }
