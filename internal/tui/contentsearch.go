@@ -23,9 +23,7 @@ type ContentSearchResult struct {
 // ContentSearch is an overlay that performs full-text search across all notes
 // in the vault, displaying results grouped by file with matching lines.
 type ContentSearch struct {
-	active   bool
-	width    int
-	height   int
+	OverlayBase
 	query    string
 	results  []ContentSearchResult
 	cursor   int
@@ -62,11 +60,6 @@ func NewContentSearch() ContentSearch {
 	return ContentSearch{historyIdx: -1, maxResults: 50}
 }
 
-// IsActive reports whether the overlay is visible.
-func (cs *ContentSearch) IsActive() bool {
-	return cs.active
-}
-
 // IsRegexMode reports whether regex search is enabled.
 func (cs *ContentSearch) IsRegexMode() bool {
 	return cs.regexMode
@@ -83,7 +76,7 @@ func (cs *ContentSearch) ToggleRegex() {
 // searchContent controls the default mode: true for content search, false for filename search.
 // maxResults limits the number of results returned (0 or negative uses default of 50).
 func (cs *ContentSearch) Open(noteContents map[string]string, si *vault.SearchIndex, vaultRoot string, searchContent bool, maxResults int) {
-	cs.active = true
+	cs.Activate()
 	cs.query = ""
 	cs.results = nil
 	cs.cursor = 0
@@ -105,20 +98,15 @@ func (cs *ContentSearch) Open(noteContents map[string]string, si *vault.SearchIn
 	cs.history = h.ContentSearch
 }
 
-// Close deactivates the overlay.
+// Close deactivates the overlay and drops the vault-data references
+// so we don't pin content maps/indexes across a vault switch.
 func (cs *ContentSearch) Close() {
-	cs.active = false
+	cs.OverlayBase.Close()
 	cs.query = ""
 	cs.results = nil
 	cs.selected = nil
 	cs.noteContents = nil
 	cs.searchIndex = nil
-}
-
-// SetSize updates the available dimensions for the overlay.
-func (cs *ContentSearch) SetSize(w, h int) {
-	cs.width = w
-	cs.height = h
 }
 
 // SelectedResult returns the result the user chose (via Enter) and clears it.
