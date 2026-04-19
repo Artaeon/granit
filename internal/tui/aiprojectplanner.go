@@ -49,8 +49,7 @@ const (
 // AIProjectPlanner takes a project idea/description and uses AI to break it
 // down into phases, milestones, and tasks automatically.
 type AIProjectPlanner struct {
-	active        bool
-	width, height int
+	OverlayBase
 	state         plannerState
 
 	// Input
@@ -88,19 +87,10 @@ func NewAIProjectPlanner() AIProjectPlanner {
 	return AIProjectPlanner{}
 }
 
-// IsActive reports whether the overlay is currently displayed.
-func (ap AIProjectPlanner) IsActive() bool { return ap.active }
-
-// SetSize updates the available terminal dimensions.
-func (ap *AIProjectPlanner) SetSize(w, h int) {
-	ap.width = w
-	ap.height = h
-}
-
 // Open activates the overlay.
 func (ap *AIProjectPlanner) Open(vaultRoot string, vaultTitles []string,
 	cfg AIConfig, projects []Project, goals []Goal) {
-	ap.active = true
+	ap.Activate()
 	ap.state = plannerInput
 	ap.nameInput = ""
 	ap.descInput = ""
@@ -133,9 +123,6 @@ func (ap *AIProjectPlanner) Open(vaultRoot string, vaultTitles []string,
 		ap.ai.NousURL = "http://localhost:3333"
 	}
 }
-
-// Close deactivates the overlay.
-func (ap *AIProjectPlanner) Close() { ap.active = false }
 
 // GetCreatedProject returns the project and tasks after the user accepts.
 func (ap *AIProjectPlanner) GetCreatedProject() (Project, []string, bool) {
