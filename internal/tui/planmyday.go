@@ -59,9 +59,7 @@ type daySlot struct {
 
 // PlanMyDay orchestrates the full "plan my day" flow in a single overlay.
 type PlanMyDay struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 	phase  int // 0=gathering, 1=planning, 2=result, 3=applied
 
 	// Gathered data
@@ -113,15 +111,6 @@ func NewPlanMyDay() PlanMyDay {
 	return PlanMyDay{}
 }
 
-// IsActive reports whether the overlay is currently displayed.
-func (p PlanMyDay) IsActive() bool { return p.active }
-
-// SetSize updates the available terminal dimensions.
-func (p *PlanMyDay) SetSize(w, h int) {
-	p.width = w
-	p.height = h
-}
-
 // Open activates the overlay with all gathered data and AI config, then
 // starts the gathering animation before auto-advancing to the AI call.
 func (p *PlanMyDay) Open(
@@ -133,7 +122,7 @@ func (p *PlanMyDay) Open(
 	yesterdayTasks []string,
 	cfg AIConfig,
 ) tea.Cmd {
-	p.active = true
+	p.Activate()
 	p.vaultRoot = vaultRoot
 	p.phase = 0
 	p.scroll = 0
@@ -219,7 +208,6 @@ func (p *PlanMyDay) loadExistingPlan() bool {
 }
 
 // Close deactivates the overlay.
-func (p *PlanMyDay) Close() { p.active = false }
 
 // SetClockedSessions provides today's clocked sessions for display in the planner.
 func (p *PlanMyDay) SetClockedSessions(sessions []clockPlanSlot) {
