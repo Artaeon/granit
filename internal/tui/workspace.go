@@ -27,9 +27,7 @@ type WorkspaceLayout struct {
 // Workspace provides the overlay for saving, loading, renaming, and deleting
 // named workspace layouts.  Storage is a single JSON file under configDir.
 type Workspace struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	// Data
 	layouts []WorkspaceLayout
@@ -63,20 +61,10 @@ func NewWorkspace(configDir string) Workspace {
 	}
 }
 
-// IsActive returns whether the workspace overlay is currently visible.
-func (w *Workspace) IsActive() bool {
-	return w.active
-}
-
-// SetSize updates available dimensions for the overlay.
-func (w *Workspace) SetSize(width, height int) {
-	w.width = width
-	w.height = height
-}
-
-// Close hides the overlay and resets transient state.
+// Close hides the overlay and resets the inline save/rename buffers so
+// the next Open starts clean rather than resuming mid-edit.
 func (w *Workspace) Close() {
-	w.active = false
+	w.OverlayBase.Close()
 	w.saveMode = false
 	w.saveName = ""
 	w.renameMode = false
@@ -85,7 +73,7 @@ func (w *Workspace) Close() {
 
 // Open shows the overlay and reloads saved workspaces from disk.
 func (w *Workspace) Open() {
-	w.active = true
+	w.Activate()
 	w.cursor = 0
 	w.scroll = 0
 	w.saveMode = false
