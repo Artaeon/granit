@@ -31,12 +31,10 @@ type fmField struct {
 
 // FrontmatterEditor provides a structured overlay for editing YAML frontmatter.
 type FrontmatterEditor struct {
-	active  bool
+	OverlayBase
 	fields  []fmField
 	cursor  int
 	scroll  int
-	width   int
-	height  int
 
 	editing    bool   // currently editing a field value
 	editBuf    string // edit buffer for the current field
@@ -57,20 +55,10 @@ func NewFrontmatterEditor() FrontmatterEditor {
 	return FrontmatterEditor{}
 }
 
-// IsActive returns whether the overlay is currently visible.
-func (fe *FrontmatterEditor) IsActive() bool {
-	return fe.active
-}
-
-// SetSize updates the available dimensions.
-func (fe *FrontmatterEditor) SetSize(w, h int) {
-	fe.width = w
-	fe.height = h
-}
-
-// Close hides the overlay.
+// Close hides the overlay and clears every transient editing sub-mode so a
+// later Open starts cleanly.
 func (fe *FrontmatterEditor) Close() {
-	fe.active = false
+	fe.OverlayBase.Close()
 	fe.editing = false
 	fe.addingKey = false
 	fe.confirmDel = false
@@ -79,7 +67,7 @@ func (fe *FrontmatterEditor) Close() {
 
 // Open parses frontmatter from the given note content and opens the overlay.
 func (fe *FrontmatterEditor) Open(content string) {
-	fe.active = true
+	fe.Activate()
 	fe.cursor = 0
 	fe.scroll = 0
 	fe.editing = false
