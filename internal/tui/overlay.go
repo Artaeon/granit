@@ -11,10 +11,10 @@ package tui
 // This file introduces the interface and an OverlayBase embed so the
 // next refactor pass — or a new overlay written today — has a single,
 // documented shape to follow. Migration is incremental: each overlay
-// moves to OverlayBase in its own commit (~30 migrated so far). Future
-// callers that want to treat overlays uniformly (e.g. "is anything
-// active?", "close the topmost overlay") can type-assert against the
-// interface.
+// moves to OverlayBase in its own commit (~50 migrated so far, about
+// half of the total). Future callers that want to treat overlays
+// uniformly (e.g. "is anything active?", "close the topmost overlay")
+// can type-assert against the interface.
 //
 // Keeping Update/View off the interface *for now* is deliberate:
 // bubbletea's value-receiver pattern for those two methods means every
