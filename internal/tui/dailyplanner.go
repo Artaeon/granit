@@ -101,9 +101,7 @@ type TaskCompletion struct {
 // DailyPlanner is a time-blocked daily schedule overlay that integrates with
 // tasks, calendar events, and habits.
 type DailyPlanner struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 	date      time.Time
 
@@ -176,16 +174,11 @@ func NewDailyPlanner() DailyPlanner {
 	return DailyPlanner{}
 }
 
-// IsActive reports whether the daily planner overlay is visible.
-func (dp *DailyPlanner) IsActive() bool {
-	return dp.active
-}
-
 // Open activates the daily planner, populating it with the supplied tasks,
 // events, and habits.  If a saved planner file exists for the current date it
 // is loaded first; events and tasks are merged on top.
 func (dp *DailyPlanner) Open(vaultRoot string, tasks []PlannerTask, events []PlannerEvent, habits []PlannerHabit) {
-	dp.active = true
+	dp.Activate()
 	dp.vaultRoot = vaultRoot
 	dp.date = time.Now()
 	dp.cursor = 0
@@ -236,12 +229,6 @@ func (dp *DailyPlanner) Open(vaultRoot string, tasks []PlannerTask, events []Pla
 	})
 
 	dp.recountProgress()
-}
-
-// SetSize updates the overlay dimensions.
-func (dp *DailyPlanner) SetSize(w, h int) {
-	dp.width = w
-	dp.height = h
 }
 
 // GetFocusResult returns (task, duration, ok) for triggering a focus session.
