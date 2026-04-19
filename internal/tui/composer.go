@@ -29,9 +29,7 @@ const (
 )
 
 type Composer struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	prompt           string // user's topic / instruction
 	generatedContent string // AI-generated note content
@@ -74,10 +72,8 @@ func NewComposer() Composer {
 // Overlay interface
 // ---------------------------------------------------------------------------
 
-func (c *Composer) IsActive() bool { return c.active }
-
 func (c *Composer) Open() {
-	c.active = true
+	c.Activate()
 	c.mode = composerModeInput
 	c.prompt = ""
 	c.generatedContent = ""
@@ -91,15 +87,6 @@ func (c *Composer) Open() {
 	c.loadingTick = 0
 	c.loadingStart = time.Time{}
 	c.errMsg = ""
-}
-
-func (c *Composer) Close() {
-	c.active = false
-}
-
-func (c *Composer) SetSize(width, height int) {
-	c.width = width
-	c.height = height
 }
 
 func (c *Composer) SetExistingNotes(notes []string) {
