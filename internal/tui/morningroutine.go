@@ -211,7 +211,7 @@ func mrTaskScore(t Task, today string) int {
 		// Due in future — closer = higher score
 		dt, err := time.Parse("2006-01-02", t.DueDate)
 		if err == nil {
-			daysAway := int(dt.Sub(time.Now()).Hours() / 24)
+			daysAway := int(time.Until(dt).Hours() / 24)
 			if daysAway <= 2 {
 				score += 600
 			} else if daysAway <= 7 {
