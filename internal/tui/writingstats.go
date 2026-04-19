@@ -36,9 +36,7 @@ type noteWordCount struct {
 // WritingStats is a TUI overlay that tracks and visualises writing
 // productivity across the vault.
 type WritingStats struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 
 	tab int // 0=overview, 1=activity, 2=notes
@@ -62,21 +60,10 @@ type WritingStats struct {
 	scroll int
 }
 
-// IsActive returns whether the overlay is visible.
-func (ws WritingStats) IsActive() bool {
-	return ws.active
-}
-
-// SetSize updates the available terminal dimensions.
-func (ws *WritingStats) SetSize(w, h int) {
-	ws.width = w
-	ws.height = h
-}
-
 // Open scans the vault, computes stats, saves the daily log and activates the
 // overlay.
 func (ws *WritingStats) Open(vaultRoot string) {
-	ws.active = true
+	ws.Activate()
 	ws.vaultRoot = vaultRoot
 	ws.tab = 0
 	ws.scroll = 0
