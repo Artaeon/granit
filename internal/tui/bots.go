@@ -197,9 +197,7 @@ const (
 )
 
 type Bots struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	state  botsState
 	cursor int
@@ -255,11 +253,6 @@ func NewBots() Bots {
 	}
 }
 
-func (b *Bots) SetSize(width, height int) {
-	b.width = width
-	b.height = height
-}
-
 func (b *Bots) SetAIConfig(cfg AIConfig) {
 	b.ai = cfg
 	if b.ai.Provider == "" {
@@ -274,7 +267,7 @@ func (b *Bots) SetVaultRoot(root string) {
 }
 
 func (b *Bots) Open() {
-	b.active = true
+	b.Activate()
 	b.state = botsStateList
 	b.cursor = 0
 	b.scroll = 0
@@ -295,8 +288,6 @@ func (b *Bots) Open() {
 	b.loadingTick = 0
 }
 
-func (b *Bots) Close()    { b.active = false }
-func (b *Bots) IsActive() bool { return b.active }
 
 func (b *Bots) SetVaultData(notes map[string]string, tags map[string][]string) {
 	b.notes = notes
