@@ -46,9 +46,7 @@ const (
 
 // BlogPublisher is an overlay for publishing notes to Medium or GitHub Blog.
 type BlogPublisher struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	noteTitle   string
 	noteContent string
@@ -91,15 +89,6 @@ func NewBlogPublisher() BlogPublisher {
 	}
 }
 
-func (bp *BlogPublisher) IsActive() bool {
-	return bp.active
-}
-
-func (bp *BlogPublisher) SetSize(w, h int) {
-	bp.width = w
-	bp.height = h
-}
-
 // SetConfigSave sets the callback invoked after a successful publish to
 // persist tokens and repo settings back to the user config.
 func (bp *BlogPublisher) SetConfigSave(fn func(target, mediumToken, ghToken, ghRepo, ghBranch string)) {
@@ -124,7 +113,7 @@ func (bp *BlogPublisher) PreFill(mediumToken, ghToken, ghRepo, ghBranch string) 
 }
 
 func (bp *BlogPublisher) Open(noteTitle, noteContent string) {
-	bp.active = true
+	bp.Activate()
 	bp.noteTitle = noteTitle
 	bp.noteContent = noteContent
 	bp.screen = blogScreenTarget
@@ -137,8 +126,10 @@ func (bp *BlogPublisher) Open(noteTitle, noteContent string) {
 	bp.err = nil
 }
 
+// Close hides the overlay and exits the inline text-edit mode so the next
+// Open starts in navigation, not mid-field.
 func (bp *BlogPublisher) Close() {
-	bp.active = false
+	bp.OverlayBase.Close()
 	bp.editing = false
 }
 
