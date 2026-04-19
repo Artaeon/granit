@@ -15,13 +15,25 @@ import (
 // and reloaded on open, so it survives between sessions.
 type Scratchpad struct {
 	OverlayBase
-	vaultRoot  string
-	content    []string // lines of text
-	cursorLine int
-	cursorCol  int
-	scroll     int
-	modified   bool
-	clipboard  string // populated by Ctrl+A (select-all copy)
+	vaultRoot   string
+	content     []string // lines of text
+	cursorLine  int
+	cursorCol   int
+	scroll      int
+	modified    bool
+	clipboard   string // populated by Ctrl+A (select-all copy)
+	lastSaveErr error  // consumed-once via ConsumeSaveError
+}
+
+// ConsumeSaveError returns the most recent save error and clears it.
+// Returns nil on a nil receiver so hosts can call it defensively.
+func (s *Scratchpad) ConsumeSaveError() error {
+	if s == nil {
+		return nil
+	}
+	err := s.lastSaveErr
+	s.lastSaveErr = nil
+	return err
 }
 
 // NewScratchpad returns a Scratchpad in its default (inactive) state.
@@ -95,10 +107,17 @@ func (s *Scratchpad) save() {
 	}
 
 	path := s.scratchpadPath()
-	_ = os.MkdirAll(filepath.Dir(path), 0755)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		s.lastSaveErr = err
+		return
+	}
 
 	data := strings.Join(s.content, "\n")
-	_ = atomicWriteState(path, []byte(data))
+	if err := atomicWriteState(path, []byte(data)); err != nil {
+		s.lastSaveErr = err
+		return
+	}
+	s.lastSaveErr = nil
 }
 
 // ---------------------------------------------------------------------------

@@ -738,6 +738,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.timeTracker.IsTimerRunning() {
 			var cmd tea.Cmd
 			m.timeTracker, cmd = m.timeTracker.Update(msg)
+			m.reportError("persist time tracker", m.timeTracker.ConsumeSaveError())
 			return m, cmd
 		}
 		return m, nil
@@ -1707,6 +1708,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.recurringTasks.IsActive() {
 			m.recurringTasks, _ = m.recurringTasks.Update(msg)
+			m.reportError("persist recurring tasks", m.recurringTasks.ConsumeSaveError())
 			if !m.recurringTasks.IsActive() {
 				if count, ok := m.recurringTasks.GetCreatedCount(); ok && count > 0 {
 					if err := m.vault.Scan(); err != nil {
@@ -1733,6 +1735,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.scratchpad.IsActive() {
 			m.scratchpad, _ = m.scratchpad.Update(msg)
+			m.reportError("persist scratchpad", m.scratchpad.ConsumeSaveError())
 			return m, nil
 		}
 
@@ -1899,6 +1902,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.timeTracker.IsActive() {
 			var cmd tea.Cmd
 			m.timeTracker, cmd = m.timeTracker.Update(msg)
+			m.reportError("persist time tracker", m.timeTracker.ConsumeSaveError())
 			return m, cmd
 		}
 
