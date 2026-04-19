@@ -14,9 +14,7 @@ type luaRunResultMsg struct {
 
 // LuaOverlay shows available Lua scripts and lets the user run them.
 type LuaOverlay struct {
-	active  bool
-	width   int
-	height  int
+	OverlayBase
 	scripts []LuaScript
 	cursor  int
 	message string
@@ -32,16 +30,12 @@ func NewLuaOverlay() LuaOverlay {
 	return LuaOverlay{}
 }
 
-func (lo *LuaOverlay) IsActive() bool {
-	return lo.active
-}
-
 func (lo *LuaOverlay) SetEngine(engine *LuaEngine) {
 	lo.engine = engine
 }
 
 func (lo *LuaOverlay) Open(notePath, noteContent string, meta map[string]string) {
-	lo.active = true
+	lo.Activate()
 	lo.cursor = 0
 	lo.message = ""
 	lo.notePath = notePath
@@ -51,15 +45,6 @@ func (lo *LuaOverlay) Open(notePath, noteContent string, meta map[string]string)
 		lo.engine.LoadScripts()
 		lo.scripts = lo.engine.GetScripts()
 	}
-}
-
-func (lo *LuaOverlay) Close() {
-	lo.active = false
-}
-
-func (lo *LuaOverlay) SetSize(w, h int) {
-	lo.width = w
-	lo.height = h
 }
 
 // GetResult returns the last script result (for app.go to process).
