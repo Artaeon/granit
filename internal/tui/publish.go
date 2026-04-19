@@ -56,9 +56,7 @@ type publishOption struct {
 
 // Publisher is an overlay that generates a static HTML website from the vault.
 type Publisher struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultPath string
 
 	// Configuration fields (editable)
@@ -95,12 +93,8 @@ func NewPublisher() Publisher {
 	}
 }
 
-func (p *Publisher) IsActive() bool {
-	return p.active
-}
-
 func (p *Publisher) Open() {
-	p.active = true
+	p.Activate()
 	p.cursor = 0
 	p.editing = false
 	p.editBuf = ""
@@ -114,14 +108,11 @@ func (p *Publisher) Open() {
 	}
 }
 
+// Close hides the overlay and exits the text-edit sub-mode so a later Open
+// doesn't reopen mid-field.
 func (p *Publisher) Close() {
-	p.active = false
+	p.OverlayBase.Close()
 	p.editing = false
-}
-
-func (p *Publisher) SetSize(width, height int) {
-	p.width = width
-	p.height = height
 }
 
 func (p *Publisher) SetVaultPath(path string) {
