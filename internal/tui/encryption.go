@@ -55,9 +55,7 @@ type EncryptionResult struct {
 // Crypto: AES-256-GCM with a PBKDF2-like iterated SHA-256 key derivation.
 // No external (x/crypto) dependencies.
 type Encryption struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	// Session key cache — never written to disk.
 	passphrase string
@@ -98,14 +96,9 @@ func NewEncryption() Encryption {
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-// IsActive reports whether the overlay is currently visible.
-func (e *Encryption) IsActive() bool {
-	return e.active
-}
-
 // Open makes the encryption overlay visible and resets transient UI state.
 func (e *Encryption) Open() {
-	e.active = true
+	e.Activate()
 	e.mode = encModeMenu
 	e.cursor = 0
 	e.input = ""
@@ -115,17 +108,12 @@ func (e *Encryption) Open() {
 	e.resultReady = false
 }
 
-// Close hides the overlay.
+// Close hides the overlay and wipes the passphrase buffers so a later Open
+// cannot display them — session key in e.passphrase is preserved separately.
 func (e *Encryption) Close() {
-	e.active = false
+	e.OverlayBase.Close()
 	e.input = ""
 	e.confirm = ""
-}
-
-// SetSize updates the available terminal dimensions.
-func (e *Encryption) SetSize(w, h int) {
-	e.width = w
-	e.height = h
 }
 
 // HasKey reports whether a passphrase has been set for this session.
