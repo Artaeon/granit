@@ -130,6 +130,30 @@ func TestConsumeSaveErrorContract(t *testing.T) {
 				return rl.ConsumeSaveError, nilRL.ConsumeSaveError
 			},
 		},
+		{
+			name: "Scratchpad",
+			setErr: func() (func() error, func() error) {
+				sp := Scratchpad{lastSaveErr: testErr}
+				var nilSP *Scratchpad
+				return sp.ConsumeSaveError, nilSP.ConsumeSaveError
+			},
+		},
+		{
+			name: "RecurringTasks",
+			setErr: func() (func() error, func() error) {
+				rt := RecurringTasks{lastSaveErr: testErr}
+				var nilRT *RecurringTasks
+				return rt.ConsumeSaveError, nilRT.ConsumeSaveError
+			},
+		},
+		{
+			name: "TimeTracker",
+			setErr: func() (func() error, func() error) {
+				tt := TimeTracker{lastSaveErr: testErr}
+				var nilTT *TimeTracker
+				return tt.ConsumeSaveError, nilTT.ConsumeSaveError
+			},
+		},
 	}
 
 	for _, tc := range cases {
