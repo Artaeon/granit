@@ -77,9 +77,7 @@ func (ac *AIChat) systemPromptFor() string {
 // the user's question to Ollama or OpenAI, and renders the conversation in a
 // chat-style UI.
 type AIChat struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	messages     []ChatMessage
 	input        string
@@ -117,14 +115,9 @@ func NewAIChat() AIChat {
 // Overlay interface
 // ---------------------------------------------------------------------------
 
-// IsActive returns whether the chat overlay is visible.
-func (ac *AIChat) IsActive() bool {
-	return ac.active
-}
-
 // Open activates the chat overlay.
 func (ac *AIChat) Open() {
-	ac.active = true
+	ac.Activate()
 	ac.input = ""
 	ac.scroll = 0
 	ac.loading = false
@@ -143,23 +136,18 @@ func (ac *AIChat) Open() {
 	}
 }
 
-// Close deactivates the chat overlay and resets streaming state.
+// Close deactivates the chat overlay, cancels any in-flight streaming
+// request, and drops transcript state so a later Open starts fresh.
 func (ac *AIChat) Close() {
 	if ac.streamCancel != nil {
 		ac.streamCancel()
 		ac.streamCancel = nil
 	}
-	ac.active = false
+	ac.OverlayBase.Close()
 	ac.streaming = false
 	ac.loading = false
 	ac.streamCh = nil
 	ac.messages = nil
-}
-
-// SetSize updates the available dimensions for the overlay.
-func (ac *AIChat) SetSize(width, height int) {
-	ac.width = width
-	ac.height = height
 }
 
 // SetNotes provides the vault contents for context lookup.
