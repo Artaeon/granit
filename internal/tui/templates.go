@@ -17,11 +17,9 @@ type NoteTemplate struct {
 }
 
 type Templates struct {
-	active    bool
+	OverlayBase
 	cursor    int
 	scroll    int
-	width     int
-	height    int
 	templates []NoteTemplate
 	result    string
 	selected  bool
@@ -267,12 +265,8 @@ tags: []
 	}
 }
 
-func (t *Templates) IsActive() bool {
-	return t.active
-}
-
 func (t *Templates) Open() {
-	t.active = true
+	t.Activate()
 	t.cursor = 0
 	t.scroll = 0
 	t.result = ""
@@ -315,15 +309,6 @@ func loadUserTemplates(vaultRoot string) []NoteTemplate {
 		})
 	}
 	return templates
-}
-
-func (t *Templates) Close() {
-	t.active = false
-}
-
-func (t *Templates) SetSize(width, height int) {
-	t.width = width
-	t.height = height
 }
 
 func (t *Templates) WasSelected() bool {
