@@ -103,7 +103,7 @@ func (nc *NousClient) ChatCtx(ctx context.Context, message string) (string, erro
 	}
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("Nous error (status %d): %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("nous error (status %d): %s", resp.StatusCode, string(body))
 	}
 
 	var chatResp nousChatResponse
@@ -167,7 +167,7 @@ func (nc *NousClient) TestConnection() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("Nous health check failed (status %d)", resp.StatusCode)
+		return fmt.Errorf("nous health check failed (status %d)", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -181,7 +181,7 @@ func (nc *NousClient) TestConnection() error {
 	}
 
 	if health.Status != "ok" {
-		return fmt.Errorf("Nous health status: %s", health.Status)
+		return fmt.Errorf("nous health status: %s", health.Status)
 	}
 	return nil
 }
@@ -206,7 +206,7 @@ func (nc *NousClient) GetStatus() (string, error) {
 	}
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("Nous status error (status %d): %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("nous status error (status %d): %s", resp.StatusCode, string(body))
 	}
 
 	var status nousStatusResponse

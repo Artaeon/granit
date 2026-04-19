@@ -506,7 +506,7 @@ func (gw *GhostWriter) requestCompletion(noteCtx string) tea.Cmd {
 		raw, err = ai.ChatShortCtx(ctx, systemPrompt, noteCtx)
 
 		if err != nil {
-			return ghostSuggestionMsg{err: fmt.Errorf("Ghost Writer: %v", err), contextKey: cacheKey}
+			return ghostSuggestionMsg{err: fmt.Errorf("ghost writer: %v", err), contextKey: cacheKey}
 		}
 
 		cleaned := ghostCleanCompletion(raw)

@@ -358,7 +358,7 @@ func (c AIConfig) chatOllamaCtx(ctx context.Context, systemPrompt, userPrompt st
 		if resp.StatusCode == 404 {
 			return "", fmt.Errorf("model %q not found — run: ollama pull %s", model, model)
 		}
-		return "", fmt.Errorf("Ollama error %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("ollama error %d: %s", resp.StatusCode, string(body))
 	}
 
 	var chatResp struct {
@@ -371,7 +371,7 @@ func (c AIConfig) chatOllamaCtx(ctx context.Context, systemPrompt, userPrompt st
 		return "", fmt.Errorf("parse response: %w", err)
 	}
 	if chatResp.Error != "" {
-		return "", fmt.Errorf("Ollama: %s", chatResp.Error)
+		return "", fmt.Errorf("ollama: %s", chatResp.Error)
 	}
 	return chatResp.Message.Content, nil
 }

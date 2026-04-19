@@ -542,7 +542,7 @@ func blogPublishMedium(token, title, content, publishStatus string, tags []strin
 	}
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("Medium API error: %s", extractAPIErrorMessage(body, resp.StatusCode))
+		return "", fmt.Errorf("medium API error: %s", extractAPIErrorMessage(body, resp.StatusCode))
 	}
 
 	var userResp struct {
@@ -598,7 +598,7 @@ func blogPublishMedium(token, title, content, publishStatus string, tags []strin
 	}
 
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		return "", fmt.Errorf("Medium API error: %s", extractAPIErrorMessage(body, resp.StatusCode))
+		return "", fmt.Errorf("medium API error: %s", extractAPIErrorMessage(body, resp.StatusCode))
 	}
 
 	var postResp struct {

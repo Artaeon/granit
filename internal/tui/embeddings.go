@@ -392,7 +392,7 @@ func getOllamaEmbedding(url, model, text string) ([]float64, error) {
 		return nil, err
 	}
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var olResp ollamaEmbedResponse
@@ -400,7 +400,7 @@ func getOllamaEmbedding(url, model, text string) ([]float64, error) {
 		return nil, err
 	}
 	if len(olResp.Embeddings) == 0 {
-		return nil, fmt.Errorf("Ollama returned no embeddings")
+		return nil, fmt.Errorf("ollama returned no embeddings")
 	}
 	return olResp.Embeddings[0], nil
 }

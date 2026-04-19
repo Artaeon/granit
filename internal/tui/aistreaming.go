@@ -122,9 +122,9 @@ func streamOllamaChat(ctx context.Context, baseURL, model, systemPrompt, userPro
 		if resp.StatusCode != 200 {
 			body, readErr := io.ReadAll(resp.Body)
 			if readErr != nil {
-				ch <- streamDoneMsg{tag: tag, err: fmt.Errorf("Ollama error %d (could not read body)", resp.StatusCode)}
+				ch <- streamDoneMsg{tag: tag, err: fmt.Errorf("ollama error %d (could not read body)", resp.StatusCode)}
 			} else {
-				ch <- streamDoneMsg{tag: tag, err: fmt.Errorf("Ollama error %d: %s", resp.StatusCode, string(body))}
+				ch <- streamDoneMsg{tag: tag, err: fmt.Errorf("ollama error %d: %s", resp.StatusCode, string(body))}
 			}
 			return
 		}
