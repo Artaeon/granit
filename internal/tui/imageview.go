@@ -179,12 +179,10 @@ type imageEntry struct {
 }
 
 type ImageManager struct {
-	active       bool
+	OverlayBase
 	images       []imageEntry
 	cursor       int
 	scroll       int
-	width        int
-	height       int
 	vaultRoot    string
 	insertResult string
 	confirmDel   bool
@@ -201,17 +199,8 @@ func NewImageManager() ImageManager {
 	return ImageManager{previewIdx: -1}
 }
 
-func (im *ImageManager) SetSize(width, height int) {
-	im.width = width
-	im.height = height
-}
-
-func (im *ImageManager) IsActive() bool {
-	return im.active
-}
-
 func (im *ImageManager) Open(vaultRoot string) {
-	im.active = true
+	im.Activate()
 	im.vaultRoot = vaultRoot
 	im.cursor = 0
 	im.scroll = 0
@@ -223,10 +212,6 @@ func (im *ImageManager) Open(vaultRoot string) {
 	im.importing = false
 	im.importBuf = ""
 	im.scanImages()
-}
-
-func (im *ImageManager) Close() {
-	im.active = false
 }
 
 func (im *ImageManager) GetInsertResult() (string, bool) {
