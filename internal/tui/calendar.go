@@ -112,9 +112,7 @@ func priorityColor(priority int) lipgloss.Color {
 
 // Calendar is an overlay component that displays a month-view calendar grid.
 type Calendar struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	cursor   time.Time // the currently highlighted date
 	viewing  time.Time // the month being displayed (year + month)
@@ -212,11 +210,6 @@ func NewCalendar() Calendar {
 	}
 }
 
-func (c *Calendar) SetSize(width, height int) {
-	c.width = width
-	c.height = height
-}
-
 func (c *Calendar) SetActiveGoals(goals []Goal) { c.activeGoals = goals }
 func (c *Calendar) SetVaultRoot(root string)     { c.vaultRoot = root }
 
@@ -234,7 +227,7 @@ func (c *Calendar) SetAllDailyFocus(all map[string]DailyFocus) {
 }
 
 func (c *Calendar) Open() {
-	c.active = true
+	c.Activate()
 	c.selected = ""
 	c.showEvents = false
 	c.addingEvent = false
@@ -248,9 +241,6 @@ func (c *Calendar) Open() {
 	c.cursor = c.today
 	c.viewing = c.today
 }
-
-func (c *Calendar) Close()         { c.active = false }
-func (c *Calendar) IsActive() bool { return c.active }
 
 func (c *Calendar) SetDailyNotes(notes []string) {
 	c.dailyNoteDates = make(map[string]bool, len(notes))
