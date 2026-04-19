@@ -72,9 +72,7 @@ const (
 // ---------------------------------------------------------------------------
 
 type IdeasBoard struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 
 	ideas   []Idea
@@ -96,15 +94,8 @@ func NewIdeasBoard() IdeasBoard {
 	return IdeasBoard{}
 }
 
-func (ib *IdeasBoard) IsActive() bool { return ib.active }
-
-func (ib *IdeasBoard) SetSize(w, h int) {
-	ib.width = w
-	ib.height = h
-}
-
 func (ib *IdeasBoard) Open(vaultRoot string) {
-	ib.active = true
+	ib.Activate()
 	ib.vaultRoot = vaultRoot
 	ib.col = 0
 	ib.cursor = 0
@@ -115,8 +106,6 @@ func (ib *IdeasBoard) Open(vaultRoot string) {
 	ib.confirmMsg = ""
 	ib.loadIdeas()
 }
-
-func (ib *IdeasBoard) Close() { ib.active = false }
 
 func (ib *IdeasBoard) WasFileChanged() bool {
 	if ib.fileChanged {
