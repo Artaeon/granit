@@ -26,9 +26,7 @@ type threadWeaverTickMsg struct{}
 // ---------------------------------------------------------------------------
 
 type ThreadWeaver struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	// Mode: 0=select notes, 1=configuring, 2=generating, 3=preview
 	mode int
@@ -86,10 +84,8 @@ func NewThreadWeaver() ThreadWeaver {
 // Overlay interface
 // ---------------------------------------------------------------------------
 
-func (tw *ThreadWeaver) IsActive() bool { return tw.active }
-
 func (tw *ThreadWeaver) Open() {
-	tw.active = true
+	tw.Activate()
 	tw.mode = 0
 	tw.query = ""
 	tw.cursor = 0
@@ -107,15 +103,6 @@ func (tw *ThreadWeaver) Open() {
 	tw.errMsg = ""
 	tw.filtered = make([]string, len(tw.allNotes))
 	copy(tw.filtered, tw.allNotes)
-}
-
-func (tw *ThreadWeaver) Close() {
-	tw.active = false
-}
-
-func (tw *ThreadWeaver) SetSize(w, h int) {
-	tw.width = w
-	tw.height = h
 }
 
 // ---------------------------------------------------------------------------
