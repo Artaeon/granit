@@ -18,13 +18,11 @@ type quickSwitchItem struct {
 }
 
 type QuickSwitch struct {
-	active bool
+	OverlayBase
 	all    []quickSwitchItem // unfiltered, in display order from Open()
 	items  []quickSwitchItem // filtered view shown to the user
 	cursor int
 	query  string
-	width  int
-	height int
 	result string
 }
 
@@ -32,16 +30,11 @@ func NewQuickSwitch() QuickSwitch {
 	return QuickSwitch{}
 }
 
-func (qs *QuickSwitch) SetSize(width, height int) {
-	qs.width = width
-	qs.height = height
-}
-
 // Open builds the item list from the provided sources.
 // Order: starred files first, then recent files, then remaining files sorted
 // by modification time (most recent first). Duplicates are suppressed.
 func (qs *QuickSwitch) Open(recentFiles []string, starredFiles []string, allPaths []string, getModTime func(string) time.Time) {
-	qs.active = true
+	qs.Activate()
 	qs.cursor = 0
 	qs.result = ""
 	qs.query = ""
@@ -150,14 +143,6 @@ func (qs *QuickSwitch) applyFilter() {
 	if qs.cursor >= len(qs.items) {
 		qs.cursor = maxInt(0, len(qs.items)-1)
 	}
-}
-
-func (qs *QuickSwitch) Close() {
-	qs.active = false
-}
-
-func (qs *QuickSwitch) IsActive() bool {
-	return qs.active
 }
 
 // SelectedFile returns the selected path and resets the result.
