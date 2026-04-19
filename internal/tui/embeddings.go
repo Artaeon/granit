@@ -52,9 +52,7 @@ type semanticResult struct {
 // notes (via Ollama or OpenAI) and lets the user type a natural-language
 // query to find notes ranked by cosine similarity.
 type SemanticSearch struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	query       string
 	results     []semanticResult
@@ -155,15 +153,10 @@ func NewSemanticSearch() *SemanticSearch {
 	}
 }
 
-// IsActive reports whether the overlay is visible.
-func (ss *SemanticSearch) IsActive() bool {
-	return ss.active
-}
-
 // Open activates the overlay. If an index is already loaded it is reused;
 // otherwise we attempt to load from disk.
 func (ss *SemanticSearch) Open() {
-	ss.active = true
+	ss.Activate()
 	ss.query = ""
 	ss.results = nil
 	ss.cursor = 0
@@ -176,17 +169,12 @@ func (ss *SemanticSearch) Open() {
 	}
 }
 
-// Close deactivates the overlay.
+// Close hides the overlay and drops the current query + results so a later
+// Open starts fresh rather than reopening on the last page of results.
 func (ss *SemanticSearch) Close() {
-	ss.active = false
+	ss.OverlayBase.Close()
 	ss.query = ""
 	ss.results = nil
-}
-
-// SetSize updates the available dimensions for the overlay.
-func (ss *SemanticSearch) SetSize(w, h int) {
-	ss.width = w
-	ss.height = h
 }
 
 // SetConfig updates the AI provider configuration.
