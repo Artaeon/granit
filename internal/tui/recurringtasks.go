@@ -59,6 +59,19 @@ type RecurringTasks struct {
 	// consumed-once: how many tasks were auto-created on Open
 	createdCount int
 	createdReady bool
+
+	lastSaveErr error // consumed-once via ConsumeSaveError
+}
+
+// ConsumeSaveError returns the most recent save error and clears it.
+// Returns nil on a nil receiver so hosts can call it defensively.
+func (rt *RecurringTasks) ConsumeSaveError() error {
+	if rt == nil {
+		return nil
+	}
+	err := rt.lastSaveErr
+	rt.lastSaveErr = nil
+	return err
 }
 
 var freqLabels = []string{"daily", "weekly", "monthly"}
@@ -113,13 +126,19 @@ func (rt *RecurringTasks) load() {
 func (rt *RecurringTasks) save() {
 	dir := filepath.Join(rt.vaultRoot, ".granit")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
+		rt.lastSaveErr = err
 		return
 	}
 	data, err := json.MarshalIndent(rt.tasks, "", "  ")
 	if err != nil {
+		rt.lastSaveErr = err
 		return
 	}
-	_ = atomicWriteState(rt.configPath(), data)
+	if err := atomicWriteState(rt.configPath(), data); err != nil {
+		rt.lastSaveErr = err
+		return
+	}
+	rt.lastSaveErr = nil
 }
 
 // ----- auto-create logic -----
