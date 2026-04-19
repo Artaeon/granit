@@ -25,9 +25,7 @@ import (
 //	LIST FROM #tag WHERE date >= 2024-01-01 SORT date DESC
 //	TASK FROM "projects" WHERE !completed
 type DataviewOverlay struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vault     *vault.Vault
 
 	// Query input
@@ -66,7 +64,7 @@ func NewDataviewOverlay() DataviewOverlay {
 
 // Open initialises the overlay.
 func (d *DataviewOverlay) Open(v *vault.Vault) {
-	d.active = true
+	d.Activate()
 	d.vault = v
 	d.query = ""
 	d.cursorPos = 0
@@ -79,17 +77,6 @@ func (d *DataviewOverlay) Open(v *vault.Vault) {
 	d.hasResult = false
 	d.historyIdx = -1
 	d.savedQuery = ""
-}
-
-// SetSize updates the available rendering dimensions.
-func (d *DataviewOverlay) SetSize(w, h int) {
-	d.width = w
-	d.height = h
-}
-
-// IsActive reports whether the overlay is currently shown.
-func (d DataviewOverlay) IsActive() bool {
-	return d.active
 }
 
 // GetSelectedNote returns the chosen note path (consumed once).
