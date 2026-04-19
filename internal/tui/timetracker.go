@@ -46,9 +46,7 @@ type noteAggregate struct {
 // TimeTracker is an overlay that tracks time spent on notes and integrates
 // with pomodoro counting. It persists data to .granit/timetracker.json.
 type TimeTracker struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 
 	entries []timeEntry
@@ -80,6 +78,19 @@ type TimeTracker struct {
 
 	// For note-detail phase
 	detailNotePath string
+
+	lastSaveErr error // consumed-once via ConsumeSaveError
+}
+
+// ConsumeSaveError returns the most recent saveEntries error and clears it.
+// Returns nil on a nil receiver so hosts can call it defensively.
+func (tt *TimeTracker) ConsumeSaveError() error {
+	if tt == nil {
+		return nil
+	}
+	err := tt.lastSaveErr
+	tt.lastSaveErr = nil
+	return err
 }
 
 // NewTimeTracker returns a TimeTracker in its default (inactive) state.
@@ -89,15 +100,9 @@ func NewTimeTracker() TimeTracker {
 	}
 }
 
-// SetSize updates the available terminal dimensions.
-func (tt *TimeTracker) SetSize(w, h int) {
-	tt.width = w
-	tt.height = h
-}
-
 // Open activates the time tracker overlay and loads persisted data.
 func (tt *TimeTracker) Open(vaultRoot string) {
-	tt.active = true
+	tt.Activate()
 	tt.vaultRoot = vaultRoot
 	tt.phase = 0
 	tt.cursor = 0
@@ -106,11 +111,6 @@ func (tt *TimeTracker) Open(vaultRoot string) {
 	tt.loadEntries()
 	tt.todaySummary()
 	tt.weekSummary()
-}
-
-// Close hides the time tracker overlay. The timer continues in the background.
-func (tt *TimeTracker) Close() {
-	tt.active = false
 }
 
 // TaskTimeMap returns cumulative duration per task text across all entries.
@@ -122,11 +122,6 @@ func (tt *TimeTracker) TaskTimeMap() map[string]int {
 		}
 	}
 	return result
-}
-
-// IsActive reports whether the time tracker overlay is currently visible.
-func (tt TimeTracker) IsActive() bool {
-	return tt.active
 }
 
 // ----- Storage -----
@@ -152,13 +147,19 @@ func (tt *TimeTracker) loadEntries() {
 func (tt *TimeTracker) saveEntries() {
 	dir := filepath.Dir(tt.storagePath())
 	if err := os.MkdirAll(dir, 0o755); err != nil {
+		tt.lastSaveErr = err
 		return
 	}
 	data, err := json.MarshalIndent(tt.entries, "", "  ")
 	if err != nil {
+		tt.lastSaveErr = err
 		return
 	}
-	_ = atomicWriteState(tt.storagePath(), data)
+	if err := atomicWriteState(tt.storagePath(), data); err != nil {
+		tt.lastSaveErr = err
+		return
+	}
+	tt.lastSaveErr = nil
 }
 
 // ----- Timer Control -----
