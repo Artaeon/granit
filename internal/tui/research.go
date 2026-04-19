@@ -1514,11 +1514,11 @@ func (r ResearchAgent) updateNoteSelection(msg tea.KeyMsg) (ResearchAgent, tea.C
 		return r, nil
 	default:
 		ch := msg.String()
+		// "space" is handled elsewhere as a toggle, so we drop it here rather
+		// than treating it as filter input.
 		if len(ch) == 1 && ch[0] >= 32 {
 			r.noteFilter += ch
 			r.refilterNotes()
-		} else if ch == "space" {
-			// space is toggle, not filter character
 		}
 		return r, nil
 	}
