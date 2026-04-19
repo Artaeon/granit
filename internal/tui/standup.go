@@ -27,9 +27,7 @@ const (
 // scanning git history, modified files, completed tasks, and recently
 // created notes.
 type StandupGenerator struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 
 	phase standupPhase
@@ -63,14 +61,9 @@ func NewStandupGenerator() StandupGenerator {
 	return StandupGenerator{}
 }
 
-// IsActive reports whether the standup overlay is visible.
-func (s StandupGenerator) IsActive() bool {
-	return s.active
-}
-
 // Open activates the overlay and scans the vault for standup data.
 func (s *StandupGenerator) Open(vaultRoot string) {
-	s.active = true
+	s.Activate()
 	s.vaultRoot = vaultRoot
 	s.phase = standupScanning
 	s.scroll = 0
@@ -91,17 +84,6 @@ func (s *StandupGenerator) Open(vaultRoot string) {
 	s.generate()
 	s.phase = standupPreview
 	s.scanDone = true
-}
-
-// Close hides the overlay.
-func (s *StandupGenerator) Close() {
-	s.active = false
-}
-
-// SetSize updates the available dimensions for the overlay.
-func (s *StandupGenerator) SetSize(w, h int) {
-	s.width = w
-	s.height = h
 }
 
 // ── Scanning ─────────────────────────────────────────────────────
