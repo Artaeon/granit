@@ -75,9 +75,7 @@ type pendingCmd struct {
 // ---------------------------------------------------------------------------
 
 type PluginManager struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	plugins   []Plugin
 	cursor    int
 	scroll    int
@@ -198,12 +196,8 @@ func (pm *PluginManager) GetPluginCommands() []Command {
 // Overlay methods
 // ---------------------------------------------------------------------------
 
-func (pm *PluginManager) IsActive() bool {
-	return pm.active
-}
-
 func (pm *PluginManager) Open() {
-	pm.active = true
+	pm.Activate()
 	pm.cursor = 0
 	pm.scroll = 0
 	pm.detail = false
@@ -212,15 +206,12 @@ func (pm *PluginManager) Open() {
 	pm.Reload()
 }
 
+// Close hides the overlay and exits any detail sub-view so the next Open
+// starts from the list.
 func (pm *PluginManager) Close() {
-	pm.active = false
+	pm.OverlayBase.Close()
 	pm.detail = false
 	pm.message = ""
-}
-
-func (pm *PluginManager) SetSize(w, h int) {
-	pm.width = w
-	pm.height = h
 }
 
 // PendingCommand returns (and clears) any plugin command that was queued while
