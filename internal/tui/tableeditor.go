@@ -17,9 +17,7 @@ const (
 
 // TableEditor is an overlay component for visually editing markdown tables.
 type TableEditor struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	// Table data
 	headers    []string
@@ -46,11 +44,6 @@ type TableEditor struct {
 // NewTableEditor creates a new TableEditor overlay.
 func NewTableEditor() TableEditor {
 	return TableEditor{}
-}
-
-// IsActive returns whether the table editor overlay is currently open.
-func (te *TableEditor) IsActive() bool {
-	return te.active
 }
 
 // Open parses a markdown table from the content around cursorLine and activates the overlay.
@@ -143,9 +136,10 @@ func (te *TableEditor) OpenNew(insertLine int) {
 	te.active = true
 }
 
-// Close deactivates the table editor overlay.
+// Close hides the overlay and cancels any in-progress cell edit so the
+// next Open starts in navigation mode.
 func (te *TableEditor) Close() {
-	te.active = false
+	te.OverlayBase.Close()
 	te.editing = false
 }
 
@@ -158,12 +152,6 @@ func (te *TableEditor) visibleDataRows() int {
 		avail = 3
 	}
 	return avail
-}
-
-// SetSize sets the available width and height for the overlay.
-func (te *TableEditor) SetSize(w, h int) {
-	te.width = w
-	te.height = h
 }
 
 // Update handles input messages for the table editor. Uses a value receiver
