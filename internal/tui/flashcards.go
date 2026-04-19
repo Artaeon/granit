@@ -256,9 +256,7 @@ const (
 )
 
 type Flashcards struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	mode      int
 	vaultPath string
 
@@ -291,24 +289,11 @@ func NewFlashcards(vaultPath string) Flashcards {
 	return fc
 }
 
-func (fc *Flashcards) IsActive() bool {
-	return fc.active
-}
-
 func (fc *Flashcards) Open() {
-	fc.active = true
+	fc.Activate()
 	fc.mode = fcModeDeck
 	fc.showAnswer = false
 	fc.scroll = 0
-}
-
-func (fc *Flashcards) Close() {
-	fc.active = false
-}
-
-func (fc *Flashcards) SetSize(width, height int) {
-	fc.width = width
-	fc.height = height
 }
 
 // GetStats returns total, due, new, and mastered card counts.
