@@ -62,9 +62,7 @@ type topicEntry struct {
 // LearnDashboard is an overlay panel that tracks study progress with
 // flashcard-review statistics, quiz history, and weekly activity.
 type LearnDashboard struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 	scroll int
 
 	stats LearnStats
@@ -95,23 +93,11 @@ func NewLearnDashboard(vaultPath string) LearnDashboard {
 // Overlay interface
 // ---------------------------------------------------------------------------
 
-// IsActive returns whether the overlay is currently shown.
-func (ld *LearnDashboard) IsActive() bool { return ld.active }
-
 // Open activates the overlay and reloads stats from disk.
 func (ld *LearnDashboard) Open() {
-	ld.active = true
+	ld.Activate()
 	ld.scroll = 0
 	ld.stats = LoadStats(ld.vaultPath)
-}
-
-// Close hides the overlay.
-func (ld *LearnDashboard) Close() { ld.active = false }
-
-// SetSize tells the overlay about the terminal dimensions.
-func (ld *LearnDashboard) SetSize(width, height int) {
-	ld.width = width
-	ld.height = height
 }
 
 // ---------------------------------------------------------------------------
