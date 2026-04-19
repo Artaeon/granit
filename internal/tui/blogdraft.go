@@ -54,9 +54,7 @@ type blogSection struct {
 }
 
 type BlogDraft struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	ai        AIConfig
 	vaultRoot string
@@ -113,10 +111,8 @@ func NewBlogDraft() BlogDraft {
 // Overlay interface
 // ---------------------------------------------------------------------------
 
-func (bd BlogDraft) IsActive() bool { return bd.active }
-
 func (bd *BlogDraft) Open(vaultRoot string, ai AIConfig) {
-	bd.active = true
+	bd.Activate()
 	bd.ai = ai
 	if bd.ai.OllamaURL == "" {
 		bd.ai.OllamaURL = "http://localhost:11434"
@@ -145,15 +141,6 @@ func (bd *BlogDraft) Open(vaultRoot string, ai AIConfig) {
 	bd.resultTitle = ""
 	bd.resultContent = ""
 	bd.errMsg = ""
-}
-
-func (bd *BlogDraft) Close() {
-	bd.active = false
-}
-
-func (bd *BlogDraft) SetSize(w, h int) {
-	bd.width = w
-	bd.height = h
 }
 
 // GetResult returns (title, content, ok) and clears the result. Consumed once.
