@@ -36,13 +36,11 @@ type AutoLinker struct {
 	notePaths []string // original paths
 
 	// Overlay state
-	active   bool
+	OverlayBase
 	mentions []LinkSuggestion
 	statuses []MentionStatus // per-mention decision
 	cursor   int
 	scroll   int
-	width    int
-	height   int
 	lines    []string // snapshot of editor lines for context display
 
 	// Collected accepted replacements, ready for the caller to consume.
@@ -68,17 +66,6 @@ func (al *AutoLinker) SetNotes(paths []string) {
 	}
 }
 
-// SetSize updates the available dimensions for the overlay.
-func (al *AutoLinker) SetSize(width, height int) {
-	al.width = width
-	al.height = height
-}
-
-// IsActive returns whether the unlinked mentions overlay is visible.
-func (al *AutoLinker) IsActive() bool {
-	return al.active
-}
-
 // Open scans the given content for unlinked mentions and opens the
 // interactive overlay. If no mentions are found the overlay is not
 // activated.
@@ -94,14 +81,14 @@ func (al *AutoLinker) Open(content string, currentNote string) {
 	al.scroll = 0
 	al.replacements = nil
 	al.lines = strings.Split(content, "\n")
-	al.active = true
+	al.Activate()
 }
 
 // Close hides the overlay and collects all accepted mentions into the
 // replacements slice. Replacements are sorted from last line/col to first
 // so the caller can apply them without shifting indices.
 func (al *AutoLinker) Close() {
-	al.active = false
+	al.OverlayBase.Close()
 	al.collectReplacements()
 }
 
