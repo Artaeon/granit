@@ -21,9 +21,7 @@ type exportFormat struct {
 // ExportOverlay provides a note export menu supporting HTML, Plain Text, PDF,
 // and full-vault HTML export.
 type ExportOverlay struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	cursor    int
 	formats   []exportFormat
 	result    string
@@ -45,27 +43,14 @@ func NewExportOverlay() ExportOverlay {
 	}
 }
 
-func (e *ExportOverlay) IsActive() bool {
-	return e.active
-}
-
 func (e *ExportOverlay) Open(notePath, noteContent string, vaultRoot string) {
-	e.active = true
+	e.Activate()
 	e.cursor = 0
 	e.result = ""
 	e.exporting = false
 	e.notePath = notePath
 	e.noteContent = noteContent
 	e.vaultRoot = vaultRoot
-}
-
-func (e *ExportOverlay) Close() {
-	e.active = false
-}
-
-func (e *ExportOverlay) SetSize(width, height int) {
-	e.width = width
-	e.height = height
 }
 
 func (e ExportOverlay) Update(msg tea.Msg) (ExportOverlay, tea.Cmd) {
