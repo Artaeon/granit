@@ -19,10 +19,8 @@ const onboardingDoneFile = "onboarding_done"
 // keybinding highlights, and a progress indicator. After the user finishes
 // (or skips), a sentinel file is written so the tutorial is not shown again.
 type Onboarding struct {
-	active     bool
+	OverlayBase
 	step       int
-	width      int
-	height     int
 	totalSteps int
 	skipped    bool
 	vaultRoot  string
@@ -36,27 +34,11 @@ func NewOnboarding() Onboarding {
 	}
 }
 
-// IsActive reports whether the onboarding overlay is currently visible.
-func (o Onboarding) IsActive() bool {
-	return o.active
-}
-
 // Open activates the onboarding overlay, resetting to the first step.
 func (o *Onboarding) Open() {
-	o.active = true
+	o.Activate()
 	o.step = 0
 	o.skipped = false
-}
-
-// Close deactivates the onboarding overlay.
-func (o *Onboarding) Close() {
-	o.active = false
-}
-
-// SetSize updates the available terminal dimensions for layout.
-func (o *Onboarding) SetSize(w, h int) {
-	o.width = w
-	o.height = h
 }
 
 // MarkComplete writes the sentinel file so the tutorial is not shown again.
