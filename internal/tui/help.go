@@ -8,9 +8,7 @@ import (
 )
 
 type HelpOverlay struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	scroll    int
 	searching bool
 	query     string
@@ -20,20 +18,11 @@ func NewHelpOverlay() HelpOverlay {
 	return HelpOverlay{}
 }
 
-func (h *HelpOverlay) SetSize(width, height int) {
-	h.width = width
-	h.height = height
-}
-
 func (h *HelpOverlay) Toggle() {
 	h.active = !h.active
 	h.scroll = 0
 	h.searching = false
 	h.query = ""
-}
-
-func (h *HelpOverlay) IsActive() bool {
-	return h.active
 }
 
 type helpSection struct {
