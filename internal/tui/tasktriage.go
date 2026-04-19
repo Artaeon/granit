@@ -56,9 +56,7 @@ type staleTaskInfo struct {
 // It analyzes open tasks, calendar events, and active goals to recommend
 // the top tasks to focus on today, and flags stale tasks that need attention.
 type TaskTriage struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	ai        AIConfig
 	vaultRoot string
@@ -97,18 +95,9 @@ func NewTaskTriage() TaskTriage {
 	return TaskTriage{}
 }
 
-// IsActive reports whether the overlay is currently displayed.
-func (tt TaskTriage) IsActive() bool { return tt.active }
-
-// SetSize updates the available terminal dimensions.
-func (tt *TaskTriage) SetSize(w, h int) {
-	tt.width = w
-	tt.height = h
-}
-
 // Open activates the triage overlay and starts analysis.
 func (tt *TaskTriage) Open(vaultRoot string, tasks []Task, goals []Goal, cfg AIConfig) tea.Cmd {
-	tt.active = true
+	tt.Activate()
 	tt.vaultRoot = vaultRoot
 	tt.ai = cfg
 	tt.phase = 0
@@ -145,9 +134,6 @@ func (tt *TaskTriage) Open(vaultRoot string, tasks []Task, goals []Goal, cfg AIC
 	// Start AI triage
 	return tea.Batch(tt.triageCmd(), triageTickCmd())
 }
-
-// Close deactivates the overlay.
-func (tt *TaskTriage) Close() { tt.active = false }
 
 // ---------------------------------------------------------------------------
 // Stale task detection (local, no AI)
