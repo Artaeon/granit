@@ -13,10 +13,8 @@ import (
 // It shows on first launch when config.TutorialCompleted is false, and can
 // be reopened any time from the command palette (CmdShowTutorial).
 type Tutorial struct {
-	active     bool
+	OverlayBase
 	page       int
-	width      int
-	height     int
 	totalPages int
 	cfg        *config.Config
 	vaultRoot  string
@@ -31,26 +29,10 @@ func NewTutorial(cfg *config.Config) Tutorial {
 	}
 }
 
-// IsActive reports whether the tutorial overlay is currently visible.
-func (t Tutorial) IsActive() bool {
-	return t.active
-}
-
 // Open activates the tutorial overlay, resetting to the first page.
 func (t *Tutorial) Open() {
-	t.active = true
+	t.Activate()
 	t.page = 0
-}
-
-// Close deactivates the tutorial overlay.
-func (t *Tutorial) Close() {
-	t.active = false
-}
-
-// SetSize updates the available terminal dimensions for layout.
-func (t *Tutorial) SetSize(w, h int) {
-	t.width = w
-	t.height = h
 }
 
 // tutorialSaveErrMsg is sent when saving the tutorial-completed flag fails.
