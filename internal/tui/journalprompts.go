@@ -22,9 +22,7 @@ type journalPrompt struct {
 // JournalPrompts provides an overlay with curated daily reflection prompts
 // organized by category, and a write mode for composing journal entries.
 type JournalPrompts struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 
 	prompts    []journalPrompt
@@ -187,14 +185,9 @@ func NewJournalPrompts() JournalPrompts {
 	}
 }
 
-// IsActive reports whether the journal prompts overlay is currently visible.
-func (jp JournalPrompts) IsActive() bool {
-	return jp.active
-}
-
 // Open activates the overlay and resets state.
 func (jp *JournalPrompts) Open(vaultRoot string) {
-	jp.active = true
+	jp.Activate()
 	jp.vaultRoot = vaultRoot
 	jp.cursor = 0
 	jp.scroll = 0
@@ -206,17 +199,6 @@ func (jp *JournalPrompts) Open(vaultRoot string) {
 	jp.hasResult = false
 	jp.resultPath = ""
 	jp.filterPrompts()
-}
-
-// Close deactivates the overlay.
-func (jp *JournalPrompts) Close() {
-	jp.active = false
-}
-
-// SetSize updates the available terminal dimensions.
-func (jp *JournalPrompts) SetSize(w, h int) {
-	jp.width = w
-	jp.height = h
 }
 
 // GetResult returns the path of the last saved journal file (consumed-once).
