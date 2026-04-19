@@ -26,9 +26,7 @@ const (
 // FocusSession is a guided work session overlay combining a timer, task
 // selection, and session notes (scratchpad).
 type FocusSession struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 
 	phase int // 0=setup, 1=active, 2=break, 3=review
@@ -87,11 +85,6 @@ func NewFocusSession() FocusSession {
 	}
 }
 
-// IsActive reports whether the focus session overlay is open.
-func (fs FocusSession) IsActive() bool {
-	return fs.active
-}
-
 // StatusString returns a short status line for the status bar.
 // Returns "" when no session is actively running.
 func (fs FocusSession) StatusString() string {
@@ -119,7 +112,7 @@ func (fs FocusSession) StatusString() string {
 
 // Open activates the focus session overlay and resets to the setup phase.
 func (fs *FocusSession) Open(vaultRoot string) {
-	fs.active = true
+	fs.Activate()
 	fs.vaultRoot = vaultRoot
 	fs.phase = fsPhaseSetup
 	fs.durIdx = 0
@@ -154,12 +147,6 @@ func (fs *FocusSession) OpenWithTask(vaultRoot, taskText string) {
 	fs.sessionTask = taskText
 	fs.goalInput = taskText
 	fs.setupField = 1 // skip task selection, go to duration
-}
-
-// SetSize updates the available terminal dimensions.
-func (fs *FocusSession) SetSize(w, h int) {
-	fs.width = w
-	fs.height = h
 }
 
 // loadTasks reads incomplete tasks from Tasks.md in the vault root.
