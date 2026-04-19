@@ -195,9 +195,7 @@ type noteChatTickMsg struct{}
 
 // NoteChat implements a chat overlay focused on a single note.
 type NoteChat struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	notePath    string
 	noteContent string
@@ -226,14 +224,9 @@ func NewNoteChat() NoteChat {
 // NoteChat — overlay interface
 // ---------------------------------------------------------------------------
 
-// IsActive reports whether the note chat overlay is visible.
-func (nc *NoteChat) IsActive() bool {
-	return nc.active
-}
-
 // Open activates the chat overlay, focused on a specific note.
 func (nc *NoteChat) Open(notePath, noteContent string) {
-	nc.active = true
+	nc.Activate()
 	nc.notePath = notePath
 	nc.noteContent = noteContent
 	nc.input = ""
@@ -247,17 +240,6 @@ func (nc *NoteChat) Open(notePath, noteContent string) {
 			Time:    time.Now(),
 		},
 	}
-}
-
-// Close deactivates the note chat overlay.
-func (nc *NoteChat) Close() {
-	nc.active = false
-}
-
-// SetSize updates the available dimensions for the overlay.
-func (nc *NoteChat) SetSize(w, h int) {
-	nc.width = w
-	nc.height = h
 }
 
 // ---------------------------------------------------------------------------
