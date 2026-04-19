@@ -12,9 +12,7 @@ import (
 // KnowledgeGraph provides AI-powered analysis of the vault's note graph.
 // It identifies clusters, hub notes, orphans, and suggests missing connections.
 type KnowledgeGraph struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 	scroll int
 
 	// Analysis results
@@ -64,23 +62,10 @@ func NewKnowledgeGraph() KnowledgeGraph {
 	return KnowledgeGraph{}
 }
 
-func (kg *KnowledgeGraph) IsActive() bool {
-	return kg.active
-}
-
 func (kg *KnowledgeGraph) Open() {
-	kg.active = true
+	kg.Activate()
 	kg.scroll = 0
 	kg.analysisMode = 0
-}
-
-func (kg *KnowledgeGraph) Close() {
-	kg.active = false
-}
-
-func (kg *KnowledgeGraph) SetSize(w, h int) {
-	kg.width = w
-	kg.height = h
 }
 
 // SetGraphData provides the link structure for analysis.
