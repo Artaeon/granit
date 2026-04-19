@@ -1391,6 +1391,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.ideasBoard.IsActive() {
 			m.ideasBoard, _ = m.ideasBoard.Update(msg)
+			m.reportError("persist ideas", m.ideasBoard.ConsumeSaveError())
 			if !m.ideasBoard.IsActive() && m.ideasBoard.WasFileChanged() {
 				m.refreshComponents("")
 			}
@@ -1923,6 +1924,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.readingList.IsActive() {
 			m.readingList, _ = m.readingList.Update(msg)
+			m.reportError("persist reading list", m.readingList.ConsumeSaveError())
 			return m, nil
 		}
 

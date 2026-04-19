@@ -37,9 +37,7 @@ const (
 
 // ReadingList is an overlay for tracking URLs and articles to read.
 type ReadingList struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	vaultRoot string
 	items     []ReadingItem
@@ -56,6 +54,8 @@ type ReadingList struct {
 
 	// Filter
 	filterQuery string
+
+	lastSaveErr error // consumed-once via ConsumeSaveError
 }
 
 // NewReadingList returns a ReadingList in its default (inactive) state.
@@ -63,21 +63,21 @@ func NewReadingList() ReadingList {
 	return ReadingList{}
 }
 
-// IsActive reports whether the reading list overlay is visible.
-func (rl ReadingList) IsActive() bool {
-	return rl.active
-}
-
-// SetSize updates available terminal dimensions.
-func (rl *ReadingList) SetSize(w, h int) {
-	rl.width = w
-	rl.height = h
+// ConsumeSaveError returns the most recent saveItems error and clears it.
+// Returns nil on a nil receiver so hosts can call it defensively.
+func (rl *ReadingList) ConsumeSaveError() error {
+	if rl == nil {
+		return nil
+	}
+	err := rl.lastSaveErr
+	rl.lastSaveErr = nil
+	return err
 }
 
 // Open loads reading items from JSON and activates the overlay.
 func (rl *ReadingList) Open(vaultRoot string) {
 	rl.vaultRoot = vaultRoot
-	rl.active = true
+	rl.Activate()
 	rl.tab = 0
 	rl.cursor = 0
 	rl.scroll = 0
@@ -87,10 +87,11 @@ func (rl *ReadingList) Open(vaultRoot string) {
 	rl.loadItems()
 }
 
-// Close saves items to JSON and deactivates the overlay.
+// Close saves items to JSON and deactivates the overlay. Callers should
+// drain ConsumeSaveError afterwards to surface any final-save failure.
 func (rl *ReadingList) Close() {
 	rl.saveItems()
-	rl.active = false
+	rl.OverlayBase.Close()
 }
 
 // AddURL adds a new reading item programmatically.
@@ -128,12 +129,20 @@ func (rl *ReadingList) saveItems() {
 		return
 	}
 	dir := filepath.Join(rl.vaultRoot, ".granit")
-	_ = os.MkdirAll(dir, 0o700)
-	raw, err := json.MarshalIndent(rl.items, "", "  ")
-	if err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		rl.lastSaveErr = err
 		return
 	}
-	_ = atomicWriteState(rl.readingListPath(), raw)
+	raw, err := json.MarshalIndent(rl.items, "", "  ")
+	if err != nil {
+		rl.lastSaveErr = err
+		return
+	}
+	if err := atomicWriteState(rl.readingListPath(), raw); err != nil {
+		rl.lastSaveErr = err
+		return
+	}
+	rl.lastSaveErr = nil
 }
 
 // filtered returns items for the current tab, sorted and filtered.

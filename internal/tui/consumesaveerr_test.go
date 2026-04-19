@@ -5,11 +5,12 @@ import (
 	"testing"
 )
 
-// TestConsumeSaveErrorContract pins the shared behaviour of every
-// overlay that gained a ConsumeSaveError method in the error-surfacing
-// pass: reading it returns the stored error, clears the slot, and the
-// next read returns nil. A nil receiver is a silent no-op so the host
-// Model can call it defensively.
+// TestConsumeSaveErrorContract pins the shared behaviour of every type
+// that gained a ConsumeSaveError method in the error-surfacing pass:
+// reading it returns the stored error, clears the slot, and the next
+// read returns nil. A nil receiver is a silent no-op so the host Model
+// can call it defensively. Covers both overlays and plain stores
+// (EventStore) that persist user data.
 func TestConsumeSaveErrorContract(t *testing.T) {
 	testErr := errors.New("disk full")
 
@@ -87,6 +88,46 @@ func TestConsumeSaveErrorContract(t *testing.T) {
 				ll := LanguageLearning{lastSaveErr: testErr}
 				var nilLL *LanguageLearning
 				return ll.ConsumeSaveError, nilLL.ConsumeSaveError
+			},
+		},
+		{
+			name: "EventStore",
+			setErr: func() (func() error, func() error) {
+				es := EventStore{lastSaveErr: testErr}
+				var nilES *EventStore
+				return es.ConsumeSaveError, nilES.ConsumeSaveError
+			},
+		},
+		{
+			name: "Bookmarks",
+			setErr: func() (func() error, func() error) {
+				bm := Bookmarks{lastSaveErr: testErr}
+				var nilBM *Bookmarks
+				return bm.ConsumeSaveError, nilBM.ConsumeSaveError
+			},
+		},
+		{
+			name: "Kanban",
+			setErr: func() (func() error, func() error) {
+				kb := Kanban{lastSaveErr: testErr}
+				var nilKB *Kanban
+				return kb.ConsumeSaveError, nilKB.ConsumeSaveError
+			},
+		},
+		{
+			name: "IdeasBoard",
+			setErr: func() (func() error, func() error) {
+				ib := IdeasBoard{lastSaveErr: testErr}
+				var nilIB *IdeasBoard
+				return ib.ConsumeSaveError, nilIB.ConsumeSaveError
+			},
+		},
+		{
+			name: "ReadingList",
+			setErr: func() (func() error, func() error) {
+				rl := ReadingList{lastSaveErr: testErr}
+				var nilRL *ReadingList
+				return rl.ConsumeSaveError, nilRL.ConsumeSaveError
 			},
 		},
 	}

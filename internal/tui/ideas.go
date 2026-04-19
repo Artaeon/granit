@@ -88,10 +88,22 @@ type IdeasBoard struct {
 
 	statusMsg   string
 	fileChanged bool
+	lastSaveErr error // consumed-once via ConsumeSaveError
 }
 
 func NewIdeasBoard() IdeasBoard {
 	return IdeasBoard{}
+}
+
+// ConsumeSaveError returns the most recent saveIdeas error and clears it.
+// Returns nil on a nil receiver so hosts can call it defensively.
+func (ib *IdeasBoard) ConsumeSaveError() error {
+	if ib == nil {
+		return nil
+	}
+	err := ib.lastSaveErr
+	ib.lastSaveErr = nil
+	return err
 }
 
 func (ib *IdeasBoard) Open(vaultRoot string) {
@@ -136,12 +148,20 @@ func (ib *IdeasBoard) loadIdeas() {
 
 func (ib *IdeasBoard) saveIdeas() {
 	dir := filepath.Join(ib.vaultRoot, ".granit")
-	_ = os.MkdirAll(dir, 0o755)
-	data, err := json.MarshalIndent(ib.ideas, "", "  ")
-	if err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		ib.lastSaveErr = err
 		return
 	}
-	_ = atomicWriteState(ib.ideasPath(), data)
+	data, err := json.MarshalIndent(ib.ideas, "", "  ")
+	if err != nil {
+		ib.lastSaveErr = err
+		return
+	}
+	if err := atomicWriteState(ib.ideasPath(), data); err != nil {
+		ib.lastSaveErr = err
+		return
+	}
+	ib.lastSaveErr = nil
 }
 
 func (ib *IdeasBoard) nextID() string {
