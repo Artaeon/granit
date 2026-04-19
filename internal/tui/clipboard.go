@@ -165,9 +165,7 @@ const (
 
 // WebClipper is an overlay for configuring and previewing a web clip.
 type WebClipper struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	url     string
 	title   string
@@ -205,14 +203,9 @@ func NewWebClipper() WebClipper {
 	return WebClipper{}
 }
 
-// IsActive reports whether the overlay is currently visible.
-func (wc *WebClipper) IsActive() bool {
-	return wc.active
-}
-
 // Open activates the web clipper. If url is empty, the URL input field is shown.
 func (wc *WebClipper) Open(url string) {
-	wc.active = true
+	wc.Activate()
 	wc.url = url
 	wc.title = ""
 	wc.content = ""
@@ -242,9 +235,11 @@ func (wc *WebClipper) Open(url string) {
 	}
 }
 
-// Close deactivates the overlay and resets state.
+// Close deactivates the overlay and tears down every transient mode
+// (URL input, title/tag editors, loading flag) so a later Open resets
+// cleanly rather than resuming mid-state.
 func (wc *WebClipper) Close() {
-	wc.active = false
+	wc.OverlayBase.Close()
 	wc.loading = false
 	wc.done = false
 	wc.errored = false
@@ -252,12 +247,6 @@ func (wc *WebClipper) Close() {
 	wc.editingTitle = false
 	wc.urlInputMode = false
 	wc.editingTags = false
-}
-
-// SetSize updates the overlay dimensions.
-func (wc *WebClipper) SetSize(w, h int) {
-	wc.width = w
-	wc.height = h
 }
 
 // GetResult returns the final title, markdown content, and whether a result
