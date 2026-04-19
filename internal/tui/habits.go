@@ -69,9 +69,7 @@ const (
 
 // HabitTracker is an overlay for tracking daily habits and goals.
 type HabitTracker struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	vaultRoot       string
 	dailyNotesFolder string // from config, e.g. "Jots"
@@ -195,14 +193,9 @@ func NewHabitTracker() HabitTracker {
 	}
 }
 
-// IsActive returns whether the habit tracker overlay is visible.
-func (ht HabitTracker) IsActive() bool {
-	return ht.active
-}
-
 // Open activates the overlay, loading data from the vault.
 func (ht *HabitTracker) Open(vaultRoot string) {
-	ht.active = true
+	ht.Activate()
 	ht.vaultRoot = vaultRoot
 	ht.tab = 0
 	ht.cursor = 0
@@ -214,17 +207,6 @@ func (ht *HabitTracker) Open(vaultRoot string) {
 	ht.confirmDelete = false
 	ht.loadHabits()
 	ht.loadGoals()
-}
-
-// Close hides the overlay.
-func (ht *HabitTracker) Close() {
-	ht.active = false
-}
-
-// SetSize updates the available dimensions.
-func (ht *HabitTracker) SetSize(w, h int) {
-	ht.width = w
-	ht.height = h
 }
 
 // habitsDir returns the path to the Habits folder.
