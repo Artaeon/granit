@@ -132,9 +132,7 @@ type taskAction struct {
 
 // TaskManager is the comprehensive task management overlay.
 type TaskManager struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	// Data
 	vault    *vault.Vault
@@ -258,20 +256,9 @@ func NewTaskManager() TaskManager {
 	}
 }
 
-// IsActive returns whether the task manager overlay is visible.
-func (tm *TaskManager) IsActive() bool {
-	return tm.active
-}
-
-// SetSize updates the available dimensions.
-func (tm *TaskManager) SetSize(width, height int) {
-	tm.width = width
-	tm.height = height
-}
-
 // Open parses all tasks from the vault and activates the overlay.
 func (tm *TaskManager) Open(v *vault.Vault) {
-	tm.active = true
+	tm.Activate()
 	tm.vault = v
 	tm.allTasks = FilterTasks(ParseAllTasks(v.Notes), tm.config)
 	tm.view = taskViewToday
@@ -302,10 +289,6 @@ func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.rebuildFiltered()
 }
 
-// Close hides the overlay.
-func (tm *TaskManager) Close() {
-	tm.active = false
-}
 
 // Refresh re-parses all tasks from the vault without resetting UI state.
 // This is used when another component modifies vault files while the task
