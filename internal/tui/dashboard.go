@@ -35,9 +35,7 @@ type dashNote struct {
 
 // Dashboard is a full-screen overlay showing a vault overview at a glance.
 type Dashboard struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 
 	// Scanned data
@@ -96,20 +94,9 @@ type Dashboard struct {
 	scroll int
 }
 
-// IsActive returns whether the dashboard overlay is visible.
-func (d Dashboard) IsActive() bool {
-	return d.active
-}
-
-// SetSize updates the available terminal dimensions.
-func (d *Dashboard) SetSize(w, h int) {
-	d.width = w
-	d.height = h
-}
-
 // Open activates the dashboard and scans the vault for data.
 func (d *Dashboard) Open(vaultRoot string, projects []Project, goals []Goal) {
-	d.active = true
+	d.Activate()
 	d.vaultRoot = vaultRoot
 	d.scroll = 0
 	d.action = CmdNone
@@ -143,11 +130,6 @@ func (d *Dashboard) Open(vaultRoot string, projects []Project, goals []Goal) {
 	d.dailyScripture = DailyScripture(vaultRoot)
 	d.scan()
 	d.scanProductivity()
-}
-
-// Close deactivates the dashboard overlay.
-func (d *Dashboard) Close() {
-	d.active = false
 }
 
 // GetAction returns a pending action and clears it.
