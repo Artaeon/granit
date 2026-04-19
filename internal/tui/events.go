@@ -68,14 +68,27 @@ func (e NativeEvent) ToCalendarEvent() CalendarEvent {
 
 // EventStore manages native events persisted in .granit/events.json.
 type EventStore struct {
-	vaultRoot string
-	events    []NativeEvent
+	vaultRoot   string
+	events      []NativeEvent
+	lastSaveErr error // consumed-once via ConsumeSaveError
 }
 
 func NewEventStore(vaultRoot string) *EventStore {
 	es := &EventStore{vaultRoot: vaultRoot}
 	es.load()
 	return es
+}
+
+// ConsumeSaveError returns the most recent save error from Add/Update/Delete
+// and clears it. Returns nil on a nil receiver so hosts can call it
+// defensively before the store is constructed.
+func (es *EventStore) ConsumeSaveError() error {
+	if es == nil {
+		return nil
+	}
+	err := es.lastSaveErr
+	es.lastSaveErr = nil
+	return err
 }
 
 func (es *EventStore) path() string {
@@ -95,12 +108,20 @@ func (es *EventStore) load() {
 
 func (es *EventStore) save() {
 	dir := filepath.Join(es.vaultRoot, ".granit")
-	_ = os.MkdirAll(dir, 0o755)
-	data, err := json.MarshalIndent(es.events, "", "  ")
-	if err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		es.lastSaveErr = err
 		return
 	}
-	_ = atomicWriteState(es.path(), data)
+	data, err := json.MarshalIndent(es.events, "", "  ")
+	if err != nil {
+		es.lastSaveErr = err
+		return
+	}
+	if err := atomicWriteState(es.path(), data); err != nil {
+		es.lastSaveErr = err
+		return
+	}
+	es.lastSaveErr = nil
 }
 
 func (es *EventStore) nextID() string {

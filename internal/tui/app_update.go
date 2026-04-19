@@ -1143,6 +1143,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if ne := m.calendar.PendingNativeEvent(); ne != nil && m.eventStore != nil {
 				m.eventStore.Add(ne.Title, ne.Date, ne.StartTime, ne.EndTime,
 					ne.Location, ne.Description, ne.Color, ne.Recurrence, ne.AllDay)
+				m.reportError("persist event", m.eventStore.ConsumeSaveError())
 				m.refreshComponents("")
 				m.toast.Show("Event created: "+ne.Title, ToastSuccess)
 			}
@@ -1150,6 +1151,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if delID := m.calendar.PendingDeleteID(); delID != "" && m.eventStore != nil {
 				if e := m.eventStore.Get(delID); e != nil {
 					m.eventStore.Delete(delID)
+					m.reportError("persist event delete", m.eventStore.ConsumeSaveError())
 					m.refreshComponents("")
 					m.toast.Show("Event deleted: "+e.Title, ToastSuccess)
 				}
@@ -1182,6 +1184,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Save as native event in event store
 				if m.eventStore != nil {
 					m.eventStore.Add(evText, evDate, "", "", "", "", "", "", true)
+					m.reportError("persist event", m.eventStore.ConsumeSaveError())
 				}
 				// Also add to planner file for the date
 				m.reportError("add event to planner", AddEventToPlannerFile(m.vault.Root, evDate, evText))
