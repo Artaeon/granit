@@ -57,9 +57,7 @@ const (
 
 // QuizMode implements the overlay pattern used throughout the TUI.
 type QuizMode struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	state int // one of quizState* constants
 
@@ -99,13 +97,9 @@ func NewQuizMode() QuizMode {
 // Overlay interface
 // ---------------------------------------------------------------------------
 
-func (q *QuizMode) IsActive() bool          { return q.active }
-func (q *QuizMode) SetSize(w, h int)        { q.width = w; q.height = h }
-func (q *QuizMode) Close()                  { q.active = false }
-
 // Open resets the overlay to the setup screen.
 func (q *QuizMode) Open() {
-	q.active = true
+	q.Activate()
 	q.state = quizStateSetup
 	q.sourceCursor = 0
 	q.scroll = 0
