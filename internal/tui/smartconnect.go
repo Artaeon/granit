@@ -35,9 +35,7 @@ type noteScore struct {
 
 // SmartConnections finds semantically related notes using TF-IDF similarity.
 type SmartConnections struct {
-	active      bool
-	width       int
-	height      int
+	OverlayBase
 	vaultRoot   string
 	currentNote string
 
@@ -56,15 +54,6 @@ type SmartConnections struct {
 	// Consumed-once: path of note user wants to insert as wikilink
 	insertLink string
 	wantInsert bool
-}
-
-func (sc SmartConnections) IsActive() bool {
-	return sc.active
-}
-
-func (sc *SmartConnections) SetSize(w, h int) {
-	sc.width = w
-	sc.height = h
 }
 
 // GetSelectedNote returns the path of the selected note and whether the user
