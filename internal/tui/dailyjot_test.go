@@ -674,7 +674,7 @@ func jotKeySpecial(t tea.KeyType) tea.Msg {
 }
 
 func TestUpdateInput_EscCloses(t *testing.T) {
-	dj := DailyJot{active: true, mode: jotInput}
+	dj := DailyJot{OverlayBase: OverlayBase{active: true}, mode: jotInput}
 	dj, _ = dj.Update(jotKeySpecial(tea.KeyEsc))
 	if dj.active {
 		t.Error("esc should close overlay")
@@ -700,7 +700,7 @@ func TestUpdateInput_EnterAppendsJot(t *testing.T) {
 }
 
 func TestUpdateInput_EnterEmptyNoop(t *testing.T) {
-	dj := DailyJot{active: true, mode: jotInput, inputRunes: nil}
+	dj := DailyJot{OverlayBase: OverlayBase{active: true}, mode: jotInput, inputRunes: nil}
 	before := dj.totalEntries()
 	dj, _ = dj.Update(jotKeySpecial(tea.KeyEnter))
 	if dj.totalEntries() != before {
@@ -733,9 +733,9 @@ func TestUpdateInput_TaskShorthand(t *testing.T) {
 
 func TestUpdateInput_DownToBrowse(t *testing.T) {
 	dj := DailyJot{
-		active: true,
-		mode:   jotInput,
-		days:   []jotDay{{Entries: []jotEntry{{Time: "09:00", Text: "a"}}}},
+		OverlayBase: OverlayBase{active: true},
+		mode:        jotInput,
+		days:        []jotDay{{Entries: []jotEntry{{Time: "09:00", Text: "a"}}}},
 	}
 	dj, _ = dj.Update(jotKeySpecial(tea.KeyDown))
 	if dj.mode != jotBrowse {
@@ -747,7 +747,7 @@ func TestUpdateInput_DownToBrowse(t *testing.T) {
 }
 
 func TestUpdateInput_DownNoEntries(t *testing.T) {
-	dj := DailyJot{active: true, mode: jotInput}
+	dj := DailyJot{OverlayBase: OverlayBase{active: true}, mode: jotInput}
 	dj, _ = dj.Update(jotKeySpecial(tea.KeyDown))
 	if dj.mode != jotInput {
 		t.Error("down with no entries should stay in input mode")
@@ -756,7 +756,7 @@ func TestUpdateInput_DownNoEntries(t *testing.T) {
 
 func TestUpdateInput_CursorMovement(t *testing.T) {
 	dj := DailyJot{
-		active:      true,
+		OverlayBase: OverlayBase{active: true},
 		mode:        jotInput,
 		inputRunes:  []rune("hello"),
 		inputCursor: 3,
@@ -789,7 +789,7 @@ func TestUpdateInput_CursorMovement(t *testing.T) {
 
 func TestUpdateInput_CtrlU(t *testing.T) {
 	dj := DailyJot{
-		active:      true,
+		OverlayBase: OverlayBase{active: true},
 		mode:        jotInput,
 		inputRunes:  []rune("hello world"),
 		inputCursor: 5,
@@ -805,7 +805,7 @@ func TestUpdateInput_CtrlU(t *testing.T) {
 
 func TestUpdateInput_CtrlK(t *testing.T) {
 	dj := DailyJot{
-		active:      true,
+		OverlayBase: OverlayBase{active: true},
 		mode:        jotInput,
 		inputRunes:  []rune("hello world"),
 		inputCursor: 5,
@@ -822,11 +822,9 @@ func TestUpdateInput_CtrlK(t *testing.T) {
 
 func TestUpdateBrowse_Navigation(t *testing.T) {
 	dj := DailyJot{
-		active: true,
-		mode:   jotBrowse,
-		width:  100,
-		height: 60,
-		cursor: 0,
+		OverlayBase: OverlayBase{active: true, width: 100, height: 60},
+		mode:        jotBrowse,
+		cursor:      0,
 		days: []jotDay{
 			{Entries: []jotEntry{
 				{Time: "09:00", Text: "a"},
@@ -857,12 +855,10 @@ func TestUpdateBrowse_Navigation(t *testing.T) {
 
 func TestUpdateBrowse_DownBoundary(t *testing.T) {
 	dj := DailyJot{
-		active: true,
-		mode:   jotBrowse,
-		width:  100,
-		height: 60,
-		cursor: 1,
-		days:   []jotDay{{Entries: []jotEntry{{Time: "09:00", Text: "a"}, {Time: "10:00", Text: "b"}}}},
+		OverlayBase: OverlayBase{active: true, width: 100, height: 60},
+		mode:        jotBrowse,
+		cursor:      1,
+		days:        []jotDay{{Entries: []jotEntry{{Time: "09:00", Text: "a"}, {Time: "10:00", Text: "b"}}}},
 	}
 	dj, _ = dj.Update(jotKeyMsg("j"))
 	if dj.cursor != 1 {
@@ -871,7 +867,7 @@ func TestUpdateBrowse_DownBoundary(t *testing.T) {
 }
 
 func TestUpdateBrowse_EscCloses(t *testing.T) {
-	dj := DailyJot{active: true, mode: jotBrowse}
+	dj := DailyJot{OverlayBase: OverlayBase{active: true}, mode: jotBrowse}
 	dj, _ = dj.Update(jotKeySpecial(tea.KeyEsc))
 	if dj.active {
 		t.Error("esc should close")
@@ -879,7 +875,7 @@ func TestUpdateBrowse_EscCloses(t *testing.T) {
 }
 
 func TestUpdateBrowse_IReturnsToInput(t *testing.T) {
-	dj := DailyJot{active: true, mode: jotBrowse, pendingDelete: true, statusMsg: "test"}
+	dj := DailyJot{OverlayBase: OverlayBase{active: true}, mode: jotBrowse, pendingDelete: true, statusMsg: "test"}
 	dj, _ = dj.Update(jotKeyMsg("i"))
 	if dj.mode != jotInput {
 		t.Error("i should switch to input mode")
@@ -893,7 +889,7 @@ func TestUpdateBrowse_IReturnsToInput(t *testing.T) {
 }
 
 func TestUpdateBrowse_SlashToFilter(t *testing.T) {
-	dj := DailyJot{active: true, mode: jotBrowse, cursor: 5, pendingDelete: true}
+	dj := DailyJot{OverlayBase: OverlayBase{active: true}, mode: jotBrowse, cursor: 5, pendingDelete: true}
 	dj, _ = dj.Update(jotKeyMsg("/"))
 	if dj.mode != jotFilter {
 		t.Error("/ should switch to filter mode")
@@ -925,11 +921,9 @@ func TestUpdateBrowse_SpaceToggleTask(t *testing.T) {
 
 func TestUpdateBrowse_SpacePastDayNoop(t *testing.T) {
 	dj := DailyJot{
-		active: true,
-		mode:   jotBrowse,
-		cursor: 1, // maps to day 1
-		width:  100,
-		height: 60,
+		OverlayBase: OverlayBase{active: true, width: 100, height: 60},
+		mode:        jotBrowse,
+		cursor:      1, // maps to day 1
 		days: []jotDay{
 			{Entries: nil},
 			{Date: "2026-03-17", Entries: []jotEntry{{Time: "09:00", Text: "old"}}},
@@ -943,9 +937,9 @@ func TestUpdateBrowse_SpacePastDayNoop(t *testing.T) {
 
 func TestUpdateBrowse_EnterToEdit(t *testing.T) {
 	dj := DailyJot{
-		active: true,
-		mode:   jotBrowse,
-		cursor: 0,
+		OverlayBase: OverlayBase{active: true},
+		mode:        jotBrowse,
+		cursor:      0,
 		days: []jotDay{{
 			Date:    "2026-03-18",
 			Entries: []jotEntry{{Time: "09:00", Text: "edit me"}},
@@ -998,7 +992,7 @@ func TestUpdateBrowse_DeleteConfirmation(t *testing.T) {
 
 func TestUpdateBrowse_DeleteCancelledByOtherKey(t *testing.T) {
 	dj := DailyJot{
-		active:        true,
+		OverlayBase:   OverlayBase{active: true},
 		mode:          jotBrowse,
 		pendingDelete: true,
 		statusMsg:     "Press d again to delete",
@@ -1020,7 +1014,7 @@ func TestUpdateBrowse_DeleteCancelledByOtherKey(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUpdateEdit_EscCancels(t *testing.T) {
-	dj := DailyJot{active: true, mode: jotEdit}
+	dj := DailyJot{OverlayBase: OverlayBase{active: true}, mode: jotEdit}
 	dj, _ = dj.Update(jotKeySpecial(tea.KeyEsc))
 	if dj.mode != jotBrowse {
 		t.Error("esc in edit should return to browse")
@@ -1075,10 +1069,10 @@ func TestUpdateEdit_EnterStaleIndex(t *testing.T) {
 
 func TestUpdateEdit_CursorMovement(t *testing.T) {
 	dj := DailyJot{
-		active:     true,
-		mode:       jotEdit,
-		editRunes:  []rune("hello"),
-		editCursor: 3,
+		OverlayBase: OverlayBase{active: true},
+		mode:        jotEdit,
+		editRunes:   []rune("hello"),
+		editCursor:  3,
 	}
 
 	dj, _ = dj.Update(jotKeySpecial(tea.KeyLeft))
@@ -1107,7 +1101,7 @@ func TestUpdateEdit_CursorMovement(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUpdateFilter_EscReturnsToBrowse(t *testing.T) {
-	dj := DailyJot{active: true, mode: jotFilter, cursor: 3}
+	dj := DailyJot{OverlayBase: OverlayBase{active: true}, mode: jotFilter, cursor: 3}
 	dj, _ = dj.Update(jotKeySpecial(tea.KeyEsc))
 	if dj.mode != jotBrowse {
 		t.Error("esc should return to browse")
@@ -1119,11 +1113,9 @@ func TestUpdateFilter_EscReturnsToBrowse(t *testing.T) {
 
 func TestUpdateFilter_EnterJumps(t *testing.T) {
 	dj := DailyJot{
-		active:       true,
+		OverlayBase:  OverlayBase{active: true, width: 100, height: 60},
 		mode:         jotFilter,
 		cursor:       0,
-		width:        100,
-		height:       60,
 		filteredIdxs: []int{5, 10},
 		days: []jotDay{
 			{Entries: make([]jotEntry, 6)},
@@ -1140,7 +1132,7 @@ func TestUpdateFilter_EnterJumps(t *testing.T) {
 }
 
 func TestUpdateFilter_EnterNoMatches(t *testing.T) {
-	dj := DailyJot{active: true, mode: jotFilter, filteredIdxs: nil}
+	dj := DailyJot{OverlayBase: OverlayBase{active: true}, mode: jotFilter, filteredIdxs: nil}
 	dj, _ = dj.Update(jotKeySpecial(tea.KeyEnter))
 	if dj.mode != jotBrowse {
 		t.Error("enter with no matches should switch to browse")
@@ -1152,7 +1144,7 @@ func TestUpdateFilter_EnterNoMatches(t *testing.T) {
 
 func TestUpdateFilter_DownUp(t *testing.T) {
 	dj := DailyJot{
-		active:       true,
+		OverlayBase:  OverlayBase{active: true},
 		mode:         jotFilter,
 		cursor:       0,
 		filteredIdxs: []int{1, 3, 5},
@@ -1177,7 +1169,7 @@ func TestUpdateFilter_DownUp(t *testing.T) {
 
 func TestUpdateFilter_DownBoundary(t *testing.T) {
 	dj := DailyJot{
-		active:       true,
+		OverlayBase:  OverlayBase{active: true},
 		mode:         jotFilter,
 		cursor:       1,
 		filteredIdxs: []int{1, 3},
@@ -1193,7 +1185,7 @@ func TestUpdateFilter_DownBoundary(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUpdateLinkCompletion_EscExits(t *testing.T) {
-	dj := DailyJot{active: true, mode: jotInput, linkMode: true}
+	dj := DailyJot{OverlayBase: OverlayBase{active: true}, mode: jotInput, linkMode: true}
 	dj, _ = dj.Update(jotKeySpecial(tea.KeyEsc))
 	if dj.linkMode {
 		t.Error("esc should exit link mode")
@@ -1202,7 +1194,7 @@ func TestUpdateLinkCompletion_EscExits(t *testing.T) {
 
 func TestUpdateLinkCompletion_TabSelects(t *testing.T) {
 	dj := DailyJot{
-		active:      true,
+		OverlayBase: OverlayBase{active: true},
 		mode:        jotInput,
 		linkMode:    true,
 		linkMatches: []string{"Project Notes", "Personal"},
@@ -1222,7 +1214,7 @@ func TestUpdateLinkCompletion_TabSelects(t *testing.T) {
 
 func TestUpdateLinkCompletion_DownUp(t *testing.T) {
 	dj := DailyJot{
-		active:      true,
+		OverlayBase: OverlayBase{active: true},
 		mode:        jotInput,
 		linkMode:    true,
 		linkMatches: []string{"A", "B", "C"},
@@ -1242,7 +1234,7 @@ func TestUpdateLinkCompletion_DownUp(t *testing.T) {
 
 func TestUpdateLinkCompletion_BackspaceExitsOnEmptyQuery(t *testing.T) {
 	dj := DailyJot{
-		active:      true,
+		OverlayBase: OverlayBase{active: true},
 		mode:        jotInput,
 		linkMode:    true,
 		linkQuery:   "",
@@ -1258,7 +1250,7 @@ func TestUpdateLinkCompletion_BackspaceExitsOnEmptyQuery(t *testing.T) {
 
 func TestUpdateLinkCompletion_BackspaceShortensQuery(t *testing.T) {
 	dj := DailyJot{
-		active:      true,
+		OverlayBase: OverlayBase{active: true},
 		mode:        jotInput,
 		linkMode:    true,
 		linkQuery:   "pro",
@@ -1282,7 +1274,7 @@ func TestUpdateLinkCompletion_BackspaceShortensQuery(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUpdate_InactiveNoop(t *testing.T) {
-	dj := DailyJot{active: false}
+	dj := DailyJot{}
 	dj, _ = dj.Update(jotKeySpecial(tea.KeyEnter))
 	if dj.active {
 		t.Error("inactive jot should ignore messages")
@@ -1290,7 +1282,7 @@ func TestUpdate_InactiveNoop(t *testing.T) {
 }
 
 func TestUpdate_NonKeyMsgNoop(t *testing.T) {
-	dj := DailyJot{active: true, mode: jotInput}
+	dj := DailyJot{OverlayBase: OverlayBase{active: true}, mode: jotInput}
 	dj, _ = dj.Update(tea.WindowSizeMsg{Width: 100, Height: 50})
 	// Should not panic or change state
 	if dj.mode != jotInput {
@@ -1387,7 +1379,7 @@ func TestFilterNoteNames_Limit(t *testing.T) {
 
 func TestMaxVisibleEntries(t *testing.T) {
 	dj := DailyJot{
-		height: 60,
+		OverlayBase: OverlayBase{height: 60},
 		days: []jotDay{
 			{Entries: []jotEntry{{}, {}, {}}},
 			{Entries: []jotEntry{{}, {}}},
@@ -1401,8 +1393,8 @@ func TestMaxVisibleEntries(t *testing.T) {
 
 func TestMaxVisibleEntries_SmallHeight(t *testing.T) {
 	dj := DailyJot{
-		height: 10,
-		days:   []jotDay{{Entries: []jotEntry{{}}}},
+		OverlayBase: OverlayBase{height: 10},
+		days:        []jotDay{{Entries: []jotEntry{{}}}},
 	}
 	mv := dj.maxVisibleEntries()
 	if mv < 3 {
@@ -1411,7 +1403,7 @@ func TestMaxVisibleEntries_SmallHeight(t *testing.T) {
 }
 
 func TestMaxVisibleEntries_ZeroHeight(t *testing.T) {
-	dj := DailyJot{height: 0}
+	dj := DailyJot{}
 	mv := dj.maxVisibleEntries()
 	if mv < 3 {
 		t.Errorf("maxVisibleEntries = %d, minimum should be 3", mv)
@@ -1424,10 +1416,10 @@ func TestMaxVisibleEntries_ZeroHeight(t *testing.T) {
 
 func TestDailyJot_AdjustScroll(t *testing.T) {
 	dj := &DailyJot{
-		height: 60,
-		scroll: 0,
-		cursor: 0,
-		days:   []jotDay{{Entries: make([]jotEntry, 30)}},
+		OverlayBase: OverlayBase{height: 60},
+		scroll:      0,
+		cursor:      0,
+		days:        []jotDay{{Entries: make([]jotEntry, 30)}},
 	}
 
 	// Cursor way past scroll window
@@ -1517,10 +1509,8 @@ func TestRenderInputLine_CursorAtEnd(t *testing.T) {
 
 func TestView_EmptyState(t *testing.T) {
 	dj := DailyJot{
-		active: true,
-		mode:   jotInput,
-		width:  100,
-		height: 40,
+		OverlayBase: OverlayBase{active: true, width: 100, height: 40},
+		mode:        jotInput,
 	}
 	v := dj.View()
 	if v == "" {
@@ -1533,11 +1523,9 @@ func TestView_EmptyState(t *testing.T) {
 
 func TestView_WithEntries(t *testing.T) {
 	dj := DailyJot{
-		active: true,
-		mode:   jotBrowse,
-		width:  100,
-		height: 40,
-		cursor: 0,
+		OverlayBase: OverlayBase{active: true, width: 100, height: 40},
+		mode:        jotBrowse,
+		cursor:      0,
 		days: []jotDay{
 			{
 				Date:  "2026-03-19",
@@ -1558,10 +1546,8 @@ func TestView_WithEntries(t *testing.T) {
 
 func TestView_FilterMode(t *testing.T) {
 	dj := DailyJot{
-		active:       true,
+		OverlayBase:  OverlayBase{active: true, width: 100, height: 40},
 		mode:         jotFilter,
-		width:        100,
-		height:       40,
 		filterQuery:  "test",
 		filterRunes:  []rune("test"),
 		filteredIdxs: []int{0},
@@ -1579,10 +1565,8 @@ func TestView_FilterMode(t *testing.T) {
 
 func TestView_EditMode(t *testing.T) {
 	dj := DailyJot{
-		active:       true,
+		OverlayBase:  OverlayBase{active: true, width: 100, height: 40},
 		mode:         jotEdit,
-		width:        100,
-		height:       40,
 		cursor:       0,
 		editDayIdx:   0,
 		editEntryIdx: 0,
@@ -1602,10 +1586,8 @@ func TestView_EditMode(t *testing.T) {
 
 func TestView_VerySmallTerminal(t *testing.T) {
 	dj := DailyJot{
-		active: true,
-		mode:   jotInput,
-		width:  20,
-		height: 10,
+		OverlayBase: OverlayBase{active: true, width: 20, height: 10},
+		mode:        jotInput,
 	}
 	v := dj.View()
 	if v == "" {
@@ -1615,11 +1597,9 @@ func TestView_VerySmallTerminal(t *testing.T) {
 
 func TestView_WithStatusMsg(t *testing.T) {
 	dj := DailyJot{
-		active:    true,
-		mode:      jotBrowse,
-		width:     100,
-		height:    40,
-		statusMsg: "Press d again to delete",
+		OverlayBase: OverlayBase{active: true, width: 100, height: 40},
+		mode:        jotBrowse,
+		statusMsg:   "Press d again to delete",
 		days: []jotDay{{
 			Date:    "2026-03-19",
 			Label:   "Today",
@@ -1634,10 +1614,8 @@ func TestView_WithStatusMsg(t *testing.T) {
 
 func TestView_LinkCompletionPopup(t *testing.T) {
 	dj := DailyJot{
-		active:      true,
+		OverlayBase: OverlayBase{active: true, width: 100, height: 40},
 		mode:        jotInput,
-		width:       100,
-		height:      40,
 		linkMode:    true,
 		linkMatches: []string{"Note A", "Note B"},
 		linkCursor:  0,
@@ -1650,10 +1628,8 @@ func TestView_LinkCompletionPopup(t *testing.T) {
 
 func TestView_CarryOverNotice(t *testing.T) {
 	dj := DailyJot{
-		active:         true,
+		OverlayBase:    OverlayBase{active: true, width: 100, height: 40},
 		mode:           jotInput,
-		width:          100,
-		height:         40,
 		carryOverCount: 3,
 	}
 	v := dj.View()
@@ -1668,12 +1644,10 @@ func TestView_ScrollIndicator(t *testing.T) {
 		entries[i] = jotEntry{Time: "09:00", Text: "entry"}
 	}
 	dj := DailyJot{
-		active: true,
-		mode:   jotBrowse,
-		width:  100,
-		height: 40,
-		scroll: 5,
-		days:   []jotDay{{Date: "2026-03-19", Label: "Today", Entries: entries}},
+		OverlayBase: OverlayBase{active: true, width: 100, height: 40},
+		mode:        jotBrowse,
+		scroll:      5,
+		days:        []jotDay{{Date: "2026-03-19", Label: "Today", Entries: entries}},
 	}
 	v := dj.View()
 	if !strings.Contains(v, "of 50") {
@@ -1687,11 +1661,9 @@ func TestView_ScrollIndicator(t *testing.T) {
 
 func TestRenderLinkPopup_ScrollsWithCursor(t *testing.T) {
 	dj := DailyJot{
-		active:   true,
-		mode:     jotInput,
-		width:    100,
-		height:   40,
-		linkMode: true,
+		OverlayBase: OverlayBase{active: true, width: 100, height: 40},
+		mode:        jotInput,
+		linkMode:    true,
 		linkMatches: []string{
 			"Note A", "Note B", "Note C", "Note D",
 			"Note E", "Note F", "Note G", "Note H",
@@ -1744,9 +1716,8 @@ func TestUpdateFilter_ScrollsWithCursor(t *testing.T) {
 		idxs[i] = i
 	}
 	dj := DailyJot{
-		active:       true,
+		OverlayBase:  OverlayBase{active: true, height: 30}, // maxVisible = 30/2 - 8 = 7
 		mode:         jotFilter,
-		height:       30, // maxVisible = 30/2 - 8 = 7
 		cursor:       0,
 		scroll:       0,
 		filteredIdxs: idxs,
@@ -1774,7 +1745,7 @@ func TestUpdateFilter_ScrollsWithCursor(t *testing.T) {
 
 func TestUpdateFilter_BackspaceResetsScroll(t *testing.T) {
 	dj := DailyJot{
-		active:       true,
+		OverlayBase:  OverlayBase{active: true},
 		mode:         jotFilter,
 		scroll:       5,
 		cursor:       8,
@@ -1802,10 +1773,8 @@ func TestView_FilterScrollIndicator(t *testing.T) {
 		idxs[i] = i
 	}
 	dj := DailyJot{
-		active:       true,
+		OverlayBase:  OverlayBase{active: true, width: 100, height: 30},
 		mode:         jotFilter,
-		width:        100,
-		height:       30,
 		filterQuery:  "match",
 		filterRunes:  []rune("match"),
 		filteredIdxs: idxs,
@@ -1824,7 +1793,7 @@ func TestView_FilterScrollIndicator(t *testing.T) {
 
 func TestUpdateInput_BackspaceDoesNotCheckLinkMode(t *testing.T) {
 	dj := DailyJot{
-		active:      true,
+		OverlayBase: OverlayBase{active: true},
 		mode:        jotInput,
 		inputRunes:  []rune("abc"),
 		inputCursor: 3,
@@ -1936,9 +1905,9 @@ func TestBuildTagFilterIndex(t *testing.T) {
 
 func TestUpdateBrowse_HashToTags(t *testing.T) {
 	dj := DailyJot{
-		active: true,
-		mode:   jotBrowse,
-		cursor: 0,
+		OverlayBase: OverlayBase{active: true},
+		mode:        jotBrowse,
+		cursor:      0,
 		days: []jotDay{{
 			Entries: []jotEntry{
 				{Time: "09:00", Text: "tagged #project"},
@@ -1956,9 +1925,9 @@ func TestUpdateBrowse_HashToTags(t *testing.T) {
 
 func TestUpdateBrowse_HashNoTags(t *testing.T) {
 	dj := DailyJot{
-		active: true,
-		mode:   jotBrowse,
-		days:   []jotDay{{Entries: []jotEntry{{Time: "09:00", Text: "no tags"}}}},
+		OverlayBase: OverlayBase{active: true},
+		mode:        jotBrowse,
+		days:        []jotDay{{Entries: []jotEntry{{Time: "09:00", Text: "no tags"}}}},
 	}
 	dj, _ = dj.Update(jotKeyMsg("#"))
 	if dj.mode != jotBrowse {
@@ -1971,12 +1940,10 @@ func TestUpdateBrowse_HashNoTags(t *testing.T) {
 
 func TestUpdateTags_Navigation(t *testing.T) {
 	dj := DailyJot{
-		active:    true,
-		mode:      jotTags,
-		width:     100,
-		height:    60,
-		tagCursor: 0,
-		tags:      []tagInfo{{Tag: "#a", Count: 5}, {Tag: "#b", Count: 3}, {Tag: "#c", Count: 1}},
+		OverlayBase: OverlayBase{active: true, width: 100, height: 60},
+		mode:        jotTags,
+		tagCursor:   0,
+		tags:        []tagInfo{{Tag: "#a", Count: 5}, {Tag: "#b", Count: 3}, {Tag: "#c", Count: 1}},
 	}
 
 	dj, _ = dj.Update(jotKeyMsg("j"))
@@ -1992,10 +1959,10 @@ func TestUpdateTags_Navigation(t *testing.T) {
 
 func TestUpdateTags_EnterSelectsTag(t *testing.T) {
 	dj := DailyJot{
-		active:    true,
-		mode:      jotTags,
-		tagCursor: 0,
-		tags:      []tagInfo{{Tag: "#project", Count: 3}},
+		OverlayBase: OverlayBase{active: true},
+		mode:        jotTags,
+		tagCursor:   0,
+		tags:        []tagInfo{{Tag: "#project", Count: 3}},
 		days: []jotDay{{
 			Entries: []jotEntry{
 				{Time: "09:00", Text: "#project idea"},
@@ -2013,7 +1980,7 @@ func TestUpdateTags_EnterSelectsTag(t *testing.T) {
 }
 
 func TestUpdateTags_EscReturnsToBrowse(t *testing.T) {
-	dj := DailyJot{active: true, mode: jotTags}
+	dj := DailyJot{OverlayBase: OverlayBase{active: true}, mode: jotTags}
 	dj, _ = dj.Update(jotKeySpecial(tea.KeyEsc))
 	if dj.mode != jotBrowse {
 		t.Error("esc should return to browse")
@@ -2022,7 +1989,7 @@ func TestUpdateTags_EscReturnsToBrowse(t *testing.T) {
 
 func TestUpdateTagFiltered_EscReturnsToTagList(t *testing.T) {
 	dj := DailyJot{
-		active:      true,
+		OverlayBase: OverlayBase{active: true},
 		mode:        jotTags,
 		selectedTag: "#project",
 		tagFiltered: []int{0, 1},
@@ -2035,10 +2002,8 @@ func TestUpdateTagFiltered_EscReturnsToTagList(t *testing.T) {
 
 func TestUpdateTagFiltered_EnterJumps(t *testing.T) {
 	dj := DailyJot{
-		active:      true,
+		OverlayBase: OverlayBase{active: true, width: 100, height: 60},
 		mode:        jotTags,
-		width:       100,
-		height:      60,
 		selectedTag: "#work",
 		tagFiltered: []int{3, 7},
 		cursor:      1,
@@ -2061,11 +2026,9 @@ func TestUpdateTagFiltered_EnterJumps(t *testing.T) {
 
 func TestView_TagMode(t *testing.T) {
 	dj := DailyJot{
-		active:    true,
-		mode:      jotTags,
-		width:     100,
-		height:    40,
-		tagCursor: 0,
+		OverlayBase: OverlayBase{active: true, width: 100, height: 40},
+		mode:        jotTags,
+		tagCursor:   0,
 		tags: []tagInfo{
 			{Tag: "#project", Count: 5},
 			{Tag: "#work", Count: 3},
@@ -2082,10 +2045,8 @@ func TestView_TagMode(t *testing.T) {
 
 func TestView_TagFilteredMode(t *testing.T) {
 	dj := DailyJot{
-		active:      true,
+		OverlayBase: OverlayBase{active: true, width: 100, height: 40},
 		mode:        jotTags,
-		width:       100,
-		height:      40,
 		selectedTag: "#work",
 		tagFiltered: []int{0},
 		cursor:      0,

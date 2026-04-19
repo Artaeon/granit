@@ -60,9 +60,7 @@ type tagInfo struct {
 }
 
 type DailyJot struct {
-	active     bool
-	width      int
-	height     int
+	OverlayBase
 	vaultRoot  string
 	jotsFolder string
 	daysBack   int
@@ -116,13 +114,8 @@ func NewDailyJot() DailyJot {
 	return DailyJot{}
 }
 
-func (dj *DailyJot) SetSize(width, height int) {
-	dj.width = width
-	dj.height = height
-}
-
 func (dj *DailyJot) Open(vaultRoot, jotsFolder string, noteNames []string, daysBack int) {
-	dj.active = true
+	dj.Activate()
 	dj.vaultRoot = vaultRoot
 	dj.jotsFolder = jotsFolder
 	if jotsFolder == "" {
@@ -159,14 +152,6 @@ func (dj *DailyJot) Open(vaultRoot, jotsFolder string, noteNames []string, daysB
 	dj.promotedNote = ""
 	dj.loadDays(dj.daysBack)
 	dj.carryOverTasks()
-}
-
-func (dj *DailyJot) Close() {
-	dj.active = false
-}
-
-func (dj DailyJot) IsActive() bool {
-	return dj.active
 }
 
 // GetPromotedNote returns and clears the path of a newly promoted note.
