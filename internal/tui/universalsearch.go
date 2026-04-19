@@ -40,9 +40,7 @@ type usResult struct {
 // ---------------------------------------------------------------------------
 
 type UniversalSearch struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	query   string
 	results []usResult
@@ -63,17 +61,8 @@ func NewUniversalSearch() UniversalSearch {
 	return UniversalSearch{}
 }
 
-func (us *UniversalSearch) IsActive() bool {
-	return us.active
-}
-
-func (us *UniversalSearch) SetSize(w, h int) {
-	us.width = w
-	us.height = h
-}
-
 func (us *UniversalSearch) Open(notes map[string]*vault.Note, tasks []Task, goals []Goal, habits []habitEntry) {
-	us.active = true
+	us.Activate()
 	us.query = ""
 	us.results = nil
 	us.cursor = 0
@@ -83,10 +72,6 @@ func (us *UniversalSearch) Open(notes map[string]*vault.Note, tasks []Task, goal
 	us.tasks = tasks
 	us.goals = goals
 	us.habits = habits
-}
-
-func (us *UniversalSearch) Close() {
-	us.active = false
 }
 
 func (us *UniversalSearch) NavResult() *usResult {
