@@ -10,17 +10,14 @@ package tui
 //
 // This file introduces the interface and an OverlayBase embed so the
 // next refactor pass — or a new overlay written today — has a single,
-// documented shape to follow. Migration is complete for virtually all
-// overlays; the only hold-outs are: DailyJot (blocked on test-literal
-// coupling — the test file constructs hundreds of DailyJot{active:true,
-// width:N, height:N} literals that would need rewriting together),
-// LinkCompleter and SlashMenu (each defines its own
-// `Activate(line, col int)` that conflicts with OverlayBase's
-// parameter-free `Activate()`), Autocomplete (popup that uses screen
-// position instead of width/height), and ClockIn (`active` means
-// "currently clocked in", not "overlay visible"). Callers that want
-// to treat overlays uniformly (e.g. "is anything active?", "close the
-// topmost overlay") can type-assert against the interface.
+// documented shape to follow. Migration is complete for ~100 overlays;
+// the remaining hold-outs are intentional: LinkCompleter and SlashMenu
+// (each defines its own `Activate(line, col int)` that would clash with
+// OverlayBase's parameter-free `Activate()`), Autocomplete (popup uses
+// screen position x,y instead of width/height), and ClockIn (`active`
+// means "currently clocked in", not "overlay visible"). Callers that
+// want to treat overlays uniformly (e.g. "is anything active?", "close
+// the topmost overlay") can type-assert against the interface.
 //
 // Keeping Update/View off the interface *for now* is deliberate:
 // bubbletea's value-receiver pattern for those two methods means every
