@@ -52,9 +52,7 @@ const (
 )
 
 type VaultRefactor struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	state       int
 	plan        string   // raw AI output
@@ -80,10 +78,8 @@ func NewVaultRefactor() VaultRefactor {
 	return VaultRefactor{}
 }
 
-func (vr *VaultRefactor) IsActive() bool { return vr.active }
-
 func (vr *VaultRefactor) Open() {
-	vr.active = true
+	vr.Activate()
 	vr.state = refactorStateConfirm
 	vr.plan = ""
 	vr.planLines = nil
@@ -92,13 +88,6 @@ func (vr *VaultRefactor) Open() {
 	vr.loadingStart = time.Time{}
 	vr.resultReady = false
 	vr.resultPlan = ""
-}
-
-func (vr *VaultRefactor) Close() { vr.active = false }
-
-func (vr *VaultRefactor) SetSize(w, h int) {
-	vr.width = w
-	vr.height = h
 }
 
 func (vr *VaultRefactor) SetVaultData(notes map[string]string, tags map[string][]string, allPaths []string) {
