@@ -27,9 +27,7 @@ type gitHistoryCommit struct {
 // GitHistory provides a per-note git history viewer overlay with diff viewing
 // and version restore capabilities.
 type GitHistory struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	// Note being viewed
 	notePath  string // relative path in vault
@@ -59,20 +57,10 @@ func NewGitHistory() GitHistory {
 	return GitHistory{}
 }
 
-// IsActive returns whether the git history overlay is currently visible.
-func (g *GitHistory) IsActive() bool {
-	return g.active
-}
-
-// SetSize updates the available dimensions for the overlay.
-func (g *GitHistory) SetSize(w, h int) {
-	g.width = w
-	g.height = h
-}
-
-// Close hides the git history overlay.
+// Close hides the git history overlay and tears down the diff sub-view
+// so a later Open doesn't reopen mid-diff.
 func (g *GitHistory) Close() {
-	g.active = false
+	g.OverlayBase.Close()
 	g.showingDiff = false
 	g.diffLines = nil
 	g.diffScroll = 0
@@ -80,7 +68,7 @@ func (g *GitHistory) Close() {
 
 // Open activates the overlay for a specific note and kicks off a log fetch.
 func (g *GitHistory) Open(notePath, vaultRoot string) tea.Cmd {
-	g.active = true
+	g.Activate()
 	g.notePath = notePath
 	g.vaultRoot = vaultRoot
 	g.commits = nil
