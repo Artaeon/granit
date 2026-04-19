@@ -25,9 +25,7 @@ type GlobalReplaceMatch struct {
 // vault files. It performs live search as you type, groups results by file,
 // and supports replacing one match, all in a file, or all across the vault.
 type GlobalReplace struct {
-	active      bool
-	width       int
-	height      int
+	OverlayBase
 	findQuery   string
 	replaceText string
 	focusField  int // 0=find, 1=replace
@@ -50,12 +48,8 @@ func NewGlobalReplace() GlobalReplace {
 	return GlobalReplace{}
 }
 
-func (gr *GlobalReplace) IsActive() bool {
-	return gr.active
-}
-
 func (gr *GlobalReplace) Open(v *vault.Vault) {
-	gr.active = true
+	gr.Activate()
 	gr.findQuery = ""
 	gr.replaceText = ""
 	gr.focusField = 0
@@ -70,14 +64,11 @@ func (gr *GlobalReplace) Open(v *vault.Vault) {
 	gr.regexErr = ""
 }
 
+// Close hides the overlay and drops the vault reference so we don't hold
+// a stale pointer across vault switches.
 func (gr *GlobalReplace) Close() {
-	gr.active = false
+	gr.OverlayBase.Close()
 	gr.vault = nil
-}
-
-func (gr *GlobalReplace) SetSize(w, h int) {
-	gr.width = w
-	gr.height = h
 }
 
 // IsRegexMode reports whether regex search is enabled.
