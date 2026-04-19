@@ -33,9 +33,7 @@ type weeklyReviewAIMsg struct {
 
 // WeeklyReview is a guided weekly review workflow overlay.
 type WeeklyReview struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	vaultRoot string
 	step      weeklyReviewStep
@@ -85,21 +83,10 @@ func NewWeeklyReview() WeeklyReview {
 	return WeeklyReview{}
 }
 
-// IsActive reports whether the weekly review overlay is visible.
-func (wr WeeklyReview) IsActive() bool {
-	return wr.active
-}
-
-// SetSize updates available terminal dimensions.
-func (wr *WeeklyReview) SetSize(w, h int) {
-	wr.width = w
-	wr.height = h
-}
-
 // Open activates the weekly review overlay, gathering data.
 func (wr *WeeklyReview) Open(vaultRoot string, v *vault.Vault) {
 	wr.vaultRoot = vaultRoot
-	wr.active = true
+	wr.Activate()
 	wr.step = wrStepTasks
 	wr.saved = false
 	wr.inputBuf = ""
@@ -117,12 +104,13 @@ func (wr *WeeklyReview) Open(vaultRoot string, v *vault.Vault) {
 	wr.gatherWeekTasks(v)
 }
 
-// Close saves and deactivates.
+// Close saves any unsaved in-progress review before deactivating so the
+// user doesn't lose their reflection text if they press Esc.
 func (wr *WeeklyReview) Close() {
 	if !wr.saved && (wr.wins != "" || wr.lessons != "" || wr.nextWeek != "") {
 		wr.saveReview()
 	}
-	wr.active = false
+	wr.OverlayBase.Close()
 }
 
 // reviewPath returns the file path for this week's review.
