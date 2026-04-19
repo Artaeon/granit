@@ -44,9 +44,7 @@ type morningPlanSavedMsg struct{ Err error }
 // No AI calls — just scripture, questions, selections, and a summary
 // that gets saved to the daily note.
 type MorningRoutine struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 	phase  morningPhase
 	scroll int
 
@@ -113,15 +111,6 @@ func NewMorningRoutine() MorningRoutine {
 	return MorningRoutine{}
 }
 
-// IsActive reports whether the morning routine overlay is visible.
-func (mr MorningRoutine) IsActive() bool { return mr.active }
-
-// SetSize updates the available terminal dimensions.
-func (mr *MorningRoutine) SetSize(w, h int) {
-	mr.width = w
-	mr.height = h
-}
-
 // Open initialises the morning routine with gathered vault data.
 func (mr *MorningRoutine) Open(
 	vaultRoot string,
@@ -134,7 +123,7 @@ func (mr *MorningRoutine) Open(
 	existingBlocks []PlannerBlock,
 	existingFocus DailyFocus,
 ) tea.Cmd {
-	mr.active = true
+	mr.Activate()
 	mr.vaultRoot = vaultRoot
 	mr.goals = goals
 	mr.events = events
