@@ -264,9 +264,7 @@ const (
 
 // GoalsMode is the standalone goal management overlay.
 type GoalsMode struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	vaultRoot string
 	allTasks  []Task // for linked task stats
@@ -319,17 +317,8 @@ func NewGoalsMode() GoalsMode {
 	}
 }
 
-func (gm GoalsMode) IsActive() bool {
-	return gm.active
-}
-
-func (gm *GoalsMode) SetSize(w, h int) {
-	gm.width = w
-	gm.height = h
-}
-
 func (gm *GoalsMode) Open(vaultRoot string, tasks ...[]Task) {
-	gm.active = true
+	gm.Activate()
 	gm.vaultRoot = vaultRoot
 	if len(tasks) > 0 {
 		gm.allTasks = tasks[0]
@@ -347,10 +336,6 @@ func (gm *GoalsMode) Open(vaultRoot string, tasks ...[]Task) {
 	gm.statusMsg = ""
 	gm.loadGoals()
 	gm.rebuildFiltered()
-}
-
-func (gm *GoalsMode) Close() {
-	gm.active = false
 }
 
 // GetGoals returns the current list of goals.
