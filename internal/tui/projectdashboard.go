@@ -20,9 +20,7 @@ import (
 // ProjectDashboard shows ALL projects at a glance with progress, blockers,
 // next actions, and deadlines grouped by status.
 type ProjectDashboard struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 	projects  []Project
 	allTasks  []Task
@@ -41,22 +39,6 @@ type ProjectDashboard struct {
 // NewProjectDashboard creates a new inactive ProjectDashboard.
 func NewProjectDashboard() ProjectDashboard {
 	return ProjectDashboard{}
-}
-
-// IsActive reports whether the project dashboard overlay is currently displayed.
-func (pd ProjectDashboard) IsActive() bool {
-	return pd.active
-}
-
-// SetSize updates the available terminal dimensions.
-func (pd *ProjectDashboard) SetSize(w, h int) {
-	pd.width = w
-	pd.height = h
-}
-
-// Close deactivates the overlay.
-func (pd *ProjectDashboard) Close() {
-	pd.active = false
 }
 
 // SelectedProject returns the chosen project name (consumed once).
