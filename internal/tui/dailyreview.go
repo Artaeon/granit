@@ -33,9 +33,7 @@ type dailyReviewAIMsg struct {
 
 // DailyReview is a guided end-of-day review overlay.
 type DailyReview struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 	phase     reviewPhase
 
@@ -87,16 +85,9 @@ func (dr *DailyReview) ConsumeSaveError() error {
 	return err
 }
 
-func (dr DailyReview) IsActive() bool { return dr.active }
-
-func (dr *DailyReview) SetSize(w, h int) {
-	dr.width = w
-	dr.height = h
-}
-
 // Open initializes the daily review with vault data.
 func (dr *DailyReview) Open(vaultRoot string, v *vault.Vault) {
-	dr.active = true
+	dr.Activate()
 	dr.vaultRoot = vaultRoot
 	dr.vault = v
 	dr.phase = reviewCompleted
