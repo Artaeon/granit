@@ -48,9 +48,7 @@ const (
 // ResearchAgent is an overlay that invokes Claude Code CLI to research a topic
 // and generate structured notes in the vault.
 type ResearchAgent struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	phase     researchPhase
 	topic     string
 	output    string
@@ -127,11 +125,6 @@ func NewResearchAgent() ResearchAgent {
 	}
 }
 
-// IsActive returns whether the overlay is visible.
-func (r ResearchAgent) IsActive() bool {
-	return r.active
-}
-
 // IsRunning returns whether a research task is in progress (even if overlay is closed).
 func (r ResearchAgent) IsRunning() bool {
 	return r.running
@@ -170,18 +163,12 @@ func (r ResearchAgent) StatusText() string {
 
 // Reopen shows the overlay again (e.g. to check on running/completed research).
 func (r *ResearchAgent) Reopen() {
-	r.active = true
-}
-
-// SetSize updates dimensions.
-func (r *ResearchAgent) SetSize(w, h int) {
-	r.width = w
-	r.height = h
+	r.Activate()
 }
 
 // Open activates the research overlay.
 func (r *ResearchAgent) Open(vaultRoot string, allVaultPaths []string, activeNotePath string) {
-	r.active = true
+	r.Activate()
 	r.phase = researchInput
 	r.topic = ""
 	r.output = ""
@@ -443,11 +430,6 @@ func (r *ResearchAgent) OpenNoteEnhance(vaultRoot, notePath, noteContent string,
 
 	name := strings.TrimSuffix(filepath.Base(notePath), ".md")
 	r.topic = name
-}
-
-// Close hides the overlay.
-func (r *ResearchAgent) Close() {
-	r.active = false
 }
 
 // GetSelectedFile returns the file the user selected from results.
