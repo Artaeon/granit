@@ -78,9 +78,7 @@ func canvasColorTable() []lipgloss.Color {
 // Canvas is a terminal-based whiteboard overlay where users can place,
 // move, connect and open note cards on a 2-D grid.
 type Canvas struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	cards       []CanvasCard
 	connections []CanvasConnection
@@ -121,12 +119,6 @@ func NewCanvas() Canvas {
 		connectFrom: -1,
 		zoom:        canvasZoomNormal,
 	}
-}
-
-// SetSize updates the overlay dimensions.
-func (c *Canvas) SetSize(width, height int) {
-	c.width = width
-	c.height = height
 }
 
 // SetVaultPath stores the vault path for persistence.
@@ -208,7 +200,7 @@ func (c *Canvas) Load() {
 
 // Open activates the canvas overlay.
 func (c *Canvas) Open() {
-	c.active = true
+	c.Activate()
 	c.mode = canvasModeNormal
 	c.result = ""
 	c.inputBuf = ""
@@ -216,16 +208,12 @@ func (c *Canvas) Open() {
 	c.selected = c.cardAtCursor()
 }
 
-// Close deactivates the canvas overlay.
+// Close persists the canvas before deactivating so edits made during the
+// session aren't lost if the user doesn't trigger an explicit Save.
 func (c *Canvas) Close() {
 	c.Save()
-	c.active = false
+	c.OverlayBase.Close()
 	c.mode = canvasModeNormal
-}
-
-// IsActive returns true when the overlay is visible.
-func (c *Canvas) IsActive() bool {
-	return c.active
 }
 
 // SelectedNote returns (and clears) the note path the user selected with Enter.
