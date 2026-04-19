@@ -29,9 +29,7 @@ type mindMapNode struct {
 // MindMap renders an ASCII mind map from the current note's headings and
 // wikilinks, or from its link neighbourhood (2 levels deep).
 type MindMap struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 	notePath  string
 
@@ -51,21 +49,10 @@ func NewMindMap() MindMap {
 	return MindMap{}
 }
 
-// IsActive reports whether the overlay is visible.
-func (mm MindMap) IsActive() bool {
-	return mm.active
-}
-
-// SetSize updates the overlay dimensions.
-func (mm *MindMap) SetSize(w, h int) {
-	mm.width = w
-	mm.height = h
-}
-
 // OpenForNote initialises the mind map for the given note and activates
 // the overlay.
 func (mm *MindMap) OpenForNote(vaultRoot, notePath, noteContent string) {
-	mm.active = true
+	mm.Activate()
 	mm.vaultRoot = vaultRoot
 	mm.notePath = notePath
 	mm.mode = 0
