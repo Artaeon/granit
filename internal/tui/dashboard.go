@@ -895,8 +895,7 @@ func (d Dashboard) View() string {
 			var urgency string
 			switch {
 			case d.nextDeadlineDays <= 1:
-				urgency = lipgloss.NewStyle().Foreground(red).Bold(true).Render(
-					fmt.Sprintf("tomorrow"))
+				urgency = lipgloss.NewStyle().Foreground(red).Bold(true).Render("tomorrow")
 			case d.nextDeadlineDays <= 3:
 				urgency = lipgloss.NewStyle().Foreground(peach).Render(
 					fmt.Sprintf("%d days", d.nextDeadlineDays))

@@ -714,7 +714,7 @@ func buildContextSection(contextMode int, contextNotes map[string]string, vaultT
 				if remaining > 500 {
 					snippet = snippet[:remaining] + "\n[... truncated ...]"
 				} else {
-					ctx.WriteString(fmt.Sprintf("\n... and more notes (truncated to fit prompt limits)\n"))
+					ctx.WriteString("\n... and more notes (truncated to fit prompt limits)\n")
 					break
 				}
 			}
