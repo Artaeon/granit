@@ -1234,7 +1234,7 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 
 func (tm *TaskManager) renderCalendarView(b *strings.Builder, w int) {
 	// Month header
-	monthName := time.Month(tm.calMonth).String()
+	monthName := tm.calMonth.String()
 	monthYear := fmt.Sprintf("%s %d", monthName, tm.calYear)
 	navLeft := lipgloss.NewStyle().Foreground(overlay1).Render("\u25C0 ")
 	navRight := lipgloss.NewStyle().Foreground(overlay1).Render(" \u25B6")

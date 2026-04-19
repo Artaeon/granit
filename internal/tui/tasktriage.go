@@ -690,7 +690,7 @@ func (tt TaskTriage) viewLoading(width int) string {
 		Render("  " + IconBotChar + " Smart Task Triage")
 	buf.WriteString(title)
 	buf.WriteString("\n")
-	buf.WriteString(DimStyle.Render("  " + strings.Repeat(string(ThemeSeparator), width-10)))
+	buf.WriteString(DimStyle.Render("  " + strings.Repeat(ThemeSeparator, width-10)))
 	buf.WriteString("\n\n")
 
 	spinFrames := []string{"|", "/", "-", "\\"}
@@ -740,7 +740,7 @@ func (tt TaskTriage) viewResults(width int) string {
 		Render("  " + IconBotChar + " Smart Task Triage")
 	buf.WriteString(title)
 	buf.WriteString("\n")
-	buf.WriteString(DimStyle.Render("  " + strings.Repeat(string(ThemeSeparator), width-10)))
+	buf.WriteString(DimStyle.Render("  " + strings.Repeat(ThemeSeparator, width-10)))
 	buf.WriteString("\n\n")
 
 	// Error message if AI failed
@@ -765,7 +765,7 @@ func (tt TaskTriage) viewResults(width int) string {
 	buf.WriteString("  ")
 	buf.WriteString(tab1Style.Render(tab1Label))
 	buf.WriteString("\n")
-	buf.WriteString(DimStyle.Render("  " + strings.Repeat(string(ThemeSeparator), width-10)))
+	buf.WriteString(DimStyle.Render("  " + strings.Repeat(ThemeSeparator, width-10)))
 	buf.WriteString("\n\n")
 
 	if tt.tab == 0 {

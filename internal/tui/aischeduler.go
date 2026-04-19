@@ -789,7 +789,7 @@ func (as AIScheduler) viewSetup(width int) string {
 		Render("  " + IconBotChar + " AI Smart Scheduler")
 	buf.WriteString(title)
 	buf.WriteString("\n")
-	buf.WriteString(DimStyle.Render("  " + strings.Repeat(string(ThemeSeparator), width-10)))
+	buf.WriteString(DimStyle.Render("  " + strings.Repeat(ThemeSeparator, width-10)))
 	buf.WriteString("\n\n")
 
 	// AI provider indicator
@@ -840,7 +840,7 @@ func (as AIScheduler) viewSetup(width int) string {
 
 	// Tasks section
 	buf.WriteString(lipgloss.NewStyle().Foreground(blue).Bold(true).Render("  Tasks to schedule:") + "\n")
-	buf.WriteString(DimStyle.Render("  "+strings.Repeat(string(ThemeSeparator), width-10)) + "\n")
+	buf.WriteString(DimStyle.Render("  "+strings.Repeat(ThemeSeparator, width-10)) + "\n")
 
 	if len(as.tasks) == 0 {
 		buf.WriteString(DimStyle.Render("  No pending tasks found.") + "\n")
@@ -919,7 +919,7 @@ func (as AIScheduler) viewSetup(width int) string {
 	}
 
 	buf.WriteString("\n")
-	buf.WriteString(DimStyle.Render("  "+strings.Repeat(string(ThemeSeparator), width-10)) + "\n")
+	buf.WriteString(DimStyle.Render("  "+strings.Repeat(ThemeSeparator, width-10)) + "\n")
 	helpLine := "  Tab: next  </>: adjust  e: edit est.  Enter: generate"
 	buf.WriteString(DimStyle.Render(helpLine))
 
@@ -949,7 +949,7 @@ func (as AIScheduler) viewGenerating(width int) string {
 		Render("  " + IconBotChar + " AI Smart Scheduler")
 	buf.WriteString(title)
 	buf.WriteString("\n")
-	buf.WriteString(DimStyle.Render("  " + strings.Repeat(string(ThemeSeparator), width-10)))
+	buf.WriteString(DimStyle.Render("  " + strings.Repeat(ThemeSeparator, width-10)))
 	buf.WriteString("\n\n")
 
 	spinFrames := []string{"|", "/", "-", "\\"}
@@ -994,7 +994,7 @@ func (as AIScheduler) viewResult(width int) string {
 		Render("  " + IconBotChar + " AI Smart Scheduler")
 	buf.WriteString(title)
 	buf.WriteString("\n")
-	buf.WriteString(DimStyle.Render("  " + strings.Repeat(string(ThemeSeparator), width-10)))
+	buf.WriteString(DimStyle.Render("  " + strings.Repeat(ThemeSeparator, width-10)))
 	buf.WriteString("\n\n")
 
 	// Show provider used
@@ -1005,7 +1005,7 @@ func (as AIScheduler) viewResult(width int) string {
 
 	buf.WriteString(lipgloss.NewStyle().Foreground(blue).Bold(true).
 		Render("  Suggested Schedule:") + "\n")
-	buf.WriteString(DimStyle.Render("  "+strings.Repeat(string(ThemeSeparator), width-10)) + "\n")
+	buf.WriteString(DimStyle.Render("  "+strings.Repeat(ThemeSeparator, width-10)) + "\n")
 
 	if len(as.schedule) == 0 {
 		buf.WriteString(DimStyle.Render("  No schedule could be generated.") + "\n")
@@ -1082,7 +1082,7 @@ func (as AIScheduler) viewResult(width int) string {
 		as.countScheduledTasks(), taskMins/60, taskMins%60)) + "\n")
 
 	buf.WriteString("\n")
-	buf.WriteString(DimStyle.Render("  "+strings.Repeat(string(ThemeSeparator), width-10)) + "\n")
+	buf.WriteString(DimStyle.Render("  "+strings.Repeat(ThemeSeparator, width-10)) + "\n")
 	buf.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
 		{"Enter", "apply"}, {"r", "regenerate"}, {"Esc", "close"},
 	}))
@@ -1108,7 +1108,7 @@ func (as AIScheduler) viewApplied(width int) string {
 		Render("  " + IconBotChar + " AI Smart Scheduler")
 	buf.WriteString(title)
 	buf.WriteString("\n")
-	buf.WriteString(DimStyle.Render("  " + strings.Repeat(string(ThemeSeparator), width-10)))
+	buf.WriteString(DimStyle.Render("  " + strings.Repeat(ThemeSeparator, width-10)))
 	buf.WriteString("\n\n")
 
 	buf.WriteString(lipgloss.NewStyle().Foreground(green).Bold(true).
