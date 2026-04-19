@@ -35,9 +35,7 @@ type QueueTask struct {
 
 // Pomodoro implements an overlay Pomodoro timer with writing stats tracking.
 type Pomodoro struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	state     PomodoroState
 	remaining time.Duration
@@ -130,25 +128,9 @@ func NewPomodoro() Pomodoro {
 	}
 }
 
-// IsActive reports whether the Pomodoro overlay is open.
-func (p *Pomodoro) IsActive() bool {
-	return p.active
-}
-
 // Open displays the Pomodoro overlay.
 func (p *Pomodoro) Open() {
-	p.active = true
-}
-
-// Close hides the Pomodoro overlay (timer keeps running in background).
-func (p *Pomodoro) Close() {
-	p.active = false
-}
-
-// SetSize updates the available terminal dimensions.
-func (p *Pomodoro) SetSize(w, h int) {
-	p.width = w
-	p.height = h
+	p.Activate()
 }
 
 // SetVaultRoot stores the vault root path for session logging.
