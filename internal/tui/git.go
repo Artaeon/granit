@@ -25,9 +25,7 @@ type gitCmdResultMsg struct {
 }
 
 type GitOverlay struct {
-	active     bool
-	width      int
-	height     int
+	OverlayBase
 	state      gitState
 	cursor     int
 	scroll     int
@@ -50,12 +48,8 @@ func NewGitOverlay() GitOverlay {
 	return GitOverlay{}
 }
 
-func (g *GitOverlay) IsActive() bool {
-	return g.active
-}
-
 func (g *GitOverlay) Open(vaultRoot string) tea.Cmd {
-	g.active = true
+	g.Activate()
 	g.vaultRoot = vaultRoot
 	g.state = gitStateStatus
 	g.cursor = 0
@@ -74,15 +68,12 @@ func (g *GitOverlay) Open(vaultRoot string) tea.Cmd {
 	return g.RefreshAll()
 }
 
+// Close hides the overlay and clears the in-progress commit buffer so
+// a later Open starts fresh.
 func (g *GitOverlay) Close() {
-	g.active = false
+	g.OverlayBase.Close()
 	g.commitMode = false
 	g.commitMsg = ""
-}
-
-func (g *GitOverlay) SetSize(width, height int) {
-	g.width = width
-	g.height = height
 }
 
 // refreshStatus runs git status --porcelain synchronously and populates statusLines.
