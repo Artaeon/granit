@@ -63,9 +63,7 @@ const (
 )
 
 type DailyBriefing struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	state       int
 	userGoal    string   // what the user wants to do today
@@ -92,10 +90,8 @@ func NewDailyBriefing() DailyBriefing {
 	return DailyBriefing{}
 }
 
-func (db *DailyBriefing) IsActive() bool { return db.active }
-
 func (db *DailyBriefing) Open() {
-	db.active = true
+	db.Activate()
 	db.state = briefingStateQuestion
 	db.userGoal = ""
 	db.briefing = ""
@@ -104,13 +100,6 @@ func (db *DailyBriefing) Open() {
 	db.loadingTick = 0
 	db.resultReady = false
 	db.resultContent = ""
-}
-
-func (db *DailyBriefing) Close() { db.active = false }
-
-func (db *DailyBriefing) SetSize(w, h int) {
-	db.width = w
-	db.height = h
 }
 
 func (db *DailyBriefing) SetVaultData(notes map[string]string, recentPaths []string, todayPath string) {
