@@ -96,6 +96,19 @@ type Kanban struct {
 	priorityNotePath   string
 	priorityLine       int
 	priorityNewLevel   int // 0..4, what to set on disk
+
+	lastSaveErr error // consumed-once via ConsumeSaveError
+}
+
+// ConsumeSaveError returns the most recent saveState error and clears it.
+// Returns nil on a nil receiver so hosts can call it defensively.
+func (kb *Kanban) ConsumeSaveError() error {
+	if kb == nil {
+		return nil
+	}
+	err := kb.lastSaveErr
+	kb.lastSaveErr = nil
+	return err
 }
 
 // NewKanban creates a new Kanban overlay with the three default columns.
@@ -180,12 +193,20 @@ func (kb *Kanban) saveState() {
 		}
 	}
 	dir := filepath.Dir(kb.statePath())
-	_ = os.MkdirAll(dir, 0o755)
-	data, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		kb.lastSaveErr = err
 		return
 	}
-	_ = atomicWriteState(kb.statePath(), data)
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		kb.lastSaveErr = err
+		return
+	}
+	if err := atomicWriteState(kb.statePath(), data); err != nil {
+		kb.lastSaveErr = err
+		return
+	}
+	kb.lastSaveErr = nil
 }
 
 // SetSize stores the available terminal dimensions for rendering.

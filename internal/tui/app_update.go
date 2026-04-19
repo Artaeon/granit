@@ -2400,6 +2400,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			if m.kanban.IsActive() {
 				m.kanban, cmd = m.kanban.Update(msg)
+				m.reportError("persist kanban state", m.kanban.ConsumeSaveError())
 			}
 			// Drain pending kanban actions on every tick — toggles, deletes,
 			// and priority cycles take effect immediately so the user sees
