@@ -64,15 +64,13 @@ type settingItem struct {
 }
 
 type Settings struct {
+	OverlayBase
 	config  config.Config
 	vault   *vault.Vault
 	items   []settingItem
 	visible []int // indices into items that are currently visible (after filtering)
 	cursor  int   // index into visible
 	scroll  int
-	width   int
-	height  int
-	active  bool
 	editing bool
 	editBuf string
 
@@ -445,11 +443,6 @@ func (s *Settings) defaultValueForKey(key string) interface{} {
 	}
 }
 
-func (s *Settings) SetSize(width, height int) {
-	s.width = width
-	s.height = height
-}
-
 func (s *Settings) GetConfig() config.Config {
 	return s.config
 }
@@ -468,10 +461,6 @@ func (s *Settings) Toggle() {
 		s.buildItems()
 		s.rebuildVisible()
 	}
-}
-
-func (s *Settings) IsActive() bool {
-	return s.active
 }
 
 func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
