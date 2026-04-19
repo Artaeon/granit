@@ -87,9 +87,7 @@ type aiSchedulerTickMsg struct{}
 // deadlines, priorities, and estimated effort to suggest an optimal daily
 // schedule.
 type AIScheduler struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 
 	phase int // 0=setup, 1=generating, 2=result, 3=applied
@@ -140,16 +138,10 @@ func NewAIScheduler() AIScheduler {
 // Overlay interface
 // ---------------------------------------------------------------------------
 
-func (as AIScheduler) IsActive() bool { return as.active }
-
-func (as *AIScheduler) SetSize(w, h int) {
-	as.width = w
-	as.height = h
-}
 
 // Open initialises the scheduler overlay with tasks, events, and AI config.
 func (as *AIScheduler) Open(vaultRoot string, tasks []SchedulerTask, events []SchedulerEvent, cfg AIConfig) {
-	as.active = true
+	as.Activate()
 	as.vaultRoot = vaultRoot
 	as.phase = 0
 	as.setupField = 0
@@ -172,9 +164,6 @@ func (as *AIScheduler) Open(vaultRoot string, tasks []SchedulerTask, events []Sc
 	as.events = events
 	as.ai = cfg
 }
-
-// Close deactivates the overlay.
-func (as *AIScheduler) Close() { as.active = false }
 
 // GetSchedule returns the applied schedule for the daily planner to consume.
 func (as *AIScheduler) GetSchedule() ([]schedulerSlot, bool) {
