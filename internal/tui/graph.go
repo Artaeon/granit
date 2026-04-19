@@ -11,14 +11,12 @@ import (
 )
 
 type GraphView struct {
-	active     bool
+	OverlayBase
 	vault      *vault.Vault
 	index      *vault.Index
 	nodes      []graphNode
 	cursor     int
 	scroll     int
-	width      int
-	height     int
 	centerNote string
 	selected   string // the note the user selected to navigate to
 	localMode  bool   // true = local graph (1-2 hops), false = global graph
@@ -42,26 +40,13 @@ func NewGraphView(v *vault.Vault, idx *vault.Index) GraphView {
 	}
 }
 
-func (g *GraphView) SetSize(width, height int) {
-	g.width = width
-	g.height = height
-}
-
 func (g *GraphView) Open(centerNote string) {
-	g.active = true
+	g.Activate()
 	g.centerNote = centerNote
 	g.cursor = 0
 	g.scroll = 0
 	g.selected = ""
 	g.buildGraph()
-}
-
-func (g *GraphView) Close() {
-	g.active = false
-}
-
-func (g *GraphView) IsActive() bool {
-	return g.active
 }
 
 func (g *GraphView) SelectedNote() string {
