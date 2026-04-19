@@ -36,9 +36,7 @@ type GapFinding struct {
 // gaps in knowledge, underdeveloped topics, stale notes, unlinked clusters,
 // and missing connections.
 type KnowledgeGaps struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 
 	tab    int // 0=Topics, 1=Stale, 2=Missing Links, 3=Orphans, 4=Structure
@@ -62,17 +60,6 @@ func NewKnowledgeGaps() KnowledgeGaps {
 	return KnowledgeGaps{}
 }
 
-// IsActive returns whether the overlay is visible.
-func (kg KnowledgeGaps) IsActive() bool {
-	return kg.active
-}
-
-// SetSize updates the available terminal dimensions.
-func (kg *KnowledgeGaps) SetSize(w, h int) {
-	kg.width = w
-	kg.height = h
-}
-
 // GetSelectedNote returns the path of the note the user wants to jump to.
 // The value is consumed once.
 func (kg *KnowledgeGaps) GetSelectedNote() (string, bool) {
@@ -87,7 +74,7 @@ func (kg *KnowledgeGaps) GetSelectedNote() (string, bool) {
 
 // Open triggers the analysis and shows the overlay.
 func (kg *KnowledgeGaps) Open(vaultRoot string) {
-	kg.active = true
+	kg.Activate()
 	kg.vaultRoot = vaultRoot
 	kg.tab = 0
 	kg.cursor = 0
