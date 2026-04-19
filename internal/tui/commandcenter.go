@@ -48,9 +48,7 @@ type habitStatus struct {
 // CommandCenter is the "What do I do RIGHT NOW?" dashboard that pulls from
 // all productivity systems: tasks, projects, habits, and calendar events.
 type CommandCenter struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	// Data sections
 	nowTask   *Task            // the single most important task RIGHT NOW
@@ -75,31 +73,15 @@ func NewCommandCenter() CommandCenter {
 	return CommandCenter{}
 }
 
-// IsActive reports whether the command center overlay is currently displayed.
-func (cc CommandCenter) IsActive() bool {
-	return cc.active
-}
-
 // Open activates the overlay.
 func (cc *CommandCenter) Open() {
-	cc.active = true
+	cc.Activate()
 	cc.section = 0
 	cc.scroll = 0
 	cc.startPomodoro = false
 	cc.completedTask = nil
 	cc.selectedProject = ""
 	cc.toggledHabit = ""
-}
-
-// Close deactivates the overlay.
-func (cc *CommandCenter) Close() {
-	cc.active = false
-}
-
-// SetSize updates the available terminal dimensions.
-func (cc *CommandCenter) SetSize(w, h int) {
-	cc.width = w
-	cc.height = h
 }
 
 // ---------------------------------------------------------------------------
