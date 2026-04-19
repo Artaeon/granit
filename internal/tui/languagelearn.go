@@ -32,9 +32,7 @@ type PracticeSession struct {
 
 // LanguageLearning is the overlay for the language learning companion.
 type LanguageLearning struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	vaultRoot string
 	tab       int // 0=vocabulary, 1=practice, 2=grammar, 3=dashboard
@@ -100,14 +98,9 @@ func NewLanguageLearning() LanguageLearning {
 	return LanguageLearning{}
 }
 
-// IsActive reports whether the overlay is visible.
-func (ll LanguageLearning) IsActive() bool {
-	return ll.active
-}
-
 // Open activates the overlay and loads data from the vault.
 func (ll *LanguageLearning) Open(vaultRoot string) {
-	ll.active = true
+	ll.Activate()
 	ll.vaultRoot = vaultRoot
 	ll.tab = 0
 	ll.vocabCursor = 0
@@ -119,17 +112,6 @@ func (ll *LanguageLearning) Open(vaultRoot string) {
 	ll.dashScroll = 0
 	ll.loadVocabulary()
 	ll.loadGrammarFiles()
-}
-
-// Close hides the overlay.
-func (ll *LanguageLearning) Close() {
-	ll.active = false
-}
-
-// SetSize updates the available dimensions.
-func (ll *LanguageLearning) SetSize(w, h int) {
-	ll.width = w
-	ll.height = h
 }
 
 // ---------- file I/O ----------
