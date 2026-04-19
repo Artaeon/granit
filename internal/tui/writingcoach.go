@@ -39,9 +39,7 @@ type coachFeedback struct {
 // ---------------------------------------------------------------------------
 
 type WritingCoach struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	vaultRoot   string
 	noteContent string
@@ -80,15 +78,9 @@ func NewWritingCoach() WritingCoach {
 	return WritingCoach{}
 }
 
-// SetSize updates the available terminal dimensions.
-func (wc *WritingCoach) SetSize(w, h int) {
-	wc.width = w
-	wc.height = h
-}
-
 // Open activates the writing coach overlay and loads the soul note if present.
 func (wc *WritingCoach) Open(vaultRoot, noteContent, notePath string, cfg AIConfig) {
-	wc.active = true
+	wc.Activate()
 	wc.phase = 0
 	wc.vaultRoot = vaultRoot
 	wc.noteContent = noteContent
@@ -112,11 +104,6 @@ func (wc *WritingCoach) Open(vaultRoot, noteContent, notePath string, cfg AIConf
 		wc.soulNote = ""
 		wc.hasSoulNote = false
 	}
-}
-
-// IsActive reports whether the writing coach is currently visible.
-func (wc WritingCoach) IsActive() bool {
-	return wc.active
 }
 
 // GetSuggestion returns the selected suggestion text (consumed-once).
