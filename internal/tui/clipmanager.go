@@ -76,9 +76,7 @@ func (ce clipEntry) preview(maxLen int) string {
 
 // ClipManager provides a clipboard history overlay for the TUI.
 type ClipManager struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	clips  []clipEntry
 	cursor int
@@ -99,14 +97,9 @@ func NewClipManager() ClipManager {
 	return ClipManager{}
 }
 
-// IsActive reports whether the overlay is currently visible.
-func (cm ClipManager) IsActive() bool {
-	return cm.active
-}
-
 // Open activates the clipboard manager overlay.
 func (cm *ClipManager) Open() {
-	cm.active = true
+	cm.Activate()
 	cm.cursor = 0
 	cm.scroll = 0
 	cm.searching = false
@@ -117,16 +110,11 @@ func (cm *ClipManager) Open() {
 	cm.rebuildFiltered()
 }
 
-// Close hides the overlay.
+// Close hides the overlay and exits search mode so a later Open isn't
+// stuck in a filter buffer from a previous session.
 func (cm *ClipManager) Close() {
-	cm.active = false
+	cm.OverlayBase.Close()
 	cm.searching = false
-}
-
-// SetSize updates the available dimensions for the overlay.
-func (cm *ClipManager) SetSize(w, h int) {
-	cm.width = w
-	cm.height = h
 }
 
 // AddClip records a new clip in the history. Duplicates are moved to the
