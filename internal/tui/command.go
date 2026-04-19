@@ -378,12 +378,10 @@ var AllCommands = []Command{
 }
 
 type CommandPalette struct {
-	active   bool
+	OverlayBase
 	query    string
 	filtered []Command
 	cursor   int
-	width    int
-	height   int
 	result   CommandAction
 	history  *CommandHistory
 }
@@ -396,13 +394,8 @@ func NewCommandPalette() CommandPalette {
 	return cp
 }
 
-func (cp *CommandPalette) SetSize(width, height int) {
-	cp.width = width
-	cp.height = height
-}
-
 func (cp *CommandPalette) Open() {
-	cp.active = true
+	cp.Activate()
 	cp.query = ""
 	cp.filtered = cp.rankedAllCommands()
 	cp.cursor = 0
@@ -426,13 +419,11 @@ func (cp *CommandPalette) rankedAllCommands() []Command {
 	return out
 }
 
+// Close clears the query alongside deactivation so the next Open starts
+// from an empty prompt even if the user reopens rapidly.
 func (cp *CommandPalette) Close() {
-	cp.active = false
+	cp.OverlayBase.Close()
 	cp.query = ""
-}
-
-func (cp *CommandPalette) IsActive() bool {
-	return cp.active
 }
 
 func (cp *CommandPalette) Result() CommandAction {
