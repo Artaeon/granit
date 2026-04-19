@@ -185,9 +185,7 @@ type projectNote struct {
 // inside the Granit TUI. It supports listing, dashboarding, and editing
 // projects stored in <vault>/.granit/projects.json.
 type ProjectMode struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 
 	// Data
@@ -253,20 +251,9 @@ func NewProjectMode() ProjectMode {
 	}
 }
 
-// IsActive reports whether the project mode overlay is currently displayed.
-func (pm ProjectMode) IsActive() bool {
-	return pm.active
-}
-
-// SetSize updates the available terminal dimensions.
-func (pm *ProjectMode) SetSize(w, h int) {
-	pm.width = w
-	pm.height = h
-}
-
 // Open activates the overlay and loads projects from disk.
 func (pm *ProjectMode) Open(vaultRoot string) {
-	pm.active = true
+	pm.Activate()
 	pm.vaultRoot = vaultRoot
 	pm.phase = pmPhaseList
 	pm.cursor = 0
@@ -281,11 +268,6 @@ func (pm *ProjectMode) Open(vaultRoot string) {
 	pm.milestoneCur = 0
 	pm.dashInput = false
 	pm.loadProjects()
-}
-
-// Close deactivates the overlay.
-func (pm *ProjectMode) Close() {
-	pm.active = false
 }
 
 // GetProjects returns the current list of projects.
