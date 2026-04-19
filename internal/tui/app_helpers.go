@@ -1195,6 +1195,7 @@ func (m *Model) loadNoteWithoutBreadcrumb(relPath string) {
 	}
 
 	m.bookmarks.AddRecent(relPath)
+	m.reportError("persist bookmarks", m.bookmarks.ConsumeSaveError())
 }
 
 // refreshCalendarPanel reloads planner blocks from disk and refreshes the panel.

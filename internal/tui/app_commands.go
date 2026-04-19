@@ -176,6 +176,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdToggleBookmark:
 		if m.activeNote != "" {
 			m.bookmarks.ToggleStar(m.activeNote)
+			m.reportError("persist bookmarks", m.bookmarks.ConsumeSaveError())
 			if m.bookmarks.IsStarred(m.activeNote) {
 				m.statusbar.SetMessage("Starred " + m.activeNote)
 			} else {

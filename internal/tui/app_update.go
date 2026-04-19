@@ -1047,6 +1047,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.bookmarks.IsActive() {
 			m.bookmarks, _ = m.bookmarks.Update(msg)
+			m.reportError("persist bookmarks", m.bookmarks.ConsumeSaveError())
 			if nav := m.bookmarks.SelectedNote(); nav != "" {
 				m.loadNote(nav)
 				m.setSidebarCursorToFile(nav)

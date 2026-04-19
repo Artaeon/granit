@@ -29,14 +29,15 @@ type BookmarkData struct {
 
 type Bookmarks struct {
 	OverlayBase
-	data       BookmarkData
-	cursor     int
-	scroll     int
-	mode       int // 0=starred, 1=recent, 2=reading
-	result     string
-	vaultRoot  string
-	activeNote string // for adding current note to reading list
-	maxRecent  int
+	data        BookmarkData
+	cursor      int
+	scroll      int
+	mode        int // 0=starred, 1=recent, 2=reading
+	result      string
+	vaultRoot   string
+	activeNote  string // for adding current note to reading list
+	maxRecent   int
+	lastSaveErr error // consumed-once via ConsumeSaveError
 }
 
 func NewBookmarks(vaultRoot string) Bookmarks {
@@ -138,9 +139,26 @@ func (bm *Bookmarks) save() {
 	}
 	data, err := json.MarshalIndent(bm.data, "", "  ")
 	if err != nil {
+		bm.lastSaveErr = err
 		return
 	}
-	_ = atomicWriteState(bm.dataPath(), data)
+	if err := atomicWriteState(bm.dataPath(), data); err != nil {
+		bm.lastSaveErr = err
+		return
+	}
+	bm.lastSaveErr = nil
+}
+
+// ConsumeSaveError returns the most recent save error from any mutation
+// (AddRecent, ToggleStar, etc.) and clears it. Returns nil on a nil
+// receiver so hosts can call it defensively.
+func (bm *Bookmarks) ConsumeSaveError() error {
+	if bm == nil {
+		return nil
+	}
+	err := bm.lastSaveErr
+	bm.lastSaveErr = nil
+	return err
 }
 
 func (bm Bookmarks) Update(msg tea.Msg) (Bookmarks, tea.Cmd) {

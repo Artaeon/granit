@@ -631,6 +631,7 @@ func (m *Model) loadNote(relPath string) {
 
 	m.foldState.UnfoldAll()
 	m.bookmarks.AddRecent(relPath)
+	m.reportError("persist bookmarks", m.bookmarks.ConsumeSaveError())
 	if m.breadcrumb != nil {
 		m.breadcrumb.Push(relPath)
 	}
