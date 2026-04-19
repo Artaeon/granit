@@ -22,9 +22,7 @@ type paneState struct {
 
 // SplitPane displays two notes side by side with independent scrolling.
 type SplitPane struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 	focus  int // 0 = left, 1 = right
 	left   paneState
 	right  paneState
@@ -43,14 +41,9 @@ func NewSplitPane() SplitPane {
 	return SplitPane{}
 }
 
-// IsActive reports whether the split pane overlay is currently visible.
-func (sp *SplitPane) IsActive() bool {
-	return sp.active
-}
-
 // Open activates the split pane overlay and enters note picker mode.
 func (sp *SplitPane) Open() {
-	sp.active = true
+	sp.Activate()
 	sp.focus = 0
 	sp.left.scroll = 0
 	sp.right.scroll = 0
@@ -60,16 +53,11 @@ func (sp *SplitPane) Open() {
 	sp.openPicker()
 }
 
-// Close deactivates the split pane overlay.
+// Close hides the overlay and exits picker mode so a later Open resets
+// cleanly.
 func (sp *SplitPane) Close() {
-	sp.active = false
+	sp.OverlayBase.Close()
 	sp.picking = false
-}
-
-// SetSize updates the available terminal dimensions.
-func (sp *SplitPane) SetSize(width, height int) {
-	sp.width = width
-	sp.height = height
 }
 
 // SetNotes provides the list of vault note paths for the picker.
