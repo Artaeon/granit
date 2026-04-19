@@ -53,9 +53,7 @@ type KanbanColumn struct {
 // Kanban is an overlay component that displays tasks from vault notes as a
 // Kanban board with configurable columns.
 type Kanban struct {
-	active    bool
-	width     int
-	height    int
+	OverlayBase
 	vaultRoot string
 
 	columns    []KanbanColumn // configurable columns
@@ -145,12 +143,9 @@ func (kb *Kanban) Configure(columns []string, tagMap map[string]string) {
 	}
 }
 
-// IsActive reports whether the Kanban overlay is currently displayed.
-func (kb *Kanban) IsActive() bool { return kb.active }
-
 // Open activates the Kanban overlay.
 func (kb *Kanban) Open(vaultRoot string) {
-	kb.active = true
+	kb.Activate()
 	kb.vaultRoot = vaultRoot
 	kb.colCursor = 0
 	kb.cardCursor = 0
@@ -160,10 +155,12 @@ func (kb *Kanban) Open(vaultRoot string) {
 	kb.loadState()
 }
 
-// Close deactivates the Kanban overlay and saves state.
+// Close persists kanban state before deactivating so column assignments
+// made during the session survive even if the user doesn't explicitly save.
+// Callers should drain ConsumeSaveError afterwards.
 func (kb *Kanban) Close() {
 	kb.saveState()
-	kb.active = false
+	kb.OverlayBase.Close()
 }
 
 func (kb *Kanban) statePath() string {
@@ -207,12 +204,6 @@ func (kb *Kanban) saveState() {
 		return
 	}
 	kb.lastSaveErr = nil
-}
-
-// SetSize stores the available terminal dimensions for rendering.
-func (kb *Kanban) SetSize(w, h int) {
-	kb.width = w
-	kb.height = h
 }
 
 // SetTasks parses all task items from the provided note contents and
