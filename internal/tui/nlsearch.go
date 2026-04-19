@@ -51,9 +51,7 @@ type noteEntry struct {
 // NLSearch provides natural language vault search powered by AI or local
 // keyword matching as a fallback.
 type NLSearch struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	// Vault
 	vaultRoot string
@@ -94,15 +92,9 @@ func NewNLSearch() NLSearch {
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-// SetSize sets the overlay dimensions.
-func (nls *NLSearch) SetSize(w, h int) {
-	nls.width = w
-	nls.height = h
-}
-
 // Open activates the NL search overlay and builds the note index.
 func (nls *NLSearch) Open(vaultRoot string, cfg AIConfig) {
-	nls.active = true
+	nls.Activate()
 	nls.vaultRoot = vaultRoot
 	nls.query = ""
 	nls.results = nil
@@ -127,11 +119,6 @@ func (nls *NLSearch) Open(vaultRoot string, cfg AIConfig) {
 
 	// Build index
 	nls.buildNoteIndex()
-}
-
-// IsActive returns whether the overlay is currently visible.
-func (nls NLSearch) IsActive() bool {
-	return nls.active
 }
 
 // GetSelectedNote returns the path of the note the user selected and
