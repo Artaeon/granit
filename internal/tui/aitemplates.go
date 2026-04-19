@@ -71,9 +71,7 @@ const (
 // want, picks a template type, enters a topic, and generates the full note
 // content via Ollama, OpenAI, or a local fallback.
 type AITemplates struct {
-	active bool
-	width  int
-	height int
+	OverlayBase
 
 	state  int
 	cursor int
@@ -115,12 +113,9 @@ func NewAITemplates() AITemplates {
 // Overlay interface
 // ---------------------------------------------------------------------------
 
-// IsActive returns true when the overlay is visible.
-func (a AITemplates) IsActive() bool { return a.active }
-
 // Open activates the overlay and stores the AI configuration.
 func (a *AITemplates) OpenWithAI(cfg AIConfig) {
-	a.active = true
+	a.Activate()
 	a.state = aitStateTypeSelect
 	a.cursor = 0
 	a.scroll = 0
@@ -146,17 +141,6 @@ func (a *AITemplates) OpenWithAI(cfg AIConfig) {
 	if a.ai.OllamaURL == "" {
 		a.ai.OllamaURL = "http://localhost:11434"
 	}
-}
-
-// Close hides the overlay.
-func (a *AITemplates) Close() {
-	a.active = false
-}
-
-// SetSize updates the available dimensions.
-func (a *AITemplates) SetSize(w, h int) {
-	a.width = w
-	a.height = h
 }
 
 // GetResult returns the generated title and content once, then clears the
