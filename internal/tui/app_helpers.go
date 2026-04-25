@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/artaeon/granit/internal/atomicio"
 	"github.com/artaeon/granit/internal/vault"
 )
 
@@ -1062,38 +1063,21 @@ func (m Model) saveCurrentNote() tea.Cmd {
 	}
 }
 
-// atomicWriteNote writes the given content to a note path atomically by
-// writing to a sibling .tmp file and then renaming it into place. This
-// prevents leaving a zero-byte or truncated note on disk if the process is
-// interrupted (crash, power loss, OOM kill) mid-write. All call sites that
-// persist user note content should go through this helper.
+// atomicWriteNote, atomicWriteState, atomicWriteWithPerm are thin
+// wrappers around the internal/atomicio package. Kept as
+// package-tui aliases so the dozens of existing call sites don't
+// have to change in this commit. New code should call atomicio
+// directly.
 func atomicWriteNote(path, content string) error {
-	return atomicWriteWithPerm(path, []byte(content), 0o644)
+	return atomicio.WriteNote(path, content)
 }
 
-// atomicWriteState is the equivalent of atomicWriteNote for internal state
-// files under .granit/. State files contain personal data (clock sessions,
-// goals, projects, kanban state, etc.) and should not be world-readable on
-// shared machines, so this helper uses 0o600 perms.
 func atomicWriteState(path string, data []byte) error {
-	return atomicWriteWithPerm(path, data, 0o600)
+	return atomicio.WriteState(path, data)
 }
 
-// atomicWriteWithPerm writes data to a sibling .tmp file then renames it
-// over the destination. The rename is atomic on POSIX filesystems, so a
-// crash mid-write leaves either the old contents or the new contents but
-// never a truncated file.
 func atomicWriteWithPerm(path string, data []byte, perm os.FileMode) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, perm); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return atomicio.WriteWithPerm(path, data, perm)
 }
 
 // tryExpandSnippet checks if the word before the cursor (before the space just typed)
