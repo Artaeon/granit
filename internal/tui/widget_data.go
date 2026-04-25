@@ -148,31 +148,51 @@ func (m *Model) widgetHabits(limit int) []widgets.HabitEntry {
 	return out
 }
 
-// widgetTodayEvents returns calendar events scheduled for today,
-// pre-formatted for the cell. Pulled from the EventStore
-// (.granit/events.json) — ICS-imported events get the same shape
-// because EventsForDate handles both. Sorted by start time.
+// widgetTodayEvents returns calendar events + planner blocks
+// scheduled for today, merged into one time-sorted list. Events
+// come from the EventStore (.granit/events.json plus ICS imports)
+// and surface as Kind="event"; planner blocks come from
+// <vault>/Planner/<YYYY-MM-DD>.md and surface as Kind="block".
+// The widget renders different glyphs for each kind so users can
+// tell their meeting from their focus block at a glance.
 func (m *Model) widgetTodayEvents(limit int) []widgets.CalendarEvent {
-	if m.eventStore == nil {
-		return nil
-	}
 	todayStr := time.Now().Format("2006-01-02")
-	events := m.eventStore.EventsForDate(todayStr)
-	sort.Slice(events, func(i, j int) bool {
-		return events[i].StartTime < events[j].StartTime
-	})
-	out := make([]widgets.CalendarEvent, 0, len(events))
-	for _, e := range events {
-		t := e.StartTime
-		if t == "" {
-			t = "all-day"
+	out := make([]widgets.CalendarEvent, 0, 8)
+
+	if m.eventStore != nil {
+		for _, e := range m.eventStore.EventsForDate(todayStr) {
+			t := e.StartTime
+			if t == "" {
+				t = "all-day"
+			}
+			out = append(out, widgets.CalendarEvent{
+				Time:  t,
+				Title: e.Title,
+				Kind:  "event",
+			})
 		}
-		out = append(out, widgets.CalendarEvent{
-			Time:  t,
-			Title: e.Title,
-			Kind:  "event",
-		})
 	}
+
+	if m.vault != nil && m.vault.Root != "" {
+		blocks, _ := loadPlannerBlocks(m.vault.Root)
+		for _, b := range blocks[todayStr] {
+			title := b.Text
+			if b.Done {
+				title = "✓ " + title
+			}
+			out = append(out, widgets.CalendarEvent{
+				Time:  b.StartTime,
+				Title: title,
+				Kind:  "block",
+			})
+		}
+	}
+
+	// Sort by start time. "all-day" sorts last because the
+	// string is alphabetically larger than "00:00".
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Time < out[j].Time
+	})
 	if len(out) > limit {
 		out = out[:limit]
 	}
