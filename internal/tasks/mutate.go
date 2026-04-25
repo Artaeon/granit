@@ -58,12 +58,20 @@ func (s *TaskStore) UpdateMeta(id string, mut func(*Task)) error {
 // Use for done-toggle, due-date set, priority cycle, text edits,
 // add/remove tag — anything the user could type into the line by
 // hand.
+//
+// Subscriber callbacks fire after the lock is released so a
+// callback that synchronously calls back into a write method
+// won't deadlock on its own write lock.
 func (s *TaskStore) UpdateLine(id string, transform func(line string) string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Note: do NOT `defer Unlock` here. We need to release the
+	// lock explicitly before calling notify so subscribers don't
+	// observe the store mid-mutation and don't risk deadlocking
+	// on a re-entrant write.
 
 	t, ok := s.tasks[id]
 	if !ok {
+		s.mu.Unlock()
 		return ErrNotFound
 	}
 	notePath := t.NotePath
@@ -71,23 +79,28 @@ func (s *TaskStore) UpdateLine(id string, transform func(line string) string) er
 
 	abs, err := resolveInVault(s.vaultRoot, notePath)
 	if err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("tasks: %s: %w", notePath, err)
 	}
 	content, err := os.ReadFile(abs)
 	if err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("tasks: read %s: %w", notePath, err)
 	}
 	lines := strings.Split(string(content), "\n")
 	if lineNum < 1 || lineNum > len(lines) {
+		s.mu.Unlock()
 		return fmt.Errorf("tasks: line %d out of range in %s (len=%d)", lineNum, notePath, len(lines))
 	}
 	oldLine := lines[lineNum-1]
 	newLine := transform(oldLine)
 	if newLine == oldLine {
+		s.mu.Unlock()
 		return nil // no-op
 	}
 	lines[lineNum-1] = newLine
 	if err := atomicio.WriteNote(abs, strings.Join(lines, "\n")); err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("tasks: write %s: %w", notePath, err)
 	}
 
@@ -108,9 +121,11 @@ func (s *TaskStore) UpdateLine(id string, transform func(line string) string) er
 		old := *t
 		s.deleteInMemoryLocked(id, time.Now().UTC())
 		if err := s.persistSidecarLocked(); err != nil {
+			s.mu.Unlock()
 			return err
 		}
-		go s.notify(Event{Kind: EventDeleted, ID: id, Old: &old})
+		s.mu.Unlock()
+		s.notify(Event{Kind: EventDeleted, ID: id, Old: &old})
 		return nil
 	}
 
@@ -149,9 +164,11 @@ func (s *TaskStore) UpdateLine(id string, transform func(line string) string) er
 	s.upsertSidecarTaskLocked(newTask)
 
 	if err := s.persistSidecarLocked(); err != nil {
+		s.mu.Unlock()
 		return err
 	}
-	go s.notify(Event{Kind: EventUpdated, ID: id, Old: &old, New: newTask})
+	s.mu.Unlock()
+	s.notify(Event{Kind: EventUpdated, ID: id, Old: &old, New: newTask})
 	return nil
 }
 
@@ -212,17 +229,20 @@ func (s *TaskStore) Create(text string, opts CreateOpts) (Task, error) {
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Explicit Unlock + sync notify (no defer). See UpdateLine.
 
 	abs, err := resolveInVault(s.vaultRoot, dest)
 	if err != nil {
+		s.mu.Unlock()
 		return Task{}, fmt.Errorf("tasks: %s: %w", dest, err)
 	}
 	if mkErr := os.MkdirAll(filepath.Dir(abs), 0o755); mkErr != nil {
+		s.mu.Unlock()
 		return Task{}, fmt.Errorf("tasks: mkdir %s: %w", filepath.Dir(dest), mkErr)
 	}
 	existing, err := os.ReadFile(abs)
 	if err != nil && !os.IsNotExist(err) {
+		s.mu.Unlock()
 		return Task{}, fmt.Errorf("tasks: read %s: %w", dest, err)
 	}
 	var buf strings.Builder
@@ -238,6 +258,7 @@ func (s *TaskStore) Create(text string, opts CreateOpts) (Task, error) {
 	buf.WriteByte('\n')
 	newContent := buf.String()
 	if err := atomicio.WriteNote(abs, newContent); err != nil {
+		s.mu.Unlock()
 		return Task{}, fmt.Errorf("tasks: write %s: %w", dest, err)
 	}
 
@@ -245,6 +266,7 @@ func (s *TaskStore) Create(text string, opts CreateOpts) (Task, error) {
 	// line by line number (last task line in the file).
 	reparsed := parseNote(NoteContent{Path: dest, Content: newContent})
 	if len(reparsed) == 0 {
+		s.mu.Unlock()
 		return Task{}, errors.New("tasks: Create wrote a line that didn't parse as a task — check the input format")
 	}
 	t := reparsed[len(reparsed)-1]
@@ -281,9 +303,11 @@ func (s *TaskStore) Create(text string, opts CreateOpts) (Task, error) {
 		delete(s.tasks, t.ID)
 		delete(s.byAnchor, anchorKey{t.NotePath, t.LineNum})
 		s.removeFPRefLocked(Fingerprint(t.Text), t.ID)
+		s.mu.Unlock()
 		return Task{}, err
 	}
-	go s.notify(Event{Kind: EventCreated, ID: t.ID, New: &t})
+	s.mu.Unlock()
+	s.notify(Event{Kind: EventCreated, ID: t.ID, New: &t})
 	return t, nil
 }
 
@@ -292,10 +316,11 @@ func (s *TaskStore) Create(text string, opts CreateOpts) (Task, error) {
 // instead of getting a fresh ID.
 func (s *TaskStore) Delete(id string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Explicit Unlock + sync notify (no defer). See UpdateLine.
 
 	t, ok := s.tasks[id]
 	if !ok {
+		s.mu.Unlock()
 		return ErrNotFound
 	}
 	notePath := t.NotePath
@@ -303,28 +328,34 @@ func (s *TaskStore) Delete(id string) error {
 
 	abs, err := resolveInVault(s.vaultRoot, notePath)
 	if err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("tasks: %s: %w", notePath, err)
 	}
 	content, err := os.ReadFile(abs)
 	if err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("tasks: read %s: %w", notePath, err)
 	}
 	lines := strings.Split(string(content), "\n")
 	if lineNum < 1 || lineNum > len(lines) {
+		s.mu.Unlock()
 		return fmt.Errorf("tasks: line %d out of range in %s", lineNum, notePath)
 	}
 	// Drop the line; preserve trailing newline shape.
 	lines = append(lines[:lineNum-1], lines[lineNum:]...)
 	if err := atomicio.WriteNote(abs, strings.Join(lines, "\n")); err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("tasks: write %s: %w", notePath, err)
 	}
 
 	old := *t
 	s.deleteInMemoryLocked(id, time.Now().UTC())
 	if err := s.persistSidecarLocked(); err != nil {
+		s.mu.Unlock()
 		return err
 	}
-	go s.notify(Event{Kind: EventDeleted, ID: id, Old: &old})
+	s.mu.Unlock()
+	s.notify(Event{Kind: EventDeleted, ID: id, Old: &old})
 	return nil
 }
 

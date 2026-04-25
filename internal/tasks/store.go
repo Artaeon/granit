@@ -197,14 +197,20 @@ func (s *TaskStore) Subscribe(fn func(Event)) (unsubscribe func()) {
 
 // notify fires Subscribe callbacks. Caller must NOT hold the lock.
 // Each callback runs in a goroutine so a slow subscriber can't
-// block reconciliation.
+// block reconciliation; a panicking subscriber is recovered so it
+// can't take down the process. Phase 3 widgets are exactly the
+// kind of code that will accidentally panic on a nil dashboard
+// reference once added.
 func (s *TaskStore) notify(ev Event) {
 	s.mu.RLock()
 	subs := make([]subscription, len(s.subs))
 	copy(subs, s.subs)
 	s.mu.RUnlock()
 	for _, sub := range subs {
-		go sub.fn(ev)
+		go func(fn func(Event)) {
+			defer func() { _ = recover() }()
+			fn(ev)
+		}(sub.fn)
 	}
 }
 

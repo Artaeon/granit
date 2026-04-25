@@ -6,13 +6,30 @@ func TestNormalize_StripsCheckboxPrefix(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"- [ ] buy milk", "buy milk"},
 		{"  - [x] done thing", "done thing"},
-		{"* [ ] alt bullet", "alt bullet"},
-		{"+ [X] capital x", "capital x"},
+		{"- [X] capital x", "capital x"},
 		{"\t- [ ] tab indent", "tab indent"},
 	}
 	for _, c := range cases {
 		if got := NormalizeTaskText(c.in); got != c.want {
 			t.Errorf("Normalize(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestNormalize_DoesNotMatchNonDashBullets(t *testing.T) {
+	// The parser regex only accepts "- [" — fingerprint must agree
+	// or asterisk/plus-bullet "tasks" get fingerprinted but never
+	// parsed, vanishing from every overlay. Ensure a non-dash
+	// bullet line is left intact (as plain text), not normalized.
+	cases := []string{"* [ ] not a task", "+ [x] also not"}
+	for _, in := range cases {
+		got := NormalizeTaskText(in)
+		// The string still gets lowercased + whitespace-collapsed
+		// (those are general normalizations) but the bullet
+		// prefix must remain so the fingerprint is distinct from
+		// the dash-bulleted form.
+		if got == "not a task" || got == "also not" {
+			t.Errorf("Normalize(%q) = %q — non-dash bullet was incorrectly stripped", in, got)
 		}
 	}
 }

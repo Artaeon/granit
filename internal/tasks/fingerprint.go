@@ -22,9 +22,13 @@ func Fingerprint(rawTaskLine string) string {
 	return strconv.FormatUint(h.Sum64(), 16)
 }
 
-// reCheckboxPrefix matches "  - [ ] " or "* [x] " etc. — the
-// indent + bullet + checkbox at the start of a task line.
-var reCheckboxPrefix = regexp.MustCompile(`^\s*[-*+]\s*\[[ xX]\]\s*`)
+// reCheckboxPrefix matches "  - [ ] " — the indent + dash bullet
+// + checkbox at the start of a task line. Intentionally limited
+// to the dash bullet to match the parser regex (parser.go); a
+// looser fingerprint that accepted * or + bullets would normalize
+// task-shaped lines that the parser silently skips, and the user
+// would see those tasks vanish from every overlay.
+var reCheckboxPrefix = regexp.MustCompile(`^\s*-\s*\[[ xX]\]\s*`)
 
 // reTrailingMeta strips markdown-task metadata that the user (or
 // granit) writes back into the line as the task's lifecycle

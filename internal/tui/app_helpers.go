@@ -804,7 +804,12 @@ func (m *Model) refreshComponents(changedPath string) {
 	m.autocomplete.SetNotes(paths)
 	m.statusbar.SetNoteCount(m.vault.NoteCount())
 
-	// Update task cache and counts
+	// Update task cache and counts. Reload picks up any external
+	// markdown edits the watcher just told us about; currentTasks
+	// then returns the fresh snapshot.
+	if m.taskStore != nil {
+		_ = m.taskStore.Reload()
+	}
 	m.cachedTasks = m.currentTasks()
 	m.dueTodayCount = CountTasksDueTodayFromList(m.cachedTasks)
 	m.statusbar.SetDueTodayCount(m.dueTodayCount)
@@ -1063,20 +1068,21 @@ func (m Model) saveCurrentNote() tea.Cmd {
 	}
 }
 
-// currentTasks returns the canonical task slice for this Model.
+// currentTasks returns the canonical task snapshot for this Model.
 // When the unified TaskStore is wired (cfg.UseTaskStore), reads
-// flow through it — including a fresh Reload so external markdown
-// edits picked up by the watcher (or by us via writeLineChange)
-// are reflected immediately. Falls back to the legacy
-// ParseAllTasks scan when the flag is off.
+// flow through it via the lock-cheap All() snapshot; otherwise
+// falls back to the legacy ParseAllTasks scan over vault.Notes.
+//
+// This helper does NOT Reload the store. Reloading on every call
+// turned out to be a per-render disk write — fine when only the
+// status bar consulted it, ruinous once Phase 3 widgets started
+// polling. Refresh discipline is now explicit: refreshComponents
+// (driven by the file watcher and by save events) calls
+// store.Reload before invoking currentTasks, and overlays that
+// bypass the store with their own writes (TaskManager's
+// writeLineChange callers) Reload at their own boundaries.
 func (m *Model) currentTasks() []Task {
 	if m.taskStore != nil {
-		// Reload is cheap (in-memory walk + sidecar write); doing
-		// it here keeps the task layer authoritative when the user
-		// just saved a note. Errors fall through silently — we'd
-		// rather show stale tasks than crash on a transient I/O
-		// hiccup.
-		_ = m.taskStore.Reload()
 		return m.taskStore.All()
 	}
 	return ParseAllTasks(m.vault.Notes)
