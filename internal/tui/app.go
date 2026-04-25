@@ -13,6 +13,7 @@ import (
 
 	"github.com/artaeon/granit/internal/config"
 	"github.com/artaeon/granit/internal/modules"
+	"github.com/artaeon/granit/internal/tasks"
 	"github.com/artaeon/granit/internal/vault"
 )
 
@@ -88,7 +89,12 @@ type Model struct {
 	// executeCommand can invoke. Empty entries fall through to the
 	// legacy switch in app_update.go.
 	moduleCommandToAction map[string]CommandAction
-	settings              Settings
+	// taskStore is the unified canonical task layer (Phase 2 of
+	// the relaunch). Nil when cfg.UseTaskStore is false — readers
+	// must check before dereferencing. When non-nil, m.cachedTasks
+	// flows from store.All() instead of ParseAllTasks.
+	taskStore *tasks.TaskStore
+	settings  Settings
 	graphView      GraphView
 	tagBrowser     TagBrowser
 	helpOverlay    HelpOverlay
@@ -412,7 +418,7 @@ func NewModel(vaultPath string) (Model, error) {
 	m.tutorial.vaultRoot = vaultPath
 	m.statusbar.SetVaultPath(vaultPath)
 	m.statusbar.SetNoteCount(v.NoteCount())
-	m.cachedTasks = ParseAllTasks(v.Notes)
+	m.cachedTasks = m.currentTasks()
 	m.dueTodayCount = CountTasksDueTodayFromList(m.cachedTasks)
 	m.statusbar.SetDueTodayCount(m.dueTodayCount)
 	m.statusbar.SetOverdueCount(CountOverdueTasksFromList(m.cachedTasks))
@@ -540,6 +546,25 @@ func NewModel(vaultPath string) (Model, error) {
 	}
 	m.cmdActionToModuleID, m.moduleCommandToAction = RegisterBuiltins(m.registry)
 	m.settings.SetRegistry(m.registry)
+
+	// Phase 2 task store, behind a feature flag during rollout.
+	// When on, ingests existing Tasks.md / daily-note tasks and
+	// writes a stable-ID sidecar. Readers and writers migrate over
+	// in subsequent commits; this commit only flips the cachedTasks
+	// source so a misbehaving store can't corrupt user notes.
+	if cfg.UseTaskStore {
+		store, err := tasks.Load(v.Root, func() []tasks.NoteContent {
+			items := make([]tasks.NoteContent, 0, len(v.Notes))
+			for _, n := range v.Notes {
+				items = append(items, tasks.NoteContent{Path: n.RelPath, Content: n.Content})
+			}
+			return items
+		})
+		if err != nil {
+			log.Printf("warning: task store load: %v", err)
+		}
+		m.taskStore = store
+	}
 	registry := m.registry
 	cmdMap := m.cmdActionToModuleID
 	m.commandPalette.SetVisibilityFilter(func(a CommandAction) bool {

@@ -805,7 +805,7 @@ func (m *Model) refreshComponents(changedPath string) {
 	m.statusbar.SetNoteCount(m.vault.NoteCount())
 
 	// Update task cache and counts
-	m.cachedTasks = ParseAllTasks(m.vault.Notes)
+	m.cachedTasks = m.currentTasks()
 	m.dueTodayCount = CountTasksDueTodayFromList(m.cachedTasks)
 	m.statusbar.SetDueTodayCount(m.dueTodayCount)
 	m.statusbar.SetOverdueCount(CountOverdueTasksFromList(m.cachedTasks))
@@ -1061,6 +1061,25 @@ func (m Model) saveCurrentNote() tea.Cmd {
 		}
 		return saveResultMsg{err: nil}
 	}
+}
+
+// currentTasks returns the canonical task slice for this Model.
+// When the unified TaskStore is wired (cfg.UseTaskStore), reads
+// flow through it — including a fresh Reload so external markdown
+// edits picked up by the watcher (or by us via writeLineChange)
+// are reflected immediately. Falls back to the legacy
+// ParseAllTasks scan when the flag is off.
+func (m *Model) currentTasks() []Task {
+	if m.taskStore != nil {
+		// Reload is cheap (in-memory walk + sidecar write); doing
+		// it here keeps the task layer authoritative when the user
+		// just saved a note. Errors fall through silently — we'd
+		// rather show stale tasks than crash on a transient I/O
+		// hiccup.
+		_ = m.taskStore.Reload()
+		return m.taskStore.All()
+	}
+	return ParseAllTasks(m.vault.Notes)
 }
 
 // atomicWriteNote, atomicWriteState, atomicWriteWithPerm are thin

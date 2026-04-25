@@ -1569,7 +1569,7 @@ func (m *Model) gatherPlannerData() ([]PlannerTask, []PlannerEvent, []PlannerHab
 func (m *Model) gatherPlanMyDayData() ([]Task, []PlannerEvent, []habitEntry, []Project, []string) {
 	// Use the canonical task parser — same as TaskManager uses.
 	// Refresh the cache so we have the latest from disk.
-	m.cachedTasks = ParseAllTasks(m.vault.Notes)
+	m.cachedTasks = m.currentTasks()
 	tasks := m.cachedTasks
 
 	// Calendar events — use shared helper (handles multi-day events)
