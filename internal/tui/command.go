@@ -379,11 +379,12 @@ var AllCommands = []Command{
 
 type CommandPalette struct {
 	OverlayBase
-	query    string
-	filtered []Command
-	cursor   int
-	result   CommandAction
-	history  *CommandHistory
+	query     string
+	filtered  []Command
+	cursor    int
+	result    CommandAction
+	history   *CommandHistory
+	isVisible func(CommandAction) bool // nil → every command visible
 }
 
 func NewCommandPalette() CommandPalette {
@@ -392,6 +393,34 @@ func NewCommandPalette() CommandPalette {
 	}
 	cp.filtered = cp.rankedAllCommands()
 	return cp
+}
+
+// SetVisibilityFilter installs a predicate the palette consults when
+// listing or filtering commands. Commands whose Action returns false
+// are hidden from both the open-state ranking and search results.
+//
+// Passing nil restores the show-everything default. The Module
+// Registry wires this in NewModel so commands owned by disabled
+// modules disappear from the palette.
+func (cp *CommandPalette) SetVisibilityFilter(f func(CommandAction) bool) {
+	cp.isVisible = f
+	cp.filtered = cp.rankedAllCommands()
+}
+
+// visibleCommands returns AllCommands trimmed by the current
+// visibility filter. Returns AllCommands directly when no filter is
+// installed (zero allocation in the common path).
+func (cp *CommandPalette) visibleCommands() []Command {
+	if cp.isVisible == nil {
+		return AllCommands
+	}
+	out := make([]Command, 0, len(AllCommands))
+	for _, c := range AllCommands {
+		if cp.isVisible(c.Action) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 func (cp *CommandPalette) Open() {
@@ -407,8 +436,9 @@ func (cp *CommandPalette) Open() {
 // palette shows immediately on Open() — your last-used / most-used
 // commands are one Enter away.
 func (cp *CommandPalette) rankedAllCommands() []Command {
-	out := make([]Command, len(AllCommands))
-	copy(out, AllCommands)
+	base := cp.visibleCommands()
+	out := make([]Command, len(base))
+	copy(out, base)
 	if cp.history == nil {
 		return out
 	}
@@ -451,7 +481,7 @@ func (cp *CommandPalette) filterCommands() {
 		score int
 	}
 	var hits []scored
-	for _, cmd := range AllCommands {
+	for _, cmd := range cp.visibleCommands() {
 		if catFilter != "" && cmdFuzzyScore(strings.ToLower(cmd.Category), catFilter) <= 0 {
 			continue
 		}

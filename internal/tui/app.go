@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/artaeon/granit/internal/config"
+	"github.com/artaeon/granit/internal/modules"
 	"github.com/artaeon/granit/internal/vault"
 )
 
@@ -76,7 +77,13 @@ type Model struct {
 	pendingTemplate  string
 
 	commandPalette CommandPalette
-	settings       Settings
+	registry       *modules.Registry
+	// cmdActionToModuleID lets the palette filter (and, in later
+	// commits, the keybind dispatcher) ask "is the module that owns
+	// this command currently enabled?" — populated by RegisterBuiltins.
+	// Commands without an entry have no module owner and stay visible.
+	cmdActionToModuleID map[CommandAction]string
+	settings            Settings
 	graphView      GraphView
 	tagBrowser     TagBrowser
 	helpOverlay    HelpOverlay
@@ -515,6 +522,26 @@ func NewModel(vaultPath string) (Model, error) {
 	} else if len(paths) > 0 {
 		m.loadNote(paths[0])
 	}
+
+	// Module registry — single source of truth for which features are
+	// enabled. Mirrors legacy CorePlugins config so existing user
+	// toggles survive Phase 1; Load() picks up any explicit overrides
+	// the user has saved through the new registry. RegisterBuiltins is
+	// a no-op until pilot commits start populating allBuiltins().
+	m.registry = modules.New(v.Root)
+	m.registry.MirrorLegacy(cfg.CorePlugins)
+	if err := m.registry.Load(); err != nil {
+		log.Printf("warning: load module state: %v", err)
+	}
+	m.cmdActionToModuleID = RegisterBuiltins(m.registry)
+	registry := m.registry
+	cmdMap := m.cmdActionToModuleID
+	m.commandPalette.SetVisibilityFilter(func(a CommandAction) bool {
+		if id, owned := cmdMap[a]; owned {
+			return registry.Enabled(id)
+		}
+		return true
+	})
 
 	return m, nil
 }
