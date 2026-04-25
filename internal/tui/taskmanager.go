@@ -79,6 +79,7 @@ const (
 	tmInputInlineEdit                  // inline edit of the cursor task's full line (no source-note context switch)
 	tmInputQuickEdit                   // single-line quick edit on cursor task: p:N, d:YYYY-MM-DD, ~30m
 	tmInputTimeBlock                   // assign task to a time block: 1=morning 2=midday 3=afternoon 4=evening
+	tmInputTriageSet                   // direct-set triage submode entered via 'm' (mark): i/t/s/n/d/x set state then exit
 )
 
 // ---------------------------------------------------------------------------
@@ -288,8 +289,14 @@ func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.inputMode = tmInputNone
 	tm.inputBuf = ""
 	tm.statusMsg = ""
+	// Filters are sticky across sessions — load before resetting
+	// the in-memory defaults so a fresh-open session that has no
+	// saved file falls through to the empty-filter default below.
 	tm.filterTag = ""
 	tm.filterPriority = -1
+	tm.filterTriage = ""
+	tm.searchTerm = ""
+	tm.loadFilters()
 	tm.collapsed = make(map[string]bool)
 	tm.selectMode = false
 	tm.selected = make(map[string]bool)
@@ -900,6 +907,69 @@ func (tm *TaskManager) saveTaskTemplates() {
 	}
 }
 
+// tmFilterState is the on-disk form of the active filter set.
+// Saved as .granit/tm-filters.json so reopening TaskManager
+// (within the same vault) restores the user's last filter view —
+// power users who pinned themselves to "p:high #urgent" don't
+// have to re-type that combo every session.
+type tmFilterState struct {
+	Tag      string `json:"tag"`
+	Priority int    `json:"priority"`
+	Triage   string `json:"triage"`
+	Search   string `json:"search"`
+	Sort     int    `json:"sort"`
+}
+
+// loadFilters restores filterTag/Priority/Triage/searchTerm/
+// sortMode from .granit/tm-filters.json. Silent on missing or
+// malformed file — fresh users get the default empty filters.
+func (tm *TaskManager) loadFilters() {
+	if tm.vault == nil {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(tm.vault.Root, ".granit", "tm-filters.json"))
+	if err != nil {
+		return
+	}
+	var st tmFilterState
+	if err := json.Unmarshal(data, &st); err != nil {
+		return
+	}
+	tm.filterTag = st.Tag
+	tm.filterPriority = st.Priority
+	tm.filterTriage = tasks.TriageState(st.Triage)
+	tm.searchTerm = st.Search
+	if st.Sort >= 0 && st.Sort < 5 {
+		tm.sortMode = tmSortMode(st.Sort)
+	}
+}
+
+// saveFilters writes the current filter set to disk. Called from
+// each filter-mutating handler so the on-disk state matches what
+// the user just did. Errors land on lastSaveErr (surfaced via
+// the same toast pipeline as other save failures).
+func (tm *TaskManager) saveFilters() {
+	if tm.vault == nil {
+		return
+	}
+	dir := filepath.Join(tm.vault.Root, ".granit")
+	_ = os.MkdirAll(dir, 0755)
+	st := tmFilterState{
+		Tag:      tm.filterTag,
+		Priority: tm.filterPriority,
+		Triage:   string(tm.filterTriage),
+		Search:   tm.searchTerm,
+		Sort:     int(tm.sortMode),
+	}
+	data, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := atomicWriteNote(filepath.Join(dir, "tm-filters.json"), string(data)); err != nil {
+		tm.lastSaveErr = err
+	}
+}
+
 // loadPinnedTasks reads pinned task keys from .granit/pinned-tasks.json.
 func (tm *TaskManager) loadPinnedTasks() {
 	tm.pinnedTasks = make(map[string]bool)
@@ -1252,14 +1322,14 @@ func (tm *TaskManager) doKanbanMove(task Task, direction int) {
 // Filtering / sorting
 // ---------------------------------------------------------------------------
 
-// switchView clears any active search and rebuilds the filtered list for a
-// new view. Use this when changing tabs so stale search text doesn't silently
-// hide tasks in the destination view.
+// switchView rebuilds the filtered list for a new view. Filters
+// are intentionally NOT cleared here — power users rely on
+// "filter once, browse multiple views" workflows. The active
+// filter chips render in the title bar so the user always sees
+// what's narrowing their list.
 func (tm *TaskManager) switchView() {
 	tm.inputMode = tmInputNone
 	tm.inputBuf = ""
-	tm.filterTag = ""
-	tm.filterPriority = -1
 	tm.rebuildFiltered()
 }
 
@@ -1737,6 +1807,32 @@ func inlineEditSeed(t Task) string {
 	return strings.TrimSpace(t.Text)
 }
 
+// setTriageState writes a new triage state for the given task,
+// persists it via the store (when wired), and patches the
+// in-memory caches so the next render shows the new chip
+// immediately. Used by both cycleTriageState (';' cycle) and
+// the direct-set submode ('m' leader). Updates statusMsg as a
+// power-user feedback signal.
+func (tm *TaskManager) setTriageState(task Task, next tasks.TriageState) {
+	if tm.taskStore != nil && task.ID != "" {
+		if err := tm.taskStore.Triage(task.ID, next); err != nil {
+			tm.statusMsg = "Triage failed: " + err.Error()
+			return
+		}
+	}
+	for i := range tm.allTasks {
+		if tm.allTasks[i].ID == task.ID || (tm.allTasks[i].NotePath == task.NotePath && tm.allTasks[i].LineNum == task.LineNum) {
+			tm.allTasks[i].Triage = next
+		}
+	}
+	for i := range tm.filtered {
+		if tm.filtered[i].ID == task.ID || (tm.filtered[i].NotePath == task.NotePath && tm.filtered[i].LineNum == task.LineNum) {
+			tm.filtered[i].Triage = next
+		}
+	}
+	tm.statusMsg = "Triage → " + string(next)
+}
+
 // cycleTriageState rotates the cursor task through the
 // (inbox → triaged → scheduled → snoozed → dropped → inbox)
 // cycle. Persists via the task store when wired; falls back to
@@ -1761,25 +1857,7 @@ func (tm *TaskManager) cycleTriageState(task Task) {
 			break
 		}
 	}
-	if tm.taskStore != nil && task.ID != "" {
-		if err := tm.taskStore.Triage(task.ID, next); err != nil {
-			tm.statusMsg = "Triage failed: " + err.Error()
-			return
-		}
-	}
-	// Update in-memory cache so the next render shows the new
-	// chip without waiting for a Reload roundtrip.
-	for i := range tm.allTasks {
-		if tm.allTasks[i].ID == task.ID || (tm.allTasks[i].NotePath == task.NotePath && tm.allTasks[i].LineNum == task.LineNum) {
-			tm.allTasks[i].Triage = next
-		}
-	}
-	for i := range tm.filtered {
-		if tm.filtered[i].ID == task.ID || (tm.filtered[i].NotePath == task.NotePath && tm.filtered[i].LineNum == task.LineNum) {
-			tm.filtered[i].Triage = next
-		}
-	}
-	tm.statusMsg = "Triage → " + string(next)
+	tm.setTriageState(task, next)
 }
 
 // collectTags returns all unique tags across allTasks with their counts,
@@ -1992,8 +2070,59 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		return tm.updateQuickEditInput(key)
 	case tmInputTimeBlock:
 		return tm.updateTimeBlock(key)
+	case tmInputTriageSet:
+		return tm.updateTriageSet(key)
 	}
 
+	return tm, nil
+}
+
+// updateTriageSet handles the direct-set triage submode entered
+// via 'm' (mark) in normal mode. One keystroke maps to one
+// triage state — no cycling, no picker overlay. The submode
+// exits after a single key (success or unknown) so the user is
+// back in normal mode immediately. Esc cancels without writing.
+//
+//	i  → inbox
+//	t  → triaged
+//	s  → scheduled
+//	n  → snoozed
+//	d  → dropped
+//	x  → done
+func (tm TaskManager) updateTriageSet(key string) (TaskManager, tea.Cmd) {
+	if key == "esc" {
+		tm.inputMode = tmInputNone
+		tm.statusMsg = ""
+		return tm, nil
+	}
+	if tm.cursor >= len(tm.filtered) {
+		tm.inputMode = tmInputNone
+		return tm, nil
+	}
+	task := tm.filtered[tm.cursor]
+	var next tasks.TriageState
+	switch key {
+	case "i":
+		next = tasks.TriageInbox
+	case "t":
+		next = tasks.TriageTriaged
+	case "s":
+		next = tasks.TriageScheduled
+	case "n":
+		next = tasks.TriageSnoozed
+	case "d":
+		next = tasks.TriageDropped
+	case "x":
+		next = tasks.TriageDone
+	default:
+		// Unknown key — exit submode without action so the user
+		// isn't stuck if they hit 'm' by accident.
+		tm.inputMode = tmInputNone
+		tm.statusMsg = "Triage cancelled"
+		return tm, nil
+	}
+	tm.setTriageState(task, next)
+	tm.inputMode = tmInputNone
 	return tm, nil
 }
 
@@ -2288,12 +2417,14 @@ func (tm TaskManager) updateSearchInput(key string) (TaskManager, tea.Cmd) {
 		tm.inputBuf = ""
 		tm.searchTerm = ""
 		tm.rebuildFiltered()
+		tm.saveFilters()
 		return tm, nil
 
 	case "enter":
 		// Enter commits the search and exits the input — search stays visible
 		// as a badge in the title bar and can be cleared with `c`.
 		tm.inputMode = tmInputNone
+		tm.saveFilters()
 		return tm, nil
 
 	case "backspace":
@@ -2425,6 +2556,7 @@ func (tm *TaskManager) applyFilterQuery(query string) {
 	}
 
 	tm.rebuildFiltered()
+	tm.saveFilters()
 	if len(applied) > 0 {
 		tm.statusMsg = "Applied: " + strings.Join(applied, " ")
 	} else {
@@ -3406,6 +3538,7 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		tm.sortMode = (tm.sortMode + 1) % 5
 		tm.statusMsg = "Sort: " + tmSortNames[tm.sortMode]
 		tm.rebuildFiltered()
+		tm.saveFilters()
 
 	// Reschedule task
 	case "r":
@@ -3451,6 +3584,7 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.statusMsg = "Tag filter cleared"
 		}
 		tm.rebuildFiltered()
+		tm.saveFilters()
 
 	// Priority filter: cycle none -> highest -> high -> medium -> low -> none
 	case "P":
@@ -3473,16 +3607,19 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.statusMsg = "Priority filter cleared"
 		}
 		tm.rebuildFiltered()
+		tm.saveFilters()
 
 	// Clear all active filters
 	case "c":
-		if tm.filterTag != "" || tm.filterPriority >= 0 || tm.searchTerm != "" || tm.sortMode != tmSortPriority {
+		if tm.filterTag != "" || tm.filterPriority >= 0 || tm.filterTriage != "" || tm.searchTerm != "" || tm.sortMode != tmSortPriority {
 			tm.filterTag = ""
 			tm.filterPriority = -1
+			tm.filterTriage = ""
 			tm.searchTerm = ""
 			tm.sortMode = tmSortPriority
 			tm.statusMsg = "Filters cleared"
 			tm.rebuildFiltered()
+			tm.saveFilters()
 		}
 
 	// Unified filter prompt — set multiple filters in one input.
@@ -3504,6 +3641,17 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case ";":
 		if tm.cursor < len(tm.filtered) {
 			tm.cycleTriageState(tm.filtered[tm.cursor])
+		}
+
+	// Direct-set triage leader. Press 'm' (mark) then a single
+	// letter to set the cursor task's triage state without
+	// cycling: i=inbox t=triaged s=scheduled n=snoozed d=dropped
+	// x=done. One keystroke faster than ';' when you know exactly
+	// where the task should go.
+	case "m":
+		if tm.cursor < len(tm.filtered) {
+			tm.inputMode = tmInputTriageSet
+			tm.statusMsg = "Triage: i=inbox t=triaged s=scheduled n=snoozed d=dropped x=done (Esc cancel)"
 		}
 
 	// Inline edit the cursor task's full line — no source-note

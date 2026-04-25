@@ -160,6 +160,7 @@ func (tm *TaskManager) renderHelpOverlay(b *strings.Builder, w int) {
 		{"Create & edit", [][2]string{
 			{"a", "Add a new task"},
 			{"x / Enter", "Toggle done / not done"},
+			{"i", "Inline edit cursor task (text + tags + dates)"},
 			{".", "Quick-edit: p:high d:tomorrow ~30m in one input"},
 			{"d", "Set / change due date"},
 			{"r", "Reschedule (tomorrow / Monday / +1wk / +1mo / custom)"},
@@ -168,9 +169,19 @@ func (tm *TaskManager) renderHelpOverlay(b *strings.Builder, w int) {
 			{"e", "Expand / collapse subtasks"},
 			{"b", "Add task dependency"},
 			{"u", "Undo last edit (10-deep stack)"},
+			{"D", "Toggle compact / dense display"},
 		}},
-		{"Filter & search", [][2]string{
-			{"F", "Unified filter prompt: #tag p:high sort:due free text"},
+		{"Triage", [][2]string{
+			{";", "Cycle triage state (inbox→triaged→scheduled→snoozed→dropped)"},
+			{"m i", "Mark inbox"},
+			{"m t", "Mark triaged (reviewed but not yet scheduled)"},
+			{"m s", "Mark scheduled (committed time)"},
+			{"m n", "Mark snoozed (defer)"},
+			{"m d", "Mark dropped (decided not to do)"},
+			{"m x", "Mark done"},
+		}},
+		{"Filter & search (sticky across views and sessions)", [][2]string{
+			{"F", "Unified filter prompt: #tag p:high triage:scheduled sort:due text"},
 			{"/", "Plain search (fuzzy — \"bygr\" matches \"buy groceries\")"},
 			{"#", "Cycle single-tag filter"},
 			{"P", "Cycle single-priority filter"},
@@ -256,6 +267,22 @@ func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
 	stats := "  " + bar + lipgloss.NewStyle().Foreground(overlay0).
 		Render(fmt.Sprintf(" %d/%d", done, total))
 
+	// Overdue badge — count tasks with due date before today
+	// across the WHOLE vault, not just the current view, so it
+	// stays visible when the user's on Upcoming/All/Completed
+	// and reminds them they have something blowing the deadline.
+	overdueCount := 0
+	for _, t := range tm.allTasks {
+		if !t.Done && tmIsOverdue(t.DueDate) {
+			overdueCount++
+		}
+	}
+	if overdueCount > 0 {
+		overdueBadge := lipgloss.NewStyle().Foreground(crust).Background(red).Bold(true).Padding(0, 1).
+			Render(fmt.Sprintf("⚠ %d overdue", overdueCount))
+		stats += "  " + overdueBadge
+	}
+
 	// Active filter indicators
 	var filters string
 	filterStyle := lipgloss.NewStyle().Foreground(crust).Background(sapphire).Padding(0, 1)
@@ -265,6 +292,9 @@ func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
 	if tm.filterPriority >= 0 {
 		prioNames := []string{"none", "low", "med", "high", "highest"}
 		filters += " " + filterStyle.Render("P:"+prioNames[tm.filterPriority])
+	}
+	if tm.filterTriage != "" {
+		filters += " " + filterStyle.Render("T:"+string(tm.filterTriage))
 	}
 	if tm.sortMode != tmSortPriority {
 		filters += " " + filterStyle.Render("Sort:"+tmSortNames[tm.sortMode])
