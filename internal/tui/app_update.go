@@ -2776,8 +2776,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "ctrl+x":
-			// Cut selected text when editing with a selection; otherwise open command palette
-			if m.focus == focusEditor && !m.viewMode && m.editor.HasSelection() {
+			// Cut selected text when editing with a selection; otherwise open command palette.
+			// Skip the cut path entirely when a feature tab is foreground — the editor isn't
+			// actually visible (the tab is rendering its own content), and a stale selection
+			// shouldn't hijack the palette shortcut. Without this guard, users would press
+			// Ctrl+X expecting the palette to open and instead silently lose their clipboard.
+			if !hasActiveFeatureTab(m.tabBar) && m.focus == focusEditor && !m.viewMode && m.editor.HasSelection() {
 				text := m.editor.GetSelectedText()
 				if text != "" {
 					if err := ClipboardCopy(text); err != nil {

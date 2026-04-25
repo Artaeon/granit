@@ -2309,7 +2309,15 @@ func (gm *GoalsMode) View() string {
 	b.WriteString("\n")
 	gm.renderHelpBar(&b, innerW)
 
-	// Bordered overlay (matches task manager style)
+	// In tab mode the editor pane already provides the visual
+	// frame — wrapping again in a centered-overlay border was
+	// causing the floating "┌ └" corner artifacts visible at
+	// the edges (the border's width + padding overflowed the
+	// pane). Skip the border in tab mode and return the body
+	// raw; overlay mode keeps the bordered look it had before.
+	if gm.IsTabMode() {
+		return b.String()
+	}
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).

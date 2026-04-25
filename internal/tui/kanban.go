@@ -665,6 +665,9 @@ func (kb Kanban) View() string {
 		{"Esc", "close"},
 	}))
 
+	if kb.IsTabMode() {
+		return b.String()
+	}
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).

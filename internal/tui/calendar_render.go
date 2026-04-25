@@ -308,6 +308,9 @@ func (c Calendar) viewMonth() string {
 	// Footer
 	c.renderFooter(&b, width)
 
+	if c.IsTabMode() {
+		return b.String()
+	}
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
@@ -1608,6 +1611,9 @@ func (c Calendar) viewAgenda() string {
 
 	c.renderFooter(&b, width)
 
+	if c.IsTabMode() {
+		return b.String()
+	}
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
@@ -1696,6 +1702,9 @@ func (c Calendar) viewYear() string {
 
 	c.renderFooter(&b, width)
 
+	if c.IsTabMode() {
+		return b.String()
+	}
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).

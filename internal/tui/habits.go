@@ -1648,6 +1648,9 @@ func (ht HabitTracker) View() string {
 	b.WriteString("\n")
 	b.WriteString(ht.renderHelp())
 
+	if ht.IsTabMode() {
+		return b.String()
+	}
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).

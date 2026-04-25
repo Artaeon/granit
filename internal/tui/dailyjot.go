@@ -1448,6 +1448,9 @@ func (dj DailyJot) View() string {
 		}
 	}
 
+	if dj.IsTabMode() {
+		return b.String()
+	}
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).

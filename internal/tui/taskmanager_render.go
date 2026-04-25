@@ -127,6 +127,9 @@ func (tm TaskManager) View() string {
 	// Help bar
 	tm.renderHelp(&b, innerW)
 
+	if tm.IsTabMode() {
+		return b.String()
+	}
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
@@ -267,21 +270,10 @@ func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
 	stats := "  " + bar + lipgloss.NewStyle().Foreground(overlay0).
 		Render(fmt.Sprintf(" %d/%d", done, total))
 
-	// Overdue badge — count tasks with due date before today
-	// across the WHOLE vault, not just the current view, so it
-	// stays visible when the user's on Upcoming/All/Completed
-	// and reminds them they have something blowing the deadline.
-	overdueCount := 0
-	for _, t := range tm.allTasks {
-		if !t.Done && tmIsOverdue(t.DueDate) {
-			overdueCount++
-		}
-	}
-	if overdueCount > 0 {
-		overdueBadge := lipgloss.NewStyle().Foreground(crust).Background(red).Bold(true).Padding(0, 1).
-			Render(fmt.Sprintf("⚠ %d overdue", overdueCount))
-		stats += "  " + overdueBadge
-	}
+	// (Workload banner below the title already surfaces overdue
+	// counts on Today/Upcoming/All — no separate title-bar chip
+	// needed; was duplicating the same number twice on the same
+	// row of pixels.)
 
 	// Active filter indicators
 	var filters string

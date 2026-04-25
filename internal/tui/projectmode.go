@@ -2806,6 +2806,13 @@ func (pm ProjectMode) editHelpBar() string {
 // ---------------------------------------------------------------------------
 
 func (pm ProjectMode) wrapBorder(content string, width int, borderColor lipgloss.Color) string {
+	// Tab mode: skip the border — the editor pane already
+	// frames the surface, and lipgloss's Width(width) +
+	// Padding(1,2) was overflowing the pane and clipping the
+	// right side, producing floating "┌ └" corner artifacts.
+	if pm.IsTabMode() {
+		return content
+	}
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(borderColor).

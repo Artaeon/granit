@@ -451,6 +451,9 @@ func (g GraphView) View() string {
 	pairs = append(pairs, struct{ Key, Desc string }{"Esc", "close"})
 	b.WriteString(RenderHelpBar(pairs))
 
+	if g.IsTabMode() {
+		return b.String()
+	}
 	border := lipgloss.NewStyle().
 		BorderStyle(PanelBorder).
 		BorderForeground(OverlayBorderColor).
