@@ -111,12 +111,12 @@ type Config struct {
 	CorePlugins map[string]bool `json:"core_plugins"`
 
 	// UseTaskStore opts into the unified TaskStore (Phase 2 of the
-	// relaunch). Off by default during rollout; flipping it on
-	// routes m.cachedTasks through the new store.All() path
-	// instead of the legacy ParseAllTasks scan, and writes a
-	// .granit/tasks-meta.json sidecar with stable IDs. Reversible:
-	// turning it back off makes granit ignore the sidecar (the
-	// file stays on disk) and revert to the markdown-only path.
+	// relaunch). On by default — the store is the canonical task
+	// layer, with stable IDs in .granit/tasks-meta.json glued to
+	// the markdown via fingerprint reconciliation. Setting this
+	// to false reverts to the legacy markdown-only path and
+	// granit will ignore the sidecar (the file stays on disk for
+	// when you flip back).
 	UseTaskStore bool `json:"use_task_store"`
 
 	// File path (not serialized)
@@ -185,6 +185,7 @@ func DefaultConfig() Config {
 		TaskExcludeDone:        false,
 		PomodoroGoal:           8,
 		CorePlugins:            DefaultCorePlugins(),
+		UseTaskStore:           true,
 	}
 }
 

@@ -125,8 +125,15 @@ type TaskManager struct {
 	// Data
 	vault    *vault.Vault
 	config   config.Config
-	allTasks []Task
-	filtered []Task // currently displayed tasks
+	// taskStore is set when cfg.UseTaskStore is on. When non-nil,
+	// reads source from store.All() (after a fresh Reload) and the
+	// "add task" path routes through store.Create. The 15+
+	// writeLineChange callers stay on the legacy path for now —
+	// migrating those to store.UpdateLine is a separate effort
+	// since each caller has bespoke transform logic.
+	taskStore *tasks.TaskStore
+	allTasks  []Task
+	filtered  []Task // currently displayed tasks
 
 	// Navigation
 	view   taskView
@@ -244,11 +251,28 @@ func NewTaskManager() TaskManager {
 	}
 }
 
+// SetTaskStore wires the TaskStore so reads come from the
+// canonical task layer (with stable IDs and triage state) and
+// adds route through store.Create. Nil-safe — falls back to the
+// legacy ParseAllTasks / appendTaskLine paths when nil.
+func (tm *TaskManager) SetTaskStore(s *tasks.TaskStore) { tm.taskStore = s }
+
+// parseAllTasks returns the canonical task list. Store-backed
+// when wired (a Reload+All snapshot so external edits show up),
+// or a fresh ParseAllTasks scan otherwise.
+func (tm *TaskManager) parseAllTasks() []Task {
+	if tm.taskStore != nil {
+		_ = tm.taskStore.Reload()
+		return tm.taskStore.All()
+	}
+	return ParseAllTasks(tm.vault.Notes)
+}
+
 // Open parses all tasks from the vault and activates the overlay.
 func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.Activate()
 	tm.vault = v
-	tm.allTasks = FilterTasks(ParseAllTasks(v.Notes), tm.config)
+	tm.allTasks = FilterTasks(tm.parseAllTasks(), tm.config)
 	tm.view = taskViewToday
 	tm.cursor = 0
 	tm.scroll = 0
@@ -283,7 +307,7 @@ func (tm *TaskManager) Open(v *vault.Vault) {
 // manager is still open, so the displayed task list stays current.
 func (tm *TaskManager) Refresh(v *vault.Vault) {
 	tm.vault = v
-	tm.allTasks = FilterTasks(ParseAllTasks(v.Notes), tm.config)
+	tm.allTasks = FilterTasks(tm.parseAllTasks(), tm.config)
 	tm.rebuildFiltered()
 	if tm.cursor >= len(tm.filtered) {
 		tm.cursor = maxInt(0, len(tm.filtered)-1)
@@ -590,7 +614,7 @@ func (tm *TaskManager) reparse() {
 	savedView := tm.view
 	savedCursor := tm.cursor
 	savedScroll := tm.scroll
-	tm.allTasks = FilterTasks(ParseAllTasks(tm.vault.Notes), tm.config)
+	tm.allTasks = FilterTasks(tm.parseAllTasks(), tm.config)
 	tm.view = savedView
 	tm.rebuildFiltered()
 	tm.scroll = savedScroll
@@ -1112,17 +1136,21 @@ func (tm *TaskManager) doAddTask(taskText string) {
 	if tm.vault == nil {
 		return
 	}
-	taskLine := "- [ ] " + strings.TrimSpace(taskText)
-	// If in calendar view, append the selected date
+	body := strings.TrimSpace(taskText)
+	// If in calendar view, append the selected date.
 	if tm.view == taskViewCalendar && tm.calDay > 0 {
 		dateStr := fmt.Sprintf("%04d-%02d-%02d", tm.calYear, int(tm.calMonth), tm.calDay)
-		if !strings.Contains(taskLine, "\U0001F4C5") {
-			taskLine += " \U0001F4C5 " + dateStr
+		if !strings.Contains(body, "\U0001F4C5") {
+			body += " \U0001F4C5 " + dateStr
 		}
 	}
 
 	targetPath := "Tasks.md"
-	if err := appendTaskLine(tm.vault.Root, taskLine); err != nil {
+	if tm.taskStore != nil {
+		if _, err := tm.taskStore.Create(body, tasks.CreateOpts{Origin: tasks.OriginManual}); err != nil {
+			return
+		}
+	} else if err := appendTaskLine(tm.vault.Root, "- [ ] "+body); err != nil {
 		return
 	}
 	// Sync the in-memory vault note with what we just wrote so the

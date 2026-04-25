@@ -573,6 +573,7 @@ func NewModel(vaultPath string) (Model, error) {
 		m.recurringTasks.SetTaskStore(store)
 		m.goalsMode.SetTaskStore(store)
 		m.morningRoutine.SetTaskStore(store)
+		m.taskManager.SetTaskStore(store)
 	}
 	registry := m.registry
 	cmdMap := m.cmdActionToModuleID

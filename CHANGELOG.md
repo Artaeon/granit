@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Relaunch foundations: Module Registry and Unified Task Store
+
+#### Module Registry (Phase 1)
+- New `internal/modules` package — single source of truth for which features are enabled. Replaces the scattered `config.CorePluginEnabled` checks with a first-class registry that the command palette, keybind dispatcher, and Settings UI all consult.
+- 9 built-in modules registered (pomodoro, flashcards, quiz, habits, task manager, blog publisher, research agent, AI templates, language learning) with the legacy `CorePlugins` keys preserved so existing user toggles transfer transparently.
+- `alt+b` (Habit Tracker) and `ctrl+k` (Task Manager) now route through the registry; disabling those modules makes their key chords no-ops automatically.
+- Bug fix folded in: `Quiz Mode` and the `ctrl+k` Task Manager bypass both ignored their feature gates before — they now respect the toggle, and `ctrl+k` no longer skips project/time-tracker enrichment.
+- Module declarations are JSON-shaped (no Go-only types) so a future Lua plugin bridge can implement them verbatim.
+
+#### Unified Task Store (Phase 2)
+- New `internal/tasks` package — canonical task layer with stable ULID identity that survives markdown edits. `Tasks.md` and any daily/project note remain user-editable; the store glues sidecar metadata to lines via fingerprint reconciliation.
+- `.granit/tasks-meta.json` sidecar tracks per-task triage state (`inbox` / `triaged` / `scheduled` / `done` / `dropped` / `snoozed`), scheduled time blocks, project/goal links, origin (jot vs manual vs recurring vs project import), and timestamps.
+- 6-pass reconciliation algorithm: exact match → same-file drift → cross-file move → ambiguous-fp by line proximity → fuzzy text match (gated at ≥0.85 similarity, ≤10 lines) → mint new ULID. IDs survive done-toggle, line moves, indent changes, due-date edits, cross-file moves, and small wording edits.
+- Tombstones (30-day TTL) so a `git pull` that re-introduces a deleted task line revives the original ID instead of minting a new one — triage state and schedule attachments come back with it.
+- Crash-safe: every read returns a snapshot copy under RWMutex; every write does atomic temp+rename; goroutine-safe under `-race`.
+- Existing vaults migrate transparently on first open — no user action required, no markdown changes.
+- Readers migrated: TaskManager, Daily Review, Weekly Review, Project Dashboard, and every Model-internal `cachedTasks` site (10 call sites). Watcher events automatically trigger reconciliation.
+- Writers migrated: Ideas Board (convert-to-task), Recurring Tasks (instance generation), Goals Mode (milestone-to-task with sidecar `goal_id`), Morning Routine (new tasks from routine), Task Manager (add).
+- `internal/atomicio` package extracted so the new layer can use crash-safe writes without depending on `tui`.
+
 ### Added — Calendar, Reading View, and UI Polish
 
 #### Calendar overhaul
