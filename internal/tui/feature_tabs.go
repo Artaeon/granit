@@ -14,6 +14,55 @@ func isFeatureTabPath(path string) bool {
 	return strings.HasPrefix(path, "feat:")
 }
 
+// isPassthroughChord reports whether a key chord must bypass
+// any active feature tab's Update and reach the global key
+// dispatcher. These are the keys a power user expects to ALWAYS
+// work regardless of focus — without this list, opening
+// TaskManager as a tab would trap the user because Ctrl+W
+// (close tab), Ctrl+P (palette), Ctrl+Tab (cycle), etc. would
+// all be consumed by taskManager.Update and never reach their
+// handlers.
+//
+// Add to this list with care — anything in here CANNOT be used
+// as a feature-internal binding. The list deliberately stays
+// minimal: tab management, palette, quit, save, and the
+// shortcut chords for opening features (so the user can switch
+// to a different feature from inside one).
+func isPassthroughChord(key string) bool {
+	switch key {
+	// Tab management
+	case "ctrl+w",
+		"ctrl+tab", "ctrl+shift+tab",
+		"ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4", "ctrl+5",
+		"ctrl+6", "ctrl+7", "ctrl+8", "ctrl+9",
+		"ctrl+shift+t":
+		return true
+	// Palette + quit + save
+	case "ctrl+p", "ctrl+q", "ctrl+c", "ctrl+s":
+		return true
+	// Feature-opening shortcuts — let the user switch from
+	// inside one feature to another without first closing.
+	case "alt+h",     // Daily Hub
+		"alt+j",      // Daily Jot
+		"alt+m",      // Morning Routine
+		"alt+b",      // Habit Tracker
+		"alt+i",      // Quick Capture
+		"alt+e",      // Daily Review
+		"alt+p",      // Plan My Day
+		"alt+l",      // Layout picker
+		"alt+W",      // Profile picker (Shift+Alt+W)
+		"alt+left", "alt+right", // Navigation history
+		"ctrl+k",     // Task Manager
+		"ctrl+g",     // Graph view
+		"ctrl+o":     // Quick switch
+		return true
+	// Focus-pane chords
+	case "f1", "f2", "f3", "alt+1", "alt+2", "alt+3":
+		return true
+	}
+	return false
+}
+
 // reopenFeatureCommand maps a synthetic feature-tab path back
 // to the CommandAction that opens that feature. Used by
 // Ctrl+Shift+T (CmdReopenClosedTab) so feature tabs survive

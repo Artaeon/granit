@@ -1013,7 +1013,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.graphView.IsActive() && featureTabIsForeground(m.tabBar, FeatGraph) {
+		if m.graphView.IsActive() && featureTabIsForeground(m.tabBar, FeatGraph) && !isPassthroughChord(msg.String()) {
 			m.graphView, _ = m.graphView.Update(msg)
 			if nav := m.graphView.SelectedNote(); nav != "" {
 				m.loadNote(nav)
@@ -1134,7 +1134,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.calendar.IsActive() && featureTabIsForeground(m.tabBar, FeatCalendar) {
+		if m.calendar.IsActive() && featureTabIsForeground(m.tabBar, FeatCalendar) && !isPassthroughChord(msg.String()) {
 			// Clear refresh flag — calendar data is already updated by refreshComponents
 			if m.needsRefresh {
 				m.needsRefresh = false
@@ -1399,7 +1399,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.goalsMode.IsActive() && featureTabIsForeground(m.tabBar, FeatGoals) {
+		if m.goalsMode.IsActive() && featureTabIsForeground(m.tabBar, FeatGoals) && !isPassthroughChord(msg.String()) {
 			m.goalsMode, _ = m.goalsMode.Update(msg)
 			if !m.goalsMode.IsActive() && m.goalsMode.WasFileChanged() {
 				m.refreshComponents("")
@@ -1484,7 +1484,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Returns ok=false for unmigrated features so the legacy
 		// IsActive()-based routing below still handles them
 		// during the migration window.
-		if id, ok := m.tabBar.ActiveFeature(); ok {
+		//
+		// Passthrough chords (Ctrl+W close-tab, Ctrl+P palette,
+		// Ctrl+Tab cycle, etc.) skip this branch entirely so the
+		// global handler below can process them. Without this,
+		// opening a feature tab traps the user — the feature's
+		// Update would silently swallow the tab-management
+		// keypress.
+		if id, ok := m.tabBar.ActiveFeature(); ok && !isPassthroughChord(msg.String()) {
 			if next, cmd, routed := m.routeFeatureKey(id, msg); routed {
 				m = next
 				return m, cmd
@@ -1799,7 +1806,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
-		if m.projectMode.IsActive() && featureTabIsForeground(m.tabBar, FeatProject) {
+		if m.projectMode.IsActive() && featureTabIsForeground(m.tabBar, FeatProject) && !isPassthroughChord(msg.String()) {
 			m.projectMode, _ = m.projectMode.Update(msg)
 			// Sync task toggles back to vault
 			if m.projectMode.WasFileChanged() {
@@ -2425,7 +2432,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Key dispatch only fires when Kanban is the active
 			// tab; HasPendingActions drains regardless so async
 			// writes complete even if the user has switched away.
-			if m.kanban.IsActive() && featureTabIsForeground(m.tabBar, FeatKanban) {
+			if m.kanban.IsActive() && featureTabIsForeground(m.tabBar, FeatKanban) && !isPassthroughChord(msg.String()) {
 				m.kanban, cmd = m.kanban.Update(msg)
 				m.reportError("persist kanban state", m.kanban.ConsumeSaveError())
 			}

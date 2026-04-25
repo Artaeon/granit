@@ -1222,3 +1222,39 @@ func TestStripCheckboxPrefix_ProtectsAgainstDoublePrefix(t *testing.T) {
 		}
 	}
 }
+
+func TestIsPassthroughChord_TabManagementAlwaysEscapes(t *testing.T) {
+	// These chords MUST always reach the global handler — if a
+	// feature tab swallows any of them the user gets trapped
+	// (no way to close the tab, open the palette, switch away,
+	// or quit). Add to this list with care; this test is the
+	// regression guard for "feature tab traps user."
+	mustEscape := []string{
+		"ctrl+w", "ctrl+q", "ctrl+c", "ctrl+s", "ctrl+p",
+		"ctrl+tab", "ctrl+shift+tab", "ctrl+shift+t",
+		"ctrl+1", "ctrl+5", "ctrl+9",
+		"ctrl+k", "alt+h", "alt+j", "alt+W",
+	}
+	for _, key := range mustEscape {
+		if !isPassthroughChord(key) {
+			t.Errorf("%q must be a passthrough chord — feature tabs would trap the user", key)
+		}
+	}
+}
+
+func TestIsPassthroughChord_FeatureKeysDoNotEscape(t *testing.T) {
+	// These are normal letter keys that features rely on for
+	// their internal bindings (TaskManager: t/d/i/D/;,
+	// Triage: t/s/d/z, etc.). They must NOT be passthrough.
+	mustConsume := []string{
+		"t", "d", "i", "D", ";", "s", "z",
+		"j", "k", "h", "l",
+		"enter", "esc", "space", "backspace",
+		"a", "b", "c", "f", "g", "n",
+	}
+	for _, key := range mustConsume {
+		if isPassthroughChord(key) {
+			t.Errorf("%q should NOT be passthrough — features need it for internal bindings", key)
+		}
+	}
+}
