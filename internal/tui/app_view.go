@@ -955,6 +955,9 @@ func (m Model) View() string {
 	if m.profilePicker.IsActive() {
 		view = m.overlayCenter(view, m.profilePicker.View())
 	}
+	if m.triageQueue.IsActive() {
+		view = m.overlayCenter(view, m.triageQueue.View())
+	}
 	if m.mindMap.IsActive() {
 		overlay := m.mindMap.View()
 		view = m.overlayCenter(view, overlay)

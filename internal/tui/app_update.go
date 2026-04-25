@@ -1519,6 +1519,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.triageQueue.IsActive() {
+			m.triageQueue, _ = m.triageQueue.Update(msg)
+			// Auto-close on inbox-zero — show a quick status.
+			if m.triageQueue.AutoClose() {
+				m.statusbar.SetMessage("Inbox zero — triage done.")
+				return m, m.clearMessageAfter(3 * time.Second)
+			}
+			// Open-source-note request from the 'o' key.
+			if path, ok := m.triageQueue.PendingOpen(); ok {
+				m.loadNote(path)
+				return m, nil
+			}
+			return m, nil
+		}
+
 		if m.mindMap.IsActive() {
 			m.mindMap, _ = m.mindMap.Update(msg)
 			return m, nil

@@ -201,6 +201,7 @@ type Model struct {
 	dailyHub         DailyHub
 	widgetRegistry   *widgets.Registry
 	profilePicker    ProfilePicker
+	triageQueue      TriageQueue
 	mindMap          MindMap
 	journalPrompts   JournalPrompts
 	clipManager      ClipManager
@@ -604,6 +605,7 @@ func NewModel(vaultPath string) (Model, error) {
 		}
 		m.dailyHub = NewDailyHub(m.widgetRegistry)
 		m.profilePicker = NewProfilePicker()
+		m.triageQueue = NewTriageQueue(m.taskStore)
 	}
 	registry := m.registry
 	cmdMap := m.cmdActionToModuleID

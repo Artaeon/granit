@@ -367,7 +367,15 @@ func (m *Model) buildWidgetCtx() widgets.WidgetCtx {
 			_ = m.taskStore.Complete(id)
 		}
 	}
-	ctx.OpenTriage = func() { /* wired in commit 6 alongside picker */ }
+	ctx.OpenTriage = func() {
+		m.triageQueue.SetSize(m.width, m.height)
+		m.triageQueue.Open()
+		// Close the Daily Hub so the triage overlay sits cleanly
+		// on top — otherwise the hub renders behind it and keys
+		// could leak through (the hub's HandleKey runs before the
+		// triage's in app_update.go because of dispatch order).
+		m.dailyHub.Close()
+	}
 	ctx.CreateTask = func(text string) error {
 		if m.taskStore == nil {
 			return nil
