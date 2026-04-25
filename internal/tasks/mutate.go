@@ -69,7 +69,10 @@ func (s *TaskStore) UpdateLine(id string, transform func(line string) string) er
 	notePath := t.NotePath
 	lineNum := t.LineNum
 
-	abs := filepath.Join(s.vaultRoot, notePath)
+	abs, err := resolveInVault(s.vaultRoot, notePath)
+	if err != nil {
+		return fmt.Errorf("tasks: %s: %w", notePath, err)
+	}
 	content, err := os.ReadFile(abs)
 	if err != nil {
 		return fmt.Errorf("tasks: read %s: %w", notePath, err)
@@ -211,7 +214,13 @@ func (s *TaskStore) Create(text string, opts CreateOpts) (Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	abs := filepath.Join(s.vaultRoot, dest)
+	abs, err := resolveInVault(s.vaultRoot, dest)
+	if err != nil {
+		return Task{}, fmt.Errorf("tasks: %s: %w", dest, err)
+	}
+	if mkErr := os.MkdirAll(filepath.Dir(abs), 0o755); mkErr != nil {
+		return Task{}, fmt.Errorf("tasks: mkdir %s: %w", filepath.Dir(dest), mkErr)
+	}
 	existing, err := os.ReadFile(abs)
 	if err != nil && !os.IsNotExist(err) {
 		return Task{}, fmt.Errorf("tasks: read %s: %w", dest, err)
@@ -292,7 +301,10 @@ func (s *TaskStore) Delete(id string) error {
 	notePath := t.NotePath
 	lineNum := t.LineNum
 
-	abs := filepath.Join(s.vaultRoot, notePath)
+	abs, err := resolveInVault(s.vaultRoot, notePath)
+	if err != nil {
+		return fmt.Errorf("tasks: %s: %w", notePath, err)
+	}
 	content, err := os.ReadFile(abs)
 	if err != nil {
 		return fmt.Errorf("tasks: read %s: %w", notePath, err)

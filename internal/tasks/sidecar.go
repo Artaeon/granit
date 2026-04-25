@@ -83,6 +83,7 @@ const (
 	LoadMissing                         // file does not exist → first-ingestion
 	LoadCorrupt                         // file exists but unparseable → backed up + first-ingestion
 	LoadFutureSchema                    // schema > known → backed up + first-ingestion
+	LoadIOError                         // EACCES / EIO / ENOTDIR — surface to user, do not destroy
 )
 
 // loadSidecar reads and parses the sidecar at the given path. On
@@ -90,21 +91,24 @@ const (
 // it existed at all) so the user can recover by hand if first
 // ingestion picks the wrong identities.
 //
-// Never returns an error — corrupt or future-schema files fall
-// back to LoadMissing semantics from the caller's perspective.
-// Errors that the OS reports (permission denied, etc.) propagate
-// through the second return value of saveSidecar paths instead.
-func loadSidecar(path string) (sidecarFile, LoadResult) {
+// Permission/IO errors propagate as LoadIOError (caller decides
+// whether to refuse launch or fall through to first-ingestion).
+// Parse errors and future-schema versions are backed up and the
+// caller falls back to first-ingestion. Tasks with paths that
+// escape the vault are silently dropped — they cannot be reached
+// by any code path anyway, and a hand-edited or git-merged sidecar
+// shouldn't crash the launch.
+func loadSidecar(path, vaultRoot string) (sidecarFile, LoadResult) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return sidecarFile{Schema: sidecarSchemaVersion}, LoadMissing
 		}
-		// Permission errors and similar — treat as corrupt so we
-		// don't crash the app on first open of a vault with a
-		// broken state directory.
-		_ = backupSidecar(path)
-		return sidecarFile{Schema: sidecarSchemaVersion}, LoadCorrupt
+		// Real I/O error (EACCES, EIO, ENOTDIR, etc.) — distinct
+		// from "the file is corrupt." Don't back up the file (it
+		// may be perfectly valid behind a transient mount issue);
+		// caller surfaces this and decides recovery policy.
+		return sidecarFile{Schema: sidecarSchemaVersion}, LoadIOError
 	}
 	var s sidecarFile
 	if err := json.Unmarshal(data, &s); err != nil {
@@ -120,6 +124,19 @@ func loadSidecar(path string) (sidecarFile, LoadResult) {
 		// Treat as v1 — the field set is identical so unmarshaling
 		// already succeeded.
 		s.Schema = sidecarSchemaVersion
+	}
+	// Drop tasks whose anchor escapes the vault — could be a
+	// hand-edited file or a git merge from a malicious branch.
+	// Keeping them would let any subsequent UpdateLine/Delete on
+	// that ID write outside the vault.
+	if vaultRoot != "" {
+		filtered := s.Tasks[:0]
+		for _, t := range s.Tasks {
+			if _, err := resolveInVault(vaultRoot, t.Anchor.File); err == nil {
+				filtered = append(filtered, t)
+			}
+		}
+		s.Tasks = filtered
 	}
 	return s, LoadOK
 }

@@ -67,7 +67,7 @@ func Load(vaultRoot string, scan ScanFunc) (*TaskStore, error) {
 		byAnchor:  make(map[anchorKey]string),
 		byFP:      make(map[string][]string),
 	}
-	side, _ := loadSidecar(SidecarPath(vaultRoot))
+	side, _ := loadSidecar(SidecarPath(vaultRoot), vaultRoot)
 	s.sidecar = side
 	if err := s.reloadLocked(); err != nil {
 		return s, err // store is still usable; caller may surface the error

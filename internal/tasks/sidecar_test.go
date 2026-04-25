@@ -45,7 +45,7 @@ func TestSidecar_RoundTrip(t *testing.T) {
 		t.Fatalf("save: %v", err)
 	}
 
-	got, result := loadSidecar(path)
+	got, result := loadSidecar(path, "")
 	if result != LoadOK {
 		t.Fatalf("load result: got %v want %v", result, LoadOK)
 	}
@@ -103,7 +103,7 @@ func TestSidecar_StampsSchemaAndUpdatedAt(t *testing.T) {
 func TestSidecar_LoadMissingFileReportsMissing(t *testing.T) {
 	vault := tempVault(t)
 	path := SidecarPath(vault)
-	got, result := loadSidecar(path)
+	got, result := loadSidecar(path, "")
 	if result != LoadMissing {
 		t.Errorf("got %v want %v", result, LoadMissing)
 	}
@@ -122,7 +122,7 @@ func TestSidecar_CorruptFileBackedUpAndReportsCorrupt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, result := loadSidecar(path)
+	_, result := loadSidecar(path, "")
 	if result != LoadCorrupt {
 		t.Errorf("got %v want %v", result, LoadCorrupt)
 	}
@@ -148,7 +148,7 @@ func TestSidecar_FutureSchemaBackedUpAndReportsFutureSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, result := loadSidecar(path)
+	_, result := loadSidecar(path, "")
 	if result != LoadFutureSchema {
 		t.Errorf("got %v want %v", result, LoadFutureSchema)
 	}
@@ -170,9 +170,70 @@ func TestSidecar_BackupsIncrementWhenPrior(t *testing.T) {
 	if err := os.WriteFile(path, []byte("garbage"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	loadSidecar(path)
+	loadSidecar(path, "")
 	if _, err := os.Stat(path + ".v2.bak"); err != nil {
 		t.Errorf("expected .v2.bak to be created when .v1.bak exists: %v", err)
+	}
+}
+
+func TestSidecar_DropsTasksWithEscapingAnchors(t *testing.T) {
+	vault := tempVault(t)
+	path := SidecarPath(vault)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Hand-crafted sidecar with one safe entry and three unsafe
+	// ones (absolute, traversal, traversal-with-cancel). Only the
+	// safe one should survive load when a vaultRoot is supplied.
+	hostile := sidecarFile{
+		Schema:    sidecarSchemaVersion,
+		UpdatedAt: time.Now(),
+		Tasks: []sidecarTask{
+			{ID: "safe", Fingerprint: "x", Anchor: sidecarAnchor{File: "Tasks.md", Line: 1}},
+			{ID: "abs", Fingerprint: "x", Anchor: sidecarAnchor{File: "/etc/passwd", Line: 1}},
+			{ID: "traverse", Fingerprint: "x", Anchor: sidecarAnchor{File: "../escape", Line: 1}},
+			{ID: "cancel", Fingerprint: "x", Anchor: sidecarAnchor{File: "Tasks/../../escape", Line: 1}},
+		},
+	}
+	data, _ := json.Marshal(hostile)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, result := loadSidecar(path, vault)
+	if result != LoadOK {
+		t.Fatalf("got %v want LoadOK", result)
+	}
+	if len(got.Tasks) != 1 || got.Tasks[0].ID != "safe" {
+		t.Errorf("only the safe entry should survive: %+v", got.Tasks)
+	}
+}
+
+func TestSidecar_LoadIOErrorDoesNotBackUp(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root bypasses perm checks")
+	}
+	vault := tempVault(t)
+	path := SidecarPath(vault)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Make the file unreadable. The load must surface LoadIOError
+	// (not LoadCorrupt) and must NOT back the file up — a transient
+	// permission glitch shouldn't quarantine valid state.
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+
+	_, result := loadSidecar(path, vault)
+	if result != LoadIOError {
+		t.Errorf("got %v want LoadIOError", result)
+	}
+	if _, err := os.Stat(path + ".v1.bak"); err == nil {
+		t.Errorf("file was backed up despite IO error — should preserve until user resolves")
 	}
 }
 
@@ -192,7 +253,7 @@ func TestSidecar_PreVersionedFileTreatedAsCurrent(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, result := loadSidecar(path)
+	got, result := loadSidecar(path, "")
 	if result != LoadOK {
 		t.Errorf("expected LoadOK for pre-versioned, got %v", result)
 	}

@@ -297,7 +297,7 @@ func TestDelete_RemovesLineAndTombstones(t *testing.T) {
 	}
 
 	// Tombstone exists so a re-add via git pull would revive the ID.
-	side, _ := loadSidecar(SidecarPath(vault))
+	side, _ := loadSidecar(SidecarPath(vault), vault)
 	found := false
 	for _, tomb := range side.Tombstones {
 		if tomb.ID == betaID {
