@@ -249,6 +249,16 @@ type ProjectMode struct {
 	searchQuery   string
 	statusFilter  string
 	searching     bool // true while live-typing the / query
+
+	// Bulk select mode. 'v' enters; 'space' toggles selection
+	// for the cursor project; 'A' archives every selected
+	// project at once; 'Esc' exits without acting. selected
+	// keys are project Names (Project has no ID field), so the
+	// set survives reorder/filter rebuild as long as names are
+	// stable.
+	selectMode bool
+	selected   map[string]bool
+	statusMsg  string
 }
 
 // NewProjectMode creates a new inactive ProjectMode overlay.
@@ -939,16 +949,69 @@ func (pm ProjectMode) updateList(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 			pm.cursor = 0
 			pm.scroll = 0
 		}
+	case "+":
+		// Quick time-log: +1 hour to the cursor project's
+		// TimeSpent field, persisted immediately. Existing
+		// dashboard renders it via formatTimeSpent so the
+		// change shows up wherever it's read.
+		if len(filtered) > 0 && pm.cursor < len(filtered) {
+			idx := filtered[pm.cursor]
+			pm.projects[idx].TimeSpent += 60 // minutes
+			pm.saveProjects()
+			pm.statusMsg = fmt.Sprintf("+1h on %s — total %s",
+				pm.projects[idx].Name, formatTimeSpent(pm.projects[idx].TimeSpent))
+		}
+	case "v":
+		// Toggle bulk-select mode. Entering wipes any prior
+		// selection so the user starts fresh; exiting also
+		// wipes so a stale selection doesn't lurk.
+		pm.selectMode = !pm.selectMode
+		pm.selected = make(map[string]bool)
+		if pm.selectMode {
+			pm.statusMsg = "SELECT MODE: space=toggle  A=archive selected  Esc=exit"
+		} else {
+			pm.statusMsg = "Selection cleared"
+		}
 	case " ":
+		// In select mode, space toggles selection for the
+		// cursor project. Outside select mode it's still the
+		// existing status-cycle binding.
+		if pm.selectMode && len(filtered) > 0 && pm.cursor < len(filtered) {
+			name := pm.projects[filtered[pm.cursor]].Name
+			if pm.selected[name] {
+				delete(pm.selected, name)
+			} else {
+				pm.selected[name] = true
+			}
+			break
+		}
 		if len(filtered) > 0 && pm.cursor < len(filtered) {
 			idx := filtered[pm.cursor]
 			pm.cycleStatus(idx)
 			pm.saveProjects()
-			// Clamp cursor after status change may alter filtered list.
 			newFiltered := pm.filteredProjects()
 			if pm.cursor >= len(newFiltered) {
 				pm.cursor = max(0, len(newFiltered)-1)
 			}
+			pm.scroll = 0
+		}
+	case "A":
+		// Bulk-archive all selected projects (only meaningful
+		// in select mode). Single-keystroke "archive these 4"
+		// instead of repeating 'd' four times.
+		if pm.selectMode && len(pm.selected) > 0 {
+			n := 0
+			for i := range pm.projects {
+				if pm.selected[pm.projects[i].Name] {
+					pm.projects[i].Status = "archived"
+					n++
+				}
+			}
+			pm.saveProjects()
+			pm.selectMode = false
+			pm.selected = make(map[string]bool)
+			pm.statusMsg = fmt.Sprintf("Archived %d projects", n)
+			pm.cursor = 0
 			pm.scroll = 0
 		}
 	}
@@ -1612,6 +1675,10 @@ func (pm ProjectMode) viewList() string {
 	if pm.statusFilter != "" {
 		b.WriteString("  " + chipStyle.Render("status:" + pm.statusFilter))
 	}
+	if pm.selectMode {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(crust).Background(mauve).Bold(true).Padding(0, 1).
+			Render(fmt.Sprintf("SELECT %d", len(pm.selected))))
+	}
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", width-6)))
 	b.WriteString("\n")
@@ -1664,11 +1731,36 @@ func (pm ProjectMode) viewList() string {
 			bar := pmProgressBar(prog, 10)
 			pctStr := lipgloss.NewStyle().Foreground(green).Render(fmt.Sprintf("%3d%%", pctInt))
 
+			// Task-count chip: shows "Nt" with done count after a slash.
+			// Example: "3/8t" means 3 of 8 tasks done. Power users
+			// see this without drilling into the dashboard.
+			taskChip := ""
+			if total := len(tasks); total > 0 {
+				done := 0
+				for _, t := range tasks {
+					if t.Done {
+						done++
+					}
+				}
+				taskChip = " " + lipgloss.NewStyle().Foreground(sapphire).
+					Render(fmt.Sprintf("%d/%dt", done, total))
+			}
+
+			// Selection prefix for bulk-select mode.
+			selPrefix := ""
+			if pm.selectMode {
+				if pm.selected[proj.Name] {
+					selPrefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("● ")
+				} else {
+					selPrefix = DimStyle.Render("○ ")
+				}
+			}
+
 			// Next action (truncated)
 			nextAct := ""
 			if proj.NextAction != "" {
 				na := proj.NextAction
-				maxNA := width - 60 - nameMaxW
+				maxNA := width - 70 - nameMaxW
 				if maxNA < 5 {
 					maxNA = 5
 				}
@@ -1678,7 +1770,7 @@ func (pm ProjectMode) viewList() string {
 				nextAct = DimStyle.Render(" -> ") + lipgloss.NewStyle().Foreground(subtext0).Render(na)
 			}
 
-			line := "  " + pDot + name + " " + stBadge + " " + bar + " " + pctStr + nextAct
+			line := "  " + selPrefix + pDot + name + " " + stBadge + " " + bar + " " + pctStr + taskChip + nextAct
 
 			if vi == pm.cursor {
 				b.WriteString(lipgloss.NewStyle().
