@@ -167,6 +167,13 @@ type TaskManager struct {
 	filterTriage   tasks.TriageState     // "" = no triage filter, "inbox"/"triaged"/etc. = filter
 	searchTerm     string                // "" = no search, otherwise substring or "#tag" query
 
+	// Compact mode — power-user density toggle. When on, the
+	// per-cursor detail strip and section dividers are
+	// suppressed so the user sees ~60% more tasks per screen.
+	// Hint dots already convey "metadata exists" without taking
+	// horizontal room. Toggled with D in normal mode.
+	compact bool
+
 	// Cached tab counts (updated by rebuildFiltered)
 	tabCounts [taskViewCount]int
 
@@ -3484,6 +3491,18 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			// know what they're doing).
 			tm.inputMode = tmInputInlineEdit
 			tm.inputBuf = inlineEditSeed(task)
+		}
+
+	// Compact density toggle — hides the per-cursor detail
+	// strip and section dividers so power users see ~60% more
+	// rows on screen. Hint dots still convey "this task has
+	// metadata" without taking horizontal room.
+	case "D":
+		tm.compact = !tm.compact
+		if tm.compact {
+			tm.statusMsg = "Compact mode on (D to toggle)"
+		} else {
+			tm.statusMsg = "Compact mode off"
 		}
 	}
 

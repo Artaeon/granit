@@ -526,8 +526,9 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 			}
 		}
 
-		// All view: group by Note Path
-		if tm.view == taskViewAll || tm.view == taskViewCompleted {
+		// All view: group by Note Path. Section headers + blank
+		// dividers are skipped in compact mode for max density.
+		if (tm.view == taskViewAll || tm.view == taskViewCompleted) && !tm.compact {
 			group := task.NotePath
 			if group != lastGroup {
 				if lastGroup != "" {
@@ -546,7 +547,7 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 			}
 		}
 
-		if tm.view == taskViewUpcoming && task.DueDate != "" {
+		if tm.view == taskViewUpcoming && task.DueDate != "" && !tm.compact {
 			group := task.DueDate
 			if group != lastGroup {
 				if lastGroup != "" {
@@ -823,8 +824,11 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		b.WriteString(line)
 	}
 
-	// Detail strip — only for the cursor row, only if there's something to show.
-	if isSelected {
+	// Detail strip — only for the cursor row, only if there's
+	// something to show, and only when compact mode is off.
+	// Compact mode relies on the hint dots to signal "metadata
+	// exists" without spending a whole line per cursor task.
+	if isSelected && !tm.compact {
 		detail := tm.renderTaskDetailLine(task)
 		if detail != "" {
 			b.WriteString("\n")
