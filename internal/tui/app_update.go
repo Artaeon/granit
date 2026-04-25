@@ -2747,13 +2747,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.universalSearch.Open(m.vault.Notes, allTasks, gm.goals, habits)
 			return m, nil
 
-		case "ctrl+k":
-			m.taskManager.SetSize(m.width, m.height)
-			m.taskManager.config = m.config
-			m.taskManager.ai = m.aiConfig()
-			m.taskManager.Open(m.vault)
-			return m, nil
-
 		case "ctrl+o":
 			m.outline.SetSize(m.width, m.height)
 			m.outline.Open(m.editor.GetContent())

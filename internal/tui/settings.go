@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"log"
 	"os/exec"
 	"strings"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/artaeon/granit/internal/config"
+	"github.com/artaeon/granit/internal/modules"
 )
 
 // ollamaSetupMsg carries the result of the Ollama setup wizard
@@ -65,14 +67,15 @@ type settingItem struct {
 
 type Settings struct {
 	OverlayBase
-	config  config.Config
-	vault   *vault.Vault
-	items   []settingItem
-	visible []int // indices into items that are currently visible (after filtering)
-	cursor  int   // index into visible
-	scroll  int
-	editing bool
-	editBuf string
+	config   config.Config
+	registry *modules.Registry
+	vault    *vault.Vault
+	items    []settingItem
+	visible  []int // indices into items that are currently visible (after filtering)
+	cursor   int   // index into visible
+	scroll   int
+	editing  bool
+	editBuf  string
 
 	// Search / filter
 	searching bool
@@ -214,7 +217,19 @@ func (s *Settings) buildItems() {
 	s.items = append(s.items, icsItems...)
 }
 
+// SetRegistry hands the Settings overlay a pointer to the module
+// registry it should consult and write through. Called from NewModel
+// after the registry is built. corePluginVal and the cp_* toggle
+// path silently fall back to the legacy config field when nil so
+// tests that construct Settings without a registry still work.
+func (s *Settings) SetRegistry(r *modules.Registry) {
+	s.registry = r
+}
+
 func (s *Settings) corePluginVal(name string) bool {
+	if s.registry != nil {
+		return s.registry.Enabled(name)
+	}
 	return s.config.CorePluginEnabled(name)
 }
 
@@ -838,13 +853,30 @@ func (s *Settings) applyValue(key string, value interface{}) {
 	case "nextcloud_auto_sync":
 		s.config.NextcloudAutoSync = value.(bool)
 	default:
-		// Handle core plugin toggles (cp_*)
+		// Handle core plugin toggles (cp_*) — the registry is the
+		// source of truth, but we mirror back into cfg.CorePlugins
+		// for one release so external tools that still read the
+		// legacy field see consistent state.
 		if strings.HasPrefix(key, "cp_") {
 			pluginName := strings.TrimPrefix(key, "cp_")
+			on := value.(bool)
+			if s.registry != nil {
+				if err := s.registry.SetEnabled(pluginName, on); err != nil {
+					// Dependency conflict — surface a friendlier
+					// error in the future settings UI; for now log
+					// and skip the legacy mirror so on-disk state
+					// stays coherent.
+					log.Printf("settings: %v", err)
+					return
+				}
+				if err := s.registry.Save(); err != nil {
+					log.Printf("settings: save modules.json: %v", err)
+				}
+			}
 			if s.config.CorePlugins == nil {
 				s.config.CorePlugins = config.DefaultCorePlugins()
 			}
-			s.config.CorePlugins[pluginName] = value.(bool)
+			s.config.CorePlugins[pluginName] = on
 		}
 		// Handle calendar ICS file toggles (cal_*)
 		if strings.HasPrefix(key, "cal_") {

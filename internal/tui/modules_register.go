@@ -56,6 +56,11 @@ func allBuiltins() []builtinRegistration {
 		flashcardsModule(),
 		quizModule(),
 		habitsModule(),
+		taskManagerModule(),
+		blogPublisherModule(),
+		researchAgentModule(),
+		aiTemplatesModule(),
+		languageLearningModule(),
 	}
 }
 

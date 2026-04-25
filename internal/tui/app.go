@@ -539,6 +539,7 @@ func NewModel(vaultPath string) (Model, error) {
 		log.Printf("warning: load module state: %v", err)
 	}
 	m.cmdActionToModuleID, m.moduleCommandToAction = RegisterBuiltins(m.registry)
+	m.settings.SetRegistry(m.registry)
 	registry := m.registry
 	cmdMap := m.cmdActionToModuleID
 	m.commandPalette.SetVisibilityFilter(func(a CommandAction) bool {

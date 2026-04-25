@@ -340,7 +340,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.publisher.SetSize(m.width, m.height)
 		m.publisher.Open()
 	case CmdBlogPublish:
-		if !m.config.CorePluginEnabled("blog_publisher") {
+		if !m.registry.Enabled("blog_publisher") {
 			break
 		}
 		if m.activeNote != "" {
@@ -873,7 +873,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.foldState.UnfoldAll()
 
 	case CmdTaskManager:
-		if !m.config.CorePluginEnabled("task_manager") {
+		if !m.registry.Enabled("task_manager") {
 			break
 		}
 		m.taskManager.SetSize(m.width, m.height)
@@ -1027,7 +1027,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		_ = m.config.Save()
 
 	case CmdResearchAgent:
-		if !m.config.CorePluginEnabled("research_agent") {
+		if !m.registry.Enabled("research_agent") {
 			break
 		}
 		m.research.SetSize(m.width, m.height)
@@ -1045,7 +1045,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 
 	case CmdAITemplate:
-		if !m.config.CorePluginEnabled("ai_templates") {
+		if !m.registry.Enabled("ai_templates") {
 			break
 		}
 		m.aiTemplates.SetSize(m.width, m.height)
@@ -1078,7 +1078,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 
 	case CmdLanguageLearning:
-		if m.config.CorePluginEnabled("language_learning") {
+		if m.registry.Enabled("language_learning") {
 			m.languageLearning.SetSize(m.width, m.height)
 			m.languageLearning.Open(m.vault.Root)
 		}
