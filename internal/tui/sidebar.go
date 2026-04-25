@@ -79,8 +79,8 @@ type Sidebar struct {
 	// sort + status
 	sortMode    sidebarSortMode
 	statusMsg   string         // ephemeral status hint (sort changed, etc.)
-	gitStatus   map[string]rune // path → status rune ('M'=modified, '?'=untracked, 'C'=conflict)
-	gitChecked  bool           // we've already attempted to fetch git status
+	gitStatus  map[string]rune // path → status rune ('M'=modified, '?'=untracked, 'C'=conflict)
+	notGitRepo bool            // sticky: once we've established there's no .git, skip subsequent execs
 }
 
 func NewSidebar(files []string) Sidebar {
@@ -221,11 +221,22 @@ func (s *Sidebar) saveSort() {
 // the per-file status. Should be called from the Model after
 // each save so dots stay current. Silent failure when git isn't
 // available — the dots simply don't render.
+//
+// Sticky non-git detection: probing .git once with os.Stat avoids
+// firing an exec.Command on every save for vaults that aren't
+// git repos. Without this guard, every Ctrl+S in a non-git vault
+// paid the ~10ms exec cost for no benefit.
 func (s *Sidebar) RefreshGitStatus() {
 	if s.vaultRoot == "" {
 		return
 	}
-	s.gitChecked = true
+	if s.notGitRepo {
+		return
+	}
+	if _, err := os.Stat(filepath.Join(s.vaultRoot, ".git")); err != nil {
+		s.notGitRepo = true
+		return
+	}
 	s.gitStatus = make(map[string]rune)
 	cmd := exec.Command("git", "-C", s.vaultRoot, "status", "--porcelain")
 	out, err := cmd.Output()

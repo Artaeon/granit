@@ -1546,6 +1546,16 @@ func (pm *ProjectMode) commitEdit() {
 			NextAction:  pm.editNextAction,
 		}
 		pm.projects = append(pm.projects, proj)
+		// Clear active filters so the new project is
+		// immediately visible — without this a user with
+		// /search or category filter active would create a
+		// project that doesn't match and wonder where it
+		// went. Status/category cycle stays untouched on
+		// edit (the user is updating an existing visible
+		// project, not introducing a new one).
+		pm.searchQuery = ""
+		pm.statusFilter = ""
+		pm.categoryIdx = -1
 	} else {
 		// Update existing.
 		pm.projects[pm.editIdx].Name = pm.editName

@@ -1239,6 +1239,15 @@ func (ht HabitTracker) updateInput(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 				Streak:  0,
 			})
 			ht.saveHabits()
+			// Clear filter so the new habit is immediately
+			// visible — without this the user would type a name
+			// that doesn't match the active filter and wonder
+			// where their habit went.
+			ht.searchQuery = ""
+			ht.cursor = len(ht.visibleHabits()) - 1
+			if ht.cursor < 0 {
+				ht.cursor = 0
+			}
 			ht.inputMode = habitInputNone
 			ht.inputValue = ""
 

@@ -1050,7 +1050,21 @@ func (gm *GoalsMode) addGoal(title, targetDate, category string) {
 	}
 	gm.goals = append(gm.goals, g)
 	gm.saveGoals()
+	// Clear active filters so the new goal is immediately
+	// visible — without this a user with /search or #tag
+	// active would type a goal that doesn't match and wonder
+	// where it went. Same fix shipped for habits + projects.
+	gm.searchQuery = ""
+	gm.filterTag = ""
 	gm.rebuildFiltered()
+	// Move cursor onto the freshly-created goal so 'enter' to
+	// expand it works without scrolling.
+	for i, goal := range gm.filtered {
+		if goal.ID == g.ID {
+			gm.cursor = i
+			break
+		}
+	}
 	gm.statusMsg = "Goal created: " + title
 }
 
