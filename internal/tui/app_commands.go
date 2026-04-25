@@ -1149,8 +1149,16 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.quickCapture.Open(m.vault.Root)
 
 	case CmdDashboard:
-		m.dashboard.SetSize(m.width, m.height)
-		m.dashboard.Open(m.vault.Root, m.projectMode.GetProjects(), m.goalsMode.GetGoals())
+		// Phase 3: route Alt+H to the new Daily Hub when the
+		// flag is on. Falls through to the legacy dashboard
+		// otherwise so users on the old flag see no change.
+		if m.config.UseProfiles && m.profileRegistry != nil {
+			m.dailyHub.SetSize(m.width, m.height)
+			m.dailyHub.Open(m.profileRegistry.Active())
+		} else {
+			m.dashboard.SetSize(m.width, m.height)
+			m.dashboard.Open(m.vault.Root, m.projectMode.GetProjects(), m.goalsMode.GetGoals())
+		}
 
 	case CmdMindMap:
 		m.mindMap.SetSize(m.width, m.height)

@@ -1496,6 +1496,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.dailyHub.IsActive() {
+			ctx := m.buildWidgetCtx()
+			bubble, cmd := m.dailyHub.HandleKey(msg.String(), ctx)
+			if !bubble {
+				return m, cmd
+			}
+			// bubble=true → fall through to global key handling
+			// (Ctrl+P palette, etc.) so the hub doesn't trap keys
+			// it doesn't recognize.
+		}
+
 		if m.mindMap.IsActive() {
 			m.mindMap, _ = m.mindMap.Update(msg)
 			return m, nil

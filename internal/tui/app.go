@@ -15,6 +15,7 @@ import (
 	"github.com/artaeon/granit/internal/modules"
 	"github.com/artaeon/granit/internal/profiles"
 	"github.com/artaeon/granit/internal/tasks"
+	"github.com/artaeon/granit/internal/tui/widgets"
 	"github.com/artaeon/granit/internal/vault"
 )
 
@@ -197,6 +198,8 @@ type Model struct {
 	writingStats     WritingStats
 	quickCapture     QuickCapture
 	dashboard        Dashboard
+	dailyHub         DailyHub
+	widgetRegistry   *widgets.Registry
 	mindMap          MindMap
 	journalPrompts   JournalPrompts
 	clipManager      ClipManager
@@ -590,6 +593,15 @@ func NewModel(vaultPath string) (Model, error) {
 	// pre-Phase-3.
 	if cfg.UseProfiles {
 		bootProfiles(&m)
+		// Widget registry + Daily Hub overlay. Done here (not
+		// inside bootProfiles) because the registry is widget-
+		// runtime concern, not profile manifest concern, and the
+		// hub needs the registry pointer at construction time.
+		m.widgetRegistry = widgets.NewRegistry()
+		if err := widgets.RegisterBuiltins(m.widgetRegistry); err != nil {
+			log.Printf("warning: widgets register builtins: %v", err)
+		}
+		m.dailyHub = NewDailyHub(m.widgetRegistry)
 	}
 	registry := m.registry
 	cmdMap := m.cmdActionToModuleID
