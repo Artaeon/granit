@@ -5,11 +5,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// sortStrings is a tiny shim so the View body reads cleanly
+// without importing sort everywhere we want a deterministic
+// pinned-file order.
+func sortStrings(s []string) { sort.Strings(s) }
 
 // sidebarSortMode controls how files within a folder are ordered.
 // Persisted across sessions via .granit/sidebar-sort.json so power
@@ -541,6 +547,41 @@ func (s Sidebar) View() string {
 
 	// If tree view and not searching, use the file tree
 	if s.treeView && s.search == "" {
+		// PINNED section sits above the tree so bookmarked
+		// notes are one keystroke away no matter how deep the
+		// vault is. Each row is a one-line shortcut; cursor
+		// nav happens inside the file tree, but the user can
+		// jump to a pinned file via Reveal (R) after opening
+		// it. (A full pinned-cursor mode is left for a future
+		// pass — keeps this commit small.)
+		if len(s.pinned) > 0 {
+			pinHeader := lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("  PINNED")
+			countStr := lipgloss.NewStyle().Foreground(surface2).Render("  " + sidebarItoa(len(s.pinned)))
+			b.WriteString(pinHeader + countStr + "\n")
+			pinned := make([]string, 0, len(s.pinned))
+			for p := range s.pinned {
+				pinned = append(pinned, p)
+			}
+			// Stable alphabetical order so the section doesn't
+			// shuffle between renders.
+			sortStrings(pinned)
+			for _, p := range pinned {
+				name := strings.TrimSuffix(filepath.Base(p), ".md")
+				star := lipgloss.NewStyle().Foreground(yellow).Render("★ ")
+				dir := filepath.Dir(p)
+				if dir == "." {
+					dir = ""
+				} else {
+					dir = lipgloss.NewStyle().Foreground(surface2).Render(" " + dir + "/")
+				}
+				active := ""
+				if p == s.activeNote {
+					active = lipgloss.NewStyle().Foreground(mauve).Render(" ●")
+				}
+				b.WriteString("  " + star + lipgloss.NewStyle().Foreground(text).Render(name) + dir + active + "\n")
+			}
+			b.WriteString(lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat(ThemeSeparator, contentWidth)) + "\n")
+		}
 		b.WriteString(s.fileTree.View())
 		if s.focused {
 			b.WriteString("\n")

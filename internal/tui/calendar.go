@@ -494,13 +494,9 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 					c.findSlotDuration = dur
 					c.findSlotResults = c.findFreeSlots(dur, 14, 9, 18, 5)
 					c.findSlotCursor = 0
-					if len(c.findSlotResults) == 0 {
-						// No free slots in the search window —
-						// bail out with a status hint instead of
-						// stranding the user in an empty picker.
-						c.findingSlot = false
-						return c, nil
-					}
+					// Stay in the picker even with zero results so
+					// the user sees the "no slots" message instead
+					// of a silent dismiss that's easy to miss.
 					c.findSlotStep = 1
 				}
 			case 1:
@@ -1382,11 +1378,48 @@ func (c Calendar) View() string {
 		return body + "\n" + c.renderSearchPrompt()
 	}
 	// Idle state: if a search query is active (committed but not
-	// open), show a compact reminder so the filter isn't silent.
+	// open), show a compact reminder + match count so the user
+	// always knows the filter is on AND how many it caught.
 	if c.searchQuery != "" {
-		return body + "\n  " + DimStyle.Render("/ search: "+c.searchQuery+"  (c to clear)")
+		matches := c.countSearchMatches()
+		hint := fmt.Sprintf("/ search: %s  %d match", c.searchQuery, matches)
+		if matches != 1 {
+			hint += "es"
+		}
+		hint += "  (c to clear)"
+		return body + "\n  " + DimStyle.Render(hint)
 	}
 	return body
+}
+
+// countSearchMatches returns the number of events + planner
+// blocks + tasks across the next 14 days whose title matches
+// the active search query. Used for the idle-state hint.
+func (c Calendar) countSearchMatches() int {
+	if c.searchQuery == "" {
+		return 0
+	}
+	count := 0
+	for d := 0; d < 14; d++ {
+		day := c.today.AddDate(0, 0, d)
+		dateStr := day.Format("2006-01-02")
+		for _, ev := range c.eventsForDate(day) {
+			if c.matchesSearch(ev.Title) {
+				count++
+			}
+		}
+		for _, pb := range c.plannerBlocks[dateStr] {
+			if c.matchesSearch(pb.Text) {
+				count++
+			}
+		}
+		for _, t := range c.tasks[dateStr] {
+			if c.matchesSearch(t.Text) {
+				count++
+			}
+		}
+	}
+	return count
 }
 
 // renderSearchPrompt draws the live-typing bar for '/'.
@@ -1418,6 +1451,13 @@ func (c Calendar) renderFindSlotPrompt() string {
 	header := lipgloss.NewStyle().Foreground(mauve).Bold(true).
 		Render(fmt.Sprintf("n free slots (%dm) — Enter to schedule, Esc cancel", c.findSlotDuration))
 	b.WriteString("  " + header + "\n")
+	if len(c.findSlotResults) == 0 {
+		// Honest empty state — tell the user the search window
+		// is exhausted so they don't think the picker broke.
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(red).
+			Render("No free slots in the next 14 days (09:00–18:00). Try a shorter duration or clear blocks."))
+		return b.String()
+	}
 	for i, slot := range c.findSlotResults {
 		marker := "  "
 		line := fmt.Sprintf("%s — %s",
@@ -1555,6 +1595,19 @@ func parseJumpDate(s string, today time.Time) (time.Time, bool) {
 		return today.AddDate(0, 0, 1), true
 	case "yesterday":
 		return today.AddDate(0, 0, -1), true
+	}
+	// Bare day number ("15") jumps to that day in the current
+	// month. Caps at the actual last day to avoid the
+	// "April 31 → May 1" overflow surprise.
+	if n, err := strconv.Atoi(s); err == nil && n >= 1 && n <= 31 {
+		y, mo, _ := today.Date()
+		// Last day of month: subtract one day from the first
+		// of next month.
+		lastDay := time.Date(y, mo+1, 0, 0, 0, 0, 0, time.Local).Day()
+		if n > lastDay {
+			n = lastDay
+		}
+		return time.Date(y, mo, n, 0, 0, 0, 0, time.Local), true
 	}
 	weekdays := map[string]time.Weekday{
 		"sunday": time.Sunday, "monday": time.Monday, "tuesday": time.Tuesday,

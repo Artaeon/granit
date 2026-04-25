@@ -232,6 +232,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.semanticSearch.MarkNoteStale(m.activeNote)
 			bgCmd = m.startSemanticBgIndex()
 		}
+		// Refresh sidebar git status so the modified dot transitions
+		// from yellow (uncommitted-modified) to clean (or stays
+		// modified, etc.) right after the save lands. Non-git
+		// vaults silently no-op inside RefreshGitStatus.
+		m.sidebar.RefreshGitStatus()
 		return m, tea.Batch(toastCmd, m.clearMessageAfter(2*time.Second), bgCmd)
 
 	case splitPanePickMsg:

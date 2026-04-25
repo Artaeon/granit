@@ -247,6 +247,19 @@ func (c Calendar) viewMonth() string {
 		isCursor := dt.Equal(c.cursor)
 		hasNote := c.dailyNoteDates[dateStr]
 		evs := c.eventsForDate(dt)
+		// Search query active: only count events whose titles
+		// match. The cell's dot indicator disappears for days
+		// with no matches — the user can scan the month and
+		// instantly see which days have a hit.
+		if c.searchQuery != "" {
+			var filtered []CalendarEvent
+			for _, ev := range evs {
+				if c.matchesSearch(ev.Title) {
+					filtered = append(filtered, ev)
+				}
+			}
+			evs = filtered
+		}
 		tasksDone, tasksTotal := c.taskStats(dateStr)
 		isWeekend := dt.Weekday() == time.Sunday || dt.Weekday() == time.Saturday
 
@@ -495,6 +508,11 @@ func (c Calendar) viewWeek() string {
 	}
 
 	// ── Pre-compute event positions for each day ───────────────────────────
+	// dimmed=true means the entry doesn't match the active
+	// search query — it still renders so spatial context is
+	// preserved (the user sees that 14:00 IS busy with a
+	// non-matching meeting), but with a muted color so the
+	// matches pop. Empty query → all entries are non-dimmed.
 	type weekEntry struct {
 		kind     string // "event", "planner"
 		title    string
@@ -502,6 +520,7 @@ func (c Calendar) viewWeek() string {
 		startMin int
 		endMin   int
 		location string
+		dimmed   bool
 	}
 	type dayEntries struct {
 		events []weekEntry
@@ -527,6 +546,7 @@ func (c Calendar) viewWeek() string {
 			entries = append(entries, weekEntry{
 				kind: "event", title: ev.Title, color: calEventColor(ev),
 				startMin: startMin, endMin: endMin, location: ev.Location,
+				dimmed: !c.matchesSearch(ev.Title),
 			})
 		}
 
@@ -541,6 +561,7 @@ func (c Calendar) viewWeek() string {
 			entries = append(entries, weekEntry{
 				kind: "planner", title: pb.Text, color: plannerBlockColor(pb.BlockType, pb.Done),
 				startMin: startMin, endMin: endMin,
+				dimmed: !c.matchesSearch(pb.Text),
 			})
 		}
 		allDayEntries[di] = dayEntries{events: entries}
@@ -743,7 +764,10 @@ func (c Calendar) viewWeek() string {
 					// Event color: time-block aware. Conflicting
 					// slots get a red background so the entire
 					// duration of the clash stands out, not just
-					// the first row.
+					// the first row. Dimmed (non-search-match)
+					// entries get a muted overlay color so the
+					// matches stand out without losing the
+					// "this slot IS busy" spatial cue.
 					evColor := eventColorForSlot(*active, hour)
 					evFg := active.color
 					if evFg == blue {
@@ -755,8 +779,12 @@ func (c Calendar) viewWeek() string {
 						evColor = red
 						evFg = crust
 					}
+					if active.dimmed {
+						evColor = surface0
+						evFg = surface2
+					}
 					blockStyle := lipgloss.NewStyle().Foreground(evFg).Background(evColor).Width(inner + 1)
-					if isEntryStart {
+					if isEntryStart && !active.dimmed {
 						blockStyle = blockStyle.Bold(true)
 					}
 					cellContent = blockStyle.Render(" " + TruncateDisplay(label, inner-1))
