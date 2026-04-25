@@ -10,9 +10,56 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// TabKind discriminates between note tabs (carry a vault note
+// path; render the editor) and feature tabs (carry a feature ID;
+// render that feature's view in place of the editor). New
+// callers default to TabKindNote so legacy code paths stay
+// unchanged.
+type TabKind uint8
+
+const (
+	TabKindNote TabKind = iota
+	TabKindFeature
+)
+
+// FeatureID is the stable identifier for an editor-tab-hosted
+// feature (TaskManager, DailyJot, Calendar, etc.). One ID per
+// feature globally; instances are still singleton-per-feature
+// at v1 (one TaskManager tab open at a time across the app).
+type FeatureID string
+
+const (
+	FeatTaskManager  FeatureID = "task_manager"
+	FeatDailyJot     FeatureID = "daily_jot"
+	FeatCalendar     FeatureID = "calendar"
+	FeatKanban       FeatureID = "kanban"
+	FeatGoals        FeatureID = "goals"
+	FeatProject      FeatureID = "project"
+	FeatGraph        FeatureID = "graph"
+)
+
+// featureTabPath builds the synthetic "Path" string used by
+// feature tabs so they round-trip through findTab/HasTab/etc.
+// without changing those lookups. The "feat:" prefix is reserved
+// — vault notes never produce this path — so collisions are
+// impossible in practice.
+func featureTabPath(id FeatureID) string {
+	return "feat:" + string(id)
+}
+
 // TabEntry represents a single open tab in the tab bar.
+//
+// Kind discriminates note vs feature; for note tabs Path is the
+// vault-relative note path, for feature tabs it is
+// featureTabPath(id) ("feat:<id>").
+//
+// Label, when non-empty, overrides the auto-generated tab name
+// (basename without extension). Used by feature tabs to display
+// "Tasks" instead of "feat:task_manager".
 type TabEntry struct {
 	Path     string
+	Kind     TabKind
+	Label    string
 	Modified bool // has unsaved changes
 	Pinned   bool
 }
@@ -378,10 +425,19 @@ func (tb *TabBar) ScrollRight() {
 // ---------------------------------------------------------------------------
 
 // tabSessionData is the JSON schema for persisting open tabs.
+//
+// Schema is forward-additive: the original v1 fields (Tabs,
+// Active, Pinned) remain authoritative. Kinds and Labels are
+// parallel slices added in the tab-feature work; missing fields
+// in older tabs.json files unmarshal as nil and every tab
+// defaults to TabKindNote with no label override. New writes
+// always include the new fields.
 type tabSessionData struct {
 	Tabs   []string `json:"tabs"`
 	Active int      `json:"active"`
 	Pinned []int    `json:"pinned"`
+	Kinds  []int    `json:"kinds,omitempty"`  // parallel to Tabs; missing/short → TabKindNote
+	Labels []string `json:"labels,omitempty"` // parallel to Tabs; missing/short → ""
 }
 
 // SaveTabs persists open tabs to <vaultPath>/.granit/tabs.json.
@@ -396,8 +452,12 @@ func (tb *TabBar) SaveTabs(vaultPath string) {
 
 	var paths []string
 	var pinned []int
+	kinds := make([]int, len(tb.tabs))
+	labels := make([]string, len(tb.tabs))
 	for i, t := range tb.tabs {
 		paths = append(paths, t.Path)
+		kinds[i] = int(t.Kind)
+		labels[i] = t.Label
 		if t.Pinned {
 			pinned = append(pinned, i)
 		}
@@ -407,6 +467,8 @@ func (tb *TabBar) SaveTabs(vaultPath string) {
 		Tabs:   paths,
 		Active: tb.activeIdx,
 		Pinned: pinned,
+		Kinds:  kinds,
+		Labels: labels,
 	}
 
 	raw, err := json.MarshalIndent(data, "", "  ")
@@ -453,14 +515,26 @@ func (tb *TabBar) LoadTabs(vaultPath string, validPaths map[string]bool) {
 	tb.activeIdx = -1
 
 	for i, p := range data.Tabs {
-		if validPaths != nil && !validPaths[p] {
+		// Determine kind first so we can decide whether to
+		// validate against vault paths. Feature tabs aren't in
+		// validPaths and shouldn't be filtered out.
+		kind := TabKindNote
+		if i < len(data.Kinds) {
+			kind = TabKind(data.Kinds[i])
+		}
+		if kind == TabKindNote && validPaths != nil && !validPaths[p] {
 			continue
 		}
-		entry := TabEntry{
-			Path:   p,
-			Pinned: pinnedSet[i],
+		label := ""
+		if i < len(data.Labels) {
+			label = data.Labels[i]
 		}
-		tb.tabs = append(tb.tabs, entry)
+		tb.tabs = append(tb.tabs, TabEntry{
+			Path:   p,
+			Kind:   kind,
+			Label:  label,
+			Pinned: pinnedSet[i],
+		})
 	}
 
 	if len(tb.tabs) > 0 {
@@ -495,12 +569,18 @@ func tbTruncName(name string, maxLen int) string {
 }
 
 // tbRenderTab renders a single tab label with the appropriate styling.
+// Feature tabs use the explicit Label field so the user sees
+// "Tasks" instead of the synthetic "feat:task_manager" path.
 func tbRenderTab(entry TabEntry, isActive bool, isMoving bool) string {
 	maxName := 14
 	if entry.Pinned || entry.Modified {
 		maxName -= 2
 	}
-	name := tbTruncName(tbBaseName(entry.Path), maxName)
+	display := entry.Label
+	if display == "" {
+		display = tbBaseName(entry.Path)
+	}
+	name := tbTruncName(display, maxName)
 
 	var parts []string
 

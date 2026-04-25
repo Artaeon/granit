@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -981,4 +982,108 @@ func TestReopenAfterClose(t *testing.T) {
 	if reopened != "" {
 		t.Errorf("expected empty on second reopen, got %q", reopened)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// TabKind / Label / persistence back-compat
+// ---------------------------------------------------------------------------
+
+func TestTabEntry_DefaultKindIsNote(t *testing.T) {
+	tb := NewTabBar()
+	tb.AddTab("Tasks.md")
+	got := tb.Tabs()
+	if got[0].Kind != TabKindNote {
+		t.Errorf("default Kind for AddTab should be Note, got %v", got[0].Kind)
+	}
+	if got[0].Label != "" {
+		t.Errorf("default Label should be empty, got %q", got[0].Label)
+	}
+}
+
+func TestSaveLoad_PreservesKindAndLabel(t *testing.T) {
+	dir := t.TempDir()
+	tb := NewTabBar()
+	tb.AddTab("note1.md")
+	// Manually mutate the tab to simulate a feature-tab entry —
+	// commit 2 will add the AddFeatureTab API; this commit just
+	// validates the persistence round-trip.
+	tb.tabs = append(tb.tabs, TabEntry{
+		Path: "feat:task_manager", Kind: TabKindFeature, Label: "Tasks",
+	})
+	tb.activeIdx = 1
+	tb.SaveTabs(dir)
+
+	tb2 := NewTabBar()
+	tb2.LoadTabs(dir, map[string]bool{"note1.md": true})
+	loaded := tb2.Tabs()
+	if len(loaded) != 2 {
+		t.Fatalf("expected 2 tabs loaded, got %d", len(loaded))
+	}
+	if loaded[0].Kind != TabKindNote || loaded[1].Kind != TabKindFeature {
+		t.Errorf("kinds not preserved: got %v, %v", loaded[0].Kind, loaded[1].Kind)
+	}
+	if loaded[1].Label != "Tasks" {
+		t.Errorf("label not preserved: got %q", loaded[1].Label)
+	}
+}
+
+func TestLoadTabs_OldFormatNoKindsTreatsAllAsNote(t *testing.T) {
+	dir := t.TempDir()
+	// Hand-write the v1 tabs.json shape (no Kinds, no Labels).
+	if err := writeTabsJSON(dir, `{"tabs":["note1.md","note2.md"],"active":1,"pinned":[]}`); err != nil {
+		t.Fatal(err)
+	}
+	tb := NewTabBar()
+	tb.LoadTabs(dir, map[string]bool{"note1.md": true, "note2.md": true})
+	loaded := tb.Tabs()
+	if len(loaded) != 2 {
+		t.Fatalf("expected 2 tabs, got %d", len(loaded))
+	}
+	for i, e := range loaded {
+		if e.Kind != TabKindNote {
+			t.Errorf("tab %d: Kind should default to Note, got %v", i, e.Kind)
+		}
+	}
+	if tb.ActiveIndex() != 1 {
+		t.Errorf("active should be 1, got %d", tb.ActiveIndex())
+	}
+}
+
+func TestLoadTabs_FeatureTabsBypassValidPathFilter(t *testing.T) {
+	dir := t.TempDir()
+	// Mixed: a note and a feature tab. validPaths only knows the
+	// note. The feature tab should still load (it's not a vault
+	// path; validPaths doesn't apply to it).
+	if err := writeTabsJSON(dir, `{"tabs":["note1.md","feat:task_manager"],"active":1,"pinned":[],"kinds":[0,1],"labels":["","Tasks"]}`); err != nil {
+		t.Fatal(err)
+	}
+	tb := NewTabBar()
+	tb.LoadTabs(dir, map[string]bool{"note1.md": true})
+	loaded := tb.Tabs()
+	if len(loaded) != 2 {
+		t.Fatalf("expected 2 tabs (note + feature), got %d", len(loaded))
+	}
+	if loaded[1].Path != "feat:task_manager" {
+		t.Errorf("feature tab path: got %q", loaded[1].Path)
+	}
+}
+
+func TestTbRenderTab_UsesLabelWhenSet(t *testing.T) {
+	out := tbRenderTab(TabEntry{Path: "feat:task_manager", Label: "Tasks"}, false, false)
+	if !strings.Contains(out, "Tasks") {
+		t.Errorf("expected rendered tab to contain Label 'Tasks', got %q", out)
+	}
+	if strings.Contains(out, "feat:task_manager") {
+		t.Errorf("rendered tab should not show synthetic feat: path: %q", out)
+	}
+}
+
+// writeTabsJSON drops a literal tabs.json into the .granit/
+// subdir of the given vault for the back-compat tests above.
+func writeTabsJSON(vault, body string) error {
+	dir := vault + "/.granit"
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(dir+"/tabs.json", []byte(body), 0o600)
 }
