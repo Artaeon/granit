@@ -240,6 +240,15 @@ type ProjectMode struct {
 	hasNote      bool
 	action       CommandAction
 	fileChanged  bool // set when a task is toggled on disk
+
+	// Power-user filtering. searchQuery narrows the list to
+	// projects whose name / description / tags match. statusFilter
+	// is a sliced view of projectStatuses; "" means no filter.
+	// Both compose with the existing categoryIdx so power users
+	// can stack "active + dev + 'auth'".
+	searchQuery   string
+	statusFilter  string
+	searching     bool // true while live-typing the / query
 }
 
 // NewProjectMode creates a new inactive ProjectMode overlay.
@@ -713,9 +722,10 @@ func formatTimeSpent(minutes int) string {
 // ---------------------------------------------------------------------------
 
 func (pm *ProjectMode) filteredProjects() []int {
+	q := strings.ToLower(pm.searchQuery)
 	var indices []int
 	for i, p := range pm.projects {
-		if p.Status == "archived" && pm.categoryIdx != -1 {
+		if p.Status == "archived" && pm.categoryIdx != -1 && pm.statusFilter != "archived" {
 			// When filtering by category, skip archived unless specifically selected.
 			continue
 		}
@@ -724,6 +734,26 @@ func (pm *ProjectMode) filteredProjects() []int {
 		} else if pm.categoryIdx < len(projectCategories) && p.Category == projectCategories[pm.categoryIdx] {
 			indices = append(indices, i)
 		}
+	}
+	// Apply power-user search + status filter on top of the
+	// category-based selection. Both stack so the user can do
+	// "category=dev + status=active + search=auth" simultaneously.
+	if q != "" || pm.statusFilter != "" {
+		out := indices[:0]
+		for _, idx := range indices {
+			p := pm.projects[idx]
+			if pm.statusFilter != "" && p.Status != pm.statusFilter {
+				continue
+			}
+			if q != "" {
+				hay := strings.ToLower(p.Name + " " + p.Description + " " + strings.Join(p.Tags, " "))
+				if !strings.Contains(hay, q) {
+					continue
+				}
+			}
+			out = append(out, idx)
+		}
+		indices = out
 	}
 
 	// Sort: active projects by priority (desc), then due date (asc).
@@ -815,6 +845,27 @@ func (pm ProjectMode) Update(msg tea.Msg) (ProjectMode, tea.Cmd) {
 }
 
 func (pm ProjectMode) updateList(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
+	// Search input: live-filter on every keystroke. Esc clears
+	// the query AND exits the bar; Enter commits and exits.
+	if pm.searching {
+		switch msg.String() {
+		case "esc":
+			pm.searchQuery = ""
+			pm.searching = false
+		case "enter":
+			pm.searching = false
+		case "backspace":
+			if len(pm.searchQuery) > 0 {
+				pm.searchQuery = TrimLastRune(pm.searchQuery)
+			}
+		default:
+			if len(msg.String()) == 1 || msg.String() == " " {
+				pm.searchQuery += msg.String()
+			}
+		}
+		pm.cursor = 0
+		return pm, nil
+	}
 	filtered := pm.filteredProjects()
 	switch msg.String() {
 	case "esc":
@@ -863,6 +914,31 @@ func (pm ProjectMode) updateList(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 		}
 		pm.cursor = 0
 		pm.scroll = 0
+	case "/":
+		pm.searching = true
+	case "S":
+		// Cycle status filter: "" → active → paused → completed → archived → "".
+		switch pm.statusFilter {
+		case "":
+			pm.statusFilter = "active"
+		case "active":
+			pm.statusFilter = "paused"
+		case "paused":
+			pm.statusFilter = "completed"
+		case "completed":
+			pm.statusFilter = "archived"
+		default:
+			pm.statusFilter = ""
+		}
+		pm.cursor = 0
+		pm.scroll = 0
+	case "c":
+		if pm.searchQuery != "" || pm.statusFilter != "" {
+			pm.searchQuery = ""
+			pm.statusFilter = ""
+			pm.cursor = 0
+			pm.scroll = 0
+		}
 	case " ":
 		if len(filtered) > 0 && pm.cursor < len(filtered) {
 			idx := filtered[pm.cursor]
@@ -1523,9 +1599,31 @@ func (pm ProjectMode) viewList() string {
 	} else {
 		b.WriteString(DimStyle.Render("  [all]"))
 	}
+	// Active power-user filter chips so the user always knows
+	// what's narrowing their list.
+	chipStyle := lipgloss.NewStyle().Foreground(crust).Background(sapphire).Padding(0, 1)
+	if pm.searchQuery != "" {
+		preview := pm.searchQuery
+		if len(preview) > 24 {
+			preview = preview[:21] + "\u2026"
+		}
+		b.WriteString("  " + chipStyle.Render("/" + preview))
+	}
+	if pm.statusFilter != "" {
+		b.WriteString("  " + chipStyle.Render("status:" + pm.statusFilter))
+	}
 	b.WriteString("\n")
 	b.WriteString(DimStyle.Render(strings.Repeat("\u2500", width-6)))
-	b.WriteString("\n\n")
+	b.WriteString("\n")
+	// Live search bar \u2014 render below the divider when active so
+	// the user sees live filtering of the list as they type.
+	if pm.searching {
+		promptStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+		inputStyle := lipgloss.NewStyle().Foreground(text)
+		b.WriteString("  " + promptStyle.Render("/ Search: ") + inputStyle.Render(pm.searchQuery+"\u2588") + "\n")
+		b.WriteString("  " + DimStyle.Render("Live filter on name / description / tags \u2014 Enter to commit, Esc to cancel") + "\n")
+	}
+	b.WriteString("\n")
 
 	filtered := pm.filteredProjects()
 

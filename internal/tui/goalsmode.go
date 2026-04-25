@@ -245,6 +245,7 @@ const (
 	goalInputMilestoneDue       // setting milestone due date
 	goalInputColor              // setting goal color
 	goalInputHelp               // showing help
+	goalInputSearch             // '/' fuzzy search across title/description/category
 )
 
 // ---------------------------------------------------------------------------
@@ -314,6 +315,15 @@ type GoalsMode struct {
 	// AI coach (holistic goal analysis)
 	coachText string
 	showCoach bool
+
+	// Power-user filtering. searchQuery narrows the visible goal
+	// list to those whose title / description / category contain
+	// the substring (case-insensitive). filterTag is set by the
+	// 'T' key — cycles through every tag present on any goal,
+	// then back to "" (no tag filter). Both render as chips in
+	// the header so the user always knows what's narrowing.
+	searchQuery string
+	filterTag   string
 }
 
 // NewGoalsMode creates a new goals overlay.
@@ -793,6 +803,36 @@ func (gm *GoalsMode) rebuildFiltered() {
 				gm.filtered = append(gm.filtered, g)
 			}
 		}
+	}
+	// Apply active search query + tag filter on top of the
+	// view-specific selection. Both are case-insensitive
+	// substring matches so power users get predictable results
+	// (no fuzzy edge cases). Empty values are no-op.
+	if gm.searchQuery != "" || gm.filterTag != "" {
+		q := strings.ToLower(gm.searchQuery)
+		out := gm.filtered[:0]
+		for _, g := range gm.filtered {
+			if q != "" {
+				hay := strings.ToLower(g.Title + " " + g.Description + " " + g.Category)
+				if !strings.Contains(hay, q) {
+					continue
+				}
+			}
+			if gm.filterTag != "" {
+				match := false
+				for _, t := range g.Tags {
+					if strings.EqualFold(t, gm.filterTag) {
+						match = true
+						break
+					}
+				}
+				if !match {
+					continue
+				}
+			}
+			out = append(out, g)
+		}
+		gm.filtered = out
 	}
 	gm.restoreExpanded()
 }
@@ -1512,15 +1552,109 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 	// Help
 	case "?":
 		gm.input = goalInputHelp
+
+	// Quick search: '/' opens the live-filter bar. The query
+	// persists across view switches and renders as a chip in
+	// the header so the filter is never silent.
+	case "/":
+		gm.input = goalInputSearch
+
+	// Tag filter: 'T' cycles through every tag attached to
+	// any goal, then back to "" (no filter). Power users who
+	// tag goals #q1 / #side-project / #personal can scope the
+	// list with one keystroke.
+	case "T":
+		tags := gm.collectTags()
+		if len(tags) == 0 {
+			gm.statusMsg = "No tagged goals"
+			break
+		}
+		next := ""
+		if gm.filterTag == "" {
+			next = tags[0]
+		} else {
+			for i, t := range tags {
+				if t == gm.filterTag {
+					if i+1 < len(tags) {
+						next = tags[i+1]
+					} // else wrap to "" (clear)
+					break
+				}
+			}
+		}
+		gm.filterTag = next
+		if next == "" {
+			gm.statusMsg = "Tag filter cleared"
+		} else {
+			gm.statusMsg = "Tag: #" + next
+		}
+		gm.rebuildFiltered()
+
+	// Clear all active filters.
+	case "c":
+		if gm.searchQuery != "" || gm.filterTag != "" {
+			gm.searchQuery = ""
+			gm.filterTag = ""
+			gm.statusMsg = "Filters cleared"
+			gm.rebuildFiltered()
+		}
 	}
 
 	return gm, nil
+}
+
+// collectTags returns the unique sorted list of tags across all
+// active/paused goals. Used by the 'T' tag-cycle and the help
+// overlay so power users can see what's available.
+func (gm *GoalsMode) collectTags() []string {
+	seen := make(map[string]bool)
+	for _, g := range gm.goals {
+		if g.Status != GoalStatusActive && g.Status != GoalStatusPaused {
+			continue
+		}
+		for _, t := range g.Tags {
+			if t != "" {
+				seen[t] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for t := range seen {
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (gm GoalsMode) updateInput(key string) (GoalsMode, tea.Cmd) {
 	switch gm.input {
 	case goalInputHelp:
 		gm.input = goalInputNone
+		return gm, nil
+
+	case goalInputSearch:
+		// Live-filter the goal list as the user types. Esc
+		// clears the query AND the filter; Enter commits and
+		// hides the input bar (the chip + 'c' clear remain
+		// visible so the user knows the filter is on).
+		switch key {
+		case "esc":
+			gm.searchQuery = ""
+			gm.input = goalInputNone
+			gm.rebuildFiltered()
+		case "enter":
+			gm.input = goalInputNone
+		case "backspace":
+			if len(gm.searchQuery) > 0 {
+				gm.searchQuery = TrimLastRune(gm.searchQuery)
+				gm.rebuildFiltered()
+			}
+		default:
+			if len(key) == 1 || key == " " {
+				gm.searchQuery += key
+				gm.rebuildFiltered()
+			}
+		}
 		return gm, nil
 
 	case goalInputTitle:
@@ -1863,9 +1997,22 @@ func (gm *GoalsMode) View() string {
 
 	var b strings.Builder
 
-	// Title bar
+	// Title bar with active-filter chips so power users always
+	// see what's narrowing the goal list.
 	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
-	b.WriteString(titleStyle.Render(IconBookmarkChar+" Goals") + "\n")
+	titleLine := titleStyle.Render(IconBookmarkChar + " Goals")
+	chipStyle := lipgloss.NewStyle().Foreground(crust).Background(sapphire).Padding(0, 1)
+	if gm.searchQuery != "" {
+		preview := gm.searchQuery
+		if len(preview) > 24 {
+			preview = preview[:21] + "…"
+		}
+		titleLine += "  " + chipStyle.Render("/" + preview)
+	}
+	if gm.filterTag != "" {
+		titleLine += "  " + chipStyle.Render("#" + gm.filterTag)
+	}
+	b.WriteString(titleLine + "\n")
 
 	// Tabs
 	gm.renderTabs(&b, innerW)
@@ -1880,6 +2027,12 @@ func (gm *GoalsMode) View() string {
 		gm.renderCoach(&b, innerW)
 	} else if gm.input == goalInputHelp {
 		gm.renderHelp(&b, innerW)
+	} else if gm.input == goalInputSearch {
+		// Search is special: render the bar + the live-filtered
+		// list so the user sees the narrowing as they type.
+		gm.renderInput(&b, innerW)
+		b.WriteString("\n")
+		gm.renderGoals(&b, innerW)
 	} else if gm.input != goalInputNone {
 		gm.renderInput(&b, innerW)
 	} else {
@@ -2271,6 +2424,9 @@ func (gm *GoalsMode) renderInput(b *strings.Builder, w int) {
 	hintStyle := DimStyle
 
 	switch gm.input {
+	case goalInputSearch:
+		b.WriteString("\n  " + promptStyle.Render("/ Search: ") + inputStyle.Render(gm.searchQuery+"\u2588") + "\n")
+		b.WriteString("  " + hintStyle.Render("Live filter on title / description / category \u2014 Enter to commit, Esc to cancel"))
 	case goalInputTitle:
 		b.WriteString("\n  " + promptStyle.Render("New Goal") + "\n")
 		b.WriteString("  " + promptStyle.Render("Title: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
