@@ -2307,37 +2307,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
-		if m.taskManager.IsActive() {
-			// Refresh task list if another component changed vault files
-			if m.needsRefresh {
-				m.taskManager.Refresh(m.vault)
-				m.needsRefresh = false
-			}
-			var cmd tea.Cmd
-			m.taskManager, cmd = m.taskManager.Update(msg)
-			m.reportError("save task state", m.taskManager.ConsumeSaveError())
-			// Check if task manager wrote any files
-			if m.taskManager.WasFileChanged() {
-				changedNote := m.taskManager.ActiveNotePath()
-				m.refreshComponents(changedNote)
-			}
-			// Handle jump result (closes overlay)
-			if notePath, lineNum, ok := m.taskManager.GetJumpResult(); ok {
-				m.loadNote(notePath)
-				m.setSidebarCursorToFile(notePath)
-				m.setFocus(focusEditor)
-				if lineNum > 0 {
-					m.editor.cursor = lineNum - 1
-					m.editor.scroll = maxInt(0, lineNum-m.editor.height/2)
-				}
-			}
-			// Launch focus session for selected task
-			if task, ok := m.taskManager.GetFocusRequest(); ok {
-				m.focusSession.SetSize(m.width, m.height)
-				m.focusSession.OpenWithTask(m.vault.Root, task)
-			}
-			return m, cmd
-		}
+		// TaskManager keypress routing retired here in Phase 4 —
+		// the feature tab dispatch (routeFeatureKey above) now
+		// owns it. The taskManager.IsActive() flag still drives
+		// async result handling (tmAIResultMsg in the typed-msg
+		// switch above) since AI suggestions can land regardless
+		// of which tab is in front.
 
 		if m.linkAssist.IsActive() {
 			var cmd tea.Cmd

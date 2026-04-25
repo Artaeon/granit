@@ -876,24 +876,38 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		if !m.registry.Enabled("task_manager") {
 			break
 		}
-		m.taskManager.SetSize(m.width, m.height)
-		m.taskManager.config = m.config
-		m.taskManager.ai = m.aiConfig()
-		m.taskManager.Open(m.vault)
-		// Enrich tasks with project associations
-		pm := NewProjectMode()
-		pm.vaultRoot = m.vault.Root
-		pm.loadProjects()
-		MatchTasksToProjects(m.taskManager.allTasks, pm.projects)
-		// Enrich tasks with actual time from time tracker
-		timeMap := m.timeTracker.TaskTimeMap()
-		for i := range m.taskManager.allTasks {
-			t := &m.taskManager.allTasks[i]
-			if mins, ok := timeMap[tmCleanText(t.Text)]; ok {
-				t.ActualMinutes = mins
-			}
+		// Phase 4: TaskManager is now an editor tab, not an
+		// overlay. Switch to the existing tab if one's open;
+		// otherwise create a fresh tab and run the full init +
+		// enrichment so the user sees the canonical task view
+		// on first open.
+		alreadyOpen := m.tabBar != nil && m.tabBar.HasFeatureTab(FeatTaskManager)
+		if m.tabBar != nil {
+			m.tabBar.AddFeatureTab(FeatTaskManager, "Tasks")
 		}
-		m.taskManager.rebuildFiltered()
+		// activeNote stays unset while a feature tab is foreground
+		// — the render branch picks up the feature tab and the
+		// note remains addressable via Tab/Ctrl+Tab.
+		m.activeNote = ""
+		if !alreadyOpen {
+			m.taskManager.config = m.config
+			m.taskManager.ai = m.aiConfig()
+			m.taskManager.Open(m.vault)
+			// Enrich tasks with project associations.
+			pm := NewProjectMode()
+			pm.vaultRoot = m.vault.Root
+			pm.loadProjects()
+			MatchTasksToProjects(m.taskManager.allTasks, pm.projects)
+			// Enrich tasks with actual time from time tracker.
+			timeMap := m.timeTracker.TaskTimeMap()
+			for i := range m.taskManager.allTasks {
+				t := &m.taskManager.allTasks[i]
+				if mins, ok := timeMap[tmCleanText(t.Text)]; ok {
+					t.ActualMinutes = mins
+				}
+			}
+			m.taskManager.rebuildFiltered()
+		}
 
 	case CmdLinkAssist:
 		if m.activeNote != "" {

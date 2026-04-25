@@ -48,10 +48,9 @@ func hasActiveFeatureTab(tb *TabBar) bool {
 // doesn't see a blank editor.
 func (m *Model) renderFeatureTab(id FeatureID, width, height int) string {
 	switch id {
-	// Migrated features will land their cases here, e.g.:
-	//   case FeatTaskManager:
-	//       m.taskManager.SetSize(width, height)
-	//       return m.taskManager.View()
+	case FeatTaskManager:
+		m.taskManager.SetSize(width, height)
+		return m.taskManager.View()
 	}
 	return ""
 }
@@ -67,10 +66,42 @@ func (m *Model) renderFeatureTab(id FeatureID, width, height int) string {
 // the legacy paths handle it).
 func (m *Model) routeFeatureKey(id FeatureID, msg tea.Msg) (Model, tea.Cmd, bool) {
 	switch id {
-	// Migrated features will land their cases here, e.g.:
-	//   case FeatTaskManager:
-	//       m.taskManager, _ = m.taskManager.Update(msg)
-	//       return *m, nil, true
+	case FeatTaskManager:
+		// Refresh task list if another component changed vault
+		// files (mirrors the behavior of the legacy IsActive()
+		// path that's now retired for TaskManager).
+		if m.needsRefresh {
+			m.taskManager.Refresh(m.vault)
+			m.needsRefresh = false
+		}
+		var cmd tea.Cmd
+		m.taskManager, cmd = m.taskManager.Update(msg)
+		m.reportError("save task state", m.taskManager.ConsumeSaveError())
+		if m.taskManager.WasFileChanged() {
+			m.refreshComponents(m.taskManager.ActiveNotePath())
+		}
+		// Jump-to-source: closes the TaskManager tab and lands
+		// the user on the requested note + line.
+		if notePath, lineNum, ok := m.taskManager.GetJumpResult(); ok {
+			if m.tabBar != nil {
+				m.tabBar.CloseFeatureTab(FeatTaskManager)
+			}
+			m.taskManager.Close()
+			m.loadNote(notePath)
+			m.setSidebarCursorToFile(notePath)
+			m.setFocus(focusEditor)
+			if lineNum > 0 {
+				m.editor.cursor = lineNum - 1
+				m.editor.scroll = maxInt(0, lineNum-m.editor.height/2)
+			}
+		}
+		// Focus session request — opens as a separate overlay
+		// (focus session stays modal for now; it's transient).
+		if task, ok := m.taskManager.GetFocusRequest(); ok {
+			m.focusSession.SetSize(m.width, m.height)
+			m.focusSession.OpenWithTask(m.vault.Root, task)
+		}
+		return *m, cmd, true
 	}
 	return *m, nil, false
 }
@@ -81,8 +112,7 @@ func (m *Model) routeFeatureKey(id FeatureID, msg tea.Msg) (Model, tea.Cmd, bool
 // silently do nothing.
 func (m *Model) closeFeature(id FeatureID) {
 	switch id {
-	// Migrated features will land their cases here, e.g.:
-	//   case FeatTaskManager:
-	//       m.taskManager.Close()
+	case FeatTaskManager:
+		m.taskManager.Close()
 	}
 }

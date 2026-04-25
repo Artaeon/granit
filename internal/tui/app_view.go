@@ -1167,10 +1167,11 @@ func (m Model) View() string {
 		overlay := m.frontmatterEdit.View()
 		view = m.overlayCenter(view, overlay)
 	}
-	if m.taskManager.IsActive() {
-		overlay := m.taskManager.View()
-		view = m.overlayCenter(view, overlay)
-	}
+	// TaskManager retired from overlay rendering in Phase 4 —
+	// it now lives as a feature tab in the editor pane (see
+	// app_view.go editorContent branch + feature_tabs.go
+	// renderFeatureTab). Keeping a guard comment here so a
+	// future audit doesn't reintroduce the overlay path.
 	if m.linkAssist.IsActive() {
 		overlay := m.linkAssist.View()
 		view = m.overlayCenter(view, overlay)
