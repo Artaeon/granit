@@ -291,6 +291,17 @@ func (m *Model) routeFeatureKey(id FeatureID, msg tea.Msg) (Model, tea.Cmd, bool
 			m.focusSession.SetSize(m.width, m.height)
 			m.focusSession.OpenWithTask(m.vault.Root, task)
 		}
+		// Esc/q in normal mode sets tm.active=false (legacy
+		// overlay-dismissal behavior, can't easily change in
+		// taskmanager.go without breaking other call sites).
+		// In the tab world that's a zombie state — render still
+		// shows the surface, but every subsequent key returns
+		// early via `if !tm.active`. Detect it and close the
+		// tab so Esc behaves like "dismiss the surface."
+		if !m.taskManager.IsActive() && m.tabBar != nil && m.tabBar.HasFeatureTab(FeatTaskManager) {
+			m.tabBar.CloseFeatureTab(FeatTaskManager)
+			m.activeNote = ""
+		}
 		return *m, cmd, true
 
 	case FeatDailyJot:

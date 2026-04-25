@@ -1020,6 +1020,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.setSidebarCursorToFile(nav)
 				m.setFocus(focusEditor)
 			}
+			// Esc inside the feature flips IsActive() to false; in
+			// the tab world that's a zombie (tab still rendered,
+			// every key swallowed by the IsActive guard). Close the
+			// tab so dismiss-from-inside also dismisses the tab.
+			if !m.graphView.IsActive() && m.tabBar != nil && m.tabBar.HasFeatureTab(FeatGraph) {
+				m.tabBar.CloseFeatureTab(FeatGraph)
+				m.activeNote = ""
+			}
 			return m, nil
 		}
 
@@ -1252,6 +1260,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.setSidebarCursorToFile(name)
 				m.setFocus(focusEditor)
 			}
+			// Same zombie-tab fix as the other migrated surfaces:
+			// close the Calendar tab if Calendar.Update flipped
+			// IsActive() to false (Esc inside the overlay).
+			if !m.calendar.IsActive() && m.tabBar != nil && m.tabBar.HasFeatureTab(FeatCalendar) {
+				m.tabBar.CloseFeatureTab(FeatCalendar)
+				m.activeNote = ""
+			}
 			return m, nil
 		}
 
@@ -1403,6 +1418,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.goalsMode, _ = m.goalsMode.Update(msg)
 			if !m.goalsMode.IsActive() && m.goalsMode.WasFileChanged() {
 				m.refreshComponents("")
+			}
+			if !m.goalsMode.IsActive() && m.tabBar != nil && m.tabBar.HasFeatureTab(FeatGoals) {
+				m.tabBar.CloseFeatureTab(FeatGoals)
+				m.activeNote = ""
 			}
 			return m, nil
 		}
@@ -1816,6 +1835,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if notePath, ok := m.projectMode.GetSelectedNote(); ok {
 					m.loadNote(notePath)
 					m.setSidebarCursorToFile(notePath)
+				}
+				// Close the tab BEFORE executeCommand — that
+				// command may open another tab and we don't want
+				// to leave the Projects tab as a zombie.
+				if m.tabBar != nil && m.tabBar.HasFeatureTab(FeatProject) {
+					m.tabBar.CloseFeatureTab(FeatProject)
+					m.activeNote = ""
 				}
 				if action, ok := m.projectMode.GetAction(); ok {
 					return m.executeCommand(action)
@@ -2448,6 +2474,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if line > 0 {
 						m.editor.SetCursorPosition(line-1, 0)
 					}
+				}
+				if m.tabBar != nil && m.tabBar.HasFeatureTab(FeatKanban) {
+					m.tabBar.CloseFeatureTab(FeatKanban)
+					m.activeNote = ""
 				}
 			}
 			return m, cmd
