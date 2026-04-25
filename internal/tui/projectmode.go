@@ -275,6 +275,30 @@ func (pm *ProjectMode) GetProjects() []Project {
 	return pm.projects
 }
 
+// Refresh re-loads projects from disk WITHOUT resetting UI
+// state (cursor / scroll / expanded dashboard). Called from
+// refreshComponents whenever the vault changes so the project
+// list reflects external edits + the dashboard's task count
+// updates after a TaskManager toggle. scanProjectTasks already
+// reads tasks live, so this only needs to reload project
+// metadata; the dashboard's dashTasks slice is recomputed by
+// the existing render path.
+//
+// Skips entirely if not active so we don't pay the disk cost
+// for a closed surface.
+func (pm *ProjectMode) Refresh(vaultRoot string) {
+	if !pm.active {
+		return
+	}
+	pm.vaultRoot = vaultRoot
+	pm.loadProjects()
+	// If we're sitting on the dashboard for a specific project,
+	// re-scan its tasks so the progress bar reflects fresh state.
+	if pm.phase == pmPhaseDashboard && pm.cursor < len(pm.projects) {
+		pm.dashTasks = pm.scanProjectTasks(pm.projects[pm.cursor])
+	}
+}
+
 // GetSelectedNote returns the note path the user chose and resets the flag.
 func (pm *ProjectMode) GetSelectedNote() (string, bool) {
 	if !pm.hasNote {

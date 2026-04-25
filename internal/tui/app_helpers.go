@@ -846,11 +846,20 @@ func (m *Model) refreshComponents(changedPath string) {
 		m.refreshCalendarPanelWith(plannerBlocks)
 	}
 
-	// Directly refresh the task manager if it's currently active, so it
-	// picks up changes immediately instead of waiting for the needsRefresh
-	// flag to be checked on the next Update() cycle.
+	// Directly refresh derived-state surfaces if active so they
+	// pick up changes immediately. Without this, a task toggled
+	// from TaskManager / Calendar / DailyHub leaves goal +
+	// project progress bars stale until the user closes and
+	// reopens the surface — the bug we shipped at the start of
+	// the relaunch and only caught in the sync audit.
 	if m.taskManager.IsActive() {
 		m.taskManager.Refresh(m.vault)
+	}
+	if m.goalsMode.IsActive() {
+		m.goalsMode.Refresh(m.vault.Root, m.cachedTasks)
+	}
+	if m.projectMode.IsActive() {
+		m.projectMode.Refresh(m.vault.Root)
 	}
 
 	m.refreshActiveNoteState(changedPath)

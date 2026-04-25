@@ -349,6 +349,28 @@ func (gm *GoalsMode) GetGoals() []Goal {
 	return gm.goals
 }
 
+// Refresh re-reads goals from disk and updates the cached task
+// snapshot WITHOUT resetting UI state (cursor / scroll /
+// expanded goal). Called from refreshComponents whenever the
+// vault changes so goal progress bars and "linked tasks" counts
+// stay in sync with the rest of the app — toggling a task in
+// TaskManager (or anywhere else) now reflects in GoalsMode
+// immediately, instead of staying stale until the user hits
+// Open() again.
+//
+// Skips entirely if not active so we don't pay the disk cost
+// for a closed surface. Caller must pass the current task
+// snapshot so we share whatever the model already computed.
+func (gm *GoalsMode) Refresh(vaultRoot string, tasks []Task) {
+	if !gm.active {
+		return
+	}
+	gm.vaultRoot = vaultRoot
+	gm.allTasks = tasks
+	gm.loadGoals()
+	gm.rebuildFiltered()
+}
+
 // ---------------------------------------------------------------------------
 // Storage
 // ---------------------------------------------------------------------------
