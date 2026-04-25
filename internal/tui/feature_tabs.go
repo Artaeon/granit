@@ -54,6 +54,21 @@ func (m *Model) renderFeatureTab(id FeatureID, width, height int) string {
 	case FeatDailyJot:
 		m.dailyJot.SetSize(width, height)
 		return m.dailyJot.View()
+	case FeatCalendar:
+		m.calendar.SetSize(width, height)
+		return m.calendar.View()
+	case FeatKanban:
+		m.kanban.SetSize(width, height)
+		return m.kanban.View()
+	case FeatGoals:
+		m.goalsMode.SetSize(width, height)
+		return m.goalsMode.View()
+	case FeatProject:
+		m.projectMode.SetSize(width, height)
+		return m.projectMode.View()
+	case FeatGraph:
+		m.graphView.SetSize(width, height)
+		return m.graphView.View()
 	}
 	return ""
 }
@@ -142,5 +157,15 @@ func (m *Model) closeFeature(id FeatureID) {
 		m.taskManager.Close()
 	case FeatDailyJot:
 		m.dailyJot.Close()
+	case FeatCalendar:
+		m.calendar.Close()
+	case FeatKanban:
+		m.kanban.Close()
+	case FeatGoals:
+		m.goalsMode.Close()
+	case FeatProject:
+		m.projectMode.Close()
+	case FeatGraph:
+		m.graphView.Close()
 	}
 }

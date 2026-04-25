@@ -159,8 +159,17 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.newNoteName = strings.TrimSuffix(m.activeNote, ".md")
 		}
 	case CmdShowGraph:
-		m.graphView.SetSize(m.width, m.height)
-		m.graphView.Open(m.activeNote)
+		alreadyOpen := m.tabBar != nil && m.tabBar.HasFeatureTab(FeatGraph)
+		// Capture the source note BEFORE we clear activeNote —
+		// graphView.Open uses it to seed the focus node.
+		seedNote := m.activeNote
+		if m.tabBar != nil {
+			m.tabBar.AddFeatureTab(FeatGraph, "Graph")
+		}
+		m.activeNote = ""
+		if !alreadyOpen {
+			m.graphView.Open(seedNote)
+		}
 	case CmdShowTags:
 		m.tagBrowser.SetSize(m.width, m.height)
 		m.tagBrowser.Open()
@@ -223,26 +232,31 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.canvas.SetSize(m.width, m.height)
 		m.canvas.Open()
 	case CmdShowCalendar:
-		m.calendar.SetSize(m.width, m.height)
-		m.calendar.SetVaultRoot(m.vault.Root)
-		m.calendar.SetActiveGoals(loadActiveGoals(m.vault.Root))
-		noteContents := make(map[string]string)
-		for _, p := range m.vault.SortedPaths() {
-			if note := m.vault.GetNote(p); note != nil {
-				noteContents[p] = note.Content
-			}
+		alreadyOpen := m.tabBar != nil && m.tabBar.HasFeatureTab(FeatCalendar)
+		if m.tabBar != nil {
+			m.tabBar.AddFeatureTab(FeatCalendar, "Calendar")
 		}
-		m.calendar.SetNoteContents(noteContents)
-		plannerBlocks, dailyFocus := loadPlannerBlocks(m.vault.Root)
-		m.calendar.SetPlannerBlocks(plannerBlocks)
-		m.calendar.SetAllDailyFocus(dailyFocus)
-		m.loadCalendarEvents()
-		m.refreshCalendarPanel()
-		// Load habit data for calendar views
-		ht := NewHabitTracker()
-		ht.Open(m.vault.Root)
-		m.calendar.SetHabitData(ht.habits, ht.logs)
-		m.calendar.Open()
+		m.activeNote = ""
+		if !alreadyOpen {
+			m.calendar.SetVaultRoot(m.vault.Root)
+			m.calendar.SetActiveGoals(loadActiveGoals(m.vault.Root))
+			noteContents := make(map[string]string)
+			for _, p := range m.vault.SortedPaths() {
+				if note := m.vault.GetNote(p); note != nil {
+					noteContents[p] = note.Content
+				}
+			}
+			m.calendar.SetNoteContents(noteContents)
+			plannerBlocks, dailyFocus := loadPlannerBlocks(m.vault.Root)
+			m.calendar.SetPlannerBlocks(plannerBlocks)
+			m.calendar.SetAllDailyFocus(dailyFocus)
+			m.loadCalendarEvents()
+			m.refreshCalendarPanel()
+			ht := NewHabitTracker()
+			ht.Open(m.vault.Root)
+			m.calendar.SetHabitData(ht.habits, ht.logs)
+			m.calendar.Open()
+		}
 	case CmdShowBots:
 		m.bots.SetSize(m.width, m.height)
 		m.bots.SetAIConfig(m.aiConfig())
@@ -694,26 +708,32 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			}
 		}
 	case CmdKanban:
-		m.kanban.SetSize(m.width, m.height)
-		if len(m.config.KanbanColumns) > 0 {
-			m.kanban.Configure(m.config.KanbanColumns, m.config.KanbanColumnTags)
+		alreadyOpen := m.tabBar != nil && m.tabBar.HasFeatureTab(FeatKanban)
+		if m.tabBar != nil {
+			m.tabBar.AddFeatureTab(FeatKanban, "Kanban")
 		}
-		// Load saved state BEFORE distributing cards so positions are restored
-		m.kanban.Open(m.vault.Root)
-		noteContents := make(map[string]string)
-		for _, p := range m.vault.SortedPaths() {
-			if note := m.vault.GetNote(p); note != nil {
-				noteContents[p] = note.Content
+		m.activeNote = ""
+		if !alreadyOpen {
+			if len(m.config.KanbanColumns) > 0 {
+				m.kanban.Configure(m.config.KanbanColumns, m.config.KanbanColumnTags)
 			}
+			// Load saved state BEFORE distributing cards so positions are restored
+			m.kanban.Open(m.vault.Root)
+			noteContents := make(map[string]string)
+			for _, p := range m.vault.SortedPaths() {
+				if note := m.vault.GetNote(p); note != nil {
+					noteContents[p] = note.Content
+				}
+			}
+			m.kanban.SetTasks(noteContents)
+			// Enrich kanban cards with project info
+			allTasks := m.currentTasks()
+			pm := NewProjectMode()
+			pm.vaultRoot = m.vault.Root
+			pm.loadProjects()
+			MatchTasksToProjects(allTasks, pm.projects)
+			m.kanban.SetTaskProjects(allTasks)
 		}
-		m.kanban.SetTasks(noteContents)
-		// Enrich kanban cards with project info
-		allTasks := m.currentTasks()
-		pm := NewProjectMode()
-		pm.vaultRoot = m.vault.Root
-		pm.loadProjects()
-		MatchTasksToProjects(allTasks, pm.projects)
-		m.kanban.SetTaskProjects(allTasks)
 	case CmdZettelNote:
 		if m.zettelkasten != nil {
 			name := m.zettelkasten.GenerateNoteName("Untitled")
@@ -1270,10 +1290,16 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.aiConfig(), m.projectMode.GetProjects(), m.goalsMode.GetGoals())
 
 	case CmdGoalsMode:
-		m.goalsMode.SetSize(m.width, m.height)
-		m.goalsMode.ai = m.aiConfig()
-		allTasks := m.currentTasks()
-		m.goalsMode.Open(m.vault.Root, allTasks)
+		alreadyOpen := m.tabBar != nil && m.tabBar.HasFeatureTab(FeatGoals)
+		if m.tabBar != nil {
+			m.tabBar.AddFeatureTab(FeatGoals, "Goals")
+		}
+		m.activeNote = ""
+		if !alreadyOpen {
+			m.goalsMode.ai = m.aiConfig()
+			allTasks := m.currentTasks()
+			m.goalsMode.Open(m.vault.Root, allTasks)
+		}
 
 	case CmdIdeasBoard:
 		m.ideasBoard.SetSize(m.width, m.height)
@@ -1339,9 +1365,15 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.scratchpad.Open(m.vault.Root)
 
 	case CmdProjectMode:
-		m.projectMode.ai = m.aiConfig()
-		m.projectMode.SetSize(m.width, m.height)
-		m.projectMode.Open(m.vault.Root)
+		alreadyOpen := m.tabBar != nil && m.tabBar.HasFeatureTab(FeatProject)
+		if m.tabBar != nil {
+			m.tabBar.AddFeatureTab(FeatProject, "Projects")
+		}
+		m.activeNote = ""
+		if !alreadyOpen {
+			m.projectMode.ai = m.aiConfig()
+			m.projectMode.Open(m.vault.Root)
+		}
 
 	case CmdCommandCenter:
 		m.commandCenter.SetSize(m.width, m.height)

@@ -838,10 +838,7 @@ func (m Model) View() string {
 		overlay := m.vaultStats.View()
 		view = m.overlayCenter(view, overlay)
 	}
-	if m.graphView.IsActive() {
-		overlay := m.graphView.View()
-		view = m.overlayCenter(view, overlay)
-	}
+	// Graph retired from overlay rendering in Phase 4 — feature tab.
 	if m.tagBrowser.IsActive() {
 		overlay := m.tagBrowser.View()
 		view = m.overlayCenter(view, overlay)
@@ -874,10 +871,8 @@ func (m Model) View() string {
 		overlay := m.canvas.View()
 		view = m.overlayCenter(view, overlay)
 	}
-	if m.calendar.IsActive() {
-		overlay := m.calendar.View()
-		view = m.overlayCenter(view, overlay)
-	}
+	// Calendar retired from overlay rendering in Phase 4 — now
+	// a feature tab in the editor pane.
 	if m.bots.IsActive() {
 		overlay := m.bots.View()
 		view = m.overlayCenter(view, overlay)
@@ -922,10 +917,7 @@ func (m Model) View() string {
 		overlay := m.universalSearch.View()
 		view = m.overlayCenter(view, overlay)
 	}
-	if m.goalsMode.IsActive() {
-		overlay := m.goalsMode.View()
-		view = m.overlayCenter(view, overlay)
-	}
+	// Goals retired from overlay rendering in Phase 4 — feature tab.
 	if m.focusSession.IsActive() {
 		overlay := m.focusSession.View()
 		view = m.overlayCenter(view, overlay)
@@ -1029,10 +1021,7 @@ func (m Model) View() string {
 		overlay := m.tutorial.View()
 		view = m.overlayCenter(view, overlay)
 	}
-	if m.projectMode.IsActive() {
-		overlay := m.projectMode.View()
-		view = m.overlayCenter(view, overlay)
-	}
+	// Projects retired from overlay rendering in Phase 4 — feature tab.
 	if m.projectDashboard.IsActive() {
 		overlay := m.projectDashboard.View()
 		view = m.overlayCenter(view, overlay)
@@ -1113,10 +1102,7 @@ func (m Model) View() string {
 		overlay := m.noteChat.View()
 		view = m.overlayCenter(view, overlay)
 	}
-	if m.kanban.IsActive() {
-		overlay := m.kanban.View()
-		view = m.overlayCenter(view, overlay)
-	}
+	// Kanban retired from overlay rendering in Phase 4 — feature tab.
 	if m.vaultRefactor.IsActive() {
 		overlay := m.vaultRefactor.View()
 		view = m.overlayCenter(view, overlay)
