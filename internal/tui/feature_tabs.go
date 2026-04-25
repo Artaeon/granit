@@ -19,45 +19,80 @@ func isFeatureTabPath(path string) bool {
 // dispatcher. These are the keys a power user expects to ALWAYS
 // work regardless of focus — without this list, opening
 // TaskManager as a tab would trap the user because Ctrl+W
-// (close tab), Ctrl+P (palette), Ctrl+Tab (cycle), etc. would
-// all be consumed by taskManager.Update and never reach their
-// handlers.
+// (close tab), Ctrl+P (palette), Ctrl+X (palette fallback),
+// etc. would all be consumed by the feature's Update and
+// never reach their handlers.
 //
-// Add to this list with care — anything in here CANNOT be used
-// as a feature-internal binding. The list deliberately stays
-// minimal: tab management, palette, quit, save, and the
-// shortcut chords for opening features (so the user can switch
-// to a different feature from inside one).
+// Rule of thumb for adding: any chord with a Ctrl, Alt, or
+// function-key prefix that's bound at the global level (in the
+// `case "ctrl+X":` block of app_update.go around line 2670+)
+// should be passthrough. Letters and Esc and arrows go to the
+// focused feature. The audit covers every chord currently
+// defined in the global switch — if a new global chord lands,
+// add it here too (or feature tabs will swallow it).
 func isPassthroughChord(key string) bool {
 	switch key {
-	// Tab management
+	// Tab management — close, cycle, jump, reopen
 	case "ctrl+w",
 		"ctrl+tab", "ctrl+shift+tab",
 		"ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4", "ctrl+5",
 		"ctrl+6", "ctrl+7", "ctrl+8", "ctrl+9",
-		"ctrl+shift+t":
+		"ctrl+shift+t",
+		"alt+shift+left", "alt+shift+right": // move tab
 		return true
-	// Palette + quit + save
-	case "ctrl+p", "ctrl+q", "ctrl+c", "ctrl+s":
+	// Quit / save / palette family — Ctrl+X is palette
+	// fallback when no editor selection (this was the
+	// originally-missed chord that trapped the user).
+	case "ctrl+p", "ctrl+q", "ctrl+c", "ctrl+s", "ctrl+x":
 		return true
-	// Feature-opening shortcuts — let the user switch from
-	// inside one feature to another without first closing.
-	case "alt+h",     // Daily Hub
-		"alt+j",      // Daily Jot
-		"alt+m",      // Morning Routine
-		"alt+b",      // Habit Tracker
-		"alt+i",      // Quick Capture
-		"alt+e",      // Daily Review
-		"alt+p",      // Plan My Day
-		"alt+l",      // Layout picker
-		"alt+W",      // Profile picker (Shift+Alt+W)
-		"alt+left", "alt+right", // Navigation history
-		"ctrl+k",     // Task Manager
-		"ctrl+g",     // Graph view
-		"ctrl+o":     // Quick switch
+	// Feature-opening Ctrl+ shortcuts
+	case "ctrl+n",     // New note
+		"ctrl+e",      // Toggle view/edit
+		"ctrl+t",      // Tags
+		"ctrl+b",      // Bookmarks
+		"ctrl+f",      // Find
+		"ctrl+h",      // Find & replace
+		"ctrl+j",      // Quick switch
+		"ctrl+k",      // Task Manager
+		"ctrl+l",      // Calendar
+		"ctrl+r",      // Bots
+		"ctrl+g",      // Graph
+		"ctrl+o",      // Outline
+		"ctrl+,",      // Settings
+		"ctrl+/",      // Help / shortcuts
+		"ctrl+z":      // Focus mode
 		return true
-	// Focus-pane chords
-	case "f1", "f2", "f3", "alt+1", "alt+2", "alt+3":
+	// Feature-opening Alt+ shortcuts (lowercase letters)
+	case "alt+h",      // Daily Hub
+		"alt+j",       // Daily Jot
+		"alt+m",       // Morning Routine
+		"alt+b",       // Habit Tracker
+		"alt+i",       // Quick Capture
+		"alt+e",       // Daily Review
+		"alt+p",       // Plan My Day
+		"alt+l",       // Layout picker
+		"alt+t",       // Time tracker
+		"alt+s",       // Focus session
+		"alt+w",       // Weekly note
+		"alt+c",       // Command Center
+		"alt+d",       // Daily Briefing or similar
+		"alt+f",       // Fold (editor); harmless on features
+		"alt+g",       // Graph alternate
+		"alt+r",       // Reload / refresh
+		"alt+[", "alt+]", // Daily-note navigation
+		"alt+left", "alt+right", // History navigation
+		"alt+?":       // Help
+		return true
+	// Capital Alt+ chords (Shift+Alt+letter)
+	case "alt+W",      // Profile picker
+		"alt+C":       // Command Center alt
+		return true
+	// Function keys + focus-pane chords
+	case "f1", "f2", "f3", "f4", "f5",
+		"alt+1", "alt+2", "alt+3":
+		return true
+	// Multi-key pane swap (Shift+Tab inside global handler)
+	case "shift+tab":
 		return true
 	}
 	return false
