@@ -53,6 +53,7 @@ type builtinRegistration struct {
 func allBuiltins() []builtinRegistration {
 	return []builtinRegistration{
 		pomodoroModule(),
+		flashcardsModule(),
 	}
 }
 

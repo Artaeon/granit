@@ -385,7 +385,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.luaOverlay.SetSize(m.width, m.height)
 		m.luaOverlay.Open(m.activeNote, m.editor.GetContent(), nil)
 	case CmdFlashcards:
-		if !m.config.CorePluginEnabled("flashcards") {
+		if !m.registry.Enabled("flashcards") {
 			break
 		}
 		m.flashcards.SetSize(m.width, m.height)
