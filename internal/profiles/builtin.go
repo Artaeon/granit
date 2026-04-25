@@ -133,6 +133,19 @@ func researcherProfile() *Profile {
 		Name:        "Researcher",
 		Description: "Notes, graph, AI tooling foregrounded. For deep work and synthesis sessions.",
 		EnabledModules: []string{
+			// Universal personal tools — always reachable via
+			// palette / direct shortcut regardless of profile.
+			// Without these in the list, switching to Researcher
+			// silently disabled habits / calendar / tasks etc.
+			// and the user couldn't find them via Ctrl+X.
+			"task_manager",
+			"habit_tracker",
+			"calendar",
+			"daily_jot",
+			"pomodoro",
+			"focus_session",
+			"recurring_tasks",
+			// Profile focus: research / synthesis tooling.
 			"knowledge_graph",
 			"smart_connections",
 			"semantic_search",
@@ -165,11 +178,20 @@ func builderProfile() *Profile {
 		Name:        "Builder",
 		Description: "Projects, kanban, goals, standup. For PMs and engineers shipping deliverables.",
 		EnabledModules: []string{
+			// Universal personal tools — always reachable via
+			// palette / direct shortcut regardless of profile.
+			"task_manager",
+			"habit_tracker",
+			"calendar",
+			"daily_jot",
+			"pomodoro",
+			"focus_session",
+			"recurring_tasks",
+			// Profile focus: project / shipping tooling.
 			"kanban",
 			"project_mode",
 			"goals_mode",
 			"standup_generator",
-			"task_manager",
 			"blog_publisher",
 			"ai_project_planner",
 		},
