@@ -1227,13 +1227,36 @@ func TestIsPassthroughChord_TabManagementAlwaysEscapes(t *testing.T) {
 	// These chords MUST always reach the global handler — if a
 	// feature tab swallows any of them the user gets trapped
 	// (no way to close the tab, open the palette, switch away,
-	// or quit). Add to this list with care; this test is the
-	// regression guard for "feature tab traps user."
+	// or quit). This is the regression guard for "feature tab
+	// traps user."
+	//
+	// ctrl+x in particular was missed in the first pass and
+	// trapped a real user — Ctrl+X is the palette fallback
+	// chord (the global handler opens the palette when no
+	// editor selection is active). Without it in the
+	// passthrough list, users coming from "Ctrl+X opens menu"
+	// muscle memory get silently nothing.
 	mustEscape := []string{
-		"ctrl+w", "ctrl+q", "ctrl+c", "ctrl+s", "ctrl+p",
-		"ctrl+tab", "ctrl+shift+tab", "ctrl+shift+t",
+		// Tab management
+		"ctrl+w", "ctrl+tab", "ctrl+shift+tab", "ctrl+shift+t",
 		"ctrl+1", "ctrl+5", "ctrl+9",
-		"ctrl+k", "alt+h", "alt+j", "alt+W",
+		"alt+shift+left", "alt+shift+right",
+		// Quit / save / palette family
+		"ctrl+q", "ctrl+c", "ctrl+s", "ctrl+p", "ctrl+x",
+		// Feature-opening Ctrl+ chords
+		"ctrl+k", "ctrl+g", "ctrl+l", "ctrl+t", "ctrl+b",
+		"ctrl+f", "ctrl+h", "ctrl+j", "ctrl+n", "ctrl+e",
+		"ctrl+r", "ctrl+o", "ctrl+,", "ctrl+/", "ctrl+z",
+		// Feature-opening Alt+ chords
+		"alt+h", "alt+j", "alt+m", "alt+b", "alt+i",
+		"alt+e", "alt+p", "alt+l", "alt+t", "alt+s",
+		"alt+w", "alt+W", "alt+c", "alt+C", "alt+d",
+		"alt+f", "alt+g", "alt+r", "alt+?",
+		"alt+[", "alt+]", "alt+left", "alt+right",
+		// Function keys + focus-pane
+		"f1", "f2", "f3", "f4", "f5",
+		"alt+1", "alt+2", "alt+3",
+		"shift+tab",
 	}
 	for _, key := range mustEscape {
 		if !isPassthroughChord(key) {
