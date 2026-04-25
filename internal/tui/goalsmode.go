@@ -259,6 +259,7 @@ const (
 	goalViewByCategory                    // grouped by category
 	goalViewTimeline                      // sorted by deadline
 	goalViewCompleted                     // completed/archived
+	goalViewWins                          // next 5 due-soon undone milestones across all goals
 )
 
 // ---------------------------------------------------------------------------
@@ -324,6 +325,24 @@ type GoalsMode struct {
 	// the header so the user always knows what's narrowing.
 	searchQuery string
 	filterTag   string
+
+	// winsList is the rendered slice for the Wins view —
+	// surfaces the next undone milestones across all active
+	// goals so the user sees "what can I knock out today?"
+	// without drilling into each goal individually. Built
+	// lazily in rebuildFiltered when view == goalViewWins.
+	winsList []winItem
+}
+
+// winItem is one row in the Wins view: an undone milestone
+// labelled with its parent goal so Enter can jump back into
+// the goal expanded.
+type winItem struct {
+	GoalID    string
+	GoalTitle string
+	GoalIdx   int             // index into gm.goals
+	MsIdx     int             // index into goal.Milestones
+	Milestone GoalMilestone   // copy for render; mutate via gm.goals[GoalIdx].Milestones[MsIdx]
 }
 
 // NewGoalsMode creates a new goals overlay.
@@ -802,6 +821,43 @@ func (gm *GoalsMode) rebuildFiltered() {
 			if g.Status == GoalStatusCompleted || g.Status == GoalStatusArchived {
 				gm.filtered = append(gm.filtered, g)
 			}
+		}
+	case goalViewWins:
+		// Wins is special: filtered stays empty (no goals are
+		// "the answer"); winsList holds the rendered rows.
+		// Surfaces the next 5 undone milestones across all
+		// active goals, sorted by milestone due date (no-date
+		// last). Skip done milestones / paused-or-archived
+		// goals so the user only sees actionable work.
+		gm.winsList = nil
+		for gi, g := range gm.goals {
+			if g.Status != GoalStatusActive {
+				continue
+			}
+			for mi, ms := range g.Milestones {
+				if ms.Done {
+					continue
+				}
+				gm.winsList = append(gm.winsList, winItem{
+					GoalID: g.ID, GoalTitle: g.Title, GoalIdx: gi, MsIdx: mi, Milestone: ms,
+				})
+			}
+		}
+		sort.SliceStable(gm.winsList, func(i, j int) bool {
+			a, b := gm.winsList[i].Milestone.DueDate, gm.winsList[j].Milestone.DueDate
+			if a == "" && b == "" {
+				return false
+			}
+			if a == "" {
+				return false
+			}
+			if b == "" {
+				return true
+			}
+			return a < b
+		})
+		if len(gm.winsList) > 5 {
+			gm.winsList = gm.winsList[:5]
 		}
 	}
 	// Apply active search query + tag filter on top of the
@@ -1354,7 +1410,11 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 
 	// Navigation
 	case "j", "down":
-		if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
+		if gm.view == goalViewWins {
+			if gm.cursor < len(gm.winsList)-1 {
+				gm.cursor++
+			}
+		} else if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
 			idx := gm.findGoalIndex(gm.filtered[gm.expanded].ID)
 			if idx >= 0 && gm.milestoneCur < len(gm.goals[idx].Milestones)-1 {
 				gm.milestoneCur++
@@ -1364,7 +1424,11 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			gm.ensureVisible()
 		}
 	case "k", "up":
-		if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
+		if gm.view == goalViewWins {
+			if gm.cursor > 0 {
+				gm.cursor--
+			}
+		} else if gm.expanded >= 0 && gm.expanded < len(gm.filtered) {
 			if gm.milestoneCur > 0 {
 				gm.milestoneCur--
 			}
@@ -1375,7 +1439,7 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 
 	// Views
 	case "tab":
-		gm.view = (gm.view + 1) % 4
+		gm.view = (gm.view + 1) % 5
 		gm.cursor = 0
 		gm.expanded = -1
 		gm.expandedID = ""
@@ -1404,10 +1468,35 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 		gm.expanded = -1
 		gm.expandedID = ""
 		gm.rebuildFiltered()
+	case "5":
+		gm.view = goalViewWins
+		gm.cursor = 0
+		gm.expanded = -1
+		gm.expandedID = ""
+		gm.rebuildFiltered()
 
 	// Expand / collapse
 	case "enter":
-		if gm.expanded >= 0 {
+		// Wins view: Enter on a milestone row jumps to the
+		// parent goal in the Active view, expands it, and
+		// parks milestoneCur on the same milestone so the user
+		// can act on it (Enter again to toggle, t to make a task).
+		if gm.view == goalViewWins {
+			if gm.cursor < len(gm.winsList) {
+				w := gm.winsList[gm.cursor]
+				gm.view = goalViewAll
+				gm.rebuildFiltered()
+				for i, g := range gm.filtered {
+					if g.ID == w.GoalID {
+						gm.cursor = i
+						gm.expanded = i
+						gm.expandedID = g.ID
+						gm.milestoneCur = w.MsIdx
+						break
+					}
+				}
+			}
+		} else if gm.expanded >= 0 {
 			gm.toggleMilestone()
 		} else if gm.cursor < len(gm.filtered) {
 			gm.expanded = gm.cursor
@@ -1662,6 +1751,61 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 	// Help
 	case "?":
 		gm.input = goalInputHelp
+
+	// Clone the cursor goal as a fresh template — deep-copies
+	// title (with "(copy)" suffix), category, color, tags,
+	// description, target date, milestones (texts + due dates),
+	// and review frequency. Resets done flags / completedAt /
+	// review log so the clone starts at zero progress.
+	// Power-user pattern: ship a goal, clone it for next quarter.
+	case "X":
+		if gm.cursor >= len(gm.filtered) {
+			break
+		}
+		src := gm.filtered[gm.cursor]
+		// Don't clone the wins synthetic; only real goals.
+		if gm.view == goalViewWins {
+			break
+		}
+		now := time.Now().Format("2006-01-02")
+		clone := Goal{
+			ID:              gm.nextID(),
+			Title:           src.Title + " (copy)",
+			Description:     src.Description,
+			Status:          GoalStatusActive,
+			Category:        src.Category,
+			Color:           src.Color,
+			TargetDate:      "", // intentionally blank — user picks fresh deadline
+			CreatedAt:       now,
+			UpdatedAt:       now,
+			ReviewFrequency: src.ReviewFrequency,
+			Notes:           src.Notes,
+			Tags:            append([]string{}, src.Tags...),
+		}
+		// Deep-copy milestones with done/completedAt reset so
+		// the clone starts at 0% progress. Due dates carry over
+		// because they're often the value the user wants to
+		// preserve when cloning ("same cadence, fresh quarter").
+		for _, ms := range src.Milestones {
+			clone.Milestones = append(clone.Milestones, GoalMilestone{
+				Text:    ms.Text,
+				DueDate: ms.DueDate,
+			})
+		}
+		gm.goals = append(gm.goals, clone)
+		gm.saveGoals()
+		// Clear filters so the clone is immediately visible
+		// (consistent with addGoal behavior).
+		gm.searchQuery = ""
+		gm.filterTag = ""
+		gm.rebuildFiltered()
+		for i, g := range gm.filtered {
+			if g.ID == clone.ID {
+				gm.cursor = i
+				break
+			}
+		}
+		gm.statusMsg = "Cloned: " + clone.Title
 
 	// Quick search: '/' opens the live-filter bar. The query
 	// persists across view switches and renders as a chip in
@@ -2177,7 +2321,7 @@ func (gm *GoalsMode) View() string {
 }
 
 func (gm *GoalsMode) renderTabs(b *strings.Builder, w int) {
-	tabs := []string{"Active", "By Category", "Timeline", "Completed"}
+	tabs := []string{"Active", "By Category", "Timeline", "Completed", "Wins"}
 	var parts []string
 	for i, name := range tabs {
 		if goalViewMode(i) == gm.view {
@@ -2238,7 +2382,53 @@ func (gm *GoalsMode) renderStats(b *strings.Builder, w int) {
 	b.WriteString("  " + strings.Join(parts, "  "))
 }
 
+// renderWins draws the next-undone-milestones list. Each row
+// shows the milestone text, the parent goal, and the due date
+// (red when overdue, yellow when ≤7 days). Cursor is gm.cursor
+// indexed against gm.winsList. Enter on a row jumps the user
+// to that goal expanded with milestoneCur set so they can act
+// on it immediately.
+func (gm *GoalsMode) renderWins(b *strings.Builder, w int) {
+	if len(gm.winsList) == 0 {
+		b.WriteString("\n  " + DimStyle.Render("No undone milestones across active goals. You're crushing it."))
+		return
+	}
+	headerStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	b.WriteString("\n  " + headerStyle.Render("Next 5 undone milestones across active goals — Enter to jump") + "\n\n")
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	for i, item := range gm.winsList {
+		prefix := "  "
+		titleStyle := lipgloss.NewStyle().Foreground(text)
+		if i == gm.cursor {
+			prefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▸ ")
+			titleStyle = titleStyle.Bold(true).Underline(true)
+		}
+		dueLbl := ""
+		if d := item.Milestone.DueDate; d != "" {
+			dColor := overlay0
+			if t, err := time.Parse("2006-01-02", d); err == nil {
+				if today.After(t) {
+					dColor = red
+				} else if today.AddDate(0, 0, 7).After(t) {
+					dColor = yellow
+				}
+			}
+			dueLbl = " " + lipgloss.NewStyle().Foreground(dColor).Render(d)
+		}
+		goalTag := lipgloss.NewStyle().Foreground(sapphire).Render(" [" + item.GoalTitle + "]")
+		b.WriteString("  " + prefix + titleStyle.Render(item.Milestone.Text) + dueLbl + goalTag + "\n")
+	}
+}
+
 func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
+	// Wins is a flat-list view of milestones, not goals. Fork
+	// here so the rest of renderGoals can stay focused on the
+	// goal-list shape.
+	if gm.view == goalViewWins {
+		gm.renderWins(b, w)
+		return
+	}
 	if len(gm.filtered) == 0 {
 		msg := "No goals yet. Press 'a' to create one."
 		switch gm.view {
@@ -2642,13 +2832,14 @@ func (gm *GoalsMode) renderHelp(b *strings.Builder, w int) {
 	}{
 		{"Navigation", [][2]string{
 			{"j/k", "Move cursor up/down"},
-			{"Tab", "Cycle views (Active/Category/Timeline/Completed)"},
-			{"1-4", "Jump to specific view"},
-			{"Enter", "Expand goal / toggle milestone"},
+			{"Tab", "Cycle views (Active/Category/Timeline/Completed/Wins)"},
+			{"1-5", "Jump to specific view (5 = Wins — next undone milestones)"},
+			{"Enter", "Expand goal / toggle milestone / jump from Wins"},
 			{"Esc", "Collapse / close"},
 		}},
 		{"Goal Actions", [][2]string{
 			{"a", "Create new goal (title → date → category)"},
+			{"X", "Clone goal as template (resets progress, '(copy)' suffix)"},
 			{"x", "Toggle goal complete / toggle milestone"},
 			{"e", "Edit goal title"},
 			{"E", "Edit goal description"},
