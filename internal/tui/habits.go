@@ -1604,12 +1604,25 @@ func (ht HabitTracker) maxCursor() int {
 
 // View renders the habit tracker overlay.
 func (ht HabitTracker) View() string {
-	width := ht.width * 2 / 3
-	if width < 60 {
-		width = 60
-	}
-	if width > 100 {
-		width = 100
+	// Tab mode fills the editor pane; overlay mode keeps the
+	// historical 60–100 char clamp so the centered popup stays
+	// readable on wide terminals. Without the tab branch, habits
+	// in tab mode rendered as a small 100-char body in a wide
+	// pane with a sea of empty cells around it.
+	var width int
+	if ht.IsTabMode() {
+		width = ht.width - 2
+		if width < 60 {
+			width = 60
+		}
+	} else {
+		width = ht.width * 2 / 3
+		if width < 60 {
+			width = 60
+		}
+		if width > 100 {
+			width = 100
+		}
 	}
 	innerW := width - 6
 
