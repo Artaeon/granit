@@ -120,12 +120,14 @@ type Config struct {
 	UseTaskStore bool `json:"use_task_store"`
 
 	// UseProfiles opts into the Profiles + Daily Hub system
-	// (Phase 3 of the relaunch). Off by default during rollout.
-	// When on, the active profile (read from
-	// <vault>/.granit/active-profile, default "classic") drives
-	// which modules are enabled and which layout boots. Reversible
-	// — flipping back leaves all modules in their last-known state
-	// and stops applying any further profile changes.
+	// (Phase 3 of the relaunch). On by default — the active
+	// profile (read from <vault>/.granit/active-profile, default
+	// "classic") drives which modules are enabled and which
+	// layout boots, and Alt+H opens the new widget-grid Daily
+	// Hub instead of the legacy dashboard.go overlay. Setting
+	// this to false reverts to the pre-Phase-3 boot path
+	// (legacy dashboard, no profile switching, all modules
+	// stay in their last-known enabled state).
 	UseProfiles bool `json:"use_profiles"`
 
 	// File path (not serialized)
@@ -195,6 +197,7 @@ func DefaultConfig() Config {
 		PomodoroGoal:           8,
 		CorePlugins:            DefaultCorePlugins(),
 		UseTaskStore:           true,
+		UseProfiles:            true,
 	}
 }
 

@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Relaunch Phase 3: Profiles and the Daily Hub
+
+#### Profiles
+- New `internal/profiles` package — workspaces that bundle (enabled modules + dashboard layout + templates + default bot + keybind overrides). Switch contexts in one chord without menu walking.
+- 4 launch profiles: **Classic** (the pre-relaunch behavior, all modules on, the migration default for existing vaults), **Daily Operator** (planning loop foregrounded — pomodoro, tasks, calendar, habits, plan-my-day), **Researcher** (knowledge work — graph, semantic search, AI tooling), **Builder** (kanban, projects, goals, standup).
+- Layered loader: built-in → `~/.config/granit/profiles/` (user-global) → `<vault>/.granit/profiles/` (vault-local). Same ID later wins. Hand-edit the JSON to fork or override anything.
+- Active profile pointer at `<vault>/.granit/active-profile` (one-line text, just the ID). New vaults default to Classic, no picker spam.
+- `Shift+Alt+W` opens the profile switcher (4 horizontal cards, arrow-key + Enter, number keys for direct jump). Also reachable as `Switch Profile` in the command palette.
+
+#### Daily Hub
+- Replaces the existing dashboard overlay on `Alt+H` with a 12-column widget grid driven by the active profile's `DashboardSpec`. The Classic profile mirrors the current dashboard's content (today's tasks, overdue, scripture, business pulse) plus recent notes, so existing users see "the same dashboard, but bigger and now profile-switchable."
+- 10 built-in widgets at v1: `today.jot` (front-door capture cell, focus lands here on open), `today.tasks` (due-today, single-key complete), `today.overdue` (with days-overdue badge), `today.calendar` (events + planner blocks), `triage.count` (inbox count, color-coded by backlog size), `goal.progress` (top goals with `████░░` bars), `habit.streak` (today's habits + streak counts), `recent.notes` (last N modified, single-key open), `dashboard.scripture` (verse of the day), `dashboard.businesspulse` (sparkline of business metrics).
+- `Tab` / `Shift+Tab` cycles widget focus, `Alt+1..9` jumps to that cell directly, `Esc` closes. Focused cell gets a brighter border. Widgets too small for their `MinSize` render an inline stub instead of a clipped half-render.
+- Lua-implementable widget surface: the `profiles.Widget` interface and `WidgetCtx` shape carry no Go-only types, so a future Lua bridge can register profiles + widgets verbatim.
+
+#### Module registry batch operations
+- New `modules.Registry.SetEnabledBatch` atomically applies a multi-module enable/disable map in dependency-safe order. Profile switches that flip a dozen modules now succeed in one call instead of failing on the dep wall.
+
 ### Added — Relaunch foundations: Module Registry and Unified Task Store
 
 #### Module Registry (Phase 1)
