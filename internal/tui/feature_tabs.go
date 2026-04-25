@@ -127,6 +127,8 @@ func reopenFeatureCommand(path string) (CommandAction, bool) {
 		return CmdProjectMode, true
 	case FeatGraph:
 		return CmdShowGraph, true
+	case FeatHabits:
+		return CmdHabitTracker, true
 	}
 	return CmdNone, false
 }
@@ -251,6 +253,10 @@ func (m *Model) renderFeatureTab(id FeatureID, width, height int) string {
 		m.graphView.SetSize(width, height)
 		m.graphView.SetTabMode(true)
 		return m.graphView.View()
+	case FeatHabits:
+		m.habitTracker.SetSize(width, height)
+		m.habitTracker.SetTabMode(true)
+		return m.habitTracker.View()
 	}
 	return ""
 }
@@ -367,5 +373,8 @@ func (m *Model) closeFeature(id FeatureID) {
 	case FeatGraph:
 		m.graphView.SetTabMode(false)
 		m.graphView.Close()
+	case FeatHabits:
+		m.habitTracker.SetTabMode(false)
+		m.habitTracker.Close()
 	}
 }

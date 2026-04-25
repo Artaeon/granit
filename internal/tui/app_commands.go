@@ -1119,11 +1119,20 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdHabitTracker:
 		if m.registry.Enabled("habit_tracker") {
-			m.habitTracker.ai = m.aiConfig()
-			m.habitTracker.SetSize(m.width, m.height)
-			m.habitTracker.vault = m.vault
-			m.habitTracker.dailyNotesFolder = m.config.DailyNotesFolder
-			m.habitTracker.Open(m.vault.Root)
+			// Habits opens as an editor tab (feature tab),
+			// matching TaskManager / Calendar / Goals etc.
+			alreadyOpen := m.tabBar != nil && m.tabBar.HasFeatureTab(FeatHabits)
+			if m.tabBar != nil {
+				m.tabBar.AddFeatureTab(FeatHabits, "Habits")
+			}
+			m.activeNote = ""
+			if !alreadyOpen {
+				m.habitTracker.ai = m.aiConfig()
+				m.habitTracker.SetSize(m.width, m.height)
+				m.habitTracker.vault = m.vault
+				m.habitTracker.dailyNotesFolder = m.config.DailyNotesFolder
+				m.habitTracker.Open(m.vault.Root)
+			}
 		}
 
 	case CmdFocusSession:

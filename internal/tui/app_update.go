@@ -1382,9 +1382,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.habitTracker.IsActive() {
+		if m.habitTracker.IsActive() && featureTabIsForeground(m.tabBar, FeatHabits) && !isPassthroughChord(msg.String()) && !m.modalCapturing() {
 			m.habitTracker, _ = m.habitTracker.Update(msg)
 			m.reportError("save habits", m.habitTracker.ConsumeSaveError())
+			// Zombie-tab fix: if Esc/q dismissed the habit
+			// surface internally, close the feature tab so the
+			// user lands back on the underlying note instead of
+			// a blank-but-still-rendered tab.
+			if !m.habitTracker.IsActive() && m.tabBar != nil && m.tabBar.HasFeatureTab(FeatHabits) {
+				m.tabBar.CloseFeatureTab(FeatHabits)
+				m.activeNote = ""
+			}
 			return m, nil
 		}
 
@@ -3197,6 +3205,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch m.focus {
 	case focusSidebar:
+		// Bare-key file ops when the sidebar has focus —
+		// matches user muscle memory from terminal file
+		// managers (n=new, d=delete, r=rename, m=move). Only
+		// intercept when sidebar isn't busy with its own
+		// search/input mode so /, b, R, s, etc. still reach
+		// sidebar.Update normally.
+		if keyMsg, ok := msg.(tea.KeyMsg); ok && !m.sidebar.searching && m.sidebar.search == "" {
+			switch keyMsg.String() {
+			case "n":
+				return m.executeCommand(CmdNewNote)
+			case "d":
+				if path := m.sidebar.Selected(); path != "" {
+					m.activeNote = path
+					return m.executeCommand(CmdDeleteNote)
+				}
+			case "r":
+				if path := m.sidebar.Selected(); path != "" {
+					m.activeNote = path
+					return m.executeCommand(CmdRenameNote)
+				}
+			case "m":
+				if path := m.sidebar.Selected(); path != "" {
+					m.activeNote = path
+					return m.executeCommand(CmdMoveFile)
+				}
+			}
+		}
 		m.sidebar, cmd = m.sidebar.Update(msg)
 	case focusEditor:
 		if !m.viewMode {

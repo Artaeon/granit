@@ -37,6 +37,14 @@ type StatusBar struct {
 	dayPlanned      bool // true once morning routine or plan my day has been run
 	gitStatus       string // e.g. "✓ synced", "● 3 changed", "⚠ no git"
 	gitInitialized  bool
+	profileName     string // active profile (Classic / Daily Operator / Researcher / Builder)
+}
+
+// SetProfile updates the active-profile name shown in the
+// status bar. Re-set whenever the user switches profiles so
+// the indicator reflects the active workspace mode.
+func (sb *StatusBar) SetProfile(name string) {
+	sb.profileName = name
 }
 
 func NewStatusBar() StatusBar {
@@ -345,6 +353,18 @@ func (sb StatusBar) View() string {
 		Background(mantle).Foreground(surface2).Padding(0, 1).
 		Render(vaultLabel)
 
+	// Profile chip — shows which workspace mode the user is in
+	// (Classic / Daily Operator / Researcher / Builder). Quietly
+	// styled with a sapphire background so it sits beside the
+	// vault label without screaming for attention. Empty when
+	// the boot path hasn't called SetProfile yet.
+	profileBadge := ""
+	if sb.profileName != "" {
+		profileBadge = lipgloss.NewStyle().
+			Background(sapphire).Foreground(crust).Bold(true).Padding(0, 1).
+			Render(sb.profileName)
+	}
+
 	// ── Overflow handling ────────────────────────────────────────────
 	totalUsed := func() int {
 		return lipgloss.Width(mode) + lipgloss.Width(fileSection) + lipgloss.Width(cursorPos) +
@@ -353,7 +373,7 @@ func (sb StatusBar) View() string {
 			lipgloss.Width(inboxIndicator) + lipgloss.Width(overdueIndicator) +
 			lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) +
 			lipgloss.Width(pomoIndicator) + lipgloss.Width(focusIndicator) +
-			lipgloss.Width(gitIndicator) +
+			lipgloss.Width(gitIndicator) + lipgloss.Width(profileBadge) +
 			lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	}
 
@@ -406,7 +426,7 @@ func (sb StatusBar) View() string {
 		lipgloss.Width(inboxIndicator) + lipgloss.Width(overdueIndicator) +
 		lipgloss.Width(taskIndicator) + lipgloss.Width(clockIndicator) +
 		lipgloss.Width(pomoIndicator) + lipgloss.Width(focusIndicator) +
-		lipgloss.Width(gitIndicator) +
+		lipgloss.Width(gitIndicator) + lipgloss.Width(profileBadge) +
 		lipgloss.Width(aiIndicator) + lipgloss.Width(rightInfo)
 	gap := sb.width - leftLen - rightLen
 	if gap < 0 {
@@ -421,7 +441,7 @@ func (sb StatusBar) View() string {
 	bar := sepLine + "\n" + mode + fileSection + cursorPos + wordInfo + readingBar + gapStr +
 		researchIndicator + planIndicator + inboxIndicator +
 		overdueIndicator + taskIndicator + clockIndicator + pomoIndicator + focusIndicator +
-		gitIndicator + aiIndicator + rightInfo
+		gitIndicator + profileBadge + aiIndicator + rightInfo
 
 	// ── Help bar ─────────────────────────────────────────────────────
 	var helpItems []struct{ key, desc string }

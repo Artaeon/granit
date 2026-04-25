@@ -36,6 +36,7 @@ const (
 	FeatGoals        FeatureID = "goals"
 	FeatProject      FeatureID = "project"
 	FeatGraph        FeatureID = "graph"
+	FeatHabits       FeatureID = "habits"
 )
 
 // featureTabPath builds the synthetic "Path" string used by

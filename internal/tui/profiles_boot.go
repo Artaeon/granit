@@ -62,21 +62,39 @@ func applyProfile(m *Model, p *profiles.Profile) {
 	if p == nil || m.registry == nil {
 		return
 	}
+	// Build the wanted-state map. Empty EnabledModules means
+	// "Classic — everything on": switching back to Classic must
+	// actively re-enable any modules a previous profile disabled,
+	// otherwise the user gets stuck (the symptom: alt+B silently
+	// no-ops and Habit Tracker disappears from the palette after
+	// a Researcher → Classic round trip).
+	var wanted map[string]bool
 	if len(p.EnabledModules) > 0 {
-		wanted := desiredModuleStates(m, p.EnabledModules)
-		if err := m.registry.SetEnabledBatch(wanted); err != nil {
-			// Dependency conflict somewhere in the wanted state.
-			// Log and continue — modules that could be toggled
-			// were toggled; the rest stay as they were. Surfaces
-			// in the picker UI as "profile applied with warnings."
-			log.Printf("warning: profile %s apply batch: %v", p.ID, err)
-		}
-		// Persist so the next launch sees the profile-derived
-		// enabled-set without needing to re-apply.
-		if err := m.registry.Save(); err != nil {
-			log.Printf("warning: save modules after profile apply: %v", err)
+		wanted = desiredModuleStates(m, p.EnabledModules)
+	} else {
+		wanted = make(map[string]bool)
+		for _, mod := range m.registry.All() {
+			wanted[mod.ID()] = true
 		}
 	}
+	if err := m.registry.SetEnabledBatch(wanted); err != nil {
+		// Dependency conflict somewhere in the wanted state.
+		// Log and continue — modules that could be toggled
+		// were toggled; the rest stay as they were. Surfaces
+		// in the picker UI as "profile applied with warnings."
+		log.Printf("warning: profile %s apply batch: %v", p.ID, err)
+	}
+	// Persist so the next launch sees the profile-derived
+	// enabled-set without needing to re-apply.
+	if err := m.registry.Save(); err != nil {
+		log.Printf("warning: save modules after profile apply: %v", err)
+	}
+
+	// Surface the active profile in the status bar so the user
+	// always knows which workspace mode they're in (the same
+	// shortcut behaving differently across profiles is an easy
+	// way to confuse users — the chip removes that mystery).
+	m.statusbar.SetProfile(p.Name)
 
 	// Layout: only override if the user hasn't explicitly chosen
 	// one. We can't perfectly tell "user picked default" from
