@@ -25,13 +25,41 @@ func (businessPulseWidget) DataNeeds() []profiles.DataKind { return []profiles.D
 
 func (w businessPulseWidget) Render(ctx WidgetCtx, width, height int) string {
 	if len(ctx.BusinessPulse) == 0 {
-		return faintLine("no business metrics — log some in Business Pulse.", width)
+		return faintLine("no business metrics — tag tasks with #revenue/#client/#business.", width)
+	}
+	// For 1-4 samples (the typical "weekly summary" case) render a
+	// stat strip — labels + values, comma-separated. More readable
+	// than a tiny sparkline at this density. For larger N we fall
+	// back to the sparkline (matches the original "trend" intent).
+	if len(ctx.BusinessPulse) <= 4 {
+		return renderStatStrip(ctx.BusinessPulse, width)
 	}
 	spark := sparkline(ctx.BusinessPulse, width)
 	last := ctx.BusinessPulse[len(ctx.BusinessPulse)-1]
 	footer := lipgloss.NewStyle().Faint(true).Render(
 		fmt.Sprintf("%s: %.1f", last.Label, last.Value))
 	return spark + "\n" + footer
+}
+
+// renderStatStrip lays small-N samples as "label: value · ..."
+// joined with a separator. Power users want the number, not a
+// pictogram, when there are only a handful of metrics.
+func renderStatStrip(samples []BusinessSample, width int) string {
+	parts := make([]string, 0, len(samples))
+	for _, s := range samples {
+		val := fmt.Sprintf("%.0f", s.Value)
+		if s.Value != float64(int(s.Value)) {
+			val = fmt.Sprintf("%.1f", s.Value)
+		}
+		labelStyle := lipgloss.NewStyle().Faint(true)
+		valStyle := lipgloss.NewStyle().Bold(true)
+		parts = append(parts, labelStyle.Render(s.Label+":")+" "+valStyle.Render(val))
+	}
+	body := strings.Join(parts, "  ·  ")
+	if width > 0 {
+		body = lipgloss.NewStyle().Width(width).Render(body)
+	}
+	return body
 }
 
 func (w businessPulseWidget) HandleKey(WidgetCtx, string) (bool, tea.Cmd) {

@@ -352,15 +352,14 @@ func (m *Model) buildWidgetCtx() widgets.WidgetCtx {
 		taskList = m.taskStore.All()
 	}
 	ctx := widgets.WidgetCtx{
-		Tasks:        taskList,
-		Scripture:    m.widgetScripture(),
-		RecentNotes:  m.widgetRecentNotes(8),
-		TriageInbox:  countTriageInbox(taskList),
-		// TodayEvents / Goals / Habits / BusinessPulse — empty for
-		// now; data integration ships in follow-up commits as the
-		// existing data sources get factored into widget-shaped
-		// helpers. Widgets render reasonable empty-states until
-		// then.
+		Tasks:         taskList,
+		Scripture:     m.widgetScripture(),
+		RecentNotes:   m.widgetRecentNotes(8),
+		TriageInbox:   countTriageInbox(taskList),
+		TodayEvents:   m.widgetTodayEvents(8),
+		Goals:         m.widgetGoals(3),
+		Habits:        m.widgetHabits(6),
+		BusinessPulse: m.widgetBusinessPulse(),
 	}
 	ctx.OpenNote = func(path string) { m.loadNote(path) }
 	ctx.CompleteTask = func(id string) {
