@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/artaeon/granit/internal/config"
+	"github.com/artaeon/granit/internal/tasks"
 	"github.com/artaeon/granit/internal/vault"
 )
 
@@ -23,25 +24,12 @@ import (
 // ---------------------------------------------------------------------------
 
 // Task represents a single task extracted from a markdown note.
-type Task struct {
-	Text             string   `json:"text"`
-	Done             bool     `json:"done"`
-	DueDate          string   `json:"due_date"`                 // "2006-01-02" or ""
-	Priority         int      `json:"priority"`                 // 0=none, 1=low, 2=medium, 3=high, 4=highest
-	ScheduledTime    string   `json:"scheduled_time,omitempty"` // "HH:MM-HH:MM" or "" — set by AI scheduler
-	Tags             []string `json:"tags,omitempty"`
-	NotePath         string   `json:"note_path"`                   // source note relative path
-	LineNum          int      `json:"line_num"`                    // 1-based line number in source note
-	Indent           int      `json:"indent,omitempty"`            // 0=top-level, 1=subtask, 2=sub-subtask
-	ParentLine       int      `json:"parent_line,omitempty"`       // LineNum of parent task, 0 if top-level
-	DependsOn        []string `json:"depends_on,omitempty"`        // dependency references (task text snippets)
-	EstimatedMinutes int      `json:"estimated_minutes,omitempty"` // time estimate in minutes
-	Recurrence       string   `json:"recurrence,omitempty"`        // "daily", "weekly", "monthly", etc.
-	Project          string   `json:"project,omitempty"`           // matched project name
-	SnoozedUntil     string   `json:"snoozed_until,omitempty"`     // ISO "2006-01-02T15:04"
-	GoalID           string   `json:"goal_id,omitempty"`           // linked goal e.g. "G001"
-	ActualMinutes    int      `json:"-"`                           // computed from time tracker, not serialized
-}
+// Task is the canonical task representation. Aliased to
+// tasks.Task so the new sidecar-tracked fields (ID, Triage,
+// ScheduledStart, etc.) are accessible from tui code without
+// per-call conversion. The struct definition lives in
+// internal/tasks/task.go.
+type Task = tasks.Task
 
 // taskView identifies which tab is active.
 type taskView int
@@ -372,138 +360,16 @@ func CountOverdueTasksFromList(tasks []Task) int {
 // Parsing
 // ---------------------------------------------------------------------------
 
-// ParseAllTasks scans all note content for task lines.
+// ParseAllTasks scans all note content for task lines. Thin wrapper
+// over tasks.ParseNotes — the actual parsing logic lives in the
+// tasks package now so the upcoming TaskStore can call it directly
+// without depending on tui.
 func ParseAllTasks(notes map[string]*vault.Note) []Task {
-	var tasks []Task
-	for _, note := range notes {
-		if note.Content == "" {
-			continue
-		}
-		lines := strings.Split(note.Content, "\n")
-		// Track recent tasks per indent level for parent linkage.
-		// Key: indent level, value: LineNum of the most recent task at that level.
-		parentStack := make(map[int]int) // indent -> LineNum
-
-		for i, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if !strings.HasPrefix(trimmed, "- [") {
-				continue
-			}
-			m := tmTaskRe.FindStringSubmatch(line)
-			if m == nil {
-				continue
-			}
-			done := m[2] == "x" || m[2] == "X"
-			taskText := m[3][2:] // strip "] " prefix
-
-			// Determine indentation level from leading whitespace.
-			indent := 0
-			for _, ch := range line {
-				if ch == ' ' {
-					indent++
-				} else if ch == '\t' {
-					indent += 2
-				} else {
-					break
-				}
-			}
-			indentLevel := indent / 2 // 2 spaces per level
-
-			// Find parent: the most recent task at a lower indent level.
-			parentLine := 0
-			for lvl := indentLevel - 1; lvl >= 0; lvl-- {
-				if pl, ok := parentStack[lvl]; ok {
-					parentLine = pl
-					break
-				}
-			}
-			parentStack[indentLevel] = i + 1
-
-			t := Task{
-				Text:       taskText,
-				Done:       done,
-				NotePath:   note.RelPath,
-				LineNum:    i + 1,
-				Indent:     indentLevel,
-				ParentLine: parentLine,
-			}
-
-			// Due date
-			// Infer due date from daily note filename
-			if t.DueDate == "" {
-				base := filepath.Base(note.RelPath)
-				base = strings.TrimSuffix(base, ".md")
-				if _, err := time.Parse("2006-01-02", base); err == nil {
-					t.DueDate = base
-				}
-			}
-			if dm := tmDueDateRe.FindStringSubmatch(taskText); dm != nil {
-				t.DueDate = dm[1]
-			}
-
-			// Priority (check highest first)
-			if tmPrioHighestRe.MatchString(taskText) {
-				t.Priority = 4
-			} else if tmPrioHighRe.MatchString(taskText) {
-				t.Priority = 3
-			} else if tmPrioMedRe.MatchString(taskText) {
-				t.Priority = 2
-			} else if tmPrioLowRe.MatchString(taskText) {
-				t.Priority = 1
-			}
-
-			// Scheduled time (set by AI scheduler)
-			if sm := tmScheduleRe.FindStringSubmatch(taskText); sm != nil {
-				t.ScheduledTime = sm[1]
-			}
-
-			// Tags
-			for _, tm := range tmTagRe.FindAllStringSubmatch(taskText, -1) {
-				t.Tags = append(t.Tags, tm[1])
-			}
-
-			// Dependencies (supports depends:"multi word" and depends:single)
-			for _, dm := range tmDependsRe.FindAllStringSubmatch(taskText, -1) {
-				dep := dm[1] // quoted form
-				if dep == "" {
-					dep = dm[2] // unquoted form
-				}
-				if dep != "" {
-					t.DependsOn = append(t.DependsOn, dep)
-				}
-			}
-
-			// Recurrence
-			if rm := tmRecurEmojiRe.FindStringSubmatch(taskText); rm != nil {
-				t.Recurrence = rm[1]
-			} else if rm := tmRecurTagRe.FindStringSubmatch(taskText); rm != nil {
-				t.Recurrence = rm[1]
-			}
-
-			// Snooze
-			if sm := tmSnoozeRe.FindStringSubmatch(taskText); sm != nil {
-				t.SnoozedUntil = sm[1]
-			}
-
-			// Goal link
-			if gm := tmGoalIDRe.FindStringSubmatch(taskText); gm != nil {
-				t.GoalID = gm[1]
-			}
-
-			// Time estimate (~30m, ~2h)
-			if em := tmEstimateRe.FindStringSubmatch(taskText); em != nil {
-				val := 0
-				_, _ = fmt.Sscanf(em[1], "%d", &val)
-				if em[2] == "h" {
-					val *= 60
-				}
-				t.EstimatedMinutes = val
-			}
-
-			tasks = append(tasks, t)
-		}
+	items := make([]tasks.NoteContent, 0, len(notes))
+	for _, n := range notes {
+		items = append(items, tasks.NoteContent{Path: n.RelPath, Content: n.Content})
 	}
-	return tasks
+	return tasks.ParseNotes(items)
 }
 
 // FilterTasks applies config-based task filtering (exclude folders, require
