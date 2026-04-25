@@ -78,12 +78,17 @@ type Model struct {
 
 	commandPalette CommandPalette
 	registry       *modules.Registry
-	// cmdActionToModuleID lets the palette filter (and, in later
-	// commits, the keybind dispatcher) ask "is the module that owns
-	// this command currently enabled?" — populated by RegisterBuiltins.
-	// Commands without an entry have no module owner and stay visible.
+	// cmdActionToModuleID lets the palette filter ask "is the module
+	// that owns this command currently enabled?" — populated by
+	// RegisterBuiltins. Commands without an entry have no module
+	// owner and stay visible.
 	cmdActionToModuleID map[CommandAction]string
-	settings            Settings
+	// moduleCommandToAction lets the keybind dispatcher resolve a
+	// registry-routed Keybind.CommandID back to the CommandAction
+	// executeCommand can invoke. Empty entries fall through to the
+	// legacy switch in app_update.go.
+	moduleCommandToAction map[string]CommandAction
+	settings              Settings
 	graphView      GraphView
 	tagBrowser     TagBrowser
 	helpOverlay    HelpOverlay
@@ -533,7 +538,7 @@ func NewModel(vaultPath string) (Model, error) {
 	if err := m.registry.Load(); err != nil {
 		log.Printf("warning: load module state: %v", err)
 	}
-	m.cmdActionToModuleID = RegisterBuiltins(m.registry)
+	m.cmdActionToModuleID, m.moduleCommandToAction = RegisterBuiltins(m.registry)
 	registry := m.registry
 	cmdMap := m.cmdActionToModuleID
 	m.commandPalette.SetVisibilityFilter(func(a CommandAction) bool {

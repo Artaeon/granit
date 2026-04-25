@@ -54,19 +54,29 @@ func allBuiltins() []builtinRegistration {
 	return []builtinRegistration{
 		pomodoroModule(),
 		flashcardsModule(),
+		quizModule(),
+		habitsModule(),
 	}
 }
 
 // RegisterBuiltins registers every compiled-in module with the
-// registry and returns the (CommandAction → moduleID) reverse map the
-// command palette uses to filter out commands owned by disabled
-// modules.
+// registry and returns two reverse maps the dispatcher needs:
 //
-// Unmigrated commands have no entry in the returned map and stay
-// visible — the registry's default-on-unknown semantics apply at the
-// palette layer too.
-func RegisterBuiltins(reg *modules.Registry) (cmdActionToModuleID map[CommandAction]string) {
+//   - cmdActionToModuleID — used by the palette filter to ask "is the
+//     module that owns this CommandAction currently enabled?"
+//   - moduleCommandToAction — used by the keybind dispatcher to
+//     resolve a registry-routed Keybind.CommandID back to the legacy
+//     CommandAction that executeCommand can invoke.
+//
+// Unmigrated commands have no entry in either map and follow the
+// legacy paths — the registry's default-on-unknown semantics apply at
+// every layer that consults these maps.
+func RegisterBuiltins(reg *modules.Registry) (
+	cmdActionToModuleID map[CommandAction]string,
+	moduleCommandToAction map[string]CommandAction,
+) {
 	cmdActionToModuleID = make(map[CommandAction]string)
+	moduleCommandToAction = make(map[string]CommandAction)
 	for _, b := range allBuiltins() {
 		if err := reg.Register(b.mod); err != nil {
 			// Duplicate IDs in the built-in list are a programmer
@@ -74,9 +84,10 @@ func RegisterBuiltins(reg *modules.Registry) (cmdActionToModuleID map[CommandAct
 			// shadowing.
 			panic("modules: RegisterBuiltins: " + err.Error())
 		}
-		for _, action := range b.actions {
+		for cmdID, action := range b.actions {
 			cmdActionToModuleID[action] = b.mod.ID()
+			moduleCommandToAction[cmdID] = action
 		}
 	}
-	return cmdActionToModuleID
+	return cmdActionToModuleID, moduleCommandToAction
 }

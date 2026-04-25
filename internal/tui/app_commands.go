@@ -398,6 +398,9 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.flashcards.LoadCards(noteContents)
 		m.flashcards.Open()
 	case CmdQuizMode:
+		if !m.registry.Enabled("quiz_mode") {
+			break
+		}
 		m.quizMode.SetSize(m.width, m.height)
 		noteContents := make(map[string]string)
 		for _, p := range m.vault.SortedPaths() {
@@ -1081,7 +1084,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 
 	case CmdHabitTracker:
-		if m.config.CorePluginEnabled("habit_tracker") {
+		if m.registry.Enabled("habit_tracker") {
 			m.habitTracker.ai = m.aiConfig()
 			m.habitTracker.SetSize(m.width, m.height)
 			m.habitTracker.vault = m.vault

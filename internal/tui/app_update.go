@@ -2601,6 +2601,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Module-routed keys: any keybind a registered module declares
+		// is dispatched here before the legacy global-key switch
+		// below. Keys not owned by an enabled module fall through.
+		// EnabledKeybinds() recomputes per call — fine at Phase 1's
+		// handful of modules; cache when the module count grows.
+		if m.registry != nil {
+			binds, _ := m.registry.EnabledKeybinds()
+			if cmdID, ok := binds[msg.String()]; ok {
+				if action, mapped := m.moduleCommandToAction[cmdID]; mapped {
+					return m.executeCommand(action)
+				}
+			}
+		}
+
 		// Global keys
 		switch msg.String() {
 		case "ctrl+c", "ctrl+q":
@@ -2972,10 +2986,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.research.Open(m.vault.Root, m.vault.SortedPaths(), m.activeNote)
 			}
 			return m, nil
-
-		case "alt+b":
-			// Habit tracker
-			return m.executeCommand(CmdHabitTracker)
 
 		case "alt+t":
 			// Time tracker
