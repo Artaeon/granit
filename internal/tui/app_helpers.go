@@ -1097,6 +1097,25 @@ func (m *Model) currentTasks() []Task {
 	return ParseAllTasks(m.vault.Notes)
 }
 
+// modalCapturing reports whether a transient input overlay or
+// prompt has the keyboard. When true, feature-tab routing
+// (TaskManager / Calendar / Goals / Projects / Kanban / Graph)
+// must yield so the user's keystrokes reach the modal instead
+// of being swallowed by whichever feature is the foreground tab.
+//
+// Without this, opening Ctrl+X palette while a feature tab was
+// active sent subsequent keys into the feature tab — the modal
+// rendered on top but couldn't accept input until the user
+// pressed Esc to close the tab. Same for /search, new-note
+// prompt, extract prompt, and move-file prompt.
+func (m *Model) modalCapturing() bool {
+	return m.commandPalette.IsActive() ||
+		m.searchMode ||
+		m.newNoteMode ||
+		m.extractMode ||
+		m.moveFileMode
+}
+
 // atomicWriteNote, atomicWriteState, atomicWriteWithPerm are thin
 // wrappers around the internal/atomicio package. Kept as
 // package-tui aliases so the dozens of existing call sites don't

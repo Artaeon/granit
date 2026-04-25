@@ -1018,7 +1018,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.graphView.IsActive() && featureTabIsForeground(m.tabBar, FeatGraph) && !isPassthroughChord(msg.String()) {
+		if m.graphView.IsActive() && featureTabIsForeground(m.tabBar, FeatGraph) && !isPassthroughChord(msg.String()) && !m.modalCapturing() {
 			m.graphView, _ = m.graphView.Update(msg)
 			if nav := m.graphView.SelectedNote(); nav != "" {
 				m.loadNote(nav)
@@ -1147,7 +1147,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.calendar.IsActive() && featureTabIsForeground(m.tabBar, FeatCalendar) && !isPassthroughChord(msg.String()) {
+		if m.calendar.IsActive() && featureTabIsForeground(m.tabBar, FeatCalendar) && !isPassthroughChord(msg.String()) && !m.modalCapturing() {
 			// Clear refresh flag — calendar data is already updated by refreshComponents
 			if m.needsRefresh {
 				m.needsRefresh = false
@@ -1419,7 +1419,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.goalsMode.IsActive() && featureTabIsForeground(m.tabBar, FeatGoals) && !isPassthroughChord(msg.String()) {
+		if m.goalsMode.IsActive() && featureTabIsForeground(m.tabBar, FeatGoals) && !isPassthroughChord(msg.String()) && !m.modalCapturing() {
 			m.goalsMode, _ = m.goalsMode.Update(msg)
 			if !m.goalsMode.IsActive() && m.goalsMode.WasFileChanged() {
 				m.refreshComponents("")
@@ -1515,7 +1515,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// opening a feature tab traps the user — the feature's
 		// Update would silently swallow the tab-management
 		// keypress.
-		if id, ok := m.tabBar.ActiveFeature(); ok && !isPassthroughChord(msg.String()) {
+		//
+		// Modal overlays (palette, search, new-note prompt, etc.)
+		// also skip this branch — they're transient input bars
+		// that need to own the keyboard until dismissed. Without
+		// this guard, opening Ctrl+X palette while a feature tab
+		// is foreground would send subsequent keystrokes to the
+		// feature tab instead of the palette input — exactly the
+		// bug a user just reported as "I press Ctrl+X, palette
+		// opens, but my keys go into TaskManager until I press
+		// Esc to close the tab".
+		if id, ok := m.tabBar.ActiveFeature(); ok && !isPassthroughChord(msg.String()) && !m.modalCapturing() {
 			if next, cmd, routed := m.routeFeatureKey(id, msg); routed {
 				m = next
 				return m, cmd
@@ -1830,7 +1840,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
-		if m.projectMode.IsActive() && featureTabIsForeground(m.tabBar, FeatProject) && !isPassthroughChord(msg.String()) {
+		if m.projectMode.IsActive() && featureTabIsForeground(m.tabBar, FeatProject) && !isPassthroughChord(msg.String()) && !m.modalCapturing() {
 			m.projectMode, _ = m.projectMode.Update(msg)
 			// Sync task toggles back to vault
 			if m.projectMode.WasFileChanged() {
@@ -2463,7 +2473,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Key dispatch only fires when Kanban is the active
 			// tab; HasPendingActions drains regardless so async
 			// writes complete even if the user has switched away.
-			if m.kanban.IsActive() && featureTabIsForeground(m.tabBar, FeatKanban) && !isPassthroughChord(msg.String()) {
+			if m.kanban.IsActive() && featureTabIsForeground(m.tabBar, FeatKanban) && !isPassthroughChord(msg.String()) && !m.modalCapturing() {
 				m.kanban, cmd = m.kanban.Update(msg)
 				m.reportError("persist kanban state", m.kanban.ConsumeSaveError())
 			}
