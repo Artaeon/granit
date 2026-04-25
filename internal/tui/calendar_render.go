@@ -718,6 +718,7 @@ func (c Calendar) viewWeek() string {
 					cellContent = cursorStyle.Render(" " + TruncateDisplay(curLabel, inner-1))
 				} else if active != nil {
 					isEntryStart := active.startMin >= slotMin && active.startMin < slotMin+30
+					hasConflict := overlapCount > 1
 
 					var label string
 					if isEntryStart {
@@ -728,19 +729,30 @@ func (c Calendar) viewWeek() string {
 						if active.location != "" && inner > 24 {
 							label += " @" + active.location
 						}
-						if overlapCount > 1 {
-							label = TruncateDisplay(label, inner-4) + fmt.Sprintf(" +%d", overlapCount-1)
+						if hasConflict {
+							// "⚠+N" badge on the entry-start row makes
+							// the conflict visible at a glance — prior
+							// rendering only showed " +N" which blended
+							// into the title text.
+							label = TruncateDisplay(label, inner-5) + fmt.Sprintf(" ⚠+%d", overlapCount-1)
 						}
 					} else {
 						label = "  " + active.title
 					}
 
-					// Event color: time-block aware
+					// Event color: time-block aware. Conflicting
+					// slots get a red background so the entire
+					// duration of the clash stands out, not just
+					// the first row.
 					evColor := eventColorForSlot(*active, hour)
 					evFg := active.color
 					if evFg == blue {
 						evFg = tb.eventFg
 					} else {
+						evFg = crust
+					}
+					if hasConflict {
+						evColor = red
 						evFg = crust
 					}
 					blockStyle := lipgloss.NewStyle().Foreground(evFg).Background(evColor).Width(inner + 1)
@@ -948,8 +960,13 @@ func (c *Calendar) rebuildAgendaItems() {
 		day := c.today.AddDate(0, 0, d)
 		dateStr := day.Format("2006-01-02")
 
-		// Add events for this date
+		// Add events for this date — skip non-matches when a
+		// quick-search query is active so the agenda becomes a
+		// real filter-narrowed list, not just dim-strikethrough.
 		for _, ev := range c.eventsForDate(day) {
+			if !c.matchesSearch(ev.Title) {
+				continue
+			}
 			items = append(items, agendaItem{
 				itemType: "event",
 				dateStr:  dateStr,
@@ -958,7 +975,10 @@ func (c *Calendar) rebuildAgendaItems() {
 		}
 
 		// Add planner blocks for this date
-		for pi := range c.plannerBlocks[dateStr] {
+		for pi, blk := range c.plannerBlocks[dateStr] {
+			if !c.matchesSearch(blk.Text) {
+				continue
+			}
 			items = append(items, agendaItem{
 				itemType: "planner",
 				dateStr:  dateStr,
@@ -967,7 +987,10 @@ func (c *Calendar) rebuildAgendaItems() {
 		}
 
 		// Add tasks for this date
-		for ti := range c.tasks[dateStr] {
+		for ti, t := range c.tasks[dateStr] {
+			if !c.matchesSearch(t.Text) {
+				continue
+			}
 			items = append(items, agendaItem{
 				itemType: "task",
 				dateStr:  dateStr,

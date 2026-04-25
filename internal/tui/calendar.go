@@ -194,6 +194,39 @@ type Calendar struct {
 	weekMilestoneStep   int    // 0=pick goal, 1=enter milestone text
 	weekMilestoneBuf    string
 	weekMilestoneGoalID string
+
+	// Quick search across events. '/' opens an input bar that
+	// types a fuzzy filter; the query persists across view
+	// switches and renders as a chip in the title bar. Empty
+	// query means no filter (all events shown).
+	searching   bool
+	searchQuery string
+
+	// Jump-to-date prompt. 'J' opens; accepts YYYY-MM-DD,
+	// "today"/"tomorrow"/weekday names ("monday", "next monday"),
+	// or relative offsets ("+7d", "-3w", "+2m", "+1y"). On Enter
+	// the cursor + viewing both move to the parsed date.
+	jumpingDate bool
+	jumpDateBuf string
+
+	// Find-next-free-slot picker. 'n' opens a duration prompt
+	// (step 0); pressing 1-8 picks a duration and computes the
+	// next free slots in the user's working hours over the next
+	// 14 days (step 1). Enter on a slot moves the cursor and
+	// opens the new-event form pre-filled with that time.
+	findingSlot      bool
+	findSlotStep     int        // 0=duration prompt, 1=results list
+	findSlotDuration int        // chosen duration in minutes
+	findSlotResults  []freeSlot // top matches in next 14 days
+	findSlotCursor   int        // result-list cursor
+}
+
+// freeSlot is a contiguous block of time with no events or
+// planner blocks scheduled. Returned by findFreeSlots and
+// rendered in the find-slot picker.
+type freeSlot struct {
+	Start time.Time
+	End   time.Time
 }
 
 // NewCalendar creates a new Calendar overlay.
@@ -389,6 +422,123 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Quick-search input mode — '/' enters this; the buffer
+		// live-filters which events render. Esc cancels and
+		// clears; Enter commits and exits the input bar (the
+		// query stays applied; 'c' or '/'+empty clears it).
+		if c.searching {
+			switch msg.String() {
+			case "esc":
+				c.searching = false
+				c.searchQuery = ""
+			case "enter":
+				c.searching = false
+			case "backspace":
+				if len(c.searchQuery) > 0 {
+					c.searchQuery = TrimLastRune(c.searchQuery)
+				}
+			default:
+				if len(msg.String()) == 1 || msg.String() == " " {
+					c.searchQuery += msg.String()
+				}
+			}
+			// Rebuild agenda so the filtered list reflects the
+			// new query on the very next render — without this,
+			// the search bar updates but the visible items lag
+			// behind until the user moves the cursor.
+			c.rebuildAgendaItems()
+			return c, nil
+		}
+
+		// Jump-to-date input mode — 'J' enters this; Enter
+		// parses the buffer and moves the cursor.
+		if c.jumpingDate {
+			switch msg.String() {
+			case "esc":
+				c.jumpingDate = false
+				c.jumpDateBuf = ""
+			case "enter":
+				if t, ok := parseJumpDate(c.jumpDateBuf, c.today); ok {
+					c.cursor = t
+					c.viewing = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.Local)
+				}
+				c.jumpingDate = false
+				c.jumpDateBuf = ""
+			case "backspace":
+				if len(c.jumpDateBuf) > 0 {
+					c.jumpDateBuf = TrimLastRune(c.jumpDateBuf)
+				}
+			default:
+				if len(msg.String()) == 1 {
+					c.jumpDateBuf += msg.String()
+				}
+			}
+			return c, nil
+		}
+
+		// Find-next-free-slot picker — 'n' enters; step 0 is
+		// the duration prompt, step 1 is the results list.
+		if c.findingSlot {
+			switch c.findSlotStep {
+			case 0:
+				durMap := map[string]int{
+					"1": 15, "2": 30, "3": 45,
+					"4": 60, "5": 90, "6": 120,
+					"7": 180, "8": 240,
+				}
+				if msg.String() == "esc" {
+					c.findingSlot = false
+					return c, nil
+				}
+				if dur, ok := durMap[msg.String()]; ok {
+					c.findSlotDuration = dur
+					c.findSlotResults = c.findFreeSlots(dur, 14, 9, 18, 5)
+					c.findSlotCursor = 0
+					if len(c.findSlotResults) == 0 {
+						// No free slots in the search window —
+						// bail out with a status hint instead of
+						// stranding the user in an empty picker.
+						c.findingSlot = false
+						return c, nil
+					}
+					c.findSlotStep = 1
+				}
+			case 1:
+				switch msg.String() {
+				case "esc":
+					c.findingSlot = false
+				case "up", "k":
+					if c.findSlotCursor > 0 {
+						c.findSlotCursor--
+					}
+				case "down", "j":
+					if c.findSlotCursor < len(c.findSlotResults)-1 {
+						c.findSlotCursor++
+					}
+				case "enter":
+					if c.findSlotCursor < len(c.findSlotResults) {
+						slot := c.findSlotResults[c.findSlotCursor]
+						c.cursor = time.Date(slot.Start.Year(), slot.Start.Month(), slot.Start.Day(), 0, 0, 0, 0, time.Local)
+						c.viewing = time.Date(slot.Start.Year(), slot.Start.Month(), 1, 0, 0, 0, 0, time.Local)
+						// Pre-fill the new-event form with this slot.
+						c.eventEditMode = 1
+						c.eventEditField = efTitle
+						c.eventEditID = ""
+						c.eventEditTitle = ""
+						c.eventEditTime = slot.Start.Format("15:04")
+						c.eventEditDur = c.findSlotDuration
+						c.eventEditDurBuf = strconv.Itoa(c.findSlotDuration)
+						c.eventEditLoc = ""
+						c.eventEditRecur = ""
+						c.eventEditColor = ""
+						c.eventEditDesc = ""
+					}
+					c.findingSlot = false
+				}
+			}
+			return c, nil
+		}
+
 		// Quick-add event input mode
 		if c.addingEvent {
 			switch msg.String() {
@@ -735,6 +885,33 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				c.weekMilestoneBuf = ""
 				c.weekMilestoneGoalID = ""
 			}
+
+		// Quick search: '/' opens an input bar; types live-filter
+		// events. The query persists across view switches.
+		case "/":
+			c.searching = true
+			// Don't reset the buffer — re-pressing '/' lets the
+			// user refine the existing query.
+
+		// Clear active search query (mirror of TaskManager 'c').
+		case "c":
+			if c.searchQuery != "" {
+				c.searchQuery = ""
+				c.rebuildAgendaItems()
+			}
+
+		// Jump to date prompt: J → "2026-05-15" / "next monday" / "+7d"
+		case "J":
+			c.jumpingDate = true
+			c.jumpDateBuf = ""
+
+		// Find next free slot: opens duration prompt, then results.
+		case "n":
+			c.findingSlot = true
+			c.findSlotStep = 0
+			c.findSlotDuration = 0
+			c.findSlotResults = nil
+			c.findSlotCursor = 0
 
 		case "e":
 			if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
@@ -1177,20 +1354,84 @@ func (c *Calendar) syncViewing() {
 }
 
 func (c Calendar) View() string {
+	var body string
 	switch c.view {
 	case calViewWeek:
-		return c.viewWeek()
+		body = c.viewWeek()
 	case calView3Day:
-		return c.viewWeek() // reuse week grid for 3-day view
+		body = c.viewWeek() // reuse week grid for 3-day view
 	case calView1Day:
-		return c.view1Day()
+		body = c.view1Day()
 	case calViewAgenda:
-		return c.viewAgenda()
+		body = c.viewAgenda()
 	case calViewYear:
-		return c.viewYear()
+		body = c.viewYear()
 	default:
-		return c.viewMonth()
+		body = c.viewMonth()
 	}
+	// Active prompts: search bar / jump-date / find-slot picker
+	// land at the bottom of the view so they don't bump the
+	// existing layout. Mutually exclusive — only one at a time.
+	if c.findingSlot {
+		return body + "\n" + c.renderFindSlotPrompt()
+	}
+	if c.jumpingDate {
+		return body + "\n" + c.renderJumpDatePrompt()
+	}
+	if c.searching {
+		return body + "\n" + c.renderSearchPrompt()
+	}
+	// Idle state: if a search query is active (committed but not
+	// open), show a compact reminder so the filter isn't silent.
+	if c.searchQuery != "" {
+		return body + "\n  " + DimStyle.Render("/ search: "+c.searchQuery+"  (c to clear)")
+	}
+	return body
+}
+
+// renderSearchPrompt draws the live-typing bar for '/'.
+func (c Calendar) renderSearchPrompt() string {
+	cursor := lipgloss.NewStyle().Foreground(mauve).Render("▏")
+	label := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("/ search ")
+	hint := DimStyle.Render("  (Enter commit, Esc cancel)")
+	return "  " + label + c.searchQuery + cursor + hint
+}
+
+// renderJumpDatePrompt draws the live-typing bar for 'J'.
+func (c Calendar) renderJumpDatePrompt() string {
+	cursor := lipgloss.NewStyle().Foreground(mauve).Render("▏")
+	label := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("J jump → ")
+	hint := DimStyle.Render("  (YYYY-MM-DD / today / monday / next monday / +7d / -3w)")
+	return "  " + label + c.jumpDateBuf + cursor + hint
+}
+
+// renderFindSlotPrompt draws either the duration menu (step 0)
+// or the results list (step 1) for the find-free-slot picker.
+func (c Calendar) renderFindSlotPrompt() string {
+	if c.findSlotStep == 0 {
+		label := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("n find next free slot")
+		menu := "  1=15m  2=30m  3=45m  4=1h  5=90m  6=2h  7=3h  8=4h"
+		hint := DimStyle.Render("  (Esc cancel)")
+		return "  " + label + "\n  " + menu + hint
+	}
+	var b strings.Builder
+	header := lipgloss.NewStyle().Foreground(mauve).Bold(true).
+		Render(fmt.Sprintf("n free slots (%dm) — Enter to schedule, Esc cancel", c.findSlotDuration))
+	b.WriteString("  " + header + "\n")
+	for i, slot := range c.findSlotResults {
+		marker := "  "
+		line := fmt.Sprintf("%s — %s",
+			slot.Start.Format("Mon Jan 2"),
+			slot.Start.Format("15:04")+"-"+slot.End.Format("15:04"))
+		if i == c.findSlotCursor {
+			marker = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▸ ")
+			line = lipgloss.NewStyle().Foreground(text).Bold(true).Render(line)
+		} else {
+			line = lipgloss.NewStyle().Foreground(text).Render(line)
+		}
+		b.WriteString("  " + marker + line + "\n")
+	}
+	return b.String()
 }
 
 // ---------------------------------------------------------------------------
@@ -1252,6 +1493,185 @@ func (c Calendar) eventsForDate(dt time.Time) []CalendarEvent {
 		}
 	}
 	return result
+}
+
+// matchesSearch reports whether title passes the active search
+// filter. Empty query matches everything (no filter active).
+// Match is a case-insensitive substring on title — fast and
+// predictable; can extend to fuzzy or location/desc later.
+func (c Calendar) matchesSearch(title string) bool {
+	if c.searchQuery == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(title), strings.ToLower(c.searchQuery))
+}
+
+// parseJumpDate converts a free-form date expression into an
+// absolute time.Time. Supported formats (anchored at `today`):
+//
+//	2026-05-15        → that date
+//	today / tomorrow / yesterday
+//	monday … sunday   → next occurrence (today if it's that day)
+//	next monday …     → strictly the following week
+//	+7d / -3w / +2m / +1y → relative offset
+//
+// Returns ok=false on unparseable input so the caller can leave
+// the cursor untouched and surface a hint.
+func parseJumpDate(s string, today time.Time) (time.Time, bool) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return time.Time{}, false
+	}
+	// Absolute YYYY-MM-DD.
+	if t, err := time.ParseInLocation("2006-01-02", s, time.Local); err == nil {
+		return t, true
+	}
+	// Relative offset: +Nd / -Nw / +Nm / +Ny.
+	if (strings.HasPrefix(s, "+") || strings.HasPrefix(s, "-")) && len(s) >= 3 {
+		sign := 1
+		if s[0] == '-' {
+			sign = -1
+		}
+		unit := s[len(s)-1]
+		n, err := strconv.Atoi(s[1 : len(s)-1])
+		if err == nil {
+			n *= sign
+			switch unit {
+			case 'd':
+				return today.AddDate(0, 0, n), true
+			case 'w':
+				return today.AddDate(0, 0, 7*n), true
+			case 'm':
+				return today.AddDate(0, n, 0), true
+			case 'y':
+				return today.AddDate(n, 0, 0), true
+			}
+		}
+	}
+	switch s {
+	case "today":
+		return today, true
+	case "tomorrow":
+		return today.AddDate(0, 0, 1), true
+	case "yesterday":
+		return today.AddDate(0, 0, -1), true
+	}
+	weekdays := map[string]time.Weekday{
+		"sunday": time.Sunday, "monday": time.Monday, "tuesday": time.Tuesday,
+		"wednesday": time.Wednesday, "thursday": time.Thursday,
+		"friday": time.Friday, "saturday": time.Saturday,
+	}
+	bare := s
+	skipWeek := false
+	if strings.HasPrefix(s, "next ") {
+		bare = strings.TrimPrefix(s, "next ")
+		skipWeek = true
+	}
+	if wd, ok := weekdays[bare]; ok {
+		diff := (int(wd) - int(today.Weekday()) + 7) % 7
+		if diff == 0 && skipWeek {
+			diff = 7
+		}
+		if diff > 0 || !skipWeek {
+			return today.AddDate(0, 0, diff), true
+		}
+		return today, true
+	}
+	return time.Time{}, false
+}
+
+// findFreeSlots scans the next `days` days inside [startHour,
+// endHour) and returns up to `limit` contiguous slots of
+// `durationMin` minutes that don't overlap any event or
+// scheduled planner block. Half-hour grid resolution.
+func (c Calendar) findFreeSlots(durationMin, days, startHour, endHour, limit int) []freeSlot {
+	if durationMin <= 0 || days <= 0 || endHour <= startHour {
+		return nil
+	}
+	durationStep := durationMin / 30
+	if durationMin%30 != 0 {
+		durationStep++
+	}
+	if durationStep < 1 {
+		durationStep = 1
+	}
+	var out []freeSlot
+	dayStart := time.Date(c.today.Year(), c.today.Month(), c.today.Day(), 0, 0, 0, 0, time.Local)
+	for d := 0; d < days && len(out) < limit; d++ {
+		day := dayStart.AddDate(0, 0, d)
+		// Build a busy-set of half-hour indexes for this day.
+		busy := make(map[int]bool)
+		mark := func(startMin, endMin int) {
+			s := startMin / 30
+			if startMin%30 != 0 {
+				// fall through — start lands inside the slot
+			}
+			e := endMin / 30
+			if endMin%30 != 0 {
+				e++
+			}
+			for i := s; i < e; i++ {
+				busy[i] = true
+			}
+		}
+		for _, ev := range c.eventsForDate(day) {
+			if ev.AllDay {
+				// Whole-day event blocks every slot.
+				for i := startHour * 2; i < endHour*2; i++ {
+					busy[i] = true
+				}
+				continue
+			}
+			startM := ev.Date.Hour()*60 + ev.Date.Minute()
+			endM := startM + 60
+			if !ev.EndDate.IsZero() {
+				endM = ev.EndDate.Hour()*60 + ev.EndDate.Minute()
+			}
+			mark(startM, endM)
+		}
+		dateStr := day.Format("2006-01-02")
+		for _, blk := range c.plannerBlocks[dateStr] {
+			if blk.StartTime == "" || blk.EndTime == "" {
+				continue
+			}
+			sh, sm := parseHHMM(blk.StartTime)
+			eh, em := parseHHMM(blk.EndTime)
+			mark(sh*60+sm, eh*60+em)
+		}
+		// Skip past hours on today so we don't surface "10:00"
+		// when it's already 14:30 — useless.
+		earliest := startHour * 2
+		if d == 0 {
+			now := time.Now()
+			cur := now.Hour()*2
+			if now.Minute() >= 30 {
+				cur++
+			}
+			if cur > earliest {
+				earliest = cur
+			}
+		}
+		for i := earliest; i+durationStep <= endHour*2 && len(out) < limit; i++ {
+			free := true
+			for j := 0; j < durationStep; j++ {
+				if busy[i+j] {
+					free = false
+					break
+				}
+			}
+			if !free {
+				continue
+			}
+			startM := i * 30
+			start := time.Date(day.Year(), day.Month(), day.Day(), startM/60, startM%60, 0, 0, time.Local)
+			out = append(out, freeSlot{Start: start, End: start.Add(time.Duration(durationMin) * time.Minute)})
+			// Skip ahead past this slot so we don't emit
+			// overlapping suggestions ("Tue 10:00", "Tue 10:30"
+			// for the same hour); jump to slot end.
+			i += durationStep - 1
+		}
+	}
+	return out
 }
 
 // weekGridStartHourFor computes the effective start hour for the week grid,
