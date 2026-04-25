@@ -1087,3 +1087,119 @@ func writeTabsJSON(vault, body string) error {
 	}
 	return os.WriteFile(dir+"/tabs.json", []byte(body), 0o600)
 }
+
+// ---------------------------------------------------------------------------
+// Feature-tab APIs
+// ---------------------------------------------------------------------------
+
+func TestAddFeatureTab_CreatesAndActivates(t *testing.T) {
+	tb := NewTabBar()
+	tb.AddFeatureTab(FeatTaskManager, "Tasks")
+	if tb.Count() != 1 {
+		t.Fatalf("expected 1 tab, got %d", tb.Count())
+	}
+	got := tb.Tabs()
+	if got[0].Kind != TabKindFeature {
+		t.Errorf("Kind: got %v want Feature", got[0].Kind)
+	}
+	if got[0].Label != "Tasks" {
+		t.Errorf("Label: got %q want Tasks", got[0].Label)
+	}
+	if tb.ActiveIndex() != 0 {
+		t.Errorf("AddFeatureTab should activate the new tab")
+	}
+}
+
+func TestAddFeatureTab_SecondCallSwitchesNoDuplicate(t *testing.T) {
+	tb := NewTabBar()
+	tb.AddTab("note.md")
+	tb.AddFeatureTab(FeatTaskManager, "Tasks")
+	tb.AddTab("note2.md")
+	tb.AddFeatureTab(FeatTaskManager, "Tasks") // already exists
+	if tb.Count() != 3 {
+		t.Errorf("duplicate AddFeatureTab should not create a second tab; got %d tabs", tb.Count())
+	}
+	if tb.ActiveIndex() != 1 {
+		t.Errorf("second AddFeatureTab should activate the existing feature tab; active=%d", tb.ActiveIndex())
+	}
+}
+
+func TestAddFeatureTab_RefreshesLabelOnSwitch(t *testing.T) {
+	tb := NewTabBar()
+	tb.AddFeatureTab(FeatTaskManager, "Old Label")
+	tb.AddFeatureTab(FeatTaskManager, "New Label")
+	got := tb.Tabs()
+	if got[0].Label != "New Label" {
+		t.Errorf("expected label refreshed to 'New Label', got %q", got[0].Label)
+	}
+}
+
+func TestHasFeatureTab(t *testing.T) {
+	tb := NewTabBar()
+	if tb.HasFeatureTab(FeatTaskManager) {
+		t.Error("empty tabbar should not have any feature tab")
+	}
+	tb.AddFeatureTab(FeatTaskManager, "Tasks")
+	if !tb.HasFeatureTab(FeatTaskManager) {
+		t.Error("HasFeatureTab should be true after AddFeatureTab")
+	}
+	if tb.HasFeatureTab(FeatDailyJot) {
+		t.Error("HasFeatureTab should be false for a different feature")
+	}
+}
+
+func TestActiveEntry_ReturnsKindAndLabel(t *testing.T) {
+	tb := NewTabBar()
+	tb.AddFeatureTab(FeatTaskManager, "Tasks")
+	e, ok := tb.ActiveEntry()
+	if !ok {
+		t.Fatal("ActiveEntry should report ok when a tab is active")
+	}
+	if e.Kind != TabKindFeature || e.Label != "Tasks" {
+		t.Errorf("ActiveEntry returned %+v", e)
+	}
+}
+
+func TestActiveFeature_OnlyReturnsForFeatureTabs(t *testing.T) {
+	tb := NewTabBar()
+	tb.AddTab("note.md")
+	if _, ok := tb.ActiveFeature(); ok {
+		t.Error("ActiveFeature should be false when active tab is a note")
+	}
+	tb.AddFeatureTab(FeatTaskManager, "Tasks")
+	id, ok := tb.ActiveFeature()
+	if !ok {
+		t.Fatal("ActiveFeature should be true when active tab is a feature")
+	}
+	if id != FeatTaskManager {
+		t.Errorf("got id=%q want %q", id, FeatTaskManager)
+	}
+}
+
+func TestSetActiveFeature_SwitchesToExistingFeatureTab(t *testing.T) {
+	tb := NewTabBar()
+	tb.AddTab("note.md")
+	tb.AddFeatureTab(FeatTaskManager, "Tasks")
+	tb.SetActive("note.md")
+	if id, ok := tb.ActiveFeature(); ok {
+		t.Errorf("active should be note, ActiveFeature reported %q", id)
+	}
+	tb.SetActiveFeature(FeatTaskManager)
+	if id, ok := tb.ActiveFeature(); !ok || id != FeatTaskManager {
+		t.Errorf("SetActiveFeature failed: ok=%v id=%q", ok, id)
+	}
+}
+
+func TestCloseFeatureTab_RemovesAndReturnsTrue(t *testing.T) {
+	tb := NewTabBar()
+	tb.AddFeatureTab(FeatTaskManager, "Tasks")
+	if !tb.CloseFeatureTab(FeatTaskManager) {
+		t.Error("CloseFeatureTab should return true when removing")
+	}
+	if tb.HasFeatureTab(FeatTaskManager) {
+		t.Error("feature tab should be gone after close")
+	}
+	if tb.CloseFeatureTab(FeatTaskManager) {
+		t.Error("CloseFeatureTab on missing tab should return false")
+	}
+}

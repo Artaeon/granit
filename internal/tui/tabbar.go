@@ -259,6 +259,112 @@ func (tb *TabBar) HasTab(path string) bool {
 	return tb.findTab(path) >= 0
 }
 
+// ---------------------------------------------------------------------------
+// Feature-tab APIs (Phase 4 — Obsidian-style editor tabs for non-note surfaces)
+// ---------------------------------------------------------------------------
+
+// AddFeatureTab adds (or switches to) a tab for the given feature.
+// Singleton-per-feature semantics: a second AddFeatureTab(FeatTaskManager, ...)
+// just activates the existing tab instead of opening a duplicate.
+//
+// label is the human-facing tab title (e.g. "Tasks", "Jot",
+// "Calendar"). Empty falls back to the feature ID — useful as a
+// safety net but every caller should pass a real label.
+//
+// Eviction: feature tabs participate in the same maxTabs cap as
+// note tabs. Pinned tabs are kept; the oldest unpinned tab is
+// evicted to make room. The closed tab (whether note or feature)
+// is pushed to closedHistory.
+func (tb *TabBar) AddFeatureTab(id FeatureID, label string) {
+	path := featureTabPath(id)
+	if idx := tb.findTab(path); idx >= 0 {
+		tb.activeIdx = idx
+		// Refresh label in case the caller passed an updated
+		// string — keeps the rendered title in sync if a profile
+		// changes its branding.
+		if label != "" {
+			tb.tabs[idx].Label = label
+		}
+		return
+	}
+	// Eviction (mirrors AddTab's logic).
+	if len(tb.tabs) >= tb.maxTabs {
+		evicted := false
+		for i, t := range tb.tabs {
+			if !t.Pinned {
+				tb.pushClosed(t.Path)
+				tb.tabs = append(tb.tabs[:i], tb.tabs[i+1:]...)
+				if tb.activeIdx >= i && tb.activeIdx > 0 {
+					tb.activeIdx--
+				}
+				evicted = true
+				break
+			}
+		}
+		if !evicted {
+			return
+		}
+	}
+	tb.tabs = append(tb.tabs, TabEntry{
+		Path:  path,
+		Kind:  TabKindFeature,
+		Label: label,
+	})
+	tb.activeIdx = len(tb.tabs) - 1
+}
+
+// HasFeatureTab reports whether a tab for the given feature is
+// currently open (regardless of whether it's the active one).
+func (tb *TabBar) HasFeatureTab(id FeatureID) bool {
+	return tb.HasTab(featureTabPath(id))
+}
+
+// SetActiveFeature activates the tab for the given feature, if
+// one is open. No-op when the feature has no tab — caller should
+// AddFeatureTab first.
+func (tb *TabBar) SetActiveFeature(id FeatureID) {
+	tb.SetActive(featureTabPath(id))
+}
+
+// ActiveEntry returns the currently active tab entry along with
+// whether one exists. Use this when you need both the path/Kind
+// and the label/pinned state — GetActive only returns the path.
+func (tb *TabBar) ActiveEntry() (TabEntry, bool) {
+	if tb.activeIdx < 0 || tb.activeIdx >= len(tb.tabs) {
+		return TabEntry{}, false
+	}
+	return tb.tabs[tb.activeIdx], true
+}
+
+// ActiveFeature returns the currently active feature ID and
+// true if the active tab is a feature tab. Returns "", false
+// when the active tab is a note (or there's no active tab).
+//
+// Render and Update routing branch on this: feature tab → render
+// that feature's view in the editor pane, route keys to it; note
+// tab → existing editor behavior.
+func (tb *TabBar) ActiveFeature() (FeatureID, bool) {
+	e, ok := tb.ActiveEntry()
+	if !ok || e.Kind != TabKindFeature {
+		return "", false
+	}
+	return FeatureID(strings.TrimPrefix(e.Path, "feat:")), true
+}
+
+// CloseFeatureTab closes the tab for the given feature, if any.
+// Wraps RemoveTab + the synthetic feature path. Returns true if
+// a tab was actually closed (false when the feature wasn't open
+// or its tab was pinned).
+func (tb *TabBar) CloseFeatureTab(id FeatureID) bool {
+	path := featureTabPath(id)
+	idx := tb.findTab(path)
+	if idx < 0 || tb.tabs[idx].Pinned {
+		return false
+	}
+	tb.RemoveTab(path)
+	return true
+}
+
 // MoveLeft moves the active tab one position to the left. Returns true if moved.
 func (tb *TabBar) MoveLeft() bool {
 	if tb.activeIdx <= 0 || len(tb.tabs) < 2 {
