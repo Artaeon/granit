@@ -879,6 +879,16 @@ func (pm ProjectMode) updateList(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 	filtered := pm.filteredProjects()
 	switch msg.String() {
 	case "esc":
+		// Esc in select mode just exits the mode (clearing the
+		// selection) — closing the entire projects view from
+		// inside select mode would be a startling overshoot
+		// for the user who just wanted to back out.
+		if pm.selectMode {
+			pm.selectMode = false
+			pm.selected = make(map[string]bool)
+			pm.statusMsg = "Selection cleared"
+			return pm, nil
+		}
 		pm.active = false
 	case "up", "k":
 		if pm.cursor > 0 {

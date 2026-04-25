@@ -835,6 +835,17 @@ func (gm *GoalsMode) rebuildFiltered() {
 		gm.filtered = out
 	}
 	gm.restoreExpanded()
+	// Clamp cursor so it can never index past the rebuilt
+	// list — applying a filter or removing a goal would leave
+	// the cursor pointing past the end, which silently
+	// disables actions like Enter and 'x'. The render guard
+	// saved us from crashing, but the UX was confusing.
+	if gm.cursor >= len(gm.filtered) {
+		gm.cursor = max(0, len(gm.filtered)-1)
+	}
+	if gm.scroll > gm.cursor {
+		gm.scroll = gm.cursor
+	}
 }
 
 // restoreExpanded re-finds the expanded goal by ID after a rebuild.
@@ -1563,13 +1574,27 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 		if idx < 0 {
 			break
 		}
-		// Build a set of texts already present as tasks for
-		// this goal so we don't create duplicates if 'B' is
-		// pressed twice.
+		// Build a set of milestone-text prefixes already
+		// present as tasks for this goal so 'B' is idempotent.
+		// Existing tasks were created via
+		//   "<ms.Text> goal:<goal.ID>"
+		// so Task.Text starts with the milestone text. We
+		// strip the trailing "goal:G…" marker (and any other
+		// emoji metadata that may have been added since) by
+		// taking everything before the first " goal:" segment.
+		// Falls back to the full text when the marker isn't
+		// present — defensive against external task creation.
+		stripGoalMarker := func(s string) string {
+			s = strings.ToLower(strings.TrimSpace(s))
+			if i := strings.Index(s, " goal:"); i >= 0 {
+				s = s[:i]
+			}
+			return strings.TrimSpace(s)
+		}
 		existing := make(map[string]bool)
 		for _, t := range gm.allTasks {
 			if t.GoalID == goal.ID {
-				existing[strings.TrimSpace(strings.ToLower(t.Text))] = true
+				existing[stripGoalMarker(t.Text)] = true
 			}
 		}
 		created, skipped := 0, 0
@@ -1577,7 +1602,7 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 			if ms.Done {
 				continue
 			}
-			if existing[strings.TrimSpace(strings.ToLower(ms.Text))] {
+			if existing[stripGoalMarker(ms.Text)] {
 				skipped++
 				continue
 			}
@@ -2621,8 +2646,14 @@ func (gm *GoalsMode) renderHelp(b *strings.Builder, w int) {
 		{"Milestones", [][2]string{
 			{"m", "Add milestone to current goal"},
 			{"t", "Create task from milestone (links to goal)"},
+			{"B", "Bulk-create tasks for ALL incomplete milestones (idempotent)"},
 			{"d", "Delete milestone (when expanded)"},
 			{"Enter", "Toggle milestone completion"},
+		}},
+		{"Search & filter (sticky)", [][2]string{
+			{"/", "Live search by title / description / category"},
+			{"T", "Cycle tag filter through all goal tags"},
+			{"c", "Clear all active filters"},
 		}},
 		{"Reviews", [][2]string{
 			{"r", "Set review frequency / write review (when expanded)"},

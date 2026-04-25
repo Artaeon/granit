@@ -1732,7 +1732,9 @@ func (ht HabitTracker) renderHelp() string {
 	case 0:
 		pairs = []struct{ Key, Desc string }{
 			{"Tab/1-3", "switch"}, {"j/k", "move"}, {"Space", "toggle"},
-			{"n", "new"}, {"d", "delete"}, {"Esc", "close"},
+			{"n", "new"}, {"d", "delete"}, {"A", "archive"}, {"H", "show arch"},
+			{"<", "prev day"}, {">", "next day"}, {"t", "today"},
+			{"s", "sort"}, {"/", "filter"}, {"c", "clear"}, {"Esc", "close"},
 		}
 	case 1:
 		if ht.goalExpanded >= 0 {
