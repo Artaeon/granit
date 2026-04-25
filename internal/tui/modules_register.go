@@ -48,10 +48,12 @@ type builtinRegistration struct {
 }
 
 // allBuiltins lists every built-in module to register at startup.
-// Empty in this commit — pilot commits append entries as they migrate
-// each feature. Order here is the order surfaced in the settings UI.
+// Each pilot/migration commit appends one entry. Order here is the
+// order surfaced in the settings UI.
 func allBuiltins() []builtinRegistration {
-	return nil
+	return []builtinRegistration{
+		pomodoroModule(),
+	}
 }
 
 // RegisterBuiltins registers every compiled-in module with the

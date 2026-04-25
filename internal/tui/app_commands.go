@@ -575,14 +575,14 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		return m, m.clearMessageAfter(3 * time.Second)
 	case CmdPomodoro:
-		if !m.config.CorePluginEnabled("pomodoro") {
+		if !m.registry.Enabled("pomodoro") {
 			break
 		}
 		m.pomodoro.SetSize(m.width, m.height)
 		m.pomodoro.SetVaultRoot(m.vault.Root)
 		m.pomodoro.Open()
 	case CmdPomodoroNow:
-		if !m.config.CorePluginEnabled("pomodoro") {
+		if !m.registry.Enabled("pomodoro") {
 			break
 		}
 		m.pomodoro.SetSize(m.width, m.height)
