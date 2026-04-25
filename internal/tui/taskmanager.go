@@ -161,9 +161,10 @@ type TaskManager struct {
 	kanbanScroll [4]int // scroll position within each column
 
 	// Active filters (applied on top of view-specific filters)
-	filterTag      string // "" = no tag filter, "tagname" = filter to this tag
-	filterPriority int    // -1 = no priority filter, 0-4 = filter to this level
-	searchTerm     string // "" = no search, otherwise substring or "#tag" query
+	filterTag      string                // "" = no tag filter, "tagname" = filter to this tag
+	filterPriority int                   // -1 = no priority filter, 0-4 = filter to this level
+	filterTriage   tasks.TriageState     // "" = no triage filter, "inbox"/"triaged"/etc. = filter
+	searchTerm     string                // "" = no search, otherwise substring or "#tag" query
 
 	// Cached tab counts (updated by rebuildFiltered)
 	tabCounts [taskViewCount]int
@@ -1280,6 +1281,12 @@ func (tm *TaskManager) rebuildFiltered() {
 		if tm.filterPriority >= 0 {
 			tm.filtered = tm.applyPriorityFilter(tm.filtered)
 		}
+		// Apply active triage-state filter (Phase 4 — surfaces
+		// the Phase 2 sidecar field "triage" so power users can
+		// see only inbox / scheduled / etc.).
+		if tm.filterTriage != "" {
+			tm.filtered = tm.applyTriageFilter(tm.filtered)
+		}
 		// Apply persistent text search (set by either search mode or filter mode).
 		if tm.searchTerm != "" {
 			tm.filtered = tm.applySearch(tm.filtered)
@@ -1694,6 +1701,69 @@ func (tm *TaskManager) applyPriorityFilter(tasks []Task) []Task {
 		}
 	}
 	return out
+}
+
+// applyTriageFilter filters tasks by Triage state. Tasks with no
+// explicit triage state (empty string) are treated as TriageInbox
+// — that's the migration default for tasks predating Phase 2.
+func (tm *TaskManager) applyTriageFilter(taskList []Task) []Task {
+	var out []Task
+	want := tm.filterTriage
+	for _, t := range taskList {
+		state := t.Triage
+		if state == "" {
+			state = tasks.TriageInbox
+		}
+		if state == want {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// cycleTriageState rotates the cursor task through the
+// (inbox → triaged → scheduled → snoozed → dropped → inbox)
+// cycle. Persists via the task store when wired; falls back to
+// in-memory mutation when the store isn't available so the
+// off-flag path doesn't crash.
+func (tm *TaskManager) cycleTriageState(task Task) {
+	cycle := []tasks.TriageState{
+		tasks.TriageInbox,
+		tasks.TriageTriaged,
+		tasks.TriageScheduled,
+		tasks.TriageSnoozed,
+		tasks.TriageDropped,
+	}
+	current := task.Triage
+	if current == "" {
+		current = tasks.TriageInbox
+	}
+	next := tasks.TriageInbox
+	for i, s := range cycle {
+		if s == current {
+			next = cycle[(i+1)%len(cycle)]
+			break
+		}
+	}
+	if tm.taskStore != nil && task.ID != "" {
+		if err := tm.taskStore.Triage(task.ID, next); err != nil {
+			tm.statusMsg = "Triage failed: " + err.Error()
+			return
+		}
+	}
+	// Update in-memory cache so the next render shows the new
+	// chip without waiting for a Reload roundtrip.
+	for i := range tm.allTasks {
+		if tm.allTasks[i].ID == task.ID || (tm.allTasks[i].NotePath == task.NotePath && tm.allTasks[i].LineNum == task.LineNum) {
+			tm.allTasks[i].Triage = next
+		}
+	}
+	for i := range tm.filtered {
+		if tm.filtered[i].ID == task.ID || (tm.filtered[i].NotePath == task.NotePath && tm.filtered[i].LineNum == task.LineNum) {
+			tm.filtered[i].Triage = next
+		}
+	}
+	tm.statusMsg = "Triage → " + string(next)
 }
 
 // collectTags returns all unique tags across allTasks with their counts,
@@ -2197,6 +2267,16 @@ func (tm *TaskManager) applyFilterQuery(query string) {
 		"tag":      tmSortTag,
 	}
 
+	triageStates := map[string]tasks.TriageState{
+		"inbox":     tasks.TriageInbox,
+		"triaged":   tasks.TriageTriaged,
+		"scheduled": tasks.TriageScheduled,
+		"done":      tasks.TriageDone,
+		"dropped":   tasks.TriageDropped,
+		"snoozed":   tasks.TriageSnoozed,
+	}
+
+	tm.filterTriage = ""
 	for _, tok := range strings.Fields(query) {
 		switch {
 		case strings.HasPrefix(tok, "#") && len(tok) > 1:
@@ -2206,6 +2286,11 @@ func (tm *TaskManager) applyFilterQuery(query string) {
 			if lvl, ok := priorityLevels[strings.ToLower(tok[2:])]; ok {
 				tm.filterPriority = lvl
 				applied = append(applied, "p="+tok[2:])
+			}
+		case strings.HasPrefix(tok, "triage:"):
+			if state, ok := triageStates[strings.ToLower(tok[7:])]; ok {
+				tm.filterTriage = state
+				applied = append(applied, "triage="+tok[7:])
 			}
 		case strings.HasPrefix(tok, "sort:"):
 			if mode, ok := sortModes[strings.ToLower(tok[5:])]; ok {
@@ -3295,6 +3380,15 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		if tm.cursor < len(tm.filtered) {
 			tm.inputMode = tmInputQuickEdit
 			tm.inputBuf = ""
+		}
+
+	// Cycle triage state on the cursor task. inbox → triaged →
+	// scheduled → snoozed → dropped → inbox. Power-user shortcut
+	// for inbox-zero workflows that don't want to leave the
+	// TaskManager tab to use the dedicated Triage queue.
+	case ";":
+		if tm.cursor < len(tm.filtered) {
+			tm.cycleTriageState(tm.filtered[tm.cursor])
 		}
 	}
 

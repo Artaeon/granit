@@ -7,7 +7,32 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/artaeon/granit/internal/tasks"
 )
+
+// renderTriageChip returns a single-glyph indicator for the
+// task's triage state. Power-user UX — at a glance you can
+// distinguish what's still in inbox (?) from what's triaged (·)
+// from what's scheduled (▸) from what's snoozed (z) or dropped
+// (✕). Empty for tasks without an explicit triage state (legacy
+// markdown, treated as inbox); tasks already done suppress this
+// chip entirely (handled by caller).
+func renderTriageChip(state tasks.TriageState) string {
+	switch state {
+	case tasks.TriageInbox, "":
+		return lipgloss.NewStyle().Foreground(peach).Bold(true).Render("?") + " "
+	case tasks.TriageTriaged:
+		return lipgloss.NewStyle().Foreground(mauve).Render("·") + " "
+	case tasks.TriageScheduled:
+		return lipgloss.NewStyle().Foreground(blue).Bold(true).Render("▸") + " "
+	case tasks.TriageSnoozed:
+		return lipgloss.NewStyle().Foreground(sky).Render("z") + " "
+	case tasks.TriageDropped:
+		return lipgloss.NewStyle().Foreground(overlay0).Render("✕") + " "
+	}
+	return ""
+}
 
 // ---------------------------------------------------------------------------
 // TaskManager rendering — all View/render methods extracted from taskmanager.go
@@ -685,6 +710,18 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		prefixExtra += 3
 	}
 
+	// Triage state chip — single char, color-coded so you can
+	// scan a long list and instantly see what's still in inbox
+	// vs. what's been triaged or scheduled. Done state suppresses
+	// the chip (the [x] checkbox already conveys it).
+	triageChip := ""
+	if !task.Done {
+		triageChip = renderTriageChip(task.Triage)
+		if triageChip != "" {
+			prefixExtra += 2
+		}
+	}
+
 	// Subtask indentation and collapse indicator
 	indentStr := ""
 	if task.Indent > 0 {
@@ -758,7 +795,7 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	}
 
 	leftSide := strings.Join([]string{
-		"  " + prioBar + prefix + selectStr + indentStr + collapseIndicator + blockedStr + checkbox,
+		"  " + prioBar + prefix + selectStr + indentStr + collapseIndicator + blockedStr + triageChip + checkbox,
 		prioStyled,
 		schedBadge + textStyle.Render(displayText) + estBadge + hintDots,
 	}, " ")
