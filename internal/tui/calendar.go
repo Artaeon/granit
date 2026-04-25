@@ -219,6 +219,11 @@ type Calendar struct {
 	findSlotDuration int        // chosen duration in minutes
 	findSlotResults  []freeSlot // top matches in next 14 days
 	findSlotCursor   int        // result-list cursor
+
+	// Help overlay. '?' toggles a full cheat sheet of all
+	// calendar bindings — without it the 30+ keys are
+	// undiscoverable. Any key dismisses.
+	showingHelp bool
 }
 
 // freeSlot is a contiguous block of time with no events or
@@ -422,6 +427,14 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Help overlay — any key dismisses, mirroring TaskManager's
+		// pattern. Must run before other input modes so '?' from
+		// inside an active help screen toggles cleanly.
+		if c.showingHelp {
+			c.showingHelp = false
+			return c, nil
+		}
+
 		// Quick-search input mode — '/' enters this; the buffer
 		// live-filters which events render. Esc cancels and
 		// clears; Enter commits and exits the input bar (the
@@ -909,6 +922,10 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			c.findSlotResults = nil
 			c.findSlotCursor = 0
 
+		// Help overlay — full cheat sheet of bindings.
+		case "?":
+			c.showingHelp = true
+
 		case "e":
 			if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
 				// Edit event under cursor: find the first event in the cursor's time slot
@@ -1350,6 +1367,12 @@ func (c *Calendar) syncViewing() {
 }
 
 func (c Calendar) View() string {
+	// Help overlay takes the full pane — no point rendering
+	// the calendar body underneath since the user is in
+	// "show me the keys" mode.
+	if c.showingHelp {
+		return c.renderHelpOverlay()
+	}
 	var body string
 	switch c.view {
 	case calViewWeek:
@@ -1404,7 +1427,7 @@ func (c Calendar) countSearchMatches() int {
 		day := c.today.AddDate(0, 0, d)
 		dateStr := day.Format("2006-01-02")
 		for _, ev := range c.eventsForDate(day) {
-			if c.matchesSearch(ev.Title) {
+			if c.matchesSearch(ev.Title, ev.Location, ev.Description) {
 				count++
 			}
 		}
@@ -1436,6 +1459,66 @@ func (c Calendar) renderJumpDatePrompt() string {
 	label := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("J jump → ")
 	hint := DimStyle.Render("  (YYYY-MM-DD / today / monday / next monday / +7d / -3w)")
 	return "  " + label + c.jumpDateBuf + cursor + hint
+}
+
+// renderHelpOverlay returns a full-pane cheat sheet of every
+// calendar binding, grouped by purpose. Mirrors TaskManager's
+// help renderer so the two surfaces feel uniform.
+func (c Calendar) renderHelpOverlay() string {
+	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true).Width(14)
+	descStyle := lipgloss.NewStyle().Foreground(text)
+	sectionStyle := lipgloss.NewStyle().Foreground(yellow).Bold(true)
+
+	var b strings.Builder
+	b.WriteString("\n  " + titleStyle.Render("📅 Calendar Keyboard Shortcuts") + "\n\n")
+
+	sections := []struct {
+		title string
+		keys  [][2]string
+	}{
+		{"Navigation", [][2]string{
+			{"h / l", "Previous / next day"},
+			{"j / k", "Down / up (week & agenda); ±week (month)"},
+			{"[ / ]", "Previous / next month"},
+			{"{ / }", "Previous / next year"},
+			{"t", "Jump to today"},
+			{"J", "Jump-to-date prompt (YYYY-MM-DD / today / monday / next monday / +7d / 15)"},
+		}},
+		{"Views", [][2]string{
+			{"w / v", "Cycle view forward (Month → Week → 3d → Day → Agenda → Year)"},
+			{"W / V", "Cycle view backward"},
+			{"y", "Toggle year view"},
+		}},
+		{"Events", [][2]string{
+			{"a", "Add event (full form: title, time, duration, location, recur, color)"},
+			{"e", "Edit event under cursor (time-grid)"},
+			{"d", "Delete event (with confirm)"},
+			{"D", "Unschedule planner block under cursor"},
+			{", / .", "Shift planner block −15min / +15min"},
+			{"b", "Time-block: pick task to schedule into cursor hour"},
+			{"g", "Add weekly milestone to a goal"},
+		}},
+		{"Search · Jump · Find slot", [][2]string{
+			{"/", "Quick search (live-filter agenda; dim non-matches in week/month)"},
+			{"c", "Clear active search query"},
+			{"n", "Find next free slot (1-8 → 15m..4h, then Enter to schedule)"},
+			{"?", "This help"},
+		}},
+		{"Conflict awareness", [][2]string{
+			{"⚠+N badge", "Red tint marks overlap; +N counts the other entries in that slot"},
+		}},
+	}
+
+	for _, sec := range sections {
+		b.WriteString("  " + sectionStyle.Render(sec.title) + "\n")
+		for _, kv := range sec.keys {
+			b.WriteString("    " + keyStyle.Render(kv[0]) + descStyle.Render(kv[1]) + "\n")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("  " + DimStyle.Render("Press any key to close"))
+	return b.String()
 }
 
 // renderFindSlotPrompt draws either the duration menu (step 0)
@@ -1535,15 +1618,22 @@ func (c Calendar) eventsForDate(dt time.Time) []CalendarEvent {
 	return result
 }
 
-// matchesSearch reports whether title passes the active search
-// filter. Empty query matches everything (no filter active).
-// Match is a case-insensitive substring on title — fast and
-// predictable; can extend to fuzzy or location/desc later.
-func (c Calendar) matchesSearch(title string) bool {
+// matchesSearch reports whether the haystack passes the active
+// search filter. Empty query matches everything. Match is a
+// case-insensitive substring; the variadic form lets callers
+// pass title + location + description so "/zoom" finds all
+// online meetings even when the URL is in description.
+func (c Calendar) matchesSearch(haystacks ...string) bool {
 	if c.searchQuery == "" {
 		return true
 	}
-	return strings.Contains(strings.ToLower(title), strings.ToLower(c.searchQuery))
+	q := strings.ToLower(c.searchQuery)
+	for _, h := range haystacks {
+		if h != "" && strings.Contains(strings.ToLower(h), q) {
+			return true
+		}
+	}
+	return false
 }
 
 // parseJumpDate converts a free-form date expression into an

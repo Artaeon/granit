@@ -262,10 +262,12 @@ func (ft *FileTree) SetSortMode(mode sidebarSortMode, vaultRoot string) {
 
 // RevealPath expands the chain of parent folders containing
 // path, rebuilds the visible list, and moves the cursor onto
-// the matching file. No-op if the path isn't in the tree.
-func (ft *FileTree) RevealPath(path string) {
+// the matching file. Returns true on success, false when the
+// path isn't in the tree (caller can surface a hint instead
+// of a silent no-op).
+func (ft *FileTree) RevealPath(path string) bool {
 	if ft.root == nil || path == "" {
-		return
+		return false
 	}
 	// Walk down the directory chain expanding ancestors. We
 	// can't recurse on names because a file at /a/b/c.md needs
@@ -285,9 +287,10 @@ func (ft *FileTree) RevealPath(path string) {
 		if n.Path == path {
 			ft.cursor = i
 			ft.ensureVisible()
-			return
+			return true
 		}
 	}
+	return false
 }
 
 // SetFocused sets whether this component currently has keyboard focus.

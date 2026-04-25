@@ -254,7 +254,7 @@ func (c Calendar) viewMonth() string {
 		if c.searchQuery != "" {
 			var filtered []CalendarEvent
 			for _, ev := range evs {
-				if c.matchesSearch(ev.Title) {
+				if c.matchesSearch(ev.Title, ev.Location, ev.Description) {
 					filtered = append(filtered, ev)
 				}
 			}
@@ -546,7 +546,7 @@ func (c Calendar) viewWeek() string {
 			entries = append(entries, weekEntry{
 				kind: "event", title: ev.Title, color: calEventColor(ev),
 				startMin: startMin, endMin: endMin, location: ev.Location,
-				dimmed: !c.matchesSearch(ev.Title),
+				dimmed: !c.matchesSearch(ev.Title, ev.Location, ev.Description),
 			})
 		}
 
@@ -991,8 +991,11 @@ func (c *Calendar) rebuildAgendaItems() {
 		// Add events for this date — skip non-matches when a
 		// quick-search query is active so the agenda becomes a
 		// real filter-narrowed list, not just dim-strikethrough.
+		// Match across title + location + description so power
+		// users can /zoom for online meetings without caring
+		// whether the URL lives in the description or location.
 		for _, ev := range c.eventsForDate(day) {
-			if !c.matchesSearch(ev.Title) {
+			if !c.matchesSearch(ev.Title, ev.Location, ev.Description) {
 				continue
 			}
 			items = append(items, agendaItem{

@@ -406,9 +406,16 @@ func (s Sidebar) Update(msg tea.Msg) (Sidebar, tea.Cmd) {
 			case "R":
 				// Reveal the currently-edited note: expand
 				// parent folders along the way, scroll, and
-				// move the cursor onto it.
-				if s.activeNote != "" {
-					s.fileTree.RevealPath(s.activeNote)
+				// move the cursor onto it. Surface a hint when
+				// the active note isn't in the tree (e.g.,
+				// scratchpad, external file) so the user
+				// doesn't think `R` is broken.
+				if s.activeNote == "" {
+					s.statusMsg = "No active note to reveal"
+				} else if !s.fileTree.RevealPath(s.activeNote) {
+					s.statusMsg = "Note not in tree: " + s.activeNote
+				} else {
+					s.statusMsg = "Revealed " + filepath.Base(s.activeNote)
 				}
 			case "s":
 				// Cycle sort mode: name → modified → created → name.
@@ -512,12 +519,21 @@ func (s Sidebar) View() string {
 		contentWidth = 10
 	}
 
-	// Header with accent bar and file count
+	// Header with accent bar, file count, and git-changes badge.
 	headerAccent := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 	fileCountStyle := lipgloss.NewStyle().Foreground(surface2)
 	headerLine := headerAccent.Render("  EXPLORER")
 	if len(s.filtered) > 0 {
 		headerLine += fileCountStyle.Render("  " + sidebarItoa(len(s.filtered)) + " files")
+	}
+	// Git change count: yellow chip when the working tree has
+	// any non-clean files. Power users glance at the sidebar
+	// and instantly see "I have 3 uncommitted changes" without
+	// flipping to a git overlay.
+	if changes := len(s.gitStatus); changes > 0 {
+		chip := lipgloss.NewStyle().Foreground(crust).Background(yellow).Bold(true).Padding(0, 1).
+			Render("●" + sidebarItoa(changes))
+		headerLine += "  " + chip
 	}
 	b.WriteString(headerLine)
 	b.WriteString("\n")
@@ -554,6 +570,7 @@ func (s Sidebar) View() string {
 		// jump to a pinned file via Reveal (R) after opening
 		// it. (A full pinned-cursor mode is left for a future
 		// pass — keeps this commit small.)
+		pinnedRows := 0
 		if len(s.pinned) > 0 {
 			pinHeader := lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("  PINNED")
 			countStr := lipgloss.NewStyle().Foreground(surface2).Render("  " + sidebarItoa(len(s.pinned)))
@@ -581,7 +598,19 @@ func (s Sidebar) View() string {
 				b.WriteString("  " + star + lipgloss.NewStyle().Foreground(text).Render(name) + dir + active + "\n")
 			}
 			b.WriteString(lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat(ThemeSeparator, contentWidth)) + "\n")
+			// Pinned section consumed: 1 header + N rows + 1 separator.
+			pinnedRows = 2 + len(s.pinned)
 		}
+		// Reclaim height from the file tree before rendering so
+		// it doesn't paint past the bottom of the sidebar pane.
+		// SetSize was called with the conservative "height - 3"
+		// that ignores the pinned section; do the corrective
+		// re-size here based on actual pinned rows.
+		treeH := s.height - 3 - pinnedRows
+		if treeH < 1 {
+			treeH = 1
+		}
+		s.fileTree.SetSize(s.width, treeH)
 		b.WriteString(s.fileTree.View())
 		if s.focused {
 			b.WriteString("\n")
