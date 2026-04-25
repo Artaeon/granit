@@ -2546,7 +2546,7 @@ func (m *Model) dailyNoteContent(date, fallback string) string {
 	// Build overdue tasks list
 	overdueTasks := ""
 	todayTasksList := ""
-	allTasks := ParseAllTasks(m.vault.Notes)
+	allTasks := m.currentTasks()
 	var overdueLines, todayLines []string
 	for _, task := range allTasks {
 		if task.Done {

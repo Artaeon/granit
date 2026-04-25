@@ -564,6 +564,15 @@ func NewModel(vaultPath string) (Model, error) {
 			log.Printf("warning: task store load: %v", err)
 		}
 		m.taskStore = store
+		// Wire the store into every overlay that creates tasks so
+		// their writes flow through it (stable IDs, sidecar
+		// markers like OriginRecurring/OriginManual, GoalID
+		// links). Each setter is nil-safe; passing nil restores
+		// the legacy appendTaskLine path.
+		m.ideasBoard.SetTaskStore(store)
+		m.recurringTasks.SetTaskStore(store)
+		m.goalsMode.SetTaskStore(store)
+		m.morningRoutine.SetTaskStore(store)
 	}
 	registry := m.registry
 	cmdMap := m.cmdActionToModuleID

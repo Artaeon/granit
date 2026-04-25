@@ -1377,7 +1377,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case usResultTask:
 					m.loadNote(nav.NotePath)
 				case usResultGoal:
-					allTasks := ParseAllTasks(m.vault.Notes)
+					allTasks := m.currentTasks()
 					m.goalsMode.SetSize(m.width, m.height)
 					m.goalsMode.ai = m.aiConfig()
 					m.goalsMode.Open(m.vault.Root, allTasks)
@@ -2736,7 +2736,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+/":
 			m.universalSearch.SetSize(m.width, m.height)
-			allTasks := ParseAllTasks(m.vault.Notes)
+			allTasks := m.currentTasks()
 			gm := NewGoalsMode()
 			gm.vaultRoot = m.vault.Root
 			gm.loadGoals()

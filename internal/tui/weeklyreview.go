@@ -84,7 +84,10 @@ func NewWeeklyReview() WeeklyReview {
 }
 
 // Open activates the weekly review overlay, gathering data.
-func (wr *WeeklyReview) Open(vaultRoot string, v *vault.Vault) {
+// Open opens the weekly review with a pre-parsed task slice
+// supplied by the caller — see DailyReview.Open for the rationale
+// (avoid pinning each overlay to ParseAllTasks).
+func (wr *WeeklyReview) Open(vaultRoot string, v *vault.Vault, allTasks []Task) {
 	wr.vaultRoot = vaultRoot
 	wr.Activate()
 	wr.step = wrStepTasks
@@ -101,7 +104,7 @@ func (wr *WeeklyReview) Open(vaultRoot string, v *vault.Vault) {
 	}
 
 	// Gather tasks for this week
-	wr.gatherWeekTasks(v)
+	wr.gatherWeekTasks(allTasks)
 }
 
 // Close saves any unsaved in-progress review before deactivating so the
@@ -162,11 +165,9 @@ func (wr *WeeklyReview) parseExisting(content string) {
 }
 
 // gatherWeekTasks finds tasks completed/incomplete this week.
-func (wr *WeeklyReview) gatherWeekTasks(v *vault.Vault) {
+func (wr *WeeklyReview) gatherWeekTasks(allTasks []Task) {
 	wr.completedTasks = nil
 	wr.incompleteTasks = nil
-
-	allTasks := ParseAllTasks(v.Notes)
 
 	now := time.Now()
 	year, week := now.ISOWeek()

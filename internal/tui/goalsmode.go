@@ -11,6 +11,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/artaeon/granit/internal/tasks"
 )
 
 // ---------------------------------------------------------------------------
@@ -267,6 +269,10 @@ type GoalsMode struct {
 	OverlayBase
 
 	vaultRoot string
+	// taskStore is set when cfg.UseTaskStore is on so creating a
+	// task from a milestone routes through store.Create with
+	// GoalID populated in the sidecar.
+	taskStore *tasks.TaskStore
 	allTasks  []Task // for linked task stats
 	goals     []Goal
 	filtered  []Goal // currently visible goals
@@ -797,10 +803,20 @@ func (gm *GoalsMode) ensureVisible() {
 	}
 }
 
+// SetTaskStore wires the TaskStore so milestone-derived tasks get
+// stable IDs and the goal link is recorded in the sidecar in
+// addition to the markdown goal:Gxxx marker. Nil-safe.
+func (gm *GoalsMode) SetTaskStore(s *tasks.TaskStore) { gm.taskStore = s }
+
 // createTaskFromMilestone writes a new task to Tasks.md linked to the goal.
 func (gm *GoalsMode) createTaskFromMilestone(goal Goal, ms GoalMilestone) {
-	taskLine := fmt.Sprintf("- [ ] %s goal:%s", ms.Text, goal.ID)
-	if err := appendTaskLine(gm.vaultRoot, taskLine); err != nil {
+	body := fmt.Sprintf("%s goal:%s", ms.Text, goal.ID)
+	if gm.taskStore != nil {
+		if _, err := gm.taskStore.Create(body, tasks.CreateOpts{Origin: tasks.OriginManual, GoalID: goal.ID}); err != nil {
+			gm.statusMsg = "Failed to create task: " + err.Error()
+			return
+		}
+	} else if err := appendTaskLine(gm.vaultRoot, "- [ ] "+body); err != nil {
 		gm.statusMsg = "Failed to create task: " + err.Error()
 		return
 	}

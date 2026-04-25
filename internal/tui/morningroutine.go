@@ -10,6 +10,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/artaeon/granit/internal/tasks"
 )
 
 // ---------------------------------------------------------------------------
@@ -45,8 +47,12 @@ type morningPlanSavedMsg struct{ Err error }
 // that gets saved to the daily note.
 type MorningRoutine struct {
 	OverlayBase
-	phase  morningPhase
-	scroll int
+	// taskStore is set when cfg.UseTaskStore is on so the
+	// new-tasks-from-routine path goes through store.Create with
+	// OriginManual. Nil-safe.
+	taskStore *tasks.TaskStore
+	phase     morningPhase
+	scroll    int
 
 	// Step 1: Overview data
 	yesterdayTasks []string // carry-forward from yesterday
@@ -95,6 +101,11 @@ type MorningRoutine struct {
 	// overlays and avoids chaining them directly.
 	aiRefineRequested bool
 }
+
+// SetTaskStore wires the unified TaskStore so newly-created tasks
+// from the routine get stable IDs. Nil-safe — falls back to
+// appendTaskLine when the store isn't wired.
+func (mr *MorningRoutine) SetTaskStore(s *tasks.TaskStore) { mr.taskStore = s }
 
 // ConsumeAIRefineRequest returns true (consumed-once) if the user asked to
 // continue into Plan My Day after the morning routine ended.
@@ -571,8 +582,16 @@ func (mr *MorningRoutine) saveToDailyNote() tea.Cmd {
 		// Write daily focus so calendar shows the goal
 		recordErr("write planner focus", writePlannerFocus(vaultRoot, today, todayGoal, selectedTasks))
 
-		// Persist newly created tasks to Tasks.md so they appear in the task manager
+		// Persist newly created tasks. Prefer the unified store
+		// when wired so they enter the planning loop with stable
+		// IDs; fall back to the legacy markdown append otherwise.
 		for _, ct := range createdTasks {
+			if mr.taskStore != nil {
+				if _, err := mr.taskStore.Create(ct, tasks.CreateOpts{Origin: tasks.OriginManual}); err != nil {
+					recordErr("append created task", err)
+				}
+				continue
+			}
 			recordErr("append created task", appendTaskLine(vaultRoot, "- [ ] "+ct))
 		}
 

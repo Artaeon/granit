@@ -10,6 +10,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/artaeon/granit/internal/tasks"
 )
 
 // ---------------------------------------------------------------------------
@@ -74,6 +76,11 @@ const (
 type IdeasBoard struct {
 	OverlayBase
 	vaultRoot string
+	// taskStore is set by Model when cfg.UseTaskStore is on. When
+	// non-nil, "convert idea to task" routes through store.Create
+	// (gets a stable ID, sidecar entry, etc.) instead of the raw
+	// appendTaskLine path. Nil falls back to legacy behavior.
+	taskStore *tasks.TaskStore
 
 	ideas   []Idea
 	col     int // current column (0-4 = stages)
@@ -358,12 +365,23 @@ func (ib *IdeasBoard) convertToGoal() {
 	ib.fileChanged = true
 }
 
+// SetTaskStore wires the unified TaskStore so converting an idea
+// to a task gets a stable ID and sidecar entry. Nil-safe — if the
+// store isn't available the convert path falls back to
+// appendTaskLine (legacy behavior).
+func (ib *IdeasBoard) SetTaskStore(s *tasks.TaskStore) { ib.taskStore = s }
+
 func (ib *IdeasBoard) convertToTask() {
 	idea := ib.selectedIdea()
 	if idea == nil {
 		return
 	}
-	if err := appendTaskLine(ib.vaultRoot, "- [ ] "+idea.Title); err != nil {
+	if ib.taskStore != nil {
+		if _, err := ib.taskStore.Create(idea.Title, tasks.CreateOpts{Origin: tasks.OriginManual}); err != nil {
+			ib.statusMsg = "Failed to convert: " + err.Error()
+			return
+		}
+	} else if err := appendTaskLine(ib.vaultRoot, "- [ ] "+idea.Title); err != nil {
 		ib.statusMsg = "Failed to convert: " + err.Error()
 		return
 	}

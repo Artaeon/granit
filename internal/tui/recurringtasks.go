@@ -11,6 +11,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/artaeon/granit/internal/tasks"
 )
 
 // RecurringTask defines a single recurring task that is automatically created
@@ -44,6 +46,11 @@ const (
 type RecurringTasks struct {
 	OverlayBase
 	vaultRoot string
+	// taskStore is set when cfg.UseTaskStore is on. When non-nil,
+	// generated instances flow through store.Create with
+	// OriginRecurring so they get stable IDs and the sidecar
+	// records why they exist.
+	taskStore *tasks.TaskStore
 
 	tasks  []RecurringTask
 	cursor int
@@ -176,8 +183,17 @@ func (rt *RecurringTasks) isDue(task *RecurringTask, today time.Time) bool {
 	return false
 }
 
+// SetTaskStore wires the TaskStore so generated instances get
+// stable IDs and an OriginRecurring sidecar marker. Nil-safe.
+func (rt *RecurringTasks) SetTaskStore(s *tasks.TaskStore) { rt.taskStore = s }
+
 func (rt *RecurringTasks) appendToTasksFile(text, dateStr string) {
-	_ = appendTaskLine(rt.vaultRoot, fmt.Sprintf("- [ ] %s 📅 %s", text, dateStr))
+	line := fmt.Sprintf("%s 📅 %s", text, dateStr)
+	if rt.taskStore != nil {
+		_, _ = rt.taskStore.Create(line, tasks.CreateOpts{Origin: tasks.OriginRecurring})
+		return
+	}
+	_ = appendTaskLine(rt.vaultRoot, "- [ ] "+line)
 }
 
 // ----- add / edit helpers -----

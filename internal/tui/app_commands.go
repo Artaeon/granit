@@ -708,7 +708,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		}
 		m.kanban.SetTasks(noteContents)
 		// Enrich kanban cards with project info
-		allTasks := ParseAllTasks(m.vault.Notes)
+		allTasks := m.currentTasks()
 		pm := NewProjectMode()
 		pm.vaultRoot = m.vault.Root
 		pm.loadProjects()
@@ -1103,7 +1103,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdDailyReview:
 		m.dailyReview.ai = m.aiConfig()
 		m.dailyReview.SetSize(m.width, m.height)
-		m.dailyReview.Open(m.vault.Root, m.vault)
+		m.dailyReview.Open(m.vault.Root, m.vault, m.currentTasks())
 
 	case CmdDailyJot:
 		m.dailyJot.SetSize(m.width, m.height)
@@ -1240,7 +1240,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdGoalsMode:
 		m.goalsMode.SetSize(m.width, m.height)
 		m.goalsMode.ai = m.aiConfig()
-		allTasks := ParseAllTasks(m.vault.Notes)
+		allTasks := m.currentTasks()
 		m.goalsMode.Open(m.vault.Root, allTasks)
 
 	case CmdIdeasBoard:
@@ -1249,7 +1249,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdUniversalSearch:
 		m.universalSearch.SetSize(m.width, m.height)
-		allTasks := ParseAllTasks(m.vault.Notes)
+		allTasks := m.currentTasks()
 		gm := NewGoalsMode()
 		gm.vaultRoot = m.vault.Root
 		gm.loadGoals()
@@ -1288,7 +1288,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdProjectDashboard:
 		m.projectDashboard.SetSize(m.width, m.height)
-		m.projectDashboard.Open(m.vault.Root, m.vault)
+		m.projectDashboard.Open(m.vault.Root, m.vault, m.currentTasks())
 
 	case CmdRecurringTasks:
 		m.recurringTasks.SetSize(m.width, m.height)
@@ -1314,7 +1314,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdCommandCenter:
 		m.commandCenter.SetSize(m.width, m.height)
 		// Gather data from all productivity systems.
-		allTasks := ParseAllTasks(m.vault.Notes)
+		allTasks := m.currentTasks()
 		// Load projects and match tasks to projects.
 		pm := NewProjectMode()
 		pm.Open(m.vault.Root)
@@ -1464,7 +1464,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 	case CmdWeeklyReview:
 		m.weeklyReview.ai = m.aiConfig()
 		m.weeklyReview.SetSize(m.width, m.height)
-		m.weeklyReview.Open(m.vault.Root, m.vault)
+		m.weeklyReview.Open(m.vault.Root, m.vault, m.currentTasks())
 
 	case CmdReadingList:
 		m.readingList.SetSize(m.width, m.height)
@@ -1476,7 +1476,7 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdTaskTriage:
 		m.taskTriage.SetSize(m.width, m.height)
-		allTasks := ParseAllTasks(m.vault.Notes)
+		allTasks := m.currentTasks()
 		var activeGoals []Goal
 		for _, g := range m.goalsMode.goals {
 			if g.Status == GoalStatusActive {

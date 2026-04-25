@@ -86,7 +86,12 @@ func (dr *DailyReview) ConsumeSaveError() error {
 }
 
 // Open initializes the daily review with vault data.
-func (dr *DailyReview) Open(vaultRoot string, v *vault.Vault) {
+// Open opens the daily review with a pre-parsed task slice. The
+// caller (typically Model.executeCommand) supplies the canonical
+// task list — when the unified TaskStore is wired this comes from
+// store.All(), otherwise from a fresh ParseAllTasks scan. v is
+// retained for the rare paths that still need raw note content.
+func (dr *DailyReview) Open(vaultRoot string, v *vault.Vault, allTasks []Task) {
 	dr.Activate()
 	dr.vaultRoot = vaultRoot
 	dr.vault = v
@@ -98,8 +103,6 @@ func (dr *DailyReview) Open(vaultRoot string, v *vault.Vault) {
 	dr.statusMsg = ""
 	dr.fileChanged = false
 	dr.rescheduleMap = make(map[int]string)
-
-	allTasks := ParseAllTasks(v.Notes)
 
 	dr.completed = nil
 	dr.overdue = nil

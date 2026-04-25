@@ -56,7 +56,13 @@ func (pd *ProjectDashboard) SelectedProject() string {
 // ---------------------------------------------------------------------------
 
 // Open activates the overlay and loads all project/task data.
-func (pd *ProjectDashboard) Open(vaultRoot string, v *vault.Vault) {
+// Open opens the project dashboard with a pre-parsed task slice
+// (from the canonical task source — TaskStore when on,
+// ParseAllTasks otherwise). v is currently unused but kept to
+// avoid touching every caller — it'll be retired in the Phase 2
+// cleanup commit alongside the other vault.Vault parameters that
+// only existed to enable inline parsing.
+func (pd *ProjectDashboard) Open(vaultRoot string, v *vault.Vault, allTasks []Task) {
 	pd.active = true
 	pd.vaultRoot = vaultRoot
 	pd.cursor = 0
@@ -66,8 +72,7 @@ func (pd *ProjectDashboard) Open(vaultRoot string, v *vault.Vault) {
 	// Load projects from .granit/projects.json.
 	pd.projects = LoadProjects(vaultRoot)
 
-	// Parse all tasks from vault notes.
-	pd.allTasks = ParseAllTasks(v.Notes)
+	pd.allTasks = allTasks
 
 	// Match tasks to projects and compute counts.
 	MatchTasksToProjects(pd.allTasks, pd.projects)
