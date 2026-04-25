@@ -76,6 +76,7 @@ const (
 	tmInputTemplate                    // template picker
 	tmInputTemplateName                // naming a new template
 	tmInputFilter                      // unified filter input — parses #tag, p:level, sort:mode, search text
+	tmInputInlineEdit                  // inline edit of the cursor task's full line (no source-note context switch)
 	tmInputQuickEdit                   // single-line quick edit on cursor task: p:N, d:YYYY-MM-DD, ~30m
 	tmInputTimeBlock                   // assign task to a time block: 1=morning 2=midday 3=afternoon 4=evening
 )
@@ -1721,6 +1722,14 @@ func (tm *TaskManager) applyTriageFilter(taskList []Task) []Task {
 	return out
 }
 
+// inlineEditSeed returns the initial buffer contents for inline
+// edit mode — the task's stored Text field, which is everything
+// after the "] " prefix as captured by the parser. Includes
+// tags + emoji markers so the user can edit them in place.
+func inlineEditSeed(t Task) string {
+	return strings.TrimSpace(t.Text)
+}
+
 // cycleTriageState rotates the cursor task through the
 // (inbox → triaged → scheduled → snoozed → dropped → inbox)
 // cycle. Persists via the task store when wired; falls back to
@@ -1947,6 +1956,8 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		return tm.updateDatePicker(key)
 	case tmInputAdd:
 		return tm.updateAddInput(key)
+	case tmInputInlineEdit:
+		return tm.updateInlineEdit(key)
 	case tmInputSearch:
 		return tm.updateSearchInput(key)
 	case tmInputReschedule:
@@ -2134,6 +2145,74 @@ func (tm *TaskManager) removeScheduleMarker(task Task) {
 	ref := ScheduleRef{NotePath: task.NotePath, LineNum: task.LineNum, Text: task.Text}
 	today := time.Now().Format("2006-01-02")
 	_ = RemovePlannerBlock(tm.vault.Root, today, ref)
+}
+
+// updateInlineEdit handles the i-key inline edit mode. The user
+// edits the full task line (sans "- [ ] " prefix) in a single-
+// line buffer; Enter commits the change to the source markdown
+// preserving the prefix and leading indent. Esc cancels.
+//
+// Edits to the full line (not just text body) so power users can
+// adjust dates/priorities/tags inline without three separate
+// modes. Re-parses after commit so the row updates.
+func (tm TaskManager) updateInlineEdit(key string) (TaskManager, tea.Cmd) {
+	switch key {
+	case "esc":
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+		return tm, nil
+	case "enter":
+		tm.applyInlineEdit()
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+		return tm, nil
+	case "backspace":
+		if len(tm.inputBuf) > 0 {
+			tm.inputBuf = TrimLastRune(tm.inputBuf)
+		}
+		return tm, nil
+	default:
+		if len(key) == 1 || key == " " {
+			tm.inputBuf += key
+		}
+		return tm, nil
+	}
+}
+
+// applyInlineEdit writes the edited line back to the source
+// note. Preserves leading whitespace + bullet + checkbox; the
+// rest of the line is replaced with the user's input. Skips
+// silently when the buffer is empty (treat as cancel — better
+// than wiping the task accidentally).
+func (tm *TaskManager) applyInlineEdit() {
+	if tm.cursor < 0 || tm.cursor >= len(tm.filtered) {
+		return
+	}
+	body := strings.TrimSpace(tm.inputBuf)
+	if body == "" {
+		tm.statusMsg = "Edit cancelled (empty)"
+		return
+	}
+	task := tm.filtered[tm.cursor]
+	ok := tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+		// Find the prefix end: after "- [ ] " or "- [x] ".
+		// reTaskLine in the parser captures group 1 as the
+		// "- [" prefix + indent; group 3 starts with "] ".
+		// We don't import the regex here; use string ops for
+		// speed and clarity.
+		idx := strings.Index(line, "] ")
+		if idx < 0 {
+			// Line stopped looking like a task between the user
+			// pressing i and Enter. Bail out — preserves the
+			// original line untouched.
+			return line
+		}
+		return line[:idx+2] + body
+	})
+	if ok {
+		tm.statusMsg = "Edited"
+		tm.reparse()
+	}
 }
 
 func (tm TaskManager) updateAddInput(key string) (TaskManager, tea.Cmd) {
@@ -3389,6 +3468,22 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	case ";":
 		if tm.cursor < len(tm.filtered) {
 			tm.cycleTriageState(tm.filtered[tm.cursor])
+		}
+
+	// Inline edit the cursor task's full line — no source-note
+	// context switch. Esc cancels, Enter commits via
+	// writeLineChange. Power users edit text + tags + dates +
+	// priorities all in one input instead of three separate
+	// modes.
+	case "i":
+		if tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			// Pre-populate with the line content after the
+			// "- [ ] " prefix so the user can edit-in-place
+			// (including tags and emoji markers — power users
+			// know what they're doing).
+			tm.inputMode = tmInputInlineEdit
+			tm.inputBuf = inlineEditSeed(task)
 		}
 	}
 

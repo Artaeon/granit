@@ -1079,6 +1079,11 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 	switch tm.inputMode {
 	case tmInputAdd:
 		b.WriteString("  " + promptStyle.Render("New task: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
+	case tmInputInlineEdit:
+		b.WriteString("  " + promptStyle.Render("Edit: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
+		b.WriteString("\n")
+		hint := lipgloss.NewStyle().Foreground(overlay0).Render("  enter=save \u00b7 esc=cancel \u00b7 edit text + tags + emojis in place")
+		b.WriteString(hint)
 	case tmInputDate:
 		// Date picker display
 		preview := tmFormatDateLong(tm.datePickerDate)
