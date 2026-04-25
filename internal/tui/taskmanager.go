@@ -2191,6 +2191,13 @@ func (tm TaskManager) updateInlineEdit(key string) (TaskManager, tea.Cmd) {
 // rest of the line is replaced with the user's input. Skips
 // silently when the buffer is empty (treat as cancel — better
 // than wiping the task accidentally).
+//
+// Defensive: strips a leading "- [ ] " (or [x] / [X]) from the
+// buffer before appending so a user who pastes-or-retypes a
+// full task line doesn't get double-prefixed
+// ("- [ ] - [ ] foo"). Newlines are also rejected to keep the
+// single-line invariant — pasting a multiline buffer would
+// otherwise corrupt adjacent rows.
 func (tm *TaskManager) applyInlineEdit() {
 	if tm.cursor < 0 || tm.cursor >= len(tm.filtered) {
 		return
@@ -2200,13 +2207,21 @@ func (tm *TaskManager) applyInlineEdit() {
 		tm.statusMsg = "Edit cancelled (empty)"
 		return
 	}
+	if strings.ContainsAny(body, "\n\r") {
+		tm.statusMsg = "Edit rejected — line breaks not allowed"
+		return
+	}
+	body = stripCheckboxPrefix(body)
+	if body == "" {
+		tm.statusMsg = "Edit cancelled (only checkbox)"
+		return
+	}
 	task := tm.filtered[tm.cursor]
 	ok := tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
-		// Find the prefix end: after "- [ ] " or "- [x] ".
-		// reTaskLine in the parser captures group 1 as the
-		// "- [" prefix + indent; group 3 starts with "] ".
-		// We don't import the regex here; use string ops for
-		// speed and clarity.
+		// Preserve everything up to and including the "] " that
+		// closes the checkbox (so leading indent + bullet +
+		// checkbox state survive); replace the tail with the
+		// user's body.
 		idx := strings.Index(line, "] ")
 		if idx < 0 {
 			// Line stopped looking like a task between the user
@@ -2220,6 +2235,20 @@ func (tm *TaskManager) applyInlineEdit() {
 		tm.statusMsg = "Edited"
 		tm.reparse()
 	}
+}
+
+// stripCheckboxPrefix removes a leading "- [ ] " (or "- [x] " /
+// "- [X] ") plus any leading whitespace from a task body. Used
+// by inline edit to defang accidental prefix double-up — a user
+// who types or pastes the full markdown line should still end
+// up with just the body part.
+func stripCheckboxPrefix(s string) string {
+	trimmed := strings.TrimLeft(s, " \t")
+	if len(trimmed) >= 6 &&
+		(trimmed[:6] == "- [ ] " || trimmed[:6] == "- [x] " || trimmed[:6] == "- [X] ") {
+		return strings.TrimSpace(trimmed[6:])
+	}
+	return s
 }
 
 func (tm TaskManager) updateAddInput(key string) (TaskManager, tea.Cmd) {

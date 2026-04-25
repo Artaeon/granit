@@ -1203,3 +1203,22 @@ func TestCloseFeatureTab_RemovesAndReturnsTrue(t *testing.T) {
 		t.Error("CloseFeatureTab on missing tab should return false")
 	}
 }
+
+func TestStripCheckboxPrefix_ProtectsAgainstDoublePrefix(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"foo", "foo"},                       // no prefix → unchanged
+		{"- [ ] foo", "foo"},                 // exact prefix
+		{"- [x] foo", "foo"},                 // done variant
+		{"- [X] foo", "foo"},                 // capital done
+		{"  - [ ] indented", "indented"},     // leading whitespace
+		{"- [] foo", "- [] foo"},             // not a real checkbox → unchanged
+		{"-[ ] foo", "-[ ] foo"},             // missing space → unchanged
+	}
+	for _, c := range cases {
+		if got := stripCheckboxPrefix(c.in); got != c.want {
+			t.Errorf("stripCheckboxPrefix(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

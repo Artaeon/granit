@@ -1013,7 +1013,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.graphView.IsActive() {
+		if m.graphView.IsActive() && featureTabIsForeground(m.tabBar, FeatGraph) {
 			m.graphView, _ = m.graphView.Update(msg)
 			if nav := m.graphView.SelectedNote(); nav != "" {
 				m.loadNote(nav)
@@ -1134,7 +1134,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.calendar.IsActive() {
+		if m.calendar.IsActive() && featureTabIsForeground(m.tabBar, FeatCalendar) {
 			// Clear refresh flag — calendar data is already updated by refreshComponents
 			if m.needsRefresh {
 				m.needsRefresh = false
@@ -1399,7 +1399,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.goalsMode.IsActive() {
+		if m.goalsMode.IsActive() && featureTabIsForeground(m.tabBar, FeatGoals) {
 			m.goalsMode, _ = m.goalsMode.Update(msg)
 			if !m.goalsMode.IsActive() && m.goalsMode.WasFileChanged() {
 				m.refreshComponents("")
@@ -1799,7 +1799,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
-		if m.projectMode.IsActive() {
+		if m.projectMode.IsActive() && featureTabIsForeground(m.tabBar, FeatProject) {
 			m.projectMode, _ = m.projectMode.Update(msg)
 			// Sync task toggles back to vault
 			if m.projectMode.WasFileChanged() {
@@ -2422,7 +2422,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.kanban.IsActive() || m.kanban.HasPendingActions() {
 			var cmd tea.Cmd
-			if m.kanban.IsActive() {
+			// Key dispatch only fires when Kanban is the active
+			// tab; HasPendingActions drains regardless so async
+			// writes complete even if the user has switched away.
+			if m.kanban.IsActive() && featureTabIsForeground(m.tabBar, FeatKanban) {
 				m.kanban, cmd = m.kanban.Update(msg)
 				m.reportError("persist kanban state", m.kanban.ConsumeSaveError())
 			}
@@ -2883,21 +2886,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "ctrl+tab":
-			// Cycle to next tab
+			// Cycle to next tab. Branches on tab kind: feature
+			// tabs don't have a vault note path so loadNote
+			// would silently fail; we just clear activeNote and
+			// let the editor-pane render branch pick up the
+			// feature via ActiveFeature.
 			if m.tabBar != nil {
-				if path := m.tabBar.NextTab(); path != "" && path != m.activeNote {
-					m.loadNote(path)
-					m.setSidebarCursorToFile(path)
+				if path := m.tabBar.NextTab(); path != "" {
+					m.activateTabByPath(path)
 				}
 			}
 			return m, nil
 
 		case "ctrl+shift+tab":
-			// Cycle to previous tab
 			if m.tabBar != nil {
-				if path := m.tabBar.PrevTab(); path != "" && path != m.activeNote {
-					m.loadNote(path)
-					m.setSidebarCursorToFile(path)
+				if path := m.tabBar.PrevTab(); path != "" {
+					m.activateTabByPath(path)
 				}
 			}
 			return m, nil
@@ -2905,15 +2909,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4", "ctrl+5",
 			"ctrl+6", "ctrl+7", "ctrl+8", "ctrl+9":
 			if m.tabBar != nil {
-				// Parse digit from key string (last character)
 				keyStr := msg.String()
 				digit := int(keyStr[len(keyStr)-1] - '0')
-				idx := digit - 1 // 1-indexed to 0-indexed
+				idx := digit - 1
 				if path := m.tabBar.SwitchToIndex(idx); path != "" {
-					if path != m.activeNote {
-						m.loadNote(path)
-						m.setSidebarCursorToFile(path)
-					}
+					m.activateTabByPath(path)
 				}
 			}
 			return m, nil

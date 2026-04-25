@@ -1502,16 +1502,28 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdReopenClosedTab:
 		if m.tabBar != nil {
-			if path := m.tabBar.ReopenLast(); path != "" {
-				if m.vault.GetNote(path) != nil {
-					m.tabBar.AddTab(path)
-					m.loadNote(path)
-					m.setSidebarCursorToFile(path)
-					m.statusbar.SetMessage("Reopened: " + path)
-					return m, m.clearMessageAfter(2 * time.Second)
-				}
-			} else {
+			path := m.tabBar.ReopenLast()
+			if path == "" {
 				m.statusbar.SetMessage("No closed tabs to reopen")
+				return m, m.clearMessageAfter(2 * time.Second)
+			}
+			// Feature tabs need to redispatch through their
+			// CmdX handler so init + enrichment runs (the
+			// closed-history only carries the path string, not
+			// the feature's state).
+			if isFeatureTabPath(path) {
+				if action, ok := reopenFeatureCommand(path); ok {
+					m.statusbar.SetMessage("Reopened: " + path)
+					return m.executeCommand(action)
+				}
+				m.statusbar.SetMessage("Cannot reopen unknown feature tab")
+				return m, m.clearMessageAfter(2 * time.Second)
+			}
+			if m.vault.GetNote(path) != nil {
+				m.tabBar.AddTab(path)
+				m.loadNote(path)
+				m.setSidebarCursorToFile(path)
+				m.statusbar.SetMessage("Reopened: " + path)
 				return m, m.clearMessageAfter(2 * time.Second)
 			}
 		}

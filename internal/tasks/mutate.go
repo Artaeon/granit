@@ -217,6 +217,15 @@ func (s *TaskStore) Create(text string, opts CreateOpts) (Task, error) {
 	if cleaned == "" {
 		return Task{}, errors.New("tasks: Create requires non-empty text")
 	}
+	// Single-line invariant: a task is one markdown line. If
+	// the caller passes a string with embedded newlines we'd
+	// silently write multiple task lines (or break a markdown
+	// fenced block) — reject explicitly so future widgets,
+	// Lua plugins, or AI auto-capture can't accidentally
+	// inject hidden tasks via a multiline buffer.
+	if strings.ContainsAny(cleaned, "\n\r") {
+		return Task{}, errors.New("tasks: Create text must be a single line — newlines not allowed")
+	}
 	// Normalize: if the caller pre-wrapped it, accept as-is.
 	taskLine := cleaned
 	if !strings.HasPrefix(strings.TrimLeft(cleaned, " \t"), "- [") {

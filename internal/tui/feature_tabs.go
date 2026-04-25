@@ -14,6 +14,63 @@ func isFeatureTabPath(path string) bool {
 	return strings.HasPrefix(path, "feat:")
 }
 
+// reopenFeatureCommand maps a synthetic feature-tab path back
+// to the CommandAction that opens that feature. Used by
+// Ctrl+Shift+T (CmdReopenClosedTab) so feature tabs survive
+// the closed-history → reopen round trip with their full init
+// + enrichment, not as a blank-state shell.
+//
+// Returns ok=false for unknown feature IDs (forward-compat with
+// future Lua-defined features whose reopen would have to come
+// from the Lua bridge instead of a built-in CommandAction).
+func reopenFeatureCommand(path string) (CommandAction, bool) {
+	if !isFeatureTabPath(path) {
+		return CmdNone, false
+	}
+	id := FeatureID(strings.TrimPrefix(path, "feat:"))
+	switch id {
+	case FeatTaskManager:
+		return CmdTaskManager, true
+	case FeatDailyJot:
+		return CmdDailyJot, true
+	case FeatCalendar:
+		return CmdShowCalendar, true
+	case FeatKanban:
+		return CmdKanban, true
+	case FeatGoals:
+		return CmdGoalsMode, true
+	case FeatProject:
+		return CmdProjectMode, true
+	case FeatGraph:
+		return CmdShowGraph, true
+	}
+	return CmdNone, false
+}
+
+// activateTabByPath dispatches a tab-switch path to the right
+// activator. For note paths, loadNote + sidebar update. For
+// feature paths ("feat:<id>"), clear activeNote so the render
+// branch picks up the feature view; sidebar stays put. Used by
+// Ctrl+Tab / Ctrl+Shift+Tab / Ctrl+1..9 — without this they
+// silently no-op'd on feature tabs because loadNote's vault
+// lookup returned nil.
+func (m *Model) activateTabByPath(path string) {
+	if path == "" {
+		return
+	}
+	if isFeatureTabPath(path) {
+		// Feature tab now active. Render branch consults
+		// ActiveFeature so we don't have to dispatch by id here.
+		m.activeNote = ""
+		return
+	}
+	if path == m.activeNote {
+		return
+	}
+	m.loadNote(path)
+	m.setSidebarCursorToFile(path)
+}
+
 // This file holds the dispatch glue for the editor-tab migration
 // (Phase 4). Each migrated overlay (TaskManager, DailyJot,
 // Calendar, etc.) wires three branches here:
@@ -40,6 +97,37 @@ func hasActiveFeatureTab(tb *TabBar) bool {
 	}
 	_, ok := tb.ActiveFeature()
 	return ok
+}
+
+// featureTabIsForeground gates the legacy `if m.X.IsActive()`
+// key-routing blocks for surfaces that migrated render-only
+// (Calendar / Kanban / Goals / Projects / Graph). Their Update
+// logic still lives in those legacy blocks, but we only want
+// them to fire when the user is actually looking at that
+// feature — otherwise opening a Calendar tab and switching to
+// a note tab would have Calendar swallow every keystroke meant
+// for the editor.
+//
+// Returns true when:
+//   - there is no tabbar (caller should behave as before), OR
+//   - the active tab IS this feature.
+//
+// Returns false when a different tab (note or another feature)
+// is active — caller should skip its IsActive-based dispatch.
+func featureTabIsForeground(tb *TabBar, id FeatureID) bool {
+	if tb == nil {
+		return true
+	}
+	af, ok := tb.ActiveFeature()
+	if !ok {
+		// No feature tab is active. The legacy block fired in
+		// the pre-Phase-4 world whenever IsActive was true; it
+		// shouldn't fire now if a note tab took focus, because
+		// the user is editing that note. Return false so legacy
+		// surfaces stop routing keys when a note tab is active.
+		return false
+	}
+	return af == id
 }
 
 // renderFeatureTab returns the rendered view for the given

@@ -338,3 +338,21 @@ func stringsIndex(s, sub string) int {
 	}
 	return -1
 }
+
+func TestCreate_RejectsNewlines(t *testing.T) {
+	store, _ := freshStore(t, map[string]string{"Tasks.md": ""})
+	cases := []string{
+		"task A\ntask B",
+		"hidden\rcarriage",
+		"first\n- [ ] hidden",
+	}
+	for _, in := range cases {
+		if _, err := store.Create(in, CreateOpts{}); err == nil {
+			t.Errorf("Create(%q) should reject newlines, got no error", in)
+		}
+	}
+	// Confirm a clean single-line still succeeds.
+	if _, err := store.Create("clean single line", CreateOpts{}); err != nil {
+		t.Errorf("clean text should succeed, got %v", err)
+	}
+}
