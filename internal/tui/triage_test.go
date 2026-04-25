@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -73,33 +74,76 @@ func TestTriageQueue_DropMarksDropped(t *testing.T) {
 	}
 }
 
-func TestTriageQueue_ScheduleSetsScheduledStateAndStart(t *testing.T) {
+func TestTriageQueue_ScheduleOpensPickerThenAppliesChoice(t *testing.T) {
 	store := mkTriageStore(t, []string{"- [ ] schedule me"})
 	q := NewTriageQueue(store)
 	q.Open()
 	id := q.inbox[0].ID
+	// `s` opens the picker — task should NOT be triaged yet.
 	q, _ = q.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	if !q.picker.IsActive() {
+		t.Fatal("expected picker active after s")
+	}
 	got, _ := store.GetByID(id)
+	if got.Triage == tasks.TriageScheduled {
+		t.Error("schedule should NOT apply until user picks a duration")
+	}
+	// Pick "today" (key 1).
+	q, _ = q.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	if q.picker.IsActive() {
+		t.Error("picker should close after pick")
+	}
+	got, _ = store.GetByID(id)
 	if got.Triage != tasks.TriageScheduled {
 		t.Errorf("triage: got %q want scheduled", got.Triage)
 	}
 	if got.ScheduledStart == nil {
-		t.Error("ScheduledStart should be set after s")
+		t.Error("ScheduledStart should be set after picking today")
 	}
 }
 
-func TestTriageQueue_SnoozeMovesScheduledStartForward(t *testing.T) {
+func TestTriageQueue_SnoozeOpensPickerThenAppliesChoice(t *testing.T) {
 	store := mkTriageStore(t, []string{"- [ ] later"})
 	q := NewTriageQueue(store)
 	q.Open()
 	id := q.inbox[0].ID
 	q, _ = q.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
+	if !q.picker.IsActive() {
+		t.Fatal("expected picker active after z")
+	}
+	// Pick "+3d" (key 2 in snoozeOptions = 3 days).
+	q, _ = q.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
 	got, _ := store.GetByID(id)
 	if got.Triage != tasks.TriageSnoozed {
 		t.Errorf("triage: got %q want snoozed", got.Triage)
 	}
 	if got.ScheduledStart == nil {
-		t.Error("ScheduledStart should be set after z")
+		t.Fatal("ScheduledStart should be set after pick")
+	}
+	// Should be roughly 3 days in the future.
+	hoursAhead := got.ScheduledStart.Sub(time.Now()).Hours()
+	if hoursAhead < 70 || hoursAhead > 74 {
+		t.Errorf("ScheduledStart should be ~72h ahead, got %.1fh", hoursAhead)
+	}
+}
+
+func TestTriageQueue_PickerEscCancelsWithoutChange(t *testing.T) {
+	store := mkTriageStore(t, []string{"- [ ] keep me"})
+	q := NewTriageQueue(store)
+	q.Open()
+	id := q.inbox[0].ID
+	q, _ = q.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	q, _ = q.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if q.picker.IsActive() {
+		t.Error("esc should close picker")
+	}
+	got, _ := store.GetByID(id)
+	if got.Triage == tasks.TriageScheduled {
+		t.Error("esc on picker must not commit a schedule")
+	}
+	// Cursor should NOT have advanced — the user cancelled.
+	if q.cursor != 0 {
+		t.Errorf("cursor advanced after picker cancel: %d", q.cursor)
 	}
 }
 

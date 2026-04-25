@@ -40,6 +40,14 @@ type TriageQueue struct {
 	openOK   bool
 	closeReq bool
 	statusMsg string
+
+	// picker is the inline date chooser activated by `s` and
+	// `z`. When active it consumes keys exclusively until the
+	// user picks an option or Esc-cancels. pendingPick remembers
+	// which action triggered it so we know what to do with the
+	// chosen duration.
+	picker      quickPicker
+	pendingPick string // "schedule" or "snooze"
 }
 
 // NewTriageQueue returns an empty queue. The store is injected
@@ -90,6 +98,24 @@ func (q *TriageQueue) Update(msg tea.Msg) (TriageQueue, tea.Cmd) {
 		return *q, nil
 	}
 	current := q.inbox[q.cursor]
+
+	// Picker takes priority — when up, all keys go to it.
+	if q.picker.IsActive() {
+		if q.picker.Update(msg) {
+			if opt, ok := q.picker.Result(); ok {
+				switch q.pendingPick {
+				case "schedule":
+					q.applySchedule(current.ID, opt.Value)
+				case "snooze":
+					q.applySnooze(current.ID, opt.Value)
+				}
+				q.pendingPick = ""
+				q.advance()
+			}
+		}
+		return *q, nil
+	}
+
 	switch keyMsg.String() {
 	case "esc", "q", "ctrl+c":
 		q.Close()
@@ -97,14 +123,14 @@ func (q *TriageQueue) Update(msg tea.Msg) (TriageQueue, tea.Cmd) {
 		q.applyTriage(current.ID, "triaged")
 		q.advance()
 	case "s":
-		q.applySchedule(current.ID)
-		q.advance()
+		q.pendingPick = "schedule"
+		q.picker.Open("Schedule when?", scheduleOptions())
 	case "d":
 		q.applyTriage(current.ID, "dropped")
 		q.advance()
 	case "z":
-		q.applySnooze(current.ID, 7*24*time.Hour)
-		q.advance()
+		q.pendingPick = "snooze"
+		q.picker.Open("Snooze until?", snoozeOptions())
 	case " ", "space", "j", "down":
 		q.advance()
 	case "k", "up":
@@ -134,15 +160,18 @@ func (q *TriageQueue) applyTriage(id, state string) {
 	q.statusMsg = "→ " + state
 }
 
-// applySchedule marks the task as scheduled with ScheduledStart
-// = now (so it surfaces in today.tasks); precise time picking
-// happens in the calendar overlay.
-func (q *TriageQueue) applySchedule(id string) {
+// applySchedule marks the task as scheduled and sets
+// ScheduledStart to now+offset. Offset 0 means "today" — the
+// task appears immediately in today.tasks. Future offsets put
+// it on that day's calendar (and today.tasks reads
+// ScheduledStart, so the task shows up on its scheduled day
+// without needing a separate trigger).
+func (q *TriageQueue) applySchedule(id string, offset time.Duration) {
 	if q.store == nil {
 		return
 	}
-	now := time.Now()
-	if err := q.store.Schedule(id, now, 30*time.Minute); err != nil {
+	when := time.Now().Add(offset)
+	if err := q.store.Schedule(id, when, 30*time.Minute); err != nil {
 		q.statusMsg = "schedule failed: " + err.Error()
 		return
 	}
@@ -150,7 +179,21 @@ func (q *TriageQueue) applySchedule(id string) {
 		q.statusMsg = "triage failed: " + err.Error()
 		return
 	}
-	q.statusMsg = "→ scheduled today"
+	q.statusMsg = "→ scheduled " + scheduleEcho(offset)
+}
+
+// scheduleEcho formats the offset for the post-action status
+// echo: "today" / "tomorrow" / "+3d" depending on offset.
+func scheduleEcho(offset time.Duration) string {
+	day := 24 * time.Hour
+	switch {
+	case offset == 0:
+		return "today"
+	case offset == day:
+		return "tomorrow"
+	default:
+		return humanDuration(offset)
+	}
 }
 
 // applySnooze advances the task's hidden-until time by dur and
@@ -245,8 +288,14 @@ func (q *TriageQueue) View() string {
 			"space skip  ·  k back  ·  o open  ·  q close")
 
 	out := header + progress + "\n\n" + body + "\n\n" + keys
-	if q.statusMsg != "" {
-		out += "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(q.statusMsg)
+	// Picker takes the bottom slot when up — replaces the
+	// keymap hint area. Power user already knows the keys; the
+	// picker shows the new menu.
+	if q.picker.IsActive() {
+		out = header + progress + "\n\n" + body + "\n\n" + q.picker.View()
+	} else if q.statusMsg != "" {
+		// Status echoes use a calmer color than the error red.
+		out += "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render(q.statusMsg)
 	}
 	return out
 }
