@@ -2,6 +2,8 @@ package tui
 
 import (
 	"log"
+	"os"
+	"path/filepath"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -88,6 +90,33 @@ func applyProfile(m *Model, p *profiles.Profile) {
 		// trigger the visual refresh by calling updateLayout on
 		// its normal path so we don't double-call here.
 	}
+}
+
+// isNewVault reports whether the vault has never been opened by
+// granit before — used to gate the first-launch profile picker.
+//
+// A vault is considered new only if NONE of granit's state files
+// exist: no .granit/active-profile, no .granit/modules.json, no
+// .granit/tasks-meta.json. Any one of those means this vault has
+// been seen before and the user already chose (or implicitly
+// stuck with) Classic; we don't want to nag them with a picker
+// every time .granit/active-profile gets accidentally deleted by
+// an over-eager .gitignore.
+func isNewVault(vaultRoot string) bool {
+	if vaultRoot == "" {
+		return false
+	}
+	markers := []string{
+		filepath.Join(vaultRoot, ".granit", "active-profile"),
+		filepath.Join(vaultRoot, ".granit", "modules.json"),
+		filepath.Join(vaultRoot, ".granit", "tasks-meta.json"),
+	}
+	for _, m := range markers {
+		if _, err := os.Stat(m); err == nil {
+			return false
+		}
+	}
+	return true
 }
 
 // applyProfileSwitch handles the runtime side of switching to a

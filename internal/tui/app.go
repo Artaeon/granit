@@ -606,6 +606,15 @@ func NewModel(vaultPath string) (Model, error) {
 		m.dailyHub = NewDailyHub(m.widgetRegistry)
 		m.profilePicker = NewProfilePicker()
 		m.triageQueue = NewTriageQueue(m.taskStore)
+
+		// First-launch UX: brand-new vaults get the profile
+		// picker on first frame so the user picks a workflow
+		// explicitly. Existing vaults skip silently — Classic
+		// is already active, no nag.
+		if isNewVault(v.Root) {
+			m.profilePicker.SetSize(m.width, m.height)
+			m.profilePicker.Open(m.profileRegistry.All(), m.profileRegistry.ActiveID())
+		}
 	}
 	registry := m.registry
 	cmdMap := m.cmdActionToModuleID
