@@ -240,6 +240,109 @@ func (r *Registry) Load() error {
 	return nil
 }
 
+// SetEnabledBatch atomically applies a desired enable-state to
+// every registered module in one call. Used by Phase 3's
+// profile-apply step where a single profile switch may flip a
+// dozen modules at once and naive per-call SetEnabled would fail
+// when it tries to disable a base before its dependent.
+//
+// The wanted map keys are module IDs; values are the desired
+// enabled state. Modules NOT in the map are left at their current
+// state — passing an empty map is a no-op.
+//
+// Algorithm: iterate up to len(registered) times, each pass
+// trying to apply changes that don't violate dep constraints.
+// Settles in O(D) passes where D is the longest dep chain;
+// bounded above by the module count so it always terminates.
+func (r *Registry) SetEnabledBatch(wanted map[string]bool) error {
+	if len(wanted) == 0 {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	maxPasses := len(r.order) + 1
+	for pass := 0; pass < maxPasses; pass++ {
+		progressed := false
+		stillBlocked := false
+		for id, want := range wanted {
+			cur := r.isEnabledLocked(id)
+			if cur == want {
+				continue
+			}
+			// Check whether this change would currently violate the
+			// dep graph. Disable: refuse if any enabled module
+			// depends on this one (and that dependent isn't itself
+			// being disabled this batch). Enable: refuse if any dep
+			// is disabled (and isn't being enabled this batch).
+			if want {
+				ok := true
+				if mod, exists := r.mods[id]; exists {
+					for _, dep := range mod.DependsOn() {
+						if !r.isEnabledLocked(dep) {
+							if depWant, planned := wanted[dep]; !planned || !depWant {
+								ok = false
+								break
+							}
+						}
+					}
+				}
+				if !ok {
+					stillBlocked = true
+					continue
+				}
+			} else {
+				ok := true
+				for _, otherID := range r.order {
+					if otherID == id {
+						continue
+					}
+					if !r.isEnabledLocked(otherID) {
+						continue
+					}
+					for _, dep := range r.mods[otherID].DependsOn() {
+						if dep == id {
+							if otherWant, planned := wanted[otherID]; !planned || otherWant {
+								ok = false
+							}
+						}
+					}
+					if !ok {
+						break
+					}
+				}
+				if !ok {
+					stillBlocked = true
+					continue
+				}
+			}
+			r.enabled[id] = want
+			progressed = true
+		}
+		if !stillBlocked {
+			return nil
+		}
+		if !progressed {
+			// No move possible this pass and still blocked — the
+			// wanted state is internally inconsistent (e.g. enable
+			// X without enabling its disabled dep, or disable X
+			// while a dependent is being kept enabled).
+			return fmt.Errorf("modules: SetEnabledBatch cannot satisfy wanted state — dependency conflict among %v", unfinishedKeys(wanted, r))
+		}
+	}
+	return nil
+}
+
+func unfinishedKeys(wanted map[string]bool, r *Registry) []string {
+	var out []string
+	for id, want := range wanted {
+		if r.isEnabledLocked(id) != want {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // MirrorLegacy seeds the enabled-map from a legacy enabled-flag
 // source (e.g. config.CorePlugins) for IDs that don't already have
 // an explicit setting. Existing entries in the registry win — this is

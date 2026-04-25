@@ -13,6 +13,7 @@ import (
 
 	"github.com/artaeon/granit/internal/config"
 	"github.com/artaeon/granit/internal/modules"
+	"github.com/artaeon/granit/internal/profiles"
 	"github.com/artaeon/granit/internal/tasks"
 	"github.com/artaeon/granit/internal/vault"
 )
@@ -94,7 +95,12 @@ type Model struct {
 	// must check before dereferencing. When non-nil, m.cachedTasks
 	// flows from store.All() instead of ParseAllTasks.
 	taskStore *tasks.TaskStore
-	settings  Settings
+	// profileRegistry holds the available profiles + the active
+	// pointer (Phase 3 of the relaunch). Nil when
+	// cfg.UseProfiles is false. Daily Hub overlay and profile
+	// picker (commits 5+6) read the active profile from here.
+	profileRegistry *profiles.ProfileRegistry
+	settings        Settings
 	graphView      GraphView
 	tagBrowser     TagBrowser
 	helpOverlay    HelpOverlay
@@ -574,6 +580,16 @@ func NewModel(vaultPath string) (Model, error) {
 		m.goalsMode.SetTaskStore(store)
 		m.morningRoutine.SetTaskStore(store)
 		m.taskManager.SetTaskStore(store)
+	}
+
+	// Phase 3 profile boot. When the flag is on, load profiles
+	// from disk + built-ins, resolve the active profile, apply
+	// its module set + layout. Registry stays nil when off so
+	// commits 5+6 (Daily Hub, picker) can nil-check before
+	// dereferencing. Behavior with the flag off is identical to
+	// pre-Phase-3.
+	if cfg.UseProfiles {
+		bootProfiles(&m)
 	}
 	registry := m.registry
 	cmdMap := m.cmdActionToModuleID

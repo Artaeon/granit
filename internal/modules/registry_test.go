@@ -302,6 +302,67 @@ func TestMirrorLegacy_NilMapIsSafe(t *testing.T) {
 	}
 }
 
+func TestSetEnabledBatch_HandlesDepOrder(t *testing.T) {
+	r := newReg(t)
+	_ = r.Register(&fakeModule{id: "base"})
+	_ = r.Register(&fakeModule{id: "dep1", deps: []string{"base"}})
+	_ = r.Register(&fakeModule{id: "dep2", deps: []string{"base"}})
+
+	// Disable base + dependents in one batch — would fail
+	// per-call (base can't be disabled while deps are enabled).
+	err := r.SetEnabledBatch(map[string]bool{
+		"base": false, "dep1": false, "dep2": false,
+	})
+	if err != nil {
+		t.Fatalf("batch disable: %v", err)
+	}
+	if r.Enabled("base") || r.Enabled("dep1") || r.Enabled("dep2") {
+		t.Errorf("expected all disabled, got base=%v dep1=%v dep2=%v",
+			r.Enabled("base"), r.Enabled("dep1"), r.Enabled("dep2"))
+	}
+
+	// Enable in opposite direction in one batch — would fail
+	// per-call if dep1 went first.
+	err = r.SetEnabledBatch(map[string]bool{
+		"dep1": true, "base": true,
+	})
+	if err != nil {
+		t.Fatalf("batch enable: %v", err)
+	}
+	if !r.Enabled("base") || !r.Enabled("dep1") {
+		t.Errorf("batch enable failed")
+	}
+	// dep2 wasn't in the batch and should remain disabled.
+	if r.Enabled("dep2") {
+		t.Error("dep2 not in batch, should still be disabled")
+	}
+}
+
+func TestSetEnabledBatch_DetectsImpossible(t *testing.T) {
+	r := newReg(t)
+	_ = r.Register(&fakeModule{id: "base"})
+	_ = r.Register(&fakeModule{id: "dep", deps: []string{"base"}})
+	// Disable base while keeping dep enabled — impossible.
+	err := r.SetEnabledBatch(map[string]bool{
+		"base": false,
+		"dep":  true,
+	})
+	if err == nil {
+		t.Error("expected error on internally-inconsistent batch")
+	}
+}
+
+func TestSetEnabledBatch_EmptyIsNoOp(t *testing.T) {
+	r := newReg(t)
+	_ = r.Register(&fakeModule{id: "x"})
+	if err := r.SetEnabledBatch(nil); err != nil {
+		t.Errorf("nil should be no-op, got %v", err)
+	}
+	if !r.Enabled("x") {
+		t.Error("x flipped on empty batch")
+	}
+}
+
 func TestPath_ReportsLocation(t *testing.T) {
 	dir := t.TempDir()
 	r := New(dir)

@@ -119,6 +119,15 @@ type Config struct {
 	// when you flip back).
 	UseTaskStore bool `json:"use_task_store"`
 
+	// UseProfiles opts into the Profiles + Daily Hub system
+	// (Phase 3 of the relaunch). Off by default during rollout.
+	// When on, the active profile (read from
+	// <vault>/.granit/active-profile, default "classic") drives
+	// which modules are enabled and which layout boots. Reversible
+	// — flipping back leaves all modules in their last-known state
+	// and stops applying any further profile changes.
+	UseProfiles bool `json:"use_profiles"`
+
 	// File path (not serialized)
 	filePath string `json:"-"`
 }
