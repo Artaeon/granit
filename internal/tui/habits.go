@@ -66,7 +66,9 @@ const (
 	habitInputNewGoalTitle
 	habitInputNewGoalDate
 	habitInputNewMilestone
-	habitInputSearch // '/' fuzzy filter on habit name
+	habitInputSearch       // '/' fuzzy filter on habit name
+	habitInputCategory     // 'g' set / type new category for cursor habit
+	habitInputNote         // 'N' add a note for cursor habit on activeDate
 )
 
 // habitSortMode controls habit list ordering.
@@ -143,6 +145,19 @@ type HabitTracker struct {
 	archived      map[string]bool // habit name → archived
 	showArchived  bool
 	statusMsg     string
+
+	// Categories: habit name → category string. Persisted as
+	// JSON sidecar so we don't have to extend the markdown
+	// table schema. When categories exist, the list view
+	// renders per-category section headers; uncategorised
+	// habits land under "Other".
+	categories map[string]string
+
+	// Per-check-in notes: keyed by "habit|date" so a habit can
+	// carry a different note for each day. ✎ dot in the row
+	// signals "this habit has a note for the active date" so
+	// power users can scan and see which logs have context.
+	notes map[string]string
 }
 
 // ConsumeSaveError returns and clears the last persistence error, if any.
@@ -250,6 +265,99 @@ func (ht *HabitTracker) Open(vaultRoot string) {
 	ht.loadHabits()
 	ht.loadGoals()
 	ht.loadArchived()
+	ht.loadCategories()
+	ht.loadNotes()
+}
+
+// loadCategories restores the habit-name → category map from
+// .granit/habits-categories.json. Silent on missing file.
+func (ht *HabitTracker) loadCategories() {
+	ht.categories = make(map[string]string)
+	if ht.vaultRoot == "" {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(ht.vaultRoot, ".granit", "habits-categories.json"))
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(data, &ht.categories)
+	if ht.categories == nil {
+		ht.categories = make(map[string]string)
+	}
+}
+
+// saveCategories persists the habit-name → category map.
+func (ht *HabitTracker) saveCategories() {
+	if ht.vaultRoot == "" {
+		return
+	}
+	dir := filepath.Join(ht.vaultRoot, ".granit")
+	_ = os.MkdirAll(dir, 0o755)
+	data, err := json.MarshalIndent(ht.categories, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := atomicWriteNote(filepath.Join(dir, "habits-categories.json"), string(data)); err != nil {
+		ht.lastSaveErr = err
+	}
+}
+
+// loadNotes restores the per-check-in note map from disk.
+// Keys are "habit|YYYY-MM-DD" so notes survive even if the
+// habit gets renamed (the note for the old name is orphaned —
+// acceptable trade-off vs. a more complex schema).
+func (ht *HabitTracker) loadNotes() {
+	ht.notes = make(map[string]string)
+	if ht.vaultRoot == "" {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(ht.vaultRoot, ".granit", "habits-notes.json"))
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(data, &ht.notes)
+	if ht.notes == nil {
+		ht.notes = make(map[string]string)
+	}
+}
+
+// saveNotes persists the per-check-in note map.
+func (ht *HabitTracker) saveNotes() {
+	if ht.vaultRoot == "" {
+		return
+	}
+	dir := filepath.Join(ht.vaultRoot, ".granit")
+	_ = os.MkdirAll(dir, 0o755)
+	data, err := json.MarshalIndent(ht.notes, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := atomicWriteNote(filepath.Join(dir, "habits-notes.json"), string(data)); err != nil {
+		ht.lastSaveErr = err
+	}
+}
+
+// noteKey is the stable composite key for the per-check-in note
+// map: "<habit name>|<YYYY-MM-DD>". Single helper so the format
+// only lives in one place.
+func noteKey(habit, date string) string { return habit + "|" + date }
+
+// uniqueCategories returns the sorted unique list of categories
+// currently assigned to any habit. Used by the 'g' cycle and
+// the section-header render.
+func (ht HabitTracker) uniqueCategories() []string {
+	seen := make(map[string]bool)
+	for _, c := range ht.categories {
+		if c != "" {
+			seen[c] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for c := range seen {
+		out = append(out, c)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // loadArchived restores the archived-name set from disk. Silent
@@ -1182,6 +1290,58 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 				ht.statusMsg = "Hiding archived"
 			}
 		}
+	case "g":
+		// Set / cycle the cursor habit's category. If the
+		// habit has no category, prompt to type one. If it
+		// already has one, cycle through existing categories
+		// → "" (clear). Power users with 15+ habits can group
+		// by Health / Work / Learning and the list view
+		// renders section headers per category.
+		if ht.tab == 0 {
+			vis := ht.visibleHabits()
+			if ht.cursor < len(vis) {
+				name := vis[ht.cursor].Name
+				cats := ht.uniqueCategories()
+				cur := ht.categories[name]
+				if cur == "" || len(cats) == 0 {
+					// No category yet — prompt for one. Lets
+					// users coin new category names.
+					ht.inputMode = habitInputCategory
+					ht.inputValue = ""
+					return ht, nil
+				}
+				// Cycle through existing categories then "".
+				next := ""
+				for i, c := range cats {
+					if c == cur {
+						if i+1 < len(cats) {
+							next = cats[i+1]
+						}
+						break
+					}
+				}
+				if next == "" {
+					delete(ht.categories, name)
+					ht.statusMsg = "Category cleared: " + name
+				} else {
+					ht.categories[name] = next
+					ht.statusMsg = "Category: " + next
+				}
+				ht.saveCategories()
+			}
+		}
+	case "N":
+		// Add / edit a per-check-in note for the cursor habit
+		// on the active date. Stored separately from the
+		// completion log so we can capture context ("felt
+		// great", "30min run") without bloating the streak data.
+		if ht.tab == 0 {
+			vis := ht.visibleHabits()
+			if ht.cursor < len(vis) {
+				ht.inputMode = habitInputNote
+				ht.inputValue = ht.notes[noteKey(vis[ht.cursor].Name, ht.activeDate)]
+			}
+		}
 	}
 
 	return ht, nil
@@ -1189,6 +1349,79 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 
 func (ht HabitTracker) updateInput(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 	key := msg.String()
+
+	// Category input — typed name gets assigned to cursor habit.
+	if ht.inputMode == habitInputCategory {
+		switch key {
+		case "esc":
+			ht.inputMode = habitInputNone
+			ht.inputValue = ""
+		case "enter":
+			cat := strings.TrimSpace(ht.inputValue)
+			vis := ht.visibleHabits()
+			if ht.cursor < len(vis) {
+				name := vis[ht.cursor].Name
+				if cat == "" {
+					delete(ht.categories, name)
+					ht.statusMsg = "Category cleared: " + name
+				} else {
+					ht.categories[name] = cat
+					ht.statusMsg = "Category set: " + cat
+				}
+				ht.saveCategories()
+			}
+			ht.inputMode = habitInputNone
+			ht.inputValue = ""
+		case "backspace":
+			if len(ht.inputValue) > 0 {
+				ht.inputValue = TrimLastRune(ht.inputValue)
+			}
+		default:
+			if len(key) == 1 {
+				ht.inputValue += key
+			} else if key == "space" {
+				ht.inputValue += " "
+			}
+		}
+		return ht, nil
+	}
+
+	// Note input — typed text becomes the note for the cursor
+	// habit on the active date. Empty commit deletes the note.
+	if ht.inputMode == habitInputNote {
+		switch key {
+		case "esc":
+			ht.inputMode = habitInputNone
+			ht.inputValue = ""
+		case "enter":
+			text := strings.TrimSpace(ht.inputValue)
+			vis := ht.visibleHabits()
+			if ht.cursor < len(vis) {
+				k := noteKey(vis[ht.cursor].Name, ht.activeDate)
+				if text == "" {
+					delete(ht.notes, k)
+					ht.statusMsg = "Note removed"
+				} else {
+					ht.notes[k] = text
+					ht.statusMsg = "Note saved"
+				}
+				ht.saveNotes()
+			}
+			ht.inputMode = habitInputNone
+			ht.inputValue = ""
+		case "backspace":
+			if len(ht.inputValue) > 0 {
+				ht.inputValue = TrimLastRune(ht.inputValue)
+			}
+		default:
+			if len(key) == 1 {
+				ht.inputValue += key
+			} else if key == "space" {
+				ht.inputValue += " "
+			}
+		}
+		return ht, nil
+	}
 
 	// Search input is its own mode — live-typing narrows the
 	// habit list as the user types. Esc clears, Enter commits.
@@ -1496,7 +1729,38 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 		}
 	}
 
+	// Group rendering by category. visibleHabits is already
+	// sort-mode ordered; we re-bucket by category so per-category
+	// section headers appear above each group. Uncategorised
+	// habits land in "Other" — only shown when there's at least
+	// one categorised habit (otherwise the header would be noise).
+	categorised := false
+	for _, h := range visible {
+		if ht.categories[h.Name] != "" {
+			categorised = true
+			break
+		}
+	}
+	noteStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+	categoryHeaderStyle := lipgloss.NewStyle().Foreground(sapphire).Bold(true)
+	lastCat := ""
+
 	for i, h := range visible {
+		// Category section header (only when at least one
+		// habit is categorised in the visible set).
+		if categorised {
+			cat := ht.categories[h.Name]
+			if cat == "" {
+				cat = "Other"
+			}
+			if cat != lastCat {
+				if lastCat != "" {
+					lines = append(lines, "")
+				}
+				lines = append(lines, "  "+categoryHeaderStyle.Render("· "+cat))
+				lastCat = cat
+			}
+		}
 		checked := ht.isCompletedOn(h.Name, ht.activeDate)
 		checkbox := lipgloss.NewStyle().Foreground(yellow).Render("[ ]")
 		if checked {
@@ -1521,12 +1785,51 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 			cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▶ ")
 			nameStyle = lipgloss.NewStyle().Foreground(peach).Bold(true).Underline(true)
 		}
+		// Note marker: ✎ when this habit has a note for the
+		// active date so the user can see at a glance which
+		// rows have context to read.
+		noteMarker := "  "
+		if ht.notes[noteKey(h.Name, ht.activeDate)] != "" {
+			noteMarker = noteStyle.Render("✎ ")
+		}
 
 		streak := ht.streakBlocks(h.Name)
 		curNum := streakStyle.Render(fmt.Sprintf(" %d🔥", h.Streak))
 		longNum := longestStyle.Render(fmt.Sprintf(" max %d", ht.longestStreak(h.Name)))
-		line := cursor + checkbox + " " + nameStyle.Render(PadRight(name, nameW)) + " " + streak + curNum + longNum
+		line := cursor + checkbox + " " + noteMarker + nameStyle.Render(PadRight(name, nameW)) + " " + streak + curNum + longNum
 		lines = append(lines, line)
+	}
+
+	// Active note bar — when the cursor habit has a note for
+	// the active date, render its full text below the list so
+	// power users see the context without opening anything.
+	if ht.cursor < len(visible) {
+		k := noteKey(visible[ht.cursor].Name, ht.activeDate)
+		if note := ht.notes[k]; note != "" {
+			lines = append(lines, "")
+			lines = append(lines, "  "+lipgloss.NewStyle().Foreground(lavender).Italic(true).Render("✎ "+note))
+		}
+	}
+
+	// Category / note input bars — render below the list so
+	// the user sees the live-typing prompt with the list above.
+	if ht.inputMode == habitInputCategory {
+		promptStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+		inputStyle := lipgloss.NewStyle().Foreground(text)
+		lines = append(lines, "")
+		lines = append(lines, "  "+promptStyle.Render("Category: ")+inputStyle.Render(ht.inputValue+"█"))
+		lines = append(lines, "  "+DimStyle.Render("Type a category name — Enter to save, empty to clear, Esc to cancel"))
+	}
+	if ht.inputMode == habitInputNote {
+		promptStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+		inputStyle := lipgloss.NewStyle().Foreground(text)
+		lines = append(lines, "")
+		dateLbl := ht.activeDate
+		if dateLbl == todayStr() {
+			dateLbl = "today"
+		}
+		lines = append(lines, "  "+promptStyle.Render("Note ("+dateLbl+"): ")+inputStyle.Render(ht.inputValue+"█"))
+		lines = append(lines, "  "+DimStyle.Render("Enter to save, empty to remove, Esc to cancel"))
 	}
 
 	// Delete confirmation
@@ -1742,6 +2045,7 @@ func (ht HabitTracker) renderHelp() string {
 		pairs = []struct{ Key, Desc string }{
 			{"Tab/1-3", "switch"}, {"j/k", "move"}, {"Space", "toggle"},
 			{"n", "new"}, {"d", "delete"}, {"A", "archive"}, {"H", "show arch"},
+			{"g", "category"}, {"N", "note"},
 			{"<", "prev day"}, {">", "next day"}, {"t", "today"},
 			{"s", "sort"}, {"/", "filter"}, {"c", "clear"}, {"Esc", "close"},
 		}
