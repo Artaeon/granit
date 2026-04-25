@@ -1432,11 +1432,24 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		if m.tabBar != nil {
 			// Capture the closing tab's kind+id BEFORE
 			// CloseActive removes the entry — feature tabs need
-			// a closeFeature() callback to drop their caches.
+			// a closeFeature() callback to drop their caches,
+			// and the user wants to see WHICH tab they just
+			// closed in the status bar.
 			var closingFeature FeatureID
 			var closingIsFeature bool
-			if e, ok := m.tabBar.ActiveEntry(); ok && e.Kind == TabKindFeature {
-				closingFeature, closingIsFeature = m.tabBar.ActiveFeature()
+			closedLabel := ""
+			if e, ok := m.tabBar.ActiveEntry(); ok {
+				if e.Kind == TabKindFeature {
+					closingFeature, closingIsFeature = m.tabBar.ActiveFeature()
+					closedLabel = e.Label
+					if closedLabel == "" {
+						closedLabel = string(closingFeature)
+					}
+				} else {
+					// Note tab — basename without extension is
+					// what the user sees in the tab bar.
+					closedLabel = strings.TrimSuffix(filepath.Base(e.Path), ".md")
+				}
 			}
 			next := m.tabBar.CloseActive()
 			if closingIsFeature {
@@ -1461,6 +1474,16 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			default:
 				m.loadNote(next)
 				m.setSidebarCursorToFile(next)
+			}
+			// Confirmation toast — without it the user
+			// pressing Ctrl+W on a feature tab might wonder if
+			// anything happened, especially when the next tab
+			// is a similar-looking note tab or another feature
+			// tab. Power-user UX: tell me what just happened
+			// so I can correct course fast.
+			if closedLabel != "" {
+				m.statusbar.SetMessage("Closed: " + closedLabel)
+				return m, m.clearMessageAfter(2 * time.Second)
 			}
 			return m, nil
 		}

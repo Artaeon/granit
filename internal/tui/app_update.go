@@ -2813,20 +2813,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "ctrl+w":
-			// Close active tab
-			if m.tabBar != nil {
-				next := m.tabBar.CloseActive()
-				if next != "" {
-					m.loadNote(next)
-					m.setSidebarCursorToFile(next)
-				} else {
-					m.activeNote = ""
-					m.editor.SetContent("")
-					m.editor.filePath = ""
-					m.statusbar.SetActiveNote("")
-				}
-			}
-			return m, nil
+			// Delegate to CmdCloseTab so feature tabs go through
+			// the same close path — closeFeature() is called for
+			// teardown, the next-tab branch knows how to handle
+			// "feat:" paths instead of fumbling them through
+			// loadNote (which silently fails). Without this
+			// delegation, closing a feature tab while another
+			// feature tab is the next-active leaves the editor
+			// pane stuck on stale state.
+			return m.executeCommand(CmdCloseTab)
 
 		case "ctrl+l":
 			m.calendar.SetSize(m.width, m.height)
