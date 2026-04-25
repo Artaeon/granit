@@ -895,6 +895,30 @@ func (gm *GoalsMode) WasFileChanged() bool {
 	return false
 }
 
+// weekVelocity returns how many of this goal's milestones got
+// completed in the last 7 days. Surfaces as the "↑N/wk" chip
+// in the goal list so power users can see where momentum is
+// accumulating without drilling into each goal's expanded view.
+// Uses GoalMilestone.CompletedAt — set when 'x' toggles a
+// milestone done — and counts only the trailing-7-day window.
+func (gm *GoalsMode) weekVelocity(goal Goal) int {
+	cutoff := time.Now().AddDate(0, 0, -7)
+	count := 0
+	for _, ms := range goal.Milestones {
+		if !ms.Done || ms.CompletedAt == "" {
+			continue
+		}
+		t, err := time.Parse("2006-01-02", ms.CompletedAt)
+		if err != nil {
+			continue
+		}
+		if t.After(cutoff) {
+			count++
+		}
+	}
+	return count
+}
+
 // linkedTaskStats returns done/total counts for tasks linked to a goal.
 func (gm *GoalsMode) linkedTaskStats(goalID string) (done, total int) {
 	for _, t := range gm.allTasks {
@@ -1522,6 +1546,53 @@ func (gm GoalsMode) updateNormal(key string) (GoalsMode, tea.Cmd) {
 				ms := gm.goals[idx].Milestones[gm.milestoneCur]
 				gm.createTaskFromMilestone(gm.goals[idx], ms)
 			}
+		}
+
+	// Bulk-create tasks for ALL incomplete milestones in the
+	// expanded goal — power-user shortcut for "I just defined
+	// a goal with 8 milestones, give me the tasks." Each task
+	// links via goal:G… so the linked-task counts update.
+	// Existing-task dedup: skip a milestone whose text is
+	// already among allTasks for this goal.
+	case "B":
+		if gm.expanded < 0 || gm.expanded >= len(gm.filtered) {
+			break
+		}
+		goal := gm.filtered[gm.expanded]
+		idx := gm.findGoalIndex(goal.ID)
+		if idx < 0 {
+			break
+		}
+		// Build a set of texts already present as tasks for
+		// this goal so we don't create duplicates if 'B' is
+		// pressed twice.
+		existing := make(map[string]bool)
+		for _, t := range gm.allTasks {
+			if t.GoalID == goal.ID {
+				existing[strings.TrimSpace(strings.ToLower(t.Text))] = true
+			}
+		}
+		created, skipped := 0, 0
+		for _, ms := range gm.goals[idx].Milestones {
+			if ms.Done {
+				continue
+			}
+			if existing[strings.TrimSpace(strings.ToLower(ms.Text))] {
+				skipped++
+				continue
+			}
+			gm.createTaskFromMilestone(gm.goals[idx], ms)
+			created++
+		}
+		switch {
+		case created == 0 && skipped == 0:
+			gm.statusMsg = "No incomplete milestones to convert"
+		case created == 0:
+			gm.statusMsg = fmt.Sprintf("All %d milestone tasks already exist", skipped)
+		case skipped == 0:
+			gm.statusMsg = fmt.Sprintf("Created %d tasks", created)
+		default:
+			gm.statusMsg = fmt.Sprintf("Created %d tasks (%d already existed)", created, skipped)
 		}
 
 	// Set review frequency / write review
@@ -2280,7 +2351,17 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 			reviewBadge = " " + DimStyle.Render("["+goal.ReviewFrequency+"]")
 		}
 
-		line := prefix + statusIcon + titleStyle.Render(title) + " " + bar + msCount + timeBadge + reviewBadge + catBadge
+		// Velocity badge: how many milestones got marked done
+		// in the last 7 days. Bright green when there's momentum,
+		// dim grey when zero — power users glance at the list
+		// and see "where am I making progress?" without drilling
+		// into each goal.
+		velBadge := ""
+		if v := gm.weekVelocity(goal); v > 0 {
+			velBadge = " " + lipgloss.NewStyle().Foreground(green).Bold(true).Render(fmt.Sprintf("↑%d/wk", v))
+		}
+
+		line := prefix + statusIcon + titleStyle.Render(title) + " " + bar + msCount + timeBadge + velBadge + reviewBadge + catBadge
 		b.WriteString(line + "\n")
 		lineCount++
 
@@ -2383,6 +2464,7 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 					mStyle = mStyle.Strikethrough(true).Foreground(overlay0)
 				}
 				dueLbl := ""
+				overduePrefix := ""
 				if ms.DueDate != "" {
 					dColor := overlay0
 					if d, err := time.Parse("2006-01-02", ms.DueDate); err == nil {
@@ -2390,13 +2472,18 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 						today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 						if today.After(d) && !ms.Done {
 							dColor = red
+							// Loud "!" prefix so the eye lands on
+							// overdue milestones at a glance —
+							// color alone is easy to miss when
+							// scanning a goal with many milestones.
+							overduePrefix = lipgloss.NewStyle().Foreground(red).Bold(true).Render("! ")
 						} else if today.AddDate(0, 0, 7).After(d) && !ms.Done {
 							dColor = yellow
 						}
 					}
 					dueLbl = " " + lipgloss.NewStyle().Foreground(dColor).Render(ms.DueDate)
 				}
-				b.WriteString(mPrefix + check + mStyle.Render(ms.Text) + dueLbl + "\n")
+				b.WriteString(mPrefix + check + overduePrefix + mStyle.Render(ms.Text) + dueLbl + "\n")
 				lineCount++
 			}
 			// AI review text (shown below milestones)
