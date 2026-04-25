@@ -1133,10 +1133,8 @@ func (m Model) View() string {
 		overlay := m.morningRoutine.View()
 		view = m.overlayCenter(view, overlay)
 	}
-	if m.dailyJot.IsActive() {
-		overlay := m.dailyJot.View()
-		view = m.overlayCenter(view, overlay)
-	}
+	// DailyJot retired from overlay rendering in Phase 4 — now
+	// a feature tab in the editor pane (see renderFeatureTab).
 	if m.encryption.IsActive() {
 		overlay := m.encryption.View()
 		view = m.overlayCenter(view, overlay)

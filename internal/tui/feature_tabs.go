@@ -51,6 +51,9 @@ func (m *Model) renderFeatureTab(id FeatureID, width, height int) string {
 	case FeatTaskManager:
 		m.taskManager.SetSize(width, height)
 		return m.taskManager.View()
+	case FeatDailyJot:
+		m.dailyJot.SetSize(width, height)
+		return m.dailyJot.View()
 	}
 	return ""
 }
@@ -102,6 +105,29 @@ func (m *Model) routeFeatureKey(id FeatureID, msg tea.Msg) (Model, tea.Cmd, bool
 			m.focusSession.OpenWithTask(m.vault.Root, task)
 		}
 		return *m, cmd, true
+
+	case FeatDailyJot:
+		var cmd tea.Cmd
+		m.dailyJot, cmd = m.dailyJot.Update(msg)
+		// DailyJot can close itself internally (e.g., user Esc)
+		// — match the legacy behavior: load the promoted note
+		// (if the user pressed the promote key on a jot) and
+		// refresh the rest of the UI. Also close the tab when
+		// the user dismisses internally so we don't leave a
+		// dead-feature tab around.
+		if !m.dailyJot.IsActive() {
+			if notePath := m.dailyJot.GetPromotedNote(); notePath != "" {
+				if m.tabBar != nil {
+					m.tabBar.CloseFeatureTab(FeatDailyJot)
+				}
+				m.loadNote(notePath)
+				m.setSidebarCursorToFile(notePath)
+			} else if m.tabBar != nil {
+				m.tabBar.CloseFeatureTab(FeatDailyJot)
+			}
+			m.refreshComponents("")
+		}
+		return *m, cmd, true
 	}
 	return *m, nil, false
 }
@@ -114,5 +140,7 @@ func (m *Model) closeFeature(id FeatureID) {
 	switch id {
 	case FeatTaskManager:
 		m.taskManager.Close()
+	case FeatDailyJot:
+		m.dailyJot.Close()
 	}
 }

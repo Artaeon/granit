@@ -1438,17 +1438,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.dailyJot.IsActive() {
-			m.dailyJot, _ = m.dailyJot.Update(msg)
-			if !m.dailyJot.IsActive() {
-				if notePath := m.dailyJot.GetPromotedNote(); notePath != "" {
-					m.loadNote(notePath)
-					m.setSidebarCursorToFile(notePath)
-				}
-				m.refreshComponents("")
-			}
-			return m, nil
-		}
+		// DailyJot keypress routing retired here in Phase 4 —
+		// routeFeatureKey owns it.
 
 		if m.noteHistory.IsActive() {
 			m.noteHistory, _ = m.noteHistory.Update(msg)

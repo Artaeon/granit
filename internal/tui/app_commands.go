@@ -1120,12 +1120,22 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.dailyReview.Open(m.vault.Root, m.vault, m.currentTasks())
 
 	case CmdDailyJot:
-		m.dailyJot.SetSize(m.width, m.height)
-		noteNames := make([]string, 0, len(m.vault.Notes))
-		for k := range m.vault.Notes {
-			noteNames = append(noteNames, strings.TrimSuffix(filepath.Base(k), ".md"))
+		// Phase 4: DailyJot is now an editor tab. AddFeatureTab
+		// creates or switches; only re-init on first open so
+		// re-pressing Alt+J doesn't lose scroll position or the
+		// in-flight buffer.
+		alreadyOpen := m.tabBar != nil && m.tabBar.HasFeatureTab(FeatDailyJot)
+		if m.tabBar != nil {
+			m.tabBar.AddFeatureTab(FeatDailyJot, "Jot")
 		}
-		m.dailyJot.Open(m.vault.Root, "Jots", noteNames, 14)
+		m.activeNote = ""
+		if !alreadyOpen {
+			noteNames := make([]string, 0, len(m.vault.Notes))
+			for k := range m.vault.Notes {
+				noteNames = append(noteNames, strings.TrimSuffix(filepath.Base(k), ".md"))
+			}
+			m.dailyJot.Open(m.vault.Root, "Jots", noteNames, 14)
+		}
 
 	case CmdMorningRoutine:
 		m.morningRoutine.SetSize(m.width, m.height)
