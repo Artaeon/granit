@@ -274,6 +274,25 @@ func TestMirrorLegacy_DoesNotOverrideExisting(t *testing.T) {
 	}
 }
 
+func TestMirrorLegacy_DisablesUnregisteredID(t *testing.T) {
+	// Migration scenario: the user has cfg.CorePlugins["foo"] = false,
+	// but the "foo" module hasn't been migrated yet, so it isn't
+	// registered. Enabled("foo") must still respect the user's choice
+	// — otherwise gates that switch from CorePluginEnabled to
+	// registry.Enabled silently re-enable disabled features.
+	r := newReg(t)
+	r.MirrorLegacy(map[string]bool{"foo": false, "bar": true})
+	if r.Enabled("foo") {
+		t.Error("legacy disable on unregistered module must be honored")
+	}
+	if !r.Enabled("bar") {
+		t.Error("legacy enable on unregistered module must be honored")
+	}
+	if !r.Enabled("never-mentioned") {
+		t.Error("truly unknown ID must still default to enabled")
+	}
+}
+
 func TestMirrorLegacy_NilMapIsSafe(t *testing.T) {
 	r := newReg(t)
 	_ = r.Register(&fakeModule{id: "alpha"})

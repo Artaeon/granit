@@ -80,20 +80,19 @@ func (r *Registry) All() []Module {
 }
 
 // Enabled reports whether the module with the given ID is currently
-// enabled. Unknown IDs return true — this is the migration-safety
-// fallback that keeps unmigrated features visible while the rollout
-// is in flight.
+// enabled.
+//
+// An explicit entry in the enabled-set wins regardless of whether the
+// module is registered — this is what lets a value mirrored from
+// legacy config.CorePlugins (or persisted in modules.json by an
+// earlier session) gate a feature whose Module declaration ships in a
+// later commit. With no explicit entry, returns true: that's the
+// migration-safety fallback that keeps unmigrated features visible
+// during rollout.
 func (r *Registry) Enabled(id string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if _, known := r.mods[id]; !known {
-		return true
-	}
-	v, set := r.enabled[id]
-	if !set {
-		return true // default-on for known modules
-	}
-	return v
+	return r.isEnabledLocked(id)
 }
 
 // SetEnabled toggles a module on or off. Enabling fails if any
@@ -133,16 +132,12 @@ func (r *Registry) SetEnabled(id string, on bool) error {
 }
 
 // isEnabledLocked is the read-side of Enabled assuming the caller
-// already holds the lock.
+// already holds the lock. See Enabled for the resolution rules.
 func (r *Registry) isEnabledLocked(id string) bool {
-	if _, known := r.mods[id]; !known {
-		return true
+	if v, set := r.enabled[id]; set {
+		return v
 	}
-	v, set := r.enabled[id]
-	if !set {
-		return true
-	}
-	return v
+	return true
 }
 
 // EnabledModules returns only the enabled modules, in registration
