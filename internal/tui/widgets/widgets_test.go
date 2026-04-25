@@ -111,6 +111,44 @@ func TestTodayTasksWidget_FilterDueByDate(t *testing.T) {
 	}
 }
 
+func TestTodayTasksWidget_IncludesScheduledTodayWithoutDueDate(t *testing.T) {
+	// Tasks promoted by triage `s` get ScheduledStart=now and no
+	// DueDate. They must still appear in today.tasks.
+	today := time.Now()
+	scheduledToday := today
+	all := []tasks.Task{
+		{ID: "1", Text: "scheduled today", ScheduledStart: &scheduledToday},
+	}
+	got := filterDueByDate(all, today.Format("2006-01-02"))
+	if len(got) != 1 || got[0].ID != "1" {
+		t.Errorf("scheduled-today task missing: %+v", got)
+	}
+}
+
+func TestTodayTasksWidget_HidesSnoozedFutureTasks(t *testing.T) {
+	future := time.Now().Add(7 * 24 * time.Hour)
+	all := []tasks.Task{
+		{ID: "1", Text: "due today snoozed", DueDate: time.Now().Format("2006-01-02"),
+			Triage: tasks.TriageSnoozed, ScheduledStart: &future},
+		{ID: "2", Text: "due today not snoozed", DueDate: time.Now().Format("2006-01-02")},
+	}
+	got := filterDueByDate(all, time.Now().Format("2006-01-02"))
+	if len(got) != 1 || got[0].ID != "2" {
+		t.Errorf("snoozed-future should be hidden, got: %+v", got)
+	}
+}
+
+func TestTodayTasksWidget_HidesDroppedTasks(t *testing.T) {
+	all := []tasks.Task{
+		{ID: "1", Text: "due today", DueDate: time.Now().Format("2006-01-02")},
+		{ID: "2", Text: "dropped", DueDate: time.Now().Format("2006-01-02"), Triage: tasks.TriageDropped},
+	}
+	got := filterDueByDate(all, time.Now().Format("2006-01-02"))
+	if len(got) != 1 || got[0].ID != "1" {
+		t.Errorf("dropped task should be hidden, got: %+v", got)
+	}
+}
+
 func TestTodayOverdueWidget_FilterOverdue(t *testing.T) {
 	now := time.Date(2026, 4, 25, 12, 0, 0, 0, time.UTC)
 	all := []tasks.Task{

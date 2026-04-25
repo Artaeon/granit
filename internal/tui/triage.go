@@ -120,15 +120,18 @@ func (q *TriageQueue) Update(msg tea.Msg) (TriageQueue, tea.Cmd) {
 }
 
 // applyTriage updates the task's triage state via the store.
-// Errors land in the status bar — never block the loop, the
-// user wants to keep moving.
+// Errors land in the status field — never block the loop, the
+// user wants to keep moving. Sets a positive feedback message
+// on success too so each action gives a confident echo.
 func (q *TriageQueue) applyTriage(id, state string) {
 	if q.store == nil {
 		return
 	}
 	if err := q.store.Triage(id, tasks.TriageState(state)); err != nil {
 		q.statusMsg = "triage failed: " + err.Error()
+		return
 	}
+	q.statusMsg = "→ " + state
 }
 
 // applySchedule marks the task as scheduled with ScheduledStart
@@ -145,7 +148,9 @@ func (q *TriageQueue) applySchedule(id string) {
 	}
 	if err := q.store.Triage(id, tasks.TriageScheduled); err != nil {
 		q.statusMsg = "triage failed: " + err.Error()
+		return
 	}
+	q.statusMsg = "→ scheduled today"
 }
 
 // applySnooze advances the task's hidden-until time by dur and
@@ -162,6 +167,24 @@ func (q *TriageQueue) applySnooze(id string, dur time.Duration) {
 		t.ScheduledStart = &until
 	}); err != nil {
 		q.statusMsg = "snooze failed: " + err.Error()
+		return
+	}
+	q.statusMsg = "→ snoozed " + humanDuration(dur)
+}
+
+// humanDuration formats a duration for triage feedback. Power
+// users want "+7d" not "168h0m0s" or "1 week."
+func humanDuration(d time.Duration) string {
+	hrs := int(d.Hours())
+	switch {
+	case hrs >= 24*7:
+		return fmt.Sprintf("+%dw", hrs/(24*7))
+	case hrs >= 24:
+		return fmt.Sprintf("+%dd", hrs/24)
+	case hrs >= 1:
+		return fmt.Sprintf("+%dh", hrs)
+	default:
+		return fmt.Sprintf("+%dm", int(d.Minutes()))
 	}
 }
 

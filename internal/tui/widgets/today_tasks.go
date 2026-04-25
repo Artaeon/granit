@@ -90,17 +90,37 @@ func (w todayTasksWidget) HandleKey(ctx WidgetCtx, key string) (bool, tea.Cmd) {
 	return false, nil
 }
 
-// filterDueByDate returns incomplete tasks whose DueDate matches
-// the given YYYY-MM-DD string. Today's daily-note tasks (filename-
-// inferred) and explicit 📅 due dates both qualify because the
-// parser populates DueDate identically for both.
+// filterDueByDate returns incomplete tasks that should appear in
+// today's view. The criteria, in order:
+//
+//   1. DueDate matches today (filename-inferred or explicit 📅)
+//   2. ScheduledStart falls on today's date (set by triage `s`
+//      or the calendar planner)
+//
+// Snoozed tasks whose ScheduledStart is still in the future are
+// excluded — that's the whole point of snooze, "don't bug me
+// until then." Dropped tasks are excluded by triage state.
+//
+// Done tasks are always excluded.
 func filterDueByDate(all []tasks.Task, ymd string) []tasks.Task {
+	now := time.Now()
 	var out []tasks.Task
 	for _, t := range all {
 		if t.Done {
 			continue
 		}
+		if t.Triage == tasks.TriageDropped {
+			continue
+		}
+		// Snoozed-into-the-future: respect the user's "not now."
+		if t.Triage == tasks.TriageSnoozed && t.ScheduledStart != nil && t.ScheduledStart.After(now) {
+			continue
+		}
 		if t.DueDate == ymd {
+			out = append(out, t)
+			continue
+		}
+		if t.ScheduledStart != nil && t.ScheduledStart.Format("2006-01-02") == ymd {
 			out = append(out, t)
 		}
 	}

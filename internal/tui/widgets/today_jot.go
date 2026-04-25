@@ -55,13 +55,15 @@ func (w todayJotWidget) HandleKey(ctx WidgetCtx, key string) (bool, tea.Cmd) {
 		if ctx.CreateTask != nil {
 			_ = ctx.CreateTask(text)
 		}
-		// Clear the buffer via the controller; widget can't
-		// mutate ctx itself. Returning a custom message would be
-		// the way; for now we return handled=true and let the
-		// controller infer "this was an enter, clear buffer."
+		// ctx.Config IS the per-cell scratch map (passed by
+		// reference from the controller's HandleKey path). Clearing
+		// it here persists across renders — capture feels snappy:
+		// type, Enter, type the next thing.
+		ctx.Config["buffer"] = ""
 		return true, nil
 	case "esc":
-		return true, nil // controller clears buffer
+		ctx.Config["buffer"] = ""
+		return true, nil
 	case "backspace":
 		if len(buf) > 0 {
 			ctx.Config["buffer"] = buf[:len(buf)-1]
