@@ -725,6 +725,8 @@ func (m *Model) loadNote(relPath string) {
 	m.statusbar.SetActiveNote(relPath)
 	m.statusbar.SetWordCount(m.editor.GetWordCount())
 	m.viewScroll = 0
+	// Inform the sidebar so 'R' (reveal) knows what to land on.
+	m.sidebar.SetActiveNote(relPath)
 
 	// Restore scroll position if we've seen this note before
 	m.restoreScrollPosition(relPath)

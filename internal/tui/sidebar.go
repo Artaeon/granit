@@ -1,12 +1,37 @@
 package tui
 
 import (
+	"encoding/json"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// sidebarSortMode controls how files within a folder are ordered.
+// Persisted across sessions via .granit/sidebar-sort.json so power
+// users who pinned themselves to "modified desc" don't have to
+// re-cycle each session.
+type sidebarSortMode int
+
+const (
+	sidebarSortName sidebarSortMode = iota
+	sidebarSortModified
+	sidebarSortCreated
+)
+
+func (m sidebarSortMode) String() string {
+	switch m {
+	case sidebarSortModified:
+		return "modified"
+	case sidebarSortCreated:
+		return "created"
+	}
+	return "name"
+}
 
 type Sidebar struct {
 	files    []string
@@ -27,6 +52,29 @@ type Sidebar struct {
 	// File tree view
 	treeView bool
 	fileTree FileTree
+
+	// vaultRoot is needed by features that touch disk (file
+	// mtimes for sort, git status, persistence). Set via
+	// SetVaultRoot from the Model right after open.
+	vaultRoot string
+
+	// activeNote is the path the editor is currently viewing.
+	// 'R' (reveal) uses this to scroll/expand the tree to land
+	// on it. Updated via SetActiveNote whenever the model swaps
+	// notes — without this the sidebar can't know what to reveal.
+	activeNote string
+
+	// pinned maps file path → true for files the user pinned with
+	// 'b'. Pinned files render in a "PINNED" section at the top of
+	// both flat and tree views, and get a ★ prefix in the tree.
+	// Persisted to .granit/sidebar-pinned.json.
+	pinned map[string]bool
+
+	// sort + status
+	sortMode    sidebarSortMode
+	statusMsg   string         // ephemeral status hint (sort changed, etc.)
+	gitStatus   map[string]rune // path → status rune ('M'=modified, '?'=untracked, 'C'=conflict)
+	gitChecked  bool           // we've already attempted to fetch git status
 }
 
 func NewSidebar(files []string) Sidebar {
@@ -75,6 +123,139 @@ func (s *Sidebar) SaveExplorerState(vaultPath string) {
 // LoadExplorerState restores folder expansion state from disk.
 func (s *Sidebar) LoadExplorerState(vaultPath string) {
 	s.fileTree.LoadState(vaultPath)
+	s.vaultRoot = vaultPath
+	s.loadPinned()
+	s.loadSort()
+	// Initial git status read so dots show on first render.
+	// Subsequent refreshes happen via RefreshGitStatus, which
+	// the model can call after saves if it wants live updates.
+	s.RefreshGitStatus()
+}
+
+// SetVaultRoot is the late-binding hook for callers that don't
+// go through LoadExplorerState (e.g. test harnesses, embeds).
+// Required for git status + sort by mtime to know where files
+// actually live on disk.
+func (s *Sidebar) SetVaultRoot(root string) {
+	s.vaultRoot = root
+}
+
+// SetActiveNote informs the sidebar of the path the editor is
+// currently displaying. Used by 'R' (reveal) to scroll/expand
+// the tree to that path. Should be called from the Model after
+// every loadNote so reveal lands on the right file.
+func (s *Sidebar) SetActiveNote(path string) {
+	s.activeNote = path
+}
+
+// loadPinned restores the pinned-file set from disk. Silent on
+// missing/malformed file — fresh users get the empty default.
+func (s *Sidebar) loadPinned() {
+	s.pinned = make(map[string]bool)
+	if s.vaultRoot == "" {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(s.vaultRoot, ".granit", "sidebar-pinned.json"))
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(data, &s.pinned)
+	if s.pinned == nil {
+		s.pinned = make(map[string]bool)
+	}
+	s.fileTree.SetPinned(s.pinned)
+}
+
+// savePinned writes the current pinned set to disk.
+func (s *Sidebar) savePinned() {
+	if s.vaultRoot == "" {
+		return
+	}
+	dir := filepath.Join(s.vaultRoot, ".granit")
+	_ = os.MkdirAll(dir, 0755)
+	data, err := json.MarshalIndent(s.pinned, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = atomicWriteNote(filepath.Join(dir, "sidebar-pinned.json"), string(data))
+}
+
+// loadSort restores the sort mode from disk.
+func (s *Sidebar) loadSort() {
+	if s.vaultRoot == "" {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(s.vaultRoot, ".granit", "sidebar-sort.json"))
+	if err != nil {
+		return
+	}
+	var st struct {
+		Mode int `json:"mode"`
+	}
+	if json.Unmarshal(data, &st) == nil && st.Mode >= 0 && st.Mode <= 2 {
+		s.sortMode = sidebarSortMode(st.Mode)
+		s.fileTree.SetSortMode(s.sortMode, s.vaultRoot)
+	}
+}
+
+// saveSort writes the sort mode to disk.
+func (s *Sidebar) saveSort() {
+	if s.vaultRoot == "" {
+		return
+	}
+	dir := filepath.Join(s.vaultRoot, ".granit")
+	_ = os.MkdirAll(dir, 0755)
+	data, _ := json.Marshal(struct {
+		Mode int `json:"mode"`
+	}{Mode: int(s.sortMode)})
+	_ = atomicWriteNote(filepath.Join(dir, "sidebar-sort.json"), string(data))
+}
+
+// RefreshGitStatus runs `git status --porcelain` once and caches
+// the per-file status. Should be called from the Model after
+// each save so dots stay current. Silent failure when git isn't
+// available — the dots simply don't render.
+func (s *Sidebar) RefreshGitStatus() {
+	if s.vaultRoot == "" {
+		return
+	}
+	s.gitChecked = true
+	s.gitStatus = make(map[string]rune)
+	cmd := exec.Command("git", "-C", s.vaultRoot, "status", "--porcelain")
+	out, err := cmd.Output()
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		// Porcelain format: "XY path" — X is index status,
+		// Y is working-tree status. Use whichever is non-blank.
+		x, y := line[0], line[1]
+		path := strings.TrimSpace(line[3:])
+		// Handle rename "old -> new" — only flag the new path.
+		if idx := strings.Index(path, " -> "); idx >= 0 {
+			path = path[idx+4:]
+		}
+		var marker rune
+		switch {
+		case x == 'U' || y == 'U' || (x == 'A' && y == 'A') || (x == 'D' && y == 'D'):
+			marker = 'C' // conflict
+		case x == '?' && y == '?':
+			marker = '?' // untracked
+		case y == 'M' || x == 'M':
+			marker = 'M' // modified
+		case x == 'A':
+			marker = 'A' // added
+		case x == 'D' || y == 'D':
+			marker = 'D' // deleted
+		default:
+			marker = '?'
+		}
+		s.gitStatus[path] = marker
+	}
+	s.fileTree.SetGitStatus(s.gitStatus)
 }
 
 func (s *Sidebar) applyFilter() {
@@ -198,6 +379,38 @@ func (s Sidebar) Update(msg tea.Msg) (Sidebar, tea.Cmd) {
 			case "/":
 				s.searching = true
 				s.treeView = false
+			case "b":
+				// Pin/unpin the file under cursor. Pinned files
+				// surface in a "PINNED" section above the tree
+				// AND get a ★ icon prefix in the tree.
+				if path := s.fileTree.Selected(); path != "" {
+					if s.pinned == nil {
+						s.pinned = make(map[string]bool)
+					}
+					if s.pinned[path] {
+						delete(s.pinned, path)
+						s.statusMsg = "Unpinned"
+					} else {
+						s.pinned[path] = true
+						s.statusMsg = "Pinned"
+					}
+					s.savePinned()
+					s.fileTree.SetPinned(s.pinned)
+				}
+			case "R":
+				// Reveal the currently-edited note: expand
+				// parent folders along the way, scroll, and
+				// move the cursor onto it.
+				if s.activeNote != "" {
+					s.fileTree.RevealPath(s.activeNote)
+				}
+			case "s":
+				// Cycle sort mode: name → modified → created → name.
+				s.sortMode = (s.sortMode + 1) % 3
+				s.fileTree.SetSortMode(s.sortMode, s.vaultRoot)
+				s.fileTree.SetFiles(s.files)
+				s.saveSort()
+				s.statusMsg = "Sort: " + s.sortMode.String()
 			default:
 				s.fileTree = s.fileTree.Update(msg)
 			}
@@ -331,7 +544,11 @@ func (s Sidebar) View() string {
 		b.WriteString(s.fileTree.View())
 		if s.focused {
 			b.WriteString("\n")
-			b.WriteString(DimStyle.Render("  z:collapse all  Z:expand all  /:search"))
+			hint := "  b:pin  R:reveal  s:sort/" + s.sortMode.String() + "  /:search"
+			b.WriteString(DimStyle.Render(hint))
+			if s.statusMsg != "" {
+				b.WriteString("\n  " + lipgloss.NewStyle().Foreground(mauve).Render(s.statusMsg))
+			}
 		}
 		return b.String()
 	}

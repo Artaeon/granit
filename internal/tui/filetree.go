@@ -54,6 +54,23 @@ type FileTree struct {
 
 	// Config-driven
 	showHidden bool
+
+	// pinned files (path → true) get a ★ icon in the tree.
+	// Set by Sidebar via SetPinned; tree renders the marker in
+	// renderNode and renderNodePlain.
+	pinned map[string]bool
+
+	// gitStatus maps path → status rune ('M', '?', 'A', 'D', 'C').
+	// Set by Sidebar after its git refresh; renderNode shows a
+	// colored dot prefix per file.
+	gitStatus map[string]rune
+
+	// sortMode + sortRoot drive how children of each folder
+	// are ordered. modified/created modes need disk access via
+	// vault root; sortRoot caches it so we don't re-stat on
+	// every rebuild.
+	sortMode sidebarSortMode
+	sortRoot string
 }
 
 // NewFileTree returns a zero-value FileTree ready for use.
@@ -136,13 +153,46 @@ func (ft *FileTree) SetFiles(files []string) {
 		parent.Children = append(parent.Children, fileNode)
 	}
 
-	// Sort: directories first (alphabetically), then files (alphabetically).
+	// Sort: directories always first; files ordered by sortMode.
+	// Modified/created modes stat each file once per rebuild —
+	// fine for vaults up to a few thousand notes; if it ever
+	// becomes a hotspot we can cache mtimes by path.
+	mtimeCache := make(map[string]int64)
+	statTime := func(rel string) int64 {
+		if t, ok := mtimeCache[rel]; ok {
+			return t
+		}
+		if ft.sortRoot == "" {
+			return 0
+		}
+		info, err := os.Stat(filepath.Join(ft.sortRoot, rel))
+		if err != nil {
+			mtimeCache[rel] = 0
+			return 0
+		}
+		// ModTime for "modified"; on linux Birth time isn't
+		// portably available so "created" falls back to ModTime
+		// of the first time we saw it (close enough for sort).
+		t := info.ModTime().UnixNano()
+		mtimeCache[rel] = t
+		return t
+	}
 	var sortChildren func(node *TreeNode)
 	sortChildren = func(node *TreeNode) {
 		sort.SliceStable(node.Children, func(i, j int) bool {
 			a, b := node.Children[i], node.Children[j]
 			if a.IsDir != b.IsDir {
 				return a.IsDir
+			}
+			if a.IsDir {
+				return strings.ToLower(a.Name) < strings.ToLower(b.Name)
+			}
+			switch ft.sortMode {
+			case sidebarSortModified, sidebarSortCreated:
+				ta, tb := statTime(a.Path), statTime(b.Path)
+				if ta != tb {
+					return ta > tb // newest first
+				}
 			}
 			return strings.ToLower(a.Name) < strings.ToLower(b.Name)
 		})
@@ -188,6 +238,56 @@ func (ft *FileTree) SetSize(width, height int) {
 	ft.width = width
 	ft.height = height
 	ft.clampScroll()
+}
+
+// SetPinned updates the set of pinned file paths. Re-rendered
+// on next View; renderNode prepends a ★ for matches.
+func (ft *FileTree) SetPinned(pinned map[string]bool) {
+	ft.pinned = pinned
+}
+
+// SetGitStatus updates the per-file git status map. Renderer
+// shows a colored dot prefix per file.
+func (ft *FileTree) SetGitStatus(status map[string]rune) {
+	ft.gitStatus = status
+}
+
+// SetSortMode swaps the file ordering. SetFiles must be called
+// after this for the new mode to take effect — the tree caches
+// the order at build time so we don't re-sort on every render.
+func (ft *FileTree) SetSortMode(mode sidebarSortMode, vaultRoot string) {
+	ft.sortMode = mode
+	ft.sortRoot = vaultRoot
+}
+
+// RevealPath expands the chain of parent folders containing
+// path, rebuilds the visible list, and moves the cursor onto
+// the matching file. No-op if the path isn't in the tree.
+func (ft *FileTree) RevealPath(path string) {
+	if ft.root == nil || path == "" {
+		return
+	}
+	// Walk down the directory chain expanding ancestors. We
+	// can't recurse on names because a file at /a/b/c.md needs
+	// /a expanded then /a/b expanded — match by Path prefix.
+	var open func(node *TreeNode)
+	open = func(node *TreeNode) {
+		for _, child := range node.Children {
+			if child.IsDir && (child.Path == path || strings.HasPrefix(path, child.Path+string(filepath.Separator))) {
+				child.Expanded = true
+				open(child)
+			}
+		}
+	}
+	open(ft.root)
+	ft.rebuild()
+	for i, n := range ft.visible {
+		if n.Path == path {
+			ft.cursor = i
+			ft.ensureVisible()
+			return
+		}
+	}
 }
 
 // SetFocused sets whether this component currently has keyboard focus.
@@ -565,14 +665,40 @@ func (ft FileTree) renderNode(node *TreeNode, maxWidth int) string {
 	} else if isWeeklyNote(node.Name) {
 		icon = lipgloss.NewStyle().Foreground(sapphire).Render(IconCalendarChar)
 	}
+	// Optional prefix glyphs: pin star (★) and git status dot.
+	// Both render only when the corresponding map says so, so
+	// non-git vaults / unpinned files cost nothing.
+	prefix := ""
+	if ft.pinned[node.Path] {
+		prefix += lipgloss.NewStyle().Foreground(yellow).Render("★ ")
+	}
+	if marker, ok := ft.gitStatus[node.Path]; ok {
+		var dotColor lipgloss.Color
+		switch marker {
+		case 'M':
+			dotColor = yellow
+		case '?':
+			dotColor = green
+		case 'A':
+			dotColor = sapphire
+		case 'D':
+			dotColor = red
+		case 'C':
+			dotColor = mauve
+		default:
+			dotColor = surface2
+		}
+		prefix += lipgloss.NewStyle().Foreground(dotColor).Render("● ")
+	}
+	prefixW := lipgloss.Width(prefix)
 	iconW := lipgloss.Width(icon) + 1 // icon + space
-	maxNameLen := maxWidth - (node.Depth*2 + iconW + 2)
+	maxNameLen := maxWidth - (node.Depth*2 + iconW + prefixW + 2)
 	if maxNameLen < 5 {
 		maxNameLen = 5
 	}
 	displayName = TruncateDisplay(displayName, maxNameLen)
 
-	return indent + icon + " " + NormalItemStyle.Render(displayName)
+	return indent + prefix + icon + " " + NormalItemStyle.Render(displayName)
 }
 
 // renderNodePlain produces a plain-text line for the selected/highlighted row.
