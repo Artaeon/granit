@@ -56,6 +56,16 @@ type Overlay interface {
 type OverlayBase struct {
 	active        bool
 	width, height int
+	// tabMode tracks whether the surface is currently being
+	// rendered as an editor tab (full-pane) vs as a centered
+	// overlay. Surfaces that historically clamped width to a
+	// 2/3-of-screen overlay box (Calendar, Kanban, Goals,
+	// Projects, Graph) consult this flag to skip the clamp and
+	// fill the pane when shown as a tab — otherwise they look
+	// like small floating boxes inside an empty editor pane.
+	// renderFeatureTab in feature_tabs.go is the only caller of
+	// SetTabMode(true); closeFeature flips it back to false.
+	tabMode bool
 }
 
 // IsActive satisfies Overlay.
@@ -84,6 +94,15 @@ func (o *OverlayBase) Width() int { return o.width }
 
 // Height returns the overlay's current height.
 func (o *OverlayBase) Height() int { return o.height }
+
+// SetTabMode flips the surface between overlay (centered, clamped)
+// and tab (full-pane) rendering modes. See the field comment.
+func (o *OverlayBase) SetTabMode(on bool) { o.tabMode = on }
+
+// IsTabMode reports whether the surface should render in tab mode.
+// Surfaces use this in their View()/overlayWidth() to skip the
+// 2/3-of-screen clamp that's appropriate for centered overlays.
+func (o *OverlayBase) IsTabMode() bool { return o != nil && o.tabMode }
 
 // Compile-time assertion that OverlayBase satisfies Overlay. Rebuilding
 // will fail loudly if the interface or the embed drift apart.

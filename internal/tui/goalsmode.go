@@ -1819,12 +1819,23 @@ func (gm *GoalsMode) View() string {
 		return ""
 	}
 
-	width := gm.width * 2 / 3
-	if width < 60 {
-		width = 60
-	}
-	if width > 100 {
-		width = 100
+	// Tab mode fills the editor pane; overlay mode keeps the
+	// historical 60–100 char clamp so the centered popup stays
+	// readable on wide terminals.
+	var width int
+	if gm.IsTabMode() {
+		width = gm.width - 2
+		if width < 60 {
+			width = 60
+		}
+	} else {
+		width = gm.width * 2 / 3
+		if width < 60 {
+			width = 60
+		}
+		if width > 100 {
+			width = 100
+		}
 	}
 	innerW := width - 8 // account for border + padding
 

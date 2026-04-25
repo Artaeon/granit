@@ -525,17 +525,33 @@ func (kb *Kanban) currentCard() *KanbanCard {
 // ---------------------------------------------------------------------------
 
 func (kb Kanban) View() string {
-	// Determine board dimensions.
-	boardWidth := kb.width * 3 / 4
-	if boardWidth < 70 {
-		boardWidth = 70
-	}
-	if boardWidth > 130 {
-		boardWidth = 130
-	}
-	boardHeight := kb.height * 3 / 4
-	if boardHeight < 16 {
-		boardHeight = 16
+	// Determine board dimensions. Tab mode fills the editor pane
+	// so columns get real estate to breathe (8 columns × ~16 char
+	// minimum is the visual floor we cared about). Overlay mode
+	// keeps the historical 70–130 clamp so the centered popup
+	// stays a reasonable size on huge terminals.
+	var boardWidth, boardHeight int
+	if kb.IsTabMode() {
+		boardWidth = kb.width
+		if boardWidth < 70 {
+			boardWidth = 70
+		}
+		boardHeight = kb.height
+		if boardHeight < 16 {
+			boardHeight = 16
+		}
+	} else {
+		boardWidth = kb.width * 3 / 4
+		if boardWidth < 70 {
+			boardWidth = 70
+		}
+		if boardWidth > 130 {
+			boardWidth = 130
+		}
+		boardHeight = kb.height * 3 / 4
+		if boardHeight < 16 {
+			boardHeight = 16
+		}
 	}
 
 	// Inner content width (subtract border + padding: 2 border + 4 padding = 6)

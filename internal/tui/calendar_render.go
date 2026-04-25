@@ -74,14 +74,31 @@ func plannerBlockColor(blockType BlockType, done bool) lipgloss.Color {
 	return lavender
 }
 
+// renderWidth returns the column count each view should target.
+// Tab mode uses the full editor pane (minus a 2-col gutter the
+// body adds); overlay mode keeps the historical 2/3-of-screen
+// clamp so the centered popup doesn't sprawl. The minWidth /
+// maxWidth args bound the overlay case to view-specific limits.
+func (c Calendar) renderWidth(minWidth, maxWidth int) int {
+	if c.IsTabMode() {
+		w := c.width - 2
+		if w < minWidth {
+			w = minWidth
+		}
+		return w
+	}
+	w := c.width * 2 / 3
+	if w < minWidth {
+		w = minWidth
+	}
+	if w > maxWidth {
+		w = maxWidth
+	}
+	return w
+}
+
 func (c Calendar) viewMonth() string {
-	width := c.width * 2 / 3
-	if width < 86 {
-		width = 86
-	}
-	if width > 100 {
-		width = 100
-	}
+	width := c.renderWidth(86, 100)
 
 	var b strings.Builder
 	now := time.Now()
@@ -980,13 +997,7 @@ func (c *Calendar) rebuildAgendaItems() {
 }
 
 func (c Calendar) view1Day() string {
-	width := c.width * 2 / 3
-	if width < 60 {
-		width = 60
-	}
-	if width > 100 {
-		width = 100
-	}
+	width := c.renderWidth(60, 100)
 
 	var b strings.Builder
 	now := time.Now()
@@ -1325,13 +1336,7 @@ func (c Calendar) view1Day() string {
 }
 
 func (c Calendar) viewAgenda() string {
-	width := c.width * 2 / 3
-	if width < 50 {
-		width = 50
-	}
-	if width > 70 {
-		width = 70
-	}
+	width := c.renderWidth(50, 70)
 
 	var b strings.Builder
 
@@ -1564,13 +1569,7 @@ func (c Calendar) viewAgenda() string {
 // ---------------------------------------------------------------------------
 
 func (c Calendar) viewYear() string {
-	width := c.width * 3 / 4
-	if width < 68 {
-		width = 68
-	}
-	if width > 88 {
-		width = 88
-	}
+	width := c.renderWidth(68, 88)
 
 	var b strings.Builder
 

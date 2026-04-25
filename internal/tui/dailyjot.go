@@ -1295,12 +1295,22 @@ func (dj DailyJot) renderEntryText(entry jotEntry, maxWidth int, dim bool) strin
 }
 
 func (dj DailyJot) View() string {
-	width := dj.width * 2 / 3
-	if width > 90 {
-		width = 90
-	}
-	if width < 60 {
-		width = 60
+	// Tab mode fills the editor pane; overlay mode keeps the
+	// historical 60–90 char clamp for centered-popup look.
+	var width int
+	if dj.IsTabMode() {
+		width = dj.width - 2
+		if width < 60 {
+			width = 60
+		}
+	} else {
+		width = dj.width * 2 / 3
+		if width > 90 {
+			width = 90
+		}
+		if width < 60 {
+			width = 60
+		}
 	}
 	if dj.width > 0 && dj.width < width+6 {
 		width = dj.width - 6

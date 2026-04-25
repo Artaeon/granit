@@ -1406,6 +1406,10 @@ func parseTags(raw string) []string {
 // ---------------------------------------------------------------------------
 
 func (pm ProjectMode) listVisibleHeight() int {
+	// Tab mode reserves the same 12-line chrome (header + footer
+	// + status row) but anchors against the full editor pane
+	// height, not the overlay-clamped one. Floor at 3 to keep at
+	// least one visible row even on a tiny terminal.
 	h := pm.height - 12
 	if h < 3 {
 		h = 3
@@ -1414,6 +1418,13 @@ func (pm ProjectMode) listVisibleHeight() int {
 }
 
 func (pm ProjectMode) overlayWidth() int {
+	if pm.IsTabMode() {
+		w := pm.width - 2
+		if w < 60 {
+			w = 60
+		}
+		return w
+	}
 	w := pm.width * 2 / 3
 	if w < 60 {
 		w = 60

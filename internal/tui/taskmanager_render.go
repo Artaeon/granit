@@ -66,12 +66,15 @@ func (tm *TaskManager) kanbanVisibleHeight() int {
 
 // View renders the task manager overlay.
 func (tm TaskManager) View() string {
-	// Use wider layout — match calendar's full-width feel
+	// Use wider layout — match calendar's full-width feel.
+	// In tab mode lift the 160-col ceiling so the surface fills
+	// the editor pane on wide terminals; in overlay mode keep
+	// the cap so the centered popup doesn't sprawl.
 	width := tm.width - 2
 	if width < 80 {
 		width = 80
 	}
-	if width > 160 {
+	if !tm.IsTabMode() && width > 160 {
 		width = 160
 	}
 

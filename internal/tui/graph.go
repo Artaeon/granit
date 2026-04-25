@@ -258,12 +258,23 @@ func (g GraphView) Update(msg tea.Msg) (GraphView, tea.Cmd) {
 }
 
 func (g GraphView) View() string {
-	width := g.width * 2 / 3
-	if width < 60 {
-		width = 60
-	}
-	if width > 100 {
-		width = 100
+	// Tab mode uses the full editor pane — graph layouts always
+	// benefit from horizontal real estate, especially in global
+	// mode where dozens of nodes need spreading out.
+	var width int
+	if g.IsTabMode() {
+		width = g.width - 2
+		if width < 60 {
+			width = 60
+		}
+	} else {
+		width = g.width * 2 / 3
+		if width < 60 {
+			width = 60
+		}
+		if width > 100 {
+			width = 100
+		}
 	}
 
 	innerWidth := width - 6

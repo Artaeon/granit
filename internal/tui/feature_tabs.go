@@ -219,27 +219,37 @@ func featureTabIsForeground(tb *TabBar, id FeatureID) bool {
 // IDs — caller falls back to the welcome screen so the user
 // doesn't see a blank editor.
 func (m *Model) renderFeatureTab(id FeatureID, width, height int) string {
+	// Each migrated surface gets SetTabMode(true) before render
+	// so it skips the overlay-mode 2/3-screen width clamp and
+	// fills the editor pane. closeFeature resets it to false.
 	switch id {
 	case FeatTaskManager:
 		m.taskManager.SetSize(width, height)
+		m.taskManager.SetTabMode(true)
 		return m.taskManager.View()
 	case FeatDailyJot:
 		m.dailyJot.SetSize(width, height)
+		m.dailyJot.SetTabMode(true)
 		return m.dailyJot.View()
 	case FeatCalendar:
 		m.calendar.SetSize(width, height)
+		m.calendar.SetTabMode(true)
 		return m.calendar.View()
 	case FeatKanban:
 		m.kanban.SetSize(width, height)
+		m.kanban.SetTabMode(true)
 		return m.kanban.View()
 	case FeatGoals:
 		m.goalsMode.SetSize(width, height)
+		m.goalsMode.SetTabMode(true)
 		return m.goalsMode.View()
 	case FeatProject:
 		m.projectMode.SetSize(width, height)
+		m.projectMode.SetTabMode(true)
 		return m.projectMode.View()
 	case FeatGraph:
 		m.graphView.SetSize(width, height)
+		m.graphView.SetTabMode(true)
 		return m.graphView.View()
 	}
 	return ""
@@ -337,18 +347,25 @@ func (m *Model) routeFeatureKey(id FeatureID, msg tea.Msg) (Model, tea.Cmd, bool
 func (m *Model) closeFeature(id FeatureID) {
 	switch id {
 	case FeatTaskManager:
+		m.taskManager.SetTabMode(false)
 		m.taskManager.Close()
 	case FeatDailyJot:
+		m.dailyJot.SetTabMode(false)
 		m.dailyJot.Close()
 	case FeatCalendar:
+		m.calendar.SetTabMode(false)
 		m.calendar.Close()
 	case FeatKanban:
+		m.kanban.SetTabMode(false)
 		m.kanban.Close()
 	case FeatGoals:
+		m.goalsMode.SetTabMode(false)
 		m.goalsMode.Close()
 	case FeatProject:
+		m.projectMode.SetTabMode(false)
 		m.projectMode.Close()
 	case FeatGraph:
+		m.graphView.SetTabMode(false)
 		m.graphView.Close()
 	}
 }
