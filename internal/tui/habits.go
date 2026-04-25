@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -65,7 +66,30 @@ const (
 	habitInputNewGoalTitle
 	habitInputNewGoalDate
 	habitInputNewMilestone
+	habitInputSearch // '/' fuzzy filter on habit name
 )
+
+// habitSortMode controls habit list ordering.
+type habitSortMode int
+
+const (
+	habitSortName    habitSortMode = iota // alphabetical
+	habitSortCurrent                      // current streak desc
+	habitSortLongest                      // longest streak desc
+	habitSortCreated                      // oldest first
+)
+
+func (m habitSortMode) String() string {
+	switch m {
+	case habitSortCurrent:
+		return "current"
+	case habitSortLongest:
+		return "longest"
+	case habitSortCreated:
+		return "created"
+	}
+	return "name"
+}
 
 // HabitTracker is an overlay for tracking daily habits and goals.
 type HabitTracker struct {
@@ -104,6 +128,21 @@ type HabitTracker struct {
 	// lastSaveErr stores the most recent persistence error so the host
 	// Model can surface it via reportError. Consumed once.
 	lastSaveErr error
+
+	// Power-user features. activeDate is the date the cursor's
+	// space/enter toggles for — defaults to today, '<'/'>' walk
+	// it, 't' returns to today. Lets users log retroactively
+	// without faking timestamps. searchQuery + sortMode +
+	// archived map narrow + reorder the visible list. Archived
+	// habits stay in habits.md but render only when showArchived
+	// is true; persistence is in .granit/habits-archived.json so
+	// we don't need to alter the markdown table format.
+	activeDate    string
+	sortMode      habitSortMode
+	searchQuery   string
+	archived      map[string]bool // habit name → archived
+	showArchived  bool
+	statusMsg     string
 }
 
 // ConsumeSaveError returns and clears the last persistence error, if any.
@@ -205,8 +244,125 @@ func (ht *HabitTracker) Open(vaultRoot string) {
 	ht.goalExpanded = -1
 	ht.milestoneCur = 0
 	ht.confirmDelete = false
+	ht.activeDate = todayStr()
+	ht.searchQuery = ""
+	ht.statusMsg = ""
 	ht.loadHabits()
 	ht.loadGoals()
+	ht.loadArchived()
+}
+
+// loadArchived restores the archived-name set from disk. Silent
+// on missing/malformed file — fresh users see no archived habits.
+func (ht *HabitTracker) loadArchived() {
+	ht.archived = make(map[string]bool)
+	if ht.vaultRoot == "" {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(ht.vaultRoot, ".granit", "habits-archived.json"))
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(data, &ht.archived)
+	if ht.archived == nil {
+		ht.archived = make(map[string]bool)
+	}
+}
+
+// saveArchived persists the archived-name set.
+func (ht *HabitTracker) saveArchived() {
+	if ht.vaultRoot == "" {
+		return
+	}
+	dir := filepath.Join(ht.vaultRoot, ".granit")
+	_ = os.MkdirAll(dir, 0o755)
+	data, err := json.MarshalIndent(ht.archived, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := atomicWriteNote(filepath.Join(dir, "habits-archived.json"), string(data)); err != nil {
+		ht.lastSaveErr = err
+	}
+}
+
+// isCompletedOn checks whether a habit was logged on a given date.
+func (ht HabitTracker) isCompletedOn(habitName, date string) bool {
+	for _, log := range ht.logs {
+		if log.Date == date {
+			for _, c := range log.Completed {
+				if c == habitName {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	return false
+}
+
+// toggleOnDate is the date-parameterised version of toggleToday.
+// Powers '<' / '>' retroactive logging — same semantics, just
+// targets activeDate instead of always-today.
+func (ht *HabitTracker) toggleOnDate(habitName, date string) {
+	for i, log := range ht.logs {
+		if log.Date == date {
+			for j, c := range log.Completed {
+				if c == habitName {
+					ht.logs[i].Completed = append(log.Completed[:j], log.Completed[j+1:]...)
+					if len(ht.logs[i].Completed) == 0 {
+						ht.logs = append(ht.logs[:i], ht.logs[i+1:]...)
+					}
+					ht.recalcStreaks()
+					ht.saveHabits()
+					return
+				}
+			}
+			ht.logs[i].Completed = append(ht.logs[i].Completed, habitName)
+			ht.recalcStreaks()
+			ht.saveHabits()
+			return
+		}
+	}
+	ht.logs = append([]habitLog{{Date: date, Completed: []string{habitName}}}, ht.logs...)
+	ht.recalcStreaks()
+	ht.saveHabits()
+}
+
+// visibleHabits returns the slice of habits to render after
+// applying archive visibility, search query, and sort mode.
+// The view loop iterates this — not ht.habits — so cursor /
+// selection stays consistent with what's drawn.
+func (ht HabitTracker) visibleHabits() []habitEntry {
+	q := strings.ToLower(ht.searchQuery)
+	out := make([]habitEntry, 0, len(ht.habits))
+	for _, h := range ht.habits {
+		if !ht.showArchived && ht.archived[h.Name] {
+			continue
+		}
+		if q != "" && !strings.Contains(strings.ToLower(h.Name), q) {
+			continue
+		}
+		out = append(out, h)
+	}
+	switch ht.sortMode {
+	case habitSortName:
+		sort.SliceStable(out, func(i, j int) bool {
+			return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+		})
+	case habitSortCurrent:
+		sort.SliceStable(out, func(i, j int) bool {
+			return out[i].Streak > out[j].Streak
+		})
+	case habitSortLongest:
+		sort.SliceStable(out, func(i, j int) bool {
+			return ht.longestStreak(out[i].Name) > ht.longestStreak(out[j].Name)
+		})
+	case habitSortCreated:
+		sort.SliceStable(out, func(i, j int) bool {
+			return out[i].Created < out[j].Created
+		})
+	}
+	return out
 }
 
 // habitsDir returns the path to the Habits folder.
@@ -870,16 +1026,24 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 
 	case " ", "enter":
 		switch ht.tab {
-		case 0: // Toggle habit
-			if ht.cursor < len(ht.habits) {
-				name := ht.habits[ht.cursor].Name
-				wasCompleted := ht.isTodayCompleted(name)
-				ht.toggleToday(name)
-				// If we just completed (not uncompleted), sync to tasks
-				if !wasCompleted {
-					ht.SyncHabitToTasks(name, ht.vault)
-				} else {
-					ht.UnsyncHabitFromTasks(name, ht.vault)
+		case 0: // Toggle habit on the activeDate (defaults to today)
+			vis := ht.visibleHabits()
+			if ht.cursor < len(vis) {
+				name := vis[ht.cursor].Name
+				if ht.activeDate == "" {
+					ht.activeDate = todayStr()
+				}
+				wasCompleted := ht.isCompletedOn(name, ht.activeDate)
+				ht.toggleOnDate(name, ht.activeDate)
+				// Only sync today's toggles to the daily-note
+				// task line — retroactive logs don't touch the
+				// past daily note (it'd be confusing edits).
+				if ht.activeDate == todayStr() {
+					if !wasCompleted {
+						ht.SyncHabitToTasks(name, ht.vault)
+					} else {
+						ht.UnsyncHabitFromTasks(name, ht.vault)
+					}
 				}
 			}
 		case 1: // Toggle milestone or expand goal
@@ -931,6 +1095,93 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 				}
 			}
 		}
+
+	// Power-user keys (habits tab only — explicit guard so they
+	// don't hijack the goals/stats tabs).
+	case "<":
+		// Walk activeDate back one day for retroactive logging.
+		if ht.tab == 0 {
+			if ht.activeDate == "" {
+				ht.activeDate = todayStr()
+			}
+			if t, err := time.Parse("2006-01-02", ht.activeDate); err == nil {
+				ht.activeDate = t.AddDate(0, 0, -1).Format("2006-01-02")
+				ht.statusMsg = "Active date: " + ht.activeDate
+			}
+		}
+	case ">":
+		// Walk activeDate forward one day, capped at today so we
+		// never let users log a future "completion" by accident.
+		if ht.tab == 0 {
+			if ht.activeDate == "" {
+				ht.activeDate = todayStr()
+			}
+			if t, err := time.Parse("2006-01-02", ht.activeDate); err == nil {
+				next := t.AddDate(0, 0, 1).Format("2006-01-02")
+				if next > todayStr() {
+					next = todayStr()
+				}
+				ht.activeDate = next
+				ht.statusMsg = "Active date: " + ht.activeDate
+			}
+		}
+	case "t":
+		// Snap activeDate back to today.
+		if ht.tab == 0 {
+			ht.activeDate = todayStr()
+			ht.statusMsg = "Active date: today"
+		}
+	case "s":
+		// Cycle sort mode: name → current → longest → created.
+		if ht.tab == 0 {
+			ht.sortMode = (ht.sortMode + 1) % 4
+			ht.cursor = 0
+			ht.statusMsg = "Sort: " + ht.sortMode.String()
+		}
+	case "/":
+		if ht.tab == 0 {
+			ht.inputMode = habitInputSearch
+		}
+	case "c":
+		// Clear search + reset showArchived to default off.
+		if ht.tab == 0 && (ht.searchQuery != "" || ht.showArchived) {
+			ht.searchQuery = ""
+			ht.showArchived = false
+			ht.cursor = 0
+			ht.statusMsg = "Filters cleared"
+		}
+	case "A":
+		// Archive / unarchive cursor habit. Preserves history;
+		// unlike 'd' which permanently deletes.
+		if ht.tab == 0 {
+			vis := ht.visibleHabits()
+			if ht.cursor < len(vis) {
+				name := vis[ht.cursor].Name
+				if ht.archived[name] {
+					delete(ht.archived, name)
+					ht.statusMsg = "Unarchived: " + name
+				} else {
+					ht.archived[name] = true
+					ht.statusMsg = "Archived: " + name
+				}
+				ht.saveArchived()
+				if ht.cursor >= len(ht.visibleHabits()) {
+					ht.cursor = max(0, len(ht.visibleHabits())-1)
+				}
+			}
+		}
+	case "H":
+		// Toggle archived visibility — power users sometimes
+		// want to revive an old habit.
+		if ht.tab == 0 {
+			ht.showArchived = !ht.showArchived
+			ht.cursor = 0
+			if ht.showArchived {
+				ht.statusMsg = "Showing archived"
+			} else {
+				ht.statusMsg = "Hiding archived"
+			}
+		}
 	}
 
 	return ht, nil
@@ -938,6 +1189,32 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 
 func (ht HabitTracker) updateInput(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 	key := msg.String()
+
+	// Search input is its own mode — live-typing narrows the
+	// habit list as the user types. Esc clears, Enter commits.
+	if ht.inputMode == habitInputSearch {
+		switch key {
+		case "esc":
+			ht.searchQuery = ""
+			ht.inputMode = habitInputNone
+		case "enter":
+			ht.inputMode = habitInputNone
+		case "backspace":
+			if len(ht.searchQuery) > 0 {
+				ht.searchQuery = TrimLastRune(ht.searchQuery)
+			}
+		default:
+			if len(key) == 1 || key == "space" {
+				if key == "space" {
+					ht.searchQuery += " "
+				} else {
+					ht.searchQuery += key
+				}
+			}
+		}
+		ht.cursor = 0
+		return ht, nil
+	}
 
 	switch key {
 	case "esc":
@@ -1040,13 +1317,22 @@ func (ht HabitTracker) updateInput(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 
 func (ht *HabitTracker) performDelete() {
 	switch ht.tab {
-	case 0: // Delete habit
-		if ht.cursor < len(ht.habits) {
-			ht.habits = append(ht.habits[:ht.cursor], ht.habits[ht.cursor+1:]...)
-			if ht.cursor >= len(ht.habits) && ht.cursor > 0 {
+	case 0: // Delete habit — translate visible-cursor → underlying index
+		vis := ht.visibleHabits()
+		if ht.cursor < len(vis) {
+			target := vis[ht.cursor].Name
+			for i, h := range ht.habits {
+				if h.Name == target {
+					ht.habits = append(ht.habits[:i], ht.habits[i+1:]...)
+					break
+				}
+			}
+			delete(ht.archived, target)
+			ht.saveHabits()
+			ht.saveArchived()
+			if ht.cursor >= len(ht.visibleHabits()) && ht.cursor > 0 {
 				ht.cursor--
 			}
-			ht.saveHabits()
 		}
 	case 1: // Archive goal
 		if ht.goalExpanded >= 0 && ht.goalExpanded < len(ht.goals) {
@@ -1061,7 +1347,9 @@ func (ht *HabitTracker) performDelete() {
 func (ht HabitTracker) maxCursor() int {
 	switch ht.tab {
 	case 0:
-		return len(ht.habits)
+		// Cursor walks the visible (filtered+sorted+archive-aware)
+		// list now, not the raw ht.habits slice.
+		return len(ht.visibleHabits())
 	case 1:
 		return len(ht.activeGoals())
 	case 2:
@@ -1157,37 +1445,78 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 	sectionStyle := lipgloss.NewStyle().Foreground(blue).Bold(true)
 	labelStyle := lipgloss.NewStyle().Foreground(text)
 	streakStyle := lipgloss.NewStyle().Foreground(peach).Bold(true)
+	longestStyle := lipgloss.NewStyle().Foreground(lavender)
+	chipStyle := lipgloss.NewStyle().Foreground(crust).Background(sapphire).Padding(0, 1)
 
-	lines = append(lines, sectionStyle.Render("  "+IconCalendarChar+" Today: "+todayStr()))
+	// Header line: "Today: 2026-04-25" or "VIEWING: 2026-04-23 (←/→ t)"
+	// when the user has walked off today via < or >.
+	dateLabel := "Today: " + todayStr()
+	if ht.activeDate != "" && ht.activeDate != todayStr() {
+		dateLabel = "VIEWING " + ht.activeDate + "  (t = today)"
+	}
+	header := sectionStyle.Render("  " + IconCalendarChar + " " + dateLabel)
+	// Chips: search + sort + showing archived. Always render
+	// sort so power users can see the active mode at a glance.
+	header += "  " + chipStyle.Render("sort:" + ht.sortMode.String())
+	if ht.searchQuery != "" {
+		header += "  " + chipStyle.Render("/" + ht.searchQuery)
+	}
+	if ht.showArchived {
+		header += "  " + chipStyle.Render("+archived")
+	}
+	lines = append(lines, header)
 	lines = append(lines, "")
 
-	if len(ht.habits) == 0 {
-		lines = append(lines, DimStyle.Render("  No habits tracked yet. Press 'n' to add one."))
+	// Live search bar — render before the habit list so the user
+	// sees the narrowing as they type.
+	if ht.inputMode == habitInputSearch {
+		promptStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+		inputStyle := lipgloss.NewStyle().Foreground(text)
+		lines = append(lines,
+			"  "+promptStyle.Render("/ Search: ")+inputStyle.Render(ht.searchQuery+"█"))
+		lines = append(lines, "  "+DimStyle.Render("Live filter on habit name — Enter to commit, Esc to cancel"))
+		lines = append(lines, "")
 	}
 
-	for i, h := range ht.habits {
-		checked := ht.isTodayCompleted(h.Name)
+	visible := ht.visibleHabits()
+	if len(visible) == 0 {
+		if len(ht.habits) == 0 {
+			lines = append(lines, DimStyle.Render("  No habits tracked yet. Press 'n' to add one."))
+		} else {
+			lines = append(lines, DimStyle.Render("  No habits match. Press 'c' to clear filters."))
+		}
+	}
+
+	for i, h := range visible {
+		checked := ht.isCompletedOn(h.Name, ht.activeDate)
 		checkbox := lipgloss.NewStyle().Foreground(yellow).Render("[ ]")
 		if checked {
-                        checkbox = lipgloss.NewStyle().Foreground(green).Bold(true).Render("[✓]")
-                }
+			checkbox = lipgloss.NewStyle().Foreground(green).Bold(true).Render("[✓]")
+		}
 
-                nameW := innerW - 40
-                if nameW < 10 {
-                        nameW = 10
-                }
-                name := TruncateDisplay(h.Name, nameW)
+		nameW := innerW - 50
+		if nameW < 10 {
+			nameW = 10
+		}
+		name := TruncateDisplay(h.Name, nameW)
+		// Archived prefix so the user can tell when showArchived
+		// is on — without it, an archived habit looks identical
+		// to an active one.
+		if ht.archived[h.Name] {
+			name = "(arch) " + name
+		}
 
-                cursor := "  "
-                nameStyle := labelStyle
-                if i == ht.cursor {
-                        cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▶ ")
-                        nameStyle = lipgloss.NewStyle().Foreground(peach).Bold(true).Underline(true)
-                }
+		cursor := "  "
+		nameStyle := labelStyle
+		if i == ht.cursor {
+			cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▶ ")
+			nameStyle = lipgloss.NewStyle().Foreground(peach).Bold(true).Underline(true)
+		}
 
-                streak := ht.streakBlocks(h.Name)
-                streakNum := streakStyle.Render(fmt.Sprintf(" %d🔥", h.Streak))
-		line := cursor + checkbox + " " + nameStyle.Render(PadRight(name, nameW)) + " " + streak + streakNum
+		streak := ht.streakBlocks(h.Name)
+		curNum := streakStyle.Render(fmt.Sprintf(" %d🔥", h.Streak))
+		longNum := longestStyle.Render(fmt.Sprintf(" max %d", ht.longestStreak(h.Name)))
+		line := cursor + checkbox + " " + nameStyle.Render(PadRight(name, nameW)) + " " + streak + curNum + longNum
 		lines = append(lines, line)
 	}
 
