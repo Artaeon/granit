@@ -177,13 +177,24 @@ func (m Model) View() string {
 		tabBarStr = m.tabBar.Render(editorWidth, m.activeNote)
 	}
 
-	// Editor: view mode, edit mode, or welcome screen
+	// Editor pane: feature tab, view mode, edit mode, or welcome.
+	//
+	// Feature tabs (TaskManager etc.) take precedence — when one
+	// is the active tab, its surface renders in place of the
+	// editor instead of layering as a popup. activeNote stays
+	// pinned to whichever note tab is open underneath, so when
+	// the user closes the feature tab they land back on their
+	// note.
 	var editorContent string
-	if m.activeNote == "" {
+	switch {
+	case m.tabBar != nil && hasActiveFeatureTab(m.tabBar):
+		id, _ := m.tabBar.ActiveFeature()
+		editorContent = m.renderFeatureTab(id, editorWidth, contentHeight)
+	case m.activeNote == "":
 		editorContent = m.renderWelcomeScreen(editorWidth, contentHeight)
-	} else if m.viewMode {
+	case m.viewMode:
 		editorContent = m.renderViewMode()
-	} else {
+	default:
 		editorContent = m.editor.View()
 	}
 

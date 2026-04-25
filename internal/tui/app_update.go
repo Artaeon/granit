@@ -1486,6 +1486,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Phase 4 feature-tab routing. When the user's active tab
+		// is a migrated feature (TaskManager, DailyJot, …) the
+		// key goes to that feature's Update directly — the
+		// surface lives in the editor pane, not as an overlay.
+		// Returns ok=false for unmigrated features so the legacy
+		// IsActive()-based routing below still handles them
+		// during the migration window.
+		if id, ok := m.tabBar.ActiveFeature(); ok {
+			if next, cmd, routed := m.routeFeatureKey(id, msg); routed {
+				m = next
+				return m, cmd
+			}
+		}
+
 		if m.dashboard.IsActive() {
 			m.dashboard, _ = m.dashboard.Update(msg)
 			if !m.dashboard.IsActive() {

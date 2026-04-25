@@ -1374,15 +1374,37 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdCloseTab:
 		if m.tabBar != nil {
+			// Capture the closing tab's kind+id BEFORE
+			// CloseActive removes the entry — feature tabs need
+			// a closeFeature() callback to drop their caches.
+			var closingFeature FeatureID
+			var closingIsFeature bool
+			if e, ok := m.tabBar.ActiveEntry(); ok && e.Kind == TabKindFeature {
+				closingFeature, closingIsFeature = m.tabBar.ActiveFeature()
+			}
 			next := m.tabBar.CloseActive()
-			if next != "" {
-				m.loadNote(next)
-				m.setSidebarCursorToFile(next)
-			} else {
+			if closingIsFeature {
+				m.closeFeature(closingFeature)
+			}
+			// After close, the new active tab might be a feature
+			// or a note. Only call loadNote when next is a real
+			// vault path (note tab). For feature tabs the render
+			// branch picks them up automatically.
+			switch {
+			case next == "":
 				m.activeNote = ""
 				m.editor.SetContent("")
 				m.editor.filePath = ""
 				m.statusbar.SetActiveNote("")
+			case isFeatureTabPath(next):
+				// Don't reload editor — the feature tab will
+				// take over the editor pane via the render
+				// branch. Keep activeNote empty so the tabbar
+				// renderer doesn't try to highlight a non-tab.
+				m.activeNote = ""
+			default:
+				m.loadNote(next)
+				m.setSidebarCursorToFile(next)
 			}
 			return m, nil
 		}
