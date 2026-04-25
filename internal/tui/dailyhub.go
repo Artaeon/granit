@@ -169,7 +169,7 @@ func (d *DailyHub) renderHeader(width int) string {
 	}
 	left := lipgloss.NewStyle().Bold(true).Render(name)
 	right := lipgloss.NewStyle().Faint(true).Render(
-		fmt.Sprintf("%s · tab=focus · alt+w=switch · esc=close",
+		fmt.Sprintf("%s · tab=focus · shift+alt+w=switch · esc=close",
 			time.Now().Format("Mon Jan 2  15:04")))
 	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {

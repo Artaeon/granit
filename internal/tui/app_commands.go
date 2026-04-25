@@ -1494,6 +1494,16 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		cmd := m.taskTriage.Open(m.vault.Root, allTasks, activeGoals, m.aiConfig())
 		return m, cmd
 
+	case CmdProfileSwitch:
+		// Phase 3 profile switcher. No-op when the flag is off so
+		// the command palette entry doesn't crash on legacy users.
+		if !m.config.UseProfiles || m.profileRegistry == nil {
+			m.statusbar.SetMessage("Profiles disabled — set use_profiles=true in config to enable")
+			return m, m.clearMessageAfter(3 * time.Second)
+		}
+		m.profilePicker.SetSize(m.width, m.height)
+		m.profilePicker.Open(m.profileRegistry.All(), m.profileRegistry.ActiveID())
+
 	case CmdQuit:
 		return m, m.triggerExitSplash()
 	}

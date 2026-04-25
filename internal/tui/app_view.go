@@ -952,6 +952,9 @@ func (m Model) View() string {
 		overlay := m.dailyHub.Render(m.width-6, m.height-6, ctx)
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.profilePicker.IsActive() {
+		view = m.overlayCenter(view, m.profilePicker.View())
+	}
 	if m.mindMap.IsActive() {
 		overlay := m.mindMap.View()
 		view = m.overlayCenter(view, overlay)

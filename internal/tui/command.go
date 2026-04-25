@@ -177,6 +177,7 @@ const (
 	CmdBlogDraft
 	CmdDevotional
 	CmdStatusTray
+	CmdProfileSwitch
 	CmdQuit
 )
 
@@ -374,6 +375,7 @@ var AllCommands = []Command{
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Status Tray", Desc: "Expanded view of all status bar indicators and background tasks", Shortcut: "", Action: CmdStatusTray, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Refresh Vault", Desc: "Rescan vault for changes", Shortcut: "", Action: CmdRefreshVault, Category: CatSettings},
+	{Label: "Switch Profile", Desc: "Change the active profile (Daily Operator, Researcher, Builder, …)", Shortcut: "Shift+Alt+W", Action: CmdProfileSwitch, Category: CatSettings},
 	{Label: "Quit", Desc: "Exit Granit", Shortcut: "Ctrl+Q", Action: CmdQuit, Category: CatSettings},
 }
 

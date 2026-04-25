@@ -200,6 +200,7 @@ type Model struct {
 	dashboard        Dashboard
 	dailyHub         DailyHub
 	widgetRegistry   *widgets.Registry
+	profilePicker    ProfilePicker
 	mindMap          MindMap
 	journalPrompts   JournalPrompts
 	clipManager      ClipManager
@@ -602,6 +603,7 @@ func NewModel(vaultPath string) (Model, error) {
 			log.Printf("warning: widgets register builtins: %v", err)
 		}
 		m.dailyHub = NewDailyHub(m.widgetRegistry)
+		m.profilePicker = NewProfilePicker()
 	}
 	registry := m.registry
 	cmdMap := m.cmdActionToModuleID

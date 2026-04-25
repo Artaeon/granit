@@ -1507,6 +1507,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// it doesn't recognize.
 		}
 
+		if m.profilePicker.IsActive() {
+			m.profilePicker, _ = m.profilePicker.Update(msg)
+			if !m.profilePicker.IsActive() {
+				if id, ok := m.profilePicker.Result(); ok {
+					if cmd := m.applyProfileSwitch(id); cmd != nil {
+						return m, cmd
+					}
+				}
+			}
+			return m, nil
+		}
+
 		if m.mindMap.IsActive() {
 			m.mindMap, _ = m.mindMap.Update(msg)
 			return m, nil
@@ -2994,6 +3006,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "alt+t":
 			// Time tracker
 			return m.executeCommand(CmdTimeTracker)
+
+		case "alt+W":
+			// Profile switcher (Phase 3 — Shift+Alt+W to avoid
+			// colliding with alt+w which already opens the
+			// weekly note). No-op when UseProfiles is off; the
+			// command itself surfaces a helpful status message
+			// in that case.
+			return m.executeCommand(CmdProfileSwitch)
 
 		case "alt+i":
 			// Quick capture (inbox)

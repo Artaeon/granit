@@ -2,6 +2,9 @@ package tui
 
 import (
 	"log"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/artaeon/granit/internal/profiles"
 )
@@ -85,6 +88,36 @@ func applyProfile(m *Model, p *profiles.Profile) {
 		// trigger the visual refresh by calling updateLayout on
 		// its normal path so we don't double-call here.
 	}
+}
+
+// applyProfileSwitch handles the runtime side of switching to a
+// new profile. Persists the new active pointer, applies its
+// module set + layout, refreshes the layout visually, and shows
+// a status bar confirmation. Returns a tea.Cmd for any
+// follow-up action (e.g. clearing the status message after a
+// few seconds).
+//
+// Called from app_update.go when the ProfilePicker overlay
+// closes with a successful Result. Errors are surfaced in the
+// status bar — never block the launch loop.
+func (m *Model) applyProfileSwitch(id string) tea.Cmd {
+	if m.profileRegistry == nil {
+		return nil
+	}
+	prev := m.profileRegistry.ActiveID()
+	if id == prev {
+		m.statusbar.SetMessage("Already on " + id)
+		return m.clearMessageAfter(2 * time.Second)
+	}
+	if err := m.profileRegistry.SetActive(id); err != nil {
+		m.statusbar.SetMessage("Profile switch failed: " + err.Error())
+		return m.clearMessageAfter(3 * time.Second)
+	}
+	p := m.profileRegistry.Active()
+	applyProfile(m, p)
+	m.updateLayout()
+	m.statusbar.SetMessage("Profile: " + p.Name)
+	return m.clearMessageAfter(2 * time.Second)
 }
 
 // desiredModuleStates builds the wanted-state map for
