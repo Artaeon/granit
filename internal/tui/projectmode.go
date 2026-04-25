@@ -97,6 +97,7 @@ type Project struct {
 	Priority    int           `json:"priority"`
 	DueDate     string        `json:"due_date"`
 	TimeSpent   int           `json:"time_spent"`
+	UpdatedAt   string        `json:"updated_at,omitempty"` // YYYY-MM-DD; bumped by saveProjects on edits
 
 	// Computed fields (not stored in JSON)
 	TasksDone  int `json:"-"` // completed tasks matched to this project
@@ -259,6 +260,20 @@ type ProjectMode struct {
 	selectMode bool
 	selected   map[string]bool
 	statusMsg  string
+
+	// filterTag narrows the list to projects carrying the tag.
+	// Cycled via '#' through every tag present on any project,
+	// then back to "" (clear). Composes with searchQuery,
+	// statusFilter, and categoryIdx so power users can stack
+	// "category=dev + status=active + tag=urgent + 'auth'".
+	filterTag string
+
+	// recencyBoost: when true, the implicit sort sinks
+	// recently-updated projects to the TOP within their
+	// priority/status group so projects you just touched float
+	// to the eye. Toggled via 'u'. Defaults off so existing
+	// users see no behavior change.
+	recencyBoost bool
 }
 
 // NewProjectMode creates a new inactive ProjectMode overlay.
@@ -393,6 +408,41 @@ func (pm *ProjectMode) loadProjects() {
 
 func (pm *ProjectMode) saveProjects() {
 	_ = SaveProjects(pm.vaultRoot, pm.projects)
+}
+
+// touchProject stamps UpdatedAt = today on the given project
+// index. Call before saveProjects from any mutation site that
+// represents user activity (status cycle, time log, edit
+// commit, etc.) so the recency-boost sort surfaces it.
+func (pm *ProjectMode) touchProject(idx int) {
+	if idx < 0 || idx >= len(pm.projects) {
+		return
+	}
+	pm.projects[idx].UpdatedAt = time.Now().Format("2006-01-02")
+}
+
+// collectProjectTags returns the unique sorted list of tags
+// across all non-archived projects. Used by the '#' tag-cycle
+// so the rotation reflects what's actually in use, not stale
+// tags from archived projects.
+func (pm *ProjectMode) collectProjectTags() []string {
+	seen := make(map[string]bool)
+	for _, p := range pm.projects {
+		if p.Status == "archived" {
+			continue
+		}
+		for _, t := range p.Tags {
+			if t != "" {
+				seen[t] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for t := range seen {
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ---------------------------------------------------------------------------
@@ -745,15 +795,28 @@ func (pm *ProjectMode) filteredProjects() []int {
 			indices = append(indices, i)
 		}
 	}
-	// Apply power-user search + status filter on top of the
-	// category-based selection. Both stack so the user can do
-	// "category=dev + status=active + search=auth" simultaneously.
-	if q != "" || pm.statusFilter != "" {
+	// Apply power-user search + status + tag filter on top of
+	// the category-based selection. All four stack so the user
+	// can do "category=dev + status=active + #urgent + search=auth"
+	// simultaneously.
+	if q != "" || pm.statusFilter != "" || pm.filterTag != "" {
 		out := indices[:0]
 		for _, idx := range indices {
 			p := pm.projects[idx]
 			if pm.statusFilter != "" && p.Status != pm.statusFilter {
 				continue
+			}
+			if pm.filterTag != "" {
+				match := false
+				for _, t := range p.Tags {
+					if strings.EqualFold(t, pm.filterTag) {
+						match = true
+						break
+					}
+				}
+				if !match {
+					continue
+				}
 			}
 			if q != "" {
 				hay := strings.ToLower(p.Name + " " + p.Description + " " + strings.Join(p.Tags, " "))
@@ -767,7 +830,10 @@ func (pm *ProjectMode) filteredProjects() []int {
 	}
 
 	// Sort: active projects by priority (desc), then due date (asc).
-	// Paused/completed/archived go to the bottom.
+	// Paused/completed/archived go to the bottom. When recencyBoost
+	// is on, the most-recently-updated project within the same
+	// priority/status group sinks to the top so power users see
+	// what they touched today.
 	sort.SliceStable(indices, func(a, b int) bool {
 		pa := pm.projects[indices[a]]
 		pb := pm.projects[indices[b]]
@@ -783,6 +849,20 @@ func (pm *ProjectMode) filteredProjects() []int {
 		// Within same activity group, sort by priority (highest first).
 		if pa.Priority != pb.Priority {
 			return pa.Priority > pb.Priority
+		}
+
+		// Recency boost: more-recently-updated wins within the
+		// same priority bucket. Empty UpdatedAt sorts last so
+		// projects that have never been touched in the new
+		// schema don't leapfrog active ones.
+		if pm.recencyBoost && pa.UpdatedAt != pb.UpdatedAt {
+			if pa.UpdatedAt == "" {
+				return false
+			}
+			if pb.UpdatedAt == "" {
+				return true
+			}
+			return pa.UpdatedAt > pb.UpdatedAt
 		}
 
 		// Then by due date (soonest first, empty last).
@@ -920,6 +1000,7 @@ func (pm ProjectMode) updateList(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 		if len(filtered) > 0 && pm.cursor < len(filtered) {
 			idx := filtered[pm.cursor]
 			pm.projects[idx].Status = "archived"
+			pm.touchProject(idx)
 			pm.saveProjects()
 			// Clamp cursor after archiving shrinks the filtered list.
 			newFiltered := pm.filteredProjects()
@@ -953,12 +1034,59 @@ func (pm ProjectMode) updateList(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 		pm.cursor = 0
 		pm.scroll = 0
 	case "c":
-		if pm.searchQuery != "" || pm.statusFilter != "" {
+		if pm.searchQuery != "" || pm.statusFilter != "" || pm.filterTag != "" {
 			pm.searchQuery = ""
 			pm.statusFilter = ""
+			pm.filterTag = ""
 			pm.cursor = 0
 			pm.scroll = 0
 		}
+	case "#":
+		// Cycle tag filter through every tag attached to any
+		// project. Composes with the category / status / search
+		// filters so power users can stack
+		//   "category=dev + #urgent + search=auth"
+		// in three keystrokes.
+		tags := pm.collectProjectTags()
+		if len(tags) == 0 {
+			pm.statusMsg = "No tagged projects"
+			break
+		}
+		next := ""
+		if pm.filterTag == "" {
+			next = tags[0]
+		} else {
+			for i, t := range tags {
+				if t == pm.filterTag {
+					if i+1 < len(tags) {
+						next = tags[i+1]
+					}
+					break
+				}
+			}
+		}
+		pm.filterTag = next
+		if next == "" {
+			pm.statusMsg = "Tag filter cleared"
+		} else {
+			pm.statusMsg = "Tag: #" + next
+		}
+		pm.cursor = 0
+		pm.scroll = 0
+	case "u":
+		// Toggle recency-boost sort. When on, the most-recently-
+		// updated project in each priority bucket floats to the
+		// top so the project you just touched is one keystroke
+		// away from being acted on again. Default off so the
+		// shipped behavior matches existing muscle memory.
+		pm.recencyBoost = !pm.recencyBoost
+		if pm.recencyBoost {
+			pm.statusMsg = "Recency boost: ON (recently-updated float to top)"
+		} else {
+			pm.statusMsg = "Recency boost: OFF"
+		}
+		pm.cursor = 0
+		pm.scroll = 0
 	case "+":
 		// Quick time-log: +1 hour to the cursor project's
 		// TimeSpent field, persisted immediately. Existing
@@ -967,6 +1095,7 @@ func (pm ProjectMode) updateList(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 		if len(filtered) > 0 && pm.cursor < len(filtered) {
 			idx := filtered[pm.cursor]
 			pm.projects[idx].TimeSpent += 60 // minutes
+			pm.touchProject(idx)
 			pm.saveProjects()
 			pm.statusMsg = fmt.Sprintf("+1h on %s — total %s",
 				pm.projects[idx].Name, formatTimeSpent(pm.projects[idx].TimeSpent))
@@ -998,6 +1127,7 @@ func (pm ProjectMode) updateList(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 		if len(filtered) > 0 && pm.cursor < len(filtered) {
 			idx := filtered[pm.cursor]
 			pm.cycleStatus(idx)
+			pm.touchProject(idx)
 			pm.saveProjects()
 			newFiltered := pm.filteredProjects()
 			if pm.cursor >= len(newFiltered) {
@@ -1014,6 +1144,7 @@ func (pm ProjectMode) updateList(msg tea.KeyMsg) (ProjectMode, tea.Cmd) {
 			for i := range pm.projects {
 				if pm.selected[pm.projects[i].Name] {
 					pm.projects[i].Status = "archived"
+					pm.touchProject(i)
 					n++
 				}
 			}
@@ -1540,6 +1671,7 @@ func (pm *ProjectMode) commitEdit() {
 			Status:      st,
 			Color:       col,
 			CreatedAt:   time.Now().Format("2006-01-02"),
+			UpdatedAt:   time.Now().Format("2006-01-02"),
 			Category:    cat,
 			Priority:    pri,
 			DueDate:     pm.editDueDate,
@@ -1568,6 +1700,7 @@ func (pm *ProjectMode) commitEdit() {
 		pm.projects[pm.editIdx].Priority = pri
 		pm.projects[pm.editIdx].DueDate = pm.editDueDate
 		pm.projects[pm.editIdx].NextAction = pm.editNextAction
+		pm.touchProject(pm.editIdx)
 	}
 	pm.saveProjects()
 }
@@ -1694,6 +1827,12 @@ func (pm ProjectMode) viewList() string {
 	}
 	if pm.statusFilter != "" {
 		b.WriteString("  " + chipStyle.Render("status:" + pm.statusFilter))
+	}
+	if pm.filterTag != "" {
+		b.WriteString("  " + chipStyle.Render("#" + pm.filterTag))
+	}
+	if pm.recencyBoost {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(crust).Background(green).Padding(0, 1).Render("recent↑"))
 	}
 	if pm.selectMode {
 		b.WriteString("  " + lipgloss.NewStyle().Foreground(crust).Background(mauve).Bold(true).Padding(0, 1).
