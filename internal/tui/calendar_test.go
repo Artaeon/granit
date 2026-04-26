@@ -253,6 +253,65 @@ func TestCalendar_MonthJumpBrackets(t *testing.T) {
 	}
 }
 
+func TestCalendar_WeekGridStartHour_DayViewFixed(t *testing.T) {
+	c := NewCalendar()
+	c.view = calView1Day
+	c.cursor = time.Date(2026, time.April, 26, 0, 0, 0, 0, time.Local)
+
+	if got := c.weekGridStartHourFor(); got != 6 {
+		t.Fatalf("expected day-view start hour 6, got %d", got)
+	}
+}
+
+func TestCalendar_WeekGridHourRange_IncludesEarlyPlannerBlock(t *testing.T) {
+	c := NewCalendar()
+	c.view = calViewWeek
+	c.cursor = time.Date(2026, time.April, 29, 0, 0, 0, 0, time.Local) // Wednesday
+	c.showPlannerLayer = true
+
+	monday := c.cursor.AddDate(0, 0, -((int(c.cursor.Weekday())+6)%7)).Format("2006-01-02")
+	c.plannerBlocks = map[string][]PlannerBlock{
+		monday: {
+			{Date: monday, StartTime: "04:30", EndTime: "05:30", Text: "Early block", BlockType: "focus"},
+		},
+	}
+
+	start, end := c.weekGridHourRangeFor()
+	if start != 4 {
+		t.Fatalf("expected start hour 4 for early planner block, got %d", start)
+	}
+	if end <= start {
+		t.Fatalf("expected end hour > start hour, got start=%d end=%d", start, end)
+	}
+}
+
+func TestCalendar_MaxGridSlots_UsesWeekRange(t *testing.T) {
+	c := NewCalendar()
+	c.view = calViewWeek
+	c.cursor = time.Date(2026, time.April, 29, 0, 0, 0, 0, time.Local)
+	c.showEventsLayer = true
+
+	day := c.cursor.Format("2006-01-02")
+	c.events = []CalendarEvent{
+		{
+			Title:   "Late Event",
+			Date:    time.Date(2026, time.April, 29, 22, 0, 0, 0, time.Local),
+			EndDate: time.Date(2026, time.April, 29, 23, 0, 0, 0, time.Local),
+		},
+	}
+	c.tasks = map[string][]TaskItem{day: nil}
+
+	start, end := c.weekGridHourRangeFor()
+	expected := (end - start) * 2
+	if expected < 16 {
+		expected = 16
+	}
+
+	if got := c.maxGridSlots(); got != expected {
+		t.Fatalf("expected maxGridSlots=%d from week range, got %d", expected, got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // SetDailyNotes — marks dates with daily notes
 // ---------------------------------------------------------------------------

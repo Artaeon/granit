@@ -1375,14 +1375,16 @@ func (c *Calendar) cursorSlotMinutes() int {
 // programmatic cursor moves (e.g. shiftBlockAtCursor) can't drive the
 // cursor past the visible grid. Half-hour rows; 17 hours max.
 func (c *Calendar) maxGridSlots() int {
-	maxSlots := c.height - 14
-	if maxSlots < 16 {
-		maxSlots = 16
+	// Day view renders a fixed 06:00-22:30 half-hour grid.
+	if c.view == calView1Day {
+		return 34
 	}
-	if maxSlots > 34 {
-		maxSlots = 34
+	startHour, endHour := c.weekGridHourRangeFor()
+	slots := (endHour - startHour) * 2
+	if slots < 16 {
+		slots = 16
 	}
-	return maxSlots
+	return slots
 }
 
 // blockAtCursor returns the index and pointer to the planner block the
@@ -2367,21 +2369,73 @@ func (c Calendar) findFreeSlots(durationMin, days, startHour, endHour, limit int
 // starts before 6 (down to 4). Used by key handlers (e/d/b) to map cursor
 // position to absolute time.
 func (c Calendar) weekGridStartHourFor() int {
-	weekStart := c.cursor.AddDate(0, 0, -int(c.cursor.Weekday()))
-	startHour := 6
+	if c.view == calView1Day {
+		return 6
+	}
+	startHour, _ := c.weekGridHourRangeFor()
+	return startHour
+}
+
+// weekGridHourRangeFor returns the hour window used by the week/3-day grid.
+// Keep this in sync with viewWeek so cursor math and render stay aligned.
+func (c Calendar) weekGridHourRangeFor() (int, int) {
+	workStart, workEnd := c.effectiveWorkHours()
+	startHour := maxInt(5, workStart-2)
+	endHour := minInt(23, workEnd+4)
+
+	// Monday-first week boundaries, matching week renderer.
+	mondayOffset := (int(c.cursor.Weekday()) + 6) % 7
+	weekStart := c.cursor.AddDate(0, 0, -mondayOffset)
+
 	for di := 0; di < 7; di++ {
 		day := weekStart.AddDate(0, 0, di)
-		for _, ev := range c.eventsForDate(day) {
-			if ev.AllDay {
-				continue
+		dateStr := day.Format("2006-01-02")
+
+		if c.showEventsLayer {
+			for _, ev := range c.eventsForDate(day) {
+				if ev.AllDay {
+					continue
+				}
+				s := ev.Date.Hour()
+				e := ev.Date.Hour() + 1
+				if !ev.EndDate.IsZero() {
+					e = (ev.EndDate.Hour()*60 + ev.EndDate.Minute() + 59) / 60
+				}
+				if s < startHour {
+					startHour = maxInt(4, s)
+				}
+				if e > endHour {
+					endHour = minInt(23, e)
+				}
 			}
-			h := ev.Date.Hour()
-			if h < startHour && h >= 4 {
-				startHour = h
+		}
+
+		if c.showPlannerLayer {
+			for _, pb := range c.plannerBlocks[dateStr] {
+				sH, _ := parseHHMM(pb.StartTime)
+				eH, eM := parseHHMM(pb.EndTime)
+				s := sH
+				e := (eH*60 + eM + 59) / 60
+				if e <= s {
+					e = s + 1
+				}
+				if s < startHour {
+					startHour = maxInt(4, s)
+				}
+				if e > endHour {
+					endHour = minInt(23, e)
+				}
 			}
 		}
 	}
-	return startHour
+
+	if endHour-startHour < 10 {
+		endHour = minInt(23, startHour+10)
+	}
+	if endHour <= startHour {
+		endHour = startHour + 1
+	}
+	return startHour, endHour
 }
 
 func daysIn(m time.Month, year int) int {

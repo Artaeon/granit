@@ -326,256 +326,83 @@ func (c Calendar) viewMonth() string {
 // ---------------------------------------------------------------------------
 
 func (c Calendar) viewWeek() string {
-	// Use full terminal width for the weekly calendar (like Google Calendar)
 	width := c.width - 2
-	if width < 90 {
-		width = 90
+	if width < 92 {
+		width = 92
 	}
 
 	var b strings.Builder
 	now := time.Now()
 
-	// Week boundaries
-	weekStart := c.cursor.AddDate(0, 0, -int(c.cursor.Weekday()))
+	// Monday-first week boundaries, consistent with month/mini calendar.
+	mondayOffset := (int(c.cursor.Weekday()) + 6) % 7
+	weekStart := c.cursor.AddDate(0, 0, -mondayOffset)
 	weekEnd := weekStart.AddDate(0, 0, 6)
-	_, weekNum := c.cursor.ISOWeek()
+	weekYear, weekNum := c.cursor.ISOWeek()
 
-	// ── Title bar ──────────────────────────────────────────────────────────
-	// Single-line header: icon + name + view + week range + cursor date.
-	// Previous version split title and cursor date across two lines AND
-	// drew boxed top/bottom borders for the day-name strip — three lines
-	// of mostly-empty space at the top of the view in tab mode. The new
-	// header lives on one line; the day strip uses thin separators.
-	// Date-format fix: Go time formatting uses "Jan" for short month;
-	// the previous "Apr 2" was a bug that emitted literal "Apr 26 -
-	// Apr 2, 2026" when the week crossed a month boundary.
 	titleIcon := lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar)
 	titleText := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" Calendar")
 	viewLabel := DimStyle.Render(" [week]")
 	weekLabel := lipgloss.NewStyle().Foreground(text).Render(
-		fmt.Sprintf("  W%d · %s – %s", weekNum,
-			weekStart.Format("Jan 2"), weekEnd.Format("Jan 2, 2006")))
-	cursorDateLabel := lipgloss.NewStyle().Foreground(overlay1).Render(
-		"  · " + c.cursor.Format("Monday 2"))
-	b.WriteString("  " + titleIcon + titleText + viewLabel + weekLabel + cursorDateLabel + "\n")
+		fmt.Sprintf("  %d-W%02d  %s - %s", weekYear, weekNum, weekStart.Format("Jan 2"), weekEnd.Format("Jan 2, 2006")))
+	cursorLabel := lipgloss.NewStyle().Foreground(overlay1).Render("  " + c.cursor.Format("Mon Jan 2"))
+	b.WriteString("  " + titleIcon + titleText + viewLabel + weekLabel + cursorLabel + "\n")
 
-	// ── Layout math ────────────────────────────────────────────────────────
-	// Every rendered row is "  " (2-char indent) + timeSt
-	// (timeColW chars) + 7 day cells (dayColW chars each).
-	// The total MUST be ≤ width or the terminal hard-wraps and
-	// the wrapped right-edge content paints into the next row's
-	// left-edge area, producing the "extra line between
-	// everything" + "text in the time column area" visual the
-	// user kept hitting. So:
-	//   2 + timeColW + 7*dayColW  ≤  width
-	//   dayColW                   ≤  (width - timeColW - 2) / 7
-	// Subtract one more for safety on emoji/width edge cases.
 	leadingIndent := 2
-	timeColW := 8
+	timeColW := 7
 	dayColW := (width - timeColW - leadingIndent - 1) / 7
-	if dayColW < 6 {
-		var fallback strings.Builder
-		fallback.WriteString("  " + lipgloss.NewStyle().Foreground(yellow).Render(
-			"Pane too narrow for week view. Try Day view (v) or widen the editor pane.") + "\n")
-		fallback.WriteString("  " + DimStyle.Render(fmt.Sprintf("(need ~%d cols, have %d)", 6*7+timeColW+leadingIndent, width)))
-		return fallback.String()
+	if dayColW < 8 {
+		return "  " + lipgloss.NewStyle().Foreground(yellow).Render("Pane too narrow for weekly calendar. Widen the pane or switch view.")
 	}
 	gridW := timeColW + dayColW*7
 
-	// ── Separator helpers ──────────────────────────────────────────────────
-	sepChar := lipgloss.NewStyle().Foreground(surface1).Render("│")
-	todaySepChar := lipgloss.NewStyle().Foreground(green).Bold(true).Render("┃")
-	sepFor := func(colIdx int) string {
-		day := weekStart.AddDate(0, 0, colIdx)
+	separatorFor := func(dayIdx int) string {
+		day := weekStart.AddDate(0, 0, dayIdx)
 		if sameDay(day, c.today) {
-			return todaySepChar
+			return lipgloss.NewStyle().Foreground(green).Bold(true).Render("┃")
 		}
-		// Also highlight the right edge of today's column
-		if colIdx > 0 {
-			prevDay := weekStart.AddDate(0, 0, colIdx-1)
-			if sameDay(prevDay, c.today) {
-				return todaySepChar
-			}
-		}
-		return sepChar
+		return lipgloss.NewStyle().Foreground(surface1).Render("│")
 	}
 
-	// ── Day headers — boxed with per-day colors, today highlighted ─────────
-	dayNamesShort := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
-	dayNamesFull := []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
-
-	// Per-day accent colors for visual rhythm
-	dayHeaderColors := []lipgloss.Color{
-		peach,    // Sun — warm
-		blue,     // Mon — fresh start
-		sapphire, // Tue
-		lavender, // Wed — midweek
-		teal,     // Thu
-		green,    // Fri — almost weekend
-		peach,    // Sat — warm
+	cellInnerW := dayColW - 1
+	renderCell := func(raw string, fg, bg lipgloss.Color, bold bool) string {
+		if cellInnerW < 1 {
+			return ""
+		}
+		content := TruncateDisplay(raw, cellInnerW)
+		pad := cellInnerW - lipgloss.Width(content)
+		if pad > 0 {
+			content += strings.Repeat(" ", pad)
+		}
+		st := lipgloss.NewStyle().Foreground(fg).Background(bg)
+		if bold {
+			st = st.Bold(true)
+		}
+		return st.Render(content)
 	}
 
-	// Day name + date row — uses the SAME column structure as
-	// the time grid below (sepFor pipe before each cell, no
-	// closing pipe). Previous version used "│ X │ │ Y │ │ Z │"
-	// which put TWO pipes between cells and didn't align with
-	// the time-grid's single-pipe column separators — looked
-	// "completely messed up" once the boxed borders that
-	// anchored the old pipe pattern were removed.
-	//
-	// Cell layout per day: sep(=│) + space + label + pad + space
-	// Total width per cell: 1 (sep) + 1 + (dayColW-2) padding
-	//                     = dayColW chars, matches grid exactly.
-	headerRow := strings.Repeat(" ", timeColW)
-	for i := 0; i < 7; i++ {
-		day := weekStart.AddDate(0, 0, i)
-		dayName := dayNamesShort[i]
-		if dayColW >= 18 {
-			dayName = dayNamesFull[i]
-		}
-		dateNum := day.Format("2")
-		label := dayName + " " + dateNum
-
-		col := dayHeaderColors[i]
-		style := lipgloss.NewStyle().Foreground(col).Bold(true)
-		if day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
-			style = lipgloss.NewStyle().Foreground(col)
-		}
-		isHeaderToday := sameDay(day, c.today)
-		if isHeaderToday {
-			col = green
-			// Today: inverted green background for maximum prominence
-			style = lipgloss.NewStyle().Foreground(crust).Background(green).Bold(true)
-		}
-		if sameDay(day, c.cursor) && !isHeaderToday {
-			style = lipgloss.NewStyle().Foreground(mauve).Bold(true)
-		}
-		// Cell content area = dayColW - 2 (1 for sep + 1 for
-		// trailing space on the same column). Truncate label
-		// to fit, then pad on the right to fill the column.
-		inner := dayColW - 2
-		if inner < 4 {
-			inner = 4
-		}
-		truncLabel := TruncateDisplay(label, inner)
-		cell := style.Render(truncLabel)
-		padLen := inner - lipgloss.Width(cell)
-		if padLen < 0 {
-			padLen = 0
-		}
-		padStr := strings.Repeat(" ", padLen)
-		if isHeaderToday {
-			padStr = lipgloss.NewStyle().Background(green).Render(padStr)
-		}
-		headerRow += sepFor(i) + " " + cell + padStr
-	}
-	b.WriteString("  " + headerRow + "\n")
-
-	// Single thin separator below the headers — uses the same
-	// per-column structure (sep before each cell + dashes) so
-	// the | pipes line up vertically through header → sep →
-	// time grid. Previous version drew one continuous bar
-	// across all 7 columns with no inter-column markers; it
-	// didn't visually anchor to the grid pipes.
-	sepBorder := strings.Repeat(" ", timeColW)
-	for i := 0; i < 7; i++ {
-		day := weekStart.AddDate(0, 0, i)
-		col := dayHeaderColors[i]
-		if sameDay(day, c.today) {
-			col = green
-		}
-		// sep + (dayColW-1) dashes per cell so total = dayColW.
-		sepBorder += sepFor(i) + lipgloss.NewStyle().Foreground(col).Render(strings.Repeat("─", dayColW-1))
-	}
-	b.WriteString("  " + sepBorder + "\n")
-
-	// ── All-day events row ─────────────────────────────────────────────────
-	// Suppressed entirely when the events layer is off so the
-	// "focus on tasks/blocks" workflow has zero event chrome.
-	hasAllDay := false
-	if c.showEventsLayer {
-		for di := 0; di < 7; di++ {
-			if hasAllDay {
-				break
-			}
-			day := weekStart.AddDate(0, 0, di)
-			for _, ev := range c.eventsForDate(day) {
-				if ev.AllDay {
-					hasAllDay = true
-					break
-				}
-			}
-		}
-	}
-	if hasAllDay {
-		allDayCells := ""
-		for di := 0; di < 7; di++ {
-			day := weekStart.AddDate(0, 0, di)
-			var allDayEvs []CalendarEvent
-			for _, ev := range c.eventsForDate(day) {
-				if ev.AllDay {
-					allDayEvs = append(allDayEvs, ev)
-				}
-			}
-			cellStr := ""
-			if len(allDayEvs) > 0 {
-				inner := dayColW - 2
-				if inner < 2 {
-					inner = 2
-				}
-				title := allDayEvs[0].Title
-				if len(allDayEvs) > 1 {
-					title += fmt.Sprintf(" +%d", len(allDayEvs)-1)
-				}
-				title = TruncateDisplay(title, inner)
-				padded := title + strings.Repeat(" ", maxInt(0, inner-lipgloss.Width(title)))
-				cellStr = lipgloss.NewStyle().Foreground(crust).Background(calEventColor(allDayEvs[0])).Bold(true).Render(" " + padded + " ")
-			} else {
-				cellStr = strings.Repeat(" ", dayColW)
-			}
-			pad := dayColW - lipgloss.Width(cellStr)
-			if pad > 0 {
-				cellStr += strings.Repeat(" ", pad)
-			}
-			allDayCells += cellStr
-		}
-		b.WriteString("  " + strings.Repeat(" ", timeColW) + allDayCells + "\n")
-	}
-
-	// ── Pre-compute event positions for each day ───────────────────────────
-	// dimmed=true means the entry doesn't match the active
-	// search query — it still renders so spatial context is
-	// preserved (the user sees that 14:00 IS busy with a
-	// non-matching meeting), but with a muted color so the
-	// matches pop. Empty query → all entries are non-dimmed.
-	type weekEntry struct {
-		kind     string // "event", "planner"
+	type weekSlotEntry struct {
+		kind     string
 		title    string
+		location string
 		color    lipgloss.Color
 		startMin int
 		endMin   int
-		location string
 		dimmed   bool
 	}
-	type dayEntries struct {
-		events []weekEntry
-	}
-	allDayEntries := make([]dayEntries, 7)
+
+	entriesByDay := make([][]weekSlotEntry, 7)
+	allDayByDay := make([][]CalendarEvent, 7)
+	taskStatsByDay := make([][2]int, 7) // pending, done
+
 	for di := 0; di < 7; di++ {
 		day := weekStart.AddDate(0, 0, di)
 		dateStr := day.Format("2006-01-02")
-		var entries []weekEntry
 
-		// Layer-toggle gates: when a layer is off, its source
-		// drops out of the week grid entirely so the user can
-		// focus on just events / just blocks. showEventsLayer
-		// gates calendar events; showPlannerLayer gates planner
-		// blocks. Tasks layer doesn't render in the time grid
-		// (tasks appear only in agenda/day-summary), so the
-		// task gate fires only in agenda + 1day's task list.
 		if c.showEventsLayer {
 			for _, ev := range c.eventsForDate(day) {
 				if ev.AllDay {
+					allDayByDay[di] = append(allDayByDay[di], ev)
 					continue
 				}
 				startMin := ev.Date.Hour()*60 + ev.Date.Minute()
@@ -586,10 +413,14 @@ func (c Calendar) viewWeek() string {
 						endMin = startMin + 60
 					}
 				}
-				entries = append(entries, weekEntry{
-					kind: "event", title: ev.Title, color: calEventColor(ev),
-					startMin: startMin, endMin: endMin, location: ev.Location,
-					dimmed: !c.matchesSearch(ev.Title, ev.Location, ev.Description),
+				entriesByDay[di] = append(entriesByDay[di], weekSlotEntry{
+					kind:     "event",
+					title:    ev.Title,
+					location: ev.Location,
+					color:    calEventColor(ev),
+					startMin: startMin,
+					endMin:   endMin,
+					dimmed:   !c.matchesSearch(ev.Title, ev.Location, ev.Description),
 				})
 			}
 		}
@@ -603,344 +434,247 @@ func (c Calendar) viewWeek() string {
 				if endMin <= startMin {
 					endMin = startMin + 60
 				}
-				entries = append(entries, weekEntry{
-					kind: "planner", title: pb.Text, color: plannerBlockColor(pb.BlockType, pb.Done),
-					startMin: startMin, endMin: endMin,
-					dimmed: !c.matchesSearch(pb.Text),
+				entriesByDay[di] = append(entriesByDay[di], weekSlotEntry{
+					kind:     "planner",
+					title:    pb.Text,
+					color:    plannerBlockColor(pb.BlockType, pb.Done),
+					startMin: startMin,
+					endMin:   endMin,
+					dimmed:   !c.matchesSearch(pb.Text),
 				})
 			}
 		}
-		allDayEntries[di] = dayEntries{events: entries}
-	}
 
-	// ── Determine visible hour range ───────────────────────────────────────
-	maxHalfHours := (c.height - 12) * 1
-	if maxHalfHours < 16 {
-		maxHalfHours = 16
-	}
-	startHour := 6
-	for di := 0; di < 7; di++ {
-		for _, e := range allDayEntries[di].events {
-			if e.startMin/60 < startHour && e.startMin/60 >= 4 {
-				startHour = e.startMin / 60
-			}
-		}
-	}
-	endHour := startHour + maxHalfHours/2
-	if endHour > 23 {
-		endHour = 23
-	}
-
-	// ── Render time grid ───────────────────────────────────────────────────
-	todayInWeek := !c.today.Before(weekStart) && c.today.Before(weekStart.AddDate(0, 0, 7))
-	todayCol := -1
-	if todayInWeek {
-		todayCol = int(c.today.Sub(weekStart).Hours() / 24)
-	}
-
-	nowMins := now.Hour()*60 + now.Minute()
-	nowLineDrawn := false
-
-	cursorSlotMin := (startHour + c.weekGridCursorHour/2) * 60
-	if c.weekGridCursorHour%2 == 1 {
-		cursorSlotMin += 30
-	}
-
-	// ── Time-block colors ──────────────────────────────────────────────────
-	// 4 time blocks with distinct, VISIBLE background tints and event colors.
-	// The bg colors are lighter than base so empty cells are NOT black.
-	type timeBlock struct {
-		startH   int
-		endH     int
-		label    string
-		bg       lipgloss.Color // empty cell background (lighter than base)
-		fg       lipgloss.Color // label/separator color
-		eventBg  lipgloss.Color // event block background in this time period
-		eventFg  lipgloss.Color // event text color
-	}
-	timeBlocks := []timeBlock{
-		{5, 10, "MORNING",
-			base, lavender,                            // bg: theme base (clean)
-			lipgloss.Color("#7B6BA6"), crust},         // events: medium purple
-		{10, 15, "MIDDAY",
-			base, sapphire,                            // bg: theme base
-			lipgloss.Color("#5B7EA8"), crust},         // events: medium blue
-		{15, 20, "AFTERNOON",
-			base, peach,                               // bg: theme base
-			lipgloss.Color("#B8875A"), crust},         // events: warm amber
-		{20, 24, "EVENING",
-			base, teal,                                // bg: theme base
-			lipgloss.Color("#5A9E9E"), crust},         // events: medium teal
-	}
-
-	getTimeBlock := func(hour int) *timeBlock {
-		for i := range timeBlocks {
-			if hour >= timeBlocks[i].startH && hour < timeBlocks[i].endH {
-				return &timeBlocks[i]
-			}
-		}
-		return &timeBlocks[0]
-	}
-
-	// eventColorForSlot returns the event background color based on the time
-	// block it falls in. Events with explicit colors (from user/ICS) keep theirs;
-	// planner blocks and default-colored events get the time-block event color.
-	eventColorForSlot := func(e weekEntry, hour int) lipgloss.Color {
-		// If the event has a user-set color (not the default blue), keep it
-		if e.color != blue {
-			return e.color
-		}
-		// Otherwise, tint by time block
-		tb := getTimeBlock(hour)
-		return tb.eventBg
-	}
-
-	lastTimeBlockLabel := ""
-
-	for hour := startHour; hour < endHour; hour++ {
-		for half := 0; half < 2; half++ {
-			slotMin := hour*60 + half*30
-			isTopHalf := half == 0
-			isCurrentSlot := todayInWeek && now.Hour() == hour && ((half == 0 && now.Minute() < 30) || (half == 1 && now.Minute() >= 30))
-
-			// ── Time-block transition separator ────────────────────────
-			if isTopHalf {
-				for _, tb := range timeBlocks {
-					if hour == tb.startH && tb.label != lastTimeBlockLabel {
-						lastTimeBlockLabel = tb.label
-						// Draw a colored separator with block label
-						blockLabel := lipgloss.NewStyle().Foreground(tb.fg).Bold(true).
-							Render(" " + tb.label + " ")
-						sepLine := lipgloss.NewStyle().Foreground(tb.fg).
-							Render(strings.Repeat("─", maxInt(1, gridW-lipgloss.Width(blockLabel)-2)))
-						b.WriteString("  " + blockLabel + sepLine + "\n")
-						break
-					}
+		if c.showTasksLayer {
+			for _, t := range c.tasks[dateStr] {
+				if t.Done {
+					taskStatsByDay[di][1]++
+				} else {
+					taskStatsByDay[di][0]++
 				}
 			}
+		}
 
-			// Time label — color-coded by time block
-			tb := getTimeBlock(hour)
-			var timeSt string
-			if isCurrentSlot {
-				timeSt = lipgloss.NewStyle().Foreground(green).Bold(true).
-					Render(fmt.Sprintf(" ▸%02d:%02d ", now.Hour(), now.Minute()))
-			} else if isTopHalf {
-				timeSt = lipgloss.NewStyle().Foreground(tb.fg).
-					Render(fmt.Sprintf("  %02d:00 ", hour))
+		sort.Slice(entriesByDay[di], func(i, j int) bool {
+			if entriesByDay[di][i].startMin != entriesByDay[di][j].startMin {
+				return entriesByDay[di][i].startMin < entriesByDay[di][j].startMin
+			}
+			return entriesByDay[di][i].endMin < entriesByDay[di][j].endMin
+		})
+	}
+
+	workStart, workEnd := c.effectiveWorkHours()
+	startHour, endHour := c.weekGridHourRangeFor()
+	slotCount := (endHour - startHour) * 2
+	if slotCount < 16 {
+		slotCount = 16
+		endHour = minInt(23, startHour+slotCount/2)
+	}
+
+	renderHeaderRow := func(top bool) {
+		row := strings.Repeat(" ", timeColW)
+		for di := 0; di < 7; di++ {
+			day := weekStart.AddDate(0, 0, di)
+			var label string
+			if top {
+				label = day.Format("Mon 2")
+				if dayColW >= 13 {
+					label = day.Format("Monday 2")
+				}
 			} else {
-				timeSt = lipgloss.NewStyle().Foreground(surface2).
-					Render("    :30 ")
+				evCount := len(entriesByDay[di]) + len(allDayByDay[di])
+				pending := taskStatsByDay[di][0]
+				done := taskStatsByDay[di][1]
+				label = fmt.Sprintf("E:%d T:%d", evCount, pending)
+				if done > 0 {
+					label += fmt.Sprintf(" D:%d", done)
+				}
 			}
 
-			// Build cells for each day
-			cells := ""
-
-			for di := 0; di < 7; di++ {
-				day := weekStart.AddDate(0, 0, di)
-				isToday := sameDay(day, c.today)
-				isCursorCell := sameDay(day, c.cursor) && slotMin == cursorSlotMin
-
-				// Find entries overlapping this slot
-				var active *weekEntry
-				overlapCount := 0
-				for i := range allDayEntries[di].events {
-					e := &allDayEntries[di].events[i]
-					if e.startMin < slotMin+30 && e.endMin > slotMin {
-						overlapCount++
-						if active == nil {
-							active = e
-						}
-					}
-				}
-
-				inner := dayColW - 2
-				if inner < 4 {
-					inner = 4
-				}
-
-				// Choose the cell background: today gets a subtle green tint,
-				// others use the theme base color (clean, not black).
-				// Non-working hours get a muted darker tint (mantle) so the
-				// eye snaps to working time without losing the half-hour
-				// grid as visual scaffolding.
-				workStart, workEnd := c.effectiveWorkHours()
-				inWorkHours := hour >= workStart && hour < workEnd
-				var cellBg lipgloss.Color
-				if isToday {
-					cellBg = surface0 // slightly lighter than base for today
-				} else if !inWorkHours {
-					cellBg = mantle // muted: outside working hours
-				} else {
-					cellBg = tb.bg // theme base
-				}
-
-				// Build cell content. CRITICAL: never use lipgloss
-				// .Width(N) here — when content overflows N (e.g.
-				// "06:15 Morning Pra… ⚠+1" inside a Width(16)
-				// cell after truncation accumulates trailing
-				// metadata), lipgloss WRAPS the content into a
-				// second visual row WITH the same background
-				// color. That's the "extra line between
-				// everything" the user kept hitting. Use explicit
-				// padding (spaces) instead so a too-wide cell
-				// silently truncates instead of wrapping.
-				cellW := inner + 1 // total chars per cell, including leading space
-				renderCell := func(fg, bg lipgloss.Color, bold bool, raw string) string {
-					content := TruncateDisplay(raw, cellW-1) // leave 1 for leading space
-					content = " " + content
-					padW := cellW - lipgloss.Width(content)
-					if padW > 0 {
-						content += strings.Repeat(" ", padW)
-					}
-					st := lipgloss.NewStyle().Foreground(fg).Background(bg)
-					if bold {
-						st = st.Bold(true)
-					}
-					return st.Render(content)
-				}
-
-				cellContent := ""
-				if isCursorCell && active != nil {
-					isEntryStart := active.startMin >= slotMin && active.startMin < slotMin+30
-					var curLabel string
-					if isEntryStart {
-						startH := active.startMin / 60
-						startM := active.startMin % 60
-						curLabel = fmt.Sprintf("%02d:%02d %s", startH, startM, active.title)
-					} else {
-						curLabel = "▎ " + active.title
-					}
-					cellContent = renderCell(crust, mauve, true, curLabel)
-				} else if active != nil {
-					isEntryStart := active.startMin >= slotMin && active.startMin < slotMin+30
-					hasConflict := overlapCount > 1
-
-					var label string
-					if isEntryStart {
-						startH := active.startMin / 60
-						startM := active.startMin % 60
-						timeStr := fmt.Sprintf("%02d:%02d", startH, startM)
-						label = timeStr + " " + active.title
-						if active.location != "" && cellW > 26 {
-							label += " @" + active.location
-						}
-						if hasConflict {
-							// "⚠+N" badge — only append if the cell
-							// is wide enough so we don't blow the
-							// truncation budget. On narrow cells the
-							// red background already signals conflict.
-							if cellW >= 12 {
-								label = TruncateDisplay(label, cellW-6) + fmt.Sprintf(" ⚠+%d", overlapCount-1)
-							}
-						}
-					} else {
-						label = "  " + active.title
-					}
-
-					evColor := eventColorForSlot(*active, hour)
-					evFg := active.color
-					if evFg == blue {
-						evFg = tb.eventFg
-					} else {
-						evFg = crust
-					}
-					if hasConflict {
-						evColor = red
-						evFg = crust
-					}
-					if active.dimmed {
-						evColor = surface0
-						evFg = surface2
-					}
-					cellContent = renderCell(evFg, evColor, isEntryStart && !active.dimmed, label)
-				} else if isCursorCell {
-					cellContent = renderCell(crust, mauve, true, "▎")
-				} else {
-					// Empty cell — explicit-padded background fill.
-					cellContent = lipgloss.NewStyle().Background(cellBg).Render(strings.Repeat(" ", cellW))
-				}
-
-				// Separator also gets background so no black line between columns
-				sep := sepFor(di)
-				cells += sep + cellContent
+			fg := text
+			bg := mantle
+			bold := true
+			if day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
+				fg = overlay1
+				bg = surface0
+			}
+			if sameDay(day, c.today) {
+				fg = crust
+				bg = green
+				bold = true
+			} else if sameDay(day, c.cursor) {
+				fg = crust
+				bg = mauve
 			}
 
-			b.WriteString("  " + timeSt + cells + "\n")
-
-			// ── Current-time red line ───────────────────────────────────
-			if !nowLineDrawn && todayInWeek && nowMins >= slotMin && nowMins < slotMin+30 {
-				nowLineDrawn = true
-				timeLabel := lipgloss.NewStyle().Foreground(crust).Background(red).Bold(true).
-					Render(fmt.Sprintf("▸%02d:%02d  ", now.Hour(), now.Minute()))
-				var rowCells string
-				for di := 0; di < 7; di++ {
-					inner := dayColW - 2
-					if inner < 1 {
-						inner = 1
-					}
-					var cell string
-					if di == todayCol {
-						// Bold red background line for today
-						cell = lipgloss.NewStyle().Foreground(crust).Background(red).Bold(true).
-							Width(inner + 1).Render(" NOW")
-					} else {
-						cell = lipgloss.NewStyle().Foreground(red).
-							Render(strings.Repeat("╌", inner))
-					}
-					rowCells += sepFor(di) + PadRight(cell, dayColW-1)
-				}
-				b.WriteString("  " + timeLabel + rowCells + "\n")
-			}
+			row += separatorFor(di) + renderCell(" "+label, fg, bg, bold)
 		}
+		b.WriteString("  " + row + "\n")
 	}
 
-	// ── Event Details panel ────────────────────────────────────────────────
-	// Persistent detail panel at the bottom showing full info for cursor event
+	renderHeaderRow(true)
+	renderHeaderRow(false)
 	b.WriteString("  " + lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", gridW)) + "\n")
-	cursorDay := int(c.cursor.Weekday())
+
+	hasAllDay := false
+	for di := 0; di < 7; di++ {
+		if len(allDayByDay[di]) > 0 {
+			hasAllDay = true
+			break
+		}
+	}
+	if hasAllDay {
+		row := lipgloss.NewStyle().Foreground(overlay0).Render(" allday")
+		if lipgloss.Width(row) < timeColW {
+			row += strings.Repeat(" ", timeColW-lipgloss.Width(row))
+		}
+		for di := 0; di < 7; di++ {
+			if len(allDayByDay[di]) == 0 {
+				row += separatorFor(di) + renderCell("", overlay1, surface0, false)
+				continue
+			}
+			title := allDayByDay[di][0].Title
+			if len(allDayByDay[di]) > 1 {
+				title += fmt.Sprintf(" +%d", len(allDayByDay[di])-1)
+			}
+			row += separatorFor(di) + renderCell(" "+title, crust, calEventColor(allDayByDay[di][0]), true)
+		}
+		b.WriteString("  " + row + "\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", gridW)) + "\n")
+	}
+
+	todayIdx := -1
+	if !c.today.Before(weekStart) && c.today.Before(weekStart.AddDate(0, 0, 7)) {
+		todayIdx = int(c.today.Sub(weekStart).Hours() / 24)
+	}
+
+	gridCursor := c.weekGridCursorHour
+	if gridCursor < 0 {
+		gridCursor = 0
+	}
+	if slotCount > 0 && gridCursor >= slotCount {
+		gridCursor = slotCount - 1
+	}
+	cursorSlotMin := startHour*60 + gridCursor*30
+	nowMins := now.Hour()*60 + now.Minute()
+
+	for slot := 0; slot < slotCount; slot++ {
+		hour := startHour + slot/2
+		minute := 0
+		if slot%2 == 1 {
+			minute = 30
+		}
+
+		isNowSlot := todayIdx >= 0 && nowMins >= hour*60+minute && nowMins < hour*60+minute+30
+		timeLabel := fmt.Sprintf(" %02d:%02d", hour, minute)
+		timeStyle := lipgloss.NewStyle().Foreground(surface2)
+		if minute == 0 {
+			timeStyle = lipgloss.NewStyle().Foreground(overlay0)
+		}
+		if isNowSlot {
+			timeStyle = lipgloss.NewStyle().Foreground(crust).Background(red).Bold(true)
+		}
+		timeCell := timeStyle.Render(PadRight(timeLabel, timeColW))
+
+		row := timeCell
+		for di := 0; di < 7; di++ {
+			day := weekStart.AddDate(0, 0, di)
+			isCursorCell := sameDay(day, c.cursor) && slot == gridCursor
+			inWorkHours := hour >= workStart && hour < workEnd
+
+			bg := base
+			if !inWorkHours {
+				bg = mantle
+			}
+			if sameDay(day, c.today) {
+				bg = surface0
+			}
+
+			var active *weekSlotEntry
+			overlapCount := 0
+			for i := range entriesByDay[di] {
+				e := &entriesByDay[di][i]
+				if e.startMin < hour*60+minute+30 && e.endMin > hour*60+minute {
+					overlapCount++
+					if active == nil {
+						active = e
+					}
+				}
+			}
+
+			if active == nil {
+				if isCursorCell {
+					row += separatorFor(di) + renderCell(" ▎", crust, mauve, true)
+				} else {
+					row += separatorFor(di) + renderCell("", overlay1, bg, false)
+				}
+				continue
+			}
+
+			startsHere := active.startMin >= hour*60+minute && active.startMin < hour*60+minute+30
+			label := " " + active.title
+			if startsHere {
+				label = fmt.Sprintf(" %02d:%02d %s", active.startMin/60, active.startMin%60, active.title)
+			}
+			if active.location != "" && dayColW >= 18 && startsHere {
+				label += " @" + active.location
+			}
+			if overlapCount > 1 {
+				label = TruncateDisplay(label, maxInt(1, cellInnerW-3)) + fmt.Sprintf(" +%d", overlapCount-1)
+			}
+
+			entryBg := active.color
+			entryFg := crust
+			bold := startsHere
+			if active.kind == "planner" {
+				entryFg = text
+			}
+			if active.dimmed {
+				entryBg = surface0
+				entryFg = surface2
+				bold = false
+			}
+			if isCursorCell {
+				entryBg = mauve
+				entryFg = crust
+				bold = true
+			}
+
+			row += separatorFor(di) + renderCell(label, entryFg, entryBg, bold)
+		}
+
+		b.WriteString("  " + row + "\n")
+	}
+
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", gridW)) + "\n")
+
+	selectedDayIdx := int(c.cursor.Sub(weekStart).Hours() / 24)
 	foundDetail := false
-	if cursorDay >= 0 && cursorDay < 7 {
-		for _, e := range allDayEntries[cursorDay].events {
+	if selectedDayIdx >= 0 && selectedDayIdx < 7 {
+		for _, e := range entriesByDay[selectedDayIdx] {
 			if e.startMin < cursorSlotMin+30 && e.endMin > cursorSlotMin {
 				foundDetail = true
-				// Header
-				detailTitle := lipgloss.NewStyle().Foreground(overlay1).Bold(true).Render("  Event Details")
-				b.WriteString(detailTitle + "\n")
-				// Colored left bar + event name
-				colorBar := lipgloss.NewStyle().Background(e.color).Render("  ")
-				nameStyled := lipgloss.NewStyle().Foreground(text).Bold(true).Render("  " + e.title)
-				b.WriteString(colorBar + nameStyled + "\n")
-				// Time range + duration
-				startH, startM := e.startMin/60, e.startMin%60
-				endH, endM := e.endMin/60, e.endMin%60
-				dur := e.endMin - e.startMin
-				timeRange := fmt.Sprintf("%02d:%02d – %02d:%02d", startH, startM, endH, endM)
-				durLabel := FormatMinutes(dur)
-				b.WriteString("  " + lipgloss.NewStyle().Foreground(teal).Render("  Time:     ") +
-					lipgloss.NewStyle().Foreground(text).Render(timeRange) +
-					DimStyle.Render(" ["+durLabel+"]") + "\n")
-				// Location
-				if e.location != "" {
-					b.WriteString("  " + lipgloss.NewStyle().Foreground(teal).Render("  Location: ") +
-						lipgloss.NewStyle().Foreground(text).Render(e.location) + "\n")
-				}
-				// Type
-				typeLabel := e.kind
+				title := lipgloss.NewStyle().Foreground(text).Bold(true).Render("  " + e.title)
+				kind := "event"
 				if e.kind == "planner" {
-					typeLabel = "scheduled block"
+					kind = "scheduled block"
 				}
-				b.WriteString("  " + lipgloss.NewStyle().Foreground(teal).Render("  Type:     ") +
-					DimStyle.Render(typeLabel) + "\n")
+				timeRange := fmt.Sprintf("%02d:%02d-%02d:%02d", e.startMin/60, e.startMin%60, e.endMin/60, e.endMin%60)
+				duration := FormatMinutes(e.endMin - e.startMin)
+				meta := lipgloss.NewStyle().Foreground(teal).Render("  " + timeRange + "  ") + DimStyle.Render("("+duration+", "+kind+")")
+				b.WriteString(title + "\n")
+				b.WriteString(meta + "\n")
+				if e.location != "" {
+					b.WriteString("  " + DimStyle.Render("at ") + lipgloss.NewStyle().Foreground(text).Render(e.location) + "\n")
+				}
 				break
 			}
 		}
 	}
 	if !foundDetail {
-		b.WriteString("  " + DimStyle.Render("  Navigate to an event to see details") + "\n")
+		b.WriteString("  " + DimStyle.Render("Move the week cursor onto an event or block to see details.") + "\n")
 	}
 
-	// ── Modals ─────────────────────────────────────────────────────────────
 	if c.addingEvent {
 		c.renderQuickAdd(&b, width)
 	}
@@ -985,7 +719,7 @@ func (c Calendar) viewWeek() string {
 		b.WriteString("  " + sepStyle.Render(strings.Repeat("─", width-8)) + "\n")
 		titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 		if c.weekMilestoneStep == 0 {
-			b.WriteString(titleStyle.Render("  Add milestone — select goal:") + "\n")
+			b.WriteString(titleStyle.Render("  Add milestone - select goal:") + "\n")
 			maxShow := 8
 			start := 0
 			if c.weekMilestoneCursor >= maxShow {
@@ -1033,6 +767,9 @@ func (c Calendar) viewWeek() string {
 		MaxHeight(c.height - 2).
 		Background(mantle)
 
+	if c.IsTabMode() {
+		return b.String()
+	}
 	return border.Render(b.String())
 }
 
