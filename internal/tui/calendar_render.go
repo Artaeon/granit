@@ -777,11 +777,33 @@ func (c Calendar) viewWeek() string {
 					cellBg = tb.bg // theme base
 				}
 
-				// Build cell content — ALL cells get a background so no black gaps
+				// Build cell content. CRITICAL: never use lipgloss
+				// .Width(N) here — when content overflows N (e.g.
+				// "06:15 Morning Pra… ⚠+1" inside a Width(16)
+				// cell after truncation accumulates trailing
+				// metadata), lipgloss WRAPS the content into a
+				// second visual row WITH the same background
+				// color. That's the "extra line between
+				// everything" the user kept hitting. Use explicit
+				// padding (spaces) instead so a too-wide cell
+				// silently truncates instead of wrapping.
+				cellW := inner + 1 // total chars per cell, including leading space
+				renderCell := func(fg, bg lipgloss.Color, bold bool, raw string) string {
+					content := TruncateDisplay(raw, cellW-1) // leave 1 for leading space
+					content = " " + content
+					padW := cellW - lipgloss.Width(content)
+					if padW > 0 {
+						content += strings.Repeat(" ", padW)
+					}
+					st := lipgloss.NewStyle().Foreground(fg).Background(bg)
+					if bold {
+						st = st.Bold(true)
+					}
+					return st.Render(content)
+				}
+
 				cellContent := ""
 				if isCursorCell && active != nil {
-					// Cursor on event: mauve highlight
-					cursorStyle := lipgloss.NewStyle().Background(mauve).Foreground(crust).Bold(true).Width(inner + 1)
 					isEntryStart := active.startMin >= slotMin && active.startMin < slotMin+30
 					var curLabel string
 					if isEntryStart {
@@ -791,7 +813,7 @@ func (c Calendar) viewWeek() string {
 					} else {
 						curLabel = "▎ " + active.title
 					}
-					cellContent = cursorStyle.Render(" " + TruncateDisplay(curLabel, inner-1))
+					cellContent = renderCell(crust, mauve, true, curLabel)
 				} else if active != nil {
 					isEntryStart := active.startMin >= slotMin && active.startMin < slotMin+30
 					hasConflict := overlapCount > 1
@@ -802,27 +824,22 @@ func (c Calendar) viewWeek() string {
 						startM := active.startMin % 60
 						timeStr := fmt.Sprintf("%02d:%02d", startH, startM)
 						label = timeStr + " " + active.title
-						if active.location != "" && inner > 24 {
+						if active.location != "" && cellW > 26 {
 							label += " @" + active.location
 						}
 						if hasConflict {
-							// "⚠+N" badge on the entry-start row makes
-							// the conflict visible at a glance — prior
-							// rendering only showed " +N" which blended
-							// into the title text.
-							label = TruncateDisplay(label, inner-5) + fmt.Sprintf(" ⚠+%d", overlapCount-1)
+							// "⚠+N" badge — only append if the cell
+							// is wide enough so we don't blow the
+							// truncation budget. On narrow cells the
+							// red background already signals conflict.
+							if cellW >= 12 {
+								label = TruncateDisplay(label, cellW-6) + fmt.Sprintf(" ⚠+%d", overlapCount-1)
+							}
 						}
 					} else {
 						label = "  " + active.title
 					}
 
-					// Event color: time-block aware. Conflicting
-					// slots get a red background so the entire
-					// duration of the clash stands out, not just
-					// the first row. Dimmed (non-search-match)
-					// entries get a muted overlay color so the
-					// matches stand out without losing the
-					// "this slot IS busy" spatial cue.
 					evColor := eventColorForSlot(*active, hour)
 					evFg := active.color
 					if evFg == blue {
@@ -838,17 +855,12 @@ func (c Calendar) viewWeek() string {
 						evColor = surface0
 						evFg = surface2
 					}
-					blockStyle := lipgloss.NewStyle().Foreground(evFg).Background(evColor).Width(inner + 1)
-					if isEntryStart && !active.dimmed {
-						blockStyle = blockStyle.Bold(true)
-					}
-					cellContent = blockStyle.Render(" " + TruncateDisplay(label, inner-1))
+					cellContent = renderCell(evFg, evColor, isEntryStart && !active.dimmed, label)
 				} else if isCursorCell {
-					cursorStyle := lipgloss.NewStyle().Background(mauve).Foreground(crust).Bold(true).Width(inner + 1)
-					cellContent = cursorStyle.Render(" ▎")
+					cellContent = renderCell(crust, mauve, true, "▎")
 				} else {
-					// Empty cell — filled with background color (NO black)
-					cellContent = lipgloss.NewStyle().Background(cellBg).Width(inner + 1).Render("")
+					// Empty cell — explicit-padded background fill.
+					cellContent = lipgloss.NewStyle().Background(cellBg).Render(strings.Repeat(" ", cellW))
 				}
 
 				// Separator also gets background so no black line between columns
