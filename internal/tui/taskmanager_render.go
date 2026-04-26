@@ -153,12 +153,36 @@ func (tm *TaskManager) renderHelpOverlay(b *strings.Builder, w int) {
 		title string
 		keys  [][2]string
 	}{
+		{"Showcase — common workflows", [][2]string{
+			{"a on Plan", "Add task → auto-tagged due today, lands in Plan + All"},
+			{"a on Upcoming", "Add task → auto-tagged tomorrow"},
+			{"7 then m i", "Open Inbox, mark cursor task as inbox-state"},
+			{"0", "Quick Wins: high-prio + ≤30min — 'I have 30 min'"},
+			{"8", "Stale: tasks not touched in 7+ days — prune the list"},
+			{"9", "By Project: grouped sections per project"},
+			{"F then p:high #urgent", "Stack filters in one input"},
+			{"/ + text", "Live fuzzy search across visible tasks"},
+		}},
 		{"Navigation", [][2]string{
 			{"j/k", "Move cursor up/down"},
-			{"Tab", "Cycle views (Plan / Upcoming / All / Done / Calendar / Kanban)"},
-			{"1-6", "Jump directly to a view"},
+			{"Tab", "Cycle views (12 in total — see Views below)"},
+			{"1-9, 0", "Jump directly to a view (0 = Quick Wins)"},
 			{"g", "Jump to the source note of the cursor task"},
 			{"Esc", "Close task manager"},
+		}},
+		{"Views", [][2]string{
+			{"1 Plan", "Today's overdue/morning/midday/etc time-blocked view"},
+			{"2 Upcoming", "Due dates in the next 7 days"},
+			{"3 All", "Every active task across the vault"},
+			{"4 Done", "Completed tasks (use X to archive >30d old)"},
+			{"5 Calendar", "Mini-month grid; cursor day shows its tasks"},
+			{"6 Kanban", "Backlog / Todo / In Progress / Done columns"},
+			{"7 Inbox", "Untriaged tasks (Triage == TriageInbox or empty)"},
+			{"8 Stale", "Active tasks not touched in 7+ days"},
+			{"9 Project", "Grouped by Project field, section per project"},
+			{"0 Quick", "Priority ≥ medium AND estimate ≤ 30min"},
+			{"Tab→Tag", "Grouped by first tag (untagged → '(no tag)')"},
+			{"Tab→Review", "Completed in the last 7 days (weekly retro)"},
 		}},
 		{"Create & edit", [][2]string{
 			{"a", "Add a new task"},
@@ -429,6 +453,9 @@ func (tm *TaskManager) renderTabs(b *strings.Builder, w int) {
 		"Inbox",
 		"Stale",
 		"Project",
+		"Quick",
+		"Tag",
+		"Review",
 	}
 	counts := tm.tabCounts[:]
 
@@ -482,6 +509,18 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 			emptyMsg = "No project-tagged tasks"
 			hint = "Tag tasks with project:NAME or wire them via ProjectMode for grouping."
 			icon = "📁"
+		case taskViewQuickWins:
+			emptyMsg = "No quick wins right now"
+			hint = "Quick Wins = priority ≥ medium AND estimate ≤ 30min. Press 'p' to bump priority or 'E' to set an estimate."
+			icon = "⚡"
+		case taskViewByTag:
+			emptyMsg = "No tagged tasks"
+			hint = "Tag tasks inline with #urgent #weekly etc. Tag groups appear as section headers here."
+			icon = "🏷"
+		case taskViewReview:
+			emptyMsg = "Nothing completed in the last 7 days"
+			hint = "Press 'x' or Enter on tasks to mark them done. They'll show up here for your weekly retro."
+			icon = "🎯"
 		}
 		b.WriteString("\n")
 		b.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).Render(icon+" "+emptyMsg))
@@ -606,6 +645,29 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 					sepLen = 2
 				}
 				sep := lipgloss.NewStyle().Foreground(mauve).Render(strings.Repeat("─", sepLen))
+				b.WriteString("  " + label + sep + "\n")
+				lastGroup = group
+			}
+		}
+
+		// By-Tag view: section headers per first tag.
+		// Untagged tasks land under "(no tag)" at the end.
+		if tm.view == taskViewByTag && !tm.compact {
+			group := "(no tag)"
+			if len(task.Tags) > 0 {
+				group = "#" + task.Tags[0]
+			}
+			if group != lastGroup {
+				if lastGroup != "" {
+					b.WriteString("\n")
+				}
+				label := lipgloss.NewStyle().Foreground(teal).Bold(true).
+					Render(" 🏷 " + group + " ")
+				sepLen := w - lipgloss.Width(label) - 4
+				if sepLen < 2 {
+					sepLen = 2
+				}
+				sep := lipgloss.NewStyle().Foreground(teal).Render(strings.Repeat("─", sepLen))
 				b.WriteString("  " + label + sep + "\n")
 				lastGroup = group
 			}

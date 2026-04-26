@@ -44,9 +44,12 @@ const (
 	taskViewInbox                     // 6 — untriaged tasks (Triage == TriageInbox)
 	taskViewStale                     // 7 — tasks not updated in 7+ days
 	taskViewByProject                 // 8 — grouped by Project field
+	taskViewQuickWins                 // 9 — high-priority + small estimate (≤30min)
+	taskViewByTag                     // 10 — grouped by first tag
+	taskViewReview                    // 11 — completed in the last 7 days
 )
 
-const taskViewCount = 9
+const taskViewCount = 12
 
 // tmSortMode controls how tasks are sorted within a view.
 type tmSortMode int
@@ -1388,6 +1391,12 @@ func (tm *TaskManager) rebuildFiltered() {
 		tm.filtered = tm.filterStale()
 	case taskViewByProject:
 		tm.filtered = tm.filterByProject()
+	case taskViewQuickWins:
+		tm.filtered = tm.filterQuickWins()
+	case taskViewByTag:
+		tm.filtered = tm.filterByTag()
+	case taskViewReview:
+		tm.filtered = tm.filterReview()
 	}
 	if tm.view != taskViewKanban {
 		// Apply active tag filter.
@@ -1449,6 +1458,9 @@ func (tm *TaskManager) rebuildFiltered() {
 		len(tm.applyActiveFilters(tm.filterInbox())),
 		len(tm.applyActiveFilters(tm.filterStale())),
 		len(tm.applyActiveFilters(tm.filterByProject())),
+		len(tm.applyActiveFilters(tm.filterQuickWins())),
+		len(tm.applyActiveFilters(tm.filterByTag())),
+		len(tm.applyActiveFilters(tm.filterReview())),
 	}
 
 	// Sticky cursor restore — match by stable ID first, fall
@@ -1640,6 +1652,91 @@ func (tm *TaskManager) filterStale() []Task {
 			return out[i].CreatedAt.Before(out[j].CreatedAt)
 		}
 		return out[i].NotePath < out[j].NotePath
+	})
+	return out
+}
+
+// filterQuickWins returns active tasks with high priority
+// (≥ medium = 2) and a small time estimate (≤30min OR no
+// estimate at all). Power-user "I have 30 minutes, what can
+// I crush?" view. Sort: priority desc, then estimate asc.
+func (tm *TaskManager) filterQuickWins() []Task {
+	var out []Task
+	for _, t := range tm.allTasks {
+		if t.Done || tmIsSnoozed(t) {
+			continue
+		}
+		if t.Priority < 2 {
+			continue
+		}
+		if t.EstimatedMinutes > 30 {
+			continue
+		}
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Priority != out[j].Priority {
+			return out[i].Priority > out[j].Priority
+		}
+		// Smaller estimate first within priority — fastest win.
+		ai, aj := out[i].EstimatedMinutes, out[j].EstimatedMinutes
+		if ai == 0 {
+			ai = 999
+		}
+		if aj == 0 {
+			aj = 999
+		}
+		return ai < aj
+	})
+	return out
+}
+
+// filterByTag groups active tasks by their first tag.
+// Tasks without tags land under "(no tag)" at the end.
+// Order: tag-name asc, priority desc within.
+func (tm *TaskManager) filterByTag() []Task {
+	var out []Task
+	for _, t := range tm.allTasks {
+		if t.Done || tmIsSnoozed(t) {
+			continue
+		}
+		out = append(out, t)
+	}
+	firstTag := func(t Task) string {
+		if len(t.Tags) > 0 {
+			return strings.ToLower(t.Tags[0])
+		}
+		return "~~no-tag" // sorts last (~ > ascii letters)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		ti, tj := firstTag(out[i]), firstTag(out[j])
+		if ti != tj {
+			return ti < tj
+		}
+		return out[i].Priority > out[j].Priority
+	})
+	return out
+}
+
+// filterReview returns tasks completed in the last 7 days.
+// Sorted by completion date (newest first) so the most
+// recent wins lead the list — useful for weekly retros.
+func (tm *TaskManager) filterReview() []Task {
+	cutoff := time.Now().AddDate(0, 0, -7)
+	var out []Task
+	for _, t := range tm.allTasks {
+		if !t.Done {
+			continue
+		}
+		if t.CompletedAt != nil && t.CompletedAt.After(cutoff) {
+			out = append(out, t)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CompletedAt != nil && out[j].CompletedAt != nil {
+			return out[i].CompletedAt.After(*out[j].CompletedAt)
+		}
+		return out[i].Priority > out[j].Priority
 	})
 	return out
 }
@@ -3224,6 +3321,12 @@ func (tm TaskManager) updateKanban(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		tm.switchView()
 	case "9":
 		tm.view = taskViewByProject
+		tm.switchView()
+	case "0":
+		// 10th view — fits into the digit row by overflowing
+		// to "0". Quick Wins is the most asked-for "I have
+		// 30 min" view so it earns the digit slot.
+		tm.view = taskViewQuickWins
 		tm.switchView()
 	case "tab":
 		tm.view = (tm.view + 1) % taskViewCount
