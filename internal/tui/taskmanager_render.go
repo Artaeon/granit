@@ -1000,8 +1000,14 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	}
 
 	if isSelected {
+		// Brighter cursor highlight — surface1 sits between
+		// surface0 (subtle) and overlay0 (loud). Combined with
+		// the existing "▸" mauve prefix and priority left-bar,
+		// the cursor row stands out without screaming. The
+		// full-width fill prevents the right edge from blending
+		// into the editor pane background.
 		b.WriteString(lipgloss.NewStyle().
-			Background(surface0).
+			Background(surface1).
 			Width(w).
 			Render(line))
 	} else {
