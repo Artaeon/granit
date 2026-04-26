@@ -360,12 +360,29 @@ func (c Calendar) viewWeek() string {
 	b.WriteString("  " + titleIcon + titleText + viewLabel + weekLabel + cursorDateLabel + "\n")
 
 	// ── Layout math ────────────────────────────────────────────────────────
+	// timeColW = "06:00 " gutter on the left. Each day column
+	// includes its left separator (the "│" pipe) so total grid
+	// width per day is dayColW exactly. Total grid =
+	//   timeColW + dayColW × 7
+	// MUST stay ≤ width or the terminal hard-wraps every row,
+	// producing the doubled-spacing visual a user just hit
+	// ("a line between everything extra"). The min clamp at
+	// 14 used to force overflow on narrow panes; now we let
+	// cells shrink down to a 6-char floor (just enough for
+	// "00:00 " in a cell) and only fall back to a "pane too
+	// narrow" message if even that doesn't fit.
 	timeColW := 8
-	dayColW := (width - timeColW - 9) / 7
-	if dayColW < 14 {
-		dayColW = 14
+	dayColW := (width - timeColW) / 7
+	if dayColW < 6 {
+		// Pane too narrow for a usable week grid — return a
+		// fallback so we don't render a wrapped mess.
+		var fallback strings.Builder
+		fallback.WriteString("  " + lipgloss.NewStyle().Foreground(yellow).Render(
+			"Pane too narrow for week view. Try Day view (v) or widen the editor pane.") + "\n")
+		fallback.WriteString("  " + DimStyle.Render(fmt.Sprintf("(need ~%d cols, have %d)", 6*7+timeColW, width)))
+		return fallback.String()
 	}
-	gridW := timeColW + dayColW*7 + 7
+	gridW := timeColW + dayColW*7
 
 	// ── Separator helpers ──────────────────────────────────────────────────
 	sepChar := lipgloss.NewStyle().Foreground(surface1).Render("│")
