@@ -56,6 +56,9 @@ func BuiltinProfiles() []*Profile {
 		dailyOperatorProfile(),
 		researcherProfile(),
 		builderProfile(),
+		studentProfile(),
+		writerProfile(),
+		founderProfile(),
 	}
 }
 
@@ -209,9 +212,140 @@ func builderProfile() *Profile {
 	}
 }
 
-// RegisterBuiltins puts the 4 profiles into the registry and
-// flags them as built-in. Returns the first registration error,
-// if any (programmer error — should never happen at runtime).
+// studentProfile centers on learning routines: flashcards,
+// quizzes, language learning, daily review, and the habit
+// tracker for keeping streaks alive between exam pushes.
+func studentProfile() *Profile {
+	return &Profile{
+		ID:          "student",
+		Name:        "Student",
+		Description: "Flashcards, quizzes, daily review, language learning. For exam prep and skill drilling.",
+		EnabledModules: []string{
+			// Universal personal tools.
+			"task_manager",
+			"habit_tracker",
+			"calendar",
+			"daily_jot",
+			"pomodoro",
+			"focus_session",
+			"recurring_tasks",
+			// Profile focus: learning surfaces.
+			"flashcards",
+			"quiz",
+			"language_learning",
+			"daily_review",
+			"weekly_review",
+			"ai_templates",
+		},
+		DefaultLayout: layoutDefault,
+		Dashboard: DashboardSpec{
+			Cells: []DashboardCell{
+				// Row 0 — daily routine front and center.
+				{WidgetID: WidgetTodayJot, Row: 0, Col: 0, ColSpan: 6},
+				{WidgetID: WidgetHabitStreak, Row: 0, Col: 6, ColSpan: 6},
+				// Row 1 — what's due today + ongoing learning goals.
+				{WidgetID: WidgetTodayTasks, Row: 1, Col: 0, ColSpan: 6},
+				{WidgetID: WidgetGoalProgress, Row: 1, Col: 6, ColSpan: 6},
+				// Row 2 — recent notes for re-entry into past topics.
+				{WidgetID: WidgetRecentNotes, Row: 2, Col: 0, ColSpan: 12},
+			},
+		},
+	}
+}
+
+// writerProfile is for writers who need a distraction-light
+// surface — focus mode, daily jot for capture, scripture for
+// centering. Less task chrome, more clean editor space.
+func writerProfile() *Profile {
+	return &Profile{
+		ID:          "writer",
+		Name:        "Writer",
+		Description: "Distraction-light writing surface. Daily jot, focus mode, word stats, weekly review.",
+		EnabledModules: []string{
+			// Universal personal tools (task_manager + calendar
+			// kept so a writer can still track deadlines without
+			// switching profiles).
+			"task_manager",
+			"habit_tracker",
+			"calendar",
+			"daily_jot",
+			"pomodoro",
+			"focus_session",
+			// Profile focus: writing surfaces.
+			"writing_coach",
+			"writing_stats",
+			"composer",
+			"weekly_review",
+			"ai_templates",
+		},
+		DefaultLayout: layoutDefault, // minimal chrome; user can switch to "minimal" or "zen"
+		Dashboard: DashboardSpec{
+			Cells: []DashboardCell{
+				// Row 0 — capture is the front door for writers.
+				{WidgetID: WidgetTodayJot, Row: 0, Col: 0, ColSpan: 12},
+				// Row 1 — habit streak (writing daily?) + recent.
+				{WidgetID: WidgetHabitStreak, Row: 1, Col: 0, ColSpan: 6},
+				{WidgetID: WidgetRecentNotes, Row: 1, Col: 6, ColSpan: 6},
+				// Row 2 — scripture for centering before a session.
+				{WidgetID: WidgetScripture, Row: 2, Col: 0, ColSpan: 12},
+			},
+		},
+	}
+}
+
+// founderProfile is for solo founders / operators running the
+// whole stack: business pulse front and center, time tracking,
+// goals, projects, daily planning. The "running my company"
+// cockpit profile.
+func founderProfile() *Profile {
+	return &Profile{
+		ID:          "founder",
+		Name:        "Founder",
+		Description: "Solo founder cockpit: business pulse, projects, goals, time tracking, daily planning.",
+		EnabledModules: []string{
+			// Universal personal tools.
+			"task_manager",
+			"habit_tracker",
+			"calendar",
+			"daily_jot",
+			"pomodoro",
+			"focus_session",
+			"recurring_tasks",
+			// Profile focus: running the business.
+			"project_mode",
+			"goals_mode",
+			"plan_my_day",
+			"morning_routine",
+			"daily_briefing",
+			"weekly_review",
+			"time_tracker",
+			"standup_generator",
+			"blog_publisher",
+		},
+		DefaultLayout: layoutCockpit,
+		Dashboard: DashboardSpec{
+			Cells: []DashboardCell{
+				// Row 0 — business pulse is the headline.
+				{WidgetID: WidgetBusinessPulse, Row: 0, Col: 0, ColSpan: 12},
+				// Row 1 — today's plan + overdue + triage.
+				{WidgetID: WidgetTodayTasks, Row: 1, Col: 0, ColSpan: 6},
+				{WidgetID: WidgetTodayOverdue, Row: 1, Col: 6, ColSpan: 4},
+				{WidgetID: WidgetTriageCount, Row: 1, Col: 10, ColSpan: 2},
+				// Row 2 — goal progress full width (the bigger
+				// picture).
+				{WidgetID: WidgetGoalProgress, Row: 2, Col: 0, ColSpan: 12},
+				// Row 3 — capture + recent for re-entry.
+				{WidgetID: WidgetTodayJot, Row: 3, Col: 0, ColSpan: 8},
+				{WidgetID: WidgetRecentNotes, Row: 3, Col: 8, ColSpan: 4},
+			},
+		},
+	}
+}
+
+// RegisterBuiltins puts the built-in profiles into the registry
+// and flags them as built-in. Returns the first registration
+// error, if any (programmer error — should never happen at
+// runtime).
 func RegisterBuiltins(r *ProfileRegistry) error {
 	for _, p := range BuiltinProfiles() {
 		if err := r.Register(p); err != nil {
