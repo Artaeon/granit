@@ -69,6 +69,8 @@ const (
 	habitInputSearch       // '/' fuzzy filter on habit name
 	habitInputCategory     // 'g' set / type new category for cursor habit
 	habitInputNote         // 'N' add a note for cursor habit on activeDate
+	habitInputBulk         // '+' bulk-add: comma- or newline-separated names
+	habitInputHelp         // '?' full keyboard reference overlay
 )
 
 // habitSortMode controls habit list ordering.
@@ -1750,6 +1752,21 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 				return ht, ht.aiHabitInsight(name)
 			}
 		}
+
+	// '+' bulk-add habits — comma-separated names land as
+	// individual habits in one keystroke. Power-user pattern
+	// for setting up a starter pack: "meditate, journal, gym, read"
+	// → 4 habits in one Enter. Habits tab only.
+	case "+":
+		if ht.tab == 0 {
+			ht.inputMode = habitInputBulk
+			ht.inputValue = ""
+		}
+
+	// '?' opens the comprehensive keyboard reference. Mirror
+	// of TaskManager's ? for cross-surface consistency.
+	case "?":
+		ht.inputMode = habitInputHelp
 	}
 
 	return ht, nil
@@ -1814,6 +1831,72 @@ func (ht HabitTracker) updateInput(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 					ht.statusMsg = "Note saved"
 				}
 				ht.saveNotes()
+			}
+			ht.inputMode = habitInputNone
+			ht.inputValue = ""
+		case "backspace":
+			if len(ht.inputValue) > 0 {
+				ht.inputValue = TrimLastRune(ht.inputValue)
+			}
+		default:
+			if len(key) == 1 {
+				ht.inputValue += key
+			} else if key == "space" {
+				ht.inputValue += " "
+			}
+		}
+		return ht, nil
+	}
+
+	// Help overlay — any key dismisses (matches TaskManager).
+	if ht.inputMode == habitInputHelp {
+		ht.inputMode = habitInputNone
+		return ht, nil
+	}
+
+	// Bulk-add input: comma-separated names → N habits.
+	// Newline shouldn't be typeable in this single-line input,
+	// so commas are the only delimiter. Whitespace trimmed.
+	if ht.inputMode == habitInputBulk {
+		switch key {
+		case "esc":
+			ht.inputMode = habitInputNone
+			ht.inputValue = ""
+		case "enter":
+			created := 0
+			for _, name := range strings.Split(ht.inputValue, ",") {
+				name = strings.TrimSpace(name)
+				if name == "" {
+					continue
+				}
+				name = strings.ReplaceAll(name, "|", "-")
+				// Skip duplicates so re-entering a starter pack
+				// doesn't double-stamp the same habits.
+				dup := false
+				for _, h := range ht.habits {
+					if h.Name == name {
+						dup = true
+						break
+					}
+				}
+				if dup {
+					continue
+				}
+				ht.habits = append(ht.habits, habitEntry{
+					Name:    name,
+					Created: todayStr(),
+					Streak:  0,
+				})
+				created++
+			}
+			if created > 0 {
+				ht.saveHabits()
+				ht.statusMsg = fmt.Sprintf("Added %d habits", created)
+				// Clear filter so the new habits are visible.
+				ht.searchQuery = ""
+				ht.categoryFilter = ""
+			} else {
+				ht.statusMsg = "Nothing to add (duplicates or empty input)"
 			}
 			ht.inputMode = habitInputNone
 			ht.inputValue = ""
@@ -2042,8 +2125,21 @@ func (ht HabitTracker) View() string {
 	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)))
 	b.WriteString("\n\n")
 
-	// Content based on active tab
-	if ht.showCoach {
+	// Content based on active tab — unless help overlay is up,
+	// in which case it takes the full content area.
+	if ht.inputMode == habitInputHelp {
+		b.WriteString(ht.renderHelpOverlay(innerW))
+	} else if ht.inputMode == habitInputBulk {
+		// Bulk-add prompt takes the content area too so the
+		// user sees what they're typing in big letters.
+		promptStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+		inputStyle := lipgloss.NewStyle().Foreground(text)
+		b.WriteString("  " + promptStyle.Render("Bulk add: ") + inputStyle.Render(ht.inputValue+"█"))
+		b.WriteString("\n  ")
+		b.WriteString(DimStyle.Render("Comma-separated names → one habit each. Enter to commit, Esc to cancel."))
+		b.WriteString("\n  ")
+		b.WriteString(DimStyle.Render("Example: meditate, journal, gym, read 30min"))
+	} else if ht.showCoach {
 		ht.renderCoach(&b, innerW)
 	} else {
 		switch ht.tab {
@@ -2595,16 +2691,108 @@ func (ht HabitTracker) heatmap90() string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// renderHelpOverlay returns the comprehensive keyboard
+// reference shown when the user presses '?'. Mirrors
+// TaskManager's overlay layout so the two surfaces feel
+// uniform — sections (Showcase / Navigation / Track / Manage
+// / Filter / Power-user) with key + description rows.
+func (ht HabitTracker) renderHelpOverlay(w int) string {
+	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true).Width(12)
+	descStyle := lipgloss.NewStyle().Foreground(text)
+	sectionStyle := lipgloss.NewStyle().Foreground(yellow).Bold(true)
+
+	var b strings.Builder
+	b.WriteString("\n  " + titleStyle.Render("📖 Habit Tracker — Keyboard Reference") + "\n\n")
+
+	sections := []struct {
+		title string
+		keys  [][2]string
+	}{
+		{"Showcase — common workflows", [][2]string{
+			{"+ then meditate, journal, gym, read", "Bulk-add 4 habits in one keystroke"},
+			{"<<<<< then space", "Walk back 5 days, then toggle yesterday's habit"},
+			{"f", "Cycle frequency: daily → weekdays → weekends → 3x-week"},
+			{"r", "Cycle reminder: morning → midday → afternoon → evening"},
+			{"g + Health then T", "Tag habit as Health, then filter list to Health"},
+			{"i", "AI insight on cursor habit (last 30 days)"},
+			{"I", "AI coach on ALL habits (holistic patterns)"},
+			{"Tab → Stats", "See heatmap, streaks, completion %"},
+		}},
+		{"Navigation", [][2]string{
+			{"Tab / 1-2", "Switch tabs (Habits / Stats)"},
+			{"j/k or ↓/↑", "Move cursor"},
+			{"Esc", "Close tracker / dismiss overlay"},
+		}},
+		{"Track — daily check-ins", [][2]string{
+			{"Space / Enter", "Toggle habit done for the active date"},
+			{"<", "Walk active date back one day (retroactive logging)"},
+			{">", "Walk active date forward one day (capped at today)"},
+			{"t", "Snap active date back to today"},
+			{"N", "Add / edit a per-check-in note for active date"},
+		}},
+		{"Manage habits", [][2]string{
+			{"n", "New single habit"},
+			{"+", "Bulk-add: comma-separated names → N habits"},
+			{"d", "Delete habit (permanent)"},
+			{"A", "Archive habit (preserves history)"},
+			{"H", "Toggle archived visibility"},
+			{"g", "Set / cycle category for cursor habit"},
+			{"f", "Cycle frequency target (daily / weekdays / weekends / 3x-week)"},
+			{"r", "Cycle reminder time-of-day (morning / midday / afternoon / evening)"},
+		}},
+		{"Filter & sort (sticky)", [][2]string{
+			{"/", "Live search by habit name"},
+			{"T", "Cycle category filter"},
+			{"s", "Cycle sort (name / current streak / longest / created)"},
+			{"c", "Clear all filters + show-archived"},
+		}},
+		{"AI", [][2]string{
+			{"i", "Per-habit insight (asks about ONE habit's last 30 days)"},
+			{"I", "Holistic coach (analyses every habit's patterns)"},
+		}},
+		{"Visual cues", [][2]string{
+			{"5🔥 max 14", "Current streak (fire) + longest streak"},
+			{"▂▃▄▅▆▇█", "12-week sparkline — intensity = completions per week"},
+			{"DUE morning", "Green badge when current period matches habit's reminder"},
+			{"@morning", "Dim chip showing reminder period (when not 'due now')"},
+			{"weekdays / 3x-week", "Frequency chip (suppressed for default 'daily')"},
+			{"✎", "Note marker — habit has a note for the active date"},
+			{"(arch)", "Habit is archived (only shown when H toggle is on)"},
+		}},
+		{"Persistence (where data lives)", [][2]string{
+			{"Habits/habits.md", "Habit names + log table (markdown, version-controllable)"},
+			{".granit/habits-archived.json", "Archive flags"},
+			{".granit/habits-categories.json", "Category assignments"},
+			{".granit/habits-notes.json", "Per-check-in notes (key: habit|date)"},
+			{".granit/habits-frequency.json", "Frequency targets"},
+			{".granit/habits-times.json", "Time-of-day reminders"},
+		}},
+	}
+
+	for _, sec := range sections {
+		b.WriteString("  " + sectionStyle.Render(sec.title) + "\n")
+		for _, kv := range sec.keys {
+			b.WriteString("    " + keyStyle.Render(kv[0]) + descStyle.Render(kv[1]) + "\n")
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString("  " + DimStyle.Render("Press any key to close"))
+	return b.String()
+}
+
 func (ht HabitTracker) renderHelp() string {
 	var pairs []struct{ Key, Desc string }
 	switch ht.tab {
 	case 0:
 		pairs = []struct{ Key, Desc string }{
+			{"?", "help"},
 			{"Tab/1-2", "switch"}, {"j/k", "move"}, {"Space", "toggle"},
-			{"n", "new"}, {"d", "delete"}, {"A", "archive"}, {"H", "show arch"},
-			{"g", "category"}, {"T", "filter cat"}, {"N", "note"},
-			{"f", "frequency"}, {"r", "reminder"}, {"i", "AI insight"},
-			{"<", "prev day"}, {">", "next day"}, {"t", "today"},
+			{"n", "new"}, {"+", "bulk-add"}, {"d", "del"}, {"A", "archive"}, {"H", "show arch"},
+			{"g", "category"}, {"T", "filter"}, {"N", "note"},
+			{"f", "freq"}, {"r", "reminder"}, {"i", "AI"},
+			{"<", "prev"}, {">", "next"}, {"t", "today"},
 			{"s", "sort"}, {"/", "search"}, {"c", "clear"}, {"Esc", "close"},
 		}
 	case 1:

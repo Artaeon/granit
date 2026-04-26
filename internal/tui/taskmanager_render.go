@@ -214,6 +214,7 @@ func (tm *TaskManager) renderHelpOverlay(b *strings.Builder, w int) {
 			{"#", "Cycle single-tag filter"},
 			{"P", "Cycle single-priority filter"},
 			{"s", "Cycle sort mode (priority / date / A-Z / source / tag)"},
+			{"*", "Saved filter views — type a name to apply, new name saves current combo, Ctrl+D deletes"},
 			{"c", "Clear all active filters"},
 		}},
 		{"Planning & focus", [][2]string{
@@ -223,6 +224,8 @@ func (tm *TaskManager) renderHelpOverlay(b *strings.Builder, w int) {
 			{"A", "Auto-suggest priority (heuristic)"},
 			{"R", "Batch reschedule all overdue (Plan view)"},
 			{"f", "Start focus session on cursor task"},
+			{"y", "Toggle time tracker (▸ Nm badge appears on tracked task; press y again to stop)"},
+			{"B", "Time-block: schedule cursor task into morning/midday/afternoon/evening"},
 		}},
 		{"Bulk", [][2]string{
 			{"v", "Enter / exit select mode"},
