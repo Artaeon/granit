@@ -1331,7 +1331,35 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 			b.WriteString("\n  " + DimStyle.Render("(no saved filters yet \u2014 type a name to save the current combo)"))
 		}
 	case tmInputAdd:
-		b.WriteString("  " + promptStyle.Render("New task: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
+		// Power-user add prompt: surface the inline syntax so
+		// users can type "buy bread !p2 ~30m #shopping" in one
+		// shot instead of three separate prompts. The prompt
+		// adapts based on the current view so the user knows
+		// what date inference will happen.
+		viewHint := ""
+		switch tm.view {
+		case taskViewToday:
+			viewHint = " (auto-tagged \U0001F4C5 today)"
+		case taskViewUpcoming:
+			viewHint = " (auto-tagged \U0001F4C5 tomorrow)"
+		case taskViewCalendar:
+			viewHint = " (auto-tagged with cursor date)"
+		}
+		b.WriteString("  " + promptStyle.Render("New task"+viewHint+": ") + inputStyle.Render(tm.inputBuf+"\u2588") + "\n")
+		// Inline syntax cheatsheet \u2014 power users compose all
+		// metadata in one line and skip the secondary prompts.
+		key := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+		desc := lipgloss.NewStyle().Foreground(overlay0)
+		b.WriteString("  " + desc.Render("inline syntax: ") +
+			key.Render("\U0001F4C5 2026-04-30") + desc.Render(" date \u00b7 ") +
+			key.Render("\U0001F53A/\u23eb/\U0001F53C/\U0001F53D") + desc.Render(" prio \u00b7 ") +
+			key.Render("#tag") + desc.Render(" \u00b7 ") +
+			key.Render("~30m / ~2h") + desc.Render(" est \u00b7 ") +
+			key.Render("\u23f0 09:00-10:30") + desc.Render(" sched"))
+		b.WriteString("\n  " + desc.Render("templates: press ") +
+			key.Render("Esc") + desc.Render(" then ") +
+			key.Render("t") + desc.Render(" to insert from saved templates \u00b7 ") +
+			key.Render("Enter") + desc.Render(" to commit"))
 	case tmInputInlineEdit:
 		b.WriteString("  " + promptStyle.Render("Edit: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
 		b.WriteString("\n")

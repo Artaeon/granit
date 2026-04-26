@@ -2401,7 +2401,20 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 	if ht.inputMode == habitInputNewHabit {
 		lines = append(lines, "")
 		prompt := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  New habit: ")
-		lines = append(lines, prompt+lipgloss.NewStyle().Foreground(text).Render(ht.inputValue+"_"))
+		lines = append(lines, prompt+lipgloss.NewStyle().Foreground(text).Render(ht.inputValue+"█"))
+		// Inline coaching: tell power users about + (bulk-add)
+		// and the per-habit knobs they can tune AFTER creation
+		// (g/f/r) so they don't expect to set everything in
+		// the create prompt.
+		key := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+		desc := lipgloss.NewStyle().Foreground(overlay0)
+		lines = append(lines, "  "+desc.Render("After Enter, tune with ")+
+			key.Render("g")+desc.Render(" category · ")+
+			key.Render("f")+desc.Render(" frequency · ")+
+			key.Render("r")+desc.Render(" reminder time"))
+		lines = append(lines, "  "+desc.Render("Want multiple? ")+
+			key.Render("Esc")+desc.Render(" then ")+
+			key.Render("+")+desc.Render(" → comma-separated names"))
 	}
 
 	return strings.Join(lines, "\n")

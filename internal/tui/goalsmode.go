@@ -2754,7 +2754,8 @@ func (gm *GoalsMode) renderInput(b *strings.Builder, w int) {
 	case goalInputTitle:
 		b.WriteString("\n  " + promptStyle.Render("New Goal") + "\n")
 		b.WriteString("  " + promptStyle.Render("Title: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
-		b.WriteString("  " + hintStyle.Render("Enter to continue, Esc to cancel"))
+		b.WriteString("  " + hintStyle.Render("Enter to continue \u2192 date \u2192 category. Esc to cancel.") + "\n")
+		b.WriteString("  " + hintStyle.Render("Tip: after creation, press 'm' to add milestones \u00b7 'B' bulk-creates tasks for all milestones"))
 	case goalInputDate:
 		b.WriteString("\n  " + promptStyle.Render("New Goal: ") + gm.newGoalTitle + "\n\n")
 		b.WriteString("  " + promptStyle.Render("Target date:") + "\n\n")

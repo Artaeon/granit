@@ -879,10 +879,26 @@ func (tb *TabBar) Render(width int, activeNote string) string {
 		tabLine.WriteString(scrollStyle.Render(" +" + tbItoa(hiddenAfter) + " >"))
 	}
 
-	// Pad to fill width
+	// Tab-switching hint — power users open many tabs and
+	// don't always remember the cycle/close shortcuts. Render
+	// a small dim chip at the right edge when 2+ tabs are
+	// open AND there's room. Without this, users see the tab
+	// bar but don't know how to switch — exactly the
+	// complaint a user just hit ("how to switch tabs? no
+	// where to be found").
 	content := tabLine.String()
 	contentWidth := lipgloss.Width(content)
-	if contentWidth < width {
+	hint := ""
+	if len(tb.tabs) >= 2 {
+		hintStyle := lipgloss.NewStyle().Background(crust).Foreground(overlay0)
+		hint = hintStyle.Render(" Ctrl+Tab cycle · Ctrl+W close · Ctrl+1-9 jump ")
+	}
+	hintW := lipgloss.Width(hint)
+	if hint != "" && contentWidth+hintW+2 <= width {
+		gap := width - contentWidth - hintW
+		content += barBg.Render(strings.Repeat(" ", gap)) + hint
+	} else if contentWidth < width {
+		// No room for hint or only one tab — pad to width.
 		gap := width - contentWidth
 		content += barBg.Render(strings.Repeat(" ", gap))
 	}

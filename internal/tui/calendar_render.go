@@ -341,17 +341,23 @@ func (c Calendar) viewWeek() string {
 	_, weekNum := c.cursor.ISOWeek()
 
 	// ── Title bar ──────────────────────────────────────────────────────────
+	// Single-line header: icon + name + view + week range + cursor date.
+	// Previous version split title and cursor date across two lines AND
+	// drew boxed top/bottom borders for the day-name strip — three lines
+	// of mostly-empty space at the top of the view in tab mode. The new
+	// header lives on one line; the day strip uses thin separators.
+	// Date-format fix: Go time formatting uses "Jan" for short month;
+	// the previous "Apr 2" was a bug that emitted literal "Apr 26 -
+	// Apr 2, 2026" when the week crossed a month boundary.
 	titleIcon := lipgloss.NewStyle().Foreground(blue).Render(IconCalendarChar)
 	titleText := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render(" Calendar")
 	viewLabel := DimStyle.Render(" [week]")
 	weekLabel := lipgloss.NewStyle().Foreground(text).Render(
-		fmt.Sprintf("  W%d – %s – %s", weekNum,
-			weekStart.Format("Apr 2"), weekEnd.Format("Apr 2, 2006")))
-	// Show cursor date below title
+		fmt.Sprintf("  W%d · %s – %s", weekNum,
+			weekStart.Format("Jan 2"), weekEnd.Format("Jan 2, 2006")))
 	cursorDateLabel := lipgloss.NewStyle().Foreground(overlay1).Render(
-		"  " + c.cursor.Format("Monday 2"))
-	b.WriteString("  " + titleIcon + titleText + viewLabel + weekLabel + "\n")
-	b.WriteString("  " + cursorDateLabel + "\n")
+		"  · " + c.cursor.Format("Monday 2"))
+	b.WriteString("  " + titleIcon + titleText + viewLabel + weekLabel + cursorDateLabel + "\n")
 
 	// ── Layout math ────────────────────────────────────────────────────────
 	timeColW := 8
@@ -394,20 +400,9 @@ func (c Calendar) viewWeek() string {
 		peach,    // Sat — warm
 	}
 
-	// Top border
-	topBorder := strings.Repeat(" ", timeColW)
-	for i := 0; i < 7; i++ {
-		day := weekStart.AddDate(0, 0, i)
-		col := dayHeaderColors[i]
-		if sameDay(day, c.today) {
-			col = green
-		}
-		borderStyle := lipgloss.NewStyle().Foreground(col)
-		topBorder += borderStyle.Render("┌" + strings.Repeat("─", dayColW-2) + "┐")
-	}
-	b.WriteString("  " + topBorder + "\n")
-
-	// Day name + date row
+	// Day name + date row — boxed borders dropped; the cell
+	// itself draws a left/right pipe and a single dim
+	// separator below acts as the bottom border.
 	headerRow := strings.Repeat(" ", timeColW)
 	for i := 0; i < 7; i++ {
 		day := weekStart.AddDate(0, 0, i)
@@ -449,17 +444,19 @@ func (c Calendar) viewWeek() string {
 	}
 	b.WriteString("  " + headerRow + "\n")
 
-	// Bottom border
-	botBorder := strings.Repeat(" ", timeColW)
+	// Single thin separator below the headers (replaces the
+	// 2-row top+bottom box border that used to bracket the
+	// day strip and waste vertical space in tab mode).
+	sepBorder := strings.Repeat(" ", timeColW)
 	for i := 0; i < 7; i++ {
 		day := weekStart.AddDate(0, 0, i)
 		col := dayHeaderColors[i]
 		if sameDay(day, c.today) {
 			col = green
 		}
-		botBorder += lipgloss.NewStyle().Foreground(col).Render("└" + strings.Repeat("─", dayColW-2) + "┘")
+		sepBorder += lipgloss.NewStyle().Foreground(col).Render(strings.Repeat("─", dayColW))
 	}
-	b.WriteString("  " + botBorder + "\n")
+	b.WriteString("  " + sepBorder + "\n")
 
 	// ── All-day events row ─────────────────────────────────────────────────
 	// Suppressed entirely when the events layer is off so the
