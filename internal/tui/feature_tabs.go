@@ -228,6 +228,15 @@ func (m *Model) renderFeatureTab(id FeatureID, width, height int) string {
 	case FeatTaskManager:
 		m.taskManager.SetSize(width, height)
 		m.taskManager.SetTabMode(true)
+		// Refresh timer snapshot so the row renderer can show
+		// the "▸ tracking" badge on the active task. Empty
+		// task name means no timer running.
+		if m.timeTracker.IsTimerRunning() {
+			task, secs := m.timeTracker.ActiveTimerSnapshot()
+			m.taskManager.SetActiveTimer(task, secs)
+		} else {
+			m.taskManager.SetActiveTimer("", 0)
+		}
 		return m.taskManager.View()
 	case FeatDailyJot:
 		m.dailyJot.SetSize(width, height)
@@ -306,6 +315,20 @@ func (m *Model) routeFeatureKey(id FeatureID, msg tea.Msg) (Model, tea.Cmd, bool
 		if task, ok := m.taskManager.GetFocusRequest(); ok {
 			m.focusSession.SetSize(m.width, m.height)
 			m.focusSession.OpenWithTask(m.vault.Root, task)
+		}
+		// Timer-toggle request — TaskManager doesn't own the
+		// TimeTracker (avoid circular ownership), so the model
+		// drives Start/Stop based on the consumed-once flag.
+		// Toggle: start tracking the cursor task if no timer
+		// is running; stop the current timer if pressing 'y'
+		// again (regardless of which task is showing).
+		if t, ok := m.taskManager.GetTimerToggleRequest(); ok {
+			if m.timeTracker.IsTimerRunning() {
+				m.timeTracker.StopTimer()
+			} else {
+				m.timeTracker.StartTimer(t.NotePath, tmCleanText(t.Text))
+			}
+			m.reportError("persist time tracker", m.timeTracker.ConsumeSaveError())
 		}
 		// Esc/q in normal mode sets tm.active=false (legacy
 		// overlay-dismissal behavior, can't easily change in

@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -477,6 +478,42 @@ func (tm *TaskManager) renderTabs(b *strings.Builder, w int) {
 }
 
 func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
+	// "X hidden by filter" hint — when active filters narrow
+	// the visible list, surface the count so the user never
+	// thinks tasks vanished. Compares per-view total against
+	// what's actually visible.
+	totalForView := 0
+	switch tm.view {
+	case taskViewToday:
+		totalForView = len(tm.filterToday())
+	case taskViewUpcoming:
+		totalForView = len(tm.filterUpcoming())
+	case taskViewAll:
+		totalForView = len(tm.filterAll())
+	case taskViewCompleted:
+		totalForView = len(tm.filterCompleted())
+	case taskViewInbox:
+		totalForView = len(tm.filterInbox())
+	case taskViewStale:
+		totalForView = len(tm.filterStale())
+	case taskViewByProject:
+		totalForView = len(tm.filterByProject())
+	case taskViewQuickWins:
+		totalForView = len(tm.filterQuickWins())
+	case taskViewByTag:
+		totalForView = len(tm.filterByTag())
+	case taskViewReview:
+		totalForView = len(tm.filterReview())
+	default:
+		totalForView = len(tm.filtered)
+	}
+	hidden := totalForView - len(tm.filtered)
+	if hidden > 0 {
+		hint := lipgloss.NewStyle().Foreground(crust).Background(yellow).Padding(0, 1).
+			Render(fmt.Sprintf("⚠ %d hidden by filter — press c to clear", hidden))
+		b.WriteString("  " + hint + "\n\n")
+	}
+
 	if len(tm.filtered) == 0 {
 		emptyMsg := "No tasks"
 		hint := "Press 'a' to add a task"
@@ -921,10 +958,28 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		}
 	}
 
+	// Active timer badge — green "▸ Nm" or "▸ N:SS" when this
+	// task is currently being tracked. Compares cleaned text
+	// to the snapshot since the live task has emoji markers
+	// while the timer stores cleaned text.
+	timerBadge := ""
+	if tm.activeTimerTask != "" && tm.activeTimerTask == tmCleanText(task.Text) {
+		secs := tm.activeTimerSecs
+		var label string
+		if secs < 60 {
+			label = fmt.Sprintf("▸ %ds", secs)
+		} else if secs < 3600 {
+			label = fmt.Sprintf("▸ %dm", secs/60)
+		} else {
+			label = fmt.Sprintf("▸ %dh%dm", secs/3600, (secs%3600)/60)
+		}
+		timerBadge = " " + lipgloss.NewStyle().Foreground(crust).Background(green).Bold(true).Padding(0, 1).Render(label)
+	}
+
 	leftSide := strings.Join([]string{
 		"  " + prioBar + prefix + selectStr + indentStr + collapseIndicator + blockedStr + triageChip + checkbox,
 		prioStyled,
-		schedBadge + textStyle.Render(displayText) + estBadge + hintDots,
+		schedBadge + textStyle.Render(displayText) + estBadge + timerBadge + hintDots,
 	}, " ")
 
 	rightSide := dueBadge
@@ -1194,6 +1249,39 @@ func (tm *TaskManager) renderMiniTimeline(b *strings.Builder, w int) {
 	}
 }
 
+// summarizeFilter returns a short human-readable description
+// of a saved filter so the picker shows what each name means
+// ("My Sprint  #urgent · p:high · sort:due").
+func summarizeFilter(sf tmSavedFilter) string {
+	var parts []string
+	if sf.Tag != "" {
+		parts = append(parts, "#"+sf.Tag)
+	}
+	if sf.Priority >= 0 {
+		prioNames := []string{"none", "low", "med", "high", "highest"}
+		if sf.Priority < len(prioNames) {
+			parts = append(parts, "p:"+prioNames[sf.Priority])
+		}
+	}
+	if sf.Triage != "" {
+		parts = append(parts, "triage:"+sf.Triage)
+	}
+	if sf.Search != "" {
+		preview := sf.Search
+		if len(preview) > 16 {
+			preview = preview[:13] + "…"
+		}
+		parts = append(parts, "\""+preview+"\"")
+	}
+	if sf.Sort > 0 && sf.Sort < len(tmSortNames) {
+		parts = append(parts, "sort:"+tmSortNames[sf.Sort])
+	}
+	if len(parts) == 0 {
+		return "(empty)"
+	}
+	return strings.Join(parts, " · ")
+}
+
 func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 	if tm.inputMode == tmInputNone {
 		return
@@ -1207,6 +1295,32 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 	inputStyle := lipgloss.NewStyle().Foreground(text).Background(surface0).Padding(0, 1)
 
 	switch tm.inputMode {
+	case tmInputSavedFilter:
+		// Show typed name + the existing saved filter list so
+		// the user knows what they can recall vs. what they're
+		// about to save.
+		b.WriteString("  " + promptStyle.Render("Filter: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
+		b.WriteString("\n")
+		hint := lipgloss.NewStyle().Foreground(overlay0).
+			Render("  enter=apply or save \u00b7 ctrl+d=delete \u00b7 esc=cancel")
+		b.WriteString(hint)
+		if len(tm.savedFilters) > 0 {
+			b.WriteString("\n  " + DimStyle.Render("Saved:"))
+			names := make([]string, 0, len(tm.savedFilters))
+			for n := range tm.savedFilters {
+				names = append(names, n)
+			}
+			sort.Strings(names)
+			for _, n := range names {
+				sf := tm.savedFilters[n]
+				summary := summarizeFilter(sf)
+				b.WriteString("\n  " +
+					lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("  "+n) +
+					DimStyle.Render("  "+summary))
+			}
+		} else {
+			b.WriteString("\n  " + DimStyle.Render("(no saved filters yet \u2014 type a name to save the current combo)"))
+		}
 	case tmInputAdd:
 		b.WriteString("  " + promptStyle.Render("New task: ") + inputStyle.Render(tm.inputBuf+"\u2588"))
 	case tmInputInlineEdit:

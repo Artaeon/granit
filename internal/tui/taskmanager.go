@@ -86,7 +86,20 @@ const (
 	tmInputQuickEdit                   // single-line quick edit on cursor task: p:N, d:YYYY-MM-DD, ~30m
 	tmInputTimeBlock                   // assign task to a time block: 1=morning 2=midday 3=afternoon 4=evening
 	tmInputTriageSet                   // direct-set triage submode entered via 'm' (mark): i/t/s/n/d/x set state then exit
+	tmInputSavedFilter                 // '*' save / recall named filter combo
 )
+
+// tmSavedFilter persists a named filter combo so power users can
+// recall complex multi-axis narrowings ("My Sprint" = #urgent +
+// p:high + sort:due) with one keystroke. Mirrors the filter
+// fields on TaskManager so apply is just a struct copy.
+type tmSavedFilter struct {
+	Tag      string `json:"tag"`
+	Priority int    `json:"priority"`
+	Triage   string `json:"triage"`
+	Search   string `json:"search"`
+	Sort     int    `json:"sort"`
+}
 
 // ---------------------------------------------------------------------------
 // Regex patterns
@@ -173,6 +186,27 @@ type TaskManager struct {
 	filterPriority int                   // -1 = no priority filter, 0-4 = filter to this level
 	filterTriage   tasks.TriageState     // "" = no triage filter, "inbox"/"triaged"/etc. = filter
 	searchTerm     string                // "" = no search, otherwise substring or "#tag" query
+
+	// Saved filter views — power users persist a filter combo
+	// ("My Sprint" = #urgent + p:high + sort:due) and recall
+	// it with one keystroke instead of re-typing the unified
+	// query. Persisted to .granit/tm-saved-filters.json. '*'
+	// opens the picker / save prompt.
+	savedFilters map[string]tmSavedFilter
+
+	// Time-tracking handoff — set when user presses 'y' on a
+	// task. The model reads it via GetTimerToggleRequest after
+	// each Update and starts/stops the actual timer (TaskManager
+	// doesn't own TimeTracker; consumed-once flag pattern).
+	timerToggleReq  bool
+	timerToggleTask Task
+
+	// Snapshot of the model's TimeTracker state, refreshed
+	// before each render via SetActiveTimer. Lets the row
+	// renderer show a "▸ Nm" badge on the task being tracked
+	// without TM holding a reference to the timer overlay.
+	activeTimerTask string
+	activeTimerSecs int
 
 	// Compact mode — power-user density toggle. When on, the
 	// per-cursor detail strip and section dividers are
@@ -303,6 +337,10 @@ func (tm *TaskManager) Open(v *vault.Vault) {
 	tm.filterTriage = ""
 	tm.searchTerm = ""
 	tm.loadFilters()
+	tm.loadSavedFilters()
+	tm.timerToggleReq = false
+	tm.activeTimerTask = ""
+	tm.activeTimerSecs = 0
 	tm.collapsed = make(map[string]bool)
 	tm.selectMode = false
 	tm.selected = make(map[string]bool)
@@ -974,6 +1012,91 @@ func (tm *TaskManager) saveFilters() {
 	if err := atomicWriteNote(filepath.Join(dir, "tm-filters.json"), string(data)); err != nil {
 		tm.lastSaveErr = err
 	}
+}
+
+// loadSavedFilters restores the named filter combos from
+// .granit/tm-saved-filters.json. Silent on missing/malformed.
+func (tm *TaskManager) loadSavedFilters() {
+	tm.savedFilters = make(map[string]tmSavedFilter)
+	if tm.vault == nil {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(tm.vault.Root, ".granit", "tm-saved-filters.json"))
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(data, &tm.savedFilters)
+	if tm.savedFilters == nil {
+		tm.savedFilters = make(map[string]tmSavedFilter)
+	}
+}
+
+// saveSavedFilters persists the named filter combo map.
+func (tm *TaskManager) saveSavedFilters() {
+	if tm.vault == nil {
+		return
+	}
+	dir := filepath.Join(tm.vault.Root, ".granit")
+	_ = os.MkdirAll(dir, 0755)
+	data, err := json.MarshalIndent(tm.savedFilters, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := atomicWriteNote(filepath.Join(dir, "tm-saved-filters.json"), string(data)); err != nil {
+		tm.lastSaveErr = err
+	}
+}
+
+// applySavedFilter copies a stored combo onto the live filter
+// fields and rebuilds. Used by the * picker on Enter.
+func (tm *TaskManager) applySavedFilter(name string) {
+	sf, ok := tm.savedFilters[name]
+	if !ok {
+		return
+	}
+	tm.filterTag = sf.Tag
+	tm.filterPriority = sf.Priority
+	tm.filterTriage = tasks.TriageState(sf.Triage)
+	tm.searchTerm = sf.Search
+	if sf.Sort >= 0 && sf.Sort < 5 {
+		tm.sortMode = tmSortMode(sf.Sort)
+	}
+	tm.rebuildFiltered()
+	tm.saveFilters()
+	tm.statusMsg = "Applied: " + name
+}
+
+// captureCurrentFilter snapshots the live filter fields into
+// a tmSavedFilter for the * save action.
+func (tm *TaskManager) captureCurrentFilter() tmSavedFilter {
+	return tmSavedFilter{
+		Tag:      tm.filterTag,
+		Priority: tm.filterPriority,
+		Triage:   string(tm.filterTriage),
+		Search:   tm.searchTerm,
+		Sort:     int(tm.sortMode),
+	}
+}
+
+// SetActiveTimer updates TaskManager's render-only snapshot of
+// the model's TimeTracker state. Called from the model right
+// before View() so the row renderer can show a "▸ Nm" badge on
+// the task currently being tracked. Empty taskText means no
+// timer running.
+func (tm *TaskManager) SetActiveTimer(taskText string, elapsedSecs int) {
+	tm.activeTimerTask = taskText
+	tm.activeTimerSecs = elapsedSecs
+}
+
+// GetTimerToggleRequest returns the task the user pressed 'y'
+// on (and clears the request). Model checks this after each
+// Update to start/stop the actual TimeTracker.
+func (tm *TaskManager) GetTimerToggleRequest() (Task, bool) {
+	if !tm.timerToggleReq {
+		return Task{}, false
+	}
+	tm.timerToggleReq = false
+	return tm.timerToggleTask, true
 }
 
 // loadPinnedTasks reads pinned task keys from .granit/pinned-tasks.json.
@@ -2314,9 +2437,73 @@ func (tm TaskManager) updateInput(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		return tm.updateTimeBlock(key)
 	case tmInputTriageSet:
 		return tm.updateTriageSet(key)
+	case tmInputSavedFilter:
+		return tm.updateSavedFilter(key)
 	}
 
 	return tm, nil
+}
+
+// updateSavedFilter handles the '*' input mode where the user
+// either applies an existing saved filter or saves the current
+// combo under a new name. Behavior:
+//
+//	Enter on a name that exists  → apply that saved combo
+//	Enter on a new name          → save current combo with that name
+//	Backspace                    → edit
+//	Esc                          → cancel
+//	Ctrl+D                       → delete the typed name (if exists)
+//
+// The render layer shows the list of saved names so the user
+// can scan instead of remembering — matches palette ergonomics.
+func (tm TaskManager) updateSavedFilter(key string) (TaskManager, tea.Cmd) {
+	switch key {
+	case "esc":
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+		return tm, nil
+	case "enter":
+		name := strings.TrimSpace(tm.inputBuf)
+		if name == "" {
+			tm.inputMode = tmInputNone
+			return tm, nil
+		}
+		if _, exists := tm.savedFilters[name]; exists {
+			tm.applySavedFilter(name)
+		} else {
+			if tm.savedFilters == nil {
+				tm.savedFilters = make(map[string]tmSavedFilter)
+			}
+			tm.savedFilters[name] = tm.captureCurrentFilter()
+			tm.saveSavedFilters()
+			tm.statusMsg = "Saved filter: " + name
+		}
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+		return tm, nil
+	case "ctrl+d":
+		// Delete the typed name (if it exists) — power-user
+		// "* foo Ctrl+D" workflow for cleanup.
+		name := strings.TrimSpace(tm.inputBuf)
+		if _, exists := tm.savedFilters[name]; exists {
+			delete(tm.savedFilters, name)
+			tm.saveSavedFilters()
+			tm.statusMsg = "Deleted filter: " + name
+		}
+		tm.inputMode = tmInputNone
+		tm.inputBuf = ""
+		return tm, nil
+	case "backspace":
+		if len(tm.inputBuf) > 0 {
+			tm.inputBuf = TrimLastRune(tm.inputBuf)
+		}
+		return tm, nil
+	default:
+		if len(key) == 1 || key == " " {
+			tm.inputBuf += key
+		}
+		return tm, nil
+	}
 }
 
 // updateTriageSet handles the direct-set triage submode entered
@@ -3763,6 +3950,24 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			tm.hasFocusReq = true
 			tm.active = false
 		}
+
+	// Toggle time-tracking timer for the cursor task. Model
+	// reads this via GetTimerToggleRequest after Update and
+	// drives the actual TimeTracker (StartTimer / StopTimer).
+	// Showing in the row: "▸ Nm" badge appears next to the
+	// task currently being tracked.
+	case "y":
+		if tm.cursor < len(tm.filtered) {
+			tm.timerToggleTask = tm.filtered[tm.cursor]
+			tm.timerToggleReq = true
+		}
+
+	// Saved filter views — '*' opens the picker / save prompt.
+	// Empty input shows the list; typing a name either applies
+	// (if exists) or prompts to save the current combo.
+	case "*":
+		tm.inputMode = tmInputSavedFilter
+		tm.inputBuf = ""
 
 	// Select mode (bulk operations)
 	case "v":

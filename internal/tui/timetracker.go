@@ -113,6 +113,18 @@ func (tt *TimeTracker) Open(vaultRoot string) {
 	tt.weekSummary()
 }
 
+// ActiveTimerSnapshot returns the currently-tracked task text
+// and elapsed seconds so far. Empty/0 when no timer is running.
+// Used by external surfaces (TaskManager rows) that want to
+// badge the active task without reaching into private state.
+func (tt *TimeTracker) ActiveTimerSnapshot() (taskText string, elapsedSecs int) {
+	if tt == nil || !tt.timerRunning || tt.activeTimer == nil {
+		return "", 0
+	}
+	elapsed := time.Since(tt.activeTimer.StartTime)
+	return tt.activeTimer.TaskText, int(elapsed.Seconds())
+}
+
 // TaskTimeMap returns cumulative duration per task text across all entries.
 func (tt *TimeTracker) TaskTimeMap() map[string]int {
 	result := make(map[string]int)
