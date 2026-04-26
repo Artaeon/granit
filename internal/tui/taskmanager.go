@@ -41,9 +41,12 @@ const (
 	taskViewCompleted                 // 3
 	taskViewCalendar                  // 4
 	taskViewKanban                    // 5
+	taskViewInbox                     // 6 — untriaged tasks (Triage == TriageInbox)
+	taskViewStale                     // 7 — tasks not updated in 7+ days
+	taskViewByProject                 // 8 — grouped by Project field
 )
 
-const taskViewCount = 6
+const taskViewCount = 9
 
 // tmSortMode controls how tasks are sorted within a view.
 type tmSortMode int
@@ -1216,10 +1219,25 @@ func (tm *TaskManager) doAddTask(taskText string) {
 		return
 	}
 	body := strings.TrimSpace(taskText)
-	// If in calendar view, append the selected date.
-	if tm.view == taskViewCalendar && tm.calDay > 0 {
-		dateStr := fmt.Sprintf("%04d-%02d-%02d", tm.calYear, int(tm.calMonth), tm.calDay)
+	// View-aware due-date inference. The intent of pressing
+	// 'a' on Today is "add a task FOR today" — without this
+	// hint, the new task lands without a date, doesn't match
+	// the Today filter, and silently disappears from view.
+	// Same for Upcoming (defaults to tomorrow). Calendar uses
+	// the cursor date. The user can always strip / change
+	// the date inline.
+	switch tm.view {
+	case taskViewToday:
 		if !strings.Contains(body, "\U0001F4C5") {
+			body += " \U0001F4C5 " + time.Now().Format("2006-01-02")
+		}
+	case taskViewUpcoming:
+		if !strings.Contains(body, "\U0001F4C5") {
+			body += " \U0001F4C5 " + time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+		}
+	case taskViewCalendar:
+		if tm.calDay > 0 && !strings.Contains(body, "\U0001F4C5") {
+			dateStr := fmt.Sprintf("%04d-%02d-%02d", tm.calYear, int(tm.calMonth), tm.calDay)
 			body += " \U0001F4C5 " + dateStr
 		}
 	}
@@ -1247,10 +1265,14 @@ func (tm *TaskManager) doAddTask(taskText string) {
 
 	tm.fileChanged = true
 	tm.lastChangedNote = targetPath
-	tm.statusMsg = "Task added to Tasks.md"
+	tm.statusMsg = "Task added"
 
-	// Switch to All view so the task is visible
-	tm.view = taskViewAll
+	// Stay on the user's current view — the view-aware due
+	// date above guarantees the new task lands where they're
+	// looking. Forcing a switch to All view dropped users out
+	// of their planning context (the symptom users hit:
+	// "I added a task on Today and now I'm on All — where
+	// did my Today list go?").
 	tm.reparse()
 }
 
@@ -1334,6 +1356,17 @@ func (tm *TaskManager) switchView() {
 }
 
 func (tm *TaskManager) rebuildFiltered() {
+	// Sticky cursor: remember which task ID the cursor was on
+	// before the rebuild so we can restore it after re-filtering.
+	// Without this, every refresh (file watcher, save, toggle)
+	// resets the cursor to 0 and the user loses their place.
+	stickyID := ""
+	stickyKey := ""
+	if tm.cursor < len(tm.filtered) {
+		t := tm.filtered[tm.cursor]
+		stickyID = t.ID
+		stickyKey = taskKey(t)
+	}
 	tm.cursor = 0
 	tm.scroll = 0
 	switch tm.view {
@@ -1349,6 +1382,12 @@ func (tm *TaskManager) rebuildFiltered() {
 		tm.filtered = tm.filterCalendarDay()
 	case taskViewKanban:
 		tm.filtered = nil // kanban uses columns, not flat list
+	case taskViewInbox:
+		tm.filtered = tm.filterInbox()
+	case taskViewStale:
+		tm.filtered = tm.filterStale()
+	case taskViewByProject:
+		tm.filtered = tm.filterByProject()
 	}
 	if tm.view != taskViewKanban {
 		// Apply active tag filter.
@@ -1407,6 +1446,26 @@ func (tm *TaskManager) rebuildFiltered() {
 		len(tm.applyActiveFilters(tm.filterCompleted())),
 		-1, // calendar doesn't show count
 		-1, // kanban doesn't show count
+		len(tm.applyActiveFilters(tm.filterInbox())),
+		len(tm.applyActiveFilters(tm.filterStale())),
+		len(tm.applyActiveFilters(tm.filterByProject())),
+	}
+
+	// Sticky cursor restore — match by stable ID first, fall
+	// back to NotePath:LineNum key. If the task left the
+	// current view (e.g. completed and we're on Today),
+	// cursor stays at 0.
+	if stickyID != "" || stickyKey != "" {
+		for i, t := range tm.filtered {
+			if (stickyID != "" && t.ID == stickyID) || (stickyKey != "" && taskKey(t) == stickyKey) {
+				tm.cursor = i
+				visH := tm.visibleHeight()
+				if visH > 0 && tm.cursor >= visH {
+					tm.scroll = tm.cursor - visH/2
+				}
+				break
+			}
+		}
 	}
 }
 
@@ -1520,6 +1579,92 @@ func (tm *TaskManager) filterCompleted() []Task {
 			return out[i].NotePath < out[j].NotePath
 		}
 		return out[i].LineNum < out[j].LineNum
+	})
+	return out
+}
+
+// filterInbox returns untriaged tasks (Triage == TriageInbox or
+// empty). The inbox is the front-door queue for the
+// Capture-Triage-Schedule loop — power users live here when
+// processing fresh captures.
+func (tm *TaskManager) filterInbox() []Task {
+	var out []Task
+	for _, t := range tm.allTasks {
+		if t.Done || tmIsSnoozed(t) {
+			continue
+		}
+		if t.Triage == "" || t.Triage == tasks.TriageInbox {
+			out = append(out, t)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		// Newest captures first — fresh inbox items deserve
+		// the user's attention before older ones go stale.
+		if !out[i].CreatedAt.IsZero() && !out[j].CreatedAt.IsZero() {
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		}
+		return out[i].Priority > out[j].Priority
+	})
+	return out
+}
+
+// filterStale returns active tasks that haven't been touched in
+// 7+ days (no completion, no triage update, no creation in
+// the last week). Surfaces forgotten work without forcing the
+// user to scroll All view.
+func (tm *TaskManager) filterStale() []Task {
+	cutoff := time.Now().AddDate(0, 0, -7)
+	var out []Task
+	for _, t := range tm.allTasks {
+		if t.Done || tmIsSnoozed(t) {
+			continue
+		}
+		// "Stale" criterion: created > 7d ago AND not
+		// recently triaged. Tasks with no CreatedAt fall
+		// through (legacy data) — show them too so the user
+		// can prune.
+		fresh := false
+		if !t.CreatedAt.IsZero() && t.CreatedAt.After(cutoff) {
+			fresh = true
+		}
+		if t.LastTriagedAt != nil && t.LastTriagedAt.After(cutoff) {
+			fresh = true
+		}
+		if !fresh {
+			out = append(out, t)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		// Oldest first — those need the most attention.
+		if !out[i].CreatedAt.IsZero() && !out[j].CreatedAt.IsZero() {
+			return out[i].CreatedAt.Before(out[j].CreatedAt)
+		}
+		return out[i].NotePath < out[j].NotePath
+	})
+	return out
+}
+
+// filterByProject groups active tasks by Project field.
+// Tasks without a project fall under "(no project)" at the
+// end. Order: project-name asc, then priority desc within.
+func (tm *TaskManager) filterByProject() []Task {
+	var out []Task
+	for _, t := range tm.allTasks {
+		if t.Done || tmIsSnoozed(t) {
+			continue
+		}
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		// Empty project sorts last so it doesn't lead the
+		// group view — projects are the headline.
+		if (out[i].Project == "") != (out[j].Project == "") {
+			return out[i].Project != ""
+		}
+		if out[i].Project != out[j].Project {
+			return strings.ToLower(out[i].Project) < strings.ToLower(out[j].Project)
+		}
+		return out[i].Priority > out[j].Priority
 	})
 	return out
 }
@@ -3069,7 +3214,17 @@ func (tm TaskManager) updateKanban(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		tm.view = taskViewCalendar
 		tm.switchView()
 	case "6":
-		// Already on kanban
+		tm.view = taskViewKanban
+		tm.switchView()
+	case "7":
+		tm.view = taskViewInbox
+		tm.switchView()
+	case "8":
+		tm.view = taskViewStale
+		tm.switchView()
+	case "9":
+		tm.view = taskViewByProject
+		tm.switchView()
 	case "tab":
 		tm.view = (tm.view + 1) % taskViewCount
 		tm.switchView()

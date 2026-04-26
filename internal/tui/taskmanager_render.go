@@ -426,6 +426,9 @@ func (tm *TaskManager) renderTabs(b *strings.Builder, w int) {
 		"Done",
 		"Calendar",
 		"Kanban",
+		"Inbox",
+		"Stale",
+		"Project",
 	}
 	counts := tm.tabCounts[:]
 
@@ -467,6 +470,18 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 		case taskViewAll:
 			emptyMsg = "No tasks in vault"
 			icon = "📝"
+		case taskViewInbox:
+			emptyMsg = "Inbox zero"
+			hint = "All tasks have been triaged. Press ; or m to triage from any view."
+			icon = "📥"
+		case taskViewStale:
+			emptyMsg = "Nothing's stale"
+			hint = "All active tasks have been touched in the last week — well done."
+			icon = "🌱"
+		case taskViewByProject:
+			emptyMsg = "No project-tagged tasks"
+			hint = "Tag tasks with project:NAME or wire them via ProjectMode for grouping."
+			icon = "📁"
 		}
 		b.WriteString("\n")
 		b.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).Render(icon+" "+emptyMsg))
@@ -567,6 +582,30 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 					sepLen = 2
 				}
 				sep := lipgloss.NewStyle().Foreground(sapphire).Render(strings.Repeat("─", sepLen))
+				b.WriteString("  " + label + sep + "\n")
+				lastGroup = group
+			}
+		}
+
+		// By-Project view: section headers per Project field.
+		// Empty project lands under "(no project)" so the user
+		// can spot orphaned tasks. Skip in compact mode.
+		if tm.view == taskViewByProject && !tm.compact {
+			group := task.Project
+			if group == "" {
+				group = "(no project)"
+			}
+			if group != lastGroup {
+				if lastGroup != "" {
+					b.WriteString("\n")
+				}
+				label := lipgloss.NewStyle().Foreground(mauve).Bold(true).
+					Render(" 📁 " + group + " ")
+				sepLen := w - lipgloss.Width(label) - 4
+				if sepLen < 2 {
+					sepLen = 2
+				}
+				sep := lipgloss.NewStyle().Foreground(mauve).Render(strings.Repeat("─", sepLen))
 				b.WriteString("  " + label + sep + "\n")
 				lastGroup = group
 			}
