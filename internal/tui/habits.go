@@ -1088,11 +1088,9 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 		}
 
 	case "tab":
-		ht.tab = (ht.tab + 1) % 3
+		ht.tab = (ht.tab + 1) % 2
 		ht.cursor = 0
 		ht.scroll = 0
-		ht.goalExpanded = -1
-		ht.milestoneCur = 0
 
 	case "1":
 		ht.tab = 0
@@ -1102,39 +1100,21 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 		ht.tab = 1
 		ht.cursor = 0
 		ht.scroll = 0
-		ht.goalExpanded = -1
-	case "3":
-		ht.tab = 2
-		ht.cursor = 0
-		ht.scroll = 0
 
 	case "up", "k":
-		if ht.tab == 1 && ht.goalExpanded >= 0 && ht.goalExpanded < len(ht.goals) {
-			if ht.milestoneCur > 0 {
-				ht.milestoneCur--
-			}
-		} else {
-			if ht.cursor > 0 {
-				ht.cursor--
-			}
+		if ht.cursor > 0 {
+			ht.cursor--
 		}
 
 	case "down", "j":
-		if ht.tab == 1 && ht.goalExpanded >= 0 && ht.goalExpanded < len(ht.goals) {
-			g := ht.goals[ht.goalExpanded]
-			if len(g.Milestones) > 0 && ht.milestoneCur < len(g.Milestones)-1 {
-				ht.milestoneCur++
-			}
-		} else {
-			max := ht.maxCursor()
-			if ht.cursor < max {
-				ht.cursor++
-			}
+		max := ht.maxCursor()
+		if ht.cursor < max {
+			ht.cursor++
 		}
 
 	case " ", "enter":
-		switch ht.tab {
-		case 0: // Toggle habit on the activeDate (defaults to today)
+		// Habits-only now (Stats has no interactive rows).
+		if ht.tab == 0 {
 			vis := ht.visibleHabits()
 			if ht.cursor < len(vis) {
 				name := vis[ht.cursor].Name
@@ -1154,54 +1134,19 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 					}
 				}
 			}
-		case 1: // Toggle milestone or expand goal
-			if ht.goalExpanded >= 0 && ht.goalExpanded < len(ht.goals) {
-				g := &ht.goals[ht.goalExpanded]
-				if ht.milestoneCur < len(g.Milestones) {
-					g.Milestones[ht.milestoneCur].Done = !g.Milestones[ht.milestoneCur].Done
-					ht.saveGoals()
-				}
-			} else {
-				active := ht.activeGoals()
-				if ht.cursor < len(active) {
-					ht.goalExpanded = active[ht.cursor]
-					ht.milestoneCur = 0
-				}
-			}
 		}
 
 	case "n":
-		switch ht.tab {
-		case 0:
+		// New habit only on Habits tab.
+		if ht.tab == 0 {
 			ht.inputMode = habitInputNewHabit
-			ht.inputValue = ""
-		case 1:
-			ht.inputMode = habitInputNewGoalTitle
-			ht.inputValue = ""
-		}
-
-	case "m":
-		if ht.tab == 1 && ht.goalExpanded >= 0 && ht.goalExpanded < len(ht.goals) {
-			ht.inputMode = habitInputNewMilestone
 			ht.inputValue = ""
 		}
 
 	case "d":
-		switch ht.tab {
-		case 0:
-			if ht.cursor < len(ht.habits) {
-				ht.confirmDelete = true
-			}
-		case 1:
-			if ht.goalExpanded >= 0 && ht.goalExpanded < len(ht.goals) {
-				ht.confirmDelete = true
-			} else {
-				active := ht.activeGoals()
-				if ht.cursor < len(active) {
-					ht.goalExpanded = active[ht.cursor]
-					ht.confirmDelete = true
-				}
-			}
+		// Delete habit only on Habits tab.
+		if ht.tab == 0 && ht.cursor < len(ht.habits) {
+			ht.confirmDelete = true
 		}
 
 	// Power-user keys (habits tab only — explicit guard so they
@@ -1558,30 +1503,24 @@ func (ht HabitTracker) updateInput(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 }
 
 func (ht *HabitTracker) performDelete() {
-	switch ht.tab {
-	case 0: // Delete habit — translate visible-cursor → underlying index
-		vis := ht.visibleHabits()
-		if ht.cursor < len(vis) {
-			target := vis[ht.cursor].Name
-			for i, h := range ht.habits {
-				if h.Name == target {
-					ht.habits = append(ht.habits[:i], ht.habits[i+1:]...)
-					break
-				}
-			}
-			delete(ht.archived, target)
-			ht.saveHabits()
-			ht.saveArchived()
-			if ht.cursor >= len(ht.visibleHabits()) && ht.cursor > 0 {
-				ht.cursor--
+	if ht.tab != 0 {
+		return
+	}
+	// Delete habit — translate visible-cursor → underlying index.
+	vis := ht.visibleHabits()
+	if ht.cursor < len(vis) {
+		target := vis[ht.cursor].Name
+		for i, h := range ht.habits {
+			if h.Name == target {
+				ht.habits = append(ht.habits[:i], ht.habits[i+1:]...)
+				break
 			}
 		}
-	case 1: // Archive goal
-		if ht.goalExpanded >= 0 && ht.goalExpanded < len(ht.goals) {
-			ht.goals[ht.goalExpanded].Archived = true
-			ht.goalExpanded = -1
-			ht.milestoneCur = 0
-			ht.saveGoals()
+		delete(ht.archived, target)
+		ht.saveHabits()
+		ht.saveArchived()
+		if ht.cursor >= len(ht.visibleHabits()) && ht.cursor > 0 {
+			ht.cursor--
 		}
 	}
 }
@@ -1593,8 +1532,7 @@ func (ht HabitTracker) maxCursor() int {
 		// list now, not the raw ht.habits slice.
 		return len(ht.visibleHabits())
 	case 1:
-		return len(ht.activeGoals())
-	case 2:
+		// Stats tab — read-only, no cursor target.
 		return 0
 	}
 	return 0
@@ -1649,8 +1587,6 @@ func (ht HabitTracker) View() string {
 		case 0:
 			b.WriteString(ht.viewHabits(innerW))
 		case 1:
-			b.WriteString(ht.viewGoals(innerW))
-		case 2:
 			b.WriteString(ht.viewStats(innerW))
 		}
 	}
@@ -1675,7 +1611,9 @@ func (ht HabitTracker) View() string {
 }
 
 func (ht HabitTracker) renderTabBar() string {
-	tabs := []string{"Habits", "Goals", "Stats"}
+	// Goals tab removed — Goals lives in its own dedicated module
+	// now (CmdGoalsMode / Alt+G). Tab indices: 0=Habits, 1=Stats.
+	tabs := []string{"Habits", "Stats"}
 	var rendered []string
 
 	for i, t := range tabs {
@@ -2059,26 +1997,15 @@ func (ht HabitTracker) renderHelp() string {
 	switch ht.tab {
 	case 0:
 		pairs = []struct{ Key, Desc string }{
-			{"Tab/1-3", "switch"}, {"j/k", "move"}, {"Space", "toggle"},
+			{"Tab/1-2", "switch"}, {"j/k", "move"}, {"Space", "toggle"},
 			{"n", "new"}, {"d", "delete"}, {"A", "archive"}, {"H", "show arch"},
 			{"g", "category"}, {"N", "note"},
 			{"<", "prev day"}, {">", "next day"}, {"t", "today"},
 			{"s", "sort"}, {"/", "filter"}, {"c", "clear"}, {"Esc", "close"},
 		}
 	case 1:
-		if ht.goalExpanded >= 0 {
-			pairs = []struct{ Key, Desc string }{
-				{"Space", "toggle"}, {"m", "milestone"}, {"d", "archive"}, {"Esc", "back"},
-			}
-		} else {
-			pairs = []struct{ Key, Desc string }{
-				{"Tab/1-3", "switch"}, {"j/k", "move"}, {"Enter", "expand"},
-				{"n", "new"}, {"d", "archive"}, {"Esc", "close"},
-			}
-		}
-	case 2:
 		pairs = []struct{ Key, Desc string }{
-			{"Tab/1-3", "switch"}, {"Esc", "close"},
+			{"Tab/1-2", "switch"}, {"Esc", "close"},
 		}
 	}
 	pairs = append(pairs, struct{ Key, Desc string }{"I", "AI coach"})

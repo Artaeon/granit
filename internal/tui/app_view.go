@@ -905,7 +905,14 @@ func (m Model) View() string {
 		overlay := m.languageLearning.View()
 		view = m.overlayCenter(view, overlay)
 	}
-	if m.habitTracker.IsActive() {
+	if m.habitTracker.IsActive() && !(m.tabBar != nil && m.tabBar.HasFeatureTab(FeatHabits)) {
+		// Habit tracker now opens as an editor tab; skip the
+		// centered-overlay render path when the feature tab is
+		// the foreground — without this guard, the surface
+		// rendered TWICE (once in the editor pane, once as the
+		// overlay on top of it). Keep the overlay path for
+		// callers that still open habit tracker without going
+		// through CmdHabitTracker (none today, but defensive).
 		overlay := m.habitTracker.View()
 		view = m.overlayCenter(view, overlay)
 	}
