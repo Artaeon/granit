@@ -400,9 +400,17 @@ func (c Calendar) viewWeek() string {
 		peach,    // Sat — warm
 	}
 
-	// Day name + date row — boxed borders dropped; the cell
-	// itself draws a left/right pipe and a single dim
-	// separator below acts as the bottom border.
+	// Day name + date row — uses the SAME column structure as
+	// the time grid below (sepFor pipe before each cell, no
+	// closing pipe). Previous version used "│ X │ │ Y │ │ Z │"
+	// which put TWO pipes between cells and didn't align with
+	// the time-grid's single-pipe column separators — looked
+	// "completely messed up" once the boxed borders that
+	// anchored the old pipe pattern were removed.
+	//
+	// Cell layout per day: sep(=│) + space + label + pad + space
+	// Total width per cell: 1 (sep) + 1 + (dayColW-2) padding
+	//                     = dayColW chars, matches grid exactly.
 	headerRow := strings.Repeat(" ", timeColW)
 	for i := 0; i < 7; i++ {
 		day := weekStart.AddDate(0, 0, i)
@@ -427,26 +435,33 @@ func (c Calendar) viewWeek() string {
 		if sameDay(day, c.cursor) && !isHeaderToday {
 			style = lipgloss.NewStyle().Foreground(mauve).Bold(true)
 		}
-		truncLabel := TruncateDisplay(label, dayColW-4)
+		// Cell content area = dayColW - 2 (1 for sep + 1 for
+		// trailing space on the same column). Truncate label
+		// to fit, then pad on the right to fill the column.
+		inner := dayColW - 2
+		if inner < 4 {
+			inner = 4
+		}
+		truncLabel := TruncateDisplay(label, inner)
 		cell := style.Render(truncLabel)
-		padLen := dayColW - 4 - lipgloss.Width(cell)
+		padLen := inner - lipgloss.Width(cell)
 		if padLen < 0 {
 			padLen = 0
 		}
-		left := lipgloss.NewStyle().Foreground(col).Render("│")
-		right := lipgloss.NewStyle().Foreground(col).Render("│")
 		padStr := strings.Repeat(" ", padLen)
 		if isHeaderToday {
-			// Fill the padding with the green background too
 			padStr = lipgloss.NewStyle().Background(green).Render(padStr)
 		}
-		headerRow += left + " " + cell + padStr + " " + right
+		headerRow += sepFor(i) + " " + cell + padStr
 	}
 	b.WriteString("  " + headerRow + "\n")
 
-	// Single thin separator below the headers (replaces the
-	// 2-row top+bottom box border that used to bracket the
-	// day strip and waste vertical space in tab mode).
+	// Single thin separator below the headers — uses the same
+	// per-column structure (sep before each cell + dashes) so
+	// the | pipes line up vertically through header → sep →
+	// time grid. Previous version drew one continuous bar
+	// across all 7 columns with no inter-column markers; it
+	// didn't visually anchor to the grid pipes.
 	sepBorder := strings.Repeat(" ", timeColW)
 	for i := 0; i < 7; i++ {
 		day := weekStart.AddDate(0, 0, i)
@@ -454,7 +469,8 @@ func (c Calendar) viewWeek() string {
 		if sameDay(day, c.today) {
 			col = green
 		}
-		sepBorder += lipgloss.NewStyle().Foreground(col).Render(strings.Repeat("─", dayColW))
+		// sep + (dayColW-1) dashes per cell so total = dayColW.
+		sepBorder += sepFor(i) + lipgloss.NewStyle().Foreground(col).Render(strings.Repeat("─", dayColW-1))
 	}
 	b.WriteString("  " + sepBorder + "\n")
 
