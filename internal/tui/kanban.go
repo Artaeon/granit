@@ -95,6 +95,23 @@ type Kanban struct {
 	priorityLine       int
 	priorityNewLevel   int // 0..4, what to set on disk
 
+	// WIP limits per column (0 = no limit). Persisted to
+	// .granit/kanban-wip.json keyed by column title. Header
+	// shows N/limit with a red warning when exceeded.
+	wipLimits map[string]int
+
+	// In-board search filter. '/' enters; live-filters cards
+	// across all columns by text (case-insensitive substring).
+	// Empty = show all.
+	searching   bool
+	searchQuery string
+
+	// Quick-add prompt for the focused column. 'a' enters;
+	// Enter appends "- [ ] <text>" to Tasks.md and tags the
+	// new line so it routes to the focused column.
+	addingCard bool
+	addBuf     string
+
 	lastSaveErr error // consumed-once via ConsumeSaveError
 }
 
@@ -152,7 +169,12 @@ func (kb *Kanban) Open(vaultRoot string) {
 	kb.dragging = false
 	kb.dragCard = nil
 	kb.pendingToggle = false
+	kb.searching = false
+	kb.searchQuery = ""
+	kb.addingCard = false
+	kb.addBuf = ""
 	kb.loadState()
+	kb.loadWIPLimits()
 }
 
 // Close persists kanban state before deactivating so column assignments
@@ -423,7 +445,57 @@ func (kb Kanban) Update(msg tea.Msg) (Kanban, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
+		key := msg.String()
+
+		// Search input mode — '/' opens; live-filter as the
+		// user types. Esc clears, Enter commits.
+		if kb.searching {
+			switch key {
+			case "esc":
+				kb.searchQuery = ""
+				kb.searching = false
+			case "enter":
+				kb.searching = false
+			case "backspace":
+				if len(kb.searchQuery) > 0 {
+					kb.searchQuery = TrimLastRune(kb.searchQuery)
+				}
+			default:
+				if len(key) == 1 || key == " " {
+					kb.searchQuery += key
+				}
+			}
+			kb.kbClampCardCursor()
+			return kb, nil
+		}
+
+		// Quick-add card prompt — 'a' opens; Enter appends to
+		// Tasks.md tagged with the focused column's first
+		// routing tag so the new card lands in the column.
+		if kb.addingCard {
+			switch key {
+			case "esc":
+				kb.addBuf = ""
+				kb.addingCard = false
+			case "enter":
+				if strings.TrimSpace(kb.addBuf) != "" {
+					kb.kbQuickAddCard(kb.addBuf)
+				}
+				kb.addBuf = ""
+				kb.addingCard = false
+			case "backspace":
+				if len(kb.addBuf) > 0 {
+					kb.addBuf = TrimLastRune(kb.addBuf)
+				}
+			default:
+				if len(key) == 1 || key == " " {
+					kb.addBuf += key
+				}
+			}
+			return kb, nil
+		}
+
+		switch key {
 		case "esc", "q":
 			// q is the same convention used across granit's nav-only
 			// overlays (calendar, kanban-style modals, dashboards). Safe
@@ -432,6 +504,44 @@ func (kb Kanban) Update(msg tea.Msg) (Kanban, tea.Cmd) {
 			// keybinding (column nav uses h/l, card nav uses j/k).
 			kb.active = false
 			return kb, nil
+
+		// Quick-add a card to the focused column.
+		case "a":
+			kb.addingCard = true
+			kb.addBuf = ""
+
+		// Search across all columns.
+		case "/":
+			kb.searching = true
+
+		// Clear search.
+		case "c":
+			if kb.searchQuery != "" {
+				kb.searchQuery = ""
+			}
+
+		// WIP limit adjustment for the focused column.
+		// '+' increases by 1, '-' decreases (floor 0 = no limit).
+		case "+":
+			if kb.colCursor >= 0 && kb.colCursor < len(kb.columns) {
+				if kb.wipLimits == nil {
+					kb.wipLimits = make(map[string]int)
+				}
+				name := kb.columns[kb.colCursor].Title
+				kb.wipLimits[name]++
+				kb.saveWIPLimits()
+			}
+		case "-":
+			if kb.colCursor >= 0 && kb.colCursor < len(kb.columns) {
+				if kb.wipLimits == nil {
+					kb.wipLimits = make(map[string]int)
+				}
+				name := kb.columns[kb.colCursor].Title
+				if kb.wipLimits[name] > 0 {
+					kb.wipLimits[name]--
+				}
+				kb.saveWIPLimits()
+			}
 
 		// Column navigation
 		case "left", "h":
@@ -509,15 +619,108 @@ func (kb Kanban) Update(msg tea.Msg) (Kanban, tea.Cmd) {
 }
 
 // currentCard returns a pointer to the card under the cursor, or nil.
+// Returns the cursor card from the FILTERED slice (when a search is
+// active) so the caller acts on what the user actually sees.
 func (kb *Kanban) currentCard() *KanbanCard {
 	if kb.colCursor < 0 || kb.colCursor >= len(kb.columns) {
 		return nil
 	}
-	col := &kb.columns[kb.colCursor]
-	if kb.cardCursor < 0 || kb.cardCursor >= len(col.Cards) {
+	cards := kb.visibleCards(kb.colCursor)
+	if kb.cardCursor < 0 || kb.cardCursor >= len(cards) {
 		return nil
 	}
-	return &col.Cards[kb.cardCursor]
+	// Translate the visible-cursor index back to the underlying
+	// columns slice so the returned pointer mutates real state.
+	target := cards[kb.cardCursor]
+	for i := range kb.columns[kb.colCursor].Cards {
+		c := &kb.columns[kb.colCursor].Cards[i]
+		if c.Source == target.Source && c.Line == target.Line {
+			return c
+		}
+	}
+	return nil
+}
+
+// visibleCards returns the cards for column ci, narrowed by the
+// active search query. Empty query returns all cards in order.
+func (kb Kanban) visibleCards(ci int) []KanbanCard {
+	if ci < 0 || ci >= len(kb.columns) {
+		return nil
+	}
+	cards := kb.columns[ci].Cards
+	if kb.searchQuery == "" {
+		return cards
+	}
+	q := strings.ToLower(kb.searchQuery)
+	out := make([]KanbanCard, 0, len(cards))
+	for _, c := range cards {
+		if strings.Contains(strings.ToLower(c.Text), q) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// loadWIPLimits restores per-column WIP limits from disk.
+func (kb *Kanban) loadWIPLimits() {
+	kb.wipLimits = make(map[string]int)
+	if kb.vaultRoot == "" {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(kb.vaultRoot, ".granit", "kanban-wip.json"))
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(data, &kb.wipLimits)
+	if kb.wipLimits == nil {
+		kb.wipLimits = make(map[string]int)
+	}
+}
+
+// saveWIPLimits persists the column → limit map. Sidecar so we
+// don't have to extend the kanban-state schema; missing file
+// silently means "no limits set anywhere".
+func (kb *Kanban) saveWIPLimits() {
+	if kb.vaultRoot == "" {
+		return
+	}
+	dir := filepath.Join(kb.vaultRoot, ".granit")
+	_ = os.MkdirAll(dir, 0o755)
+	data, err := json.MarshalIndent(kb.wipLimits, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := atomicWriteNote(filepath.Join(dir, "kanban-wip.json"), string(data)); err != nil {
+		kb.lastSaveErr = err
+	}
+}
+
+// kbQuickAddCard appends a fresh task to Tasks.md tagged so it
+// routes to the focused column on next reparse. Routing tag is
+// the first tag mapped to the column in columnTags, or the
+// column title (lowercased, spaces → '-') as a fallback when
+// no explicit tag exists.
+func (kb *Kanban) kbQuickAddCard(text string) {
+	if kb.vaultRoot == "" || kb.colCursor < 0 || kb.colCursor >= len(kb.columns) {
+		return
+	}
+	col := kb.columns[kb.colCursor]
+	tag := ""
+	if tags, ok := kb.columnTags[col.Title]; ok && len(tags) > 0 {
+		tag = tags[0]
+	} else {
+		tag = strings.ToLower(strings.ReplaceAll(col.Title, " ", "-"))
+	}
+	body := strings.TrimSpace(text)
+	if !strings.Contains(body, "#"+tag) {
+		body += " #" + tag
+	}
+	if err := appendTaskLine(kb.vaultRoot, "- [ ] "+body); err != nil {
+		kb.lastSaveErr = err
+		return
+	}
+	// Caller drains kb.allCards / kb.columns via the host's
+	// next refreshComponents pass — file change triggers it.
 }
 
 // ---------------------------------------------------------------------------
@@ -658,11 +861,32 @@ func (kb Kanban) View() string {
 	b.WriteString(ruleStyle.Render("  " + strings.Repeat("─", innerWidth-4)))
 	b.WriteString("\n")
 
+	// Active search query — show as a chip when a query is
+	// committed (search bar closed), or as a live-typing bar
+	// when the user is mid-search.
+	promptStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
+	if kb.searching {
+		b.WriteString("  " + promptStyle.Render("/ Search: ") +
+			lipgloss.NewStyle().Foreground(text).Render(kb.searchQuery+"█") + "\n")
+	} else if kb.searchQuery != "" {
+		b.WriteString("  " + DimStyle.Render("/ search: "+kb.searchQuery+"  (c to clear)") + "\n")
+	}
+
+	// Quick-add prompt for the focused column.
+	if kb.addingCard {
+		colName := ""
+		if kb.colCursor < len(kb.columns) {
+			colName = kb.columns[kb.colCursor].Title
+		}
+		b.WriteString("  " + promptStyle.Render("+ Add to "+colName+": ") +
+			lipgloss.NewStyle().Foreground(text).Render(kb.addBuf+"█") + "\n")
+	}
+
 	// Footer with keybinds
 	b.WriteString(RenderHelpBar([]struct{ Key, Desc string }{
 		{"←→", "column"}, {"↑↓", "card"}, {"m/M", "move ↔"},
-		{"x", "toggle"}, {"o", "open"}, {"p", "priority"}, {"d", "delete"},
-		{"Esc", "close"},
+		{"a", "add"}, {"x", "toggle"}, {"o", "open"}, {"p", "priority"}, {"d", "delete"},
+		{"+/-", "WIP"}, {"/", "search"}, {"c", "clear"}, {"Esc", "close"},
 	}))
 
 	if kb.IsTabMode() {
@@ -697,10 +921,21 @@ func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCard
 		indicator = lipgloss.NewStyle().Foreground(colColor).Bold(true).Render("> ")
 	}
 
+	// WIP-aware count: "5/3" with red ⚠ when over limit.
+	countText := kbItoa(len(col.Cards))
+	countRendered := countStyle.Render(" " + countText)
+	if limit := kb.wipLimits[col.Title]; limit > 0 {
+		countText = kbItoa(len(col.Cards)) + "/" + kbItoa(limit)
+		if len(col.Cards) > limit {
+			countRendered = " " + lipgloss.NewStyle().Foreground(red).Bold(true).
+				Render("⚠ "+countText)
+		} else {
+			countRendered = countStyle.Render(" " + countText)
+		}
+	}
 	headerContent := indicator +
 		lipgloss.NewStyle().Foreground(colColor).Render(icon) + " " +
-		titleStyle.Render(col.Title) +
-		countStyle.Render(" "+kbItoa(len(col.Cards)))
+		titleStyle.Render(col.Title) + countRendered
 	lines = append(lines, lineStyle.Render(headerContent))
 
 	// Column underline
@@ -711,9 +946,17 @@ func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCard
 	underline := "  " + lipgloss.NewStyle().Foreground(underColor).Render(strings.Repeat("-", width-4))
 	lines = append(lines, lineStyle.Render(underline))
 
-	if len(col.Cards) == 0 {
+	// Search-aware card list: when a query is active, only
+	// matching cards render (and the cursor walks the
+	// filtered slice via currentCard()).
+	visible := kb.visibleCards(colIdx)
+	if len(visible) == 0 {
 		emptyStyle := lipgloss.NewStyle().Foreground(surface2).Italic(true)
-		lines = append(lines, lineStyle.Render("  "+emptyStyle.Render("No tasks")))
+		emptyMsg := "No tasks"
+		if kb.searchQuery != "" {
+			emptyMsg = "No matches"
+		}
+		lines = append(lines, lineStyle.Render("  "+emptyStyle.Render(emptyMsg)))
 		// Pad remaining
 		for i := 1; i < visibleCards*2; i++ {
 			lines = append(lines, lineStyle.Render(""))
@@ -723,18 +966,18 @@ func (kb Kanban) kbRenderColumn(colIdx int, col KanbanColumn, width, visibleCard
 		if isActiveCol && kb.cardCursor >= visibleCards {
 			scrollOffset = kb.cardCursor - visibleCards + 1
 		}
-		if scrollOffset > len(col.Cards) {
-			scrollOffset = len(col.Cards)
+		if scrollOffset > len(visible) {
+			scrollOffset = len(visible)
 		}
 
 		end := scrollOffset + visibleCards
-		if end > len(col.Cards) {
-			end = len(col.Cards)
+		if end > len(visible) {
+			end = len(visible)
 		}
 
 		linesUsed := 0
 		for i := scrollOffset; i < end; i++ {
-			card := col.Cards[i]
+			card := visible[i]
 			isSelected := isActiveCol && i == kb.cardCursor
 
 			prioIcon := kbPriorityIcon(card.Priority)
