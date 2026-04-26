@@ -360,26 +360,24 @@ func (c Calendar) viewWeek() string {
 	b.WriteString("  " + titleIcon + titleText + viewLabel + weekLabel + cursorDateLabel + "\n")
 
 	// ── Layout math ────────────────────────────────────────────────────────
-	// timeColW = "06:00 " gutter on the left. Each day column
-	// includes its left separator (the "│" pipe) so total grid
-	// width per day is dayColW exactly. Total grid =
-	//   timeColW + dayColW × 7
-	// MUST stay ≤ width or the terminal hard-wraps every row,
-	// producing the doubled-spacing visual a user just hit
-	// ("a line between everything extra"). The min clamp at
-	// 14 used to force overflow on narrow panes; now we let
-	// cells shrink down to a 6-char floor (just enough for
-	// "00:00 " in a cell) and only fall back to a "pane too
-	// narrow" message if even that doesn't fit.
+	// Every rendered row is "  " (2-char indent) + timeSt
+	// (timeColW chars) + 7 day cells (dayColW chars each).
+	// The total MUST be ≤ width or the terminal hard-wraps and
+	// the wrapped right-edge content paints into the next row's
+	// left-edge area, producing the "extra line between
+	// everything" + "text in the time column area" visual the
+	// user kept hitting. So:
+	//   2 + timeColW + 7*dayColW  ≤  width
+	//   dayColW                   ≤  (width - timeColW - 2) / 7
+	// Subtract one more for safety on emoji/width edge cases.
+	leadingIndent := 2
 	timeColW := 8
-	dayColW := (width - timeColW) / 7
+	dayColW := (width - timeColW - leadingIndent - 1) / 7
 	if dayColW < 6 {
-		// Pane too narrow for a usable week grid — return a
-		// fallback so we don't render a wrapped mess.
 		var fallback strings.Builder
 		fallback.WriteString("  " + lipgloss.NewStyle().Foreground(yellow).Render(
 			"Pane too narrow for week view. Try Day view (v) or widen the editor pane.") + "\n")
-		fallback.WriteString("  " + DimStyle.Render(fmt.Sprintf("(need ~%d cols, have %d)", 6*7+timeColW, width)))
+		fallback.WriteString("  " + DimStyle.Render(fmt.Sprintf("(need ~%d cols, have %d)", 6*7+timeColW+leadingIndent, width)))
 		return fallback.String()
 	}
 	gridW := timeColW + dayColW*7
