@@ -158,6 +158,33 @@ type HabitTracker struct {
 	// signals "this habit has a note for the active date" so
 	// power users can scan and see which logs have context.
 	notes map[string]string
+
+	// Frequency target per habit (cadence the streak math
+	// honours). Values: "daily", "weekdays", "weekends",
+	// "3x-week". Stored in .granit/habits-frequency.json keyed
+	// by habit name. Habits with no entry default to "daily"
+	// (current behaviour). 'f' cycles the cursor habit
+	// through the presets.
+	frequencies map[string]string
+
+	// Time-of-day reminder per habit. Values: "morning",
+	// "midday", "afternoon", "evening", or HH:MM. Stored in
+	// .granit/habits-times.json. Display: chip in the row;
+	// habits whose time matches the current period get a
+	// "DUE NOW" badge so the dashboard can surface them.
+	times map[string]string
+
+	// Filter by category (analogous to TaskManager's #tag).
+	// 'T' cycles through every category in use; empty means
+	// no filter active.
+	categoryFilter string
+
+	// Per-habit AI insight result, keyed by habit name. Set
+	// when the user presses 'i' on a habit; cleared on next
+	// render after they navigate away or open the coach
+	// (which uses showCoach for the global view).
+	insightHabit string
+	insightText  string
 }
 
 // ConsumeSaveError returns and clears the last persistence error, if any.
@@ -176,6 +203,78 @@ func (ht *HabitTracker) ConsumeSaveError() error {
 type habitAICoachMsg struct {
 	analysis string
 	err      error
+}
+
+// habitAIInsightMsg carries a per-habit AI insight (the user
+// asked specifically about one habit via the 'i' key).
+type habitAIInsightMsg struct {
+	habit    string
+	insight  string
+	err      error
+}
+
+// aiHabitInsight asks the LLM about a single habit's last-30-day
+// log. Scoping the prompt to one habit makes the response
+// actionable ("you skipped on Mondays for 3 weeks") instead of
+// the holistic coach's broader observations.
+func (ht *HabitTracker) aiHabitInsight(habit string) tea.Cmd {
+	ai := ht.ai
+	logs := make([]habitLog, 0, len(ht.logs))
+	cutoff := time.Now().AddDate(0, 0, -30).Format("2006-01-02")
+	for _, l := range ht.logs {
+		if l.Date >= cutoff {
+			completed := false
+			for _, c := range l.Completed {
+				if c == habit {
+					completed = true
+					break
+				}
+			}
+			logs = append(logs, habitLog{Date: l.Date, Completed: []string{
+				func() string {
+					if completed {
+						return habit
+					}
+					return ""
+				}(),
+			}})
+		}
+	}
+	freq := ht.frequencies[habit]
+	if freq == "" {
+		freq = "daily"
+	}
+	cat := ht.categories[habit]
+	t := ht.times[habit]
+	curStreak := ht.streakFor(habit, todayStr())
+	maxStreak := ht.longestStreak(habit)
+
+	return func() tea.Msg {
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("Habit: %s\n", habit))
+		sb.WriteString(fmt.Sprintf("Frequency: %s\n", freq))
+		if cat != "" {
+			sb.WriteString(fmt.Sprintf("Category: %s\n", cat))
+		}
+		if t != "" {
+			sb.WriteString(fmt.Sprintf("Time of day: %s\n", t))
+		}
+		sb.WriteString(fmt.Sprintf("Current streak: %d, longest: %d\n\n", curStreak, maxStreak))
+		sb.WriteString("Last 30 days (✓=done, ·=skip):\n")
+		for _, l := range logs {
+			mark := "·"
+			if len(l.Completed) > 0 && l.Completed[0] != "" {
+				mark = "✓"
+			}
+			sb.WriteString(fmt.Sprintf("  %s %s\n", l.Date, mark))
+		}
+		systemPrompt := "You are a habit coach. The user is asking about ONE specific habit. " +
+			"Look at the day-of-week patterns (when do they skip?), the streak trajectory " +
+			"(growing or resetting?), and propose ONE concrete change. Be brief — 4-6 lines max. " +
+			"No bullet lists; write as you'd speak."
+		resp, err := ai.Chat(systemPrompt, sb.String())
+		return habitAIInsightMsg{habit: habit, insight: strings.TrimSpace(resp), err: err}
+	}
 }
 
 // aiHabitCoach sends habit data to the LLM for pattern analysis.
@@ -262,11 +361,129 @@ func (ht *HabitTracker) Open(vaultRoot string) {
 	ht.activeDate = todayStr()
 	ht.searchQuery = ""
 	ht.statusMsg = ""
+	ht.categoryFilter = ""
+	ht.insightHabit = ""
+	ht.insightText = ""
 	ht.loadHabits()
 	ht.loadGoals()
 	ht.loadArchived()
 	ht.loadCategories()
 	ht.loadNotes()
+	ht.loadFrequencies()
+	ht.loadTimes()
+}
+
+// loadFrequencies restores per-habit cadence presets from disk.
+func (ht *HabitTracker) loadFrequencies() {
+	ht.frequencies = make(map[string]string)
+	if ht.vaultRoot == "" {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(ht.vaultRoot, ".granit", "habits-frequency.json"))
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(data, &ht.frequencies)
+	if ht.frequencies == nil {
+		ht.frequencies = make(map[string]string)
+	}
+}
+
+// saveFrequencies persists the per-habit cadence map.
+func (ht *HabitTracker) saveFrequencies() {
+	if ht.vaultRoot == "" {
+		return
+	}
+	dir := filepath.Join(ht.vaultRoot, ".granit")
+	_ = os.MkdirAll(dir, 0o755)
+	data, err := json.MarshalIndent(ht.frequencies, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := atomicWriteNote(filepath.Join(dir, "habits-frequency.json"), string(data)); err != nil {
+		ht.lastSaveErr = err
+	}
+}
+
+// loadTimes restores per-habit time-of-day reminders.
+func (ht *HabitTracker) loadTimes() {
+	ht.times = make(map[string]string)
+	if ht.vaultRoot == "" {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(ht.vaultRoot, ".granit", "habits-times.json"))
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(data, &ht.times)
+	if ht.times == nil {
+		ht.times = make(map[string]string)
+	}
+}
+
+// saveTimes persists the per-habit time map.
+func (ht *HabitTracker) saveTimes() {
+	if ht.vaultRoot == "" {
+		return
+	}
+	dir := filepath.Join(ht.vaultRoot, ".granit")
+	_ = os.MkdirAll(dir, 0o755)
+	data, err := json.MarshalIndent(ht.times, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := atomicWriteNote(filepath.Join(dir, "habits-times.json"), string(data)); err != nil {
+		ht.lastSaveErr = err
+	}
+}
+
+// freqIsRequired reports whether a habit's frequency demands
+// a check-in on the given date. Used by the streak walker so
+// "weekdays" habits don't break their streak on Saturday.
+// "daily" / unset always returns true.
+// "3x-week" returns true on every day (the streak math sums
+// per week instead of per day — see streakFor).
+func (ht HabitTracker) freqIsRequired(habit, date string) bool {
+	freq := ht.frequencies[habit]
+	if freq == "" || freq == "daily" {
+		return true
+	}
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return true
+	}
+	wd := t.Weekday()
+	switch freq {
+	case "weekdays":
+		return wd >= time.Monday && wd <= time.Friday
+	case "weekends":
+		return wd == time.Saturday || wd == time.Sunday
+	case "3x-week":
+		// Daily check-in not required; the streak counts in
+		// week-buckets. Treat every day as not-required so the
+		// daily-walk streak helper falls through; the actual
+		// streak number gets recomputed in recalcStreaks via
+		// the weekly path.
+		return false
+	}
+	return true
+}
+
+// currentPeriod maps the wall-clock hour to one of the four
+// time buckets used by the smart-reminder display so a habit
+// with time="morning" can light up between roughly 06:00 and
+// 11:00.
+func currentPeriod(now time.Time) string {
+	switch h := now.Hour(); {
+	case h < 11:
+		return "morning"
+	case h < 14:
+		return "midday"
+	case h < 18:
+		return "afternoon"
+	default:
+		return "evening"
+	}
 }
 
 // loadCategories restores the habit-name → category map from
@@ -450,6 +667,11 @@ func (ht HabitTracker) visibleHabits() []habitEntry {
 		if q != "" && !strings.Contains(strings.ToLower(h.Name), q) {
 			continue
 		}
+		// Category filter (T-cycle): when set, only habits in
+		// that category survive. Empty filter = no narrowing.
+		if ht.categoryFilter != "" && ht.categories[h.Name] != ht.categoryFilter {
+			continue
+		}
 		out = append(out, h)
 	}
 	switch ht.sortMode {
@@ -567,33 +789,151 @@ func (ht *HabitTracker) loadHabits() {
 func (ht *HabitTracker) recalcStreaks() {
 	today := todayStr()
 	for i := range ht.habits {
-		streak := 0
-		d, err := time.Parse("2006-01-02", today)
-		if err != nil {
+		ht.habits[i].Streak = ht.streakFor(ht.habits[i].Name, today)
+	}
+}
+
+// streakFor walks backward from `today` honouring the habit's
+// frequency. Daily habits count consecutive days completed.
+// Weekdays / weekends only require check-ins on those days
+// (skip days don't break). 3x-week sums per ISO week and
+// counts consecutive weeks meeting the target.
+func (ht HabitTracker) streakFor(habit, today string) int {
+	freq := ht.frequencies[habit]
+	if freq == "3x-week" {
+		return ht.streakWeekly(habit, today, 3)
+	}
+	d, err := time.Parse("2006-01-02", today)
+	if err != nil {
+		return 0
+	}
+	streak := 0
+	// Allow up to ~2 years of walk-back so a high streak doesn't
+	// run forever on stale data.
+	for guard := 0; guard < 730; guard++ {
+		ds := d.Format("2006-01-02")
+		// If this date isn't a required day for the cadence,
+		// skip it without breaking the streak.
+		if !ht.freqIsRequired(habit, ds) {
+			d = d.AddDate(0, 0, -1)
 			continue
 		}
-		for {
-			ds := d.Format("2006-01-02")
-			found := false
+		done := false
+		for _, log := range ht.logs {
+			if log.Date == ds {
+				for _, c := range log.Completed {
+					if c == habit {
+						done = true
+						break
+					}
+				}
+				break
+			}
+		}
+		if !done {
+			break
+		}
+		streak++
+		d = d.AddDate(0, 0, -1)
+	}
+	return streak
+}
+
+// streakWeekly counts consecutive ISO weeks ending in the
+// week containing `today` where the habit was completed at
+// least `target` times. Used for the "3x-week" frequency.
+func (ht HabitTracker) streakWeekly(habit, today string, target int) int {
+	t, err := time.Parse("2006-01-02", today)
+	if err != nil {
+		return 0
+	}
+	// Walk back week-by-week. Stop after 104 weeks (2 years).
+	streak := 0
+	cursor := t
+	for guard := 0; guard < 104; guard++ {
+		count := 0
+		// Count completions in the 7 days ending at cursor.
+		for offset := 0; offset < 7; offset++ {
+			d := cursor.AddDate(0, 0, -offset).Format("2006-01-02")
 			for _, log := range ht.logs {
-				if log.Date == ds {
+				if log.Date == d {
 					for _, c := range log.Completed {
-						if c == ht.habits[i].Name {
-							found = true
+						if c == habit {
+							count++
 							break
 						}
 					}
 					break
 				}
 			}
-			if !found {
-				break
-			}
-			streak++
-			d = d.AddDate(0, 0, -1)
 		}
-		ht.habits[i].Streak = streak
+		if count < target {
+			break
+		}
+		streak++
+		cursor = cursor.AddDate(0, 0, -7)
 	}
+	return streak
+}
+
+// weeklySparkline returns the colorised 12-block sparkline for
+// the last 12 weeks of a habit. Each cell uses an intensity
+// glyph (▁▂▃▄▅▆▇█) sized by completion count, color graded
+// from grey (0) → green (target). Compact (12 cells) so it
+// fits in the row alongside the existing 7-day blocks.
+func (ht HabitTracker) weeklySparkline(habit string) string {
+	weeks := ht.weeklyCompletions(habit)
+	glyphs := []string{"·", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
+	var b strings.Builder
+	b.WriteString(" ")
+	for _, count := range weeks {
+		idx := count
+		if idx >= len(glyphs) {
+			idx = len(glyphs) - 1
+		}
+		var col lipgloss.Color
+		switch {
+		case count == 0:
+			col = surface1
+		case count <= 2:
+			col = peach
+		case count <= 4:
+			col = yellow
+		default:
+			col = green
+		}
+		b.WriteString(lipgloss.NewStyle().Foreground(col).Render(glyphs[idx]))
+	}
+	return b.String()
+}
+
+// weeklyCompletions returns the per-week completion count for
+// the last 12 weeks (oldest to newest). Used by the per-habit
+// sparkline rendered in the row.
+func (ht HabitTracker) weeklyCompletions(habit string) []int {
+	now := time.Now()
+	weeks := make([]int, 12)
+	// idx 11 is the current week, 0 is 11 weeks ago.
+	for w := 0; w < 12; w++ {
+		weekEnd := now.AddDate(0, 0, -7*(11-w))
+		count := 0
+		for offset := 0; offset < 7; offset++ {
+			d := weekEnd.AddDate(0, 0, -offset).Format("2006-01-02")
+			for _, log := range ht.logs {
+				if log.Date == d {
+					for _, c := range log.Completed {
+						if c == habit {
+							count++
+							break
+						}
+					}
+					break
+				}
+			}
+		}
+		weeks[w] = count
+	}
+	return weeks
 }
 
 func (ht *HabitTracker) saveHabits() {
@@ -1041,6 +1381,15 @@ func (ht HabitTracker) Update(msg tea.Msg) (HabitTracker, tea.Cmd) {
 			ht.showCoach = true
 		}
 		return ht, nil
+	case habitAIInsightMsg:
+		ht.aiPending = false
+		ht.insightHabit = msg.habit
+		if msg.err != nil {
+			ht.insightText = "AI error: " + msg.err.Error()
+		} else {
+			ht.insightText = msg.insight
+		}
+		return ht, nil
 	case tea.KeyMsg:
 		return ht.updateKeys(msg)
 	}
@@ -1285,6 +1634,120 @@ func (ht HabitTracker) updateKeys(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 			if ht.cursor < len(vis) {
 				ht.inputMode = habitInputNote
 				ht.inputValue = ht.notes[noteKey(vis[ht.cursor].Name, ht.activeDate)]
+			}
+		}
+
+	// Cycle frequency target: daily → weekdays → weekends →
+	// 3x-week → daily. Recalc streaks afterwards because the
+	// new cadence changes the math.
+	case "f":
+		if ht.tab == 0 {
+			vis := ht.visibleHabits()
+			if ht.cursor < len(vis) {
+				name := vis[ht.cursor].Name
+				cycle := []string{"daily", "weekdays", "weekends", "3x-week"}
+				cur := ht.frequencies[name]
+				if cur == "" {
+					cur = "daily"
+				}
+				next := "daily"
+				for i, c := range cycle {
+					if c == cur {
+						next = cycle[(i+1)%len(cycle)]
+						break
+					}
+				}
+				if next == "daily" {
+					delete(ht.frequencies, name)
+				} else {
+					ht.frequencies[name] = next
+				}
+				ht.saveFrequencies()
+				ht.recalcStreaks()
+				ht.statusMsg = "Frequency: " + next
+			}
+		}
+
+	// Cycle reminder time-of-day: morning → midday →
+	// afternoon → evening → cleared. Powers the "DUE NOW"
+	// chip + dashboard widget surfacing of due habits.
+	case "r":
+		if ht.tab == 0 {
+			vis := ht.visibleHabits()
+			if ht.cursor < len(vis) {
+				name := vis[ht.cursor].Name
+				cycle := []string{"morning", "midday", "afternoon", "evening"}
+				cur := ht.times[name]
+				next := "morning"
+				if cur != "" {
+					for i, c := range cycle {
+						if c == cur {
+							if i+1 < len(cycle) {
+								next = cycle[i+1]
+							} else {
+								next = ""
+							}
+							break
+						}
+					}
+				}
+				if next == "" {
+					delete(ht.times, name)
+					ht.statusMsg = "Reminder cleared"
+				} else {
+					ht.times[name] = next
+					ht.statusMsg = "Reminder: " + next
+				}
+				ht.saveTimes()
+			}
+		}
+
+	// Cycle category filter through every category in use.
+	// Composes with searchQuery so power users can drill down
+	// "Health + 'run'" in two keystrokes.
+	case "T":
+		if ht.tab == 0 {
+			cats := ht.uniqueCategories()
+			if len(cats) == 0 {
+				ht.statusMsg = "No categorised habits"
+				break
+			}
+			next := ""
+			if ht.categoryFilter == "" {
+				next = cats[0]
+			} else {
+				for i, c := range cats {
+					if c == ht.categoryFilter {
+						if i+1 < len(cats) {
+							next = cats[i+1]
+						}
+						break
+					}
+				}
+			}
+			ht.categoryFilter = next
+			if next == "" {
+				ht.statusMsg = "Category filter cleared"
+			} else {
+				ht.statusMsg = "Filter: " + next
+			}
+			ht.cursor = 0
+		}
+
+	// AI insight on the cursor habit — last 30 days only.
+	// Uses the existing per-habit AI coach plumbing but
+	// scopes the prompt to one habit so the response is
+	// actionable ("you skipped X on Mondays" beats "your
+	// completion rate is 73%").
+	case "i":
+		if ht.tab == 0 && !ht.aiPending && ht.ai.Provider != "local" && ht.ai.Provider != "" {
+			vis := ht.visibleHabits()
+			if ht.cursor < len(vis) {
+				name := vis[ht.cursor].Name
+				ht.insightHabit = name
+				ht.insightText = "Asking AI about " + name + "…"
+				ht.aiPending = true
+				return ht, ht.aiHabitInsight(name)
 			}
 		}
 	}
@@ -1750,7 +2213,34 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 		streak := ht.streakBlocks(h.Name)
 		curNum := streakStyle.Render(fmt.Sprintf(" %d🔥", h.Streak))
 		longNum := longestStyle.Render(fmt.Sprintf(" max %d", ht.longestStreak(h.Name)))
-		line := cursor + checkbox + " " + noteMarker + nameStyle.Render(PadRight(name, nameW)) + " " + streak + curNum + longNum
+
+		// Frequency chip — only show when non-default ("daily"
+		// implied means every day, no chip needed).
+		freqChip := ""
+		if f := ht.frequencies[h.Name]; f != "" && f != "daily" {
+			freqChip = " " + lipgloss.NewStyle().Foreground(crust).Background(sapphire).Padding(0, 1).Render(f)
+		}
+
+		// Time chip — current period gets a green "DUE NOW"
+		// flair when the habit is set for that period AND
+		// hasn't been completed today.
+		timeChip := ""
+		if t := ht.times[h.Name]; t != "" {
+			if t == currentPeriod(time.Now()) && !ht.isCompletedOn(h.Name, todayStr()) {
+				timeChip = " " + lipgloss.NewStyle().Foreground(crust).Background(green).Bold(true).Padding(0, 1).
+					Render("DUE " + t)
+			} else {
+				timeChip = " " + lipgloss.NewStyle().Foreground(overlay1).Render("@" + t)
+			}
+		}
+
+		// 12-week sparkline — last 12 weeks of completion
+		// counts, each cell colored by intensity. Power users
+		// can spot a falling-off-cliff trend in one glance.
+		spark := ht.weeklySparkline(h.Name)
+
+		line := cursor + checkbox + " " + noteMarker + nameStyle.Render(PadRight(name, nameW)) +
+			" " + streak + curNum + longNum + spark + freqChip + timeChip
 		lines = append(lines, line)
 	}
 
@@ -1762,6 +2252,25 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 		if note := ht.notes[k]; note != "" {
 			lines = append(lines, "")
 			lines = append(lines, "  "+lipgloss.NewStyle().Foreground(lavender).Italic(true).Render("✎ "+note))
+		}
+	}
+
+	// Per-habit AI insight panel — shown below the active note
+	// when 'i' was pressed on a habit. Stays visible across
+	// renders until the user navigates away or asks for a new
+	// insight on a different habit.
+	if ht.insightHabit != "" && ht.insightText != "" {
+		lines = append(lines, "")
+		header := lipgloss.NewStyle().Foreground(mauve).Bold(true).
+			Render("  💡 Insight: " + ht.insightHabit)
+		lines = append(lines, header)
+		body := lipgloss.NewStyle().Foreground(lavender).Italic(true)
+		for _, line := range strings.Split(ht.insightText, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			lines = append(lines, "  "+body.Render(TruncateDisplay(line, innerW-4)))
 		}
 	}
 
@@ -1987,9 +2496,103 @@ func (ht HabitTracker) viewStats(innerW int) string {
 			dateLine += DimStyle.Render(fmt.Sprintf("%2d", d.Day())) + " "
 		}
 		lines = append(lines, dateLine)
+		lines = append(lines, "")
+	}
+
+	// 90-day heatmap (GitHub-style 7×13 grid). Each cell is a
+	// day; intensity = total habits completed that day. Power
+	// users spot patterns ("I do nothing on Saturdays") without
+	// drilling into individual rows. The grid reads top-to-
+	// bottom = Sun..Sat, left-to-right = oldest to newest.
+	if len(ht.habits) > 0 {
+		lines = append(lines, sectionStyle.Render("  Last 90 Days (heatmap)"))
+		lines = append(lines, DimStyle.Render("  "+strings.Repeat("─", 30)))
+		lines = append(lines, ht.heatmap90())
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// heatmap90 renders the 7×13-cell GitHub-style heatmap. Each
+// cell represents one day in the last 90 days, color graded
+// by total completions. Returns the joined-lines block ready
+// for direct WriteString.
+func (ht HabitTracker) heatmap90() string {
+	now := time.Now()
+	days := 90
+	// Build a date → completion-count map for fast lookup.
+	counts := make(map[string]int)
+	cutoff := now.AddDate(0, 0, -days).Format("2006-01-02")
+	for _, log := range ht.logs {
+		if log.Date >= cutoff {
+			counts[log.Date] = len(log.Completed)
+		}
+	}
+	// Find max for color grading.
+	maxCount := 0
+	for _, c := range counts {
+		if c > maxCount {
+			maxCount = c
+		}
+	}
+	if maxCount == 0 {
+		return DimStyle.Render("  No completions in the last 90 days")
+	}
+	// 7 rows = days of the week (Sun row 0, Sat row 6).
+	// Cols = enough to cover 90 days, ~13.
+	cols := 13
+	rows := 7
+	cellGlyph := "■"
+	style := func(count int) lipgloss.Color {
+		if count == 0 {
+			return surface1
+		}
+		ratio := float64(count) / float64(maxCount)
+		switch {
+		case ratio >= 0.75:
+			return green
+		case ratio >= 0.5:
+			return yellow
+		case ratio >= 0.25:
+			return peach
+		default:
+			return overlay1
+		}
+	}
+	// Today is the rightmost cell. Walk backward filling the
+	// grid right-to-left so today lands at (todayDOW, cols-1).
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	gridDate := make([][]string, rows)
+	for r := 0; r < rows; r++ {
+		gridDate[r] = make([]string, cols)
+	}
+	d := today
+	for col := cols - 1; col >= 0; col-- {
+		for row := 6; row >= 0; row-- {
+			if d.Before(today.AddDate(0, 0, -days)) {
+				continue
+			}
+			gridDate[row][col] = d.Format("2006-01-02")
+			d = d.AddDate(0, 0, -1)
+		}
+	}
+	// Render row by row.
+	dayLabels := []string{"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"}
+	var b strings.Builder
+	for r := 0; r < rows; r++ {
+		b.WriteString("  " + DimStyle.Render(dayLabels[r]) + " ")
+		for c := 0; c < cols; c++ {
+			date := gridDate[r][c]
+			if date == "" {
+				b.WriteString("  ")
+				continue
+			}
+			b.WriteString(lipgloss.NewStyle().Foreground(style(counts[date])).Render(cellGlyph))
+			b.WriteString(" ")
+		}
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func (ht HabitTracker) renderHelp() string {
@@ -1999,9 +2602,10 @@ func (ht HabitTracker) renderHelp() string {
 		pairs = []struct{ Key, Desc string }{
 			{"Tab/1-2", "switch"}, {"j/k", "move"}, {"Space", "toggle"},
 			{"n", "new"}, {"d", "delete"}, {"A", "archive"}, {"H", "show arch"},
-			{"g", "category"}, {"N", "note"},
+			{"g", "category"}, {"T", "filter cat"}, {"N", "note"},
+			{"f", "frequency"}, {"r", "reminder"}, {"i", "AI insight"},
 			{"<", "prev day"}, {">", "next day"}, {"t", "today"},
-			{"s", "sort"}, {"/", "filter"}, {"c", "clear"}, {"Esc", "close"},
+			{"s", "sort"}, {"/", "search"}, {"c", "clear"}, {"Esc", "close"},
 		}
 	case 1:
 		pairs = []struct{ Key, Desc string }{
