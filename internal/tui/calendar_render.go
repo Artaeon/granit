@@ -462,16 +462,20 @@ func (c Calendar) viewWeek() string {
 	b.WriteString("  " + botBorder + "\n")
 
 	// ── All-day events row ─────────────────────────────────────────────────
+	// Suppressed entirely when the events layer is off so the
+	// "focus on tasks/blocks" workflow has zero event chrome.
 	hasAllDay := false
-	for di := 0; di < 7; di++ {
-		if hasAllDay {
-			break
-		}
-		day := weekStart.AddDate(0, 0, di)
-		for _, ev := range c.eventsForDate(day) {
-			if ev.AllDay {
-				hasAllDay = true
+	if c.showEventsLayer {
+		for di := 0; di < 7; di++ {
+			if hasAllDay {
 				break
+			}
+			day := weekStart.AddDate(0, 0, di)
+			for _, ev := range c.eventsForDate(day) {
+				if ev.AllDay {
+					hasAllDay = true
+					break
+				}
 			}
 		}
 	}
@@ -534,38 +538,49 @@ func (c Calendar) viewWeek() string {
 		dateStr := day.Format("2006-01-02")
 		var entries []weekEntry
 
-		for _, ev := range c.eventsForDate(day) {
-			if ev.AllDay {
-				continue
+		// Layer-toggle gates: when a layer is off, its source
+		// drops out of the week grid entirely so the user can
+		// focus on just events / just blocks. showEventsLayer
+		// gates calendar events; showPlannerLayer gates planner
+		// blocks. Tasks layer doesn't render in the time grid
+		// (tasks appear only in agenda/day-summary), so the
+		// task gate fires only in agenda + 1day's task list.
+		if c.showEventsLayer {
+			for _, ev := range c.eventsForDate(day) {
+				if ev.AllDay {
+					continue
+				}
+				startMin := ev.Date.Hour()*60 + ev.Date.Minute()
+				endMin := startMin + 60
+				if !ev.EndDate.IsZero() {
+					endMin = ev.EndDate.Hour()*60 + ev.EndDate.Minute()
+					if endMin <= startMin {
+						endMin = startMin + 60
+					}
+				}
+				entries = append(entries, weekEntry{
+					kind: "event", title: ev.Title, color: calEventColor(ev),
+					startMin: startMin, endMin: endMin, location: ev.Location,
+					dimmed: !c.matchesSearch(ev.Title, ev.Location, ev.Description),
+				})
 			}
-			startMin := ev.Date.Hour()*60 + ev.Date.Minute()
-			endMin := startMin + 60
-			if !ev.EndDate.IsZero() {
-				endMin = ev.EndDate.Hour()*60 + ev.EndDate.Minute()
+		}
+
+		if c.showPlannerLayer {
+			for _, pb := range c.plannerBlocks[dateStr] {
+				sH, sM := parseHHMM(pb.StartTime)
+				eH, eM := parseHHMM(pb.EndTime)
+				startMin := sH*60 + sM
+				endMin := eH*60 + eM
 				if endMin <= startMin {
 					endMin = startMin + 60
 				}
+				entries = append(entries, weekEntry{
+					kind: "planner", title: pb.Text, color: plannerBlockColor(pb.BlockType, pb.Done),
+					startMin: startMin, endMin: endMin,
+					dimmed: !c.matchesSearch(pb.Text),
+				})
 			}
-			entries = append(entries, weekEntry{
-				kind: "event", title: ev.Title, color: calEventColor(ev),
-				startMin: startMin, endMin: endMin, location: ev.Location,
-				dimmed: !c.matchesSearch(ev.Title, ev.Location, ev.Description),
-			})
-		}
-
-		for _, pb := range c.plannerBlocks[dateStr] {
-			sH, sM := parseHHMM(pb.StartTime)
-			eH, eM := parseHHMM(pb.EndTime)
-			startMin := sH*60 + sM
-			endMin := eH*60 + eM
-			if endMin <= startMin {
-				endMin = startMin + 60
-			}
-			entries = append(entries, weekEntry{
-				kind: "planner", title: pb.Text, color: plannerBlockColor(pb.BlockType, pb.Done),
-				startMin: startMin, endMin: endMin,
-				dimmed: !c.matchesSearch(pb.Text),
-			})
 		}
 		allDayEntries[di] = dayEntries{events: entries}
 	}
@@ -718,9 +733,16 @@ func (c Calendar) viewWeek() string {
 
 				// Choose the cell background: today gets a subtle green tint,
 				// others use the theme base color (clean, not black).
+				// Non-working hours get a muted darker tint (mantle) so the
+				// eye snaps to working time without losing the half-hour
+				// grid as visual scaffolding.
+				workStart, workEnd := c.effectiveWorkHours()
+				inWorkHours := hour >= workStart && hour < workEnd
 				var cellBg lipgloss.Color
 				if isToday {
 					cellBg = surface0 // slightly lighter than base for today
+				} else if !inWorkHours {
+					cellBg = mantle // muted: outside working hours
 				} else {
 					cellBg = tb.bg // theme base
 				}
@@ -997,39 +1019,47 @@ func (c *Calendar) rebuildAgendaItems() {
 		// Match across title + location + description so power
 		// users can /zoom for online meetings without caring
 		// whether the URL lives in the description or location.
-		for _, ev := range c.eventsForDate(day) {
-			if !c.matchesSearch(ev.Title, ev.Location, ev.Description) {
-				continue
+		// Layer toggles also gate sources here so the agenda
+		// view stays in sync with the week-grid layer state.
+		if c.showEventsLayer {
+			for _, ev := range c.eventsForDate(day) {
+				if !c.matchesSearch(ev.Title, ev.Location, ev.Description) {
+					continue
+				}
+				items = append(items, agendaItem{
+					itemType: "event",
+					dateStr:  dateStr,
+					eventID:  ev.ID,
+				})
 			}
-			items = append(items, agendaItem{
-				itemType: "event",
-				dateStr:  dateStr,
-				eventID:  ev.ID,
-			})
 		}
 
 		// Add planner blocks for this date
-		for pi, blk := range c.plannerBlocks[dateStr] {
-			if !c.matchesSearch(blk.Text) {
-				continue
+		if c.showPlannerLayer {
+			for pi, blk := range c.plannerBlocks[dateStr] {
+				if !c.matchesSearch(blk.Text) {
+					continue
+				}
+				items = append(items, agendaItem{
+					itemType: "planner",
+					dateStr:  dateStr,
+					index:    pi,
+				})
 			}
-			items = append(items, agendaItem{
-				itemType: "planner",
-				dateStr:  dateStr,
-				index:    pi,
-			})
 		}
 
 		// Add tasks for this date
-		for ti, t := range c.tasks[dateStr] {
-			if !c.matchesSearch(t.Text) {
-				continue
+		if c.showTasksLayer {
+			for ti, t := range c.tasks[dateStr] {
+				if !c.matchesSearch(t.Text) {
+					continue
+				}
+				items = append(items, agendaItem{
+					itemType: "task",
+					dateStr:  dateStr,
+					index:    ti,
+				})
 			}
-			items = append(items, agendaItem{
-				itemType: "task",
-				dateStr:  dateStr,
-				index:    ti,
-			})
 		}
 		sectionCount++
 	}
@@ -1130,15 +1160,19 @@ func (c Calendar) view1Day() string {
 	}
 
 	// ── All-day events ─────────────────────────────────────────────────────
+	// Skipped when the events layer is off so a "tasks/blocks
+	// only" focus stays clean.
 	hasAllDay := false
-	for _, ev := range dayEvents {
-		if ev.AllDay {
-			if !hasAllDay {
-				hasAllDay = true
-				b.WriteString("  " + lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("All Day") + "  ")
+	if c.showEventsLayer {
+		for _, ev := range dayEvents {
+			if ev.AllDay {
+				if !hasAllDay {
+					hasAllDay = true
+					b.WriteString("  " + lipgloss.NewStyle().Foreground(yellow).Bold(true).Render("All Day") + "  ")
+				}
+				pill := lipgloss.NewStyle().Foreground(crust).Background(calEventColor(ev)).Bold(true).Padding(0, 1).Render(ev.Title)
+				b.WriteString(pill + " ")
 			}
-			pill := lipgloss.NewStyle().Foreground(crust).Background(calEventColor(ev)).Bold(true).Padding(0, 1).Render(ev.Title)
-			b.WriteString(pill + " ")
 		}
 	}
 	if hasAllDay {
@@ -1195,36 +1229,40 @@ func (c Calendar) view1Day() string {
 		location string
 	}
 	var entries []activeEntry
-	for _, ev := range dayEvents {
-		if ev.AllDay {
-			continue
+	if c.showEventsLayer {
+		for _, ev := range dayEvents {
+			if ev.AllDay {
+				continue
+			}
+			startMin := ev.Date.Hour()*60 + ev.Date.Minute()
+			endMin := startMin + 60
+			if !ev.EndDate.IsZero() {
+				endMin = ev.EndDate.Hour()*60 + ev.EndDate.Minute()
+				if endMin <= startMin {
+					endMin = startMin + 60
+				}
+			}
+			entries = append(entries, activeEntry{
+				kind: "event", title: ev.Title, color: calEventColor(ev),
+				startMin: startMin, endMin: endMin, location: ev.Location,
+			})
 		}
-		startMin := ev.Date.Hour()*60 + ev.Date.Minute()
-		endMin := startMin + 60
-		if !ev.EndDate.IsZero() {
-			endMin = ev.EndDate.Hour()*60 + ev.EndDate.Minute()
+	}
+	if c.showPlannerLayer {
+		for _, pb := range c.plannerBlocks[dateStr] {
+			var sH, sM, eH, eM int
+			_, _ = fmt.Sscanf(pb.StartTime, "%d:%d", &sH, &sM)
+			_, _ = fmt.Sscanf(pb.EndTime, "%d:%d", &eH, &eM)
+			startMin := sH*60 + sM
+			endMin := eH*60 + eM
 			if endMin <= startMin {
 				endMin = startMin + 60
 			}
+			entries = append(entries, activeEntry{
+				kind: "planner", title: pb.Text, color: plannerBlockColor(pb.BlockType, pb.Done),
+				startMin: startMin, endMin: endMin,
+			})
 		}
-		entries = append(entries, activeEntry{
-			kind: "event", title: ev.Title, color: calEventColor(ev),
-			startMin: startMin, endMin: endMin, location: ev.Location,
-		})
-	}
-	for _, pb := range c.plannerBlocks[dateStr] {
-		var sH, sM, eH, eM int
-		_, _ = fmt.Sscanf(pb.StartTime, "%d:%d", &sH, &sM)
-		_, _ = fmt.Sscanf(pb.EndTime, "%d:%d", &eH, &eM)
-		startMin := sH*60 + sM
-		endMin := eH*60 + eM
-		if endMin <= startMin {
-			endMin = startMin + 60
-		}
-		entries = append(entries, activeEntry{
-			kind: "planner", title: pb.Text, color: plannerBlockColor(pb.BlockType, pb.Done),
-			startMin: startMin, endMin: endMin,
-		})
 	}
 
 	contentW := width - 14
@@ -1326,7 +1364,7 @@ func (c Calendar) view1Day() string {
 	}
 
 	// ── Tasks due this day ─────────────────────────────────────────────────
-	if tasks, ok := c.tasks[dateStr]; ok && len(tasks) > 0 {
+	if tasks, ok := c.tasks[dateStr]; ok && len(tasks) > 0 && c.showTasksLayer {
 		b.WriteString("\n")
 		taskHeader := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  Tasks")
 		// Progress indicator
@@ -1459,7 +1497,14 @@ func (c Calendar) viewAgenda() string {
 			section.items = append(section.items, -1)
 		}
 
-		// Events (interactive — can be selected and deleted)
+		// Events (interactive — can be selected and deleted).
+		// Layer-toggle guards: when an event layer is off, drop
+		// the whole loop so the visual rendering matches the
+		// agenda-item index list (otherwise cursor positions
+		// would mis-align with displayed rows).
+		if !c.showEventsLayer {
+			dayEvents = nil
+		}
 		for _, ev := range dayEvents {
 			timeStr := "all day"
 			if !ev.AllDay {
@@ -1499,6 +1544,9 @@ func (c Calendar) viewAgenda() string {
 		}
 
 		// Planner blocks
+		if !c.showPlannerLayer {
+			dayPlannerBlocks = nil
+		}
 		for _, pb := range dayPlannerBlocks {
 			timeRange := pb.StartTime + "-" + pb.EndTime
 			tag := plannerBlockTag(pb.BlockType)
@@ -1515,6 +1563,9 @@ func (c Calendar) viewAgenda() string {
 		}
 
 		// Tasks with priority coloring (interactive)
+		if !c.showTasksLayer {
+			dayTasks = nil
+		}
 		for ti, task := range dayTasks {
 			itemIdx := len(items)
 			items = append(items, agendaItem{
@@ -2173,12 +2224,28 @@ func (c Calendar) renderMonthCell(
 ) (string, string, string) {
 	numStr := fmt.Sprintf("%2d", day)
 
+	// Today's number renders louder so it pops at a glance:
+	// underlined + bold + green bg even outside the cursor.
+	// When cursor is also on today, the cursor's mauve bg
+	// composes ON TOP visually because the cursor branch
+	// runs first below — but we want both signals readable,
+	// so today + cursor combined renders mauve-bg with a
+	// green underline (sticking out past the bg), matching
+	// "this is the cursor AND it's today" intuition.
 	var styled string
 	switch {
+	case isToday && isCursor:
+		// Compose: mauve cursor pill + green underline so both
+		// signals survive (otherwise the cursor would erase the
+		// today indicator entirely on the day they coincide).
+		styled = lipgloss.NewStyle().Background(mauve).Foreground(crust).Bold(true).Underline(true).Render(numStr)
 	case isToday:
-		styled = lipgloss.NewStyle().Background(green).Foreground(crust).Bold(true).Render(numStr)
+		// Loud today: green bg + bold + underline so the user
+		// can spot today in a single screen-sweep without
+		// hunting for "the green cell".
+		styled = lipgloss.NewStyle().Background(green).Foreground(crust).Bold(true).Underline(true).Render(numStr)
 	case isCursor:
-		styled = lipgloss.NewStyle().Background(peach).Foreground(crust).Bold(true).Render(numStr)
+		styled = lipgloss.NewStyle().Background(mauve).Foreground(crust).Bold(true).Render(numStr)
 	case !currentMonth || dim:
 		styled = DimStyle.Render(numStr)
 	case isWeekend:
@@ -2205,11 +2272,22 @@ func (c Calendar) renderMonthCell(
 			badge = " " + lipgloss.NewStyle().Foreground(yellow).Render(fmt.Sprintf("%d", pending))
 		}
 	}
-	numLine := padToCell(" " + styled + badge)
+	// Today gets a green left-edge bar across all 3 cell rows
+	// so the eye sees a vertical green ring framing today —
+	// this lets the user find today instantly in a 6-week month
+	// view even when the cursor is elsewhere and there are
+	// events on every other day of the week. Bar uses ▎ (left
+	// one-eighth block) which sits in the leading space slot
+	// without bumping the pill columns.
+	leadChar := " "
+	if isToday {
+		leadChar = lipgloss.NewStyle().Foreground(green).Bold(true).Render("▎")
+	}
+	numLine := padToCell(leadChar + styled + badge)
 
 	// Pill rows: only render for current-month, non-dim cells.
-	pill1 := strings.Repeat(" ", monthCellWidth)
-	pill2 := strings.Repeat(" ", monthCellWidth)
+	pill1 := padToCell(leadChar)
+	pill2 := padToCell(leadChar)
 	if currentMonth && !dim && len(evs) > 0 {
 		// Sort by time-of-day so morning events appear first.
 		sorted := append([]CalendarEvent(nil), evs...)
@@ -2223,6 +2301,26 @@ func (c Calendar) renderMonthCell(
 		case len(sorted) > 2:
 			pill2 = renderMorePill(len(sorted) - 1)
 		}
+		// Today's left-edge ring overrides the pill's leading
+		// space so the green bar runs uninterrupted through all
+		// three rows of the cell.
+		if isToday {
+			pill1 = applyTodayLeadBar(pill1)
+			pill2 = applyTodayLeadBar(pill2)
+		}
 	}
 	return numLine, pill1, pill2
+}
+
+// applyTodayLeadBar replaces the leading space of a pill row
+// with the green ▎ character so today's vertical edge ring is
+// continuous across all three cell rows. Pills are rendered as
+// " <colored-pill>"; we slice off the first byte (single ASCII
+// space) and prepend the styled bar.
+func applyTodayLeadBar(pill string) string {
+	if !strings.HasPrefix(pill, " ") {
+		return pill
+	}
+	bar := lipgloss.NewStyle().Foreground(green).Bold(true).Render("▎")
+	return bar + pill[1:]
 }

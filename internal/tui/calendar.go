@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -224,6 +226,70 @@ type Calendar struct {
 	// calendar bindings — without it the 30+ keys are
 	// undiscoverable. Any key dismisses.
 	showingHelp bool
+
+	// Working-hours config — drives findFreeSlots and the
+	// non-working-hours background tint in the week grid.
+	// Persisted to .granit/calendar-config.json so power users
+	// don't have to retune every launch. Sensible defaults
+	// (09:00–18:00) apply when zero/unset.
+	workStartHour int
+	workEndHour   int
+
+	// Layer toggles — let the user focus on just events, just
+	// tasks, or just planner blocks at a glance. Default to
+	// all-on. Persisted alongside working hours so the chosen
+	// view survives restarts. NOTE: showEvents above is the
+	// pre-existing event sub-panel toggle; these layer toggles
+	// are independent and gate which sources contribute to the
+	// week grid + agenda views.
+	showEventsLayer   bool
+	showTasksLayer    bool
+	showPlannerLayer  bool
+
+	// Working-hours / layer-toggle prompts. 'H' opens a small
+	// input bar to set hours ("9-18" or "08:00-19:00"); 'L'
+	// opens a layer-toggle prompt where E/T/B flip each layer.
+	editingWorkHours bool
+	workHoursBuf     string
+	layerPrompt      bool
+
+	// Event templates — power users have recurring meeting
+	// types ("1:1 weekly", "standup", "deep work block"). 'X'
+	// saves the event under the cursor as a template; 'T'
+	// opens the picker; selecting one seeds the new-event form
+	// the next time the user presses 'a'. Persisted to
+	// .granit/calendar-templates.json.
+	eventTemplates       []eventTemplate
+	templatePicker       bool
+	templatePickerCursor int
+	templateSavePrompt   bool   // 'X' opened: prompt for template name
+	templateNameBuf      string // template name being typed during save
+	templateSaveSource   *eventTemplate
+	pendingTemplateSeed  *eventTemplate // consumed on next 'a'
+}
+
+// eventTemplate is a reusable event blueprint. Only the Name +
+// Title are required; the rest are optional pre-fills for the
+// new-event form. Persisted to .granit/calendar-templates.json.
+type eventTemplate struct {
+	Name        string `json:"name"`
+	Title       string `json:"title"`
+	DurationMin int    `json:"duration_min,omitempty"`
+	Location    string `json:"location,omitempty"`
+	Color       string `json:"color,omitempty"`
+	Recurrence  string `json:"recurrence,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// calendarConfig is the on-disk schema for working-hours +
+// layer toggles. Kept as a flat struct so future fields can
+// land via JSON additive merges.
+type calendarConfig struct {
+	WorkStartHour    int  `json:"work_start_hour"`
+	WorkEndHour      int  `json:"work_end_hour"`
+	ShowEventsLayer  bool `json:"show_events_layer"`
+	ShowTasksLayer   bool `json:"show_tasks_layer"`
+	ShowPlannerLayer bool `json:"show_planner_layer"`
 }
 
 // freeSlot is a contiguous block of time with no events or
@@ -239,17 +305,142 @@ func NewCalendar() Calendar {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	return Calendar{
-		cursor:         today,
-		viewing:        today,
-		today:          today,
-		dailyNoteDates: make(map[string]bool),
-		tasks:          make(map[string][]TaskItem),
-		plannerBlocks:  make(map[string][]PlannerBlock),
+		cursor:           today,
+		viewing:          today,
+		today:            today,
+		dailyNoteDates:   make(map[string]bool),
+		tasks:            make(map[string][]TaskItem),
+		plannerBlocks:    make(map[string][]PlannerBlock),
+		// Layers default ON so behavior matches pre-toggle world
+		// for fresh installs; loadCalendarConfig overrides if
+		// the user persisted explicit values last session.
+		showEventsLayer:  true,
+		showTasksLayer:   true,
+		showPlannerLayer: true,
 	}
 }
 
 func (c *Calendar) SetActiveGoals(goals []Goal) { c.activeGoals = goals }
-func (c *Calendar) SetVaultRoot(root string)     { c.vaultRoot = root }
+func (c *Calendar) SetVaultRoot(root string) {
+	c.vaultRoot = root
+	c.loadCalendarConfig()
+	c.loadEventTemplates()
+}
+
+// loadCalendarConfig restores working-hours + layer toggles from
+// .granit/calendar-config.json. Missing file silently falls back
+// to defaults (09:00–18:00 work, all layers on).
+func (c *Calendar) loadCalendarConfig() {
+	if c.vaultRoot == "" {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(c.vaultRoot, ".granit", "calendar-config.json"))
+	if err != nil {
+		return
+	}
+	var cfg calendarConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return
+	}
+	c.workStartHour = cfg.WorkStartHour
+	c.workEndHour = cfg.WorkEndHour
+	c.showEventsLayer = cfg.ShowEventsLayer
+	c.showTasksLayer = cfg.ShowTasksLayer
+	c.showPlannerLayer = cfg.ShowPlannerLayer
+}
+
+// saveCalendarConfig persists working-hours + layer toggles. The
+// sidecar lives in .granit/ (not the vault) so it doesn't pollute
+// markdown listings or sync conflicts.
+func (c *Calendar) saveCalendarConfig() {
+	if c.vaultRoot == "" {
+		return
+	}
+	dir := filepath.Join(c.vaultRoot, ".granit")
+	_ = os.MkdirAll(dir, 0o755)
+	cfg := calendarConfig{
+		WorkStartHour:    c.workStartHour,
+		WorkEndHour:      c.workEndHour,
+		ShowEventsLayer:  c.showEventsLayer,
+		ShowTasksLayer:   c.showTasksLayer,
+		ShowPlannerLayer: c.showPlannerLayer,
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = atomicWriteNote(filepath.Join(dir, "calendar-config.json"), string(data))
+}
+
+// loadEventTemplates restores the user's named event templates.
+// Missing file leaves the slice nil — picker shows an empty state.
+func (c *Calendar) loadEventTemplates() {
+	if c.vaultRoot == "" {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(c.vaultRoot, ".granit", "calendar-templates.json"))
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(data, &c.eventTemplates)
+}
+
+// saveEventTemplates persists the templates list.
+func (c *Calendar) saveEventTemplates() {
+	if c.vaultRoot == "" {
+		return
+	}
+	dir := filepath.Join(c.vaultRoot, ".granit")
+	_ = os.MkdirAll(dir, 0o755)
+	data, err := json.MarshalIndent(c.eventTemplates, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = atomicWriteNote(filepath.Join(dir, "calendar-templates.json"), string(data))
+}
+
+// effectiveWorkHours returns the working-hour range in use,
+// falling back to 09–18 when no explicit config has been set.
+// Centralised so renderers and findFreeSlots agree.
+func (c Calendar) effectiveWorkHours() (int, int) {
+	start, end := c.workStartHour, c.workEndHour
+	if start <= 0 || end <= 0 || end <= start {
+		start, end = 9, 18
+	}
+	return start, end
+}
+
+// parseWorkHoursInput parses "9-18" / "08:00-19:00" / "8-19" and
+// returns (startHour, endHour, ok). Hours-only or HH:MM (minutes
+// dropped) accepted — minutes don't make sense for grid tinting,
+// the granularity is one hour.
+func parseWorkHoursInput(s string) (int, int, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, 0, false
+	}
+	parts := strings.Split(s, "-")
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	parseHour := func(p string) (int, bool) {
+		p = strings.TrimSpace(p)
+		if i := strings.Index(p, ":"); i >= 0 {
+			p = p[:i]
+		}
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 || n > 23 {
+			return 0, false
+		}
+		return n, true
+	}
+	a, ok1 := parseHour(parts[0])
+	b, ok2 := parseHour(parts[1])
+	if !ok1 || !ok2 || b <= a {
+		return 0, 0, false
+	}
+	return a, b, true
+}
 
 // SetDailyFocus stores focus data for a given date.
 func (c *Calendar) SetDailyFocus(date string, focus DailyFocus) {
@@ -274,6 +465,17 @@ func (c *Calendar) Open() {
 	c.agendaCursor = 0
 	c.agendaItems = nil
 	c.taskToggles = nil
+	// Reset transient prompts so reopening lands in a clean
+	// state — a stuck templatePicker from a prior session
+	// would steal the first keystroke otherwise.
+	c.editingWorkHours = false
+	c.workHoursBuf = ""
+	c.layerPrompt = false
+	c.templatePicker = false
+	c.templateSavePrompt = false
+	c.templateNameBuf = ""
+	c.templateSaveSource = nil
+	c.pendingTemplateSeed = nil
 	now := time.Now()
 	c.today = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	c.cursor = c.today
@@ -505,7 +707,8 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				}
 				if dur, ok := durMap[msg.String()]; ok {
 					c.findSlotDuration = dur
-					c.findSlotResults = c.findFreeSlots(dur, 14, 9, 18, 5)
+					sh, eh := c.effectiveWorkHours()
+					c.findSlotResults = c.findFreeSlots(dur, 14, sh, eh, 5)
 					c.findSlotCursor = 0
 					// Stay in the picker even with zero results so
 					// the user sees the "no slots" message instead
@@ -543,6 +746,133 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 						c.eventEditDesc = ""
 					}
 					c.findingSlot = false
+				}
+			}
+			return c, nil
+		}
+
+		// Working-hours input mode — 'H' enters; accepts
+		// "9-18" or "08:00-19:00". Enter commits + persists,
+		// Esc cancels. Bad input leaves prior values intact.
+		if c.editingWorkHours {
+			switch msg.String() {
+			case "esc":
+				c.editingWorkHours = false
+				c.workHoursBuf = ""
+			case "enter":
+				if a, b, ok := parseWorkHoursInput(c.workHoursBuf); ok {
+					c.workStartHour = a
+					c.workEndHour = b
+					c.saveCalendarConfig()
+				}
+				c.editingWorkHours = false
+				c.workHoursBuf = ""
+			case "backspace":
+				if len(c.workHoursBuf) > 0 {
+					c.workHoursBuf = TrimLastRune(c.workHoursBuf)
+				}
+			default:
+				if len(msg.String()) == 1 {
+					c.workHoursBuf += msg.String()
+				}
+			}
+			return c, nil
+		}
+
+		// Layer-toggle prompt — 'L' opens; E/T/B flip events,
+		// tasks, planner blocks. Esc / any other key dismisses.
+		// Persisted on every flip so the toggle sticks.
+		if c.layerPrompt {
+			switch msg.String() {
+			case "e", "E":
+				c.showEventsLayer = !c.showEventsLayer
+				c.saveCalendarConfig()
+				if c.view == calViewAgenda {
+					c.rebuildAgendaItems()
+				}
+			case "t", "T":
+				c.showTasksLayer = !c.showTasksLayer
+				c.saveCalendarConfig()
+				if c.view == calViewAgenda {
+					c.rebuildAgendaItems()
+				}
+			case "b", "B":
+				c.showPlannerLayer = !c.showPlannerLayer
+				c.saveCalendarConfig()
+				if c.view == calViewAgenda {
+					c.rebuildAgendaItems()
+				}
+			default:
+				// Any other key dismisses the prompt — the
+				// flip-keys are the only "stay open" path.
+				c.layerPrompt = false
+			}
+			return c, nil
+		}
+
+		// Template picker — 'T' opens; up/down move, Enter
+		// seeds the new-event form via pendingTemplateSeed.
+		if c.templatePicker {
+			switch msg.String() {
+			case "esc":
+				c.templatePicker = false
+			case "up", "k":
+				if c.templatePickerCursor > 0 {
+					c.templatePickerCursor--
+				}
+			case "down", "j":
+				if c.templatePickerCursor < len(c.eventTemplates)-1 {
+					c.templatePickerCursor++
+				}
+			case "enter":
+				if c.templatePickerCursor < len(c.eventTemplates) {
+					tmpl := c.eventTemplates[c.templatePickerCursor]
+					c.openEventFormFromTemplate(&tmpl)
+				}
+				c.templatePicker = false
+			case "d", "D":
+				// Quick-delete from picker so users can prune
+				// stale templates without hand-editing JSON.
+				if c.templatePickerCursor < len(c.eventTemplates) {
+					c.eventTemplates = append(
+						c.eventTemplates[:c.templatePickerCursor],
+						c.eventTemplates[c.templatePickerCursor+1:]...)
+					c.saveEventTemplates()
+					if c.templatePickerCursor >= len(c.eventTemplates) && c.templatePickerCursor > 0 {
+						c.templatePickerCursor--
+					}
+				}
+			}
+			return c, nil
+		}
+
+		// Template save prompt — 'X' opens with the cursor's
+		// event preloaded; user types a name and presses Enter
+		// to add to templates list.
+		if c.templateSavePrompt {
+			switch msg.String() {
+			case "esc":
+				c.templateSavePrompt = false
+				c.templateNameBuf = ""
+				c.templateSaveSource = nil
+			case "enter":
+				name := strings.TrimSpace(c.templateNameBuf)
+				if name != "" && c.templateSaveSource != nil {
+					tmpl := *c.templateSaveSource
+					tmpl.Name = name
+					c.eventTemplates = append(c.eventTemplates, tmpl)
+					c.saveEventTemplates()
+				}
+				c.templateSavePrompt = false
+				c.templateNameBuf = ""
+				c.templateSaveSource = nil
+			case "backspace":
+				if len(c.templateNameBuf) > 0 {
+					c.templateNameBuf = TrimLastRune(c.templateNameBuf)
+				}
+			default:
+				if len(msg.String()) == 1 || msg.String() == " " {
+					c.templateNameBuf += msg.String()
 				}
 			}
 			return c, nil
@@ -852,22 +1182,9 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 			// views, pre-fill Time from the grid cursor so "press a on a slot"
 			// creates an event at that hour (most users expect this — the
 			// previous all-day default meant re-typing the time every time).
-			c.eventEditMode = 1
-			c.eventEditField = efTitle
-			c.eventEditID = ""
-			c.eventEditTitle = ""
-			c.eventEditTime = ""
-			if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
-				sH := c.weekGridStartHourFor()
-				cursorMin := (sH+c.weekGridCursorHour/2)*60 + (c.weekGridCursorHour%2)*30
-				c.eventEditTime = fmt.Sprintf("%02d:%02d", cursorMin/60, cursorMin%60)
-			}
-			c.eventEditDur = 60
-			c.eventEditDurBuf = "60"
-			c.eventEditLoc = ""
-			c.eventEditRecur = ""
-			c.eventEditColor = ""
-			c.eventEditDesc = ""
+			// If a template was just picked, seed the form from it instead
+			// of the empty defaults.
+			c.openNewEventForm()
 
 		case "b":
 			if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
@@ -893,6 +1210,36 @@ func (c Calendar) Update(msg tea.Msg) (Calendar, tea.Cmd) {
 				c.weekMilestoneStep = 0
 				c.weekMilestoneBuf = ""
 				c.weekMilestoneGoalID = ""
+			}
+
+		// 'H' opens the working-hours prompt. Lowercase 'h' is
+		// already left-arrow nav, and 'W' (the natural mnemonic
+		// for "working hours") is taken by view-cycle-back, so
+		// 'H' wins on availability + mnemonic ("Hours").
+		case "H":
+			c.editingWorkHours = true
+			start, end := c.effectiveWorkHours()
+			c.workHoursBuf = fmt.Sprintf("%d-%d", start, end)
+
+		// 'L' opens the layer-toggle prompt. E/T/B inside the
+		// prompt flip events / tasks / planner blocks. Persists
+		// on every flip so the next launch remembers the focus.
+		case "L":
+			c.layerPrompt = true
+
+		// 'T' opens the template picker. Capital so it doesn't
+		// conflict with 't' = jump to today. Picking a template
+		// seeds the new-event form for the next 'a' press.
+		case "T":
+			c.templatePicker = true
+			c.templatePickerCursor = 0
+
+		// 'X' saves the event under the cursor as a template.
+		// Only meaningful in time-grid views with the cursor on
+		// an actual event — silent no-op otherwise.
+		case "X":
+			if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
+				c.openTemplateSavePrompt()
 			}
 
 		// Quick search: '/' opens an input bar; types live-filter
@@ -1325,6 +1672,95 @@ func (c *Calendar) commitDurationBuf() {
 	}
 }
 
+// openNewEventForm opens the event creation wizard. When a
+// template is queued via pendingTemplateSeed (set by the picker),
+// the form fields are seeded from it and the seed is consumed.
+// Otherwise the form opens with empty/default values, with the
+// time pre-filled from the grid cursor in time-grid views.
+func (c *Calendar) openNewEventForm() {
+	c.eventEditMode = 1
+	c.eventEditField = efTitle
+	c.eventEditID = ""
+
+	if c.pendingTemplateSeed != nil {
+		t := c.pendingTemplateSeed
+		c.eventEditTitle = t.Title
+		c.eventEditDur = t.DurationMin
+		if c.eventEditDur <= 0 {
+			c.eventEditDur = 60
+		}
+		c.eventEditDurBuf = strconv.Itoa(c.eventEditDur)
+		c.eventEditLoc = t.Location
+		c.eventEditRecur = t.Recurrence
+		c.eventEditColor = t.Color
+		c.eventEditDesc = t.Description
+		c.eventEditTime = ""
+		c.pendingTemplateSeed = nil
+	} else {
+		c.eventEditTitle = ""
+		c.eventEditTime = ""
+		c.eventEditDur = 60
+		c.eventEditDurBuf = "60"
+		c.eventEditLoc = ""
+		c.eventEditRecur = ""
+		c.eventEditColor = ""
+		c.eventEditDesc = ""
+	}
+
+	// Time-grid views: use the cursor row as the start time
+	// when the template didn't pin one. The previous all-day
+	// default forced retyping the time on every quick-add.
+	if c.view == calViewWeek || c.view == calView3Day || c.view == calView1Day {
+		sH := c.weekGridStartHourFor()
+		cursorMin := (sH+c.weekGridCursorHour/2)*60 + (c.weekGridCursorHour%2)*30
+		c.eventEditTime = fmt.Sprintf("%02d:%02d", cursorMin/60, cursorMin%60)
+	}
+}
+
+// openTemplateSavePrompt scans the event under the grid cursor
+// and, if found, opens a name-input prompt to add it to the
+// templates list. Silent no-op when no event is present.
+func (c *Calendar) openTemplateSavePrompt() {
+	cursorDay := c.cursor
+	sH := c.weekGridStartHourFor()
+	cursorSlotMin := (sH+c.weekGridCursorHour/2)*60 + (c.weekGridCursorHour%2)*30
+	for _, ev := range c.eventsForDate(cursorDay) {
+		if ev.AllDay {
+			continue
+		}
+		evStart := ev.Date.Hour()*60 + ev.Date.Minute()
+		evEnd := evStart + 60
+		if !ev.EndDate.IsZero() {
+			evEnd = ev.EndDate.Hour()*60 + ev.EndDate.Minute()
+		}
+		if evStart < cursorSlotMin+30 && evEnd > cursorSlotMin {
+			dur := 60
+			if !ev.EndDate.IsZero() {
+				dur = int(ev.EndDate.Sub(ev.Date).Minutes())
+			}
+			c.templateSaveSource = &eventTemplate{
+				Title:       ev.Title,
+				DurationMin: dur,
+				Location:    ev.Location,
+				Color:       ev.Color,
+				Recurrence:  ev.Recurrence,
+				Description: ev.Description,
+			}
+			c.templateSavePrompt = true
+			c.templateNameBuf = ev.Title // pre-fill with title as a sane default name
+			return
+		}
+	}
+}
+
+// openEventFormFromTemplate stages a template for the next 'a'
+// press and fires it immediately so the user lands in the form
+// with template fields already populated.
+func (c *Calendar) openEventFormFromTemplate(t *eventTemplate) {
+	c.pendingTemplateSeed = t
+	c.openNewEventForm()
+}
+
 func (c *Calendar) saveEditedEvent() {
 	dateStr := c.cursor.Format("2006-01-02")
 	endTime := ""
@@ -1400,6 +1836,18 @@ func (c Calendar) View() string {
 	if c.searching {
 		return body + "\n" + c.renderSearchPrompt()
 	}
+	if c.editingWorkHours {
+		return body + "\n" + c.renderWorkHoursPrompt()
+	}
+	if c.layerPrompt {
+		return body + "\n" + c.renderLayerPrompt()
+	}
+	if c.templatePicker {
+		return body + "\n" + c.renderTemplatePicker()
+	}
+	if c.templateSavePrompt {
+		return body + "\n" + c.renderTemplateSavePrompt()
+	}
 	// Idle state: if a search query is active (committed but not
 	// open), show a compact reminder + match count so the user
 	// always knows the filter is on AND how many it caught.
@@ -1461,6 +1909,96 @@ func (c Calendar) renderJumpDatePrompt() string {
 	return "  " + label + c.jumpDateBuf + cursor + hint
 }
 
+// renderWorkHoursPrompt draws the input bar for 'H'. Shows the
+// current effective range as a hint so the user can confirm
+// their persisted setting before retyping.
+func (c Calendar) renderWorkHoursPrompt() string {
+	cursor := lipgloss.NewStyle().Foreground(mauve).Render("▏")
+	label := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("H working hours → ")
+	sh, eh := c.effectiveWorkHours()
+	hint := DimStyle.Render(fmt.Sprintf("  (current %02d:00-%02d:00; format \"9-18\" or \"08:00-19:00\"; Esc cancel)", sh, eh))
+	return "  " + label + c.workHoursBuf + cursor + hint
+}
+
+// renderLayerPrompt draws the layer-toggle prompt. Shows the
+// current state of each layer with a [x] / [ ] marker so the
+// user always knows which keys flip what.
+func (c Calendar) renderLayerPrompt() string {
+	mark := func(on bool) string {
+		if on {
+			return lipgloss.NewStyle().Foreground(green).Bold(true).Render("[x]")
+		}
+		return lipgloss.NewStyle().Foreground(surface2).Render("[ ]")
+	}
+	label := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("L layers")
+	keyStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
+	parts := []string{
+		keyStyle.Render("E") + ":" + mark(c.showEventsLayer) + " events",
+		keyStyle.Render("T") + ":" + mark(c.showTasksLayer) + " tasks",
+		keyStyle.Render("B") + ":" + mark(c.showPlannerLayer) + " planner blocks",
+	}
+	hint := DimStyle.Render("  (any other key closes)")
+	return "  " + label + "  " + strings.Join(parts, "  ") + hint
+}
+
+// renderTemplatePicker draws the template-list popup. Shows
+// up to 10 templates with the cursor highlighted; cursored row
+// also previews duration/location/recurrence so the user can
+// pick by detail without committing first.
+func (c Calendar) renderTemplatePicker() string {
+	var b strings.Builder
+	header := lipgloss.NewStyle().Foreground(mauve).Bold(true).
+		Render("T event templates — Enter:use  d:delete  Esc:cancel")
+	b.WriteString("  " + header + "\n")
+	if len(c.eventTemplates) == 0 {
+		b.WriteString("  " + DimStyle.Render("No templates yet. Press X on an event in week/day view to save one."))
+		return b.String()
+	}
+	maxShow := 10
+	start := 0
+	if c.templatePickerCursor >= maxShow {
+		start = c.templatePickerCursor - maxShow + 1
+	}
+	end := start + maxShow
+	if end > len(c.eventTemplates) {
+		end = len(c.eventTemplates)
+	}
+	for i := start; i < end; i++ {
+		t := c.eventTemplates[i]
+		marker := "  "
+		nameStyle := lipgloss.NewStyle().Foreground(text)
+		if i == c.templatePickerCursor {
+			marker = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▸ ")
+			nameStyle = lipgloss.NewStyle().Foreground(text).Bold(true)
+		}
+		details := ""
+		if t.DurationMin > 0 {
+			details += fmt.Sprintf(" %dm", t.DurationMin)
+		}
+		if t.Location != "" {
+			details += " @" + t.Location
+		}
+		if t.Recurrence != "" {
+			details += " ⟲" + t.Recurrence
+		}
+		b.WriteString("  " + marker + nameStyle.Render(t.Name) +
+			DimStyle.Render(" — "+t.Title) + DimStyle.Render(details) + "\n")
+	}
+	return b.String()
+}
+
+// renderTemplateSavePrompt draws the name-input bar for 'X'.
+func (c Calendar) renderTemplateSavePrompt() string {
+	cursor := lipgloss.NewStyle().Foreground(mauve).Render("▏")
+	label := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("X save template → ")
+	srcTitle := ""
+	if c.templateSaveSource != nil {
+		srcTitle = c.templateSaveSource.Title
+	}
+	hint := DimStyle.Render(fmt.Sprintf("  (from \"%s\"; Enter save, Esc cancel)", srcTitle))
+	return "  " + label + c.templateNameBuf + cursor + hint
+}
+
 // renderHelpOverlay returns a full-pane cheat sheet of every
 // calendar binding, grouped by purpose. Mirrors TaskManager's
 // help renderer so the two surfaces feel uniform.
@@ -1497,6 +2035,8 @@ func (c Calendar) renderHelpOverlay() string {
 			{"D", "Unschedule planner block under cursor"},
 			{", / .", "Shift planner block −15min / +15min"},
 			{"b", "Time-block: pick task to schedule into cursor hour"},
+			{"X", "Save event under cursor as a reusable template"},
+			{"T", "Open template picker — pick one then 'a' creates from it"},
 			{"g", "Add weekly milestone to a goal"},
 		}},
 		{"Search · Jump · Find slot", [][2]string{
@@ -1504,6 +2044,10 @@ func (c Calendar) renderHelpOverlay() string {
 			{"c", "Clear active search query"},
 			{"n", "Find next free slot (1-8 → 15m..4h, then Enter to schedule)"},
 			{"?", "This help"},
+		}},
+		{"Layout · Layers · Hours", [][2]string{
+			{"H", "Set working hours (format \"9-18\" or \"08:00-19:00\")"},
+			{"L", "Toggle layers prompt — E events / T tasks / B planner blocks"},
 		}},
 		{"Conflict awareness", [][2]string{
 			{"⚠+N badge", "Red tint marks overlap; +N counts the other entries in that slot"},
@@ -1537,8 +2081,9 @@ func (c Calendar) renderFindSlotPrompt() string {
 	if len(c.findSlotResults) == 0 {
 		// Honest empty state — tell the user the search window
 		// is exhausted so they don't think the picker broke.
+		sh, eh := c.effectiveWorkHours()
 		b.WriteString("  " + lipgloss.NewStyle().Foreground(red).
-			Render("No free slots in the next 14 days (09:00–18:00). Try a shorter duration or clear blocks."))
+			Render(fmt.Sprintf("No free slots in the next 14 days (%02d:00–%02d:00). Try a shorter duration, change H, or clear blocks.", sh, eh)))
 		return b.String()
 	}
 	for i, slot := range c.findSlotResults {
