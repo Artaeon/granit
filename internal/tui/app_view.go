@@ -17,6 +17,7 @@ import (
 
 	"github.com/artaeon/granit/internal/vault"
 )
+
 // renderSidebarPanel renders the file sidebar with the given border style and dimensions.
 func (m Model) renderSidebarPanel(border lipgloss.Border, borderColor lipgloss.TerminalColor, w, h int) string {
 	return SidebarStyle.BorderStyle(border).
@@ -47,6 +48,7 @@ func (m Model) View() string {
 
 	// Content height: terminal minus status bar (2 lines) minus panel borders (2 lines)
 	overhead := 4
+	overhead++ // persistent action bar
 	if m.breadcrumb != nil && (len(m.breadcrumb.Pinned()) > 0 || m.breadcrumb.CanGoBack()) {
 		overhead++ // breadcrumb nav bar between content and status
 	}
@@ -510,7 +512,7 @@ func (m Model) View() string {
 				for _, bl := range bls {
 					name := filepath.Base(bl)
 					name = strings.TrimSuffix(name, ".md")
-					cornellNotes.WriteString("  " + lipgloss.NewStyle().Foreground(green).Render("← " + name) + "\n")
+					cornellNotes.WriteString("  " + lipgloss.NewStyle().Foreground(green).Render("← "+name) + "\n")
 				}
 			}
 
@@ -789,6 +791,7 @@ func (m Model) View() string {
 		m.statusbar.SetPomodoroStatus(m.pomodoro.StatusString())
 		m.statusbar.SetFocusSessionStatus(m.focusSession.StatusString())
 		m.statusbar.SetClockInStatus(m.clockIn.StatusString())
+		m.statusbar.SetDirty(m.editor.modified)
 		if layout == "zen" || layout == "minimal" || layout == "presenter" {
 			// Minimal status for zen/presenter: just filename + word count, no help bar
 			zenInfo := lipgloss.NewStyle().Foreground(surface1).Render(
@@ -796,11 +799,12 @@ func (m Model) View() string {
 			zenBar := lipgloss.NewStyle().Background(surface0).Width(m.width).Render(zenInfo)
 			view = lipgloss.JoinVertical(lipgloss.Left, content, zenBar)
 		} else {
+			actionBar := m.renderActionBar(m.width)
 			status := m.statusbar.View()
 			if breadcrumbBar != "" {
-				view = lipgloss.JoinVertical(lipgloss.Left, content, breadcrumbBar, status)
+				view = lipgloss.JoinVertical(lipgloss.Left, content, actionBar, breadcrumbBar, status)
 			} else {
-				view = lipgloss.JoinVertical(lipgloss.Left, content, status)
+				view = lipgloss.JoinVertical(lipgloss.Left, content, actionBar, status)
 			}
 		}
 	}
@@ -1033,7 +1037,7 @@ func (m Model) View() string {
 		overlay := m.projectDashboard.View()
 		view = m.overlayCenter(view, overlay)
 	}
-	if m.commandCenter.IsActive() {
+	if m.commandCenter.IsActive() && featureTabIsForeground(m.tabBar, FeatCommandCenter) && !(m.tabBar != nil && hasActiveFeatureTab(m.tabBar)) {
 		overlay := m.commandCenter.View()
 		view = m.overlayCenter(view, overlay)
 	}
@@ -1316,7 +1320,7 @@ func (m Model) overlayTopRight(bg, overlay string) string {
 			rightFill = "  "
 			skipRight += 2
 		}
-		
+
 		left := ansiTakeCols(result[y], startX)
 		right := ansiSkipCols(result[y], skipRight)
 		lineStr := left + overlayLine + margin
@@ -1325,14 +1329,14 @@ func (m Model) overlayTopRight(bg, overlay string) string {
 		}
 		result[y] = lineStr + right
 	}
-	
+
 	bottomY := startY + len(overlayLines)
 	if bottomY < len(result) {
 		if overlayWidth > 0 {
 			bottomPad := strings.Repeat(" ", startX+2)
-		bottomFill := strings.Repeat(" ", overlayWidth)
-		right := ansiSkipCols(result[bottomY], startX+2+overlayWidth)
-		result[bottomY] = bottomPad + shadowStyle.Render(bottomFill) + right
+			bottomFill := strings.Repeat(" ", overlayWidth)
+			right := ansiSkipCols(result[bottomY], startX+2+overlayWidth)
+			result[bottomY] = bottomPad + shadowStyle.Render(bottomFill) + right
 		}
 	}
 
@@ -1409,6 +1413,12 @@ func (m *Model) updateReadingProgress() {
 
 // renderWelcomeScreen shows a help screen when no note is open.
 func (m Model) renderWelcomeScreen(width, height int) string {
+	if m.vault != nil {
+		cc := m.commandCenter
+		cc.SetSize(width, height)
+		return cc.InlineView(width, height)
+	}
+
 	titleStyle := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 	headingStyle := lipgloss.NewStyle().Foreground(lavender).Bold(true)
 	keyStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
@@ -2031,7 +2041,7 @@ func (m Model) overlayCenter(bg, overlay string) string {
 			rightFill = "  "
 			skipRight += 2
 		}
-		
+
 		left := ansiTakeCols(result[y], startX)
 		right := ansiSkipCols(result[y], skipRight)
 		lineStr := left + overlayLine + margin
@@ -2040,20 +2050,19 @@ func (m Model) overlayCenter(bg, overlay string) string {
 		}
 		result[y] = lineStr + right
 	}
-	
+
 	bottomY := startY + len(overlayLines)
 	if bottomY < len(result) {
 		if overlayWidth > 0 {
 			bottomPad := strings.Repeat(" ", startX+2)
-		bottomFill := strings.Repeat(" ", overlayWidth)
-		right := ansiSkipCols(result[bottomY], startX+2+overlayWidth)
-		result[bottomY] = bottomPad + shadowStyle.Render(bottomFill) + right
+			bottomFill := strings.Repeat(" ", overlayWidth)
+			right := ansiSkipCols(result[bottomY], startX+2+overlayWidth)
+			result[bottomY] = bottomPad + shadowStyle.Render(bottomFill) + right
 		}
 	}
 
 	return strings.Join(result, "\n")
 }
-
 
 // ansiTakeCols returns the prefix of s up to n visual columns.
 func ansiTakeCols(s string, n int) string {
@@ -2118,7 +2127,6 @@ func ansiSkipCols(s string, n int) string {
 	}
 	return "\x1b[0m" + s[i:]
 }
-
 
 // applyVaultRefactor parses the AI refactor plan and applies file moves,
 // tag additions, and wikilink insertions.

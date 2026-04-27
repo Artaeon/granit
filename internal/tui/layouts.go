@@ -30,15 +30,27 @@ const (
 
 // AllLayouts returns every valid layout name in display order.
 func AllLayouts() []string {
+	return PrimaryLayouts()
+}
+
+// PrimaryLayouts returns the four workflow presets exposed in normal UI.
+func PrimaryLayouts() []string {
 	return []string{
 		LayoutDefault,
+		LayoutCockpit,
+		LayoutResearch,
+		LayoutDashboard,
+	}
+}
+
+// AdvancedLayouts returns specialized layouts kept available for direct config,
+// tests, and future advanced pickers without crowding the default UI.
+func AdvancedLayouts() []string {
+	return []string{
 		LayoutWriter,
 		LayoutMinimal,
 		LayoutReading,
-		LayoutDashboard,
 		LayoutZen,
-		LayoutResearch,
-		LayoutCockpit,
 		LayoutStacked,
 		LayoutCornell,
 		LayoutFocus,

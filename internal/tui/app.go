@@ -624,6 +624,7 @@ func NewModel(vaultPath string) (Model, error) {
 		}
 		return true
 	})
+	m.loadCommandCenterData(&m.commandCenter)
 
 	return m, nil
 }
@@ -840,4 +841,3 @@ func (m Model) Init() tea.Cmd {
 	}
 	return tea.Batch(cmds...)
 }
-

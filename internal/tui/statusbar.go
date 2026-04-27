@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -14,30 +15,31 @@ type statusToast struct {
 }
 
 type StatusBar struct {
-	vaultPath  string
-	activeNote string
-	noteCount  int
-	mode       string
-	width      int
-	message    string // kept for backward compat (legacy single message)
-	messages   []statusToast
-	lineNum    int
-	colNum     int
-	wordCount  int
-	ai AIConfig
+	vaultPath          string
+	activeNote         string
+	dirty              bool
+	noteCount          int
+	mode               string
+	width              int
+	message            string // kept for backward compat (legacy single message)
+	messages           []statusToast
+	lineNum            int
+	colNum             int
+	wordCount          int
+	ai                 AIConfig
 	pomodoroStatus     string // e.g. "🍅 12:34"
 	focusSessionStatus string // e.g. "◉ 12:34"
 	clockInStatus      string // e.g. "⏱ 1:23:45 · Project"
-	researchStatus string // e.g. "Researching: AI trends"
-	dueTodayCount  int
-	overdueCount   int
-	inboxCount     int
-	readingProgress int  // 0-100 percentage
-	viewMode        bool // whether currently in view mode
-	dayPlanned      bool // true once morning routine or plan my day has been run
-	gitStatus       string // e.g. "✓ synced", "● 3 changed", "⚠ no git"
-	gitInitialized  bool
-	profileName     string // active profile (Classic / Daily Operator / Researcher / Builder)
+	researchStatus     string // e.g. "Researching: AI trends"
+	dueTodayCount      int
+	overdueCount       int
+	inboxCount         int
+	readingProgress    int    // 0-100 percentage
+	viewMode           bool   // whether currently in view mode
+	dayPlanned         bool   // true once morning routine or plan my day has been run
+	gitStatus          string // e.g. "✓ synced", "● 3 changed", "⚠ no git"
+	gitInitialized     bool
+	profileName        string // active profile (Classic / Daily Operator / Researcher / Builder)
 }
 
 // SetProfile updates the active-profile name shown in the
@@ -63,6 +65,10 @@ func (sb *StatusBar) SetVaultPath(path string) {
 
 func (sb *StatusBar) SetActiveNote(note string) {
 	sb.activeNote = note
+}
+
+func (sb *StatusBar) SetDirty(dirty bool) {
+	sb.dirty = dirty
 }
 
 func (sb *StatusBar) SetNoteCount(count int) {
@@ -225,7 +231,7 @@ func (sb StatusBar) View() string {
 		Background(modeColor).Foreground(crust).Bold(true).Padding(0, 1).
 		Render(sb.mode)
 
-	// ── File section ─────────────────────────────────────────────────
+	// ── Active surface / file section ─────────────────────────────────
 	fileIcon := IconMd
 	if strings.Contains(sb.activeNote, "/") {
 		fileIcon = IconFolder
@@ -233,7 +239,19 @@ func (sb StatusBar) View() string {
 	if isDaily(sb.activeNote) {
 		fileIcon = IconDaily
 	}
-	fileSection := StatusFileStyle.Render(fileIcon + " " + sb.activeNote)
+	activeLabel := sb.activeNote
+	if activeLabel == "" {
+		fileIcon = "⌁"
+		activeLabel = "Command Center"
+	}
+	if activeLabel != "Command Center" {
+		activeLabel = filepath.Base(activeLabel)
+	}
+	dirtyMark := ""
+	if sb.dirty {
+		dirtyMark = lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(" ●")
+	}
+	fileSection := StatusFileStyle.Render(fileIcon + " " + activeLabel + dirtyMark)
 
 	// ── Cursor position (edit mode only) ─────────────────────────────
 	cursorPos := ""
@@ -249,6 +267,11 @@ func (sb StatusBar) View() string {
 		wordInfo = lipgloss.NewStyle().
 			Background(mantle).Foreground(overlay0).Padding(0, 1).
 			Render(fmt.Sprintf("%dw", sb.wordCount))
+	}
+	if sb.dirty {
+		wordInfo += lipgloss.NewStyle().
+			Background(yellow).Foreground(crust).Bold(true).Padding(0, 1).
+			Render("unsaved")
 	}
 
 	// ── Reading progress (view mode) ─────────────────────────────────
@@ -284,7 +307,7 @@ func (sb StatusBar) View() string {
 
 	taskIndicator := ""
 	if sb.dueTodayCount > 0 {
-		taskIndicator = alertBadge(fmt.Sprintf("%d due", sb.dueTodayCount), yellow)
+		taskIndicator = alertBadge(fmt.Sprintf("%d today", sb.dueTodayCount), yellow)
 	}
 
 	// Pomodoro, focus session & clock-in (medium priority — colored badges)
@@ -318,17 +341,19 @@ func (sb StatusBar) View() string {
 	planIndicator := ""
 	if !sb.dayPlanned {
 		planIndicator = dimBadge("◇", "plan day", mauve)
+	} else {
+		planIndicator = dimBadge("✓", "planned", green)
 	}
 
 	// Git (subtle)
 	gitIndicator := ""
 	if !sb.gitInitialized {
-		gitIndicator = dimBadge("⚠", "no git", yellow)
+		gitIndicator = dimBadge("git", "off", yellow)
 	} else if sb.gitStatus != "" {
-		icon := "✓"
+		icon := "git"
 		color := green
 		if sb.gitStatus != "synced" {
-			icon = "●"
+			icon = "git"
 			color = peach
 		}
 		gitIndicator = dimBadge(icon, sb.gitStatus, color)
@@ -406,7 +431,7 @@ func (sb StatusBar) View() string {
 
 	if totalUsed() > sb.width {
 		overhead := totalUsed() - sb.width
-		plainFile := fileIcon + " " + sb.activeNote
+		plainFile := fileIcon + " " + activeLabel
 		runes := []rune(plainFile)
 		cut := len(runes)
 		for cut > 0 && lipgloss.Width(string(runes[:cut])) > lipgloss.Width(plainFile)-overhead-3 {

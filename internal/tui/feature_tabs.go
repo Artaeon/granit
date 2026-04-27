@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -46,46 +47,46 @@ func isPassthroughChord(key string) bool {
 	case "ctrl+p", "ctrl+q", "ctrl+c", "ctrl+s", "ctrl+x":
 		return true
 	// Feature-opening Ctrl+ shortcuts
-	case "ctrl+n",     // New note
-		"ctrl+e",      // Toggle view/edit
-		"ctrl+t",      // Tags
-		"ctrl+b",      // Bookmarks
-		"ctrl+f",      // Find
-		"ctrl+h",      // Find & replace
-		"ctrl+j",      // Quick switch
-		"ctrl+k",      // Task Manager
-		"ctrl+l",      // Calendar
-		"ctrl+r",      // Bots
-		"ctrl+g",      // Graph
-		"ctrl+o",      // Outline
-		"ctrl+,",      // Settings
-		"ctrl+/",      // Help / shortcuts
-		"ctrl+z":      // Focus mode
+	case "ctrl+n", // New note
+		"ctrl+e", // Toggle view/edit
+		"ctrl+t", // Tags
+		"ctrl+b", // Bookmarks
+		"ctrl+f", // Find
+		"ctrl+h", // Find & replace
+		"ctrl+j", // Quick switch
+		"ctrl+k", // Task Manager
+		"ctrl+l", // Calendar
+		"ctrl+r", // Bots
+		"ctrl+g", // Graph
+		"ctrl+o", // Outline
+		"ctrl+,", // Settings
+		"ctrl+/", // Help / shortcuts
+		"ctrl+z": // Focus mode
 		return true
 	// Feature-opening Alt+ shortcuts (lowercase letters)
-	case "alt+h",      // Daily Hub
-		"alt+j",       // Daily Jot
-		"alt+m",       // Morning Routine
-		"alt+b",       // Habit Tracker
-		"alt+i",       // Quick Capture
-		"alt+e",       // Daily Review
-		"alt+p",       // Plan My Day
-		"alt+l",       // Layout picker
-		"alt+t",       // Time tracker
-		"alt+s",       // Focus session
-		"alt+w",       // Weekly note
-		"alt+c",       // Command Center
-		"alt+d",       // Daily Briefing or similar
-		"alt+f",       // Fold (editor); harmless on features
-		"alt+g",       // Graph alternate
-		"alt+r",       // Reload / refresh
+	case "alt+h", // Daily Hub
+		"alt+j",          // Daily Jot
+		"alt+m",          // Morning Routine
+		"alt+b",          // Habit Tracker
+		"alt+i",          // Quick Capture
+		"alt+e",          // Daily Review
+		"alt+p",          // Plan My Day
+		"alt+l",          // Layout picker
+		"alt+t",          // Time tracker
+		"alt+s",          // Focus session
+		"alt+w",          // Weekly note
+		"alt+c",          // Command Center
+		"alt+d",          // Daily Briefing or similar
+		"alt+f",          // Fold (editor); harmless on features
+		"alt+g",          // Graph alternate
+		"alt+r",          // Reload / refresh
 		"alt+[", "alt+]", // Daily-note navigation
 		"alt+left", "alt+right", // History navigation
-		"alt+?":       // Help
+		"alt+?": // Help
 		return true
 	// Capital Alt+ chords (Shift+Alt+letter)
-	case "alt+W",      // Profile picker
-		"alt+C":       // Command Center alt
+	case "alt+W", // Profile picker
+		"alt+C": // Command Center alt
 		return true
 	// Function keys + focus-pane chords
 	case "f1", "f2", "f3", "f4", "f5",
@@ -129,6 +130,8 @@ func reopenFeatureCommand(path string) (CommandAction, bool) {
 		return CmdShowGraph, true
 	case FeatHabits:
 		return CmdHabitTracker, true
+	case FeatCommandCenter:
+		return CmdCommandCenter, true
 	}
 	return CmdNone, false
 }
@@ -266,6 +269,9 @@ func (m *Model) renderFeatureTab(id FeatureID, width, height int) string {
 		m.habitTracker.SetSize(width, height)
 		m.habitTracker.SetTabMode(true)
 		return m.habitTracker.View()
+	case FeatCommandCenter:
+		m.commandCenter.SetSize(width, height)
+		return m.commandCenter.InlineView(width, height)
 	}
 	return ""
 }
@@ -365,6 +371,45 @@ func (m *Model) routeFeatureKey(id FeatureID, msg tea.Msg) (Model, tea.Cmd, bool
 			m.refreshComponents("")
 		}
 		return *m, cmd, true
+	case FeatCommandCenter:
+		var cmd tea.Cmd
+		m.commandCenter, cmd = m.commandCenter.Update(msg)
+		if m.commandCenter.ShouldStartPomodoro() {
+			m.pomodoro.Open()
+			m.pomodoro.Start()
+		}
+		if task := m.commandCenter.CompletedTask(); task != nil {
+			if task.NotePath != "" && task.LineNum >= 1 {
+				if note := m.vault.GetNote(task.NotePath); note != nil {
+					lines := strings.Split(note.Content, "\n")
+					idx := task.LineNum - 1
+					if idx < len(lines) {
+						lines[idx] = strings.Replace(lines[idx], "- [ ]", "- [x]", 1)
+						newContent := strings.Join(lines, "\n")
+						if err := atomicWriteNote(filepath.Join(m.vault.Root, task.NotePath), newContent); err != nil {
+							m.reportError("mark task done", err)
+						} else {
+							m.refreshComponents(task.NotePath)
+						}
+					}
+				}
+			}
+		}
+		if projName := m.commandCenter.SelectedProject(); projName != "" {
+			m.projectMode.SetSize(m.width, m.height)
+			m.projectMode.Open(m.vault.Root)
+		}
+		if habitName := m.commandCenter.ToggledHabit(); habitName != "" {
+			m.habitTracker.dailyNotesFolder = m.config.DailyNotesFolder
+			m.habitTracker.Open(m.vault.Root)
+			m.habitTracker.toggleToday(habitName)
+			m.habitTracker.Close()
+		}
+		if !m.commandCenter.IsActive() && m.tabBar != nil && m.tabBar.HasFeatureTab(FeatCommandCenter) {
+			m.tabBar.CloseFeatureTab(FeatCommandCenter)
+			m.activeNote = ""
+		}
+		return *m, cmd, true
 	}
 	return *m, nil, false
 }
@@ -399,5 +444,7 @@ func (m *Model) closeFeature(id FeatureID) {
 	case FeatHabits:
 		m.habitTracker.SetTabMode(false)
 		m.habitTracker.Close()
+	case FeatCommandCenter:
+		m.commandCenter.Close()
 	}
 }

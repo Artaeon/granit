@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -1386,26 +1387,11 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 
 	case CmdCommandCenter:
 		m.commandCenter.SetSize(m.width, m.height)
-		// Gather data from all productivity systems.
-		allTasks := m.currentTasks()
-		// Load projects and match tasks to projects.
-		pm := NewProjectMode()
-		pm.Open(m.vault.Root)
-		pm.Close()
-		var projects []Project
-		projects = append(projects, pm.projects...)
-		MatchTasksToProjects(allTasks, projects)
-		// Compute task counts for each project.
-		for i := range projects {
-			projects[i].ComputeTaskCounts(allTasks)
+		m.loadCommandCenterData(&m.commandCenter)
+		if m.tabBar != nil {
+			m.tabBar.AddFeatureTab(FeatCommandCenter, "Command")
+			m.activeNote = ""
 		}
-		// Load habits.
-		ht := NewHabitTracker()
-		ht.Open(m.vault.Root)
-		ht.Close()
-		// Gather calendar events for today.
-		_, plannerEvents, _ := m.gatherPlannerData()
-		m.commandCenter.LoadData(allTasks, projects, ht.habits, ht.logs, plannerEvents)
 		m.commandCenter.Open()
 
 	case CmdNLSearch:
@@ -1630,6 +1616,94 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		return m, m.triggerExitSplash()
 	}
 	return m, nil
+}
+
+// loadCommandCenterData gathers the cross-system cockpit data used by both the
+// persistent default screen and the Command Center overlay.
+func (m *Model) loadCommandCenterData(cc *CommandCenter) {
+	if cc == nil || m.vault == nil {
+		return
+	}
+	allTasks := m.currentTasks()
+
+	pm := NewProjectMode()
+	pm.Open(m.vault.Root)
+	pm.Close()
+	projects := append([]Project(nil), pm.projects...)
+	MatchTasksToProjects(allTasks, projects)
+	for i := range projects {
+		projects[i].ComputeTaskCounts(allTasks)
+	}
+
+	ht := NewHabitTracker()
+	ht.Open(m.vault.Root)
+	ht.Close()
+
+	_, plannerEvents, _ := m.gatherPlannerData()
+	cc.LoadData(allTasks, projects, ht.habits, ht.logs, plannerEvents)
+	cc.SetRecentNotes(m.recentNotesForCommandCenter(6))
+
+	timer := strings.TrimSpace(m.clockIn.StatusString())
+	if timer == "" {
+		timer = strings.TrimSpace(m.pomodoro.StatusString())
+	}
+	cc.SetActiveTimer(timer)
+}
+
+func (m *Model) recentNotesForCommandCenter(limit int) []dashNote {
+	if m.vault == nil || limit <= 0 {
+		return nil
+	}
+	type entry struct {
+		name string
+		path string
+		mod  time.Time
+	}
+	var entries []entry
+	for _, p := range m.vault.SortedPaths() {
+		note := m.vault.GetNote(p)
+		if note == nil {
+			continue
+		}
+		entries = append(entries, entry{
+			name: strings.TrimSuffix(filepath.Base(note.RelPath), ".md"),
+			path: note.RelPath,
+			mod:  note.ModTime,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].mod.After(entries[j].mod)
+	})
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+	out := make([]dashNote, 0, len(entries))
+	now := time.Now()
+	for _, e := range entries {
+		out = append(out, dashNote{
+			Name:    e.name,
+			Path:    e.path,
+			TimeAgo: formatTimeAgo(now.Sub(e.mod)),
+		})
+	}
+	return out
+}
+
+func formatTimeAgo(d time.Duration) string {
+	if d < time.Minute {
+		return "now"
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	}
+	days := int(d.Hours() / 24)
+	if days == 1 {
+		return "1d ago"
+	}
+	return fmt.Sprintf("%dd ago", days)
 }
 
 // gatherPlannerData collects tasks, events, and habits for the daily planner.

@@ -29,14 +29,15 @@ const (
 type FeatureID string
 
 const (
-	FeatTaskManager  FeatureID = "task_manager"
-	FeatDailyJot     FeatureID = "daily_jot"
-	FeatCalendar     FeatureID = "calendar"
-	FeatKanban       FeatureID = "kanban"
-	FeatGoals        FeatureID = "goals"
-	FeatProject      FeatureID = "project"
-	FeatGraph        FeatureID = "graph"
-	FeatHabits       FeatureID = "habits"
+	FeatTaskManager   FeatureID = "task_manager"
+	FeatDailyJot      FeatureID = "daily_jot"
+	FeatCalendar      FeatureID = "calendar"
+	FeatKanban        FeatureID = "kanban"
+	FeatGoals         FeatureID = "goals"
+	FeatProject       FeatureID = "project"
+	FeatGraph         FeatureID = "graph"
+	FeatHabits        FeatureID = "habits"
+	FeatCommandCenter FeatureID = "command_center"
 )
 
 // featureTabPath builds the synthetic "Path" string used by
@@ -525,7 +526,6 @@ func (tb *TabBar) ScrollRight() {
 		tb.scrollOffset++
 	}
 }
-
 
 // ---------------------------------------------------------------------------
 // Persistence

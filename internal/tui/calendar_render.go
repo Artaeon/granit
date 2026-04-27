@@ -54,8 +54,10 @@ func plannerBlockColor(blockType BlockType, done bool) lipgloss.Color {
 		return surface2
 	}
 	switch NormaliseBlockType(string(blockType)) {
-	case BlockTypeTask, BlockTypeDeepWork:
+	case BlockTypeTask:
 		return blue
+	case BlockTypeDeepWork:
+		return sapphire
 	case BlockTypeFocus:
 		return peach
 	case BlockTypeBreak, BlockTypeLunch:
@@ -72,6 +74,98 @@ func plannerBlockColor(blockType BlockType, done bool) lipgloss.Color {
 		return red
 	}
 	return lavender
+}
+
+func plannerBlockVisualColor(block PlannerBlock) lipgloss.Color {
+	if block.Done {
+		return surface2
+	}
+	label := strings.ToLower(block.Text)
+	switch {
+	case strings.Contains(label, "prayer"), strings.Contains(label, "church"), strings.Contains(label, "worship"):
+		return mauve
+	case strings.Contains(label, "breakfast"), strings.Contains(label, "lunch"), strings.Contains(label, "dinner"):
+		return peach
+	case strings.Contains(label, "training"), strings.Contains(label, "gym"), strings.Contains(label, "running"), strings.Contains(label, "swimming"):
+		return green
+	case strings.Contains(label, "deep work"), strings.Contains(label, "focus"):
+		return sapphire
+	case strings.Contains(label, "blog"), strings.Contains(label, "writing"), strings.Contains(label, "social media"):
+		return blue
+	case strings.Contains(label, "free time"), strings.Contains(label, "reading"):
+		return teal
+	case strings.Contains(label, "sleep"), strings.Contains(label, "lights out"):
+		return surface2
+	case strings.Contains(label, "break"), strings.Contains(label, "reset"):
+		return yellow
+	}
+	return plannerBlockColor(block.BlockType, block.Done)
+}
+
+func calendarTextCategory(title string) string {
+	label := strings.ToLower(title)
+	switch {
+	case strings.Contains(label, "prayer"):
+		return "PRAY"
+	case strings.Contains(label, "church"), strings.Contains(label, "worship"):
+		return "CHUR"
+	case strings.Contains(label, "breakfast"), strings.Contains(label, "lunch"), strings.Contains(label, "dinner"):
+		return "MEAL"
+	case strings.Contains(label, "training"), strings.Contains(label, "gym"), strings.Contains(label, "running"), strings.Contains(label, "swimming"):
+		return "MOVE"
+	case strings.Contains(label, "deep work"), strings.Contains(label, "focus"):
+		return "WORK"
+	case strings.Contains(label, "blog"), strings.Contains(label, "writing"), strings.Contains(label, "social media"):
+		return "MAKE"
+	case strings.Contains(label, "free time"), strings.Contains(label, "reading"):
+		return "READ"
+	case strings.Contains(label, "sleep"), strings.Contains(label, "lights out"):
+		return "REST"
+	case strings.Contains(label, "break"), strings.Contains(label, "reset"):
+		return "STOP"
+	}
+	return "PLAN"
+}
+
+func calendarTextCategoryColor(title string, fallback lipgloss.Color) lipgloss.Color {
+	switch calendarTextCategory(title) {
+	case "PRAY", "CHUR":
+		return mauve
+	case "MEAL", "STOP":
+		return peach
+	case "MOVE":
+		return green
+	case "WORK":
+		return sapphire
+	case "MAKE":
+		return blue
+	case "READ":
+		return teal
+	case "REST":
+		return surface2
+	}
+	return fallback
+}
+
+func weekDayAccent(dayIdx int) lipgloss.Color {
+	switch dayIdx {
+	case 0:
+		return blue
+	case 1:
+		return sapphire
+	case 2:
+		return teal
+	case 3:
+		return green
+	case 4:
+		return peach
+	case 5:
+		return mauve
+	case 6:
+		return red
+	default:
+		return lavender
+	}
 }
 
 // renderWidth returns the column count each view should target.
@@ -346,7 +440,13 @@ func (c Calendar) viewWeek() string {
 	weekLabel := lipgloss.NewStyle().Foreground(text).Render(
 		fmt.Sprintf("  %d-W%02d  %s - %s", weekYear, weekNum, weekStart.Format("Jan 2"), weekEnd.Format("Jan 2, 2006")))
 	cursorLabel := lipgloss.NewStyle().Foreground(overlay1).Render("  " + c.cursor.Format("Mon Jan 2"))
-	b.WriteString("  " + titleIcon + titleText + viewLabel + weekLabel + cursorLabel + "\n")
+	clockLabel := lipgloss.NewStyle().Foreground(green).Bold(true).Render(now.Format("15:04"))
+	headerLeft := "  " + titleIcon + titleText + viewLabel + weekLabel + cursorLabel
+	headerGap := width - lipgloss.Width(headerLeft) - lipgloss.Width(clockLabel) - 4
+	if headerGap < 2 {
+		headerGap = 2
+	}
+	b.WriteString(headerLeft + strings.Repeat(" ", headerGap) + clockLabel + "\n")
 
 	leadingIndent := 2
 	timeColW := 7
@@ -361,8 +461,27 @@ func (c Calendar) viewWeek() string {
 		if sameDay(day, c.today) {
 			return lipgloss.NewStyle().Foreground(green).Bold(true).Render("┃")
 		}
-		return lipgloss.NewStyle().Foreground(surface1).Render("│")
+		if sameDay(day, c.cursor) {
+			return lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("┃")
+		}
+		return lipgloss.NewStyle().Foreground(weekDayAccent(dayIdx)).Render("│")
 	}
+
+	renderLegend := func() {
+		legend := []string{
+			lipgloss.NewStyle().Foreground(sapphire).Render("WORK"),
+			lipgloss.NewStyle().Foreground(mauve).Render("PRAY"),
+			lipgloss.NewStyle().Foreground(peach).Render("MEAL"),
+			lipgloss.NewStyle().Foreground(green).Render("MOVE"),
+			lipgloss.NewStyle().Foreground(teal).Render("READ"),
+			DimStyle.Render("tags show only at block start"),
+		}
+		line := "  " + strings.Join(legend, DimStyle.Render("  "))
+		b.WriteString(line + "\n")
+	}
+
+	renderLegend()
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", gridW)) + "\n")
 
 	cellInnerW := dayColW - 1
 	renderCell := func(raw string, fg, bg lipgloss.Color, bold bool) string {
@@ -383,6 +502,7 @@ func (c Calendar) viewWeek() string {
 
 	type weekSlotEntry struct {
 		kind     string
+		tag      string
 		title    string
 		location string
 		color    lipgloss.Color
@@ -415,9 +535,10 @@ func (c Calendar) viewWeek() string {
 				}
 				entriesByDay[di] = append(entriesByDay[di], weekSlotEntry{
 					kind:     "event",
+					tag:      calendarTextCategory(ev.Title),
 					title:    ev.Title,
 					location: ev.Location,
-					color:    calEventColor(ev),
+					color:    calendarTextCategoryColor(ev.Title, calEventColor(ev)),
 					startMin: startMin,
 					endMin:   endMin,
 					dimmed:   !c.matchesSearch(ev.Title, ev.Location, ev.Description),
@@ -436,8 +557,9 @@ func (c Calendar) viewWeek() string {
 				}
 				entriesByDay[di] = append(entriesByDay[di], weekSlotEntry{
 					kind:     "planner",
+					tag:      calendarTextCategory(pb.Text),
 					title:    pb.Text,
-					color:    plannerBlockColor(pb.BlockType, pb.Done),
+					color:    plannerBlockVisualColor(pb),
 					startMin: startMin,
 					endMin:   endMin,
 					dimmed:   !c.matchesSearch(pb.Text),
@@ -471,6 +593,27 @@ func (c Calendar) viewWeek() string {
 		endHour = minInt(23, startHour+slotCount/2)
 	}
 
+	renderDayStat := func(di int) string {
+		blocks := len(entriesByDay[di])
+		allDay := len(allDayByDay[di])
+		pending := taskStatsByDay[di][0]
+		done := taskStatsByDay[di][1]
+		var parts []string
+		if blocks+allDay > 0 {
+			parts = append(parts, fmt.Sprintf("%d blk", blocks+allDay))
+		}
+		if pending > 0 {
+			parts = append(parts, fmt.Sprintf("%d task", pending))
+		}
+		if done > 0 {
+			parts = append(parts, fmt.Sprintf("%d done", done))
+		}
+		if len(parts) == 0 {
+			return "open"
+		}
+		return strings.Join(parts, " ")
+	}
+
 	renderHeaderRow := func(top bool) {
 		row := strings.Repeat(" ", timeColW)
 		for di := 0; di < 7; di++ {
@@ -482,20 +625,13 @@ func (c Calendar) viewWeek() string {
 					label = day.Format("Monday 2")
 				}
 			} else {
-				evCount := len(entriesByDay[di]) + len(allDayByDay[di])
-				pending := taskStatsByDay[di][0]
-				done := taskStatsByDay[di][1]
-				label = fmt.Sprintf("E:%d T:%d", evCount, pending)
-				if done > 0 {
-					label += fmt.Sprintf(" D:%d", done)
-				}
+				label = renderDayStat(di)
 			}
 
-			fg := text
+			fg := weekDayAccent(di)
 			bg := mantle
 			bold := true
 			if day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
-				fg = overlay1
 				bg = surface0
 			}
 			if sameDay(day, c.today) {
@@ -505,6 +641,10 @@ func (c Calendar) viewWeek() string {
 			} else if sameDay(day, c.cursor) {
 				fg = crust
 				bg = mauve
+			}
+			if !top && !sameDay(day, c.today) && !sameDay(day, c.cursor) {
+				fg = subtext0
+				bg = base
 			}
 
 			row += separatorFor(di) + renderCell(" "+label, fg, bg, bold)
@@ -529,15 +669,24 @@ func (c Calendar) viewWeek() string {
 			row += strings.Repeat(" ", timeColW-lipgloss.Width(row))
 		}
 		for di := 0; di < 7; di++ {
+			day := weekStart.AddDate(0, 0, di)
 			if len(allDayByDay[di]) == 0 {
-				row += separatorFor(di) + renderCell("", overlay1, surface0, false)
+				bg := surface0
+				if sameDay(day, c.cursor) {
+					bg = surface1
+				}
+				row += separatorFor(di) + renderCell("", overlay1, bg, false)
 				continue
 			}
 			title := allDayByDay[di][0].Title
 			if len(allDayByDay[di]) > 1 {
 				title += fmt.Sprintf(" +%d", len(allDayByDay[di])-1)
 			}
-			row += separatorFor(di) + renderCell(" "+title, crust, calEventColor(allDayByDay[di][0]), true)
+			bg := calEventColor(allDayByDay[di][0])
+			if sameDay(day, c.cursor) {
+				bg = mauve
+			}
+			row += separatorFor(di) + renderCell(" "+title, crust, bg, true)
 		}
 		b.WriteString("  " + row + "\n")
 		b.WriteString("  " + lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", gridW)) + "\n")
@@ -586,8 +735,17 @@ func (c Calendar) viewWeek() string {
 			if !inWorkHours {
 				bg = mantle
 			}
+			if day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
+				bg = surface0
+			}
 			if sameDay(day, c.today) {
 				bg = surface0
+			}
+			if sameDay(day, c.cursor) {
+				bg = surface1
+				if !inWorkHours {
+					bg = surface0
+				}
 			}
 
 			var active *weekSlotEntry
@@ -604,7 +762,9 @@ func (c Calendar) viewWeek() string {
 
 			if active == nil {
 				if isCursorCell {
-					row += separatorFor(di) + renderCell(" ▎", crust, mauve, true)
+					row += separatorFor(di) + renderCell(" ▶ free", crust, mauve, true)
+				} else if isNowSlot && di == todayIdx {
+					row += separatorFor(di) + renderCell(" now", crust, red, true)
 				} else {
 					row += separatorFor(di) + renderCell("", overlay1, bg, false)
 				}
@@ -614,7 +774,13 @@ func (c Calendar) viewWeek() string {
 			startsHere := active.startMin >= hour*60+minute && active.startMin < hour*60+minute+30
 			label := " " + active.title
 			if startsHere {
-				label = fmt.Sprintf(" %02d:%02d %s", active.startMin/60, active.startMin%60, active.title)
+				tag := active.tag
+				if tag == "" {
+					tag = "ITEM"
+				}
+				label = fmt.Sprintf(" %s %02d:%02d %s", tag, active.startMin/60, active.startMin%60, active.title)
+			} else if dayColW >= 14 {
+				label = " │ " + active.title
 			}
 			if active.location != "" && dayColW >= 18 && startsHere {
 				label += " @" + active.location
@@ -627,7 +793,10 @@ func (c Calendar) viewWeek() string {
 			entryFg := crust
 			bold := startsHere
 			if active.kind == "planner" {
-				entryFg = text
+				entryFg = crust
+				if active.color == yellow || active.color == surface2 {
+					entryFg = text
+				}
 			}
 			if active.dimmed {
 				entryBg = surface0
@@ -661,7 +830,7 @@ func (c Calendar) viewWeek() string {
 				}
 				timeRange := fmt.Sprintf("%02d:%02d-%02d:%02d", e.startMin/60, e.startMin%60, e.endMin/60, e.endMin%60)
 				duration := FormatMinutes(e.endMin - e.startMin)
-				meta := lipgloss.NewStyle().Foreground(teal).Render("  " + timeRange + "  ") + DimStyle.Render("("+duration+", "+kind+")")
+				meta := lipgloss.NewStyle().Foreground(teal).Render("  "+timeRange+"  ") + DimStyle.Render("("+duration+", "+kind+")")
 				b.WriteString(title + "\n")
 				b.WriteString(meta + "\n")
 				if e.location != "" {

@@ -31,26 +31,26 @@ const (
 
 // GoalMilestone is a sub-step within a goal.
 type GoalMilestone struct {
-	Text      string `json:"text"`
-	Done      bool   `json:"done"`
-	DueDate   string `json:"due_date,omitempty"` // YYYY-MM-DD
+	Text        string `json:"text"`
+	Done        bool   `json:"done"`
+	DueDate     string `json:"due_date,omitempty"` // YYYY-MM-DD
 	CompletedAt string `json:"completed_at,omitempty"`
 }
 
 // Goal is a standalone goal independent of projects or habits.
 type Goal struct {
-	ID          string          `json:"id"`
-	Title       string          `json:"title"`
-	Description string          `json:"description,omitempty"`
-	Status      GoalStatus      `json:"status"`
-	Category    string          `json:"category,omitempty"` // e.g. "Career", "Health", "Learning"
-	Color       string          `json:"color,omitempty"`  // "red","blue","green","yellow","mauve","pink","teal"
-	Tags        []string        `json:"tags,omitempty"`
-	TargetDate  string          `json:"target_date,omitempty"` // YYYY-MM-DD
-	CreatedAt   string          `json:"created_at"`
-	UpdatedAt   string          `json:"updated_at"`
-	CompletedAt string          `json:"completed_at,omitempty"`
-	Project     string          `json:"project,omitempty"` // linked project name
+	ID              string          `json:"id"`
+	Title           string          `json:"title"`
+	Description     string          `json:"description,omitempty"`
+	Status          GoalStatus      `json:"status"`
+	Category        string          `json:"category,omitempty"` // e.g. "Career", "Health", "Learning"
+	Color           string          `json:"color,omitempty"`    // "red","blue","green","yellow","mauve","pink","teal"
+	Tags            []string        `json:"tags,omitempty"`
+	TargetDate      string          `json:"target_date,omitempty"` // YYYY-MM-DD
+	CreatedAt       string          `json:"created_at"`
+	UpdatedAt       string          `json:"updated_at"`
+	CompletedAt     string          `json:"completed_at,omitempty"`
+	Project         string          `json:"project,omitempty"` // linked project name
 	Milestones      []GoalMilestone `json:"milestones"`
 	Notes           string          `json:"notes,omitempty"`
 	ReviewFrequency string          `json:"review_frequency,omitempty"` // "weekly", "monthly", "quarterly"
@@ -233,19 +233,19 @@ func (g Goal) TimeframeLabel() string {
 type goalInputMode int
 
 const (
-	goalInputNone goalInputMode = iota
-	goalInputTitle              // creating new goal: title
-	goalInputDate               // creating new goal: target date
-	goalInputCategory           // creating new goal: category
-	goalInputMilestone          // adding milestone
-	goalInputNotes              // editing notes
-	goalInputDescription        // editing description
-	goalInputReviewFreq         // setting review frequency
-	goalInputReview             // writing review reflection
-	goalInputMilestoneDue       // setting milestone due date
-	goalInputColor              // setting goal color
-	goalInputHelp               // showing help
-	goalInputSearch             // '/' fuzzy search across title/description/category
+	goalInputNone         goalInputMode = iota
+	goalInputTitle                      // creating new goal: title
+	goalInputDate                       // creating new goal: target date
+	goalInputCategory                   // creating new goal: category
+	goalInputMilestone                  // adding milestone
+	goalInputNotes                      // editing notes
+	goalInputDescription                // editing description
+	goalInputReviewFreq                 // setting review frequency
+	goalInputReview                     // writing review reflection
+	goalInputMilestoneDue               // setting milestone due date
+	goalInputColor                      // setting goal color
+	goalInputHelp                       // showing help
+	goalInputSearch                     // '/' fuzzy search across title/description/category
 )
 
 // ---------------------------------------------------------------------------
@@ -255,11 +255,11 @@ const (
 type goalViewMode int
 
 const (
-	goalViewAll       goalViewMode = iota // all active goals
-	goalViewByCategory                    // grouped by category
-	goalViewTimeline                      // sorted by deadline
-	goalViewCompleted                     // completed/archived
-	goalViewWins                          // next 5 due-soon undone milestones across all goals
+	goalViewAll        goalViewMode = iota // all active goals
+	goalViewByCategory                     // grouped by category
+	goalViewTimeline                       // sorted by deadline
+	goalViewCompleted                      // completed/archived
+	goalViewWins                           // next 5 due-soon undone milestones across all goals
 )
 
 // ---------------------------------------------------------------------------
@@ -286,8 +286,8 @@ type GoalsMode struct {
 	inputBuf string
 
 	// Expanded goal state
-	expanded    int    // index in filtered, -1 = none
-	expandedID  string // ID of expanded goal (survives rebuildFiltered)
+	expanded     int    // index in filtered, -1 = none
+	expandedID   string // ID of expanded goal (survives rebuildFiltered)
 	milestoneCur int
 
 	// Snapshot of target goal for input modes (prevents cursor drift)
@@ -340,9 +340,9 @@ type GoalsMode struct {
 type winItem struct {
 	GoalID    string
 	GoalTitle string
-	GoalIdx   int             // index into gm.goals
-	MsIdx     int             // index into goal.Milestones
-	Milestone GoalMilestone   // copy for render; mutate via gm.goals[GoalIdx].Milestones[MsIdx]
+	GoalIdx   int           // index into gm.goals
+	MsIdx     int           // index into goal.Milestones
+	Milestone GoalMilestone // copy for render; mutate via gm.goals[GoalIdx].Milestones[MsIdx]
 }
 
 // NewGoalsMode creates a new goals overlay.
@@ -2261,10 +2261,10 @@ func (gm *GoalsMode) View() string {
 		if len(preview) > 24 {
 			preview = preview[:21] + "…"
 		}
-		titleLine += "  " + chipStyle.Render("/" + preview)
+		titleLine += "  " + chipStyle.Render("/"+preview)
 	}
 	if gm.filterTag != "" {
-		titleLine += "  " + chipStyle.Render("#" + gm.filterTag)
+		titleLine += "  " + chipStyle.Render("#"+gm.filterTag)
 	}
 	b.WriteString(titleLine + "\n")
 
@@ -2344,6 +2344,7 @@ func (gm *GoalsMode) renderTabs(b *strings.Builder, w int) {
 func (gm *GoalsMode) renderStats(b *strings.Builder, w int) {
 	active, paused, completed, overdue := 0, 0, 0, 0
 	totalProgress := 0
+	taskDone, taskTotal := 0, 0
 	for _, g := range gm.goals {
 		switch g.Status {
 		case GoalStatusActive:
@@ -2357,6 +2358,9 @@ func (gm *GoalsMode) renderStats(b *strings.Builder, w int) {
 		if g.IsOverdue() {
 			overdue++
 		}
+		done, total := gm.linkedTaskStats(g.ID)
+		taskDone += done
+		taskTotal += total
 	}
 	avgProgress := 0
 	if active > 0 {
@@ -2386,6 +2390,9 @@ func (gm *GoalsMode) renderStats(b *strings.Builder, w int) {
 	}
 	if reviewsDue > 0 {
 		parts = append(parts, lipgloss.NewStyle().Foreground(yellow).Bold(true).Render(fmt.Sprintf("%d review due", reviewsDue)))
+	}
+	if taskTotal > 0 {
+		parts = append(parts, lipgloss.NewStyle().Foreground(sapphire).Bold(true).Render(fmt.Sprintf("%d/%d linked tasks", taskDone, taskTotal)))
 	}
 	b.WriteString("  " + strings.Join(parts, "  "))
 }
@@ -2598,7 +2605,19 @@ func (gm *GoalsMode) renderGoals(b *strings.Builder, w int) {
 			velBadge = " " + lipgloss.NewStyle().Foreground(green).Bold(true).Render(fmt.Sprintf("↑%d/wk", v))
 		}
 
-		line := prefix + statusIcon + titleStyle.Render(title) + " " + bar + msCount + timeBadge + velBadge + reviewBadge + catBadge
+		taskBadge := ""
+		if taskDone, taskTotal := gm.linkedTaskStats(goal.ID); taskTotal > 0 {
+			taskColor := sapphire
+			if taskDone == taskTotal {
+				taskColor = green
+			}
+			taskBadge = " " + lipgloss.NewStyle().Foreground(taskColor).Render(fmt.Sprintf("tasks %d/%d", taskDone, taskTotal))
+		}
+
+		line := prefix + statusIcon + titleStyle.Render(title) + " " + bar + msCount + timeBadge + velBadge + taskBadge + reviewBadge + catBadge
+		if isCursor && gm.expanded < 0 {
+			line = lipgloss.NewStyle().Background(surface0).Width(w).Render(line)
+		}
 		b.WriteString(line + "\n")
 		lineCount++
 
@@ -2790,7 +2809,10 @@ func (gm *GoalsMode) renderInput(b *strings.Builder, w int) {
 		b.WriteString("\n  " + promptStyle.Render("Add Milestone: ") + inputStyle.Render(gm.inputBuf+"\u2588") + "\n")
 	case goalInputColor:
 		b.WriteString("\n  " + promptStyle.Render("Set goal color:") + "\n\n")
-		colors := []struct{ name string; color lipgloss.Color }{
+		colors := []struct {
+			name  string
+			color lipgloss.Color
+		}{
 			{"blue", blue}, {"red", red}, {"green", green}, {"yellow", yellow},
 			{"mauve", mauve}, {"pink", pink}, {"teal", teal},
 		}

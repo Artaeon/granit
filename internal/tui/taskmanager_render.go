@@ -41,8 +41,8 @@ func renderTriageChip(state tasks.TriageState) string {
 
 func (tm *TaskManager) visibleHeight() int {
 	// Reserve: border(2) + padding(2) + title(2) + tabs(2) + input/status(2) + help bar(2) + gaps(4)
-	// Plus 1 line for cursor detail strip, plus 1 line for workload banner when visible.
-	h := tm.height - 19
+	// Plus selected-task detail pane and 1 line for workload banner when visible.
+	h := tm.height - 23
 	if tm.view == taskViewToday || tm.view == taskViewUpcoming || tm.view == taskViewAll {
 		h--
 	}
@@ -324,7 +324,7 @@ func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
 		if len(preview) > 20 {
 			preview = preview[:17] + "…"
 		}
-		filters += " " + filterStyle.Render("\"" + preview + "\"")
+		filters += " " + filterStyle.Render("\""+preview+"\"")
 	}
 	if tm.selectMode && len(tm.selected) > 0 {
 		filters += " " + lipgloss.NewStyle().Foreground(crust).Background(mauve).Padding(0, 1).
@@ -562,6 +562,11 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 			hint = "Press 'x' or Enter on tasks to mark them done. They'll show up here for your weekly retro."
 			icon = "🎯"
 		}
+		if tm.hasActiveNarrowing() {
+			emptyMsg = "No tasks match this view"
+			hint = "Filters are active — press 'c' to clear or 'F' to refine"
+			icon = "⌕"
+		}
 		b.WriteString("\n")
 		b.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).Render(icon+" "+emptyMsg))
 		b.WriteString("\n")
@@ -788,6 +793,16 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 		b.WriteString(DimStyle.Render(fmt.Sprintf("  ↪ %d snoozed %s hidden (press 'z' on a task to snooze/wake)", snoozed, word)))
 		b.WriteString("\n")
 	}
+
+	tm.renderSelectedTaskPane(b, w)
+}
+
+func (tm *TaskManager) hasActiveNarrowing() bool {
+	return tm.filterTag != "" ||
+		tm.filterPriority >= 0 ||
+		tm.filterTriage != "" ||
+		tm.searchTerm != "" ||
+		tm.sortMode != tmSortPriority
 }
 
 // snoozedCount returns the number of tasks currently snoozed (excluded from
@@ -804,6 +819,9 @@ func (tm *TaskManager) snoozedCount() int {
 
 func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w int) {
 	isSelected := idx == tm.cursor
+	selectedBg := lipgloss.Color("#313244")
+	selectedFg := lipgloss.Color("#FFFFFF")
+	selectedStyle := lipgloss.NewStyle().Foreground(selectedFg).Background(selectedBg).Bold(true)
 
 	// Checkbox
 	var checkbox string
@@ -812,10 +830,16 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	} else {
 		checkbox = lipgloss.NewStyle().Foreground(overlay0).Render("[ ]")
 	}
+	if isSelected {
+		checkbox = selectedStyle.Render(checkbox)
+	}
 
 	// Priority indicator
 	prioIcon := tmPriorityIcon(task.Priority)
 	prioStyled := lipgloss.NewStyle().Foreground(tmPriorityColor(task.Priority)).Render(prioIcon)
+	if isSelected {
+		prioStyled = selectedStyle.Render(prioIcon)
+	}
 
 	// Task text (strip emoji markers and tags for cleaner display)
 	displayText := task.Text
@@ -836,6 +860,9 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	if task.Done {
 		textStyle = lipgloss.NewStyle().Foreground(overlay0).Strikethrough(true)
 	}
+	if isSelected && !task.Done {
+		textStyle = selectedStyle
+	}
 
 	// Due date badge
 	var dueBadge string
@@ -855,6 +882,9 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	var estBadge string
 	if task.EstimatedMinutes > 0 && !task.Done {
 		estBadge = lipgloss.NewStyle().Foreground(sky).Render(" ~" + tmFormatMinutes(task.EstimatedMinutes))
+		if isSelected {
+			estBadge = selectedStyle.Render(" ~" + tmFormatMinutes(task.EstimatedMinutes))
+		}
 	}
 
 	// Selection indicator (in select mode)
@@ -866,6 +896,9 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		} else {
 			selectStr = DimStyle.Render("[ ] ")
 		}
+		if isSelected {
+			selectStr = selectedStyle.Render(selectStr)
+		}
 		prefixExtra += 4
 	}
 
@@ -874,6 +907,10 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	if tm.blockedCache[taskKey(task)] {
 		blockedStr = lipgloss.NewStyle().Foreground(red).Render("🔒 ")
 		textStyle = lipgloss.NewStyle().Foreground(overlay0)
+		if isSelected {
+			blockedStr = lipgloss.NewStyle().Foreground(selectedFg).Background(red).Bold(true).Render("LOCK ")
+			textStyle = selectedStyle
+		}
 		prefixExtra += 3
 	}
 
@@ -885,6 +922,9 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	if !task.Done {
 		triageChip = renderTriageChip(task.Triage)
 		if triageChip != "" {
+			if isSelected {
+				triageChip = selectedStyle.Render(strings.TrimSpace(triageChip)) + " "
+			}
 			prefixExtra += 2
 		}
 	}
@@ -893,6 +933,9 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	indentStr := ""
 	if task.Indent > 0 {
 		indentStr = strings.Repeat("  ", task.Indent) + DimStyle.Render("└ ")
+		if isSelected {
+			indentStr = selectedStyle.Render(strings.Repeat("  ", task.Indent) + "└ ")
+		}
 		prefixExtra += task.Indent*2 + 2
 	}
 	collapseIndicator := ""
@@ -900,6 +943,9 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		key := fmt.Sprintf("%s:%d", task.NotePath, task.LineNum)
 		if tm.collapsed[key] {
 			collapseIndicator = lipgloss.NewStyle().Foreground(overlay1).Render("[+] ")
+			if isSelected {
+				collapseIndicator = selectedStyle.Render("[+] ")
+			}
 			prefixExtra += 4
 		}
 	}
@@ -949,7 +995,8 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 
 	prefix := " "
 	if isSelected {
-		prefix = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▸")
+		prioBar = selectedStyle.Render("██")
+		prefix = selectedStyle.Render("▶")
 	}
 
 	// Small scheduled time indicator before task text
@@ -958,6 +1005,9 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 		parts := strings.SplitN(task.ScheduledTime, "-", 2)
 		if len(parts) >= 1 {
 			schedBadge = lipgloss.NewStyle().Foreground(teal).Render(parts[0] + " ")
+			if isSelected {
+				schedBadge = selectedStyle.Render(parts[0] + " ")
+			}
 		}
 	}
 
@@ -1000,31 +1050,57 @@ func (tm *TaskManager) renderTaskRow(b *strings.Builder, idx int, task Task, w i
 	}
 
 	if isSelected {
-		// Brighter cursor highlight — surface1 sits between
-		// surface0 (subtle) and overlay0 (loud). Combined with
-		// the existing "▸" mauve prefix and priority left-bar,
-		// the cursor row stands out without screaming. The
-		// full-width fill prevents the right edge from blending
-		// into the editor pane background.
+		activeBadge := lipgloss.NewStyle().
+			Foreground(selectedFg).
+			Background(lipgloss.Color("#45475A")).
+			Bold(true).
+			Padding(0, 1).
+			Render("SELECTED")
+		row := " ▶ " + strings.TrimLeft(line, " ")
+		if lipgloss.Width(row)+lipgloss.Width(activeBadge)+1 < w {
+			row += strings.Repeat(" ", w-lipgloss.Width(row)-lipgloss.Width(activeBadge)-1) + activeBadge
+		}
 		b.WriteString(lipgloss.NewStyle().
-			Background(surface1).
+			Background(selectedBg).
+			Foreground(selectedFg).
+			Bold(true).
 			Width(w).
-			Render(line))
+			Render(row))
 	} else {
 		b.WriteString(line)
 	}
 
-	// Detail strip — only for the cursor row, only if there's
-	// something to show, and only when compact mode is off.
-	// Compact mode relies on the hint dots to signal "metadata
-	// exists" without spending a whole line per cursor task.
-	if isSelected && !tm.compact {
-		detail := tm.renderTaskDetailLine(task)
-		if detail != "" {
-			b.WriteString("\n")
-			detailStyle := lipgloss.NewStyle().Background(surface0).Padding(0, 1)
-			b.WriteString("   " + detailStyle.Render(detail))
-		}
+}
+
+func (tm *TaskManager) selectedTask() (Task, bool) {
+	if tm.cursor < 0 || tm.cursor >= len(tm.filtered) {
+		return Task{}, false
+	}
+	return tm.filtered[tm.cursor], true
+}
+
+func (tm *TaskManager) renderSelectedTaskPane(b *strings.Builder, w int) {
+	task, ok := tm.selectedTask()
+	if !ok || tm.compact {
+		return
+	}
+
+	b.WriteString("\n")
+	rule := lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("─", maxInt(8, w-4)))
+	b.WriteString("  " + rule + "\n")
+
+	title := TruncateDisplay(tmCleanText(task.Text), w-18)
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("SELECTED") + " " +
+		lipgloss.NewStyle().Foreground(text).Bold(true).Render(title) + "\n")
+
+	meta := tm.selectedTaskMeta(task, w)
+	if meta != "" {
+		b.WriteString("  " + meta + "\n")
+	}
+
+	actions := tm.selectedTaskActions(task)
+	if actions != "" {
+		b.WriteString("  " + actions + "\n")
 	}
 }
 
@@ -1076,6 +1152,96 @@ func (tm *TaskManager) renderTaskDetailLine(task Task) string {
 	}
 	sep := DimStyle.Render(" · ")
 	return strings.Join(parts, sep)
+}
+
+func (tm *TaskManager) selectedTaskMeta(task Task, w int) string {
+	chip := func(label, value string, color lipgloss.Color) string {
+		if value == "" {
+			return ""
+		}
+		return lipgloss.NewStyle().Foreground(color).Bold(true).Render(label) +
+			DimStyle.Render(":") +
+			lipgloss.NewStyle().Foreground(text).Render(value)
+	}
+
+	var parts []string
+	if task.Project != "" {
+		parts = append(parts, chip("project", task.Project, blue))
+	}
+	if task.ProjectID != "" {
+		parts = append(parts, chip("project-id", task.ProjectID, blue))
+	}
+	if task.DueDate != "" {
+		parts = append(parts, chip("due", tmFormatDue(task.DueDate), tmDueColor(task.DueDate)))
+	}
+	if task.Recurrence != "" {
+		parts = append(parts, chip("repeat", task.Recurrence, teal))
+	}
+	if task.EstimatedMinutes > 0 {
+		parts = append(parts, chip("estimate", tmFormatMinutes(task.EstimatedMinutes), sky))
+	}
+	if task.ActualMinutes > 0 {
+		parts = append(parts, chip("actual", tmFormatMinutes(task.ActualMinutes), green))
+	}
+	if task.ScheduledTime != "" {
+		parts = append(parts, chip("block", task.ScheduledTime, lavender))
+	}
+	if task.GoalID != "" {
+		parts = append(parts, chip("goal", task.GoalID, sapphire))
+	}
+	if task.Origin != "" {
+		parts = append(parts, chip("origin", string(task.Origin), peach))
+	}
+	if task.Triage != "" {
+		parts = append(parts, chip("triage", string(task.Triage), mauve))
+	}
+	if len(task.Tags) > 0 {
+		parts = append(parts, chip("tags", "#"+strings.Join(task.Tags, " #"), sapphire))
+	}
+	if task.NotePath != "" {
+		parts = append(parts, chip("source", fmt.Sprintf("%s:%d", task.NotePath, task.LineNum), overlay1))
+	}
+	if task.ID != "" {
+		parts = append(parts, chip("id", task.ID, overlay0))
+	}
+	line := strings.Join(parts, DimStyle.Render("  ·  "))
+	if lipgloss.Width(line) > w-4 {
+		return TruncateDisplay(line, w-4)
+	}
+	return line
+}
+
+func (tm *TaskManager) selectedTaskActions(task Task) string {
+	items := []struct{ key, desc string }{
+		{"x", "toggle"}, {"g", "source"}, {"i", "edit"}, {"d", "due"},
+		{"p", "priority"}, {"E", "estimate"}, {"B", "block"}, {"f", "focus"},
+	}
+	if task.Done {
+		items = []struct{ key, desc string }{
+			{"x", "reopen"}, {"g", "source"}, {"n", "note"}, {"X", "archive"},
+		}
+	}
+	if task.Triage == "" || task.Triage == tasks.TriageInbox {
+		items = append([]struct{ key, desc string }{{"m t", "triage"}, {"m s", "schedule"}}, items...)
+	}
+	keyStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(overlay1)
+	var parts []string
+	for _, item := range items {
+		parts = append(parts, keyStyle.Render(item.key)+" "+descStyle.Render(item.desc))
+	}
+	return strings.Join(parts, "  ")
+}
+
+func tmDueColor(due string) lipgloss.Color {
+	switch {
+	case tmIsOverdue(due):
+		return red
+	case tmIsToday(due):
+		return yellow
+	default:
+		return lavender
+	}
 }
 
 // renderMiniTimeline draws a compact timeline strip for the Plan view, showing
@@ -1152,8 +1318,8 @@ func (tm *TaskManager) renderMiniTimeline(b *strings.Builder, w int) {
 	b.WriteString("  " + label + lipgloss.NewStyle().Foreground(teal).Render(strings.Repeat("─", sepLen)) + "\n")
 
 	// Render compact timeline: each hour is a fixed width
-	rangeStart := 8 * 60  // 08:00
-	rangeEnd := 22 * 60   // 22:00
+	rangeStart := 8 * 60 // 08:00
+	rangeEnd := 22 * 60  // 22:00
 	totalMins := rangeEnd - rangeStart
 	barW := w - 12
 	if barW < 10 {
@@ -1236,7 +1402,7 @@ func (tm *TaskManager) renderMiniTimeline(b *strings.Builder, w int) {
 
 	// Now marker
 	if nowMin >= rangeStart && nowMin < rangeEnd {
-		nowPos := (nowMin - rangeStart) * barW / totalMins + 2
+		nowPos := (nowMin-rangeStart)*barW/totalMins + 2
 		b.WriteString(strings.Repeat(" ", nowPos) +
 			lipgloss.NewStyle().Foreground(red).Bold(true).Render("▲") +
 			lipgloss.NewStyle().Foreground(red).Render(" now") + "\n")
@@ -1721,7 +1887,9 @@ func (tm *TaskManager) renderKanbanView(b *strings.Builder, w int) {
 		} else {
 			start := tm.kanbanScroll[c]
 			end := start + visH
-			if end > len(cols[c]) { end = len(cols[c]) }
+			if end > len(cols[c]) {
+				end = len(cols[c])
+			}
 			for i := start; i < end; i++ {
 				isSelected := isActiveCol && i == tm.kanbanCursor[c]
 				tm.renderKanbanCard(&cb, cols[c][i], isSelected, colWidth-4)
@@ -1732,11 +1900,11 @@ func (tm *TaskManager) renderKanbanView(b *strings.Builder, w int) {
 			}
 		}
 
-		colStyle := lipgloss.NewStyle().Width(colWidth - 2).Padding(0, 1)
+		colStyle := lipgloss.NewStyle().Width(colWidth-2).Padding(0, 1)
 		if isActiveCol {
 			colStyle = colStyle.Border(lipgloss.NormalBorder(), false, true, false, true).BorderForeground(surface1).Padding(0, 0)
 		} else {
-		    colStyle = colStyle.Border(lipgloss.NormalBorder(), false, true, false, false).BorderForeground(surface0)
+			colStyle = colStyle.Border(lipgloss.NormalBorder(), false, true, false, false).BorderForeground(surface0)
 		}
 
 		colViews = append(colViews, colStyle.Render(cb.String()))
@@ -1748,19 +1916,23 @@ func (tm *TaskManager) renderKanbanView(b *strings.Builder, w int) {
 
 func (tm *TaskManager) renderKanbanCard(b *strings.Builder, task Task, isSelected bool, w int) {
 	borderColor := surface0
-	if isSelected { borderColor = lavender }
-	
+	if isSelected {
+		borderColor = lavender
+	}
+
 	boxW := w
-	if boxW < 10 { boxW = 10 }
+	if boxW < 10 {
+		boxW = 10
+	}
 
 	boxStyle := lipgloss.NewStyle().
-	    Border(PanelBorder).
-	    BorderForeground(borderColor).
-	    Width(boxW).
-	    Padding(0, 1)
+		Border(PanelBorder).
+		BorderForeground(borderColor).
+		Width(boxW).
+		Padding(0, 1)
 
-	if isSelected { 
-	    boxStyle = boxStyle.Background(surface0).BorderForeground(lavender) 
+	if isSelected {
+		boxStyle = boxStyle.Background(surface0).BorderForeground(lavender)
 	}
 
 	var contentBuilder strings.Builder
@@ -1775,41 +1947,55 @@ func (tm *TaskManager) renderKanbanCard(b *strings.Builder, task Task, isSelecte
 	if task.DueDate != "" {
 		dueLabel := tmFormatDue(task.DueDate)
 		dueColor := overlay0
-		if tmIsOverdue(task.DueDate) { dueColor = red } else if tmIsToday(task.DueDate) { dueColor = yellow }
+		if tmIsOverdue(task.DueDate) {
+			dueColor = red
+		} else if tmIsToday(task.DueDate) {
+			dueColor = yellow
+		}
 		contentBuilder.WriteString(lipgloss.NewStyle().Foreground(dueColor).Render("⏰ " + dueLabel))
 	} else {
-	    contentBuilder.WriteString(lipgloss.NewStyle().Foreground(surface0).Render("⏰ No Date"))
+		contentBuilder.WriteString(lipgloss.NewStyle().Foreground(surface0).Render("⏰ No Date"))
 	}
 	contentBuilder.WriteString("\n")
 
 	/* Title */
 	displayText := tmCleanText(task.Text)
 	runes := []rune(displayText)
-	maxTextW := boxW - 2 
-	if maxTextW < 1 { maxTextW = 1 }
-	if len(runes) > maxTextW*2 { displayText = string(runes[:maxTextW*2-3]) + "..." }
-	
+	maxTextW := boxW - 2
+	if maxTextW < 1 {
+		maxTextW = 1
+	}
+	if len(runes) > maxTextW*2 {
+		displayText = string(runes[:maxTextW*2-3]) + "..."
+	}
+
 	textStyle := lipgloss.NewStyle().Foreground(text).Width(maxTextW)
-	if task.Done { textStyle = textStyle.Foreground(overlay0).Strikethrough(true) }
-	
+	if task.Done {
+		textStyle = textStyle.Foreground(overlay0).Strikethrough(true)
+	}
+
 	contentBuilder.WriteString(textStyle.Render(displayText) + "\n")
-	
+
 	/* Status & Badge */
 	checkbox := lipgloss.NewStyle().Foreground(overlay0).Render("[ ]")
-	if task.Done { checkbox = lipgloss.NewStyle().Foreground(green).Render("[✓]") }
-	
-	projectBadge := ""
-	if task.Project != "" { projectBadge = lipgloss.NewStyle().Foreground(blue).Render("#" + task.Project) }
+	if task.Done {
+		checkbox = lipgloss.NewStyle().Foreground(green).Render("[✓]")
+	}
 
-    bottomLine := checkbox
-    if projectBadge != "" {
-        padLen := maxTextW - lipgloss.Width(checkbox) - lipgloss.Width(projectBadge)
-        if padLen > 0 {
-            bottomLine += strings.Repeat(" ", padLen) + projectBadge
-        } else {
-            bottomLine += " " + projectBadge
-        }
-    }
+	projectBadge := ""
+	if task.Project != "" {
+		projectBadge = lipgloss.NewStyle().Foreground(blue).Render("#" + task.Project)
+	}
+
+	bottomLine := checkbox
+	if projectBadge != "" {
+		padLen := maxTextW - lipgloss.Width(checkbox) - lipgloss.Width(projectBadge)
+		if padLen > 0 {
+			bottomLine += strings.Repeat(" ", padLen) + projectBadge
+		} else {
+			bottomLine += " " + projectBadge
+		}
+	}
 	contentBuilder.WriteString(bottomLine)
 
 	b.WriteString(boxStyle.Render(contentBuilder.String()))

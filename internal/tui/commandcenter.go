@@ -56,6 +56,12 @@ type CommandCenter struct {
 	schedule  []timeSlot       // today's time blocks
 	projects  []projectSummary // active projects with progress
 	habits    []habitStatus    // today's habits
+	recent    []dashNote       // recent notes for fast re-entry
+
+	todayCount   int
+	overdueCount int
+	inboxCount   int
+	activeTimer  string
 
 	// UI state
 	section int // 0=now, 1=schedule, 2=projects, 3=habits
@@ -134,6 +140,9 @@ func (cc *CommandCenter) ToggledHabit() string {
 // LoadData populates the command center with data from all productivity systems.
 func (cc *CommandCenter) LoadData(tasks []Task, projects []Project, habits []habitEntry, habitLogs []habitLog, events []PlannerEvent) {
 	today := time.Now().Format("2006-01-02")
+	cc.todayCount = 0
+	cc.overdueCount = 0
+	cc.inboxCount = 0
 
 	// ── Sort and select tasks ──
 	// Filter to incomplete tasks only.
@@ -141,6 +150,15 @@ func (cc *CommandCenter) LoadData(tasks []Task, projects []Project, habits []hab
 	for _, t := range tasks {
 		if !t.Done {
 			pending = append(pending, t)
+			if t.DueDate != "" && t.DueDate < today {
+				cc.overdueCount++
+			}
+			if t.DueDate == today {
+				cc.todayCount++
+			}
+			if t.Triage == "" || t.Triage == "inbox" {
+				cc.inboxCount++
+			}
 		}
 	}
 
@@ -278,6 +296,16 @@ func (cc *CommandCenter) LoadData(tasks []Task, projects []Project, habits []hab
 			Streak: h.Streak,
 		})
 	}
+}
+
+// SetRecentNotes sets compact recent-note data for the persistent cockpit view.
+func (cc *CommandCenter) SetRecentNotes(notes []dashNote) {
+	cc.recent = notes
+}
+
+// SetActiveTimer sets the current running timer label, if any.
+func (cc *CommandCenter) SetActiveTimer(label string) {
+	cc.activeTimer = label
 }
 
 // priorityScore computes an urgency score for a task used for sorting.
@@ -495,6 +523,190 @@ func (cc CommandCenter) View() string {
 		Background(mantle)
 
 	return border.Render(b.String())
+}
+
+// InlineView renders Command Center as the default editor surface, without a
+// popup frame. It is intentionally denser than the overlay: this is the cockpit
+// users should land on when no note tab is active.
+func (cc CommandCenter) InlineView(width, height int) string {
+	if width < 50 {
+		width = 50
+	}
+	innerW := width - 4
+	var b strings.Builder
+
+	title := lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("  COMMAND CENTER")
+	subtitle := DimStyle.Render("  morning launchpad")
+	if cc.activeTimer != "" {
+		subtitle = DimStyle.Render("  morning launchpad  ·  ") + lipgloss.NewStyle().Foreground(green).Bold(true).Render(cc.activeTimer)
+	}
+	b.WriteString(title + subtitle + "\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("─", innerW)) + "\n")
+
+	habitsDue := 0
+	for _, h := range cc.habits {
+		if !h.Done {
+			habitsDue++
+		}
+	}
+	cardW := innerW/4 - 2
+	cards := []string{
+		cc.metricCard("Today", fmt.Sprintf("%d", cc.todayCount), green, cardW),
+		cc.metricCard("Overdue", fmt.Sprintf("%d", cc.overdueCount), red, cardW),
+		cc.metricCard("Inbox", fmt.Sprintf("%d", cc.inboxCount), peach, cardW),
+		cc.metricCard("Habits", fmt.Sprintf("%d", habitsDue), teal, cardW),
+	}
+	b.WriteString("  " + lipgloss.JoinHorizontal(lipgloss.Top, cards...) + "\n\n")
+
+	b.WriteString(cc.viewNow(innerW) + "\n")
+	b.WriteString(cc.viewNextBlockCompact(innerW) + "\n")
+	b.WriteString(cc.viewScheduleCompact(innerW, 4) + "\n")
+	b.WriteString(cc.viewProjectsCompact(innerW, 3) + "\n")
+	b.WriteString(cc.viewHabitsCompact(innerW, 5) + "\n")
+	b.WriteString(cc.viewRecentNotes(innerW, 5))
+
+	lines := strings.Split(strings.TrimRight(b.String(), "\n"), "\n")
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (cc CommandCenter) viewNextBlockCompact(innerW int) string {
+	var b strings.Builder
+	b.WriteString(lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("  NEXT CALENDAR BLOCK") + "\n")
+	if len(cc.schedule) == 0 {
+		b.WriteString("  " + DimStyle.Render("No calendar block queued") + "\n")
+		return b.String()
+	}
+	slot := cc.schedule[0]
+	label := slot.Task
+	maxW := innerW - 20
+	if maxW < 12 {
+		maxW = 12
+	}
+	label = TruncateDisplay(label, maxW)
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(teal).Bold(true).Width(14).Render(slot.Time) +
+		" " + lipgloss.NewStyle().Foreground(text).Render(label) + "\n")
+	return b.String()
+}
+
+func (cc CommandCenter) metricCard(label, value string, color lipgloss.Color, width int) string {
+	if width < 12 {
+		width = 12
+	}
+	return lipgloss.NewStyle().
+		BorderStyle(PanelBorder).
+		BorderForeground(surface0).
+		Width(width).
+		Padding(0, 1).
+		Render(
+			DimStyle.Render(label) + "\n" +
+				lipgloss.NewStyle().Foreground(color).Bold(true).Render(value),
+		)
+}
+
+func (cc CommandCenter) viewScheduleCompact(innerW, limit int) string {
+	var b strings.Builder
+	b.WriteString(lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("  NEXT BLOCKS") + "\n")
+	if len(cc.schedule) == 0 {
+		b.WriteString(DimStyle.Render("  No scheduled items") + "\n")
+		return b.String()
+	}
+	if limit > len(cc.schedule) {
+		limit = len(cc.schedule)
+	}
+	for i := 0; i < limit; i++ {
+		slot := cc.schedule[i]
+		task := slot.Task
+		maxW := innerW - 22
+		if maxW < 12 {
+			maxW = 12
+		}
+		if r := []rune(task); len(r) > maxW {
+			task = string(r[:maxW-3]) + "..."
+		}
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).Width(14).Render(slot.Time) + " " + task + "\n")
+	}
+	return b.String()
+}
+
+func (cc CommandCenter) viewProjectsCompact(innerW, limit int) string {
+	var b strings.Builder
+	b.WriteString(lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("  ACTIVE PROJECTS") + "\n")
+	if len(cc.projects) == 0 {
+		b.WriteString(DimStyle.Render("  No active projects") + "\n")
+		return b.String()
+	}
+	if limit > len(cc.projects) {
+		limit = len(cc.projects)
+	}
+	for i := 0; i < limit; i++ {
+		proj := cc.projects[i]
+		pct := int(proj.Progress * 100)
+		next := proj.NextAction
+		maxW := innerW - 28
+		if maxW < 10 {
+			maxW = 10
+		}
+		if r := []rune(next); len(r) > maxW {
+			next = string(r[:maxW-3]) + "..."
+		}
+		b.WriteString(fmt.Sprintf("  %-18s %3d%%  %s\n", proj.Name, pct, DimStyle.Render(next)))
+	}
+	return b.String()
+}
+
+func (cc CommandCenter) viewRecentNotes(innerW, limit int) string {
+	var b strings.Builder
+	b.WriteString(lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("  RECENT NOTES") + "\n")
+	if len(cc.recent) == 0 {
+		b.WriteString(DimStyle.Render("  No recent notes yet") + "\n")
+		return b.String()
+	}
+	if limit > len(cc.recent) {
+		limit = len(cc.recent)
+	}
+	for i := 0; i < limit; i++ {
+		note := cc.recent[i]
+		name := note.Name
+		maxW := innerW - 18
+		if maxW < 12 {
+			maxW = 12
+		}
+		if r := []rune(name); len(r) > maxW {
+			name = string(r[:maxW-3]) + "..."
+		}
+		b.WriteString("  " + ccPadRight(name, maxW) + " " + DimStyle.Render(note.TimeAgo) + "\n")
+	}
+	return b.String()
+}
+
+func (cc CommandCenter) viewHabitsCompact(innerW, limit int) string {
+	var b strings.Builder
+	b.WriteString(lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("  HABITS DUE") + "\n")
+	var due []habitStatus
+	for _, h := range cc.habits {
+		if !h.Done {
+			due = append(due, h)
+		}
+	}
+	if len(due) == 0 {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(green).Render("All habits checked for today") + "\n")
+		return b.String()
+	}
+	if limit > len(due) {
+		limit = len(due)
+	}
+	for i := 0; i < limit; i++ {
+		name := TruncateDisplay(due[i].Name, innerW-16)
+		streak := ""
+		if due[i].Streak > 0 {
+			streak = lipgloss.NewStyle().Foreground(peach).Render(fmt.Sprintf("  %dd", due[i].Streak))
+		}
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(overlay0).Render("[ ]") + " " + name + streak + "\n")
+	}
+	return b.String()
 }
 
 // viewNow renders the NOW section — the single most important task.

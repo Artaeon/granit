@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -247,9 +248,9 @@ type ProjectMode struct {
 	// is a sliced view of projectStatuses; "" means no filter.
 	// Both compose with the existing categoryIdx so power users
 	// can stack "active + dev + 'auth'".
-	searchQuery   string
-	statusFilter  string
-	searching     bool // true while live-typing the / query
+	searchQuery  string
+	statusFilter string
+	searching    bool // true while live-typing the / query
 
 	// Bulk select mode. 'v' enters; 'space' toggles selection
 	// for the cursor project; 'A' archives every selected
@@ -391,6 +392,18 @@ func (pm *ProjectMode) toggleTask(idx int) {
 		return
 	}
 	task.Done = !task.Done
+	if pm.selectedProj >= 0 && pm.selectedProj < len(pm.projects) {
+		done := 0
+		for _, t := range pm.dashTasks {
+			if t.Done {
+				done++
+			}
+		}
+		pm.projects[pm.selectedProj].TasksDone = done
+		pm.projects[pm.selectedProj].TasksTotal = len(pm.dashTasks)
+		pm.touchProject(pm.selectedProj)
+		pm.saveProjects()
+	}
 	pm.fileChanged = true
 }
 
@@ -576,23 +589,42 @@ func (pm *ProjectMode) scanProjectTasks(proj Project) []projectTask {
 	}
 
 	var tasks []projectTask
+	seen := map[string]bool{}
+	addTasks := func(found []projectTask) {
+		for _, t := range found {
+			key := t.Source + ":" + strconv.Itoa(t.LineNum)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			tasks = append(tasks, t)
+		}
+	}
 
 	// If filter looks like a folder path, scan just that folder.
 	if strings.Contains(filter, "/") || strings.Contains(filter, string(os.PathSeparator)) {
 		absDir := filepath.Join(pm.vaultRoot, filter)
-		pm.scanTasksInDir(absDir, filter, &tasks)
+		var found []projectTask
+		pm.scanTasksInDir(absDir, "", &found)
+		addTasks(found)
 		return tasks
 	}
 
-	// Otherwise treat as a tag; scan the project folder first, then
-	// a Tasks.md at vault root.
+	// A project folder narrows where we look; an explicit task filter
+	// still decides which tasks belong to the dashboard.
 	if proj.Folder != "" {
 		absDir := filepath.Join(pm.vaultRoot, proj.Folder)
-		pm.scanTasksInDir(absDir, filter, &tasks)
+		var found []projectTask
+		pm.scanTasksInDir(absDir, filter, &found)
+		addTasks(found)
 	}
 
-	// Check vault-root Tasks.md
-	pm.scanTasksInFile(tasksFilePath(pm.vaultRoot), filter, &tasks)
+	// Root Tasks.md is shared, so keep it filter/tag based.
+	if filter != "" {
+		var found []projectTask
+		pm.scanTasksInFile(tasksFilePath(pm.vaultRoot), filter, &found)
+		addTasks(found)
+	}
 
 	return tasks
 }
@@ -631,10 +663,11 @@ func (pm *ProjectMode) scanTasksInFile(absPath, filter string, tasks *[]projectT
 			continue
 		}
 
-		// Apply tag filter: task must contain #filter or the filter word.
-		tagStr := "#" + filter
-		if !strings.Contains(taskText, tagStr) && !strings.Contains(strings.ToLower(taskText), strings.ToLower(filter)) {
-			continue
+		if filter != "" {
+			tagStr := "#" + filter
+			if !strings.Contains(taskText, tagStr) && !strings.Contains(strings.ToLower(taskText), strings.ToLower(filter)) {
+				continue
+			}
 		}
 
 		*tasks = append(*tasks, projectTask{
@@ -1823,13 +1856,13 @@ func (pm ProjectMode) viewList() string {
 		if len(preview) > 24 {
 			preview = preview[:21] + "\u2026"
 		}
-		b.WriteString("  " + chipStyle.Render("/" + preview))
+		b.WriteString("  " + chipStyle.Render("/"+preview))
 	}
 	if pm.statusFilter != "" {
-		b.WriteString("  " + chipStyle.Render("status:" + pm.statusFilter))
+		b.WriteString("  " + chipStyle.Render("status:"+pm.statusFilter))
 	}
 	if pm.filterTag != "" {
-		b.WriteString("  " + chipStyle.Render("#" + pm.filterTag))
+		b.WriteString("  " + chipStyle.Render("#"+pm.filterTag))
 	}
 	if pm.recencyBoost {
 		b.WriteString("  " + lipgloss.NewStyle().Foreground(crust).Background(green).Padding(0, 1).Render("recent↑"))
@@ -1903,6 +1936,9 @@ func (pm ProjectMode) viewList() string {
 				}
 				taskChip = " " + lipgloss.NewStyle().Foreground(sapphire).
 					Render(fmt.Sprintf("%d/%dt", done, total))
+				if proj.Folder != "" {
+					taskChip += " " + lipgloss.NewStyle().Foreground(green).Render("folder")
+				}
 			}
 
 			// Selection prefix for bulk-select mode.
@@ -2406,6 +2442,15 @@ func (pm ProjectMode) viewDashTasks(width int) string {
 		Render(IconCalendarChar + "  Tasks")
 	b.WriteString("  " + title)
 	b.WriteString(DimStyle.Render(fmt.Sprintf(" (%d/%d done)", doneTasks, len(pm.dashTasks))))
+	if pm.selectedProj >= 0 && pm.selectedProj < len(pm.projects) {
+		proj := pm.projects[pm.selectedProj]
+		if proj.Folder != "" {
+			b.WriteString(" " + lipgloss.NewStyle().Foreground(green).Render("folder-linked"))
+		}
+		if proj.TaskFilter != "" {
+			b.WriteString(" " + lipgloss.NewStyle().Foreground(sapphire).Render("filter:"+proj.TaskFilter))
+		}
+	}
 	b.WriteString("\n")
 
 	if len(pm.dashTasks) == 0 {
@@ -2446,7 +2491,17 @@ func (pm ProjectMode) viewDashTasks(width int) string {
 			textStyle = textStyle.Strikethrough(true).Foreground(overlay0)
 		}
 
-		b.WriteString("  " + checkbox + textStyle.Render(taskText))
+		source := DimStyle.Render("  " + task.Source)
+		line := checkbox + textStyle.Render(taskText) + source
+		if i == pm.dashScroll {
+			line = lipgloss.NewStyle().
+				Background(surface0).
+				Width(width - 8).
+				Render(lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▸ ") + line)
+		} else {
+			line = "  " + line
+		}
+		b.WriteString(line)
 		b.WriteString("\n")
 	}
 

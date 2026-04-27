@@ -1756,6 +1756,11 @@ func (m *Model) triggerExitSplash() tea.Cmd {
 	OllamaStopServer()
 	m.showExitSplash = true
 	m.exitSplash = NewExitSplash(m.vault.NoteCount(), time.Since(m.sessionStart))
+	tabCount := 0
+	if m.tabBar != nil {
+		tabCount = m.tabBar.Count()
+	}
+	m.exitSplash.SetContext(tabCount, m.statusbar.gitStatus, m.activeNote)
 	m.exitSplash.width = m.width
 	m.exitSplash.height = m.height
 	return m.exitSplash.Init()

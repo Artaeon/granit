@@ -15,7 +15,7 @@ import (
 type PomodoroState int
 
 const (
-	PomodoroIdle       PomodoroState = iota
+	PomodoroIdle PomodoroState = iota
 	PomodoroWork
 	PomodoroShortBreak
 	PomodoroLongBreak
@@ -60,10 +60,10 @@ type Pomodoro struct {
 	sessionLog []pomodoroSession
 
 	// Focus queue
-	queue       []QueueTask    // ordered task queue for the day
-	queueCursor int            // current position in queue
-	showQueue   bool           // show queue panel in overlay
-	queueScroll int            // scroll offset for long queue lists
+	queue       []QueueTask // ordered task queue for the day
+	queueCursor int         // current position in queue
+	showQueue   bool        // show queue panel in overlay
+	queueScroll int         // scroll offset for long queue lists
 
 	// Time tracking
 	taskTimeLog map[string]int // task text -> minutes spent
@@ -703,7 +703,7 @@ func (p Pomodoro) View() string {
 		if qt := p.CurrentQueueTask(); qt != nil {
 			details := "  "
 			if qt.Project != "" {
-				details += lipgloss.NewStyle().Foreground(blue).Render("Project: "+qt.Project)
+				details += lipgloss.NewStyle().Foreground(blue).Render("Project: " + qt.Project)
 				if qt.Estimated > 0 {
 					details += lipgloss.NewStyle().Foreground(overlay0).Render(" \u00b7 ")
 				}
@@ -711,6 +711,12 @@ func (p Pomodoro) View() string {
 			if qt.Estimated > 0 {
 				details += lipgloss.NewStyle().Foreground(subtext0).Render(
 					fmt.Sprintf("Est: %dmin", qt.Estimated))
+			}
+			if qt.SourcePath != "" {
+				if details != "  " {
+					details += lipgloss.NewStyle().Foreground(overlay0).Render(" · ")
+				}
+				details += lipgloss.NewStyle().Foreground(green).Render("task-linked")
 			}
 			b.WriteString("  " + details)
 			b.WriteString("\n")
@@ -783,8 +789,24 @@ func (p Pomodoro) View() string {
 				timeStyle = lipgloss.NewStyle().Foreground(green)
 			}
 
-			b.WriteString("  " + leftPart + strings.Repeat(" ", padding) + timeStyle.Render(timeInfo))
+			line := leftPart + strings.Repeat(" ", padding) + timeStyle.Render(timeInfo)
+			if i == p.queueCursor && !qt.Done {
+				line = lipgloss.NewStyle().
+					Background(surface0).
+					Width(width - 8).
+					Render(lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▸ ") + line)
+			} else {
+				line = "  " + line
+			}
+			b.WriteString(line)
 			b.WriteString("\n")
+			if qt.Estimated > 0 && i == p.queueCursor && !qt.Done {
+				b.WriteString("    " + pomodoroTaskProgressBar(qt.Elapsed, qt.Estimated, width-14))
+				if qt.SourcePath != "" {
+					b.WriteString(" " + lipgloss.NewStyle().Foreground(green).Render("sync"))
+				}
+				b.WriteString("\n")
+			}
 		}
 
 		if len(p.queue) > maxVisible {
@@ -932,6 +954,28 @@ func (p Pomodoro) View() string {
 		Background(mantle)
 
 	return border.Render(b.String())
+}
+
+func pomodoroTaskProgressBar(elapsed, estimated, width int) string {
+	if width < 8 {
+		width = 8
+	}
+	if estimated <= 0 {
+		return lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("░", width))
+	}
+	filled := elapsed * width / estimated
+	if filled > width {
+		filled = width
+	}
+	if filled < 0 {
+		filled = 0
+	}
+	color := green
+	if elapsed > estimated {
+		color = yellow
+	}
+	return lipgloss.NewStyle().Foreground(color).Render(strings.Repeat("█", filled)) +
+		lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("░", width-filled))
 }
 
 // tick returns a command that sends a pomodoroTickMsg after 1 second.

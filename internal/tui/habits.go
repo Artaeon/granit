@@ -66,11 +66,11 @@ const (
 	habitInputNewGoalTitle
 	habitInputNewGoalDate
 	habitInputNewMilestone
-	habitInputSearch       // '/' fuzzy filter on habit name
-	habitInputCategory     // 'g' set / type new category for cursor habit
-	habitInputNote         // 'N' add a note for cursor habit on activeDate
-	habitInputBulk         // '+' bulk-add: comma- or newline-separated names
-	habitInputHelp         // '?' full keyboard reference overlay
+	habitInputSearch   // '/' fuzzy filter on habit name
+	habitInputCategory // 'g' set / type new category for cursor habit
+	habitInputNote     // 'N' add a note for cursor habit on activeDate
+	habitInputBulk     // '+' bulk-add: comma- or newline-separated names
+	habitInputHelp     // '?' full keyboard reference overlay
 )
 
 // habitSortMode controls habit list ordering.
@@ -99,11 +99,11 @@ func (m habitSortMode) String() string {
 type HabitTracker struct {
 	OverlayBase
 
-	vaultRoot       string
+	vaultRoot        string
 	dailyNotesFolder string // from config, e.g. "Jots"
-	tab             int    // 0=habits, 1=goals, 2=stats
-	cursor    int
-	scroll    int
+	tab              int    // 0=habits, 1=goals, 2=stats
+	cursor           int
+	scroll           int
 
 	habits []habitEntry
 	logs   []habitLog
@@ -141,12 +141,12 @@ type HabitTracker struct {
 	// habits stay in habits.md but render only when showArchived
 	// is true; persistence is in .granit/habits-archived.json so
 	// we don't need to alter the markdown table format.
-	activeDate    string
-	sortMode      habitSortMode
-	searchQuery   string
-	archived      map[string]bool // habit name → archived
-	showArchived  bool
-	statusMsg     string
+	activeDate   string
+	sortMode     habitSortMode
+	searchQuery  string
+	archived     map[string]bool // habit name → archived
+	showArchived bool
+	statusMsg    string
 
 	// Categories: habit name → category string. Persisted as
 	// JSON sidecar so we don't have to extend the markdown
@@ -210,9 +210,9 @@ type habitAICoachMsg struct {
 // habitAIInsightMsg carries a per-habit AI insight (the user
 // asked specifically about one habit via the 'i' key).
 type habitAIInsightMsg struct {
-	habit    string
-	insight  string
-	err      error
+	habit   string
+	insight string
+	err     error
 }
 
 // aiHabitInsight asks the LLM about a single habit's last-30-day
@@ -2049,24 +2049,38 @@ func (ht HabitTracker) updateInput(msg tea.KeyMsg) (HabitTracker, tea.Cmd) {
 }
 
 func (ht *HabitTracker) performDelete() {
-	if ht.tab != 0 {
-		return
-	}
-	// Delete habit — translate visible-cursor → underlying index.
-	vis := ht.visibleHabits()
-	if ht.cursor < len(vis) {
-		target := vis[ht.cursor].Name
-		for i, h := range ht.habits {
-			if h.Name == target {
-				ht.habits = append(ht.habits[:i], ht.habits[i+1:]...)
-				break
+	switch ht.tab {
+	case 0:
+		// Delete habit — translate visible-cursor → underlying index.
+		vis := ht.visibleHabits()
+		if ht.cursor < len(vis) {
+			target := vis[ht.cursor].Name
+			for i, h := range ht.habits {
+				if h.Name == target {
+					ht.habits = append(ht.habits[:i], ht.habits[i+1:]...)
+					break
+				}
+			}
+			delete(ht.archived, target)
+			ht.saveHabits()
+			ht.saveArchived()
+			if ht.cursor >= len(ht.visibleHabits()) && ht.cursor > 0 {
+				ht.cursor--
 			}
 		}
-		delete(ht.archived, target)
-		ht.saveHabits()
-		ht.saveArchived()
-		if ht.cursor >= len(ht.visibleHabits()) && ht.cursor > 0 {
-			ht.cursor--
+	case 1:
+		active := ht.activeGoals()
+		if ht.cursor < len(active) {
+			targetIdx := active[ht.cursor]
+			if targetIdx >= 0 && targetIdx < len(ht.goals) {
+				ht.goals[targetIdx].Archived = true
+				ht.saveGoals()
+			}
+			ht.goalExpanded = -1
+			ht.milestoneCur = 0
+			if ht.cursor >= len(ht.activeGoals()) && ht.cursor > 0 {
+				ht.cursor--
+			}
 		}
 	}
 }
@@ -2078,8 +2092,7 @@ func (ht HabitTracker) maxCursor() int {
 		// list now, not the raw ht.habits slice.
 		return len(ht.visibleHabits())
 	case 1:
-		// Stats tab — read-only, no cursor target.
-		return 0
+		return len(ht.activeGoals())
 	}
 	return 0
 }
@@ -2212,14 +2225,16 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 	header := sectionStyle.Render("  " + IconCalendarChar + " " + dateLabel)
 	// Chips: search + sort + showing archived. Always render
 	// sort so power users can see the active mode at a glance.
-	header += "  " + chipStyle.Render("sort:" + ht.sortMode.String())
+	header += "  " + chipStyle.Render("sort:"+ht.sortMode.String())
 	if ht.searchQuery != "" {
-		header += "  " + chipStyle.Render("/" + ht.searchQuery)
+		header += "  " + chipStyle.Render("/"+ht.searchQuery)
 	}
 	if ht.showArchived {
 		header += "  " + chipStyle.Render("+archived")
 	}
+	visible := ht.visibleHabits()
 	lines = append(lines, header)
+	lines = append(lines, ht.renderHabitSummary(innerW, visible))
 	lines = append(lines, "")
 
 	// Live search bar — render before the habit list so the user
@@ -2233,7 +2248,6 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 		lines = append(lines, "")
 	}
 
-	visible := ht.visibleHabits()
 	if len(visible) == 0 {
 		if len(ht.habits) == 0 {
 			lines = append(lines, DimStyle.Render("  No habits tracked yet. Press 'n' to add one."))
@@ -2294,9 +2308,11 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 
 		cursor := "  "
 		nameStyle := labelStyle
+		rowBg := lipgloss.Color("")
 		if i == ht.cursor {
-			cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▶ ")
-			nameStyle = lipgloss.NewStyle().Foreground(peach).Bold(true).Underline(true)
+			cursor = lipgloss.NewStyle().Foreground(mauve).Bold(true).Render("▸ ")
+			nameStyle = lipgloss.NewStyle().Foreground(text).Bold(true)
+			rowBg = surface0
 		}
 		// Note marker: ✎ when this habit has a note for the
 		// active date so the user can see at a glance which
@@ -2324,9 +2340,9 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 		if t := ht.times[h.Name]; t != "" {
 			if t == currentPeriod(time.Now()) && !ht.isCompletedOn(h.Name, todayStr()) {
 				timeChip = " " + lipgloss.NewStyle().Foreground(crust).Background(green).Bold(true).Padding(0, 1).
-					Render("DUE " + t)
+					Render("DUE "+t)
 			} else {
-				timeChip = " " + lipgloss.NewStyle().Foreground(overlay1).Render("@" + t)
+				timeChip = " " + lipgloss.NewStyle().Foreground(overlay1).Render("@"+t)
 			}
 		}
 
@@ -2337,6 +2353,9 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 
 		line := cursor + checkbox + " " + noteMarker + nameStyle.Render(PadRight(name, nameW)) +
 			" " + streak + curNum + longNum + spark + freqChip + timeChip
+		if i == ht.cursor {
+			line = lipgloss.NewStyle().Background(rowBg).Width(innerW - 2).Render(line)
+		}
 		lines = append(lines, line)
 	}
 
@@ -2418,6 +2437,52 @@ func (ht HabitTracker) viewHabits(innerW int) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func (ht HabitTracker) renderHabitSummary(innerW int, visible []habitEntry) string {
+	activeDate := ht.activeDate
+	if activeDate == "" {
+		activeDate = todayStr()
+	}
+	done, dueNow, bestStreak, withNotes := 0, 0, 0, 0
+	period := currentPeriod(time.Now())
+	for _, h := range visible {
+		if ht.isCompletedOn(h.Name, activeDate) {
+			done++
+		}
+		if h.Streak > bestStreak {
+			bestStreak = h.Streak
+		}
+		if ht.notes[noteKey(h.Name, activeDate)] != "" {
+			withNotes++
+		}
+		if activeDate == todayStr() && ht.times[h.Name] == period && !ht.isCompletedOn(h.Name, activeDate) {
+			dueNow++
+		}
+	}
+
+	chip := func(label, value string, fg, bg lipgloss.Color) string {
+		return lipgloss.NewStyle().Foreground(fg).Background(bg).Padding(0, 1).Render(label + " " + value)
+	}
+	parts := []string{
+		chip("done", fmt.Sprintf("%d/%d", done, len(visible)), crust, green),
+		chip("due", fmt.Sprintf("%d", dueNow), crust, yellow),
+		chip("best", fmt.Sprintf("%d", bestStreak), crust, peach),
+	}
+	if len(ht.activeGoals()) > 0 {
+		parts = append(parts, chip("goals", fmt.Sprintf("%d", len(ht.activeGoals())), crust, blue))
+	}
+	if withNotes > 0 {
+		parts = append(parts, chip("notes", fmt.Sprintf("%d", withNotes), crust, lavender))
+	}
+	if ht.vault != nil && activeDate == todayStr() {
+		parts = append(parts, lipgloss.NewStyle().Foreground(green).Render("daily task sync on"))
+	}
+	line := "  " + strings.Join(parts, " ")
+	if lipgloss.Width(line) > innerW {
+		return TruncateDisplay(line, innerW)
+	}
+	return line
 }
 
 func (ht HabitTracker) viewGoals(innerW int) string {
@@ -2855,4 +2920,3 @@ func habitProgressBar(pct int, width int) string {
 		lipgloss.NewStyle().Foreground(surface1).Render(strings.Repeat("░", empty))
 	return bar
 }
-

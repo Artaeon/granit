@@ -7,7 +7,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// LayoutPicker is an overlay that lets the user browse, preview, and select layouts.
+// LayoutPicker is an overlay that lets the user browse, preview, and select the
+// four primary workflow layouts. Advanced layouts still exist for direct config,
+// but the picker stays focused on useful operating modes.
 type LayoutPicker struct {
 	OverlayBase
 	cursor  int

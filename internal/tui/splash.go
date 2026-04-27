@@ -17,7 +17,6 @@ var splashLogo = []string{
 	"   ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝   ╚═╝",
 }
 
-
 type splashTickMsg struct{}
 
 type SplashModel struct {
@@ -119,7 +118,7 @@ func (s SplashModel) View() string {
 
 	// ── Tagline (typewriter) ─────────────────────────────────────────
 	if s.tick >= 10 {
-		tagline := "Terminal Knowledge Manager"
+		tagline := "Terminal Operator Workspace"
 		runes := []rune(tagline)
 		shown := (s.tick - 10) * 6
 		if shown > len(runes) {
@@ -145,11 +144,20 @@ func (s SplashModel) View() string {
 		}
 	}
 
+	if s.tick >= 18 {
+		content.WriteString("\n")
+		keyStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
+		descStyle := lipgloss.NewStyle().Foreground(overlay0)
+		content.WriteString("    " + keyStyle.Render("Ctrl+K") + descStyle.Render(" tasks  ") +
+			keyStyle.Render("Alt+C") + descStyle.Render(" command center  ") +
+			keyStyle.Render("Ctrl+X") + descStyle.Render(" actions") + "\n")
+	}
+
 	// ── Ready with check ─────────────────────────────────────────────
-	if s.tick >= 20 {
+	if s.tick >= 21 {
 		content.WriteString("\n")
 		checkStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
-		content.WriteString(checkStyle.Render("    ✓ Ready"))
+		content.WriteString(checkStyle.Render("    ✓ Ready for power UI"))
 		content.WriteString("\n")
 	}
 
@@ -238,6 +246,9 @@ type ExitSplash struct {
 	done      bool
 	noteCount int
 	uptime    time.Duration
+	tabCount  int
+	gitStatus string
+	lastNote  string
 }
 
 func NewExitSplash(noteCount int, uptime time.Duration) ExitSplash {
@@ -245,6 +256,12 @@ func NewExitSplash(noteCount int, uptime time.Duration) ExitSplash {
 		noteCount: noteCount,
 		uptime:    uptime,
 	}
+}
+
+func (e *ExitSplash) SetContext(tabCount int, gitStatus, lastNote string) {
+	e.tabCount = tabCount
+	e.gitStatus = gitStatus
+	e.lastNote = lastNote
 }
 
 func (e ExitSplash) Init() tea.Cmd {
@@ -312,6 +329,19 @@ func (e ExitSplash) View() string {
 		valStyle := lipgloss.NewStyle().Foreground(overlay0)
 		content.WriteString(dimStyle.Render("    session  ") + valStyle.Render(uptimeStr) + "\n")
 		content.WriteString(dimStyle.Render("    notes    ") + valStyle.Render(itoa(e.noteCount)) + "\n")
+		if e.tabCount > 0 {
+			content.WriteString(dimStyle.Render("    tabs     ") + valStyle.Render(itoa(e.tabCount)+" restored next time") + "\n")
+		}
+		if e.gitStatus != "" {
+			gitColor := green
+			if e.gitStatus != "synced" {
+				gitColor = peach
+			}
+			content.WriteString(dimStyle.Render("    sync     ") + lipgloss.NewStyle().Foreground(gitColor).Render(e.gitStatus) + "\n")
+		}
+		if e.lastNote != "" && e.tick >= 8 {
+			content.WriteString(dimStyle.Render("    last     ") + valStyle.Render(TruncateDisplay(e.lastNote, 42)) + "\n")
+		}
 	}
 
 	// ── Goodbye ──────────────────────────────────────────────────────
@@ -321,7 +351,7 @@ func (e ExitSplash) View() string {
 		content.WriteString(ruleStyle.Render("    " + strings.Repeat("─", 40)))
 		content.WriteString("\n\n")
 		byeStyle := lipgloss.NewStyle().Foreground(mauve).Italic(true)
-		content.WriteString(byeStyle.Render("    Until next time."))
+		content.WriteString(byeStyle.Render("    Workspace saved. Until next time."))
 		content.WriteString("\n")
 	}
 
