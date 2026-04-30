@@ -559,6 +559,142 @@ func (e *Editor) HasSelection() bool {
 	return e.selectionActive
 }
 
+// AppendTaskLine appends a markdown checkbox to the end of the buffer
+// and positions the cursor immediately after "- [ ] " so the user can
+// start typing the task title. Adds a leading blank line when the
+// previous line is non-empty so the new task isn't visually glued to
+// the previous content. Used by the project/goal quick-add (Alt+N)
+// flow.
+func (e *Editor) AppendTaskLine() {
+	if len(e.content) == 0 {
+		e.content = []string{""}
+	}
+	e.saveSnapshot()
+	e.redoStack = nil
+	last := len(e.content) - 1
+	if strings.TrimSpace(e.content[last]) != "" {
+		e.content = append(e.content, "")
+		last++
+	}
+	taskPrefix := "- [ ] "
+	e.content = append(e.content, taskPrefix)
+	e.cursor = len(e.content) - 1
+	e.col = len(taskPrefix)
+	e.selectionActive = false
+	e.modified = true
+	e.codeFenceCacheDirty = true
+	// Scroll the new line into view.
+	if e.cursor >= e.scroll+e.height {
+		e.scroll = e.cursor - e.height/2
+		if e.scroll < 0 {
+			e.scroll = 0
+		}
+	}
+}
+
+// CurrentLineRange returns the (line, startCol=0, line, endCol=lineLen) range
+// for the current cursor line. Used as the implicit target for AI edits when
+// no selection is active.
+func (e *Editor) CurrentLineRange() (startLine, startCol, endLine, endCol int) {
+	line := e.cursor
+	if line < 0 {
+		line = 0
+	}
+	if line >= len(e.content) {
+		if len(e.content) == 0 {
+			return 0, 0, 0, 0
+		}
+		line = len(e.content) - 1
+	}
+	return line, 0, line, len(e.content[line])
+}
+
+// ReplaceRange overwrites the text in [(startLine, startCol), (endLine, endCol))
+// with `text`. The replacement text may contain newlines. After the call the
+// cursor is placed at the end of the inserted text and any active selection
+// is cleared. This is the splice primitive used by the AI inline-edit
+// pipeline — it deliberately does NOT depend on the selection being active,
+// so a stale dispatch can still write to the original range.
+//
+// Out-of-bounds inputs are clamped to valid content. If the range is empty
+// and `text` is empty, this is a no-op.
+func (e *Editor) ReplaceRange(startLine, startCol, endLine, endCol int, text string) {
+	if len(e.content) == 0 {
+		e.content = []string{""}
+	}
+	// Clamp endpoints to content bounds.
+	clampLine := func(l int) int {
+		if l < 0 {
+			return 0
+		}
+		if l >= len(e.content) {
+			return len(e.content) - 1
+		}
+		return l
+	}
+	startLine = clampLine(startLine)
+	endLine = clampLine(endLine)
+	if endLine < startLine || (endLine == startLine && endCol < startCol) {
+		startLine, startCol, endLine, endCol = endLine, endCol, startLine, startCol
+	}
+	if startCol < 0 {
+		startCol = 0
+	}
+	if startCol > len(e.content[startLine]) {
+		startCol = len(e.content[startLine])
+	}
+	if endCol < 0 {
+		endCol = 0
+	}
+	if endCol > len(e.content[endLine]) {
+		endCol = len(e.content[endLine])
+	}
+
+	// No-op short-circuit.
+	if startLine == endLine && startCol == endCol && text == "" {
+		return
+	}
+
+	e.saveSnapshot()
+	e.rebuildBlockCaches()
+	e.redoStack = nil
+
+	// Normalise line endings — same as InsertText.
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	text = strings.ReplaceAll(text, "\x00", "")
+
+	prefix := e.content[startLine][:startCol]
+	suffix := e.content[endLine][endCol:]
+	insertLines := strings.Split(text, "\n")
+
+	// Build the new slice: lines before startLine, the spliced first/last,
+	// any middle inserted lines, and lines after endLine.
+	newLines := make([]string, 0, len(e.content)-(endLine-startLine)+len(insertLines))
+	newLines = append(newLines, e.content[:startLine]...)
+	if len(insertLines) == 1 {
+		newLines = append(newLines, prefix+insertLines[0]+suffix)
+		e.cursor = startLine
+		e.col = startCol + len(insertLines[0])
+	} else {
+		newLines = append(newLines, prefix+insertLines[0])
+		for i := 1; i < len(insertLines)-1; i++ {
+			newLines = append(newLines, insertLines[i])
+		}
+		last := insertLines[len(insertLines)-1]
+		newLines = append(newLines, last+suffix)
+		e.cursor = startLine + len(insertLines) - 1
+		e.col = len(last)
+	}
+	newLines = append(newLines, e.content[endLine+1:]...)
+	e.content = newLines
+
+	e.selectionActive = false
+	e.modified = true
+	e.countWords()
+	e.codeFenceCacheDirty = true
+}
+
 // SelectionRange returns the normalized selection range (start <= end).
 func (e *Editor) SelectionRange() (startLine, startCol, endLine, endCol int) {
 	s := e.selectionStart
@@ -1036,11 +1172,15 @@ func (e Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 			if e.col > len(e.content[e.cursor]) {
 				e.col = len(e.content[e.cursor])
 			}
-		case "ctrl+u":
+		case "ctrl+z", "ctrl+u":
+			// Ctrl+Z is the universal undo shortcut; Ctrl+U is kept
+			// as a vim-friendly alias so muscle memory survives.
 			e.clearMultiCursors()
 			e.Undo()
 			return e, nil
-		case "ctrl+y":
+		case "ctrl+shift+z", "ctrl+y":
+			// Ctrl+Shift+Z is the universal redo; Ctrl+Y is the
+			// alternative convention. Both work.
 			e.clearMultiCursors()
 			e.Redo()
 			return e, nil
