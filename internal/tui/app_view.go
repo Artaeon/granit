@@ -205,6 +205,17 @@ func (m Model) View() string {
 		tabBarStr = ""
 	}
 
+	// Project/Goal Hub strip: when the active note is a typed-project
+	// or typed-goal, prepend a 1-line summary strip showing linked
+	// task counts + a quick-add hint. Hidden in feature-tab mode (the
+	// strip belongs to a real note, not to a Task Manager / Object
+	// Browser tab) and on the welcome screen.
+	if m.activeNote != "" && !hasActiveFeatureTab(m.tabBar) {
+		if hub := m.renderProjectGoalHub(editorWidth - 4); hub != "" {
+			editorContent = hub + "\n" + editorContent
+		}
+	}
+
 	// Combine tab bar + editor
 	editorPanel := editorContent
 	if tabBarStr != "" {
@@ -885,6 +896,14 @@ func (m Model) View() string {
 		overlay := m.export.View()
 		view = m.overlayCenter(view, overlay)
 	}
+	if m.agentRunner.IsActive() {
+		overlay := m.agentRunner.View()
+		view = m.overlayCenter(view, overlay)
+	}
+	if m.typedMentionPicker.IsActive() {
+		overlay := m.typedMentionPicker.View()
+		view = m.overlayCenter(view, overlay)
+	}
 	if m.git.IsActive() {
 		overlay := m.git.View()
 		view = m.overlayCenter(view, overlay)
@@ -1219,6 +1238,12 @@ func (m Model) View() string {
 	}
 	if m.slashMenu != nil && m.slashMenu.IsActive() {
 		overlay := m.slashMenu.View()
+		if overlay != "" {
+			view = m.overlayCenter(view, overlay)
+		}
+	}
+	if m.aiDiffPreview.IsActive() {
+		overlay := m.aiDiffPreview.View()
 		if overlay != "" {
 			view = m.overlayCenter(view, overlay)
 		}
@@ -2565,7 +2590,13 @@ func (m *Model) dailyNoteContent(date, fallback string) string {
 		recurringTasks = strings.Join(lines, "\n")
 	}
 
-	// Build overdue tasks list
+	// Build overdue / today task lists — plain bullets, NOT "- [ ]"
+	// checkboxes. These reference tasks that already exist as real
+	// "- [ ]" lines elsewhere in the vault; emitting checkboxes here
+	// would make ParseAllTasks count the task once per daily note + the
+	// original, so a task overdue for 5 days shows up 6 times in Plan view.
+	// Bullet form keeps the daily note useful as a "what's on my plate"
+	// recap without polluting the global task index.
 	overdueTasks := ""
 	todayTasksList := ""
 	allTasks := m.currentTasks()
@@ -2575,10 +2606,10 @@ func (m *Model) dailyNoteContent(date, fallback string) string {
 			continue
 		}
 		if tmIsOverdue(task.DueDate) {
-			overdueLines = append(overdueLines, "- [ ] "+tmCleanText(task.Text))
+			overdueLines = append(overdueLines, "- "+tmCleanText(task.Text))
 		}
 		if task.DueDate == date {
-			todayLines = append(todayLines, "- [ ] "+tmCleanText(task.Text))
+			todayLines = append(todayLines, "- "+tmCleanText(task.Text))
 		}
 	}
 	if len(overdueLines) > 0 {
@@ -2706,7 +2737,12 @@ func (m *Model) dailyNoteStreak() int {
 	return streak
 }
 
-// yesterdayIncompleteTasks returns incomplete task lines from yesterday's daily note.
+// yesterdayIncompleteTasks returns incomplete tasks carried over from yesterday's
+// daily note as plain "- text" bullets (no checkbox). Lines are sourced by
+// matching "- [ ]" entries in yesterday's note, but emitted as bullets so the
+// new daily note doesn't reparse them as fresh tasks — otherwise an overdue
+// item gets duplicated into every subsequent daily note and pollutes the
+// global task list.
 func (m *Model) yesterdayIncompleteTasks() []string {
 	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 	name := yesterday + ".md"
@@ -2722,7 +2758,7 @@ func (m *Model) yesterdayIncompleteTasks() []string {
 	for _, line := range strings.Split(note.Content, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "- [ ] ") && len(trimmed) > 6 {
-			tasks = append(tasks, trimmed)
+			tasks = append(tasks, "- "+strings.TrimPrefix(trimmed, "- [ ] "))
 		}
 	}
 	return tasks

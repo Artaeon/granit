@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/artaeon/granit/internal/repos"
 	"github.com/artaeon/granit/internal/vault"
 )
 
@@ -837,6 +838,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case aiEditDoneMsg:
+		// Inline AI selection edit finished. Default UX is the
+		// Deepnote-style diff preview: BEFORE / AFTER, y/Enter to
+		// accept, n/Esc to discard. Power users can flip
+		// AIAutoApplyEdits on to skip straight to the splice.
+		m.aiEditPending = false
+		if msg.err != nil {
+			m.statusbar.SetWarning("AI: " + msg.err.Error())
+			return m, m.clearMessageAfter(6 * time.Second)
+		}
+		if strings.TrimSpace(msg.output) == "" {
+			m.statusbar.SetWarning("AI: empty response — try a larger model or a simpler selection")
+			return m, m.clearMessageAfter(6 * time.Second)
+		}
+		// Auto-apply path mirrors the original behaviour exactly.
+		if m.config.AIAutoApplyEdits {
+			m.editor.ReplaceRange(msg.startLine, msg.startCol, msg.endLine, msg.endCol, msg.output)
+			m.editor.modified = true
+			line, col := m.editor.GetCursor()
+			m.statusbar.SetCursor(line, col)
+			m.statusbar.SetWordCount(m.editor.GetWordCount())
+			m.statusbar.SetMessage("✓ AI " + string(msg.action)[3:] + " applied")
+			return m, m.clearMessageAfter(2 * time.Second)
+		}
+		// Preview path: capture the original text from the editor at
+		// the same range so BEFORE / AFTER renders accurately even
+		// if the cursor has moved during the AI roundtrip.
+		original := extractEditorRange(&m.editor, msg.startLine, msg.startCol, msg.endLine, msg.endCol)
+		m.aiDiffPreview.SetSize(m.width, m.height)
+		m.aiDiffPreview.Open(msg.action, original, msg.output,
+			msg.startLine, msg.startCol, msg.endLine, msg.endCol, msg.hadSelection)
+		m.statusbar.SetMessage("AI: review proposal — y accept · n discard")
+		return m, nil
+
 	case fileChangeMsg:
 		if m.fileWatcher == nil || !m.fileWatcher.IsEnabled() {
 			return m, nil
@@ -935,6 +970,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case agentEventMsg, agentDoneMsg:
+		// Agent runner streams events from a goroutine via tea.Cmd.
+		// Even if the user has dismissed the overlay we forward
+		// once so the doneCh drain completes.
+		if m.agentRunner.IsActive() {
+			var cmd tea.Cmd
+			m.agentRunner, cmd = m.agentRunner.Update(msg)
+			// Persist the completed run as an agent_run note so the
+			// transcript becomes searchable / re-openable. Best-effort:
+			// a write failure surfaces via reportError but doesn't
+			// disturb the runner's UI state.
+			if relPath, content, ok := m.agentRunner.GetPersistRequest(); ok {
+				if err := m.createTypedObjectFile(relPath, content); err != nil {
+					m.reportError("persist agent run", err)
+				} else {
+					m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+				}
+			}
+			return m, cmd
+		}
+		return m, nil
+
 	case ollamaSetupMsg:
 		if m.settings.IsActive() {
 			m.settings, _ = m.settings.Update(msg)
@@ -973,6 +1030,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.pendingDailyNote && !m.showSplash {
 			m.pendingDailyNote = false
 			m.openDailyNote()
+		}
+		// Auto-open spreadsheet feature tab when the CLI was
+		// invoked with a CSV/XLSX path (granit budget.xlsx).
+		if m.pendingSheetPath != "" && !m.showSplash {
+			path := m.pendingSheetPath
+			m.pendingSheetPath = ""
+			m.sheetView.SetSize(m.width, m.height)
+			if err := m.sheetView.Open(path); err != nil {
+				m.reportError("open spreadsheet", err)
+			} else {
+				if m.tabBar != nil {
+					m.tabBar.AddFeatureTab(FeatSheetView, "Sheet")
+				}
+				m.activeNote = ""
+			}
 		}
 		return m, nil
 
@@ -1306,6 +1378,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.export.IsActive() {
 			m.export, _ = m.export.Update(msg)
 			return m, nil
+		}
+
+		if m.agentRunner.IsActive() {
+			var arCmd tea.Cmd
+			m.agentRunner, arCmd = m.agentRunner.Update(msg)
+			return m, arCmd
+		}
+
+		if m.typedMentionPicker.IsActive() {
+			var tmCmd tea.Cmd
+			m.typedMentionPicker, tmCmd = m.typedMentionPicker.Update(msg)
+			// Pick → insert at cursor in the active editor.
+			if insert, ok := m.typedMentionPicker.ConsumeInsert(); ok {
+				m.editor.InsertText(insert)
+				m.setFocus(focusEditor)
+			}
+			return m, tmCmd
 		}
 
 		if m.plugins.IsActive() {
@@ -2739,6 +2828,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.helpOverlay.Toggle()
 			return m, nil
 
+		case "f6":
+			return m.executeCommand(CmdToggleLightDark)
+
 		case "tab":
 			if m.focus != focusEditor {
 				m.cycleFocus(1)
@@ -2928,7 +3020,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.bots.Open()
 			return m, nil
 
-		case "ctrl+z":
+		case "alt+z":
+			// Focus / Zen mode toggle. Was Ctrl+Z historically, but
+			// power users expect Ctrl+Z = undo (universal convention),
+			// and the editor's undo is the more frequent action by
+			// orders of magnitude. Alt+Z keeps the "z = zen" mnemonic.
 			if m.focusMode.IsActive() {
 				m.focusMode.Close()
 			} else {
@@ -2944,12 +3040,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-		case "ctrl+tab":
-			// Cycle to next tab. Branches on tab kind: feature
-			// tabs don't have a vault note path so loadNote
-			// would silently fail; we just clear activeNote and
-			// let the editor-pane render branch pick up the
-			// feature via ActiveFeature.
+		case "ctrl+tab", "ctrl+pgdown", "alt+.":
+			// Cycle to next tab. Three bindings because Ctrl+Tab is
+			// notoriously unreliable across terminals (gnome-terminal,
+			// alacritty, kitty all intercept it for their own tab
+			// switching, OR send escape sequences bubbletea doesn't
+			// decode). Ctrl+PageDown is the browser convention; Alt+.
+			// is a one-handed alternative that always reaches the TUI.
+			//
+			// Branches on tab kind: feature tabs don't have a vault
+			// note path so loadNote would silently fail; we just clear
+			// activeNote and let the editor-pane render branch pick up
+			// the feature via ActiveFeature.
 			if m.tabBar != nil {
 				if path := m.tabBar.NextTab(); path != "" {
 					m.activateTabByPath(path)
@@ -2957,7 +3059,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "ctrl+shift+tab":
+		case "ctrl+shift+tab", "ctrl+pgup", "alt+,":
+			// Cycle to previous tab. Same rationale as the next-tab
+			// case above — three bindings to defeat terminal intercepts.
 			if m.tabBar != nil {
 				if path := m.tabBar.PrevTab(); path != "" {
 					m.activateTabByPath(path)
@@ -3060,6 +3164,88 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "alt+t":
 			// Time tracker
 			return m.executeCommand(CmdTimeTracker)
+
+		case "alt+n":
+			// Quick-add task: when the active note is a typed-project
+			// or typed-goal, append a `- [ ] ` line at end of file and
+			// drop the cursor at the right spot. On any other note this
+			// is a no-op so it doesn't surprise users in regular notes.
+			if m.objectsIndex == nil || m.activeNote == "" {
+				return m, nil
+			}
+			obj := m.objectsIndex.ByPath(m.activeNote)
+			if obj == nil || (obj.TypeID != "project" && obj.TypeID != "goal") {
+				return m, nil
+			}
+			m.editor.AppendTaskLine()
+			m.editor.modified = true
+			m.setFocus(focusEditor)
+			line, col := m.editor.GetCursor()
+			m.statusbar.SetCursor(line, col)
+			m.statusbar.SetMessage("✚ task — type the title, Esc to cancel")
+			return m, m.clearMessageAfter(3 * time.Second)
+
+		case "alt+\\", "alt+'":
+			// Project ↔ folder bridge: from a typed-project note that
+			// declares `repo:`, alt+\ opens the folder externally
+			// (xdg-open / open / explorer); alt+' copies its absolute
+			// path to the clipboard. Mnemonics: \ = "shell" (think
+			// shell escape), ' = "literal" (the path literal).
+			if m.objectsIndex == nil || m.activeNote == "" {
+				return m, nil
+			}
+			obj := m.objectsIndex.ByPath(m.activeNote)
+			if obj == nil || obj.TypeID != "project" {
+				return m, nil
+			}
+			repoPath := strings.TrimSpace(obj.PropertyValue("repo"))
+			if repoPath == "" {
+				m.statusbar.SetMessage("This project has no repo: property — set one in frontmatter")
+				return m, m.clearMessageAfter(3 * time.Second)
+			}
+			expanded, err := expandHome(repoPath)
+			if err != nil {
+				m.statusbar.SetWarning("Bad repo path: " + err.Error())
+				return m, m.clearMessageAfter(3 * time.Second)
+			}
+			if msg.String() == "alt+\\" {
+				if err := repos.OpenFolder(expanded); err != nil {
+					m.statusbar.SetWarning("Open folder: " + err.Error())
+				} else {
+					m.statusbar.SetMessage("Opened " + expanded)
+				}
+			} else {
+				if err := ClipboardCopy(expanded); err != nil {
+					m.statusbar.SetWarning("Clipboard: " + err.Error())
+				} else {
+					m.statusbar.SetMessage("Copied " + expanded + " to clipboard")
+				}
+			}
+			return m, m.clearMessageAfter(3 * time.Second)
+
+		case "alt+x":
+			// Spreadsheet picker — CSV / TSV / XLSX viewer & editor
+			return m.executeCommand(CmdSheetPicker)
+
+		case "alt+o":
+			// Object Browser — typed-note galleries (Capacities-style).
+			return m.executeCommand(CmdObjectBrowser)
+
+		case "alt+v":
+			// Saved Views — smart collections (Capacities-style).
+			return m.executeCommand(CmdSavedViews)
+
+		case "alt+a":
+			// Multi-step Agent runner (Deepnote-inspired ReAct loop).
+			return m.executeCommand(CmdAgentRunner)
+
+		case "alt+@":
+			// Typed-mention picker. The `@` mnemonic matches the
+			// "mention" character even though it requires Shift on
+			// most keyboards. Tested on US + DE Linux layouts;
+			// users on layouts where Alt+@ doesn't reach can
+			// always trigger via Ctrl+X → "Insert Typed Mention".
+			return m.executeCommand(CmdTypedMention)
 
 		case "alt+W":
 			// Profile switcher (Phase 3 — Shift+Alt+W to avoid
@@ -3321,35 +3507,107 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 
-				// Slash menu intercepts keys when active
-				if m.slashMenu != nil && m.slashMenu.IsActive() {
-					queryLen := m.slashMenu.QueryLen()
-					insertText, consumed, closed := m.slashMenu.HandleKey(k)
-					if insertText != "" {
-						// Delete the "/" and query chars that triggered the menu
-						if m.editor.cursor >= 0 && m.editor.cursor < len(m.editor.content) {
-							line := m.editor.content[m.editor.cursor]
-							// Remove "/" + query chars (slash is at col - queryLen - 1)
-							slashCol := m.editor.col - queryLen - 1
-							if slashCol < 0 {
-								slashCol = 0
-							}
-							if m.editor.col > len(line) {
-								m.editor.col = len(line)
-							}
-							if slashCol < len(line) {
-								m.editor.content[m.editor.cursor] = line[:slashCol] + line[m.editor.col:]
-								m.editor.col = slashCol
-							}
-						}
-						// Expand placeholders
-						expanded := m.snippets.ExpandPlaceholders(insertText)
-						m.editor.InsertText(expanded)
+				// AI diff-preview overlay: when active, intercepts
+				// y/Enter (accept), n/Esc (discard), r (regenerate).
+				// Done first so the keys never leak into the editor /
+				// slash-menu paths.
+				if m.aiDiffPreview.IsActive() {
+					switch k {
+					case "y", "Y", "enter":
+						sl, sc, el, ec := m.aiDiffPreview.Range()
+						out := m.aiDiffPreview.Output()
+						action := m.aiDiffPreview.Action()
+						m.aiDiffPreview.Reset()
+						m.editor.ReplaceRange(sl, sc, el, ec, out)
 						m.editor.modified = true
 						line, col := m.editor.GetCursor()
 						m.statusbar.SetCursor(line, col)
 						m.statusbar.SetWordCount(m.editor.GetWordCount())
-						return m, nil
+						m.statusbar.SetMessage("✓ AI " + string(action)[3:] + " applied")
+						return m, m.clearMessageAfter(2 * time.Second)
+					case "n", "N", "esc":
+						m.aiDiffPreview.Reset()
+						m.statusbar.SetMessage("AI proposal discarded")
+						return m, m.clearMessageAfter(2 * time.Second)
+					case "r":
+						// Re-run the same action against the same range.
+						action := m.aiDiffPreview.Action()
+						sl, sc, el, ec := m.aiDiffPreview.Range()
+						source := extractEditorRange(&m.editor, sl, sc, el, ec)
+						m.aiDiffPreview.Reset()
+						if strings.TrimSpace(source) == "" {
+							m.statusbar.SetWarning("AI: nothing to retry — selection range is empty")
+							return m, m.clearMessageAfter(3 * time.Second)
+						}
+						cfg := m.aiConfig()
+						cfg.Model = m.getAIModel()
+						m.aiEditPending = true
+						m.statusbar.SetMessage("AI " + aiActionLabel(action) + " (retry)...")
+						return m, runAIEdit(cfg, action, source, sl, sc, el, ec, true)
+					}
+					// Any other key while preview is up — swallow it
+					// so a stray character doesn't fall into the editor.
+					return m, nil
+				}
+
+				// Alt+/ opens the AI action menu. Mnemonic: same key as
+				// the "/" slash menu but with Alt for AI mode. Done before
+				// the slash-menu intercept block so the user can re-trigger
+				// it. Selection is preserved because Alt+/ never reaches
+				// the editor's Update.
+				if k == "alt+/" && m.slashMenu != nil && !m.slashMenu.IsActive() {
+					if m.aiEditPending {
+						m.statusbar.SetMessage("AI: already running — press Esc to cancel")
+						return m, m.clearMessageAfter(2 * time.Second)
+					}
+					m.slashMenu.ActivateAI(m.editor.cursor, m.editor.col)
+					return m, nil
+				}
+
+				// Slash menu intercepts keys when active
+				if m.slashMenu != nil && m.slashMenu.IsActive() {
+					queryLen := m.slashMenu.QueryLen()
+					menuMode := m.slashMenu.Mode()
+					item, consumed, closed := m.slashMenu.HandleKey(k)
+					if item != nil {
+						// modeAll was triggered by typing "/" — strip the
+						// "/" + filter chars before splicing/dispatching.
+						// modeAI was opened via shortcut so there's nothing
+						// to strip.
+						if menuMode == SlashMenuModeAll {
+							if m.editor.cursor >= 0 && m.editor.cursor < len(m.editor.content) {
+								line := m.editor.content[m.editor.cursor]
+								slashCol := m.editor.col - queryLen - 1
+								if slashCol < 0 {
+									slashCol = 0
+								}
+								if m.editor.col > len(line) {
+									m.editor.col = len(line)
+								}
+								if slashCol < len(line) {
+									m.editor.content[m.editor.cursor] = line[:slashCol] + line[m.editor.col:]
+									m.editor.col = slashCol
+								}
+							}
+						}
+
+						switch {
+						case item.Action != "" && strings.HasPrefix(item.Action, "ai:"):
+							// Dispatch an inline AI edit. modeAll falls back
+							// to the current line because typing "/" cleared
+							// any selection. modeAI preserves selection.
+							cmd := m.dispatchAIEdit(aiEditAction(item.Action), menuMode == SlashMenuModeAI)
+							return m, cmd
+
+						case item.Insert != "":
+							expanded := m.snippets.ExpandPlaceholders(item.Insert)
+							m.editor.InsertText(expanded)
+							m.editor.modified = true
+							line, col := m.editor.GetCursor()
+							m.statusbar.SetCursor(line, col)
+							m.statusbar.SetWordCount(m.editor.GetWordCount())
+							return m, nil
+						}
 					}
 					if closed {
 						return m, nil

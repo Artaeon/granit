@@ -178,6 +178,14 @@ const (
 	CmdDevotional
 	CmdStatusTray
 	CmdProfileSwitch
+	CmdSheetView
+	CmdSheetPicker
+	CmdToggleLightDark
+	CmdObjectBrowser
+	CmdAgentRunner
+	CmdTypedMention
+	CmdSavedViews
+	CmdRepoTracker
 	CmdQuit
 )
 
@@ -366,6 +374,7 @@ var AllCommands = []Command{
 	{Label: "Help", Desc: "Show keyboard shortcuts", Shortcut: "Alt+?", Action: CmdShowHelp, Icon: &IconHelpChar, Category: CatSettings},
 	{Label: "Show Tutorial", Desc: "Interactive walkthrough of Granit features", Shortcut: "", Action: CmdShowTutorial, Icon: &IconHelpChar, Category: CatSettings},
 	{Label: "Theme Editor", Desc: "Create and customize color themes", Shortcut: "", Action: CmdThemeEditor, Icon: &IconSettingsChar, Category: CatSettings},
+	{Label: "Toggle Light/Dark Theme", Desc: "Flip between configured light and dark themes (defaults: catppuccin-latte / catppuccin-mocha)", Shortcut: "F6", Action: CmdToggleLightDark, Icon: &IconSettingsChar, Category: CatSettings},
 	{Label: "Plugins", Desc: "Manage and run plugins", Shortcut: "", Action: CmdPluginManager, Icon: &IconSettingsChar, Category: CatSettings},
 	{Label: "Lua Scripts", Desc: "Run Lua scripts from vault or global dir", Shortcut: "", Action: CmdRunLuaScript, Icon: &IconBotChar, Category: CatSettings},
 	{Label: "Import Obsidian Config", Desc: "Import settings from .obsidian/ directory", Shortcut: "", Action: CmdImportObsidian, Icon: &IconSettingsChar, Category: CatSettings},
@@ -373,6 +382,13 @@ var AllCommands = []Command{
 	{Label: "Layout Picker", Desc: "Browse and preview all layouts with visual diagrams", Shortcut: "Alt+L", Action: CmdLayoutPicker, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Cycle Layout", Desc: "Switch to next layout quickly", Shortcut: "", Action: CmdCycleLayout, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Image Manager", Desc: "Browse and manage vault images", Shortcut: "", Action: CmdImageManager, Icon: &IconViewChar, Category: CatSettings},
+	{Label: "Open Spreadsheet", Desc: "Open a CSV / TSV / XLSX file in the spreadsheet viewer (charts, stats, edit)", Shortcut: "Alt+X", Action: CmdSheetPicker, Icon: &IconViewChar, Category: CatNavigation},
+	{Label: "New Spreadsheet", Desc: "Create a new spreadsheet (Untitled.csv) in the vault root", Shortcut: "", Action: CmdSheetView, Icon: &IconNewChar, Category: CatNavigation},
+	{Label: "Object Browser", Desc: "Browse typed notes (Person, Book, Project, ...) as galleries — Capacities-style", Shortcut: "Alt+O", Action: CmdObjectBrowser, Icon: &IconViewChar, Category: CatNavigation},
+	{Label: "Saved Views", Desc: "Open a saved smart-collection view (e.g. Articles to Read, Active Projects) as a tab", Shortcut: "Alt+V", Action: CmdSavedViews, Icon: &IconViewChar, Category: CatNavigation},
+	{Label: "Repo Tracker", Desc: "Scan a folder for git repos, see status (branch, dirty, age), import as project notes", Shortcut: "", Action: CmdRepoTracker, Icon: &IconFolderChar, Category: CatNavigation},
+	{Label: "Run Agent", Desc: "Multi-step AI agent — search, read, query objects, synthesise. Deepnote-style ReAct loop with tool catalog", Shortcut: "Alt+A", Action: CmdAgentRunner, Icon: &IconViewChar, Category: CatNavigation},
+	{Label: "Insert Typed Mention", Desc: "Pick a typed object (Person, Book, Project, ...) and insert as a [[wikilink]] at cursor", Shortcut: "Alt+@", Action: CmdTypedMention, Icon: &IconViewChar, Category: CatNavigation},
 	{Label: "Status Tray", Desc: "Expanded view of all status bar indicators and background tasks", Shortcut: "", Action: CmdStatusTray, Icon: &IconViewChar, Category: CatSettings},
 	{Label: "Refresh Vault", Desc: "Rescan vault for changes", Shortcut: "", Action: CmdRefreshVault, Category: CatSettings},
 	{Label: "Switch Profile", Desc: "Change the active profile (Daily Operator, Researcher, Builder, …)", Shortcut: "Shift+Alt+W", Action: CmdProfileSwitch, Category: CatSettings},

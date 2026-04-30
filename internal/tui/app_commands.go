@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/artaeon/granit/internal/config"
+	"github.com/artaeon/granit/internal/objects"
 	"github.com/artaeon/granit/internal/vault"
 )
 
@@ -944,6 +945,32 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 		m.themeEditor.SetSize(m.width, m.height)
 		m.themeEditor.Open(m.config.Theme)
 
+	case CmdToggleLightDark:
+		// Flip between the configured DarkTheme and LightTheme.
+		// Falls back to catppuccin-mocha / catppuccin-latte when
+		// either is empty so first-time users get a working
+		// toggle without editing config.
+		dark := m.config.DarkTheme
+		if dark == "" {
+			dark = "catppuccin-mocha"
+		}
+		light := m.config.LightTheme
+		if light == "" {
+			light = "catppuccin-latte"
+		}
+		var next string
+		if m.config.Theme == light {
+			next = dark
+		} else {
+			next = light
+		}
+		m.config.Theme = next
+		m.config.AutoDarkMode = false // explicit pick wins
+		ApplyTheme(next)
+		_ = m.config.Save()
+		m.statusbar.SetMessage("Theme: " + next)
+		return m, m.clearMessageAfter(3 * time.Second)
+
 	case CmdLayoutDefault, CmdLayoutWriter, CmdLayoutMinimal, CmdLayoutReading, CmdLayoutDashboard, CmdLayoutZen, CmdLayoutResearch, CmdLayoutCornell, CmdLayoutFocus, CmdLayoutCockpit, CmdLayoutStacked, CmdLayoutPreview, CmdLayoutPresenter, CmdLayoutKanban, CmdLayoutWidescreen:
 		switch action {
 		case CmdLayoutDefault:
@@ -1164,6 +1191,10 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			for k := range m.vault.Notes {
 				noteNames = append(noteNames, strings.TrimSuffix(filepath.Base(k), ".md"))
 			}
+			// Refresh typed-objects index so today's-captures reflects
+			// frontmatter saved since the last refresh.
+			m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+			m.dailyJot.SetTypedObjects(m.objectsRegistry, m.objectsIndex, m.vault.Root)
 			m.dailyJot.Open(m.vault.Root, "Jots", noteNames, 14)
 		}
 
@@ -1211,6 +1242,16 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.dailyHub.Open(m.profileRegistry.Active())
 		} else {
 			m.dashboard.SetSize(m.width, m.height)
+			// Refresh the typed-objects index against the current vault
+			// so newly-saved frontmatter is reflected on the dashboard.
+			m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+			// "articles-to-read" is the most universally-applicable
+			// built-in saved view — pin it as the dashboard primary
+			// when the catalog has it. Vault overrides take effect
+			// automatically because the catalog's ByID resolves to
+			// whichever wins (vault > built-in).
+			m.dashboard.SetTypedObjects(m.objectsRegistry, m.objectsIndex,
+				m.viewCatalog, "articles-to-read", m.vault.Root)
 			m.dashboard.Open(m.vault.Root, m.projectMode.GetProjects(), m.goalsMode.GetGoals())
 		}
 
@@ -1393,6 +1434,139 @@ func (m *Model) executeCommand(action CommandAction) (tea.Model, tea.Cmd) {
 			m.activeNote = ""
 		}
 		m.commandCenter.Open()
+
+	case CmdSheetPicker:
+		// Open the spreadsheet feature tab in picker mode so the
+		// user can scan vault CSV/XLSX files and pick one. If a
+		// SheetView tab is already open showing a loaded file,
+		// switch to it instead of clobbering the user's data.
+		alreadyOpen := m.tabBar != nil && m.tabBar.HasFeatureTab(FeatSheetView)
+		if alreadyOpen && m.sheetView.FilePath() != "" {
+			m.tabBar.AddFeatureTab(FeatSheetView, "Sheet")
+			m.activeNote = ""
+			break
+		}
+		m.sheetView.SetSize(m.width, m.height)
+		m.sheetView.OpenPicker(m.vault.Root)
+		if m.tabBar != nil {
+			m.tabBar.AddFeatureTab(FeatSheetView, "Sheet")
+		}
+		m.activeNote = ""
+
+	case CmdSheetView:
+		// Direct entry — create a new spreadsheet immediately
+		// in the vault root. Useful for scripted/keybind paths.
+		fname := "Untitled-" + time.Now().Format("2006-01-02-150405") + ".csv"
+		abs := filepath.Join(m.vault.Root, fname)
+		m.sheetView.SetSize(m.width, m.height)
+		if err := m.sheetView.Open(abs); err != nil {
+			m.reportError("open spreadsheet", err)
+			break
+		}
+		_ = m.sheetView.Save()
+		if m.tabBar != nil {
+			m.tabBar.AddFeatureTab(FeatSheetView, "Sheet")
+		}
+		m.activeNote = ""
+
+	case CmdTypedMention:
+		// Refresh the typed-objects index so newly-saved
+		// frontmatter shows up in the picker without an app
+		// restart. Same lazy-init pattern as CmdObjectBrowser.
+		if m.objectsRegistry == nil {
+			m.objectsRegistry = objects.NewRegistry()
+			if _, errs := m.objectsRegistry.LoadVaultDir(m.vault.Root); len(errs) > 0 {
+				for _, err := range errs {
+					m.reportError("object types", err)
+				}
+			}
+		}
+		m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+		m.typedMentionPicker.SetSize(m.width, m.height)
+		m.typedMentionPicker.Open(m.objectsRegistry, m.objectsIndex)
+
+	case CmdAgentRunner:
+		// Multi-step agent overlay. Uses the same registry/index
+		// as the Object Browser so query_objects sees current
+		// vault state. Refreshed lazily on each open.
+		if m.objectsRegistry == nil {
+			m.objectsRegistry = objects.NewRegistry()
+			if _, errs := m.objectsRegistry.LoadVaultDir(m.vault.Root); len(errs) > 0 {
+				for _, err := range errs {
+					m.reportError("object types", err)
+				}
+			}
+		}
+		m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+		m.agentRunner.SetSize(m.width, m.height)
+		m.agentRunner.Open(
+			m.vault, m.objectsRegistry, m.objectsIndex,
+			m.aiConfig(),
+			func() []Task { return m.currentTasks() },
+		)
+
+	case CmdObjectBrowser:
+		// Capacities-style typed object browser. Refreshes the
+		// object index against the current vault snapshot before
+		// opening so newly-saved frontmatter changes show up
+		// immediately.
+		if m.objectsRegistry == nil {
+			m.objectsRegistry = objects.NewRegistry()
+			if _, errs := m.objectsRegistry.LoadVaultDir(m.vault.Root); len(errs) > 0 {
+				for _, err := range errs {
+					m.reportError("object types", err)
+				}
+			}
+		}
+		m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+		m.objectBrowser.SetSize(m.width, m.height)
+		m.objectBrowser.Open(m.objectsRegistry, m.objectsIndex)
+		if m.tabBar != nil {
+			m.tabBar.AddFeatureTab(FeatObjectBrowser, "Objects")
+		}
+		m.activeNote = ""
+
+	case CmdRepoTracker:
+		// Scan the configured RepoScanRoot for git repos, list each
+		// with status, allow importing into the typed-projects layer.
+		// Default scan root: ~/Projects when unset (matches the
+		// majority of users' setup).
+		root := m.config.RepoScanRoot
+		if strings.TrimSpace(root) == "" {
+			root = "~/Projects"
+		}
+		// Ensure the typed-objects index is fresh so already-imported
+		// repos are detected and we don't show duplicate-import options.
+		m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+		m.repoTracker.SetSize(m.width, m.height)
+		m.repoTracker.Open(root, m.objectsRegistry, m.objectsIndex)
+		if m.tabBar != nil {
+			m.tabBar.AddFeatureTab(FeatRepoTracker, "Repos")
+		}
+		m.activeNote = ""
+
+	case CmdSavedViews:
+		// Saved views (smart collections) — opens a tab in catalog-
+		// picker mode. The user picks a view; the same tab then
+		// re-renders as the resolved object list. Mirrors the
+		// Object Browser refresh-before-open pattern so frontmatter
+		// edits show up immediately.
+		if m.viewCatalog == nil {
+			m.viewCatalog = objects.NewViewCatalog(objects.BuiltinViews())
+			if _, errs := m.viewCatalog.LoadVaultDir(m.vault.Root); len(errs) > 0 {
+				for _, err := range errs {
+					m.reportError("saved views", err)
+				}
+			}
+		}
+		m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+		m.savedViews.SetSize(m.width, m.height)
+		m.savedViews.SetRegistry(m.objectsRegistry)
+		m.savedViews.OpenPicker(m.viewCatalog, m.objectsIndex)
+		if m.tabBar != nil {
+			m.tabBar.AddFeatureTab(FeatSavedView, "Views")
+		}
+		m.activeNote = ""
 
 	case CmdNLSearch:
 		m.nlSearch.SetSize(m.width, m.height)

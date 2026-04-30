@@ -146,13 +146,16 @@ func (s *Settings) buildItems() {
 		{label: "Inline Spell Check", key: "spell_check", kind: "bool", value: s.config.SpellCheck, category: catEditor, description: "highlight misspelled words"},
 
 		// ── AI ──
-		{label: "AI Provider", key: "ai_provider", kind: "string", value: s.config.AIProvider, options: []string{"local", "ollama", "openai", "nous", "nerve"}, category: catAI, description: "language model backend"},
-		{label: "Ollama Model", key: "ollama_model", kind: "string", value: s.config.OllamaModel, options: []string{"qwen2.5:0.5b", "qwen2.5:1.5b", "qwen2.5:3b", "phi3:mini", "phi3.5:3.8b", "gemma2:2b", "tinyllama", "llama3.2", "llama3.2:1b", "mistral", "gemma2"}, category: catAI, description: "local LLM model name"},
+		{label: "AI Provider", key: "ai_provider", kind: "string", value: s.config.AIProvider, options: []string{"local", "ollama", "openai", "anthropic", "nous", "nerve"}, category: catAI, description: "language model backend"},
+		{label: "Ollama Model", key: "ollama_model", kind: "string", value: s.config.OllamaModel, options: ollamaModelOptions(s.config.OllamaURL, s.config.OllamaModel), category: catAI, description: "local LLM model name (live-listed from `ollama list`; restart settings to refresh)"},
 		{label: "Ollama URL", key: "ollama_url", kind: "string", value: s.config.OllamaURL, category: catAI, description: "server endpoint address"},
 		{label: ">> Setup Ollama (install + model)", key: "setup_ollama", kind: "action", value: "run", category: catAI, description: "wizard install configure"},
 		{label: ">> Start Ollama Server", key: "start_ollama", kind: "action", value: "run", category: catAI, description: "start stop ollama serve local AI"},
+		{label: ">> Test AI Provider", key: "test_ai_provider", kind: "action", value: "run", category: catAI, description: "send a 1-token ping to the configured provider — confirm it works"},
 		{label: "OpenAI API Key", key: "openai_key", kind: "string", value: s.config.OpenAIKey, category: catAI, description: "secret token authentication"},
-		{label: "OpenAI Model", key: "openai_model", kind: "string", value: s.config.OpenAIModel, options: []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1-nano"}, category: catAI, description: "GPT model version"},
+		{label: "OpenAI Model", key: "openai_model", kind: "string", value: s.config.OpenAIModel, options: []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o1-mini", "o3-mini"}, category: catAI, description: "GPT model version"},
+		{label: "Anthropic API Key", key: "anthropic_key", kind: "string", value: s.config.AnthropicKey, category: catAI, description: "Claude API key (https://console.anthropic.com)"},
+		{label: "Anthropic Model", key: "anthropic_model", kind: "string", value: s.config.AnthropicModel, options: []string{"claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7"}, category: catAI, description: "Claude model — Haiku=fast/cheap, Sonnet=balanced, Opus=most capable"},
 		{label: "Nous URL", key: "nous_url", kind: "string", value: s.config.NousURL, category: catAI, description: "local Nous AI server endpoint"},
 		{label: "Nous API Key", key: "nous_api_key", kind: "string", value: s.config.NousAPIKey, category: catAI, description: "optional Nous authentication key"},
 		{label: "Nerve Binary", key: "nerve_binary", kind: "string", value: s.config.NerveBinary, category: catAI, description: "path to nerve chat binary"},
@@ -167,6 +170,7 @@ func (s *Settings) buildItems() {
 		{label: "Auto Daily Note", key: "auto_daily_note", kind: "bool", value: s.config.AutoDailyNote, category: catFiles, description: "open daily note on startup"},
 		{label: "Daily Notes Folder", key: "daily_notes_folder", kind: "string", value: s.config.DailyNotesFolder, category: catFiles, description: "journal directory path"},
 		{label: "Weekly Notes Folder", key: "weekly_notes_folder", kind: "string", value: s.config.WeeklyNotesFolder, category: catFiles, description: "weekly review directory path"},
+		{label: "Repo Scan Root", key: "repo_scan_root", kind: "string", value: s.config.RepoScanRoot, category: catFiles, description: "where the Repo Tracker scans for git repos (~ allowed)"},
 		{label: "Weekly Note Template", key: "weekly_note_template", kind: "string", value: s.config.WeeklyNoteTemplate, category: catFiles, description: "weekly note template file"},
 		{label: "Sort Files By", key: "sort_by", kind: "string", value: s.config.SortBy, options: []string{"name", "modified", "created"}, category: catFiles, description: "file list ordering"},
 		{label: "Search Content by Default", key: "search_content", kind: "bool", value: s.config.SearchContentByDefault, category: catFiles, description: "full text search"},
@@ -402,6 +406,8 @@ func (s *Settings) defaultValueForKey(key string) interface{} {
 		return def.WeeklyNotesFolder
 	case "weekly_note_template":
 		return def.WeeklyNoteTemplate
+	case "repo_scan_root":
+		return def.RepoScanRoot
 	case "search_content":
 		return def.SearchContentByDefault
 	case "ai_provider":
@@ -414,6 +420,10 @@ func (s *Settings) defaultValueForKey(key string) interface{} {
 		return def.OpenAIKey
 	case "openai_model":
 		return def.OpenAIModel
+	case "anthropic_key":
+		return def.AnthropicKey
+	case "anthropic_model":
+		return def.AnthropicModel
 	case "nous_url":
 		return def.NousURL
 	case "nous_api_key":
@@ -502,6 +512,14 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 	case ollamaStartMsg:
 		s.setupRunning = false
 		s.setupStatus = msg.message
+		return s, nil
+	case providerTestMsg:
+		s.setupRunning = false
+		if msg.success {
+			s.setupStatus = msg.message
+		} else {
+			s.setupStatus = "Test failed: " + msg.message
+		}
 		return s, nil
 	case tea.KeyMsg:
 		// ── Search mode input ──
@@ -666,6 +684,16 @@ func (s Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 					s.setupStatus = "Starting Ollama..."
 					return s, s.runOllamaStart()
 				}
+				if item.key == "test_ai_provider" && !s.setupRunning {
+					// Run a tiny prompt against the currently
+					// configured provider. Surfaces "yes it
+					// works" or a specific actionable error in
+					// 1-2 seconds without making the user spin
+					// up an agent.
+					s.setupRunning = true
+					s.setupStatus = "Testing " + s.config.AIProvider + "..."
+					return s, s.runProviderTest()
+				}
 			}
 		}
 	}
@@ -749,6 +777,8 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.DailyNotesFolder = value.(string)
 	case "weekly_notes_folder":
 		s.config.WeeklyNotesFolder = value.(string)
+	case "repo_scan_root":
+		s.config.RepoScanRoot = value.(string)
 	case "weekly_note_template":
 		s.config.WeeklyNoteTemplate = value.(string)
 	case "theme":
@@ -808,6 +838,10 @@ func (s *Settings) applyValue(key string, value interface{}) {
 		s.config.OpenAIKey = value.(string)
 	case "openai_model":
 		s.config.OpenAIModel = value.(string)
+	case "anthropic_key":
+		s.config.AnthropicKey = value.(string)
+	case "anthropic_model":
+		s.config.AnthropicModel = value.(string)
 	case "nous_url":
 		s.config.NousURL = value.(string)
 	case "nous_api_key":
@@ -1077,7 +1111,7 @@ func (s Settings) View() string {
 				}
 			}
 		case "action":
-			if s.setupRunning && (item.key == "setup_ollama" || item.key == "start_ollama") {
+			if s.setupRunning && (item.key == "setup_ollama" || item.key == "start_ollama" || item.key == "test_ai_provider") {
 				valueStr = lipgloss.NewStyle().Foreground(yellow).Render("running...")
 			} else if item.key == "start_ollama" && OllamaWeStartedServer() {
 				label = ">> Stop Ollama Server"

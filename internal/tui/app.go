@@ -13,6 +13,7 @@ import (
 
 	"github.com/artaeon/granit/internal/config"
 	"github.com/artaeon/granit/internal/modules"
+	"github.com/artaeon/granit/internal/objects"
 	"github.com/artaeon/granit/internal/profiles"
 	"github.com/artaeon/granit/internal/tasks"
 	"github.com/artaeon/granit/internal/tui/widgets"
@@ -222,6 +223,10 @@ type Model struct {
 	planMyDay        PlanMyDay
 	clockIn          ClockIn
 	commandCenter    CommandCenter
+	sheetView         SheetView
+	objectBrowser      ObjectBrowser
+	agentRunner        AgentRunner
+	typedMentionPicker TypedMentionPicker
 	weeklyReview      WeeklyReview
 	readingList       ReadingList
 	aiProjectPlanner  AIProjectPlanner
@@ -234,6 +239,23 @@ type Model struct {
 	dueTodayCount     int
 	cachedTasks       []Task // cached ParseAllTasks result, refreshed on vault changes
 
+	// Typed-objects layer (Capacities-style). Registry is loaded
+	// once at startup (built-ins + vault overrides at .granit/types/).
+	// Index is rebuilt every time the vault scan finishes — cheap
+	// because it's pure in-memory frontmatter scanning.
+	objectsRegistry *objects.Registry
+	objectsIndex    *objects.Index
+
+	// Saved-views catalog: built-ins + vault overlays from
+	// .granit/views/<id>.json. Re-evaluated against objectsIndex on
+	// every Refresh so the list stays current as the user adds notes.
+	viewCatalog *objects.ViewCatalog
+	savedViews  SavedViews
+
+	// Repo Tracker: scans config.RepoScanRoot for git repositories
+	// and lets the user import each as a typed-project note.
+	repoTracker RepoTracker
+
 	// Startup message (e.g. "Loaded 247 notes in 12ms")
 	startupMsg string
 
@@ -243,6 +265,17 @@ type Model struct {
 
 	// Slash command menu
 	slashMenu *SlashMenu
+
+	// Inline AI selection edit — true while a request is in flight. Used to
+	// reject overlapping dispatches (rapid Alt+A spam) and to render a
+	// spinner-ish hint in the status bar.
+	aiEditPending bool
+
+	// Diff preview overlay for inline AI edits. When the model
+	// returns, instead of writing immediately we show this for the
+	// user to accept/discard (Deepnote-style "see what AI proposed").
+	// Bypassed when config.AIAutoApplyEdits is true.
+	aiDiffPreview AIDiffPreview
 
 	// Toast notifications
 	toast *Toast
@@ -286,6 +319,7 @@ type Model struct {
 
 	// Auto daily note on startup
 	pendingDailyNote bool
+	pendingSheetPath string
 }
 
 func NewModel(vaultPath string) (Model, error) {
@@ -312,11 +346,40 @@ func NewModel(vaultPath string) (Model, error) {
 	idx := vault.NewIndex(v)
 	idx.Build()
 
+	// Typed-objects layer: load registry (built-ins + vault overrides
+	// at .granit/types/) and build the initial Object index by scanning
+	// frontmatter. Errors during type loading are logged but don't
+	// block startup — vault overrides are optional and a malformed
+	// JSON shouldn't lock the user out of their entire vault.
+	objReg := objects.NewRegistry()
+	if _, errs := objReg.LoadVaultDir(v.Root); len(errs) > 0 {
+		for _, err := range errs {
+			log.Printf("granit: object types: %v", err)
+		}
+	}
+	objIdx := rebuildObjectsIndex(objReg, v)
+
+	// Saved-views: built-ins ship with granit, vault-local overrides at
+	// .granit/views/. Errors are logged, not fatal — same rationale as
+	// type loading above.
+	viewCat := objects.NewViewCatalog(objects.BuiltinViews())
+	if _, errs := viewCat.LoadVaultDir(v.Root); len(errs) > 0 {
+		for _, err := range errs {
+			log.Printf("granit: saved views: %v", err)
+		}
+	}
+
 	paths := v.SortedPaths()
 
 	m := Model{
 		vault:          v,
 		index:          idx,
+		objectsRegistry: objReg,
+		objectsIndex:    objIdx,
+		viewCatalog:     viewCat,
+		savedViews:      NewSavedViews(),
+		repoTracker:     NewRepoTracker(),
+		aiDiffPreview:   NewAIDiffPreview(),
 		sidebar:        NewSidebar(paths),
 		editor:         NewEditor(),
 		renderer:       NewRenderer(),
@@ -404,6 +467,10 @@ func NewModel(vaultPath string) (Model, error) {
 		ideasBoard:       NewIdeasBoard(),
 		eventStore:       NewEventStore(vaultPath),
 		commandCenter:   NewCommandCenter(),
+		sheetView:       NewSheetView(),
+		objectBrowser:      NewObjectBrowser(),
+		agentRunner:        NewAgentRunner(),
+		typedMentionPicker: NewTypedMentionPicker(),
 		dailyPlanner:    NewDailyPlanner(),
 		dailyJot:        NewDailyJot(),
 		aiScheduler:     NewAIScheduler(),
@@ -528,6 +595,11 @@ func NewModel(vaultPath string) (Model, error) {
 
 	// Restore persisted explorer (folder collapse) state
 	m.sidebar.LoadExplorerState(vaultPath)
+
+	// Wire typed-objects into the sidebar so 'm' (mode-cycle key)
+	// in the explorer can flip to the Types view. Sidebar holds
+	// references and rebuilds its own row list on each call.
+	m.sidebar.SetTypedObjects(m.objectsRegistry, m.objectsIndex)
 
 	// Restore persisted tabs from previous session
 	if m.tabBar != nil {
@@ -776,6 +848,14 @@ func (m Model) NoteCount() int {
 // SetStartupMessage sets a message to show on the status bar at launch.
 func (m *Model) SetStartupMessage(msg string) {
 	m.startupMsg = msg
+}
+
+// QueueOpenSheet asks the model to open the given spreadsheet
+// file in a SheetView feature tab on first Init. Used by the
+// CLI entry `granit path/to/file.csv` so the user lands directly
+// inside the spreadsheet surface.
+func (m *Model) QueueOpenSheet(path string) {
+	m.pendingSheetPath = path
 }
 
 func (m Model) Init() tea.Cmd {

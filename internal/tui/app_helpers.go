@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/base64"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -862,6 +863,15 @@ func (m *Model) refreshComponents(changedPath string) {
 		m.projectMode.Refresh(m.vault.Root)
 	}
 
+	// Rebuild typed-objects index on every full refresh so the
+	// Object Browser AND the sidebar's Types view both see fresh
+	// frontmatter without an explicit reload. Cheap on a 1000-note
+	// vault (~1ms — pure in-memory frontmatter scanning).
+	if m.objectsRegistry != nil {
+		m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+		m.sidebar.SetTypedObjects(m.objectsRegistry, m.objectsIndex)
+	}
+
 	m.refreshActiveNoteState(changedPath)
 
 	m.tfidfDirty = true
@@ -1091,10 +1101,56 @@ func (m Model) saveCurrentNote() tea.Cmd {
 // bypass the store with their own writes (TaskManager's
 // writeLineChange callers) Reload at their own boundaries.
 func (m *Model) currentTasks() []Task {
+	var raw []Task
 	if m.taskStore != nil {
-		return m.taskStore.All()
+		raw = m.taskStore.All()
+	} else {
+		raw = ParseAllTasks(m.vault.Notes)
 	}
-	return ParseAllTasks(m.vault.Notes)
+	return m.enrichTasksWithProjects(raw)
+}
+
+// enrichTasksWithProjects sets Task.Project from typed-object metadata
+// when the task's note doesn't already carry an explicit project value.
+//
+// Resolution order (first match wins, never overwrites a non-empty value):
+//
+//  1. The task's containing note has `type: project` in its frontmatter →
+//     Project = note's Title (the project IS the note).
+//  2. The task's containing note has a `project: <ref>` frontmatter key →
+//     Project = that string (free-form; user-typed reference).
+//
+// Cheap (per-task map lookups), pure (no I/O), no-op when the
+// objectsIndex isn't wired yet (e.g. during early startup).
+func (m *Model) enrichTasksWithProjects(in []Task) []Task {
+	if len(in) == 0 {
+		return in
+	}
+	out := make([]Task, len(in))
+	for i, t := range in {
+		out[i] = t
+		if strings.TrimSpace(t.Project) != "" {
+			continue // explicit `@project:X` in the markdown wins
+		}
+		// 1. Note is itself a project typed-object.
+		if m.objectsIndex != nil {
+			if obj := m.objectsIndex.ByPath(t.NotePath); obj != nil && obj.TypeID == "project" {
+				out[i].Project = obj.Title
+				continue
+			}
+		}
+		// 2. Note's frontmatter declares a project: ref.
+		note := m.vault.GetNote(t.NotePath)
+		if note == nil {
+			continue
+		}
+		if v, ok := note.Frontmatter["project"]; ok {
+			if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+				out[i].Project = strings.TrimSpace(s)
+			}
+		}
+	}
+	return out
 }
 
 // modalCapturing reports whether a transient input overlay or
@@ -1131,6 +1187,73 @@ func atomicWriteState(path string, data []byte) error {
 
 func atomicWriteWithPerm(path string, data []byte, perm os.FileMode) error {
 	return atomicio.WriteWithPerm(path, data, perm)
+}
+
+// createTypedObjectFile writes a new typed-object note at the given
+// vault-relative path with the provided content (already-built
+// frontmatter + body). Refuses to overwrite an existing file —
+// callers should re-prompt the user with a different title rather
+// than silently clobber prior work.
+//
+// Returns nil on success; the caller is responsible for the follow-up
+// (refresh vault, open the new note in the editor, etc.).
+func (m *Model) createTypedObjectFile(relPath, content string) error {
+	if strings.TrimSpace(relPath) == "" {
+		return fmt.Errorf("create object: empty path")
+	}
+	abs := filepath.Join(m.vault.Root, relPath)
+	if _, err := os.Stat(abs); err == nil {
+		return fmt.Errorf("%s already exists — choose a different title", relPath)
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(relPath), err)
+	}
+	if err := atomicWriteNote(abs, content); err != nil {
+		return fmt.Errorf("write %s: %w", relPath, err)
+	}
+	if err := m.vault.Scan(); err != nil {
+		return fmt.Errorf("rescan vault: %w", err)
+	}
+	m.index = vault.NewIndex(m.vault)
+	m.index.Build()
+	m.sidebar.SetFiles(m.vault.SortedPaths())
+	m.statusbar.SetNoteCount(m.vault.NoteCount())
+	return nil
+}
+
+// deleteObjectFile removes a typed-object's underlying note file from
+// disk and rescans the vault. Used by the Object Browser's 'D' delete
+// flow. Refuses to delete a file outside the vault root (defence in
+// depth — the path comes from the index so it should always be safe,
+// but the check costs nothing).
+func (m *Model) deleteObjectFile(relPath string) error {
+	if strings.TrimSpace(relPath) == "" {
+		return fmt.Errorf("delete object: empty path")
+	}
+	if strings.Contains(relPath, "..") {
+		return fmt.Errorf("delete object: refused path %q (contains ..)", relPath)
+	}
+	abs := filepath.Join(m.vault.Root, relPath)
+	if _, err := os.Stat(abs); err != nil {
+		return fmt.Errorf("file not found: %s", relPath)
+	}
+	if err := os.Remove(abs); err != nil {
+		return fmt.Errorf("remove %s: %w", relPath, err)
+	}
+	if err := m.vault.Scan(); err != nil {
+		return fmt.Errorf("rescan vault: %w", err)
+	}
+	m.index = vault.NewIndex(m.vault)
+	m.index.Build()
+	m.sidebar.SetFiles(m.vault.SortedPaths())
+	m.statusbar.SetNoteCount(m.vault.NoteCount())
+	// If the deleted note was the active editor tab, clear it so the
+	// editor pane doesn't keep referencing a missing file.
+	if m.activeNote == relPath {
+		m.activeNote = ""
+		m.editor.SetContent("")
+	}
+	return nil
 }
 
 // tryExpandSnippet checks if the word before the cursor (before the space just typed)
@@ -1564,6 +1687,8 @@ func (m *Model) getAIModel() string {
 		return m.config.OllamaModel
 	case "openai":
 		return m.config.OpenAIModel
+	case "anthropic", "claude":
+		return m.config.AnthropicModel
 	case "nous":
 		return "nous"
 	default:
@@ -1577,6 +1702,7 @@ func (m Model) aiConfig() AIConfig {
 		Model:         m.getAIModel(),
 		OllamaURL:     m.config.OllamaURL,
 		APIKey:        m.config.OpenAIKey,
+		AnthropicKey:  m.config.AnthropicKey,
 		NousURL:       m.config.NousURL,
 		NousAPIKey:    m.config.NousAPIKey,
 		NerveBinary:   m.config.NerveBinary,
