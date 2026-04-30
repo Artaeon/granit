@@ -6,11 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/artaeon/granit/internal/objects"
 )
 
 // jotEntry represents a single bullet in a daily jot file.
@@ -108,10 +111,80 @@ type DailyJot struct {
 	linkCursor  int
 
 	statusMsg string
+
+	// Today's typed-object captures (Phase 9). Populated via
+	// SetTypedObjects before Open. Lets the user see at a glance
+	// "I captured 4 articles, 2 ideas today" right above the input
+	// — feedback loop for capture velocity.
+	todayObjects     []jotTodayObject // most recent first, capped at 6
+	todayObjectCount int              // total typed objects modified today
+}
+
+// jotTodayObject is one row in the today's-captures panel: type icon
+// + title + type label, sourced from the typed-objects index.
+type jotTodayObject struct {
+	Title  string
+	TypeID string
+	Icon   string
+	Path   string
 }
 
 func NewDailyJot() DailyJot {
 	return DailyJot{}
+}
+
+// SetTypedObjects feeds the daily jot the typed-objects context. Call
+// before Open() so the today's-captures panel renders on first paint.
+//
+// "Today" = files whose mtime falls within the local-day window of
+// time.Now(). mtime is used rather than parsed `created` frontmatter
+// because (a) most users don't fill in a created field, (b) mtime is
+// always present and accurate for the "did I touch this today" signal.
+func (dj *DailyJot) SetTypedObjects(reg *objects.Registry, idx *objects.Index, vaultRoot string) {
+	dj.todayObjects = nil
+	dj.todayObjectCount = 0
+	if reg == nil || idx == nil {
+		return
+	}
+
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	type pathTime struct {
+		path  string
+		mtime time.Time
+	}
+	var hits []pathTime
+	for _, t := range reg.All() {
+		for _, obj := range idx.ByType(t.ID) {
+			abs := filepath.Join(vaultRoot, obj.NotePath)
+			info, err := os.Stat(abs)
+			if err != nil {
+				continue
+			}
+			if info.ModTime().Before(startOfDay) {
+				continue
+			}
+			hits = append(hits, pathTime{path: obj.NotePath, mtime: info.ModTime()})
+		}
+	}
+	dj.todayObjectCount = len(hits)
+
+	sort.Slice(hits, func(i, j int) bool { return hits[i].mtime.After(hits[j].mtime) })
+	if len(hits) > 6 {
+		hits = hits[:6]
+	}
+	for _, h := range hits {
+		obj := idx.ByPath(h.path)
+		if obj == nil {
+			continue
+		}
+		t, _ := reg.ByID(obj.TypeID)
+		dj.todayObjects = append(dj.todayObjects, jotTodayObject{
+			Title: obj.Title, TypeID: obj.TypeID,
+			Icon: t.Icon, Path: obj.NotePath,
+		})
+	}
 }
 
 func (dj *DailyJot) Open(vaultRoot, jotsFolder string, noteNames []string, daysBack int) {
@@ -1354,6 +1427,38 @@ func (dj DailyJot) View() string {
 	if dj.carryOverCount > 0 {
 		coStyle := lipgloss.NewStyle().Foreground(yellow).Italic(true)
 		b.WriteString("  " + coStyle.Render(fmt.Sprintf("↳ %d incomplete task(s) carried from yesterday", dj.carryOverCount)))
+		b.WriteString("\n")
+	}
+
+	// Today's typed-object captures (Phase 9). One inline line per
+	// captured object, capped at 6 to stay out of the user's way.
+	// Hidden entirely when zero.
+	if dj.todayObjectCount > 0 {
+		captureLabel := lipgloss.NewStyle().Foreground(green).Bold(true)
+		b.WriteString("  " + captureLabel.Render(fmt.Sprintf("📦 Captured today (%d)", dj.todayObjectCount)))
+		b.WriteString("\n")
+		objStyle := lipgloss.NewStyle().Foreground(text)
+		typeStyle := lipgloss.NewStyle().Foreground(overlay0)
+		for _, o := range dj.todayObjects {
+			icon := o.Icon
+			if strings.TrimSpace(icon) == "" {
+				icon = "•"
+			}
+			titleW := innerWidth - 14
+			if titleW < 12 {
+				titleW = 12
+			}
+			title := TruncateDisplay(o.Title, titleW)
+			b.WriteString("    " + icon + " " + objStyle.Render(title) +
+				"  " + typeStyle.Render(o.TypeID))
+			b.WriteString("\n")
+		}
+		if dj.todayObjectCount > len(dj.todayObjects) {
+			more := lipgloss.NewStyle().Foreground(overlay0).Italic(true)
+			b.WriteString("    " + more.Render(fmt.Sprintf("+%d more — Alt+O to browse",
+				dj.todayObjectCount-len(dj.todayObjects))))
+			b.WriteString("\n")
+		}
 		b.WriteString("\n")
 	}
 

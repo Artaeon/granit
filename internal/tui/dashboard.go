@@ -11,12 +11,34 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/artaeon/granit/internal/objects"
 )
 
 // dashTask represents a single task entry for the dashboard.
 type dashTask struct {
 	Text string
 	Done bool
+}
+
+// dashTypeCount is one row in the typed-objects panel: type icon +
+// human label + object count. Sorted by count desc when rendered.
+type dashTypeCount struct {
+	Icon  string
+	Name  string
+	ID    string
+	Count int
+}
+
+// dashRecentObject is one row in the "Recently Captured" sub-panel —
+// most-recently-modified typed objects across all types. Lets the user
+// see capture velocity at a glance.
+type dashRecentObject struct {
+	Title   string
+	TypeID  string
+	Icon    string
+	Path    string
+	TimeAgo string
 }
 
 // dashHabit represents a habit with today's status for the dashboard.
@@ -74,6 +96,16 @@ type Dashboard struct {
 	// Daily scripture (cached on open)
 	dailyScripture Scripture
 
+	// Typed-objects panel (Phase 9): per-type counts, top-N recently
+	// created objects, and inline results from the primary saved view.
+	// All populated via SetTypedObjects before Open. Empty when the
+	// vault has no typed objects — the renderer just hides the panel.
+	objCountsByType []dashTypeCount     // sorted by count desc
+	objTotal        int                 // sum across all types
+	objRecent       []dashRecentObject  // top 6 by mtime
+	primaryView     *objects.View       // optional starred view
+	primaryViewObjs []*objects.Object   // resolved objects for the primary view (top 5)
+
 	// Business/Revenue metrics
 	bizTasksDone  int // completed tasks tagged #revenue/#client/#business this week
 	bizTasksTotal int // total such tasks this week
@@ -92,6 +124,110 @@ type Dashboard struct {
 	action CommandAction
 
 	scroll int
+}
+
+// SetTypedObjects feeds the dashboard the typed-objects context. Call
+// this BEFORE Open() so the panel data is ready by first render. The
+// primaryViewID is optional — when non-empty and present in the
+// catalog, the dashboard surfaces its top results inline. Pass an
+// empty string to skip the saved-view section.
+//
+// All inputs are tolerated as nil — the renderer hides the panel
+// entirely when there's nothing to show. This way callers don't have
+// to special-case "vault hasn't been scanned yet."
+func (d *Dashboard) SetTypedObjects(reg *objects.Registry, idx *objects.Index,
+	cat *objects.ViewCatalog, primaryViewID string, vaultRoot string) {
+
+	d.objCountsByType = nil
+	d.objTotal = 0
+	d.objRecent = nil
+	d.primaryView = nil
+	d.primaryViewObjs = nil
+
+	if idx == nil || reg == nil {
+		return
+	}
+	d.objTotal = idx.Total()
+
+	// Per-type counts. Iterate registry.All() to keep registry order
+	// (not arbitrary map order); skip empty types so the panel stays
+	// dense — the Object Browser is the right place to discover empty
+	// types, the dashboard surfaces utilisation.
+	counts := idx.CountByType()
+	for _, t := range reg.All() {
+		c := counts[t.ID]
+		if c == 0 {
+			continue
+		}
+		d.objCountsByType = append(d.objCountsByType, dashTypeCount{
+			Icon: t.Icon, Name: t.Name, ID: t.ID, Count: c,
+		})
+	}
+	sort.Slice(d.objCountsByType, func(i, j int) bool {
+		return d.objCountsByType[i].Count > d.objCountsByType[j].Count
+	})
+
+	// Recently-created objects: read mtime for each indexed object,
+	// sort desc, keep the top 6. Bounded scan: only iterates over
+	// indexed (typed) objects, not the whole vault.
+	type pathTime struct {
+		path  string
+		mtime time.Time
+	}
+	all := []pathTime{}
+	for _, t := range reg.All() {
+		for _, obj := range idx.ByType(t.ID) {
+			abs := filepath.Join(vaultRoot, obj.NotePath)
+			if info, err := os.Stat(abs); err == nil {
+				all = append(all, pathTime{path: obj.NotePath, mtime: info.ModTime()})
+			}
+		}
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].mtime.After(all[j].mtime) })
+	if len(all) > 6 {
+		all = all[:6]
+	}
+	for _, pt := range all {
+		obj := idx.ByPath(pt.path)
+		if obj == nil {
+			continue
+		}
+		t, _ := reg.ByID(obj.TypeID)
+		d.objRecent = append(d.objRecent, dashRecentObject{
+			Title: obj.Title, TypeID: obj.TypeID, Icon: t.Icon,
+			Path: obj.NotePath, TimeAgo: relativeTime(pt.mtime),
+		})
+	}
+
+	// Primary saved view (optional inline section).
+	if cat != nil && strings.TrimSpace(primaryViewID) != "" {
+		if v, ok := cat.ByID(primaryViewID); ok {
+			d.primaryView = &v
+			res := objects.Evaluate(idx, v)
+			if len(res) > 5 {
+				res = res[:5]
+			}
+			d.primaryViewObjs = res
+		}
+	}
+}
+
+// relativeTime formats a "moments ago / 5m / 2h / 3d" string for
+// dashboard rows. Identical pattern to recentNotes' TimeAgo.
+func relativeTime(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	default:
+		return t.Format("Jan 2")
+	}
 }
 
 // Open activates the dashboard and scans the vault for data.
@@ -717,6 +853,81 @@ func (d Dashboard) View() string {
 	row1 := lipgloss.JoinHorizontal(lipgloss.Top, taskPanel, "  ", recentPanel)
 	lines = append(lines, row1)
 	lines = append(lines, "")
+
+	// --- Typed Objects panel (Phase 9): two columns when populated.
+	// Hidden entirely when the vault has no typed objects so brand-new
+	// users don't see an empty section confusingly.
+	if d.objTotal > 0 {
+		// Left column: per-type counts (top 6).
+		var typeLines []string
+		typeLines = append(typeLines, sectionTitle.Render("📦 Typed Objects"))
+		typeLines = append(typeLines, dimSt.Render(strings.Repeat("─", halfW-4)))
+		shown := d.objCountsByType
+		if len(shown) > 6 {
+			shown = shown[:6]
+		}
+		for _, c := range shown {
+			icon := c.Icon
+			if strings.TrimSpace(icon) == "" {
+				icon = "•"
+			}
+			label := TruncateDisplay(c.Name, halfW-12)
+			line := fmt.Sprintf("  %s %s",
+				icon,
+				labelStyle.Render(PadRight(label, halfW-10)))
+			line += numStyle.Render(fmt.Sprintf("%d", c.Count))
+			typeLines = append(typeLines, line)
+		}
+		typeLines = append(typeLines, "")
+		typeLines = append(typeLines, dimSt.Render(fmt.Sprintf("  %d total · Alt+O to browse · Alt+V for views",
+			d.objTotal)))
+		typesPanel := lipgloss.NewStyle().Width(halfW).
+			Render(strings.Join(typeLines, "\n"))
+
+		// Right column: recently captured + (optional) primary saved view.
+		var rightLines []string
+		rightTitle := "Recently Captured"
+		rightLines = append(rightLines, sectionTitle.Render("🕐 "+rightTitle))
+		rightLines = append(rightLines, dimSt.Render(strings.Repeat("─", halfW-4)))
+		if len(d.objRecent) == 0 {
+			rightLines = append(rightLines, dimSt.Render("  No typed objects yet"))
+		} else {
+			for _, r := range d.objRecent {
+				icon := r.Icon
+				if strings.TrimSpace(icon) == "" {
+					icon = "•"
+				}
+				titleW := halfW - 14
+				if titleW < 8 {
+					titleW = 8
+				}
+				title := TruncateDisplay(r.Title, titleW)
+				rightLines = append(rightLines,
+					"  "+icon+" "+labelStyle.Render(PadRight(title, titleW))+
+						"  "+dimSt.Render(r.TimeAgo))
+			}
+		}
+		// Optional saved-view inline.
+		if d.primaryView != nil {
+			rightLines = append(rightLines, "")
+			rightLines = append(rightLines, sectionTitle.Render("☆ "+d.primaryView.Name))
+			rightLines = append(rightLines, dimSt.Render(strings.Repeat("─", halfW-4)))
+			if len(d.primaryViewObjs) == 0 {
+				rightLines = append(rightLines, dimSt.Render("  (no matches)"))
+			} else {
+				for _, obj := range d.primaryViewObjs {
+					title := TruncateDisplay(obj.Title, halfW-6)
+					rightLines = append(rightLines, "  • "+labelStyle.Render(title))
+				}
+			}
+		}
+		recentObjsPanel := lipgloss.NewStyle().Width(halfW).
+			Render(strings.Join(rightLines, "\n"))
+
+		row1b := lipgloss.JoinHorizontal(lipgloss.Top, typesPanel, "  ", recentObjsPanel)
+		lines = append(lines, row1b)
+		lines = append(lines, "")
+	}
 
 	// --- Two-column: Quick Stats | Streaks ---
 	var statsLines []string
