@@ -10,6 +10,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/artaeon/granit/internal/objects"
 )
 
 // sortStrings is a tiny shim so the View body reads cleanly
@@ -81,6 +83,15 @@ type Sidebar struct {
 	statusMsg   string         // ephemeral status hint (sort changed, etc.)
 	gitStatus  map[string]rune // path → status rune ('M'=modified, '?'=untracked, 'C'=conflict)
 	notGitRepo bool            // sticky: once we've established there's no .git, skip subsequent execs
+
+	// Sidebar mode + Types-view backing data. Set by the Model
+	// via SetTypedObjects after each vault refresh — Sidebar
+	// holds a reference, never the source of truth. Cycle modes
+	// with 'm' (or programmatically via SetMode).
+	mode            SidebarMode
+	objectsRegistry *objects.Registry
+	objectsIndex    *objects.Index
+	typeRows        []typeRow // flattened display rows in Types mode
 }
 
 func NewSidebar(files []string) Sidebar {
@@ -367,6 +378,15 @@ func fuzzyHighlight(name, query string, baseStyle, matchStyle lipgloss.Style) st
 }
 
 func (s *Sidebar) Selected() string {
+	// Types mode: only object rows are selectable as files —
+	// header rows return empty so the host doesn't try to
+	// loadNote("") on a Type-name keystroke.
+	if s.mode == ModeTypes {
+		if r, ok := s.selectedTypeRow(); ok && !r.Header {
+			return r.Path
+		}
+		return ""
+	}
 	if s.treeView && s.search == "" {
 		return s.fileTree.Selected()
 	}
@@ -383,6 +403,23 @@ func (s Sidebar) Update(msg tea.Msg) (Sidebar, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// 'm' cycles sidebar modes (Files / Types). Works in any
+		// sub-mode — tree view, flat view, search-active. Without
+		// this users discover Types view by reading docs;
+		// surfacing the toggle on the home row makes it
+		// discoverable without the doc lookup.
+		if msg.String() == "m" && !s.searching {
+			s.CycleMode()
+			return s, nil
+		}
+
+		// Types mode short-circuits the rest of the handler — its
+		// row model is different (header rows interleaved with
+		// object rows) so it has its own navigation.
+		if s.mode == ModeTypes {
+			return s.updateTypesMode(msg)
+		}
+
 		// Toggle between tree and flat view
 		if msg.String() == "ctrl+t" {
 			s.treeView = !s.treeView
@@ -530,12 +567,23 @@ func (s Sidebar) View() string {
 		contentWidth = 10
 	}
 
-	// Header with accent bar, file count, and git-changes badge.
+	// Header with accent bar, file/type count, mode chip, git-changes badge.
 	headerAccent := lipgloss.NewStyle().Foreground(mauve).Bold(true)
 	fileCountStyle := lipgloss.NewStyle().Foreground(surface2)
+	modeChipStyle := lipgloss.NewStyle().Foreground(crust).Background(sapphire).Padding(0, 1)
 	headerLine := headerAccent.Render("  EXPLORER")
-	if len(s.filtered) > 0 {
-		headerLine += fileCountStyle.Render("  " + sidebarItoa(len(s.filtered)) + " files")
+	headerLine += "  " + modeChipStyle.Render(s.mode.String())
+	switch s.mode {
+	case ModeTypes:
+		// Total typed-objects count is the natural counterpart of
+		// the file count in Files mode.
+		if s.objectsIndex != nil && s.objectsIndex.Total() > 0 {
+			headerLine += fileCountStyle.Render("  " + sidebarItoa(s.objectsIndex.Total()) + " objects")
+		}
+	default:
+		if len(s.filtered) > 0 {
+			headerLine += fileCountStyle.Render("  " + sidebarItoa(len(s.filtered)) + " files")
+		}
 	}
 	// Git change count: yellow chip when the working tree has
 	// any non-clean files. Power users glance at the sidebar
@@ -571,6 +619,19 @@ func (s Sidebar) View() string {
 	// Thin separator
 	b.WriteString(lipgloss.NewStyle().Foreground(surface0).Render(strings.Repeat(ThemeSeparator, contentWidth)))
 	b.WriteString("\n")
+
+	// Types mode short-circuits the file-tree / flat-list paths
+	// and renders typed objects grouped by Type. Search filter
+	// is applied inside renderTypesView so the same '/' UX
+	// works in both modes.
+	if s.mode == ModeTypes {
+		b.WriteString(s.renderTypesView(contentWidth))
+		if s.statusMsg != "" {
+			b.WriteString("\n")
+			b.WriteString(DimStyle.Render("  " + s.statusMsg))
+		}
+		return b.String()
+	}
 
 	// If tree view and not searching, use the file tree
 	if s.treeView && s.search == "" {

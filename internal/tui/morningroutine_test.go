@@ -140,15 +140,20 @@ func TestBuildDailyPlanMarkdown_FullPlan(t *testing.T) {
 		t.Error("expected goal text")
 	}
 
-	// Tasks
+	// Tasks — emitted as plain bullets (no "[ ]" checkbox) so the daily-plan
+	// recap doesn't get reparsed as fresh tasks by ParseAllTasks. The real
+	// task lines live in the source notes; this section is informational.
 	if !strings.Contains(md, "### Tasks") {
 		t.Error("expected tasks heading")
 	}
-	if !strings.Contains(md, "- [ ] Fix bug #42 (due: 2026-04-09)") {
-		t.Error("expected task with due date")
+	if !strings.Contains(md, "- Fix bug #42 (due: 2026-04-09)") {
+		t.Error("expected task with due date as plain bullet")
 	}
-	if !strings.Contains(md, "- [ ] Update docs") {
-		t.Error("expected task without due date")
+	if !strings.Contains(md, "- Update docs") {
+		t.Error("expected task without due date as plain bullet")
+	}
+	if strings.Contains(md, "- [ ] Fix bug #42") || strings.Contains(md, "- [ ] Update docs") {
+		t.Errorf("tasks must not be emitted as '- [ ]' checkboxes — would duplicate into global task list. md:\n%s", md)
 	}
 
 	// Habits

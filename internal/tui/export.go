@@ -169,16 +169,9 @@ func (e *ExportOverlay) exportPDF() {
 		e.result = "Error: no note is open"
 		return
 	}
-
 	pandocPath, err := exec.LookPath("pandoc")
 	if err != nil || pandocPath == "" {
 		e.result = "Error: pandoc is not installed or not in PATH"
-		return
-	}
-
-	inputPath, err := resolveVaultPath(e.vaultRoot, e.notePath)
-	if err != nil {
-		e.result = "Error: " + err.Error()
 		return
 	}
 	baseName := strings.TrimSuffix(e.notePath, filepath.Ext(e.notePath))
@@ -187,19 +180,19 @@ func (e *ExportOverlay) exportPDF() {
 		e.result = "Error: " + err.Error()
 		return
 	}
-
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 		e.result = "Error: " + err.Error()
 		return
 	}
-
-	cmd := exec.Command(pandocPath, inputPath, "-o", outPath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		msg := err.Error()
-		if len(output) > 0 {
-			msg = strings.TrimSpace(string(output))
-		}
-		e.result = "Error: " + msg
+	// Hand off to renderNoteToPDF — which preprocesses wikilinks +
+	// task emoji, builds a YAML metadata block for the title page,
+	// and invokes pandoc with the typography flags that turn the
+	// default-pandoc PDF into something that reads as a real
+	// document instead of an academic homework artifact.
+	if err := renderNoteToPDF(e.notePath, e.noteContent, outPath, pdfRenderOptions{
+		PandocPath: pandocPath,
+	}); err != nil {
+		e.result = "Error: " + err.Error()
 		return
 	}
 	e.result = "Exported: " + outPath

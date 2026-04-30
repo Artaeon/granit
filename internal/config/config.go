@@ -29,6 +29,13 @@ type Config struct {
 	WeeklyNotesFolder   string   `json:"weekly_notes_folder"`
 	WeeklyNoteTemplate  string   `json:"weekly_note_template"`
 
+	// RepoScanRoot is the absolute path the Repo Tracker scans for
+	// local git repositories (each subdirectory containing a `.git`
+	// becomes a row). Empty means "skip the scan" — the tracker
+	// renders an empty hint asking the user to set this. Default
+	// resolves to ~/Projects when unset on first launch.
+	RepoScanRoot string `json:"repo_scan_root"`
+
 	// Editor enhancements
 	AutoCloseBrackets    bool `json:"auto_close_brackets"`
 	HighlightCurrentLine bool `json:"highlight_current_line"`
@@ -55,11 +62,13 @@ type Config struct {
 	GitAutoSync     bool `json:"git_auto_sync"`
 
 	// AI / Bots
-	AIProvider  string `json:"ai_provider"`  // "local", "ollama", "openai", "nous", "nerve"
+	AIProvider  string `json:"ai_provider"`  // "local", "ollama", "openai", "anthropic", "nous", "nerve"
 	OllamaModel string `json:"ollama_model"` // e.g. "qwen2.5:0.5b", "phi3:mini"
 	OllamaURL   string `json:"ollama_url"`   // e.g. "http://localhost:11434"
 	OpenAIKey   string `json:"openai_key"`   // API key for OpenAI
 	OpenAIModel string `json:"openai_model"` // e.g. "gpt-4o-mini", "gpt-4o"
+	AnthropicKey   string `json:"anthropic_key"`   // API key for Anthropic Claude
+	AnthropicModel string `json:"anthropic_model"` // e.g. "claude-haiku-4-5", "claude-sonnet-4-6"
 	NousURL     string `json:"nous_url"`     // e.g. "http://localhost:3333"
 	NousAPIKey  string `json:"nous_api_key"` // optional API key for Nous
 	NerveBinary string `json:"nerve_binary"` // path to nerve binary (default: "nerve")
@@ -69,6 +78,11 @@ type Config struct {
 	AutoTag               bool `json:"auto_tag"`                // auto-tag notes on save
 	GhostWriter           bool `json:"ghost_writer"`            // inline AI writing suggestions
 	SemanticSearchEnabled bool `json:"semantic_search_enabled"` // background embedding index for semantic search
+	// AIAutoApplyEdits skips the diff-preview overlay for inline AI
+	// edits (rewrite/expand/summarize/improve/shorten/fix). Defaults
+	// to false — the preview is the safer UX. Power users who trust
+	// the model can flip it on for one-keystroke edits.
+	AIAutoApplyEdits bool `json:"ai_auto_apply_edits"`
 
 	// Sidebar
 	ShowHiddenFiles bool   `json:"show_hidden_files"`
@@ -180,6 +194,8 @@ func DefaultConfig() Config {
 		OllamaURL:              "http://localhost:11434",
 		OpenAIKey:              "",
 		OpenAIModel:            "gpt-4o-mini",
+		AnthropicKey:           "",
+		AnthropicModel:         "claude-haiku-4-5",
 		NousURL:                "http://localhost:3333",
 		NousAPIKey:             "",
 		NerveBinary:            "nerve",

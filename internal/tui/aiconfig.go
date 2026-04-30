@@ -38,15 +38,25 @@ type AIConfig struct {
 	Provider      string
 	Model         string
 	OllamaURL     string
-	APIKey        string
+	APIKey        string // Reused: OpenAI key when Provider=openai; preserved for back-compat
 	NousURL       string
 	NousAPIKey    string
 	NerveBinary   string
 	NerveModel    string
 	NerveProvider string
+
+	// AnthropicKey carries the Anthropic API key when Provider="anthropic".
+	// Kept distinct from APIKey so a user can configure both OpenAI and
+	// Anthropic credentials side-by-side and switch providers at the
+	// preset level (Phase 5.2 model override) without losing the other key.
+	AnthropicKey string
 }
 
 // SetFromConfig populates the AIConfig from the app's config values.
+// AnthropicKey is set separately via SetAnthropicKey because adding
+// it to this signature would break every existing caller — too many
+// surface sites for a single field. New providers should use the
+// per-field setter pattern from now on.
 func (c *AIConfig) SetFromConfig(provider, model, ollamaURL, apiKey, nousURL, nousAPIKey, nerveBinary, nerveModel, nerveProvider string) {
 	c.Provider = provider
 	c.Model = model
@@ -57,6 +67,12 @@ func (c *AIConfig) SetFromConfig(provider, model, ollamaURL, apiKey, nousURL, no
 	c.NerveBinary = nerveBinary
 	c.NerveModel = nerveModel
 	c.NerveProvider = nerveProvider
+}
+
+// SetAnthropicKey installs the Anthropic API key. Called separately
+// from SetFromConfig (see comment above).
+func (c *AIConfig) SetAnthropicKey(key string) {
+	c.AnthropicKey = key
 }
 
 // NewNerve creates a NerveClient from this config.
@@ -269,6 +285,8 @@ func (c AIConfig) chatOnceCtx(ctx context.Context, systemPrompt, userPrompt stri
 	switch c.Provider {
 	case "openai":
 		return c.chatOpenAI(ctx, systemPrompt, userPrompt)
+	case "anthropic", "claude":
+		return c.chatAnthropic(ctx, systemPrompt, userPrompt)
 	case "nous":
 		client := c.NewNous()
 		prompt := userPrompt
@@ -432,4 +450,89 @@ func (c AIConfig) chatOpenAI(ctx context.Context, systemPrompt, userPrompt strin
 		return "", fmt.Errorf("OpenAI returned no choices")
 	}
 	return openaiResp.Choices[0].Message.Content, nil
+}
+
+// chatAnthropic sends a non-streaming chat request to Anthropic's
+// Messages API. Mirrors chatOpenAI's structure but uses Anthropic's
+// distinct request shape:
+//
+//   - The system prompt rides as a top-level `system` field, NOT
+//     as a message with role=system (Anthropic rejects that).
+//   - Authentication via x-api-key + anthropic-version headers
+//     (no bearer token).
+//   - Response shape returns an array of content blocks; we
+//     concatenate every text-typed block.
+//
+// Default model is `claude-haiku-4-5` — the cheapest Claude tier
+// that fits the small/fast/cheap niche. Synthesis-heavy presets
+// can override per Phase 5.2's preset.Model field.
+func (c AIConfig) chatAnthropic(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+	if c.AnthropicKey == "" {
+		return "", fmt.Errorf("Anthropic API key not configured — set it in Settings (Ctrl+,)")
+	}
+	model := c.ModelOrDefault("claude-haiku-4-5")
+
+	// Anthropic's Messages API expects ONLY user/assistant turns
+	// in the messages array. The system prompt goes at the top
+	// level, separately.
+	body := map[string]interface{}{
+		"model":      model,
+		"max_tokens": 4096,
+		"messages": []chatMessage{
+			{Role: "user", Content: userPrompt},
+		},
+	}
+	if systemPrompt != "" {
+		body["system"] = systemPrompt
+	}
+	reqBody, err := json.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST",
+		"https://api.anthropic.com/v1/messages", bytes.NewReader(reqBody))
+	if err != nil {
+		return "", fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", c.AnthropicKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	resp, err := aiHTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("cannot reach Anthropic API — check your internet connection")
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("Anthropic error %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var anth struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(respBody, &anth); err != nil {
+		return "", fmt.Errorf("parse response: %w", err)
+	}
+	if len(anth.Content) == 0 {
+		return "", fmt.Errorf("Anthropic returned no content blocks")
+	}
+	// Concatenate every text block — typical responses have just one,
+	// but tool-use responses can interleave text + tool_use blocks
+	// and we want the human-readable text from all of them.
+	var b strings.Builder
+	for _, block := range anth.Content {
+		if block.Type == "text" {
+			b.WriteString(block.Text)
+		}
+	}
+	return b.String(), nil
 }

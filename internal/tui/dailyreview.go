@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/artaeon/granit/internal/tasks"
 	"github.com/artaeon/granit/internal/vault"
 )
 
@@ -112,11 +113,18 @@ func (dr *DailyReview) Open(vaultRoot string, v *vault.Vault, allTasks []Task) {
 	tomorrowStr := now.AddDate(0, 0, 1).Format("2006-01-02")
 
 	for _, t := range allTasks {
+		// Snoozed/dropped tasks aren't part of "what's outstanding" for
+		// the daily review — the review is meant to surface what the
+		// user actually has to deal with. Snoozed work is intentionally
+		// deferred, dropped work is intentionally abandoned. Counting
+		// them in overdue/tomorrow makes the review look heavier than
+		// the user's real queue.
+		hidden := !t.Done && (tmIsSnoozed(t) || t.Triage == tasks.TriageDropped)
 		if t.Done && tmIsToday(t.DueDate) {
 			dr.completed = append(dr.completed, t)
-		} else if !t.Done && tmIsOverdue(t.DueDate) {
+		} else if !t.Done && !hidden && tmIsOverdue(t.DueDate) {
 			dr.overdue = append(dr.overdue, t)
-		} else if !t.Done && t.DueDate == tomorrowStr {
+		} else if !t.Done && !hidden && t.DueDate == tomorrowStr {
 			dr.tomorrow = append(dr.tomorrow, t)
 		}
 	}

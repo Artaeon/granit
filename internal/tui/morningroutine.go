@@ -624,12 +624,19 @@ func (mr *MorningRoutine) buildDailyPlanMarkdown() string {
 		b.WriteString("\n")
 	}
 
-	// Tasks
+	// Tasks — plain bullets, NOT "- [ ]" checkboxes. The selected tasks
+	// already live as real "- [ ]" lines in the source notes (Tasks.md or
+	// wherever they were captured); writing them again as checkbox lines
+	// would make ParseAllTasks count one task per daily note + the original,
+	// so after a week of Morning Routines the same task shows up 7 times in
+	// the task list. The schedule table above and the planner state file
+	// (Planner/YYYY-MM-DD.md) carry the time-blocking; this section is a
+	// human-readable "today's commitments" recap, not a separate task store.
 	selectedTasks := mr.getSelectedTasks()
 	if len(selectedTasks) > 0 {
 		b.WriteString("### Tasks\n\n")
 		for _, t := range selectedTasks {
-			b.WriteString(fmt.Sprintf("- [ ] %s\n", t))
+			b.WriteString(fmt.Sprintf("- %s\n", t))
 		}
 		b.WriteString("\n")
 	}
