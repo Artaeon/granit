@@ -138,6 +138,9 @@ func main() {
 	case "query":
 		runQuery()
 
+	case "publish":
+		runPublish(os.Args[2:])
+
 	case "config":
 		runConfig()
 
@@ -157,11 +160,65 @@ func main() {
 		// If argument is a path, try to open it
 		if info, err := os.Stat(command); err == nil && info.IsDir() {
 			runTUI(command)
+		} else if isSpreadsheetFile(command) {
+			// Spreadsheet path — open the vault containing it
+			// (or the parent directory) and auto-load the sheet
+			// in the spreadsheet feature tab.
+			runTUIWithSheet(command)
 		} else {
 			fmt.Printf("Unknown command: %s\n", command)
 			printUsage()
 			os.Exit(1)
 		}
+	}
+}
+
+func isSpreadsheetFile(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".csv", ".tsv", ".xlsx", ".xlsm":
+		return true
+	}
+	return false
+}
+
+// runTUIWithSheet boots the TUI rooted at the file's parent
+// directory and queues an OpenSheet call so the spreadsheet
+// surface comes up showing the requested file. Useful for shell
+// invocations like `granit ~/Finances/budget.xlsx`.
+func runTUIWithSheet(filePath string) {
+	abs, err := filepath.Abs(filePath)
+	if err != nil {
+		fmt.Printf("Error resolving path: %v\n", err)
+		os.Exit(1)
+	}
+	vaultPath := filepath.Dir(abs)
+	vl := config.LoadVaultList()
+	vl.AddVault(vaultPath)
+	config.SaveVaultList(vl)
+
+	startTime := time.Now()
+	model, err := tui.NewModel(vaultPath)
+	if err != nil {
+		fmt.Printf("Error opening vault: %v\n", err)
+		os.Exit(1)
+	}
+	loadDuration := time.Since(startTime)
+	noteCount := model.NoteCount()
+	model.SetStartupMessage(fmt.Sprintf("Loaded %d notes in %dms", noteCount, loadDuration.Milliseconds()))
+	model.QueueOpenSheet(abs)
+
+	p := tea.NewProgram(model, tea.WithAltScreen())
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGHUP)
+	go func() {
+		<-sigCh
+		p.Send(tea.KeyMsg{Type: tea.KeyCtrlQ})
+		time.Sleep(100 * time.Millisecond)
+		p.Send(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	}()
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Error running Granit: %v\n", err)
+		os.Exit(1)
 	}
 }
 
@@ -302,6 +359,11 @@ GIT SYNC
 DATA MANAGEMENT
   export [path]                 Export vault notes to HTML, text, or JSON
   import --from <format> <src>  Import from Obsidian, Logseq, or Notion
+  publish <subcommand>          Render a folder to a static site (B&W, GitHub-Pages-ready)
+    publish build <folder>        Build site to ./dist (or --output)
+    publish preview <folder>      Build + serve on http://localhost:8080
+    publish init <folder>         Write .granit/publish.json template
+    publish help                  Full flag reference (or see docs/PUBLISH.md)
 
 PLUGIN MANAGEMENT
   plugin list                   List all installed plugins (--json)
@@ -357,6 +419,12 @@ EXAMPLES
                                 Export all notes as HTML
   granit import --from obsidian ~/obsidian-vault ~/notes
                                 Import from an Obsidian vault
+  granit publish build ~/notes/Research --title "Research"
+                                Render a folder to ./dist as a static B&W site
+  granit publish preview ~/notes/Research
+                                Build + open a preview on http://localhost:8080
+  granit publish build ~/notes --output ./docs --homepage README.md
+                                Build into ./docs for GitHub Pages, with a homepage note
   granit plugin list            Show installed plugins
   granit backup ~/notes         Create a zip backup of the vault
   granit backup --restore backup.zip ~/notes
