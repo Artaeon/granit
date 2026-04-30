@@ -986,8 +986,11 @@ func TestPomodoro_StartForCurrentBlock_ReturnsEmptyWhenNothingScheduled(t *testi
 }
 
 func TestPomodoro_StartForCurrentBlock_SeedsQueueFromOverlappingBlock(t *testing.T) {
+	skipIfMidnightWindow(t)
 	root := t.TempDir()
-	// Write a planner block that covers "now" ± 30 min.
+	// Write a planner block that covers "now" ± 30 min. Skips near
+	// midnight because the planner block's HH:MM strings would span
+	// two dates in that window.
 	now := time.Now()
 	start := now.Add(-10 * time.Minute)
 	end := now.Add(20 * time.Minute)
@@ -1051,6 +1054,7 @@ func TestPomodoro_FinishWorkSession_NoOpWithoutVaultRoot(t *testing.T) {
 }
 
 func TestPomodoro_FinishWorkSession_AppendsDoesNotCollapseRepeats(t *testing.T) {
+	skipIfMidnightWindow(t)
 	root := t.TempDir()
 	p := NewPomodoro()
 	p.SetVaultRoot(root)
@@ -1217,6 +1221,7 @@ func TestApplyTaskCompletion_NoOpOnZeroOrNegativeLineNum(t *testing.T) {
 }
 
 func TestPomodoro_StartForCurrentBlock_AllowsRestartFromBreak(t *testing.T) {
+	skipIfMidnightWindow(t)
 	root := t.TempDir()
 	now := time.Now()
 	date := now.Format("2006-01-02")

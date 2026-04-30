@@ -8,6 +8,33 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// skipIfLateEvening skips the caller when the current time is in the
+// 23:xx-hour window. Tests that craft schedule slots like 23:00-23:10
+// to "always be in the future" actually fail when the suite happens to
+// run between 23:15 and midnight, because the parser drops slots
+// whose start is >15 minutes in the past.
+func skipIfLateEvening(t *testing.T) {
+	t.Helper()
+	if time.Now().Hour() == 23 {
+		t.Skip("skipping clock-of-day-sensitive test in late-evening window")
+	}
+}
+
+// skipIfMidnightWindow skips when "now ± 30 minutes" would straddle a
+// date boundary. Tests that synthesise planner blocks (HH:MM strings
+// without a date) using a window around now break when the start is
+// "yesterday" and the end is "today" (or vice versa).
+func skipIfMidnightWindow(t *testing.T) {
+	t.Helper()
+	now := time.Now()
+	if now.Hour() == 23 && now.Minute() >= 30 {
+		t.Skip("skipping date-boundary-sensitive test late at night")
+	}
+	if now.Hour() == 0 && now.Minute() <= 30 {
+		t.Skip("skipping date-boundary-sensitive test just after midnight")
+	}
+}
+
 // hasWorkTime returns true if enough work hours remain today for a full schedule.
 // Tests that assert on lunch, breaks, habits, etc. can only pass during work hours.
 func hasWorkTime() bool {
@@ -484,13 +511,17 @@ func TestPlanMyDayLocalPlanAdvice(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestPlanMyDayParseAIResponseValid(t *testing.T) {
+	skipIfLateEvening(t)
 	p := NewPlanMyDay()
 	p.tasks = []Task{
 		{Text: "Write report", Priority: 3},
 	}
 
 	// Use 23:xx times so the time-of-day filter inside parseAIResponse
-	// never drops any slots regardless of when this test runs (even at 22:59).
+	// never drops any slots regardless of when this test runs — except
+	// in the danger window 23:00–23:59 itself, where the filter would
+	// drop slots whose start is >15min in the past. skipIfLateEvening
+	// handles that case.
 	response := `TOP_GOAL: Complete the quarterly report
 
 SCHEDULE:
@@ -552,6 +583,7 @@ ADVICE: Start with the report while your energy is high. Batch email checking to
 // ---------------------------------------------------------------------------
 
 func TestPlanMyDayParseAIResponseMalformed(t *testing.T) {
+	skipIfLateEvening(t)
 	p := NewPlanMyDay()
 
 	// Use late-evening times so the test is independent of when in the day it runs.

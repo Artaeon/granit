@@ -126,6 +126,12 @@ func TestTodayTotalTime_Empty(t *testing.T) {
 
 func TestTodayTotalTime_OnlyTodaySessions(t *testing.T) {
 	now := time.Now()
+	// Skip near midnight: when now is within 1h of 00:00, "now-1h" lives on
+	// yesterday and the "today" filter excludes both sessions, breaking
+	// the assertion. Mirrors the skip helpers in internal/tui.
+	if now.Hour() == 0 || (now.Hour() == 23 && now.Minute() >= 0) {
+		t.Skip("skipping date-boundary-sensitive test near midnight")
+	}
 	earlier := now.Add(-1 * time.Hour)
 	yesterday := now.AddDate(0, 0, -1)
 	data := clockData{
