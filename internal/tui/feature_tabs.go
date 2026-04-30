@@ -3,8 +3,11 @@ package tui
 import (
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/artaeon/granit/internal/objects"
 )
 
 // isFeatureTabPath reports whether a path produced by the
@@ -36,6 +39,8 @@ func isPassthroughChord(key string) bool {
 	// Tab management — close, cycle, jump, reopen
 	case "ctrl+w",
 		"ctrl+tab", "ctrl+shift+tab",
+		"ctrl+pgup", "ctrl+pgdown", // browser-style tab cycle
+		"alt+,", "alt+.", // one-handed tab cycle (defeats terminal intercepts)
 		"ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4", "ctrl+5",
 		"ctrl+6", "ctrl+7", "ctrl+8", "ctrl+9",
 		"ctrl+shift+t",
@@ -60,8 +65,10 @@ func isPassthroughChord(key string) bool {
 		"ctrl+g", // Graph
 		"ctrl+o", // Outline
 		"ctrl+,", // Settings
-		"ctrl+/", // Help / shortcuts
-		"ctrl+z": // Focus mode
+		"ctrl+/": // Help / shortcuts
+		// Ctrl+Z is NOT passthrough — it's editor undo, must land
+		// in the focused editor when one is active. Feature tabs
+		// without an editor underneath simply ignore it.
 		return true
 	// Feature-opening Alt+ shortcuts (lowercase letters)
 	case "alt+h", // Daily Hub
@@ -73,6 +80,14 @@ func isPassthroughChord(key string) bool {
 		"alt+p",          // Plan My Day
 		"alt+l",          // Layout picker
 		"alt+t",          // Time tracker
+		"alt+x",          // Spreadsheet picker (CSV/XLSX)
+		"alt+o",          // Object Browser (typed notes)
+		"alt+v",          // Saved Views (smart collections)
+		"alt+/",          // Inline AI action menu
+		"alt+z",          // Focus / Zen mode (was ctrl+z; freed up for undo)
+		"alt+n",          // Quick-add task on project/goal note
+		"alt+a",          // Agent runner (multi-step AI)
+		"alt+@",          // Typed-mention picker
 		"alt+s",          // Focus session
 		"alt+w",          // Weekly note
 		"alt+c",          // Command Center
@@ -89,7 +104,7 @@ func isPassthroughChord(key string) bool {
 		"alt+C": // Command Center alt
 		return true
 	// Function keys + focus-pane chords
-	case "f1", "f2", "f3", "f4", "f5",
+	case "f1", "f2", "f3", "f4", "f5", "f6",
 		"alt+1", "alt+2", "alt+3":
 		return true
 	// Multi-key pane swap (Shift+Tab inside global handler)
@@ -132,6 +147,14 @@ func reopenFeatureCommand(path string) (CommandAction, bool) {
 		return CmdHabitTracker, true
 	case FeatCommandCenter:
 		return CmdCommandCenter, true
+	case FeatSheetView:
+		return CmdSheetView, true
+	case FeatObjectBrowser:
+		return CmdObjectBrowser, true
+	case FeatSavedView:
+		return CmdSavedViews, true
+	case FeatRepoTracker:
+		return CmdRepoTracker, true
 	}
 	return CmdNone, false
 }
@@ -272,6 +295,22 @@ func (m *Model) renderFeatureTab(id FeatureID, width, height int) string {
 	case FeatCommandCenter:
 		m.commandCenter.SetSize(width, height)
 		return m.commandCenter.InlineView(width, height)
+	case FeatSheetView:
+		m.sheetView.SetSize(width, height)
+		m.sheetView.SetTabMode(true)
+		return m.sheetView.View()
+	case FeatObjectBrowser:
+		m.objectBrowser.SetSize(width, height)
+		m.objectBrowser.SetTabMode(true)
+		return m.objectBrowser.View()
+	case FeatSavedView:
+		m.savedViews.SetSize(width, height)
+		m.savedViews.SetTabMode(true)
+		return m.savedViews.View()
+	case FeatRepoTracker:
+		m.repoTracker.SetSize(width, height)
+		m.repoTracker.SetTabMode(true)
+		return m.repoTracker.View()
 	}
 	return ""
 }
@@ -410,6 +449,208 @@ func (m *Model) routeFeatureKey(id FeatureID, msg tea.Msg) (Model, tea.Cmd, bool
 			m.activeNote = ""
 		}
 		return *m, cmd, true
+	case FeatSheetView:
+		var cmd tea.Cmd
+		m.sheetView, cmd = m.sheetView.Update(msg)
+		// Persist on Ctrl+S errors so the user sees them.
+		if err := m.sheetView.ConsumeSaveError(); err != nil {
+			m.reportError("save spreadsheet", err)
+		}
+		// 'q' inside the sheet requests tab close.
+		if m.sheetView.ConsumePendingClose() {
+			if m.tabBar != nil {
+				m.tabBar.CloseFeatureTab(FeatSheetView)
+			}
+			m.sheetView.Close()
+			m.activeNote = ""
+		}
+		return *m, cmd, true
+	case FeatObjectBrowser:
+		// Refresh the typed-objects index when the vault has
+		// changed since the last interaction. Without this, if
+		// the user edits a typed note's frontmatter (changes
+		// status, adds a property) and tabs back, the gallery
+		// stays stale until they manually re-open. Cheap on a
+		// 1000-note vault (~1ms).
+		if m.needsRefresh {
+			if m.objectsRegistry == nil {
+				m.objectsRegistry = objects.NewRegistry()
+				if _, errs := m.objectsRegistry.LoadVaultDir(m.vault.Root); len(errs) > 0 {
+					for _, err := range errs {
+						m.reportError("object types", err)
+					}
+				}
+			}
+			m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+			m.objectBrowser.Refresh(m.objectsRegistry, m.objectsIndex)
+			m.needsRefresh = false
+		}
+		var cmd tea.Cmd
+		m.objectBrowser, cmd = m.objectBrowser.Update(msg)
+		// Object selected → close tab and load the underlying note.
+		if path, ok := m.objectBrowser.GetJumpRequest(); ok {
+			if m.tabBar != nil {
+				m.tabBar.CloseFeatureTab(FeatObjectBrowser)
+			}
+			m.objectBrowser.Close()
+			m.loadNote(path)
+			m.setSidebarCursorToFile(path)
+			m.setFocus(focusEditor)
+		}
+		// Delete requested — remove the file from disk and refresh
+		// every dependent component. Errors surface as a status
+		// warning so the user knows if the file was missing or the
+		// remove failed.
+		if delPath, ok := m.objectBrowser.GetDeleteRequest(); ok {
+			if err := m.deleteObjectFile(delPath); err != nil {
+				m.reportError("delete object", err)
+			} else {
+				if m.tabBar != nil {
+					m.tabBar.CloseFeatureTab(FeatObjectBrowser)
+				}
+				m.objectBrowser.Close()
+				m.refreshComponents("")
+				m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+				m.statusbar.SetMessage("✓ Deleted " + delPath)
+				return *m, m.clearMessageAfter(3 * time.Second), true
+			}
+		}
+		// New object requested — write the file, refresh vault state,
+		// close the browser, and open the new note for the user to
+		// fill in. Errors are surfaced via reportError so the user
+		// sees a clear "couldn't create" status if e.g. the path
+		// already exists.
+		if relPath, content, ok := m.objectBrowser.GetCreateRequest(); ok {
+			if err := m.createTypedObjectFile(relPath, content); err != nil {
+				m.reportError("create object", err)
+			} else {
+				if m.tabBar != nil {
+					m.tabBar.CloseFeatureTab(FeatObjectBrowser)
+				}
+				m.objectBrowser.Close()
+				m.refreshComponents("")
+				// Refresh the typed-objects index so the new note
+				// appears in the registry-driven counts on next open.
+				m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+				m.loadNote(relPath)
+				m.setSidebarCursorToFile(relPath)
+				m.setFocus(focusEditor)
+				m.statusbar.SetMessage("✓ Created " + relPath)
+			}
+		}
+		// User pressed Esc twice — close the tab.
+		if !m.objectBrowser.IsActive() && m.tabBar != nil && m.tabBar.HasFeatureTab(FeatObjectBrowser) {
+			m.tabBar.CloseFeatureTab(FeatObjectBrowser)
+			m.activeNote = ""
+		}
+		return *m, cmd, true
+
+	case FeatSavedView:
+		// Re-evaluate the active view against a refreshed index when the
+		// vault changed since the last interaction. Same rationale as
+		// the FeatObjectBrowser branch above.
+		if m.needsRefresh {
+			m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+			m.savedViews.Refresh(m.objectsIndex)
+			m.needsRefresh = false
+		}
+		var cmd tea.Cmd
+		m.savedViews, cmd = m.savedViews.Update(msg)
+		// Delete requested — same flow as FeatObjectBrowser. Two-step
+		// confirmation already happened inside SavedViews; here we
+		// just remove the file and refresh.
+		if delPath, ok := m.savedViews.GetDeleteRequest(); ok {
+			if err := m.deleteObjectFile(delPath); err != nil {
+				m.reportError("delete object", err)
+			} else {
+				if m.tabBar != nil {
+					m.tabBar.CloseFeatureTab(FeatSavedView)
+				}
+				m.savedViews.Close()
+				m.refreshComponents("")
+				m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+				m.statusbar.SetMessage("✓ Deleted " + delPath)
+				return *m, m.clearMessageAfter(3 * time.Second), true
+			}
+		}
+		// In-tab object creation: same flow as FeatObjectBrowser. Lets
+		// the user capture from inside a saved view (e.g. add another
+		// article while browsing "Articles to Read").
+		if relPath, content, ok := m.savedViews.GetCreateRequest(); ok {
+			if err := m.createTypedObjectFile(relPath, content); err != nil {
+				m.reportError("create object", err)
+			} else {
+				if m.tabBar != nil {
+					m.tabBar.CloseFeatureTab(FeatSavedView)
+				}
+				m.savedViews.Close()
+				m.refreshComponents("")
+				m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+				m.loadNote(relPath)
+				m.setSidebarCursorToFile(relPath)
+				m.setFocus(focusEditor)
+				m.statusbar.SetMessage("✓ Created " + relPath)
+				return *m, cmd, true
+			}
+		}
+		if path, ok := m.savedViews.GetJumpRequest(); ok {
+			if m.tabBar != nil {
+				m.tabBar.CloseFeatureTab(FeatSavedView)
+			}
+			m.savedViews.Close()
+			m.loadNote(path)
+			m.setSidebarCursorToFile(path)
+			m.setFocus(focusEditor)
+		}
+		if !m.savedViews.IsActive() && m.tabBar != nil && m.tabBar.HasFeatureTab(FeatSavedView) {
+			m.tabBar.CloseFeatureTab(FeatSavedView)
+			m.activeNote = ""
+		}
+		return *m, cmd, true
+
+	case FeatRepoTracker:
+		var cmd tea.Cmd
+		m.repoTracker, cmd = m.repoTracker.Update(msg)
+		// Surface action results (o / c) on the global status bar.
+		// ConsumePendingStatus is consumed-once so calling on every
+		// tick is safe.
+		if msg := m.repoTracker.ConsumePendingStatus(); msg != "" {
+			m.statusbar.SetMessage(msg)
+			cmd = tea.Batch(cmd, m.clearMessageAfter(3*time.Second))
+		}
+		// Import: write the project note, refresh, open it.
+		if relPath, content, ok := m.repoTracker.GetImportRequest(); ok {
+			if err := m.createTypedObjectFile(relPath, content); err != nil {
+				m.reportError("import repo", err)
+			} else {
+				if m.tabBar != nil {
+					m.tabBar.CloseFeatureTab(FeatRepoTracker)
+				}
+				m.repoTracker.Close()
+				m.refreshComponents("")
+				m.objectsIndex = rebuildObjectsIndex(m.objectsRegistry, m.vault)
+				m.loadNote(relPath)
+				m.setSidebarCursorToFile(relPath)
+				m.setFocus(focusEditor)
+				m.statusbar.SetMessage("✓ Imported repo as " + relPath)
+				return *m, cmd, true
+			}
+		}
+		// Jump to existing note for already-imported row.
+		if path, ok := m.repoTracker.GetJumpRequest(); ok {
+			if m.tabBar != nil {
+				m.tabBar.CloseFeatureTab(FeatRepoTracker)
+			}
+			m.repoTracker.Close()
+			m.loadNote(path)
+			m.setSidebarCursorToFile(path)
+			m.setFocus(focusEditor)
+		}
+		if !m.repoTracker.IsActive() && m.tabBar != nil && m.tabBar.HasFeatureTab(FeatRepoTracker) {
+			m.tabBar.CloseFeatureTab(FeatRepoTracker)
+			m.activeNote = ""
+		}
+		return *m, cmd, true
 	}
 	return *m, nil, false
 }
@@ -446,5 +687,17 @@ func (m *Model) closeFeature(id FeatureID) {
 		m.habitTracker.Close()
 	case FeatCommandCenter:
 		m.commandCenter.Close()
+	case FeatSheetView:
+		m.sheetView.SetTabMode(false)
+		m.sheetView.Close()
+	case FeatObjectBrowser:
+		m.objectBrowser.SetTabMode(false)
+		m.objectBrowser.Close()
+	case FeatSavedView:
+		m.savedViews.SetTabMode(false)
+		m.savedViews.Close()
+	case FeatRepoTracker:
+		m.repoTracker.SetTabMode(false)
+		m.repoTracker.Close()
 	}
 }

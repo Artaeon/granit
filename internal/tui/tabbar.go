@@ -38,6 +38,10 @@ const (
 	FeatGraph         FeatureID = "graph"
 	FeatHabits        FeatureID = "habits"
 	FeatCommandCenter FeatureID = "command_center"
+	FeatSheetView     FeatureID = "sheet_view"
+	FeatObjectBrowser FeatureID = "object_browser"
+	FeatSavedView     FeatureID = "saved_view"
+	FeatRepoTracker   FeatureID = "repo_tracker"
 )
 
 // featureTabPath builds the synthetic "Path" string used by

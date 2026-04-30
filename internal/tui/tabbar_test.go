@@ -1243,15 +1243,18 @@ func TestIsPassthroughChord_TabManagementAlwaysEscapes(t *testing.T) {
 		"alt+shift+left", "alt+shift+right",
 		// Quit / save / palette family
 		"ctrl+q", "ctrl+c", "ctrl+s", "ctrl+p", "ctrl+x",
-		// Feature-opening Ctrl+ chords
+		// Feature-opening Ctrl+ chords. Ctrl+Z is intentionally
+		// NOT in this list — it's the editor's undo binding now
+		// (Focus Mode moved to Alt+Z). Features without a Ctrl+Z
+		// binding silently no-op, which is the desired behaviour.
 		"ctrl+k", "ctrl+g", "ctrl+l", "ctrl+t", "ctrl+b",
 		"ctrl+f", "ctrl+h", "ctrl+j", "ctrl+n", "ctrl+e",
-		"ctrl+r", "ctrl+o", "ctrl+,", "ctrl+/", "ctrl+z",
+		"ctrl+r", "ctrl+o", "ctrl+,", "ctrl+/",
 		// Feature-opening Alt+ chords
 		"alt+h", "alt+j", "alt+m", "alt+b", "alt+i",
 		"alt+e", "alt+p", "alt+l", "alt+t", "alt+s",
 		"alt+w", "alt+W", "alt+c", "alt+C", "alt+d",
-		"alt+f", "alt+g", "alt+r", "alt+?",
+		"alt+f", "alt+g", "alt+r", "alt+z", "alt+?",
 		"alt+[", "alt+]", "alt+left", "alt+right",
 		// Function keys + focus-pane
 		"f1", "f2", "f3", "f4", "f5",
