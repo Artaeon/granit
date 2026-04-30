@@ -60,12 +60,13 @@ granit today                    # print today's tasks and habits
 >
 > | Tool | Monthly Cost | What Granit Replaces |
 > |------|-------------|---------------------|
-> | Obsidian Sync + Publish | $16/mo | Notes, wikilinks, graph, canvas, sync |
+> | Obsidian Sync | $5/mo | Wikilinks, graph, canvas, git-based sync |
+> | Obsidian Publish | $10/mo | `granit publish` -- static site, SEO, RSS, graph, search |
 > | Obsidian AI | $14/mo | 23 local AI bots, free |
 > | Todoist Pro | $5/mo | Task manager with 7 views + Eisenhower + Kanban |
 > | Notion | $10/mo | Database, calendar, kanban, wiki |
 > | Habitica / Streaks | $5/mo | Habit tracker with streaks |
-> | **Total** | **$50/mo** | **Granit: $0/mo, forever** |
+> | **Total** | **$49/mo** | **Granit: $0/mo, forever** |
 
 ---
 
@@ -206,6 +207,36 @@ Tasks live inside your notes as Markdown checkboxes. Granit finds them all and g
 - **AI Project Insights** -- health analysis, risks, blockers, next actions
 - Project dashboards, burndown charts, and daily standup generator
 
+### Multi-step AI Agents (Deepnote-style)
+
+Beyond the existing 19 single-shot bots, granit now supports **multi-step agents** — an LLM that picks tools from a registered catalog, observes their output, and iterates until it produces a final answer. ReAct-style loop with strict step budget + audit transcript.
+
+- Press `Alt+A` to open the agent runner; pick a preset, type a goal, watch the live transcript
+- Tool catalog: `read_note`, `list_notes`, `search_vault`, `query_objects`, `query_tasks`, `get_today` (read), `write_note`, `create_task`, `create_object` (write — gated)
+- Read/Write split — a registry without write tools cannot mutate disk regardless of what the LLM proposes
+- Path containment + Approve callback gate every write
+- Works on small local Ollama models (text-based Thought/Action/Observation protocol, no JSON-mode required)
+- Composable with typed objects: agents can `query_objects(type=person, where='last_contact<2026-04-01')` and synthesise from the result
+
+Full docs: [docs/AGENTS.md](docs/AGENTS.md).
+
+### Typed Objects (Capacities-style)
+
+Notes can declare a `type:` in frontmatter (Person, Book, Project, Goal, Meeting, Idea, Article, Podcast, Video, Quote, Place, Recipe, Highlight — or any custom type you define) and granit treats them as structured objects with **galleries**, **type-aware indexing**, **type-aware mentions**, and agent queries.
+
+- **Object Browser** (`Alt+O`) — type list (left), filterable gallery (middle), preview pane (right ≥95 cols). `n` creates a new object of the focused type with frontmatter prefilled; `D` deletes (with confirmation); `Enter` opens the underlying note
+- **Saved Views** (`Alt+V`) — Capacities-style smart collections: `Articles to Read`, `Active Projects`, `Active Goals`, `Currently Reading`, etc. Six built-ins; vault overrides at `.granit/views/<id>.json`. Inside a view, `n` quick-creates a new object of the view's type
+- **Project / Goal Hub strip** — when you open a `type: project` or `type: goal` note, granit prepends a 1-line summary above the editor: `🎯 Project: Apollo · ● active · 7 tasks (3 done) · Alt+N to add task`
+- **Quick-add task** (`Alt+N`) — on a typed-project or typed-goal note, appends a `- [ ] ` line at end of file with cursor positioned to type the title
+- **Tasks ↔ Projects** — tasks in a `type: project` note inherit the project as their `Project` field; By-Project view (`9` in Task Manager) groups them automatically
+- **Dashboard typed-objects panel** — counts per type, recently-captured objects, top results from a primary saved view
+- **Daily Jot today's-captures** — typed objects modified today appear inline in the jot, so you see capture velocity at a glance
+- 13 built-in types; vault-local overrides at `.granit/types/<id>.json` replace built-ins entirely
+- Storage stays plain markdown — every typed note is still a `.md` file with frontmatter
+- Search within a type via `/` (matches title + any property value)
+
+Full docs: [docs/OBJECTS.md](docs/OBJECTS.md).
+
 ### Knowledge Management
 
 Your notes are not just files -- they're a connected knowledge graph.
@@ -273,8 +304,40 @@ Granit treats AI as a built-in utility, not a paid add-on. Every bot is optimize
 - **Git** -- built-in overlay with status, log, diff, commit, push, pull, author config; `granit sync` CLI
 - **Nextcloud** WebDAV sync with auto-sync option
 - Export to HTML, PDF (pandoc), plain text; blog publisher (Medium, GitHub Pages)
+- **Static site publishing** -- `granit publish` renders any folder of markdown notes to a self-hostable, GitHub-Pages-ready website. See [Static Site Publishing](#static-site-publishing) below
 - Note encryption (AES-256-GCM), import from Obsidian/Logseq/Notion
 - Backup and restore with timestamped zip archives
+
+### Static Site Publishing
+
+Replaces Obsidian Publish (~$10/mo) with a free, self-hosted alternative. One command renders a vault folder into a black-and-white static site you can drop on GitHub Pages, Cloudflare Pages, Netlify, or any S3-compatible host.
+
+```bash
+granit publish build ~/Notes/Research \
+  --output ./docs \
+  --title "Research" \
+  --site-url "https://you.github.io/research" \
+  --auto-og --math --mermaid
+
+git add docs && git commit -m "publish" && git push
+# Repo Settings -> Pages -> Source: branch / docs
+```
+
+What you get out of the box:
+
+- **Wikilinks resolved** across the published note set; unresolved targets render as plain text (no broken links)
+- **Backlinks** auto-generated for each note ("Linked from")
+- **Force-directed graph SVG** with Fruchterman-Reingold layout, deterministic, JS-free
+- **Per-note Contents outline** + **prev/next navigation** + **tag pages**
+- **Client-side search** -- ~30 lines of vanilla ES5 fuzzy filter, no framework
+- **Auto-detected Impressum / Datenschutz pages** for German/EU compliance, with footer links
+- **Cookie banner** (opt-in), **mobile-responsive** (≤640px breakpoint), **light + dark mode** via `prefers-color-scheme`
+- **SEO**: Open Graph, Twitter Card, JSON-LD Article schema, canonical links, sitemap.xml, robots.txt, RSS feed
+- **OG images**: per-note from frontmatter, site-wide default, or auto-generated 1200×630 PNGs
+- **Math** (KaTeX) and **Mermaid** opt-in, loaded only on pages that need them
+- **404 page**, image-asset copying, code highlighting via chroma
+
+Full reference: [docs/PUBLISH.md](docs/PUBLISH.md).
 
 ### Customization
 
@@ -569,6 +632,17 @@ granit search --regex "#+\s" .    # Regex search
 granit query 'tag:project' <path> # Metadata query
 ```
 
+### Publishing
+
+```bash
+granit publish build <folder>           # Render to ./dist (or --output)
+granit publish preview <folder>         # Build + serve on http://localhost:8080
+granit publish init <folder>            # Write .granit/publish.json template
+granit publish help                     # Full flag reference
+```
+
+Common flags: `--title`, `--homepage`, `--site-url`, `--author`, `--auto-og`, `--math`, `--mermaid`, `--hero`, `--cookie-banner`, `--no-branding`. See [docs/PUBLISH.md](docs/PUBLISH.md) for the full guide.
+
 ### Other
 
 ```bash
@@ -790,6 +864,9 @@ go test ./internal/tui/ -run TestName
 |----------|-------------|
 | [Features](docs/FEATURES.md) | Complete feature guide with examples |
 | [Keybindings](docs/KEYBINDINGS.md) | All keyboard shortcuts by context |
+| [Publishing](docs/PUBLISH.md) | Static site generator: GitHub Pages, SEO, graph, RSS, math, mermaid |
+| [Typed Objects](docs/OBJECTS.md) | Capacities-style typed notes — Person, Book, Project galleries via `Alt+O` |
+| [Agents](docs/AGENTS.md) | Multi-step AI agents — Deepnote-style ReAct loop with tool catalog, `Alt+A` |
 | [AI Guide](docs/AI-GUIDE.md) | AI setup, providers, bot reference |
 | [Configuration](docs/CONFIGURATION.md) | All config options with defaults |
 | [Themes](docs/THEMES.md) | 40 themes + custom theme creation |

@@ -145,6 +145,26 @@ Import from Obsidian, Logseq, or Notion vaults.
 .B export \fR[\fIpath\fR]
 Export vault notes. Supports \fB\-\-format\fR (html/text/json),
 \fB\-\-output\fR, \fB\-\-all\fR, \fB\-\-note\fR.
+.TP
+.B publish build \fIfolder\fR \fR[\fIflags\fR]
+Render a folder of markdown notes to a static black-and-white site
+(GitHub-Pages-ready). Output is plain HTML + one CSS file + a small
+vanilla-JS search shim — no Node.js, no build step.
+Supports \fB\-\-output\fR (default \fI./dist\fR), \fB\-\-title\fR,
+\fB\-\-homepage\fR (note path used as \fIindex.html\fR),
+\fB\-\-no\-search\fR, \fB\-\-config\fR.
+Generates a force-directed graph SVG, per-note outline, prev/next
+navigation, backlinks, tag pages, and a JSON search index.
+See \fBdocs/PUBLISH.md\fR for the full reference.
+.TP
+.B publish preview \fIfolder\fR \fR[\fIflags\fR]
+Build, then serve the result on
+.B http://localhost:8080
+for local review before deploying.
+.TP
+.B publish init \fR[\fIfolder\fR]
+Write a \fI.granit/publish.json\fR template the user can hand-edit
+instead of passing flags every build.
 
 .SS Data Capture
 .TP
@@ -288,6 +308,9 @@ Rename current note.
 Show keyboard shortcuts.
 .TP
 .B Ctrl+Z
+Undo last edit (Ctrl+Shift+Z to redo).
+.TP
+.B Alt+Z
 Focus / zen mode (distraction-free writing).
 .TP
 .B Esc

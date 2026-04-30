@@ -6,6 +6,541 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Phase 16: more Deepnote-like AI surface
+
+#### Inline AI diff preview (BEFORE / AFTER, accept/discard/retry)
+- After `Alt+/` or a slash-menu AI action returns, instead of writing the result immediately, granit shows a centred overlay with the original selection and the proposed replacement
+- **`y` or `Enter`** — accept and splice into the editor at the originally-captured range
+- **`n` or `Esc`** — discard; selection stays untouched, brief "AI proposal discarded" status
+- **`r`** — re-run the same action against the same range (regenerate without re-typing the slash-menu navigation)
+- Original text re-extracted from the editor at the captured range so a cursor move during the AI roundtrip can't break the BEFORE preview
+- Output capped at 8 wrapped lines per pane (with "(truncated)" gutter) so a giant rewrite doesn't push the hint footer offscreen
+- Power-user opt-out: `AIAutoApplyEdits: true` in `config.json` skips the preview entirely; original behaviour restored
+
+#### Agent transcripts persisted as `agent_run` typed objects
+- New built-in type (#14): `agent_run` with properties `title`, `preset`, `model`, `goal`, `status` (ok / budget / error / cancelled), `started`, `steps`, `tags`. Folder: `Agents/`
+- AgentRunner queues a persist request when a run finishes; host writes via the same `createTypedObjectFile` plumbing the Object Browser uses. Filename pattern encodes UTC timestamp + preset ID so multiple runs of the same preset on the same day stay distinct (`Agents/2026-04-30T1542-research-synthesizer.md`)
+- Body is a structured markdown transcript: `## Answer` (final answer first so search hits land readers on the conclusion), then `## Transcript` with one `### Step N` per ReAct iteration containing Thought / Action / Observation. Long observations truncated to 1000 chars with a `(truncated)` marker
+- New built-in saved view: **Recent Agent Runs** — `type:agent_run` sorted by `started` desc, limit 50. Pin as the dashboard primary view to see your AI usage history at a glance
+
+#### Tests
+- 11 new tests covering: diff-preview Open/Reset/empty-output-noop, View renders BEFORE/AFTER + accept hint, `extractEditorRange` (same-line, multi-line, clamping, reversed-range normalisation), transcript markdown serialisation (goal+answer rendered, long-output truncation, budget-status propagation), queuePersist builds the right note + filename + frontmatter
+
+### Added — Phase 15: project notes ↔ folder bridge
+
+#### Open repo folder + copy path from anywhere
+- New cross-platform `repos.OpenFolder(path)` helper: `xdg-open` on Linux/BSD, `open` on macOS, `explorer` on Windows. Detached so the file manager outlives granit; missing-path / missing-handler failures surface as clear errors instead of silent no-ops
+- **In the Repo Tracker:** `o` opens the focused repo's folder externally; `c` copies its absolute path to the system clipboard. Both queue a status-bar message via a new `ConsumePendingStatus` channel so feedback is consistent ("Opened /home/me/Projects/foo" or "Copied … to clipboard")
+- **From any project note** (when the note has a `repo:` property): `Alt+\` opens the folder externally; `Alt+'` copies the path. Mnemonics: `\` = "shell" (think shell escape), `'` = "literal" (the path literal). No-op on regular notes; clear hint when the project note has no `repo:` set
+- Tracker footer hint updated: `j/k nav · Enter import/open · g jump · o open folder · c copy path · r refresh · Esc close`
+
+#### `RepoScanRoot` editable in Settings UI
+- Settings (Ctrl+,) under Files now has a `Repo Scan Root` entry — string field, supports `~` expansion, persisted to `config.json`. No more "edit the JSON to discover the feature"
+- Default value (`~/Projects`) shipped via the standard config-default chain so first-launch behaviour is sensible
+
+#### Tests
+- 4 new tests covering `OpenFolder` (empty path errors, non-existent path errors, platform binary selection); 3 new tracker action tests (`o` queues open status, `c` queues copy status, action on empty rows is safe)
+
+### Added — Phase 14: local git repos as typed-project notes
+
+#### `internal/repos/` package — git status as a library
+- New `Status(path)` helper shells out to `git -C <path> status --porcelain=v2 --branch` and `git log -1 --format=%ct` (3s timeout, zero new dependencies)
+- Returns `Status{IsRepo, Branch, Dirty, Ahead, Behind, LastCommit}` with ergonomic helpers `IsClean()` and `AgeSinceLastCommit()`
+- Cheap path probe (`looksLikeRepo`) avoids forking `git` for plain directories during a folder scan — important when scanning a `~/Projects/` with hundreds of subdirs
+- Why shell instead of go-git/libgit2? Zero new deps, status flags exactly match the user's mental model from the command line, and git's already on every dev machine
+- 6 tests against real temp git repos: clean repo, modified file detection, untracked file detection, non-repo path returns ErrNotARepo, age helper
+
+#### `project` typed-object gains a `repo:` property
+- Optional path-string property on the built-in project type. Backwards compatible — existing project notes keep working unchanged
+- Documented as "Local path to the project's git repo (e.g. /home/me/Projects/foo). Hub strip + Repo Tracker pull live status from here"
+
+#### Project Hub strip surfaces live git status
+- When a `type: project` note has `repo:` set, the hub strip above the editor adds an inline chip: `git: main · 3 dirty · ↑2 ↓0 · 2h`
+- Status results cached at the package level for 30s so the strip stays cheap on rapid renders (no `git` fork per frame)
+- Colour-coded: green `clean` when in-sync · yellow when dirty/ahead/behind · dim when stale (>30 days idle)
+
+#### Repo Tracker — discover and import every local repo
+- New feature tab (Command palette → "Repo Tracker") that scans a configured root for direct subdirectories containing a `.git` and lists each with live status badges
+- Scan root configured via new `RepoScanRoot` field in `config.json` (defaults to `~/Projects` when unset). Tilde expansion handled automatically
+- Already-imported repos are detected by walking the typed-objects index for project notes with `repo:` matching the absolute path; row gets a green ✓ marker. Enter on those jumps to the existing note instead of creating a duplicate
+- Enter on a not-yet-imported row writes `Projects/<repo-name>.md` with `type: project`, `status: active`, `repo: <abs path>` pre-filled, then opens the new note in the editor — instant capture for the local "what am I building?" inventory
+- Keys: `j/k` nav · `Enter` import (or jump) · `g` jump-only · `r` rescan + drop status cache · `Esc` close
+- One-level-deep scan keeps it fast — matches the typical `Projects/foo/` layout; deeper hierarchies use the agent runtime instead
+
+#### New built-in saved view: "Code Projects"
+- `type:project` where `repo: exists` — surfaces every project with a local git repo as a smart collection. Pin it as your dashboard primary view to see your build pipeline at a glance
+
+#### Tests
+- 6 new RepoTracker tests: scan finds repos, Enter imports + builds correct frontmatter, already-imported row jumps instead of duplicating, empty-root hint, tilde expansion, absolute-path passthrough
+
+### Added + Fixed — Phase 13: Saved View parity, Task Manager project filter, midnight-flake hardening
+
+#### Saved View tab: `/` filter + `D` delete (full UX parity with Object Browser)
+- The two big gaps in the saved-views experience — no in-result search, no way to delete an object you've decided isn't worth keeping — are closed
+- **`/`** enters filter mode: characters narrow the displayed match list by case-insensitive title-substring; Enter commits, Esc clears. Composes with the view's where clause (where runs first, filter narrows the result). Header shows `(N/total)` so you see how much was filtered out
+- **`D`** (also `Ctrl+D`, `Delete`) deletes the focused object: in-tab y/n confirmation prompt with full path shown ("Delete People/Alice.md ? (y/n) — irreversible…"); host removes the file via the same `deleteObjectFile` helper Object Browser uses, so behaviour is identical
+- **`Esc`** behaviour clarified: clears active filter first, then returns to picker (less drastic than closing the tab)
+- Empty-state distinguishes "view has nothing" from "filter excluded everything" — the fix is different and now the message says so
+
+#### Task Manager: `=` filters to cursor task's project
+- New shortcut: with the cursor on a task whose `Project` field is set, **`=`** narrows the list to tasks for that project. Press `=` again on any task in that project (or with the same project name) to clear the filter — toggle UX
+- Mnemonic: `=` as in "show me what equals this project"
+- Composes with the existing `9` By-Project view, the tag filter, the priority filter, and triage filters (all stack via `applyActiveFilters`)
+- No-op when the cursor task has no project set, with a clear hint: "No project on this task — set one via frontmatter or @project:Name"
+- Status bar confirms: `Filter: project = Apollo (= to clear)`
+- Help bar gained `= this project`; `help.go` task-manager section gained a "PROJECT & TAG FILTERS" subsection covering `=`, `P`, and `#`
+
+#### Cleanup: midnight-window flaky tests
+- Three tests (`TestPomodoro_StartForCurrentBlock_SeedsQueueFromOverlappingBlock`, `TestPomodoro_FinishWorkSession_AppendsDoesNotCollapseRepeats`, `TestPomodoro_StartForCurrentBlock_AllowsRestartFromBreak` in `internal/tui`, plus `TestTodayTotalTime_OnlyTodaySessions` in `cmd/granit`) used `now ± Nminutes` to construct planner blocks or sessions. When the suite happened to run within ~30 minutes of midnight, the synthesised time strings straddled a date boundary and the assertions failed
+- New `skipIfMidnightWindow` helper (in `planmyday_test.go`, mirroring the existing `skipIfLateEvening`) gates these tests; `cmd/granit` test got an inline guard. Tests now skip cleanly in the danger window instead of flapping
+
+#### Tests
+- 9 new tests: SavedViews `/` enters filter mode, filter narrows by title substring, Esc clears, `D` arms delete, y commits, n cancels, Enter commits the filter while preserving results; Task Manager `applyProjectFilter` keeps only matching project (case-insensitive), empty-filter no-op safety
+
+### Fixed + Added — Phase 12: reliable tab cycling, in-view object creation, doc refresh
+
+#### Tab cycling now works in every terminal
+- The original `Ctrl+Tab` / `Ctrl+Shift+Tab` shortcuts were intercepted by gnome-terminal, alacritty, kitty, iTerm and many other terminals (each grabs Ctrl+Tab for THEIR tab switching, or sends an escape sequence bubbletea doesn't decode). Users couldn't switch granit tabs at all in these environments
+- Added two new shortcut pairs that **always** reach the TUI:
+  - `Ctrl+PageDown` / `Ctrl+PageUp` — browser convention, universally supported
+  - `Alt+.` / `Alt+,` — one-handed, mnemonic (`<` and `>` are `,` and `.` shifted)
+- Both pairs added to the passthrough chord list so feature tabs don't trap them
+- `help.go` Editor Tabs section explicitly calls out the terminal-intercept issue and recommends the alternatives; sidebar's tab-switching mini-section updated to list all six bindings
+
+#### Saved View tab: `n` quick-creates an object of the view's type
+- Inside a loaded saved view (e.g. "Articles to Read"), pressing `n` opens an inline title prompt — the same flow as Object Browser's `n` but the type is auto-resolved from the view's `Type` field
+- After Enter, the host writes the file using the type's `Folder` + `FilenamePattern` and pre-populated frontmatter, closes the saved-view tab, and opens the new note in the editor
+- Esc cancels; empty title rejected; existing-file collision surfaces as a status warning
+- No-op for views with `Type: ""` (no schema to instantiate from)
+- Hint footer gained `n new` when the view has a type
+
+#### Object Browser preview pane visible at narrower widths
+- Threshold lowered from **110 → 95 cols** so users on the typical 13"-15" laptop terminal (~95-120 cols) actually see the preview pane
+- Preview width also shrinks (40 → 32 cols) on tighter screens so the gallery doesn't get squeezed when both panes share the available space
+
+#### Documentation refresh
+- `README.md` Typed Objects section now lists all 13 built-in types, all the recently-added keys (`n` create, `D` delete, `Alt+N` quick-add, `Alt+V` saved views), the Project/Goal Hub strip, and the dashboard + daily-jot integrations
+- `docs/FEATURES.md` Saved Views section now lists all 8 built-in views (added Active Goals, Overdue Goals); new "Project / Goal Hub strip" subsection; new "Object Browser actions" subsection covering `n` / `D` / preview-width threshold
+
+#### Tests
+- 4 new tests: passthrough-chord guard for the new tab-cycle shortcuts; SavedViews `n` quick-create commits with consumed-once semantics; SavedViews `n` is a no-op for type-less views; SavedViews create-prompt Esc cancellation
+
+### Fixed — Phase 11: discoverable delete (tasks + typed objects)
+
+#### Task Manager: Ctrl+D and Delete now delete a task
+- The original delete shortcut was `!` (shift+1) — undiscoverable. Users couldn't find how to delete tasks at all
+- Now bound to **`Ctrl+D`** (universal convention), **`Delete`** (the keyboard key), and `!` (legacy alias kept for muscle memory) — all three trigger the same y/n confirmation prompt + irreversible disk removal via `TaskStore.Delete`
+- Footer keybind hint bar updated to surface "Ctrl+D delete" prominently — was hidden behind the obscure `!`
+- `help.go` task-manager section explains all three bindings + the confirmation gate
+
+#### Object Browser: 'D' deletes the focused object
+- Same gap existed for typed objects — once captured, no way to remove them through the UI
+- New `D` key (also `Ctrl+D`, also `Delete`) on a focused object row arms a y/n confirmation in the footer ("Delete People/Alice.md ? (y/n) — irreversible, removes the underlying note file")
+- y commits → host removes the file from disk, refreshes vault scan, rebuilds the typed-objects index, clears active editor tab if it was open. n / Esc cancels
+- Defence-in-depth: the file path comes from the typed-objects index but the helper still rejects paths containing `..` and outside the vault root
+- Only fires from the grid pane — `D` on the type list is a no-op so users can't accidentally delete an entire type by hitting D in the wrong column
+- Footer keybind hint updated: `j/k nav · Tab swap pane · Enter open · n new · D delete · / filter · Esc close`
+
+#### Tests
+- 4 new tests for the Object Browser delete flow: D arms confirmation, y commits with consumed-once semantics, n cancels, D on type-list pane is a no-op
+
+### Added — Phase 10: goal type, project/goal hub strip, quick-add task
+
+#### `goal` is a first-class typed object
+- New built-in type joining the 12 existing ones — total now 13. Properties: `title`, `status` (active/completed/paused/archived — mirrors `GoalStatus` from the legacy GoalsMode for future migration), `target_date`, `priority` (low/medium/high), `why`, `started`, `tags`. Folder: `Goals/`
+- Two new built-in saved views: **Active Goals** (sorted by target_date asc) and **Overdue Goals** (active + target_date present)
+- Coexists with the legacy GoalsMode store — no migration of existing goal data, no breaking changes. Users can create new goals as typed-object notes via Object Browser → `n`, and they participate in saved views, agents, the dashboard panel, and the agents `query_objects` tool
+
+#### Project / Goal Hub strip above the editor
+- When the active note is a typed-project or typed-goal, granit prepends a 1-line summary strip above the editor: `🎯 Project: Apollo  ● active  · 7 tasks (3 done)  · Alt+N to add task`
+- Strip pulls from already-cached state (`m.cachedTasks` + `objectsIndex` + the note's frontmatter) — zero extra I/O per render
+- Counts logic differs by type: projects match by `Task.Project == obj.Title` (uses the Phase 9 enrichment); goals match by `Task.NotePath == obj.NotePath` (tasks written inside the goal note). A future enrichment could honour `goal:G…` references too
+- Status badge with semantic colours (green for active, blue for completed/shipped, yellow for paused, dim for archived/abandoned/backlog)
+- Hidden on regular notes, on feature tabs, and on the welcome screen — strip only renders when it has something to say
+
+#### Quick-add task (Alt+N)
+- On a typed-project or typed-goal note, `Alt+N` appends a `- [ ] ` line at end of file with the cursor placed right after the prefix, ready for the user to type. Inserts a blank line before it when the previous content isn't already empty so the new task isn't visually glued to prior text
+- New `Editor.AppendTaskLine()` primitive with full undo support
+- No-op on regular notes (silently does nothing — no "wrong-context" error, just doesn't fire)
+- Status bar confirms `✚ task — type the title, Esc to cancel`
+
+#### Cleanup
+- Fixed two pre-existing flaky tests (`TestPlanMyDayParseAIResponseValid` / `TestPlanMyDayParseAIResponseMalformed`) that asserted on `23:xx` schedule slots and silently broke when the suite happened to run between 23:15 and midnight. Added `skipIfLateEvening` helper so they skip cleanly in the danger window instead of flapping
+
+#### Tests
+- 8 new tests: hub strip empty for non-typed and non-project/goal notes; renders for project with task counts; renders for goal with target date; empty-state hint; AppendTaskLine cursor placement and blank-line insertion; built-in starter set now includes `goal`
+
+### Added — Phase 9: typed-objects integration with tasks, dashboard, daily jot
+
+#### Tasks ↔ Projects via typed-object frontmatter
+- Tasks already had a `Project` field on the struct (`internal/tasks/task.go:80`) but it was unwired in the TUI. Now `Model.currentTasks()` runs an enrichment pass that populates `Task.Project` from:
+  1. The note's `type: project` typed-object — task's project = the project's title
+  2. A `project: <ref>` frontmatter key on the note — free-form ref string
+  3. (Existing) An explicit `@project:X` mention in the markdown body — never overwritten
+- The Task Manager's existing **By-Project view** (key `9`) and project chip rendering now light up automatically — no UI changes needed
+- Pure post-process pass: no I/O, no tasks-package refactor, no-op when objectsIndex isn't ready (early startup safety)
+
+#### Dashboard typed-objects panel
+- New row beneath "Today's Tasks | Recent Notes" with two columns:
+  - **Left:** per-type counts sorted by frequency (top 6) with icon + label + number — single-glance "what does my vault contain"
+  - **Right:** "🕐 Recently Captured" list (top 6 by mtime, with relative time), plus an inline section for the **primary saved view** (default: `articles-to-read`) showing top-5 results
+- Hidden entirely when the vault has no typed objects, so brand-new users don't see an empty section confusingly
+- Re-evaluates the index on each Open so frontmatter saved since the last refresh shows up immediately
+- Dashboard footer hint mentions `Alt+O to browse · Alt+V for views` so the panel doubles as a discovery surface
+
+#### Daily Jot today's-captures panel
+- New "📦 Captured today (N)" inline section between the carry-over notice and the input line, listing typed objects modified today (type icon + title + type ID)
+- "Today" = files whose mtime falls within the local-day window of `time.Now()` — mtime over parsed `created` frontmatter because most users don't fill that field, mtime is always present
+- Capped at 6 visible rows; "+N more — Alt+O to browse" footer when there are more
+- Hidden when zero, so the jot stays clean on slow days
+- Capture velocity feedback loop: type a jot or capture an article via `n` in Object Browser, the jot tab refreshes the next time it's opened and you see the count tick up
+
+#### Tests
+- 9 new tests across enrichment, dashboard SetTypedObjects (counts + recent + primary view + nil-safe), DailyJot SetTypedObjects (today filter + nil-safe), task project resolution paths
+
+### Added — Phase 8: Object Browser create-from-browser + show all types
+
+#### `n` key creates a new object of the focused type
+- Press `n` in the Object Browser to create a new note of the cursored type. A small inline title prompt opens in the footer (mnemonic placement: same row as the keybind hints, so the user knows what they're typing without an over-the-top modal)
+- Enter writes the file using the type's `Folder` + `FilenamePattern` and pre-populated frontmatter (`type:`, `title:`, all required properties with their defaults — `{today}` and `{now}` substitutions applied) — then closes the browser and opens the new note in the editor for the user to fill in the body
+- Esc cancels; empty title is silently rejected; existing-file collision surfaces as a status warning ("X.md already exists — choose a different title") rather than overwriting prior work
+- Path & frontmatter generation extracted into `internal/objects/template.go` (`PathFor`, `BuildFrontmatter`, `SanitiseFilename`) — the agent runtime's `create_object` tool will migrate to share this in a future pass
+
+#### Type list now shows EVERY registered type, not just populated ones
+- The original UX hid empty types, leaving users wondering "where are the other 10 built-ins?" when they only had two notes typed. Now all 12 built-ins appear; empty types render dimmed (overlay0) so populated types still stand out for browsing
+- Combined with `n`, this means a brand-new vault can immediately discover + create across the full type catalog without first hand-editing frontmatter
+
+#### Help & feedback
+- Footer keybind bar gained `n new`
+- New regression tests: shows-all-types, prompt opens on n, prompt commits on Enter, Esc cancels, empty title rejected, path/frontmatter helpers (8 tests)
+
+### Fixed — Phase 7: layout regressions in typed-objects views, Ctrl+Z is undo
+
+#### Sidebar Types view + Object Browser no longer wrap rows
+- Long type names + object titles previously wrapped to extra lines because lipgloss `Width()` defaults to wrapping when content exceeds the box. Fixed by hard-truncating every row with `TruncateDisplay` BEFORE rendering, then padding to a constant width
+- Affects: Sidebar's Types mode (the cycle from Files mode), Object Browser type list, Object Browser grid, Object Browser preview-pane property labels, and the header strip when the untyped-types warning was wide
+- Object Browser header now puts the warning on its own line instead of letting it push the rule onto a third row on narrow terminals
+- Two new regression tests assert that **no rendered line exceeds pane width** for the typical 28-col sidebar / 80-col grid / 120-col full layout
+
+#### Ctrl+Z is undo (universal convention)
+- The editor now binds `Ctrl+Z` → undo and `Ctrl+Shift+Z` → redo, matching every other text editor on the planet. The non-standard `Ctrl+U` / `Ctrl+Y` aliases still work for muscle memory
+- Focus / Zen mode moved from `Ctrl+Z` to `Alt+Z` (the `z = zen` mnemonic survives)
+- Passthrough chord list updated: `Ctrl+Z` is now consumed by the editor (not pass-through to global), and `Alt+Z` joins the Alt-shortcut family for Focus Mode access from any feature tab
+- `internal/tui/help.go` and `cmd/granit/manpage.go` documentation updated
+
+### Added — Phase 6: inline AI editor + saved views
+
+#### Inline AI selection edits (Alt+/ and `/` slash menu)
+- The classic `/` slash menu now offers six selection-aware AI actions alongside the insert templates: **AI: Rewrite**, **Expand**, **Summarize**, **Improve**, **Shorten**, **Fix Grammar**
+- `Alt+/` is a dedicated AI-only menu shortcut that **preserves the editor's selection** (typing `/` would have replaced it). Mnemonic: same key as the slash menu, plus Alt for AI mode
+- Both modes route to the same dispatcher (`runAIEdit` in `internal/tui/ai_selection.go`) which uses the configured provider/model — Ollama, OpenAI, Anthropic, Nous, Nerve all work transparently
+- Output is spliced back at the **originally-captured range**, not the cursor's current position — so a slow Ollama response doesn't write into the wrong spot if the user moved on
+- New `Editor.ReplaceRange(sl, sc, el, ec, text)` primitive replaces multi-line ranges atomically with full undo support; clamped to content bounds so a stale dispatch can't crash on out-of-bounds writes
+- Output cleaner strips common LLM preambles ("Sure! Here's the rewritten text:"), wrapping code fences, and surrounding quotes — small models otherwise frequently ignore the system prompt's "no preamble" instruction
+- Per-action prompts in `aiEditPrompts` are tuned to reject explanation/preamble and preserve markdown formatting; 60s context timeout for cold-load tolerance
+- Same `translateProviderError` pipeline as the agent runtime, so failures surface as actionable hints in the status bar
+
+#### Saved views — Capacities-style smart collections
+- New `internal/objects/view.go` data model: `View {ID, Name, Type, Where[], Sort, Limit}` with operators `eq`, `ne`, `contains`, `exists`, `missing`, `gt`, `lt`. AND-only for now (every real-world example was expressible as AND; OR can come later as a clause group)
+- Best-effort numeric comparison: `gt`/`lt` parse both sides as floats and fail open on non-numeric values
+- String comparisons are case-insensitive throughout — frontmatter values are hand-typed and we don't want users tripping over "Read" vs "read"
+- Six built-in views ship with granit:
+  - **Articles to Read** — `type:article` where `status != read AND status != archived`
+  - **Recent Highlights** — `type:highlight` sorted by capture date desc
+  - **Active Projects** — `type:project` where `status == active`
+  - **Raw Ideas** — `type:idea` where `status == raw`
+  - **Top-Rated Podcasts** — `type:podcast` where `rating > 3` desc
+  - **Currently Reading** — `type:book` where `status == reading`
+- Vault-local overrides at `.granit/views/<id>.json` REPLACE built-ins by ID (same full-override semantics as Type registry / Preset catalog — merge semantics on user-edited JSON make for surprising behaviour, full override is the simpler mental model)
+- Filename basename must match the embedded `id` field (case-insensitive); per-file errors surface together so the UI can render them all at once
+- New `SavedView` feature tab opens via `Alt+V` (or palette → "Saved Views") in catalog-picker mode; Enter loads the cursored view, `p` returns to picker, `r` re-evaluates against the latest index, Enter on an object opens the underlying note
+- Result list renders title + up to 3 property columns pulled from the matched objects; em-dash for empty values
+- Re-evaluates against a refreshed index when the vault changed since the last interaction (same lazy-refresh pattern as Object Browser)
+
+#### Tests
+- 27 new tests across the package: slash-menu mode/filter/dispatch, AI output cleaner (preamble/fence/quote stripping), `ReplaceRange` (single-line, multi-line, CRLF normalization, clamping, reversed ranges), SavedViews picker→view round trip, jump request, refresh
+- View engine: 18 tests covering each operator, sort semantics, limit, promoted-field access (title/type), built-in validity, vault-local override + filename mismatch handling
+
+### Added — Phase 5.5–5.7: Anthropic provider, AI provider self-test, live Ollama model list
+
+#### Anthropic Claude as a first-class provider
+- New `chatAnthropic` path in `aiconfig.go` speaks the Messages API directly (`x-api-key`, `anthropic-version: 2023-06-01`, top-level `system`)
+- New config fields `AnthropicKey` + `AnthropicModel` (default `claude-haiku-4-5`); presets and agents pick this up automatically when `AIProvider == "anthropic"` or `"claude"`
+- Settings panel exposes both fields with a curated model dropdown (`claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-7`)
+- Provider key separated from `OpenAIKey` so a user can keep both configured side-by-side and flip between them with one keystroke
+
+#### `>> Test AI Provider` action button
+- One-shot button in Settings that fires a `ping` against the currently-configured provider/model and surfaces the result in `setupStatus`
+- Uses the same `translateProviderError` translator as the agent runtime so the failure mode you see during a manual test matches what an agent would hit
+- 30s context timeout — long enough for an Ollama cold-load on a chunky model, short enough that a misconfigured cloud key fails fast
+
+#### Live Ollama model list
+- The Ollama Model dropdown now queries `/api/tags` on the configured `OllamaURL` (800ms timeout) and renders the user's actually-installed models instead of a guessed list
+- Falls back to a curated starter list when the daemon is down — and *always* includes the current selection so switching back to a known-good model is never blocked by a daemon being offline
+- OpenAI dropdown widened to include `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `o1-mini`, `o3-mini`
+
+### Added — Phase 5: 7 new built-in types, per-preset model, provider error hints, Object Browser preview pane
+
+#### 7 new built-in types (Capacities parity)
+- `article` 📰 — saved web articles with URL, author, status, publication
+- `podcast` 🎙️ — episodes with show, host, duration, rating
+- `video` 📺 — YouTube/Vimeo videos with channel, URL, watched date
+- `quote` 💬 — pithy quotes with author + source attribution
+- `place` 📍 — venues, cities, restaurants with kind + rating
+- `recipe` 🍳 — cooking recipes with cuisine, course, prep/cook times
+- `highlight` 🔖 — passages worth remembering (with link to source note)
+
+Total built-in types now 12 (was 5). Same JSON schema as before so vault-local overrides at `.granit/types/<id>.json` work for these too.
+
+#### Per-preset model override
+- New `Model` field on `agents.Preset` — preset declares which model to use for its runs
+- Provider is NEVER overridden — preset rides the user's configured provider (Ollama / OpenAI / Anthropic / Nous / Nerve) with this model name swapped in
+- Pattern: fast cheap models (`qwen2.5:0.5b`) for routing tasks like Inbox Triager; bigger smarter models (`llama3.1:8b`, `gpt-4o-mini`) for Research Synthesizer
+- Global Settings stays the source of truth for the default; presets only override when explicitly set
+
+#### Better AI provider error messages
+- New `translateProviderError` in agentbridge.go converts low-level network/API errors into actionable hints:
+  - "connection refused" → "Ollama isn't running. Start it with `ollama serve`"
+  - "model not found" → "Run `ollama pull <model>` and retry"
+  - 401/403 → "API key for X is invalid. Open Settings (Ctrl+,) → AI"
+  - "context deadline exceeded" → "Try a smaller model or simpler goal"
+- Empty-Provider check in agent runner already in place from Phase 4
+- 6 new tests across the translator covering each provider's error shape
+
+#### Object Browser preview pane (≥110-col terminals)
+- 3-pane layout activates on wide terminals: type list (left) + gallery (middle) + preview (right, 40 cols)
+- Preview shows: object title, type name, EVERY declared property (with em-dash for empty values), note path
+- Empty properties render as `—` so the user sees schema completeness at a glance
+- Falls back to the 2-pane layout on narrow terminals — no UX regression for laptop screens
+- 3 new tests for preview rendering at full / narrow / out-of-range cursor
+
+#### Documentation
+- `docs/OBJECTS.md` updated with all 12 built-in types
+- `docs/AGENTS.md` documents `model` preset field + the where-clause exact-match limitation
+- CHANGELOG (this section)
+
+### Added — Phase 4: typed-mention picker, sidebar Types view, vault schemas, type-aware bookmarks
+
+#### Sidebar Types view (`m` key)
+- New SidebarMode enum with two modes: Files (existing) and Types (new)
+- 'm' key cycles modes when sidebar focused
+- Header chip shows current mode ("files" / "types") + object count
+- Types view groups typed objects by Type with icon + count badge, sorted by registry order
+- j/k auto-skip type headers so navigation feels continuous
+- Search ('/') filters objects by title; type headers stay visible only when at least one object matches
+- Active note marked with `●`
+- Empty types hidden (no `Meeting (0)` dead rows)
+- Pinned typed objects render in a `★ Pinned` section at the top, mirroring Files-mode PINNED behavior
+- 9 new tests covering mode toggling, row rebuild, filter, navigation, header skipping
+
+#### Per-type bookmarks (`b` in Types view)
+- `b` on a typed-object row pins/unpins it
+- Pinned objects appear with a yellow ★ marker AND in the dedicated PINNED section
+- Reuses the existing pinned map / persistence at `.granit/sidebar-pinned.json` — works across both views
+- Status message confirms the action ("Pinned Alice", "Unpinned Bob")
+
+#### Type-aware mention picker (`Alt+@`)
+- New `TypedMentionPicker` overlay — Capacities-style structured-mention insertion without editor surgery
+- Open with `Alt+@` or via command palette ("Insert Typed Mention")
+- Filter syntax: bare query (e.g. `alice`) matches across all typed-object titles; `typeID:query` (e.g. `person:alice` or `book:`) scopes to a single type
+- Prefix matches sort before substring matches so the most likely target lands at the top
+- Enter inserts `[[Title]]` at the editor cursor — compatible with the existing wikilink renderer + publish pipeline
+- 9 new tests covering filter parsing, scope syntax, navigation clamps, insert behavior, prefix-match ordering
+
+#### Custom vault type schemas (review nudge → real galleries)
+- Wrote `~/Documents/Main/.granit/types/research.json` (44 notes) and `daily.json` (13 notes) so the user's existing `type:` frontmatter no longer surfaces as "unknown types" warnings
+- Both schemas follow the documented Type JSON format — hand-editable, version-controllable, vault-local
+
+#### Help overlay
+- Sidebar section now documents both modes, the cycle key, and Types-mode navigation
+- Typed Objects section adds `Alt+@` for the mention picker
+
+#### Phase 4.4 (agent-driven Daily Hub widgets) — deferred
+- Background agent execution needs scheduler + result cache + cost discussion. Earmarked as a follow-up phase rather than rushed alongside Phase 4.1-4.3.
+
+### Added — Phase 3: vault-local agent presets + 2 more flagships
+
+The agent runtime ships with three built-in presets now (Research Synthesizer, Project Manager, Inbox Triager) and supports user-defined agents via JSON files at `<vault>/.granit/agents/<id>.json` — no recompile required. Vault-local presets replace built-ins by ID.
+
+#### New built-in presets
+- **Project Manager** — read-only. Looks up project objects via `query_objects(type=project)`, reads them, queries related tasks for blockers, produces a structured status report
+- **Inbox Triager** — read+write. Walks an inbox folder, proposes next-action tasks via `create_task` (capped at 5 per run, every proposed write shown in the live transcript so the user can `Esc`-cancel)
+
+#### Custom agent definitions
+- New `Preset` schema in `internal/agents/preset.go` — JSON-serializable, hand-editable
+- `PresetCatalog` merges built-in + vault-local with full-override semantics
+- Validation rejects malformed presets per-file with clear errors; remaining presets still load
+- Filename basename must match embedded `id` (case-insensitive); mismatches surface in the picker's status line
+- `BuildRegistryForPreset` filters tool factories by the preset's `tools` allow-list and `includeWrite` flag — preset opt-in for write access without rewriting the runner
+- `MaxSteps` override per-preset (0 falls through to runtime default of 8)
+
+#### Runner integration
+- `agentRunner.Open()` now loads built-ins then overlays vault-local presets each time the overlay opens — fresh definitions show up without an app restart
+- Write tools wired into the agent bridge (`agentRunner.writeNote`, `appentTaskLine`) — actually mutate the vault when the LLM calls them, with the in-memory vault cache updated so subsequent reads see the write
+- Approve callback shipped at "auto-approve with transcript visibility" — every proposed write is rendered in the streamed transcript before execution, user `Esc`-cancels if needed
+
+#### Quality fixes (review pass)
+- `agentrunner.go` race fix: agent goroutine now captures `eventCh` / `doneCh` in local closure variables instead of via the receiver, so a rapid Esc-then-Alt+A flow can't make the old goroutine write to the new run's channels
+- `agent.go` parser: defensive `strings.TrimSpace` on captured arg values to guard against `\s*$` regex edge cases that leak trailing whitespace into path arguments
+- `objectbrowser_index.go` parser: handles tab-indented YAML continuation lines (some editors emit tabs in YAML); also skips keys with empty values whose next non-blank line is an indented continuation, so `tags:\n  - foo` no longer leaves a stray empty `tags` entry in the flat map
+- `feature_tabs.go`: ObjectBrowser now refreshes its typed-objects index when the vault has changed since the last interaction (was previously stale until manual re-open)
+
+#### Tests
+- New `internal/agents/preset_test.go` — 9 tests covering Validate/built-in loading/vault-local override/round-trip/registry filtering
+- New `internal/tui/agentrunner_test.go` — 5 tests covering event rendering, line truncation, defensive tag-copy in agentTaskBridge, parseFlatFrontmatter (including the regression for the empty-key-with-continuation bug)
+- Total: ~60 agent-related tests across the two packages, all green
+
+#### Documentation
+- `docs/AGENTS.md` updated: new presets section, custom-agent JSON schema with field-by-field reference, override semantics
+- CHANGELOG (this section)
+
+### Added — Multi-step Agent Runtime (Deepnote-inspired)
+
+Beyond the existing 19 single-shot bots, granit now supports multi-step agents: an LLM that picks tools from a registered catalog, observes their output, and iterates in a Thought / Action / Observation loop until it produces a final answer. Inspired by Deepnote's tool-calling AI; designed to work on any LLM including small local Ollama models (text-based ReAct protocol, no JSON-mode required).
+
+#### Core (`internal/agents/`)
+- New package, fully independent of the TUI — `Tool` interface, `Registry`, `ToolCall`, `ToolResult`, ReAct loop, `LLM` interface
+- 6 read tools: `read_note`, `list_notes`, `search_vault`, `query_objects`, `query_tasks`, `get_today` — all bounded (path containment, output truncation, result-count limits)
+- 3 write tools (off by default in v1): `write_note` (refuses overwrite without `overwrite=true`), `create_task` (assembles "- [ ] text 📅 date 🔼" line), `create_object` (assembles frontmatter + body for typed objects)
+- `Options.MaxSteps` budget cap (default 8) prevents runaway loops
+- `Options.Approve` callback required when write tools registered (fail-fast at construction, not silent)
+- `Options.OnEvent` streams Goal / Thought / ToolCall / ToolResult / FinalAnswer / Error / BudgetHit events for live UI
+- 45 tests across the package — registry contract, validation, parser variants, full happy-path runs, recovery from bad actions, budget cap, write approval gate, LLM error propagation, context cancellation
+
+#### TUI integration
+- `Alt+A` opens the agent runner overlay (also "Run Agent" in command palette)
+- Phase 2.5 ships one flagship preset: **Research Synthesizer** — given a topic, finds related notes via `search_vault`, reads them with `read_note`, synthesises themes + open questions
+- Streamed live transcript with per-step Thought / Tool call / Observation rendering, distinct colours for each event kind
+- Cancellation via `Esc` during a run honours `ctx.Done()` on the next LLM call boundary
+- Reuses the existing `AIConfig` (Ollama / OpenAI / Nous / Nerve), so nothing leaves the user's machine unless an external provider is configured
+
+#### Wire format
+- Plain-text Thought / Action / Args / Final Answer protocol — works on any model
+- Parser is line-walking (Go's RE2 lacks lookaheads); handles case-insensitive headers (`Thought:` / `THOUGHT:` / `thought:`) and multi-line thoughts/answers
+- Tool catalog rendered into the system prompt with arg schemas so the LLM picks correctly without hardcoded prompt templates
+
+#### Safety
+- KindRead vs KindWrite tool classification — registries without write tools cannot mutate disk
+- Path containment on every read+write tool that takes a path (refuses `..` escapes and absolute paths)
+- Approve callback gates every write before the tool runs; in interactive mode surfaces a confirmation prompt
+- Full audit transcript returned from every Run — Step, Thought, ToolCall, ToolResult — for compliance / debugging
+
+#### Documentation
+- New `docs/AGENTS.md` — full reference: why agents vs bots, tool catalog, safety model, architecture, how to write goals
+- README "Multi-step AI Agents" feature section + docs table entry
+- CHANGELOG (this section)
+
+### Added — Typed Objects: Capacities-style structured notes
+
+A new layer on top of plain markdown that lets notes declare a `type:` in frontmatter (Person, Book, Project, Meeting, Idea — or any custom type) and treats them as structured objects with galleries, schemas, and (in Phase 2/3) typed mentions + queries. Inspired by Capacities; designed to stay file-first, git-friendly, and Obsidian-compatible.
+
+#### Core
+- New `internal/objects/` package — Type / Property / PropertyKind schema, JSON-serializable
+- 8 property kinds: text, number, date, url, tag, checkbox, link, select
+- Per-vault type definitions at `.granit/types/<id>.json` (full override of built-ins by ID, not deep merge)
+- 5 built-in starter types: person, book, project, meeting, idea — opinionated 4-6 properties each, never a long-tail JSON-Schema
+- Validation surface: per-Type `.Validate()`, per-Property `.Validate()`, registry guards `Set` against invalid input
+
+#### Object Browser (`Alt+O`)
+- New TUI feature tab — two-pane layout, type list left, gallery grid right
+- Auto-derived columns from type properties (title + up to 3 property columns, prioritising required fields)
+- In-grid filter (`/`) matches title OR any property value, case-insensitive
+- Per-type object counts, with empty types hidden from the list
+- "⚠ N notes reference unknown types" warning when a frontmatter `type:` doesn't match any registered schema
+- Object selection (`Enter`) opens the underlying note in the editor pane and closes the browser tab
+- Mobile-aware: collapses to title-only when pane width < 30 cols
+
+#### Index pipeline
+- `rebuildObjectsIndex` walks the vault on startup and on vault refresh, parses frontmatter into an `objects.Index` keyed by TypeID
+- `parseFlatFrontmatter` is a shallow YAML parser (single-line `key: value` only) intentionally decoupled from any specific YAML library — the typed-object schema covers the common case, richer YAML belongs in the body
+- Sub-millisecond rebuild on a 1000-note vault
+
+#### Tests
+- 28 tests across `internal/objects/` covering type/property validation, JSON round-trips, registry overrides, builder semantics, search filtering, nil-safety
+- 10 ObjectBrowser TUI tests covering Tab/Enter/search/refresh flows + column-spec heuristics
+- Built-in type lints: every default validates, has a unique ID, ships an icon, declares at least one required field
+
+#### Documentation
+- New `docs/OBJECTS.md` — full reference: quick start, frontmatter conventions, custom types, property kinds, keyboard, roadmap
+- README "Typed Objects" feature section + docs table entry
+- TUI help overlay (F5) entry under Knowledge Management
+- CHANGELOG (this section)
+
+### Added — `granit publish` static site generator
+
+A new top-level subcommand that renders any folder of markdown notes into a self-hostable static website. Inspired by Obsidian Publish; designed for GitHub Pages but works on any static-file host (Cloudflare Pages, Netlify, S3, fleetdeck, plain VPS via rsync). Output is plain HTML + one CSS file + a small vanilla-JS search shim — no Node.js, no build step.
+
+#### CLI
+- `granit publish build <folder> [flags]` — render to `./dist` (or `--output`)
+- `granit publish preview <folder> [flags]` — build + serve on `http://localhost:8080`
+- `granit publish init <folder>` — write a starter `.granit/publish.json` template
+- Flags: `--output`, `--title`, `--homepage`, `--site-url`, `--author`, `--auto-og`, `--og-image`, `--math`, `--mermaid`, `--hero`, `--cookie-banner`, `--no-branding`, `--no-search`, `--config`
+
+#### Content rendering
+- Goldmark markdown with GFM (tables, autolinks, strikethrough, task lists)
+- Code highlighting via chroma (B&W "bw" style, no color)
+- Wikilinks (`[[Note]]`, `[[Note|Display]]`, `[[Note#section]]`) resolved across the published note set
+- Auto-rewrites relative image paths (`![alt](./diagram.png)`) so they resolve from the published note's URL
+- Image asset copying: every non-markdown file in the source folder mirrors into the output preserving relative paths
+- Per-note Contents outline (auto-extracted from H2-H4)
+- Backlinks panel ("Linked from") on every note
+- Prev/Next note navigation (filename-ordered for `00_*` / `01_*` flows)
+- Reading-time chip for notes over 100 words (220 wpm)
+- KaTeX math rendering (opt-in via `--math`, loaded only on pages containing `$math$`)
+- Mermaid diagrams (opt-in via `--mermaid`, loaded only on pages containing fenced mermaid blocks)
+
+#### SEO
+- `<title>`, `<meta description>`, canonical link
+- Open Graph: `og:title`, `og:description`, `og:type` (article for notes, website for index/tags/graph), `og:url`, `og:site_name`, `og:image` (with width/height/type)
+- Twitter Card: `summary_large_image` when og:image present, `summary` otherwise
+- JSON-LD Article schema on every note page (headline, dates, author, publisher, description, url)
+- `<meta name="author">` from frontmatter or site-wide `--author`
+- `<meta name="robots" content="noindex,nofollow">` for legal pages and any note with `noindex: true` frontmatter
+- `sitemap.xml` (standards-conformant, absolute URLs when `--site-url` is set)
+- `robots.txt` allow-everything + Sitemap directive
+- RSS 2.0 feed (`feed.xml`) with `<link rel="alternate">` auto-discovery on every page
+- `404.html` custom not-found page
+- `.nojekyll` for GitHub Pages (files starting with `_` work)
+
+#### OG images (per-note social-share previews)
+- Frontmatter `image:` (relative path in source folder)
+- Site-wide default via `--og-image` / `defaultOGImage`
+- Auto-generation via `--auto-og`: 1200×630 PNG per note, B&W, embedded Go font (`golang.org/x/image/font/gofont`), word-wrapped title, ~40 KB each, deterministic across builds
+
+#### Layout & theming
+- Black-and-white minimal theme (4 KB CSS, light + dark via `prefers-color-scheme`)
+- Mobile-responsive breakpoints at 640px and 380px (header stacks, prev/next stacks, table overflow scroll, bigger tap targets, no iOS zoom-on-focus)
+- Force-directed wikilink graph as inline SVG (Fruchterman-Reingold, 200 iterations, deterministic seed, JS-free)
+- Hero homepage layout (`--hero`): centered title block + intro + 3-column note card grid with hover lift
+- Default list homepage: dense vertical note list sorted by date desc
+
+#### Legal & compliance (German / EU)
+- Auto-detected Impressum / Datenschutz pages: filename heuristics (`impressum.md`, `datenschutz.md`, `imprint.md`, `privacy.md`) OR frontmatter `legal: impressum` / `legal: datenschutz`
+- Render to root-level URLs (`/impressum.html`, `/datenschutz.html`), not under `/notes/`
+- Auto footer links on every page when detected
+- Auto-marked `noindex,nofollow` (search engines don't index legal boilerplate)
+- Excluded from search index, auto note list, and graph
+- Cross-site wikilinks (`[[Impressum]]`) resolve to the root URLs automatically
+- Optional cookie banner (`--cookie-banner`): bottom-fixed, single OK button, localStorage dismissal, `{datenschutzURL}` placeholder substitution in custom messages
+
+#### Search
+- Client-side fuzzy filter on the homepage
+- ~30 lines of vanilla ES5, no framework
+- `search-index.json` carries title + first 800 chars of body per note
+- Excludes legal pages and `noindex: true` notes
+
+#### Branding
+- Subtle "Built with Granit" footer link (dotted underline, muted color, opens in new tab) on every page
+- Suppress with `--no-branding` / `noBranding: true`
+
+#### Documentation
+- New [docs/PUBLISH.md](docs/PUBLISH.md) — full reference: quick start, CLI flags, configuration, frontmatter, wikilinks, tags, graph, SEO, mobile, legal pages, cookie banner, OG images, math, mermaid, RSS, image assets, GitHub Pages workflow, multi-host deploy recipes, troubleshooting, roadmap
+- New "Static Site Publishing" section in README and "Publishing" entry in CLI reference
+- New "granit publish — Obsidian-Publish-style folder-to-website" section in docs/FEATURES.md
+- Manpage entries under Data Management for `publish build` / `publish preview` / `publish init`
+- TUI help overlay (F5) "Publish — static site generator" section
+- `granit publish help` covers every flag with examples and deploy recipes
+
 ### Added — Relaunch Phase 3: Profiles and the Daily Hub
 
 #### Profiles

@@ -4,6 +4,8 @@
 
 ---
 
+> **Looking for the static site generator?** See the [`granit publish`](#granit-publish----obsidian-publish-style-folder-to-website) section under Export & Publishing, or the dedicated [Publishing guide](PUBLISH.md).
+
 ## Table of Contents
 
 - [Core Editor](#core-editor)
@@ -173,6 +175,23 @@ Line numbers display in the gutter, with the active line number highlighted in t
 
 - **Access:** Type the trigger (e.g., `/meeting`) and it auto-expands. A slash menu appears showing matching snippets as you type.
 - **Example:** Type `/meeting` and the full meeting template appears with today's date filled in.
+
+### Inline AI Editor (slash-menu AI actions, Alt+/)
+
+Six selection-aware AI actions live inside the slash menu and a dedicated AI-only menu, powered by whatever provider is configured (Ollama, OpenAI, Anthropic, Nous, Nerve):
+
+| Trigger | Action | What it does |
+|---|---|---|
+| `/rewrite` or AI menu | **Rewrite** | Same meaning, clearer wording |
+| `/expand` | **Expand** | Adds depth + detail (≤ 1 paragraph) |
+| `/summarize` | **Summarize** | 1–3 sentence distillation |
+| `/improve` | **Improve** | Word choice + flow tightening |
+| `/shorten` | **Shorten** | Tighter, fewer words |
+| `/fix` | **Fix Grammar** | Minimal-edit grammar/spelling pass |
+
+- **Access (with selection):** `Alt+/` — preserves the selection so the action targets exactly the highlighted text. Mnemonic: same key as the `/` slash menu, plus Alt for AI mode.
+- **Access (no selection):** Type `/` then the action name — operates on the current line. Selection is lost when `/` is typed (it's a regular keystroke), so this path is best when you're editing the line you're on.
+- **Output handling:** spliced back at the originally-captured range — moving the cursor while the AI thinks doesn't write to the wrong spot. LLM preambles ("Sure! Here's…"), wrapping code fences, and surrounding quotes are stripped before insertion.
 
 ### Spell Checking
 
@@ -991,6 +1010,75 @@ Production-hardened data protection: atomic file writes (temp file + rename), au
 
 ## Knowledge Tools
 
+### Saved Views (smart collections, Alt+V)
+
+Capacities-style saved queries over the typed-objects index. Define a view once, granit re-evaluates it whenever the tab is opened or the vault is refreshed.
+
+**Eight built-in views ship with granit:**
+
+- **Articles to Read** — `type:article` where `status != read AND status != archived`
+- **Recent Highlights** — `type:highlight` sorted by capture date (desc)
+- **Active Projects** — `type:project` where `status == active`
+- **Active Goals** — `type:goal` where `status == active`, sorted by `target_date`
+- **Overdue Goals** — `type:goal`, active, with a target_date set
+- **Raw Ideas** — `type:idea` where `status == raw`
+- **Top-Rated Podcasts** — `type:podcast` where `rating > 3`
+- **Currently Reading** — `type:book` where `status == reading`
+
+**Custom views** — drop a JSON file in `.granit/views/<id>.json`:
+
+```json
+{
+  "id": "books-to-finish",
+  "name": "Books to Finish",
+  "description": "Books I'm partway through",
+  "type": "book",
+  "where": [
+    { "property": "status", "op": "eq", "value": "reading" }
+  ],
+  "sort": { "property": "title", "direction": "asc" },
+  "limit": 20
+}
+```
+
+Operators: `eq`, `ne`, `contains`, `exists`, `missing`, `gt`, `lt`. AND-only; case-insensitive string compare; best-effort numeric parsing for `gt`/`lt`.
+
+- **Access:** `Alt+V` or Command palette → "Saved Views". Opens in catalog-picker mode; Enter loads a view.
+- **Inside a view:** `j/k` navigate · Enter opens note · `n` quick-create a new object of this view's type · `r` re-evaluate · `p` return to picker.
+
+### Project / Goal Hub strip
+
+When the active note is a typed-project (`type: project`) or typed-goal (`type: goal`), granit prepends a one-line summary above the editor:
+
+```
+🎯 Project: Apollo  ● active  · 7 tasks (3 done)  · Alt+N to add task
+```
+
+- Status badge with semantic colours (green/blue/yellow/dim)
+- Linked task counts: for projects, tasks whose `Project` field matches the project title (auto-populated from the note's frontmatter); for goals, tasks written inside the goal note
+- Target date (goals) or deadline (projects) when set
+- `Alt+N` quick-add: appends `- [ ] ` at end of file with cursor positioned to type the title (no-op on regular notes)
+- Hidden on regular notes / feature tabs / welcome screen
+
+### Repo Tracker — local git projects as typed objects
+
+Many of your `~/Projects/` folders are git repos. The Repo Tracker scans that root, lists each repository with live status (branch, dirty count, ahead/behind, last-commit age), and lets you import any of them as a typed-project note with one Enter — `repo:` is pre-populated, so the Project Hub strip immediately shows live git status when you open the note.
+
+- **Open:** Command palette → "Repo Tracker"
+- **Configure scan root:** Settings → `RepoScanRoot` (defaults to `~/Projects`)
+- **Inside the tracker:** `j/k` navigate · `Enter` import (or jump to existing note when the row is already imported, marked with ✓) · `g` jump-only · `r` rescan + drop status cache · `Esc` close
+- **Status badges:** green `clean` for in-sync repos · yellow `N dirty` and `↑N ↓M` for outstanding work · dim age for stale repos (`> 30d`)
+- **Hub strip integration:** any `type: project` note with `repo: /path/to/repo` shows `git: branch · 3 dirty · ↑2 ↓0 · 2h` inline in the strip above the editor; cached for 30s so renders stay cheap
+- **From any project note** (when `repo:` is set): `Alt+\` opens the folder in your system file manager (xdg-open / open / explorer); `Alt+'` copies the absolute path to the clipboard
+- **Saved view:** "Code Projects" surfaces every project that has a `repo:` set — combine with the dashboard primary view to see your build pipeline at a glance
+
+### Object Browser actions
+
+- `Alt+O` opens the browser; left pane = type list (all 13 built-ins always visible, empty types dimmed); middle = filterable gallery; right (≥95 cols) = preview pane
+- `n` create new object of focused type — title prompt in the footer; pre-populates frontmatter from the type's required properties + defaults (`{today}`, `{now}` substituted)
+- `D` (also `Ctrl+D`, `Delete`) delete focused object — y/n confirmation; removes the underlying note file
+- `Enter` open the object's note · `Tab` swap pane · `/` filter
+
 ### Smart Connections
 
 TF-IDF content similarity finds semantically related notes. Shows shared keywords and a similarity score for each match.
@@ -1107,11 +1195,33 @@ Strip all Markdown formatting and export as plain text.
 
 ### Export to PDF
 
-Export via pandoc (if installed) to a formatted PDF document.
+Export the current note as a clean, document-style PDF via pandoc + xelatex. Granit handles markdown preprocessing so wikilinks, task-marker emojis, and granit-specific syntax render legibly on a printed page.
 
 - **Access:** Command palette > "Export Current Note" > PDF
-- **Requires:** `pandoc` installed
-- **Example:** Export a "Weekly Report" note as a professional PDF.
+- **Output:** `<note-basename>.pdf` next to the source note in the vault
+- **Requires:** `pandoc` and a LaTeX engine (`xelatex` recommended for Unicode + system fonts)
+  - Arch: `sudo pacman -S pandoc-cli texlive-basic texlive-latex texlive-fontsrecommended texlive-xetex texlive-binextra`
+  - Debian/Ubuntu: `sudo apt install pandoc texlive-xetex texlive-fonts-recommended`
+  - macOS: `brew install pandoc basictex`
+
+**Typography defaults:**
+- A4 page, 2.2 cm margins
+- 11pt body with 1.35 line-stretch for documentation-grade rhythm
+- Subtle blue link colour (accessible contrast on white paper)
+- `tango` syntax-highlighting style for code blocks
+- DejaVu Sans Mono for code fragments
+- Auto Table of Contents for substantial notes (≥4 H2 sections AND ≥1500 words)
+
+**Markdown preprocessing (so the PDF reads cleanly):**
+- `[[Note Name]]` → italicized *Note Name* (no broken-link blue underline)
+- `[[Note|Display]]` → italicized *Display*
+- `- [ ]` / `- [x]` → Unicode `☐` / `☑` (renders correctly with default xelatex fonts)
+- Task-marker emojis (📅, 🔼, 🔁, ⏰, ⏫, etc.) stripped — LaTeX's default fonts have no emoji glyphs and would render them as missing-glyph boxes
+- YAML frontmatter `title:` / `date:` / `author:` populate a proper pandoc title block
+
+**Friendly errors:**
+- "pandoc is not installed" — clear actionable message instead of a Go exec error
+- Missing LaTeX engine triggers a tailored hint with the package name to install
 
 ### Bulk HTML Export
 
@@ -1120,12 +1230,79 @@ Export all vault notes at once as HTML files, preserving the folder structure.
 - **Access:** Command palette > "Export Current Note" > Bulk HTML
 - **Example:** Export your entire vault as a browsable HTML archive.
 
-### Static Site Publisher
+### Static Site Publisher (in-vault)
 
 Export your vault as a complete HTML website with search functionality, tag pages, and wikilink resolution. Creates a self-contained site that can be hosted anywhere.
 
 - **Access:** Command palette > "Publish Site"
 - **Example:** Publish your knowledge base as a searchable static website.
+
+### `granit publish` -- Obsidian-Publish-style folder-to-website
+
+A dedicated CLI subcommand that renders any folder of markdown notes to a black-and-white static site. Inspired by Obsidian Publish; designed for GitHub Pages but works on any static host (Cloudflare Pages, Netlify, S3, fleetdeck, plain VPS via rsync).
+
+```bash
+granit publish build ~/Notes/Research --output ./docs --title "Research"
+granit publish preview ~/Notes/Research          # local server on :8080
+granit publish init ~/Notes/Research             # generate publish.json template
+```
+
+What ships in every build:
+
+| File | Purpose |
+|------|---------|
+| `index.html` | Auto note list, OR a homepage note (`--homepage README.md`), OR hero layout (`--hero`) |
+| `notes/<slug>.html` | One page per note: outline panel, prev/next nav, backlinks, tags |
+| `tags/index.html` + `tags/<tag>.html` | Tag pages, auto-generated from frontmatter + inline `#tags` |
+| `graph.html` | Force-directed wikilink graph as inline SVG (deterministic, JS-free) |
+| `impressum.html` / `datenschutz.html` | Auto-detected German legal pages with footer links (filename or `legal:` frontmatter) |
+| `feed.xml` | RSS 2.0 feed with `<link rel="alternate">` auto-discovery |
+| `sitemap.xml` + `robots.txt` | SEO essentials |
+| `404.html` | Custom 404 page (GitHub Pages serves automatically) |
+| `og/<slug>.png` | Auto-generated 1200x630 OG images (enable with `--auto-og`) |
+| `style.css` | 4 KB B&W theme, mobile-responsive, light + dark via `prefers-color-scheme` |
+| `search.js` + `search-index.json` | ~30 lines of vanilla JS fuzzy-filter, no framework |
+| `.nojekyll` | GitHub Pages compatibility |
+
+Per-page features:
+
+- Wikilinks (`[[Note]]`, `[[Note|Display]]`, `[[Note#section]]`) resolved across the published set
+- Backlinks panel ("Linked from")
+- Per-note Contents outline (collapsible, H2-H4)
+- Reading-time chip for notes over 100 words
+- Open Graph + Twitter Card + JSON-LD Article schema for rich social previews
+- KaTeX math rendering (`--math`, opt-in, loaded only on pages with `$math$`)
+- Mermaid diagrams (`--mermaid`, opt-in, loaded only on pages with ` ```mermaid ` blocks)
+- Code highlighting via chroma (B&W "bw" style)
+- Cookie banner (`--cookie-banner`, opt-in, localStorage dismissal)
+- "Built with Granit" footer link (suppressible via `--no-branding`)
+
+Frontmatter directives:
+
+```yaml
+---
+title: ...           # overrides H1/filename fallback
+date: 2026-04-08     # shown under title; sorts the index page
+tags: [a, b, c]      # array OR "a, b, c" comma string
+author: Jane Doe     # per-note author
+image: cover.png     # per-note og:image (relative path)
+publish: false       # exclude from publish even when folder is published
+noindex: true        # exclude from sitemap, emit robots noindex
+legal: impressum     # render to /impressum.html (root, not under /notes/)
+legal: datenschutz   # render to /datenschutz.html
+---
+```
+
+GitHub Pages workflow (60 seconds to live):
+
+```bash
+cd ~/your-repo
+granit publish build ~/Notes/Research --output ./docs --site-url "https://you.github.io/your-repo"
+git add docs/ && git commit -m "publish notes" && git push
+# Repo Settings -> Pages -> Source: Deploy from a branch / docs
+```
+
+Full reference: [docs/PUBLISH.md](PUBLISH.md).
 
 ### Blog Publisher
 
