@@ -185,6 +185,7 @@ type TaskManager struct {
 	filterTag      string                // "" = no tag filter, "tagname" = filter to this tag
 	filterPriority int                   // -1 = no priority filter, 0-4 = filter to this level
 	filterTriage   tasks.TriageState     // "" = no triage filter, "inbox"/"triaged"/etc. = filter
+	filterProject  string                // "" = no project filter, "name" = filter to this project name
 	searchTerm     string                // "" = no search, otherwise substring or "#tag" query
 
 	// Saved filter views — power users persist a filter combo
@@ -413,11 +414,18 @@ func CountTasksDueToday(notes map[string]*vault.Note) int {
 	return CountTasksDueTodayFromList(ParseAllTasks(notes))
 }
 
-// CountTasksDueTodayFromList counts from a pre-parsed task list.
-func CountTasksDueTodayFromList(tasks []Task) int {
+// CountTasksDueTodayFromList counts from a pre-parsed task list. Excludes
+// snoozed and dropped tasks so the status-bar badge matches what the user
+// actually sees in the active TaskManager views — otherwise the user sees
+// "5 due today" in the status bar but only 3 rows in Plan because 2 have
+// been snoozed/dropped, and they have to dig to figure out the discrepancy.
+func CountTasksDueTodayFromList(tasksList []Task) int {
 	count := 0
-	for _, t := range tasks {
-		if !t.Done && t.DueDate != "" && (tmIsToday(t.DueDate) || tmIsOverdue(t.DueDate)) {
+	for _, t := range tasksList {
+		if t.Done || tmIsSnoozed(t) || t.Triage == tasks.TriageDropped {
+			continue
+		}
+		if t.DueDate != "" && (tmIsToday(t.DueDate) || tmIsOverdue(t.DueDate)) {
 			count++
 		}
 	}
@@ -429,11 +437,18 @@ func CountOverdueTasks(notes map[string]*vault.Note) int {
 	return CountOverdueTasksFromList(ParseAllTasks(notes))
 }
 
-// CountOverdueTasksFromList counts from a pre-parsed task list.
-func CountOverdueTasksFromList(tasks []Task) int {
+// CountOverdueTasksFromList counts from a pre-parsed task list. Same
+// exclusion logic as CountTasksDueTodayFromList — snoozed/dropped tasks
+// are not part of the user's actionable workload, so counting them in
+// the overdue badge inflates the number above what the views actually
+// surface and makes the badge a lie.
+func CountOverdueTasksFromList(tasksList []Task) int {
 	count := 0
-	for _, t := range tasks {
-		if !t.Done && t.DueDate != "" && tmIsOverdue(t.DueDate) {
+	for _, t := range tasksList {
+		if t.Done || tmIsSnoozed(t) || t.Triage == tasks.TriageDropped {
+			continue
+		}
+		if t.DueDate != "" && tmIsOverdue(t.DueDate) {
 			count++
 		}
 	}
@@ -687,6 +702,53 @@ func (tm *TaskManager) reparse() {
 	tm.cursor = savedCursor
 }
 
+// doDelete removes the task line entirely from disk. Prefers the unified
+// TaskStore (stable IDs, sidecar tombstone) when wired so the deletion
+// participates in the planning loop; falls back to in-place line removal
+// via the vault note when the store isn't available. Returns true on
+// success so the caller can refresh state and surface a status message.
+func (tm *TaskManager) doDelete(task Task) bool {
+	if tm.taskStore != nil && task.ID != "" {
+		if err := tm.taskStore.Delete(task.ID); err == nil {
+			tm.fileChanged = true
+			tm.lastChangedNote = task.NotePath
+			return true
+		}
+		// Fall through to legacy path on store error so the user
+		// still gets the line removed even if the sidecar is in
+		// a weird state.
+	}
+	if tm.vault == nil {
+		return false
+	}
+	note := tm.vault.GetNote(task.NotePath)
+	if note == nil {
+		return false
+	}
+	lines := strings.Split(note.Content, "\n")
+	if task.LineNum < 1 || task.LineNum > len(lines) {
+		return false
+	}
+	tm.undoStack = append(tm.undoStack, taskAction{
+		NotePath: task.NotePath,
+		LineNum:  task.LineNum,
+		OldLine:  lines[task.LineNum-1],
+	})
+	if len(tm.undoStack) > 10 {
+		tm.undoStack = tm.undoStack[len(tm.undoStack)-10:]
+	}
+	lines = append(lines[:task.LineNum-1], lines[task.LineNum:]...)
+	newContent := strings.Join(lines, "\n")
+	note.Content = newContent
+	absPath := filepath.Join(tm.vault.Root, task.NotePath)
+	if err := atomicWriteNote(absPath, newContent); err != nil {
+		return false
+	}
+	tm.fileChanged = true
+	tm.lastChangedNote = task.NotePath
+	return true
+}
+
 // doToggle toggles the done state of the task at the current cursor.
 func (tm *TaskManager) doToggle(task Task) {
 	newDone := !task.Done
@@ -751,11 +813,35 @@ func (tm *TaskManager) createNextRecurrence(task Task) {
 		newLine += " #" + task.Recurrence
 	}
 
-	// Append to the same file
+	// Dedup guard: if the user toggles a recurring task done →
+	// undone → done in quick succession (or any other reason
+	// doToggle fires twice on the same instance), createNextRecurrence
+	// would otherwise append a fresh copy each time, leaving the
+	// vault with N identical "next instance" lines. Scan the source
+	// file for an existing incomplete task with the same normalised
+	// text AND the same target due date — if found, skip the append
+	// and just update the status message so the user knows the
+	// recurrence is already in flight.
 	note := tm.vault.GetNote(task.NotePath)
 	if note == nil {
 		return
 	}
+	wantedNorm := tasks.NormalizeTaskText(newLine)
+	for _, line := range strings.Split(note.Content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "- [ ]") {
+			continue
+		}
+		if !strings.Contains(trimmed, dateStr) {
+			continue
+		}
+		if tasks.NormalizeTaskText(trimmed) == wantedNorm {
+			tm.statusMsg = fmt.Sprintf("Task completed — next instance for %s already exists", dateStr)
+			return
+		}
+	}
+
+	// Append to the same file
 	note.Content += "\n" + newLine + "\n"
 	absPath := filepath.Join(tm.vault.Root, task.NotePath)
 	if err := atomicWriteNote(absPath, note.Content); err != nil {
@@ -1610,7 +1696,7 @@ func (tm *TaskManager) filterToday() []Task {
 	var unscheduledToday, tomorrow []Task
 
 	for _, t := range tm.allTasks {
-		if t.Done || tmIsSnoozed(t) {
+		if tm.shouldHideFromActive(t) {
 			continue
 		}
 		switch timeBlockGroup(t) {
@@ -1661,7 +1747,7 @@ func (tm *TaskManager) filterToday() []Task {
 func (tm *TaskManager) filterUpcoming() []Task {
 	var out []Task
 	for _, t := range tm.allTasks {
-		if t.Done || tmIsSnoozed(t) {
+		if tm.shouldHideFromActive(t) {
 			continue
 		}
 		if t.DueDate == "" {
@@ -1685,7 +1771,7 @@ func (tm *TaskManager) filterUpcoming() []Task {
 func (tm *TaskManager) filterAll() []Task {
 	var out []Task
 	for _, t := range tm.allTasks {
-		if t.Done || tmIsSnoozed(t) {
+		if tm.shouldHideFromActive(t) {
 			continue
 		}
 		out = append(out, t)
@@ -1725,7 +1811,7 @@ func (tm *TaskManager) filterCompleted() []Task {
 func (tm *TaskManager) filterInbox() []Task {
 	var out []Task
 	for _, t := range tm.allTasks {
-		if t.Done || tmIsSnoozed(t) {
+		if tm.shouldHideFromActive(t) {
 			continue
 		}
 		if t.Triage == "" || t.Triage == tasks.TriageInbox {
@@ -1751,7 +1837,7 @@ func (tm *TaskManager) filterStale() []Task {
 	cutoff := time.Now().AddDate(0, 0, -7)
 	var out []Task
 	for _, t := range tm.allTasks {
-		if t.Done || tmIsSnoozed(t) {
+		if tm.shouldHideFromActive(t) {
 			continue
 		}
 		// "Stale" criterion: created > 7d ago AND not
@@ -1786,7 +1872,7 @@ func (tm *TaskManager) filterStale() []Task {
 func (tm *TaskManager) filterQuickWins() []Task {
 	var out []Task
 	for _, t := range tm.allTasks {
-		if t.Done || tmIsSnoozed(t) {
+		if tm.shouldHideFromActive(t) {
 			continue
 		}
 		if t.Priority < 2 {
@@ -1820,7 +1906,7 @@ func (tm *TaskManager) filterQuickWins() []Task {
 func (tm *TaskManager) filterByTag() []Task {
 	var out []Task
 	for _, t := range tm.allTasks {
-		if t.Done || tmIsSnoozed(t) {
+		if tm.shouldHideFromActive(t) {
 			continue
 		}
 		out = append(out, t)
@@ -1870,7 +1956,7 @@ func (tm *TaskManager) filterReview() []Task {
 func (tm *TaskManager) filterByProject() []Task {
 	var out []Task
 	for _, t := range tm.allTasks {
-		if t.Done || tmIsSnoozed(t) {
+		if tm.shouldHideFromActive(t) {
 			continue
 		}
 		out = append(out, t)
@@ -1896,7 +1982,7 @@ func (tm *TaskManager) filterCalendarDay() []Task {
 	dateStr := fmt.Sprintf("%04d-%02d-%02d", tm.calYear, int(tm.calMonth), tm.calDay)
 	var out []Task
 	for _, t := range tm.allTasks {
-		if t.Done {
+		if tm.shouldHideFromActive(t) {
 			continue
 		}
 		if t.DueDate == dateStr {
@@ -2007,6 +2093,45 @@ func tmIsSnoozed(task Task) bool {
 		return false
 	}
 	return time.Now().Before(t)
+}
+
+// tmIsHiddenFromActive returns true when a task should NOT appear in the
+// active views (Plan, Upcoming, All, Inbox, Stale, Quick Wins, By Tag,
+// By Project, Calendar, Kanban). Three states qualify: completed (Done),
+// snoozed (SnoozedUntil in the future), or dropped (TriageDropped).
+//
+// Centralising this check fixes a long-standing leak where 'm d' /
+// ';'-cycle to Dropped did not actually remove the task from the user's
+// daily view — every filter function checked Done+Snoozed but missed
+// Dropped, so triaging away a task did nothing visible. The Done view
+// (filterCompleted) and Review view (filterReview) intentionally do
+// NOT use this helper because they specifically want completed tasks.
+//
+// Free function form retained for callers that don't have the TaskManager
+// in scope; methods that DO should prefer (*TaskManager).shouldHideFromActive
+// because it also respects an active triage filter (so the user can use
+// F → triage:dropped to see and recover dropped tasks).
+func tmIsHiddenFromActive(task Task) bool {
+	return task.Done || tmIsSnoozed(task) || task.Triage == tasks.TriageDropped
+}
+
+// shouldHideFromActive is the filter-function entry point for "should this
+// task be excluded from the current view?". Same semantics as
+// tmIsHiddenFromActive *except* when the user has set an explicit triage
+// filter — in that case the base view must NOT pre-hide the very state
+// the user asked to see, otherwise applyTriageFilter runs against an
+// empty pool and the user can't reach their dropped/snoozed tasks. Without
+// this opt-out, dropped tasks were unrecoverable through the UI: hidden
+// from every active view AND filtered out before the triage filter could
+// match them.
+func (tm *TaskManager) shouldHideFromActive(task Task) bool {
+	switch tm.filterTriage {
+	case tasks.TriageDropped:
+		return task.Done || tmIsSnoozed(task) // show dropped, hide other normally-hidden states
+	case tasks.TriageSnoozed:
+		return task.Done || task.Triage == tasks.TriageDropped // show snoozed
+	}
+	return tmIsHiddenFromActive(task)
 }
 
 func tmFormatMinutes(minutes int) string {
@@ -2120,7 +2245,24 @@ func (tm *TaskManager) applyActiveFilters(tasks []Task) []Task {
 	if tm.filterPriority >= 0 {
 		tasks = tm.applyPriorityFilter(tasks)
 	}
+	if tm.filterProject != "" {
+		tasks = tm.applyProjectFilter(tasks)
+	}
 	return tasks
+}
+
+// applyProjectFilter narrows the list to tasks whose Project field
+// matches tm.filterProject (case-insensitive). Powers the 'P' shortcut
+// — "show only tasks for the project the cursor is on."
+func (tm *TaskManager) applyProjectFilter(taskList []Task) []Task {
+	target := strings.ToLower(strings.TrimSpace(tm.filterProject))
+	var out []Task
+	for _, t := range taskList {
+		if strings.EqualFold(strings.TrimSpace(t.Project), target) {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func (tm *TaskManager) applyTagFilter(tasks []Task) []Task {
@@ -2291,7 +2433,14 @@ func (tm *TaskManager) kanbanColumns() [4][]Task {
 	var cols [4][]Task
 
 	for _, t := range tm.allTasks {
-		if tmIsSnoozed(t) {
+		// Hide snoozed and dropped from the kanban; Done still appears
+		// in the rightmost "Done" column because that column is the
+		// completion bucket. Dropped tasks have no column — they should
+		// not visually clutter the board. Honors the active triage
+		// filter the same way active views do, so 'F triage:dropped'
+		// still shows dropped tasks (they cluster into Backlog since
+		// dropped + no due date = Backlog by the switch below).
+		if tm.shouldHideFromActive(t) && !t.Done {
 			continue
 		}
 		hasDoingTag := false
@@ -2687,29 +2836,47 @@ func (tm *TaskManager) findFreeSlot(blockStart, blockEnd, duration int, exclude 
 // vault cache and undo stack consistent; the planner-side write goes
 // through UpsertPlannerBlock (idempotent — re-scheduling replaces,
 // doesn't duplicate).
+//
+// Surfaces failures via statusMsg. Previously both writes swallowed
+// errors silently — if the planner mirror failed (disk full, permission
+// denied), the source line got the ⏰ marker but the calendar view
+// never showed the block, leaving the schedule visibly inconsistent
+// without explanation.
 func (tm *TaskManager) assignSchedule(task Task, startTime, endTime string) {
 	marker := " ⏰ " + startTime + "-" + endTime
-	tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+	if !tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
 		cleaned := tmScheduleRe.ReplaceAllString(line, "")
 		return strings.TrimRight(cleaned, " ") + marker
-	})
+	}) {
+		tm.statusMsg = "Schedule: failed to update source line"
+		return
+	}
 	ref := ScheduleRef{NotePath: task.NotePath, LineNum: task.LineNum, Text: task.Text}
 	today := time.Now().Format("2006-01-02")
-	_ = UpsertPlannerBlock(tm.vault.Root, today, ref, PlannerBlock{
+	if err := UpsertPlannerBlock(tm.vault.Root, today, ref, PlannerBlock{
 		Date: today, StartTime: startTime, EndTime: endTime,
 		Text: task.Text, BlockType: "task", SourceRef: ref,
-	})
+	}); err != nil {
+		tm.statusMsg = "Schedule: source updated, planner write failed: " + err.Error()
+	}
 }
 
 // removeScheduleMarker clears the ⏰ marker from the task's source line AND
-// removes the mirrored planner block from today's Planner file.
+// removes the mirrored planner block from today's Planner file. Errors on
+// either side are surfaced via statusMsg so a half-applied unschedule
+// doesn't go unnoticed.
 func (tm *TaskManager) removeScheduleMarker(task Task) {
-	tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
+	if !tm.writeLineChange(task.NotePath, task.LineNum, func(line string) string {
 		return tmScheduleRe.ReplaceAllString(line, "")
-	})
+	}) {
+		tm.statusMsg = "Unschedule: failed to update source line"
+		return
+	}
 	ref := ScheduleRef{NotePath: task.NotePath, LineNum: task.LineNum, Text: task.Text}
 	today := time.Now().Format("2006-01-02")
-	_ = RemovePlannerBlock(tm.vault.Root, today, ref)
+	if err := RemovePlannerBlock(tm.vault.Root, today, ref); err != nil {
+		tm.statusMsg = "Unschedule: source updated, planner write failed: " + err.Error()
+	}
 }
 
 // updateInlineEdit handles the i-key inline edit mode. The user
@@ -3598,13 +3765,19 @@ func (tm TaskManager) updateKanban(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 	key := msg.String()
 
-	// Handle pending confirmation
+	// Handle pending confirmation. Only y/Y fires the action; any other
+	// key dismisses the prompt with a "Cancelled" status so the user
+	// gets visible feedback that their non-yes keystroke was registered
+	// (otherwise an accidental Enter looks identical to having taken
+	// no action and the prompt just vanishes).
 	if tm.confirmMsg != "" {
 		switch key {
 		case "y", "Y":
 			if tm.confirmAction != nil {
 				tm.confirmAction()
 			}
+		default:
+			tm.statusMsg = "Cancelled"
 		}
 		tm.confirmMsg = ""
 		tm.confirmAction = nil
@@ -3829,6 +4002,37 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 			}
 		}
 
+	// Delete cursor task (with confirmation). The line is removed
+	// from disk via TaskStore.Delete (or in-place line removal as a
+	// fallback). Irreversible — undo is line-replace and a deleted
+	// line has no slot to restore into, so we gate on a y/n prompt
+	// rather than risk a quick-keypress mishap deleting the wrong
+	// task. The preview shows the truncated task text so the user
+	// confirms what they're actually about to remove.
+	//
+	// Three keys bound: `Ctrl+D` (universal convention), `Delete`
+	// (the keyboard key), and `!` (legacy alias kept for muscle
+	// memory). The previous binding was only `!` — undiscoverable,
+	// users couldn't find how to delete tasks at all.
+	case "!", "ctrl+d", "delete":
+		if tm.cursor < len(tm.filtered) {
+			task := tm.filtered[tm.cursor]
+			preview := tmCleanText(task.Text)
+			if len(preview) > 60 {
+				preview = preview[:57] + "..."
+			}
+			tm.confirmMsg = fmt.Sprintf("Delete task: %q? (y/n)", preview)
+			taskCopy := task
+			tm.confirmAction = func() {
+				if tm.doDelete(taskCopy) {
+					tm.statusMsg = "Task deleted"
+					tm.reparse()
+				} else {
+					tm.statusMsg = "Delete failed"
+				}
+			}
+		}
+
 	// Save task as template
 	case "T":
 		if tm.cursor < len(tm.filtered) {
@@ -4048,6 +4252,28 @@ func (tm TaskManager) updateNormal(msg tea.KeyMsg) (TaskManager, tea.Cmd) {
 		}
 		tm.rebuildFiltered()
 		tm.saveFilters()
+
+	// Project filter: focus the cursor task's project. Press again
+	// (or use the unified clear) to drop the filter. Mnemonic: '=' as
+	// in "show me what equals this project". When the cursor task has
+	// no Project field set, the keystroke is a no-op + status hint
+	// rather than a silent miss.
+	case "=":
+		if tm.cursor >= len(tm.filtered) {
+			break
+		}
+		task := tm.filtered[tm.cursor]
+		// Toggle: if this project is already the active filter, clear it.
+		if strings.EqualFold(strings.TrimSpace(tm.filterProject), strings.TrimSpace(task.Project)) && tm.filterProject != "" {
+			tm.filterProject = ""
+			tm.statusMsg = "Project filter cleared"
+		} else if strings.TrimSpace(task.Project) == "" {
+			tm.statusMsg = "No project on this task — set one via frontmatter or @project:Name"
+		} else {
+			tm.filterProject = task.Project
+			tm.statusMsg = "Filter: project = " + task.Project + " (= to clear)"
+		}
+		tm.rebuildFiltered()
 
 	// Priority filter: cycle none -> highest -> high -> medium -> low -> none
 	case "P":

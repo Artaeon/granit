@@ -227,12 +227,16 @@ func (tm *TaskManager) renderHelpOverlay(b *strings.Builder, w int) {
 			{"y", "Toggle time tracker (▸ Nm badge appears on tracked task; press y again to stop)"},
 			{"B", "Time-block: schedule cursor task into morning/midday/afternoon/evening"},
 		}},
+		{"Delete & archive", [][2]string{
+			{"!", "Delete cursor task — removes the line from disk (with confirm). Irreversible: undo can restore line-edits but not deletions"},
+			{"m d", "Mark dropped — keeps the line, hides from active views (reversible via 'm i' inbox)"},
+			{"X", "Archive ALL completed tasks >30 days (with confirm) — bulk cleanup"},
+		}},
 		{"Bulk", [][2]string{
 			{"v", "Enter / exit select mode"},
 			{"Space", "Toggle selection (in select mode)"},
 			{"T", "Save cursor task as template"},
 			{"t", "Create task from template"},
-			{"X", "Archive completed tasks >30 days (with confirm)"},
 		}},
 	}
 
@@ -280,6 +284,14 @@ func (tm *TaskManager) renderTitle(b *strings.Builder, w int) {
 	total := 0
 	done := 0
 	for _, t := range tm.allTasks {
+		// Snoozed/dropped tasks are not part of the user's active workload —
+		// excluding them from the denominator keeps the progress percentage
+		// honest (otherwise dropping "won't do" tasks would PUNISH the user
+		// by lowering their done/total ratio, the exact opposite of what
+		// dropping a task should mean).
+		if !t.Done && (tmIsSnoozed(t) || t.Triage == tasks.TriageDropped) {
+			continue
+		}
 		total++
 		if t.Done {
 			done++
@@ -794,6 +806,19 @@ func (tm *TaskManager) renderTaskList(b *strings.Builder, w int) {
 		b.WriteString("\n")
 	}
 
+	// Dropped-tasks indicator — same idea: dropped tasks are hidden across
+	// all active views, so the user needs to know they exist (and how to
+	// recover them) or "drop" feels like silent data loss. 'm i' marks a
+	// task back to inbox; 7 (Inbox view) shows them all together.
+	if dropped := tm.droppedCount(); dropped > 0 {
+		word := "tasks"
+		if dropped == 1 {
+			word = "task"
+		}
+		b.WriteString(DimStyle.Render(fmt.Sprintf("  ↪ %d dropped %s hidden (press F then type 'triage:dropped' to see them, then 'm i' to restore)", dropped, word)))
+		b.WriteString("\n")
+	}
+
 	tm.renderSelectedTaskPane(b, w)
 }
 
@@ -811,6 +836,21 @@ func (tm *TaskManager) snoozedCount() int {
 	n := 0
 	for _, t := range tm.allTasks {
 		if !t.Done && tmIsSnoozed(t) {
+			n++
+		}
+	}
+	return n
+}
+
+// droppedCount returns the number of tasks the user has explicitly dropped
+// (TriageDropped). These are excluded from every active view but still live
+// on disk — the user can recover them via the Inbox or by setting triage
+// back to inbox ('m i'). Surfacing the count below the list is the cue
+// that "you marked some tasks as dropped — they're not lost, just hidden".
+func (tm *TaskManager) droppedCount() int {
+	n := 0
+	for _, t := range tm.allTasks {
+		if !t.Done && t.Triage == tasks.TriageDropped {
 			n++
 		}
 	}
@@ -1589,7 +1629,11 @@ func (tm *TaskManager) renderInput(b *strings.Builder, w int) {
 			count := 0
 			totalEst := 0
 			for _, t := range tm.allTasks {
-				if t.Done || t.ScheduledTime == "" {
+				// Skip tasks that aren't counted in the user's active
+				// workload — done/snoozed/dropped never appear in the
+				// scheduled-blocks renderer below, so counting them
+				// here would make the time-block summary lie.
+				if tmIsHiddenFromActive(t) || t.ScheduledTime == "" {
 					continue
 				}
 				parts := strings.SplitN(t.ScheduledTime, "-", 2)
@@ -1708,8 +1752,9 @@ func (tm *TaskManager) renderHelp(b *strings.Builder, w int) {
 		}
 	default:
 		pairs = []struct{ Key, Desc string }{
-			{"j/k", "nav"}, {"x", "done"}, {"a", "add"}, {"d", "date"}, {"p", "prio"},
-			{"B", "time block"}, {"r", "reschedule"}, {"E", "estimate"},
+			{"j/k", "nav"}, {"x", "done"}, {"Ctrl+D", "delete"}, {"a", "add"},
+			{"d", "date"}, {"p", "prio"}, {"r", "reschedule"},
+			{"=", "this project"}, {"m d", "drop"}, {"X", "archive done"},
 			{"/", "search"}, {"?", "help"}, {"Tab", "view"}, {"Esc", "close"},
 		}
 	}

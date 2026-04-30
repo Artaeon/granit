@@ -6,7 +6,10 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/artaeon/granit/internal/config"
+	"github.com/artaeon/granit/internal/tasks"
 	"github.com/artaeon/granit/internal/vault"
 )
 
@@ -1524,5 +1527,294 @@ func TestTimeBlockGroup(t *testing.T) {
 				t.Errorf("timeBlockGroup(%v) = %q, want %q", tc.task, got, tc.want)
 			}
 		})
+	}
+}
+
+// doDelete (legacy path, no TaskStore) removes the cursor task line from disk
+// and pushes the old line onto the undo stack. Confirms the user has a way to
+// remove a single task without going through the bulk-archive flow.
+func TestTaskManagerDoDelete_RemovesLineAndUpdatesVault(t *testing.T) {
+	tmpDir := t.TempDir()
+	content := "# Tasks\n\n- [ ] Keep me\n- [ ] Delete me\n- [ ] Also keep\n"
+	path := tmpDir + "/Tasks.md"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	v := &vault.Vault{Root: tmpDir}
+	v.Notes = map[string]*vault.Note{
+		"Tasks.md": {Path: path, RelPath: "Tasks.md", Content: content},
+	}
+	tm := &TaskManager{vault: v}
+	target := Task{Text: "Delete me", NotePath: "Tasks.md", LineNum: 4}
+
+	if !tm.doDelete(target) {
+		t.Fatal("doDelete returned false on the legacy path")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if strings.Contains(got, "Delete me") {
+		t.Errorf("'Delete me' line should be gone from disk:\n%s", got)
+	}
+	if !strings.Contains(got, "Keep me") || !strings.Contains(got, "Also keep") {
+		t.Errorf("siblings must remain after delete:\n%s", got)
+	}
+	// Vault cache must reflect the deletion so re-rendering doesn't
+	// resurrect the line until the next disk re-read.
+	if strings.Contains(v.Notes["Tasks.md"].Content, "Delete me") {
+		t.Errorf("vault cache still has deleted line:\n%s", v.Notes["Tasks.md"].Content)
+	}
+	if !tm.fileChanged {
+		t.Error("fileChanged must be set so the host triggers a refresh")
+	}
+	if len(tm.undoStack) != 1 || tm.undoStack[0].OldLine != "- [ ] Delete me" {
+		t.Errorf("undoStack should record the old line for status messaging; got %+v", tm.undoStack)
+	}
+}
+
+// CountTasksDueTodayFromList and CountOverdueTasksFromList feed the global
+// status-bar badges. They MUST exclude snoozed and dropped tasks so the
+// badge ("5 due today") matches what the TaskManager view actually renders
+// after the same exclusions. Without this, dropping or snoozing a task
+// reduces the visible row count but the badge stays the same — looks like
+// a bug to the user.
+func TestCountFunctions_ExcludeDroppedAndSnoozed(t *testing.T) {
+	today := time.Now().Format("2006-01-02")
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	future := time.Now().AddDate(0, 0, 1).Format("2006-01-02T15:04")
+
+	list := []Task{
+		{Text: "due today, active", DueDate: today},
+		{Text: "due today, dropped", DueDate: today, Triage: tasks.TriageDropped},
+		{Text: "due today, snoozed", DueDate: today, SnoozedUntil: future},
+		{Text: "overdue, active", DueDate: yesterday},
+		{Text: "overdue, dropped", DueDate: yesterday, Triage: tasks.TriageDropped},
+		{Text: "overdue, snoozed", DueDate: yesterday, SnoozedUntil: future},
+	}
+
+	// Due today/overdue counter: only the 2 active tasks count.
+	if got := CountTasksDueTodayFromList(list); got != 2 {
+		t.Errorf("CountTasksDueTodayFromList = %d, want 2 (active overdue + active due today; snoozed and dropped must be excluded)", got)
+	}
+	// Overdue-only counter: only the 1 active overdue task counts.
+	if got := CountOverdueTasksFromList(list); got != 1 {
+		t.Errorf("CountOverdueTasksFromList = %d, want 1 (only the active overdue task; snoozed and dropped overdue must be excluded)", got)
+	}
+}
+
+// createNextRecurrence used to blindly append a fresh "next instance" line
+// every time a recurring task transitioned to done. Toggling done →
+// undone → done in quick succession would leave 2+ identical next-instance
+// lines in the vault (the bug that compounded into the 5x duplication
+// the user originally reported). Now it scans for an existing incomplete
+// task with the same normalised text + target date before appending.
+func TestCreateNextRecurrence_DedupesOnRapidToggle(t *testing.T) {
+	tmpDir := t.TempDir()
+	content := "# Tasks\n\n- [ ] meditate \U0001F4C5 2026-04-28 #daily\n"
+	path := tmpDir + "/Tasks.md"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	v := &vault.Vault{Root: tmpDir, Notes: map[string]*vault.Note{
+		"Tasks.md": {Path: path, RelPath: "Tasks.md", Content: content},
+	}}
+	tm := &TaskManager{vault: v}
+
+	task := Task{
+		Text:       "meditate \U0001F4C5 2026-04-28 #daily",
+		NotePath:   "Tasks.md",
+		LineNum:    3,
+		Recurrence: "daily",
+	}
+
+	// Simulate three rapid toggles (each creating a "next instance"
+	// attempt). Only the FIRST should write a new line.
+	tm.createNextRecurrence(task)
+	tm.createNextRecurrence(task)
+	tm.createNextRecurrence(task)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	// Count incomplete "meditate" lines — should be exactly 2 (original
+	// + 1 next instance), never 4 (original + 3 dups).
+	count := strings.Count(got, "- [ ] meditate")
+	if count != 2 {
+		t.Errorf("expected 2 incomplete 'meditate' lines after rapid toggle, got %d:\n%s", count, got)
+	}
+	// Status should reflect the dedup hit, not "Task completed — next: ..."
+	if !strings.Contains(tm.statusMsg, "already exists") {
+		t.Errorf("expected statusMsg to mention 'already exists' after dup attempt, got %q", tm.statusMsg)
+	}
+}
+
+// When the user explicitly filters for dropped tasks (F → triage:dropped),
+// the base filter functions must STOP hiding dropped — otherwise the user
+// has no UI path to recover them. This test pins down the recovery flow:
+// filterAll without filter excludes dropped; filterAll with filterTriage
+// set to TriageDropped includes dropped.
+func TestFilterAll_TriageDroppedFilterMakesDroppedVisible(t *testing.T) {
+	keep := Task{Text: "active", Triage: tasks.TriageInbox}
+	dropped := Task{Text: "dropped", Triage: tasks.TriageDropped}
+	tm := &TaskManager{allTasks: []Task{keep, dropped}}
+
+	// Default: dropped is hidden.
+	got := tm.filterAll()
+	for _, x := range got {
+		if x.Triage == tasks.TriageDropped {
+			t.Fatalf("default filterAll must hide dropped tasks; got %+v", got)
+		}
+	}
+
+	// With explicit triage:dropped filter: dropped becomes visible (so the
+	// user can press 'm i' on it to restore).
+	tm.filterTriage = tasks.TriageDropped
+	got = tm.filterAll()
+	foundDropped := false
+	for _, x := range got {
+		if x.Triage == tasks.TriageDropped {
+			foundDropped = true
+		}
+	}
+	if !foundDropped {
+		t.Errorf("filterAll with filterTriage=TriageDropped must include dropped tasks so the user can recover them; got %+v", got)
+	}
+}
+
+// droppedCount reports the number of explicitly-dropped active tasks so the
+// renderer can surface "↪ N dropped tasks hidden". Excludes done tasks
+// because completed work isn't conceptually "hidden" — the Done view shows
+// it. A non-zero count is the user's cue that 'm d' put tasks somewhere
+// retrievable rather than deleting them.
+func TestDroppedCount_ExcludesDoneCountsActiveDropped(t *testing.T) {
+	tm := &TaskManager{allTasks: []Task{
+		{Text: "active", Triage: tasks.TriageInbox},
+		{Text: "dropped 1", Triage: tasks.TriageDropped},
+		{Text: "dropped 2", Triage: tasks.TriageDropped},
+		{Text: "done+dropped", Done: true, Triage: tasks.TriageDropped},
+	}}
+	if got := tm.droppedCount(); got != 2 {
+		t.Errorf("droppedCount = %d, want 2 (active dropped only — done tasks live in the Done view, not 'hidden')", got)
+	}
+}
+
+// Tasks with TriageDropped must NOT appear in any active view. This was a
+// long-standing leak: 'm d' / ';' cycle to dropped wrote the state but the
+// filter functions only checked Done+Snoozed, so the user's "drop this from
+// my queue" gesture had no visible effect.
+func TestFilterFunctions_HideDroppedTasks(t *testing.T) {
+	keep := Task{Text: "active task", DueDate: "2026-04-28", Priority: 3}
+	dropped := Task{Text: "dropped task", DueDate: "2026-04-28", Priority: 3, Triage: tasks.TriageDropped}
+
+	tm := &TaskManager{allTasks: []Task{keep, dropped}}
+
+	assertOnlyKeep := func(name string, got []Task) {
+		t.Helper()
+		for _, x := range got {
+			if x.Text == "dropped task" {
+				t.Errorf("%s: dropped task leaked into results: %+v", name, got)
+				return
+			}
+		}
+	}
+	assertOnlyKeep("filterAll", tm.filterAll())
+	assertOnlyKeep("filterToday", tm.filterToday())
+	assertOnlyKeep("filterUpcoming", tm.filterUpcoming())
+	assertOnlyKeep("filterInbox", tm.filterInbox())
+	assertOnlyKeep("filterStale", tm.filterStale())
+	assertOnlyKeep("filterQuickWins", tm.filterQuickWins())
+	assertOnlyKeep("filterByTag", tm.filterByTag())
+	assertOnlyKeep("filterByProject", tm.filterByProject())
+
+	// Calendar day for the same due date — dropped task must not appear.
+	tm.calYear, tm.calMonth, tm.calDay = 2026, 4, 28
+	assertOnlyKeep("filterCalendarDay", tm.filterCalendarDay())
+
+	// Kanban board — dropped task must not occupy any column.
+	cols := tm.kanbanColumns()
+	for c, col := range cols {
+		for _, x := range col {
+			if x.Text == "dropped task" {
+				t.Errorf("kanbanColumns col %d contains dropped task: %+v", c, col)
+			}
+		}
+	}
+}
+
+// The y/N confirmation on '!' (delete) and 'X' (archive) used to silently
+// dismiss on any non-y key — no feedback that the dismissal registered.
+// Now any non-y press sets statusMsg to "Cancelled" so an accidental Enter
+// or stray keypress is visibly distinct from the action firing.
+func TestConfirmReject_SetsCancelledStatus(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(tmpDir+"/Tasks.md", []byte("# Tasks\n\n- [ ] keep me\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	v := &vault.Vault{Root: tmpDir, Notes: map[string]*vault.Note{
+		"Tasks.md": {Path: tmpDir + "/Tasks.md", RelPath: "Tasks.md", Content: "# Tasks\n\n- [ ] keep me\n"},
+	}}
+	tm := TaskManager{
+		vault:    v,
+		filtered: []Task{{Text: "keep me", NotePath: "Tasks.md", LineNum: 3}},
+		cursor:   0,
+	}
+	// Arm the prompt with '!' then dismiss with 'n'.
+	tm, _ = tm.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("!")})
+	if tm.confirmMsg == "" {
+		t.Fatal("expected confirmMsg to be armed")
+	}
+	tm, _ = tm.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	if tm.statusMsg != "Cancelled" {
+		t.Errorf("expected statusMsg=\"Cancelled\" after rejecting confirm, got %q", tm.statusMsg)
+	}
+}
+
+// The "!" key in updateNormal must NOT delete on the first press — it sets
+// the confirmation prompt. The actual delete only fires when the user
+// presses 'y' afterwards. Locks in the y/n gate so a stray '!' keypress
+// can't silently destroy a task line.
+func TestTaskManagerDeleteKey_RequiresConfirmation(t *testing.T) {
+	tmpDir := t.TempDir()
+	content := "# Tasks\n\n- [ ] Don't delete me by accident\n"
+	path := tmpDir + "/Tasks.md"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	v := &vault.Vault{Root: tmpDir}
+	v.Notes = map[string]*vault.Note{
+		"Tasks.md": {Path: path, RelPath: "Tasks.md", Content: content},
+	}
+	tm := TaskManager{
+		vault:    v,
+		filtered: []Task{{Text: "Don't delete me by accident", NotePath: "Tasks.md", LineNum: 3}},
+		cursor:   0,
+	}
+
+	// First press of '!' must arm the confirmation, not delete.
+	tm, _ = tm.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("!")})
+	if tm.confirmMsg == "" {
+		t.Fatal("'!' should set confirmMsg, not delete immediately")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "Don't delete me by accident") {
+		t.Errorf("task should still be on disk after first '!' press; file:\n%s", data)
+	}
+
+	// 'n' rejects the confirmation — task survives.
+	tm, _ = tm.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	if tm.confirmMsg != "" {
+		t.Error("confirm prompt should clear after 'n'")
+	}
+	data, _ = os.ReadFile(path)
+	if !strings.Contains(string(data), "Don't delete me by accident") {
+		t.Errorf("'n' must NOT delete the task; file:\n%s", data)
 	}
 }
