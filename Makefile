@@ -1,4 +1,4 @@
-.PHONY: build run clean test install size completion
+.PHONY: build run clean test install size completion web-setup web-build web-dev web-serve
 
 BINARY=granit
 MODULE=github.com/artaeon/granit
@@ -8,11 +8,27 @@ COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
 DATE=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS=-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 
-build:
+build: web-build
 	@echo "Building $(BINARY)..."
 	@mkdir -p $(BUILD_DIR)
 	go build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) ./cmd/granit/
 	@echo "Built $(BUILD_DIR)/$(BINARY) ($$(du -h $(BUILD_DIR)/$(BINARY) | cut -f1))"
+
+# ── web frontend (SvelteKit, embedded into the granit binary) ─────────
+web-setup:
+	cd web && pnpm install
+
+web-build:
+	cd web && pnpm build
+
+web-dev:
+	cd web && pnpm dev
+
+# `make web-serve VAULT=~/Documents/Main` boots `granit web --dev` plus Vite.
+web-serve:
+	@(go run ./cmd/granit web --dev --addr :8787 $(VAULT)) & \
+	 (cd web && pnpm dev) ; \
+	 wait
 
 run:
 	go run ./cmd/granit/ $(ARGS)
