@@ -45,3 +45,12 @@ desktop/desktop
 desktop/frontend/dist/
 desktop/frontend/node_modules/
 desktop/frontend/package.json.md5
+
+# Web companion (granit web). The SvelteKit SPA is built into
+# internal/serveapi/dist/ and embedded by go:embed at compile time.
+# Re-built by `make build`, so we don't track the artifact in git.
+internal/serveapi/dist/
+web/node_modules/
+web/.svelte-kit/
+web/build/
+web/.vite/

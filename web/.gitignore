@@ -1,0 +1,9 @@
+node_modules/
+.svelte-kit/
+.vite/
+build/
+.DS_Store
+
+# The static SPA build is emitted to ../internal/serveapi/dist/ via the
+# adapter-static config. That path is gitignored at the repo root so the
+# binary always ships against a freshly-built frontend (`make build`).
