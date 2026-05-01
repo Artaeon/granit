@@ -1,0 +1,340 @@
+<script lang="ts">
+  import { goto } from '$app/navigation';
+  import { api, type Task } from '$lib/api';
+  import { inlineMd } from '$lib/util/inlineMd';
+  import SnoozePicker from './SnoozePicker.svelte';
+
+  let {
+    task = $bindable(),
+    compact = false,
+    onChanged,
+    selectedIds = $bindable(new Set<string>()),
+    onOpenDetail
+  }: {
+    task: Task;
+    compact?: boolean;
+    onChanged?: (t: Task) => void;
+    selectedIds?: Set<string>;
+    /** When set, clicking the task body opens a detail panel rather than
+     *  starting in-place edit mode. */
+    onOpenDetail?: (t: Task) => void;
+  } = $props();
+
+  import { tick } from 'svelte';
+
+  let editing = $state(false);
+  let editText = $state(task.text);
+  let editPriority = $state(task.priority);
+  let editDue = $state(task.dueDate ?? '');
+  let busy = $state(false);
+  let editInputEl: HTMLInputElement | undefined = $state();
+  let snoozePickerOpen = $state(false);
+  let snoozePickerAnchor: HTMLElement | undefined = $state();
+
+  function priorityClass(p: number): string {
+    if (p === 1) return 'border-error';
+    if (p === 2) return 'border-warning';
+    if (p === 3) return 'border-info';
+    return 'border-surface1';
+  }
+
+  function priorityBadge(p: number): { label: string; cls: string } | null {
+    if (p === 1) return { label: 'P1', cls: 'bg-error/20 text-error' };
+    if (p === 2) return { label: 'P2', cls: 'bg-warning/20 text-warning' };
+    if (p === 3) return { label: 'P3', cls: 'bg-info/20 text-info' };
+    return null;
+  }
+
+  // Snooze active = SnoozedUntil exists AND is in the future.
+  function isSnoozed(t: Task): boolean {
+    if (!t.snoozedUntil) return false;
+    const sn = new Date(t.snoozedUntil);
+    if (isNaN(sn.getTime())) return false;
+    return sn.getTime() > Date.now();
+  }
+
+  function relSnooze(iso: string): string {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const diff = d.getTime() - Date.now();
+    const mins = Math.round(diff / 60_000);
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs}h`;
+    const days = Math.round(hrs / 24);
+    if (days < 7) return `${days}d`;
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  // Triage cycle order matches granit's UX: inbox → triaged → scheduled → done → dropped → snoozed → inbox
+  const triageOrder: Array<NonNullable<Task['triage']>> = ['inbox', 'triaged', 'scheduled', 'done', 'dropped', 'snoozed'];
+  function nextTriage(cur?: string): NonNullable<Task['triage']> {
+    const i = triageOrder.indexOf((cur as NonNullable<Task['triage']>) || 'inbox');
+    return triageOrder[(i + 1) % triageOrder.length];
+  }
+  function triageTone(t?: string): string {
+    if (t === 'inbox') return 'subtext';
+    if (t === 'triaged') return 'info';
+    if (t === 'scheduled') return 'primary';
+    if (t === 'done') return 'success';
+    if (t === 'dropped') return 'dim';
+    if (t === 'snoozed') return 'warning';
+    return 'subtext';
+  }
+
+  async function toggle(e: Event) {
+    e.stopPropagation();
+    busy = true;
+    try {
+      const updated = await api.patchTask(task.id, { done: !task.done });
+      task = updated;
+      onChanged?.(updated);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function cycleTriage(e: Event) {
+    e.stopPropagation();
+    const nxt = nextTriage(task.triage);
+    busy = true;
+    try {
+      const updated = await api.patchTask(task.id, { triage: nxt });
+      task = updated;
+      onChanged?.(updated);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function applySnooze(until: string) {
+    snoozePickerOpen = false;
+    busy = true;
+    try {
+      const updated = await api.patchTask(task.id, { snoozedUntil: until });
+      task = updated;
+      onChanged?.(updated);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function unsnooze(e: Event) {
+    e.stopPropagation();
+    busy = true;
+    try {
+      const updated = await api.patchTask(task.id, { snoozedUntil: '' });
+      task = updated;
+      onChanged?.(updated);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function toggleSelect(e: Event) {
+    e.stopPropagation();
+    const next = new Set(selectedIds);
+    if (next.has(task.id)) next.delete(task.id);
+    else next.add(task.id);
+    selectedIds = next;
+  }
+
+  function startEdit(e: Event) {
+    e.stopPropagation();
+    editing = true;
+    editText = task.text;
+    editPriority = task.priority;
+    editDue = task.dueDate ?? '';
+    tick().then(() => editInputEl?.focus());
+  }
+
+  async function saveEdit(e: Event) {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (!editText.trim()) {
+      editing = false;
+      return;
+    }
+    busy = true;
+    try {
+      const patch: Parameters<typeof api.patchTask>[1] = {};
+      if (editText !== task.text) patch.text = editText.trim();
+      if (editPriority !== task.priority) patch.priority = editPriority;
+      if (editDue !== (task.dueDate ?? '')) patch.dueDate = editDue;
+      if (Object.keys(patch).length > 0) {
+        const updated = await api.patchTask(task.id, patch);
+        task = updated;
+        onChanged?.(updated);
+      }
+      editing = false;
+    } finally {
+      busy = false;
+    }
+  }
+
+  function cancelEdit() { editing = false; }
+
+  function openNote(e: Event) {
+    e.stopPropagation();
+    goto(`/notes/${encodeURIComponent(task.notePath)}`);
+  }
+
+  let dueClass = $derived.by(() => {
+    if (!task.dueDate) return 'text-dim';
+    const today = new Date().toISOString().slice(0, 10);
+    if (task.dueDate < today) return 'text-error';
+    if (task.dueDate === today) return 'text-warning';
+    return 'text-dim';
+  });
+
+  let badge = $derived(priorityBadge(task.priority));
+  let isSelected = $derived(selectedIds.has(task.id));
+  let snoozed = $derived(isSnoozed(task));
+  // Indent for subtasks. Tasks with Indent>0 are nested under a parent
+  // within the same note. Cap at 4 levels so deep trees don't push
+  // content off-screen.
+  let indentPx = $derived(Math.min(task.indent ?? 0, 4) * 18);
+</script>
+
+<div
+  class="bg-surface0 border-l-2 {priorityClass(task.priority)} border border-surface1 rounded p-2 transition-colors group
+    {isSelected ? 'ring-1 ring-primary' : 'hover:border-primary/40'}"
+  class:opacity-60={task.done}
+  class:opacity-50={snoozed}
+  style="margin-left: {indentPx}px;"
+>
+  {#if !editing}
+    <div class="flex items-start gap-2">
+      <!-- Bulk-select checkbox: visible on hover, or when at least one is selected. -->
+      <label
+        class="cursor-pointer mt-0.5 flex-shrink-0 transition-opacity
+          {selectedIds.size > 0 ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}"
+        title="select for bulk action"
+      >
+        <input type="checkbox" checked={isSelected} onchange={toggleSelect} class="w-3.5 h-3.5 accent-primary cursor-pointer" />
+      </label>
+
+      <button
+        onclick={toggle}
+        disabled={busy}
+        class="w-4 h-4 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center
+          {task.done ? 'bg-success border-success' : 'border-surface2 hover:border-primary'}"
+        aria-label={task.done ? 'mark not done' : 'mark done'}
+      >
+        {#if task.done}
+          <svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
+        {/if}
+      </button>
+
+      <div class="flex-1 min-w-0">
+        <div class="flex items-baseline gap-2">
+          <button
+            onclick={(e) => { if (onOpenDetail) { e.stopPropagation(); onOpenDetail(task); } }}
+            ondblclick={startEdit}
+            class="text-sm text-left flex-1 min-w-0 break-words {task.done ? 'line-through text-dim' : 'text-text'}"
+            title={onOpenDetail ? 'click for details, double-click to edit' : 'double-click to edit'}
+          >
+            {#if (task.indent ?? 0) > 0}
+              <span class="text-dim opacity-60 mr-1">↳</span>
+            {/if}
+            {@html inlineMd(task.text)}
+          </button>
+          {#if badge}
+            <span class="text-[10px] font-mono px-1.5 rounded {badge.cls} flex-shrink-0">{badge.label}</span>
+          {/if}
+          {#if task.estimatedMinutes}
+            <span class="text-[10px] font-mono text-dim flex-shrink-0" title="estimate">{task.estimatedMinutes}m</span>
+          {/if}
+        </div>
+
+        {#if !compact}
+          <div class="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs">
+            {#if task.dueDate}
+              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] {dueClass} bg-surface1/40">due {task.dueDate}</span>
+            {/if}
+            {#if task.scheduledStart}
+              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-primary bg-primary/10">
+                <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                {new Date(task.scheduledStart).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            {/if}
+            {#if snoozed && task.snoozedUntil}
+              <button
+                onclick={unsnooze}
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-warning bg-warning/10 hover:bg-warning/20"
+                title="click to wake now"
+              >
+                <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                {relSnooze(task.snoozedUntil)}
+              </button>
+            {/if}
+            {#if task.tags && task.tags.length > 0}
+              <span class="text-dim">{task.tags.map((t) => '#' + t).join(' ')}</span>
+            {/if}
+            <button
+              onclick={cycleTriage}
+              class="text-[10px] uppercase px-1.5 py-0.5 rounded transition-colors"
+              style="color: var(--color-{triageTone(task.triage)}); background: color-mix(in srgb, var(--color-{triageTone(task.triage)}) 12%, transparent);"
+              title="click to cycle triage state"
+            >{task.triage || 'inbox'}</button>
+            {#if task.dependsOn && task.dependsOn.length > 0}
+              <span class="text-[10px] text-dim" title="depends on {task.dependsOn.join(', ')}">↳ {task.dependsOn.length} dep{task.dependsOn.length !== 1 ? 's' : ''}</span>
+            {/if}
+            {#if task.recurrence}
+              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-info bg-info/10" title="recurring {task.recurrence}">
+                <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M3 16l3 3 3-3M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+                {task.recurrence}
+              </span>
+            {/if}
+            {#if task.notes}
+              <span class="text-[10px] text-dim" title={task.notes}>📝</span>
+            {/if}
+            <span class="flex-1"></span>
+            <button
+              bind:this={snoozePickerAnchor}
+              onclick={(e) => { e.stopPropagation(); snoozePickerOpen = !snoozePickerOpen; }}
+              aria-label="snooze"
+              class="text-dim hover:text-warning opacity-0 group-hover:opacity-100"
+              title="snooze"
+            >
+              <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+            </button>
+            <button onclick={startEdit} class="text-dim hover:text-text opacity-0 group-hover:opacity-100">edit</button>
+            <button onclick={openNote} class="text-dim hover:text-secondary opacity-0 group-hover:opacity-100" aria-label="open note">↗</button>
+          </div>
+        {/if}
+      </div>
+    </div>
+    {#if snoozePickerOpen}
+      <SnoozePicker
+        anchor={snoozePickerAnchor}
+        onClose={() => (snoozePickerOpen = false)}
+        onPick={applySnooze}
+      />
+    {/if}
+  {:else}
+    <div role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+    <form onsubmit={saveEdit} class="space-y-2">
+      <input
+        bind:value={editText}
+        bind:this={editInputEl}
+        class="w-full px-2 py-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text focus:outline-none focus:border-primary"
+      />
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <select bind:value={editPriority} class="bg-mantle border border-surface1 rounded px-2 py-1 text-text text-sm">
+          <option value={0}>no priority</option>
+          <option value={1}>P1</option>
+          <option value={2}>P2</option>
+          <option value={3}>P3</option>
+        </select>
+        <input type="date" bind:value={editDue} class="bg-mantle border border-surface1 rounded px-2 py-1 text-text text-sm" />
+        <span class="flex-1 min-w-0"></span>
+        <button type="button" onclick={cancelEdit} class="px-3 py-1 text-dim hover:text-text">cancel</button>
+        <button type="submit" disabled={busy} class="px-3 py-1 bg-primary text-mantle rounded disabled:opacity-50">save</button>
+      </div>
+    </form>
+    </div>
+  {/if}
+</div>
