@@ -1,0 +1,31 @@
+{
+  "name": "Granit",
+  "short_name": "Granit",
+  "description": "Your vault, anywhere. Web companion to Granit.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1a1b26",
+  "theme_color": "#1a1b26",
+  "categories": ["productivity"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Today", "url": "/", "icons": [{ "src": "/icon.svg", "sizes": "any" }] },
+    { "name": "Tasks", "url": "/tasks" },
+    { "name": "Calendar", "url": "/calendar" }
+  ]
+}

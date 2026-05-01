@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Maskable: full-bleed background, content within safe zone (centered 80%) -->
+  <rect width="512" height="512" fill="#1a1b26"/>
+  <g fill="none" stroke="#bb9af7" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M152 208 L256 128 L360 208 L360 384 L152 384 Z"/>
+    <path d="M208 384 L208 288 L304 288 L304 384"/>
+  </g>
+</svg>
