@@ -6,6 +6,85 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Phase 17: web companion (`granit web`)
+
+A self-hosted web frontend over the same vault, task store, and daily-note
+pipeline as the TUI. Single-binary deployment — the SvelteKit SPA is
+embedded via `go:embed` and served from the same process. See `docs/WEB.md`.
+
+#### Core
+- New subcommand `granit web [--addr :8787] [--dev] [--sync] [vault-path]` —
+  boots an HTTP/JSON + WebSocket API plus the embedded SPA. Auto-watches
+  the vault and broadcasts file events to connected clients.
+- New packages: `internal/granitmeta` (Read/Write helpers for the JSON
+  sidecars: events, projects, goals), `internal/wshub` (small WebSocket
+  fan-out hub), `internal/templates` (template defs extracted from TUI so
+  both surfaces share one source of truth), `internal/serveapi` (HTTP
+  router, handlers, embed).
+- TUI's hardcoded agent presets moved into `agents.BuiltinPresets()` —
+  `agents/preset.go` is now the single source of truth; the TUI's
+  `builtinAgentPresets()` thinly wraps it.
+
+#### Auth
+- argon2id password login (m=64MiB, t=1, p=4). Hash + sessions stored at
+  `<vault>/.granit/web-auth.json`. Sessions are 256-bit random tokens;
+  only their sha256 is persisted.
+- 60-day inactive session expiry. Per-device labels at login (Web / iOS /
+  Android / macOS / Linux / Windows).
+- Endpoints: `/auth/status` `/auth/setup` `/auth/login` `/auth/logout`
+  `/auth/change-password` `/auth/revoke-all`. 250ms anti-bruteforce delay
+  on wrong password.
+- Legacy bearer token (`<vault>/.granit/everything-token`) still printed
+  at boot for CLI scripts; both auth paths accepted by `requireToken`.
+
+#### Surfaces
+- **Dashboard**: customizable widgets (Now / Streaks / Today's Tasks /
+  Scheduled / Goals / Projects / Inbox / Calendar Week / Recent Notes /
+  Daily Note / Quick Capture / Habits / Pomodoro / Pinned). Drag-to-reorder.
+- **Tasks**: 7 view modes (List / Kanban / Inbox / Triage / Quick Wins /
+  Stale / Review). Triage state cycle, snooze with TUI presets,
+  bulk-select + bulk actions, side-panel detail drawer (priority pills,
+  full triage grid, recurrence picker, free-form notes textarea).
+  Subtask indent display, recurrence chip, dependency badge.
+- **Calendar**: 6 views (Day / 3-day / Week / Month / Year / Agenda).
+  Click-and-drag on the time grid creates a task or event; resize
+  bottom edge to change duration. Per-source ICS toggles synced with
+  TUI's `disabled_calendars`. Full events.json CRUD. ICS dedup matches
+  the TUI's `title|start|end` algorithm.
+- **Notes**: CodeMirror editor with wikilink autocomplete, frontmatter
+  editor, outline + backlinks, three view modes (edit / preview /
+  split), folder breadcrumbs in header, frontmatter tag chips, per-note
+  draft persistence in localStorage with conflict guard against server-
+  newer.
+- **Daily note**: inline quick-add band parses TUI shorthand
+  (`!1 due:YYYY-MM-DD #tag`), task ↔ event toggle.
+- **Projects**: full CRUD with goals + milestones (auto-progress), next-
+  action chip, linked-tasks panel, status lifecycle pills, color picker,
+  category, priority levels.
+- **Agents**: presets gallery (built-in + vault overrides) and run
+  history (any note with `type: agent_run` frontmatter). Per-preset stats.
+- **Settings**: theme picker, security (password change, sign out
+  everywhere), **devices** (active sessions list with revoke per-row,
+  current-device pill), git sync status, vault info, keyboard shortcuts.
+- **Habits / Goals / Tags / Stats / Templates / Morning / Objects**: full
+  page implementations.
+
+#### Offline + PWA
+- Service worker with stale-while-revalidate for `GET /api/v1/*` and
+  cache-first for hashed bundle assets. Edits queue when offline; the
+  client retries on `online` event.
+- Per-note drafts in localStorage survive tab close, reload, and brief
+  power loss (writes 600 ms after last keystroke).
+- PWA manifest + apple-touch icons. Installable on iOS / Android.
+- Theme bootstrap inline in `index.html` to eliminate dark↔light flash.
+
+#### Sync & devices
+- Optional `git` auto-sync (`--sync`): periodic `git pull` + auto-commit/
+  push. Status surfaced at `/api/v1/sync` and the Settings page.
+- `/api/v1/devices` lists active sessions; `DELETE /api/v1/devices/{id}`
+  revokes one. Stable per-device IDs are sha256-prefix hashes — raw
+  tokens never leave the server.
+
 ### Added — Phase 16: more Deepnote-like AI surface
 
 #### Inline AI diff preview (BEFORE / AFTER, accept/discard/retry)

@@ -299,6 +299,25 @@ Granit treats AI as a built-in utility, not a paid add-on. Every bot is optimize
 - Vim-style navigation: `j`/`k` to move, `h`/`l` to collapse/expand, `Enter` to open
 - Tab switching: `Ctrl+Tab` / `Ctrl+Shift+Tab` to cycle, `Ctrl+1-9` to jump by position
 
+### Web companion (`granit web`)
+
+A self-hosted web frontend over the same vault, task store, and daily-note pipeline as the TUI. Single-binary deployment — the SvelteKit SPA is embedded into the granit binary via `go:embed`. See [`docs/WEB.md`](docs/WEB.md) for the full guide.
+
+- **Same data, different surface** — notes, tasks, projects, goals, habits, calendar events, ICS calendars, agent runs all read/write the same files the TUI uses.
+- **Password auth** — argon2id, per-device sessions, sign-out-everywhere. Bootstrap bearer token still printed for CLI scripts.
+- **Calendar with drag-to-create + resize** — Google-Calendar-style click+drag to create a task or event, drag bottom edge to resize. Six views (day / 3-day / week / month / year / agenda).
+- **Tasks** — 7 view modes (list, kanban, inbox, triage, quick wins, stale, review), full triage workflow, snooze with TUI presets, bulk actions.
+- **Projects** — full CRUD with goals + milestones, next-action chip, linked tasks, status lifecycle.
+- **Agents tab** — gallery of agent presets (built-in + vault overrides) and history of past runs.
+- **Devices** — one row per browser/laptop with an active session. Revoke per-device.
+- **PWA + offline** — installable, service worker with stale-while-revalidate, per-note draft persistence in localStorage.
+
+```bash
+make build                              # builds web SPA + binary
+./bin/granit web ~/Documents/Vault      # boot against your vault
+# open http://localhost:8787 — first paint asks you to set a password
+```
+
 ### Sync and Export
 
 - **Git** -- built-in overlay with status, log, diff, commit, push, pull, author config; `granit sync` CLI
