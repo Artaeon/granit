@@ -1,0 +1,111 @@
+# Web companion (`granit web`)
+
+Granit ships a self-hosted web frontend that wraps the same vault, task
+store, and daily-note pipeline the TUI uses. It is a single binary —
+the SvelteKit SPA is embedded — so deploying it means copying one file
+to a server and running it next to your vault.
+
+## Quick start
+
+```bash
+# 1. From the granit checkout, build everything (frontend + binary):
+make build
+
+# 2. Boot it against a vault:
+./bin/granit web /path/to/your/vault
+
+# 3. Open http://localhost:8787 — the first paint asks you to set a password.
+```
+
+On first launch you'll be prompted to **set a password**. After that:
+
+- Web UI logs in with the password and stores a per-device session token
+  in `localStorage`. Sessions live for 60 days of inactivity.
+- A bootstrap **bearer token** is also printed at startup. It is the
+  legacy/CLI auth path — useful for `curl` scripts and the Tauri desktop
+  wrapper. The web UI's "Sign in with bearer token" link drops you into
+  that path if you ever need it.
+
+The bootstrap token is stored at `<vault>/.granit/everything-token`.
+The password hash + active sessions live at `<vault>/.granit/web-auth.json`
+(argon2id, 64 MiB / 1 iteration / 4 threads).
+
+## Flags
+
+```text
+granit web [--addr :8787] [--dev] [--sync] [--sync-interval 1m] [vault-path]
+```
+
+- `--addr` — listen address. Default `:8787` (`PORT` env overrides).
+- `--dev` — relaxes CORS so a Vite dev server on `:5173` can hit the API.
+- `--sync` — turn on the git auto-sync loop. The server runs
+  `git pull` + auto-commit/push on `--sync-interval` (min 10s).
+
+The vault path defaults to `.` (current directory).
+
+## What's in the web app
+
+| Surface       | Notes                                                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Dashboard     | Customizable widgets (time, streaks, today's tasks, scheduled, goals, projects, inbox, calendar week, recent notes, quick capture).              |
+| Tasks         | Seven views: list, kanban, **inbox / triage / quick wins / stale / review**. Triage state cycle, snooze with presets, bulk actions, side-panel detail. |
+| Calendar      | Six views: day / 3-day / week / month / year / agenda. Click+drag to create. Resize event chips. Per-source ICS toggles synced with TUI's `disabled_calendars`. |
+| Notes         | CodeMirror-based editor with wikilink autocomplete, frontmatter editor, outline + backlinks, markdown preview, three view modes. Per-note draft persistence. |
+| Daily note    | Inline quick-add for tasks/events at the top of every daily note. Shorthand parsed (`!1 due:YYYY-MM-DD #tag`).                                   |
+| Projects      | Full CRUD with goals + milestones (nested progress), next-action chip, linked tasks, status lifecycle, color picker.                              |
+| Habits        | Streak overview + completion toggles.                                                                                                            |
+| Goals         | Read view of `.granit/goals.json`.                                                                                                               |
+| Agents        | Two-tab page. Presets gallery (built-in + vault-local). Run history (any note with `type: agent_run` frontmatter). Per-preset stats.             |
+| Settings      | Theme, security (password change / "log out everywhere"), **devices** (active sessions, revoke per-row), git sync status, vault info.            |
+| Morning       | Mirrors the TUI's morning-startup wizard.                                                                                                        |
+| Templates     | Browse built-in + vault templates, create note from one.                                                                                         |
+
+## Sharing data with the TUI
+
+The web frontend reads and writes the same on-disk artifacts as the TUI:
+
+- Notes — markdown files in the vault.
+- Tasks — `<vault>/.granit/tasks-meta.json` plus the markdown checkboxes.
+- Pinned — `<vault>/.granit/sidebar-pinned.json`.
+- Events — `<vault>/.granit/events.json`.
+- Projects — `<vault>/.granit/projects.json`.
+- Goals — `<vault>/.granit/goals.json`.
+- Habits — `<vault>/.granit/habits-times.json`.
+- Calendar source toggles — `disabled_calendars` in `~/.config/granit/config.json`
+  or `<vault>/.granit.json`.
+- Agent presets — `<vault>/.granit/agents/<id>.json`.
+
+Edits made in the web propagate to the TUI immediately on its next read,
+and the WebSocket fanout pushes vault file events to connected web
+clients live.
+
+## API
+
+Everything the UI does goes through `/api/v1/*`. A few highlights:
+
+| Endpoint                              | Method     | Purpose                                            |
+| ------------------------------------- | ---------- | -------------------------------------------------- |
+| `/auth/status` `/auth/login` `/auth/setup` `/auth/logout` `/auth/change-password` `/auth/revoke-all` | various    | Password auth + session management.                |
+| `/notes` `/notes/{path}`              | GET/POST/PUT | List, read, write notes.                          |
+| `/tasks` `/tasks/{id}`                | GET/POST/PATCH | List, create, update tasks (incl. triage, snooze, recurrence, notes). |
+| `/calendar`                           | GET        | Unified feed: daily notes, due tasks, scheduled tasks, events, ICS. |
+| `/calendar/sources`                   | GET/PATCH  | List `.ics` files; toggle disabled.                |
+| `/events` `/events/{id}`              | GET/POST/PATCH/DELETE | `events.json` CRUD.                    |
+| `/projects` `/projects/{name}`        | GET/POST/PATCH/DELETE | Full project lifecycle.                |
+| `/agents/presets` `/agents/runs`      | GET        | Agent catalog and run history.                     |
+| `/devices` `/devices/{id}`            | GET/DELETE | Active session list, revoke per-device.            |
+| `/dashboard`                          | GET/PUT    | Per-vault widget config.                            |
+| `/sync`                               | GET/POST   | Git auto-sync status / manual trigger.             |
+
+All authed endpoints accept either:
+
+1. The bootstrap bearer token (`<vault>/.granit/everything-token`), or
+2. A session token from a successful `POST /auth/login`.
+
+## Offline + PWA
+
+The web app installs as a PWA. The service worker uses
+**stale-while-revalidate** for `GET /api/v1/*`, so a brief network outage
+doesn't blank the UI — you keep the last-known data and edits queue for
+when the connection returns. Note edits also persist to localStorage as
+**drafts**, surviving tab close, reload, and full power loss.
