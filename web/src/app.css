@@ -1,0 +1,210 @@
+@import 'tailwindcss';
+
+/* ── Theme palettes ─────────────────────────────────────────────
+   Two themes: dark (default, nightfox-ish) and light (catppuccin latte-ish).
+   Tailwind's @theme block exposes them as utility classes (`bg-base`,
+   `text-primary`, etc.). Theme switch sets `data-theme` on <html>; the
+   :root selector re-binds the same Tailwind tokens to the active palette.
+*/
+
+@theme {
+  --color-base: #1a1b26;
+  --color-mantle: #16161e;
+  --color-crust: #13131a;
+  --color-surface0: #24273a;
+  --color-surface1: #2f3349;
+  --color-surface2: #3b425b;
+  --color-text: #c0caf5;
+  --color-subtext: #a9b1d6;
+  --color-dim: #6b7394;
+  --color-primary: #bb9af7;
+  --color-secondary: #7aa2f7;
+  --color-accent: #ff9e64;
+  --color-success: #9ece6a;
+  --color-warning: #e0af68;
+  --color-error: #f7768e;
+  --color-info: #7dcfff;
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Dark (default — explicit selector lets [data-theme="dark"] override
+   prefers-color-scheme:light if the user has chosen dark) */
+:root,
+[data-theme='dark'] {
+  --color-base: #1a1b26;
+  --color-mantle: #16161e;
+  --color-crust: #13131a;
+  --color-surface0: #24273a;
+  --color-surface1: #2f3349;
+  --color-surface2: #3b425b;
+  --color-text: #c0caf5;
+  --color-subtext: #a9b1d6;
+  --color-dim: #6b7394;
+  --color-primary: #bb9af7;
+  --color-secondary: #7aa2f7;
+  --color-accent: #ff9e64;
+  --color-success: #9ece6a;
+  --color-warning: #e0af68;
+  --color-error: #f7768e;
+  --color-info: #7dcfff;
+  color-scheme: dark;
+}
+
+/* Light — catppuccin latte */
+[data-theme='light'] {
+  --color-base: #eff1f5;
+  --color-mantle: #e6e9ef;
+  --color-crust: #dce0e8;
+  --color-surface0: #ccd0da;
+  --color-surface1: #bcc0cc;
+  --color-surface2: #acb0be;
+  --color-text: #4c4f69;
+  --color-subtext: #5c5f77;
+  --color-dim: #8c8fa1;
+  --color-primary: #8839ef;
+  --color-secondary: #1e66f5;
+  --color-accent: #fe640b;
+  --color-success: #40a02b;
+  --color-warning: #df8e1d;
+  --color-error: #d20f39;
+  --color-info: #04a5e5;
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+  overscroll-behavior: none;
+  background: var(--color-base);
+  color: var(--color-text);
+}
+body {
+  font-family: var(--font-sans);
+}
+
+a {
+  color: var(--color-secondary);
+}
+a:hover {
+  text-decoration: underline;
+}
+
+button,
+a,
+[role='button'],
+input[type='checkbox'],
+input[type='radio'] {
+  touch-action: manipulation;
+}
+
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'] {
+  color-scheme: inherit;
+}
+
+@supports (padding: env(safe-area-inset-bottom)) {
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .pt-safe { padding-top: env(safe-area-inset-top); }
+}
+
+@media (max-width: 767px) {
+  .pb-bottomnav { padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* Scrollbars adapt to theme via the surface tokens */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--color-mantle); }
+::-webkit-scrollbar-thumb { background: var(--color-surface2); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-subtext); }
+
+/* Prose styles for the markdown preview */
+.prose-note {
+  color: var(--color-text);
+  line-height: 1.65;
+}
+.prose-note h1, .prose-note h2, .prose-note h3, .prose-note h4 { line-height: 1.25; font-weight: 600; }
+.prose-note h1 { font-size: 1.6rem; color: var(--color-primary); margin: 1.4rem 0 0.6rem; }
+.prose-note h2 { font-size: 1.3rem; color: var(--color-secondary); margin: 1.2rem 0 0.5rem; }
+.prose-note h3 { font-size: 1.1rem; color: var(--color-info); margin: 1rem 0 0.4rem; }
+.prose-note h4 { font-size: 1rem; color: var(--color-info); margin: 0.8rem 0 0.3rem; }
+.prose-note p { margin: 0.6rem 0; }
+.prose-note ul, .prose-note ol { margin: 0.5rem 0 0.5rem 1.4rem; }
+.prose-note ul { list-style: disc; }
+.prose-note ol { list-style: decimal; }
+.prose-note li { margin: 0.2rem 0; }
+.prose-note strong { font-weight: 700; color: var(--color-text); }
+.prose-note em { font-style: italic; }
+.prose-note blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding: 0.4rem 0 0.4rem 1rem;
+  margin: 0.7rem 0;
+  color: var(--color-subtext);
+  font-style: italic;
+}
+.prose-note code {
+  background: var(--color-surface0);
+  color: var(--color-accent);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+.prose-note pre {
+  background: var(--color-surface0);
+  border: 1px solid var(--color-surface1);
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.8rem 0;
+}
+.prose-note pre code {
+  background: transparent;
+  color: var(--color-text);
+  padding: 0;
+}
+.prose-note hr {
+  border: none;
+  border-top: 1px solid var(--color-surface1);
+  margin: 1.4rem 0;
+}
+.prose-note table {
+  border-collapse: collapse;
+  margin: 0.8rem 0;
+  display: block;
+  overflow-x: auto;
+}
+.prose-note th, .prose-note td {
+  border: 1px solid var(--color-surface1);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+}
+.prose-note th {
+  background: var(--color-surface0);
+  font-weight: 600;
+}
+.prose-note input[type='checkbox'] {
+  margin-right: 0.4em;
+  accent-color: var(--color-primary);
+}
+.prose-note .wikilink {
+  color: var(--color-secondary);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--color-secondary);
+  cursor: pointer;
+}
+.prose-note .wikilink:hover {
+  border-bottom-style: solid;
+  color: var(--color-primary);
+}
+.prose-note .hashtag {
+  color: var(--color-accent);
+  font-size: 0.92em;
+}
+.prose-note img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
