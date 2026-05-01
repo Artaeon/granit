@@ -1,0 +1,28 @@
+[Unit]
+Description=Granit web (your vault, anywhere)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=granit
+Group=granit
+
+# Vault path on the server. Should be a git checkout of your vault repo.
+Environment=VAULT=/var/lib/granit/vault
+
+# Listen on localhost only — put behind a reverse proxy (Caddy/Nginx) for TLS.
+ExecStart=/usr/local/bin/granit web --addr 127.0.0.1:8787 --sync --sync-interval 60s ${VAULT}
+
+Restart=on-failure
+RestartSec=5
+
+# Hardening — drop privileges, no new privs, read-write only the vault dir.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/granit
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

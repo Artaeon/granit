@@ -1,0 +1,20 @@
+# Caddy reverse proxy in front of `granit web`.
+# Save as /etc/caddy/Caddyfile and run `systemctl reload caddy`.
+
+granit.example.com {
+    encode zstd gzip
+
+    # Long timeouts for the WebSocket (/api/v1/ws). 24h handles the worst-case
+    # idle browser tab; reads/writes are unaffected.
+    reverse_proxy 127.0.0.1:8787 {
+        transport http {
+            read_timeout 24h
+            write_timeout 24h
+        }
+    }
+
+    log {
+        output file /var/log/caddy/granit.log
+        format console
+    }
+}
