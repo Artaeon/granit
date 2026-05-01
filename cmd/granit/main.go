@@ -75,6 +75,9 @@ func main() {
 	case "serve":
 		runServe(os.Args[2:])
 
+	case "web":
+		runWeb(os.Args[2:])
+
 	case "scan":
 		if len(os.Args) < 3 {
 			fmt.Println("Usage: granit scan <vault-path>")
