@@ -254,31 +254,63 @@ func (s *TaskStore) Create(text string, opts CreateOpts) (Task, error) {
 		s.mu.Unlock()
 		return Task{}, fmt.Errorf("tasks: read %s: %w", dest, err)
 	}
-	var buf strings.Builder
-	if len(existing) == 0 && dest == "Tasks.md" {
-		buf.WriteString("# Tasks\n\n")
-	} else {
-		buf.Write(existing)
-		if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
-			buf.WriteByte('\n')
+	// If a target Section heading is specified and present, insert the new
+	// task line directly after the heading (and any single blank line that
+	// follows). Otherwise fall back to the historical "append at end"
+	// behavior. Either path yields a single atomic file write.
+	var newContent string
+	insertedLine := 0
+	if opts.Section != "" {
+		if c, ln, ok := insertUnderSection(string(existing), opts.Section, taskLine); ok {
+			newContent = c
+			insertedLine = ln
 		}
 	}
-	buf.WriteString(taskLine)
-	buf.WriteByte('\n')
-	newContent := buf.String()
+	if newContent == "" {
+		var buf strings.Builder
+		if len(existing) == 0 && dest == "Tasks.md" {
+			buf.WriteString("# Tasks\n\n")
+		} else {
+			buf.Write(existing)
+			if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
+				buf.WriteByte('\n')
+			}
+		}
+		buf.WriteString(taskLine)
+		buf.WriteByte('\n')
+		newContent = buf.String()
+		// Inserted line is the last line of newContent. We compute it after
+		// parsing below if needed; for the append path, "last task" works.
+	}
 	if err := atomicio.WriteNote(abs, newContent); err != nil {
 		s.mu.Unlock()
 		return Task{}, fmt.Errorf("tasks: write %s: %w", dest, err)
 	}
 
-	// Re-parse the destination file and find the just-appended
-	// line by line number (last task line in the file).
+	// Re-parse the destination file and find the just-inserted task. If we
+	// inserted into a section we know the exact line; otherwise it's the
+	// last task line in the file (append path).
 	reparsed := parseNote(NoteContent{Path: dest, Content: newContent})
 	if len(reparsed) == 0 {
 		s.mu.Unlock()
 		return Task{}, errors.New("tasks: Create wrote a line that didn't parse as a task — check the input format")
 	}
-	t := reparsed[len(reparsed)-1]
+	var t Task
+	if insertedLine > 0 {
+		found := false
+		for _, p := range reparsed {
+			if p.LineNum == insertedLine {
+				t = p
+				found = true
+				break
+			}
+		}
+		if !found {
+			t = reparsed[len(reparsed)-1]
+		}
+	} else {
+		t = reparsed[len(reparsed)-1]
+	}
 	t.ID = NewID()
 
 	if opts.Origin != "" {
@@ -467,4 +499,41 @@ func toggleCheckbox(done bool) func(string) string {
 		}
 		return line[:idx+1] + string(ch) + line[idx+2:]
 	}
+}
+
+// insertUnderSection finds a markdown heading whose trimmed text matches
+// `section` (e.g. "## Tasks", "### Habits") and inserts `taskLine` directly
+// after it. Returns the new content, the 1-indexed line number of the
+// inserted line, and ok=true on success. Returns ok=false if the section
+// isn't present so the caller can fall back to append-at-end.
+//
+// Heading match is case-sensitive on the heading text and tolerates an
+// optional blank line right after the heading (the typical markdown form).
+func insertUnderSection(content, section, taskLine string) (string, int, bool) {
+	want := strings.TrimSpace(section)
+	if want == "" {
+		return "", 0, false
+	}
+	lines := strings.Split(content, "\n")
+	hit := -1
+	for i, ln := range lines {
+		if strings.TrimRight(ln, " \t\r") == want {
+			hit = i
+			break
+		}
+	}
+	if hit < 0 {
+		return "", 0, false
+	}
+	insertAt := hit + 1
+	// Skip a single blank line directly after the heading so the new task
+	// doesn't sit awkwardly right against the header underline.
+	if insertAt < len(lines) && strings.TrimSpace(lines[insertAt]) == "" {
+		insertAt++
+	}
+	out := make([]string, 0, len(lines)+1)
+	out = append(out, lines[:insertAt]...)
+	out = append(out, taskLine)
+	out = append(out, lines[insertAt:]...)
+	return strings.Join(out, "\n"), insertAt + 1, true
 }

@@ -105,6 +105,13 @@ type CreateOpts struct {
 	Triage    TriageState // "" → TriageInbox
 	ProjectID string
 	GoalID    string
+
+	// Section, if non-empty, asks Create to insert the new task line
+	// directly after the matching markdown heading (e.g. "## Tasks"
+	// or "### Habits"). If the section isn't found, the task is
+	// appended at the end of the file as a fallback. Empty (the
+	// zero value) preserves the historical append-at-end behavior.
+	Section string
 }
 
 // EventKind tags Subscribe() callbacks.
