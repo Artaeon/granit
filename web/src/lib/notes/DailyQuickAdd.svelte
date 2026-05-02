@@ -25,32 +25,37 @@
   let text = $state('');
   let busy = $state(false);
 
-  // Plan-my-day shortcut. Looks up the preset on demand (cheap — local
-  // catalog lives in localStorage cache after the first fetch) so the
-  // composer stays light when the user doesn't open it.
-  let planOpen = $state(false);
-  let planPreset = $state<AgentPreset | null>(null);
-  let planLoading = $state(false);
+  // Daily AI shortcuts. Plan-my-day, Summarize today, Reflect on today
+  // — three presets that all read+write the daily note. Looked up on
+  // demand and cached in agentCache so subsequent opens skip the
+  // /agents/presets round-trip.
+  let panelOpen = $state(false);
+  let panelPreset = $state<AgentPreset | null>(null);
+  let panelLoading = $state<string | null>(null); // preset id while fetching
+  const agentCache = new Map<string, AgentPreset>();
 
-  async function openPlanMyDay() {
-    if (planPreset) {
-      planOpen = true;
+  async function openPreset(id: 'plan-my-day' | 'summarize-day' | 'reflect-on-day') {
+    const cached = agentCache.get(id);
+    if (cached) {
+      panelPreset = cached;
+      panelOpen = true;
       return;
     }
-    planLoading = true;
+    panelLoading = id;
     try {
       const r = await api.listAgentPresets();
-      const p = r.presets.find((p) => p.id === 'plan-my-day');
+      const p = r.presets.find((p) => p.id === id);
       if (!p) {
-        toast.error('plan-my-day preset not found — vault override may have shadowed it');
+        toast.error(`${id} preset not found — vault override may have shadowed it`);
         return;
       }
-      planPreset = p;
-      planOpen = true;
+      agentCache.set(id, p);
+      panelPreset = p;
+      panelOpen = true;
     } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
-      planLoading = false;
+      panelLoading = null;
     }
   }
 
@@ -146,21 +151,50 @@
       class="px-3 py-1.5 text-xs bg-primary text-mantle rounded font-medium disabled:opacity-50"
     >{busy ? '…' : 'add'}</button>
 
-    <!-- Plan-my-day fires the AI agent that reads today's calendar +
-         tasks + projects and writes a ## Plan section to this note. -->
-    <button
-      type="button"
-      onclick={openPlanMyDay}
-      disabled={planLoading}
-      class="px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-primary disabled:opacity-50 hidden sm:inline-flex items-center gap-1"
-      title="Use AI to draft today's schedule"
-    >
-      <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-        <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M5 5l2 2M19 5l-2 2"/>
-      </svg>
-      {planLoading ? '…' : 'Plan my day'}
-    </button>
+    <!-- Daily AI band. Three presets that read this note + write back
+         appended sections (## Plan / ## Summary / ## Reflection).
+         Hidden on phone widths to keep the input bar uncluttered;
+         visible from sm: up. -->
+    <div class="hidden sm:flex items-center gap-1">
+      <button
+        type="button"
+        onclick={() => openPreset('plan-my-day')}
+        disabled={panelLoading !== null}
+        class="px-2.5 py-1.5 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-primary disabled:opacity-50 inline-flex items-center gap-1"
+        title="Use AI to draft today's schedule"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+        </svg>
+        {panelLoading === 'plan-my-day' ? '…' : 'Plan'}
+      </button>
+      <button
+        type="button"
+        onclick={() => openPreset('summarize-day')}
+        disabled={panelLoading !== null}
+        class="px-2.5 py-1.5 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-secondary hover:text-secondary disabled:opacity-50 inline-flex items-center gap-1"
+        title="Recap today's done tasks + jots into a ## Summary section"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M4 6h16M4 12h10M4 18h16"/>
+        </svg>
+        {panelLoading === 'summarize-day' ? '…' : 'Summarize'}
+      </button>
+      <button
+        type="button"
+        onclick={() => openPreset('reflect-on-day')}
+        disabled={panelLoading !== null}
+        class="px-2.5 py-1.5 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-warning hover:text-warning disabled:opacity-50 inline-flex items-center gap-1"
+        title="Write a thoughtful ## Reflection on today"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+        {panelLoading === 'reflect-on-day' ? '…' : 'Reflect'}
+      </button>
+    </div>
   </form>
 </div>
 
-<AgentRunPanel bind:open={planOpen} preset={planPreset} />
+<AgentRunPanel bind:open={panelOpen} preset={panelPreset} />
