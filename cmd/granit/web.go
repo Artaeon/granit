@@ -101,6 +101,15 @@ func runWeb(args []string) {
 		dailyCfg.Template = daily.DefaultConfig().Template
 	}
 
+	// Make sure today's daily exists before any client hits /tasks. Without
+	// this, the first-of-the-day visitor would land on an empty Tasks page
+	// because the recurring-task seeds wouldn't be in the TaskStore yet.
+	// EnsureDaily is idempotent — no-op when the file already exists.
+	if _, _, err := daily.EnsureDaily(v.Root, dailyCfg); err == nil {
+		_ = v.ScanFast()
+		_ = store.Reload()
+	}
+
 	srv, err := serveapi.NewServer(serveapi.Config{
 		Vault:     v,
 		TaskStore: store,

@@ -71,6 +71,13 @@ func (s *Server) handleGetDaily(w http.ResponseWriter, r *http.Request) {
 	if created {
 		s.rescanMu.Lock()
 		_ = s.cfg.Vault.ScanFast()
+		// EnsureDaily seeded the new daily with the user's recurring
+		// tasks; without an inline reload the TaskStore stays
+		// unaware until the file watcher catches up. Race window is
+		// small but caused the "no tasks" bug on first launch of the
+		// day — the dashboard fetches /api/v1/tasks before the
+		// watcher has fired. Reload here closes that gap.
+		_ = s.cfg.TaskStore.Reload()
 		s.rescanMu.Unlock()
 		w.Header().Set("X-Created", "true")
 	}

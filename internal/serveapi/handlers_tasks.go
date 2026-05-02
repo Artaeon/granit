@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/artaeon/granit/internal/daily"
 	"github.com/artaeon/granit/internal/tasks"
 )
 
@@ -299,11 +301,30 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "text required")
 		return
 	}
+	// Empty notePath = "the user wanted today's daily" — every front-end
+	// surface that doesn't supply a path (the dashboard quick-capture
+	// widget, future API consumers) means "land it under today's daily."
+	// Without this default the task would silently land in Tasks.md at
+	// the vault root, where the daily-note Tasks page never looks.
+	notePath := strings.TrimSpace(b.NotePath)
+	section := b.Section
+	if notePath == "" {
+		dcfg := s.dailyConfigFor()
+		_, _, _ = daily.EnsureDaily(s.cfg.Vault.Root, dcfg)
+		filename := time.Now().Format("2006-01-02") + ".md"
+		notePath = filename
+		if dcfg.Folder != "" {
+			notePath = filepath.ToSlash(filepath.Join(dcfg.Folder, filename))
+		}
+		if section == "" {
+			section = "## Tasks"
+		}
+	}
 	textWithMarkers := buildTaskTextLine(b.Text, b.Priority, b.DueDate, b.Tags)
 	opts := tasks.CreateOpts{
-		File:    b.NotePath,
+		File:    notePath,
 		Origin:  tasks.Origin("manual"),
-		Section: b.Section,
+		Section: section,
 	}
 	t, err := s.cfg.TaskStore.Create(textWithMarkers, opts)
 	if err != nil {
