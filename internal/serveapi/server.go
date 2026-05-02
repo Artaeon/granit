@@ -175,6 +175,12 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/sync", s.handleSyncStatus)
 		r.Post("/api/v1/sync", s.handleSyncTrigger)
 
+		// Settings — curated view of the granit config.json the TUI also
+		// reads, so changes made on /settings show up in the TUI on next
+		// launch and vice-versa.
+		r.Get("/api/v1/config", s.handleGetConfig)
+		r.Patch("/api/v1/config", s.handlePatchConfig)
+
 		r.Get("/api/v1/dashboard", s.handleGetDashboard)
 		r.Put("/api/v1/dashboard", s.handlePutDashboard)
 
