@@ -24,6 +24,35 @@
     else disconnect();
   });
 
+  // Auto-reload when the service worker activates a new build. The SW
+  // posts {type:'sw-updated'} after clients.claim(); we honor it only
+  // when the page is hidden or the user has nothing in flight, so a
+  // mid-edit refresh can't drop unsaved work. The drafts module also
+  // protects against this — it persists every keystroke to
+  // localStorage — but skipping the reload while visible keeps the UX
+  // polite.
+  onMount(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event?.data?.type !== 'sw-updated') return;
+      if (document.visibilityState === 'hidden') {
+        location.reload();
+      } else {
+        // Reload on next focus loss, so the visible session isn't
+        // interrupted but a tab-switch picks up the new build.
+        const onceHidden = () => {
+          if (document.visibilityState === 'hidden') {
+            document.removeEventListener('visibilitychange', onceHidden);
+            location.reload();
+          }
+        };
+        document.addEventListener('visibilitychange', onceHidden);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  });
+
   const nav = [
     { href: '/', label: 'Today', icon: 'today' },
     { href: '/morning', label: 'Morning', icon: 'morning' },

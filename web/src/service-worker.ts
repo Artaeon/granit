@@ -32,10 +32,30 @@ self.addEventListener('activate', (event) => {
   const e = event as ExtendableEvent;
   e.waitUntil(
     (async () => {
+      // Drop every cache that isn't the current build's. Catches the
+      // common stale-bundle bug: user upgrades the binary but the old
+      // SW (with `granit-shell-OLDVERSION`) keeps serving last week's
+      // SPA. New SW is at a new version, so its keep-set excludes the
+      // old shell + old API cache, both get nuked here.
       const keys = await caches.keys();
       const keep = new Set([SHELL_CACHE, API_CACHE]);
       await Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)));
       await (self as unknown as ServiceWorkerGlobalScope).clients.claim();
+      // Tell every open page to reload so they pick up the new bundle
+      // immediately. Without this, an open tab stays on the old JS
+      // until the user manually refreshes — which is how "tasks stuck
+      // on loading after a deploy" happened.
+      const sw = self as unknown as ServiceWorkerGlobalScope;
+      const allClients = await sw.clients.matchAll({ type: 'window' });
+      for (const client of allClients) {
+        try {
+          // postMessage is non-blocking — pages decide whether to
+          // honor it. The companion handler in the SPA reloads.
+          client.postMessage({ type: 'sw-updated', version });
+        } catch {
+          // Client unreachable; nothing useful to do.
+        }
+      }
     })()
   );
 });
