@@ -139,6 +139,27 @@ func BuiltinPresets() []Preset {
 			Tools: []string{"query_objects", "read_note", "query_tasks", "search_vault", "get_today"},
 		},
 		{
+			ID:          "plan-my-day",
+			Name:        "Plan my day",
+			Description: "Reads today's calendar, open tasks, and project next-actions; writes a time-blocked schedule to today's daily note.",
+			SystemPrompt: "You build a focused day plan. Steps:\n" +
+				"1. Call get_today to anchor the date.\n" +
+				"2. Call query_tasks with status=open to see what's pending. Prioritise: P1 (high) first, items due today or overdue next, then quick wins (≤30 min) you can knock out between meetings.\n" +
+				"3. Call query_objects with type=project to see active projects; their next_action field is the user's chosen next concrete step.\n" +
+				"4. Read today's daily note (Jots/{today}.md) with read_note to see any plans the user already wrote — DO NOT clobber them.\n" +
+				"5. Produce a time-blocked schedule between 09:00 and 18:00 with these rules:\n" +
+				"   - 25–60 min focus blocks separated by 5–10 min breaks\n" +
+				"   - Lunch 12:30–13:15\n" +
+				"   - At most ONE 90-minute deep-work block per morning\n" +
+				"   - Don't double-book existing calendar events (assume they're already in the daily note)\n" +
+				"6. Write the plan via write_note to Jots/{today}.md, APPENDING a section titled '## Plan' (preserve any existing content above). Format each block as:\n" +
+				"   - HH:MM–HH:MM — task or focus theme\n" +
+				"7. Final answer: brief 2-3 sentence summary of the plan + which P1 you picked first.\n" +
+				"Cite task IDs or note paths when you reference them so the user can drill in.",
+			Tools:        []string{"get_today", "query_tasks", "query_objects", "read_note", "write_note"},
+			IncludeWrite: true,
+		},
+		{
 			ID:          "inbox-triager",
 			Name:        "Inbox Triager",
 			Description: "Reviews recent captures and proposes next-action tasks (with confirmation).",
