@@ -115,6 +115,19 @@ export function listDrafts(): { path: string; draft: Draft }[] {
     .filter((x): x is { path: string; draft: Draft } => x.draft !== null);
 }
 
+// clearAllDrafts wipes every cached draft body + the index. Called on
+// sign-out so a shared device doesn't leak note bodies to whoever logs
+// in next. Best-effort: per-key removeItem may throw quota errors on
+// some browsers, but the index removal at the end ensures listDrafts()
+// returns empty even if a few keys linger.
+export function clearAllDrafts(): void {
+  if (typeof localStorage === 'undefined') return;
+  for (const path of readIndex()) {
+    try { localStorage.removeItem(key(path)); } catch {}
+  }
+  try { localStorage.removeItem(INDEX_KEY); } catch {}
+}
+
 /** Returns true if the local draft is meaningfully different from the
  *  server's body (not just trailing whitespace). */
 export function draftDivergesFromServer(draft: Draft, serverBody: string): boolean {
