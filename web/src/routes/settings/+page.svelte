@@ -17,11 +17,69 @@
     lastErr?: string;
   };
 
+  import type { AppConfig, AppConfigPatch } from '$lib/api';
+
   let vault = $state<{ root: string; notes: number } | null>(null);
   let sync = $state<SyncStatus | null>(null);
   let authStatus = $state<{ hasPassword: boolean; sessionCount?: number; setupAt?: string } | null>(null);
   let devices = $state<import('$lib/api').Device[]>([]);
   let revokeBusy = $state<string | null>(null);
+
+  // Curated config from /api/v1/config — same file the TUI reads.
+  let appCfg = $state<AppConfig | null>(null);
+  let configBusy = $state(false);
+  // Inline-edit buffers for keys (we don't echo the secret back from
+  // the server — only a "set/unset" flag — so the input starts empty
+  // each load). Empty string + the user clicking save clears the key
+  // server-side; non-empty string sets it.
+  let openAIKeyBuf = $state('');
+  let anthropicKeyBuf = $state('');
+  let recurringTasksBuf = $state('');
+
+  async function patchConfig(patch: AppConfigPatch) {
+    if (!appCfg) return;
+    configBusy = true;
+    try {
+      appCfg = await api.patchConfig(patch);
+    } catch (e) {
+      pwError = e instanceof Error ? e.message : String(e);
+    } finally {
+      configBusy = false;
+    }
+  }
+
+  async function commitOpenAIKey() {
+    // Empty input + currently-set key → no-op (avoid accidental clears).
+    // Empty input + no key set → no-op. Non-empty → patch.
+    if (!openAIKeyBuf.trim()) return;
+    await patchConfig({ openai_key: openAIKeyBuf.trim() });
+    openAIKeyBuf = '';
+  }
+  async function clearOpenAIKey() {
+    if (!confirm('Clear the OpenAI API key?')) return;
+    await patchConfig({ openai_key: '' });
+    openAIKeyBuf = '';
+  }
+  async function commitAnthropicKey() {
+    if (!anthropicKeyBuf.trim()) return;
+    await patchConfig({ anthropic_key: anthropicKeyBuf.trim() });
+    anthropicKeyBuf = '';
+  }
+  async function clearAnthropicKey() {
+    if (!confirm('Clear the Anthropic API key?')) return;
+    await patchConfig({ anthropic_key: '' });
+    anthropicKeyBuf = '';
+  }
+
+  // Recurring-tasks: list <textarea> with one item per line. Easier
+  // mental model than a chip-add UI for a one-time setup screen.
+  function syncRecurringBuf(c: AppConfig) {
+    recurringTasksBuf = (c.daily_recurring_tasks ?? []).join('\n');
+  }
+  async function commitRecurringTasks() {
+    const list = recurringTasksBuf.split('\n').map((s) => s.trim()).filter(Boolean);
+    await patchConfig({ daily_recurring_tasks: list });
+  }
 
   // Change-password panel state — hidden until the user opens it.
   let pwOpen = $state(false);
@@ -35,16 +93,21 @@
   async function load() {
     if (!$auth) return;
     try {
-      const [v, s, a, d] = await Promise.all([
+      const [v, s, a, d, c] = await Promise.all([
         api.vault(),
         api.req<SyncStatus>('/sync'),
         api.authStatus(),
-        api.listDevices().catch(() => ({ devices: [] }))
+        api.listDevices().catch(() => ({ devices: [] })),
+        api.getConfig().catch(() => null)
       ]);
       vault = v;
       sync = s;
       authStatus = a;
       devices = d.devices;
+      if (c) {
+        appCfg = c;
+        syncRecurringBuf(c);
+      }
     } catch {}
   }
 
@@ -147,6 +210,201 @@
       <p class="text-xs text-dim mt-2 leading-relaxed">
         System follows your OS setting and updates live. Stored in <code class="text-[10px]">localStorage</code>.
       </p>
+    </section>
+
+    <!-- AI provider — same config the TUI reads. Setting up either
+         surface is enough; both pick up changes automatically. -->
+    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">AI</h2>
+      {#if !appCfg}
+        <Skeleton class="h-4 w-1/3 mb-2" />
+        <Skeleton class="h-4 w-1/2" />
+      {:else}
+        <div class="space-y-3 text-sm">
+          <div>
+            <label for="ai-provider" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Provider</label>
+            <select
+              id="ai-provider"
+              value={appCfg.ai_provider || 'ollama'}
+              onchange={(e) => patchConfig({ ai_provider: (e.target as HTMLSelectElement).value })}
+              disabled={configBusy}
+              class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text"
+            >
+              <option value="openai">OpenAI (cloud)</option>
+              <option value="anthropic">Anthropic (cloud)</option>
+              <option value="ollama">Ollama (local)</option>
+            </select>
+          </div>
+
+          {#if appCfg.ai_provider === 'openai' || (!appCfg.ai_provider && appCfg.openai_key_set)}
+            <div>
+              <label for="openai-model" class="block text-[11px] uppercase tracking-wider text-dim mb-1">OpenAI model</label>
+              <input
+                id="openai-model"
+                value={appCfg.openai_model}
+                onblur={(e) => patchConfig({ openai_model: (e.target as HTMLInputElement).value })}
+                placeholder="gpt-4o-mini"
+                class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
+              />
+              <p class="text-[11px] text-dim mt-1">Recommended: <code>gpt-4o-mini</code> (cheap+fast) or <code>gpt-4o</code> (smart).</p>
+            </div>
+            <div>
+              <label for="openai-key" class="block text-[11px] uppercase tracking-wider text-dim mb-1">
+                OpenAI API key
+                {#if appCfg.openai_key_set}<span class="text-success normal-case ml-1">· set</span>{/if}
+              </label>
+              <div class="flex gap-2">
+                <input
+                  id="openai-key"
+                  type="password"
+                  bind:value={openAIKeyBuf}
+                  placeholder={appCfg.openai_key_set ? '••••• (hidden — type to replace)' : 'sk-…'}
+                  class="flex-1 px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
+                />
+                <button onclick={commitOpenAIKey} disabled={!openAIKeyBuf.trim() || configBusy} class="px-3 py-2 text-xs bg-primary text-mantle rounded disabled:opacity-50">save</button>
+                {#if appCfg.openai_key_set}
+                  <button onclick={clearOpenAIKey} class="px-3 py-2 text-xs text-error hover:bg-error/10 rounded border border-error/30">clear</button>
+                {/if}
+              </div>
+              <p class="text-[11px] text-dim mt-1">Stored in <code>~/.config/granit/config.json</code>. Never echoed back to the browser after save.</p>
+            </div>
+          {/if}
+
+          {#if appCfg.ai_provider === 'anthropic'}
+            <div>
+              <label for="anthropic-model" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Anthropic model</label>
+              <input
+                id="anthropic-model"
+                value={appCfg.anthropic_model}
+                onblur={(e) => patchConfig({ anthropic_model: (e.target as HTMLInputElement).value })}
+                placeholder="claude-haiku-4-5"
+                class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
+              />
+            </div>
+            <div>
+              <label for="anthropic-key" class="block text-[11px] uppercase tracking-wider text-dim mb-1">
+                Anthropic API key
+                {#if appCfg.anthropic_key_set}<span class="text-success normal-case ml-1">· set</span>{/if}
+              </label>
+              <div class="flex gap-2">
+                <input
+                  id="anthropic-key"
+                  type="password"
+                  bind:value={anthropicKeyBuf}
+                  placeholder={appCfg.anthropic_key_set ? '••••• (hidden)' : 'sk-ant-…'}
+                  class="flex-1 px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
+                />
+                <button onclick={commitAnthropicKey} disabled={!anthropicKeyBuf.trim() || configBusy} class="px-3 py-2 text-xs bg-primary text-mantle rounded disabled:opacity-50">save</button>
+                {#if appCfg.anthropic_key_set}
+                  <button onclick={clearAnthropicKey} class="px-3 py-2 text-xs text-error hover:bg-error/10 rounded border border-error/30">clear</button>
+                {/if}
+              </div>
+            </div>
+          {/if}
+
+          {#if appCfg.ai_provider === 'ollama' || appCfg.ai_provider === 'local' || appCfg.ai_provider === ''}
+            <div>
+              <label for="ollama-url" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Ollama URL</label>
+              <input
+                id="ollama-url"
+                value={appCfg.ollama_url}
+                onblur={(e) => patchConfig({ ollama_url: (e.target as HTMLInputElement).value })}
+                placeholder="http://localhost:11434"
+                class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
+              />
+            </div>
+            <div>
+              <label for="ollama-model" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Ollama model</label>
+              <input
+                id="ollama-model"
+                value={appCfg.ollama_model}
+                onblur={(e) => patchConfig({ ollama_model: (e.target as HTMLInputElement).value })}
+                placeholder="llama3.2"
+                class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
+              />
+              <p class="text-[11px] text-dim mt-1">Pull first with <code>ollama pull {appCfg.ollama_model || 'llama3.2'}</code>.</p>
+            </div>
+          {/if}
+        </div>
+      {/if}
+    </section>
+
+    <!-- Daily / weekly notes -->
+    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Daily notes</h2>
+      {#if !appCfg}
+        <Skeleton class="h-4 w-1/2" />
+      {:else}
+        <div class="space-y-3 text-sm">
+          <div>
+            <label for="daily-folder" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Daily notes folder</label>
+            <input
+              id="daily-folder"
+              value={appCfg.daily_notes_folder}
+              onblur={(e) => patchConfig({ daily_notes_folder: (e.target as HTMLInputElement).value })}
+              placeholder="Jots"
+              class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
+            />
+            <p class="text-[11px] text-dim mt-1">Empty = vault root. New daily notes land at <code>{appCfg.daily_notes_folder || ''}/{'{YYYY-MM-DD}'}.md</code>.</p>
+          </div>
+          <div>
+            <label for="weekly-folder" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Weekly notes folder</label>
+            <input
+              id="weekly-folder"
+              value={appCfg.weekly_notes_folder}
+              onblur={(e) => patchConfig({ weekly_notes_folder: (e.target as HTMLInputElement).value })}
+              placeholder="Weeklies"
+              class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
+            />
+          </div>
+          <div>
+            <label for="recurring-tasks" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Daily habits / recurring tasks</label>
+            <textarea
+              id="recurring-tasks"
+              bind:value={recurringTasksBuf}
+              onblur={commitRecurringTasks}
+              rows="5"
+              placeholder="Workout&#10;Read&#10;Meditate"
+              class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text text-sm"
+            ></textarea>
+            <p class="text-[11px] text-dim mt-1">One per line. Renders as a habits checklist on every daily note. Tick by writing <code>- [x] {'{habit}'}</code> in the daily.</p>
+          </div>
+        </div>
+      {/if}
+    </section>
+
+    <!-- Editor / behavior -->
+    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Editor & behavior</h2>
+      {#if !appCfg}
+        <Skeleton class="h-4 w-1/2" />
+      {:else}
+        <div class="space-y-2 text-sm">
+          {#each [
+            { key: 'auto_save', label: 'Auto-save', help: 'Save 2s after the last keystroke.' },
+            { key: 'line_numbers', label: 'Line numbers', help: 'Show line gutter in the editor.' },
+            { key: 'word_wrap', label: 'Word wrap', help: 'Wrap long lines instead of horizontal scroll.' },
+            { key: 'auto_dark_mode', label: 'Auto dark mode', help: 'Follow OS preference (overrides theme picker).' },
+            { key: 'task_exclude_done', label: 'Hide done tasks by default', help: 'Tasks page opens with only open items.' },
+            { key: 'auto_tag', label: 'AI auto-tag on save', help: 'Suggest tags from note content (requires AI provider).' },
+            { key: 'ai_auto_apply_edits', label: 'Auto-apply AI edits', help: 'Skip the BEFORE/AFTER preview on inline AI edits.' }
+          ] as opt}
+            <label class="flex items-start gap-3 cursor-pointer py-1">
+              <input
+                type="checkbox"
+                checked={(appCfg as unknown as Record<string, boolean>)[opt.key]}
+                onchange={(e) => patchConfig({ [opt.key]: (e.target as HTMLInputElement).checked } as AppConfigPatch)}
+                disabled={configBusy}
+                class="w-4 h-4 mt-0.5 accent-primary cursor-pointer"
+              />
+              <div class="flex-1">
+                <div class="text-sm text-text">{opt.label}</div>
+                <div class="text-[11px] text-dim">{opt.help}</div>
+              </div>
+            </label>
+          {/each}
+        </div>
+      {/if}
     </section>
 
     <!-- Security -->

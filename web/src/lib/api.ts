@@ -208,6 +208,66 @@ export interface AgentRun {
   model?: string;
 }
 
+export interface AppConfig {
+  ai_provider: string;
+  openai_model: string;
+  openai_key_set: boolean;
+  anthropic_model: string;
+  anthropic_key_set: boolean;
+  ollama_url: string;
+  ollama_model: string;
+  ai_auto_apply_edits: boolean;
+  auto_tag: boolean;
+  ghost_writer: boolean;
+  daily_notes_folder: string;
+  daily_note_template: string;
+  daily_recurring_tasks: string[];
+  weekly_notes_folder: string;
+  theme: string;
+  auto_dark_mode: boolean;
+  dark_theme: string;
+  light_theme: string;
+  line_numbers: boolean;
+  word_wrap: boolean;
+  auto_save: boolean;
+  task_filter_mode: string;
+  task_required_tags: string[];
+  task_exclude_done: boolean;
+  git_auto_sync: boolean;
+  pomodoro_goal: number;
+}
+
+// Patch shape: every field optional, plus opaque-set fields (api keys)
+// take a string (empty string clears) rather than a bool.
+export type AppConfigPatch = Partial<{
+  ai_provider: string;
+  openai_key: string; // "" to clear, anything else to set
+  openai_model: string;
+  anthropic_key: string;
+  anthropic_model: string;
+  ollama_url: string;
+  ollama_model: string;
+  ai_auto_apply_edits: boolean;
+  auto_tag: boolean;
+  ghost_writer: boolean;
+  daily_notes_folder: string;
+  daily_note_template: string;
+  daily_recurring_tasks: string[];
+  weekly_notes_folder: string;
+  theme: string;
+  auto_dark_mode: boolean;
+  dark_theme: string;
+  light_theme: string;
+  line_numbers: boolean;
+  word_wrap: boolean;
+  auto_save: boolean;
+  task_filter_mode: string;
+  task_required_tags: string[];
+  task_exclude_done: boolean;
+  git_auto_sync: boolean;
+  pomodoro_goal: number;
+}>;
+
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -378,6 +438,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body)
     }),
+
+  // Config (web ↔ TUI shared config.json)
+  getConfig: () => req<AppConfig>('/config'),
+  patchConfig: (patch: Partial<AppConfigPatch>) =>
+    req<AppConfig>('/config', { method: 'PATCH', body: JSON.stringify(patch) }),
 
   // Devices (active sessions)
   listDevices: () => req<{ devices: Device[]; total: number }>('/devices'),
