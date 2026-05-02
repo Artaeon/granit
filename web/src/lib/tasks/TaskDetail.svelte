@@ -82,7 +82,7 @@
   const triageStates: NonNullable<Task['triage']>[] = ['inbox', 'triaged', 'scheduled', 'done', 'dropped', 'snoozed'];
 </script>
 
-<Drawer bind:open side="right">
+<Drawer bind:open side="right" responsive width="w-full sm:w-96 md:w-[28rem]">
   {#if task}
     <div class="h-full flex flex-col overflow-hidden">
       <header class="px-4 py-3 border-b border-surface1 flex items-center gap-2 flex-shrink-0">

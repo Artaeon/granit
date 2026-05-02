@@ -65,7 +65,7 @@
   }
 </script>
 
-<Drawer bind:open side="right">
+<Drawer bind:open side="right" responsive width="w-full sm:w-96 md:w-[28rem]">
   <form onsubmit={submit} class="p-4 space-y-4 h-full overflow-y-auto">
     <div class="flex items-center gap-2">
       <h2 class="text-base font-semibold text-text flex-1">New project</h2>
