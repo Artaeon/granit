@@ -1,12 +1,28 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api } from '$lib/api';
+  import { api, type OpenAIModelOption } from '$lib/api';
   import { onWsEvent, wsConnected } from '$lib/ws';
   import { theme, themeIcon, themeLabel, type Theme } from '$lib/stores/theme';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import RecurringEditor from '$lib/components/RecurringEditor.svelte';
+
+  // Curated OpenAI model picker — refreshed against
+  // developers.openai.com/api/docs/pricing periodically. Server is the
+  // source of truth (internal/agentruntime.RecommendedOpenAIModels);
+  // the web just renders. Lazy-loaded so we don't fetch on settings
+  // pages where the user never opens the AI section.
+  let openAIModels = $state<OpenAIModelOption[] | null>(null);
+  async function ensureOpenAIModels() {
+    if (openAIModels) return;
+    try {
+      const r = await api.listOpenAIModels();
+      openAIModels = r.models;
+    } catch {
+      openAIModels = [];
+    }
+  }
 
   type SyncStatus = {
     enabled: boolean;
@@ -262,16 +278,61 @@
           </div>
 
           {#if appCfg.ai_provider === 'openai' || (!appCfg.ai_provider && appCfg.openai_key_set)}
+            {void ensureOpenAIModels()}
             <div>
-              <label for="openai-model" class="block text-[11px] uppercase tracking-wider text-dim mb-1">OpenAI model</label>
-              <input
-                id="openai-model"
-                value={appCfg.openai_model}
-                onblur={(e) => patchConfig({ openai_model: (e.target as HTMLInputElement).value })}
-                placeholder="gpt-4o-mini"
-                class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
-              />
-              <p class="text-[11px] text-dim mt-1">Recommended: <code>gpt-4o-mini</code> (cheap+fast) or <code>gpt-4o</code> (smart).</p>
+              <label for="openai-model" class="block text-[11px] uppercase tracking-wider text-dim mb-1">
+                OpenAI model
+                {#if appCfg.openai_model}<span class="text-dim normal-case ml-1 font-mono">· {appCfg.openai_model}</span>{/if}
+              </label>
+              {#if openAIModels === null}
+                <Skeleton class="h-9 w-full" />
+              {:else if openAIModels.length === 0}
+                <input
+                  id="openai-model"
+                  value={appCfg.openai_model}
+                  onblur={(e) => patchConfig({ openai_model: (e.target as HTMLInputElement).value })}
+                  placeholder="gpt-4o-mini"
+                  class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
+                />
+              {:else}
+                <!-- Curated picker. Prices in the option label so the
+                     user picks knowingly. Custom model still allowed via
+                     the override input below. -->
+                <select
+                  id="openai-model"
+                  value={appCfg.openai_model}
+                  onchange={(e) => patchConfig({ openai_model: (e.target as HTMLSelectElement).value })}
+                  disabled={configBusy}
+                  class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
+                >
+                  {#if appCfg.openai_model}
+                    {#if !openAIModels.find((m) => m.id === appCfg!.openai_model)}
+                      <option value={appCfg.openai_model}>{appCfg.openai_model} (custom)</option>
+                    {/if}
+                  {/if}
+                  {#each openAIModels as m}
+                    <option value={m.id}>
+                      {m.id} — in {m.input_per_m} / out {m.output_per_m} per 1M tokens{m.note ? ` · ${m.note}` : ''}
+                    </option>
+                  {/each}
+                </select>
+                <details class="mt-1.5">
+                  <summary class="text-[11px] text-dim cursor-pointer hover:text-text">use a model not in the list</summary>
+                  <input
+                    type="text"
+                    placeholder="gpt-5.5-pro / o3-mini / dated snapshot ID"
+                    onblur={(e) => {
+                      const v = (e.target as HTMLInputElement).value.trim();
+                      if (v) patchConfig({ openai_model: v });
+                    }}
+                    class="mt-1.5 w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
+                  />
+                </details>
+                <p class="text-[11px] text-dim mt-1.5">
+                  Recommended for agents: <code>gpt-5.4-mini</code> (workhorse) or <code>gpt-5.4-nano</code> (cheap).
+                  Pricing reflects May 2026 rates from <a href="https://platform.openai.com/docs/pricing" target="_blank" rel="noopener" class="text-secondary hover:underline">platform.openai.com</a>.
+                </p>
+              {/if}
             </div>
             <div>
               <label for="openai-key" class="block text-[11px] uppercase tracking-wider text-dim mb-1">

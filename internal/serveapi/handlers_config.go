@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/artaeon/granit/internal/agentruntime"
 	"github.com/artaeon/granit/internal/config"
 )
 
@@ -370,4 +371,13 @@ func (s *Server) handlePatchConfig(w http.ResponseWriter, r *http.Request) {
 	// Read merged view back so the client sees what's effective.
 	merged := config.LoadForVault(s.cfg.Vault.Root)
 	writeJSON(w, http.StatusOK, toView(merged))
+}
+
+// handleListOpenAIModels returns the curated picker list defined in
+// agentruntime.RecommendedOpenAIModels — keeps the settings UI from
+// shipping a stale list of model IDs that no longer exist.
+func (s *Server) handleListOpenAIModels(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"models": agentruntime.RecommendedOpenAIModels(),
+	})
 }

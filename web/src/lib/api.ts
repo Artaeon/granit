@@ -254,6 +254,18 @@ export interface RecurringTask {
   enabled: boolean;
 }
 
+// OpenAI model option as exposed by /api/v1/config/openai-models. The
+// settings page renders these as dropdown choices with prices in
+// the label so the user picks knowingly.
+export interface OpenAIModelOption {
+  id: string;
+  family: string;
+  input_per_m: string;
+  output_per_m: string;
+  note?: string;
+  recommended?: boolean;
+}
+
 export interface AppConfig {
   ai_provider: string;
   openai_model: string;
@@ -610,6 +622,8 @@ export const api = {
   getConfig: () => req<AppConfig>('/config'),
   patchConfig: (patch: Partial<AppConfigPatch>) =>
     req<AppConfig>('/config', { method: 'PATCH', body: JSON.stringify(patch) }),
+  listOpenAIModels: () =>
+    req<{ models: OpenAIModelOption[] }>('/config/openai-models'),
 
   // Time tracking
   listTimetracker: () =>

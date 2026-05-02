@@ -215,6 +215,17 @@ func (s *Server) Handler() http.Handler {
 		// launch and vice-versa.
 		r.Get("/api/v1/config", s.handleGetConfig)
 		r.Patch("/api/v1/config", s.handlePatchConfig)
+		// Curated OpenAI model picker — refreshed against
+		// developers.openai.com/api/docs/pricing periodically. Exposed
+		// so the settings page can render a dropdown of recommended
+		// models instead of a free-form text input where the user has
+		// to know exact IDs.
+		r.Get("/api/v1/config/openai-models", s.handleListOpenAIModels)
+
+		// Vault binary file passthrough — used by the markdown preview
+		// to inline images via `![[image.png]]`. Markdown files have
+		// their own JSON endpoint and are refused here.
+		r.Get("/api/v1/files/*", s.handleGetFile)
 
 		// Recurring tasks — same .granit/recurring.json file the TUI's
 		// recurringtasks overlay edits. Server fires due rules at
