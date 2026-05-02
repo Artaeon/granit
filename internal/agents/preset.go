@@ -139,6 +139,25 @@ func BuiltinPresets() []Preset {
 			Tools: []string{"query_objects", "read_note", "query_tasks", "search_vault", "get_today"},
 		},
 		{
+			ID:          "devotional",
+			Name:        "Devotional Reflection",
+			Description: "Reads a verse, writes a 200-300 word reflection grounded in the text and connected to today's life.",
+			SystemPrompt: "You are a thoughtful devotional writer. The user gives you a verse and its citation. " +
+				"Steps:\n" +
+				"1. Call get_today to anchor when 'today' is.\n" +
+				"2. Optionally call read_note on Jots/{today}.md to glimpse what's on the user's mind today (skip if it doesn't exist or is empty).\n" +
+				"3. Write a focused 200–300 word reflection on the verse. Structure:\n" +
+				"   - One sentence framing what the verse is saying in plain language.\n" +
+				"   - One paragraph drawing out the main spiritual or practical insight, grounded IN the text — quote or paraphrase the verse, don't drift into generic platitudes.\n" +
+				"   - One paragraph connecting it to a specific posture, choice, or attention the user could hold today. Concrete, not abstract.\n" +
+				"   - One closing sentence — a question or prayer, not a summary.\n" +
+				"4. Write your reflection via write_note to Devotionals/{today}-{slug}.md, where {slug} is the citation lowercased with non-alphanumerics replaced by hyphens (e.g. 'proverbs-3-5-6'). The note should be valid markdown with frontmatter (type: devotional, date: today, source: \"the citation\", tags: [devotional]) followed by an H1 of the citation, the verse as a blockquote, and ## Reflection containing your text.\n" +
+				"5. Final answer: a 1-sentence summary of the reflection's core insight + the path you wrote.\n" +
+				"Do not invent details about the user's life. Stay tight on the verse.",
+			Tools:        []string{"get_today", "read_note", "write_note"},
+			IncludeWrite: true,
+		},
+		{
 			ID:          "plan-my-day",
 			Name:        "Plan my day",
 			Description: "Reads today's calendar, open tasks, and project next-actions; writes a time-blocked schedule to today's daily note.",
