@@ -56,7 +56,8 @@ The vault path defaults to `.` (current directory).
 | Habits        | Streak overview + completion toggles.                                                                                                            |
 | Goals         | Read view of `.granit/goals.json`.                                                                                                               |
 | Agents        | Two-tab page. Presets gallery (built-in + vault-local) with one-click **Run** that streams the ReAct transcript live via WS. Run history (any note with `type: agent_run` frontmatter). Per-preset stats. |
-| Scripture     | Verse-of-the-day, "another one" random pick, **Memorize** mode (cloze drill with per-verse accuracy tracking), Browse the full library. Reads `.granit/scriptures.md` — same file the TUI uses. |
+| Scripture     | Verse-of-the-day, "another one" random pick, **Memorize** mode (cloze drill with per-verse accuracy tracking), Browse the full library. AI-generated reflection via the `devotional` preset. Reads `.granit/scriptures.md` — same file the TUI uses. |
+| Chat          | Multi-turn conversation with the configured AI provider. History in localStorage; "save as note" writes the conversation to `Chats/`. Optional vault-context attachment (named note's body fed as a system message). |
 | Settings      | Theme, security (password change / "log out everywhere"), **devices** (active sessions, revoke per-row), git sync status, vault info.            |
 | Morning       | Mirrors the TUI's morning-startup wizard.                                                                                                        |
 | Templates     | Browse built-in + vault templates, create note from one.                                                                                         |
@@ -95,8 +96,13 @@ Everything the UI does goes through `/api/v1/*`. A few highlights:
 | `/projects` `/projects/{name}`        | GET/POST/PATCH/DELETE | Full project lifecycle.                |
 | `/agents/presets` `/agents/runs`      | GET        | Agent catalog and run history.                     |
 | `/agents/run`                         | POST       | Kick off an agent run server-side. Returns runId; events stream via WS frames `agent.event` / `agent.complete`. |
+| `/chat`                               | POST       | Multi-turn chat with the configured LLM. Optional `notePath` attaches the note's body as system context. |
 | `/scripture` `/scripture/today` `/scripture/random` | GET | Verse library, daily verse, random pick.            |
 | `/devotionals`                        | POST       | Create a devotional note pre-seeded with a verse.   |
+| `/daily/context`                      | GET        | Carryover (yesterday's open tasks) + today's habits checklist for the daily-note band. |
+| `/config`                             | GET/PATCH  | Curated config.json read/write — AI provider, keys, daily folder + recurring, theme, editor toggles. |
+| `/recurring`                          | GET/PUT    | Daily/weekly/monthly auto-creating task rules. Server fires due rules at midnight. |
+| `/timetracker` `/timetracker/start` `/timetracker/stop` | GET/POST | Clock-in/out + session history. WS frames `timer.started` / `timer.stopped` for live cross-device pill updates. |
 | `/devices` `/devices/{id}`            | GET/DELETE | Active session list, revoke per-device.            |
 | `/dashboard`                          | GET/PUT    | Per-vault widget config.                            |
 | `/sync`                               | GET/POST   | Git auto-sync status / manual trigger.             |
@@ -128,6 +134,7 @@ Built-in presets (visible on `/agents`):
 | `project-manager`      | Project name → status, blockers, next-actions report. Read-only. |
 | `inbox-triager`        | Reviews recent captures, proposes one next-action task per item. Writes tasks. |
 | `plan-my-day`          | Reads today's calendar + open tasks + project next-actions, writes a `## Plan` time-block schedule into today's daily note. Writes notes. |
+| `devotional`           | Verse + citation → 200-300 word reflection in `Devotionals/{date}-{slug}.md`. Triggered from `/scripture`. Writes notes. |
 
 The daily note has a one-click **"Plan my day"** button that fires
 `plan-my-day` and inserts the result. Other presets get their Run button

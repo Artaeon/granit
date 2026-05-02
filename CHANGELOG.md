@@ -6,6 +6,90 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Phase 19: Chat, daily-note context, settings, recurring + tracking
+
+#### Chat surface
+- `Chatter` interface added to `internal/agentruntime` so OpenAI and
+  Ollama can serve multi-turn conversations natively (chat-completions
+  endpoint for OpenAI, /api/chat for Ollama).
+- `POST /chat` — single-shot helper. Caller supplies the full message
+  history, server reads the AI config, calls the model, returns the
+  next assistant message. Stateless on the server (history lives in
+  the client). Optional `notePath` attaches the note's body as a
+  system message so the LLM has vault context without copy-paste.
+- `/chat` web page — multi-turn UI. Enter sends, Shift+Enter newlines.
+  History persisted to localStorage; "save as note" writes the
+  conversation to `Chats/{ts}.md`. Bouncing-dots indicator while the
+  model thinks. Empty messages/errors drop the input back so the user
+  can retry.
+
+#### Devotional reflection
+- New `devotional` preset in `agents.BuiltinPresets()` — takes a verse
+  + citation, writes a structured 200-300 word reflection into
+  `Devotionals/{date}-{slug}.md`. System prompt enforces structure
+  (insight rooted in the text, concrete posture for today, closing
+  question/prayer) so the model doesn't drift into platitudes.
+- `/scripture` page gained an "AI reflection ✨" button next to the
+  existing manual "Reflect on this" path. The agent panel opens
+  pre-filled with the verse so the user just hits Run.
+- `AgentRunPanel` accepts an optional `initialGoal` prop for the same
+  pre-fill pattern.
+
+#### Daily-note carryover + habits checklist
+- `GET /daily/context` returns yesterday's open tasks (carryover) +
+  today's habits checklist (derived from `daily_recurring_tasks` in
+  config + the daily note's `[x]` lines). Cheap on the server; the
+  web fetches it once on note load and on every WS event.
+- `DailyContext.svelte` renders both as collapsible bands at the top
+  of every daily note. Carryover row has a one-click "mark done";
+  habits row shows tick-status chips with a hint to write
+  `- [x] {habit}` in the daily.
+
+#### Settings (config.json read/write)
+- `GET /config` and `PATCH /config` expose a curated subset of the
+  same `~/.config/granit/config.json` the TUI reads. Fields exposed:
+  AI provider/model/keys (OpenAI + Anthropic + Ollama), daily +
+  weekly folder, daily recurring tasks, theme, editor toggles, task
+  filter mode, sync, pomodoro goal.
+- API keys never echoed back — the GET response carries `*_key_set`
+  booleans only. PATCH accepts a non-empty string to set, an
+  explicit empty string to clear.
+- Settings page gained AI / Daily notes / Editor & behavior /
+  Recurring tasks sections. Set up the AI once on either surface
+  and both pick it up.
+
+#### Recurring tasks
+- `internal/recurring` — shared store. Read/write
+  `<vault>/.granit/recurring.json` (same file the TUI's overlay
+  edits). `IsDue` rule mirrors the TUI's: daily / weekly (matching
+  weekday) / monthly (matching day-of-month).
+- `GET /recurring` and `PUT /recurring` for the web. Server fires
+  due rules at every local-time midnight (goroutine wakes 30s past
+  midnight) + on boot + as a side effect of every list/mutate
+  request (defends against the goroutine missing a tick).
+- Created tasks carry `tasks.OriginRecurring` on the sidecar — same
+  provenance the TUI tags them with.
+- `RecurringEditor.svelte` — full-list editor embedded in /settings.
+  Per-row enable/text/frequency + conditional weekday/day-of-month
+  picker. Save button writes the canonical list back via PUT.
+
+#### Time tracking
+- `internal/timetracker` — shared store at
+  `<vault>/.granit/timetracker.json`. One Entry per completed
+  session. Optional `task_id` field for cross-surface task rollup
+  (TUI uses free-form text, web uses the stable sidecar ID).
+- `GET /timetracker` returns recent entries + active timer + pre-
+  rolled-up `minutesByTaskId` and `minutesToday`.
+- `POST /timetracker/start` and `/stop` manage one server-wide
+  active timer. Start auto-stops any prior timer so users don't
+  abandon time. WS broadcasts `timer.started` / `timer.stopped`
+  so other connected devices update their pill.
+- Web active-timer store (`lib/stores/timer.ts`) hydrated on auth +
+  WS frames. `RunningTimer.svelte` floats a green pill in the top-
+  right while a timer runs; click to stop. `TaskCard` gained a
+  play/stop button next to snooze + a "1h 23m total" minutes pill
+  next to its action row.
+
 ### Added — Phase 18: server-side AI agents + Bible practicer
 
 #### Shared agent runtime (`internal/agentruntime`)
