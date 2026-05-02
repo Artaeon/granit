@@ -50,6 +50,15 @@ type Server struct {
 	// process — granit web restart drops the timer.
 	timerMu     sync.Mutex
 	activeTimer *activeTimer
+
+	// Recurring-task scheduling. Per-Server (not package-level) so
+	// multiple servers in one process — tests, future multi-vault —
+	// don't share state. recurringMu serialises the "create today's
+	// due tasks" pass; recurringRanFor caches the YYYY-MM-DD of the
+	// most recent successful run so 100 hits to /recurring on the
+	// same day fire the work once.
+	recurringMu     sync.Mutex
+	recurringRanFor string
 }
 
 // activeTimer is the in-memory shape of a running timer. We keep it
@@ -111,6 +120,13 @@ func (s *Server) Handler() http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
+	// Cap every request body at 4 MiB. Notes can be large but rarely
+	// over a megabyte; legitimate API writes (config patches, agent
+	// goals, devotional reflections) are far smaller. A bigger payload
+	// is almost certainly a buggy client or an attempt to exhaust
+	// server memory — fail fast at the read instead of silently
+	// streaming gigabytes into a json.Decoder.
+	r.Use(maxBodyBytes(4 << 20))
 
 	if s.cfg.Dev {
 		r.Use(cors.Handler(cors.Options{
@@ -323,5 +339,21 @@ func (s *Server) Run(ctx context.Context, addr string) error {
 			return nil
 		}
 		return err
+	}
+}
+
+// maxBodyBytes wraps every request's body with http.MaxBytesReader so a
+// pathological POST can't stream gigabytes into a json.Decoder. The
+// limit is generous (notes can be big, but the cap covers everything
+// the web actually writes) and the failure is a clean 400 from the
+// json decode call rather than OOM-ing the process.
+func maxBodyBytes(n int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, n)
+			}
+			next.ServeHTTP(w, r)
+		})
 	}
 }
