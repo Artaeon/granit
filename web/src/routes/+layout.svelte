@@ -9,6 +9,7 @@
   import BottomNav from '$lib/components/BottomNav.svelte';
   import Toaster from '$lib/components/Toaster.svelte';
   import OfflineBanner from '$lib/components/OfflineBanner.svelte';
+  import InstallPrompt from '$lib/components/InstallPrompt.svelte';
   import RunningTimer from '$lib/components/RunningTimer.svelte';
   import NavIcon from '$lib/components/NavIcon.svelte';
   import { connect, disconnect, wsConnected } from '$lib/ws';
@@ -198,5 +199,11 @@
   <div class="fixed top-3 right-3 z-30">
     <RunningTimer />
   </div>
+  <!-- One-time PWA install hint. The component is self-gating: it only
+       renders when the browser has fired beforeinstallprompt (Chromium)
+       or when we detect iOS Safari, and only when the user hasn't
+       already installed or dismissed it. Auth-gated because pre-login
+       is too early to be useful. -->
+  <InstallPrompt />
 {/if}
 <Toaster />
