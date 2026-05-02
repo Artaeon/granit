@@ -2,6 +2,7 @@ package serveapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -173,25 +174,41 @@ func (s *Server) handlePatchProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := projects[idx]
+	// First malformed field wins — return 400 with the offending key
+	// so the client knows which JSON it sent was bad. Earlier we
+	// silently swallowed unmarshal errors which let bugs through
+	// (a typo'd shape would 200 with the field unchanged and no
+	// signal to the user).
 	apply := func(field string, into interface{}) error {
-		if raw, ok := patch[field]; ok {
-			return json.Unmarshal(raw, into)
+		raw, ok := patch[field]
+		if !ok {
+			return nil
+		}
+		if err := json.Unmarshal(raw, into); err != nil {
+			return fmt.Errorf("field %q: %w", field, err)
 		}
 		return nil
 	}
-	_ = apply("description", &p.Description)
-	_ = apply("folder", &p.Folder)
-	_ = apply("tags", &p.Tags)
-	_ = apply("status", &p.Status)
-	_ = apply("color", &p.Color)
-	_ = apply("category", &p.Category)
-	_ = apply("notes", &p.Notes)
-	_ = apply("task_filter", &p.TaskFilter)
-	_ = apply("goals", &p.Goals)
-	_ = apply("next_action", &p.NextAction)
-	_ = apply("priority", &p.Priority)
-	_ = apply("due_date", &p.DueDate)
-	_ = apply("time_spent", &p.TimeSpent)
+	for _, step := range []func() error{
+		func() error { return apply("description", &p.Description) },
+		func() error { return apply("folder", &p.Folder) },
+		func() error { return apply("tags", &p.Tags) },
+		func() error { return apply("status", &p.Status) },
+		func() error { return apply("color", &p.Color) },
+		func() error { return apply("category", &p.Category) },
+		func() error { return apply("notes", &p.Notes) },
+		func() error { return apply("task_filter", &p.TaskFilter) },
+		func() error { return apply("goals", &p.Goals) },
+		func() error { return apply("next_action", &p.NextAction) },
+		func() error { return apply("priority", &p.Priority) },
+		func() error { return apply("due_date", &p.DueDate) },
+		func() error { return apply("time_spent", &p.TimeSpent) },
+	} {
+		if err := step(); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	// Renaming is allowed but must not collide.
 	if raw, ok := patch["name"]; ok {
 		var newName string

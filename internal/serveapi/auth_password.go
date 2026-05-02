@@ -182,18 +182,27 @@ func (a *authState) IsValidToken(tok string) bool {
 	}
 	hash := sha256Hex(tok)
 	for _, s := range a.store.Sessions {
-		if subtle.ConstantTimeCompare([]byte(s.TokenHash), []byte(hash)) == 1 {
-			if time.Since(s.LastUsed) > sessionTTL {
-				a.mu.RUnlock()
-				return false // expired but not yet swept; sweeper will drop it
-			}
-			a.mu.RUnlock()
-			a.mu.Lock()
-			a.tokenSet[tok] = time.Now()
-			a.mu.Unlock()
-			a.touch(tok)
-			return true
+		if subtle.ConstantTimeCompare([]byte(s.TokenHash), []byte(hash)) != 1 {
+			continue
 		}
+		if time.Since(s.LastUsed) > sessionTTL {
+			a.mu.RUnlock()
+			return false // expired but not yet swept; sweeper will drop it
+		}
+		// Promote to write lock to populate the in-memory cache.
+		// Drop+re-acquire is the only path Go's RWMutex offers; the
+		// race window between Unlock and Lock can let two requests
+		// both reach the populate path. Re-check once we hold the
+		// write lock so the populate is idempotent (cheap; the entry
+		// either already exists or we add it).
+		a.mu.RUnlock()
+		a.mu.Lock()
+		if _, already := a.tokenSet[tok]; !already {
+			a.tokenSet[tok] = time.Now()
+		}
+		a.mu.Unlock()
+		a.touch(tok)
+		return true
 	}
 	a.mu.RUnlock()
 	return false

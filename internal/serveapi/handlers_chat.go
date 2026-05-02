@@ -119,12 +119,12 @@ func defaultSystemMessages(s *Server, notePath string) []chatMessage {
 	if notePath = strings.TrimSpace(notePath); notePath == "" {
 		return out
 	}
+	// vault.GetNote calls EnsureLoaded internally, so the body is
+	// guaranteed populated when GetNote returns non-nil. (The
+	// previous version called GetNote → returned early on nil →
+	// EnsureLoaded → re-GetNote, which never reached the load if the
+	// first lookup missed; effectively a no-op on lazy notes.)
 	n := s.cfg.Vault.GetNote(notePath)
-	if n == nil {
-		return out
-	}
-	s.cfg.Vault.EnsureLoaded(notePath)
-	n = s.cfg.Vault.GetNote(notePath)
 	if n == nil || strings.TrimSpace(n.Content) == "" {
 		return out
 	}

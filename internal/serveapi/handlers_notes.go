@@ -147,6 +147,14 @@ func (s *Server) handleGetNote(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing path")
 		return
 	}
+	// Defense in depth: vault.GetNote currently looks up by canonical
+	// relpath so traversal attempts hit a 404 anyway, but a future
+	// refactor that adds disk fallback would be a real escape. Reject
+	// `..` and absolute paths up front. Cheap and matches PUT/POST.
+	if strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
 	n := s.cfg.Vault.GetNote(path)
 	if n == nil {
 		writeError(w, http.StatusNotFound, "note not found")
@@ -288,6 +296,10 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGetLinks(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(chi.URLParam(r, "*"), "/")
+	if path == "" || strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
 	n := s.cfg.Vault.GetNote(path)
 	if n == nil {
 		writeError(w, http.StatusNotFound, "note not found")
