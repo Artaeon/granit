@@ -150,8 +150,22 @@ export function eventTypeColor(ev: CalendarEvent): { bg: string; fg: string; bor
     border: `color-mix(in srgb, var(--color-${token}) 65%, transparent)`
   });
 
+  // ICS events: color by source filename FIRST so faith.ics, training.ics,
+  // work.ics get distinct hues on the grid. Hash → index into the
+  // sourcePalette so the same file always lands on the same tone (a
+  // user dropping new .ics files in the vault gets a stable color
+  // without manual setup). This must run BEFORE the named-color check
+  // because the server hard-codes Color="cyan" on every ICS event as a
+  // legacy default — without this ordering every ICS event would land
+  // on the same cyan tone and the per-source palette would be dead code.
+  if (ev.type === 'ics_event' && ev.source) {
+    return tone(sourcePalette[hashStr(ev.source) % sourcePalette.length]);
+  }
+
   // Granit's events.json `color` field — map names → palette tokens.
-  // Explicit user choice; honored before any auto-coloring rule.
+  // Explicit user choice on a USER event; honored before the type-
+  // default fallback. ICS events are excluded here because their
+  // server-side default isn't a real user choice (see above).
   const named: Record<string, string> = {
     red: 'error',
     yellow: 'warning',
@@ -161,18 +175,8 @@ export function eventTypeColor(ev: CalendarEvent): { bg: string; fg: string; bor
     purple: 'primary',
     cyan: 'info'
   };
-  if ((ev.type === 'event' || ev.type === 'ics_event') && ev.color && named[ev.color]) {
+  if (ev.type === 'event' && ev.color && named[ev.color]) {
     return tone(named[ev.color]);
-  }
-
-  // ICS events: color by source filename so faith.ics, training.ics,
-  // work.ics get distinct hues on the grid. Hash → index into the
-  // sourcePalette so the same file always lands on the same tone (a
-  // user dropping new .ics files in the vault gets a stable color
-  // without manual setup). Falls back to the type-default when the
-  // server didn't provide a source (older binaries, events.json).
-  if (ev.type === 'ics_event' && ev.source) {
-    return tone(sourcePalette[hashStr(ev.source) % sourcePalette.length]);
   }
 
   switch (ev.type) {
