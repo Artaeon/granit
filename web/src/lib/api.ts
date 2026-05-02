@@ -208,6 +208,11 @@ export interface AgentRun {
   model?: string;
 }
 
+export interface Scripture {
+  text: string;
+  source?: string;
+}
+
 export interface Device {
   id: string;
   label?: string;
@@ -344,6 +349,16 @@ export const api = {
     req<{ runId: string; preset: string }>('/agents/run', {
       method: 'POST',
       body: JSON.stringify({ preset, goal })
+    }),
+
+  // Scripture / devotional
+  listScriptures: () => req<{ scriptures: Scripture[]; total: number }>('/scripture'),
+  todayScripture: () => req<Scripture>('/scripture/today'),
+  randomScripture: () => req<Scripture>('/scripture/random'),
+  createDevotional: (body: { verse: string; source?: string; reflection?: string }) =>
+    req<{ path: string; title: string }>('/devotionals', {
+      method: 'POST',
+      body: JSON.stringify(body)
     }),
 
   // Devices (active sessions)
@@ -503,7 +518,8 @@ export type DashboardWidgetType =
   | 'habits'
   | 'pomodoro'
   | 'now'
-  | 'streaks';
+  | 'streaks'
+  | 'scripture';
 
 export interface DashboardWidget {
   id: string;
