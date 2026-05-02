@@ -12,6 +12,9 @@
     try {
       const list = await api.listTasks({ status: 'open' });
       tasks = list.tasks;
+    } catch (e) {
+      // 401 / network failure: render empty state, not a stuck spinner.
+      console.error('today-tasks widget: load failed', e);
     } finally {
       loading = false;
     }

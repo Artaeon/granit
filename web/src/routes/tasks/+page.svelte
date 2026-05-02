@@ -64,23 +64,35 @@
       ]);
       tasks = list.tasks;
       projects = p.projects;
+    } catch (e) {
+      // 401 (stale auth) and network failures both end up here.
+      // Silently leave tasks/projects empty so the empty-state copy
+      // renders instead of the indefinite loading spinner. A later
+      // WS reconnect or filter change will retry naturally.
+      console.error('tasks: load failed', e);
     } finally {
       loading = false;
     }
   }
 
-  onMount(load);
+  // Single load driver: an effect that keys off $auth + filters. When
+  // auth resolves (or changes) it fires; when status/tagFilter change
+  // it fires. We don't pair it with onMount(load) — that would cause
+  // a double-fetch on initial paint and (more importantly) was the
+  // source of the "stays loading" bug when an early call set
+  // loading=true before $auth was ready.
+  $effect(() => {
+    void $auth;
+    void status;
+    void tagFilter;
+    load();
+  });
+
   onMount(() =>
     onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
     })
   );
-
-  $effect(() => {
-    void status;
-    void tagFilter;
-    load();
-  });
 
   // Active snooze: a task is "active" if snoozedUntil is empty or in the past.
   function isSnoozed(t: Task): boolean {
