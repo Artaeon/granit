@@ -208,6 +208,24 @@ export interface AgentRun {
   model?: string;
 }
 
+export interface TimerEntry {
+  note_path: string;
+  task_text: string;
+  task_id?: string;
+  start_time: string;
+  end_time: string;
+  duration: number; // nanoseconds (Go's time.Duration JSON encoding)
+  date: string;
+}
+
+export interface ActiveTimer {
+  notePath: string;
+  taskText: string;
+  taskId?: string;
+  startTime: string;
+  elapsedSec?: number;
+}
+
 export interface RecurringTask {
   text: string;
   frequency: 'daily' | 'weekly' | 'monthly';
@@ -452,6 +470,19 @@ export const api = {
   getConfig: () => req<AppConfig>('/config'),
   patchConfig: (patch: Partial<AppConfigPatch>) =>
     req<AppConfig>('/config', { method: 'PATCH', body: JSON.stringify(patch) }),
+
+  // Time tracking
+  listTimetracker: () =>
+    req<{
+      entries: TimerEntry[];
+      total: number;
+      active: ActiveTimer | null;
+      minutesByTaskId: Record<string, number>;
+      minutesToday: number;
+    }>('/timetracker'),
+  clockIn: (body: { notePath?: string; taskText?: string; taskId?: string }) =>
+    req<ActiveTimer>('/timetracker/start', { method: 'POST', body: JSON.stringify(body) }),
+  clockOut: () => req<{ taskId: string; taskText: string; minutes: number; endTime: string }>('/timetracker/stop', { method: 'POST' }),
 
   // Recurring tasks (granit's daily/weekly/monthly auto-creator)
   listRecurring: () => req<{ rules: RecurringTask[]; total: number }>('/recurring'),

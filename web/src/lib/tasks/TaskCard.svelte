@@ -3,6 +3,7 @@
   import { api, type Task } from '$lib/api';
   import { inlineMd } from '$lib/util/inlineMd';
   import SnoozePicker from './SnoozePicker.svelte';
+  import { activeTimer, minutesByTaskId, fmtDuration } from '$lib/stores/timer';
 
   let {
     task = $bindable(),
@@ -119,6 +120,24 @@
     }
   }
 
+  // Time tracking: clock in/out for this task. The Server's active-
+  // timer state is the source of truth — we just call the endpoint
+  // and the WS frame back updates the global activeTimer store.
+  async function toggleClock(e: Event) {
+    e.stopPropagation();
+    busy = true;
+    try {
+      const isRunning = $activeTimer && $activeTimer.taskId === task.id;
+      if (isRunning) {
+        await api.clockOut();
+      } else {
+        await api.clockIn({ notePath: task.notePath, taskText: task.text, taskId: task.id });
+      }
+    } finally {
+      busy = false;
+    }
+  }
+
   async function unsnooze(e: Event) {
     e.stopPropagation();
     busy = true;
@@ -190,6 +209,9 @@
   let badge = $derived(priorityBadge(task.priority));
   let isSelected = $derived(selectedIds.has(task.id));
   let snoozed = $derived(isSnoozed(task));
+  // Whether THIS task is the currently-running clock-in. Drives the
+  // play/stop icon swap on the toggle button.
+  let isThisRunning = $derived(!!$activeTimer && $activeTimer.taskId === task.id);
   // Indent for subtasks. Tasks with Indent>0 are nested under a parent
   // within the same note. Cap at 4 levels so deep trees don't push
   // content off-screen.
@@ -289,7 +311,23 @@
             {#if task.notes}
               <span class="text-[10px] text-dim" title={task.notes}>📝</span>
             {/if}
+            {#if $minutesByTaskId[task.id]}
+              <span class="text-[10px] text-dim font-mono" title="total tracked">{fmtDuration($minutesByTaskId[task.id] * 60)}</span>
+            {/if}
             <span class="flex-1"></span>
+            <button
+              onclick={toggleClock}
+              disabled={busy}
+              class="opacity-0 group-hover:opacity-100 disabled:opacity-50 {isThisRunning ? 'text-success !opacity-100' : 'text-dim hover:text-success'}"
+              title={isThisRunning ? 'stop tracking' : 'start tracking'}
+              aria-label={isThisRunning ? 'stop tracking' : 'start tracking'}
+            >
+              {#if isThisRunning}
+                <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+              {:else}
+                <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor"><path d="M5 4l14 8-14 8z"/></svg>
+              {/if}
+            </button>
             <button
               bind:this={snoozePickerAnchor}
               onclick={(e) => { e.stopPropagation(); snoozePickerOpen = !snoozePickerOpen; }}

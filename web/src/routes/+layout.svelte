@@ -9,6 +9,7 @@
   import BottomNav from '$lib/components/BottomNav.svelte';
   import Toaster from '$lib/components/Toaster.svelte';
   import OfflineBanner from '$lib/components/OfflineBanner.svelte';
+  import RunningTimer from '$lib/components/RunningTimer.svelte';
   import NavIcon from '$lib/components/NavIcon.svelte';
   import { connect, disconnect, wsConnected } from '$lib/ws';
   import { theme, nextTheme, themeIcon, themeLabel } from '$lib/stores/theme';
@@ -161,5 +162,12 @@
 {#if $auth}
   <CommandPalette bind:this={palette} />
   <OfflineBanner />
+  <!-- Floating top-right pill that's only visible while a clock-in
+       is running. Position keeps it out of the way of the editor and
+       the offline banner; on mobile the component itself hides
+       below the sm breakpoint to avoid crowding the bottom nav. -->
+  <div class="fixed top-3 right-3 z-30">
+    <RunningTimer />
+  </div>
 {/if}
 <Toaster />
