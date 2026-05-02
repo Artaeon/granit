@@ -53,6 +53,13 @@ type CostTracker struct {
 	CompletionTokens int
 	MicroCents       int64 // -1 means "no pricing for the model"
 	Model            string
+	// BudgetHit flips true the moment the runtime cancels the run for
+	// hitting BudgetMicroCents. Callers read it after Run returns to
+	// distinguish a budget stop ("status=budget", warning UI) from a
+	// generic context.Canceled (which would otherwise look like a real
+	// error to the HTTP layer). Snapshot copies it so it survives a
+	// later read.
+	BudgetHit bool
 }
 
 func (c *CostTracker) record(u Usage) {
@@ -83,7 +90,14 @@ func (c *CostTracker) Snapshot() CostTracker {
 		CompletionTokens: c.CompletionTokens,
 		MicroCents:       c.MicroCents,
 		Model:            c.Model,
+		BudgetHit:        c.BudgetHit,
 	}
+}
+
+func (c *CostTracker) markBudgetHit() {
+	c.mu.Lock()
+	c.BudgetHit = true
+	c.mu.Unlock()
 }
 
 // New constructs a runner. llm and bridge are required; pass an
@@ -132,6 +146,13 @@ func (r *Runner) Run(ctx context.Context, preset agents.Preset, goal string, onE
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// budgetEmitted flips once we surface the synthetic "budget exceeded"
+	// event. Without it, every in-flight Thought arriving after we cancel
+	// (but before the agent loop notices ctx.Done()) would re-evaluate the
+	// over-budget condition and re-emit the same error frame to the WS
+	// stream — clients would see the message N times.
+	var budgetEmitted bool
+
 	wrappedEvent := func(ev agents.Event) {
 		// Attribute cost on every Thought event. The agent's loop is
 		// "send prompt → get response → parse Thought + Action → run
@@ -144,11 +165,14 @@ func (r *Runner) Run(ctx context.Context, preset agents.Preset, goal string, onE
 			if u.PromptTokens > 0 || u.CompletionTokens > 0 {
 				tracker.record(u)
 				snap := tracker.Snapshot()
-				if r.BudgetMicroCents > 0 && snap.MicroCents > r.BudgetMicroCents {
+				if r.BudgetMicroCents > 0 && snap.MicroCents > r.BudgetMicroCents && !budgetEmitted {
 					// Budget exceeded: cancel the context so the
 					// agent stops on its next iteration boundary.
-					// Surface a synthetic error event so the live
-					// stream records why.
+					// Surface ONE synthetic error event — subsequent
+					// Thoughts queued before cancel-propagation are
+					// suppressed by the budgetEmitted flag.
+					budgetEmitted = true
+					tracker.markBudgetHit()
 					cancel()
 					if onEvent != nil {
 						onEvent(agents.Event{
@@ -167,8 +191,18 @@ func (r *Runner) Run(ctx context.Context, preset agents.Preset, goal string, onE
 		}
 	}
 
+	// Resolve the effective step cap. Precedence: explicit Runner override
+	// > preset hint > agents-package default (8). The preset hint matters
+	// for callers (e.g. scheduled jobs, raw API consumers) that don't know
+	// to ask for more steps on a research-style preset; without this the
+	// preset's MaxSteps field would be silently ignored.
+	maxSteps := r.MaxSteps
+	if maxSteps == 0 {
+		maxSteps = preset.MaxSteps
+	}
+
 	agent, err := agents.New(registry, r.llm, agents.Options{
-		MaxSteps:     r.MaxSteps,
+		MaxSteps:     maxSteps,
 		SystemPrompt: preset.SystemPrompt,
 		Approve:      approve,
 		OnEvent:      wrappedEvent,

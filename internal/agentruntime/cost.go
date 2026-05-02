@@ -55,8 +55,7 @@ func CostMicroCents(u Usage) int64 {
 // in the price table.
 func normalizeModel(m string) string {
 	m = strings.ToLower(strings.TrimSpace(m))
-	if p, ok := modelPrices[m]; ok {
-		_ = p
+	if _, ok := modelPrices[m]; ok {
 		return m
 	}
 	// Try progressively shorter prefixes. "gpt-4o-mini-2024-07-18"

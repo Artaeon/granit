@@ -121,23 +121,43 @@ func (s *Server) handleRunAgent(w http.ResponseWriter, r *http.Request) {
 		// Persist the transcript as an agent_run note so it shows up
 		// in /agents the same way TUI runs do.
 		if tr != nil {
-			path, content := buildAgentRunNote(preset, *tr, body.Goal, startedAt, runErr, cfg, cost)
+			// Budget hit short-circuits the runner via context.Cancel, so
+			// runErr looks like a generic context.Canceled. Detect it
+			// against the tracker so the UI renders a yellow "budget"
+			// badge instead of a red "error" + "context canceled" text.
+			budgetHit := false
+			if cost != nil {
+				budgetHit = cost.Snapshot().BudgetHit
+			}
+
+			path, content := buildAgentRunNote(preset, *tr, body.Goal, startedAt, runErr, cfg, cost, budgetHit)
+			notePersisted := false
 			if path != "" {
 				abs := filepath.Join(s.cfg.Vault.Root, path)
 				// Agents/ may not exist on a fresh vault. atomicio.WriteNote
 				// uses O_EXCL on a tmp file in the destination dir, so the
-				// parent has to exist before the call.
-				_ = os.MkdirAll(filepath.Dir(abs), 0o755)
-				_ = atomicio.WriteNote(abs, content)
+				// parent has to exist before the call. If either step fails
+				// (disk full, perms) we drop Path from the broadcast so the
+				// UI's "view transcript →" link doesn't 404.
+				if mkErr := os.MkdirAll(filepath.Dir(abs), 0o755); mkErr == nil {
+					if wrErr := atomicio.WriteNote(abs, content); wrErr == nil {
+						notePersisted = true
+					}
+				}
 			}
-			// Notify clients the run finished. Path lets the UI link
-			// directly to the transcript note.
 			final := ""
 			status := "ok"
-			if runErr != nil {
+			switch {
+			case budgetHit:
+				status = "budget"
+				snap := cost.Snapshot()
+				final = fmt.Sprintf("budget exceeded (%s spent, %s limit)",
+					agentruntime.FormatCents(snap.MicroCents),
+					agentruntime.FormatCents(body.BudgetCents))
+			case runErr != nil:
 				status = "error"
 				final = runErr.Error()
-			} else {
+			default:
 				final = strings.TrimSpace(tr.FinalAnswer)
 				switch tr.StoppedBy {
 				case "budget":
@@ -165,15 +185,20 @@ func (s *Server) handleRunAgent(w http.ResponseWriter, r *http.Request) {
 					completeData["completionTokens"] = snap.CompletionTokens
 				}
 			}
+			broadcastPath := path
+			if !notePersisted {
+				broadcastPath = ""
+			}
 			s.hub.Broadcast(wshub.Event{
 				Type: "agent.complete",
 				ID:   runID,
-				Path: path,
+				Path: broadcastPath,
 				Data: completeData,
 			})
 		} else if runErr != nil {
 			// runner.Run returned without a transcript — most likely
-			// a config error before the loop started. Surface to clients.
+			// a config error before the loop started. Surface to clients
+			// (no Path — there's nothing persisted to link to).
 			s.hub.Broadcast(wshub.Event{
 				Type: "agent.complete",
 				ID:   runID,
@@ -195,15 +220,18 @@ func (s *Server) handleRunAgent(w http.ResponseWriter, r *http.Request) {
 // cost may be nil (e.g. Ollama runs that don't track usage). When
 // non-nil + priced, we add a Cost row to the frontmatter so the
 // /agents page can show it without re-parsing the body.
-func buildAgentRunNote(preset agents.Preset, tr agents.Transcript, goal string, startedAt time.Time, runErr error, cfg config.Config, cost *agentruntime.CostTracker) (string, string) {
+func buildAgentRunNote(preset agents.Preset, tr agents.Transcript, goal string, startedAt time.Time, runErr error, cfg config.Config, cost *agentruntime.CostTracker, budgetHit bool) (string, string) {
 	stamp := startedAt.UTC().Format("2006-01-02T1504")
 	title := stamp + "-" + preset.ID
 	path := "Agents/" + title + ".md"
 
 	status := "ok"
-	if runErr != nil {
+	switch {
+	case budgetHit:
+		status = "budget"
+	case runErr != nil:
 		status = "error"
-	} else {
+	default:
 		switch tr.StoppedBy {
 		case "budget":
 			status = "budget"
