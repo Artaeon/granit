@@ -11,6 +11,7 @@
   import FrontmatterEditor from '$lib/notes/FrontmatterEditor.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import DailyQuickAdd from '$lib/notes/DailyQuickAdd.svelte';
+  import DailyContext from '$lib/notes/DailyContext.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
   import { toast } from '$lib/components/toast';
   import { getDraft, setDraft, clearDraft, draftDivergesFromServer } from '$lib/notes/drafts';
@@ -548,6 +549,11 @@
       </header>
       {#if isDaily && note}
         {@const np = note.path}
+        <!-- Carryover (yesterday's open) + habit checklist render
+             above the quick-add bar so they're the first thing the
+             user sees on the daily. Both collapse to a header line
+             when the user wants the editor max-screen. -->
+        <DailyContext onChanged={async () => { lastLoadedPath = ''; await load(np); }} />
         <DailyQuickAdd notePath={np} dailyDate={dailyDate} onAdded={async () => { lastLoadedPath = ''; await load(np); }} />
       {/if}
       <div class="flex-1 min-h-0 p-2 sm:p-3">

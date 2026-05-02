@@ -301,6 +301,12 @@ export const api = {
 
   // Daily
   daily: (date: string = 'today') => req<Note>(`/daily/${date}`),
+  dailyContext: () =>
+    req<{
+      date: string;
+      carryover: { id: string; text: string; priority?: number; dueDate?: string; notePath: string }[];
+      habits: { text: string; done: boolean }[];
+    }>('/daily/context'),
 
   // Calendar
   calendar: (from: string, to: string) =>
