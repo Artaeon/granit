@@ -180,6 +180,38 @@
       .map((w) => ({ widget: w, meta: widgetMeta(w.type) }))
       .filter((x): x is { widget: DashboardWidget; meta: NonNullable<ReturnType<typeof widgetMeta>> } => !!x.meta);
   });
+
+  // AI setup hint. Shown until the user has either configured a cloud
+  // provider key OR explicitly dismissed it. Detects the common
+  // first-launch state where the user has all the AI features in the
+  // UI (Plan my day / Reflect / Chat / Agents) but no provider that
+  // can actually run them — and points at /settings instead of letting
+  // those features error out cryptically.
+  let appCfg = $state<import('$lib/api').AppConfig | null>(null);
+  let aiHintDismissed = $state(false);
+  if (typeof localStorage !== 'undefined') {
+    aiHintDismissed = localStorage.getItem('granit.ai.hint.dismissed') === '1';
+  }
+  $effect(() => {
+    if ($auth && !appCfg) {
+      api.getConfig().then((c) => (appCfg = c)).catch(() => {});
+    }
+  });
+  let aiNotConfigured = $derived.by(() => {
+    if (!appCfg || aiHintDismissed) return false;
+    const p = appCfg.ai_provider || 'local';
+    if (p === 'openai') return !appCfg.openai_key_set;
+    if (p === 'anthropic') return !appCfg.anthropic_key_set;
+    // Ollama / local: we can't tell from config whether the daemon is
+    // reachable, but the default model (qwen2.5:0.5b) is rarely pulled.
+    // Show the hint when no cloud provider is set at all — covers the
+    // most common "AI features just don't work" state.
+    return !appCfg.openai_key_set && !appCfg.anthropic_key_set;
+  });
+  function dismissAiHint() {
+    aiHintDismissed = true;
+    try { localStorage.setItem('granit.ai.hint.dismissed', '1'); } catch {}
+  }
 </script>
 
 {#if !$auth}
@@ -280,6 +312,27 @@
   <div class="h-full overflow-y-auto">
     <div class="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
       {#if loadError}<div class="text-sm text-error mb-4">{loadError}</div>{/if}
+
+      {#if aiNotConfigured}
+        <div class="mb-4 p-4 bg-warning/10 border border-warning/30 rounded-lg flex items-start gap-3">
+          <div class="w-8 h-8 rounded-full bg-warning/20 flex items-center justify-center flex-shrink-0">
+            <svg viewBox="0 0 24 24" class="w-4 h-4 text-warning" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 9v4M12 17h.01" stroke-linecap="round"/>
+              <circle cx="12" cy="12" r="9"/>
+            </svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-text font-medium">AI provider not configured</p>
+            <p class="text-xs text-dim mt-0.5">
+              Plan my day, Chat, Reflect, deep research, morning AI suggestion — none of these will work until you set an API key.
+            </p>
+            <div class="flex items-center gap-3 mt-2">
+              <a href="/settings" class="px-3 py-1.5 text-xs bg-warning text-mantle rounded font-medium">Open Settings</a>
+              <button onclick={dismissAiHint} class="text-xs text-dim hover:text-text">dismiss</button>
+            </div>
+          </div>
+        </div>
+      {/if}
 
       <div class="flex items-center justify-end mb-4">
         <button

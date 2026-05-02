@@ -10,11 +10,16 @@
 
   let { onMore }: { onMore: () => void } = $props();
 
+  // Four primary tabs + a More drawer button = five thumb columns,
+  // the Apple/Material density target. Settings was previously buried
+  // under More so users couldn't find AI provider / API-key setup —
+  // moved up to a primary tab. Notes/Jots/Agents/Chat etc. remain
+  // reachable via the More drawer (which exposes the full sidebar).
   const tabs: Tab[] = [
     { href: '/', label: 'Today', icon: 'today' },
     { href: '/tasks', label: 'Tasks', icon: 'tasks' },
     { href: '/calendar', label: 'Calendar', icon: 'calendar' },
-    { href: '/notes', label: 'Notes', icon: 'notes' }
+    { href: '/settings', label: 'Settings', icon: 'settings' }
   ];
 
   function isActive(href: string): boolean {
