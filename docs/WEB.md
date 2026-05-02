@@ -55,7 +55,8 @@ The vault path defaults to `.` (current directory).
 | Projects      | Full CRUD with goals + milestones (nested progress), next-action chip, linked tasks, status lifecycle, color picker.                              |
 | Habits        | Streak overview + completion toggles.                                                                                                            |
 | Goals         | Read view of `.granit/goals.json`.                                                                                                               |
-| Agents        | Two-tab page. Presets gallery (built-in + vault-local). Run history (any note with `type: agent_run` frontmatter). Per-preset stats.             |
+| Agents        | Two-tab page. Presets gallery (built-in + vault-local) with one-click **Run** that streams the ReAct transcript live via WS. Run history (any note with `type: agent_run` frontmatter). Per-preset stats. |
+| Scripture     | Verse-of-the-day, "another one" random pick, **Memorize** mode (cloze drill with per-verse accuracy tracking), Browse the full library. Reads `.granit/scriptures.md` — same file the TUI uses. |
 | Settings      | Theme, security (password change / "log out everywhere"), **devices** (active sessions, revoke per-row), git sync status, vault info.            |
 | Morning       | Mirrors the TUI's morning-startup wizard.                                                                                                        |
 | Templates     | Browse built-in + vault templates, create note from one.                                                                                         |
@@ -93,6 +94,9 @@ Everything the UI does goes through `/api/v1/*`. A few highlights:
 | `/events` `/events/{id}`              | GET/POST/PATCH/DELETE | `events.json` CRUD.                    |
 | `/projects` `/projects/{name}`        | GET/POST/PATCH/DELETE | Full project lifecycle.                |
 | `/agents/presets` `/agents/runs`      | GET        | Agent catalog and run history.                     |
+| `/agents/run`                         | POST       | Kick off an agent run server-side. Returns runId; events stream via WS frames `agent.event` / `agent.complete`. |
+| `/scripture` `/scripture/today` `/scripture/random` | GET | Verse library, daily verse, random pick.            |
+| `/devotionals`                        | POST       | Create a devotional note pre-seeded with a verse.   |
 | `/devices` `/devices/{id}`            | GET/DELETE | Active session list, revoke per-device.            |
 | `/dashboard`                          | GET/PUT    | Per-vault widget config.                            |
 | `/sync`                               | GET/POST   | Git auto-sync status / manual trigger.             |
@@ -101,6 +105,36 @@ All authed endpoints accept either:
 
 1. The bootstrap bearer token (`<vault>/.granit/everything-token`), or
 2. A session token from a successful `POST /auth/login`.
+
+## AI: server-side agents
+
+`granit web` reads the same `~/.config/granit/config.json` the TUI uses,
+so the AI provider, key, and model settings are shared across both
+surfaces. Setting up the TUI's AI once works on the web automatically.
+
+Supported providers (via `internal/agentruntime`):
+
+- **OpenAI** — set `ai_provider: "openai"`, `openai_key`, `openai_model`
+  (defaults to `gpt-4o-mini`).
+- **Ollama / local** — set `ai_provider: "ollama"`, `ollama_url`
+  (defaults to `http://localhost:11434`), `ollama_model`. Free, runs
+  on your hardware, slower.
+
+Built-in presets (visible on `/agents`):
+
+| Preset | What it does |
+|---|---|
+| `research-synthesizer` | Topic → finds related notes, synthesises patterns + open questions. Read-only. |
+| `project-manager`      | Project name → status, blockers, next-actions report. Read-only. |
+| `inbox-triager`        | Reviews recent captures, proposes one next-action task per item. Writes tasks. |
+| `plan-my-day`          | Reads today's calendar + open tasks + project next-actions, writes a `## Plan` time-block schedule into today's daily note. Writes notes. |
+
+The daily note has a one-click **"Plan my day"** button that fires
+`plan-my-day` and inserts the result. Other presets get their Run button
+on the `/agents` page; the transcript streams live in a side panel.
+
+Vault-local overrides at `<vault>/.granit/agents/<id>.json` shadow built-
+ins by ID. Custom prompts work the same in both surfaces.
 
 ## Offline + PWA
 

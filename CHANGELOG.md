@@ -6,6 +6,86 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Phase 18: server-side AI agents + Bible practicer
+
+#### Shared agent runtime (`internal/agentruntime`)
+- New TUI-free runtime package that wraps `internal/agents` so any caller
+  (HTTP handlers, future scheduled jobs, future CLI subcommands) can run
+  agents the same way the TUI does.
+- LLM impls for OpenAI (`gpt-4o-mini` default) and Ollama. Provider
+  switch keyed off the existing `config.Config` — same `ai_provider` /
+  `openai_key` / `openai_model` / `ollama_url` / `ollama_model` fields
+  the TUI reads. A working `granit tui` setup runs on the web with no
+  extra config.
+- Bridge wires vault/objects/tasks into agent tools (`read_note`,
+  `list_notes`, `search_vault`, `query_objects`, `query_tasks`,
+  `get_today`, `write_note`, `create_task`, `create_object`). Mirrors
+  the TUI bridge but with no TUI dep so the server uses it directly.
+- Auto-approve writes when the preset's `IncludeWrite=true` — preset
+  metadata IS the user's prior consent, no per-step prompt.
+
+#### `POST /agents/run` with WS event streaming
+- Kicks off an agent run on the server; returns `{runId}`.
+- For every step the agent emits, broadcasts `agent.event` over the
+  existing WS hub with `{step, kind, text}` so the page that started
+  the run (and any other connected device) can render the transcript
+  live.
+- On completion, persists a TUI-compatible `agent_run` note into
+  `Agents/{utc-timestamp}-{preset}.md` (same frontmatter shape, so
+  `/agents/runs` picks it up identically) and broadcasts
+  `agent.complete` with status + final answer + path to the note.
+- Stateless: no server-side run map. The WS stream is the live
+  channel; the persisted note is the post-run record.
+- Surfaces misconfiguration (missing API key, wrong provider) as 400
+  to the kicker, not 500.
+
+#### `plan-my-day` built-in preset
+- Reads today's date, open tasks, active project next-actions, and the
+  current daily note (so existing manual plans aren't clobbered);
+  writes a time-blocked `## Plan` section into today's daily.
+- Hard rules in the system prompt: 25–60 min focus blocks, lunch
+  12:30–13:15, ≤1 90-min deep-work block per morning, cite task IDs.
+- One-click button on the daily note's quick-add bar opens the agent
+  run panel. After completion, the editor's WS subscriber catches
+  `note.changed` and reloads — the new `## Plan` appears in-place.
+
+#### Web agent run UI
+- New "▶ Run" button on every preset card on `/agents`.
+- Slide-in `AgentRunPanel` shows the goal input, then streams each
+  ReAct step (thought / tool_call / tool_result / final_answer) with
+  tone-coded labels and step numbers.
+- Final answer floats to the top in a green callout when the run
+  completes; `view transcript →` link jumps to the persisted
+  `agent_run` note.
+
+#### Scripture / Bible practicer (`internal/scripture` + `/scripture`)
+- Extracted scripture loader to a shared package — TUI now thin-wraps
+  it. Single source of truth for the verse list and the
+  `<vault>/.granit/scriptures.md` format.
+- Endpoints: `GET /scripture` (full library), `/scripture/today`
+  (deterministic verse-of-the-day, same on every device), `/scripture/random`
+  (uniform random; `?seed=N` for testing). `POST /devotionals` creates
+  a `Devotionals/{date}-{slug}.md` note pre-seeded with the verse text
+  as a blockquote and a "## Reflection" section.
+- New `/scripture` page with three modes:
+  - **Read**: verse-of-the-day in big serif, "another verse" / "reflect
+    on this" buttons. Reflect creates a devotional note and routes the
+    user to it for editing.
+  - **Memorize**: cloze-deletion drill. Hides ~25% of significant
+    words (filler words skipped). Per-verse accuracy stored in
+    localStorage; the picker weights weaker verses preferentially so
+    practice converges on the gaps.
+  - **Browse**: the full library with a text-search filter.
+- Dashboard widget shows the verse of the day with a click-through.
+  Enabled by default in new vaults.
+- Nav entry with a book icon.
+
+#### WebSocket protocol
+- `wshub.Event` gained an optional `Data map[string]any` so events that
+  need a richer payload than (path, id) can carry it. Agent streaming
+  is the first user; other features can adopt the same field.
+- Web `WsEvent` union extended with `agent.event` and `agent.complete`.
+
 ### Added — Phase 17: web companion (`granit web`)
 
 A self-hosted web frontend over the same vault, task store, and daily-note
