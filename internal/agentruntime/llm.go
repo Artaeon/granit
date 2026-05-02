@@ -46,6 +46,23 @@ type Chatter interface {
 	Chat(ctx context.Context, messages []ChatMessage) (string, error)
 }
 
+// Usage is the token tally from one LLM call. Captured by the OpenAI
+// implementation (Ollama doesn't bill, so its usage is always zero).
+// Cost is computed from a price table at the runtime layer, not here.
+type Usage struct {
+	PromptTokens     int
+	CompletionTokens int
+	Model            string // model that produced these tokens
+}
+
+// Metered is implemented by LLMs that report token usage after each
+// call. The runtime polls LastUsage() between iterations to drive
+// budget enforcement; LLMs without this interface (Ollama) get a free
+// pass — no budget tracking, no cost reporting.
+type Metered interface {
+	LastUsage() Usage
+}
+
 // NewLLM constructs an LLM bound to the user's granit config. Provider
 // selection mirrors what the TUI does so a working `granit tui` setup
 // just works on the web side too — same key, same model, same provider.
@@ -94,11 +111,21 @@ func NewLLM(cfg config.Config) (agents.LLM, error) {
 type openAILLM struct {
 	apiKey string
 	model  string
+	// lastUsage tracks the token count from the most recent call.
+	// Single-writer (the goroutine inside an agent run) so a plain
+	// field is safe — no mutex needed.
+	lastUsage Usage
 }
 
 func (l *openAILLM) Complete(ctx context.Context, prompt string) (string, error) {
 	return l.Chat(ctx, []ChatMessage{{Role: "user", Content: prompt}})
 }
+
+// LastUsage returns the token tally from the most recent Chat/Complete.
+// Zero values when no call has happened yet. The Model field always
+// reflects the configured model so cost lookups stay deterministic
+// even if the API silently routes to a different snapshot.
+func (l *openAILLM) LastUsage() Usage { return l.lastUsage }
 
 // Chat sends a multi-turn conversation. OpenAI's chat-completions
 // endpoint takes the messages array directly so this is just a
@@ -141,12 +168,26 @@ func (l *openAILLM) Chat(ctx context.Context, messages []ChatMessage) (string, e
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return "", fmt.Errorf("openai: parse: %w", err)
 	}
 	if len(out.Choices) == 0 {
 		return "", fmt.Errorf("openai: no choices returned")
+	}
+	// Cache token usage so the runtime can poll between iterations.
+	// We deliberately store the configured model (l.model) rather than
+	// any "actual model" field the response might carry — for cost
+	// calculation we want the user's settings, not the API's silent
+	// routing decision.
+	l.lastUsage = Usage{
+		PromptTokens:     out.Usage.PromptTokens,
+		CompletionTokens: out.Usage.CompletionTokens,
+		Model:            l.model,
 	}
 	return out.Choices[0].Message.Content, nil
 }
