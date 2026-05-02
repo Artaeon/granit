@@ -181,6 +181,13 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/agents/runs", s.handleListAgentRuns)
 		r.Post("/api/v1/agents/run", s.handleRunAgent)
 
+		// Scripture / devotional — verse of the day, full set, "another
+		// one" random pick, and a one-shot devotional-note creator.
+		r.Get("/api/v1/scripture", s.handleListScriptures)
+		r.Get("/api/v1/scripture/today", s.handleDailyScripture)
+		r.Get("/api/v1/scripture/random", s.handleRandomScripture)
+		r.Post("/api/v1/devotionals", s.handleCreateDevotional)
+
 		// Devices — authState.Sessions exposed for management.
 		r.Get("/api/v1/devices", s.handleListDevices)
 		r.Delete("/api/v1/devices/{id}", s.handleRevokeDevice)
