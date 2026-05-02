@@ -357,6 +357,36 @@ export interface Scripture {
   source?: string;
 }
 
+// Bible — bundled World English Bible (PD). Mirrors
+// internal/scripture/bible types.
+export interface BibleVerse {
+  n: number;
+  text: string;
+}
+export interface BibleBookSummary {
+  code: string; // USFM, e.g. "JHN"
+  name: string;
+  testament: 'OT' | 'NT';
+  chapters: number;
+}
+export interface BiblePassage {
+  book: string;
+  bookCode: string;
+  chapter: number;
+  startV: number;
+  endV: number;
+  reference: string; // "Proverbs 3:5-8"
+  verses: BibleVerse[];
+}
+export interface BibleSearchHit {
+  book: string;
+  bookCode: string;
+  chapter: number;
+  verse: number;
+  text: string;
+  reference: string;
+}
+
 export interface Device {
   id: string;
   label?: string;
@@ -546,6 +576,35 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body)
     }),
+
+  // Bible — embedded World English Bible (public domain). The reader
+  // page hits these to drive the book picker + random-passage button.
+  bibleBooks: () =>
+    req<{
+      books: BibleBookSummary[];
+      meta: { name: string; abbreviation: string; license: string };
+    }>('/bible/books'),
+  bibleChapter: (book: string, chapter: number) =>
+    req<{
+      book: string;
+      bookCode: string;
+      testament: 'OT' | 'NT';
+      chapter: number;
+      verses: BibleVerse[];
+      chapters: number;
+    }>(`/bible/${encodeURIComponent(book)}/${chapter}`),
+  bibleRandom: (opts: { length?: number; book?: string; testament?: 'OT' | 'NT' } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.length) params.set('length', String(opts.length));
+    if (opts.book) params.set('book', opts.book);
+    if (opts.testament) params.set('testament', opts.testament);
+    const q = params.toString();
+    return req<BiblePassage>(`/bible/random${q ? `?${q}` : ''}`);
+  },
+  bibleSearch: (query: string, limit = 50) =>
+    req<{ hits: BibleSearchHit[]; total: number; query: string }>(
+      `/bible/search?q=${encodeURIComponent(query)}&limit=${limit}`
+    ),
 
   // Config (web ↔ TUI shared config.json)
   getConfig: () => req<AppConfig>('/config'),

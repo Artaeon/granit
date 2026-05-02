@@ -1,13 +1,20 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { api, type Scripture } from '$lib/api';
+  import {
+    api,
+    type Scripture,
+    type BibleBookSummary,
+    type BiblePassage,
+    type BibleVerse,
+    type BibleSearchHit
+  } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
   import type { AgentPreset } from '$lib/api';
 
-  // Three modes:
+  // Four modes:
   //   read   — verse-of-the-day in big type, "another one" button,
   //            reflect-on-this saves a Devotionals/ note
   //   memo   — cloze-deletion drill: hide every Nth significant word,
@@ -16,7 +23,12 @@
   //            surface preferentially (SM-2-style spaced repetition,
   //            simplified — accuracy alone, not interval-based)
   //   browse — paginated full list, search, click-to-copy
-  type Mode = 'read' | 'memo' | 'browse';
+  //   bible  — full embedded WEB bible: random passage, book/chapter
+  //            picker, full-text search. Distinct from `read` because
+  //            the curated daily-rotation set stays small and stable
+  //            for spaced-repetition; the bible tab is for free-form
+  //            exploration.
+  type Mode = 'read' | 'memo' | 'browse' | 'bible';
 
   let mode = $state<Mode>('read');
   let today = $state<Scripture | null>(null);
@@ -198,13 +210,159 @@
     const s = loadStats();
     return Object.values(s).reduce((sum, x) => sum + x.correct, 0);
   });
+
+  // ─── Bible mode ──────────────────────────────────────────────────────
+  // Lazy-loaded so /scripture stays fast to first paint; we only fetch
+  // the book index when the user actually clicks the Bible tab.
+  let bibleBooks = $state<BibleBookSummary[]>([]);
+  let bibleMeta = $state<{ name: string; abbreviation: string; license: string } | null>(null);
+  let bibleLoading = $state(false);
+  let biblePassage = $state<BiblePassage | null>(null);
+  let bibleChapter = $state<{ book: string; bookCode: string; chapter: number; verses: BibleVerse[]; chapters: number } | null>(null);
+  let bibleSearchQ = $state('');
+  let bibleSearchHits = $state<BibleSearchHit[]>([]);
+  let bibleSearchBusy = $state(false);
+  let bibleLengthFilter = $state(4);
+  let bibleTestamentFilter = $state<'' | 'OT' | 'NT'>('');
+  // Picker state: which book is expanded to show its chapter grid.
+  let pickerOpenBook = $state<string | null>(null);
+  // Picker state: collapsible OT / NT sections.
+  let pickerShowOT = $state(true);
+  let pickerShowNT = $state(true);
+
+  async function ensureBibleIndex() {
+    if (bibleBooks.length > 0 || bibleLoading) return;
+    bibleLoading = true;
+    try {
+      const r = await api.bibleBooks();
+      bibleBooks = r.books;
+      bibleMeta = r.meta;
+    } catch (e) {
+      toast.error('failed to load bible: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      bibleLoading = false;
+    }
+  }
+
+  async function bibleRandom() {
+    try {
+      const opts: { length?: number; testament?: 'OT' | 'NT' } = { length: bibleLengthFilter };
+      if (bibleTestamentFilter) opts.testament = bibleTestamentFilter;
+      biblePassage = await api.bibleRandom(opts);
+      bibleChapter = null; // mutually exclusive views — passage replaces chapter view
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function loadBibleChapter(book: string, chapter: number) {
+    try {
+      bibleChapter = await api.bibleChapter(book, chapter);
+      biblePassage = null;
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function bibleNextChapter(delta: number) {
+    if (!bibleChapter) return;
+    const next = bibleChapter.chapter + delta;
+    if (next < 1 || next > bibleChapter.chapters) return;
+    await loadBibleChapter(bibleChapter.bookCode, next);
+  }
+
+  // Pull the visible passage into the curated `current` slot so
+  // the "use as today's verse" + devotional + AI reflection flows can
+  // operate on a bible passage without reimplementing them.
+  function biblePassageToScripture(p: BiblePassage): Scripture {
+    return {
+      text: p.verses.map((v) => v.text).join(' '),
+      source: `${p.reference} (WEB)`
+    };
+  }
+
+  function useAsTodayVerse(s: Scripture) {
+    // Promote into the curated `current` slot — the existing read-tab
+    // controls then operate on it (Reflect / AI Reflection / etc.).
+    current = s;
+    mode = 'read';
+    toast.success('promoted to verse view');
+  }
+
+  async function reflectOnPassage(p: BiblePassage) {
+    const s = biblePassageToScripture(p);
+    try {
+      const r = await api.createDevotional({ verse: s.text, source: s.source });
+      toast.success('devotional created');
+      goto(`/notes/${encodeURIComponent(r.path)}`);
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function aiReflectOnPassage(p: BiblePassage) {
+    aiLoading = true;
+    try {
+      if (!devotionalPreset) {
+        const r = await api.listAgentPresets();
+        devotionalPreset = r.presets.find((pp) => pp.id === 'devotional') ?? null;
+      }
+      if (!devotionalPreset) {
+        toast.error('devotional preset not found');
+        return;
+      }
+      const verse = p.verses.map((v) => `${v.n}. ${v.text}`).join('\n');
+      aiGoal = `Passage: ${p.reference} (WEB)\n\n${verse}`;
+      aiOpen = true;
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      aiLoading = false;
+    }
+  }
+
+  // Debounced search — keeps the UI snappy even though the server scan
+  // is fast; no point firing a request on every keystroke.
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  function onSearchInput() {
+    if (searchTimer) clearTimeout(searchTimer);
+    const q = bibleSearchQ.trim();
+    if (q.length < 2) {
+      bibleSearchHits = [];
+      return;
+    }
+    searchTimer = setTimeout(async () => {
+      bibleSearchBusy = true;
+      try {
+        const r = await api.bibleSearch(q, 50);
+        bibleSearchHits = r.hits;
+      } catch (e) {
+        toast.error('search failed: ' + (e instanceof Error ? e.message : String(e)));
+      } finally {
+        bibleSearchBusy = false;
+      }
+    }, 250);
+  }
+
+  function openHit(h: BibleSearchHit) {
+    loadBibleChapter(h.bookCode, h.chapter);
+    // Defer scroll so the DOM has rendered the chapter.
+    setTimeout(() => {
+      const el = document.getElementById(`bible-v-${h.verse}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+  }
+
+  // Books grouped by testament, for the collapsible picker.
+  let bibleBooksOT = $derived(bibleBooks.filter((b) => b.testament === 'OT'));
+  let bibleBooksNT = $derived(bibleBooks.filter((b) => b.testament === 'NT'));
 </script>
 
 <div class="h-full overflow-y-auto">
   <div class="max-w-3xl mx-auto p-4 sm:p-6 lg:p-8">
-    <PageHeader title="Scripture" subtitle="Verse of the day, memorization drill, full library" />
+    <PageHeader title="Scripture" subtitle="Verse of the day, memorization drill, full bible (WEB)" />
 
-    <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-6 w-fit">
+    <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-6 flex-wrap">
       <button
         class="px-4 py-2 {mode === 'read' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
         onclick={() => (mode = 'read')}
@@ -217,6 +375,10 @@
         class="px-4 py-2 {mode === 'browse' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
         onclick={() => (mode = 'browse')}
       >Browse <span class="text-[10px] opacity-70">{all.length}</span></button>
+      <button
+        class="px-4 py-2 {mode === 'bible' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+        onclick={() => { mode = 'bible'; ensureBibleIndex(); }}
+      >Bible</button>
     </div>
 
     {#if loading && all.length === 0}
@@ -311,7 +473,7 @@
           {/if}
         </div>
       </div>
-    {:else}
+    {:else if mode === 'browse'}
       <input
         bind:value={q}
         placeholder="filter…"
@@ -330,6 +492,219 @@
       <p class="text-[11px] text-dim italic mt-3">
         Edit <code>.granit/scriptures.md</code> to add your own — same file the granit TUI reads.
       </p>
+    {:else if mode === 'bible'}
+      {#if bibleLoading && bibleBooks.length === 0}
+        <div class="text-sm text-dim">loading bible…</div>
+      {:else}
+        <!-- Random passage controls — primary action up top -->
+        <div class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+          <div class="flex flex-wrap gap-2 items-center">
+            <button
+              onclick={bibleRandom}
+              class="px-4 py-2 text-sm bg-primary text-mantle rounded hover:opacity-90"
+            >Random passage</button>
+            <label class="text-xs text-subtext">
+              length
+              <select
+                bind:value={bibleLengthFilter}
+                class="ml-1 bg-mantle border border-surface1 rounded px-2 py-1 text-text"
+              >
+                {#each [1, 2, 3, 4, 5, 6, 8, 10] as n}
+                  <option value={n}>{n}</option>
+                {/each}
+              </select>
+            </label>
+            <label class="text-xs text-subtext">
+              from
+              <select
+                bind:value={bibleTestamentFilter}
+                class="ml-1 bg-mantle border border-surface1 rounded px-2 py-1 text-text"
+              >
+                <option value="">whole bible</option>
+                <option value="OT">Old Testament</option>
+                <option value="NT">New Testament</option>
+              </select>
+            </label>
+            {#if bibleMeta}
+              <span class="ml-auto text-[11px] text-dim italic">
+                {bibleMeta.name} ({bibleMeta.abbreviation}) · {bibleMeta.license}
+              </span>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Search box -->
+        <div class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+          <div class="flex gap-2 items-center">
+            <input
+              bind:value={bibleSearchQ}
+              oninput={onSearchInput}
+              placeholder="search the bible (e.g. 'love your enemies')…"
+              class="flex-1 px-3 py-2 bg-mantle border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
+            />
+            {#if bibleSearchBusy}
+              <span class="text-xs text-dim">searching…</span>
+            {/if}
+          </div>
+          {#if bibleSearchHits.length > 0}
+            <ul class="mt-3 max-h-64 overflow-y-auto divide-y divide-surface1 border border-surface1 rounded">
+              {#each bibleSearchHits as h}
+                <li>
+                  <button
+                    type="button"
+                    onclick={() => openHit(h)}
+                    class="w-full text-left px-3 py-2 hover:bg-surface1"
+                  >
+                    <p class="text-xs text-primary font-mono">{h.reference}</p>
+                    <p class="text-sm text-text font-serif italic mt-0.5">"{h.text}"</p>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+            <p class="text-[11px] text-dim italic mt-2">
+              showing {bibleSearchHits.length} {bibleSearchHits.length === 50 ? '(capped)' : ''}
+            </p>
+          {:else if bibleSearchQ.trim().length >= 2 && !bibleSearchBusy}
+            <p class="text-[11px] text-dim italic mt-2">no matches</p>
+          {/if}
+        </div>
+
+        <!-- Active passage / chapter view -->
+        {#if biblePassage}
+          <article class="bg-surface0 border border-surface1 rounded-lg p-6 sm:p-8">
+            <p class="text-xs text-primary font-mono mb-3">{biblePassage.reference} (WEB)</p>
+            <div class="text-lg sm:text-xl text-text leading-relaxed font-serif">
+              {#each biblePassage.verses as v}
+                <span class="text-xs align-super text-dim mr-1 font-sans not-italic">{v.n}</span><span>{v.text}</span>{' '}
+              {/each}
+            </div>
+            <div class="flex gap-2 mt-6 flex-wrap">
+              <button
+                onclick={bibleRandom}
+                class="px-3 py-1.5 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
+              >Another passage</button>
+              <button
+                onclick={() => loadBibleChapter(biblePassage!.bookCode, biblePassage!.chapter)}
+                class="px-3 py-1.5 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
+              >Read full chapter →</button>
+              <button
+                onclick={() => useAsTodayVerse(biblePassageToScripture(biblePassage!))}
+                class="px-3 py-1.5 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
+              >Use as today's verse</button>
+              <button
+                onclick={() => reflectOnPassage(biblePassage!)}
+                class="px-3 py-1.5 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
+              >Reflect →</button>
+              <button
+                onclick={() => aiReflectOnPassage(biblePassage!)}
+                disabled={aiLoading}
+                class="px-3 py-1.5 text-sm bg-primary text-mantle rounded hover:opacity-90 disabled:opacity-50"
+              >{aiLoading ? '…' : 'AI reflection ✨'}</button>
+            </div>
+          </article>
+        {:else if bibleChapter}
+          <article class="bg-surface0 border border-surface1 rounded-lg p-6 sm:p-8">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-semibold text-text">
+                {bibleChapter.book} {bibleChapter.chapter}
+              </h2>
+              <div class="flex gap-1">
+                <button
+                  disabled={bibleChapter.chapter <= 1}
+                  onclick={() => bibleNextChapter(-1)}
+                  class="px-2 py-1 text-sm bg-mantle border border-surface1 rounded hover:border-primary disabled:opacity-30"
+                >‹ prev</button>
+                <button
+                  disabled={bibleChapter.chapter >= bibleChapter.chapters}
+                  onclick={() => bibleNextChapter(1)}
+                  class="px-2 py-1 text-sm bg-mantle border border-surface1 rounded hover:border-primary disabled:opacity-30"
+                >next ›</button>
+              </div>
+            </div>
+            <div class="text-base sm:text-lg text-text leading-relaxed font-serif space-y-1">
+              {#each bibleChapter.verses as v}
+                <p id={`bible-v-${v.n}`}>
+                  <span class="text-xs align-super text-dim mr-1 font-sans not-italic">{v.n}</span>{v.text}
+                </p>
+              {/each}
+            </div>
+            <p class="text-[11px] text-dim italic mt-4">
+              {bibleChapter.book} · chapter {bibleChapter.chapter} of {bibleChapter.chapters} · WEB (Public Domain)
+            </p>
+          </article>
+        {/if}
+
+        <!-- Book / chapter picker -->
+        <div class="mt-4 bg-surface0 border border-surface1 rounded-lg overflow-hidden">
+          <button
+            class="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-surface1"
+            onclick={() => (pickerShowOT = !pickerShowOT)}
+          >
+            <span class="text-sm font-semibold text-text">Old Testament</span>
+            <span class="text-xs text-dim">{bibleBooksOT.length} books · {pickerShowOT ? '▾' : '▸'}</span>
+          </button>
+          {#if pickerShowOT}
+            <ul class="divide-y divide-surface1 border-t border-surface1">
+              {#each bibleBooksOT as bk}
+                <li>
+                  <button
+                    class="w-full text-left px-4 py-2 flex items-center justify-between hover:bg-surface1"
+                    onclick={() => (pickerOpenBook = pickerOpenBook === bk.code ? null : bk.code)}
+                  >
+                    <span class="text-sm text-text">{bk.name}</span>
+                    <span class="text-[11px] text-dim">{bk.chapters} ch · {pickerOpenBook === bk.code ? '▾' : '▸'}</span>
+                  </button>
+                  {#if pickerOpenBook === bk.code}
+                    <div class="px-3 pb-3 flex flex-wrap gap-1">
+                      {#each Array.from({ length: bk.chapters }, (_, i) => i + 1) as ch}
+                        <button
+                          onclick={() => loadBibleChapter(bk.code, ch)}
+                          class="px-2 py-1 text-xs bg-mantle border border-surface1 rounded hover:border-primary text-text font-mono"
+                        >{ch}</button>
+                      {/each}
+                    </div>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+
+        <div class="mt-2 bg-surface0 border border-surface1 rounded-lg overflow-hidden">
+          <button
+            class="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-surface1"
+            onclick={() => (pickerShowNT = !pickerShowNT)}
+          >
+            <span class="text-sm font-semibold text-text">New Testament</span>
+            <span class="text-xs text-dim">{bibleBooksNT.length} books · {pickerShowNT ? '▾' : '▸'}</span>
+          </button>
+          {#if pickerShowNT}
+            <ul class="divide-y divide-surface1 border-t border-surface1">
+              {#each bibleBooksNT as bk}
+                <li>
+                  <button
+                    class="w-full text-left px-4 py-2 flex items-center justify-between hover:bg-surface1"
+                    onclick={() => (pickerOpenBook = pickerOpenBook === bk.code ? null : bk.code)}
+                  >
+                    <span class="text-sm text-text">{bk.name}</span>
+                    <span class="text-[11px] text-dim">{bk.chapters} ch · {pickerOpenBook === bk.code ? '▾' : '▸'}</span>
+                  </button>
+                  {#if pickerOpenBook === bk.code}
+                    <div class="px-3 pb-3 flex flex-wrap gap-1">
+                      {#each Array.from({ length: bk.chapters }, (_, i) => i + 1) as ch}
+                        <button
+                          onclick={() => loadBibleChapter(bk.code, ch)}
+                          class="px-2 py-1 text-xs bg-mantle border border-surface1 rounded hover:border-primary text-text font-mono"
+                        >{ch}</button>
+                      {/each}
+                    </div>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+      {/if}
     {/if}
   </div>
 </div>

@@ -254,6 +254,14 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/scripture/random", s.handleRandomScripture)
 		r.Post("/api/v1/devotionals", s.handleCreateDevotional)
 
+		// Bible — full embedded WEB (World English Bible, public domain)
+		// as a reader + random-passage source. Backed by
+		// internal/scripture/bible (loaded once from a go:embed JSON).
+		r.Get("/api/v1/bible/books", s.handleBibleBooks)
+		r.Get("/api/v1/bible/random", s.handleBibleRandom)
+		r.Get("/api/v1/bible/search", s.handleBibleSearch)
+		r.Get("/api/v1/bible/{book}/{chapter}", s.handleBibleChapter)
+
 		// Devices — authState.Sessions exposed for management.
 		r.Get("/api/v1/devices", s.handleListDevices)
 		r.Delete("/api/v1/devices/{id}", s.handleRevokeDevice)
