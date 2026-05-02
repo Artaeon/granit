@@ -32,7 +32,10 @@
   let notePath = $state('');
   let priority = $state(0);
   let location = $state('');
-  let color = $state('cyan');
+  // Empty default → eventTypeColor falls through to the per-title hash
+  // rotate, so a series of drag-created events get distinct hues without
+  // the user picking each one. Picking a color here flips it explicit.
+  let color = $state('');
   let saving = $state(false);
   let titleEl: HTMLInputElement | undefined = $state();
 
@@ -48,7 +51,7 @@
     notePath = defaultNotePath ?? `Jots/${dateISO}.md`;
     priority = 0;
     location = '';
-    color = 'cyan';
+    color = '';
     setTimeout(() => titleEl?.focus(), 50);
   });
 

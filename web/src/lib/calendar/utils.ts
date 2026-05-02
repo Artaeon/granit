@@ -179,9 +179,18 @@ export function eventTypeColor(ev: CalendarEvent): { bg: string; fg: string; bor
     return tone(named[ev.color]);
   }
 
+  // Untouched user events fall here. Hash by title (or the eventId
+  // when present) into the same per-source palette so a fresh
+  // calendar with five drag-created events shows five distinct hues
+  // for free — matches the visual pattern users expect from Google /
+  // Apple Calendar where every event gets its own color out of the
+  // box. The user can still override via the explicit color picker.
+  if (ev.type === 'event') {
+    const seed = ev.title || ev.eventId || '';
+    return tone(sourcePalette[hashStr(seed) % sourcePalette.length]);
+  }
+
   switch (ev.type) {
-    case 'event':
-      return tone('info');
     case 'ics_event':
       return tone('info');
     case 'task_scheduled':

@@ -17,7 +17,9 @@
   let startTime = $state('');
   let endTime = $state('');
   let location = $state('');
-  let color = $state('cyan');
+  // Empty default lets eventTypeColor rotate by title hash so a fresh
+  // calendar fills with distinct hues automatically.
+  let color = $state('');
   let saving = $state(false);
 
   $effect(() => {
