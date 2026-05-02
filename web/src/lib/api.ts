@@ -115,6 +115,8 @@ export interface CalendarEvent {
   durationMinutes?: number;
   color?: string;
   location?: string;
+  /** ICS filename for ics_event types — drives per-source coloring. */
+  source?: string;
 }
 
 export interface ProjectMilestone {

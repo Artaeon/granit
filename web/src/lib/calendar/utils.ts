@@ -151,6 +151,7 @@ export function eventTypeColor(ev: CalendarEvent): { bg: string; fg: string; bor
   });
 
   // Granit's events.json `color` field — map names → palette tokens.
+  // Explicit user choice; honored before any auto-coloring rule.
   const named: Record<string, string> = {
     red: 'error',
     yellow: 'warning',
@@ -162,6 +163,16 @@ export function eventTypeColor(ev: CalendarEvent): { bg: string; fg: string; bor
   };
   if ((ev.type === 'event' || ev.type === 'ics_event') && ev.color && named[ev.color]) {
     return tone(named[ev.color]);
+  }
+
+  // ICS events: color by source filename so faith.ics, training.ics,
+  // work.ics get distinct hues on the grid. Hash → index into the
+  // sourcePalette so the same file always lands on the same tone (a
+  // user dropping new .ics files in the vault gets a stable color
+  // without manual setup). Falls back to the type-default when the
+  // server didn't provide a source (older binaries, events.json).
+  if (ev.type === 'ics_event' && ev.source) {
+    return tone(sourcePalette[hashStr(ev.source) % sourcePalette.length]);
   }
 
   switch (ev.type) {
@@ -178,4 +189,41 @@ export function eventTypeColor(ev: CalendarEvent): { bg: string; fg: string; bor
     default:
       return tone('subtext');
   }
+}
+
+// sourcePalette is the per-ICS-source rotation. Eight tones picked so
+// no two adjacent indices clash visually. Order matters less than
+// the count — bigger palette = more distinguishable sources, with
+// diminishing returns past ~8 (humans don't reliably distinguish
+// 12+ pastels at a glance).
+const sourcePalette = [
+  'info',       // teal/cyan
+  'success',    // green
+  'warning',    // yellow
+  'primary',    // mauve/purple
+  'secondary',  // blue
+  'accent',     // peach/orange
+  'error',      // red/pink
+  'subtext'     // muted grey — fallback "other"
+] as const;
+
+// sourceColorToken returns the palette token a given ICS source maps
+// to. Exposed so the source-list legend in the calendar sidebar can
+// match the on-grid event color exactly — same input always lands on
+// the same token.
+export function sourceColorToken(source: string): string {
+  if (!source) return 'info';
+  return sourcePalette[hashStr(source) % sourcePalette.length];
+}
+
+// hashStr is a tiny FNV-1a hash. Deterministic + sufficient distribution
+// across the small palette; we don't need cryptographic strength here,
+// just "same input always → same output".
+function hashStr(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h;
 }
