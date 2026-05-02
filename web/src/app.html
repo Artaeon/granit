@@ -2,15 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%sveltekit.assets%/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="%sveltekit.assets%/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="%sveltekit.assets%/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="%sveltekit.assets%/icon-512.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#1a1b26" />
     <link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="%sveltekit.assets%/icon.svg" />
+    <!-- iOS doesn't read manifest icons. apple-touch-icon must be PNG;
+         180×180 is the universal size that scales cleanly to every iOS
+         device. Older fallback link kept identical for older iOS. -->
+    <link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="%sveltekit.assets%/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Granit" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Granit" />
     <title>Granit</title>
     <!-- Theme bootstrap: runs before paint to avoid the dark → light flash
          when the user prefers light. Reads the same localStorage key the
