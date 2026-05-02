@@ -208,6 +208,11 @@ export interface AgentRun {
   model?: string;
 }
 
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
 export interface Scripture {
   text: string;
   source?: string;
@@ -349,6 +354,13 @@ export const api = {
     req<{ runId: string; preset: string }>('/agents/run', {
       method: 'POST',
       body: JSON.stringify({ preset, goal })
+    }),
+
+  // Chat
+  chat: (messages: ChatMessage[], notePath?: string) =>
+    req<{ message: ChatMessage }>('/chat', {
+      method: 'POST',
+      body: JSON.stringify({ messages, notePath })
     }),
 
   // Scripture / devotional
