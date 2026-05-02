@@ -6,6 +6,7 @@
   import { theme, themeIcon, themeLabel, type Theme } from '$lib/stores/theme';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import RecurringEditor from '$lib/components/RecurringEditor.svelte';
 
   type SyncStatus = {
     enabled: boolean;
@@ -371,6 +372,12 @@
           </div>
         </div>
       {/if}
+    </section>
+
+    <!-- Recurring tasks -->
+    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Recurring tasks</h2>
+      <RecurringEditor />
     </section>
 
     <!-- Editor / behavior -->

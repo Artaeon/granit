@@ -208,6 +208,15 @@ export interface AgentRun {
   model?: string;
 }
 
+export interface RecurringTask {
+  text: string;
+  frequency: 'daily' | 'weekly' | 'monthly';
+  day_of_week?: number;  // 0-6, used for weekly
+  day_of_month?: number; // 1-31, used for monthly
+  last_created?: string; // YYYY-MM-DD
+  enabled: boolean;
+}
+
 export interface AppConfig {
   ai_provider: string;
   openai_model: string;
@@ -443,6 +452,14 @@ export const api = {
   getConfig: () => req<AppConfig>('/config'),
   patchConfig: (patch: Partial<AppConfigPatch>) =>
     req<AppConfig>('/config', { method: 'PATCH', body: JSON.stringify(patch) }),
+
+  // Recurring tasks (granit's daily/weekly/monthly auto-creator)
+  listRecurring: () => req<{ rules: RecurringTask[]; total: number }>('/recurring'),
+  putRecurring: (rules: RecurringTask[]) =>
+    req<{ rules: RecurringTask[]; total: number }>('/recurring', {
+      method: 'PUT',
+      body: JSON.stringify({ rules })
+    }),
 
   // Devices (active sessions)
   listDevices: () => req<{ devices: Device[]; total: number }>('/devices'),
