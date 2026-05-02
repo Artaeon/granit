@@ -67,7 +67,9 @@
     { href: '/scripture', label: 'Scripture', icon: 'scripture' },
     { href: '/objects', label: 'Objects', icon: 'objects' },
     { href: '/tags', label: 'Tags', icon: 'tags' },
-    { href: '/notes', label: 'Notes', icon: 'notes' }
+    { href: '/jots', label: 'Jots', icon: 'jots' },
+    { href: '/notes', label: 'Notes', icon: 'notes' },
+    { href: '/settings', label: 'Settings', icon: 'settings' }
   ];
 
   let drawerOpen = $state(false);

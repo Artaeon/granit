@@ -64,6 +64,13 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h4"/>
   </svg>
+{:else if name === 'jots'}
+  <!-- Stack of journal entries — three horizontal lines layered like a feed. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <rect x="3" y="4" width="18" height="5" rx="1"/>
+    <rect x="3" y="11" width="18" height="5" rx="1"/>
+    <path d="M6 18h12" stroke-dasharray="2 2"/>
+  </svg>
 {:else if name === 'settings'}
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <path d="M10.3 3.3a2 2 0 0 1 3.4 0l.4.7a2 2 0 0 0 1.7 1l.8-.1a2 2 0 0 1 2.4 2.4l-.1.8a2 2 0 0 0 1 1.7l.7.4a2 2 0 0 1 0 3.4l-.7.4a2 2 0 0 0-1 1.7l.1.8a2 2 0 0 1-2.4 2.4l-.8-.1a2 2 0 0 0-1.7 1l-.4.7a2 2 0 0 1-3.4 0l-.4-.7a2 2 0 0 0-1.7-1l-.8.1a2 2 0 0 1-2.4-2.4l.1-.8a2 2 0 0 0-1-1.7l-.7-.4a2 2 0 0 1 0-3.4l.7-.4a2 2 0 0 0 1-1.7l-.1-.8a2 2 0 0 1 2.4-2.4l.8.1a2 2 0 0 0 1.7-1z"/><circle cx="12" cy="12" r="3"/>

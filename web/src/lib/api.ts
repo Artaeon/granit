@@ -66,6 +66,23 @@ export interface VaultInfo {
   notes: number;
 }
 
+export interface Jot {
+  date: string;
+  path: string;
+  title: string;
+  modTime: string;
+  size: number;
+  frontmatter?: Record<string, unknown>;
+  body: string;
+  openTasks: number;
+}
+
+export interface JotsResponse {
+  jots: Jot[];
+  nextBefore: string | null;
+  hasMore: boolean;
+}
+
 export interface Task {
   id: string;
   notePath: string;
@@ -414,6 +431,13 @@ export const api = {
 
   // Daily
   daily: (date: string = 'today') => req<Note>(`/daily/${date}`),
+  listJots: (params: { before?: string; limit?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.before) qs.set('before', params.before);
+    if (params.limit !== undefined) qs.set('limit', String(params.limit));
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return req<JotsResponse>(`/jots${suffix}`);
+  },
   dailyContext: () =>
     req<{
       date: string;

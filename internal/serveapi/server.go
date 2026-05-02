@@ -171,6 +171,7 @@ func (s *Server) Handler() http.Handler {
 		// as a date and 400 from handleGetDaily's parser).
 		r.Get("/api/v1/daily/context", s.handleDailyContext)
 		r.Get("/api/v1/daily/{date}", s.handleGetDaily)
+		r.Get("/api/v1/jots", s.handleListJots)
 		r.Get("/api/v1/calendar", s.handleCalendar)
 		r.Get("/api/v1/calendar/sources", s.handleListCalendarSources)
 		r.Patch("/api/v1/calendar/sources", s.handlePatchCalendarSources)
