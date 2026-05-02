@@ -43,6 +43,24 @@ type Server struct {
 	rescanMu sync.Mutex
 	mu       sync.Mutex
 	syncer   *Syncer
+
+	// activeTimer is the currently-running clock-in session, if any.
+	// Server-side state (one timer per server, since one server hosts
+	// one vault); guarded by timerMu. Survives only as long as the
+	// process — granit web restart drops the timer.
+	timerMu     sync.Mutex
+	activeTimer *activeTimer
+}
+
+// activeTimer is the in-memory shape of a running timer. We keep it
+// local to the serveapi package — the TUI uses its own struct for the
+// same purpose (it has a UI loop to drive). The shared package's
+// timetracker.Active is the duck-type.
+type activeTimer struct {
+	NotePath  string
+	TaskText  string
+	TaskID    string
+	StartTime time.Time
 }
 
 func NewServer(cfg Config) (*Server, error) {
@@ -186,6 +204,13 @@ func (s *Server) Handler() http.Handler {
 		// midnight + on every list/mutate.
 		r.Get("/api/v1/recurring", s.handleListRecurring)
 		r.Put("/api/v1/recurring", s.handlePutRecurring)
+
+		// Time tracking — clock-in/out + session history. Persists to
+		// .granit/timetracker.json (same file the TUI's clock-in
+		// overlay writes).
+		r.Get("/api/v1/timetracker", s.handleListTimetracker)
+		r.Post("/api/v1/timetracker/start", s.handleClockIn)
+		r.Post("/api/v1/timetracker/stop", s.handleClockOut)
 
 		r.Get("/api/v1/dashboard", s.handleGetDashboard)
 		r.Put("/api/v1/dashboard", s.handlePutDashboard)
