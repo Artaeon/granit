@@ -15,7 +15,21 @@ export type WsEvent =
   | { type: 'project.changed'; id: string }
   | { type: 'project.removed'; id: string }
   | { type: 'agent.event'; id: string; data: { step: number; kind: string; text: string } }
-  | { type: 'agent.complete'; id: string; path?: string; data: { status: string; finalAnswer?: string; steps?: number } }
+  | {
+      type: 'agent.complete';
+      id: string;
+      path?: string;
+      data: {
+        status: string;
+        finalAnswer?: string;
+        steps?: number;
+        // Cost telemetry only present when the LLM is priced
+        // (OpenAI w/ a known model). Ollama runs omit these fields.
+        microCents?: number;
+        promptTokens?: number;
+        completionTokens?: number;
+      };
+    }
   | { type: 'timer.started'; id: string; data: { taskText: string } }
   | { type: 'timer.stopped'; id: string; data: { minutes: number } };
 

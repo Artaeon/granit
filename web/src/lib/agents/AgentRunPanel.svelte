@@ -35,6 +35,29 @@
   let starting = $state(false);
   let unsub: (() => void) | null = null;
 
+  // Budget + step caps. Budget is in main-currency units (€/$/etc.)
+  // so users type "0.25" instead of "25_000_000". We multiply by
+  // 100_000_000 for the wire format. 0 means "no cap" — only the
+  // server's iteration ceiling applies. Per-preset defaults: deep-
+  // research gets 0.25 + 20 steps, others stay free.
+  let budgetMain = $state(0);
+  let maxSteps = $state(0);
+  // Cost telemetry from agent.complete. microCents == -1 (not set)
+  // means the model wasn't priced (Ollama / unknown OpenAI snapshot).
+  let costMicroCents = $state<number | null>(null);
+  let promptTokens = $state(0);
+  let completionTokens = $state(0);
+
+  // Adjust defaults when the preset changes so the deep-research entry
+  // arrives with sensible caps prefilled.
+  $effect(() => {
+    if (!preset) return;
+    if (preset.id === 'deep-research') {
+      if (budgetMain === 0) budgetMain = 0.25; // €0.25 cap
+      if (maxSteps === 0) maxSteps = 20;
+    }
+  });
+
   $effect(() => {
     if (!open) return;
     // Reset on each open so the panel starts clean. Seed the goal
@@ -47,6 +70,9 @@
       finalAnswer = '';
       status = 'idle';
       resultPath = null;
+      costMicroCents = null;
+      promptTokens = 0;
+      completionTokens = 0;
     }
   });
 
@@ -61,6 +87,13 @@
         status = (ev.data.status as typeof status) ?? 'ok';
         finalAnswer = ev.data.finalAnswer ?? '';
         resultPath = ev.path ?? null;
+        // Cost telemetry only present when the model is priced.
+        // microCents ≥ 0 ⇒ valid; absent ⇒ Ollama / unknown model.
+        if (typeof ev.data.microCents === 'number') {
+          costMicroCents = ev.data.microCents;
+          promptTokens = ev.data.promptTokens ?? 0;
+          completionTokens = ev.data.completionTokens ?? 0;
+        }
       }
     });
   }
@@ -69,18 +102,34 @@
     if (!preset) return;
     starting = true;
     try {
-      const r = await api.runAgent(preset.id, goal);
+      // Main units → micro-cents (×100_000_000). 0 stays 0 ⇒ "no budget".
+      const budgetMicroCents = budgetMain > 0 ? Math.round(budgetMain * 100_000_000) : 0;
+      const r = await api.runAgent(preset.id, goal, {
+        maxSteps: maxSteps > 0 ? maxSteps : undefined,
+        budgetMicroCents: budgetMicroCents > 0 ? budgetMicroCents : undefined
+      });
       runId = r.runId;
       status = 'running';
       lines = [];
       finalAnswer = '';
       resultPath = null;
+      costMicroCents = null;
+      promptTokens = 0;
+      completionTokens = 0;
       subscribe(r.runId);
     } catch (e) {
       toast.error('failed to start: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
       starting = false;
     }
+  }
+
+  function formatCost(microCents: number | null): string {
+    if (microCents === null || microCents < 0) return '—';
+    // 1 micro-cent = 1/1_000_000 of a cent ⇒ 100_000_000 mc = 1.00 main unit.
+    const main = microCents / 100_000_000;
+    if (main > 0 && main < 0.0001) return '<0.0001';
+    return main.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
   }
 
   function viewTranscript() {
@@ -135,6 +184,35 @@
             placeholder={preset.id === 'plan-my-day' ? 'leave blank — preset reads today automatically' : 'what should the agent do?'}
             class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
           ></textarea>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label for="budget" class="block text-[11px] uppercase tracking-wider text-dim mb-1">
+                Budget <span class="text-dim/70 lowercase normal-case">(€/$ — 0 = no cap)</span>
+              </label>
+              <input
+                id="budget"
+                type="number"
+                min="0"
+                step="0.05"
+                bind:value={budgetMain}
+                class="w-full px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label for="maxsteps" class="block text-[11px] uppercase tracking-wider text-dim mb-1">
+                Max steps <span class="text-dim/70 lowercase normal-case">(0 = preset default)</span>
+              </label>
+              <input
+                id="maxsteps"
+                type="number"
+                min="0"
+                max="50"
+                step="1"
+                bind:value={maxSteps}
+                class="w-full px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+              />
+            </div>
+          </div>
           <button
             type="submit"
             disabled={starting}
@@ -142,6 +220,7 @@
           >{starting ? 'starting…' : `Run ${preset.name}`}</button>
           <p class="text-[10px] text-dim italic">
             Uses your granit AI config (provider · {preset.includeWrite ? 'may write to vault' : 'read-only'}).
+            Budget is enforced for OpenAI runs only — Ollama is free.
           </p>
         </form>
       {/if}
@@ -161,6 +240,14 @@
               <button onclick={viewTranscript} class="text-xs text-secondary hover:underline">view transcript →</button>
             {/if}
           </div>
+
+          {#if costMicroCents !== null && costMicroCents >= 0}
+            <div class="flex items-baseline gap-3 text-[11px] text-dim mt-1">
+              <span>Tokens <span class="text-subtext font-medium">{promptTokens}</span> in / <span class="text-subtext font-medium">{completionTokens}</span> out</span>
+              <span>·</span>
+              <span>Cost <span class="text-subtext font-medium">{formatCost(costMicroCents)}</span></span>
+            </div>
+          {/if}
 
           {#if finalAnswer}
             <div class="rounded p-3 bg-success/10 border-l-3 border-success mt-2">

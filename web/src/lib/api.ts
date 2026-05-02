@@ -445,10 +445,19 @@ export const api = {
     req<{ runs: AgentRun[]; total: number; stats: Record<string, Record<string, number>> }>(
       `/agents/runs?limit=${limit}`
     ),
-  runAgent: (preset: string, goal: string) =>
+  runAgent: (
+    preset: string,
+    goal: string,
+    opts?: { maxSteps?: number; budgetMicroCents?: number }
+  ) =>
     req<{ runId: string; preset: string }>('/agents/run', {
       method: 'POST',
-      body: JSON.stringify({ preset, goal })
+      body: JSON.stringify({
+        preset,
+        goal,
+        ...(opts?.maxSteps ? { maxSteps: opts.maxSteps } : {}),
+        ...(opts?.budgetMicroCents ? { budgetMicroCents: opts.budgetMicroCents } : {})
+      })
     }),
 
   // Chat
