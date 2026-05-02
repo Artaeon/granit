@@ -4,6 +4,8 @@
   import { api, type Scripture } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
+  import type { AgentPreset } from '$lib/api';
 
   // Three modes:
   //   read   — verse-of-the-day in big type, "another one" button,
@@ -80,6 +82,35 @@
       goto(`/notes/${encodeURIComponent(r.path)}`);
     } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  // AI reflection — opens the devotional preset's run panel with the
+  // verse + citation pre-filled as the goal. The agent writes a
+  // 200-300 word reflection into Devotionals/{date}-{slug}.md.
+  let aiOpen = $state(false);
+  let devotionalPreset = $state<AgentPreset | null>(null);
+  let aiLoading = $state(false);
+  let aiGoal = $state('');
+
+  async function aiReflect() {
+    if (!current) return;
+    aiLoading = true;
+    try {
+      if (!devotionalPreset) {
+        const r = await api.listAgentPresets();
+        devotionalPreset = r.presets.find((p) => p.id === 'devotional') ?? null;
+      }
+      if (!devotionalPreset) {
+        toast.error('devotional preset not found');
+        return;
+      }
+      aiGoal = `Verse: "${current.text}"${current.source ? `\nSource: ${current.source}` : ''}`;
+      aiOpen = true;
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      aiLoading = false;
     }
   }
 
@@ -207,8 +238,14 @@
           >Another verse</button>
           <button
             onclick={reflectOnThis}
-            class="px-4 py-2 text-sm bg-primary text-mantle rounded hover:opacity-90"
+            class="px-4 py-2 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
           >Reflect on this →</button>
+          <button
+            onclick={aiReflect}
+            disabled={aiLoading}
+            class="px-4 py-2 text-sm bg-primary text-mantle rounded hover:opacity-90 disabled:opacity-50"
+            title="AI writes a 200-300 word reflection into Devotionals/"
+          >{aiLoading ? '…' : 'AI reflection ✨'}</button>
         </div>
         {#if today && current === today}
           <p class="text-[11px] text-dim text-center mt-4 italic">Verse of the day — same on every device, rotates at midnight.</p>
@@ -296,3 +333,10 @@
     {/if}
   </div>
 </div>
+
+<!-- AgentRunPanel doesn't accept a pre-filled goal directly, but the
+     panel's textarea is bound to a local state — we skip the goal
+     input by writing aiGoal into the panel via the same mechanism the
+     daily-note button uses. The agent reads the verse from the goal
+     prompt in either case (devotional preset asks for "Verse: X / Source: Y"). -->
+<AgentRunPanel bind:open={aiOpen} preset={devotionalPreset} initialGoal={aiGoal} />

@@ -13,10 +13,15 @@
 
   let {
     open = $bindable(false),
-    preset = null as AgentPreset | null
+    preset = null as AgentPreset | null,
+    initialGoal = ''
   }: {
     open?: boolean;
     preset?: AgentPreset | null;
+    /** Pre-fill the goal textarea when the panel opens. Used by the
+     *  scripture page to feed the verse + source straight in so the
+     *  user can hit Run without typing. */
+    initialGoal?: string;
   } = $props();
 
   type StreamLine = { step: number; kind: string; text: string };
@@ -32,9 +37,11 @@
 
   $effect(() => {
     if (!open) return;
-    // Reset on each open so the panel starts clean.
+    // Reset on each open so the panel starts clean. Seed the goal
+    // textarea with the caller-supplied initialGoal (scripture page
+    // uses this to pre-fill the verse) so the user can just hit Run.
     if (status !== 'running') {
-      goal = '';
+      goal = initialGoal;
       runId = null;
       lines = [];
       finalAnswer = '';
