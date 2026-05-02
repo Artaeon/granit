@@ -132,6 +132,10 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/tasks/{id}", s.handleGetTask)
 		r.Patch("/api/v1/tasks/{id}", s.handlePatchTask)
 
+		// Literal path registered first so chi matches it before the
+		// {date} wildcard branch (otherwise "context" would be parsed
+		// as a date and 400 from handleGetDaily's parser).
+		r.Get("/api/v1/daily/context", s.handleDailyContext)
 		r.Get("/api/v1/daily/{date}", s.handleGetDaily)
 		r.Get("/api/v1/calendar", s.handleCalendar)
 		r.Get("/api/v1/calendar/sources", s.handleListCalendarSources)
