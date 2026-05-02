@@ -13,9 +13,13 @@ import (
 )
 
 type Event struct {
-	Type string `json:"type"`           // hello | note.changed | note.removed | task.changed | vault.rescanned
+	Type string `json:"type"`           // hello | note.changed | note.removed | task.changed | vault.rescanned | agent.event | agent.complete
 	Path string `json:"path,omitempty"` // vault-relative
-	ID   string `json:"id,omitempty"`   // task ID (for task.changed)
+	ID   string `json:"id,omitempty"`   // task ID / agent run ID
+	// Data carries the optional structured payload for events that
+	// need more than (path,id). Currently used for agent.event to
+	// stream transcript steps live (step number, kind, text).
+	Data map[string]any `json:"data,omitempty"`
 }
 
 type Hub struct {
