@@ -179,6 +179,7 @@ func (s *Server) Handler() http.Handler {
 		// TUI's AgentRunner sees.
 		r.Get("/api/v1/agents/presets", s.handleListAgentPresets)
 		r.Get("/api/v1/agents/runs", s.handleListAgentRuns)
+		r.Post("/api/v1/agents/run", s.handleRunAgent)
 
 		// Devices — authState.Sessions exposed for management.
 		r.Get("/api/v1/devices", s.handleListDevices)
