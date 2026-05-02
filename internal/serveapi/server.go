@@ -181,6 +181,10 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/agents/runs", s.handleListAgentRuns)
 		r.Post("/api/v1/agents/run", s.handleRunAgent)
 
+		// Multi-turn chat — single-shot helper around agentruntime.Chatter.
+		// Stateless on the server; the web persists history client-side.
+		r.Post("/api/v1/chat", s.handleChat)
+
 		// Scripture / devotional — verse of the day, full set, "another
 		// one" random pick, and a one-shot devotional-note creator.
 		r.Get("/api/v1/scripture", s.handleListScriptures)
