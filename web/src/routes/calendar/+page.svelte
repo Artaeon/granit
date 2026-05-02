@@ -211,6 +211,64 @@
   }
   function gotoToday() { cursor = new Date(); }
 
+  // Keyboard shortcuts. Active only when nothing else has focus (so we
+  // don't steal keystrokes from the create-event modal's inputs).
+  // Mirrors Google Calendars default bindings so muscle memory carries
+  // over: t = today, j/n = next, k/p = prev, d/w/m/y/a = view, ? = help.
+  function isTextField(el: EventTarget | null): boolean {
+    if (!(el instanceof HTMLElement)) return false;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+  }
+
+  let showShortcutHelp = $state(false);
+
+  function onKeydown(e: KeyboardEvent) {
+    if (isTextField(e.target)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // Don't fight the create / detail drawers — they own their own
+    // keyboard surface (Escape to close, Enter to submit).
+    if (createOpen || createEventOpen || unifiedOpen || detailOpen) return;
+    switch (e.key) {
+      case 't': gotoToday(); break;
+      case 'j': case 'n': next(); break;
+      case 'k': case 'p': prev(); break;
+      case 'd': view = 'day'; break;
+      case 'w': view = 'week'; break;
+      case 'x': view = '3day'; break; // m is taken by month
+      case 'm': view = 'month'; break;
+      case 'y': view = 'year'; break;
+      case 'a': view = 'agenda'; break;
+      case '?': showShortcutHelp = !showShortcutHelp; break;
+      default: return;
+    }
+    e.preventDefault();
+  }
+
+  // Touch swipe to navigate. Triggered on the main grid container; a
+  // horizontal swipe of >60px (with vertical movement <40px so we dont
+  // hijack scroll) counts. Mobile users can flick between weeks the
+  // same way they would on Google Calendar / iOS Calendar.
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchActive = false;
+  function onTouchStart(e: TouchEvent) {
+    if (e.touches.length !== 1) { touchActive = false; return; }
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchActive = true;
+  }
+  function onTouchEnd(e: TouchEvent) {
+    if (!touchActive) return;
+    touchActive = false;
+    if (e.changedTouches.length !== 1) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dy) > 40) return; // mostly vertical → let scroll happen
+    if (Math.abs(dx) < 60) return; // too short
+    if (dx > 0) prev(); else next();
+  }
+
   function clickEvent(ev: CalendarEvent) { selected = ev; detailOpen = true; }
   function clickSlot(date: Date, hour: number, minute: number) {
     createDate = date;
@@ -401,9 +459,21 @@
           onclick={() => (view = 'agenda')}
         >Agenda</button>
       </div>
+      <button
+        onclick={() => (showShortcutHelp = true)}
+        aria-label="keyboard shortcuts"
+        title="Keyboard shortcuts (?)"
+        class="hidden md:flex w-8 h-8 items-center justify-center text-dim hover:text-text hover:bg-surface0 rounded text-xs font-mono"
+      >?</button>
     </header>
 
-    <div class="flex-1 overflow-hidden p-2 sm:p-3">
+    <div
+      class="flex-1 overflow-hidden p-2 sm:p-3"
+      role="region"
+      aria-label="calendar grid"
+      ontouchstart={onTouchStart}
+      ontouchend={onTouchEnd}
+    >
       {#if view === 'day' || view === '3day' || view === 'week'}
         <HourGrid days={viewDays} events={events} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onResize={resizeTask} />
       {:else if view === 'month'}
@@ -422,6 +492,45 @@
     </div>
   </div>
 </div>
+
+<svelte:window onkeydown={onKeydown} />
+
+{#if showShortcutHelp}
+  <!-- Backdrop only closes when the click LANDS on the backdrop itself,
+       not when it bubbles up from a child. Avoids the button-in-button
+       HTML invalidity from a previous version while keeping the
+       expected modal behavior (click outside to close). -->
+  <div
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="shortcuts-title"
+    class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+    onclick={(e) => { if (e.target === e.currentTarget) showShortcutHelp = false; }}
+    onkeydown={(e) => { if (e.key === 'Escape') showShortcutHelp = false; }}
+    tabindex="-1"
+  >
+    <div class="bg-mantle border border-surface1 rounded-lg p-5 max-w-sm w-full text-left shadow-xl">
+      <h3 id="shortcuts-title" class="text-sm font-semibold text-text mb-3">Calendar shortcuts</h3>
+      <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+        <dt class="font-mono text-primary">t</dt><dd class="text-subtext">jump to today</dd>
+        <dt class="font-mono text-primary">j / n</dt><dd class="text-subtext">next period</dd>
+        <dt class="font-mono text-primary">k / p</dt><dd class="text-subtext">previous period</dd>
+        <dt class="font-mono text-primary">d</dt><dd class="text-subtext">day view</dd>
+        <dt class="font-mono text-primary">x</dt><dd class="text-subtext">3-day view</dd>
+        <dt class="font-mono text-primary">w</dt><dd class="text-subtext">week view</dd>
+        <dt class="font-mono text-primary">m</dt><dd class="text-subtext">month view</dd>
+        <dt class="font-mono text-primary">y</dt><dd class="text-subtext">year view</dd>
+        <dt class="font-mono text-primary">a</dt><dd class="text-subtext">agenda view</dd>
+        <dt class="font-mono text-primary">?</dt><dd class="text-subtext">toggle this help</dd>
+      </dl>
+      <p class="text-[11px] text-dim italic mt-3">On mobile: swipe left/right to navigate.</p>
+      <button
+        onclick={() => (showShortcutHelp = false)}
+        class="mt-4 px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded hover:border-primary"
+      >close</button>
+    </div>
+  </div>
+{/if}
 
 <EventDetail bind:open={detailOpen} event={selected} onChanged={load} />
 <QuickCreateScheduled

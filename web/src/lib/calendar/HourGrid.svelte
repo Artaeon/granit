@@ -302,8 +302,12 @@
         {#each days as d}
           {@const isToday = isSameDay(d, new Date())}
           <div class="px-1 py-2 border-l border-surface1 text-center">
-            <div class="text-[10px] text-dim uppercase tracking-wider">{d.toLocaleDateString(undefined, { weekday: 'short' })}</div>
-            <div class="text-lg sm:text-xl {isToday ? 'text-primary font-semibold' : 'text-text'}">{d.getDate()}</div>
+            <div class="text-[10px] {isToday ? 'text-primary' : 'text-dim'} uppercase tracking-wider">{d.toLocaleDateString(undefined, { weekday: 'short' })}</div>
+            {#if isToday}
+              <div class="mt-0.5 inline-flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary text-mantle font-semibold text-base sm:text-lg">{d.getDate()}</div>
+            {:else}
+              <div class="text-lg sm:text-xl text-text">{d.getDate()}</div>
+            {/if}
           </div>
         {/each}
       </div>

@@ -56,16 +56,25 @@
       {@const events = eventsByDay.get(c.iso) ?? []}
       <div
         role="gridcell"
-        class="bg-base p-1.5 overflow-hidden flex flex-col gap-0.5 hover:bg-surface0 transition-colors {c.inMonth ? '' : 'opacity-50'}"
+        class="p-1.5 overflow-hidden flex flex-col gap-0.5 hover:bg-surface0 transition-colors
+          {c.inMonth ? 'bg-base' : 'bg-base opacity-50'}
+          {isToday ? 'ring-1 ring-inset ring-primary/40' : ''}"
       >
         <button
           onclick={() => onClickDay(c.date)}
-          class="text-left -mb-0.5"
+          class="text-left -mb-0.5 self-start"
           aria-label="open {c.iso}"
         >
-          <span class="text-xs {isToday ? 'text-primary font-semibold' : 'text-subtext'}">
-            {c.date.getDate()}
-          </span>
+          {#if isToday}
+            <!-- Today gets a filled pill, matching the Google Calendar
+                 visual cue. The pill is small enough to coexist with
+                 the event chips below without crowding the cell. -->
+            <span class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-mantle text-[11px] font-semibold">
+              {c.date.getDate()}
+            </span>
+          {:else}
+            <span class="text-xs text-subtext px-1">{c.date.getDate()}</span>
+          {/if}
         </button>
         <div class="flex-1 space-y-0.5 overflow-hidden">
           {#each events.slice(0, 3) as ev}

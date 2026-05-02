@@ -24,21 +24,49 @@
     return sorted;
   });
 
+  // Relative-aware label so the agenda reads naturally — "Today" /
+  // "Tomorrow" / "Yesterday" / weekday for the next 6 days, full date
+  // otherwise. Matches what the daily-note header shows and what users
+  // expect from Google / iOS Calendar.
   function dateLabel(iso: string): string {
     const [y, m, d] = iso.split('-').map(Number);
     const date = new Date(y, m - 1, d);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const days = Math.round((date.getTime() - today.getTime()) / 86_400_000);
+    const dow = date.toLocaleDateString(undefined, { weekday: 'long' });
+    if (days === 0) return `Today · ${dow}`;
+    if (days === 1) return `Tomorrow · ${dow}`;
+    if (days === -1) return `Yesterday · ${dow}`;
+    if (days > 1 && days < 7) return `${dow} · ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
     return date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+
+  function isTodayIso(iso: string): boolean {
+    const [y, m, d] = iso.split('-').map(Number);
+    const a = new Date(y, m - 1, d);
+    const t = new Date();
+    return a.getFullYear() === t.getFullYear() && a.getMonth() === t.getMonth() && a.getDate() === t.getDate();
   }
 </script>
 
 <div class="space-y-6 max-w-3xl">
   {#if groups.length === 0}
-    <div class="text-sm text-dim italic">no events in range</div>
+    <div class="text-center py-16 px-4">
+      <svg viewBox="0 0 64 64" class="w-12 h-12 mx-auto text-dim opacity-40 mb-3" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="10" y="14" width="44" height="42" rx="3"/>
+        <path d="M10 24h44M22 8v10M42 8v10" stroke-linecap="round"/>
+      </svg>
+      <p class="text-sm text-subtext mb-1">No events in this range</p>
+      <p class="text-xs text-dim">Click + drag on the day/week grid to create one, or use the <span class="text-text font-medium">+ New</span> button.</p>
+    </div>
   {/if}
   {#each groups as [iso, evs]}
+    {@const isToday = isTodayIso(iso)}
     <section>
-      <h3 class="text-xs uppercase tracking-wider text-dim mb-2 font-medium border-b border-surface1 pb-1">
-        {dateLabel(iso)}
+      <h3 class="text-xs uppercase tracking-wider {isToday ? 'text-primary' : 'text-dim'} mb-2 font-medium border-b border-surface1 pb-1 flex items-center gap-2">
+        <span>{dateLabel(iso)}</span>
+        {#if isToday}<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>{/if}
       </h3>
       <ul class="space-y-1">
         {#each evs as ev}
