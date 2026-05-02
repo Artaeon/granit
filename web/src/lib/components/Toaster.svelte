@@ -22,6 +22,14 @@
       default: return 'i';
     }
   }
+
+  // Tracks which toasts have their `details` block expanded. Keyed by
+  // toast id — wiped automatically when the toast dismisses because we
+  // re-render against $toasts. Local UI state, never persisted.
+  let expanded = $state<Record<number, boolean>>({});
+  function toggleDetails(id: number) {
+    expanded[id] = !expanded[id];
+  }
 </script>
 
 <div
@@ -37,7 +45,30 @@
       class="pointer-events-auto flex items-start gap-2 px-3 py-2 rounded-lg border shadow-lg backdrop-blur {classFor(t.kind)}"
     >
       <span class="text-sm font-bold w-4 text-center flex-shrink-0">{iconFor(t.kind)}</span>
-      <span class="flex-1 text-sm break-words">{t.message}</span>
+      <div class="flex-1 min-w-0">
+        <div class="text-sm break-words">{t.message}</div>
+        {#if t.action || t.details}
+          <div class="mt-1 flex items-center gap-3 text-[11px]">
+            {#if t.action}
+              <a
+                href={t.action.href}
+                onclick={() => dismiss(t.id)}
+                class="font-medium underline-offset-2 hover:underline"
+              >{t.action.label} →</a>
+            {/if}
+            {#if t.details}
+              <button
+                type="button"
+                onclick={() => toggleDetails(t.id)}
+                class="opacity-70 hover:opacity-100 underline-offset-2 hover:underline"
+              >{expanded[t.id] ? 'hide details' : 'details'}</button>
+            {/if}
+          </div>
+        {/if}
+        {#if t.details && expanded[t.id]}
+          <pre class="mt-1.5 text-[10px] opacity-80 whitespace-pre-wrap break-words font-mono leading-snug max-h-40 overflow-y-auto">{t.details}</pre>
+        {/if}
+      </div>
       <button
         onclick={() => dismiss(t.id)}
         aria-label="dismiss"

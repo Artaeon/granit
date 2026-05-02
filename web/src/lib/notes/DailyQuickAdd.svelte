@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type AgentPreset } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { classifyAiError } from '$lib/util/aiErrors';
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
 
   // DailyQuickAdd is a slim composer that lives at the top of every
@@ -53,7 +54,15 @@
       panelPreset = p;
       panelOpen = true;
     } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+      // Open-preset usually fails on the listAgentPresets fetch, but
+      // when a vault override re-runs the preset's preflight we can
+      // also see provider errors here. Route through the classifier
+      // so missing-key / refused-dial / model-not-found all produce
+      // an actionable toast pointing at /settings.
+      const raw = e instanceof Error ? e.message : String(e);
+      console.error('[DailyQuickAdd] openPreset failed:', raw);
+      const hint = classifyAiError(raw);
+      toast.error(hint.headline, { action: hint.cta, details: hint.raw });
     } finally {
       panelLoading = null;
     }

@@ -6,6 +6,7 @@
   import { scriptures, scriptureOfTheDay } from '$lib/morning/scriptures';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
+  import { classifyAiError } from '$lib/util/aiErrors';
 
   type Step = 'scripture' | 'goal' | 'tasks' | 'habits' | 'thoughts' | 'review';
   const order: Step[] = ['scripture', 'goal', 'tasks', 'habits', 'thoughts', 'review'];
@@ -222,7 +223,13 @@
       s = s.replace(/^["'`]+|["'`]+$/g, '').trim();
       suggestion = s;
     } catch (e) {
-      toast.error('suggest failed: ' + (e instanceof Error ? e.message : String(e)));
+      // The suggest-focus button hits /chat, so the same classifier
+      // applies — bad key / unreachable Ollama / missing model all
+      // get a single-line headline + Open-Settings CTA.
+      const raw = e instanceof Error ? e.message : String(e);
+      console.error('[morning] suggestFocus failed:', raw);
+      const hint = classifyAiError(raw);
+      toast.error(hint.headline, { action: hint.cta, details: hint.raw });
     } finally {
       suggesting = false;
     }

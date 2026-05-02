@@ -11,6 +11,7 @@
   import { onMount } from 'svelte';
   import { api, type Task } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { classifyAiError } from '$lib/util/aiErrors';
   import { onWsEvent } from '$lib/ws';
   import { dragStore } from './dragStore';
   import { fmtDateISO } from './utils';
@@ -205,7 +206,13 @@
       await load();
       onRefresh?.();
     } catch (e) {
-      toast.error('AI plan failed: ' + (e instanceof Error ? e.message : String(e)));
+      // Plan-day-schedule wraps the plan-my-day preset; the most
+      // common failure here is the same provider noise the agent
+      // panel sees. Map to an actionable Open-Settings CTA.
+      const raw = e instanceof Error ? e.message : String(e);
+      console.error('[TaskBacklog] runPlanDaySchedule failed:', raw);
+      const hint = classifyAiError(raw);
+      toast.error(hint.headline, { action: hint.cta, details: hint.raw });
     } finally {
       aiBusy = false;
     }

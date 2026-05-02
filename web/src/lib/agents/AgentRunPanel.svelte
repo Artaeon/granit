@@ -4,6 +4,7 @@
   import { api, type AgentPreset } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
+  import { classifyAiError } from '$lib/util/aiErrors';
   import Drawer from '$lib/components/Drawer.svelte';
 
   // Slide-in panel that runs an agent and streams its transcript live.
@@ -182,7 +183,15 @@
       if (fallbackTimer) clearTimeout(fallbackTimer);
       fallbackTimer = setTimeout(resolveFromPersisted, FALLBACK_TIMEOUT_MS);
     } catch (e) {
-      toast.error('failed to start: ' + (e instanceof Error ? e.message : String(e)));
+      // Map provider-specific noise (missing model, refused dial, bad
+      // key) to a one-line headline + Open-Settings CTA. The raw error
+      // is still available behind the toast's "details" expand and on
+      // the console, so power users debugging a custom config can see
+      // exactly what the provider returned.
+      const raw = e instanceof Error ? e.message : String(e);
+      console.error('[runAgent] failed:', raw);
+      const hint = classifyAiError(raw);
+      toast.error(hint.headline, { action: hint.cta, details: hint.raw });
     } finally {
       starting = false;
     }

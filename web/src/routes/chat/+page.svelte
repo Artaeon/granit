@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { api, type ChatMessage } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { classifyAiError } from '$lib/util/aiErrors';
   import PageHeader from '$lib/components/PageHeader.svelte';
 
   // Multi-turn chat with the configured LLM. History lives in localStorage
@@ -59,9 +60,13 @@
     } catch (err) {
       // Surface the server error inline so the user can see what went
       // wrong (e.g. "no API key set"). Drop the user's message back into
-      // the input so they can retry without re-typing.
+      // the input so they can retry without re-typing. The classifier
+      // turns raw "ollama: 404 …" noise into a one-line headline plus
+      // an Open-Settings CTA; raw is still available behind "details".
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(msg);
+      console.error('[chat] send failed:', msg);
+      const hint = classifyAiError(msg);
+      toast.error(hint.headline, { action: hint.cta, details: hint.raw });
       messages = messages.slice(0, -1);
       input = text;
     } finally {

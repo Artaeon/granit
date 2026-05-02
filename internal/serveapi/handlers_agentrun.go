@@ -3,6 +3,7 @@ package serveapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -72,6 +73,23 @@ func (s *Server) handleRunAgent(w http.ResponseWriter, r *http.Request) {
 		// Surface the misconfiguration as 400 not 500 — the user has
 		// to fix their config.json, no fault of the server.
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Pre-flight ping: send a tiny probe so the obvious misconfigs
+	// (missing model, unreachable Ollama, bad API key) become a 400
+	// here instead of a transcript-shaped "agent.complete error" event
+	// fifteen seconds later. Without this, the user sees no feedback
+	// until the WS frame arrives — and gets a useless `agent_run`
+	// note persisted for what was really a config error.
+	//
+	// Trade-off: ~one extra round-trip per run. Trivial vs. the value
+	// of immediate, actionable feedback. We only block on classifiable
+	// errors (api-key/model/network); anything else (including a
+	// timeout — local models can be slow on a cold cache) falls
+	// through and lets the real run proceed normally.
+	if hint := preflightLLM(llm); hint != "" {
+		writeError(w, http.StatusBadRequest, hint)
 		return
 	}
 
@@ -281,6 +299,58 @@ func buildAgentRunNote(preset agents.Preset, tr agents.Transcript, goal string, 
 
 	body := renderTranscriptBody(preset, tr, goal, runErr, cost)
 	return path, fm.String() + body
+}
+
+// preflightLLM probes the configured LLM with a 1-token-ish prompt and
+// returns a non-empty string ONLY when the failure is classifiable as
+// a user-fixable config error (bad/missing key, model not pulled,
+// provider unreachable). Anything else — success, ambiguous failure,
+// or a slow-model timeout — returns "" so the real run proceeds.
+//
+// The 5-second budget is intentionally short: a healthy provider
+// answers a one-token prompt well inside that. A cold Ollama load
+// can blow past it, which is why DeadlineExceeded is treated as a
+// pass — we'd rather false-pass a slow start than false-fail one.
+func preflightLLM(llm agents.LLM) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := llm.Complete(ctx, "ping")
+	if err == nil {
+		return ""
+	}
+	// Slow-model false-positive guard. Local 7B+ models on a cold cache
+	// routinely take >5s to first token — we don't want to block the run
+	// over that. A real config error (404, refused) returns instantly.
+	if errors.Is(err, context.DeadlineExceeded) {
+		return ""
+	}
+	msg := err.Error()
+	low := strings.ToLower(msg)
+	// Allow-list of substrings we trust to mean "user config issue".
+	// Order is by specificity — "404 not found" before bare "404" so
+	// the more informative match wins if both are present.
+	markers := []string{
+		"404 not found",
+		"connection refused",
+		"no such host",
+		"401",
+		"403",
+		"api key",
+		"unauthorized",
+		"not pulled",
+		"model",
+		"key",
+		"404",
+	}
+	for _, m := range markers {
+		if strings.Contains(low, m) {
+			return msg
+		}
+	}
+	// Unrecognized error — let the real run try; the runtime will
+	// either succeed (transient) or write a transcript with the
+	// failure (so the user still has a record).
+	return ""
 }
 
 // renderTranscriptBody mirrors the TUI's renderTranscriptMarkdown but
