@@ -31,12 +31,16 @@ type configView struct {
 	AIAutoApplyEdits bool `json:"ai_auto_apply_edits"`
 	AutoTag          bool `json:"auto_tag"`
 	GhostWriter      bool `json:"ghost_writer"`
+	BackgroundBots        bool `json:"background_bots"`
+	SemanticSearchEnabled bool `json:"semantic_search_enabled"`
 
 	// Daily / weekly
 	DailyNotesFolder    string   `json:"daily_notes_folder"`
 	DailyNoteTemplate   string   `json:"daily_note_template"`
 	DailyRecurringTasks []string `json:"daily_recurring_tasks"`
 	WeeklyNotesFolder   string   `json:"weekly_notes_folder"`
+	WeeklyNoteTemplate  string   `json:"weekly_note_template"`
+	AutoDailyNote       bool     `json:"auto_daily_note"`
 
 	// Editor / appearance
 	Theme        string `json:"theme"`
@@ -46,11 +50,24 @@ type configView struct {
 	LineNumbers  bool   `json:"line_numbers"`
 	WordWrap     bool   `json:"word_wrap"`
 	AutoSave     bool   `json:"auto_save"`
+	// Editor sub-config — surfaced flat so the web's settings UI
+	// doesn't have to nest. Renamed to editor_* to avoid colliding
+	// with top-level booleans like word_wrap.
+	EditorTabSize         int  `json:"editor_tab_size"`
+	EditorInsertTabs      bool `json:"editor_insert_tabs"`
+	EditorAutoIndent      bool `json:"editor_auto_indent"`
+	AutoCloseBrackets     bool `json:"auto_close_brackets"`
+	HighlightCurrentLine  bool `json:"highlight_current_line"`
 
 	// Tasks
 	TaskFilterMode     string   `json:"task_filter_mode"`
 	TaskRequiredTags   []string `json:"task_required_tags"`
+	TaskExcludeFolders []string `json:"task_exclude_folders"`
 	TaskExcludeDone    bool     `json:"task_exclude_done"`
+
+	// Search
+	SearchContentByDefault bool `json:"search_content_by_default"`
+	MaxSearchResults       int  `json:"max_search_results"`
 
 	// Sync
 	GitAutoSync bool `json:"git_auto_sync"`
@@ -72,14 +89,18 @@ type configPatch struct {
 	AnthropicModel   *string   `json:"anthropic_model,omitempty"`
 	OllamaURL        *string   `json:"ollama_url,omitempty"`
 	OllamaModel      *string   `json:"ollama_model,omitempty"`
-	AIAutoApplyEdits *bool     `json:"ai_auto_apply_edits,omitempty"`
-	AutoTag          *bool     `json:"auto_tag,omitempty"`
-	GhostWriter      *bool     `json:"ghost_writer,omitempty"`
+	AIAutoApplyEdits      *bool `json:"ai_auto_apply_edits,omitempty"`
+	AutoTag               *bool `json:"auto_tag,omitempty"`
+	GhostWriter           *bool `json:"ghost_writer,omitempty"`
+	BackgroundBots        *bool `json:"background_bots,omitempty"`
+	SemanticSearchEnabled *bool `json:"semantic_search_enabled,omitempty"`
 
 	DailyNotesFolder    *string   `json:"daily_notes_folder,omitempty"`
 	DailyNoteTemplate   *string   `json:"daily_note_template,omitempty"`
 	DailyRecurringTasks *[]string `json:"daily_recurring_tasks,omitempty"`
 	WeeklyNotesFolder   *string   `json:"weekly_notes_folder,omitempty"`
+	WeeklyNoteTemplate  *string   `json:"weekly_note_template,omitempty"`
+	AutoDailyNote       *bool     `json:"auto_daily_note,omitempty"`
 
 	Theme        *string `json:"theme,omitempty"`
 	AutoDarkMode *bool   `json:"auto_dark_mode,omitempty"`
@@ -88,10 +109,20 @@ type configPatch struct {
 	LineNumbers  *bool   `json:"line_numbers,omitempty"`
 	WordWrap     *bool   `json:"word_wrap,omitempty"`
 	AutoSave     *bool   `json:"auto_save,omitempty"`
+	// Editor sub-config — flat names match configView.
+	EditorTabSize        *int  `json:"editor_tab_size,omitempty"`
+	EditorInsertTabs     *bool `json:"editor_insert_tabs,omitempty"`
+	EditorAutoIndent     *bool `json:"editor_auto_indent,omitempty"`
+	AutoCloseBrackets    *bool `json:"auto_close_brackets,omitempty"`
+	HighlightCurrentLine *bool `json:"highlight_current_line,omitempty"`
 
-	TaskFilterMode   *string   `json:"task_filter_mode,omitempty"`
-	TaskRequiredTags *[]string `json:"task_required_tags,omitempty"`
-	TaskExcludeDone  *bool     `json:"task_exclude_done,omitempty"`
+	TaskFilterMode     *string   `json:"task_filter_mode,omitempty"`
+	TaskRequiredTags   *[]string `json:"task_required_tags,omitempty"`
+	TaskExcludeFolders *[]string `json:"task_exclude_folders,omitempty"`
+	TaskExcludeDone    *bool     `json:"task_exclude_done,omitempty"`
+
+	SearchContentByDefault *bool `json:"search_content_by_default,omitempty"`
+	MaxSearchResults       *int  `json:"max_search_results,omitempty"`
 
 	GitAutoSync  *bool `json:"git_auto_sync,omitempty"`
 	PomodoroGoal *int  `json:"pomodoro_goal,omitempty"`
@@ -99,32 +130,49 @@ type configPatch struct {
 
 func toView(c config.Config) configView {
 	return configView{
-		AIProvider:        c.AIProvider,
-		OpenAIModel:       c.OpenAIModel,
-		OpenAIKeySet:      strings.TrimSpace(c.OpenAIKey) != "",
-		AnthropicModel:    c.AnthropicModel,
-		AnthropicKeySet:   strings.TrimSpace(c.AnthropicKey) != "",
-		OllamaURL:         c.OllamaURL,
-		OllamaModel:       c.OllamaModel,
-		AIAutoApplyEdits:  c.AIAutoApplyEdits,
-		AutoTag:           c.AutoTag,
-		GhostWriter:       c.GhostWriter,
-		DailyNotesFolder:  c.DailyNotesFolder,
-		DailyNoteTemplate: c.DailyNoteTemplate,
+		AIProvider:            c.AIProvider,
+		OpenAIModel:           c.OpenAIModel,
+		OpenAIKeySet:          strings.TrimSpace(c.OpenAIKey) != "",
+		AnthropicModel:        c.AnthropicModel,
+		AnthropicKeySet:       strings.TrimSpace(c.AnthropicKey) != "",
+		OllamaURL:             c.OllamaURL,
+		OllamaModel:           c.OllamaModel,
+		AIAutoApplyEdits:      c.AIAutoApplyEdits,
+		AutoTag:               c.AutoTag,
+		GhostWriter:           c.GhostWriter,
+		BackgroundBots:        c.BackgroundBots,
+		SemanticSearchEnabled: c.SemanticSearchEnabled,
+
+		DailyNotesFolder:    c.DailyNotesFolder,
+		DailyNoteTemplate:   c.DailyNoteTemplate,
 		DailyRecurringTasks: c.DailyRecurringTasks,
-		WeeklyNotesFolder: c.WeeklyNotesFolder,
-		Theme:             c.Theme,
-		AutoDarkMode:      c.AutoDarkMode,
-		DarkTheme:         c.DarkTheme,
-		LightTheme:        c.LightTheme,
-		LineNumbers:       c.LineNumbers,
-		WordWrap:          c.WordWrap,
-		AutoSave:          c.AutoSave,
+		WeeklyNotesFolder:   c.WeeklyNotesFolder,
+		WeeklyNoteTemplate:  c.WeeklyNoteTemplate,
+		AutoDailyNote:       c.AutoDailyNote,
+
+		Theme:                c.Theme,
+		AutoDarkMode:         c.AutoDarkMode,
+		DarkTheme:            c.DarkTheme,
+		LightTheme:           c.LightTheme,
+		LineNumbers:          c.LineNumbers,
+		WordWrap:             c.WordWrap,
+		AutoSave:             c.AutoSave,
+		EditorTabSize:        c.Editor.TabSize,
+		EditorInsertTabs:     c.Editor.InsertTabs,
+		EditorAutoIndent:     c.Editor.AutoIndent,
+		AutoCloseBrackets:    c.AutoCloseBrackets,
+		HighlightCurrentLine: c.HighlightCurrentLine,
+
 		TaskFilterMode:    c.TaskFilterMode,
 		TaskRequiredTags:  c.TaskRequiredTags,
+		TaskExcludeFolders: c.TaskExcludeFolders,
 		TaskExcludeDone:   c.TaskExcludeDone,
-		GitAutoSync:       c.GitAutoSync,
-		PomodoroGoal:      c.PomodoroGoal,
+
+		SearchContentByDefault: c.SearchContentByDefault,
+		MaxSearchResults:       c.MaxSearchResults,
+
+		GitAutoSync:  c.GitAutoSync,
+		PomodoroGoal: c.PomodoroGoal,
 	}
 }
 
@@ -161,6 +209,12 @@ func applyPatch(c *config.Config, p configPatch) {
 	if p.GhostWriter != nil {
 		c.GhostWriter = *p.GhostWriter
 	}
+	if p.BackgroundBots != nil {
+		c.BackgroundBots = *p.BackgroundBots
+	}
+	if p.SemanticSearchEnabled != nil {
+		c.SemanticSearchEnabled = *p.SemanticSearchEnabled
+	}
 	if p.DailyNotesFolder != nil {
 		c.DailyNotesFolder = *p.DailyNotesFolder
 	}
@@ -172,6 +226,12 @@ func applyPatch(c *config.Config, p configPatch) {
 	}
 	if p.WeeklyNotesFolder != nil {
 		c.WeeklyNotesFolder = *p.WeeklyNotesFolder
+	}
+	if p.WeeklyNoteTemplate != nil {
+		c.WeeklyNoteTemplate = *p.WeeklyNoteTemplate
+	}
+	if p.AutoDailyNote != nil {
+		c.AutoDailyNote = *p.AutoDailyNote
 	}
 	if p.Theme != nil {
 		c.Theme = *p.Theme
@@ -194,14 +254,38 @@ func applyPatch(c *config.Config, p configPatch) {
 	if p.AutoSave != nil {
 		c.AutoSave = *p.AutoSave
 	}
+	if p.EditorTabSize != nil {
+		c.Editor.TabSize = *p.EditorTabSize
+	}
+	if p.EditorInsertTabs != nil {
+		c.Editor.InsertTabs = *p.EditorInsertTabs
+	}
+	if p.EditorAutoIndent != nil {
+		c.Editor.AutoIndent = *p.EditorAutoIndent
+	}
+	if p.AutoCloseBrackets != nil {
+		c.AutoCloseBrackets = *p.AutoCloseBrackets
+	}
+	if p.HighlightCurrentLine != nil {
+		c.HighlightCurrentLine = *p.HighlightCurrentLine
+	}
 	if p.TaskFilterMode != nil {
 		c.TaskFilterMode = *p.TaskFilterMode
 	}
 	if p.TaskRequiredTags != nil {
 		c.TaskRequiredTags = *p.TaskRequiredTags
 	}
+	if p.TaskExcludeFolders != nil {
+		c.TaskExcludeFolders = *p.TaskExcludeFolders
+	}
 	if p.TaskExcludeDone != nil {
 		c.TaskExcludeDone = *p.TaskExcludeDone
+	}
+	if p.SearchContentByDefault != nil {
+		c.SearchContentByDefault = *p.SearchContentByDefault
+	}
+	if p.MaxSearchResults != nil {
+		c.MaxSearchResults = *p.MaxSearchResults
 	}
 	if p.GitAutoSync != nil {
 		c.GitAutoSync = *p.GitAutoSync

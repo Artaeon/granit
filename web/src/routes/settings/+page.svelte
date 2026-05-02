@@ -391,9 +391,18 @@
             { key: 'auto_save', label: 'Auto-save', help: 'Save 2s after the last keystroke.' },
             { key: 'line_numbers', label: 'Line numbers', help: 'Show line gutter in the editor.' },
             { key: 'word_wrap', label: 'Word wrap', help: 'Wrap long lines instead of horizontal scroll.' },
+            { key: 'auto_close_brackets', label: 'Auto-close brackets', help: 'Insert matching ), ], } and quotes as you type.' },
+            { key: 'highlight_current_line', label: 'Highlight current line', help: 'Tint the editor row your cursor is on.' },
+            { key: 'editor_insert_tabs', label: 'Insert tab character', help: 'Use a real tab on Tab. Off = spaces (width set below).' },
+            { key: 'editor_auto_indent', label: 'Auto-indent', help: 'Match the previous line indent on Enter.' },
             { key: 'auto_dark_mode', label: 'Auto dark mode', help: 'Follow OS preference (overrides theme picker).' },
+            { key: 'auto_daily_note', label: 'Auto-create daily note', help: 'Open or create today daily on app launch.' },
             { key: 'task_exclude_done', label: 'Hide done tasks by default', help: 'Tasks page opens with only open items.' },
+            { key: 'search_content_by_default', label: 'Search note content by default', help: 'Search bar matches body text, not just titles.' },
             { key: 'auto_tag', label: 'AI auto-tag on save', help: 'Suggest tags from note content (requires AI provider).' },
+            { key: 'background_bots', label: 'AI background bots', help: 'Auto-analyze notes on save (e.g. summary, action items).' },
+            { key: 'semantic_search_enabled', label: 'AI semantic search index', help: 'Background embedding index enables fuzzy meaning search.' },
+            { key: 'ghost_writer', label: 'AI ghost writer', help: 'Inline writing suggestions while you type.' },
             { key: 'ai_auto_apply_edits', label: 'Auto-apply AI edits', help: 'Skip the BEFORE/AFTER preview on inline AI edits.' }
           ] as opt}
             <label class="flex items-start gap-3 cursor-pointer py-1">
@@ -410,6 +419,62 @@
               </div>
             </label>
           {/each}
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-surface1">
+            <div>
+              <label for="tab-size" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Tab size</label>
+              <input
+                id="tab-size"
+                type="number"
+                min="1"
+                max="16"
+                value={appCfg.editor_tab_size || 4}
+                onblur={(e) => patchConfig({ editor_tab_size: Number((e.target as HTMLInputElement).value) || 4 })}
+                class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text text-sm"
+              />
+            </div>
+            <div>
+              <label for="max-search" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Max search results</label>
+              <input
+                id="max-search"
+                type="number"
+                min="10"
+                max="1000"
+                step="10"
+                value={appCfg.max_search_results || 100}
+                onblur={(e) => patchConfig({ max_search_results: Number((e.target as HTMLInputElement).value) || 100 })}
+                class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text text-sm"
+              />
+            </div>
+            <div class="sm:col-span-2">
+              <label for="weekly-template" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Weekly note template path</label>
+              <input
+                id="weekly-template"
+                value={appCfg.weekly_note_template ?? ''}
+                onblur={(e) => patchConfig({ weekly_note_template: (e.target as HTMLInputElement).value })}
+                placeholder="Templates/weekly.md"
+                class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
+              />
+              <p class="text-[11px] text-dim mt-1">Path inside the vault. Empty = built-in fallback layout.</p>
+            </div>
+            <div class="sm:col-span-2">
+              <label for="exclude-folders" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Task: exclude folders</label>
+              <input
+                id="exclude-folders"
+                value={(appCfg.task_exclude_folders ?? []).join(', ')}
+                onblur={(e) => {
+                  const list = (e.target as HTMLInputElement).value
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+                  patchConfig({ task_exclude_folders: list });
+                }}
+                placeholder="Archive/, Templates/"
+                class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
+              />
+              <p class="text-[11px] text-dim mt-1">Comma-separated. Tasks under these folders are hidden from the Tasks page.</p>
+            </div>
+          </div>
         </div>
       {/if}
     </section>
