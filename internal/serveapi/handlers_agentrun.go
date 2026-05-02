@@ -21,9 +21,17 @@ import (
 // runAgentBody is the POST /agents/run request shape. Goal can be empty
 // for presets that get all their context from the system prompt (e.g.
 // plan-my-day reads "today" without an explicit goal).
+//
+// MaxSteps and BudgetCents are optional. A zero MaxSteps falls through
+// to the agents package's default (8). BudgetCents (in micro-cents,
+// 1/1_000_000 of a cent — €0.25 = 25_000_000 micro-cents in this unit)
+// gates cost-aware presets like deep-research; zero means no budget,
+// only the iteration cap applies.
 type runAgentBody struct {
-	Preset string `json:"preset"`
-	Goal   string `json:"goal"`
+	Preset      string `json:"preset"`
+	Goal        string `json:"goal"`
+	MaxSteps    int    `json:"maxSteps,omitempty"`
+	BudgetCents int64  `json:"budgetMicroCents,omitempty"`
 }
 
 // handleRunAgent kicks off an agent run on the server. The request
@@ -69,6 +77,21 @@ func (s *Server) handleRunAgent(w http.ResponseWriter, r *http.Request) {
 
 	bridge := agentruntime.NewBridge(s.cfg.Vault, s.cfg.TaskStore, nil, nil)
 	runner := agentruntime.New(llm, bridge)
+	// Apply optional caller-provided caps. Sane defaults: 8 steps when
+	// the caller doesn't ask for more (matches the TUI's preset
+	// expectations), no budget unless explicitly requested.
+	if body.MaxSteps > 0 {
+		// Hard ceiling: 50 iterations is more than any preset has
+		// ever reasonably needed and bounds runaway cost on a
+		// pricing typo.
+		runner.MaxSteps = body.MaxSteps
+		if runner.MaxSteps > 50 {
+			runner.MaxSteps = 50
+		}
+	}
+	if body.BudgetCents > 0 {
+		runner.BudgetMicroCents = body.BudgetCents
+	}
 
 	runID := strings.ToLower(ulid.Make().String())
 	startedAt := time.Now()
@@ -93,12 +116,12 @@ func (s *Server) handleRunAgent(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
-		tr, runErr := runner.Run(ctx, preset, body.Goal, onEvent)
+		tr, cost, runErr := runner.Run(ctx, preset, body.Goal, onEvent)
 
 		// Persist the transcript as an agent_run note so it shows up
 		// in /agents the same way TUI runs do.
 		if tr != nil {
-			path, content := buildAgentRunNote(preset, *tr, body.Goal, startedAt, runErr, cfg)
+			path, content := buildAgentRunNote(preset, *tr, body.Goal, startedAt, runErr, cfg, cost)
 			if path != "" {
 				abs := filepath.Join(s.cfg.Vault.Root, path)
 				// Agents/ may not exist on a fresh vault. atomicio.WriteNote
@@ -125,15 +148,28 @@ func (s *Server) handleRunAgent(w http.ResponseWriter, r *http.Request) {
 					status = tr.StoppedBy
 				}
 			}
+			completeData := map[string]any{
+				"status":      status,
+				"finalAnswer": final,
+				"steps":       len(tr.Steps),
+			}
+			// Cost telemetry: only attach when we have priced tokens.
+			// A zero/-1 cost means Ollama (free) or an unknown model;
+			// in either case the UI shouldn't show a "spent X" line
+			// that isn't real.
+			if cost != nil {
+				snap := cost.Snapshot()
+				if snap.MicroCents >= 0 {
+					completeData["microCents"] = snap.MicroCents
+					completeData["promptTokens"] = snap.PromptTokens
+					completeData["completionTokens"] = snap.CompletionTokens
+				}
+			}
 			s.hub.Broadcast(wshub.Event{
 				Type: "agent.complete",
 				ID:   runID,
 				Path: path,
-				Data: map[string]any{
-					"status":      status,
-					"finalAnswer": final,
-					"steps":       len(tr.Steps),
-				},
+				Data: completeData,
 			})
 		} else if runErr != nil {
 			// runner.Run returned without a transcript — most likely
@@ -155,7 +191,11 @@ func (s *Server) handleRunAgent(w http.ResponseWriter, r *http.Request) {
 // buildAgentRunNote renders a TUI-compatible agent_run note: same
 // frontmatter shape, same body sections (Goal / Answer / Transcript)
 // so /agents/runs picks it up identically to a run made from the TUI.
-func buildAgentRunNote(preset agents.Preset, tr agents.Transcript, goal string, startedAt time.Time, runErr error, cfg config.Config) (string, string) {
+//
+// cost may be nil (e.g. Ollama runs that don't track usage). When
+// non-nil + priced, we add a Cost row to the frontmatter so the
+// /agents page can show it without re-parsing the body.
+func buildAgentRunNote(preset agents.Preset, tr agents.Transcript, goal string, startedAt time.Time, runErr error, cfg config.Config, cost *agentruntime.CostTracker) (string, string) {
 	stamp := startedAt.UTC().Format("2006-01-02T1504")
 	title := stamp + "-" + preset.ID
 	path := "Agents/" + title + ".md"
@@ -198,17 +238,27 @@ func buildAgentRunNote(preset agents.Preset, tr agents.Transcript, goal string, 
 	fmt.Fprintf(&fm, "status: %s\n", status)
 	fmt.Fprintf(&fm, "started: %s\n", startedAt.Format(time.RFC3339))
 	fmt.Fprintf(&fm, "steps: %d\n", len(tr.Steps))
+	if cost != nil {
+		snap := cost.Snapshot()
+		if snap.PromptTokens > 0 || snap.CompletionTokens > 0 {
+			fmt.Fprintf(&fm, "prompt_tokens: %d\n", snap.PromptTokens)
+			fmt.Fprintf(&fm, "completion_tokens: %d\n", snap.CompletionTokens)
+		}
+		if snap.MicroCents >= 0 {
+			fmt.Fprintf(&fm, "cost: %q\n", agentruntime.FormatCents(snap.MicroCents))
+		}
+	}
 	fm.WriteString("tags: [agent]\n")
 	fm.WriteString("---\n\n")
 
-	body := renderTranscriptBody(preset, tr, goal, runErr)
+	body := renderTranscriptBody(preset, tr, goal, runErr, cost)
 	return path, fm.String() + body
 }
 
 // renderTranscriptBody mirrors the TUI's renderTranscriptMarkdown but
 // stays in the serveapi package — duplicating ~50 lines is cheaper than
 // adding a tui→server import path that breaks the import direction.
-func renderTranscriptBody(preset agents.Preset, tr agents.Transcript, goal string, runErr error) string {
+func renderTranscriptBody(preset agents.Preset, tr agents.Transcript, goal string, runErr error, cost *agentruntime.CostTracker) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s — agent run\n\n", preset.Name)
 	if goal != "" {
@@ -220,6 +270,13 @@ func renderTranscriptBody(preset agents.Preset, tr agents.Transcript, goal strin
 		fmt.Fprintf(&b, "**Duration:** %s · **Steps:** %d · **Stopped by:** %s\n\n",
 			tr.EndedAt.Sub(tr.StartedAt).Round(100*time.Millisecond),
 			len(tr.Steps), tr.StoppedBy)
+	}
+	if cost != nil {
+		snap := cost.Snapshot()
+		if snap.MicroCents >= 0 {
+			fmt.Fprintf(&b, "**Tokens:** %d in / %d out · **Cost:** %s\n\n",
+				snap.PromptTokens, snap.CompletionTokens, agentruntime.FormatCents(snap.MicroCents))
+		}
 	}
 	if runErr != nil {
 		fmt.Fprintf(&b, "**Error:** %s\n\n", runErr.Error())
