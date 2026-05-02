@@ -26,7 +26,9 @@
   let groupBy = $state<Group>(
     (typeof localStorage !== 'undefined' && (localStorage.getItem(GROUP_KEY) as Group)) || 'due'
   );
-  let kanbanMode = $state<'priority' | 'due' | 'triage'>('priority');
+  let kanbanMode = $state<'priority' | 'due' | 'triage' | 'config'>('priority');
+  let kanbanSwimlane = $state<'none' | 'project' | 'tag' | 'priority'>('none');
+  let helpOpen = $state(false);
   let status = $state<'open' | 'done' | 'all'>('open');
   let q = $state('');
   let tagFilter = $state('');
@@ -90,9 +92,108 @@
 
   onMount(() =>
     onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
+      // task.changed fires after every patchTask, including drag-drops
+      // from the kanban — without it, moves would only show up on a
+      // manual refresh (or the next note write coincidentally). Match
+      // the same set the calendar/inbox widgets honor.
+      if (ev.type === 'note.changed' || ev.type === 'note.removed' || ev.type === 'task.changed') load();
     })
   );
+
+  // ---------------------------------------------------------------------------
+  // Keyboard shortcuts (j/k navigate, x select, e edit, d done, p priority).
+  // Mirrors the TUI's task manager bindings as far as the web allows. Skipped
+  // when the user is typing into an input so we don't eat letters mid-search.
+  // The cursor is page-local; we only navigate within the current `filtered`
+  // list. Discoverable via the '?' button in the header.
+  // ---------------------------------------------------------------------------
+  let cursorIdx = $state<number>(-1);
+  $effect(() => {
+    // Reset cursor when the filtered list shrinks past it.
+    if (cursorIdx >= filtered.length) cursorIdx = filtered.length - 1;
+  });
+
+  function isTypingTarget(el: EventTarget | null): boolean {
+    if (!(el instanceof HTMLElement)) return false;
+    const tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (el.isContentEditable) return true;
+    return false;
+  }
+
+  async function cyclePriorityOf(t: Task) {
+    const next = ((t.priority || 0) + 1) % 4; // 0,1,2,3 cycle
+    try {
+      await api.patchTask(t.id, { priority: next });
+    } catch {}
+  }
+
+  function focusCursor(idx: number) {
+    cursorIdx = Math.max(0, Math.min(filtered.length - 1, idx));
+    // Scroll the focused row into view; the data-task-id attr on the
+    // wrapper element gives us a stable selector across re-renders.
+    const t = filtered[cursorIdx];
+    if (!t) return;
+    queueMicrotask(() => {
+      const el = document.querySelector(`[data-task-id="${t.id}"]`) as HTMLElement | null;
+      if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+  }
+
+  onMount(() => {
+    function onKey(e: KeyboardEvent) {
+      if (isTypingTarget(e.target)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key;
+      // Help overlay
+      if (k === '?') {
+        helpOpen = !helpOpen;
+        e.preventDefault();
+        return;
+      }
+      if (helpOpen && k === 'Escape') {
+        helpOpen = false;
+        return;
+      }
+      // j/k navigation
+      if (k === 'j') {
+        focusCursor((cursorIdx < 0 ? 0 : cursorIdx + 1));
+        e.preventDefault();
+        return;
+      }
+      if (k === 'k') {
+        focusCursor((cursorIdx < 0 ? 0 : cursorIdx - 1));
+        e.preventDefault();
+        return;
+      }
+      const t = cursorIdx >= 0 ? filtered[cursorIdx] : null;
+      if (!t) return;
+      if (k === 'x') {
+        // Toggle selection on cursor
+        const next = new Set(selectedIds);
+        if (next.has(t.id)) next.delete(t.id);
+        else next.add(t.id);
+        selectedIds = next;
+        e.preventDefault();
+      } else if (k === 'd') {
+        api.patchTask(t.id, { done: !t.done }).catch(() => {});
+        e.preventDefault();
+      } else if (k === 'e') {
+        openDetail(t);
+        e.preventDefault();
+      } else if (k === 'p') {
+        cyclePriorityOf(t);
+        e.preventDefault();
+      } else if (k === 'Escape') {
+        if (selectedIds.size > 0) {
+          selectedIds = new Set();
+          e.preventDefault();
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   // Active snooze: a task is "active" if snoozedUntil is empty or in the past.
   function isSnoozed(t: Task): boolean {
@@ -331,6 +432,12 @@
         <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'stale' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'stale')} title="not touched in 7+ days">Stale</button>
         <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'review' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'review')} title="completed in last 7 days">Review</button>
       </div>
+      <button
+        onclick={() => (helpOpen = !helpOpen)}
+        aria-label="keyboard shortcuts"
+        title="keyboard shortcuts (?)"
+        class="hidden sm:flex w-7 h-7 items-center justify-center text-dim hover:text-text border border-surface1 rounded text-sm"
+      >?</button>
     </header>
 
     {#if view === 'list' || view === 'kanban'}
@@ -350,6 +457,7 @@
             <option value="priority">priority</option>
             <option value="due">due</option>
             <option value="triage">triage (granit)</option>
+            <option value="config">config</option>
           </select>
         {/if}
       </div>
@@ -378,7 +486,14 @@
       {:else if filtered.length === 0}
         <div class="text-sm text-dim italic">no tasks match these filters.</div>
       {:else if view === 'kanban'}
-        <Kanban tasks={filtered} bind:mode={kanbanMode} onChanged={load} />
+        <Kanban
+          tasks={filtered}
+          bind:mode={kanbanMode}
+          bind:swimlane={kanbanSwimlane}
+          bind:selectedIds
+          onChanged={load}
+          onOpenDetail={openDetail}
+        />
       {:else if view === 'triage'}
         <TriageBoard tasks={filtered} onChanged={load} />
       {:else if view === 'inbox'}
@@ -388,7 +503,9 @@
           </p>
           <div class="space-y-2">
             {#each filtered as t (t.id)}
-              <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+              <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
+                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+              </div>
             {/each}
           </div>
         </div>
@@ -397,7 +514,9 @@
           <p class="text-sm text-dim mb-4">Tasks that haven't been touched in 7+ days. Drop, snooze, or do them.</p>
           <div class="space-y-2">
             {#each filtered as t (t.id)}
-              <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+              <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
+                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+              </div>
             {/each}
           </div>
         </div>
@@ -406,7 +525,9 @@
           <p class="text-sm text-dim mb-4">High-priority tasks you can finish in ≤30 min. Pick one, knock it out.</p>
           <div class="space-y-2">
             {#each filtered as t (t.id)}
-              <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+              <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
+                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+              </div>
             {/each}
           </div>
         </div>
@@ -415,7 +536,9 @@
           <p class="text-sm text-dim mb-4">Done in the last week — your retrospective view.</p>
           <div class="space-y-2 opacity-80">
             {#each filtered as t (t.id)}
-              <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+              <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
+                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+              </div>
             {/each}
           </div>
         </div>
@@ -428,7 +551,9 @@
               </h2>
               <div class="space-y-2">
                 {#each g.tasks as t (t.id)}
-                  <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+                  <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
+                    <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+                  </div>
                 {/each}
               </div>
             </section>
@@ -445,3 +570,47 @@
   // edits see latest state.
   if (detailTask) detailTask = tasks.find((t) => t.id === detailTask!.id) ?? detailTask;
 }} />
+
+<!-- Keyboard shortcuts overlay. Toggled with '?' or the header button. -->
+{#if helpOpen}
+  <div
+    class="fixed inset-0 bg-mantle/80 z-50 flex items-center justify-center p-4"
+    onclick={() => (helpOpen = false)}
+    role="presentation"
+  >
+    <div
+      class="bg-surface0 border border-surface1 rounded-lg p-5 max-w-md w-full shadow-xl"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => { if (e.key === 'Escape') helpOpen = false; }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Keyboard shortcuts"
+      tabindex="-1"
+    >
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold text-text">Keyboard shortcuts</h2>
+        <button onclick={() => (helpOpen = false)} class="text-dim hover:text-text">esc</button>
+      </div>
+      <div class="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
+        <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">j / k</kbd>
+        <span class="text-subtext">navigate up / down</span>
+        <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">x</kbd>
+        <span class="text-subtext">toggle bulk-select</span>
+        <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">e</kbd>
+        <span class="text-subtext">open task detail</span>
+        <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">d</kbd>
+        <span class="text-subtext">toggle done</span>
+        <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">p</kbd>
+        <span class="text-subtext">cycle priority (P0→P3)</span>
+        <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">esc</kbd>
+        <span class="text-subtext">clear selection</span>
+        <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">?</kbd>
+        <span class="text-subtext">toggle this overlay</span>
+      </div>
+      <div class="mt-4 pt-3 border-t border-surface1 text-xs text-dim">
+        <strong class="text-subtext">Kanban:</strong> drag cards between columns. Drag while a
+        bulk-selection is active to move all selected tasks at once.
+      </div>
+    </div>
+  </div>
+{/if}
