@@ -32,6 +32,7 @@
     { href: '/goals', label: 'Goals', icon: 'goals' },
     { href: '/projects', label: 'Projects', icon: 'projects' },
     { href: '/agents', label: 'Agents', icon: 'agents' },
+    { href: '/scripture', label: 'Scripture', icon: 'scripture' },
     { href: '/objects', label: 'Objects', icon: 'objects' },
     { href: '/tags', label: 'Tags', icon: 'tags' },
     { href: '/notes', label: 'Notes', icon: 'notes' }

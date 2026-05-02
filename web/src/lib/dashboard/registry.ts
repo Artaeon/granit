@@ -3,6 +3,7 @@ import type { DashboardWidgetType } from '$lib/api';
 import GreetingWidget from './widgets/GreetingWidget.svelte';
 import NowWidget from './widgets/NowWidget.svelte';
 import StreaksWidget from './widgets/StreaksWidget.svelte';
+import ScriptureWidget from './widgets/ScriptureWidget.svelte';
 import DailyNoteWidget from './widgets/DailyNoteWidget.svelte';
 import QuickCaptureWidget from './widgets/QuickCaptureWidget.svelte';
 import TodayTasksWidget from './widgets/TodayTasksWidget.svelte';
@@ -26,6 +27,7 @@ export const widgetRegistry: WidgetMeta[] = [
   { type: 'greeting', label: 'Greeting', description: 'Date + welcome', span: 2, component: GreetingWidget },
   { type: 'now', label: 'Now', description: 'Current time + next event', span: 1, component: NowWidget },
   { type: 'streaks', label: 'Streaks', description: 'Habit streaks at a glance', span: 1, component: StreaksWidget },
+  { type: 'scripture', label: 'Today\'s verse', description: 'Daily scripture / quote rotation', span: 1, component: ScriptureWidget },
   { type: 'daily-note', label: 'Daily note', description: 'Link to today\'s daily note', span: 1, component: DailyNoteWidget },
   { type: 'quick-capture', label: 'Quick capture', description: 'Add a task fast', span: 1, component: QuickCaptureWidget },
   { type: 'today-tasks', label: 'Today\'s tasks', description: 'Overdue + due + open', span: 2, component: TodayTasksWidget },

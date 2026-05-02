@@ -30,6 +30,7 @@ func defaultDashboard() dashboardConfig {
 			{ID: "w-greeting", Type: "greeting", Enabled: true},
 			{ID: "w-now", Type: "now", Enabled: true},
 			{ID: "w-streaks", Type: "streaks", Enabled: true},
+			{ID: "w-scripture", Type: "scripture", Enabled: true},
 			{ID: "w-pinned", Type: "pinned", Enabled: true},
 			{ID: "w-daily", Type: "daily-note", Enabled: true},
 			{ID: "w-habits", Type: "habits", Enabled: true},
