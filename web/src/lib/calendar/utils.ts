@@ -41,7 +41,7 @@ export function isSameDay(a: Date, b: Date): boolean {
 }
 
 export function fmtTime(d: Date): string {
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 export function eventStartDate(ev: CalendarEvent): Date | null {

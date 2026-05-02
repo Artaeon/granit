@@ -35,7 +35,7 @@
   {:else}
     <ul class="space-y-1.5">
       {#each scheduled as t (t.id)}
-        {@const time = new Date(t.scheduledStart!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        {@const time = new Date(t.scheduledStart!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
         <li class="flex items-baseline gap-3">
           <span class="text-xs font-mono text-info w-12 flex-shrink-0">{time}</span>
           <span class="flex-1 text-sm {t.done ? 'line-through text-dim' : 'text-text'} min-w-0 truncate">{@html inlineMd(t.text)}</span>

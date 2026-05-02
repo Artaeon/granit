@@ -86,9 +86,9 @@
   const presets: { label: string; sub: string; fn: () => string }[] = [
     { label: 'In 1 hour', sub: '', fn: () => nowPlus(1) },
     { label: 'In 3 hours', sub: '', fn: () => nowPlus(3) },
-    { label: 'Tonight', sub: '7:00 PM', fn: () => tonight() },
-    { label: 'Tomorrow', sub: '9:00 AM', fn: () => tomorrow() },
-    { label: 'Next Monday', sub: '9:00 AM', fn: () => nextMonday() },
+    { label: 'Tonight', sub: '19:00', fn: () => tonight() },
+    { label: 'Tomorrow', sub: '09:00', fn: () => tomorrow() },
+    { label: 'Next Monday', sub: '09:00', fn: () => nextMonday() },
     { label: 'Next week', sub: '7 days', fn: () => nextWeek() }
   ];
 </script>

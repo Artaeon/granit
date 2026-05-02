@@ -277,7 +277,7 @@
             {#if task.scheduledStart}
               <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-primary bg-primary/10">
                 <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-                {new Date(task.scheduledStart).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                {new Date(task.scheduledStart).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}
               </span>
             {/if}
             {#if snoozed && task.snoozedUntil}

@@ -98,9 +98,9 @@
     if (isNaN(d.getTime())) return iso;
     const now = new Date();
     const sameDay = d.toDateString() === now.toDateString();
-    if (sameDay) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (sameDay) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     const days = Math.floor((now.getTime() - d.getTime()) / 86400000);
-    if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
     return d.toLocaleDateString();
   }
 
