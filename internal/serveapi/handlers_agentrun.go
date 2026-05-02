@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -98,7 +100,12 @@ func (s *Server) handleRunAgent(w http.ResponseWriter, r *http.Request) {
 		if tr != nil {
 			path, content := buildAgentRunNote(preset, *tr, body.Goal, startedAt, runErr, cfg)
 			if path != "" {
-				_ = atomicio.WriteNote(s.cfg.Vault.Root+"/"+path, content)
+				abs := filepath.Join(s.cfg.Vault.Root, path)
+				// Agents/ may not exist on a fresh vault. atomicio.WriteNote
+				// uses O_EXCL on a tmp file in the destination dir, so the
+				// parent has to exist before the call.
+				_ = os.MkdirAll(filepath.Dir(abs), 0o755)
+				_ = atomicio.WriteNote(abs, content)
 			}
 			// Notify clients the run finished. Path lets the UI link
 			// directly to the transcript note.

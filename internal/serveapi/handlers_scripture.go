@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -89,7 +91,15 @@ func (s *Server) handleCreateDevotional(w http.ResponseWriter, r *http.Request) 
 	rel := fmt.Sprintf("Devotionals/%s-%s.md", stamp, slug)
 
 	note := buildDevotionalNote(body, stamp)
-	abs := s.cfg.Vault.Root + "/" + rel
+	abs := filepath.Join(s.cfg.Vault.Root, rel)
+	// atomicio.WriteNote doesn't create parent dirs (it operates on a
+	// single file with strict O_EXCL semantics). The Devotionals/
+	// folder may not exist on a fresh vault, so ensure it's there
+	// before we try to write through it.
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	if err := atomicio.WriteNote(abs, note); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
