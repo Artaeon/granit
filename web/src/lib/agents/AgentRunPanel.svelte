@@ -35,6 +35,15 @@
   let starting = $state(false);
   let unsub: (() => void) | null = null;
 
+  // Fallback timer for the case where the WS hub drops our agent.complete
+  // frame (slow client, queue full). After this many ms in 'running'
+  // without a complete event, we fetch /agents/runs and resolve from the
+  // persisted note. The runner caps its own ctx at 5 min, so 6 min is
+  // a safe ceiling — anything that took longer is dead anyway.
+  const FALLBACK_TIMEOUT_MS = 6 * 60 * 1000;
+  let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  let runStartedAt = 0;
+
   // Budget + step caps. Budget is in main-currency units (€/$/etc.)
   // so users type "0.25" instead of "25_000_000". We multiply by
   // 100_000_000 for the wire format. 0 means "no cap" — only the
@@ -76,7 +85,10 @@
     }
   });
 
-  onDestroy(() => unsub?.());
+  onDestroy(() => {
+    unsub?.();
+    if (fallbackTimer) clearTimeout(fallbackTimer);
+  });
 
   function subscribe(rid: string) {
     unsub?.();
@@ -94,8 +106,55 @@
           promptTokens = ev.data.promptTokens ?? 0;
           completionTokens = ev.data.completionTokens ?? 0;
         }
+        if (fallbackTimer) {
+          clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+        }
       }
     });
+  }
+
+  // Fallback resolver. Fires when the WS complete frame never arrived.
+  // Walks /agents/runs (newest first) for a record whose preset matches
+  // and whose started timestamp is within a short window of when we
+  // POSTed /run — close enough to be the same run without needing the
+  // server to expose runId in the persisted note.
+  async function resolveFromPersisted() {
+    if (!preset || !runStartedAt) return;
+    if (status !== 'running') return; // already resolved
+    try {
+      const r = await api.listAgentRuns(50);
+      const presetID = preset.id;
+      const startMs = runStartedAt;
+      // Server writes started in RFC3339; the run's ISO timestamp will
+      // be within a few seconds of when we POSTed /run. ±60s window
+      // tolerates clock skew between the device + server.
+      const match = r.runs.find((run) => {
+        if (run.preset !== presetID) return false;
+        const t = Date.parse(run.started);
+        if (Number.isNaN(t)) return false;
+        return Math.abs(t - startMs) <= 60_000;
+      });
+      if (!match) {
+        status = 'error';
+        finalAnswer = 'lost connection to the run — refresh /agents to find the transcript';
+        return;
+      }
+      // Persisted note exists ⇒ run finished. Use its frontmatter
+      // status; the body has the answer + transcript for follow-up.
+      const s = match.status || 'ok';
+      status = (s === 'budget' || s === 'error' || s === 'ok' ? s : 'ok') as typeof status;
+      resultPath = match.path;
+      finalAnswer = `Run finished — open transcript for the full answer (${match.steps} steps)`;
+    } catch {
+      status = 'error';
+      finalAnswer = 'lost connection — open /agents to find the transcript';
+    } finally {
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+    }
   }
 
   async function run() {
@@ -116,7 +175,12 @@
       costMicroCents = null;
       promptTokens = 0;
       completionTokens = 0;
+      runStartedAt = Date.now();
       subscribe(r.runId);
+      // Arm the fallback. Cleared by the WS complete handler; only fires
+      // if the WS frame got dropped on a slow client.
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      fallbackTimer = setTimeout(resolveFromPersisted, FALLBACK_TIMEOUT_MS);
     } catch (e) {
       toast.error('failed to start: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -159,12 +223,16 @@
   }
 </script>
 
-<Drawer bind:open side="right">
+<Drawer bind:open side="right" responsive width="w-full sm:w-96 md:w-[32rem] lg:w-[36rem]">
   {#if preset}
     <div class="h-full flex flex-col overflow-hidden">
       <header class="px-4 py-3 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
         <h2 class="text-base font-semibold text-text flex-1 truncate">{preset.name}</h2>
-        <button onclick={() => (open = false)} aria-label="close" class="text-dim hover:text-text">×</button>
+        <button
+          onclick={() => (open = false)}
+          aria-label="close"
+          class="w-9 h-9 -mr-2 flex items-center justify-center text-dim hover:text-text hover:bg-surface0 rounded text-xl leading-none"
+        >×</button>
       </header>
 
       <div class="px-4 py-3 border-b border-surface1 flex-shrink-0">
@@ -237,7 +305,10 @@
             {/if}
             <span class="flex-1"></span>
             {#if resultPath}
-              <button onclick={viewTranscript} class="text-xs text-secondary hover:underline">view transcript →</button>
+              <button
+                onclick={viewTranscript}
+                class="text-xs text-secondary hover:underline px-2 py-1 -mr-1 rounded hover:bg-secondary/10"
+              >view transcript →</button>
             {/if}
           </div>
 
@@ -257,15 +328,22 @@
           {/if}
 
           {#if lines.length > 0}
-            <ol class="space-y-1.5 mt-3">
+            <ol class="space-y-2 mt-3">
               {#each lines as ln, i (i)}
-                <li class="text-xs flex gap-2">
-                  <span class="font-mono text-dim flex-shrink-0 w-7">#{ln.step}</span>
-                  <span
-                    class="text-[10px] uppercase tracking-wider w-20 flex-shrink-0 font-medium"
-                    style="color: var(--color-{tone(ln.kind)})"
-                  >{kindLabel(ln.kind)}</span>
-                  <span class="text-subtext flex-1 break-words whitespace-pre-wrap">{ln.text}</span>
+                <li class="text-xs">
+                  <!-- Header line: step + kind badge. Wrapping to its
+                       own row keeps long event text fully readable on
+                       phones (the previous side-by-side layout
+                       squeezed the text column to ~140px on narrow
+                       drawers). -->
+                  <div class="flex items-center gap-2 mb-0.5">
+                    <span class="font-mono text-dim flex-shrink-0">#{ln.step}</span>
+                    <span
+                      class="text-[10px] uppercase tracking-wider font-medium"
+                      style="color: var(--color-{tone(ln.kind)})"
+                    >{kindLabel(ln.kind)}</span>
+                  </div>
+                  <p class="text-subtext break-words whitespace-pre-wrap pl-6 border-l border-surface1 ml-1.5">{ln.text}</p>
                 </li>
               {/each}
             </ol>
