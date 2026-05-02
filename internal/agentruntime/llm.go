@@ -29,6 +29,23 @@ import (
 	"github.com/artaeon/granit/internal/config"
 )
 
+// ChatMessage is a single turn in a chat conversation. Used by Chat()
+// for multi-turn conversations where the agents.LLM single-shot
+// Complete() interface isn't enough.
+type ChatMessage struct {
+	Role    string // "system" | "user" | "assistant"
+	Content string
+}
+
+// Chatter is the multi-turn-aware extension of agents.LLM. NewLLM's
+// returns implement both — Complete for the agent loop, Chat for the
+// /chat endpoint. We keep them separate because the agent loop
+// doesn't need conversation history (it bakes everything into one
+// prompt) and we don't want to pay the prompt-building cost twice.
+type Chatter interface {
+	Chat(ctx context.Context, messages []ChatMessage) (string, error)
+}
+
 // NewLLM constructs an LLM bound to the user's granit config. Provider
 // selection mirrors what the TUI does so a working `granit tui` setup
 // just works on the web side too — same key, same model, same provider.
@@ -80,11 +97,20 @@ type openAILLM struct {
 }
 
 func (l *openAILLM) Complete(ctx context.Context, prompt string) (string, error) {
+	return l.Chat(ctx, []ChatMessage{{Role: "user", Content: prompt}})
+}
+
+// Chat sends a multi-turn conversation. OpenAI's chat-completions
+// endpoint takes the messages array directly so this is just a
+// re-shape of our ChatMessage slice.
+func (l *openAILLM) Chat(ctx context.Context, messages []ChatMessage) (string, error) {
+	wire := make([]map[string]string, 0, len(messages))
+	for _, m := range messages {
+		wire = append(wire, map[string]string{"role": m.Role, "content": m.Content})
+	}
 	body, _ := json.Marshal(map[string]any{
-		"model": l.model,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
-		},
+		"model":    l.model,
+		"messages": wire,
 	})
 	req, err := http.NewRequestWithContext(ctx, "POST",
 		"https://api.openai.com/v1/chat/completions", bytes.NewReader(body))
@@ -166,4 +192,42 @@ func (l *ollamaLLM) Complete(ctx context.Context, prompt string) (string, error)
 		return "", fmt.Errorf("ollama: parse: %w", err)
 	}
 	return out.Response, nil
+}
+
+// Chat uses Ollama's /api/chat endpoint (which accepts the OpenAI-
+// shaped messages array directly). Supported on Ollama 0.1.14+.
+func (l *ollamaLLM) Chat(ctx context.Context, messages []ChatMessage) (string, error) {
+	wire := make([]map[string]string, 0, len(messages))
+	for _, m := range messages {
+		wire = append(wire, map[string]string{"role": m.Role, "content": m.Content})
+	}
+	body, _ := json.Marshal(map[string]any{
+		"model":    l.model,
+		"messages": wire,
+		"stream":   false,
+	})
+	req, err := http.NewRequestWithContext(ctx, "POST", l.url+"/api/chat", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	cl := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := cl.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("ollama at %s: %w (is `ollama serve` running?)", l.url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("ollama: %d %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	var out struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", fmt.Errorf("ollama: parse: %w", err)
+	}
+	return out.Message.Content, nil
 }
