@@ -48,8 +48,13 @@ export function connect() {
   }
 
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  const url = `${proto}://${window.location.host}/api/v1/ws?token=${encodeURIComponent(tok)}`;
-  ws = new WebSocket(url);
+  const url = `${proto}://${window.location.host}/api/v1/ws`;
+  // Pass the bearer through Sec-WebSocket-Protocol (the only auth
+  // header browsers let us set on `new WebSocket()`). The server
+  // recognizes the `granit.<tok>` form and echoes it back so the
+  // handshake completes. This keeps the token out of the URL
+  // querystring → out of access logs, browser history, and Referer.
+  ws = new WebSocket(url, [`granit.${tok}`]);
 
   ws.onopen = () => {
     wsConnected.set(true);
