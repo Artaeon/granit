@@ -63,10 +63,21 @@ func runWeb(args []string) {
 	}
 	logger.Info("vault opened", "path", v.Root, "notes", v.NoteCount())
 
+	// Scan adapter the TaskStore uses to (re)load tasks from the vault.
+	// Critical: SnapshotNotes returns notes with Content=="" when the
+	// note was indexed by ScanFast (which is what the watcher uses on
+	// every fs event). Without this EnsureLoaded call, every Reload
+	// would see empty bodies and the parser would silently drop every
+	// task — that was the "tasks page is empty" bug. EnsureLoaded is a
+	// no-op when the body is already cached, so the cost is paid once
+	// per note then amortised.
 	store, err := tasks.Load(v.Root, func() []tasks.NoteContent {
 		notes := v.SnapshotNotes()
 		out := make([]tasks.NoteContent, 0, len(notes))
 		for _, n := range notes {
+			if n.Content == "" {
+				v.EnsureLoaded(n.RelPath)
+			}
 			out = append(out, tasks.NoteContent{Path: n.RelPath, Content: n.Content})
 		}
 		return out
