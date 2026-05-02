@@ -148,21 +148,7 @@ func (s *Server) handleRunAgent(w http.ResponseWriter, r *http.Request) {
 				budgetHit = cost.Snapshot().BudgetHit
 			}
 
-			path, content := buildAgentRunNote(preset, *tr, body.Goal, startedAt, runErr, cfg, cost, budgetHit)
-			notePersisted := false
-			if path != "" {
-				abs := filepath.Join(s.cfg.Vault.Root, path)
-				// Agents/ may not exist on a fresh vault. atomicio.WriteNote
-				// uses O_EXCL on a tmp file in the destination dir, so the
-				// parent has to exist before the call. If either step fails
-				// (disk full, perms) we drop Path from the broadcast so the
-				// UI's "view transcript →" link doesn't 404.
-				if mkErr := os.MkdirAll(filepath.Dir(abs), 0o755); mkErr == nil {
-					if wrErr := atomicio.WriteNote(abs, content); wrErr == nil {
-						notePersisted = true
-					}
-				}
-			}
+			path, notePersisted := persistAgentRun(s, preset, *tr, body.Goal, startedAt, runErr, cfg, cost, budgetHit)
 			final := ""
 			status := "ok"
 			switch {
@@ -229,6 +215,40 @@ func (s *Server) handleRunAgent(w http.ResponseWriter, r *http.Request) {
 		"runId":  runID,
 		"preset": preset.ID,
 	})
+}
+
+// persistAgentRun writes the transcript as an agent_run note under
+// `<vault>/Agents/`. Returns (path, persisted) where path is the
+// vault-relative path (e.g. "Agents/2026-05-02T0930-plan-my-day.md")
+// and persisted indicates whether the file was successfully written.
+//
+// Used by both the async /agents/run handler (which broadcasts a
+// completion frame after this returns) and the synchronous
+// /agents/plan-day-schedule handler (which doesn't broadcast — the
+// caller is awaiting the HTTP response, so a WS frame would be
+// redundant). Either way the user gets an audit-trail note in the
+// vault for what the AI did.
+//
+// Safe to call with a partial transcript on a failed run — the buildAgentRunNote
+// renderer surfaces errors in the body so the user can still see how
+// far the agent got before it bailed.
+func persistAgentRun(s *Server, preset agents.Preset, tr agents.Transcript, goal string, startedAt time.Time, runErr error, cfg config.Config, cost *agentruntime.CostTracker, budgetHit bool) (string, bool) {
+	path, content := buildAgentRunNote(preset, tr, goal, startedAt, runErr, cfg, cost, budgetHit)
+	if path == "" {
+		return "", false
+	}
+	abs := filepath.Join(s.cfg.Vault.Root, path)
+	// Agents/ may not exist on a fresh vault. atomicio.WriteNote uses
+	// O_EXCL on a tmp file in the destination dir, so the parent has
+	// to exist before the call. If either step fails (disk full,
+	// perms) callers should treat path as unavailable.
+	if mkErr := os.MkdirAll(filepath.Dir(abs), 0o755); mkErr != nil {
+		return "", false
+	}
+	if wrErr := atomicio.WriteNote(abs, content); wrErr != nil {
+		return "", false
+	}
+	return path, true
 }
 
 // buildAgentRunNote renders a TUI-compatible agent_run note: same

@@ -67,10 +67,16 @@ type Metered interface {
 // selection mirrors what the TUI does so a working `granit tui` setup
 // just works on the web side too — same key, same model, same provider.
 //
-// "openai" + "anthropic" hit cloud APIs; "ollama"/"local"/empty go to
+// "openai" hits the cloud API; "ollama"/"local"/empty go to
 // localhost:11434 by default. Unknown providers fall back to OpenAI when
 // a key is set, otherwise return an error so misconfiguration surfaces
 // as soon as an agent actually runs (rather than silently doing nothing).
+//
+// TODO(anthropic): port the Messages-API client from
+// internal/tui/aiconfig.go (~lines 288-500) and add a `case "anthropic":`
+// branch keyed on cfg.AnthropicKey + cfg.AnthropicModel. Until then the
+// settings UI hides the Anthropic option to avoid silent fallthrough
+// to OpenAI/Ollama for users who pick "anthropic" expecting Claude.
 func NewLLM(cfg config.Config) (agents.LLM, error) {
 	provider := strings.ToLower(strings.TrimSpace(cfg.AIProvider))
 	switch provider {

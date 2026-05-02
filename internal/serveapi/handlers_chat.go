@@ -62,6 +62,15 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Pre-flight ping: surfaces a clean 400 within ~5s when the
+	// provider is unreachable or the model isn't pulled. Chat is
+	// fast, so the upside is mostly consistency with /agents/run +
+	// a clearer error than the upstream provider's raw failure
+	// (which we'd otherwise return as 502 below).
+	if hint := preflightLLM(llm); hint != "" {
+		writeError(w, http.StatusBadRequest, hint)
+		return
+	}
 	chatter, ok := llm.(agentruntime.Chatter)
 	if !ok {
 		// Should never happen given our two implementations, but

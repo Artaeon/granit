@@ -50,7 +50,6 @@
   // each load). Empty string + the user clicking save clears the key
   // server-side; non-empty string sets it.
   let openAIKeyBuf = $state('');
-  let anthropicKeyBuf = $state('');
   let recurringTasksBuf = $state('');
 
   async function patchConfig(patch: AppConfigPatch) {
@@ -77,16 +76,9 @@
     await patchConfig({ openai_key: '' });
     openAIKeyBuf = '';
   }
-  async function commitAnthropicKey() {
-    if (!anthropicKeyBuf.trim()) return;
-    await patchConfig({ anthropic_key: anthropicKeyBuf.trim() });
-    anthropicKeyBuf = '';
-  }
-  async function clearAnthropicKey() {
-    if (!confirm('Clear the Anthropic API key?')) return;
-    await patchConfig({ anthropic_key: '' });
-    anthropicKeyBuf = '';
-  }
+  // Anthropic key commit/clear handlers omitted — the dropdown no
+  // longer offers Anthropic and the runtime can't reach the Messages
+  // API yet. See TODO in internal/agentruntime/llm.go.
 
   // Recurring-tasks: list <textarea> with one item per line. Easier
   // mental model than a chip-add UI for a one-time setup screen.
@@ -237,7 +229,6 @@
         {#if appCfg}
           {@const provider = appCfg.ai_provider || 'ollama'}
           {@const ready = (provider === 'openai' && appCfg.openai_key_set)
-            || (provider === 'anthropic' && appCfg.anthropic_key_set)
             || (provider === 'ollama' || provider === 'local' || provider === '')}
           <span
             class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium"
@@ -255,6 +246,10 @@
         <div class="space-y-3 text-sm">
           <div>
             <label for="ai-provider" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Provider</label>
+            <!-- Anthropic intentionally absent: the runtime
+                 (internal/agentruntime/llm.go) doesn't implement the
+                 Messages API yet. AppConfig keeps anthropic_* fields so
+                 a TUI-set value isn't truncated on save from the web. -->
             <select
               id="ai-provider"
               value={appCfg.ai_provider || 'ollama'}
@@ -263,14 +258,11 @@
               class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text"
             >
               <option value="openai">OpenAI (cloud — gpt-4o, gpt-5)</option>
-              <option value="anthropic">Anthropic (cloud — Claude)</option>
               <option value="ollama">Ollama (local — free, private)</option>
             </select>
             <p class="text-[11px] text-dim mt-1">
               {#if (appCfg.ai_provider || 'ollama') === 'openai'}
                 Need a key? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" class="text-secondary hover:underline">platform.openai.com/api-keys</a> · ~$0.0001 per chat call on gpt-4o-mini.
-              {:else if appCfg.ai_provider === 'anthropic'}
-                Need a key? <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" class="text-secondary hover:underline">console.anthropic.com</a>
               {:else}
                 Run <code class="text-text">ollama serve</code> locally. Free, private, slower than cloud.
               {/if}
@@ -356,37 +348,9 @@
             </div>
           {/if}
 
-          {#if appCfg.ai_provider === 'anthropic'}
-            <div>
-              <label for="anthropic-model" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Anthropic model</label>
-              <input
-                id="anthropic-model"
-                value={appCfg.anthropic_model}
-                onblur={(e) => patchConfig({ anthropic_model: (e.target as HTMLInputElement).value })}
-                placeholder="claude-haiku-4-5"
-                class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
-              />
-            </div>
-            <div>
-              <label for="anthropic-key" class="block text-[11px] uppercase tracking-wider text-dim mb-1">
-                Anthropic API key
-                {#if appCfg.anthropic_key_set}<span class="text-success normal-case ml-1">· set</span>{/if}
-              </label>
-              <div class="flex gap-2">
-                <input
-                  id="anthropic-key"
-                  type="password"
-                  bind:value={anthropicKeyBuf}
-                  placeholder={appCfg.anthropic_key_set ? '••••• (hidden)' : 'sk-ant-…'}
-                  class="flex-1 px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
-                />
-                <button onclick={commitAnthropicKey} disabled={!anthropicKeyBuf.trim() || configBusy} class="px-3 py-2 text-xs bg-primary text-mantle rounded disabled:opacity-50">save</button>
-                {#if appCfg.anthropic_key_set}
-                  <button onclick={clearAnthropicKey} class="px-3 py-2 text-xs text-error hover:bg-error/10 rounded border border-error/30">clear</button>
-                {/if}
-              </div>
-            </div>
-          {/if}
+          <!-- Anthropic key/model inputs intentionally hidden — the
+               runtime can't talk to the Messages API yet. See the
+               TODO in internal/agentruntime/llm.go. -->
 
           {#if appCfg.ai_provider === 'ollama' || appCfg.ai_provider === 'local' || appCfg.ai_provider === ''}
             <div>

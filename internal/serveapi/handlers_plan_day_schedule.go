@@ -212,11 +212,21 @@ func (s *Server) handlePlanDaySchedule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Pre-flight ping: same shape as /agents/run. Without this, a bad
+	// model / unreachable Ollama / wrong key makes the user wait the
+	// full 3-minute timeout for an empty result. preflightLLM returns
+	// classifiable misconfigs (404, refused, bad key) within ~5s so
+	// the UI gets an actionable 400 message instead of a silent 200.
+	if hint := preflightLLM(llm); hint != "" {
+		writeError(w, http.StatusBadRequest, hint)
+		return
+	}
 
 	bridge := agentruntime.NewBridge(s.cfg.Vault, s.cfg.TaskStore, nil, nil)
 	runner := agentruntime.New(llm, bridge)
 
 	runID := strings.ToLower(ulid.Make().String())
+	startedAt := time.Now()
 
 	// 3-min hard timeout — plan-my-day is a short preset. Anything
 	// longer is almost certainly a stuck tool call and we'd rather
@@ -224,11 +234,31 @@ func (s *Server) handlePlanDaySchedule(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
 	defer cancel()
 
-	_, _, runErr := runner.Run(ctx, preset, "", nil)
+	tr, cost, runErr := runner.Run(ctx, preset, "", nil)
 	if runErr != nil && ctx.Err() == nil {
-		// Run errored before timeout — surface it.
+		// Run errored before timeout — persist a transcript (so the
+		// user can audit the failure) and surface a 500.
+		if tr != nil {
+			budgetHit := false
+			if cost != nil {
+				budgetHit = cost.Snapshot().BudgetHit
+			}
+			_, _ = persistAgentRun(s, preset, *tr, "", startedAt, runErr, cfg, cost, budgetHit)
+		}
 		writeError(w, http.StatusInternalServerError, "agent run failed: "+runErr.Error())
 		return
+	}
+	// Persist a transcript for the successful run (or the timeout case
+	// — partial transcript is still useful audit trail). Mirrors what
+	// /agents/run does so the user can review what the AI did from the
+	// /agents page either way. We don't WS-broadcast here; the HTTP
+	// caller is already awaiting our response.
+	if tr != nil {
+		budgetHit := false
+		if cost != nil {
+			budgetHit = cost.Snapshot().BudgetHit
+		}
+		_, _ = persistAgentRun(s, preset, *tr, "", startedAt, runErr, cfg, cost, budgetHit)
 	}
 	// On timeout we still try to parse — the agent may have written the
 	// plan before the deadline hit. If not, we'll just return empty
