@@ -36,6 +36,13 @@
   let saving = $state(false);
   let error = $state('');
 
+  // AI focus suggestion: one-shot chat call that proposes a single-
+  // sentence "today's #1" based on the user's open tasks + today's
+  // calendar. Cheap (one model call, capped tokens) and the user
+  // can ignore or edit the result freely.
+  let suggesting = $state(false);
+  let suggestion = $state('');
+
   // Persist progress through the wizard so a closed tab / phone lock
   // doesn't lose what the user already picked. Keyed per-day so yesterday's
   // half-completed wizard doesn't bleed into today.
@@ -183,6 +190,49 @@
     return ts;
   });
 
+  // Build a compact context string from open tasks for the AI suggestion
+  // call. Only the top-priority / soonest-due items — sending 60 task
+  // lines blows the prompt without changing the answer materially.
+  function focusContext(): string {
+    const top = sortedTasks.slice(0, 12).map((t) => {
+      const p = t.priority > 0 ? `P${t.priority} ` : '';
+      const due = t.dueDate ? ` (due ${t.dueDate})` : '';
+      return `- ${p}${t.text}${due}`;
+    });
+    return top.join('\n');
+  }
+
+  async function suggestFocus() {
+    suggesting = true;
+    suggestion = '';
+    try {
+      const ctx = focusContext();
+      const today = new Date().toISOString().slice(0, 10);
+      const userMsg = ctx
+        ? `It's ${today}. My open tasks (top by priority + due date):\n\n${ctx}\n\n` +
+          `If I only got ONE thing done today, what should it be? Reply with a single, action-oriented sentence ` +
+          `(8–14 words). No preamble, no list, no quotes — just the sentence. Pick something concrete from the tasks above ` +
+          `or, if nothing fits, propose a focused outcome.`
+        : `It's ${today}. I haven't logged any open tasks. Suggest one focused outcome for today as a single ` +
+          `action-oriented sentence (8–14 words). No preamble, no quotes.`;
+      const r = await api.chat([{ role: 'user', content: userMsg }]);
+      // Strip surrounding quotes / trailing period clutter the model
+      // sometimes adds despite the instruction.
+      let s = r.message.content.trim();
+      s = s.replace(/^["'`]+|["'`]+$/g, '').trim();
+      suggestion = s;
+    } catch (e) {
+      toast.error('suggest failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      suggesting = false;
+    }
+  }
+
+  function acceptSuggestion() {
+    if (suggestion) goal = suggestion;
+    suggestion = '';
+  }
+
   async function save() {
     saving = true;
     error = '';
@@ -297,6 +347,37 @@
           placeholder="ship the mealtime onboarding flow"
           class="w-full px-3 py-3 bg-mantle border border-surface1 rounded text-base text-text placeholder-dim focus:outline-none focus:border-primary"
         />
+        <div class="mt-3 flex items-center gap-2">
+          <button
+            onclick={suggestFocus}
+            disabled={suggesting}
+            class="px-3 py-1.5 text-xs rounded border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50"
+          >
+            {suggesting ? 'thinking…' : '✨ Suggest based on my tasks'}
+          </button>
+          <span class="text-[11px] text-dim italic">uses your AI provider · single short sentence</span>
+        </div>
+        {#if suggestion}
+          <div class="mt-3 p-3 bg-primary/8 border-l-3 border-primary rounded">
+            <div class="text-[10px] uppercase tracking-wider text-primary mb-1">Suggested</div>
+            <p class="text-sm text-text mb-2">{suggestion}</p>
+            <div class="flex items-center gap-2">
+              <button
+                onclick={acceptSuggestion}
+                class="px-2.5 py-1 text-xs rounded bg-primary text-mantle font-medium"
+              >use this</button>
+              <button
+                onclick={() => (suggestion = '')}
+                class="px-2.5 py-1 text-xs rounded text-dim hover:text-text"
+              >dismiss</button>
+              <button
+                onclick={suggestFocus}
+                disabled={suggesting}
+                class="ml-auto text-xs text-secondary hover:underline disabled:opacity-50"
+              >try again</button>
+            </div>
+          </div>
+        {/if}
       {:else if step === 'tasks'}
         <h2 class="text-lg font-medium text-text mb-1">Tasks for today</h2>
         <p class="text-sm text-dim mb-4">{pickedTasks.size} selected · pick what you'll actually commit to.</p>
