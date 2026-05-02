@@ -3,6 +3,7 @@ package serveapi
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/artaeon/granit/internal/config"
@@ -74,6 +75,13 @@ type configView struct {
 
 	// Pomodoro
 	PomodoroGoal int `json:"pomodoro_goal"`
+
+	// Kanban — surfaced read-only for the web kanban view so it can
+	// honor user-defined columns / tag routing / WIP limits without
+	// reaching for the raw config file.
+	KanbanColumns    []string          `json:"kanban_columns"`
+	KanbanColumnTags map[string]string `json:"kanban_column_tags"`
+	KanbanColumnWIP  map[string]int    `json:"kanban_column_wip"`
 }
 
 // configPatch mirrors configView but every field is a pointer so the
@@ -126,6 +134,12 @@ type configPatch struct {
 
 	GitAutoSync  *bool `json:"git_auto_sync,omitempty"`
 	PomodoroGoal *int  `json:"pomodoro_goal,omitempty"`
+
+	// Kanban — write paths so the web can save WIP limits / column edits
+	// without sidestepping the config layer.
+	KanbanColumns    *[]string          `json:"kanban_columns,omitempty"`
+	KanbanColumnTags *map[string]string `json:"kanban_column_tags,omitempty"`
+	KanbanColumnWIP  *map[string]int    `json:"kanban_column_wip,omitempty"`
 }
 
 func toView(c config.Config) configView {
@@ -173,6 +187,10 @@ func toView(c config.Config) configView {
 
 		GitAutoSync:  c.GitAutoSync,
 		PomodoroGoal: c.PomodoroGoal,
+
+		KanbanColumns:    c.KanbanColumns,
+		KanbanColumnTags: c.KanbanColumnTags,
+		KanbanColumnWIP:  c.KanbanColumnWIP,
 	}
 }
 
@@ -293,6 +311,15 @@ func applyPatch(c *config.Config, p configPatch) {
 	if p.PomodoroGoal != nil {
 		c.PomodoroGoal = *p.PomodoroGoal
 	}
+	if p.KanbanColumns != nil {
+		c.KanbanColumns = *p.KanbanColumns
+	}
+	if p.KanbanColumnTags != nil {
+		c.KanbanColumnTags = *p.KanbanColumnTags
+	}
+	if p.KanbanColumnWIP != nil {
+		c.KanbanColumnWIP = *p.KanbanColumnWIP
+	}
 }
 
 // handleGetConfig returns the curated config view for the web settings
@@ -303,35 +330,44 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toView(cfg))
 }
 
-// handlePatchConfig applies a partial update to the global config file
-// (~/.config/granit/config.json — the same file `granit tui` reads).
-// Vault-specific overrides (.granit.json) aren't touched; if the user
-// has those, they win on next read.
+// handlePatchConfig applies a partial update to whichever config file
+// will actually be read by the next LoadForVault call — vault override
+// when one exists, global config otherwise. The previous behavior
+// (always write global) silently lost saves whenever a `.granit.json`
+// existed because the vault override wins on read; the user clicked
+// "Save", the file got written, the next GET returned the unchanged
+// merged value, and the UI looked broken.
 //
-// Trade-off: we always write to the GLOBAL config rather than the
-// vault config. Reasons:
-//  - The web is server-side; "vault config" already means
-//    "this server's vault" since one server hosts one vault.
-//  - The user's TUI almost certainly reads from the global config
-//    too — writing there is what they expect.
-//  - Vault-config tracking would need an extra UI choice we don't
-//    yet have a good model for.
-// If a power user sets vault-config overrides, they'll override
-// these writes; that's fine and matches the precedence the TUI uses.
+// Routing rule:
+//   - <vault>/.granit.json exists → patch the vault override.
+//   - otherwise                    → patch the global config.
+//
+// Either way the saved value is the one the web AND the TUI will see
+// next time they read the merged config — single source of truth.
 func (s *Server) handlePatchConfig(w http.ResponseWriter, r *http.Request) {
 	var patch configPatch
 	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	cfg := config.Load() // global only — see comment above
+	// Pick the file whose value will actually win on the next read.
+	// If a vault override exists, patch it (so saves take effect on
+	// the next merged read). If not, patch the global config (so we
+	// don't materialise a vault override and snowball the user's
+	// sparse vault file into a copy of every default).
+	vaultPath := config.VaultConfigPath(s.cfg.Vault.Root)
+	var cfg config.Config
+	if _, err := os.Stat(vaultPath); err == nil {
+		cfg = config.LoadForVault(s.cfg.Vault.Root) // filePath = vaultPath
+	} else {
+		cfg = config.Load() // filePath = global
+	}
 	applyPatch(&cfg, patch)
 	if err := cfg.Save(); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// Read merged view back so the client sees what's effective
-	// (e.g. if a vault override exists for this field, its value wins).
+	// Read merged view back so the client sees what's effective.
 	merged := config.LoadForVault(s.cfg.Vault.Root)
 	writeJSON(w, http.StatusOK, toView(merged))
 }

@@ -293,6 +293,12 @@ export interface AppConfig {
   max_search_results: number;
   git_auto_sync: boolean;
   pomodoro_goal: number;
+  // Kanban (read-only mirrors of config — the web's kanban view honors these).
+  // Server always returns the keys (possibly null) so the union type is
+  // safe to consume without an existence check.
+  kanban_columns: string[] | null;
+  kanban_column_tags: Record<string, string> | null;
+  kanban_column_wip: Record<string, number> | null;
 }
 
 // Patch shape: every field optional, plus opaque-set fields (api keys)
@@ -336,6 +342,9 @@ export type AppConfigPatch = Partial<{
   max_search_results: number;
   git_auto_sync: boolean;
   pomodoro_goal: number;
+  kanban_columns: string[];
+  kanban_column_tags: Record<string, string>;
+  kanban_column_wip: Record<string, number>;
 }>;
 
 export interface ChatMessage {
