@@ -20,8 +20,11 @@
   import QuickCreateScheduled from '$lib/calendar/QuickCreateScheduled.svelte';
   import CreateEvent from '$lib/calendar/CreateEvent.svelte';
   import UnifiedCreate from '$lib/calendar/UnifiedCreate.svelte';
+  import TaskBacklog from '$lib/calendar/TaskBacklog.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
   import { onWsEvent } from '$lib/ws';
+  import { dragStore } from '$lib/calendar/dragStore';
+  import { onDestroy } from 'svelte';
 
   type View = 'day' | '3day' | 'week' | 'month' | 'year' | 'agenda';
 
@@ -32,11 +35,36 @@
   );
   let cursor = $state(new Date());
 
+  // Plan mode — splits the page into a left-side backlog of today's
+  // open tasks and the regular hour grid. Persisted so the user's
+  // choice carries across sessions / devices (per-device localStorage).
+  // Plan mode is single-day in v1: turning it on forces view='day' so
+  // the layout stays sensible (a 7-column week grid + side rail is too
+  // tight on most screens).
+  const PLAN_KEY = 'granit.calendar.planmode';
+  let planMode = $state<boolean>(
+    typeof localStorage !== 'undefined' && localStorage.getItem(PLAN_KEY) === '1'
+  );
+
   $effect(() => {
     if (typeof localStorage !== 'undefined') {
       try { localStorage.setItem(VIEW_KEY, view); } catch {}
     }
   });
+
+  $effect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try { localStorage.setItem(PLAN_KEY, planMode ? '1' : '0'); } catch {}
+  });
+
+  function togglePlanMode() {
+    planMode = !planMode;
+    if (planMode) view = 'day';
+  }
+
+  // Clean exit on route change: drop any pending drag pick. Otherwise
+  // a stale dragStore could corrupt the next page's pointer behaviour.
+  onDestroy(() => dragStore.set(null));
 
   let feed = $state<CalendarFeed | null>(null);
   let loading = $state(false);
@@ -291,6 +319,18 @@
       console.error('reschedule failed', e);
     }
   }
+  async function dropTask(id: string, start: Date, dur: number) {
+    try {
+      await api.patchTask(id, {
+        scheduledStart: start.toISOString(),
+        durationMinutes: dur
+      });
+      await load();
+      toast.success('scheduled');
+    } catch (e) {
+      toast.error('schedule failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
   async function resizeTask(taskId: string, durationMinutes: number) {
     try {
       await api.patchTask(taskId, { durationMinutes });
@@ -432,6 +472,26 @@
       <h2 class="text-sm sm:text-base text-text font-medium truncate">{headline}</h2>
       <span class="flex-1"></span>
       {#if loading}<span class="hidden sm:inline text-xs text-dim">loading…</span>{/if}
+      <!-- Plan mode pill — distinct fill (secondary accent) when active
+           so the user can see at a glance that scheduling-by-drag is
+           live. Forces day view when toggled on (the side-rail layout
+           collapses week-views below useful width). -->
+      <button
+        onclick={togglePlanMode}
+        class="px-2.5 py-1.5 text-xs sm:text-sm rounded border flex items-center gap-1 transition-colors
+          {planMode
+            ? 'bg-secondary text-mantle border-secondary hover:opacity-90'
+            : 'bg-surface0 border-surface1 text-subtext hover:border-secondary'}"
+        title={planMode ? 'Exit Plan mode' : 'Enter Plan mode (drag tasks onto the grid)'}
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M3 6h18M3 12h12M3 18h6"/>
+        </svg>
+        Plan
+      </button>
+      {#if planMode}
+        <span class="hidden sm:inline-block text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary/20 text-secondary border border-secondary/30">Plan mode</span>
+      {/if}
       <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm">
         <button
           class="px-2 sm:px-3 py-1.5 {view === 'day' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
@@ -474,7 +534,29 @@
       ontouchstart={onTouchStart}
       ontouchend={onTouchEnd}
     >
-      {#if view === 'day' || view === '3day' || view === 'week'}
+      {#if planMode && (view === 'day' || view === '3day' || view === 'week')}
+        <!-- Plan layout: backlog on the left (desktop) / top
+             (mobile horizontal scroller). The grid takes the rest.
+             onTaskDrop is what wires backlog → grid drop semantics;
+             slot drag-to-create stays on via onSlotRange. -->
+        <div class="h-full flex flex-col md:flex-row gap-2 md:gap-3 min-h-0">
+          <aside class="md:w-72 md:flex-shrink-0 h-32 md:h-auto overflow-x-auto md:overflow-visible">
+            <TaskBacklog onRefresh={load} />
+          </aside>
+          <div class="flex-1 min-w-0 min-h-0">
+            <HourGrid
+              days={viewDays}
+              events={events}
+              onClickEvent={clickEvent}
+              onClickSlot={clickSlot}
+              onSlotRange={onSlotRange}
+              onReschedule={reschedule}
+              onResize={resizeTask}
+              onTaskDrop={dropTask}
+            />
+          </div>
+        </div>
+      {:else if view === 'day' || view === '3day' || view === 'week'}
         <HourGrid days={viewDays} events={events} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onResize={resizeTask} />
       {:else if view === 'month'}
         <div class="h-full overflow-auto">

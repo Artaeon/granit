@@ -238,6 +238,10 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/agents/presets", s.handleListAgentPresets)
 		r.Get("/api/v1/agents/runs", s.handleListAgentRuns)
 		r.Post("/api/v1/agents/run", s.handleRunAgent)
+		// Synchronous wrapper around plan-my-day that ALSO post-
+		// processes the agent's `## Plan` block and writes
+		// scheduledStart back to matched tasks. See handlers_plan_day_schedule.go.
+		r.Post("/api/v1/agents/plan-day-schedule", s.handlePlanDaySchedule)
 
 		// Multi-turn chat — single-shot helper around agentruntime.Chatter.
 		// Stateless on the server; the web persists history client-side.

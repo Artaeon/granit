@@ -11,6 +11,7 @@
     isSameDay,
     layoutDay
   } from './utils';
+  import { dragStore, type DraggedTask } from './dragStore';
 
   let {
     days,
@@ -19,7 +20,8 @@
     onClickSlot,
     onSlotRange,
     onReschedule,
-    onResize
+    onResize,
+    onTaskDrop
   }: {
     days: Date[];
     events: CalendarEvent[];
@@ -33,7 +35,53 @@
      *  its duration. Only fires for scheduled tasks (events.json events
      *  use a different code path: open the editor and adjust there). */
     onResize?: (taskId: string, durationMinutes: number) => void | Promise<void>;
+    /** Called when a task from the backlog is dropped on a slot. The
+     *  page wires this to api.patchTask({ scheduledStart, durationMinutes }).
+     *  Discriminator for "task drop in progress" is the dragStore — when
+     *  it's non-null, slot pointer handlers take the task-drop path
+     *  instead of slot-drag-to-create. */
+    onTaskDrop?: (taskId: string, start: Date, durationMinutes: number) => void | Promise<void>;
   } = $props();
+
+  // Subscribe to the shared drag store. $derived isn't enough — we need
+  // to peek at the value inside non-reactive pointer handlers, hence
+  // the manual subscribe.
+  let pendingTask = $state<DraggedTask | null>(null);
+  onMount(() => dragStore.subscribe((v) => (pendingTask = v)));
+
+  // Track the hovered slot during a task drag so we can render a ghost
+  // even though slotDrag (used for drag-to-create) is left null. This
+  // also gives us the start time on pointerup.
+  let taskDragHover = $state<{ dayIdx: number; startMin: number } | null>(null);
+
+  // Safety net: if a desktop drag releases OUTSIDE any slot (e.g. the
+  // page header, the backlog itself), the slot's pointerup never fires
+  // and the store stays set. A document-level pointerup with a tiny
+  // delay clears it. The delay is so the slot's own pointerup can win
+  // first if the user dropped inside a column.
+  onMount(() => {
+    const onDocUp = (e: PointerEvent) => {
+      // Microtask defer so the slot's onpointerup (which also clears
+      // the store via commitTaskDrop) gets to run first. If it cleared
+      // the store, our update here is a no-op.
+      queueMicrotask(() => {
+        dragStore.update((cur) => {
+          if (!cur) return cur;
+          // Only clear desktop drags (real pointer ID). Mobile tap-pick
+          // (pointerId === -1) survives until a slot consumes it.
+          if (cur.pointerId === e.pointerId && cur.pointerId !== -1) return null;
+          return cur;
+        });
+        taskDragHover = null;
+      });
+    };
+    window.addEventListener('pointerup', onDocUp);
+    window.addEventListener('pointercancel', onDocUp);
+    return () => {
+      window.removeEventListener('pointerup', onDocUp);
+      window.removeEventListener('pointercancel', onDocUp);
+    };
+  });
 
   const HOUR_PX = 48;
   const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -103,11 +151,51 @@
     return Math.max(0, Math.min(24 * 60, Math.round((yPx / HOUR_PX) * 60 / 15) * 15));
   }
 
+  // Commit a task-drop at the given slot. Snapped to 15 min.
+  function commitTaskDrop(dayIdx: number, slotEl: HTMLElement, clientY: number) {
+    if (!pendingTask || !onTaskDrop) return;
+    const rect = slotEl.getBoundingClientRect();
+    const min = snapMin(clientY - rect.top + slotEl.scrollTop);
+    const day = days[dayIdx];
+    const start = new Date(day);
+    start.setHours(Math.floor(min / 60), min % 60, 0, 0);
+    const t = pendingTask;
+    // Clear FIRST so the parent's onTaskDrop → load() doesn't race
+    // a stale store value into the rerender.
+    dragStore.set(null);
+    taskDragHover = null;
+    void onTaskDrop(t.taskId, start, t.durationMinutes);
+  }
+
   function onSlotPointerDown(e: PointerEvent, dayIdx: number) {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     // Bail if the press lands on an existing event — those have their own
     // pointer handlers (drag-to-reschedule).
     if ((e.target as HTMLElement)?.closest('button')) return;
+
+    // ─── Mobile tap-pick path ──────────────────────────────
+    // pointerId === -1 in the store = "the user tapped a backlog
+    // task and is now tapping a slot to drop it". Commit on the
+    // pointerdown (we don't need a drag gesture — it's a discrete
+    // tap-tap action). The slotDrag flow is bypassed entirely.
+    if (pendingTask && pendingTask.pointerId === -1 && onTaskDrop) {
+      commitTaskDrop(dayIdx, e.currentTarget as HTMLElement, e.clientY);
+      e.preventDefault();
+      return;
+    }
+
+    // ─── Desktop drag in progress ─────────────────────────
+    // pendingTask non-null + real pointerId = the user pressed a
+    // backlog row and is now over the grid (no capture, so this
+    // pointerdown wouldn't normally fire mid-gesture — but it CAN
+    // fire if the user clicked on the row, released, then clicked
+    // a slot. Treat it the same as a tap-pick.)
+    if (pendingTask && onTaskDrop) {
+      commitTaskDrop(dayIdx, e.currentTarget as HTMLElement, e.clientY);
+      e.preventDefault();
+      return;
+    }
+
     if (!onSlotRange) return; // page doesn't want drag-create — fall through to slotClick
     const target = e.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
@@ -117,36 +205,59 @@
     e.preventDefault();
   }
 
-  function onSlotPointerMove(e: PointerEvent) {
-    if (!slotDrag || slotDrag.pointerId !== e.pointerId) return;
-    const target = e.currentTarget as HTMLElement;
-    const rect = target.getBoundingClientRect();
-    slotDrag.endMin = snapMin(e.clientY - rect.top);
+  function onSlotPointerMove(e: PointerEvent, dayIdx: number) {
+    // Existing drag-to-create flow — only when slotDrag is active.
+    if (slotDrag && slotDrag.pointerId === e.pointerId) {
+      const target = e.currentTarget as HTMLElement;
+      const rect = target.getBoundingClientRect();
+      slotDrag.endMin = snapMin(e.clientY - rect.top);
+      return;
+    }
+
+    // Task-drop ghost — the backlog set dragStore on pointerdown but
+    // didn't capture the pointer, so move events route here naturally
+    // as the cursor crosses the grid. We update taskDragHover so the
+    // ghost (rendered below) tracks the cursor.
+    if (pendingTask && pendingTask.pointerId !== -1) {
+      const target = e.currentTarget as HTMLElement;
+      const rect = target.getBoundingClientRect();
+      const min = snapMin(e.clientY - rect.top);
+      taskDragHover = { dayIdx, startMin: min };
+    }
   }
 
-  function onSlotPointerUp(e: PointerEvent) {
-    if (!slotDrag || slotDrag.pointerId !== e.pointerId) return;
-    const ds = slotDrag;
-    slotDrag = null;
-    const target = e.currentTarget as HTMLElement;
-    if (target.hasPointerCapture(e.pointerId)) target.releasePointerCapture(e.pointerId);
+  function onSlotPointerUp(e: PointerEvent, dayIdx: number) {
+    // Existing drag-to-create commit.
+    if (slotDrag && slotDrag.pointerId === e.pointerId) {
+      const ds = slotDrag;
+      slotDrag = null;
+      const target = e.currentTarget as HTMLElement;
+      if (target.hasPointerCapture(e.pointerId)) target.releasePointerCapture(e.pointerId);
 
-    let startMin = Math.min(ds.startMin, ds.endMin);
-    let endMin = Math.max(ds.startMin, ds.endMin);
-    // Click without meaningful drag → seed a 30-minute slot starting at the
-    // press point. The 15-min check matches the snap grid.
-    if (endMin - startMin < 15) endMin = startMin + 30;
+      let startMin = Math.min(ds.startMin, ds.endMin);
+      let endMin = Math.max(ds.startMin, ds.endMin);
+      if (endMin - startMin < 15) endMin = startMin + 30;
 
-    const day = days[ds.dayIdx];
-    const start = new Date(day);
-    start.setHours(Math.floor(startMin / 60), startMin % 60, 0, 0);
-    const end = new Date(day);
-    end.setHours(Math.floor(endMin / 60), endMin % 60, 0, 0);
-    onSlotRange?.(start, end);
+      const day = days[ds.dayIdx];
+      const start = new Date(day);
+      start.setHours(Math.floor(startMin / 60), startMin % 60, 0, 0);
+      const end = new Date(day);
+      end.setHours(Math.floor(endMin / 60), endMin % 60, 0, 0);
+      onSlotRange?.(start, end);
+      return;
+    }
+
+    // Desktop task-drop commit — pointer was never captured, so this
+    // pointerup fires naturally on whichever slot is under the cursor.
+    if (pendingTask && pendingTask.pointerId !== -1 && onTaskDrop) {
+      commitTaskDrop(dayIdx, e.currentTarget as HTMLElement, e.clientY);
+    }
   }
 
   function onSlotPointerCancel(e: PointerEvent) {
     if (slotDrag?.pointerId === e.pointerId) slotDrag = null;
+    // Cancel the hover ghost too so a stuck phantom doesn't linger.
+    taskDragHover = null;
   }
 
   // Live-derived bounds for the ghost rectangle while dragging.
@@ -358,9 +469,10 @@
             class="relative border-l border-surface1 cursor-cell {isToday ? 'bg-primary/5' : ''}"
             role="button"
             tabindex="0"
+            data-day-idx={dayIdx}
             onpointerdown={(e) => onSlotPointerDown(e, dayIdx)}
-            onpointermove={onSlotPointerMove}
-            onpointerup={onSlotPointerUp}
+            onpointermove={(e) => onSlotPointerMove(e, dayIdx)}
+            onpointerup={(e) => onSlotPointerUp(e, dayIdx)}
             onpointercancel={onSlotPointerCancel}
             onclick={(e) => { if (!onSlotRange) slotClick(d, e); }}
             onkeydown={(e) => { if (e.key === 'Enter') slotClick(d, e as unknown as MouseEvent); }}
@@ -390,6 +502,24 @@
                   {fmtMin(slotGhost.startMin)} – {fmtMin(slotGhost.endMin)}
                   <span class="opacity-70">· {slotGhost.endMin - slotGhost.startMin}m</span>
                 </div>
+              </div>
+            {/if}
+
+            <!-- Task-drop ghost: rendered when a backlog task is being
+                 dragged over this column. Distinct from slotGhost (which
+                 is for click-and-drag-to-create empty time blocks). -->
+            {#if pendingTask && taskDragHover && taskDragHover.dayIdx === dayIdx}
+              {@const top = taskDragHover.startMin * (HOUR_PX / 60)}
+              {@const dur = pendingTask.durationMinutes}
+              {@const height = Math.max(dur * (HOUR_PX / 60), 22)}
+              <div
+                class="absolute left-0.5 right-0.5 z-20 pointer-events-none rounded border border-secondary ring-1 ring-secondary/40"
+                style="top: {top}px; height: {height}px; background: color-mix(in srgb, var(--color-secondary) 22%, transparent);"
+              >
+                <div class="text-[10px] text-secondary font-medium px-1.5 pt-1 truncate">
+                  {fmtMin(taskDragHover.startMin)} · {pendingTask.title}
+                </div>
+                <div class="text-[10px] opacity-70 px-1.5">drop to schedule · {dur}m</div>
               </div>
             {/if}
 

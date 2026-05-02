@@ -508,6 +508,19 @@ export const api = {
       })
     }),
 
+  // Plan-day-schedule: synchronous wrapper around the plan-my-day
+  // preset that ALSO parses the resulting `## Plan` block in today's
+  // daily note and writes scheduledStart/durationMinutes back to each
+  // matched task. Returns scheduled + unmatched lists so the UI can
+  // toast "Scheduled N of M tasks". Long-running (the LLM call is the
+  // critical path); callers should show a busy state.
+  runPlanDaySchedule: () =>
+    req<{
+      runId: string;
+      scheduled: { taskId: string; start: string }[];
+      unmatched: string[];
+    }>('/agents/plan-day-schedule', { method: 'POST' }),
+
   // Chat
   chat: (messages: ChatMessage[], notePath?: string) =>
     req<{ message: ChatMessage }>('/chat', {
