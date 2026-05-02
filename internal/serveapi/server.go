@@ -181,6 +181,12 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/config", s.handleGetConfig)
 		r.Patch("/api/v1/config", s.handlePatchConfig)
 
+		// Recurring tasks — same .granit/recurring.json file the TUI's
+		// recurringtasks overlay edits. Server fires due rules at
+		// midnight + on every list/mutate.
+		r.Get("/api/v1/recurring", s.handleListRecurring)
+		r.Put("/api/v1/recurring", s.handlePutRecurring)
+
 		r.Get("/api/v1/dashboard", s.handleGetDashboard)
 		r.Put("/api/v1/dashboard", s.handlePutDashboard)
 
@@ -275,6 +281,9 @@ func (s *Server) Run(ctx context.Context, addr string) error {
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	// Fire recurring tasks at boot + every midnight while the server
+	// runs. ctx cancellation stops the loop cleanly.
+	s.startRecurringLoop(ctx)
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- srv.ListenAndServe()
