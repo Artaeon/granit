@@ -179,6 +179,44 @@ func BuiltinPresets() []Preset {
 			IncludeWrite: true,
 		},
 		{
+			ID:          "summarize-day",
+			Name:        "Summarize today",
+			Description: "Reads today's daily note + completed tasks and appends a ## Summary section recapping what happened.",
+			SystemPrompt: "You write a tight end-of-day summary appended to the user's daily note. Steps:\n" +
+				"1. Call get_today to anchor the date.\n" +
+				"2. Call read_note on Jots/{today}.md — this is the source of truth for what the user logged today (notes, tasks marked done, plan blocks, jots).\n" +
+				"3. Call query_tasks with status=done to see tasks completed today (filter out anything not completed today by checking the date in the task context — if you can't tell, leave it out).\n" +
+				"4. Synthesise a 4–8 line ## Summary section:\n" +
+				"   - One opening sentence: the day's overall arc (productive / scattered / blocked / etc.) — be honest, not generic.\n" +
+				"   - Bulleted list (3–6 bullets) of concrete things done: tasks shipped, decisions made, notes written. Cite task ids or note paths.\n" +
+				"   - One closing line: anything worth remembering for tomorrow (a lesson, a leftover, a tone-shift).\n" +
+				"5. Write back via write_note to Jots/{today}.md, APPENDING the new ## Summary section to whatever the note already contains. Do NOT delete or rewrite existing content.\n" +
+				"6. Final answer: 1-sentence recap of the day.\n" +
+				"Be specific. \"Made progress on the migration\" is useless; \"shipped #134 (auth refresh) and unblocked the QA queue\" is good. If the note is empty / sparse, say so plainly rather than padding.",
+			Tools:        []string{"get_today", "read_note", "query_tasks", "write_note"},
+			IncludeWrite: true,
+			MaxSteps:     8,
+		},
+		{
+			ID:          "reflect-on-day",
+			Name:        "Reflect on today",
+			Description: "Reads today's daily note and writes a ## Reflection — a thoughtful, honest 150–250 word check-in.",
+			SystemPrompt: "You are a thoughtful journaling coach helping the user reflect at end of day. Steps:\n" +
+				"1. Call get_today to anchor the date.\n" +
+				"2. Call read_note on Jots/{today}.md to see what the user actually logged: scripture, goal, tasks, habits, thoughts, plan, summary if present.\n" +
+				"3. Optionally call read_note on yesterday's daily (Jots/{yesterday}.md) for one-day continuity context — skip if the file doesn't exist.\n" +
+				"4. Write a 150–250 word ## Reflection grounded in what's actually in the note. Structure freely but cover:\n" +
+				"   - What seems to have gone well (and why, based on the entries).\n" +
+				"   - Where there was friction, fatigue, or drift.\n" +
+				"   - One question or noticing for tomorrow — open, not prescriptive.\n" +
+				"5. Write back via write_note to Jots/{today}.md, APPENDING ## Reflection to existing content. Do NOT delete or rewrite anything else.\n" +
+				"6. Final answer: 1 short sentence pointing to the core noticing.\n" +
+				"Tone: warm, observational, second-person (\"you\"). Do not invent feelings the user did not write. If the note is too sparse to reflect on honestly, say so in one sentence and write a 3-line ## Reflection inviting the user to journal more — short and gentle.",
+			Tools:        []string{"get_today", "read_note", "write_note"},
+			IncludeWrite: true,
+			MaxSteps:     6,
+		},
+		{
 			ID:          "deep-research",
 			Name:        "Deep Research",
 			Description: "Multi-step research run: gathers vault notes on a topic, synthesises a structured brief, writes it to Research/.",
