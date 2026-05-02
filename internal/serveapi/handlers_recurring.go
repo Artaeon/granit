@@ -5,22 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/artaeon/granit/internal/recurring"
 	"github.com/artaeon/granit/internal/tasks"
 )
-
-// recurringRunMu serialises the "create today's due tasks" pass.
-// Only one runner at a time so concurrent requests can't double-
-// generate when two clients hit the same day boundary.
-var recurringRunMu sync.Mutex
-
-// recurringLastRun is the date string of the most recent successful
-// run. Used so the cheap fast-path on every request short-circuits
-// when we already ran today.
-var recurringLastRun string
 
 // runRecurringIfDue creates any due recurring-task instances and stamps
 // their LastCreated. Idempotent within a single calendar day — calling
@@ -33,19 +22,22 @@ var recurringLastRun string
 //   3. The handler that lists or mutates rules — cheap defence
 //      against the goroutine missing a tick (laptop wake-from-sleep,
 //      timer drift on long uptimes).
+//
+// State is per-Server (recurringMu / recurringRanFor) so multiple
+// server instances in one process don't share a "ran today" flag.
 func (s *Server) runRecurringIfDue() (created int) {
-	recurringRunMu.Lock()
-	defer recurringRunMu.Unlock()
+	s.recurringMu.Lock()
+	defer s.recurringMu.Unlock()
 
 	today := time.Now()
 	todayStr := today.Format("2006-01-02")
-	if recurringLastRun == todayStr {
+	if s.recurringRanFor == todayStr {
 		return 0
 	}
 
 	rules, err := recurring.Load(s.cfg.Vault.Root)
 	if err != nil || len(rules) == 0 {
-		recurringLastRun = todayStr
+		s.recurringRanFor = todayStr
 		return 0
 	}
 
@@ -73,7 +65,7 @@ func (s *Server) runRecurringIfDue() (created int) {
 			s.cfg.Logger.Warn("recurring: save failed", "err", err)
 		}
 	}
-	recurringLastRun = todayStr
+	s.recurringRanFor = todayStr
 	return created
 }
 
@@ -155,9 +147,9 @@ func (s *Server) handlePutRecurring(w http.ResponseWriter, r *http.Request) {
 	// Invalidate the "ran today" cache so a freshly-added rule
 	// fires immediately on the next request rather than waiting
 	// for tomorrow.
-	recurringRunMu.Lock()
-	recurringLastRun = ""
-	recurringRunMu.Unlock()
+	s.recurringMu.Lock()
+	s.recurringRanFor = ""
+	s.recurringMu.Unlock()
 	s.runRecurringIfDue()
 	writeJSON(w, http.StatusOK, map[string]any{"rules": body.Rules, "total": len(body.Rules)})
 }
