@@ -215,8 +215,23 @@
 
     <!-- AI provider — same config the TUI reads. Setting up either
          surface is enough; both pick up changes automatically. -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">AI</h2>
+    <section class="bg-surface0 border-2 border-primary/30 rounded-lg p-4 mb-4">
+      <header class="flex items-baseline gap-3 mb-3">
+        <h2 class="text-base font-semibold text-text">AI provider</h2>
+        {#if appCfg}
+          {@const provider = appCfg.ai_provider || 'ollama'}
+          {@const ready = (provider === 'openai' && appCfg.openai_key_set)
+            || (provider === 'anthropic' && appCfg.anthropic_key_set)
+            || (provider === 'ollama' || provider === 'local' || provider === '')}
+          <span
+            class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium"
+            style="color: var(--color-{ready ? 'success' : 'warning'}); background: color-mix(in srgb, var(--color-{ready ? 'success' : 'warning'}) 14%, transparent);"
+          >{ready ? 'configured' : 'needs API key'}</span>
+        {/if}
+      </header>
+      <p class="text-xs text-dim mb-3 -mt-1">
+        Powers chat, agent runs (Plan my day, deep research, summarize, reflect), morning AI focus suggestion, and any future AI feature. Same config as <code class="text-text">granit tui</code>.
+      </p>
       {#if !appCfg}
         <Skeleton class="h-4 w-1/3 mb-2" />
         <Skeleton class="h-4 w-1/2" />
@@ -231,10 +246,19 @@
               disabled={configBusy}
               class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-text"
             >
-              <option value="openai">OpenAI (cloud)</option>
-              <option value="anthropic">Anthropic (cloud)</option>
-              <option value="ollama">Ollama (local)</option>
+              <option value="openai">OpenAI (cloud — gpt-4o, gpt-5)</option>
+              <option value="anthropic">Anthropic (cloud — Claude)</option>
+              <option value="ollama">Ollama (local — free, private)</option>
             </select>
+            <p class="text-[11px] text-dim mt-1">
+              {#if (appCfg.ai_provider || 'ollama') === 'openai'}
+                Need a key? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" class="text-secondary hover:underline">platform.openai.com/api-keys</a> · ~$0.0001 per chat call on gpt-4o-mini.
+              {:else if appCfg.ai_provider === 'anthropic'}
+                Need a key? <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" class="text-secondary hover:underline">console.anthropic.com</a>
+              {:else}
+                Run <code class="text-text">ollama serve</code> locally. Free, private, slower than cloud.
+              {/if}
+            </p>
           </div>
 
           {#if appCfg.ai_provider === 'openai' || (!appCfg.ai_provider && appCfg.openai_key_set)}
