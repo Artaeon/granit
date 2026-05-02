@@ -5,6 +5,7 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
 
   // Two-tab page: presets the agent runner can use, plus a timeline of
   // past runs (each run is persisted as an `agent_run` typed-object note
@@ -13,6 +14,13 @@
   let tab = $state<Tab>('runs');
 
   let presets = $state<AgentPreset[]>([]);
+  let runOpen = $state(false);
+  let runPreset = $state<AgentPreset | null>(null);
+
+  function startRun(p: AgentPreset) {
+    runPreset = p;
+    runOpen = true;
+  }
   let runs = $state<AgentRun[]>([]);
   let stats = $state<Record<string, Record<string, number>>>({});
   let loading = $state(false);
@@ -228,9 +236,12 @@
                 </footer>
               {/if}
 
-              <div class="flex items-center mt-1 pt-2 border-t border-surface1">
-                <span class="text-[11px] text-dim italic flex-1">Run from the granit TUI ("Agents" overlay)</span>
-                <code class="text-[10px] text-dim font-mono">{p.id}</code>
+              <div class="flex items-center gap-2 mt-1 pt-2 border-t border-surface1">
+                <button
+                  onclick={() => startRun(p)}
+                  class="px-3 py-1.5 text-xs bg-primary text-mantle rounded font-medium hover:opacity-90"
+                >▶ Run</button>
+                <code class="text-[10px] text-dim font-mono flex-1">{p.id}</code>
               </div>
             </article>
           {/each}
@@ -239,3 +250,5 @@
     {/if}
   </div>
 </div>
+
+<AgentRunPanel bind:open={runOpen} preset={runPreset} />

@@ -13,7 +13,9 @@ export type WsEvent =
   | { type: 'event.changed'; id: string }
   | { type: 'event.removed'; id: string }
   | { type: 'project.changed'; id: string }
-  | { type: 'project.removed'; id: string };
+  | { type: 'project.removed'; id: string }
+  | { type: 'agent.event'; id: string; data: { step: number; kind: string; text: string } }
+  | { type: 'agent.complete'; id: string; path?: string; data: { status: string; finalAnswer?: string; steps?: number } };
 
 export const wsConnected: Writable<boolean> = writable(false);
 

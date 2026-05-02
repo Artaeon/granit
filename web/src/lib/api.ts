@@ -340,6 +340,11 @@ export const api = {
     req<{ runs: AgentRun[]; total: number; stats: Record<string, Record<string, number>> }>(
       `/agents/runs?limit=${limit}`
     ),
+  runAgent: (preset: string, goal: string) =>
+    req<{ runId: string; preset: string }>('/agents/run', {
+      method: 'POST',
+      body: JSON.stringify({ preset, goal })
+    }),
 
   // Devices (active sessions)
   listDevices: () => req<{ devices: Device[]; total: number }>('/devices'),
