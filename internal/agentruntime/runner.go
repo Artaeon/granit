@@ -3,15 +3,15 @@ package agentruntime
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/artaeon/granit/internal/agents"
 )
 
 // Runner is the high-level entrypoint a caller (HTTP handler, scheduled
 // job, future CLI subcommand) uses to fire a single agent run. Nothing
-// stateful — Run is safe to call concurrently as long as the bridge's
-// vault store can tolerate concurrent reads (granit's TaskStore + Vault
-// already do via their own locks).
+// stateful between Run calls — concurrent calls each get their own
+// CostTracker so usage is attributed correctly.
 type Runner struct {
 	llm    agents.LLM
 	bridge *Bridge
@@ -24,8 +24,66 @@ type Runner struct {
 	Approve agents.ApproveCallback
 
 	// MaxSteps caps ReAct iterations. Zero falls through to the
-	// agents-package default (8).
+	// agents-package default (8). Higher values let deep-research
+	// presets explore more thoroughly at higher cost.
 	MaxSteps int
+
+	// BudgetMicroCents caps cumulative cost across the run in
+	// micro-cents (1/1_000_000 of a cent). Zero means "no budget" —
+	// MaxSteps is the only ceiling. When exceeded mid-run, the
+	// runtime cancels the context so the agent stops at its next
+	// iteration boundary, and the transcript records "stopped by
+	// budget".
+	//
+	// Only enforced when the LLM implements Metered (OpenAI does;
+	// Ollama doesn't, since it's free). Without metering this field
+	// is silently ignored.
+	BudgetMicroCents int64
+}
+
+// CostTracker accumulates usage across an agent run. Returned from
+// Run so the caller can render a final cost line in the transcript
+// note + the WS completion frame. Thread-safe even though typical
+// runs are single-goroutine — the OnEvent callback may be invoked
+// re-entrantly in some agent-loop bug scenarios, and we'd rather not
+// race.
+type CostTracker struct {
+	mu               sync.Mutex
+	PromptTokens     int
+	CompletionTokens int
+	MicroCents       int64 // -1 means "no pricing for the model"
+	Model            string
+}
+
+func (c *CostTracker) record(u Usage) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.PromptTokens += u.PromptTokens
+	c.CompletionTokens += u.CompletionTokens
+	c.Model = u.Model
+	if cents := CostMicroCents(u); cents >= 0 {
+		// First call sets the base; subsequent calls add. -1
+		// (unknown model) doesn't poison the running total — we
+		// just accumulate the calls we can price.
+		if c.MicroCents < 0 {
+			c.MicroCents = 0
+		}
+		c.MicroCents += cents
+	}
+}
+
+// Snapshot returns a copy under the lock so the caller can read it
+// safely while the run is still going. The Cost field is the running
+// total in micro-cents; -1 when the model isn't priced.
+func (c *CostTracker) Snapshot() CostTracker {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return CostTracker{
+		PromptTokens:     c.PromptTokens,
+		CompletionTokens: c.CompletionTokens,
+		MicroCents:       c.MicroCents,
+		Model:            c.Model,
+	}
 }
 
 // New constructs a runner. llm and bridge are required; pass an
@@ -40,20 +98,23 @@ func New(llm agents.LLM, bridge *Bridge) *Runner {
 // returned Transcript contains the full run history regardless of what
 // onEvent did with the live stream.
 //
-// On error from the LLM or a tool, Run still returns a transcript with
-// the failure recorded — callers should always persist it for forensic
-// value, not branch on err being nil.
-func (r *Runner) Run(ctx context.Context, preset agents.Preset, goal string, onEvent agents.EventHandler) (*agents.Transcript, error) {
+// Budget enforcement: after every LLM call (which the agent emits as
+// a ResponseReceived event), the runtime polls Metered.LastUsage(),
+// accumulates cost into the CostTracker, and if BudgetMicroCents > 0
+// and the running total exceeds it, cancels the run's context. The
+// agent stops cleanly at the next iteration boundary; the transcript
+// records the budget hit.
+func (r *Runner) Run(ctx context.Context, preset agents.Preset, goal string, onEvent agents.EventHandler) (*agents.Transcript, *CostTracker, error) {
 	if r.llm == nil {
-		return nil, fmt.Errorf("agentruntime: nil LLM")
+		return nil, nil, fmt.Errorf("agentruntime: nil LLM")
 	}
 	if r.bridge == nil {
-		return nil, fmt.Errorf("agentruntime: nil bridge")
+		return nil, nil, fmt.Errorf("agentruntime: nil bridge")
 	}
 
 	registry, err := agents.BuildRegistryForPreset(preset, r.allReadTools(), r.allWriteTools())
 	if err != nil {
-		return nil, fmt.Errorf("build registry: %w", err)
+		return nil, nil, fmt.Errorf("build registry: %w", err)
 	}
 
 	approve := r.Approve
@@ -64,16 +125,59 @@ func (r *Runner) Run(ctx context.Context, preset agents.Preset, goal string, onE
 		approve = func(string, string) bool { return true }
 	}
 
+	tracker := &CostTracker{MicroCents: -1}
+	metered, _ := r.llm.(Metered)
+
+	// Wrap the run context so the budget gate can cancel mid-loop.
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	wrappedEvent := func(ev agents.Event) {
+		// Attribute cost on every Thought event. The agent's loop is
+		// "send prompt → get response → parse Thought + Action → run
+		// tool → next iteration", so a Thought arriving means a model
+		// call just completed. We poll the LLM's LastUsage right
+		// after — the metered impl updated lastUsage before returning
+		// from Complete, so the values are fresh.
+		if metered != nil && ev.Kind == agents.EventThought {
+			u := metered.LastUsage()
+			if u.PromptTokens > 0 || u.CompletionTokens > 0 {
+				tracker.record(u)
+				snap := tracker.Snapshot()
+				if r.BudgetMicroCents > 0 && snap.MicroCents > r.BudgetMicroCents {
+					// Budget exceeded: cancel the context so the
+					// agent stops on its next iteration boundary.
+					// Surface a synthetic error event so the live
+					// stream records why.
+					cancel()
+					if onEvent != nil {
+						onEvent(agents.Event{
+							Step: ev.Step,
+							Kind: agents.EventError,
+							Text: fmt.Sprintf("budget exceeded (%s spent, %s limit) — stopping",
+								FormatCents(snap.MicroCents), FormatCents(r.BudgetMicroCents)),
+						})
+					}
+					return
+				}
+			}
+		}
+		if onEvent != nil {
+			onEvent(ev)
+		}
+	}
+
 	agent, err := agents.New(registry, r.llm, agents.Options{
 		MaxSteps:     r.MaxSteps,
 		SystemPrompt: preset.SystemPrompt,
 		Approve:      approve,
-		OnEvent:      onEvent,
+		OnEvent:      wrappedEvent,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("new agent: %w", err)
+		return nil, nil, fmt.Errorf("new agent: %w", err)
 	}
-	return agent.Run(ctx, goal)
+	tr, err := agent.Run(runCtx, goal)
+	return tr, tracker, err
 }
 
 // allReadTools returns the full read-tool catalog wired to our bridge.
