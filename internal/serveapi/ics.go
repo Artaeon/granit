@@ -18,6 +18,12 @@ type icsEvent struct {
 	AllDay   bool
 	UID      string
 	RRule    string // raw rule, e.g. "FREQ=DAILY;COUNT=10"
+	// Source is the .ics filename this event came from (e.g. "faith.ics"
+	// / "training.ics"). The web uses it to color events by source so
+	// faith vs training vs work are visually distinct on the grid.
+	// Empty for events that originated in events.json (granit's native
+	// store) — those use the user-picked color field instead.
+	Source string
 }
 
 // icsSource is one .ics file discovered in the vault. Source is what the
@@ -82,6 +88,13 @@ func icsScan(vaultRoot string, disabled []string) []icsEvent {
 		evs, err := parseICSFile(src.Path)
 		if err != nil {
 			continue
+		}
+		// Tag each parsed event with its origin filename so the web
+		// can color-by-source (faith.ics vs training.ics get distinct
+		// hues). expandRRULE preserves the field on every instance it
+		// produces.
+		for i := range evs {
+			evs[i].Source = src.Source
 		}
 		out = append(out, evs...)
 	}

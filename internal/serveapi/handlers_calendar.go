@@ -24,6 +24,10 @@ type calendarEvent struct {
 	DurationMinutes int     `json:"durationMinutes,omitempty"`
 	Color           string  `json:"color,omitempty"`
 	Location        string  `json:"location,omitempty"`
+	// Source is the .ics filename for ICS-derived events (e.g.
+	// "faith.ics") — the web uses it to color-by-source so different
+	// calendars are visually distinct on the grid.
+	Source string `json:"source,omitempty"`
 }
 
 func parseDateQuery(s string) (time.Time, error) {
@@ -178,6 +182,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				Location: ev.Location,
 				EventID:  ev.UID,
 				Color:    "cyan",
+				Source:   ev.Source,
 			}
 			if ev.AllDay {
 				ce.Date = ev.Start.Format("2006-01-02")
