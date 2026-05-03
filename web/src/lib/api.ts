@@ -116,10 +116,16 @@ export interface TaskList {
   total: number;
 }
 
-export type CalendarEventType = 'daily' | 'task_due' | 'task_scheduled' | 'event' | 'ics_event';
+export type CalendarEventType =
+  | 'daily'
+  | 'task_due'
+  | 'task_scheduled'
+  | 'event'
+  | 'ics_event'
+  | 'deadline';
 
 export interface CalendarEvent {
-  type: 'daily' | 'task_due' | 'task_scheduled' | 'event' | 'ics_event';
+  type: CalendarEventType;
   date?: string; // YYYY-MM-DD (all-day events)
   start?: string; // RFC3339
   end?: string; // RFC3339
@@ -134,7 +140,42 @@ export interface CalendarEvent {
   location?: string;
   /** ICS filename for ics_event types — drives per-source coloring. */
   source?: string;
+  /** Deadline importance — set only on type='deadline' (critical/high/normal). */
+  importance?: 'critical' | 'high' | 'normal';
 }
+
+// Mirrors internal/deadlines.Deadline — top-level "this matters by date X"
+// markers stored in .granit/deadlines.json. Linkable to a goal, project,
+// and/or any number of tasks (loose foreign keys, no FK enforcement).
+export type DeadlineImportance = 'critical' | 'high' | 'normal';
+export type DeadlineStatus = 'active' | 'missed' | 'met' | 'cancelled';
+
+export interface Deadline {
+  id: string;
+  title: string;
+  date: string; // YYYY-MM-DD
+  description?: string;
+  goal_id?: string;
+  project?: string;
+  task_ids?: string[];
+  importance: DeadlineImportance;
+  status: DeadlineStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export type DeadlineCreate = {
+  title: string;
+  date: string;
+  description?: string;
+  goal_id?: string;
+  project?: string;
+  task_ids?: string[];
+  importance?: DeadlineImportance;
+  status?: DeadlineStatus;
+};
+
+export type DeadlinePatch = Partial<DeadlineCreate>;
 
 export interface ProjectMilestone {
   text: string;
@@ -222,6 +263,8 @@ export interface CalendarFeed {
   to: string;
   events: CalendarEvent[];
 }
+
+// (Deadline canonical type defined above near CalendarEvent.)
 
 export interface AgentPreset {
   id: string;
@@ -560,8 +603,65 @@ export const api = {
   deleteEvent: (id: string) =>
     req<void>(`/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
-  // Goals (granit, read-only)
+  // Goals (granit, full CRUD — schema mirrors internal/goals.Goal)
   listGoals: () => req<{ goals: Goal[]; total: number }>('/goals'),
+  createGoal: (g: Partial<Goal>) =>
+    req<Goal>('/goals', { method: 'POST', body: JSON.stringify(g) }),
+  patchGoal: (id: string, g: Partial<Goal>) =>
+    req<Goal>(`/goals/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(g)
+    }),
+  deleteGoal: (id: string) =>
+    req<void>(`/goals/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  addGoalMilestone: (id: string, m: { text: string; due_date?: string; done?: boolean }) =>
+    req<Goal>(`/goals/${encodeURIComponent(id)}/milestones`, {
+      method: 'POST',
+      body: JSON.stringify(m)
+    }),
+  patchGoalMilestone: (
+    id: string,
+    idx: number,
+    m: { text?: string; due_date?: string; done?: boolean }
+  ) =>
+    req<Goal>(`/goals/${encodeURIComponent(id)}/milestones/${idx}`, {
+      method: 'PATCH',
+      body: JSON.stringify(m)
+    }),
+  deleteGoalMilestone: (id: string, idx: number) =>
+    req<Goal>(`/goals/${encodeURIComponent(id)}/milestones/${idx}`, { method: 'DELETE' }),
+  logGoalReview: (id: string, note: string, opts?: { date?: string; progress?: number }) =>
+    req<Goal>(`/goals/${encodeURIComponent(id)}/review`, {
+      method: 'POST',
+      body: JSON.stringify({ note, ...(opts ?? {}) })
+    }),
+
+  // Deadlines — top-level dated markers stored in
+  // .granit/deadlines.json. listDeadlines is the canonical full-CRUD
+  // endpoint; tryListDeadlines is the defensive variant kept for the
+  // dashboard widget so a transient 404 / network blip can't tank the
+  // home page.
+  listDeadlines: () => req<{ deadlines: Deadline[]; total: number }>('/deadlines'),
+  getDeadline: (id: string) => req<Deadline>(`/deadlines/${encodeURIComponent(id)}`),
+  createDeadline: (d: DeadlineCreate) =>
+    req<Deadline>('/deadlines', { method: 'POST', body: JSON.stringify(d) }),
+  patchDeadline: (id: string, d: DeadlinePatch) =>
+    req<Deadline>(`/deadlines/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(d)
+    }),
+  deleteDeadline: (id: string) =>
+    req<void>(`/deadlines/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  tryListDeadlines: async (): Promise<Deadline[] | null> => {
+    try {
+      const r = await req<{ deadlines?: Deadline[]; items?: Deadline[]; total?: number }>('/deadlines');
+      const list = r.deadlines ?? r.items ?? null;
+      if (!Array.isArray(list)) return null;
+      return list.filter((d) => d && typeof d.date === 'string' && d.date.length >= 10);
+    } catch {
+      return null;
+    }
+  },
 
   // Agents
   listAgentPresets: (includePrompt = false) =>
@@ -841,7 +941,9 @@ export type DashboardWidgetType =
   | 'pomodoro'
   | 'now'
   | 'streaks'
-  | 'scripture';
+  | 'scripture'
+  | 'today-focus'
+  | 'top-deadlines';
 
 export interface DashboardWidget {
   id: string;

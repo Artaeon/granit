@@ -5,6 +5,16 @@
   import { onWsEvent } from '$lib/ws';
   import { widgetRegistry, widgetMeta } from '$lib/dashboard/registry';
 
+  // New widget types we ship in this build that the server's defaults
+  // (internal/serveapi/handlers_dashboard.go) doesn't know about yet. We
+  // inject them into the user's saved config locally so they appear in
+  // customize-mode and can render. Order matters — these are the slots
+  // we want the new widgets to occupy by default.
+  const NEW_WIDGETS: { id: string; type: import('$lib/api').DashboardWidgetType; afterId: string; enabled: boolean }[] = [
+    { id: 'w-today-focus', type: 'today-focus', afterId: 'w-greeting', enabled: true },
+    { id: 'w-top-deadlines', type: 'top-deadlines', afterId: 'w-now', enabled: true }
+  ];
+
   // Auth state machine on the landing page:
   //   loading      → checking /auth/status
   //   setup        → no password yet → set one
@@ -63,13 +73,34 @@
     try {
       const [v, c] = await Promise.all([api.vault(), api.getDashboard()]);
       vault = v;
-      config = c;
+      config = injectNewWidgets(c);
+      // If we added widgets the server didn't know about, persist so the
+      // toggle states travel across devices on next load.
+      if (config.widgets.length !== c.widgets.length) {
+        await api.putDashboard(config).catch(() => {});
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         auth.clear();
         await refreshAuthScreen();
       } else loadError = e instanceof Error ? e.message : String(e);
     }
+  }
+
+  // Splice in any NEW_WIDGETS the saved config doesn't have, anchored
+  // after the slot we want them to follow. Idempotent — re-running on a
+  // config that already has the new widget is a no-op.
+  function injectNewWidgets(c: DashboardConfig): DashboardConfig {
+    const have = new Set(c.widgets.map((w) => w.id));
+    let widgets = [...c.widgets];
+    for (const nw of NEW_WIDGETS) {
+      if (have.has(nw.id)) continue;
+      const anchor = widgets.findIndex((w) => w.id === nw.afterId);
+      const entry = { id: nw.id, type: nw.type, enabled: nw.enabled };
+      if (anchor === -1) widgets.push(entry);
+      else widgets = [...widgets.slice(0, anchor + 1), entry, ...widgets.slice(anchor + 1)];
+    }
+    return { ...c, widgets };
   }
 
   function deviceLabel(): string {

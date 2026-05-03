@@ -13,6 +13,8 @@ import RecentNotesWidget from './widgets/RecentNotesWidget.svelte';
 import ProjectsWidget from './widgets/ProjectsWidget.svelte';
 import InboxWidget from './widgets/InboxWidget.svelte';
 import CalendarWeekWidget from './widgets/CalendarWeekWidget.svelte';
+import TodayFocusWidget from './widgets/TodayFocusWidget.svelte';
+import TopDeadlinesWidget from './widgets/TopDeadlinesWidget.svelte';
 
 export interface WidgetMeta {
   type: DashboardWidgetType;
@@ -25,8 +27,10 @@ export interface WidgetMeta {
 
 export const widgetRegistry: WidgetMeta[] = [
   { type: 'greeting', label: 'Greeting', description: 'Date + welcome', span: 2, component: GreetingWidget },
+  { type: 'today-focus', label: 'Today\'s focus', description: 'What you committed to in the morning routine', span: 2, component: TodayFocusWidget },
   { type: 'now', label: 'Now', description: 'Current time + next event', span: 1, component: NowWidget },
   { type: 'streaks', label: 'Streaks', description: 'Habit streaks at a glance', span: 1, component: StreaksWidget },
+  { type: 'top-deadlines', label: 'Top deadlines', description: 'Next 3 important deadlines', span: 1, component: TopDeadlinesWidget },
   { type: 'scripture', label: 'Today\'s verse', description: 'Daily scripture / quote rotation', span: 1, component: ScriptureWidget },
   { type: 'daily-note', label: 'Daily note', description: 'Link to today\'s daily note', span: 1, component: DailyNoteWidget },
   { type: 'quick-capture', label: 'Quick capture', description: 'Add a task fast', span: 1, component: QuickCaptureWidget },

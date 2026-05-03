@@ -10,7 +10,9 @@
     loading = true;
     try {
       const list = await api.listGoals();
-      goals = list.goals.filter((g) => (g.status ?? 'active') === 'active').slice(0, 4);
+      // Top 3 active goals — matches what the morning anchors review
+      // surfaces, so the dashboard and the wizard tell the same story.
+      goals = list.goals.filter((g) => (g.status ?? 'active') === 'active').slice(0, 3);
     } finally {
       loading = false;
     }
