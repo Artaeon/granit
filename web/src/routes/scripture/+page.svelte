@@ -355,10 +355,46 @@
     }
   }
 
+  // Reading history — last N chapters viewed, kept in localStorage.
+  // Used to render a "Continue reading" pointer at the top of the
+  // bible tab and a "Recent" strip for one-click jump-back. Per-device
+  // (not synced) on purpose — reading position is much more about how
+  // *this* device is positioned than something to round-trip through
+  // the vault.
+  type RecentChapter = { bookCode: string; book: string; chapter: number; at: number };
+  const RECENT_KEY = 'granit.bible.recent';
+  const RECENT_MAX = 8;
+
+  function loadRecent(): RecentChapter[] {
+    if (typeof localStorage === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem(RECENT_KEY);
+      if (!raw) return [];
+      const arr = JSON.parse(raw) as RecentChapter[];
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }
+  function saveRecent(list: RecentChapter[]): void {
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch {}
+  }
+  let recent = $state<RecentChapter[]>(typeof localStorage === 'undefined' ? [] : loadRecent());
+
+  function pushRecent(book: string, bookCode: string, chapter: number) {
+    const next: RecentChapter[] = [
+      { bookCode, book, chapter, at: Date.now() },
+      ...recent.filter((r) => !(r.bookCode === bookCode && r.chapter === chapter))
+    ].slice(0, RECENT_MAX);
+    recent = next;
+    saveRecent(next);
+  }
+
   async function loadBibleChapter(book: string, chapter: number) {
     try {
       bibleChapter = await api.bibleChapter(book, chapter);
       biblePassage = null;
+      pushRecent(bibleChapter.book, bibleChapter.bookCode, bibleChapter.chapter);
     } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
@@ -600,6 +636,34 @@
       {#if bibleLoading && bibleBooks.length === 0}
         <div class="text-sm text-dim">loading bible…</div>
       {:else}
+        <!-- Continue reading — surfaces the last chapter viewed so the
+             user can jump back into a sequential reading flow without
+             scrolling the picker. Hidden until something's been read. -->
+        {#if recent.length > 0}
+          <div class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+            <div class="flex items-baseline gap-3 mb-2">
+              <h3 class="text-xs uppercase tracking-wider text-dim font-medium">Continue reading</h3>
+              <button
+                type="button"
+                onclick={() => loadBibleChapter(recent[0].bookCode, recent[0].chapter)}
+                class="text-sm text-primary hover:underline font-medium"
+              >{recent[0].book} {recent[0].chapter} →</button>
+            </div>
+            {#if recent.length > 1}
+              <div class="flex flex-wrap gap-1.5">
+                <span class="text-[11px] text-dim self-center">recent:</span>
+                {#each recent.slice(1) as r (r.bookCode + r.chapter)}
+                  <button
+                    type="button"
+                    onclick={() => loadBibleChapter(r.bookCode, r.chapter)}
+                    class="text-[11px] px-2 py-0.5 rounded bg-mantle border border-surface1 text-subtext hover:border-primary hover:text-text"
+                  >{r.book} {r.chapter}</button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
+
         <!-- Random passage controls — primary action up top -->
         <div class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
           <div class="flex flex-wrap gap-2 items-center">
