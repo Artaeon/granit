@@ -601,6 +601,63 @@ export interface FinOverview {
   goals_active_count: number;
 }
 
+// Prayer intentions — active prayer list with status lifecycle.
+export type PrayerStatus = 'praying' | 'answered' | 'archived';
+export interface PrayerIntention {
+  id: string;
+  text: string;
+  category?: string;
+  status: PrayerStatus | string;
+  started_at?: string;
+  answered_at?: string;
+  answer?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// People — lightweight CRM. The list response also carries derived
+// upcoming-birthday + stale-count fields so the page hydrates in
+// one round trip.
+export interface Person {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  birthday?: string;
+  relationship?: string;
+  tags?: string[];
+  last_contacted_at?: string;
+  cadence_days?: number;
+  note_path?: string;
+  notes?: string;
+  archived?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Measurements — numeric tracking. Two concepts: Series (definition)
+// + Entry (logged values).
+export interface MeasurementSeries {
+  id: string;
+  name: string;
+  unit: string;
+  target?: number;
+  direction?: 'up' | 'down' | string;
+  notes?: string;
+  archived?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export interface MeasurementEntry {
+  id: string;
+  series_id: string;
+  date: string;
+  value: number;
+  notes?: string;
+  created_at: string;
+}
+
 export interface CalendarSource {
   id: string;
   source: string; // filename
@@ -1079,6 +1136,63 @@ export const api = {
     req<FinGoal>(`/finance/goals/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(p) }),
   finDeleteGoal: (id: string) =>
     req<void>(`/finance/goals/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  // Prayer intentions
+  listPrayer: () => req<{ intentions: PrayerIntention[]; total: number }>('/prayer/intentions'),
+  createPrayer: (b: Partial<PrayerIntention>) =>
+    req<PrayerIntention>('/prayer/intentions', { method: 'POST', body: JSON.stringify(b) }),
+  patchPrayer: (id: string, p: Partial<PrayerIntention>) =>
+    req<PrayerIntention>(`/prayer/intentions/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(p) }),
+  deletePrayer: (id: string) =>
+    req<void>(`/prayer/intentions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  // People — list response includes derived fields the page uses
+  // for the header pill + upcoming-birthdays section.
+  listPeople: (opts: { birthdaysWithin?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.birthdaysWithin) params.set('birthdays_within', String(opts.birthdaysWithin));
+    const q = params.toString();
+    return req<{
+      people: Person[];
+      total: number;
+      stale_count: number;
+      upcoming_birthdays: Person[];
+    }>(`/people${q ? `?${q}` : ''}`);
+  },
+  createPerson: (b: Partial<Person>) =>
+    req<Person>('/people', { method: 'POST', body: JSON.stringify(b) }),
+  patchPerson: (id: string, p: Partial<Person>) =>
+    req<Person>(`/people/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(p) }),
+  pingPerson: (id: string) =>
+    req<Person>(`/people/${encodeURIComponent(id)}/ping`, { method: 'POST' }),
+  deletePerson: (id: string) =>
+    req<void>(`/people/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  // Measurements
+  listMeasurementSeries: () =>
+    req<{
+      series: MeasurementSeries[];
+      total: number;
+      latest: Record<string, MeasurementEntry>;
+      entry_count: number;
+    }>('/measurements/series'),
+  createMeasurementSeries: (b: Partial<MeasurementSeries>) =>
+    req<MeasurementSeries>('/measurements/series', { method: 'POST', body: JSON.stringify(b) }),
+  patchMeasurementSeries: (id: string, p: Partial<MeasurementSeries>) =>
+    req<MeasurementSeries>(`/measurements/series/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(p) }),
+  deleteMeasurementSeries: (id: string) =>
+    req<void>(`/measurements/series/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  listMeasurementEntries: (opts: { series?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.series) params.set('series', opts.series);
+    if (opts.limit) params.set('limit', String(opts.limit));
+    const q = params.toString();
+    return req<{ entries: MeasurementEntry[]; total: number }>(`/measurements/entries${q ? `?${q}` : ''}`);
+  },
+  createMeasurementEntry: (b: Partial<MeasurementEntry>) =>
+    req<MeasurementEntry>('/measurements/entries', { method: 'POST', body: JSON.stringify(b) }),
+  deleteMeasurementEntry: (id: string) =>
+    req<void>(`/measurements/entries/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // Config (web ↔ TUI shared config.json)
   getConfig: () => req<AppConfig>('/config'),

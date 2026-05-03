@@ -73,7 +73,10 @@ func baselineDeclarations() []Module {
 		// web exposes it via the friendly path /habits but the canonical
 		// ID stays habit_tracker.
 		&baselineModule{id: "habit_tracker", name: "Habit Tracker", desc: "Daily habits, streaks, and progress", cat: "Daily"},
-		&baselineModule{id: "finance", name: "Finance", desc: "Accounts, transactions, subscriptions, holdings, money goals", cat: "Life"},
+		&baselineModule{id: "finance", name: "Finance", desc: "Accounts, subscriptions, income streams, money goals", cat: "Life"},
+		&baselineModule{id: "people", name: "People", desc: "Lightweight relationship tracker — last contact, birthdays, cadence reminders", cat: "Life"},
+		&baselineModule{id: "prayer", name: "Prayer", desc: "Active prayer intentions with status lifecycle. Lives in /scripture#intentions.", cat: "Spiritual"},
+		&baselineModule{id: "measurements", name: "Measurements", desc: "Numeric tracking — weight, sleep, exercise reps, mood, anything", cat: "Life"},
 	}
 }
 

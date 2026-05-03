@@ -86,6 +86,24 @@
     <path d="M12 2v20"/>
     <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
   </svg>
+{:else if name === 'people'}
+  <!-- Two heads — a relationship pair. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <circle cx="9" cy="8" r="3"/>
+    <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>
+    <circle cx="17" cy="6" r="2.5"/>
+    <path d="M21 21v-1.5a3 3 0 0 0-2-2.8"/>
+  </svg>
+{:else if name === 'measurements'}
+  <!-- Tiny line chart: trending data points. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <path d="M3 20h18"/>
+    <path d="M5 17l4-5 4 3 6-8"/>
+    <circle cx="5" cy="17" r="1.5" fill="currentColor"/>
+    <circle cx="9" cy="12" r="1.5" fill="currentColor"/>
+    <circle cx="13" cy="15" r="1.5" fill="currentColor"/>
+    <circle cx="19" cy="7" r="1.5" fill="currentColor"/>
+  </svg>
 {:else if name === 'settings'}
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <path d="M10.3 3.3a2 2 0 0 1 3.4 0l.4.7a2 2 0 0 0 1.7 1l.8-.1a2 2 0 0 1 2.4 2.4l-.1.8a2 2 0 0 0 1 1.7l.7.4a2 2 0 0 1 0 3.4l-.7.4a2 2 0 0 0-1 1.7l.1.8a2 2 0 0 1-2.4 2.4l-.8-.1a2 2 0 0 0-1.7 1l-.4.7a2 2 0 0 1-3.4 0l-.4-.7a2 2 0 0 0-1.7-1l-.8.1a2 2 0 0 1-2.4-2.4l.1-.8a2 2 0 0 0-1-1.7l-.7-.4a2 2 0 0 1 0-3.4l.7-.4a2 2 0 0 0 1-1.7l-.1-.8a2 2 0 0 1 2.4-2.4l.8.1a2 2 0 0 0 1.7-1z"/><circle cx="12" cy="12" r="3"/>

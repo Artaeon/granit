@@ -8,7 +8,8 @@
     type BiblePassage,
     type BibleVerse,
     type BibleSearchHit,
-    type BibleBookmark
+    type BibleBookmark,
+    type PrayerIntention
   } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
@@ -30,7 +31,7 @@
   //            the curated daily-rotation set stays small and stable
   //            for spaced-repetition; the bible tab is for free-form
   //            exploration.
-  type Mode = 'read' | 'memo' | 'browse' | 'bible' | 'bookmarks';
+  type Mode = 'read' | 'memo' | 'browse' | 'bible' | 'bookmarks' | 'intentions';
 
   let mode = $state<Mode>('read');
   let today = $state<Scripture | null>(null);
@@ -95,8 +96,12 @@
   onMount(() => {
     load();
     return onWsEvent((ev) => {
-      if (ev.type === 'state.changed' && ev.path === '.granit/bible-bookmarks.json') {
-        if (bookmarksLoaded) loadBookmarks();
+      if (ev.type !== 'state.changed') return;
+      if (ev.path === '.granit/bible-bookmarks.json' && bookmarksLoaded) {
+        loadBookmarks();
+      }
+      if (ev.path === '.granit/prayer/intentions.json' && intentionsLoaded) {
+        loadIntentions();
       }
     });
   });
@@ -175,6 +180,71 @@
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 100);
   }
+
+  // ── Prayer intentions ────────────────────────────────────────────
+  // Active prayer list. Lifecycle: praying → answered → archived.
+  // Sibling concept to bookmarks (also a personal list within
+  // /scripture); kept on a separate tab so the user can review their
+  // prayer life without scrolling past their reading materials.
+  let intentions = $state<PrayerIntention[]>([]);
+  let intentionsLoaded = $state(false);
+  let newIntentionText = $state('');
+  let newIntentionCategory = $state('');
+
+  async function loadIntentions() {
+    try {
+      const r = await api.listPrayer();
+      intentions = r.intentions;
+      intentionsLoaded = true;
+    } catch (e) {
+      toast.error('failed to load prayers: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+  async function addIntention() {
+    const text = newIntentionText.trim();
+    if (!text) return;
+    try {
+      await api.createPrayer({
+        text,
+        category: newIntentionCategory.trim() || undefined
+      });
+      newIntentionText = '';
+      // Keep category — most users add several with the same category in a row.
+      await loadIntentions();
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+  async function setIntentionStatus(p: PrayerIntention, status: 'praying' | 'answered' | 'archived') {
+    try {
+      await api.patchPrayer(p.id, { status });
+      await loadIntentions();
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+  async function saveIntentionAnswer(p: PrayerIntention, answer: string) {
+    try {
+      await api.patchPrayer(p.id, { answer });
+      await loadIntentions();
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+  async function deleteIntention(p: PrayerIntention) {
+    if (!confirm('Remove this intention from history?')) return;
+    try {
+      await api.deletePrayer(p.id);
+      await loadIntentions();
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  // Pre-grouped derivations so the template stays declarative.
+  let prayingNow = $derived(intentions.filter((p) => p.status === 'praying'));
+  let answered = $derived(intentions.filter((p) => p.status === 'answered'));
+  let archived = $derived(intentions.filter((p) => p.status === 'archived'));
 
   async function anotherOne() {
     try {
@@ -572,6 +642,10 @@
         class="px-4 py-2 {mode === 'bookmarks' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
         onclick={() => { mode = 'bookmarks'; if (!bookmarksLoaded) loadBookmarks(); }}
       >Bookmarks {#if bookmarks.length > 0}<span class="text-[10px] opacity-70">{bookmarks.length}</span>{/if}</button>
+      <button
+        class="px-4 py-2 {mode === 'intentions' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+        onclick={() => { mode = 'intentions'; if (!intentionsLoaded) loadIntentions(); }}
+      >Prayer {#if prayingNow.length > 0}<span class="text-[10px] opacity-70">{prayingNow.length}</span>{/if}</button>
     </div>
 
     {#if loading && all.length === 0}
@@ -982,6 +1056,101 @@
         </ul>
         <p class="text-[11px] text-dim italic mt-3">
           Synced via <code>.granit/bible-bookmarks.json</code> — same file the granit TUI reads.
+        </p>
+      {/if}
+    {:else if mode === 'intentions'}
+      {#if !intentionsLoaded}
+        <div class="text-sm text-dim">loading prayer list…</div>
+      {:else}
+        <!-- Quick-add composer at top — Enter to submit. -->
+        <form onsubmit={(e) => { e.preventDefault(); addIntention(); }} class="bg-surface0 border border-surface1 rounded-lg p-3 mb-5">
+          <input
+            bind:value={newIntentionText}
+            placeholder="What are you praying for?"
+            class="w-full bg-transparent text-text placeholder-dim focus:outline-none text-base"
+          />
+          <div class="flex items-center gap-2 mt-2">
+            <input
+              bind:value={newIntentionCategory}
+              placeholder="category (optional, e.g. Family / Self / World)"
+              class="flex-1 bg-mantle border border-surface1 rounded px-2 py-1 text-xs text-text placeholder-dim focus:outline-none focus:border-primary"
+            />
+            <button
+              type="submit"
+              disabled={!newIntentionText.trim()}
+              class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90 disabled:opacity-50"
+            >Add</button>
+          </div>
+        </form>
+
+        {#if intentions.length === 0}
+          <p class="text-sm text-dim italic">No intentions yet. The list above this line is your prayer list — add what's on your heart.</p>
+        {:else}
+          {#if prayingNow.length > 0}
+            <h3 class="text-xs uppercase tracking-wider text-dim mt-2 mb-2">Praying for</h3>
+            <ul class="space-y-2 mb-5">
+              {#each prayingNow as p (p.id)}
+                <li class="bg-surface0 border border-surface1 rounded-lg p-3">
+                  <div class="flex items-baseline gap-3 flex-wrap">
+                    <p class="text-text flex-1 min-w-0 break-words">{p.text}</p>
+                    {#if p.category}
+                      <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface1 text-subtext">{p.category}</span>
+                    {/if}
+                    <button onclick={() => setIntentionStatus(p, 'answered')} class="text-xs text-success hover:underline" title="Mark as answered">✓ answered</button>
+                    <button onclick={() => setIntentionStatus(p, 'archived')} class="text-xs text-dim hover:text-text" title="Archive">archive</button>
+                    <button onclick={() => deleteIntention(p)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>
+                  </div>
+                  {#if p.started_at}<p class="text-[11px] text-dim mt-1">since {p.started_at}</p>{/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          {#if answered.length > 0}
+            <h3 class="text-xs uppercase tracking-wider text-dim mt-2 mb-2">Answered ✓</h3>
+            <ul class="space-y-2 mb-5">
+              {#each answered as p (p.id)}
+                <li class="bg-success/5 border border-success/30 rounded-lg p-3">
+                  <div class="flex items-baseline gap-3 flex-wrap">
+                    <p class="text-text flex-1 min-w-0 break-words">{p.text}</p>
+                    {#if p.category}
+                      <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface1 text-subtext">{p.category}</span>
+                    {/if}
+                    <button onclick={() => setIntentionStatus(p, 'praying')} class="text-xs text-dim hover:text-text" title="Move back to praying">↺</button>
+                    <button onclick={() => deleteIntention(p)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>
+                  </div>
+                  <p class="text-[11px] text-dim mt-1">
+                    {#if p.started_at}from {p.started_at}{/if}
+                    {#if p.answered_at}· answered {p.answered_at}{/if}
+                  </p>
+                  <textarea
+                    value={p.answer ?? ''}
+                    placeholder="How was it answered? (optional)"
+                    onblur={(e) => {
+                      const v = (e.currentTarget as HTMLTextAreaElement).value;
+                      if (v !== (p.answer ?? '')) saveIntentionAnswer(p, v);
+                    }}
+                    rows="2"
+                    class="w-full mt-2 bg-mantle border border-surface1 rounded px-2 py-1.5 text-xs text-text placeholder-dim resize-y focus:outline-none focus:border-primary"
+                  ></textarea>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          {#if archived.length > 0}
+            <h3 class="text-xs uppercase tracking-wider text-dim mt-2 mb-2">Archived</h3>
+            <ul class="space-y-2 opacity-60">
+              {#each archived as p (p.id)}
+                <li class="bg-surface0 border border-surface1 rounded-lg p-3 flex items-baseline gap-3 flex-wrap">
+                  <p class="text-text flex-1 min-w-0 break-words text-sm">{p.text}</p>
+                  <button onclick={() => setIntentionStatus(p, 'praying')} class="text-xs text-dim hover:text-text">↺</button>
+                  <button onclick={() => deleteIntention(p)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        {/if}
+        <p class="text-[11px] text-dim italic mt-4">
+          Synced via <code>.granit/prayer/intentions.json</code> — same file the granit TUI reads.
         </p>
       {/if}
     {/if}

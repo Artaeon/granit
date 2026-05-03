@@ -279,6 +279,34 @@ func (s *Server) Handler() http.Handler {
 		r.Patch("/api/v1/finance/goals/{id}", s.handlePatchFinGoal)
 		r.Delete("/api/v1/finance/goals/{id}", s.handleDeleteFinGoal)
 
+		// Prayer intentions — active prayer list with status lifecycle
+		// (praying → answered → archived). State at .granit/prayer/.
+		r.Get("/api/v1/prayer/intentions", s.handleListPrayer)
+		r.Post("/api/v1/prayer/intentions", s.handleCreatePrayer)
+		r.Patch("/api/v1/prayer/intentions/{id}", s.handlePatchPrayer)
+		r.Delete("/api/v1/prayer/intentions/{id}", s.handleDeletePrayer)
+
+		// People — lightweight relationship tracker. State at
+		// .granit/people.json. The list response carries derived
+		// upcoming-birthdays + stale-count denormalisations so the
+		// dashboard widgets don't N+1.
+		r.Get("/api/v1/people", s.handleListPeople)
+		r.Post("/api/v1/people", s.handleCreatePerson)
+		r.Patch("/api/v1/people/{id}", s.handlePatchPerson)
+		r.Post("/api/v1/people/{id}/ping", s.handlePingPerson)
+		r.Delete("/api/v1/people/{id}", s.handleDeletePerson)
+
+		// Measurements — numeric tracking (companion to habits). One
+		// Series = one metric definition; one Entry = one logged value.
+		// State under .granit/measurements/.
+		r.Get("/api/v1/measurements/series", s.handleListMeasurementSeries)
+		r.Post("/api/v1/measurements/series", s.handleCreateMeasurementSeries)
+		r.Patch("/api/v1/measurements/series/{id}", s.handlePatchMeasurementSeries)
+		r.Delete("/api/v1/measurements/series/{id}", s.handleDeleteMeasurementSeries)
+		r.Get("/api/v1/measurements/entries", s.handleListMeasurementEntries)
+		r.Post("/api/v1/measurements/entries", s.handleCreateMeasurementEntry)
+		r.Delete("/api/v1/measurements/entries/{id}", s.handleDeleteMeasurementEntry)
+
 		r.Get("/api/v1/types", s.handleListTypes)
 		r.Get("/api/v1/types/{id}/objects", s.handleListTypeObjects)
 		r.Get("/api/v1/tags", s.handleListTags)
