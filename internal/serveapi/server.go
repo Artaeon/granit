@@ -201,6 +201,15 @@ func (s *Server) Handler() http.Handler {
 		r.Delete("/api/v1/goals/{id}/milestones/{idx}", s.handleDeleteMilestone)
 		r.Post("/api/v1/goals/{id}/review", s.handleLogReview)
 
+		// Deadlines — top-level "this matters by date X" markers backed
+		// by .granit/deadlines.json. See internal/deadlines for the
+		// schema; the calendar overlay lives in handlers_calendar.go.
+		r.Get("/api/v1/deadlines", s.handleListDeadlines)
+		r.Post("/api/v1/deadlines", s.handleCreateDeadline)
+		r.Get("/api/v1/deadlines/{id}", s.handleGetDeadline)
+		r.Patch("/api/v1/deadlines/{id}", s.handlePatchDeadline)
+		r.Delete("/api/v1/deadlines/{id}", s.handleDeleteDeadline)
+
 		r.Get("/api/v1/types", s.handleListTypes)
 		r.Get("/api/v1/types/{id}/objects", s.handleListTypeObjects)
 		r.Get("/api/v1/tags", s.handleListTags)

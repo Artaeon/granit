@@ -24,6 +24,15 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <path d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.5-7 10-7 10z"/>
   </svg>
+{:else if name === 'deadline'}
+  <!-- Clock face — circle with hour ticks plus an hour/minute hand pointing
+       at "4 o'clock". Visually distinct from /goals (concentric rings) and
+       /today (filled half-circle) so the three time-themed icons don't
+       blur together in the sidebar. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <circle cx="12" cy="12" r="9"/>
+    <path d="M12 7v5l3 2"/>
+  </svg>
 {:else if name === 'goals'}
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>

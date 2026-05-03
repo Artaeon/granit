@@ -61,6 +61,7 @@
     { href: '/calendar', label: 'Calendar', icon: 'calendar' },
     { href: '/habits', label: 'Habits', icon: 'habits' },
     { href: '/goals', label: 'Goals', icon: 'goals' },
+    { href: '/deadlines', label: 'Deadlines', icon: 'deadline' },
     { href: '/projects', label: 'Projects', icon: 'projects' },
     { href: '/agents', label: 'Agents', icon: 'agents' },
     { href: '/chat', label: 'Chat', icon: 'chat' },

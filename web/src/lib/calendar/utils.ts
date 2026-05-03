@@ -150,6 +150,21 @@ export function eventTypeColor(ev: CalendarEvent): { bg: string; fg: string; bor
     border: `color-mix(in srgb, var(--color-${token}) 65%, transparent)`
   });
 
+  // Deadlines: color by importance — critical (red), high (yellow),
+  // normal (purple). Highest specificity, evaluated FIRST so a future
+  // user-color field can never accidentally overwrite the
+  // miss-this-and-suffer signal.
+  if (ev.type === 'deadline') {
+    switch (ev.importance) {
+      case 'critical':
+        return tone('error');
+      case 'high':
+        return tone('warning');
+      default:
+        return tone('secondary');
+    }
+  }
+
   // ICS events: color by source filename FIRST so faith.ics, training.ics,
   // work.ics get distinct hues on the grid. Hash → index into the
   // sourcePalette so the same file always lands on the same tone (a

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/artaeon/granit/internal/config"
+	"github.com/artaeon/granit/internal/deadlines"
 	"github.com/artaeon/granit/internal/granitmeta"
 )
 
@@ -28,6 +29,11 @@ type calendarEvent struct {
 	// "faith.ics") — the web uses it to color-by-source so different
 	// calendars are visually distinct on the grid.
 	Source string `json:"source,omitempty"`
+	// Importance is set ONLY on type=="deadline" entries — drives the
+	// per-deadline color in the web's calendar overlay
+	// (critical→error / high→warning / normal→secondary). Empty for
+	// every other event type.
+	Importance string `json:"importance,omitempty"`
 }
 
 func parseDateQuery(s string) (time.Time, error) {
@@ -197,6 +203,32 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 			}
 			events = append(events, ce)
 		}
+	}
+
+	// Deadlines (.granit/deadlines.json). Always all-day. Importance
+	// is the only non-default field — the web overlay maps it to a
+	// distinct red/yellow/purple tone so a critical deadline stands
+	// out on the grid even at week-zoom. Status filter excludes
+	// "cancelled" (the user explicitly dismissed the date) but keeps
+	// "missed" / "met" so a calendar of the past tells the truth.
+	for _, d := range deadlines.LoadAll(s.cfg.Vault.Root) {
+		if d.Status == string(deadlines.StatusCancelled) {
+			continue
+		}
+		dt, err := time.Parse("2006-01-02", d.Date)
+		if err != nil {
+			continue
+		}
+		if dt.Before(from) || dt.After(to) {
+			continue
+		}
+		events = append(events, calendarEvent{
+			Type:       "deadline",
+			Date:       d.Date,
+			Title:      d.Title,
+			EventID:    d.ID,
+			Importance: deadlines.NormalizeImportance(d.Importance),
+		})
 	}
 
 	_ = strings.TrimSpace
