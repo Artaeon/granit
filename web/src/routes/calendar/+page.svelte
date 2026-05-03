@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, type CalendarEvent, type CalendarFeed, type CalendarSource } from '$lib/api';
   import { toast } from '$lib/components/toast';
@@ -223,10 +223,14 @@
     })
   );
 
+  // load() reads fetchFrom/fetchTo synchronously and may reassign them
+  // when cursor walks outside the prefetch window. Without untrack, the
+  // re-assignment refires this effect (one extra fetch per far-jump
+  // navigation). The explicit `void` list above is the actual dep set.
   $effect(() => {
     void cursor;
     void view;
-    load();
+    untrack(() => load());
   });
 
   let allEvents = $derived(feed?.events ?? []);
