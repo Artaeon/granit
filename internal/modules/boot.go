@@ -78,6 +78,7 @@ func baselineDeclarations() []Module {
 		&baselineModule{id: "prayer", name: "Prayer", desc: "Active prayer intentions with status lifecycle. Lives in /scripture#intentions.", cat: "Spiritual"},
 		&baselineModule{id: "measurements", name: "Measurements", desc: "Numeric tracking — weight, sleep, exercise reps, mood, anything", cat: "Life"},
 		&baselineModule{id: "vision", name: "Vision", desc: "Life mission, core values, season focus — the layer above goals", cat: "Planning"},
+		&baselineModule{id: "weekly_review", name: "Weekly Review", desc: "Friday/Sunday five-question review — wins, setbacks, next week's one thing", cat: "Planning"},
 	}
 }
 

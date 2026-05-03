@@ -90,6 +90,15 @@
     <polygon points="12 5 14 12 12 19 10 12" fill="currentColor" stroke="none"/>
     <polygon points="5 12 12 10 19 12 12 14" fill="currentColor" stroke="none" opacity="0.5"/>
   </svg>
+{:else if name === 'review'}
+  <!-- Looped arrow forming a circle — review is the recurring loop
+       that closes the gap between intention and execution. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <path d="M3 12a9 9 0 0 1 15.5-6.3"/>
+    <path d="M21 12a9 9 0 0 1-15.5 6.3"/>
+    <polyline points="18 3 18 6 15 6"/>
+    <polyline points="6 21 6 18 9 18"/>
+  </svg>
 {:else if name === 'finance'}
   <!-- Coin / stack-of-bills hybrid. -->
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>

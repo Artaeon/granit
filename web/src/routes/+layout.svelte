@@ -85,6 +85,7 @@
       label: 'Plan',
       items: [
         { href: '/vision', label: 'Vision', icon: 'vision', moduleId: 'vision' },
+        { href: '/review', label: 'Review', icon: 'review', moduleId: 'weekly_review' },
         { href: '/goals', label: 'Goals', icon: 'goals', moduleId: 'goals' },
         { href: '/deadlines', label: 'Deadlines', icon: 'deadline', moduleId: 'deadlines' },
         { href: '/projects', label: 'Projects', icon: 'projects', moduleId: 'projects' }
