@@ -1,7 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<!-- Granit logo. Faceted hexagonal stone — six-vertex outline with two
+     internal facet lines that split the top into a triangular cap.
+     Reads as a hewn gem / monolith, picks up on the "granit" name
+     without being literal about granite. Single-stroke purple on the
+     dark base color, matching the app's theme tokens.
+
+     Geometry uses absolute coordinates rather than relative so the
+     SVG diffs cleanly. Stroke width is tuned so a 32px favicon still
+     reads — the thin proportions blow up to a confident silhouette
+     at install-icon scale. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Granit">
   <rect width="512" height="512" rx="96" fill="#1a1b26"/>
-  <g fill="none" stroke="#bb9af7" stroke-width="32" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M128 192 L256 96 L384 192 L384 416 L128 416 Z"/>
-    <path d="M192 416 L192 288 L320 288 L320 416"/>
+  <g fill="none" stroke="#bb9af7" stroke-width="32" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Outer stone outline. Top apex, top shoulders, bottom shoulders, bottom apex. -->
+    <path d="M 256 76 L 432 184 L 432 360 L 256 436 L 80 360 L 80 184 Z"/>
+    <!-- Cap base — splits the top facet from the body. -->
+    <path d="M 80 184 L 432 184"/>
+    <!-- Cap median — divides the top into two triangular facets so
+         the silhouette reads as faceted stone, not a flat hexagon. -->
+    <path d="M 256 76 L 256 184"/>
   </g>
 </svg>

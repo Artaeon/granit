@@ -138,11 +138,33 @@ input[type='datetime-local'] {
   .pb-bottomnav { padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px)); }
 }
 
-/* Scrollbars adapt to theme via the surface tokens */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: var(--color-mantle); }
-::-webkit-scrollbar-thumb { background: var(--color-surface2); border-radius: 5px; }
-::-webkit-scrollbar-thumb:hover { background: var(--color-subtext); }
+/* Scrollbars: thin and quiet by default. The previous 10px style with
+   a fully-painted track gutter looked like a slider crowding into the
+   sidebar nav — replaced with a transparent track + an inset thumb
+   that reveals on hover. Firefox honors the spec-level
+   scrollbar-width / scrollbar-color tuple in the *-rule below. */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface1);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-surface2); background-clip: padding-box; }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-surface1) transparent;
+}
+
+/* Sidebar nav scrollbar is even quieter — only appears when hovering
+   the rail, so at rest the column has no track gutter painted. */
+aside nav::-webkit-scrollbar { width: 6px; }
+aside nav::-webkit-scrollbar-thumb {
+  background: transparent;
+  transition: background-color 0.2s;
+}
+aside:hover nav::-webkit-scrollbar-thumb { background: var(--color-surface1); background-clip: padding-box; }
 
 /* Prose styles for the markdown preview */
 .prose-note {
