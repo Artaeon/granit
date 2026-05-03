@@ -1,0 +1,43 @@
+# ── Excluded from the build context ─────────────────────────────────
+# Anything not needed at build time. Smaller context = faster builds
+# and tighter cache invalidation.
+
+# VCS + editor state
+.git
+.gitignore
+.github
+.vscode
+.idea
+*.swp
+*.swo
+
+# Build outputs
+bin/
+dist/
+*.exe
+granit
+granit-*
+
+# Web frontend caches + outputs (Dockerfile rebuilds them inside
+# the web stage). The dist/ output is regenerated; node_modules
+# is reinstalled from the lockfile.
+web/node_modules
+web/.svelte-kit
+web/.vite
+web/build
+web/dist
+
+# Embedded SPA target — produced by the Dockerfile's web stage
+# (go:embed reads internal/serveapi/dist, which the build creates).
+internal/serveapi/dist
+
+# Test + scratch
+*.test
+*.out
+coverage.txt
+
+# Local notes / vaults / secrets that might sit in the repo root
+notes/
+.granit/
+.env
+.env.*

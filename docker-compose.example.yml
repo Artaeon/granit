@@ -1,0 +1,61 @@
+# Drop-in compose for self-hosting `granit web`. Two flavours:
+#
+#   1) Plain HTTP on :8787 — local LAN, behind your own reverse proxy.
+#   2) Behind Traefik with auto-HTTPS — uncomment the `labels:` block
+#      and run on a Traefik network. The fleetdeck deploy profile
+#      generates the equivalent automatically.
+#
+# Vault is bind-mounted from the host so it survives container
+# rebuilds and stays a normal git repo (you can `cd` in and run git
+# commands directly). The mount target inside the container is
+# /vault — matches the Dockerfile's WORKDIR + CMD.
+
+services:
+  granit:
+    build: .
+    # Or pin a tag once you've pushed to a registry:
+    # image: ghcr.io/artaeon/granit:latest
+    container_name: granit
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    volumes:
+      # The vault — markdown notes + .granit/ state. Container runs
+      # as a non-root user (uid in the alpine adduser pool); chown the
+      # host directory accordingly:
+      #   sudo chown -R 100:101 /srv/granit-vault
+      - /srv/granit-vault:/vault
+      # If you use git auto-sync, mount your SSH config + agent socket
+      # so `git push` finds your deploy key. Adjust paths to taste.
+      # - ${HOME}/.ssh:/home/granit/.ssh:ro
+    environment:
+      # `granit web` reads PORT directly. Override via compose if you
+      # need to coexist with another service on :8787.
+      - PORT=8787
+      # Granit reads ~/.config/granit/config.json for AI provider keys.
+      # Inside the container that resolves to /home/granit/.config/...
+      # — easiest path is to set the keys via env and let the user
+      # write them once via the /settings page.
+      # - OPENAI_API_KEY=
+    # Auto-sync flag. Drop `--sync` if your vault isn't a git repo,
+    # or override --sync-interval (min 10s).
+    command: ["web", "--addr", "0.0.0.0:8787", "--sync", "--sync-interval", "60s", "/vault"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8787/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    # ── Behind Traefik (uncomment + put on the traefik network) ────
+    # networks: [traefik]
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.granit.rule=Host(`granit.example.com`)"
+    #   - "traefik.http.routers.granit.entrypoints=websecure"
+    #   - "traefik.http.routers.granit.tls.certresolver=letsencrypt"
+    #   - "traefik.http.services.granit.loadbalancer.server.port=8787"
+
+# networks:
+#   traefik:
+#     external: true

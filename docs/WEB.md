@@ -150,3 +150,70 @@ The web app installs as a PWA. The service worker uses
 doesn't blank the UI — you keep the last-known data and edits queue for
 when the connection returns. Note edits also persist to localStorage as
 **drafts**, surviving tab close, reload, and full power loss.
+
+## Deployment — server, Docker, FleetDeck
+
+`granit web` is a single Go binary with the SvelteKit SPA embedded via
+`go:embed`, so deploying it is "copy one file to a server, run it next
+to a vault." Three supported paths in increasing automation:
+
+### 1. Bare binary on a Linux box
+
+```bash
+# On the server:
+GOOS=linux GOARCH=amd64 go install github.com/artaeon/granit/cmd/granit@latest
+git clone git@github.com:you/your-vault.git /srv/granit-vault
+granit web --addr 0.0.0.0:8787 --sync --sync-interval 60s /srv/granit-vault
+```
+
+`--sync` runs `git pull --rebase --autostash` + auto-commit + push on
+every interval (min 10 s). A TUI commit pushed locally lands on the
+server within ~one tick; web-side writes commit + push back. The vault
+stays a normal git repo — you can `cd` in and run git commands by hand.
+
+### 2. Docker / docker-compose
+
+The repo ships a multi-stage `Dockerfile` (Node → Go → Alpine) and a
+`docker-compose.example.yml` template:
+
+```bash
+cp docker-compose.example.yml docker-compose.yml
+# edit volumes: line for your vault path, optionally uncomment the
+# Traefik labels block for auto-HTTPS.
+docker compose up -d
+```
+
+The container runs as a non-root user; chown the host vault directory
+(`sudo chown -R 100:101 /srv/granit-vault`) so the Alpine `granit`
+user can write. Mount `~/.ssh` read-only into `/home/granit/.ssh` if
+you want git auto-sync over SSH.
+
+### 3. FleetDeck
+
+[FleetDeck](https://github.com/Artaeon/fleetdeck) auto-detects Go via
+`go.mod` and assigns the `server` profile (single binary, exposes a
+port, has a health endpoint at `/api/v1/health`). One command takes
+this repo from local to a Traefik-fronted production deployment with
+GitHub Actions CI/CD wired up:
+
+```bash
+fleetdeck deploy . --server root@your-server.ip --domain granit.example.com --profile server
+```
+
+The provided `Dockerfile` is what FleetDeck will pick up; if you let
+it generate its own, regenerate after every granit upgrade so the Node
++ Go versions stay aligned with this repo's pinned versions (Node 22,
+Go 1.25 currently).
+
+### Things to think about before going public
+
+- **Bootstrap token + password**: first launch prints the bootstrap
+  bearer token and asks the web UI to set a password. The token lives
+  at `<vault>/.granit/everything-token` — the same file the TUI uses;
+  treat it like a password.
+- **Vault on the server vs. the desktop**: with `--sync`, the server
+  is just another peer in the git replication. Your TUI on a laptop
+  pushes; the server pulls within ~one interval; the web UI sees the
+  changes via the file watcher → WS broadcast. Same the other way.
+- **HTTPS**: the binary speaks plain HTTP on 8787. Front it with
+  Traefik / nginx / Caddy / fleetdeck for TLS + a real domain.
