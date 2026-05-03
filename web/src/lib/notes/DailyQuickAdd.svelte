@@ -3,6 +3,7 @@
   import { toast } from '$lib/components/toast';
   import { classifyAiError } from '$lib/util/aiErrors';
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
+  import PlanMyDayDrawer from '$lib/calendar/PlanMyDayDrawer.svelte';
 
   // DailyQuickAdd is a slim composer that lives at the top of every
   // daily note page. Single input + Enter creates a task in this note's
@@ -26,16 +27,26 @@
   let text = $state('');
   let busy = $state(false);
 
-  // Daily AI shortcuts. Plan-my-day, Summarize today, Reflect on today
-  // — three presets that all read+write the daily note. Looked up on
-  // demand and cached in agentCache so subsequent opens skip the
-  // /agents/presets round-trip.
+  // Daily AI shortcuts.
+  //   - Plan: opens the new PlanMyDayDrawer (preview-and-edit flow).
+  //     The previous AgentRunPanel route showed only the raw transcript;
+  //     the drawer surfaces editable proposals so the user can see WHAT
+  //     was scheduled and tweak before commit.
+  //   - Summarize / Reflect: keep the AgentRunPanel — they read+write
+  //     the daily note as markdown, no scheduling decisions to preview.
+  // Looked up on demand and cached in agentCache so subsequent opens
+  // skip the /agents/presets round-trip.
   let panelOpen = $state(false);
   let panelPreset = $state<AgentPreset | null>(null);
   let panelLoading = $state<string | null>(null); // preset id while fetching
+  let planDrawerOpen = $state(false);
   const agentCache = new Map<string, AgentPreset>();
 
-  async function openPreset(id: 'plan-my-day' | 'summarize-day' | 'reflect-on-day') {
+  function openPlanDrawer() {
+    planDrawerOpen = true;
+  }
+
+  async function openPreset(id: 'summarize-day' | 'reflect-on-day') {
     const cached = agentCache.get(id);
     if (cached) {
       panelPreset = cached;
@@ -167,15 +178,14 @@
     <div class="hidden sm:flex items-center gap-1">
       <button
         type="button"
-        onclick={() => openPreset('plan-my-day')}
-        disabled={panelLoading !== null}
-        class="px-2.5 py-1.5 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-primary disabled:opacity-50 inline-flex items-center gap-1"
-        title="Use AI to draft today's schedule"
+        onclick={openPlanDrawer}
+        class="px-2.5 py-1.5 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-primary inline-flex items-center gap-1"
+        title="Preview an AI-drafted schedule, edit, then apply"
       >
         <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
         </svg>
-        {panelLoading === 'plan-my-day' ? '…' : 'Plan'}
+        Plan
       </button>
       <button
         type="button"
@@ -207,3 +217,4 @@
 </div>
 
 <AgentRunPanel bind:open={panelOpen} preset={panelPreset} />
+<PlanMyDayDrawer bind:open={planDrawerOpen} onApplied={onAdded} />

@@ -10,18 +10,21 @@
   // progress, HourGrid takes the alternate path. See dragStore.ts.
   import { onMount } from 'svelte';
   import { api, type Task } from '$lib/api';
-  import { toast } from '$lib/components/toast';
-  import { classifyAiError } from '$lib/util/aiErrors';
   import { onWsEvent } from '$lib/ws';
   import { dragStore } from './dragStore';
+  import PlanMyDayDrawer from './PlanMyDayDrawer.svelte';
   import { fmtDateISO } from './utils';
 
   let { onRefresh }: { onRefresh?: () => void } = $props();
 
   let tasks = $state<Task[]>([]);
   let loading = $state(false);
-  let aiBusy = $state(false);
   let isMobile = $state(false);
+
+  // Plan-my-day drawer. Replaces the old fire-and-forget
+  // "Plan with AI" button: now we open a drawer that runs a dry-run,
+  // shows editable proposals, and only commits on Apply.
+  let planDrawerOpen = $state(false);
 
   // Tasks already on today's grid live in the list too (greyed) so the
   // user has an at-a-glance "what's already scheduled" without flipping
@@ -189,33 +192,18 @@
     void t;
   }
 
-  // ─── AI auto-schedule ───
-  async function runAi() {
-    aiBusy = true;
-    try {
-      const r = await api.runPlanDaySchedule();
-      const n = r.scheduled.length;
-      const m = n + r.unmatched.length;
-      if (n === 0 && r.unmatched.length === 0) {
-        toast.warning('AI returned no plan blocks');
-      } else if (n === 0) {
-        toast.warning(`No matches found in ${r.unmatched.length} plan blocks`);
-      } else {
-        toast.success(`Scheduled ${n} of ${m} tasks`);
-      }
-      await load();
-      onRefresh?.();
-    } catch (e) {
-      // Plan-day-schedule wraps the plan-my-day preset; the most
-      // common failure here is the same provider noise the agent
-      // panel sees. Map to an actionable Open-Settings CTA.
-      const raw = e instanceof Error ? e.message : String(e);
-      console.error('[TaskBacklog] runPlanDaySchedule failed:', raw);
-      const hint = classifyAiError(raw);
-      toast.error(hint.headline, { action: hint.cta, details: hint.raw });
-    } finally {
-      aiBusy = false;
-    }
+  // ─── AI plan ───
+  // Opens the preview drawer instead of firing off a one-shot call.
+  // The user gets to see proposed slots, edit them, accept per row,
+  // and only THEN does anything land on the calendar. The drawer
+  // owns the dry-run/apply round-trips; we just refresh on success.
+  function openPlanDrawer() {
+    planDrawerOpen = true;
+  }
+
+  async function onPlanApplied() {
+    await load();
+    onRefresh?.();
   }
 </script>
 
@@ -226,20 +214,14 @@
       <p class="text-[10px] text-dim">drag onto grid · {filtered.length} task{filtered.length === 1 ? '' : 's'}</p>
     </div>
     <button
-      onclick={runAi}
-      disabled={aiBusy}
-      class="px-2.5 py-1 text-xs rounded bg-secondary/15 text-secondary border border-secondary/30 hover:bg-secondary/25 disabled:opacity-60 flex items-center gap-1.5"
-      title="Run plan-my-day and auto-schedule matched tasks"
+      onclick={openPlanDrawer}
+      class="px-2.5 py-1 text-xs rounded bg-secondary/15 text-secondary border border-secondary/30 hover:bg-secondary/25 flex items-center gap-1.5"
+      title="Preview an AI-drafted schedule, edit, then apply"
     >
-      {#if aiBusy}
-        <span class="inline-block w-3 h-3 rounded-full border-2 border-secondary border-t-transparent animate-spin"></span>
-        thinking…
-      {:else}
-        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>
-        </svg>
-        Plan with AI
-      {/if}
+      <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>
+      </svg>
+      Plan with AI
     </button>
   </header>
 
@@ -290,3 +272,5 @@
     {/if}
   </div>
 </div>
+
+<PlanMyDayDrawer bind:open={planDrawerOpen} onApplied={onPlanApplied} />

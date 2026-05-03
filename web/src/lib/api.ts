@@ -122,6 +122,32 @@ export interface TaskList {
   total: number;
 }
 
+// Plan-my-day preview/apply pair. The dry-run endpoint returns
+// PlanProposal[]; the drawer lets the user edit each row's start +
+// duration + keep/skip and posts the survivors as PlanApplyProposal[].
+//
+// PlanLine is the verbatim markdown line the LLM emitted (e.g.
+// "- 09:00–09:30 — review PR"); the drawer surfaces it in a tooltip
+// so the user can see *why* a slot exists without leaving the panel.
+//
+// Reason is the matched plan-line text without the time prefix —
+// useful when fuzzyMatch picks an unexpected task and the user wants
+// to see what the model actually said.
+export interface PlanProposal {
+  taskId: string;
+  taskText: string;
+  start: string; // RFC3339
+  durationMinutes: number;
+  planLine: string;
+  reason: string;
+}
+
+export interface PlanApplyProposal {
+  taskId: string;
+  start: string; // RFC3339
+  durationMinutes: number;
+}
+
 export type CalendarEventType =
   | 'daily'
   | 'task_due'
@@ -715,12 +741,35 @@ export const api = {
   // matched task. Returns scheduled + unmatched lists so the UI can
   // toast "Scheduled N of M tasks". Long-running (the LLM call is the
   // critical path); callers should show a busy state.
-  runPlanDaySchedule: () =>
+  //
+  // Pass {dryRun: true} to PREVIEW the proposals without writing — the
+  // server returns the same `proposals` shape but skips Schedule(). The
+  // PlanMyDayDrawer component uses this to let the user edit times +
+  // toggle keep/skip per row before applying.
+  runPlanDaySchedule: (opts?: { dryRun?: boolean }) =>
     req<{
       runId: string;
       scheduled: { taskId: string; start: string }[];
       unmatched: string[];
-    }>('/agents/plan-day-schedule', { method: 'POST' }),
+      proposals: PlanProposal[];
+      dryRun: boolean;
+    }>('/agents/plan-day-schedule', {
+      method: 'POST',
+      body: JSON.stringify({ dry_run: !!opts?.dryRun })
+    }),
+
+  // Plan-day-apply: commit a (possibly user-edited) subset of proposals
+  // returned by a prior dry-run. No LLM call — pure sidecar write, fast.
+  // The drawer uses this on the user's "Apply" click so the edited
+  // schedule lands on the calendar atomically.
+  applyPlanDaySchedule: (proposals: PlanApplyProposal[]) =>
+    req<{
+      scheduled: { taskId: string; start: string }[];
+      errors: string[];
+    }>('/agents/plan-day-apply', {
+      method: 'POST',
+      body: JSON.stringify({ proposals })
+    }),
 
   // Chat
   chat: (messages: ChatMessage[], notePath?: string) =>

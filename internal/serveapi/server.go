@@ -277,7 +277,12 @@ func (s *Server) Handler() http.Handler {
 		// Synchronous wrapper around plan-my-day that ALSO post-
 		// processes the agent's `## Plan` block and writes
 		// scheduledStart back to matched tasks. See handlers_plan_day_schedule.go.
+		// Pass {"dry_run":true} to preview proposals without writing —
+		// the web drawer uses this to let the user edit before commit.
 		r.Post("/api/v1/agents/plan-day-schedule", s.handlePlanDaySchedule)
+		// Companion endpoint: commits a user-edited subset of dry-run
+		// proposals to the task store. No LLM call — pure sidecar write.
+		r.Post("/api/v1/agents/plan-day-apply", s.handlePlanDayApply)
 
 		// Multi-turn chat — single-shot helper around agentruntime.Chatter.
 		// Stateless on the server; the web persists history client-side.

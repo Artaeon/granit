@@ -2,6 +2,7 @@ package serveapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -190,13 +191,55 @@ type planScheduleScheduled struct {
 	Start  string `json:"start"`
 }
 
+// planProposal is one editable row in the new preview UI. The drawer
+// shows a list of these and POSTs the user's edited subset back to
+// /agents/plan-day-apply for actual scheduling.
+//
+// PlanLine is the raw markdown the LLM emitted (e.g.
+// "- 09:00–09:30 — review PR"); the UI shows it in a tooltip so the
+// user can see *why* this slot exists.
+//
+// Reason is the matched plan-line text only (no time prefix) — what
+// fuzzyMatch matched against. Useful for debugging surprising matches.
+type planProposal struct {
+	TaskID           string `json:"taskId"`
+	TaskText         string `json:"taskText"`
+	Start            string `json:"start"`
+	DurationMinutes  int    `json:"durationMinutes"`
+	PlanLine         string `json:"planLine"`
+	Reason           string `json:"reason"`
+}
+
 type planScheduleResponse struct {
 	RunID     string                  `json:"runId"`
 	Scheduled []planScheduleScheduled `json:"scheduled"`
 	Unmatched []string                `json:"unmatched"`
+	// Proposals is populated for both dry-run and apply modes so the UI
+	// can always render the same row shape. In non-dry-run mode, every
+	// entry in Scheduled has a corresponding Proposal at the same index
+	// (proposals carry the human-readable text + plan line; scheduled
+	// is the persisted record). In dry-run mode, Scheduled is empty.
+	Proposals []planProposal `json:"proposals"`
+	DryRun    bool           `json:"dryRun"`
+}
+
+// planScheduleRequest is the optional body for POST /agents/plan-day-schedule.
+// An empty body still works (legacy callers) — DryRun defaults to false
+// so the behaviour matches the original "fire-and-forget" flow.
+type planScheduleRequest struct {
+	DryRun bool `json:"dry_run"`
 }
 
 func (s *Server) handlePlanDaySchedule(w http.ResponseWriter, r *http.Request) {
+	// Decode optional body. Empty body = legacy behaviour (immediate
+	// scheduling). Bad JSON is tolerated as empty body — we don't want
+	// to break the existing TaskBacklog button if the web ever sends
+	// a stale shape during a deploy.
+	var req planScheduleRequest
+	if r.Body != nil && r.ContentLength != 0 {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+
 	cat := agents.NewPresetCatalog(agents.BuiltinPresets())
 	_, _ = cat.LoadVaultDir(s.cfg.Vault.Root)
 	preset, ok := cat.ByID("plan-my-day")
@@ -311,8 +354,48 @@ func (s *Server) handlePlanDaySchedule(w http.ResponseWriter, r *http.Request) {
 		return !ss.Before(startOfDay) && ss.Before(endOfDay)
 	})
 
-	scheduled := make([]planScheduleScheduled, 0, len(blocks))
-	unmatched := make([]string, 0)
+	scheduled, unmatched, proposals := buildPlanProposals(
+		blocks, candidates, startOfDay, req.DryRun, s.cfg.TaskStore,
+	)
+
+	writeJSON(w, http.StatusOK, planScheduleResponse{
+		RunID:     runID,
+		Scheduled: scheduled,
+		Unmatched: unmatched,
+		Proposals: proposals,
+		DryRun:    req.DryRun,
+	})
+}
+
+// planScheduler is the narrow contract buildPlanProposals needs from a
+// task store. Lets tests pass a nil store for the dry-run path without
+// dragging the full TaskStore machinery into a focused unit test.
+type planScheduler interface {
+	Schedule(id string, start time.Time, dur time.Duration) error
+	Triage(id string, state tasks.TriageState) error
+}
+
+// buildPlanProposals walks the parsed plan blocks, fuzzy-matches each to
+// a task in candidates, and either persists the schedule (dryRun=false)
+// or just records the proposal (dryRun=true). Centralising this loop
+// lets us unit-test the dry-run contract: "DryRun MUST NOT call Schedule".
+//
+// store may be nil only when dryRun=true. Passing nil in commit mode is
+// a programmer error and would panic — the test helper avoids this.
+func buildPlanProposals(
+	blocks []planBlock,
+	candidates []tasks.Task,
+	startOfDay time.Time,
+	dryRun bool,
+	store planScheduler,
+) (
+	scheduled []planScheduleScheduled,
+	unmatched []string,
+	proposals []planProposal,
+) {
+	scheduled = make([]planScheduleScheduled, 0, len(blocks))
+	unmatched = make([]string, 0)
+	proposals = make([]planProposal, 0, len(blocks))
 
 	for _, b := range blocks {
 		t := fuzzyMatch(b.Text, candidates)
@@ -336,7 +419,27 @@ func (s *Server) handlePlanDaySchedule(w http.ResponseWriter, r *http.Request) {
 		if dur <= 0 {
 			dur = 30 * time.Minute
 		}
-		if err := s.cfg.TaskStore.Schedule(t.ID, start, dur); err != nil {
+
+		// Build the proposal row for the UI either way. The LLM's text
+		// is preserved verbatim so the user can see what the model
+		// actually wrote — handy when fuzzyMatch latches onto an
+		// unexpected task (rare but happens with short verbs).
+		proposals = append(proposals, planProposal{
+			TaskID:          t.ID,
+			TaskText:        t.Text,
+			Start:           start.Format(time.RFC3339),
+			DurationMinutes: int(dur / time.Minute),
+			PlanLine:        formatPlanLine(b),
+			Reason:          b.Text,
+		})
+
+		if dryRun {
+			// No write. The UI will collect edited proposals and POST
+			// /agents/plan-day-apply with the user's chosen subset.
+			continue
+		}
+
+		if err := store.Schedule(t.ID, start, dur); err != nil {
 			// Schedule failure is rare (sidecar write IO) but
 			// non-fatal — keep going for the rest of the blocks. Log
 			// to the response by treating as unmatched so the UI's
@@ -345,16 +448,115 @@ func (s *Server) handlePlanDaySchedule(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		// Also flip triage to scheduled so the kanban board reflects.
-		_ = s.cfg.TaskStore.Triage(t.ID, tasks.TriageScheduled)
+		_ = store.Triage(t.ID, tasks.TriageScheduled)
 		scheduled = append(scheduled, planScheduleScheduled{
 			TaskID: t.ID,
 			Start:  start.Format(time.RFC3339),
 		})
 	}
+	return scheduled, unmatched, proposals
+}
 
-	writeJSON(w, http.StatusOK, planScheduleResponse{
-		RunID:     runID,
+// formatPlanLine renders a planBlock back into the markdown line shape
+// the LLM emits, so the drawer's tooltip ("AI suggested this because:
+// <line>") shows the same text the user would see if they opened the
+// daily note. Uses an en-dash to match the canonical preset output.
+func formatPlanLine(b planBlock) string {
+	return "- " +
+		twoDigit(b.StartH) + ":" + twoDigit(b.StartM) +
+		"–" +
+		twoDigit(b.EndH) + ":" + twoDigit(b.EndM) +
+		" — " + b.Text
+}
+
+func twoDigit(n int) string {
+	if n < 10 {
+		return "0" + string(rune('0'+n))
+	}
+	return string(rune('0'+n/10)) + string(rune('0'+n%10))
+}
+
+// planApplyProposal is one row from the user's edited subset. The web
+// drawer collects these from the dry-run response, lets the user tweak
+// time/duration/keep-skip, and POSTs the survivors here.
+//
+// Start is RFC3339; DurationMinutes is the user's chosen duration (the
+// drawer's duration picker snaps to 15/30/45/60/90).
+type planApplyProposal struct {
+	TaskID          string `json:"taskId"`
+	Start           string `json:"start"`
+	DurationMinutes int    `json:"durationMinutes"`
+}
+
+type planApplyRequest struct {
+	Proposals []planApplyProposal `json:"proposals"`
+}
+
+type planApplyResponse struct {
+	Scheduled []planScheduleScheduled `json:"scheduled"`
+	// Errors holds task IDs that couldn't be scheduled (sidecar write
+	// failure, missing task, malformed start). UI shows these as
+	// "couldn't apply N proposals".
+	Errors []string `json:"errors"`
+}
+
+// handlePlanDayApply commits a subset of proposals from a prior dry-run
+// to the task store. Idempotent against the same subset (TaskStore.Schedule
+// overwrites scheduledStart/durationMinutes), so a click-double-click
+// won't double-schedule.
+//
+// Why a separate endpoint instead of folding into plan-day-schedule:
+// the dry-run is expensive (LLM call, ~5–30s) and we want apply to be
+// fast (just sidecar writes, ~50ms). Splitting also means the apply
+// path doesn't need an LLM at all — relevant when the user hits Apply
+// after the model has gone offline mid-session.
+func (s *Server) handlePlanDayApply(w http.ResponseWriter, r *http.Request) {
+	var body planApplyRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if len(body.Proposals) == 0 {
+		// Empty apply is harmless but pointless — return an empty list
+		// rather than an error so the UI can call Apply on a fully-
+		// rejected proposal set without surfacing an error toast.
+		writeJSON(w, http.StatusOK, planApplyResponse{
+			Scheduled: []planScheduleScheduled{},
+			Errors:    []string{},
+		})
+		return
+	}
+
+	scheduled := make([]planScheduleScheduled, 0, len(body.Proposals))
+	errs := make([]string, 0)
+
+	for _, p := range body.Proposals {
+		if p.TaskID == "" {
+			errs = append(errs, "(missing taskId)")
+			continue
+		}
+		start, err := time.Parse(time.RFC3339, p.Start)
+		if err != nil {
+			errs = append(errs, p.TaskID)
+			continue
+		}
+		dur := time.Duration(p.DurationMinutes) * time.Minute
+		if dur <= 0 {
+			dur = 30 * time.Minute
+		}
+		if err := s.cfg.TaskStore.Schedule(p.TaskID, start, dur); err != nil {
+			errs = append(errs, p.TaskID)
+			continue
+		}
+		_ = s.cfg.TaskStore.Triage(p.TaskID, tasks.TriageScheduled)
+		scheduled = append(scheduled, planScheduleScheduled{
+			TaskID: p.TaskID,
+			Start:  start.Format(time.RFC3339),
+		})
+	}
+
+	writeJSON(w, http.StatusOK, planApplyResponse{
 		Scheduled: scheduled,
-		Unmatched: unmatched,
+		Errors:    errs,
 	})
 }

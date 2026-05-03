@@ -2,9 +2,34 @@ package serveapi
 
 import (
 	"testing"
+	"time"
 
 	"github.com/artaeon/granit/internal/tasks"
 )
+
+// recordingScheduler is a planScheduler stub that just remembers every
+// call. Used to verify that dry-run mode doesn't write — the real
+// TaskStore depends on a vault root + sidecar files, which is too much
+// machinery for what we want to assert here.
+type recordingScheduler struct {
+	scheduleCalls []scheduleCall
+	triageCalls   []string
+}
+
+type scheduleCall struct {
+	id    string
+	start time.Time
+	dur   time.Duration
+}
+
+func (r *recordingScheduler) Schedule(id string, start time.Time, dur time.Duration) error {
+	r.scheduleCalls = append(r.scheduleCalls, scheduleCall{id, start, dur})
+	return nil
+}
+func (r *recordingScheduler) Triage(id string, _ tasks.TriageState) error {
+	r.triageCalls = append(r.triageCalls, id)
+	return nil
+}
 
 // parsePlanSection — verifies the regex picks up all three dash variants
 // the LLM emits non-deterministically (-, –, —) and only inside the
@@ -175,5 +200,110 @@ func TestFuzzyMatch_RejectsTooShort(t *testing.T) {
 	}
 	if got := fuzzyMatch("xy", candidates); got != nil {
 		t.Errorf("expected nil for too-short input, got %+v", got)
+	}
+}
+
+// buildPlanProposals — the dry-run contract. The whole point of the
+// preview UI is that the user can review proposals BEFORE commit.
+// If dry_run=true ever calls Schedule, every drawer surface
+// silently shifts task times the moment the user opens it.
+
+func TestBuildPlanProposals_DryRunDoesNotWrite(t *testing.T) {
+	blocks := []planBlock{
+		{StartH: 9, StartM: 0, EndH: 9, EndM: 30, Text: "ship the auth refresh"},
+		{StartH: 10, StartM: 0, EndH: 10, EndM: 30, Text: "code review"},
+	}
+	candidates := []tasks.Task{
+		{ID: "t1", Text: "Ship the auth refresh"},
+		{ID: "t2", Text: "Code review the new endpoint"},
+	}
+	start := time.Date(2026, 5, 3, 0, 0, 0, 0, time.Local)
+
+	rec := &recordingScheduler{}
+	scheduled, unmatched, proposals := buildPlanProposals(blocks, candidates, start, true, rec)
+
+	if len(rec.scheduleCalls) != 0 {
+		t.Errorf("dry-run called Schedule %d times — must be 0: %+v",
+			len(rec.scheduleCalls), rec.scheduleCalls)
+	}
+	if len(rec.triageCalls) != 0 {
+		t.Errorf("dry-run called Triage %d times — must be 0", len(rec.triageCalls))
+	}
+	if len(scheduled) != 0 {
+		t.Errorf("dry-run scheduled list must be empty, got %d", len(scheduled))
+	}
+	if len(unmatched) != 0 {
+		t.Errorf("dry-run had unmatched lines, got %d: %v", len(unmatched), unmatched)
+	}
+	if len(proposals) != 2 {
+		t.Fatalf("dry-run should still build proposals, got %d", len(proposals))
+	}
+	// Proposals must carry the data the drawer renders.
+	if proposals[0].TaskID != "t1" {
+		t.Errorf("proposals[0].TaskID=%q want t1", proposals[0].TaskID)
+	}
+	if proposals[0].DurationMinutes != 30 {
+		t.Errorf("proposals[0].DurationMinutes=%d want 30", proposals[0].DurationMinutes)
+	}
+	if proposals[0].PlanLine == "" {
+		t.Error("proposals[0].PlanLine empty — UI tooltip needs the raw line")
+	}
+	if proposals[0].Reason != "ship the auth refresh" {
+		t.Errorf("proposals[0].Reason=%q want raw plan text", proposals[0].Reason)
+	}
+}
+
+func TestBuildPlanProposals_CommitWrites(t *testing.T) {
+	blocks := []planBlock{
+		{StartH: 14, StartM: 0, EndH: 15, EndM: 0, Text: "deep work"},
+	}
+	candidates := []tasks.Task{
+		{ID: "t1", Text: "Deep work block"},
+	}
+	start := time.Date(2026, 5, 3, 0, 0, 0, 0, time.Local)
+
+	rec := &recordingScheduler{}
+	scheduled, _, _ := buildPlanProposals(blocks, candidates, start, false, rec)
+
+	if len(rec.scheduleCalls) != 1 {
+		t.Fatalf("commit should call Schedule once, got %d", len(rec.scheduleCalls))
+	}
+	if rec.scheduleCalls[0].id != "t1" {
+		t.Errorf("schedule call id=%q want t1", rec.scheduleCalls[0].id)
+	}
+	if rec.scheduleCalls[0].dur != time.Hour {
+		t.Errorf("schedule call dur=%v want 1h", rec.scheduleCalls[0].dur)
+	}
+	if len(scheduled) != 1 || scheduled[0].TaskID != "t1" {
+		t.Errorf("scheduled response wrong: %+v", scheduled)
+	}
+	if len(rec.triageCalls) != 1 || rec.triageCalls[0] != "t1" {
+		t.Errorf("triage call wrong: %+v", rec.triageCalls)
+	}
+}
+
+func TestBuildPlanProposals_UnmatchedReported(t *testing.T) {
+	blocks := []planBlock{
+		{StartH: 9, StartM: 0, EndH: 9, EndM: 30, Text: "completely unrelated phrase"},
+	}
+	candidates := []tasks.Task{
+		{ID: "t1", Text: "Buy groceries"},
+	}
+	start := time.Date(2026, 5, 3, 0, 0, 0, 0, time.Local)
+
+	_, unmatched, proposals := buildPlanProposals(blocks, candidates, start, true, &recordingScheduler{})
+	if len(unmatched) != 1 {
+		t.Errorf("expected 1 unmatched, got %d", len(unmatched))
+	}
+	if len(proposals) != 0 {
+		t.Errorf("expected 0 proposals when nothing matched, got %d", len(proposals))
+	}
+}
+
+func TestFormatPlanLine(t *testing.T) {
+	got := formatPlanLine(planBlock{StartH: 9, StartM: 5, EndH: 10, EndM: 30, Text: "ship it"})
+	want := "- 09:05–10:30 — ship it"
+	if got != want {
+		t.Errorf("formatPlanLine = %q, want %q", got, want)
 	}
 }
