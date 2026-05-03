@@ -26,6 +26,14 @@ var (
 	rePrioHigh       = regexp.MustCompile(`\x{23EB}`)                        // ⏫
 	rePrioMed        = regexp.MustCompile(`\x{1F53C}`)                       // 🔼
 	rePrioLow        = regexp.MustCompile(`\x{1F53D}`)                       // 🔽
+	// ASCII shorthand `!1` / `!2` / `!3` is what the web's
+	// buildTaskTextLine writes (and what the TUI also accepts on
+	// inline-task entry). Without this regex, web-created tasks would
+	// have `!1` in the markdown line but Priority=0 in the TaskStore —
+	// the API would round-trip a priority field of 0 even though the
+	// marker was written. Same numeric scale as the emoji branch:
+	// !1=Highest=4, !2=High=3, !3=Med=2.
+	rePrioBangAscii = regexp.MustCompile(`(?:^|\s)!([1-3])(?:\s|$)`)
 	reTagInLine      = regexp.MustCompile(`#([A-Za-z0-9_/-]+)`)
 	reScheduledTime  = regexp.MustCompile(`⏰\s*(\d{2}:\d{2}-\d{2}:\d{2})`)
 	reDepends        = regexp.MustCompile(`depends:"([^"]+)"|depends:([^\s]+)`)
@@ -131,6 +139,21 @@ func applyMarkdownExtras(t *Task, notePath, taskText string) {
 		t.Priority = 2
 	case rePrioLow.MatchString(taskText):
 		t.Priority = 1
+	default:
+		// ASCII `!N` shorthand fallback. `!1` → Highest (4), `!2` →
+		// High (3), `!3` → Med (2). The mapping inverts the digit so
+		// "P1 = highest" matches user intuition AND the parser's
+		// existing emoji semantics where bigger number = more urgent.
+		if m := rePrioBangAscii.FindStringSubmatch(taskText); m != nil {
+			switch m[1] {
+			case "1":
+				t.Priority = 4
+			case "2":
+				t.Priority = 3
+			case "3":
+				t.Priority = 2
+			}
+		}
 	}
 
 	if sm := reScheduledTime.FindStringSubmatch(taskText); sm != nil {

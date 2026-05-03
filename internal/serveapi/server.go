@@ -163,6 +163,7 @@ func (s *Server) Handler() http.Handler {
 
 		r.Get("/api/v1/tasks", s.handleListTasks)
 		r.Post("/api/v1/tasks", s.handleCreateTask)
+		r.Delete("/api/v1/tasks/{id}", s.handleDeleteTask)
 		r.Get("/api/v1/tasks/{id}", s.handleGetTask)
 		r.Patch("/api/v1/tasks/{id}", s.handlePatchTask)
 

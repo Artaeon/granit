@@ -43,6 +43,24 @@ type taskView struct {
 	GranitOrigin     string     `json:"granitOrigin,omitempty"`
 }
 
+// priorityStoreToAPI maps the parser's internal Priority field (where
+// 4=Highest, 3=High, 2=Med, 1=Low — matches the emoji order) to the
+// web's API convention where 1=Highest, 2=Med, 3=Low. The web's
+// TaskCard renders P1 in red (most urgent) so the inversion is what
+// users expect. Out-of-range values pass through as 0 so the
+// `priority > 0` UI guard hides them.
+func priorityStoreToAPI(p int) int {
+	switch p {
+	case 4:
+		return 1
+	case 3:
+		return 2
+	case 2:
+		return 3
+	}
+	return 0
+}
+
 func taskToView(t tasks.Task) taskView {
 	v := taskView{
 		ID:               t.ID,
@@ -51,7 +69,7 @@ func taskToView(t tasks.Task) taskView {
 		LineNum:          t.LineNum,
 		Text:             t.Text,
 		Done:             t.Done,
-		Priority:         t.Priority,
+		Priority:         priorityStoreToAPI(t.Priority),
 		Tags:             t.Tags,
 		DueDate:          t.DueDate,
 		ProjectID:        t.ProjectID,
@@ -341,6 +359,28 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, taskToView(t))
 }
 
+// handleDeleteTask removes the task line from its source note and
+// tombstones the ID so reconciliation doesn't resurrect it. Mirrors
+// the TUI's delete behaviour exactly — same TaskStore.Delete, same
+// atomic write path. Returns 204 on success, 404 when the id is
+// unknown.
+func (s *Server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "id required")
+		return
+	}
+	if err := s.cfg.TaskStore.Delete(id); err != nil {
+		if errors.Is(err, tasks.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "task not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ---- line transforms ----
 
 var (
@@ -364,8 +404,13 @@ func transformDone(line string, done bool) string {
 	if done {
 		ch = 'x'
 	}
-	// m[2]:m[3] is the checkbox char group
-	return line[:m[2]] + string(ch) + line[m[3]:]
+	// FindStringSubmatchIndex returns [full_start, full_end, g1_start, g1_end,
+	// g2_start, g2_end, ...]. The checkbox character is the SECOND capture
+	// group (the [ xX] inside the brackets), so its bounds are at indices
+	// m[4]:m[5]. Previous code used m[2]:m[3] which is group 1 (the
+	// prefix "  - [") — replacing that with the char produced "x ] task"
+	// instead of "- [x] task" and broke every PATCH done:true call.
+	return line[:m[4]] + string(ch) + line[m[5]:]
 }
 
 func transformPriority(line string, p int) string {
