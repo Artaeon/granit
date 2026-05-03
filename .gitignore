@@ -35,6 +35,33 @@
 .DS_Store
 Thumbs.db
 
+# Secrets — defense in depth. Audit (HEAD + git history) currently
+# shows no committed secrets, but add the common patterns so a
+# future "I'll just put my OpenAI key in .env for testing" doesn't
+# silently land in a public commit. Update this list when you grow
+# new secret-bearing files; it's cheaper to over-ignore than under.
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+!*.public.key
+*.crt
+*.p12
+*.pfx
+secrets.json
+credentials.json
+id_rsa
+id_ed25519
+id_ecdsa
+*_rsa
+*_ed25519
+*.gpg-secret
+.npmrc
+.netrc
+.aws/credentials
+
 # Build
 /build/
 /tmp/
