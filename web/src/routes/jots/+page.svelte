@@ -177,6 +177,73 @@
     goto(`/notes/${encodeURIComponent(path)}`);
   }
 
+  // Quick-jot composer — Amplenote-style "fire a thought into today"
+  // without leaving the feed. Appends a timestamped line under a
+  // `## Jots` section in today's daily, creating the section on first
+  // use. The WS note.changed event then re-fetches today's jot in
+  // the feed automatically.
+  let composerText = $state('');
+  let composerBusy = $state(false);
+  let composerEl = $state<HTMLTextAreaElement | undefined>();
+
+  function appendUnderJotsSection(body: string, line: string): string {
+    // Find the `## Jots` heading; if present, splice the line in just
+    // below it (after any existing list items the user has there). If
+    // missing, append the section to the end of the document.
+    const lines = body.split('\n');
+    const idx = lines.findIndex((l) => /^##\s+Jots\b/i.test(l.trim()));
+    if (idx === -1) {
+      const sep = body.endsWith('\n') ? '' : '\n';
+      return body + `${sep}\n## Jots\n${line}\n`;
+    }
+    // Walk past the heading to the end of the section (next `## ` or EOF).
+    let end = lines.length;
+    for (let i = idx + 1; i < lines.length; i++) {
+      if (/^##\s+/.test(lines[i].trim())) {
+        end = i;
+        break;
+      }
+    }
+    // Insert before `end`, trimming trailing empty lines so the new
+    // line sits flush with the section content.
+    let insertAt = end;
+    while (insertAt > idx + 1 && lines[insertAt - 1].trim() === '') insertAt--;
+    lines.splice(insertAt, 0, line);
+    return lines.join('\n');
+  }
+
+  async function submitJot() {
+    const text = composerText.trim();
+    if (!text || composerBusy) return;
+    composerBusy = true;
+    try {
+      const note = await api.daily('today');
+      const t = new Date();
+      const hh = String(t.getHours()).padStart(2, '0');
+      const mm = String(t.getMinutes()).padStart(2, '0');
+      // Multi-line input collapses to "; " separators so the appended
+      // line stays a single bullet. Original line breaks are preserved
+      // by markdown viewers since the line ends with a bullet.
+      const flat = text.replace(/\n+/g, '; ');
+      const newBody = appendUnderJotsSection(note.body ?? '', `- ${hh}:${mm} — ${flat}`);
+      await api.putNote(note.path, {
+        frontmatter: note.frontmatter ?? undefined,
+        body: newBody
+      });
+      composerText = '';
+      toast.success('jot saved');
+      // WS will re-fetch; queue an immediate optimistic refetch too in
+      // case the WS round-trip lags.
+      const today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+      scheduleRefetch(today);
+      composerEl?.focus();
+    } catch (e) {
+      toast.error('failed to add jot: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      composerBusy = false;
+    }
+  }
+
   // ── lifecycle ─────────────────────────────────────────────────────
   // Debounce WS-driven refetches per-date — a flurry of writes (the
   // user typing into a daily) shouldn't trigger a refetch per
@@ -312,6 +379,36 @@
       {:else if searchText && !searching}
         <div class="mt-2 text-xs text-dim italic px-1">no matches — press Enter to search</div>
       {/if}
+    </div>
+
+    <!-- Quick-jot composer — Amplenote-style fire-and-forget input
+         that appends a timestamped line to today's daily. The user
+         doesn't navigate; the new content lands in the feed below. -->
+    <div class="mb-5 bg-surface0 border border-surface1 rounded-lg focus-within:border-primary transition-colors">
+      <textarea
+        bind:this={composerEl}
+        bind:value={composerText}
+        onkeydown={(e) => {
+          // Enter (without shift) submits; Shift+Enter inserts a newline
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            submitJot();
+          }
+        }}
+        placeholder="What's on your mind? (Enter to save, Shift+Enter for newline)"
+        rows="2"
+        disabled={composerBusy}
+        class="w-full bg-transparent px-3 py-2 text-sm text-text placeholder-dim focus:outline-none resize-y disabled:opacity-50"
+      ></textarea>
+      <div class="flex items-center justify-between px-3 py-1.5 border-t border-surface1/50">
+        <p class="text-[10px] text-dim">Appends under <code>## Jots</code> in today's daily</p>
+        <button
+          type="button"
+          onclick={submitJot}
+          disabled={composerBusy || !composerText.trim()}
+          class="text-xs px-3 py-1 rounded bg-primary text-on-primary font-medium hover:opacity-90 disabled:opacity-50"
+        >{composerBusy ? '…' : 'Add jot'}</button>
+      </div>
     </div>
 
     {#if error}

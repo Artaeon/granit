@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
   import { api, type ObjectType, type ObjectInstance } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
+  import { toast } from '$lib/components/toast';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
 
@@ -13,6 +15,65 @@
   let activeType = $state<ObjectType | null>(null);
   let objects = $state<ObjectInstance[]>([]);
   let objLoading = $state(false);
+
+  // Inline filter — narrows the visible objects by title or any
+  // property value (case-insensitive substring). Cheap because the
+  // full set already fits in memory; switching to a debounced
+  // server-side query is overkill until a single type holds 5k+ rows.
+  let filterText = $state('');
+  let filtered = $derived.by(() => {
+    const q = filterText.trim().toLowerCase();
+    if (!q) return objects;
+    return objects.filter((o) => {
+      if (o.title.toLowerCase().includes(q)) return true;
+      if (o.path.toLowerCase().includes(q)) return true;
+      if (o.properties) {
+        for (const v of Object.values(o.properties)) {
+          if (typeof v === 'string' && v.toLowerCase().includes(q)) return true;
+        }
+      }
+      return false;
+    });
+  });
+
+  // Create-new dialog state. Kept inline rather than a separate
+  // component — only one entry point and the form is two fields.
+  let createOpen = $state(false);
+  let createTitle = $state('');
+  let createBusy = $state(false);
+
+  function openCreate() {
+    if (!activeType) return;
+    createTitle = '';
+    createOpen = true;
+  }
+
+  async function submitCreate() {
+    const t = activeType;
+    if (!t || !createTitle.trim() || createBusy) return;
+    createBusy = true;
+    try {
+      // Slug: keep alphanum + dashes/underscores, collapse spaces. The
+      // server enforces uniqueness; collisions surface as 409 and the
+      // user retries with a different title. Folder defaults to vault
+      // root if the type doesn't declare one.
+      const slug = createTitle.trim().replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '');
+      const folder = (t.folder ?? '').replace(/\/+$/, '');
+      const path = folder ? `${folder}/${slug}.md` : `${slug}.md`;
+      await api.createNote({
+        path,
+        frontmatter: { type: t.id, title: createTitle.trim() },
+        body: `# ${createTitle.trim()}\n\n`
+      });
+      createOpen = false;
+      toast.success(`${t.name} created`);
+      goto(`/notes/${encodeURIComponent(path)}`);
+    } catch (e) {
+      toast.error('failed to create: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      createBusy = false;
+    }
+  }
 
   async function loadTypes() {
     if (!$auth) return;
@@ -85,16 +146,29 @@
   </aside>
 
   <div class="flex-1 flex flex-col min-w-0">
-    <header class="px-3 sm:px-4 py-3 border-b border-surface1 flex items-baseline gap-3 flex-shrink-0">
+    <header class="px-3 sm:px-4 py-3 border-b border-surface1 flex flex-wrap items-center gap-3 flex-shrink-0">
       <h1 class="text-xl sm:text-2xl font-semibold text-text flex items-baseline gap-2">
         <span>{activeType?.icon ?? '◇'}</span>
         <span>{activeType?.name ?? 'Objects'}</span>
       </h1>
       {#if activeType}
-        <span class="text-xs text-dim">{objects.length}</span>
+        <span class="text-xs text-dim">
+          {filtered.length}{filterText && filtered.length !== objects.length ? ` of ${objects.length}` : ''}
+        </span>
         {#if activeType.folder}
           <span class="text-xs text-dim hidden sm:inline">· folder <code class="text-[10px]">{activeType.folder}/</code></span>
         {/if}
+        <span class="flex-1"></span>
+        <input
+          bind:value={filterText}
+          placeholder="filter…"
+          class="w-32 sm:w-48 bg-mantle border border-surface1 rounded px-2 py-1 text-xs text-text placeholder-dim focus:outline-none focus:border-primary"
+        />
+        <button
+          type="button"
+          onclick={openCreate}
+          class="text-xs px-2.5 py-1 rounded bg-primary text-on-primary font-medium hover:opacity-90"
+        >+ New {activeType.name}</button>
       {/if}
     </header>
 
@@ -137,10 +211,12 @@
           title={`No ${t.name} notes yet`}
           description={`Notes get this type when they have type: ${t.id} in their frontmatter. Create one in the TUI or set the frontmatter manually.`}
         />
+      {:else if filtered.length === 0}
+        <div class="text-sm text-dim italic">no objects match this filter.</div>
       {:else}
         {@const cols = summaryProps(activeType)}
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-          {#each objects as o (o.path)}
+          {#each filtered as o (o.path)}
             <a
               href="/notes/{encodeURIComponent(o.path)}"
               class="bg-surface0 border border-surface1 rounded-lg p-3 hover:border-primary/40 transition-colors block"
@@ -166,3 +242,55 @@
     </div>
   </div>
 </div>
+
+<!-- Create-new modal. Single title field; the server fills the rest
+     from the type's defaults. Slug-encodes the title for the path. -->
+{#if createOpen && activeType}
+  <div
+    class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+    onclick={() => (createOpen = false)}
+    role="dialog"
+    tabindex="-1"
+    onkeydown={(e) => { if (e.key === 'Escape') createOpen = false; }}
+  >
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+      class="w-full max-w-sm bg-mantle border border-surface1 rounded-lg shadow-xl"
+      role="document"
+    >
+      <header class="px-4 py-3 border-b border-surface1">
+        <h2 class="text-base font-semibold text-text">
+          New {activeType.icon ?? '◇'} {activeType.name}
+        </h2>
+      </header>
+      <form onsubmit={(e) => { e.preventDefault(); submitCreate(); }} class="p-4 space-y-3">
+        <label class="block">
+          <span class="text-xs text-dim">Title</span>
+          <input
+            bind:value={createTitle}
+            placeholder={`${activeType.name} title…`}
+            disabled={createBusy}
+            class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary"
+          />
+        </label>
+        <p class="text-[11px] text-dim">
+          Saved to <code>{activeType.folder ?? '(vault root)'}/</code> with frontmatter <code>type: {activeType.id}</code>.
+        </p>
+        <div class="flex gap-2 justify-end pt-1">
+          <button
+            type="button"
+            onclick={() => (createOpen = false)}
+            class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1"
+          >Cancel</button>
+          <button
+            type="submit"
+            disabled={createBusy || !createTitle.trim()}
+            class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90 disabled:opacity-50"
+          >{createBusy ? '…' : 'Create'}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}
