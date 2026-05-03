@@ -7,6 +7,7 @@
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
   import { classifyAiError } from '$lib/util/aiErrors';
+  import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
 
   // The wizard runs in 7 steps now. The new "anchors" step opens the
   // routine with a read-only review of what the user is currently
@@ -390,19 +391,6 @@
     t.setHours(0, 0, 0, 0);
     return Math.round((due.getTime() - t.getTime()) / 86_400_000);
   }
-  function relLabel(days: number): string {
-    if (days < 0) return `${Math.abs(days)}d overdue`;
-    if (days === 0) return 'today';
-    if (days === 1) return 'tomorrow';
-    if (days < 14) return `in ${days}d`;
-    return `in ${Math.round(days / 7)}w`;
-  }
-  function deadlineTone(days: number): string {
-    if (days < 0) return 'error';
-    if (days <= 3) return 'error';
-    if (days <= 7) return 'warning';
-    return 'info';
-  }
   function goalProgress(g: Goal): number {
     const ms = g.milestones ?? [];
     if (!ms || ms.length === 0) return 0;
@@ -539,14 +527,9 @@
             </div>
             <ul class="space-y-1.5">
               {#each upcomingNear as { d, days } (d.id)}
-                {@const t = deadlineTone(days)}
                 <li class="flex items-baseline gap-2">
-                  <span
-                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium tabular-nums whitespace-nowrap"
-                    style="background: color-mix(in srgb, var(--color-{t}) 14%, transparent); color: var(--color-{t}); border: 1px solid color-mix(in srgb, var(--color-{t}) 30%, transparent);"
-                  >
-                    {relLabel(days)}
-                  </span>
+                  <DeadlinePill variant="countdown" {days} status={d.status} />
+                  <DeadlinePill variant="icon" importance={d.importance} />
                   <span class="text-sm text-text flex-1 truncate">{d.title}</span>
                   {#if d.goal_id && allGoalsById[d.goal_id]}
                     <span class="text-[11px] text-dim truncate">🎯 {allGoalsById[d.goal_id]}</span>

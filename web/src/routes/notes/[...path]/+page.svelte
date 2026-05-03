@@ -12,6 +12,7 @@
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import DailyQuickAdd from '$lib/notes/DailyQuickAdd.svelte';
   import DailyContext from '$lib/notes/DailyContext.svelte';
+  import NoteDeadlinesStrip from '$lib/deadlines/NoteDeadlinesStrip.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
   import { toast } from '$lib/components/toast';
   import { getDraft, setDraft, clearDraft, draftDivergesFromServer } from '$lib/notes/drafts';
@@ -596,6 +597,10 @@
         <DailyContext onChanged={async () => { lastLoadedPath = ''; await load(np); }} />
         <DailyQuickAdd notePath={np} dailyDate={dailyDate} onAdded={async () => { lastLoadedPath = ''; await load(np); }} />
       {/if}
+      <!-- Deadline strip — surfaces project/goal-linked deadlines for
+           this note. Renders nothing when frontmatter has neither
+           field, or none of the deadlines match. -->
+      <NoteDeadlinesStrip frontmatter={note.frontmatter ?? null} />
       <div class="flex-1 min-h-0 p-2 sm:p-3">
         {#if viewMode === 'edit'}
           <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} />

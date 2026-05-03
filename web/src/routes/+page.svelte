@@ -204,6 +204,64 @@
     persist();
   }
 
+  // ----- Drag-and-drop reorder (customize-mode only) -----
+  //
+  // Uses native HTML5 DnD instead of pointer events so we don't conflict
+  // with the calendar's plan-mode pointer drag (which lives on a totally
+  // different surface). The moveUp/moveDown buttons stay as a fallback
+  // for keyboard / touch users who can't easily hold-drag.
+  let dragId = $state<string | null>(null);
+  let dragOverId = $state<string | null>(null);
+
+  function onDragStart(id: string, ev: DragEvent) {
+    if (!editing) return;
+    dragId = id;
+    if (ev.dataTransfer) {
+      ev.dataTransfer.effectAllowed = 'move';
+      // Required on Firefox — without setData() the drag never starts.
+      try { ev.dataTransfer.setData('text/plain', id); } catch {}
+    }
+  }
+
+  function onDragOver(id: string, ev: DragEvent) {
+    if (!editing || !dragId || dragId === id) return;
+    ev.preventDefault();
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+    dragOverId = id;
+  }
+
+  function onDragLeave(id: string) {
+    if (dragOverId === id) dragOverId = null;
+  }
+
+  function onDrop(targetId: string, ev: DragEvent) {
+    if (!editing || !config || !dragId || dragId === targetId) {
+      dragId = null;
+      dragOverId = null;
+      return;
+    }
+    ev.preventDefault();
+    const ws = [...config.widgets];
+    const fromIdx = ws.findIndex((w) => w.id === dragId);
+    const toIdx = ws.findIndex((w) => w.id === targetId);
+    if (fromIdx < 0 || toIdx < 0) {
+      dragId = null;
+      dragOverId = null;
+      return;
+    }
+    const [moved] = ws.splice(fromIdx, 1);
+    ws.splice(toIdx, 0, moved);
+    config = { ...config, widgets: ws };
+    dragId = null;
+    dragOverId = null;
+    persist();
+  }
+
+  function onDragEnd() {
+    dragId = null;
+    dragOverId = null;
+  }
+
   let activeWidgets = $derived.by(() => {
     if (!config) return [];
     return config.widgets
@@ -381,7 +439,18 @@
             {#each config.widgets as w, i (w.id)}
               {@const meta = widgetMeta(w.type)}
               {#if meta}
-                <li class="flex items-center gap-2 py-1">
+                <li
+                  draggable="true"
+                  ondragstart={(ev) => onDragStart(w.id, ev)}
+                  ondragover={(ev) => onDragOver(w.id, ev)}
+                  ondragleave={() => onDragLeave(w.id)}
+                  ondrop={(ev) => onDrop(w.id, ev)}
+                  ondragend={onDragEnd}
+                  class="flex items-center gap-2 py-1.5 px-2 rounded transition-colors cursor-grab active:cursor-grabbing
+                    {dragId === w.id ? 'opacity-40' : ''}
+                    {dragOverId === w.id && dragId !== w.id ? 'bg-primary/10 border border-primary/40' : 'border border-transparent'}"
+                >
+                  <span aria-hidden="true" class="text-dim/60 select-none flex-shrink-0" title="drag to reorder">⋮⋮</span>
                   <button
                     onclick={() => toggleWidget(w.id)}
                     aria-label="toggle"
@@ -403,7 +472,7 @@
             {/each}
           </ul>
           <p class="text-xs text-dim pt-2 border-t border-surface1">
-            saved to <code class="text-[10px]">.granit/everything-dashboard.json</code> · syncs across devices
+            drag rows to reorder · saved to <code class="text-[10px]">.granit/everything-dashboard.json</code> · syncs across devices
           </p>
         </section>
       {/if}
