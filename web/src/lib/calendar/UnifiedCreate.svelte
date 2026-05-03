@@ -257,17 +257,21 @@
           </div>
         {:else}
           <!-- Calendar picker. Default ("") = events.json (granit-native);
-               any other value routes through the new ICS endpoints. -->
-          <label class="block text-[11px] text-dim uppercase tracking-wider">Calendar</label>
-          <select
-            bind:value={calendarTarget}
-            class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text"
-          >
-            <option value="">events.json (default)</option>
-            {#each writableSources as src}
-              <option value={src.source}>{src.source}</option>
-            {/each}
-          </select>
+               any other value routes through the new ICS endpoints.
+               Wrapping the select inside the label is the simplest
+               valid label-association pattern (no for/id pair needed). -->
+          <label class="block">
+            <span class="block text-[11px] text-dim uppercase tracking-wider mb-1">Calendar</span>
+            <select
+              bind:value={calendarTarget}
+              class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text"
+            >
+              <option value="">events.json (default)</option>
+              {#each writableSources as src}
+                <option value={src.source}>{src.source}</option>
+              {/each}
+            </select>
+          </label>
 
           <input
             bind:value={location}
