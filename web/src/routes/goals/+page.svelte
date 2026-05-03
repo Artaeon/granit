@@ -8,6 +8,7 @@
   import { toast } from '$lib/components/toast';
   import GoalCreate from '$lib/goals/GoalCreate.svelte';
   import GoalDetail from '$lib/goals/GoalDetail.svelte';
+  import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
 
   let goals = $state<Goal[]>([]);
   let loading = $state(false);
@@ -160,6 +161,7 @@
 
 <div class="h-full overflow-y-auto">
   <div class="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+    <VisionContextStrip />
     <header class="mb-6 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
       <div>
         <h1 class="text-2xl sm:text-3xl font-semibold text-text">Goals</h1>

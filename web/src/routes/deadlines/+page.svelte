@@ -16,6 +16,7 @@
   import { onWsEvent } from '$lib/ws';
   import Drawer from '$lib/components/Drawer.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
   import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
   import { daysUntil, pickHeroDeadline } from '$lib/deadlines/util';
 
@@ -347,6 +348,7 @@
 
 <div class="h-full overflow-y-auto">
   <div class="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+    <VisionContextStrip />
     <PageHeader
       title="Deadlines"
       subtitle="dated commitments — linked to goals, projects, or tasks"

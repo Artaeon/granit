@@ -7,6 +7,7 @@
   import { toast } from '$lib/components/toast';
   import ProjectDetail from '$lib/projects/ProjectDetail.svelte';
   import ProjectCreate from '$lib/projects/ProjectCreate.svelte';
+  import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
 
   let projects = $state<Project[]>([]);
   let loading = $state(false);
@@ -102,7 +103,15 @@
   }
 </script>
 
-<div class="h-full flex">
+<div class="h-full flex flex-col">
+  <!-- Vision strip sits above the projects layout (sidebar + detail
+       split), so the user always sees their season focus without it
+       competing with horizontal space. Hidden on mobile when the
+       detail pane is open to keep the chrome quiet. -->
+  <div class="px-3 sm:px-4 pt-3 flex-shrink-0 {selectedName ? 'hidden md:block' : ''}">
+    <VisionContextStrip />
+  </div>
+  <div class="flex-1 min-h-0 flex">
   <!-- List -->
   <aside class="w-full md:w-72 lg:w-80 xl:w-96 flex-shrink-0 border-r border-surface1 bg-mantle/40 flex flex-col {selectedName ? 'hidden md:flex' : ''}">
     <header class="px-3 py-2.5 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
@@ -188,6 +197,7 @@
       </div>
     {/if}
   </main>
+  </div>
 </div>
 
 <ProjectCreate bind:open={createOpen} onCreated={created} />
