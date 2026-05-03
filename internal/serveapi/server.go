@@ -254,26 +254,26 @@ func (s *Server) Handler() http.Handler {
 		r.Patch("/api/v1/deadlines/{id}", s.handlePatchDeadline)
 		r.Delete("/api/v1/deadlines/{id}", s.handleDeleteDeadline)
 
-		// Finance — accounts / transactions / subscriptions / holdings /
-		// money goals. State lives under .granit/finance/*.json so a
-		// future TUI surface reads the same files. Overview is a single
-		// composite read for the dashboard summary.
+		// Finance — net worth (accounts), recurring drag (subscriptions),
+		// income streams (active + planned ventures), and money goals.
+		// State lives under .granit/finance/*.json so a future TUI
+		// surface reads the same files. Overview is a single composite
+		// read for the dashboard summary. Per-transaction history and
+		// portfolio holdings are deliberately out of scope — this is a
+		// life-management tracker, not accounting software.
 		r.Get("/api/v1/finance/overview", s.handleFinanceOverview)
 		r.Get("/api/v1/finance/accounts", s.handleListAccounts)
 		r.Post("/api/v1/finance/accounts", s.handleCreateAccount)
 		r.Patch("/api/v1/finance/accounts/{id}", s.handlePatchAccount)
 		r.Delete("/api/v1/finance/accounts/{id}", s.handleDeleteAccount)
-		r.Get("/api/v1/finance/transactions", s.handleListTransactions)
-		r.Post("/api/v1/finance/transactions", s.handleCreateTransaction)
-		r.Patch("/api/v1/finance/transactions/{id}", s.handlePatchTransaction)
-		r.Delete("/api/v1/finance/transactions/{id}", s.handleDeleteTransaction)
 		r.Get("/api/v1/finance/subscriptions", s.handleListSubscriptions)
 		r.Post("/api/v1/finance/subscriptions", s.handleCreateSubscription)
 		r.Patch("/api/v1/finance/subscriptions/{id}", s.handlePatchSubscription)
 		r.Delete("/api/v1/finance/subscriptions/{id}", s.handleDeleteSubscription)
-		r.Get("/api/v1/finance/holdings", s.handleListHoldings)
-		r.Post("/api/v1/finance/holdings", s.handleCreateHolding)
-		r.Delete("/api/v1/finance/holdings/{id}", s.handleDeleteHolding)
+		r.Get("/api/v1/finance/income", s.handleListIncome)
+		r.Post("/api/v1/finance/income", s.handleCreateIncome)
+		r.Patch("/api/v1/finance/income/{id}", s.handlePatchIncome)
+		r.Delete("/api/v1/finance/income/{id}", s.handleDeleteIncome)
 		r.Get("/api/v1/finance/goals", s.handleListFinGoals)
 		r.Post("/api/v1/finance/goals", s.handleCreateFinGoal)
 		r.Patch("/api/v1/finance/goals/{id}", s.handlePatchFinGoal)

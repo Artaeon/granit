@@ -1,13 +1,16 @@
 // Package finance is the canonical schema + IO for granit's financial
-// domain: accounts, transactions, subscriptions, holdings, and money
-// goals. State lives under <vault>/.granit/finance/*.json — one file
-// per concept — so the TUI, web server, and any future agent share
-// one source of truth on disk. A round-trip through any surface
-// preserves every field.
+// domain: accounts, subscriptions, income streams, and money goals.
+// State lives under <vault>/.granit/finance/*.json — one file per
+// concept — so the TUI, web server, and any future agent share one
+// source of truth on disk. A round-trip through any surface preserves
+// every field.
 //
-// Pure data + IO only. No HTTP, no rendering, no balance projections
-// (those live in serveapi handlers / web derivations where they can
-// reuse the cached load-all on the request path).
+// Deliberately scoped to what a single user actually wants to track
+// week-to-week, not a full ledger. No per-transaction history, no
+// portfolio (those would shift the design from "track my financial
+// life" toward "be my accounting software"). The primary numbers —
+// net worth, monthly subscription drag, monthly income, goal
+// progress — fall out of the four concepts directly.
 //
 // Money convention: amounts are stored as integer cents (`int64
 // AmountCents`) to dodge float drift on summation. Currency codes are
@@ -73,23 +76,76 @@ type Account struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// Transaction is a single in/out movement of money. Sign convention:
-// AmountCents > 0 is income / inbound; < 0 is expense / outbound.
-// Linking to an Account is required (orphan transactions don't make
-// sense for net-worth math). Category is freeform string so the user
-// owns their taxonomy — the UI surfaces a unique-list as autocomplete.
-type Transaction struct {
-	ID          string    `json:"id"`
-	AccountID   string    `json:"account_id"`
-	Date        string    `json:"date"`             // YYYY-MM-DD
-	AmountCents int64     `json:"amount_cents"`
-	Currency    string    `json:"currency"`         // usually = Account.Currency, allow override for FX
-	Category    string    `json:"category,omitempty"`
-	Description string    `json:"description,omitempty"`
-	Tags        []string  `json:"tags,omitempty"`
-	GoalID      string    `json:"goal_id,omitempty"` // links to a FinGoal (e.g. savings deposit)
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+// IncomeStreamStatus tracks where a stream is in its lifecycle.
+// "idea" and "planned" are forward-looking — the user is exploring or
+// preparing a venture that could bring money. "active" means it's
+// actually paying out today; "paused" is income that ran but isn't
+// running right now.
+type IncomeStreamStatus string
+
+const (
+	IncomeIdea    IncomeStreamStatus = "idea"
+	IncomePlanned IncomeStreamStatus = "planned"
+	IncomeActive  IncomeStreamStatus = "active"
+	IncomePaused  IncomeStreamStatus = "paused"
+)
+
+func NormalizeIncomeStatus(s string) string {
+	switch IncomeStreamStatus(s) {
+	case IncomeIdea, IncomePlanned, IncomeActive, IncomePaused:
+		return s
+	default:
+		return string(IncomeIdea)
+	}
+}
+
+// IncomeKind classifies how the income shows up. Open-string with a
+// canonical set so a typo doesn't escape into the UI as a stray pill.
+type IncomeKind string
+
+const (
+	IncomeKindEmployment IncomeKind = "employment" // salary, regular paycheck
+	IncomeKindFreelance  IncomeKind = "freelance"  // contracts, gigs
+	IncomeKindBusiness   IncomeKind = "business"   // SaaS, product sales
+	IncomeKindInvestment IncomeKind = "investment" // dividends, rent, interest
+	IncomeKindRoyalty    IncomeKind = "royalty"
+	IncomeKindOther      IncomeKind = "other"
+)
+
+func NormalizeIncomeKind(s string) string {
+	switch IncomeKind(s) {
+	case IncomeKindEmployment, IncomeKindFreelance, IncomeKindBusiness,
+		IncomeKindInvestment, IncomeKindRoyalty, IncomeKindOther:
+		return s
+	default:
+		return string(IncomeKindOther)
+	}
+}
+
+// IncomeStream is a way money comes (or could come) in. One concept
+// covers both "active income" (your day job, your SaaS) and
+// "ventures" (a side project still in idea / planning) because the
+// difference is exactly Status — same shape, different stage. The
+// UI surfaces the status as a colored pill and groups the list by
+// active-vs-pipeline.
+//
+// Projected vs actual: Projected is the user's expectation
+// ("when this is running, it should make $X/mo"). Actual is what's
+// flowing right now. For an idea/planned stream Actual is 0; for an
+// active one the user updates it as months close.
+type IncomeStream struct {
+	ID                  string    `json:"id"`
+	Name                string    `json:"name"`
+	Status              string    `json:"status"`              // see IncomeStreamStatus
+	Kind                string    `json:"kind"`                // see IncomeKind
+	ProjectedMonthlyCents int64   `json:"projected_monthly_cents"`
+	ActualMonthlyCents  int64     `json:"actual_monthly_cents"`
+	Currency            string    `json:"currency"`
+	URL                 string    `json:"url,omitempty"`       // landing page / dashboard
+	StartedAt           string    `json:"started_at,omitempty"` // YYYY-MM-DD when it became active
+	Notes               string    `json:"notes,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 // SubCadence is how often a subscription recurs. Same open-string +
@@ -130,25 +186,6 @@ type Subscription struct {
 	Active        bool      `json:"active"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
-}
-
-// Holding is a single position in a portfolio account. Quantity is a
-// float64 because shares can be fractional; cost basis is cents-per-
-// quantity-unit at acquisition (so total cost = Quantity *
-// CostBasisCents). Live price is fetched out-of-band by the UI (or
-// not at all) — this struct only stores user-entered facts.
-type Holding struct {
-	ID             string    `json:"id"`
-	AccountID      string    `json:"account_id"`
-	Ticker         string    `json:"ticker"`            // "VTI", "BTC", free-form
-	Name           string    `json:"name,omitempty"`    // friendly name
-	Quantity       float64   `json:"quantity"`
-	CostBasisCents int64     `json:"cost_basis_cents"`  // per-unit, in Currency
-	Currency       string    `json:"currency"`
-	AsOf           string    `json:"as_of,omitempty"`
-	Notes          string    `json:"notes,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // FinGoalKind keeps the goal types canonical. Savings = grow toward a
@@ -201,9 +238,8 @@ func dir(vaultRoot string) string {
 	return filepath.Join(vaultRoot, ".granit", "finance")
 }
 func AccountsPath(v string) string      { return filepath.Join(dir(v), "accounts.json") }
-func TransactionsPath(v string) string  { return filepath.Join(dir(v), "transactions.json") }
 func SubscriptionsPath(v string) string { return filepath.Join(dir(v), "subscriptions.json") }
-func HoldingsPath(v string) string      { return filepath.Join(dir(v), "holdings.json") }
+func IncomePath(v string) string        { return filepath.Join(dir(v), "income.json") }
 func FinGoalsPath(v string) string      { return filepath.Join(dir(v), "goals.json") }
 
 // ── Generic load/save ────────────────────────────────────────────────
@@ -247,20 +283,14 @@ func saveAll[T any](vaultRoot, path string, items []T) error {
 // idiomatic and let the editor + LSP autocomplete the right return
 // type per concept.
 
-func LoadAccounts(v string) []Account     { return loadAll[Account](AccountsPath(v)) }
-func SaveAccounts(v string, x []Account) error { return saveAll(v, AccountsPath(v), x) }
-
-func LoadTransactions(v string) []Transaction     { return loadAll[Transaction](TransactionsPath(v)) }
-func SaveTransactions(v string, x []Transaction) error { return saveAll(v, TransactionsPath(v), x) }
-
-func LoadSubscriptions(v string) []Subscription     { return loadAll[Subscription](SubscriptionsPath(v)) }
+func LoadAccounts(v string) []Account                    { return loadAll[Account](AccountsPath(v)) }
+func SaveAccounts(v string, x []Account) error           { return saveAll(v, AccountsPath(v), x) }
+func LoadSubscriptions(v string) []Subscription          { return loadAll[Subscription](SubscriptionsPath(v)) }
 func SaveSubscriptions(v string, x []Subscription) error { return saveAll(v, SubscriptionsPath(v), x) }
-
-func LoadHoldings(v string) []Holding     { return loadAll[Holding](HoldingsPath(v)) }
-func SaveHoldings(v string, x []Holding) error { return saveAll(v, HoldingsPath(v), x) }
-
-func LoadFinGoals(v string) []FinGoal     { return loadAll[FinGoal](FinGoalsPath(v)) }
-func SaveFinGoals(v string, x []FinGoal) error { return saveAll(v, FinGoalsPath(v), x) }
+func LoadIncome(v string) []IncomeStream                 { return loadAll[IncomeStream](IncomePath(v)) }
+func SaveIncome(v string, x []IncomeStream) error        { return saveAll(v, IncomePath(v), x) }
+func LoadFinGoals(v string) []FinGoal                    { return loadAll[FinGoal](FinGoalsPath(v)) }
+func SaveFinGoals(v string, x []FinGoal) error           { return saveAll(v, FinGoalsPath(v), x) }
 
 // ── Sort helpers (stable, copy-returning) ────────────────────────────
 
@@ -281,15 +311,45 @@ func SortAccountsForDisplay(xs []Account) []Account {
 	return out
 }
 
-// SortTransactionsByDate: newest first, then ID for stable order.
-func SortTransactionsByDate(xs []Transaction) []Transaction {
-	out := make([]Transaction, len(xs))
+// SortIncomeForDisplay: active first (the income that's actually
+// flowing), then planned/idea ranked by Status order, then paused at
+// the bottom. Within a status bucket, highest projected first so the
+// big numbers surface — useful when scanning to see "what's actually
+// moving the needle this month."
+func SortIncomeForDisplay(xs []IncomeStream) []IncomeStream {
+	out := make([]IncomeStream, len(xs))
 	copy(out, xs)
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Date != out[j].Date {
-			return out[i].Date > out[j].Date
+	rank := func(s string) int {
+		switch IncomeStreamStatus(s) {
+		case IncomeActive:
+			return 0
+		case IncomePlanned:
+			return 1
+		case IncomeIdea:
+			return 2
+		case IncomePaused:
+			return 3
+		default:
+			return 4
 		}
-		return out[i].ID > out[j].ID
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		ri, rj := rank(out[i].Status), rank(out[j].Status)
+		if ri != rj {
+			return ri < rj
+		}
+		// Use whichever number better represents the stream's "size":
+		// active → actual; planned/idea → projected.
+		size := func(s IncomeStream) int64 {
+			if IncomeStreamStatus(s.Status) == IncomeActive && s.ActualMonthlyCents > 0 {
+				return s.ActualMonthlyCents
+			}
+			return s.ProjectedMonthlyCents
+		}
+		if size(out[i]) != size(out[j]) {
+			return size(out[i]) > size(out[j])
+		}
+		return out[i].ID < out[j].ID
 	})
 	return out
 }

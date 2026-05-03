@@ -14,12 +14,11 @@ import (
 
 // One file per concept on disk; one WS path per file so subscribers
 // can refetch only what changed (e.g. editing a subscription doesn't
-// force the transactions tab to reload).
+// force the income tab to reload).
 const (
 	statePathAccounts      = ".granit/finance/accounts.json"
-	statePathTransactions  = ".granit/finance/transactions.json"
 	statePathSubscriptions = ".granit/finance/subscriptions.json"
-	statePathHoldings      = ".granit/finance/holdings.json"
+	statePathIncome        = ".granit/finance/income.json"
 	statePathFinGoals      = ".granit/finance/goals.json"
 )
 
@@ -32,7 +31,8 @@ func (s *Server) bcastFinance(path string) {
 func newULID() string { return strings.ToLower(ulid.Make().String()) }
 
 // readJSON decodes a request body into dst, writing a 400 on parse
-// failure and returning false. Saves five copies of the same boilerplate.
+// failure and returning false. Saves several copies of the same
+// boilerplate across handlers.
 func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -43,53 +43,49 @@ func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 
 // ── Overview ─────────────────────────────────────────────────────────
 //
-// Single composite endpoint so the dashboard can hydrate in one round
-// trip. Each tab still has its own GET for live updates / detail
-// views. Numbers are computed (not stored) — keeps the Finance schema
-// pure-data and avoids stale aggregates after a TUI edit.
+// Single composite endpoint so the dashboard hydrates in one round
+// trip. Numbers are computed (not stored) — keeps the schema pure-
+// data and avoids stale aggregates after a TUI edit.
 
 type financeOverview struct {
-	Currency           string `json:"currency"`
-	NetWorthCents      int64  `json:"net_worth_cents"`
-	AssetsCents        int64  `json:"assets_cents"`
-	LiabilitiesCents   int64  `json:"liabilities_cents"`
-	MonthlyIncomeCents int64  `json:"monthly_income_cents"`   // last 30 days
-	MonthlyOutCents    int64  `json:"monthly_outflow_cents"`  // last 30 days, abs
-	SubMonthlyCents    int64  `json:"subscription_monthly_cents"`
-	UpcomingSubsCount  int    `json:"upcoming_subs_count"`    // due in next 7 days
-	AccountsCount      int    `json:"accounts_count"`
-	TransactionsCount  int    `json:"transactions_count"`
-	GoalsActiveCount   int    `json:"goals_active_count"`
+	Currency               string `json:"currency"`
+	NetWorthCents          int64  `json:"net_worth_cents"`
+	AssetsCents            int64  `json:"assets_cents"`
+	LiabilitiesCents       int64  `json:"liabilities_cents"`
+	IncomeActualCents      int64  `json:"income_monthly_actual_cents"`    // sum of active streams' actual
+	IncomeProjectedCents   int64  `json:"income_monthly_projected_cents"` // sum across all non-paused streams' projected
+	SubMonthlyCents        int64  `json:"subscription_monthly_cents"`
+	UpcomingSubsCount      int    `json:"upcoming_subs_count"`
+	AccountsCount          int    `json:"accounts_count"`
+	IncomeActiveCount      int    `json:"income_active_count"`
+	IncomePipelineCount    int    `json:"income_pipeline_count"` // idea + planned
+	GoalsActiveCount       int    `json:"goals_active_count"`
 }
 
 func (s *Server) handleFinanceOverview(w http.ResponseWriter, r *http.Request) {
 	v := s.cfg.Vault.Root
 	accounts := finance.LoadAccounts(v)
-	txs := finance.LoadTransactions(v)
 	subs := finance.LoadSubscriptions(v)
+	income := finance.LoadIncome(v)
 	goals := finance.LoadFinGoals(v)
 
 	out := financeOverview{}
 
 	// Currency: pick the most-common Account.Currency. Multi-currency
-	// vaults keep their per-account display intact; this single field
-	// is just for the dashboard summary line. Empty string when no
-	// accounts exist yet.
-	if c := primaryCurrency(accounts); c != "" {
-		out.Currency = c
-	}
+	// users keep their per-account display intact; this single field
+	// only drives the dashboard summary line. Empty when no accounts.
+	out.Currency = primaryCurrency(accounts)
 
-	// Net worth: assets (kind != credit/loan) - liabilities (kind in
-	// credit/loan, with their negative balance treated as debt). Kept
-	// straightforward — multi-currency conversion is out of scope; the
-	// UI shows totals in `Currency` and notes when accounts use other
-	// currencies.
+	// Net worth: assets (kind != credit/loan) − liabilities (credit/loan).
+	// Multi-currency conversion is out of scope; foreign-currency
+	// accounts are excluded from the summary number — the per-account
+	// view still shows them.
 	for _, a := range accounts {
 		if a.Archived {
 			continue
 		}
 		if a.Currency != "" && out.Currency != "" && a.Currency != out.Currency {
-			continue // skip foreign accounts from the summary number
+			continue
 		}
 		switch finance.AccountKind(a.Kind) {
 		case finance.AccountCredit, finance.AccountLoan:
@@ -99,29 +95,9 @@ func (s *Server) handleFinanceOverview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	out.NetWorthCents = out.AssetsCents - out.LiabilitiesCents
-	out.AccountsCount = countActive(accounts)
+	out.AccountsCount = countActiveAccounts(accounts)
 
-	// Last-30-days cashflow: sum signed transactions whose date >=
-	// (today - 30). Treat amounts in non-primary currency the same as
-	// accounts above — exclude.
-	cutoff := time.Now().AddDate(0, 0, -30).Format("2006-01-02")
-	for _, t := range txs {
-		if t.Date < cutoff {
-			continue
-		}
-		if out.Currency != "" && t.Currency != "" && t.Currency != out.Currency {
-			continue
-		}
-		if t.AmountCents > 0 {
-			out.MonthlyIncomeCents += t.AmountCents
-		} else {
-			out.MonthlyOutCents += -t.AmountCents
-		}
-	}
-	out.TransactionsCount = len(txs)
-
-	// Subscription totals: sum of monthly-normalised costs (always
-	// positive for display). Upcoming-7-day count separate from total.
+	// Subscriptions: monthly-normalised total + upcoming-7-day count.
 	now := time.Now()
 	in7 := now.AddDate(0, 0, 7).Format("2006-01-02")
 	today := now.Format("2006-01-02")
@@ -139,6 +115,25 @@ func (s *Server) handleFinanceOverview(w http.ResponseWriter, r *http.Request) {
 		out.SubMonthlyCents += monthly
 		if sub.NextRenewal >= today && sub.NextRenewal <= in7 {
 			out.UpcomingSubsCount++
+		}
+	}
+
+	// Income: actual = sum of active streams' actual; projected =
+	// sum across every non-paused stream's projected (so the user
+	// sees both "today's run rate" and "if everything in the pipeline
+	// hits, the future run rate").
+	for _, s := range income {
+		if out.Currency != "" && s.Currency != "" && s.Currency != out.Currency {
+			continue
+		}
+		switch finance.IncomeStreamStatus(s.Status) {
+		case finance.IncomeActive:
+			out.IncomeActualCents += s.ActualMonthlyCents
+			out.IncomeProjectedCents += s.ProjectedMonthlyCents
+			out.IncomeActiveCount++
+		case finance.IncomeIdea, finance.IncomePlanned:
+			out.IncomeProjectedCents += s.ProjectedMonthlyCents
+			out.IncomePipelineCount++
 		}
 	}
 
@@ -167,7 +162,7 @@ func primaryCurrency(accounts []finance.Account) string {
 	}
 	return best
 }
-func countActive(accounts []finance.Account) int {
+func countActiveAccounts(accounts []finance.Account) int {
 	n := 0
 	for _, a := range accounts {
 		if !a.Archived {
@@ -235,37 +230,27 @@ func (s *Server) handlePatchAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "account not found")
 		return
 	}
-	// Whitelist patch — same map[string]json.RawMessage pattern as
-	// deadlines so a buggy client can't silently drop fields the user
-	// isn't editing.
 	var patch map[string]json.RawMessage
 	if !readJSON(w, r, &patch) {
 		return
 	}
 	a := all[idx]
-	if raw, ok := patch["name"]; ok {
-		_ = json.Unmarshal(raw, &a.Name)
+	apply := func(k string, dst any) {
+		if raw, ok := patch[k]; ok {
+			_ = json.Unmarshal(raw, dst)
+		}
 	}
+	apply("name", &a.Name)
 	if raw, ok := patch["kind"]; ok {
 		var k string
 		_ = json.Unmarshal(raw, &k)
 		a.Kind = finance.NormalizeAccountKind(k)
 	}
-	if raw, ok := patch["currency"]; ok {
-		_ = json.Unmarshal(raw, &a.Currency)
-	}
-	if raw, ok := patch["balance_cents"]; ok {
-		_ = json.Unmarshal(raw, &a.BalanceCents)
-	}
-	if raw, ok := patch["as_of"]; ok {
-		_ = json.Unmarshal(raw, &a.AsOf)
-	}
-	if raw, ok := patch["notes"]; ok {
-		_ = json.Unmarshal(raw, &a.Notes)
-	}
-	if raw, ok := patch["archived"]; ok {
-		_ = json.Unmarshal(raw, &a.Archived)
-	}
+	apply("currency", &a.Currency)
+	apply("balance_cents", &a.BalanceCents)
+	apply("as_of", &a.AsOf)
+	apply("notes", &a.Notes)
+	apply("archived", &a.Archived)
 	a.UpdatedAt = time.Now().UTC()
 	all[idx] = a
 	if err := finance.SaveAccounts(s.cfg.Vault.Root, all); err != nil {
@@ -297,108 +282,6 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.bcastFinance(statePathAccounts)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// ── Transactions CRUD ────────────────────────────────────────────────
-
-func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) {
-	out := finance.SortTransactionsByDate(finance.LoadTransactions(s.cfg.Vault.Root))
-	if out == nil {
-		out = []finance.Transaction{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"transactions": out, "total": len(out)})
-}
-
-func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request) {
-	var t finance.Transaction
-	if !readJSON(w, r, &t) {
-		return
-	}
-	if t.AccountID == "" || t.Date == "" {
-		writeError(w, http.StatusBadRequest, "account_id + date required")
-		return
-	}
-	if t.ID == "" {
-		t.ID = newULID()
-	}
-	now := time.Now().UTC()
-	if t.CreatedAt.IsZero() {
-		t.CreatedAt = now
-	}
-	t.UpdatedAt = now
-	all := append(finance.LoadTransactions(s.cfg.Vault.Root), t)
-	if err := finance.SaveTransactions(s.cfg.Vault.Root, all); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	s.bcastFinance(statePathTransactions)
-	writeJSON(w, http.StatusCreated, t)
-}
-
-func (s *Server) handlePatchTransaction(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	all := finance.LoadTransactions(s.cfg.Vault.Root)
-	idx := -1
-	for i, t := range all {
-		if t.ID == id {
-			idx = i
-			break
-		}
-	}
-	if idx == -1 {
-		writeError(w, http.StatusNotFound, "tx not found")
-		return
-	}
-	var patch map[string]json.RawMessage
-	if !readJSON(w, r, &patch) {
-		return
-	}
-	t := all[idx]
-	apply := func(k string, dst any) {
-		if raw, ok := patch[k]; ok {
-			_ = json.Unmarshal(raw, dst)
-		}
-	}
-	apply("account_id", &t.AccountID)
-	apply("date", &t.Date)
-	apply("amount_cents", &t.AmountCents)
-	apply("currency", &t.Currency)
-	apply("category", &t.Category)
-	apply("description", &t.Description)
-	apply("tags", &t.Tags)
-	apply("goal_id", &t.GoalID)
-	t.UpdatedAt = time.Now().UTC()
-	all[idx] = t
-	if err := finance.SaveTransactions(s.cfg.Vault.Root, all); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	s.bcastFinance(statePathTransactions)
-	writeJSON(w, http.StatusOK, t)
-}
-
-func (s *Server) handleDeleteTransaction(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	all := finance.LoadTransactions(s.cfg.Vault.Root)
-	out := all[:0]
-	found := false
-	for _, t := range all {
-		if t.ID == id {
-			found = true
-			continue
-		}
-		out = append(out, t)
-	}
-	if !found {
-		writeError(w, http.StatusNotFound, "tx not found")
-		return
-	}
-	if err := finance.SaveTransactions(s.cfg.Vault.Root, out); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	s.bcastFinance(statePathTransactions)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -511,63 +394,116 @@ func (s *Server) handleDeleteSubscription(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ── Holdings CRUD ────────────────────────────────────────────────────
+// ── Income streams CRUD ──────────────────────────────────────────────
 
-func (s *Server) handleListHoldings(w http.ResponseWriter, r *http.Request) {
-	out := finance.LoadHoldings(s.cfg.Vault.Root)
+func (s *Server) handleListIncome(w http.ResponseWriter, r *http.Request) {
+	out := finance.SortIncomeForDisplay(finance.LoadIncome(s.cfg.Vault.Root))
 	if out == nil {
-		out = []finance.Holding{}
+		out = []finance.IncomeStream{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"holdings": out, "total": len(out)})
+	writeJSON(w, http.StatusOK, map[string]any{"streams": out, "total": len(out)})
 }
 
-func (s *Server) handleCreateHolding(w http.ResponseWriter, r *http.Request) {
-	var h finance.Holding
-	if !readJSON(w, r, &h) {
+func (s *Server) handleCreateIncome(w http.ResponseWriter, r *http.Request) {
+	var st finance.IncomeStream
+	if !readJSON(w, r, &st) {
 		return
 	}
-	if h.AccountID == "" || strings.TrimSpace(h.Ticker) == "" {
-		writeError(w, http.StatusBadRequest, "account_id + ticker required")
+	if strings.TrimSpace(st.Name) == "" {
+		writeError(w, http.StatusBadRequest, "name required")
 		return
 	}
-	if h.ID == "" {
-		h.ID = newULID()
+	st.Status = finance.NormalizeIncomeStatus(st.Status)
+	st.Kind = finance.NormalizeIncomeKind(st.Kind)
+	if st.ID == "" {
+		st.ID = newULID()
 	}
 	now := time.Now().UTC()
-	if h.CreatedAt.IsZero() {
-		h.CreatedAt = now
+	if st.CreatedAt.IsZero() {
+		st.CreatedAt = now
 	}
-	h.UpdatedAt = now
-	all := append(finance.LoadHoldings(s.cfg.Vault.Root), h)
-	if err := finance.SaveHoldings(s.cfg.Vault.Root, all); err != nil {
+	st.UpdatedAt = now
+	all := append(finance.LoadIncome(s.cfg.Vault.Root), st)
+	if err := finance.SaveIncome(s.cfg.Vault.Root, all); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.bcastFinance(statePathHoldings)
-	writeJSON(w, http.StatusCreated, h)
+	s.bcastFinance(statePathIncome)
+	writeJSON(w, http.StatusCreated, st)
 }
 
-func (s *Server) handleDeleteHolding(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handlePatchIncome(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	all := finance.LoadHoldings(s.cfg.Vault.Root)
+	all := finance.LoadIncome(s.cfg.Vault.Root)
+	idx := -1
+	for i, st := range all {
+		if st.ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		writeError(w, http.StatusNotFound, "income stream not found")
+		return
+	}
+	var patch map[string]json.RawMessage
+	if !readJSON(w, r, &patch) {
+		return
+	}
+	st := all[idx]
+	apply := func(k string, dst any) {
+		if raw, ok := patch[k]; ok {
+			_ = json.Unmarshal(raw, dst)
+		}
+	}
+	apply("name", &st.Name)
+	if raw, ok := patch["status"]; ok {
+		var s string
+		_ = json.Unmarshal(raw, &s)
+		st.Status = finance.NormalizeIncomeStatus(s)
+	}
+	if raw, ok := patch["kind"]; ok {
+		var k string
+		_ = json.Unmarshal(raw, &k)
+		st.Kind = finance.NormalizeIncomeKind(k)
+	}
+	apply("projected_monthly_cents", &st.ProjectedMonthlyCents)
+	apply("actual_monthly_cents", &st.ActualMonthlyCents)
+	apply("currency", &st.Currency)
+	apply("url", &st.URL)
+	apply("started_at", &st.StartedAt)
+	apply("notes", &st.Notes)
+	st.UpdatedAt = time.Now().UTC()
+	all[idx] = st
+	if err := finance.SaveIncome(s.cfg.Vault.Root, all); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.bcastFinance(statePathIncome)
+	writeJSON(w, http.StatusOK, st)
+}
+
+func (s *Server) handleDeleteIncome(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	all := finance.LoadIncome(s.cfg.Vault.Root)
 	out := all[:0]
 	found := false
-	for _, h := range all {
-		if h.ID == id {
+	for _, st := range all {
+		if st.ID == id {
 			found = true
 			continue
 		}
-		out = append(out, h)
+		out = append(out, st)
 	}
 	if !found {
-		writeError(w, http.StatusNotFound, "holding not found")
+		writeError(w, http.StatusNotFound, "income stream not found")
 		return
 	}
-	if err := finance.SaveHoldings(s.cfg.Vault.Root, out); err != nil {
+	if err := finance.SaveIncome(s.cfg.Vault.Root, out); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.bcastFinance(statePathHoldings)
+	s.bcastFinance(statePathIncome)
 	w.WriteHeader(http.StatusNoContent)
 }
 

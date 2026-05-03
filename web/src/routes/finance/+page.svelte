@@ -4,9 +4,8 @@
   import {
     api,
     type FinAccount,
-    type FinTransaction,
     type FinSubscription,
-    type FinHolding,
+    type FinIncomeStream,
     type FinGoal,
     type FinOverview
   } from '$lib/api';
@@ -14,13 +13,14 @@
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
 
-  // /finance is a single page with tabs because the entities share a
-  // dashboard view (overview) and frequent cross-references (a tx links
-  // to an account; a sub links to an account). One page = one fetch
-  // batch, one WS subscription, no inter-route handoff for the
-  // common edit flows.
+  // /finance covers the four things that actually matter for tracking
+  // a financial life: how much money I have (Accounts → Net worth),
+  // recurring drag (Subscriptions), income — both active sources and
+  // pipeline ventures (Income), and money goals (Goals). Overview is
+  // a single landing page that pulls the headline numbers from the
+  // composite endpoint.
 
-  type Tab = 'overview' | 'subscriptions' | 'transactions' | 'accounts' | 'holdings' | 'goals';
+  type Tab = 'overview' | 'income' | 'subscriptions' | 'accounts' | 'goals';
   let tab = $state<Tab>(
     typeof window !== 'undefined'
       ? ((window.location.hash.replace(/^#/, '') as Tab) || 'overview')
@@ -35,16 +35,13 @@
 
   let overview = $state<FinOverview | null>(null);
   let accounts = $state<FinAccount[]>([]);
-  let txs = $state<FinTransaction[]>([]);
   let subs = $state<FinSubscription[]>([]);
-  let holdings = $state<FinHolding[]>([]);
+  let streams = $state<FinIncomeStream[]>([]);
   let goals = $state<FinGoal[]>([]);
   let loading = $state(false);
 
-  // ── shared formatters ──────────────────────────────────────────────
-  // Render integer cents in the user's locale, with the right sign +
-  // currency symbol. Falls back to the bare number if the browser
-  // doesn't know the currency code (offline locale data).
+  // Render integer cents in the user's locale. Falls back to
+  // "<CCY> <amount>" if the browser doesn't know the code.
   function fmtMoney(cents: number, currency: string): string {
     if (!Number.isFinite(cents)) return '—';
     const value = cents / 100;
@@ -60,9 +57,6 @@
     }
   }
 
-  // Friendly relative date — "today", "in 3 days", "5 days ago" — for
-  // subscription next-renewal labels. Detail view still shows the full
-  // date so this only fires on the list cards.
   function relDate(iso: string): string {
     if (!iso) return '';
     const d = new Date(iso + 'T00:00:00');
@@ -87,19 +81,17 @@
     if (!$auth) return;
     loading = true;
     try {
-      const [o, a, t, s, h, g] = await Promise.all([
+      const [o, a, s, i, g] = await Promise.all([
         api.finOverview(),
         api.finListAccounts(),
-        api.finListTransactions(),
         api.finListSubscriptions(),
-        api.finListHoldings(),
+        api.finListIncome(),
         api.finListGoals()
       ]);
       overview = o;
       accounts = a.accounts;
-      txs = t.transactions;
       subs = s.subscriptions;
-      holdings = h.holdings;
+      streams = i.streams;
       goals = g.goals;
     } catch (e) {
       toast.error('failed to load finance: ' + (e instanceof Error ? e.message : String(e)));
@@ -111,25 +103,28 @@
   onMount(() => {
     loadAll();
     return onWsEvent((ev) => {
-      // Refetch only what changed. The five state files use distinct
-      // path constants so we don't reload the whole tab on every edit.
       if (ev.type !== 'state.changed') return;
       if (!ev.path?.startsWith('.granit/finance/')) return;
-      loadAll(); // overview always refetches; the per-list arrays do too
+      loadAll();
     });
   });
 
+  // ── status pill colors ─────────────────────────────────────────────
+  function statusTone(s: string): { bg: string; text: string; label: string } {
+    switch (s) {
+      case 'active':  return { bg: 'bg-success/15', text: 'text-success', label: 'Active' };
+      case 'planned': return { bg: 'bg-info/15',    text: 'text-info',    label: 'Planned' };
+      case 'idea':    return { bg: 'bg-primary/15', text: 'text-primary', label: 'Idea' };
+      case 'paused':  return { bg: 'bg-surface1',   text: 'text-dim',     label: 'Paused' };
+      default:        return { bg: 'bg-surface1',   text: 'text-subtext', label: s || '—' };
+    }
+  }
+
   // ── New-account modal ─────────────────────────────────────────────
   let accOpen = $state(false);
-  let accForm = $state({
-    name: '',
-    kind: 'checking' as FinAccount['kind'],
-    currency: 'USD',
-    balance: '0',
-    notes: ''
-  });
+  let accForm = $state({ name: '', kind: 'checking', currency: 'USD', balance: '0', notes: '' });
   function openAcc() {
-    accForm = { name: '', kind: 'checking', currency: 'USD', balance: '0', notes: '' };
+    accForm = { name: '', kind: 'checking', currency: accounts[0]?.currency || 'USD', balance: '0', notes: '' };
     accOpen = true;
   }
   async function submitAcc() {
@@ -150,63 +145,46 @@
   }
   async function deleteAcc(a: FinAccount) {
     if (!confirm(`Delete account "${a.name}"?`)) return;
-    try {
-      await api.finDeleteAccount(a.id);
-      await loadAll();
-    } catch (e) {
+    try { await api.finDeleteAccount(a.id); await loadAll(); } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
-  // Inline balance edit: save on blur. Keeps the row read-mostly and
-  // doesn't require a full edit modal for the most-common edit.
+  // Inline balance edit on blur — no modal for the most-frequent edit.
   async function saveBalance(a: FinAccount, ev: Event) {
     const v = parseFloat((ev.currentTarget as HTMLInputElement).value);
     if (!Number.isFinite(v)) return;
     const cents = Math.round(v * 100);
     if (cents === a.balance_cents) return;
     try {
-      await api.finPatchAccount(a.id, {
-        balance_cents: cents,
-        as_of: new Date().toISOString().slice(0, 10)
-      });
+      await api.finPatchAccount(a.id, { balance_cents: cents, as_of: new Date().toISOString().slice(0, 10) });
       await loadAll();
-    } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
+    } catch (e) { toast.error('failed: ' + (e instanceof Error ? e.message : String(e))); }
   }
 
   // ── New-subscription modal ─────────────────────────────────────────
   let subOpen = $state(false);
   let subForm = $state({
-    name: '',
-    amount: '',
-    currency: 'USD',
+    name: '', amount: '', currency: 'USD',
     cadence: 'monthly' as FinSubscription['cadence'],
-    next_renewal: new Date().toISOString().slice(0, 10),
-    account_id: '',
-    category: '',
-    url: ''
+    next_renewal: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+    account_id: '', category: '', url: ''
   });
   function openSub() {
     subForm = {
-      name: '',
-      amount: '',
+      name: '', amount: '',
       currency: accounts[0]?.currency || 'USD',
       cadence: 'monthly',
       next_renewal: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
       account_id: accounts[0]?.id ?? '',
-      category: '',
-      url: ''
+      category: '', url: ''
     };
     subOpen = true;
   }
   async function submitSub() {
     try {
       const amt = parseFloat(subForm.amount || '0');
-      // Subscriptions are outflows by convention — the UI accepts a
-      // positive number from the user (people don't write "-9.99")
-      // and we negate at the boundary so the schema stays signed-
-      // consistent with transactions.
+      // Negate so the schema stays signed-consistent — users type a
+      // positive number, the schema records the outflow.
       const cents = -Math.round(Math.abs(amt) * 100);
       await api.finCreateSubscription({
         name: subForm.name.trim(),
@@ -222,142 +200,110 @@
       subOpen = false;
       toast.success('subscription added');
       await loadAll();
-    } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
+    } catch (e) { toast.error('failed: ' + (e instanceof Error ? e.message : String(e))); }
   }
   async function toggleSubActive(s: FinSubscription) {
-    try {
-      await api.finPatchSubscription(s.id, { active: !s.active });
-      await loadAll();
-    } catch (e) {
+    try { await api.finPatchSubscription(s.id, { active: !s.active }); await loadAll(); } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
   async function deleteSub(s: FinSubscription) {
     if (!confirm(`Delete subscription "${s.name}"?`)) return;
-    try {
-      await api.finDeleteSubscription(s.id);
-      await loadAll();
-    } catch (e) {
+    try { await api.finDeleteSubscription(s.id); await loadAll(); } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
 
-  // ── New-transaction modal ──────────────────────────────────────────
-  let txOpen = $state(false);
-  let txForm = $state({
-    account_id: '',
-    date: new Date().toISOString().slice(0, 10),
-    amount: '',
+  // ── New / edit income stream modal ─────────────────────────────────
+  // One modal handles both create and edit — the UX is the same form
+  // either way. editingId tracks "we're editing this one" vs "we're
+  // making a fresh one"; the submit branches accordingly.
+  let incomeOpen = $state(false);
+  let editingIncomeId = $state<string | null>(null);
+  let incomeForm = $state({
+    name: '',
+    status: 'idea' as FinIncomeStream['status'],
+    kind: 'business' as FinIncomeStream['kind'],
+    projected: '',
+    actual: '',
     currency: 'USD',
-    category: '',
-    description: ''
+    url: '',
+    notes: ''
   });
-  let txKind = $state<'expense' | 'income'>('expense');
-  function openTx() {
-    txForm = {
-      account_id: accounts[0]?.id ?? '',
-      date: new Date().toISOString().slice(0, 10),
-      amount: '',
-      currency: accounts[0]?.currency || 'USD',
-      category: '',
-      description: ''
-    };
-    txKind = 'expense';
-    txOpen = true;
-  }
-  async function submitTx() {
-    if (!txForm.account_id) {
-      toast.error('pick an account first');
-      return;
+  function openIncome(s?: FinIncomeStream) {
+    if (s) {
+      editingIncomeId = s.id;
+      incomeForm = {
+        name: s.name,
+        status: s.status as FinIncomeStream['status'],
+        kind: s.kind as FinIncomeStream['kind'],
+        projected: (s.projected_monthly_cents / 100).toFixed(2),
+        actual: (s.actual_monthly_cents / 100).toFixed(2),
+        currency: s.currency,
+        url: s.url ?? '',
+        notes: s.notes ?? ''
+      };
+    } else {
+      editingIncomeId = null;
+      incomeForm = {
+        name: '', status: 'idea', kind: 'business',
+        projected: '', actual: '',
+        currency: accounts[0]?.currency || 'USD',
+        url: '', notes: ''
+      };
     }
-    try {
-      const v = Math.round(Math.abs(parseFloat(txForm.amount || '0')) * 100);
-      const signed = txKind === 'expense' ? -v : v;
-      await api.finCreateTransaction({
-        account_id: txForm.account_id,
-        date: txForm.date,
-        amount_cents: signed,
-        currency: txForm.currency.trim() || accounts[0]?.currency || 'USD',
-        category: txForm.category.trim() || undefined,
-        description: txForm.description.trim() || undefined
-      });
-      txOpen = false;
-      toast.success('transaction added');
-      await loadAll();
-    } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
+    incomeOpen = true;
   }
-  async function deleteTx(t: FinTransaction) {
-    if (!confirm('Delete this transaction?')) return;
+  async function submitIncome() {
     try {
-      await api.finDeleteTransaction(t.id);
+      const body = {
+        name: incomeForm.name.trim(),
+        status: incomeForm.status,
+        kind: incomeForm.kind,
+        projected_monthly_cents: Math.round(parseFloat(incomeForm.projected || '0') * 100),
+        actual_monthly_cents: Math.round(parseFloat(incomeForm.actual || '0') * 100),
+        currency: incomeForm.currency.trim() || 'USD',
+        url: incomeForm.url.trim() || undefined,
+        notes: incomeForm.notes.trim() || undefined,
+        // When the user flips a stream to active, stamp started_at if
+        // they haven't already — saves them re-typing the date.
+        started_at: incomeForm.status === 'active'
+          ? (streams.find((x) => x.id === editingIncomeId)?.started_at
+             || new Date().toISOString().slice(0, 10))
+          : undefined
+      };
+      if (editingIncomeId) {
+        await api.finPatchIncome(editingIncomeId, body);
+        toast.success('updated');
+      } else {
+        await api.finCreateIncome(body);
+        toast.success('income stream added');
+      }
+      incomeOpen = false;
+      editingIncomeId = null;
       await loadAll();
-    } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
+    } catch (e) { toast.error('failed: ' + (e instanceof Error ? e.message : String(e))); }
   }
-
-  // ── Holding + goal create (smaller forms — single submit) ──────────
-  let holdingOpen = $state(false);
-  let holdingForm = $state({ account_id: '', ticker: '', quantity: '', cost_basis: '', currency: 'USD' });
-  function openHolding() {
-    holdingForm = {
-      account_id: accounts.find((a) => a.kind === 'investment')?.id ?? accounts[0]?.id ?? '',
-      ticker: '',
-      quantity: '',
-      cost_basis: '',
-      currency: accounts[0]?.currency || 'USD'
-    };
-    holdingOpen = true;
-  }
-  async function submitHolding() {
-    if (!holdingForm.account_id || !holdingForm.ticker.trim()) return;
-    try {
-      await api.finCreateHolding({
-        account_id: holdingForm.account_id,
-        ticker: holdingForm.ticker.trim().toUpperCase(),
-        quantity: parseFloat(holdingForm.quantity || '0'),
-        cost_basis_cents: Math.round(parseFloat(holdingForm.cost_basis || '0') * 100),
-        currency: holdingForm.currency.trim() || 'USD'
-      });
-      holdingOpen = false;
-      await loadAll();
-    } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-  async function deleteHolding(h: FinHolding) {
-    if (!confirm(`Delete ${h.ticker}?`)) return;
-    try {
-      await api.finDeleteHolding(h.id);
-      await loadAll();
-    } catch (e) {
+  async function deleteIncome(s: FinIncomeStream) {
+    if (!confirm(`Delete "${s.name}"?`)) return;
+    try { await api.finDeleteIncome(s.id); await loadAll(); } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
 
+  // ── New goal modal ────────────────────────────────────────────────
   let goalOpen = $state(false);
   let goalForm = $state({
-    name: '',
-    kind: 'savings' as FinGoal['kind'],
-    target: '',
-    current: '0',
-    currency: 'USD',
-    target_date: '',
-    linked_account_id: ''
+    name: '', kind: 'savings' as FinGoal['kind'],
+    target: '', current: '0', currency: 'USD',
+    target_date: '', linked_account_id: ''
   });
   function openGoal() {
     goalForm = {
-      name: '',
-      kind: 'savings',
-      target: '',
-      current: '0',
+      name: '', kind: 'savings',
+      target: '', current: '0',
       currency: accounts[0]?.currency || 'USD',
-      target_date: '',
-      linked_account_id: ''
+      target_date: '', linked_account_id: ''
     };
     goalOpen = true;
   }
@@ -375,42 +321,34 @@
       });
       goalOpen = false;
       await loadAll();
-    } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
+    } catch (e) { toast.error('failed: ' + (e instanceof Error ? e.message : String(e))); }
   }
   async function deleteGoal(g: FinGoal) {
     if (!confirm(`Delete goal "${g.name}"?`)) return;
-    try {
-      await api.finDeleteGoal(g.id);
-      await loadAll();
-    } catch (e) {
+    try { await api.finDeleteGoal(g.id); await loadAll(); } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
 
-  // Distinct categories from existing transactions — surfaced as
-  // <datalist> on the new-transaction form so the user gets a free
-  // taxonomy without re-typing "Groceries" every time.
-  let txCategories = $derived.by(() => {
-    const s = new Set<string>();
-    for (const t of txs) if (t.category) s.add(t.category);
-    return [...s].sort();
-  });
+  // Group income streams for the Income tab. Active flow at top,
+  // pipeline (idea + planned) below, paused at the bottom — the
+  // server already returns them sorted, this just produces the
+  // section labels.
+  let activeStreams = $derived(streams.filter((s) => s.status === 'active'));
+  let pipelineStreams = $derived(streams.filter((s) => s.status === 'idea' || s.status === 'planned'));
+  let pausedStreams = $derived(streams.filter((s) => s.status === 'paused'));
 </script>
 
 <div class="h-full overflow-y-auto">
   <div class="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8">
-    <PageHeader title="Finance" subtitle="Net worth, subscriptions, transactions, holdings, goals" />
+    <PageHeader title="Finance" subtitle="Net worth, subscriptions, income streams, money goals" />
 
-    <!-- Tabs. Hash-mirrored so refresh keeps the user where they were. -->
     <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-6 flex-wrap">
       {#each [
         { id: 'overview' as Tab, label: 'Overview' },
+        { id: 'income' as Tab, label: 'Income', count: streams.length },
         { id: 'subscriptions' as Tab, label: 'Subscriptions', count: subs.length },
-        { id: 'transactions' as Tab, label: 'Transactions', count: txs.length },
         { id: 'accounts' as Tab, label: 'Accounts', count: accounts.length },
-        { id: 'holdings' as Tab, label: 'Holdings', count: holdings.length },
         { id: 'goals' as Tab, label: 'Goals', count: goals.length }
       ] as t}
         <button
@@ -426,59 +364,156 @@
       <p class="text-sm text-dim">loading…</p>
     {:else if tab === 'overview'}
       {#if overview}
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <!-- Headline numbers: how much money I have, what's coming
+             in, what's leaking out. Three cards instead of four so
+             nothing competes with the headline net-worth figure. -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
           <div class="bg-surface0 border border-surface1 rounded-lg p-4">
-            <p class="text-xs uppercase tracking-wider text-dim">Net worth</p>
+            <p class="text-xs uppercase tracking-wider text-dim">How much I have</p>
             <p class="text-2xl font-semibold mt-1 {overview.net_worth_cents >= 0 ? 'text-text' : 'text-error'}">
               {fmtMoney(overview.net_worth_cents, overview.currency)}
             </p>
             <p class="text-[11px] text-dim mt-1">
               {fmtMoney(overview.assets_cents, overview.currency)} assets
               {#if overview.liabilities_cents > 0}
-                · {fmtMoney(overview.liabilities_cents, overview.currency)} debt
+                · −{fmtMoney(overview.liabilities_cents, overview.currency)} debt
               {/if}
             </p>
           </div>
           <div class="bg-surface0 border border-surface1 rounded-lg p-4">
-            <p class="text-xs uppercase tracking-wider text-dim">30-day flow</p>
-            <p class="text-lg font-semibold mt-1 text-success">
-              + {fmtMoney(overview.monthly_income_cents, overview.currency)}
+            <p class="text-xs uppercase tracking-wider text-dim">Income / month</p>
+            <p class="text-2xl font-semibold mt-1 text-success">
+              {fmtMoney(overview.income_monthly_actual_cents, overview.currency)}
             </p>
-            <p class="text-lg font-semibold text-error">
-              − {fmtMoney(overview.monthly_outflow_cents, overview.currency)}
+            <p class="text-[11px] text-dim mt-1">
+              from {overview.income_active_count} active source{overview.income_active_count === 1 ? '' : 's'}
+              {#if overview.income_pipeline_count > 0}
+                · {overview.income_pipeline_count} in pipeline
+              {/if}
             </p>
           </div>
           <div class="bg-surface0 border border-surface1 rounded-lg p-4">
-            <p class="text-xs uppercase tracking-wider text-dim">Subscriptions</p>
+            <p class="text-xs uppercase tracking-wider text-dim">Subscriptions / month</p>
             <p class="text-2xl font-semibold mt-1 text-text">
               {fmtMoney(overview.subscription_monthly_cents, overview.currency)}
             </p>
-            <p class="text-[11px] text-dim mt-1">/ month
+            <p class="text-[11px] text-dim mt-1">
               {#if overview.upcoming_subs_count > 0}
-                · <span class="text-warning">{overview.upcoming_subs_count} due in 7 days</span>
+                <span class="text-warning">{overview.upcoming_subs_count} due in 7 days</span>
+              {:else}
+                nothing renewing this week
               {/if}
             </p>
           </div>
-          <div class="bg-surface0 border border-surface1 rounded-lg p-4">
-            <p class="text-xs uppercase tracking-wider text-dim">Active goals</p>
-            <p class="text-2xl font-semibold mt-1 text-text">{overview.goals_active_count}</p>
-            <p class="text-[11px] text-dim mt-1">{overview.accounts_count} accounts · {overview.transactions_count} transactions</p>
-          </div>
         </div>
 
-        <!-- Quick actions -->
+        <!-- Net flow line: what's the user keeping each month? Plain
+             arithmetic so the user can sanity-check it against their
+             own spreadsheet without trusting a black-box derivation. -->
+        {#if overview.income_monthly_actual_cents > 0 || overview.subscription_monthly_cents > 0}
+          {@const net = overview.income_monthly_actual_cents - overview.subscription_monthly_cents}
+          <div class="mb-6 px-4 py-3 bg-surface0/40 border border-surface1 rounded text-sm">
+            <span class="text-dim">Monthly run rate: </span>
+            <span class="text-success">+{fmtMoney(overview.income_monthly_actual_cents, overview.currency)}</span>
+            <span class="text-dim"> − </span>
+            <span class="text-error">{fmtMoney(overview.subscription_monthly_cents, overview.currency)}</span>
+            <span class="text-dim"> = </span>
+            <span class="font-semibold {net >= 0 ? 'text-text' : 'text-error'}">{fmtMoney(net, overview.currency)} / month</span>
+            <p class="text-[11px] text-dim mt-1">From recurring income & subscriptions only — doesn't include one-off spending.</p>
+          </div>
+        {/if}
+
         <div class="flex flex-wrap gap-2">
-          <button onclick={openTx} class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90">+ Transaction</button>
+          <button onclick={() => openIncome()} class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90">+ Income source</button>
           <button onclick={openSub} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Subscription</button>
           <button onclick={openAcc} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Account</button>
           <button onclick={openGoal} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Goal</button>
         </div>
 
-        {#if accounts.length === 0 && subs.length === 0 && txs.length === 0}
+        {#if accounts.length === 0 && streams.length === 0 && subs.length === 0}
           <div class="mt-8 bg-surface0 border border-surface1 rounded-lg p-6 text-center">
             <p class="text-sm text-text">Welcome to your money tracker.</p>
-            <p class="text-xs text-dim mt-1">Start by adding an account, then track subscriptions and transactions against it.</p>
+            <p class="text-xs text-dim mt-1">Start by adding an account so you can see your net worth, then track income and subscriptions against it.</p>
           </div>
+        {/if}
+      {/if}
+
+    {:else if tab === 'income'}
+      <div class="flex justify-between items-center mb-3">
+        <p class="text-xs text-dim">
+          {streams.length} stream{streams.length === 1 ? '' : 's'} · active: {fmtMoney(overview?.income_monthly_actual_cents ?? 0, overview?.currency ?? '')} / mo · projected (incl. pipeline): {fmtMoney(overview?.income_monthly_projected_cents ?? 0, overview?.currency ?? '')} / mo
+        </p>
+        <button onclick={() => openIncome()} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New income source</button>
+      </div>
+      {#if streams.length === 0}
+        <div class="bg-surface0 border border-surface1 rounded-lg p-6 text-center">
+          <p class="text-sm text-text">Track every way money comes (or could come) in.</p>
+          <p class="text-xs text-dim mt-1">A day job, a SaaS, dividends, a side hustle still in the idea stage — all live here together.</p>
+        </div>
+      {:else}
+        {#if activeStreams.length > 0}
+          <h3 class="text-xs uppercase tracking-wider text-dim mt-2 mb-2">Active</h3>
+          <ul class="space-y-2 mb-5">
+            {#each activeStreams as s (s.id)}
+              {@const tone = statusTone(s.status)}
+              {@const variance = s.actual_monthly_cents - s.projected_monthly_cents}
+              <li class="bg-surface0 border border-surface1 rounded-lg p-3">
+                <div class="flex items-baseline gap-3 flex-wrap">
+                  <button onclick={() => openIncome(s)} class="font-medium text-text hover:underline">{s.name}</button>
+                  <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded {tone.bg} {tone.text}">{tone.label}</span>
+                  <span class="text-[11px] text-dim">{s.kind}</span>
+                  <span class="flex-1"></span>
+                  <span class="text-sm font-mono text-success">{fmtMoney(s.actual_monthly_cents, s.currency)} / mo</span>
+                  <button onclick={() => deleteIncome(s)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>
+                </div>
+                <p class="text-[11px] text-dim mt-1">
+                  projected: {fmtMoney(s.projected_monthly_cents, s.currency)}
+                  {#if s.projected_monthly_cents > 0}
+                    · variance: <span class="{variance >= 0 ? 'text-success' : 'text-warning'}">{variance >= 0 ? '+' : ''}{fmtMoney(variance, s.currency)}</span>
+                  {/if}
+                  {#if s.started_at}· since {s.started_at}{/if}
+                  {#if s.url}· <a href={s.url} target="_blank" rel="noopener" class="text-secondary hover:underline">link ↗</a>{/if}
+                </p>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if pipelineStreams.length > 0}
+          <h3 class="text-xs uppercase tracking-wider text-dim mt-2 mb-2">Pipeline — ideas & planned ventures</h3>
+          <ul class="space-y-2 mb-5">
+            {#each pipelineStreams as s (s.id)}
+              {@const tone = statusTone(s.status)}
+              <li class="bg-surface0 border border-surface1 rounded-lg p-3">
+                <div class="flex items-baseline gap-3 flex-wrap">
+                  <button onclick={() => openIncome(s)} class="font-medium text-text hover:underline">{s.name}</button>
+                  <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded {tone.bg} {tone.text}">{tone.label}</span>
+                  <span class="text-[11px] text-dim">{s.kind}</span>
+                  <span class="flex-1"></span>
+                  <span class="text-sm font-mono text-info">→ {fmtMoney(s.projected_monthly_cents, s.currency)} / mo</span>
+                  <button onclick={() => deleteIncome(s)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>
+                </div>
+                {#if s.notes}
+                  <p class="text-[11px] text-subtext mt-1 whitespace-pre-line">{s.notes}</p>
+                {/if}
+                {#if s.url}
+                  <p class="text-[11px] mt-1"><a href={s.url} target="_blank" rel="noopener" class="text-secondary hover:underline">link ↗</a></p>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if pausedStreams.length > 0}
+          <h3 class="text-xs uppercase tracking-wider text-dim mt-2 mb-2">Paused</h3>
+          <ul class="space-y-2 opacity-60">
+            {#each pausedStreams as s (s.id)}
+              <li class="bg-surface0 border border-surface1 rounded-lg p-3 flex items-baseline gap-3 flex-wrap">
+                <button onclick={() => openIncome(s)} class="font-medium text-text hover:underline">{s.name}</button>
+                <span class="text-[11px] text-dim">{s.kind} · last actual {fmtMoney(s.actual_monthly_cents, s.currency)}/mo</span>
+                <span class="flex-1"></span>
+                <button onclick={() => deleteIncome(s)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>
+              </li>
+            {/each}
+          </ul>
         {/if}
       {/if}
 
@@ -497,7 +532,6 @@
                 <h3 class="font-medium text-text">{s.name}</h3>
                 <span class="text-sm text-error font-mono">{fmtMoney(s.amount_cents, s.currency)}</span>
                 <span class="text-xs text-dim">/ {s.cadence}</span>
-                <span class="text-[11px] px-1.5 py-0.5 rounded bg-surface1 text-subtext">≈ {fmtMoney(Math.abs((s.amount_cents * (s.cadence === 'yearly' ? 1 : s.cadence === 'quarterly' ? 4 : s.cadence === 'weekly' ? 52 : 12)) / 12), s.currency)}/mo</span>
                 <span class="flex-1"></span>
                 <button onclick={() => toggleSubActive(s)} class="text-xs text-dim hover:text-text">{s.active ? 'pause' : 'resume'}</button>
                 <button onclick={() => deleteSub(s)} class="text-xs text-dim hover:text-error">delete</button>
@@ -513,35 +547,9 @@
         </ul>
       {/if}
 
-    {:else if tab === 'transactions'}
-      <div class="flex justify-between items-center mb-3">
-        <p class="text-xs text-dim">{txs.length} transactions · last 30d: <span class="text-success">+{fmtMoney(overview?.monthly_income_cents ?? 0, overview?.currency ?? '')}</span> / <span class="text-error">−{fmtMoney(overview?.monthly_outflow_cents ?? 0, overview?.currency ?? '')}</span></p>
-        <button onclick={openTx} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ Transaction</button>
-      </div>
-      {#if txs.length === 0}
-        <p class="text-sm text-dim italic">No transactions yet.</p>
-      {:else}
-        <ul class="divide-y divide-surface1 bg-surface0/40 border border-surface1 rounded-lg">
-          {#each txs.slice(0, 200) as t (t.id)}
-            <li class="px-3 py-2 flex items-baseline gap-3">
-              <span class="text-xs text-dim font-mono w-20 flex-shrink-0">{t.date}</span>
-              <div class="flex-1 min-w-0">
-                <p class="text-sm text-text truncate">{t.description || t.category || '(no description)'}</p>
-                <p class="text-[11px] text-dim">{accountName(t.account_id)}{#if t.category && t.description}· {t.category}{/if}</p>
-              </div>
-              <span class="text-sm font-mono {t.amount_cents >= 0 ? 'text-success' : 'text-error'}">
-                {t.amount_cents >= 0 ? '+' : '−'}{fmtMoney(Math.abs(t.amount_cents), t.currency)}
-              </span>
-              <button onclick={() => deleteTx(t)} aria-label="delete" class="text-xs text-dim hover:text-error">×</button>
-            </li>
-          {/each}
-        </ul>
-        {#if txs.length > 200}<p class="text-[11px] text-dim mt-2 italic">showing first 200 of {txs.length}</p>{/if}
-      {/if}
-
     {:else if tab === 'accounts'}
       <div class="flex justify-between items-center mb-3">
-        <p class="text-xs text-dim">{accounts.length} accounts</p>
+        <p class="text-xs text-dim">{accounts.length} accounts · {fmtMoney(overview?.net_worth_cents ?? 0, overview?.currency ?? '')} net worth</p>
         <button onclick={openAcc} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New account</button>
       </div>
       {#if accounts.length === 0}
@@ -567,31 +575,6 @@
             </li>
           {/each}
         </ul>
-      {/if}
-
-    {:else if tab === 'holdings'}
-      <div class="flex justify-between items-center mb-3">
-        <p class="text-xs text-dim">{holdings.length} positions across {new Set(holdings.map((h) => h.account_id)).size} accounts</p>
-        <button onclick={openHolding} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New position</button>
-      </div>
-      {#if holdings.length === 0}
-        <p class="text-sm text-dim italic">No holdings yet — add a position to track cost basis.</p>
-      {:else}
-        <ul class="divide-y divide-surface1 bg-surface0/40 border border-surface1 rounded-lg">
-          {#each holdings as h (h.id)}
-            <li class="px-3 py-2 flex items-baseline gap-3">
-              <span class="font-mono text-text font-semibold w-16 flex-shrink-0">{h.ticker}</span>
-              <span class="text-xs text-dim flex-1 min-w-0 truncate">{h.name || ''} · {accountName(h.account_id)}</span>
-              <span class="text-sm font-mono text-text">{h.quantity}</span>
-              <span class="text-sm font-mono text-subtext">@ {fmtMoney(h.cost_basis_cents, h.currency)}</span>
-              <span class="text-sm font-mono text-text">= {fmtMoney(Math.round(h.cost_basis_cents * h.quantity), h.currency)}</span>
-              <button onclick={() => deleteHolding(h)} aria-label="delete" class="text-xs text-dim hover:text-error">×</button>
-            </li>
-          {/each}
-        </ul>
-        <p class="text-[11px] text-dim italic mt-2">
-          Cost basis only — live prices not fetched. Total: {fmtMoney(holdings.reduce((s, h) => s + Math.round(h.cost_basis_cents * h.quantity), 0), overview?.currency ?? 'USD')}
-        </p>
       {/if}
 
     {:else if tab === 'goals'}
@@ -625,6 +608,56 @@
     {/if}
   </div>
 </div>
+
+<!-- ── New / edit income modal ──────────────────────────────────────── -->
+{#if incomeOpen}
+  <div class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onclick={() => (incomeOpen = false)} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') incomeOpen = false; }}>
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <form onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} onsubmit={(e) => { e.preventDefault(); submitIncome(); }} class="w-full max-w-md bg-mantle border border-surface1 rounded-lg shadow-xl p-4 space-y-3">
+      <h2 class="text-base font-semibold text-text">{editingIncomeId ? 'Edit income source' : 'New income source'}</h2>
+      <input bind:value={incomeForm.name} required placeholder="Name (Day job, Side SaaS, Dividends…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
+      <div class="grid grid-cols-2 gap-2">
+        <label class="block">
+          <span class="text-[11px] text-dim">Status</span>
+          <select bind:value={incomeForm.status} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
+            <option value="idea">Idea (could bring money)</option>
+            <option value="planned">Planned (working on it)</option>
+            <option value="active">Active (bringing money now)</option>
+            <option value="paused">Paused</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-[11px] text-dim">Type</span>
+          <select bind:value={incomeForm.kind} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
+            <option value="employment">Employment / salary</option>
+            <option value="freelance">Freelance / contract</option>
+            <option value="business">Business / SaaS</option>
+            <option value="investment">Investment / dividends</option>
+            <option value="royalty">Royalty</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+      </div>
+      <div class="grid grid-cols-3 gap-2 items-end">
+        <label class="block col-span-1">
+          <span class="text-[11px] text-dim">Projected / mo</span>
+          <input type="number" step="0.01" bind:value={incomeForm.projected} placeholder="0.00" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
+        </label>
+        <label class="block col-span-1">
+          <span class="text-[11px] text-dim">Actual / mo</span>
+          <input type="number" step="0.01" bind:value={incomeForm.actual} placeholder="0.00" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
+        </label>
+        <input bind:value={incomeForm.currency} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
+      </div>
+      <input bind:value={incomeForm.url} placeholder="URL (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+      <textarea bind:value={incomeForm.notes} rows="2" placeholder="Notes (idea details, next steps…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text resize-y focus:outline-none focus:border-primary"></textarea>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick={() => (incomeOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
+        <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">{editingIncomeId ? 'Save' : 'Add'}</button>
+      </div>
+    </form>
+  </div>
+{/if}
 
 <!-- ── New-account modal ────────────────────────────────────────────── -->
 {#if accOpen}
@@ -684,61 +717,6 @@
       <input bind:value={subForm.url} placeholder="Manage URL (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
       <div class="flex justify-end gap-2 pt-2">
         <button type="button" onclick={() => (subOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-        <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Add</button>
-      </div>
-    </form>
-  </div>
-{/if}
-
-<!-- ── New-transaction modal ────────────────────────────────────────── -->
-{#if txOpen}
-  <div class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onclick={() => (txOpen = false)} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') txOpen = false; }}>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <form onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} onsubmit={(e) => { e.preventDefault(); submitTx(); }} class="w-full max-w-sm bg-mantle border border-surface1 rounded-lg shadow-xl p-4 space-y-3">
-      <h2 class="text-base font-semibold text-text">New transaction</h2>
-      <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm">
-        <button type="button" onclick={() => (txKind = 'expense')} class="flex-1 px-3 py-1.5 {txKind === 'expense' ? 'bg-error/15 text-error' : 'text-subtext'}">Expense</button>
-        <button type="button" onclick={() => (txKind = 'income')} class="flex-1 px-3 py-1.5 {txKind === 'income' ? 'bg-success/15 text-success' : 'text-subtext'}">Income</button>
-      </div>
-      <select bind:value={txForm.account_id} required class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
-        <option value="">— pick an account —</option>
-        {#each accounts as a}<option value={a.id}>{a.name}</option>{/each}
-      </select>
-      <div class="flex gap-2">
-        <input type="date" bind:value={txForm.date} class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-        <input type="number" step="0.01" bind:value={txForm.amount} required placeholder="0.00" class="w-28 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
-      </div>
-      <input bind:value={txForm.category} list="tx-cat-list" placeholder="Category (Groceries, Salary…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      <datalist id="tx-cat-list">
-        {#each txCategories as c}<option value={c}></option>{/each}
-      </datalist>
-      <input bind:value={txForm.description} placeholder="Description (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      <div class="flex justify-end gap-2 pt-2">
-        <button type="button" onclick={() => (txOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-        <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Add</button>
-      </div>
-    </form>
-  </div>
-{/if}
-
-<!-- ── New-holding modal ────────────────────────────────────────────── -->
-{#if holdingOpen}
-  <div class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onclick={() => (holdingOpen = false)} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') holdingOpen = false; }}>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <form onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} onsubmit={(e) => { e.preventDefault(); submitHolding(); }} class="w-full max-w-sm bg-mantle border border-surface1 rounded-lg shadow-xl p-4 space-y-3">
-      <h2 class="text-base font-semibold text-text">New position</h2>
-      <select bind:value={holdingForm.account_id} required class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
-        <option value="">— pick an account —</option>
-        {#each accounts as a}<option value={a.id}>{a.name}</option>{/each}
-      </select>
-      <input bind:value={holdingForm.ticker} required placeholder="Ticker (VTI, BTC…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono uppercase focus:outline-none focus:border-primary" />
-      <div class="flex gap-2">
-        <input type="number" step="any" bind:value={holdingForm.quantity} required placeholder="qty" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
-        <input type="number" step="0.01" bind:value={holdingForm.cost_basis} placeholder="cost / unit" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
-        <input bind:value={holdingForm.currency} class="w-20 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      </div>
-      <div class="flex justify-end gap-2 pt-2">
-        <button type="button" onclick={() => (holdingOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
         <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Add</button>
       </div>
     </form>
