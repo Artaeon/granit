@@ -254,6 +254,31 @@ func (s *Server) Handler() http.Handler {
 		r.Patch("/api/v1/deadlines/{id}", s.handlePatchDeadline)
 		r.Delete("/api/v1/deadlines/{id}", s.handleDeleteDeadline)
 
+		// Finance — accounts / transactions / subscriptions / holdings /
+		// money goals. State lives under .granit/finance/*.json so a
+		// future TUI surface reads the same files. Overview is a single
+		// composite read for the dashboard summary.
+		r.Get("/api/v1/finance/overview", s.handleFinanceOverview)
+		r.Get("/api/v1/finance/accounts", s.handleListAccounts)
+		r.Post("/api/v1/finance/accounts", s.handleCreateAccount)
+		r.Patch("/api/v1/finance/accounts/{id}", s.handlePatchAccount)
+		r.Delete("/api/v1/finance/accounts/{id}", s.handleDeleteAccount)
+		r.Get("/api/v1/finance/transactions", s.handleListTransactions)
+		r.Post("/api/v1/finance/transactions", s.handleCreateTransaction)
+		r.Patch("/api/v1/finance/transactions/{id}", s.handlePatchTransaction)
+		r.Delete("/api/v1/finance/transactions/{id}", s.handleDeleteTransaction)
+		r.Get("/api/v1/finance/subscriptions", s.handleListSubscriptions)
+		r.Post("/api/v1/finance/subscriptions", s.handleCreateSubscription)
+		r.Patch("/api/v1/finance/subscriptions/{id}", s.handlePatchSubscription)
+		r.Delete("/api/v1/finance/subscriptions/{id}", s.handleDeleteSubscription)
+		r.Get("/api/v1/finance/holdings", s.handleListHoldings)
+		r.Post("/api/v1/finance/holdings", s.handleCreateHolding)
+		r.Delete("/api/v1/finance/holdings/{id}", s.handleDeleteHolding)
+		r.Get("/api/v1/finance/goals", s.handleListFinGoals)
+		r.Post("/api/v1/finance/goals", s.handleCreateFinGoal)
+		r.Patch("/api/v1/finance/goals/{id}", s.handlePatchFinGoal)
+		r.Delete("/api/v1/finance/goals/{id}", s.handleDeleteFinGoal)
+
 		r.Get("/api/v1/types", s.handleListTypes)
 		r.Get("/api/v1/types/{id}/objects", s.handleListTypeObjects)
 		r.Get("/api/v1/tags", s.handleListTags)

@@ -73,6 +73,7 @@ func baselineDeclarations() []Module {
 		// web exposes it via the friendly path /habits but the canonical
 		// ID stays habit_tracker.
 		&baselineModule{id: "habit_tracker", name: "Habit Tracker", desc: "Daily habits, streaks, and progress", cat: "Daily"},
+		&baselineModule{id: "finance", name: "Finance", desc: "Accounts, transactions, subscriptions, holdings, money goals", cat: "Life"},
 	}
 }
 

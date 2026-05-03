@@ -515,6 +515,101 @@ export interface Device {
   current: boolean;
 }
 
+// Finance — accounts, transactions, subscriptions, holdings, money
+// goals. Money is integer cents (int64 server-side, number client) to
+// dodge float drift. See internal/finance/finance.go for the canonical
+// schema; field names here match the JSON tags 1:1.
+
+export type FinAccountKind = 'cash' | 'checking' | 'savings' | 'credit' | 'investment' | 'loan';
+export type FinSubCadence = 'monthly' | 'yearly' | 'weekly' | 'quarterly';
+export type FinGoalKind = 'savings' | 'payoff' | 'networth';
+
+export interface FinAccount {
+  id: string;
+  name: string;
+  kind: FinAccountKind | string; // string fallback for forward-compat
+  currency: string;
+  balance_cents: number;
+  as_of?: string;
+  notes?: string;
+  archived?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FinTransaction {
+  id: string;
+  account_id: string;
+  date: string;
+  amount_cents: number;
+  currency: string;
+  category?: string;
+  description?: string;
+  tags?: string[];
+  goal_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FinSubscription {
+  id: string;
+  name: string;
+  amount_cents: number;
+  currency: string;
+  cadence: FinSubCadence | string;
+  next_renewal: string;
+  account_id?: string;
+  category?: string;
+  url?: string;
+  notes?: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FinHolding {
+  id: string;
+  account_id: string;
+  ticker: string;
+  name?: string;
+  quantity: number;
+  cost_basis_cents: number;
+  currency: string;
+  as_of?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FinGoal {
+  id: string;
+  name: string;
+  kind: FinGoalKind | string;
+  target_cents: number;
+  current_cents: number;
+  currency: string;
+  target_date?: string;
+  linked_account_id?: string;
+  notes?: string;
+  status?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FinOverview {
+  currency: string;
+  net_worth_cents: number;
+  assets_cents: number;
+  liabilities_cents: number;
+  monthly_income_cents: number;
+  monthly_outflow_cents: number;
+  subscription_monthly_cents: number;
+  upcoming_subs_count: number;
+  accounts_count: number;
+  transactions_count: number;
+  goals_active_count: number;
+}
+
 export interface CalendarSource {
   id: string;
   source: string; // filename
@@ -956,6 +1051,49 @@ export const api = {
     }),
   deleteBibleBookmark: (id: string) =>
     req<void>(`/bible/bookmarks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  // Finance — accounts / transactions / subscriptions / holdings / goals.
+  // The overview endpoint is a single composite read for the
+  // dashboard summary, so the page hydrates in one round trip.
+  finOverview: () => req<FinOverview>('/finance/overview'),
+
+  finListAccounts: () => req<{ accounts: FinAccount[]; total: number }>('/finance/accounts'),
+  finCreateAccount: (b: Partial<FinAccount>) =>
+    req<FinAccount>('/finance/accounts', { method: 'POST', body: JSON.stringify(b) }),
+  finPatchAccount: (id: string, p: Partial<FinAccount>) =>
+    req<FinAccount>(`/finance/accounts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(p) }),
+  finDeleteAccount: (id: string) =>
+    req<void>(`/finance/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  finListTransactions: () => req<{ transactions: FinTransaction[]; total: number }>('/finance/transactions'),
+  finCreateTransaction: (b: Partial<FinTransaction>) =>
+    req<FinTransaction>('/finance/transactions', { method: 'POST', body: JSON.stringify(b) }),
+  finPatchTransaction: (id: string, p: Partial<FinTransaction>) =>
+    req<FinTransaction>(`/finance/transactions/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(p) }),
+  finDeleteTransaction: (id: string) =>
+    req<void>(`/finance/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  finListSubscriptions: () => req<{ subscriptions: FinSubscription[]; total: number }>('/finance/subscriptions'),
+  finCreateSubscription: (b: Partial<FinSubscription>) =>
+    req<FinSubscription>('/finance/subscriptions', { method: 'POST', body: JSON.stringify(b) }),
+  finPatchSubscription: (id: string, p: Partial<FinSubscription>) =>
+    req<FinSubscription>(`/finance/subscriptions/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(p) }),
+  finDeleteSubscription: (id: string) =>
+    req<void>(`/finance/subscriptions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  finListHoldings: () => req<{ holdings: FinHolding[]; total: number }>('/finance/holdings'),
+  finCreateHolding: (b: Partial<FinHolding>) =>
+    req<FinHolding>('/finance/holdings', { method: 'POST', body: JSON.stringify(b) }),
+  finDeleteHolding: (id: string) =>
+    req<void>(`/finance/holdings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  finListGoals: () => req<{ goals: FinGoal[]; total: number }>('/finance/goals'),
+  finCreateGoal: (b: Partial<FinGoal>) =>
+    req<FinGoal>('/finance/goals', { method: 'POST', body: JSON.stringify(b) }),
+  finPatchGoal: (id: string, p: Partial<FinGoal>) =>
+    req<FinGoal>(`/finance/goals/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(p) }),
+  finDeleteGoal: (id: string) =>
+    req<void>(`/finance/goals/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // Config (web ↔ TUI shared config.json)
   getConfig: () => req<AppConfig>('/config'),

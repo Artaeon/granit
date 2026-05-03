@@ -76,6 +76,7 @@
     { href: '/objects', label: 'Objects', icon: 'objects', moduleId: 'objects' },
     { href: '/tags', label: 'Tags', icon: 'tags' },
     { href: '/jots', label: 'Jots', icon: 'jots', moduleId: 'jots' },
+    { href: '/finance', label: 'Finance', icon: 'finance', moduleId: 'finance' },
     { href: '/notes', label: 'Notes', icon: 'notes' },
     { href: '/settings', label: 'Settings', icon: 'settings' }
   ];
