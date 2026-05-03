@@ -325,6 +325,24 @@ func (s *Server) handlePatchTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Force a fresh scan + task-store reload BEFORE responding so the
+	// next GET (which the web fires immediately on success) is
+	// guaranteed to see the post-patch state. Mirrors the same pattern
+	// used in handleSaveMorning / handleToggleHabit / handlePatchDaily.
+	//
+	// Why: in plan mode the user drops a backlog task on the grid, the
+	// frontend awaits this patch and then awaits GET /calendar to
+	// repaint the grid. If the file watcher's debounce kicks in
+	// between those two requests, ScanFast() can race the in-memory
+	// schedule mutation we just applied — clearing it back out — so
+	// the calendar feed comes back without the new task_scheduled
+	// event and the user has to reload to see their drop. Synchronous
+	// rescan here means the response is the post-state, full stop.
+	s.rescanMu.Lock()
+	_ = s.cfg.Vault.ScanFast()
+	_ = s.cfg.TaskStore.Reload()
+	s.rescanMu.Unlock()
+
 	t, _ := store.GetByID(id)
 	writeJSON(w, http.StatusOK, taskToView(t))
 }

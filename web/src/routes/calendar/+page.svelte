@@ -133,18 +133,38 @@
   }
 
   async function toggleSource(src: CalendarSource) {
+    // Snapshot the desired post-toggle state up front so subsequent
+    // logic doesn't depend on `src.enabled` mutating mid-flight (the
+    // `src` we received is a proxy backed by `calSources`; if anything
+    // races with this handler the read could observe the wrong value).
+    const targetId = src.id;
+    const wasEnabled = src.enabled;
+    const willBeEnabled = !wasEnabled;
     savingSources = true;
+    // Optimistic flip — write a NEW array (not an in-place mutation
+    // of the existing proxy), so Svelte's keyed each block re-runs
+    // its bindings with the right `enabled` value before the network
+    // round-trip completes. Without this the user saw the toggle stay
+    // on its old visual state until the second click triggered a
+    // re-render via the response replace, hence "click twice".
+    calSources = calSources.map((s) =>
+      s.id === targetId ? { ...s, enabled: willBeEnabled } : s
+    );
+    // Compute the new `disabled` list from the OPTIMISTIC state so
+    // we send the canonical set the user just expressed intent for.
+    const newDisabled = calSources.filter((s) => !s.enabled).map((s) => s.source);
     try {
-      // The TUI matches by substring (filename or path). We persist the
-      // exact filename when disabling — that's stable across vault moves
-      // and matches both the file itself and any path containing it.
-      const newDisabled = calSources
-        .filter((s) => (s.id === src.id ? src.enabled : !s.enabled))
-        .map((s) => s.source);
       const r = await api.patchCalendarSources(newDisabled);
-      calSources = r.sources;
+      // Replace with the server's authoritative shape (always a fresh
+      // array reference — guards against any future shape drift).
+      calSources = [...r.sources];
       await load(); // refresh feed with new disabled list
     } catch (e) {
+      // Roll the optimistic flip back so the UI matches what the
+      // server still has on disk.
+      calSources = calSources.map((s) =>
+        s.id === targetId ? { ...s, enabled: wasEnabled } : s
+      );
       toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
       savingSources = false;
