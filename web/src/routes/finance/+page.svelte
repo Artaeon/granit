@@ -7,7 +7,8 @@
     type FinSubscription,
     type FinIncomeStream,
     type FinGoal,
-    type FinOverview
+    type FinOverview,
+    type Project
   } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
@@ -38,7 +39,27 @@
   let subs = $state<FinSubscription[]>([]);
   let streams = $state<FinIncomeStream[]>([]);
   let goals = $state<FinGoal[]>([]);
+  // Projects feed the project-link pickers on income + subscription
+  // forms. Loaded alongside the rest so the dropdowns hydrate without
+  // a follow-up fetch when the user clicks "+ New".
+  let projects = $state<Project[]>([]);
   let loading = $state(false);
+
+  // Account color → CSS variable. Empty / unknown falls through to
+  // surface1 so the row pip is just visible without yelling.
+  function accColor(c: string | undefined): string {
+    if (!c) return 'var(--color-surface2)';
+    const map: Record<string, string> = {
+      red: 'var(--color-error)',
+      orange: 'var(--color-accent)',
+      yellow: 'var(--color-warning)',
+      green: 'var(--color-success)',
+      blue: 'var(--color-secondary)',
+      purple: 'var(--color-primary)',
+      cyan: 'var(--color-info)'
+    };
+    return map[c] ?? 'var(--color-surface2)';
+  }
 
   // Render integer cents in the user's locale. Falls back to
   // "<CCY> <amount>" if the browser doesn't know the code.
@@ -81,18 +102,23 @@
     if (!$auth) return;
     loading = true;
     try {
-      const [o, a, s, i, g] = await Promise.all([
+      const [o, a, s, i, g, p] = await Promise.all([
         api.finOverview(),
         api.finListAccounts(),
         api.finListSubscriptions(),
         api.finListIncome(),
-        api.finListGoals()
+        api.finListGoals(),
+        // Projects are read-only here — fetched only to populate
+        // pickers on income + subscription create/edit. A failure
+        // shouldn't break the finance page; fall through with empty.
+        api.listProjects().catch(() => ({ projects: [] as Project[], total: 0 }))
       ]);
       overview = o;
       accounts = a.accounts;
       subs = s.subscriptions;
       streams = i.streams;
       goals = g.goals;
+      projects = p.projects;
     } catch (e) {
       toast.error('failed to load finance: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -122,9 +148,9 @@
 
   // ── New-account modal ─────────────────────────────────────────────
   let accOpen = $state(false);
-  let accForm = $state({ name: '', kind: 'checking', currency: 'USD', balance: '0', notes: '' });
+  let accForm = $state({ name: '', kind: 'checking', currency: 'USD', balance: '0', institution: '', color: '', tags: '', notes: '' });
   function openAcc() {
-    accForm = { name: '', kind: 'checking', currency: accounts[0]?.currency || 'USD', balance: '0', notes: '' };
+    accForm = { name: '', kind: 'checking', currency: accounts[0]?.currency || 'USD', balance: '0', institution: '', color: '', tags: '', notes: '' };
     accOpen = true;
   }
   async function submitAcc() {
@@ -134,6 +160,9 @@
         kind: accForm.kind,
         currency: accForm.currency.trim(),
         balance_cents: Math.round(parseFloat(accForm.balance || '0') * 100),
+        institution: accForm.institution.trim() || undefined,
+        color: accForm.color || undefined,
+        tags: accForm.tags.split(',').map((t) => t.trim()).filter(Boolean),
         notes: accForm.notes.trim() || undefined
       });
       accOpen = false;
@@ -167,7 +196,7 @@
     name: '', amount: '', currency: 'USD',
     cadence: 'monthly' as FinSubscription['cadence'],
     next_renewal: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-    account_id: '', category: '', url: ''
+    account_id: '', project: '', tags: '', category: '', url: ''
   });
   function openSub() {
     subForm = {
@@ -176,6 +205,8 @@
       cadence: 'monthly',
       next_renewal: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
       account_id: accounts[0]?.id ?? '',
+      project: '',
+      tags: '',
       category: '', url: ''
     };
     subOpen = true;
@@ -193,6 +224,8 @@
         cadence: subForm.cadence,
         next_renewal: subForm.next_renewal,
         account_id: subForm.account_id || undefined,
+        project: subForm.project.trim() || undefined,
+        tags: subForm.tags.split(',').map((t) => t.trim()).filter(Boolean),
         category: subForm.category.trim() || undefined,
         url: subForm.url.trim() || undefined,
         active: true
@@ -227,6 +260,11 @@
     projected: '',
     actual: '',
     currency: 'USD',
+    payout_day: '',
+    payout_cadence: 'monthly' as FinIncomeStream['payout_cadence'],
+    account_id: '',
+    project: '',
+    tags: '',
     url: '',
     notes: ''
   });
@@ -240,6 +278,11 @@
         projected: (s.projected_monthly_cents / 100).toFixed(2),
         actual: (s.actual_monthly_cents / 100).toFixed(2),
         currency: s.currency,
+        payout_day: s.payout_day_of_month ? String(s.payout_day_of_month) : '',
+        payout_cadence: (s.payout_cadence ?? 'monthly') as FinIncomeStream['payout_cadence'],
+        account_id: s.account_id ?? '',
+        project: s.project ?? '',
+        tags: (s.tags ?? []).join(', '),
         url: s.url ?? '',
         notes: s.notes ?? ''
       };
@@ -249,6 +292,11 @@
         name: '', status: 'idea', kind: 'business',
         projected: '', actual: '',
         currency: accounts[0]?.currency || 'USD',
+        payout_day: '',
+        payout_cadence: 'monthly',
+        account_id: accounts[0]?.id ?? '',
+        project: '',
+        tags: '',
         url: '', notes: ''
       };
     }
@@ -256,13 +304,22 @@
   }
   async function submitIncome() {
     try {
-      const body = {
+      // Empty payout day means "unknown" — send as 0 so the server
+      // stores nothing. Days outside 1-31 get clamped at the form
+      // level so the schema stays sane regardless of weird input.
+      const day = incomeForm.payout_day ? Math.max(0, Math.min(31, parseInt(incomeForm.payout_day, 10))) : 0;
+      const body: Partial<FinIncomeStream> = {
         name: incomeForm.name.trim(),
         status: incomeForm.status,
         kind: incomeForm.kind,
         projected_monthly_cents: Math.round(parseFloat(incomeForm.projected || '0') * 100),
         actual_monthly_cents: Math.round(parseFloat(incomeForm.actual || '0') * 100),
         currency: incomeForm.currency.trim() || 'USD',
+        payout_day_of_month: day,
+        payout_cadence: incomeForm.payout_cadence || 'monthly',
+        account_id: incomeForm.account_id || undefined,
+        project: incomeForm.project.trim() || undefined,
+        tags: incomeForm.tags.split(',').map((t) => t.trim()).filter(Boolean),
         url: incomeForm.url.trim() || undefined,
         notes: incomeForm.notes.trim() || undefined,
         // When the user flips a stream to active, stamp started_at if
@@ -339,28 +396,66 @@
   let pausedStreams = $derived(streams.filter((s) => s.status === 'paused'));
 
   // ── 30-day cashflow timeline ──────────────────────────────────────
-  // Combines subscription renewals + financial-goal target dates that
-  // fall in the next 30 days into one chronological list. Income
-  // streams are summarised as a single "approx monthly income" line
-  // because we don't track exact payout dates per source — going
-  // beyond that would require a payout_day field on IncomeStream and
-  // bloats the schema for marginal value.
+  // Concrete dated events in the next 30 days: subscription renewals,
+  // income payouts (when the stream has payout_day_of_month set),
+  // and financial-goal target dates. Income streams without an
+  // explicit payout day are summarised as a footer line — we don't
+  // make up dates for them.
   type CashflowEvent = {
     date: string;
     label: string;
     detail?: string;
     cents: number; // signed; >0 income, <0 outflow
-    kind: 'subscription' | 'goal';
+    kind: 'subscription' | 'goal' | 'income';
   };
   const HORIZON_DAYS = 30;
+
+  // Mirror of finance.IncomeStream.NextPayoutInWindow — kept in sync
+  // with the Go side so the timeline matches what the server would
+  // compute. Returns null when the stream has no schedule.
+  function nextPayoutInWindow(s: FinIncomeStream, from: Date, to: Date): Date | null {
+    const day = s.payout_day_of_month;
+    if (!day || day < 1 || day > 31) return null;
+    const cad = s.payout_cadence || 'monthly';
+    const lastDay = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+    const clamp = (year: number, month: number, requested: number) => Math.min(requested, lastDay(year, month));
+
+    if (cad === 'yearly') {
+      // Anchor on started_at month if available.
+      let anchorMonth = from.getMonth();
+      if (s.started_at) {
+        const t = new Date(s.started_at + 'T00:00:00');
+        if (!Number.isNaN(t.getTime())) anchorMonth = t.getMonth();
+      }
+      for (let year = from.getFullYear(); year <= to.getFullYear() + 1; year++) {
+        const candidate = new Date(year, anchorMonth, clamp(year, anchorMonth, day));
+        if (candidate >= from && candidate <= to) return candidate;
+      }
+      return null;
+    }
+    // Monthly (and weekly/quarterly fallbacks).
+    let year = from.getFullYear();
+    let month = from.getMonth();
+    for (let i = 0; i < 32; i++) {
+      const candidate = new Date(year, month, clamp(year, month, day));
+      if (candidate >= from && candidate <= to) return candidate;
+      if (candidate > to) return null;
+      month++;
+      if (month > 11) { month = 0; year++; }
+    }
+    return null;
+  }
+  function isoDate(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
 
   let cashflowEvents = $derived.by<CashflowEvent[]>(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const horizon = new Date(today);
     horizon.setDate(horizon.getDate() + HORIZON_DAYS);
-    const todayISO = today.toISOString().slice(0, 10);
-    const horizonISO = horizon.toISOString().slice(0, 10);
+    const todayISO = isoDate(today);
+    const horizonISO = isoDate(horizon);
     const out: CashflowEvent[] = [];
 
     for (const s of subs) {
@@ -370,9 +465,29 @@
         date: s.next_renewal,
         label: s.name,
         detail: `${s.cadence} renewal`,
-        // amount_cents is already negative for outflows; keep the sign.
         cents: s.amount_cents,
         kind: 'subscription'
+      });
+    }
+    for (const stream of streams) {
+      if (stream.status !== 'active') continue;
+      if (stream.actual_monthly_cents <= 0) continue;
+      const payout = nextPayoutInWindow(stream, today, horizon);
+      if (!payout) continue;
+      // Yearly cadence: the payout amount is the actual ANNUAL value
+      // (yearly bonus, dividends), not monthly. Approximate as 12×
+      // the monthly the user told us; users with a real bonus
+      // structure should record it differently. Other cadences use
+      // the monthly directly.
+      const cents = stream.payout_cadence === 'yearly'
+        ? stream.actual_monthly_cents * 12
+        : stream.actual_monthly_cents;
+      out.push({
+        date: isoDate(payout),
+        label: stream.name,
+        detail: stream.payout_cadence === 'yearly' ? 'yearly payout' : 'monthly payout',
+        cents,
+        kind: 'income'
       });
     }
     for (const g of goals) {
@@ -383,7 +498,7 @@
         date: g.target_date,
         label: `${g.name} (target)`,
         detail: `${g.kind} goal due`,
-        cents: 0, // goals don't move money themselves; show as a dateline
+        cents: 0,
         kind: 'goal'
       });
     }
@@ -391,13 +506,20 @@
     return out;
   });
 
-  // Window net = approx 30-day income - 30-day subscription outflows.
-  // Income side uses the active-stream actual sum directly (already
-  // monthly). Sub side uses the sum of the actual renewal amounts in
-  // the window — NOT the monthly-normalised number — because a yearly
-  // sub renewing in 5 days hits as the full annual charge, not 1/12.
+  // Window totals split by sign so the header line can show in / out
+  // separately from the running net. Income side counts dated payouts
+  // first, falls back to the aggregate "approx monthly" footer for
+  // streams without a payout day.
+  let cashflowIncomeIn = $derived(cashflowEvents.reduce((s, e) => s + (e.cents > 0 ? e.cents : 0), 0));
   let cashflowSubOut = $derived(cashflowEvents.reduce((s, e) => s + (e.cents < 0 ? -e.cents : 0), 0));
-  let cashflowNet = $derived((overview?.income_monthly_actual_cents ?? 0) - cashflowSubOut);
+  // Streams with no payout day — we'll show them as "+approx X / mo"
+  // in the footer because we don't know the date.
+  let undatedIncomeMonthly = $derived(
+    streams
+      .filter((s) => s.status === 'active' && s.actual_monthly_cents > 0 && (!s.payout_day_of_month || s.payout_day_of_month < 1))
+      .reduce((sum, s) => sum + s.actual_monthly_cents, 0)
+  );
+  let cashflowNet = $derived(cashflowIncomeIn + undatedIncomeMonthly - cashflowSubOut);
 
   // Day-of-month from a YYYY-MM-DD; used for the timeline pip layout.
   function dayOf(iso: string): number {
@@ -500,12 +622,12 @@
              outflows at a glance, then a chronological list with
              running net for detail. Hidden when nothing's coming up
              so empty vaults don't show a dead band. -->
-        {#if cashflowEvents.length > 0 || (overview.income_monthly_actual_cents > 0 && cashflowSubOut > 0)}
+        {#if cashflowEvents.length > 0 || undatedIncomeMonthly > 0}
           <section class="mb-6 bg-surface0 border border-surface1 rounded-lg p-4">
             <div class="flex items-baseline gap-3 flex-wrap mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium">Next 30 days</h3>
               <span class="text-xs text-dim">
-                <span class="text-success">+{fmtMoney(overview.income_monthly_actual_cents, overview.currency)}</span>
+                <span class="text-success">+{fmtMoney(cashflowIncomeIn + undatedIncomeMonthly, overview.currency)}</span>
                 <span class="mx-1">−</span>
                 <span class="text-error">{fmtMoney(cashflowSubOut, overview.currency)}</span>
                 <span class="mx-1">=</span>
@@ -513,10 +635,10 @@
               </span>
             </div>
 
-            <!-- Pip strip: each subscription due in the window shows
-                 as a small marker positioned by day-of-month. Hover
-                 for the name + amount. Pure CSS — no canvas, no
-                 d3, no chart lib for what's a horizontal scale. -->
+            <!-- Pip strip: each event in the window shows as a small
+                 marker positioned by day-of-month. Income (green),
+                 subscription (red), goal target (blue). Hover for
+                 the full label + amount. Pure CSS — no chart lib. -->
             {#if cashflowEvents.length > 0}
               <div class="relative h-6 bg-mantle rounded mb-3">
                 <div class="absolute inset-y-0 left-0 right-0 flex items-center px-1">
@@ -529,8 +651,9 @@
                   {@const eventDate = new Date(e.date + 'T00:00:00')}
                   {@const daysFromToday = Math.round((eventDate.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / 86400000)}
                   {@const pct = Math.max(0, Math.min(100, (daysFromToday / 30) * 100))}
+                  {@const tone = e.kind === 'income' ? 'bg-success' : e.kind === 'subscription' ? 'bg-error' : 'bg-info'}
                   <div
-                    class="absolute top-0 bottom-0 w-1 -translate-x-1/2 rounded-full {e.kind === 'subscription' ? 'bg-error' : 'bg-info'}"
+                    class="absolute top-0 bottom-0 w-1 -translate-x-1/2 rounded-full {tone}"
                     style="left: {pct}%"
                     title="{dayLabel(e.date)} — {e.label}{e.cents ? ` (${e.cents > 0 ? '+' : '−'}${fmtMoney(Math.abs(e.cents), overview.currency)})` : ''}"
                   ></div>
@@ -555,10 +678,10 @@
               {/each}
             </ul>
 
-            {#if overview.income_monthly_actual_cents > 0}
+            {#if undatedIncomeMonthly > 0}
               <p class="text-[11px] text-dim italic mt-3">
-                Plus monthly income: <span class="text-success">+{fmtMoney(overview.income_monthly_actual_cents, overview.currency)}</span>
-                from {overview.income_active_count} active source{overview.income_active_count === 1 ? '' : 's'} — exact payout dates vary, not shown above.
+                Plus undated income: <span class="text-success">+{fmtMoney(undatedIncomeMonthly, overview.currency)}</span>/month
+                — set a payout day on the active stream to project it onto the timeline above.
               </p>
             {/if}
           </section>
@@ -612,9 +735,19 @@
                   {#if s.projected_monthly_cents > 0}
                     · variance: <span class="{variance >= 0 ? 'text-success' : 'text-warning'}">{variance >= 0 ? '+' : ''}{fmtMoney(variance, s.currency)}</span>
                   {/if}
+                  {#if s.payout_day_of_month}· payout day {s.payout_day_of_month}{#if s.payout_cadence && s.payout_cadence !== 'monthly'} ({s.payout_cadence}){/if}{/if}
+                  {#if s.account_id}· into {accountName(s.account_id)}{/if}
                   {#if s.started_at}· since {s.started_at}{/if}
+                  {#if s.project}· <a href="/projects/{encodeURIComponent(s.project)}" class="text-secondary hover:underline">📁 {s.project}</a>{/if}
                   {#if s.url}· <a href={s.url} target="_blank" rel="noopener" class="text-secondary hover:underline">link ↗</a>{/if}
                 </p>
+                {#if s.tags && s.tags.length > 0}
+                  <div class="flex flex-wrap gap-1 mt-1">
+                    {#each s.tags as t}
+                      <span class="text-[10px] px-1.5 py-0.5 bg-surface1 text-subtext rounded">#{t}</span>
+                    {/each}
+                  </div>
+                {/if}
               </li>
             {/each}
           </ul>
@@ -633,6 +766,14 @@
                   <span class="text-sm font-mono text-info">→ {fmtMoney(s.projected_monthly_cents, s.currency)} / mo</span>
                   <button onclick={() => deleteIncome(s)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>
                 </div>
+                {#if s.project || (s.tags && s.tags.length > 0)}
+                  <div class="flex flex-wrap items-center gap-1.5 mt-1">
+                    {#if s.project}<a href="/projects/{encodeURIComponent(s.project)}" class="text-[11px] text-secondary hover:underline">📁 {s.project}</a>{/if}
+                    {#each (s.tags ?? []) as t}
+                      <span class="text-[10px] px-1.5 py-0.5 bg-surface1 text-subtext rounded">#{t}</span>
+                    {/each}
+                  </div>
+                {/if}
                 {#if s.notes}
                   <p class="text-[11px] text-subtext mt-1 whitespace-pre-line">{s.notes}</p>
                 {/if}
@@ -680,9 +821,17 @@
               <p class="text-xs text-dim mt-1">
                 next: <span class="text-subtext">{s.next_renewal}</span> · <span class="{relDate(s.next_renewal).includes('ago') ? 'text-error' : ''}">{relDate(s.next_renewal)}</span>
                 {#if s.account_id}· billed to {accountName(s.account_id)}{/if}
+                {#if s.project}· <a href="/projects/{encodeURIComponent(s.project)}" class="text-secondary hover:underline">📁 {s.project}</a>{/if}
                 {#if s.category}· {s.category}{/if}
                 {#if s.url}· <a href={s.url} target="_blank" rel="noopener" class="text-secondary hover:underline">manage ↗</a>{/if}
               </p>
+              {#if s.tags && s.tags.length > 0}
+                <div class="flex flex-wrap gap-1 mt-1">
+                  {#each s.tags as t}
+                    <span class="text-[10px] px-1.5 py-0.5 bg-surface1 text-subtext rounded">#{t}</span>
+                  {/each}
+                </div>
+              {/if}
             </li>
           {/each}
         </ul>
@@ -698,21 +847,34 @@
       {:else}
         <ul class="space-y-2">
           {#each accounts as a (a.id)}
-            <li class="bg-surface0 border border-surface1 rounded-lg p-3 flex items-baseline gap-3 flex-wrap {a.archived ? 'opacity-50' : ''}">
-              <h3 class="font-medium text-text">{a.name}</h3>
-              <span class="text-[11px] px-1.5 py-0.5 rounded bg-surface1 text-subtext">{a.kind}</span>
-              <span class="text-xs text-dim">{a.currency}</span>
-              <span class="flex-1"></span>
-              <label class="text-xs text-dim flex items-center gap-1.5">balance
-                <input
-                  type="number"
-                  step="0.01"
-                  value={(a.balance_cents / 100).toFixed(2)}
-                  onblur={(e) => saveBalance(a, e)}
-                  class="w-28 bg-mantle border border-surface1 rounded px-1.5 py-0.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary"
-                />
-              </label>
-              <button onclick={() => deleteAcc(a)} class="text-xs text-dim hover:text-error">delete</button>
+            <li class="bg-surface0 border border-surface1 rounded-lg p-3 {a.archived ? 'opacity-50' : ''}" style="border-left: 3px solid {accColor(a.color)}">
+              <div class="flex items-baseline gap-3 flex-wrap">
+                <h3 class="font-medium text-text">{a.name}</h3>
+                <span class="text-[11px] px-1.5 py-0.5 rounded bg-surface1 text-subtext">{a.kind}</span>
+                {#if a.institution}
+                  <span class="text-[11px] text-dim">{a.institution}</span>
+                {/if}
+                <span class="text-xs text-dim">{a.currency}</span>
+                <span class="flex-1"></span>
+                <label class="text-xs text-dim flex items-center gap-1.5">balance
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={(a.balance_cents / 100).toFixed(2)}
+                    onblur={(e) => saveBalance(a, e)}
+                    class="w-28 bg-mantle border border-surface1 rounded px-1.5 py-0.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary"
+                  />
+                </label>
+                <button onclick={() => deleteAcc(a)} class="text-xs text-dim hover:text-error">delete</button>
+              </div>
+              {#if (a.tags && a.tags.length > 0) || a.as_of}
+                <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  {#each (a.tags ?? []) as t}
+                    <span class="text-[10px] px-1.5 py-0.5 bg-surface1 text-subtext rounded">#{t}</span>
+                  {/each}
+                  {#if a.as_of}<span class="text-[11px] text-dim">as of {a.as_of}</span>{/if}
+                </div>
+              {/if}
             </li>
           {/each}
         </ul>
@@ -790,6 +952,53 @@
         </label>
         <input bind:value={incomeForm.currency} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       </div>
+
+      <!-- Payout schedule. Day-of-month + cadence drives the
+           cashflow timeline projection. Empty day = unknown
+           schedule; the stream still shows everywhere else but
+           doesn't render on the date strip. -->
+      <fieldset class="border border-surface1 rounded p-3 space-y-2">
+        <legend class="text-[11px] text-dim px-1">Payout schedule</legend>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block">
+            <span class="text-[11px] text-dim">Day of month (1-31)</span>
+            <input type="number" min="0" max="31" bind:value={incomeForm.payout_day} placeholder="e.g. 5" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
+          </label>
+          <label class="block">
+            <span class="text-[11px] text-dim">Cadence</span>
+            <select bind:value={incomeForm.payout_cadence} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly (anchor month from started date)</option>
+              <option value="quarterly">Quarterly (approx)</option>
+              <option value="weekly">Weekly (approx)</option>
+            </select>
+          </label>
+        </div>
+        <p class="text-[11px] text-dim">
+          Salary on the 5th? Set day=5, cadence=monthly. Leave day blank if you don't want it on the timeline.
+        </p>
+      </fieldset>
+
+      <!-- Project + account links. Both optional — useful for
+           ventures (link to the project that's the venture) and
+           dividend streams (link to the investment account). -->
+      <div class="grid grid-cols-2 gap-2">
+        <label class="block">
+          <span class="text-[11px] text-dim">Lands in account</span>
+          <select bind:value={incomeForm.account_id} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
+            <option value="">— none —</option>
+            {#each accounts as a}<option value={a.id}>{a.name}</option>{/each}
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-[11px] text-dim">Linked project</span>
+          <select bind:value={incomeForm.project} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
+            <option value="">— none —</option>
+            {#each projects as p}<option value={p.name}>{p.name}</option>{/each}
+          </select>
+        </label>
+      </div>
+      <input bind:value={incomeForm.tags} placeholder="Tags (comma-separated, e.g. primary, w2)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
       <input bind:value={incomeForm.url} placeholder="URL (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
       <textarea bind:value={incomeForm.notes} rows="2" placeholder="Notes (idea details, next steps…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text resize-y focus:outline-none focus:border-primary"></textarea>
       <div class="flex justify-end gap-2 pt-2">
@@ -819,6 +1028,17 @@
         <input bind:value={accForm.currency} placeholder="USD" class="w-20 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
         <input type="number" step="0.01" bind:value={accForm.balance} placeholder="0.00" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
       </div>
+      <input bind:value={accForm.institution} placeholder="Institution (Chase, Apple Card…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+      <!-- Color palette swatches — visually pick the row pip rather
+           than typing a name. Empty pip = "no color". -->
+      <div class="flex items-center gap-2">
+        <span class="text-[11px] text-dim">Color</span>
+        <button type="button" onclick={() => (accForm.color = '')} class="w-5 h-5 rounded-full border border-surface2 {accForm.color === '' ? 'ring-2 ring-primary' : ''}" aria-label="no color"></button>
+        {#each ['red','orange','yellow','green','blue','purple','cyan'] as c}
+          <button type="button" onclick={() => (accForm.color = c)} class="w-5 h-5 rounded-full {accForm.color === c ? 'ring-2 ring-primary' : ''}" style="background: {accColor(c)}" aria-label={c}></button>
+        {/each}
+      </div>
+      <input bind:value={accForm.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
       <input bind:value={accForm.notes} placeholder="Notes (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
       <div class="flex justify-end gap-2 pt-2">
         <button type="button" onclick={() => (accOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
@@ -848,12 +1068,19 @@
       <label class="block text-xs text-dim">Next renewal
         <input type="date" bind:value={subForm.next_renewal} class="block mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       </label>
-      {#if accounts.length > 0}
-        <select bind:value={subForm.account_id} class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
-          <option value="">— no account link —</option>
-          {#each accounts as a}<option value={a.id}>{a.name}</option>{/each}
+      <div class="grid grid-cols-2 gap-2">
+        {#if accounts.length > 0}
+          <select bind:value={subForm.account_id} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
+            <option value="">— no account —</option>
+            {#each accounts as a}<option value={a.id}>{a.name}</option>{/each}
+          </select>
+        {/if}
+        <select bind:value={subForm.project} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
+          <option value="">— no project —</option>
+          {#each projects as p}<option value={p.name}>{p.name}</option>{/each}
         </select>
-      {/if}
+      </div>
+      <input bind:value={subForm.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
       <input bind:value={subForm.category} placeholder="Category (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
       <input bind:value={subForm.url} placeholder="Manage URL (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
       <div class="flex justify-end gap-2 pt-2">

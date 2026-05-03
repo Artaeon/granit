@@ -534,6 +534,12 @@ export interface FinAccount {
   currency: string;
   balance_cents: number;
   as_of?: string;
+  // Optional polish fields — institution name (bank/issuer), color
+  // palette key for the row pip, freeform tags. The UI treats any
+  // string as a valid color (CSS var lookup with sensible fallback).
+  institution?: string;
+  color?: string;
+  tags?: string[];
   notes?: string;
   archived?: boolean;
   created_at: string;
@@ -548,6 +554,8 @@ export interface FinSubscription {
   cadence: FinSubCadence | string;
   next_renewal: string;
   account_id?: string;
+  project?: string; // Project.Name
+  tags?: string[];
   category?: string;
   url?: string;
   notes?: string;
@@ -564,6 +572,14 @@ export interface FinIncomeStream {
   projected_monthly_cents: number;
   actual_monthly_cents: number;
   currency: string;
+  // Concrete payout schedule. payout_day_of_month is 1-31 (0/missing
+  // = unknown, no projection); payout_cadence defaults to monthly
+  // when empty. Drives the cashflow timeline's income lines.
+  payout_day_of_month?: number;
+  payout_cadence?: FinSubCadence | string;
+  account_id?: string;     // where the money lands
+  project?: string;        // Project.Name — for ventures + career-tagged jobs
+  tags?: string[];
   url?: string;
   started_at?: string;
   notes?: string;

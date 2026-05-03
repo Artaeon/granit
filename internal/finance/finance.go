@@ -60,20 +60,30 @@ func NormalizeAccountKind(s string) string {
 }
 
 // Account is a money container — one bank/credit/cash/investment per
-// row. Balance is the user-confirmed snapshot; live balance equals
-// Balance + sum(Transactions since AsOf), but we keep that derivation
-// out of this package (it belongs in handlers).
+// row. Balance is the user-confirmed snapshot; the AsOf field captures
+// when the user last reconciled it.
+//
+// Optional fields beyond the basics:
+//   - Institution: bank/issuer name ("Chase", "Apple Card") so the
+//     UI can group multiple accounts at the same institution and
+//     show it as a small pill on the row.
+//   - Color: visual distinguisher — palette key (e.g. "blue",
+//     "purple") that the UI maps to a CSS variable. Empty = default.
+//   - Tags: user-owned taxonomy — same convention as tasks/people.
 type Account struct {
-	ID          string    `json:"id"`               // ULID, lowercase
-	Name        string    `json:"name"`             // user-facing label
-	Kind        string    `json:"kind"`             // see AccountKind
-	Currency    string    `json:"currency"`         // ISO 4217
-	BalanceCents int64    `json:"balance_cents"`    // signed
-	AsOf        string    `json:"as_of,omitempty"`  // YYYY-MM-DD of the snapshot
-	Notes       string    `json:"notes,omitempty"`
-	Archived    bool      `json:"archived,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           string    `json:"id"`               // ULID, lowercase
+	Name         string    `json:"name"`             // user-facing label
+	Kind         string    `json:"kind"`             // see AccountKind
+	Currency     string    `json:"currency"`         // ISO 4217
+	BalanceCents int64     `json:"balance_cents"`    // signed
+	AsOf         string    `json:"as_of,omitempty"`  // YYYY-MM-DD of the snapshot
+	Institution  string    `json:"institution,omitempty"`
+	Color        string    `json:"color,omitempty"`  // palette key
+	Tags         []string  `json:"tags,omitempty"`
+	Notes        string    `json:"notes,omitempty"`
+	Archived     bool      `json:"archived,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // IncomeStreamStatus tracks where a stream is in its lifecycle.
@@ -133,19 +143,111 @@ func NormalizeIncomeKind(s string) string {
 // ("when this is running, it should make $X/mo"). Actual is what's
 // flowing right now. For an idea/planned stream Actual is 0; for an
 // active one the user updates it as months close.
+//
+// PayoutDayOfMonth (1-31, 0 = unknown) + PayoutCadence are the
+// concrete schedule — "salary lands on the 5th, monthly". The
+// cashflow timeline projects each active stream's next payout in
+// the 30-day window using these.
+//
+// AccountID + ProjectName + Tags hook the stream into the rest of
+// granit: which account does it land in, which project does it
+// belong to (a venture's project, the day job's "career" project,
+// dividends from the "investment" project), and freeform tags.
 type IncomeStream struct {
-	ID                  string    `json:"id"`
-	Name                string    `json:"name"`
-	Status              string    `json:"status"`              // see IncomeStreamStatus
-	Kind                string    `json:"kind"`                // see IncomeKind
-	ProjectedMonthlyCents int64   `json:"projected_monthly_cents"`
-	ActualMonthlyCents  int64     `json:"actual_monthly_cents"`
-	Currency            string    `json:"currency"`
-	URL                 string    `json:"url,omitempty"`       // landing page / dashboard
-	StartedAt           string    `json:"started_at,omitempty"` // YYYY-MM-DD when it became active
-	Notes               string    `json:"notes,omitempty"`
-	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	ID                    string    `json:"id"`
+	Name                  string    `json:"name"`
+	Status                string    `json:"status"`              // see IncomeStreamStatus
+	Kind                  string    `json:"kind"`                // see IncomeKind
+	ProjectedMonthlyCents int64     `json:"projected_monthly_cents"`
+	ActualMonthlyCents    int64     `json:"actual_monthly_cents"`
+	Currency              string    `json:"currency"`
+	PayoutDayOfMonth      int       `json:"payout_day_of_month,omitempty"` // 1-31; 0 = unknown
+	PayoutCadence         string    `json:"payout_cadence,omitempty"`      // see SubCadence; empty defaults to monthly
+	AccountID             string    `json:"account_id,omitempty"`          // where the money lands
+	ProjectName           string    `json:"project,omitempty"`             // matches Project.Name
+	Tags                  []string  `json:"tags,omitempty"`
+	URL                   string    `json:"url,omitempty"`                 // landing page / dashboard
+	StartedAt             string    `json:"started_at,omitempty"`          // YYYY-MM-DD when it became active
+	Notes                 string    `json:"notes,omitempty"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+}
+
+// NextPayoutInWindow returns the next payout date that falls between
+// `from` (inclusive) and `to` (inclusive), or zero-time + false if
+// none fits or the schedule is unknown.
+//
+// Cadence behaviour:
+//   - "monthly" or empty: PayoutDayOfMonth applied to each calendar
+//     month. If the month has fewer days (Feb 30 → ?), we clamp to
+//     the last day of the month.
+//   - "yearly": the day-of-month + month from StartedAt; falls back
+//     to today's month if StartedAt is unset.
+//   - "weekly" / "quarterly": fall back to monthly approximation —
+//     these are rare for income (paycheck is monthly; quarterly is
+//     dividends with too much variation to project precisely
+//     without more fields). The UI label flags them as "approx".
+//
+// Used by the cashflow timeline.
+func (s IncomeStream) NextPayoutInWindow(from, to time.Time) (time.Time, bool) {
+	if s.PayoutDayOfMonth < 1 || s.PayoutDayOfMonth > 31 {
+		return time.Time{}, false
+	}
+	cad := s.PayoutCadence
+	if cad == "" {
+		cad = string(CadenceMonthly)
+	}
+	switch SubCadence(cad) {
+	case CadenceYearly:
+		// Anchor to the started_at month if available; else today's month.
+		var month time.Month
+		if t, err := time.Parse("2006-01-02", s.StartedAt); err == nil {
+			month = t.Month()
+		} else {
+			month = from.Month()
+		}
+		for year := from.Year(); year <= to.Year()+1; year++ {
+			day := clampDay(year, month, s.PayoutDayOfMonth)
+			candidate := time.Date(year, month, day, 0, 0, 0, 0, from.Location())
+			if !candidate.Before(from) && !candidate.After(to) {
+				return candidate, true
+			}
+		}
+		return time.Time{}, false
+	default:
+		// Monthly (and the weekly/quarterly fallbacks). Walk forward
+		// month-by-month from `from` until we find one in the window
+		// or pass the end. Loop bound: at most ~32 months would fit
+		// in any reasonable window, so the linear scan is cheap.
+		year, month := from.Year(), from.Month()
+		for i := 0; i < 32; i++ {
+			day := clampDay(year, month, s.PayoutDayOfMonth)
+			candidate := time.Date(year, month, day, 0, 0, 0, 0, from.Location())
+			if !candidate.Before(from) && !candidate.After(to) {
+				return candidate, true
+			}
+			if candidate.After(to) {
+				return time.Time{}, false
+			}
+			month++
+			if month > 12 {
+				month = 1
+				year++
+			}
+		}
+		return time.Time{}, false
+	}
+}
+
+// clampDay returns the smallest of the requested day and the actual
+// last day of (year, month). Lets callers say "the 31st" without
+// special-casing February / 30-day months.
+func clampDay(year int, month time.Month, requested int) int {
+	last := time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	if requested > last {
+		return last
+	}
+	return requested
 }
 
 // SubCadence is how often a subscription recurs. Same open-string +
@@ -172,6 +274,10 @@ func NormalizeCadence(s string) string {
 // next-renewal date is the user-edited snapshot; computed roll-forward
 // (advance by cadence on each tick past today) lives in serveapi
 // handlers so this package stays IO-only.
+//
+// ProjectName lets the user attribute a SaaS spend to a project ("VPS
+// is for the side-SaaS venture"). It's a name, not an ID, to match
+// the existing project schema in granitmeta which keys by Name.
 type Subscription struct {
 	ID            string    `json:"id"`
 	Name          string    `json:"name"`             // "Netflix"
@@ -180,7 +286,9 @@ type Subscription struct {
 	Cadence       string    `json:"cadence"`          // see SubCadence
 	NextRenewal   string    `json:"next_renewal"`     // YYYY-MM-DD
 	AccountID     string    `json:"account_id,omitempty"` // billed against
+	ProjectName   string    `json:"project,omitempty"`     // matches Project.Name
 	Category      string    `json:"category,omitempty"`
+	Tags          []string  `json:"tags,omitempty"`
 	URL           string    `json:"url,omitempty"`        // cancellation / login link
 	Notes         string    `json:"notes,omitempty"`
 	Active        bool      `json:"active"`

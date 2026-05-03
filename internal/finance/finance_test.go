@@ -86,6 +86,11 @@ func TestIncomeRoundTrip(t *testing.T) {
 			ProjectedMonthlyCents: 800000,
 			ActualMonthlyCents:    810000,
 			Currency:              "USD",
+			PayoutDayOfMonth:      5,
+			PayoutCadence:         string(CadenceMonthly),
+			AccountID:             "acc-1",
+			ProjectName:           "Career",
+			Tags:                  []string{"primary", "w2"},
 			StartedAt:             "2024-01-15",
 			CreatedAt:             now,
 			UpdatedAt:             now,
@@ -109,6 +114,56 @@ func TestIncomeRoundTrip(t *testing.T) {
 	got := LoadIncome(dir)
 	if !reflect.DeepEqual(got, in) {
 		t.Errorf("round-trip mismatch:\n got = %+v\n want = %+v", got, in)
+	}
+}
+
+func TestNextPayoutInWindow(t *testing.T) {
+	from := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 5, 30, 0, 0, 0, 0, time.UTC)
+
+	// Monthly on the 5th — should be 2026-05-05.
+	s := IncomeStream{PayoutDayOfMonth: 5, PayoutCadence: string(CadenceMonthly)}
+	got, ok := s.NextPayoutInWindow(from, to)
+	if !ok || got.Day() != 5 || got.Month() != time.May {
+		t.Errorf("monthly 5th: got %v ok=%v, want 2026-05-05", got, ok)
+	}
+
+	// Monthly on the 31st — Feb has no 31st; should clamp to last day.
+	feb := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	febEnd := time.Date(2026, 2, 28, 0, 0, 0, 0, time.UTC)
+	s = IncomeStream{PayoutDayOfMonth: 31, PayoutCadence: string(CadenceMonthly)}
+	got, ok = s.NextPayoutInWindow(feb, febEnd)
+	if !ok || got.Day() != 28 {
+		t.Errorf("31st in Feb: got %v ok=%v, want clamped to 28", got, ok)
+	}
+
+	// Past day in current month — should roll to next month.
+	from2 := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	to2 := time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC)
+	s = IncomeStream{PayoutDayOfMonth: 5, PayoutCadence: string(CadenceMonthly)}
+	got, ok = s.NextPayoutInWindow(from2, to2)
+	if !ok || got.Month() != time.June || got.Day() != 5 {
+		t.Errorf("monthly 5th past: got %v, want 2026-06-05", got)
+	}
+
+	// PayoutDayOfMonth=0 → schedule unknown, should return false.
+	s = IncomeStream{PayoutDayOfMonth: 0}
+	if _, ok := s.NextPayoutInWindow(from, to); ok {
+		t.Error("zero day-of-month should return false")
+	}
+
+	// Yearly — anchored to StartedAt month. Started Jan 15, payout day 15 →
+	// next yearly hit is January 2027 from a May 2026 window: out.
+	s = IncomeStream{PayoutDayOfMonth: 15, PayoutCadence: string(CadenceYearly), StartedAt: "2024-01-15"}
+	if _, ok := s.NextPayoutInWindow(from, to); ok {
+		t.Error("yearly Jan in May window: should return false")
+	}
+	// Same stream, but window covers next January.
+	winFrom := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+	winTo := time.Date(2027, 2, 1, 0, 0, 0, 0, time.UTC)
+	got, ok = s.NextPayoutInWindow(winFrom, winTo)
+	if !ok || got.Year() != 2027 || got.Month() != time.January || got.Day() != 15 {
+		t.Errorf("yearly Jan 15 in Dec-Feb window: got %v, want 2027-01-15", got)
 	}
 }
 

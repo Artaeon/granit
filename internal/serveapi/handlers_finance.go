@@ -249,6 +249,9 @@ func (s *Server) handlePatchAccount(w http.ResponseWriter, r *http.Request) {
 	apply("currency", &a.Currency)
 	apply("balance_cents", &a.BalanceCents)
 	apply("as_of", &a.AsOf)
+	apply("institution", &a.Institution)
+	apply("color", &a.Color)
+	apply("tags", &a.Tags)
 	apply("notes", &a.Notes)
 	apply("archived", &a.Archived)
 	a.UpdatedAt = time.Now().UTC()
@@ -356,6 +359,8 @@ func (s *Server) handlePatchSubscription(w http.ResponseWriter, r *http.Request)
 	}
 	apply("next_renewal", &x.NextRenewal)
 	apply("account_id", &x.AccountID)
+	apply("project", &x.ProjectName)
+	apply("tags", &x.Tags)
 	apply("category", &x.Category)
 	apply("url", &x.URL)
 	apply("notes", &x.Notes)
@@ -470,6 +475,21 @@ func (s *Server) handlePatchIncome(w http.ResponseWriter, r *http.Request) {
 	apply("projected_monthly_cents", &st.ProjectedMonthlyCents)
 	apply("actual_monthly_cents", &st.ActualMonthlyCents)
 	apply("currency", &st.Currency)
+	apply("payout_day_of_month", &st.PayoutDayOfMonth)
+	if raw, ok := patch["payout_cadence"]; ok {
+		var c string
+		_ = json.Unmarshal(raw, &c)
+		// Empty stays empty (UI treats it as "monthly default");
+		// otherwise canonicalise.
+		if c != "" {
+			st.PayoutCadence = finance.NormalizeCadence(c)
+		} else {
+			st.PayoutCadence = ""
+		}
+	}
+	apply("account_id", &st.AccountID)
+	apply("project", &st.ProjectName)
+	apply("tags", &st.Tags)
 	apply("url", &st.URL)
 	apply("started_at", &st.StartedAt)
 	apply("notes", &st.Notes)
