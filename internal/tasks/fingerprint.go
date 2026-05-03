@@ -43,6 +43,7 @@ var reCheckboxPrefix = regexp.MustCompile(`^\s*-\s*\[[ xX]\]\s*`)
 //   - 🔁 recurrence rules
 //   - [note:...] inline notes
 //   - goal:Gxxx links
+//   - deadline:<ulid> links
 //   - snooze:... markers
 var reTrailingMeta = regexp.MustCompile(
 	`📅\s*\d{4}-\d{2}-\d{2}` +
@@ -55,7 +56,8 @@ var reTrailingMeta = regexp.MustCompile(
 		`|~\d+m\b` +
 		`|🔁\s*\S+` +
 		`|\[note:[^\]]*\]` +
-		`|\bgoal:G\d+\b` +
+		`|\bgoal:[A-Za-z0-9_-]+\b` +
+		`|\bdeadline:[0-9a-z]{26}\b` +
 		`|\bsnooze:\S+`,
 )
 

@@ -1,20 +1,29 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
-  import { api, type Task, type Project } from '$lib/api';
+  import { api, type Task, type Project, type Goal, type Deadline } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import TaskCard from '$lib/tasks/TaskCard.svelte';
   import Kanban from '$lib/tasks/Kanban.svelte';
   import TriageBoard from '$lib/tasks/TriageBoard.svelte';
   import BulkBar from '$lib/tasks/BulkBar.svelte';
   import TaskDetail from '$lib/tasks/TaskDetail.svelte';
+  import TaskContextMenu from '$lib/tasks/TaskContextMenu.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
 
   type View = 'list' | 'kanban' | 'triage' | 'inbox' | 'stale' | 'quickwins' | 'review';
-  type Group = 'due' | 'priority' | 'note' | 'project' | 'tag';
+  type Group = 'due' | 'priority' | 'note' | 'project' | 'tag' | 'goal' | 'deadline';
 
   let tasks = $state<Task[]>([]);
   let projects = $state<Project[]>([]);
+  // Goals + deadlines drive the new group-by options and the group
+  // header titles (so a "Q3 launch (G004)" group reads as the goal's
+  // title, not the bare ID). Loaded once, then refreshed alongside
+  // the task list on WS events.
+  let goals = $state<Goal[]>([]);
+  let deadlines = $state<Deadline[]>([]);
 
   // Persist view + groupBy to localStorage so the user comes back to where they left off.
   const VIEW_KEY = 'granit.tasks.view';
@@ -34,15 +43,80 @@
   let tagFilter = $state('');
   let projectFilter = $state('');
   let priorityFilter = $state<number | ''>('');
+  let goalFilter = $state('');
+  let deadlineFilter = $state('');
   let loading = $state(false);
+  // URL sync: hydrate filter state from ?status=…&priority=…&… on
+  // first load so refresh / shared links keep filters intact, and
+  // mirror user-driven changes back into the URL via $effect.
+  // Without this, the kanban/list filters were per-tab session state
+  // — opening a P1-filtered list in a new tab silently lost the
+  // filter and the user blamed "the search box".
+  let urlHydrated = false;
+  function hydrateFromUrl() {
+    if (typeof window === 'undefined') return;
+    const sp = new URL(window.location.href).searchParams;
+    const get = (k: string) => sp.get(k) ?? '';
+    if (sp.has('status')) {
+      const s = get('status');
+      if (s === 'open' || s === 'done' || s === 'all') status = s;
+    }
+    if (sp.has('q')) q = get('q');
+    if (sp.has('tag')) tagFilter = get('tag');
+    if (sp.has('project')) projectFilter = get('project');
+    if (sp.has('priority')) {
+      const n = Number(get('priority'));
+      priorityFilter = n >= 1 && n <= 3 ? n : '';
+    }
+    if (sp.has('goal')) goalFilter = get('goal');
+    if (sp.has('deadline')) deadlineFilter = get('deadline');
+    if (sp.has('view')) {
+      const v = get('view') as View;
+      if (['list', 'kanban', 'triage', 'inbox', 'stale', 'quickwins', 'review'].includes(v)) view = v;
+    }
+    if (sp.has('group')) {
+      const g = get('group') as Group;
+      if (['due', 'priority', 'note', 'project', 'tag', 'goal', 'deadline'].includes(g)) groupBy = g;
+    }
+    urlHydrated = true;
+  }
+  function syncToUrl() {
+    if (!urlHydrated) return;
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams();
+    if (status !== 'open') sp.set('status', status);
+    if (q) sp.set('q', q);
+    if (tagFilter) sp.set('tag', tagFilter);
+    if (projectFilter) sp.set('project', projectFilter);
+    if (priorityFilter !== '') sp.set('priority', String(priorityFilter));
+    if (goalFilter) sp.set('goal', goalFilter);
+    if (deadlineFilter) sp.set('deadline', deadlineFilter);
+    if (view !== 'list') sp.set('view', view);
+    if (groupBy !== 'due') sp.set('group', groupBy);
+    const qs = sp.toString();
+    const next = qs ? `${$page.url.pathname}?${qs}` : $page.url.pathname;
+    // replaceState (not goto) — we don't want every keystroke in the
+    // search box adding to browser history.
+    void goto(next, { replaceState: true, noScroll: true, keepFocus: true });
+  }
   let filterDrawerOpen = $state(false);
   let selectedIds = $state<Set<string>>(new Set());
   let detailTask = $state<Task | null>(null);
   let detailOpen = $state(false);
+  // Context menu state — driven by TaskCard's onContextMenu hook.
+  // The menu mounts at the click position with {ctxTask, ctxX, ctxY}.
+  let ctxTask = $state<Task | null>(null);
+  let ctxX = $state(0);
+  let ctxY = $state(0);
 
   function openDetail(t: Task) {
     detailTask = t;
     detailOpen = true;
+  }
+  function openContext(t: Task, x: number, y: number) {
+    ctxTask = t;
+    ctxX = x;
+    ctxY = y;
   }
 
   $effect(() => {
@@ -57,15 +131,30 @@
     if (!$auth) return;
     loading = true;
     try {
-      const params: { status?: 'open' | 'done'; tag?: string } = {};
+      // Honor every server-side filter we expose. The client-side
+      // `filtered` derivation still re-applies these (so view-specific
+      // logic like inbox/stale stays consistent), but pushing them to
+      // the server first means we don't ship the entire task graph
+      // over the wire when the user wants P1 only.
+      const params: Parameters<typeof api.listTasks>[0] = {};
       if (status !== 'all') params.status = status;
       if (tagFilter) params.tag = tagFilter;
-      const [list, p] = await Promise.all([
+      if (priorityFilter !== '') params.priority = priorityFilter;
+      if (projectFilter) params.project = projectFilter;
+      if (goalFilter) params.goal = goalFilter;
+      if (deadlineFilter) params.deadline = deadlineFilter;
+      const [list, p, gg, dd] = await Promise.all([
         api.listTasks(params),
-        projects.length === 0 ? api.listProjects().catch(() => ({ projects: [] as Project[] })) : Promise.resolve({ projects })
+        projects.length === 0 ? api.listProjects().catch(() => ({ projects: [] as Project[] })) : Promise.resolve({ projects }),
+        goals.length === 0 ? api.listGoals().catch(() => ({ goals: [] as Goal[] })) : Promise.resolve({ goals }),
+        deadlines.length === 0
+          ? api.listDeadlines().catch(() => ({ deadlines: [] as Deadline[] }))
+          : Promise.resolve({ deadlines })
       ]);
       tasks = list.tasks;
       projects = p.projects;
+      goals = gg.goals;
+      deadlines = dd.deadlines;
     } catch (e) {
       // 401 (stale auth) and network failures both end up here.
       // Silently leave tasks/projects empty so the empty-state copy
@@ -87,7 +176,31 @@
     void $auth;
     void status;
     void tagFilter;
+    void priorityFilter;
+    void projectFilter;
+    void goalFilter;
+    void deadlineFilter;
     load();
+  });
+
+  // URL-state effect — runs whenever a filter changes after hydration.
+  // Skipped on the initial render so the URL doesn't get rewritten
+  // before we read it back.
+  $effect(() => {
+    void status;
+    void q;
+    void tagFilter;
+    void projectFilter;
+    void priorityFilter;
+    void goalFilter;
+    void deadlineFilter;
+    void view;
+    void groupBy;
+    syncToUrl();
+  });
+
+  onMount(() => {
+    hydrateFromUrl();
   });
 
   onMount(() =>
@@ -220,6 +333,8 @@
       out = out.filter((t) => t.text.toLowerCase().includes(ql) || t.notePath.toLowerCase().includes(ql));
     }
     if (priorityFilter !== '') out = out.filter((t) => t.priority === priorityFilter);
+    if (goalFilter) out = out.filter((t) => t.goalId === goalFilter);
+    if (deadlineFilter) out = out.filter((t) => t.deadlineId === deadlineFilter);
     if (projectFilter) {
       const proj = projects.find((p) => p.name === projectFilter);
       if (proj) {
@@ -248,7 +363,7 @@
     return out;
   });
 
-  type ListGroup = { key: string; label: string; tasks: Task[] };
+  type ListGroup = { key: string; label: string; tasks: Task[]; deepLink?: string };
   let listGroups = $derived.by((): ListGroup[] => {
     if (groupBy === 'due') {
       const today = new Date().toISOString().slice(0, 10);
@@ -299,7 +414,64 @@
         }
         (b[key] ??= []).push(t);
       }
-      return Object.entries(b).map(([k, v]) => ({ key: k, label: k, tasks: v })).sort((a, b) => a.label.localeCompare(b.label));
+      return Object.entries(b)
+        .map(([k, v]) => ({
+          key: k,
+          label: k,
+          tasks: v,
+          deepLink: projects.find((p) => p.name === k)
+            ? `/projects/${encodeURIComponent(k)}`
+            : undefined
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+    }
+    if (groupBy === 'goal') {
+      const b: Record<string, Task[]> = {};
+      for (const t of filtered) {
+        const key = t.goalId || '(no goal)';
+        (b[key] ??= []).push(t);
+      }
+      return Object.entries(b)
+        .map(([k, v]) => {
+          const g = goals.find((x) => x.id === k);
+          return {
+            key: k,
+            label: g ? `🎯 ${g.title} (${g.id})` : k,
+            tasks: v,
+            deepLink: g ? `/goals/${encodeURIComponent(g.id)}` : undefined
+          };
+        })
+        .sort((a, b) => {
+          // Pin (no goal) to the bottom so the named buckets are surfaced first.
+          if (a.key === '(no goal)') return 1;
+          if (b.key === '(no goal)') return -1;
+          return a.label.localeCompare(b.label);
+        });
+    }
+    if (groupBy === 'deadline') {
+      const b: Record<string, Task[]> = {};
+      for (const t of filtered) {
+        const key = t.deadlineId || '(no deadline)';
+        (b[key] ??= []).push(t);
+      }
+      return Object.entries(b)
+        .map(([k, v]) => {
+          const d = deadlines.find((x) => x.id === k);
+          return {
+            key: k,
+            label: d ? `⏰ ${d.title} · ${d.date}` : k,
+            tasks: v,
+            deepLink: d ? `/deadlines?focus=${encodeURIComponent(d.id)}` : undefined
+          };
+        })
+        .sort((a, b) => {
+          if (a.key === '(no deadline)') return 1;
+          if (b.key === '(no deadline)') return -1;
+          // Sort by deadline date ascending — soonest first.
+          const da = deadlines.find((x) => x.id === a.key)?.date ?? '';
+          const db = deadlines.find((x) => x.id === b.key)?.date ?? '';
+          return da.localeCompare(db);
+        });
     }
     const b: Record<string, Task[]> = {};
     for (const t of filtered) (b[t.notePath] ??= []).push(t);
@@ -316,7 +488,11 @@
   let countDone = $derived(tasks.filter((t) => t.done).length);
 
   let activeFilterCount = $derived(
-    (priorityFilter !== '' ? 1 : 0) + (projectFilter ? 1 : 0) + (tagFilter ? 1 : 0)
+    (priorityFilter !== '' ? 1 : 0) +
+      (projectFilter ? 1 : 0) +
+      (tagFilter ? 1 : 0) +
+      (goalFilter ? 1 : 0) +
+      (deadlineFilter ? 1 : 0)
   );
 </script>
 
@@ -382,8 +558,52 @@
       </div>
     {/if}
 
+    {#if goals.length > 0}
+      <div>
+        <div class="text-xs uppercase tracking-wider text-dim mb-2">Goals</div>
+        <div class="flex flex-col gap-1 text-sm">
+          <button
+            class="text-left px-3 py-2 rounded {goalFilter === '' ? 'bg-surface1' : 'hover:bg-surface0'} text-subtext"
+            onclick={() => (goalFilter = '')}
+          >all</button>
+          {#each goals.slice(0, 12) as g}
+            <button
+              class="text-left px-3 py-2 rounded text-sm truncate {goalFilter === g.id ? 'bg-info/20 text-info' : 'text-subtext hover:bg-surface0'}"
+              onclick={() => (goalFilter = goalFilter === g.id ? '' : g.id)}
+              title={g.description}
+            >
+              <span class="font-mono text-[10px] text-dim mr-1">{g.id}</span>
+              {g.title}
+            </button>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
+    {#if deadlines.length > 0}
+      <div>
+        <div class="text-xs uppercase tracking-wider text-dim mb-2">Deadlines</div>
+        <div class="flex flex-col gap-1 text-sm">
+          <button
+            class="text-left px-3 py-2 rounded {deadlineFilter === '' ? 'bg-surface1' : 'hover:bg-surface0'} text-subtext"
+            onclick={() => (deadlineFilter = '')}
+          >all</button>
+          {#each deadlines.slice(0, 12) as d}
+            <button
+              class="text-left px-3 py-2 rounded text-sm truncate {deadlineFilter === d.id ? 'bg-warning/20 text-warning' : 'text-subtext hover:bg-surface0'}"
+              onclick={() => (deadlineFilter = deadlineFilter === d.id ? '' : d.id)}
+              title={d.description}
+            >
+              <span class="font-mono text-[10px] text-dim mr-1">{d.date}</span>
+              {d.title}
+            </button>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
     <button
-      onclick={() => { priorityFilter = ''; projectFilter = ''; tagFilter = ''; q = ''; }}
+      onclick={() => { priorityFilter = ''; projectFilter = ''; tagFilter = ''; goalFilter = ''; deadlineFilter = ''; q = ''; }}
       class="w-full text-xs text-dim hover:text-text underline pt-2"
     >
       reset filters
@@ -449,6 +669,8 @@
             <option value="priority">priority</option>
             <option value="tag">tag</option>
             <option value="project">project</option>
+            <option value="goal">goal</option>
+            <option value="deadline">deadline</option>
             <option value="note">note</option>
           </select>
         {:else}
@@ -493,6 +715,7 @@
           bind:selectedIds
           onChanged={load}
           onOpenDetail={openDetail}
+          onContextMenu={openContext}
         />
       {:else if view === 'triage'}
         <TriageBoard tasks={filtered} onChanged={load} />
@@ -504,7 +727,7 @@
           <div class="space-y-2">
             {#each filtered as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -515,7 +738,7 @@
           <div class="space-y-2">
             {#each filtered as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -526,7 +749,7 @@
           <div class="space-y-2">
             {#each filtered as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -537,7 +760,7 @@
           <div class="space-y-2 opacity-80">
             {#each filtered as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -546,13 +769,20 @@
         <div class="space-y-6 max-w-3xl">
           {#each listGroups as g (g.key)}
             <section>
-              <h2 class="text-xs uppercase tracking-wider text-dim mb-2 font-medium border-b border-surface1 pb-1">
-                {g.label} · {g.tasks.length}
+              <h2 class="text-xs uppercase tracking-wider text-dim mb-2 font-medium border-b border-surface1 pb-1 flex items-baseline gap-2">
+                <span>{g.label} · {g.tasks.length}</span>
+                {#if g.deepLink}
+                  <a
+                    href={g.deepLink}
+                    class="ml-auto text-[10px] text-secondary hover:underline normal-case tracking-normal"
+                    title="open {g.label}"
+                  >open ↗</a>
+                {/if}
               </h2>
               <div class="space-y-2">
                 {#each g.tasks as t (t.id)}
                   <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                    <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} />
+                    <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
                   </div>
                 {/each}
               </div>
@@ -570,6 +800,17 @@
   // edits see latest state.
   if (detailTask) detailTask = tasks.find((t) => t.id === detailTask!.id) ?? detailTask;
 }} />
+
+{#if ctxTask}
+  <TaskContextMenu
+    task={ctxTask}
+    x={ctxX}
+    y={ctxY}
+    onClose={() => (ctxTask = null)}
+    onChanged={load}
+    onOpenDetail={openDetail}
+  />
+{/if}
 
 <!-- Keyboard shortcuts overlay. Toggled with '?' or the header button. -->
 {#if helpOpen}

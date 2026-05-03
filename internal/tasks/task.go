@@ -80,6 +80,7 @@ type Task struct {
 	Project          string   `json:"project,omitempty"`
 	SnoozedUntil     string   `json:"snoozed_until,omitempty"`
 	GoalID           string   `json:"goal_id,omitempty"`
+	DeadlineID       string   `json:"deadline_id,omitempty"`
 
 	// ── Sidecar-only metadata (Phase 2 additions) ─────────────
 	Triage         TriageState `json:"triage,omitempty"`

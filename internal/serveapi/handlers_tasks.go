@@ -7,12 +7,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/artaeon/granit/internal/daily"
+	"github.com/artaeon/granit/internal/granitmeta"
 	"github.com/artaeon/granit/internal/tasks"
 )
 
@@ -41,6 +43,8 @@ type taskView struct {
 	Notes            string     `json:"notes,omitempty"`
 	GranitID         string     `json:"granitId,omitempty"`
 	GranitOrigin     string     `json:"granitOrigin,omitempty"`
+	GoalID           string     `json:"goalId,omitempty"`
+	DeadlineID       string     `json:"deadlineId,omitempty"`
 }
 
 // priorityStoreToAPI maps the parser's internal Priority field (where
@@ -57,6 +61,21 @@ func priorityStoreToAPI(p int) int {
 		return 2
 	case 2:
 		return 3
+	}
+	return 0
+}
+
+// priorityAPIToStore is the inverse — needed by the list-handler's
+// `priority=` query filter so the web's "1=highest" query value maps
+// to the parser's "4=highest" stored value.
+func priorityAPIToStore(p int) int {
+	switch p {
+	case 1:
+		return 4
+	case 2:
+		return 3
+	case 3:
+		return 2
 	}
 	return 0
 }
@@ -94,6 +113,8 @@ func taskToView(t tasks.Task) taskView {
 		ParentLine:       t.ParentLine,
 		Recurrence:       t.Recurrence,
 		Notes:            t.Notes,
+		GoalID:           t.GoalID,
+		DeadlineID:       t.DeadlineID,
 	}
 	if t.Origin != "" {
 		v.GranitOrigin = string(t.Origin)
@@ -122,6 +143,60 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	dueBefore := q.Get("due_before")
 	notePath := q.Get("note")
 	triage := q.Get("triage")
+	// New filters — priority / project / goal / deadline. The audit
+	// caught these as silent no-ops: the URL accepted the query
+	// parameter and returned the unfiltered set, which made every
+	// "Filter by P1" or "Filter by project Hub - MealTime" appear
+	// broken on refresh because the page-side filter wasn't
+	// re-applied until the client rerendered.
+	priorityFilter := 0
+	if v := q.Get("priority"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			priorityFilter = priorityAPIToStore(n)
+		}
+	}
+	projectFilter := q.Get("project")
+	goalFilter := q.Get("goal")
+	deadlineFilter := q.Get("deadline")
+
+	// For the project filter we accept the project's Name (the same
+	// identifier the rest of the API uses — `granitmeta.Project.Name`
+	// is the load-bearing key on disk). A task is "in" the project
+	// when one of: (a) its sidecar ProjectID matches, (b) the note
+	// path lives under the project's folder, or (c) one of the
+	// project's tags is on the task. This mirrors the web's existing
+	// derivation in routes/tasks/+page.svelte so server-side filtering
+	// agrees with client-side grouping.
+	var matchProj func(t tasks.Task) bool
+	if projectFilter != "" {
+		var folder string
+		var pTags []string
+		if all, err := granitmeta.ReadProjects(s.cfg.Vault.Root); err == nil {
+			for _, p := range all {
+				if p.Name == projectFilter {
+					folder = p.Folder
+					pTags = p.Tags
+					break
+				}
+			}
+		}
+		matchProj = func(t tasks.Task) bool {
+			if t.ProjectID == projectFilter {
+				return true
+			}
+			if folder != "" && strings.HasPrefix(t.NotePath, folder+"/") {
+				return true
+			}
+			for _, pt := range pTags {
+				for _, tt := range t.Tags {
+					if pt == tt {
+						return true
+					}
+				}
+			}
+			return false
+		}
+	}
 
 	all := s.cfg.TaskStore.All()
 	out := make([]taskView, 0, len(all))
@@ -154,6 +229,18 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if triage != "" && string(t.Triage) != triage {
+			continue
+		}
+		if priorityFilter > 0 && t.Priority != priorityFilter {
+			continue
+		}
+		if matchProj != nil && !matchProj(t) {
+			continue
+		}
+		if goalFilter != "" && t.GoalID != goalFilter {
+			continue
+		}
+		if deadlineFilter != "" && t.DeadlineID != deadlineFilter {
 			continue
 		}
 		out = append(out, taskToView(t))
@@ -201,7 +288,14 @@ type patchTaskBody struct {
 	SnoozedUntil    *string `json:"snoozedUntil,omitempty"` // YYYY-MM-DDThh:mm or "" to clear
 	Recurrence      *string `json:"recurrence,omitempty"`   // line marker, e.g. "daily" / ""
 	Notes           *string `json:"notes,omitempty"`        // free-form sidecar metadata
-	ClearSchedule   bool    `json:"clearSchedule,omitempty"`
+	// GoalID and DeadlineID are pointer-typed for explicit clear
+	// semantics: an absent field leaves the existing link alone,
+	// `""` removes the marker, a value writes a new marker. Same
+	// pattern as DueDate / SnoozedUntil. Round-trips through the
+	// markdown line via transformGoal / transformDeadline.
+	GoalID        *string `json:"goalId,omitempty"`
+	DeadlineID    *string `json:"deadlineId,omitempty"`
+	ClearSchedule bool    `json:"clearSchedule,omitempty"`
 }
 
 func (s *Server) handlePatchTask(w http.ResponseWriter, r *http.Request) {
@@ -229,6 +323,26 @@ func (s *Server) handlePatchTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Same defensive validation as DueDate / SnoozedUntil. transformGoal
+	// only strips strict goal:G\d+ tokens; a malformed value (e.g.
+	// "goal:foo") would leak through and the next patch would append a
+	// second marker. Reject early.
+	if b.GoalID != nil && *b.GoalID != "" {
+		// Goal IDs come from two mints: TUI's Gxxx form and the web's
+		// goal-<timestamp> form. Accept any letters/digits/dash/underscore
+		// token; reject only payloads that would break the line marker
+		// (whitespace, quotes, markdown punctuation).
+		if !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(*b.GoalID) {
+			writeError(w, http.StatusBadRequest, "goalId must be alphanumeric / dash / underscore")
+			return
+		}
+	}
+	if b.DeadlineID != nil && *b.DeadlineID != "" {
+		if !regexp.MustCompile(`^[0-9a-z]{26}$`).MatchString(*b.DeadlineID) {
+			writeError(w, http.StatusBadRequest, "deadlineId must be a 26-char ULID")
+			return
+		}
+	}
 	store := s.cfg.TaskStore
 	if _, ok := store.GetByID(id); !ok {
 		writeError(w, http.StatusNotFound, "task not found")
@@ -236,7 +350,7 @@ func (s *Server) handlePatchTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Markdown-line mutations (bundled into a single UpdateLine for atomicity)
-	if b.Done != nil || b.Priority != nil || b.DueDate != nil || b.Text != nil || b.SnoozedUntil != nil || b.Recurrence != nil {
+	if b.Done != nil || b.Priority != nil || b.DueDate != nil || b.Text != nil || b.SnoozedUntil != nil || b.Recurrence != nil || b.GoalID != nil || b.DeadlineID != nil {
 		err := store.UpdateLine(id, func(line string) string {
 			if b.Done != nil {
 				line = transformDone(line, *b.Done)
@@ -252,6 +366,15 @@ func (s *Server) handlePatchTask(w http.ResponseWriter, r *http.Request) {
 			}
 			if b.Recurrence != nil {
 				line = transformRecurrence(line, *b.Recurrence)
+			}
+			// Goal / deadline must run BEFORE transformText so that
+			// transformText can preserve them in the same way it
+			// preserves priority and due markers.
+			if b.GoalID != nil {
+				line = transformGoal(line, *b.GoalID)
+			}
+			if b.DeadlineID != nil {
+				line = transformDeadline(line, *b.DeadlineID)
 			}
 			if b.Text != nil {
 				line = transformText(line, *b.Text)
@@ -356,6 +479,8 @@ type createTaskBody struct {
 	Section         string   `json:"section,omitempty"`
 	ScheduledStart  *string  `json:"scheduledStart,omitempty"`
 	DurationMinutes int      `json:"durationMinutes,omitempty"`
+	GoalID          string   `json:"goalId,omitempty"`
+	DeadlineID      string   `json:"deadlineId,omitempty"`
 }
 
 func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
@@ -373,6 +498,14 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "dueDate must be YYYY-MM-DD")
 			return
 		}
+	}
+	if b.GoalID != "" && !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(b.GoalID) {
+		writeError(w, http.StatusBadRequest, "goalId must be alphanumeric / dash / underscore")
+		return
+	}
+	if b.DeadlineID != "" && !regexp.MustCompile(`^[0-9a-z]{26}$`).MatchString(b.DeadlineID) {
+		writeError(w, http.StatusBadRequest, "deadlineId must be a 26-char ULID")
+		return
 	}
 	// Empty notePath = "the user wanted today's daily" — every front-end
 	// surface that doesn't supply a path (the dashboard quick-capture
@@ -394,6 +527,12 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	textWithMarkers := buildTaskTextLine(b.Text, b.Priority, b.DueDate, b.Tags)
+	if b.GoalID != "" {
+		textWithMarkers += " goal:" + b.GoalID
+	}
+	if b.DeadlineID != "" {
+		textWithMarkers += " deadline:" + b.DeadlineID
+	}
 	opts := tasks.CreateOpts{
 		File:    notePath,
 		Origin:  tasks.Origin("manual"),
@@ -442,6 +581,8 @@ var (
 	rePriorityMarker = regexp.MustCompile(`(^|\s)![1-3](\s|$)`)
 	reDueMarker      = regexp.MustCompile(`(^|\s)due:\d{4}-\d{2}-\d{2}(\s|$)`)
 	reSnoozeMarker   = regexp.MustCompile(`(^|\s)snooze:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(\s|$)`)
+	reGoalLineMarker     = regexp.MustCompile(`(^|\s)goal:[A-Za-z0-9_-]+(\s|$)`)
+	reDeadlineLineMarker = regexp.MustCompile(`(^|\s)deadline:[0-9a-z]{26}(\s|$)`)
 	// granit recognizes recurrence as either an emoji form (🔁 daily) or
 	// the hashtag form (#daily). We strip both on rewrite and emit the
 	// hashtag form — plain ASCII, easier to type, parser reads it back.
@@ -508,6 +649,31 @@ func transformRecurrence(line string, freq string) string {
 	return clean + " #" + freq
 }
 
+// transformGoal writes (or clears) a `goal:G\d+` marker on a checkbox
+// line. Marker shape mirrors the parser's reGoalLink so the round-trip
+// is symmetric. Empty `goalID` clears any existing marker.
+func transformGoal(line string, goalID string) string {
+	clean := reGoalLineMarker.ReplaceAllString(line, "$1$2")
+	if goalID == "" {
+		return strings.TrimRight(clean, " ")
+	}
+	return strings.TrimRight(clean, " ") + " goal:" + goalID
+}
+
+// transformDeadline writes (or clears) a `deadline:<ulid>` marker on
+// a checkbox line. ULIDs come from internal/deadlines (lowercase
+// 26-char Crockford alphabet). Empty `deadlineID` clears the marker.
+// The marker shape parallels `goal:` — the TUI's parser ignores
+// unknown markers gracefully, so a TUI that doesn't yet know about
+// deadlines just leaves the token as inert text in the line.
+func transformDeadline(line string, deadlineID string) string {
+	clean := reDeadlineLineMarker.ReplaceAllString(line, "$1$2")
+	if deadlineID == "" {
+		return strings.TrimRight(clean, " ")
+	}
+	return strings.TrimRight(clean, " ") + " deadline:" + deadlineID
+}
+
 func transformText(line string, newText string) string {
 	m := reCheckbox.FindStringSubmatchIndex(line)
 	if m == nil {
@@ -517,7 +683,7 @@ func transformText(line string, newText string) string {
 	// Preserve markers we don't want to clobber: collect them from the old tail.
 	tail := line[m[5]:]
 	var preserved []string
-	for _, re := range []*regexp.Regexp{rePriorityMarker, reDueMarker} {
+	for _, re := range []*regexp.Regexp{rePriorityMarker, reDueMarker, reGoalLineMarker, reDeadlineLineMarker} {
 		for _, mm := range re.FindAllString(tail, -1) {
 			preserved = append(preserved, strings.TrimSpace(mm))
 		}

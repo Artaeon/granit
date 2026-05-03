@@ -48,7 +48,19 @@ var (
 	reRecurEmoji     = regexp.MustCompile(`\x{1F501}\s*(daily|weekly|monthly|3x-week)`) // 🔁
 	reRecurTag       = regexp.MustCompile(`#(daily|weekly|monthly|3x-week)\b`)
 	reSnoozeMarker   = regexp.MustCompile(`snooze:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})`)
-	reGoalLink       = regexp.MustCompile(`goal:(G\d{3,})`)
+	// Goal marker — historically `goal:Gxxx` (TUI-minted IDs) but the
+	// web's goals API mints `goal-<timestamp>` shaped IDs too, so the
+	// regex accepts both: `goal:` followed by a non-whitespace token
+	// of letters / digits / dash / underscore. Strict enough to bound
+	// the match (no spaces, no quotes, no punctuation that would let
+	// adjacent markdown leak into the captured ID).
+	reGoalLink       = regexp.MustCompile(`goal:([A-Za-z0-9_-]+)`)
+	// Deadline marker `deadline:<ulid>` (lowercase 26-char Crockford
+	// alphabet — what internal/deadlines mints). The shape mirrors
+	// the goal: marker so the TUI parser ignores it gracefully if it
+	// hasn't learned the new field yet (the marker just becomes
+	// inert text from the legacy parser's perspective).
+	reDeadlineLink   = regexp.MustCompile(`deadline:([0-9a-z]{26})`)
 	reDailyNoteName  = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 )
 
@@ -199,6 +211,10 @@ func applyMarkdownExtras(t *Task, notePath, taskText string) {
 
 	if gm := reGoalLink.FindStringSubmatch(taskText); gm != nil {
 		t.GoalID = gm[1]
+	}
+
+	if dm := reDeadlineLink.FindStringSubmatch(taskText); dm != nil {
+		t.DeadlineID = dm[1]
 	}
 
 	if em := reEstimate.FindStringSubmatch(taskText); em != nil {

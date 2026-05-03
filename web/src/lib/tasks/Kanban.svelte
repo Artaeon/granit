@@ -16,7 +16,8 @@
     swimlane = $bindable<'none' | 'project' | 'tag' | 'priority'>('none'),
     onChanged,
     selectedIds = $bindable(new Set<string>()),
-    onOpenDetail
+    onOpenDetail,
+    onContextMenu
   }: {
     tasks: Task[];
     mode?: 'priority' | 'due' | 'triage' | 'config';
@@ -24,6 +25,9 @@
     onChanged?: () => void;
     selectedIds?: Set<string>;
     onOpenDetail?: (t: Task) => void;
+    /** Forwarded to the rendered TaskCard so right-click on a kanban
+     *  card surfaces the same context menu the list view uses. */
+    onContextMenu?: (t: Task, x: number, y: number) => void;
   } = $props();
 
   type Column = {
@@ -534,6 +538,7 @@
                     onChanged={() => onChanged?.()}
                     bind:selectedIds
                     onOpenDetail={onOpenDetail}
+                    onContextMenu={onContextMenu}
                   />
                 </div>
               {/each}

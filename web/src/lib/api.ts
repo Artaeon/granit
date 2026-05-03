@@ -109,6 +109,12 @@ export interface Task {
   granitId?: string;
   triage?: 'inbox' | 'triaged' | 'scheduled' | 'done' | 'dropped' | 'snoozed';
   granitOrigin?: string;
+  // Loose foreign keys to top-level entities. goalId is a Gxxx id
+  // matching internal/goals.Goal.ID; deadlineId is a 26-char ULID
+  // matching internal/deadlines.Deadline.ID. Round-trip through the
+  // markdown line via `goal:Gxxx` / `deadline:<ulid>` markers.
+  goalId?: string;
+  deadlineId?: string;
 }
 
 export interface TaskList {
@@ -528,14 +534,27 @@ export const api = {
     }),
 
   // Tasks
-  listTasks: (params: { status?: 'open' | 'done'; tag?: string; due_on?: string; due_before?: string; note?: string; triage?: string } = {}) => {
+  listTasks: (
+    params: {
+      status?: 'open' | 'done';
+      tag?: string;
+      due_on?: string;
+      due_before?: string;
+      note?: string;
+      triage?: string;
+      priority?: number;
+      project?: string;
+      goal?: string;
+      deadline?: string;
+    } = {}
+  ) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') qs.set(k, String(v));
     return req<TaskList>(`/tasks${qs.toString() ? '?' + qs : ''}`);
   },
   patchTask: (
     id: string,
-    patch: Partial<Pick<Task, 'done' | 'priority' | 'dueDate' | 'text' | 'scheduledStart' | 'durationMinutes' | 'projectId' | 'snoozedUntil' | 'recurrence' | 'notes'>> & {
+    patch: Partial<Pick<Task, 'done' | 'priority' | 'dueDate' | 'text' | 'scheduledStart' | 'durationMinutes' | 'projectId' | 'snoozedUntil' | 'recurrence' | 'notes' | 'goalId' | 'deadlineId'>> & {
       triage?: 'inbox' | 'triaged' | 'scheduled' | 'done' | 'dropped' | 'snoozed';
       clearSchedule?: boolean;
     }
@@ -549,7 +568,10 @@ export const api = {
     section?: string;
     scheduledStart?: string;
     durationMinutes?: number;
+    goalId?: string;
+    deadlineId?: string;
   }) => req<Task>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
+  deleteTask: (id: string) => req<void>(`/tasks/${id}`, { method: 'DELETE' }),
 
   // Daily
   daily: (date: string = 'today') => req<Note>(`/daily/${date}`),

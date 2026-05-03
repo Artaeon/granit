@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { api, type Task } from '$lib/api';
+  import { api, type Task, type Project, type Goal, type Deadline } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import Drawer from '$lib/components/Drawer.svelte';
 
@@ -23,11 +23,35 @@
   let recurrenceBuf = $state('');
   let busy = $state(false);
 
+  // Linkable-entity lists. Lazy-loaded the first time the drawer opens
+  // so the list pages don't pay the lookup cost on every card render.
+  let projects = $state<Project[]>([]);
+  let goals = $state<Goal[]>([]);
+  let deadlines = $state<Deadline[]>([]);
+  let linksLoaded = $state(false);
+
+  async function loadLinks() {
+    if (linksLoaded) return;
+    linksLoaded = true;
+    // Settle these in parallel — three independent reads. Failures
+    // degrade silently to an empty list rather than blocking the
+    // drawer; the dropdown will just show "(none)".
+    const [pp, gg, dd] = await Promise.allSettled([
+      api.listProjects(),
+      api.listGoals(),
+      api.listDeadlines()
+    ]);
+    if (pp.status === 'fulfilled') projects = pp.value.projects;
+    if (gg.status === 'fulfilled') goals = gg.value.goals;
+    if (dd.status === 'fulfilled') deadlines = dd.value.deadlines;
+  }
+
   // Resync local buffers whenever the modal opens for a different task.
   $effect(() => {
     if (open && task) {
       notesBuf = task.notes ?? '';
       recurrenceBuf = task.recurrence ?? '';
+      void loadLinks();
     }
   });
 
@@ -58,6 +82,9 @@
   async function setPriority(p: number) { await patch({ priority: p }); }
   async function toggleDone() { if (task) await patch({ done: !task.done }); }
   async function setTriage(state: NonNullable<Task['triage']>) { await patch({ triage: state }); }
+  async function setProject(name: string) { await patch({ projectId: name }); }
+  async function setGoal(id: string) { await patch({ goalId: id }); }
+  async function setDeadline(id: string) { await patch({ deadlineId: id }); }
 
   function close() { open = false; }
   function openNote() {
@@ -153,6 +180,58 @@
             {/each}
           </div>
           <p class="text-[10px] text-dim mt-1">Writes a <code>#daily</code>/<code>#weekly</code>/etc. tag onto the task line.</p>
+        </section>
+
+        <!-- Project / Goal / Deadline links. Single-select per type;
+             saving via patchTask round-trips through the markdown line
+             (goal:Gxxx + deadline:<ulid> markers; projectId is sidecar
+             metadata). Selecting "(none)" clears the link. -->
+        <section>
+          <h4 class="text-[11px] uppercase tracking-wider text-dim mb-1.5">Links</h4>
+          <div class="space-y-2 text-xs">
+            <label class="flex items-center gap-2">
+              <span class="text-dim w-20 flex-shrink-0">Project</span>
+              <select
+                value={task.projectId ?? ''}
+                onchange={(e) => setProject((e.currentTarget as HTMLSelectElement).value)}
+                disabled={busy}
+                class="flex-1 min-w-0 bg-surface0 border border-surface1 rounded px-2 py-1 text-text"
+              >
+                <option value="">(none)</option>
+                {#each projects as p (p.name)}
+                  <option value={p.name}>{p.name}</option>
+                {/each}
+              </select>
+            </label>
+            <label class="flex items-center gap-2">
+              <span class="text-dim w-20 flex-shrink-0">Goal</span>
+              <select
+                value={task.goalId ?? ''}
+                onchange={(e) => setGoal((e.currentTarget as HTMLSelectElement).value)}
+                disabled={busy}
+                class="flex-1 min-w-0 bg-surface0 border border-surface1 rounded px-2 py-1 text-text"
+              >
+                <option value="">(none)</option>
+                {#each goals as g (g.id)}
+                  <option value={g.id}>{g.id} — {g.title}</option>
+                {/each}
+              </select>
+            </label>
+            <label class="flex items-center gap-2">
+              <span class="text-dim w-20 flex-shrink-0">Deadline</span>
+              <select
+                value={task.deadlineId ?? ''}
+                onchange={(e) => setDeadline((e.currentTarget as HTMLSelectElement).value)}
+                disabled={busy}
+                class="flex-1 min-w-0 bg-surface0 border border-surface1 rounded px-2 py-1 text-text"
+              >
+                <option value="">(none)</option>
+                {#each deadlines as d (d.id)}
+                  <option value={d.id}>{d.date} — {d.title}</option>
+                {/each}
+              </select>
+            </label>
+          </div>
         </section>
 
         <!-- Free-form notes -->

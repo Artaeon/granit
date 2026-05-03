@@ -10,15 +10,21 @@
     compact = false,
     onChanged,
     selectedIds = $bindable(new Set<string>()),
-    onOpenDetail
+    onOpenDetail,
+    onContextMenu
   }: {
     task: Task;
     compact?: boolean;
     onChanged?: (t: Task) => void;
     selectedIds?: Set<string>;
-    /** When set, clicking the task body opens a detail panel rather than
-     *  starting in-place edit mode. */
+    /** Open the detail drawer for this task. Bound to the explicit
+     *  "open detail" button + the right-click menu — clicking the
+     *  title itself enters inline edit. */
     onOpenDetail?: (t: Task) => void;
+    /** Right-click / long-press hook. The page wires a TaskContextMenu
+     *  to this so the user gets a discoverable surface for triage / link
+     *  actions without losing the existing hover affordances. */
+    onContextMenu?: (t: Task, x: number, y: number) => void;
   } = $props();
 
   import { tick } from 'svelte';
@@ -193,6 +199,46 @@
 
   function cancelEdit() { editing = false; }
 
+  // Title-click handler. Default behavior is inline edit (the user's
+  // expected gesture from Notion/Things/Reminders). Holding cmd/ctrl
+  // or middle-click escapes to onOpenDetail when wired, so power users
+  // can still jump to the drawer without leaving the keyboard.
+  function onTitleClick(e: MouseEvent) {
+    e.stopPropagation();
+    if ((e.metaKey || e.ctrlKey) && onOpenDetail) {
+      onOpenDetail(task);
+      return;
+    }
+    startEdit(e);
+  }
+
+  // Long-press surfaces the context menu on touch devices, where
+  // there's no native right-click. 500ms threshold matches the
+  // platform conventions.
+  let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  function onTouchStart(e: TouchEvent) {
+    if (!onContextMenu) return;
+    const t0 = e.touches[0];
+    if (!t0) return;
+    const x = t0.clientX;
+    const y = t0.clientY;
+    longPressTimer = setTimeout(() => {
+      onContextMenu?.(task, x, y);
+      longPressTimer = null;
+    }, 500);
+  }
+  function onTouchEnd() {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }
+  function onContextMenuEvent(e: MouseEvent) {
+    if (!onContextMenu) return;
+    e.preventDefault();
+    onContextMenu(task, e.clientX, e.clientY);
+  }
+
   function openNote(e: Event) {
     e.stopPropagation();
     goto(`/notes/${encodeURIComponent(task.notePath)}`);
@@ -253,6 +299,12 @@
   class:opacity-60={task.done}
   class:opacity-50={snoozed}
   style="margin-left: {indentPx}px;"
+  oncontextmenu={onContextMenuEvent}
+  ontouchstart={onTouchStart}
+  ontouchend={onTouchEnd}
+  ontouchmove={onTouchEnd}
+  ontouchcancel={onTouchEnd}
+  role="article"
 >
   {#if !editing}
     <div class="flex items-start gap-2">
@@ -280,10 +332,9 @@
       <div class="flex-1 min-w-0">
         <div class="flex items-baseline gap-2">
           <button
-            onclick={(e) => { if (onOpenDetail) { e.stopPropagation(); onOpenDetail(task); } }}
-            ondblclick={startEdit}
+            onclick={onTitleClick}
             class="text-sm text-left flex-1 min-w-0 break-words {task.done ? 'line-through text-dim' : 'text-text'}"
-            title={onOpenDetail ? 'click for details, double-click to edit' : 'double-click to edit'}
+            title="click to edit · cmd/ctrl-click to open details · right-click for actions"
           >
             {#if (task.indent ?? 0) > 0}
               <span class="text-dim opacity-60 mr-1">↳</span>
@@ -327,6 +378,32 @@
             {/if}
             {#if task.tags && task.tags.length > 0}
               <span class="text-dim">{task.tags.map((t) => '#' + t).join(' ')}</span>
+            {/if}
+            {#if task.projectId}
+              <span
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-secondary bg-secondary/10"
+                title="project: {task.projectId}"
+              >
+                <span aria-hidden="true">📁</span>
+                <span class="truncate max-w-[8rem]">{task.projectId}</span>
+              </span>
+            {/if}
+            {#if task.goalId}
+              <span
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-info bg-info/10 font-mono"
+                title="goal: {task.goalId}"
+              >
+                <span aria-hidden="true">🎯</span>{task.goalId}
+              </span>
+            {/if}
+            {#if task.deadlineId}
+              <span
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-warning bg-warning/10"
+                title="deadline: {task.deadlineId}"
+              >
+                <span aria-hidden="true">⏰</span>
+                <span class="font-mono">deadline</span>
+              </span>
             {/if}
             <button
               onclick={cycleTriage}
@@ -375,6 +452,16 @@
               </svg>
             </button>
             <button onclick={startEdit} class="text-dim hover:text-text opacity-0 group-hover:opacity-100">edit</button>
+            {#if onOpenDetail}
+              <button
+                onclick={(e) => { e.stopPropagation(); onOpenDetail!(task); }}
+                aria-label="open details"
+                title="open details"
+                class="text-dim hover:text-primary opacity-0 group-hover:opacity-100"
+              >
+                <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+              </button>
+            {/if}
             <button onclick={openNote} class="text-dim hover:text-secondary opacity-0 group-hover:opacity-100" aria-label="open note">↗</button>
           </div>
         {/if}
@@ -393,6 +480,7 @@
       <input
         bind:value={editText}
         bind:this={editInputEl}
+        onkeydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); } }}
         class="w-full px-2 py-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text focus:outline-none focus:border-primary"
       />
       <div class="flex flex-wrap items-center gap-2 text-xs">

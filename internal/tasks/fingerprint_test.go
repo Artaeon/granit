@@ -53,10 +53,12 @@ func TestNormalize_StripsTrailingMetadata(t *testing.T) {
 		{"- [ ] write doc 🔁 daily", "write doc"},
 		{"- [ ] write doc [note:reviewed]", "write doc"},
 		{"- [ ] write doc goal:G004", "write doc"},
+		{"- [ ] write doc deadline:01h7v3v3z9q4y0v3y8x6e7m2s1", "write doc"},
 		{"- [ ] write doc snooze:2026-05-01", "write doc"},
 
 		// Combined
 		{"- [ ] ship phase 2 📅 2026-04-30 ⏫ ~90m goal:G001", "ship phase 2"},
+		{"- [ ] ship phase 2 ⏫ goal:G001 deadline:01h7v3v3z9q4y0v3y8x6e7m2s1", "ship phase 2"},
 	}
 	for _, c := range cases {
 		if got := NormalizeTaskText(c.in); got != c.want {
