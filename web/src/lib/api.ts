@@ -491,6 +491,22 @@ export interface BibleSearchHit {
   reference: string;
 }
 
+// Saved bible passage with optional note. Persisted to
+// .granit/bible-bookmarks.json so the TUI can read the same set.
+export interface BibleBookmark {
+  id: string;
+  bookCode: string;
+  book: string;
+  chapter: number;
+  verseFrom: number;
+  verseTo: number;
+  reference: string; // server-rendered, e.g. "John 3:16-17"
+  text: string;      // snapshot at save time
+  note?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Device {
   id: string;
   label?: string;
@@ -920,6 +936,26 @@ export const api = {
     req<{ hits: BibleSearchHit[]; total: number; query: string }>(
       `/bible/search?q=${encodeURIComponent(query)}&limit=${limit}`
     ),
+
+  // Bible bookmarks — saved passages, optional note.
+  listBibleBookmarks: () =>
+    req<{ bookmarks: BibleBookmark[]; total: number }>('/bible/bookmarks'),
+  createBibleBookmark: (
+    body: Pick<BibleBookmark, 'bookCode' | 'book' | 'chapter' | 'verseFrom' | 'verseTo' | 'text'> & {
+      note?: string;
+    }
+  ) =>
+    req<BibleBookmark>('/bible/bookmarks', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    }),
+  patchBibleBookmark: (id: string, patch: { note?: string }) =>
+    req<BibleBookmark>(`/bible/bookmarks/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
+    }),
+  deleteBibleBookmark: (id: string) =>
+    req<void>(`/bible/bookmarks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // Config (web ↔ TUI shared config.json)
   getConfig: () => req<AppConfig>('/config'),

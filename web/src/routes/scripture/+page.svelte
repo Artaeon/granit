@@ -7,8 +7,10 @@
     type BibleBookSummary,
     type BiblePassage,
     type BibleVerse,
-    type BibleSearchHit
+    type BibleSearchHit,
+    type BibleBookmark
   } from '$lib/api';
+  import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
@@ -28,7 +30,7 @@
   //            the curated daily-rotation set stays small and stable
   //            for spaced-repetition; the bible tab is for free-form
   //            exploration.
-  type Mode = 'read' | 'memo' | 'browse' | 'bible';
+  type Mode = 'read' | 'memo' | 'browse' | 'bible' | 'bookmarks';
 
   let mode = $state<Mode>('read');
   let today = $state<Scripture | null>(null);
@@ -74,7 +76,105 @@
     }
   }
 
-  onMount(load);
+  // Bookmarks — saved bible passages, .granit/bible-bookmarks.json.
+  // Loaded lazily on first visit to the bookmarks tab; live-updates
+  // via WS state.changed (TUI bookmark UI lands later, same file).
+  let bookmarks = $state<BibleBookmark[]>([]);
+  let bookmarksLoaded = $state(false);
+
+  async function loadBookmarks() {
+    try {
+      const r = await api.listBibleBookmarks();
+      bookmarks = r.bookmarks;
+      bookmarksLoaded = true;
+    } catch (e) {
+      toast.error('failed to load bookmarks: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  onMount(() => {
+    load();
+    return onWsEvent((ev) => {
+      if (ev.type === 'state.changed' && ev.path === '.granit/bible-bookmarks.json') {
+        if (bookmarksLoaded) loadBookmarks();
+      }
+    });
+  });
+
+  // Save the visible passage as a bookmark. Idempotent at the UX level
+  // — a duplicate bookmark is allowed (user might want a second copy
+  // with a different note); we don't dedupe here.
+  async function bookmarkPassage(p: BiblePassage, note = '') {
+    try {
+      await api.createBibleBookmark({
+        bookCode: p.bookCode,
+        book: p.book,
+        chapter: p.chapter,
+        verseFrom: p.verses[0]?.n ?? 1,
+        verseTo: p.verses[p.verses.length - 1]?.n ?? 1,
+        text: p.verses.map((v) => v.text).join(' '),
+        note: note || undefined
+      });
+      toast.success('bookmark saved');
+      if (bookmarksLoaded) await loadBookmarks();
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  // Save a single verse from a chapter view. Snapshot + reference are
+  // built from the verse number + the current chapter's book.
+  async function bookmarkVerse(bookCode: string, book: string, chapter: number, v: BibleVerse) {
+    try {
+      await api.createBibleBookmark({
+        bookCode,
+        book,
+        chapter,
+        verseFrom: v.n,
+        verseTo: v.n,
+        text: v.text
+      });
+      toast.success('verse bookmarked');
+      if (bookmarksLoaded) await loadBookmarks();
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function deleteBookmark(b: BibleBookmark) {
+    if (!confirm(`Remove bookmark "${b.reference}"?`)) return;
+    try {
+      await api.deleteBibleBookmark(b.id);
+      toast.success('bookmark removed');
+      await loadBookmarks();
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  // Note-edit happens inline; this commits the change.
+  async function saveBookmarkNote(b: BibleBookmark, note: string) {
+    try {
+      await api.patchBibleBookmark(b.id, { note });
+      toast.success('note saved');
+      await loadBookmarks();
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  // Open a bookmark in the bible reader: load its chapter, scroll to
+  // the first verse. The user can copy the saved snippet but the
+  // chapter view shows the canonical translation alongside.
+  async function openBookmark(b: BibleBookmark) {
+    mode = 'bible';
+    await ensureBibleIndex();
+    await loadBibleChapter(b.bookCode, b.chapter);
+    setTimeout(() => {
+      const el = document.getElementById(`bible-v-${b.verseFrom}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+  }
 
   async function anotherOne() {
     try {
@@ -379,6 +479,10 @@
         class="px-4 py-2 {mode === 'bible' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
         onclick={() => { mode = 'bible'; ensureBibleIndex(); }}
       >Bible</button>
+      <button
+        class="px-4 py-2 {mode === 'bookmarks' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+        onclick={() => { mode = 'bookmarks'; if (!bookmarksLoaded) loadBookmarks(); }}
+      >Bookmarks {#if bookmarks.length > 0}<span class="text-[10px] opacity-70">{bookmarks.length}</span>{/if}</button>
     </div>
 
     {#if loading && all.length === 0}
@@ -592,6 +696,11 @@
                 class="px-3 py-1.5 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
               >Use as today's verse</button>
               <button
+                onclick={() => bookmarkPassage(biblePassage!)}
+                class="px-3 py-1.5 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
+                title="Save this passage to your bookmarks"
+              >★ Bookmark</button>
+              <button
                 onclick={() => reflectOnPassage(biblePassage!)}
                 class="px-3 py-1.5 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
               >Reflect →</button>
@@ -623,8 +732,16 @@
             </div>
             <div class="text-base sm:text-lg text-text leading-relaxed font-serif space-y-1">
               {#each bibleChapter.verses as v}
-                <p id={`bible-v-${v.n}`}>
-                  <span class="text-xs align-super text-dim mr-1 font-sans not-italic">{v.n}</span>{v.text}
+                <p id={`bible-v-${v.n}`} class="group flex items-baseline gap-2">
+                  <span class="text-xs align-super text-dim font-sans not-italic">{v.n}</span>
+                  <span class="flex-1">{v.text}</span>
+                  <button
+                    type="button"
+                    onclick={() => bookmarkVerse(bibleChapter!.bookCode, bibleChapter!.book, bibleChapter!.chapter, v)}
+                    class="text-dim hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity text-xs font-sans not-italic"
+                    title="Bookmark this verse"
+                    aria-label="Bookmark verse {v.n}"
+                  >★</button>
                 </p>
               {/each}
             </div>
@@ -704,6 +821,51 @@
             </ul>
           {/if}
         </div>
+      {/if}
+    {:else if mode === 'bookmarks'}
+      {#if !bookmarksLoaded}
+        <div class="text-sm text-dim">loading bookmarks…</div>
+      {:else if bookmarks.length === 0}
+        <div class="bg-surface0 border border-surface1 rounded-lg p-6 text-center">
+          <p class="text-sm text-dim">
+            No bookmarks yet. Open a passage in the Bible tab and click <span class="text-primary">★ Bookmark</span> to save it.
+          </p>
+        </div>
+      {:else}
+        <ul class="space-y-3">
+          {#each bookmarks as b (b.id)}
+            <li class="bg-surface0 border border-surface1 rounded-lg p-4">
+              <div class="flex items-baseline gap-2 mb-2">
+                <button
+                  type="button"
+                  onclick={() => openBookmark(b)}
+                  class="text-sm text-primary font-mono hover:underline"
+                >{b.reference}</button>
+                <span class="flex-1"></span>
+                <button
+                  type="button"
+                  onclick={() => deleteBookmark(b)}
+                  class="text-xs text-dim hover:text-error"
+                  aria-label="Remove bookmark"
+                >remove</button>
+              </div>
+              <p class="text-sm text-text font-serif italic leading-relaxed">"{b.text}"</p>
+              <textarea
+                value={b.note ?? ''}
+                placeholder="Add a personal note…"
+                onblur={(e) => {
+                  const v = (e.currentTarget as HTMLTextAreaElement).value;
+                  if (v !== (b.note ?? '')) saveBookmarkNote(b, v);
+                }}
+                class="w-full mt-3 px-2 py-1.5 bg-mantle border border-surface1 rounded text-xs text-text placeholder-dim focus:outline-none focus:border-primary resize-y"
+                rows="2"
+              ></textarea>
+            </li>
+          {/each}
+        </ul>
+        <p class="text-[11px] text-dim italic mt-3">
+          Synced via <code>.granit/bible-bookmarks.json</code> — same file the granit TUI reads.
+        </p>
       {/if}
     {/if}
   </div>
