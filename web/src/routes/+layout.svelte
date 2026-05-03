@@ -15,6 +15,7 @@
   import { connect, disconnect, wsConnected } from '$lib/ws';
   import { theme, nextTheme, themeIcon, themeLabel } from '$lib/stores/theme';
   import { modulesStore } from '$lib/stores/modules';
+  import { sabbath, SABBATH_HIDE_MODULES } from '$lib/stores/sabbath';
   import { goto } from '$app/navigation';
   import { toast } from '$lib/components/toast';
 
@@ -129,15 +130,22 @@
   // settings so route resolution covers the full surface.
   const nav: NavItem[] = [today, ...sections.flatMap((s) => s.items), settingsItem];
 
-  // Per-section visible items (after module filter). Sections with no
-  // visible items collapse out of the rendered list entirely so the
-  // user doesn't see an empty header.
+  // Per-section visible items (after module filter + sabbath overlay).
+  // Sections with no visible items collapse out of the rendered list
+  // entirely so the user doesn't see an empty header. Sabbath mode
+  // hides work modules on top of the user's persistent module config
+  // — it's a temporal overlay, not a config edit.
   let visibleSections = $derived.by(() => {
     void $modulesStore;
+    void $sabbath;
     return sections
       .map((s) => ({
         ...s,
-        items: s.items.filter((item) => !item.moduleId || modulesStore.isEnabled(item.moduleId))
+        items: s.items.filter((item) => {
+          if (item.moduleId && !modulesStore.isEnabled(item.moduleId)) return false;
+          if ($sabbath && item.moduleId && SABBATH_HIDE_MODULES.includes(item.moduleId)) return false;
+          return true;
+        })
       }))
       .filter((s) => s.items.length > 0);
   });
@@ -315,6 +323,24 @@
         {/if}
       </button>
 
+      <!-- Sabbath toggle. Hides work modules for the day (Mark 2:27).
+           Auto-clears at midnight via a read-time check in the store,
+           so a forgotten 'on' state recovers the next morning by
+           itself. The active state pulses a small dot in compact
+           mode + shifts the button to the success palette so the
+           user sees at a glance whether sabbath is on. -->
+      <button
+        onclick={() => sabbath.toggle()}
+        title={$sabbath ? 'Sabbath mode is on — tap to exit' : 'Enter sabbath mode (hides work modules for today)'}
+        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm transition-colors {$sabbath ? 'bg-success/15 text-success hover:bg-success/25' : 'text-dim hover:bg-surface0 hover:text-text'}"
+      >
+        <span class="w-5 text-center text-base flex-shrink-0">{$sabbath ? '🕊️' : '✦'}</span>
+        {#if !isCompact}
+          <span class="flex-1 text-left">{$sabbath ? 'Sabbath on' : 'Sabbath'}</span>
+          <span class="text-[10px] text-dim">{$sabbath ? 'tap to exit' : 'rest day'}</span>
+        {/if}
+      </button>
+
       <!-- Desktop-only compact toggle. Hidden on mobile because the
            drawer is already an icon-poor experience and a compact
            toggle in a temporary panel doesn't save anything. -->
@@ -409,8 +435,24 @@
     </Drawer>
   {/if}
 
-  <main class="flex-1 min-h-0 min-w-0 overflow-hidden">
-    {@render children()}
+  <main class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
+    <!-- Sabbath ribbon. Visible from every authed page so the state
+         is unmissable; the mode auto-clears at midnight. Click to
+         exit. Z-index sits below the running-timer pill so they
+         don't clash. -->
+    {#if $auth && $sabbath}
+      <button
+        type="button"
+        onclick={() => sabbath.disable()}
+        class="flex-shrink-0 px-4 py-1.5 bg-success/10 border-b border-success/30 text-xs text-success text-center hover:bg-success/15 transition-colors"
+        title="Tap to exit sabbath mode"
+      >
+        🕊️ Sabbath mode is on — work modules hidden until midnight. Tap to exit.
+      </button>
+    {/if}
+    <div class="flex-1 min-h-0 overflow-hidden">
+      {@render children()}
+    </div>
   </main>
 
   {#if $auth}
