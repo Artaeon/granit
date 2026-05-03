@@ -166,7 +166,7 @@
                 <button
                   onclick={create}
                   disabled={busy}
-                  class="px-4 py-2 bg-primary text-mantle rounded text-sm font-medium disabled:opacity-50"
+                  class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
                 >
                   {busy ? 'creating…' : 'create note'}
                 </button>

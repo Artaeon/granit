@@ -147,7 +147,7 @@
               <button
                 onclick={() => setPriority(o.p)}
                 disabled={busy}
-                class="flex-1 px-3 py-1.5 {task.priority === o.p ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+                class="flex-1 px-3 py-1.5 {task.priority === o.p ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
               >{o.label}</button>
             {/each}
           </div>
@@ -161,7 +161,7 @@
               <button
                 onclick={() => setTriage(st)}
                 disabled={busy}
-                class="px-2 py-1 rounded {(task.triage || 'inbox') === st ? 'bg-primary text-mantle' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+                class="px-2 py-1 rounded {(task.triage || 'inbox') === st ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
               >{st}</button>
             {/each}
           </div>

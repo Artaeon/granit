@@ -147,12 +147,12 @@
 
   <div class="flex items-center gap-2">
     {#if phase === 'idle'}
-      <button onclick={start} class="flex-1 px-3 py-2 bg-primary text-mantle rounded text-sm font-medium">Start 25/5</button>
+      <button onclick={start} class="flex-1 px-3 py-2 bg-primary text-on-primary rounded text-sm font-medium">Start 25/5</button>
     {:else if isRunning}
       <button onclick={pause} class="flex-1 px-3 py-2 bg-surface1 text-text rounded text-sm font-medium">Pause</button>
       <button onclick={reset} class="px-3 py-2 text-dim hover:text-error text-sm">Reset</button>
     {:else}
-      <button onclick={resume} class="flex-1 px-3 py-2 bg-primary text-mantle rounded text-sm font-medium">Resume</button>
+      <button onclick={resume} class="flex-1 px-3 py-2 bg-primary text-on-primary rounded text-sm font-medium">Resume</button>
       <button onclick={reset} class="px-3 py-2 text-dim hover:text-error text-sm">Reset</button>
     {/if}
   </div>

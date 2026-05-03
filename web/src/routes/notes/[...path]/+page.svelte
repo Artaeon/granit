@@ -554,7 +554,7 @@
           {#each [{m: 'edit', l: 'edit', i: '✎'}, {m: 'split', l: 'split', i: '⊟'}, {m: 'preview', l: 'preview', i: '👁'}] as v}
             <button
               onclick={() => setViewMode(v.m as ViewMode)}
-              class="px-2.5 py-1.5 {viewMode === v.m ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+              class="px-2.5 py-1.5 {viewMode === v.m ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
               title={v.l}
             >
               <span class="text-[11px]">{v.i}</span>
@@ -574,7 +574,7 @@
           disabled={(!dirty && !saveFailed) || saving}
           title={saveStatus}
           class="px-3 sm:px-4 py-2 rounded text-sm font-medium disabled:opacity-60
-            {saveFailed ? 'bg-error text-mantle' : dirty || saving ? 'bg-primary text-mantle' : 'bg-surface1 text-subtext'}"
+            {saveFailed ? 'bg-error text-mantle' : dirty || saving ? 'bg-primary text-on-primary' : 'bg-surface1 text-subtext'}"
         >
           {saveStatus}
         </button>

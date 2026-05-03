@@ -412,7 +412,7 @@
         unifiedStart = s; unifiedEnd = e; unifiedKind = 'task'; unifiedOpen = true;
         filterDrawerOpen = false;
       }}
-      class="w-full px-3 py-2.5 bg-primary text-mantle rounded text-sm font-medium hover:opacity-90"
+      class="w-full px-3 py-2.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
     >
       + New task or event
     </button>
@@ -531,28 +531,28 @@
       {/if}
       <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm">
         <button
-          class="px-2 sm:px-3 py-1.5 {view === 'day' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+          class="px-2 sm:px-3 py-1.5 {view === 'day' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (view = 'day')}
         >Day</button>
         <button
-          class="px-2 sm:px-3 py-1.5 {view === '3day' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+          class="px-2 sm:px-3 py-1.5 {view === '3day' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (view = '3day')}
           title="3-day view"
         >3d</button>
         <button
-          class="px-2 sm:px-3 py-1.5 {view === 'week' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+          class="px-2 sm:px-3 py-1.5 {view === 'week' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (view = 'week')}
         >Week</button>
         <button
-          class="px-2 sm:px-3 py-1.5 {view === 'month' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+          class="px-2 sm:px-3 py-1.5 {view === 'month' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (view = 'month')}
         >Month</button>
         <button
-          class="px-2 sm:px-3 py-1.5 {view === 'year' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'} hidden sm:inline-block"
+          class="px-2 sm:px-3 py-1.5 {view === 'year' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'} hidden sm:inline-block"
           onclick={() => (view = 'year')}
         >Year</button>
         <button
-          class="px-2 sm:px-3 py-1.5 {view === 'agenda' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+          class="px-2 sm:px-3 py-1.5 {view === 'agenda' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (view = 'agenda')}
         >Agenda</button>
       </div>

@@ -222,7 +222,7 @@
       </div>
       <button
         onclick={() => (createOpen = true)}
-        class="px-3 py-1.5 bg-primary text-mantle rounded text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
+        class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
       >
         <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
           <path d="M12 5v14M5 12h14"/>
@@ -254,7 +254,7 @@
         <button
           onclick={() => (view = t.id)}
           class="px-3 py-1.5 rounded transition-colors flex-shrink-0
-            {view === t.id ? 'bg-primary text-mantle' : 'bg-surface0 text-subtext hover:bg-surface1 border border-surface1'}"
+            {view === t.id ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1 border border-surface1'}"
         >
           {t.label} <span class="opacity-70 ml-0.5">{t.count}</span>
         </button>
@@ -409,7 +409,7 @@
           <button
             type="submit"
             disabled={!createTitle.trim() || creating}
-            class="px-4 py-1.5 bg-primary text-mantle rounded text-sm font-medium disabled:opacity-50"
+            class="px-4 py-1.5 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
           >{creating ? 'creating…' : 'Create'}</button>
         </div>
       </form>

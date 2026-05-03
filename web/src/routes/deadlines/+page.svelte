@@ -354,7 +354,7 @@
       {#snippet actions()}
         <button
           onclick={openCreate}
-          class="px-3 py-1.5 bg-primary text-mantle text-sm font-medium rounded hover:opacity-90"
+          class="px-3 py-1.5 bg-primary text-on-primary text-sm font-medium rounded hover:opacity-90"
         >+ New deadline</button>
       {/snippet}
     </PageHeader>
@@ -587,7 +587,7 @@
             <button
               type="button"
               onclick={() => (fImportance = i as DeadlineImportance)}
-              class="flex-1 px-3 py-1.5 capitalize {fImportance === i ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+              class="flex-1 px-3 py-1.5 capitalize {fImportance === i ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
             >{i}</button>
           {/each}
         </div>
@@ -600,7 +600,7 @@
             <button
               type="button"
               onclick={() => (fStatus = s as DeadlineStatus)}
-              class="flex-1 px-2 py-1.5 capitalize {fStatus === s ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+              class="flex-1 px-2 py-1.5 capitalize {fStatus === s ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
             >{s}</button>
           {/each}
         </div>
@@ -678,7 +678,7 @@
       <button
         onclick={save}
         disabled={busy}
-        class="px-3 py-1.5 text-sm bg-primary text-mantle rounded hover:opacity-90 disabled:opacity-50"
+        class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded hover:opacity-90 disabled:opacity-50"
       >{editing ? 'Save' : 'Create'}</button>
     </footer>
   </div>

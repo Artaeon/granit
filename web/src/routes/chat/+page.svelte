@@ -144,7 +144,7 @@
             {/if}
             <div
               class="max-w-[85%] sm:max-w-[75%] px-4 py-2.5 rounded-lg whitespace-pre-wrap break-words text-sm leading-relaxed
-                {m.role === 'user' ? 'bg-primary text-mantle' : m.role === 'system' ? 'bg-surface0 text-dim border border-surface1 italic' : 'bg-surface0 text-text border border-surface1'}"
+                {m.role === 'user' ? 'bg-primary text-on-primary' : m.role === 'system' ? 'bg-surface0 text-dim border border-surface1 italic' : 'bg-surface0 text-text border border-surface1'}"
             >{m.content}</div>
             {#if m.role === 'user'}
               <div class="w-8 h-8 rounded-full bg-surface1 text-subtext flex items-center justify-center flex-shrink-0 text-xs font-mono mt-1">You</div>
@@ -180,7 +180,7 @@
       <button
         type="submit"
         disabled={busy || !input.trim()}
-        class="px-4 py-2 bg-primary text-mantle rounded text-sm font-medium disabled:opacity-50"
+        class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
       >Send</button>
     </form>
   </div>

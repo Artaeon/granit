@@ -123,7 +123,7 @@
     <button
       onclick={() => onPick(customDate)}
       disabled={!customDate}
-      class="w-full px-2 py-1 bg-primary text-mantle rounded text-xs disabled:opacity-50"
+      class="w-full px-2 py-1 bg-primary text-on-primary rounded text-xs disabled:opacity-50"
     >Snooze</button>
   </div>
 </div>

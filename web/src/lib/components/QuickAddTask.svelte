@@ -73,7 +73,7 @@
       <button
         type="submit"
         disabled={busy || !parsed.text}
-        class="px-3 py-1 bg-primary text-mantle rounded text-sm font-medium disabled:opacity-50 flex-shrink-0"
+        class="px-3 py-1 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50 flex-shrink-0"
       >
         {busy ? '…' : 'add'}
         <kbd class="hidden sm:inline ml-1 text-[10px] opacity-70">↵</kbd>

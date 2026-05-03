@@ -163,7 +163,7 @@
     <button
       type="submit"
       disabled={!title.trim() || saving}
-      class="w-full px-4 py-2.5 bg-primary text-mantle rounded font-medium disabled:opacity-50"
+      class="w-full px-4 py-2.5 bg-primary text-on-primary rounded font-medium disabled:opacity-50"
     >{saving ? 'creating…' : 'Create goal'}</button>
   </form>
 </Drawer>

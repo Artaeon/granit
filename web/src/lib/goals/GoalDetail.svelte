@@ -299,7 +299,7 @@
                       <div class="flex gap-2">
                         <button
                           onclick={commitEditMilestone}
-                          class="px-2 py-0.5 text-xs bg-primary text-mantle rounded"
+                          class="px-2 py-0.5 text-xs bg-primary text-on-primary rounded"
                         >save</button>
                         <button
                           onclick={() => (editingMilestoneIdx = null)}
@@ -343,7 +343,7 @@
             <button
               onclick={addMilestone}
               disabled={!newMilestoneText.trim() || saving}
-              class="px-3 py-1.5 bg-primary text-mantle rounded text-sm disabled:opacity-50"
+              class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm disabled:opacity-50"
             >+ add</button>
           </div>
         </section>
@@ -368,7 +368,7 @@
               <button
                 onclick={logReview}
                 disabled={!reviewBuf.trim() || saving}
-                class="px-3 py-1.5 bg-primary text-mantle rounded text-sm disabled:opacity-50"
+                class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm disabled:opacity-50"
               >{saving ? 'saving…' : 'log review'}</button>
             </div>
           {/if}

@@ -364,19 +364,19 @@
 
     <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-6 flex-wrap">
       <button
-        class="px-4 py-2 {mode === 'read' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+        class="px-4 py-2 {mode === 'read' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
         onclick={() => (mode = 'read')}
       >Read</button>
       <button
-        class="px-4 py-2 {mode === 'memo' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+        class="px-4 py-2 {mode === 'memo' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
         onclick={() => { mode = 'memo'; if (!drill) startDrill(); }}
       >Memorize</button>
       <button
-        class="px-4 py-2 {mode === 'browse' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+        class="px-4 py-2 {mode === 'browse' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
         onclick={() => (mode = 'browse')}
       >Browse <span class="text-[10px] opacity-70">{all.length}</span></button>
       <button
-        class="px-4 py-2 {mode === 'bible' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+        class="px-4 py-2 {mode === 'bible' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
         onclick={() => { mode = 'bible'; ensureBibleIndex(); }}
       >Bible</button>
     </div>
@@ -405,7 +405,7 @@
           <button
             onclick={aiReflect}
             disabled={aiLoading}
-            class="px-4 py-2 text-sm bg-primary text-mantle rounded hover:opacity-90 disabled:opacity-50"
+            class="px-4 py-2 text-sm bg-primary text-on-primary rounded hover:opacity-90 disabled:opacity-50"
             title="AI writes a 200-300 word reflection into Devotionals/"
           >{aiLoading ? '…' : 'AI reflection ✨'}</button>
         </div>
@@ -452,12 +452,12 @@
             <button
               onclick={checkDrill}
               disabled={!drill}
-              class="px-4 py-2 text-sm bg-primary text-mantle rounded disabled:opacity-50"
+              class="px-4 py-2 text-sm bg-primary text-on-primary rounded disabled:opacity-50"
             >Check</button>
           {:else}
             <button
               onclick={startDrill}
-              class="px-4 py-2 text-sm bg-primary text-mantle rounded"
+              class="px-4 py-2 text-sm bg-primary text-on-primary rounded"
             >Next verse →</button>
           {/if}
           <button
@@ -501,7 +501,7 @@
           <div class="flex flex-wrap gap-2 items-center">
             <button
               onclick={bibleRandom}
-              class="px-4 py-2 text-sm bg-primary text-mantle rounded hover:opacity-90"
+              class="px-4 py-2 text-sm bg-primary text-on-primary rounded hover:opacity-90"
             >Random passage</button>
             <label class="text-xs text-subtext">
               length
@@ -598,7 +598,7 @@
               <button
                 onclick={() => aiReflectOnPassage(biblePassage!)}
                 disabled={aiLoading}
-                class="px-3 py-1.5 text-sm bg-primary text-mantle rounded hover:opacity-90 disabled:opacity-50"
+                class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded hover:opacity-90 disabled:opacity-50"
               >{aiLoading ? '…' : 'AI reflection ✨'}</button>
             </div>
           </article>

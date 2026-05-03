@@ -58,7 +58,7 @@
     <button
       type="submit"
       disabled={busy || !text.trim()}
-      class="px-4 py-1.5 bg-primary text-mantle rounded font-medium text-sm disabled:opacity-50"
+      class="px-4 py-1.5 bg-primary text-on-primary rounded font-medium text-sm disabled:opacity-50"
     >
       {busy ? '…' : 'add'}
     </button>

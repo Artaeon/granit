@@ -293,7 +293,7 @@
           <button
             type="submit"
             disabled={starting}
-            class="w-full px-3 py-2.5 bg-primary text-mantle rounded text-sm font-medium disabled:opacity-50"
+            class="w-full px-3 py-2.5 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
           >{starting ? 'starting…' : `Run ${preset.name}`}</button>
           <p class="text-[10px] text-dim italic">
             Uses your granit AI config (provider · {preset.includeWrite ? 'may write to vault' : 'read-only'}).

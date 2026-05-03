@@ -109,7 +109,7 @@
       <h2 class="text-sm font-medium text-text flex-1">Projects</h2>
       <button
         onclick={() => (createOpen = true)}
-        class="px-2.5 py-1 text-xs bg-primary text-mantle rounded hover:opacity-90"
+        class="px-2.5 py-1 text-xs bg-primary text-on-primary rounded hover:opacity-90"
       >+ new</button>
     </header>
     <div class="px-3 py-2 space-y-2 flex-shrink-0">

@@ -117,7 +117,7 @@
     {/if}
   {:else}
     <p class="text-sm text-dim mb-3">No focus set for today.</p>
-    <a href="/morning" class="self-start px-3 py-1.5 text-xs bg-primary text-mantle rounded font-medium hover:opacity-90">
+    <a href="/morning" class="self-start px-3 py-1.5 text-xs bg-primary text-on-primary rounded font-medium hover:opacity-90">
       Set a focus →
     </a>
   {/if}

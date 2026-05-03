@@ -341,7 +341,7 @@
         {#snippet action()}
           <button
             onclick={openToday}
-            class="px-4 py-2 bg-primary text-mantle rounded text-sm font-medium"
+            class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium"
           >
             Open today's daily
           </button>

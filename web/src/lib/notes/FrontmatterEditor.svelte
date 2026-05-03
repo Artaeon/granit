@@ -118,7 +118,7 @@
           {:else}
             <input type="text" bind:value={draft} class="flex-1 px-2 py-1 bg-mantle border border-surface1 rounded text-text text-xs" placeholder={kind === 'list' ? 'a, b, c' : ''} />
           {/if}
-          <button onclick={commit} disabled={saving} class="px-2 py-1 bg-primary text-mantle rounded text-xs disabled:opacity-50">save</button>
+          <button onclick={commit} disabled={saving} class="px-2 py-1 bg-primary text-on-primary rounded text-xs disabled:opacity-50">save</button>
           <button onclick={cancel} class="px-2 py-1 text-dim hover:text-text text-xs">×</button>
         </div>
       {/if}

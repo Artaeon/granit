@@ -133,12 +133,12 @@
       <button
         type="button"
         onclick={() => (kind = 'task')}
-        class="px-2 py-1.5 {kind === 'task' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+        class="px-2 py-1.5 {kind === 'task' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
       >task</button>
       <button
         type="button"
         onclick={() => (kind = 'event')}
-        class="px-2 py-1.5 {kind === 'event' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+        class="px-2 py-1.5 {kind === 'event' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
       >event</button>
     </div>
 
@@ -157,7 +157,7 @@
     <button
       type="submit"
       disabled={busy || !text.trim()}
-      class="px-3 py-1.5 text-xs bg-primary text-mantle rounded font-medium disabled:opacity-50"
+      class="px-3 py-1.5 text-xs bg-primary text-on-primary rounded font-medium disabled:opacity-50"
     >{busy ? '…' : 'add'}</button>
 
     <!-- Daily AI band. Three presets that read this note + write back

@@ -133,11 +133,11 @@
     <div class="flex items-center gap-2 flex-wrap mb-4">
       <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm">
         <button
-          class="px-3 py-1.5 {tab === 'runs' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+          class="px-3 py-1.5 {tab === 'runs' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (tab = 'runs')}
         >Runs <span class="text-[10px] opacity-70">{runs.length}</span></button>
         <button
-          class="px-3 py-1.5 {tab === 'presets' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+          class="px-3 py-1.5 {tab === 'presets' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (tab = 'presets')}
         >Presets <span class="text-[10px] opacity-70">{presets.length}</span></button>
       </div>
@@ -239,7 +239,7 @@
               <div class="flex items-center gap-2 mt-1 pt-2 border-t border-surface1">
                 <button
                   onclick={() => startRun(p)}
-                  class="px-3 py-1.5 text-xs bg-primary text-mantle rounded font-medium hover:opacity-90"
+                  class="px-3 py-1.5 text-xs bg-primary text-on-primary rounded font-medium hover:opacity-90"
                 >▶ Run</button>
                 <code class="text-[10px] text-dim font-mono flex-1">{p.id}</code>
               </div>

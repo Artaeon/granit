@@ -116,7 +116,7 @@
       <div class="flex gap-2">
         <button
           onclick={install}
-          class="px-2.5 py-1 text-xs bg-primary text-mantle rounded font-medium"
+          class="px-2.5 py-1 text-xs bg-primary text-on-primary rounded font-medium"
         >Install</button>
         <button
           onclick={dismiss}

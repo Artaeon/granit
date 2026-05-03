@@ -396,7 +396,7 @@
             {#each priorityLabels as label, i}
               <button
                 onclick={() => setPriority(i)}
-                class="flex-1 px-1 py-1 text-[11px] rounded {project.priority === i ? 'bg-primary text-mantle' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+                class="flex-1 px-1 py-1 text-[11px] rounded {project.priority === i ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
               >{label}</button>
             {/each}
           </div>

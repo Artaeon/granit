@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
   import { auth } from '$lib/stores/auth';
   import { api, type Goal } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
@@ -40,6 +41,22 @@
       // The server broadcasts state.changed with Path=".granit/goals.json".
       if (ev.type === 'state.changed' && ev.path === '.granit/goals.json') load();
     });
+  });
+
+  // ?focus=<goalId> auto-opens the matching detail drawer. Used by the
+  // /tasks page deepLink when a goal-group "open ↗" is clicked. Without
+  // this the deepLink used to point at /goals/<id> — a route that
+  // didn't exist, so SvelteKit served the SPA shell and the client
+  // router fell through silently. The user perceived it as a freeze.
+  $effect(() => {
+    const focus = $page.url.searchParams.get('focus');
+    if (!focus) return;
+    if (goals.length === 0) return; // wait until load() resolves
+    const g = goals.find((x) => x.id === focus);
+    if (g && selectedId !== focus) {
+      selectedId = focus;
+      detailOpen = true;
+    }
   });
 
   // Selected goal — derived from id so live edits during a refetch find
@@ -150,7 +167,7 @@
       </div>
       <button
         onclick={() => (createOpen = true)}
-        class="px-3 py-1.5 bg-primary text-mantle rounded text-sm font-medium hover:opacity-90 self-start"
+        class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 self-start"
       >+ New goal</button>
     </header>
 
@@ -158,7 +175,7 @@
     <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-3 self-start flex-wrap">
       {#each ['all', 'active', 'paused', 'completed', 'archived'] as s}
         <button
-          class="px-3 py-1.5 capitalize {statusFilter === s ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+          class="px-3 py-1.5 capitalize {statusFilter === s ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (statusFilter = s as typeof statusFilter)}
         >
           {s} <span class="text-xs opacity-70">{counts[s as keyof typeof counts]}</span>
@@ -184,13 +201,13 @@
           {#each categories as c}
             <button
               onclick={() => (categoryFilter = categoryFilter === c ? '' : c)}
-              class="px-2 py-0.5 rounded {categoryFilter === c ? 'bg-primary text-mantle' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+              class="px-2 py-0.5 rounded {categoryFilter === c ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
             >{c}</button>
           {/each}
           {#each tags as t}
             <button
               onclick={() => (tagFilter = tagFilter === t ? '' : t)}
-              class="px-2 py-0.5 rounded {tagFilter === t ? 'bg-primary text-mantle' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+              class="px-2 py-0.5 rounded {tagFilter === t ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
             >#{t}</button>
           {/each}
         </div>

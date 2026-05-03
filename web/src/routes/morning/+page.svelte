@@ -434,7 +434,7 @@
         <button
           onclick={() => jumpTo(s)}
           class="px-2.5 py-1 rounded transition-colors
-            {active ? 'bg-primary text-mantle' : ''}
+            {active ? 'bg-primary text-on-primary' : ''}
             {past ? 'text-success' : ''}
             {!active && !past ? 'text-dim hover:text-text bg-surface0' : ''}"
         >
@@ -595,7 +595,7 @@
             <div class="flex items-center gap-2">
               <button
                 onclick={acceptSuggestion}
-                class="px-2.5 py-1 text-xs rounded bg-primary text-mantle font-medium"
+                class="px-2.5 py-1 text-xs rounded bg-primary text-on-primary font-medium"
               >use this</button>
               <button
                 onclick={() => (suggestion = '')}
@@ -799,14 +799,14 @@
         <button
           onclick={save}
           disabled={saving}
-          class="px-5 py-2 bg-primary text-mantle rounded text-sm font-medium disabled:opacity-50"
+          class="px-5 py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
         >
           {saving ? 'saving…' : 'save to today\'s daily note'}
         </button>
       {:else}
         <button
           onclick={next}
-          class="px-4 py-2 bg-primary text-mantle rounded text-sm font-medium"
+          class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium"
         >
           next →
         </button>

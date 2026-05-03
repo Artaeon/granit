@@ -172,7 +172,7 @@
             {/each}
           </div>
           <div class="flex gap-2">
-            <button type="submit" disabled={busy} class="px-3 py-1.5 text-sm bg-primary text-mantle rounded disabled:opacity-50">save</button>
+            <button type="submit" disabled={busy} class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded disabled:opacity-50">save</button>
             <button type="button" onclick={() => (editing = false)} class="px-3 py-1.5 text-sm text-subtext hover:text-text">cancel</button>
             <span class="flex-1"></span>
             <button type="button" onclick={deleteEvent} disabled={busy} class="px-3 py-1.5 text-sm text-error hover:bg-error/10 rounded">delete</button>

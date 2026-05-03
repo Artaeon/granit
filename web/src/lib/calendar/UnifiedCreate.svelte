@@ -139,7 +139,7 @@
           <button
             type="button"
             onclick={() => (kind = 'task')}
-            class="flex-1 px-3 py-2 text-sm flex items-center justify-center gap-2 {kind === 'task' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+            class="flex-1 px-3 py-2 text-sm flex items-center justify-center gap-2 {kind === 'task' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           >
             <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="6" height="6" rx="1"/><path d="m4.5 8 1 1 2-2M13 7h8M13 17h8M3 17h6"/></svg>
             Task
@@ -147,7 +147,7 @@
           <button
             type="button"
             onclick={() => (kind = 'event')}
-            class="flex-1 px-3 py-2 text-sm flex items-center justify-center gap-2 {kind === 'event' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+            class="flex-1 px-3 py-2 text-sm flex items-center justify-center gap-2 {kind === 'event' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           >
             <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
             Event
@@ -185,7 +185,7 @@
                 <button
                   type="button"
                   onclick={() => (priority = o.p)}
-                  class="px-3 py-1.5 {priority === o.p ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
+                  class="px-3 py-1.5 {priority === o.p ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
                 >{o.label}</button>
               {/each}
             </div>
@@ -213,7 +213,7 @@
         <button
           type="submit"
           disabled={!title.trim() || saving}
-          class="w-full px-4 py-2.5 bg-primary text-mantle rounded-lg font-medium disabled:opacity-50"
+          class="w-full px-4 py-2.5 bg-primary text-on-primary rounded-lg font-medium disabled:opacity-50"
         >{saving ? 'creating…' : `Create ${kind}`}</button>
       </form>
     </div>

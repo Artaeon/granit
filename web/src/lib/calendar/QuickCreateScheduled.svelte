@@ -118,7 +118,7 @@
       {#if error}<div class="text-sm text-error">{error}</div>{/if}
       <div class="flex gap-2 justify-end">
         <button type="button" onclick={close} class="px-3 py-1.5 text-sm text-subtext hover:text-text">cancel</button>
-        <button type="submit" disabled={busy || !text.trim()} class="px-3 py-1.5 text-sm bg-primary text-mantle rounded disabled:opacity-50">
+        <button type="submit" disabled={busy || !text.trim()} class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded disabled:opacity-50">
           {busy ? 'creating…' : 'create'}
         </button>
       </div>

@@ -346,7 +346,7 @@
             />
           </div>
           {#if signInError}<div class="text-sm text-error">{signInError}</div>{/if}
-          <button type="submit" disabled={signingIn || !password} class="w-full px-3 py-3 bg-primary text-mantle rounded text-sm font-medium hover:opacity-90 disabled:opacity-50">
+          <button type="submit" disabled={signingIn || !password} class="w-full px-3 py-3 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 disabled:opacity-50">
             {signingIn ? 'creating…' : 'Set password & sign in'}
           </button>
           <p class="text-[11px] text-dim text-center">
@@ -366,7 +366,7 @@
             class="w-full px-3 py-3 bg-surface0 border border-surface1 rounded text-base text-text placeholder-dim focus:outline-none focus:border-primary"
           />
           {#if signInError}<div class="text-sm text-error">{signInError}</div>{/if}
-          <button type="submit" disabled={signingIn || !password} class="w-full px-3 py-3 bg-primary text-mantle rounded text-sm font-medium hover:opacity-90 disabled:opacity-50">
+          <button type="submit" disabled={signingIn || !password} class="w-full px-3 py-3 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 disabled:opacity-50">
             {signingIn ? 'signing in…' : 'Sign in'}
           </button>
           <button type="button" onclick={() => { authScreen = 'advanced'; signInError = ''; }} class="w-full text-xs text-dim hover:text-text">

@@ -114,7 +114,7 @@
   <div class="flex gap-2">
     <button onclick={addRule} class="px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded hover:border-primary text-text">+ add rule</button>
     <span class="flex-1"></span>
-    <button onclick={save} disabled={busy} class="px-3 py-1.5 text-xs bg-primary text-mantle rounded font-medium disabled:opacity-50">{busy ? 'saving…' : 'save'}</button>
+    <button onclick={save} disabled={busy} class="px-3 py-1.5 text-xs bg-primary text-on-primary rounded font-medium disabled:opacity-50">{busy ? 'saving…' : 'save'}</button>
   </div>
   <p class="text-[11px] text-dim italic">
     Stored in <code>.granit/recurring.json</code> (same file the TUI's recurring overlay edits).

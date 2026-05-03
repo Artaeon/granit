@@ -66,7 +66,7 @@
       <button
         onclick={() => onPick(c.date)}
         class="aspect-square text-xs rounded relative
-          {isSelected ? 'bg-primary text-mantle font-medium' : ''}
+          {isSelected ? 'bg-primary text-on-primary font-medium' : ''}
           {!isSelected && isToday ? 'text-primary font-medium ring-1 ring-primary/40' : ''}
           {!isSelected && !c.inMonth ? 'text-dim opacity-50' : ''}
           {!isSelected && c.inMonth && !isToday ? 'text-text hover:bg-surface0' : ''}"

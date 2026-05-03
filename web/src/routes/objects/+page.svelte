@@ -104,7 +104,7 @@
         <button
           onclick={() => selectType(t)}
           class="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded text-sm
-            {activeType?.id === t.id ? 'bg-primary text-mantle' : 'bg-surface0 text-subtext'}"
+            {activeType?.id === t.id ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext'}"
         >
           <span>{t.icon ?? '◇'}</span><span>{t.name}</span><span class="opacity-70 text-xs">{t.count}</span>
         </button>

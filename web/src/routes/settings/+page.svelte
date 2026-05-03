@@ -339,7 +339,7 @@
                   placeholder={appCfg.openai_key_set ? '••••• (hidden — type to replace)' : 'sk-…'}
                   class="flex-1 px-3 py-2 bg-mantle border border-surface1 rounded text-text font-mono text-xs"
                 />
-                <button onclick={commitOpenAIKey} disabled={!openAIKeyBuf.trim() || configBusy} class="px-3 py-2 text-xs bg-primary text-mantle rounded disabled:opacity-50">save</button>
+                <button onclick={commitOpenAIKey} disabled={!openAIKeyBuf.trim() || configBusy} class="px-3 py-2 text-xs bg-primary text-on-primary rounded disabled:opacity-50">save</button>
                 {#if appCfg.openai_key_set}
                   <button onclick={clearOpenAIKey} class="px-3 py-2 text-xs text-error hover:bg-error/10 rounded border border-error/30">clear</button>
                 {/if}
@@ -569,7 +569,7 @@
               {#if pwError}<div class="text-sm text-error">{pwError}</div>{/if}
               {#if pwSuccess}<div class="text-sm text-success">{pwSuccess}</div>{/if}
               <div class="flex gap-2">
-                <button type="submit" disabled={pwBusy} class="px-3 py-1.5 text-xs bg-primary text-mantle rounded disabled:opacity-50">
+                <button type="submit" disabled={pwBusy} class="px-3 py-1.5 text-xs bg-primary text-on-primary rounded disabled:opacity-50">
                   {pwBusy ? 'changing…' : 'Change password'}
                 </button>
                 <button type="button" onclick={() => { pwOpen = false; pwError = ''; pwOld = pwNew = pwConfirm = ''; }} class="px-3 py-1.5 text-xs text-dim hover:text-text">cancel</button>

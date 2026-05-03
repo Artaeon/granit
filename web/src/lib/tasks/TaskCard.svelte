@@ -493,7 +493,7 @@
         <input type="date" bind:value={editDue} class="bg-mantle border border-surface1 rounded px-2 py-1 text-text text-sm" />
         <span class="flex-1 min-w-0"></span>
         <button type="button" onclick={cancelEdit} class="px-3 py-1 text-dim hover:text-text">cancel</button>
-        <button type="submit" disabled={busy} class="px-3 py-1 bg-primary text-mantle rounded disabled:opacity-50">save</button>
+        <button type="submit" disabled={busy} class="px-3 py-1 bg-primary text-on-primary rounded disabled:opacity-50">save</button>
       </div>
     </form>
     </div>

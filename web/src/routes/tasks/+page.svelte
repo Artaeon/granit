@@ -438,7 +438,11 @@
             key: k,
             label: g ? `🎯 ${g.title} (${g.id})` : k,
             tasks: v,
-            deepLink: g ? `/goals/${encodeURIComponent(g.id)}` : undefined
+            // /goals/[id] doesn't exist as a route — the SPA shell
+            // matched but the client router fell through, looking like
+            // a freeze on click. Use the same-page focus param the
+            // /goals page already understands.
+            deepLink: g ? `/goals?focus=${encodeURIComponent(g.id)}` : undefined
           };
         })
         .sort((a, b) => {
@@ -633,7 +637,7 @@
           <path d="M3 6h18M6 12h12M9 18h6" stroke-linecap="round" />
         </svg>
         {#if activeFilterCount > 0}
-          <span class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-mantle text-[10px] rounded-full flex items-center justify-center">{activeFilterCount}</span>
+          <span class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-on-primary text-[10px] rounded-full flex items-center justify-center">{activeFilterCount}</span>
         {/if}
       </button>
       <h1 class="text-base sm:text-lg font-semibold text-text">Tasks</h1>
@@ -644,13 +648,13 @@
         class="flex-1 min-w-0 px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
       />
       <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm flex-wrap">
-        <button class="px-2 sm:px-3 py-1.5 {view === 'list' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'list')}>List</button>
-        <button class="px-2 sm:px-3 py-1.5 {view === 'kanban' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'kanban')}>Kanban</button>
-        <button class="px-2 sm:px-3 py-1.5 {view === 'inbox' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'inbox')} title="untriaged tasks">Inbox</button>
-        <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'triage' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'triage')}>Triage</button>
-        <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'quickwins' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'quickwins')} title="high priority + ≤30 min">Quick wins</button>
-        <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'stale' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'stale')} title="not touched in 7+ days">Stale</button>
-        <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'review' ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'review')} title="completed in last 7 days">Review</button>
+        <button class="px-2 sm:px-3 py-1.5 {view === 'list' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'list')}>List</button>
+        <button class="px-2 sm:px-3 py-1.5 {view === 'kanban' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'kanban')}>Kanban</button>
+        <button class="px-2 sm:px-3 py-1.5 {view === 'inbox' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'inbox')} title="untriaged tasks">Inbox</button>
+        <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'triage' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'triage')}>Triage</button>
+        <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'quickwins' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'quickwins')} title="high priority + ≤30 min">Quick wins</button>
+        <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'stale' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'stale')} title="not touched in 7+ days">Stale</button>
+        <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'review' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'review')} title="completed in last 7 days">Review</button>
       </div>
       <button
         onclick={() => (helpOpen = !helpOpen)}

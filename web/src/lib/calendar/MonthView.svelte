@@ -69,7 +69,7 @@
             <!-- Today gets a filled pill, matching the Google Calendar
                  visual cue. The pill is small enough to coexist with
                  the event chips below without crowding the cell. -->
-            <span class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-mantle text-[11px] font-semibold">
+            <span class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-on-primary text-[11px] font-semibold">
               {c.date.getDate()}
             </span>
           {:else}

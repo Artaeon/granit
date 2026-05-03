@@ -195,7 +195,7 @@
     <button
       type="submit"
       disabled={!newGoalText.trim()}
-      class="px-3 py-2 bg-primary text-mantle rounded text-sm font-medium disabled:opacity-50"
+      class="px-3 py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
     >+ goal</button>
   </form>
 </div>
