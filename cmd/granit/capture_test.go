@@ -215,6 +215,13 @@ func TestGetCapturePositionalArgs_SkipsShortFlags(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestResolveCaptureVault_FallbackToDot(t *testing.T) {
+	// Isolate from the developer's real ~/.config/granit/vaults.json,
+	// which may carry a stale last_used pointing at a deleted dir.
+	// resolveCaptureVault used to call exitError() on that path,
+	// which terminated the test process — now (post-fix) it falls
+	// through silently, but isolation is still the right discipline.
+	t.Setenv("HOME", t.TempDir())
+
 	origArgs := os.Args
 	defer func() { os.Args = origArgs }()
 
@@ -239,6 +246,7 @@ func TestResolveCaptureVault_FallbackToDot(t *testing.T) {
 }
 
 func TestResolveCaptureVault_FromEnv(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	origArgs := os.Args
 	defer func() { os.Args = origArgs }()
 
@@ -262,6 +270,7 @@ func TestResolveCaptureVault_FromEnv(t *testing.T) {
 }
 
 func TestResolveCaptureVault_FlagOverridesEnv(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	origArgs := os.Args
 	defer func() { os.Args = origArgs }()
 

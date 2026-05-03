@@ -7,7 +7,21 @@ import (
 	"testing"
 )
 
+// isolateHome points the user-config lookup at a fresh tempdir per
+// test so Load() / LoadForVault() can't bleed in the developer's
+// real ~/.config/granit/config.json. Without this, a dev machine
+// with ai_provider=openai (or anything other than 'local') makes
+// the default-value tests fail spuriously.
+//
+// ConfigDir() resolves via os.UserHomeDir(), which honors HOME on
+// Unix; t.Setenv restores at the end of the test for free.
+func isolateHome(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+}
+
 func TestConfig_CorruptJSON(t *testing.T) {
+	isolateHome(t)
 	// Malformed JSON in a vault config file should not crash; the config
 	// should still have default values (LoadForVault prints a warning to stderr).
 	vaultDir := t.TempDir()
@@ -33,6 +47,7 @@ func TestConfig_CorruptJSON(t *testing.T) {
 }
 
 func TestConfig_EmptyFile(t *testing.T) {
+	isolateHome(t)
 	// An empty config file should result in defaults being used.
 	vaultDir := t.TempDir()
 	vaultConfigPath := filepath.Join(vaultDir, ".granit.json")
@@ -54,6 +69,7 @@ func TestConfig_EmptyFile(t *testing.T) {
 }
 
 func TestConfig_PartialConfig(t *testing.T) {
+	isolateHome(t)
 	// Only some fields set in the vault config; others should use defaults.
 	vaultDir := t.TempDir()
 	vaultConfigPath := filepath.Join(vaultDir, ".granit.json")
@@ -105,6 +121,7 @@ func TestConfig_PartialConfig(t *testing.T) {
 }
 
 func TestConfig_SaveAndReload(t *testing.T) {
+	isolateHome(t)
 	// Save a config with custom values, reload it, verify all fields match.
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.json")

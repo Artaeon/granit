@@ -13,28 +13,54 @@ import (
 
 // resolveCaptureVault determines the vault path for capture/clip commands.
 // Priority: --vault / -v flag > GRANIT_VAULT env > last opened vault > cwd.
+//
+// User-supplied sources (flag, env) hard-fail with exitError when the
+// path is bad — they're explicit and a typo is best surfaced loudly.
+// Inferred sources (last-used, cwd) fall through silently when
+// invalid, so a deleted vault directory in ~/.config/granit/vaults.json
+// doesn't refuse to launch the binary after a vault got cleaned up.
 func resolveCaptureVault() string {
-	var vaultPath string
+	// Explicit sources — exitError on bad input so a typo on the
+	// command line surfaces immediately.
 	if v := getFlagValue("--vault"); v != "" {
-		vaultPath = v
-	} else if v := getFlagValue("-v"); v != "" {
-		vaultPath = v
-	} else if envVault := os.Getenv("GRANIT_VAULT"); envVault != "" {
-		vaultPath = envVault
-	} else if last := config.LoadVaultList().LastUsed; last != "" {
-		vaultPath = last
-	} else {
-		vaultPath = "."
+		return mustValidVault(v)
 	}
-	// Validate that the resolved path is a directory.
-	info, err := os.Stat(vaultPath)
+	if v := getFlagValue("-v"); v != "" {
+		return mustValidVault(v)
+	}
+	if envVault := os.Getenv("GRANIT_VAULT"); envVault != "" {
+		return mustValidVault(envVault)
+	}
+	// Inferred sources — silently fall through on bad data so stale
+	// state doesn't break the binary.
+	if last := config.LoadVaultList().LastUsed; last != "" {
+		if validVault(last) {
+			return last
+		}
+	}
+	return "." // final fallback; cwd may itself fail validation in callers
+}
+
+// mustValidVault returns p if it's an existing directory; otherwise
+// terminates the process with a friendly message. Used for vault
+// paths the user explicitly supplied (flag / env).
+func mustValidVault(p string) string {
+	info, err := os.Stat(p)
 	if err != nil {
-		exitError("Vault path does not exist: %s", vaultPath)
+		exitError("Vault path does not exist: %s", p)
 	}
 	if !info.IsDir() {
-		exitError("Vault path is not a directory: %s", vaultPath)
+		exitError("Vault path is not a directory: %s", p)
 	}
-	return vaultPath
+	return p
+}
+
+// validVault is mustValidVault's silent sibling — used for inferred
+// paths (last-used vault list) where invalid input should fall
+// through to the next candidate, not crash.
+func validVault(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && info.IsDir()
 }
 
 // resolveTargetFile returns the target filename from flags or default.

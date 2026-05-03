@@ -277,9 +277,11 @@ func TestSaveToVault(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLoadForVault(t *testing.T) {
-	// We cannot easily override ConfigDir()/ConfigPath() since they use
-	// os.UserHomeDir(), so we create a vault config and verify it overlays
-	// correctly by calling LoadForVault with a vault root.
+	// ConfigDir() uses os.UserHomeDir(), which honors HOME on Unix —
+	// pointing it at a fresh tempdir gives us a clean global config
+	// (defaults only) without the developer's real ~/.config/granit
+	// bleeding in.
+	t.Setenv("HOME", t.TempDir())
 
 	vaultDir := t.TempDir()
 
