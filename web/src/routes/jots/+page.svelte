@@ -31,6 +31,55 @@
   let searchResults = $state<Note[]>([]);
   let searching = $state(false);
 
+  // Hashtag filter — when set, the feed shows only jots whose body
+  // contains that tag. Clicking a `#tag` chip in any jot toggles this.
+  // Stored in the URL hash so a tab refresh keeps the filter and a
+  // shared link lands the recipient on the same view.
+  let activeTag = $state<string>(
+    typeof window !== 'undefined' ? (window.location.hash.match(/^#tag=(.+)$/)?.[1] ?? '') : ''
+  );
+
+  // All distinct hashtags found across the loaded jots, ordered by
+  // frequency desc then alpha. Cheap derivation — for a few hundred
+  // jots × a few tags each, the linear scan is invisible.
+  let allTags = $derived.by(() => {
+    const counts = new Map<string, number>();
+    const tagRe = /(?:^|\s)#([\p{L}\p{N}_-]+)/gu;
+    for (const j of jots) {
+      const seen = new Set<string>();
+      for (const m of (j.body ?? '').matchAll(tagRe)) {
+        const t = m[1].toLowerCase();
+        if (seen.has(t)) continue;
+        seen.add(t);
+        counts.set(t, (counts.get(t) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+      .map(([t]) => t);
+  });
+
+  // Filtered feed = jots whose body mentions the active tag (case-
+  // insensitive). When no filter, returns the full list verbatim.
+  let visibleJots = $derived.by(() => {
+    if (!activeTag) return jots;
+    const re = new RegExp(`(?:^|\\s)#${activeTag.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`, 'i');
+    return jots.filter((j) => re.test(j.body ?? ''));
+  });
+
+  function setActiveTag(t: string) {
+    activeTag = activeTag === t ? '' : t;
+    if (typeof window !== 'undefined') {
+      const next = activeTag ? `#tag=${encodeURIComponent(activeTag)}` : '';
+      // Replace, not push — tag filtering shouldn't pollute browser
+      // history with one entry per chip click.
+      history.replaceState(null, '', window.location.pathname + window.location.search + next);
+    }
+  }
+  function clearTag() {
+    setActiveTag(activeTag);
+  }
+
   // Sentinel + observer for infinite scroll.
   let sentinel: HTMLDivElement | undefined = $state();
   let observer: IntersectionObserver | null = null;
@@ -357,6 +406,31 @@
         >Today</button>
       </div>
 
+      <!-- Hashtag chip strip — click to filter the feed. The first
+           click sets activeTag; clicking the same chip again clears.
+           Hidden when nothing's been loaded yet to avoid layout shift. -->
+      {#if allTags.length > 0}
+        <div class="flex flex-wrap items-center gap-1 mt-2 text-[11px]">
+          {#if activeTag}
+            <button
+              type="button"
+              onclick={clearTag}
+              class="px-1.5 py-0.5 rounded bg-surface1 text-dim hover:text-text"
+            >clear</button>
+          {/if}
+          {#each allTags.slice(0, 24) as t}
+            <button
+              type="button"
+              onclick={() => setActiveTag(t)}
+              class="px-1.5 py-0.5 rounded {activeTag === t ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+            >#{t}</button>
+          {/each}
+          {#if allTags.length > 24}
+            <span class="text-dim">+{allTags.length - 24} more</span>
+          {/if}
+        </div>
+      {/if}
+
       {#if searchResults.length > 0}
         <div class="mt-2 bg-mantle border border-surface1 rounded p-2 max-h-64 overflow-y-auto">
           <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5 px-1">
@@ -445,8 +519,13 @@
         {/snippet}
       </EmptyState>
     {:else}
+      {#if activeTag && visibleJots.length === 0}
+        <p class="text-sm text-dim italic mb-4">
+          No jots tagged <span class="text-primary">#{activeTag}</span> yet — keep scrolling to load older dailies.
+        </p>
+      {/if}
       <ul class="space-y-5">
-        {#each jots as jot (jot.path)}
+        {#each visibleJots as jot (jot.path)}
           <li>
             <article>
               <header

@@ -1081,6 +1081,12 @@ export interface ObjectInstance {
   path: string;
   title: string;
   properties?: Record<string, string>;
+  // Epoch millis from the source file's mtime. Server sets both to
+  // the same value today since Linux ctime is unreliable as a real
+  // creation-time signal — see the handler comment in
+  // internal/serveapi/handlers_types.go.
+  modifiedTime?: number;
+  createdTime?: number;
 }
 
 export interface HabitDay {

@@ -3,6 +3,8 @@ package serveapi
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -88,11 +90,26 @@ func (s *Server) handleListTypeObjects(w http.ResponseWriter, r *http.Request) {
 	objs := idx.ByType(id)
 	out := make([]map[string]interface{}, 0, len(objs))
 	for _, o := range objs {
-		out = append(out, map[string]interface{}{
+		entry := map[string]interface{}{
 			"path":       o.NotePath,
 			"title":      o.Title,
 			"properties": o.Properties,
-		})
+		}
+		// Populate created/modified epoch-millis from the file system so
+		// the web can offer recently-touched / newest-first sort. Stat
+		// is cheap (a few hundred typed notes per type at most). Errors
+		// silently leave the timestamps off — the web treats missing as
+		// "0 epoch" which sorts to the bottom of a desc list, the least-
+		// surprising fallback.
+		if info, err := os.Stat(filepath.Join(s.cfg.Vault.Root, o.NotePath)); err == nil {
+			entry["modifiedTime"] = info.ModTime().UnixMilli()
+			// On Linux, ctime ≠ creation time (it's "inode change time"),
+			// so we use mtime as a stable proxy for "when did the user
+			// last touch this." Real created-time would need birthtime
+			// (statx on Linux 4.11+) — out of scope for this slice.
+			entry["createdTime"] = info.ModTime().UnixMilli()
+		}
+		out = append(out, entry)
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"typeId":  id,

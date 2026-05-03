@@ -365,6 +365,48 @@
   const RECENT_KEY = 'granit.bible.recent';
   const RECENT_MAX = 8;
 
+  // Reading streak — count of consecutive distinct days the user has
+  // opened a chapter. Each loadBibleChapter call records today's
+  // YYYY-MM-DD; the streak resets when a day is skipped. Stored in
+  // localStorage as { lastDay, streak } so a single field captures
+  // both the trail end and the current run.
+  const STREAK_KEY = 'granit.bible.streak';
+  type StreakState = { lastDay: string; streak: number };
+  function loadStreak(): StreakState {
+    if (typeof localStorage === 'undefined') return { lastDay: '', streak: 0 };
+    try {
+      const raw = localStorage.getItem(STREAK_KEY);
+      if (!raw) return { lastDay: '', streak: 0 };
+      const s = JSON.parse(raw) as StreakState;
+      return { lastDay: s.lastDay ?? '', streak: s.streak ?? 0 };
+    } catch {
+      return { lastDay: '', streak: 0 };
+    }
+  }
+  function saveStreak(s: StreakState): void {
+    try { localStorage.setItem(STREAK_KEY, JSON.stringify(s)); } catch {}
+  }
+  let streak = $state<StreakState>(loadStreak());
+
+  function todayKey(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  function bumpStreak() {
+    const today = todayKey();
+    if (streak.lastDay === today) return; // already counted today
+    // Yesterday → continue streak; older → reset to 1; empty → start at 1.
+    const yest = new Date();
+    yest.setDate(yest.getDate() - 1);
+    const yKey = `${yest.getFullYear()}-${String(yest.getMonth() + 1).padStart(2, '0')}-${String(yest.getDate()).padStart(2, '0')}`;
+    const next: StreakState = {
+      lastDay: today,
+      streak: streak.lastDay === yKey ? streak.streak + 1 : 1
+    };
+    streak = next;
+    saveStreak(next);
+  }
+
   function loadRecent(): RecentChapter[] {
     if (typeof localStorage === 'undefined') return [];
     try {
@@ -395,6 +437,7 @@
       bibleChapter = await api.bibleChapter(book, chapter);
       biblePassage = null;
       pushRecent(bibleChapter.book, bibleChapter.bookCode, bibleChapter.chapter);
+      bumpStreak();
     } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
@@ -496,7 +539,17 @@
 
 <div class="h-full overflow-y-auto">
   <div class="max-w-3xl mx-auto p-4 sm:p-6 lg:p-8">
-    <PageHeader title="Scripture" subtitle="Verse of the day, memorization drill, full bible (WEB)" />
+    <div class="flex flex-wrap items-baseline gap-3 mb-6">
+      <div class="flex-1 min-w-0">
+        <PageHeader title="Scripture" subtitle="Verse of the day, memorization drill, full bible (WEB)" />
+      </div>
+      {#if streak.streak > 0}
+        <span
+          class="text-xs px-2 py-1 rounded bg-success/15 text-success font-medium flex-shrink-0"
+          title="Days in a row you've opened a chapter (per device)"
+        >🔥 {streak.streak}-day streak</span>
+      {/if}
+    </div>
 
     <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-6 flex-wrap">
       <button
