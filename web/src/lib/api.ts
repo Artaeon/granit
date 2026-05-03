@@ -472,6 +472,17 @@ export const api = {
   },
   createNote: (body: { path: string; frontmatter?: Record<string, unknown>; body: string }) =>
     req<Note>('/notes', { method: 'POST', body: JSON.stringify(body) }),
+  // Hard-delete a note. Server emits a note.removed WS event; pages
+  // subscribe and refresh. No undo / trash folder yet.
+  deleteNote: (path: string) =>
+    req<void>(`/notes/${path.split('/').map(encodeURIComponent).join('/')}`, { method: 'DELETE' }),
+  // Rename / move a note. Returns { from, to } on success, 409 if
+  // the destination already exists.
+  renameNote: (from: string, to: string) =>
+    req<{ from: string; to: string }>('/notes/rename', {
+      method: 'POST',
+      body: JSON.stringify({ from, to })
+    }),
 
   // Tasks
   listTasks: (params: { status?: 'open' | 'done'; tag?: string; due_on?: string; due_before?: string; note?: string; triage?: string } = {}) => {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/artaeon/granit/internal/atomicio"
 	"github.com/artaeon/granit/internal/vault"
+	"github.com/artaeon/granit/internal/wshub"
 	"gopkg.in/yaml.v3"
 )
 
@@ -361,3 +362,110 @@ func serializeNote(fm map[string]interface{}, body string) (string, error) {
 }
 
 var inlineTagRe = mustCompile(`(^|\s)#([\p{L}\p{N}_/-]+)`)
+
+// handleDeleteNote removes a note from the vault. Hard delete — no
+// trash folder yet (a future enhancement). The same path-safety
+// shape used by handlePutNote / handleGetFile: refuse absolute paths,
+// any `..` component, and ensure the cleaned absolute lives under
+// the vault root. Returns 204 on success, 404 when missing, 400 on
+// path violation.
+func (s *Server) handleDeleteNote(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(chi.URLParam(r, "*"), "/")
+	if path == "" || strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	abs := filepath.Clean(filepath.Join(s.cfg.Vault.Root, filepath.FromSlash(path)))
+	rootClean := filepath.Clean(s.cfg.Vault.Root)
+	if abs != rootClean && !strings.HasPrefix(abs, rootClean+string(filepath.Separator)) {
+		writeError(w, http.StatusBadRequest, "path escapes vault")
+		return
+	}
+	if _, err := os.Stat(abs); os.IsNotExist(err) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := os.Remove(abs); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// rescanMu protects the vault index AND the search index — they're
+	// not internally thread-safe and the runWatcher holds this same
+	// lock around its own scan/reload/search.Remove. Without it, a
+	// concurrent search request can fatal-panic on a map read/write
+	// race. Discovered the hard way; fix is to mirror the watcher's
+	// shape.
+	s.rescanMu.Lock()
+	_ = s.cfg.Vault.ScanFast()
+	_ = s.cfg.TaskStore.Reload()
+	s.search.Remove(path)
+	s.rescanMu.Unlock()
+	s.hub.Broadcast(wshub.Event{Type: "note.removed", Path: path})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type renameNoteBody struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// handleRenameNote moves a note from one vault-relative path to
+// another. Used by the notes tab to rename or move a file without
+// the user opening the editor. Path safety mirrors delete; refuses
+// to overwrite an existing file at the destination.
+func (s *Server) handleRenameNote(w http.ResponseWriter, r *http.Request) {
+	var b renameNoteBody
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	from := strings.TrimPrefix(b.From, "/")
+	to := strings.TrimPrefix(b.To, "/")
+	if from == "" || to == "" || strings.Contains(from, "..") || strings.Contains(to, "..") ||
+		strings.HasPrefix(from, "/") || strings.HasPrefix(to, "/") {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	root := filepath.Clean(s.cfg.Vault.Root)
+	fromAbs := filepath.Clean(filepath.Join(root, filepath.FromSlash(from)))
+	toAbs := filepath.Clean(filepath.Join(root, filepath.FromSlash(to)))
+	for _, p := range []string{fromAbs, toAbs} {
+		if p != root && !strings.HasPrefix(p, root+string(filepath.Separator)) {
+			writeError(w, http.StatusBadRequest, "path escapes vault")
+			return
+		}
+	}
+	if _, err := os.Stat(fromAbs); err != nil {
+		writeError(w, http.StatusNotFound, "source not found")
+		return
+	}
+	if _, err := os.Stat(toAbs); err == nil {
+		writeError(w, http.StatusConflict, "destination exists")
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(toAbs), 0o755); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := os.Rename(fromAbs, toAbs); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// rescanMu wraps vault scan + task reload + search index mutation —
+	// see handleDeleteNote comment.
+	s.rescanMu.Lock()
+	_ = s.cfg.Vault.ScanFast()
+	_ = s.cfg.TaskStore.Reload()
+	s.search.Remove(from)
+	if n := s.cfg.Vault.GetNote(to); n != nil {
+		s.cfg.Vault.EnsureLoaded(to)
+		s.search.Update(to, n.Content)
+	}
+	s.rescanMu.Unlock()
+	s.hub.Broadcast(wshub.Event{Type: "note.removed", Path: from})
+	s.hub.Broadcast(wshub.Event{Type: "note.changed", Path: to})
+	writeJSON(w, http.StatusOK, map[string]string{"from": from, "to": to})
+}

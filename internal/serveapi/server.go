@@ -159,6 +159,10 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/api/v1/notes", s.handleCreateNote)
 		r.Get("/api/v1/notes/*", s.handleGetNote)
 		r.Put("/api/v1/notes/*", s.handlePutNote)
+		r.Delete("/api/v1/notes/*", s.handleDeleteNote)
+		// Rename / move a note. POST so the body carries from+to —
+		// chi doesn't have a clean "rename" verb shape.
+		r.Post("/api/v1/notes/rename", s.handleRenameNote)
 		r.Get("/api/v1/links/*", s.handleGetLinks)
 
 		r.Get("/api/v1/tasks", s.handleListTasks)
