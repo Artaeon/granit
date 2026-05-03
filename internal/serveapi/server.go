@@ -198,6 +198,10 @@ func (s *Server) Handler() http.Handler {
 		r.Patch("/api/v1/pinned", s.handlePatchPinned)
 
 		r.Get("/api/v1/habits", s.handleListHabits)
+		// Per-date habit toggle. Mark a habit done/undone for ANY day
+		// (not just today) — drives the click-on-past-day-dot
+		// interaction on the habits heatmap.
+		r.Post("/api/v1/habits/toggle", s.handleToggleHabit)
 
 		r.Get("/api/v1/search", s.handleSearch)
 

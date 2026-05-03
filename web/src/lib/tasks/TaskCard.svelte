@@ -206,6 +206,35 @@
     return 'text-dim';
   });
 
+  // Relative-aware due-date label. Reads naturally — "today", "tomorrow",
+  // "yesterday", "in 3 days", "+2w", or a localised date for far-out
+  // dates. Matches what users expect from Things / Reminders / Todoist
+  // and keeps the task row uncluttered (was rendering raw "2026-05-15"
+  // even for tomorrow).
+  function dueLabel(due: string): string {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const [y, m, d] = due.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    const days = Math.round((date.getTime() - today.getTime()) / 86_400_000);
+    if (days === 0) return 'today';
+    if (days === 1) return 'tomorrow';
+    if (days === -1) return 'yesterday';
+    if (days < 0 && days >= -6) return `${-days}d ago`;
+    if (days > 0 && days <= 6) return `in ${days}d`;
+    if (days < 0 && days >= -28) return `${Math.round(-days / 7)}w ago`;
+    if (days > 0 && days <= 28) return `in ${Math.round(days / 7)}w`;
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+  // Icon char per due-state — nothing fancy, just enough to let the eye
+  // distinguish "overdue" (⚠) from "soon" (📅) at a glance.
+  function dueIcon(due: string): string {
+    const today = new Date().toISOString().slice(0, 10);
+    if (due < today) return '⚠';
+    if (due === today) return '⏰';
+    return '📅';
+  }
+
   let badge = $derived(priorityBadge(task.priority));
   let isSelected = $derived(selectedIds.has(task.id));
   let snoozed = $derived(isSnoozed(task));
@@ -272,7 +301,13 @@
         {#if !compact}
           <div class="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs">
             {#if task.dueDate}
-              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] {dueClass} bg-surface1/40">due {task.dueDate}</span>
+              <span
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] {dueClass} bg-surface1/40"
+                title="due {task.dueDate}"
+              >
+                <span class="text-[9px]" aria-hidden="true">{dueIcon(task.dueDate)}</span>
+                {dueLabel(task.dueDate)}
+              </span>
             {/if}
             {#if task.scheduledStart}
               <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-primary bg-primary/10">

@@ -22,6 +22,13 @@ type NoteContent struct {
 var (
 	reTaskLine       = regexp.MustCompile(`^(\s*- \[)([ xX])(\] .+)`)
 	reDueDateMarker  = regexp.MustCompile(`\x{1F4C5}\s*(\d{4}-\d{2}-\d{2})`) // 📅
+	// ASCII shorthand `due:YYYY-MM-DD` is what the web's
+	// buildTaskTextLine writes (and what the TUI also emits in
+	// inline-task quick-capture). Without this regex, the parser falls
+	// back to the daily-note filename for the due-date field — every
+	// API-created task with a future date silently appeared "due
+	// today" because that was the daily it lived in.
+	reDueDateAscii   = regexp.MustCompile(`(?:^|\s)due:(\d{4}-\d{2}-\d{2})(?:\s|$)`)
 	rePrioHighest    = regexp.MustCompile(`\x{1F53A}`)                       // 🔺
 	rePrioHigh       = regexp.MustCompile(`\x{23EB}`)                        // ⏫
 	rePrioMed        = regexp.MustCompile(`\x{1F53C}`)                       // 🔼
@@ -127,6 +134,12 @@ func applyMarkdownExtras(t *Task, notePath, taskText string) {
 		}
 	}
 	if dm := reDueDateMarker.FindStringSubmatch(taskText); dm != nil {
+		t.DueDate = dm[1]
+	}
+	// ASCII due:YYYY-MM-DD — overrides emoji + filename fallback,
+	// because the web's buildTaskTextLine emits this form on
+	// create/patch and we want it to round-trip exactly.
+	if dm := reDueDateAscii.FindStringSubmatch(taskText); dm != nil {
 		t.DueDate = dm[1]
 	}
 

@@ -27,27 +27,32 @@
   });
 
   async function toggleToday(h: HabitInfo) {
-    busy = h.name;
+    await toggleOnDate(h, data?.today ?? new Date().toISOString().slice(0, 10), !h.doneToday);
+  }
+
+  // Click-on-dot retro-toggle. Works for any date, including future
+  // ones (so the user can plan-log) — server creates the daily file
+  // for that date if it doesn't exist yet. The optimistic flip keeps
+  // the UI snappy on a slow link; load() at the end reconciles.
+  async function toggleOnDate(h: HabitInfo, date: string, want: boolean) {
+    busy = `${h.name}|${date}`;
+    // Optimistic update: flip the dot in our local state so the user
+    // sees instant feedback. The full reload below reconciles streaks
+    // and the today badge.
+    if (data) {
+      const habit = data.habits.find((x) => x.name === h.name);
+      const day = habit?.days.find((d) => d.date === date);
+      if (day) day.done = want;
+      if (habit && date === data.today) habit.doneToday = want;
+      data = { ...data };
+    }
     try {
-      // If the habit task already exists in today's daily, just toggle.
-      if (h.taskIdToday) {
-        await api.patchTask(h.taskIdToday, { done: !h.doneToday });
-        await load();
-        return;
-      }
-      // Otherwise, materialize the habit in today's daily note as a new
-      // task line under "## Habits", then mark it done.
-      if (!h.notePathToday) return;
-      const created = await api.createTask({
-        notePath: h.notePathToday,
-        text: h.name,
-        section: '## Habits'
-      });
-      await api.patchTask(created.id, { done: true });
+      await api.toggleHabit(h.name, date, want);
       await load();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       (await import('$lib/components/toast')).toast.error(`couldn't toggle: ${msg}`);
+      await load(); // restore truth
     } finally {
       busy = null;
     }
@@ -123,18 +128,28 @@
               </div>
             </div>
 
-            <!-- Dot grid: 90 days, oldest→newest -->
+            <!-- Dot grid: 90 days, oldest→newest. Each dot is now a
+                 button — click to toggle done/undone for that date.
+                 Future-dated dots stay clickable too so the user can
+                 plan-log (e.g. mark a workout planned for tomorrow). -->
             <div class="grid grid-flow-col grid-rows-7 gap-0.5" style="grid-auto-columns: minmax(0, 1fr);">
               {#each h.days as d (d.date)}
                 {@const isToday = d.date === data.today}
-                <div
-                  class="aspect-square rounded-[2px] {d.done ? 'bg-success' : 'bg-surface1'}"
+                {@const cellBusy = busy === `${h.name}|${d.date}`}
+                <button
+                  type="button"
+                  onclick={() => toggleOnDate(h, d.date, !d.done)}
+                  disabled={cellBusy}
+                  class="aspect-square rounded-[2px] transition-colors hover:opacity-70 disabled:opacity-40
+                    {d.done ? 'bg-success' : 'bg-surface1 hover:bg-surface2'}"
                   class:ring-1={isToday}
                   class:ring-primary={isToday}
-                  title="{d.date}{d.done ? ' · done' : ''}"
-                ></div>
+                  title={`${d.date}${d.done ? ' · done · click to undo' : ' · click to mark done'}`}
+                  aria-label={`toggle ${h.name} on ${d.date}`}
+                ></button>
               {/each}
             </div>
+            <p class="text-[11px] text-dim mt-2">click any past day to mark / unmark — server updates that day's daily note</p>
           </article>
         {/each}
       </div>

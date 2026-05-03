@@ -1,12 +1,18 @@
 package serveapi
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/artaeon/granit/internal/atomicio"
+	"github.com/artaeon/granit/internal/config"
 )
 
 // Habits are derived from `## Habits` sections in daily notes. Each checkbox
@@ -252,4 +258,173 @@ func pctDone(days []habitDay, n int) int {
 		}
 	}
 	return int(float64(done) / float64(n) * 100)
+}
+
+// ---- retro-toggle ----
+
+type habitToggleBody struct {
+	Name string `json:"name"`         // habit name (matches the task text after "- [ ] ")
+	Date string `json:"date"`         // YYYY-MM-DD; "" or absent = today
+	Done bool   `json:"done"`         // target state
+}
+
+// handleToggleHabit lets the user mark a habit done/undone for ANY day,
+// not just today. Edits (or creates) the daily note for the given date,
+// finds an existing line under ## Habits matching the name and toggles
+// its checkbox, or appends a new line if none exists.
+//
+// The previous toggle path on the web could only patch the current
+// day's task by ID, leaving the heatmap dots for past days read-only.
+// This endpoint backs the click-to-toggle interaction on the heatmap.
+//
+// Trade-off: we don't lean on EnsureDaily here because that always
+// targets today. For past dates we just write the file directly with
+// a minimal frontmatter; for future dates the same flow happens to
+// work and matches what users expect (mark a habit done in advance,
+// e.g. logging a planned workout).
+func (s *Server) handleToggleHabit(w http.ResponseWriter, r *http.Request) {
+	var body habitToggleBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "name required")
+		return
+	}
+	date := strings.TrimSpace(body.Date)
+	if date == "" {
+		date = time.Now().Format("2006-01-02")
+	} else if _, err := time.Parse("2006-01-02", date); err != nil {
+		writeError(w, http.StatusBadRequest, "date must be YYYY-MM-DD")
+		return
+	}
+
+	// Compute the daily-note path the same way the rest of the server does.
+	cfg := config.LoadForVault(s.cfg.Vault.Root)
+	folder := strings.TrimSpace(cfg.DailyNotesFolder)
+	rel := date + ".md"
+	if folder != "" {
+		rel = filepath.ToSlash(filepath.Join(folder, rel))
+	}
+	abs := filepath.Join(s.cfg.Vault.Root, rel)
+
+	// Read existing content (may be missing — we'll seed below).
+	var content string
+	if data, err := os.ReadFile(abs); err == nil {
+		content = string(data)
+	}
+
+	box := "[ ]"
+	if body.Done {
+		box = "[x]"
+	}
+	target := strings.ToLower(name)
+
+	// Try to find an existing checkbox line under ## Habits whose text
+	// matches (case-insensitive). If found, flip its state. If not,
+	// append a new line under (or alongside) the section.
+	lines := strings.Split(content, "\n")
+	inHabits := false
+	habitsLine := -1
+	updated := false
+	for i, ln := range lines {
+		trim := strings.TrimSpace(ln)
+		if strings.HasPrefix(trim, "## ") {
+			low := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(trim, "## ")))
+			inHabits = (low == "habits")
+			if inHabits {
+				habitsLine = i
+			}
+			continue
+		}
+		if !inHabits {
+			continue
+		}
+		m := habitCheckboxRe.FindStringSubmatch(ln)
+		if m == nil {
+			continue
+		}
+		// m[2] is the task text — strip granit markers (priority/due/
+		// time emojis, !N, due:, recurrence tags, # tags) before
+		// comparing. Imperfect but matches user intuition: "Daily
+		// Workout !1 #habit" still matches "daily workout".
+		text := stripHabitMarkers(m[2])
+		if strings.EqualFold(strings.TrimSpace(text), strings.TrimSpace(name)) || strings.Contains(strings.ToLower(text), target) {
+			lines[i] = strings.Replace(ln, "["+m[1]+"]", box, 1)
+			updated = true
+			break
+		}
+	}
+
+	if !updated {
+		newLine := "- " + box + " " + name
+		if habitsLine >= 0 {
+			// Insert right after the heading.
+			before := lines[:habitsLine+1]
+			after := lines[habitsLine+1:]
+			lines = append(append(before, newLine), after...)
+		} else {
+			// No ## Habits section — append one. Keep the existing
+			// content intact + add a trailing section.
+			if content != "" && !strings.HasSuffix(content, "\n") {
+				lines = append(lines, "")
+			}
+			if content == "" {
+				// Brand new file — give it the same minimal frontmatter
+				// our daily template uses so other consumers recognize it.
+				lines = []string{
+					"---",
+					"date: " + date,
+					"type: daily",
+					"---",
+					"",
+					"## Habits",
+					newLine,
+					"",
+				}
+			} else {
+				lines = append(lines, "", "## Habits", newLine, "")
+			}
+		}
+	}
+
+	out := strings.Join(lines, "\n")
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("mkdir: %v", err))
+		return
+	}
+	if err := atomicio.WriteNote(abs, out); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("write: %v", err))
+		return
+	}
+	// Force a fresh scan + task-store reload so subsequent GETs see
+	// the updated state without waiting for the watcher debounce.
+	s.rescanMu.Lock()
+	_ = s.cfg.Vault.ScanFast()
+	_ = s.cfg.TaskStore.Reload()
+	s.rescanMu.Unlock()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name": name,
+		"date": date,
+		"done": body.Done,
+		"path": rel,
+	})
+}
+
+// stripHabitMarkers removes granit's task-line markers so a habit line
+// like "Daily workout !1 due:2026-05-03 #habit ⏰ 06:00" still matches
+// the plain "Daily workout" name. Identical regex set used by the
+// habit aggregator above.
+func stripHabitMarkers(text string) string {
+	t := text
+	t = taskTimeMarkerRe.ReplaceAllString(t, "")
+	t = taskDateEmojiRe.ReplaceAllString(t, "")
+	t = taskEmojiPrioRe.ReplaceAllString(t, "")
+	t = regexp.MustCompile(`(?:^|\s)!([1-3])(?:\s|$)`).ReplaceAllString(t, " ")
+	t = regexp.MustCompile(`due:\d{4}-\d{2}-\d{2}`).ReplaceAllString(t, "")
+	t = regexp.MustCompile(`#[A-Za-z0-9_/-]+`).ReplaceAllString(t, "")
+	return strings.TrimSpace(t)
 }

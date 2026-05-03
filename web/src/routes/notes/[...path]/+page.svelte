@@ -140,6 +140,14 @@
       body = '';
       prev = '';
       dirty = false;
+      // Critical: drop the dedupe guard so a refetch of the SAME path
+      // is allowed. Without this, the user lands on a 404/network-error
+      // note, the page renders the error banner, and any subsequent
+      // navigation back to that URL (browser back, retry click,
+      // sidebar re-click) silently no-ops because `lastLoadedPath ===
+      // p` returns early. The user concludes the page is frozen and
+      // hits reload.
+      lastLoadedPath = '';
     }
   }
 
@@ -422,7 +430,39 @@
 
   <!-- Center: editor -->
   <div class="flex-1 flex flex-col min-w-0">
-    {#if error}
+    {#if error && !note}
+      <!-- Stuck-on-error escape header. When the load failed and we
+           have no note to render, the normal header below is hidden
+           too — without this the user has no UI to navigate away
+           except a full page reload. Keep it minimal: just a back
+           link and the error message. -->
+      <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0">
+        <a
+          href="/notes"
+          aria-label="back to notes"
+          class="w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0"
+        >
+          <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </a>
+        <button
+          onclick={() => (treeDrawerOpen = true)}
+          aria-label="vault tree"
+          class="lg:hidden w-9 h-9 flex items-center justify-center text-subtext hover:bg-surface0 rounded flex-shrink-0"
+        >
+          <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18M3 12h18M3 18h18" stroke-linecap="round" />
+          </svg>
+        </button>
+        <h1 class="text-base font-semibold text-text flex-1 truncate">Couldn't open note</h1>
+        <button
+          onclick={() => { lastLoadedPath = ''; load(decodeURIComponent($page.params.path ?? '')); }}
+          class="px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded hover:border-primary text-text"
+        >Retry</button>
+      </header>
+      <div class="p-6 text-sm text-error">{error}</div>
+    {:else if error}
       <div class="px-4 py-2 text-sm text-error border-b border-error/30 bg-error/10 flex-shrink-0">{error}</div>
     {/if}
     {#if note}

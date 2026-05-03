@@ -688,6 +688,15 @@ export const api = {
 
   // Habits (derived from `## Habits` sections in daily notes)
   listHabits: () => req<HabitsResponse>('/habits'),
+  // Mark a habit done/undone for ANY date — used by the heatmap to
+  // let users retro-fix yesterday's missed log without opening the
+  // daily note. Server creates the daily file if it doesn't exist
+  // for that date.
+  toggleHabit: (name: string, date: string, done: boolean) =>
+    req<{ name: string; date: string; done: boolean; path: string }>(
+      '/habits/toggle',
+      { method: 'POST', body: JSON.stringify({ name, date, done }) }
+    ),
 
   // Morning routine — saves a `## Daily Plan` block into today's daily note
   saveMorning: (body: {
