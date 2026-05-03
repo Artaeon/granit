@@ -61,6 +61,19 @@
 }
 
 /* Light — catppuccin latte */
+/* Global safety net: any element with bg-primary inherits a readable
+   text color even when the author forgot the matching text class. The
+   previous codebase-wide pattern was to pair `bg-primary` with
+   `text-mantle`, which broke in light theme. This rule guarantees
+   readability across themes regardless of which utility is or isn't
+   applied — author overrides via an explicit `text-*` class still win
+   because Tailwind's specificity order puts utilities last. */
+:where(button, a, [role="button"]).bg-primary,
+:where(button, a, [role="button"])[class*="bg-primary "],
+button.bg-primary, a.bg-primary {
+  color: var(--color-on-primary);
+}
+
 [data-theme='light'] {
   --color-base: #eff1f5;
   --color-mantle: #e6e9ef;
