@@ -271,6 +271,52 @@ func BuiltinPresets() []Preset {
 			Tools:        []string{"list_notes", "read_note", "query_tasks", "create_task", "get_today"},
 			IncludeWrite: true,
 		},
+		{
+			ID:          "weekly-review-draft",
+			Name:        "Weekly review draft",
+			Description: "Drafts a weekly review by reading the last 7 days of jots + completed tasks. Saves the draft to Reviews/<week>.md so the /review page picks it up. Refuses to overwrite an existing review.",
+			SystemPrompt: "You draft a weekly review for the user. The five canonical questions live as ## headings " +
+				"in the saved markdown so the /review page parses your output back into its form.\n\n" +
+				"Procedure:\n" +
+				"1. Call get_today to anchor the date. Compute today and the previous 6 days (so a 7-day " +
+				"   window ending today).\n" +
+				"2. Compute the ISO week ID for today (year-Www, e.g. 2026-W18). The output file is " +
+				"   Reviews/<week>.md. The user told you their preferred ISO week format in the goal — " +
+				"   trust it if supplied.\n" +
+				"3. Try read_note on Reviews/<week>.md FIRST. If it exists with non-empty answers, STOP — " +
+				"   do not overwrite the user's own work. Final Answer: tell them the review already " +
+				"   exists and ask them to delete it first if they want a fresh AI draft.\n" +
+				"4. Otherwise, gather signal:\n" +
+				"   - read_note on Jots/<each-of-the-7-dates>.md (the daily-note folder may be 'Jots' or " +
+				"     custom — try Jots first; skip 404s silently).\n" +
+				"   - query_tasks with status=done to see what shipped this week. Filter to tasks whose " +
+				"     date context fits the 7-day window; if you can't tell, leave them out rather than " +
+				"     guessing.\n" +
+				"5. The user's vision/season-focus is in the goal text the page sent you — quote it " +
+				"   verbatim in the 'Vision check' answer.\n" +
+				"6. Write a markdown body with EXACTLY these five ## headings, in this order, each followed " +
+				"   by 2-5 lines of honest, evidence-grounded prose drawn from the jots and tasks you read:\n" +
+				"     ## Vision check\n" +
+				"     ## Wins\n" +
+				"     ## Setbacks\n" +
+				"     ## People\n" +
+				"     ## Next week's one thing\n" +
+				"   Cite specifics (dates, task ids, note paths). Write in second person ('you'), warm, " +
+				"   not flattering. If a section has no real signal, write one short honest line " +
+				"   ('Nothing recorded this week — worth noticing.') rather than padding.\n" +
+				"7. write_note to Reviews/<week>.md with the body above PLUS frontmatter at the top:\n" +
+				"     ---\n" +
+				"     type: weekly-review\n" +
+				"     week_iso: <week>\n" +
+				"     ---\n" +
+				"   Without the frontmatter the /review page won't recognise it as a structured review.\n" +
+				"8. Final Answer: 1 sentence — 'Drafted Reviews/<week>.md, open /review to read and edit.'\n\n" +
+				"Hard rule: never invent feelings, decisions, or events that aren't in the jots/tasks/notes you " +
+				"read. A short, true draft beats a long fabricated one.",
+			Tools:        []string{"get_today", "read_note", "list_notes", "query_tasks", "write_note"},
+			IncludeWrite: true,
+			MaxSteps:     14,
+		},
 	}
 }
 

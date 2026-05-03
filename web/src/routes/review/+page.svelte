@@ -2,10 +2,11 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
-  import { api, type Vision, type Note } from '$lib/api';
+  import { api, type Vision, type Note, type AgentPreset } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
 
   // /review is the weekly examination ritual — five questions, saved
   // to a markdown note in Reviews/YYYY-Www.md. The page deliberately
@@ -249,6 +250,61 @@
     cursor = new Date();
   }
 
+  // ── AI draft ──────────────────────────────────────────────────────
+  // Opens the weekly-review-draft preset in the AgentRunPanel with
+  // the user's vision + week ID pre-filled into the goal. The preset
+  // refuses to overwrite an existing review, so calling it on a
+  // populated week is a safe no-op (the agent's Final Answer tells
+  // the user). After a successful run, the WS subscription on
+  // Reviews/ already handles the refetch — the form populates with
+  // the agent's draft automatically.
+  let aiOpen = $state(false);
+  let weeklyReviewPreset = $state<AgentPreset | null>(null);
+  let aiGoal = $state('');
+  let aiBusy = $state(false);
+
+  async function openAIDraft() {
+    if (!$auth || aiBusy) return;
+    if (isExisting && Object.values(answers).some((v) => v.trim())) {
+      if (!confirm("This week's review already has answers. The AI draft will refuse to overwrite — open the run panel anyway?")) return;
+    }
+    aiBusy = true;
+    try {
+      // Lazy-load the preset on first use, cache afterwards. Saves
+      // a /agents/presets round-trip on subsequent clicks.
+      if (!weeklyReviewPreset) {
+        const r = await api.listAgentPresets();
+        weeklyReviewPreset = r.presets.find((p) => p.id === 'weekly-review-draft') ?? null;
+      }
+      if (!weeklyReviewPreset) {
+        toast.error('weekly-review-draft preset not found');
+        return;
+      }
+      // Pre-fill goal with everything the agent needs without a
+      // tool call: the ISO week, the vision context, and the daily-
+      // notes folder if it's anything other than the default.
+      const wId = weekId(cursor);
+      const lines = [
+        `Draft this week's review.`,
+        `ISO week: ${wId}`,
+      ];
+      if (vision?.mission) lines.push(`Mission: ${vision.mission}`);
+      if (vision?.season_focus) {
+        const day = vision.season_day ? ` (day ${vision.season_day} of ${vision.season_total ?? 90})` : '';
+        lines.push(`Season focus: ${vision.season_focus}${day}`);
+      }
+      if (vision?.values && vision.values.length > 0) {
+        lines.push(`Core values: ${vision.values.join(', ')}`);
+      }
+      aiGoal = lines.join('\n');
+      aiOpen = true;
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      aiBusy = false;
+    }
+  }
+
   // Friday/Sunday hint — surfaces a small note when it's actually a
   // good day to do the review. Doesn't gate anything; just nudges.
   let dayHint = $derived.by(() => {
@@ -328,11 +384,18 @@
           </section>
         {/each}
 
-        <div class="flex items-center gap-3 pt-2">
+        <div class="flex items-center gap-3 pt-2 flex-wrap">
           {#if isExisting && lastSavedAt}
             <span class="text-[11px] text-dim">last saved {new Date(lastSavedAt).toLocaleString()}</span>
           {/if}
           <span class="flex-1"></span>
+          <button
+            type="button"
+            onclick={openAIDraft}
+            disabled={aiBusy}
+            class="text-xs px-3 py-1.5 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary disabled:opacity-50"
+            title="Generate a draft from this week's jots + completed tasks"
+          >{aiBusy ? '…' : '✨ AI draft'}</button>
           <button
             type="button"
             onclick={() => goto(`/notes/${encodeURIComponent(reviewPath(cursor))}`)}
@@ -397,3 +460,11 @@
     </p>
   </div>
 </div>
+
+<!-- AI draft run panel. Opens with the weekly-review-draft preset
+     pre-filled to write to Reviews/<this-week>.md. The preset
+     refuses to overwrite an existing review with non-empty answers,
+     so this is safe to invoke on a half-filled week. After a run
+     completes the WS subscription on Reviews/ above re-fetches the
+     note and the form populates automatically. -->
+<AgentRunPanel bind:open={aiOpen} preset={weeklyReviewPreset} initialGoal={aiGoal} />
