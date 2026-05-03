@@ -1,18 +1,25 @@
 <script lang="ts">
   import { api, todayISO, type Task } from '$lib/api';
   import { inlineMd } from '$lib/util/inlineMd';
+  import { toast } from '$lib/components/toast';
 
   let { task = $bindable(), onChanged }: { task: Task; onChanged?: (t: Task) => void } = $props();
   let busy = $state(false);
 
+  // Optimistic toggle — flip local state instantly, replace with the
+  // server's authoritative response when it arrives. Rollback on
+  // error so the user never sees a desync.
   async function toggle() {
+    const prev = task;
+    task = { ...task, done: !task.done };
     busy = true;
     try {
-      const updated = await api.patchTask(task.id, { done: !task.done });
+      const updated = await api.patchTask(task.id, { done: task.done });
       task = updated;
       onChanged?.(updated);
     } catch (e) {
-      console.error(e);
+      task = prev;
+      toast.error('failed to toggle task');
     } finally {
       busy = false;
     }

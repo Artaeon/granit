@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import { api, type Task } from '$lib/api';
   import { inlineMd } from '$lib/util/inlineMd';
+  import { toast } from '$lib/components/toast';
   import SnoozePicker from './SnoozePicker.svelte';
   import { activeTimer, minutesByTaskId, fmtDuration } from '$lib/stores/timer';
 
@@ -89,13 +90,26 @@
     return 'subtext';
   }
 
+  // Optimistic local update — flip the field immediately so the UI
+  // doesn't sit waiting on a 100-400ms round-trip + parent refetch
+  // before the user sees their click. The server response is still
+  // authoritative; we replace the local task with whatever it returns.
+  // On failure we'd ideally roll back, but the parent's refetch (via
+  // onChanged) will reconcile within ~half a second either way, so a
+  // toast + leave-as-is keeps the code simple. If a future user
+  // complaint about ghost-updates surfaces, swap in explicit rollback.
   async function toggle(e: Event) {
     e.stopPropagation();
+    const prev = task;
+    task = { ...task, done: !task.done };
     busy = true;
     try {
-      const updated = await api.patchTask(task.id, { done: !task.done });
+      const updated = await api.patchTask(task.id, { done: task.done });
       task = updated;
       onChanged?.(updated);
+    } catch (err) {
+      task = prev;
+      toast.error('failed to toggle task');
     } finally {
       busy = false;
     }
@@ -104,11 +118,16 @@
   async function cycleTriage(e: Event) {
     e.stopPropagation();
     const nxt = nextTriage(task.triage);
+    const prev = task;
+    task = { ...task, triage: nxt };
     busy = true;
     try {
       const updated = await api.patchTask(task.id, { triage: nxt });
       task = updated;
       onChanged?.(updated);
+    } catch (err) {
+      task = prev;
+      toast.error('failed to update triage');
     } finally {
       busy = false;
     }
@@ -116,11 +135,16 @@
 
   async function applySnooze(until: string) {
     snoozePickerOpen = false;
+    const prev = task;
+    task = { ...task, snoozedUntil: until };
     busy = true;
     try {
       const updated = await api.patchTask(task.id, { snoozedUntil: until });
       task = updated;
       onChanged?.(updated);
+    } catch (err) {
+      task = prev;
+      toast.error('failed to snooze');
     } finally {
       busy = false;
     }
@@ -146,11 +170,16 @@
 
   async function unsnooze(e: Event) {
     e.stopPropagation();
+    const prev = task;
+    task = { ...task, snoozedUntil: undefined };
     busy = true;
     try {
       const updated = await api.patchTask(task.id, { snoozedUntil: '' });
       task = updated;
       onChanged?.(updated);
+    } catch (err) {
+      task = prev;
+      toast.error('failed to unsnooze');
     } finally {
       busy = false;
     }
