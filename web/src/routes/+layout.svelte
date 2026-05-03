@@ -57,40 +57,119 @@
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);
   });
 
-  // moduleId on each entry maps the route to the module that gates it.
-  // Entries without a moduleId (or with a core ID) are always visible.
-  // The filter below resolves moduleId against the modules store on
-  // every $modulesStore tick.
-  const nav: { href: string; label: string; icon: string; moduleId?: string }[] = [
-    { href: '/', label: 'Today', icon: 'today' },
-    { href: '/morning', label: 'Morning', icon: 'morning', moduleId: 'morning' },
-    { href: '/tasks', label: 'Tasks', icon: 'tasks' },
-    { href: '/calendar', label: 'Calendar', icon: 'calendar' },
-    { href: '/habits', label: 'Habits', icon: 'habits', moduleId: 'habit_tracker' },
-    { href: '/goals', label: 'Goals', icon: 'goals', moduleId: 'goals' },
-    { href: '/deadlines', label: 'Deadlines', icon: 'deadline', moduleId: 'deadlines' },
-    { href: '/projects', label: 'Projects', icon: 'projects', moduleId: 'projects' },
-    { href: '/agents', label: 'Agents', icon: 'agents', moduleId: 'agents' },
-    { href: '/chat', label: 'Chat', icon: 'chat', moduleId: 'chat' },
-    { href: '/scripture', label: 'Scripture', icon: 'scripture', moduleId: 'scripture' },
-    { href: '/objects', label: 'Objects', icon: 'objects', moduleId: 'objects' },
-    { href: '/tags', label: 'Tags', icon: 'tags' },
-    { href: '/jots', label: 'Jots', icon: 'jots', moduleId: 'jots' },
-    { href: '/finance', label: 'Finance', icon: 'finance', moduleId: 'finance' },
-    { href: '/people', label: 'People', icon: 'people', moduleId: 'people' },
-    { href: '/measurements', label: 'Metrics', icon: 'measurements', moduleId: 'measurements' },
-    { href: '/notes', label: 'Notes', icon: 'notes' },
-    { href: '/settings', label: 'Settings', icon: 'settings' }
+  // moduleId gates the entry against the modules store. Entries without
+  // a moduleId stay visible unconditionally.
+  type NavItem = { href: string; label: string; icon: string; moduleId?: string };
+
+  // Grouped nav. Section ID is the persistence key for collapsed state
+  // and the header label. The Today entry sits above all groups (no
+  // header) because it's the always-on home — sections start where
+  // organisation begins to help.
+  const today: NavItem = { href: '/', label: 'Today', icon: 'today' };
+
+  type NavSection = { id: string; label: string; items: NavItem[] };
+  const sections: NavSection[] = [
+    {
+      id: 'daily',
+      label: 'Daily',
+      items: [
+        { href: '/morning', label: 'Morning', icon: 'morning', moduleId: 'morning' },
+        { href: '/tasks', label: 'Tasks', icon: 'tasks' },
+        { href: '/calendar', label: 'Calendar', icon: 'calendar' },
+        { href: '/jots', label: 'Jots', icon: 'jots', moduleId: 'jots' },
+        { href: '/habits', label: 'Habits', icon: 'habits', moduleId: 'habit_tracker' }
+      ]
+    },
+    {
+      id: 'plan',
+      label: 'Plan',
+      items: [
+        { href: '/goals', label: 'Goals', icon: 'goals', moduleId: 'goals' },
+        { href: '/deadlines', label: 'Deadlines', icon: 'deadline', moduleId: 'deadlines' },
+        { href: '/projects', label: 'Projects', icon: 'projects', moduleId: 'projects' }
+      ]
+    },
+    {
+      id: 'life',
+      label: 'Life',
+      items: [
+        { href: '/finance', label: 'Finance', icon: 'finance', moduleId: 'finance' },
+        { href: '/people', label: 'People', icon: 'people', moduleId: 'people' },
+        { href: '/measurements', label: 'Metrics', icon: 'measurements', moduleId: 'measurements' },
+        { href: '/scripture', label: 'Scripture', icon: 'scripture', moduleId: 'scripture' }
+      ]
+    },
+    {
+      id: 'knowledge',
+      label: 'Knowledge',
+      items: [
+        { href: '/notes', label: 'Notes', icon: 'notes' },
+        { href: '/objects', label: 'Objects', icon: 'objects', moduleId: 'objects' },
+        { href: '/tags', label: 'Tags', icon: 'tags' }
+      ]
+    },
+    {
+      id: 'ai',
+      label: 'AI',
+      items: [
+        { href: '/agents', label: 'Agents', icon: 'agents', moduleId: 'agents' },
+        { href: '/chat', label: 'Chat', icon: 'chat', moduleId: 'chat' }
+      ]
+    }
   ];
 
-  // Reactive filter against the modules store. Read $modulesStore so
-  // the derived re-runs on every store tick (initial load, ws-driven
-  // refresh, settings-page toggle). Routes without a moduleId stay
-  // visible unconditionally.
-  let visibleNav = $derived.by(() => {
-    void $modulesStore; // subscribe
-    return nav.filter((item) => !item.moduleId || modulesStore.isEnabled(item.moduleId));
+  // Settings stays in the footer rail next to theme + sign-out, not as
+  // a section item — it's a meta destination.
+  const settingsItem: NavItem = { href: '/settings', label: 'Settings', icon: 'settings' };
+
+  // Flat nav list — used for: route guard match, mobile back-to-section
+  // header, modules filter parity. Includes Today + every section item +
+  // settings so route resolution covers the full surface.
+  const nav: NavItem[] = [today, ...sections.flatMap((s) => s.items), settingsItem];
+
+  // Per-section visible items (after module filter). Sections with no
+  // visible items collapse out of the rendered list entirely so the
+  // user doesn't see an empty header.
+  let visibleSections = $derived.by(() => {
+    void $modulesStore;
+    return sections
+      .map((s) => ({
+        ...s,
+        items: s.items.filter((item) => !item.moduleId || modulesStore.isEnabled(item.moduleId))
+      }))
+      .filter((s) => s.items.length > 0);
   });
+
+  // ── Sidebar UX state ──────────────────────────────────────────────
+  // Collapsed sections + compact mode are both per-device localStorage.
+  // collapsedSections is a record of section.id → true to keep the
+  // wire format tiny (only collapsed sections are stored).
+  const COLLAPSED_KEY = 'granit.sidebar.collapsed';
+  const COMPACT_KEY = 'granit.sidebar.compact';
+  function loadCollapsed(): Record<string, boolean> {
+    if (typeof localStorage === 'undefined') return {};
+    try {
+      return JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '{}') as Record<string, boolean>;
+    } catch {
+      return {};
+    }
+  }
+  let collapsedSections = $state<Record<string, boolean>>(loadCollapsed());
+  function toggleSection(id: string) {
+    const next = { ...collapsedSections };
+    if (next[id]) delete next[id];
+    else next[id] = true;
+    collapsedSections = next;
+    try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next)); } catch {}
+  }
+
+  let compact = $state<boolean>(
+    typeof localStorage !== 'undefined' && localStorage.getItem(COMPACT_KEY) === '1'
+  );
+  function toggleCompact() {
+    compact = !compact;
+    try { localStorage.setItem(COMPACT_KEY, compact ? '1' : '0'); } catch {}
+  }
 
   // Route guard: if the user lands on a path whose module is disabled
   // (deep link, bookmark, stale tab), bounce to home. We use a tiny
@@ -127,55 +206,151 @@
   function NavLinks() {}
 </script>
 
-{#snippet navContent()}
+{#snippet navItem(item: NavItem, isCompact: boolean)}
+  {@const active = $page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href))}
+  <a
+    href={item.href}
+    onclick={() => (drawerOpen = false)}
+    title={isCompact ? item.label : undefined}
+    aria-label={item.label}
+    class="group relative flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm transition-colors
+      {active ? 'text-primary bg-surface1/60' : 'text-subtext hover:bg-surface0 hover:text-text'}"
+  >
+    <!-- Active rail: a 2px accent strip on the left edge replaces
+         the heavier full-row fill, so scanning down the sidebar
+         lands on the active item without the eye getting pulled. -->
+    {#if active}
+      <span class="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-primary" aria-hidden="true"></span>
+    {/if}
+    <NavIcon name={item.icon} class="w-5 h-5 flex-shrink-0" />
+    {#if !isCompact}
+      <span class="truncate">{item.label}</span>
+    {/if}
+  </a>
+{/snippet}
+
+{#snippet navContent(isCompact: boolean)}
   <div class="flex flex-col h-full">
-    <div class="px-4 py-3 border-b border-surface1">
-      <div class="text-xs uppercase tracking-wider text-dim">everything</div>
-      <div class="text-sm text-subtext mt-0.5">your vault, anywhere</div>
+    <!-- Brand area collapses to icon-only in compact mode so the rail
+         doesn't blow up to full width on narrow desktops. The 'e'
+         monogram + accent dot reads as a logo without needing the
+         full text. -->
+    <div class="border-b border-surface1 {isCompact ? 'px-2 py-3 flex justify-center' : 'px-4 py-3'}">
+      {#if isCompact}
+        <div class="w-9 h-9 rounded bg-primary/15 text-primary flex items-center justify-center font-semibold">e</div>
+      {:else}
+        <div class="text-xs uppercase tracking-wider text-dim">everything</div>
+        <div class="text-sm text-subtext mt-0.5">your vault, anywhere</div>
+      {/if}
     </div>
-    <nav class="flex-1 px-2 py-3 space-y-0.5">
+
+    <nav class="flex-1 overflow-y-auto {isCompact ? 'px-1.5 py-3' : 'px-2 py-3'} space-y-1">
+      <!-- Quick jump — compact form drops the kbd hint + label,
+           keeps the icon as the click target. -->
       <button
         onclick={() => { palette?.show(); drawerOpen = false; }}
-        class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm text-subtext hover:bg-surface0 mb-1"
+        title={isCompact ? 'Quick jump (⌘K)' : undefined}
+        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm text-subtext hover:bg-surface0 hover:text-text mb-2 transition-colors"
       >
         <NavIcon name="search" class="w-5 h-5 flex-shrink-0" />
-        <span class="flex-1 text-left">Quick jump</span>
-        <kbd class="text-[10px] text-dim font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">⌘K</kbd>
+        {#if !isCompact}
+          <span class="flex-1 text-left">Quick jump</span>
+          <kbd class="text-[10px] text-dim font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">⌘K</kbd>
+        {/if}
       </button>
-      {#each visibleNav as item}
-        {@const active = $page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href))}
-        <a
-          href={item.href}
-          onclick={() => (drawerOpen = false)}
-          class="flex items-center gap-3 px-3 py-2.5 rounded text-sm
-            {active ? 'bg-surface1 text-primary' : 'text-subtext hover:bg-surface0'}"
-        >
-          <NavIcon name={item.icon} class="w-5 h-5 flex-shrink-0" />
-          <span>{item.label}</span>
-        </a>
+
+      <!-- Today sits above all groups, no header, since it's home. -->
+      {@render navItem(today, isCompact)}
+
+      <!-- Sections. In compact mode the section header collapses to a
+           thin separator line so the visual rhythm of grouping is
+           preserved without the labels. -->
+      {#each visibleSections as section}
+        {@const isCollapsed = !!collapsedSections[section.id] && !isCompact}
+        {#if isCompact}
+          <div class="my-2 border-t border-surface1/60" aria-hidden="true"></div>
+          {#each section.items as item}
+            {@render navItem(item, true)}
+          {/each}
+        {:else}
+          <div class="pt-2">
+            <button
+              type="button"
+              onclick={() => toggleSection(section.id)}
+              aria-expanded={!isCollapsed}
+              class="w-full flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wider text-dim hover:text-subtext transition-colors"
+            >
+              <span class="flex-1 text-left">{section.label}</span>
+              <svg viewBox="0 0 24 24" class="w-3 h-3 transition-transform {isCollapsed ? '-rotate-90' : ''}" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {#if !isCollapsed}
+              <div class="space-y-0.5 mt-0.5">
+                {#each section.items as item}
+                  {@render navItem(item, false)}
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
       {/each}
     </nav>
-    <div class="px-3 py-3 border-t border-surface1 space-y-2">
+
+    <!-- Footer rail. Settings, theme, compact toggle, sign out. -->
+    <div class="border-t border-surface1 {isCompact ? 'px-1.5 py-2 space-y-1' : 'px-2 py-3 space-y-1'}">
+      {@render navItem(settingsItem, isCompact)}
+
       <button
         onclick={() => theme.set(nextTheme($theme))}
-        class="w-full flex items-center gap-3 px-3 py-2 rounded text-sm text-subtext hover:bg-surface0 transition-colors"
+        title={isCompact ? `Theme: ${themeLabel($theme)} — tap to cycle` : undefined}
+        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm text-subtext hover:bg-surface0 hover:text-text transition-colors"
       >
-        <span class="w-5 text-center text-base">{themeIcon($theme)}</span>
-        <span class="flex-1 text-left">Theme: {themeLabel($theme)}</span>
-        <span class="text-[10px] text-dim">tap to cycle</span>
+        <span class="w-5 text-center text-base flex-shrink-0">{themeIcon($theme)}</span>
+        {#if !isCompact}
+          <span class="flex-1 text-left">Theme: {themeLabel($theme)}</span>
+          <span class="text-[10px] text-dim">cycle</span>
+        {/if}
       </button>
-      <div class="flex items-center justify-between px-3">
-        <button
-          onclick={async () => { try { await api.authLogout(); } catch {} auth.clear(); }}
-          class="text-xs text-dim hover:text-error"
-        >
-          sign out
-        </button>
-        <div class="flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full {$wsConnected ? 'bg-success' : 'bg-dim'}" title={$wsConnected ? 'live' : 'offline'}></span>
-          <span class="text-[10px] text-dim font-mono">v0.0.1</span>
+
+      <!-- Desktop-only compact toggle. Hidden on mobile because the
+           drawer is already an icon-poor experience and a compact
+           toggle in a temporary panel doesn't save anything. -->
+      <button
+        onclick={toggleCompact}
+        title={isCompact ? 'Expand sidebar' : 'Collapse to icons'}
+        class="hidden md:flex w-full items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm text-dim hover:bg-surface0 hover:text-text transition-colors"
+      >
+        <svg viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          {#if isCompact}
+            <polyline points="9 18 15 12 9 6" />
+          {:else}
+            <polyline points="15 18 9 12 15 6" />
+          {/if}
+        </svg>
+        {#if !isCompact}<span class="flex-1 text-left">Collapse</span>{/if}
+      </button>
+
+      {#if !isCompact}
+        <div class="flex items-center justify-between px-3 pt-1">
+          <button
+            onclick={async () => { try { await api.authLogout(); } catch {} auth.clear(); }}
+            class="text-xs text-dim hover:text-error transition-colors"
+          >
+            sign out
+          </button>
+          <div class="flex items-center gap-1.5" title={$wsConnected ? 'live' : 'offline'}>
+            <span class="w-2 h-2 rounded-full {$wsConnected ? 'bg-success' : 'bg-dim'}"></span>
+            <span class="text-[10px] text-dim font-mono">v0.0.1</span>
+          </div>
         </div>
-      </div>
+      {:else}
+        <!-- Compact connection pip lives at the very bottom, on its
+             own line, so the rail still surfaces live/offline state. -->
+        <div class="flex justify-center pt-1" title={$wsConnected ? 'live' : 'offline'}>
+          <span class="w-2 h-2 rounded-full {$wsConnected ? 'bg-success' : 'bg-dim'}"></span>
+        </div>
+      {/if}
     </div>
   </div>
 {/snippet}
@@ -216,14 +391,19 @@
       </a>
     </header>
 
-    <!-- Desktop sidebar -->
-    <aside class="hidden md:flex md:w-56 lg:w-60 bg-mantle border-r border-surface1 flex-shrink-0">
-      {@render navContent()}
+    <!-- Desktop sidebar — expand/compact width is driven by the
+         compact toggle in the footer rail. Both states animate via
+         the transition class so the resize feels intentional. -->
+    <aside
+      class="hidden md:flex bg-mantle border-r border-surface1 flex-shrink-0 transition-[width] duration-150 {compact ? 'md:w-14' : 'md:w-56 lg:w-60'}"
+    >
+      {@render navContent(compact)}
     </aside>
 
-    <!-- Mobile "More" drawer (full nav) — opened from bottom-nav More button -->
+    <!-- Mobile "More" drawer always renders the full (non-compact)
+         nav — a temporary panel doesn't benefit from icon-only mode. -->
     <Drawer bind:open={drawerOpen} side="left">
-      {@render navContent()}
+      {@render navContent(false)}
     </Drawer>
   {/if}
 
