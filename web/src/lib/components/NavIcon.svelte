@@ -80,6 +80,16 @@
     <rect x="3" y="11" width="18" height="5" rx="1"/>
     <path d="M6 18h12" stroke-dasharray="2 2"/>
   </svg>
+{:else if name === 'vision'}
+  <!-- Compass / North Star — vision is a directional concept, not a
+       goal. The four-point star inside a circle reads as a compass
+       rose at small sizes and as a star at larger sizes; either
+       works for the layer-above-goals meaning. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <circle cx="12" cy="12" r="9"/>
+    <polygon points="12 5 14 12 12 19 10 12" fill="currentColor" stroke="none"/>
+    <polygon points="5 12 12 10 19 12 12 14" fill="currentColor" stroke="none" opacity="0.5"/>
+  </svg>
 {:else if name === 'finance'}
   <!-- Coin / stack-of-bills hybrid. -->
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>

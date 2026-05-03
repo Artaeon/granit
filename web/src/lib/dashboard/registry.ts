@@ -15,6 +15,7 @@ import InboxWidget from './widgets/InboxWidget.svelte';
 import CalendarWeekWidget from './widgets/CalendarWeekWidget.svelte';
 import TodayFocusWidget from './widgets/TodayFocusWidget.svelte';
 import TopDeadlinesWidget from './widgets/TopDeadlinesWidget.svelte';
+import VisionWidget from './widgets/VisionWidget.svelte';
 
 export interface WidgetMeta {
   type: DashboardWidgetType;
@@ -27,6 +28,10 @@ export interface WidgetMeta {
 
 export const widgetRegistry: WidgetMeta[] = [
   { type: 'greeting', label: 'Greeting', description: 'Date + welcome', span: 2, component: GreetingWidget },
+  // Vision sits at the top of the registry (and gets injected at the
+  // top of new dashboards) because it's the layer the user re-reads
+  // every morning before drilling into tactics.
+  { type: 'vision', label: 'Vision', description: 'Life mission, values, season focus — the layer above goals', span: 2, component: VisionWidget },
   { type: 'today-focus', label: 'Today\'s focus', description: 'What you committed to in the morning routine', span: 2, component: TodayFocusWidget },
   { type: 'now', label: 'Now', description: 'Current time + next event', span: 1, component: NowWidget },
   { type: 'streaks', label: 'Streaks', description: 'Habit streaks at a glance', span: 1, component: StreaksWidget },

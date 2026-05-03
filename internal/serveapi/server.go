@@ -279,6 +279,12 @@ func (s *Server) Handler() http.Handler {
 		r.Patch("/api/v1/finance/goals/{id}", s.handlePatchFinGoal)
 		r.Delete("/api/v1/finance/goals/{id}", s.handleDeleteFinGoal)
 
+		// Vision — life mission + values + season focus. Single record
+		// per vault under .granit/vision.json. The "above goals" layer
+		// the dashboard re-reads each morning to anchor focus.
+		r.Get("/api/v1/vision", s.handleGetVision)
+		r.Put("/api/v1/vision", s.handlePutVision)
+
 		// Prayer intentions — active prayer list with status lifecycle
 		// (praying → answered → archived). State at .granit/prayer/.
 		r.Get("/api/v1/prayer/intentions", s.handleListPrayer)

@@ -617,6 +617,21 @@ export interface FinOverview {
   goals_active_count: number;
 }
 
+// Vision — life mission + core values + 90-day season focus.
+// Single record per vault. The server decorates the on-disk shape
+// with derived season_day / season_total ("day 12 of 90") so the
+// UI doesn't redo the date math on every render.
+export interface Vision {
+  mission?: string;
+  values?: string[];
+  season_focus?: string;
+  season_started_at?: string;
+  notes?: string;
+  updated_at: string;
+  season_day?: number;
+  season_total?: number;
+}
+
 // Prayer intentions — active prayer list with status lifecycle.
 export type PrayerStatus = 'praying' | 'answered' | 'archived';
 export interface PrayerIntention {
@@ -1153,6 +1168,13 @@ export const api = {
   finDeleteGoal: (id: string) =>
     req<void>(`/finance/goals/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
+  // Vision — single-record GET / PUT. PUT is a full upsert, not
+  // a patch-merge: the form is a flat five-field shape and a full
+  // body is the least-surprising contract.
+  getVision: () => req<Vision>('/vision'),
+  putVision: (v: Partial<Vision>) =>
+    req<Vision>('/vision', { method: 'PUT', body: JSON.stringify(v) }),
+
   // Prayer intentions
   listPrayer: () => req<{ intentions: PrayerIntention[]; total: number }>('/prayer/intentions'),
   createPrayer: (b: Partial<PrayerIntention>) =>
@@ -1420,7 +1442,8 @@ export type DashboardWidgetType =
   | 'streaks'
   | 'scripture'
   | 'today-focus'
-  | 'top-deadlines';
+  | 'top-deadlines'
+  | 'vision';
 
 export interface DashboardWidget {
   id: string;

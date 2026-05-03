@@ -11,7 +11,9 @@
   // customize-mode and can render. Order matters — these are the slots
   // we want the new widgets to occupy by default.
   const NEW_WIDGETS: { id: string; type: import('$lib/api').DashboardWidgetType; afterId: string; enabled: boolean }[] = [
-    { id: 'w-today-focus', type: 'today-focus', afterId: 'w-greeting', enabled: true },
+    // Vision lands at the very top — anchor for the morning re-read.
+    { id: 'w-vision', type: 'vision', afterId: 'w-greeting', enabled: true },
+    { id: 'w-today-focus', type: 'today-focus', afterId: 'w-vision', enabled: true },
     { id: 'w-top-deadlines', type: 'top-deadlines', afterId: 'w-now', enabled: true }
   ];
 

@@ -84,6 +84,7 @@
       id: 'plan',
       label: 'Plan',
       items: [
+        { href: '/vision', label: 'Vision', icon: 'vision', moduleId: 'vision' },
         { href: '/goals', label: 'Goals', icon: 'goals', moduleId: 'goals' },
         { href: '/deadlines', label: 'Deadlines', icon: 'deadline', moduleId: 'deadlines' },
         { href: '/projects', label: 'Projects', icon: 'projects', moduleId: 'projects' }
