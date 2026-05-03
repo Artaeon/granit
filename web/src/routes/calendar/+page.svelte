@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type CalendarEvent, type CalendarFeed, type CalendarSource } from '$lib/api';
+  import { api, type CalendarEvent, type CalendarFeed, type CalendarSource, type HabitInfo } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import {
     addDays,
@@ -67,6 +67,7 @@
   onDestroy(() => dragStore.set(null));
 
   let feed = $state<CalendarFeed | null>(null);
+  let habits = $state<HabitInfo[]>([]);
   let loading = $state(false);
 
   let fetchFrom = $state(addDays(new Date(), -7));
@@ -206,8 +207,22 @@
     }
   }
 
+  // Habits power the per-day "habits" overlay row in HourGrid.
+  // Independent of the event feed — toggling a habit shouldn't refetch
+  // the calendar (and vice versa).
+  async function loadHabits() {
+    if (!$auth) return;
+    try {
+      const r = await api.listHabits();
+      habits = r.habits;
+    } catch {
+      habits = [];
+    }
+  }
+
   onMount(load);
   onMount(loadSources);
+  onMount(loadHabits);
   onMount(() =>
     onWsEvent((ev) => {
       if (
@@ -215,7 +230,12 @@
         ev.type === 'note.removed' ||
         ev.type === 'event.changed' ||
         ev.type === 'event.removed'
-      ) load();
+      ) {
+        load();
+        // Habits live inside daily notes — a note change might mean a
+        // habit was ticked. Refetch alongside the event feed.
+        loadHabits();
+      }
       // Deadlines are an overlay on the feed — refetch when the
       // server signals .granit/deadlines.json changed (TUI edit, web
       // edit in another tab, or anything else that calls SaveAll).
@@ -588,6 +608,7 @@
             <HourGrid
               days={viewDays}
               events={events}
+              habits={habits}
               onClickEvent={clickEvent}
               onClickSlot={clickSlot}
               onSlotRange={onSlotRange}
@@ -598,7 +619,7 @@
           </div>
         </div>
       {:else if view === 'day' || view === '3day' || view === 'week'}
-        <HourGrid days={viewDays} events={events} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onResize={resizeTask} />
+        <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onResize={resizeTask} />
       {:else if view === 'month'}
         <div class="h-full overflow-auto">
           <MonthView cursor={cursor} events={events} onClickEvent={clickEvent} onClickDay={clickDay} />

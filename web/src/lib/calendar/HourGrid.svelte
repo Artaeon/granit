@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { CalendarEvent } from '$lib/api';
+  import type { CalendarEvent, HabitInfo } from '$lib/api';
   import {
     eventDayKey,
     eventStartDate,
@@ -16,6 +16,7 @@
   let {
     days,
     events,
+    habits = [],
     onClickEvent,
     onClickSlot,
     onSlotRange,
@@ -25,6 +26,11 @@
   }: {
     days: Date[];
     events: CalendarEvent[];
+    /** Habits from /api/v1/habits — each carries its per-day done flags
+     *  in `days[]`. Rendered as a thin row of dots above the hour grid
+     *  (one dot per habit per day). Default empty so callers that
+     *  don't care don't have to fetch. */
+    habits?: HabitInfo[];
     onClickEvent: (ev: CalendarEvent) => void;
     onClickSlot: (date: Date, hour: number, minute: number) => void;
     /** Called on click+drag (or single click → 30min default) on an empty
@@ -42,6 +48,25 @@
      *  instead of slot-drag-to-create. */
     onTaskDrop?: (taskId: string, start: Date, durationMinutes: number) => void | Promise<void>;
   } = $props();
+
+  // Per-day habit completion lookup. Built once per render — for a
+  // visible week (≤7 days × ~10 habits) the loop is trivial. Storing
+  // a Map<iso, Map<habitName, done>> keeps the lookup at the day cell
+  // O(habits) while skipping the per-habit linear scan.
+  let habitsByDay = $derived.by(() => {
+    const m = new Map<string, Map<string, boolean>>();
+    for (const h of habits) {
+      for (const d of h.days) {
+        let inner = m.get(d.date);
+        if (!inner) {
+          inner = new Map();
+          m.set(d.date, inner);
+        }
+        inner.set(h.name, d.done);
+      }
+    }
+    return m;
+  });
 
   // Subscribe to the shared drag store. $derived isn't enough — we need
   // to peek at the value inside non-reactive pointer handlers, hence
@@ -441,6 +466,28 @@
           </div>
         {/each}
       </div>
+
+      <!-- Habits overlay row: one dot per habit per day. Green when
+           done, dim outline when not. Hidden when no habits exist so
+           callers without habit data get the original layout back. -->
+      {#if habits.length > 0}
+        <div class="grid border-b border-surface1 min-h-[22px]" style="grid-template-columns: {cols}">
+          <div class="text-[10px] text-dim p-1 text-right" title="Habits — green = done that day">habits</div>
+          {#each days as d}
+            {@const dayMap = habitsByDay.get(fmtDateISO(d))}
+            <div class="border-l border-surface1 p-1 flex flex-wrap gap-1 items-center min-w-0">
+              {#each habits as h}
+                {@const done = dayMap?.get(h.name) ?? false}
+                <span
+                  class="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style="{done ? 'background: var(--color-success);' : 'background: transparent; border: 1px solid var(--color-surface2);'}"
+                  title="{h.name}: {done ? 'done' : 'not done'}"
+                ></span>
+              {/each}
+            </div>
+          {/each}
+        </div>
+      {/if}
     </div>
 
     <div bind:this={scrollEl} class="flex-1 overflow-y-auto relative" style="min-width: {minWidth}">
