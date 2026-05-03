@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
@@ -172,6 +172,17 @@
   // a double-fetch on initial paint and (more importantly) was the
   // source of the "stays loading" bug when an early call set
   // loading=true before $auth was ready.
+  //
+  // load() is wrapped in untrack() because the function reads
+  // projects.length / goals.length / deadlines.length to decide whether
+  // to refetch the linkable-entity sidecars, and it reassigns those
+  // arrays when fresh data lands. Without untrack, those reads would
+  // become deps of THIS effect, and Svelte 5 fires reactivity on
+  // $state array reassignment even when contents are equal — turning
+  // a single initial fetch into a tight loop (most visible when
+  // /api/v1/deadlines returns []: deadlines.length stays 0, so every
+  // load() refires load(), saturating the page). The explicit `void`
+  // list above is the source-of-truth for what should retrigger load.
   $effect(() => {
     void $auth;
     void status;
@@ -180,12 +191,15 @@
     void projectFilter;
     void goalFilter;
     void deadlineFilter;
-    load();
+    untrack(() => load());
   });
 
   // URL-state effect — runs whenever a filter changes after hydration.
   // Skipped on the initial render so the URL doesn't get rewritten
-  // before we read it back.
+  // before we read it back. syncToUrl reads $page.url.pathname and
+  // calls goto(); both are reactive surfaces we don't want this effect
+  // to depend on, so the call is untracked. The void list above is
+  // the explicit dep set.
   $effect(() => {
     void status;
     void q;
@@ -196,7 +210,7 @@
     void deadlineFilter;
     void view;
     void groupBy;
-    syncToUrl();
+    untrack(() => syncToUrl());
   });
 
   onMount(() => {
