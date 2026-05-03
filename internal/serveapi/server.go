@@ -391,10 +391,25 @@ func (s *Server) Handler() http.Handler {
 		r.Delete("/api/v1/devices/{id}", s.handleRevokeDevice)
 	})
 
-	// SPA fallback — last resort
+	// SPA fallback — last resort. Two early exits before we serve
+	// index.html for unknown paths:
+	//
+	//   1. Anything under /api/v1/ that wasn't matched by a real
+	//      handler is a missing endpoint, not a route the client
+	//      should rehydrate. Returning the SPA HTML there made
+	//      JSON consumers see "<!doctype html>" and choke on
+	//      JSON.parse with a confusing error; 404 JSON is the
+	//      honest answer.
+	//   2. /api/v1/ws falls through here on a non-websocket GET
+	//      (the upgrade handler returns 4xx earlier), so apply the
+	//      same rule.
 	assets := Assets()
 	fileSrv := http.FileServer(assets)
 	r.Get("/*", func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasPrefix(req.URL.Path, "/api/") {
+			writeError(w, http.StatusNotFound, "endpoint not found: "+req.URL.Path)
+			return
+		}
 		f, err := assets.Open(req.URL.Path)
 		if err != nil {
 			req2 := req.Clone(req.Context())
@@ -404,6 +419,26 @@ func (s *Server) Handler() http.Handler {
 		}
 		f.Close()
 		fileSrv.ServeHTTP(w, req)
+	})
+	// Apply the same /api guard to every method — POST/PUT/etc to a
+	// nonexistent /api path was also returning HTML before because
+	// chi's NotFound default served the SPA fallback.
+	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasPrefix(req.URL.Path, "/api/") {
+			writeError(w, http.StatusNotFound, "endpoint not found: "+req.URL.Path)
+			return
+		}
+		// Non-API miss: serve the SPA shell so client-side routing works.
+		req2 := req.Clone(req.Context())
+		req2.URL.Path = "/"
+		fileSrv.ServeHTTP(w, req2)
+	})
+	r.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasPrefix(req.URL.Path, "/api/") {
+			writeError(w, http.StatusMethodNotAllowed, "method "+req.Method+" not allowed on "+req.URL.Path)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 
 	return r

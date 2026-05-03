@@ -337,6 +337,78 @@
   let activeStreams = $derived(streams.filter((s) => s.status === 'active'));
   let pipelineStreams = $derived(streams.filter((s) => s.status === 'idea' || s.status === 'planned'));
   let pausedStreams = $derived(streams.filter((s) => s.status === 'paused'));
+
+  // ── 30-day cashflow timeline ──────────────────────────────────────
+  // Combines subscription renewals + financial-goal target dates that
+  // fall in the next 30 days into one chronological list. Income
+  // streams are summarised as a single "approx monthly income" line
+  // because we don't track exact payout dates per source — going
+  // beyond that would require a payout_day field on IncomeStream and
+  // bloats the schema for marginal value.
+  type CashflowEvent = {
+    date: string;
+    label: string;
+    detail?: string;
+    cents: number; // signed; >0 income, <0 outflow
+    kind: 'subscription' | 'goal';
+  };
+  const HORIZON_DAYS = 30;
+
+  let cashflowEvents = $derived.by<CashflowEvent[]>(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const horizon = new Date(today);
+    horizon.setDate(horizon.getDate() + HORIZON_DAYS);
+    const todayISO = today.toISOString().slice(0, 10);
+    const horizonISO = horizon.toISOString().slice(0, 10);
+    const out: CashflowEvent[] = [];
+
+    for (const s of subs) {
+      if (!s.active) continue;
+      if (s.next_renewal < todayISO || s.next_renewal > horizonISO) continue;
+      out.push({
+        date: s.next_renewal,
+        label: s.name,
+        detail: `${s.cadence} renewal`,
+        // amount_cents is already negative for outflows; keep the sign.
+        cents: s.amount_cents,
+        kind: 'subscription'
+      });
+    }
+    for (const g of goals) {
+      if (!g.target_date) continue;
+      if ((g.status ?? 'active') !== 'active') continue;
+      if (g.target_date < todayISO || g.target_date > horizonISO) continue;
+      out.push({
+        date: g.target_date,
+        label: `${g.name} (target)`,
+        detail: `${g.kind} goal due`,
+        cents: 0, // goals don't move money themselves; show as a dateline
+        kind: 'goal'
+      });
+    }
+    out.sort((a, b) => a.date.localeCompare(b.date) || a.label.localeCompare(b.label));
+    return out;
+  });
+
+  // Window net = approx 30-day income - 30-day subscription outflows.
+  // Income side uses the active-stream actual sum directly (already
+  // monthly). Sub side uses the sum of the actual renewal amounts in
+  // the window — NOT the monthly-normalised number — because a yearly
+  // sub renewing in 5 days hits as the full annual charge, not 1/12.
+  let cashflowSubOut = $derived(cashflowEvents.reduce((s, e) => s + (e.cents < 0 ? -e.cents : 0), 0));
+  let cashflowNet = $derived((overview?.income_monthly_actual_cents ?? 0) - cashflowSubOut);
+
+  // Day-of-month from a YYYY-MM-DD; used for the timeline pip layout.
+  function dayOf(iso: string): number {
+    const m = iso.match(/-(\d{2})$/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+  function dayLabel(iso: string): string {
+    const d = new Date(iso + 'T00:00:00');
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -421,6 +493,75 @@
             <span class="font-semibold {net >= 0 ? 'text-text' : 'text-error'}">{fmtMoney(net, overview.currency)} / month</span>
             <p class="text-[11px] text-dim mt-1">From recurring income & subscriptions only — doesn't include one-off spending.</p>
           </div>
+        {/if}
+
+        <!-- 30-day cashflow timeline. Compact horizontal pip layout
+             at the top so the user sees the shape of upcoming
+             outflows at a glance, then a chronological list with
+             running net for detail. Hidden when nothing's coming up
+             so empty vaults don't show a dead band. -->
+        {#if cashflowEvents.length > 0 || (overview.income_monthly_actual_cents > 0 && cashflowSubOut > 0)}
+          <section class="mb-6 bg-surface0 border border-surface1 rounded-lg p-4">
+            <div class="flex items-baseline gap-3 flex-wrap mb-3">
+              <h3 class="text-xs uppercase tracking-wider text-dim font-medium">Next 30 days</h3>
+              <span class="text-xs text-dim">
+                <span class="text-success">+{fmtMoney(overview.income_monthly_actual_cents, overview.currency)}</span>
+                <span class="mx-1">−</span>
+                <span class="text-error">{fmtMoney(cashflowSubOut, overview.currency)}</span>
+                <span class="mx-1">=</span>
+                <span class="font-semibold {cashflowNet >= 0 ? 'text-text' : 'text-error'}">{fmtMoney(cashflowNet, overview.currency)}</span>
+              </span>
+            </div>
+
+            <!-- Pip strip: each subscription due in the window shows
+                 as a small marker positioned by day-of-month. Hover
+                 for the name + amount. Pure CSS — no canvas, no
+                 d3, no chart lib for what's a horizontal scale. -->
+            {#if cashflowEvents.length > 0}
+              <div class="relative h-6 bg-mantle rounded mb-3">
+                <div class="absolute inset-y-0 left-0 right-0 flex items-center px-1">
+                  {#each Array.from({ length: 30 }, (_, i) => i) as i}
+                    <div class="flex-1 border-r last:border-r-0 border-surface1/50 h-2 self-center"></div>
+                  {/each}
+                </div>
+                {#each cashflowEvents as e (e.date + e.label)}
+                  {@const today = new Date()}
+                  {@const eventDate = new Date(e.date + 'T00:00:00')}
+                  {@const daysFromToday = Math.round((eventDate.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / 86400000)}
+                  {@const pct = Math.max(0, Math.min(100, (daysFromToday / 30) * 100))}
+                  <div
+                    class="absolute top-0 bottom-0 w-1 -translate-x-1/2 rounded-full {e.kind === 'subscription' ? 'bg-error' : 'bg-info'}"
+                    style="left: {pct}%"
+                    title="{dayLabel(e.date)} — {e.label}{e.cents ? ` (${e.cents > 0 ? '+' : '−'}${fmtMoney(Math.abs(e.cents), overview.currency)})` : ''}"
+                  ></div>
+                {/each}
+              </div>
+            {/if}
+
+            <ul class="text-sm divide-y divide-surface1/50">
+              {#each cashflowEvents as e (e.date + e.label)}
+                <li class="py-1.5 flex items-baseline gap-3">
+                  <span class="text-xs text-dim font-mono w-16 flex-shrink-0">{dayLabel(e.date)}</span>
+                  <span class="text-text flex-1 min-w-0 truncate">{e.label}</span>
+                  <span class="text-[11px] text-dim hidden sm:inline">{e.detail}</span>
+                  {#if e.cents !== 0}
+                    <span class="font-mono {e.cents >= 0 ? 'text-success' : 'text-error'}">
+                      {e.cents >= 0 ? '+' : '−'}{fmtMoney(Math.abs(e.cents), overview.currency)}
+                    </span>
+                  {:else}
+                    <span class="text-[11px] text-info">—</span>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+
+            {#if overview.income_monthly_actual_cents > 0}
+              <p class="text-[11px] text-dim italic mt-3">
+                Plus monthly income: <span class="text-success">+{fmtMoney(overview.income_monthly_actual_cents, overview.currency)}</span>
+                from {overview.income_active_count} active source{overview.income_active_count === 1 ? '' : 's'} — exact payout dates vary, not shown above.
+              </p>
+            {/if}
+          </section>
         {/if}
 
         <div class="flex flex-wrap gap-2">
