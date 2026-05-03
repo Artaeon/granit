@@ -193,6 +193,13 @@ func (s *Server) Handler() http.Handler {
 		r.Delete("/api/v1/events/{id}", s.handleDeleteEvent)
 
 		r.Get("/api/v1/goals", s.handleListGoals)
+		r.Post("/api/v1/goals", s.handleCreateGoal)
+		r.Patch("/api/v1/goals/{id}", s.handlePatchGoal)
+		r.Delete("/api/v1/goals/{id}", s.handleDeleteGoal)
+		r.Post("/api/v1/goals/{id}/milestones", s.handleAddMilestone)
+		r.Patch("/api/v1/goals/{id}/milestones/{idx}", s.handlePatchMilestone)
+		r.Delete("/api/v1/goals/{id}/milestones/{idx}", s.handleDeleteMilestone)
+		r.Post("/api/v1/goals/{id}/review", s.handleLogReview)
 
 		r.Get("/api/v1/types", s.handleListTypes)
 		r.Get("/api/v1/types/{id}/objects", s.handleListTypeObjects)

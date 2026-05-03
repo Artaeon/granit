@@ -4,6 +4,9 @@
   import { api, type Goal } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { inlineMd } from '$lib/util/inlineMd';
+  import { toast } from '$lib/components/toast';
+  import GoalCreate from '$lib/goals/GoalCreate.svelte';
+  import GoalDetail from '$lib/goals/GoalDetail.svelte';
 
   let goals = $state<Goal[]>([]);
   let loading = $state(false);
@@ -11,6 +14,13 @@
   // rendered a 'done' tab that never matched anything because the TUI
   // writes 'completed'.
   let statusFilter = $state<'all' | 'active' | 'paused' | 'completed' | 'archived'>('all');
+  let categoryFilter = $state<string>('');
+  let tagFilter = $state<string>('');
+  let q = $state<string>('');
+
+  let createOpen = $state(false);
+  let detailOpen = $state(false);
+  let selectedId = $state<string | null>(null);
 
   async function load() {
     if (!$auth) return;
@@ -32,31 +42,52 @@
     });
   });
 
+  // Selected goal — derived from id so live edits during a refetch find
+  // the new copy without reopening the drawer at a stale state.
+  let selected = $derived(goals.find((g) => g.id === selectedId) ?? null);
+
+  function openDetail(g: Goal) {
+    selectedId = g.id;
+    detailOpen = true;
+  }
+
   let filtered = $derived.by(() => {
-    if (statusFilter === 'all') return goals;
-    return goals.filter((g) => (g.status ?? 'active') === statusFilter);
+    let list = goals;
+    if (statusFilter !== 'all') list = list.filter((g) => (g.status ?? 'active') === statusFilter);
+    if (categoryFilter) list = list.filter((g) => g.category === categoryFilter);
+    if (tagFilter) list = list.filter((g) => (g.tags ?? []).includes(tagFilter));
+    const term = q.trim().toLowerCase();
+    if (term) {
+      list = list.filter((g) =>
+        g.title.toLowerCase().includes(term) ||
+        (g.description ?? '').toLowerCase().includes(term) ||
+        (g.notes ?? '').toLowerCase().includes(term)
+      );
+    }
+    return list;
   });
 
   function progress(g: Goal): { done: number; total: number; pct: number } {
     const ms = g.milestones ?? [];
     const total = ms.length;
-    if (total === 0) return { done: 0, total: 0, pct: 0 };
+    if (total === 0) return { done: 0, total: 0, pct: g.status === 'completed' ? 100 : 0 };
     const done = ms.filter((m) => m.done).length;
     return { done, total, pct: Math.round((done / total) * 100) };
   }
 
-  function statusColor(s?: string): { bg: string; text: string; ring: string } {
+  // Status-pill colors. Spec: active=primary, paused=subtext, completed=success, archived=dim.
+  function statusColor(s?: string): { bg: string; text: string } {
     switch (s) {
       case 'active':
-        return { bg: 'bg-success/15', text: 'text-success', ring: 'ring-success/30' };
+        return { bg: 'bg-primary/15', text: 'text-primary' };
       case 'paused':
-        return { bg: 'bg-warning/15', text: 'text-warning', ring: 'ring-warning/30' };
+        return { bg: 'bg-surface1', text: 'text-subtext' };
       case 'completed':
-        return { bg: 'bg-info/15', text: 'text-info', ring: 'ring-info/30' };
+        return { bg: 'bg-success/15', text: 'text-success' };
       case 'archived':
-        return { bg: 'bg-surface1', text: 'text-dim', ring: 'ring-surface2' };
+        return { bg: 'bg-surface1', text: 'text-dim' };
       default:
-        return { bg: 'bg-surface1', text: 'text-subtext', ring: 'ring-surface2' };
+        return { bg: 'bg-surface1', text: 'text-subtext' };
     }
   }
 
@@ -77,8 +108,37 @@
     archived: goals.filter((g) => g.status === 'archived').length
   });
 
-  let expanded = $state<Record<string, boolean>>({});
-  function toggle(id: string) { expanded = { ...expanded, [id]: !expanded[id] }; }
+  // Distinct category + tag chips, sorted by frequency desc so the most
+  // common chip surfaces first.
+  let categories = $derived.by(() => {
+    const m = new Map<string, number>();
+    for (const g of goals) {
+      const c = (g.category ?? '').trim();
+      if (!c) continue;
+      m.set(c, (m.get(c) ?? 0) + 1);
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
+  });
+  let tags = $derived.by(() => {
+    const m = new Map<string, number>();
+    for (const g of goals) {
+      for (const t of g.tags ?? []) m.set(t, (m.get(t) ?? 0) + 1);
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
+  });
+
+  async function created(g: Goal) {
+    await load();
+    selectedId = g.id;
+    detailOpen = true;
+  }
+
+  async function deleted(_id: string) {
+    detailOpen = false;
+    selectedId = null;
+    await load();
+    toast.success('goal deleted');
+  }
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -88,9 +148,14 @@
         <h1 class="text-2xl sm:text-3xl font-semibold text-text">Goals</h1>
         <p class="text-sm text-dim mt-1">{goals.length} goals · from <code class="text-xs">.granit/goals.json</code></p>
       </div>
+      <button
+        onclick={() => (createOpen = true)}
+        class="px-3 py-1.5 bg-primary text-mantle rounded text-sm font-medium hover:opacity-90 self-start"
+      >+ New goal</button>
     </header>
 
-    <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-6 self-start">
+    <!-- Status tabs -->
+    <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-3 self-start flex-wrap">
       {#each ['all', 'active', 'paused', 'completed', 'archived'] as s}
         <button
           class="px-3 py-1.5 capitalize {statusFilter === s ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
@@ -99,6 +164,37 @@
           {s} <span class="text-xs opacity-70">{counts[s as keyof typeof counts]}</span>
         </button>
       {/each}
+    </div>
+
+    <!-- Search + filter chips -->
+    <div class="mb-6 space-y-2">
+      <input
+        bind:value={q}
+        placeholder="search title, description, notes…"
+        class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
+      />
+      {#if categories.length > 0 || tags.length > 0}
+        <div class="flex flex-wrap items-center gap-1.5 text-xs">
+          {#if categoryFilter || tagFilter}
+            <button
+              onclick={() => { categoryFilter = ''; tagFilter = ''; }}
+              class="px-2 py-0.5 bg-surface1 text-dim rounded hover:text-text"
+            >clear filters</button>
+          {/if}
+          {#each categories as c}
+            <button
+              onclick={() => (categoryFilter = categoryFilter === c ? '' : c)}
+              class="px-2 py-0.5 rounded {categoryFilter === c ? 'bg-primary text-mantle' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+            >{c}</button>
+          {/each}
+          {#each tags as t}
+            <button
+              onclick={() => (tagFilter = tagFilter === t ? '' : t)}
+              class="px-2 py-0.5 rounded {tagFilter === t ? 'bg-primary text-mantle' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+            >#{t}</button>
+          {/each}
+        </div>
+      {/if}
     </div>
 
     {#if loading && goals.length === 0}
@@ -110,11 +206,10 @@
         {#each filtered as g (g.id)}
           {@const p = progress(g)}
           {@const sc = statusColor(g.status)}
-          {@const isOpen = !!expanded[g.id]}
           <article class="bg-surface0 border border-surface1 rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
             <button
               type="button"
-              onclick={() => toggle(g.id)}
+              onclick={() => openDetail(g)}
               class="w-full text-left p-4 flex flex-col gap-2"
             >
               <div class="flex items-start gap-3">
@@ -134,6 +229,7 @@
                 {#if g.project}<span>📁 {g.project}</span>{/if}
                 {#if g.category}<span>· {g.category}</span>{/if}
                 {#if p.total > 0}<span>{p.done}/{p.total} milestones</span>{/if}
+                {#if g.review_frequency}<span>↻ {g.review_frequency}</span>{/if}
               </div>
 
               {#if g.tags && g.tags.length > 0}
@@ -149,31 +245,21 @@
                   <div class="h-1.5 bg-mantle rounded-full overflow-hidden">
                     <div class="h-full bg-primary transition-all" style="width: {p.pct}%"></div>
                   </div>
-                  <div class="text-[10px] text-dim mt-1">{p.pct}% complete · click to {isOpen ? 'collapse' : 'expand'}</div>
+                  <div class="text-[10px] text-dim mt-1">{p.pct}% complete</div>
                 </div>
               {/if}
             </button>
-
-            {#if isOpen && g.milestones && g.milestones.length > 0}
-              <div class="px-4 pb-4 border-t border-surface1 pt-3 bg-mantle/40">
-                <ul class="space-y-1.5">
-                  {#each g.milestones as m, i (i)}
-                    <li class="flex items-start gap-2 text-sm">
-                      <span class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center mt-0.5
-                        {m.done ? 'bg-success border-success' : 'border-surface2'}">
-                        {#if m.done}
-                          <svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
-                        {/if}
-                      </span>
-                      <span class="{m.done ? 'line-through text-dim' : 'text-text'}">{@html inlineMd(m.text)}</span>
-                    </li>
-                  {/each}
-                </ul>
-              </div>
-            {/if}
           </article>
         {/each}
       </div>
     {/if}
   </div>
 </div>
+
+<GoalCreate bind:open={createOpen} onCreated={created} />
+<GoalDetail
+  bind:open={detailOpen}
+  goal={selected}
+  onUpdated={load}
+  onDeleted={deleted}
+/>

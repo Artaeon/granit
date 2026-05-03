@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, type Project, type ProjectGoal, type Task } from '$lib/api';
+  import { api, type Goal, type Project, type ProjectGoal, type Task } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import GoalEditor from './GoalEditor.svelte';
   import TaskRow from '$lib/components/TaskRow.svelte';
@@ -24,6 +24,12 @@
   let loadingTasks = $state(false);
   let showCompletedTasks = $state(false);
 
+  // Top-level goals (.granit/goals.json) linked to this project via the
+  // goal's `project` field. Read-only here — the goals page is where
+  // those get edited. We render a compact list as a quick context cue
+  // so the project detail surface answers "what are we working towards?".
+  let linkedGoals = $state<Goal[]>([]);
+
   async function loadTasks() {
     loadingTasks = true;
     try {
@@ -44,9 +50,21 @@
     }
   }
 
+  async function loadLinkedGoals() {
+    try {
+      const r = await api.listGoals();
+      linkedGoals = r.goals.filter((g) => g.project === project.name);
+    } catch (e) {
+      // Non-fatal — goals endpoint failure shouldn't break the project
+      // page; just leave the section empty.
+      console.error('listGoals', e);
+    }
+  }
+
   $effect(() => {
     void project.name;
     loadTasks();
+    loadLinkedGoals();
   });
 
   async function patch(p: Partial<Project>): Promise<boolean> {
@@ -223,7 +241,14 @@
 
       <!-- Next Action (highlight chip) -->
       <section>
-        <h3 class="text-xs uppercase tracking-wider text-dim font-medium mb-1.5">Next action</h3>
+        <div class="flex items-baseline justify-between mb-1.5">
+          <h3 class="text-xs uppercase tracking-wider text-dim font-medium">Next action</h3>
+          <a
+            href={`/calendar?plan=1&project=${encodeURIComponent(project.name)}`}
+            class="text-xs text-secondary hover:underline"
+            title="open the calendar in plan mode to drag tasks onto the grid"
+          >schedule →</a>
+        </div>
         {#if editingNextAction}
           <input
             bind:value={nextActionBuf}
@@ -245,6 +270,46 @@
         <h3 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">Goals & milestones</h3>
         <GoalEditor goals={project.goals ?? []} onChange={updateGoals} />
       </section>
+
+      <!-- Linked top-level goals (.granit/goals.json) -->
+      {#if linkedGoals.length > 0}
+        <section>
+          <div class="flex items-baseline justify-between mb-2">
+            <h3 class="text-xs uppercase tracking-wider text-dim font-medium">Linked goals · {linkedGoals.length}</h3>
+            <a href="/goals" class="text-xs text-secondary hover:underline">open /goals →</a>
+          </div>
+          <ul class="space-y-1.5">
+            {#each linkedGoals as g (g.id)}
+              {@const ms = g.milestones ?? []}
+              {@const total = ms.length}
+              {@const done = ms.filter((m) => m.done).length}
+              {@const pct = total === 0 ? (g.status === 'completed' ? 100 : 0) : Math.round((done / total) * 100)}
+              <li class="px-3 py-2 bg-surface0 rounded text-sm">
+                <div class="flex items-baseline justify-between gap-2">
+                  <span class="text-text truncate">{g.title}</span>
+                  <span class="text-[11px] text-dim flex-shrink-0">{pct}%{#if total > 0} · {done}/{total}{/if}</span>
+                </div>
+                {#if total > 0}
+                  <div class="mt-1 h-1 bg-mantle rounded-full overflow-hidden">
+                    <div class="h-full bg-primary" style="width: {pct}%"></div>
+                  </div>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
+
+      <!-- Time spent -->
+      {#if (project.time_spent ?? 0) > 0}
+        <section>
+          <h3 class="text-xs uppercase tracking-wider text-dim font-medium mb-1.5">Time spent</h3>
+          <p class="text-sm text-text">
+            {Math.floor((project.time_spent ?? 0) / 60)}h {(project.time_spent ?? 0) % 60}m
+            <span class="text-dim text-xs">tracked</span>
+          </p>
+        </section>
+      {/if}
 
       <!-- Linked tasks -->
       <section>

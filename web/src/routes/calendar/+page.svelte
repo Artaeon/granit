@@ -93,7 +93,7 @@
 
   // Event-type filter: each toggle hides events of that type. Persisted so
   // the user's preference (e.g. "always hide ICS") sticks across sessions.
-  type EventFilterKey = 'daily' | 'task_due' | 'task_scheduled' | 'event' | 'ics_event';
+  type EventFilterKey = 'daily' | 'task_due' | 'task_scheduled' | 'event' | 'ics_event' | 'deadline';
   const FILTER_KEY = 'granit.calendar.filters';
   let hidden = $state<Set<EventFilterKey>>(new Set());
 
@@ -180,6 +180,18 @@
     return () => mq.removeEventListener('change', handler);
   });
 
+  // Deep-link: ?plan=1 (optionally with &project=NAME) flips on plan
+  // mode so other pages — e.g. the project detail's "schedule next
+  // action" button — can hand off into the calendar in the right state.
+  onMount(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('plan') === '1' && !planMode) {
+      planMode = true;
+      view = 'day';
+    }
+  });
+
   async function load() {
     if (!$auth) return;
     loading = true;
@@ -204,6 +216,10 @@
         ev.type === 'event.changed' ||
         ev.type === 'event.removed'
       ) load();
+      // Deadlines are an overlay on the feed — refetch when the
+      // server signals .granit/deadlines.json changed (TUI edit, web
+      // edit in another tab, or anything else that calls SaveAll).
+      if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') load();
     })
   );
 
@@ -447,7 +463,8 @@
         { key: 'task_scheduled', label: 'Scheduled task', tone: 'primary' },
         { key: 'task_due', label: 'Task due', tone: 'warning' },
         { key: 'event', label: 'Event', tone: 'info' },
-        { key: 'ics_event', label: 'ICS calendars', tone: 'info' }
+        { key: 'ics_event', label: 'ICS calendars', tone: 'info' },
+        { key: 'deadline', label: 'Deadlines', tone: 'error' }
       ] as f}
         {@const isHidden = hidden.has(f.key as EventFilterKey)}
         <button
