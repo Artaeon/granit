@@ -679,9 +679,19 @@ func transformText(line string, newText string) string {
 	if m == nil {
 		return line
 	}
-	prefix := line[:m[5]] // includes "[x] "
+	// reCheckbox capture groups:
+	//   1: "  - [" (indent + bullet + open bracket)  → m[2]:m[3]
+	//   2: " " | "x" | "X" (checkbox char)           → m[4]:m[5]
+	//   3: "] "  (close bracket + trailing space)    → m[6]:m[7]
+	// The prefix we want to preserve is "  - [x] " — through the END of
+	// group 3, i.e. m[7]. Using m[5] here cut the line just after the
+	// checkbox char, dropping the "] " entirely; the rewritten line then
+	// looked like "- [ Renamed task" which the task parser refuses to
+	// match, silently dropping the task on the next scan. That was the
+	// "renaming makes the task disappear" bug.
+	prefix := line[:m[7]] // includes "- [x] "
 	// Preserve markers we don't want to clobber: collect them from the old tail.
-	tail := line[m[5]:]
+	tail := line[m[7]:]
 	var preserved []string
 	for _, re := range []*regexp.Regexp{rePriorityMarker, reDueMarker, reGoalLineMarker, reDeadlineLineMarker} {
 		for _, mm := range re.FindAllString(tail, -1) {
