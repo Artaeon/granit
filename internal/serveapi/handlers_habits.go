@@ -331,9 +331,16 @@ func (s *Server) handleToggleHabit(w http.ResponseWriter, r *http.Request) {
 	updated := false
 	for i, ln := range lines {
 		trim := strings.TrimSpace(ln)
-		if strings.HasPrefix(trim, "## ") {
-			low := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(trim, "## ")))
-			inHabits = (low == "habits")
+		// Match ANY heading level for "Habits" — same shape as the
+		// reader's parseHabitsSection. The previous "## " prefix-only
+		// check meant a daily with `### Habits` was invisible to the
+		// toggle; it would create a brand-new `## Habits` section
+		// alongside, orphaning the existing data into a phantom
+		// duplicate. Critical for users whose older dailies use a
+		// different heading level.
+		if strings.HasPrefix(trim, "#") {
+			text := strings.TrimSpace(strings.TrimLeft(trim, "#"))
+			inHabits = strings.EqualFold(text, "Habits")
 			if inHabits {
 				habitsLine = i
 			}

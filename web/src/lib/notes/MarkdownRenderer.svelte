@@ -118,15 +118,38 @@
   };
 
   function rewriteCallouts(html: string): string {
+    // Match the callout `[!type]` marker + the SAME LINE only as the
+    // title. Marked emits the full callout body inside a single <p>
+    // when there are no blank lines between the `> [!note]` header
+    // and the body lines, which means a naive `[^<]*` greedy capture
+    // dragged body content into the title and produced an empty
+    // body. Splitting at the first newline keeps the title as the
+    // first line and pushes everything after into the body section.
     return html.replace(
-      /<blockquote>\s*<p>\[!([a-zA-Z]+)\]([+-]?)\s*([^<]*)<\/p>([\s\S]*?)<\/blockquote>/g,
-      (_match, rawType: string, _toggle: string, title: string, rest: string) => {
+      /<blockquote>\s*<p>\[!([a-zA-Z]+)\]([+-]?)([^<]*)<\/p>([\s\S]*?)<\/blockquote>/g,
+      (_match, rawType: string, _toggle: string, head: string, rest: string) => {
         const t = rawType.toLowerCase();
         const meta = CALLOUT_TYPES[t] ?? { label: rawType, tone: 'subtext' };
-        const headerTitle = title.trim() || meta.label;
+        // First line is the title; remaining lines belong in the body
+        // (re-wrapped in a <p> so spacing matches a normal paragraph).
+        const newlineIdx = head.search(/\r?\n/);
+        let title: string;
+        let leftover: string;
+        if (newlineIdx === -1) {
+          title = head.trim();
+          leftover = '';
+        } else {
+          title = head.slice(0, newlineIdx).trim();
+          leftover = head.slice(newlineIdx).trim();
+        }
+        const headerTitle = title || meta.label;
+        const bodyParagraph = leftover
+          ? `<p>${escHtml(leftover)}</p>`
+          : '';
         return (
           `<blockquote class="callout callout--${meta.tone}">` +
           `<div class="callout__header"><span class="callout__icon" aria-hidden="true">●</span>${escHtml(headerTitle)}</div>` +
+          bodyParagraph +
           rest +
           `</blockquote>`
         );

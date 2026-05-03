@@ -61,7 +61,20 @@ func priorityStoreToAPI(p int) int {
 	return 0
 }
 
+// reExplicitDue catches the two markers our writers actually emit
+// (📅 emoji + ASCII due:). Used by taskToView to suppress the
+// parser's daily-filename fallback at the API boundary — the
+// fallback is right for the TUI's display logic but lies to API
+// consumers when the user explicitly cleared a due date with
+// PATCH dueDate:"". Without this, "I removed the due date" became
+// "due today" on every subsequent GET.
+var reExplicitDue = regexp.MustCompile(`(?:\x{1F4C5}\s*\d{4}-\d{2}-\d{2})|(?:(?:^|\s)due:\d{4}-\d{2}-\d{2}(?:\s|$))`)
+
 func taskToView(t tasks.Task) taskView {
+	dueDate := t.DueDate
+	if !reExplicitDue.MatchString(t.Text) {
+		dueDate = ""
+	}
 	v := taskView{
 		ID:               t.ID,
 		GranitID:         t.ID,
@@ -71,7 +84,7 @@ func taskToView(t tasks.Task) taskView {
 		Done:             t.Done,
 		Priority:         priorityStoreToAPI(t.Priority),
 		Tags:             t.Tags,
-		DueDate:          t.DueDate,
+		DueDate:          dueDate,
 		ProjectID:        t.ProjectID,
 		Triage:           string(t.Triage),
 		SnoozedUntil:     t.SnoozedUntil,
@@ -198,6 +211,24 @@ func (s *Server) handlePatchTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
+	// Validate before any UpdateLine mutation. transformDue regex
+	// only strips strict YYYY-MM-DD, so a malformed input (e.g.
+	// "next-friday") would write a literal due:next-friday into the
+	// markdown that the parser can't subsequently strip — every
+	// later patch would APPEND a second due: token. Same for
+	// snooze: catch malformed early and refuse.
+	if b.DueDate != nil && *b.DueDate != "" {
+		if _, err := time.Parse("2006-01-02", *b.DueDate); err != nil {
+			writeError(w, http.StatusBadRequest, "dueDate must be YYYY-MM-DD")
+			return
+		}
+	}
+	if b.SnoozedUntil != nil && *b.SnoozedUntil != "" {
+		if _, err := time.Parse("2006-01-02T15:04", *b.SnoozedUntil); err != nil {
+			writeError(w, http.StatusBadRequest, "snoozedUntil must be YYYY-MM-DDThh:mm")
+			return
+		}
+	}
 	store := s.cfg.TaskStore
 	if _, ok := store.GetByID(id); !ok {
 		writeError(w, http.StatusNotFound, "task not found")
@@ -318,6 +349,12 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(b.Text) == "" {
 		writeError(w, http.StatusBadRequest, "text required")
 		return
+	}
+	if b.DueDate != "" {
+		if _, err := time.Parse("2006-01-02", b.DueDate); err != nil {
+			writeError(w, http.StatusBadRequest, "dueDate must be YYYY-MM-DD")
+			return
+		}
 	}
 	// Empty notePath = "the user wanted today's daily" — every front-end
 	// surface that doesn't supply a path (the dashboard quick-capture
