@@ -1,8 +1,9 @@
 import type { CalendarEvent } from '$lib/api';
+import { fmtDateISO } from '$lib/util/date';
 
-export function fmtDateISO(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+// Re-exported so calendar files that already import via `./utils`
+// keep working without a touch-everything refactor.
+export { fmtDateISO };
 
 export function startOfWeek(d: Date): Date {
   const x = new Date(d);

@@ -14,6 +14,7 @@
   import { dragStore } from './dragStore';
   import PlanMyDayDrawer from './PlanMyDayDrawer.svelte';
   import { fmtDateISO } from './utils';
+  import { todayISO } from '$lib/util/date';
 
   let { onRefresh }: { onRefresh?: () => void } = $props();
 
@@ -31,11 +32,6 @@
   // back to the grid. Greyed rows aren't draggable — drag would
   // duplicate the schedule. The user moves a scheduled task by dragging
   // its event chip on the grid (existing reschedule code path).
-
-  function todayISO(): string {
-    const d = new Date();
-    return fmtDateISO(d);
-  }
 
   function isToday(iso: string | undefined): boolean {
     if (!iso) return false;

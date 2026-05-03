@@ -1177,11 +1177,7 @@ export interface DashboardConfig {
 
 // ---- helpers ----
 
-export function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-export function fmtDateISO(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+// Re-exported from lib/util/date.ts (the canonical home). Keeping the
+// names available from $lib/api so existing imports keep working
+// without a touch-everything refactor.
+export { fmtDateISO, todayISO } from '$lib/util/date';
