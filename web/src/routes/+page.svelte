@@ -13,7 +13,11 @@
   const NEW_WIDGETS: { id: string; type: import('$lib/api').DashboardWidgetType; afterId: string; enabled: boolean }[] = [
     // Vision lands at the very top — anchor for the morning re-read.
     { id: 'w-vision', type: 'vision', afterId: 'w-greeting', enabled: true },
-    { id: 'w-today-focus', type: 'today-focus', afterId: 'w-vision', enabled: true },
+    // One-thing shows the commitment from the latest weekly review,
+    // sitting between vision and today's focus so the week's
+    // intention bridges the season's vision and the day's tactics.
+    { id: 'w-one-thing', type: 'one-thing', afterId: 'w-vision', enabled: true },
+    { id: 'w-today-focus', type: 'today-focus', afterId: 'w-one-thing', enabled: true },
     { id: 'w-top-deadlines', type: 'top-deadlines', afterId: 'w-now', enabled: true }
   ];
 

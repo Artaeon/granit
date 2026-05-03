@@ -16,6 +16,7 @@ import CalendarWeekWidget from './widgets/CalendarWeekWidget.svelte';
 import TodayFocusWidget from './widgets/TodayFocusWidget.svelte';
 import TopDeadlinesWidget from './widgets/TopDeadlinesWidget.svelte';
 import VisionWidget from './widgets/VisionWidget.svelte';
+import OneThingWidget from './widgets/OneThingWidget.svelte';
 
 export interface WidgetMeta {
   type: DashboardWidgetType;
@@ -32,6 +33,7 @@ export const widgetRegistry: WidgetMeta[] = [
   // top of new dashboards) because it's the layer the user re-reads
   // every morning before drilling into tactics.
   { type: 'vision', label: 'Vision', description: 'Life mission, values, season focus — the layer above goals', span: 2, component: VisionWidget },
+  { type: 'one-thing', label: 'This week\'s one thing', description: 'Surfaces the commitment from your most recent weekly review', span: 2, component: OneThingWidget },
   { type: 'today-focus', label: 'Today\'s focus', description: 'What you committed to in the morning routine', span: 2, component: TodayFocusWidget },
   { type: 'now', label: 'Now', description: 'Current time + next event', span: 1, component: NowWidget },
   { type: 'streaks', label: 'Streaks', description: 'Habit streaks at a glance', span: 1, component: StreaksWidget },

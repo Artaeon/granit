@@ -213,8 +213,22 @@
     !!activeNav && activeNav.href !== '/' && $page.url.pathname !== activeNav.href
   );
 
+  // Browser tab title. Empty home stays as just 'Granit'; deep
+  // pages get 'Granit · Pagename' so multiple open tabs are
+  // distinguishable. Single source of truth (the same activeNav
+  // that drives the mobile header) means new routes pick this up
+  // automatically when added to the nav array.
+  let tabTitle = $derived.by(() => {
+    if (!activeNav || activeNav.href === '/') return 'Granit';
+    return `Granit · ${activeNav.label}`;
+  });
+
   function NavLinks() {}
 </script>
+
+<svelte:head>
+  <title>{tabTitle}</title>
+</svelte:head>
 
 {#snippet navItem(item: NavItem, isCompact: boolean)}
   {@const active = $page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href))}

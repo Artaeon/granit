@@ -1443,7 +1443,8 @@ export type DashboardWidgetType =
   | 'scripture'
   | 'today-focus'
   | 'top-deadlines'
-  | 'vision';
+  | 'vision'
+  | 'one-thing';
 
 export interface DashboardWidget {
   id: string;
