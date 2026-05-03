@@ -7,7 +7,10 @@
 
   let goals = $state<Goal[]>([]);
   let loading = $state(false);
-  let statusFilter = $state<'all' | 'active' | 'paused' | 'done'>('all');
+  // Status values mirror the TUI / internal/goals.Status. The earlier UI
+  // rendered a 'done' tab that never matched anything because the TUI
+  // writes 'completed'.
+  let statusFilter = $state<'all' | 'active' | 'paused' | 'completed' | 'archived'>('all');
 
   async function load() {
     if (!$auth) return;
@@ -23,6 +26,9 @@
     load();
     return onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
+      // Re-fetch when the TUI (or another web tab) writes goals.json.
+      // The server broadcasts state.changed with Path=".granit/goals.json".
+      if (ev.type === 'state.changed' && ev.path === '.granit/goals.json') load();
     });
   });
 
@@ -45,8 +51,10 @@
         return { bg: 'bg-success/15', text: 'text-success', ring: 'ring-success/30' };
       case 'paused':
         return { bg: 'bg-warning/15', text: 'text-warning', ring: 'ring-warning/30' };
-      case 'done':
+      case 'completed':
         return { bg: 'bg-info/15', text: 'text-info', ring: 'ring-info/30' };
+      case 'archived':
+        return { bg: 'bg-surface1', text: 'text-dim', ring: 'ring-surface2' };
       default:
         return { bg: 'bg-surface1', text: 'text-subtext', ring: 'ring-surface2' };
     }
@@ -65,7 +73,8 @@
     all: goals.length,
     active: goals.filter((g) => (g.status ?? 'active') === 'active').length,
     paused: goals.filter((g) => g.status === 'paused').length,
-    done: goals.filter((g) => g.status === 'done').length
+    completed: goals.filter((g) => g.status === 'completed').length,
+    archived: goals.filter((g) => g.status === 'archived').length
   });
 
   let expanded = $state<Record<string, boolean>>({});
@@ -82,7 +91,7 @@
     </header>
 
     <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-6 self-start">
-      {#each ['all', 'active', 'paused', 'done'] as s}
+      {#each ['all', 'active', 'paused', 'completed', 'archived'] as s}
         <button
           class="px-3 py-1.5 capitalize {statusFilter === s ? 'bg-primary text-mantle' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (statusFilter = s as typeof statusFilter)}

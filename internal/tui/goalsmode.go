@@ -1,10 +1,7 @@
 package tui
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -12,51 +9,29 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	goalspkg "github.com/artaeon/granit/internal/goals"
 	"github.com/artaeon/granit/internal/tasks"
 )
 
 // ---------------------------------------------------------------------------
-// Data types
+// Data types — re-exported aliases over internal/goals so the TUI
+// keeps its existing names (Goal, GoalMilestone, GoalStatus, GoalReview)
+// while the on-disk schema lives in exactly one place. The package is
+// the source of truth; this file is the bubbletea binding.
 // ---------------------------------------------------------------------------
 
-// GoalStatus represents the lifecycle state of a goal.
-type GoalStatus string
+type GoalStatus = goalspkg.Status
 
 const (
-	GoalStatusActive    GoalStatus = "active"
-	GoalStatusCompleted GoalStatus = "completed"
-	GoalStatusArchived  GoalStatus = "archived"
-	GoalStatusPaused    GoalStatus = "paused"
+	GoalStatusActive    = goalspkg.StatusActive
+	GoalStatusCompleted = goalspkg.StatusCompleted
+	GoalStatusArchived  = goalspkg.StatusArchived
+	GoalStatusPaused    = goalspkg.StatusPaused
 )
 
-// GoalMilestone is a sub-step within a goal.
-type GoalMilestone struct {
-	Text        string `json:"text"`
-	Done        bool   `json:"done"`
-	DueDate     string `json:"due_date,omitempty"` // YYYY-MM-DD
-	CompletedAt string `json:"completed_at,omitempty"`
-}
-
-// Goal is a standalone goal independent of projects or habits.
-type Goal struct {
-	ID              string          `json:"id"`
-	Title           string          `json:"title"`
-	Description     string          `json:"description,omitempty"`
-	Status          GoalStatus      `json:"status"`
-	Category        string          `json:"category,omitempty"` // e.g. "Career", "Health", "Learning"
-	Color           string          `json:"color,omitempty"`    // "red","blue","green","yellow","mauve","pink","teal"
-	Tags            []string        `json:"tags,omitempty"`
-	TargetDate      string          `json:"target_date,omitempty"` // YYYY-MM-DD
-	CreatedAt       string          `json:"created_at"`
-	UpdatedAt       string          `json:"updated_at"`
-	CompletedAt     string          `json:"completed_at,omitempty"`
-	Project         string          `json:"project,omitempty"` // linked project name
-	Milestones      []GoalMilestone `json:"milestones"`
-	Notes           string          `json:"notes,omitempty"`
-	ReviewFrequency string          `json:"review_frequency,omitempty"` // "weekly", "monthly", "quarterly"
-	LastReviewed    string          `json:"last_reviewed,omitempty"`    // YYYY-MM-DD
-	ReviewLog       []GoalReview    `json:"review_log,omitempty"`
-}
+type GoalMilestone = goalspkg.Milestone
+type GoalReview = goalspkg.Review
+type Goal = goalspkg.Goal
 
 // goalColorMap returns the theme color for a goal color name.
 func goalColorMap(name string) lipgloss.Color {
@@ -78,152 +53,6 @@ func goalColorMap(name string) lipgloss.Color {
 	default:
 		return blue
 	}
-}
-
-// GoalReview records a periodic check-in on a goal.
-type GoalReview struct {
-	Date     string `json:"date"`
-	Note     string `json:"note"`
-	Progress int    `json:"progress"` // snapshot at time of review
-}
-
-// Progress returns milestone completion percentage (0-100).
-func (g Goal) Progress() int {
-	if len(g.Milestones) == 0 {
-		if g.Status == GoalStatusCompleted {
-			return 100
-		}
-		return 0
-	}
-	done := 0
-	for _, m := range g.Milestones {
-		if m.Done {
-			done++
-		}
-	}
-	return done * 100 / len(g.Milestones)
-}
-
-// DoneCount returns the number of completed milestones.
-func (g Goal) DoneCount() int {
-	done := 0
-	for _, m := range g.Milestones {
-		if m.Done {
-			done++
-		}
-	}
-	return done
-}
-
-// IsOverdue returns true if the goal has a target date in the past and is not completed.
-func (g Goal) IsOverdue() bool {
-	if g.TargetDate == "" || g.Status == GoalStatusCompleted || g.Status == GoalStatusArchived {
-		return false
-	}
-	target, err := time.Parse("2006-01-02", g.TargetDate)
-	if err != nil {
-		return false
-	}
-	// Compare against today's midnight so "today" is not yet overdue.
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-	return today.After(target)
-}
-
-// DaysRemaining returns days until target date (-1 if no date set).
-func (g Goal) DaysRemaining() int {
-	if g.TargetDate == "" {
-		return -1
-	}
-	target, err := time.Parse("2006-01-02", g.TargetDate)
-	if err != nil {
-		return -1
-	}
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-	return int(target.Sub(today).Hours() / 24)
-}
-
-// IsDueForReview returns true if the goal's review period has elapsed.
-func (g Goal) IsDueForReview() bool {
-	if g.ReviewFrequency == "" || g.Status != GoalStatusActive {
-		return false
-	}
-	if g.LastReviewed == "" {
-		return true
-	}
-	last, err := time.Parse("2006-01-02", g.LastReviewed)
-	if err != nil {
-		return true
-	}
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-	switch g.ReviewFrequency {
-	case "weekly":
-		return today.After(last.AddDate(0, 0, 7))
-	case "monthly":
-		return today.After(last.AddDate(0, 1, 0))
-	case "quarterly":
-		return today.After(last.AddDate(0, 3, 0))
-	}
-	return false
-}
-
-// NextReviewDate returns the next scheduled review date as YYYY-MM-DD.
-func (g Goal) NextReviewDate() string {
-	if g.ReviewFrequency == "" {
-		return ""
-	}
-	base := g.LastReviewed
-	if base == "" {
-		base = g.CreatedAt
-	}
-	last, err := time.Parse("2006-01-02", base)
-	if err != nil {
-		return ""
-	}
-	switch g.ReviewFrequency {
-	case "weekly":
-		return last.AddDate(0, 0, 7).Format("2006-01-02")
-	case "monthly":
-		return last.AddDate(0, 1, 0).Format("2006-01-02")
-	case "quarterly":
-		return last.AddDate(0, 3, 0).Format("2006-01-02")
-	}
-	return ""
-}
-
-// TimeframeLabel returns a human-readable time remaining label.
-func (g Goal) TimeframeLabel() string {
-	days := g.DaysRemaining()
-	if days < 0 {
-		absDays := -days
-		if absDays < 30 {
-			return fmt.Sprintf("%dd overdue", absDays)
-		}
-		return fmt.Sprintf("%dmo overdue", absDays/30)
-	}
-	if days == 0 {
-		return "due today"
-	}
-	if days == 1 {
-		return "1d left"
-	}
-	if days < 14 {
-		return fmt.Sprintf("%dd left", days)
-	}
-	if days < 60 {
-		return fmt.Sprintf("%dw left", days/7)
-	}
-	if days < 365 {
-		return fmt.Sprintf("%dmo left", days/30)
-	}
-	years := days / 365
-	rem := (days % 365) / 30
-	if rem > 0 {
-		return fmt.Sprintf("%dy%dmo left", years, rem)
-	}
-	return fmt.Sprintf("%dy left", years)
 }
 
 // ---------------------------------------------------------------------------
@@ -401,33 +230,24 @@ func (gm *GoalsMode) Refresh(vaultRoot string, tasks []Task) {
 }
 
 // ---------------------------------------------------------------------------
-// Storage
+// Storage — thin wrappers over internal/goals so the TUI keeps its
+// existing call sites unchanged. The package owns the on-disk schema.
 // ---------------------------------------------------------------------------
 
 // goalsStatePath returns the canonical path to the goals.json state file.
-// Two prior call sites (loadActiveGoals and loadAllGoals) duplicated this
-// filepath.Join, so any future relocation needed two coordinated edits.
-// Centralising it here means renames are a single change.
 func goalsStatePath(vaultRoot string) string {
-	return filepath.Join(vaultRoot, ".granit", "goals.json")
+	return goalspkg.StatePath(vaultRoot)
 }
 
 // loadActiveGoals reads .granit/goals.json and returns only the active goals.
 func loadActiveGoals(vaultRoot string) []Goal {
-	all := loadAllGoals(vaultRoot)
-	var active []Goal
-	for _, g := range all {
-		if g.Status == GoalStatusActive {
-			active = append(active, g)
-		}
-	}
-	return active
+	return goalspkg.LoadActive(vaultRoot)
 }
 
 func (gm *GoalsMode) loadGoals() {
-	// loadAllGoals returns nil for both missing and corrupt files; the
+	// LoadAll returns nil for both missing and corrupt files; the
 	// rest of GoalsMode handles a nil slice as the empty state.
-	gm.goals = loadAllGoals(gm.vaultRoot)
+	gm.goals = goalspkg.LoadAll(gm.vaultRoot)
 }
 
 func (gm *GoalsMode) saveGoals() {
@@ -436,46 +256,19 @@ func (gm *GoalsMode) saveGoals() {
 
 // loadAllGoals reads all goals from the goals.json file.
 func loadAllGoals(vaultRoot string) []Goal {
-	data, err := os.ReadFile(goalsStatePath(vaultRoot))
-	if err != nil {
-		return nil
-	}
-	var all []Goal
-	if err := json.Unmarshal(data, &all); err != nil {
-		return nil
-	}
-	return all
+	return goalspkg.LoadAll(vaultRoot)
 }
 
 // saveAllGoals writes all goals back to the goals.json file using an
 // atomic tmp+rename so a crash mid-write cannot truncate the user's
 // goal history. Returns true on success.
 func saveAllGoals(vaultRoot string, goals []Goal) bool {
-	dir := filepath.Join(vaultRoot, ".granit")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return false
-	}
-	data, err := json.MarshalIndent(goals, "", "  ")
-	if err != nil {
-		return false
-	}
-	return atomicWriteState(goalsStatePath(vaultRoot), data) == nil
+	return goalspkg.SaveAll(vaultRoot, goals) == nil
 }
 
 // addMilestoneToGoal appends a new milestone to the specified goal.
 func addMilestoneToGoal(vaultRoot, goalID, text, dueDate string) {
-	goals := loadAllGoals(vaultRoot)
-	for i, g := range goals {
-		if g.ID == goalID {
-			goals[i].Milestones = append(goals[i].Milestones, GoalMilestone{
-				Text:    text,
-				DueDate: dueDate,
-			})
-			goals[i].UpdatedAt = time.Now().Format(time.RFC3339)
-			break
-		}
-	}
-	saveAllGoals(vaultRoot, goals)
+	_ = goalspkg.AddMilestone(vaultRoot, goalID, text, dueDate)
 }
 
 type gmAIResultMsg struct {

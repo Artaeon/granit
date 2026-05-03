@@ -77,35 +77,12 @@ func WriteProjects(vaultRoot string, projects []Project) error {
 	return writeJSON(filepath.Join(vaultRoot, ".granit", "projects.json"), projects)
 }
 
-// Milestone is a sub-step inside a Goal (top-level goals.json entry, not
-// to be confused with ProjectMilestone).
-type Milestone struct {
-	Text string `json:"text"`
-	Done bool   `json:"done"`
-}
-
-// Goal mirrors a single entry in <vault>/.granit/goals.json.
-type Goal struct {
-	ID          string      `json:"id"`
-	Title       string      `json:"title"`
-	Description string      `json:"description,omitempty"`
-	Status      string      `json:"status,omitempty"`
-	Category    string      `json:"category,omitempty"`
-	Tags        []string    `json:"tags,omitempty"`
-	TargetDate  string      `json:"target_date,omitempty"`
-	CreatedAt   string      `json:"created_at,omitempty"`
-	UpdatedAt   string      `json:"updated_at,omitempty"`
-	Project     string      `json:"project,omitempty"`
-	Milestones  []Milestone `json:"milestones,omitempty"`
-}
-
-func ReadGoals(vaultRoot string) ([]Goal, error) {
-	return readJSON[[]Goal](filepath.Join(vaultRoot, ".granit", "goals.json"))
-}
-
-func WriteGoals(vaultRoot string, goals []Goal) error {
-	return writeJSON(filepath.Join(vaultRoot, ".granit", "goals.json"), goals)
-}
+// NOTE: the top-level Goal schema previously lived here as granitmeta.Goal.
+// It was a stripped subset that silently dropped fields the TUI wrote
+// (Notes, ReviewFrequency, LastReviewed, ReviewLog, CompletedAt, Color,
+// per-milestone DueDate / CompletedAt). It was retired in favour of the
+// internal/goals package, which is the single source of truth for the
+// .granit/goals.json on-disk schema. Use internal/goals from now on.
 
 func readJSON[T any](path string) (T, error) {
 	var zero T

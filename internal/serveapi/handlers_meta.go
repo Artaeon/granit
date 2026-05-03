@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/artaeon/granit/internal/goals"
 	"github.com/artaeon/granit/internal/granitmeta"
 	"github.com/artaeon/granit/internal/tasks"
 	"github.com/artaeon/granit/internal/wshub"
@@ -375,12 +376,17 @@ func (s *Server) handleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 
 // ----- Goals -----
 
+// handleListGoals returns the full Goal schema (including notes,
+// review_frequency, last_reviewed, review_log, color, completed_at,
+// and per-milestone due_date / completed_at). Earlier the handler went
+// through granitmeta.Goal which silently dropped those fields — a web
+// PATCH would round-trip and erase data the TUI had written. The new
+// internal/goals package preserves every field.
 func (s *Server) handleListGoals(w http.ResponseWriter, r *http.Request) {
-	goals, err := granitmeta.ReadGoals(s.cfg.Vault.Root)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	all := goals.LoadAll(s.cfg.Vault.Root)
+	if all == nil {
+		all = []goals.Goal{}
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"goals": goals, "total": len(goals)})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"goals": all, "total": len(all)})
 }
 

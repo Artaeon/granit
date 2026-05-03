@@ -31,7 +31,11 @@ export type WsEvent =
       };
     }
   | { type: 'timer.started'; id: string; data: { taskText: string } }
-  | { type: 'timer.stopped'; id: string; data: { minutes: number } };
+  | { type: 'timer.stopped'; id: string; data: { minutes: number } }
+  // State files (.granit/goals.json, habits sidecars, etc.) — broadcast
+  // when granitmeta or habits packages write to disk so the web doesn't
+  // go stale after a TUI edit. Path is the vault-relative file path.
+  | { type: 'state.changed'; path: string };
 
 export const wsConnected: Writable<boolean> = writable(false);
 

@@ -184,20 +184,37 @@ export interface CalendarEventEntry {
 export interface Milestone {
   text: string;
   done: boolean;
+  due_date?: string;
+  completed_at?: string;
 }
 
+export interface GoalReview {
+  date: string;
+  note: string;
+  progress: number;
+}
+
+// Mirrors internal/goals.Goal — the canonical .granit/goals.json schema.
+// Status uses the TUI's value space ('completed', not 'done'); the web
+// previously rendered a 'done' chip that never matched anything.
 export interface Goal {
   id: string;
   title: string;
   description?: string;
-  status?: string;
+  status?: 'active' | 'paused' | 'completed' | 'archived';
   category?: string;
+  color?: string;
   tags?: string[];
   target_date?: string;
   created_at?: string;
   updated_at?: string;
+  completed_at?: string;
   project?: string;
   milestones?: Milestone[] | null;
+  notes?: string;
+  review_frequency?: 'weekly' | 'monthly' | 'quarterly' | string;
+  last_reviewed?: string;
+  review_log?: GoalReview[];
 }
 
 export interface CalendarFeed {
