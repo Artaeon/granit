@@ -28,21 +28,33 @@ type icsEvent struct {
 
 // icsSource is one .ics file discovered in the vault. Source is what the
 // user sees in the calendar sources panel; Path is the absolute path.
+//
+// Writable is true iff the file lives under <vault>/calendars/ — that's
+// the directory where granit owns the .ics files (created via
+// POST /calendars, edited via the events sub-endpoints). Other roots
+// (vault root, Capital-C Calendars/) stay read-only because they may
+// be remote subscriptions or hand-managed files where we don't want
+// to clobber the user's structure.
 type icsSource struct {
-	Source string `json:"source"` // filename (e.g. "training.ics")
-	Path   string `json:"path"`   // absolute path on disk
+	Source   string `json:"source"`   // filename (e.g. "training.ics")
+	Path     string `json:"path"`     // absolute path on disk
+	Writable bool   `json:"writable"` // true if path is under <vault>/calendars/
 }
 
 // icsListSources walks the vault for *.ics files (one level deep under
 // vault root, calendars/, and Calendars/) and returns one entry per file.
+// Files under <vault>/calendars/ are tagged Writable=true; everything
+// else is read-only.
 func icsListSources(vaultRoot string) []icsSource {
 	var out []icsSource
-	roots := []string{vaultRoot, filepath.Join(vaultRoot, "calendars"), filepath.Join(vaultRoot, "Calendars")}
+	writableRoot := filepath.Join(vaultRoot, "calendars")
+	roots := []string{vaultRoot, writableRoot, filepath.Join(vaultRoot, "Calendars")}
 	for _, root := range roots {
 		entries, err := os.ReadDir(root)
 		if err != nil {
 			continue
 		}
+		writable := root == writableRoot
 		for _, e := range entries {
 			if e.IsDir() {
 				continue
@@ -51,8 +63,9 @@ func icsListSources(vaultRoot string) []icsSource {
 				continue
 			}
 			out = append(out, icsSource{
-				Source: e.Name(),
-				Path:   filepath.Join(root, e.Name()),
+				Source:   e.Name(),
+				Path:     filepath.Join(root, e.Name()),
+				Writable: writable,
 			})
 		}
 	}

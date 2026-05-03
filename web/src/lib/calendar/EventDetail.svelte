@@ -1,7 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { api, type CalendarEvent } from '$lib/api';
+  import { api, type CalendarEvent, type CalendarSource } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { onMount } from 'svelte';
   import { eventStartDate, eventEndDate, fmtTime, eventTypeColor } from './utils';
 
   let {
@@ -23,8 +24,27 @@
   let editLocation = $state('');
   let editColor = $state('cyan');
 
-  // Editable only for events backed by events.json (type === 'event' with eventId)
-  let editable = $derived(event?.type === 'event' && !!event?.eventId);
+  // Calendar sources — needed to know if an ICS event came from a
+  // writable .ics file. Loaded once on mount; refreshed on demand.
+  let sources = $state<CalendarSource[]>([]);
+  async function loadSources() {
+    try {
+      const r = await api.listCalendarSources();
+      sources = r.sources;
+    } catch {
+      sources = [];
+    }
+  }
+  onMount(loadSources);
+
+  // ICS events from a writable calendar are editable through the
+  // ics-events endpoints; events.json events keep their existing path.
+  let icsWritable = $derived.by(() => {
+    if (event?.type !== 'ics_event' || !event.source) return false;
+    const src = sources.find((s) => s.source === event.source);
+    return !!src?.writable;
+  });
+  let editable = $derived((event?.type === 'event' && !!event?.eventId) || icsWritable);
 
   function startEdit() {
     if (!event) return;
@@ -37,19 +57,39 @@
     editing = true;
   }
 
+  // Build an RFC3339 string from YYYY-MM-DD + HH:MM. Mirrors what the
+  // create form posts so the server's parser sees the same shape on
+  // both endpoints.
+  function localRFC3339FromParts(date: string, time: string): string {
+    const [y, mo, d] = date.split('-').map(Number);
+    const [h, mi] = time.split(':').map(Number);
+    return new Date(y, mo - 1, d, h, mi, 0, 0).toISOString();
+  }
+
   async function saveEdit(e: SubmitEvent) {
     e.preventDefault();
-    if (!event?.eventId) return;
+    if (!event) return;
     busy = true;
     try {
-      await api.patchEvent(event.eventId, {
-        title: editTitle,
-        date: editDate,
-        start_time: editStartTime,
-        end_time: editEndTime,
-        location: editLocation,
-        color: editColor
-      });
+      if (event.type === 'ics_event' && event.source && event.eventId) {
+        await api.patchICSEvent(event.source, event.eventId, {
+          summary: editTitle,
+          start: localRFC3339FromParts(editDate, editStartTime || '00:00'),
+          end: editEndTime ? localRFC3339FromParts(editDate, editEndTime) : undefined,
+          location: editLocation
+        });
+      } else if (event.eventId) {
+        await api.patchEvent(event.eventId, {
+          title: editTitle,
+          date: editDate,
+          start_time: editStartTime,
+          end_time: editEndTime,
+          location: editLocation,
+          color: editColor
+        });
+      } else {
+        return;
+      }
       editing = false;
       onChanged?.();
       open = false;
@@ -66,7 +106,11 @@
     if (!confirm(`Delete event "${event.title}"?`)) return;
     busy = true;
     try {
-      await api.deleteEvent(event.eventId);
+      if (event.type === 'ics_event' && event.source) {
+        await api.deleteICSEvent(event.source, event.eventId);
+      } else {
+        await api.deleteEvent(event.eventId);
+      }
       onChanged?.();
       open = false;
       toast.success('event deleted');

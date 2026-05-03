@@ -48,11 +48,42 @@ func defaultDashboard() dashboardConfig {
 	}
 }
 
+// widgetTypeToModuleID maps a dashboard widget Type to the module ID
+// that gates it. A widget without an entry stays visible regardless of
+// module state — that's the right default for "always-on" widgets like
+// greeting / now / quick-capture / daily-note / pinned that aren't
+// owned by any toggleable module.
+var widgetTypeToModuleID = map[string]string{
+	"goals-progress":  "goals",
+	"projects-active": "projects",
+	"habits":          "habit_tracker",
+	"streaks":         "habit_tracker",
+	"top-deadlines":   "deadlines",
+	"scripture":       "scripture",
+	"today-focus":     "morning",
+}
+
 func (s *Server) handleGetDashboard(w http.ResponseWriter, r *http.Request) {
 	cfg, err := s.readDashboard()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	// Filter widgets whose owning module has been disabled. We don't
+	// remove the widget from the user's saved config — they may
+	// re-enable the module later and expect the widget to come back
+	// with their previous Enabled flag. Just flip the response copy's
+	// Enabled to false so the client renders nothing for it.
+	reg := s.modulesRegistry()
+	if reg != nil {
+		filtered := make([]dashboardWidget, 0, len(cfg.Widgets))
+		for _, w := range cfg.Widgets {
+			if mid, ok := widgetTypeToModuleID[w.Type]; ok && !reg.Enabled(mid) {
+				w.Enabled = false
+			}
+			filtered = append(filtered, w)
+		}
+		cfg.Widgets = filtered
 	}
 	writeJSON(w, http.StatusOK, cfg)
 }

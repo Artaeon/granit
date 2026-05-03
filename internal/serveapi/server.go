@@ -20,6 +20,7 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/artaeon/granit/internal/daily"
+	"github.com/artaeon/granit/internal/modules"
 	"github.com/artaeon/granit/internal/tasks"
 	"github.com/artaeon/granit/internal/vault"
 	"github.com/artaeon/granit/internal/wshub"
@@ -59,6 +60,13 @@ type Server struct {
 	// same day fire the work once.
 	recurringMu     sync.Mutex
 	recurringRanFor string
+
+	// modules is the shared module registry rooted at
+	// <vault>/.granit/modules.json. Lazily constructed via
+	// modulesRegistry() so a missing-vault error path doesn't crash
+	// NewServer on a unit test that exercises a single handler.
+	modulesMu  sync.Mutex
+	modulesReg *modules.Registry
 }
 
 // activeTimer is the in-memory shape of a running timer. We keep it
@@ -112,6 +120,34 @@ func (s *Server) Close() error {
 		return s.watcher.Close()
 	}
 	return nil
+}
+
+// modulesRegistry returns the shared module registry, constructing it
+// on first use. We Boot lazily rather than in NewServer so a transient
+// modules.json read failure (rare but possible on a freshly-created
+// vault) surfaces on the /api/v1/modules call rather than blocking
+// server start. Errors fall back to a bare registry with the baseline
+// declarations so the settings page still renders even if the file is
+// unreadable.
+func (s *Server) modulesRegistry() *modules.Registry {
+	s.modulesMu.Lock()
+	defer s.modulesMu.Unlock()
+	if s.modulesReg != nil {
+		return s.modulesReg
+	}
+	reg, err := modules.Boot(s.cfg.Vault.Root)
+	if err != nil {
+		s.cfg.Logger.Warn("modules: boot failed, falling back to in-memory registry", "err", err)
+		// Boot's only failure modes are dup-register (programmer
+		// error) or a Load fail. Either way, return the half-built
+		// registry — it still has every baseline declaration and
+		// Enabled defaults true.
+		if reg == nil {
+			reg = modules.New(s.cfg.Vault.Root)
+		}
+	}
+	s.modulesReg = reg
+	return reg
 }
 
 // Handler returns the http.Handler for the API + embedded SPA.
@@ -180,6 +216,14 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/calendar", s.handleCalendar)
 		r.Get("/api/v1/calendar/sources", s.handleListCalendarSources)
 		r.Patch("/api/v1/calendar/sources", s.handlePatchCalendarSources)
+
+		// Local writable ICS calendars under <vault>/calendars/. Remote
+		// subscriptions (any .ics outside that dir) stay read-only — see
+		// requireWritableICS for the 403 path.
+		r.Post("/api/v1/calendars", s.handleCreateCalendar)
+		r.Post("/api/v1/calendars/{source}/events", s.handleCreateICSEvent)
+		r.Patch("/api/v1/calendars/{source}/events/{uid}", s.handlePatchICSEvent)
+		r.Delete("/api/v1/calendars/{source}/events/{uid}", s.handleDeleteICSEvent)
 
 		r.Get("/api/v1/projects", s.handleListProjects)
 		r.Post("/api/v1/projects", s.handleCreateProject)
@@ -268,6 +312,14 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/dashboard", s.handleGetDashboard)
 		r.Put("/api/v1/dashboard", s.handlePutDashboard)
 
+		// Module toggles — backed by .granit/modules.json. Hides web
+		// surfaces (sidebar nav entries + dashboard widgets + route
+		// guards) when the user disables a feature. Core IDs (notes,
+		// tasks, calendar, settings) are surfaced separately as
+		// always-on so the UI can render them with a lock icon.
+		r.Get("/api/v1/modules", s.handleListModules)
+		r.Put("/api/v1/modules", s.handlePutModules)
+
 		// Agents — read-only catalog + run history. Reuses internal/agents
 		// and the vault index, so this stays in lockstep with what the
 		// TUI's AgentRunner sees.
@@ -301,6 +353,12 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/bible/books", s.handleBibleBooks)
 		r.Get("/api/v1/bible/random", s.handleBibleRandom)
 		r.Get("/api/v1/bible/search", s.handleBibleSearch)
+		// Specific routes BEFORE the wildcard so /bible/bookmarks
+		// doesn't get caught by /bible/{book}/{chapter}.
+		r.Get("/api/v1/bible/bookmarks", s.handleListBibleBookmarks)
+		r.Post("/api/v1/bible/bookmarks", s.handleCreateBibleBookmark)
+		r.Patch("/api/v1/bible/bookmarks/{id}", s.handlePatchBibleBookmark)
+		r.Delete("/api/v1/bible/bookmarks/{id}", s.handleDeleteBibleBookmark)
 		r.Get("/api/v1/bible/{book}/{chapter}", s.handleBibleChapter)
 
 		// Devices — authState.Sessions exposed for management.

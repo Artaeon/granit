@@ -505,6 +505,90 @@ export interface CalendarSource {
   path: string;   // absolute
   folder: string; // vault-relative parent
   enabled: boolean;
+  /** True iff source is under <vault>/calendars/ — gate edits / new-event UI on this. */
+  writable: boolean;
+}
+
+// Wire shape for ICS event create/patch responses. Times are RFC3339 for
+// timed events, YYYY-MM-DD when allDay is true.
+export interface ICSEvent {
+  uid: string;
+  summary?: string;
+  start?: string;
+  end?: string;
+  allDay?: boolean;
+  location?: string;
+  description?: string;
+  rrule?: string;
+}
+
+export type ICSEventCreate = {
+  uid?: string;
+  summary: string;
+  start: string;
+  end?: string;
+  allDay?: boolean;
+  location?: string;
+  description?: string;
+  rrule?: string;
+};
+
+export type ICSEventPatch = Partial<ICSEventCreate>;
+
+// RRULE builder mirroring icswriter.BuildRRULE so the create form can
+// produce a rule string client-side. The server re-applies its own
+// formatter on patch round-trips, so this just has to be 5545-valid.
+export type ICSRecurrenceFreq = '' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+
+export interface ICSRecurrenceOpts {
+  freq: ICSRecurrenceFreq;
+  interval?: number;
+  count?: number;
+  until?: string; // YYYY-MM-DD
+  byDay?: string[]; // MO/TU/WE/TH/FR/SA/SU
+}
+
+/** Mirrors icswriter.BuildRRULE — same canonical field order so a
+ *  client-built rule round-trips byte-identical through the server. */
+export function buildRRULE(opts: ICSRecurrenceOpts): string {
+  if (!opts.freq) return '';
+  const parts: string[] = [`FREQ=${opts.freq}`];
+  if (opts.interval && opts.interval > 1) parts.push(`INTERVAL=${opts.interval}`);
+  if (opts.count && opts.count > 0) {
+    parts.push(`COUNT=${opts.count}`);
+  } else if (opts.until) {
+    // YYYY-MM-DD → YYYYMMDDT000000Z (server treats UNTIL as UTC).
+    const compact = opts.until.replaceAll('-', '') + 'T000000Z';
+    parts.push(`UNTIL=${compact}`);
+  }
+  if (opts.byDay && opts.byDay.length > 0) {
+    const days = [...opts.byDay].map((d) => d.toUpperCase()).filter(Boolean).sort();
+    parts.push(`BYDAY=${days.join(',')}`);
+  }
+  return parts.join(';');
+}
+
+// Module toggles. Server is the source of truth; .granit/modules.json
+// persists changes across both the web and TUI surfaces. Core entries
+// arrive on the same response under coreIds — they're surfaces the user
+// can never disable (notes, tasks, calendar, settings).
+export interface ModuleEntry {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  enabled: boolean;
+  dependsOn?: string[];
+}
+
+export interface CoreModuleEntry {
+  id: string;
+  name: string;
+}
+
+export interface ModulesResponse {
+  modules: ModuleEntry[];
+  coreIds: CoreModuleEntry[];
 }
 
 // ---- endpoints ----
@@ -624,6 +708,26 @@ export const api = {
     req<{ sources: CalendarSource[]; disabled: string[]; total: number }>('/calendar/sources', {
       method: 'PATCH',
       body: JSON.stringify({ disabled })
+    }),
+
+  // Local writable .ics calendars under <vault>/calendars/. Remote
+  // subscriptions stay read-only — the create-event form gates the
+  // picker on the source's writable flag.
+  createCalendar: (body: { name: string; display_name?: string }) =>
+    req<CalendarSource>('/calendars', { method: 'POST', body: JSON.stringify(body) }),
+  createICSEvent: (source: string, ev: ICSEventCreate) =>
+    req<ICSEvent>(`/calendars/${encodeURIComponent(source)}/events`, {
+      method: 'POST',
+      body: JSON.stringify(ev)
+    }),
+  patchICSEvent: (source: string, uid: string, patch: ICSEventPatch) =>
+    req<ICSEvent>(`/calendars/${encodeURIComponent(source)}/events/${encodeURIComponent(uid)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
+    }),
+  deleteICSEvent: (source: string, uid: string) =>
+    req<void>(`/calendars/${encodeURIComponent(source)}/events/${encodeURIComponent(uid)}`, {
+      method: 'DELETE'
     }),
 
   // Projects
@@ -908,7 +1012,14 @@ export const api = {
 
   // Dashboard config (read/write)
   getDashboard: () => req<DashboardConfig>('/dashboard'),
-  putDashboard: (cfg: DashboardConfig) => req<DashboardConfig>('/dashboard', { method: 'PUT', body: JSON.stringify(cfg) })
+  putDashboard: (cfg: DashboardConfig) => req<DashboardConfig>('/dashboard', { method: 'PUT', body: JSON.stringify(cfg) }),
+
+  // Module toggles. listModules returns both the toggleable modules
+  // and the always-on core IDs (notes/tasks/calendar/settings) so the
+  // settings UI can render a unified list.
+  listModules: () => req<ModulesResponse>('/modules'),
+  setModules: (patch: Record<string, boolean>) =>
+    req<ModulesResponse>('/modules', { method: 'PUT', body: JSON.stringify({ enabled: patch }) })
 };
 
 export interface ObjectTypeProperty {

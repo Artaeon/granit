@@ -35,7 +35,10 @@ export type WsEvent =
   // State files (.granit/goals.json, habits sidecars, etc.) — broadcast
   // when granitmeta or habits packages write to disk so the web doesn't
   // go stale after a TUI edit. Path is the vault-relative file path.
-  | { type: 'state.changed'; path: string };
+  | { type: 'state.changed'; path: string }
+  // Modules — fired after a successful PUT /api/v1/modules so connected
+  // clients refresh their cached enable-state without polling.
+  | { type: 'modules.changed' };
 
 export const wsConnected: Writable<boolean> = writable(false);
 

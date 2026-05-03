@@ -14,6 +14,9 @@
   import NavIcon from '$lib/components/NavIcon.svelte';
   import { connect, disconnect, wsConnected } from '$lib/ws';
   import { theme, nextTheme, themeIcon, themeLabel } from '$lib/stores/theme';
+  import { modulesStore } from '$lib/stores/modules';
+  import { goto } from '$app/navigation';
+  import { toast } from '$lib/components/toast';
 
   let palette: { show: () => void } | undefined = $state();
 
@@ -54,24 +57,53 @@
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);
   });
 
-  const nav = [
+  // moduleId on each entry maps the route to the module that gates it.
+  // Entries without a moduleId (or with a core ID) are always visible.
+  // The filter below resolves moduleId against the modules store on
+  // every $modulesStore tick.
+  const nav: { href: string; label: string; icon: string; moduleId?: string }[] = [
     { href: '/', label: 'Today', icon: 'today' },
-    { href: '/morning', label: 'Morning', icon: 'morning' },
+    { href: '/morning', label: 'Morning', icon: 'morning', moduleId: 'morning' },
     { href: '/tasks', label: 'Tasks', icon: 'tasks' },
     { href: '/calendar', label: 'Calendar', icon: 'calendar' },
-    { href: '/habits', label: 'Habits', icon: 'habits' },
-    { href: '/goals', label: 'Goals', icon: 'goals' },
-    { href: '/deadlines', label: 'Deadlines', icon: 'deadline' },
-    { href: '/projects', label: 'Projects', icon: 'projects' },
-    { href: '/agents', label: 'Agents', icon: 'agents' },
-    { href: '/chat', label: 'Chat', icon: 'chat' },
-    { href: '/scripture', label: 'Scripture', icon: 'scripture' },
-    { href: '/objects', label: 'Objects', icon: 'objects' },
+    { href: '/habits', label: 'Habits', icon: 'habits', moduleId: 'habit_tracker' },
+    { href: '/goals', label: 'Goals', icon: 'goals', moduleId: 'goals' },
+    { href: '/deadlines', label: 'Deadlines', icon: 'deadline', moduleId: 'deadlines' },
+    { href: '/projects', label: 'Projects', icon: 'projects', moduleId: 'projects' },
+    { href: '/agents', label: 'Agents', icon: 'agents', moduleId: 'agents' },
+    { href: '/chat', label: 'Chat', icon: 'chat', moduleId: 'chat' },
+    { href: '/scripture', label: 'Scripture', icon: 'scripture', moduleId: 'scripture' },
+    { href: '/objects', label: 'Objects', icon: 'objects', moduleId: 'objects' },
     { href: '/tags', label: 'Tags', icon: 'tags' },
-    { href: '/jots', label: 'Jots', icon: 'jots' },
+    { href: '/jots', label: 'Jots', icon: 'jots', moduleId: 'jots' },
     { href: '/notes', label: 'Notes', icon: 'notes' },
     { href: '/settings', label: 'Settings', icon: 'settings' }
   ];
+
+  // Reactive filter against the modules store. Read $modulesStore so
+  // the derived re-runs on every store tick (initial load, ws-driven
+  // refresh, settings-page toggle). Routes without a moduleId stay
+  // visible unconditionally.
+  let visibleNav = $derived.by(() => {
+    void $modulesStore; // subscribe
+    return nav.filter((item) => !item.moduleId || modulesStore.isEnabled(item.moduleId));
+  });
+
+  // Route guard: if the user lands on a path whose module is disabled
+  // (deep link, bookmark, stale tab), bounce to home. We use a tiny
+  // delay-via-effect rather than a load function because layout.ts is
+  // SSR-only — by the time any code runs the SPA is already mounted.
+  $effect(() => {
+    void $modulesStore; // re-run when modules state arrives/changes
+    const path = $page.url.pathname;
+    const match = nav.find(
+      (n) => n.href !== '/' && (path === n.href || path.startsWith(n.href + '/'))
+    );
+    if (match?.moduleId && !modulesStore.isEnabled(match.moduleId)) {
+      toast.info(`${match.label} is disabled — enable it in Settings → Modules`);
+      goto('/', { replaceState: true });
+    }
+  });
 
   let drawerOpen = $state(false);
 
@@ -107,7 +139,7 @@
         <span class="flex-1 text-left">Quick jump</span>
         <kbd class="text-[10px] text-dim font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">⌘K</kbd>
       </button>
-      {#each nav as item}
+      {#each visibleNav as item}
         {@const active = $page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href))}
         <a
           href={item.href}

@@ -1,12 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type OpenAIModelOption } from '$lib/api';
+  import { api, type OpenAIModelOption, type CalendarSource } from '$lib/api';
   import { onWsEvent, wsConnected } from '$lib/ws';
   import { theme, themeIcon, themeLabel, type Theme } from '$lib/stores/theme';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import RecurringEditor from '$lib/components/RecurringEditor.svelte';
+  import { modulesStore } from '$lib/stores/modules';
+  import { toast } from '$lib/components/toast';
 
   // Curated OpenAI model picker — refreshed against
   // developers.openai.com/api/docs/pricing periodically. Server is the
@@ -88,6 +90,33 @@
   async function commitRecurringTasks() {
     const list = recurringTasksBuf.split('\n').map((s) => s.trim()).filter(Boolean);
     await patchConfig({ daily_recurring_tasks: list });
+  }
+
+  // Local calendars — writable .ics files under <vault>/calendars/.
+  // Settings shows the list + a "+ New calendar" button; everything
+  // else (event CRUD) lives on the calendar page.
+  let calSources = $state<CalendarSource[]>([]);
+  let calBusy = $state(false);
+  async function loadCalSources() {
+    try {
+      const r = await api.listCalendarSources();
+      calSources = r.sources;
+    } catch {
+      calSources = [];
+    }
+  }
+  async function newCalendar() {
+    const name = prompt('Calendar name (a-z, 0-9, -, _, space; max 64 chars):');
+    if (!name) return;
+    calBusy = true;
+    try {
+      await api.createCalendar({ name: name.trim() });
+      await loadCalSources();
+    } catch (e) {
+      pwError = e instanceof Error ? e.message : String(e);
+    } finally {
+      calBusy = false;
+    }
   }
 
   // Change-password panel state — hidden until the user opens it.
@@ -175,8 +204,50 @@
   }
   onMount(() => {
     load();
-    return onWsEvent(() => load());
+    void modulesStore.ensureLoaded();
+    void loadCalSources();
+    return onWsEvent((ev) => {
+      // Watch for ICS file mutations so the calendars list refreshes
+      // when an event is created from another tab.
+      if (ev.type === 'state.changed' && ev.path?.startsWith('calendars/')) {
+        void loadCalSources();
+      }
+      load();
+    });
   });
+
+  // Module toggle UX. We debounce so a user rapid-firing checkboxes
+  // doesn't fire a PUT per click (the server batches anyway, but the
+  // round-trip still costs). Pending edits coalesce into one PUT after
+  // a quiet period; toast on success/failure.
+  let pendingModulePatch: Record<string, boolean> = $state({});
+  let moduleSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  let moduleSaving = $state(false);
+
+  function queueModuleToggle(id: string, enabled: boolean) {
+    pendingModulePatch[id] = enabled;
+    pendingModulePatch = { ...pendingModulePatch };
+    if (moduleSaveTimer) clearTimeout(moduleSaveTimer);
+    moduleSaveTimer = setTimeout(commitModulePatch, 350);
+  }
+
+  async function commitModulePatch() {
+    if (Object.keys(pendingModulePatch).length === 0) return;
+    const patch = pendingModulePatch;
+    pendingModulePatch = {};
+    moduleSaving = true;
+    try {
+      await modulesStore.set(patch);
+      toast.success('Modules updated');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+      // Roll back the optimistic store state so checkboxes match
+      // server truth on the next render tick.
+      void modulesStore.refresh();
+    } finally {
+      moduleSaving = false;
+    }
+  }
 
   const themeOptions: Theme[] = ['system', 'light', 'dark'];
 
@@ -219,6 +290,62 @@
       <p class="text-xs text-dim mt-2 leading-relaxed">
         System follows your OS setting and updates live. Stored in <code class="text-[10px]">localStorage</code>.
       </p>
+    </section>
+
+    <!-- Modules — toggle which surfaces appear in the sidebar / are
+         routable. Backed by .granit/modules.json (same file the TUI
+         registry persists to). Core surfaces (notes, tasks, calendar,
+         settings) are always-on and rendered with a lock icon. -->
+    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+      <header class="flex items-baseline justify-between mb-3">
+        <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Modules</h2>
+        {#if moduleSaving}
+          <span class="text-[10px] uppercase tracking-wider text-dim">saving…</span>
+        {/if}
+      </header>
+      <p class="text-xs text-dim mb-3">
+        Disable a module to hide its sidebar entry, dashboard widgets, and route. Re-enable any time — your data stays on disk.
+      </p>
+      {#if !$modulesStore.loaded}
+        <Skeleton class="h-4 w-full mb-2" />
+        <Skeleton class="h-4 w-3/4" />
+      {:else}
+        <div class="space-y-1.5">
+          <!-- Always-on core. Rendered first with a lock icon so the
+               user understands these can't be disabled. -->
+          {#each $modulesStore.coreIds as core (core.id)}
+            <label class="flex items-start gap-3 py-1 opacity-70 cursor-not-allowed">
+              <input type="checkbox" checked disabled class="w-4 h-4 mt-0.5 accent-primary" />
+              <div class="flex-1">
+                <div class="text-sm text-text flex items-center gap-1.5">
+                  <span>{core.name}</span>
+                  <span class="text-[10px]" title="Always on — core surface">🔒</span>
+                </div>
+                <div class="text-[11px] text-dim">Always on, can't disable.</div>
+              </div>
+            </label>
+          {/each}
+
+          <div class="border-t border-surface1 my-2"></div>
+
+          {#each $modulesStore.modules as m (m.id)}
+            {@const queued = pendingModulePatch[m.id]}
+            {@const checked = queued !== undefined ? queued : m.enabled}
+            <label class="flex items-start gap-3 cursor-pointer py-1">
+              <input
+                type="checkbox"
+                {checked}
+                onchange={(e) => queueModuleToggle(m.id, (e.target as HTMLInputElement).checked)}
+                class="w-4 h-4 mt-0.5 accent-primary cursor-pointer"
+              />
+              <div class="flex-1">
+                <div class="text-sm text-text">{m.name}</div>
+                <div class="text-[11px] text-dim">{m.description}</div>
+              </div>
+            </label>
+          {/each}
+        </div>
+      {/if}
     </section>
 
     <!-- AI provider — same config the TUI reads. Setting up either
