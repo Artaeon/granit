@@ -86,7 +86,8 @@
         { href: '/review', label: 'Review', icon: 'review', moduleId: 'weekly_review' },
         { href: '/goals', label: 'Goals', icon: 'goals', moduleId: 'goals' },
         { href: '/deadlines', label: 'Deadlines', icon: 'deadline', moduleId: 'deadlines' },
-        { href: '/projects', label: 'Projects', icon: 'projects', moduleId: 'projects' }
+        { href: '/projects', label: 'Projects', icon: 'projects', moduleId: 'projects' },
+        { href: '/ventures', label: 'Ventures', icon: 'ventures', moduleId: 'ventures' }
       ]
     },
     {

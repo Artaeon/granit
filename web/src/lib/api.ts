@@ -265,6 +265,25 @@ export interface Project {
   tasksTotal?: number;
 }
 
+// Mirrors internal/ventures.Venture — the umbrella entity above
+// projects + goals. Project.venture and Goal.venture stay as free-text
+// strings; this record adds the optional enrichment (description,
+// mission, color, ...) when the user explicitly creates one.
+export interface Venture {
+  name: string;
+  description?: string;
+  mission?: string;
+  color?: string;
+  status?: 'active' | 'paused' | 'archived' | string;
+  url?: string;
+  tags?: string[];
+  created_at?: string;
+  updated_at?: string;
+  // Server-decorated:
+  project_count?: number;
+  goal_count?: number;
+}
+
 export interface CalendarEventEntry {
   id: string;
   title: string;
@@ -957,6 +976,19 @@ export const api = {
     }),
   deleteProject: (name: string) =>
     req<void>(`/projects/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+
+  // Ventures (umbrella above projects/goals)
+  listVentures: () => req<{ ventures: Venture[]; total: number }>('/ventures'),
+  getVenture: (name: string) => req<Venture>(`/ventures/${encodeURIComponent(name)}`),
+  createVenture: (v: Partial<Venture>) =>
+    req<Venture>('/ventures', { method: 'POST', body: JSON.stringify(v) }),
+  patchVenture: (name: string, v: Partial<Venture>) =>
+    req<Venture>(`/ventures/${encodeURIComponent(name)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(v)
+    }),
+  deleteVenture: (name: string) =>
+    req<void>(`/ventures/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 
   // Calendar events (events.json)
   listEvents: () => req<{ events: CalendarEventEntry[]; total: number }>('/events'),

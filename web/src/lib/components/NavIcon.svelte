@@ -37,6 +37,15 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>
   </svg>
+{:else if name === 'ventures'}
+  <!-- Stylized building / venture portfolio: roof + door + flanking
+       windows. Reads as "company / org" without using a literal
+       briefcase that would clash with the existing project icon. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <path d="M3 21V8l9-5 9 5v13"/>
+    <path d="M9 21v-6h6v6"/>
+    <path d="M7 11h.01M17 11h.01M7 15h.01M17 15h.01"/>
+  </svg>
 {:else if name === 'chat'}
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>

@@ -231,6 +231,15 @@ func (s *Server) Handler() http.Handler {
 		r.Patch("/api/v1/projects/{name}", s.handlePatchProject)
 		r.Delete("/api/v1/projects/{name}", s.handleDeleteProject)
 
+		// Ventures — umbrella entity above projects/goals. Project.Venture
+		// and Goal.Venture remain free-text strings; this endpoint serves
+		// the optional enrichment layer (description, mission, color, ...).
+		r.Get("/api/v1/ventures", s.handleListVentures)
+		r.Post("/api/v1/ventures", s.handleCreateVenture)
+		r.Get("/api/v1/ventures/{name}", s.handleGetVenture)
+		r.Patch("/api/v1/ventures/{name}", s.handlePatchVenture)
+		r.Delete("/api/v1/ventures/{name}", s.handleDeleteVenture)
+
 		r.Get("/api/v1/events", s.handleListEvents)
 		r.Post("/api/v1/events", s.handleCreateEvent)
 		r.Patch("/api/v1/events/{id}", s.handlePatchEvent)
