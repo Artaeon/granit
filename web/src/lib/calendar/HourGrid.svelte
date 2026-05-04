@@ -114,6 +114,21 @@
   let scrollEl: HTMLDivElement | undefined = $state();
   let innerGridEl: HTMLDivElement | undefined = $state();
 
+  // Per-day all-day expansion state. The all-day strip used to render
+  // every event on its own line, so a vacation-week pushed the time
+  // grid down by 5+ rows on every day. We now cap the visible count
+  // and surface a "+N more" link that flips the day's entry in this
+  // set to "expanded". Keyed by ISO date string so the toggle
+  // persists across re-renders.
+  const ALL_DAY_VISIBLE = 2;
+  let expandedAllDay = $state<Set<string>>(new Set());
+  function toggleAllDayExpand(dayKey: string) {
+    const next = new Set(expandedAllDay);
+    if (next.has(dayKey)) next.delete(dayKey);
+    else next.add(dayKey);
+    expandedAllDay = next;
+  }
+
   onMount(() => {
     if (scrollEl) {
       const n = new Date();
@@ -451,18 +466,36 @@
       <div class="grid border-b border-surface1 min-h-[28px]" style="grid-template-columns: {cols}">
         <div class="text-[10px] text-dim p-1 text-right">all-day</div>
         {#each days as d}
-          {@const list = (eventsByDay.get(fmtDateISO(d)) ?? []).filter(isAllDay)}
+          {@const dayKey = fmtDateISO(d)}
+          {@const list = (eventsByDay.get(dayKey) ?? []).filter(isAllDay)}
+          {@const expanded = expandedAllDay.has(dayKey)}
+          {@const visible = expanded ? list : list.slice(0, ALL_DAY_VISIBLE)}
+          {@const hidden = list.length - visible.length}
           <div class="border-l border-surface1 p-1 space-y-0.5 min-w-0">
-            {#each list as ev}
+            {#each visible as ev}
               {@const c = eventTypeColor(ev)}
               <button
                 onclick={() => onClickEvent(ev)}
-                class="block w-full text-left text-[11px] px-1.5 py-0.5 rounded truncate"
+                class="block w-full text-left text-[10px] leading-tight px-1.5 py-0.5 rounded truncate"
                 style="background: {c.bg}; color: {c.fg}; border-left: 2px solid {c.border}; {ev.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}"
               >
                 {ev.title}
               </button>
             {/each}
+            {#if hidden > 0}
+              <button
+                type="button"
+                onclick={() => toggleAllDayExpand(dayKey)}
+                class="block w-full text-left text-[10px] text-dim hover:text-text px-1.5 leading-tight"
+                title="show all {list.length} all-day events for this day"
+              >+ {hidden} more</button>
+            {:else if expanded && list.length > ALL_DAY_VISIBLE}
+              <button
+                type="button"
+                onclick={() => toggleAllDayExpand(dayKey)}
+                class="block w-full text-left text-[10px] text-dim hover:text-text px-1.5 leading-tight"
+              >show less</button>
+            {/if}
           </div>
         {/each}
       </div>
