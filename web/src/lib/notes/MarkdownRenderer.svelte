@@ -32,12 +32,24 @@
     return src.slice(end + 4).replace(/^\r?\n/, '');
   }
 
+  // Footnote sentinels. Sandwich the ref id between SO/SI control bytes
+  // (\x0E and \x0F) to keep them distinct from the WL/TG/DG/IM markers
+  // above. Footnotes use Pandoc/PHP-Markdown-Extra syntax: `[^id]`
+  // inline reference, `[^id]: text` line-start definition.
+  const FNR_OPEN = '\x0EFNR\x0F';
+  const FNR_CLOSE = '\x0E/FNR\x0F';
+
   // Diagrams + image transclusions stashed during preprocess and
   // restored as styled elements in postprocess. Module-scoped so the
   // helpers can share state across one render pass — $derived re-runs
   // the whole function so there's no cross-render leakage.
   let diagramCache: { kind: string; source: string }[] = [];
   let imageCache: string[] = [];
+  // Footnote state: defs is the line-start `[^id]: body` map; refs is
+  // the order of first-occurrence references so we can number them in
+  // appearance order regardless of definition order in the source.
+  let footnoteDefs: Map<string, string> = new Map();
+  let footnoteRefOrder: string[] = [];
 
   // Image extensions we know how to embed via the file API. Anything
   // else (PDF, audio, video, .canvas) falls through to the plain
@@ -46,6 +58,31 @@
 
   function preprocess(src: string): string {
     let s = stripFrontmatter(src);
+    // Footnote definitions FIRST so subsequent passes don't try to
+    // tokenize the definition body (which is just markdown that ends
+    // up rendered in the footnote section, not inline). Match line-
+    // start `[^id]: text` taking the rest of the line as the body —
+    // simple form; pandoc allows multi-line continuations but those
+    // are rare in practice and a single-line def covers the common
+    // case. Strip the line entirely from the doc; postprocess
+    // reinjects the footnotes section at the bottom.
+    footnoteDefs = new Map();
+    footnoteRefOrder = [];
+    s = s.replace(/^\[\^([^\]\s]+)\]:[ \t]+(.*)$/gm, (_, id: string, body: string) => {
+      footnoteDefs.set(String(id), String(body).trim());
+      return ''; // remove the def line — keeps the visible body clean
+    });
+    // Footnote references: replace `[^id]` (inline) with a sentinel
+    // pair carrying the id. Order of first-appearance drives the
+    // displayed number (matches Pandoc behaviour). A reference whose
+    // id has no matching definition stays sentinel-wrapped — postprocess
+    // renders it as a clearly-broken superscript so the user sees the
+    // gap rather than a silent disappearance.
+    s = s.replace(/\[\^([^\]\s]+)\]/g, (_, id: string) => {
+      const sid = String(id);
+      if (!footnoteRefOrder.includes(sid)) footnoteRefOrder.push(sid);
+      return `${FNR_OPEN}${sid}${FNR_CLOSE}`;
+    });
     // Carve out granit-specific fenced blocks (diagram/mermaid/mindmap/
     // chart/flow) BEFORE wikilink+tag substitution so their bodies
     // don't get clobbered.
@@ -205,6 +242,48 @@
     // Tags → spans
     const tgRe = new RegExp(`${esc(TAG_OPEN)}([^${esc(TAG_CLOSE)}]+)${esc(TAG_CLOSE)}`, 'g');
     s = s.replace(tgRe, (_, tag: string) => `<span class="hashtag">#${escHtml(tag)}</span>`);
+    // Footnote references: superscript anchor that jumps to the
+    // matching <li id="fn-<id>"> in the footnotes section. Includes a
+    // back-link (↩) on the definition side so the reader can hop both
+    // directions, matching Pandoc's default footnote rendering.
+    const fnrRe = new RegExp(`${esc(FNR_OPEN)}([^${esc(FNR_CLOSE)[0]}]+?)${esc(FNR_CLOSE)}`, 'g');
+    s = s.replace(fnrRe, (_, id: string) => {
+      const idx = footnoteRefOrder.indexOf(id);
+      const num = idx === -1 ? '?' : String(idx + 1);
+      const safeId = escAttr(id);
+      const broken = !footnoteDefs.has(id);
+      const cls = broken ? 'footnote-ref footnote-ref--broken' : 'footnote-ref';
+      const title = broken ? `unresolved footnote: ${escHtml(id)}` : '';
+      return `<sup class="${cls}"><a href="#fn-${safeId}" id="fnref-${safeId}" title="${title}">[${num}]</a></sup>`;
+    });
+    // Footnote definitions → ordered list at the bottom. Only emit the
+    // section when at least one ref was seen; a doc with definitions
+    // but no refs is probably mid-edit (user wrote the def first), so
+    // hide them rather than dumping orphan footnotes that look like
+    // garbage trailing text.
+    if (footnoteRefOrder.length > 0) {
+      const items: string[] = [];
+      for (const id of footnoteRefOrder) {
+        const body = footnoteDefs.get(id) ?? '<em class="footnote-missing">no definition</em>';
+        const safeId = escAttr(id);
+        // Body has been through marked already? No — we stripped the
+        // definition line in preprocess, so body is raw markdown.
+        // Inline-render it through marked.parseInline so `**bold**` and
+        // links inside footnotes work, but we don't get nested <p>
+        // wrappers that would break the <li> layout.
+        let rendered: string;
+        try {
+          rendered = marked.parseInline(body, { async: false }) as string;
+        } catch {
+          rendered = escHtml(body);
+        }
+        items.push(
+          `<li id="fn-${safeId}" class="footnote-item">${rendered} ` +
+            `<a class="footnote-back" href="#fnref-${safeId}" title="back to text">↩</a></li>`
+        );
+      }
+      s += `<hr class="footnote-sep"><ol class="footnote-list">${items.join('')}</ol>`;
+    }
     // Obsidian callouts last so the regex sees the final tree.
     s = rewriteCallouts(s);
     return s;
@@ -264,6 +343,44 @@
 </div>
 
 <style>
+  /* Footnote rendering — Pandoc-compatible markup. */
+  :global(.footnote-ref a) {
+    color: var(--color-secondary);
+    text-decoration: none;
+    font-size: 0.85em;
+    padding: 0 0.1em;
+  }
+  :global(.footnote-ref a:hover) { text-decoration: underline; }
+  :global(.footnote-ref--broken a) {
+    color: var(--color-error);
+    border-bottom: 1px dotted var(--color-error);
+  }
+  :global(.footnote-sep) {
+    margin: 1.5rem 0 0.5rem;
+    border: none;
+    border-top: 1px solid var(--color-surface1);
+  }
+  :global(.footnote-list) {
+    margin: 0;
+    padding-left: 1.5rem;
+    color: var(--color-subtext);
+    font-size: 0.92em;
+    line-height: 1.55;
+  }
+  :global(.footnote-list li) { margin: 0.3rem 0; }
+  :global(.footnote-list li:target) {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    border-radius: 0.25rem;
+    padding: 0.1rem 0.4rem;
+  }
+  :global(.footnote-back) {
+    color: var(--color-dim);
+    text-decoration: none;
+    margin-left: 0.3em;
+  }
+  :global(.footnote-back:hover) { color: var(--color-primary); }
+  :global(.footnote-missing) { color: var(--color-error); font-style: italic; }
+
   /* Diagram placeholder */
   :global(.diagram-card) {
     border: 1px dashed color-mix(in srgb, var(--color-secondary) 50%, transparent);

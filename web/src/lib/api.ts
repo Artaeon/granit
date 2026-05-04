@@ -1001,6 +1001,14 @@ export const api = {
   deleteVenture: (name: string) =>
     req<void>(`/ventures/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 
+  // Editor snippets — slash-command templates the CodeMirror
+  // autocomplete extension surfaces when the user types '/'. Read-only;
+  // the source of truth lives in internal/snippets shared with the TUI.
+  listSnippets: () =>
+    req<{ snippets: { trigger: string; description: string; content: string }[]; total: number }>(
+      '/snippets'
+    ),
+
   // Calendar events (events.json)
   listEvents: () => req<{ events: CalendarEventEntry[]; total: number }>('/events'),
   createEvent: (ev: Partial<CalendarEventEntry>) =>

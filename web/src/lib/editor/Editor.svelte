@@ -10,6 +10,8 @@
 
   import { theme, mdHighlight } from './theme';
   import { wikilinkDecoration, wikilinkClickHandler, wikilinkComplete } from './wikilinks';
+  import { snippetComplete } from './snippets';
+  import { tagComplete } from './tags';
 
   let {
     value = $bindable(''),
@@ -42,7 +44,10 @@
         bracketMatching(),
         closeBrackets(),
         autocompletion({
-          override: [wikilinkComplete],
+          // Order: wikilinks ([[…]]) → snippets (/…) → tags (#…). All
+          // three are scoped by their trigger character so they don't
+          // step on each other; CodeMirror runs each source and merges.
+          override: [wikilinkComplete, snippetComplete, tagComplete],
           activateOnTyping: true,
           closeOnBlur: true
         }),
