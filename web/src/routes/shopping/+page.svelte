@@ -55,7 +55,21 @@
   let eQuantity = $state<number | ''>('');
   let eUrl = $state('');
   let eStandard = $state(false);
+  let eCadence = $state<'' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly'>('');
   let eNotes = $state('');
+
+  // Cadence picker options. Empty value = "no projected recurrence"
+  // (catalogue-only — the standard exists but doesn't contribute to
+  // the /finance monthly run-rate). The label "—" matches what the
+  // user expects from a "none" sentinel in the rest of granit.
+  const CADENCE_OPTIONS: { value: '' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly'; label: string }[] = [
+    { value: '', label: '— no schedule —' },
+    { value: 'weekly', label: 'weekly' },
+    { value: 'biweekly', label: 'biweekly' },
+    { value: 'monthly', label: 'monthly' },
+    { value: 'quarterly', label: 'quarterly' },
+    { value: 'yearly', label: 'yearly' }
+  ];
 
   const CATEGORY_SUGGESTIONS = [
     'groceries',
@@ -231,6 +245,11 @@
     eQuantity = it.quantity ?? '';
     eUrl = it.url ?? '';
     eStandard = !!it.standard;
+    // Cast to the local union — server may return any string but
+    // the picker only honours canonical values; everything else
+    // round-trips as "no schedule" via NormalizeCadence on save.
+    const c = (it.cadence ?? '') as typeof eCadence;
+    eCadence = ['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'].includes(c) ? c : '';
     eNotes = it.notes ?? '';
   }
   function cancelEdit() {
@@ -246,6 +265,10 @@
         quantity: typeof eQuantity === 'number' ? eQuantity : undefined,
         url: eUrl.trim() || undefined,
         standard: eStandard,
+        // Cadence only meaningful when standard=true; we still send
+        // it on non-standard items so a later "mark standard" picks
+        // up an existing user intent without re-asking.
+        cadence: eCadence,
         notes: eNotes.trim() || undefined
       });
       items = items.map((x) => (x.id === updated.id ? updated : x));
@@ -295,17 +318,32 @@
       </p>
     </header>
 
-    <!-- Totals strip — rolls up alongside /finance overview. -->
+    <!-- Totals strip — rolls up alongside /finance overview. Three
+         cards on phones (2 mobile rows), four on tablet+ when there's
+         a recurring projection to surface. -->
     {#if totals}
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-5">
+      {@const showRecurring = (totals.recurring_standards_count ?? 0) > 0}
+      <div class="grid grid-cols-2 {showRecurring ? 'lg:grid-cols-4 sm:grid-cols-3' : 'sm:grid-cols-3'} gap-2 mb-5">
         <div class="px-3 py-2 bg-surface0 border border-surface1 rounded">
           <div class="text-2xl font-semibold text-text tabular-nums leading-none">{totals.planned_count}</div>
-          <div class="text-[11px] text-dim mt-1">Planned · {fmtMoney(totals.planned_sum)}</div>
+          <div class="text-[11px] text-dim mt-1 truncate">Planned · {fmtMoney(totals.planned_sum)}</div>
         </div>
         <div class="px-3 py-2 bg-surface0 border border-surface1 rounded">
           <div class="text-2xl font-semibold text-text tabular-nums leading-none">{totals.bought_month_count}</div>
-          <div class="text-[11px] text-dim mt-1">Bought this month · {fmtMoney(totals.bought_month_sum)}</div>
+          <div class="text-[11px] text-dim mt-1 truncate">Bought this month · {fmtMoney(totals.bought_month_sum)}</div>
         </div>
+        {#if showRecurring}
+          <a
+            href="/finance"
+            class="px-3 py-2 bg-surface0 border border-surface1 rounded hover:border-primary block group"
+            title="recurring standards projected per month — read in /finance overview"
+          >
+            <div class="text-2xl font-semibold tabular-nums leading-none text-secondary group-hover:text-primary">
+              {fmtMoney(totals.recurring_monthly_estimate)}
+            </div>
+            <div class="text-[11px] text-dim mt-1 truncate">~ recurring/month · {totals.recurring_standards_count} standards</div>
+          </a>
+        {/if}
         <a
           href="/finance"
           class="hidden sm:flex px-3 py-2 bg-surface0 border border-surface1 rounded text-xs text-secondary hover:border-primary items-center justify-center"
@@ -517,6 +555,31 @@
                         placeholder="notes (optional)"
                         class="w-full px-2 py-1.5 bg-mantle border border-surface1 rounded text-xs text-text"
                       ></textarea>
+                      <!-- Cadence picker — only meaningful for standards
+                           but we let the user set it on any item; if
+                           they later mark standard, the cadence is
+                           already in place. Hidden when neither
+                           standard nor an existing cadence is set so
+                           the form stays compact for simple items. -->
+                      {#if eStandard || eCadence}
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <label class="text-xs text-dim flex items-center gap-1.5 flex-shrink-0">
+                            recurs
+                            <select
+                              bind:value={eCadence}
+                              class="px-2 py-1 bg-mantle border border-surface1 rounded text-xs text-text"
+                            >
+                              {#each CADENCE_OPTIONS as o}<option value={o.value}>{o.label}</option>{/each}
+                            </select>
+                          </label>
+                          {#if eStandard && eCadence && typeof ePrice === 'number' && ePrice > 0}
+                            {@const qty = typeof eQuantity === 'number' && eQuantity > 0 ? eQuantity : 1}
+                            {@const factor = eCadence === 'weekly' ? 52/12 : eCadence === 'biweekly' ? 26/12 : eCadence === 'monthly' ? 1 : eCadence === 'quarterly' ? 1/3 : eCadence === 'yearly' ? 1/12 : 0}
+                            {@const monthly = ePrice * qty * factor}
+                            <span class="text-[11px] text-secondary">≈ {fmtMoney(monthly)}/month</span>
+                          {/if}
+                        </div>
+                      {/if}
                       <div class="flex items-center gap-3 flex-wrap">
                         <label class="flex items-center gap-1.5 text-xs text-dim cursor-pointer">
                           <input type="checkbox" bind:checked={eStandard} class="accent-primary" />
@@ -568,7 +631,9 @@
                         {/if}
                         <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
                           {#if it.standard}
-                            <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary/15 text-secondary">standard</span>
+                            <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary/15 text-secondary">
+                              standard{#if it.cadence} · {it.cadence}{/if}
+                            </span>
                           {/if}
                           {#if it.url}
                             <a

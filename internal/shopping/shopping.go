@@ -80,6 +80,78 @@ func NormalizeCategory(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
+// Cadence is how often a standard recurs. Used only for items
+// flagged Standard=true — non-standard one-off purchases ignore
+// this field. The /finance run-rate calc multiplies Price by the
+// per-month factor (CadenceMonthlyFactor) to project recurring
+// shopping spend alongside subscriptions.
+type Cadence string
+
+const (
+	// CadenceNone means "no projected recurrence" — a standard
+	// without a cadence is still in the standards catalogue but
+	// doesn't contribute to the monthly run-rate. The user might
+	// pick this up "when needed" rather than on a schedule.
+	CadenceNone     Cadence = ""
+	CadenceWeekly   Cadence = "weekly"
+	CadenceBiweekly Cadence = "biweekly"
+	CadenceMonthly  Cadence = "monthly"
+	CadenceQuarterly Cadence = "quarterly"
+	CadenceYearly   Cadence = "yearly"
+)
+
+// CadenceSuggestions lists the canonical values in display order.
+var CadenceSuggestions = []string{
+	string(CadenceNone),
+	string(CadenceWeekly),
+	string(CadenceBiweekly),
+	string(CadenceMonthly),
+	string(CadenceQuarterly),
+	string(CadenceYearly),
+}
+
+// NormalizeCadence collapses input to a canonical value. Unknown
+// → "" (none) so a typo'd PATCH doesn't accidentally project
+// monthly spend the user didn't ask for.
+func NormalizeCadence(s string) string {
+	switch Cadence(strings.ToLower(strings.TrimSpace(s))) {
+	case CadenceWeekly:
+		return string(CadenceWeekly)
+	case CadenceBiweekly:
+		return string(CadenceBiweekly)
+	case CadenceMonthly:
+		return string(CadenceMonthly)
+	case CadenceQuarterly:
+		return string(CadenceQuarterly)
+	case CadenceYearly:
+		return string(CadenceYearly)
+	default:
+		return string(CadenceNone)
+	}
+}
+
+// CadenceMonthlyFactor returns "how many times per month does this
+// recur" — used to project monthly spend from a per-occurrence
+// price. Weekly = 52/12 ≈ 4.333, biweekly = 26/12 ≈ 2.167.
+// Cadence "" / unknown returns 0 so non-recurring items contribute
+// nothing to the projection.
+func CadenceMonthlyFactor(c string) float64 {
+	switch Cadence(c) {
+	case CadenceWeekly:
+		return 52.0 / 12.0
+	case CadenceBiweekly:
+		return 26.0 / 12.0
+	case CadenceMonthly:
+		return 1
+	case CadenceQuarterly:
+		return 1.0 / 3.0
+	case CadenceYearly:
+		return 1.0 / 12.0
+	default:
+		return 0
+	}
+}
+
 // Item is one thing-to-buy. Quantity defaults to 1 when zero is
 // stored — UI math (Price * Quantity totals) treats Quantity=0
 // as 1 so back-fill doesn't break running spend calculations on
@@ -97,7 +169,13 @@ type Item struct {
 	// view surfaces these together so the user can re-plan a fresh
 	// week's groceries by flipping their statuses back to planned.
 	Standard bool   `json:"standard,omitempty"`
-	Notes    string `json:"notes,omitempty"`
+	// Cadence is the recurrence pattern for a Standard item:
+	// weekly / biweekly / monthly / quarterly / yearly, or "" for
+	// "no projected recurrence". Drives the /finance run-rate
+	// projection — without a cadence a standard counts as a
+	// catalogue entry only.
+	Cadence string `json:"cadence,omitempty"`
+	Notes   string `json:"notes,omitempty"`
 	// BoughtAt is the YYYY-MM-DD date the user marked the item
 	// bought. Set automatically on the planned→bought transition;
 	// cleared on re-plan back to planned. Used by /finance for the
@@ -105,6 +183,19 @@ type Item struct {
 	BoughtAt  string `json:"bought_at,omitempty"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
+}
+
+// MonthlyRecurringEstimate projects this item's monthly contribution
+// to the recurring-spend run-rate. Returns 0 unless Standard=true
+// AND a non-empty Cadence AND a positive Price are all set —
+// missing any of those signals "we don't know enough to project".
+// Quantity multiplies the per-occurrence price (a weekly purchase
+// of 2 yogurts at €1.50 each is 2 * 1.50 * 4.33 ≈ €13/month).
+func (i Item) MonthlyRecurringEstimate() float64 {
+	if !i.Standard || i.Cadence == "" || i.Price <= 0 {
+		return 0
+	}
+	return i.LineTotal() * CadenceMonthlyFactor(i.Cadence)
 }
 
 // EffectiveQty returns Quantity with the zero-default-to-1 mapping
@@ -237,17 +328,27 @@ func SortForDisplay(list []Item) []Item {
 	return out
 }
 
-// Totals aggregates planned and bought-this-month spend across the
-// list. The /finance overview reads this to surface "you've planned
-// €X / bought €Y this month" alongside accounts. Bought-month is
-// determined by the YYYY-MM prefix of BoughtAt for the given Now —
-// timezone-stable because BoughtAt is a date string in the user's
-// local zone (set by handler at write time).
+// Totals aggregates planned, bought-this-month, and projected-
+// recurring spend across the list. The /finance overview reads this
+// to surface running numbers alongside accounts/income/subscriptions.
+// Bought-month is determined by the YYYY-MM prefix of BoughtAt for
+// the given Now — timezone-stable because BoughtAt is a date string
+// in the user's local zone (set by handler at write time).
 type Totals struct {
 	PlannedCount     int     `json:"planned_count"`
 	PlannedSum       float64 `json:"planned_sum"`
 	BoughtMonthCount int     `json:"bought_month_count"`
 	BoughtMonthSum   float64 `json:"bought_month_sum"`
+	// RecurringMonthlyEstimate sums every standard item's projected
+	// per-month spend (see Item.MonthlyRecurringEstimate). Combined
+	// with finance subscriptions, this is "what does my baseline
+	// month cost me" — a number the user can sanity-check against
+	// their actual outflows.
+	RecurringMonthlyEstimate float64 `json:"recurring_monthly_estimate"`
+	// RecurringStandardsCount is how many standards contribute to
+	// that projection. Hidden from the wire when zero so a fresh
+	// vault doesn't show "0 recurring" noise.
+	RecurringStandardsCount int `json:"recurring_standards_count,omitempty"`
 }
 
 // AggregateTotals walks the list and returns spend rollups. now is
@@ -266,6 +367,10 @@ func AggregateTotals(list []Item, now time.Time) Totals {
 				t.BoughtMonthCount++
 				t.BoughtMonthSum += it.LineTotal()
 			}
+		}
+		if est := it.MonthlyRecurringEstimate(); est > 0 {
+			t.RecurringMonthlyEstimate += est
+			t.RecurringStandardsCount++
 		}
 	}
 	return t

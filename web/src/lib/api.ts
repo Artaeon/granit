@@ -737,6 +737,11 @@ export interface Virtue {
 // basic clothing). Re-planning a bought standard flips its
 // status back to 'planned' in place; no template-duplication.
 export type ShoppingStatus = 'planned' | 'bought' | 'skipped';
+// Cadence for recurring standards. "" means catalogue-only (no
+// monthly projection contribution). The /finance overview reads
+// the cadence-driven monthly estimate alongside subscriptions to
+// surface "what does my baseline month cost".
+export type ShoppingCadence = '' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
 export interface ShoppingItem {
   id: string;
   name: string;
@@ -747,6 +752,7 @@ export interface ShoppingItem {
   category?: string;
   status: ShoppingStatus | string;
   standard?: boolean;
+  cadence?: ShoppingCadence | string;
   notes?: string;
   bought_at?: string;
   created_at: string;
@@ -757,6 +763,8 @@ export interface ShoppingTotals {
   planned_sum: number;
   bought_month_count: number;
   bought_month_sum: number;
+  recurring_monthly_estimate: number;
+  recurring_standards_count?: number;
 }
 
 // People — lightweight CRM. The list response also carries derived

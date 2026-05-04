@@ -612,17 +612,33 @@
 
         <!-- Net flow line: what's the user keeping each month? Plain
              arithmetic so the user can sanity-check it against their
-             own spreadsheet without trusting a black-box derivation. -->
+             own spreadsheet without trusting a black-box derivation.
+             When recurring shopping standards exist (weekly groceries,
+             monthly vitamins, ...) we fold their projection in too —
+             the run-rate becomes "income − subscriptions − recurring
+             groceries", a closer match to actual baseline outflow. -->
         {#if overview.income_monthly_actual_cents > 0 || overview.subscription_monthly_cents > 0}
-          {@const net = overview.income_monthly_actual_cents - overview.subscription_monthly_cents}
+          {@const recurringShoppingCents = shoppingTotals ? Math.round(shoppingTotals.recurring_monthly_estimate * 100) : 0}
+          {@const net = overview.income_monthly_actual_cents - overview.subscription_monthly_cents - recurringShoppingCents}
           <div class="mb-6 px-4 py-3 bg-surface0/40 border border-surface1 rounded text-sm">
             <span class="text-dim">Monthly run rate: </span>
             <span class="text-success">+{fmtMoney(overview.income_monthly_actual_cents, overview.currency)}</span>
             <span class="text-dim"> − </span>
             <span class="text-error">{fmtMoney(overview.subscription_monthly_cents, overview.currency)}</span>
+            {#if recurringShoppingCents > 0}
+              <span class="text-dim"> − </span>
+              <span class="text-error">{fmtMoney(recurringShoppingCents, overview.currency)}</span>
+              <span class="text-[11px] text-dim">(shopping)</span>
+            {/if}
             <span class="text-dim"> = </span>
             <span class="font-semibold {net >= 0 ? 'text-text' : 'text-error'}">{fmtMoney(net, overview.currency)} / month</span>
-            <p class="text-[11px] text-dim mt-1">From recurring income & subscriptions only — doesn't include one-off spending.</p>
+            <p class="text-[11px] text-dim mt-1">
+              {#if recurringShoppingCents > 0}
+                Recurring income + subscriptions + recurring shopping standards. One-off spending sits in the shopping rollup below.
+              {:else}
+                From recurring income & subscriptions only — doesn't include one-off spending.
+              {/if}
+            </p>
           </div>
         {/if}
 

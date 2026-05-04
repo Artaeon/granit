@@ -65,6 +65,7 @@ func (s *Server) handleCreateShoppingItem(w http.ResponseWriter, r *http.Request
 	}
 	it.Status = shopping.NormalizeStatus(it.Status)
 	it.Category = shopping.NormalizeCategory(it.Category)
+	it.Cadence = shopping.NormalizeCadence(it.Cadence)
 	now := time.Now().Format(time.RFC3339)
 	if it.CreatedAt == "" {
 		it.CreatedAt = now
@@ -124,6 +125,7 @@ func (s *Server) handlePatchShoppingItem(w http.ResponseWriter, r *http.Request)
 		func() error { return apply("category", &it.Category) },
 		func() error { return apply("status", &it.Status) },
 		func() error { return apply("standard", &it.Standard) },
+		func() error { return apply("cadence", &it.Cadence) },
 		func() error { return apply("notes", &it.Notes) },
 		func() error { return apply("bought_at", &it.BoughtAt) },
 	} {
@@ -138,6 +140,7 @@ func (s *Server) handlePatchShoppingItem(w http.ResponseWriter, r *http.Request)
 	}
 	it.Status = shopping.NormalizeStatus(it.Status)
 	it.Category = shopping.NormalizeCategory(it.Category)
+	it.Cadence = shopping.NormalizeCadence(it.Cadence)
 
 	// Lifecycle-driven BoughtAt management.
 	if prevStatus != string(shopping.StatusBought) && it.Status == string(shopping.StatusBought) {

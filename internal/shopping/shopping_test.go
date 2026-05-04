@@ -139,6 +139,130 @@ func TestAggregateTotals_BoughtMonthFilter(t *testing.T) {
 	}
 }
 
+// TestCadenceMonthlyFactor pins the per-month projection math.
+// Critical because the /finance run-rate ties recurring spend
+// projections to these constants — drift would silently corrupt
+// every user's monthly forecast.
+func TestCadenceMonthlyFactor(t *testing.T) {
+	cases := []struct {
+		in   string
+		want float64
+	}{
+		{"weekly", 52.0 / 12.0},   // ~4.333
+		{"biweekly", 26.0 / 12.0}, // ~2.167
+		{"monthly", 1},
+		{"quarterly", 1.0 / 3.0},  // ~0.333
+		{"yearly", 1.0 / 12.0},    // ~0.083
+		{"", 0},                   // none → no projection
+		{"unknown", 0},            // typo → no projection (safer than guessing)
+	}
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			if got := CadenceMonthlyFactor(c.in); got != c.want {
+				t.Errorf("CadenceMonthlyFactor(%q) = %v, want %v", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+// TestNormalizeCadence — unknown values map to "" so a typo'd
+// PATCH doesn't accidentally project monthly spend.
+func TestNormalizeCadence(t *testing.T) {
+	cases := map[string]string{
+		"":          "",
+		"WEEKLY":    "weekly",
+		" weekly ":  "weekly",
+		"biweekly":  "biweekly",
+		"monthly":   "monthly",
+		"quarterly": "quarterly",
+		"yearly":    "yearly",
+		"daily":     "", // not a supported cadence
+		"sometimes": "",
+	}
+	for in, want := range cases {
+		if got := NormalizeCadence(in); got != want {
+			t.Errorf("NormalizeCadence(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestMonthlyRecurringEstimate covers the gating: standard=true AND
+// cadence!="" AND price>0 — anything missing returns 0. Quantity
+// multiplies the per-occurrence price (a weekly pack of 2 yogurts
+// at €1.50 each is 2 × 1.50 × 4.333 ≈ €13/month).
+func TestMonthlyRecurringEstimate(t *testing.T) {
+	cases := []struct {
+		name string
+		it   Item
+		want float64
+	}{
+		{
+			"standard weekly with price + qty",
+			Item{Standard: true, Cadence: "weekly", Price: 1.5, Quantity: 2},
+			(1.5 * 2) * (52.0 / 12.0),
+		},
+		{
+			"standard monthly basic",
+			Item{Standard: true, Cadence: "monthly", Price: 80},
+			80,
+		},
+		{
+			"non-standard with cadence — gated out",
+			Item{Standard: false, Cadence: "weekly", Price: 5},
+			0,
+		},
+		{
+			"standard without cadence — catalogue only",
+			Item{Standard: true, Cadence: "", Price: 5},
+			0,
+		},
+		{
+			"standard cadence but no price",
+			Item{Standard: true, Cadence: "weekly", Price: 0},
+			0,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.it.MonthlyRecurringEstimate(); got != c.want {
+				t.Errorf("MonthlyRecurringEstimate = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// TestAggregateTotals_RecurringEstimate verifies the rollup wires
+// MonthlyRecurringEstimate through correctly. Mix of standard /
+// non-standard / no-cadence items, with one standard contributing
+// across the planned + bought sums and the recurring projection.
+//
+// Float comparison tolerance: the rollup's running sum accumulates
+// 80*(52/12) (irrational in binary) + 40 in a different order than
+// computing the expected value standalone, so the bit pattern differs
+// by 1 ULP. Compare with a small epsilon rather than exact equality.
+func TestAggregateTotals_RecurringEstimate(t *testing.T) {
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	items := []Item{
+		// Recurring: weekly groceries, ~€80/wk → ~€346.67/month
+		{Name: "weekly groceries", Status: "planned", Standard: true, Cadence: "weekly", Price: 80, Quantity: 1},
+		// Recurring: monthly subscription-shaped item, €40/month
+		{Name: "vitamins", Status: "planned", Standard: true, Cadence: "monthly", Price: 40, Quantity: 1},
+		// Standard but no cadence — catalogue only, no recurring contribution
+		{Name: "olive oil", Status: "planned", Standard: true, Price: 12, Quantity: 1},
+		// Non-standard, contributes only to planned sum
+		{Name: "shoes", Status: "planned", Price: 100},
+	}
+	got := AggregateTotals(items, now)
+	wantRecurring := 80*(52.0/12.0) + 40
+	const eps = 1e-9
+	if diff := got.RecurringMonthlyEstimate - wantRecurring; diff > eps || diff < -eps {
+		t.Errorf("RecurringMonthlyEstimate = %v, want ~%v (diff %v)", got.RecurringMonthlyEstimate, wantRecurring, diff)
+	}
+	if got.RecurringStandardsCount != 2 {
+		t.Errorf("RecurringStandardsCount = %d, want 2", got.RecurringStandardsCount)
+	}
+}
+
 // TestValidate covers the rejection paths.
 func TestValidate(t *testing.T) {
 	cases := []struct {
