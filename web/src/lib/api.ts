@@ -708,6 +708,30 @@ export interface PrayerIntention {
   updated_at: string;
 }
 
+// Virtues — character formation tracker. Mirrors internal/virtues
+// — a Virtue carries a name, anchor (free-form scripture or
+// definition), optional season, and a history of weekly Checks
+// that capture a 1–5 self-evaluation plus reflection note.
+export type VirtueStatus = 'active' | 'paused' | 'archived';
+export interface VirtueCheck {
+  week_start: string; // YYYY-MM-DD, Monday of the scored week
+  score: number; // 1–5
+  note?: string;
+  logged_at: string; // RFC3339
+}
+export interface Virtue {
+  id: string;
+  name: string;
+  description?: string;
+  anchor?: string; // free-form: scripture ref / definition / quote
+  status: VirtueStatus | string;
+  season?: string;
+  color?: string;
+  created_at: string;
+  updated_at: string;
+  checks?: VirtueCheck[];
+}
+
 // People — lightweight CRM. The list response also carries derived
 // upcoming-birthday + stale-count fields so the page hydrates in
 // one round trip.
@@ -1397,6 +1421,26 @@ export const api = {
     gratitude?: string;
     tomorrow?: string;
   }) => req<{ path: string; saved: boolean }>('/examen', { method: 'POST', body: JSON.stringify(body) }),
+
+  // Virtues — character formation tracker. Checks live on a separate
+  // POST endpoint to avoid two clients clobbering each other's
+  // history via a PATCH array.
+  listVirtues: () => req<{ virtues: Virtue[]; total: number }>('/virtues'),
+  getVirtue: (id: string) => req<Virtue>(`/virtues/${encodeURIComponent(id)}`),
+  createVirtue: (v: Partial<Virtue>) =>
+    req<Virtue>('/virtues', { method: 'POST', body: JSON.stringify(v) }),
+  patchVirtue: (id: string, v: Partial<Virtue>) =>
+    req<Virtue>(`/virtues/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(v)
+    }),
+  deleteVirtue: (id: string) =>
+    req<void>(`/virtues/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  logVirtueCheck: (id: string, body: { week_start?: string; score: number; note?: string }) =>
+    req<Virtue>(`/virtues/${encodeURIComponent(id)}/checks`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    }),
 
   // Full-text search across vault content (uses granit's TF-IDF SearchIndex)
   search: (q: string, limit = 30) =>

@@ -20,6 +20,17 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
   </svg>
+{:else if name === 'virtues'}
+  <!-- Sprout / growing plant — character formation as cultivation.
+       Three leaves rising from a stem to read as "what's being
+       grown in me", distinct from the goal/scripture icons in the
+       same category. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <path d="M12 22V8"/>
+    <path d="M12 8c-3-3-7-2-7 2 0 3 4 4 7 1"/>
+    <path d="M12 8c3-3 7-2 7 2 0 3-4 4-7 1"/>
+    <path d="M12 8c0-3 2-5 5-5"/>
+  </svg>
 {:else if name === 'tasks'}
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <rect x="3" y="5" width="6" height="6" rx="1"/><path d="m4.5 8 1 1 2-2"/><path d="M13 7h8M13 17h8M3 17h6"/>

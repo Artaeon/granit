@@ -7,6 +7,7 @@
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
+  import VirtuesWeeklyCheck from '$lib/virtues/VirtuesWeeklyCheck.svelte';
 
   // /review is the weekly examination ritual — five questions, saved
   // to a markdown note in Reviews/YYYY-Www.md. The page deliberately
@@ -410,6 +411,17 @@
         </div>
       </form>
     {/if}
+
+    <!-- Virtues weekly check — character-formation companion to the
+         five-question review. Auto-hides when the user has no active
+         virtues, so the section doesn't crowd reviews for users who
+         haven't adopted the feature. Submits independently of the
+         review form (its own POST endpoint), so a single Sunday
+         click logs the score even if the user doesn't save the
+         questions yet. -->
+    <div class="mt-8">
+      <VirtuesWeeklyCheck />
+    </div>
 
     <!-- Past reviews. Surfaces complete-vs-partial badges so the user
          can spot weeks they only half-finished. Click → cursor jumps
