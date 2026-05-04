@@ -61,9 +61,23 @@
   }
   onMount(() => {
     loadAll();
-    return onWsEvent((ev) => {
+    const unsub = onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed') loadAll();
     });
+    // Mobile browsers (and any backgrounded tab) suspend the WS, so
+    // notes created/edited on another device while we were away never
+    // make it through. Refetch on the visibility flip so a returning
+    // tab catches up without the user having to pull-to-refresh.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') loadAll();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      unsub();
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
   });
 
   // Debounced search — fires 250ms after the user stops typing. We

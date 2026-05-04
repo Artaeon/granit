@@ -30,12 +30,17 @@
   });
 
   // Auto-reload when the service worker activates a new build. The SW
-  // posts {type:'sw-updated'} after clients.claim(); we honor it only
-  // when the page is hidden or the user has nothing in flight, so a
-  // mid-edit refresh can't drop unsaved work. The drafts module also
-  // protects against this — it persists every keystroke to
-  // localStorage — but skipping the reload while visible keeps the UX
-  // polite.
+  // posts {type:'sw-updated'} after clients.claim(). Previously we
+  // waited for the next tab-hide so a mid-edit refresh wouldn't drop
+  // unsaved work — but mobile users often keep one tab open all day,
+  // and silently waiting meant the user thought we'd shipped nothing
+  // (cache-stuck on yesterday's bundle for hours after a deploy).
+  // New behaviour: hidden tab → reload immediately; visible tab →
+  // surface a toast with a "Reload" action so the user gets agency
+  // without being yanked mid-keystroke. The note drafts module
+  // already preserves every keystroke to localStorage so even a
+  // reload-during-edit can't lose data.
+  let updateAvailable = $state(false);
   onMount(() => {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
     const onMessage = (event: MessageEvent) => {
@@ -43,15 +48,7 @@
       if (document.visibilityState === 'hidden') {
         location.reload();
       } else {
-        // Reload on next focus loss, so the visible session isn't
-        // interrupted but a tab-switch picks up the new build.
-        const onceHidden = () => {
-          if (document.visibilityState === 'hidden') {
-            document.removeEventListener('visibilitychange', onceHidden);
-            location.reload();
-          }
-        };
-        document.addEventListener('visibilitychange', onceHidden);
+        updateAvailable = true;
       }
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
@@ -492,3 +489,29 @@
   <InstallPrompt />
 {/if}
 <Toaster />
+
+<!-- "New version available" banner. Sits ABOVE the bottom nav (z-40 vs
+     bottom-nav's z-30) and uses sm:bottom-3 on desktop so it doesn't
+     collide with the nav rail edge. Kept dismissable because the user
+     might want to finish a thought before we yank them — but the action
+     button reloads on tap so they don't have to hunt for "clear cache". -->
+{#if updateAvailable}
+  <div
+    role="status"
+    class="fixed inset-x-3 z-40 bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px)+0.75rem)] md:bottom-3 md:left-auto md:right-3 md:max-w-sm bg-mantle border border-primary/40 rounded-lg shadow-2xl p-3 flex items-center gap-3"
+  >
+    <div class="flex-1 min-w-0">
+      <div class="text-sm font-medium text-text">Update available</div>
+      <div class="text-xs text-dim mt-0.5">Reload to pick up the latest build.</div>
+    </div>
+    <button
+      onclick={() => location.reload()}
+      class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90 flex-shrink-0"
+    >Reload</button>
+    <button
+      onclick={() => (updateAvailable = false)}
+      aria-label="dismiss"
+      class="text-dim hover:text-text flex-shrink-0 px-1"
+    >×</button>
+  </div>
+{/if}

@@ -217,15 +217,29 @@
     hydrateFromUrl();
   });
 
-  onMount(() =>
-    onWsEvent((ev) => {
+  onMount(() => {
+    const unsub = onWsEvent((ev) => {
       // task.changed fires after every patchTask, including drag-drops
       // from the kanban — without it, moves would only show up on a
       // manual refresh (or the next note write coincidentally). Match
       // the same set the calendar/inbox widgets honor.
       if (ev.type === 'note.changed' || ev.type === 'note.removed' || ev.type === 'task.changed') load();
-    })
-  );
+    });
+    // Visibility-aware refresh: a backgrounded tab won't get WS events,
+    // so a task ticked off on the phone while the desktop tab was
+    // hidden would otherwise stay open here until reload. Catches the
+    // cross-device case at zero recurring cost.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      unsub();
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  });
 
   // ---------------------------------------------------------------------------
   // Keyboard shortcuts (j/k navigate, x select, e edit, d done, p priority).
