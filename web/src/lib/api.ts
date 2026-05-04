@@ -727,6 +727,8 @@ export interface Virtue {
   status: VirtueStatus | string;
   season?: string;
   color?: string;
+  /** Habit names whose practice cultivates this virtue. */
+  linked_habits?: string[];
   created_at: string;
   updated_at: string;
   checks?: VirtueCheck[];

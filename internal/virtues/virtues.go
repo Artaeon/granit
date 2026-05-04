@@ -68,11 +68,19 @@ type Virtue struct {
 	// cultivating this virtue ("Lent 2026", "Q3 deep work", "this
 	// fatherhood season"). Optional — virtues without a season just
 	// run continuously.
-	Season      string  `json:"season,omitempty"`
-	Color       string  `json:"color,omitempty"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
-	Checks      []Check `json:"checks,omitempty"`
+	Season string `json:"season,omitempty"`
+	Color  string `json:"color,omitempty"`
+	// LinkedHabits is the list of habit names that practise this
+	// virtue ("morning prayer" feeds discipline; "no doomscrolling"
+	// feeds presence). Habits don't have a JSON record (they're
+	// derived live from `## Habits` lines in daily notes), so the
+	// linkage lives here on the Virtue side. Names are matched
+	// case-insensitively at the UI boundary, but stored verbatim
+	// to preserve user casing on display.
+	LinkedHabits []string `json:"linked_habits,omitempty"`
+	CreatedAt    string   `json:"created_at"`
+	UpdatedAt    string   `json:"updated_at"`
+	Checks       []Check  `json:"checks,omitempty"`
 }
 
 // NormalizeStatus collapses a user-supplied status string to one of

@@ -126,6 +126,7 @@ func (s *Server) handlePatchVirtue(w http.ResponseWriter, r *http.Request) {
 		func() error { return apply("status", &v.Status) },
 		func() error { return apply("season", &v.Season) },
 		func() error { return apply("color", &v.Color) },
+		func() error { return apply("linked_habits", &v.LinkedHabits) },
 	} {
 		if err := step(); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())

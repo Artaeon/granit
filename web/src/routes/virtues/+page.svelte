@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type Virtue, type VirtueCheck } from '$lib/api';
+  import { api, type Virtue, type VirtueCheck, type HabitInfo } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
 
@@ -54,12 +54,31 @@
     return `var(--color-${map[c ?? ''] ?? 'secondary'})`;
   }
 
+  // Habit catalogue — drives the "linked habits" multi-select on
+  // the create/edit forms and the streak chip rendered on each
+  // virtue card. Best-effort: a missing habits module leaves
+  // `habitsByName` empty and the linkage UI just shows names without
+  // streak metadata. Reused across mount + edit.
+  let habits = $state<HabitInfo[]>([]);
+  let habitsByName = $derived.by(() => {
+    const m = new Map<string, HabitInfo>();
+    for (const h of habits) m.set(h.name.toLowerCase(), h);
+    return m;
+  });
+
   async function load() {
     if (!$auth) return;
     loading = true;
     try {
-      const r = await api.listVirtues();
-      virtues = r.virtues;
+      // Fetch virtues + habits in parallel; habits failure shouldn't
+      // block the virtues page (the linkage UI degrades gracefully
+      // to plain name strings).
+      const [v, h] = await Promise.all([
+        api.listVirtues(),
+        api.listHabits().catch(() => ({ habits: [] as HabitInfo[], today: '', days: 0 }))
+      ]);
+      virtues = v.virtues;
+      habits = h.habits;
     } catch (e) {
       toast.error('failed to load virtues: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -176,6 +195,42 @@
       await load();
     } catch (e) {
       toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  // ----- Linked habits editor -----
+  // One open-at-a-time linkage editor. Tracking by virtue id so a
+  // tap on a different card auto-closes the previous one (no
+  // multiple open editors stacking up). Toggle a habit on/off to
+  // add/remove it from the linkage list; the patch is debounced by
+  // a button rather than auto-save so the user can de-select +
+  // re-select without firing a write per click.
+  let linkingId = $state<string | null>(null);
+  let linkBuf = $state<string[]>([]);
+  let linkSaving = $state(false);
+
+  function openLinkEditor(v: Virtue) {
+    linkingId = v.id;
+    linkBuf = [...(v.linked_habits ?? [])];
+  }
+  function cancelLinkEditor() {
+    linkingId = null;
+  }
+  function toggleLinkBuf(name: string) {
+    const idx = linkBuf.findIndex((n) => n.toLowerCase() === name.toLowerCase());
+    if (idx >= 0) linkBuf = [...linkBuf.slice(0, idx), ...linkBuf.slice(idx + 1)];
+    else linkBuf = [...linkBuf, name];
+  }
+  async function saveLinkEditor(v: Virtue) {
+    linkSaving = true;
+    try {
+      await api.patchVirtue(v.id, { linked_habits: linkBuf });
+      linkingId = null;
+      await load();
+    } catch (e) {
+      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      linkSaving = false;
     }
   }
 
@@ -348,6 +403,7 @@
           {@const lastTone = last ? scoreTone(last.score) : 'dim'}
           {@const isExpanded = expanded.has(v.id)}
           {@const isCheckOpen = openCheck === v.id}
+          {@const isLinking = linkingId === v.id}
           <li
             class="bg-surface0 border border-surface1 rounded-lg overflow-hidden"
             style="border-left: 3px solid {colorVar(v.color)};"
@@ -382,6 +438,89 @@
                     >{last.score}</span>
                     <span class="text-[10px] text-dim mt-0.5">last check</span>
                   </button>
+                {/if}
+              </div>
+
+              <!-- Linked habits — surfaces what daily practices feed
+                   this virtue. Each linked habit shows its current
+                   streak (resolved against the live habits API) so
+                   the user reads "discipline · 12d streak from
+                   morning prayer" at a glance. Names that don't
+                   resolve to a current habit (deleted, renamed)
+                   render plain — never an error. -->
+              <div class="mt-3 pt-3 border-t border-surface1">
+                <div class="flex items-baseline justify-between gap-2 mb-1.5">
+                  <span class="text-[11px] uppercase tracking-wider text-dim">
+                    Habits feeding this virtue
+                    {#if (v.linked_habits ?? []).length > 0}
+                      <span class="text-dim/70 ml-0.5">· {v.linked_habits!.length}</span>
+                    {/if}
+                  </span>
+                  {#if isLinking}
+                    <div class="flex items-center gap-2 text-xs">
+                      <button
+                        type="button"
+                        onclick={cancelLinkEditor}
+                        class="text-dim hover:text-text"
+                      >cancel</button>
+                      <button
+                        type="button"
+                        onclick={() => saveLinkEditor(v)}
+                        disabled={linkSaving}
+                        class="px-2 py-0.5 bg-primary text-on-primary rounded font-medium disabled:opacity-50"
+                      >{linkSaving ? '…' : 'save'}</button>
+                    </div>
+                  {:else}
+                    <button
+                      type="button"
+                      onclick={() => openLinkEditor(v)}
+                      class="text-[11px] text-secondary hover:underline"
+                    >{(v.linked_habits ?? []).length === 0 ? '+ link habits' : 'edit'}</button>
+                  {/if}
+                </div>
+
+                {#if isLinking}
+                  {#if habits.length === 0}
+                    <p class="text-xs text-dim italic">
+                      No habits to link yet. <a href="/habits" class="text-secondary hover:underline">Add one in /habits</a>, then come back.
+                    </p>
+                  {:else}
+                    <div class="flex flex-wrap gap-1.5">
+                      {#each habits as h (h.name)}
+                        {@const linked = linkBuf.some((n) => n.toLowerCase() === h.name.toLowerCase())}
+                        <button
+                          type="button"
+                          onclick={() => toggleLinkBuf(h.name)}
+                          class="inline-flex items-baseline gap-1.5 px-2 py-1 rounded text-xs border transition-colors
+                            {linked
+                              ? 'bg-primary/15 border-primary text-primary'
+                              : 'bg-mantle/40 border-surface1 text-subtext hover:border-primary/40'}"
+                        >
+                          <span>{h.name}</span>
+                          <span class="text-[10px] opacity-70">🔥 {h.currentStreak}d</span>
+                        </button>
+                      {/each}
+                    </div>
+                    <p class="text-[11px] text-dim mt-2">Tap a habit to toggle. Save to commit.</p>
+                  {/if}
+                {:else if (v.linked_habits ?? []).length > 0}
+                  <ul class="flex flex-wrap gap-1.5">
+                    {#each v.linked_habits ?? [] as hname}
+                      {@const h = habitsByName.get(hname.toLowerCase())}
+                      <li class="inline-flex items-baseline gap-1.5 px-2 py-1 bg-mantle/40 border border-surface1 rounded text-xs">
+                        <span class="text-text">{hname}</span>
+                        {#if h}
+                          <span class="text-dim text-[10px]" title="current streak">🔥 {h.currentStreak}d</span>
+                        {:else}
+                          <span class="text-dim/60 text-[10px]" title="not in today's daily note">—</span>
+                        {/if}
+                      </li>
+                    {/each}
+                  </ul>
+                {:else}
+                  <p class="text-[11px] text-dim italic">
+                    No habits linked yet. Daily practices that cultivate this virtue.
+                  </p>
                 {/if}
               </div>
 

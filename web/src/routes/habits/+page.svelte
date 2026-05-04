@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type HabitInfo, type HabitsResponse } from '$lib/api';
+  import { api, type HabitInfo, type HabitsResponse, type Virtue } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import Skeleton from '$lib/components/Skeleton.svelte';
 
@@ -71,11 +71,38 @@
     }
   }
 
+  // Virtue catalogue — used to compute the reverse linkage (which
+  // virtues does each habit feed?). Best-effort: a missing virtues
+  // module just leaves the linkage empty and the chip doesn't render.
+  let virtues = $state<Virtue[]>([]);
+  // Pre-computed habit-name (lowercased) → virtues that link it.
+  // Recomputed when either side updates so the chips stay accurate.
+  let virtuesByHabit = $derived.by(() => {
+    const m = new Map<string, Virtue[]>();
+    for (const v of virtues) {
+      if ((v.status ?? 'active') !== 'active') continue;
+      for (const h of v.linked_habits ?? []) {
+        const k = h.toLowerCase();
+        const arr = m.get(k) ?? [];
+        arr.push(v);
+        m.set(k, arr);
+      }
+    }
+    return m;
+  });
+
   async function load() {
     if (!$auth) return;
     loading = true;
     try {
-      data = await api.listHabits();
+      // Habits + virtues in parallel; virtues failure leaves the
+      // reverse-linkage map empty (chip just doesn't render).
+      const [d, v] = await Promise.all([
+        api.listHabits(),
+        api.listVirtues().catch(() => ({ virtues: [] as Virtue[], total: 0 }))
+      ]);
+      data = d;
+      virtues = v.virtues;
     } finally {
       loading = false;
     }
@@ -84,6 +111,7 @@
     load();
     return onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
+      if (ev.type === 'state.changed' && ev.path === '.granit/virtues.json') load();
     });
   });
 
@@ -305,6 +333,7 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {#each sortedHabits as h (h.name)}
           {@const insight = bestDay(h)}
+          {@const linkedVirtuesToday = virtuesByHabit.get(h.name.toLowerCase()) ?? []}
           <button
             type="button"
             onclick={() => toggleToday(h)}
@@ -336,6 +365,19 @@
                   </span>
                 {/if}
               </div>
+              <!-- Virtue chips — reverse linkage. "this habit feeds:" -->
+              {#if linkedVirtuesToday.length > 0}
+                <div class="flex flex-wrap gap-1 mt-1.5">
+                  {#each linkedVirtuesToday as lv (lv.id)}
+                    <a
+                      href="/virtues"
+                      onclick={(e) => e.stopPropagation()}
+                      class="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider bg-secondary/15 text-secondary hover:bg-secondary/25"
+                      title="feeds the {lv.name} virtue"
+                    >🌱 {lv.name}</a>
+                  {/each}
+                </div>
+              {/if}
             </div>
           </button>
         {/each}
@@ -398,6 +440,7 @@
       <div class="space-y-4">
         {#each sortedHabits as h (h.name)}
           {@const insight = bestDay(h)}
+          {@const linkedVirtuesList = virtuesByHabit.get(h.name.toLowerCase()) ?? []}
           <article class="bg-surface0 border border-surface1 rounded-lg p-4">
             <div class="flex items-start gap-3 mb-3">
               <button
@@ -425,6 +468,17 @@
                     </span>
                   {/if}
                 </div>
+                {#if linkedVirtuesList.length > 0}
+                  <div class="flex flex-wrap gap-1 mt-1.5">
+                    {#each linkedVirtuesList as lv (lv.id)}
+                      <a
+                        href="/virtues"
+                        class="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider bg-secondary/15 text-secondary hover:bg-secondary/25"
+                        title="feeds the {lv.name} virtue"
+                      >🌱 {lv.name}</a>
+                    {/each}
+                  </div>
+                {/if}
               </div>
             </div>
 
