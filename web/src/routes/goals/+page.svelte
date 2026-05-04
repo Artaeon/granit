@@ -18,6 +18,7 @@
   let statusFilter = $state<'all' | 'active' | 'paused' | 'completed' | 'archived'>('all');
   let categoryFilter = $state<string>('');
   let tagFilter = $state<string>('');
+  let ventureFilter = $state<string>('');
   let q = $state<string>('');
 
   let createOpen = $state(false);
@@ -36,12 +37,27 @@
   }
   onMount(() => {
     load();
-    return onWsEvent((ev) => {
+    const unsub = onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
       // Re-fetch when the TUI (or another web tab) writes goals.json.
       // The server broadcasts state.changed with Path=".granit/goals.json".
       if (ev.type === 'state.changed' && ev.path === '.granit/goals.json') load();
     });
+    // Visibility-aware refresh: WS connections are suspended when the
+    // tab is backgrounded (especially on mobile Safari), so we'd miss
+    // any state.changed event fired in that window. Refetching on
+    // visibility flip cheaply guarantees the user never returns to a
+    // stale list.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      unsub();
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
   });
 
   // ?focus=<goalId> auto-opens the matching detail drawer. Used by the
@@ -74,12 +90,14 @@
     if (statusFilter !== 'all') list = list.filter((g) => (g.status ?? 'active') === statusFilter);
     if (categoryFilter) list = list.filter((g) => g.category === categoryFilter);
     if (tagFilter) list = list.filter((g) => (g.tags ?? []).includes(tagFilter));
+    if (ventureFilter) list = list.filter((g) => (g.venture ?? '') === ventureFilter);
     const term = q.trim().toLowerCase();
     if (term) {
       list = list.filter((g) =>
         g.title.toLowerCase().includes(term) ||
         (g.description ?? '').toLowerCase().includes(term) ||
-        (g.notes ?? '').toLowerCase().includes(term)
+        (g.notes ?? '').toLowerCase().includes(term) ||
+        (g.venture ?? '').toLowerCase().includes(term)
       );
     }
     return list;
@@ -144,11 +162,26 @@
     }
     return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
   });
+  let ventures = $derived.by(() => {
+    const m = new Map<string, number>();
+    for (const g of goals) {
+      const v = (g.venture ?? '').trim();
+      if (!v) continue;
+      m.set(v, (m.get(v) ?? 0) + 1);
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([v]) => v);
+  });
 
   async function created(g: Goal) {
-    await load();
+    // Optimistic prepend so the new goal renders immediately. The
+    // load() below reconciles with the server (auth-stamped CreatedAt,
+    // any defaults the server filled in).
+    if (!goals.some((x) => x.id === g.id)) {
+      goals = [g, ...goals];
+    }
     selectedId = g.id;
     detailOpen = true;
+    await load();
   }
 
   async function deleted(_id: string) {
@@ -192,14 +225,21 @@
         placeholder="search title, description, notes…"
         class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
       />
-      {#if categories.length > 0 || tags.length > 0}
+      {#if categories.length > 0 || tags.length > 0 || ventures.length > 0}
         <div class="flex flex-wrap items-center gap-1.5 text-xs">
-          {#if categoryFilter || tagFilter}
+          {#if categoryFilter || tagFilter || ventureFilter}
             <button
-              onclick={() => { categoryFilter = ''; tagFilter = ''; }}
+              onclick={() => { categoryFilter = ''; tagFilter = ''; ventureFilter = ''; }}
               class="px-2 py-0.5 bg-surface1 text-dim rounded hover:text-text"
             >clear filters</button>
           {/if}
+          {#each ventures as v}
+            <button
+              onclick={() => (ventureFilter = ventureFilter === v ? '' : v)}
+              class="px-2 py-0.5 rounded {ventureFilter === v ? 'bg-secondary text-on-primary' : 'bg-surface0 text-secondary hover:bg-surface1'}"
+              title="filter to this venture"
+            >🏢 {v}</button>
+          {/each}
           {#each categories as c}
             <button
               onclick={() => (categoryFilter = categoryFilter === c ? '' : c)}
@@ -246,6 +286,7 @@
               <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-dim">
                 {#if g.target_date}<span>🎯 {fmtDate(g.target_date)}</span>{/if}
                 {#if g.project}<span>📁 {g.project}</span>{/if}
+                {#if g.venture}<span class="text-secondary">🏢 {g.venture}</span>{/if}
                 {#if g.category}<span>· {g.category}</span>{/if}
                 {#if p.total > 0}<span>{p.done}/{p.total} milestones</span>{/if}
                 {#if g.review_frequency}<span>↻ {g.review_frequency}</span>{/if}
@@ -275,7 +316,7 @@
   </div>
 </div>
 
-<GoalCreate bind:open={createOpen} onCreated={created} />
+<GoalCreate bind:open={createOpen} ventures={ventures} onCreated={created} />
 <GoalDetail
   bind:open={detailOpen}
   goal={selected}

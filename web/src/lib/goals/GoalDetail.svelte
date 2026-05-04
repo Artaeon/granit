@@ -77,6 +77,7 @@
   async function setColor(v: string) { await patch({ color: v }); }
   async function setReviewFrequency(v: string) { await patch({ review_frequency: v || undefined }); }
   async function setProject(v: string) { await patch({ project: v.trim() || undefined }); }
+  async function setVenture(v: string) { await patch({ venture: v.trim() || undefined }); }
   async function setTags(raw: string) {
     const tags = raw.split(',').map((t) => t.trim()).filter(Boolean);
     await patch({ tags });
@@ -454,6 +455,16 @@
               value={goal.project ?? ''}
               onblur={(e) => setProject((e.target as HTMLInputElement).value)}
               placeholder="link to a project name"
+              class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text"
+            />
+          </div>
+          <div>
+            <label for="g-venture" class="text-[11px] uppercase tracking-wider text-dim block mb-1">Venture / Company</label>
+            <input
+              id="g-venture"
+              value={goal.venture ?? ''}
+              onblur={(e) => setVenture((e.target as HTMLInputElement).value)}
+              placeholder="e.g. Stoicera"
               class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text"
             />
           </div>

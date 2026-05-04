@@ -143,6 +143,7 @@ func (s *Server) handlePatchGoal(w http.ResponseWriter, r *http.Request) {
 		func() error { return apply("notes", &g.Notes) },
 		func() error { return apply("review_frequency", &g.ReviewFrequency) },
 		func() error { return apply("project", &g.Project) },
+		func() error { return apply("venture", &g.Venture) },
 	} {
 		if err := step(); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())

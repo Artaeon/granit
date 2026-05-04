@@ -203,6 +203,9 @@ func (s *Server) handlePatchProject(w http.ResponseWriter, r *http.Request) {
 		func() error { return apply("priority", &p.Priority) },
 		func() error { return apply("due_date", &p.DueDate) },
 		func() error { return apply("time_spent", &p.TimeSpent) },
+		func() error { return apply("kind", &p.Kind) },
+		func() error { return apply("venture", &p.Venture) },
+		func() error { return apply("repo_url", &p.RepoURL) },
 	} {
 		if err := step(); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())

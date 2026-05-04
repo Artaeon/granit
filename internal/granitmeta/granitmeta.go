@@ -50,6 +50,11 @@ type ProjectGoal struct {
 // Project mirrors a single entry in <vault>/.granit/projects.json. The
 // full schema — keep all fields the TUI writes so we can round-trip
 // without dropping data on PATCH.
+//
+// Kind/Venture/RepoURL were added later; older projects.json files
+// pre-dating these fields round-trip correctly because every new field
+// is `omitempty` and the JSON decoder leaves missing keys at the zero
+// value.
 type Project struct {
 	Name        string        `json:"name"`
 	Description string        `json:"description"`
@@ -67,6 +72,21 @@ type Project struct {
 	DueDate     string        `json:"due_date,omitempty"`
 	TimeSpent   int           `json:"time_spent,omitempty"`
 	UpdatedAt   string        `json:"updated_at,omitempty"`
+	// Kind is the project type — drives which extra fields the UI
+	// surfaces (e.g. RepoURL only renders when Kind == "software").
+	// Free-form so the UI can introduce new types without a server
+	// migration; the canonical set today is software, content,
+	// research, business, personal, creative, client, other.
+	Kind string `json:"kind,omitempty"`
+	// Venture groups projects under a parent organization, company,
+	// or umbrella initiative. Free-text by design — projects can be
+	// grouped without first creating a formal venture record.
+	Venture string `json:"venture,omitempty"`
+	// RepoURL is the source-control URL for software projects.
+	// Persisted regardless of Kind so a project can be reclassified
+	// without losing the link, but the UI hides the field unless
+	// Kind == "software".
+	RepoURL string `json:"repo_url,omitempty"`
 }
 
 func ReadProjects(vaultRoot string) ([]Project, error) {

@@ -5,9 +5,12 @@
 
   let {
     open = $bindable(false),
+    ventures = [],
     onCreated
   }: {
     open?: boolean;
+    /** Existing venture names for autocomplete. Optional. */
+    ventures?: string[];
     onCreated: (g: Goal) => void | Promise<void>;
   } = $props();
 
@@ -16,6 +19,7 @@
   let targetDate = $state('');
   let category = $state('');
   let project = $state('');
+  let venture = $state('');
   let color = $state('blue');
   let reviewFrequency = $state<'' | 'weekly' | 'monthly' | 'quarterly'>('');
   let saving = $state(false);
@@ -29,6 +33,7 @@
     targetDate = '';
     category = '';
     project = '';
+    venture = '';
     color = 'blue';
     reviewFrequency = '';
   }
@@ -54,6 +59,7 @@
         target_date: targetDate || undefined,
         category: category || undefined,
         project: project.trim() || undefined,
+        venture: venture.trim() || undefined,
         color,
         status: 'active',
         review_frequency: reviewFrequency || undefined
@@ -129,6 +135,22 @@
         placeholder="link to a project name"
         class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
       />
+    </div>
+
+    <div>
+      <label for="ng-venture" class="text-xs uppercase tracking-wider text-dim block mb-1">Venture / Company (optional)</label>
+      <input
+        id="ng-venture"
+        bind:value={venture}
+        list="ng-venture-list"
+        placeholder="e.g. Stoicera"
+        class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+      />
+      {#if ventures.length > 0}
+        <datalist id="ng-venture-list">
+          {#each ventures as v}<option value={v}></option>{/each}
+        </datalist>
+      {/if}
     </div>
 
     <div>

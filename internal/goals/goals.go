@@ -59,6 +59,10 @@ type Goal struct {
 	UpdatedAt       string      `json:"updated_at"`
 	CompletedAt     string      `json:"completed_at,omitempty"`
 	Project         string      `json:"project,omitempty"`
+	// Venture mirrors the field on Project — groups goals under the
+	// same parent venture/company string so a "what's this venture
+	// up to?" view can pull both.
+	Venture         string      `json:"venture,omitempty"`
 	Milestones      []Milestone `json:"milestones"`
 	Notes           string      `json:"notes,omitempty"`
 	ReviewFrequency string      `json:"review_frequency,omitempty"` // "weekly", "monthly", "quarterly"

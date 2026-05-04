@@ -220,6 +220,20 @@ export interface ProjectGoal {
   milestones?: ProjectMilestone[];
 }
 
+// Canonical project kinds. Free-form on the server (the field is just a
+// string) so the UI can introduce new kinds without a server migration,
+// but the values below are the ones the create form / detail panel
+// surfaces today.
+export type ProjectKind =
+  | 'software'
+  | 'content'
+  | 'research'
+  | 'business'
+  | 'personal'
+  | 'creative'
+  | 'client'
+  | 'other';
+
 export interface Project {
   name: string;
   description?: string;
@@ -237,6 +251,14 @@ export interface Project {
   priority?: number;
   due_date?: string;
   time_spent?: number;
+  // Kind drives which extra fields the UI surfaces (e.g. repo_url
+  // is hidden unless kind === 'software'). Persisted regardless so a
+  // reclassification doesn't drop data.
+  kind?: ProjectKind | string;
+  // Free-text venture/company name — groups projects under a parent.
+  venture?: string;
+  // Source-control URL (mainly for software projects).
+  repo_url?: string;
   // Server-decorated:
   progress?: number;
   tasksDone?: number;
@@ -283,6 +305,9 @@ export interface Goal {
   updated_at?: string;
   completed_at?: string;
   project?: string;
+  // Free-text venture/company name — mirrors Project.venture so a
+  // venture roll-up can pull both projects and goals.
+  venture?: string;
   milestones?: Milestone[] | null;
   notes?: string;
   review_frequency?: 'weekly' | 'monthly' | 'quarterly' | string;

@@ -142,6 +142,7 @@
 
   const colorOptions = ['blue', 'green', 'mauve', 'peach', 'red', 'yellow', 'pink', 'lavender', 'teal', 'sapphire', 'flamingo'];
   const categoryOptions = ['development', 'social-media', 'personal', 'business', 'writing', 'research', 'health', 'finance', 'other'];
+  const kindOptions = ['software', 'content', 'research', 'business', 'creative', 'client', 'personal', 'other'];
   const statusOptions = ['active', 'paused', 'completed', 'archived'];
   const priorityLabels = ['none', 'low', 'medium', 'high', 'highest'];
 
@@ -200,6 +201,31 @@
 
   <div class="flex-1 overflow-y-auto">
     <div class="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
+      <!-- Classification strip — kind + venture at a glance. Only renders
+           if at least one is set, so older projects don't get an empty
+           row. The repo link doubles as a quick-launcher. -->
+      {#if project.kind || project.venture || (project.kind === 'software' && project.repo_url)}
+        <div class="flex flex-wrap items-center gap-2 -mt-1 text-xs">
+          {#if project.kind}
+            <span class="px-2 py-0.5 rounded bg-primary/15 text-primary uppercase tracking-wider text-[10px] font-medium">{project.kind}</span>
+          {/if}
+          {#if project.venture}
+            <a
+              href={`/projects?venture=${encodeURIComponent(project.venture)}`}
+              class="px-2 py-0.5 rounded bg-secondary/15 text-secondary hover:bg-secondary/25"
+              title="show all projects in this venture"
+            >🏢 {project.venture}</a>
+          {/if}
+          {#if project.kind === 'software' && project.repo_url}
+            <a
+              href={project.repo_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="px-2 py-0.5 rounded bg-surface0 text-subtext border border-surface1 hover:border-primary hover:text-primary font-mono"
+            >↗ repo</a>
+          {/if}
+        </div>
+      {/if}
       <!-- Progress bar -->
       <section>
         <div class="flex items-baseline justify-between mb-1.5">
@@ -348,6 +374,52 @@
 
       <!-- Metadata grid -->
       <section class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 pt-4 border-t border-surface1">
+        <div>
+          <label for="prj-kind" class="text-[11px] uppercase tracking-wider text-dim block mb-1">Kind</label>
+          <select
+            id="prj-kind"
+            value={project.kind ?? ''}
+            onchange={(e) => patch({ kind: (e.target as HTMLSelectElement).value })}
+            class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text"
+          >
+            <option value="">—</option>
+            {#each kindOptions as k}<option value={k}>{k}</option>{/each}
+          </select>
+        </div>
+        <div>
+          <label for="prj-venture" class="text-[11px] uppercase tracking-wider text-dim block mb-1">Venture / Company</label>
+          <input
+            id="prj-venture"
+            value={project.venture ?? ''}
+            onblur={(e) => patch({ venture: (e.target as HTMLInputElement).value })}
+            placeholder="e.g. Stoicera"
+            class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text"
+          />
+        </div>
+        {#if (project.kind ?? '') === 'software'}
+          <div class="sm:col-span-2">
+            <label for="prj-repo" class="text-[11px] uppercase tracking-wider text-dim block mb-1">Repo URL</label>
+            <div class="flex gap-2">
+              <input
+                id="prj-repo"
+                type="url"
+                value={project.repo_url ?? ''}
+                onblur={(e) => patch({ repo_url: (e.target as HTMLInputElement).value })}
+                placeholder="https://github.com/you/repo"
+                class="flex-1 px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text font-mono"
+              />
+              {#if project.repo_url}
+                <a
+                  href={project.repo_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="px-2.5 py-1 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-primary"
+                  title="open repo"
+                >open ↗</a>
+              {/if}
+            </div>
+          </div>
+        {/if}
         <div>
           <label for="prj-folder" class="text-[11px] uppercase tracking-wider text-dim block mb-1">Folder</label>
           <input
