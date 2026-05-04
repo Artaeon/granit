@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
 )
 
 const dashboardFileRel = ".granit/everything-dashboard.json"
@@ -18,9 +21,32 @@ type dashboardWidget struct {
 	Config  map[string]interface{} `json:"config,omitempty"`
 }
 
+// dashboardLayout is one named preset (focus / morning / shutdown /
+// custom). The user can save the current widget arrangement as a
+// preset and switch between them; switching copies the layout's
+// Widgets into the top-level Widgets so the active arrangement is
+// always denormalised at the top of the config — older client builds
+// that don't know about layouts keep working unchanged.
+type dashboardLayout struct {
+	Name    string            `json:"name"`
+	Widgets []dashboardWidget `json:"widgets"`
+}
+
 type dashboardConfig struct {
 	Version int               `json:"version"`
+	// Widgets holds the active arrangement. Source of truth for what
+	// the dashboard renders. Keeping it at the top level means a
+	// pre-layouts client just reads Widgets and ignores Layouts.
 	Widgets []dashboardWidget `json:"widgets"`
+	// Active is the name of the currently-applied layout (must match
+	// one of Layouts[i].Name) or "" when no preset is active. Empty
+	// means the user is on an ad-hoc arrangement that hasn't been
+	// saved as a preset — switching to a preset later overwrites
+	// Widgets but leaves Layouts intact.
+	Active string `json:"active,omitempty"`
+	// Layouts is the catalogue of saved presets. Empty for users
+	// who haven't created any (the legacy single-layout case).
+	Layouts []dashboardLayout `json:"layouts,omitempty"`
 }
 
 func defaultDashboard() dashboardConfig {
@@ -158,4 +184,157 @@ func (s *Server) writeDashboard(cfg dashboardConfig) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// ----- Layout presets -----
+//
+// Presets let the user save the current dashboard arrangement under a
+// name and switch between named layouts (e.g. focus / morning /
+// shutdown). The active layout's widgets are mirrored into the
+// top-level Widgets field so a client that doesn't know about layouts
+// keeps working — they just see one Widgets list and don't care.
+//
+// Routes (registered in server.go):
+//   GET    /api/v1/dashboard/layouts            → list saved layouts
+//   POST   /api/v1/dashboard/layouts            → {name} save current Widgets as preset
+//   DELETE /api/v1/dashboard/layouts/{name}     → drop preset
+//   POST   /api/v1/dashboard/layouts/{name}/activate → switch active
+
+// findLayout returns the index of the named layout (case-insensitive)
+// or -1 when not found. Case-insensitive because preset names are
+// user-typed and "Focus" / "focus" should be treated as the same
+// thing for switch / replace semantics.
+func findLayout(layouts []dashboardLayout, name string) int {
+	for i, l := range layouts {
+		if strings.EqualFold(l.Name, name) {
+			return i
+		}
+	}
+	return -1
+}
+
+// cloneWidgets returns a deep-enough copy that mutating the result
+// won't reach back into the source slice. Widget.Config is a map of
+// arbitrary JSON, so we shallow-copy each entry — the values are
+// expected to be JSON primitives by contract, no nested pointers.
+func cloneWidgets(in []dashboardWidget) []dashboardWidget {
+	out := make([]dashboardWidget, len(in))
+	for i, w := range in {
+		nw := w
+		if w.Config != nil {
+			nw.Config = make(map[string]interface{}, len(w.Config))
+			for k, v := range w.Config {
+				nw.Config[k] = v
+			}
+		}
+		out[i] = nw
+	}
+	return out
+}
+
+func (s *Server) handleListDashboardLayouts(w http.ResponseWriter, r *http.Request) {
+	cfg, err := s.readDashboard()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if cfg.Layouts == nil {
+		cfg.Layouts = []dashboardLayout{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"layouts": cfg.Layouts,
+		"active":  cfg.Active,
+	})
+}
+
+// handleSaveDashboardLayout snapshots the current Widgets under a name.
+// If a preset with that name already exists it's overwritten — that's
+// the natural "update preset" UX; the user can rename via delete +
+// re-save if they want a fresh copy. The active pointer also flips
+// to the saved name so the user lands on the layout they just saved.
+func (s *Server) handleSaveDashboardLayout(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "name required")
+		return
+	}
+	cfg, err := s.readDashboard()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	idx := findLayout(cfg.Layouts, name)
+	layout := dashboardLayout{Name: name, Widgets: cloneWidgets(cfg.Widgets)}
+	if idx == -1 {
+		cfg.Layouts = append(cfg.Layouts, layout)
+	} else {
+		// Preserve original casing of the existing name to avoid a
+		// rename masquerading as an update — if the user wants to
+		// rename, they delete + recreate.
+		layout.Name = cfg.Layouts[idx].Name
+		cfg.Layouts[idx] = layout
+	}
+	cfg.Active = layout.Name
+	if err := s.writeDashboard(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+func (s *Server) handleDeleteDashboardLayout(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	cfg, err := s.readDashboard()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	idx := findLayout(cfg.Layouts, name)
+	if idx == -1 {
+		writeError(w, http.StatusNotFound, "layout not found")
+		return
+	}
+	cfg.Layouts = append(cfg.Layouts[:idx], cfg.Layouts[idx+1:]...)
+	// If we just deleted the active preset, drop the pointer — the
+	// current top-level Widgets stays intact (an unnamed arrangement)
+	// so deleting an active preset doesn't blow up the dashboard.
+	if strings.EqualFold(cfg.Active, name) {
+		cfg.Active = ""
+	}
+	if err := s.writeDashboard(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+// handleActivateDashboardLayout switches the active layout — copies
+// the named preset's widgets into the top-level Widgets and updates
+// Active. Idempotent: activating the already-active preset is a no-op.
+func (s *Server) handleActivateDashboardLayout(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	cfg, err := s.readDashboard()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	idx := findLayout(cfg.Layouts, name)
+	if idx == -1 {
+		writeError(w, http.StatusNotFound, "layout not found")
+		return
+	}
+	cfg.Widgets = cloneWidgets(cfg.Layouts[idx].Widgets)
+	cfg.Active = cfg.Layouts[idx].Name
+	if err := s.writeDashboard(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
 }

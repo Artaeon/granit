@@ -1406,6 +1406,23 @@ export const api = {
   // Dashboard config (read/write)
   getDashboard: () => req<DashboardConfig>('/dashboard'),
   putDashboard: (cfg: DashboardConfig) => req<DashboardConfig>('/dashboard', { method: 'PUT', body: JSON.stringify(cfg) }),
+  // Layout presets. Save snapshots the current widgets under a name;
+  // activate switches the live arrangement to a saved preset; delete
+  // drops one. All four return the full updated DashboardConfig so
+  // the client can swap state in one trip.
+  listDashboardLayouts: () =>
+    req<{ layouts: DashboardLayout[]; active: string }>('/dashboard/layouts'),
+  saveDashboardLayout: (name: string) =>
+    req<DashboardConfig>('/dashboard/layouts', {
+      method: 'POST',
+      body: JSON.stringify({ name })
+    }),
+  deleteDashboardLayout: (name: string) =>
+    req<DashboardConfig>(`/dashboard/layouts/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  activateDashboardLayout: (name: string) =>
+    req<DashboardConfig>(`/dashboard/layouts/${encodeURIComponent(name)}/activate`, {
+      method: 'POST'
+    }),
 
   // Module toggles. listModules returns both the toggleable modules
   // and the always-on core IDs (notes/tasks/calendar/settings) so the
@@ -1538,9 +1555,22 @@ export interface DashboardWidget {
   config?: Record<string, unknown>;
 }
 
+// One named preset. Saved alongside the active arrangement so the user
+// can switch between focus / morning / shutdown layouts without
+// re-checking each widget. Backend stores them in the same
+// .granit/everything-dashboard.json file under `layouts`.
+export interface DashboardLayout {
+  name: string;
+  widgets: DashboardWidget[];
+}
+
 export interface DashboardConfig {
   version: number;
   widgets: DashboardWidget[];
+  /** Name of the currently-applied layout, or "" when on an ad-hoc one. */
+  active?: string;
+  /** Saved layout presets — empty for users who haven't created any. */
+  layouts?: DashboardLayout[];
 }
 
 // ---- helpers ----

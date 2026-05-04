@@ -384,6 +384,13 @@ func (s *Server) Handler() http.Handler {
 
 		r.Get("/api/v1/dashboard", s.handleGetDashboard)
 		r.Put("/api/v1/dashboard", s.handlePutDashboard)
+		// Saved layout presets — focus / morning / shutdown switcher.
+		// The layouts catalogue lives inside the same dashboard config
+		// file; switching activates a named layout's widgets.
+		r.Get("/api/v1/dashboard/layouts", s.handleListDashboardLayouts)
+		r.Post("/api/v1/dashboard/layouts", s.handleSaveDashboardLayout)
+		r.Delete("/api/v1/dashboard/layouts/{name}", s.handleDeleteDashboardLayout)
+		r.Post("/api/v1/dashboard/layouts/{name}/activate", s.handleActivateDashboardLayout)
 
 		// Module toggles — backed by .granit/modules.json. Hides web
 		// surfaces (sidebar nav entries + dashboard widgets + route

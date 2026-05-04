@@ -182,6 +182,52 @@
     }
   }
 
+  // ----- Layout presets -----
+  //
+  // Save / activate / delete each return the full updated config so we
+  // swap state in one round trip rather than re-fetching. Failures
+  // surface via toast — we don't try to roll back optimistic changes
+  // because the server's response IS the new state of truth.
+
+  let savingLayout = $state(false);
+  async function saveCurrentLayout() {
+    if (!config) return;
+    const name = prompt('Save current arrangement as preset:', config.active || '');
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    savingLayout = true;
+    try {
+      const saved = await api.saveDashboardLayout(trimmed);
+      config = saved;
+    } catch (e) {
+      console.error('saveLayout', e);
+    } finally {
+      savingLayout = false;
+    }
+  }
+
+  async function activateLayout(name: string) {
+    if (!config || config.active === name) return;
+    try {
+      const saved = await api.activateDashboardLayout(name);
+      config = saved;
+    } catch (e) {
+      console.error('activateLayout', e);
+    }
+  }
+
+  async function deleteLayout(name: string) {
+    if (!config) return;
+    if (!confirm(`Delete the "${name}" preset? The widgets stay where they are.`)) return;
+    try {
+      const saved = await api.deleteDashboardLayout(name);
+      config = saved;
+    } catch (e) {
+      console.error('deleteLayout', e);
+    }
+  }
+
   function toggleWidget(id: string) {
     if (!config) return;
     config = {
@@ -429,7 +475,29 @@
         </div>
       {/if}
 
-      <div class="flex items-center justify-end mb-4">
+      <div class="flex items-center justify-end gap-2 mb-4">
+        <!-- Active preset chip + quick switcher. Shown only when the
+             user has at least one saved layout, so the row stays tidy
+             until presets become useful. -->
+        {#if config && (config.layouts?.length ?? 0) > 0}
+          <select
+            value={config.active ?? ''}
+            onchange={(e) => {
+              const next = (e.target as HTMLSelectElement).value;
+              if (next) activateLayout(next);
+            }}
+            class="text-xs px-2 py-1.5 bg-surface0 border border-surface1 rounded text-subtext hover:border-primary"
+            aria-label="active dashboard layout"
+            title="switch dashboard layout"
+          >
+            {#if !config.active}
+              <option value="">— ad-hoc —</option>
+            {/if}
+            {#each config.layouts ?? [] as l (l.name)}
+              <option value={l.name}>{l.name}</option>
+            {/each}
+          </select>
+        {/if}
         <button
           onclick={() => (editing = !editing)}
           class="text-xs px-3 py-1.5 bg-surface0 border border-surface1 rounded {editing ? 'text-primary border-primary' : 'text-subtext hover:border-primary'}"
@@ -480,6 +548,56 @@
           <p class="text-xs text-dim pt-2 border-t border-surface1">
             drag rows to reorder · saved to <code class="text-[10px]">.granit/everything-dashboard.json</code> · syncs across devices
           </p>
+        </section>
+
+        <!-- Layout presets — switch between named arrangements like
+             focus / morning / shutdown. Each preset captures the
+             complete widget list (order + enabled state); switching
+             swaps them in. Save snapshots whatever's currently
+             arranged. -->
+        <section class="mb-6 bg-mantle/50 border border-surface1 rounded-lg p-4 space-y-3">
+          <div class="flex items-baseline justify-between">
+            <h2 class="text-sm font-medium text-text">Layout presets</h2>
+            <button
+              onclick={saveCurrentLayout}
+              disabled={savingLayout}
+              class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90 disabled:opacity-50"
+            >
+              + save current as preset
+            </button>
+          </div>
+          {#if (config?.layouts?.length ?? 0) === 0}
+            <p class="text-xs text-dim italic">
+              No presets yet. Arrange your widgets above, then save as
+              <em>focus</em> / <em>morning</em> / <em>shutdown</em> — switch from the dropdown next to "customize".
+            </p>
+          {:else}
+            <ul class="space-y-1">
+              {#each config?.layouts ?? [] as l (l.name)}
+                {@const active = config?.active === l.name}
+                <li class="flex items-center gap-2 px-2.5 py-1.5 rounded {active ? 'bg-primary/10 border border-primary/40' : 'border border-transparent hover:bg-surface0'}">
+                  <span class="text-sm flex-1 truncate {active ? 'text-primary font-medium' : 'text-text'}">
+                    {l.name}
+                  </span>
+                  <span class="text-[11px] text-dim">{l.widgets.filter((w) => w.enabled).length} enabled</span>
+                  {#if !active}
+                    <button
+                      onclick={() => activateLayout(l.name)}
+                      class="text-xs px-2 py-0.5 text-secondary hover:underline"
+                    >activate</button>
+                  {:else}
+                    <span class="text-[10px] uppercase tracking-wider text-primary">active</span>
+                  {/if}
+                  <button
+                    onclick={() => deleteLayout(l.name)}
+                    aria-label="delete {l.name}"
+                    title="delete preset"
+                    class="text-xs text-dim hover:text-error w-6 h-6 flex items-center justify-center rounded"
+                  >×</button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
         </section>
       {/if}
 
