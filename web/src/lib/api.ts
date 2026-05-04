@@ -1386,6 +1386,18 @@ export const api = {
     thoughts?: string;
   }) => req<{ path: string; saved: boolean }>('/morning/save', { method: 'POST', body: JSON.stringify(body) }),
 
+  // Daily examen — Ignatian evening reflection saved as a `## Examen`
+  // section in the daily note. Empty `date` defaults to today;
+  // explicit YYYY-MM-DD lets the user backfill an examen for the
+  // wrong-end-of-the-day case (typed it the next morning).
+  saveExamen: (body: {
+    date?: string;
+    saw_god?: string;
+    missed?: string;
+    gratitude?: string;
+    tomorrow?: string;
+  }) => req<{ path: string; saved: boolean }>('/examen', { method: 'POST', body: JSON.stringify(body) }),
+
   // Full-text search across vault content (uses granit's TF-IDF SearchIndex)
   search: (q: string, limit = 30) =>
     req<{ results: SearchHit[]; total: number; q: string; ready: boolean }>(

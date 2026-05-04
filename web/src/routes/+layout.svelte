@@ -76,7 +76,8 @@
         { href: '/tasks', label: 'Tasks', icon: 'tasks' },
         { href: '/calendar', label: 'Calendar', icon: 'calendar' },
         { href: '/jots', label: 'Jots', icon: 'jots', moduleId: 'jots' },
-        { href: '/habits', label: 'Habits', icon: 'habits', moduleId: 'habit_tracker' }
+        { href: '/habits', label: 'Habits', icon: 'habits', moduleId: 'habit_tracker' },
+        { href: '/examen', label: 'Examen', icon: 'examen', moduleId: 'examen' }
       ]
     },
     {
