@@ -1526,7 +1526,9 @@ export type DashboardWidgetType =
   | 'today-focus'
   | 'top-deadlines'
   | 'vision'
-  | 'one-thing';
+  | 'one-thing'
+  | 'ventures'
+  | 'prayer';
 
 export interface DashboardWidget {
   id: string;

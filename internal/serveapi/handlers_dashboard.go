@@ -61,6 +61,8 @@ var widgetTypeToModuleID = map[string]string{
 	"top-deadlines":   "deadlines",
 	"scripture":       "scripture",
 	"today-focus":     "morning",
+	"ventures":        "ventures",
+	"prayer":          "prayer",
 }
 
 func (s *Server) handleGetDashboard(w http.ResponseWriter, r *http.Request) {

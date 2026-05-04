@@ -2,20 +2,21 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
-  import { api, todayISO, type Task, type HabitInfo, type Goal, type Deadline } from '$lib/api';
+  import { api, todayISO, type Task, type HabitInfo, type Goal, type Deadline, type PrayerIntention } from '$lib/api';
   import { scriptures, scriptureOfTheDay } from '$lib/morning/scriptures';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
   import { classifyAiError } from '$lib/util/aiErrors';
   import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
 
-  // The wizard runs in 7 steps now. The new "anchors" step opens the
-  // routine with a read-only review of what the user is currently
-  // working towards (active goals, today's habits, near-term deadlines)
-  // — so they enter the planning loop already grounded in the bigger
-  // picture instead of staring at a blank scripture.
-  type Step = 'anchors' | 'scripture' | 'goal' | 'tasks' | 'habits' | 'thoughts' | 'review';
-  const order: Step[] = ['anchors', 'scripture', 'goal', 'tasks', 'habits', 'thoughts', 'review'];
+  // The wizard runs in 8 steps now. "anchors" opens with a read-only
+  // review of what the user is working towards (active goals, today's
+  // habits, near-term deadlines); "prayer" sits between scripture and
+  // goal so the user brings the day's work before God before
+  // committing to specifics — matches the "align life and business
+  // to God" narrative the dedicated /prayer page is built around.
+  type Step = 'anchors' | 'scripture' | 'prayer' | 'goal' | 'tasks' | 'habits' | 'thoughts' | 'review';
+  const order: Step[] = ['anchors', 'scripture', 'prayer', 'goal', 'tasks', 'habits', 'thoughts', 'review'];
 
   let step = $state<Step>('anchors');
 
@@ -29,6 +30,18 @@
   let scripture = $state(scriptureOfTheDay());
   let customScripture = $state('');
   let customSource = $state('');
+
+  // Step: Prayer. Picks from active intentions; the user can also add
+  // a quick new one inline. We don't read/write the underlying
+  // intentions.json from the wizard except for the inline "+" button
+  // (a plain createPrayer call) — toggling existing intentions just
+  // marks which ones the user is committing to pray over today, no
+  // schema change needed on the prayer record itself.
+  let activeIntentions = $state<PrayerIntention[]>([]);
+  let prayerLoaded = $state(false);
+  let pickedIntentions = $state<Set<string>>(new Set()); // intention ids
+  let newPrayerText = $state('');
+  let addingPrayer = $state(false);
 
   // Step 2: Goal
   let goal = $state('');
@@ -72,6 +85,7 @@
     linkedGoalId: string;
     pickedTasks: string[];
     pickedHabits: string[];
+    pickedIntentions: string[];
     newHabit: string;
     thoughts: string;
     winSentence: string;
@@ -87,6 +101,7 @@
       linkedGoalId,
       pickedTasks: [...pickedTasks],
       pickedHabits: [...pickedHabits],
+      pickedIntentions: [...pickedIntentions],
       newHabit,
       thoughts,
       winSentence
@@ -113,6 +128,7 @@
       linkedGoalId = s.linkedGoalId ?? '';
       pickedTasks = new Set(s.pickedTasks ?? []);
       pickedHabits = new Set(s.pickedHabits ?? []);
+      pickedIntentions = new Set(s.pickedIntentions ?? []);
       newHabit = s.newHabit ?? '';
       thoughts = s.thoughts ?? '';
       winSentence = s.winSentence ?? '';
@@ -133,6 +149,7 @@
     void linkedGoalId;
     void pickedTasks;
     void pickedHabits;
+    void pickedIntentions;
     void newHabit;
     void thoughts;
     void winSentence;
@@ -142,15 +159,21 @@
   async function load() {
     if (!$auth) return;
     try {
-      const [t, h, g, d] = await Promise.all([
+      const [t, h, g, d, p] = await Promise.all([
         api.listTasks({ status: 'open' }),
         api.listHabits(),
         api.listGoals().catch((): { goals: Goal[]; total: number } => ({ goals: [], total: 0 })),
         // tryListDeadlines never throws — returns null when unavailable.
-        api.tryListDeadlines()
+        api.tryListDeadlines(),
+        // Prayer is best-effort: a 404 (module disabled) shouldn't block
+        // the rest of the routine. We swallow into an empty list and
+        // the prayer step renders an empty-state with a "+ add" prompt.
+        api.listPrayer().catch(() => ({ intentions: [] as PrayerIntention[], total: 0 }))
       ]);
       openTasks = t.tasks;
       knownHabits = h.habits;
+      activeIntentions = p.intentions.filter((x) => x.status === 'praying');
+      prayerLoaded = true;
       activeGoals = g.goals.filter((x) => (x.status ?? 'active') === 'active').slice(0, 3);
       const map: Record<string, string> = {};
       for (const goalEntry of g.goals) map[goalEntry.id] = goalEntry.title;
@@ -193,6 +216,43 @@
     else pickedTasks.add(id);
     pickedTasks = new Set(pickedTasks);
   }
+  function toggleIntention(id: string) {
+    if (pickedIntentions.has(id)) pickedIntentions.delete(id);
+    else pickedIntentions.add(id);
+    pickedIntentions = new Set(pickedIntentions);
+  }
+  // Inline create of a brand-new intention straight from the wizard.
+  // The created intention is auto-picked for today (so the user sees
+  // it appear in the saved Plan block) and stays in their long-term
+  // prayer list — same as if they'd added it from /prayer.
+  async function addNewPrayer(e: Event) {
+    e.preventDefault();
+    const text = newPrayerText.trim();
+    if (!text || addingPrayer) return;
+    addingPrayer = true;
+    try {
+      const created = await api.createPrayer({ text, status: 'praying' });
+      activeIntentions = [created, ...activeIntentions];
+      pickedIntentions.add(created.id);
+      pickedIntentions = new Set(pickedIntentions);
+      newPrayerText = '';
+    } catch (err) {
+      toast.error(`failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      addingPrayer = false;
+    }
+  }
+  // Sort the picker: work-tied (venture/project/goal) first, then
+  // people, then general — matches the dedicated /prayer page so the
+  // mental model stays consistent across surfaces.
+  let sortedIntentions = $derived.by(() => {
+    const tied = activeIntentions.filter((p) => p.venture || p.project || p.goal);
+    const persons = activeIntentions.filter((p) => p.person && !(p.venture || p.project || p.goal));
+    const general = activeIntentions.filter(
+      (p) => !p.person && !(p.venture || p.project || p.goal)
+    );
+    return [...tied, ...persons, ...general];
+  });
   function toggleHabit(name: string) {
     if (pickedHabits.has(name)) pickedHabits.delete(name);
     else pickedHabits.add(name);
@@ -319,13 +379,39 @@
           ? `${goalText} — contributes to: ${linked.title}`
           : goalText
         : undefined;
+      // Fold picked prayer intentions into the saved Plan block. The
+      // server's saveMorning endpoint has no dedicated prayer field, so
+      // the intentions ride along with thoughts as a clearly-labelled
+      // 'Praying for' section. This keeps the daily note self-contained
+      // ("what was I bringing before God on this day") without forcing
+      // a server schema change. The dedicated /prayer page remains the
+      // source of truth for the long-term list.
+      const prayerLines: string[] = [];
+      for (const id of pickedIntentions) {
+        const intent = activeIntentions.find((x) => x.id === id);
+        if (!intent) continue;
+        let line = `- ${intent.text}`;
+        if (intent.venture) line += ` (🏢 ${intent.venture})`;
+        else if (intent.project) line += ` (📁 ${intent.project})`;
+        else if (intent.person) line += ` (👤 ${intent.person})`;
+        if (intent.passage_ref) line += ` — ${intent.passage_ref}`;
+        prayerLines.push(line);
+      }
+      const prayerBlock = prayerLines.length > 0
+        ? `Praying for:\n${prayerLines.join('\n')}`
+        : '';
+
       // The win sentence rides along in the thoughts block (server has
       // no dedicated field). Prepend it so it shows up first when the
-      // user reopens the daily note.
+      // user reopens the daily note. Prayer block sits between the
+      // win and the free-form thoughts so the structure reads:
+      // win → before God → free-form reflection.
       const winLine = winSentence.trim();
-      const thoughtsBody = winLine
-        ? `Today's win: ${winLine}${thoughts.trim() ? `\n\n${thoughts.trim()}` : ''}`
-        : (thoughts.trim() || undefined);
+      const winPart = winLine ? `Today's win: ${winLine}` : '';
+      const thoughtsRaw = thoughts.trim();
+      const thoughtsBody = [winPart, prayerBlock, thoughtsRaw]
+        .filter((s) => s.length > 0)
+        .join('\n\n') || undefined;
 
       await api.saveMorning({
         scripture: activeScripture.text ? activeScripture : undefined,
@@ -409,6 +495,7 @@
   const stepLabels: Record<Step, string> = {
     anchors: 'Anchors',
     scripture: 'Scripture',
+    prayer: 'Prayer',
     goal: 'Today\'s Goal',
     tasks: 'Tasks',
     habits: 'Habits',
@@ -570,6 +657,77 @@
         <div class="text-xs text-dim mt-2 mb-2">Or paste your own</div>
         <input bind:value={customScripture} placeholder="quote / verse text" class="w-full px-3 py-2 mb-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary" />
         <input bind:value={customSource} placeholder="source (e.g. Proverbs 27:17)" class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary" />
+      {:else if step === 'prayer'}
+        <h2 class="text-lg font-medium text-text mb-1">Bring it before God</h2>
+        <p class="text-sm text-dim mb-4">
+          Pick the intentions you want to carry into today, or add a fresh one.
+          {#if activeIntentions.length === 0 && prayerLoaded}
+            <a href="/prayer" class="text-secondary hover:underline">Open /prayer →</a>
+          {/if}
+        </p>
+
+        {#if !prayerLoaded}
+          <div class="text-sm text-dim italic">loading intentions…</div>
+        {:else if sortedIntentions.length === 0}
+          <p class="text-sm text-dim italic mb-4">
+            No active intentions yet. Add one below — it'll save to your prayer list and ride along in today's daily plan.
+          </p>
+        {:else}
+          <ul class="space-y-1.5 mb-4 max-h-64 overflow-y-auto pr-1">
+            {#each sortedIntentions as p (p.id)}
+              {@const picked = pickedIntentions.has(p.id)}
+              <li>
+                <button
+                  type="button"
+                  onclick={() => toggleIntention(p.id)}
+                  class="w-full text-left flex items-start gap-2.5 px-3 py-2 rounded border transition-colors
+                    {picked
+                      ? 'border-primary bg-primary/10'
+                      : 'border-surface1 bg-mantle/40 hover:border-primary/40'}"
+                >
+                  <span
+                    class="flex-shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center text-[10px]
+                      {picked ? 'bg-primary border-primary text-on-primary' : 'border-surface2'}"
+                  >
+                    {picked ? '✓' : ''}
+                  </span>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm text-text break-words">{p.text}</div>
+                    {#if p.venture || p.project || p.goal || p.person || p.passage_ref}
+                      <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[11px] text-dim">
+                        {#if p.venture}<span class="text-secondary">🏢 {p.venture}</span>{/if}
+                        {#if p.project && !p.venture}<span class="text-secondary">📁 {p.project}</span>{/if}
+                        {#if p.goal && !p.venture && !p.project}<span class="text-secondary">🎯 goal</span>{/if}
+                        {#if p.person && !(p.venture || p.project || p.goal)}<span class="text-secondary">👤 {p.person}</span>{/if}
+                        {#if p.passage_ref}<span>📖 {p.passage_ref}</span>{/if}
+                      </div>
+                    {/if}
+                  </div>
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+
+        <!-- Inline create — keeps the user in the wizard. New intention
+             is auto-picked for today and persisted to the long-term list. -->
+        <form onsubmit={addNewPrayer} class="flex gap-2">
+          <input
+            bind:value={newPrayerText}
+            placeholder="add a fresh intention…"
+            class="flex-1 px-3 py-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
+          />
+          <button
+            type="submit"
+            disabled={!newPrayerText.trim() || addingPrayer}
+            class="px-3 py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
+          >{addingPrayer ? '…' : '+ add'}</button>
+        </form>
+
+        <p class="text-[11px] text-dim mt-3">
+          {pickedIntentions.size} intention{pickedIntentions.size === 1 ? '' : 's'} will save with today's plan.
+          Manage the long-term list at <a href="/prayer" class="text-secondary hover:underline">/prayer</a>.
+        </p>
       {:else if step === 'goal'}
         <h2 class="text-lg font-medium text-text mb-1">Today's #1 goal</h2>
         <p class="text-sm text-dim mb-4">If you only got one thing done today, what should it be?</p>
@@ -774,6 +932,25 @@
               <div class="text-xs uppercase tracking-wider text-dim mb-1">Habits ({pickedHabits.size})</div>
               <ul class="space-y-0.5 text-text">
                 {#each [...pickedHabits] as h}<li>☐ {h}</li>{/each}
+              </ul>
+            </div>
+          {/if}
+          {#if pickedIntentions.size > 0}
+            <div>
+              <div class="text-xs uppercase tracking-wider text-dim mb-1">Praying for ({pickedIntentions.size})</div>
+              <ul class="space-y-0.5 text-text">
+                {#each [...pickedIntentions] as id}
+                  {@const intent = activeIntentions.find((x) => x.id === id)}
+                  {#if intent}
+                    <li class="flex items-baseline gap-2">
+                      <span>🙏</span>
+                      <span class="flex-1 min-w-0">{intent.text}</span>
+                      {#if intent.venture}<span class="text-[11px] text-secondary flex-shrink-0">🏢 {intent.venture}</span>
+                      {:else if intent.project}<span class="text-[11px] text-secondary flex-shrink-0">📁 {intent.project}</span>
+                      {:else if intent.person}<span class="text-[11px] text-secondary flex-shrink-0">👤 {intent.person}</span>{/if}
+                    </li>
+                  {/if}
+                {/each}
               </ul>
             </div>
           {/if}
