@@ -45,6 +45,24 @@
   let priorityFilter = $state<number | ''>('');
   let goalFilter = $state('');
   let deadlineFilter = $state('');
+  // Source filter — separates "tasks the user actually wrote as tasks"
+  // from "stray `- [ ]` bullets in reading notes / brainstorm pages".
+  // Default is 'task-notes' (only notes that look like task surfaces:
+  // daily notes, anything under Tasks/Projects/Daily, or notes with a
+  // type:task/project/daily frontmatter declared via path patterns we
+  // can detect without a frontmatter fetch). Flipping to 'all' shows
+  // every checkbox in the vault — same behaviour as before this filter
+  // shipped. Persisted in localStorage so the user's preference sticks.
+  const SOURCE_KEY = 'granit.tasks.source';
+  let sourceFilter = $state<'task-notes' | 'all'>(
+    typeof localStorage !== 'undefined' && localStorage.getItem(SOURCE_KEY) === 'all'
+      ? 'all'
+      : 'task-notes'
+  );
+  $effect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try { localStorage.setItem(SOURCE_KEY, sourceFilter); } catch {}
+  });
   let loading = $state(false);
   // URL sync: hydrate filter state from ?status=…&priority=…&… on
   // first load so refresh / shared links keep filters intact, and
@@ -354,8 +372,38 @@
     return d.getTime() < sevenDaysAgo;
   }
 
+  // isTaskLikePath: heuristic for "this notePath came from a note the
+  // user clearly meant as a task surface, not a reading list that
+  // happens to use - [ ] for visual bullets". Pure path-based so we
+  // don't need to fetch frontmatter for every task.
+  //
+  // Match rules (any one is enough to count as task-like):
+  //   - filename is YYYY-MM-DD.md anywhere → daily note
+  //   - path begins with Daily/, Tasks/, or Projects/ at any depth
+  //   - notePath empty → tasks created via the API w/o a host note
+  //     (we keep them visible because they were explicit)
+  //
+  // The folder list below intentionally does NOT include arbitrary
+  // user folders; the user can still see those by flipping the source
+  // filter to 'all' from the UI. Folder names are case-insensitive on
+  // the prefix to be friendly to mac/windows-originated vaults.
+  const taskFolderPrefixes = ['daily/', 'tasks/', 'projects/'];
+  const reDailyName = /(?:^|\/)\d{4}-\d{2}-\d{2}\.md$/;
+  function isTaskLikePath(p: string): boolean {
+    if (!p) return true;
+    if (reDailyName.test(p)) return true;
+    const lower = p.toLowerCase();
+    for (const prefix of taskFolderPrefixes) {
+      if (lower.startsWith(prefix)) return true;
+    }
+    return false;
+  }
+
   let filtered = $derived.by(() => {
     let out = tasks;
+    if (sourceFilter === 'task-notes') {
+      out = out.filter((t) => isTaskLikePath(t.notePath));
+    }
     if (q.trim()) {
       const ql = q.toLowerCase();
       out = out.filter((t) => t.text.toLowerCase().includes(ql) || t.notePath.toLowerCase().includes(ql));
@@ -543,6 +591,32 @@
             {#if v === 'done'}<span class="text-xs text-dim ml-1">{countDone}</span>{/if}
           </button>
         {/each}
+      </div>
+    </div>
+
+    <!-- Source filter — hides `- [ ]` bullets that live in reading
+         notes / brainstorm pages so the global task view doesn't get
+         polluted by visual list bullets the user never meant as
+         tasks. Default 'task-notes' looks at notes that look like
+         task surfaces (daily notes, anything under Daily/, Tasks/,
+         Projects/). Flip to 'all' to see every checkbox in the vault. -->
+    <div>
+      <div class="text-xs uppercase tracking-wider text-dim mb-2">Source</div>
+      <div class="flex flex-col gap-1 text-sm">
+        <button
+          class="text-left px-3 py-2 rounded {sourceFilter === 'task-notes' ? 'bg-surface1 text-text' : 'text-subtext hover:bg-surface0'}"
+          onclick={() => (sourceFilter = 'task-notes')}
+          title="Daily notes, Tasks/, Projects/, Daily/ — skip bullets in arbitrary notes"
+        >
+          Task notes only
+        </button>
+        <button
+          class="text-left px-3 py-2 rounded {sourceFilter === 'all' ? 'bg-surface1 text-text' : 'text-subtext hover:bg-surface0'}"
+          onclick={() => (sourceFilter = 'all')}
+          title="Show every - [ ] checkbox the parser found in the vault"
+        >
+          All notes
+        </button>
       </div>
     </div>
 
