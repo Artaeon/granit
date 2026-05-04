@@ -732,6 +732,33 @@ export interface Virtue {
   checks?: VirtueCheck[];
 }
 
+// Shopping list. Mirrors internal/shopping — single-record model
+// with a `standard` flag for recurring needs (bread, olive oil,
+// basic clothing). Re-planning a bought standard flips its
+// status back to 'planned' in place; no template-duplication.
+export type ShoppingStatus = 'planned' | 'bought' | 'skipped';
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  description?: string;
+  url?: string;
+  price?: number;
+  quantity?: number;
+  category?: string;
+  status: ShoppingStatus | string;
+  standard?: boolean;
+  notes?: string;
+  bought_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+export interface ShoppingTotals {
+  planned_count: number;
+  planned_sum: number;
+  bought_month_count: number;
+  bought_month_sum: number;
+}
+
 // People — lightweight CRM. The list response also carries derived
 // upcoming-birthday + stale-count fields so the page hydrates in
 // one round trip.
@@ -1421,6 +1448,21 @@ export const api = {
     gratitude?: string;
     tomorrow?: string;
   }) => req<{ path: string; saved: boolean }>('/examen', { method: 'POST', body: JSON.stringify(body) }),
+
+  // Shopping list — single-record items with a `standard` flag for
+  // recurring needs. /totals serves the /finance overview rollup.
+  listShopping: () => req<{ items: ShoppingItem[]; total: number }>('/shopping'),
+  shoppingTotals: () => req<ShoppingTotals>('/shopping/totals'),
+  getShoppingItem: (id: string) => req<ShoppingItem>(`/shopping/${encodeURIComponent(id)}`),
+  createShoppingItem: (it: Partial<ShoppingItem>) =>
+    req<ShoppingItem>('/shopping', { method: 'POST', body: JSON.stringify(it) }),
+  patchShoppingItem: (id: string, it: Partial<ShoppingItem>) =>
+    req<ShoppingItem>(`/shopping/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(it)
+    }),
+  deleteShoppingItem: (id: string) =>
+    req<void>(`/shopping/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // Virtues — character formation tracker. Checks live on a separate
   // POST endpoint to avoid two clients clobbering each other's

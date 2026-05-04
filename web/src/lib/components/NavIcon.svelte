@@ -31,6 +31,15 @@
     <path d="M12 8c3-3 7-2 7 2 0 3-4 4-7 1"/>
     <path d="M12 8c0-3 2-5 5-5"/>
   </svg>
+{:else if name === 'shopping'}
+  <!-- Shopping basket — open lattice with two handles. Reads as
+       "things to pick up" without the cart-with-wheels associations
+       of online checkout (granit's shopping is plan-and-buy, not
+       browse-and-checkout). -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <path d="M3 9h18l-2 11H5z"/>
+    <path d="M8 9V6a4 4 0 0 1 8 0v3"/>
+  </svg>
 {:else if name === 'tasks'}
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <rect x="3" y="5" width="6" height="6" rx="1"/><path d="m4.5 8 1 1 2-2"/><path d="M13 7h8M13 17h8M3 17h6"/>
