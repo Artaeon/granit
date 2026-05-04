@@ -52,6 +52,78 @@ func TestParse_DeadlineMarker_NoFalsePositives(t *testing.T) {
 	}
 }
 
+// TestParse_FrontmatterOptOut_SkipsNote verifies the
+// `tasks: false` (or no/skip/none) frontmatter flag suppresses the
+// scanner for the entire note. Bullet-list-style `- [ ]` lines in
+// reading notes / templates / brainstorm pages must not pollute the
+// global task list once opted out.
+func TestParse_FrontmatterOptOut_SkipsNote(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name: "tasks: false",
+			content: "---\ntitle: brainstorm\ntasks: false\n---\n\n- [ ] not a task\n- [ ] also not\n",
+		},
+		{
+			name: "tasks: no",
+			content: "---\ntasks: no\n---\n- [ ] still no\n",
+		},
+		{
+			name: "tasks: skip",
+			content: "---\ntasks: skip\n---\n- [ ] skipped\n",
+		},
+		{
+			name: "tasks: none",
+			content: "---\ntasks: none\n---\n- [ ] nope\n",
+		},
+		{
+			name:    "CRLF line endings",
+			content: "---\r\ntasks: false\r\n---\r\n- [ ] crlf\r\n",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out := ParseNotes([]NoteContent{{Path: "Brainstorm.md", Content: c.content}})
+			if len(out) != 0 {
+				t.Errorf("expected 0 tasks for opted-out note, got %d", len(out))
+			}
+		})
+	}
+}
+
+// TestParse_FrontmatterOptOut_DoesNotMatchInBody guards against
+// false-positive opt-outs from a line of body text that happens to
+// contain `tasks: false` (e.g. inside a code fence or a quote).
+func TestParse_FrontmatterOptOut_DoesNotMatchInBody(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "tasks: true in frontmatter",
+			content: "---\ntasks: true\n---\n- [ ] real task\n",
+		},
+		{
+			name:    "no frontmatter, tasks: false in body",
+			content: "Some intro.\ntasks: false\n- [ ] real task\n",
+		},
+		{
+			name:    "tasks: false in code fence below frontmatter",
+			content: "---\ntitle: x\n---\n\n```\ntasks: false\n```\n- [ ] real task\n",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out := ParseNotes([]NoteContent{{Path: "x.md", Content: c.content}})
+			if len(out) != 1 {
+				t.Errorf("expected 1 task, got %d (content suppressed)", len(out))
+			}
+		})
+	}
+}
+
 // TestParse_GoalAndDeadline_BothPopulated verifies that a single line
 // with both markers populates GoalID and DeadlineID independently —
 // the two regexes must not interfere.

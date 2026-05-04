@@ -62,6 +62,15 @@ var (
 	// inert text from the legacy parser's perspective).
 	reDeadlineLink   = regexp.MustCompile(`deadline:([0-9a-z]{26})`)
 	reDailyNoteName  = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	// Frontmatter opt-out: a note containing `tasks: false` (also
+	// `no`, `skip`, `none`) inside its leading YAML block is excluded
+	// from the task scanner entirely. This lets users keep `- [ ]`
+	// style bullet lists in reading notes / templates / brainstorm
+	// pages without those bullets cluttering the global task view.
+	// Match is anchored to a line start (`(?m)^`) so a line of body
+	// text that happens to contain "tasks: false" can't disable
+	// scanning for the whole note.
+	reTaskOptOut    = regexp.MustCompile(`(?m)^tasks:\s*(false|no|skip|none)\s*$`)
 )
 
 // ParseNotes scans every note for GFM checkbox lines and returns
@@ -82,6 +91,9 @@ func ParseNotes(notes []NoteContent) []Task {
 
 func parseNote(note NoteContent) []Task {
 	if note.Content == "" {
+		return nil
+	}
+	if hasTaskOptOut(note.Content) {
 		return nil
 	}
 	lines := strings.Split(note.Content, "\n")
@@ -225,6 +237,38 @@ func applyMarkdownExtras(t *Task, notePath, taskText string) {
 		}
 		t.EstimatedMinutes = val
 	}
+}
+
+// hasTaskOptOut returns true when the note's leading frontmatter
+// contains `tasks: false` (or no/skip/none). Bounded to the
+// frontmatter block so the same key inside a code fence or quoted
+// body text doesn't accidentally suppress scanning.
+//
+// The internal/vault package already has a richer ParseFrontmatter,
+// but pulling it in here would invert the dependency direction
+// (tasks → vault → tasks via the Note conversion at the boundary),
+// so we re-detect the block locally with a tiny stdlib-only routine.
+func hasTaskOptOut(content string) bool {
+	// Frontmatter must start at byte 0. Accept LF and CRLF after the
+	// opening "---" so files committed from Windows still match.
+	var rest string
+	switch {
+	case strings.HasPrefix(content, "---\n"):
+		rest = content[4:]
+	case strings.HasPrefix(content, "---\r\n"):
+		rest = content[5:]
+	default:
+		return false
+	}
+	// End delimiter is the first line equal to `---` (with optional
+	// CR). Look for "\n---" as a cheap match — the strictly correct
+	// form would also accept a leading `---` immediately after the
+	// opener (an empty block), but no real note hits that case.
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		return false
+	}
+	return reTaskOptOut.MatchString(rest[:end])
 }
 
 // leadingIndentColumns counts visual indent columns on a line:
