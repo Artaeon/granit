@@ -43,6 +43,7 @@
         scrollToLine: (n: number) => void;
         getScrollTop: () => number;
         setScrollTop: (top: number) => void;
+        isCompletionActive: () => boolean;
       }
     | undefined = $state();
 
@@ -278,13 +279,32 @@
 
   // Auto-save: debounce 2s after last edit. If save fails, the next edit
   // re-triggers the timer so we keep retrying as the user continues typing.
+  //
+  // Hostile-UX guard: while the autocomplete picker is open (user mid-
+  // snippet like /callout, mid-wikilink, or mid-tag), saving causes the
+  // editor's doc to be re-set on the WS bounce-back, which closes the
+  // picker and interrupts what the user was composing. We back off
+  // every 1s in that case and only save once the picker is closed.
+  // This pattern preserves a single in-flight timer ref (cleaned up
+  // properly on effect re-run) instead of leaking re-scheduled timers.
   $effect(() => {
     void body;
     if (!dirty || saving || !note) return;
-    const t = setTimeout(() => {
-      if (dirty && !saving && note) save({ silent: true });
-    }, 2000);
-    return () => clearTimeout(t);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const trySave = () => {
+      timer = null;
+      if (!dirty || saving || !note) return;
+      if (editor?.isCompletionActive?.()) {
+        // Picker open — back off and re-check in 1s.
+        timer = setTimeout(trySave, 1000);
+        return;
+      }
+      save({ silent: true });
+    };
+    timer = setTimeout(trySave, 2000);
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   });
 
   // Persist the body to localStorage on every change (debounced 600ms).
@@ -385,12 +405,27 @@
     });
   });
 
-  // Live-reload current note from WS, but never clobber unsaved edits.
+  // Live-reload current note from WS, but never clobber unsaved edits
+  // OR our own just-completed save.
+  //
+  // The own-save guard (lastSavedAt within ~3s) suppresses the reload
+  // that the server fires back after WE save: even when bodies match
+  // byte-for-byte, the body=serverBody assignment in load() can
+  // disturb the editor's autocomplete state (re-running the value
+  // effect, even with an equality guard, occasionally clobbers a
+  // mid-snippet picker). Skipping our own bounce-back keeps the
+  // composing user's flow intact.
+  //
+  // Reloads from a cross-device save still come through — the user's
+  // own save sets lastSavedAt within milliseconds before the bounce-
+  // back, so the 3s window is short enough that an external edit
+  // arriving moments later still wins.
   onMount(() =>
     onWsEvent((ev) => {
       if (ev.type !== 'note.changed') return;
       if (!note || ev.path !== note.path) return;
       if (dirty || saving) return;
+      if (lastSavedAt && Date.now() - lastSavedAt < 3000) return;
       lastLoadedPath = '';
       load(note.path);
     })

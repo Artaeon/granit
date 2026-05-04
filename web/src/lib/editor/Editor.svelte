@@ -5,7 +5,7 @@
   import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
   import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
   import { syntaxHighlighting, indentOnInput, foldGutter, foldKeymap, bracketMatching } from '@codemirror/language';
-  import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
+  import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, completionStatus } from '@codemirror/autocomplete';
   import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 
   import { theme, mdHighlight } from './theme';
@@ -147,6 +147,15 @@
     requestAnimationFrame(() => {
       if (view) view.scrollDOM.scrollTop = top;
     });
+  }
+
+  // True when the autocomplete picker is currently open (the user is
+  // mid-snippet or wikilink). Parent uses this to pause auto-save —
+  // saving + the resulting WS roundtrip can reset the editor doc,
+  // which closes the picker, which interrupts the user. Hostile UX.
+  export function isCompletionActive(): boolean {
+    if (!view) return false;
+    return completionStatus(view.state) !== null;
   }
 </script>
 
