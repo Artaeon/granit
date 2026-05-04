@@ -8,7 +8,8 @@
     type FinIncomeStream,
     type FinGoal,
     type FinOverview,
-    type Project
+    type Project,
+    type ShoppingTotals
   } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
@@ -39,6 +40,9 @@
   let subs = $state<FinSubscription[]>([]);
   let streams = $state<FinIncomeStream[]>([]);
   let goals = $state<FinGoal[]>([]);
+  // Shopping rollup — best-effort fetch alongside the finance load.
+  // Module-disabled or 404 leaves it null and the section auto-hides.
+  let shoppingTotals = $state<ShoppingTotals | null>(null);
   // Projects feed the project-link pickers on income + subscription
   // forms. Loaded alongside the rest so the dropdowns hydrate without
   // a follow-up fetch when the user clicks "+ New".
@@ -102,7 +106,7 @@
     if (!$auth) return;
     loading = true;
     try {
-      const [o, a, s, i, g, p] = await Promise.all([
+      const [o, a, s, i, g, p, sh] = await Promise.all([
         api.finOverview(),
         api.finListAccounts(),
         api.finListSubscriptions(),
@@ -111,7 +115,11 @@
         // Projects are read-only here — fetched only to populate
         // pickers on income + subscription create/edit. A failure
         // shouldn't break the finance page; fall through with empty.
-        api.listProjects().catch(() => ({ projects: [] as Project[], total: 0 }))
+        api.listProjects().catch(() => ({ projects: [] as Project[], total: 0 })),
+        // Shopping totals — same defensive pattern. Module disabled
+        // → endpoint may return 404 → null, which the render branch
+        // auto-hides.
+        api.shoppingTotals().catch(() => null)
       ]);
       overview = o;
       accounts = a.accounts;
@@ -119,6 +127,7 @@
       streams = i.streams;
       goals = g.goals;
       projects = p.projects;
+      shoppingTotals = sh;
     } catch (e) {
       toast.error('failed to load finance: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -614,6 +623,42 @@
             <span class="text-dim"> = </span>
             <span class="font-semibold {net >= 0 ? 'text-text' : 'text-error'}">{fmtMoney(net, overview.currency)} / month</span>
             <p class="text-[11px] text-dim mt-1">From recurring income & subscriptions only — doesn't include one-off spending.</p>
+          </div>
+        {/if}
+
+        <!-- Shopping rollup — bridges the user's plan-to-buy list into
+             the money picture. Shows planned spend (the queued purchases
+             not yet bought) and bought-this-month spend (one-off
+             outflow that the run-rate above doesn't capture). Hidden
+             when the shopping module is disabled or the user has no
+             items yet. The shopping API stores prices in user-currency
+             floats (EUR by default); fmtMoney here expects integer
+             cents so we multiply by 100. -->
+        {#if shoppingTotals && (shoppingTotals.planned_count > 0 || shoppingTotals.bought_month_count > 0)}
+          <div class="mb-6 px-4 py-3 bg-surface0 border border-surface1 rounded">
+            <div class="flex items-baseline justify-between gap-3 flex-wrap">
+              <div class="flex items-baseline gap-4 flex-wrap">
+                <span class="text-xs uppercase tracking-wider text-dim font-medium">Shopping</span>
+                {#if shoppingTotals.planned_count > 0}
+                  <span class="text-sm">
+                    <span class="text-dim">planned</span>
+                    <span class="text-text font-medium ml-1">{fmtMoney(Math.round(shoppingTotals.planned_sum * 100), overview.currency)}</span>
+                    <span class="text-dim text-xs">· {shoppingTotals.planned_count} items</span>
+                  </span>
+                {/if}
+                {#if shoppingTotals.bought_month_count > 0}
+                  <span class="text-sm">
+                    <span class="text-dim">bought this month</span>
+                    <span class="text-text font-medium ml-1">{fmtMoney(Math.round(shoppingTotals.bought_month_sum * 100), overview.currency)}</span>
+                    <span class="text-dim text-xs">· {shoppingTotals.bought_month_count} items</span>
+                  </span>
+                {/if}
+              </div>
+              <a href="/shopping" class="text-xs text-secondary hover:underline">open list →</a>
+            </div>
+            <p class="text-[11px] text-dim mt-1">
+              From your <a href="/shopping" class="text-secondary hover:underline">shopping plan</a> — separate from subscriptions, so this captures one-off intent and actual outflows.
+            </p>
           </div>
         {/if}
 
