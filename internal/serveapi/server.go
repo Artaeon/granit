@@ -363,6 +363,17 @@ func (s *Server) Handler() http.Handler {
 		r.Delete("/api/v1/virtues/{id}", s.handleDeleteVirtue)
 		r.Post("/api/v1/virtues/{id}/checks", s.handleLogVirtueCheck)
 
+		// Shopping list — single source-of-truth Items with a
+		// `standard` flag for recurring needs. /totals serves the
+		// /finance overview's "planned spend / bought this month"
+		// rollup so the finance page doesn't have to reconstruct it.
+		r.Get("/api/v1/shopping", s.handleListShopping)
+		r.Post("/api/v1/shopping", s.handleCreateShoppingItem)
+		r.Get("/api/v1/shopping/totals", s.handleShoppingTotals)
+		r.Get("/api/v1/shopping/{id}", s.handleGetShoppingItem)
+		r.Patch("/api/v1/shopping/{id}", s.handlePatchShoppingItem)
+		r.Delete("/api/v1/shopping/{id}", s.handleDeleteShoppingItem)
+
 		r.Get("/api/v1/sync", s.handleSyncStatus)
 		r.Post("/api/v1/sync", s.handleSyncTrigger)
 
