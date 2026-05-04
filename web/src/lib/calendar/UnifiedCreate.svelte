@@ -179,7 +179,7 @@
 
 {#if open}
   <div
-    class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+    class="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center sm:p-4"
     onclick={close}
     role="dialog"
     tabindex="-1"
@@ -189,7 +189,7 @@
     <div
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}
-      class="w-full max-w-md bg-mantle border border-surface1 rounded-lg shadow-xl"
+      class="w-full max-w-md bg-mantle border border-surface1 rounded-t-lg sm:rounded-lg shadow-xl max-h-[90dvh] overflow-y-auto"
       role="document"
     >
       <header class="px-5 py-3 border-b border-surface1 flex items-center gap-2">
@@ -220,7 +220,7 @@
         </div>
       </div>
 
-      <form onsubmit={submit} class="p-5 space-y-3">
+      <form onsubmit={submit} class="p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] sm:pb-5 space-y-3">
         <input
           bind:this={titleEl}
           bind:value={title}
@@ -229,9 +229,11 @@
           class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded-lg text-sm text-text focus:outline-none focus:border-primary"
         />
 
-        <!-- Time row — shared between task & event branches. -->
-        <div class="grid grid-cols-3 gap-2">
-          <input type="date" bind:value={dateISO} required class="px-2 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text" />
+        <!-- Time row — shared between task & event branches. Stacked on
+             mobile because three columns squeeze the date input below
+             usable width on phones. -->
+        <input type="date" bind:value={dateISO} required class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text" />
+        <div class="grid grid-cols-2 gap-2">
           <input type="time" bind:value={startTime} required class="px-2 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text" />
           <input type="time" bind:value={endTime} required class="px-2 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text" />
         </div>

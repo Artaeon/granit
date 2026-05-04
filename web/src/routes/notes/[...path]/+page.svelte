@@ -76,9 +76,19 @@
     error = '';
     draftRestored = false;
     if (lastLoadedPath === p) return;
+    // Same-note reloads (WS-triggered note.changed) must not clobber
+    // in-flight typing. Snapshot the body before the await; if the user
+    // types during the fetch, abort the body overwrite and let the
+    // auto-save effect persist their edits. For navigation to a
+    // different note (note?.path !== p), we always want to overwrite.
+    const isSameNoteReload = note?.path === p;
+    const bodyAtStart = body;
     lastLoadedPath = p;
     try {
       const fresh = await api.getNote(p);
+      if (isSameNoteReload && body !== bodyAtStart) {
+        return;
+      }
       const serverBody = fresh.body ?? '';
 
       // Restore a local draft if it diverges AND the server hasn't moved
@@ -166,16 +176,23 @@
     if (!note || !dirty || saving) return !dirty;
     saving = true;
     error = '';
+    // Capture the body at the start of the save. If the user types
+    // during the await, body will diverge from sentBody — we must NOT
+    // mark the editor clean in that case, or those keystrokes are lost
+    // forever (server only got sentBody, prev=body would mask the gap,
+    // and the next typing wouldn't trigger a fresh save). Compare body
+    // to sentBody after the await to decide whether more work remains.
+    const sentBody = body;
     try {
-      const updated = await api.putNote(note.path, { frontmatter: note.frontmatter as Record<string, unknown>, body });
+      const updated = await api.putNote(note.path, { frontmatter: note.frontmatter as Record<string, unknown>, body: sentBody });
       note = updated;
-      prev = body;
-      dirty = false;
+      prev = sentBody;
+      dirty = body !== sentBody;
       lastSavedAt = Date.now();
       saveFailed = false;
-      clearDraft(updated.path);
+      if (!dirty) clearDraft(updated.path);
       draftRestored = false;
-      if (!opts.silent) toast.success('saved');
+      if (!opts.silent && !dirty) toast.success('saved');
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -468,10 +485,14 @@
     {/if}
     {#if note}
       <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0">
+        <!-- Hidden on mobile: the layout's top-bar already shows a back
+             arrow to /notes for any subpath, so a second one here pushes
+             the view-mode toggle (and save button) off the right edge on
+             narrow phones. -->
         <a
           href="/notes"
           aria-label="back to notes"
-          class="w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0"
+          class="hidden md:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0"
         >
           <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" />

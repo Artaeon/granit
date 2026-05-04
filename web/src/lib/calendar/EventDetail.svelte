@@ -159,7 +159,7 @@
   {@const start = eventStartDate(event)}
   {@const end = eventEndDate(event)}
   <div
-    class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+    class="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center sm:p-4"
     onclick={close}
     onkeydown={(e) => { if (e.key === 'Escape') close(); }}
     role="dialog"
@@ -169,7 +169,7 @@
     <div
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}
-      class="w-full max-w-md bg-mantle border border-surface1 rounded-lg p-5 space-y-3"
+      class="w-full max-w-md bg-mantle border border-surface1 rounded-t-lg sm:rounded-lg p-5 space-y-3 max-h-[90dvh] overflow-y-auto pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] sm:pb-5"
       role="document"
     >
       <div class="flex items-start gap-3">
@@ -197,10 +197,13 @@
       {#if editing && editable}
         <form onsubmit={saveEdit} class="space-y-2 pt-2 border-t border-surface1">
           <input bind:value={editTitle} required placeholder="title" class="w-full px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm text-text" />
-          <div class="grid grid-cols-3 gap-2">
-            <input type="date" bind:value={editDate} required class="px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text" />
-            <input type="time" bind:value={editStartTime} placeholder="start" class="px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text" />
-            <input type="time" bind:value={editEndTime} placeholder="end" class="px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text" />
+          <!-- Stack on mobile: a 3-column row crushes the date input below
+               usable width on phones. The date gets its own row, then
+               start/end share a row. -->
+          <input type="date" bind:value={editDate} required class="w-full px-2 py-2 bg-surface0 border border-surface1 rounded text-sm text-text" />
+          <div class="grid grid-cols-2 gap-2">
+            <input type="time" bind:value={editStartTime} placeholder="start" class="px-2 py-2 bg-surface0 border border-surface1 rounded text-sm text-text" />
+            <input type="time" bind:value={editEndTime} placeholder="end" class="px-2 py-2 bg-surface0 border border-surface1 rounded text-sm text-text" />
           </div>
           <input bind:value={editLocation} placeholder="location (optional)" class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text" />
           <div class="flex items-center gap-2">
