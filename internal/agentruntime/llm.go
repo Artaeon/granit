@@ -141,10 +141,28 @@ func (l *openAILLM) Chat(ctx context.Context, messages []ChatMessage) (string, e
 	for _, m := range messages {
 		wire = append(wire, map[string]string{"role": m.Role, "content": m.Content})
 	}
-	body, _ := json.Marshal(map[string]any{
+	payload := map[string]any{
 		"model":    l.model,
 		"messages": wire,
-	})
+	}
+	// GPT-5 family quirk: chat/completions accepts a `reasoning_effort`
+	// parameter that controls the model's internal chain-of-thought
+	// budget (minimal | low | medium | high). The default is "medium",
+	// which makes gpt-5-nano — the model people pick *because* it's
+	// supposed to feel instant — spend hundreds of ms on hidden
+	// reasoning per turn before any tokens land. "minimal" skips the
+	// reasoning step and goes straight to the answer; that's the right
+	// default for vault chat where the model already has the relevant
+	// context inlined and just needs to write a reply.
+	//
+	// Gated to gpt-5* because non-gpt-5 models (gpt-4o, o-series, etc.)
+	// reject the field with a 400. The verbosity knob is intentionally
+	// not set — letting the response length follow the prompt avoids
+	// truncating answers the user actually wants long.
+	if strings.HasPrefix(l.model, "gpt-5") {
+		payload["reasoning_effort"] = "minimal"
+	}
+	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, "POST",
 		"https://api.openai.com/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {
