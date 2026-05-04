@@ -41,6 +41,36 @@
   let loading = $state(false);
   let busy = $state<string | null>(null);
 
+  // Add-habit-from-web. The existing toggleHabit endpoint already
+  // auto-creates the `- [ ] habit` line when the supplied name
+  // doesn't match anything in today's `## Habits` section (and
+  // creates the section + minimal frontmatter when the daily note
+  // doesn't exist yet). So "add a habit" is just a toggle call with
+  // done=false on a fresh name.
+  let addOpen = $state(false);
+  let addName = $state('');
+  let addBusy = $state(false);
+
+  async function addHabit(e?: Event) {
+    e?.preventDefault();
+    const name = addName.trim();
+    if (!name || addBusy) return;
+    addBusy = true;
+    try {
+      // done=false for a fresh "track this" intent (the user hasn't
+      // done it today yet, just wants the habit in the list).
+      await api.toggleHabit(name, data?.today ?? new Date().toISOString().slice(0, 10), false);
+      addName = '';
+      addOpen = false;
+      await load();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      (await import('$lib/components/toast')).toast.error(`couldn't add habit: ${msg}`);
+    } finally {
+      addBusy = false;
+    }
+  }
+
   async function load() {
     if (!$auth) return;
     loading = true;
@@ -170,7 +200,35 @@
           {/if}
         </p>
       </div>
+      <button
+        type="button"
+        onclick={() => (addOpen = !addOpen)}
+        class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 self-start"
+      >{addOpen ? 'cancel' : '+ Add habit'}</button>
     </header>
+
+    {#if addOpen}
+      <!-- Add-habit form. Single field — name only. Adds an unticked
+           checkbox to today's daily note's ## Habits section (the
+           server creates the section / file if needed). The user can
+           then toggle it done from the same page or set per-day
+           later. Keeps capture friction at a single keystroke beyond
+           "where do I click". -->
+      <form onsubmit={addHabit} class="bg-surface0 border border-surface1 rounded-lg p-3 mb-4 flex flex-wrap gap-2 items-center">
+        <input
+          bind:value={addName}
+          required
+          autofocus
+          placeholder="habit name (e.g. morning movement, no doomscrolling)…"
+          class="flex-1 min-w-[12rem] px-3 py-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
+        />
+        <button
+          type="submit"
+          disabled={!addName.trim() || addBusy}
+          class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
+        >{addBusy ? '…' : 'add to today'}</button>
+      </form>
+    {/if}
 
     <!-- View + sort controls. Both rows wrap on narrow screens; the
          view toggle uses a segmented pill, the sort uses a select to
