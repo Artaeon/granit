@@ -38,7 +38,49 @@
   let dirty = $state(false);
   let error = $state('');
   let lastLoadedPath = $state('');
-  let editor: { scrollToLine: (n: number) => void } | undefined = $state();
+  let editor:
+    | {
+        scrollToLine: (n: number) => void;
+        getScrollTop: () => number;
+        setScrollTop: (top: number) => void;
+      }
+    | undefined = $state();
+
+  // Per-note scroll position cache. Pixel-accurate (not line-accurate)
+  // because line tracking misbehaves once the user changes font size or
+  // window width — pixels survive reflow because we restore on the
+  // same note (same width, same font) only.
+  // localStorage'd so a page reload, tab close, or device handoff
+  // also lands the user back at the right spot.
+  const SCROLL_KEY = 'granit.note.scroll';
+  function loadScrollMap(): Record<string, number> {
+    if (typeof localStorage === 'undefined') return {};
+    try {
+      return (JSON.parse(localStorage.getItem(SCROLL_KEY) ?? '{}') as Record<string, number>) || {};
+    } catch {
+      return {};
+    }
+  }
+  function saveScrollMap(m: Record<string, number>) {
+    try { localStorage.setItem(SCROLL_KEY, JSON.stringify(m)); } catch {}
+  }
+  function rememberScroll(path: string, top: number) {
+    if (top <= 0) return;
+    const m = loadScrollMap();
+    m[path] = top;
+    // Cap the map at the 200 most-recently-visited notes so we don't
+    // grow localStorage indefinitely. Cheap heuristic: when oversized,
+    // drop a random 50; the user's recently-viewed notes still land.
+    const keys = Object.keys(m);
+    if (keys.length > 200) {
+      const drop = keys.slice(0, keys.length - 150);
+      for (const k of drop) delete m[k];
+    }
+    saveScrollMap(m);
+  }
+  function recallScroll(path: string): number {
+    return loadScrollMap()[path] ?? 0;
+  }
 
   let treeDrawerOpen = $state(false);
   let infoDrawerOpen = $state(false);
@@ -125,6 +167,16 @@
       dirty = false;
       treeDrawerOpen = false;
       infoDrawerOpen = false;
+      // Restore the scroll position (per-note, pixel-accurate). Defer
+      // a frame so the editor has finished mounting and the scroller
+      // has its content height — without the defer the setScrollTop
+      // call lands at 0 because the doc just got swapped.
+      const remembered = recallScroll(p);
+      if (remembered > 0) {
+        requestAnimationFrame(() => {
+          editor?.setScrollTop?.(remembered);
+        });
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       // If we have a local draft, surface it instead of an error so an
@@ -267,6 +319,12 @@
       // outcome is safe (draft still on disk).
       void save({ silent: true });
     }
+    // Remember the scroll position so navigating back to this note
+    // returns to where the user was reading. Saved synchronously so
+    // even a forced reload (close tab) catches it.
+    if (note && editor?.getScrollTop) {
+      rememberScroll(note.path, editor.getScrollTop());
+    }
   });
 
   // Save status label that updates with the live tick.
@@ -304,6 +362,12 @@
 
   $effect(() => {
     const handler = (e: BeforeUnloadEvent) => {
+      // Save scroll position synchronously — beforeunload is the last
+      // chance before tab close. We also save on beforeNavigate
+      // (SPA-internal nav) so the two cover both paths.
+      if (note && editor?.getScrollTop) {
+        rememberScroll(note.path, editor.getScrollTop());
+      }
       if (dirty) {
         e.preventDefault();
         e.returnValue = '';
@@ -336,6 +400,10 @@
     const t = body.trim();
     return t ? t.split(/\s+/).length : 0;
   });
+  // Reading time at ~225 wpm — average silent reading speed. Floor of
+  // 1 minute so a short note doesn't read "0 min". Hidden under 50
+  // words because "<1 min" on a tiny note is noise.
+  let readingMinutes = $derived(Math.max(1, Math.round(wordCount / 225)));
 
   function jumpToLine(lineNum: number) {
     editor?.scrollToLine(lineNum);
@@ -569,7 +637,9 @@
         >
           {pinned.has(note.path) ? '★' : '☆'}
         </button>
-        <span class="text-xs text-dim hidden sm:inline">{wordCount} words</span>
+        <span class="text-xs text-dim hidden sm:inline">
+          {wordCount} words{#if wordCount >= 50} · {readingMinutes} min read{/if}
+        </span>
         <!-- view-mode toggle -->
         <div class="hidden sm:flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs">
           {#each [{m: 'edit', l: 'edit', i: '✎'}, {m: 'split', l: 'split', i: '⊟'}, {m: 'preview', l: 'preview', i: '👁'}] as v}
@@ -642,7 +712,7 @@
         {/if}
       </div>
       <footer class="md:hidden px-3 py-1.5 border-t border-surface1 text-[11px] text-dim flex items-center justify-between">
-        <span>{wordCount} words</span>
+        <span>{wordCount} words{#if wordCount >= 50} · {readingMinutes}m{/if}</span>
         <span class="opacity-60">[[ for autocomplete · ⌘-click links</span>
       </footer>
     {:else}

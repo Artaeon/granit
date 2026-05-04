@@ -12,6 +12,7 @@
   import { wikilinkDecoration, wikilinkClickHandler, wikilinkComplete } from './wikilinks';
   import { snippetComplete } from './snippets';
   import { tagComplete } from './tags';
+  import { markdownShortcuts, smartPaste } from './markdown-shortcuts';
 
   let {
     value = $bindable(''),
@@ -62,7 +63,12 @@
         wikilinkDecoration,
         wikilinkClickHandler((target) => onNavigate?.(target)),
         theme,
+        // Markdown shortcuts come BEFORE defaultKeymap so Mod-b /
+        // Mod-i / Mod-k aren't shadowed by CodeMirror's defaults. Same
+        // story for the search keymap below — `searchKeymap` brings
+        // Mod-f for the find panel, which composes nicely.
         keymap.of([
+          ...markdownShortcuts,
           ...closeBracketsKeymap,
           ...defaultKeymap,
           ...historyKeymap,
@@ -79,6 +85,9 @@
             }
           }
         ]),
+        // Smart paste: URL-while-selected → markdown link. Falls
+        // through to default paste otherwise.
+        smartPaste,
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
             internalChange = true;
@@ -112,6 +121,28 @@
       effects: EditorView.scrollIntoView(line.from, { y: 'start', yMargin: 32 })
     });
     view.focus();
+  }
+
+  // Sticky-scroll-position helpers. Parent reads getScrollTop() before
+  // navigating away (saved to localStorage keyed by note path) and
+  // calls setScrollTop() after the doc is loaded so the user lands
+  // back where they were. We use the actual scroller element rather
+  // than CodeMirror's per-line tracking because the scroll-to-pixel
+  // form survives reflow (font-size change, line wrapping) much better
+  // than scroll-to-line for prose-heavy notes.
+  export function getScrollTop(): number {
+    if (!view) return 0;
+    return view.scrollDOM.scrollTop;
+  }
+  export function setScrollTop(top: number) {
+    if (!view || top <= 0) return;
+    // Defer one frame so the doc has a chance to lay out before we
+    // try to scroll into a tall position. Without this, replacing the
+    // doc and immediately scrolling can land at 0 because the scroller
+    // hasn't computed its content height yet.
+    requestAnimationFrame(() => {
+      if (view) view.scrollDOM.scrollTop = top;
+    });
   }
 </script>
 
