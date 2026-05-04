@@ -15,6 +15,7 @@ import (
 	"github.com/artaeon/granit/internal/modules"
 	"github.com/artaeon/granit/internal/objects"
 	"github.com/artaeon/granit/internal/profiles"
+	"github.com/artaeon/granit/internal/snippets"
 	"github.com/artaeon/granit/internal/tasks"
 	"github.com/artaeon/granit/internal/tui/widgets"
 	"github.com/artaeon/granit/internal/vault"
@@ -124,7 +125,7 @@ type Model struct {
 	contentSearch  ContentSearch
 	globalReplace  GlobalReplace
 	spellcheck     SpellChecker
-	snippets       *SnippetEngine
+	snippets       *snippets.Engine
 	autoSync       AutoSync
 	publisher      Publisher
 	splitPane      SplitPane
@@ -411,7 +412,7 @@ func NewModel(vaultPath string) (Model, error) {
 		contentSearch:  NewContentSearch(),
 		globalReplace:  NewGlobalReplace(),
 		spellcheck:     NewSpellChecker(),
-		snippets:       NewSnippetEngine(),
+		snippets:       snippets.New(),
 		autoSync:       NewAutoSync(v.Root),
 		publisher:      NewPublisher(),
 		splitPane:      NewSplitPane(),

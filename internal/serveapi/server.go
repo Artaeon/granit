@@ -234,6 +234,11 @@ func (s *Server) Handler() http.Handler {
 		// Ventures — umbrella entity above projects/goals. Project.Venture
 		// and Goal.Venture remain free-text strings; this endpoint serves
 		// the optional enrichment layer (description, mission, color, ...).
+		// Snippets — builtin slash-command templates the editor renders
+		// in its autocomplete picker. Read-only today; if we add
+		// user-defined snippets the POST/DELETE land here.
+		r.Get("/api/v1/snippets", s.handleListSnippets)
+
 		r.Get("/api/v1/ventures", s.handleListVentures)
 		r.Post("/api/v1/ventures", s.handleCreateVenture)
 		r.Get("/api/v1/ventures/{name}", s.handleGetVenture)
