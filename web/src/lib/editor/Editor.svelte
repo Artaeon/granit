@@ -13,6 +13,7 @@
   import { snippetComplete } from './snippets';
   import { tagComplete } from './tags';
   import { markdownShortcuts, smartPaste } from './markdown-shortcuts';
+  import { autolinkComplete } from './autolink';
 
   let {
     value = $bindable(''),
@@ -45,10 +46,13 @@
         bracketMatching(),
         closeBrackets(),
         autocompletion({
-          // Order: wikilinks ([[…]]) → snippets (/…) → tags (#…). All
-          // three are scoped by their trigger character so they don't
-          // step on each other; CodeMirror runs each source and merges.
-          override: [wikilinkComplete, snippetComplete, tagComplete],
+          // Order: wikilinks ([[…]]) → snippets (/…) → tags (#…) →
+          // autolink (phrases that match a known note title). Each
+          // source is scoped to its own trigger / context so they
+          // don't compete; autolink lands last because it runs on
+          // every word boundary and we'd rather the trigger-character
+          // sources resolve first when both could match.
+          override: [wikilinkComplete, snippetComplete, tagComplete, autolinkComplete],
           activateOnTyping: true,
           closeOnBlur: true
         }),

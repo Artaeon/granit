@@ -66,7 +66,10 @@ export function wikilinkClickHandler(navigate: (target: string) => void) {
 let titleCache: { title: string; path: string }[] | null = null;
 let titleCachePromise: Promise<{ title: string; path: string }[]> | null = null;
 
-async function ensureTitles() {
+// Exported so editor extensions outside this module (autolink-suggest,
+// any future similar feature) can share the cache instead of starting
+// their own — invalidateTitleCache() drops both consumers in one shot.
+export async function ensureTitles() {
   if (titleCache) return titleCache;
   if (titleCachePromise) return titleCachePromise;
   titleCachePromise = (async () => {
