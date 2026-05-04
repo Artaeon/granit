@@ -4,6 +4,7 @@
   import { toast } from '$lib/components/toast';
   import GoalEditor from './GoalEditor.svelte';
   import TaskRow from '$lib/components/TaskRow.svelte';
+  import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
 
   let { project, onClose, onUpdated, onDeleted }: {
     project: Project;
@@ -299,6 +300,12 @@
           >→ {project.next_action || 'what\'s the next concrete step?'}</button>
         {/if}
       </section>
+
+      <!-- Deadlines linked to this project. Free-standing component
+           so the same panel renders on goals + ventures with the same
+           visual language. Quick-add jumps to /deadlines with project
+           pre-set; full editing still happens on the deadlines page. -->
+      <EntityDeadlines scope={{ kind: 'project', name: project.name }} />
 
       <!-- Goals + milestones -->
       <section>

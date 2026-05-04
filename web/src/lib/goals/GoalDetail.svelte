@@ -3,6 +3,7 @@
   import { toast } from '$lib/components/toast';
   import Drawer from '$lib/components/Drawer.svelte';
   import { inlineMd } from '$lib/util/inlineMd';
+  import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
 
   // Detail-and-edit drawer for a single goal. Mirrors ProjectDetail's
   // approach: every field commits via PATCH on blur / explicit toggle so
@@ -354,6 +355,12 @@
             >+ add</button>
           </div>
         </section>
+
+        <!-- Deadlines linked to this goal — same component the project
+             panel uses, so the visual language matches. -->
+        {#if goal}
+          <EntityDeadlines scope={{ kind: 'goal', id: goal.id, title: goal.title }} />
+        {/if}
 
         <!-- Reviews -->
         <section>

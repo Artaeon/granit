@@ -122,6 +122,7 @@ func (s *Server) handlePatchDeadline(w http.ResponseWriter, r *http.Request) {
 		func() error { return apply("description", &d.Description) },
 		func() error { return apply("goal_id", &d.GoalID) },
 		func() error { return apply("project", &d.ProjectName) },
+		func() error { return apply("venture", &d.Venture) },
 		func() error { return apply("task_ids", &d.TaskIDs) },
 		func() error { return apply("importance", &d.Importance) },
 		func() error { return apply("status", &d.Status) },

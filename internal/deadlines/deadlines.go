@@ -51,11 +51,16 @@ const (
 )
 
 // Deadline is a top-level "this matters by date X" marker. Linkable to
-// at most one goal, one project, and any number of tasks — the links
-// are loose foreign keys (no FK enforcement on disk; the web/TUI just
-// renders chips when the IDs resolve). Every JSON field below MUST be
-// preserved by writers — a web PATCH cannot silently drop a field the
-// TUI wrote.
+// at most one goal, one project, one venture, and any number of tasks
+// — the links are loose foreign keys (no FK enforcement on disk; the
+// web/TUI just renders chips when the IDs resolve). Every JSON field
+// below MUST be preserved by writers — a web PATCH cannot silently
+// drop a field the TUI wrote.
+//
+// Venture was added later; it stays as a free-text name so existing
+// deadlines.json files round-trip unchanged (the JSON decoder leaves
+// missing keys at the zero value, and `omitempty` keeps them out of
+// the serialised form).
 type Deadline struct {
 	ID          string    `json:"id"`             // ULID (lowercase, matches Event)
 	Title       string    `json:"title"`          // required
@@ -63,6 +68,7 @@ type Deadline struct {
 	Description string    `json:"description,omitempty"`
 	GoalID      string    `json:"goal_id,omitempty"`     // matches Goal.ID
 	ProjectName string    `json:"project,omitempty"`     // matches Project.Name
+	Venture     string    `json:"venture,omitempty"`     // matches Venture.Name (free-text)
 	TaskIDs     []string  `json:"task_ids,omitempty"`    // matches Task.ID
 	Importance  string    `json:"importance"`            // critical | high | normal
 	Status      string    `json:"status"`                // active | missed | met | cancelled

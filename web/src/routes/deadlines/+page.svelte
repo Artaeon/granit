@@ -10,7 +10,8 @@
     type DeadlineStatus,
     type Goal,
     type Project,
-    type Task
+    type Task,
+    type Venture
   } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { onWsEvent } from '$lib/ws';
@@ -30,6 +31,7 @@
   let deadlines = $state<Deadline[]>([]);
   let goals = $state<Goal[]>([]);
   let projects = $state<Project[]>([]);
+  let ventures = $state<Venture[]>([]);
   // Open tasks pool used by the "link to tasks" multi-select. Loaded
   // lazily on drawer open so the page paints fast even on big vaults.
   let openTasks = $state<Task[]>([]);
@@ -47,6 +49,7 @@
   // SPA query-only navigations.
   let scopeProject = $derived($page.url.searchParams.get('project') ?? '');
   let scopeGoalId = $derived($page.url.searchParams.get('goal_id') ?? '');
+  let scopeVenture = $derived($page.url.searchParams.get('venture') ?? '');
 
   // Selection / drawer state.
   let drawerOpen = $state(false);
@@ -61,20 +64,23 @@
   let fStatus = $state<DeadlineStatus>('active');
   let fGoalId = $state('');
   let fProject = $state('');
+  let fVenture = $state('');
   let fTaskIds = $state<string[]>([]);
 
   async function load() {
     if (!$auth) return;
     loading = true;
     try {
-      const [dl, gl, pl] = await Promise.all([
+      const [dl, gl, pl, vl] = await Promise.all([
         api.listDeadlines(),
         api.listGoals().catch(() => ({ goals: [] as Goal[], total: 0 })),
-        api.listProjects().catch(() => ({ projects: [] as Project[], total: 0 }))
+        api.listProjects().catch(() => ({ projects: [] as Project[], total: 0 })),
+        api.listVentures().catch(() => ({ ventures: [] as Venture[], total: 0 }))
       ]);
       deadlines = dl.deadlines;
       goals = gl.goals;
       projects = pl.projects;
+      ventures = vl.ventures;
     } catch (e) {
       toast.error('load failed: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -133,6 +139,7 @@
     let out = deadlines;
     if (scopeProject) out = out.filter((d) => d.project === scopeProject);
     if (scopeGoalId) out = out.filter((d) => d.goal_id === scopeGoalId);
+    if (scopeVenture) out = out.filter((d) => d.venture === scopeVenture);
     return out;
   });
 
@@ -214,8 +221,11 @@
     fDescription = '';
     fImportance = 'normal';
     fStatus = 'active';
-    fGoalId = '';
-    fProject = '';
+    // Pre-fill linkage from URL scope so the entity-detail "+ add"
+    // jump lands here with project/goal/venture already populated.
+    fGoalId = scopeGoalId;
+    fProject = scopeProject;
+    fVenture = scopeVenture;
     fTaskIds = [];
     drawerOpen = true;
     void ensureTasksLoaded();
@@ -230,10 +240,27 @@
     fStatus = d.status ?? 'active';
     fGoalId = d.goal_id ?? '';
     fProject = d.project ?? '';
+    fVenture = d.venture ?? '';
     fTaskIds = [...(d.task_ids ?? [])];
     drawerOpen = true;
     void ensureTasksLoaded();
   }
+
+  // Hydrate the create drawer from ?new=1 on mount so the entity
+  // detail "+ add" buttons land in the open state. Done as an effect
+  // (not in load) so a subsequent navigation back here picks up the
+  // param the second time too.
+  let urlNewHandled = $state(false);
+  $effect(() => {
+    if (urlNewHandled) return;
+    if (!loading && deadlines !== undefined) {
+      const sp = $page.url.searchParams;
+      if (sp.get('new') === '1') {
+        urlNewHandled = true;
+        openCreate();
+      }
+    }
+  });
 
   function todayISO(): string {
     const d = new Date();
@@ -263,6 +290,7 @@
         status: fStatus,
         goal_id: fGoalId || undefined,
         project: fProject || undefined,
+        venture: fVenture.trim() || undefined,
         task_ids: fTaskIds.length ? fTaskIds : undefined
       };
       if (editing) {
@@ -361,11 +389,12 @@
       {/snippet}
     </PageHeader>
 
-    {#if scopeProject || scopeGoalId}
+    {#if scopeProject || scopeGoalId || scopeVenture}
       <div class="mb-4 flex items-center gap-2 text-xs px-3 py-2 bg-secondary/10 border border-secondary/30 rounded">
         <span class="text-secondary">
           {#if scopeProject}📁 Scope: project <strong>{scopeProject}</strong>{/if}
           {#if scopeGoalId}🎯 Scope: goal <strong>{goalTitle(scopeGoalId)}</strong>{/if}
+          {#if scopeVenture}🏢 Scope: venture <strong>{scopeVenture}</strong>{/if}
         </span>
         <span class="text-dim">· {scoped.length} {scoped.length === 1 ? 'deadline' : 'deadlines'}</span>
         <a href="/deadlines" class="ml-auto text-dim hover:text-text">× clear scope</a>
@@ -410,6 +439,9 @@
               </div>
               <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-dim">
                 <span class="font-mono tabular-nums text-subtext">{h.date}</span>
+                {#if h.venture}
+                  <span class="text-secondary">🏢 {h.venture}</span>
+                {/if}
                 {#if h.goal_id}
                   <span class="text-secondary">🎯 {goalTitle(h.goal_id)}</span>
                 {/if}
@@ -501,6 +533,9 @@
                       <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dim">
                         <span class="font-mono tabular-nums text-subtext">{d.date}</span>
                         <span>· {countdown(d)}</span>
+                        {#if d.venture}
+                          <span class="text-secondary">🏢 {d.venture}</span>
+                        {/if}
                         {#if d.goal_id}
                           <span class="text-secondary">🎯 {goalTitle(d.goal_id)}</span>
                         {/if}
@@ -634,6 +669,25 @@
             <option value={p.name}>{p.name}</option>
           {/each}
         </select>
+      </div>
+
+      <div>
+        <label for="d-venture" class="block text-xs uppercase tracking-wider text-dim mb-1">Linked venture</label>
+        <input
+          id="d-venture"
+          bind:value={fVenture}
+          list="d-ventures-list"
+          placeholder="venture name (optional)"
+          class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+        />
+        {#if ventures.length > 0}
+          <datalist id="d-ventures-list">
+            {#each ventures as v}<option value={v.name}></option>{/each}
+          </datalist>
+        {/if}
+        <p class="text-[11px] text-dim mt-1">
+          Free-text — links the deadline to a Venture record so it shows up on /ventures and the venture's project rollup.
+        </p>
       </div>
 
       <div>

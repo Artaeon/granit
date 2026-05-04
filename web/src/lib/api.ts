@@ -189,6 +189,11 @@ export interface Deadline {
   description?: string;
   goal_id?: string;
   project?: string;
+  // Free-text venture name — links the deadline to a Venture record.
+  // Stored as a string for the same backwards-compat reasons as
+  // Project.venture / Goal.venture (renaming the venture won't
+  // transitively repoint).
+  venture?: string;
   task_ids?: string[];
   importance: DeadlineImportance;
   status: DeadlineStatus;
@@ -202,6 +207,7 @@ export type DeadlineCreate = {
   description?: string;
   goal_id?: string;
   project?: string;
+  venture?: string;
   task_ids?: string[];
   importance?: DeadlineImportance;
   status?: DeadlineStatus;

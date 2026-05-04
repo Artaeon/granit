@@ -220,6 +220,11 @@
                   title="goals tracker"
                 >🎯 {goalsCount} goal{goalsCount === 1 ? '' : 's'}</a>
                 <a
+                  href={`/deadlines?venture=${encodeURIComponent(v.name)}`}
+                  class="hover:text-primary"
+                  title="show deadlines for this venture"
+                >⏰ deadlines</a>
+                <a
                   href={`/prayer?venture=${encodeURIComponent(v.name)}`}
                   class="hover:text-primary"
                   title="add a prayer intention for this venture"
