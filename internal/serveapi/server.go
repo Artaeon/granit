@@ -348,6 +348,9 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/stats", s.handleStats)
 
 		r.Post("/api/v1/morning/save", s.handleSaveMorning)
+		// Daily examen — evening companion to the morning routine.
+		// Saves a `## Examen` block to the day's daily note.
+		r.Post("/api/v1/examen", s.handleSaveExamen)
 
 		r.Get("/api/v1/sync", s.handleSyncStatus)
 		r.Post("/api/v1/sync", s.handleSyncTrigger)

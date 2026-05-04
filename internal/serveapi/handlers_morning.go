@@ -146,9 +146,25 @@ func buildDailyPlan(b MorningSaveBody, now time.Time) string {
 
 // upsertDailyPlan inserts (or replaces) the "## Daily Plan" section in raw,
 // preserving everything else. The section ends at the next "## " heading
-// (or end-of-file).
+// (or end-of-file). Backed by upsertNamedSection so daily-plan, examen,
+// and any future "well-known section" feature share one parser.
 func upsertDailyPlan(raw, plan string) string {
-	const marker = "## Daily Plan"
+	return upsertNamedSection(raw, "## Daily Plan", plan)
+}
+
+// upsertNamedSection inserts (or replaces) the H2 section beginning with
+// the given marker (e.g. "## Daily Plan", "## Examen") in raw. The section
+// is delimited by the next H2 heading (lines starting with "## " but not
+// "### "), or EOF when the section runs to the end of the file. Surrounding
+// content (preamble, frontmatter, sibling sections, trailing notes) is
+// preserved byte-for-byte except for normalised blank-line spacing
+// around the inserted block.
+//
+// Marker matching is whole-line: a marker "## Daily Plan" matches the
+// header "## Daily Plan — Monday, January 2, 2026" because we accept the
+// marker as a prefix on the first H2 line. This lets each section use a
+// title with a date suffix while keeping the upserter simple.
+func upsertNamedSection(raw, marker, body string) string {
 	idx := strings.Index(raw, marker)
 	if idx < 0 {
 		// Append; ensure single blank line separator.
@@ -156,7 +172,7 @@ func upsertDailyPlan(raw, plan string) string {
 		if raw != "" {
 			raw += "\n\n"
 		}
-		return raw + plan
+		return raw + body
 	}
 	// Find the end of the existing section: the next "\n## " (top-level
 	// heading) or EOF.
@@ -185,10 +201,10 @@ func upsertDailyPlan(raw, plan string) string {
 	before := raw[:idx]
 	if end < 0 {
 		// Section runs to EOF.
-		return strings.TrimRight(before, "\n") + "\n\n" + plan
+		return strings.TrimRight(before, "\n") + "\n\n" + body
 	}
 	after := rest[end:]
-	return strings.TrimRight(before, "\n") + "\n\n" + plan + after
+	return strings.TrimRight(before, "\n") + "\n\n" + body + after
 }
 
 // silence linter if no other consumer
