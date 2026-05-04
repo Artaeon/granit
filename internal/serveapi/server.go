@@ -352,6 +352,17 @@ func (s *Server) Handler() http.Handler {
 		// Saves a `## Examen` block to the day's daily note.
 		r.Post("/api/v1/examen", s.handleSaveExamen)
 
+		// Virtues — character formation tracker. CRUD on the virtue,
+		// dedicated POST .../checks for weekly self-evaluation entries
+		// (kept off the patch path so two devices logging on the same
+		// Sunday can't clobber each other's reflections).
+		r.Get("/api/v1/virtues", s.handleListVirtues)
+		r.Post("/api/v1/virtues", s.handleCreateVirtue)
+		r.Get("/api/v1/virtues/{id}", s.handleGetVirtue)
+		r.Patch("/api/v1/virtues/{id}", s.handlePatchVirtue)
+		r.Delete("/api/v1/virtues/{id}", s.handleDeleteVirtue)
+		r.Post("/api/v1/virtues/{id}/checks", s.handleLogVirtueCheck)
+
 		r.Get("/api/v1/sync", s.handleSyncStatus)
 		r.Post("/api/v1/sync", s.handleSyncTrigger)
 

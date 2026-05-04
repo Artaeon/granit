@@ -65,6 +65,7 @@ func baselineDeclarations() []Module {
 		&baselineModule{id: "objects", name: "Objects", desc: "Typed objects and the type registry", cat: "Knowledge"},
 		&baselineModule{id: "morning", name: "Morning Routine", desc: "Daily morning checkin with tasks, habits, and reflection", cat: "Daily"},
 		&baselineModule{id: "examen", name: "Daily Examen", desc: "Evening companion to morning routine — Ignatian where-I-saw-God / where-I-missed reflection saved to the daily note", cat: "Spiritual"},
+		&baselineModule{id: "virtues", name: "Virtues", desc: "Character formation tracker — name the virtues you're cultivating, log a weekly self-check during the Sunday review", cat: "Spiritual"},
 		&baselineModule{id: "jots", name: "Jots", desc: "Daily-note feed and quick entries", cat: "Daily"},
 		&baselineModule{id: "scripture", name: "Scripture", desc: "Verse of the day and devotional notes", cat: "Knowledge"},
 		&baselineModule{id: "deadlines", name: "Deadlines", desc: "Top-level dated commitments", cat: "Planning"},
