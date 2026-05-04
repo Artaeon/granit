@@ -40,6 +40,7 @@
 
   let vault = $state<{ root: string; notes: number } | null>(null);
   let sync = $state<SyncStatus | null>(null);
+  let syncBusy = $state(false);
   let authStatus = $state<{ hasPassword: boolean; sessionCount?: number; setupAt?: string } | null>(null);
   let devices = $state<import('$lib/api').Device[]>([]);
   let revokeBusy = $state<string | null>(null);
@@ -147,6 +148,35 @@
         syncRecurringBuf(c);
       }
     } catch {}
+  }
+
+  // Manual one-off sync — POST /api/v1/sync triggers the same cycle
+  // the daemon runs every interval (pull → commit local changes →
+  // push). Only available when --sync was passed at startup; the
+  // button hides itself when sync.enabled is false.
+  // Refreshes the status fields a moment later so the user sees the
+  // updated last-pull / last-push timestamps.
+  async function syncNow() {
+    if (syncBusy) return;
+    syncBusy = true;
+    try {
+      await api.req('/sync', { method: 'POST' });
+      toast.success('sync triggered');
+      // Give the background goroutine a beat to finish before we
+      // re-read status. 1.5s covers the typical pull+push round-trip
+      // on a small vault; longer-running syncs land later via the
+      // user's next visit / refresh.
+      setTimeout(async () => {
+        try {
+          sync = await api.req<SyncStatus>('/sync');
+        } catch {}
+      }, 1500);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error('sync failed: ' + msg);
+    } finally {
+      syncBusy = false;
+    }
   }
 
   async function revokeDevice(id: string) {
@@ -791,14 +821,38 @@
 
     <!-- Sync status -->
     <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Git auto-sync</h2>
+      <div class="flex items-baseline justify-between mb-3">
+        <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Git auto-sync</h2>
+        {#if sync?.enabled}
+          <button
+            type="button"
+            onclick={syncNow}
+            disabled={syncBusy}
+            class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90 disabled:opacity-50"
+            title="trigger a one-off pull + commit + push"
+          >{syncBusy ? '…' : '↻ Sync now'}</button>
+        {/if}
+      </div>
       {#if !sync}
         <Skeleton class="h-4 w-1/2" />
       {:else if !sync.enabled}
-        <p class="text-sm text-dim leading-relaxed">
-          Disabled. Pass <code class="text-xs">--sync</code> to <code class="text-xs">granit web</code> to enable periodic
-          <code class="text-xs">git pull</code> + auto-commit/push when this server hosts a git-backed vault.
-        </p>
+        <div class="text-sm text-dim leading-relaxed space-y-2">
+          <p>
+            Auto-sync is off. To enable periodic <code class="text-xs">git pull</code> + auto-commit/push,
+            edit your <code class="text-xs">docker-compose.yml</code> on the server and add
+            <code class="text-xs">--sync --sync-interval 60s</code> to the granit
+            <code class="text-xs">command:</code> line, then
+            <code class="text-xs">docker compose up -d</code>.
+          </p>
+          <p>
+            To commit + push the vault manually right now (no daemon needed),
+            SSH into your server and run inside the vault directory:
+          </p>
+          <pre class="text-xs font-mono px-3 py-2 bg-mantle border border-surface1 rounded overflow-x-auto"><code>cd /srv/granit-vault
+git add -A
+git commit -m "manual sync $(date +%F)"
+git push</code></pre>
+        </div>
       {:else}
         <dl class="space-y-1.5 text-sm">
           <div class="flex gap-3">
