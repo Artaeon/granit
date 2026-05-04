@@ -19,6 +19,7 @@ import VisionWidget from './widgets/VisionWidget.svelte';
 import OneThingWidget from './widgets/OneThingWidget.svelte';
 import VenturesWidget from './widgets/VenturesWidget.svelte';
 import PrayerWidget from './widgets/PrayerWidget.svelte';
+import AtAGlanceWidget from './widgets/AtAGlanceWidget.svelte';
 
 export interface WidgetMeta {
   type: DashboardWidgetType;
@@ -31,6 +32,11 @@ export interface WidgetMeta {
 
 export const widgetRegistry: WidgetMeta[] = [
   { type: 'greeting', label: 'Greeting', description: 'Date + welcome', span: 2, component: GreetingWidget },
+  // At-a-glance lives at the very top by default — single span-2 row
+  // of compact daily counts so the user reads "shape of today" before
+  // anything else. Listed second in the registry so it slots above
+  // Vision in fresh dashboards but the user can drag it anywhere.
+  { type: 'at-a-glance', label: 'Today at a glance', description: 'Compact stats: tasks due, overdue, deadlines, prayer, habits', span: 2, component: AtAGlanceWidget },
   // Vision sits at the top of the registry (and gets injected at the
   // top of new dashboards) because it's the layer the user re-reads
   // every morning before drilling into tactics.

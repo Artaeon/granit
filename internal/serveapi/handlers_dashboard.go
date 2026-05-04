@@ -28,6 +28,11 @@ func defaultDashboard() dashboardConfig {
 		Version: dashboardVersion,
 		Widgets: []dashboardWidget{
 			{ID: "w-greeting", Type: "greeting", Enabled: true},
+			// at-a-glance sits second in the default config so a fresh
+			// install reads "shape of today" right under the greeting.
+			// Existing users keep their saved layout — this only
+			// affects users with no dashboard config on disk yet.
+			{ID: "w-at-a-glance", Type: "at-a-glance", Enabled: true},
 			{ID: "w-now", Type: "now", Enabled: true},
 			{ID: "w-streaks", Type: "streaks", Enabled: true},
 			{ID: "w-scripture", Type: "scripture", Enabled: true},
