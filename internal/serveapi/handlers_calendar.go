@@ -36,6 +36,26 @@ type calendarEvent struct {
 	Importance string `json:"importance,omitempty"`
 }
 
+// expandAllDayDates walks every day in an all-day event's [start, end)
+// span (ICS DTEND is exclusive) and returns ISO dates clamped to the
+// requested [from, rangeEnd) window. Used by the calendar handler so
+// a multi-day vacation renders on every day of the trip rather than
+// only on day 1. Pure helper, no I/O — tested separately to lock the
+// inclusive-start / exclusive-end / window-clamp semantics.
+func expandAllDayDates(start, end, from, rangeEnd time.Time) []string {
+	if end.IsZero() || !end.After(start) {
+		end = start.Add(24 * time.Hour)
+	}
+	var out []string
+	for d := start; d.Before(end); d = d.AddDate(0, 0, 1) {
+		if d.Before(from) || !d.Before(rangeEnd) {
+			continue
+		}
+		out = append(out, d.Format("2006-01-02"))
+	}
+	return out
+}
+
 func parseDateQuery(s string) (time.Time, error) {
 	if s == "" {
 		return time.Now(), nil
@@ -171,8 +191,40 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 	// for "same occurrence shown twice".
 	gcfg := config.LoadForVault(s.cfg.Vault.Root)
 	icsSeen := map[string]struct{}{}
+	// Window the ICS expansion will render into. Used both as the
+	// per-day expansion clamp for multi-day events and as the
+	// time-window filter for timed events.
+	rangeEnd := to.Add(24 * time.Hour)
 	for _, base := range icsScan(s.cfg.Vault.Root, gcfg.DisabledCalendars) {
-		for _, ev := range expandRRULE(base, from, to.Add(24*time.Hour)) {
+		for _, ev := range expandRRULE(base, from, rangeEnd) {
+			if ev.AllDay {
+				// Multi-day all-day events: ICS DTEND is exclusive
+				// (DTSTART=Aug1 DTEND=Aug11 → 10 days, Aug 1 through 10).
+				// Without per-day expansion, a 10-day vacation only
+				// rendered on day 1 because calendarEvent carries a
+				// single Date field. expandAllDayDates clamps to the
+				// requested window and returns one ISO date per day.
+				// Per-day dedup key folds duplicates from a per-source
+				// merged.ics into a single entry per day.
+				for _, dayISO := range expandAllDayDates(ev.Start, ev.End, from, rangeEnd) {
+					key := ev.Title + "|allday|" + dayISO
+					if _, dup := icsSeen[key]; dup {
+						continue
+					}
+					icsSeen[key] = struct{}{}
+					events = append(events, calendarEvent{
+						Type:     "ics_event",
+						Title:    ev.Title,
+						Location: ev.Location,
+						EventID:  ev.UID,
+						Color:    "cyan",
+						Source:   ev.Source,
+						Date:     dayISO,
+					})
+				}
+				continue
+			}
+			// Timed event branch — keep the existing dedup shape.
 			endKey := ""
 			if !ev.End.IsZero() {
 				endKey = ev.End.Format("15:04")
@@ -190,16 +242,12 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				Color:    "cyan",
 				Source:   ev.Source,
 			}
-			if ev.AllDay {
-				ce.Date = ev.Start.Format("2006-01-02")
-			} else {
-				startStr := ev.Start.Format(time.RFC3339)
-				ce.Start = &startStr
-				if !ev.End.IsZero() {
-					endStr := ev.End.Format(time.RFC3339)
-					ce.End = &endStr
-					ce.DurationMinutes = int(ev.End.Sub(ev.Start) / time.Minute)
-				}
+			startStr := ev.Start.Format(time.RFC3339)
+			ce.Start = &startStr
+			if !ev.End.IsZero() {
+				endStr := ev.End.Format(time.RFC3339)
+				ce.End = &endStr
+				ce.DurationMinutes = int(ev.End.Sub(ev.Start) / time.Minute)
 			}
 			events = append(events, ce)
 		}
