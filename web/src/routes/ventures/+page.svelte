@@ -196,7 +196,10 @@
             <div class="h-1.5 flex-shrink-0" style="background: {colorVar(v.color)}"></div>
             <div class="p-4 flex flex-col gap-2 flex-1">
               <div class="flex items-start gap-2">
-                <h2 class="text-base sm:text-lg font-semibold text-text flex-1 min-w-0 truncate">{v.name}</h2>
+                <a
+                  href={`/ventures/${encodeURIComponent(v.name)}`}
+                  class="text-base sm:text-lg font-semibold text-text flex-1 min-w-0 truncate hover:text-primary"
+                >{v.name}</a>
                 <span
                   class="text-[10px] uppercase tracking-wider flex-shrink-0"
                   style="color: var(--color-{statusTone(v.status)})"
