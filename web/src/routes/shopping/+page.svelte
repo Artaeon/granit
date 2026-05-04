@@ -313,18 +313,25 @@
       </div>
     {/if}
 
-    <!-- Quick add form — single-line entry for fast capture. -->
-    <form onsubmit={addItem} class="bg-surface0 border border-surface1 rounded-lg p-3 mb-5 space-y-2">
-      <div class="flex flex-wrap gap-2">
+    <!-- Quick add form. Mobile-first grid layout: name takes its own
+         row (so a long item title isn't crammed against numeric
+         inputs), then category | price | qty share a 3-col row, then
+         url (full width) and the standard toggle + add button on the
+         action row. On sm+ the layout collapses to two rows: name +
+         category + price + qty + add on row 1; url + standard on row 2.
+         Avoids flex-wrap reflowing into a tower of half-empty rows on
+         narrow phones. -->
+    <form onsubmit={addItem} class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-4 mb-5 space-y-2.5">
+      <div class="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-stretch">
         <input
           bind:value={nName}
           required
           placeholder="add to plan…"
-          class="flex-1 min-w-[12rem] px-3 py-2 bg-mantle border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
+          class="col-span-3 sm:flex-1 sm:min-w-[14rem] px-3 py-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
         />
         <select
           bind:value={nCategory}
-          class="px-2 py-2 bg-mantle border border-surface1 rounded text-sm text-text"
+          class="col-span-3 sm:col-auto sm:w-auto px-2 py-2 bg-mantle border border-surface1 rounded text-sm text-text"
           aria-label="category"
         >
           {#each CATEGORY_SUGGESTIONS as c}<option value={c}>{c}</option>{/each}
@@ -335,7 +342,7 @@
           step="0.01"
           min="0"
           placeholder="€"
-          class="w-20 px-2 py-2 bg-mantle border border-surface1 rounded text-sm text-text"
+          class="sm:w-20 px-2 py-2 bg-mantle border border-surface1 rounded text-sm text-text tabular-nums"
           aria-label="price"
         />
         <input
@@ -344,7 +351,7 @@
           step="1"
           min="1"
           placeholder="qty"
-          class="w-16 px-2 py-2 bg-mantle border border-surface1 rounded text-sm text-text"
+          class="sm:w-16 px-2 py-2 bg-mantle border border-surface1 rounded text-sm text-text tabular-nums"
           aria-label="quantity"
         />
         <button
@@ -357,10 +364,10 @@
         <input
           bind:value={nUrl}
           type="url"
-          placeholder="https://product-link (optional)"
-          class="flex-1 min-w-[10rem] px-2 py-1 bg-mantle border border-surface1 rounded text-xs text-text font-mono"
+          placeholder="product link (optional)"
+          class="flex-1 min-w-[10rem] px-2 py-1.5 bg-mantle border border-surface1 rounded text-xs text-text font-mono placeholder-dim focus:outline-none focus:border-primary"
         />
-        <label class="flex items-center gap-1.5 text-dim cursor-pointer">
+        <label class="flex items-center gap-1.5 text-dim cursor-pointer flex-shrink-0">
           <input type="checkbox" bind:checked={nStandard} class="accent-primary" />
           standard (recurring need)
         </label>
@@ -460,19 +467,23 @@
                 {@const editing = editingId === it.id}
                 <li class="bg-surface0 border border-surface1 rounded p-3">
                   {#if editing}
+                    <!-- Edit form: same mobile-first grid as quick-add.
+                         Name takes its own row; category/price/qty share
+                         a 3-col row on mobile and inline on sm+. URL +
+                         notes are full-width below regardless of viewport. -->
                     <div class="space-y-2">
-                      <div class="flex flex-wrap gap-2">
+                      <div class="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-stretch">
                         <input
                           bind:value={eName}
                           required
                           placeholder="name"
-                          class="flex-1 min-w-[10rem] px-2 py-1.5 bg-mantle border border-surface1 rounded text-sm text-text"
+                          class="col-span-3 sm:flex-1 sm:min-w-[12rem] px-2 py-1.5 bg-mantle border border-surface1 rounded text-sm text-text"
                         />
                         <input
                           bind:value={eCategory}
                           list="cat-suggestions"
                           placeholder="category"
-                          class="w-32 px-2 py-1.5 bg-mantle border border-surface1 rounded text-sm text-text"
+                          class="col-span-3 sm:col-auto sm:w-32 px-2 py-1.5 bg-mantle border border-surface1 rounded text-sm text-text"
                         />
                         <datalist id="cat-suggestions">
                           {#each CATEGORY_SUGGESTIONS as c}<option value={c}></option>{/each}
@@ -483,7 +494,7 @@
                           step="0.01"
                           min="0"
                           placeholder="€"
-                          class="w-20 px-2 py-1.5 bg-mantle border border-surface1 rounded text-sm text-text"
+                          class="sm:w-20 px-2 py-1.5 bg-mantle border border-surface1 rounded text-sm text-text tabular-nums"
                         />
                         <input
                           type="number"
@@ -491,22 +502,22 @@
                           step="1"
                           min="1"
                           placeholder="qty"
-                          class="w-16 px-2 py-1.5 bg-mantle border border-surface1 rounded text-sm text-text"
+                          class="sm:w-16 px-2 py-1.5 bg-mantle border border-surface1 rounded text-sm text-text tabular-nums"
                         />
                       </div>
                       <input
                         bind:value={eUrl}
                         type="url"
-                        placeholder="url"
+                        placeholder="product link (optional)"
                         class="w-full px-2 py-1.5 bg-mantle border border-surface1 rounded text-xs text-text font-mono"
                       />
                       <textarea
                         bind:value={eNotes}
                         rows="2"
-                        placeholder="notes"
+                        placeholder="notes (optional)"
                         class="w-full px-2 py-1.5 bg-mantle border border-surface1 rounded text-xs text-text"
                       ></textarea>
-                      <div class="flex items-center gap-3">
+                      <div class="flex items-center gap-3 flex-wrap">
                         <label class="flex items-center gap-1.5 text-xs text-dim cursor-pointer">
                           <input type="checkbox" bind:checked={eStandard} class="accent-primary" />
                           standard
@@ -515,63 +526,109 @@
                         <button
                           type="button"
                           onclick={cancelEdit}
-                          class="text-xs text-dim hover:text-text"
+                          class="px-3 py-1.5 text-sm text-subtext hover:text-text"
                         >cancel</button>
                         <button
                           type="button"
                           onclick={commitEdit}
-                          class="px-3 py-1 bg-primary text-on-primary rounded text-xs font-medium"
+                          class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium"
                         >save</button>
                       </div>
                     </div>
                   {:else}
-                    <div class="flex items-baseline gap-2 flex-wrap">
+                    <!-- Two-row layout: top row = checkbox + name + price/url
+                         (the high-frequency information); bottom row = chips +
+                         action icons. Always-visible action icons replace the
+                         hover-only ⋯ menu so touch users don't have to hunt. -->
+                    <div class="flex items-start gap-2.5">
                       <button
                         type="button"
                         onclick={() => setStatus(it, it.status === 'bought' ? 'planned' : 'bought')}
                         title={it.status === 'bought' ? 'mark not bought' : 'mark bought'}
                         aria-label="toggle bought"
-                        class="w-5 h-5 rounded border flex-shrink-0 flex items-center justify-center transition-colors
+                        class="w-6 h-6 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors
                           {it.status === 'bought' ? 'bg-success border-success' : 'border-surface2 hover:border-primary'}"
                       >
                         {#if it.status === 'bought'}
-                          <svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
+                          <svg viewBox="0 0 12 12" class="w-3.5 h-3.5 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
                         {/if}
                       </button>
-                      <span class="text-sm text-text flex-1 min-w-0 break-words {it.status === 'bought' ? 'line-through text-dim' : ''}">
-                        {it.name}
-                        {#if it.quantity && it.quantity > 1}<span class="text-dim text-xs"> ×{it.quantity}</span>{/if}
-                      </span>
-                      {#if it.standard}
-                        <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary/15 text-secondary">standard</span>
-                      {/if}
-                      {#if it.url}
-                        <a
-                          href={it.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="text-[11px] text-secondary hover:underline truncate font-mono max-w-[10rem]"
-                          title={it.url}
-                        >↗</a>
-                      {/if}
-                      {#if total > 0}
-                        <span class="text-xs text-dim tabular-nums flex-shrink-0">{fmtMoney(total)}</span>
-                      {/if}
-                      <details class="relative flex-shrink-0">
-                        <summary class="text-xs text-dim hover:text-text cursor-pointer list-none px-1">⋯</summary>
-                        <div class="absolute right-0 top-5 z-10 bg-surface1 border border-surface2 rounded shadow-lg py-1 min-w-[8rem] text-xs">
-                          <button onclick={() => startEdit(it)} class="block w-full text-left px-3 py-1.5 hover:bg-surface2 text-text">edit</button>
-                          <button onclick={() => toggleStandard(it)} class="block w-full text-left px-3 py-1.5 hover:bg-surface2 text-text">
-                            {it.standard ? 'unmark standard' : 'mark standard'}
-                          </button>
-                          <button onclick={() => setStatus(it, 'skipped')} class="block w-full text-left px-3 py-1.5 hover:bg-surface2 text-warning">skip</button>
-                          <button onclick={() => removeItem(it)} class="block w-full text-left px-3 py-1.5 hover:bg-surface2 text-error">delete</button>
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-baseline gap-2 flex-wrap">
+                          <span class="text-sm text-text break-words {it.status === 'bought' ? 'line-through text-dim' : ''}">
+                            {it.name}
+                            {#if it.quantity && it.quantity > 1}<span class="text-dim text-xs"> ×{it.quantity}</span>{/if}
+                          </span>
+                          {#if total > 0}
+                            <span class="text-xs text-dim tabular-nums flex-shrink-0">{fmtMoney(total)}</span>
+                          {/if}
                         </div>
-                      </details>
+                        {#if it.notes}
+                          <p class="text-[11px] text-dim mt-0.5 break-words">{it.notes}</p>
+                        {/if}
+                        <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
+                          {#if it.standard}
+                            <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary/15 text-secondary">standard</span>
+                          {/if}
+                          {#if it.url}
+                            <a
+                              href={it.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              class="text-[11px] text-secondary hover:underline truncate font-mono max-w-full sm:max-w-[14rem]"
+                              title={it.url}
+                            >↗ {it.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a>
+                          {/if}
+                        </div>
+                      </div>
+                      <!-- Action buttons: always-visible icon row aligned
+                           to the right edge. 8x8 hit boxes meet the 32×32
+                           touch-target floor for a comfortable phone tap. -->
+                      <div class="flex items-center gap-0.5 flex-shrink-0 -mr-1">
+                        <button
+                          type="button"
+                          onclick={() => toggleStandard(it)}
+                          aria-label={it.standard ? 'unmark standard' : 'mark standard'}
+                          title={it.standard ? 'unmark standard' : 'mark as recurring need'}
+                          class="w-8 h-8 flex items-center justify-center rounded text-base transition-colors
+                            {it.standard ? 'text-secondary hover:bg-surface1' : 'text-dim hover:text-secondary hover:bg-surface1'}"
+                        >{it.standard ? '★' : '☆'}</button>
+                        <button
+                          type="button"
+                          onclick={() => startEdit(it)}
+                          aria-label="edit"
+                          title="edit"
+                          class="w-8 h-8 flex items-center justify-center rounded text-dim hover:text-text hover:bg-surface1"
+                        >
+                          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onclick={() => setStatus(it, 'skipped')}
+                          aria-label="skip"
+                          title="skip — won't buy this cycle"
+                          class="w-8 h-8 flex items-center justify-center rounded text-dim hover:text-warning hover:bg-surface1"
+                        >
+                          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                            <circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/>
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onclick={() => removeItem(it)}
+                          aria-label="delete"
+                          title="delete"
+                          class="w-8 h-8 flex items-center justify-center rounded text-dim hover:text-error hover:bg-surface1"
+                        >
+                          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                    {#if it.notes}
-                      <p class="text-[11px] text-dim mt-1 ml-7 break-words">{it.notes}</p>
-                    {/if}
                   {/if}
                 </li>
               {/each}
