@@ -122,6 +122,17 @@
     </span>
   {/if}
 
+  {#if task.recurrence}
+    <span
+      class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium tabular-nums"
+      style="background: color-mix(in srgb, var(--color-info) 14%, transparent); color: var(--color-info);"
+      title="recurring {task.recurrence}"
+    >
+      <span aria-hidden="true">🔁</span>
+      {task.recurrence}
+    </span>
+  {/if}
+
   {#if task.tags && task.tags.length > 0}
     <span class="text-xs text-dim hidden group-hover:inline">
       {task.tags.map((t) => '#' + t).join(' ')}

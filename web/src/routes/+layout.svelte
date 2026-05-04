@@ -12,6 +12,7 @@
   import InstallPrompt from '$lib/components/InstallPrompt.svelte';
   import RunningTimer from '$lib/components/RunningTimer.svelte';
   import NavIcon from '$lib/components/NavIcon.svelte';
+  import QuickCaptureFab from '$lib/components/QuickCaptureFab.svelte';
   import { connect, disconnect, wsConnected } from '$lib/ws';
   import { theme, nextTheme, themeIcon, themeLabel } from '$lib/stores/theme';
   import { modulesStore } from '$lib/stores/modules';
@@ -489,6 +490,10 @@
        already installed or dismissed it. Auth-gated because pre-login
        is too early to be useful. -->
   <InstallPrompt />
+  <!-- Global quick-capture FAB. Single keystroke (Ctrl+Shift+N) opens
+       a small task-capture modal from anywhere in the app. Auth-gated
+       since pre-login captures don't have a daily note to write to. -->
+  <QuickCaptureFab />
 {/if}
 <Toaster />
 
