@@ -687,6 +687,17 @@ export interface PrayerIntention {
   answered_at?: string;
   answer?: string;
   notes?: string;
+  // Linkage to other granit entities — at most one of project/goal/
+  // venture/person is meaningful for any given intention, but
+  // multiples are allowed. PassageRef is free-text scripture (e.g.
+  // "Phil 4:6-7") that the prayer page renders as a clickable jump
+  // into the bible reader.
+  project?: string;
+  goal?: string;
+  venture?: string;
+  person?: string;
+  note_path?: string;
+  passage_ref?: string;
   created_at: string;
   updated_at: string;
 }

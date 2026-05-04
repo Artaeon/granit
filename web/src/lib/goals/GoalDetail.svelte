@@ -225,6 +225,12 @@
         >
           {#each statusOptions as s}<option value={s}>{s}</option>{/each}
         </select>
+        <a
+          href={`/prayer?goal=${encodeURIComponent(goal.id)}&text=${encodeURIComponent('For: ' + goal.title)}`}
+          title="add a prayer intention for this goal"
+          aria-label="pray for this goal"
+          class="w-9 h-9 flex items-center justify-center text-dim hover:text-primary rounded text-base"
+        >🙏</a>
         <button
           onclick={deleteGoal}
           aria-label="delete"

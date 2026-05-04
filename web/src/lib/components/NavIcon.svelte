@@ -54,6 +54,14 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h6M9 11h6"/>
   </svg>
+{:else if name === 'prayer'}
+  <!-- Two hands joined in prayer — abstracted as two opposing curved
+       paths meeting at the top, with a small heart-spark in the
+       center to read as devotion rather than just "hand silhouette". -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <path d="M9 21V10c0-1.1-.9-2-2-2s-2 .9-2 2v6c0 2.8 2.2 5 5 5h4c2.8 0 5-2.2 5-5v-6c0-1.1-.9-2-2-2s-2 .9-2 2v11"/>
+    <path d="M12 13v-3M10.5 11.5h3"/>
+  </svg>
 {:else if name === 'agents'}
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <rect x="4" y="6" width="16" height="12" rx="3"/><circle cx="9" cy="12" r="1.2" fill="currentColor"/><circle cx="15" cy="12" r="1.2" fill="currentColor"/><path d="M12 6V3M9 21h6"/>

@@ -52,6 +52,19 @@ func NormalizeStatus(s string) string {
 // (Family / Self / World / Friends / Work are common starters.)
 
 // Intention is a single prayer entry.
+//
+// Linkage fields (Project, Goal, Venture, Person, NotePath, PassageRef)
+// were added later to support the "pray specifically for the work"
+// use case — clicking a 'Pray for this' button on a Project / Goal /
+// Venture detail page creates an Intention with that entity already
+// attached. All linkage fields are free-text strings (Person points to
+// a name in people.json, Project to a project name, etc.) so renaming
+// the target doesn't transitively repoint — same trade-off the rest
+// of granit's free-text linkage takes. PassageRef is a citation like
+// "John 3:16" or "Romans 8:28" that the UI renders as a clickable
+// jump into the bible reader; we store it as text rather than a
+// structured ref so a user-entered "Psalm 23" or "Phil 4:6-7" both
+// round-trip without forcing an exact format.
 type Intention struct {
 	ID         string    `json:"id"`         // ULID, lowercase
 	Text       string    `json:"text"`       // the actual ask
@@ -61,6 +74,18 @@ type Intention struct {
 	AnsweredAt string    `json:"answered_at,omitempty"` // YYYY-MM-DD when marked answered
 	Answer     string    `json:"answer,omitempty"`      // optional how-it-was-answered note
 	Notes      string    `json:"notes,omitempty"`
+	// Linkage to other granit entities — all optional, all free-text.
+	// At most one of Project / Goal / Venture / Person is meaningful
+	// for any given intention (the prayer page renders the first one
+	// it finds), but we don't enforce that — a single intention could
+	// legitimately span "praying for Stoicera (venture) and especially
+	// Natascha (person)".
+	Project    string    `json:"project,omitempty"`     // project name
+	Goal       string    `json:"goal,omitempty"`        // goal id
+	Venture    string    `json:"venture,omitempty"`     // venture name
+	Person     string    `json:"person,omitempty"`      // person id or name
+	NotePath   string    `json:"note_path,omitempty"`   // vault-relative note path
+	PassageRef string    `json:"passage_ref,omitempty"` // free-text scripture ref (e.g. "Phil 4:6-7")
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }

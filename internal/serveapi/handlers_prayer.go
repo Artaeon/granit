@@ -76,6 +76,17 @@ func (s *Server) handlePatchPrayer(w http.ResponseWriter, r *http.Request) {
 	apply("category", &p.Category)
 	apply("answer", &p.Answer)
 	apply("notes", &p.Notes)
+	// Linkage fields — written by the 'Pray for this' buttons on the
+	// Project / Goal / Venture detail pages, surfaced as group chips
+	// on /prayer. Keeping them on the patch path means a user can
+	// retroactively attach an existing intention to a project they
+	// just created without re-creating the prayer.
+	apply("project", &p.Project)
+	apply("goal", &p.Goal)
+	apply("venture", &p.Venture)
+	apply("person", &p.Person)
+	apply("note_path", &p.NotePath)
+	apply("passage_ref", &p.PassageRef)
 	if raw, ok := patch["status"]; ok {
 		var v string
 		_ = json.Unmarshal(raw, &v)

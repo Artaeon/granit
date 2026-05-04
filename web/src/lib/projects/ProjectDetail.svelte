@@ -187,6 +187,15 @@
     >
       {#each statusOptions as s}<option value={s}>{s}</option>{/each}
     </select>
+    <!-- "Pray for this" — opens /prayer with the project pre-linked.
+         Lets a moment of clarity in the project view become an
+         intention in one click. -->
+    <a
+      href={`/prayer?project=${encodeURIComponent(project.name)}`}
+      title="add a prayer intention for this project"
+      aria-label="pray for this project"
+      class="w-9 h-9 flex items-center justify-center text-dim hover:text-primary rounded text-base"
+    >🙏</a>
     <button
       onclick={deleteProject}
       title="delete project"

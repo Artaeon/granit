@@ -75,7 +75,7 @@ func baselineDeclarations() []Module {
 		&baselineModule{id: "habit_tracker", name: "Habit Tracker", desc: "Daily habits, streaks, and progress", cat: "Daily"},
 		&baselineModule{id: "finance", name: "Finance", desc: "Accounts, subscriptions, income streams, money goals", cat: "Life"},
 		&baselineModule{id: "people", name: "People", desc: "Lightweight relationship tracker — last contact, birthdays, cadence reminders", cat: "Life"},
-		&baselineModule{id: "prayer", name: "Prayer", desc: "Active prayer intentions with status lifecycle. Lives in /scripture#intentions.", cat: "Spiritual"},
+		&baselineModule{id: "prayer", name: "Prayer", desc: "Dedicated prayer page — intentions linked to ventures, projects, goals, and people. Verse of the day above.", cat: "Spiritual"},
 		&baselineModule{id: "measurements", name: "Measurements", desc: "Numeric tracking — weight, sleep, exercise reps, mood, anything", cat: "Life"},
 		&baselineModule{id: "vision", name: "Vision", desc: "Life mission, core values, season focus — the layer above goals", cat: "Planning"},
 		&baselineModule{id: "ventures", name: "Ventures", desc: "Umbrella entity above projects and goals — companies, side hustles, ministries", cat: "Planning"},

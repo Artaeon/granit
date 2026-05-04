@@ -219,6 +219,11 @@
                   class="hover:text-primary"
                   title="goals tracker"
                 >🎯 {goalsCount} goal{goalsCount === 1 ? '' : 's'}</a>
+                <a
+                  href={`/prayer?venture=${encodeURIComponent(v.name)}`}
+                  class="hover:text-primary"
+                  title="add a prayer intention for this venture"
+                >🙏 pray</a>
                 {#if v.url}
                   <a
                     href={v.url}
