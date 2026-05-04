@@ -196,11 +196,24 @@
 
   function postprocess(html: string): string {
     let s = html;
-    // Diagrams → styled cards.
+    // Diagrams → styled cards. `mermaid` blocks become <pre> placeholders
+    // that the post-render effect (below) hydrates with rendered SVG.
+    // Other diagram kinds (mindmap/chart/flow) keep the source-card
+    // fallback because we don't have a renderer for them yet.
     const dgRe = new RegExp(`${esc(DIAGRAM_OPEN)}(\\d+)${esc(DIAGRAM_CLOSE)}`, 'g');
     s = s.replace(dgRe, (_, idx: string) => {
       const d = diagramCache[Number(idx)];
       if (!d) return '';
+      if (d.kind === 'mermaid') {
+        // Carry the source on a data attribute so the hydrator can
+        // pick it up after the {@html} drop. Wrapped in <pre> for
+        // graceful degradation: if the lazy-import or the render call
+        // fails, the user sees their source code, not a blank box.
+        return (
+          `<pre class="mermaid-host" data-mermaid-source="${escAttr(d.source)}">` +
+          `<code>${escHtml(d.source)}</code></pre>`
+        );
+      }
       return (
         `<div class="diagram-card">` +
         `<div class="diagram-card__header">${escHtml(d.kind)}<span class="diagram-card__hint"> · render in TUI</span></div>` +
@@ -334,15 +347,147 @@
       if (t) onWikilink?.(t);
     }
   }
+
+  // ── Mermaid renderer ────────────────────────────────────────────
+  // Lazy-loaded so users who never write a mermaid block don't pay
+  // the ~1MB bundle cost. The library is pulled in only when at
+  // least one .mermaid-host placeholder is in the DOM, then cached
+  // at module scope so subsequent renders reuse the same instance.
+
+  let mermaidContainer: HTMLDivElement | undefined = $state();
+  // Module-scoped — the import promise persists across re-renders so
+  // we don't re-fetch on every doc keystroke.
+  let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;
+  let mermaidIdCounter = 0;
+
+  // The body's theme controls mermaid's palette. We re-init mermaid
+  // when the user flips the theme so light-mode diagrams come back
+  // with the right colours; observation via MutationObserver on the
+  // <html> data-theme attribute is overkill here — we just call init
+  // before each render and pass the live theme.
+  function detectMermaidTheme(): 'dark' | 'default' {
+    if (typeof document === 'undefined') return 'default';
+    const t = document.documentElement.getAttribute('data-theme');
+    if (t === 'light') return 'default';
+    return 'dark';
+  }
+
+  async function getMermaid() {
+    if (!mermaidPromise) {
+      mermaidPromise = import('mermaid').then((m) => m.default);
+    }
+    return mermaidPromise;
+  }
+
+  async function renderMermaidBlocks() {
+    if (!mermaidContainer) return;
+    const hosts = Array.from(
+      mermaidContainer.querySelectorAll<HTMLPreElement>('pre.mermaid-host[data-mermaid-source]')
+    );
+    if (hosts.length === 0) return;
+    const mermaid = await getMermaid();
+    // initialize is idempotent — calling per render lets a theme
+    // toggle take effect without reloading the page.
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict', // no <foreignObject> raw HTML — bound to vault content
+      theme: detectMermaidTheme(),
+      fontFamily: 'inherit'
+    });
+    for (const host of hosts) {
+      const source = host.getAttribute('data-mermaid-source') ?? '';
+      const id = `mermaid-${++mermaidIdCounter}`;
+      try {
+        const { svg, bindFunctions } = await mermaid.render(id, source);
+        const wrapper = document.createElement('div');
+        wrapper.className = 'mermaid-rendered';
+        wrapper.innerHTML = svg;
+        // bindFunctions wires up click handlers in flowcharts that
+        // use `click NodeId callback "tooltip"`. Skipping it would
+        // silently break interactivity in user-authored diagrams.
+        bindFunctions?.(wrapper);
+        host.replaceWith(wrapper);
+      } catch (err) {
+        // Render failure → keep the source visible and surface a
+        // small error caption. Better than a silent blank.
+        const msg = err instanceof Error ? err.message : String(err);
+        const errBox = document.createElement('div');
+        errBox.className = 'mermaid-error';
+        errBox.innerHTML =
+          `<div class="mermaid-error__caption">mermaid render failed: ${escHtml(msg)}</div>` +
+          `<pre class="mermaid-error__source"><code>${escHtml(source)}</code></pre>`;
+        host.replaceWith(errBox);
+      }
+    }
+  }
+
+  // Re-run after every html update. The `void html` line is the dep
+  // tracker — Svelte 5's $effect re-runs when any read state changes,
+  // and we explicitly want the html derived to be the trigger here.
+  // queueMicrotask defers until the {@html} insertion has actually
+  // landed in the DOM.
+  $effect(() => {
+    void html;
+    queueMicrotask(() => {
+      void renderMermaidBlocks();
+    });
+  });
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="prose-note" onclick={onClickContainer}>
+<div class="prose-note" bind:this={mermaidContainer} onclick={onClickContainer}>
   {@html html}
 </div>
 
 <style>
+  /* Mermaid rendering — wrapper centres the diagram and lets it
+     overflow horizontally when the chart is wider than the column. */
+  :global(.mermaid-rendered) {
+    margin: 0.9rem 0;
+    overflow-x: auto;
+    text-align: center;
+  }
+  :global(.mermaid-rendered svg) {
+    max-width: 100%;
+    height: auto;
+  }
+  :global(.mermaid-host) {
+    /* Pre-render placeholder. Visible briefly while mermaid is
+       lazy-loading so the user sees something instead of a flash of
+       empty space. Subdued styling matches diagram-card so the
+       transition into the rendered SVG isn't jarring. */
+    margin: 0.9rem 0;
+    padding: 0.75rem 1rem;
+    border: 1px dashed color-mix(in srgb, var(--color-secondary) 40%, transparent);
+    border-radius: 0.375rem;
+    background: color-mix(in srgb, var(--color-secondary) 4%, transparent);
+    color: var(--color-dim);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    overflow-x: auto;
+  }
+  :global(.mermaid-error) {
+    margin: 0.9rem 0;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--color-error);
+    border-radius: 0.375rem;
+    background: color-mix(in srgb, var(--color-error) 8%, transparent);
+  }
+  :global(.mermaid-error__caption) {
+    color: var(--color-error);
+    font-size: 0.85em;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+  }
+  :global(.mermaid-error__source) {
+    margin: 0;
+    background: var(--color-surface0);
+    border-radius: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    overflow-x: auto;
+  }
+
   /* Footnote rendering — Pandoc-compatible markup. */
   :global(.footnote-ref a) {
     color: var(--color-secondary);
