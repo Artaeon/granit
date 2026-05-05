@@ -24,6 +24,13 @@ type icsEvent struct {
 	// Empty for events that originated in events.json (granit's native
 	// store) — those use the user-picked color field instead.
 	Source string
+	// ExDates is the set of explicitly-cancelled occurrences of a
+	// recurring event (RFC 5545 EXDATE). When a user cancels a single
+	// instance of a weekly meeting in their calendar app, the export
+	// drops one EXDATE line per skip. expandRRULE filters these out
+	// of the emitted instances. Stored as a map keyed by the date or
+	// datetime form so lookup stays O(1) per iteration.
+	ExDates map[string]struct{}
 }
 
 // icsSource is one .ics file discovered in the vault. Source is what the
@@ -175,6 +182,29 @@ func parseICSFile(path string) ([]icsEvent, error) {
 			if t, _, ok := parseICSTime(val, params["TZID"]); ok {
 				cur.End = t
 			}
+		case "EXDATE":
+			// EXDATE can carry multiple values separated by commas
+			// (RFC 5545 §3.8.5.1) and may use VALUE=DATE or a TZID
+			// param. We store both the bare-date form (YYYY-MM-DD)
+			// and the timestamp form (YYYY-MM-DDTHH:MM:SS in UTC) so
+			// expandRRULE can match either ICS-time shape without
+			// guessing.
+			if cur.ExDates == nil {
+				cur.ExDates = map[string]struct{}{}
+			}
+			for _, v := range strings.Split(val, ",") {
+				v = strings.TrimSpace(v)
+				if v == "" {
+					continue
+				}
+				if t, allDay, ok := parseICSTime(v, params["TZID"]); ok {
+					if allDay {
+						cur.ExDates[t.Format("2006-01-02")] = struct{}{}
+					} else {
+						cur.ExDates[t.UTC().Format("2006-01-02T15:04:05")] = struct{}{}
+					}
+				}
+			}
 		}
 	}
 	// Default end = start + 1h for timed, +24h for all-day
@@ -298,13 +328,19 @@ func expandRRULE(ev icsEvent, from, to time.Time) []icsEvent {
 
 	dur := ev.End.Sub(ev.Start)
 	var out []icsEvent
-	emitted := 0
+	// consumed counts recurrence-set occurrences regardless of whether
+	// they end up emitted. RFC 5545: COUNT bounds the recurrence itself,
+	// and EXDATE filters that bounded set — so EXDATE-cancelled dates
+	// still consume a COUNT slot. Without this distinction, COUNT=5 with
+	// one EXDATE would emit 5 (extending past the recurrence set);
+	// the correct behavior is to emit 4.
+	consumed := 0
 	const maxEmit = 1000
 
 	// emit attempts to add an instance at t. Returns false to signal the
-	// caller should stop iterating (past UNTIL, past `to`, or hit a count
-	// cap). Out-of-window instances before `from` or before DTSTART are
-	// silently skipped — the caller keeps stepping.
+	// caller should stop iterating (past UNTIL, past `to`, or hit COUNT).
+	// EXDATE-cancelled occurrences and pre-window dates are silently
+	// skipped (still consume a COUNT slot once we're past DTSTART).
 	emit := func(t time.Time) bool {
 		if !until.IsZero() && t.After(until) {
 			return false
@@ -312,19 +348,40 @@ func expandRRULE(ev icsEvent, from, to time.Time) []icsEvent {
 		if t.After(to) {
 			return false
 		}
-		if t.Before(ev.Start) || t.Add(dur).Before(from) {
+		if t.Before(ev.Start) {
+			// Pre-DTSTART — not in the recurrence set yet, don't
+			// consume a COUNT slot. Happens with WEEKLY+BYDAY when
+			// earlier weekdays in DTSTART's week need to be skipped.
+			return true
+		}
+		consumed++
+		if count > 0 && consumed > count {
+			return false
+		}
+		// In the recurrence set: skip if EXDATE-cancelled or fully
+		// before the requested window.
+		if isExcluded(t, ev.ExDates, ev.AllDay) {
+			if count > 0 && consumed >= count {
+				return false
+			}
+			return true
+		}
+		if t.Add(dur).Before(from) {
+			if count > 0 && consumed >= count {
+				return false
+			}
 			return true
 		}
 		inst := ev
 		inst.Start = t
 		inst.End = t.Add(dur)
 		inst.RRule = ""
+		inst.ExDates = nil
 		out = append(out, inst)
-		emitted++
-		if count > 0 && emitted >= count {
+		if count > 0 && consumed >= count {
 			return false
 		}
-		if emitted >= maxEmit {
+		if len(out) >= maxEmit {
 			return false
 		}
 		return true
@@ -379,7 +436,7 @@ func expandRRULE(ev icsEvent, from, to time.Time) []icsEvent {
 	}
 
 	cur := ev.Start
-	for emitted < maxEmit {
+	for len(out) < maxEmit {
 		if !emit(cur) {
 			break
 		}
@@ -433,6 +490,24 @@ func weekdayOffsetFromMonday(w time.Weekday) int {
 		return 6
 	}
 	return int(w) - 1
+}
+
+// isExcluded checks whether a candidate occurrence at t matches any
+// EXDATE entry. The match is a string compare against the same
+// formatting parseICSFile used to populate the set — bare YYYY-MM-DD
+// for all-day events and YYYY-MM-DDTHH:MM:SS in UTC for timed events.
+// Returns false fast when there are no EXDATEs to check (the common
+// case — most events aren't recurring with cancellations).
+func isExcluded(t time.Time, exDates map[string]struct{}, allDay bool) bool {
+	if len(exDates) == 0 {
+		return false
+	}
+	if allDay {
+		_, hit := exDates[t.Format("2006-01-02")]
+		return hit
+	}
+	_, hit := exDates[t.UTC().Format("2006-01-02T15:04:05")]
+	return hit
 }
 
 func atoiSafe(s string) int {

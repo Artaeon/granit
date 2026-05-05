@@ -261,6 +261,104 @@ func TestExpandRRULE_WeeklyBYDAYBeforeStart(t *testing.T) {
 	}
 }
 
+// TestExpandRRULE_EXDATE pins the EXDATE filter: a recurring event
+// with a single excluded occurrence drops that occurrence from the
+// emitted instances. Models the common case where a user cancels a
+// single instance of a weekly meeting in their calendar app.
+func TestExpandRRULE_EXDATE(t *testing.T) {
+	// Daily 9am UTC, 5 occurrences, with the third one excluded.
+	excluded := time.Date(2026, 3, 3, 9, 0, 0, 0, time.UTC)
+	base := icsEvent{
+		Title: "Daily standup",
+		Start: time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC),
+		End:   time.Date(2026, 3, 1, 9, 30, 0, 0, time.UTC),
+		RRule: "FREQ=DAILY;COUNT=5",
+		ExDates: map[string]struct{}{
+			excluded.UTC().Format("2006-01-02T15:04:05"): {},
+		},
+	}
+	from := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	got := expandRRULE(base, from, to)
+	// COUNT=5 minus 1 excluded → 4 emitted.
+	if len(got) != 4 {
+		t.Fatalf("expected 4 instances after EXDATE filter, got %d", len(got))
+	}
+	// The excluded date must NOT appear in the output.
+	for _, inst := range got {
+		if inst.Start.Equal(excluded) {
+			t.Errorf("excluded occurrence leaked through: %v", inst.Start)
+		}
+	}
+	// Instances should be cleared of the EXDATE map so downstream
+	// JSON serialization stays clean.
+	for i, inst := range got {
+		if inst.ExDates != nil {
+			t.Errorf("instance %d still carries ExDates", i)
+		}
+	}
+}
+
+// TestExpandRRULE_EXDATE_AllDay covers the all-day form: EXDATEs for
+// VALUE=DATE events are stored as bare YYYY-MM-DD and matched against
+// the occurrence's date format directly (no time component).
+func TestExpandRRULE_EXDATE_AllDay(t *testing.T) {
+	base := icsEvent{
+		Title:  "Holiday",
+		Start:  time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC),
+		End:    time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC),
+		AllDay: true,
+		RRule:  "FREQ=DAILY;COUNT=5",
+		ExDates: map[string]struct{}{
+			"2026-03-04": {},
+		},
+	}
+	from := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	got := expandRRULE(base, from, to)
+	if len(got) != 4 {
+		t.Fatalf("expected 4 instances, got %d", len(got))
+	}
+	for _, inst := range got {
+		if inst.Start.Format("2006-01-02") == "2026-03-04" {
+			t.Errorf("excluded all-day occurrence leaked through")
+		}
+	}
+}
+
+// TestParseICSFile_EXDATE verifies that an EXDATE line in the ICS
+// source parses into the icsEvent's ExDates map in the expected
+// canonical form.
+func TestParseICSFile_EXDATE(t *testing.T) {
+	const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//EN
+BEGIN:VEVENT
+UID:r@test
+SUMMARY:Recurring with skip
+DTSTART:20260301T090000Z
+DTEND:20260301T093000Z
+RRULE:FREQ=DAILY;COUNT=5
+EXDATE:20260303T090000Z
+END:VEVENT
+END:VCALENDAR
+`
+	path := writeTempICS(t, ics)
+	events, err := parseICSFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if len(events[0].ExDates) != 1 {
+		t.Fatalf("expected 1 EXDATE, got %d", len(events[0].ExDates))
+	}
+	if _, ok := events[0].ExDates["2026-03-03T09:00:00"]; !ok {
+		t.Errorf("EXDATE not stored in expected key shape; got %v", events[0].ExDates)
+	}
+}
+
 // TestParseBYDAY locks the parser shape: numeric prefixes are stripped
 // (so "-1SU" still resolves to Sunday) and unknown tokens are dropped
 // silently rather than crashing the calendar feed.
