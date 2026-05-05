@@ -90,6 +90,7 @@ var widgetTypeToModuleID = map[string]string{
 	"habits":          "habit_tracker",
 	"streaks":         "habit_tracker",
 	"top-deadlines":   "deadlines",
+	"top-goals":       "goals",
 	"scripture":       "scripture",
 	"today-focus":     "morning",
 	"ventures":        "ventures",
