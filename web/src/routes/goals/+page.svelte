@@ -9,6 +9,7 @@
   import GoalCreate from '$lib/goals/GoalCreate.svelte';
   import GoalDetail from '$lib/goals/GoalDetail.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
+  import PageHeader from '$lib/components/PageHeader.svelte';
 
   let goals = $state<Goal[]>([]);
   let loading = $state(false);
@@ -239,16 +240,17 @@
 <div class="h-full overflow-y-auto">
   <div class="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
     <VisionContextStrip />
-    <header class="mb-6 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
-      <div>
-        <h1 class="text-2xl sm:text-3xl font-semibold text-text">Goals</h1>
-        <p class="text-sm text-dim mt-1">{goals.length} goals · from <code class="text-xs">.granit/goals.json</code></p>
-      </div>
-      <button
-        onclick={() => (createOpen = true)}
-        class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 self-start"
-      >+ New goal</button>
-    </header>
+    <PageHeader
+      title="Goals"
+      subtitle="{goals.length} {goals.length === 1 ? 'goal' : 'goals'} · the things you're committing to in this season"
+    >
+      {#snippet actions()}
+        <button
+          onclick={() => (createOpen = true)}
+          class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
+        >+ New goal</button>
+      {/snippet}
+    </PageHeader>
 
     <!-- Status tabs -->
     <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-3 self-start flex-wrap">
