@@ -111,6 +111,27 @@
     nUrl = '';
   }
 
+  // ----- Stat strip -----
+  // Compact roll-up of "what does the venture portfolio look like?"
+  // Counts use the server-decorated project_count / goal_count fields
+  // so we don't fan out to /projects + /goals just to render the
+  // strip. Numbers reflect the visible (status-filtered) list rather
+  // than every venture in the file — when the user is on the Active
+  // tab the strip should answer "what's actually in motion".
+  let stats = $derived.by(() => {
+    let projectsTotal = 0;
+    let goalsTotal = 0;
+    for (const v of filtered) {
+      projectsTotal += v.project_count ?? 0;
+      goalsTotal += v.goal_count ?? 0;
+    }
+    return {
+      ventures: filtered.length,
+      projects: projectsTotal,
+      goals: goalsTotal
+    };
+  });
+
   async function submitCreate(e?: SubmitEvent) {
     e?.preventDefault();
     if (!nName.trim()) return;
@@ -157,6 +178,24 @@
         class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 self-start"
       >+ New venture</button>
     </header>
+
+    <!-- Stat strip — total projects + goals across the (filtered)
+         venture set. Hidden until at least one venture is in scope so
+         a fresh page stays empty-and-quiet. Reads server-decorated
+         counts directly so no extra round-trip is needed. -->
+    {#if stats.ventures > 0}
+      <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4 text-xs">
+        <span class="text-text font-medium tabular-nums">
+          {stats.ventures} {stats.ventures === 1 ? 'venture' : 'ventures'}
+        </span>
+        {#if stats.projects > 0}
+          <span class="text-secondary tabular-nums">{stats.projects} {stats.projects === 1 ? 'project' : 'projects'}</span>
+        {/if}
+        {#if stats.goals > 0}
+          <span class="text-secondary tabular-nums">{stats.goals} {stats.goals === 1 ? 'goal' : 'goals'}</span>
+        {/if}
+      </div>
+    {/if}
 
     <!-- Status tabs + search -->
     <div class="flex flex-wrap items-center gap-2 mb-4">
