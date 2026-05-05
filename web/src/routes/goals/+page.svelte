@@ -189,6 +189,38 @@
     archived: goals.filter((g) => g.status === 'archived').length
   });
 
+  // ----- Hero "next target" -----
+  // Picks the most-imminent active or paused goal with a parseable
+  // target_date and surfaces it as a hero card above the list. Skips
+  // goals whose status excludes them from the urgency treatment
+  // (completed / archived) and skips free-text target_dates that
+  // can't be compared to "today". Falls back to null when the user
+  // has no dated goals — the hero card simply doesn't render.
+  let goalHero = $derived.by((): { goal: Goal; days: number } | null => {
+    let best: Goal | null = null;
+    let bestDays = Infinity;
+    for (const g of goals) {
+      const status = g.status ?? 'active';
+      if (status !== 'active' && status !== 'paused') continue;
+      const days = daysUntilTarget(g.target_date);
+      if (days === null) continue;
+      // Earliest target wins; overdue goals (negative days) sort
+      // ahead of upcoming ones because they need attention more.
+      if (days < bestDays) {
+        bestDays = days;
+        best = g;
+      }
+    }
+    return best ? { goal: best, days: bestDays } : null;
+  });
+
+  function heroBorder(days: number): string {
+    if (days < 0 || days <= 7) return 'var(--color-error)';
+    if (days <= 30) return 'var(--color-warning)';
+    if (days <= 90) return 'var(--color-info)';
+    return 'var(--color-secondary)';
+  }
+
   // Distinct category + tag chips, sorted by frequency desc so the most
   // common chip surfaces first.
   let categories = $derived.by(() => {
@@ -251,6 +283,56 @@
         >+ New goal</button>
       {/snippet}
     </PageHeader>
+
+    <!-- Hero "next target" card — surfaces the most-imminent active
+         or paused goal with a parseable target_date so the user lands
+         on what's most pressing without scanning the list. Click jumps
+         to the goal's detail drawer (same affordance as the cards
+         below). Border tint = urgency, mirroring the deadlines hero. -->
+    {#if goalHero}
+      {@const h = goalHero.goal}
+      {@const days = goalHero.days}
+      {@const p = progress(h)}
+      <button
+        type="button"
+        onclick={() => openDetail(h)}
+        class="w-full text-left block mb-5 p-4 sm:p-5 bg-surface0 border-l-4 rounded-lg hover:border-primary transition-colors"
+        style="border-left-color: {heroBorder(days)};"
+      >
+        <div class="flex items-start gap-3">
+          <span class="text-2xl flex-shrink-0 mt-0.5" aria-hidden="true">🎯</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] uppercase tracking-wider text-dim mb-0.5">Next target</div>
+            <div class="text-lg sm:text-xl font-semibold text-text leading-tight break-words">
+              {#if days < 0}
+                <span class="text-error">{Math.abs(days)} {Math.abs(days) === 1 ? 'day' : 'days'} past target</span> · {h.title}
+              {:else if days === 0}
+                <span class="text-error">Today</span> · {h.title}
+              {:else if days === 1}
+                <span class="text-warning">Tomorrow</span> · {h.title}
+              {:else}
+                <span class="text-primary">{days} days</span>
+                <span class="text-dim font-normal">until</span>
+                {h.title}
+              {/if}
+            </div>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-dim">
+              <span class="font-mono tabular-nums text-subtext">{fmtDate(h.target_date)}</span>
+              {#if h.venture}
+                <span class="text-secondary">🏢 {h.venture}</span>
+              {/if}
+              {#if h.project}
+                <span class="text-secondary">📁 {h.project}</span>
+              {/if}
+              {#if p.total > 0}
+                <span class="tabular-nums">{p.done}/{p.total} milestones · {p.pct}%</span>
+              {/if}
+              <span class="ml-auto text-secondary hover:underline">View →</span>
+            </div>
+          </div>
+        </div>
+      </button>
+    {/if}
 
     <!-- Status tabs -->
     <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-3 self-start flex-wrap">
