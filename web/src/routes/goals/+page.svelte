@@ -10,6 +10,7 @@
   import GoalDetail from '$lib/goals/GoalDetail.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import { daysUntilTarget, targetChip, targetBorderColor } from '$lib/goals/util';
 
   let goals = $state<Goal[]>([]);
   let loading = $state(false);
@@ -137,26 +138,13 @@
     return s;
   }
 
-  // Days until target_date — used by the urgency border + chip below.
-  // Returns null when the date can't be parsed (some legacy goals
-  // store target_date as free text like "Q4 2026"). Today is computed
-  // in local time so a goal targeting "today" reads as 0 days, not -1
-  // for users east of UTC.
-  function daysUntilTarget(s: string | undefined): number | null {
-    if (!s) return null;
-    const d = new Date(s);
-    if (isNaN(d.getTime())) return null;
-    const t = new Date();
-    const aMid = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    const bMid = new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime();
-    return Math.round((aMid - bMid) / (24 * 3600 * 1000));
-  }
-
-  // Urgency tone for the goal card's left border. Completed +
-  // archived goals stay neutral so a past-target completed goal
-  // doesn't shout — its target_date is now historical context, not a
-  // call to action. Only `active` and `paused` goals get the urgency
-  // treatment so the user's eye lands on living work.
+  // Status-aware urgency tone for the goal card's left border.
+  // Completed + archived goals stay neutral so a past-target completed
+  // goal doesn't shout — its target_date is now historical context,
+  // not a call to action. Only `active` and `paused` goals get the
+  // urgency treatment so the user's eye lands on living work.
+  // The proximity → tone mapping itself lives in $lib/goals/util so
+  // /goals and the dashboard widget can't drift.
   function targetTone(g: Goal): string | null {
     if (g.status === 'completed' || g.status === 'archived') return null;
     const days = daysUntilTarget(g.target_date);
@@ -165,20 +153,6 @@
     if (days <= 30) return 'warning';
     if (days <= 90) return 'info';
     return null;
-  }
-
-  // Compact target-date chip — "past target" / "in 12d" / "in 3w" /
-  // "in 4mo" — matching the DeadlinePill rhythm so the user reads
-  // the same shape across goals and deadlines.
-  function targetChip(s: string | undefined): { label: string; tone: string } | null {
-    const days = daysUntilTarget(s);
-    if (days === null) return null;
-    if (days < 0) return { label: `${Math.abs(days)}d past target`, tone: 'error' };
-    if (days === 0) return { label: 'today', tone: 'error' };
-    if (days === 1) return { label: 'tomorrow', tone: 'warning' };
-    if (days < 14) return { label: `in ${days}d`, tone: days <= 30 ? 'warning' : 'info' };
-    if (days < 60) return { label: `in ${Math.round(days / 7)}w`, tone: days <= 30 ? 'warning' : 'info' };
-    return { label: `in ${Math.round(days / 30)}mo`, tone: 'dim' };
   }
 
   let counts = $derived({
@@ -213,13 +187,6 @@
     }
     return best ? { goal: best, days: bestDays } : null;
   });
-
-  function heroBorder(days: number): string {
-    if (days < 0 || days <= 7) return 'var(--color-error)';
-    if (days <= 30) return 'var(--color-warning)';
-    if (days <= 90) return 'var(--color-info)';
-    return 'var(--color-secondary)';
-  }
 
   // ----- Target-proximity stat strip -----
   // Distribution of dated active+paused goals across urgency
@@ -319,7 +286,7 @@
         type="button"
         onclick={() => openDetail(h)}
         class="w-full text-left block mb-5 p-4 sm:p-5 bg-surface0 border-l-4 rounded-lg hover:border-primary transition-colors"
-        style="border-left-color: {heroBorder(days)};"
+        style="border-left-color: {targetBorderColor(days)};"
       >
         <div class="flex items-start gap-3">
           <span class="text-2xl flex-shrink-0 mt-0.5" aria-hidden="true">🎯</span>
