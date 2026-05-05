@@ -282,6 +282,30 @@
     if (isNaN(d.getTime())) return s;
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   }
+
+  // ----- Stat strip -----
+  // Glance summary tuned to the Sunday review rhythm:
+  //   active        — all non-paused, non-archived virtues
+  //   checkedRecent — has a check within the last 7 days
+  //   needCheck     — active virtues with no check OR last check
+  //                   more than 7 days old. The page leads with
+  //                   "what's waiting on me?" so the count ties
+  //                   directly to the user's next action.
+  let stats = $derived.by(() => {
+    const now = Date.now();
+    const sevenDaysAgo = now - 7 * 24 * 3600 * 1000;
+    let active = 0, checkedRecent = 0, needCheck = 0;
+    for (const v of virtues) {
+      const status = v.status ?? 'active';
+      if (status !== 'active') continue;
+      active++;
+      const last = latestCheck(v);
+      const lastTs = last ? new Date(last.week_start).getTime() : 0;
+      if (lastTs >= sevenDaysAgo) checkedRecent++;
+      else needCheck++;
+    }
+    return { active, checkedRecent, needCheck };
+  });
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -297,6 +321,23 @@
         >{createOpen ? 'cancel' : '+ New virtue'}</button>
       {/snippet}
     </PageHeader>
+
+    <!-- Stat strip — small one-line "shape of the Sunday review"
+         summary. needCheck is the actionable count the user reads
+         first, so it leads with a warning tone; checkedRecent is
+         the success counterpart so the user feels the win when
+         they're caught up. -->
+    {#if stats.active > 0}
+      <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4 text-xs">
+        <span class="text-text font-medium tabular-nums">{stats.active} active</span>
+        {#if stats.needCheck > 0}
+          <span class="text-warning tabular-nums">{stats.needCheck} {stats.needCheck === 1 ? 'waiting on check' : 'waiting on check'}</span>
+        {/if}
+        {#if stats.checkedRecent > 0}
+          <span class="text-success/80 tabular-nums">{stats.checkedRecent} checked this week</span>
+        {/if}
+      </div>
+    {/if}
 
     {#if createOpen}
       <form onsubmit={submitCreate} class="bg-surface0 border border-surface1 rounded-lg p-4 mb-6 space-y-3">
