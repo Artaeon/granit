@@ -143,3 +143,67 @@ func TestParse_GoalAndDeadline_BothPopulated(t *testing.T) {
 		t.Errorf("DeadlineID = %q, want %q", out[0].DeadlineID, ulid)
 	}
 }
+
+// TestParse_HabitsSection_Excluded pins the section-skip rule:
+// `## Habits` is owned by the habits subsystem, so its checkbox lines
+// must NOT be surfaced as tasks. Verifies entry on the Habits heading,
+// exit on the next heading, and case-insensitive heading match.
+func TestParse_HabitsSection_Excluded(t *testing.T) {
+	content := `# 2026-05-05
+
+## Tasks
+- [ ] finish report
+- [x] morning email
+
+## Habits
+- [ ] morning movement
+- [ ] read 20 pages
+- [x] evening prayer
+
+## Notes
+- [ ] follow up on RFC
+
+### habits
+- [ ] case-insensitive habit
+`
+	out := ParseNotes([]NoteContent{{Path: "Daily/2026-05-05.md", Content: content}})
+	// Expect exactly 3 tasks: finish report, morning email, follow up on RFC.
+	// All 4 habit checkboxes (3 in ## Habits + 1 in ### habits) are skipped.
+	if len(out) != 3 {
+		got := make([]string, len(out))
+		for i, t := range out {
+			got[i] = t.Text
+		}
+		t.Fatalf("expected 3 tasks, got %d: %v", len(out), got)
+	}
+	wantTexts := map[string]bool{
+		"finish report":      true,
+		"morning email":      true,
+		"follow up on RFC":   true,
+	}
+	for _, task := range out {
+		if !wantTexts[task.Text] {
+			t.Errorf("unexpected task surfaced from Habits section: %q", task.Text)
+		}
+	}
+}
+
+// TestParse_HabitsSection_NestedHeading verifies that a sub-heading
+// under ## Habits keeps the section closed (we exit Habits on any
+// heading, including deeper ones — matches the habits parser's
+// section-end behavior).
+func TestParse_HabitsSection_NestedHeading(t *testing.T) {
+	content := `## Habits
+- [ ] habit one
+
+### Sub
+- [ ] not a habit anymore
+`
+	out := ParseNotes([]NoteContent{{Path: "x.md", Content: content}})
+	if len(out) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(out))
+	}
+	if out[0].Text != "not a habit anymore" {
+		t.Errorf("got task %q, want %q", out[0].Text, "not a habit anymore")
+	}
+}

@@ -100,9 +100,23 @@ func parseNote(note NoteContent) []Task {
 	// indent level → LineNum of most recent task at that level (1-based).
 	parentStack := make(map[int]int)
 	var out []Task
+	// `## Habits` is owned by the habits subsystem (handlers_habits.go's
+	// parseHabitsSection). Without this skip, every habit checkbox in a
+	// daily note also surfaced on /tasks — the user reported habits
+	// "showing in tasks sometimes". Match any heading level (matches the
+	// habits parser's heading shape) and exit on the next heading.
+	inHabits := false
 
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			text := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+			inHabits = strings.EqualFold(text, "Habits")
+			continue
+		}
+		if inHabits {
+			continue
+		}
 		if !strings.HasPrefix(trimmed, "- [") {
 			continue
 		}
