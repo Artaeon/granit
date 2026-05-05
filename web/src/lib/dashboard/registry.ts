@@ -20,6 +20,7 @@ import OneThingWidget from './widgets/OneThingWidget.svelte';
 import VenturesWidget from './widgets/VenturesWidget.svelte';
 import PrayerWidget from './widgets/PrayerWidget.svelte';
 import AtAGlanceWidget from './widgets/AtAGlanceWidget.svelte';
+import TopGoalsWidget from './widgets/TopGoalsWidget.svelte';
 
 export interface WidgetMeta {
   type: DashboardWidgetType;
@@ -46,6 +47,11 @@ export const widgetRegistry: WidgetMeta[] = [
   { type: 'now', label: 'Now', description: 'Current time + next event', span: 1, component: NowWidget },
   { type: 'streaks', label: 'Streaks', description: 'Habit streaks at a glance', span: 1, component: StreaksWidget },
   { type: 'top-deadlines', label: 'Top deadlines', description: 'Next 3 important deadlines', span: 1, component: TopDeadlinesWidget },
+  // Sits next to Top deadlines so the two "by-when" widgets cluster
+  // visually when both are enabled. Pulls from goals.target_date —
+  // free-text targets ("Q4 2026") are excluded since the widget is
+  // about countdown pressure.
+  { type: 'top-goals', label: 'Next goal targets', description: 'Top 3 active goals by target_date proximity', span: 1, component: TopGoalsWidget },
   { type: 'scripture', label: 'Today\'s verse', description: 'Daily scripture / quote rotation', span: 1, component: ScriptureWidget },
   { type: 'daily-note', label: 'Daily note', description: 'Link to today\'s daily note', span: 1, component: DailyNoteWidget },
   { type: 'quick-capture', label: 'Quick capture', description: 'Add a task fast', span: 1, component: QuickCaptureWidget },

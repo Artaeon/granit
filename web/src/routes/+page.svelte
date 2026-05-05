@@ -18,7 +18,10 @@
     // intention bridges the season's vision and the day's tactics.
     { id: 'w-one-thing', type: 'one-thing', afterId: 'w-vision', enabled: true },
     { id: 'w-today-focus', type: 'today-focus', afterId: 'w-one-thing', enabled: true },
-    { id: 'w-top-deadlines', type: 'top-deadlines', afterId: 'w-now', enabled: true }
+    { id: 'w-top-deadlines', type: 'top-deadlines', afterId: 'w-now', enabled: true },
+    // Pairs naturally with top-deadlines so the two by-when widgets
+    // sit side-by-side on the wide dashboard grid.
+    { id: 'w-top-goals', type: 'top-goals', afterId: 'w-top-deadlines', enabled: true }
   ];
 
   // Auth state machine on the landing page:

@@ -1654,7 +1654,8 @@ export type DashboardWidgetType =
   | 'one-thing'
   | 'ventures'
   | 'prayer'
-  | 'at-a-glance';
+  | 'at-a-glance'
+  | 'top-goals';
 
 export interface DashboardWidget {
   id: string;
