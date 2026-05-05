@@ -212,6 +212,39 @@
     return out;
   });
 
+  // ----- Stat strip -----
+  // One-line "shape of your deadlines" summary, computed from the
+  // SCOPED list (so deep-links from a project show project-only
+  // counts) but BEFORE the importance filter — the strip is a global
+  // glance, not a filtered view. Reads from `grouped` would be
+  // wrong: that's already filtered. Recompute from `scoped` directly.
+  let stats = $derived.by(() => {
+    let overdue = 0, thisWeek = 0, thisMonth = 0, later = 0, met = 0;
+    for (const d of scoped) {
+      if (d.status === 'cancelled') continue;
+      if (d.status === 'met') { met++; continue; }
+      const days = daysUntil(d.date);
+      if (days < 0) overdue++;
+      else if (days <= 7) thisWeek++;
+      else if (days <= 31) thisMonth++;
+      else later++;
+    }
+    return { overdue, thisWeek, thisMonth, later, met };
+  });
+
+  // Bucket header tint — drives the section heading color so the eye
+  // lands on Overdue / This week first. Keep "later" + "met" in the
+  // muted dim tone to preserve the calm-tail effect.
+  function bucketTone(b: Bucket): string {
+    switch (b) {
+      case 'overdue': return 'error';
+      case 'this_week': return 'warning';
+      case 'this_month': return 'info';
+      case 'met': return 'success';
+      default: return 'dim';
+    }
+  }
+
   // ----- Drawer / form -----
 
   function openCreate() {
@@ -455,6 +488,32 @@
         </button>
       {/if}
 
+      <!-- Stat strip — one-line "shape of today's commitments" so the
+           user sees what's slipping vs. distant in a single glance.
+           Sits between the hero card and the importance filter so the
+           visual flow is: most-urgent (hero) → overall shape (strip)
+           → drilldown (filter pills + buckets). Hides zero buckets to
+           stay tidy on a young vault. -->
+      {#if stats.overdue + stats.thisWeek + stats.thisMonth + stats.later + stats.met > 0}
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4 text-xs">
+          {#if stats.overdue > 0}
+            <span class="text-error font-medium tabular-nums">{stats.overdue} overdue</span>
+          {/if}
+          {#if stats.thisWeek > 0}
+            <span class="text-warning tabular-nums">{stats.thisWeek} this week</span>
+          {/if}
+          {#if stats.thisMonth > 0}
+            <span class="text-info tabular-nums">{stats.thisMonth} this month</span>
+          {/if}
+          {#if stats.later > 0}
+            <span class="text-dim tabular-nums">{stats.later} later</span>
+          {/if}
+          {#if stats.met > 0}
+            <span class="text-success/80 tabular-nums">{stats.met} met</span>
+          {/if}
+        </div>
+      {/if}
+
       <!-- Importance filter bar — three pills with global counts.
            Click toggles. The hint row below tells the user we're
            filtered (and how to reset). -->
@@ -494,10 +553,20 @@
         {#each bucketOrder as b}
           {@const rows = grouped[b]}
           {#if rows.length > 0}
+            {@const tone = bucketTone(b)}
             <section>
-              <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">
+              <!-- Bucket header tinted by urgency — overdue/this_week
+                   pop visually so the user's eye lands on what needs
+                   action first. Met/cancelled stay quiet so past wins
+                   and dismissals don't compete for attention. -->
+              <h2
+                class="text-xs uppercase tracking-wider font-medium mb-2"
+                style={tone === 'dim'
+                  ? 'color: var(--color-dim);'
+                  : `color: var(--color-${tone});`}
+              >
                 {bucketLabel[b]}
-                <span class="text-dim/70 ml-1">·{rows.length}</span>
+                <span class="opacity-60 ml-1 tabular-nums">· {rows.length}</span>
               </h2>
               <ul class="space-y-1.5">
                 {#each rows as d (d.id)}
@@ -511,16 +580,16 @@
                       class="w-full text-left bg-surface0 border border-surface1 rounded-lg p-3 hover:border-primary/50 transition-colors flex flex-col gap-1.5
                         {isMet || isCancelled ? 'opacity-60' : ''}"
                     >
-                      <!-- Title row — stacks on phone, inline 2-col on sm+
-                           so the date pill stays visible on narrow screens. -->
-                      <div class="flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
-                        <div class="flex items-baseline gap-2 flex-1 min-w-0">
-                          <DeadlinePill variant="icon" importance={d.importance} />
-                          <span class="text-base text-text font-medium flex-1 min-w-0 truncate {isMet ? 'line-through' : ''}">
-                            {d.title}
-                          </span>
-                        </div>
-                        <div class="flex items-center gap-1.5 flex-shrink-0 mt-1 sm:mt-0">
+                      <!-- Title row — title takes the lead, importance
+                           pill anchors the right. The icon variant is
+                           dropped (the colored importance pill already
+                           encodes severity) and date+countdown moves
+                           into the meta row to declutter the title. -->
+                      <div class="flex items-baseline gap-2">
+                        <span class="text-base text-text font-medium flex-1 min-w-0 truncate {isMet ? 'line-through' : ''}">
+                          {d.title}
+                        </span>
+                        <div class="flex items-center gap-1.5 flex-shrink-0">
                           <DeadlinePill variant="importance" importance={d.importance} />
                           {#if d.status && d.status !== 'active'}
                             <span
@@ -532,7 +601,7 @@
                       </div>
                       <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dim">
                         <span class="font-mono tabular-nums text-subtext">{d.date}</span>
-                        <span>· {countdown(d)}</span>
+                        <span class="text-subtext">· {countdown(d)}</span>
                         {#if d.venture}
                           <span class="text-secondary">🏢 {d.venture}</span>
                         {/if}
