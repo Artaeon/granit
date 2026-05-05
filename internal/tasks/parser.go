@@ -106,9 +106,29 @@ func parseNote(note NoteContent) []Task {
 	// "showing in tasks sometimes". Match any heading level (matches the
 	// habits parser's heading shape) and exit on the next heading.
 	inHabits := false
+	// Heading detection has to ignore `#` lines that are actually code-
+	// fence content. Without this, a daily note containing
+	//
+	//   ```bash
+	//   # Habits configuration
+	//   ```
+	//
+	// would falsely toggle inHabits=true and silently drop every task
+	// after the fence. Track triple-backtick (```) and triple-tilde
+	// (~~~) fences; toggle on each fence line. Indented (4-space)
+	// code blocks aren't detected here because they're rare in daily
+	// notes and would require column tracking — keep it simple.
+	inFence := false
 
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
 		if strings.HasPrefix(trimmed, "#") {
 			text := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
 			inHabits = strings.EqualFold(text, "Habits")

@@ -188,6 +188,55 @@ func TestParse_HabitsSection_Excluded(t *testing.T) {
 	}
 }
 
+// TestParse_HabitsSection_IgnoresCodeFences pins the code-fence
+// guard: a `# Habits` line inside a triple-backtick (or triple-
+// tilde) code block must NOT toggle the section skip. Without this,
+// a daily note with a bash example containing "# Habits" would
+// silently drop every task after the fence.
+func TestParse_HabitsSection_IgnoresCodeFences(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name: "backtick fence with comment",
+			content: "## Tasks\n" +
+				"- [ ] real task A\n" +
+				"\n" +
+				"```bash\n" +
+				"# Habits configuration\n" +
+				"echo hi\n" +
+				"```\n" +
+				"\n" +
+				"- [ ] real task B\n",
+		},
+		{
+			name: "tilde fence",
+			content: "## Tasks\n" +
+				"- [ ] real task A\n" +
+				"\n" +
+				"~~~yaml\n" +
+				"### Habits\n" +
+				"foo: bar\n" +
+				"~~~\n" +
+				"\n" +
+				"- [ ] real task B\n",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out := ParseNotes([]NoteContent{{Path: "x.md", Content: c.content}})
+			if len(out) != 2 {
+				got := make([]string, len(out))
+				for i, t := range out {
+					got[i] = t.Text
+				}
+				t.Fatalf("expected 2 tasks (fence content ignored), got %d: %v", len(out), got)
+			}
+		})
+	}
+}
+
 // TestParse_HabitsSection_NestedHeading verifies that a sub-heading
 // under ## Habits keeps the section closed (we exit Habits on any
 // heading, including deeper ones — matches the habits parser's
