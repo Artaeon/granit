@@ -5,6 +5,7 @@
   import { onWsEvent } from '$lib/ws';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
+  import PageHeader from '$lib/components/PageHeader.svelte';
 
   let tags = $state<{ tag: string; count: number }[]>([]);
   let loading = $state(false);
@@ -60,10 +61,11 @@
 
 <div class="h-full overflow-y-auto">
   <div class="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
-    <header class="mb-6">
-      <h1 class="text-2xl sm:text-3xl font-semibold text-text">Tags</h1>
-      <p class="text-sm text-dim mt-1">{tags.length} tag{tags.length === 1 ? '' : 's'} across the vault</p>
-    </header>
+    <PageHeader
+      title="Tags"
+      subtitle="{tags.length} tag{tags.length === 1 ? '' : 's'} across the vault"
+    />
+
 
     {#if loading && tags.length === 0}
       <div class="flex flex-wrap gap-x-3 gap-y-2">
