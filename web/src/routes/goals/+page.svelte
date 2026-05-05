@@ -136,6 +136,50 @@
     return s;
   }
 
+  // Days until target_date — used by the urgency border + chip below.
+  // Returns null when the date can't be parsed (some legacy goals
+  // store target_date as free text like "Q4 2026"). Today is computed
+  // in local time so a goal targeting "today" reads as 0 days, not -1
+  // for users east of UTC.
+  function daysUntilTarget(s: string | undefined): number | null {
+    if (!s) return null;
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return null;
+    const t = new Date();
+    const aMid = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const bMid = new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime();
+    return Math.round((aMid - bMid) / (24 * 3600 * 1000));
+  }
+
+  // Urgency tone for the goal card's left border. Completed +
+  // archived goals stay neutral so a past-target completed goal
+  // doesn't shout — its target_date is now historical context, not a
+  // call to action. Only `active` and `paused` goals get the urgency
+  // treatment so the user's eye lands on living work.
+  function targetTone(g: Goal): string | null {
+    if (g.status === 'completed' || g.status === 'archived') return null;
+    const days = daysUntilTarget(g.target_date);
+    if (days === null) return null;
+    if (days < 0) return 'error';
+    if (days <= 30) return 'warning';
+    if (days <= 90) return 'info';
+    return null;
+  }
+
+  // Compact target-date chip — "past target" / "in 12d" / "in 3w" /
+  // "in 4mo" — matching the DeadlinePill rhythm so the user reads
+  // the same shape across goals and deadlines.
+  function targetChip(s: string | undefined): { label: string; tone: string } | null {
+    const days = daysUntilTarget(s);
+    if (days === null) return null;
+    if (days < 0) return { label: `${Math.abs(days)}d past target`, tone: 'error' };
+    if (days === 0) return { label: 'today', tone: 'error' };
+    if (days === 1) return { label: 'tomorrow', tone: 'warning' };
+    if (days < 14) return { label: `in ${days}d`, tone: days <= 30 ? 'warning' : 'info' };
+    if (days < 60) return { label: `in ${Math.round(days / 7)}w`, tone: days <= 30 ? 'warning' : 'info' };
+    return { label: `in ${Math.round(days / 30)}mo`, tone: 'dim' };
+  }
+
   let counts = $derived({
     all: goals.length,
     active: goals.filter((g) => (g.status ?? 'active') === 'active').length,
@@ -265,7 +309,12 @@
         {#each filtered as g (g.id)}
           {@const p = progress(g)}
           {@const sc = statusColor(g.status)}
-          <article class="bg-surface0 border border-surface1 rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
+          {@const tone = targetTone(g)}
+          {@const chip = targetChip(g.target_date)}
+          <article
+            class="bg-surface0 border border-surface1 rounded-lg overflow-hidden hover:border-primary/40 transition-colors {tone ? 'border-l-4' : ''}"
+            style={tone ? `border-left-color: var(--color-${tone});` : ''}
+          >
             <button
               type="button"
               onclick={() => openDetail(g)}
@@ -284,7 +333,17 @@
               </div>
 
               <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-dim">
-                {#if g.target_date}<span>🎯 {fmtDate(g.target_date)}</span>{/if}
+                {#if g.target_date}
+                  <span class="inline-flex items-baseline gap-1.5">
+                    <span>🎯 {fmtDate(g.target_date)}</span>
+                    {#if chip && (g.status === 'active' || g.status === 'paused')}
+                      <span
+                        class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium tabular-nums whitespace-nowrap"
+                        style="background: color-mix(in srgb, var(--color-{chip.tone}) 14%, transparent); color: var(--color-{chip.tone});"
+                      >{chip.label}</span>
+                    {/if}
+                  </span>
+                {/if}
                 {#if g.project}<span>📁 {g.project}</span>{/if}
                 {#if g.venture}<span class="text-secondary">🏢 {g.venture}</span>{/if}
                 {#if g.category}<span>· {g.category}</span>{/if}
