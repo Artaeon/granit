@@ -4,6 +4,7 @@
   import { api, type Virtue, type VirtueCheck, type HabitInfo } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
+  import PageHeader from '$lib/components/PageHeader.svelte';
 
   // /virtues — character formation tracker. The "kingdom in me"
   // dimension that complements the project / venture / goal
@@ -285,18 +286,17 @@
 
 <div class="h-full overflow-y-auto">
   <div class="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
-    <header class="mb-6 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
-      <div>
-        <h1 class="text-2xl sm:text-3xl font-semibold text-text">Virtues</h1>
-        <p class="text-sm text-dim mt-1">
-          What God is forming in you. Name them, anchor them in scripture, check honestly each Sunday.
-        </p>
-      </div>
-      <button
-        onclick={() => (createOpen = !createOpen)}
-        class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 self-start"
-      >{createOpen ? 'cancel' : '+ New virtue'}</button>
-    </header>
+    <PageHeader
+      title="Virtues"
+      subtitle="What God is forming in you. Name them, anchor them in scripture, check honestly each Sunday."
+    >
+      {#snippet actions()}
+        <button
+          onclick={() => (createOpen = !createOpen)}
+          class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
+        >{createOpen ? 'cancel' : '+ New virtue'}</button>
+      {/snippet}
+    </PageHeader>
 
     {#if createOpen}
       <form onsubmit={submitCreate} class="bg-surface0 border border-surface1 rounded-lg p-4 mb-6 space-y-3">
