@@ -221,6 +221,28 @@
     return 'var(--color-secondary)';
   }
 
+  // ----- Target-proximity stat strip -----
+  // Distribution of dated active+paused goals across urgency
+  // buckets, surfaced as a one-line summary below the status tabs.
+  // Complements the hero (single most-pressing goal) by showing the
+  // shape of the whole pipeline at a glance. Free-text target_dates
+  // and undated goals are excluded — they have no place on a
+  // proximity axis.
+  let targetStats = $derived.by(() => {
+    let pastTarget = 0, thisMonth = 0, thisQuarter = 0, later = 0;
+    for (const g of goals) {
+      const status = g.status ?? 'active';
+      if (status !== 'active' && status !== 'paused') continue;
+      const days = daysUntilTarget(g.target_date);
+      if (days === null) continue;
+      if (days < 0) pastTarget++;
+      else if (days <= 30) thisMonth++;
+      else if (days <= 90) thisQuarter++;
+      else later++;
+    }
+    return { pastTarget, thisMonth, thisQuarter, later };
+  });
+
   // Distinct category + tag chips, sorted by frequency desc so the most
   // common chip surfaces first.
   let categories = $derived.by(() => {
@@ -345,6 +367,27 @@
         </button>
       {/each}
     </div>
+
+    <!-- Target-proximity stat strip — complements the hero card by
+         showing the distribution of dated goals across urgency
+         buckets. Hidden when no dated goals exist (the strip would
+         just read "0 0 0 0"). -->
+    {#if targetStats.pastTarget + targetStats.thisMonth + targetStats.thisQuarter + targetStats.later > 0}
+      <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4 text-xs">
+        {#if targetStats.pastTarget > 0}
+          <span class="text-error font-medium tabular-nums">{targetStats.pastTarget} past target</span>
+        {/if}
+        {#if targetStats.thisMonth > 0}
+          <span class="text-warning tabular-nums">{targetStats.thisMonth} this month</span>
+        {/if}
+        {#if targetStats.thisQuarter > 0}
+          <span class="text-info tabular-nums">{targetStats.thisQuarter} this quarter</span>
+        {/if}
+        {#if targetStats.later > 0}
+          <span class="text-dim tabular-nums">{targetStats.later} later</span>
+        {/if}
+      </div>
+    {/if}
 
     <!-- Search + filter chips -->
     <div class="mb-6 space-y-2">
