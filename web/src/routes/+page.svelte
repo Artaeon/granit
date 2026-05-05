@@ -451,7 +451,7 @@
   </div>
 {:else}
   <div class="h-full overflow-y-auto">
-    <div class="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    <div class="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       {#if loadError}<div class="text-sm text-error mb-4">{loadError}</div>{/if}
 
       {#if aiNotConfigured}
@@ -602,10 +602,16 @@
       {/if}
 
       {#if config}
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Three-column grid above 1280px: span-2 widgets become
+             full-width strips, span-1 widgets pack 3 per row so wide
+             displays don't leave half-empty rows. items-start keeps
+             each widget at its natural content height — without it,
+             a short widget paired with a tall one stretches and the
+             card looks half-empty inside. -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 items-start">
           {#each activeWidgets as { widget, meta } (widget.id)}
             {@const Widget = meta.component}
-            <div class={meta.span === 2 ? 'lg:col-span-2' : ''}>
+            <div class={meta.span === 2 ? 'lg:col-span-2 xl:col-span-3' : ''}>
               <Widget vaultPath={vault?.root ?? ''} />
             </div>
           {/each}
