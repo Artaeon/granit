@@ -256,8 +256,10 @@ func parseICSTime(value, tzid string) (time.Time, bool, bool) {
 
 // expandRRULE returns instances of ev within [from, to] inclusive, given the
 // RRULE. Supports FREQ=DAILY|WEEKLY|MONTHLY|YEARLY with INTERVAL, COUNT, UNTIL.
-// More exotic rules (BYDAY, BYMONTHDAY, etc.) are best-effort: we just emit
-// the base series.
+// FREQ=WEEKLY honors BYDAY (e.g. MO,TU,WE,TH,FR) — without this, an event with
+// DTSTART on a Monday and BYDAY=MO,TU,WE,TH,FR would only fire on Mondays.
+// Other BY* rules (BYMONTHDAY, BYMONTH, BYSETPOS) are best-effort: ignored,
+// and the base series is emitted.
 func expandRRULE(ev icsEvent, from, to time.Time) []icsEvent {
 	if ev.RRule == "" {
 		// Single occurrence
@@ -292,6 +294,71 @@ func expandRRULE(ev icsEvent, from, to time.Time) []icsEvent {
 			until = t
 		}
 	}
+	bydays := parseBYDAY(parts["BYDAY"])
+
+	dur := ev.End.Sub(ev.Start)
+	var out []icsEvent
+	emitted := 0
+	const maxEmit = 1000
+
+	// emit attempts to add an instance at t. Returns false to signal the
+	// caller should stop iterating (past UNTIL, past `to`, or hit a count
+	// cap). Out-of-window instances before `from` or before DTSTART are
+	// silently skipped — the caller keeps stepping.
+	emit := func(t time.Time) bool {
+		if !until.IsZero() && t.After(until) {
+			return false
+		}
+		if t.After(to) {
+			return false
+		}
+		if t.Before(ev.Start) || t.Add(dur).Before(from) {
+			return true
+		}
+		inst := ev
+		inst.Start = t
+		inst.End = t.Add(dur)
+		inst.RRule = ""
+		out = append(out, inst)
+		emitted++
+		if count > 0 && emitted >= count {
+			return false
+		}
+		if emitted >= maxEmit {
+			return false
+		}
+		return true
+	}
+
+	// FREQ=WEEKLY with BYDAY: iterate week-by-week, expanding each week to
+	// its target weekdays. Without this branch, BYDAY=MO,TU,WE,TH,FR would
+	// silently degrade to "every 7 days from DTSTART", missing 4 of 5 days.
+	if freq == "WEEKLY" && len(bydays) > 0 {
+		// Snap to the Monday of DTSTART's week (WKST defaults to MO per
+		// RFC 5545). Time-of-day is preserved by AddDate.
+		weekStart := ev.Start
+		for weekStart.Weekday() != time.Monday {
+			weekStart = weekStart.AddDate(0, 0, -1)
+		}
+		for week := 0; week < 10000; week++ {
+			base := weekStart.AddDate(0, 0, 7*interval*week)
+			if base.After(to) {
+				break
+			}
+			stop := false
+			for _, wd := range bydays {
+				cur := base.AddDate(0, 0, weekdayOffsetFromMonday(wd))
+				if !emit(cur) {
+					stop = true
+					break
+				}
+			}
+			if stop {
+				break
+			}
+		}
+		return out
+	}
 
 	var step func(time.Time) time.Time
 	switch freq {
@@ -311,29 +378,10 @@ func expandRRULE(ev icsEvent, from, to time.Time) []icsEvent {
 		return nil
 	}
 
-	dur := ev.End.Sub(ev.Start)
-	var out []icsEvent
 	cur := ev.Start
-	emitted := 0
-	const maxEmit = 1000
-
 	for emitted < maxEmit {
-		if !until.IsZero() && cur.After(until) {
+		if !emit(cur) {
 			break
-		}
-		if cur.After(to) {
-			break
-		}
-		if !cur.Before(from.Add(-dur)) {
-			inst := ev
-			inst.Start = cur
-			inst.End = cur.Add(dur)
-			inst.RRule = ""
-			out = append(out, inst)
-			emitted++
-			if count > 0 && emitted >= count {
-				break
-			}
 		}
 		next := step(cur)
 		if !next.After(cur) {
@@ -342,6 +390,49 @@ func expandRRULE(ev icsEvent, from, to time.Time) []icsEvent {
 		cur = next
 	}
 	return out
+}
+
+// parseBYDAY turns "MO,TU,WE,TH,FR" into weekdays. Numeric prefixes used
+// for monthly/yearly recurrences (e.g. "-1SU", "2WE") are stripped — we
+// don't honor positional BYDAY, but we don't want it to silently break
+// the weekday match either.
+func parseBYDAY(s string) []time.Weekday {
+	if s == "" {
+		return nil
+	}
+	var out []time.Weekday
+	for _, raw := range strings.Split(s, ",") {
+		part := strings.TrimSpace(raw)
+		for len(part) > 0 && (part[0] == '-' || part[0] == '+' || (part[0] >= '0' && part[0] <= '9')) {
+			part = part[1:]
+		}
+		switch strings.ToUpper(part) {
+		case "MO":
+			out = append(out, time.Monday)
+		case "TU":
+			out = append(out, time.Tuesday)
+		case "WE":
+			out = append(out, time.Wednesday)
+		case "TH":
+			out = append(out, time.Thursday)
+		case "FR":
+			out = append(out, time.Friday)
+		case "SA":
+			out = append(out, time.Saturday)
+		case "SU":
+			out = append(out, time.Sunday)
+		}
+	}
+	return out
+}
+
+// weekdayOffsetFromMonday: ISO week order (Mon=0, Tue=1, ..., Sun=6).
+// Go's time.Weekday is Sun=0, so Sunday wraps to 6.
+func weekdayOffsetFromMonday(w time.Weekday) int {
+	if w == time.Sunday {
+		return 6
+	}
+	return int(w) - 1
 }
 
 func atoiSafe(s string) int {
