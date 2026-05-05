@@ -5,6 +5,7 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import { page } from '$app/stores';
+  import PageHeader from '$lib/components/PageHeader.svelte';
 
   // /prayer is the dedicated prayer surface, separate from the
   // /scripture#intentions tab. The product story: scripture-driven
@@ -261,12 +262,11 @@
 
 <div class="h-full overflow-y-auto">
   <div class="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
-    <header class="mb-6">
-      <h1 class="text-2xl sm:text-3xl font-semibold text-text">Prayer</h1>
-      <p class="text-sm text-dim mt-1">
-        {active.length} active · what you're bringing before God for the work, the people, and your life
-      </p>
-    </header>
+    <PageHeader
+      title="Prayer"
+      subtitle="{active.length} active · what you're bringing before God for the work, the people, and your life"
+    />
+
 
     <!-- Verse of the day. Sets the tone above the prayer list — God's
          word frames the requests. Links to the full /scripture surface. -->
