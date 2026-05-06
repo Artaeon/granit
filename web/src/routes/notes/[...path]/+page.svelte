@@ -567,10 +567,66 @@
     const t = body.trim();
     return t ? t.split(/\s+/).length : 0;
   });
+  let charCount = $derived(body.length);
+  let lineCount = $derived(body ? body.split('\n').length : 0);
   // Reading time at ~225 wpm — average silent reading speed. Floor of
   // 1 minute so a short note doesn't read "0 min". Hidden under 50
   // words because "<1 min" on a tiny note is noise.
   let readingMinutes = $derived(Math.max(1, Math.round(wordCount / 225)));
+
+  // Cursor position state — populated by the Editor's onCursor
+  // callback. line:col is 1-indexed (matches what every editor
+  // status bar shows). selLen > 0 means the user has a selection;
+  // we surface a "{N} selected" badge in that case so the user
+  // knows how much they're about to act on.
+  let cursorLine = $state(1);
+  let cursorCol = $state(1);
+  let cursorSelLen = $state(0);
+
+  // Last-saved relative time for the status bar. Re-derived every
+  // time `lastSavedAt` ticks; the status bar reads it directly.
+  let lastSavedDisplay = $state('—');
+  $effect(() => {
+    function tick() {
+      if (!lastSavedAt) {
+        lastSavedDisplay = '—';
+        return;
+      }
+      const sec = Math.round((Date.now() - lastSavedAt) / 1000);
+      if (sec < 5) lastSavedDisplay = 'just now';
+      else if (sec < 60) lastSavedDisplay = `${sec}s ago`;
+      else if (sec < 3600) lastSavedDisplay = `${Math.round(sec / 60)}m ago`;
+      else lastSavedDisplay = `${Math.round(sec / 3600)}h ago`;
+    }
+    tick();
+    const id = setInterval(tick, 5000);
+    return () => clearInterval(id);
+  });
+
+  // Mod-/ to cycle view modes (edit → split → preview → edit). A
+  // common shortcut in markdown editors (Typora, Obsidian) — the
+  // keymap stays inside the editor so we install a window-level
+  // handler that ignores the event when the focused element isn't
+  // CodeMirror's editable surface (otherwise typing '/' in a form
+  // would cycle the view, hostile UX).
+  $effect(() => {
+    function onKey(e: KeyboardEvent) {
+      const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+      if (!mod || e.key !== '/' || e.shiftKey || e.altKey) return;
+      // Only cycle when the editor has focus (or no input has focus).
+      const el = document.activeElement as HTMLElement | null;
+      const tag = el?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+      e.preventDefault();
+      const order: ViewMode[] = ['edit', 'split', 'preview'];
+      const idx = order.indexOf(viewMode);
+      const next = order[(idx + 1) % order.length];
+      setViewMode(next);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   function jumpToLine(lineNum: number) {
     editor?.scrollToLine(lineNum);
@@ -907,7 +963,7 @@
       <NoteDeadlinesStrip frontmatter={note.frontmatter ?? null} />
       <div class="flex-1 min-h-0 p-2 sm:p-3">
         {#if viewMode === 'edit'}
-          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} />
+          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} />
         {:else if viewMode === 'preview'}
           <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4">
             <div class="max-w-3xl mx-auto">
@@ -917,16 +973,44 @@
         {:else}
           <!-- split (desktop only) -->
           <div class="h-full grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} />
+            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} />
             <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block">
               <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
             </div>
           </div>
         {/if}
       </div>
-      <footer class="md:hidden px-3 py-1.5 border-t border-surface1 text-[11px] text-dim flex items-center justify-between">
-        <span>{wordCount} words{#if wordCount >= 50} · {readingMinutes}m{/if}</span>
-        <span class="opacity-60">[[ for autocomplete · ⌘-click links</span>
+      <!-- Status bar — always visible (mobile + desktop). The
+           previous version was md:hidden, which left desktop users
+           with no live word/char/line/cursor readout. The desktop
+           layout fits more datapoints; mobile collapses to the
+           essentials.
+
+           Order: counts (words · chars · lines) · reading time ·
+           cursor (line:col + selection length) · last saved.
+           Right side carries autocomplete hint on mobile only —
+           desktop has the help button in the header. -->
+      <footer class="px-3 py-1.5 border-t border-surface1 text-[11px] text-dim flex items-center gap-3 flex-wrap">
+        <span class="font-mono tabular-nums">{wordCount} words</span>
+        <span class="hidden sm:inline opacity-60">·</span>
+        <span class="hidden sm:inline font-mono tabular-nums">{charCount.toLocaleString()} chars</span>
+        <span class="hidden md:inline opacity-60">·</span>
+        <span class="hidden md:inline font-mono tabular-nums">{lineCount} lines</span>
+        {#if wordCount >= 50}
+          <span class="opacity-60">·</span>
+          <span>{readingMinutes} min read</span>
+        {/if}
+        {#if viewMode !== 'preview'}
+          <span class="hidden sm:inline opacity-60">·</span>
+          <span class="hidden sm:inline font-mono tabular-nums">
+            Ln {cursorLine}, Col {cursorCol}{#if cursorSelLen > 0} · {cursorSelLen} sel{/if}
+          </span>
+        {/if}
+        <span class="flex-1"></span>
+        {#if lastSavedAt}
+          <span class="hidden sm:inline">Saved {lastSavedDisplay}</span>
+        {/if}
+        <span class="md:hidden opacity-60">[[ autocomplete · ⌘-click links</span>
       </footer>
     {:else}
       <div class="p-6 text-sm text-dim">loading…</div>

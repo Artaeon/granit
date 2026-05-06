@@ -25,6 +25,7 @@
     onNavigate,
     onExtract,
     onAskAI,
+    onCursor,
     placeholder = ''
   }: {
     value?: string;
@@ -45,6 +46,15 @@
      * the document. Implementation in $lib/editor/ask-ai.
      */
     onAskAI?: (req: AskAIRequest) => void;
+    /**
+     * Cursor position callback — fires on every selection change with
+     * the 1-indexed line number, 1-indexed column, and the selected
+     * length (0 when there's no selection). Used by the host page's
+     * status bar to display "Ln 12, Col 4" / "12 selected". Receiving
+     * a callback is preferred over polling because polling on every
+     * frame is expensive on long documents.
+     */
+    onCursor?: (info: { line: number; col: number; selLen: number }) => void;
     placeholder?: string;
   } = $props();
 
@@ -131,6 +141,21 @@
             internalChange = true;
             value = u.state.doc.toString();
             queueMicrotask(() => (internalChange = false));
+          }
+          // Fire cursor info on selection or doc changes. Both
+          // mutate the cursor position from the user's perspective
+          // (typing moves the caret; clicking moves it; deletion
+          // can shift it). selectionSet is the most precise signal
+          // for "cursor moved" but doesn't catch typing-induced
+          // drift, so we OR with docChanged.
+          if ((u.selectionSet || u.docChanged) && onCursor) {
+            const sel = u.state.selection.main;
+            const line = u.state.doc.lineAt(sel.head);
+            onCursor({
+              line: line.number,
+              col: sel.head - line.from + 1,
+              selLen: Math.abs(sel.to - sel.from)
+            });
           }
         })
       ]
