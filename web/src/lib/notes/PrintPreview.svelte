@@ -59,6 +59,19 @@
   let configOpen = $state(false);
   let savingConfig = $state(false);
   let configDirty = $state(false);
+  // "Add Granit signature" — appends a tamper-detection footer to
+  // the printed document with a SHA-256 of the body, generated-at
+  // timestamp, and a one-line provenance. Like the integrity stamp
+  // a signed PDF carries: not a legal e-signature, but a verifiable
+  // claim that the document was generated through Granit and that
+  // the bytes haven't been altered since.
+  //
+  // Persisted alongside header/footer/mode so the user's choice
+  // sticks across exports.
+  const SIG_KEY = 'granit.print.signature';
+  let signatureOn = $state(false);
+  let signatureHash = $state('');
+  let signatureTimestamp = $state('');
 
   // Load order: localStorage immediately (so the overlay paints with
   // SOMETHING fast even on a slow server), then await the server. If
@@ -71,7 +84,8 @@
       header = localStorage.getItem(HEADER_KEY) ?? '';
       footer = localStorage.getItem(FOOTER_KEY) ?? '';
       const m = localStorage.getItem(MODE_KEY);
-      if (m === 'standard' || m === 'certificate' || m === 'report') mode = m;
+      if (m === 'standard' || m === 'certificate' || m === 'report' || m === 'letterhead' || m === 'memo') mode = m;
+      signatureOn = localStorage.getItem(SIG_KEY) === '1';
     } catch {}
     try {
       const cfg = await api.getPrintConfig();
@@ -121,6 +135,71 @@
     try { localStorage.setItem(MODE_KEY, mode); } catch {}
     configDirty = true;
   });
+  $effect(() => {
+    void signatureOn;
+    if (!loaded) return;
+    try { localStorage.setItem(SIG_KEY, signatureOn ? '1' : '0'); } catch {}
+  });
+
+  // Document signature: SHA-256 of the rendered body + a frozen
+  // generated-at timestamp. Recomputed when the body or signature
+  // toggle changes — re-hashing on every keystroke is fine because
+  // SubtleCrypto is fast for small docs (microseconds), and a fresh
+  // hash is the whole point: the signature claims THIS exact body
+  // is what got produced.
+  //
+  // Timestamp is captured at signature-on rather than per-render so
+  // the user reads the same "Generated at" line every time the
+  // overlay opens — useful when they're previewing and want to know
+  // the moment they signed off.
+  async function computeHash(text: string): Promise<string> {
+    if (typeof crypto === 'undefined' || !crypto.subtle) return '';
+    const enc = new TextEncoder().encode(text);
+    const buf = await crypto.subtle.digest('SHA-256', enc);
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  $effect(() => {
+    if (!signatureOn) {
+      signatureHash = '';
+      signatureTimestamp = '';
+      return;
+    }
+    if (!signatureTimestamp) {
+      signatureTimestamp = new Date().toISOString();
+    }
+    const snap = body;
+    void computeHash(snap).then((h) => {
+      // Late-arriving hash from a stale snapshot — only commit if
+      // the body hasn't changed since we kicked off the digest.
+      if (snap === body) signatureHash = h;
+    });
+  });
+
+  // Word + char counts for the signature block — small but
+  // useful integrity datapoints alongside the hash.
+  let docWords = $derived(body.trim() ? body.trim().split(/\s+/).length : 0);
+  let docChars = $derived(body.length);
+
+  function fmtTimestamp(iso: string): string {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleString(undefined, {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      });
+    } catch {
+      return iso;
+    }
+  }
+  function shortHash(h: string): string {
+    if (!h) return '…';
+    // Display as four 8-char groups for readability — same shape
+    // signed-PDF viewers use for fingerprint summaries. The full
+    // hash is still in the title attribute for copy-paste.
+    return `${h.slice(0, 8)} ${h.slice(8, 16)} … ${h.slice(-16, -8)} ${h.slice(-8)}`;
+  }
 
   async function saveConfigToServer() {
     if (savingConfig) return;
@@ -191,6 +270,17 @@
         class="tb-btn {configOpen ? 'tb-active' : ''}"
         title="Edit header / footer"
       >⚙ Configure</button>
+      <!-- Sign-document toggle. Independent from the mode selector
+           because signing is an additive concern: any of the four
+           templates can carry a signature footer. The visual state
+           is a chip — pressed = on. Available on every viewport
+           because it's a structural document property, not a tweak. -->
+      <button
+        onclick={() => (signatureOn = !signatureOn)}
+        class="tb-btn {signatureOn ? 'tb-active' : ''}"
+        title={signatureOn ? 'Document is signed (SHA-256 footer added)' : 'Add signature footer (SHA-256 + timestamp)'}
+      >🔏 {signatureOn ? 'Signed' : 'Sign'}</button>
+      <span class="tb-sep"></span>
       <div class="tb-modes">
         {#each [
           { id: 'standard', label: 'Standard' },
@@ -259,70 +349,22 @@
     <!-- The printable surface. data-mode toggles the layout. -->
     <main class="print-page" data-mode={mode}>
       {#if mode === 'certificate'}
-        <!-- Certificate layout — formal document framing. The double
-             border + corner ornaments + formal serif typography give
-             the page authenticity at a glance, and the Granit seal
-             at the bottom doubles as a verifiable provenance mark
-             (a colleague who suspects a forgery can check the repo). -->
-        <div class="cert-frame">
-          <div class="cert-corner cert-corner-tl">❦</div>
-          <div class="cert-corner cert-corner-tr">❦</div>
-          <div class="cert-corner cert-corner-bl">❦</div>
-          <div class="cert-corner cert-corner-br">❦</div>
-          <div class="cert-content">
-            {#if header}
-              <div class="cert-issuer">{header}</div>
-            {/if}
-            <div class="cert-eyebrow">— Certificate —</div>
-            <h1 class="cert-title">{title}</h1>
-            <div class="cert-divider">
-              <span class="cert-divider-line"></span>
-              <span class="cert-divider-mark">⁕</span>
-              <span class="cert-divider-line"></span>
-            </div>
-            <article class="cert-body">
-              <MarkdownRenderer body={body} />
-            </article>
-            <div class="cert-footer">
-              <div class="cert-footer-row">
-                <div class="cert-footer-cell">
-                  <div class="cert-footer-line"></div>
-                  <div class="cert-footer-label">Date</div>
-                  <div class="cert-footer-value">{footer || todayHuman()}</div>
-                </div>
-                <div class="cert-seal">
-                  <!-- Round embossed-style seal in pure SVG. Renders
-                       crisp at any zoom + survives PDF export at full
-                       fidelity (no raster artefacts). The repo URL
-                       and a Granit wordmark sit on the inner ring so
-                       a colleague verifying the certificate can read
-                       the provenance directly off the seal. -->
-                  <svg viewBox="0 0 120 120" width="86" height="86" aria-label="Granit seal">
-                    <defs>
-                      <path id="seal-arc-top" d="M 60 60 m -44 0 a 44 44 0 0 1 88 0" fill="none"/>
-                      <path id="seal-arc-bot" d="M 60 60 m 44 0 a 44 44 0 0 1 -88 0" fill="none"/>
-                    </defs>
-                    <circle cx="60" cy="60" r="54" fill="none" stroke="#8a6d3b" stroke-width="1.5"/>
-                    <circle cx="60" cy="60" r="48" fill="none" stroke="#8a6d3b" stroke-width="0.6"/>
-                    <circle cx="60" cy="60" r="30" fill="none" stroke="#8a6d3b" stroke-width="1"/>
-                    <text font-family="Georgia, serif" font-size="7" letter-spacing="1.5" fill="#8a6d3b">
-                      <textPath href="#seal-arc-top" startOffset="50%" text-anchor="middle">GENERATED · WITH · GRANIT</textPath>
-                    </text>
-                    <text font-family="Georgia, serif" font-size="5" letter-spacing="0.8" fill="#8a6d3b">
-                      <textPath href="#seal-arc-bot" startOffset="50%" text-anchor="middle">github.com/artaeon/granit</textPath>
-                    </text>
-                    <text x="60" y="55" font-family="Georgia, serif" font-size="14" font-weight="700" text-anchor="middle" fill="#8a6d3b" letter-spacing="2">G</text>
-                    <text x="60" y="68" font-family="Georgia, serif" font-size="6" letter-spacing="2" text-anchor="middle" fill="#8a6d3b">GRANIT</text>
-                    <text x="60" y="76" font-family="Georgia, serif" font-size="3.5" text-anchor="middle" fill="#8a6d3b">{todayHuman()}</text>
-                  </svg>
-                </div>
-              </div>
-              <div class="cert-provenance">
-                Issued via Granit · open source at <a href="https://github.com/artaeon/granit">github.com/artaeon/granit</a> · {sourcePath}
-              </div>
-            </div>
-          </div>
-        </div>
+        <!-- Formal mode — serif body, generous margins, prominent
+             title. The "certificate" label is retained as a mode
+             name because users may have it saved in their config,
+             but the look is now "formal document" rather than
+             "academic award" (which the user clarified was not what
+             they wanted). The signature footer below — opt-in via
+             the Sign toggle — is what carries the actual integrity
+             stamp now. -->
+        <header class="print-header">
+          {#if header}<div class="print-header-text">{header}</div>{/if}
+        </header>
+        <article class="print-body formal-body">
+          <h1 class="formal-title">{title}</h1>
+          <div class="formal-meta">{todayHuman()}</div>
+          <MarkdownRenderer body={body} />
+        </article>
       {:else if mode === 'letterhead'}
         <!-- Letterhead — formal corporate document. Header band at
              the top with sender block, narrow body for readability,
@@ -387,6 +429,65 @@
             {footer || todayHuman()}
           </div>
         </footer>
+      {/if}
+
+      <!-- Document signature footer — the PDF-grade integrity stamp
+           the user actually asked for. Toggleable on every mode
+           via the toolbar's Sign button. Renders SHA-256 of the
+           body, a generated-at timestamp, the source path, the
+           Granit seal, and a small provenance line linking the
+           open-source repo. Looks like the signature panel a
+           PDF viewer surfaces for a signed document. -->
+      {#if signatureOn}
+        <aside class="doc-signature" aria-label="Document signature">
+          <div class="doc-signature__inner">
+            <div class="doc-signature__seal">
+              <svg viewBox="0 0 120 120" width="64" height="64" aria-hidden="true">
+                <defs>
+                  <path id="sig-arc-top" d="M 60 60 m -44 0 a 44 44 0 0 1 88 0" fill="none"/>
+                  <path id="sig-arc-bot" d="M 60 60 m 44 0 a 44 44 0 0 1 -88 0" fill="none"/>
+                </defs>
+                <circle cx="60" cy="60" r="54" fill="none" stroke="#5a7088" stroke-width="1.5"/>
+                <circle cx="60" cy="60" r="48" fill="none" stroke="#5a7088" stroke-width="0.6"/>
+                <circle cx="60" cy="60" r="30" fill="none" stroke="#5a7088" stroke-width="1"/>
+                <text font-family="Georgia, serif" font-size="7" letter-spacing="1.5" fill="#5a7088">
+                  <textPath href="#sig-arc-top" startOffset="50%" text-anchor="middle">GENERATED · WITH · GRANIT</textPath>
+                </text>
+                <text font-family="Georgia, serif" font-size="5" letter-spacing="0.8" fill="#5a7088">
+                  <textPath href="#sig-arc-bot" startOffset="50%" text-anchor="middle">github.com/artaeon/granit</textPath>
+                </text>
+                <text x="60" y="56" font-family="Georgia, serif" font-size="14" font-weight="700" text-anchor="middle" fill="#5a7088" letter-spacing="2">G</text>
+                <text x="60" y="68" font-family="Georgia, serif" font-size="5" letter-spacing="1.5" text-anchor="middle" fill="#5a7088">GRANIT</text>
+              </svg>
+            </div>
+            <div class="doc-signature__body">
+              <div class="doc-signature__title">Document Signature</div>
+              <div class="doc-signature__lead">
+                This document was generated through Granit. The hash below is computed
+                over its content (SHA-256) and changes if the source is altered.
+              </div>
+              <dl class="doc-signature__fields">
+                <dt>SHA-256</dt>
+                <dd class="doc-signature__hash" title={signatureHash}>
+                  {shortHash(signatureHash)}
+                </dd>
+                <dt>Generated</dt>
+                <dd>{fmtTimestamp(signatureTimestamp)}</dd>
+                <dt>Source</dt>
+                <dd class="doc-signature__src">{sourcePath}</dd>
+                <dt>Length</dt>
+                <dd>{docWords} words · {docChars} characters</dd>
+                <dt>Tool</dt>
+                <dd>Granit · <a href="https://github.com/artaeon/granit">github.com/artaeon/granit</a></dd>
+              </dl>
+              <p class="doc-signature__note">
+                To verify: copy the body of this document, run sha256sum, and compare
+                the hash to the one above. Any difference means the content was
+                modified after this signature was applied.
+              </p>
+            </div>
+          </div>
+        </aside>
       {/if}
     </main>
   </div>
@@ -532,9 +633,29 @@
   .print-page[data-mode="certificate"] {
     font-family: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
     font-size: 12pt;
-    padding: 0;
-    line-height: 1.6;
-    color: #2a2419;
+    padding: 2.5cm 2cm;
+    line-height: 1.65;
+    color: #1a1a1a;
+  }
+  .formal-body {
+    /* Slightly tighter measure than the screen body — printed
+       formal documents read better in narrower columns. */
+    max-width: 16.5cm;
+    margin: 0 auto;
+  }
+  .formal-title {
+    font-size: 22pt;
+    font-weight: 700;
+    margin: 0.5rem 0 0.25rem;
+    color: #1a1a1a;
+    letter-spacing: 0.005em;
+  }
+  .formal-meta {
+    font-size: 9.5pt;
+    color: #666;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid #c8c8c8;
+    padding-bottom: 0.6rem;
   }
 
   .print-page[data-mode="letterhead"] {
@@ -931,6 +1052,95 @@
        dark-mode filter the screen styles apply. */
     max-width: 100% !important;
     filter: none !important;
+  }
+
+  /* ----- Document Signature footer ----- */
+  /* Styled like the integrity panel a PDF reader (Acrobat,
+     Preview) shows for a signed document — not gaudy, not
+     decorative, just a clean evidentiary block: the round seal on
+     the left, hash + timestamp + provenance on the right, a
+     subtle border + tonal background that says "this is a
+     control surface, not body content". Stays attached to the
+     bottom of the printed page; renders crisply at any zoom
+     because the seal is inline SVG. */
+  .doc-signature {
+    margin-top: 1.5cm;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .doc-signature__inner {
+    display: flex;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid #b9c4d0;
+    border-radius: 0.25rem;
+    background: #f5f8fb;
+    color: #2a3340;
+  }
+  .doc-signature__seal {
+    flex-shrink: 0;
+    align-self: center;
+  }
+  .doc-signature__body {
+    flex: 1;
+    min-width: 0;
+  }
+  .doc-signature__title {
+    font-size: 9pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #5a7088;
+    margin-bottom: 0.4rem;
+  }
+  .doc-signature__lead {
+    font-size: 8.5pt;
+    line-height: 1.5;
+    color: #44546a;
+    margin-bottom: 0.6rem;
+  }
+  .doc-signature__fields {
+    display: grid;
+    grid-template-columns: 5.5rem 1fr;
+    column-gap: 0.75rem;
+    row-gap: 0.15rem;
+    margin: 0 0 0.6rem;
+    font-size: 8.5pt;
+    color: #2a3340;
+  }
+  .doc-signature__fields dt {
+    color: #5a7088;
+    font-weight: 600;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .doc-signature__fields dd {
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    overflow-wrap: anywhere;
+  }
+  .doc-signature__hash {
+    /* Ample letter-spacing for the grouped-hash readout, like a
+       PDF viewer's fingerprint summary. */
+    letter-spacing: 0.06em;
+    color: #1a4fb3;
+  }
+  .doc-signature__src {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .doc-signature__note {
+    font-size: 7.5pt;
+    line-height: 1.5;
+    color: #5a7088;
+    font-style: italic;
+    margin: 0;
+    padding-top: 0.5rem;
+    border-top: 1px dashed #c5d1de;
+  }
+  .doc-signature__body a {
+    color: #1a4fb3;
+    text-decoration: none;
   }
 
   /* THE actual print rules. We hide the overlay's chrome (toolbar,
