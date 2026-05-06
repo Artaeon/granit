@@ -211,6 +211,20 @@
   // useful integrity datapoints alongside the hash.
   let docWords = $derived(body.trim() ? body.trim().split(/\s+/).length : 0);
   let docChars = $derived(body.length);
+  let docLines = $derived(body ? body.split('\n').length : 0);
+
+  // User agent + locale captured at sign time — small extra
+  // provenance datapoints. Not load-bearing, but they help a reader
+  // understand the context the signature was generated in.
+  let signedFrom = $derived.by(() => {
+    if (typeof navigator === 'undefined') return '';
+    const ua = navigator.userAgent;
+    if (/Firefox\//.test(ua)) return 'Firefox';
+    if (/Edg\//.test(ua)) return 'Edge';
+    if (/Chrome\//.test(ua)) return 'Chrome';
+    if (/Safari\//.test(ua)) return 'Safari';
+    return 'Browser';
+  });
 
   function fmtTimestamp(iso: string): string {
     if (!iso) return '';
@@ -519,53 +533,67 @@
             </div>
             <div class="doc-signature__body">
               <div class="doc-signature__head">
-                <div class="doc-signature__eyebrow">Authenticity Stamp</div>
-                <div class="doc-signature__title">Granit Signature</div>
+                <div class="doc-signature__eyebrow">Authenticity Stamp · Document Signature</div>
+                <!-- Signer is the lead claim. A reader scans this
+                     first to learn "who is asserting this document
+                     is authentic." Falls back to a muted placeholder
+                     so the layout doesn't shift between with/without
+                     states. -->
+                <div class="doc-signature__signer-row">
+                  {#if signer}
+                    <span class="doc-signature__signer-label">Signed by</span>
+                    <span class="doc-signature__signer-name">{signer}</span>
+                  {:else}
+                    <span class="doc-signature__signer-name doc-signature__signer-none">No signer specified</span>
+                  {/if}
+                </div>
                 <div class="doc-signature__docid">
                   Document ID <span class="doc-signature__docid-value">{docID}</span>
                 </div>
               </div>
               <div class="doc-signature__lead">
-                This document was generated through Granit (open-source notes &
-                knowledge tool). The cryptographic fingerprint below is computed
-                over the body and changes the moment any character is altered.
+                {#if purpose}<strong>{purpose}.</strong>{' '}{/if}This
+                document was generated through Granit (open-source
+                notes &amp; knowledge tool). The cryptographic
+                fingerprint below is computed over the body and
+                changes the moment any character is altered.
               </div>
-              <!-- Full hash on its own row above the table — this is
-                   the load-bearing claim, displays better as a
-                   monospace block than a tight key/value cell. -->
-              <div class="doc-signature__hashbox" title="Click to copy" role="presentation">
+              <div class="doc-signature__hashbox" title="Full SHA-256 hash" role="presentation">
                 <div class="doc-signature__hashlabel">SHA-256 fingerprint</div>
                 <div class="doc-signature__hashvalue">{signatureHash || '…'}</div>
               </div>
               <dl class="doc-signature__fields">
-                {#if signer}
-                  <dt>Signer</dt>
-                  <dd class="doc-signature__signer">{signer}</dd>
-                {/if}
-                {#if purpose}
-                  <dt>Purpose</dt>
-                  <dd>{purpose}</dd>
-                {/if}
-                <dt>Generated</dt>
+                <dt>Signed at</dt>
                 <dd>{fmtTimestamp(signatureTimestamp)}</dd>
-                <dt>Source</dt>
+                <dt>Source path</dt>
                 <dd class="doc-signature__src">{sourcePath}</dd>
-                <dt>Length</dt>
-                <dd>{docWords} words · {docChars} characters</dd>
-                <dt>Algorithm</dt>
-                <dd>SHA-256 (FIPS 180-4)</dd>
-                <dt>Verify at</dt>
+                <dt>Content length</dt>
+                <dd>{docWords} words · {docChars} characters · {docLines} lines</dd>
+                <dt>Hash algorithm</dt>
+                <dd>SHA-256 (FIPS 180-4) · 32 bytes / 256 bits</dd>
+                <dt>Signed from</dt>
+                <dd>{signedFrom}</dd>
+                <dt>Tool</dt>
                 <dd>
+                  Granit · open-source ·
                   <a href="https://github.com/artaeon/granit">github.com/artaeon/granit</a>
                 </dd>
               </dl>
               <p class="doc-signature__note">
-                <strong>To verify:</strong>
+                <strong>To verify integrity:</strong>
                 copy the body of this document into a file, run
-                <code>sha256sum &lt;file&gt;</code>, and compare against the fingerprint above.
-                Any single character change produces an entirely different hash —
-                a match proves the content matches what Granit signed at the
-                generation time shown.
+                <code>sha256sum &lt;file&gt;</code> (Linux / macOS) or
+                <code>certutil -hashfile &lt;file&gt; SHA256</code> (Windows),
+                and compare the output to the fingerprint above. A match proves
+                the content has not changed since this signature was applied
+                at <strong>{fmtTimestamp(signatureTimestamp)}</strong>.
+                A single character difference produces an entirely different hash.
+              </p>
+              <p class="doc-signature__disclaimer">
+                <em>This is a content-integrity stamp, not a legally binding
+                e-signature. The hash proves the document hasn't been altered
+                since generation; the signer field is a self-attested claim
+                with no third-party verification authority.</em>
               </p>
             </div>
           </div>
@@ -1167,12 +1195,13 @@
     flex: 1;
     min-width: 0;
   }
+  /* New layout: head is a vertical stack — eyebrow, signer row,
+     docID. The previous version was a single horizontal flex row
+     where the signer was buried in the dl below; the new layout
+     promotes the signer to a prominent, scannable header line. */
   .doc-signature__head {
-    display: flex;
-    align-items: baseline;
-    gap: 0.75rem;
-    margin-bottom: 0.5rem;
-    padding-bottom: 0.4rem;
+    margin-bottom: 0.6rem;
+    padding-bottom: 0.5rem;
     border-bottom: 1px solid #b9c4d0;
   }
   .doc-signature__eyebrow {
@@ -1181,13 +1210,34 @@
     text-transform: uppercase;
     letter-spacing: 0.15em;
     color: #8090a4;
+    margin-bottom: 0.3rem;
+  }
+  .doc-signature__signer-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    margin-bottom: 0.25rem;
+  }
+  .doc-signature__signer-label {
+    font-size: 8pt;
+    color: #5a7088;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
     flex-shrink: 0;
   }
-  .doc-signature__title {
-    font-size: 11pt;
+  .doc-signature__signer-name {
+    font-size: 13pt;
     font-weight: 700;
-    color: #2a3340;
-    flex: 1;
+    color: #1a1a1a;
+    letter-spacing: 0.01em;
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+  .doc-signature__signer-none {
+    font-style: italic;
+    color: #8090a4;
+    font-weight: 500;
+    font-size: 11pt;
   }
   .doc-signature__docid {
     font-size: 8pt;
@@ -1270,10 +1320,19 @@
     font-size: 7.5pt;
     line-height: 1.5;
     color: #5a7088;
-    font-style: italic;
     margin: 0;
     padding-top: 0.5rem;
     border-top: 1px dashed #c5d1de;
+  }
+  /* Disclaimer is the smallest, mutest piece — sets reader
+     expectations about the integrity-vs-legal-signature distinction
+     without competing with the verification instructions above. */
+  .doc-signature__disclaimer {
+    font-size: 7pt;
+    line-height: 1.5;
+    color: #8090a4;
+    margin: 0.4rem 0 0;
+    padding-top: 0.4rem;
   }
   .doc-signature__body a {
     color: #1a4fb3;
