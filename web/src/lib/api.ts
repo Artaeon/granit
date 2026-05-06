@@ -1224,6 +1224,111 @@ export const api = {
       body: JSON.stringify({ messages, notePath })
     }),
 
+  // Chat — streaming variant. Yields tokens as they arrive via the
+  // onChunk callback so consumers can render progressively. Uses
+  // the SSE shape served by /chat/stream (data: {chunk}, event:
+  // done, event: error). AbortSignal honoured both client-side
+  // (closes the fetch) and server-side (the upstream LLM context
+  // is cancelled when r.Context is done).
+  //
+  // Returns when the stream completes — onDone fires once on
+  // success, onError once on failure. Aborts surface as an
+  // AbortError that's intentionally NOT routed to onError so the
+  // caller can detect "user cancelled" vs "real failure" cleanly.
+  chatStream: async (
+    messages: ChatMessage[],
+    notePath: string | undefined,
+    handlers: {
+      onChunk: (chunk: string) => void;
+      onDone?: () => void;
+      onError?: (err: Error) => void;
+    },
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const headers = new Headers({ 'Content-Type': 'application/json' });
+    const tok = getToken();
+    if (tok) headers.set('Authorization', `Bearer ${tok}`);
+    let res: Response;
+    try {
+      res = await fetch('/api/v1/chat/stream', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ messages, notePath }),
+        signal
+      });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      handlers.onError?.(e instanceof Error ? e : new Error(String(e)));
+      return;
+    }
+    if (!res.ok) {
+      let msg = res.statusText;
+      try {
+        const body = await res.json();
+        if (body?.error) msg = body.error;
+      } catch {}
+      handlers.onError?.(new ApiError(res.status, msg));
+      return;
+    }
+    if (!res.body) {
+      handlers.onError?.(new Error('No response body'));
+      return;
+    }
+    // Parse the SSE stream by hand — each event is a sequence of
+    // `field: value` lines terminated by `\n\n`. We only care about
+    // `event` (default = "message" / our chunk events) and `data`
+    // (JSON payload).
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let event = '';
+    let dataLines: string[] = [];
+
+    const flush = () => {
+      if (dataLines.length === 0) return;
+      const data = dataLines.join('\n');
+      dataLines = [];
+      try {
+        const parsed = JSON.parse(data) as { chunk?: string; message?: string };
+        if (event === 'error') {
+          handlers.onError?.(new Error(parsed.message ?? 'stream error'));
+        } else if (event === 'done') {
+          handlers.onDone?.();
+        } else if (parsed.chunk !== undefined) {
+          handlers.onChunk(parsed.chunk);
+        }
+      } catch {
+        // Malformed event — skip rather than aborting the whole stream.
+      }
+      event = '';
+    };
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, idx).replace(/\r$/, '');
+          buf = buf.slice(idx + 1);
+          if (line === '') {
+            flush();
+            continue;
+          }
+          if (line.startsWith('event: ')) event = line.slice(7).trim();
+          else if (line.startsWith('data: ')) dataLines.push(line.slice(6));
+        }
+      }
+      // Final flush for an event that arrived without a trailing
+      // blank line — rare in practice but happens on abrupt close.
+      if (dataLines.length > 0) flush();
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      handlers.onError?.(e instanceof Error ? e : new Error(String(e)));
+    }
+  },
+
   // Scripture / devotional
   listScriptures: () => req<{ scriptures: Scripture[]; total: number }>('/scripture'),
   todayScripture: () => req<Scripture>('/scripture/today'),

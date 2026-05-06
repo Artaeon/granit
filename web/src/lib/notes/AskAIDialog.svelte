@@ -33,6 +33,10 @@
   let pending = $state(false);
   let error = $state('');
   let inputEl: HTMLTextAreaElement | undefined = $state();
+  // AbortController for the in-flight streaming call. Stored at the
+  // component level so the cancel button + Escape key can both
+  // close the upstream connection promptly.
+  let abortCtl: AbortController | null = $state(null);
 
   // Quick-pick instructions — common AI-on-selection tasks the user
   // can fire without typing. Each one is a complete instruction that
@@ -62,22 +66,44 @@
     pending = true;
     error = '';
     response = '';
-    try {
-      // Two-message body: an optional steering preface (instruction)
-      // followed by the selected text wrapped in a clear delimiter.
-      // The server-side system prompt + note context still apply —
-      // this is just the user-visible prompt we add on top.
-      const userMessage = instruction.trim()
-        ? `${instruction.trim()}\n\n---\n\n${request.text}`
-        : `Help me with this:\n\n${request.text}`;
-      const r = await api.chat([{ role: 'user', content: userMessage }], sourcePath || undefined);
-      response = r.message?.content ?? '';
-      if (!response) error = 'AI returned an empty response.';
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-    } finally {
-      pending = false;
+    const userMessage = instruction.trim()
+      ? `${instruction.trim()}\n\n---\n\n${request.text}`
+      : `Help me with this:\n\n${request.text}`;
+
+    // Streaming path. Tokens land in `response` as they arrive so
+    // the user sees the AI typing in real time — much snappier
+    // perceived latency than the buffered path. AbortController
+    // wires through to the upstream provider so a Stop click
+    // closes the connection immediately.
+    abortCtl = new AbortController();
+    await api.chatStream(
+      [{ role: 'user', content: userMessage }],
+      sourcePath || undefined,
+      {
+        onChunk: (chunk) => {
+          response += chunk;
+        },
+        onDone: () => {
+          pending = false;
+          abortCtl = null;
+          if (!response) error = 'AI returned an empty response.';
+        },
+        onError: (err) => {
+          pending = false;
+          abortCtl = null;
+          error = err.message;
+        }
+      },
+      abortCtl.signal
+    );
+  }
+
+  function stop() {
+    if (abortCtl) {
+      abortCtl.abort();
+      abortCtl = null;
     }
+    pending = false;
   }
 
   function pickQuick(text: string) {
@@ -112,7 +138,12 @@
   }
 
   function dismiss() {
-    if (pending) return;
+    // While streaming, ESC / backdrop-click stops the stream rather
+    // than sitting locked. Same affordance as the Stop button.
+    if (pending) {
+      stop();
+      return;
+    }
     request?.cancel();
     close();
   }
@@ -186,15 +217,12 @@
           </div>
         </div>
 
-        <!-- Response area. Shows a spinner while pending, the AI
-             output once it lands, an error block if the API fails
-             (most commonly: "AI provider not configured"). -->
-        {#if pending}
-          <div class="text-sm text-dim italic flex items-center gap-2">
-            <span class="ai-spinner" aria-hidden="true"></span>
-            Asking the AI…
-          </div>
-        {:else if error}
+        <!-- Response area. Streams progressively — chunks land in
+             `response` as they arrive, so the user sees the AI
+             "type" in real time. The pending+empty state shows just
+             the spinner; pending+streaming shows the partial
+             response with a small streaming indicator above it. -->
+        {#if error}
           <div class="text-xs text-error border border-error/30 bg-error/5 rounded px-3 py-2">
             {error}
             {#if /provider|api key|not configured/i.test(error)}
@@ -203,45 +231,66 @@
               </div>
             {/if}
           </div>
+        {:else if pending && !response}
+          <div class="text-sm text-dim italic flex items-center gap-2">
+            <span class="ai-spinner" aria-hidden="true"></span>
+            Asking the AI…
+          </div>
         {:else if response}
           <div>
-            <span class="block text-[11px] uppercase tracking-wider text-dim mb-1">Response</span>
+            <div class="flex items-baseline justify-between mb-1">
+              <span class="text-[11px] uppercase tracking-wider text-dim">Response</span>
+              {#if pending}
+                <span class="text-[11px] text-secondary flex items-center gap-1.5">
+                  <span class="ai-spinner ai-spinner--sm" aria-hidden="true"></span>
+                  streaming
+                </span>
+              {/if}
+            </div>
             <div class="bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text whitespace-pre-wrap break-words max-h-72 overflow-y-auto">{response}</div>
           </div>
         {/if}
       </div>
 
       <footer class="px-4 py-3 border-t border-surface1 flex items-center gap-2 flex-wrap">
-        <button
-          type="button"
-          onclick={dismiss}
-          disabled={pending}
-          class="px-3 py-1.5 text-sm text-subtext hover:bg-surface0 rounded disabled:opacity-50"
-        >Cancel</button>
-        {#if response}
+        {#if pending}
           <button
             type="button"
-            onclick={copyResponse}
-            class="px-3 py-1.5 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
-          >Copy</button>
-          <button
-            type="button"
-            onclick={insertBelow}
-            class="px-3 py-1.5 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
-          >Insert below</button>
-          <button
-            type="button"
-            onclick={replaceSelection}
-            class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90"
-          >Replace selection</button>
-        {:else}
+            onclick={stop}
+            class="px-3 py-1.5 text-sm bg-surface0 text-error border border-error/30 rounded hover:bg-error/10"
+          >Stop</button>
           <span class="flex-1"></span>
+          <span class="text-[11px] text-dim italic">Streaming · cancel anytime</span>
+        {:else}
           <button
             type="button"
-            onclick={ask}
-            disabled={pending}
-            class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90 disabled:opacity-50"
-          >{pending ? 'Asking…' : 'Ask AI (⌘↵)'}</button>
+            onclick={dismiss}
+            class="px-3 py-1.5 text-sm text-subtext hover:bg-surface0 rounded"
+          >Cancel</button>
+          {#if response}
+            <button
+              type="button"
+              onclick={copyResponse}
+              class="px-3 py-1.5 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
+            >Copy</button>
+            <button
+              type="button"
+              onclick={insertBelow}
+              class="px-3 py-1.5 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
+            >Insert below</button>
+            <button
+              type="button"
+              onclick={replaceSelection}
+              class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90"
+            >Replace selection</button>
+          {:else}
+            <span class="flex-1"></span>
+            <button
+              type="button"
+              onclick={ask}
+              class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90"
+            >Ask AI (⌘↵)</button>
+          {/if}
         {/if}
       </footer>
     </section>
@@ -257,6 +306,12 @@
     border-top-color: var(--color-primary);
     border-radius: 50%;
     animation: ai-spin 0.7s linear infinite;
+  }
+  .ai-spinner--sm {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-width: 1.5px;
+    border-top-color: var(--color-secondary);
   }
   @keyframes ai-spin {
     to { transform: rotate(360deg); }
