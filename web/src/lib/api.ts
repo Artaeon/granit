@@ -719,6 +719,23 @@ export interface VirtueCheck {
   note?: string;
   logged_at: string; // RFC3339
 }
+// HubItem — entry on the personal launch pad (/hub). Title is the
+// only required field; everything else is optional so the same
+// shape covers a pure link, a tool entry, or a non-critical
+// credential record without forcing the user to pick a "kind".
+export interface HubItem {
+  id: string;
+  title: string;
+  url?: string;
+  category?: string;
+  icon?: string;
+  notes?: string;
+  username?: string;
+  password?: string;
+  favorite?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
 export interface Virtue {
   id: string;
   name: string;
@@ -952,6 +969,21 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(cfg)
     }),
+
+  // Hub — personal launch pad at .granit/hub.json. Quick-access
+  // links, tools, and optional non-critical credentials. Real
+  // secrets stay in a password manager; the hub is for the daily
+  // "URL of staging dashboard" / "API key for service X" tier.
+  listHubItems: () => req<{ items: HubItem[]; total: number }>('/hub/items'),
+  createHubItem: (item: Partial<HubItem>) =>
+    req<HubItem>('/hub/items', { method: 'POST', body: JSON.stringify(item) }),
+  patchHubItem: (id: string, patch: Partial<HubItem>) =>
+    req<HubItem>(`/hub/items/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
+    }),
+  deleteHubItem: (id: string) =>
+    req<void>(`/hub/items/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   // Hard-delete a note. Server emits a note.removed WS event; pages
   // subscribe and refresh. No undo / trash folder yet.
   deleteNote: (path: string) =>
