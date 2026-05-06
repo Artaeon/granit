@@ -20,6 +20,7 @@
   import type { ExtractRequest } from '$lib/editor/extract-note';
   import PrintPreview from '$lib/notes/PrintPreview.svelte';
   import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
+  import SelectionToolbar from '$lib/editor/SelectionToolbar.svelte';
 
   type ViewMode = 'edit' | 'preview' | 'split';
   const VIEW_KEY = 'granit.note.viewMode';
@@ -48,8 +49,15 @@
         getScrollTop: () => number;
         setScrollTop: (top: number) => void;
         isCompletionActive: () => boolean;
+        dispatchChord: (chord: string) => void;
+        getDOM: () => HTMLElement | undefined;
       }
     | undefined = $state();
+  // Re-derived after every render so the SelectionToolbar can scope
+  // its selection detection to the editor's contentDOM specifically.
+  // The CodeMirror DOM exists only after mount, so this stays
+  // `undefined` until then and the toolbar simply doesn't render.
+  let editorDOM = $derived(editor?.getDOM());
 
   // Per-note scroll position cache. Pixel-accurate (not line-accurate)
   // because line tracking misbehaves once the user changes font size or
@@ -900,4 +908,14 @@
 <ShortcutsHelpOverlay
   bind:open={helpOpen}
   onClose={() => (helpOpen = false)}
+/>
+
+<!-- Floating selection toolbar — appears above any text selection
+     inside the editor. The chord-dispatch path means buttons take
+     the same code route as the keyboard shortcuts (single source
+     of truth: the keymap). Hidden on mobile via CSS and on print
+     surfaces. -->
+<SelectionToolbar
+  container={editorDOM}
+  onCommand={(chord) => editor?.dispatchChord(chord)}
 />
