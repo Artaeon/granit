@@ -14,16 +14,25 @@
   import { tagComplete } from './tags';
   import { markdownShortcuts, smartPaste } from './markdown-shortcuts';
   import { autolinkComplete } from './autolink';
+  import { extractToNoteKeymap, type ExtractRequest } from './extract-note';
 
   let {
     value = $bindable(''),
     onSave,
     onNavigate,
+    onExtract,
     placeholder = ''
   }: {
     value?: string;
     onSave?: () => void;
     onNavigate?: (target: string) => void;
+    /**
+     * Mod-Shift-X handler. Fires only when the editor has a non-empty
+     * selection. The host page should show a dialog asking for the
+     * new note title, then call req.apply(title) on confirm or
+     * req.cancel() on dismiss. Implementation in $lib/editor/extract-note.
+     */
+    onExtract?: (req: ExtractRequest) => void;
     placeholder?: string;
   } = $props();
 
@@ -66,6 +75,12 @@
         syntaxHighlighting(mdHighlight),
         wikilinkDecoration,
         wikilinkClickHandler((target) => onNavigate?.(target)),
+        // Extract-to-note (Mod-Shift-X). Registered above the default
+        // keymap so the chord isn't shadowed by anything else. The
+        // keybind only fires when there's a selection — empty
+        // selections fall through so the user can re-bind the chord
+        // for something else later if needed.
+        extractToNoteKeymap((req) => onExtract?.(req)),
         theme,
         // Markdown shortcuts come BEFORE defaultKeymap so Mod-b /
         // Mod-i / Mod-k aren't shadowed by CodeMirror's defaults. Same

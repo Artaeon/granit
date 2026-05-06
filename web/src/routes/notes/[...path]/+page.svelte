@@ -16,6 +16,8 @@
   import Drawer from '$lib/components/Drawer.svelte';
   import { toast } from '$lib/components/toast';
   import { getDraft, setDraft, clearDraft, draftDivergesFromServer } from '$lib/notes/drafts';
+  import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
+  import type { ExtractRequest } from '$lib/editor/extract-note';
 
   type ViewMode = 'edit' | 'preview' | 'split';
   const VIEW_KEY = 'granit.note.viewMode';
@@ -360,6 +362,63 @@
     if (ago < 3600) return `saved ${Math.floor(ago / 60)}m ago`;
     return 'saved';
   });
+
+  // ----- Extract-to-note (Mod-Shift-X) -----
+  // The Editor component fires onExtract with the selection + an
+  // apply() callback; we show the dialog, the user names the new note,
+  // and on confirm we POST /notes then call apply(title) which
+  // replaces the original selection with [[title]]. The apply is
+  // gated on the API call SUCCEEDING — if create fails, the source
+  // note isn't mutated and the user can retry without dead links.
+  let extractRequest = $state<ExtractRequest | null>(null);
+
+  function handleExtract(req: ExtractRequest) {
+    extractRequest = req;
+  }
+
+  function dismissExtract() {
+    extractRequest?.cancel();
+    extractRequest = null;
+  }
+
+  async function confirmExtract(title: string, path: string) {
+    if (!extractRequest || !note) return;
+    const sourceTitle = note.title || note.path;
+    // New note body — selection on top, then a small backref footer
+    // so the user can jump back even if their tooling doesn't read
+    // frontmatter. The frontmatter `extracted_from` field is the
+    // canonical machine-readable backref; the BacklinksPanel will
+    // also surface this note under the source via the [[wikilink]]
+    // we're about to insert in the source.
+    const body = `${extractRequest.text.trim()}
+
+---
+*Extracted from [[${sourceTitle}]] on ${new Date().toISOString().slice(0, 10)}*
+`;
+    try {
+      await api.createNote({
+        path,
+        frontmatter: {
+          title,
+          extracted_from: note.path,
+          extracted_at: new Date().toISOString()
+        },
+        body
+      });
+    } catch (e) {
+      // Re-throw so the dialog surfaces the error inline.
+      throw e instanceof Error ? e : new Error(String(e));
+    }
+    // Replace the selection with [[title]] now that the new note
+    // exists. apply() also re-focuses the editor.
+    extractRequest.apply(title);
+    extractRequest = null;
+    // Auto-save the source note so the wikilink lands on disk
+    // immediately — without this, the user could close the tab
+    // before the debounce fires and lose the link.
+    await save({ silent: true });
+    toast.success(`Extracted to [[${title}]]`);
+  }
 
   async function navigateWikilink(title: string) {
     // Best-effort flush of any pending edit. We never block navigation on
@@ -729,7 +788,7 @@
       <NoteDeadlinesStrip frontmatter={note.frontmatter ?? null} />
       <div class="flex-1 min-h-0 p-2 sm:p-3">
         {#if viewMode === 'edit'}
-          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} />
+          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} />
         {:else if viewMode === 'preview'}
           <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4">
             <div class="max-w-3xl mx-auto">
@@ -739,7 +798,7 @@
         {:else}
           <!-- split (desktop only) -->
           <div class="h-full grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} />
+            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} />
             <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block">
               <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
             </div>
@@ -765,3 +824,14 @@
     {@render infoContent()}
   </Drawer>
 </div>
+
+<!-- Extract-to-note dialog. Lives at the page root so it overlays
+     above the editor + sidebars on every viewport size. The
+     ExtractRequest is null when no extraction is in flight, so the
+     dialog renders nothing. -->
+<ExtractToNoteDialog
+  request={extractRequest}
+  sourcePath={note?.path ?? ''}
+  onConfirm={confirmExtract}
+  onDismiss={dismissExtract}
+/>
