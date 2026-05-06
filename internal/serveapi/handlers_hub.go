@@ -130,6 +130,54 @@ func (s *Server) handlePatchHubItem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, it)
 }
 
+// handleReorderHubItems accepts an array of item IDs in their new
+// order and rewrites the Position field on each. The client sends
+// the order of a SINGLE category at a time (drag-to-reorder is
+// scoped to a category section); items not in the array keep
+// their existing position.
+//
+// Atomic at the file level — full read / mutate / write through
+// atomicio.WriteState — so a concurrent edit of an unrelated item
+// can't tear the reorder write.
+func (s *Server) handleReorderHubItems(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if len(body.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "ids required")
+		return
+	}
+	if err := hub.Reorder(s.cfg.Vault.Root, body.IDs); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.bcastHub()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleVisitHubItem stamps last_visited_at on the given item.
+// Fired by the page when the user clicks a link card so the hub
+// can surface "recently used" cues. Returns 204 — no body needed
+// because the client already has the item's data in memory; the
+// next list refresh picks up the new timestamp.
+func (s *Server) handleVisitHubItem(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "id required")
+		return
+	}
+	if err := hub.MarkVisited(s.cfg.Vault.Root, id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.bcastHub()
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleDeleteHubItem(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	items, err := hub.LoadAll(s.cfg.Vault.Root)

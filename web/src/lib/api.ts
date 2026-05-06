@@ -733,6 +733,8 @@ export interface HubItem {
   username?: string;
   password?: string;
   favorite?: boolean;
+  position?: number;          // manual order within a category (drag-to-reorder)
+  last_visited_at?: string;   // RFC3339 — set by /visit endpoint on click
   created_at?: string;
   updated_at?: string;
 }
@@ -984,6 +986,16 @@ export const api = {
     }),
   deleteHubItem: (id: string) =>
     req<void>(`/hub/items/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // Drag-to-reorder: send the new ordering of a category's items.
+  // The server rewrites Position 1..N on each ID in order; items
+  // not in the array keep their existing position.
+  reorderHubItems: (ids: string[]) =>
+    req<void>('/hub/reorder', { method: 'POST', body: JSON.stringify({ ids }) }),
+  // Stamp last_visited_at on a hub item. Fire-and-forget on the
+  // client side: a failed visit-stamp shouldn't block the user
+  // from reaching their destination.
+  visitHubItem: (id: string) =>
+    req<void>(`/hub/items/${encodeURIComponent(id)}/visit`, { method: 'POST' }),
   // Hard-delete a note. Server emits a note.removed WS event; pages
   // subscribe and refresh. No undo / trash folder yet.
   deleteNote: (path: string) =>

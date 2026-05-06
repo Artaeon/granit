@@ -75,6 +75,21 @@ type Item struct {
 	// future dashboard widget). Boolean, defaults to false.
 	Favorite bool `json:"favorite,omitempty"`
 
+	// Position is the user's manual ordering hint within a
+	// category, set via drag-to-reorder. Lower values render
+	// first. Items with the same position fall back to alphabetic
+	// ordering — and items left at the default 0 sort against
+	// each other alphabetically too, so the field is opt-in: a
+	// user who never drags anything sees a clean alpha list.
+	Position int `json:"position,omitempty"`
+
+	// LastVisitedAt records the most recent time the user
+	// opened this entry's URL from the hub page. Surfaces on
+	// the card as a "recently used" cue and lets a future
+	// "frequently used" sort surface the user's actual workflow.
+	// Empty for entries that have never been clicked.
+	LastVisitedAt string `json:"last_visited_at,omitempty"`
+
 	CreatedAt string `json:"created_at,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
 }
@@ -112,15 +127,69 @@ func LoadAll(vaultRoot string) ([]Item, error) {
 	if err := json.Unmarshal(data, &f); err != nil {
 		return nil, fmt.Errorf("hub: parse: %w", err)
 	}
-	// Sort favorites first, then alpha by title — stable order so
-	// the API response is deterministic regardless of save order.
+	// Sort: favorites first, then by user-assigned position within
+	// the (favorite, category) bucket, then alpha by title as the
+	// final tiebreaker. Items with the default position 0 fall
+	// through to alpha — no special-casing required.
 	sort.SliceStable(f.Items, func(i, j int) bool {
-		if f.Items[i].Favorite != f.Items[j].Favorite {
-			return f.Items[i].Favorite
+		a, b := f.Items[i], f.Items[j]
+		if a.Favorite != b.Favorite {
+			return a.Favorite
 		}
-		return strings.ToLower(f.Items[i].Title) < strings.ToLower(f.Items[j].Title)
+		if a.Position != b.Position {
+			return a.Position < b.Position
+		}
+		return strings.ToLower(a.Title) < strings.ToLower(b.Title)
 	})
 	return f.Items, nil
+}
+
+// Reorder rewrites the position field on the given IDs in the
+// supplied order. Items not in the ID list keep their existing
+// position. Used by the drag-to-reorder UI: the client sends the
+// new order of cards in a category as a single batch update,
+// avoiding a flood of per-item PATCH calls (and the partial-
+// reorder visual stutter a flood would produce).
+func Reorder(vaultRoot string, orderedIDs []string) error {
+	items, err := LoadAll(vaultRoot)
+	if err != nil {
+		return err
+	}
+	idx := make(map[string]int, len(items))
+	for i := range items {
+		idx[items[i].ID] = i
+	}
+	now := Now()
+	for newPos, id := range orderedIDs {
+		i, ok := idx[id]
+		if !ok {
+			continue
+		}
+		items[i].Position = newPos + 1 // 1-based so unset (0) sorts last among reordered
+		items[i].UpdatedAt = now
+	}
+	return SaveAll(vaultRoot, items)
+}
+
+// MarkVisited stamps last_visited_at on a single item. Surfaced
+// as its own helper because the visit-tracking write path is
+// hot — it fires on every link click — and we don't want the
+// patch handler's full marshal/validate cycle for what is just
+// a timestamp poke.
+func MarkVisited(vaultRoot, id string) error {
+	items, err := LoadAll(vaultRoot)
+	if err != nil {
+		return err
+	}
+	now := Now()
+	for i := range items {
+		if items[i].ID == id {
+			items[i].LastVisitedAt = now
+			items[i].UpdatedAt = now
+			return SaveAll(vaultRoot, items)
+		}
+	}
+	return nil
 }
 
 // SaveAll writes the full set atomically. Caller is expected to

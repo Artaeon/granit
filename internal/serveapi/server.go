@@ -273,6 +273,8 @@ func (s *Server) Handler() http.Handler {
 		// dashboard" tier.
 		r.Get("/api/v1/hub/items", s.handleListHubItems)
 		r.Post("/api/v1/hub/items", s.handleCreateHubItem)
+		r.Post("/api/v1/hub/reorder", s.handleReorderHubItems)
+		r.Post("/api/v1/hub/items/{id}/visit", s.handleVisitHubItem)
 		r.Patch("/api/v1/hub/items/{id}", s.handlePatchHubItem)
 		r.Delete("/api/v1/hub/items/{id}", s.handleDeleteHubItem)
 
