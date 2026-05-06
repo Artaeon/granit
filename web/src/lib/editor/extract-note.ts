@@ -80,26 +80,56 @@ export function extractToNoteKeymap(
 }
 
 /**
- * Suggests a note title from the selected text — first non-empty
- * line, trimmed, capped at 60 chars. Strips markdown decorations
- * (`#`, `-`, `*`, leading whitespace) so a heading or bullet item
- * becomes a clean title. Returns the empty string when there's
- * nothing usable; caller should fall back to a generic placeholder.
+ * Suggests a note title from the selected text. The user reported
+ * the previous 60-char cap dumped half the selection into the title
+ * field when the selection was one long paragraph (a meeting jot is
+ * usually a single block, not a heading + body), so the title
+ * pre-fill was always too long.
+ *
+ * Strategy now:
+ *   1. Prefer a markdown heading line if one exists in the selection
+ *      — that's almost always the right title.
+ *   2. Otherwise prefer the first SENTENCE of the first non-empty
+ *      line (split on `. `, `? `, `! `, em-dash, or a hard line
+ *      break). Capped at 50 chars.
+ *   3. Strip leading markdown decorations (`#`, `-`, `*`, `>`,
+ *      numbered list prefix) so the title reads cleanly.
+ *
+ * Returns "" when nothing usable — the dialog falls back to an
+ * empty input + placeholder so the user types fresh.
  */
 export function suggestTitle(text: string): string {
+  // First pass: hunt for a heading. Headings are nearly always the
+  // user's intended title — a meeting block titled "## Board sync"
+  // should extract as "Board sync", not "Notes from Tuesday's call
+  // about Q3 priorities…".
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (/^#{1,6}\s+\S/.test(line)) {
+      return line.replace(/^#+\s*/, '').slice(0, 60).trim();
+    }
+  }
+  // Second pass: first sentence of the first non-empty line. Stops
+  // at the first sentence-ender so a long block doesn't bleed into
+  // the title field. The cap is intentionally tight (50 chars) to
+  // discourage "title equals first half of paragraph" UX.
   for (const raw of text.split('\n')) {
     let line = raw.trim();
     if (!line) continue;
-    // Strip leading markdown markers: heading hashes, bullets,
-    // numbered lists, blockquotes.
     line = line
-      .replace(/^#+\s*/, '')
       .replace(/^[-*+]\s+/, '')
       .replace(/^\d+\.\s+/, '')
       .replace(/^>\s*/, '')
       .trim();
     if (!line) continue;
-    if (line.length > 60) line = line.slice(0, 60).trim();
+    // Split on sentence-enders that are followed by whitespace, OR
+    // an em/en dash with surrounding whitespace. The lookahead keeps
+    // the punctuation out of the captured title.
+    const sentenceEnd = line.search(/[.!?](\s|$)|\s—\s|\s–\s/);
+    if (sentenceEnd > 0 && sentenceEnd < 60) {
+      return line.slice(0, sentenceEnd).trim();
+    }
+    if (line.length > 50) line = line.slice(0, 50).trim();
     return line;
   }
   return '';

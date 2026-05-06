@@ -409,41 +409,31 @@
     extractRequest = null;
   }
 
-  async function confirmExtract(title: string, path: string) {
+  async function confirmExtract(args: { title: string; path: string; tags: string[] }) {
     if (!extractRequest || !note) return;
+    const { title, path, tags } = args;
     const sourceTitle = note.title || note.path;
-    // New note body — selection on top, then a small backref footer
-    // so the user can jump back even if their tooling doesn't read
-    // frontmatter. The frontmatter `extracted_from` field is the
-    // canonical machine-readable backref; the BacklinksPanel will
-    // also surface this note under the source via the [[wikilink]]
-    // we're about to insert in the source.
     const body = `${extractRequest.text.trim()}
 
 ---
 *Extracted from [[${sourceTitle}]] on ${new Date().toISOString().slice(0, 10)}*
 `;
+    // Frontmatter: title + extraction provenance + optional tags.
+    // Tags are written only when present so a no-tag extract doesn't
+    // get a `tags: []` line cluttering the file.
+    const frontmatter: Record<string, unknown> = {
+      title,
+      extracted_from: note.path,
+      extracted_at: new Date().toISOString()
+    };
+    if (tags.length > 0) frontmatter.tags = tags;
     try {
-      await api.createNote({
-        path,
-        frontmatter: {
-          title,
-          extracted_from: note.path,
-          extracted_at: new Date().toISOString()
-        },
-        body
-      });
+      await api.createNote({ path, frontmatter, body });
     } catch (e) {
-      // Re-throw so the dialog surfaces the error inline.
       throw e instanceof Error ? e : new Error(String(e));
     }
-    // Replace the selection with [[title]] now that the new note
-    // exists. apply() also re-focuses the editor.
     extractRequest.apply(title);
     extractRequest = null;
-    // Auto-save the source note so the wikilink lands on disk
-    // immediately — without this, the user could close the tab
-    // before the debounce fires and lose the link.
     await save({ silent: true });
     toast.success(`Extracted to [[${title}]]`);
   }
