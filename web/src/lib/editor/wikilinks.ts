@@ -5,6 +5,11 @@ import { api } from '$lib/api';
 
 const wikilinkRe = /\[\[([^\]\n]+?)\]\]/g;
 const openWikilinkRe = /\[\[([^\]\n]*)$/;
+// When the user has typed a `#` inside an open wikilink, switch from
+// title-completion to heading-completion so [[Note#H]] surfaces the
+// matching headings of `Note`. Captures: 1) the bare title before `#`
+// 2) the heading-fragment query the user has typed so far.
+const openHeadingRe = /\[\[([^\]\n#|]+)#([^\]\n|]*)$/;
 
 const wikilinkMark = Decoration.mark({ class: 'cm-wikilink' });
 
@@ -49,6 +54,9 @@ export function wikilinkClickHandler(navigate: (target: string) => void) {
         const s = m.index;
         const en = s + m[0].length;
         if (pos >= s && pos <= en) {
+          // The | strips the alias form ([[Note|alias]] → "Note");
+          // the # carries the heading anchor through to navigate so
+          // the host page can scroll to that section after open.
           const target = m[1].split('|')[0].trim();
           if (target) {
             navigate(target);
@@ -89,8 +97,112 @@ export function invalidateTitleCache() {
   titleCache = null;
 }
 
+// Headings live in the body of a note rather than the listNotes
+// payload, so the editor fetches per-note on first heading-pick.
+// Cached at module scope keyed by path so a user typing into
+// [[Foo#] followed by [[Foo#Plan]] doesn't re-fetch. Cache is
+// dropped when the title cache invalidates (a fresh note edit
+// usually means the headings changed too).
+const headingCache = new Map<string, string[]>();
+
+/** Resolve a title (possibly the user's free-text input) to a note
+ *  path. Used by both the heading completion and the click handler.
+ *  Falls back to a "<title>.md" guess if no exact match exists. */
+function resolveTitleToPath(title: string): string | null {
+  const t = title.trim().toLowerCase();
+  if (!titleCache) return null;
+  const exact = titleCache.find((x) => x.title.toLowerCase() === t);
+  if (exact) return exact.path;
+  const partial = titleCache.find((x) => x.title.toLowerCase().includes(t));
+  return partial?.path ?? null;
+}
+
+/** Read all `# … ###### ` headings out of a markdown blob, normalised
+ *  to plain text (no leading hashes). Skips fenced code blocks so a
+ *  bash sample with `# comment` doesn't pollute the heading list. */
+function extractHeadings(body: string): string[] {
+  const out: string[] = [];
+  let inFence = false;
+  for (const raw of body.split('\n')) {
+    const line = raw.trim();
+    if (line.startsWith('```') || line.startsWith('~~~')) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const m = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
+    if (m) out.push(m[2].trim());
+  }
+  return out;
+}
+
+async function fetchHeadingsForTitle(title: string): Promise<string[]> {
+  await ensureTitles();
+  const path = resolveTitleToPath(title);
+  if (!path) return [];
+  const cached = headingCache.get(path);
+  if (cached) return cached;
+  try {
+    const note = await api.getNote(path);
+    const headings = extractHeadings(note.body ?? '');
+    headingCache.set(path, headings);
+    return headings;
+  } catch {
+    return [];
+  }
+}
+
 export async function wikilinkComplete(ctx: CompletionContext): Promise<CompletionResult | null> {
   const before = ctx.state.doc.sliceString(0, ctx.pos);
+  // Heading-mode fires first so [[Foo#bar takes the heading branch
+  // even though it also matches the title regex (the `#` is part of
+  // the captured title group there). Order matters.
+  const hm = before.match(openHeadingRe);
+  if (hm) {
+    const noteTitle = hm[1];
+    const fragQuery = hm[2];
+    const from = ctx.pos - fragQuery.length;
+    const headings = await fetchHeadingsForTitle(noteTitle);
+    if (headings.length === 0) return null;
+    const ql = fragQuery.toLowerCase();
+    const filtered = headings
+      .map((h) => {
+        const lo = h.toLowerCase();
+        let score = -1;
+        if (ql === '') score = 0;
+        else if (lo === ql) score = 1000;
+        else if (lo.startsWith(ql)) score = 500 - lo.length;
+        else if (lo.includes(ql)) score = 100 - lo.length;
+        return { h, score };
+      })
+      .filter((x) => x.score >= 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 30);
+    if (filtered.length === 0) return null;
+    return {
+      from,
+      options: filtered.map(({ h }) => ({
+        label: h,
+        detail: `${noteTitle} heading`,
+        type: 'property',
+        apply: (view, _completion, applyFrom, applyTo) => {
+          // Same closing-bracket handling as the title branch — if
+          // ]] is already there, don't double up.
+          const after = view.state.doc.sliceString(applyTo, applyTo + 2);
+          const insert = h + (after === ']]' ? '' : ']]');
+          const cursor = applyFrom + insert.length;
+          view.dispatch({
+            changes: { from: applyFrom, to: applyTo, insert },
+            selection: { anchor: cursor }
+          });
+        }
+      })),
+      // validFor allows free typing INSIDE the heading fragment but
+      // bails on `]` so we close completion when the user types the
+      // closing bracket manually.
+      validFor: /^[^\]\n|]*$/
+    };
+  }
   const m = before.match(openWikilinkRe);
   if (!m) return null;
   const query = m[1];
