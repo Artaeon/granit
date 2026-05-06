@@ -28,7 +28,7 @@
   // takes over and the user picks "Save as PDF" or sends to a
   // physical printer. Zero server work, zero new dependencies.
 
-  type Mode = 'standard' | 'certificate' | 'report';
+  type Mode = 'standard' | 'certificate' | 'report' | 'letterhead' | 'memo';
 
   interface Props {
     open: boolean;
@@ -194,8 +194,10 @@
       <div class="tb-modes">
         {#each [
           { id: 'standard', label: 'Standard' },
-          { id: 'certificate', label: 'Certificate' },
-          { id: 'report', label: 'Report' }
+          { id: 'letterhead', label: 'Letterhead' },
+          { id: 'memo', label: 'Memo' },
+          { id: 'report', label: 'Report' },
+          { id: 'certificate', label: 'Certificate' }
         ] as m}
           <button
             onclick={() => (mode = m.id as Mode)}
@@ -211,12 +213,22 @@
       <section class="config-panel">
         <div class="config-row">
           <label for="print-header">Header</label>
-          <input
-            id="print-header"
-            bind:value={header}
-            placeholder="e.g. ACME Corp — Internal"
-            class="config-input"
-          />
+          {#if mode === 'letterhead'}
+            <textarea
+              id="print-header"
+              bind:value={header}
+              placeholder={`Acme Corp\n123 Main St\nVienna, AT`}
+              class="config-input config-textarea"
+              rows="3"
+            ></textarea>
+          {:else}
+            <input
+              id="print-header"
+              bind:value={header}
+              placeholder={mode === 'memo' ? 'Your name (FROM)' : 'e.g. ACME Corp — Internal'}
+              class="config-input"
+            />
+          {/if}
         </div>
         <div class="config-row">
           <label for="print-footer">Footer</label>
@@ -311,6 +323,56 @@
             </div>
           </div>
         </div>
+      {:else if mode === 'letterhead'}
+        <!-- Letterhead — formal corporate document. Header band at
+             the top with sender block, narrow body for readability,
+             contact strip footer. The sender block parses the
+             configured header field as multi-line so a user can put
+             "Acme Corp\n123 Main St\nVienna, AT" in the header
+             input and have it render naturally. -->
+        <header class="lh-header">
+          <div class="lh-sender">
+            {#each (header || 'Your Letterhead Here').split('\n') as line, i}
+              <div class:lh-sender-name={i === 0}>{line}</div>
+            {/each}
+          </div>
+          <div class="lh-rule"></div>
+        </header>
+        <article class="print-body lh-body">
+          <div class="lh-date">{todayHuman()}</div>
+          <h1 class="lh-title">{title}</h1>
+          <MarkdownRenderer body={body} />
+        </article>
+        <footer class="lh-footer">
+          <div class="lh-footer-rule"></div>
+          <div class="lh-footer-text">
+            {footer || `${sourcePath}  ·  Generated with Granit`}
+          </div>
+        </footer>
+      {:else if mode === 'memo'}
+        <!-- Memo — interoffice format. The classic TO/FROM/DATE/RE
+             block at the top, plain body. Header field doubles as
+             the FROM line; user can override via standard markdown
+             at the top of the note. -->
+        <header class="memo-header">
+          <div class="memo-eyebrow">Memorandum</div>
+          <table class="memo-meta">
+            <tbody>
+              <tr><th>To:</th><td>—</td></tr>
+              <tr><th>From:</th><td>{header || '—'}</td></tr>
+              <tr><th>Date:</th><td>{todayHuman()}</td></tr>
+              <tr><th>Re:</th><td>{title}</td></tr>
+            </tbody>
+          </table>
+        </header>
+        <article class="print-body memo-body">
+          <MarkdownRenderer body={body} />
+        </article>
+        <footer class="print-footer">
+          <div class="print-footer-text">
+            {footer || `${sourcePath}  ·  Generated with Granit`}
+          </div>
+        </footer>
       {:else}
         <header class="print-header">
           {#if header}<div class="print-header-text">{header}</div>{/if}
@@ -414,6 +476,12 @@
     font-family: inherit;
   }
   .config-input:focus { outline: none; border-color: var(--color-primary); }
+  .config-textarea {
+    font-family: inherit;
+    resize: vertical;
+    min-height: 4.5rem;
+    line-height: 1.4;
+  }
   .config-hint {
     font-size: 0.6875rem;
     color: var(--color-dim);
@@ -467,6 +535,117 @@
     padding: 0;
     line-height: 1.6;
     color: #2a2419;
+  }
+
+  .print-page[data-mode="letterhead"] {
+    font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+    font-size: 11pt;
+    padding: 1.8cm 2cm;
+    line-height: 1.6;
+  }
+  .print-page[data-mode="memo"] {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 11pt;
+    padding: 2cm 2cm;
+    line-height: 1.55;
+  }
+
+  /* ----- Letterhead template ----- */
+  /* Top sender block (multi-line) → narrow body → contact strip
+     footer. Mimics the corporate-letter feel of a printed cover
+     sheet. The sender block accepts newlines in the header field
+     so the user gets a 3-line address without resorting to HTML. */
+  .lh-header {
+    margin-bottom: 1.5rem;
+  }
+  .lh-sender {
+    font-size: 10pt;
+    color: #2a2a2a;
+    line-height: 1.4;
+  }
+  .lh-sender-name {
+    font-size: 16pt !important;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #1a1a1a;
+    margin-bottom: 0.25rem;
+  }
+  .lh-rule {
+    margin-top: 0.6rem;
+    height: 2px;
+    background: linear-gradient(to right, #1a1a1a 0%, #1a1a1a 60%, transparent 100%);
+  }
+  .lh-body {
+    margin-top: 0;
+  }
+  .lh-date {
+    font-size: 10pt;
+    color: #555;
+    margin-bottom: 1.2rem;
+  }
+  .lh-title {
+    font-size: 18pt;
+    font-weight: 600;
+    margin: 0 0 1rem;
+    color: #1a1a1a;
+    line-height: 1.25;
+  }
+  .lh-footer {
+    margin-top: 2rem;
+    text-align: center;
+  }
+  .lh-footer-rule {
+    height: 1px;
+    background: #c0c0c0;
+    margin-bottom: 0.5rem;
+  }
+  .lh-footer-text {
+    font-size: 9pt;
+    color: #666;
+    letter-spacing: 0.02em;
+  }
+
+  /* ----- Memo template ----- */
+  /* Classic interoffice memo: large "MEMORANDUM" eyebrow, four-row
+     metadata table (TO/FROM/DATE/RE), then body. The labels are
+     bold + right-aligned in a fixed-width column for that
+     unmistakable "office memo" feel. */
+  .memo-header {
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 2px solid #1a1a1a;
+  }
+  .memo-eyebrow {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 22pt;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #1a1a1a;
+    margin-bottom: 1rem;
+  }
+  .memo-meta {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  .memo-meta th {
+    text-align: left;
+    font-weight: 700;
+    width: 4.5rem;
+    padding: 0.15rem 0.5rem 0.15rem 0;
+    color: #1a1a1a;
+    font-size: 10.5pt;
+    vertical-align: top;
+  }
+  .memo-meta td {
+    padding: 0.15rem 0;
+    color: #1a1a1a;
+    font-size: 10.5pt;
+    vertical-align: top;
+  }
+  .memo-body {
+    /* Memo body is plain — the header band carries all the
+       formal weight, body is conversational. */
   }
 
   /* ----- Certificate template ----- */
