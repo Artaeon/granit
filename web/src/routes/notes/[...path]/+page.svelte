@@ -19,6 +19,7 @@
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import type { ExtractRequest } from '$lib/editor/extract-note';
   import PrintPreview from '$lib/notes/PrintPreview.svelte';
+  import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
 
   type ViewMode = 'edit' | 'preview' | 'split';
   const VIEW_KEY = 'granit.note.viewMode';
@@ -373,6 +374,31 @@
   // note isn't mutated and the user can retry without dead links.
   let extractRequest = $state<ExtractRequest | null>(null);
   let printOpen = $state(false);
+  let helpOpen = $state(false);
+
+  // Global "?" handler — opens the shortcuts cheat sheet from
+  // anywhere on the note view, but ONLY when the user isn't typing
+  // into an input or the editor (otherwise they couldn't ever type
+  // a literal question mark in their notes). The cheap detection
+  // looks at the active element's tag + role; any input/textarea/
+  // contenteditable is treated as "user is typing".
+  $effect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== '?' || e.shiftKey === false) return;
+      const el = document.activeElement as HTMLElement | null;
+      if (!el) return;
+      const tag = el.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+      if (el.isContentEditable) return;
+      // CodeMirror's editable surface is a contenteditable div, so the
+      // check above already covers the editor. Outside of that, on the
+      // note layout (sidebars, toolbar buttons), `?` is free.
+      e.preventDefault();
+      helpOpen = true;
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  });
 
   function handleExtract(req: ExtractRequest) {
     extractRequest = req;
@@ -756,6 +782,17 @@
         >
           {viewMode === 'preview' ? '✎' : '👁'}
         </button>
+        <!-- Keyboard shortcut cheat sheet — also bound to "?" on
+             anywhere outside an editable surface. Hidden on phones
+             where the help is less useful (no physical keyboard). -->
+        <button
+          onclick={() => (helpOpen = true)}
+          title="Keyboard shortcuts (?)"
+          aria-label="Keyboard shortcuts"
+          class="hidden sm:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+        >
+          <span class="font-mono text-sm">?</span>
+        </button>
         <!-- Export PDF — opens a fullscreen print preview with
              configurable header/footer and three layout modes
              (standard / certificate / report). Hidden on the very
@@ -867,3 +904,10 @@
     onClose={() => (printOpen = false)}
   />
 {/if}
+
+<!-- Keyboard cheat sheet. Triggered by "?" anywhere outside an
+     editable surface, or via the toolbar help button. -->
+<ShortcutsHelpOverlay
+  bind:open={helpOpen}
+  onClose={() => (helpOpen = false)}
+/>
