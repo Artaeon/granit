@@ -62,7 +62,7 @@
       rows: [
         { keys: `[[`, label: 'Wikilink picker — autocomplete to any note' },
         { keys: `#`, label: 'Tag picker — autocomplete from your tag set' },
-        { keys: `/`, label: 'Snippet picker — expand a saved template' },
+        { keys: `/`, label: 'Slash picker — snippets + /h1 /code /divider /table /note /tip /warning /danger …' },
         { keys: `${modKey}+Shift+X`, label: 'Extract selection to a new note (auto-link)' },
         { keys: `${modKey}+click`, label: 'Open a wikilink in place' }
       ]

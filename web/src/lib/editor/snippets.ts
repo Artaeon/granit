@@ -9,6 +9,7 @@
 
 import type { CompletionContext, CompletionResult, Completion } from '@codemirror/autocomplete';
 import { api } from '$lib/api';
+import { blockCompletionsFor } from './block-completions';
 
 interface Snippet {
   trigger: string; // e.g. "/meeting"
@@ -86,18 +87,17 @@ export async function snippetComplete(ctx: CompletionContext): Promise<Completio
   const list = await getSnippets();
   const lower = typed.toLowerCase();
   const filtered = list.filter((s) => s.trigger.toLowerCase().startsWith(lower));
-  if (filtered.length === 0) return null;
 
-  const options: Completion[] = filtered.map((s) => ({
+  // User snippets render first — they're the personalised content,
+  // and a /me hitting /meeting (the user's snippet) should rank
+  // above /memo / /markdown (a built-in) since the user explicitly
+  // authored the snippet. Built-ins backstop the list with the
+  // structural blocks (headings / code / divider / etc).
+  const userOptions: Completion[] = filtered.map((s) => ({
     label: s.trigger,
     detail: s.description,
     type: 'snippet',
     apply: (view, _completion, applyFrom, applyTo) => {
-      // Replace the entire `/typed` prefix with the expanded content,
-      // not just append — otherwise a partial trigger (`/me` accepting
-      // /meeting) would leave the partial behind. CodeMirror passes
-      // the actual matched range so we honor that, not the captured
-      // `from` (which can drift if the doc changed mid-completion).
       const insert = expandPlaceholders(s.content);
       view.dispatch({
         changes: { from: applyFrom, to: applyTo, insert },
@@ -105,5 +105,12 @@ export async function snippetComplete(ctx: CompletionContext): Promise<Completio
       });
     }
   }));
-  return { from, options, validFor: /^\/[a-z0-9-]*$/i };
+  const blockOptions = blockCompletionsFor(typed);
+
+  if (userOptions.length === 0 && blockOptions.length === 0) return null;
+  return {
+    from,
+    options: [...userOptions, ...blockOptions],
+    validFor: /^\/[a-z0-9-]*$/i
+  };
 }
