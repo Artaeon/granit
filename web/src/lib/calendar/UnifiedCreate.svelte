@@ -31,8 +31,6 @@
   let kind = $state<'task' | 'event'>('task');
   let title = $state('');
   let dateISO = $state('');
-  let startTime = $state('');
-  let endTime = $state('');
   let notePath = $state('');
   let priority = $state(0);
   let location = $state('');
@@ -68,22 +66,24 @@
   // 0-23 + minutes 0-55 in 5-min steps) instead of <input type="time">
   // because every browser's <input type="time"> renders AM/PM based
   // on OS locale, IGNORING the element's lang attribute. Custom
-  // selects guarantee 24-hour display everywhere — the user reported
-  // AM/PM still showing despite the previous lang="en-GB" attempt.
+  // selects guarantee 24-hour display everywhere.
   let startH = $state(0);
   let startM = $state(0);
   let endH = $state(0);
   let endM = $state(0);
-  // Format the picker values back into the HH:MM strings the rest of
-  // the form (and the API contract) expect. Two-way: changing the
-  // selects updates startTime/endTime; opening with a pre-filled
-  // start/end seeds the selects.
-  $effect(() => {
-    startTime = `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`;
-  });
-  $effect(() => {
-    endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
-  });
+  // startTime / endTime are DERIVED from H+M, not state-with-effect.
+  // The previous $effect-driven sync had a real flush race: the
+  // user could change a select, immediately click Save, and the
+  // submit handler would read a stale startTime that hadn't picked
+  // up the new H/M yet — events landed at the previous time, not
+  // the one the user just chose. The user reported this as "the
+  // times … get scheduled somewhere".
+  // $derived is read synchronously on access — no flush dep, no
+  // race. Reading startTime in the submit handler ALWAYS reflects
+  // the current H/M. The select onchange writes are still reactive
+  // (via the $derived) so the live "range preview" updates on type.
+  let startTime = $derived(`${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`);
+  let endTime = $derived(`${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`);
 
   // Re-seed every time the modal opens — `start`/`end` reflect the most
   // recent drag, so the buffer must follow.
@@ -91,8 +91,9 @@
     if (!open) return;
     kind = defaultKind;
     dateISO = fmtDateISO(start);
-    startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
-    endTime = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
+    // Seed the H/M selects from the prop's start/end. startTime /
+    // endTime are derived from these — DON'T also assign them
+    // directly, that would fight the $derived expression.
     // Round minutes to the nearest 5 so they line up with the
     // select's options. The grid drag-create already snaps to 15min
     // so this rounding is usually a no-op; defends against modal
