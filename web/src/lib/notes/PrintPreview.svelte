@@ -246,32 +246,86 @@
 
     <!-- The printable surface. data-mode toggles the layout. -->
     <main class="print-page" data-mode={mode}>
-      <header class="print-header">
-        {#if mode === 'certificate'}
-          <div class="cert-flourish">⁕</div>
-        {/if}
-        {#if header}<div class="print-header-text">{header}</div>{/if}
-      </header>
-
-      <article class="print-body">
-        {#if mode === 'certificate'}
-          <h1 class="cert-title">{title}</h1>
-          <div class="cert-rule"></div>
-        {:else}
+      {#if mode === 'certificate'}
+        <!-- Certificate layout — formal document framing. The double
+             border + corner ornaments + formal serif typography give
+             the page authenticity at a glance, and the Granit seal
+             at the bottom doubles as a verifiable provenance mark
+             (a colleague who suspects a forgery can check the repo). -->
+        <div class="cert-frame">
+          <div class="cert-corner cert-corner-tl">❦</div>
+          <div class="cert-corner cert-corner-tr">❦</div>
+          <div class="cert-corner cert-corner-bl">❦</div>
+          <div class="cert-corner cert-corner-br">❦</div>
+          <div class="cert-content">
+            {#if header}
+              <div class="cert-issuer">{header}</div>
+            {/if}
+            <div class="cert-eyebrow">— Certificate —</div>
+            <h1 class="cert-title">{title}</h1>
+            <div class="cert-divider">
+              <span class="cert-divider-line"></span>
+              <span class="cert-divider-mark">⁕</span>
+              <span class="cert-divider-line"></span>
+            </div>
+            <article class="cert-body">
+              <MarkdownRenderer body={body} />
+            </article>
+            <div class="cert-footer">
+              <div class="cert-footer-row">
+                <div class="cert-footer-cell">
+                  <div class="cert-footer-line"></div>
+                  <div class="cert-footer-label">Date</div>
+                  <div class="cert-footer-value">{footer || todayHuman()}</div>
+                </div>
+                <div class="cert-seal">
+                  <!-- Round embossed-style seal in pure SVG. Renders
+                       crisp at any zoom + survives PDF export at full
+                       fidelity (no raster artefacts). The repo URL
+                       and a Granit wordmark sit on the inner ring so
+                       a colleague verifying the certificate can read
+                       the provenance directly off the seal. -->
+                  <svg viewBox="0 0 120 120" width="86" height="86" aria-label="Granit seal">
+                    <defs>
+                      <path id="seal-arc-top" d="M 60 60 m -44 0 a 44 44 0 0 1 88 0" fill="none"/>
+                      <path id="seal-arc-bot" d="M 60 60 m 44 0 a 44 44 0 0 1 -88 0" fill="none"/>
+                    </defs>
+                    <circle cx="60" cy="60" r="54" fill="none" stroke="#8a6d3b" stroke-width="1.5"/>
+                    <circle cx="60" cy="60" r="48" fill="none" stroke="#8a6d3b" stroke-width="0.6"/>
+                    <circle cx="60" cy="60" r="30" fill="none" stroke="#8a6d3b" stroke-width="1"/>
+                    <text font-family="Georgia, serif" font-size="7" letter-spacing="1.5" fill="#8a6d3b">
+                      <textPath href="#seal-arc-top" startOffset="50%" text-anchor="middle">GENERATED · WITH · GRANIT</textPath>
+                    </text>
+                    <text font-family="Georgia, serif" font-size="5" letter-spacing="0.8" fill="#8a6d3b">
+                      <textPath href="#seal-arc-bot" startOffset="50%" text-anchor="middle">github.com/artaeon/granit</textPath>
+                    </text>
+                    <text x="60" y="55" font-family="Georgia, serif" font-size="14" font-weight="700" text-anchor="middle" fill="#8a6d3b" letter-spacing="2">G</text>
+                    <text x="60" y="68" font-family="Georgia, serif" font-size="6" letter-spacing="2" text-anchor="middle" fill="#8a6d3b">GRANIT</text>
+                    <text x="60" y="76" font-family="Georgia, serif" font-size="3.5" text-anchor="middle" fill="#8a6d3b">{todayHuman()}</text>
+                  </svg>
+                </div>
+              </div>
+              <div class="cert-provenance">
+                Issued via Granit · open source at <a href="https://github.com/artaeon/granit">github.com/artaeon/granit</a> · {sourcePath}
+              </div>
+            </div>
+          </div>
+        </div>
+      {:else}
+        <header class="print-header">
+          {#if header}<div class="print-header-text">{header}</div>{/if}
+        </header>
+        <article class="print-body">
           <h1 class="doc-title">{title}</h1>
           <div class="doc-meta">{sourcePath} · {todayHuman()}</div>
-        {/if}
-        <MarkdownRenderer body={body} />
-      </article>
-
-      <footer class="print-footer">
-        {#if mode === 'certificate'}
-          <div class="cert-rule"></div>
-        {/if}
-        <div class="print-footer-text">
-          {footer || todayHuman()}
-        </div>
-      </footer>
+          <MarkdownRenderer body={body} />
+        </article>
+        <footer class="print-footer">
+          <div class="print-footer-text">
+            {footer || todayHuman()}
+          </div>
+        </footer>
+      {/if}
     </main>
   </div>
 {/if}
@@ -408,11 +462,156 @@
     padding: 2.5cm 2cm;
   }
   .print-page[data-mode="certificate"] {
-    font-family: Georgia, 'Iowan Old Style', serif;
-    font-size: 13pt;
+    font-family: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+    font-size: 12pt;
+    padding: 0;
+    line-height: 1.6;
+    color: #2a2419;
+  }
+
+  /* ----- Certificate template ----- */
+  /* A formal document framing. The double border + corner ornaments
+     give the page a "real certificate" feel without leaning on
+     external fonts (which would fail in print or with a CSP). The
+     Granit seal at the bottom is pure inline SVG so it survives
+     PDF export crisp at any zoom and acts as verifiable provenance. */
+  .cert-frame {
+    position: relative;
+    margin: 1.2cm;
+    padding: 1.6cm 1.5cm 1.4cm;
+    border: 2px solid #8a6d3b;
+    box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px #d4b87a;
+    background: #fbf7ee;
+    min-height: calc(29.7cm - 2.4cm);
+    display: flex;
+    flex-direction: column;
+  }
+  .cert-corner {
+    position: absolute;
+    color: #8a6d3b;
+    font-size: 18pt;
+    line-height: 1;
+  }
+  .cert-corner-tl { top: 0.4cm; left: 0.5cm; }
+  .cert-corner-tr { top: 0.4cm; right: 0.5cm; transform: rotate(90deg); }
+  .cert-corner-bl { bottom: 0.4cm; left: 0.5cm; transform: rotate(-90deg); }
+  .cert-corner-br { bottom: 0.4cm; right: 0.5cm; transform: rotate(180deg); }
+
+  .cert-content {
+    flex: 1;
     text-align: center;
-    padding: 3cm 2cm;
-    line-height: 1.7;
+    display: flex;
+    flex-direction: column;
+  }
+  .cert-issuer {
+    font-size: 10pt;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: #8a6d3b;
+    margin-bottom: 0.5rem;
+  }
+  .cert-eyebrow {
+    font-style: italic;
+    font-size: 11pt;
+    color: #8a6d3b;
+    margin-top: 0.5rem;
+    letter-spacing: 0.05em;
+  }
+  .cert-title {
+    font-family: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+    font-size: 26pt;
+    font-weight: 700;
+    margin: 0.6rem 0 0.2rem;
+    color: #2a2419;
+    letter-spacing: 0.01em;
+    line-height: 1.15;
+  }
+  .cert-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin: 0.5rem 0 1.2rem;
+    color: #8a6d3b;
+  }
+  .cert-divider-line {
+    flex: 0 1 25%;
+    height: 1px;
+    background: linear-gradient(to right, transparent, #8a6d3b, transparent);
+  }
+  .cert-divider-mark {
+    font-size: 14pt;
+  }
+  .cert-body {
+    flex: 1;
+    text-align: left;
+    font-size: 11.5pt;
+    color: #2a2419;
+    /* The body of a certificate reads denser than freeform notes;
+       a tighter measure (max 16cm) keeps line lengths comfortable. */
+    max-width: 16cm;
+    margin: 0 auto;
+  }
+  .cert-body :global(.prose-note),
+  .cert-body :global(.prose-note *) {
+    color: #2a2419 !important;
+  }
+  .cert-body :global(.prose-note h1),
+  .cert-body :global(.prose-note h2) {
+    font-family: 'Iowan Old Style', Georgia, serif !important;
+    color: #2a2419 !important;
+    text-align: center;
+  }
+  .cert-footer {
+    margin-top: 1.5rem;
+    padding-top: 0.8rem;
+  }
+  .cert-footer-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 2rem;
+    text-align: left;
+  }
+  .cert-footer-cell {
+    flex: 1;
+    min-width: 0;
+  }
+  .cert-footer-line {
+    border-top: 1px solid #8a6d3b;
+    margin-bottom: 0.25rem;
+    width: 100%;
+    max-width: 6cm;
+  }
+  .cert-footer-label {
+    font-size: 8pt;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #8a6d3b;
+  }
+  .cert-footer-value {
+    font-size: 11pt;
+    color: #2a2419;
+    margin-top: 0.1rem;
+  }
+  .cert-seal {
+    flex-shrink: 0;
+    /* The seal sits flush-right; its 86px width keeps it from
+       fighting the date column for space on standard A4. */
+  }
+  .cert-provenance {
+    margin-top: 1.2rem;
+    padding-top: 0.6rem;
+    border-top: 0.5pt solid #d4b87a;
+    font-size: 8pt;
+    color: #8a6d3b;
+    text-align: center;
+    font-style: italic;
+    letter-spacing: 0.02em;
+  }
+  .cert-provenance a {
+    color: #8a6d3b;
+    text-decoration: none;
   }
 
   .print-header {
