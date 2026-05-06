@@ -336,17 +336,17 @@
               <select
                 bind:value={startH}
                 aria-label="start hour"
-                class="flex-1 bg-transparent px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
+                class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
               >
                 {#each Array.from({ length: 24 }, (_, i) => i) as h}
                   <option value={h}>{String(h).padStart(2, '0')}</option>
                 {/each}
               </select>
-              <span class="text-dim">:</span>
+              <span class="text-dim px-1">:</span>
               <select
                 bind:value={startM}
                 aria-label="start minute"
-                class="flex-1 bg-transparent px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
+                class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
               >
                 {#each Array.from({ length: 12 }, (_, i) => i * 5) as m}
                   <option value={m}>{String(m).padStart(2, '0')}</option>
@@ -360,17 +360,17 @@
               <select
                 bind:value={endH}
                 aria-label="end hour"
-                class="flex-1 bg-transparent px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
+                class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
               >
                 {#each Array.from({ length: 24 }, (_, i) => i) as h}
                   <option value={h}>{String(h).padStart(2, '0')}</option>
                 {/each}
               </select>
-              <span class="text-dim">:</span>
+              <span class="text-dim px-1">:</span>
               <select
                 bind:value={endM}
                 aria-label="end minute"
-                class="flex-1 bg-transparent px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
+                class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
               >
                 {#each Array.from({ length: 12 }, (_, i) => i * 5) as m}
                   <option value={m}>{String(m).padStart(2, '0')}</option>
@@ -521,3 +521,34 @@
     </div>
   </div>
 {/if}
+
+<style>
+  /* The native <select> dropdown panel is rendered by the browser
+     using OS chrome, NOT our app's CSS variables. On a dark theme
+     that means white-text-on-white-background by default, which the
+     user reported as "the dropdown is only white nothing to see".
+     Two fixes layered together so every browser/OS combo lands on
+     readable values:
+       - color-scheme: dark — hints to Chromium / Safari / Firefox
+         that the UA should pick the dark variant of its native
+         widgets, including <option> rendering.
+       - explicit background / color on the <select> AND on each
+         <option>. Some renderers honour these (Firefox), some
+         ignore them (Chromium-on-Linux falls back to OS theme).
+         color-scheme covers the second case.
+     The result: the open dropdown shows white-on-dark text in dark
+     mode, dark-on-white in light mode. Always legible. */
+  .time-select {
+    color-scheme: dark;
+    background: var(--color-surface0);
+  }
+  .time-select option {
+    background: var(--color-base);
+    color: var(--color-text);
+  }
+  /* Light-mode override — color-scheme: light keeps the option
+     panel readable when the user's app theme is set to light. */
+  :global([data-theme="light"]) .time-select {
+    color-scheme: light;
+  }
+</style>
