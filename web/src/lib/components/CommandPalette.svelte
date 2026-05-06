@@ -19,6 +19,16 @@
   let selected = $state(0);
   let inputEl: HTMLInputElement | undefined = $state();
 
+  // Mode controls which groups participate in the result list.
+  //   'all'   — everything: Pages, Actions, Notes, Content. Triggered
+  //             by Mod-K. The full command palette UX.
+  //   'notes' — Notes + Content only. Triggered by Mod-P, the
+  //             Amplenote-style "quick switcher" — a focused note
+  //             picker that overrides browser print so the user can
+  //             jump to any note by title without scanning the tree.
+  type PaletteMode = 'all' | 'notes';
+  let mode = $state<PaletteMode>('all');
+
   // Cached vault titles for the "Notes" group. Refresh on WS events.
   let notes = $state<{ path: string; title: string }[]>([]);
   let notesLoaded = $state(false);
@@ -105,9 +115,12 @@
     }
   ];
 
-  // Open / close
-  export function show() {
+  // Open / close. Default mode mirrors the Mod-K behaviour ("all").
+  // Callers (or the Mod-P keymap below) pass 'notes' to scope the
+  // palette to the quick-switcher experience.
+  export function show(asMode: PaletteMode = 'all') {
     open = true;
+    mode = asMode;
     q = '';
     selected = 0;
     if (!notesLoaded) loadNotes();
@@ -123,7 +136,19 @@
       if (meta && e.key === 'k') {
         e.preventDefault();
         if (open) close();
-        else show();
+        else show('all');
+        return;
+      }
+      // Mod-P → quick switcher (notes-only). Overrides the browser
+      // print dialog globally; PrintPreview's own Mod-P handler runs
+      // in the capture phase + stopImmediatePropagation so it still
+      // wins inside the print overlay (otherwise the user would lose
+      // their way to Save-as-PDF). e.shiftKey check excludes
+      // Mod-Shift-P which is reserved for future "fast print".
+      if (meta && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        if (open && mode === 'notes') close();
+        else show('notes');
         return;
       }
       if (!open) return;
@@ -178,17 +203,29 @@
     const needle = q.trim();
     const all: CmdItem[] = [];
 
-    for (const p of pages) {
-      const sc = score(needle, p.label);
-      if (sc >= 0) all.push({ ...p, score: sc });
-    }
-    for (const a of actions) {
-      const sc = score(needle, a.label);
-      if (sc >= 0) all.push({ ...a, score: sc });
+    // Notes-mode short-circuits Pages + Actions so the user gets a
+    // focused jumper. Empty queries still surface notes (sorted by
+    // server modTime so most-recent leads — that's the muscle-memory
+    // win for power users: Mod-P, Enter, you're back where you were).
+    if (mode === 'all') {
+      for (const p of pages) {
+        const sc = score(needle, p.label);
+        if (sc >= 0) all.push({ ...p, score: sc });
+      }
+      for (const a of actions) {
+        const sc = score(needle, a.label);
+        if (sc >= 0) all.push({ ...a, score: sc });
+      }
     }
     if (notesLoaded) {
-      for (const n of notes) {
+      for (let i = 0; i < notes.length; i++) {
+        const n = notes[i];
         const sc = Math.max(score(needle, n.title), score(needle, n.path));
+        // In notes-mode an empty query still surfaces every note —
+        // ranked by recency (notes is already modTime-desc per the
+        // server). Tiny negative-index nudge so the first entry wins
+        // when scores tie at the empty-needle = 1 baseline.
+        const finalScore = needle ? sc - 50 : 100 - i;
         if (sc >= 0) {
           all.push({
             id: 'n-' + n.path,
@@ -196,7 +233,7 @@
             detail: n.path,
             group: 'Notes',
             icon: '✎',
-            score: sc - 50, // bias actions/pages above notes when scores are close
+            score: finalScore,
             run: () => goto('/notes/' + encodeURIComponent(n.path))
           });
         }
@@ -277,9 +314,12 @@
       <input
         bind:this={inputEl}
         bind:value={q}
-        placeholder="jump to a page, note, or action…"
+        placeholder={mode === 'notes' ? 'jump to a note…' : 'jump to a page, note, or action…'}
         class="flex-1 bg-transparent text-base sm:text-sm text-text placeholder-dim focus:outline-none"
       />
+      {#if mode === 'notes'}
+        <span class="text-[10px] text-secondary font-mono px-1.5 py-0.5 bg-secondary/10 border border-secondary/30 rounded">notes</span>
+      {/if}
       <span class="text-[10px] text-dim font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">esc</span>
     </div>
 
