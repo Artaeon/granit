@@ -16,6 +16,7 @@
 package agentruntime
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -44,6 +45,17 @@ type ChatMessage struct {
 // prompt) and we don't want to pay the prompt-building cost twice.
 type Chatter interface {
 	Chat(ctx context.Context, messages []ChatMessage) (string, error)
+}
+
+// ChatStreamer is implemented by LLMs that support streamed
+// completions. The /chat/stream HTTP handler uses this to forward
+// tokens to the browser as they arrive instead of buffering the
+// full reply — gives the AI dialog the snappy "watch it write"
+// feel of ChatGPT et al. onChunk runs synchronously per delta;
+// implementations are expected to honour ctx cancellation so the
+// upstream provider is closed when the user aborts.
+type ChatStreamer interface {
+	ChatStream(ctx context.Context, messages []ChatMessage, onChunk func(string)) error
 }
 
 // Usage is the token tally from one LLM call. Captured by the OpenAI
@@ -295,4 +307,161 @@ func (l *ollamaLLM) Chat(ctx context.Context, messages []ChatMessage) (string, e
 		return "", fmt.Errorf("ollama: parse: %w", err)
 	}
 	return out.Message.Content, nil
+}
+
+// ----- Streaming -----
+
+// ChatStream calls OpenAI's chat/completions endpoint with stream:true
+// and forwards each delta's content to onChunk as it arrives. The
+// upstream wire format is SSE-style "data: <json>\n\n" lines plus a
+// terminating "data: [DONE]\n\n" — we parse line-by-line and bail
+// out on context cancellation so the user-side abort closes the
+// upstream socket promptly.
+func (l *openAILLM) ChatStream(ctx context.Context, messages []ChatMessage, onChunk func(string)) error {
+	wire := make([]map[string]string, 0, len(messages))
+	for _, m := range messages {
+		wire = append(wire, map[string]string{"role": m.Role, "content": m.Content})
+	}
+	payload := map[string]any{
+		"model":    l.model,
+		"messages": wire,
+		"stream":   true,
+	}
+	if strings.HasPrefix(l.model, "gpt-5") {
+		payload["reasoning_effort"] = "minimal"
+	}
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, "POST",
+		"https://api.openai.com/v1/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+l.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+
+	cl := &http.Client{Timeout: 0} // no client-side cap — ctx drives lifetime
+	resp, err := cl.Do(req)
+	if err != nil {
+		return fmt.Errorf("openai: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("openai: API key rejected (HTTP %d). Check config.json's openai_key", resp.StatusCode)
+	}
+	if resp.StatusCode >= 400 {
+		raw, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("openai: %d %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+
+	// SSE chunks are terminated by "\n\n" but each line we care about
+	// starts with "data: ". Use a Scanner with default token size; the
+	// individual JSON deltas are well under the 64KB limit.
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		// ctx cancellation isn't observed by Scanner directly, but the
+		// underlying http.Body close (via defer above when ctx fires)
+		// terminates the read; we still check explicitly so a slow
+		// provider doesn't keep us spinning past Done.
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimPrefix(line, "data: ")
+		if payload == "[DONE]" {
+			return nil
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+			// Skip malformed chunks rather than aborting the stream —
+			// the official spec is loose enough that occasional non-
+			// JSON keep-alive lines aren't unheard of.
+			continue
+		}
+		if len(chunk.Choices) > 0 {
+			delta := chunk.Choices[0].Delta.Content
+			if delta != "" {
+				onChunk(delta)
+			}
+		}
+	}
+	return scanner.Err()
+}
+
+// ChatStream calls Ollama's /api/chat with stream:true. Ollama
+// responds with newline-delimited JSON (one object per line, each
+// carrying message.content as the partial delta and `done` true on
+// the terminal line) — simpler than OpenAI's SSE shape but the same
+// idea.
+func (l *ollamaLLM) ChatStream(ctx context.Context, messages []ChatMessage, onChunk func(string)) error {
+	wire := make([]map[string]string, 0, len(messages))
+	for _, m := range messages {
+		wire = append(wire, map[string]string{"role": m.Role, "content": m.Content})
+	}
+	body, _ := json.Marshal(map[string]any{
+		"model":    l.model,
+		"messages": wire,
+		"stream":   true,
+	})
+	req, err := http.NewRequestWithContext(ctx, "POST", l.url+"/api/chat", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	cl := &http.Client{Timeout: 0}
+	resp, err := cl.Do(req)
+	if err != nil {
+		return fmt.Errorf("ollama at %s: %w (is `ollama serve` running?)", l.url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 400 {
+		raw, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("ollama: %d %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var chunk struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			Done bool `json:"done"`
+		}
+		if err := json.Unmarshal([]byte(line), &chunk); err != nil {
+			continue
+		}
+		if chunk.Message.Content != "" {
+			onChunk(chunk.Message.Content)
+		}
+		if chunk.Done {
+			return nil
+		}
+	}
+	return scanner.Err()
 }
