@@ -21,7 +21,11 @@
     { id: 'w-top-deadlines', type: 'top-deadlines', afterId: 'w-now', enabled: true },
     // Pairs naturally with top-deadlines so the two by-when widgets
     // sit side-by-side on the wide dashboard grid.
-    { id: 'w-top-goals', type: 'top-goals', afterId: 'w-top-deadlines', enabled: true }
+    { id: 'w-top-goals', type: 'top-goals', afterId: 'w-top-deadlines', enabled: true },
+    // Quick links — hub favorites surfaced next to the by-when
+    // widgets so the morning view answers both "when" and "where"
+    // at a glance.
+    { id: 'w-quick-links', type: 'quick-links', afterId: 'w-top-goals', enabled: true }
   ];
 
   // Auth state machine on the landing page:

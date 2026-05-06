@@ -1813,7 +1813,8 @@ export type DashboardWidgetType =
   | 'ventures'
   | 'prayer'
   | 'at-a-glance'
-  | 'top-goals';
+  | 'top-goals'
+  | 'quick-links';
 
 export interface DashboardWidget {
   id: string;

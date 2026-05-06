@@ -21,6 +21,7 @@ import VenturesWidget from './widgets/VenturesWidget.svelte';
 import PrayerWidget from './widgets/PrayerWidget.svelte';
 import AtAGlanceWidget from './widgets/AtAGlanceWidget.svelte';
 import TopGoalsWidget from './widgets/TopGoalsWidget.svelte';
+import QuickLinksWidget from './widgets/QuickLinksWidget.svelte';
 
 export interface WidgetMeta {
   type: DashboardWidgetType;
@@ -52,6 +53,10 @@ export const widgetRegistry: WidgetMeta[] = [
   // free-text targets ("Q4 2026") are excluded since the widget is
   // about countdown pressure.
   { type: 'top-goals', label: 'Next goal targets', description: 'Top 3 active goals by target_date proximity', span: 1, component: TopGoalsWidget },
+  // Quick links — surfaces hub favorites on the dashboard. Sits
+  // close to top-deadlines / top-goals because it's the same
+  // shape: a glance-fast "what do I reach for first" tile.
+  { type: 'quick-links', label: 'Quick links', description: 'Top 5 favorites from your Hub — single-click access to the URLs you live in', span: 1, component: QuickLinksWidget },
   { type: 'scripture', label: 'Today\'s verse', description: 'Daily scripture / quote rotation', span: 1, component: ScriptureWidget },
   { type: 'daily-note', label: 'Daily note', description: 'Link to today\'s daily note', span: 1, component: DailyNoteWidget },
   { type: 'quick-capture', label: 'Quick capture', description: 'Add a task fast', span: 1, component: QuickCaptureWidget },
