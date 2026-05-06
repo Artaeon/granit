@@ -201,6 +201,16 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/api/v1/notes/rename", s.handleRenameNote)
 		r.Get("/api/v1/links/*", s.handleGetLinks)
 
+		// File history endpoints. List versions of a note, fetch a
+		// single version's body, restore a version. The /restore
+		// route lives at a sibling path (`/restore/*`) rather than
+		// `/history/*/restore` because chi's wildcard segments must
+		// be terminal — there's no way to write `/history/{*}/restore`
+		// in chi. Splitting into two prefixes keeps the routes clean.
+		r.Get("/api/v1/history/*", s.handleListHistory)
+		r.Get("/api/v1/history-version/*", s.handleGetHistoryVersion)
+		r.Post("/api/v1/history-restore/*", s.handleRestoreHistoryVersion)
+
 		r.Get("/api/v1/tasks", s.handleListTasks)
 		r.Post("/api/v1/tasks", s.handleCreateTask)
 		r.Delete("/api/v1/tasks/{id}", s.handleDeleteTask)

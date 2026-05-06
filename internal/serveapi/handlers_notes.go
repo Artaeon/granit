@@ -2,6 +2,7 @@ package serveapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/artaeon/granit/internal/atomicio"
+	"github.com/artaeon/granit/internal/history"
 	"github.com/artaeon/granit/internal/vault"
 	"github.com/artaeon/granit/internal/wshub"
 	"gopkg.in/yaml.v3"
@@ -209,6 +211,24 @@ func (s *Server) handlePutNote(w http.ResponseWriter, r *http.Request) {
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	// File history: snapshot the prior on-disk content BEFORE the
+	// new write lands. If the file doesn't exist yet (first save of
+	// a brand-new note created via this PUT path) the read fails
+	// with ENOENT and we skip the snapshot — there's no prior state
+	// to preserve. The snapshot package dedupes on content hash, so
+	// a chain of identical autosaves produces only one history
+	// entry. Errors are logged but never fail the write — losing a
+	// snapshot is degraded but not catastrophic; failing the save
+	// because we couldn't snapshot would be.
+	if prior, rerr := os.ReadFile(abs); rerr == nil {
+		if _, herr := history.Snap(s.cfg.Vault.Root, path, prior); herr != nil {
+			// Log via stderr; the API itself doesn't have a hook
+			// for structured logging, but the ops user (the user)
+			// runs granit attached to a terminal so a fmt to
+			// stderr is visible.
+			fmt.Fprintf(os.Stderr, "history snap %s: %v\n", path, herr)
+		}
 	}
 	if err := atomicio.WriteNote(abs, content); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -468,4 +488,143 @@ func (s *Server) handleRenameNote(w http.ResponseWriter, r *http.Request) {
 	s.hub.Broadcast(wshub.Event{Type: "note.removed", Path: from})
 	s.hub.Broadcast(wshub.Event{Type: "note.changed", Path: to})
 	writeJSON(w, http.StatusOK, map[string]string{"from": from, "to": to})
+}
+
+// handleListHistory returns the version history for a single note.
+// GET /api/v1/notes/*?action=history is too clever; we expose this
+// at GET /api/v1/notes/*\/history (chi handles the literal `/history`
+// suffix below the wildcard via a sub-route, but chi doesn't support
+// that out of the box for `*` routes — so we use a separate path
+// prefix /api/v1/history/*  registered in server.go).
+//
+// Response shape:
+//
+//	{ "path": "foo/bar.md", "versions": [ {timestamp, size, hash}, ... ] }
+//
+// Newest first, capped at history.MaxVersionsListed.
+func (s *Server) handleListHistory(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(chi.URLParam(r, "*"), "/")
+	if path == "" || strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	versions, err := history.List(s.cfg.Vault.Root, path)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"path":     path,
+		"versions": versions,
+	})
+}
+
+// handleGetHistoryVersion returns the body of a single historical
+// snapshot. The timestamp comes via `?ts=<stamp>` rather than a path
+// segment because timestamps contain colons / dots that are awkward
+// in URL paths.
+//
+//	GET /api/v1/history/<path>?ts=2026-05-06T12:34:56.789Z
+func (s *Server) handleGetHistoryVersion(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(chi.URLParam(r, "*"), "/")
+	if path == "" || strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	ts := r.URL.Query().Get("ts")
+	if ts == "" {
+		writeError(w, http.StatusBadRequest, "missing ts query parameter")
+		return
+	}
+	body, err := history.Read(s.cfg.Vault.Root, path, ts)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeError(w, http.StatusNotFound, "version not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"path":      path,
+		"timestamp": ts,
+		"body":      string(body),
+	})
+}
+
+type restoreHistoryBody struct {
+	Timestamp string `json:"timestamp"`
+}
+
+// handleRestoreHistoryVersion writes a chosen snapshot's content
+// back to the live note path. The current live content is itself
+// snapshotted first by the regular Snap-on-write path inside the
+// handler, so a restore is itself reversible — restoring v3 over
+// v5 leaves v5 in the history list as the most-recent pre-restore
+// snapshot, and the user can restore THAT to undo the restore.
+//
+//	POST /api/v1/history/<path>/restore  body: {timestamp}
+//
+// Returns the new note state on success (mirrors PUT /notes/* shape).
+func (s *Server) handleRestoreHistoryVersion(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(chi.URLParam(r, "*"), "/")
+	if path == "" || strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	var b restoreHistoryBody
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if b.Timestamp == "" {
+		writeError(w, http.StatusBadRequest, "missing timestamp")
+		return
+	}
+	body, err := history.Read(s.cfg.Vault.Root, path, b.Timestamp)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeError(w, http.StatusNotFound, "version not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	abs := filepath.Join(s.cfg.Vault.Root, filepath.FromSlash(path))
+	// Snapshot current live content before overwrite so the restore
+	// is itself reversible.
+	if prior, rerr := os.ReadFile(abs); rerr == nil {
+		if _, herr := history.Snap(s.cfg.Vault.Root, path, prior); herr != nil {
+			fmt.Fprintf(os.Stderr, "history snap on restore %s: %v\n", path, herr)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := atomicio.WriteNote(abs, string(body)); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.rescanMu.Lock()
+	_ = s.cfg.Vault.ScanFast()
+	_ = s.cfg.TaskStore.Reload()
+	s.rescanMu.Unlock()
+	n := s.cfg.Vault.GetNote(path)
+	if n == nil {
+		writeError(w, http.StatusInternalServerError, "post-restore: note not found")
+		return
+	}
+	s.hub.Broadcast(wshub.Event{Type: "note.changed", Path: path})
+	w.Header().Set("ETag", s.etagFor(n.ModTime, n.Size))
+	writeJSON(w, http.StatusOK, noteFull{
+		Path:        n.RelPath,
+		Title:       n.Title,
+		ModTime:     n.ModTime,
+		Size:        n.Size,
+		Frontmatter: n.Frontmatter,
+		Body:        stripFrontmatterBody(n.Content),
+		Links:       n.Links,
+		Tags:        tagsFor(n),
+	})
 }
