@@ -105,13 +105,20 @@
       error = '';
       void loadFolders();
       tick().then(() => {
+        // Focus the title input but DON'T select-all. The previous
+        // select-all behaviour was causing user reports of "I can't
+        // change the name" — they tried to click into the field to
+        // edit and got confused by the highlighted state, or the
+        // first keystroke replacement felt unintentional. Now: focus
+        // lands the cursor at the end of the suggestion, the user
+        // sees normal text-input behaviour (click anywhere to position,
+        // backspace to clear, type to append), no surprise re-select.
         if (titleEl) {
           titleEl.focus();
-          // Select-all on focus so the user can immediately overtype
-          // the suggestion. The previous behaviour put the cursor at
-          // the end of the suggestion, which meant the user had to
-          // Cmd-A first to replace it — friction the report flagged.
-          titleEl.select();
+          // Cursor at end via setSelectionRange — works on every
+          // browser without the "select all" side-effect.
+          const len = titleEl.value.length;
+          titleEl.setSelectionRange(len, len);
         }
       });
     } else {
@@ -143,32 +150,48 @@
   }
 
   // Folder dropdown — opens on input focus / click and closes on
-  // outside click. Filters the options live as the user types so a
-  // partial match narrows the list. Pure state-driven; no
-  // datalist-style invisible popup magic that varies between
-  // browsers.
+  // outside click. Differentiates between TWO interactions:
+  //
+  //   1. User clicks the chevron / focuses the input → see ALL
+  //      folders in the vault. No filtering. This is the bug the
+  //      user reported: with the previous always-filter behaviour,
+  //      the field was pre-seeded to "Jots" so the dropdown only
+  //      showed Jots-* folders — they couldn't see the rest of the
+  //      vault.
+  //
+  //   2. User actively types in the search box at the top of the
+  //      panel → filter live. The search box is INSIDE the dropdown,
+  //      separate from the folder field below it, so picking a folder
+  //      doesn't replace the user's search query mid-search.
+  //
+  // The folder field stays as the SELECTED VALUE (or a custom path
+  // the user types directly).
+  let folderSearch = $state('');
   let filteredFolders = $derived.by(() => {
-    const q = folder.trim().toLowerCase();
+    const q = folderSearch.trim().toLowerCase();
     if (!q) return folderOptions;
     return folderOptions.filter((f) => f.toLowerCase().includes(q));
   });
   function pickFolder(f: string) {
     folder = f;
     folderPickerOpen = false;
+    folderSearch = '';
     folderEl?.focus();
   }
   function onFolderFocus() {
     folderPickerOpen = true;
+    folderSearch = '';
   }
-  function onFolderInput() {
+  function onFolderClick() {
     folderPickerOpen = true;
+    folderSearch = '';
   }
   function onFolderKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') {
       folderPickerOpen = false;
-    } else if (e.key === 'Enter' && filteredFolders.length === 1) {
+    } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      pickFolder(filteredFolders[0]);
+      folderPickerOpen = true;
     }
   }
   // Document-level listener to close the picker when the user
@@ -299,10 +322,10 @@
               bind:this={folderEl}
               bind:value={folder}
               onfocus={onFolderFocus}
-              oninput={onFolderInput}
+              onclick={onFolderClick}
               onkeydown={onFolderKeydown}
               placeholder="(vault root)"
-              class="w-full px-3 py-2 pr-9 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+              class="w-full px-3 py-2 pr-9 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary cursor-pointer"
               autocomplete="off"
               spellcheck="false"
               role="combobox"
@@ -311,39 +334,62 @@
             />
             <button
               type="button"
-              onclick={() => { folderPickerOpen = !folderPickerOpen; folderEl?.focus(); }}
+              onclick={() => { folderPickerOpen = !folderPickerOpen; if (folderPickerOpen) folderSearch = ''; folderEl?.focus(); }}
               aria-label={folderPickerOpen ? 'close folder picker' : 'open folder picker'}
               class="absolute right-2 top-1/2 -translate-y-1/2 text-dim hover:text-text px-1 leading-none"
             >▾</button>
           </div>
-          {#if folderPickerOpen && folderOptions.length > 0}
+          {#if folderPickerOpen}
             <div
               bind:this={folderPickerEl}
               id="extract-folder-listbox"
               role="listbox"
-              class="absolute z-10 left-0 right-0 mt-1 bg-base border border-surface1 rounded shadow-lg max-h-56 overflow-y-auto"
+              class="absolute z-10 left-0 right-0 mt-1 bg-base border border-surface1 rounded shadow-lg max-h-72 overflow-hidden flex flex-col"
             >
-              <button
-                type="button"
-                onclick={() => pickFolder('')}
-                role="option"
-                aria-selected={folder === ''}
-                class="w-full text-left px-3 py-1.5 text-xs text-dim hover:bg-surface0 italic border-b border-surface1"
-              >(vault root)</button>
-              {#each filteredFolders as f}
+              <!-- Search box at the top — separate from the folder
+                   field below so picking doesn't kill the user's
+                   search query mid-search. -->
+              <div class="p-1.5 border-b border-surface1 flex-shrink-0">
+                <input
+                  bind:value={folderSearch}
+                  placeholder="search folders…"
+                  class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-xs text-text focus:outline-none focus:border-primary"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </div>
+              <div class="overflow-y-auto flex-1">
                 <button
                   type="button"
-                  onclick={() => pickFolder(f)}
+                  onclick={() => pickFolder('')}
                   role="option"
-                  aria-selected={folder === f}
-                  class="w-full text-left px-3 py-1.5 text-sm font-mono text-text hover:bg-surface0 truncate"
-                >{f}</button>
-              {/each}
-              {#if filteredFolders.length === 0 && folder.trim()}
-                <div class="px-3 py-1.5 text-xs text-dim italic">
-                  No matching folder. <span class="text-text">"{folder.trim()}"</span> will be created on save.
-                </div>
-              {/if}
+                  aria-selected={folder === ''}
+                  class="w-full text-left px-3 py-1.5 text-xs text-dim hover:bg-surface0 italic border-b border-surface1"
+                >(vault root)</button>
+                {#if folderOptions.length === 0}
+                  <div class="px-3 py-2 text-xs text-dim italic">
+                    No folders in the vault yet. Type a name in the field above to create one.
+                  </div>
+                {:else}
+                  {#each filteredFolders as f}
+                    <button
+                      type="button"
+                      onclick={() => pickFolder(f)}
+                      role="option"
+                      aria-selected={folder === f}
+                      class="w-full text-left px-3 py-1.5 text-sm font-mono hover:bg-surface0 truncate {folder === f ? 'text-primary bg-primary/5' : 'text-text'}"
+                    >{f}</button>
+                  {/each}
+                  {#if filteredFolders.length === 0}
+                    <div class="px-3 py-2 text-xs text-dim italic">
+                      No matching folder for "{folderSearch.trim()}". Use the field above to create a new one.
+                    </div>
+                  {/if}
+                {/if}
+              </div>
+              <div class="px-3 py-1.5 text-[10px] text-dim border-t border-surface1 flex-shrink-0">
+                {filteredFolders.length} of {folderOptions.length} folder{folderOptions.length === 1 ? '' : 's'}
+              </div>
             </div>
           {/if}
         </div>
