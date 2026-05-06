@@ -486,35 +486,73 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* MarkdownRenderer overrides for paper. The default screen styles
-     use dark mode tokens that print badly; force light + reset
-     visited link colors. Hooks into the renderer's class names —
-     keep in sync if those change. */
-  .print-page :global(.prose),
-  .print-page :global(.prose *) {
+  /* MarkdownRenderer overrides for paper. The renderer's container
+     class is `.prose-note` (NOT `.prose` — earlier overrides missed
+     that and the rendered body inherited the dark-mode tokens, so
+     "white text on white paper" was the visible bug in dark mode).
+     Force light, paper-friendly styling for every element the body
+     can produce; CSS variables get re-bound to literal greys/blacks
+     so even tokens we forget to override fall back to readable
+     values. */
+  .print-page {
+    --color-text: #1a1a1a;
+    --color-subtext: #404040;
+    --color-dim: #6a6a6a;
+    --color-surface0: #f6f6f6;
+    --color-surface1: #e5e5e5;
+    --color-surface2: #d0d0d0;
+    --color-base: #ffffff;
+    --color-mantle: #ffffff;
+    --color-primary: #1a4fb3;
+    --color-secondary: #1a4fb3;
+  }
+  .print-page :global(.prose-note),
+  .print-page :global(.prose-note *) {
     color: #1a1a1a !important;
     background: transparent !important;
   }
-  .print-page :global(.prose h1),
-  .print-page :global(.prose h2),
-  .print-page :global(.prose h3) {
+  .print-page :global(.prose-note h1),
+  .print-page :global(.prose-note h2),
+  .print-page :global(.prose-note h3),
+  .print-page :global(.prose-note h4),
+  .print-page :global(.prose-note h5),
+  .print-page :global(.prose-note h6) {
     color: #1a1a1a !important;
     page-break-after: avoid;
     break-after: avoid;
   }
-  .print-page :global(.prose pre),
-  .print-page :global(.prose code) {
+  .print-page :global(.prose-note pre),
+  .print-page :global(.prose-note code) {
     background: #f4f4f4 !important;
     color: #222 !important;
     border: 1px solid #e5e5e5;
   }
-  .print-page :global(.prose a) {
+  .print-page :global(.prose-note a) {
     color: #1a4fb3 !important;
     text-decoration: underline;
   }
-  .print-page :global(.prose blockquote) {
+  .print-page :global(.prose-note blockquote) {
     border-left: 3px solid #888 !important;
     color: #444 !important;
+  }
+  .print-page :global(.prose-note table),
+  .print-page :global(.prose-note th),
+  .print-page :global(.prose-note td) {
+    border: 1px solid #c0c0c0 !important;
+    color: #1a1a1a !important;
+  }
+  .print-page :global(.prose-note th) {
+    background: #f4f4f4 !important;
+  }
+  .print-page :global(.prose-note hr) {
+    border-color: #c0c0c0 !important;
+  }
+  .print-page :global(.prose-note img) {
+    /* Print images at most page-width; otherwise a 4K screenshot
+       blows out the layout. Stays !important to override any
+       dark-mode filter the screen styles apply. */
+    max-width: 100% !important;
+    filter: none !important;
   }
 
   /* THE actual print rules. We hide the overlay's chrome (toolbar,
