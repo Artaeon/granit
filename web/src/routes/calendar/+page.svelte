@@ -372,11 +372,15 @@
     unifiedOpen = true;
   }
   async function reschedule(taskId: string, newStart: Date) {
+    const fmt = (d: Date) =>
+      `${d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     try {
       await api.patchTask(taskId, { scheduledStart: newStart.toISOString() });
       await load();
+      toast.success(`Rescheduled to ${fmt(newStart)}`);
     } catch (e) {
-      console.error('reschedule failed', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error('Reschedule failed: ' + msg);
     }
   }
   async function dropTask(id: string, start: Date, dur: number) {
@@ -398,6 +402,11 @@
   // — drag-to-move only changes the start; drag-to-resize changes
   // duration. Two distinct gestures, two patch endpoints.
   async function moveEvent(ev: CalendarEvent, newStart: Date) {
+    // Format helper for the success toast — keeps the toast call
+    // sites clean, and the user gets unambiguous confirmation of
+    // the actual time the move resolved to.
+    const fmt = (d: Date) =>
+      `${d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     try {
       // Surface a clear toast when the user drag-released an event we
       // can't actually patch — the most common cause is a legacy
@@ -408,6 +417,18 @@
       if (!ev.eventId && !ev.taskId) {
         toast.error('This event is missing an ID and can\'t be moved. Try editing it in the detail view to mint one.');
         return;
+      }
+      if (ev.type === 'ics_event' && ev.source) {
+        // ICS-specific gate: even if eventId is set, the source must
+        // be writable. The HourGrid filters this in isMovable, but
+        // a stale writableSources prop can let a drag fire that the
+        // server then rejects with 403. Catch it here with a clear
+        // message instead of a generic patchICSEvent failure toast.
+        const w = calSources.find((s) => s.source === ev.source)?.writable;
+        if (!w) {
+          toast.error(`Read-only calendar (${ev.source}) — can't move this event.`);
+          return;
+        }
       }
       if (ev.type === 'event' && ev.eventId) {
         const dateStr = `${newStart.getFullYear()}-${String(newStart.getMonth() + 1).padStart(2, '0')}-${String(newStart.getDate()).padStart(2, '0')}`;
@@ -427,10 +448,18 @@
           start: newStart.toISOString(),
           end: endD.toISOString()
         });
+      } else {
+        // Caught: the event doesn't match any of the known dispatch
+        // branches (event / ics_event / task). Surface so the user
+        // doesn't see a silent failure.
+        toast.error(`Can't move this event type (${ev.type ?? 'unknown'}).`);
+        return;
       }
       await load();
+      toast.success(`Moved to ${fmt(newStart)}`);
     } catch (e) {
-      console.error('move failed', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error('Move failed: ' + msg);
     }
   }
 
