@@ -259,6 +259,13 @@ func (s *Server) Handler() http.Handler {
 		r.Delete("/api/v1/goals/{id}/milestones/{idx}", s.handleDeleteMilestone)
 		r.Post("/api/v1/goals/{id}/review", s.handleLogReview)
 
+		// Print preview defaults — header / footer / mode persisted at
+		// .granit/print-config.json so a colleague's "ACME Corp"
+		// header survives across devices instead of living in browser
+		// localStorage on the desktop where they set it.
+		r.Get("/api/v1/print-config", s.handleGetPrintConfig)
+		r.Put("/api/v1/print-config", s.handlePutPrintConfig)
+
 		// Deadlines — top-level "this matters by date X" markers backed
 		// by .granit/deadlines.json. See internal/deadlines for the
 		// schema; the calendar overlay lives in handlers_calendar.go.
