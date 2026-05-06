@@ -37,7 +37,17 @@
         { keys: `${modKey}+B`, label: 'Bold the selection' },
         { keys: `${modKey}+I`, label: 'Italic the selection' },
         { keys: `${modKey}+Shift+I`, label: 'Italic (underscore form)' },
-        { keys: `${modKey}+K`, label: 'Wrap selection as a markdown link' }
+        { keys: `${modKey}+K`, label: 'Wrap selection as a markdown link' },
+        { keys: `${modKey}+\``, label: 'Inline code (toggle)' }
+      ]
+    },
+    {
+      title: 'Headings & Blocks',
+      rows: [
+        { keys: `${modKey}+Alt+1..6`, label: 'Set the line to a heading of that level' },
+        { keys: `${modKey}+Alt+0`, label: 'Strip heading / list / quote prefix' },
+        { keys: `${modKey}+Shift+8`, label: 'Toggle bullet list on the line' },
+        { keys: `${modKey}+Shift+9`, label: 'Toggle blockquote on the line' }
       ]
     },
     {
