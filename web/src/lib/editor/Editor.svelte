@@ -140,12 +140,37 @@
 
   onMount(setupView);
 
-  // External value changes — replace doc.
+  // External value changes — replace doc, but preserve cursor +
+  // selection across the dispatch so a server-side body sync (after
+  // autosave returns a normalised body, or after a WS reload from
+  // another device) doesn't yank the cursor back to position 0
+  // mid-type. The user reported "saving bug with reloading" — the
+  // pre-fix version replaced the doc cleanly but lost cursor
+  // state, which felt like the editor "broke" until a reload
+  // re-mounted everything.
+  //
+  // Two-line guard:
+  //   1. internalChange flag suppresses the dispatch when the
+  //      change came from the user's own typing (the updateListener
+  //      already updated `value` to match the doc).
+  //   2. doc.toString() !== v skips the dispatch when the values
+  //      already match (saves a layout flush + selection reset on
+  //      every reactive ping).
+  // When the dispatch DOES fire (genuinely external value change),
+  // we clamp the original selection to the new doc length so the
+  // cursor lands at a sensible position instead of jumping to 0.
   $effect(() => {
     const v = value;
-    if (view && !internalChange && view.state.doc.toString() !== v) {
-      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: v } });
-    }
+    if (!view || internalChange) return;
+    if (view.state.doc.toString() === v) return;
+    const sel = view.state.selection.main;
+    const len = v.length;
+    const anchor = Math.min(sel.anchor, len);
+    const head = Math.min(sel.head, len);
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: v },
+      selection: { anchor, head }
+    });
   });
 
   onDestroy(() => view?.destroy());
