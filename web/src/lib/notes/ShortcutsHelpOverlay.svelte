@@ -64,6 +64,7 @@
         { keys: `#`, label: 'Tag picker — autocomplete from your tag set' },
         { keys: `/`, label: 'Slash picker — snippets + /h1 /code /divider /table /note /tip /warning /danger …' },
         { keys: `${modKey}+Shift+X`, label: 'Extract selection to a new note (auto-link)' },
+        { keys: `${modKey}+Shift+A`, label: 'Ask AI about the selection (summarise / improve / translate)' },
         { keys: `${modKey}+click`, label: 'Open a wikilink in place' }
       ]
     },

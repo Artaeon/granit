@@ -36,7 +36,8 @@
     { label: 'H3', chord: 'mod+alt+3', title: 'Heading 3' },
     { label: '•', chord: 'mod+shift+8', title: 'Bullet list' },
     { label: '"', chord: 'mod+shift+9', title: 'Blockquote' },
-    { label: '↗', chord: 'mod+shift+x', title: 'Extract to new note' }
+    { label: '↗', chord: 'mod+shift+x', title: 'Extract to new note' },
+    { label: '✨', chord: 'mod+shift+a', title: 'Ask AI about selection' }
   ];
 
   interface Props {

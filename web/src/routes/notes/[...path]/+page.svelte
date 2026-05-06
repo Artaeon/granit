@@ -18,6 +18,8 @@
   import { getDraft, setDraft, clearDraft, draftDivergesFromServer } from '$lib/notes/drafts';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import type { ExtractRequest } from '$lib/editor/extract-note';
+  import AskAIDialog from '$lib/notes/AskAIDialog.svelte';
+  import type { AskAIRequest } from '$lib/editor/ask-ai';
   import PrintPreview from '$lib/notes/PrintPreview.svelte';
   import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
   import SelectionToolbar from '$lib/editor/SelectionToolbar.svelte';
@@ -381,8 +383,17 @@
   // gated on the API call SUCCEEDING — if create fails, the source
   // note isn't mutated and the user can retry without dead links.
   let extractRequest = $state<ExtractRequest | null>(null);
+  let askAIRequest = $state<AskAIRequest | null>(null);
   let printOpen = $state(false);
   let helpOpen = $state(false);
+
+  function handleAskAI(req: AskAIRequest) {
+    askAIRequest = req;
+  }
+  function dismissAskAI() {
+    askAIRequest?.cancel();
+    askAIRequest = null;
+  }
 
   // Global "?" handler — opens the shortcuts cheat sheet from
   // anywhere on the note view, but ONLY when the user isn't typing
@@ -842,7 +853,7 @@
       <NoteDeadlinesStrip frontmatter={note.frontmatter ?? null} />
       <div class="flex-1 min-h-0 p-2 sm:p-3">
         {#if viewMode === 'edit'}
-          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} />
+          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} />
         {:else if viewMode === 'preview'}
           <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4">
             <div class="max-w-3xl mx-auto">
@@ -852,7 +863,7 @@
         {:else}
           <!-- split (desktop only) -->
           <div class="h-full grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} />
+            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} />
             <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block">
               <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
             </div>
@@ -918,4 +929,14 @@
 <SelectionToolbar
   container={editorDOM}
   onCommand={(chord) => editor?.dispatchChord(chord)}
+/>
+
+<!-- Ask-AI dialog — fired by Mod-Shift-A or the toolbar's ✨ button.
+     The selection is sent to /api/v1/chat with optional preset or
+     custom instruction; the response opens with Copy / Replace /
+     Insert below action buttons. -->
+<AskAIDialog
+  request={askAIRequest}
+  sourcePath={note?.path ?? ''}
+  onDismiss={dismissAskAI}
 />
