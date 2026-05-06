@@ -19,29 +19,31 @@
   let editing = $state(false);
   let editTitle = $state('');
   let editDate = $state('');
-  let editStartTime = $state('');
-  let editEndTime = $state('');
   let editLocation = $state('');
   let editColor = $state('cyan');
 
   // 24-hour HH:MM picker buffers — same pattern as UnifiedCreate.
   // Native <input type="time"> renders AM/PM on most OS locales
   // regardless of any lang attribute. Custom HH + MM selects
-  // guarantee 24-hour display everywhere; user's bug report:
-  // "editing an event still shows AM and PM."
+  // guarantee 24-hour display everywhere.
   let editStartH = $state(0);
   let editStartM = $state(0);
   let editEndH = $state(0);
   let editEndM = $state(0);
-  // Sync the HH:MM strings back from the picker selects. Each
-  // effect tracks its two H/M components and writes the combined
-  // value used by saveEdit.
-  $effect(() => {
-    editStartTime = `${String(editStartH).padStart(2, '0')}:${String(editStartM).padStart(2, '0')}`;
-  });
-  $effect(() => {
-    editEndTime = `${String(editEndH).padStart(2, '0')}:${String(editEndM).padStart(2, '0')}`;
-  });
+  // editStartTime / editEndTime are DERIVED, not state-with-effect.
+  // The previous $effect-driven sync had a flush race: the user
+  // could change a select and immediately click Save, and the
+  // submit handler would read a stale time string that hadn't
+  // picked up the new H/M yet. Events landed at the previous
+  // time, not the one the user just chose. The user reported this
+  // as "editing the times also not, they get scheduled somewhere".
+  // $derived is read synchronously on access — no flush race.
+  let editStartTime = $derived(
+    `${String(editStartH).padStart(2, '0')}:${String(editStartM).padStart(2, '0')}`
+  );
+  let editEndTime = $derived(
+    `${String(editEndH).padStart(2, '0')}:${String(editEndM).padStart(2, '0')}`
+  );
 
   // Calendar sources — needed to know if an ICS event came from a
   // writable .ics file. Loaded once on mount; refreshed on demand.
@@ -69,8 +71,9 @@
     if (!event) return;
     editTitle = event.title;
     editDate = event.date ?? (event.start ? event.start.slice(0, 10) : '');
-    editStartTime = event.start ? new Date(event.start).toTimeString().slice(0, 5) : '';
-    editEndTime = event.end ? new Date(event.end).toTimeString().slice(0, 5) : '';
+    // editStartTime / editEndTime are derived from H+M now — seed
+    // the H/M state instead. Direct string assignment to the
+    // derived bindings would throw at runtime in Svelte 5.
     editLocation = event.location ?? '';
     editColor = event.color ?? 'cyan';
     // Seed the 24-hour selects from the event's start/end so the
