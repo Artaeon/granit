@@ -5,6 +5,7 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import HubImportDialog from '$lib/notes/HubImportDialog.svelte';
 
   // /hub — the personal launch pad. The "single login, find
   // everything I need" page the user described. Three concerns
@@ -31,6 +32,9 @@
   // HubItem instance means "edit this".
   let modalOpen = $state(false);
   let editing = $state<HubItem | null>(null);
+  // Bookmark import dialog — separate modal so its preview list
+  // doesn't fight the add/edit form for screen real estate.
+  let importOpen = $state(false);
 
   // Form buffers — bound to the modal inputs so cancel cleanly
   // discards without mutating the on-disk record.
@@ -358,6 +362,12 @@
       subtitle="Quick-access links, tools, and small credentials — your single login to the things you use every day."
     >
       {#snippet actions()}
+        <button
+          type="button"
+          onclick={() => (importOpen = true)}
+          class="px-3 py-1.5 bg-surface0 border border-surface1 text-subtext rounded text-sm hover:border-primary hover:text-text"
+          title="Paste a browser bookmark export and pick which ones to add"
+        >↓ Import</button>
         <button
           onclick={openCreate}
           class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
@@ -711,3 +721,9 @@
     </form>
   </div>
 {/if}
+
+<HubImportDialog
+  bind:open={importOpen}
+  onClose={() => (importOpen = false)}
+  onImported={load}
+/>
