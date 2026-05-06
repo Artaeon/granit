@@ -391,9 +391,31 @@
       toast.error('schedule failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
-  async function resizeTask(taskId: string, durationMinutes: number) {
+  // Resize dispatch — receives the full event so we can route to the
+  // right patch endpoint based on event kind. Tasks → patchTask
+  // (durationMinutes wires through to scheduledStart + duration in the
+  // task store). events.json → patchEvent with a new HH:MM end_time
+  // computed from start + duration. ICS → patchICSEvent with an
+  // RFC3339 end built from the same arithmetic, since ICS stores
+  // start/end as full timestamps not separate date+time fields.
+  async function resizeEvent(ev: CalendarEvent, durationMinutes: number) {
     try {
-      await api.patchTask(taskId, { durationMinutes });
+      if (ev.taskId) {
+        await api.patchTask(ev.taskId, { durationMinutes });
+      } else if (ev.type === 'event' && ev.eventId && ev.start) {
+        // events.json is keyed on date + HH:MM strings. Build the
+        // new end_time by adding `durationMinutes` to the start
+        // string, wrapped through a Date so DST transitions don't
+        // surprise us mid-event.
+        const startD = new Date(ev.start);
+        const endD = new Date(startD.getTime() + durationMinutes * 60_000);
+        const endTime = `${String(endD.getHours()).padStart(2, '0')}:${String(endD.getMinutes()).padStart(2, '0')}`;
+        await api.patchEvent(ev.eventId, { end_time: endTime });
+      } else if (ev.type === 'ics_event' && ev.eventId && ev.source && ev.start) {
+        const startD = new Date(ev.start);
+        const endD = new Date(startD.getTime() + durationMinutes * 60_000);
+        await api.patchICSEvent(ev.source, ev.eventId, { end: endD.toISOString() });
+      }
       await load();
     } catch (e) {
       console.error('resize failed', e);
@@ -613,13 +635,14 @@
               onClickSlot={clickSlot}
               onSlotRange={onSlotRange}
               onReschedule={reschedule}
-              onResize={resizeTask}
+              onResize={resizeEvent}
+              writableSources={calSources.filter((s) => s.writable).map((s) => s.source)}
               onTaskDrop={dropTask}
             />
           </div>
         </div>
       {:else if view === 'day' || view === '3day' || view === 'week'}
-        <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onResize={resizeTask} />
+        <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} />
       {:else if view === 'month'}
         <div class="h-full overflow-auto">
           <MonthView cursor={cursor} events={events} onClickEvent={clickEvent} onClickDay={clickDay} />
