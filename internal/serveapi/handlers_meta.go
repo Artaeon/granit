@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -13,6 +14,40 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/oklog/ulid/v2"
 )
+
+// Date / time validators for event payloads. The handlers used to
+// trust the client's strings verbatim, so a malformed payload could
+// land an event with start_time="9 PM" or date="May 6" — strings the
+// calendar feed couldn't parse, so the event silently disappeared
+// from the grid. Validating at the boundary keeps the storage shape
+// invariant and lets the API surface a clear 400 instead of a ghost
+// event.
+var (
+	eventDateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	eventTimeRe = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
+)
+
+// validateEventTimes ensures date is YYYY-MM-DD, optional times are
+// 24-hour HH:MM, and end (when present) is strictly after start.
+// Empty start_time / end_time is allowed (the event is then "all-
+// day-ish" — granitmeta accepts both shapes).
+func validateEventTimes(date, start, end string) error {
+	if !eventDateRe.MatchString(date) {
+		return fmt.Errorf("date must be YYYY-MM-DD")
+	}
+	if start != "" && !eventTimeRe.MatchString(start) {
+		return fmt.Errorf("start_time must be HH:MM (24-hour)")
+	}
+	if end != "" && !eventTimeRe.MatchString(end) {
+		return fmt.Errorf("end_time must be HH:MM (24-hour)")
+	}
+	if start != "" && end != "" {
+		if end <= start {
+			return fmt.Errorf("end_time must be after start_time")
+		}
+	}
+	return nil
+}
 
 // projectView decorates the on-disk project with computed fields the web
 // UI needs (progress + task counts) so the client doesn't need to recompute.
@@ -284,6 +319,10 @@ func (s *Server) handleCreateEvent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "title and date required")
 		return
 	}
+	if err := validateEventTimes(ev.Date, ev.StartTime, ev.EndTime); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if ev.ID == "" {
 		ev.ID = strings.ToLower(ulid.Make().String())
 	}
@@ -339,6 +378,13 @@ func (s *Server) handlePatchEvent(w http.ResponseWriter, r *http.Request) {
 	apply("end_time", &ev.EndTime)
 	apply("location", &ev.Location)
 	apply("color", &ev.Color)
+	// Validate AFTER apply so a partial patch (e.g. just start_time)
+	// gets validated against the merged record. Catches "user shifted
+	// the start past the end" without forcing them to also patch end.
+	if err := validateEventTimes(ev.Date, ev.StartTime, ev.EndTime); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	events[idx] = ev
 	if err := granitmeta.WriteEvents(s.cfg.Vault.Root, events); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
