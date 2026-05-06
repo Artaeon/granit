@@ -17,6 +17,7 @@
     days,
     events,
     habits = [],
+    writableSources = [],
     onClickEvent,
     onClickSlot,
     onSlotRange,
@@ -31,6 +32,11 @@
      *  (one dot per habit per day). Default empty so callers that
      *  don't care don't have to fetch. */
     habits?: HabitInfo[];
+    /** ICS source filenames the user can write to (e.g. "training.ics").
+     *  An ICS event's resize gate checks this — read-only ICS files
+     *  (subscribed feeds, hand-managed) get a locked cursor instead
+     *  of a resize grip so we can't try to PATCH them. */
+    writableSources?: string[];
     onClickEvent: (ev: CalendarEvent) => void;
     onClickSlot: (date: Date, hour: number, minute: number) => void;
     /** Called on click+drag (or single click → 30min default) on an empty
@@ -38,9 +44,12 @@
     onSlotRange?: (start: Date, end: Date) => void;
     onReschedule?: (taskId: string, newStart: Date) => void | Promise<void>;
     /** Called when the user drags the bottom edge of an event to change
-     *  its duration. Only fires for scheduled tasks (events.json events
-     *  use a different code path: open the editor and adjust there). */
-    onResize?: (taskId: string, durationMinutes: number) => void | Promise<void>;
+     *  its duration. Fires for scheduled tasks (taskId is set), events.json
+     *  events (eventId is set, type==='event'), and writable ICS events
+     *  (eventId UID + source filename, type==='ics_event'). The parent
+     *  inspects ev.type / ev.taskId / ev.source to dispatch to the right
+     *  patch endpoint. */
+    onResize?: (ev: CalendarEvent, durationMinutes: number) => void | Promise<void>;
     /** Called when a task from the backlog is dropped on a slot. The
      *  page wires this to api.patchTask({ scheduledStart, durationMinutes }).
      *  Discriminator for "task drop in progress" is the dragStore — when
@@ -48,6 +57,27 @@
      *  instead of slot-drag-to-create. */
     onTaskDrop?: (taskId: string, start: Date, durationMinutes: number) => void | Promise<void>;
   } = $props();
+
+  /**
+   * `true` when the event is a kind we can resize via the patch APIs.
+   * Three branches:
+   *   - Scheduled tasks (taskId set)
+   *   - events.json events (type === 'event' && eventId set)
+   *   - Writable ICS events (type === 'ics_event' && source in
+   *     writableSources). Read-only ICS gets no resize grip — patch
+   *     would fail with 403 anyway.
+   * The render loop uses this to gate the grip rendering AND the
+   * pointerdown-on-event guard so a forbidden event ignores both.
+   */
+  function isResizable(ev: CalendarEvent): boolean {
+    if (!ev.start) return false;
+    if (ev.taskId) return true;
+    if (ev.type === 'event' && ev.eventId) return true;
+    if (ev.type === 'ics_event' && ev.eventId && ev.source) {
+      return writableSources.includes(ev.source);
+    }
+    return false;
+  }
 
   // Per-day habit completion lookup. Built once per render — for a
   // visible week (≤7 days × ~10 habits) the loop is trivial. Storing
@@ -407,7 +437,7 @@
   let resize = $state<ResizeState | null>(null);
 
   function onResizePointerDown(e: PointerEvent, ev: CalendarEvent, startMin: number, durationMin: number) {
-    if (!ev.taskId || !ev.start) return;
+    if (!isResizable(ev)) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.stopPropagation();
     const target = e.currentTarget as HTMLElement;
@@ -437,7 +467,7 @@
     const target = e.currentTarget as HTMLElement;
     if (target.hasPointerCapture(e.pointerId)) target.releasePointerCapture(e.pointerId);
     if (rs.ghostDuration === rs.initialDurationMin) return;
-    if (rs.ev.taskId && onResize) await onResize(rs.ev.taskId, rs.ghostDuration);
+    if (onResize) await onResize(rs.ev, rs.ghostDuration);
   }
 
   function onResizePointerCancel(e: PointerEvent) {
@@ -612,6 +642,7 @@
               {@const height = Math.max(ghostDur * (HOUR_PX / 60), 18)}
               {@const widthPct = 100 / item.groupSize}
               {@const draggable = !!item.ev.taskId && !!item.ev.start}
+              {@const resizable = isResizable(item.ev)}
               <div
                 class="absolute z-10"
                 style="top: {top}px; height: {height}px; left: {item.col * widthPct}%; width: calc({widthPct}% - 2px);"
@@ -636,7 +667,7 @@
                 <!-- Resize grip — bottom 6px, only visible/usable on
                      scheduled tasks. Sits ABOVE the event button so its
                      pointerdown wins. -->
-                {#if draggable && height > 22}
+                {#if resizable && height > 22}
                   <div
                     role="separator"
                     aria-label="resize event"
