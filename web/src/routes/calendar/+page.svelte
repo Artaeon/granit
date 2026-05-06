@@ -399,6 +399,16 @@
   // duration. Two distinct gestures, two patch endpoints.
   async function moveEvent(ev: CalendarEvent, newStart: Date) {
     try {
+      // Surface a clear toast when the user drag-released an event we
+      // can't actually patch — the most common cause is a legacy
+      // events.json entry without an ID (created before the ID-mint
+      // path was added) or an ICS event whose source isn't writable.
+      // Without this, the drag visually "works" (ghost moves with the
+      // pointer) but the event snaps back on release with no feedback.
+      if (!ev.eventId && !ev.taskId) {
+        toast.error('This event is missing an ID and can\'t be moved. Try editing it in the detail view to mint one.');
+        return;
+      }
       if (ev.type === 'event' && ev.eventId) {
         const dateStr = `${newStart.getFullYear()}-${String(newStart.getMonth() + 1).padStart(2, '0')}-${String(newStart.getDate()).padStart(2, '0')}`;
         const startTime = `${String(newStart.getHours()).padStart(2, '0')}:${String(newStart.getMinutes()).padStart(2, '0')}`;

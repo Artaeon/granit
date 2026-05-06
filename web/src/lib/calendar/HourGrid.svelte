@@ -678,7 +678,8 @@
                   onpointerup={onEventPointerUp}
                   onpointercancel={onEventPointerCancel}
                   onclick={(e) => { e.stopPropagation(); if (!drag && !draggable) onClickEvent(item.ev); }}
-                  class="absolute inset-0 rounded text-left text-[11px] overflow-hidden hover:brightness-125 transition {draggable ? 'cursor-grab active:cursor-grabbing' : ''} {isDragging ? 'opacity-30' : ''} {isResizing ? 'ring-1 ring-primary' : ''}"
+                  title={draggable ? 'Drag to move · drag bottom edge to resize' : item.ev.type === 'ics_event' ? 'Read-only ICS event (subscribed feed)' : 'Click to view'}
+                  class="absolute inset-0 rounded text-left text-[11px] overflow-hidden hover:brightness-125 transition {draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} {isDragging ? 'opacity-30' : ''} {isResizing ? 'ring-1 ring-primary' : ''}"
                   style="background: {c.bg}; color: {c.fg}; border-left: 3px solid {c.border}; padding: 2px 4px; touch-action: none;"
                 >
                   <div class="font-medium truncate {item.ev.done ? 'line-through opacity-70' : ''}">{item.ev.title}</div>
