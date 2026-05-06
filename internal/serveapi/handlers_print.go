@@ -42,12 +42,15 @@ func printConfigPath(vaultRoot string) string {
 }
 
 // validMode returns m if it's a recognised print mode, otherwise
-// "standard". Keeps the front-end's three-mode UI honest — if a
-// future build adds a new mode and an old client tries to write
-// it, we silently downgrade rather than crashing the renderer.
+// "standard". Keeps the front-end's mode set honest — if a future
+// build adds a new mode and an old client tries to write it, we
+// silently downgrade rather than crashing the renderer. Adding a
+// new mode requires both a client-side template AND adding it
+// here; older clients that don't know about a new mode will see
+// "standard" until they update.
 func validMode(m string) string {
 	switch m {
-	case "standard", "certificate", "report":
+	case "standard", "certificate", "report", "letterhead", "memo":
 		return m
 	}
 	return "standard"
