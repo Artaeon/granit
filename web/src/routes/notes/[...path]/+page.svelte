@@ -21,6 +21,7 @@
   import AskAIDialog from '$lib/notes/AskAIDialog.svelte';
   import type { AskAIRequest } from '$lib/editor/ask-ai';
   import PrintPreview from '$lib/notes/PrintPreview.svelte';
+  import HistoryPanel from '$lib/notes/HistoryPanel.svelte';
   import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
   import SelectionToolbar from '$lib/editor/SelectionToolbar.svelte';
 
@@ -412,6 +413,7 @@
   let extractRequest = $state<ExtractRequest | null>(null);
   let askAIRequest = $state<AskAIRequest | null>(null);
   let printOpen = $state(false);
+  let historyOpen = $state(false);
   let helpOpen = $state(false);
 
   function handleAskAI(req: AskAIRequest) {
@@ -853,6 +855,24 @@
             <path d="M6 17H4a2 2 0 01-2-2v-3a2 2 0 012-2h16a2 2 0 012 2v3a2 2 0 01-2 2h-2"/>
           </svg>
         </button>
+        <!-- Version history — opens a fullscreen panel showing all
+             prior saved versions of this note with one-click
+             restore. Snapshot is taken automatically on every save
+             (with content-hash dedup, so autosave bursts don't
+             pollute the list). The promise: nothing is ever lost. -->
+        <button
+          onclick={() => (historyOpen = true)}
+          title="Version history"
+          aria-label="Version history"
+          class="hidden sm:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 7v5l3 2" stroke-linecap="round"/>
+            <path d="M3 12a9 9 0 0114-7.5l1 1" stroke-linecap="round"/>
+            <path d="M3 4v4h4" stroke-linecap="round"/>
+          </svg>
+        </button>
         <button
           onclick={() => save()}
           disabled={(!dirty && !saveFailed) || saving}
@@ -945,6 +965,23 @@
     body={body}
     sourcePath={note.path}
     onClose={() => (printOpen = false)}
+  />
+{/if}
+
+<!-- Version history overlay. Restore returns the body of the chosen
+     snapshot; we set `body` so the editor reflects it immediately,
+     mark dirty so the next autosave persists the restored content,
+     and let the panel's own loadVersions() refresh the list (the
+     pre-restore content was itself snapshotted server-side). -->
+{#if note}
+  <HistoryPanel
+    bind:open={historyOpen}
+    notePath={note.path}
+    currentBody={body}
+    onRestore={(restoredBody: string) => {
+      body = restoredBody;
+      dirty = true;
+    }}
   />
 {/if}
 
