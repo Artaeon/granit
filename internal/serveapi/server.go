@@ -266,6 +266,16 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/print-config", s.handleGetPrintConfig)
 		r.Put("/api/v1/print-config", s.handlePutPrintConfig)
 
+		// Hub — personal "single login, find everything I need" page.
+		// Backed by .granit/hub.json: links, tools, optional non-
+		// critical credentials. Real secrets live in a password
+		// manager; this is for the day-to-day "URL of my staging
+		// dashboard" tier.
+		r.Get("/api/v1/hub/items", s.handleListHubItems)
+		r.Post("/api/v1/hub/items", s.handleCreateHubItem)
+		r.Patch("/api/v1/hub/items/{id}", s.handlePatchHubItem)
+		r.Delete("/api/v1/hub/items/{id}", s.handleDeleteHubItem)
+
 		// Deadlines — top-level "this matters by date X" markers backed
 		// by .granit/deadlines.json. See internal/deadlines for the
 		// schema; the calendar overlay lives in handlers_calendar.go.
