@@ -1280,6 +1280,20 @@
     text-decoration: none;
   }
 
+  /* Long-content print pagination. The previous version printed
+     only the first page because:
+       1. .print-page was display:flex (column) — flex containers
+          handle overflow oddly under print, and the browser may
+          not break flex items across pages cleanly.
+       2. .print-overlay was position:fixed in screen mode, which
+          some browsers carry into print — fixed elements typically
+          render only on the first page per the CSS spec.
+     The @media print block below resets both: the overlay becomes
+     position:static, the .print-page becomes display:block, and
+     content flows naturally past the page boundary so the printer
+     auto-paginates. page-break-inside:avoid on the doc-signature
+     keeps the integrity stamp from being split across pages. */
+
   /* THE actual print rules. We hide the overlay's chrome (toolbar,
      config panel, page shadow), reset margins so the OS @page
      handles them, and let the .print-page content flow at native
@@ -1306,7 +1320,41 @@
       margin: 0 !important;
       padding: 0 !important;
       box-shadow: none !important;
+      /* CRITICAL for multi-page: reset display from flex to block
+         so the browser's pagination engine breaks content across
+         pages naturally. Flex containers and grid containers both
+         disrupt page-break flow in most browsers. */
+      display: block !important;
     }
+    /* Body content needs to be a normal block so headings, lists,
+       and paragraphs each become breakable blocks. The screen-side
+       max-width (16cm for cert / formal) is dropped in print —
+       @page margins handle the gutters. */
+    .formal-body, .lh-body, .memo-body, .cert-body, .print-body {
+      max-width: none !important;
+      margin: 0 !important;
+    }
+    /* Tighten orphan/widow control so a heading's content doesn't
+       get stranded at the bottom of one page with its subtext on
+       the next. Most browsers honor these defaults but explicit is
+       safer for print. */
+    :global(.print-page p),
+    :global(.print-page li),
+    :global(.print-page blockquote) {
+      orphans: 3;
+      widows: 3;
+    }
+    /* Keep code blocks and tables intact when possible — splitting
+       a code fence mid-line is unreadable; splitting a table mid-
+       row strands the header from the body. */
+    :global(.print-page pre),
+    :global(.print-page table) {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    /* Document signature already has page-break-inside:avoid in
+       its own rule, which is the load-bearing one — the
+       authenticity stamp must NEVER be split across pages. */
     @page {
       size: A4;
       margin: 2cm 1.5cm;
