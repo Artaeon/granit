@@ -192,6 +192,33 @@
           editor?.setScrollTop?.(remembered);
         });
       }
+      // Block-level wikilink target — when arriving via [[Note#H]] the
+      // url hash carries the heading text. Scroll to the matching
+      // line, overriding any remembered scroll position. Only fires
+      // when the hash is non-empty so the regular reopen flow keeps
+      // its remembered position. Heading-match is case-insensitive
+      // and whitespace-collapsed so "  Plan  " in the hash still
+      // matches "## Plan" in the body.
+      const rawHash = $page.url.hash ? decodeURIComponent($page.url.hash.slice(1)) : '';
+      if (rawHash) {
+        const target = rawHash.toLowerCase().replace(/\s+/g, ' ').trim();
+        const lines = (body ?? '').split('\n');
+        let found = -1;
+        let inFence = false;
+        for (let i = 0; i < lines.length; i++) {
+          const t = lines[i].trim();
+          if (t.startsWith('```') || t.startsWith('~~~')) { inFence = !inFence; continue; }
+          if (inFence) continue;
+          const m = /^(#{1,6})\s+(.+?)\s*$/.exec(t);
+          if (m && m[2].toLowerCase().replace(/\s+/g, ' ').trim() === target) {
+            found = i + 1; // CodeMirror is 1-based
+            break;
+          }
+        }
+        if (found > 0) {
+          requestAnimationFrame(() => editor?.scrollToLine?.(found));
+        }
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       // If we have a local draft, surface it instead of an error so an
@@ -457,23 +484,30 @@
     toast.success(`Extracted to [[${title}]]`);
   }
 
-  async function navigateWikilink(title: string) {
+  async function navigateWikilink(target: string) {
     // Best-effort flush of any pending edit. We never block navigation on
     // the save result — the localStorage draft (setDraft, debounce 600ms)
     // already preserves the body, and beforeNavigate flushes again. If the
     // user is offline, save will fail; the draft is still on disk and gets
     // retried automatically when 'online' fires.
     if (dirty) void save({ silent: true });
+    // Block-level wikilink: [[Note#Heading]] — split off the fragment
+    // and pass it through the URL hash. The receiving page (i.e. this
+    // same component on a fresh mount) reads $page.url.hash and
+    // scrolls to the heading after the doc loads.
+    const [titleRaw, ...frag] = target.split('#');
+    const title = titleRaw.trim();
+    const hash = frag.length > 0 ? `#${frag.join('#').trim()}` : '';
     try {
       const list = await api.listNotes({ q: title, limit: 5 });
       const exact = list.notes.find((n) => n.title.toLowerCase() === title.toLowerCase());
-      const target = exact ?? list.notes[0];
-      if (target) {
-        goto(`/notes/${encodeURIComponent(target.path)}`);
+      const t = exact ?? list.notes[0];
+      if (t) {
+        goto(`/notes/${encodeURIComponent(t.path)}${hash}`);
         return;
       }
     } catch {}
-    goto(`/notes/${encodeURIComponent(title + '.md')}`);
+    goto(`/notes/${encodeURIComponent(title + '.md')}${hash}`);
   }
 
   $effect(() => {
