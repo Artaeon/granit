@@ -98,6 +98,7 @@
       items: [
         { href: '/finance', label: 'Finance', icon: 'finance', moduleId: 'finance' },
         { href: '/shopping', label: 'Shopping', icon: 'shopping', moduleId: 'shopping' },
+        { href: '/hub', label: 'Hub', icon: 'hub', moduleId: 'hub' },
         { href: '/people', label: 'People', icon: 'people', moduleId: 'people' },
         { href: '/measurements', label: 'Metrics', icon: 'measurements', moduleId: 'measurements' },
         { href: '/virtues', label: 'Virtues', icon: 'virtues', moduleId: 'virtues' },

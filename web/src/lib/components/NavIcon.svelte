@@ -40,6 +40,18 @@
     <path d="M3 9h18l-2 11H5z"/>
     <path d="M8 9V6a4 4 0 0 1 8 0v3"/>
   </svg>
+{:else if name === 'hub'}
+  <!-- Hub — concentric grid of dots, the "everything in one place"
+       metaphor. Reads as "launch pad" / "directory" rather than a
+       single tool. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <circle cx="12" cy="12" r="2.5"/>
+    <circle cx="5" cy="5" r="1.5"/>
+    <circle cx="19" cy="5" r="1.5"/>
+    <circle cx="5" cy="19" r="1.5"/>
+    <circle cx="19" cy="19" r="1.5"/>
+    <path d="m9.8 9.8-3.5-3.5M14.2 9.8l3.5-3.5M9.8 14.2l-3.5 3.5M14.2 14.2l3.5 3.5" opacity="0.5"/>
+  </svg>
 {:else if name === 'tasks'}
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <rect x="3" y="5" width="6" height="6" rx="1"/><path d="m4.5 8 1 1 2-2"/><path d="M13 7h8M13 17h8M3 17h6"/>
