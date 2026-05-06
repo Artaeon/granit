@@ -408,8 +408,20 @@ func (s *Server) handleToggleHabit(w http.ResponseWriter, r *http.Request) {
 	}
 	// Force a fresh scan + task-store reload so subsequent GETs see
 	// the updated state without waiting for the watcher debounce.
+	//
+	// CRITICAL: Vault.ScanFast() leaves Note.Content empty for notes
+	// whose modtime hasn't changed since the last scan, AND on first
+	// discovery of a brand-new file it indexes the path but doesn't
+	// load body bytes. TaskStore.Reload() then parses an empty body
+	// for the daily note we just wrote, so the new habit's checkbox
+	// line is invisible to the task index — taskIdToday stays empty
+	// and the web's toggle button greys out forever ("can't track new
+	// habits"). EnsureLoaded forces a content read on `rel` before the
+	// reload so the new task is actually visible. Same pitfall the
+	// `Granit ScanFast/EnsureLoaded contract` memory note warns about.
 	s.rescanMu.Lock()
 	_ = s.cfg.Vault.ScanFast()
+	_ = s.cfg.Vault.EnsureLoaded(rel)
 	_ = s.cfg.TaskStore.Reload()
 	s.rescanMu.Unlock()
 
