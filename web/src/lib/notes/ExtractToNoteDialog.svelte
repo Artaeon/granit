@@ -88,8 +88,16 @@
       error = 'Title is required';
       return;
     }
-    if (!path.trim().endsWith('.md')) {
+    const cleanPath = path.trim();
+    if (!cleanPath.endsWith('.md')) {
       error = 'Path must end in .md';
+      return;
+    }
+    // The backend already rejects ".." and absolute paths (handlers_
+    // notes.go), but failing here is faster + the dialog gets to keep
+    // the user's draft instead of round-tripping for a 400.
+    if (cleanPath.includes('..') || cleanPath.startsWith('/')) {
+      error = 'Path must stay inside the vault';
       return;
     }
     busy = true;
