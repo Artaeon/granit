@@ -391,6 +391,39 @@
       toast.error('schedule failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
+  // Move dispatch — receives the full event + new start Date and
+  // routes to the right patch endpoint by event kind. Tasks already
+  // have their own onReschedule path (taskId-based, unchanged); this
+  // handler covers events.json + writable ICS. Duration is preserved
+  // — drag-to-move only changes the start; drag-to-resize changes
+  // duration. Two distinct gestures, two patch endpoints.
+  async function moveEvent(ev: CalendarEvent, newStart: Date) {
+    try {
+      if (ev.type === 'event' && ev.eventId) {
+        const dateStr = `${newStart.getFullYear()}-${String(newStart.getMonth() + 1).padStart(2, '0')}-${String(newStart.getDate()).padStart(2, '0')}`;
+        const startTime = `${String(newStart.getHours()).padStart(2, '0')}:${String(newStart.getMinutes()).padStart(2, '0')}`;
+        // Preserve duration: take the event's old duration in
+        // minutes, add to the new start to compute the new end. The
+        // event used to span 14:30–16:00; dragging to 09:15 should
+        // produce 09:15–10:45, not collapse to a zero-length event.
+        const dur = ev.durationMinutes ?? 30;
+        const endD = new Date(newStart.getTime() + dur * 60_000);
+        const endTime = `${String(endD.getHours()).padStart(2, '0')}:${String(endD.getMinutes()).padStart(2, '0')}`;
+        await api.patchEvent(ev.eventId, { date: dateStr, start_time: startTime, end_time: endTime });
+      } else if (ev.type === 'ics_event' && ev.eventId && ev.source) {
+        const dur = ev.durationMinutes ?? 60;
+        const endD = new Date(newStart.getTime() + dur * 60_000);
+        await api.patchICSEvent(ev.source, ev.eventId, {
+          start: newStart.toISOString(),
+          end: endD.toISOString()
+        });
+      }
+      await load();
+    } catch (e) {
+      console.error('move failed', e);
+    }
+  }
+
   // Resize dispatch — receives the full event so we can route to the
   // right patch endpoint based on event kind. Tasks → patchTask
   // (durationMinutes wires through to scheduledStart + duration in the
@@ -635,6 +668,7 @@
               onClickSlot={clickSlot}
               onSlotRange={onSlotRange}
               onReschedule={reschedule}
+              onMove={moveEvent}
               onResize={resizeEvent}
               writableSources={calSources.filter((s) => s.writable).map((s) => s.source)}
               onTaskDrop={dropTask}
@@ -642,7 +676,7 @@
           </div>
         </div>
       {:else if view === 'day' || view === '3day' || view === 'week'}
-        <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} />
+        <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} />
       {:else if view === 'month'}
         <div class="h-full overflow-auto">
           <MonthView cursor={cursor} events={events} onClickEvent={clickEvent} onClickDay={clickDay} />
