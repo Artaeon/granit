@@ -355,6 +355,14 @@ func expandRRULE(ev icsEvent, from, to time.Time) []icsEvent {
 			return true
 		}
 		consumed++
+		// `>` here is intentional and asymmetric with the `>=` checks
+		// further down. After incrementing we want to TRY to emit the
+		// `count`-th occurrence (consumed == count) and let the
+		// post-emit guards stop the loop. With `>=` here we'd bail
+		// before emitting, dropping one occurrence — COUNT=5 would
+		// only ever produce 4. The defensive role of this branch is
+		// to catch consumed > count, which can happen if a future
+		// caller iterates after we've already returned false.
 		if count > 0 && consumed > count {
 			return false
 		}
