@@ -1,5 +1,6 @@
 <script lang="ts">
   import { marked } from 'marked';
+  import { api } from '$lib/api';
 
   let { body, onWikilink }: { body: string; onWikilink?: (target: string) => void } = $props();
 
@@ -421,6 +422,77 @@
     }
   }
 
+  // ── Inline note embed renderer ────────────────────────────────
+  // The preprocessor lays down `<div class="transclude-card">` for
+  // every ![[path]] in the source; this post-render pass walks
+  // those placeholders and replaces them with the actual rendered
+  // body of the linked note. Recursion is bounded — we strip
+  // ![[…]] from the embedded content before parsing it so an
+  // embed-of-an-embed doesn't snowball into a fetch storm or an
+  // infinite loop.
+  //
+  // Shape of a hydrated embed:
+  //   <aside class="embed-card">
+  //     <header class="embed-card__header">
+  //       <a class="wikilink" data-wikilink="…">embedded · Title</a>
+  //     </header>
+  //     <div class="embed-card__body prose-note">…rendered body…</div>
+  //   </aside>
+  // The wikilink in the header still triggers onWikilink so the
+  // user can jump into the embedded note for full edit access.
+  const embedCache = new Map<string, string>();
+
+  async function hydrateEmbeds() {
+    if (!mermaidContainer) return;
+    const cards = Array.from(mermaidContainer.querySelectorAll('.transclude-card'));
+    if (cards.length === 0) return;
+    for (const card of cards) {
+      const link = card.querySelector('[data-wikilink]') as HTMLElement | null;
+      if (!link) continue;
+      const target = link.getAttribute('data-wikilink');
+      if (!target) continue;
+      try {
+        let bodyHtml = embedCache.get(target);
+        if (bodyHtml === undefined) {
+          // Resolve the target → path. listNotes search is forgiving;
+          // we accept the first hit. A `.md` suffix already makes
+          // exact-path links work directly via the backend.
+          const list = await api.listNotes({ q: target.replace(/\.md$/, ''), limit: 5 });
+          const exact = list.notes.find((n) => n.title.toLowerCase() === target.toLowerCase()) ??
+                         list.notes.find((n) => n.path === target || n.path === `${target}.md`);
+          const note = exact ?? list.notes[0];
+          if (!note) {
+            embedCache.set(target, '');
+            continue;
+          }
+          const full = await api.getNote(note.path);
+          // Strip ![[…]] from the embed's own body before parsing —
+          // otherwise A→B→A or any cycle re-fetches forever. One
+          // level of embed is enough; deeper embeds appear as plain
+          // wikilink cards inside the embedded content.
+          const stripped = (full.body ?? '').replace(/!\[\[[^\]]+\]\]/g, '');
+          const pre = preprocess(stripped);
+          bodyHtml = postprocess(marked.parse(pre, { async: false }) as string);
+          embedCache.set(target, bodyHtml);
+        }
+        if (!bodyHtml) continue;
+        const aside = document.createElement('aside');
+        aside.className = 'embed-card';
+        aside.innerHTML =
+          `<header class="embed-card__header">` +
+          `<span class="embed-card__label">embedded</span>` +
+          `<a class="wikilink" data-wikilink="${escAttr(target)}">${escHtml(target)}</a>` +
+          `</header>` +
+          `<div class="embed-card__body prose-note">${bodyHtml}</div>`;
+        card.replaceWith(aside);
+      } catch {
+        // Leave the card in place on failure so the user still has
+        // a clickable target; the placeholder shape ("embed" label
+        // + wikilink) already conveys the intent.
+      }
+    }
+  }
+
   // Re-run after every html update. The `void html` line is the dep
   // tracker — Svelte 5's $effect re-runs when any read state changes,
   // and we explicitly want the html derived to be the trigger here.
@@ -430,6 +502,7 @@
     void html;
     queueMicrotask(() => {
       void renderMermaidBlocks();
+      void hydrateEmbeds();
     });
   });
 </script>
@@ -584,6 +657,41 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--color-info);
+  }
+
+  /* Hydrated embed — replaces the transclude-card placeholder when
+     the embedded note's body lands. The header carries the
+     navigation affordance (the same wikilink that triggered the
+     embed); the body wraps the rendered sub-note in a subtly
+     boxed surface so the boundary is visible without competing
+     with the host content. */
+  :global(.embed-card) {
+    margin: 0.75rem 0;
+    padding: 0.75rem 1rem;
+    border-left: 3px solid var(--color-info);
+    border-radius: 0.375rem;
+    background: color-mix(in srgb, var(--color-info) 5%, transparent);
+  }
+  :global(.embed-card__header) {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-info) 25%, transparent);
+  }
+  :global(.embed-card__label) {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-info);
+    flex-shrink: 0;
+  }
+  :global(.embed-card__body) {
+    /* The body inherits prose-note styling so the embedded content
+       reads identically to a directly-rendered note — same heading
+       sizes, same callouts, same wikilinks. */
+    font-size: 0.95em;
   }
 
   /* Obsidian callouts */

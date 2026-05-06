@@ -128,6 +128,14 @@ const BLOCKS: BlockEntry[] = [
     insert: '\n---\n\n$|'
   },
   {
+    trigger: '/embed',
+    description: 'Embed another note (![[Title]])',
+    // ![[…]] is the Obsidian-style embed shape the MarkdownRenderer
+    // hydrates into an inline embed card. Cursor lands inside the
+    // brackets so the user immediately starts the wikilink picker.
+    insert: '![[$|]]'
+  },
+  {
     trigger: '/table',
     description: 'Markdown table (3 columns)',
     insert: '| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n| $| | | |\n'
