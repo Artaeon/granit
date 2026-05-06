@@ -64,6 +64,27 @@
     }
   }
 
+  // 24-hour time picker buffers. We use TWO selects per time (hours
+  // 0-23 + minutes 0-55 in 5-min steps) instead of <input type="time">
+  // because every browser's <input type="time"> renders AM/PM based
+  // on OS locale, IGNORING the element's lang attribute. Custom
+  // selects guarantee 24-hour display everywhere — the user reported
+  // AM/PM still showing despite the previous lang="en-GB" attempt.
+  let startH = $state(0);
+  let startM = $state(0);
+  let endH = $state(0);
+  let endM = $state(0);
+  // Format the picker values back into the HH:MM strings the rest of
+  // the form (and the API contract) expect. Two-way: changing the
+  // selects updates startTime/endTime; opening with a pre-filled
+  // start/end seeds the selects.
+  $effect(() => {
+    startTime = `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`;
+  });
+  $effect(() => {
+    endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+  });
+
   // Re-seed every time the modal opens — `start`/`end` reflect the most
   // recent drag, so the buffer must follow.
   $effect(() => {
@@ -72,6 +93,16 @@
     dateISO = fmtDateISO(start);
     startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
     endTime = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
+    // Round minutes to the nearest 5 so they line up with the
+    // select's options. The grid drag-create already snaps to 15min
+    // so this rounding is usually a no-op; defends against modal
+    // re-opens with hand-picked starts.
+    startH = start.getHours();
+    startM = Math.round(start.getMinutes() / 5) * 5;
+    if (startM === 60) { startH = (startH + 1) % 24; startM = 0; }
+    endH = end.getHours();
+    endM = Math.round(end.getMinutes() / 5) * 5;
+    if (endM === 60) { endH = (endH + 1) % 24; endM = 0; }
     title = '';
     notePath = defaultNotePath ?? `Jots/${dateISO}.md`;
     priority = 0;
@@ -291,29 +322,62 @@
             class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text focus:outline-none focus:border-primary"
           />
         </label>
+        <!-- Custom 24-hour time picker. Native <input type="time">
+             renders AM/PM on most OS locales regardless of the
+             element's lang attribute, so we use HH + MM selects:
+             every browser, every OS, always 24-hour. Hours 0-23
+             list every value; minutes step in 5s (most calendar
+             interactions snap to 15, so 5 covers every realistic
+             pick without 60 menu items). -->
         <div class="grid grid-cols-2 gap-2">
-          <label class="block">
+          <div>
             <span class="block text-[11px] uppercase tracking-wider text-dim mb-1">Start (24h)</span>
-            <input
-              type="time"
-              bind:value={startTime}
-              required
-              step="60"
-              lang="en-GB"
-              class="w-full px-2 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text font-mono tabular-nums focus:outline-none focus:border-primary"
-            />
-          </label>
-          <label class="block">
+            <div class="flex items-center bg-surface0 border border-surface1 rounded-lg overflow-hidden focus-within:border-primary">
+              <select
+                bind:value={startH}
+                aria-label="start hour"
+                class="flex-1 bg-transparent px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
+              >
+                {#each Array.from({ length: 24 }, (_, i) => i) as h}
+                  <option value={h}>{String(h).padStart(2, '0')}</option>
+                {/each}
+              </select>
+              <span class="text-dim">:</span>
+              <select
+                bind:value={startM}
+                aria-label="start minute"
+                class="flex-1 bg-transparent px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
+              >
+                {#each Array.from({ length: 12 }, (_, i) => i * 5) as m}
+                  <option value={m}>{String(m).padStart(2, '0')}</option>
+                {/each}
+              </select>
+            </div>
+          </div>
+          <div>
             <span class="block text-[11px] uppercase tracking-wider text-dim mb-1">End (24h)</span>
-            <input
-              type="time"
-              bind:value={endTime}
-              required
-              step="60"
-              lang="en-GB"
-              class="w-full px-2 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text font-mono tabular-nums focus:outline-none focus:border-primary"
-            />
-          </label>
+            <div class="flex items-center bg-surface0 border border-surface1 rounded-lg overflow-hidden focus-within:border-primary">
+              <select
+                bind:value={endH}
+                aria-label="end hour"
+                class="flex-1 bg-transparent px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
+              >
+                {#each Array.from({ length: 24 }, (_, i) => i) as h}
+                  <option value={h}>{String(h).padStart(2, '0')}</option>
+                {/each}
+              </select>
+              <span class="text-dim">:</span>
+              <select
+                bind:value={endM}
+                aria-label="end minute"
+                class="flex-1 bg-transparent px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
+              >
+                {#each Array.from({ length: 12 }, (_, i) => i * 5) as m}
+                  <option value={m}>{String(m).padStart(2, '0')}</option>
+                {/each}
+              </select>
+            </div>
+          </div>
         </div>
         <!-- Range preview + duration — the user-facing source of
              truth. Shows exactly what will be saved (24-hour, the
