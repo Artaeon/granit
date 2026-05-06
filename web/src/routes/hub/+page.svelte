@@ -48,6 +48,13 @@
   // expanding one credential doesn't reveal others.
   let revealed = $state<Set<string>>(new Set());
 
+  // Drag-to-reorder state. Cards are draggable WITHIN a category
+  // section only — cross-category moves require editing the card
+  // (the category is a free-text field, not an enum, so a drag
+  // metaphor doesn't map cleanly to it).
+  let dragId = $state<string | null>(null);
+  let dragOverId = $state<string | null>(null);
+
   async function load() {
     if (!$auth) return;
     loading = true;
@@ -232,6 +239,106 @@
     return (it.title.trim().charAt(0) || '·').toUpperCase();
   }
 
+  // Favicon URL via Google's s2 service. Free, no API key, returns
+  // a sensible icon for almost any public domain. Used when:
+  //   - the user didn't pick a custom emoji icon AND
+  //   - the entry has a parseable URL
+  // Falls back to the letter glyph when either condition fails.
+  // We don't try to fetch /favicon.ico directly — many sites either
+  // don't serve one or serve a tiny .ico that scales badly. Google's
+  // service handles the resolution + scaling on its end and returns
+  // a clean PNG.
+  function faviconUrl(it: HubItem, size = 64): string | null {
+    if (it.icon?.trim()) return null;
+    if (!it.url) return null;
+    try {
+      const u = new URL(it.url);
+      return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(u.hostname)}&sz=${size}`;
+    } catch {
+      return null;
+    }
+  }
+
+  // Format last-visited as a relative time ("2h ago", "3d ago")
+  // for the recently-used cue. Stays empty for entries the user
+  // has never clicked.
+  function visitedAgo(iso: string | undefined): string {
+    if (!iso) return '';
+    const t = Date.parse(iso);
+    if (isNaN(t)) return '';
+    const ago = Date.now() - t;
+    if (ago < 60_000) return 'just now';
+    if (ago < 3600_000) return `${Math.floor(ago / 60_000)}m ago`;
+    if (ago < 86400_000) return `${Math.floor(ago / 3600_000)}h ago`;
+    return `${Math.floor(ago / 86400_000)}d ago`;
+  }
+
+  // Click on the card body: open URL (if any) and stamp the visit
+  // timestamp fire-and-forget. We deliberately don't await the
+  // visit call before opening — a slow server shouldn't hold up
+  // navigation.
+  function openItem(it: HubItem) {
+    if (!it.url) {
+      openEdit(it);
+      return;
+    }
+    // window.open with noopener so the destination can't access
+    // the granit window via window.opener (security hygiene for
+    // any "open external" flow).
+    window.open(it.url, '_blank', 'noopener,noreferrer');
+    void api.visitHubItem(it.id).catch(() => {});
+  }
+
+  // Drag handlers — HTML5 native drag-and-drop. Native because:
+  //   - No new dependency
+  //   - Pointer-perfect on every browser
+  //   - Plays nicely with the existing card hover state
+  // Setting data-transfer is required on Firefox or the drag
+  // never starts; we put the item ID there even though our state
+  // tracking via dragId is what actually drives the reorder.
+  function onDragStart(id: string, ev: DragEvent) {
+    dragId = id;
+    if (ev.dataTransfer) {
+      ev.dataTransfer.effectAllowed = 'move';
+      try { ev.dataTransfer.setData('text/plain', id); } catch {}
+    }
+  }
+  function onDragOver(id: string, ev: DragEvent) {
+    if (!dragId || dragId === id) return;
+    ev.preventDefault();
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+    dragOverId = id;
+  }
+  function onDragLeave(id: string) {
+    if (dragOverId === id) dragOverId = null;
+  }
+  async function onDrop(targetId: string, categoryItems: HubItem[], ev: DragEvent) {
+    ev.preventDefault();
+    const from = dragId;
+    dragId = null;
+    dragOverId = null;
+    if (!from || from === targetId) return;
+    // Reorder WITHIN the dropped-on card's category. The drag
+    // handlers are scoped to category sections in the template,
+    // so categoryItems is the right slice already.
+    const ids = categoryItems.map((x) => x.id);
+    const fromIdx = ids.indexOf(from);
+    const toIdx = ids.indexOf(targetId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const [moved] = ids.splice(fromIdx, 1);
+    ids.splice(toIdx, 0, moved);
+    try {
+      await api.reorderHubItems(ids);
+      await load();
+    } catch (e) {
+      toast.error('reorder failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+  function onDragEnd() {
+    dragId = null;
+    dragOverId = null;
+  }
+
   // Hostname extraction for the secondary line on link cards.
   // Falls back to the raw URL if parsing fails.
   function displayHost(url: string): string {
@@ -310,94 +417,140 @@
               {#each g.items as it (it.id)}
                 {@const hasCred = !!(it.username || it.password)}
                 {@const isRevealed = revealed.has(it.id)}
-                <li class="bg-surface0 border border-surface1 rounded-lg overflow-hidden hover:border-primary/40 transition-colors group">
-                  <div class="p-3 flex items-start gap-2.5">
-                    <!-- Icon column. Falls back to the title's first
-                         letter when the user didn't pick an icon. -->
-                    <div class="w-9 h-9 flex-shrink-0 rounded bg-surface1 flex items-center justify-center text-sm font-medium text-text">
-                      {fallbackIcon(it)}
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <div class="flex items-baseline gap-1.5">
-                        {#if it.url}
-                          <a
-                            href={it.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="text-sm text-text font-medium truncate hover:text-primary"
-                          >{it.title}</a>
-                        {:else}
-                          <span class="text-sm text-text font-medium truncate">{it.title}</span>
-                        {/if}
-                        {#if it.favorite}
-                          <span class="text-warning flex-shrink-0" title="favorite" aria-label="favorite">★</span>
-                        {/if}
-                      </div>
-                      {#if it.url}
-                        <div class="text-[11px] text-dim font-mono truncate">{displayHost(it.url)}</div>
-                      {/if}
-                      {#if it.notes}
-                        <p class="text-[11px] text-subtext mt-1 line-clamp-2">{it.notes}</p>
-                      {/if}
-                      {#if hasCred}
-                        <div class="mt-2 pt-2 border-t border-surface1 space-y-1">
-                          {#if it.username}
-                            <div class="flex items-baseline gap-2 text-[11px]">
-                              <span class="text-dim w-12 flex-shrink-0">user</span>
-                              <span class="text-text font-mono truncate flex-1 min-w-0">{it.username}</span>
-                              <button
-                                type="button"
-                                onclick={() => copyValue(it.username ?? '', 'username')}
-                                title="copy username"
-                                class="text-dim hover:text-primary opacity-0 group-hover:opacity-100"
-                              >⧉</button>
-                            </div>
-                          {/if}
-                          {#if it.password}
-                            <div class="flex items-baseline gap-2 text-[11px]">
-                              <span class="text-dim w-12 flex-shrink-0">pass</span>
-                              <span class="text-text font-mono truncate flex-1 min-w-0">
-                                {isRevealed ? it.password : '••••••••'}
-                              </span>
-                              <button
-                                type="button"
-                                onclick={() => toggleReveal(it.id)}
-                                title={isRevealed ? 'hide password' : 'show password'}
-                                class="text-dim hover:text-primary"
-                              >{isRevealed ? '◌' : '◎'}</button>
-                              <button
-                                type="button"
-                                onclick={() => copyValue(it.password ?? '', 'password')}
-                                title="copy password"
-                                class="text-dim hover:text-primary opacity-0 group-hover:opacity-100"
-                              >⧉</button>
-                            </div>
+                {@const fav = faviconUrl(it)}
+                {@const visited = visitedAgo(it.last_visited_at)}
+                {@const isDragSource = dragId === it.id}
+                {@const isDragTarget = dragOverId === it.id && dragId !== it.id}
+                <li
+                  draggable="true"
+                  ondragstart={(e) => onDragStart(it.id, e)}
+                  ondragover={(e) => onDragOver(it.id, e)}
+                  ondragleave={() => onDragLeave(it.id)}
+                  ondrop={(e) => onDrop(it.id, g.items, e)}
+                  ondragend={onDragEnd}
+                  class="bg-surface0 border rounded-lg overflow-hidden transition-colors group
+                    {isDragSource ? 'opacity-40 border-surface1' : ''}
+                    {isDragTarget ? 'border-primary ring-1 ring-primary' : 'border-surface1 hover:border-primary/40'}"
+                >
+                  <div class="p-3">
+                    <div class="flex items-start gap-2.5">
+                      <!-- Card-body button: icon + title + url + notes
+                           are all click-to-open. Credential rows live
+                           OUTSIDE this button (below) so clicking the
+                           username/password copy buttons doesn't also
+                           navigate. Whole-card click was the report's
+                           ask — make it clear, not just on the title. -->
+                      <button
+                        type="button"
+                        onclick={() => openItem(it)}
+                        class="flex-1 min-w-0 flex items-start gap-2.5 text-left cursor-pointer"
+                        aria-label={it.url ? `Open ${it.title}` : `Edit ${it.title}`}
+                      >
+                        <!-- Icon: favicon when URL is set + no manual
+                             icon, else the user's emoji, else the
+                             first-letter glyph. Three layers of
+                             graceful degradation. -->
+                        <div class="w-9 h-9 flex-shrink-0 rounded bg-surface1 flex items-center justify-center text-sm font-medium text-text overflow-hidden">
+                          {#if fav}
+                            <img
+                              src={fav}
+                              alt=""
+                              class="w-6 h-6"
+                              loading="lazy"
+                              onerror={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                            />
+                          {:else}
+                            {fallbackIcon(it)}
                           {/if}
                         </div>
-                      {/if}
+                        <div class="flex-1 min-w-0">
+                          <div class="flex items-baseline gap-1.5">
+                            <span class="text-sm text-text font-medium truncate group-hover:text-primary">{it.title}</span>
+                            {#if it.favorite}
+                              <span class="text-warning flex-shrink-0" title="favorite" aria-label="favorite">★</span>
+                            {/if}
+                          </div>
+                          {#if it.url}
+                            <div class="text-[11px] text-dim font-mono truncate flex items-baseline gap-1.5">
+                              <span class="truncate">{displayHost(it.url)}</span>
+                              {#if visited}
+                                <span class="text-dim/70 flex-shrink-0">· {visited}</span>
+                              {/if}
+                            </div>
+                          {/if}
+                          {#if it.notes}
+                            <p class="text-[11px] text-subtext mt-1 line-clamp-2">{it.notes}</p>
+                          {/if}
+                        </div>
+                      </button>
+                      <!-- Action menu — favorite + edit + delete.
+                           Hidden until card hover so the resting state
+                           is clean. Drag handle ⋮⋮ pinned at the top
+                           so the user always has a deliberate grab
+                           target if they want to skip the
+                           click-anywhere-to-drag affordance. -->
+                      <div class="flex flex-col gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span
+                          class="text-dim/60 select-none w-5 h-5 flex items-center justify-center cursor-grab active:cursor-grabbing"
+                          title="drag to reorder"
+                          aria-hidden="true"
+                        >⋮⋮</span>
+                        <button
+                          onclick={() => toggleFavorite(it)}
+                          title={it.favorite ? 'unfavorite' : 'favorite'}
+                          aria-label={it.favorite ? 'unfavorite' : 'favorite'}
+                          class="text-dim hover:text-warning text-xs leading-none w-5 h-5"
+                        >{it.favorite ? '★' : '☆'}</button>
+                        <button
+                          onclick={() => openEdit(it)}
+                          title="edit"
+                          aria-label="edit"
+                          class="text-dim hover:text-text text-xs leading-none w-5 h-5"
+                        >✎</button>
+                        <button
+                          onclick={() => remove(it)}
+                          title="delete"
+                          aria-label="delete"
+                          class="text-dim hover:text-error text-xs leading-none w-5 h-5"
+                        >×</button>
+                      </div>
                     </div>
-                    <!-- Action menu — favorite + edit + delete. Hidden
-                         until card hover so the resting state is clean. -->
-                    <div class="flex flex-col gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onclick={() => toggleFavorite(it)}
-                        title={it.favorite ? 'unfavorite' : 'favorite'}
-                        aria-label={it.favorite ? 'unfavorite' : 'favorite'}
-                        class="text-dim hover:text-warning text-xs leading-none w-5 h-5"
-                      >{it.favorite ? '★' : '☆'}</button>
-                      <button
-                        onclick={() => openEdit(it)}
-                        title="edit"
-                        aria-label="edit"
-                        class="text-dim hover:text-text text-xs leading-none w-5 h-5"
-                      >✎</button>
-                      <button
-                        onclick={() => remove(it)}
-                        title="delete"
-                        aria-label="delete"
-                        class="text-dim hover:text-error text-xs leading-none w-5 h-5"
-                      >×</button>
-                    </div>
+                    {#if hasCred}
+                      <div class="mt-2 pt-2 border-t border-surface1 space-y-1">
+                        {#if it.username}
+                          <div class="flex items-baseline gap-2 text-[11px]">
+                            <span class="text-dim w-12 flex-shrink-0">user</span>
+                            <span class="text-text font-mono truncate flex-1 min-w-0">{it.username}</span>
+                            <button
+                              type="button"
+                              onclick={() => copyValue(it.username ?? '', 'username')}
+                              title="copy username"
+                              class="text-dim hover:text-primary opacity-0 group-hover:opacity-100"
+                            >⧉</button>
+                          </div>
+                        {/if}
+                        {#if it.password}
+                          <div class="flex items-baseline gap-2 text-[11px]">
+                            <span class="text-dim w-12 flex-shrink-0">pass</span>
+                            <span class="text-text font-mono truncate flex-1 min-w-0">
+                              {isRevealed ? it.password : '••••••••'}
+                            </span>
+                            <button
+                              type="button"
+                              onclick={() => toggleReveal(it.id)}
+                              title={isRevealed ? 'hide password' : 'show password'}
+                              class="text-dim hover:text-primary"
+                            >{isRevealed ? '◌' : '◎'}</button>
+                            <button
+                              type="button"
+                              onclick={() => copyValue(it.password ?? '', 'password')}
+                              title="copy password"
+                              class="text-dim hover:text-primary opacity-0 group-hover:opacity-100"
+                            >⧉</button>
+                          </div>
+                        {/if}
+                      </div>
+                    {/if}
                   </div>
                 </li>
               {/each}
