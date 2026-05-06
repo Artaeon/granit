@@ -493,17 +493,37 @@
     }
   }
 
-  // Re-run after every html update. The `void html` line is the dep
-  // tracker — Svelte 5's $effect re-runs when any read state changes,
-  // and we explicitly want the html derived to be the trigger here.
-  // queueMicrotask defers until the {@html} insertion has actually
-  // landed in the DOM.
+  // Re-run after every html update. Two kinds of work happen here:
+  //
+  //   - renderMermaidBlocks: cheap if there are no diagrams, fires
+  //     immediately on every render. Mermaid hosts are stable
+  //     placeholders, so re-walking is OK.
+  //
+  //   - hydrateEmbeds: walks the DOM and may make API calls. This
+  //     used to fire on every keystroke when the user was in
+  //     split-mode, which (combined with the DOM mutations from
+  //     replaceWith) broke the editor's selection state mid-type.
+  //     Now debounced: we only hydrate 350ms after the last body
+  //     change, so live typing doesn't thrash the embed list. The
+  //     embedCache makes the actual fetch a no-op for already-seen
+  //     targets, but the DOM walk + replaceWith was the issue.
+  let embedTimer: ReturnType<typeof setTimeout> | null = null;
   $effect(() => {
     void html;
     queueMicrotask(() => {
       void renderMermaidBlocks();
-      void hydrateEmbeds();
     });
+    if (embedTimer) clearTimeout(embedTimer);
+    embedTimer = setTimeout(() => {
+      embedTimer = null;
+      void hydrateEmbeds();
+    }, 350);
+    return () => {
+      if (embedTimer) {
+        clearTimeout(embedTimer);
+        embedTimer = null;
+      }
+    };
   });
 </script>
 
