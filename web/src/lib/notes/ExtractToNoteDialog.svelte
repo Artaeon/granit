@@ -51,6 +51,13 @@
   let error = $state('');
   let titleEl: HTMLInputElement | undefined = $state();
   let folderEl: HTMLInputElement | undefined = $state();
+  // Folder picker state — a real combobox dropdown. The previous
+  // <datalist> implementation relied on the browser's autocomplete
+  // surface, which the user described as a "fake select" because
+  // the popup didn't appear reliably (Safari, mobile Firefox).
+  // Rolling our own keeps the behaviour consistent everywhere.
+  let folderPickerOpen = $state(false);
+  let folderPickerEl: HTMLDivElement | undefined = $state();
 
   // Folder discovery — derive distinct folder paths from existing
   // notes so the datalist offers concrete choices ("Notes/Meetings",
@@ -134,6 +141,51 @@
   function onPathInput() {
     pathTouched = true;
   }
+
+  // Folder dropdown — opens on input focus / click and closes on
+  // outside click. Filters the options live as the user types so a
+  // partial match narrows the list. Pure state-driven; no
+  // datalist-style invisible popup magic that varies between
+  // browsers.
+  let filteredFolders = $derived.by(() => {
+    const q = folder.trim().toLowerCase();
+    if (!q) return folderOptions;
+    return folderOptions.filter((f) => f.toLowerCase().includes(q));
+  });
+  function pickFolder(f: string) {
+    folder = f;
+    folderPickerOpen = false;
+    folderEl?.focus();
+  }
+  function onFolderFocus() {
+    folderPickerOpen = true;
+  }
+  function onFolderInput() {
+    folderPickerOpen = true;
+  }
+  function onFolderKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      folderPickerOpen = false;
+    } else if (e.key === 'Enter' && filteredFolders.length === 1) {
+      e.preventDefault();
+      pickFolder(filteredFolders[0]);
+    }
+  }
+  // Document-level listener to close the picker when the user
+  // clicks outside the input + popup. Mounted only while the
+  // picker is open so we don't hold a listener forever.
+  $effect(() => {
+    if (!folderPickerOpen) return;
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (folderPickerEl?.contains(t)) return;
+      if (folderEl?.contains(t)) return;
+      folderPickerOpen = false;
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  });
 
   // Tag chip helpers — same UX as FrontmatterEditor: Enter / comma
   // confirms, Backspace on empty buffer pops the last chip.
@@ -239,22 +291,60 @@
           <p class="text-[10px] text-dim mt-1">Pre-filled from your selection — overtype to change.</p>
         </div>
 
-        <div>
+        <div class="relative">
           <label for="extract-folder" class="block text-xs uppercase tracking-wider text-dim mb-1">Folder</label>
-          <input
-            id="extract-folder"
-            bind:this={folderEl}
-            bind:value={folder}
-            list="extract-folder-options"
-            placeholder="(vault root)"
-            class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
-            autocomplete="off"
-            spellcheck="false"
-          />
-          {#if folderOptions.length > 0}
-            <datalist id="extract-folder-options">
-              {#each folderOptions as f}<option value={f}></option>{/each}
-            </datalist>
+          <div class="relative">
+            <input
+              id="extract-folder"
+              bind:this={folderEl}
+              bind:value={folder}
+              onfocus={onFolderFocus}
+              oninput={onFolderInput}
+              onkeydown={onFolderKeydown}
+              placeholder="(vault root)"
+              class="w-full px-3 py-2 pr-9 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+              autocomplete="off"
+              spellcheck="false"
+              role="combobox"
+              aria-expanded={folderPickerOpen}
+              aria-controls="extract-folder-listbox"
+            />
+            <button
+              type="button"
+              onclick={() => { folderPickerOpen = !folderPickerOpen; folderEl?.focus(); }}
+              aria-label={folderPickerOpen ? 'close folder picker' : 'open folder picker'}
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-dim hover:text-text px-1 leading-none"
+            >▾</button>
+          </div>
+          {#if folderPickerOpen && folderOptions.length > 0}
+            <div
+              bind:this={folderPickerEl}
+              id="extract-folder-listbox"
+              role="listbox"
+              class="absolute z-10 left-0 right-0 mt-1 bg-base border border-surface1 rounded shadow-lg max-h-56 overflow-y-auto"
+            >
+              <button
+                type="button"
+                onclick={() => pickFolder('')}
+                role="option"
+                aria-selected={folder === ''}
+                class="w-full text-left px-3 py-1.5 text-xs text-dim hover:bg-surface0 italic border-b border-surface1"
+              >(vault root)</button>
+              {#each filteredFolders as f}
+                <button
+                  type="button"
+                  onclick={() => pickFolder(f)}
+                  role="option"
+                  aria-selected={folder === f}
+                  class="w-full text-left px-3 py-1.5 text-sm font-mono text-text hover:bg-surface0 truncate"
+                >{f}</button>
+              {/each}
+              {#if filteredFolders.length === 0 && folder.trim()}
+                <div class="px-3 py-1.5 text-xs text-dim italic">
+                  No matching folder. <span class="text-text">"{folder.trim()}"</span> will be created on save.
+                </div>
+              {/if}
+            </div>
           {/if}
         </div>
 
