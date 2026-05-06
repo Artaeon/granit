@@ -16,6 +16,7 @@
   import { autolinkComplete } from './autolink';
   import { extractToNoteKeymap, type ExtractRequest } from './extract-note';
   import { checkboxShortcuts } from './checkbox-shortcuts';
+  import { headingShortcuts } from './heading-shortcuts';
 
   let {
     value = $bindable(''),
@@ -90,6 +91,7 @@
         keymap.of([
           ...markdownShortcuts,
           ...checkboxShortcuts,
+          ...headingShortcuts,
           ...closeBracketsKeymap,
           ...defaultKeymap,
           ...historyKeymap,
@@ -173,6 +175,37 @@
   export function isCompletionActive(): boolean {
     if (!view) return false;
     return completionStatus(view.state) !== null;
+  }
+
+  // Dispatch a chord like "mod+b" / "mod+shift+x" into the editor.
+  // Used by the floating SelectionToolbar so toolbar buttons take the
+  // same code path as keyboard shortcuts — single source of truth
+  // (the keymap), no parallel implementations to drift.
+  export function dispatchChord(chord: string) {
+    if (!view) return;
+    const parts = chord.toLowerCase().split('+');
+    const key = parts[parts.length - 1];
+    const mod = parts.includes('mod');
+    const shift = parts.includes('shift');
+    const alt = parts.includes('alt');
+    const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
+    const ev = new KeyboardEvent('keydown', {
+      key,
+      ctrlKey: mod && !isMac,
+      metaKey: mod && isMac,
+      shiftKey: shift,
+      altKey: alt,
+      bubbles: true,
+      cancelable: true
+    });
+    view.contentDOM.dispatchEvent(ev);
+  }
+
+  /** The editor view's host element — exposed so an overlay (like
+   *  SelectionToolbar) can scope its selection-detection to the
+   *  editor instead of the whole document. */
+  export function getDOM(): HTMLElement | undefined {
+    return view?.contentDOM;
   }
 </script>
 
