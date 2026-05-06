@@ -69,9 +69,27 @@
   // Persisted alongside header/footer/mode so the user's choice
   // sticks across exports.
   const SIG_KEY = 'granit.print.signature';
+  const SIG_SIGNER_KEY = 'granit.print.signer';
+  const SIG_PURPOSE_KEY = 'granit.print.purpose';
   let signatureOn = $state(false);
   let signatureHash = $state('');
   let signatureTimestamp = $state('');
+  // Optional human-readable claim fields. Equivalent to the
+  // "Reason" / "Signer" lines a real signed-PDF carries — useful
+  // for a "this report was prepared by Raphael Lugmayr · Q3 review"
+  // attestation. Both persist in localStorage so the user doesn't
+  // re-type them on every export.
+  let signer = $state('');
+  let purpose = $state('');
+  // A short, stable document identifier derived from the hash
+  // (first 8 chars of SHA-256, uppercase, hyphenated). Quick to
+  // reference verbally — "doc 7A3F-B1C9" — and fully implied by
+  // the full hash so it doesn't add a separate verification claim.
+  let docID = $derived.by(() => {
+    if (!signatureHash) return '…';
+    const h = signatureHash.slice(0, 8).toUpperCase();
+    return `${h.slice(0, 4)}-${h.slice(4, 8)}`;
+  });
 
   // Load order: localStorage immediately (so the overlay paints with
   // SOMETHING fast even on a slow server), then await the server. If
@@ -86,6 +104,8 @@
       const m = localStorage.getItem(MODE_KEY);
       if (m === 'standard' || m === 'certificate' || m === 'report' || m === 'letterhead' || m === 'memo') mode = m;
       signatureOn = localStorage.getItem(SIG_KEY) === '1';
+      signer = localStorage.getItem(SIG_SIGNER_KEY) ?? '';
+      purpose = localStorage.getItem(SIG_PURPOSE_KEY) ?? '';
     } catch {}
     try {
       const cfg = await api.getPrintConfig();
@@ -139,6 +159,16 @@
     void signatureOn;
     if (!loaded) return;
     try { localStorage.setItem(SIG_KEY, signatureOn ? '1' : '0'); } catch {}
+  });
+  $effect(() => {
+    void signer;
+    if (!loaded) return;
+    try { localStorage.setItem(SIG_SIGNER_KEY, signer); } catch {}
+  });
+  $effect(() => {
+    void purpose;
+    if (!loaded) return;
+    try { localStorage.setItem(SIG_PURPOSE_KEY, purpose); } catch {}
   });
 
   // Document signature: SHA-256 of the rendered body + a frozen
@@ -329,6 +359,33 @@
             class="config-input"
           />
         </div>
+        <!-- Signature claim fields. Only shown when the Sign toggle
+             is on so the config panel doesn't fill with irrelevant
+             options for users who never sign documents. Both are
+             optional — a signature with neither still carries the
+             SHA-256 / timestamp / source claim, which is the actual
+             integrity stamp; signer / purpose are human-readable
+             attestations on top. -->
+        {#if signatureOn}
+          <div class="config-row">
+            <label for="print-signer">Signer</label>
+            <input
+              id="print-signer"
+              bind:value={signer}
+              placeholder="e.g. Raphael Lugmayr"
+              class="config-input"
+            />
+          </div>
+          <div class="config-row">
+            <label for="print-purpose">Purpose</label>
+            <input
+              id="print-purpose"
+              bind:value={purpose}
+              placeholder="e.g. Q3 review · Internal use only"
+              class="config-input"
+            />
+          </div>
+        {/if}
         <div class="config-actions">
           <span class="config-hint">
             Saved on this device by default. Click <strong>Save as vault default</strong>
@@ -461,29 +518,54 @@
               </svg>
             </div>
             <div class="doc-signature__body">
-              <div class="doc-signature__title">Document Signature</div>
+              <div class="doc-signature__head">
+                <div class="doc-signature__eyebrow">Authenticity Stamp</div>
+                <div class="doc-signature__title">Granit Signature</div>
+                <div class="doc-signature__docid">
+                  Document ID <span class="doc-signature__docid-value">{docID}</span>
+                </div>
+              </div>
               <div class="doc-signature__lead">
-                This document was generated through Granit. The hash below is computed
-                over its content (SHA-256) and changes if the source is altered.
+                This document was generated through Granit (open-source notes &
+                knowledge tool). The cryptographic fingerprint below is computed
+                over the body and changes the moment any character is altered.
+              </div>
+              <!-- Full hash on its own row above the table — this is
+                   the load-bearing claim, displays better as a
+                   monospace block than a tight key/value cell. -->
+              <div class="doc-signature__hashbox" title="Click to copy" role="presentation">
+                <div class="doc-signature__hashlabel">SHA-256 fingerprint</div>
+                <div class="doc-signature__hashvalue">{signatureHash || '…'}</div>
               </div>
               <dl class="doc-signature__fields">
-                <dt>SHA-256</dt>
-                <dd class="doc-signature__hash" title={signatureHash}>
-                  {shortHash(signatureHash)}
-                </dd>
+                {#if signer}
+                  <dt>Signer</dt>
+                  <dd class="doc-signature__signer">{signer}</dd>
+                {/if}
+                {#if purpose}
+                  <dt>Purpose</dt>
+                  <dd>{purpose}</dd>
+                {/if}
                 <dt>Generated</dt>
                 <dd>{fmtTimestamp(signatureTimestamp)}</dd>
                 <dt>Source</dt>
                 <dd class="doc-signature__src">{sourcePath}</dd>
                 <dt>Length</dt>
                 <dd>{docWords} words · {docChars} characters</dd>
-                <dt>Tool</dt>
-                <dd>Granit · <a href="https://github.com/artaeon/granit">github.com/artaeon/granit</a></dd>
+                <dt>Algorithm</dt>
+                <dd>SHA-256 (FIPS 180-4)</dd>
+                <dt>Verify at</dt>
+                <dd>
+                  <a href="https://github.com/artaeon/granit">github.com/artaeon/granit</a>
+                </dd>
               </dl>
               <p class="doc-signature__note">
-                To verify: copy the body of this document, run sha256sum, and compare
-                the hash to the one above. Any difference means the content was
-                modified after this signature was applied.
+                <strong>To verify:</strong>
+                copy the body of this document into a file, run
+                <code>sha256sum &lt;file&gt;</code>, and compare against the fingerprint above.
+                Any single character change produces an entirely different hash —
+                a match proves the content matches what Granit signed at the
+                generation time shown.
               </p>
             </div>
           </div>
@@ -1085,13 +1167,68 @@
     flex: 1;
     min-width: 0;
   }
+  .doc-signature__head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid #b9c4d0;
+  }
+  .doc-signature__eyebrow {
+    font-size: 7.5pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: #8090a4;
+    flex-shrink: 0;
+  }
   .doc-signature__title {
-    font-size: 9pt;
+    font-size: 11pt;
     font-weight: 700;
+    color: #2a3340;
+    flex: 1;
+  }
+  .doc-signature__docid {
+    font-size: 8pt;
+    color: #5a7088;
+    font-variant-numeric: tabular-nums;
+  }
+  .doc-signature__docid-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 700;
+    color: #1a4fb3;
+    letter-spacing: 0.04em;
+  }
+  /* Hash callout — full SHA-256 on its own row, monospace, with a
+     subtle ruled border so it reads as the load-bearing claim
+     rather than just another row in the metadata table. */
+  .doc-signature__hashbox {
+    margin: 0.5rem 0;
+    padding: 0.4rem 0.6rem;
+    background: #ffffff;
+    border: 1px solid #c5d1de;
+    border-radius: 0.2rem;
+  }
+  .doc-signature__hashlabel {
+    font-size: 7.5pt;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.1em;
     color: #5a7088;
-    margin-bottom: 0.4rem;
+    margin-bottom: 0.15rem;
+  }
+  .doc-signature__hashvalue {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8pt;
+    color: #1a4fb3;
+    word-break: break-all;
+    letter-spacing: 0.02em;
+    line-height: 1.4;
+  }
+  .doc-signature__signer {
+    font-weight: 600;
+    color: #1a1a1a !important;
   }
   .doc-signature__lead {
     font-size: 8.5pt;
