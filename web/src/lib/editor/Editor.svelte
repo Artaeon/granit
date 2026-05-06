@@ -15,6 +15,7 @@
   import { markdownShortcuts, smartPaste } from './markdown-shortcuts';
   import { autolinkComplete } from './autolink';
   import { extractToNoteKeymap, type ExtractRequest } from './extract-note';
+  import { askAIKeymap, type AskAIRequest } from './ask-ai';
   import { checkboxShortcuts } from './checkbox-shortcuts';
   import { headingShortcuts } from './heading-shortcuts';
 
@@ -23,6 +24,7 @@
     onSave,
     onNavigate,
     onExtract,
+    onAskAI,
     placeholder = ''
   }: {
     value?: string;
@@ -35,6 +37,14 @@
      * req.cancel() on dismiss. Implementation in $lib/editor/extract-note.
      */
     onExtract?: (req: ExtractRequest) => void;
+    /**
+     * Mod-Shift-A handler. Fires only when the editor has a non-empty
+     * selection. The host page shows the Ask-AI dialog, calls
+     * /api/v1/chat with the selection, and on accept invokes one of
+     * req.replace / req.insertAfter to splice the AI response into
+     * the document. Implementation in $lib/editor/ask-ai.
+     */
+    onAskAI?: (req: AskAIRequest) => void;
     placeholder?: string;
   } = $props();
 
@@ -83,6 +93,11 @@
         // selections fall through so the user can re-bind the chord
         // for something else later if needed.
         extractToNoteKeymap((req) => onExtract?.(req)),
+        // Ask-AI (Mod-Shift-A). Same shape as extract: selection
+        // required, hands the request up to the host so the modal
+        // UX + /chat call live in the page (where the toast +
+        // settings nav live too).
+        askAIKeymap((req) => onAskAI?.(req)),
         theme,
         // Markdown shortcuts come BEFORE defaultKeymap so Mod-b /
         // Mod-i / Mod-k aren't shadowed by CodeMirror's defaults. Same
