@@ -22,6 +22,7 @@
     onClickSlot,
     onSlotRange,
     onReschedule,
+    onMove,
     onResize,
     onTaskDrop
   }: {
@@ -43,6 +44,12 @@
      *  slot. The page wires this to the unified create modal. */
     onSlotRange?: (start: Date, end: Date) => void;
     onReschedule?: (taskId: string, newStart: Date) => void | Promise<void>;
+    /** Called when the user drag-moves a non-task event (events.json or
+     *  writable ICS) to a new slot. Receives the full event so the parent
+     *  can dispatch by type. Tasks still go through onReschedule above
+     *  for backwards compatibility — splitting the callbacks keeps each
+     *  branch's contract obvious from the call site. */
+    onMove?: (ev: CalendarEvent, newStart: Date) => void | Promise<void>;
     /** Called when the user drags the bottom edge of an event to change
      *  its duration. Fires for scheduled tasks (taskId is set), events.json
      *  events (eventId is set, type==='event'), and writable ICS events
@@ -77,6 +84,17 @@
       return writableSources.includes(ev.source);
     }
     return false;
+  }
+
+  /**
+   * Same shape as isResizable today (the patch-API matrix happens to
+   * match exactly), but kept as a separate predicate so a future
+   * read-only-but-resize-allowed event type doesn't have to invent a
+   * new flag. Used by the drag-to-move gate + the `cursor: grab`
+   * styling.
+   */
+  function isMovable(ev: CalendarEvent): boolean {
+    return isResizable(ev);
   }
 
   // Per-day habit completion lookup. Built once per render — for a
@@ -363,7 +381,7 @@
   let drag = $state<DragState | null>(null);
 
   function onEventPointerDown(e: PointerEvent, ev: CalendarEvent, dayIdx: number) {
-    if (!ev.taskId || !ev.start) return; // only scheduled tasks are draggable
+    if (!isMovable(ev) || !ev.start) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     const target = e.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
@@ -412,10 +430,17 @@
       onClickEvent(ds.ev);
       return;
     }
-    if (!ds.ev.taskId) return;
     const newDate = new Date(days[ds.ghostDayIdx]);
     newDate.setHours(Math.floor(ds.ghostMinutes / 60), ds.ghostMinutes % 60, 0, 0);
-    if (onReschedule) await onReschedule(ds.ev.taskId, newDate);
+    // Tasks go through onReschedule (existing path, taskId-based);
+    // events + ICS go through onMove which carries the full event so
+    // the parent can dispatch by type. Splitting them keeps each
+    // callback's signature honest about what it operates on.
+    if (ds.ev.taskId && onReschedule) {
+      await onReschedule(ds.ev.taskId, newDate);
+    } else if (onMove) {
+      await onMove(ds.ev, newDate);
+    }
   }
 
   function onEventPointerCancel(e: PointerEvent) {
@@ -641,7 +666,7 @@
               {@const top = item.startMin * (HOUR_PX / 60)}
               {@const height = Math.max(ghostDur * (HOUR_PX / 60), 18)}
               {@const widthPct = 100 / item.groupSize}
-              {@const draggable = !!item.ev.taskId && !!item.ev.start}
+              {@const draggable = isMovable(item.ev)}
               {@const resizable = isResizable(item.ev)}
               <div
                 class="absolute z-10"
