@@ -96,27 +96,73 @@
 
   // RFC3339 in the user's local zone — events.json + ICS endpoints both
   // accept this shape; the server's parser keeps the offset.
+  //
+  // CRITICAL: build the Date from `dateISO` (the input the user can
+  // actively change), NOT from the `start` prop captured at modal-
+  // open. Earlier this read `new Date(start)` and silently dropped
+  // the user's date-picker edits — drag-create on Wednesday, change
+  // the date to Friday, hit save, the event landed on Wednesday.
+  // The user reported this as "random times / not in the calendar".
   function localRFC3339(timeStr: string): string {
-    const [h, m] = timeStr.split(':').map(Number);
-    const d = new Date(start);
-    d.setHours(h, m, 0, 0);
-    return d.toISOString();
+    const [h, m] = parseHHMM(timeStr);
+    const [y, mo, d] = dateISO.split('-').map(Number);
+    if (!y || !mo || !d) return new Date().toISOString();
+    const dt = new Date(y, mo - 1, d, h, m, 0, 0);
+    return dt.toISOString();
+  }
+
+  // Parse "HH:MM" → [hours, minutes]. Tolerates "9:5" and similar
+  // sloppy inputs; clamps to a valid 24-hour clock so a typo can't
+  // produce nonsense like 25:99. Returning a clamped value is safer
+  // than throwing because the form's submit gate already validates
+  // upstream — this is just defence in depth.
+  function parseHHMM(s: string): [number, number] {
+    const parts = (s ?? '').split(':');
+    let h = Number(parts[0]) || 0;
+    let m = Number(parts[1]) || 0;
+    if (h < 0) h = 0; if (h > 23) h = 23;
+    if (m < 0) m = 0; if (m > 59) m = 59;
+    return [h, m];
   }
 
   function close() { open = false; }
 
   function durationMinutes(): number {
-    const [sh, sm] = startTime.split(':').map(Number);
-    const [eh, em] = endTime.split(':').map(Number);
+    const [sh, sm] = parseHHMM(startTime);
+    const [eh, em] = parseHHMM(endTime);
     return Math.max(15, (eh * 60 + em) - (sh * 60 + sm));
   }
 
+  // True when end-time is at-or-before start-time. The submit
+  // button uses this to gate creation so the user can never persist
+  // an inverted range; the form surfaces a clear inline message
+  // explaining what's wrong.
+  let endBeforeStart = $derived.by(() => {
+    if (!startTime || !endTime) return false;
+    const [sh, sm] = parseHHMM(startTime);
+    const [eh, em] = parseHHMM(endTime);
+    return eh * 60 + em <= sh * 60 + sm;
+  });
+
+  // Live human-readable preview of the committed datetime range —
+  // surfaced in the form so the user can verify what will actually
+  // be saved before they hit Create. This is the most reliable way
+  // to defuse "the time picker rendered AM but I expected PM" type
+  // confusion: even when the input UI lies, the preview line is
+  // built directly from the stored 24-hour values.
+  let rangePreview = $derived.by(() => {
+    if (!dateISO || !startTime || !endTime) return '';
+    const [y, mo, d] = dateISO.split('-').map(Number);
+    if (!y || !mo || !d) return '';
+    const dt = new Date(y, mo - 1, d);
+    const dayLabel = dt.toLocaleDateString(undefined, {
+      weekday: 'short', month: 'short', day: 'numeric'
+    });
+    return `${dayLabel} · ${startTime} → ${endTime}`;
+  });
+
   function startISO(): string {
-    // Build local-time RFC3339 so the server's parser uses the user's TZ.
-    const [h, m] = startTime.split(':').map(Number);
-    const d = new Date(start);
-    d.setHours(h, m, 0, 0);
-    return d.toISOString();
+    return localRFC3339(startTime);
   }
 
   async function submit(e: SubmitEvent) {
@@ -229,15 +275,63 @@
           class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded-lg text-sm text-text focus:outline-none focus:border-primary"
         />
 
-        <!-- Time row — shared between task & event branches. Stacked on
-             mobile because three columns squeeze the date input below
-             usable width on phones. -->
-        <input type="date" bind:value={dateISO} required class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text" />
+        <!-- Date + time row — shared between task & event branches.
+             Each input gets an explicit label so a 12-hour-locale
+             time picker can't confuse the user about which slot is
+             which. The duration + range preview below ARE the
+             trustworthy display: built directly from the stored
+             24-hour values, so even if the OS-rendered picker shows
+             AM/PM, the preview line confirms what gets persisted. -->
+        <label class="block">
+          <span class="block text-[11px] uppercase tracking-wider text-dim mb-1">Date</span>
+          <input
+            type="date"
+            bind:value={dateISO}
+            required
+            class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text focus:outline-none focus:border-primary"
+          />
+        </label>
         <div class="grid grid-cols-2 gap-2">
-          <input type="time" bind:value={startTime} required class="px-2 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text" />
-          <input type="time" bind:value={endTime} required class="px-2 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text" />
+          <label class="block">
+            <span class="block text-[11px] uppercase tracking-wider text-dim mb-1">Start (24h)</span>
+            <input
+              type="time"
+              bind:value={startTime}
+              required
+              step="60"
+              lang="en-GB"
+              class="w-full px-2 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text font-mono tabular-nums focus:outline-none focus:border-primary"
+            />
+          </label>
+          <label class="block">
+            <span class="block text-[11px] uppercase tracking-wider text-dim mb-1">End (24h)</span>
+            <input
+              type="time"
+              bind:value={endTime}
+              required
+              step="60"
+              lang="en-GB"
+              class="w-full px-2 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text font-mono tabular-nums focus:outline-none focus:border-primary"
+            />
+          </label>
         </div>
-        <div class="text-[11px] text-dim text-center -mt-1">{durationMinutes()} min</div>
+        <!-- Range preview + duration — the user-facing source of
+             truth. Shows exactly what will be saved (24-hour, the
+             actual stored values). Tinted error when end ≤ start
+             so the inverted-range case is obvious before submit. -->
+        <div
+          class="flex items-baseline justify-between text-[11px] -mt-1 px-1"
+          class:text-error={endBeforeStart}
+          class:text-dim={!endBeforeStart}
+        >
+          {#if endBeforeStart}
+            <span>End must be after start</span>
+            <span class="font-mono">{startTime} → {endTime}</span>
+          {:else}
+            <span class="truncate">{rangePreview}</span>
+            <span class="font-mono tabular-nums flex-shrink-0">{durationMinutes()} min</span>
+          {/if}
+        </div>
 
         {#if kind === 'task'}
           <input
@@ -356,7 +450,7 @@
 
         <button
           type="submit"
-          disabled={!title.trim() || saving}
+          disabled={!title.trim() || saving || endBeforeStart}
           class="w-full px-4 py-2.5 bg-primary text-on-primary rounded-lg font-medium disabled:opacity-50"
         >{saving ? 'creating…' : `Create ${kind}`}</button>
       </form>
