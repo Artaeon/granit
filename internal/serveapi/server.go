@@ -451,6 +451,7 @@ func (s *Server) Handler() http.Handler {
 		// Multi-turn chat — single-shot helper around agentruntime.Chatter.
 		// Stateless on the server; the web persists history client-side.
 		r.Post("/api/v1/chat", s.handleChat)
+		r.Post("/api/v1/chat/stream", s.handleChatStream)
 
 		// Scripture / devotional — verse of the day, full set, "another
 		// one" random pick, and a one-shot devotional-note creator.

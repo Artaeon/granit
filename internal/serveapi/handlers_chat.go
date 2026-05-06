@@ -113,6 +113,126 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleChatStream is the SSE-streaming sibling of handleChat. Same
+// request shape; response is text/event-stream where each event's
+// data is `{"chunk":"…"}`. A final `event: done` marks the end of
+// the response. Errors are surfaced as `event: error` so the client
+// can distinguish them from normal chunks without parsing the body.
+//
+// Falls back to a buffered single chunk when the configured LLM
+// doesn't implement ChatStreamer — keeps the endpoint usable
+// across providers without forking the client logic.
+func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
+	var body chatRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if len(body.Messages) == 0 {
+		writeError(w, http.StatusBadRequest, "messages required")
+		return
+	}
+
+	cfg := config.LoadForVault(s.cfg.Vault.Root)
+	llm, err := agentruntime.NewLLM(cfg)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if hint := preflightLLM(llm); hint != "" {
+		writeError(w, http.StatusBadRequest, hint)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming not supported by transport")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	// Disable proxy buffering — most reverse proxies (Traefik, Nginx)
+	// buffer small responses and the stream chokes until enough bytes
+	// pile up, defeating the whole point. X-Accel-Buffering is the
+	// nginx-style hint; both honour it in modern builds.
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	// Build the wire messages with the same system-prefix shape as
+	// the buffered handler so streaming and non-streaming paths
+	// behave identically apart from delivery.
+	prefix := defaultSystemMessages(s, body.NotePath)
+	wire := make([]agentruntime.ChatMessage, 0, len(prefix)+len(body.Messages))
+	for _, m := range prefix {
+		wire = append(wire, agentruntime.ChatMessage{Role: m.Role, Content: m.Content})
+	}
+	for _, m := range body.Messages {
+		role := strings.TrimSpace(m.Role)
+		if role != "system" && role != "user" && role != "assistant" {
+			role = "user"
+		}
+		wire = append(wire, agentruntime.ChatMessage{Role: role, Content: m.Content})
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+
+	send := func(event, data string) {
+		if event != "" {
+			_, _ = fmt.Fprintf(w, "event: %s\n", event)
+		}
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	streamer, ok := llm.(agentruntime.ChatStreamer)
+	if !ok {
+		// Buffered fallback for providers that don't implement
+		// streaming. Send the full reply as a single chunk so the
+		// client's progressive-render path still works (no special
+		// case needed for legacy providers).
+		chatter, ok := llm.(agentruntime.Chatter)
+		if !ok {
+			send("error", `{"message":"configured LLM does not support chat"}`)
+			return
+		}
+		reply, err := chatter.Chat(ctx, wire)
+		if err != nil {
+			send("error", mustJSON(map[string]string{"message": err.Error()}))
+			return
+		}
+		send("", mustJSON(map[string]string{"chunk": reply}))
+		send("done", "{}")
+		return
+	}
+
+	err = streamer.ChatStream(ctx, wire, func(chunk string) {
+		send("", mustJSON(map[string]string{"chunk": chunk}))
+	})
+	if err != nil {
+		// ctx.Err() means the client disconnected — no point trying
+		// to write back to a broken pipe. Other errors get a final
+		// event so the client surfaces a clean message.
+		if ctx.Err() == nil {
+			send("error", mustJSON(map[string]string{"message": err.Error()}))
+		}
+		return
+	}
+	send("done", "{}")
+}
+
+// mustJSON marshals a value that we know is JSON-safe (string-keyed
+// maps with string values). Fallback to a literal "{}" rather than
+// panicking — a bad chunk shouldn't take the whole stream down.
+func mustJSON(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
 // defaultSystemMessages builds the system-prompt prefix for every chat.
 // Always includes a short framing message; conditionally attaches the
 // referenced note's body so the model can answer questions about it
