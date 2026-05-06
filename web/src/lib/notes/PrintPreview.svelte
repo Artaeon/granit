@@ -85,20 +85,26 @@
 
   // ESC closes; Mod-P prints from inside the overlay so the user
   // doesn't have to reach for the mouse after editing the header.
+  // Capture phase + stopImmediatePropagation so the global Mod-P
+  // (CommandPalette quick-switcher) doesn't fire underneath us —
+  // otherwise opening the print preview and hitting Mod-P would
+  // both print AND open the switcher, which is hostile UX.
   function onKey(e: KeyboardEvent) {
     if (!open) return;
     if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopImmediatePropagation();
       close();
-    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p') {
+    } else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'p') {
       e.preventDefault();
+      e.stopImmediatePropagation();
       doPrint();
     }
   }
   $effect(() => {
     if (!open) return;
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, { capture: true });
+    return () => window.removeEventListener('keydown', onKey, { capture: true });
   });
 
   // Today's date in the user's locale, used as a default placeholder
