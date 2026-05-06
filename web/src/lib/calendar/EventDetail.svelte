@@ -24,6 +24,25 @@
   let editLocation = $state('');
   let editColor = $state('cyan');
 
+  // 24-hour HH:MM picker buffers — same pattern as UnifiedCreate.
+  // Native <input type="time"> renders AM/PM on most OS locales
+  // regardless of any lang attribute. Custom HH + MM selects
+  // guarantee 24-hour display everywhere; user's bug report:
+  // "editing an event still shows AM and PM."
+  let editStartH = $state(0);
+  let editStartM = $state(0);
+  let editEndH = $state(0);
+  let editEndM = $state(0);
+  // Sync the HH:MM strings back from the picker selects. Each
+  // effect tracks its two H/M components and writes the combined
+  // value used by saveEdit.
+  $effect(() => {
+    editStartTime = `${String(editStartH).padStart(2, '0')}:${String(editStartM).padStart(2, '0')}`;
+  });
+  $effect(() => {
+    editEndTime = `${String(editEndH).padStart(2, '0')}:${String(editEndM).padStart(2, '0')}`;
+  });
+
   // Calendar sources — needed to know if an ICS event came from a
   // writable .ics file. Loaded once on mount; refreshed on demand.
   let sources = $state<CalendarSource[]>([]);
@@ -54,6 +73,29 @@
     editEndTime = event.end ? new Date(event.end).toTimeString().slice(0, 5) : '';
     editLocation = event.location ?? '';
     editColor = event.color ?? 'cyan';
+    // Seed the 24-hour selects from the event's start/end so the
+    // picker shows the current value when edit-mode opens. Round
+    // minutes to the nearest 5 to align with the select options;
+    // the underlying time string still carries the exact value
+    // until the user changes it.
+    if (event.start) {
+      const sd = new Date(event.start);
+      editStartH = sd.getHours();
+      editStartM = Math.round(sd.getMinutes() / 5) * 5;
+      if (editStartM === 60) { editStartH = (editStartH + 1) % 24; editStartM = 0; }
+    } else {
+      editStartH = 0;
+      editStartM = 0;
+    }
+    if (event.end) {
+      const ed = new Date(event.end);
+      editEndH = ed.getHours();
+      editEndM = Math.round(ed.getMinutes() / 5) * 5;
+      if (editEndM === 60) { editEndH = (editEndH + 1) % 24; editEndM = 0; }
+    } else {
+      editEndH = 0;
+      editEndM = 0;
+    }
     editing = true;
   }
 
@@ -201,9 +243,60 @@
                usable width on phones. The date gets its own row, then
                start/end share a row. -->
           <input type="date" bind:value={editDate} required class="w-full px-2 py-2 bg-surface0 border border-surface1 rounded text-sm text-text" />
+          <!-- 24-hour HH:MM picker — paired selects, same pattern as
+               UnifiedCreate. Native <input type="time"> respects the
+               OS locale, not the element's lang, so a US-locale user
+               saw AM/PM on every event edit. These selects always
+               show 24-hour values. -->
           <div class="grid grid-cols-2 gap-2">
-            <input type="time" bind:value={editStartTime} placeholder="start" class="px-2 py-2 bg-surface0 border border-surface1 rounded text-sm text-text" />
-            <input type="time" bind:value={editEndTime} placeholder="end" class="px-2 py-2 bg-surface0 border border-surface1 rounded text-sm text-text" />
+            <div>
+              <span class="block text-[10px] uppercase tracking-wider text-dim mb-1">Start (24h)</span>
+              <div class="flex items-center bg-surface0 border border-surface1 rounded overflow-hidden focus-within:border-primary">
+                <select
+                  bind:value={editStartH}
+                  aria-label="start hour"
+                  class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
+                >
+                  {#each Array.from({ length: 24 }, (_, i) => i) as h}
+                    <option value={h}>{String(h).padStart(2, '0')}</option>
+                  {/each}
+                </select>
+                <span class="text-dim px-1">:</span>
+                <select
+                  bind:value={editStartM}
+                  aria-label="start minute"
+                  class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
+                >
+                  {#each Array.from({ length: 12 }, (_, i) => i * 5) as m}
+                    <option value={m}>{String(m).padStart(2, '0')}</option>
+                  {/each}
+                </select>
+              </div>
+            </div>
+            <div>
+              <span class="block text-[10px] uppercase tracking-wider text-dim mb-1">End (24h)</span>
+              <div class="flex items-center bg-surface0 border border-surface1 rounded overflow-hidden focus-within:border-primary">
+                <select
+                  bind:value={editEndH}
+                  aria-label="end hour"
+                  class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
+                >
+                  {#each Array.from({ length: 24 }, (_, i) => i) as h}
+                    <option value={h}>{String(h).padStart(2, '0')}</option>
+                  {/each}
+                </select>
+                <span class="text-dim px-1">:</span>
+                <select
+                  bind:value={editEndM}
+                  aria-label="end minute"
+                  class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
+                >
+                  {#each Array.from({ length: 12 }, (_, i) => i * 5) as m}
+                    <option value={m}>{String(m).padStart(2, '0')}</option>
+                  {/each}
+                </select>
+              </div>
+            </div>
           </div>
           <input bind:value={editLocation} placeholder="location (optional)" class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text" />
           <div class="flex items-center gap-2">
@@ -253,3 +346,21 @@
     </div>
   </div>
 {/if}
+
+<style>
+  /* Native <select> dropdown panel is rendered with OS chrome and
+     defaults to white-on-white in dark mode. Same fix as
+     UnifiedCreate: hint color-scheme + explicit option colors so
+     the dropdown is readable on every browser/OS. */
+  .time-select {
+    color-scheme: dark;
+    background: var(--color-surface0);
+  }
+  .time-select option {
+    background: var(--color-base);
+    color: var(--color-text);
+  }
+  :global([data-theme="light"]) .time-select {
+    color-scheme: light;
+  }
+</style>
