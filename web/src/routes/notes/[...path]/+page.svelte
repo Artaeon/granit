@@ -18,6 +18,7 @@
   import { getDraft, setDraft, clearDraft, draftDivergesFromServer } from '$lib/notes/drafts';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import type { ExtractRequest } from '$lib/editor/extract-note';
+  import PrintPreview from '$lib/notes/PrintPreview.svelte';
 
   type ViewMode = 'edit' | 'preview' | 'split';
   const VIEW_KEY = 'granit.note.viewMode';
@@ -371,6 +372,7 @@
   // gated on the API call SUCCEEDING — if create fails, the source
   // note isn't mutated and the user can retry without dead links.
   let extractRequest = $state<ExtractRequest | null>(null);
+  let printOpen = $state(false);
 
   function handleExtract(req: ExtractRequest) {
     extractRequest = req;
@@ -754,6 +756,23 @@
         >
           {viewMode === 'preview' ? '✎' : '👁'}
         </button>
+        <!-- Export PDF — opens a fullscreen print preview with
+             configurable header/footer and three layout modes
+             (standard / certificate / report). Hidden on the very
+             narrowest viewports because the toolbar is already busy
+             on phone; tablet+ shows it. -->
+        <button
+          onclick={() => (printOpen = true)}
+          title="Export as PDF (header + footer)"
+          aria-label="Export as PDF"
+          class="hidden sm:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
+            <path d="M6 9V4h12v5"/>
+            <rect x="6" y="14" width="12" height="6" rx="1"/>
+            <path d="M6 17H4a2 2 0 01-2-2v-3a2 2 0 012-2h16a2 2 0 012 2v3a2 2 0 01-2 2h-2"/>
+          </svg>
+        </button>
         <button
           onclick={() => save()}
           disabled={(!dirty && !saveFailed) || saving}
@@ -835,3 +854,16 @@
   onConfirm={confirmExtract}
   onDismiss={dismissExtract}
 />
+
+<!-- Print preview overlay. Renders nothing while closed; mounted at
+     the page root so its `body > *:not(.print-overlay)` print rule
+     reliably hides everything else. -->
+{#if note}
+  <PrintPreview
+    bind:open={printOpen}
+    title={note.title || note.path}
+    body={body}
+    sourcePath={note.path}
+    onClose={() => (printOpen = false)}
+  />
+{/if}
