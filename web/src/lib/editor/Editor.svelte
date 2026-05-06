@@ -15,6 +15,7 @@
   import { markdownShortcuts, smartPaste } from './markdown-shortcuts';
   import { autolinkComplete } from './autolink';
   import { extractToNoteKeymap, type ExtractRequest } from './extract-note';
+  import { checkboxShortcuts } from './checkbox-shortcuts';
 
   let {
     value = $bindable(''),
@@ -88,6 +89,7 @@
         // Mod-f for the find panel, which composes nicely.
         keymap.of([
           ...markdownShortcuts,
+          ...checkboxShortcuts,
           ...closeBracketsKeymap,
           ...defaultKeymap,
           ...historyKeymap,
