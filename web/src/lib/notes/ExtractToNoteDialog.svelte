@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import { suggestTitle, slugifyTitle, type ExtractRequest } from '$lib/editor/extract-note';
   import { api } from '$lib/api';
 
@@ -93,44 +93,57 @@
   // Auto-fill on every new request. The dialog re-uses the same
   // component instance across opens, so resetting in `else` keeps
   // a stale draft from leaking into the next extraction.
+  //
+  // CRITICAL: this effect must ONLY re-run on `request` transitions —
+  // never when `sourcePath` changes. The user reported "title cannot
+  // be changed!" The root cause:
+  //
+  //   - sourcePath is bound to the parent's `note?.path`
+  //   - the parent reassigns `note` every time autosave succeeds
+  //     (note = updated inside save())
+  //   - Reading sourcePath inside the effect body registered it as
+  //     a reactive dep, so every parent autosave during the user's
+  //     typing re-ran THIS effect and reset title to suggestTitle
+  //
+  // Wrapping the body in untrack() — except for the explicit
+  // `request` read up top — means the effect tracks request alone.
+  // Open/close transitions still re-init state; in-flight parent
+  // saves are invisible to the dialog.
   $effect(() => {
-    if (request) {
-      title = suggestTitle(request.text);
-      folder = defaultFolder(sourcePath);
-      tags = [];
-      tagBuf = '';
-      path = buildPath(folder, title);
-      pathTouched = false;
-      advancedOpen = false;
-      error = '';
-      void loadFolders();
-      tick().then(() => {
-        // Focus the title input but DON'T select-all. The previous
-        // select-all behaviour was causing user reports of "I can't
-        // change the name" — they tried to click into the field to
-        // edit and got confused by the highlighted state, or the
-        // first keystroke replacement felt unintentional. Now: focus
-        // lands the cursor at the end of the suggestion, the user
-        // sees normal text-input behaviour (click anywhere to position,
-        // backspace to clear, type to append), no surprise re-select.
-        if (titleEl) {
-          titleEl.focus();
-          // Cursor at end via setSelectionRange — works on every
-          // browser without the "select all" side-effect.
-          const len = titleEl.value.length;
-          titleEl.setSelectionRange(len, len);
-        }
+    const r = request; // the only reactive dep we want
+    if (r) {
+      untrack(() => {
+        title = suggestTitle(r.text);
+        folder = defaultFolder(sourcePath);
+        tags = [];
+        tagBuf = '';
+        path = buildPath(folder, title);
+        pathTouched = false;
+        advancedOpen = false;
+        error = '';
+        void loadFolders();
+        tick().then(() => {
+          if (titleEl) {
+            titleEl.focus();
+            // Cursor at end via setSelectionRange — works on every
+            // browser without the "select all" side-effect.
+            const len = titleEl.value.length;
+            titleEl.setSelectionRange(len, len);
+          }
+        });
       });
     } else {
-      title = '';
-      folder = '';
-      tags = [];
-      tagBuf = '';
-      path = '';
-      busy = false;
-      error = '';
-      advancedOpen = false;
-      pathTouched = false;
+      untrack(() => {
+        title = '';
+        folder = '';
+        tags = [];
+        tagBuf = '';
+        path = '';
+        busy = false;
+        error = '';
+        advancedOpen = false;
+        pathTouched = false;
+      });
     }
   });
 
