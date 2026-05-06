@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import MarkdownRenderer from './MarkdownRenderer.svelte';
+  import { api } from '$lib/api';
+  import { toast } from '$lib/components/toast';
 
   // PrintPreview — fullscreen overlay for "save as PDF" of a note.
   //
@@ -38,11 +40,15 @@
 
   let { open = $bindable(false), title, body, sourcePath, onClose }: Props = $props();
 
-  // Per-vault defaults — header/footer stick across exports so a
-  // user with a "ACME — Internal" header doesn't re-type it every
-  // time. localStorage keyed globally; a per-vault scheme would need
-  // the vault name surfaced through the API which isn't worth the
-  // complexity for v1.
+  // Per-vault defaults stored at .granit/print-config.json on the
+  // server so an "ACME — Internal" header set on the desktop is
+  // already there next time the user prints from their phone. The
+  // legacy localStorage keys (granit.print.{header,footer,mode}) are
+  // kept as a one-time migration source: if the server has nothing
+  // and localStorage does, we adopt those values + push them up so
+  // existing users don't lose their settings on first run after this
+  // change. localStorage is ALSO updated alongside server writes as a
+  // session-fast cache for re-opens before /print-config resolves.
   const HEADER_KEY = 'granit.print.header';
   const FOOTER_KEY = 'granit.print.footer';
   const MODE_KEY = 'granit.print.mode';
@@ -51,27 +57,84 @@
   let footer = $state('');
   let mode = $state<Mode>('standard');
   let configOpen = $state(false);
+  let savingConfig = $state(false);
+  let configDirty = $state(false);
 
-  onMount(() => {
+  // Load order: localStorage immediately (so the overlay paints with
+  // SOMETHING fast even on a slow server), then await the server. If
+  // the server returns non-empty values they overwrite the local
+  // copy; if it returns empty AND we have local values, push the
+  // local values up (one-time migration).
+  let loaded = $state(false);
+  onMount(async () => {
     try {
       header = localStorage.getItem(HEADER_KEY) ?? '';
       footer = localStorage.getItem(FOOTER_KEY) ?? '';
       const m = localStorage.getItem(MODE_KEY);
       if (m === 'standard' || m === 'certificate' || m === 'report') mode = m;
     } catch {}
+    try {
+      const cfg = await api.getPrintConfig();
+      const serverHasAny = !!(cfg.header || cfg.footer);
+      const localHasAny = !!(header || footer);
+      if (serverHasAny) {
+        header = cfg.header;
+        footer = cfg.footer;
+        if (cfg.mode === 'standard' || cfg.mode === 'certificate' || cfg.mode === 'report') {
+          mode = cfg.mode;
+        }
+      } else if (localHasAny) {
+        // Migrate localStorage → server so this device's history
+        // becomes the vault default. Best-effort: a network error
+        // here just means the migration retries next mount.
+        try {
+          await api.putPrintConfig({ header, footer, mode });
+        } catch {}
+      }
+    } catch {
+      // Server unreachable / endpoint not deployed yet — fall back
+      // entirely to the localStorage values we already loaded.
+    }
+    loaded = true;
+    configDirty = false;
   });
 
-  // Persist on every change — debouncing isn't worth the complexity
-  // for a tiny string written infrequently.
+  // localStorage is the warm cache — every change writes through so
+  // the next open paints instantly with the latest values, even
+  // before the server confirms. Server save is explicit (button) to
+  // avoid round-tripping on every keystroke.
   $effect(() => {
+    void header;
+    if (!loaded) return;
     try { localStorage.setItem(HEADER_KEY, header); } catch {}
+    configDirty = true;
   });
   $effect(() => {
+    void footer;
+    if (!loaded) return;
     try { localStorage.setItem(FOOTER_KEY, footer); } catch {}
+    configDirty = true;
   });
   $effect(() => {
+    void mode;
+    if (!loaded) return;
     try { localStorage.setItem(MODE_KEY, mode); } catch {}
+    configDirty = true;
   });
+
+  async function saveConfigToServer() {
+    if (savingConfig) return;
+    savingConfig = true;
+    try {
+      await api.putPrintConfig({ header, footer, mode });
+      configDirty = false;
+      toast.success('Print defaults saved');
+    } catch (e) {
+      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      savingConfig = false;
+    }
+  }
 
   function close() {
     onClose();
@@ -164,11 +227,20 @@
             class="config-input"
           />
         </div>
-        <p class="config-hint">
-          Saved per-browser. Use the Mode buttons for layout. The OS print
-          dialog will let you also set Headers &amp; Footers (URL, page #) — turn
-          those off for a clean, branded export.
-        </p>
+        <div class="config-actions">
+          <span class="config-hint">
+            Saved on this device by default. Click <strong>Save as vault default</strong>
+            to sync the values to <code>.granit/print-config.json</code> so they
+            travel across browsers and devices.
+          </span>
+          <button
+            type="button"
+            onclick={saveConfigToServer}
+            disabled={savingConfig || !configDirty}
+            class="config-save"
+            title={configDirty ? 'Save header/footer/mode to the vault' : 'No changes to save'}
+          >{savingConfig ? 'saving…' : configDirty ? 'Save as vault default' : '✓ saved'}</button>
+        </div>
       </section>
     {/if}
 
@@ -291,9 +363,28 @@
   .config-hint {
     font-size: 0.6875rem;
     color: var(--color-dim);
-    margin-top: 0.5rem;
     line-height: 1.5;
+    flex: 1;
   }
+  .config-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+  .config-save {
+    flex-shrink: 0;
+    padding: 0.25rem 0.75rem;
+    background: var(--color-secondary);
+    color: var(--color-mantle);
+    border: none;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .config-save:hover { opacity: 0.9; }
+  .config-save:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* The page itself — A4-shaped on screen so the user sees what
      prints. White background with shadow to feel like paper. */

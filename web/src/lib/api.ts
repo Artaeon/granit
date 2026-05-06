@@ -943,6 +943,15 @@ export const api = {
   },
   createNote: (body: { path: string; frontmatter?: Record<string, unknown>; body: string }) =>
     req<Note>('/notes', { method: 'POST', body: JSON.stringify(body) }),
+  // Per-vault print defaults at .granit/print-config.json. Header /
+  // footer / mode used by the note-print preview overlay; backed by
+  // the server so they survive across browsers and devices.
+  getPrintConfig: () => req<{ header: string; footer: string; mode: string }>('/print-config'),
+  putPrintConfig: (cfg: { header: string; footer: string; mode: string }) =>
+    req<{ header: string; footer: string; mode: string }>('/print-config', {
+      method: 'PUT',
+      body: JSON.stringify(cfg)
+    }),
   // Hard-delete a note. Server emits a note.removed WS event; pages
   // subscribe and refresh. No undo / trash folder yet.
   deleteNote: (path: string) =>
