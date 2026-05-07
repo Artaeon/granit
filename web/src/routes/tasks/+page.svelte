@@ -138,12 +138,42 @@
   // up via r.Context() and short-circuits before billing tokens).
   let aiTriageAbort: AbortController | null = null;
 
+  // Persist proposals to localStorage so navigating away (or a
+  // refresh / SW update) doesn't burn the AI work the user just
+  // paid for. Tag with the date they were generated; we drop them
+  // on load if they're older than 24h since the underlying tasks
+  // may have moved on. Same shape used for deadline proposals below.
+  const TRIAGE_KEY = 'granit.ai.triage.proposals';
+  const DEADLINE_KEY = 'granit.ai.deadlines.proposals';
+  const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000;
+  function saveProposals<T>(key: string, items: T[]) {
+    try {
+      if (items.length === 0) localStorage.removeItem(key);
+      else localStorage.setItem(key, JSON.stringify({ at: Date.now(), items }));
+    } catch {}
+  }
+  function loadProposals<T>(key: string): T[] {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as { at?: number; items?: T[] };
+      if (!parsed.at || Date.now() - parsed.at > PROPOSAL_TTL_MS) {
+        localStorage.removeItem(key);
+        return [];
+      }
+      return parsed.items ?? [];
+    } catch {
+      return [];
+    }
+  }
+
   async function runAITriage() {
     aiTriageBusy = true;
     aiTriageAbort = new AbortController();
     try {
       const r = await api.aiInboxTriage(aiTriageAbort.signal);
       aiTriageProposals = r.proposals ?? [];
+      saveProposals(TRIAGE_KEY, aiTriageProposals);
       if ((r.proposals?.length ?? 0) === 0) {
         if (r.warning) toast.warning(r.warning);
         else toast.info('No suggestions returned.');
@@ -169,6 +199,11 @@
 
   function skipTriageProposal(id: string) {
     aiTriageProposals = aiTriageProposals.filter((p) => p.id !== id);
+    saveProposals(TRIAGE_KEY, aiTriageProposals);
+  }
+  function discardTriageProposals() {
+    aiTriageProposals = [];
+    saveProposals(TRIAGE_KEY, []);
   }
 
   // AI deadline-detect — sister feature to triage. Scans every open
@@ -184,6 +219,7 @@
     try {
       const r = await api.aiDeadlineDetect(aiDeadlineAbort.signal);
       aiDeadlineProposals = r.proposals ?? [];
+      saveProposals(DEADLINE_KEY, aiDeadlineProposals);
       if ((r.proposals?.length ?? 0) === 0) {
         if (r.warning) toast.warning(r.warning);
         else toast.info('No clear deadlines detected.');
@@ -205,12 +241,18 @@
   function cancelAIDeadline() { aiDeadlineAbort?.abort(); }
   function skipDeadlineProposal(id: string) {
     aiDeadlineProposals = aiDeadlineProposals.filter((p) => p.id !== id);
+    saveProposals(DEADLINE_KEY, aiDeadlineProposals);
+  }
+  function discardDeadlineProposals() {
+    aiDeadlineProposals = [];
+    saveProposals(DEADLINE_KEY, []);
   }
   async function applyDeadlineProposal(p: { id: string; due_date: string }) {
     aiDeadlineBusy = true;
     try {
       await api.patchTask(p.id, { dueDate: p.due_date });
       aiDeadlineProposals = aiDeadlineProposals.filter((x) => x.id !== p.id);
+      saveProposals(DEADLINE_KEY, aiDeadlineProposals);
       await load();
     } catch (err) {
       toast.error('Apply failed: ' + (err instanceof Error ? err.message : String(err)));
@@ -265,6 +307,7 @@
       }
       await api.patchTask(p.id, patch);
       aiTriageProposals = aiTriageProposals.filter((x) => x.id !== p.id);
+      saveProposals(TRIAGE_KEY, aiTriageProposals);
       await load();
     } catch (err) {
       toast.error('Apply failed: ' + (err instanceof Error ? err.message : String(err)));
@@ -445,6 +488,11 @@
 
   onMount(() => {
     hydrateFromUrl();
+    // Rehydrate any unprocessed AI proposals so a refresh / nav-away
+    // doesn't burn the call. TTL-stale entries are dropped silently
+    // by loadProposals.
+    aiTriageProposals = loadProposals(TRIAGE_KEY);
+    aiDeadlineProposals = loadProposals(DEADLINE_KEY);
   });
 
   onMount(() => {
@@ -1385,7 +1433,14 @@
                  filtered out blanks, so every row is a confident
                  suggestion. Apply patches dueDate; skip just dismisses. -->
             <div class="mb-5 p-3 bg-warning/5 border border-warning/30 rounded">
-              <div class="text-xs uppercase tracking-wider text-warning font-semibold mb-2">Detected deadlines ({aiDeadlineProposals.length})</div>
+              <div class="flex items-center mb-2">
+                <div class="text-xs uppercase tracking-wider text-warning font-semibold flex-1">Detected deadlines ({aiDeadlineProposals.length})</div>
+                <button
+                  onclick={discardDeadlineProposals}
+                  class="text-[10px] text-dim hover:text-error"
+                  title="Drop all proposals without applying any"
+                >discard</button>
+              </div>
               <ul class="space-y-2">
                 {#each aiDeadlineProposals as p (p.id)}
                   {@const t = tasks.find((x) => x.id === p.id)}
@@ -1419,7 +1474,14 @@
                  Skip; accepting applies the suggested priority +
                  schedule to the matching task. -->
             <div class="mb-5 p-3 bg-secondary/5 border border-secondary/30 rounded">
-              <div class="text-xs uppercase tracking-wider text-secondary font-semibold mb-2">AI suggestions ({aiTriageProposals.length})</div>
+              <div class="flex items-center mb-2">
+                <div class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">AI suggestions ({aiTriageProposals.length})</div>
+                <button
+                  onclick={discardTriageProposals}
+                  class="text-[10px] text-dim hover:text-error"
+                  title="Drop all proposals without applying any"
+                >discard</button>
+              </div>
               <ul class="space-y-2">
                 {#each aiTriageProposals as p (p.id)}
                   {@const t = tasks.find((x) => x.id === p.id)}
