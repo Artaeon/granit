@@ -8,6 +8,7 @@
   import NotesTree from '$lib/notes/NotesTree.svelte';
   import Outline from '$lib/notes/Outline.svelte';
   import BacklinksPanel from '$lib/notes/BacklinksPanel.svelte';
+  import LocalGraph from '$lib/notes/LocalGraph.svelte';
   import FrontmatterEditor from '$lib/notes/FrontmatterEditor.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import DailyQuickAdd from '$lib/notes/DailyQuickAdd.svelte';
@@ -775,6 +776,10 @@
       <Outline body={body} onJump={jumpToLine} />
     </section>
     {#if note}
+      <section>
+        <h3 class="text-xs uppercase tracking-wider text-dim mb-2">Local graph</h3>
+        <LocalGraph path={note.path} onNavigate={navigateWikilink} />
+      </section>
       <section>
         <h3 class="text-xs uppercase tracking-wider text-dim mb-2">Backlinks</h3>
         <BacklinksPanel path={note.path} onNavigate={navigateWikilink} />
