@@ -293,6 +293,45 @@
     try { aiStatus = await api.getAIStatus(); } catch {}
   }
 
+  // Usage rollup over the audit list. Pure derivation — no extra
+  // wire calls. Today + last 7 days count requests, bytes, errors;
+  // gives the user a "what did this week cost" answer without us
+  // having to write a totals endpoint. Bytes are an honest stand-in
+  // for tokens (we don't store actual token counts on the server),
+  // so we deliberately don't try to estimate dollar cost — bytes →
+  // tokens is provider-specific and a wrong number is worse than
+  // none.
+  function formatBytes(n: number): string {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  }
+  const aiUsage = $derived.by(() => {
+    const now = Date.now();
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+    let todayN = 0, todayIn = 0, todayOut = 0, todayErr = 0;
+    let weekN = 0, weekIn = 0, weekOut = 0, weekErr = 0;
+    for (const e of aiAudit) {
+      const t = new Date(e.timestamp).getTime();
+      const inB = e.prompt_size_bytes ?? 0;
+      const outB = e.response_size_bytes ?? 0;
+      if (t >= todayStart.getTime()) {
+        todayN++;
+        todayIn += inB;
+        todayOut += outB;
+        if (e.error) todayErr++;
+      }
+      if (t >= sevenDaysAgo) {
+        weekN++;
+        weekIn += inB;
+        weekOut += outB;
+        if (e.error) weekErr++;
+      }
+    }
+    return { todayN, todayIn, todayOut, todayErr, weekN, weekIn, weekOut, weekErr };
+  });
+
   async function loadAIPrefs() {
     try {
       const r = await api.getAIPrefs();
@@ -942,11 +981,36 @@
       </div>
 
       {#if aiAuditOpen}
-        <div class="mt-3 pt-3 border-t border-surface1 max-h-72 overflow-y-auto">
+        <div class="mt-3 pt-3 border-t border-surface1">
           {#if aiAudit.length === 0}
             <p class="text-xs text-dim italic">No AI requests recorded yet.</p>
           {:else}
-            <ul class="space-y-1 text-[11px] font-mono">
+            <!-- Usage rollup. Today first since "what did I just
+                 burn" is the more common question; 7-day below for
+                 weekly context. Errors split out separately because
+                 they're free (no provider charges on a request that
+                 failed before the chat call) but worth flagging. -->
+            <div class="mb-3 grid grid-cols-2 gap-2 text-[11px]">
+              <div class="px-2 py-1.5 bg-mantle border border-surface1 rounded">
+                <div class="text-[10px] uppercase tracking-wider text-dim">Today</div>
+                <div class="text-text">{aiUsage.todayN} request{aiUsage.todayN === 1 ? '' : 's'}</div>
+                <div class="text-dim font-mono">{formatBytes(aiUsage.todayIn)} in / {formatBytes(aiUsage.todayOut)} out</div>
+                {#if aiUsage.todayErr > 0}
+                  <div class="text-error">{aiUsage.todayErr} error{aiUsage.todayErr === 1 ? '' : 's'}</div>
+                {/if}
+              </div>
+              <div class="px-2 py-1.5 bg-mantle border border-surface1 rounded">
+                <div class="text-[10px] uppercase tracking-wider text-dim">Last 7 days</div>
+                <div class="text-text">{aiUsage.weekN} request{aiUsage.weekN === 1 ? '' : 's'}</div>
+                <div class="text-dim font-mono">{formatBytes(aiUsage.weekIn)} in / {formatBytes(aiUsage.weekOut)} out</div>
+                {#if aiUsage.weekErr > 0}
+                  <div class="text-error">{aiUsage.weekErr} error{aiUsage.weekErr === 1 ? '' : 's'}</div>
+                {/if}
+              </div>
+            </div>
+          {/if}
+          {#if aiAudit.length > 0}
+            <ul class="space-y-1 text-[11px] font-mono max-h-72 overflow-y-auto">
               {#each aiAudit as e (e.timestamp + e.feature)}
                 <li class="px-2 py-1.5 bg-mantle border border-surface1 rounded">
                   <div class="flex items-baseline gap-2 flex-wrap">
