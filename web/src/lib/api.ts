@@ -298,6 +298,10 @@ export interface CalendarEventEntry {
   end_time?: string;
   location?: string;
   color?: string;
+  /** Minutes before event start to fire a Web Push reminder. 0 / undefined = no reminder. */
+  remind_minutes_before?: number;
+  /** RFC3339 timestamp of the most recent reminder fired (set by server). */
+  last_reminder_fired?: string;
   created_at?: string;
 }
 

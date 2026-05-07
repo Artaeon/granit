@@ -237,6 +237,7 @@
     void modulesStore.ensureLoaded();
     void loadCalSources();
     void loadAutocommit();
+    void loadPush();
     return onWsEvent((ev) => {
       // Watch for ICS file mutations so the calendars list refreshes
       // when an event is created from another tab.
@@ -246,6 +247,67 @@
       load();
     });
   });
+
+  // Push notifications state. Mirrors the SW + browser
+  // PushManager state plus a 'subscribed' flag the server has
+  // recorded. enablePush / disablePush wrap the helper from
+  // $lib/notifications which handles permission + subscribe call
+  // against the server's VAPID key.
+  let pushStatus = $state<{ supported: boolean; permission: NotificationPermission; subscribed: boolean }>({
+    supported: false,
+    permission: 'default',
+    subscribed: false
+  });
+  let pushBusy = $state(false);
+  async function loadPush() {
+    try {
+      const m = await import('$lib/notifications');
+      pushStatus = await m.getStatus();
+    } catch {}
+  }
+  async function enablePush() {
+    pushBusy = true;
+    try {
+      const m = await import('$lib/notifications');
+      pushStatus = await m.subscribe();
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      const t = await import('$lib/components/toast');
+      t.toast.error('Subscribe failed: ' + m);
+    } finally {
+      pushBusy = false;
+    }
+  }
+  async function disablePush() {
+    pushBusy = true;
+    try {
+      const m = await import('$lib/notifications');
+      await m.unsubscribe();
+      pushStatus = await m.getStatus();
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      const t = await import('$lib/components/toast');
+      t.toast.error('Unsubscribe failed: ' + m);
+    } finally {
+      pushBusy = false;
+    }
+  }
+  async function testPush() {
+    pushBusy = true;
+    try {
+      const m = await import('$lib/notifications');
+      const r = await m.sendTest();
+      const t = await import('$lib/components/toast');
+      if (r.sent > 0) t.toast.success(`Test sent to ${r.sent} device${r.sent === 1 ? '' : 's'}`);
+      else t.toast.warning('No devices subscribed.');
+    } catch (err) {
+      const e = err instanceof Error ? err.message : String(err);
+      const t = await import('$lib/components/toast');
+      t.toast.error('Test failed: ' + e);
+    } finally {
+      pushBusy = false;
+    }
+  }
 
   // Autocommit setting state. Loaded from /api/v1/autocommit on
   // mount; toggle saves immediately (no debounce since this is a
@@ -377,6 +439,53 @@
       <p class="text-xs text-dim mt-2 leading-relaxed">
         Combines with dark / light mode above — each palette has both variants. Default is the original Tokyo Night / Catppuccin Latte pair.
       </p>
+    </section>
+
+    <!-- Push notifications. The most-asked feature for any
+         self-hosted calendar tool: reminders that fire when the
+         tab is closed. Opt-in because the subscribe flow needs
+         permission + a stored endpoint. -->
+    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+      <header class="flex items-baseline justify-between mb-2">
+        <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Reminders</h2>
+        {#if pushBusy}
+          <span class="text-[10px] uppercase tracking-wider text-dim">working…</span>
+        {/if}
+      </header>
+      {#if !pushStatus.supported}
+        <p class="text-sm text-dim">
+          Push notifications aren't supported in this browser. On iOS this works only in an installed PWA on iOS 16.4+.
+        </p>
+      {:else if pushStatus.permission === 'denied'}
+        <p class="text-sm text-warning">
+          Notifications are blocked at the browser level. Enable them in your browser's site settings, then return here.
+        </p>
+      {:else if !pushStatus.subscribed}
+        <p class="text-sm text-dim mb-3">
+          Reminds you about upcoming events even when the tab is closed. Set a "Remind me N min before" on any event to fire a push.
+        </p>
+        <button
+          onclick={() => void enablePush()}
+          disabled={pushBusy}
+          class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
+        >Enable mobile reminders</button>
+      {:else}
+        <p class="text-sm text-success mb-3">
+          ✓ Subscribed on this device. Set a reminder on any event in the calendar to receive a push.
+        </p>
+        <div class="flex gap-2">
+          <button
+            onclick={() => void testPush()}
+            disabled={pushBusy}
+            class="px-3 py-1.5 bg-surface1 text-subtext rounded text-sm hover:bg-surface2"
+          >Send test</button>
+          <button
+            onclick={() => void disablePush()}
+            disabled={pushBusy}
+            class="px-3 py-1.5 text-error hover:bg-error/10 rounded text-sm"
+          >Unsubscribe this device</button>
+        </div>
+      {/if}
     </section>
 
     <!-- Autocommit — debounced git-commit-on-save. Opt-in because

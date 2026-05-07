@@ -22,7 +22,15 @@ type Event struct {
 	EndTime   string `json:"end_time"`
 	Location  string `json:"location,omitempty"`
 	Color     string `json:"color,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
+	// RemindMinutesBefore — Web Push reminder offset. 0 means
+	// "no reminder". Common values: 5, 10, 15, 30, 60. The push
+	// scheduler reads this to know when to fire a notification.
+	RemindMinutesBefore int `json:"remind_minutes_before,omitempty"`
+	// LastReminderFired is the RFC3339 timestamp of the most
+	// recent reminder we sent. Set by the scheduler so a second
+	// tick within the fire window doesn't double-notify.
+	LastReminderFired string `json:"last_reminder_fired,omitempty"`
+	CreatedAt         string `json:"created_at,omitempty"`
 }
 
 func ReadEvents(vaultRoot string) ([]Event, error) {

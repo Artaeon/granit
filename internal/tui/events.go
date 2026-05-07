@@ -26,7 +26,17 @@ type NativeEvent struct {
 	Color       string `json:"color,omitempty"`      // red, blue, green, yellow, mauve, teal
 	Recurrence  string `json:"recurrence,omitempty"` // daily, weekly, monthly, yearly
 	AllDay      bool   `json:"all_day,omitempty"`
-	CreatedAt   string `json:"created_at"`
+	// RemindMinutesBefore — Web Push reminder offset. 0 means "no
+	// reminder". Common values: 5, 10, 15, 30, 60. Set on creation
+	// or editing; the push scheduler reads this to know when to
+	// fire a notification.
+	RemindMinutesBefore int    `json:"remind_minutes_before,omitempty"`
+	// LastReminderFired is the RFC3339 timestamp of the most recent
+	// reminder we sent for this event. Set by the scheduler. Used
+	// to skip already-fired reminders so a second scheduler tick
+	// inside the fire window doesn't double-notify.
+	LastReminderFired string `json:"last_reminder_fired,omitempty"`
+	CreatedAt         string `json:"created_at"`
 }
 
 // Duration returns the event duration in minutes.

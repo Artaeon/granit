@@ -22,6 +22,7 @@ import (
 	"github.com/artaeon/granit/internal/autocommit"
 	"github.com/artaeon/granit/internal/daily"
 	"github.com/artaeon/granit/internal/modules"
+	"github.com/artaeon/granit/internal/push"
 	"github.com/artaeon/granit/internal/tasks"
 	"github.com/artaeon/granit/internal/vault"
 	"github.com/artaeon/granit/internal/wshub"
@@ -49,6 +50,9 @@ type Server struct {
 	// writes a note, when the vault is a git repo and the user
 	// has opted in (settings.json). Does nothing when disabled.
 	autocommit *autocommit.Manager
+	// Push manages Web Push subscriptions + delivery for event
+	// reminders. Lazy-generates VAPID keys on first call.
+	push *push.Manager
 
 	// activeTimer is the currently-running clock-in session, if any.
 	// Server-side state (one timer per server, since one server hosts
@@ -110,6 +114,7 @@ func NewServer(cfg Config) (*Server, error) {
 		search:     vault.NewSearchIndex(),
 		auth:       auth,
 		autocommit: autocommit.New(cfg.Vault.Root),
+		push:       push.New(cfg.Vault.Root),
 	}
 	// Restore autocommit-enabled state from settings.json. The
 	// setting is opt-in (default off) so a vault that's a git repo
@@ -122,6 +127,10 @@ func NewServer(cfg Config) (*Server, error) {
 		cfg.Logger.Info("search index built")
 	}()
 	go s.runWatcher()
+	// Reminder scheduler — wakes every 30s to check for events
+	// crossing their reminder window. No-op when no subscriptions
+	// are recorded.
+	go s.runReminderScheduler()
 	return s, nil
 }
 
@@ -446,6 +455,12 @@ func (s *Server) Handler() http.Handler {
 		// Autocommit toggle. Reads / writes .granit/autocommit.json.
 		r.Get("/api/v1/autocommit", s.handleGetAutocommit)
 		r.Put("/api/v1/autocommit", s.handlePutAutocommit)
+
+		// Web Push: VAPID public key + subscribe / unsubscribe + test.
+		r.Get("/api/v1/push/vapid", s.handleGetVAPID)
+		r.Post("/api/v1/push/subscribe", s.handlePushSubscribe)
+		r.Post("/api/v1/push/unsubscribe", s.handlePushUnsubscribe)
+		r.Post("/api/v1/push/test", s.handlePushTest)
 
 		// Recurring tasks — same .granit/recurring.json file the TUI's
 		// recurringtasks overlay edits. Server fires due rules at

@@ -135,3 +135,60 @@ async function staleWhileRevalidate(req: Request): Promise<Response> {
   // next time.
   return cached ?? networkPromise;
 }
+
+// ── Web Push ──────────────────────────────────────────────────────
+// Server fires reminders via VAPID-signed pushes; the SW receives
+// them here, shows a notification, and routes the click back to
+// the relevant page. Subscriptions are managed from the SPA via
+// $lib/notifications.ts (request permission, subscribe, POST to
+// /api/v1/push/subscribe).
+//
+// Payload shape (matches internal/push.Payload):
+//   { title, body?, url?, tag?, icon? }
+self.addEventListener('push', (event) => {
+  const e = event as PushEvent;
+  if (!e.data) return;
+  let payload: { title?: string; body?: string; url?: string; tag?: string; icon?: string } = {};
+  try {
+    payload = e.data.json();
+  } catch {
+    payload = { title: e.data.text() };
+  }
+  const sw = self as unknown as ServiceWorkerGlobalScope;
+  e.waitUntil(
+    sw.registration.showNotification(payload.title || 'Granit', {
+      body: payload.body,
+      tag: payload.tag,
+      icon: payload.icon || '/icon-192.png',
+      badge: '/favicon.svg',
+      // Custom data so the click handler can route to the right
+      // page. Persists until the user dismisses or interacts.
+      data: { url: payload.url || '/' }
+    } as NotificationOptions)
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  const e = event as NotificationEvent;
+  e.notification.close();
+  const target = (e.notification.data && (e.notification.data as { url?: string }).url) || '/';
+  const sw = self as unknown as ServiceWorkerGlobalScope;
+  e.waitUntil(
+    (async () => {
+      // Prefer focusing an open client showing the same path; fall
+      // back to opening a new tab. Matches the user expectation
+      // "the calendar tab I already had should come to the front".
+      const clients = await sw.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of clients) {
+        try {
+          const url = new URL(client.url);
+          if (url.pathname === target || target === '/') {
+            await client.focus();
+            return;
+          }
+        } catch {}
+      }
+      await sw.clients.openWindow(target);
+    })()
+  );
+});

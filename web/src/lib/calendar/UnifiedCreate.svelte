@@ -38,6 +38,10 @@
   // rotate, so a series of drag-created events get distinct hues without
   // the user picking each one. Picking a color here flips it explicit.
   let color = $state('');
+  // Reminder offset in minutes. 0 = no reminder. The push scheduler
+  // fires a Web Push at (event.start - remindMinsBefore). Common
+  // useful values; user can pick any of the chips or 0 to skip.
+  let remindMinsBefore = $state(0);
   let saving = $state(false);
   let titleEl: HTMLInputElement | undefined = $state();
 
@@ -139,6 +143,7 @@
     priority = 0;
     location = '';
     color = '';
+    remindMinsBefore = 0;
     calendarTarget = '';
     recurFreq = '';
     recurInterval = 1;
@@ -265,7 +270,8 @@
           start_time: startTime,
           end_time: endTime,
           location: location.trim(),
-          color
+          color,
+          remind_minutes_before: remindMinsBefore || undefined
         });
       }
       close();
@@ -511,6 +517,29 @@
                   class="w-6 h-6 rounded-full border-2 {color === c ? 'border-text' : 'border-surface1'}"
                   style="background: {tone(c)}"
                 ></button>
+              {/each}
+            </div>
+            <!-- Reminder offset. Server scheduler fires a Web Push
+                 at (event.start - remindMinsBefore). Available on
+                 events.json events only since ICS round-trip would
+                 need VALARM support, which we haven't built yet. -->
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-[11px] uppercase tracking-wider text-dim mr-1">Remind</span>
+              {#each [
+                { mins: 0,  label: 'off' },
+                { mins: 5,  label: '5m' },
+                { mins: 15, label: '15m' },
+                { mins: 30, label: '30m' },
+                { mins: 60, label: '1h' },
+                { mins: 1440, label: '1d' }
+              ] as preset}
+                {@const active = remindMinsBefore === preset.mins}
+                <button
+                  type="button"
+                  onclick={() => (remindMinsBefore = preset.mins)}
+                  class="px-2 py-1 text-xs rounded border transition-colors
+                    {active ? 'bg-primary/15 border-primary text-primary' : 'bg-surface0 border-surface1 text-subtext hover:border-primary/40'}"
+                >{preset.label}</button>
               {/each}
             </div>
           {:else}
