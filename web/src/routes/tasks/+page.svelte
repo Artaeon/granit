@@ -578,6 +578,69 @@
     collapsedIds = next;
   }
 
+  // Saved filter presets — name a combination of status / q / tag /
+  // project / priority / goal / deadline / view / groupBy, pin it
+  // as a one-click chip above the stats row. Persisted to
+  // localStorage. Useful for "P1 this week", "Inbox", "Project X —
+  // open", etc — the kind of saved-views feature power users rely
+  // on.
+  type FilterPreset = {
+    name: string;
+    status: 'open' | 'done' | 'all';
+    q: string;
+    tag: string;
+    project: string;
+    priority: number | '';
+    goal: string;
+    deadline: string;
+    view: View;
+    groupBy: Group;
+  };
+  const PRESETS_KEY = 'granit.tasks.presets';
+  let presets = $state<FilterPreset[]>([]);
+  onMount(() => {
+    try {
+      const raw = localStorage.getItem(PRESETS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) presets = parsed;
+      }
+    } catch {}
+  });
+  function persistPresets() {
+    try { localStorage.setItem(PRESETS_KEY, JSON.stringify(presets)); } catch {}
+  }
+  function captureCurrentAsPreset() {
+    const name = prompt('Name this filter preset:', '');
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    const next = presets.filter((p) => p.name !== trimmed);
+    next.unshift({
+      name: trimmed,
+      status, q, tag: tagFilter, project: projectFilter,
+      priority: priorityFilter, goal: goalFilter, deadline: deadlineFilter,
+      view, groupBy
+    });
+    presets = next;
+    persistPresets();
+    toast.success(`Saved preset "${trimmed}"`);
+  }
+  function applyPreset(p: FilterPreset) {
+    status = p.status; q = p.q; tagFilter = p.tag; projectFilter = p.project;
+    priorityFilter = p.priority; goalFilter = p.goal; deadlineFilter = p.deadline;
+    view = p.view; groupBy = p.groupBy;
+  }
+  function deletePreset(name: string) {
+    presets = presets.filter((p) => p.name !== name);
+    persistPresets();
+  }
+  function presetMatches(p: FilterPreset): boolean {
+    return p.status === status && p.q === q && p.tag === tagFilter
+      && p.project === projectFilter && p.priority === priorityFilter
+      && p.goal === goalFilter && p.deadline === deadlineFilter
+      && p.view === view && p.groupBy === groupBy;
+  }
+
   let stats = $derived.by(() => {
     const today = new Date().toISOString().slice(0, 10);
     let open = 0, overdue = 0, todayCount = 0, doneToday = 0, snoozed = 0;
@@ -979,6 +1042,40 @@
           class="px-3 py-2 bg-primary text-on-primary rounded text-sm disabled:opacity-50 flex-shrink-0"
         >{quickAddBusy ? '…' : 'Add'}</button>
       </div>
+      <!-- Saved filter presets. One-click application of a stored
+           filter combo. The "+ save" chip captures the current
+           filter state under a name; clicking a preset chip
+           re-applies all stored fields. Long-press / right-click to
+           delete via the small × on the active chip. -->
+      {#if presets.length > 0 || true}
+        <div class="px-3 py-1.5 border-b border-surface1 flex items-center gap-1.5 text-xs flex-shrink-0 flex-wrap">
+          <span class="text-dim font-mono uppercase tracking-wider">presets</span>
+          {#each presets as p (p.name)}
+            {@const active = presetMatches(p)}
+            <span
+              class="inline-flex items-center rounded overflow-hidden border
+                {active ? 'border-primary bg-primary/10 text-primary' : 'border-surface1 bg-surface0 text-subtext hover:border-primary/40'}"
+            >
+              <button
+                onclick={() => applyPreset(p)}
+                class="px-2 py-0.5"
+              >{p.name}</button>
+              {#if active}
+                <button
+                  onclick={() => deletePreset(p.name)}
+                  title="Remove preset"
+                  class="px-1.5 py-0.5 text-dim hover:text-error border-l border-surface1"
+                >×</button>
+              {/if}
+            </span>
+          {/each}
+          <button
+            onclick={captureCurrentAsPreset}
+            title="Save the current filters as a named preset"
+            class="px-2 py-0.5 text-dim hover:text-primary border border-dashed border-surface1 hover:border-primary rounded"
+          >+ save current</button>
+        </div>
+      {/if}
       <!-- Stats summary chips. Always reflect the unfiltered set so
            the user knows total load even with active filters. The
            overdue / today chips have urgency coloring; doneToday is
