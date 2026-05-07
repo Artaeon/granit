@@ -112,6 +112,7 @@
       items: [
         { href: '/notes', label: 'Notes', icon: 'notes' },
         { href: '/search', label: 'Search', icon: 'search' },
+        { href: '/templates', label: 'Templates', icon: 'templates' },
         { href: '/objects', label: 'Objects', icon: 'objects', moduleId: 'objects' },
         { href: '/tags', label: 'Tags', icon: 'tags' }
       ]
