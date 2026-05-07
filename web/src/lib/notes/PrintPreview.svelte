@@ -970,26 +970,11 @@
     font-size: 10.5pt;
     padding: 2.5cm 2cm;
   }
-  .formal-body {
-    /* Slightly tighter measure than the screen body — printed
-       formal documents read better in narrower columns. */
-    max-width: 16.5cm;
-    margin: 0 auto;
-  }
-  .formal-title {
-    font-size: 22pt;
-    font-weight: 700;
-    margin: 0.5rem 0 0.25rem;
-    color: #1a1a1a;
-    letter-spacing: 0.005em;
-  }
-  .formal-meta {
-    font-size: 9.5pt;
-    color: #666;
-    margin-bottom: 1.5rem;
-    border-bottom: 1px solid #c8c8c8;
-    padding-bottom: 0.6rem;
-  }
+  /* .formal-* classes lived under a removed "formal" mode and were
+     left as orphan style blocks — the markup never emits them now.
+     Deleted to clear the unused-CSS warnings; the @media print
+     rules referencing them are kept since they're harmless and
+     would re-apply if the mode is ever revived. */
 
   .print-page[data-mode="letterhead"] {
     font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
@@ -1400,10 +1385,6 @@
     letter-spacing: 0.02em;
     line-height: 1.4;
   }
-  .doc-signature__signer {
-    font-weight: 600;
-    color: #1a1a1a !important;
-  }
   .doc-signature__lead {
     font-size: 8.5pt;
     line-height: 1.5;
@@ -1430,12 +1411,6 @@
     margin: 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     overflow-wrap: anywhere;
-  }
-  .doc-signature__hash {
-    /* Ample letter-spacing for the grouped-hash readout, like a
-       PDF viewer's fingerprint summary. */
-    letter-spacing: 0.06em;
-    color: #1a4fb3;
   }
   .doc-signature__src {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

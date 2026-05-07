@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import { page } from '$app/stores';
   import { api, type ChatMessage } from '$lib/api';
   import { sabbath } from '$lib/stores/sabbath';
@@ -81,15 +81,24 @@
     // open-transitions, so no duplication here.
   }
   // Also handle external opens (sidebar button, etc.) — load
-  // status + focus input when the store flips us to true. Note
-  // we DON'T read attachNote here even to gate the auto-enable;
-  // doing so would put attachNote in the effect's deps and the
-  // user un-checking it would re-fire the effect, which would
-  // re-enable it (regression of the earlier flicker bug). Just
-  // write unconditionally — the user owns the toggle once open.
+  // status + focus input when the store flips us to true. Two
+  // tracking rules apply here:
+  //
+  //   - DON'T read attachNote: doing so would put it in the
+  //     effect's deps and the user un-checking it would re-fire
+  //     this effect, which would re-enable it (regression of the
+  //     earlier flicker bug). Just write unconditionally.
+  //
+  //   - DON'T track currentNotePath either: navigating while the
+  //     overlay is open would re-fire this effect and yank focus
+  //     into the chat input, even if the user was typing in the
+  //     destination page. untrack reads the path without
+  //     subscribing, so the effect only re-fires on open changes.
   $effect(() => {
     if (open) {
-      if (currentNotePath) attachNote = true;
+      untrack(() => {
+        if (currentNotePath) attachNote = true;
+      });
       void loadStatus();
       tick().then(() => inputEl?.focus());
     }

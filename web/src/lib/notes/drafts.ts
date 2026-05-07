@@ -76,7 +76,13 @@ export function setDraft(path: string, body: string, baseModTime: string): void 
     }
   }
   // Move this path to the front of the index (most-recently-touched).
-  let idx = readIndex().filter((p) => p !== path);
+  // Skip the read-modify-write when the path is already at the front
+  // — autosave fires once per keystroke now (no debounce), and
+  // re-writing a 12-entry array on every keystroke is wasted IO.
+  // Only re-index when this is genuinely a new or moved entry.
+  const idx0 = readIndex();
+  if (idx0[0] === path && idx0.length <= MAX_DRAFTS) return;
+  let idx = idx0.filter((p) => p !== path);
   idx.unshift(path);
   if (idx.length > MAX_DRAFTS) {
     for (const p of idx.slice(MAX_DRAFTS)) {
