@@ -153,6 +153,23 @@
   let openTasks = $derived(projectTasks.filter((t) => !t.done));
   let doneTasks = $derived(projectTasks.filter((t) => t.done));
 
+  // Per-goal task tallies — for the linked-goals section, surface
+  // not just milestone progress but actual task velocity so the
+  // user sees which goal is being actively worked on. Project
+  // tasks already loaded; this is just a bucket-by-goalId
+  // derivation, no extra wire calls.
+  const tasksByGoal = $derived.by(() => {
+    const m = new Map<string, { open: number; done: number }>();
+    for (const t of projectTasks) {
+      if (!t.goalId) continue;
+      const b = m.get(t.goalId) ?? { open: 0, done: 0 };
+      if (t.done) b.done++;
+      else b.open++;
+      m.set(t.goalId, b);
+    }
+    return m;
+  });
+
   // ── Burn-up: weekly completion buckets for this project ──────────
   // Same ISO-week scheme as TaskVelocityWidget so a "W19" tally
   // matches what the dashboard shows. Scoped to projectTasks so
@@ -500,16 +517,34 @@
               {@const total = ms.length}
               {@const done = ms.filter((m) => m.done).length}
               {@const pct = total === 0 ? (g.status === 'completed' ? 100 : 0) : Math.round((done / total) * 100)}
-              <li class="px-3 py-2 bg-surface0 rounded text-sm">
-                <div class="flex items-baseline justify-between gap-2">
-                  <span class="text-text truncate">{g.title}</span>
-                  <span class="text-[11px] text-dim flex-shrink-0">{pct}%{#if total > 0} · {done}/{total}{/if}</span>
-                </div>
-                {#if total > 0}
-                  <div class="mt-1 h-1 bg-mantle rounded-full overflow-hidden">
-                    <div class="h-full bg-primary" style="width: {pct}%"></div>
+              {@const taskCounts = tasksByGoal.get(g.id) ?? { open: 0, done: 0 }}
+              {@const goalTaskTotal = taskCounts.open + taskCounts.done}
+              <!-- Each row is now a clickable link to the goal's
+                   detail drawer (?focus=<id> auto-opens it) with
+                   milestone progress AND task tally surfaced
+                   side-by-side. The two metrics complement: the
+                   milestone bar shows planned-vs-done, the task
+                   counts show ongoing momentum. -->
+              <li>
+                <a
+                  href="/goals?focus={encodeURIComponent(g.id)}"
+                  class="block px-3 py-2 bg-surface0 hover:bg-surface1 rounded text-sm transition-colors"
+                >
+                  <div class="flex items-baseline justify-between gap-2">
+                    <span class="text-text truncate">{g.title}</span>
+                    <span class="text-[11px] text-dim flex-shrink-0">
+                      {pct}%{#if total > 0} · {done}/{total}{/if}
+                      {#if goalTaskTotal > 0}
+                        <span class="text-secondary ml-1" title="open / done tasks linked to this goal">{taskCounts.open}/{goalTaskTotal} ✓</span>
+                      {/if}
+                    </span>
                   </div>
-                {/if}
+                  {#if total > 0}
+                    <div class="mt-1 h-1 bg-mantle rounded-full overflow-hidden">
+                      <div class="h-full bg-primary" style="width: {pct}%"></div>
+                    </div>
+                  {/if}
+                </a>
               </li>
             {/each}
           </ul>

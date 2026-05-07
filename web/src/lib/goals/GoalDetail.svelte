@@ -315,6 +315,33 @@
       </header>
 
       <div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        {#if goal.project || goal.venture}
+          <!-- Cross-link chips. The goal carries free-text references
+               to a project name and / or venture; the chips make
+               those clickable so the user can hop to the project
+               page (`/projects?p=<name>`) or venture page directly,
+               without having to scroll down to the form fields and
+               copy-paste the name. Bidirectional surface: the
+               project page already lists "linked goals", this is
+               the goal-side mirror. -->
+          <div class="flex items-center gap-1.5 flex-wrap text-[11px]">
+            {#if goal.project}
+              <a
+                href="/projects?p={encodeURIComponent(goal.project)}"
+                class="px-2 py-0.5 rounded-full bg-secondary/10 text-secondary border border-secondary/20 hover:border-secondary/40 hover:bg-secondary/15 transition-colors"
+                title="Open the linked project"
+              >📁 {goal.project}</a>
+            {/if}
+            {#if goal.venture}
+              <a
+                href="/ventures/{encodeURIComponent(goal.venture)}"
+                class="px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 hover:border-primary/40 hover:bg-primary/15 transition-colors"
+                title="Open the linked venture"
+              >🏢 {goal.venture}</a>
+            {/if}
+          </div>
+        {/if}
+
         <!-- Progress -->
         <section>
           <div class="flex items-baseline justify-between mb-1.5">
