@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { page } from '$app/stores';
   import { api, type ChatMessage } from '$lib/api';
   import { sabbath } from '$lib/stores/sabbath';
   import { toast } from '$lib/components/toast';
@@ -43,6 +44,28 @@
   // threads; this is a quick-question surface.
   let messages = $state<ChatMessage[]>([]);
   let input = $state('');
+
+  // Note-aware chat. When the overlay opens on a /notes/<path>
+  // page, we offer to attach that note as context to the chat
+  // request (chatStream's notePath parameter — server expands it
+  // into the system prompt). Default ON when on a note page so the
+  // common case "ask about THIS note" works without a toggle dance,
+  // but the user can disable per-session if the note is huge or
+  // off-topic.
+  let attachNote = $state(false);
+  // $derived view of the current path so attachNote doesn't get
+  // stale across navigation while the overlay sits closed.
+  const currentNotePath = $derived.by(() => {
+    const p = $page.url.pathname;
+    if (!p.startsWith('/notes/')) return '';
+    return decodeURIComponent(p.slice('/notes/'.length));
+  });
+  // Auto-enable attach when opening on a note. We deliberately
+  // DON'T auto-disable when navigating away with the overlay open
+  // — the user might be referencing a note they just left.
+  $effect(() => {
+    if (open && currentNotePath && !attachNote) attachNote = true;
+  });
 
   function close() {
     abort?.abort();
@@ -191,7 +214,7 @@
     try {
       await api.chatStream(
         history,
-        undefined,
+        attachNote && currentNotePath ? currentNotePath : undefined,
         {
           onChunk: (c) => {
             acc += c;
@@ -365,6 +388,25 @@
         </div>
       {/if}
     </div>
+
+    {#if currentNotePath}
+      <!-- Note-context chip. Lets the user toggle whether the
+           current note is attached to the next chat message. The
+           server-side notePath expander on /chat/stream injects
+           the note's body into the system prompt; we only show
+           the path here so the user knows what we're sending. -->
+      <div class="border-t border-surface1 px-4 py-2 flex items-center gap-2 flex-shrink-0 text-[11px]">
+        <label class="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
+          <input
+            type="checkbox"
+            bind:checked={attachNote}
+            class="w-3.5 h-3.5 accent-primary cursor-pointer flex-shrink-0"
+          />
+          <span class="text-dim flex-shrink-0">attach</span>
+          <span class="text-subtext font-mono truncate" title={currentNotePath}>{currentNotePath}</span>
+        </label>
+      </div>
+    {/if}
 
     <!-- Chat input. Sits at the bottom, growable up to a few rows.
          Enter sends, Shift+Enter inserts a newline. Disabled
