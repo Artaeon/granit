@@ -196,6 +196,72 @@
     open = false;
   }
 
+  // Create a meeting note for this event and navigate to it. The
+  // note lands at Meetings/<YYYY-MM-DD> · <slug-of-title>.md with
+  // frontmatter that captures the event metadata so the note is
+  // searchable + tag-filterable + later linkable from the daily.
+  // If today's daily exists we also append a backlink line so the
+  // user has a one-click trail from "what did I do today" to the
+  // meeting note. Failures fall back to a toast.
+  let creatingMeetingNote = $state(false);
+  async function createMeetingNote() {
+    if (!event || creatingMeetingNote) return;
+    creatingMeetingNote = true;
+    try {
+      const date = (event.start ?? event.date ?? new Date().toISOString()).slice(0, 10);
+      const slug = (event.title || 'meeting')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .slice(0, 60);
+      const path = `Meetings/${date} · ${slug}.md`;
+      const startTimeStr = event.start ? new Date(event.start).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+      const endTimeStr = event.end ? new Date(event.end).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+      const fm: Record<string, unknown> = {
+        type: 'meeting',
+        date,
+        title: event.title,
+        tags: ['meeting'],
+        // Round-trips so a future feature can link the note back to
+        // the source event without a fuzzy search.
+        sourceEvent: event.eventId ?? undefined,
+        sourceCalendar: event.source ?? undefined
+      };
+      if (event.location) fm.location = event.location;
+      if (startTimeStr) fm.start = startTimeStr;
+      if (endTimeStr) fm.end = endTimeStr;
+      // Strip undefined keys so the YAML serializer doesn't emit
+      // `key: ~` lines for nothing.
+      for (const k of Object.keys(fm)) if (fm[k] === undefined) delete fm[k];
+
+      const body =
+        `# ${event.title}\n\n` +
+        (event.location ? `**Location:** ${event.location}\n` : '') +
+        (startTimeStr || endTimeStr ? `**Time:** ${startTimeStr}${endTimeStr ? '–' + endTimeStr : ''}\n` : '') +
+        `\n## Attendees\n- \n\n## Agenda\n- \n\n## Notes\n\n\n## Action items\n- [ ] \n`;
+
+      await api.createNote({ path, frontmatter: fm, body });
+
+      // Append a backlink to today's daily — best-effort.
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        if (date === today) {
+          const daily = await api.daily('today');
+          const dailyBody = (daily.body ?? '') + `\n- [[${path}|${event.title}]] (meeting)\n`;
+          await api.putNote(daily.path, { frontmatter: daily.frontmatter ?? {}, body: dailyBody });
+        }
+      } catch {}
+
+      toast.success('Meeting note created');
+      goto(`/notes/${encodeURIComponent(path)}`);
+      open = false;
+    } catch (err) {
+      toast.error('Failed to create meeting note: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      creatingMeetingNote = false;
+    }
+  }
+
   function close() { open = false; }
 </script>
 
@@ -342,6 +408,14 @@
             open note
           </button>
         {/if}
+        <button
+          onclick={createMeetingNote}
+          disabled={creatingMeetingNote}
+          class="px-3 py-1.5 text-sm bg-secondary/15 text-secondary rounded hover:bg-secondary/25 disabled:opacity-50"
+          title="Create a meeting note for this event with frontmatter"
+        >
+          {creatingMeetingNote ? 'creating…' : '✎ meeting note'}
+        </button>
         <span class="flex-1"></span>
         <button onclick={close} class="px-3 py-1.5 text-sm text-subtext hover:text-text">close</button>
       </div>

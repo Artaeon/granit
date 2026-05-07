@@ -71,6 +71,32 @@
   let startM = $state(0);
   let endH = $state(0);
   let endM = $state(0);
+  // Track the previous start so we can shift the end when the user
+  // changes start. Without this, picking 14:00-15:00 then changing
+  // start to 15:00 leaves end at 15:00 → 0-minute event → endBefore-
+  // Start gate fires and the user can't save. Auto-shifting keeps
+  // the duration the user already chose.
+  let prevStartMinutes = $state(0);
+  let suppressShift = $state(false);
+  $effect(() => {
+    const cur = startH * 60 + startM;
+    const endCur = endH * 60 + endM;
+    if (suppressShift) {
+      // Skip shift on programmatic resets (open / kind-switch).
+      prevStartMinutes = cur;
+      suppressShift = false;
+      return;
+    }
+    if (cur !== prevStartMinutes && endCur > 0) {
+      const dur = endCur - prevStartMinutes;
+      if (dur > 0) {
+        let newEnd = (cur + dur) % (24 * 60);
+        endH = Math.floor(newEnd / 60);
+        endM = newEnd % 60;
+      }
+    }
+    prevStartMinutes = cur;
+  });
   // startTime / endTime are DERIVED from H+M, not state-with-effect.
   // The previous $effect-driven sync had a real flush race: the
   // user could change a select, immediately click Save, and the
@@ -91,6 +117,10 @@
     if (!open) return;
     kind = defaultKind;
     dateISO = fmtDateISO(start);
+    // Suppress the auto-shift effect during the open-time reseed so
+    // we don't drag the end time to follow start when the user
+    // hasn't even seen the form yet.
+    suppressShift = true;
     // Seed the H/M selects from the prop's start/end. startTime /
     // endTime are derived from these — DON'T also assign them
     // directly, that would fight the $derived expression.
@@ -379,6 +409,34 @@
               </select>
             </div>
           </div>
+        </div>
+        <!-- Duration quick-pick. Sets the end-time to start +
+             selected duration. Saves users from clicking through
+             two select dropdowns when they want a standard slot. -->
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span class="text-[11px] uppercase tracking-wider text-dim mr-1">Duration</span>
+          {#each [
+            { mins: 15, label: '15m' },
+            { mins: 30, label: '30m' },
+            { mins: 45, label: '45m' },
+            { mins: 60, label: '1h' },
+            { mins: 90, label: '1.5h' },
+            { mins: 120, label: '2h' }
+          ] as preset}
+            {@const active = (endH * 60 + endM) - (startH * 60 + startM) === preset.mins}
+            <button
+              type="button"
+              onclick={() => {
+                const startMin = startH * 60 + startM;
+                const newEnd = (startMin + preset.mins) % (24 * 60);
+                suppressShift = true;
+                endH = Math.floor(newEnd / 60);
+                endM = newEnd % 60;
+              }}
+              class="px-2 py-1 text-xs rounded border transition-colors
+                {active ? 'bg-primary/15 border-primary text-primary' : 'bg-surface0 border-surface1 text-subtext hover:border-primary/40'}"
+            >{preset.label}</button>
+          {/each}
         </div>
         <!-- Range preview + duration — the user-facing source of
              truth. Shows exactly what will be saved (24-hour, the
