@@ -1,27 +1,182 @@
-# Granit — Keyboard Shortcut Reference
+# Granit — Keyboard shortcut reference
 
-> Complete reference for every keyboard shortcut in Granit.
+Complete reference for keyboard shortcuts in Granit. The web app and
+the terminal UI have separate bindings; both are listed here.
 
----
-
-## Table of Contents
-
-- [Global Navigation](#global-navigation)
-- [File Operations](#file-operations)
-- [Editor Shortcuts](#editor-shortcuts)
-- [Views & Tools](#views--tools)
-- [Vim Mode](#vim-mode)
-- [Overlay-Specific Shortcuts](#overlay-specific-shortcuts)
-- [Task Manager Shortcuts](#task-manager-shortcuts)
-- [Calendar Shortcuts](#calendar-shortcuts)
-- [Canvas Shortcuts](#canvas-shortcuts)
+In all tables below `Mod` means the platform-default modifier — `Cmd`
+on macOS, `Ctrl` on Linux and Windows. CodeMirror's keymap parser
+expands `Mod-X` into both, so `Mod-S` saves on every platform.
 
 ---
 
-## Global Navigation
+## Table of contents
 
-| Key | Action |
-|-----|--------|
+- [Web app](#web-app)
+  - [Global](#web--global)
+  - [Notes editor](#web--notes-editor)
+  - [Notes page](#web--notes-page)
+  - [Tasks page](#web--tasks-page)
+  - [Calendar page](#web--calendar-page)
+  - [History panel](#web--history-panel)
+  - [Print preview](#web--print-preview)
+- [Terminal UI](#terminal-ui)
+  - [Global navigation](#tui--global-navigation)
+  - [File operations](#tui--file-operations)
+  - [Editor](#tui--editor)
+  - [Views and tools](#tui--views-and-tools)
+  - [Vim mode](#tui--vim-mode)
+  - [Task manager](#tui--task-manager)
+  - [Calendar](#tui--calendar)
+  - [Canvas](#tui--canvas)
+
+---
+
+## Web app
+
+### Web — Global
+
+| Shortcut | Action |
+|---|---|
+| `Mod-K` | Open the command palette (search across notes, tasks, settings) |
+| `Mod-P` | Quick switcher (notes-only fast file open) |
+| `Mod-Shift-P` | Browser print dialog (when a print preview is open it captures `Mod-P` for itself) |
+| `Esc` | Close the current overlay / drawer |
+
+The command palette and quick switcher live in
+`web/src/lib/components/CommandPalette.svelte`. The palette has two
+modes — full search (Mod-K) and notes-only (Mod-P).
+
+### Web — Notes editor
+
+CodeMirror 6 bindings registered in `web/src/lib/editor/Editor.svelte`
+and the extension files under `web/src/lib/editor/`.
+
+#### Markdown formatting
+
+| Shortcut | Action |
+|---|---|
+| `Mod-B` | Toggle bold (`**...**`) |
+| `Mod-I` | Toggle italic (`*...*`) |
+| `Mod-Shift-I` | Toggle italic with underscore (`_..._`) |
+| `Mod-K` | Insert / wrap as a markdown link (uses clipboard if it looks like a URL) |
+| `Mod-`` ` `` | Toggle inline code |
+
+#### Headings, lists, quotes
+
+| Shortcut | Action |
+|---|---|
+| `Mod-Alt-1` … `Mod-Alt-6` | Set the line to a heading of that level |
+| `Mod-Alt-0` | Strip any heading / list / quote prefix |
+| `Mod-Shift-7` | Toggle ordered list (number prefix) |
+| `Mod-Shift-8` | Toggle bullet list (`*`) |
+| `Mod-Shift-9` | Toggle blockquote |
+
+#### Tasks
+
+| Shortcut | Action |
+|---|---|
+| `Mod-Shift-Enter` | Insert `- [ ] ` checklist item |
+| `Mod-Enter` | Toggle the checkbox state on the current line |
+
+#### Save + edit
+
+| Shortcut | Action |
+|---|---|
+| `Mod-S` | Save the current note immediately (auto-save also runs on idle) |
+| `Mod-F` | Open CodeMirror's find panel |
+| `Mod-Shift-F` | Find and replace |
+| `Mod-Z` | Undo |
+| `Mod-Shift-Z` | Redo |
+| `Tab` / `Shift-Tab` | Indent / unindent |
+
+#### Editor power features
+
+| Shortcut | Action |
+|---|---|
+| `[[` | Trigger wikilink autocomplete |
+| `#` | Trigger tag autocomplete |
+| `/` | Trigger snippet / block-completion picker |
+| `Mod-Shift-X` | Extract selection into a new note (opens dialog with editable title + folder picker) |
+| `Mod-Shift-A` | Send the selection to the AI (opens Ask AI panel) |
+
+When a CodeMirror autocomplete picker is open, auto-save is paused so
+the picker isn't disrupted by an external value change.
+
+### Web — Notes page
+
+When focus is in the page chrome (not the editor itself):
+
+| Shortcut | Action |
+|---|---|
+| `Mod-/` | Cycle the view mode (edit → split → preview → edit) |
+| `?` | Open the keyboard-shortcuts help overlay |
+| `Esc` | Close help / overlays |
+
+### Web — Tasks page
+
+When focus is on the page (not inside an input):
+
+| Shortcut | Action |
+|---|---|
+| `j` | Move cursor down to the next task |
+| `k` | Move cursor up to the previous task |
+| `x` | Toggle selection on the cursor task (multi-select) |
+| `d` | Toggle done on the cursor task |
+| `e` | Open the task detail drawer |
+| `p` | Cycle priority on the cursor task |
+| `Esc` | Clear multi-selection |
+| `?` | Open / close the keyboard-shortcuts help overlay |
+
+### Web — Calendar page
+
+Mirrors Google Calendar bindings so muscle memory carries over.
+
+| Shortcut | Action |
+|---|---|
+| `t` | Jump to today |
+| `j` or `n` | Next period (week / month / etc., depending on view) |
+| `k` or `p` | Previous period |
+| `d` | Day view |
+| `w` | Week view |
+| `x` | 3-day view |
+| `m` | Month view |
+| `y` | Year view |
+| `a` | Agenda view |
+| `?` | Toggle the calendar shortcuts help overlay |
+| `Esc` | Close create / edit drawer |
+
+Bindings disable when an input has focus or when a creation / detail
+drawer is open. The drawers own their own keyboard surface (Enter to
+submit, Esc to close).
+
+On touch devices, swipe left / right on the grid to advance / go back.
+
+### Web — History panel
+
+| Shortcut | Action |
+|---|---|
+| `Arrow Down` / `Arrow Up` | Move the selection through the version list |
+| `Esc` | Close the history panel |
+
+### Web — Print preview
+
+| Shortcut | Action |
+|---|---|
+| `Mod-P` | Print (handled inside the overlay so the global `Mod-P` doesn't open the quick switcher first) |
+| `Esc` | Close the preview |
+
+---
+
+## Terminal UI
+
+The TUI uses Bubble Tea bindings. Bindings below are the canonical
+defaults; some can be remapped via the settings overlay or
+`config.json`.
+
+### TUI — Global navigation
+
+| Shortcut | Action |
+|---|---|
 | `Tab` | Cycle focus to next panel (sidebar → editor → backlinks) |
 | `Shift+Tab` | Cycle focus to previous panel |
 | `F1` / `Alt+1` | Focus the file sidebar |
@@ -29,68 +184,52 @@
 | `F3` / `Alt+3` | Focus the backlinks panel |
 | `Ctrl+Tab` | Switch to next open tab |
 | `Ctrl+Shift+Tab` | Switch to previous open tab |
-| `Ctrl+1-9` | Jump to tab by position |
-| `Alt+Left` | Navigate back in history (browser-style) |
+| `Ctrl+1`–`Ctrl+9` | Jump to tab by position |
+| `Alt+Left` | Navigate back in history |
 | `Alt+Right` | Navigate forward in history |
 | `Ctrl+/` | Search Everything (notes, tasks, goals, habits) |
 | `Esc` | Close current overlay / return to sidebar |
-| `PgUp` | Scroll page up |
-| `PgDn` | Scroll page down |
+| `PgUp` / `PgDn` | Scroll page up / down |
 
----
+### TUI — File operations
 
-## File Operations
-
-| Key | Action |
-|-----|--------|
+| Shortcut | Action |
+|---|---|
 | `Ctrl+P` | Quick open (fuzzy file search) |
 | `Ctrl+N` | Create new note (template picker) |
 | `Ctrl+S` | Save current note |
 | `Ctrl+V` | Paste from system clipboard |
 | `F4` | Rename current note |
-| `Ctrl+X` | Open command palette (168 commands, 11 categories) |
-| `Ctrl+Q` | Quit Granit |
-| `Ctrl+C` | Quit Granit |
+| `Ctrl+X` | Open command palette |
+| `Ctrl+Q` / `Ctrl+C` | Quit Granit |
 
----
+### TUI — Editor
 
-## Editor Shortcuts
-
-| Key | Action |
-|-----|--------|
+| Shortcut | Action |
+|---|---|
 | `Ctrl+E` | Toggle between view and edit mode |
 | `Ctrl+U` | Undo |
 | `Ctrl+Y` | Redo |
 | `Ctrl+F` | Find in current file |
 | `Ctrl+H` | Find and replace in current file |
-| `Ctrl+D` | Select word under cursor / add next occurrence to multi-cursor |
+| `Ctrl+D` | Select word under cursor / add cursor at next occurrence |
 | `Ctrl+Shift+Up` | Add cursor on the line above |
 | `Ctrl+Shift+Down` | Add cursor on the line below |
-| `Esc` | Clear multi-cursors (when multi-cursor is active) |
+| `Esc` | Clear multi-cursors |
 | `[[` | Trigger wikilink autocomplete |
-| `/` | Trigger snippet expansion (e.g., `/date`, `/meeting`) |
-| `Tab` | Accept ghost writer suggestion / indent |
-| `Shift+Tab` | Unindent |
-| `Enter` | New line (with auto-indent) |
-| `Backspace` | Delete character before cursor |
-| `Delete` | Delete character after cursor |
-| `Home` | Move to start of line |
-| `End` | Move to end of line |
-| `Arrow keys` | Move cursor |
-| `Alt+Shift+Left` | Reorder tab left |
-| `Alt+Shift+Right` | Reorder tab right |
+| `/` | Trigger snippet expansion |
+| `Tab` / `Shift+Tab` | Accept ghost-writer suggestion / indent / unindent |
+| `Alt+Shift+Left` / `Alt+Shift+Right` | Reorder current tab |
 | `Alt+W` | Close current tab |
 
----
+### TUI — Views and tools
 
-## Views & Tools
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+G` | Open note graph visualization |
+| Shortcut | Action |
+|---|---|
+| `Ctrl+G` | Open note graph visualisation |
 | `Ctrl+T` | Open tag browser |
 | `Ctrl+O` | Open note heading outline |
-| `Ctrl+B` | Open bookmarks & recent notes |
+| `Ctrl+B` | Open bookmarks + recent notes |
 | `Ctrl+J` | Quick switch between recent files |
 | `Ctrl+W` | Open canvas / whiteboard |
 | `Ctrl+L` | Open calendar view |
@@ -99,496 +238,91 @@
 | `Ctrl+Z` | Toggle focus / zen mode |
 | `Ctrl+,` | Open settings panel |
 | `F5` | Show help / keyboard shortcuts |
-| `Ctrl+X` | Open command palette |
 
----
+### TUI — Vim mode
 
-## Vim Mode
+Enable Vim mode via Settings ("Vim Mode") or the command palette
+("Toggle Vim Mode"). The status bar shows the current mode (`NORMAL`,
+`INSERT`, `VISUAL`, `COMMAND`).
 
-Enable Vim mode via Settings > "Vim Mode" or Command palette > "Toggle Vim Mode".
-
-When Vim mode is active, the status bar shows the current mode: `NORMAL`, `INSERT`, `VISUAL`, or `COMMAND`.
-
-### Normal Mode
-
-#### Cursor Movement
+#### Cursor movement
 
 | Key | Action |
-|-----|--------|
-| `h` | Move left |
-| `j` | Move down |
-| `k` | Move up |
-| `l` | Move right |
-| `w` | Move to start of next word |
-| `b` | Move to start of previous word |
-| `e` | Move to end of current/next word |
-| `0` | Move to start of line |
-| `$` | Move to end of line |
-| `^` | Move to first non-space character |
-| `gg` | Move to top of file |
-| `G` | Move to bottom of file |
-| `{count}G` | Move to line {count} |
-| `{count}gg` | Move to line {count} |
-| `H` | Move to top of visible screen |
-| `M` | Move to middle of visible screen |
-| `L` | Move to bottom of visible screen |
-| `Ctrl+D` | Scroll half page down |
-| `Ctrl+U` | Scroll half page up |
+|---|---|
+| `h` / `j` / `k` / `l` | Left / down / up / right |
+| `w` / `b` / `e` | Word forward / back / end |
+| `0` / `$` | Start / end of line |
+| `gg` / `G` | Top / bottom of buffer |
 
-All movement commands accept a numeric prefix: `5j` moves down 5 lines, `3w` moves forward 3 words.
-
-#### Entering Insert Mode
+#### Operators (combine with motions)
 
 | Key | Action |
-|-----|--------|
-| `i` | Insert before cursor |
-| `a` | Insert after cursor |
-| `I` | Insert at first non-space character of line |
-| `A` | Insert at end of line |
-| `o` | Open new line below and enter Insert mode |
-| `O` | Open new line above and enter Insert mode |
+|---|---|
+| `d` | Delete |
+| `c` | Change |
+| `y` | Yank |
+| `p` | Paste |
+| `dd` / `yy` | Delete / yank line |
+| `ciw` | Change inner word |
+| `5dd` | Delete 5 lines |
 
-#### Editing (Normal Mode)
-
-| Key | Action |
-|-----|--------|
-| `dd` | Delete current line |
-| `{count}dd` | Delete {count} lines |
-| `dw` | Delete to next word |
-| `d$` | Delete to end of line |
-| `D` | Delete to end of line (same as `d$`) |
-| `dj` | Delete current and next line |
-| `dk` | Delete current and previous line |
-| `dG` | Delete from cursor to end of file |
-| `x` | Delete character under cursor |
-| `cc` | Change (delete + enter Insert) current line |
-| `cw` | Change word |
-| `c$` | Change to end of line |
-| `C` | Change to end of line (same as `c$`) |
-| `yy` | Yank (copy) current line |
-| `{count}yy` | Yank {count} lines |
-| `yw` | Yank word |
-| `y$` | Yank to end of line |
-| `yj` | Yank current and next line |
-| `yk` | Yank current and previous line |
-| `yG` | Yank from cursor to end of file |
-| `p` | Paste below current line |
-| `P` | Paste above current line |
-| `u` | Undo |
-| `Ctrl+R` | Redo |
-| `J` | Join current line with the next line |
-| `.` | Repeat last action |
-
-#### Folding
+#### Visual
 
 | Key | Action |
-|-----|--------|
-| `za` | Toggle fold at cursor |
-| `zM` | Fold all sections |
-| `zR` | Unfold all sections |
+|---|---|
+| `v` | Character-wise visual |
+| `V` | Line-wise visual |
 
-#### Search
-
-| Key | Action |
-|-----|--------|
-| `/` | Start forward search |
-| `?` | Start backward search |
-| `n` | Go to next search match |
-| `N` | Go to previous search match |
-
-#### Mode Switching
+#### Command-line
 
 | Key | Action |
-|-----|--------|
-| `v` or `V` | Enter Visual mode |
-| `:` | Enter Command mode |
-
-### Insert Mode
-
-| Key | Action |
-|-----|--------|
-| `Esc` | Return to Normal mode |
-| All other keys | Type normally (passed through to the editor) |
-
-### Visual Mode
-
-Visual mode starts a selection from the cursor position. Moving the cursor extends the selection.
-
-| Key | Action |
-|-----|--------|
-| `h` / `j` / `k` / `l` | Extend selection in direction |
-| `G` | Extend selection to end of file |
-| `0` | Extend selection to start of line |
-| `$` | Extend selection to end of line |
-| `d` or `x` | Delete the selection |
-| `y` | Yank (copy) the selection |
-| `Esc` | Return to Normal mode (cancel selection) |
-
-### Command Mode
-
-Enter Command mode by pressing `:` in Normal mode. Type a command and press `Enter`.
-
-| Command | Action |
-|---------|--------|
-| `:w` | Save the current note |
-| `:q` | Quit Granit |
+|---|---|
+| `:w` | Save |
+| `:q` | Quit |
 | `:wq` | Save and quit |
-| `:{number}` | Go to line number (e.g., `:42` goes to line 42) |
-| `Esc` | Cancel and return to Normal mode |
-| `Backspace` | Delete last character in command buffer |
+| `:{n}` | Jump to line `n` |
+
+### TUI — Task manager
+
+| Shortcut | Action |
+|---|---|
+| `j` / `k` | Move cursor down / up |
+| `x` | Toggle selection |
+| `d` | Toggle done |
+| `e` | Edit task detail |
+| `p` | Cycle priority |
+| `=` | Filter by cursor's project |
+| `Ctrl+D` / `Delete` | Delete cursor task |
+| `Esc` | Clear selection / close panel |
+
+### TUI — Calendar
+
+| Shortcut | Action |
+|---|---|
+| `t` | Today |
+| `j` / `n` | Next period |
+| `k` / `p` | Previous period |
+| `d` / `w` / `m` / `y` / `a` | Day / week / month / year / agenda |
+
+### TUI — Canvas
+
+| Shortcut | Action |
+|---|---|
+| `n` | New node |
+| `Tab` | Cycle nodes |
+| `Enter` | Edit node label |
+| `d` | Delete node |
+| `Arrow keys` | Move selected node |
 
 ---
 
-## Overlay-Specific Shortcuts
-
-### Command Palette (`Ctrl+X`)
-
-| Key | Action |
-|-----|--------|
-| Type text | Filter commands by name or description |
-| `Up` / `Ctrl+K` | Move cursor up in results |
-| `Down` / `Ctrl+J` | Move cursor down in results |
-| `Enter` | Execute selected command |
-| `Esc` | Close palette |
-| `Backspace` | Delete last filter character |
-
-### Explorer / Sidebar (Focused)
-
-**Tree Navigation:**
-
-| Key | Action |
-|-----|--------|
-| `Up` / `k` | Move cursor up |
-| `Down` / `j` | Move cursor down |
-| `Enter` / `Space` | Open file — or expand/collapse folder |
-| `Left` / `h` | Collapse folder or go to parent |
-| `Right` / `l` | Expand folder or enter directory |
-| `g` / `Home` | Jump to first item |
-| `G` / `End` | Jump to last item |
-| `PgUp` / `Ctrl+U` | Scroll half page up |
-| `PgDn` / `Ctrl+D` | Scroll half page down |
-
-**Folder Operations:**
-
-| Key | Action |
-|-----|--------|
-| `z` | Collapse all folders |
-| `Z` | Expand all folders |
-
-**Search:**
-
-| Key | Action |
-|-----|--------|
-| `/` | Enter search mode (fuzzy filter files) |
-| `Backspace` | Delete search character |
-| `Enter` | Exit search (keep filter) |
-| `Esc` | Clear search and return to tree |
-
-> Folder collapse state persists across sessions in `.granit/explorer.json`.
-
-### Settings (`Ctrl+,`)
-
-| Key | Action |
-|-----|--------|
-| `Up` / `k` | Move cursor up |
-| `Down` / `j` | Move cursor down |
-| `Enter` / `Space` | Toggle boolean setting or cycle through options |
-| `Left` / `Right` | Cycle string option values |
-| `Esc` | Close settings and save |
-
-### Graph View (`Ctrl+G`)
-
-| Key | Action |
-|-----|--------|
-| `Up` / `Down` | Select node |
-| `Enter` | Open selected note |
-| `Esc` | Close graph |
-
-### Tag Browser (`Ctrl+T`)
-
-| Key | Action |
-|-----|--------|
-| `Up` / `Down` | Navigate tags/notes |
-| `Enter` | Select tag or open note |
-| `Esc` | Close tag browser |
-
-### Bookmarks (`Ctrl+B`)
-
-| Key | Action |
-|-----|--------|
-| `Tab` | Switch between Starred and Recent tabs |
-| `Up` / `Down` | Navigate entries |
-| `Enter` | Open selected note |
-| `Esc` | Close bookmarks |
-
-### Find & Replace (`Ctrl+F` / `Ctrl+H`)
-
-| Key | Action |
-|-----|--------|
-| Type text | Enter search query |
-| `Enter` | Find next match |
-| `Tab` | Switch between find and replace fields |
-| `Esc` | Close find/replace |
-
-### Outline (`Ctrl+O`)
-
-| Key | Action |
-|-----|--------|
-| `Up` / `Down` | Navigate headings |
-| `Enter` | Jump to selected heading |
-| `Esc` | Close outline |
-
-### Quick Switch (`Ctrl+J`)
-
-| Key | Action |
-|-----|--------|
-| `Up` / `Down` | Navigate recent files |
-| `Enter` | Open selected file |
-| `Esc` | Close quick switch |
-
-### AI Bots (`Ctrl+R`)
-
-23 AI bots organized into 6 categories (Summarize, Writing, Analysis, Organize, Learning, Vault).
-
-**Bot list:**
-
-| Key | Action |
-|-----|--------|
-| `Up` / `k` | Select previous bot (wraps at top) |
-| `Down` / `j` | Select next bot (wraps at bottom) |
-| `Home` | Jump to first bot |
-| `End` | Jump to last bot |
-| `Enter` | Run selected bot |
-| `1`–`9` | Quick-pick first nine visible bots |
-| type any letter | Type-to-filter the list (searches name + description) |
-| `Backspace` | Remove last filter character |
-| `Esc` | Clear filter if set, otherwise close |
-
-**Bot results:**
-
-| Key | Action |
-|-----|--------|
-| `j` / `k` | Scroll down / up |
-| `Down` / `Up` | Scroll down / up |
-| `pgdn` / `ctrl+d` | Page down |
-| `pgup` / `ctrl+u` | Page up |
-| `g` / `home` | Jump to top |
-| `G` / `end` | Jump to bottom |
-| `c` / `y` | Copy raw AI response to system clipboard |
-| `s` | Save result as a note in `<vault>/Bots/` with frontmatter |
-| `r` | Re-run the same bot (great for retrying on small models) |
-| `Enter` | Apply result (tags/links) or close |
-| `Esc` | Back to bot list |
-
-**Bot loading screen:**
-
-| Key | Action |
-|-----|--------|
-| `Esc` | Cancel the in-flight AI request (actually aborts HTTP, not just UI) |
-
-### Export
-
-| Key | Action |
-|-----|--------|
-| `Up` / `Down` | Select export format |
-| `Enter` | Export in selected format |
-| `Esc` | Close export overlay |
-
-### Git Overlay
-
-| Key | Action |
-|-----|--------|
-| `Tab` | Switch between Status / Log / Diff views |
-| `c` | Commit (prompts for message) |
-| `p` | Push to remote |
-| `P` | Pull from remote |
-| `r` | Refresh status |
-| `Up` / `Down` | Navigate entries |
-| `Esc` | Close git overlay |
-
-### Plugin Manager
-
-| Key | Action |
-|-----|--------|
-| `Up` / `k` | Move cursor up |
-| `Down` / `j` | Move cursor down |
-| `Enter` / `Space` | Toggle plugin enabled/disabled |
-| `d` | Show plugin detail view |
-| `r` | Run first command of selected plugin |
-| `i` | Show installable plugins registry |
-| `Esc` / `q` | Close plugin manager |
-
-### Trash
-
-| Key | Action |
-|-----|--------|
-| `Up` / `Down` | Navigate deleted notes |
-| `r` | Restore selected note |
-| `Esc` | Close trash |
-
----
-
-## Task Manager Shortcuts
-
-### Navigation & Views
-
-| Key | Action |
-|-----|--------|
-| `Tab` | Cycle views (Today / Upcoming / All / Done / Calendar / Kanban / Matrix) |
-| `1`-`7` | Jump to specific view |
-| `j` / `k` | Navigate tasks |
-| `Esc`, `q` | Close task manager |
-
-### Task Actions
-
-| Key | Action |
-|-----|--------|
-| `x`, `Enter` | Toggle task done/undone |
-| `u` | Undo task action (10-deep stack; toggle, date, priority, etc.) |
-| `n` | Add/edit task note (Enter saves, Esc cancels) |
-| `z` | Snooze task (1=1h, 2=4h, 3=tomorrow 9am) |
-| `W` | Pin/unpin task (pinned tasks sort to top) |
-| `A` | Auto-suggest priority (heuristic based on deadline/deps/project) |
-| `R` | Batch reschedule all overdue tasks (Today view only) |
-| `a` | Add new task |
-| `g` | Jump to task source note |
-| `d` | Set/change due date (date picker) |
-| `r` | Reschedule (1=tomorrow, 2=Monday, 3=+1wk, 4=+1mo, 5=custom) |
-| `p` | Cycle priority level (none/low/med/high/highest) |
-| `E` | Set time estimate (1=15m, 2=30m, 3=45m, 4=1h, 5=1.5h, 6=2h) |
-| `e` | Expand/collapse subtasks |
-| `b` | Add task dependency |
-| `f` | Start focus session on task |
-| `T` | Save current task as reusable template |
-| `t` | Create task from template (1-9 to select) |
-| `X` | Archive completed tasks older than 30 days |
-| `?` | Show help overlay with all keybindings |
-
-### Filtering & Sorting
-
-| Key | Action |
-|-----|--------|
-| `/` | Search tasks (supports `#tag` syntax) |
-| `#` | Cycle tag filter |
-| `P` | Cycle priority filter |
-| `s` | Cycle sort mode (priority / due date / A-Z / source / tag) |
-| `c` | Clear all active filters |
-
-### Bulk Operations
-
-| Key | Action |
-|-----|--------|
-| `v` | Enter/exit select mode |
-| `Space` | Toggle selection on current task (in select mode) |
-| `x` | Bulk toggle done/undone (in select mode) |
-| `d` | Bulk set due date (in select mode) |
-| `Esc`, `q` | Exit select mode |
-
-### Kanban Board
-
-| Key | Action |
-|-----|--------|
-| `h` / `l` | Move between columns |
-| `j` / `k` | Navigate tasks within a column |
-| `x`, `Enter` | Toggle task completion |
-| `>` / `<` | Move task to next/previous column |
-| `g` | Jump to task source note |
-| `a` | Add new task |
-
-### Eisenhower Matrix
-
-| Key | Action |
-|-----|--------|
-| `7` or `Tab` | Switch to Matrix view |
-| Read-only | 2×2 grid: DO (urgent+important), SCHEDULE (important), DELEGATE (urgent), ELIMINATE (neither) |
-
----
-
-## Goals Manager Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `j` / `k` | Navigate goals / milestones |
-| `Tab` | Cycle views (Active / By Category / Timeline / Completed) |
-| `1`-`4` | Jump to specific view |
-| `Enter` | Expand goal to show milestones / toggle milestone |
-| `a` | Create new goal (title → date → category wizard) |
-| `m` | Add milestone to current goal |
-| `x` | Toggle goal complete / toggle milestone done |
-| `e` | Edit goal title |
-| `E` | Edit goal description |
-| `n` | Edit goal notes |
-| `p` | Pause / resume goal |
-| `A` | Archive goal (soft delete) |
-| `D` | Delete goal permanently |
-| `d` | Delete milestone (when expanded) |
-| `!` | Set milestone due date (1=1wk, 2=2wk, 3=1mo, 4=3mo, 0=clear) |
-| `J` / `K` | Reorder milestone down / up |
-| `t` | Create task from milestone (links with goal:ID) |
-| `r` | Set review frequency / write review (when expanded) |
-| `C` | Set goal color (7 theme colors) |
-| `?` | Help overlay with all keybindings |
-| `Esc` | Collapse goal / close overlay |
-
----
-
-## Daily Planner Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `j` / `k` | Navigate time slots |
-| `a` | Add block (type with 1-4, duration with -/+) |
-| `d` | Delete block |
-| `Space` | Toggle block done |
-| `m` / `Enter` | Move block / assign unscheduled task |
-| `f` | Start focus session from block |
-| `c` | Copy daily plan to clipboard (includes goals) |
-| `S` | Export plan as markdown to Plans/ folder |
-| `s` | Save planner to file |
-| `[` / `]` | Previous / next day |
-| `Tab` | Switch panel (schedule / tasks / habits) |
-| `Esc` | Close planner |
-
----
-
-## Calendar Shortcuts
-
-### Navigation
-
-| Key | Action |
-|-----|--------|
-| `Left` / `Right` (`h` / `l`) | Previous / next day |
-| `Up` / `Down` (`k` / `j`) | Previous / next hour (week/3-day/1-day views) |
-| `Up` / `Down` (`k` / `j`) | Previous / next week (month view) |
-| `[` / `]` | Previous / next month |
-| `{` / `}` | Previous / next year |
-| `t` | Jump to today |
-| `w` / `v` | Cycle views forward (month → week → 3-day → 1-day → agenda → year) |
-| `W` / `V` | Cycle views backward |
-
-### Actions
-
-| Key | Action |
-|-----|--------|
-| `a` | Event creation wizard (title → time → duration → location → recurrence → color → description) |
-| `b` | Task time-blocking — pick a task and assign it to the selected time slot |
-| `g` | Create weekly milestone — pick a goal, enter milestone text (due end of week) |
-| `e` | Toggle event panel |
-| `Enter` | Open or create daily note for selected date |
-| `Space` | Toggle task completion (agenda view) |
-| `d` | Delete event (agenda view) |
-| `Esc` | Close calendar |
-
----
-
-## Canvas Shortcuts
-
-| Key | Action |
-|-----|--------|
-| Arrow keys | Move selected card |
-| `n` | Add new card |
-| `Enter` | Open note for selected card |
-| `d` | Delete selected card |
-| `c` | Connect two cards |
-| `Tab` | Cycle between cards |
-| `Esc` | Close canvas |
+## Discovering more
+
+- The web app's quickest discovery surface is the command palette
+  (`Mod-K`) — every action that has a name is listed there.
+- The TUI's command palette (`Ctrl+X`) is similarly the source of
+  truth for "what can I do right now"; press `F5` for the help
+  overlay.
+
+If a shortcut listed here is wrong or missing, please open an issue
+or PR — bindings drift faster than docs.

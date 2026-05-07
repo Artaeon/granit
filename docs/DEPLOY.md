@@ -88,7 +88,7 @@ docker-compose, and wires up GitHub Actions CI/CD.
 ### Run detection first (no side-effects)
 
 ```bash
-fleetdeck detect /home/rrl/Projects/granit
+fleetdeck detect /path/to/granit
 ```
 
 Expected output:
@@ -106,7 +106,7 @@ will pick that up at deploy time.
 ### Deploy
 
 ```bash
-fleetdeck deploy /home/rrl/Projects/granit \
+fleetdeck deploy /path/to/granit \
   --server root@your-server.ip \
   --domain granit.example.com \
   --profile bare \

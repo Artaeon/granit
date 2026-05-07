@@ -10,994 +10,330 @@
 </p>
 
 <p align="center">
-  <strong>The terminal-native knowledge manager that replaces Obsidian, Notion, and Todoist.</strong><br>
-  <em>Notes, tasks, goals, habits, calendar, 23 AI bots, and daily planning -- one binary, zero subscriptions.</em>
+  <strong>A self-hosted, single-tenant knowledge manager built on plain Markdown.</strong><br>
+  <em>Notes, tasks, calendar, daily routines, finance, habits, and more — one binary, your filesystem, no telemetry.</em>
 </p>
 
 <p align="center">
-  <a href="#installation"><img src="https://img.shields.io/badge/Go-1.24+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License"></a>
-  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform">
-  <img src="https://img.shields.io/badge/Themes-40-purple?style=for-the-badge" alt="Themes">
-  <img src="https://img.shields.io/badge/AI%20Bots-23-green?style=for-the-badge" alt="AI Bots">
-  <img src="https://img.shields.io/badge/Tests-2072-orange?style=for-the-badge" alt="Tests">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License"></a>
+  <img src="https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go">
+  <img src="https://img.shields.io/badge/Frontend-SvelteKit%205-FF3E00?style=flat-square&logo=svelte&logoColor=white" alt="SvelteKit">
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey?style=flat-square" alt="Platform">
 </p>
 
 <p align="center">
+  <a href="#what-is-granit">What is Granit</a> &bull;
+  <a href="#install">Install</a> &bull;
+  <a href="#quick-start">Quick start</a> &bull;
   <a href="#features">Features</a> &bull;
-  <a href="#who-is-granit-for">Use Cases</a> &bull;
-  <a href="#screenshots">Screenshots</a> &bull;
-  <a href="#installation">Installation</a> &bull;
-  <a href="#quick-start">Quick Start</a> &bull;
-  <a href="#a-day-with-granit">Daily Workflow</a> &bull;
-  <a href="#keyboard-shortcuts">Shortcuts</a> &bull;
-  <a href="#cli-reference">CLI</a> &bull;
-  <a href="#ai-setup">AI Setup</a> &bull;
-  <a href="#configuration">Config</a> &bull;
-  <a href="#granit-vs-the-alternatives">Compare</a> &bull;
-  <a href="#contributing">Contributing</a> &bull;
-  <a href="docs/">Docs</a>
+  <a href="#architecture">Architecture</a> &bull;
+  <a href="#documentation">Docs</a> &bull;
+  <a href="#contributing">Contributing</a>
 </p>
 
 ---
 
 ## What is Granit?
 
-Granit is a **free, open-source** knowledge management system built entirely in Go. A single ~32 MB binary gives you a full-featured note editor, task manager, goal tracker, habit tracker, calendar with time-blocking, 23 AI bots, and daily planning workflows -- all inside your terminal.
+Granit is a knowledge management system you run on your own machine, against your own files.
 
-Your notes are plain Markdown files with `[[wikilinks]]` and YAML frontmatter. **Fully compatible** with Obsidian, Logseq, and any Markdown editor. Bring your existing vault or start fresh.
+- **Vault-first.** A vault is a directory of plain `.md` files. No proprietary database, no opaque storage. Open the same vault in Obsidian, Logseq, vim, VS Code — Granit only adds a `.granit/` sidecar folder for state that doesn't belong inside the markdown.
+- **Single-tenant.** Granit assumes one person per running instance. There is no shared multi-tenant cloud, no team invites, no per-seat pricing. Run it on your laptop, on a NAS, on a VPS behind your own auth.
+- **Self-hosted.** Ships as a single Go binary with the SvelteKit web app embedded via `go:embed`. `granit web -v <vault>` boots an HTTP + WebSocket server, sets a password on first launch, and serves the SPA from the same port.
+- **Web + TUI.** A browser frontend for daily use on desktop and mobile, and a Bubble Tea TUI for terminal workflows. Both read and write the same files.
+- **No telemetry. No analytics. No outbound calls.** Granit makes network requests only for features the user explicitly turns on (AI providers, git remotes, ICS subscription URLs).
+- **Open source under MIT.** Read it, fork it, audit it, ship it. No CLA.
 
-**No Electron. No browser. No subscriptions. No telemetry. No vendor lock-in.**
-
-```
-granit                          # open your vault
-granit note "ship the release"  # quick capture from shell
-granit sync                     # git pull + commit + push
-granit today                    # print today's tasks and habits
-```
-
-> **How much are you paying for productivity tools?**
->
-> | Tool | Monthly Cost | What Granit Replaces |
-> |------|-------------|---------------------|
-> | Obsidian Sync | $5/mo | Wikilinks, graph, canvas, git-based sync |
-> | Obsidian Publish | $10/mo | `granit publish` -- static site, SEO, RSS, graph, search |
-> | Obsidian AI | $14/mo | 23 local AI bots, free |
-> | Todoist Pro | $5/mo | Task manager with 7 views + Eisenhower + Kanban |
-> | Notion | $10/mo | Database, calendar, kanban, wiki |
-> | Habitica / Streaks | $5/mo | Habit tracker with streaks |
-> | **Total** | **$49/mo** | **Granit: $0/mo, forever** |
+If you want a productivity stack that survives the next pricing change, the next acquihire, the next SaaS shutdown — your data lives in plain text in a folder you own, and the software that reads it is a few hundred kilobytes of Go and Svelte you can build yourself.
 
 ---
 
-## Why Granit?
+## Install
 
-Most knowledge tools force a trade-off: **power vs speed**, **features vs simplicity**, **local vs connected**. Granit refuses to choose.
+The recommended deployment is a single Go binary running `granit web` against a vault directory.
 
-- **Instant startup.** Your vault loads in ~12ms. No splash screens, no spinners, no loading bars. Open Granit, start typing. It's as fast as `vim` but with a full productivity suite behind it.
-- **Everything in one place.** Notes, tasks, goals, habits, calendar, journal, AI -- they all live together. No more context-switching between five different apps to plan your day.
-- **Keyboard-first.** 168 commands, all reachable from your keyboard. 17 layouts to match how you work. Full Vim mode with macros, text objects, and dot repeat. Your hands never leave the keyboard.
-- **AI that runs locally.** 23 AI bots work with models as small as 0.5B parameters via Ollama. Auto-tag your notes, generate flashcards, plan your day, triage tasks -- all without sending data to the cloud.
-- **Your data, your files.** Plain `.md` files in a folder. Sync with git, Nextcloud, or Dropbox. Encrypt sensitive notes with AES-256. No proprietary database, no cloud dependency, no account required.
-- **Obsidian compatible.** Use your existing Obsidian vault. `[[Wikilinks]]`, backlinks, graph view, canvas, dataview queries, YAML frontmatter -- it all works. Switch to Granit without changing a single file.
-
----
-
-## Who is Granit for?
-
-### Developers and Engineers
-
-You live in the terminal. Your IDE is there, your git is there, your builds run there. Why should your notes be trapped in Electron? Granit fits into your existing workflow -- `tmux` split, SSH session, or standalone. Use the CLI to capture ideas without leaving your current context. Git sync keeps everything versioned automatically.
+### From source
 
 ```bash
-# Quick capture without leaving your terminal workflow
-granit note "Bug: race condition in auth middleware -- see PR #847"
-granit todo "Fix flaky test in CI" --due tomorrow --priority high --tag backend
+git clone https://github.com/artaeon/granit.git
+cd granit
+make build                       # builds the SvelteKit SPA + the Go binary
+./bin/granit web ~/Vault         # serve on http://localhost:8787
 ```
 
-### Researchers and Students
+`make build` does two things: it runs `pnpm build` inside `web/` to produce the static SPA, then `go build` embeds that SPA into the binary via `go:embed`. The result is a self-contained executable — no Node, no static-asset hosting at runtime.
 
-Granit is a Zettelkasten and study tool in one. `[[Wikilinks]]` connect your ideas into a knowledge graph. The AI flashcard generator turns your notes into study material. Semantic search finds connections you didn't know existed. The reading list tracks papers and books with progress bars.
+### Go install (TUI only, no embedded web)
 
-### Writers and Content Creators
+```bash
+go install github.com/artaeon/granit/cmd/granit@latest
+granit ~/Vault                   # opens the terminal UI
+```
 
-Focus Mode strips away everything except your words. Ghost Writer offers inline AI suggestions as you type. 17 layouts let you switch between drafting, editing, and outlining. Export to HTML, PDF, or publish directly to Medium and GitHub Pages.
+Note: `go install` skips the SPA build step. You'll have a working TUI but `granit web` will serve an empty SPA. Use `make build` if you want the web frontend.
 
-### Productivity Enthusiasts
+### Docker
 
-If you've tried every app from Todoist to Notion to Obsidian and still feel like something's missing, Granit might be it. Morning routine, evening review, habit tracking with streaks, Pomodoro timer, goal manager with milestones, clock-in/out time tracking, Eisenhower Matrix, and Kanban boards -- all without paying for a single subscription.
+```bash
+docker compose -f docker-compose.example.yml up -d
+# vault bind-mounted from the host, exposed on :8787
+```
 
-### Teams on a Budget
+See [`docker-compose.example.yml`](docker-compose.example.yml) for the reference deployment, including the optional `--sync` flag for git auto-pull/commit/push.
 
-Granit is MIT-licensed and free forever. Sync through a shared git repo or Nextcloud server. Every team member gets the full feature set. No "Pro" tier, no per-seat pricing, no feature gates.
+### Arch Linux (AUR)
+
+A [`PKGBUILD`](PKGBUILD) is included in the repo. Build the AUR package against an upstream tarball or your local clone.
+
+### Cross-compiled binaries
+
+The included [`.goreleaser.yml`](.goreleaser.yml) produces `linux/amd64`, `linux/arm64`, `darwin/amd64`, and `darwin/arm64` archives.
+
+### Prerequisites
+
+| | |
+|---|---|
+| Go | 1.24+ (the Dockerfile uses 1.25) |
+| Node + pnpm | only for `make build` (web SPA) |
+| Git | optional, for `granit sync` and `--sync` |
+| Pandoc / aspell / xclip / wl-clipboard | optional, used by specific features |
+| Ollama or an OpenAI key | optional, for AI features |
 
 ---
 
-## Screenshots
+## Quick start
 
-<p align="center">
-  <img src="assets/editor.gif" alt="Granit Editor" width="800">
-  <br><em>Markdown editing with syntax highlighting, wikilink autocomplete, and multi-cursor</em>
-</p>
+```bash
+# 1. Build (or use a prebuilt binary).
+make build
 
-<p align="center">
-  <img src="assets/calendar.gif" alt="Calendar" width="800">
-  <br><em>Full-width weekly grid with time-blocking, event wizard, and goal integration</em>
-</p>
+# 2. Serve a vault.
+./bin/granit web -v ~/Documents/Vault
 
-<p align="center">
-  <img src="assets/ai-features.gif" alt="AI Features" width="800">
-  <br><em>23 AI bots running locally via Ollama -- auto-tag, summarize, flashcards, and more</em>
-</p>
+# 3. Open http://localhost:8787 in your browser.
+# First launch asks you to set a password. Subsequent launches log in
+# with that password and issue a per-device session.
 
-<p align="center">
-  <img src="assets/themes.gif" alt="Themes" width="800">
-  <br><em>40 built-in themes including accessibility themes and a live theme editor</em>
-</p>
+# 4. Or use the TUI against the same vault.
+./bin/granit ~/Documents/Vault
+```
+
+The vault directory is just markdown. To start fresh:
+
+```bash
+./bin/granit init ~/NewVault
+./bin/granit web -v ~/NewVault
+```
+
+Both surfaces operate on the same files. Edit a note in the TUI, and the web SPA receives a WebSocket fan-out and re-renders. Edit it in the browser, and the next TUI scan picks up the change. External edits (vim, another editor, `git pull`) are detected by an fsnotify watcher and broadcast the same way.
 
 ---
 
 ## Features
 
-### Editor
+Grouped by surface area. Every entry below is backed by code in this repository — features that don't exist or no longer ship are not listed.
 
-Granit's editor isn't a glorified textarea -- it's a real code-grade text editor built for Markdown.
+### Notes
 
-- Syntax-highlighted Markdown with Chroma (200+ languages in fenced code blocks)
-- Full Vim modal editing -- Normal, Insert, Visual, Command modes with macros, marks, registers, and dot repeat
-- Multi-cursor editing (`Ctrl+D` to select next occurrence, `Ctrl+Shift+Up/Down` to add cursors)
-- Heading folding, split pane view, visual table editor
-- Ghost Writer -- inline AI writing suggestions (Tab to accept) with 32-entry completion cache
-- **Reading mode** (`Ctrl+E`) -- distraction-free rendered view with reading-width column, progress bar, and smooth scrolling
-- Find and replace (in-file and global with regex), 18 built-in snippets, smart bracket auto-close
-- `[[` wikilink autocomplete with fuzzy matching across all vault files
-- Mermaid diagram rendering, footnotes, callout blocks, transclusion, and smart indentation
-- Spell checking (aspell), clipboard manager with history, and unlimited undo/redo
-- Word count, reading time, and writing statistics in the status bar
-
-> **Vim Mode:** If you're a Vim user, Granit feels like home. Normal, Insert, Visual, and Command modes. Text objects (`diw`, `ci"`, `da(`), macros (`q` to record, `@` to play), marks (`m` + letter), search highlighting with `n`/`N`, dot repeat, `:%s` substitution, and more. Toggle with `Ctrl+,` > Vim Mode or the command palette.
-
-### Calendar
-
-- 6 views: month, week, 3-day, 1-day, agenda, year (`Ctrl+L`)
-- **Full-width weekly grid** -- hourly time slots with column separators, today highlighted
-- **Current time marker** -- green `>HH:MM` line across the grid
-- **Task time-blocking** (`b`) -- assign tasks to time slots, writes to planner file
-- **Event creation wizard** (`a`) -- title, time, duration, location, recurrence, color, description
-- **Goals integration** -- active goals as progress badges in the week header
-- **Weekly milestones** (`g`) -- create a milestone linked to an existing goal
-- **Daily focus** -- Plan My Day's top goal shown in day headers
-- **ICS calendar sync** -- auto-loads `.ics` files, per-file toggle in settings, RRULE support
-- Calendar sidebar panel for cockpit and widescreen layouts
+- **CodeMirror 6 editor** with markdown highlighting, lazy-loaded Mermaid diagram rendering, footnotes, and rendered preview mode.
+- **Slash commands** (`/`) — heading shortcuts, snippets, and selection-aware AI actions (rewrite, expand, summarize, improve, shorten, fix grammar) inline in the editor.
+- **Wikilinks and embeds** — `[[Note]]`, block-level `[[Note#Heading]]`, and inline `![[path]]` note embeds.
+- **Smart paste** — pasting a URL on a selection wraps it as a markdown link.
+- **Markdown keyboard shortcuts** — bold/italic/link/heading shortcuts, floating selection toolbar.
+- **Tag autocomplete and frontmatter helper UI** — pill-style tag editor and structured frontmatter form.
+- **Reading time + sticky scroll position** per note.
+- **Autolink suggestions** — surface candidate `[[wikilinks]]` based on note content.
+- **Ask AI on selection** — selection → AI prompt with SSE streaming.
+- **Extract to note** — pull a heading or selection into a new file with title/folder/tags picker.
+- **Quick switcher** — `Mod-P` / `Ctrl-P` fuzzy file switch across the vault.
+- **File history** — per-note version snapshots stored under `.granit/history/`, browse and restore from the editor sidebar.
+- **PDF export** with a trust-stamp signature footer (English and German), optional corporate header/footer templates, multi-page rendering for long notes.
 
 ### Tasks
 
-Tasks live inside your notes as Markdown checkboxes. Granit finds them all and gives you powerful views to organize them.
+Tasks live as `- [ ]` lines inside your markdown files. Granit indexes them and gives you views.
 
-- Task Manager (`Ctrl+K`) -- 7 views:
+- **List, kanban, triage, and review** views with smart due-groups (Today / Tomorrow / This week / Later / Overdue).
+- **Bulk select + bulk actions** — select multiple tasks with `x`, batch reschedule, bulk complete.
+- **Keyboard-first** — `j`/`k` to move, `x` to toggle, `e` to edit, drag-and-drop to reorder, quick-add bar with smart syntax (`#tag !p1 ~30m @friday`).
+- **Recurring tasks** with a picker in the task detail panel.
+- **Snooze** with TUI-aligned presets.
+- **Property markers** (`#tag`, `@date`, `!priority`, `~estimate`) are stripped from displayed text but preserved in the source.
+- **Per-project linking** — tasks under a `type: project` note inherit the project on the task.
 
-  | View | What it shows |
-  |------|--------------|
-  | **Today** | Due today + overdue, sorted by priority |
-  | **Upcoming** | Next 7 days grouped by date |
-  | **All** | Every task with filters and sort |
-  | **Done** | Completed tasks with completion dates |
-  | **Calendar** | Tasks on a date grid |
-  | **Kanban** | Drag between columns by status |
-  | **Eisenhower** | 2x2 urgent/important matrix |
+### Calendar
 
-- 5 priority levels, due dates, time estimates (`~30m`), subtask hierarchy, dependencies
-- Reschedule, batch reschedule, snooze, pin, undo (10-deep stack), task templates
-- Bulk operations, tag/priority filters, focus session launcher
-- Recurring tasks with auto-creation on completion
-- Natural language dates (`@next week`, `@friday`, `@in 3 days`), quick-add syntax (`!high #tag ~1h`)
-- **AI task triage** -- suggest priorities based on deadlines, dependencies, and workload
-- CLI quick capture:
-  ```bash
-  granit todo "Ship v2.0" --due friday --priority high --tag release
-  granit todo "Buy groceries" --due today --tag personal
-  ```
+- **Day, 3-day, week, month views.**
+- **Drag-to-create** — click+drag on a time slot to create a task or event.
+- **Drag-to-move and drag-to-resize** for both events and ICS-backed entries.
+- **24-hour time inputs** throughout (no AM/PM picker).
+- **ICS sync** — local writable calendars under `<vault>/calendars/`, read-only remote subscriptions, RRULE expansion (including `WEEKLY+BYDAY`).
+- **All-day strip** — collapsible, multi-day events render only on their start date with a `+N more` overflow.
 
-### Goals and Projects
+### Daily routines
 
-- **Goal Manager** -- active, paused, completed, archived lifecycle with milestones and due dates
-- Milestone CRUD with reordering, auto-complete, goal-to-task linking, and progress sparklines
-- Recurring reviews (weekly/monthly/quarterly) with progress tracking
-- **AI Goal Coach** -- velocity tracking, stalled detection, priority recommendations
-- **AI Project Insights** -- health analysis, risks, blockers, next actions
-- Project dashboards, burndown charts, and daily standup generator
+- **Morning routine** wizard — scripture, prayer, top-of-day goal, task selection, habit toggles, free-form thoughts. Saves a structured block to today's daily note.
+- **Daily examen** — evening companion that writes an `## Examen` block.
+- **Daily jots** — quick timestamped bullets.
+- **Carryover** — today's note inherits unfinished items from yesterday's.
 
-### Multi-step AI Agents (Deepnote-style)
+### Habits and virtues
 
-Beyond the existing 19 single-shot bots, granit now supports **multi-step agents** — an LLM that picks tools from a registered catalog, observes their output, and iterates until it produces a final answer. ReAct-style loop with strict step budget + audit transcript.
+- **Habits** with view modes (List / Today / Week), sort, streaks, and per-day toggle on past dates.
+- **Virtues tracker** — character-formation entity with weekly self-evaluation checks.
+- **Habit ↔ virtue linkage** — habits can roll up into a virtue's progress.
+- **Measurements** — numeric series (weight, mood, hours-deep-work, etc.) with timestamped entries.
 
-- Press `Alt+A` to open the agent runner; pick a preset, type a goal, watch the live transcript
-- Tool catalog: `read_note`, `list_notes`, `search_vault`, `query_objects`, `query_tasks`, `get_today` (read), `write_note`, `create_task`, `create_object` (write — gated)
-- Read/Write split — a registry without write tools cannot mutate disk regardless of what the LLM proposes
-- Path containment + Approve callback gate every write
-- Works on small local Ollama models (text-based Thought/Action/Observation protocol, no JSON-mode required)
-- Composable with typed objects: agents can `query_objects(type=person, where='last_contact<2026-04-01')` and synthesise from the result
+### Goals, deadlines, ventures, projects
 
-Full docs: [docs/AGENTS.md](docs/AGENTS.md).
+- **Goals** with milestones, status lifecycle (active / paused / completed / archived), and review log.
+- **Deadlines** — top-level "this matters by date X" markers, separate from tasks and goals.
+- **Ventures** — umbrella entity above goals and projects (e.g. a side business, a research thread). Optional description, mission, color.
+- **Projects** with goal/milestone linkage, next-action chip, status lifecycle, and full CRUD.
 
-### Typed Objects (Capacities-style)
+### Knowledge tools
 
-Notes can declare a `type:` in frontmatter (Person, Book, Project, Goal, Meeting, Idea, Article, Podcast, Video, Quote, Place, Recipe, Highlight — or any custom type you define) and granit treats them as structured objects with **galleries**, **type-aware indexing**, **type-aware mentions**, and agent queries.
+- **Typed objects** — notes can declare `type: person | book | project | goal | meeting | idea | article | podcast | video | quote | place | recipe | highlight | <custom>` in frontmatter, and Granit exposes them as galleries with type-aware indexing.
+- **Object browser** — filterable gallery per type with preview pane.
+- **Tags page** — every tag in the vault with note counts.
+- **Backlinks and outgoing links** — per-note panel.
+- **Bible reader + bookmarks** — embedded WEB (World English Bible, public domain) for daily verse, random passage, and bookmarked-verse persistence.
+- **Scripture devotional flow** — verse of the day, "another one", one-shot devotional-note creator.
 
-- **Object Browser** (`Alt+O`) — type list (left), filterable gallery (middle), preview pane (right ≥95 cols). `n` creates a new object of the focused type with frontmatter prefilled; `D` deletes (with confirmation); `Enter` opens the underlying note
-- **Saved Views** (`Alt+V`) — Capacities-style smart collections: `Articles to Read`, `Active Projects`, `Active Goals`, `Currently Reading`, etc. Six built-ins; vault overrides at `.granit/views/<id>.json`. Inside a view, `n` quick-creates a new object of the view's type
-- **Project / Goal Hub strip** — when you open a `type: project` or `type: goal` note, granit prepends a 1-line summary above the editor: `🎯 Project: Apollo · ● active · 7 tasks (3 done) · Alt+N to add task`
-- **Quick-add task** (`Alt+N`) — on a typed-project or typed-goal note, appends a `- [ ] ` line at end of file with cursor positioned to type the title
-- **Tasks ↔ Projects** — tasks in a `type: project` note inherit the project as their `Project` field; By-Project view (`9` in Task Manager) groups them automatically
-- **Dashboard typed-objects panel** — counts per type, recently-captured objects, top results from a primary saved view
-- **Daily Jot today's-captures** — typed objects modified today appear inline in the jot, so you see capture velocity at a glance
-- 13 built-in types; vault-local overrides at `.granit/types/<id>.json` replace built-ins entirely
-- Storage stays plain markdown — every typed note is still a `.md` file with frontmatter
-- Search within a type via `/` (matches title + any property value)
+### Personal life
 
-Full docs: [docs/OBJECTS.md](docs/OBJECTS.md).
+- **Prayer intentions** with a status lifecycle (praying → answered → archived) and optional links to projects/goals/ventures.
+- **People** — lightweight CRM (last contact, upcoming birthdays, "ping" log).
+- **Hub** — a single login link manager for the URLs you check daily; importer for browser bookmarks; drag-to-reorder cards.
 
-### Knowledge Management
+### Productivity
 
-Your notes are not just files -- they're a connected knowledge graph.
+- **Shopping list** with `standard` recurring-need flag, and a `/finance` rollup of planned vs. bought spend.
+- **Finance** — net worth (accounts), recurring drag (subscriptions), income streams (active + planned), money goals. Deliberately scope-limited: this is a life-management tracker, not accounting software.
+- **Time tracker** — clock in/out per task or project, persisted in `.granit/timetracker.json`.
+- **Templates** — note templates with date variables.
+- **Snippets** — slash-command snippet picker in the editor.
+- **Saved dashboard layouts** — focus / morning / shutdown widget presets you can switch between.
 
-- `[[Wikilinks]]` with real-time autocomplete, backlinks panel, and interactive note graph (`Ctrl+G`)
-- **Tag browser** (`Ctrl+T`) -- browse all tags with note counts, drill into tagged notes
-- **Note outline** (`Ctrl+O`) -- jump to any heading in the current note
-- **Bookmarks** (`Ctrl+B`) -- starred notes and recently opened, with quick navigation
-- **Reading list** -- track books, papers, and articles with progress bars and notes
-- Semantic search with AI embeddings -- find notes by meaning, not just keywords
-- **Dataview queries** -- filter and display notes based on frontmatter metadata
-- Canvas/whiteboard with nodes, connections, and spatial layout for visual thinking
-- Zettelkasten ID generator for structured note-taking workflows
-- Note versioning with git diffs -- see how any note changed over time
-- **Smart connections** -- AI finds related notes you didn't explicitly link
-- **Knowledge gaps analysis** -- AI identifies topics you've referenced but never written about
-- **Thread Weaver** -- connects disparate notes into coherent narratives
-- **Auto-linker** -- suggests `[[links]]` you might have missed based on content analysis
+### Vision and review
 
-### AI Integration
+- **Vision** — life mission + values + season focus, single record per vault, anchored above goals on the dashboard.
+- **Review** — daily and weekly review pages with goal/task/habit recap.
+- **Stats** — basic vault metrics.
 
-Granit treats AI as a built-in utility, not a paid add-on. Every bot is optimized for small models that run on CPU.
+### AI
 
-- **23 AI Bots** (`Ctrl+R`) in 6 categories:
+- **Ask AI on selection** — slash-menu and `Alt+/` actions: rewrite, expand, summarize, improve, shorten, fix grammar.
+- **Streaming chat** — `/chat` page backed by an SSE endpoint.
+- **Plan-my-day** — agent that proposes a time-blocked plan; dry-run preview, then user-confirmed apply that writes `scheduledStart` back to matched tasks.
+- **Multi-step agent runner** — ReAct-style loop with a registered tool catalog (read_note, list_notes, search_vault, query_objects, query_tasks, get_today, write_note, create_task, create_object). Read/write split is enforced at the registry level — an agent without write tools registered cannot mutate disk.
+- **Providers** — Ollama (local, default), OpenAI, with a graceful offline fallback.
 
-  | Category | Bots |
-  |----------|------|
-  | **Writing** | Summarizer, tone adjuster, writing coach, ghost writer, expand, TLDR |
-  | **Organization** | Auto-tagger, auto-linker, flashcard generator, action items, outliner, MOC generator |
-  | **Research** | Deep dive agent, note enhancer, vault analyzer, daily digest, key terms |
-  | **Planning** | Plan my day, task triage, AI scheduler, goal coach, standup generator |
-  | **Analysis** | Smart connections, knowledge gaps, project insights, counter-argument, pros/cons |
-  | **Learning** | Explain simply, question generator, flashcards, key concepts |
+### Privacy and integrity
 
-- **Deep Dive Research Agent** -- runs Claude Code in the background to research topics and create structured notes in your vault. Status indicator in the status bar. ESC to minimize, Ctrl+C to cancel.
-- **Ghost Writer** -- inline AI suggestions as you type, Tab to accept. 32-entry completion cache ensures fast suggestions even with slow models.
-- Providers: **Ollama** (local, default), **OpenAI**, **Nous**, or offline fallback with graceful degradation
-- **Ollama management** -- install, start/stop, and pull models directly from Granit's settings panel
-- Production reliability: auto-retry with exponential backoff, HTTP cancellation, timeout handling, token-budget checks, and per-bot system prompts with small-model variants
+- **Per-vault password auth** — argon2id, per-device sessions, "sign out everywhere" from the devices page. Bootstrap bearer token printed once for CLI scripts.
+- **Atomic file writes** — every save goes through `internal/atomicio` (write to temp file in the same dir, fsync, rename) so a crash mid-write never produces a half-written note.
+- **`.granit/*.json` sidecars** — state that doesn't belong inside the markdown (task ordering, dashboard layout, finance rollups, hub items) lives in JSON sidecars next to the vault, not in a hidden global database.
+- **WebSocket fan-out** — file changes detected by fsnotify, broadcast on `/api/v1/ws` to connected clients so two browsers stay in sync without polling.
+- **No telemetry. No analytics. No update pings.**
+- **Plugin sandbox** — Lua plugins (`internal/plugins/`, `internal/tui/lua.go`) run with a 10-second execution timeout and path-escape detection. See [`docs/PLUGINS.md`](docs/PLUGINS.md).
 
-> **Privacy first:** When using Ollama, your notes never leave your machine. All AI processing happens locally. The 0.5B parameter `qwen2.5:0.5b` model runs on any CPU and handles auto-tagging, summarization, and flashcard generation well. Upgrade to 3B-7B for better writing and planning quality.
+### PWA
 
-### Habits and Daily Routines
-
-- Habit tracker with streaks, frequency settings (daily/weekly), and completion history
-- Pomodoro timer with configurable session goals, focus sessions (25/45/60/90 min)
-- Daily planner with time-blocked schedule and clipboard export
-- **Morning Routine** (`Alt+M`) -- scripture, set a goal, select tasks, toggle habits, write thoughts -- saved to daily note
-- **Evening Review** (`Alt+E`) -- reflect on accomplishments, audit overdue tasks, plan tomorrow
-- **Daily Jot** (`Alt+J`) -- quick timestamped bullets throughout the day
-- Smart daily note templates with 15+ variables (`{{overdue_tasks}}`, `{{active_goals}}`, etc.)
-- Clock in/out time tracking with project tagging and weekly reports
-
-### Explorer / File Browser
-
-- Hierarchical file tree with folder expand/collapse, file type icons, and daily/weekly note markers
-- **Persistent state** -- folder collapse state saved across sessions automatically
-- `z` to collapse all folders, `Z` to expand all -- instantly reorganize your view
-- `/` to enter fuzzy search mode, filtering across all filenames in real time
-- Vim-style navigation: `j`/`k` to move, `h`/`l` to collapse/expand, `Enter` to open
-- Tab switching: `Ctrl+Tab` / `Ctrl+Shift+Tab` to cycle, `Ctrl+1-9` to jump by position
-
-### Web companion (`granit web`)
-
-A self-hosted web frontend over the same vault, task store, and daily-note pipeline as the TUI. Single-binary deployment — the SvelteKit SPA is embedded into the granit binary via `go:embed`. See [`docs/WEB.md`](docs/WEB.md) for the full guide.
-
-- **Same data, different surface** — notes, tasks, projects, goals, habits, calendar events, ICS calendars, agent runs all read/write the same files the TUI uses.
-- **Password auth** — argon2id, per-device sessions, sign-out-everywhere. Bootstrap bearer token still printed for CLI scripts.
-- **Calendar with drag-to-create + resize** — Google-Calendar-style click+drag to create a task or event, drag bottom edge to resize. Six views (day / 3-day / week / month / year / agenda).
-- **Tasks** — 7 view modes (list, kanban, inbox, triage, quick wins, stale, review), full triage workflow, snooze with TUI presets, bulk actions.
-- **Projects** — full CRUD with goals + milestones, next-action chip, linked tasks, status lifecycle.
-- **Agents tab** — gallery of agent presets (built-in + vault overrides) and history of past runs.
-- **Devices** — one row per browser/laptop with an active session. Revoke per-device.
-- **PWA + offline** — installable, service worker with stale-while-revalidate, per-note draft persistence in localStorage.
-
-```bash
-make build                              # builds web SPA + binary
-./bin/granit web ~/Documents/Vault      # boot against your vault
-# open http://localhost:8787 — first paint asks you to set a password
-```
-
-### Sync and Export
-
-- **Git** -- built-in overlay with status, log, diff, commit, push, pull, author config; `granit sync` CLI
-- **Nextcloud** WebDAV sync with auto-sync option
-- Export to HTML, PDF (pandoc), plain text; blog publisher (Medium, GitHub Pages)
-- **Static site publishing** -- `granit publish` renders any folder of markdown notes to a self-hostable, GitHub-Pages-ready website. See [Static Site Publishing](#static-site-publishing) below
-- Note encryption (AES-256-GCM), import from Obsidian/Logseq/Notion
-- Backup and restore with timestamped zip archives
-
-### Static Site Publishing
-
-Replaces Obsidian Publish (~$10/mo) with a free, self-hosted alternative. One command renders a vault folder into a black-and-white static site you can drop on GitHub Pages, Cloudflare Pages, Netlify, or any S3-compatible host.
-
-```bash
-granit publish build ~/Notes/Research \
-  --output ./docs \
-  --title "Research" \
-  --site-url "https://you.github.io/research" \
-  --auto-og --math --mermaid
-
-git add docs && git commit -m "publish" && git push
-# Repo Settings -> Pages -> Source: branch / docs
-```
-
-What you get out of the box:
-
-- **Wikilinks resolved** across the published note set; unresolved targets render as plain text (no broken links)
-- **Backlinks** auto-generated for each note ("Linked from")
-- **Force-directed graph SVG** with Fruchterman-Reingold layout, deterministic, JS-free
-- **Per-note Contents outline** + **prev/next navigation** + **tag pages**
-- **Client-side search** -- ~30 lines of vanilla ES5 fuzzy filter, no framework
-- **Auto-detected Impressum / Datenschutz pages** for German/EU compliance, with footer links
-- **Cookie banner** (opt-in), **mobile-responsive** (≤640px breakpoint), **light + dark mode** via `prefers-color-scheme`
-- **SEO**: Open Graph, Twitter Card, JSON-LD Article schema, canonical links, sitemap.xml, robots.txt, RSS feed
-- **OG images**: per-note from frontmatter, site-wide default, or auto-generated 1200×630 PNGs
-- **Math** (KaTeX) and **Mermaid** opt-in, loaded only on pages that need them
-- **404 page**, image-asset copying, code highlighting via chroma
-
-Full reference: [docs/PUBLISH.md](docs/PUBLISH.md).
-
-### Customization
-
-Granit is deeply configurable. Every visual element can be changed without touching code.
-
-- **40 themes** including 5 accessibility themes (high-contrast, deuteranopia, protanopia, tritanopia, monochrome)
-  - Popular themes: Catppuccin Mocha/Latte/Frappe/Macchiato, Tokyo Night, Gruvbox, Nord, Dracula, Rosepine, Solarized, One Dark, Kanagawa, Everforest, and more
-- **Live theme editor** -- customize all 16 color roles in real-time and export as custom JSON
-- **17 layouts** with instant switching (`Alt+L`):
-
-  | Layout | Best for |
-  |--------|----------|
-  | Default | General note-taking with sidebar + editor + backlinks |
-  | Writer | Centered editor with generous margins |
-  | Zen | Distraction-free, no panels |
-  | Dashboard | Sidebar + editor + calendar panel |
-  | Cockpit | Compact layout with status tray |
-  | Kanban | Task manager focused with board view |
-  | Cornell | Cornell note-taking method layout |
-  | Widescreen | Optimized for ultra-wide monitors |
-  | + 9 more | Reading, focus, preview, presenter, research, etc. |
-
-- 4 icon themes: unicode (default), nerd font, emoji, ASCII
-- 16 core plugins with Lua scripting API for custom workflows
-- Command palette (`Ctrl+X`) with 168 commands across 11 categories
-- Per-vault configuration overrides -- different themes and settings per vault
-
-### Testing & Reliability
-
-Granit is one of the most thoroughly tested TUI applications in the Go ecosystem.
-
-- **2,072 test cases** covering editor operations, task parsing, calendar logic, AI integration, configuration, vault scanning, and more
-- Tests run on every commit with `go test ./...`
-- Edge case coverage: Unicode handling, large file performance, concurrent vault access, malformed Markdown, empty vaults
-- AI bots include fallback paths for offline/error scenarios -- Granit never crashes because an AI request failed
-- Configuration migration handles schema changes across versions
-- File watcher detects external changes (edits from other apps) and reloads gracefully
+The web frontend ships a service worker (`web/src/service-worker.ts`) and manifest (`web/static/manifest.webmanifest`) so it installs as a PWA on desktop and mobile, with stale-while-revalidate caching and per-note draft persistence in `localStorage`.
 
 ---
 
-## A Day with Granit
+## Screenshots
 
-Here's what a typical day looks like:
+Asciicasts and screenshots of the web frontend live in `assets/`. The web SPA looks roughly like a minimal Notion / Capacities — left sidebar with module nav, page-level header, and a content surface that swaps per route. The TUI is built on Bubble Tea with overlays for each major surface (calendar, tasks, settings).
 
-**6:30 AM -- Morning routine** (`Alt+M`)
-You open Granit and press `Alt+M`. A Bible verse greets you. You set your goal for the day: "Ship the API refactor." You select today's tasks from your vault, toggle which habits you'll focus on, and write a quick thought. Everything gets saved to your daily note.
-
-**9:00 AM -- Deep work**
-You're coding in tmux. An idea hits you mid-flow. Without leaving your terminal: `granit note "Consider event sourcing for audit trail"`. Done. Back to code. Later, you press `Ctrl+R` and ask the auto-linker to connect your new note to related ones.
-
-**12:00 PM -- Quick capture**
-Lunch meeting produced action items. You fire off:
-```bash
-granit todo "Draft API migration guide" --due friday --tag docs
-granit todo "Set up staging env" --due tomorrow --priority high
-```
-
-**3:00 PM -- Research**
-You press `Alt+R` to launch the Deep Dive Research Agent. It runs Claude Code in the background, researching "event sourcing patterns in Go," and creates a structured note in your vault. You keep working while it runs -- the status bar shows progress.
-
-**5:30 PM -- Review and sync**
-Press `Alt+E` for the evening review. Granit shows what you accomplished, flags overdue tasks, and helps you plan tomorrow. Then `granit sync` commits and pushes everything.
-
-**Throughout the day** -- `Alt+J` for quick jots. `Ctrl+L` to check your calendar. `Alt+H` for the dashboard with tasks, goals, habits, and stats at a glance.
-
----
-
-## Installation
-
-### From source (recommended)
-
-```bash
-git clone https://github.com/artaeon/granit.git
-cd granit
-go install ./cmd/granit/
-
-# Ensure ~/go/bin is in your PATH
-export PATH="$HOME/go/bin:$PATH"
-```
-
-### One-liner
-
-```bash
-go install github.com/artaeon/granit/cmd/granit@latest
-```
-
-### Build from source with custom binary location
-
-```bash
-git clone https://github.com/artaeon/granit.git
-cd granit
-go build -o bin/granit ./cmd/granit/
-sudo cp bin/granit /usr/local/bin/
-```
-
-### Requirements
-
-| Requirement | Version | Notes |
-|------------|---------|-------|
-| **Go** | 1.24+ | Required for building |
-| **Git** | Any | Required for git sync features |
-| **Platform** | Linux, macOS | Terminal with 256-color support recommended |
-
-### Optional Dependencies
-
-| Package | Purpose |
-|---------|---------|
-| [Ollama](https://ollama.ai) | Local AI (23 bots, Ghost Writer, research agent) |
-| aspell | Spell checking |
-| pandoc | PDF export |
-| xclip / wl-copy | System clipboard integration |
-| Claude Code | Deep Dive Research Agent |
-
-See [docs/INSTALLATION.md](docs/INSTALLATION.md) for desktop app, AUR package, and cross-compilation.
-
----
-
-## Quick Start
-
-```bash
-# Create and open a vault
-granit init my-vault
-granit my-vault
-
-# Or open any directory of Markdown files (including Obsidian vaults)
-granit ~/Documents/notes
-
-# Subsequent launches re-open the last vault
-granit
-```
-
-### First steps inside Granit
-
-| Step | Shortcut | What it does |
-|------|----------|--------------|
-| 1 | `Ctrl+N` | Create a new note with template picker |
-| 2 | Type `[[` | Link to another note with autocomplete |
-| 3 | `Ctrl+K` | Open task manager -- add your first task |
-| 4 | `Ctrl+L` | Open calendar -- view month/week/day |
-| 5 | `Ctrl+R` | AI bots -- auto-tag, summarize, flashcards |
-| 6 | `Ctrl+X` | Command palette -- 168 commands at your fingertips |
-| 7 | `Ctrl+,` | Settings -- configure theme, AI, layout |
-| 8 | `Alt+M` | Morning routine -- plan your day |
-| 9 | `Ctrl+G` | Note graph -- visualize connections |
-| 10 | `Alt+L` | Layout picker -- try all 17 layouts |
-
-### Import your existing vault
-
-```bash
-# Obsidian vault -- just point Granit at it
-granit ~/Documents/ObsidianVault
-
-# Logseq -- works with the pages/ directory
-granit ~/Logseq/pages
-
-# Notion export (markdown)
-granit import --from notion ~/Downloads/notion-export
-```
-
----
-
-## Keyboard Shortcuts
-
-### Core Navigation
-
-| Key | Action |
-|-----|--------|
-| `Tab` / `Shift+Tab` | Cycle between panels |
-| `F1` / `F2` / `F3` | Focus sidebar / editor / backlinks |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Cycle between open tabs |
-| `Ctrl+1-9` | Jump to tab by position |
-| `Ctrl+P` | Quick open (fuzzy file search) |
-| `Ctrl+J` | Quick switch between recent files |
-| `Ctrl+N` | New note with template picker |
-| `Ctrl+S` | Save current note |
-| `Ctrl+E` | Toggle edit / reading mode |
-| `Ctrl+Q` | Quit |
-
-### Explorer / Sidebar
-
-| Key | Action |
-|-----|--------|
-| `j` / `k` / `Up` / `Down` | Navigate up / down |
-| `Enter` / `Space` | Open file or expand/collapse folder |
-| `Left` / `h` | Collapse folder or go to parent |
-| `Right` / `l` | Expand folder or enter directory |
-| `z` | Collapse all folders |
-| `Z` | Expand all folders |
-| `/` | Search / filter files |
-| `Esc` | Clear search, return to tree |
-
-> Folder state persists across sessions automatically.
-
-### Overlays and Tools
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+X` | Command palette (168 commands) |
-| `Ctrl+K` | Task manager |
-| `Ctrl+L` | Calendar |
-| `Ctrl+R` | AI bots |
-| `Ctrl+G` | Note graph visualization |
-| `Ctrl+T` | Tag browser |
-| `Ctrl+O` | Note outline (headings) |
-| `Ctrl+B` | Bookmarks and recent notes |
-| `Ctrl+W` | Canvas / whiteboard |
-| `Ctrl+,` | Settings |
-| `Ctrl+Z` | Focus / zen mode |
-| `F4` | Rename current note |
-| `F5` / `Alt+?` | Help overlay |
-
-### Editing
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+F` | Find in file |
-| `Ctrl+H` | Find and replace |
-| `Ctrl+D` | Multi-cursor: select word / next occurrence |
-| `Ctrl+U` | Undo |
-| `Ctrl+Y` | Redo |
-| `Ctrl+Shift+Up/Down` | Add cursor above/below |
-
-### Daily Workflow
-
-| Key | Action |
-|-----|--------|
-| `Alt+M` | Morning routine -- scripture, goal, tasks, habits, thoughts |
-| `Alt+D` | Today's daily note |
-| `Alt+J` | Daily jot (quick timestamped entries) |
-| `Alt+E` | Evening review |
-| `Alt+H` | Dashboard (tasks, goals, habits, stats) |
-| `Alt+W` | Weekly note |
-| `Alt+L` | Layout picker |
-| `Alt+R` | Deep Dive Research Agent |
-
-See [docs/KEYBINDINGS.md](docs/KEYBINDINGS.md) for the complete reference including Vim mode, task manager, calendar, canvas, and goals keybindings.
-
----
-
-## CLI Reference
-
-Granit includes a full CLI for quick actions from your shell -- perfect for scripting, cron jobs, and integration with other tools.
-
-### Vault Management
-
-```bash
-granit                          # Open last vault or vault selector
-granit <path>                   # Open vault at path
-granit init <path>              # Initialize a new vault
-granit scan <path>              # Print vault statistics (--json)
-granit list <path>              # List notes (--json, --paths, --tags)
-granit list --vaults            # List all known vaults
-granit config                   # Show configuration paths and values
-granit backup <path>            # Create timestamped zip backup
-```
-
-### Notes and Tasks
-
-```bash
-granit note "your thought"      # Quick capture to Inbox.md
-granit todo "task" --due friday --priority high --tag work
-granit capture "idea"           # Append to inbox.md
-echo "idea" | granit clip       # Capture from stdin (pipe-friendly)
-granit daily <path>             # Open today's daily note
-```
-
-### Sync and Review
-
-```bash
-granit sync <path>              # Pull, commit, push (one command)
-granit sync -m "weekly update"  # Custom commit message
-granit today                    # Print today's dashboard
-granit review                   # Daily review
-granit review --week --md       # Weekly review as markdown
-granit review --save            # Save review to vault
-```
-
-### Time Tracking
-
-```bash
-granit clock in --project "Study Go"
-granit clock out
-granit clock status
-granit clock log --week
-```
-
-### Search
-
-```bash
-granit search "TODO" <path>       # Full-text search
-granit search --regex "#+\s" .    # Regex search
-granit query 'tag:project' <path> # Metadata query
-```
-
-### Publishing
-
-```bash
-granit publish build <folder>           # Render to ./dist (or --output)
-granit publish preview <folder>         # Build + serve on http://localhost:8080
-granit publish init <folder>            # Write .granit/publish.json template
-granit publish help                     # Full flag reference
-```
-
-Common flags: `--title`, `--homepage`, `--site-url`, `--author`, `--auto-og`, `--math`, `--mermaid`, `--hero`, `--cookie-banner`, `--no-branding`. See [docs/PUBLISH.md](docs/PUBLISH.md) for the full guide.
-
-### Other
-
-```bash
-granit serve <path> --port 8080   # Serve vault as read-only website
-granit export --format html --all # Export notes
-granit import --from obsidian src # Import from other apps
-granit remind "Start work" --at 07:00 --daily
-granit completion bash            # Shell completions (bash, zsh, fish)
-granit man | man -l -             # View man page
-```
-
----
-
-## AI Setup
-
-### Ollama (recommended -- local, private, free)
-
-```bash
-# Install Ollama
-curl -fsSL https://ollama.ai/install.sh | sh
-
-# Pull a small, fast model
-ollama pull qwen2.5:0.5b
-ollama serve
-```
-
-Or use the built-in wizard: `Ctrl+,` > Setup Ollama. You can install, start/stop Ollama, and pull models directly from settings.
-
-All 23 AI bots are optimized for small models. A 0.5B parameter model running on CPU is enough for auto-tagging, summarization, flashcards, and most features. Larger models (3B-7B) improve quality for writing coach, planning, and research tasks.
-
-### OpenAI
-
-Add to your vault's `.granit.json` or global config:
-
-```json
-{
-  "ai_provider": "openai",
-  "openai_key": "sk-...",
-  "openai_model": "gpt-4o-mini"
-}
-```
-
-### Claude Code (Deep Dive Research Agent)
-
-Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) for the Deep Dive Research Agent, which runs in the background to research any topic and create structured notes in your vault.
-
-### AI Bot Categories
-
-| Category | Bots |
-|----------|------|
-| **Writing** | Summarizer, tone adjuster, writing coach, ghost writer, expand, TLDR |
-| **Organization** | Auto-tagger, auto-linker, flashcard generator, action items, outliner |
-| **Research** | Deep dive agent, note enhancer, vault analyzer, daily digest, key terms |
-| **Planning** | Plan my day, task triage, AI scheduler, goal coach, standup generator |
-| **Analysis** | Smart connections, knowledge gaps, project insights, counter-argument, pros/cons |
-
-See [docs/AI-GUIDE.md](docs/AI-GUIDE.md) for all providers, model recommendations, and troubleshooting.
-
----
-
-## Configuration
-
-Granit uses layered JSON configuration. Per-vault settings override global.
-
-| Scope | Path |
-|-------|------|
-| Global | `~/.config/granit/config.json` |
-| Per-vault | `<vault>/.granit.json` |
-| Vault registry | `~/.config/granit/vaults.json` |
-| Custom themes | `~/.config/granit/themes/` |
-| Plugins | `~/.config/granit/plugins/` |
-
-All settings are editable from `Ctrl+,` in the TUI.
-
-### Key Settings
-
-```json
-{
-  "theme": "catppuccin-mocha",
-  "layout": "default",
-  "vim_mode": false,
-  "ai_provider": "ollama",
-  "ollama_model": "qwen2.5:0.5b",
-  "ghost_writer": false,
-  "auto_save": false,
-  "git_auto_sync": false,
-  "line_numbers": true,
-  "word_wrap": false,
-  "show_icons": true,
-  "sort_by": "name"
-}
-```
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `GRANIT_VAULT` | Default vault path (used when no path given) |
-| `EDITOR` | Preferred external editor for shell-out |
-
-See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the full reference with all options.
-
----
-
-## Granit vs the Alternatives
-
-| Feature | Granit | Obsidian | Notion | Logseq |
-|---------|--------|----------|--------|--------|
-| **Price** | **Free forever (MIT)** | $50/yr + $8/mo sync | $8-10/mo | Free |
-| **Terminal native** | Yes | No (Electron) | No (web) | No (Electron) |
-| **Open source** | Yes (MIT) | No | No | Yes (AGPL) |
-| **Startup time** | ~12ms | ~2s | ~3s | ~2s |
-| **Vim mode** | Full (macros, objects, marks) | Plugin | No | Plugin |
-| **AI integration** | 23 bots, local or cloud | $14/mo add-on | Built-in (cloud only) | Plugin |
-| **Task manager** | 7 views + Eisenhower + Kanban | Plugin | Built-in | Built-in |
-| **Calendar** | 6 views + time-blocking | Plugin | Built-in | No |
-| **Goal tracking** | Built-in + AI coaching | No | No | No |
-| **Habit tracking** | Built-in with streaks | No | Template | No |
-| **Daily routines** | Morning + Evening + Jot | No | Template | Journal |
-| **Themes** | 40 built-in + editor | Community | Limited | Community |
-| **Layouts** | 17 built-in | 1 | 1 | 1 |
-| **Offline** | Always | Paid | No | Yes |
-| **Data format** | Plain Markdown | Plain Markdown | Proprietary | Markdown/EDN |
-| **Binary size** | ~32 MB | ~300 MB | N/A | ~250 MB |
-| **Memory usage** | ~30 MB | ~500 MB+ | ~500 MB+ | ~400 MB+ |
+> Screenshots will be re-shot from the current web frontend; the GIFs in `assets/` predate the web rewrite.
 
 ---
 
 ## Architecture
 
-Granit is a monolithic Go application built on the [Bubble Tea](https://github.com/charmbracelet/bubbletea) TUI framework.
-
 ```
-cmd/granit/          Entry point, CLI commands
-internal/
-  config/            Configuration loading and persistence
-  tui/               All TUI components (~219 files)
-  vault/             Vault scanning, indexing, search
-desktop/             Wails desktop app (Go + Svelte)
-docs/                Documentation and website
-assets/              Screenshots and GIFs
-```
-
-### Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Language | Go 1.24+ |
-| TUI Framework | [Bubble Tea](https://github.com/charmbracelet/bubbletea) |
-| Styling | [Lip Gloss](https://github.com/charmbracelet/lipgloss) |
-| Syntax Highlighting | [Chroma](https://github.com/alecthomas/chroma) |
-| Desktop App | [Wails](https://wails.io) + Svelte |
-| AI | Ollama, OpenAI, Claude Code |
-
-### Codebase Statistics
-
-| Metric | Value |
-|--------|-------|
-| Lines of Go | 187,000+ |
-| Test cases | 2,072 |
-| TUI components | 219 files |
-| Commands | 168 |
-| Themes | 40 |
-| Layouts | 17 |
-| Core plugins | 16 |
-| AI bots | 23 |
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a deep dive into the overlay system, message routing, and component design.
-
----
-
-## Contributing
-
-Contributions are welcome! Granit is a large codebase, so here are some guidelines to help you get started.
-
-### Getting Started
-
-```bash
-# Clone and build
-git clone https://github.com/artaeon/granit.git
-cd granit
-go build -o bin/granit ./cmd/granit/
-
-# Run tests
-go test ./...
-
-# Run a specific test package
-go test ./internal/tui/ -run TestName
+                +---------------------------+
+                |  granit (single binary)   |
+                +-------------+-------------+
+                              |
+            +-----------------+-----------------+
+            |                                   |
+   +--------v--------+               +----------v----------+
+   |   chi router    |               |     Bubble Tea TUI  |
+   |  /api/v1/...    |               |   (internal/tui)    |
+   |  WebSocket /ws  |               +----------+----------+
+   |  embed SPA      |                          |
+   +--------+--------+                          |
+            |                                   |
+            +-----------+   +-------------------+
+                        |   |
+                        v   v
+                +---------------------+
+                |    vault directory  |
+                |   *.md (your notes) |
+                |   .granit/*.json    |
+                +---------------------+
 ```
 
-### Project Structure
+- **Backend** — Go, [chi](https://github.com/go-chi/chi) router, atomic file writes, WebSocket fan-out via `internal/wshub`, fsnotify watcher, embedded SPA via `go:embed`. Module registry under `internal/modules/` lets a vault disable feature surfaces (sidebar nav + dashboard widgets + route guards) per-deployment.
+- **Frontend** — SvelteKit 5 (runes), Tailwind CSS 4, CodeMirror 6, Marked, Mermaid. Static-adapter build, embedded into the Go binary; SPA fallback handled server-side so client-side routing works on hard refresh.
+- **TUI** — Bubble Tea + Lip Gloss, Chroma syntax highlighting, Lua scripting bridge for plugins.
+- **Storage** — plain markdown files in the vault directory, plus `.granit/*.json` sidecars for state (tasks ordering, finance, hub, vision, recurring rules, dashboard layout, etc.). Every write goes through `internal/atomicio` for crash safety.
+- **Tasks** — parsed live from `- [ ]` lines in markdown, indexed at scan time, kept in sync via `tasks.Reload` on every relevant fs event.
+- **Auth** — `internal/serveapi/auth*.go`: argon2id password, per-device sessions, bootstrap bearer token for scripts.
+- **AI** — `internal/agentruntime` and `internal/agents`. Tool catalog registered separately from the runtime, so a read-only agent literally cannot write.
 
-- `cmd/granit/` -- Entry point and CLI commands. Start here to understand the app flow.
-- `internal/tui/` -- All TUI components. Each overlay is a self-contained file (e.g., `calendar.go`, `taskmanager.go`).
-- `internal/vault/` -- Vault scanning, note parsing, search indexing.
-- `internal/config/` -- Configuration loading, saving, and per-vault overrides.
-
-### Guidelines
-
-- **One feature per PR.** Keep changes focused and reviewable.
-- **Add tests** for new features. Run `go test ./...` before submitting.
-- **Follow existing patterns.** Look at similar overlays for structure reference.
-- **No unnecessary dependencies.** Granit ships as a single binary -- keep it that way.
-
-### Areas for Contribution
-
-- Bug fixes and performance improvements
-- New themes (add to `internal/tui/themes.go`)
-- New AI bot prompts (see `internal/tui/bots.go`)
-- Documentation improvements
-- Accessibility improvements
-- Test coverage for untested components
+For a deeper tour, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Features](docs/FEATURES.md) | Complete feature guide with examples |
-| [Keybindings](docs/KEYBINDINGS.md) | All keyboard shortcuts by context |
-| [Publishing](docs/PUBLISH.md) | Static site generator: GitHub Pages, SEO, graph, RSS, math, mermaid |
-| [Typed Objects](docs/OBJECTS.md) | Capacities-style typed notes — Person, Book, Project galleries via `Alt+O` |
-| [Agents](docs/AGENTS.md) | Multi-step AI agents — Deepnote-style ReAct loop with tool catalog, `Alt+A` |
-| [AI Guide](docs/AI-GUIDE.md) | AI setup, providers, bot reference |
-| [Configuration](docs/CONFIGURATION.md) | All config options with defaults |
-| [Themes](docs/THEMES.md) | 40 themes + custom theme creation |
-| [Installation](docs/INSTALLATION.md) | Build, install, desktop app, dependencies |
-| [Plugins](docs/PLUGINS.md) | Plugin development and Lua API |
-| [Architecture](docs/ARCHITECTURE.md) | Codebase structure and design |
-| [Changelog](CHANGELOG.md) | Version history and release notes |
+| Doc | Topic |
+|---|---|
+| [docs/INSTALLATION.md](docs/INSTALLATION.md) | Build from source, system-wide install, cross-compile, optional deps |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Global + per-vault config, every option with its default |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Codebase tour, package map, design decisions |
+| [docs/FEATURES.md](docs/FEATURES.md) | Long-form feature reference with examples |
+| [docs/WEB.md](docs/WEB.md) | Web frontend deployment, PWA, devices, sessions |
+| [docs/AI-GUIDE.md](docs/AI-GUIDE.md) | Provider setup, model recommendations, troubleshooting |
+| [docs/AGENTS.md](docs/AGENTS.md) | Multi-step agent runner — tool catalog, read/write split, write gating |
+| [docs/OBJECTS.md](docs/OBJECTS.md) | Typed objects — declaring `type:`, galleries, vault overrides |
+| [docs/PUBLISH.md](docs/PUBLISH.md) | `granit publish` — vault folder → static site |
+| [docs/PLUGINS.md](docs/PLUGINS.md) | Lua plugin API, sandbox model |
+| [docs/THEMES.md](docs/THEMES.md) | TUI theme catalogue + custom themes |
+| [docs/KEYBINDINGS.md](docs/KEYBINDINGS.md) | Full keybinding reference |
+| [docs/DEPLOY.md](docs/DEPLOY.md), [docs/DEPLOY-PRODUCTION.md](docs/DEPLOY-PRODUCTION.md) | Reverse-proxy, HTTPS, systemd |
 
 ---
 
-## Frequently Asked Questions
+## Contributing
 
-<details>
-<summary><strong>Can I use my existing Obsidian vault?</strong></summary>
+Contributions are welcome — bug fixes, new features, docs, and themes. Before opening a PR, please read [`CONTRIBUTING.md`](CONTRIBUTING.md). The short version:
 
-Yes. Point Granit at your Obsidian vault directory and everything works: `[[wikilinks]]`, backlinks, YAML frontmatter, tags, daily notes, and canvas files. You don't need to migrate, convert, or change anything. Both apps can use the same vault simultaneously.
-</details>
-
-<details>
-<summary><strong>Does Granit require an internet connection?</strong></summary>
-
-No. Granit works fully offline. AI features use local models via Ollama (also offline). Cloud AI providers (OpenAI, Claude) are optional. Git and Nextcloud sync only connect when you explicitly run sync.
-</details>
-
-<details>
-<summary><strong>How does Granit compare to Neovim with plugins?</strong></summary>
-
-Granit gives you a fully integrated system out of the box -- no plugin hunting, no configuration hell, no breaking updates. Tasks, calendar, goals, habits, AI, and daily routines all work together seamlessly. Think of it as Neovim's editing DNA combined with Notion's feature set, in a single binary.
-</details>
-
-<details>
-<summary><strong>What AI models work with Granit?</strong></summary>
-
-Any Ollama-compatible model works. We recommend `qwen2.5:0.5b` for fast, lightweight AI on CPU. Larger models like `llama3.1:8b` or `mistral:7b` give better results for writing and planning tasks. OpenAI models (GPT-4o, GPT-4o-mini) also work. The Deep Dive Research Agent uses Claude Code.
-</details>
-
-<details>
-<summary><strong>Is there a GUI / desktop version?</strong></summary>
-
-Yes. Granit includes a Wails-based desktop app (Go + Svelte) in the `desktop/` directory. However, the terminal version is the primary interface and most actively developed. See [docs/INSTALLATION.md](docs/INSTALLATION.md) for desktop build instructions.
-</details>
-
-<details>
-<summary><strong>How do I sync between devices?</strong></summary>
-
-Three options: (1) `granit sync` uses git -- pull, commit, push in one command. (2) Nextcloud WebDAV sync is built-in. (3) Any folder-based sync (Dropbox, Syncthing, rsync) works since notes are plain files. Git is recommended because it gives you version history and conflict resolution.
-</details>
-
-<details>
-<summary><strong>Can I write plugins?</strong></summary>
-
-Yes. Granit has a Lua scripting API and 16 core plugins included. Plugins can hook into save, open, create, and delete events. See [docs/PLUGINS.md](docs/PLUGINS.md) for the full API reference and examples.
-</details>
-
-<details>
-<summary><strong>What terminals work best?</strong></summary>
-
-Any terminal with 256-color support works. Recommended: Alacritty, Kitty, Ghostty, WezTerm, or iTerm2. Works well in tmux and screen. Nerd Font icons are supported but optional (Unicode icons are the default).
-</details>
+- One focused change per PR.
+- Add tests for new behaviour. `go test ./...` must pass.
+- Match existing patterns. Each feature has a self-contained Go package under `internal/<feature>/` and (where it has a UI) a self-contained Svelte route under `web/src/routes/<feature>/`.
+- No unnecessary dependencies. Granit ships as a single binary — keep it that way.
+- Don't break the vault format. Sidecars under `.granit/` are versioned in their JSON; markdown stays canonical.
 
 ---
 
-## Roadmap
+## Security
 
-Granit is actively developed. Here's what's coming:
-
-- [ ] **Mobile companion app** -- read and capture on the go, sync via git
-- [ ] **Collaborative editing** -- real-time shared vaults over WebSocket
-- [ ] **PDF annotation** -- highlight and annotate PDFs inline
-- [ ] **Spaced repetition** -- integrated SRS with the flashcard generator
-- [ ] **Email integration** -- clip emails to notes, send notes as email
-- [ ] **Voice notes** -- record and transcribe with Whisper
-- [ ] **Advanced dataview** -- SQL-like queries across all vault metadata
-- [ ] **Web clipper** -- save web pages as clean Markdown
-- [ ] **Multi-vault search** -- search across all vaults from one interface
-- [ ] **Theme marketplace** -- share and discover community themes
-
-Want to help? See [Contributing](#contributing) or browse [open issues](https://github.com/artaeon/granit/issues).
-
----
-
-## Acknowledgments
-
-Built with these excellent open-source projects:
-
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea) -- TUI framework
-- [Lip Gloss](https://github.com/charmbracelet/lipgloss) -- Terminal styling
-- [Chroma](https://github.com/alecthomas/chroma) -- Syntax highlighting
-- [Catppuccin](https://github.com/catppuccin/catppuccin) -- Color palette inspiration
+If you find a vulnerability, please don't open a public issue. See [`SECURITY.md`](SECURITY.md) for the disclosure process and scope. Granit's threat model assumes the operator owns the host; the security boundaries that matter most are **path containment** (the vault path), **auth** (per-device sessions), and **AI write gating** (tool registry).
 
 ---
 
 ## License
 
-MIT License. See [LICENSE](LICENSE).
+MIT. See [`LICENSE`](LICENSE).
 
 ---
 
 <p align="center">
-  <strong>Your knowledge. Your terminal. Your rules.</strong>
-</p>
-
-<p align="center">
-  <a href="#installation"><img src="https://img.shields.io/badge/GET%20STARTED-Install%20Now-b48ead?style=for-the-badge" alt="Get Started"></a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/artaeon/granit/issues">Report a Bug</a> &bull;
-  <a href="https://github.com/artaeon/granit/discussions">Discussions</a> &bull;
-  <a href="https://github.com/artaeon/granit">Star on GitHub</a>
-</p>
-
-<p align="center">
-  <sub>If Granit helps you, consider giving it a star. It helps others discover the project.</sub>
+  <sub>Plain markdown, your filesystem, your rules.</sub>
 </p>

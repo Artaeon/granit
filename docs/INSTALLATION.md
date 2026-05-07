@@ -2,6 +2,10 @@
 
 > How to install, build, update, and uninstall Granit on Linux and macOS.
 
+Granit ships as a single Go binary with the SvelteKit web app embedded
+via `go:embed`. The recommended deployment runs `granit web` against a
+vault directory.
+
 ---
 
 ## Table of Contents
@@ -10,6 +14,7 @@
 - [Quick Install (Recommended)](#quick-install-recommended)
 - [System-Wide Install](#system-wide-install)
 - [Go Install (Remote)](#go-install-remote)
+- [Docker](#docker)
 - [Arch Linux (AUR)](#arch-linux-aur)
 - [Building from Source with Custom Flags](#building-from-source-with-custom-flags)
 - [Cross-Compilation](#cross-compilation)
@@ -22,45 +27,65 @@
 
 ## Prerequisites
 
-| Requirement | Version | Notes |
-|-------------|---------|-------|
-| **Go** | 1.24+ | [Install Go](https://go.dev/doc/install) |
-| **Git** | Any recent version | For cloning and git features |
-| **OS** | Linux or macOS | Windows support planned |
+| Requirement     | Version  | Notes                                                       |
+| --------------- | -------- | ----------------------------------------------------------- |
+| Go              | 1.25+    | `go.mod` requires `1.25.0`. [Install Go](https://go.dev/doc/install). |
+| Node + pnpm     | 22 LTS / pnpm 9+ | Only for building the web app via `make build`.    |
+| Git             | recent   | For cloning, `granit sync`, and the file-history feature.   |
+| OS              | Linux or macOS | Windows works under WSL or Docker.                    |
 
 Verify your Go installation:
 
 ```bash
 go version
-# Expected: go version go1.24.x linux/amd64 (or similar)
+# Expected: go version go1.25.x linux/amd64 (or similar)
 ```
 
-If Go is not in your PATH, you may need to add it:
+If Go is not in your PATH:
 
 ```bash
 export PATH="/usr/local/go/bin:$PATH"
+```
+
+For the web app build, make sure pnpm is available:
+
+```bash
+corepack enable        # ships with Node 22; activates pnpm
+pnpm --version         # should print 9.x or newer
 ```
 
 ---
 
 ## Quick Install (Recommended)
 
-Clone the repository and install with `go install`:
+Clone the repository and use `make build` so the SvelteKit SPA is
+included in the binary:
 
 ```bash
 git clone https://github.com/artaeon/granit.git
 cd granit
-go install ./cmd/granit/
+make web-setup                  # one-time: pnpm install
+make build                      # builds the SPA + the Go binary
+./bin/granit web ~/your-vault   # serves on http://localhost:8787
 ```
 
-This installs the `granit` binary to `~/go/bin/`. Ensure this directory is in your PATH:
+`make build` runs `pnpm build` inside `web/` first (the static output
+lands in `internal/serveapi/dist/`), then `go build` embeds it into
+`bin/granit` via `go:embed`. The result is a self-contained
+executable — no Node, no static-asset hosting at runtime.
+
+To run the TUI on the same vault:
 
 ```bash
-# Add to ~/.bashrc or ~/.zshrc (one-time setup):
-export PATH="$HOME/go/bin:$PATH"
+./bin/granit ~/your-vault       # opens the terminal UI
+```
 
-# Then reload:
-source ~/.bashrc  # or source ~/.zshrc
+To install the binary into your `$PATH`:
+
+```bash
+make install                    # copies bin/granit to ~/go/bin/
+# Make sure ~/go/bin is in your PATH:
+export PATH="$HOME/go/bin:$PATH"
 ```
 
 ---
@@ -72,38 +97,70 @@ Build and install to `/usr/local/bin/` for all users:
 ```bash
 git clone https://github.com/artaeon/granit.git
 cd granit
-go build -ldflags="-s -w" -o granit ./cmd/granit/
-sudo mv granit /usr/local/bin/
+make build
+sudo cp bin/granit /usr/local/bin/
 ```
 
-Or use the included Makefile:
+If you only need the TUI and don't want to install Node + pnpm, you
+can build without the web app:
 
 ```bash
 git clone https://github.com/artaeon/granit.git
 cd granit
-make build
-sudo cp bin/granit /usr/local/bin/
+go build -ldflags="-s -w" -o granit ./cmd/granit/
+sudo mv granit /usr/local/bin/
+# Note: `granit web` will serve an empty SPA in this build.
 ```
 
 ---
 
 ## Go Install (Remote)
 
-Install directly from the repository without cloning:
+Install directly from the repository without cloning. **This builds
+the TUI only**; the embedded SPA will be empty because `go install`
+does not run the `pnpm build` step.
 
 ```bash
 go install github.com/artaeon/granit/cmd/granit@latest
+granit ~/your-vault             # opens the TUI
 ```
 
-This downloads, builds, and installs the latest version to `~/go/bin/`.
+If you want the full web app, use `make build` from a clone instead.
+
+---
+
+## Docker
+
+The repository ships a multi-stage `Dockerfile` (Node + Go + Alpine
+runtime) and a reference `docker-compose.example.yml`.
+
+```bash
+git clone https://github.com/artaeon/granit.git
+cd granit
+docker compose -f docker-compose.example.yml up -d
+# vault bind-mounted from the host, exposed on :8787
+```
+
+The container's `CMD` runs `granit web --addr 0.0.0.0:8787 /vault`.
+Lock down access at the Docker network or via a reverse proxy. See
+[`docker-compose.example.yml`](../docker-compose.example.yml) for the
+reference deployment, including the optional `--sync` flag for git
+auto-pull/commit/push.
+
+To build a local image:
+
+```bash
+docker build -t granit:local \
+  --build-arg VERSION=local \
+  --build-arg COMMIT=$(git rev-parse --short HEAD) \
+  --build-arg DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) .
+```
 
 ---
 
 ## Arch Linux (AUR)
 
-Two AUR packages are available:
-
-### Stable Release
+A `PKGBUILD` is included in the repo:
 
 ```bash
 # Using an AUR helper (e.g., yay, paru):
@@ -115,31 +172,26 @@ cd granit
 makepkg -si
 ```
 
-### Development (Git)
+### PKGBUILD details
 
-Builds from the latest `main` branch:
-
-```bash
-yay -S granit-git
-```
-
-### PKGBUILD Details
-
-The PKGBUILD uses static compilation with security-hardened flags:
+The PKGBUILD builds with security-hardened flags:
 
 ```bash
 CGO_ENABLED=0
 GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw"
 ```
 
-Optional dependencies registered in the PKGBUILD:
+Optional runtime dependencies registered in the PKGBUILD:
 
 - `ollama` — local AI provider
-- `aspell` or `hunspell` — spell checking
+- `aspell` or `hunspell` — spell checking (TUI feature)
 - `pandoc` — PDF export
 - `xclip` — system clipboard (X11)
 - `wl-clipboard` — system clipboard (Wayland)
 - `git` — version control features
+
+The PKGBUILD currently builds the TUI. To run the embedded web app,
+use the `make build` flow above or the Docker image.
 
 ---
 
@@ -267,7 +319,6 @@ which granit
 
 # Check the version
 granit version
-# Expected: Granit v0.1.0 (abc1234, 2026-03-08)
 
 # View help
 granit help
@@ -275,24 +326,27 @@ granit help
 # View the man page
 granit man | man -l -
 
-# View configuration
-granit config
-
-# Test with a vault
+# Open the TUI on a vault
 granit ~/your-notes-folder
+
+# Or boot the web app
+granit web ~/your-notes-folder
+# Open http://localhost:8787 in a browser
 ```
 
-### Quick Smoke Test
+### Quick smoke test
 
 ```bash
-# Create a temporary test vault
 mkdir /tmp/granit-test
-echo "# Hello Granit" > /tmp/granit-test/test.md
+printf '# Hello Granit\n\n- [ ] Smoke test task\n' > /tmp/granit-test/test.md
 
-# Open it
+# TUI:
 granit /tmp/granit-test
 
-# Clean up
+# Web:
+granit web --addr 127.0.0.1:8787 /tmp/granit-test
+# Open http://127.0.0.1:8787, finish first-launch setup, see the task.
+
 rm -rf /tmp/granit-test
 ```
 
@@ -300,15 +354,16 @@ rm -rf /tmp/granit-test
 
 ## Updating
 
-### From Git Clone
+### From git clone
 
 ```bash
 cd granit  # your clone directory
 git pull
-go install ./cmd/granit/
+make build               # rebuilds SPA + Go binary
+sudo cp bin/granit /usr/local/bin/   # if installed system-wide
 ```
 
-### From Remote
+### From remote (TUI only)
 
 ```bash
 go install github.com/artaeon/granit/cmd/granit@latest
@@ -398,11 +453,14 @@ echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### Build Errors
+### Build errors
 
-1. Verify Go version: `go version` (need 1.24+)
-2. Ensure modules are downloaded: `go mod download`
-3. Clear module cache if corrupted: `go clean -modcache && go mod download`
+1. Verify Go version: `go version` (need 1.25+).
+2. Ensure modules are downloaded: `go mod download`.
+3. Clear module cache if corrupted: `go clean -modcache && go mod download`.
+4. For web build failures: `cd web && pnpm install --frozen-lockfile`,
+   then `pnpm build`. Confirm Node 22+ and pnpm 9+ via
+   `node --version` and `pnpm --version`.
 
 ### Permission Denied
 

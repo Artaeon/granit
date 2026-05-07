@@ -45,8 +45,8 @@ func (s *Server) broadcastVenturesChanged() {
 
 // countLinks returns (projects, goals) referencing the given venture
 // name. Case-insensitive on the name to match ventures.Find — a project
-// with venture="stoicera" should count toward a Venture record named
-// "Stoicera". Empty venture strings on either side are skipped.
+// with venture="acme" should count toward a Venture record named
+// "Acme". Empty venture strings on either side are skipped.
 func countLinks(name string, projects []granitmeta.Project, allGoals []goals.Goal) (int, int) {
 	target := strings.ToLower(strings.TrimSpace(name))
 	if target == "" {

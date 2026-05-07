@@ -93,8 +93,8 @@ func SaveAll(vaultRoot string, list []Venture) error {
 
 // Find returns a pointer to the named venture (case-insensitive on the
 // name) or nil if not present. Case-insensitive because Project.Venture
-// is free-text and a user typing "stoicera" should match a record named
-// "Stoicera" — the alternative (silent no-match) is a UX trap.
+// is free-text and a user typing "acme" should match a record named
+// "Acme" — the alternative (silent no-match) is a UX trap.
 func Find(list []Venture, name string) *Venture {
 	target := strings.ToLower(strings.TrimSpace(name))
 	if target == "" {

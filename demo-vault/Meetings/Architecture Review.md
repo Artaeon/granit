@@ -2,7 +2,7 @@
 title: Architecture Review
 date: 2026-03-07
 tags: [meeting, architecture, decisions, technical]
-attendees: [raphael, sarah, marcus, alex]
+attendees: [jordan, sarah, marcus, alex]
 decision-status: approved
 ---
 
@@ -96,7 +96,7 @@ Key requirements:
 
 ## Action Items
 
-- [ ] Raphael: Spike on React Server Components with current API
+- [ ] Jordan: Spike on React Server Components with current API
 - [ ] Sarah: Set up SurrealDB proof-of-concept with sample data
 - [ ] Marcus: Draft CI/CD pipeline configuration
 - [ ] Alex: Document ADRs (Architecture Decision Records) in the wiki

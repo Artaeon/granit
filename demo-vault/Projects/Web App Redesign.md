@@ -8,7 +8,7 @@ priority: high
 
 # Web App Redesign
 
-**Status:** In Progress | **Target:** Q1 2026 | **Lead:** @raphael
+**Status:** In Progress | **Target:** Q1 2026 | **Lead:** @jordan
 
 A full redesign of the customer-facing web application. Moving from the legacy jQuery frontend to a modern React + TypeScript stack with a component library.
 

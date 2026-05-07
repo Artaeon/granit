@@ -2,7 +2,7 @@
 title: "Team Standup — 2026-03-08"
 date: 2026-03-08
 tags: [meeting, standup, team]
-attendees: [raphael, sarah, marcus, priya]
+attendees: [jordan, sarah, marcus, priya]
 ---
 
 # Team Standup — Monday, March 8, 2026
@@ -11,7 +11,7 @@ attendees: [raphael, sarah, marcus, priya]
 
 ## Round-Robin Updates
 
-### Raphael
+### Jordan
 - **Yesterday:** Fixed sidebar tree collapse bug, attended [[Meetings/Architecture Review]], read DDIA chapters
 - **Today:** Auth flow migration for [[Projects/Web App Redesign]], search module tests
 - **Blockers:** None, but need design review on the new login page mockup
@@ -41,14 +41,14 @@ attendees: [raphael, sarah, marcus, priya]
    - P1: Screen reader labels for icon buttons
    - P2: Focus management on route transitions
 
-3. **Demo day** — Scheduled for Friday March 13. Each team member presents 10 minutes of progress. Raphael to demo the new component library.
+3. **Demo day** — Scheduled for Friday March 13. Each team member presents 10 minutes of progress. Jordan to demo the new component library.
 
 ## Action Items
 
 - [ ] Sarah: File ops ticket for staging credentials by EOD
 - [ ] Marcus: Share WebSocket vs SSE benchmark results in Slack
 - [ ] Priya: Create Jira epic for accessibility fixes with priority labels
-- [ ] Raphael: Schedule design review with UX team for login page
+- [ ] Jordan: Schedule design review with UX team for login page
 - [ ] All: Update [[Tasks]] board with current sprint items
 
 ## Next Standup

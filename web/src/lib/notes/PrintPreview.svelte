@@ -90,7 +90,7 @@
   let signatureTimestamp = $state('');
   // Optional human-readable claim fields. Equivalent to the
   // "Reason" / "Signer" lines a real signed-PDF carries — useful
-  // for a "this report was prepared by Raphael Lugmayr · Q3 review"
+  // for a "this report was prepared by Jane Doe · Q3 review"
   // attestation. Both persist in localStorage so the user doesn't
   // re-type them on every export.
   let signer = $state('');
@@ -478,7 +478,7 @@
              configure-panel input. -->
         <input
           bind:value={signer}
-          placeholder="Signer (e.g. Raphael Lugmayr)"
+          placeholder="Signer (e.g. Jane Doe)"
           class="tb-signer-input"
           aria-label="Signer name"
         />
@@ -571,7 +571,7 @@
             <input
               id="print-signer"
               bind:value={signer}
-              placeholder="e.g. Raphael Lugmayr"
+              placeholder="e.g. Jane Doe"
               class="config-input"
             />
           </div>

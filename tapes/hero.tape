@@ -14,7 +14,7 @@ Set TypingSpeed 50ms
 
 # ── Launch Granit with the demo vault ────────────────────────────────────────
 Sleep 500ms
-Type "cd /home/raphael/Projects/obsidian-alternative && ~/go/bin/granit demo-vault"
+Type "granit demo-vault"
 Enter
 Sleep 3s
 

@@ -2,11 +2,18 @@
 
 > Technical architecture reference for developers and contributors.
 
+Granit has two surfaces — a SvelteKit web app served by `granit web`,
+and a Bubble Tea TUI run with `granit <vault>`. They share the same
+vault and the same internal Go packages. This document describes both.
+
 ---
 
 ## Table of Contents
 
+- [Two surfaces, one vault](#two-surfaces-one-vault)
 - [Project Structure](#project-structure)
+- [Backend HTTP + WebSocket API](#backend-http--websocket-api)
+- [Web frontend (SvelteKit)](#web-frontend-sveltekit)
 - [Bubble Tea Model/Update/View Pattern](#bubble-tea-modelupdateview-pattern)
 - [Overlay System](#overlay-system)
 - [Configuration System](#configuration-system)
@@ -18,27 +25,112 @@
 
 ---
 
+## Two surfaces, one vault
+
+The vault is a directory of plain `.md` files plus a `.granit/` sidecar
+folder for state that doesn't belong inside markdown (task sidecars,
+events, goals, projects, hub items, finance, prayer, virtues, sessions,
+the auth store, and so on). Every other piece of the system reads or
+writes this single source of truth.
+
+Two top-level surfaces sit above the vault:
+
+1. **Web app + HTTP API** (`granit web`). A Go process owns the vault,
+   exposes a JSON + WebSocket API under `/api/v1/...`, and serves the
+   embedded SvelteKit SPA from the same port. This is the recommended
+   day-to-day shape. Auth is one password, many session tokens; see
+   [SECURITY.md](../SECURITY.md).
+2. **Terminal UI** (`granit <vault>`). A Bubble Tea program that
+   operates on the vault directly. No HTTP, no auth, no networking.
+   Shares packages like `internal/vault`, `internal/tasks`, and
+   `internal/agentruntime` with the web backend, so a feature added to
+   a shared package shows up in both surfaces on the next build.
+
+There is also `granit serve` (read-only HTML preview), `granit publish`
+(static-site generator), and `granit scan` / `granit daily` (utility
+subcommands), but they are smaller. See `cmd/granit/` for the full
+list.
+
+---
+
 ## Project Structure
 
 ```
 granit/
 ├── cmd/granit/
-│   ├── main.go                     CLI entry point, subcommands, vault selector
-│   └── manpage.go                  Roff-formatted man page generator
+│   ├── main.go                     CLI entry point + subcommand dispatch.
+│   ├── web.go                      `granit web`: HTTP API + embedded SPA.
+│   ├── serve.go                    `granit serve`: read-only HTML preview.
+│   ├── publish.go                  `granit publish`: static-site generator.
+│   ├── scan.go                     `granit scan`: vault stats utility.
+│   ├── daily.go                    `granit daily`: open today's daily note.
+│   ├── completion.go               `granit completion {bash|zsh|fish}`.
+│   └── manpage.go                  Roff-formatted man page generator.
 │
 ├── internal/
-│   ├── config/
-│   │   ├── config.go               JSON configuration (global + per-vault, layered)
-│   │   ├── vaults.go               Vault list persistence (~/.config/granit/vaults.json)
-│   │   └── import.go               Obsidian .obsidian/ settings importer
-│   │
-│   ├── daily/
-│   │   └── (daily note utilities)
-│   │
+│   ├── agentruntime/               Provider-agnostic LLM runtime
+│   │   ├── llm.go                  Ollama / OpenAI / Anthropic over HTTP.
+│   │   └── chat.go                 Chatter interface for chat completions.
+│   ├── agents/                     Multi-step agent runtime (ReAct loop)
+│   │   ├── agent.go                Step machine + tool dispatch.
+│   │   ├── preset.go               Built-in presets (devotional, plan-my-day).
+│   │   └── runner.go               Run lifecycle.
+│   ├── atomicio/                   Crash-safe file writes (O_EXCL, O_NOFOLLOW)
+│   │   └── atomicio.go             WriteNote (0644), WriteState (0600).
+│   ├── biblebookmarks/             Bible verse bookmarks store.
+│   ├── config/                     JSON config (global + per-vault, layered)
+│   │   ├── config.go               ~/.config/granit/config.json + .granit.json.
+│   │   ├── vaults.go               Vault list persistence.
+│   │   └── import.go               Obsidian .obsidian/ settings importer.
+│   ├── daily/                      Daily-note utilities (template, EnsureDaily).
+│   ├── deadlines/                  Top-level "this matters by date X".
+│   ├── examen/                     Daily examen records.
+│   ├── finance/                    Accounts, subscriptions, income, money goals.
+│   ├── goals/                      Goals + milestones.
+│   ├── granitmeta/                 Read/Write helpers for JSON sidecars.
+│   ├── habits/                     Habit tracker + heatmap state.
+│   ├── history/                    Per-note version history snapshots.
+│   ├── hub/                        Personal launch-pad items.
+│   ├── icswriter/                  Outbound .ics writing for local calendars.
+│   ├── measurements/               Numeric tracking (series + entries).
+│   ├── modules/                    Module registry (feature toggles).
+│   ├── objects/                    Typed-object schema + index.
+│   ├── people/                     Lightweight relationship tracker.
+│   ├── plugins/                    Lua plugin system (TUI-side).
+│   ├── prayer/                     Prayer intentions list.
+│   ├── profiles/                   Multi-profile support.
+│   ├── publish/                    Static-site generator internals.
+│   ├── recurring/                  Recurring tasks shared store.
+│   ├── repos/                      Local git repos as typed-project notes.
+│   ├── scripture/                  Scripture loader + embedded WEB Bible.
+│   ├── serveapi/                   HTTP/WebSocket API + embedded SPA + auth
+│   │   ├── server.go               chi router + middleware.
+│   │   ├── auth.go                 Bearer token middleware.
+│   │   ├── auth_password.go        argon2id, sessions, sweeper.
+│   │   ├── handlers_*.go           One file per resource.
+│   │   ├── ics.go                  ICS parser + RRULE expansion.
+│   │   ├── watch.go                fsnotify → wshub fan-out.
+│   │   ├── sync.go                 Optional git auto-pull/commit/push.
+│   │   ├── embed.go                go:embed of the SvelteKit dist.
+│   │   └── dist/                   Built SPA (gitignored after build).
+│   ├── shopping/                   Shopping list (with finance integration).
+│   ├── snippets/                   Editor snippet definitions.
+│   ├── tasks/                      Unified task store (TUI + web share it)
+│   │   ├── store.go                CRUD + recurring seed.
+│   │   ├── parse.go                `- [ ] ...` line parser.
+│   │   └── sidecar.go              .granit/tasks.json sidecar.
+│   ├── templates/                  Note template definitions.
+│   ├── timetracker/                Clock-in/out + session history.
+│   ├── ventures/                   Ventures (umbrella above projects/goals).
+│   ├── virtues/                    Character-formation tracker.
+│   ├── vision/                     Mission + values + season focus.
 │   ├── vault/
-│   │   ├── vault.go                Vault scanning with lazy loading
-│   │   ├── parser.go               Markdown, YAML frontmatter, wikilink parser
-│   │   └── index.go                Backlink and forward-link index builder
+│   │   ├── vault.go                Vault scanning with lazy loading.
+│   │   ├── parser.go               Markdown / frontmatter / wikilink parser.
+│   │   ├── index.go                Backlink + forward-link index.
+│   │   └── searchindex.go          Full-text search index.
+│   ├── wshub/                      WebSocket fan-out hub
+│   │   └── hub.go                  Subscribe / Broadcast / Event union.
 │   │
 │   └── tui/                        All TUI components (Bubble Tea)
 │       │
@@ -179,20 +271,219 @@ granit/
 │       ├── vaultswitch.go          In-app multi-vault switcher
 │       └── vaultselector.go        Full-screen vault selector UI
 │
+├── web/                            SvelteKit 5 web app (embedded into the Go binary)
+│   ├── src/
+│   │   ├── routes/                 SvelteKit pages — one folder per top-level surface
+│   │   │   ├── +page.svelte        Today / dashboard
+│   │   │   ├── notes/              Notes index + editor
+│   │   │   ├── tasks/              Tasks list + kanban
+│   │   │   ├── calendar/           Calendar (day/week/month/year/agenda)
+│   │   │   ├── morning/            Morning routine wizard
+│   │   │   ├── examen/             Daily examen wizard
+│   │   │   ├── habits/             Habits tracker
+│   │   │   ├── jots/               Jots (quick captures)
+│   │   │   ├── vision/             Vision (mission + values)
+│   │   │   ├── review/             Weekly review
+│   │   │   ├── goals/              Goals
+│   │   │   ├── deadlines/          Deadlines
+│   │   │   ├── projects/           Projects
+│   │   │   ├── ventures/           Ventures + per-venture detail
+│   │   │   ├── finance/            Finance overview
+│   │   │   ├── shopping/           Shopping list
+│   │   │   ├── hub/                Hub (personal launch pad)
+│   │   │   ├── people/             People tracker
+│   │   │   ├── measurements/       Measurement series
+│   │   │   ├── virtues/            Virtues tracker
+│   │   │   ├── prayer/             Prayer intentions
+│   │   │   ├── scripture/          Scripture / Bible
+│   │   │   ├── templates/          Note template manager
+│   │   │   ├── tags/               Tag browser
+│   │   │   ├── objects/            Typed-object browser
+│   │   │   ├── chat/               AI chat (multi-turn)
+│   │   │   ├── agents/             Agent run panel + history
+│   │   │   ├── stats/              Vault stats
+│   │   │   └── settings/           Settings (config + modules + auth)
+│   │   ├── lib/
+│   │   │   ├── api.ts              Typed fetch client over /api/v1/*.
+│   │   │   ├── ws.ts               WebSocket client + event union.
+│   │   │   ├── stores/             Svelte stores (auth, modules, theme, ...).
+│   │   │   ├── components/         Shared shell (PageHeader, FAB, Drawer, ...).
+│   │   │   ├── editor/             CodeMirror 6 + extensions.
+│   │   │   ├── tasks/              Task page components.
+│   │   │   ├── calendar/           Calendar components.
+│   │   │   ├── notes/              Note components (history, print, embed).
+│   │   │   ├── dashboard/          Dashboard widgets.
+│   │   │   ├── agents/             Agent run UI.
+│   │   │   ├── projects/           Project page components.
+│   │   │   ├── goals/              Goal page components.
+│   │   │   ├── morning/            Morning wizard components.
+│   │   │   ├── deadlines/          Deadline components.
+│   │   │   ├── virtues/            Virtues components.
+│   │   │   └── util/               Utility helpers.
+│   │   ├── app.css                 Tailwind 4 entry.
+│   │   ├── app.html                HTML shell.
+│   │   └── service-worker.ts       PWA service worker.
+│   ├── package.json                pnpm + Svelte 5 + Vite 6 + Tailwind 4.
+│   └── svelte.config.js            adapter-static → internal/serveapi/dist.
+│
+├── docs/                           Documentation (this file + siblings)
 ├── example-vault/                  Example vault with sample notes
-├── aur/
-│   └── PKGBUILD                   Arch Linux AUR package definition
+├── demo-vault/                     Smaller demo vault used by tests
+├── deploy/                         Deployment artifacts (systemd, etc.)
+├── desktop/                        Tauri desktop shell scaffolding
+├── aur/                            Arch Linux AUR helper PKGBUILD
 ├── vhs/                            VHS tape files for terminal recordings
+├── tapes/                          More VHS tapes
 ├── assets/                         Screenshots, GIFs, logos
-├── Makefile                        Build, install, test, cross-compile
+├── docker-compose.example.yml      Reference Compose deployment
+├── Dockerfile                      Multi-stage build (web + Go + alpine)
+├── Makefile                        Build, install, test, web targets
 ├── PKGBUILD                        Root PKGBUILD for Arch Linux
-├── go.mod                          Go module definition
+├── .goreleaser.yml                 Release build matrix
+├── go.mod                          Go module definition (Go 1.25.0)
 ├── go.sum                          Go module checksums
 ├── CHANGELOG.md                    Release changelog
 ├── CONTRIBUTING.md                 Contribution guidelines
+├── ROADMAP.md                      Forward-looking plan
+├── SECURITY.md                     Security policy + threat model
 ├── LICENSE                         MIT License
 └── README.md                       Project overview and quick start
 ```
+
+---
+
+## Backend HTTP + WebSocket API
+
+`granit web` is implemented in `internal/serveapi`. The package owns:
+
+- the chi router and middleware stack,
+- the bearer-token + argon2id auth subsystem,
+- one `handlers_*.go` file per resource,
+- the WebSocket fan-out hub (`internal/wshub`),
+- the file watcher (`fsnotify` → `wshub` events), and
+- the `go:embed` of the SvelteKit dist directory.
+
+### Request lifecycle
+
+```
+HTTP request
+  → chi router
+  → RequestID + RealIP + Recoverer middleware
+  → maxBodyBytes (4 MiB cap)
+  → optional CORS (only with --dev)
+  → /api/v1/auth/{status,setup,login}  → unauthed
+  → everything else                    → requireToken middleware
+                                         (legacy bootstrap OR session token)
+  → handler
+  → JSON response (or SSE for /chat/stream, or upgrade for /ws)
+```
+
+### WebSocket fan-out
+
+`internal/wshub` is a small in-process pub/sub. Any handler that
+mutates state broadcasts an event; the file watcher broadcasts on
+external edits. Connected clients subscribe and patch their in-memory
+state from those events. Event names include `note.changed`,
+`task.changed`, `event.changed`, `agent.event`, `agent.complete`,
+`timer.started`, `timer.stopped`. Adding a new event means adding it
+to the `wshub.Event` shape AND to the `WsEvent` union in
+`web/src/lib/ws.ts`.
+
+### Vault path safety
+
+Every handler that takes a path inside the vault validates it the same
+way (see `internal/serveapi/handlers_files.go` for the canonical
+shape):
+
+1. Reject empty paths.
+2. Reject paths containing `..` segments.
+3. Reject absolute paths.
+4. `filepath.Clean(filepath.Join(vault.Root, rel))`.
+5. Confirm the cleaned absolute path equals `vault.Root` or is
+   prefixed by `vault.Root + os.PathSeparator`.
+
+`internal/atomicio` provides the second line of defence at write time
+— `O_EXCL | O_NOFOLLOW` on the temp open and explicit symlink
+rejection at the destination.
+
+### Shared packages
+
+The web backend reuses the same Go packages the TUI does:
+
+- `internal/vault` — scanning, parsing, indexing, search.
+- `internal/tasks` — unified task store (sidecar in
+  `.granit/tasks.json`).
+- `internal/recurring` — recurring rules (sidecar in
+  `.granit/recurring.json`).
+- `internal/agentruntime` — provider-neutral LLM runtime.
+- `internal/agents` — multi-step ReAct loop + presets.
+- `internal/scripture` — scripture loader + embedded WEB Bible.
+- `internal/granitmeta`, `internal/atomicio` — sidecar IO primitives.
+
+Adding a new module typically means: a storage package under
+`internal/<module>/`, a handler file under `internal/serveapi/handlers_<module>.go`,
+a route block in `server.go`, and a SvelteKit page under
+`web/src/routes/<module>/`. See the Hub or Virtues additions in the
+changelog for end-to-end examples.
+
+---
+
+## Web frontend (SvelteKit)
+
+`web/` is a Svelte 5 / SvelteKit 2 application built with Vite 6 and
+Tailwind 4. Output goes through `@sveltejs/adapter-static` and lands
+in `internal/serveapi/dist/`, which `server.go` embeds into the Go
+binary via `go:embed`. There is no Node runtime in production.
+
+### Routing + layout
+
+- `web/src/routes/+layout.svelte` is the global shell — sidebar nav,
+  command palette, toaster, FAB, install prompt, websocket
+  lifecycle.
+- Each top-level page lives at `web/src/routes/<page>/+page.svelte`.
+  Sub-routes (e.g. notes by path) use SvelteKit's `[...path]` syntax.
+- The sidebar renders modules grouped into Daily / Plan / Life /
+  Knowledge / AI sections. Each entry can declare a `moduleId` that
+  the modules registry gates on; disabled modules drop out of the
+  nav, the dashboard, and the route guard.
+
+### State
+
+- Svelte 5 runes (`$state`, `$derived`, `$effect`, `$props`) are the
+  primary state primitives.
+- Cross-page state lives in stores under `web/src/lib/stores/`:
+  `auth`, `modules`, `theme`, `timer`, `sabbath`. Each store is a
+  small object exposing reactive properties.
+- API state is fetched on mount (or on WebSocket events) and held in
+  `$state` in the page component.
+
+### API + WebSocket clients
+
+- `web/src/lib/api.ts` is a typed fetch wrapper. Every endpoint has a
+  named function that returns the parsed response shape. New
+  endpoints get a wrapper here rather than inline `fetch` calls.
+- `web/src/lib/ws.ts` is the WebSocket client. It (re)connects when
+  auth state changes, parses `WsEvent` messages, and exposes a
+  `subscribe(handler)` API that pages use to patch their local state.
+
+### Editor stack
+
+- `web/src/lib/editor/Editor.svelte` is the CodeMirror 6 editor. It
+  composes a stack of extensions: markdown grammar, custom theme,
+  wikilinks, autolink, tag autocomplete, snippets, block
+  completions, checkbox shortcuts, heading shortcuts, markdown
+  shortcuts, ask-AI, extract-note.
+- Each extension is a separate `.ts` file under
+  `web/src/lib/editor/`. CodeMirror's keymap order matters: custom
+  keymaps come BEFORE `defaultKeymap` so they aren't shadowed.
+
+### PWA
+
+- `web/src/service-worker.ts` is a static-asset cache + offline
+  fallback. The layout listens for `sw-updated` messages and either
+  reloads silently (hidden tab) or surfaces a "Reload" toast (visible
+  tab).
+- Install prompt is a small banner in `web/src/lib/components/InstallPrompt.svelte`.
 
 ---
 
@@ -539,6 +830,17 @@ Plugin output is parsed line by line:
 ---
 
 ## AI Provider Abstraction
+
+> Note: the section below describes the TUI's `internal/tui/aiconfig.go`
+> path, which predates the shared runtime. Newer AI surfaces — agents,
+> `/chat`, the inline editor, and the daily-plan helper — go through
+> `internal/agentruntime` instead. That package wraps three first-class
+> providers (Ollama, OpenAI, **Anthropic**) behind a `Chatter` interface
+> and is shared between the TUI and the web backend. Same config keys
+> (`ai_provider`, `openai_key`, `openai_model`, `anthropic_key`,
+> `anthropic_model`, `ollama_url`, `ollama_model`) drive both code paths,
+> so changing the provider in `/settings` updates every AI feature in
+> lockstep.
 
 ### Provider Architecture
 
