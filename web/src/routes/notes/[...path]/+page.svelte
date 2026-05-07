@@ -414,6 +414,17 @@
   let askAIRequest = $state<AskAIRequest | null>(null);
   let printOpen = $state(false);
   let historyOpen = $state(false);
+  // Focus mode (Mod-Shift-Z) — hides the app sidebar, info panel,
+  // and toolbar so the editor takes the full viewport. Persisted to
+  // localStorage so the user's preference survives reloads.
+  const FOCUS_KEY = 'granit.note.focus';
+  let focusMode = $state(
+    typeof localStorage !== 'undefined' && localStorage.getItem(FOCUS_KEY) === '1'
+  );
+  $effect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try { localStorage.setItem(FOCUS_KEY, focusMode ? '1' : '0'); } catch {}
+  });
   let helpOpen = $state(false);
 
   function handleAskAI(req: AskAIRequest) {
@@ -613,16 +624,40 @@
     function onKey(e: KeyboardEvent) {
       const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
       const mod = isMac ? e.metaKey : e.ctrlKey;
-      if (!mod || e.key !== '/' || e.shiftKey || e.altKey) return;
-      // Only cycle when the editor has focus (or no input has focus).
       const el = document.activeElement as HTMLElement | null;
       const tag = el?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'textarea') return;
-      e.preventDefault();
-      const order: ViewMode[] = ['edit', 'split', 'preview'];
-      const idx = order.indexOf(viewMode);
-      const next = order[(idx + 1) % order.length];
-      setViewMode(next);
+      const inInput = tag === 'input' || tag === 'textarea';
+
+      // Mod-/ — cycle view mode (edit → split → preview).
+      if (mod && e.key === '/' && !e.shiftKey && !e.altKey) {
+        if (inInput) return;
+        e.preventDefault();
+        const order: ViewMode[] = ['edit', 'split', 'preview'];
+        const idx = order.indexOf(viewMode);
+        const next = order[(idx + 1) % order.length];
+        setViewMode(next);
+        return;
+      }
+
+      // Mod-Shift-Z — toggle focus mode. Always live (even with the
+      // editor focused) since it's a visibility toggle and doesn't
+      // collide with any default editor binding.
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        focusMode = !focusMode;
+        return;
+      }
+
+      // Mod-Shift-←/→ — jump to previous / next daily note. Only on
+      // daily notes (otherwise the chord has no obvious target). Skip
+      // when typing into a non-editor input.
+      if (mod && e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        if (!isDaily || !dailyDate || (inInput && el !== editor?.getDOM())) return;
+        e.preventDefault();
+        const delta = e.key === 'ArrowLeft' ? -1 : 1;
+        void gotoDaily(shiftDate(dailyDate, delta));
+        return;
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -724,9 +759,11 @@
   </div>
 {/snippet}
 
-<div class="h-full flex">
-  <!-- Tree (desktop only) -->
-  <aside class="hidden lg:flex lg:flex-col lg:w-64 xl:w-72 border-r border-surface1 bg-mantle/40 flex-shrink-0">
+<div class="h-full flex" class:focus-mode={focusMode}>
+  <!-- Tree (desktop only). Hidden in focus mode so the editor takes
+       the full viewport — toggle with Mod-Shift-Z or the focus
+       button in the header. -->
+  <aside class="hidden lg:flex lg:flex-col lg:w-64 xl:w-72 border-r border-surface1 bg-mantle/40 flex-shrink-0 focus-hide">
     {@render treeContent()}
   </aside>
 
@@ -911,6 +948,27 @@
             <path d="M6 17H4a2 2 0 01-2-2v-3a2 2 0 012-2h16a2 2 0 012 2v3a2 2 0 01-2 2h-2"/>
           </svg>
         </button>
+        <!-- Focus mode (Mod-Shift-Z) — hides the tree + info panel
+             so the editor fills the viewport. Persists across page
+             loads. The button shows the current state with a
+             tinted background so the user can see they're in focus
+             mode at a glance. -->
+        <button
+          onclick={() => (focusMode = !focusMode)}
+          title={focusMode ? 'Exit focus mode (Mod-Shift-Z)' : 'Focus mode (Mod-Shift-Z)'}
+          aria-label={focusMode ? 'Exit focus mode' : 'Enter focus mode'}
+          aria-pressed={focusMode}
+          class="hidden sm:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
+            {focusMode ? 'bg-primary/15 text-primary' : 'text-subtext hover:text-primary hover:bg-surface0'}"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
+            {#if focusMode}
+              <path d="M9 4v4H5M15 4v4h4M9 20v-4H5M15 20v-4h4" stroke-linecap="round" stroke-linejoin="round"/>
+            {:else}
+              <path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4" stroke-linecap="round" stroke-linejoin="round"/>
+            {/if}
+          </svg>
+        </button>
         <!-- Version history — opens a fullscreen panel showing all
              prior saved versions of this note with one-click
              restore. Snapshot is taken automatically on every save
@@ -1017,8 +1075,8 @@
     {/if}
   </div>
 
-  <!-- Right info panel (desktop xl+) -->
-  <aside class="hidden xl:flex xl:flex-col xl:w-72 border-l border-surface1 bg-mantle/40 flex-shrink-0">
+  <!-- Right info panel (desktop xl+) — also hidden in focus mode. -->
+  <aside class="hidden xl:flex xl:flex-col xl:w-72 border-l border-surface1 bg-mantle/40 flex-shrink-0 focus-hide">
     {@render infoContent()}
   </aside>
 
@@ -1095,3 +1153,13 @@
   sourcePath={note?.path ?? ''}
   onDismiss={dismissAskAI}
 />
+
+<style>
+  /* Focus mode: hide the side asides (tree on the left, info on the
+     right) so the editor pane fills the available width. The header
+     and footer stay — they're tightly bound to the editing flow
+     (save state, word count, daily-nav buttons). */
+  .focus-mode .focus-hide {
+    display: none !important;
+  }
+</style>
