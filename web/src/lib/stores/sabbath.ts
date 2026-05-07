@@ -33,7 +33,18 @@ export const SABBATH_HIDE_MODULES = [
   'agents',
   'deadlines',
   'chat',
-  'weekly_review'
+  'weekly_review',
+  // Round 2: more work-coded surfaces. The principle: anything
+  // about transacting, measuring, optimising, or planning hides;
+  // anything about presence, reflection, and people stays.
+  'emails',       // CRM-style tracking is inherently transactional
+  'shopping',     // errands belong to a workday
+  'ventures',     // companies / side hustles
+  'goals',        // long-term striving conflicts with rest
+  'habits',       // measurement of self; the discipline of not measuring is the point
+  'measurements', // numeric tracking of any kind
+  'objects',      // typed-objects browser feeds the systematising impulse
+  'hub'           // launcher pad for tools → tools = work
 ];
 
 // Rest modules surfaced as a hint when sabbath starts — nav doesn't
@@ -68,6 +79,28 @@ function loadActive(): boolean {
 
 const { subscribe, set } = writable<boolean>(loadActive());
 
+// Mirror local toggle to the server so server-side surfaces (push
+// scheduler, future agents) can silently skip work during the
+// day of rest. The server sidecar is .granit/sabbath.json. Best-
+// effort: server unreachable → UI overlay still works (the local
+// flag is the source of truth for navigation), only the push
+// silencing degrades. We don't await — the toggle should feel
+// instant.
+function syncToServer(activeOn: string) {
+  if (typeof fetch === 'undefined') return;
+  let token: string | null = null;
+  try {
+    token = localStorage.getItem('everything.token');
+  } catch {}
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  fetch('/api/v1/sabbath', {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ active_on: activeOn })
+  }).catch(() => undefined);
+}
+
 export const sabbath: Readable<boolean> & {
   enable(): void;
   disable(): void;
@@ -76,12 +109,15 @@ export const sabbath: Readable<boolean> & {
 } = {
   subscribe,
   enable() {
-    try { localStorage.setItem(KEY, todayISO()); } catch {}
+    const today = todayISO();
+    try { localStorage.setItem(KEY, today); } catch {}
     set(true);
+    syncToServer(today);
   },
   disable() {
     try { localStorage.removeItem(KEY); } catch {}
     set(false);
+    syncToServer('');
   },
   toggle() {
     if (get({ subscribe })) this.disable();

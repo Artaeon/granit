@@ -9,6 +9,7 @@ import (
 	"github.com/artaeon/granit/internal/deadlines"
 	"github.com/artaeon/granit/internal/granitmeta"
 	"github.com/artaeon/granit/internal/push"
+	"github.com/artaeon/granit/internal/sabbath"
 	"github.com/artaeon/granit/internal/tasks"
 )
 
@@ -218,6 +219,12 @@ func (s *Server) runReminderScheduler() {
 func (s *Server) runReminderTick() {
 	subs, err := s.push.Subscriptions()
 	if err != nil || len(subs) == 0 {
+		return
+	}
+	// Sabbath silences ALL pushes for the user's day of rest. This
+	// is checked BEFORE prefs.IsQuiet so even a user who hasn't
+	// configured quiet hours gets the protection.
+	if sabbath.IsActiveToday(s.cfg.Vault.Root) {
 		return
 	}
 	prefs, _ := push.LoadPrefs(s.cfg.Vault.Root)

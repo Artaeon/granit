@@ -193,14 +193,23 @@
   // (deep link, bookmark, stale tab), bounce to home. We use a tiny
   // delay-via-effect rather than a load function because layout.ts is
   // SSR-only — by the time any code runs the SPA is already mounted.
+  // Also bounces sabbath-hidden modules — typing /tasks during
+  // Sabbath should redirect to home with a soft message rather than
+  // letting the user back-door past the discipline.
   $effect(() => {
     void $modulesStore; // re-run when modules state arrives/changes
+    void $sabbath;
     const path = $page.url.pathname;
     const match = nav.find(
       (n) => n.href !== '/' && (path === n.href || path.startsWith(n.href + '/'))
     );
     if (match?.moduleId && !modulesStore.isEnabled(match.moduleId)) {
       toast.info(`${match.label} is disabled — enable it in Settings → Modules`);
+      goto('/', { replaceState: true });
+      return;
+    }
+    if ($sabbath && match?.moduleId && SABBATH_HIDE_MODULES.includes(match.moduleId)) {
+      toast.info(`${match.label} is hidden during Sabbath — exit Sabbath mode to access.`);
       goto('/', { replaceState: true });
     }
   });
@@ -505,8 +514,12 @@
   <InstallPrompt />
   <!-- Global quick-capture FAB. Single keystroke (Ctrl+Shift+N) opens
        a small task-capture modal from anywhere in the app. Auth-gated
-       since pre-login captures don't have a daily note to write to. -->
-  <QuickCaptureFab />
+       since pre-login captures don't have a daily note to write to.
+       Hidden during Sabbath — capturing a task is the work the day
+       is supposed to be free of. -->
+  {#if !$sabbath}
+    <QuickCaptureFab />
+  {/if}
 {/if}
 <Toaster />
 

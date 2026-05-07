@@ -466,6 +466,11 @@ func (s *Server) Handler() http.Handler {
 		// Notification preferences (per-category toggles + quiet hours).
 		r.Get("/api/v1/notifications/prefs", s.handleGetNotificationPrefs)
 		r.Put("/api/v1/notifications/prefs", s.handlePutNotificationPrefs)
+		// Sabbath state. Mirrors the client's localStorage flag to
+		// disk so server-side schedulers (push reminders, future
+		// agents) can silently skip work during the day of rest.
+		r.Get("/api/v1/sabbath", s.handleGetSabbath)
+		r.Put("/api/v1/sabbath", s.handlePutSabbath)
 
 		// Recurring tasks — same .granit/recurring.json file the TUI's
 		// recurringtasks overlay edits. Server fires due rules at
