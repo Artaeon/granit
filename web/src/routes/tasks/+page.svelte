@@ -503,6 +503,81 @@
   // as small chips above the list so the user always knows the
   // overall load — even when a filter is hiding most of it. Numbers
   // are debounced through $derived so they don't flicker mid-edit.
+  // Subtask collapse state. Stored as a flat set of parent task IDs;
+  // a task whose ANY ancestor is in this set is hidden from the
+  // rendered list. Persisted to localStorage so collapse state
+  // survives a refresh, but only IDs that still exist in the current
+  // task list are kept (prevents the set from growing forever).
+  const COLLAPSE_KEY = 'granit.tasks.collapsed';
+  let collapsedIds = $state<Set<string>>(new Set());
+  onMount(() => {
+    try {
+      const raw = localStorage.getItem(COLLAPSE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw) as string[];
+        if (Array.isArray(arr)) collapsedIds = new Set(arr);
+      }
+    } catch {}
+  });
+  $effect(() => {
+    void collapsedIds;
+    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(Array.from(collapsedIds))); } catch {}
+  });
+
+  // Parent map: for every task with indent > 0, finds its parent in
+  // the same notePath (the nearest preceding task with smaller
+  // indent). Built once per task-list update so the collapse logic
+  // doesn't recompute O(N²) on every render.
+  let parentMap = $derived.by(() => {
+    const m = new Map<string, string>();
+    // Group by notePath then walk in line order so the parent search
+    // is bounded to within a note.
+    const byNote: Record<string, Task[]> = {};
+    for (const t of tasks) (byNote[t.notePath] ??= []).push(t);
+    for (const list of Object.values(byNote)) {
+      list.sort((a, b) => a.lineNum - b.lineNum);
+      const stack: Task[] = [];
+      for (const t of list) {
+        const ind = t.indent ?? 0;
+        while (stack.length > 0 && (stack[stack.length - 1].indent ?? 0) >= ind) {
+          stack.pop();
+        }
+        if (stack.length > 0) m.set(t.id, stack[stack.length - 1].id);
+        stack.push(t);
+      }
+    }
+    return m;
+  });
+
+  // Inverse: parentId -> child IDs. Used to know whether a task
+  // even HAS children (so we can show the chevron) and to count
+  // them in the toggle label.
+  let childCount = $derived.by(() => {
+    const c = new Map<string, number>();
+    for (const childId of parentMap.keys()) {
+      const parent = parentMap.get(childId)!;
+      c.set(parent, (c.get(parent) ?? 0) + 1);
+    }
+    return c;
+  });
+
+  // Walk ancestry; returns true if any ancestor is collapsed.
+  function isHiddenByCollapse(taskId: string, collapsed: Set<string>): boolean {
+    let cur: string | undefined = parentMap.get(taskId);
+    while (cur) {
+      if (collapsed.has(cur)) return true;
+      cur = parentMap.get(cur);
+    }
+    return false;
+  }
+
+  function toggleCollapsed(taskId: string) {
+    const next = new Set(collapsedIds);
+    if (next.has(taskId)) next.delete(taskId);
+    else next.add(taskId);
+    collapsedIds = next;
+  }
+
   let stats = $derived.by(() => {
     const today = new Date().toISOString().slice(0, 10);
     let open = 0, overdue = 0, todayCount = 0, doneToday = 0, snoozed = 0;
@@ -1026,9 +1101,9 @@
             Untriaged tasks. Decide for each: schedule, prioritize, drop, or snooze.
           </p>
           <div class="space-y-2">
-            {#each filtered as t (t.id)}
+            {#each filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                <TaskCard task={t} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -1037,9 +1112,9 @@
         <div class="max-w-3xl">
           <p class="text-sm text-dim mb-4">Tasks that haven't been touched in 7+ days. Drop, snooze, or do them.</p>
           <div class="space-y-2">
-            {#each filtered as t (t.id)}
+            {#each filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                <TaskCard task={t} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -1048,9 +1123,9 @@
         <div class="max-w-3xl">
           <p class="text-sm text-dim mb-4">High-priority tasks you can finish in ≤30 min. Pick one, knock it out.</p>
           <div class="space-y-2">
-            {#each filtered as t (t.id)}
+            {#each filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                <TaskCard task={t} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -1059,9 +1134,9 @@
         <div class="max-w-3xl">
           <p class="text-sm text-dim mb-4">Done in the last week — your retrospective view.</p>
           <div class="space-y-2 opacity-80">
-            {#each filtered as t (t.id)}
+            {#each filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                <TaskCard task={t} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -1103,9 +1178,9 @@
                 {/if}
               </h2>
               <div class="space-y-2">
-                {#each g.tasks as t (t.id)}
+                {#each g.tasks.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
                   <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                    <TaskCard task={t} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                    <TaskCard task={t} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
                   </div>
                 {/each}
               </div>

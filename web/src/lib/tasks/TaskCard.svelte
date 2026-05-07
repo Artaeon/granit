@@ -13,7 +13,11 @@
     onChanged,
     selectedIds = $bindable(new Set<string>()),
     onOpenDetail,
-    onContextMenu
+    onContextMenu,
+    hasChildren = false,
+    childCount = 0,
+    collapsed = false,
+    onToggleCollapse
   }: {
     task: Task;
     compact?: boolean;
@@ -27,6 +31,18 @@
      *  to this so the user gets a discoverable surface for triage / link
      *  actions without losing the existing hover affordances. */
     onContextMenu?: (t: Task, x: number, y: number) => void;
+    /** True when this task has at least one child (descendant) — page
+     *  computes this from indent + line ordering and passes it down.
+     *  Drives whether the chevron renders. */
+    hasChildren?: boolean;
+    /** Number of direct + transitive children — surfaced as "(N)" in
+     *  the chevron's title attribute so the user sees how much they're
+     *  hiding before they collapse. */
+    childCount?: number;
+    /** Whether this task's children are currently collapsed. */
+    collapsed?: boolean;
+    /** Click handler for the chevron — page flips its collapsedIds set. */
+    onToggleCollapse?: () => void;
   } = $props();
 
   import { tick } from 'svelte';
@@ -473,6 +489,23 @@
 
       <div class="flex-1 min-w-0">
         <div class="flex items-baseline gap-2">
+          <!-- Subtask collapse chevron — only renders when the task
+               has at least one child. Click flips collapsed state on
+               the page-level set; the page filters descendants out
+               of the rendered list. The chevron animates by rotating
+               the same SVG so the visual state matches the data. -->
+          {#if hasChildren && onToggleCollapse}
+            <button
+              onclick={(e) => { e.stopPropagation(); onToggleCollapse?.(); }}
+              class="flex-shrink-0 mt-0.5 w-4 h-4 flex items-center justify-center text-dim hover:text-text rounded transition-transform"
+              style:transform={collapsed ? 'rotate(-90deg)' : 'rotate(0deg)'}
+              title={collapsed ? `Expand (${childCount} subtask${childCount === 1 ? '' : 's'} hidden)` : `Collapse (${childCount} subtask${childCount === 1 ? '' : 's'})`}
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? 'Expand subtasks' : 'Collapse subtasks'}
+            >
+              <svg viewBox="0 0 16 16" class="w-3 h-3" fill="currentColor"><path d="M4 6l4 5 4-5z"/></svg>
+            </button>
+          {/if}
           <button
             onclick={onTitleClick}
             class="text-sm text-left flex-1 min-w-0 break-words {task.done ? 'line-through text-dim' : 'text-text'}"
@@ -482,6 +515,9 @@
               <span class="text-dim opacity-60 mr-1">↳</span>
             {/if}
             {@html inlineMd(cleanTaskText(task.text))}
+            {#if hasChildren && collapsed}
+              <span class="ml-1 text-[10px] text-dim font-mono">+{childCount}</span>
+            {/if}
           </button>
           {#if badge}
             <span class="text-[10px] font-mono px-1.5 rounded {badge.cls} flex-shrink-0">{badge.label}</span>
