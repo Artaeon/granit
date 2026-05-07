@@ -12,6 +12,7 @@
   import InstallPrompt from '$lib/components/InstallPrompt.svelte';
   import RunningTimer from '$lib/components/RunningTimer.svelte';
   import NavIcon from '$lib/components/NavIcon.svelte';
+  import Logo from '$lib/components/Logo.svelte';
   import QuickCaptureFab from '$lib/components/QuickCaptureFab.svelte';
   import { connect, disconnect, wsConnected } from '$lib/ws';
   import { theme, nextTheme, themeIcon, themeLabel } from '$lib/stores/theme';
@@ -270,10 +271,14 @@
          full text. -->
     <div class="border-b border-surface1 {isCompact ? 'px-2 py-3 flex justify-center' : 'px-4 py-3'}">
       {#if isCompact}
-        <div class="w-9 h-9 rounded bg-primary/15 text-primary flex items-center justify-center font-semibold">G</div>
+        <div class="w-9 h-9 rounded bg-primary/15 text-primary flex items-center justify-center" aria-label="Granit">
+          <Logo class="w-5 h-5" label="" />
+        </div>
       {:else}
         <div class="flex items-center gap-2">
-          <div class="w-7 h-7 rounded bg-primary/15 text-primary flex items-center justify-center font-semibold flex-shrink-0">G</div>
+          <div class="w-7 h-7 rounded bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">
+            <Logo class="w-4 h-4" label="" />
+          </div>
           <div class="min-w-0">
             <div class="text-sm font-semibold text-text leading-tight">Granit</div>
             <div class="text-[10px] text-dim leading-tight mt-0.5">your vault, anywhere</div>
