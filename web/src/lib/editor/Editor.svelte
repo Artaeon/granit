@@ -6,7 +6,7 @@
   import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
   import { syntaxHighlighting, indentOnInput, foldGutter, foldKeymap, bracketMatching } from '@codemirror/language';
   import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, completionStatus } from '@codemirror/autocomplete';
-  import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+  import { searchKeymap, highlightSelectionMatches, openSearchPanel } from '@codemirror/search';
 
   import { theme, mdHighlight } from './theme';
   import { wikilinkDecoration, wikilinkClickHandler, wikilinkComplete } from './wikilinks';
@@ -277,6 +277,15 @@
    *  editor instead of the whole document. */
   export function getDOM(): HTMLElement | undefined {
     return view?.contentDOM;
+  }
+
+  /** Open CodeMirror's built-in find/replace panel. Same panel as
+   *  Mod-F triggers via the keymap; exposed as an export so a
+   *  toolbar button on the host page can invoke it for users who
+   *  don't know the shortcut. */
+  export function openFind() {
+    if (!view) return;
+    openSearchPanel(view);
   }
 </script>
 

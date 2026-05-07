@@ -55,6 +55,7 @@
         isCompletionActive: () => boolean;
         dispatchChord: (chord: string) => void;
         getDOM: () => HTMLElement | undefined;
+        openFind: () => void;
       }
     | undefined = $state();
   // Re-derived after every render so the SelectionToolbar can scope
@@ -981,6 +982,21 @@
             <path d="M6 9V4h12v5"/>
             <rect x="6" y="14" width="12" height="6" rx="1"/>
             <path d="M6 17H4a2 2 0 01-2-2v-3a2 2 0 012-2h16a2 2 0 012 2v3a2 2 0 01-2 2h-2"/>
+          </svg>
+        </button>
+        <!-- Find / replace — opens CodeMirror's built-in search
+             panel. Mod-F triggers the same panel via the keymap;
+             this button surfaces the feature for users who don't
+             know the shortcut. -->
+        <button
+          onclick={() => editor?.openFind()}
+          title="Find / replace (Mod-F)"
+          aria-label="Find in note"
+          class="hidden sm:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+        >
+          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="11" cy="11" r="7"/>
+            <path d="M21 21l-4.5-4.5" stroke-linecap="round"/>
           </svg>
         </button>
         <!-- Whole-note AI. Opens the AskAIDialog with the entire
