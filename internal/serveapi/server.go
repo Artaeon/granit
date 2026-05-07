@@ -19,6 +19,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"github.com/artaeon/granit/internal/aiaudit"
+	"github.com/artaeon/granit/internal/aicontext"
 	"github.com/artaeon/granit/internal/autocommit"
 	"github.com/artaeon/granit/internal/daily"
 	"github.com/artaeon/granit/internal/modules"
@@ -53,6 +55,15 @@ type Server struct {
 	// Push manages Web Push subscriptions + delivery for event
 	// reminders. Lazy-generates VAPID keys on first call.
 	push *push.Manager
+	// aiContext builds the personalised "what's going on now"
+	// snapshot every AI feature reads. Single source of truth so
+	// every feature works from the same curated view + the user
+	// can audit exactly what gets sent to providers.
+	aiContext *aicontext.Builder
+	// aiAudit appends one log entry per outbound AI request to
+	// .granit/ai-audit.jsonl. The user can inspect / clear from
+	// settings — GDPR right-to-erasure for the on-device portion.
+	aiAudit *aiaudit.Logger
 
 	// activeTimer is the currently-running clock-in session, if any.
 	// Server-side state (one timer per server, since one server hosts
@@ -115,6 +126,8 @@ func NewServer(cfg Config) (*Server, error) {
 		auth:       auth,
 		autocommit: autocommit.New(cfg.Vault.Root),
 		push:       push.New(cfg.Vault.Root),
+		aiContext:  aicontext.New(cfg.Vault, cfg.TaskStore, cfg.Vault.Root),
+		aiAudit:    aiaudit.New(cfg.Vault.Root),
 	}
 	// Restore autocommit-enabled state from settings.json. The
 	// setting is opt-in (default off) so a vault that's a git repo
@@ -471,6 +484,12 @@ func (s *Server) Handler() http.Handler {
 		// agents) can silently skip work during the day of rest.
 		r.Get("/api/v1/sabbath", s.handleGetSabbath)
 		r.Put("/api/v1/sabbath", s.handlePutSabbath)
+		// AI foundation: snapshot, prefs, audit log.
+		r.Get("/api/v1/ai/snapshot", s.handleGetAISnapshot)
+		r.Get("/api/v1/ai/prefs", s.handleGetAIPrefs)
+		r.Put("/api/v1/ai/prefs", s.handlePutAIPrefs)
+		r.Get("/api/v1/ai/audit", s.handleGetAIAudit)
+		r.Delete("/api/v1/ai/audit", s.handleClearAIAudit)
 
 		// Recurring tasks — same .granit/recurring.json file the TUI's
 		// recurringtasks overlay edits. Server fires due rules at
