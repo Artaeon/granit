@@ -20,6 +20,7 @@
   import QuickCreateScheduled from '$lib/calendar/QuickCreateScheduled.svelte';
   import CreateEvent from '$lib/calendar/CreateEvent.svelte';
   import UnifiedCreate from '$lib/calendar/UnifiedCreate.svelte';
+  import { parseEventInput, type ParseResult } from '$lib/calendar/quickCreate';
   import TaskBacklog from '$lib/calendar/TaskBacklog.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
   import { onWsEvent } from '$lib/ws';
@@ -255,6 +256,41 @@
 
   let allEvents = $derived(feed?.events ?? []);
   let events = $derived(allEvents.filter((e) => !hidden.has(e.type as EventFilterKey)));
+
+  // ── Natural-language quick-create ────────────────────────────────
+  // Single text input above the grid: "lunch tomorrow 12pm 1h" →
+  // event. Reuses the deterministic regex parser in
+  // calendar/quickCreate.ts (no LLM call), so the flow stays fast,
+  // offline-friendly, and predictable. Live preview shows what we
+  // recognised so the user can see whether the parse worked before
+  // hitting Enter — saves the "type, submit, get a wrong event,
+  // delete, retry" loop.
+  let quickInput = $state('');
+  let quickBusy = $state(false);
+  const quickParse = $derived<ParseResult | null>(
+    quickInput.trim() ? parseEventInput(quickInput) : null
+  );
+
+  async function submitQuickEvent() {
+    if (!quickParse?.ok || !quickParse.event || quickBusy) return;
+    quickBusy = true;
+    try {
+      const ev = quickParse.event;
+      await api.createEvent({
+        title: ev.title,
+        date: ev.date,
+        start_time: ev.startTime,
+        end_time: ev.endTime
+      });
+      quickInput = '';
+      toast.success('event created');
+      await load();
+    } catch (err) {
+      toast.error('create failed: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      quickBusy = false;
+    }
+  }
   let typeCounts = $derived.by(() => {
     const c: Record<string, number> = {};
     for (const e of allEvents) c[e.type] = (c[e.type] ?? 0) + 1;
@@ -699,6 +735,41 @@
         class="hidden md:flex w-8 h-8 items-center justify-center text-dim hover:text-text hover:bg-surface0 rounded text-xs font-mono"
       >?</button>
     </header>
+
+    <!-- Quick-create bar. Sits between the toolbar and the grid so
+         it's always visible without crowding the controls row. The
+         parsed preview replaces the input's helper text the moment
+         we recognise a valid date+time, giving the user instant
+         feedback that "fri 2pm 30m" actually became next Friday
+         14:00–14:30 before they commit. -->
+    <form
+      class="flex items-center gap-2 px-3 py-1.5 border-b border-surface1 flex-shrink-0"
+      onsubmit={(e) => { e.preventDefault(); void submitQuickEvent(); }}
+    >
+      <span class="text-base flex-shrink-0" aria-hidden="true">＋</span>
+      <input
+        bind:value={quickInput}
+        placeholder='e.g. "lunch tomorrow 12pm 1h" or "team mtg fri 14:00-15:00"'
+        class="flex-1 min-w-0 px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
+        aria-label="quick-create event"
+        disabled={quickBusy}
+      />
+      {#if quickInput.trim()}
+        <span class="hidden md:inline text-[11px] text-dim font-mono truncate max-w-md">
+          {#if quickParse?.ok && quickParse.event}
+            <span class="text-success">✓</span>
+            {quickParse.event.title} · {quickParse.event.date}{quickParse.event.startTime ? ` · ${quickParse.event.startTime}${quickParse.event.endTime ? `–${quickParse.event.endTime}` : ''}` : ' · all-day'}
+          {:else}
+            <span class="text-warning">{quickParse?.hint ?? 'parsing…'}</span>
+          {/if}
+        </span>
+        <button
+          type="submit"
+          disabled={!quickParse?.ok || quickBusy}
+          class="px-2.5 py-1 text-xs bg-primary text-on-primary rounded font-medium disabled:opacity-40 flex-shrink-0"
+        >{quickBusy ? '…' : 'Add'}</button>
+      {/if}
+    </form>
 
     <div
       class="flex-1 overflow-hidden p-2 sm:p-3"
