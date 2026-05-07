@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type Goal, type Milestone } from '$lib/api';
+  import { api, type Goal, type Milestone, type Task } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import Drawer from '$lib/components/Drawer.svelte';
   import { inlineMd } from '$lib/util/inlineMd';
@@ -38,6 +38,75 @@
 
   // Reviews — buffer for "Log review".
   let reviewBuf = $state('');
+
+  // ── Linked tasks + burn-up ───────────────────────────────────────
+  // Tasks carry a free goalId reference; we fetch all and filter
+  // client-side. Same pattern ProjectDetail uses for project tasks.
+  // Burn-up bucketed by ISO week so a "W19" tally on the goal lines
+  // up with the dashboard TaskVelocityWidget and the project pages.
+  let goalTasks = $state<Task[]>([]);
+  async function loadGoalTasks() {
+    if (!goal) return;
+    try {
+      const r = await api.listTasks({});
+      goalTasks = r.tasks.filter((t) => t.goalId === goal!.id);
+    } catch {
+      goalTasks = [];
+    }
+  }
+  $effect(() => {
+    void goal?.id;
+    if (goal) loadGoalTasks();
+  });
+
+  const BURNUP_WEEKS = 8;
+  function weekKey(d: Date): string {
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const day = (t.getUTCDay() + 6) % 7;
+    t.setUTCDate(t.getUTCDate() - day + 3);
+    const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+    const week = 1 + Math.round((t.getTime() - firstThu.getTime()) / (7 * 24 * 60 * 60 * 1000));
+    return `${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+  }
+  function startOfIsoWeek(d: Date): Date {
+    const t = new Date(d);
+    const day = (t.getDay() + 6) % 7;
+    t.setDate(t.getDate() - day);
+    t.setHours(0, 0, 0, 0);
+    return t;
+  }
+  const burnup = $derived.by(() => {
+    const now = new Date();
+    const weekStart = startOfIsoWeek(now);
+    const thisKey = weekKey(now);
+    const order: string[] = [];
+    const labels = new Map<string, string>();
+    for (let i = BURNUP_WEEKS - 1; i >= 0; i--) {
+      const d = new Date(weekStart);
+      d.setDate(d.getDate() - i * 7);
+      const k = weekKey(d);
+      order.push(k);
+      labels.set(k, k === thisKey ? 'Now' : k.split('W')[1]);
+    }
+    const counts = new Map<string, number>();
+    for (const t of goalTasks) {
+      if (!t.done || !t.completedAt) continue;
+      const d = new Date(t.completedAt);
+      if (Number.isNaN(d.getTime())) continue;
+      const k = weekKey(d);
+      if (!order.includes(k)) continue;
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return order.map((k) => ({
+      label: labels.get(k) ?? k,
+      count: counts.get(k) ?? 0,
+      isThisWeek: k === thisKey
+    }));
+  });
+  const burnupMax = $derived(burnup.reduce((m, b) => Math.max(m, b.count), 0));
+  const burnupTotal = $derived(burnup.reduce((s, b) => s + b.count, 0));
+  const openTaskCount = $derived(goalTasks.filter((t) => !t.done).length);
+  const doneTaskCount = $derived(goalTasks.filter((t) => t.done).length);
   let reviewOpen = $state(false);
 
   const statusOptions: Goal['status'][] = ['active', 'paused', 'completed', 'archived'];
@@ -255,6 +324,38 @@
           <div class="h-2 rounded-full bg-surface0 overflow-hidden">
             <div class="h-full transition-all" style="width: {progressPct}%; background: {colorVar(goal.color)}"></div>
           </div>
+
+          {#if goalTasks.length > 0}
+            <!-- Linked-task counts + 8-week burn-up. Only goals
+                 whose tasks carry an explicit goalId reference show
+                 up here — the milestone-based progress bar above
+                 covers the milestone path. The two views complement:
+                 milestones tell you "how much of the plan is done",
+                 burn-up tells you "are we still moving". -->
+            <div class="mt-3 flex items-baseline gap-2 text-[11px] text-dim">
+              <span class="font-mono">{openTaskCount} open · {doneTaskCount} done</span>
+              <span class="flex-1"></span>
+              {#if burnupTotal > 0}
+                <span class="font-mono">{burnupTotal} done in 8w</span>
+              {/if}
+            </div>
+            {#if burnupTotal > 0}
+              <div class="mt-1.5">
+                <div class="flex items-end gap-1 h-10">
+                  {#each burnup as b (b.label)}
+                    {@const pct = burnupMax === 0 ? 0 : Math.max(2, Math.round((b.count / burnupMax) * 100))}
+                    <div class="flex-1 flex flex-col items-center justify-end gap-0.5" title="{b.label}: {b.count}">
+                      <div
+                        class="w-full rounded-t {b.isThisWeek ? 'bg-primary' : 'bg-secondary/40'} transition-all"
+                        style="height: {pct}%"
+                      ></div>
+                      <div class="text-[9px] text-dim font-mono leading-none">{b.label}</div>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          {/if}
         </section>
 
         <!-- Description -->
