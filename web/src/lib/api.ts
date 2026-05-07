@@ -1658,6 +1658,14 @@ export const api = {
       `/search?q=${encodeURIComponent(q)}&limit=${limit}`
     ),
 
+  // Autocommit settings — debounced git-commit-on-save, opt-in.
+  getAutocommit: () => req<{ enabled: boolean; isGitRepo: boolean }>('/autocommit'),
+  putAutocommit: (enabled: boolean) =>
+    req<{ enabled: boolean; isGitRepo: boolean }>('/autocommit', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled })
+    }),
+
   // Templates (built-in + vault user templates)
   listTemplates: () => req<{ templates: NoteTemplate[]; total: number }>('/templates'),
   createFromTemplate: (body: { templateName: string; path: string; title?: string }) =>

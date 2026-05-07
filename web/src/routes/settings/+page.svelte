@@ -236,6 +236,7 @@
     load();
     void modulesStore.ensureLoaded();
     void loadCalSources();
+    void loadAutocommit();
     return onWsEvent((ev) => {
       // Watch for ICS file mutations so the calendars list refreshes
       // when an event is created from another tab.
@@ -245,6 +246,31 @@
       load();
     });
   });
+
+  // Autocommit setting state. Loaded from /api/v1/autocommit on
+  // mount; toggle saves immediately (no debounce since this is a
+  // single boolean, not a per-click flurry like Modules).
+  let autocommit = $state<{ enabled: boolean; isGitRepo: boolean }>({
+    enabled: false,
+    isGitRepo: false
+  });
+  let autocommitSaving = $state(false);
+  async function loadAutocommit() {
+    try {
+      autocommit = await api.getAutocommit();
+    } catch {}
+  }
+  async function toggleAutocommit(enabled: boolean) {
+    autocommitSaving = true;
+    try {
+      autocommit = await api.putAutocommit(enabled);
+    } catch (e) {
+      // Revert on error so the checkbox reflects reality.
+      autocommit = { ...autocommit };
+    } finally {
+      autocommitSaving = false;
+    }
+  }
 
   // Module toggle UX. We debounce so a user rapid-firing checkboxes
   // doesn't fire a PUT per click (the server batches anyway, but the
@@ -351,6 +377,39 @@
       <p class="text-xs text-dim mt-2 leading-relaxed">
         Combines with dark / light mode above — each palette has both variants. Default is the original Tokyo Night / Catppuccin Latte pair.
       </p>
+    </section>
+
+    <!-- Autocommit — debounced git-commit-on-save. Opt-in because
+         not every vault is a git repo and surprising commits would
+         be hostile. The status line tells the user whether the
+         vault is actually a git repo so they don't toggle on
+         expecting magic in a non-repo directory. -->
+    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+      <header class="flex items-baseline justify-between mb-2">
+        <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Git autocommit</h2>
+        {#if autocommitSaving}
+          <span class="text-[10px] uppercase tracking-wider text-dim">saving…</span>
+        {/if}
+      </header>
+      <label class="flex items-center gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={autocommit.enabled}
+          onchange={(e) => void toggleAutocommit((e.target as HTMLInputElement).checked)}
+          disabled={autocommitSaving}
+          class="w-4 h-4 accent-primary cursor-pointer"
+        />
+        <div class="flex-1 min-w-0">
+          <div class="text-sm text-text">Auto-commit changes to git</div>
+          <div class="text-[11px] text-dim mt-0.5">
+            {#if autocommit.isGitRepo}
+              Coalesced commit ~30s after the last save. Single tidy commit per work session.
+            {:else}
+              <span class="text-warning">Vault is not a git repository — toggle does nothing until you run <code class="text-[10px]">git init</code> in the vault.</span>
+            {/if}
+          </div>
+        </div>
+      </label>
     </section>
 
     <!-- Modules — toggle which surfaces appear in the sidebar / are

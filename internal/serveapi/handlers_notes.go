@@ -234,6 +234,12 @@ func (s *Server) handlePutNote(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Notify the autocommit manager — debounces internally and
+	// no-ops when disabled or vault isn't a git repo, so this is
+	// always a cheap call regardless of the user's setup.
+	if s.autocommit != nil {
+		s.autocommit.Notify(path)
+	}
 	s.rescanMu.Lock()
 	_ = s.cfg.Vault.ScanFast()
 	_ = s.cfg.TaskStore.Reload()

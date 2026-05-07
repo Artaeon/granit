@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"github.com/artaeon/granit/internal/autocommit"
 	"github.com/artaeon/granit/internal/daily"
 	"github.com/artaeon/granit/internal/modules"
 	"github.com/artaeon/granit/internal/tasks"
@@ -44,6 +45,10 @@ type Server struct {
 	rescanMu sync.Mutex
 	mu       sync.Mutex
 	syncer   *Syncer
+	// Autocommit fires a debounced `git commit` after the API
+	// writes a note, when the vault is a git repo and the user
+	// has opted in (settings.json). Does nothing when disabled.
+	autocommit *autocommit.Manager
 
 	// activeTimer is the currently-running clock-in session, if any.
 	// Server-side state (one timer per server, since one server hosts
@@ -99,12 +104,17 @@ func NewServer(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("serveapi: auth: %w", err)
 	}
 	s := &Server{
-		cfg:     cfg,
-		hub:     wshub.New(cfg.Logger),
-		watcher: w,
-		search:  vault.NewSearchIndex(),
-		auth:    auth,
+		cfg:        cfg,
+		hub:        wshub.New(cfg.Logger),
+		watcher:    w,
+		search:     vault.NewSearchIndex(),
+		auth:       auth,
+		autocommit: autocommit.New(cfg.Vault.Root),
 	}
+	// Restore autocommit-enabled state from settings.json. The
+	// setting is opt-in (default off) so a vault that's a git repo
+	// for unrelated reasons doesn't get surprise commits.
+	s.autocommit.SetEnabled(loadAutocommitSetting(cfg.Vault.Root))
 	// Build the search index in the background — could take a moment on
 	// large vaults, and the API doesn't need to wait for it.
 	go func() {
@@ -425,6 +435,9 @@ func (s *Server) Handler() http.Handler {
 		// Multipart upload — used by the editor's paste-image and
 		// drop-file handlers. Files land under attachments/YYYY/MM/.
 		r.Post("/api/v1/upload", s.handleUpload)
+		// Autocommit toggle. Reads / writes .granit/autocommit.json.
+		r.Get("/api/v1/autocommit", s.handleGetAutocommit)
+		r.Put("/api/v1/autocommit", s.handlePutAutocommit)
 
 		// Recurring tasks — same .granit/recurring.json file the TUI's
 		// recurringtasks overlay edits. Server fires due rules at
