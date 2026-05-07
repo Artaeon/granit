@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import { api, type Task, type Project, type Goal, type Deadline } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { cleanTaskText } from '$lib/util/taskParse';
   import Drawer from '$lib/components/Drawer.svelte';
 
   // TaskDetail is the side-drawer that pops open when the user clicks
@@ -132,7 +133,7 @@
             {/if}
           </button>
           <div class="flex-1 min-w-0">
-            <h3 class="text-base font-medium text-text break-words {task.done ? 'line-through text-dim' : ''}">{task.text}</h3>
+            <h3 class="text-base font-medium text-text break-words {task.done ? 'line-through text-dim' : ''}">{cleanTaskText(task.text)}</h3>
             <a href="/notes/{encodeURIComponent(task.notePath)}" onclick={openNote} class="text-xs text-secondary hover:underline font-mono">
               {task.notePath}
             </a>

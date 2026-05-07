@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import { api, type Task } from '$lib/api';
   import { inlineMd } from '$lib/util/inlineMd';
+  import { cleanTaskText } from '$lib/util/taskParse';
   import { toast } from '$lib/components/toast';
   import SnoozePicker from './SnoozePicker.svelte';
   import { activeTimer, minutesByTaskId, fmtDuration } from '$lib/stores/timer';
@@ -383,7 +384,7 @@
             {#if (task.indent ?? 0) > 0}
               <span class="text-dim opacity-60 mr-1">↳</span>
             {/if}
-            {@html inlineMd(task.text)}
+            {@html inlineMd(cleanTaskText(task.text))}
           </button>
           {#if badge}
             <span class="text-[10px] font-mono px-1.5 rounded {badge.cls} flex-shrink-0">{badge.label}</span>

@@ -3,6 +3,7 @@
   import { api, todayISO, type Task } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { inlineMd } from '$lib/util/inlineMd';
+  import { cleanTaskText } from '$lib/util/taskParse';
 
   let tasks = $state<Task[]>([]);
 
@@ -38,7 +39,7 @@
         {@const time = new Date(t.scheduledStart!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
         <li class="flex items-baseline gap-3">
           <span class="text-xs font-mono text-info w-12 flex-shrink-0">{time}</span>
-          <span class="flex-1 text-sm {t.done ? 'line-through text-dim' : 'text-text'} min-w-0 truncate">{@html inlineMd(t.text)}</span>
+          <span class="flex-1 text-sm {t.done ? 'line-through text-dim' : 'text-text'} min-w-0 truncate">{@html inlineMd(cleanTaskText(t.text))}</span>
           {#if t.durationMinutes}<span class="text-[10px] text-dim flex-shrink-0">{t.durationMinutes}m</span>{/if}
         </li>
       {/each}

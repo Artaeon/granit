@@ -47,6 +47,48 @@ export function parseTaskInput(raw: string): ParsedTask {
   return { text, priority, dueDate, tags };
 }
 
+// Strip every inline-property marker the backend parser knows
+// about, so the rendered task title shows just the human-readable
+// text. The markers themselves stay in the underlying `task.text`
+// (the authoritative on-disk markdown) and the parsed values live
+// in fields like priority / dueDate / tags — the UI shouldn't
+// duplicate them in the title.
+//
+// User report: a task rendering as "buy milk !2 due:2026-05-07"
+// instead of just "buy milk". Fix is purely cosmetic — strip on
+// render only. Markers preserved in `text` so editing round-trips
+// safely.
+//
+// Patterns mirror internal/tasks/parser.go regex-for-regex.
+const STRIP_PATTERNS: RegExp[] = [
+  // ASCII shorthands
+  /(?:^|\s)!([1-3])(?=\s|$)/g,
+  /(?:^|\s)due:\d{4}-\d{2}-\d{2}(?=\s|$)/g,
+  /(?:^|\s)snooze:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?=\s|$)/g,
+  /(?:^|\s)goal:[A-Za-z0-9_-]+(?=\s|$)/g,
+  /(?:^|\s)deadline:[0-9a-z]{26}(?=\s|$)/g,
+  /(?:^|\s)depends:"[^"]+"(?=\s|$)/g,
+  /(?:^|\s)depends:[^\s]+(?=\s|$)/g,
+  /(?:^|\s)~\d+[mh](?=\s|$)/g,
+  // Emoji markers — literal glyphs so the file stays greppable.
+  /\s*📅\s*\d{4}-\d{2}-\d{2}/g,
+  /\s*⏰\s*\d{2}:\d{2}-\d{2}:\d{2}/g,
+  /\s*🔁\s*(?:daily|weekly|monthly|3x-week)/g,
+  /\s*🔺/g,
+  /\s*⏫/g,
+  /\s*🔼/g,
+  /\s*🔽/g,
+  // Tags — rendered as chips elsewhere, drop from title.
+  /(?:^|\s)#[\p{L}\p{N}_/-]+/gu
+];
+
+export function cleanTaskText(raw: string): string {
+  if (!raw) return '';
+  let s = raw;
+  for (const re of STRIP_PATTERNS) s = s.replace(re, ' ');
+  return s.trim().replace(/\s+/g, ' ');
+}
+
 // "today" / "tomorrow" / "fri" / "next mon" → YYYY-MM-DD
 export function smartDate(token: string, ref = new Date()): string | null {
   const t = token.toLowerCase().trim();

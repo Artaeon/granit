@@ -4,6 +4,8 @@
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
   import { api, type Task, type Project, type Goal, type Deadline } from '$lib/api';
+  import { parseTaskInput, smartDate } from '$lib/util/taskParse';
+  import { toast } from '$lib/components/toast';
   import { onWsEvent } from '$lib/ws';
   import TaskCard from '$lib/tasks/TaskCard.svelte';
   import Kanban from '$lib/tasks/Kanban.svelte';
@@ -118,6 +120,64 @@
     void goto(next, { replaceState: true, noScroll: true, keepFocus: true });
   }
   let filterDrawerOpen = $state(false);
+
+  // Quick-add bar at the top of the page. The user types a single
+  // line in the syntax granit's parser understands ("buy milk !2
+  // due:2026-05-15 #errand" — also "due:tomorrow" / "due:fri" via
+  // smartDate) and pressing Enter creates the task in today's
+  // daily note. Keeps the user's hands on the keyboard and turns
+  // task creation into a 2-second flow without opening any modal.
+  let quickAdd = $state('');
+  let quickAddBusy = $state(false);
+  async function submitQuickAdd() {
+    const raw = quickAdd.trim();
+    if (!raw || quickAddBusy) return;
+    quickAddBusy = true;
+    try {
+      // Pre-parse to extract priority / due / tags. parseTaskInput
+      // accepts ISO dates; smartDate translates "tomorrow" / "fri"
+      // / "next mon" so the user can type natural language.
+      const parsed = parseTaskInput(raw);
+      // If the user typed `due:<word>` (non-ISO), retry via smartDate.
+      // The pre-parse leaves the original raw visible, so we slice
+      // it ourselves by re-matching.
+      let dueDate = parsed.dueDate;
+      if (!dueDate) {
+        const m = raw.match(/(?:^|\s)due:([\w-]+)(?=\s|$)/);
+        if (m) {
+          const sd = smartDate(m[1]);
+          if (sd) {
+            dueDate = sd;
+            // Strip the original `due:<word>` from the text we
+            // pre-parsed (parseTaskInput only stripped ISO matches).
+            parsed.text = parsed.text.replace(/(?:^|\s)due:[\w-]+(?=\s|$)/, ' ').trim().replace(/\s+/g, ' ');
+          }
+        }
+      }
+      if (!parsed.text) {
+        toast.error('Empty task — type a description first.');
+        return;
+      }
+      // Create in today's daily note. If today's daily doesn't exist
+      // yet, granit's GET /api/v1/daily/today auto-creates it from
+      // the template.
+      const daily = await api.daily('today');
+      await api.createTask({
+        notePath: daily.path,
+        text: parsed.text,
+        priority: parsed.priority || undefined,
+        dueDate: dueDate || undefined,
+        tags: parsed.tags.length > 0 ? parsed.tags : undefined
+      });
+      toast.success(`Added: ${parsed.text}`);
+      quickAdd = '';
+      await load();
+    } catch (e) {
+      toast.error('Failed to add task: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      quickAddBusy = false;
+    }
+  }
   let selectedIds = $state<Set<string>>(new Set());
   let detailTask = $state<Task | null>(null);
   let detailOpen = $state(false);
@@ -824,6 +884,26 @@
     </header>
 
     {#if view === 'list' || view === 'kanban'}
+      <!-- Quick-add bar. Type a single-line task in granit's
+           parser-friendly syntax; Enter creates it in today's daily
+           note. Single most-impactful "more powerful tasks" change:
+           creating a task no longer requires opening a note. -->
+      <div class="px-3 py-2 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
+        <span class="text-xl text-primary leading-none flex-shrink-0" aria-hidden="true">＋</span>
+        <input
+          bind:value={quickAdd}
+          onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void submitQuickAdd(); } }}
+          placeholder="Quick-add a task — e.g. fix login bug !1 due:tomorrow #frontend"
+          aria-label="Quick-add task"
+          disabled={quickAddBusy}
+          class="flex-1 min-w-0 px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary disabled:opacity-60"
+        />
+        <button
+          onclick={() => void submitQuickAdd()}
+          disabled={!quickAdd.trim() || quickAddBusy}
+          class="px-3 py-2 bg-primary text-on-primary rounded text-sm disabled:opacity-50 flex-shrink-0"
+        >{quickAddBusy ? '…' : 'Add'}</button>
+      </div>
       <!-- Stats summary chips. Always reflect the unfiltered set so
            the user knows total load even with active filters. The
            overdue / today chips have urgency coloring; doneToday is
@@ -896,8 +976,38 @@
         <p class="text-sm text-success">No stale tasks — everything's been touched in the last week.</p>
       {:else if filtered.length === 0 && view === 'quickwins'}
         <p class="text-sm text-dim italic">No quick wins available. Add an estimate (e.g. <code class="text-secondary">est:30m</code>) to high-priority tasks.</p>
+      {:else if filtered.length === 0 && tasks.length === 0}
+        <!-- True empty: no tasks anywhere. Onboarding-style hint
+             pointing at the quick-add bar. -->
+        <div class="max-w-md mx-auto py-12 text-center">
+          <div class="text-5xl mb-3 opacity-30">✓</div>
+          <h2 class="text-lg font-semibold text-text mb-2">No tasks yet</h2>
+          <p class="text-sm text-dim mb-1">
+            Type your first task in the bar above. Examples:
+          </p>
+          <ul class="text-sm text-subtext font-mono mt-3 space-y-1.5 inline-block text-left">
+            <li>fix login bug <span class="text-error">!1</span> <span class="text-secondary">due:tomorrow</span></li>
+            <li>buy groceries <span class="text-info">#errands</span></li>
+            <li>review PR <span class="text-warning">!2</span> <span class="text-secondary">due:fri</span></li>
+          </ul>
+        </div>
       {:else if filtered.length === 0}
-        <div class="text-sm text-dim italic">no tasks match these filters.</div>
+        <!-- Tasks exist but the active filter masks them all. Offer
+             a "Clear filters" reset so the user isn't stuck. -->
+        <div class="max-w-md mx-auto py-12 text-center">
+          <div class="text-4xl mb-3 opacity-30">🔍</div>
+          <h2 class="text-base font-medium text-text mb-2">No tasks match these filters</h2>
+          <p class="text-sm text-dim mb-3">
+            {tasks.length} {tasks.length === 1 ? 'task is' : 'tasks are'} hidden by the current filters.
+          </p>
+          <button
+            onclick={() => {
+              q = ''; tagFilter = ''; projectFilter = ''; priorityFilter = '';
+              goalFilter = ''; deadlineFilter = ''; status = 'open';
+            }}
+            class="px-3 py-1.5 bg-surface0 border border-surface1 hover:border-primary rounded text-sm text-subtext"
+          >Clear filters</button>
+        </div>
       {:else if view === 'kanban'}
         <Kanban
           tasks={filtered}
