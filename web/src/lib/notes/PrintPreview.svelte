@@ -320,10 +320,32 @@
            is a chip — pressed = on. Available on every viewport
            because it's a structural document property, not a tweak. -->
       <button
-        onclick={() => (signatureOn = !signatureOn)}
+        onclick={() => {
+          signatureOn = !signatureOn;
+          // Auto-open the configure panel the first time the user
+          // turns on signing, so the Signer field is immediately
+          // visible. Without this, users would toggle 🔏 on, see
+          // "No signer specified" in the rendered footer, and have
+          // no clue where to set it.
+          if (signatureOn) configOpen = true;
+        }}
         class="tb-btn {signatureOn ? 'tb-active' : ''}"
         title={signatureOn ? 'Document is signed (SHA-256 footer added)' : 'Add signature footer (SHA-256 + timestamp)'}
       >🔏 {signatureOn ? 'Signed' : 'Sign'}</button>
+      {#if signatureOn}
+        <!-- Inline signer field. Lives in the toolbar (not buried in
+             the configure panel) when signing is on, because "who
+             signed this" is the single most-important field of a
+             signature — it deserves immediate, one-click access.
+             Mirrors the same `signer` state as the configure-panel
+             input below; both edit the same value. -->
+        <input
+          bind:value={signer}
+          placeholder="Signer name (e.g. Raphael Lugmayr)"
+          class="tb-signer-input"
+          aria-label="Signer name"
+        />
+      {/if}
       <span class="tb-sep"></span>
       <div class="tb-modes">
         {#each [
@@ -645,6 +667,18 @@
   .tb-primary { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); }
   .tb-primary:hover { opacity: 0.9; }
   .tb-sep { width: 1px; height: 1.5rem; background: var(--color-surface1); }
+  .tb-signer-input {
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--color-primary);
+    border-radius: 0.25rem;
+    background: var(--color-base);
+    color: var(--color-text);
+    font-size: 0.85rem;
+    min-width: 16rem;
+    outline: none;
+  }
+  .tb-signer-input::placeholder { color: var(--color-dim); }
+  .tb-signer-input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 30%, transparent); }
   .tb-modes { display: inline-flex; border: 1px solid var(--color-surface1); border-radius: 0.25rem; overflow: hidden; }
   .tb-mode {
     padding: 0.25rem 0.75rem;
@@ -1376,22 +1410,49 @@
     .print-page {
       width: 100% !important;
       min-height: auto !important;
+      height: auto !important;
       margin: 0 !important;
       padding: 0 !important;
       box-shadow: none !important;
-      /* CRITICAL for multi-page: reset display from flex to block
-         so the browser's pagination engine breaks content across
-         pages naturally. Flex containers and grid containers both
-         disrupt page-break flow in most browsers. */
       display: block !important;
+      overflow: visible !important;
     }
-    /* Body content needs to be a normal block so headings, lists,
-       and paragraphs each become breakable blocks. The screen-side
-       max-width (16cm for cert / formal) is dropped in print —
-       @page margins handle the gutters. */
+    /* CRITICAL for multi-page output: every flex / grid container
+       inside the printed page must be reset to plain block layout,
+       and every fixed min-height / max-height removed. Flex chains
+       are what was breaking pagination — a `flex: 1` body inside a
+       `display: flex; min-height: 29.7cm` parent keeps content
+       visually constrained to one viewport-page even when the
+       printer would happily paginate a block.
+       The cert-frame / cert-content / cert-body chain was the
+       worst offender (cert was the user's primary failure mode);
+       all four templates have similar issues. We reset them
+       wholesale. */
+    .cert-frame, .cert-content, .cert-body,
+    .formal-body, .lh-body, .lh-header, .memo-body, .memo-header,
+    .print-body, .doc-signature, .doc-signature__inner {
+      display: block !important;
+      flex: none !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      height: auto !important;
+      overflow: visible !important;
+    }
     .formal-body, .lh-body, .memo-body, .cert-body, .print-body {
       max-width: none !important;
       margin: 0 !important;
+    }
+    /* The cert-frame has a decorative border + corner ornaments. In
+       print we keep the border (it renders on every page break,
+       which is fine — actually looks coherent), but we must NOT
+       carry the inset double-border + min-height from screen mode
+       or content can't break. Corners are positioned absolutely so
+       they pin to the first page only — that's accepted; trying to
+       repeat them on every page would require page-counting. */
+    .cert-frame {
+      margin: 0 !important;
+      padding: 1.2cm 1cm !important;
+      box-shadow: inset 0 0 0 1px #fff, inset 0 0 0 2px #d4b87a !important;
     }
     /* Tighten orphan/widow control so a heading's content doesn't
        get stranded at the bottom of one page with its subtext on

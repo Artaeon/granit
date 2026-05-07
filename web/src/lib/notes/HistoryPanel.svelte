@@ -22,6 +22,7 @@
    */
   import { onMount } from 'svelte';
   import { toast } from '$lib/components/toast';
+  import { req } from '$lib/api';
 
   // Inline relative-time formatter — there's no shared helper yet
   // and the panel only needs five buckets ("just now", N seconds /
@@ -84,6 +85,10 @@
     void loadVersions();
   });
 
+  // All three calls go through `req` from $lib/api so the bearer
+  // token from localStorage gets attached as Authorization. The
+  // earlier raw-fetch + credentials:'include' version 401'd because
+  // this app authenticates via Bearer token, not cookies.
   async function loadVersions() {
     loading = true;
     loadError = '';
@@ -91,14 +96,10 @@
     selectedTs = null;
     selectedBody = '';
     try {
-      const res = await fetch(`/api/v1/history/${notePath}`, {
-        credentials: 'include'
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await req<{ versions: Version[] }>(
+        `/history/${notePath}`
+      );
       versions = data.versions ?? [];
-      // Auto-select the newest version so the user sees something
-      // immediately instead of an empty preview pane.
       if (versions.length > 0) {
         await selectVersion(versions[0].timestamp);
       }
@@ -114,12 +115,9 @@
     bodyLoading = true;
     selectedBody = '';
     try {
-      const res = await fetch(
-        `/api/v1/history-version/${notePath}?ts=${encodeURIComponent(ts)}`,
-        { credentials: 'include' }
+      const data = await req<{ body: string }>(
+        `/history-version/${notePath}?ts=${encodeURIComponent(ts)}`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
       selectedBody = data.body ?? '';
     } catch (err: any) {
       toast.error(`Couldn't load version: ${err?.message || err}`);
@@ -132,19 +130,16 @@
     if (!selectedTs || restoring) return;
     restoring = true;
     try {
-      const res = await fetch(`/api/v1/history-restore/${notePath}`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timestamp: selectedTs })
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await req<{ body: string }>(
+        `/history-restore/${notePath}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ timestamp: selectedTs })
+        }
+      );
       const newBody = data.body ?? '';
       toast.success('Restored. Pre-restore content is in history.');
       onRestore?.(newBody);
-      // Refresh versions list — the live content right before the
-      // restore was itself snapshotted, so there's a new entry.
       await loadVersions();
     } catch (err: any) {
       toast.error(`Restore failed: ${err?.message || err}`);
