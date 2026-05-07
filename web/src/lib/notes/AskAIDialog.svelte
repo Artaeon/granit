@@ -33,6 +33,12 @@
   let response = $state('');
   let pending = $state(false);
   let error = $state('');
+  // View toggle for the response panel — 'preview' renders as
+  // markdown (the default), 'diff' shows a line-by-line LCS diff
+  // of the original selection against the AI response. Diff is the
+  // killer view for Improve / Fix grammar / Shorten where you want
+  // to see exactly what changed before hitting Replace.
+  let viewMode = $state<'preview' | 'diff'>('preview');
   let inputEl: HTMLTextAreaElement | undefined = $state();
   // AbortController for the in-flight streaming call. Stored at the
   // component level so the cancel button + Escape key can both
@@ -102,8 +108,59 @@
       instruction = loadLastInstruction();
       error = '';
       pending = false;
+      viewMode = 'preview';
       tick().then(() => inputEl?.focus());
     }
+  });
+
+  // Line-based LCS diff. Cheap (O(m*n) on line counts that are
+  // realistically small), no library dependency. For human text
+  // rewrites this is the right granularity — character-level diff
+  // would be too noisy on prose, paragraph-level too coarse.
+  interface DiffLine { type: 'eq' | 'add' | 'del'; text: string; }
+  function lineDiff(oldText: string, newText: string): DiffLine[] {
+    const a = oldText.split('\n');
+    const b = newText.split('\n');
+    const m = a.length;
+    const n = b.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = m - 1; i >= 0; i--) {
+      for (let j = n - 1; j >= 0; j--) {
+        if (a[i] === b[j]) dp[i][j] = dp[i + 1][j + 1] + 1;
+        else dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+    const out: DiffLine[] = [];
+    let i = 0;
+    let j = 0;
+    while (i < m && j < n) {
+      if (a[i] === b[j]) {
+        out.push({ type: 'eq', text: a[i] });
+        i++;
+        j++;
+      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+        out.push({ type: 'del', text: a[i] });
+        i++;
+      } else {
+        out.push({ type: 'add', text: b[j] });
+        j++;
+      }
+    }
+    while (i < m) out.push({ type: 'del', text: a[i++] });
+    while (j < n) out.push({ type: 'add', text: b[j++] });
+    return out;
+  }
+  const diff = $derived(
+    request && response ? lineDiff(request.text, response) : []
+  );
+  const diffStats = $derived.by(() => {
+    let added = 0;
+    let removed = 0;
+    for (const l of diff) {
+      if (l.type === 'add') added++;
+      else if (l.type === 'del') removed++;
+    }
+    return { added, removed };
   });
 
   async function ask() {
@@ -293,8 +350,33 @@
           </div>
         {:else if response}
           <div>
-            <div class="flex items-baseline justify-between mb-1">
+            <div class="flex items-baseline gap-2 mb-1">
               <span class="text-[11px] uppercase tracking-wider text-dim">Response</span>
+              <!-- Preview / Diff toggle. Diff is unbeatable for
+                   "did the AI actually change what I wanted" — the
+                   stats badge shows +N/-M lines so the user knows
+                   at a glance how invasive the rewrite was. -->
+              {#if !pending}
+                <div class="inline-flex bg-surface0 border border-surface1 rounded overflow-hidden text-[10px]">
+                  <button
+                    type="button"
+                    onclick={() => (viewMode = 'preview')}
+                    class="px-2 py-0.5 {viewMode === 'preview' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+                  >Preview</button>
+                  <button
+                    type="button"
+                    onclick={() => (viewMode = 'diff')}
+                    class="px-2 py-0.5 {viewMode === 'diff' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+                  >Diff</button>
+                </div>
+                {#if viewMode === 'diff'}
+                  <span class="text-[10px] font-mono">
+                    <span class="text-success">+{diffStats.added}</span>
+                    <span class="text-error ml-1">−{diffStats.removed}</span>
+                  </span>
+                {/if}
+              {/if}
+              <span class="flex-1"></span>
               {#if pending}
                 <span class="text-[11px] text-secondary flex items-center gap-1.5">
                   <span class="ai-spinner ai-spinner--sm" aria-hidden="true"></span>
@@ -302,17 +384,38 @@
                 </span>
               {/if}
             </div>
-            <!-- Markdown-rendered response. AI replies are typically
-                 markdown — bullets, headers, code blocks — and the
-                 previous plain-text rendering ate all the structure.
-                 The renderer's `prose` styles match the editor's
-                 reading view so what the user sees here is what
-                 they'll get on Replace / Insert. -->
-            <div class="bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text break-words max-h-72 overflow-y-auto">
-              <div class="prose prose-sm max-w-none">
-                <MarkdownRenderer body={response} />
+            {#if viewMode === 'diff' && !pending}
+              <!-- Diff view: line-by-line LCS over the original
+                   selection vs the AI response. Adds in green,
+                   removes in red, unchanged in dim text — same
+                   visual grammar as `git diff` so any developer
+                   reads it instantly. Whitespace pre-wrap so
+                   long lines wrap rather than horizontally
+                   scrolling on mobile. -->
+              <div class="bg-surface0 border border-surface1 rounded text-xs font-mono max-h-72 overflow-y-auto">
+                {#each diff as l, i (i)}
+                  {#if l.type === 'eq'}
+                    <div class="px-3 py-0.5 text-dim whitespace-pre-wrap break-words"><span class="opacity-60">  </span>{l.text || ' '}</div>
+                  {:else if l.type === 'add'}
+                    <div class="px-3 py-0.5 bg-success/10 text-success whitespace-pre-wrap break-words"><span class="opacity-80">+ </span>{l.text || ' '}</div>
+                  {:else}
+                    <div class="px-3 py-0.5 bg-error/10 text-error whitespace-pre-wrap break-words"><span class="opacity-80">- </span>{l.text || ' '}</div>
+                  {/if}
+                {/each}
               </div>
-            </div>
+            {:else}
+              <!-- Markdown-rendered response. AI replies are typically
+                   markdown — bullets, headers, code blocks — and the
+                   previous plain-text rendering ate all the structure.
+                   The renderer's `prose` styles match the editor's
+                   reading view so what the user sees here is what
+                   they'll get on Replace / Insert. -->
+              <div class="bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text break-words max-h-72 overflow-y-auto">
+                <div class="prose prose-sm max-w-none">
+                  <MarkdownRenderer body={response} />
+                </div>
+              </div>
+            {/if}
           </div>
         {/if}
       </div>
