@@ -870,7 +870,7 @@
   defaultNotePath={`Jots/${fmtDateISO(createDate)}.md`}
   onCreated={load}
 />
-<CreateEvent bind:open={createEventOpen} date={createEventDate} onCreated={load} />
+<CreateEvent bind:open={createEventOpen} date={createEventDate} existingEvents={events} onCreated={load} />
 <UnifiedCreate
   bind:open={unifiedOpen}
   start={unifiedStart}

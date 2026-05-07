@@ -1,14 +1,19 @@
 <script lang="ts">
-  import { api } from '$lib/api';
+  import { api, type CalendarEvent } from '$lib/api';
   import { toast } from '$lib/components/toast';
 
   let {
     open = $bindable(false),
     date,
+    existingEvents = [],
     onCreated
   }: {
     open?: boolean;
     date: Date;
+    /** Events shown on the surrounding calendar — used for conflict
+     *  detection. Defaults to empty so callers that don't care about
+     *  conflicts (e.g. unit tests) don't have to provide it. */
+    existingEvents?: CalendarEvent[];
     onCreated: () => void | Promise<void>;
   } = $props();
 
@@ -21,6 +26,49 @@
   // calendar fills with distinct hues automatically.
   let color = $state('');
   let saving = $state(false);
+
+  // ── Conflict detection ──────────────────────────────────────────
+  // Compute the events on the chosen date that overlap the picked
+  // [startTime, endTime] window. Pure derivation from existingEvents
+  // — cheap at any realistic vault size. We only flag overlaps when
+  // BOTH the new event and the candidate have explicit start+end
+  // times; all-day events on the same date are by-definition not a
+  // scheduling clash (they're parallel context).
+  function pickHM(rfc: string | undefined): string {
+    if (!rfc) return '';
+    // RFC3339 like "2026-05-09T14:00:00+02:00" — slice the time part
+    // in the device's local presentation. The /calendar page stores
+    // events in the user's local zone already.
+    const m = /T(\d{2}:\d{2})/.exec(rfc);
+    return m ? m[1] : '';
+  }
+  function eventDateKey(e: CalendarEvent): string {
+    if (e.date) return e.date;
+    if (e.start) return e.start.slice(0, 10);
+    return '';
+  }
+  function rangesOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
+    // String compare on HH:MM is order-preserving since both are
+    // zero-padded 24-hour. aStart < bEnd && bStart < aEnd is the
+    // half-open-interval overlap test.
+    return aStart < bEnd && bStart < aEnd;
+  }
+  const conflicts = $derived.by(() => {
+    if (!startTime || !endTime || !dateISO) return [];
+    if (startTime >= endTime) return []; // bad range; let the form's own validation handle it
+    const out: { title: string; start: string; end: string }[] = [];
+    for (const e of existingEvents) {
+      if (eventDateKey(e) !== dateISO) continue;
+      const eStart = pickHM(e.start);
+      const eEnd = pickHM(e.end);
+      if (!eStart || !eEnd) continue;
+      if (rangesOverlap(startTime, endTime, eStart, eEnd)) {
+        out.push({ title: e.title, start: eStart, end: eEnd });
+      }
+      if (out.length >= 3) break; // cap so a busy day doesn't tower
+    }
+    return out;
+  });
 
   $effect(() => {
     if (open && date) {
@@ -81,6 +129,20 @@
           <input type="time" bind:value={startTime} placeholder="start" class="px-2 py-2 bg-surface0 border border-surface1 rounded text-sm text-text" />
           <input type="time" bind:value={endTime} placeholder="end" class="px-2 py-2 bg-surface0 border border-surface1 rounded text-sm text-text" />
         </div>
+        {#if conflicts.length > 0}
+          <!-- Conflict warning. Inline, non-blocking — overlaps are
+               sometimes intentional (back-to-back meetings the user
+               wants flagged but not refused), so we surface the clash
+               and let the user decide. -->
+          <div class="px-3 py-2 bg-warning/10 border border-warning/30 rounded text-[11px]">
+            <div class="text-warning font-semibold mb-1">⚠ Overlaps {conflicts.length} existing event{conflicts.length === 1 ? '' : 's'}:</div>
+            <ul class="space-y-0.5">
+              {#each conflicts as c}
+                <li class="text-warning/90 font-mono">{c.start}–{c.end} · {c.title}</li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
         <input bind:value={location} placeholder="location (optional)" class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text" />
         <div class="flex items-center gap-2">
           <span class="text-[11px] text-dim uppercase tracking-wider">Color</span>
