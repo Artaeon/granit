@@ -245,11 +245,13 @@
     class="group relative flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm transition-colors
       {active ? 'text-primary bg-surface1/60' : 'text-subtext hover:bg-surface0 hover:text-text'}"
   >
-    <!-- Active rail: a 2px accent strip on the left edge replaces
+    <!-- Active rail: a 3px accent strip on the left edge replaces
          the heavier full-row fill, so scanning down the sidebar
-         lands on the active item without the eye getting pulled. -->
+         lands on the active item without the eye getting pulled.
+         3px reads cleanly on every density / DPR — 2px disappeared
+         under blur on some displays. -->
     {#if active}
-      <span class="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-primary" aria-hidden="true"></span>
+      <span class="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-primary" aria-hidden="true"></span>
     {/if}
     <NavIcon name={item.icon} class="w-5 h-5 flex-shrink-0" />
     {#if !isCompact}
@@ -266,10 +268,15 @@
          full text. -->
     <div class="border-b border-surface1 {isCompact ? 'px-2 py-3 flex justify-center' : 'px-4 py-3'}">
       {#if isCompact}
-        <div class="w-9 h-9 rounded bg-primary/15 text-primary flex items-center justify-center font-semibold">e</div>
+        <div class="w-9 h-9 rounded bg-primary/15 text-primary flex items-center justify-center font-semibold">G</div>
       {:else}
-        <div class="text-xs uppercase tracking-wider text-dim">everything</div>
-        <div class="text-sm text-subtext mt-0.5">your vault, anywhere</div>
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded bg-primary/15 text-primary flex items-center justify-center font-semibold flex-shrink-0">G</div>
+          <div class="min-w-0">
+            <div class="text-sm font-semibold text-text leading-tight">Granit</div>
+            <div class="text-[10px] text-dim leading-tight mt-0.5">your vault, anywhere</div>
+          </div>
+        </div>
       {/if}
     </div>
 
@@ -307,7 +314,7 @@
               type="button"
               onclick={() => toggleSection(section.id)}
               aria-expanded={!isCollapsed}
-              class="w-full flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wider text-dim hover:text-subtext transition-colors"
+              class="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-wider text-dim hover:text-subtext transition-colors"
             >
               <span class="flex-1 text-left">{section.label}</span>
               <svg viewBox="0 0 24 24" class="w-3 h-3 transition-transform {isCollapsed ? '-rotate-90' : ''}" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -404,8 +411,11 @@
 
 <div class="h-screen flex flex-col md:flex-row overflow-hidden">
   {#if $auth}
-    <!-- Mobile top bar — minimal: title + back (when in subpage) + search -->
-    <header class="md:hidden flex items-center gap-2 px-3 h-12 border-b border-surface1 bg-mantle/90 backdrop-blur sticky top-0 z-30 flex-shrink-0">
+    <!-- Mobile top bar — back (when in subpage) · title · search.
+         Settings used to live here too but it's already in the More
+         drawer now, so the redundancy is gone. The bottom nav is the
+         primary nav surface; this top bar is just contextual. -->
+    <header class="md:hidden flex items-center gap-1 px-3 h-12 border-b border-surface1 bg-mantle/90 backdrop-blur sticky top-0 z-30 flex-shrink-0">
       {#if showBackToSection && activeNav}
         <a
           href={activeNav.href}
@@ -427,15 +437,6 @@
           <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" stroke-linecap="round" />
         </svg>
       </button>
-      <a
-        href="/settings"
-        aria-label="settings"
-        class="w-10 h-10 flex items-center justify-center text-subtext hover:text-primary rounded"
-      >
-        <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </a>
     </header>
 
     <!-- Desktop sidebar — expand/compact width is driven by the

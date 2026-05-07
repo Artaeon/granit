@@ -11,15 +11,16 @@
   let { onMore }: { onMore: () => void } = $props();
 
   // Four primary tabs + a More drawer button = five thumb columns,
-  // the Apple/Material density target. Settings was previously buried
-  // under More so users couldn't find AI provider / API-key setup —
-  // moved up to a primary tab. Notes/Jots/Agents/Chat etc. remain
-  // reachable via the More drawer (which exposes the full sidebar).
+  // the Apple/Material density target. The four primary tabs are
+  // the four most-frequently-used surfaces — daily home, action
+  // list, knowledge surface, scheduled time. Settings is a meta
+  // destination and now lives in the More drawer (one tap deeper)
+  // alongside everything else.
   const tabs: Tab[] = [
     { href: '/', label: 'Today', icon: 'today' },
     { href: '/tasks', label: 'Tasks', icon: 'tasks' },
-    { href: '/calendar', label: 'Calendar', icon: 'calendar' },
-    { href: '/settings', label: 'Settings', icon: 'settings' }
+    { href: '/notes', label: 'Notes', icon: 'notes' },
+    { href: '/calendar', label: 'Calendar', icon: 'calendar' }
   ];
 
   function isActive(href: string): boolean {
@@ -44,20 +45,36 @@
       {@const active = isActive(t.href)}
       <a
         href={t.href}
+        aria-current={active ? 'page' : undefined}
+        aria-label={t.label}
         class="flex flex-col items-center justify-center flex-1 gap-0.5 transition-colors
           {active ? 'text-primary' : 'text-dim active:text-text'}"
       >
-        <NavIcon name={t.icon} class="w-5 h-5" />
+        <!-- Active state: a small pill behind the icon, not a
+             full-row fill. Reads as the active tab without
+             visually crowding the rest of the row. -->
+        <span
+          class="w-10 h-6 rounded-full flex items-center justify-center transition-colors
+            {active ? 'bg-primary/15' : ''}"
+        >
+          <NavIcon name={t.icon} class="w-5 h-5" />
+        </span>
         <span class="text-[10px] font-medium">{t.label}</span>
       </a>
     {/each}
     <button
       onclick={onMore}
       aria-label="more"
+      aria-current={moreActive ? 'page' : undefined}
       class="flex flex-col items-center justify-center flex-1 gap-0.5 transition-colors
         {moreActive ? 'text-primary' : 'text-dim active:text-text'}"
     >
-      <NavIcon name="more" class="w-5 h-5" />
+      <span
+        class="w-10 h-6 rounded-full flex items-center justify-center transition-colors
+          {moreActive ? 'bg-primary/15' : ''}"
+      >
+        <NavIcon name="more" class="w-5 h-5" />
+      </span>
       <span class="text-[10px] font-medium">More</span>
     </button>
   </div>
