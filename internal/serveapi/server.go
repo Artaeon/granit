@@ -490,6 +490,11 @@ func (s *Server) Handler() http.Handler {
 		r.Put("/api/v1/ai/prefs", s.handlePutAIPrefs)
 		r.Get("/api/v1/ai/audit", s.handleGetAIAudit)
 		r.Delete("/api/v1/ai/audit", s.handleClearAIAudit)
+		// AI features (Tier 1). Each runs through the same
+		// pipeline: consent check → snapshot → redact → chat → audit.
+		r.Post("/api/v1/ai/daily-briefing", s.handleAIDailyBriefing)
+		r.Post("/api/v1/ai/weekly-review", s.handleAIWeeklyReview)
+		r.Post("/api/v1/ai/inbox-triage", s.handleAIInboxTriage)
 
 		// Recurring tasks — same .granit/recurring.json file the TUI's
 		// recurringtasks overlay edits. Server fires due rules at

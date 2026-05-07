@@ -1662,6 +1662,26 @@ export const api = {
       `/search?q=${encodeURIComponent(q)}&limit=${limit}`
     ),
 
+  // AI: foundation (prefs, audit log, snapshot view) + Tier 1
+  // features (daily briefing, weekly review, inbox triage).
+  // Every feature is opt-in via /ai/prefs; the audit log records
+  // every outbound request (sizes only — no prompt bodies stored).
+  getAIPrefs: () => req<{ prefs: AIPreferences; warning?: string }>('/ai/prefs'),
+  putAIPrefs: (p: AIPreferences) =>
+    req<{ prefs: AIPreferences }>('/ai/prefs', { method: 'PUT', body: JSON.stringify(p) }),
+  getAIAudit: () => req<{ entries: AIAuditEntry[] }>('/ai/audit'),
+  clearAIAudit: () => req<void>('/ai/audit', { method: 'DELETE' }),
+  getAISnapshot: () => req<{ snapshot: unknown }>('/ai/snapshot'),
+  aiDailyBriefing: () =>
+    req<{ markdown: string }>('/ai/daily-briefing', { method: 'POST', body: '{}' }),
+  aiWeeklyReview: () =>
+    req<{ markdown: string }>('/ai/weekly-review', { method: 'POST', body: '{}' }),
+  aiInboxTriage: () =>
+    req<{ proposals: AITriageProposal[]; raw?: string; warning?: string }>(
+      '/ai/inbox-triage',
+      { method: 'POST', body: '{}' }
+    ),
+
   // Notification preferences — per-category toggles, quiet
   // hours, defaults. Stored at .granit/notifications.json.
   getNotificationPrefs: () =>
@@ -1798,6 +1818,33 @@ export interface SearchHit {
   score: number;
 }
 
+export interface AIFeatureConfig {
+  enabled: boolean;
+  provider?: string;
+}
+export interface AIPreferences {
+  features: Record<string, AIFeatureConfig>;
+  redaction_enabled: boolean;
+  disabled_redaction?: string[];
+  default_provider?: string;
+}
+export interface AIAuditEntry {
+  timestamp: string;
+  feature: string;
+  provider?: string;
+  prompt_size_bytes: number;
+  prompt_hash?: string;
+  redactions?: { name: string; count: number }[];
+  response_size_bytes?: number;
+  error?: string;
+}
+export interface AITriageProposal {
+  id: string;
+  priority: number;
+  schedule: 'today' | 'tomorrow' | 'this_week' | 'next_week' | 'no_date' | string;
+  rationale: string;
+}
+
 export interface NotificationPrefs {
   calendar: { enabled: boolean };
   tasks: { enabled: boolean; due_today_time: string };
@@ -1877,7 +1924,8 @@ export type DashboardWidgetType =
   | 'prayer'
   | 'at-a-glance'
   | 'top-goals'
-  | 'quick-links';
+  | 'quick-links'
+  | 'ai-briefing';
 
 export interface DashboardWidget {
   id: string;

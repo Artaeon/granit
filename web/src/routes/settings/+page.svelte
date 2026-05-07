@@ -239,6 +239,7 @@
     void loadAutocommit();
     void loadPush();
     void loadPrefs();
+    void loadAIPrefs();
     return onWsEvent((ev) => {
       // Watch for ICS file mutations so the calendars list refreshes
       // when an event is created from another tab.
@@ -248,6 +249,82 @@
       load();
     });
   });
+
+  // AI feature preferences + audit log + snapshot peek. The
+  // foundation pieces (Context Engine, redaction, audit) are
+  // always-on; this is the user-facing layer.
+  let aiPrefs = $state<{
+    features: Record<string, { enabled: boolean; provider?: string }>;
+    redaction_enabled: boolean;
+    disabled_redaction?: string[];
+    default_provider?: string;
+  }>({
+    features: {},
+    redaction_enabled: true,
+    default_provider: 'ollama'
+  });
+  let aiPrefsSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  let aiAuditOpen = $state(false);
+  let aiAudit = $state<{
+    timestamp: string;
+    feature: string;
+    provider?: string;
+    prompt_size_bytes: number;
+    response_size_bytes?: number;
+    redactions?: { name: string; count: number }[];
+    error?: string;
+  }[]>([]);
+  let aiSnapshotOpen = $state(false);
+  let aiSnapshotJSON = $state('');
+
+  async function loadAIPrefs() {
+    try {
+      const r = await api.getAIPrefs();
+      if (r.prefs) aiPrefs = r.prefs;
+    } catch {}
+  }
+  function saveAIPrefs() {
+    if (aiPrefsSaveTimer) clearTimeout(aiPrefsSaveTimer);
+    aiPrefsSaveTimer = setTimeout(async () => {
+      try {
+        await api.putAIPrefs(aiPrefs);
+      } catch (err) {
+        const t = await import('$lib/components/toast');
+        t.toast.error('Save failed: ' + (err instanceof Error ? err.message : String(err)));
+      }
+    }, 400);
+  }
+  async function toggleAIFeature(id: string, enabled: boolean) {
+    if (!aiPrefs.features[id]) aiPrefs.features[id] = { enabled };
+    else aiPrefs.features[id] = { ...aiPrefs.features[id], enabled };
+    saveAIPrefs();
+  }
+  async function loadAIAudit() {
+    try {
+      const r = await api.getAIAudit();
+      aiAudit = r.entries ?? [];
+    } catch {}
+  }
+  async function clearAIAudit() {
+    if (!confirm('Clear the AI audit log? This permanently deletes the record of every AI request.')) return;
+    try {
+      await api.clearAIAudit();
+      aiAudit = [];
+      const t = await import('$lib/components/toast');
+      t.toast.success('AI history cleared');
+    } catch (err) {
+      const t = await import('$lib/components/toast');
+      t.toast.error('Clear failed: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+  async function loadAISnapshot() {
+    try {
+      const r = await api.getAISnapshot();
+      aiSnapshotJSON = JSON.stringify(r.snapshot, null, 2);
+    } catch (err) {
+      aiSnapshotJSON = `// Failed to load snapshot: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
 
   // Notification preferences. Per-category toggles + quiet
   // hours + defaults, mirrored from .granit/notifications.json.
@@ -722,6 +799,117 @@
               </div>
             </div>
           </div>
+        </div>
+      {/if}
+    </section>
+
+    <!-- AI features. Per-feature opt-in toggles + audit log + a
+         "what AI sees" peek so the user has perfect transparency
+         into what data MIGHT leave the device. Foundation pieces
+         (Context Engine, redaction, audit) are always-on; the
+         features themselves are opt-in via the toggles below. -->
+    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+      <header class="flex items-baseline justify-between mb-3">
+        <h2 class="text-xs uppercase tracking-wider text-dim font-medium">AI features</h2>
+        <span class="text-[10px] text-dim">opt-in · redacted · audited</span>
+      </header>
+      <p class="text-xs text-dim mb-3 leading-relaxed">
+        Each feature checks the toggle before doing any work. Prompts are passed through a PII-redaction pass before they leave the device. Every request is recorded to an audit log you can inspect or clear below.
+      </p>
+      <div class="space-y-2">
+        {#each [
+          { id: 'daily_briefing',  label: 'Daily briefing',  desc: 'Morning summary: today\'s events + urgent tasks + 1 deadline.' },
+          { id: 'weekly_review',   label: 'Weekly review',   desc: 'Friday/Sunday: drafts a Wins / Setbacks / Learned / Next-week review.' },
+          { id: 'inbox_triage',    label: 'Inbox triage',    desc: 'Suggests priority + schedule for untriaged tasks.' },
+          { id: 'summarise',       label: 'Summarise (existing)',  desc: 'In-editor "summarise selection / whole note" — already shipping.' },
+          { id: 'extract_tasks',   label: 'Extract tasks (existing)', desc: 'In-editor "extract tasks from this note" — already shipping.' },
+          { id: 'suggest_tags',    label: 'Suggest tags (existing)', desc: 'In-editor "suggest tags for this note" — already shipping.' },
+          { id: 'rewrite',         label: 'Rewrite / improve (existing)', desc: 'In-editor selection rewriter — already shipping.' },
+          { id: 'chat',            label: 'Chat (existing)', desc: 'The /chat page. Toggle off to disable entirely.' }
+        ] as f}
+          {@const cfg = aiPrefs.features[f.id] ?? { enabled: false }}
+          <label class="flex items-start gap-3 py-1.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={cfg.enabled}
+              onchange={(e) => { void toggleAIFeature(f.id, (e.target as HTMLInputElement).checked); }}
+              class="mt-1 w-4 h-4 accent-primary cursor-pointer"
+            />
+            <div class="flex-1 min-w-0">
+              <div class="text-sm text-text">{f.label}</div>
+              <div class="text-[11px] text-dim">{f.desc}</div>
+            </div>
+          </label>
+        {/each}
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-surface1 flex items-center gap-3">
+        <label class="flex items-center gap-2 text-xs text-subtext flex-1">
+          <input
+            type="checkbox"
+            checked={aiPrefs.redaction_enabled}
+            onchange={(e) => { aiPrefs.redaction_enabled = (e.target as HTMLInputElement).checked; void saveAIPrefs(); }}
+            class="w-4 h-4 accent-primary"
+          />
+          Redact PII (emails, phone, IBAN, cards, IPs) before prompts leave the device
+        </label>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-surface1 flex items-center gap-2 flex-wrap">
+        <button
+          onclick={() => { aiAuditOpen = !aiAuditOpen; if (aiAuditOpen) void loadAIAudit(); }}
+          class="px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary"
+        >{aiAuditOpen ? 'Hide audit log' : 'View audit log'}</button>
+        <button
+          onclick={() => { aiSnapshotOpen = !aiSnapshotOpen; if (aiSnapshotOpen) void loadAISnapshot(); }}
+          class="px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary"
+        >{aiSnapshotOpen ? 'Hide snapshot' : 'What AI sees'}</button>
+        <span class="flex-1"></span>
+        <button
+          onclick={() => void clearAIAudit()}
+          class="px-3 py-1.5 text-xs text-dim hover:text-error"
+          title="Permanently delete the AI audit log (GDPR right-to-erasure for the on-device portion)"
+        >Clear AI history</button>
+      </div>
+
+      {#if aiAuditOpen}
+        <div class="mt-3 pt-3 border-t border-surface1 max-h-72 overflow-y-auto">
+          {#if aiAudit.length === 0}
+            <p class="text-xs text-dim italic">No AI requests recorded yet.</p>
+          {:else}
+            <ul class="space-y-1 text-[11px] font-mono">
+              {#each aiAudit as e (e.timestamp + e.feature)}
+                <li class="px-2 py-1.5 bg-mantle border border-surface1 rounded">
+                  <div class="flex items-baseline gap-2 flex-wrap">
+                    <span class="text-dim">{new Date(e.timestamp).toLocaleString()}</span>
+                    <span class="text-text font-semibold">{e.feature}</span>
+                    {#if e.provider}<span class="text-secondary">via {e.provider}</span>{/if}
+                    <span class="text-dim ml-auto">{e.prompt_size_bytes}B in / {e.response_size_bytes ?? 0}B out</span>
+                  </div>
+                  {#if e.redactions && e.redactions.length > 0}
+                    <div class="text-dim mt-0.5">
+                      Redacted:
+                      {#each e.redactions as r, i}
+                        <span class="ml-1">{r.count}× {r.name}{i < (e.redactions?.length ?? 0) - 1 ? ',' : ''}</span>
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if e.error}
+                    <div class="text-error mt-0.5">{e.error}</div>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+      {/if}
+
+      {#if aiSnapshotOpen}
+        <div class="mt-3 pt-3 border-t border-surface1">
+          <p class="text-[11px] text-dim mb-2">
+            This is the JSON shape AI features pass to your chosen provider. Note bodies and email contents are <strong>not</strong> included by default.
+          </p>
+          <pre class="max-h-72 overflow-auto bg-mantle border border-surface1 rounded p-2 text-[10px] font-mono text-subtext">{aiSnapshotJSON}</pre>
         </div>
       {/if}
     </section>

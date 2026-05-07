@@ -22,6 +22,7 @@ import PrayerWidget from './widgets/PrayerWidget.svelte';
 import AtAGlanceWidget from './widgets/AtAGlanceWidget.svelte';
 import TopGoalsWidget from './widgets/TopGoalsWidget.svelte';
 import QuickLinksWidget from './widgets/QuickLinksWidget.svelte';
+import AIBriefingWidget from './widgets/AIBriefingWidget.svelte';
 
 export interface WidgetMeta {
   type: DashboardWidgetType;
@@ -57,6 +58,10 @@ export const widgetRegistry: WidgetMeta[] = [
   // close to top-deadlines / top-goals because it's the same
   // shape: a glance-fast "what do I reach for first" tile.
   { type: 'quick-links', label: 'Quick links', description: 'Top 5 favorites from your Hub — single-click access to the URLs you live in', span: 1, component: QuickLinksWidget },
+  // AI briefing — opt-in via Settings → AI features. Shows a one-
+  // click "compose today's briefing" button until generated, then
+  // renders the markdown inline with a "save to today" action.
+  { type: 'ai-briefing', label: 'AI daily briefing', description: 'One-click summary of today\'s events + urgent tasks + next deadline. Opt-in.', span: 2, component: AIBriefingWidget },
   { type: 'scripture', label: 'Today\'s verse', description: 'Daily scripture / quote rotation', span: 1, component: ScriptureWidget },
   { type: 'daily-note', label: 'Daily note', description: 'Link to today\'s daily note', span: 1, component: DailyNoteWidget },
   { type: 'quick-capture', label: 'Quick capture', description: 'Add a task fast', span: 1, component: QuickCaptureWidget },

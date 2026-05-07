@@ -121,6 +121,96 @@
   }
   let filterDrawerOpen = $state(false);
 
+  // AI inbox-triage state. The button on the inbox view kicks off
+  // /api/v1/ai/inbox-triage; the response is a list of proposals
+  // {id, priority, schedule, rationale} that render as accept/skip
+  // chips. Accept applies the suggested priority + a derived
+  // scheduledStart based on the schedule keyword.
+  let aiTriageBusy = $state(false);
+  let aiTriageProposals = $state<{
+    id: string;
+    priority: number;
+    schedule: string;
+    rationale: string;
+  }[]>([]);
+
+  async function runAITriage() {
+    aiTriageBusy = true;
+    try {
+      const r = await api.aiInboxTriage();
+      aiTriageProposals = r.proposals ?? [];
+      if ((r.proposals?.length ?? 0) === 0) {
+        if (r.warning) toast.warning(r.warning);
+        else toast.info('No suggestions returned.');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(/disabled in AI preferences/i.test(msg)
+        ? 'Enable "Inbox triage" in Settings → AI features first.'
+        : 'AI triage failed: ' + msg);
+    } finally {
+      aiTriageBusy = false;
+    }
+  }
+
+  function skipTriageProposal(id: string) {
+    aiTriageProposals = aiTriageProposals.filter((p) => p.id !== id);
+  }
+
+  // Apply a proposal: patch priority + (when applicable) compute a
+  // dueDate from the schedule keyword. "drop" sets done = true.
+  // Move triage state out of "inbox" so the same task doesn't keep
+  // showing up.
+  async function applyTriageProposal(p: { id: string; priority: number; schedule: string }) {
+    aiTriageBusy = true;
+    try {
+      const patch: Parameters<typeof api.patchTask>[1] = {};
+      if (p.priority === 0) {
+        patch.done = true;
+        patch.triage = 'dropped';
+      } else {
+        patch.priority = p.priority;
+        patch.triage = 'triaged';
+      }
+      const today = new Date();
+      switch (p.schedule) {
+        case 'today': {
+          patch.dueDate = today.toISOString().slice(0, 10);
+          break;
+        }
+        case 'tomorrow': {
+          const t = new Date(today);
+          t.setDate(t.getDate() + 1);
+          patch.dueDate = t.toISOString().slice(0, 10);
+          break;
+        }
+        case 'this_week': {
+          // End of week — Sunday — at the latest.
+          const t = new Date(today);
+          const dow = t.getDay();
+          const daysToSun = (7 - dow) % 7;
+          t.setDate(t.getDate() + daysToSun);
+          patch.dueDate = t.toISOString().slice(0, 10);
+          break;
+        }
+        case 'next_week': {
+          const t = new Date(today);
+          t.setDate(t.getDate() + 7);
+          patch.dueDate = t.toISOString().slice(0, 10);
+          break;
+        }
+        // 'no_date' or anything else → leave dueDate alone.
+      }
+      await api.patchTask(p.id, patch);
+      aiTriageProposals = aiTriageProposals.filter((x) => x.id !== p.id);
+      await load();
+    } catch (err) {
+      toast.error('Apply failed: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      aiTriageBusy = false;
+    }
+  }
+
   // Quick-add bar at the top of the page. The user types a single
   // line in the syntax granit's parser understands ("buy milk !2
   // due:2026-05-15 #errand" — also "due:tomorrow" / "due:fri" via
@@ -1194,9 +1284,52 @@
         <TriageBoard tasks={filtered} onChanged={load} />
       {:else if view === 'inbox'}
         <div class="max-w-3xl">
-          <p class="text-sm text-dim mb-4">
-            Untriaged tasks. Decide for each: schedule, prioritize, drop, or snooze.
-          </p>
+          <div class="flex items-baseline gap-3 mb-4">
+            <p class="text-sm text-dim flex-1">
+              Untriaged tasks. Decide for each: schedule, prioritize, drop, or snooze.
+            </p>
+            <button
+              onclick={() => void runAITriage()}
+              disabled={aiTriageBusy || filtered.length === 0}
+              class="px-3 py-1.5 text-xs bg-secondary/15 text-secondary rounded hover:bg-secondary/25 disabled:opacity-50 flex-shrink-0"
+              title="Ask AI to suggest priority + schedule for each untriaged task"
+            >{aiTriageBusy ? '✨ thinking…' : '✨ AI triage'}</button>
+          </div>
+
+          {#if aiTriageProposals.length > 0}
+            <!-- AI suggestions panel. Each proposal has Accept /
+                 Skip; accepting applies the suggested priority +
+                 schedule to the matching task. -->
+            <div class="mb-5 p-3 bg-secondary/5 border border-secondary/30 rounded">
+              <div class="text-xs uppercase tracking-wider text-secondary font-semibold mb-2">AI suggestions ({aiTriageProposals.length})</div>
+              <ul class="space-y-2">
+                {#each aiTriageProposals as p (p.id)}
+                  {@const t = tasks.find((x) => x.id === p.id)}
+                  {#if t}
+                    <li class="flex items-start gap-2 text-xs">
+                      <div class="flex-1 min-w-0">
+                        <div class="text-text">{t.text}</div>
+                        <div class="text-dim mt-0.5">
+                          {p.priority === 0 ? 'drop' : `P${p.priority}`} · {p.schedule}
+                          {#if p.rationale}<span class="italic"> — {p.rationale}</span>{/if}
+                        </div>
+                      </div>
+                      <button
+                        onclick={() => void applyTriageProposal(p)}
+                        disabled={aiTriageBusy}
+                        class="px-2 py-0.5 bg-success/15 text-success rounded hover:bg-success/25"
+                      >accept</button>
+                      <button
+                        onclick={() => skipTriageProposal(p.id)}
+                        class="px-2 py-0.5 text-dim hover:text-text"
+                      >skip</button>
+                    </li>
+                  {/if}
+                {/each}
+              </ul>
+            </div>
+          {/if}
+
           <div class="space-y-2">
             {#each filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
