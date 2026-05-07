@@ -1051,7 +1051,7 @@
           onclick={askAIWholeNote}
           title="Ask AI about this note"
           aria-label="Ask AI about this note"
-          class="hidden sm:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+          class="flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
         >
           <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" stroke-linejoin="round"/>
@@ -1086,9 +1086,9 @@
              pollute the list). The promise: nothing is ever lost. -->
         <button
           onclick={() => (historyOpen = true)}
-          title="Version history"
+          title="Version history — every save creates a backup. Nothing is ever lost."
           aria-label="Version history"
-          class="hidden sm:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+          class="flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
             <circle cx="12" cy="12" r="9"/>

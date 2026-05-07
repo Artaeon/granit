@@ -263,18 +263,31 @@
 </script>
 
 {#if request}
+  <!-- Mobile slides up from the bottom (items-end + rounded-t),
+       desktop centers (items-start + pt-12 + rounded-lg). dvh
+       (dynamic viewport) accounts for iOS Safari's address bar
+       so a long preset list doesn't get clipped when the bar is
+       visible. The presets row is dense — on a phone it fits two
+       rows of chips before the response panel begins. -->
   <div
-    class="fixed inset-0 z-50 flex items-start justify-center pt-12 px-4 bg-mantle/70 backdrop-blur-sm"
+    class="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:pt-12 sm:px-4 bg-mantle/70 backdrop-blur-sm"
     onclick={dismiss}
     onkeydown={onKey}
     role="presentation"
   >
     <section
-      class="w-full max-w-2xl bg-base border border-surface1 rounded-lg shadow-xl max-h-[88vh] flex flex-col"
+      class="w-full sm:max-w-2xl bg-base border border-surface1 rounded-t-xl sm:rounded-lg shadow-xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col"
       onclick={(e) => e.stopPropagation()}
       role="dialog"
       aria-label="Ask AI about selection"
     >
+      <!-- Drag-handle visual hint on mobile, the iOS/Android sheet
+           convention. Doesn't actually drag — tap-outside or X to
+           dismiss — but signals "this is a sheet" without a
+           native widget. -->
+      <div class="sm:hidden flex justify-center pt-2 pb-1">
+        <span class="block w-10 h-1 rounded-full bg-surface2"></span>
+      </div>
       <header class="px-4 py-3 border-b border-surface1 flex items-baseline gap-2">
         <h2 class="text-sm font-semibold text-text flex-1">Ask AI</h2>
         <span class="text-[11px] text-dim">{request.text.length} char{request.text.length === 1 ? '' : 's'} selected</span>
