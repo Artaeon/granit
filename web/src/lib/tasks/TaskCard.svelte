@@ -246,21 +246,85 @@
   // there's no native right-click. 500ms threshold matches the
   // platform conventions.
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Swipe-to-action state. Tracks horizontal drag distance and
+  // surfaces a colored backing layer behind the card showing what
+  // will fire if the user releases now.
+  //   • Swipe right → toggle done (green ✓)
+  //   • Swipe left  → snooze (amber 💤)
+  // Threshold is 80px — below that the card snaps back. Vertical
+  // movement (scroll intent) cancels the swipe so list-scrolling
+  // isn't accidentally hijacked.
+  const SWIPE_THRESHOLD = 80;
+  let swipeStartX = 0;
+  let swipeStartY = 0;
+  let swipeOffset = $state(0);
+  let swipeActive = $state(false);
+
   function onTouchStart(e: TouchEvent) {
-    if (!onContextMenu) return;
     const t0 = e.touches[0];
     if (!t0) return;
-    const x = t0.clientX;
-    const y = t0.clientY;
-    longPressTimer = setTimeout(() => {
-      onContextMenu?.(task, x, y);
-      longPressTimer = null;
-    }, 500);
+    swipeStartX = t0.clientX;
+    swipeStartY = t0.clientY;
+    swipeOffset = 0;
+    swipeActive = false;
+    if (onContextMenu) {
+      longPressTimer = setTimeout(() => {
+        onContextMenu?.(task, t0.clientX, t0.clientY);
+        longPressTimer = null;
+      }, 500);
+    }
   }
-  function onTouchEnd() {
+  function onTouchMove(e: TouchEvent) {
+    const t0 = e.touches[0];
+    if (!t0) return;
+    const dx = t0.clientX - swipeStartX;
+    const dy = t0.clientY - swipeStartY;
+    // Once the user has moved ~10px, decide whether this is a swipe
+    // (horizontal) or a scroll (vertical) and lock in. If vertical
+    // wins we cancel the swipe and let the list scroll naturally.
+    if (!swipeActive && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      if (Math.abs(dx) > Math.abs(dy)) {
+        swipeActive = true;
+        // Cancel long-press; user is swiping, not holding.
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      } else {
+        // Vertical scroll — abort the swipe entirely.
+        swipeStartX = NaN;
+        return;
+      }
+    }
+    if (!swipeActive || Number.isNaN(swipeStartX)) return;
+    // Cap the visual offset at 1.5× threshold so the card doesn't
+    // fly off-screen on a vigorous swipe — the action is committed
+    // at threshold either way.
+    swipeOffset = Math.max(-SWIPE_THRESHOLD * 1.5, Math.min(SWIPE_THRESHOLD * 1.5, dx));
+    // Don't preventDefault on the touchmove event itself — the user
+    // may still pan vertically after the lock-in moment if their
+    // gesture changes direction.
+  }
+  function onTouchEnd(e: TouchEvent) {
     if (longPressTimer) {
       clearTimeout(longPressTimer);
       longPressTimer = null;
+    }
+    if (!swipeActive) return;
+    const finalOffset = swipeOffset;
+    swipeOffset = 0;
+    swipeActive = false;
+    // Commit the action if past threshold. Right = done; left =
+    // snooze for 1 day (a sensible default). The user can still
+    // open the SnoozePicker explicitly from the context menu / card
+    // button if they want a custom date.
+    if (finalOffset > SWIPE_THRESHOLD) {
+      e.preventDefault();
+      void toggle(new Event('swipe-done'));
+    } else if (finalOffset < -SWIPE_THRESHOLD) {
+      e.preventDefault();
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0);
+      void applySnooze(tomorrow.toISOString());
     }
   }
   function onContextMenuEvent(e: MouseEvent) {
@@ -335,6 +399,42 @@
   });
 </script>
 
+<!-- Outer container handles touch events + hosts the swipe-action
+     backing layer behind the card. Position is relative so the
+     backing can overlay full-bleed; overflow hidden so a swipe
+     past the edge doesn't bleed past the card border. -->
+<div
+  class="task-card-wrap relative overflow-hidden rounded"
+  style="margin-left: {indentPx}px;"
+  ontouchstart={onTouchStart}
+  ontouchmove={onTouchMove}
+  ontouchend={onTouchEnd}
+  ontouchcancel={onTouchEnd}
+  role="presentation"
+>
+  <!-- Action backing — visible only while swiping. Right swipe
+       reveals "✓ Done" on the LEFT (the user is dragging right, so
+       the action label appears on the side they swept FROM). Left
+       swipe reveals "💤 Snooze" on the right side. -->
+  {#if swipeActive && swipeOffset !== 0}
+    <div
+      class="absolute inset-0 flex items-center px-3 text-sm font-semibold pointer-events-none
+        {swipeOffset > 0 ? 'justify-start bg-success/30 text-success' : 'justify-end bg-warning/30 text-warning'}"
+      aria-hidden="true"
+    >
+      {#if swipeOffset > 0}
+        <span class="flex items-center gap-1.5">
+          <span class="text-lg">✓</span>
+          {Math.abs(swipeOffset) >= SWIPE_THRESHOLD ? (task.done ? 'Reopen' : 'Done') : 'Swipe right…'}
+        </span>
+      {:else}
+        <span class="flex items-center gap-1.5">
+          {Math.abs(swipeOffset) >= SWIPE_THRESHOLD ? 'Snooze 1d' : 'Swipe left…'}
+          <span class="text-lg">💤</span>
+        </span>
+      {/if}
+    </div>
+  {/if}
 <div
   class="task-card bg-surface0 border-l-2 {priorityClass(task.priority)} border border-surface1 rounded p-2 transition-all group relative
     {isSelected ? 'ring-1 ring-primary' : 'hover:border-primary/40 hover:bg-surface0/80'}
@@ -343,12 +443,9 @@
     {task.done ? 'task-card--done' : ''}"
   class:opacity-60={task.done}
   class:opacity-50={snoozed}
-  style="margin-left: {indentPx}px;"
+  class:task-card--swiping={swipeActive}
+  style="transform: translateX({swipeOffset}px);"
   oncontextmenu={onContextMenuEvent}
-  ontouchstart={onTouchStart}
-  ontouchend={onTouchEnd}
-  ontouchmove={onTouchEnd}
-  ontouchcancel={onTouchEnd}
   role="article"
 >
   {#if !editing}
@@ -544,6 +641,7 @@
     </div>
   {/if}
 </div>
+</div>
 
 <style>
   /* Soft urgency tints. The priority border (left rail) is the
@@ -583,5 +681,16 @@
      change so accessibility users still get the state cue. */
   @media (prefers-reduced-motion: reduce) {
     .task-card--done { animation: none; }
+  }
+  /* Swipe transform — when actively swiping, no transition so the
+     card tracks the finger 1:1; on release the .task-card--swiping
+     class is removed and the default transition kicks in to snap
+     the card back to position. */
+  .task-card-wrap .task-card {
+    transition: transform 200ms ease-out, background-color 150ms;
+    will-change: transform;
+  }
+  .task-card-wrap .task-card.task-card--swiping {
+    transition: none;
   }
 </style>
