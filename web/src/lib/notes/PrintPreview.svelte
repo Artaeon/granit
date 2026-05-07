@@ -950,15 +950,19 @@
     min-height: 29.7cm;
     margin: 2rem auto;
     padding: 2cm 1.5cm;
-    background:
-      white
-      repeating-linear-gradient(
-        to bottom,
-        transparent 0,
-        transparent calc(29.7cm - 1px),
-        rgba(0, 0, 0, 0.08) calc(29.7cm - 1px),
-        rgba(0, 0, 0, 0.08) 29.7cm
-      );
+    /* Color + image as separate longhands so the @media print
+       block below can drop the page-break gradient without
+       touching the white. The shorthand `background: white <grad>`
+       was non-conformant (color must be last in the shorthand)
+       and tied the two together — ungainly to override. */
+    background-color: white;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(29.7cm - 1px),
+      rgba(0, 0, 0, 0.08) calc(29.7cm - 1px),
+      rgba(0, 0, 0, 0.08) 29.7cm
+    );
     color: #1a1a1a;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     box-sizing: border-box;
@@ -1500,6 +1504,10 @@
       box-shadow: none !important;
       display: block !important;
       overflow: visible !important;
+      /* Drop the screen-only page-break gradient — printers honor
+         their own page boundaries and faint band stripes every
+         29.7cm of paper would look like a registration error. */
+      background-image: none !important;
     }
     /* Reset every flex / grid container in the print tree to block
        layout, drop fixed heights, and force overflow:visible — flex
