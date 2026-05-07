@@ -3,6 +3,7 @@ package serveapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/artaeon/granit/internal/aiprefs"
 	"github.com/artaeon/granit/internal/airedact"
 	"github.com/artaeon/granit/internal/config"
+	"github.com/artaeon/granit/internal/sabbath"
 )
 
 // runAIFeature is the shared pipeline every Tier 1 AI feature runs
@@ -26,6 +28,13 @@ import (
 // Returns the assistant's reply text or an error. Audit log
 // recorded as a side effect; redaction applied per prefs.
 func (s *Server) runAIFeature(ctx context.Context, feature aiprefs.Feature, systemPrompt, userPrompt string) (string, error) {
+	// Sabbath gate — same reasoning as push: the day of rest should
+	// silence outbound AI calls too. Cheaper than the consent check
+	// because it's just a date-string compare on a small JSON file,
+	// so do it before anything else.
+	if sabbath.IsActiveToday(s.cfg.Vault.Root) {
+		return "", fmt.Errorf("AI features are paused during Sabbath — exit Sabbath mode to use them")
+	}
 	prefs, _ := aiprefs.Load(s.cfg.Vault.Root)
 	cfg, ok := prefs.Features[feature]
 	if !ok || !cfg.Enabled {
@@ -39,34 +48,53 @@ func (s *Server) runAIFeature(ctx context.Context, feature aiprefs.Feature, syst
 	if prefs.RedactionEnabled {
 		finalPrompt, stats = airedact.RedactWithStats(userPrompt, airedact.DefaultRules())
 	}
-	cfgFile := config.LoadForVault(s.cfg.Vault.Root)
+	// Honor the per-feature provider override. The aiprefs FeatureConfig
+	// allows "this feature uses ollama, that one uses openai" — until
+	// now the override was decorative because runAIFeature always built
+	// the LLM from the global ai_provider. Resolve the effective config
+	// here so each call lands on the right backend.
+	cfgFile := resolveLLMConfig(s.cfg.Vault.Root, cfg.Provider, prefs.DefaultProvider)
 	llm, err := agentruntime.NewLLM(cfgFile)
 	if err != nil {
+		s.recordAuditFailure(feature, cfgFile, finalPrompt, stats, err)
 		return "", err
 	}
 	if hint := preflightLLM(llm); hint != "" {
-		return "", fmt.Errorf("%s", hint)
+		err := fmt.Errorf("%s", hint)
+		s.recordAuditFailure(feature, cfgFile, finalPrompt, stats, err)
+		return "", err
 	}
 	chatter, ok := llm.(agentruntime.Chatter)
 	if !ok {
-		return "", fmt.Errorf("configured LLM does not support chat")
+		err := fmt.Errorf("configured LLM does not support chat")
+		s.recordAuditFailure(feature, cfgFile, finalPrompt, stats, err)
+		return "", err
 	}
 	messages := []agentruntime.ChatMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: finalPrompt},
 	}
 	out, err := chatter.Chat(ctx, messages)
-	// Audit. Error or success, log.
+	// Classify cancellation distinctly from other errors so the
+	// audit log + UI can show "cancelled by user" rather than a
+	// noisy network-style message.
+	if err != nil {
+		if ctxErr := ctx.Err(); errors.Is(ctxErr, context.Canceled) {
+			err = fmt.Errorf("cancelled by user")
+		} else if errors.Is(ctxErr, context.DeadlineExceeded) {
+			err = fmt.Errorf("timed out")
+		}
+	}
 	if s.aiAudit != nil {
 		entry := aiaudit.Entry{
 			Feature:           string(feature),
 			Provider:          cfgFile.AIProvider,
+			Model:             effectiveModel(cfgFile),
 			ResponseSizeBytes: len(out),
 		}
 		if err != nil {
 			entry.Error = err.Error()
 		}
-		// Convert redaction stats to the audit shape.
 		if len(stats) > 0 {
 			entry.RedactionsByRule = make([]aiaudit.Stat, len(stats))
 			for i, s := range stats {
@@ -76,6 +104,65 @@ func (s *Server) runAIFeature(ctx context.Context, feature aiprefs.Feature, syst
 		_, _ = s.aiAudit.Append(entry, finalPrompt)
 	}
 	return out, err
+}
+
+// resolveLLMConfig builds a config.Config for THIS feature, honoring
+// the per-feature provider override. featureProvider takes precedence;
+// defaultProvider is the fallback the user set on the prefs root; if
+// both are empty we use the file-global ai_provider.
+func resolveLLMConfig(vaultRoot, featureProvider, defaultProvider string) config.Config {
+	cfgFile := config.LoadForVault(vaultRoot)
+	chosen := strings.TrimSpace(featureProvider)
+	if chosen == "" {
+		chosen = strings.TrimSpace(defaultProvider)
+	}
+	if chosen != "" {
+		cfgFile.AIProvider = chosen
+	}
+	return cfgFile
+}
+
+// effectiveModel picks the model that NewLLM will end up using for the
+// resolved provider, so the audit log records the same string the
+// remote API saw. Mirror the defaults from agentruntime.NewLLM.
+func effectiveModel(cfg config.Config) string {
+	switch strings.ToLower(strings.TrimSpace(cfg.AIProvider)) {
+	case "openai":
+		if cfg.OpenAIModel != "" {
+			return cfg.OpenAIModel
+		}
+		return "gpt-4o-mini"
+	case "ollama", "local", "":
+		if cfg.OllamaModel != "" {
+			return cfg.OllamaModel
+		}
+		return "llama3.2"
+	}
+	return ""
+}
+
+// recordAuditFailure logs an audit entry for a failure that happened
+// BEFORE we could run Chat — provider misconfig, preflight failure,
+// chatter type assertion. Without this the audit log would silently
+// drop "ollama isn't running" cases, which is exactly what the user
+// wants to see when a feature mysteriously does nothing.
+func (s *Server) recordAuditFailure(feature aiprefs.Feature, cfgFile config.Config, finalPrompt string, stats []airedact.Stat, err error) {
+	if s.aiAudit == nil {
+		return
+	}
+	entry := aiaudit.Entry{
+		Feature:  string(feature),
+		Provider: cfgFile.AIProvider,
+		Model:    effectiveModel(cfgFile),
+		Error:    err.Error(),
+	}
+	if len(stats) > 0 {
+		entry.RedactionsByRule = make([]aiaudit.Stat, len(stats))
+		for i, s := range stats {
+			entry.RedactionsByRule[i] = aiaudit.Stat{Name: s.Name, Count: s.Count}
+		}
+	}
+	_, _ = s.aiAudit.Append(entry, finalPrompt)
 }
 
 // ─── Daily Briefing ───────────────────────────────────────────────
