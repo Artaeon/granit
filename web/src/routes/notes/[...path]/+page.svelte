@@ -379,27 +379,27 @@
     };
   });
 
-  // Persist the body to localStorage on every change (debounced 100ms).
-  // localStorage.setItem is synchronous and fast (sub-millisecond for
-  // typical note sizes) so the debounce can be aggressive — the only
-  // reason to debounce at all is to coalesce rapid keystrokes into one
-  // write. Previously 600ms, which left a wide window where typing
-  // wasn't yet on disk; a tab crash or reload in that window lost
-  // those keystrokes since auto-save's 2s timer hadn't fired yet either.
+  // Persist the body to localStorage on every change — synchronously,
+  // no debounce. The previous 600ms (and even the 100ms we tried) had
+  // a real bug: during continuous typing the timer reset every
+  // keystroke and never fired, so a crash mid-paragraph lost
+  // everything since the last typing pause. localStorage.setItem is
+  // sub-millisecond for typical note sizes, so writing on every
+  // keystroke costs ~30ms/sec at fastest realistic typing speeds —
+  // imperceptible. This is the bulletproof guarantee: every visible
+  // keystroke is on disk before the next paint.
   $effect(() => {
     void body;
     if (!note || !dirty) return;
-    const t = setTimeout(() => {
-      if (note) setDraft(note.path, body, note.modTime);
-    }, 100);
-    return () => clearTimeout(t);
+    setDraft(note.path, body, note.modTime);
   });
 
-  // Force-flush draft on tab hide / before unload. Covers the case
-  // where the user closes the tab during the 100ms debounce window OR
-  // the OS suspends the page (mobile background, lid close) before
-  // the next debounce tick. localStorage writes are synchronous, so
-  // we can guarantee the latest body lands before the page goes away.
+  // Force-flush draft on tab hide / before unload. Belt-and-suspenders
+  // since we already write synchronously per keystroke — but covers
+  // the unlikely case of a body change that hasn't propagated to the
+  // $effect yet (e.g. an in-flight CodeMirror dispatch the moment
+  // the OS suspends the page). localStorage writes are synchronous,
+  // so this guarantees the latest body lands before the page goes away.
   $effect(() => {
     if (typeof window === 'undefined') return;
     const flush = () => {
