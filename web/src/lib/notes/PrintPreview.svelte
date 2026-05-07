@@ -933,18 +933,35 @@
   .config-save:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* The page itself — A4-shaped on screen so the user sees what
-     prints. White background with shadow to feel like paper. */
+     prints. White background with shadow to feel like paper.
+     Critically, the layout is BLOCK, not flex column. The previous
+     flex layout combined with `.print-body { flex: 1 }` caused
+     long notes to overflow the white box: the article got
+     stretched to "one page minus header minus footer", and any
+     content past that escaped into the dark overlay backdrop —
+     dark text on dark background, unreadable. Block flow grows
+     naturally with content; the white surface always wraps
+     everything the printer will lay down. Faint dashed bands
+     mark where pages will break on print so the user has a
+     visual cue without us trying to teleport content into
+     multiple discrete page elements. */
   .print-page {
     width: 21cm;
     min-height: 29.7cm;
     margin: 2rem auto;
     padding: 2cm 1.5cm;
-    background: white;
+    background:
+      white
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent calc(29.7cm - 1px),
+        rgba(0, 0, 0, 0.08) calc(29.7cm - 1px),
+        rgba(0, 0, 0, 0.08) 29.7cm
+      );
     color: #1a1a1a;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     font-size: 11pt;
     line-height: 1.55;
