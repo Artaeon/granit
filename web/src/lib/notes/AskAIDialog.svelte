@@ -48,7 +48,13 @@
     { label: 'Expand', text: 'Expand the following with more detail and context. Keep the same voice.' },
     { label: 'Translate · DE', text: 'Translate the following to German. Return only the translation.' },
     { label: 'Translate · EN', text: 'Translate the following to English. Return only the translation.' },
-    { label: 'Bullet list', text: 'Rewrite the following as a markdown bullet list. Return only the list.' }
+    { label: 'Bullet list', text: 'Rewrite the following as a markdown bullet list. Return only the list.' },
+    // Whole-note actions — useful when the dialog is opened over the
+    // entire note body (via the toolbar AI button). Still work on a
+    // selection too, just less useful.
+    { label: 'Extract tasks', text: 'Extract the actionable items from the following as a markdown task list (`- [ ] task` lines). Each line should be a concrete action. Return ONLY the markdown checklist, no preamble.' },
+    { label: 'Suggest tags', text: 'Suggest 5-7 short, lowercase, hyphenated hashtags relevant to the topic of the following. Return ONLY a single line of space-separated tags starting with `#`. Example: `#research #notes-app #productivity`.' },
+    { label: 'Outline', text: 'Generate a markdown outline (## headings + bulleted sub-points) of the key ideas in the following. Return only the outline.' }
   ];
 
   $effect(() => {
