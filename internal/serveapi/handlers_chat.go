@@ -9,8 +9,100 @@ import (
 	"time"
 
 	"github.com/artaeon/granit/internal/agentruntime"
+	"github.com/artaeon/granit/internal/aiaudit"
+	"github.com/artaeon/granit/internal/aiprefs"
+	"github.com/artaeon/granit/internal/airedact"
 	"github.com/artaeon/granit/internal/config"
+	"github.com/artaeon/granit/internal/sabbath"
 )
+
+// gateChat checks Sabbath + chat-feature consent, then applies the
+// redaction rules to every non-system message so the chat path
+// gets the same privacy guarantees as the Tier 1 features. Returns
+// the cleaned wire messages, aggregated redaction stats for the
+// audit, and an error if the call should be refused outright.
+//
+// System messages are left alone — they're our framing prefix
+// (the granit assistant preamble + the optional attached note's
+// body), not user input. Redacting our own template would scrub
+// "from: <user@host>" patterns inside example text, which would be
+// a hostile UX bug.
+func (s *Server) gateChat(messages []agentruntime.ChatMessage) ([]agentruntime.ChatMessage, []airedact.Stat, error) {
+	if sabbath.IsActiveToday(s.cfg.Vault.Root) {
+		return nil, nil, fmt.Errorf("chat is paused during Sabbath — exit Sabbath mode to use it")
+	}
+	prefs, _ := aiprefs.Load(s.cfg.Vault.Root)
+	if cfg, ok := prefs.Features[aiprefs.FeatureChat]; !ok || !cfg.Enabled {
+		return nil, nil, fmt.Errorf("chat is disabled in AI preferences")
+	}
+	if !prefs.RedactionEnabled {
+		return messages, nil, nil
+	}
+	rules := airedact.DefaultRules()
+	totals := map[string]int{}
+	cleaned := make([]agentruntime.ChatMessage, len(messages))
+	for i, m := range messages {
+		if m.Role == "system" {
+			cleaned[i] = m
+			continue
+		}
+		out, stats := airedact.RedactWithStats(m.Content, rules)
+		cleaned[i] = agentruntime.ChatMessage{Role: m.Role, Content: out}
+		for _, st := range stats {
+			totals[st.Name] += st.Count
+		}
+	}
+	var aggregated []airedact.Stat
+	for name, count := range totals {
+		aggregated = append(aggregated, airedact.Stat{Name: name, Count: count})
+	}
+	return cleaned, aggregated, nil
+}
+
+// auditChat appends one audit entry for a chat call. promptForHash
+// is the concatenated transcript we send to the LLM (post-redact);
+// the Append function hashes it without storing the body.
+func (s *Server) auditChat(cfgFile config.Config, llm interface{}, replyBytes int, redactStats []airedact.Stat, callErr error, promptForHash string) {
+	if s.aiAudit == nil {
+		return
+	}
+	entry := aiaudit.Entry{
+		Feature:           string(aiprefs.FeatureChat),
+		Provider:          cfgFile.AIProvider,
+		Model:             effectiveModel(cfgFile),
+		ResponseSizeBytes: replyBytes,
+	}
+	if metered, ok := llm.(agentruntime.Metered); ok {
+		usage := metered.LastUsage()
+		entry.PromptTokens = usage.PromptTokens
+		entry.CompletionTokens = usage.CompletionTokens
+		if cost := agentruntime.CostMicroCents(usage); cost >= 0 {
+			entry.CostMicroCents = cost
+		}
+	}
+	if callErr != nil {
+		entry.Error = callErr.Error()
+	}
+	if len(redactStats) > 0 {
+		entry.RedactionsByRule = make([]aiaudit.Stat, len(redactStats))
+		for i, st := range redactStats {
+			entry.RedactionsByRule[i] = aiaudit.Stat{Name: st.Name, Count: st.Count}
+		}
+	}
+	_, _ = s.aiAudit.Append(entry, promptForHash)
+}
+
+// transcriptForHash glues every message's content into one blob so
+// Append's SHA-256 lookup spots dup conversations. Uses \x00 as the
+// separator since real text never contains it — keeps the hash
+// deterministic without ambiguity from whitespace.
+func transcriptForHash(messages []agentruntime.ChatMessage) string {
+	parts := make([]string, len(messages))
+	for i, m := range messages {
+		parts[i] = m.Role + ":" + m.Content
+	}
+	return strings.Join(parts, "\x00")
+}
 
 // chatMessage mirrors agentruntime.ChatMessage with JSON tags for the
 // wire shape. Kept local so the wire schema doesn't drift if the
@@ -98,12 +190,25 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		wire = append(wire, agentruntime.ChatMessage{Role: role, Content: m.Content})
 	}
 
+	// Sabbath + consent + redaction. Returns either the cleaned
+	// wire (PII swapped) or refuses the call when the day is rest
+	// or the user has chat off in AI preferences. Same gate the
+	// Tier 1 features run through, so /chat is no longer a side
+	// channel that bypasses the AI foundation.
+	gated, redactStats, gateErr := s.gateChat(wire)
+	if gateErr != nil {
+		writeError(w, http.StatusBadRequest, gateErr.Error())
+		return
+	}
+	wire = gated
+
 	// Bound LLM calls so a hung backend can't tie up a request
 	// indefinitely. 90s is plenty for chat — agent runs use 5min
 	// because they may make several model calls per run.
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	reply, err := chatter.Chat(ctx, wire)
+	s.auditChat(cfg, llm, len(reply), redactStats, err, transcriptForHash(wire))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -175,6 +280,17 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		wire = append(wire, agentruntime.ChatMessage{Role: role, Content: m.Content})
 	}
 
+	// Same gate path as the buffered handler — Sabbath, consent,
+	// redaction. Refusal is sent as an SSE error event so the
+	// client surfaces it in the same channel as runtime failures
+	// instead of seeing a mid-stream 4xx.
+	gated, redactStats, gateErr := s.gateChat(wire)
+	if gateErr != nil {
+		writeError(w, http.StatusBadRequest, gateErr.Error())
+		return
+	}
+	wire = gated
+
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
 
@@ -186,35 +302,51 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
+	// Capture final byte count + error for the audit entry. The
+	// buffered path writes once; the streaming path accumulates
+	// across chunks. Audit fires once at the end of either path so
+	// the entry reflects the actual response size + the upstream's
+	// error if any.
+	var (
+		responseBytes int
+		callErr       error
+	)
+	defer func() {
+		s.auditChat(cfg, llm, responseBytes, redactStats, callErr, transcriptForHash(wire))
+	}()
+
 	streamer, ok := llm.(agentruntime.ChatStreamer)
 	if !ok {
-		// Buffered fallback for providers that don't implement
-		// streaming. Send the full reply as a single chunk so the
-		// client's progressive-render path still works (no special
-		// case needed for legacy providers).
 		chatter, ok := llm.(agentruntime.Chatter)
 		if !ok {
+			callErr = fmt.Errorf("configured LLM does not support chat")
 			send("error", `{"message":"configured LLM does not support chat"}`)
 			return
 		}
 		reply, err := chatter.Chat(ctx, wire)
 		if err != nil {
+			callErr = err
 			send("error", mustJSON(map[string]string{"message": err.Error()}))
 			return
 		}
+		responseBytes = len(reply)
 		send("", mustJSON(map[string]string{"chunk": reply}))
 		send("done", "{}")
 		return
 	}
 
 	err = streamer.ChatStream(ctx, wire, func(chunk string) {
+		responseBytes += len(chunk)
 		send("", mustJSON(map[string]string{"chunk": chunk}))
 	})
 	if err != nil {
 		// ctx.Err() means the client disconnected — no point trying
 		// to write back to a broken pipe. Other errors get a final
 		// event so the client surfaces a clean message.
-		if ctx.Err() == nil {
+		if ctx.Err() != nil {
+			callErr = fmt.Errorf("cancelled by user")
+		} else {
+			callErr = err
 			send("error", mustJSON(map[string]string{"message": err.Error()}))
 		}
 		return
