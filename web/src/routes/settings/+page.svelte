@@ -881,6 +881,30 @@
                     title={st.source === 'feature' ? 'Per-feature override' : st.source === 'default' ? 'Prefs default_provider' : 'Global ai_provider from config.json'}
                   >via {st.provider} · {st.model}</span>
                 {/if}
+                {#if cfg.enabled}
+                  <!-- Per-feature provider override. Empty value
+                       means "use the prefs default / global config" —
+                       resolveLLMConfig honors that fallback chain.
+                       We list the providers granit's NewLLM actually
+                       implements; Anthropic is in the config schema
+                       but has no LLM driver yet, so omitted here. -->
+                  <select
+                    value={cfg.provider ?? ''}
+                    onchange={(e) => {
+                      const v = (e.target as HTMLSelectElement).value;
+                      aiPrefs.features[f.id] = { ...cfg, provider: v || undefined };
+                      saveAIPrefs();
+                      setTimeout(() => { void loadAIStatus(); }, 600);
+                    }}
+                    class="text-[10px] bg-surface1 border border-surface1 rounded px-1 py-0.5 text-subtext hover:border-primary cursor-pointer"
+                    onclick={(e) => e.stopPropagation()}
+                    title="Override the provider for this feature only"
+                  >
+                    <option value="">(default)</option>
+                    <option value="ollama">ollama</option>
+                    <option value="openai">openai</option>
+                  </select>
+                {/if}
               </div>
               <div class="text-[11px] text-dim">{f.desc}</div>
             </div>
