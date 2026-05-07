@@ -14,6 +14,7 @@
   import NavIcon from '$lib/components/NavIcon.svelte';
   import Logo from '$lib/components/Logo.svelte';
   import QuickCaptureFab from '$lib/components/QuickCaptureFab.svelte';
+  import AIOverlay from '$lib/components/AIOverlay.svelte';
   import { connect, disconnect, wsConnected } from '$lib/ws';
   import { theme, nextTheme, themeIcon, themeLabel } from '$lib/stores/theme';
   import { modulesStore } from '$lib/stores/modules';
@@ -520,6 +521,10 @@
   {#if !$sabbath}
     <QuickCaptureFab />
   {/if}
+  <!-- Global AI overlay. Listens for Mod+J on its own — no
+       external trigger needed. Auth-gated since pre-login the
+       configured-LLM lookup would 401. -->
+  <AIOverlay />
 {/if}
 <Toaster />
 
