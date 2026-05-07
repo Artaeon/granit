@@ -29,11 +29,20 @@
 
   type View = 'day' | '3day' | 'week' | 'month' | 'year' | 'agenda';
 
-  // Persisted last-used view (per device).
+  // Persisted last-used view (per device). On a fresh visit (no
+  // saved preference) we default to 'day' on small screens because
+  // the 7-column week grid is unreadable below ~640px — Google
+  // Calendar does the same. Saved preferences win regardless of
+  // device, so a user who explicitly picked 'week' on mobile keeps
+  // that choice.
   const VIEW_KEY = 'granit.calendar.view';
-  let view = $state<View>(
-    (typeof localStorage !== 'undefined' && (localStorage.getItem(VIEW_KEY) as View)) || 'week'
-  );
+  function defaultView(): View {
+    if (typeof window === 'undefined') return 'week';
+    const saved = localStorage.getItem(VIEW_KEY) as View | null;
+    if (saved) return saved;
+    return window.innerWidth < 640 ? 'day' : 'week';
+  }
+  let view = $state<View>(defaultView());
   let cursor = $state(new Date());
 
   // Plan mode — splits the page into a left-side backlog of today's
