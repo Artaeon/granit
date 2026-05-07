@@ -170,6 +170,13 @@
     <circle cx="17" cy="6" r="2.5"/>
     <path d="M21 21v-1.5a3 3 0 0 0-2-2.8"/>
   </svg>
+{:else if name === 'emails'}
+  <!-- Envelope — two-line silhouette so it reads at the icon size
+       used in the rail. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <rect x="3" y="5" width="18" height="14" rx="2"/>
+    <path d="M3 7l9 6 9-6"/>
+  </svg>
 {:else if name === 'measurements'}
   <!-- Tiny line chart: trending data points. -->
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>

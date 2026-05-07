@@ -1658,6 +1658,20 @@ export const api = {
       `/search?q=${encodeURIComponent(q)}&limit=${limit}`
     ),
 
+  // Email tracker — CRM-grade record of correspondence. Storage:
+  // <vault>/.granit/emails.json. Fields mirror internal/email.Email.
+  listEmails: () => req<{ emails: Email[]; total: number }>('/emails'),
+  getEmail: (id: string) => req<Email>(`/emails/${encodeURIComponent(id)}`),
+  createEmail: (e: Partial<Email>) =>
+    req<Email>('/emails', { method: 'POST', body: JSON.stringify(e) }),
+  patchEmail: (id: string, e: Partial<Email>) =>
+    req<Email>(`/emails/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(e)
+    }),
+  deleteEmail: (id: string) =>
+    req<void>(`/emails/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   // Autocommit settings — debounced git-commit-on-save, opt-in.
   getAutocommit: () => req<{ enabled: boolean; isGitRepo: boolean }>('/autocommit'),
   putAutocommit: (enabled: boolean) =>
@@ -1768,6 +1782,25 @@ export interface SearchHit {
   column: number;
   matchLine: string;
   score: number;
+}
+
+export interface Email {
+  id: string;
+  direction: 'in' | 'out';
+  subject: string;
+  from: string;
+  to?: string[];
+  cc?: string[];
+  body?: string;
+  received_at?: string;
+  sent_at?: string;
+  status: 'inbox' | 'read' | 'replied' | 'archived';
+  tags?: string[];
+  follow_up_date?: string;
+  person_id?: string;
+  project?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface NoteTemplate {

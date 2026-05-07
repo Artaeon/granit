@@ -431,6 +431,14 @@ func (s *Server) Handler() http.Handler {
 		// Vault binary file passthrough — used by the markdown preview
 		// to inline images via `![[image.png]]`. Markdown files have
 		// their own JSON endpoint and are refused here.
+		// Email tracker — manual CRM-grade record of inbound /
+		// outbound correspondence. Storage is .granit/emails.json.
+		r.Get("/api/v1/emails", s.handleListEmails)
+		r.Post("/api/v1/emails", s.handleCreateEmail)
+		r.Get("/api/v1/emails/{id}", s.handleGetEmail)
+		r.Patch("/api/v1/emails/{id}", s.handlePatchEmail)
+		r.Delete("/api/v1/emails/{id}", s.handleDeleteEmail)
+
 		r.Get("/api/v1/files/*", s.handleGetFile)
 		// Multipart upload — used by the editor's paste-image and
 		// drop-file handlers. Files land under attachments/YYYY/MM/.
