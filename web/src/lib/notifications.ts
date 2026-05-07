@@ -15,6 +15,12 @@ export interface PushStatus {
   supported: boolean;
   permission: NotificationPermission;
   subscribed: boolean;
+  /** Server-side pause flag for THIS device's subscription. True
+   *  means "subscribed but the scheduler is silently skipping
+   *  this endpoint". Lets users disable notifications without
+   *  unsubscribing (which would force a re-permission grant on
+   *  re-enable). */
+  paused?: boolean;
 }
 
 const TOKEN_KEY = 'everything.token';
@@ -44,18 +50,47 @@ function urlBase64ToUint8Array(b64: string): Uint8Array {
 
 /** Read the current subscription state, asking the registered SW
  *  for any existing subscription. Doesn't request permission or
- *  subscribe — pure observer. */
+ *  subscribe — pure observer. Also queries the server for the
+ *  paused flag on THIS device's endpoint so the UI can render the
+ *  pause toggle in its true state across devices. */
 export async function getStatus(): Promise<PushStatus> {
   if (!isSupported()) {
     return { supported: false, permission: 'denied', subscribed: false };
   }
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.getSubscription();
+  let paused = false;
+  if (sub) {
+    try {
+      const s = await req<{ subscribed: boolean; paused?: boolean }>(
+        `/push/me?endpoint=${encodeURIComponent(sub.endpoint)}`
+      );
+      paused = !!s.paused;
+    } catch {
+      // Server unreachable; fall back to assuming not paused.
+    }
+  }
   return {
     supported: true,
     permission: Notification.permission,
-    subscribed: !!sub
+    subscribed: !!sub,
+    paused
   };
+}
+
+/** Pause / resume notifications for THIS device. Keeps the
+ *  subscription alive on both browser + server so the user can
+ *  flip back without re-granting permission. Tells the server-
+ *  side scheduler to skip pushing to the endpoint. */
+export async function setPaused(paused: boolean): Promise<void> {
+  if (!isSupported()) return;
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return;
+  await req('/push/pause', {
+    method: 'POST',
+    body: JSON.stringify({ endpoint: sub.endpoint, paused })
+  });
 }
 
 /** Full subscribe flow: request permission if needed, subscribe

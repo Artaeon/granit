@@ -458,8 +458,10 @@ func (s *Server) Handler() http.Handler {
 
 		// Web Push: VAPID public key + subscribe / unsubscribe + test.
 		r.Get("/api/v1/push/vapid", s.handleGetVAPID)
+		r.Get("/api/v1/push/me", s.handlePushMe)
 		r.Post("/api/v1/push/subscribe", s.handlePushSubscribe)
 		r.Post("/api/v1/push/unsubscribe", s.handlePushUnsubscribe)
+		r.Post("/api/v1/push/pause", s.handlePushPause)
 		r.Post("/api/v1/push/test", s.handlePushTest)
 
 		// Recurring tasks — same .granit/recurring.json file the TUI's

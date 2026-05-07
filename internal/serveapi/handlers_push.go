@@ -39,6 +39,56 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// handlePushMe returns the server-side state for the subscription
+// matching the supplied endpoint (in particular: whether it's
+// paused). Used by the frontend's settings page to render the
+// pause toggle in its actual state. Returns 404 when no record
+// matches, which the UI treats as "not subscribed".
+func (s *Server) handlePushMe(w http.ResponseWriter, r *http.Request) {
+	endpoint := r.URL.Query().Get("endpoint")
+	if endpoint == "" {
+		writeError(w, http.StatusBadRequest, "missing endpoint")
+		return
+	}
+	subs, err := s.push.Subscriptions()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for _, sub := range subs {
+		if sub.Endpoint == endpoint {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"subscribed": true,
+				"paused":     sub.Paused,
+				"label":      sub.Label,
+			})
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"subscribed": false})
+}
+
+// handlePushPause toggles the Paused flag on a subscription. The
+// frontend uses this for the "Pause notifications" toggle in
+// settings — keeps the subscription alive (no need to re-grant
+// permission later) but tells the scheduler to skip pushing to
+// the endpoint while paused.
+func (s *Server) handlePushPause(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Endpoint string `json:"endpoint"`
+		Paused   bool   `json:"paused"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if err := s.push.SetPaused(body.Endpoint, body.Paused); err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true, "paused": body.Paused})
+}
+
 // handlePushUnsubscribe removes a subscription by endpoint.
 // Idempotent — unsubscribing an unknown endpoint is a no-op.
 func (s *Server) handlePushUnsubscribe(w http.ResponseWriter, r *http.Request) {

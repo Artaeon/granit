@@ -57,6 +57,11 @@ type Subscription struct {
 	// Label is a friendly identifier the user can attach to a
 	// device ("iPhone", "work laptop"). Optional.
 	Label string `json:"label,omitempty"`
+	// Paused: when true, the subscription stays in the file but
+	// SendAll skips it. Lets users disable notifications on a
+	// device temporarily (overnight, while focusing) without
+	// having to re-grant browser permission to re-enable.
+	Paused bool `json:"paused,omitempty"`
 }
 
 type KeyBundle struct {
@@ -203,6 +208,30 @@ func (m *Manager) Subscribe(s Subscription) error {
 	return m.saveSubs()
 }
 
+// SetPaused flips the Paused flag on a subscription. Returns
+// os.ErrNotExist when no record matches (caller can ignore — this
+// is idempotent enough for the UX). The flag is checked at
+// send-time so a paused subscription is silently skipped.
+func (m *Manager) SetPaused(endpoint string, paused bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.loadSubs(); err != nil {
+		return err
+	}
+	found := false
+	for i := range m.subs {
+		if m.subs[i].Endpoint == endpoint {
+			m.subs[i].Paused = paused
+			found = true
+			break
+		}
+	}
+	if !found {
+		return errors.New("push: subscription not found")
+	}
+	return m.saveSubs()
+}
+
 // Unsubscribe removes a subscription by endpoint. Returns nil if
 // no record matched (idempotent).
 func (m *Manager) Unsubscribe(endpoint string) error {
@@ -271,6 +300,12 @@ func (m *Manager) SendAll(payload Payload) (int, []error) {
 	var errs []error
 	var stale []string
 	for _, s := range subs {
+		// Skip paused subscriptions silently — the user wants to
+		// stop receiving without unsubscribing. Counts as neither
+		// success nor failure.
+		if s.Paused {
+			continue
+		}
 		ws := &webpush.Subscription{
 			Endpoint: s.Endpoint,
 			Keys: webpush.Keys{

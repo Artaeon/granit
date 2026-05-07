@@ -253,10 +253,11 @@
   // recorded. enablePush / disablePush wrap the helper from
   // $lib/notifications which handles permission + subscribe call
   // against the server's VAPID key.
-  let pushStatus = $state<{ supported: boolean; permission: NotificationPermission; subscribed: boolean }>({
+  let pushStatus = $state<{ supported: boolean; permission: NotificationPermission; subscribed: boolean; paused?: boolean }>({
     supported: false,
     permission: 'default',
-    subscribed: false
+    subscribed: false,
+    paused: false
   });
   let pushBusy = $state(false);
   async function loadPush() {
@@ -274,6 +275,38 @@
       const m = err instanceof Error ? err.message : String(err);
       const t = await import('$lib/components/toast');
       t.toast.error('Subscribe failed: ' + m);
+    } finally {
+      pushBusy = false;
+    }
+  }
+  async function pausePush() {
+    pushBusy = true;
+    try {
+      const m = await import('$lib/notifications');
+      await m.setPaused(true);
+      pushStatus = await m.getStatus();
+      const t = await import('$lib/components/toast');
+      t.toast.success('Notifications paused');
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      const t = await import('$lib/components/toast');
+      t.toast.error('Pause failed: ' + m);
+    } finally {
+      pushBusy = false;
+    }
+  }
+  async function resumePush() {
+    pushBusy = true;
+    try {
+      const m = await import('$lib/notifications');
+      await m.setPaused(false);
+      pushStatus = await m.getStatus();
+      const t = await import('$lib/components/toast');
+      t.toast.success('Notifications resumed');
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      const t = await import('$lib/components/toast');
+      t.toast.error('Resume failed: ' + m);
     } finally {
       pushBusy = false;
     }
@@ -470,20 +503,49 @@
           class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
         >Enable mobile reminders</button>
       {:else}
-        <p class="text-sm text-success mb-3">
-          ✓ Subscribed on this device. Set a reminder on any event in the calendar to receive a push.
-        </p>
-        <div class="flex gap-2">
+        <!-- Subscribed. Two states:
+             • active   → "Pause" button (keeps sub, server stops pushing)
+             • paused   → "Resume" button (re-enables without re-permission)
+             Plus "Send test" to verify the endpoint actually delivers,
+             and "Unsubscribe this device" as a small secondary option
+             for permanent removal. -->
+        {#if pushStatus.paused}
+          <p class="text-sm text-warning mb-3">
+            ⏸ Notifications paused on this device. Subscription is still active — resume any time without re-granting permission.
+          </p>
+        {:else}
+          <p class="text-sm text-success mb-3">
+            ✓ Subscribed on this device. Set a reminder on any event in the calendar to receive a push.
+          </p>
+        {/if}
+        <div class="flex flex-wrap items-center gap-2">
+          {#if pushStatus.paused}
+            <button
+              onclick={() => void resumePush()}
+              disabled={pushBusy}
+              class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
+            >Resume notifications</button>
+          {:else}
+            <button
+              onclick={() => void pausePush()}
+              disabled={pushBusy}
+              class="px-3 py-1.5 bg-warning/15 text-warning rounded text-sm hover:bg-warning/25 disabled:opacity-50"
+              title="Stop receiving notifications without unsubscribing"
+            >Pause notifications</button>
+          {/if}
           <button
             onclick={() => void testPush()}
-            disabled={pushBusy}
-            class="px-3 py-1.5 bg-surface1 text-subtext rounded text-sm hover:bg-surface2"
+            disabled={pushBusy || pushStatus.paused}
+            class="px-3 py-1.5 bg-surface1 text-subtext rounded text-sm hover:bg-surface2 disabled:opacity-50"
+            title={pushStatus.paused ? 'Resume first to send a test' : 'Send a test push to all subscribed devices'}
           >Send test</button>
+          <span class="flex-1"></span>
           <button
             onclick={() => void disablePush()}
             disabled={pushBusy}
-            class="px-3 py-1.5 text-error hover:bg-error/10 rounded text-sm"
-          >Unsubscribe this device</button>
+            class="px-3 py-1.5 text-dim hover:text-error text-sm"
+            title="Permanently remove this device's subscription. Re-enabling will require granting permission again."
+          >Unsubscribe</button>
         </div>
       {/if}
     </section>
