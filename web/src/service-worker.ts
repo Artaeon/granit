@@ -148,23 +148,56 @@ async function staleWhileRevalidate(req: Request): Promise<Response> {
 self.addEventListener('push', (event) => {
   const e = event as PushEvent;
   if (!e.data) return;
-  let payload: { title?: string; body?: string; url?: string; tag?: string; icon?: string } = {};
+  let payload: {
+    title?: string;
+    body?: string;
+    url?: string;
+    tag?: string;
+    icon?: string;
+    category?: string;
+  } = {};
   try {
     payload = e.data.json();
   } catch {
     payload = { title: e.data.text() };
   }
   const sw = self as unknown as ServiceWorkerGlobalScope;
+  // Category styling: a leading glyph in the title gives a one-
+  // glance cue in the notification stack, and per-category
+  // vibration patterns let the user tell from feel which kind
+  // of reminder fired without reading the screen.
+  const titlePrefix =
+    payload.category === 'event'    ? '📅 ' :
+    payload.category === 'task'     ? '✓ ' :
+    payload.category === 'deadline' ? '⏰ ' :
+    '';
+  const vibrate =
+    payload.category === 'event'    ? [200, 100, 200] :
+    payload.category === 'task'     ? [80, 40, 80] :
+    payload.category === 'deadline' ? [120, 60, 120, 60, 200] :
+    [200];
+  // Tag groups same-category pushes so a flurry of task reminders
+  // collapses into one notification card on Android instead of a
+  // wall of N. Per-event tags (event-<id>) are still unique so
+  // distinct events don't collide.
+  const tag = payload.tag || (payload.category ? `granit-${payload.category}` : 'granit');
   e.waitUntil(
-    sw.registration.showNotification(payload.title || 'Granit', {
+    sw.registration.showNotification((titlePrefix + (payload.title || 'Granit')).trim(), {
       body: payload.body,
-      tag: payload.tag,
+      tag,
       icon: payload.icon || '/icon-192.png',
       badge: '/favicon.svg',
       // Custom data so the click handler can route to the right
       // page. Persists until the user dismisses or interacts.
-      data: { url: payload.url || '/' }
-    } as NotificationOptions)
+      data: { url: payload.url || '/', category: payload.category },
+      // Vibration is opt-in by browser; setting it is harmless on
+      // browsers that ignore the field.
+      vibrate,
+      // Calendar events stay on screen until the user dismisses
+      // (don't miss a meeting); tasks and deadlines auto-dismiss
+      // like a regular push so the lock-screen doesn't hoard them.
+      requireInteraction: payload.category === 'event'
+    } as NotificationOptions & { vibrate?: number[]; requireInteraction?: boolean })
   );
 });
 

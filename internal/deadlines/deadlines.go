@@ -72,8 +72,14 @@ type Deadline struct {
 	TaskIDs     []string  `json:"task_ids,omitempty"`    // matches Task.ID
 	Importance  string    `json:"importance"`            // critical | high | normal
 	Status      string    `json:"status"`                // active | missed | met | cancelled
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	// LastReminderFired maps a days-before offset (e.g. "7", "3",
+	// "1", "0") to the RFC3339 timestamp of the most recent push
+	// reminder fired at that offset. Lets the push scheduler skip
+	// already-fired reminders so two ticks within the same minute
+	// don't double-notify.
+	LastReminderFired map[string]string `json:"last_reminder_fired,omitempty"`
+	CreatedAt         time.Time         `json:"created_at"`
+	UpdatedAt         time.Time         `json:"updated_at"`
 }
 
 // ValidateDate reports whether s is a YYYY-MM-DD date the package will

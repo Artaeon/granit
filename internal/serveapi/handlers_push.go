@@ -6,8 +6,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/artaeon/granit/internal/deadlines"
 	"github.com/artaeon/granit/internal/granitmeta"
 	"github.com/artaeon/granit/internal/push"
+	"github.com/artaeon/granit/internal/tasks"
 )
 
 // handleGetVAPID returns the public VAPID key the browser needs
@@ -37,6 +39,51 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// handleGetNotificationPrefs returns the persisted notification
+// preferences (per-category toggles, quiet hours, defaults).
+// Missing file → DefaultPreferences so a fresh vault Just Works.
+func (s *Server) handleGetNotificationPrefs(w http.ResponseWriter, r *http.Request) {
+	prefs, err := push.LoadPrefs(s.cfg.Vault.Root)
+	if err != nil {
+		// Surface the parse error but still return defaults so
+		// the UI can show something.
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"prefs":   prefs,
+			"warning": err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"prefs": prefs})
+}
+
+// handlePutNotificationPrefs replaces the prefs sidecar with the
+// posted JSON. Validation is light — bad time strings get
+// silently rejected at MatchesAtTime; bad days_before values are
+// clamped to non-negative ints.
+func (s *Server) handlePutNotificationPrefs(w http.ResponseWriter, r *http.Request) {
+	var p push.Preferences
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	// Clamp DaysBefore to non-negative + dedupe.
+	clean := make([]int, 0, len(p.Deadlines.DaysBefore))
+	seen := map[int]bool{}
+	for _, d := range p.Deadlines.DaysBefore {
+		if d < 0 || seen[d] {
+			continue
+		}
+		seen[d] = true
+		clean = append(clean, d)
+	}
+	p.Deadlines.DaysBefore = clean
+	if err := push.SavePrefs(s.cfg.Vault.Root, p); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"prefs": p})
 }
 
 // handlePushMe returns the server-side state for the subscription
@@ -158,19 +205,45 @@ func (s *Server) runReminderScheduler() {
 
 // runReminderTick is the per-tick body, factored so tests can call
 // it directly without spinning up the ticker.
+//
+// Order of work each tick:
+//   1. Bail if there are no subscriptions to push to.
+//   2. Load preferences. Quiet-hours window? skip everything.
+//   3. Calendar events (if calendar prefs enabled) — fire when
+//      crossing event.start - remind_minutes_before.
+//   4. Tasks (if tasks prefs enabled) — fire daily "due today"
+//      reminder at the configured time-of-day.
+//   5. Deadlines (if deadlines prefs enabled) — fire reminders
+//      at each days_before milestone, at the configured time.
 func (s *Server) runReminderTick() {
 	subs, err := s.push.Subscriptions()
 	if err != nil || len(subs) == 0 {
 		return
 	}
+	prefs, _ := push.LoadPrefs(s.cfg.Vault.Root)
+	now := time.Now()
+	if prefs.IsQuiet(now) {
+		return
+	}
+	if prefs.Calendar.Enabled {
+		s.fireEventReminders(now)
+	}
+	if prefs.Tasks.Enabled {
+		s.fireTaskReminders(now, prefs.Tasks)
+	}
+	if prefs.Deadlines.Enabled {
+		s.fireDeadlineReminders(now, prefs.Deadlines)
+	}
+}
+
+// fireEventReminders scans the events.json sidecar for upcoming
+// events that have crossed their reminder window and fires a push
+// for each. Stamps LastReminderFired on each fired event.
+func (s *Server) fireEventReminders(now time.Time) {
 	events, err := granitmeta.ReadEvents(s.cfg.Vault.Root)
 	if err != nil {
 		return
 	}
-	now := time.Now()
-	// Window: from now to now+12h. A reminder more than 12h in
-	// advance won't be considered yet (saves us scanning the whole
-	// year on every tick).
 	horizon := now.Add(12 * time.Hour)
 	dirty := false
 	for i := range events {
@@ -183,41 +256,181 @@ func (s *Server) runReminderTick() {
 			continue
 		}
 		fireAt := startTime.Add(-time.Duration(ev.RemindMinutesBefore) * time.Minute)
-		// Skip events whose fire-time is in the future or beyond
-		// the horizon — we'll catch them on a later tick.
 		if fireAt.After(now) || fireAt.After(horizon) {
 			continue
 		}
-		// Skip events whose start has already passed by more than
-		// 30 minutes — the reminder is irrelevant after the event
-		// has begun (the user knows or doesn't care).
 		if startTime.Before(now.Add(-30 * time.Minute)) {
 			continue
 		}
-		// Skip if we've already fired for this event recently.
 		if ev.LastReminderFired != "" {
 			if last, err := time.Parse(time.RFC3339, ev.LastReminderFired); err == nil {
-				// "Recently" = within the last 24 hours. Once-a-day
-				// recurring events would otherwise re-fire when
-				// they round-trip through the scheduler.
 				if now.Sub(last) < 24*time.Hour {
 					continue
 				}
 			}
 		}
-		// Fire.
-		body := buildReminderBody(*ev, startTime, now)
 		_, _ = s.push.SendAll(push.Payload{
-			Title: ev.Title,
-			Body:  body,
-			URL:   "/calendar",
-			Tag:   "granit-event-" + ev.ID,
+			Title:    ev.Title,
+			Body:     buildReminderBody(*ev, startTime, now),
+			URL:      "/calendar",
+			Tag:      "granit-event-" + ev.ID,
+			Category: "event",
 		})
 		ev.LastReminderFired = now.UTC().Format(time.RFC3339)
 		dirty = true
 	}
 	if dirty {
 		_ = granitmeta.WriteEvents(s.cfg.Vault.Root, events)
+	}
+}
+
+// fireTaskReminders fires one "task due today" reminder per task
+// per day, at the configured time-of-day. The push lists up to
+// three task titles when multiple tasks are due — one push, not
+// N pushes, so the user gets a single morning summary instead of
+// a flurry. LastReminderFired stamps each task to dedupe.
+func (s *Server) fireTaskReminders(now time.Time, prefs push.TaskPrefs) {
+	if !push.MatchesAtTime(now, prefs.DueTodayTime) {
+		return
+	}
+	if s.cfg.TaskStore == nil {
+		return
+	}
+	all := s.cfg.TaskStore.All()
+	today := now.Format("2006-01-02")
+	var due []string
+	var fired []*tasksRef
+	for i := range all {
+		t := &all[i]
+		if t.Done || t.DueDate != today {
+			continue
+		}
+		// Skip snoozed tasks.
+		if t.SnoozedUntil != "" {
+			if su, err := time.Parse(time.RFC3339, t.SnoozedUntil); err == nil && su.After(now) {
+				continue
+			}
+		}
+		// Already fired today?
+		if t.LastReminderFired == today {
+			continue
+		}
+		due = append(due, t.Text)
+		fired = append(fired, &tasksRef{notePath: t.NotePath, id: t.ID, today: today})
+	}
+	if len(due) == 0 {
+		return
+	}
+	title := "Tasks due today"
+	body := summariseTasks(due)
+	_, _ = s.push.SendAll(push.Payload{
+		Title:    title,
+		Body:     body,
+		URL:      "/tasks",
+		Tag:      "granit-tasks-" + today,
+		Category: "task",
+	})
+	// Stamp LastReminderFired on each fired task. The TaskStore
+	// keeps tasks in markdown + a sidecar; UpdateMeta is the
+	// safe path for sidecar-only fields like this.
+	for _, ref := range fired {
+		_ = s.cfg.TaskStore.UpdateMeta(ref.id, func(t *tasks.Task) {
+			t.LastReminderFired = ref.today
+		})
+	}
+}
+
+type tasksRef struct {
+	notePath string
+	id       string
+	today    string
+}
+
+// fireDeadlineReminders fires reminders at each configured
+// days-before milestone. For each deadline whose date matches
+// (today + offset) for any offset in DaysBefore, fire a single
+// notification. Per-offset dedup via Deadline.LastReminderFired
+// keyed by the offset string.
+func (s *Server) fireDeadlineReminders(now time.Time, prefs push.DeadlinePrefs) {
+	if !push.MatchesAtTime(now, prefs.AtTime) {
+		return
+	}
+	all := deadlines.LoadAll(s.cfg.Vault.Root)
+	today := now.Truncate(24 * time.Hour)
+	dirty := false
+	for i := range all {
+		d := &all[i]
+		if d.Status != "active" {
+			continue
+		}
+		dd, err := time.Parse("2006-01-02", d.Date)
+		if err != nil {
+			continue
+		}
+		dueDay := dd.Truncate(24 * time.Hour)
+		daysUntil := int(dueDay.Sub(today).Hours() / 24)
+		matched := false
+		for _, off := range prefs.DaysBefore {
+			if daysUntil == off {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		// Dedup: one fire per offset per day.
+		key := strconv.Itoa(daysUntil)
+		todayISO := now.Format("2006-01-02")
+		if d.LastReminderFired != nil {
+			if last, ok := d.LastReminderFired[key]; ok && last == todayISO {
+				continue
+			}
+		}
+		body := buildDeadlineBody(*d, daysUntil)
+		_, _ = s.push.SendAll(push.Payload{
+			Title:    "Deadline: " + d.Title,
+			Body:     body,
+			URL:      "/deadlines",
+			Tag:      "granit-deadline-" + d.ID,
+			Category: "deadline",
+		})
+		if d.LastReminderFired == nil {
+			d.LastReminderFired = map[string]string{}
+		}
+		d.LastReminderFired[key] = todayISO
+		dirty = true
+	}
+	if dirty {
+		_ = deadlines.SaveAll(s.cfg.Vault.Root, all)
+	}
+}
+
+func summariseTasks(titles []string) string {
+	if len(titles) == 1 {
+		return titles[0]
+	}
+	if len(titles) <= 3 {
+		out := ""
+		for i, t := range titles {
+			if i > 0 {
+				out += " · "
+			}
+			out += t
+		}
+		return out
+	}
+	return titles[0] + " · " + titles[1] + " · +" + strconv.Itoa(len(titles)-2) + " more"
+}
+
+func buildDeadlineBody(d deadlines.Deadline, daysUntil int) string {
+	switch {
+	case daysUntil == 0:
+		return "Due today · " + d.Date
+	case daysUntil == 1:
+		return "Due tomorrow · " + d.Date
+	default:
+		return "Due in " + strconv.Itoa(daysUntil) + " days · " + d.Date
 	}
 }
 

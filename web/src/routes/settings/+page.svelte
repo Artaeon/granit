@@ -238,6 +238,7 @@
     void loadCalSources();
     void loadAutocommit();
     void loadPush();
+    void loadPrefs();
     return onWsEvent((ev) => {
       // Watch for ICS file mutations so the calendars list refreshes
       // when an event is created from another tab.
@@ -247,6 +248,48 @@
       load();
     });
   });
+
+  // Notification preferences. Per-category toggles + quiet
+  // hours + defaults, mirrored from .granit/notifications.json.
+  // Saved-on-change with a 400ms debounce so dragging a time
+  // slider doesn't fire a PUT per movement.
+  let prefs = $state<{
+    calendar: { enabled: boolean };
+    tasks: { enabled: boolean; due_today_time: string };
+    deadlines: { enabled: boolean; days_before: number[]; at_time: string };
+    quiet_hours: { enabled: boolean; start: string; end: string };
+    default_event_reminder: number;
+  }>({
+    calendar: { enabled: true },
+    tasks: { enabled: true, due_today_time: '09:00' },
+    deadlines: { enabled: true, days_before: [7, 3, 1, 0], at_time: '09:00' },
+    quiet_hours: { enabled: false, start: '22:00', end: '07:00' },
+    default_event_reminder: 15
+  });
+  let prefsSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  async function loadPrefs() {
+    try {
+      const r = await api.getNotificationPrefs();
+      if (r.prefs) prefs = r.prefs;
+    } catch {}
+  }
+  function savePrefs() {
+    if (prefsSaveTimer) clearTimeout(prefsSaveTimer);
+    prefsSaveTimer = setTimeout(async () => {
+      try {
+        await api.putNotificationPrefs(prefs);
+      } catch (err) {
+        const t = await import('$lib/components/toast');
+        t.toast.error('Save failed: ' + (err instanceof Error ? err.message : String(err)));
+      }
+    }, 400);
+  }
+  function toggleDeadlineOffset(off: number) {
+    const list = prefs.deadlines.days_before;
+    const i = list.indexOf(off);
+    if (i >= 0) prefs.deadlines.days_before = list.filter((d) => d !== off);
+    else prefs.deadlines.days_before = [...list, off].sort((a, b) => b - a);
+  }
 
   // Push notifications state. Mirrors the SW + browser
   // PushManager state plus a 'subscribed' flag the server has
@@ -546,6 +589,139 @@
             class="px-3 py-1.5 text-dim hover:text-error text-sm"
             title="Permanently remove this device's subscription. Re-enabling will require granting permission again."
           >Unsubscribe</button>
+        </div>
+      {/if}
+
+      <!-- Per-category preferences. Hidden until at least one
+           device is subscribed — toggles aren't useful when no
+           push can fire anyway. The whole panel is one form so
+           a flurry of changes coalesces into one PUT. -->
+      {#if pushStatus.subscribed}
+        <div class="mt-5 pt-4 border-t border-surface1 space-y-3">
+          <h3 class="text-[10px] uppercase tracking-wider text-dim font-semibold">What to remind me about</h3>
+
+          <!-- Calendar events. Master toggle + the default
+               reminder offset that pre-fills the create form. -->
+          <div class="flex items-start gap-3">
+            <input
+              type="checkbox"
+              bind:checked={prefs.calendar.enabled}
+              onchange={() => void savePrefs()}
+              class="mt-1 w-4 h-4 accent-primary"
+            />
+            <div class="flex-1 min-w-0">
+              <div class="text-sm text-text">📅 Calendar events</div>
+              <div class="text-[11px] text-dim">Reminders fire at the configured "remind me N min before" on each event.</div>
+              <label class="mt-2 flex items-center gap-2 text-[11px] text-dim">
+                Default reminder offset
+                <select
+                  bind:value={prefs.default_event_reminder}
+                  onchange={() => void savePrefs()}
+                  class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text text-xs"
+                >
+                  <option value={0}>off</option>
+                  <option value={5}>5 minutes before</option>
+                  <option value={15}>15 minutes before</option>
+                  <option value={30}>30 minutes before</option>
+                  <option value={60}>1 hour before</option>
+                  <option value={1440}>1 day before</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <!-- Tasks. Master toggle + the time-of-day for the
+               daily "tasks due today" summary push. -->
+          <div class="flex items-start gap-3">
+            <input
+              type="checkbox"
+              bind:checked={prefs.tasks.enabled}
+              onchange={() => void savePrefs()}
+              class="mt-1 w-4 h-4 accent-primary"
+            />
+            <div class="flex-1 min-w-0">
+              <div class="text-sm text-text">✓ Tasks due today</div>
+              <div class="text-[11px] text-dim">One morning summary listing tasks whose due date is today.</div>
+              <label class="mt-2 flex items-center gap-2 text-[11px] text-dim">
+                Reminder time
+                <input
+                  type="time"
+                  bind:value={prefs.tasks.due_today_time}
+                  onchange={() => void savePrefs()}
+                  class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text text-xs font-mono tabular-nums"
+                />
+              </label>
+            </div>
+          </div>
+
+          <!-- Deadlines. Master toggle + days-before list +
+               time-of-day. The days-before list is rendered as
+               a row of toggle pills so the user sees + edits the
+               offsets at a glance. -->
+          <div class="flex items-start gap-3">
+            <input
+              type="checkbox"
+              bind:checked={prefs.deadlines.enabled}
+              onchange={() => void savePrefs()}
+              class="mt-1 w-4 h-4 accent-primary"
+            />
+            <div class="flex-1 min-w-0">
+              <div class="text-sm text-text">⏰ Deadlines</div>
+              <div class="text-[11px] text-dim">Fire at each chosen offset before a deadline (one push per offset).</div>
+              <div class="mt-2 flex items-center gap-1 flex-wrap">
+                {#each [14, 7, 3, 1, 0] as off}
+                  {@const active = prefs.deadlines.days_before.includes(off)}
+                  <button
+                    type="button"
+                    onclick={() => { toggleDeadlineOffset(off); void savePrefs(); }}
+                    class="px-2 py-1 text-[11px] rounded border transition-colors
+                      {active ? 'bg-primary/15 border-primary text-primary' : 'bg-surface0 border-surface1 text-dim hover:border-primary/40'}"
+                  >{off === 0 ? 'day-of' : `${off}d`}</button>
+                {/each}
+              </div>
+              <label class="mt-2 flex items-center gap-2 text-[11px] text-dim">
+                Reminder time
+                <input
+                  type="time"
+                  bind:value={prefs.deadlines.at_time}
+                  onchange={() => void savePrefs()}
+                  class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text text-xs font-mono tabular-nums"
+                />
+              </label>
+            </div>
+          </div>
+
+          <!-- Quiet hours. Suppresses ALL pushes during the
+               window (any category). Wrap-around (e.g. 22:00 →
+               07:00) handled server-side. -->
+          <div class="flex items-start gap-3 pt-2 border-t border-surface1">
+            <input
+              type="checkbox"
+              bind:checked={prefs.quiet_hours.enabled}
+              onchange={() => void savePrefs()}
+              class="mt-1 w-4 h-4 accent-primary"
+            />
+            <div class="flex-1 min-w-0">
+              <div class="text-sm text-text">🌙 Quiet hours</div>
+              <div class="text-[11px] text-dim">No pushes between these times — across all categories.</div>
+              <div class="mt-2 flex items-center gap-2 text-[11px] text-dim">
+                From
+                <input
+                  type="time"
+                  bind:value={prefs.quiet_hours.start}
+                  onchange={() => void savePrefs()}
+                  class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text text-xs font-mono tabular-nums"
+                />
+                to
+                <input
+                  type="time"
+                  bind:value={prefs.quiet_hours.end}
+                  onchange={() => void savePrefs()}
+                  class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text text-xs font-mono tabular-nums"
+                />
+              </div>
+            </div>
+          </div>
         </div>
       {/if}
     </section>

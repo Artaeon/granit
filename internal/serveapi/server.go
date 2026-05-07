@@ -463,6 +463,9 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/api/v1/push/unsubscribe", s.handlePushUnsubscribe)
 		r.Post("/api/v1/push/pause", s.handlePushPause)
 		r.Post("/api/v1/push/test", s.handlePushTest)
+		// Notification preferences (per-category toggles + quiet hours).
+		r.Get("/api/v1/notifications/prefs", s.handleGetNotificationPrefs)
+		r.Put("/api/v1/notifications/prefs", s.handlePutNotificationPrefs)
 
 		// Recurring tasks — same .granit/recurring.json file the TUI's
 		// recurringtasks overlay edits. Server fires due rules at

@@ -93,6 +93,12 @@ type Task struct {
 	CompletedAt    *time.Time  `json:"completed_at,omitempty"`
 	Notes          string      `json:"notes,omitempty"`
 
+	// LastReminderFired — the YYYY-MM-DD of the most recent push
+	// reminder fired for this task. Used by the push scheduler to
+	// dedupe (e.g. one "due today" reminder per day, not one per
+	// 30-second tick).
+	LastReminderFired string `json:"last_reminder_fired,omitempty"`
+
 	// ── Computed, never persisted ─────────────────────────────
 	ActualMinutes int `json:"-"`
 }

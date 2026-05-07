@@ -272,6 +272,11 @@ type Payload struct {
 	Tag   string `json:"tag,omitempty"`
 	// IconHref overrides the default icon (the granit logo).
 	IconHref string `json:"icon,omitempty"`
+	// Category is one of "event" / "task" / "deadline" / "" so
+	// the SW can pick a category-appropriate icon + vibration
+	// pattern. Plain string rather than enum so the SW doesn't
+	// need to import a Go-defined constant set.
+	Category string `json:"category,omitempty"`
 }
 
 // SendAll delivers `payload` to every stored subscription. Returns

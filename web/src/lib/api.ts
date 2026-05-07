@@ -1662,6 +1662,16 @@ export const api = {
       `/search?q=${encodeURIComponent(q)}&limit=${limit}`
     ),
 
+  // Notification preferences — per-category toggles, quiet
+  // hours, defaults. Stored at .granit/notifications.json.
+  getNotificationPrefs: () =>
+    req<{ prefs: NotificationPrefs; warning?: string }>('/notifications/prefs'),
+  putNotificationPrefs: (prefs: NotificationPrefs) =>
+    req<{ prefs: NotificationPrefs }>('/notifications/prefs', {
+      method: 'PUT',
+      body: JSON.stringify(prefs)
+    }),
+
   // Email tracker — CRM-grade record of correspondence. Storage:
   // <vault>/.granit/emails.json. Fields mirror internal/email.Email.
   listEmails: () => req<{ emails: Email[]; total: number }>('/emails'),
@@ -1786,6 +1796,14 @@ export interface SearchHit {
   column: number;
   matchLine: string;
   score: number;
+}
+
+export interface NotificationPrefs {
+  calendar: { enabled: boolean };
+  tasks: { enabled: boolean; due_today_time: string };
+  deadlines: { enabled: boolean; days_before: number[]; at_time: string };
+  quiet_hours: { enabled: boolean; start: string; end: string };
+  default_event_reminder: number;
 }
 
 export interface Email {
