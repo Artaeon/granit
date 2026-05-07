@@ -151,29 +151,36 @@
       }
       const serverBody = fresh.body ?? '';
 
-      // Restore a local draft if it diverges AND the server hasn't moved
-      // forward since the draft was made. If the server is newer, the user
-      // (or another device, or the TUI) has saved newer content — restoring
-      // the local draft would silently overwrite that. Discard the stale
-      // draft and prefer the server in that case.
+      // Restore a local draft if it diverges from the server. We ALWAYS
+      // prefer the draft when it has unsaved typing, even when the
+      // server's modTime is newer — losing the user's work silently is
+      // worse than the rare case of overwriting a TUI/other-device edit.
+      // The most common reason the server is "newer" while a draft
+      // diverges is the user typing during the autosave (the draft was
+      // written with the pre-save modTime, then save bumped the server's
+      // modTime; the draft's body has the keystrokes that came in after
+      // the save fired). Discarding it is exactly the wrong move.
+      //
+      // We still warn the user when the modTime says they may be
+      // working from a stale base, so they can manually reconcile if
+      // they actually have a multi-device conflict (the rare case).
       const draft = getDraft(p);
       if (draft && draftDivergesFromServer(draft, serverBody)) {
         const serverNewer = new Date(fresh.modTime) > new Date(draft.baseModTime);
+        prev = draft.body;
+        body = draft.body;
+        note = fresh;
+        dirty = true;
+        draftRestored = true;
+        treeDrawerOpen = false;
+        infoDrawerOpen = false;
         if (serverNewer) {
-          clearDraft(p);
-          toast.warning('stale local draft discarded — server has newer content');
+          toast.warning('Restored unsaved draft — server moved forward since your last edit. Your version will overwrite on next save.');
         } else {
-          prev = draft.body;
-          body = draft.body;
-          note = fresh;
-          dirty = true;
-          draftRestored = true;
-          treeDrawerOpen = false;
-          infoDrawerOpen = false;
-          toast.info('restored unsaved draft');
-          save({ silent: true });
-          return;
+          toast.info('Restored unsaved draft');
         }
+        save({ silent: true });
+        return;
       } else if (draft) {
         // Draft matches server — stale, clean up.
         clearDraft(p);
@@ -298,7 +305,17 @@
       dirty = body !== sentBody;
       lastSavedAt = Date.now();
       saveFailed = false;
-      if (!dirty) clearDraft(updated.path);
+      if (!dirty) {
+        clearDraft(updated.path);
+      } else {
+        // User typed during the save. The draft on disk still has
+        // the OLD modTime as baseModTime, which would cause the
+        // "server has newer content" branch to trip on a mid-edit
+        // reload. Refresh the draft synchronously with the post-save
+        // modTime so a crash / reload in the next 100ms (debounce
+        // window) doesn't fall into that path.
+        setDraft(updated.path, body, updated.modTime);
+      }
       draftRestored = false;
       if (!opts.silent && !dirty) toast.success('saved');
       return true;
@@ -362,16 +379,41 @@
     };
   });
 
-  // Persist the body to localStorage on every change (debounced 600ms).
-  // Survives tab close, offline reload, and brief power-loss / browser-crash
-  // scenarios that auto-save's 2s window doesn't cover.
+  // Persist the body to localStorage on every change (debounced 100ms).
+  // localStorage.setItem is synchronous and fast (sub-millisecond for
+  // typical note sizes) so the debounce can be aggressive — the only
+  // reason to debounce at all is to coalesce rapid keystrokes into one
+  // write. Previously 600ms, which left a wide window where typing
+  // wasn't yet on disk; a tab crash or reload in that window lost
+  // those keystrokes since auto-save's 2s timer hadn't fired yet either.
   $effect(() => {
     void body;
     if (!note || !dirty) return;
     const t = setTimeout(() => {
       if (note) setDraft(note.path, body, note.modTime);
-    }, 600);
+    }, 100);
     return () => clearTimeout(t);
+  });
+
+  // Force-flush draft on tab hide / before unload. Covers the case
+  // where the user closes the tab during the 100ms debounce window OR
+  // the OS suspends the page (mobile background, lid close) before
+  // the next debounce tick. localStorage writes are synchronous, so
+  // we can guarantee the latest body lands before the page goes away.
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const flush = () => {
+      if (note && dirty) setDraft(note.path, body, note.modTime);
+    };
+    const onVis = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('beforeunload', flush);
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   });
 
   // When the network comes back, retry any pending save.
