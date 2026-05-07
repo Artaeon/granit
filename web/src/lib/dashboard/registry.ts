@@ -23,6 +23,7 @@ import AtAGlanceWidget from './widgets/AtAGlanceWidget.svelte';
 import TopGoalsWidget from './widgets/TopGoalsWidget.svelte';
 import QuickLinksWidget from './widgets/QuickLinksWidget.svelte';
 import AIBriefingWidget from './widgets/AIBriefingWidget.svelte';
+import TaskVelocityWidget from './widgets/TaskVelocityWidget.svelte';
 
 export interface WidgetMeta {
   type: DashboardWidgetType;
@@ -62,6 +63,11 @@ export const widgetRegistry: WidgetMeta[] = [
   // click "compose today's briefing" button until generated, then
   // renders the markdown inline with a "save to today" action.
   { type: 'ai-briefing', label: 'AI daily briefing', description: 'One-click summary of today\'s events + urgent tasks + next deadline. Opt-in.', span: 2, component: AIBriefingWidget },
+  // Task velocity — 8-week bar chart of completed-tasks-per-week
+  // with a 3-week-avg trend arrow. Sits next to the at-a-glance
+  // tile so the user can read "shape of today" alongside "shape
+  // of the last two months" without scrolling.
+  { type: 'task-velocity', label: 'Task velocity', description: 'Tasks completed per week (last 8 weeks) + trend arrow', span: 1, component: TaskVelocityWidget },
   { type: 'scripture', label: 'Today\'s verse', description: 'Daily scripture / quote rotation', span: 1, component: ScriptureWidget },
   { type: 'daily-note', label: 'Daily note', description: 'Link to today\'s daily note', span: 1, component: DailyNoteWidget },
   { type: 'quick-capture', label: 'Quick capture', description: 'Add a task fast', span: 1, component: QuickCaptureWidget },

@@ -1956,7 +1956,8 @@ export type DashboardWidgetType =
   | 'at-a-glance'
   | 'top-goals'
   | 'quick-links'
-  | 'ai-briefing';
+  | 'ai-briefing'
+  | 'task-velocity';
 
 export interface DashboardWidget {
   id: string;
