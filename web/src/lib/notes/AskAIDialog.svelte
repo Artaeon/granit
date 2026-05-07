@@ -3,6 +3,7 @@
   import { api } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import type { AskAIRequest } from '$lib/editor/ask-ai';
+  import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
 
   // AskAIDialog — modal that opens when the user fires Mod-Shift-A
   // (or clicks the AI button on the floating toolbar) on a text
@@ -38,29 +39,67 @@
   // close the upstream connection promptly.
   let abortCtl: AbortController | null = $state(null);
 
-  // Quick-pick instructions — common AI-on-selection tasks the user
-  // can fire without typing. Each one is a complete instruction that
-  // works across providers; the user can still tweak the field
-  // before submitting, or write their own.
-  const QUICK_INSTRUCTIONS = [
-    { label: 'Summarise', text: 'Summarise the following in 3 concise bullet points.' },
-    { label: 'Improve', text: 'Improve the writing of the following — clearer, tighter, same voice. Return only the improved text.' },
-    { label: 'Expand', text: 'Expand the following with more detail and context. Keep the same voice.' },
-    { label: 'Translate · DE', text: 'Translate the following to German. Return only the translation.' },
-    { label: 'Translate · EN', text: 'Translate the following to English. Return only the translation.' },
-    { label: 'Bullet list', text: 'Rewrite the following as a markdown bullet list. Return only the list.' },
-    // Whole-note actions — useful when the dialog is opened over the
-    // entire note body (via the toolbar AI button). Still work on a
-    // selection too, just less useful.
-    { label: 'Extract tasks', text: 'Extract the actionable items from the following as a markdown task list (`- [ ] task` lines). Each line should be a concrete action. Return ONLY the markdown checklist, no preamble.' },
-    { label: 'Suggest tags', text: 'Suggest 5-7 short, lowercase, hyphenated hashtags relevant to the topic of the following. Return ONLY a single line of space-separated tags starting with `#`. Example: `#research #notes-app #productivity`.' },
-    { label: 'Outline', text: 'Generate a markdown outline (## headings + bulleted sub-points) of the key ideas in the following. Return only the outline.' }
+  // Quick-pick instructions, grouped by intent. Each is a complete
+  // instruction that works across providers; the user can still
+  // tweak the field before submitting. Grouping makes the chip wall
+  // scannable instead of looking like 13 random buttons in a row.
+  const PRESET_GROUPS: { label: string; items: { label: string; text: string }[] }[] = [
+    {
+      label: 'Transform',
+      items: [
+        { label: 'Improve', text: 'Improve the writing of the following — clearer, tighter, same voice. Return only the improved text, no preamble.' },
+        { label: 'Fix grammar', text: 'Fix grammar and typos in the following. Preserve voice, structure, and meaning. Return only the corrected text.' },
+        { label: 'Shorten', text: 'Shorten the following while preserving the key points. Return only the shorter version.' },
+        { label: 'Expand', text: 'Expand the following with more detail and context. Keep the same voice. Return only the expanded text.' },
+        { label: 'Make formal', text: 'Rewrite the following in a more formal, professional register. Return only the rewritten text.' },
+        { label: 'Make casual', text: 'Rewrite the following in a more casual, conversational register. Return only the rewritten text.' }
+      ]
+    },
+    {
+      label: 'Extract',
+      items: [
+        { label: 'Summarise', text: 'Summarise the following in 3 concise bullet points.' },
+        { label: 'Outline', text: 'Generate a markdown outline (## headings + bulleted sub-points) of the key ideas in the following. Return only the outline.' },
+        { label: 'Tasks', text: 'Extract the actionable items from the following as a markdown task list (`- [ ] task` lines). Each line should be a concrete action. Return ONLY the markdown checklist, no preamble.' },
+        { label: 'Tags', text: 'Suggest 5-7 short, lowercase, hyphenated hashtags relevant to the topic of the following. Return ONLY a single line of space-separated tags starting with `#`. Example: `#research #notes-app #productivity`.' },
+        { label: 'Continue', text: 'Continue writing from where the following text leaves off, in the same voice and style. Return only the continuation, no preamble.' }
+      ]
+    },
+    {
+      label: 'Translate',
+      items: [
+        { label: 'EN', text: 'Translate the following to English. Return only the translation.' },
+        { label: 'DE', text: 'Translate the following to German. Return only the translation.' },
+        { label: 'Bullet list', text: 'Rewrite the following as a markdown bullet list. Return only the list.' }
+      ]
+    }
   ];
+
+  // Last-used instruction persists across sessions so a re-open of
+  // the dialog over a different selection lets the user re-run the
+  // same prompt with one click. localStorage-backed; size-bounded so
+  // a giant prompt doesn't blow the quota.
+  const LAST_INSTRUCTION_KEY = 'granit.ai.lastInstruction';
+  function loadLastInstruction(): string {
+    if (typeof localStorage === 'undefined') return '';
+    try { return localStorage.getItem(LAST_INSTRUCTION_KEY) ?? ''; } catch { return ''; }
+  }
+  function saveLastInstruction(s: string): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      if (s.length > 0 && s.length < 500) {
+        localStorage.setItem(LAST_INSTRUCTION_KEY, s);
+      }
+    } catch {}
+  }
 
   $effect(() => {
     if (request) {
       response = '';
-      instruction = '';
+      // Pre-fill with last-used instruction so a "summarise this"
+      // workflow becomes one click on subsequent selections. The
+      // user can still clear or change before sending.
+      instruction = loadLastInstruction();
       error = '';
       pending = false;
       tick().then(() => inputEl?.focus());
@@ -72,6 +111,7 @@
     pending = true;
     error = '';
     response = '';
+    saveLastInstruction(instruction.trim());
     const userMessage = instruction.trim()
       ? `${instruction.trim()}\n\n---\n\n${request.text}`
       : `Help me with this:\n\n${request.text}`;
@@ -211,14 +251,23 @@
             class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
             disabled={pending}
           ></textarea>
-          <div class="flex flex-wrap gap-1 mt-1.5">
-            {#each QUICK_INSTRUCTIONS as q}
-              <button
-                type="button"
-                onclick={() => pickQuick(q.text)}
-                disabled={pending}
-                class="px-2 py-0.5 text-[11px] rounded bg-surface0 text-subtext hover:bg-surface1 hover:text-text disabled:opacity-50"
-              >{q.label}</button>
+          <!-- Grouped presets — Transform / Extract / Translate.
+               Each group is a labeled row of chips so the wall of
+               13 buttons reads as scannable categories. Group label
+               on the left, chips flow on the right. -->
+          <div class="space-y-1.5 mt-2">
+            {#each PRESET_GROUPS as group}
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-[10px] uppercase tracking-wider text-dim w-16 flex-shrink-0">{group.label}</span>
+                {#each group.items as q}
+                  <button
+                    type="button"
+                    onclick={() => pickQuick(q.text)}
+                    disabled={pending}
+                    class="px-2 py-0.5 text-[11px] rounded bg-surface0 text-subtext hover:bg-surface1 hover:text-text disabled:opacity-50 transition-colors"
+                  >{q.label}</button>
+                {/each}
+              </div>
             {/each}
           </div>
         </div>
@@ -253,7 +302,17 @@
                 </span>
               {/if}
             </div>
-            <div class="bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text whitespace-pre-wrap break-words max-h-72 overflow-y-auto">{response}</div>
+            <!-- Markdown-rendered response. AI replies are typically
+                 markdown — bullets, headers, code blocks — and the
+                 previous plain-text rendering ate all the structure.
+                 The renderer's `prose` styles match the editor's
+                 reading view so what the user sees here is what
+                 they'll get on Replace / Insert. -->
+            <div class="bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text break-words max-h-72 overflow-y-auto">
+              <div class="prose prose-sm max-w-none">
+                <MarkdownRenderer body={response} />
+              </div>
+            </div>
           </div>
         {/if}
       </div>
