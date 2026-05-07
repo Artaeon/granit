@@ -326,6 +326,29 @@
     if (n < 1000) return `${n}`;
     return `${(n / 1000).toFixed(1)}k`;
   }
+  // Per-feature usage breakdown — same window as the headline
+  // rollup tiles (today + last 7 days) but bucketed by feature so
+  // the user can see "Daily briefing burned $0.012 today, Inbox
+  // triage $0.003" without scrolling the whole audit list. Sorted
+  // by cost desc so the expensive features land at the top.
+  const aiUsageByFeature = $derived.by(() => {
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const buckets = new Map<string, { count: number; tokens: number; cost: number }>();
+    for (const e of aiAudit) {
+      const t = new Date(e.timestamp).getTime();
+      if (t < sevenDaysAgo) continue;
+      const key = e.feature || 'unknown';
+      const b = buckets.get(key) ?? { count: 0, tokens: 0, cost: 0 };
+      b.count++;
+      b.tokens += (e.prompt_tokens ?? 0) + (e.completion_tokens ?? 0);
+      b.cost += e.cost_micro_cents ?? 0;
+      buckets.set(key, b);
+    }
+    return Array.from(buckets.entries())
+      .map(([feature, v]) => ({ feature, ...v }))
+      .sort((a, b) => b.cost - a.cost || b.count - a.count);
+  });
+
   const aiUsage = $derived.by(() => {
     const now = Date.now();
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
@@ -1052,6 +1075,30 @@
                 {/if}
               </div>
             </div>
+
+            {#if aiUsageByFeature.length > 1}
+              <!-- Per-feature breakdown over the same 7-day window
+                   as the headline tile. Surfaces "which feature is
+                   eating my budget" without forcing the user to
+                   scroll the per-request audit list. Ordered by
+                   cost desc, fall-through to count when costs tie
+                   (Ollama entries have $0 across the board). -->
+              <div class="mb-3 px-2 py-1.5 bg-mantle border border-surface1 rounded">
+                <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5">Last 7 days · by feature</div>
+                <table class="w-full text-[11px]">
+                  <tbody>
+                    {#each aiUsageByFeature as f}
+                      <tr>
+                        <td class="text-text py-0.5 pr-2">{f.feature}</td>
+                        <td class="text-dim font-mono py-0.5 pr-2 tabular-nums text-right">{f.count}×</td>
+                        <td class="text-dim font-mono py-0.5 pr-2 tabular-nums text-right">{formatTokens(f.tokens)} tok</td>
+                        <td class="text-secondary font-mono py-0.5 tabular-nums text-right">{f.cost > 0 ? formatCost(f.cost) : '—'}</td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            {/if}
           {/if}
           {#if aiAudit.length > 0}
             <ul class="space-y-1 text-[11px] font-mono max-h-72 overflow-y-auto">
