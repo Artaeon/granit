@@ -625,6 +625,24 @@
       <button onclick={prev} aria-label="prev" class="w-8 h-8 flex items-center justify-center text-sm bg-surface0 border border-surface1 rounded hover:border-primary">‹</button>
       <button onclick={next} aria-label="next" class="w-8 h-8 flex items-center justify-center text-sm bg-surface0 border border-surface1 rounded hover:border-primary">›</button>
       <h2 class="text-sm sm:text-base text-text font-medium truncate">{headline}</h2>
+      <!-- Jump to a specific date. Hidden on the smallest screens
+           where the header is already crowded; the prev/next +
+           "today" buttons cover the common case. The input is
+           always reset back to empty after a navigation so re-
+           selecting the same date triggers the jump again. -->
+      <input
+        type="date"
+        aria-label="jump to date"
+        title="Jump to date"
+        onchange={(e) => {
+          const v = (e.target as HTMLInputElement).value;
+          if (!v) return;
+          const [y, mo, d] = v.split('-').map(Number);
+          if (y && mo && d) cursor = new Date(y, mo - 1, d);
+          (e.target as HTMLInputElement).value = '';
+        }}
+        class="hidden sm:block px-1.5 py-1 text-xs bg-surface0 border border-surface1 rounded text-dim hover:border-primary focus:border-primary focus:outline-none"
+      />
       <span class="flex-1"></span>
       {#if loading}<span class="hidden sm:inline text-xs text-dim">loading…</span>{/if}
       <!-- Plan mode pill — distinct fill (secondary accent) when active
