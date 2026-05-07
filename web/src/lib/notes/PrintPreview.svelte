@@ -28,7 +28,7 @@
   // takes over and the user picks "Save as PDF" or sends to a
   // physical printer. Zero server work, zero new dependencies.
 
-  type Mode = 'standard' | 'certificate' | 'report' | 'letterhead' | 'memo';
+  type Mode = 'standard' | 'report' | 'letterhead' | 'memo';
 
   interface Props {
     open: boolean;
@@ -79,7 +79,11 @@
   const CERT_LANG_KEY = 'granit.print.certLang';
   type CertVariant = 'standard' | 'compact';
   type CertLang = 'en' | 'de';
-  let certVariant = $state<CertVariant>('standard');
+  // Default to 'compact' — the user's pain point was that the
+  // standard signature footer pushes content off the page. Compact
+  // is small enough to sit at the foot of any A4 page without
+  // disrupting pagination.
+  let certVariant = $state<CertVariant>('compact');
   let certLang = $state<CertLang>('en');
   let signatureOn = $state(false);
   let signatureHash = $state('');
@@ -112,7 +116,10 @@
       header = localStorage.getItem(HEADER_KEY) ?? '';
       footer = localStorage.getItem(FOOTER_KEY) ?? '';
       const m = localStorage.getItem(MODE_KEY);
-      if (m === 'standard' || m === 'certificate' || m === 'report' || m === 'letterhead' || m === 'memo') mode = m;
+      // 'certificate' was a previous template mode that's been
+      // removed — silently coerce any saved value to 'standard'.
+      if (m === 'standard' || m === 'report' || m === 'letterhead' || m === 'memo') mode = m;
+      else if (m === 'certificate') mode = 'standard';
       signatureOn = localStorage.getItem(SIG_KEY) === '1';
       signer = localStorage.getItem(SIG_SIGNER_KEY) ?? '';
       purpose = localStorage.getItem(SIG_PURPOSE_KEY) ?? '';
@@ -128,8 +135,10 @@
       if (serverHasAny) {
         header = cfg.header;
         footer = cfg.footer;
-        if (cfg.mode === 'standard' || cfg.mode === 'certificate' || cfg.mode === 'report') {
+        if (cfg.mode === 'standard' || cfg.mode === 'report' || cfg.mode === 'letterhead' || cfg.mode === 'memo') {
           mode = cfg.mode;
+        } else if (cfg.mode === 'certificate') {
+          mode = 'standard';
         }
       } else if (localHasAny) {
         // Migrate localStorage → server so this device's history
@@ -297,6 +306,34 @@
   let docChars = $derived(body.length);
   let docLines = $derived(body ? body.split('\n').length : 0);
 
+  // Teleport: when the overlay opens, move its DOM node to be a
+  // direct child of document.body. SvelteKit wraps content in a
+  // `<div style="display: contents">` (see web/src/app.html), so an
+  // overlay rendered inline inside a page component is nested at
+  // body > div > … > .print-overlay. Multiple previous attempts at
+  // print isolation failed because of this nesting (CSS `body > *`
+  // selectors hit the wrapper, not the overlay). Moving the node
+  // out of its component subtree solves it: in print mode we can
+  // now reliably hide every direct child of body except the
+  // overlay, and content paginates normally.
+  let overlayEl: HTMLDivElement | undefined = $state();
+  $effect(() => {
+    if (!open || !overlayEl) return;
+    const original = overlayEl.parentNode;
+    document.body.appendChild(overlayEl);
+    return () => {
+      // On close, move the node back so Svelte's lifecycle can
+      // reconcile it cleanly. If the original parent has already
+      // been unmounted (e.g. the user navigated away), Svelte's
+      // {#if open} cleanup will tear it down regardless.
+      try {
+        if (original && original.isConnected) {
+          original.appendChild(overlayEl!);
+        }
+      } catch {}
+    };
+  });
+
   // User agent + locale captured at sign time — small extra
   // provenance datapoints. Not load-bearing, but they help a reader
   // understand the context the signature was generated in.
@@ -390,7 +427,10 @@
     // Use the certificate language ONLY for certificate mode;
     // the other templates stay in the user's OS locale because
     // memos / letterheads are not language-tagged in the UI.
-    const locale = mode === 'certificate' && certLang === 'de' ? 'de-AT' : undefined;
+    // The signature footer's timestamp follows the signature
+    // language toggle, so a German signature stamps "7. Mai 2026,
+    // 14:32:18". hour12:false forces 24-hour everywhere.
+    const locale = certLang === 'de' ? 'de-AT' : undefined;
     return new Date().toLocaleDateString(locale, {
       year: 'numeric', month: 'long', day: 'numeric'
     });
@@ -398,7 +438,12 @@
 </script>
 
 {#if open}
-  <div class="print-overlay" role="dialog" aria-label="Print preview">
+  <!-- Teleport target. The actual overlay is moved to be a direct
+       child of document.body via the effect below — without that,
+       SvelteKit's `<div style="display: contents">` wrapper sits
+       between body and our overlay, which broke every previous
+       attempt at print isolation. -->
+  <div bind:this={overlayEl} class="print-overlay" role="dialog" aria-label="Print preview">
     <!-- Toolbar — hidden in print via @media print. Lets the user
          tweak header/footer/mode without leaving the preview. -->
     <header class="print-toolbar">
@@ -428,44 +473,22 @@
         title={signatureOn ? 'Document is signed (SHA-256 footer added)' : 'Add signature footer (SHA-256 + timestamp)'}
       >🔏 {signatureOn ? 'Signed' : 'Sign'}</button>
       {#if signatureOn}
-        <!-- Inline signer field. Lives in the toolbar (not buried in
-             the configure panel) when signing is on, because "who
-             signed this" is the single most-important field of a
-             signature — it deserves immediate, one-click access.
-             Mirrors the same `signer` state as the configure-panel
-             input below; both edit the same value. -->
+        <!-- Inline signer field — single most-important signature
+             field, deserves toolbar-level access. Mirrors the
+             configure-panel input. -->
         <input
           bind:value={signer}
-          placeholder="Signer name (e.g. Raphael Lugmayr)"
+          placeholder="Signer (e.g. Raphael Lugmayr)"
           class="tb-signer-input"
           aria-label="Signer name"
         />
-      {/if}
-      <span class="tb-sep"></span>
-      <div class="tb-modes">
-        {#each [
-          { id: 'standard', label: 'Standard' },
-          { id: 'letterhead', label: 'Letterhead' },
-          { id: 'memo', label: 'Memo' },
-          { id: 'report', label: 'Report' },
-          { id: 'certificate', label: 'Certificate' }
-        ] as m}
-          <button
-            onclick={() => (mode = m.id as Mode)}
-            class="tb-mode {mode === m.id ? 'tb-active' : ''}"
-          >{m.label}</button>
-        {/each}
-      </div>
-      {#if mode === 'certificate'}
-        <!-- Certificate-only options: variant (size/density) and
-             language (string table). Both surface only when the
-             certificate template is selected, so the toolbar stays
-             clean for other templates. Persisted to localStorage. -->
-        <span class="tb-sep"></span>
-        <div class="tb-modes" role="radiogroup" aria-label="Certificate variant">
+        <!-- Signature-variant chip group: Standard (full footer) vs
+             Compact (slim, single-line trust stamp). Visible only
+             when signing is on so the toolbar stays clean. -->
+        <div class="tb-modes" role="radiogroup" aria-label="Signature variant">
           {#each [
-            { id: 'standard', label: 'Standard', title: 'Full A4 certificate' },
-            { id: 'compact',  label: 'Compact',  title: 'Half-page, denser body' }
+            { id: 'standard', label: 'Standard', title: 'Full trust certificate footer' },
+            { id: 'compact',  label: 'Compact',  title: 'Slim trust stamp — fits on the same page' }
           ] as v}
             <button
               onclick={() => (certVariant = v.id as CertVariant)}
@@ -474,9 +497,9 @@
             >{v.label}</button>
           {/each}
         </div>
-        <div class="tb-modes" role="radiogroup" aria-label="Certificate language">
+        <div class="tb-modes" role="radiogroup" aria-label="Signature language">
           {#each [
-            { id: 'en', label: 'EN', title: 'English certificate' },
+            { id: 'en', label: 'EN', title: 'English' },
             { id: 'de', label: 'DE', title: 'Deutsch' }
           ] as l}
             <button
@@ -487,6 +510,20 @@
           {/each}
         </div>
       {/if}
+      <span class="tb-sep"></span>
+      <div class="tb-modes">
+        {#each [
+          { id: 'standard', label: 'Standard' },
+          { id: 'letterhead', label: 'Letterhead' },
+          { id: 'memo', label: 'Memo' },
+          { id: 'report', label: 'Report' }
+        ] as m}
+          <button
+            onclick={() => (mode = m.id as Mode)}
+            class="tb-mode {mode === m.id ? 'tb-active' : ''}"
+          >{m.label}</button>
+        {/each}
+      </div>
       <span class="tb-spacer"></span>
       <button onclick={doPrint} class="tb-btn tb-primary" title="Print (⌘P)">🖨 Print / Save as PDF</button>
     </header>
@@ -565,62 +602,11 @@
       </section>
     {/if}
 
-    <!-- The printable surface. data-mode toggles the layout. -->
-    <main class="print-page" data-mode={mode} data-cert-variant={certVariant} data-cert-lang={certLang}>
-      {#if mode === 'certificate'}
-        <!-- Formal certificate template. The cert-frame is a real
-             ornamented certificate frame with a double border and
-             corner glyphs (kept simple — no external fonts, all
-             inline SVG, so it survives PDF export and any CSP).
-             Two sub-variants:
-               • standard: full-A4, generous margins, large title
-               • compact:  half-page, tighter margins, smaller title
-             Two languages (en / de) swap the eyebrow / labels and
-             pick the locale for the date format. The compact +
-             German combo prints a small German Urkunde with the
-             signature footer underneath. -->
-        <div class="cert-frame">
-          <span class="cert-corner cert-corner-tl">❖</span>
-          <span class="cert-corner cert-corner-tr">❖</span>
-          <span class="cert-corner cert-corner-bl">❖</span>
-          <span class="cert-corner cert-corner-br">❖</span>
-          <div class="cert-content">
-            <div class="cert-issuer">{str.issuer}</div>
-            <div class="cert-divider cert-divider--top">
-              <span class="cert-divider-line"></span>
-              <span class="cert-divider-mark">❦</span>
-              <span class="cert-divider-line"></span>
-            </div>
-            <div class="cert-eyebrow">{str.eyebrow}</div>
-            <h1 class="cert-title">{title}</h1>
-            <div class="cert-divider">
-              <span class="cert-divider-line"></span>
-              <span class="cert-divider-mark">✦</span>
-              <span class="cert-divider-line"></span>
-            </div>
-            <article class="cert-body">
-              <MarkdownRenderer body={body} />
-            </article>
-            <div class="cert-meta">
-              <div class="cert-meta-row">
-                <span class="cert-meta-label">{str.issuedOn}</span>
-                <span class="cert-meta-value">{todayHuman()}</span>
-              </div>
-              <div class="cert-meta-row">
-                <span class="cert-meta-label">{str.signedBy}</span>
-                <span class="cert-meta-value cert-signer-line">
-                  {#if signer}{signer}{:else}<em class="cert-signer-empty">{str.noSigner}</em>{/if}
-                </span>
-              </div>
-              {#if header}
-                <div class="cert-meta-row">
-                  <span class="cert-meta-value cert-meta-header">{header}</span>
-                </div>
-              {/if}
-            </div>
-          </div>
-        </div>
-      {:else if mode === 'letterhead'}
+    <!-- The printable surface. data-mode toggles the layout.
+         data-sig-variant / data-sig-lang drive the signature
+         footer's compact-vs-standard rendering and language. -->
+    <main class="print-page" data-mode={mode} data-sig-variant={certVariant} data-sig-lang={certLang}>
+      {#if mode === 'letterhead'}
         <!-- Letterhead — formal corporate document. Header band at
              the top with sender block, narrow body for readability,
              contact strip footer. The sender block parses the
@@ -694,83 +680,124 @@
            open-source repo. Looks like the signature panel a
            PDF viewer surfaces for a signed document. -->
       {#if signatureOn}
-        <aside class="doc-signature" aria-label="Document signature">
-          <div class="doc-signature__inner">
-            <div class="doc-signature__seal">
-              <svg viewBox="0 0 120 120" width="64" height="64" aria-hidden="true">
-                <defs>
-                  <path id="sig-arc-top" d="M 60 60 m -44 0 a 44 44 0 0 1 88 0" fill="none"/>
-                  <path id="sig-arc-bot" d="M 60 60 m 44 0 a 44 44 0 0 1 -88 0" fill="none"/>
-                </defs>
-                <circle cx="60" cy="60" r="54" fill="none" stroke="#5a7088" stroke-width="1.5"/>
-                <circle cx="60" cy="60" r="48" fill="none" stroke="#5a7088" stroke-width="0.6"/>
-                <circle cx="60" cy="60" r="30" fill="none" stroke="#5a7088" stroke-width="1"/>
-                <text font-family="Georgia, serif" font-size="7" letter-spacing="1.5" fill="#5a7088">
-                  <textPath href="#sig-arc-top" startOffset="50%" text-anchor="middle">GENERATED · WITH · GRANIT</textPath>
-                </text>
-                <text font-family="Georgia, serif" font-size="5" letter-spacing="0.8" fill="#5a7088">
-                  <textPath href="#sig-arc-bot" startOffset="50%" text-anchor="middle">github.com/artaeon/granit</textPath>
-                </text>
-                <text x="60" y="56" font-family="Georgia, serif" font-size="14" font-weight="700" text-anchor="middle" fill="#5a7088" letter-spacing="2">G</text>
-                <text x="60" y="68" font-family="Georgia, serif" font-size="5" letter-spacing="1.5" text-anchor="middle" fill="#5a7088">GRANIT</text>
+        <!-- Trust certificate footer. The user calls this "the
+             certificate" — it asserts that the document was
+             generated with Granit (open-source, no malware) and
+             carries a SHA-256 integrity hash. Two variants:
+               • compact  — single-line trust stamp + hash, fits at
+                            the foot of any A4 page without pushing
+                            content over.
+               • standard — full panel with verification commands and
+                            disclaimer block. Bigger but still
+                            page-aware via page-break-inside:avoid. -->
+        <aside class="doc-signature" aria-label={str.authenticityLabel}>
+          {#if certVariant === 'compact'}
+            <!-- Compact variant: a single-row trust stamp. The seal
+                 is small; the body is one line of trust text plus a
+                 tight 2-row grid of meta. The hash sits on its own
+                 line so a verifier can copy it. -->
+            <div class="doc-signature__compact">
+              <svg viewBox="0 0 60 60" class="doc-signature__seal-sm" aria-hidden="true">
+                <circle cx="30" cy="30" r="27" fill="none" stroke="#5a7088" stroke-width="1.2"/>
+                <circle cx="30" cy="30" r="22" fill="none" stroke="#5a7088" stroke-width="0.4"/>
+                <text x="30" y="36" font-family="Georgia, serif" font-size="20" font-weight="700" text-anchor="middle" fill="#5a7088">G</text>
               </svg>
-            </div>
-            <div class="doc-signature__body">
-              <div class="doc-signature__head">
-                <div class="doc-signature__eyebrow">{str.authenticityLabel}</div>
-                <div class="doc-signature__signer-row">
-                  {#if signer}
-                    <span class="doc-signature__signer-label">{str.signedBy}</span>
-                    <span class="doc-signature__signer-name">{signer}</span>
-                  {:else}
-                    <span class="doc-signature__signer-name doc-signature__signer-none">{str.noSigner}</span>
-                  {/if}
+              <div class="doc-signature__compact-body">
+                <div class="doc-signature__compact-headline">
+                  <strong>
+                    {certLang === 'de'
+                      ? 'Mit Granit erzeugt · Open-Source · keine Schadsoftware'
+                      : 'Generated with Granit · Open-source · No harmful software'}
+                  </strong>
+                  {#if signer}<span class="doc-signature__compact-signer"> · {str.signedBy} {signer}</span>{/if}
                 </div>
-                <div class="doc-signature__docid">
-                  Document ID <span class="doc-signature__docid-value">{docID}</span>
+                <div class="doc-signature__compact-meta">
+                  <span><strong>{str.sigGenerated}:</strong> {fmtTimestamp(signatureTimestamp)}</span>
+                  <span class="doc-signature__compact-sep">·</span>
+                  <span>Doc <span class="doc-signature__docid-value">{docID}</span></span>
+                  <span class="doc-signature__compact-sep">·</span>
+                  <span>{certLang === 'de' ? 'Werkzeug' : 'Tool'}: <a href="https://github.com/artaeon/granit">github.com/artaeon/granit</a></span>
+                </div>
+                <div class="doc-signature__compact-hash" title="Full SHA-256">
+                  SHA-256: <span>{signatureHash || '…'}</span>
                 </div>
               </div>
-              <div class="doc-signature__lead">
-                {#if purpose}<strong>{purpose}.</strong>{' '}{/if}{certLang === 'de'
-                  ? 'Dieses Dokument wurde mit Granit (Open-Source-Notiz- und Wissenswerkzeug) erzeugt. Der unten angegebene kryptographische Fingerabdruck wird über den Inhalt berechnet und ändert sich, sobald ein einziges Zeichen verändert wird.'
-                  : 'This document was generated through Granit (open-source notes & knowledge tool). The cryptographic fingerprint below is computed over the body and changes the moment any character is altered.'}
-              </div>
-              <div class="doc-signature__hashbox" title="SHA-256" role="presentation">
-                <div class="doc-signature__hashlabel">SHA-256 {certLang === 'de' ? 'Fingerabdruck' : 'fingerprint'}</div>
-                <div class="doc-signature__hashvalue">{signatureHash || '…'}</div>
-              </div>
-              <dl class="doc-signature__fields">
-                <dt>{str.sigGenerated}</dt>
-                <dd>{fmtTimestamp(signatureTimestamp)}</dd>
-                <dt>{str.sigSource}</dt>
-                <dd class="doc-signature__src">{sourcePath}</dd>
-                <dt>{str.sigLength}</dt>
-                <dd>{docWords} {str.lengthWords} · {docChars} {str.lengthChars} · {docLines} {str.lengthLines}</dd>
-                <dt>{str.sigAlgo}</dt>
-                <dd>SHA-256 (FIPS 180-4) · 32 bytes / 256 bits</dd>
-                <dt>{certLang === 'de' ? 'Erstellt mit' : 'Signed from'}</dt>
-                <dd>{signedFrom}</dd>
-                <dt>{str.sigTool}</dt>
-                <dd>
-                  Granit ·
-                  {certLang === 'de' ? 'quelloffen' : 'open-source'} ·
-                  <a href="https://github.com/artaeon/granit">github.com/artaeon/granit</a>
-                </dd>
-              </dl>
-              <p class="doc-signature__note">
-                <strong>{str.verifyHeading}:</strong>
-                {str.verifyBody}
-                <code>sha256sum &lt;file&gt;</code> {str.verifyLinuxLabel}
-                {str.verifyOr}
-                <code>certutil -hashfile &lt;file&gt; SHA256</code> {str.verifyWindowsLabel},
-                {str.verifyMatch} <strong>{fmtTimestamp(signatureTimestamp)}</strong>.
-                {str.verifyChange}
-              </p>
-              <p class="doc-signature__disclaimer">
-                <em>{str.disclaimer}</em>
-              </p>
             </div>
-          </div>
+          {:else}
+            <div class="doc-signature__inner">
+              <div class="doc-signature__seal">
+                <svg viewBox="0 0 120 120" width="64" height="64" aria-hidden="true">
+                  <defs>
+                    <path id="sig-arc-top" d="M 60 60 m -44 0 a 44 44 0 0 1 88 0" fill="none"/>
+                    <path id="sig-arc-bot" d="M 60 60 m 44 0 a 44 44 0 0 1 -88 0" fill="none"/>
+                  </defs>
+                  <circle cx="60" cy="60" r="54" fill="none" stroke="#5a7088" stroke-width="1.5"/>
+                  <circle cx="60" cy="60" r="48" fill="none" stroke="#5a7088" stroke-width="0.6"/>
+                  <circle cx="60" cy="60" r="30" fill="none" stroke="#5a7088" stroke-width="1"/>
+                  <text font-family="Georgia, serif" font-size="7" letter-spacing="1.5" fill="#5a7088">
+                    <textPath href="#sig-arc-top" startOffset="50%" text-anchor="middle">GENERATED · WITH · GRANIT</textPath>
+                  </text>
+                  <text font-family="Georgia, serif" font-size="5" letter-spacing="0.8" fill="#5a7088">
+                    <textPath href="#sig-arc-bot" startOffset="50%" text-anchor="middle">github.com/artaeon/granit</textPath>
+                  </text>
+                  <text x="60" y="56" font-family="Georgia, serif" font-size="14" font-weight="700" text-anchor="middle" fill="#5a7088" letter-spacing="2">G</text>
+                  <text x="60" y="68" font-family="Georgia, serif" font-size="5" letter-spacing="1.5" text-anchor="middle" fill="#5a7088">GRANIT</text>
+                </svg>
+              </div>
+              <div class="doc-signature__body">
+                <div class="doc-signature__head">
+                  <div class="doc-signature__eyebrow">{str.authenticityLabel}</div>
+                  <div class="doc-signature__signer-row">
+                    {#if signer}
+                      <span class="doc-signature__signer-label">{str.signedBy}</span>
+                      <span class="doc-signature__signer-name">{signer}</span>
+                    {:else}
+                      <span class="doc-signature__signer-name doc-signature__signer-none">{str.noSigner}</span>
+                    {/if}
+                  </div>
+                  <div class="doc-signature__docid">
+                    Document ID <span class="doc-signature__docid-value">{docID}</span>
+                  </div>
+                </div>
+                <div class="doc-signature__lead">
+                  {#if purpose}<strong>{purpose}.</strong>{' '}{/if}{certLang === 'de'
+                    ? 'Dieses Dokument wurde mit Granit (Open-Source-Notiz- und Wissenswerkzeug, keine Schadsoftware) erzeugt. Der kryptographische Fingerabdruck wird über den Inhalt berechnet und ändert sich, sobald ein einziges Zeichen verändert wird.'
+                    : 'This document was generated with Granit (open-source notes & knowledge tool — no harmful software). The cryptographic fingerprint is computed over the content and changes the moment any character is altered.'}
+                </div>
+                <div class="doc-signature__hashbox" title="SHA-256" role="presentation">
+                  <div class="doc-signature__hashlabel">SHA-256 {certLang === 'de' ? 'Fingerabdruck' : 'fingerprint'}</div>
+                  <div class="doc-signature__hashvalue">{signatureHash || '…'}</div>
+                </div>
+                <dl class="doc-signature__fields">
+                  <dt>{str.sigGenerated}</dt>
+                  <dd>{fmtTimestamp(signatureTimestamp)}</dd>
+                  <dt>{str.sigSource}</dt>
+                  <dd class="doc-signature__src">{sourcePath}</dd>
+                  <dt>{str.sigLength}</dt>
+                  <dd>{docWords} {str.lengthWords} · {docChars} {str.lengthChars} · {docLines} {str.lengthLines}</dd>
+                  <dt>{str.sigAlgo}</dt>
+                  <dd>SHA-256 (FIPS 180-4)</dd>
+                  <dt>{str.sigTool}</dt>
+                  <dd>
+                    Granit ·
+                    {certLang === 'de' ? 'quelloffen' : 'open-source'} ·
+                    <a href="https://github.com/artaeon/granit">github.com/artaeon/granit</a>
+                  </dd>
+                </dl>
+                <p class="doc-signature__note">
+                  <strong>{str.verifyHeading}:</strong>
+                  {str.verifyBody}
+                  <code>sha256sum &lt;file&gt;</code> {str.verifyLinuxLabel}
+                  {str.verifyOr}
+                  <code>certutil -hashfile &lt;file&gt; SHA256</code> {str.verifyWindowsLabel},
+                  {str.verifyMatch} <strong>{fmtTimestamp(signatureTimestamp)}</strong>.
+                </p>
+                <p class="doc-signature__disclaimer">
+                  <em>{str.disclaimer}</em>
+                </p>
+              </div>
+            </div>
+          {/if}
         </aside>
       {/if}
     </main>
@@ -926,13 +953,6 @@
     font-size: 10.5pt;
     padding: 2.5cm 2cm;
   }
-  .print-page[data-mode="certificate"] {
-    font-family: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
-    font-size: 12pt;
-    padding: 2.5cm 2cm;
-    line-height: 1.65;
-    color: #1a1a1a;
-  }
   .formal-body {
     /* Slightly tighter measure than the screen body — printed
        formal documents read better in narrower columns. */
@@ -1065,250 +1085,10 @@
        formal weight, body is conversational. */
   }
 
-  /* ----- Certificate template ----- */
-  /* A formal document framing. The double border + corner ornaments
-     give the page a "real certificate" feel without leaning on
-     external fonts (which would fail in print or with a CSP). The
-     Granit seal at the bottom is pure inline SVG so it survives
-     PDF export crisp at any zoom and acts as verifiable provenance. */
-  .cert-frame {
-    position: relative;
-    margin: 1.2cm;
-    padding: 1.6cm 1.5cm 1.4cm;
-    border: 2px solid #8a6d3b;
-    /* The triple inset gives the frame a "engraved" look without
-       any external image — outer cream stripe, golden hairline,
-       inner cream stripe. Reads as a real certificate border on
-       printer output. */
-    box-shadow:
-      inset 0 0 0 2px #fbf7ee,
-      inset 0 0 0 3px #c9a55c,
-      inset 0 0 0 5px #fbf7ee;
-    background: #fbf7ee;
-    min-height: calc(29.7cm - 2.4cm);
-    display: flex;
-    flex-direction: column;
-  }
-  /* Compact variant: half-page footprint, denser body text. Picked
-     for the case the user described — when the standard A4 frame
-     is too much for a short Urkunde / certificate. The frame still
-     uses A4 paper; the cert just doesn't fill the entire page. */
-  .print-page[data-cert-variant="compact"] .cert-frame {
-    margin: 0.8cm;
-    padding: 1cm 1.2cm 1cm;
-    min-height: 14cm;
-  }
-  .cert-corner {
-    position: absolute;
-    color: #8a6d3b;
-    font-size: 18pt;
-    line-height: 1;
-  }
-  .print-page[data-cert-variant="compact"] .cert-corner { font-size: 13pt; }
-  .cert-corner-tl { top: 0.4cm; left: 0.5cm; }
-  .cert-corner-tr { top: 0.4cm; right: 0.5cm; transform: rotate(90deg); }
-  .cert-corner-bl { bottom: 0.4cm; left: 0.5cm; transform: rotate(-90deg); }
-  .cert-corner-br { bottom: 0.4cm; right: 0.5cm; transform: rotate(180deg); }
-
-  .cert-content {
-    flex: 1;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-  }
-  .cert-issuer {
-    font-size: 9.5pt;
-    letter-spacing: 0.4em;
-    text-transform: uppercase;
-    color: #8a6d3b;
-    font-weight: 700;
-    margin-bottom: 0.6rem;
-  }
-  .print-page[data-cert-variant="compact"] .cert-issuer {
-    font-size: 8.5pt;
-    margin-bottom: 0.4rem;
-  }
-  .cert-eyebrow {
-    font-style: italic;
-    font-size: 11pt;
-    color: #8a6d3b;
-    margin: 0.8rem 0 0.4rem;
-    letter-spacing: 0.05em;
-  }
-  .print-page[data-cert-variant="compact"] .cert-eyebrow {
-    font-size: 9pt;
-    margin: 0.4rem 0 0.2rem;
-  }
-  .cert-title {
-    font-family: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
-    font-size: 30pt;
-    font-weight: 700;
-    margin: 0.4rem 0 0.6rem;
-    color: #2a2419;
-    letter-spacing: 0.012em;
-    line-height: 1.18;
-  }
-  .print-page[data-cert-variant="compact"] .cert-title {
-    font-size: 18pt;
-    margin: 0.2rem 0 0.4rem;
-  }
-  .cert-divider {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    margin: 0.5rem 0 1.2rem;
-    color: #8a6d3b;
-  }
-  .cert-divider--top {
-    margin: 0.4rem 0 0.6rem;
-  }
-  .print-page[data-cert-variant="compact"] .cert-divider {
-    margin: 0.3rem 0 0.6rem;
-  }
-  .cert-divider-line {
-    flex: 0 1 25%;
-    height: 1px;
-    background: linear-gradient(to right, transparent, #8a6d3b, transparent);
-  }
-  .cert-divider-mark {
-    font-size: 14pt;
-  }
-  .print-page[data-cert-variant="compact"] .cert-divider-mark {
-    font-size: 11pt;
-  }
-  .cert-body {
-    flex: 1;
-    text-align: left;
-    font-size: 11.5pt;
-    color: #2a2419;
-    /* The body of a certificate reads denser than freeform notes;
-       a tighter measure (max 16cm) keeps line lengths comfortable. */
-    max-width: 16cm;
-    margin: 0 auto;
-  }
-  .print-page[data-cert-variant="compact"] .cert-body {
-    font-size: 10pt;
-    line-height: 1.5;
-    max-width: 14cm;
-  }
-  /* Meta block at the bottom of the cert: Issued on / Signed by /
-     Header. Two-column-ish layout with a label / value alignment
-     that reads like the back of a real certificate. */
-  .cert-meta {
-    margin-top: 1.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid #c9a55c;
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    column-gap: 1rem;
-    row-gap: 0.4rem;
-    font-size: 10pt;
-    color: #2a2419;
-    text-align: left;
-  }
-  .print-page[data-cert-variant="compact"] .cert-meta {
-    margin-top: 0.8rem;
-    padding-top: 0.5rem;
-    font-size: 8.5pt;
-    row-gap: 0.2rem;
-  }
-  .cert-meta-row {
-    display: contents;
-  }
-  .cert-meta-label {
-    font-size: 8.5pt;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: #8a6d3b;
-    font-weight: 700;
-    align-self: baseline;
-  }
-  .cert-meta-value {
-    color: #2a2419;
-    font-family: Georgia, 'Iowan Old Style', serif;
-  }
-  .cert-meta-header {
-    font-style: italic;
-    color: #5a4a30;
-    grid-column: 1 / -1;
-    text-align: center;
-    border-top: 1px dashed #c9a55c;
-    padding-top: 0.4rem;
-    margin-top: 0.2rem;
-  }
-  .cert-signer-line {
-    border-bottom: 1px solid #2a2419;
-    padding-bottom: 1px;
-    min-width: 4cm;
-    display: inline-block;
-  }
-  .cert-signer-empty {
-    color: #8a6d3b;
-    font-style: italic;
-    border-bottom: none;
-  }
-  .cert-body :global(.prose-note),
-  .cert-body :global(.prose-note *) {
-    color: #2a2419 !important;
-  }
-  .cert-body :global(.prose-note h1),
-  .cert-body :global(.prose-note h2) {
-    font-family: 'Iowan Old Style', Georgia, serif !important;
-    color: #2a2419 !important;
-    text-align: center;
-  }
-  .cert-footer {
-    margin-top: 1.5rem;
-    padding-top: 0.8rem;
-  }
-  .cert-footer-row {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 2rem;
-    text-align: left;
-  }
-  .cert-footer-cell {
-    flex: 1;
-    min-width: 0;
-  }
-  .cert-footer-line {
-    border-top: 1px solid #8a6d3b;
-    margin-bottom: 0.25rem;
-    width: 100%;
-    max-width: 6cm;
-  }
-  .cert-footer-label {
-    font-size: 8pt;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: #8a6d3b;
-  }
-  .cert-footer-value {
-    font-size: 11pt;
-    color: #2a2419;
-    margin-top: 0.1rem;
-  }
-  .cert-seal {
-    flex-shrink: 0;
-    /* The seal sits flush-right; its 86px width keeps it from
-       fighting the date column for space on standard A4. */
-  }
-  .cert-provenance {
-    margin-top: 1.2rem;
-    padding-top: 0.6rem;
-    border-top: 0.5pt solid #d4b87a;
-    font-size: 8pt;
-    color: #8a6d3b;
-    text-align: center;
-    font-style: italic;
-    letter-spacing: 0.02em;
-  }
-  .cert-provenance a {
-    color: #8a6d3b;
-    text-decoration: none;
-  }
+  /* (The cert-frame template was removed — the user clarified that
+     "certificate" referred to the trust-stamp signature footer, not
+     a separate template. Signature variants moved to .doc-signature
+     and .doc-signature__compact.) */
 
   .print-header {
     border-bottom: 1px solid #444;
@@ -1317,18 +1097,9 @@
     font-size: 9.5pt;
     color: #555;
   }
-  .print-page[data-mode="certificate"] .print-header {
-    border-bottom: none;
-    margin-bottom: 0;
-  }
   .print-header-text {
     font-weight: 600;
     letter-spacing: 0.02em;
-  }
-  .cert-flourish {
-    font-size: 1.5rem;
-    color: #888;
-    margin-bottom: 0.5rem;
   }
 
   .print-body {
@@ -1346,19 +1117,6 @@
     color: #888;
     margin-bottom: 1.5rem;
   }
-  .cert-title {
-    font-size: 28pt;
-    font-weight: 400;
-    font-style: italic;
-    margin: 1rem 0 0.5rem 0;
-    color: #222;
-  }
-  .cert-rule {
-    height: 1px;
-    background: linear-gradient(to right, transparent, #888, transparent);
-    margin: 0.75rem auto;
-    width: 60%;
-  }
 
   .print-footer {
     border-top: 1px solid #444;
@@ -1369,13 +1127,6 @@
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-  }
-  .print-page[data-mode="certificate"] .print-footer {
-    border-top: none;
-    text-align: center;
-    justify-content: center;
-    margin-top: 2rem;
-    font-style: italic;
   }
   .print-footer-text {
     font-variant-numeric: tabular-nums;
@@ -1460,9 +1211,79 @@
      bottom of the printed page; renders crisply at any zoom
      because the seal is inline SVG. */
   .doc-signature {
-    margin-top: 1.5cm;
+    margin-top: 1cm;
     page-break-inside: avoid;
     break-inside: avoid;
+  }
+  /* Compact trust-stamp: a slim two-line footer. Max-height ~3cm
+     so it sits at the bottom of any A4 page without bumping page
+     content over to a second page. The page-break-inside:avoid on
+     the parent keeps the whole stamp on one page. */
+  .doc-signature__compact {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    border-top: 1.5px solid #5a7088;
+    border-bottom: 1.5px solid #5a7088;
+    background: #f5f8fb;
+    color: #2a3340;
+    font-size: 8.5pt;
+    line-height: 1.35;
+  }
+  .doc-signature__seal-sm {
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+  }
+  .doc-signature__compact-body {
+    flex: 1;
+    min-width: 0;
+  }
+  .doc-signature__compact-headline {
+    font-size: 9pt;
+    color: #1a2a3a;
+    margin-bottom: 0.1rem;
+  }
+  .doc-signature__compact-headline strong {
+    font-weight: 700;
+    color: #2a4a6a;
+  }
+  .doc-signature__compact-signer {
+    font-style: italic;
+    color: #44546a;
+    font-weight: 500;
+  }
+  .doc-signature__compact-meta {
+    font-size: 7.5pt;
+    color: #44546a;
+    display: inline;
+    /* Wraps naturally at narrow widths because each meta span is
+       inline, not flex — so on a tight page the stamp stays on
+       two lines without overflow. */
+  }
+  .doc-signature__compact-meta strong {
+    color: #2a3340;
+    font-weight: 600;
+  }
+  .doc-signature__compact-sep {
+    color: #b9c4d0;
+    margin: 0 0.3rem;
+  }
+  .doc-signature__compact-hash {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 7pt;
+    color: #1a4fb3;
+    word-break: break-all;
+    margin-top: 0.15rem;
+    line-height: 1.3;
+  }
+  .doc-signature__compact-hash span {
+    letter-spacing: 0.02em;
+  }
+  .doc-signature__compact a {
+    color: #1a4fb3;
+    text-decoration: none;
   }
   .doc-signature__inner {
     display: flex;
@@ -1651,39 +1472,30 @@
       height: auto !important;
       overflow: visible !important;
     }
-    /* Why this isolation pattern: SvelteKit wraps everything in
-       <div style="display: contents">%sveltekit.body%</div> in
-       app.html (see /web/src/app.html). The previous rule used
-       `body > *:not(.print-overlay) { display: none }` — but
-       .print-overlay is NOT a direct child of body; it's nested
-       inside the SvelteKit wrapper. So the rule hid the WRAPPER,
-       which hid everything including the print-overlay, and Chrome's
-       print engine fell back to whatever it could render on page 1.
-
-       The visibility-based recipe below works regardless of
-       ancestor structure: hide every descendant of body, then make
-       the overlay + its subtree visible again, then reposition the
-       overlay to the document origin so it doesn't render after
-       the hidden-but-still-laid-out screen content. */
-    :global(body *) { visibility: hidden !important; }
-    :global(.print-overlay), :global(.print-overlay *) {
-      visibility: visible !important;
+    /* Print isolation. The overlay is moved to be a direct child
+       of body when open (see teleport effect in <script>), so we
+       can now reliably hide every other direct body child without
+       worrying about SvelteKit wrappers in between.
+       display:none (not visibility:hidden) because we want the
+       hidden content fully removed from the layout — leaving it as
+       visibility:hidden reserves space and the overlay would render
+       after a long blank stretch. */
+    :global(body > *:not(.print-overlay)) {
+      display: none !important;
     }
-    /* position:absolute (NOT fixed) because position:fixed blocks
-       only render on the first page in print spec, while absolute-
-       positioned subtrees DO paginate in modern Chrome / Firefox.
-       This is the load-bearing line for multi-page output. */
-    .print-overlay {
-      position: absolute !important;
-      left: 0 !important;
-      top: 0 !important;
-      right: 0 !important;
-      width: 100% !important;
+    /* The overlay itself flows normally as a static block child of
+       body. position:static (default) means content paginates the
+       way the browser normally would — every direct block child of
+       the print-page becomes a candidate page-break point. */
+    :global(.print-overlay) {
+      position: static !important;
+      display: block !important;
+      width: auto !important;
       height: auto !important;
       overflow: visible !important;
-      display: block !important;
       background: white !important;
-      z-index: 0 !important;
+      box-shadow: none !important;
+      z-index: auto !important;
     }
     .print-toolbar, .config-panel { display: none !important; }
     .print-page {
@@ -1697,20 +1509,14 @@
       display: block !important;
       overflow: visible !important;
     }
-    /* CRITICAL for multi-page output: every flex / grid container
-       inside the printed page must be reset to plain block layout,
-       and every fixed min-height / max-height removed. Flex chains
-       are what was breaking pagination — a `flex: 1` body inside a
-       `display: flex; min-height: 29.7cm` parent keeps content
-       visually constrained to one viewport-page even when the
-       printer would happily paginate a block.
-       The cert-frame / cert-content / cert-body chain was the
-       worst offender (cert was the user's primary failure mode);
-       all four templates have similar issues. We reset them
-       wholesale. */
-    .cert-frame, .cert-content, .cert-body,
+    /* Reset every flex / grid container in the print tree to block
+       layout, drop fixed heights, and force overflow:visible — flex
+       chains and fixed min-heights were the cause of the multi-page
+       failure (a flex parent doesn't paginate the way a block does
+       in any current browser). */
     .formal-body, .lh-body, .lh-header, .memo-body, .memo-header,
-    .print-body, .doc-signature, .doc-signature__inner {
+    .print-body, .doc-signature, .doc-signature__inner,
+    .doc-signature__compact, .doc-signature__compact-body {
       display: block !important;
       flex: none !important;
       min-height: 0 !important;
@@ -1718,21 +1524,17 @@
       height: auto !important;
       overflow: visible !important;
     }
-    .formal-body, .lh-body, .memo-body, .cert-body, .print-body {
+    /* The compact signature stays visually flexed (seal + body side
+       by side) — but we keep its outer flex on so the layout doesn't
+       collapse to a stacked block. The block-mode reset above is
+       overridden here. */
+    .doc-signature__compact {
+      display: flex !important;
+      flex: none !important;
+    }
+    .formal-body, .lh-body, .memo-body, .print-body {
       max-width: none !important;
       margin: 0 !important;
-    }
-    /* The cert-frame has a decorative border + corner ornaments. In
-       print we keep the border (it renders on every page break,
-       which is fine — actually looks coherent), but we must NOT
-       carry the inset double-border + min-height from screen mode
-       or content can't break. Corners are positioned absolutely so
-       they pin to the first page only — that's accepted; trying to
-       repeat them on every page would require page-counting. */
-    .cert-frame {
-      margin: 0 !important;
-      padding: 1.2cm 1cm !important;
-      box-shadow: inset 0 0 0 1px #fff, inset 0 0 0 2px #d4b87a !important;
     }
     /* Tighten orphan/widow control so a heading's content doesn't
        get stranded at the bottom of one page with its subtext on
