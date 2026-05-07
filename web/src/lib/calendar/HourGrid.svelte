@@ -369,6 +369,7 @@
   interface DragState {
     ev: CalendarEvent;
     pointerId: number;
+    pointerType: string; // 'mouse' | 'touch' | 'pen' — drives threshold
     pickOffsetY: number; // px within the event where the user grabbed
     durationMinutes: number;
     startX: number;
@@ -389,6 +390,7 @@
     drag = {
       ev,
       pointerId: e.pointerId,
+      pointerType: e.pointerType,
       pickOffsetY: e.clientY - rect.top,
       durationMinutes: ev.durationMinutes ?? Math.round(rect.height / (HOUR_PX / 60)),
       startX: e.clientX,
@@ -405,7 +407,12 @@
     if (!innerGridEl) return;
     const dx = e.clientX - drag.startX;
     const dy = e.clientY - drag.startY;
-    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) drag.moved = true;
+    // Higher threshold for touch pointers — finger jitter on a tap
+    // can easily hit 4px without the user intending to drag, which
+    // turned every quick tap into a no-op move. 10px for fingers,
+    // 4px for mouse/pen where pixel precision is honest.
+    const threshold = drag.pointerType === 'touch' ? 10 : 4;
+    if (Math.abs(dx) > threshold || Math.abs(dy) > threshold) drag.moved = true;
 
     const grid = innerGridEl.getBoundingClientRect();
     const yInGrid = e.clientY - grid.top - drag.pickOffsetY;
