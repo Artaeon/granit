@@ -5,6 +5,7 @@
   import GoalEditor from './GoalEditor.svelte';
   import TaskRow from '$lib/components/TaskRow.svelte';
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
+  import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
 
   let { project, onClose, onUpdated, onDeleted }: {
     project: Project;
@@ -151,6 +152,118 @@
 
   let openTasks = $derived(projectTasks.filter((t) => !t.done));
   let doneTasks = $derived(projectTasks.filter((t) => t.done));
+
+  // ── Burn-up: weekly completion buckets for this project ──────────
+  // Same ISO-week scheme as TaskVelocityWidget so a "W19" tally
+  // matches what the dashboard shows. Scoped to projectTasks so
+  // each project's chart only counts its own work.
+  const BURNUP_WEEKS = 8;
+  function weekKey(d: Date): string {
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const day = (t.getUTCDay() + 6) % 7;
+    t.setUTCDate(t.getUTCDate() - day + 3);
+    const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+    const week = 1 + Math.round((t.getTime() - firstThu.getTime()) / (7 * 24 * 60 * 60 * 1000));
+    return `${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+  }
+  function startOfIsoWeek(d: Date): Date {
+    const t = new Date(d);
+    const day = (t.getDay() + 6) % 7;
+    t.setDate(t.getDate() - day);
+    t.setHours(0, 0, 0, 0);
+    return t;
+  }
+  const burnup = $derived.by(() => {
+    const now = new Date();
+    const weekStart = startOfIsoWeek(now);
+    const thisKey = weekKey(now);
+    const order: string[] = [];
+    const labels = new Map<string, string>();
+    for (let i = BURNUP_WEEKS - 1; i >= 0; i--) {
+      const d = new Date(weekStart);
+      d.setDate(d.getDate() - i * 7);
+      const k = weekKey(d);
+      order.push(k);
+      labels.set(k, k === thisKey ? 'Now' : k.split('W')[1]);
+    }
+    const counts = new Map<string, number>();
+    for (const t of doneTasks) {
+      if (!t.completedAt) continue;
+      const d = new Date(t.completedAt);
+      if (Number.isNaN(d.getTime())) continue;
+      const k = weekKey(d);
+      if (!order.includes(k)) continue;
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return order.map((k) => ({
+      label: labels.get(k) ?? k,
+      count: counts.get(k) ?? 0,
+      isThisWeek: k === thisKey
+    }));
+  });
+  const burnupMax = $derived(burnup.reduce((m, b) => Math.max(m, b.count), 0));
+  const burnupTotal = $derived(burnup.reduce((s, b) => s + b.count, 0));
+
+  // ── AI project summary ───────────────────────────────────────────
+  // Fires /chat with a focused prompt that bundles the project's
+  // state — open vs done tasks, linked goals, deadlines context —
+  // and asks for a 3-bullet status summary. Goes through the same
+  // gate as the global chat (Sabbath / consent / redaction / audit)
+  // so this isn't a side-channel that bypasses the AI foundation.
+  let aiSummaryOpen = $state(false);
+  let aiSummary = $state('');
+  let aiSummaryBusy = $state(false);
+  let aiSummaryError = $state('');
+  let aiSummaryAbort: AbortController | null = null;
+
+  async function runAISummary() {
+    if (aiSummaryBusy) return;
+    aiSummaryBusy = true;
+    aiSummaryError = '';
+    aiSummary = '';
+    aiSummaryOpen = true;
+    aiSummaryAbort = new AbortController();
+    // Compose a structured context block the model can reason
+    // over without us having to rely on an aicontext snapshot.
+    // Keep it under ~3KB so token cost stays predictable.
+    const ctx = [
+      `Project: ${project.name}`,
+      project.description ? `Description: ${project.description}` : '',
+      project.next_action ? `Next action: ${project.next_action}` : '',
+      `Tasks: ${openTasks.length} open / ${doneTasks.length} done`,
+      openTasks.length > 0
+        ? `Open tasks:\n${openTasks.slice(0, 15).map((t) => `- ${t.text}${t.dueDate ? ` (due ${t.dueDate})` : ''}`).join('\n')}`
+        : '',
+      linkedGoals.length > 0
+        ? `Linked goals:\n${linkedGoals.map((g) => `- ${g.title}`).join('\n')}`
+        : '',
+      doneTasks.length > 0
+        ? `Recent completions:\n${doneTasks.slice(-8).map((t) => `- ${t.text}`).join('\n')}`
+        : ''
+    ].filter(Boolean).join('\n\n');
+    const userMessage =
+      'Give me a concise status summary of this project. ' +
+      'Use this format:\n' +
+      '- **Where it stands:** one sentence on momentum / blockers\n' +
+      '- **Next move:** one concrete action to keep things moving\n' +
+      '- **Risks:** anything that looks stuck or overdue (or "none" if clean)\n\n' +
+      'Project context:\n\n' + ctx;
+    try {
+      await api.chatStream(
+        [{ role: 'user', content: userMessage }],
+        undefined,
+        {
+          onChunk: (c) => { aiSummary += c; },
+          onError: (err) => { aiSummaryError = err.message; }
+        },
+        aiSummaryAbort.signal
+      );
+    } finally {
+      aiSummaryBusy = false;
+      aiSummaryAbort = null;
+    }
+  }
+  function cancelAISummary() { aiSummaryAbort?.abort(); }
 </script>
 
 <div class="h-full flex flex-col overflow-hidden">
@@ -253,6 +366,67 @@
             style="width: {progressPct}%; background: {colorVar(project.color)}"
           ></div>
         </div>
+
+        {#if burnupTotal > 0}
+          <!-- Burn-up — last 8 weeks of completion velocity for
+               THIS project. Same ISO-week scheme as the dashboard
+               TaskVelocityWidget so a "W19" tally matches across
+               surfaces. Hidden when there's no completion history
+               yet to avoid a row of empty bars. -->
+          <div class="mt-3">
+            <div class="flex items-baseline gap-2 mb-1.5">
+              <span class="text-[10px] uppercase tracking-wider text-dim">8-week burn-up</span>
+              <span class="flex-1"></span>
+              <span class="text-[10px] text-dim font-mono">{burnupTotal} done</span>
+            </div>
+            <div class="flex items-end gap-1 h-10">
+              {#each burnup as b (b.label)}
+                {@const pct = burnupMax === 0 ? 0 : Math.max(2, Math.round((b.count / burnupMax) * 100))}
+                <div class="flex-1 flex flex-col items-center justify-end gap-0.5" title="{b.label}: {b.count}">
+                  <div
+                    class="w-full rounded-t {b.isThisWeek ? 'bg-primary' : 'bg-secondary/40'} transition-all"
+                    style="height: {pct}%"
+                  ></div>
+                  <div class="text-[9px] text-dim font-mono leading-none">{b.label}</div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+      </section>
+
+      <!-- AI summary — fires /chat with a project-context blob and
+           asks for a 3-bullet status. Goes through the same gate
+           as the global chat (Sabbath / consent / redaction /
+           audit). Collapsible so the panel stays out of the way
+           until the user asks for it. -->
+      <section>
+        <div class="flex items-baseline gap-2 mb-1.5">
+          <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">AI summary</h3>
+          {#if aiSummaryBusy}
+            <button onclick={cancelAISummary} class="text-[11px] text-warning hover:underline">cancel</button>
+          {:else if aiSummary}
+            <button
+              onclick={() => { aiSummary = ''; aiSummaryError = ''; aiSummaryOpen = false; }}
+              class="text-[11px] text-dim hover:text-error"
+            >clear</button>
+          {/if}
+          <button
+            onclick={() => void runAISummary()}
+            disabled={aiSummaryBusy || projectTasks.length === 0}
+            class="text-[11px] px-2 py-0.5 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary disabled:opacity-50"
+            title="Ask the AI to summarise this project's state"
+          >{aiSummaryBusy ? '✨ thinking…' : aiSummary ? '✨ regenerate' : '✨ summarise'}</button>
+        </div>
+        {#if aiSummaryError}
+          <div class="text-xs text-error border border-error/30 bg-error/5 rounded px-3 py-2">{aiSummaryError}</div>
+        {:else if aiSummary || aiSummaryBusy}
+          <div class="bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text break-words">
+            <div class="prose prose-sm max-w-none">
+              <MarkdownRenderer body={aiSummary || '_…_'} />
+            </div>
+          </div>
+        {/if}
       </section>
 
       <!-- Description -->
