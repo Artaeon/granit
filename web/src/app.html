@@ -35,6 +35,11 @@
                   ? 'light'
                   : 'dark';
           document.documentElement.setAttribute('data-theme', e);
+          // Palette: set data-palette before paint so the chosen
+          // colorscheme is on screen the very first frame instead
+          // of flashing through the default first.
+          var p = localStorage.getItem('granit.palette');
+          if (p && p !== 'default') document.documentElement.setAttribute('data-palette', p);
           var meta = document.querySelector('meta[name="theme-color"]');
           if (meta) meta.setAttribute('content', e === 'light' ? '#eff1f5' : '#1a1b26');
         } catch (_) {}

@@ -3,7 +3,7 @@
   import { auth } from '$lib/stores/auth';
   import { api, type OpenAIModelOption, type CalendarSource } from '$lib/api';
   import { onWsEvent, wsConnected } from '$lib/ws';
-  import { theme, themeIcon, themeLabel, type Theme } from '$lib/stores/theme';
+  import { theme, palette, themeIcon, themeLabel, PALETTES, type Theme, type Palette } from '$lib/stores/theme';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import RecurringEditor from '$lib/components/RecurringEditor.svelte';
@@ -319,6 +319,37 @@
       </div>
       <p class="text-xs text-dim mt-2 leading-relaxed">
         System follows your OS setting and updates live. Stored in <code class="text-[10px]">localStorage</code>.
+      </p>
+    </section>
+
+    <!-- Palette — applies on top of the dark/light theme axis.
+         Stored as data-palette on <html>; CSS variable overrides
+         in app.css drive the color tokens. -->
+    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Palette</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        {#each PALETTES as p}
+          {@const active = $palette === p.id}
+          <button
+            onclick={() => palette.set(p.id)}
+            class="px-3 py-3 rounded-lg border-2 flex items-center gap-3 text-left
+              {active ? 'border-primary bg-primary/10' : 'border-surface1 bg-mantle hover:border-primary/40'}"
+            title={p.hint}
+          >
+            <span
+              class="w-6 h-6 rounded-full border border-surface1 flex-shrink-0"
+              style="background: {p.swatch};"
+              aria-hidden="true"
+            ></span>
+            <span class="flex flex-col min-w-0">
+              <span class="text-sm font-medium {active ? 'text-primary' : 'text-text'}">{p.label}</span>
+              <span class="text-[10px] text-dim truncate">{p.hint}</span>
+            </span>
+          </button>
+        {/each}
+      </div>
+      <p class="text-xs text-dim mt-2 leading-relaxed">
+        Combines with dark / light mode above — each palette has both variants. Default is the original Tokyo Night / Catppuccin Latte pair.
       </p>
     </section>
 

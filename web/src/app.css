@@ -97,6 +97,185 @@ button.bg-primary, a.bg-primary {
   color-scheme: light;
 }
 
+/* ── Alternate palettes ─────────────────────────────────────────────
+   Picked from well-known terminal / editor palettes so they read
+   familiar to power users. Each palette is dark by default; their
+   light siblings are flagged with [data-theme='light'] selectors
+   below where they differ enough to need it. The data-palette axis
+   sits on <html> alongside data-theme.
+*/
+
+/* Rose Pine — soft, low-saturation, pinks-and-pines. Originally a
+   Vim colorscheme (rose-pine/rose-pine). */
+[data-palette='rose-pine'] {
+  --color-base: #191724;
+  --color-mantle: #1f1d2e;
+  --color-crust: #16141f;
+  --color-surface0: #26233a;
+  --color-surface1: #2a2737;
+  --color-surface2: #393552;
+  --color-text: #e0def4;
+  --color-subtext: #c4a7e7;
+  --color-dim: #6e6a86;
+  --color-primary: #c4a7e7;
+  --color-secondary: #9ccfd8;
+  --color-accent: #ebbcba;
+  --color-success: #31748f;
+  --color-warning: #f6c177;
+  --color-error: #eb6f92;
+  --color-info: #9ccfd8;
+  --color-on-primary: #191724;
+  color-scheme: dark;
+}
+[data-palette='rose-pine'][data-theme='light'] {
+  --color-base: #faf4ed;
+  --color-mantle: #fffaf3;
+  --color-crust: #f2e9e1;
+  --color-surface0: #f4ede8;
+  --color-surface1: #dfdad9;
+  --color-surface2: #cecacd;
+  --color-text: #575279;
+  --color-subtext: #797593;
+  --color-dim: #9893a5;
+  --color-primary: #907aa9;
+  --color-secondary: #56949f;
+  --color-accent: #d7827e;
+  --color-success: #286983;
+  --color-warning: #ea9d34;
+  --color-error: #b4637a;
+  --color-info: #56949f;
+  --color-on-primary: #faf4ed;
+  color-scheme: light;
+}
+
+/* Gruvbox — high-contrast retro palette by morhetz. The light
+   variant uses the documented hard background. */
+[data-palette='gruvbox'] {
+  --color-base: #282828;
+  --color-mantle: #1d2021;
+  --color-crust: #16181a;
+  --color-surface0: #3c3836;
+  --color-surface1: #504945;
+  --color-surface2: #665c54;
+  --color-text: #ebdbb2;
+  --color-subtext: #d5c4a1;
+  --color-dim: #928374;
+  --color-primary: #d3869b;
+  --color-secondary: #83a598;
+  --color-accent: #fe8019;
+  --color-success: #b8bb26;
+  --color-warning: #fabd2f;
+  --color-error: #fb4934;
+  --color-info: #8ec07c;
+  --color-on-primary: #1d2021;
+  color-scheme: dark;
+}
+[data-palette='gruvbox'][data-theme='light'] {
+  --color-base: #fbf1c7;
+  --color-mantle: #f9f5d7;
+  --color-crust: #f2e5bc;
+  --color-surface0: #ebdbb2;
+  --color-surface1: #d5c4a1;
+  --color-surface2: #bdae93;
+  --color-text: #3c3836;
+  --color-subtext: #504945;
+  --color-dim: #7c6f64;
+  --color-primary: #b16286;
+  --color-secondary: #076678;
+  --color-accent: #af3a03;
+  --color-success: #79740e;
+  --color-warning: #b57614;
+  --color-error: #9d0006;
+  --color-info: #427b58;
+  --color-on-primary: #fbf1c7;
+  color-scheme: light;
+}
+
+/* Nord — cool blues and greys, by arcticicestudio. The light
+   variant uses Snow Storm. */
+[data-palette='nord'] {
+  --color-base: #2e3440;
+  --color-mantle: #242933;
+  --color-crust: #1e222a;
+  --color-surface0: #3b4252;
+  --color-surface1: #434c5e;
+  --color-surface2: #4c566a;
+  --color-text: #eceff4;
+  --color-subtext: #d8dee9;
+  --color-dim: #7b8497;
+  --color-primary: #88c0d0;
+  --color-secondary: #81a1c1;
+  --color-accent: #d08770;
+  --color-success: #a3be8c;
+  --color-warning: #ebcb8b;
+  --color-error: #bf616a;
+  --color-info: #5e81ac;
+  --color-on-primary: #2e3440;
+  color-scheme: dark;
+}
+[data-palette='nord'][data-theme='light'] {
+  --color-base: #eceff4;
+  --color-mantle: #e5e9f0;
+  --color-crust: #d8dee9;
+  --color-surface0: #d8dee9;
+  --color-surface1: #c2cad8;
+  --color-surface2: #a8b3c5;
+  --color-text: #2e3440;
+  --color-subtext: #3b4252;
+  --color-dim: #5e6678;
+  --color-primary: #5e81ac;
+  --color-secondary: #81a1c1;
+  --color-accent: #d08770;
+  --color-success: #a3be8c;
+  --color-warning: #b48a3a;
+  --color-error: #bf616a;
+  --color-info: #5e81ac;
+  --color-on-primary: #eceff4;
+  color-scheme: light;
+}
+
+/* Solarized — Ethan Schoonover. The classic editor palette. */
+[data-palette='solarized'] {
+  --color-base: #002b36;
+  --color-mantle: #073642;
+  --color-crust: #001f27;
+  --color-surface0: #073642;
+  --color-surface1: #0e4351;
+  --color-surface2: #2a5b6a;
+  --color-text: #eee8d5;
+  --color-subtext: #93a1a1;
+  --color-dim: #586e75;
+  --color-primary: #b58900;
+  --color-secondary: #268bd2;
+  --color-accent: #cb4b16;
+  --color-success: #859900;
+  --color-warning: #b58900;
+  --color-error: #dc322f;
+  --color-info: #2aa198;
+  --color-on-primary: #002b36;
+  color-scheme: dark;
+}
+[data-palette='solarized'][data-theme='light'] {
+  --color-base: #fdf6e3;
+  --color-mantle: #eee8d5;
+  --color-crust: #d8d2c0;
+  --color-surface0: #eee8d5;
+  --color-surface1: #d8d2c0;
+  --color-surface2: #b8b4a3;
+  --color-text: #586e75;
+  --color-subtext: #657b83;
+  --color-dim: #93a1a1;
+  --color-primary: #b58900;
+  --color-secondary: #268bd2;
+  --color-accent: #cb4b16;
+  --color-success: #859900;
+  --color-warning: #b58900;
+  --color-error: #dc322f;
+  --color-info: #2aa198;
+  --color-on-primary: #fdf6e3;
+  color-scheme: light;
+}
+
 html,
 body {
   height: 100%;
