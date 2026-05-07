@@ -1671,6 +1671,7 @@ export const api = {
     req<{ prefs: AIPreferences }>('/ai/prefs', { method: 'PUT', body: JSON.stringify(p) }),
   getAIAudit: () => req<{ entries: AIAuditEntry[] }>('/ai/audit'),
   clearAIAudit: () => req<void>('/ai/audit', { method: 'DELETE' }),
+  getAIStatus: () => req<AIStatus>('/ai/status'),
   getAISnapshot: () => req<{ snapshot: unknown }>('/ai/snapshot'),
   aiDailyBriefing: (signal?: AbortSignal) =>
     req<{ markdown: string }>('/ai/daily-briefing', { method: 'POST', body: '{}', signal }),
@@ -1837,11 +1838,26 @@ export interface AIAuditEntry {
   timestamp: string;
   feature: string;
   provider?: string;
+  model?: string;
   prompt_size_bytes: number;
   prompt_hash?: string;
   redactions?: { name: string; count: number }[];
   response_size_bytes?: number;
   error?: string;
+}
+export interface AIFeatureStatus {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  source: 'feature' | 'default' | 'global' | string;
+}
+export interface AIStatus {
+  sabbath_active: boolean;
+  global_provider: string;
+  global_model: string;
+  redaction: boolean;
+  default_provider?: string;
+  features: Record<string, AIFeatureStatus>;
 }
 export interface AITriageProposal {
   id: string;

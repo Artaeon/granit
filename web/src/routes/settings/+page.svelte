@@ -240,6 +240,7 @@
     void loadPush();
     void loadPrefs();
     void loadAIPrefs();
+    void loadAIStatus();
     return onWsEvent((ev) => {
       // Watch for ICS file mutations so the calendars list refreshes
       // when an event is created from another tab.
@@ -269,6 +270,7 @@
     timestamp: string;
     feature: string;
     provider?: string;
+    model?: string;
     prompt_size_bytes: number;
     response_size_bytes?: number;
     redactions?: { name: string; count: number }[];
@@ -276,6 +278,20 @@
   }[]>([]);
   let aiSnapshotOpen = $state(false);
   let aiSnapshotJSON = $state('');
+  // /ai/status — what each feature would actually run with right
+  // now. Populates the small pill next to each toggle so the user
+  // sees "via Ollama (llama3.2)" without having to fire a request.
+  let aiStatus = $state<{
+    sabbath_active: boolean;
+    global_provider: string;
+    global_model: string;
+    redaction: boolean;
+    default_provider?: string;
+    features: Record<string, { enabled: boolean; provider: string; model: string; source: string }>;
+  } | null>(null);
+  async function loadAIStatus() {
+    try { aiStatus = await api.getAIStatus(); } catch {}
+  }
 
   async function loadAIPrefs() {
     try {
@@ -298,6 +314,10 @@
     if (!aiPrefs.features[id]) aiPrefs.features[id] = { enabled };
     else aiPrefs.features[id] = { ...aiPrefs.features[id], enabled };
     saveAIPrefs();
+    // Refresh runtime status after a short delay so the resolved
+    // provider/model pill updates without a page reload. Long enough
+    // to let the debounced PUT land first.
+    setTimeout(() => { void loadAIStatus(); }, 600);
   }
   async function loadAIAudit() {
     try {
@@ -816,6 +836,17 @@
       <p class="text-xs text-dim mb-3 leading-relaxed">
         Each feature checks the toggle before doing any work. Prompts are passed through a PII-redaction pass before they leave the device. Every request is recorded to an audit log you can inspect or clear below.
       </p>
+
+      {#if aiStatus?.sabbath_active}
+        <div class="mb-3 px-3 py-2 text-[11px] bg-warning/10 border border-warning/30 rounded text-warning">
+          🕯️ Sabbath mode active — AI requests are paused today. Toggling features here is fine; calls just won't fire until Sabbath ends.
+        </div>
+      {/if}
+      {#if aiStatus}
+        <div class="mb-3 text-[11px] text-dim">
+          Default backend: <span class="text-subtext font-mono">{aiStatus.global_provider} · {aiStatus.global_model}</span>
+        </div>
+      {/if}
       <div class="space-y-2">
         {#each [
           { id: 'daily_briefing',  label: 'Daily briefing',  desc: 'Morning summary: today\'s events + urgent tasks + 1 deadline.' },
@@ -829,6 +860,7 @@
           { id: 'chat',            label: 'Chat (existing)', desc: 'The /chat page. Toggle off to disable entirely.' }
         ] as f}
           {@const cfg = aiPrefs.features[f.id] ?? { enabled: false }}
+          {@const st = aiStatus?.features[f.id]}
           <label class="flex items-start gap-3 py-1.5 cursor-pointer">
             <input
               type="checkbox"
@@ -837,7 +869,19 @@
               class="mt-1 w-4 h-4 accent-primary cursor-pointer"
             />
             <div class="flex-1 min-w-0">
-              <div class="text-sm text-text">{f.label}</div>
+              <div class="flex items-baseline gap-2 flex-wrap">
+                <span class="text-sm text-text">{f.label}</span>
+                {#if cfg.enabled && st}
+                  <!-- Resolved provider+model pill. Tooltip explains
+                       which override path took effect (feature / default /
+                       global) so the user can audit the routing without
+                       reading our config code. -->
+                  <span
+                    class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface1 text-subtext"
+                    title={st.source === 'feature' ? 'Per-feature override' : st.source === 'default' ? 'Prefs default_provider' : 'Global ai_provider from config.json'}
+                  >via {st.provider} · {st.model}</span>
+                {/if}
+              </div>
               <div class="text-[11px] text-dim">{f.desc}</div>
             </div>
           </label>
@@ -884,7 +928,7 @@
                   <div class="flex items-baseline gap-2 flex-wrap">
                     <span class="text-dim">{new Date(e.timestamp).toLocaleString()}</span>
                     <span class="text-text font-semibold">{e.feature}</span>
-                    {#if e.provider}<span class="text-secondary">via {e.provider}</span>{/if}
+                    {#if e.provider}<span class="text-secondary">via {e.provider}{e.model ? ` · ${e.model}` : ''}</span>{/if}
                     <span class="text-dim ml-auto">{e.prompt_size_bytes}B in / {e.response_size_bytes ?? 0}B out</span>
                   </div>
                   {#if e.redactions && e.redactions.length > 0}

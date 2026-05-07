@@ -7,6 +7,8 @@ import (
 	"github.com/artaeon/granit/internal/aiaudit"
 	"github.com/artaeon/granit/internal/aicontext"
 	"github.com/artaeon/granit/internal/aiprefs"
+	"github.com/artaeon/granit/internal/config"
+	"github.com/artaeon/granit/internal/sabbath"
 )
 
 // handleGetAISnapshot returns the current Context Engine snapshot
@@ -65,6 +67,54 @@ func (s *Server) handleGetAIAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"entries": entries})
+}
+
+// handleGetAIStatus surfaces the runtime view of every AI feature so
+// the user can see — without firing a request — exactly which provider
+// + model granit will route a given feature to. Settings shows this
+// next to each toggle so "Daily briefing" and "Inbox triage" can be
+// pointed at different backends and the user can confirm.
+//
+// The response also includes Sabbath state (every AI feature is
+// short-circuited during Sabbath) and the file-global provider so
+// the UI can flag "uses fallback provider".
+func (s *Server) handleGetAIStatus(w http.ResponseWriter, r *http.Request) {
+	prefs, _ := aiprefs.Load(s.cfg.Vault.Root)
+	cfgFile := config.LoadForVault(s.cfg.Vault.Root)
+	type featureStatus struct {
+		Enabled  bool   `json:"enabled"`
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+		// Source describes where Provider came from — "feature" if
+		// the user set a per-feature override, "default" if the
+		// prefs DefaultProvider applied, "global" if we fell all the
+		// way back to ai_provider in config.json.
+		Source string `json:"source"`
+	}
+	features := make(map[string]featureStatus, len(prefs.Features))
+	for fid, fc := range prefs.Features {
+		resolved := resolveLLMConfig(s.cfg.Vault.Root, fc.Provider, prefs.DefaultProvider)
+		source := "global"
+		if fc.Provider != "" {
+			source = "feature"
+		} else if prefs.DefaultProvider != "" {
+			source = "default"
+		}
+		features[string(fid)] = featureStatus{
+			Enabled:  fc.Enabled,
+			Provider: resolved.AIProvider,
+			Model:    effectiveModel(resolved),
+			Source:   source,
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"sabbath_active":   sabbath.IsActiveToday(s.cfg.Vault.Root),
+		"global_provider":  cfgFile.AIProvider,
+		"global_model":     effectiveModel(cfgFile),
+		"redaction":        prefs.RedactionEnabled,
+		"default_provider": prefs.DefaultProvider,
+		"features":         features,
+	})
 }
 
 // handleClearAIAudit deletes the audit log file. The GDPR right-

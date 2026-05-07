@@ -484,12 +484,13 @@ func (s *Server) Handler() http.Handler {
 		// agents) can silently skip work during the day of rest.
 		r.Get("/api/v1/sabbath", s.handleGetSabbath)
 		r.Put("/api/v1/sabbath", s.handlePutSabbath)
-		// AI foundation: snapshot, prefs, audit log.
+		// AI foundation: snapshot, prefs, audit log, runtime status.
 		r.Get("/api/v1/ai/snapshot", s.handleGetAISnapshot)
 		r.Get("/api/v1/ai/prefs", s.handleGetAIPrefs)
 		r.Put("/api/v1/ai/prefs", s.handlePutAIPrefs)
 		r.Get("/api/v1/ai/audit", s.handleGetAIAudit)
 		r.Delete("/api/v1/ai/audit", s.handleClearAIAudit)
+		r.Get("/api/v1/ai/status", s.handleGetAIStatus)
 		// AI features (Tier 1). Each runs through the same
 		// pipeline: consent check → snapshot → redact → chat → audit.
 		r.Post("/api/v1/ai/daily-briefing", s.handleAIDailyBriefing)
