@@ -13,6 +13,7 @@
   import { snippetComplete } from './snippets';
   import { tagComplete } from './tags';
   import { markdownShortcuts, smartPaste } from './markdown-shortcuts';
+  import { imagePasteAndDrop } from './image-upload';
   import { autolinkComplete } from './autolink';
   import { extractToNoteKeymap, type ExtractRequest } from './extract-note';
   import { askAIKeymap, type AskAIRequest } from './ask-ai';
@@ -133,6 +134,11 @@
             }
           }
         ]),
+        // Image paste/drop registered BEFORE smartPaste — image
+        // clipboards never carry text/plain so the two never compete,
+        // but ordering matters in case the OS clipboard contains both
+        // (some screenshot tools include a text fallback).
+        imagePasteAndDrop,
         // Smart paste: URL-while-selected → markdown link. Falls
         // through to default paste otherwise.
         smartPaste,

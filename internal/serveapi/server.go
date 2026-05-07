@@ -422,6 +422,9 @@ func (s *Server) Handler() http.Handler {
 		// to inline images via `![[image.png]]`. Markdown files have
 		// their own JSON endpoint and are refused here.
 		r.Get("/api/v1/files/*", s.handleGetFile)
+		// Multipart upload — used by the editor's paste-image and
+		// drop-file handlers. Files land under attachments/YYYY/MM/.
+		r.Post("/api/v1/upload", s.handleUpload)
 
 		// Recurring tasks — same .granit/recurring.json file the TUI's
 		// recurringtasks overlay edits. Server fires due rules at
