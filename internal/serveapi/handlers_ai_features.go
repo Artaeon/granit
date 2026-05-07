@@ -220,3 +220,98 @@ func (s *Server) handleAIInboxTriage(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"proposals": proposals})
 }
+
+// ─── Deadline Detect ──────────────────────────────────────────────
+//
+// Sister feature to inbox-triage. Triage proposes "this_week / next_week"
+// scheduling buckets; deadline-detect goes a step further and proposes a
+// HARD due_date for tasks whose title or note carries a clear deadline
+// signal ("by Friday", "before launch", "submit by 2026-06-01"). Tasks
+// without a clear signal return no_signal so the user isn't pressured
+// into committing to an artificial date.
+
+const deadlineDetectSystemPrompt = `You will receive a JSON list of open tasks that have NO due_date set.
+For EACH task, decide whether the title (or context if shown) implies a clear deadline.
+Return a JSON array (NOT prose) of proposals:
+[{"id": "<task id>", "due_date": "YYYY-MM-DD" | "", "rationale": "..."}]
+Rules:
+  - Use today's date "%s" as the reference for relative phrases (e.g. "Friday", "next week").
+  - "due_date": "" means NO clear signal — do not invent dates. Honest "no signal" is better than guessing.
+  - Strong signals: explicit dates, "by/before/until <day>", deadline-shaped verbs ("submit", "file", "renew").
+  - Weak signals (e.g. "soon", "asap"): leave due_date blank.
+  - Rationale: under 12 words, name the phrase that triggered the date.
+Be conservative. The user trusts proposals; spurious dates erode that trust.`
+
+type deadlineProposal struct {
+	ID        string `json:"id"`
+	DueDate   string `json:"due_date"`
+	Rationale string `json:"rationale"`
+}
+
+func (s *Server) handleAIDeadlineDetect(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.TaskStore == nil {
+		writeError(w, http.StatusInternalServerError, "task store not configured")
+		return
+	}
+	all := s.cfg.TaskStore.All()
+	type seed struct {
+		ID       string   `json:"id"`
+		Title    string   `json:"title"`
+		Priority int      `json:"priority,omitempty"`
+		Tags     []string `json:"tags,omitempty"`
+		NotePath string   `json:"note_path,omitempty"`
+	}
+	seeds := make([]seed, 0)
+	for _, t := range all {
+		if t.Done || t.DueDate != "" {
+			continue
+		}
+		seeds = append(seeds, seed{
+			ID: t.ID, Title: t.Text, Priority: t.Priority,
+			Tags: t.Tags, NotePath: t.NotePath,
+		})
+		if len(seeds) >= 30 {
+			break
+		}
+	}
+	if len(seeds) == 0 {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"proposals": []deadlineProposal{}})
+		return
+	}
+	body, _ := json.Marshal(seeds)
+	today := time.Now().Format("2006-01-02")
+	out, err := s.runAIFeature(r.Context(), aiprefs.FeatureDeadlineDetect,
+		fmt.Sprintf(deadlineDetectSystemPrompt, today),
+		"Open tasks without due dates:\n\n```json\n"+string(body)+"\n```")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	cleaned := strings.TrimSpace(out)
+	if strings.HasPrefix(cleaned, "```") {
+		cleaned = strings.TrimPrefix(cleaned, "```json")
+		cleaned = strings.TrimPrefix(cleaned, "```")
+		cleaned = strings.TrimSuffix(cleaned, "```")
+		cleaned = strings.TrimSpace(cleaned)
+	}
+	var proposals []deadlineProposal
+	if err := json.Unmarshal([]byte(cleaned), &proposals); err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"proposals": []deadlineProposal{},
+			"raw":       out,
+			"warning":   "Model didn't return parseable JSON; showing raw response.",
+		})
+		return
+	}
+	// Filter out blanks before returning so the UI doesn't render a
+	// dozen "no signal" rows. The model is told to leave blanks for
+	// no-signal cases — we honor that here rather than UI-side.
+	kept := proposals[:0]
+	for _, p := range proposals {
+		if p.DueDate == "" {
+			continue
+		}
+		kept = append(kept, p)
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"proposals": kept})
+}

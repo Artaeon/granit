@@ -157,6 +157,46 @@
     aiTriageProposals = aiTriageProposals.filter((p) => p.id !== id);
   }
 
+  // AI deadline-detect — sister feature to triage. Scans every open
+  // task with no due_date and proposes one (or stays silent) based on
+  // title/note context. Lower-pressure than triage: blanks are
+  // filtered server-side so the UI only shows confident proposals.
+  let aiDeadlineBusy = $state(false);
+  let aiDeadlineProposals = $state<{ id: string; due_date: string; rationale: string }[]>([]);
+  async function runAIDeadlineDetect() {
+    aiDeadlineBusy = true;
+    try {
+      const r = await api.aiDeadlineDetect();
+      aiDeadlineProposals = r.proposals ?? [];
+      if ((r.proposals?.length ?? 0) === 0) {
+        if (r.warning) toast.warning(r.warning);
+        else toast.info('No clear deadlines detected.');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(/disabled in AI preferences/i.test(msg)
+        ? 'Enable "Deadline detect" in Settings → AI features first.'
+        : 'Detect failed: ' + msg);
+    } finally {
+      aiDeadlineBusy = false;
+    }
+  }
+  function skipDeadlineProposal(id: string) {
+    aiDeadlineProposals = aiDeadlineProposals.filter((p) => p.id !== id);
+  }
+  async function applyDeadlineProposal(p: { id: string; due_date: string }) {
+    aiDeadlineBusy = true;
+    try {
+      await api.patchTask(p.id, { dueDate: p.due_date });
+      aiDeadlineProposals = aiDeadlineProposals.filter((x) => x.id !== p.id);
+      await load();
+    } catch (err) {
+      toast.error('Apply failed: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      aiDeadlineBusy = false;
+    }
+  }
+
   // Apply a proposal: patch priority + (when applicable) compute a
   // dueDate from the schedule keyword. "drop" sets done = true.
   // Move triage state out of "inbox" so the same task doesn't keep
@@ -1294,7 +1334,48 @@
               class="px-3 py-1.5 text-xs bg-secondary/15 text-secondary rounded hover:bg-secondary/25 disabled:opacity-50 flex-shrink-0"
               title="Ask AI to suggest priority + schedule for each untriaged task"
             >{aiTriageBusy ? '✨ thinking…' : '✨ AI triage'}</button>
+            <button
+              onclick={() => void runAIDeadlineDetect()}
+              disabled={aiDeadlineBusy}
+              class="px-3 py-1.5 text-xs bg-secondary/15 text-secondary rounded hover:bg-secondary/25 disabled:opacity-50 flex-shrink-0"
+              title="Scan all open tasks without a due date — propose ones whose title implies a clear deadline"
+            >{aiDeadlineBusy ? '✨ thinking…' : '✨ Detect deadlines'}</button>
           </div>
+
+          {#if aiDeadlineProposals.length > 0}
+            <!-- Deadline proposals — operates across ALL open tasks
+                 without a due_date, not just inbox. Server already
+                 filtered out blanks, so every row is a confident
+                 suggestion. Apply patches dueDate; skip just dismisses. -->
+            <div class="mb-5 p-3 bg-warning/5 border border-warning/30 rounded">
+              <div class="text-xs uppercase tracking-wider text-warning font-semibold mb-2">Detected deadlines ({aiDeadlineProposals.length})</div>
+              <ul class="space-y-2">
+                {#each aiDeadlineProposals as p (p.id)}
+                  {@const t = tasks.find((x) => x.id === p.id)}
+                  {#if t}
+                    <li class="flex items-start gap-2 text-xs">
+                      <div class="flex-1 min-w-0">
+                        <div class="text-text">{t.text}</div>
+                        <div class="text-dim mt-0.5">
+                          due <span class="text-warning font-medium">{p.due_date}</span>
+                          {#if p.rationale}<span class="italic"> — {p.rationale}</span>{/if}
+                        </div>
+                      </div>
+                      <button
+                        onclick={() => void applyDeadlineProposal(p)}
+                        disabled={aiDeadlineBusy}
+                        class="px-2 py-0.5 bg-success/15 text-success rounded hover:bg-success/25"
+                      >accept</button>
+                      <button
+                        onclick={() => skipDeadlineProposal(p.id)}
+                        class="px-2 py-0.5 text-dim hover:text-text"
+                      >skip</button>
+                    </li>
+                  {/if}
+                {/each}
+              </ul>
+            </div>
+          {/if}
 
           {#if aiTriageProposals.length > 0}
             <!-- AI suggestions panel. Each proposal has Accept /

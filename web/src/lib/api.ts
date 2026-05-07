@@ -1681,6 +1681,11 @@ export const api = {
       '/ai/inbox-triage',
       { method: 'POST', body: '{}' }
     ),
+  aiDeadlineDetect: () =>
+    req<{ proposals: AIDeadlineProposal[]; raw?: string; warning?: string }>(
+      '/ai/deadline-detect',
+      { method: 'POST', body: '{}' }
+    ),
 
   // Notification preferences — per-category toggles, quiet
   // hours, defaults. Stored at .granit/notifications.json.
@@ -1842,6 +1847,11 @@ export interface AITriageProposal {
   id: string;
   priority: number;
   schedule: 'today' | 'tomorrow' | 'this_week' | 'next_week' | 'no_date' | string;
+  rationale: string;
+}
+export interface AIDeadlineProposal {
+  id: string;
+  due_date: string;
   rationale: string;
 }
 

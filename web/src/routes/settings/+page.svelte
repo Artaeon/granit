@@ -821,6 +821,7 @@
           { id: 'daily_briefing',  label: 'Daily briefing',  desc: 'Morning summary: today\'s events + urgent tasks + 1 deadline.' },
           { id: 'weekly_review',   label: 'Weekly review',   desc: 'Friday/Sunday: drafts a Wins / Setbacks / Learned / Next-week review.' },
           { id: 'inbox_triage',    label: 'Inbox triage',    desc: 'Suggests priority + schedule for untriaged tasks.' },
+          { id: 'deadline_detect', label: 'Deadline detect', desc: 'Reads open tasks without due dates and proposes one when the title carries a clear deadline signal.' },
           { id: 'summarise',       label: 'Summarise (existing)',  desc: 'In-editor "summarise selection / whole note" — already shipping.' },
           { id: 'extract_tasks',   label: 'Extract tasks (existing)', desc: 'In-editor "extract tasks from this note" — already shipping.' },
           { id: 'suggest_tags',    label: 'Suggest tags (existing)', desc: 'In-editor "suggest tags for this note" — already shipping.' },
