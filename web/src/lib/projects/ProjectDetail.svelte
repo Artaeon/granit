@@ -153,6 +153,50 @@
   let openTasks = $derived(projectTasks.filter((t) => !t.done));
   let doneTasks = $derived(projectTasks.filter((t) => t.done));
 
+  // ── This-week schedule strip ─────────────────────────────────────
+  // 7-cell mini-calendar (Mon-Sun) showing how many of this
+  // project's tasks are scheduled on each day of the current
+  // week. Density bar height keys off the busiest day so a
+  // light week and a heavy week both render readably. Cells are
+  // clickable links into the calendar at that day, so a user
+  // can hop straight from "this project has 3 tasks Wednesday"
+  // to the day view.
+  function startOfThisWeekMonday(): Date {
+    const d = new Date();
+    const dow = (d.getDay() + 6) % 7; // 0 = Monday
+    d.setDate(d.getDate() - dow);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  function ymd(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  const weekSchedule = $derived.by(() => {
+    const start = startOfThisWeekMonday();
+    const today = ymd(new Date());
+    const days: { date: string; label: string; count: number; isToday: boolean }[] = [];
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      days.push({
+        date: ymd(d),
+        label: labels[i],
+        count: 0,
+        isToday: ymd(d) === today
+      });
+    }
+    for (const t of projectTasks) {
+      if (t.done || !t.scheduledStart) continue;
+      const day = t.scheduledStart.slice(0, 10);
+      const cell = days.find((x) => x.date === day);
+      if (cell) cell.count++;
+    }
+    return days;
+  });
+  const weekScheduleMax = $derived(weekSchedule.reduce((m, d) => Math.max(m, d.count), 0));
+  const weekScheduleTotal = $derived(weekSchedule.reduce((s, d) => s + d.count, 0));
+
   // Per-goal task tallies — for the linked-goals section, surface
   // not just milestone progress but actual task velocity so the
   // user sees which goal is being actively worked on. Project
@@ -411,6 +455,40 @@
           </div>
         {/if}
       </section>
+
+      {#if weekScheduleTotal > 0}
+        <!-- This-week schedule strip — Mon-Sun cells showing how
+             many of this project's tasks are scheduled per day,
+             with each cell clickable into the calendar at that
+             day. Hidden when nothing's scheduled this week so a
+             quiet project doesn't show empty bars. The strip
+             complements the burn-up: burn-up is "what we did
+             over the last 8 weeks", schedule is "what's queued
+             for the next few days." -->
+        <section>
+          <div class="flex items-baseline gap-2 mb-2">
+            <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">This week's schedule</h3>
+            <span class="text-[11px] text-dim font-mono">{weekScheduleTotal} task{weekScheduleTotal === 1 ? '' : 's'}</span>
+            <a href="/calendar" class="text-[11px] text-secondary hover:underline">/calendar →</a>
+          </div>
+          <div class="flex items-end gap-1 h-12">
+            {#each weekSchedule as d (d.date)}
+              {@const pct = weekScheduleMax === 0 ? 0 : Math.max(2, Math.round((d.count / weekScheduleMax) * 100))}
+              <a
+                href="/calendar?date={d.date}"
+                class="flex-1 flex flex-col items-center justify-end gap-0.5 hover:opacity-80 transition-opacity"
+                title="{d.label} {d.date}: {d.count} scheduled"
+              >
+                <div
+                  class="w-full rounded-t {d.isToday ? 'bg-primary' : 'bg-secondary/40'} transition-all"
+                  style="height: {pct}%"
+                ></div>
+                <div class="text-[9px] {d.isToday ? 'text-primary' : 'text-dim'} font-mono leading-none">{d.label}</div>
+              </a>
+            {/each}
+          </div>
+        </section>
+      {/if}
 
       <!-- AI summary — fires /chat with a project-context blob and
            asks for a 3-bullet status. Goes through the same gate
