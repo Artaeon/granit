@@ -439,6 +439,30 @@
     return out;
   });
 
+  // At-a-glance stats over the unfiltered open task list. Surfaced
+  // as small chips above the list so the user always knows the
+  // overall load — even when a filter is hiding most of it. Numbers
+  // are debounced through $derived so they don't flicker mid-edit.
+  let stats = $derived.by(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    let open = 0, overdue = 0, todayCount = 0, doneToday = 0, snoozed = 0;
+    for (const t of tasks) {
+      const sn = isSnoozed(t);
+      if (!t.done) {
+        open++;
+        if (sn) snoozed++;
+        else {
+          const d = t.dueDate ?? (t.scheduledStart ? t.scheduledStart.slice(0, 10) : '');
+          if (d && d < today) overdue++;
+          else if (d === today) todayCount++;
+        }
+      } else if (t.completedAt && t.completedAt.slice(0, 10) === today) {
+        doneToday++;
+      }
+    }
+    return { open, overdue, todayCount, doneToday, snoozed };
+  });
+
   type ListGroup = { key: string; label: string; tasks: Task[]; deepLink?: string };
   let listGroups = $derived.by((): ListGroup[] => {
     if (groupBy === 'due') {
@@ -800,9 +824,37 @@
     </header>
 
     {#if view === 'list' || view === 'kanban'}
-      <div class="px-3 py-2 border-b border-surface1 flex items-center gap-2 text-xs text-dim flex-shrink-0">
+      <!-- Stats summary chips. Always reflect the unfiltered set so
+           the user knows total load even with active filters. The
+           overdue / today chips have urgency coloring; doneToday is
+           a positive-tone affirmation; snoozed is muted. -->
+      <div class="px-3 py-2 border-b border-surface1 flex items-center gap-1.5 text-xs flex-shrink-0 flex-wrap">
+        <span class="px-2 py-1 rounded bg-surface0 text-subtext font-mono tabular-nums">
+          <span class="text-text font-semibold">{stats.open}</span> open
+        </span>
+        {#if stats.overdue > 0}
+          <span class="px-2 py-1 rounded bg-error/15 text-error font-mono tabular-nums" title="Tasks past their due date">
+            <span class="font-semibold">{stats.overdue}</span> overdue
+          </span>
+        {/if}
+        {#if stats.todayCount > 0}
+          <span class="px-2 py-1 rounded bg-warning/15 text-warning font-mono tabular-nums" title="Tasks due today">
+            <span class="font-semibold">{stats.todayCount}</span> today
+          </span>
+        {/if}
+        {#if stats.doneToday > 0}
+          <span class="px-2 py-1 rounded bg-success/15 text-success font-mono tabular-nums" title="Completed today">
+            ✓ <span class="font-semibold">{stats.doneToday}</span>
+          </span>
+        {/if}
+        {#if stats.snoozed > 0}
+          <span class="px-2 py-1 rounded bg-surface0 text-dim font-mono tabular-nums" title="Currently snoozed">
+            💤 {stats.snoozed}
+          </span>
+        {/if}
+        <span class="flex-1"></span>
         {#if view === 'list'}
-          <span>group</span>
+          <span class="text-dim">group</span>
           <select bind:value={groupBy} class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text">
             <option value="due">due date</option>
             <option value="priority">priority</option>
@@ -813,7 +865,7 @@
             <option value="note">note</option>
           </select>
         {:else}
-          <span>columns</span>
+          <span class="text-dim">columns</span>
           <select bind:value={kanbanMode} class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text">
             <option value="priority">priority</option>
             <option value="due">due</option>
