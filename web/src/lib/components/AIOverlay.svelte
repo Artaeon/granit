@@ -48,23 +48,21 @@
   // Note-aware chat. When the overlay opens on a /notes/<path>
   // page, we offer to attach that note as context to the chat
   // request (chatStream's notePath parameter — server expands it
-  // into the system prompt). Default ON when on a note page so the
-  // common case "ask about THIS note" works without a toggle dance,
-  // but the user can disable per-session if the note is huge or
-  // off-topic.
+  // into the system prompt). Default ON when opening on a note
+  // page; once opened the user owns the toggle, so manual changes
+  // stick. We deliberately don't drive this from a $effect because
+  // attachNote being a dependency of its own auto-enable causes
+  // the toggle to immediately re-enable when the user un-checks it
+  // (the effect re-fires the moment attachNote flips false). The
+  // open-transition is the right moment to make the call.
   let attachNote = $state(false);
-  // $derived view of the current path so attachNote doesn't get
-  // stale across navigation while the overlay sits closed.
+  // $derived view of the current path so the chip + outgoing
+  // chatStream call always reflect the page the user is on, even
+  // if they navigate while the overlay is open.
   const currentNotePath = $derived.by(() => {
     const p = $page.url.pathname;
     if (!p.startsWith('/notes/')) return '';
     return decodeURIComponent(p.slice('/notes/'.length));
-  });
-  // Auto-enable attach when opening on a note. We deliberately
-  // DON'T auto-disable when navigating away with the overlay open
-  // — the user might be referencing a note they just left.
-  $effect(() => {
-    if (open && currentNotePath && !attachNote) attachNote = true;
   });
 
   function close() {
@@ -74,6 +72,11 @@
   function toggle() {
     open = !open;
     if (open) {
+      // Auto-enable note-attach on open if we're on a note page —
+      // common case is "ask about THIS note." The user can still
+      // un-check it; their choice now sticks because we only run
+      // this on the open-transition, not on a reactive cycle.
+      if (currentNotePath) attachNote = true;
       void loadStatus();
       tick().then(() => inputEl?.focus());
     }
