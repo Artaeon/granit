@@ -4,6 +4,7 @@
   import { api, type HabitInfo, type HabitsResponse, type Virtue } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import Heatmap from '$lib/components/Heatmap.svelte';
 
   // /habits — three view modes for the same data:
   //   • Today: large quick-tick cards, the morning/evening rhythm view
@@ -12,7 +13,7 @@
   // Sort + insight (best day of week) work across all three views so
   // the user's preference sticks regardless of which lens they pick.
 
-  type View = 'today' | 'week' | 'list';
+  type View = 'today' | 'week' | 'list' | 'heatmap';
   type Sort = 'streak' | 'completion' | 'alpha' | 'behind';
 
   // Persist per-device so a user who lives in Week view doesn't have
@@ -267,7 +268,8 @@
           {#each [
             { v: 'today', label: 'Today' },
             { v: 'week', label: 'Week' },
-            { v: 'list', label: 'List' }
+            { v: 'list', label: 'List' },
+            { v: 'heatmap', label: 'Heatmap' }
           ] as o}
             <button
               type="button"
@@ -504,6 +506,32 @@
               {/each}
             </div>
             <p class="text-[11px] text-dim mt-2">click any past day to mark / unmark — server updates that day's daily note</p>
+          </article>
+        {/each}
+      </div>
+    {:else if data && view === 'heatmap'}
+      <!-- Year-at-a-glance per habit. The Heatmap component handles
+           layout + tooltips; we just feed it {date, value} pairs.
+           value = 1 when done, 0 otherwise — binary maxes the
+           color scale at the brightest tone, which reads as a
+           clean "completed" green. -->
+      <div class="space-y-6">
+        {#each sortedHabits as h (h.name)}
+          <article class="bg-surface0 border border-surface1 rounded-lg p-4">
+            <header class="flex items-baseline gap-2 mb-3">
+              <h3 class="text-sm font-medium text-text">{h.name}</h3>
+              <span class="text-[11px] text-dim font-mono tabular-nums">
+                {h.currentStreak}d streak · best {h.longestStreak}d
+              </span>
+              <span class="text-[11px] text-dim font-mono tabular-nums ml-auto">
+                {h.last30Pct}% / 30d
+              </span>
+            </header>
+            <Heatmap
+              cells={h.days.map((d) => ({ date: d.date, value: d.done ? 1 : 0 }))}
+              maxValue={1}
+              legendLabels={['none', '', '', '', 'done']}
+            />
           </article>
         {/each}
       </div>

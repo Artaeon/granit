@@ -5,6 +5,7 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import Heatmap from '$lib/components/Heatmap.svelte';
 
   // /virtues — character formation tracker. The "kingdom in me"
   // dimension that complements the project / venture / goal
@@ -637,6 +638,29 @@
               </div>
 
               {#if isExpanded && (v.checks?.length ?? 0) > 0}
+                <!-- Year heatmap. Virtue checks are weekly, so we
+                     paint each week's 7 days with the same score —
+                     gives the visual a familiar habit-grid feel
+                     without inventing fake daily resolution. -->
+                <div class="mt-3 pt-3 border-t border-surface1">
+                  <Heatmap
+                    cells={(v.checks ?? []).flatMap((c) => {
+                      const start = new Date(c.week_start);
+                      const out = [];
+                      for (let d = 0; d < 7; d++) {
+                        const dt = new Date(start);
+                        dt.setDate(start.getDate() + d);
+                        out.push({
+                          date: `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`,
+                          value: c.score
+                        });
+                      }
+                      return out;
+                    })}
+                    maxValue={5}
+                    legendLabels={['1', '2', '3', '4', '5']}
+                  />
+                </div>
                 <ul class="mt-3 pt-3 border-t border-surface1 space-y-1.5">
                   {#each v.checks ?? [] as c (c.week_start)}
                     {@const tone = scoreTone(c.score)}
