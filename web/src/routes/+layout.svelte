@@ -111,6 +111,7 @@
       label: 'Knowledge',
       items: [
         { href: '/notes', label: 'Notes', icon: 'notes' },
+        { href: '/search', label: 'Search', icon: 'search' },
         { href: '/objects', label: 'Objects', icon: 'objects', moduleId: 'objects' },
         { href: '/tags', label: 'Tags', icon: 'tags' }
       ]

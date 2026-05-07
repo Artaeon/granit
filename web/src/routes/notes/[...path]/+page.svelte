@@ -193,6 +193,17 @@
           editor?.setScrollTop?.(remembered);
         });
       }
+      // ?line=<n> — incoming jump from /search. Wins over remembered
+      // scroll position so a user clicking a search hit lands on the
+      // matched line, not yesterday's reading position. We let the
+      // editor mount fully before dispatching the scroll.
+      const lineParam = $page.url.searchParams.get('line');
+      if (lineParam) {
+        const ln = parseInt(lineParam, 10);
+        if (Number.isFinite(ln) && ln > 0) {
+          requestAnimationFrame(() => editor?.scrollToLine?.(ln));
+        }
+      }
       // Block-level wikilink target — when arriving via [[Note#H]] the
       // url hash carries the heading text. Scroll to the matching
       // line, overriding any remembered scroll position. Only fires
@@ -433,6 +444,25 @@
   function dismissAskAI() {
     askAIRequest?.cancel();
     askAIRequest = null;
+  }
+
+  // Whole-note AI action: opens the AskAIDialog with the entire body
+  // pre-filled as the selection, so the user gets summary / extract-
+  // tasks / suggest-tags / outline / etc. against the whole note
+  // without having to select-all first. The replace/insertAfter
+  // callbacks splice into the document at the start (replace = whole
+  // body) or after the end (insertAfter = append). The user picks
+  // the apply mode in the dialog.
+  function askAIWholeNote() {
+    askAIRequest = {
+      text: body,
+      replace: (replacement: string) => { body = replacement; dirty = true; },
+      insertAfter: (addition: string) => {
+        body = body.replace(/\n*$/, '') + '\n\n' + addition + '\n';
+        dirty = true;
+      },
+      cancel: () => {}
+    };
   }
 
   // Global "?" handler — opens the shortcuts cheat sheet from
@@ -946,6 +976,23 @@
             <path d="M6 9V4h12v5"/>
             <rect x="6" y="14" width="12" height="6" rx="1"/>
             <path d="M6 17H4a2 2 0 01-2-2v-3a2 2 0 012-2h16a2 2 0 012 2v3a2 2 0 01-2 2h-2"/>
+          </svg>
+        </button>
+        <!-- Whole-note AI. Opens the AskAIDialog with the entire
+             body pre-filled, so the user can summarise / extract
+             tasks / suggest tags / outline against the whole note
+             without selecting first. The dialog still supports the
+             selection-based shortcut (Mod-Shift-A) — this is just
+             the no-selection entry point. -->
+        <button
+          onclick={askAIWholeNote}
+          title="Ask AI about this note"
+          aria-label="Ask AI about this note"
+          class="hidden sm:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+        >
+          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" stroke-linejoin="round"/>
+            <path d="M19 14l.7 2.1L22 17l-2.3.9L19 20l-.7-2.1L16 17l2.3-.9L19 14z" stroke-linejoin="round"/>
           </svg>
         </button>
         <!-- Focus mode (Mod-Shift-Z) — hides the tree + info panel

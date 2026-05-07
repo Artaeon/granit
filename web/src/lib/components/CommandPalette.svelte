@@ -151,6 +151,19 @@
         else show('notes');
         return;
       }
+      // Mod-Shift-F → full-text search. Quick-switcher is title-only
+      // (Mod-P), this navigates to the dedicated /search page where
+      // hits include line + snippet preview. Skip when typing into
+      // an input/textarea so the user can still type 'F' or use
+      // the browser's Cmd-Shift-F if they want it.
+      if (meta && e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+        const el = document.activeElement as HTMLElement | null;
+        const tag = el?.tagName?.toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || el?.isContentEditable) return;
+        e.preventDefault();
+        void goto('/search');
+        return;
+      }
       if (!open) return;
       if (e.key === 'Escape') {
         e.preventDefault();
