@@ -233,7 +233,14 @@ func (l *openAILLM) Chat(ctx context.Context, messages []ChatMessage) (string, e
 type ollamaLLM struct {
 	url   string
 	model string
+	// lastUsage tracks the token count from the most recent Chat
+	// call. Same single-writer pattern as openAILLM. Ollama doesn't
+	// bill — we capture this so the audit log can surface a
+	// consistent "tokens consumed" view across providers.
+	lastUsage Usage
 }
+
+func (l *ollamaLLM) LastUsage() Usage { return l.lastUsage }
 
 func (l *ollamaLLM) Complete(ctx context.Context, prompt string) (string, error) {
 	body, _ := json.Marshal(map[string]any{
@@ -302,9 +309,21 @@ func (l *ollamaLLM) Chat(ctx context.Context, messages []ChatMessage) (string, e
 		Message struct {
 			Content string `json:"content"`
 		} `json:"message"`
+		// Ollama returns prompt_eval_count + eval_count for token
+		// counts. They're not always present (older versions, some
+		// model loaders) — zero values just mean "not reported"
+		// rather than "zero tokens." Cost path treats Model=ollama
+		// as free regardless.
+		PromptEvalCount int `json:"prompt_eval_count"`
+		EvalCount       int `json:"eval_count"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return "", fmt.Errorf("ollama: parse: %w", err)
+	}
+	l.lastUsage = Usage{
+		PromptTokens:     out.PromptEvalCount,
+		CompletionTokens: out.EvalCount,
+		Model:            l.model,
 	}
 	return out.Message.Content, nil
 }

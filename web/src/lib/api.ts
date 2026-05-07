@@ -1843,6 +1843,11 @@ export interface AIAuditEntry {
   prompt_hash?: string;
   redactions?: { name: string; count: number }[];
   response_size_bytes?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  /** Cost in micro-cents (1/1_000_000 of a cent). 0 = unset (no pricing
+   *  data for this model, or non-billing provider like Ollama). */
+  cost_micro_cents?: number;
   error?: string;
 }
 export interface AIFeatureStatus {

@@ -273,6 +273,9 @@
     model?: string;
     prompt_size_bytes: number;
     response_size_bytes?: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    cost_micro_cents?: number;
     redactions?: { name: string; count: number }[];
     error?: string;
   }[]>([]);
@@ -306,30 +309,59 @@
     if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
     return `${(n / 1024 / 1024).toFixed(1)} MB`;
   }
+  // Render micro-cents as $X.XXXX with trailing-zero trim. Mirrors
+  // agentruntime.FormatCents on the Go side so the UI agrees with
+  // any future debug logs. Returns "—" for the not-priced case
+  // (Ollama, unknown OpenAI model snapshots).
+  function formatCost(microCents?: number): string {
+    if (!microCents || microCents <= 0) return '—';
+    const dollars = microCents / 1_000_000 / 100; // µcents → cents → dollars
+    if (dollars < 0.0001) return '<$0.0001';
+    // Show up to 4 decimals, trim trailing zeros.
+    let s = dollars.toFixed(4);
+    s = s.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+    return '$' + s;
+  }
+  function formatTokens(n: number): string {
+    if (n < 1000) return `${n}`;
+    return `${(n / 1000).toFixed(1)}k`;
+  }
   const aiUsage = $derived.by(() => {
     const now = Date.now();
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-    let todayN = 0, todayIn = 0, todayOut = 0, todayErr = 0;
-    let weekN = 0, weekIn = 0, weekOut = 0, weekErr = 0;
+    let todayN = 0, todayIn = 0, todayOut = 0, todayErr = 0, todayPT = 0, todayCT = 0, todayCost = 0;
+    let weekN = 0, weekIn = 0, weekOut = 0, weekErr = 0, weekPT = 0, weekCT = 0, weekCost = 0;
     for (const e of aiAudit) {
       const t = new Date(e.timestamp).getTime();
       const inB = e.prompt_size_bytes ?? 0;
       const outB = e.response_size_bytes ?? 0;
+      const pT = e.prompt_tokens ?? 0;
+      const cT = e.completion_tokens ?? 0;
+      const cost = e.cost_micro_cents ?? 0;
       if (t >= todayStart.getTime()) {
         todayN++;
         todayIn += inB;
         todayOut += outB;
+        todayPT += pT;
+        todayCT += cT;
+        todayCost += cost;
         if (e.error) todayErr++;
       }
       if (t >= sevenDaysAgo) {
         weekN++;
         weekIn += inB;
         weekOut += outB;
+        weekPT += pT;
+        weekCT += cT;
+        weekCost += cost;
         if (e.error) weekErr++;
       }
     }
-    return { todayN, todayIn, todayOut, todayErr, weekN, weekIn, weekOut, weekErr };
+    return {
+      todayN, todayIn, todayOut, todayErr, todayPT, todayCT, todayCost,
+      weekN, weekIn, weekOut, weekErr, weekPT, weekCT, weekCost
+    };
   });
 
   async function loadAIPrefs() {
@@ -994,7 +1026,13 @@
               <div class="px-2 py-1.5 bg-mantle border border-surface1 rounded">
                 <div class="text-[10px] uppercase tracking-wider text-dim">Today</div>
                 <div class="text-text">{aiUsage.todayN} request{aiUsage.todayN === 1 ? '' : 's'}</div>
+                {#if aiUsage.todayPT + aiUsage.todayCT > 0}
+                  <div class="text-dim font-mono" title="real token counts from the provider">{formatTokens(aiUsage.todayPT)} + {formatTokens(aiUsage.todayCT)} tokens</div>
+                {/if}
                 <div class="text-dim font-mono">{formatBytes(aiUsage.todayIn)} in / {formatBytes(aiUsage.todayOut)} out</div>
+                {#if aiUsage.todayCost > 0}
+                  <div class="text-secondary font-mono" title="OpenAI pricing — Ollama is free">{formatCost(aiUsage.todayCost)}</div>
+                {/if}
                 {#if aiUsage.todayErr > 0}
                   <div class="text-error">{aiUsage.todayErr} error{aiUsage.todayErr === 1 ? '' : 's'}</div>
                 {/if}
@@ -1002,7 +1040,13 @@
               <div class="px-2 py-1.5 bg-mantle border border-surface1 rounded">
                 <div class="text-[10px] uppercase tracking-wider text-dim">Last 7 days</div>
                 <div class="text-text">{aiUsage.weekN} request{aiUsage.weekN === 1 ? '' : 's'}</div>
+                {#if aiUsage.weekPT + aiUsage.weekCT > 0}
+                  <div class="text-dim font-mono" title="real token counts from the provider">{formatTokens(aiUsage.weekPT)} + {formatTokens(aiUsage.weekCT)} tokens</div>
+                {/if}
                 <div class="text-dim font-mono">{formatBytes(aiUsage.weekIn)} in / {formatBytes(aiUsage.weekOut)} out</div>
+                {#if aiUsage.weekCost > 0}
+                  <div class="text-secondary font-mono" title="OpenAI pricing — Ollama is free">{formatCost(aiUsage.weekCost)}</div>
+                {/if}
                 {#if aiUsage.weekErr > 0}
                   <div class="text-error">{aiUsage.weekErr} error{aiUsage.weekErr === 1 ? '' : 's'}</div>
                 {/if}
@@ -1017,7 +1061,16 @@
                     <span class="text-dim">{new Date(e.timestamp).toLocaleString()}</span>
                     <span class="text-text font-semibold">{e.feature}</span>
                     {#if e.provider}<span class="text-secondary">via {e.provider}{e.model ? ` · ${e.model}` : ''}</span>{/if}
-                    <span class="text-dim ml-auto">{e.prompt_size_bytes}B in / {e.response_size_bytes ?? 0}B out</span>
+                    <span class="text-dim ml-auto">
+                      {#if (e.prompt_tokens ?? 0) + (e.completion_tokens ?? 0) > 0}
+                        {e.prompt_tokens ?? 0}+{e.completion_tokens ?? 0} tok
+                      {:else}
+                        {e.prompt_size_bytes}B / {e.response_size_bytes ?? 0}B
+                      {/if}
+                      {#if e.cost_micro_cents && e.cost_micro_cents > 0}
+                        <span class="text-secondary ml-1">{formatCost(e.cost_micro_cents)}</span>
+                      {/if}
+                    </span>
                   </div>
                   {#if e.redactions && e.redactions.length > 0}
                     <div class="text-dim mt-0.5">

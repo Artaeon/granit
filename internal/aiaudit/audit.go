@@ -45,7 +45,17 @@ type Entry struct {
 	PromptHash       string    `json:"prompt_hash,omitempty"`
 	RedactionsByRule []Stat    `json:"redactions,omitempty"`
 	ResponseSizeBytes int      `json:"response_size_bytes,omitempty"`
-	Error            string    `json:"error,omitempty"`
+	// Real token counts as reported by the provider (OpenAI's
+	// usage block, Ollama's prompt_eval_count / eval_count). Zero
+	// means "not reported" — older entries written before token
+	// capture landed will have these unset, which is honest.
+	PromptTokens     int   `json:"prompt_tokens,omitempty"`
+	CompletionTokens int   `json:"completion_tokens,omitempty"`
+	// CostMicroCents is the computed cost from the price table in
+	// agentruntime/cost.go (-1 / unset = "no pricing data for this
+	// model"). Stored as integer micro-cents to dodge float drift.
+	CostMicroCents int64 `json:"cost_micro_cents,omitempty"`
+	Error          string `json:"error,omitempty"`
 }
 
 // Stat mirrors airedact.Stat but kept here as a separate type so

@@ -92,6 +92,21 @@ func (s *Server) runAIFeature(ctx context.Context, feature aiprefs.Feature, syst
 			Model:             effectiveModel(cfgFile),
 			ResponseSizeBytes: len(out),
 		}
+		// Token usage from the provider. Both ollama and openai
+		// implement Metered now; the type-assertion guards are
+		// defensive in case a future provider doesn't. Cost is
+		// computed from the agentruntime price table — returns -1
+		// for "no pricing data" (e.g. ollama, unrecognised model)
+		// which we omit rather than store, so the UI can render a
+		// dash instead of a misleading €0.
+		if metered, ok := llm.(agentruntime.Metered); ok {
+			usage := metered.LastUsage()
+			entry.PromptTokens = usage.PromptTokens
+			entry.CompletionTokens = usage.CompletionTokens
+			if cost := agentruntime.CostMicroCents(usage); cost >= 0 {
+				entry.CostMicroCents = cost
+			}
+		}
 		if err != nil {
 			entry.Error = err.Error()
 		}
