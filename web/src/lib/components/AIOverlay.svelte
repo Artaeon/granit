@@ -79,12 +79,13 @@
     }
   }
 
-  // Global Mod+J shortcut + Esc to close. We don't fire when the
-  // user is typing in another input — a writer hitting Mod+J in
-  // their text editor probably means "newline literal", not "open
-  // AI." (Mod+J is a terminal/Vim convention for line-join, but
-  // we're inside a webapp and the conflict is rare; the input
-  // exclusion handles the common case of code editors etc.)
+  // Global Mod+J shortcut + Esc to close. Fires from anywhere
+  // including inside text inputs / contentEditable editors —
+  // "ask AI about the note I'm currently writing" is the killer
+  // use case, so we deliberately steal the keystroke from
+  // editors. Mod+J has no strong default in inputs (browsers use
+  // it for downloads, which we override the same way Mod+P
+  // overrides print).
   function onKey(e: KeyboardEvent) {
     if (open && e.key === 'Escape') {
       e.preventDefault();
@@ -92,16 +93,6 @@
       return;
     }
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
-        // Inside our own panel? Toggle anyway, otherwise let the
-        // caret keep its keystroke.
-        if (panelEl && t.closest('[data-ai-overlay]')) {
-          // Allow.
-        } else {
-          return;
-        }
-      }
       e.preventDefault();
       toggle();
     }

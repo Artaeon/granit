@@ -345,10 +345,21 @@ func (l *openAILLM) ChatStream(ctx context.Context, messages []ChatMessage, onCh
 		"model":    l.model,
 		"messages": wire,
 		"stream":   true,
+		// stream_options.include_usage tells OpenAI to send a final
+		// delta with the usage object (prompt+completion tokens) just
+		// before [DONE]. Without this flag, streaming responses arrive
+		// with zero usage data — the audit log would then silently
+		// report "0 tokens / $0" for every streaming chat call.
+		"stream_options": map[string]any{"include_usage": true},
 	}
 	if strings.HasPrefix(l.model, "gpt-5") {
 		payload["reasoning_effort"] = "minimal"
 	}
+	// Reset usage so a partial stream that fails before the final
+	// usage delta doesn't surface a stale tally from the previous
+	// call. Cleared on every entry; populated once the [DONE]-
+	// preceding usage chunk arrives.
+	l.lastUsage = Usage{Model: l.model}
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, "POST",
 		"https://api.openai.com/v1/chat/completions", bytes.NewReader(body))
@@ -406,12 +417,25 @@ func (l *openAILLM) ChatStream(ctx context.Context, messages []ChatMessage, onCh
 					Content string `json:"content"`
 				} `json:"delta"`
 			} `json:"choices"`
+			// Final delta with stream_options.include_usage carries
+			// the usage block in a chunk where Choices is empty.
+			Usage *struct {
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+			} `json:"usage"`
 		}
 		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
 			// Skip malformed chunks rather than aborting the stream —
 			// the official spec is loose enough that occasional non-
 			// JSON keep-alive lines aren't unheard of.
 			continue
+		}
+		if chunk.Usage != nil {
+			l.lastUsage = Usage{
+				PromptTokens:     chunk.Usage.PromptTokens,
+				CompletionTokens: chunk.Usage.CompletionTokens,
+				Model:            l.model,
+			}
 		}
 		if len(chunk.Choices) > 0 {
 			delta := chunk.Choices[0].Delta.Content
@@ -454,6 +478,10 @@ func (l *ollamaLLM) ChatStream(ctx context.Context, messages []ChatMessage, onCh
 		return fmt.Errorf("ollama: %d %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 
+	// Reset usage so a partial stream that fails before the
+	// done-flagged final chunk doesn't leak a stale tally from a
+	// previous call.
+	l.lastUsage = Usage{Model: l.model}
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
@@ -471,6 +499,11 @@ func (l *ollamaLLM) ChatStream(ctx context.Context, messages []ChatMessage, onCh
 				Content string `json:"content"`
 			} `json:"message"`
 			Done bool `json:"done"`
+			// Ollama puts the token counters on the terminal chunk
+			// (the same one with done:true). Same field names as
+			// the non-streaming response so audit captures match.
+			PromptEvalCount int `json:"prompt_eval_count"`
+			EvalCount       int `json:"eval_count"`
 		}
 		if err := json.Unmarshal([]byte(line), &chunk); err != nil {
 			continue
@@ -479,6 +512,11 @@ func (l *ollamaLLM) ChatStream(ctx context.Context, messages []ChatMessage, onCh
 			onChunk(chunk.Message.Content)
 		}
 		if chunk.Done {
+			l.lastUsage = Usage{
+				PromptTokens:     chunk.PromptEvalCount,
+				CompletionTokens: chunk.EvalCount,
+				Model:            l.model,
+			}
 			return nil
 		}
 	}
