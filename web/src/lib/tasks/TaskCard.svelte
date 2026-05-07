@@ -320,11 +320,26 @@
   // within the same note. Cap at 4 levels so deep trees don't push
   // content off-screen.
   let indentPx = $derived(Math.min(task.indent ?? 0, 4) * 18);
+
+  // Overdue / today derived states. Drives the soft red / amber tint
+  // on the card background — a passive cue that doesn't compete with
+  // the priority border but signals urgency at a glance.
+  let isOverdue = $derived.by(() => {
+    if (task.done || !task.dueDate) return false;
+    return task.dueDate < new Date().toISOString().slice(0, 10);
+  });
+  let isDueToday = $derived.by(() => {
+    if (task.done || !task.dueDate) return false;
+    return task.dueDate === new Date().toISOString().slice(0, 10);
+  });
 </script>
 
 <div
-  class="bg-surface0 border-l-2 {priorityClass(task.priority)} border border-surface1 rounded p-2 transition-colors group
-    {isSelected ? 'ring-1 ring-primary' : 'hover:border-primary/40'}"
+  class="task-card bg-surface0 border-l-2 {priorityClass(task.priority)} border border-surface1 rounded p-2 transition-all group relative
+    {isSelected ? 'ring-1 ring-primary' : 'hover:border-primary/40 hover:bg-surface0/80'}
+    {isOverdue ? 'task-card--overdue' : ''}
+    {isDueToday ? 'task-card--today' : ''}
+    {task.done ? 'task-card--done' : ''}"
   class:opacity-60={task.done}
   class:opacity-50={snoozed}
   style="margin-left: {indentPx}px;"
@@ -528,3 +543,44 @@
     </div>
   {/if}
 </div>
+
+<style>
+  /* Soft urgency tints. The priority border (left rail) is the
+     primary signal; these card-wide tints are secondary, set low
+     enough that they don't fight the border but high enough that a
+     scanning eye can pick out overdue rows in a long list. */
+  .task-card--overdue {
+    background: color-mix(in srgb, var(--color-error) 6%, var(--color-surface0));
+  }
+  .task-card--overdue:hover {
+    background: color-mix(in srgb, var(--color-error) 10%, var(--color-surface0));
+  }
+  .task-card--today {
+    background: color-mix(in srgb, var(--color-warning) 5%, var(--color-surface0));
+  }
+  /* Done state: strikethrough already comes from the title element;
+     here we add a subtle hatched background so the card visually
+     "fades out" without losing its shape. Animation is applied once
+     the .task-card--done class arrives so the user sees the change. */
+  .task-card--done {
+    background-image: linear-gradient(
+      135deg,
+      transparent 0,
+      transparent 8px,
+      color-mix(in srgb, var(--color-text) 4%, transparent) 8px,
+      color-mix(in srgb, var(--color-text) 4%, transparent) 16px
+    );
+    background-size: 16px 16px;
+    animation: task-done-pop 280ms ease-out;
+  }
+  @keyframes task-done-pop {
+    0%   { transform: scale(1);    opacity: 1;   }
+    35%  { transform: scale(0.985); opacity: 0.7; }
+    100% { transform: scale(1);    opacity: 0.6; }
+  }
+  /* Reduce-motion respect: skip the animation but keep the visual
+     change so accessibility users still get the state cue. */
+  @media (prefers-reduced-motion: reduce) {
+    .task-card--done { animation: none; }
+  }
+</style>

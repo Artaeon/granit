@@ -442,22 +442,55 @@
   type ListGroup = { key: string; label: string; tasks: Task[]; deepLink?: string };
   let listGroups = $derived.by((): ListGroup[] => {
     if (groupBy === 'due') {
-      const today = new Date().toISOString().slice(0, 10);
-      const b: Record<string, Task[]> = { overdue: [], today: [], upcoming: [], no_date: [] };
+      // Smart-groups: split the previous "Upcoming" bucket into
+      // Tomorrow / This week / Later so a user with a long backlog
+      // sees the upcoming-week's work without scrolling. Boundaries:
+      //   today          — date == today
+      //   tomorrow       — date == today+1
+      //   this_week      — within next 7 days but past tomorrow
+      //   later          — beyond 7 days
+      // Each group only renders when non-empty.
+      const now = new Date();
+      const today = now.toISOString().slice(0, 10);
+      const tmw = new Date(now);
+      tmw.setDate(tmw.getDate() + 1);
+      const tomorrow = tmw.toISOString().slice(0, 10);
+      const wk = new Date(now);
+      wk.setDate(wk.getDate() + 7);
+      const weekEnd = wk.toISOString().slice(0, 10);
+      const b: Record<string, Task[]> = {
+        overdue: [], today: [], tomorrow: [], this_week: [], later: [], no_date: []
+      };
       for (const t of filtered) {
-        if (!t.dueDate && !t.scheduledStart) b.no_date.push(t);
-        else {
-          const d = t.dueDate ?? (t.scheduledStart ? t.scheduledStart.slice(0, 10) : '');
-          if (d < today) b.overdue.push(t);
-          else if (d === today) b.today.push(t);
-          else b.upcoming.push(t);
+        if (!t.dueDate && !t.scheduledStart) {
+          b.no_date.push(t);
+          continue;
         }
+        const d = t.dueDate ?? (t.scheduledStart ? t.scheduledStart.slice(0, 10) : '');
+        if (d < today) b.overdue.push(t);
+        else if (d === today) b.today.push(t);
+        else if (d === tomorrow) b.tomorrow.push(t);
+        else if (d < weekEnd) b.this_week.push(t);
+        else b.later.push(t);
       }
+      // Sort each bucket by date asc, then priority asc — so the
+      // user sees the most urgent / most important task first.
+      const sortByDateThenPrio = (a: Task, x: Task) => {
+        const ad = a.dueDate ?? (a.scheduledStart?.slice(0, 10) ?? '');
+        const xd = x.dueDate ?? (x.scheduledStart?.slice(0, 10) ?? '');
+        if (ad !== xd) return ad < xd ? -1 : 1;
+        const ap = a.priority || 99;
+        const xp = x.priority || 99;
+        return ap - xp;
+      };
+      Object.values(b).forEach((arr) => arr.sort(sortByDateThenPrio));
       return [
-        { key: 'overdue', label: 'Overdue', tasks: b.overdue },
-        { key: 'today', label: 'Today', tasks: b.today },
-        { key: 'upcoming', label: 'Upcoming', tasks: b.upcoming },
-        { key: 'no_date', label: 'No date', tasks: b.no_date }
+        { key: 'overdue',   label: 'Overdue',   tasks: b.overdue },
+        { key: 'today',     label: 'Today',     tasks: b.today },
+        { key: 'tomorrow',  label: 'Tomorrow',  tasks: b.tomorrow },
+        { key: 'this_week', label: 'This Week', tasks: b.this_week },
+        { key: 'later',     label: 'Later',     tasks: b.later },
+        { key: 'no_date',   label: 'No date',   tasks: b.no_date }
       ].filter((g) => g.tasks.length > 0);
     }
     if (groupBy === 'priority') {
@@ -874,9 +907,31 @@
       {:else}
         <div class="space-y-6 max-w-3xl">
           {#each listGroups as g (g.key)}
+            {@const dotColor = (
+              g.key === 'overdue' ? 'bg-error' :
+              g.key === 'today' ? 'bg-warning' :
+              g.key === 'tomorrow' ? 'bg-secondary' :
+              g.key === 'this_week' ? 'bg-success' :
+              'bg-surface2'
+            )}
+            {@const labelColor = (
+              g.key === 'overdue' ? 'text-error' :
+              g.key === 'today' ? 'text-warning' :
+              'text-text'
+            )}
             <section>
-              <h2 class="text-xs uppercase tracking-wider text-dim mb-2 font-medium border-b border-surface1 pb-1 flex items-baseline gap-2">
-                <span>{g.label} · {g.tasks.length}</span>
+              <h2 class="text-xs uppercase tracking-wider mb-2 font-semibold border-b border-surface1 pb-1.5 flex items-center gap-2">
+                <!-- Color dot keyed to urgency tone: overdue red,
+                     today amber, tomorrow blue, this-week green,
+                     anything else muted. Quick scan signal. -->
+                <span class="w-2 h-2 rounded-full {dotColor}" aria-hidden="true"></span>
+                <span class={labelColor}>{g.label}</span>
+                <span class="text-dim font-mono tabular-nums text-[11px]">{g.tasks.length}</span>
+                {#if g.key === 'overdue' && g.tasks.length > 0}
+                  <span class="ml-1 px-1.5 py-0.5 bg-error/15 text-error text-[10px] tracking-wider rounded uppercase font-bold animate-pulse" title="These tasks are past their due date">
+                    overdue
+                  </span>
+                {/if}
                 {#if g.deepLink}
                   <a
                     href={g.deepLink}
