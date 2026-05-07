@@ -133,11 +133,16 @@
     schedule: string;
     rationale: string;
   }[]>([]);
+  // One controller per in-flight triage call. Holding a reference
+  // lets the Cancel button abort the fetch (which the server picks
+  // up via r.Context() and short-circuits before billing tokens).
+  let aiTriageAbort: AbortController | null = null;
 
   async function runAITriage() {
     aiTriageBusy = true;
+    aiTriageAbort = new AbortController();
     try {
-      const r = await api.aiInboxTriage();
+      const r = await api.aiInboxTriage(aiTriageAbort.signal);
       aiTriageProposals = r.proposals ?? [];
       if ((r.proposals?.length ?? 0) === 0) {
         if (r.warning) toast.warning(r.warning);
@@ -145,13 +150,22 @@
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(/disabled in AI preferences/i.test(msg)
-        ? 'Enable "Inbox triage" in Settings → AI features first.'
-        : 'AI triage failed: ' + msg);
+      // AbortError surfaces as a DOMException with name "AbortError";
+      // when fetch is aborted on Chromium-based engines the message
+      // can also be "BodyStreamBuffer was aborted" — match both.
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        toast.info('Triage cancelled.');
+      } else {
+        toast.error(/disabled in AI preferences/i.test(msg)
+          ? 'Enable "Inbox triage" in Settings → AI features first.'
+          : 'AI triage failed: ' + msg);
+      }
     } finally {
       aiTriageBusy = false;
+      aiTriageAbort = null;
     }
   }
+  function cancelAITriage() { aiTriageAbort?.abort(); }
 
   function skipTriageProposal(id: string) {
     aiTriageProposals = aiTriageProposals.filter((p) => p.id !== id);
@@ -163,10 +177,12 @@
   // filtered server-side so the UI only shows confident proposals.
   let aiDeadlineBusy = $state(false);
   let aiDeadlineProposals = $state<{ id: string; due_date: string; rationale: string }[]>([]);
+  let aiDeadlineAbort: AbortController | null = null;
   async function runAIDeadlineDetect() {
     aiDeadlineBusy = true;
+    aiDeadlineAbort = new AbortController();
     try {
-      const r = await api.aiDeadlineDetect();
+      const r = await api.aiDeadlineDetect(aiDeadlineAbort.signal);
       aiDeadlineProposals = r.proposals ?? [];
       if ((r.proposals?.length ?? 0) === 0) {
         if (r.warning) toast.warning(r.warning);
@@ -174,13 +190,19 @@
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(/disabled in AI preferences/i.test(msg)
-        ? 'Enable "Deadline detect" in Settings → AI features first.'
-        : 'Detect failed: ' + msg);
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        toast.info('Detect cancelled.');
+      } else {
+        toast.error(/disabled in AI preferences/i.test(msg)
+          ? 'Enable "Deadline detect" in Settings → AI features first.'
+          : 'Detect failed: ' + msg);
+      }
     } finally {
       aiDeadlineBusy = false;
+      aiDeadlineAbort = null;
     }
   }
+  function cancelAIDeadline() { aiDeadlineAbort?.abort(); }
   function skipDeadlineProposal(id: string) {
     aiDeadlineProposals = aiDeadlineProposals.filter((p) => p.id !== id);
   }
@@ -1328,18 +1350,33 @@
             <p class="text-sm text-dim flex-1">
               Untriaged tasks. Decide for each: schedule, prioritize, drop, or snooze.
             </p>
-            <button
-              onclick={() => void runAITriage()}
-              disabled={aiTriageBusy || filtered.length === 0}
-              class="px-3 py-1.5 text-xs bg-secondary/15 text-secondary rounded hover:bg-secondary/25 disabled:opacity-50 flex-shrink-0"
-              title="Ask AI to suggest priority + schedule for each untriaged task"
-            >{aiTriageBusy ? '✨ thinking…' : '✨ AI triage'}</button>
-            <button
-              onclick={() => void runAIDeadlineDetect()}
-              disabled={aiDeadlineBusy}
-              class="px-3 py-1.5 text-xs bg-secondary/15 text-secondary rounded hover:bg-secondary/25 disabled:opacity-50 flex-shrink-0"
-              title="Scan all open tasks without a due date — propose ones whose title implies a clear deadline"
-            >{aiDeadlineBusy ? '✨ thinking…' : '✨ Detect deadlines'}</button>
+            {#if aiTriageBusy}
+              <button
+                onclick={cancelAITriage}
+                class="px-3 py-1.5 text-xs bg-warning/15 text-warning rounded hover:bg-warning/25 flex-shrink-0"
+                title="Cancel the in-flight triage call"
+              >✨ thinking… cancel</button>
+            {:else}
+              <button
+                onclick={() => void runAITriage()}
+                disabled={filtered.length === 0}
+                class="px-3 py-1.5 text-xs bg-secondary/15 text-secondary rounded hover:bg-secondary/25 disabled:opacity-50 flex-shrink-0"
+                title="Ask AI to suggest priority + schedule for each untriaged task"
+              >✨ AI triage</button>
+            {/if}
+            {#if aiDeadlineBusy}
+              <button
+                onclick={cancelAIDeadline}
+                class="px-3 py-1.5 text-xs bg-warning/15 text-warning rounded hover:bg-warning/25 flex-shrink-0"
+                title="Cancel the in-flight deadline scan"
+              >✨ thinking… cancel</button>
+            {:else}
+              <button
+                onclick={() => void runAIDeadlineDetect()}
+                class="px-3 py-1.5 text-xs bg-secondary/15 text-secondary rounded hover:bg-secondary/25 disabled:opacity-50 flex-shrink-0"
+                title="Scan all open tasks without a due date — propose ones whose title implies a clear deadline"
+              >✨ Detect deadlines</button>
+            {/if}
           </div>
 
           {#if aiDeadlineProposals.length > 0}

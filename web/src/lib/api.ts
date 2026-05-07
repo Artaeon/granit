@@ -1672,19 +1672,19 @@ export const api = {
   getAIAudit: () => req<{ entries: AIAuditEntry[] }>('/ai/audit'),
   clearAIAudit: () => req<void>('/ai/audit', { method: 'DELETE' }),
   getAISnapshot: () => req<{ snapshot: unknown }>('/ai/snapshot'),
-  aiDailyBriefing: () =>
-    req<{ markdown: string }>('/ai/daily-briefing', { method: 'POST', body: '{}' }),
-  aiWeeklyReview: () =>
-    req<{ markdown: string }>('/ai/weekly-review', { method: 'POST', body: '{}' }),
-  aiInboxTriage: () =>
+  aiDailyBriefing: (signal?: AbortSignal) =>
+    req<{ markdown: string }>('/ai/daily-briefing', { method: 'POST', body: '{}', signal }),
+  aiWeeklyReview: (signal?: AbortSignal) =>
+    req<{ markdown: string }>('/ai/weekly-review', { method: 'POST', body: '{}', signal }),
+  aiInboxTriage: (signal?: AbortSignal) =>
     req<{ proposals: AITriageProposal[]; raw?: string; warning?: string }>(
       '/ai/inbox-triage',
-      { method: 'POST', body: '{}' }
+      { method: 'POST', body: '{}', signal }
     ),
-  aiDeadlineDetect: () =>
+  aiDeadlineDetect: (signal?: AbortSignal) =>
     req<{ proposals: AIDeadlineProposal[]; raw?: string; warning?: string }>(
       '/ai/deadline-detect',
-      { method: 'POST', body: '{}' }
+      { method: 'POST', body: '{}', signal }
     ),
 
   // Notification preferences — per-category toggles, quiet

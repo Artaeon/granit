@@ -19,6 +19,7 @@
   let busy = $state(false);
   let error = $state('');
   let savedToToday = $state(false);
+  let abort: AbortController | null = null;
 
   // Cache: load on mount if today's briefing was already generated.
   let today = new Date().toISOString().slice(0, 10);
@@ -37,19 +38,28 @@
     busy = true;
     error = '';
     savedToToday = false;
+    abort = new AbortController();
     try {
-      const r = await api.aiDailyBriefing();
+      const r = await api.aiDailyBriefing(abort.signal);
       markdown = r.markdown;
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ date: today, markdown }));
       } catch {}
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      error = msg;
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // User cancelled — leave any prior cached markdown alone
+        // and fall back to the empty/cached state without showing
+        // a scary error banner.
+        error = '';
+      } else {
+        error = err instanceof Error ? err.message : String(err);
+      }
     } finally {
       busy = false;
+      abort = null;
     }
   }
+  function cancel() { abort?.abort(); }
 
   async function saveToToday() {
     if (!markdown) return;
@@ -90,7 +100,14 @@
   </header>
 
   {#if busy}
-    <div class="text-sm text-dim italic">Composing…</div>
+    <div class="flex items-center gap-3">
+      <div class="text-sm text-dim italic flex-1">Composing…</div>
+      <button
+        onclick={cancel}
+        class="px-2 py-1 text-xs text-warning hover:underline"
+        title="Cancel the in-flight briefing"
+      >cancel</button>
+    </div>
   {:else if error}
     <div class="text-xs text-warning mb-2">
       {error}
