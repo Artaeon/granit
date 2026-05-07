@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import { api, type ChatMessage } from '$lib/api';
   import { sabbath } from '$lib/stores/sabbath';
+  import { aiOverlayOpen } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
 
@@ -23,7 +24,12 @@
   // layout doesn't have to know it exists — drop a single
   // <AIOverlay /> in +layout.svelte and you're done.
 
-  let open = $state(false);
+  // open is a $derived view of the global store so any UI surface
+  // (sidebar button, command palette, future mobile entry) can flip
+  // the overlay without prop-drilling. We write back via store
+  // setters when the user closes / Mod+J-toggles, keeping the
+  // store as the single source of truth.
+  const open = $derived($aiOverlayOpen);
   let panelEl: HTMLDivElement | undefined = $state();
   let inputEl: HTMLTextAreaElement | undefined = $state();
   let scrollEl: HTMLDivElement | undefined = $state();
@@ -67,20 +73,27 @@
 
   function close() {
     abort?.abort();
-    open = false;
+    aiOverlayOpen.set(false);
   }
   function toggle() {
-    open = !open;
+    aiOverlayOpen.update((v) => !v);
+    // The $effect below handles focus + status + note-attach on
+    // open-transitions, so no duplication here.
+  }
+  // Also handle external opens (sidebar button, etc.) — load
+  // status + focus input when the store flips us to true. Note
+  // we DON'T read attachNote here even to gate the auto-enable;
+  // doing so would put attachNote in the effect's deps and the
+  // user un-checking it would re-fire the effect, which would
+  // re-enable it (regression of the earlier flicker bug). Just
+  // write unconditionally — the user owns the toggle once open.
+  $effect(() => {
     if (open) {
-      // Auto-enable note-attach on open if we're on a note page —
-      // common case is "ask about THIS note." The user can still
-      // un-check it; their choice now sticks because we only run
-      // this on the open-transition, not on a reactive cycle.
       if (currentNotePath) attachNote = true;
       void loadStatus();
       tick().then(() => inputEl?.focus());
     }
-  }
+  });
 
   // Global Mod+J shortcut + Esc to close. Fires from anywhere
   // including inside text inputs / contentEditable editors —

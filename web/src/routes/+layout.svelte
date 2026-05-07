@@ -15,6 +15,7 @@
   import Logo from '$lib/components/Logo.svelte';
   import QuickCaptureFab from '$lib/components/QuickCaptureFab.svelte';
   import AIOverlay from '$lib/components/AIOverlay.svelte';
+  import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { connect, disconnect, wsConnected } from '$lib/ws';
   import { theme, nextTheme, themeIcon, themeLabel } from '$lib/stores/theme';
   import { modulesStore } from '$lib/stores/modules';
@@ -303,12 +304,32 @@
       <button
         onclick={() => { palette?.show(); drawerOpen = false; }}
         title={isCompact ? 'Quick jump (⌘K)' : undefined}
-        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm text-subtext hover:bg-surface0 hover:text-text mb-2 transition-colors"
+        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm text-subtext hover:bg-surface0 hover:text-text transition-colors"
       >
         <NavIcon name="search" class="w-5 h-5 flex-shrink-0" />
         {#if !isCompact}
           <span class="flex-1 text-left">Quick jump</span>
           <kbd class="text-[10px] text-dim font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">⌘K</kbd>
+        {/if}
+      </button>
+
+      <!-- Ask AI — opens the global AI overlay. Subtle gradient
+           border + sparkle icon distinguish it from regular nav so
+           the user notices an "intelligence" surface without it
+           dominating the rail. Mod+J also works from anywhere; this
+           button is for discovery + click-first users. -->
+      <button
+        onclick={() => { openAIOverlay(); drawerOpen = false; }}
+        title={isCompact ? 'Ask AI (⌘J)' : undefined}
+        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm text-subtext hover:text-text mb-2 transition-colors group bg-gradient-to-r from-primary/10 via-secondary/10 to-primary/10 hover:from-primary/15 hover:via-secondary/15 hover:to-primary/15 border border-primary/20 hover:border-primary/40"
+      >
+        <svg viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0 text-primary" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>
+          <circle cx="12" cy="12" r="3.5" fill="currentColor" fill-opacity="0.15"/>
+        </svg>
+        {#if !isCompact}
+          <span class="flex-1 text-left bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent font-medium">Ask AI</span>
+          <kbd class="text-[10px] text-dim font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">⌘J</kbd>
         {/if}
       </button>
 
