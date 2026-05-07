@@ -8,6 +8,7 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
   import VirtuesWeeklyCheck from '$lib/virtues/VirtuesWeeklyCheck.svelte';
+  import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
 
   // /review is the weekly examination ritual — five questions, saved
   // to a markdown note in Reviews/YYYY-Www.md. The page deliberately
@@ -264,6 +265,49 @@
   let aiGoal = $state('');
   let aiBusy = $state(false);
 
+  // ── Quick AI draft (new pipeline) ─────────────────────────────────
+  // Companion to openAIDraft, but routes through /api/v1/ai/weekly-
+  // review — the consent + redaction + audit + per-feature provider
+  // pipeline. The AgentRunPanel path above writes structured answers
+  // directly into the note; this one returns a markdown synopsis the
+  // user can copy or append. Useful when you want a fast "what would
+  // an AI say about this week" without the panel overhead.
+  let aiQuickBusy = $state(false);
+  let aiQuickMarkdown = $state('');
+  let aiQuickError = $state('');
+  let aiQuickAbort: AbortController | null = null;
+
+  async function runQuickAIDraft() {
+    aiQuickBusy = true;
+    aiQuickError = '';
+    aiQuickAbort = new AbortController();
+    try {
+      const r = await api.aiWeeklyReview(aiQuickAbort.signal);
+      aiQuickMarkdown = r.markdown ?? '';
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        toast.info('Draft cancelled.');
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        aiQuickError = /disabled in AI preferences/i.test(msg)
+          ? 'Enable "Weekly review" in Settings → AI features first.'
+          : msg;
+      }
+    } finally {
+      aiQuickBusy = false;
+      aiQuickAbort = null;
+    }
+  }
+  function cancelQuickAI() { aiQuickAbort?.abort(); }
+  async function copyQuickDraft() {
+    try {
+      await navigator.clipboard.writeText(aiQuickMarkdown);
+      toast.success('Copied to clipboard');
+    } catch {
+      toast.error('Clipboard write failed — select and copy manually');
+    }
+  }
+
   async function openAIDraft() {
     if (!$auth || aiBusy) return;
     if (isExisting && Object.values(answers).some((v) => v.trim())) {
@@ -395,8 +439,23 @@
             onclick={openAIDraft}
             disabled={aiBusy}
             class="text-xs px-3 py-1.5 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary disabled:opacity-50"
-            title="Generate a draft from this week's jots + completed tasks"
-          >{aiBusy ? '…' : '✨ AI draft'}</button>
+            title="Run the weekly-review-draft agent — fills the form with structured answers"
+          >{aiBusy ? '…' : '✨ AI draft (full)'}</button>
+          {#if aiQuickBusy}
+            <button
+              type="button"
+              onclick={cancelQuickAI}
+              class="text-xs px-3 py-1.5 rounded bg-warning/15 text-warning border border-warning/30"
+              title="Cancel the in-flight quick draft"
+            >✨ thinking… cancel</button>
+          {:else}
+            <button
+              type="button"
+              onclick={runQuickAIDraft}
+              class="text-xs px-3 py-1.5 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary"
+              title="One-shot markdown synopsis via the AI features pipeline (consent + redaction + audit)"
+            >✨ AI synopsis</button>
+          {/if}
           <button
             type="button"
             onclick={() => goto(`/notes/${encodeURIComponent(reviewPath(cursor))}`)}
@@ -410,6 +469,37 @@
           >{busy ? '…' : isExisting ? 'Update review' : 'Save review'}</button>
         </div>
       </form>
+
+      {#if aiQuickError}
+        <div class="mt-4 px-3 py-2 bg-error/10 border border-error/30 rounded text-xs text-error">
+          {aiQuickError}
+        </div>
+      {/if}
+      {#if aiQuickMarkdown}
+        <!-- AI synopsis panel — markdown the user can copy or use as
+             a thinking aid before filling in the form by hand. We
+             deliberately don't auto-fill the form fields (the model
+             often picks the wrong section per answer); leaving it as
+             a side-by-side reference is simpler + harder to mis-route. -->
+        <div class="mt-6 p-4 bg-secondary/5 border border-secondary/30 rounded">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">AI synopsis</span>
+            <button
+              type="button"
+              onclick={copyQuickDraft}
+              class="text-[11px] px-2 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary"
+            >Copy markdown</button>
+            <button
+              type="button"
+              onclick={() => { aiQuickMarkdown = ''; }}
+              class="text-[11px] text-dim hover:text-error"
+            >dismiss</button>
+          </div>
+          <div class="prose prose-sm max-w-none">
+            <MarkdownRenderer body={aiQuickMarkdown} />
+          </div>
+        </div>
+      {/if}
     {/if}
 
     <!-- Virtues weekly check — character-formation companion to the
