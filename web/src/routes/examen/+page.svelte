@@ -162,6 +162,104 @@
       gratitude.trim().length > 0 ||
       tomorrow.trim().length > 0
   );
+
+  // ----- AI reflection prompts -----
+  // Gentle, contextual questions seeded by today's daily plan +
+  // intentions + what the user has already written. Goal is to OPEN
+  // doors, not write answers — the prompts are framed as questions
+  // ("What feeling stayed longest after the meeting?" not "You felt
+  // tired because…"). Streamed via chatStream so the audit-gated
+  // pipeline records cost; user can dismiss any time.
+  type PromptScope = 'saw' | 'missed' | 'gratitude' | 'tomorrow';
+  let aiBusy = $state(false);
+  let aiAbort: AbortController | null = null;
+  let aiPrompts = $state<{ scope: PromptScope; lines: string[] } | null>(null);
+  let aiError = $state('');
+
+  function aiContext(scope: PromptScope): string {
+    const intentionLines = activeIntentions.slice(0, 6).map((p) => {
+      let s = `- ${p.text}`;
+      if (p.venture) s += ` (🏢 ${p.venture})`;
+      else if (p.project) s += ` (📁 ${p.project})`;
+      else if (p.person) s += ` (👤 ${p.person})`;
+      return s;
+    }).join('\n');
+    const sections: string[] = [];
+    if (dailyPlanText) sections.push(`Today's plan:\n${dailyPlanText}`);
+    if (intentionLines) sections.push(`Currently praying for:\n${intentionLines}`);
+    const written: string[] = [];
+    if (sawGod.trim()) written.push(`Where I saw God:\n${sawGod.trim()}`);
+    if (missed.trim()) written.push(`Where I missed:\n${missed.trim()}`);
+    if (gratitude.trim()) written.push(`Gratitude:\n${gratitude.trim()}`);
+    if (tomorrow.trim()) written.push(`For tomorrow:\n${tomorrow.trim()}`);
+    if (written.length > 0) sections.push(`What I've written so far:\n${written.join('\n\n')}`);
+    return sections.join('\n\n');
+  }
+
+  const SCOPE_FRAME: Record<PromptScope, string> = {
+    saw: 'Where the user saw God today (consolation, grace, the unexpected gift)',
+    missed: 'Where the user missed today (desolation, distraction, resisted grace) — be gentle, not accusatory',
+    gratitude: 'Three concrete things the user might be grateful for from this day',
+    tomorrow: 'What the user might want to bring before God for tomorrow morning'
+  };
+
+  async function aiReflect(scope: PromptScope) {
+    if (aiBusy) return;
+    aiAbort?.abort();
+    aiAbort = new AbortController();
+    aiBusy = true;
+    aiError = '';
+    aiPrompts = { scope, lines: [] };
+    let buf = '';
+    const ctx = aiContext(scope);
+    const system = 'You are a gentle Ignatian companion helping the user reflect on their day. Surface 2-3 short, OPEN questions (not answers, not advice) that help them go one level deeper. Each question on its own line. No preamble. No numbered list. No bullet points. No religious jargon they didn\'t already use. Be specific to the context if you can; generic if not. Keep each question under 18 words.';
+    const user = `Section: ${SCOPE_FRAME[scope]}.\n\n${ctx || '(No context yet — the user just opened the page.)'}\n\nGive me 2-3 reflection questions for this section.`;
+    try {
+      await api.chatStream(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        undefined,
+        {
+          onChunk: (c) => {
+            buf += c;
+            const lines = buf.split(/\n+/).map((l) => l.trim()).filter((l) => l.length > 0);
+            if (aiPrompts && aiPrompts.scope === scope) {
+              aiPrompts = { scope, lines };
+            }
+          },
+          onDone: () => {},
+          onError: (err) => {
+            aiError = err.message;
+            aiPrompts = null;
+          }
+        },
+        aiAbort.signal
+      );
+    } finally {
+      aiBusy = false;
+      aiAbort = null;
+    }
+  }
+  function dismissPrompts() {
+    aiAbort?.abort();
+    aiBusy = false;
+    aiPrompts = null;
+    aiError = '';
+  }
+  function usePromptInScope(line: string) {
+    if (!aiPrompts) return;
+    const cleaned = line.replace(/^[-•*\d.\s]+/, '').trim();
+    const insert = (current: string) => current.trim() ? current.trim() + '\n\n' + cleaned + '\n' : cleaned + '\n';
+    switch (aiPrompts.scope) {
+      case 'saw': sawGod = insert(sawGod); break;
+      case 'missed': missed = insert(missed); break;
+      case 'gratitude': gratitude = insert(gratitude); break;
+      case 'tomorrow': tomorrow = insert(tomorrow); break;
+    }
+    aiPrompts = null;
+  }
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -216,12 +314,61 @@
       onsubmit={(e) => { e.preventDefault(); save(); }}
       class="space-y-5"
     >
+      {#snippet promptPanel(scope: PromptScope)}
+        {#if aiPrompts && aiPrompts.scope === scope}
+          <div class="mt-2 p-2.5 bg-primary/8 border-l-2 border-primary rounded space-y-1.5">
+            {#if aiBusy && aiPrompts.lines.length === 0}
+              <div class="text-xs text-dim italic">listening…</div>
+            {/if}
+            {#each aiPrompts.lines as line}
+              {@const cleaned = line.replace(/^[-•*\d.\s]+/, '').trim()}
+              {#if cleaned}
+                <button
+                  type="button"
+                  onclick={() => usePromptInScope(line)}
+                  class="w-full text-left text-sm text-text hover:text-primary px-2 py-1 rounded hover:bg-primary/10"
+                  title="use this prompt as a starter"
+                >
+                  {cleaned}
+                </button>
+              {/if}
+            {/each}
+            <div class="flex items-center gap-2 pt-1">
+              <button type="button" onclick={() => aiReflect(scope)} class="text-[11px] text-secondary hover:underline" disabled={aiBusy}>regenerate</button>
+              <button type="button" onclick={dismissPrompts} class="text-[11px] text-dim hover:text-text">dismiss</button>
+            </div>
+          </div>
+        {/if}
+      {/snippet}
+
+      {#snippet aiButton(scope: PromptScope)}
+        <button
+          type="button"
+          onclick={() => aiReflect(scope)}
+          disabled={aiBusy && aiPrompts?.scope === scope}
+          class="text-[11px] text-primary hover:underline disabled:opacity-50 inline-flex items-center gap-1"
+          title="ask AI for a gentle reflection prompt"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+            <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
+          </svg>
+          {aiBusy && aiPrompts?.scope === scope ? 'asking…' : 'help me reflect'}
+        </button>
+      {/snippet}
+
+      {#if aiError}
+        <div class="text-xs text-error bg-error/10 border border-error/20 rounded px-2 py-1.5">{aiError}</div>
+      {/if}
+
       <!-- Where did I see God? -->
       <section>
-        <label for="examen-saw" class="block text-sm font-medium text-text mb-1.5">
-          Where did I see God today?
-          <span class="text-[11px] text-dim font-normal ml-1">consolation, grace, the unexpected gift</span>
-        </label>
+        <div class="flex items-baseline justify-between mb-1.5">
+          <label for="examen-saw" class="block text-sm font-medium text-text">
+            Where did I see God today?
+            <span class="text-[11px] text-dim font-normal ml-1">consolation, grace, the unexpected gift</span>
+          </label>
+          {@render aiButton('saw')}
+        </div>
         <textarea
           id="examen-saw"
           bind:value={sawGod}
@@ -229,14 +376,18 @@
           placeholder="A conversation. A breakthrough. A moment of peace. Where He showed up."
           class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
         ></textarea>
+        {@render promptPanel('saw')}
       </section>
 
       <!-- Where did I miss? -->
       <section>
-        <label for="examen-miss" class="block text-sm font-medium text-text mb-1.5">
-          Where did I miss?
-          <span class="text-[11px] text-dim font-normal ml-1">desolation, distraction, where I resisted grace</span>
-        </label>
+        <div class="flex items-baseline justify-between mb-1.5">
+          <label for="examen-miss" class="block text-sm font-medium text-text">
+            Where did I miss?
+            <span class="text-[11px] text-dim font-normal ml-1">desolation, distraction, where I resisted grace</span>
+          </label>
+          {@render aiButton('missed')}
+        </div>
         <textarea
           id="examen-miss"
           bind:value={missed}
@@ -244,14 +395,18 @@
           placeholder="Honest, not punishing. What pulled me away today?"
           class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
         ></textarea>
+        {@render promptPanel('missed')}
       </section>
 
       <!-- Optional: gratitude -->
       <section>
-        <label for="examen-grat" class="block text-sm font-medium text-text mb-1.5">
-          Gratitude
-          <span class="text-[11px] text-dim font-normal ml-1">optional — three things, or none</span>
-        </label>
+        <div class="flex items-baseline justify-between mb-1.5">
+          <label for="examen-grat" class="block text-sm font-medium text-text">
+            Gratitude
+            <span class="text-[11px] text-dim font-normal ml-1">optional — three things, or none</span>
+          </label>
+          {@render aiButton('gratitude')}
+        </div>
         <textarea
           id="examen-grat"
           bind:value={gratitude}
@@ -259,14 +414,18 @@
           placeholder=""
           class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
         ></textarea>
+        {@render promptPanel('gratitude')}
       </section>
 
       <!-- Optional: tomorrow -->
       <section>
-        <label for="examen-tomorrow" class="block text-sm font-medium text-text mb-1.5">
-          For tomorrow
-          <span class="text-[11px] text-dim font-normal ml-1">optional — what I bring before God for the morning</span>
-        </label>
+        <div class="flex items-baseline justify-between mb-1.5">
+          <label for="examen-tomorrow" class="block text-sm font-medium text-text">
+            For tomorrow
+            <span class="text-[11px] text-dim font-normal ml-1">optional — what I bring before God for the morning</span>
+          </label>
+          {@render aiButton('tomorrow')}
+        </div>
         <textarea
           id="examen-tomorrow"
           bind:value={tomorrow}
@@ -274,6 +433,7 @@
           placeholder="A specific ask. A virtue to practice. The one thing I want to bring."
           class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
         ></textarea>
+        {@render promptPanel('tomorrow')}
       </section>
 
       <div class="flex items-center gap-3 pt-2 border-t border-surface1">
