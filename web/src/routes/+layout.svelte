@@ -199,11 +199,8 @@
         { href: '/finance', label: 'Finance', icon: 'finance', moduleId: 'finance' },
         { href: '/shopping', label: 'Shopping', icon: 'shopping', moduleId: 'shopping' },
         { href: '/hub', label: 'Hub', icon: 'hub', moduleId: 'hub' },
-        { href: '/emails', label: 'Emails', icon: 'emails', moduleId: 'emails' },
-        { href: '/email-signatures', label: 'Signatures', icon: 'emails', moduleId: 'email_signatures' },
         { href: '/people', label: 'People', icon: 'people', moduleId: 'people' },
         { href: '/measurements', label: 'Metrics', icon: 'measurements', moduleId: 'measurements' },
-        { href: '/virtues', label: 'Virtues', icon: 'virtues', moduleId: 'virtues' },
         { href: '/prayer', label: 'Prayer', icon: 'prayer', moduleId: 'prayer' },
         { href: '/scripture', label: 'Scripture', icon: 'scripture', moduleId: 'scripture' }
       ]
