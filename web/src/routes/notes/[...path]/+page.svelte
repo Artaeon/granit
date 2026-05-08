@@ -32,6 +32,7 @@
   import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
   import AskThisNotePanel from '$lib/notes/AskThisNotePanel.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
+  import NotePresentation from '$lib/notes/NotePresentation.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
 
@@ -646,6 +647,10 @@
   // SpeechSynthesis only, no backend. Closed by default; opens via
   // the toolbar button.
   let audioOpen = $state(false);
+  // Slideshow / presentation mode — fullscreen deck view of the
+  // note, split on H2 boundaries. Closed by default; opens via the
+  // toolbar button or Mod-Shift-P.
+  let presentationOpen = $state(false);
 
   function handleAskAI(req: AskAIRequest) {
     askAIRequest = req;
@@ -916,6 +921,15 @@
       if (mod && e.shiftKey && e.key.toLowerCase() === 'r') {
         e.preventDefault();
         toggleReadingMode();
+        return;
+      }
+
+      // Mod-Shift-P — open slideshow / presentation mode. The
+      // overlay's own Esc handler closes it; we don't need a
+      // toggle here.
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        if (note) presentationOpen = true;
         return;
       }
 
@@ -1391,6 +1405,21 @@
             onReplaceBody={aiMenuReplaceBody}
           />
         {/if}
+        <!-- Slideshow — open the note as a fullscreen deck split
+             on H2 boundaries. Mod-Shift-P also opens it. Hidden on
+             phones because driving a deck on a 4" screen is
+             pointless. -->
+        <button
+          onclick={() => (presentationOpen = true)}
+          title="Slideshow (Mod-Shift-P)"
+          aria-label="Open slideshow presentation"
+          class="hidden sm:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base text-subtext hover:text-primary hover:bg-surface0"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
+            <rect x="3" y="4" width="18" height="13" rx="1.5"/>
+            <path d="M8 21h8M12 17v4" stroke-linecap="round"/>
+          </svg>
+        </button>
         <!-- Audio mode — TTS read-aloud via the browser's Speech-
              Synthesis API. No backend, no AI cost. Walk-and-listen
              to your own notes. The button is a toggle: opens the
@@ -1674,6 +1703,18 @@
   bind:open={helpOpen}
   onClose={() => (helpOpen = false)}
 />
+
+<!-- Slideshow / presentation mode — fullscreen deck view. Mounted
+     at the page root so it overlays sidebars; component renders
+     nothing while closed. -->
+{#if note}
+  <NotePresentation
+    body={body}
+    title={note.title || note.path}
+    open={presentationOpen}
+    onClose={() => (presentationOpen = false)}
+  />
+{/if}
 
 <!-- Floating selection toolbar — appears above any text selection
      inside the editor. The chord-dispatch path means buttons take
