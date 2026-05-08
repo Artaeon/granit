@@ -18,6 +18,8 @@
   import Drawer from '$lib/components/Drawer.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
+  import EmptyState from '$lib/components/EmptyState.svelte';
+  import Skeleton from '$lib/components/Skeleton.svelte';
   import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
   import { daysUntil, pickHeroDeadline } from '$lib/deadlines/util';
 
@@ -25,8 +27,43 @@
   // by .granit/deadlines.json. Distinct from Tasks (no checkbox / not
   // a todo) and from Goals (a goal has milestones / progress; a
   // deadline is a single hard moment in time, possibly linked to a
-  // goal). The list is grouped by recency so the user can see at a
-  // glance what's slipping vs. what's distant background context.
+  // goal). Three view modes:
+  //   list      — flat, group-by toggle (urgency / status / month)
+  //   timeline  — vertical year-spanning rail of bands
+  //   calendar  — month-grid heat view
+  // Active view + group-by are persisted in localStorage so the
+  // user's last layout reopens with them.
+
+  type ViewMode = 'list' | 'timeline' | 'calendar';
+  type GroupBy = 'urgency' | 'status' | 'month';
+
+  const VIEW_KEY = 'granit.deadlines.view';
+  const GROUP_KEY = 'granit.deadlines.groupby';
+
+  function loadView(): ViewMode {
+    if (typeof localStorage === 'undefined') return 'list';
+    const v = localStorage.getItem(VIEW_KEY);
+    if (v === 'list' || v === 'timeline' || v === 'calendar') return v;
+    return 'list';
+  }
+  function loadGroup(): GroupBy {
+    if (typeof localStorage === 'undefined') return 'urgency';
+    const v = localStorage.getItem(GROUP_KEY);
+    if (v === 'urgency' || v === 'status' || v === 'month') return v;
+    return 'urgency';
+  }
+
+  let viewMode = $state<ViewMode>(loadView());
+  let groupBy = $state<GroupBy>(loadGroup());
+
+  $effect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try { localStorage.setItem(VIEW_KEY, viewMode); } catch {}
+  });
+  $effect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try { localStorage.setItem(GROUP_KEY, groupBy); } catch {}
+  });
 
   let deadlines = $state<Deadline[]>([]);
   let goals = $state<Goal[]>([]);
@@ -42,6 +79,11 @@
   // Active importance filter — null = show all; otherwise filter to
   // the matching importance value. The toggle bar at the top reads + writes this.
   let importanceFilter = $state<DeadlineImportance | null>(null);
+
+  // Title-substring quick filter — typing in the search box narrows
+  // the visible set. Cheap on the client; deadlines.json rarely runs
+  // to thousands of rows.
+  let q = $state('');
 
   // Optional URL-driven scope filters (e.g. /deadlines?project=Foo or
   // ?goal_id=G123). Used by the note-page deadline strip to deep-link
@@ -144,8 +186,18 @@
   });
 
   let filtered = $derived.by(() => {
-    if (!importanceFilter) return scoped;
-    return scoped.filter((d) => d.importance === importanceFilter);
+    let out = scoped;
+    if (importanceFilter) out = out.filter((d) => d.importance === importanceFilter);
+    const term = q.trim().toLowerCase();
+    if (term) {
+      out = out.filter((d) =>
+        d.title.toLowerCase().includes(term) ||
+        (d.description ?? '').toLowerCase().includes(term) ||
+        (d.project ?? '').toLowerCase().includes(term) ||
+        (d.venture ?? '').toLowerCase().includes(term)
+      );
+    }
+    return out;
   });
 
   // ----- Hero countdown card -----
@@ -159,15 +211,22 @@
 
   // ----- Grouping for the list -----
   //
-  // Buckets: "Overdue" | "This week" | "This month" | "Later" | "Met"
-  // | "Cancelled". Met used to fold into "Done" alongside cancelled,
-  // but the user explicitly wants past wins to stay visible — so
-  // we now render "Met" as its own tail group, and roll cancelled
-  // into a separate quieter bucket below it.
+  // Group-by 'urgency' (default): "Overdue" | "This week" | "This
+  // month" | "Later" | "Met" | "Cancelled". Met used to fold into
+  // "Done" alongside cancelled, but the user explicitly wants past
+  // wins to stay visible — so we render "Met" as its own tail group
+  // and roll cancelled into a quieter bucket below it.
+  //
+  // Group-by 'status': active / missed / met / cancelled — useful
+  // when triaging "what's still open" across all dates.
+  //
+  // Group-by 'month': "May 2026", "Jun 2026", etc — calendar-year
+  // mental model, matches how birthdays and exams are usually
+  // mentally bucketed.
 
-  type Bucket = 'overdue' | 'this_week' | 'this_month' | 'later' | 'met' | 'cancelled';
-  const bucketOrder: Bucket[] = ['overdue', 'this_week', 'this_month', 'later', 'met', 'cancelled'];
-  const bucketLabel: Record<Bucket, string> = {
+  type Bucket = string;
+  const urgencyOrder: Bucket[] = ['overdue', 'this_week', 'this_month', 'later', 'met', 'cancelled'];
+  const urgencyLabel: Record<string, string> = {
     overdue: 'Overdue',
     this_week: 'This week',
     this_month: 'This month',
@@ -175,8 +234,15 @@
     met: 'Met',
     cancelled: 'Cancelled'
   };
+  const statusOrder: Bucket[] = ['active', 'missed', 'met', 'cancelled'];
+  const statusLabel: Record<string, string> = {
+    active: 'Active',
+    missed: 'Missed',
+    met: 'Met',
+    cancelled: 'Cancelled'
+  };
 
-  function bucketOf(d: Deadline): Bucket {
+  function urgencyBucket(d: Deadline): Bucket {
     if (d.status === 'met') return 'met';
     if (d.status === 'cancelled') return 'cancelled';
     const days = daysUntil(d.date);
@@ -184,6 +250,21 @@
     if (days <= 7) return 'this_week';
     if (days <= 31) return 'this_month';
     return 'later';
+  }
+
+  function statusBucket(d: Deadline): Bucket {
+    return d.status ?? 'active';
+  }
+
+  function monthBucket(d: Deadline): Bucket {
+    // 'YYYY-MM' as the bucket key; rendered with the localised month name.
+    return d.date.slice(0, 7);
+  }
+  function monthLabel(key: string): string {
+    const [y, m] = key.split('-').map(Number);
+    if (!y || !m) return key;
+    const dt = new Date(y, m - 1, 1);
+    return dt.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   }
 
   function countdown(d: Deadline): string {
@@ -197,20 +278,73 @@
     return `${-n}d ago`;
   }
 
+  // Each bucket is a Map of [key, rows] preserving insertion order
+  // so the section render order matches our intended display order.
   let grouped = $derived.by(() => {
-    const out: Record<Bucket, Deadline[]> = {
-      overdue: [],
-      this_week: [],
-      this_month: [],
-      later: [],
-      met: [],
-      cancelled: []
-    };
-    // The server returns rows already sorted (active+missed first by
-    // date asc), so we can just bucket without re-sorting.
-    for (const d of filtered) out[bucketOf(d)].push(d);
+    const out = new Map<Bucket, Deadline[]>();
+    if (groupBy === 'urgency') {
+      for (const k of urgencyOrder) out.set(k, []);
+      for (const d of filtered) out.get(urgencyBucket(d))!.push(d);
+    } else if (groupBy === 'status') {
+      for (const k of statusOrder) out.set(k, []);
+      for (const d of filtered) {
+        const b = statusBucket(d);
+        if (!out.has(b)) out.set(b, []);
+        out.get(b)!.push(d);
+      }
+    } else {
+      // month — keys are the YYYY-MM in chronological order. We
+      // collect first then sort, which is cheap (deadlines.json is
+      // small enough that O(n log n) once isn't worth optimising).
+      const tmp = new Map<string, Deadline[]>();
+      for (const d of filtered) {
+        const k = monthBucket(d);
+        if (!tmp.has(k)) tmp.set(k, []);
+        tmp.get(k)!.push(d);
+      }
+      const keys = Array.from(tmp.keys()).sort();
+      for (const k of keys) out.set(k, tmp.get(k)!);
+    }
     return out;
   });
+
+  function bucketTitle(b: Bucket): string {
+    if (groupBy === 'urgency') return urgencyLabel[b] ?? b;
+    if (groupBy === 'status') return statusLabel[b] ?? b;
+    return monthLabel(b);
+  }
+
+  // Bucket header tint — drives the section heading color so the eye
+  // lands on Overdue / This week first under urgency, on Active under
+  // status, and on the urgency of the bucket's first row under month.
+  function bucketTone(b: Bucket): string {
+    if (groupBy === 'urgency') {
+      switch (b) {
+        case 'overdue': return 'error';
+        case 'this_week': return 'warning';
+        case 'this_month': return 'info';
+        case 'met': return 'success';
+        default: return 'dim';
+      }
+    }
+    if (groupBy === 'status') {
+      switch (b) {
+        case 'active': return 'info';
+        case 'missed': return 'error';
+        case 'met': return 'success';
+        default: return 'dim';
+      }
+    }
+    // month — tint by how close the bucket is to today.
+    const [y, m] = b.split('-').map(Number);
+    if (!y || !m) return 'dim';
+    const now = new Date();
+    const monthsAhead = (y - now.getFullYear()) * 12 + (m - 1 - now.getMonth());
+    if (monthsAhead < 0) return 'dim';
+    if (monthsAhead === 0) return 'warning';
+    if (monthsAhead <= 1) return 'info';
+    return 'secondary';
+  }
 
   // ----- Stat strip -----
   // One-line "shape of your deadlines" summary, computed from the
@@ -231,19 +365,6 @@
     }
     return { overdue, thisWeek, thisMonth, later, met };
   });
-
-  // Bucket header tint — drives the section heading color so the eye
-  // lands on Overdue / This week first. Keep "later" + "met" in the
-  // muted dim tone to preserve the calm-tail effect.
-  function bucketTone(b: Bucket): string {
-    switch (b) {
-      case 'overdue': return 'error';
-      case 'this_week': return 'warning';
-      case 'this_month': return 'info';
-      case 'met': return 'success';
-      default: return 'dim';
-    }
-  }
 
   // ----- Drawer / form -----
 
@@ -304,6 +425,16 @@
     return /^\d{4}-\d{2}-\d{2}$/.test(s);
   }
 
+  // Add N days to an ISO YYYY-MM-DD string and return the same format.
+  // Used by snooze quick-actions. Local-time arithmetic (matches
+  // daysUntil's local-midnight semantics).
+  function addDaysISO(iso: string, n: number): string {
+    const [y, m, d] = iso.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + n);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  }
+
   async function save() {
     if (!fTitle.trim()) {
       toast.warning('title is required');
@@ -358,6 +489,41 @@
     }
   }
 
+  // Inline quick-actions on a row. Don't open the drawer — fire-and-
+  // forget patches that the WS broadcast will reconcile on the next
+  // refetch. We optimistically toast on success/failure so the user
+  // gets feedback without a layout shift.
+  async function markMet(d: Deadline, e: MouseEvent) {
+    e.stopPropagation();
+    try {
+      await api.patchDeadline(d.id, { status: 'met' });
+      toast.success(`✓ ${d.title}`);
+      await load();
+    } catch (err) {
+      toast.error('mark met failed: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+  async function snooze(d: Deadline, days: number, e: MouseEvent) {
+    e.stopPropagation();
+    try {
+      await api.patchDeadline(d.id, { date: addDaysISO(d.date, days) });
+      toast.success(`snoozed +${days}d`);
+      await load();
+    } catch (err) {
+      toast.error('snooze failed: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+  async function reopen(d: Deadline, e: MouseEvent) {
+    e.stopPropagation();
+    try {
+      await api.patchDeadline(d.id, { status: 'active' });
+      toast.success('reopened');
+      await load();
+    } catch (err) {
+      toast.error('reopen failed: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+
   function toggleTaskLink(id: string) {
     if (fTaskIds.includes(id)) fTaskIds = fTaskIds.filter((x) => x !== id);
     else fTaskIds = [...fTaskIds, id];
@@ -405,10 +571,171 @@
     if (days <= 14) return 'var(--color-info)';
     return 'var(--color-secondary)';
   }
+
+  // ----- "Coming up" hero strip -----
+  // Three most-urgent active rows (critical→high→normal, then
+  // earliest date). Replaces the single hero card on first paint
+  // because the user often has multiple critical things stacked and
+  // showing only one hides the next-on-deck. Falls back to whatever's
+  // available when fewer than three are upcoming.
+  let comingUp = $derived.by(() => {
+    const active = scoped.filter((d) => d.status !== 'met' && d.status !== 'cancelled');
+    const importanceRank: Record<DeadlineImportance, number> = { critical: 0, high: 1, normal: 2 };
+    return [...active]
+      .sort((a, b) => {
+        const ra = importanceRank[a.importance] ?? 2;
+        const rb = importanceRank[b.importance] ?? 2;
+        if (ra !== rb) return ra - rb;
+        return a.date.localeCompare(b.date);
+      })
+      .slice(0, 3);
+  });
+
+  // ----- Calendar (month-grid) view -----
+  // Cursor is the first-of-month being shown. ←/→ buttons step it.
+  let calCursor = $state(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  function calStep(n: number) {
+    const dt = new Date(calCursor);
+    dt.setMonth(dt.getMonth() + n);
+    calCursor = dt;
+  }
+  function calLabel(): string {
+    return calCursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  }
+  let calCells = $derived.by(() => {
+    // 6 weeks x 7 days, aligned to Monday-start. Each cell holds the
+    // ISO date string + the deadlines (post-filter) due that day.
+    const first = new Date(calCursor);
+    // Monday-of-grid = the Monday on or before the 1st. JS Sunday=0 → shift.
+    const dow = (first.getDay() + 6) % 7;
+    const start = new Date(first);
+    start.setDate(first.getDate() - dow);
+    const cells: { iso: string; date: Date; rows: Deadline[]; inMonth: boolean }[] = [];
+    const byDate = new Map<string, Deadline[]>();
+    for (const d of filtered) {
+      if (!byDate.has(d.date)) byDate.set(d.date, []);
+      byDate.get(d.date)!.push(d);
+    }
+    for (let i = 0; i < 42; i++) {
+      const dt = new Date(start);
+      dt.setDate(start.getDate() + i);
+      const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      cells.push({
+        iso,
+        date: dt,
+        rows: byDate.get(iso) ?? [],
+        inMonth: dt.getMonth() === calCursor.getMonth()
+      });
+    }
+    return cells;
+  });
+  const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  function isTodayISO(iso: string): boolean {
+    return iso === todayISO();
+  }
+  function calRowTone(d: Deadline): string {
+    if (d.status === 'met') return 'success';
+    if (d.status === 'cancelled') return 'dim';
+    if (d.importance === 'critical') return 'error';
+    if (d.importance === 'high') return 'warning';
+    return 'info';
+  }
+
+  // ----- Timeline view -----
+  // Vertical rail of all (filtered) deadlines, sorted earliest-first,
+  // visually grouped by month. Row position on the rail communicates
+  // urgency; gap height between rows is proportional to days-between
+  // (clamped) so distant deadlines visibly drift apart from clustered ones.
+  let timelineRows = $derived.by(() => {
+    return [...filtered].sort((a, b) => a.date.localeCompare(b.date));
+  });
+
+  // ----- Cross-link helpers -----
+  // The deadline's `project` / `goal_id` / `venture` chips on the row
+  // become real links to the corresponding entity-detail page so the
+  // user can pivot from a deadline to its parent context in one click.
+  // We stopPropagation in the handler so the chip click doesn't also
+  // open the deadline drawer.
+  function projectHref(name: string): string {
+    return `/projects?p=${encodeURIComponent(name)}`;
+  }
+  function goalHref(id: string): string {
+    return `/goals?focus=${encodeURIComponent(id)}`;
+  }
+  function ventureHref(name: string): string {
+    return `/ventures?v=${encodeURIComponent(name)}`;
+  }
+
+  // ----- Keyboard shortcuts -----
+  //
+  //   n        new deadline
+  //   /        focus title-search box
+  //   1/2/3    toggle Critical / High / Normal pill
+  //   v        cycle view mode (list → timeline → calendar → list)
+  //   g        cycle group-by (urgency → status → month → urgency)
+  //   esc      clear filter / blur search (when search has focus)
+  //
+  // We bail when the drawer is open or focus is inside any input,
+  // textarea or select — global single-letter binds otherwise eat
+  // typing. The search box has its own key handler to intercept Esc
+  // before it reaches us.
+  let searchInput = $state<HTMLInputElement | null>(null);
+  function onPageKey(e: KeyboardEvent) {
+    if (drawerOpen) return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) {
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'n':
+        e.preventDefault();
+        openCreate();
+        break;
+      case '/':
+        e.preventDefault();
+        searchInput?.focus();
+        searchInput?.select();
+        break;
+      case '1':
+        e.preventDefault();
+        setFilter('critical');
+        break;
+      case '2':
+        e.preventDefault();
+        setFilter('high');
+        break;
+      case '3':
+        e.preventDefault();
+        setFilter('normal');
+        break;
+      case 'v': {
+        e.preventDefault();
+        const order: ViewMode[] = ['list', 'timeline', 'calendar'];
+        viewMode = order[(order.indexOf(viewMode) + 1) % order.length];
+        break;
+      }
+      case 'g': {
+        e.preventDefault();
+        const order: GroupBy[] = ['urgency', 'status', 'month'];
+        groupBy = order[(order.indexOf(groupBy) + 1) % order.length];
+        break;
+      }
+      case 'Escape':
+        if (importanceFilter || q) {
+          e.preventDefault();
+          importanceFilter = null;
+          q = '';
+        }
+        break;
+    }
+  }
 </script>
 
+<svelte:window on:keydown={onPageKey} />
+
 <div class="h-full overflow-y-auto">
-  <div class="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+  <div class="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
     <VisionContextStrip />
     <PageHeader
       title="Deadlines"
@@ -418,6 +745,7 @@
         <button
           onclick={openCreate}
           class="px-3 py-1.5 bg-primary text-on-primary text-sm font-medium rounded hover:opacity-90"
+          title="New deadline (n)"
         >+ New deadline</button>
       {/snippet}
     </PageHeader>
@@ -435,67 +763,95 @@
     {/if}
 
     {#if loading && deadlines.length === 0}
-      <div class="text-sm text-dim">loading…</div>
-    {:else if deadlines.length === 0}
-      <div class="text-sm text-dim italic">
-        no deadlines yet. click "+ New deadline" to add the first one.
+      <!-- Skeleton — three rectangles approximating the hero strip
+           plus a stack of list rows. Keeps the page from looking
+           "broken" on a slow network without bouncing the layout when
+           real content arrives. -->
+      <div class="space-y-5">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Skeleton class="h-24 w-full" />
+          <Skeleton class="h-24 w-full" />
+          <Skeleton class="h-24 w-full" />
+        </div>
+        <div class="space-y-2">
+          {#each Array(5) as _, i (i)}
+            <Skeleton class="h-14 w-full" />
+          {/each}
+        </div>
       </div>
+    {:else if deadlines.length === 0}
+      <EmptyState
+        icon="📅"
+        title="No deadlines yet"
+        description="Capture the next exam, launch, birthday, or contract date. Deadlines are calm anchors — Granit keeps the slipping ones at the top so you can never miss the one that matters."
+      >
+        {#snippet action()}
+          <button
+            onclick={openCreate}
+            class="px-4 py-2 bg-primary text-on-primary text-sm font-medium rounded hover:opacity-90"
+          >+ Add your first deadline</button>
+        {/snippet}
+      </EmptyState>
     {:else}
-      <!-- Hero countdown card — most-urgent active row. Visually
-           striking so the user can't miss it on first paint. -->
-      {#if hero}
-        {@const h = hero}
-        <button
-          type="button"
-          onclick={() => openEdit(h)}
-          class="w-full text-left block mb-5 p-4 sm:p-5 bg-surface0 border-l-4 rounded-lg hover:border-primary transition-colors"
-          style="border-left-color: {heroBorder(heroDays)};"
-        >
-          <div class="flex items-start gap-3">
-            <span class="text-2xl flex-shrink-0 mt-0.5" aria-hidden="true">
-              {h.importance === 'critical' ? '🔴' : h.importance === 'high' ? '🟠' : '🟢'}
-            </span>
-            <div class="flex-1 min-w-0">
-              <div class="text-[11px] uppercase tracking-wider text-dim mb-0.5">Up next</div>
-              <div class="text-lg sm:text-xl font-semibold text-text leading-tight">
-                {#if heroDays < 0}
-                  <span class="text-error">{Math.abs(heroDays)} {Math.abs(heroDays) === 1 ? 'day' : 'days'} overdue</span> · {h.title}
-                {:else if heroDays === 0}
-                  <span class="text-error">Today</span> · {h.title}
-                {:else if heroDays === 1}
-                  <span class="text-warning">Tomorrow</span> · {h.title}
-                {:else}
-                  <span class="text-primary">{heroDays} days</span>
-                  <span class="text-dim font-normal">until</span>
-                  {h.title}
-                {/if}
-              </div>
-              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-dim">
-                <span class="font-mono tabular-nums text-subtext">{h.date}</span>
-                {#if h.venture}
-                  <span class="text-secondary">🏢 {h.venture}</span>
-                {/if}
-                {#if h.goal_id}
-                  <span class="text-secondary">🎯 {goalTitle(h.goal_id)}</span>
-                {/if}
-                {#if h.project}
-                  <span class="text-secondary">📁 {h.project}</span>
-                {/if}
-                <span class="ml-auto text-secondary hover:underline">View →</span>
-              </div>
-            </div>
+      <!-- Coming-up strip — top 3 most-urgent active rows. Shows three
+           cards on desktop, stacks on mobile. Each card mirrors the
+           old single-hero layout but tighter so three fit. -->
+      {#if comingUp.length > 0}
+        <div class="mb-5">
+          <div class="text-[11px] uppercase tracking-wider text-dim mb-2">Coming up</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {#each comingUp as h (h.id)}
+              {@const days = daysUntil(h.date)}
+              <button
+                type="button"
+                onclick={() => openEdit(h)}
+                class="text-left block p-3 sm:p-4 bg-surface0 border-l-4 rounded-lg hover:border-primary transition-colors"
+                style="border-left-color: {heroBorder(days)};"
+              >
+                <div class="flex items-start gap-2.5">
+                  <span class="text-xl flex-shrink-0 mt-0.5" aria-hidden="true">
+                    {h.importance === 'critical' ? '🔴' : h.importance === 'high' ? '🟠' : '🟢'}
+                  </span>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm sm:text-base font-semibold text-text leading-tight truncate" title={h.title}>
+                      {h.title}
+                    </div>
+                    <div class="mt-1 text-xs">
+                      {#if days < 0}
+                        <span class="text-error font-medium">{Math.abs(days)}d overdue</span>
+                      {:else if days === 0}
+                        <span class="text-error font-medium">Today</span>
+                      {:else if days === 1}
+                        <span class="text-warning font-medium">Tomorrow</span>
+                      {:else if days <= 7}
+                        <span class="text-warning font-medium">in {days} days</span>
+                      {:else if days <= 31}
+                        <span class="text-info font-medium">in {days} days</span>
+                      {:else}
+                        <span class="text-secondary font-medium">in {days} days</span>
+                      {/if}
+                      <span class="text-dim ml-1">· {h.date}</span>
+                    </div>
+                    {#if h.project || h.goal_id || h.venture}
+                      <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 text-[11px] text-dim">
+                        {#if h.venture}<span class="text-secondary truncate">🏢 {h.venture}</span>{/if}
+                        {#if h.goal_id}<span class="text-secondary truncate">🎯 {goalTitle(h.goal_id)}</span>{/if}
+                        {#if h.project}<span class="text-secondary truncate">📁 {h.project}</span>{/if}
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              </button>
+            {/each}
           </div>
-        </button>
+        </div>
       {/if}
 
       <!-- Stat strip — one-line "shape of today's commitments" so the
            user sees what's slipping vs. distant in a single glance.
-           Sits between the hero card and the importance filter so the
-           visual flow is: most-urgent (hero) → overall shape (strip)
-           → drilldown (filter pills + buckets). Hides zero buckets to
-           stay tidy on a young vault. -->
+           Hides zero buckets to stay tidy on a young vault. -->
       {#if stats.overdue + stats.thisWeek + stats.thisMonth + stats.later + stats.met > 0}
-        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4 text-xs">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3 text-xs">
           {#if stats.overdue > 0}
             <span class="text-error font-medium tabular-nums">{stats.overdue} overdue</span>
           {/if}
@@ -514,19 +870,89 @@
         </div>
       {/if}
 
+      <!-- Toolbar — view-mode segment, group-by segment (only in list
+           view), search box, importance pills. Wraps cleanly on mobile.
+           Keyboard hints in title attrs match the on-page binds. -->
+      <div class="flex flex-wrap items-center gap-2 mb-4">
+        <!-- View mode -->
+        <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs" role="tablist" aria-label="View mode">
+          {#each [
+            { v: 'list' as ViewMode, label: 'List', icon: '☰' },
+            { v: 'timeline' as ViewMode, label: 'Timeline', icon: '┊' },
+            { v: 'calendar' as ViewMode, label: 'Calendar', icon: '▦' }
+          ] as o}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === o.v}
+              onclick={() => (viewMode = o.v)}
+              class="px-2.5 py-1.5 transition-colors {viewMode === o.v
+                ? 'bg-primary text-on-primary'
+                : 'text-subtext hover:bg-surface1'}"
+              title="{o.label} view (v to cycle)"
+            ><span class="font-mono mr-1">{o.icon}</span>{o.label}</button>
+          {/each}
+        </div>
+
+        <!-- Group-by — only meaningful in list view -->
+        {#if viewMode === 'list'}
+          <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs" role="tablist" aria-label="Group by">
+            <span class="px-2 py-1.5 text-dim self-center">Group:</span>
+            {#each [
+              { v: 'urgency' as GroupBy, label: 'Urgency' },
+              { v: 'status' as GroupBy, label: 'Status' },
+              { v: 'month' as GroupBy, label: 'Month' }
+            ] as o}
+              <button
+                type="button"
+                role="tab"
+                aria-selected={groupBy === o.v}
+                onclick={() => (groupBy = o.v)}
+                class="px-2.5 py-1.5 transition-colors {groupBy === o.v
+                  ? 'bg-primary text-on-primary'
+                  : 'text-subtext hover:bg-surface1'}"
+                title="Group by {o.label.toLowerCase()} (g to cycle)"
+              >{o.label}</button>
+            {/each}
+          </div>
+        {/if}
+
+        <!-- Search — narrows by title/description/project/venture -->
+        <div class="relative flex-1 min-w-[12rem] max-w-sm">
+          <input
+            bind:this={searchInput}
+            bind:value={q}
+            type="text"
+            placeholder="Search title… (/)"
+            class="w-full pl-7 pr-2 py-1.5 bg-surface0 border border-surface1 rounded text-xs text-text focus:outline-none focus:border-primary"
+            onkeydown={(e) => { if (e.key === 'Escape') { (e.target as HTMLInputElement).blur(); q = ''; } }}
+          />
+          <span class="absolute left-2 top-1/2 -translate-y-1/2 text-dim text-xs" aria-hidden="true">⌕</span>
+          {#if q}
+            <button
+              type="button"
+              onclick={() => (q = '')}
+              class="absolute right-1.5 top-1/2 -translate-y-1/2 text-dim hover:text-text text-xs"
+              aria-label="clear search"
+            >×</button>
+          {/if}
+        </div>
+      </div>
+
       <!-- Importance filter bar — three pills with global counts.
            Click toggles. The hint row below tells the user we're
            filtered (and how to reset). -->
       <div class="flex flex-wrap items-center gap-2 mb-4">
         {#each [
-          { v: 'critical' as DeadlineImportance, label: 'Critical', tone: 'error', count: importanceCounts.critical },
-          { v: 'high' as DeadlineImportance, label: 'High', tone: 'warning', count: importanceCounts.high },
-          { v: 'normal' as DeadlineImportance, label: 'Normal', tone: 'secondary', count: importanceCounts.normal }
+          { v: 'critical' as DeadlineImportance, label: 'Critical', tone: 'error', count: importanceCounts.critical, key: '1' },
+          { v: 'high' as DeadlineImportance, label: 'High', tone: 'warning', count: importanceCounts.high, key: '2' },
+          { v: 'normal' as DeadlineImportance, label: 'Normal', tone: 'secondary', count: importanceCounts.normal, key: '3' }
         ] as p}
           {@const active = importanceFilter === p.v}
           <button
             type="button"
             onclick={() => setFilter(p.v)}
+            title="{p.label} ({p.key})"
             class="px-3 py-1.5 rounded-full border text-xs font-medium tabular-nums transition-colors flex items-center gap-1.5
               {active ? 'border-transparent' : 'border-surface1 hover:border-surface2'}"
             style={active
@@ -537,105 +963,286 @@
             <span class="text-[10px] opacity-80">{p.count}</span>
           </button>
         {/each}
-        {#if importanceFilter}
+        {#if importanceFilter || q}
           <span class="text-xs text-dim">
             Showing {filtered.length} of {scoped.length}
             <button
               type="button"
-              onclick={() => (importanceFilter = null)}
+              onclick={() => { importanceFilter = null; q = ''; }}
               class="ml-1 px-1.5 py-0.5 rounded text-dim hover:text-text hover:bg-surface1"
             >× clear</button>
           </span>
         {/if}
       </div>
 
-      <div class="space-y-6">
-        {#each bucketOrder as b}
-          {@const rows = grouped[b]}
-          {#if rows.length > 0}
-            {@const tone = bucketTone(b)}
-            <section>
-              <!-- Bucket header tinted by urgency — overdue/this_week
-                   pop visually so the user's eye lands on what needs
-                   action first. Met/cancelled stay quiet so past wins
-                   and dismissals don't compete for attention. -->
-              <h2
-                class="text-xs uppercase tracking-wider font-medium mb-2"
-                style={tone === 'dim'
-                  ? 'color: var(--color-dim);'
-                  : `color: var(--color-${tone});`}
-              >
-                {bucketLabel[b]}
-                <span class="opacity-60 ml-1 tabular-nums">· {rows.length}</span>
-              </h2>
-              <ul class="space-y-1.5">
-                {#each rows as d (d.id)}
-                  {@const st = statusTone(d.status)}
-                  {@const isMet = d.status === 'met'}
-                  {@const isCancelled = d.status === 'cancelled'}
-                  <li>
-                    <button
-                      type="button"
-                      onclick={() => openEdit(d)}
-                      class="w-full text-left bg-surface0 border border-surface1 rounded-lg p-3 hover:border-primary/50 transition-colors flex flex-col gap-1.5
-                        {isMet || isCancelled ? 'opacity-60' : ''}"
-                    >
-                      <!-- Title row — title takes the lead, importance
-                           pill anchors the right. The icon variant is
-                           dropped (the colored importance pill already
-                           encodes severity) and date+countdown moves
-                           into the meta row to declutter the title. -->
-                      <div class="flex items-baseline gap-2">
-                        <span class="text-base text-text font-medium flex-1 min-w-0 truncate {isMet ? 'line-through' : ''}">
-                          {d.title}
-                        </span>
-                        <div class="flex items-center gap-1.5 flex-shrink-0">
-                          <DeadlinePill variant="importance" importance={d.importance} />
-                          {#if d.status && d.status !== 'active'}
-                            <span
-                              class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded whitespace-nowrap"
-                              style="background: color-mix(in srgb, var(--color-{st}) 18%, transparent); color: var(--color-{st});"
-                            >{d.status}</span>
-                          {/if}
+      <!-- Body — view-mode switch -->
+      {#if viewMode === 'list'}
+        <div class="space-y-6">
+          {#each Array.from(grouped.entries()) as [b, rows] (b)}
+            {#if rows.length > 0}
+              {@const tone = bucketTone(b)}
+              <section>
+                <!-- Bucket header tinted by tone — overdue/this_week
+                     pop visually under urgency, active does under
+                     status, etc. -->
+                <h2
+                  class="text-xs uppercase tracking-wider font-medium mb-2"
+                  style={tone === 'dim'
+                    ? 'color: var(--color-dim);'
+                    : `color: var(--color-${tone});`}
+                >
+                  {bucketTitle(b)}
+                  <span class="opacity-60 ml-1 tabular-nums">· {rows.length}</span>
+                </h2>
+                <ul class="space-y-1.5">
+                  {#each rows as d (d.id)}
+                    {@const st = statusTone(d.status)}
+                    {@const isMet = d.status === 'met'}
+                    {@const isCancelled = d.status === 'cancelled'}
+                    {@const isDone = isMet || isCancelled}
+                    <li>
+                      <div
+                        role="button"
+                        tabindex="0"
+                        onclick={() => openEdit(d)}
+                        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(d); } }}
+                        class="group w-full text-left bg-surface0 border border-surface1 rounded-lg p-3 hover:border-primary/50 transition-colors flex flex-col gap-1.5 cursor-pointer
+                          {isDone ? 'opacity-60' : ''}"
+                      >
+                        <!-- Title row — title takes the lead, importance
+                             pill anchors the right. The icon variant is
+                             dropped (the colored importance pill already
+                             encodes severity) and date+countdown moves
+                             into the meta row to declutter the title. -->
+                        <div class="flex items-baseline gap-2">
+                          <span class="text-base text-text font-medium flex-1 min-w-0 truncate {isMet ? 'line-through' : ''}">
+                            {d.title}
+                          </span>
+                          <div class="flex items-center gap-1.5 flex-shrink-0">
+                            <DeadlinePill variant="importance" importance={d.importance} />
+                            {#if d.status && d.status !== 'active'}
+                              <span
+                                class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded whitespace-nowrap"
+                                style="background: color-mix(in srgb, var(--color-{st}) 18%, transparent); color: var(--color-{st});"
+                              >{d.status}</span>
+                            {/if}
+                          </div>
                         </div>
+                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dim">
+                          <span class="font-mono tabular-nums text-subtext">{d.date}</span>
+                          <span class="text-subtext">· {countdown(d)}</span>
+                          {#if d.venture}
+                            <a
+                              href={ventureHref(d.venture)}
+                              onclick={(e) => e.stopPropagation()}
+                              class="text-secondary hover:underline"
+                            >🏢 {d.venture}</a>
+                          {/if}
+                          {#if d.goal_id}
+                            <a
+                              href={goalHref(d.goal_id)}
+                              onclick={(e) => e.stopPropagation()}
+                              class="text-secondary hover:underline"
+                            >🎯 {goalTitle(d.goal_id)}</a>
+                          {/if}
+                          {#if d.project}
+                            <a
+                              href={projectHref(d.project)}
+                              onclick={(e) => e.stopPropagation()}
+                              class="text-secondary hover:underline"
+                            >📁 {d.project}</a>
+                          {/if}
+                          {#if d.task_ids && d.task_ids.length > 0}
+                            <span>🔗 {d.task_ids.length} task{d.task_ids.length === 1 ? '' : 's'}</span>
+                          {/if}
+                          <!-- Inline quick-actions, revealed on row
+                               hover/focus to stay calm on first paint
+                               but discoverable. Active rows: ✓ done +
+                               snooze. Done rows: ↺ reopen. -->
+                          <span class="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                            {#if !isDone}
+                              <button
+                                type="button"
+                                onclick={(e) => markMet(d, e)}
+                                class="px-1.5 py-0.5 text-success hover:bg-success/15 rounded"
+                                title="Mark met"
+                                aria-label="Mark {d.title} as met"
+                              >✓</button>
+                              <button
+                                type="button"
+                                onclick={(e) => snooze(d, 1, e)}
+                                class="px-1.5 py-0.5 text-info hover:bg-info/15 rounded"
+                                title="Snooze 1 day"
+                                aria-label="Snooze {d.title} 1 day"
+                              >+1d</button>
+                              <button
+                                type="button"
+                                onclick={(e) => snooze(d, 7, e)}
+                                class="px-1.5 py-0.5 text-info hover:bg-info/15 rounded"
+                                title="Snooze 1 week"
+                                aria-label="Snooze {d.title} 1 week"
+                              >+7d</button>
+                            {:else}
+                              <button
+                                type="button"
+                                onclick={(e) => reopen(d, e)}
+                                class="px-1.5 py-0.5 text-warning hover:bg-warning/15 rounded"
+                                title="Reopen"
+                                aria-label="Reopen {d.title}"
+                              >↺</button>
+                            {/if}
+                          </span>
+                        </div>
+                        {#if d.description}
+                          <p class="text-sm text-subtext line-clamp-2">{d.description}</p>
+                        {/if}
                       </div>
-                      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dim">
-                        <span class="font-mono tabular-nums text-subtext">{d.date}</span>
-                        <span class="text-subtext">· {countdown(d)}</span>
-                        {#if d.venture}
-                          <span class="text-secondary">🏢 {d.venture}</span>
-                        {/if}
-                        {#if d.goal_id}
-                          <span class="text-secondary">🎯 {goalTitle(d.goal_id)}</span>
-                        {/if}
-                        {#if d.project}
-                          <span class="text-secondary">📁 {d.project}</span>
-                        {/if}
-                        {#if d.task_ids && d.task_ids.length > 0}
-                          <span>🔗 {d.task_ids.length} task{d.task_ids.length === 1 ? '' : 's'}</span>
-                        {/if}
-                      </div>
-                      {#if d.description}
-                        <p class="text-sm text-subtext line-clamp-2">{d.description}</p>
-                      {/if}
-                    </button>
-                  </li>
-                {/each}
-              </ul>
-            </section>
+                    </li>
+                  {/each}
+                </ul>
+              </section>
+            {/if}
+          {/each}
+          {#if filtered.length === 0}
+            <div class="text-sm text-dim italic">
+              No deadlines match your filters.
+              <button
+                type="button"
+                onclick={() => { importanceFilter = null; q = ''; }}
+                class="text-secondary hover:underline ml-1"
+              >clear →</button>
+            </div>
           {/if}
-        {/each}
-        {#if importanceFilter && filtered.length === 0}
-          <div class="text-sm text-dim italic">
-            No deadlines match this filter.
-            <button
-              type="button"
-              onclick={() => (importanceFilter = null)}
-              class="text-secondary hover:underline ml-1"
-            >clear →</button>
-          </div>
+        </div>
+      {:else if viewMode === 'timeline'}
+        <!-- Timeline view — vertical rail. Each row is a dot on the
+             rail with the date + title to the right. Month dividers
+             break the visual rhythm so the eye can pick out clusters. -->
+        {#if timelineRows.length === 0}
+          <div class="text-sm text-dim italic">No deadlines match your filters.</div>
+        {:else}
+          {@const monthHeaders = (() => {
+            const seen = new Set<string>();
+            const out = new Set<string>();
+            for (const d of timelineRows) {
+              const k = monthBucket(d);
+              if (!seen.has(k)) { seen.add(k); out.add(d.id); }
+            }
+            return out;
+          })()}
+          <ol class="relative ml-4 border-l border-surface2 space-y-2 pl-5">
+            {#each timelineRows as d (d.id)}
+              {@const days = daysUntil(d.date)}
+              {@const isMet = d.status === 'met'}
+              {@const isCancelled = d.status === 'cancelled'}
+              {@const isDone = isMet || isCancelled}
+              {@const showMonth = monthHeaders.has(d.id)}
+              {@const dotTone = isDone
+                ? (isMet ? 'success' : 'dim')
+                : days < 0 ? 'error'
+                : days <= 3 ? 'error'
+                : days <= 7 ? 'warning'
+                : days <= 14 ? 'info'
+                : 'secondary'}
+              {#if showMonth}
+                <li class="ml-[-1.25rem] pt-3 first:pt-0 text-[11px] uppercase tracking-wider text-dim font-medium">
+                  {monthLabel(monthBucket(d))}
+                </li>
+              {/if}
+              <li class="relative">
+                <span
+                  class="absolute -left-[1.55rem] top-3 w-3 h-3 rounded-full ring-2 ring-base"
+                  style="background: var(--color-{dotTone});"
+                  aria-hidden="true"
+                ></span>
+                <div
+                  role="button"
+                  tabindex="0"
+                  onclick={() => openEdit(d)}
+                  onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(d); } }}
+                  class="bg-surface0 border border-surface1 hover:border-primary/50 rounded-lg p-3 transition-colors cursor-pointer {isDone ? 'opacity-60' : ''}"
+                >
+                  <div class="flex items-baseline gap-2">
+                    <span class="font-mono text-xs text-subtext tabular-nums w-20 flex-shrink-0">{d.date}</span>
+                    <span class="text-sm font-medium text-text flex-1 min-w-0 truncate {isMet ? 'line-through' : ''}">{d.title}</span>
+                    <DeadlinePill variant="importance" importance={d.importance} />
+                  </div>
+                  <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-xs text-dim">
+                    <span style="color: var(--color-{dotTone});">· {countdown(d)}</span>
+                    {#if d.venture}<span class="text-secondary">🏢 {d.venture}</span>{/if}
+                    {#if d.goal_id}<span class="text-secondary">🎯 {goalTitle(d.goal_id)}</span>{/if}
+                    {#if d.project}<span class="text-secondary">📁 {d.project}</span>{/if}
+                  </div>
+                </div>
+              </li>
+            {/each}
+          </ol>
         {/if}
-      </div>
+      {:else if viewMode === 'calendar'}
+        <!-- Calendar view — month grid. Days with deadlines render a
+             stacked list of compact rows (max 3 visible, "+N more" if
+             over). Click a row to open it; click an empty cell to
+             create-on-that-date. -->
+        <div class="flex items-center gap-2 mb-3">
+          <button
+            type="button"
+            onclick={() => calStep(-1)}
+            class="px-2 py-1 text-sm text-subtext hover:bg-surface1 rounded"
+            aria-label="Previous month"
+          >‹</button>
+          <span class="text-sm font-medium text-text tabular-nums">{calLabel()}</span>
+          <button
+            type="button"
+            onclick={() => calStep(1)}
+            class="px-2 py-1 text-sm text-subtext hover:bg-surface1 rounded"
+            aria-label="Next month"
+          >›</button>
+          <button
+            type="button"
+            onclick={() => (calCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1))}
+            class="px-2 py-1 text-xs text-dim hover:text-text rounded"
+          >Today</button>
+        </div>
+        <div class="grid grid-cols-7 gap-px bg-surface1 border border-surface1 rounded overflow-hidden">
+          {#each weekdayLabels as w}
+            <div class="bg-mantle text-[10px] uppercase tracking-wider text-dim font-medium py-1.5 text-center">{w}</div>
+          {/each}
+          {#each calCells as c (c.iso)}
+            {@const today = isTodayISO(c.iso)}
+            <div
+              class="bg-base min-h-[5rem] p-1.5 flex flex-col gap-1 {c.inMonth ? '' : 'opacity-40'}"
+              style={today ? 'box-shadow: inset 0 0 0 2px var(--color-primary);' : ''}
+            >
+              <div class="text-[11px] text-dim tabular-nums flex items-center gap-1">
+                <span class={today ? 'text-primary font-semibold' : ''}>{c.date.getDate()}</span>
+                {#if c.rows.length === 0 && c.inMonth}
+                  <button
+                    type="button"
+                    onclick={() => { fDate = c.iso; openCreate(); fDate = c.iso; }}
+                    class="ml-auto opacity-0 hover:opacity-100 focus:opacity-100 text-dim hover:text-primary"
+                    aria-label="Create on {c.iso}"
+                    title="Create on {c.iso}"
+                  >+</button>
+                {/if}
+              </div>
+              {#each c.rows.slice(0, 3) as d (d.id)}
+                {@const tone = calRowTone(d)}
+                {@const isMet = d.status === 'met'}
+                <button
+                  type="button"
+                  onclick={() => openEdit(d)}
+                  class="text-left text-[11px] truncate px-1 py-0.5 rounded hover:opacity-80 {isMet ? 'line-through opacity-60' : ''}"
+                  style="background: color-mix(in srgb, var(--color-{tone}) 18%, transparent); color: var(--color-{tone});"
+                  title={d.title}
+                >{d.title}</button>
+              {/each}
+              {#if c.rows.length > 3}
+                <span class="text-[10px] text-dim">+ {c.rows.length - 3} more</span>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
     {/if}
   </div>
 </div>
