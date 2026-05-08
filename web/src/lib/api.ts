@@ -1712,6 +1712,24 @@ export const api = {
   deleteEmail: (id: string) =>
     req<void>(`/emails/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
+  // Email signatures — HTML signature library at
+  // <vault>/.granit/email-signatures.json. Render on the page
+  // inside an iframe sandbox so user-authored HTML can't fire
+  // scripts on the host.
+  listEmailSignatures: () =>
+    req<{ signatures: EmailSignature[]; total: number }>('/email-signatures'),
+  getEmailSignature: (id: string) =>
+    req<EmailSignature>(`/email-signatures/${encodeURIComponent(id)}`),
+  createEmailSignature: (s: Partial<EmailSignature>) =>
+    req<EmailSignature>('/email-signatures', { method: 'POST', body: JSON.stringify(s) }),
+  patchEmailSignature: (id: string, s: Partial<EmailSignature>) =>
+    req<EmailSignature>(`/email-signatures/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(s)
+    }),
+  deleteEmailSignature: (id: string) =>
+    req<void>(`/email-signatures/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   // Autocommit settings — debounced git-commit-on-save, opt-in.
   getAutocommit: () => req<{ enabled: boolean; isGitRepo: boolean }>('/autocommit'),
   putAutocommit: (enabled: boolean) =>
@@ -1901,6 +1919,20 @@ export interface Email {
   project?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface EmailSignature {
+  id: string;
+  name: string;
+  html: string;
+  /** Optional plain-text fallback for clients that strip HTML. */
+  plain_text?: string;
+  /** Free-text grouping — "Work", "Venture: Stoicera", etc. */
+  category?: string;
+  /** At most one per vault; the "use this unless I pick another" pick. */
+  is_default?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface NoteTemplate {
