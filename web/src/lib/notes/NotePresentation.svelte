@@ -29,7 +29,7 @@
   drifted may not. Keeping it on a button keeps the UX reliable.
 -->
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
 
   let {
@@ -187,6 +187,18 @@
     }
     onClose();
   }
+
+  // Defensive cleanup: if the parent unmounts the deck without
+  // calling onClose first (e.g. user navigates away mid-presentation),
+  // exit fullscreen so the next page isn't stuck in a fullscreen
+  // shell that no longer has a host. Browsers usually exit
+  // automatically when the fullscreen element leaves the DOM, but
+  // some Safari builds wedge — explicit exit is cheap insurance.
+  onDestroy(() => {
+    if (typeof document !== 'undefined' && document.fullscreenElement === host) {
+      void document.exitFullscreen().catch(() => {});
+    }
+  });
 
   // Focus the host on open so keystrokes work without an extra
   // click. tick() to wait for the conditional render.

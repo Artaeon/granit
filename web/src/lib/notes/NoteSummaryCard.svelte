@@ -91,10 +91,22 @@
   // Per-session dismissal — distinct from the persistent
   // ai_summary_dismissed frontmatter key. The user can hide it for
   // now without saying "never again". Reset on note change.
+  //
+  // Also abort any in-flight summary stream on note change. Without
+  // this, a user who navigates away mid-stream would have onDone
+  // write the OLD note's summary into the NEW note's frontmatter
+  // (since onSaveFrontmatter closes over whatever the parent now
+  // considers "current"). The reset wipes session state too so a
+  // half-streamed response doesn't bleed into the next note.
   let sessionDismissed = $state(false);
   $effect(() => {
     void notePath;
     sessionDismissed = false;
+    abort?.abort();
+    abort = null;
+    pending = false;
+    response = '';
+    error = '';
   });
 
   // Streaming state.
