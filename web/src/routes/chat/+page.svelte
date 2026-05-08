@@ -112,18 +112,24 @@
 </script>
 
 <div class="h-full flex flex-col overflow-hidden">
-  <header class="px-4 py-3 border-b border-surface1 flex-shrink-0 flex items-center gap-2 max-w-3xl w-full mx-auto">
-    <PageHeader title="Chat" subtitle="Talk to your AI — same provider as the agents" />
-    <span class="flex-1"></span>
-    {#if messages.length > 0}
-      <button onclick={saveAsNote} class="text-xs px-3 py-1.5 bg-surface0 border border-surface1 rounded text-subtext hover:border-primary">
-        Save as note
-      </button>
-      <button onclick={reset} class="text-xs px-3 py-1.5 text-dim hover:text-error">
-        Clear
-      </button>
-    {/if}
-  </header>
+  <!-- Use PageHeader's actions snippet so the title/subtitle and
+       chrome buttons share the same flex-wrap rules. Avoids the
+       previous nested-<header> + arm-twisted flex layout that
+       caused the subtitle to crowd the buttons on narrow screens. -->
+  <div class="px-4 pt-3 border-b border-surface1 flex-shrink-0 max-w-3xl w-full mx-auto">
+    <PageHeader title="Chat" subtitle="Talk to your AI — same provider as the agents">
+      {#snippet actions()}
+        {#if messages.length > 0}
+          <button onclick={saveAsNote} class="text-xs px-3 py-1.5 bg-surface0 border border-surface1 rounded text-subtext hover:border-primary">
+            Save as note
+          </button>
+          <button onclick={reset} class="text-xs px-3 py-1.5 text-dim hover:text-error">
+            Clear
+          </button>
+        {/if}
+      {/snippet}
+    </PageHeader>
+  </div>
 
   <div bind:this={scrollEl} class="flex-1 overflow-y-auto">
     <div class="max-w-3xl mx-auto px-4 py-6">
@@ -167,7 +173,11 @@
     </div>
   </div>
 
-  <div class="border-t border-surface1 bg-mantle/50 flex-shrink-0">
+  <!-- Bottom input rests against the keyboard on mobile. Adding
+       env(safe-area-inset-bottom) means the iPhone home indicator
+       doesn't sit on top of the textarea. The form itself stays
+       padded; the safe-area only kicks in on devices that report it. -->
+  <div class="border-t border-surface1 bg-mantle/50 flex-shrink-0 pb-[env(safe-area-inset-bottom,0px)]">
     <form onsubmit={send} class="max-w-3xl mx-auto p-3 flex gap-2 items-end">
       <textarea
         bind:this={inputEl}
@@ -175,12 +185,12 @@
         onkeydown={onKey}
         placeholder="Send a message…   (Enter to send, Shift+Enter for newline)"
         rows="1"
-        class="flex-1 min-w-0 px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-none max-h-40"
+        class="flex-1 min-w-0 px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-none max-h-40"
       ></textarea>
       <button
         type="submit"
         disabled={busy || !input.trim()}
-        class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
+        class="px-4 py-3 sm:py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
       >Send</button>
     </form>
   </div>
