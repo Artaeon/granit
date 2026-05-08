@@ -78,6 +78,21 @@
         { label: 'DE', text: 'Translate the following to German. Return only the translation.' },
         { label: 'Bullet list', text: 'Rewrite the following as a markdown bullet list. Return only the list.' }
       ]
+    },
+    {
+      // Reflect — the dialog's "thinking" surface as opposed to its
+      // "rewriting" surface. Output here is meant to be READ next to
+      // the original (replace mode rarely makes sense), so each
+      // prompt frames the response as commentary rather than a
+      // drop-in rewrite. Insert-Below is the natural action.
+      label: 'Reflect',
+      items: [
+        { label: 'Explain', text: 'Explain the following clearly. Assume the reader knows the broad surrounding context but not this specific topic. Return a short markdown explanation — definitions, intuition, one concrete example. No preamble.' },
+        { label: 'Steel-man', text: 'Steel-man the argument in the following. Begin with "**Strongest version:**" and write the most charitable, most rigorous version of the argument. Then on a new line "**Weak points:**" with 2-3 honest weaknesses. Return only this markdown block.' },
+        { label: 'Counter', text: 'Argue the opposite of the position in the following. Make the strongest possible case for the contrary view in 2-4 sentences. Return only the counter-argument prose, no preamble.' },
+        { label: 'Connect', text: 'What ideas, concepts, or fields does the following connect to? Return a markdown bullet list of 5 connections, each with one line of why. Return ONLY the list.' },
+        { label: 'Question', text: 'Generate 5 sharp, non-leading questions that would deepen understanding of the following. Return ONLY a numbered markdown list, one question per line, no preamble.' }
+      ]
     }
   ];
 
