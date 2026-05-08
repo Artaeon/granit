@@ -17,6 +17,7 @@
   import AgendaView from '$lib/calendar/AgendaView.svelte';
   import YearView from '$lib/calendar/YearView.svelte';
   import MiniMonth from '$lib/calendar/MiniMonth.svelte';
+  import { sourceColors, setSourceColor, applySourceColor, type CalendarTone } from '$lib/calendar/sourceColors';
   import EventDetail from '$lib/calendar/EventDetail.svelte';
   import QuickCreateScheduled from '$lib/calendar/QuickCreateScheduled.svelte';
   import CreateEvent from '$lib/calendar/CreateEvent.svelte';
@@ -265,7 +266,17 @@
   });
 
   let allEvents = $derived(feed?.events ?? []);
-  let events = $derived(allEvents.filter((e) => !hidden.has(e.type as EventFilterKey)));
+  // Apply per-source color overrides so an ICS calendar the user
+  // tinted 'green' renders that way on every view. Pure transform
+  // on the derived event list — no extra fetches, no storage round
+  // trip. The override is per-device (localStorage); future cross-
+  // device sync can layer over the same map without touching the
+  // render path.
+  let events = $derived(
+    allEvents
+      .filter((e) => !hidden.has(e.type as EventFilterKey))
+      .map((e) => applySourceColor(e, $sourceColors))
+  );
 
   // ── Natural-language quick-create ────────────────────────────────
   // Single text input above the grid: "lunch tomorrow 12pm 1h" →
@@ -803,27 +814,43 @@
         <h3 class="text-dim uppercase tracking-wider mb-2">Calendar sources</h3>
         {#each calSources as s (s.id)}
           {@const tone = sourceColorToken(s.source)}
-          <button
-            onclick={() => toggleSource(s)}
-            disabled={savingSources}
-            class="w-full flex items-center gap-2 px-2 py-1 rounded hover:bg-surface0 {s.enabled ? '' : 'opacity-40'}"
-            title="{s.path}{s.enabled ? '' : ' (disabled)'}"
-          >
-            <!-- Color dot matches the per-source rotation used on the
-                 grid, so the legend doubles as a visual key for which
-                 source a given event chip came from. Checkmark
-                 overlaid on the dot when enabled. -->
-            <span class="w-3 h-3 rounded-sm border flex items-center justify-center flex-shrink-0"
-              style="border-color: var(--color-{tone}); background: {s.enabled ? `var(--color-${tone})` : 'transparent'}">
-              {#if s.enabled}
-                <svg viewBox="0 0 12 12" class="w-2.5 h-2.5 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
-              {/if}
-            </span>
-            <span class="text-subtext flex-1 text-left truncate">{s.source}</span>
-            {#if s.folder}<span class="text-dim text-[10px]">{s.folder}</span>{/if}
-          </button>
+          {@const customTone = $sourceColors[s.source] ?? ''}
+          {@const displayTone = customTone || tone}
+          <div class="flex items-center gap-1 px-1 group">
+            <button
+              onclick={() => toggleSource(s)}
+              disabled={savingSources}
+              class="flex items-center gap-2 px-2 py-1 rounded hover:bg-surface0 flex-1 min-w-0 {s.enabled ? '' : 'opacity-40'}"
+              title="{s.path}{s.enabled ? '' : ' (disabled)'}"
+            >
+              <span class="w-3 h-3 rounded-sm border flex items-center justify-center flex-shrink-0"
+                style="border-color: var(--color-{displayTone}); background: {s.enabled ? `var(--color-${displayTone})` : 'transparent'}">
+                {#if s.enabled}
+                  <svg viewBox="0 0 12 12" class="w-2.5 h-2.5 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
+                {/if}
+              </span>
+              <span class="text-subtext flex-1 text-left truncate">{s.source}</span>
+              {#if s.folder}<span class="text-dim text-[10px]">{s.folder}</span>{/if}
+            </button>
+            <!-- Per-source color picker. Hidden until hover so the
+                 row stays visually quiet, then a small swatch row
+                 appears with all tone options. Empty swatch resets
+                 to the auto-rotation default. -->
+            <div class="hidden group-hover:flex items-center gap-0.5 flex-shrink-0">
+              {#each ['', 'red', 'yellow', 'orange', 'green', 'blue', 'purple', 'cyan', 'pink'] as t}
+                <button
+                  type="button"
+                  onclick={() => setSourceColor(s.source, t as CalendarTone)}
+                  aria-label={t || 'auto'}
+                  title={t ? `Color: ${t}` : 'Auto (default rotation)'}
+                  class="w-3 h-3 rounded-full border transition-transform hover:scale-125 {customTone === t ? 'ring-1 ring-text scale-125' : ''}"
+                  style={t ? `background: var(--color-${t}); border-color: var(--color-${t})` : 'background: transparent; border-color: var(--color-dim)'}
+                ></button>
+              {/each}
+            </div>
+          </div>
         {/each}
-        <p class="text-[10px] text-dim italic px-2 pt-1">colors match each source's events on the grid · syncs with granit TUI's <code>disabled_calendars</code></p>
+        <p class="text-[10px] text-dim italic px-2 pt-1">hover a row to recolour · colours sync per device · toggles sync with granit TUI's <code>disabled_calendars</code></p>
       </div>
     {/if}
 
