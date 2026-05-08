@@ -321,10 +321,37 @@
     dragOverId = null;
   }
 
+  // Focus mode — temporarily hides everything except the essentials
+  // for a quiet "what matters today" view. Not a saved preset; just
+  // a render-time filter so the user's preset/layout choices are
+  // untouched. Toggle is at the top of the page.
+  //
+  // The essentials list is curated, not user-configurable: greeting
+  // (date anchor), at-a-glance (today's counts), today-focus (the
+  // morning commitment), today-tasks (the working list), calendar-
+  // week (what's coming), top-deadlines (the by-when pressure).
+  // Six tiles, one screen, no scrolling on a typical desktop.
+  const FOCUS_ESSENTIALS = new Set<import('$lib/api').DashboardWidgetType>([
+    'greeting',
+    'at-a-glance',
+    'today-focus',
+    'today-tasks',
+    'calendar-week',
+    'top-deadlines'
+  ]);
+  const FOCUS_KEY = 'granit.dashboard.focus';
+  let focus = $state<boolean>(
+    typeof localStorage !== 'undefined' && localStorage.getItem(FOCUS_KEY) === '1'
+  );
+  function toggleFocus() {
+    focus = !focus;
+    try { localStorage.setItem(FOCUS_KEY, focus ? '1' : '0'); } catch {}
+  }
+
   let activeWidgets = $derived.by(() => {
     if (!config) return [];
     return config.widgets
-      .filter((w) => w.enabled)
+      .filter((w) => w.enabled && (!focus || FOCUS_ESSENTIALS.has(w.type)))
       .map((w) => ({ widget: w, meta: widgetMeta(w.type) }))
       .filter((x): x is { widget: DashboardWidget; meta: NonNullable<ReturnType<typeof widgetMeta>> } => !!x.meta);
   });
@@ -483,6 +510,24 @@
       {/if}
 
       <div class="flex items-center justify-end gap-2 mb-4">
+        <!-- Focus toggle — render-time filter that strips the dashboard
+             to its 6 essentials so a noisy widget list doesn't
+             overwhelm the user when they just want today's view.
+             Doesn't touch saved presets or widget config. -->
+        <button
+          type="button"
+          onclick={toggleFocus}
+          aria-pressed={focus}
+          class="text-xs px-3 py-1.5 rounded inline-flex items-center gap-1.5 transition-colors
+            {focus ? 'bg-primary/15 text-primary border border-primary/40' : 'bg-surface0 border border-surface1 text-subtext hover:border-primary/40'}"
+          title={focus ? 'Show all enabled widgets' : 'Hide everything except today essentials'}
+        >
+          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="9"/>
+            <circle cx="12" cy="12" r="3" fill="currentColor"/>
+          </svg>
+          {focus ? 'Focus on' : 'Focus'}
+        </button>
         <!-- Active preset chip + quick switcher. Shown only when the
              user has at least one saved layout, so the row stays tidy
              until presets become useful. -->
@@ -608,6 +653,21 @@
         </section>
       {/if}
 
+      {#if focus && config && activeWidgets.length === 0}
+        <!-- Focus on but the user has none of the essentials enabled.
+             Tell them rather than render an empty page. -->
+        <div class="mb-4 p-4 bg-mantle/60 border border-surface1 rounded-lg text-sm">
+          <div class="text-text font-medium mb-1">Focus mode is on, but no essential widgets are enabled.</div>
+          <p class="text-xs text-dim mb-3">
+            Focus shows: greeting, at-a-glance, today's focus, today's tasks, calendar week, top deadlines.
+            Enable any of these in customize, or turn focus off.
+          </p>
+          <div class="flex items-center gap-2">
+            <button onclick={toggleFocus} class="px-3 py-1.5 text-xs rounded bg-primary text-on-primary font-medium">Turn off focus</button>
+            <button onclick={() => (editing = true)} class="px-3 py-1.5 text-xs rounded bg-surface0 border border-surface1 text-subtext hover:border-primary">Customize widgets</button>
+          </div>
+        </div>
+      {/if}
       {#if config}
         <!-- Three-column grid above 1280px: span-2 widgets become
              full-width strips, span-1 widgets pack 3 per row so wide
