@@ -10,7 +10,25 @@
   import GoalDetail from '$lib/goals/GoalDetail.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import EmptyState from '$lib/components/EmptyState.svelte';
+  import Skeleton from '$lib/components/Skeleton.svelte';
   import { daysUntilTarget, targetChip, targetBorderColor } from '$lib/goals/util';
+
+  // View modes — `cards` is the rich card layout (the existing UI),
+  // `list` is a compact one-line-per-goal table for users with many
+  // goals who want density, `kanban` lays goals out in status columns
+  // (active / paused / completed / archived) so the user can see the
+  // shape of their pipeline at a glance. Persisted in localStorage so
+  // the user lands on their preferred mode on every visit.
+  type ViewMode = 'cards' | 'list' | 'kanban';
+  const VIEW_KEY = 'granit.goals.view';
+  let viewMode = $state<ViewMode>(
+    (typeof localStorage !== 'undefined' && (localStorage.getItem(VIEW_KEY) as ViewMode)) || 'cards'
+  );
+  $effect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try { localStorage.setItem(VIEW_KEY, viewMode); } catch {}
+  });
 
   let goals = $state<Goal[]>([]);
   let loading = $state(false);
@@ -27,6 +45,12 @@
   let detailOpen = $state(false);
   let selectedId = $state<string | null>(null);
 
+  // Tracks whether load() has resolved at least once. Drives the
+  // skeleton vs empty-state choice — pre-resolution we render
+  // shimmer placeholders, post-resolution we render the proper
+  // "no goals" empty state. Without this distinction the page
+  // briefly flashed "no goals match this filter." on every mount.
+  let firstLoaded = $state(false);
   async function load() {
     if (!$auth) return;
     loading = true;
@@ -35,6 +59,7 @@
       goals = list.goals;
     } finally {
       loading = false;
+      firstLoaded = true;
     }
   }
   onMount(() => {
@@ -163,6 +188,38 @@
     archived: goals.filter((g) => g.status === 'archived').length
   });
 
+  // Kanban grouping — same status order as the tabs so the column
+  // order matches the user's mental model. Filtering still applies
+  // (search / category / venture / tag); the status filter is only
+  // honoured when it isn't 'all', otherwise every column renders so
+  // the kanban surfaces the full pipeline. Sort within each column:
+  // imminent target_date first, then by title for stability.
+  type KanbanCol = 'active' | 'paused' | 'completed' | 'archived';
+  const kanbanColumns: KanbanCol[] = ['active', 'paused', 'completed', 'archived'];
+  let kanbanGroups = $derived.by((): Record<KanbanCol, Goal[]> => {
+    const out: Record<KanbanCol, Goal[]> = {
+      active: [], paused: [], completed: [], archived: []
+    };
+    for (const g of filtered) {
+      const s = (g.status ?? 'active') as KanbanCol;
+      if (out[s]) out[s].push(g);
+    }
+    const sortKey = (g: Goal): number => {
+      const d = daysUntilTarget(g.target_date);
+      // Goals with no parseable date sink to the bottom; among the
+      // dated, smaller (closer / overdue) days come first.
+      return d === null ? Number.POSITIVE_INFINITY : d;
+    };
+    for (const col of kanbanColumns) {
+      out[col].sort((a, b) => {
+        const sa = sortKey(a), sb = sortKey(b);
+        if (sa !== sb) return sa - sb;
+        return a.title.localeCompare(b.title);
+      });
+    }
+    return out;
+  });
+
   // ----- Hero "next target" -----
   // Picks the most-imminent active or paused goal with a parseable
   // target_date and surfaces it as a hero card above the list. Skips
@@ -259,7 +316,10 @@
 </script>
 
 <div class="h-full overflow-y-auto">
-  <div class="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+  <!-- Container widens in kanban mode so the four columns have room
+       to breathe. Cards / list stay at the original 4xl reading width
+       so long titles remain comfortable. -->
+  <div class="p-4 sm:p-6 lg:p-8 mx-auto {viewMode === 'kanban' ? 'max-w-7xl' : 'max-w-4xl'}">
     <VisionContextStrip />
     <PageHeader
       title="Goals"
@@ -323,16 +383,63 @@
       </button>
     {/if}
 
-    <!-- Status tabs -->
-    <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-3 self-start flex-wrap">
-      {#each ['all', 'active', 'paused', 'completed', 'archived'] as s}
+    <!-- Status tabs + view-mode toggle. The view toggle is hidden in
+         the kanban layout (kanban already implies "by status" so the
+         status filter is decorative there — kept anyway so a user
+         narrowing to "active only" sees just one column without
+         switching back to cards). -->
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+      <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm self-start flex-wrap">
+        {#each ['all', 'active', 'paused', 'completed', 'archived'] as s}
+          <button
+            class="px-3 py-1.5 capitalize {statusFilter === s ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (statusFilter = s as typeof statusFilter)}
+          >
+            {s} <span class="text-xs opacity-70">{counts[s as keyof typeof counts]}</span>
+          </button>
+        {/each}
+      </div>
+      <div class="ml-auto flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs">
         <button
-          class="px-3 py-1.5 capitalize {statusFilter === s ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-          onclick={() => (statusFilter = s as typeof statusFilter)}
+          class="px-2.5 py-1.5 inline-flex items-center gap-1 {viewMode === 'cards' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+          onclick={() => (viewMode = 'cards')}
+          title="rich card layout"
+          aria-label="cards view"
+          aria-pressed={viewMode === 'cards'}
         >
-          {s} <span class="text-xs opacity-70">{counts[s as keyof typeof counts]}</span>
+          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="6" rx="1.5" />
+            <rect x="3" y="14" width="18" height="6" rx="1.5" />
+          </svg>
+          Cards
         </button>
-      {/each}
+        <button
+          class="px-2.5 py-1.5 inline-flex items-center gap-1 {viewMode === 'list' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+          onclick={() => (viewMode = 'list')}
+          title="compact list — denser, one row per goal"
+          aria-label="list view"
+          aria-pressed={viewMode === 'list'}
+        >
+          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M3 6h18" /><path d="M3 12h18" /><path d="M3 18h18" />
+          </svg>
+          List
+        </button>
+        <button
+          class="px-2.5 py-1.5 inline-flex items-center gap-1 {viewMode === 'kanban' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+          onclick={() => (viewMode = 'kanban')}
+          title="kanban — columns by status"
+          aria-label="kanban view"
+          aria-pressed={viewMode === 'kanban'}
+        >
+          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="5" height="16" rx="1" />
+            <rect x="9.5" y="4" width="5" height="11" rx="1" />
+            <rect x="16" y="4" width="5" height="14" rx="1" />
+          </svg>
+          Kanban
+        </button>
+      </div>
     </div>
 
     <!-- Target-proximity stat strip — complements the hero card by
@@ -394,11 +501,65 @@
       {/if}
     </div>
 
-    {#if loading && goals.length === 0}
-      <div class="text-sm text-dim">loading…</div>
+    {#if !firstLoaded && loading}
+      <!-- Shimmer skeletons match the cards-view rhythm so the
+           layout doesn't reflow on first load. Three placeholders is
+           a reasonable bet — most users have at least that many
+           goals once they're past day-one. -->
+      <div class="space-y-4">
+        {#each [0, 1, 2] as i (i)}
+          <div class="bg-surface0 border border-surface1 rounded-lg p-4 space-y-2.5">
+            <div class="flex items-start gap-3">
+              <div class="flex-1 space-y-1.5">
+                <Skeleton class="h-5 w-2/3" />
+                <Skeleton class="h-3.5 w-full" />
+              </div>
+              <Skeleton class="h-4 w-14 rounded-full" />
+            </div>
+            <Skeleton class="h-3 w-1/2" />
+            <Skeleton class="h-1.5 w-full" />
+          </div>
+        {/each}
+      </div>
     {:else if filtered.length === 0}
-      <div class="text-sm text-dim italic">no goals match this filter.</div>
-    {:else}
+      <!-- Empty state branches: real "no goals at all" vs "filter
+           hides everything". The first nudges the user to create
+           their first goal; the second offers a clear-filters
+           shortcut so they don't have to hunt for the UI. -->
+      {#if goals.length === 0}
+        <EmptyState
+          icon="🎯"
+          title="No goals yet"
+          description="Goals are the long-term targets you're committing to in this season — quarterly, annual, lifetime. Add your first one to get started."
+        >
+          {#snippet action()}
+            <button
+              onclick={() => (createOpen = true)}
+              class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
+            >+ Create a goal</button>
+          {/snippet}
+        </EmptyState>
+      {:else}
+        <EmptyState
+          icon="🔍"
+          title="No goals match this filter"
+          description="Try a different status tab, clear the search, or drop your category / tag filters."
+        >
+          {#snippet action()}
+            <button
+              onclick={() => {
+                statusFilter = 'all';
+                categoryFilter = '';
+                tagFilter = '';
+                ventureFilter = '';
+                q = '';
+              }}
+              class="px-3 py-1.5 bg-surface1 text-text rounded text-sm hover:bg-surface2"
+            >Clear all filters</button>
+          {/snippet}
+        </EmptyState>
+      {/if}
+    {:else if viewMode === 'cards'}
       <div class="space-y-4">
         {#each filtered as g (g.id)}
           {@const p = progress(g)}
@@ -463,6 +624,125 @@
               {/if}
             </button>
           </article>
+        {/each}
+      </div>
+    {:else if viewMode === 'list'}
+      <!-- Compact list — denser layout for users with many goals.
+           Each row: title · status pill · countdown chip · progress
+           bar inline. Click anywhere on the row opens the detail
+           drawer. Same urgency border-left as cards so the visual
+           language stays consistent. -->
+      <div class="bg-surface0 border border-surface1 rounded-lg overflow-hidden divide-y divide-surface1">
+        {#each filtered as g (g.id)}
+          {@const p = progress(g)}
+          {@const sc = statusColor(g.status)}
+          {@const tone = targetTone(g)}
+          {@const chip = targetChip(g.target_date)}
+          <button
+            type="button"
+            onclick={() => openDetail(g)}
+            class="w-full text-left px-3 py-2 flex items-center gap-3 hover:bg-surface1 transition-colors {tone ? 'border-l-4' : 'border-l-4 border-l-transparent'}"
+            style={tone ? `border-left-color: var(--color-${tone});` : ''}
+          >
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-medium text-text truncate">{@html inlineMd(g.title)}</span>
+                {#if g.venture}
+                  <span class="text-[10px] text-secondary truncate hidden sm:inline">🏢 {g.venture}</span>
+                {/if}
+              </div>
+              <div class="flex items-center gap-x-3 gap-y-0.5 text-[11px] text-dim flex-wrap">
+                {#if g.target_date}
+                  <span class="font-mono tabular-nums">{fmtDate(g.target_date)}</span>
+                {/if}
+                {#if chip && (g.status === 'active' || g.status === 'paused')}
+                  <span
+                    class="text-[10px] tabular-nums"
+                    style="color: var(--color-{chip.tone});"
+                  >{chip.label}</span>
+                {/if}
+                {#if p.total > 0}
+                  <span class="tabular-nums">{p.done}/{p.total} ms</span>
+                {/if}
+                {#if g.category}<span>· {g.category}</span>{/if}
+              </div>
+            </div>
+            {#if p.total > 0}
+              <div class="hidden sm:flex flex-col items-end gap-0.5 w-24 flex-shrink-0">
+                <div class="text-[10px] text-dim tabular-nums">{p.pct}%</div>
+                <div class="h-1 w-full bg-mantle rounded-full overflow-hidden">
+                  <div class="h-full bg-primary" style="width: {p.pct}%"></div>
+                </div>
+              </div>
+            {/if}
+            <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded {sc.bg} {sc.text} flex-shrink-0 hidden sm:inline">
+              {g.status ?? 'active'}
+            </span>
+          </button>
+        {/each}
+      </div>
+    {:else}
+      <!-- Kanban-by-status. Four columns side-by-side on desktop,
+           horizontally scrollable on mobile. Each column header
+           carries its own count so the user can see the shape of
+           their pipeline at a glance. Empty columns render a faint
+           "—" placeholder so the column shape stays visible. -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {#each kanbanColumns as col (col)}
+          {@const colGoals = kanbanGroups[col]}
+          {@const colColor = statusColor(col)}
+          <section class="bg-surface0 border border-surface1 rounded-lg flex flex-col min-h-[120px]">
+            <header class="flex items-center justify-between px-3 py-2 border-b border-surface1">
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded {colColor.bg} {colColor.text}">
+                  {col}
+                </span>
+              </div>
+              <span class="text-xs text-dim tabular-nums">{colGoals.length}</span>
+            </header>
+            <div class="flex-1 p-2 space-y-2">
+              {#if colGoals.length === 0}
+                <div class="text-[11px] text-dim italic text-center py-4">—</div>
+              {:else}
+                {#each colGoals as g (g.id)}
+                  {@const p = progress(g)}
+                  {@const tone = targetTone(g)}
+                  {@const chip = targetChip(g.target_date)}
+                  <button
+                    type="button"
+                    onclick={() => openDetail(g)}
+                    class="w-full text-left p-2.5 bg-mantle rounded border border-surface1 hover:border-primary/40 transition-colors {tone ? 'border-l-4' : ''}"
+                    style={tone ? `border-left-color: var(--color-${tone});` : ''}
+                  >
+                    <div class="text-sm font-medium text-text break-words leading-snug">{@html inlineMd(g.title)}</div>
+                    <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mt-1.5 text-[11px] text-dim">
+                      {#if g.target_date}
+                        <span class="font-mono tabular-nums">{fmtDate(g.target_date)}</span>
+                      {/if}
+                      {#if chip && (g.status === 'active' || g.status === 'paused')}
+                        <span class="tabular-nums" style="color: var(--color-{chip.tone});">{chip.label}</span>
+                      {/if}
+                    </div>
+                    {#if g.venture || g.project}
+                      <div class="text-[11px] text-secondary truncate mt-0.5">
+                        {#if g.venture}🏢 {g.venture}{/if}
+                        {#if g.venture && g.project} · {/if}
+                        {#if g.project}📁 {g.project}{/if}
+                      </div>
+                    {/if}
+                    {#if p.total > 0}
+                      <div class="mt-1.5">
+                        <div class="h-1 bg-surface1 rounded-full overflow-hidden">
+                          <div class="h-full bg-primary" style="width: {p.pct}%"></div>
+                        </div>
+                        <div class="text-[10px] text-dim mt-0.5 tabular-nums">{p.done}/{p.total} · {p.pct}%</div>
+                      </div>
+                    {/if}
+                  </button>
+                {/each}
+              {/if}
+            </div>
+          </section>
         {/each}
       </div>
     {/if}
