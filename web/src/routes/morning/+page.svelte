@@ -1,4 +1,22 @@
 <script lang="ts">
+  // The Calm Morning — single-page redesign.
+  //
+  // The previous iteration was an 8-step wizard (anchors → scripture
+  // → prayer → goal → tasks → habits → thoughts → review). Even with
+  // per-day persistence it felt like a slog: eight clicks before
+  // "lock in", every step screen-sized, formal headers everywhere.
+  //
+  // The new shape is a single scroll. Sections live next to each other,
+  // each one optional — leave it blank and it's silently skipped on
+  // save. One "Lock in" CTA at the bottom commits the whole plan to
+  // today's daily note. A "skip ritual" link at the top jumps straight
+  // to the dashboard for days when the user just wants to get going.
+  //
+  // The API contract is preserved: saveMorning still takes the same
+  // {scripture, goal, tasks, habits, thoughts} shape so existing
+  // daily notes stay round-trippable. Prayer intentions still ride
+  // along in the thoughts block under a `Praying for:` heading.
+
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
@@ -9,153 +27,108 @@
   import { classifyAiError } from '$lib/util/aiErrors';
   import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
 
-  // The wizard runs in 8 steps now. "anchors" opens with a read-only
-  // review of what the user is working towards (active goals, today's
-  // habits, near-term deadlines); "prayer" sits between scripture and
-  // goal so the user brings the day's work before God before
-  // committing to specifics — matches the "align life and business
-  // to God" narrative the dedicated /prayer page is built around.
-  type Step = 'anchors' | 'scripture' | 'prayer' | 'goal' | 'tasks' | 'habits' | 'thoughts' | 'review';
-  const order: Step[] = ['anchors', 'scripture', 'prayer', 'goal', 'tasks', 'habits', 'thoughts', 'review'];
-
-  let step = $state<Step>('anchors');
-
-  // Step: Anchors
+  // ─── Data ─────────────────────────────────────────────────────────
   let activeGoals = $state<Goal[]>([]);
   let allGoalsById = $state<Record<string, string>>({});
   let upcomingDeadlines = $state<Deadline[] | null>(null);
-  let deadlinesLoaded = $state(false);
+  let openTasks = $state<Task[]>([]);
+  let knownHabits = $state<HabitInfo[]>([]);
+  let activeIntentions = $state<PrayerIntention[]>([]);
 
-  // Step 1: Scripture
+  // ─── Form state ───────────────────────────────────────────────────
   let scripture = $state(scriptureOfTheDay());
   let customScripture = $state('');
   let customSource = $state('');
+  let scripturePickerOpen = $state(false);
 
-  // Step: Prayer. Picks from active intentions; the user can also add
-  // a quick new one inline. We don't read/write the underlying
-  // intentions.json from the wizard except for the inline "+" button
-  // (a plain createPrayer call) — toggling existing intentions just
-  // marks which ones the user is committing to pray over today, no
-  // schema change needed on the prayer record itself.
-  let activeIntentions = $state<PrayerIntention[]>([]);
-  let prayerLoaded = $state(false);
-  let pickedIntentions = $state<Set<string>>(new Set()); // intention ids
+  let winSentence = $state('');
+  let goal = $state('');
+  let linkedGoalId = $state<string>('');
+  let pickedTasks = $state<Set<string>>(new Set());
+  let showAllTasks = $state(false);
+  let pickedHabits = $state<Set<string>>(new Set());
+  let pickedIntentions = $state<Set<string>>(new Set());
+  let prayerPickerOpen = $state(false);
+  let thoughts = $state('');
   let newPrayerText = $state('');
   let addingPrayer = $state(false);
-
-  // Step 2: Goal
-  let goal = $state('');
-  let linkedGoalId = $state<string>(''); // wires today's goal to a granit Goal
-
-  // Step 3: Tasks
-  let openTasks = $state<Task[]>([]);
-  let pickedTasks = $state<Set<string>>(new Set());
-
-  // Step 4: Habits
-  let knownHabits = $state<HabitInfo[]>([]);
-  let pickedHabits = $state<Set<string>>(new Set());
   let newHabit = $state('');
 
-  // Step 5: Thoughts
-  let thoughts = $state('');
-
-  // Review: the user's win-condition for the day. Persisted with the
-  // snapshot and rendered in the saved Plan block.
-  let winSentence = $state('');
-
-  // Submission
   let saving = $state(false);
-  let error = $state('');
-
   let suggesting = $state(false);
   let suggestion = $state('');
+  let error = $state('');
 
-  // Persist progress through the wizard so a closed tab / phone lock
-  // doesn't lose what the user already picked. Keyed per-day so yesterday's
-  // half-completed wizard doesn't bleed into today.
+  // ─── Persistence ──────────────────────────────────────────────────
+  // Per-day localStorage so a closed tab doesn't lose progress, but
+  // yesterday's half-finished morning doesn't bleed into today.
   const today = todayISO();
   const STORAGE_KEY = `granit.morning.${today}`;
-
   interface Snapshot {
-    step: Step;
     scriptureSource: string;
     customScripture: string;
     customSource: string;
+    winSentence: string;
     goal: string;
     linkedGoalId: string;
     pickedTasks: string[];
     pickedHabits: string[];
     pickedIntentions: string[];
-    newHabit: string;
     thoughts: string;
-    winSentence: string;
+    newHabit: string;
   }
-
-  function snapshot(): Snapshot {
-    return {
-      step,
+  function persist() {
+    const s: Snapshot = {
       scriptureSource: scripture.source,
       customScripture,
       customSource,
+      winSentence,
       goal,
       linkedGoalId,
       pickedTasks: [...pickedTasks],
       pickedHabits: [...pickedHabits],
       pickedIntentions: [...pickedIntentions],
-      newHabit,
       thoughts,
-      winSentence
+      newHabit
     };
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
   }
-
-  function persist() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot())); } catch {}
-  }
-
   function restore() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
+      if (!raw) return false;
       const s = JSON.parse(raw) as Snapshot;
-      if (s.step) step = s.step;
       if (s.scriptureSource) {
         const m = scriptures.find((x) => x.source === s.scriptureSource);
         if (m) scripture = m;
       }
       customScripture = s.customScripture ?? '';
       customSource = s.customSource ?? '';
+      winSentence = s.winSentence ?? '';
       goal = s.goal ?? '';
       linkedGoalId = s.linkedGoalId ?? '';
       pickedTasks = new Set(s.pickedTasks ?? []);
       pickedHabits = new Set(s.pickedHabits ?? []);
       pickedIntentions = new Set(s.pickedIntentions ?? []);
-      newHabit = s.newHabit ?? '';
       thoughts = s.thoughts ?? '';
-      winSentence = s.winSentence ?? '';
-    } catch {}
+      newHabit = s.newHabit ?? '';
+      return true;
+    } catch {
+      return false;
+    }
   }
-
   function clearPersisted() {
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
   }
-
-  // Auto-persist on every change to a tracked field.
   $effect(() => {
-    void step;
-    void scripture;
-    void customScripture;
-    void customSource;
-    void goal;
-    void linkedGoalId;
-    void pickedTasks;
-    void pickedHabits;
-    void pickedIntentions;
-    void newHabit;
-    void thoughts;
-    void winSentence;
+    void scripture; void customScripture; void customSource;
+    void winSentence; void goal; void linkedGoalId;
+    void pickedTasks; void pickedHabits; void pickedIntentions;
+    void thoughts; void newHabit;
     persist();
   });
 
+  // ─── Load ─────────────────────────────────────────────────────────
   async function load() {
     if (!$auth) return;
     try {
@@ -163,28 +136,21 @@
         api.listTasks({ status: 'open' }),
         api.listHabits(),
         api.listGoals().catch((): { goals: Goal[]; total: number } => ({ goals: [], total: 0 })),
-        // tryListDeadlines never throws — returns null when unavailable.
         api.tryListDeadlines(),
-        // Prayer is best-effort: a 404 (module disabled) shouldn't block
-        // the rest of the routine. We swallow into an empty list and
-        // the prayer step renders an empty-state with a "+ add" prompt.
         api.listPrayer().catch(() => ({ intentions: [] as PrayerIntention[], total: 0 }))
       ]);
       openTasks = t.tasks;
       knownHabits = h.habits;
       activeIntentions = p.intentions.filter((x) => x.status === 'praying');
-      prayerLoaded = true;
       activeGoals = g.goals.filter((x) => (x.status ?? 'active') === 'active').slice(0, 3);
       const map: Record<string, string> = {};
-      for (const goalEntry of g.goals) map[goalEntry.id] = goalEntry.title;
+      for (const ge of g.goals) map[ge.id] = ge.title;
       allGoalsById = map;
       upcomingDeadlines = d;
-      deadlinesLoaded = true;
-      // Pre-tick today's habits that are usually done — but ONLY if we
-      // haven't restored from a snapshot (otherwise we'd overwrite the
-      // user's deliberate choices).
-      const restored = !!localStorage.getItem(STORAGE_KEY);
-      if (!restored) {
+      // Pre-tick today's habits (only if no restored snapshot — don't
+      // clobber the user's deliberate choices).
+      const hadSnapshot = !!localStorage.getItem(STORAGE_KEY);
+      if (!hadSnapshot) {
         for (const k of knownHabits) {
           if (k.last7Pct >= 50) pickedHabits.add(k.name);
         }
@@ -199,32 +165,111 @@
     load();
   });
 
-  function next() {
-    const i = order.indexOf(step);
-    if (i < order.length - 1) step = order[i + 1];
-  }
-  function back() {
-    const i = order.indexOf(step);
-    if (i > 0) step = order[i - 1];
-  }
-  function jumpTo(s: Step) {
-    step = s;
-  }
+  // ─── Derived ──────────────────────────────────────────────────────
+  const activeScripture = $derived.by(() => {
+    if (customScripture.trim()) return { text: customScripture.trim(), source: customSource.trim() };
+    return scripture;
+  });
+  const greeting = $derived.by(() => {
+    const h = new Date().getHours();
+    if (h < 5) return 'Late night';
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  });
+  const dateLine = $derived(new Date().toLocaleDateString(undefined, {
+    weekday: 'long', month: 'long', day: 'numeric'
+  }));
 
+  // Tasks sorted by urgency. Same algorithm as the previous version —
+  // overdue+important → due today → quick wins → priority/date.
+  const sortedTasks = $derived.by(() => {
+    type Bucketed = { task: Task; bucket: number; rank: number };
+    const isOverdueImportant = (t: Task) =>
+      !!t.dueDate && t.dueDate < today && (t.priority === 1 || t.priority === 2);
+    const isDueToday = (t: Task) => t.dueDate === today;
+    const isQuickWin = (t: Task) =>
+      !t.scheduledStart &&
+      (!t.dueDate || t.dueDate >= today) &&
+      (((t.estimatedMinutes ?? 0) > 0 && (t.estimatedMinutes ?? 0) <= 30) ||
+        (t.text.length <= 60 && (t.priority === 0 || t.priority >= 3)));
+    const bucketed: Bucketed[] = openTasks.map((t) => {
+      let bucket = 9;
+      if (isOverdueImportant(t)) bucket = 0;
+      else if (isDueToday(t)) bucket = 1;
+      else if (isQuickWin(t)) bucket = 2;
+      const rank =
+        bucket === 0
+          ? -((today.localeCompare(t.dueDate ?? '~')) || 0)
+          : (t.priority || 99) * 100 + (t.dueDate ? Number(t.dueDate.replace(/-/g, '').slice(2)) : 999_999);
+      return { task: t, bucket, rank };
+    });
+    return bucketed
+      .sort((a, b) => (a.bucket !== b.bucket ? a.bucket - b.bucket : a.rank - b.rank))
+      .slice(0, 60)
+      .map((x) => x.task);
+  });
+  const taskPreview = $derived(sortedTasks.slice(0, 8));
+  const taskOverflow = $derived(sortedTasks.length - taskPreview.length);
+
+  const sortedIntentions = $derived.by(() => {
+    const tied = activeIntentions.filter((p) => p.venture || p.project || p.goal);
+    const persons = activeIntentions.filter((p) => p.person && !(p.venture || p.project || p.goal));
+    const general = activeIntentions.filter((p) => !p.person && !(p.venture || p.project || p.goal));
+    return [...tied, ...persons, ...general];
+  });
+
+  const pickedTaskTexts = $derived.by(() => {
+    const ts: string[] = [];
+    for (const t of openTasks) if (pickedTasks.has(t.id)) ts.push(t.text);
+    return ts;
+  });
+
+  function daysUntil(iso: string): number {
+    const [y, m, d] = iso.split('-').map(Number);
+    const due = new Date(y, m - 1, d);
+    const t = new Date();
+    t.setHours(0, 0, 0, 0);
+    return Math.round((due.getTime() - t.getTime()) / 86_400_000);
+  }
+  const upcomingNear = $derived.by(() => {
+    if (!upcomingDeadlines) return [];
+    return upcomingDeadlines
+      .filter((d) => d.status !== 'cancelled' && d.status !== 'met')
+      .map((d) => ({ d, days: daysUntil(d.date) }))
+      .filter((x) => x.days <= 7)
+      .sort((a, b) => a.days - b.days)
+      .slice(0, 3);
+  });
+
+  // ─── Actions ──────────────────────────────────────────────────────
   function toggleTask(id: string) {
     if (pickedTasks.has(id)) pickedTasks.delete(id);
     else pickedTasks.add(id);
     pickedTasks = new Set(pickedTasks);
+  }
+  function toggleHabit(name: string) {
+    if (pickedHabits.has(name)) pickedHabits.delete(name);
+    else pickedHabits.add(name);
+    pickedHabits = new Set(pickedHabits);
   }
   function toggleIntention(id: string) {
     if (pickedIntentions.has(id)) pickedIntentions.delete(id);
     else pickedIntentions.add(id);
     pickedIntentions = new Set(pickedIntentions);
   }
-  // Inline create of a brand-new intention straight from the wizard.
-  // The created intention is auto-picked for today (so the user sees
-  // it appear in the saved Plan block) and stays in their long-term
-  // prayer list — same as if they'd added it from /prayer.
+  function addCustomHabit(e: Event) {
+    e.preventDefault();
+    const n = newHabit.trim();
+    if (!n) return;
+    pickedHabits.add(n);
+    pickedHabits = new Set(pickedHabits);
+    knownHabits = [...knownHabits, {
+      name: n, days: [], currentStreak: 0, longestStreak: 0,
+      last7Pct: 0, last30Pct: 0, doneToday: false
+    }];
+    newHabit = '';
+  }
   async function addNewPrayer(e: Event) {
     e.preventDefault();
     const text = newPrayerText.trim();
@@ -242,150 +287,58 @@
       addingPrayer = false;
     }
   }
-  // Sort the picker: work-tied (venture/project/goal) first, then
-  // people, then general — matches the dedicated /prayer page so the
-  // mental model stays consistent across surfaces.
-  let sortedIntentions = $derived.by(() => {
-    const tied = activeIntentions.filter((p) => p.venture || p.project || p.goal);
-    const persons = activeIntentions.filter((p) => p.person && !(p.venture || p.project || p.goal));
-    const general = activeIntentions.filter(
-      (p) => !p.person && !(p.venture || p.project || p.goal)
-    );
-    return [...tied, ...persons, ...general];
-  });
-  function toggleHabit(name: string) {
-    if (pickedHabits.has(name)) pickedHabits.delete(name);
-    else pickedHabits.add(name);
-    pickedHabits = new Set(pickedHabits);
-  }
-  function addCustomHabit(e: Event) {
-    e.preventDefault();
-    const n = newHabit.trim();
-    if (!n) return;
-    pickedHabits.add(n);
-    pickedHabits = new Set(pickedHabits);
-    knownHabits = [...knownHabits, {
-      name: n, days: [], currentStreak: 0, longestStreak: 0,
-      last7Pct: 0, last30Pct: 0, doneToday: false
-    }];
-    newHabit = '';
-  }
 
-  // From the anchors step the user can mark a habit done immediately —
-  // if it's already done, no-op. Server creates the daily file when
-  // needed.
-  let anchorBusy = $state<Record<string, boolean>>({});
-  async function markHabitDoneNow(h: HabitInfo) {
-    if (h.doneToday) return;
-    anchorBusy[h.name] = true;
-    try {
-      await api.toggleHabit(h.name, today, true);
-      // Optimistic local update — the WS event will reconcile.
-      knownHabits = knownHabits.map((x) =>
-        x.name === h.name
-          ? { ...x, doneToday: true, currentStreak: (x.currentStreak ?? 0) + (x.doneToday ? 0 : 1) }
-          : x
-      );
-      pickedHabits.add(h.name);
-      pickedHabits = new Set(pickedHabits);
-    } catch (e) {
-      toast.error(`failed: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      anchorBusy[h.name] = false;
-    }
-  }
-
-  let activeScripture = $derived.by(() => {
-    if (customScripture.trim()) {
-      return { text: customScripture.trim(), source: customSource.trim() };
-    }
-    return scripture;
-  });
-
-  let pickedTaskTexts = $derived.by(() => {
-    const ts: string[] = [];
-    for (const t of openTasks) if (pickedTasks.has(t.id)) ts.push(t.text);
-    return ts;
-  });
-
-  // Build a compact context string from open tasks for the AI suggestion
-  // call. Only the top-priority / soonest-due items — sending 60 task
-  // lines blows the prompt without changing the answer materially.
   function focusContext(): string {
-    const top = sortedTasks.slice(0, 12).map((t) => {
+    return sortedTasks.slice(0, 12).map((t) => {
       const p = t.priority > 0 ? `P${t.priority} ` : '';
       const due = t.dueDate ? ` (due ${t.dueDate})` : '';
       return `- ${p}${t.text}${due}`;
-    });
-    return top.join('\n');
+    }).join('\n');
   }
-
   async function suggestFocus() {
     suggesting = true;
     suggestion = '';
     try {
       const ctx = focusContext();
-      const today = todayISO();
       const userMsg = ctx
-        ? `It's ${today}. My open tasks (top by priority + due date):\n\n${ctx}\n\n` +
-          `If I only got ONE thing done today, what should it be? Reply with a single, action-oriented sentence ` +
-          `(8–14 words). No preamble, no list, no quotes — just the sentence. Pick something concrete from the tasks above ` +
-          `or, if nothing fits, propose a focused outcome.`
-        : `It's ${today}. I haven't logged any open tasks. Suggest one focused outcome for today as a single ` +
-          `action-oriented sentence (8–14 words). No preamble, no quotes.`;
+        ? `It's ${today}. My open tasks (top by priority + due date):\n\n${ctx}\n\nIf I only got ONE thing done today, what should it be? Reply with a single, action-oriented sentence (8–14 words). No preamble, no list, no quotes — just the sentence. Pick something concrete from the tasks above or, if nothing fits, propose a focused outcome.`
+        : `It's ${today}. I haven't logged any open tasks. Suggest one focused outcome for today as a single action-oriented sentence (8–14 words). No preamble, no quotes.`;
       const r = await api.chat([{ role: 'user', content: userMsg }]);
-      let s = r.message.content.trim();
-      s = s.replace(/^["'`]+|["'`]+$/g, '').trim();
-      suggestion = s;
+      suggestion = r.message.content.trim().replace(/^["'`]+|["'`]+$/g, '').trim();
     } catch (e) {
       const raw = e instanceof Error ? e.message : String(e);
-      console.error('[morning] suggestFocus failed:', raw);
       const hint = classifyAiError(raw);
       toast.error(hint.headline, { action: hint.cta, details: hint.raw });
     } finally {
       suggesting = false;
     }
   }
-
   function acceptSuggestion() {
     if (suggestion) goal = suggestion;
     suggestion = '';
   }
-
   function pickGoalLink(g: Goal) {
     if (linkedGoalId === g.id) {
       linkedGoalId = '';
     } else {
       linkedGoalId = g.id;
-      // Prefill the daily goal with the goal's title if the input is
-      // empty — the user can still rewrite it. This makes the chip act
-      // as a "today contributes to" shortcut instead of an opaque tag.
       if (!goal.trim()) goal = g.title;
     }
   }
 
-  async function save() {
+  async function lockIn() {
     saving = true;
     error = '';
     try {
-      // Compose a richer goal string when the user linked a goal — the
-      // server save endpoint takes plain strings so we encode the link
-      // inline. Format chosen so it's still readable as a daily-note
-      // bullet without further parsing.
       const linked = activeGoals.find((g) => g.id === linkedGoalId);
       const goalText = goal.trim();
       const goalForSave = goalText
-        ? linked
-          ? `${goalText} — contributes to: ${linked.title}`
-          : goalText
+        ? linked ? `${goalText} — contributes to: ${linked.title}` : goalText
         : undefined;
-      // Fold picked prayer intentions into the saved Plan block. The
-      // server's saveMorning endpoint has no dedicated prayer field, so
-      // the intentions ride along with thoughts as a clearly-labelled
-      // 'Praying for' section. This keeps the daily note self-contained
-      // ("what was I bringing before God on this day") without forcing
-      // a server schema change. The dedicated /prayer page remains the
-      // source of truth for the long-term list.
+
+      // Prayer intentions ride along in the thoughts block under
+      // 'Praying for:' (server has no dedicated prayer field — keeps
+      // the daily note self-contained without a schema change).
       const prayerLines: string[] = [];
       for (const id of pickedIntentions) {
         const intent = activeIntentions.find((x) => x.id === id);
@@ -397,15 +350,7 @@
         if (intent.passage_ref) line += ` — ${intent.passage_ref}`;
         prayerLines.push(line);
       }
-      const prayerBlock = prayerLines.length > 0
-        ? `Praying for:\n${prayerLines.join('\n')}`
-        : '';
-
-      // The win sentence rides along in the thoughts block (server has
-      // no dedicated field). Prepend it so it shows up first when the
-      // user reopens the daily note. Prayer block sits between the
-      // win and the free-form thoughts so the structure reads:
-      // win → before God → free-form reflection.
+      const prayerBlock = prayerLines.length > 0 ? `Praying for:\n${prayerLines.join('\n')}` : '';
       const winLine = winSentence.trim();
       const winPart = winLine ? `Today's win: ${winLine}` : '';
       const thoughtsRaw = thoughts.trim();
@@ -421,7 +366,7 @@
         thoughts: thoughtsBody
       });
       clearPersisted();
-      toast.success("daily plan saved");
+      toast.success('today is locked in');
       goto('/');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -432,562 +377,353 @@
     }
   }
 
-  // Sort tasks for the picker:
-  //   1. overdue P1/P2 (most-overdue first)
-  //   2. due today
-  //   3. quick wins (no scheduled, ≤30 min estimate or short text)
-  //   4. everything else by priority then due-soon
-  // The user picks from the top — and the most pressing items are at
-  // the top.
-  let sortedTasks = $derived.by(() => {
-    const todayStr = todayISO();
-    type Bucketed = { task: Task; bucket: number; rank: number };
-    const isOverdueImportant = (t: Task) =>
-      !!t.dueDate && t.dueDate < todayStr && (t.priority === 1 || t.priority === 2);
-    const isDueToday = (t: Task) => t.dueDate === todayStr;
-    const isQuickWin = (t: Task) =>
-      !t.scheduledStart &&
-      (!t.dueDate || t.dueDate >= todayStr) &&
-      (((t.estimatedMinutes ?? 0) > 0 && (t.estimatedMinutes ?? 0) <= 30) ||
-        (t.text.length <= 60 && (t.priority === 0 || t.priority >= 3)));
-
-    const bucketed: Bucketed[] = openTasks.map((t) => {
-      let bucket = 9;
-      if (isOverdueImportant(t)) bucket = 0;
-      else if (isDueToday(t)) bucket = 1;
-      else if (isQuickWin(t)) bucket = 2;
-      const rank =
-        bucket === 0
-          ? -((todayStr.localeCompare(t.dueDate ?? '~')) || 0) // more overdue → smaller (more negative) rank
-          : (t.priority || 99) * 100 + (t.dueDate ? Number(t.dueDate.replace(/-/g, '').slice(2)) : 999_999);
-      return { task: t, bucket, rank };
-    });
-
-    return bucketed
-      .sort((a, b) => (a.bucket !== b.bucket ? a.bucket - b.bucket : a.rank - b.rank))
-      .slice(0, 60)
-      .map((x) => x.task);
+  // Counts the user can see on the lock-in button.
+  const filledCount = $derived.by(() => {
+    let n = 0;
+    if (winSentence.trim()) n++;
+    if (goal.trim()) n++;
+    if (pickedTasks.size > 0) n++;
+    if (pickedHabits.size > 0) n++;
+    if (thoughts.trim() || pickedIntentions.size > 0) n++;
+    return n;
   });
-
-  // Anchors-step helpers
-  function daysUntil(iso: string): number {
-    const [y, m, d] = iso.split('-').map(Number);
-    const due = new Date(y, m - 1, d);
-    const t = new Date();
-    t.setHours(0, 0, 0, 0);
-    return Math.round((due.getTime() - t.getTime()) / 86_400_000);
-  }
-  function goalProgress(g: Goal): number {
-    const ms = g.milestones ?? [];
-    if (!ms || ms.length === 0) return 0;
-    return Math.round((ms.filter((m) => m.done).length / ms.length) * 100);
-  }
-  let upcomingNear = $derived.by(() => {
-    if (!upcomingDeadlines) return [];
-    return upcomingDeadlines
-      .filter((d) => d.status !== 'cancelled' && d.status !== 'met')
-      .map((d) => ({ d, days: daysUntil(d.date) }))
-      .filter((x) => x.days <= 14)
-      .sort((a, b) => a.days - b.days)
-      .slice(0, 5);
-  });
-
-  const stepLabels: Record<Step, string> = {
-    anchors: 'Anchors',
-    scripture: 'Scripture',
-    prayer: 'Prayer',
-    goal: 'Today\'s Goal',
-    tasks: 'Tasks',
-    habits: 'Habits',
-    thoughts: 'Thoughts',
-    review: 'Review'
-  };
 </script>
 
-<div class="h-full overflow-y-auto">
-  <div class="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
-    <header class="mb-5 sm:mb-6">
-      <h1 class="text-2xl sm:text-3xl font-semibold text-text">Morning routine</h1>
-      <p class="text-sm text-dim mt-1">
-        Plan today in {order.length} quick steps. Saves a <code class="text-xs">## Daily Plan</code> block to your daily note.
-      </p>
-    </header>
+<div class="h-full overflow-y-auto bg-base">
+  <div class="p-4 sm:p-6 lg:p-8 max-w-2xl mx-auto pb-32">
+    <!-- Header: greeting + scripture + date. The whole point of
+         scripture being inline (not its own step) is that it's
+         passive — read once, anchor the day, move on. -->
+    <header class="mb-6 sm:mb-8">
+      <div class="flex items-baseline justify-between gap-3 mb-3">
+        <h1 class="text-2xl sm:text-3xl font-semibold text-text">{greeting}</h1>
+        <a href="/" class="text-xs text-dim hover:text-text">skip ritual →</a>
+      </div>
+      <div class="text-xs text-dim">{dateLine}</div>
 
-    <!-- Stepper -->
-    <nav class="flex flex-wrap items-center gap-1.5 mb-6 text-xs">
-      {#each order as s, i}
-        {@const active = step === s}
-        {@const past = order.indexOf(step) > i}
-        <button
-          onclick={() => jumpTo(s)}
-          class="px-2.5 py-1 rounded transition-colors
-            {active ? 'bg-primary text-on-primary' : ''}
-            {past ? 'text-success' : ''}
-            {!active && !past ? 'text-dim hover:text-text bg-surface0' : ''}"
-        >
-          {i + 1}. {stepLabels[s]}
-        </button>
-        {#if i < order.length - 1}
-          <span class="text-dim/50">·</span>
-        {/if}
-      {/each}
-    </nav>
-
-    {#if error}
-      <div class="text-sm text-error mb-4 p-3 bg-error/10 border border-error/30 rounded">{error}</div>
-    {/if}
-
-    <main class="bg-surface0 border border-surface1 rounded-lg p-5 sm:p-6 min-h-[24rem]">
-      {#if step === 'anchors'}
-        <h2 class="text-lg font-medium text-text mb-1">Today's anchors</h2>
-        <p class="text-sm text-dim mb-4">What you're working towards, what you've committed to, what's coming up.</p>
-
-        <!-- Active goals -->
-        <section class="mb-5">
-          <div class="flex items-baseline justify-between mb-2">
-            <h3 class="text-xs uppercase tracking-wider text-dim">Active goals</h3>
-            <a href="/goals" class="text-xs text-secondary hover:underline">all →</a>
-          </div>
-          {#if activeGoals.length === 0}
-            <p class="text-sm text-dim italic">No active goals. <a href="/goals" class="text-secondary hover:underline">Set one →</a></p>
-          {:else}
-            <ul class="space-y-2">
-              {#each activeGoals as g (g.id)}
-                {@const p = goalProgress(g)}
-                <li class="bg-mantle/40 border border-surface1/60 rounded p-2.5">
-                  <div class="flex items-baseline gap-2">
-                    <span class="text-sm text-text flex-1 truncate">{@html inlineMd(g.title)}</span>
-                    {#if g.target_date}
-                      <span class="text-[10px] text-dim font-mono">🎯 {g.target_date}</span>
-                    {/if}
-                  </div>
-                  {#if g.milestones && g.milestones.length > 0}
-                    <div class="h-1.5 bg-surface1 rounded-full overflow-hidden mt-1.5">
-                      <div class="h-full bg-primary" style="width: {p}%"></div>
-                    </div>
-                    <div class="text-[10px] text-dim mt-0.5">{p}% · {g.milestones.filter((m) => m.done).length}/{g.milestones.length}</div>
-                  {/if}
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        </section>
-
-        <!-- Habits checklist -->
-        <section class="mb-5">
-          <div class="flex items-baseline justify-between mb-2">
-            <h3 class="text-xs uppercase tracking-wider text-dim">Today's habits</h3>
-            <a href="/habits" class="text-xs text-secondary hover:underline">all →</a>
-          </div>
-          {#if knownHabits.length === 0}
-            <p class="text-sm text-dim italic">No habits tracked. <a href="/habits" class="text-secondary hover:underline">Add one →</a></p>
-          {:else}
-            <ul class="space-y-1">
-              {#each knownHabits.slice(0, 6) as h (h.name)}
-                <li class="flex items-center gap-2 text-sm">
-                  <button
-                    onclick={() => markHabitDoneNow(h)}
-                    disabled={anchorBusy[h.name] || h.doneToday}
-                    aria-label={h.doneToday ? `${h.name} done` : `mark ${h.name} done`}
-                    class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors
-                      {h.doneToday ? 'bg-success border-success' : 'border-surface2 hover:border-primary'}"
-                  >
-                    {#if h.doneToday}
-                      <svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
-                    {/if}
-                  </button>
-                  <span class="flex-1 text-text truncate {h.doneToday ? 'opacity-60' : ''}">{h.name}</span>
-                  {#if h.currentStreak > 0}<span class="text-xs text-warning">🔥 {h.currentStreak}</span>{/if}
-                  <span class="text-[11px] text-dim tabular-nums">L7 {h.last7Pct}%</span>
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        </section>
-
-        <!-- Deadlines (defensive — only renders if endpoint shipped) -->
-        {#if deadlinesLoaded && upcomingDeadlines !== null && upcomingNear.length > 0}
-          <section class="mb-2">
-            <div class="flex items-baseline justify-between mb-2">
-              <h3 class="text-xs uppercase tracking-wider text-dim">Upcoming deadlines · 14 days</h3>
-              <a href="/goals" class="text-xs text-secondary hover:underline">all →</a>
-            </div>
-            <ul class="space-y-1.5">
-              {#each upcomingNear as { d, days } (d.id)}
-                <li class="flex items-baseline gap-2">
-                  <DeadlinePill variant="countdown" {days} status={d.status} />
-                  <DeadlinePill variant="icon" importance={d.importance} />
-                  <span class="text-sm text-text flex-1 truncate">{d.title}</span>
-                  {#if d.goal_id && allGoalsById[d.goal_id]}
-                    <span class="text-[11px] text-dim truncate">🎯 {allGoalsById[d.goal_id]}</span>
-                  {:else if d.project}
-                    <span class="text-[11px] text-dim truncate">⏵ {d.project}</span>
-                  {/if}
-                </li>
-              {/each}
-            </ul>
-          </section>
-        {/if}
-
-        <p class="text-[11px] text-dim mt-4 italic">Press <kbd class="text-[10px]">next →</kbd> when you're grounded.</p>
-      {:else if step === 'scripture'}
-        <h2 class="text-lg font-medium text-text mb-1">Scripture</h2>
-        <p class="text-sm text-dim mb-4">A line to anchor your day.</p>
-
-        <blockquote class="border-l-2 border-primary pl-4 py-2 my-4 italic text-subtext">
+      {#if activeScripture.text}
+        <blockquote class="mt-4 border-l-2 border-primary/60 pl-3 py-1.5 italic text-subtext text-sm">
           "{activeScripture.text}"
           {#if activeScripture.source}
-            <div class="not-italic text-xs text-dim mt-1">— {activeScripture.source}</div>
+            <span class="not-italic text-[11px] text-dim ml-2">— {activeScripture.source}</span>
           {/if}
         </blockquote>
+        <button
+          type="button"
+          onclick={() => (scripturePickerOpen = !scripturePickerOpen)}
+          class="text-[11px] text-dim hover:text-text mt-1"
+        >
+          {scripturePickerOpen ? 'hide picker' : 'change verse'}
+        </button>
+      {/if}
 
-        <div class="text-xs text-dim mt-4 mb-2">Pick from rotation</div>
-        <div class="flex flex-wrap gap-2 max-h-40 overflow-y-auto mb-4">
-          {#each scriptures as s}
-            <button
-              onclick={() => { scripture = s; customScripture = ''; customSource = ''; }}
-              class="text-xs px-2 py-1 rounded border
-                {scripture === s && !customScripture ? 'border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary/40'}"
-            >
-              {s.source}
-            </button>
-          {/each}
-        </div>
-
-        <div class="text-xs text-dim mt-2 mb-2">Or paste your own</div>
-        <input bind:value={customScripture} placeholder="quote / verse text" class="w-full px-3 py-2 mb-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary" />
-        <input bind:value={customSource} placeholder="source (e.g. Proverbs 27:17)" class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary" />
-      {:else if step === 'prayer'}
-        <h2 class="text-lg font-medium text-text mb-1">Bring it before God</h2>
-        <p class="text-sm text-dim mb-4">
-          Pick the intentions you want to carry into today, or add a fresh one.
-          {#if activeIntentions.length === 0 && prayerLoaded}
-            <a href="/prayer" class="text-secondary hover:underline">Open /prayer →</a>
-          {/if}
-        </p>
-
-        {#if !prayerLoaded}
-          <div class="text-sm text-dim italic">loading intentions…</div>
-        {:else if sortedIntentions.length === 0}
-          <p class="text-sm text-dim italic mb-4">
-            No active intentions yet. Add one below — it'll save to your prayer list and ride along in today's daily plan.
-          </p>
-        {:else}
-          <ul class="space-y-1.5 mb-4 max-h-64 overflow-y-auto pr-1">
-            {#each sortedIntentions as p (p.id)}
-              {@const picked = pickedIntentions.has(p.id)}
-              <li>
+      {#if scripturePickerOpen}
+        <div class="mt-3 p-3 bg-mantle/60 border border-surface1 rounded space-y-3">
+          <div>
+            <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5">From rotation</div>
+            <div class="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+              {#each scriptures as s}
                 <button
                   type="button"
-                  onclick={() => toggleIntention(p.id)}
-                  class="w-full text-left flex items-start gap-2.5 px-3 py-2 rounded border transition-colors
-                    {picked
-                      ? 'border-primary bg-primary/10'
-                      : 'border-surface1 bg-mantle/40 hover:border-primary/40'}"
-                >
-                  <span
-                    class="flex-shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center text-[10px]
-                      {picked ? 'bg-primary border-primary text-on-primary' : 'border-surface2'}"
-                  >
-                    {picked ? '✓' : ''}
-                  </span>
-                  <div class="flex-1 min-w-0">
-                    <div class="text-sm text-text break-words">{p.text}</div>
-                    {#if p.venture || p.project || p.goal || p.person || p.passage_ref}
-                      <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[11px] text-dim">
-                        {#if p.venture}<span class="text-secondary">🏢 {p.venture}</span>{/if}
-                        {#if p.project && !p.venture}<span class="text-secondary">📁 {p.project}</span>{/if}
-                        {#if p.goal && !p.venture && !p.project}<span class="text-secondary">🎯 goal</span>{/if}
-                        {#if p.person && !(p.venture || p.project || p.goal)}<span class="text-secondary">👤 {p.person}</span>{/if}
-                        {#if p.passage_ref}<span>📖 {p.passage_ref}</span>{/if}
-                      </div>
-                    {/if}
-                  </div>
-                </button>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-
-        <!-- Inline create — keeps the user in the wizard. New intention
-             is auto-picked for today and persisted to the long-term list. -->
-        <form onsubmit={addNewPrayer} class="flex gap-2">
-          <input
-            bind:value={newPrayerText}
-            placeholder="add a fresh intention…"
-            class="flex-1 px-3 py-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
-          />
-          <button
-            type="submit"
-            disabled={!newPrayerText.trim() || addingPrayer}
-            class="px-3 py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
-          >{addingPrayer ? '…' : '+ add'}</button>
-        </form>
-
-        <p class="text-[11px] text-dim mt-3">
-          {pickedIntentions.size} intention{pickedIntentions.size === 1 ? '' : 's'} will save with today's plan.
-          Manage the long-term list at <a href="/prayer" class="text-secondary hover:underline">/prayer</a>.
-        </p>
-      {:else if step === 'goal'}
-        <h2 class="text-lg font-medium text-text mb-1">Today's #1 goal</h2>
-        <p class="text-sm text-dim mb-4">If you only got one thing done today, what should it be?</p>
-        <input
-          bind:value={goal}
-          placeholder="ship the mealtime onboarding flow"
-          class="w-full px-3 py-3 bg-mantle border border-surface1 rounded text-base text-text placeholder-dim focus:outline-none focus:border-primary"
-        />
-        <div class="mt-3 flex items-center gap-2">
-          <button
-            onclick={suggestFocus}
-            disabled={suggesting}
-            class="px-3 py-1.5 text-xs rounded border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50"
-          >
-            {suggesting ? 'thinking…' : '✨ Suggest based on my tasks'}
-          </button>
-          <span class="text-[11px] text-dim italic">uses your AI provider · single short sentence</span>
-        </div>
-        {#if suggestion}
-          <div class="mt-3 p-3 bg-primary/8 border-l-3 border-primary rounded">
-            <div class="text-[10px] uppercase tracking-wider text-primary mb-1">Suggested</div>
-            <p class="text-sm text-text mb-2">{suggestion}</p>
-            <div class="flex items-center gap-2">
-              <button
-                onclick={acceptSuggestion}
-                class="px-2.5 py-1 text-xs rounded bg-primary text-on-primary font-medium"
-              >use this</button>
-              <button
-                onclick={() => (suggestion = '')}
-                class="px-2.5 py-1 text-xs rounded text-dim hover:text-text"
-              >dismiss</button>
-              <button
-                onclick={suggestFocus}
-                disabled={suggesting}
-                class="ml-auto text-xs text-secondary hover:underline disabled:opacity-50"
-              >try again</button>
-            </div>
-          </div>
-        {/if}
-
-        {#if activeGoals.length > 0}
-          <div class="mt-5 pt-4 border-t border-surface1">
-            <div class="text-xs uppercase tracking-wider text-dim mb-2">Today contributes to</div>
-            <div class="flex flex-wrap gap-1.5">
-              {#each activeGoals as g (g.id)}
-                {@const sel = linkedGoalId === g.id}
-                <button
-                  onclick={() => pickGoalLink(g)}
-                  class="px-2.5 py-1 text-xs rounded border transition-colors
-                    {sel ? 'bg-primary/15 border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary/40'}"
-                >
-                  {sel ? '✓ ' : '🎯 '}{g.title}
-                </button>
+                  onclick={() => { scripture = s; customScripture = ''; customSource = ''; }}
+                  class="text-[11px] px-2 py-0.5 rounded border
+                    {scripture === s && !customScripture ? 'border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary/40'}"
+                >{s.source}</button>
               {/each}
-              {#if linkedGoalId}
-                <button
-                  onclick={() => (linkedGoalId = '')}
-                  class="px-2.5 py-1 text-xs text-dim hover:text-text"
-                >clear link</button>
-              {/if}
             </div>
-            <p class="text-[11px] text-dim mt-2 italic">Saved as <code class="text-[10px]">— contributes to: …</code> on the goal line.</p>
           </div>
-        {/if}
-      {:else if step === 'tasks'}
-        <h2 class="text-lg font-medium text-text mb-1">Tasks for today</h2>
-        <p class="text-sm text-dim mb-4">{pickedTasks.size} selected · pick what you'll actually commit to. Sorted by urgency.</p>
-        {#if openTasks.length === 0}
-          <div class="text-sm text-dim italic">no open tasks — add some first or skip this step</div>
-        {:else}
-          <ul class="space-y-1 max-h-[24rem] overflow-y-auto">
-            {#each sortedTasks as t (t.id)}
-              {@const sel = pickedTasks.has(t.id)}
-              {@const overdueImp = !!t.dueDate && t.dueDate < today && (t.priority === 1 || t.priority === 2)}
-              {@const dueToday = t.dueDate === today}
-              <li>
-                <button
-                  onclick={() => toggleTask(t.id)}
-                  class="w-full text-left flex items-baseline gap-2 px-2 py-1.5 rounded hover:bg-surface1 group"
-                >
-                  <span class="w-4 h-4 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center
-                    {sel ? 'bg-primary border-primary' : 'border-surface2'}">
-                    {#if sel}
-                      <svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
-                    {/if}
-                  </span>
-                  {#if overdueImp}
-                    <span class="text-[10px] font-mono px-1 rounded bg-error/20 text-error">!OVERDUE</span>
-                  {:else if dueToday}
-                    <span class="text-[10px] font-mono px-1 rounded bg-primary/20 text-primary">TODAY</span>
-                  {/if}
-                  {#if t.priority > 0}
-                    <span class="text-[10px] font-mono px-1 rounded
-                      {t.priority === 1 ? 'bg-error/20 text-error' : ''}
-                      {t.priority === 2 ? 'bg-warning/20 text-warning' : ''}
-                      {t.priority === 3 ? 'bg-info/20 text-info' : ''}">P{t.priority}</span>
-                  {/if}
-                  <span class="flex-1 text-sm text-text">{@html inlineMd(t.text)}</span>
-                  {#if t.estimatedMinutes}<span class="text-[10px] text-dim">⏱ {t.estimatedMinutes}m</span>{/if}
-                  {#if t.dueDate}<span class="text-xs text-dim">{t.dueDate}</span>{/if}
-                </button>
+          <div>
+            <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5">Or paste your own</div>
+            <input bind:value={customScripture} placeholder="quote / verse text"
+              class="w-full px-2 py-1.5 mb-1.5 bg-surface0 border border-surface1 rounded text-sm" />
+            <input bind:value={customSource} placeholder="source"
+              class="w-full px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm" />
+          </div>
+        </div>
+      {/if}
+    </header>
+
+    {#if error}
+      <div class="mb-5 text-sm text-error p-3 bg-error/10 border border-error/30 rounded">{error}</div>
+    {/if}
+
+    <!-- Anchors strip — passive context. Active goals + nearest
+         deadlines so the user starts grounded in what they're
+         actually working towards before picking today's specifics. -->
+    {#if activeGoals.length > 0 || upcomingNear.length > 0}
+      <section class="mb-7 p-3 sm:p-4 rounded-lg bg-mantle/50 border border-surface1/60">
+        <div class="text-[10px] uppercase tracking-wider text-dim mb-2">Working towards</div>
+        {#if activeGoals.length > 0}
+          <ul class="space-y-1.5">
+            {#each activeGoals as g (g.id)}
+              <li class="flex items-baseline gap-2 text-sm">
+                <span class="text-dim">🎯</span>
+                <span class="flex-1 text-text truncate">{@html inlineMd(g.title)}</span>
+                {#if g.target_date}<span class="text-[11px] text-dim font-mono">{g.target_date}</span>{/if}
               </li>
             {/each}
           </ul>
         {/if}
-      {:else if step === 'habits'}
-        <h2 class="text-lg font-medium text-text mb-1">Habits</h2>
-        <p class="text-sm text-dim mb-4">Which ones are non-negotiable today?</p>
+        {#if upcomingNear.length > 0}
+          <ul class="space-y-1.5 {activeGoals.length > 0 ? 'mt-2 pt-2 border-t border-surface1/60' : ''}">
+            {#each upcomingNear as { d, days } (d.id)}
+              <li class="flex items-baseline gap-2 text-sm">
+                <DeadlinePill variant="countdown" {days} status={d.status} />
+                <span class="flex-1 text-text truncate">{d.title}</span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </section>
+    {/if}
 
+    <!-- 1 · Today's win — the single most important sentence. Big
+         input, no chrome. -->
+    <section class="mb-7">
+      <div class="flex items-baseline justify-between mb-2">
+        <h2 class="text-sm font-semibold text-text uppercase tracking-wider">What would make today a win?</h2>
+        {#if winSentence.trim()}<span class="text-[10px] text-success">✓</span>{/if}
+      </div>
+      <input
+        bind:value={winSentence}
+        placeholder="one concrete sentence — finishable today"
+        class="w-full px-3 py-3 text-base bg-surface0 border border-surface1 rounded-lg text-text placeholder-dim focus:outline-none focus:border-primary"
+      />
+    </section>
+
+    <!-- 2 · Today's #1 focus — with AI suggest -->
+    <section class="mb-7">
+      <div class="flex items-baseline justify-between mb-2">
+        <h2 class="text-sm font-semibold text-text uppercase tracking-wider">Today's #1 focus</h2>
+        <button
+          type="button"
+          onclick={suggestFocus}
+          disabled={suggesting}
+          class="text-[11px] text-primary hover:underline disabled:opacity-50 inline-flex items-center gap-1"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+            <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
+          </svg>
+          {suggesting ? 'thinking…' : 'suggest from tasks'}
+        </button>
+      </div>
+      <input
+        bind:value={goal}
+        placeholder="if you got one thing done…"
+        class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded text-text placeholder-dim focus:outline-none focus:border-primary"
+      />
+      {#if suggestion}
+        <div class="mt-2 p-2.5 bg-primary/8 border-l-2 border-primary rounded text-sm">
+          <div class="text-text mb-1.5">{suggestion}</div>
+          <div class="flex items-center gap-2">
+            <button onclick={acceptSuggestion} class="px-2 py-0.5 text-[11px] rounded bg-primary text-on-primary font-medium">use this</button>
+            <button onclick={() => (suggestion = '')} class="px-2 py-0.5 text-[11px] text-dim hover:text-text">dismiss</button>
+            <button onclick={suggestFocus} disabled={suggesting} class="ml-auto text-[11px] text-secondary hover:underline disabled:opacity-50">try again</button>
+          </div>
+        </div>
+      {/if}
+      {#if activeGoals.length > 0}
+        <div class="flex flex-wrap items-center gap-1.5 mt-2.5">
+          <span class="text-[11px] text-dim">contributes to:</span>
+          {#each activeGoals as g (g.id)}
+            {@const sel = linkedGoalId === g.id}
+            <button
+              type="button"
+              onclick={() => pickGoalLink(g)}
+              class="px-2 py-0.5 text-[11px] rounded-full border transition-colors
+                {sel ? 'bg-primary/15 border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary/40'}"
+            >
+              {sel ? '✓ ' : ''}{g.title}
+            </button>
+          {/each}
+          {#if linkedGoalId}
+            <button onclick={() => (linkedGoalId = '')} class="text-[11px] text-dim hover:text-text">clear</button>
+          {/if}
+        </div>
+      {/if}
+    </section>
+
+    <!-- 3 · Tasks — compact picker, urgency-sorted -->
+    <section class="mb-7">
+      <div class="flex items-baseline justify-between mb-2">
+        <h2 class="text-sm font-semibold text-text uppercase tracking-wider">Pick your tasks</h2>
+        <span class="text-[11px] text-dim">{pickedTasks.size} picked</span>
+      </div>
+      {#if openTasks.length === 0}
+        <p class="text-sm text-dim italic">no open tasks — <a href="/tasks" class="text-secondary hover:underline">add some</a></p>
+      {:else}
+        <ul class="space-y-0.5">
+          {#each (showAllTasks ? sortedTasks : taskPreview) as t (t.id)}
+            {@const sel = pickedTasks.has(t.id)}
+            {@const overdueImp = !!t.dueDate && t.dueDate < today && (t.priority === 1 || t.priority === 2)}
+            {@const dueToday = t.dueDate === today}
+            <li>
+              <button
+                type="button"
+                onclick={() => toggleTask(t.id)}
+                class="w-full text-left flex items-baseline gap-2 px-2 py-1.5 rounded hover:bg-surface0 group"
+              >
+                <span class="w-4 h-4 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center
+                  {sel ? 'bg-primary border-primary' : 'border-surface2'}">
+                  {#if sel}<svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>{/if}
+                </span>
+                {#if overdueImp}
+                  <span class="text-[10px] font-mono px-1 rounded bg-error/20 text-error">!OVERDUE</span>
+                {:else if dueToday}
+                  <span class="text-[10px] font-mono px-1 rounded bg-primary/20 text-primary">TODAY</span>
+                {/if}
+                {#if t.priority > 0}
+                  <span class="text-[10px] font-mono px-1 rounded
+                    {t.priority === 1 ? 'bg-error/20 text-error' : ''}
+                    {t.priority === 2 ? 'bg-warning/20 text-warning' : ''}
+                    {t.priority === 3 ? 'bg-info/20 text-info' : ''}">P{t.priority}</span>
+                {/if}
+                <span class="flex-1 text-sm text-text">{@html inlineMd(t.text)}</span>
+                {#if t.estimatedMinutes}<span class="text-[10px] text-dim">⏱ {t.estimatedMinutes}m</span>{/if}
+                {#if t.dueDate}<span class="text-[11px] text-dim font-mono">{t.dueDate}</span>{/if}
+              </button>
+            </li>
+          {/each}
+        </ul>
+        {#if !showAllTasks && taskOverflow > 0}
+          <button
+            type="button"
+            onclick={() => (showAllTasks = true)}
+            class="mt-1.5 text-[11px] text-secondary hover:underline"
+          >show {taskOverflow} more</button>
+        {:else if showAllTasks && sortedTasks.length > 8}
+          <button
+            type="button"
+            onclick={() => (showAllTasks = false)}
+            class="mt-1.5 text-[11px] text-dim hover:text-text"
+          >collapse</button>
+        {/if}
+      {/if}
+    </section>
+
+    <!-- 4 · Habits — compact horizontal grid -->
+    {#if knownHabits.length > 0 || newHabit.length === 0}
+      <section class="mb-7">
+        <div class="flex items-baseline justify-between mb-2">
+          <h2 class="text-sm font-semibold text-text uppercase tracking-wider">Habits</h2>
+          <span class="text-[11px] text-dim">{pickedHabits.size} committed</span>
+        </div>
         {#if knownHabits.length > 0}
-          <ul class="space-y-1 mb-4">
+          <div class="flex flex-wrap gap-1.5 mb-2">
             {#each knownHabits as h (h.name)}
               {@const sel = pickedHabits.has(h.name)}
-              <li>
-                <button
-                  onclick={() => toggleHabit(h.name)}
-                  class="w-full text-left flex items-baseline gap-2 px-2 py-1.5 rounded hover:bg-surface1"
-                >
-                  <span class="w-4 h-4 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center
-                    {sel ? 'bg-primary border-primary' : 'border-surface2'}">
-                    {#if sel}<svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>{/if}
-                  </span>
-                  <span class="flex-1 text-sm text-text">{h.name}</span>
-                  {#if h.currentStreak > 0}<span class="text-xs text-warning">🔥 {h.currentStreak}</span>{/if}
-                  <span class="text-xs text-dim">L7 {h.last7Pct}%</span>
-                </button>
-              </li>
+              <button
+                type="button"
+                onclick={() => toggleHabit(h.name)}
+                class="px-2.5 py-1 text-[11px] rounded-full border transition-colors inline-flex items-center gap-1.5
+                  {sel ? 'bg-primary/15 border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary/40'}"
+              >
+                <span>{sel ? '☑' : '☐'}</span>
+                <span>{h.name}</span>
+                {#if h.currentStreak > 0}<span class="text-warning">🔥{h.currentStreak}</span>{/if}
+              </button>
             {/each}
-          </ul>
+          </div>
         {/if}
-
-        <form onsubmit={addCustomHabit} class="flex gap-2 mt-2">
+        <form onsubmit={addCustomHabit} class="flex gap-2">
           <input
             bind:value={newHabit}
-            placeholder="add a new habit…"
-            class="flex-1 px-2 py-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text focus:outline-none focus:border-primary"
+            placeholder="add a habit…"
+            class="flex-1 px-2.5 py-1.5 bg-surface0 border border-surface1 rounded text-sm"
           />
-          <button type="submit" disabled={!newHabit.trim()} class="px-3 py-2 bg-surface1 text-subtext rounded text-sm disabled:opacity-50">+ add</button>
+          <button type="submit" disabled={!newHabit.trim()} class="px-2.5 py-1.5 bg-surface1 text-subtext rounded text-sm disabled:opacity-50">+ add</button>
         </form>
-      {:else if step === 'thoughts'}
-        <h2 class="text-lg font-medium text-text mb-1">Thoughts</h2>
-        <p class="text-sm text-dim mb-4">Anything on your mind. Two sentences works.</p>
-        <textarea
-          bind:value={thoughts}
-          rows="8"
-          placeholder="grateful for… / wrestling with… / today's mood…"
-          class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary leading-relaxed font-mono"
-        ></textarea>
-      {:else if step === 'review'}
-        <h2 class="text-lg font-medium text-text mb-1">Review</h2>
-        <p class="text-sm text-dim mb-4">This is what we'll save under <code class="text-xs">## Daily Plan</code>.</p>
+      </section>
+    {/if}
 
-        <!-- Win-condition prompt -->
-        <div class="mb-4 p-3 bg-mantle/60 border border-primary/30 rounded">
-          <label class="block text-xs uppercase tracking-wider text-primary mb-1.5" for="win-input">
-            What would make today a win?
-          </label>
-          <input
-            id="win-input"
-            bind:value={winSentence}
-            placeholder="one sentence — concrete, finishable today"
-            class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
-          />
-          <p class="text-[11px] text-dim mt-1.5 italic">Saved with your thoughts so you can re-read it tonight.</p>
-        </div>
-
-        <div class="bg-mantle border border-surface1 rounded p-4 space-y-3 text-sm">
-          {#if activeScripture.text}
-            <blockquote class="border-l-2 border-primary pl-3 italic text-subtext">
-              "{activeScripture.text}"
-              {#if activeScripture.source}<div class="text-xs text-dim mt-1 not-italic">— {activeScripture.source}</div>{/if}
-            </blockquote>
+    <!-- 5 · Bring forward — combined prayer + thoughts. The previous
+         design split these into two ceremonial steps; merging keeps
+         the meditative quality without the click overhead. The
+         user's input lands in the daily note's thoughts section;
+         picked prayer chips ride along under "Praying for:". -->
+    <section class="mb-7">
+      <div class="flex items-baseline justify-between mb-2">
+        <h2 class="text-sm font-semibold text-text uppercase tracking-wider">Bring forward</h2>
+        {#if activeIntentions.length > 0}
+          <button
+            type="button"
+            onclick={() => (prayerPickerOpen = !prayerPickerOpen)}
+            class="text-[11px] text-secondary hover:underline"
+          >
+            {prayerPickerOpen ? 'hide intentions' : `${pickedIntentions.size} of ${activeIntentions.length} intentions`}
+          </button>
+        {/if}
+      </div>
+      <textarea
+        bind:value={thoughts}
+        rows="3"
+        placeholder="grateful for · wrestling with · today's mood · what to bring before God"
+        class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary leading-relaxed"
+      ></textarea>
+      {#if prayerPickerOpen}
+        <div class="mt-3 p-3 bg-mantle/40 border border-surface1 rounded space-y-2">
+          {#if sortedIntentions.length > 0}
+            <ul class="space-y-1 max-h-48 overflow-y-auto">
+              {#each sortedIntentions as p (p.id)}
+                {@const picked = pickedIntentions.has(p.id)}
+                <li>
+                  <button
+                    type="button"
+                    onclick={() => toggleIntention(p.id)}
+                    class="w-full text-left flex items-start gap-2 px-2 py-1.5 rounded
+                      {picked ? 'bg-primary/10' : 'hover:bg-surface0'}"
+                  >
+                    <span class="w-3.5 h-3.5 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center text-[9px]
+                      {picked ? 'bg-primary border-primary text-on-primary' : 'border-surface2'}">{picked ? '✓' : ''}</span>
+                    <div class="flex-1 min-w-0">
+                      <div class="text-sm text-text">{p.text}</div>
+                      {#if p.venture || p.project || p.person}
+                        <div class="text-[11px] text-dim">
+                          {#if p.venture}🏢 {p.venture}
+                          {:else if p.project}📁 {p.project}
+                          {:else if p.person}👤 {p.person}{/if}
+                        </div>
+                      {/if}
+                    </div>
+                  </button>
+                </li>
+              {/each}
+            </ul>
           {/if}
-          {#if winSentence.trim()}
-            <div>
-              <div class="text-xs uppercase tracking-wider text-primary mb-1">Today's win</div>
-              <div class="font-medium text-text">{winSentence}</div>
-            </div>
-          {/if}
-          {#if goal.trim()}
-            <div>
-              <div class="text-xs uppercase tracking-wider text-dim mb-1">Today's Goal</div>
-              <div class="font-medium text-text">{goal}</div>
-              {#if linkedGoalId}
-                {@const g = activeGoals.find((x) => x.id === linkedGoalId)}
-                {#if g}
-                  <div class="text-[11px] text-secondary mt-0.5">→ contributes to: {g.title}</div>
-                {/if}
-              {/if}
-            </div>
-          {/if}
-          {#if pickedTaskTexts.length > 0}
-            <div>
-              <div class="text-xs uppercase tracking-wider text-dim mb-1">Tasks ({pickedTaskTexts.length})</div>
-              <ul class="space-y-0.5 text-text">
-                {#each pickedTaskTexts as t}<li>· {@html inlineMd(t)}</li>{/each}
-              </ul>
-            </div>
-          {/if}
-          {#if pickedHabits.size > 0}
-            <div>
-              <div class="text-xs uppercase tracking-wider text-dim mb-1">Habits ({pickedHabits.size})</div>
-              <ul class="space-y-0.5 text-text">
-                {#each [...pickedHabits] as h}<li>☐ {h}</li>{/each}
-              </ul>
-            </div>
-          {/if}
-          {#if pickedIntentions.size > 0}
-            <div>
-              <div class="text-xs uppercase tracking-wider text-dim mb-1">Praying for ({pickedIntentions.size})</div>
-              <ul class="space-y-0.5 text-text">
-                {#each [...pickedIntentions] as id}
-                  {@const intent = activeIntentions.find((x) => x.id === id)}
-                  {#if intent}
-                    <li class="flex items-baseline gap-2">
-                      <span>🙏</span>
-                      <span class="flex-1 min-w-0">{intent.text}</span>
-                      {#if intent.venture}<span class="text-[11px] text-secondary flex-shrink-0">🏢 {intent.venture}</span>
-                      {:else if intent.project}<span class="text-[11px] text-secondary flex-shrink-0">📁 {intent.project}</span>
-                      {:else if intent.person}<span class="text-[11px] text-secondary flex-shrink-0">👤 {intent.person}</span>{/if}
-                    </li>
-                  {/if}
-                {/each}
-              </ul>
-            </div>
-          {/if}
-          {#if thoughts.trim()}
-            <div>
-              <div class="text-xs uppercase tracking-wider text-dim mb-1">Thoughts</div>
-              <div class="text-subtext whitespace-pre-wrap">{thoughts}</div>
-            </div>
-          {/if}
+          <form onsubmit={addNewPrayer} class="flex gap-2">
+            <input
+              bind:value={newPrayerText}
+              placeholder="add an intention…"
+              class="flex-1 px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm"
+            />
+            <button type="submit" disabled={!newPrayerText.trim() || addingPrayer} class="px-2.5 py-1.5 bg-primary text-on-primary rounded text-sm disabled:opacity-50">
+              {addingPrayer ? '…' : '+ add'}
+            </button>
+          </form>
         </div>
       {/if}
-    </main>
-
-    <div class="flex items-center justify-between mt-5">
-      <button
-        onclick={back}
-        disabled={step === 'anchors'}
-        class="px-4 py-2 text-sm text-subtext disabled:opacity-30"
-      >
-        ← back
-      </button>
-      {#if step === 'review'}
-        <button
-          onclick={save}
-          disabled={saving}
-          class="px-5 py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
-        >
-          {saving ? 'saving…' : 'save to today\'s daily note'}
-        </button>
-      {:else}
-        <button
-          onclick={next}
-          class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium"
-        >
-          next →
-        </button>
-      {/if}
-    </div>
+    </section>
   </div>
+
+  <!-- Sticky Lock-in footer. Mobile-friendly; hides itself when
+       there's literally nothing to save so the user can leave the
+       page without an empty save attempt. -->
+  <footer class="fixed bottom-0 left-0 right-0 lg:left-64 xl:left-72 z-20 border-t border-surface1 bg-mantle/95 backdrop-blur px-4 py-3">
+    <div class="max-w-2xl mx-auto flex items-center gap-3">
+      <span class="text-[11px] text-dim flex-1">
+        {#if filledCount === 0}
+          Fill anything you want — empty sections are silently skipped.
+        {:else}
+          {filledCount} section{filledCount === 1 ? '' : 's'} filled · saves to today's daily note
+        {/if}
+      </span>
+      <button
+        onclick={lockIn}
+        disabled={saving || filledCount === 0}
+        class="px-5 py-2 rounded text-sm font-semibold bg-primary text-on-primary disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {saving ? 'saving…' : 'Lock in →'}
+      </button>
+    </div>
+  </footer>
 </div>
