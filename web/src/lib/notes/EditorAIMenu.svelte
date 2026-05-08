@@ -56,22 +56,70 @@
 
   let open = $state(false);
   let menuEl: HTMLDivElement | undefined = $state();
+  // Trigger button — we measure its bounding rect to position the
+  // popup panel viewport-aware (right-anchored when there's room,
+  // left-anchored otherwise, never off-screen on narrow phones).
+  // The previous version used `class="absolute right-0 top-full"`
+  // with a fixed `w-72` (288px). When the trigger sat near the right
+  // edge of a narrow viewport, `right-0` anchored to the trigger's
+  // own right, but the 288px-wide panel could still spill past the
+  // left viewport edge — and on phones with overflow-hidden ancestors
+  // somewhere in the toolbar chain the panel got clipped instead.
+  let triggerEl: HTMLButtonElement | undefined = $state();
+  // Position of the floating menu in viewport coordinates. We render
+  // with `position: fixed` and these coordinates so the panel escapes
+  // any ancestor `overflow-hidden` and lands inside the viewport
+  // regardless of how wide the trigger's row is.
+  let menuTop = $state(0);
+  let menuLeft = $state(0);
+  let menuWidth = $state(288); // matches w-72; clamped to viewport on narrow screens
+
+  function repositionMenu() {
+    if (!triggerEl) return;
+    const rect = triggerEl.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const margin = 8;
+    // Clamp panel width to the viewport with a safe margin.
+    const desired = 288;
+    menuWidth = Math.min(desired, vw - margin * 2);
+    // Try right-aligning to the trigger first (the original design).
+    let left = rect.right - menuWidth;
+    // If that pushes the panel off the left edge, slide it back in.
+    if (left < margin) left = margin;
+    // If somehow it overflows the right edge (e.g. menuWidth was
+    // clamped to a smaller value), pull it back from the right.
+    if (left + menuWidth > vw - margin) left = vw - margin - menuWidth;
+    menuLeft = left;
+    menuTop = rect.bottom + 4;
+  }
 
   // ── click-outside + esc to close ────────────────────────────────
   $effect(() => {
     if (!open) return;
+    repositionMenu();
     function onDocClick(e: MouseEvent) {
-      if (!menuEl) return;
-      if (e.target instanceof Node && !menuEl.contains(e.target)) open = false;
+      if (!menuEl || !triggerEl) return;
+      if (e.target instanceof Node && menuEl.contains(e.target)) return;
+      if (e.target instanceof Node && triggerEl.contains(e.target)) return;
+      open = false;
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') open = false;
     }
+    function onResize() {
+      repositionMenu();
+    }
     document.addEventListener('mousedown', onDocClick);
     document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize);
+    // Scroll inside the editor toolbar / page can shift the trigger;
+    // capture-phase listener so we catch any scroll, not just window.
+    window.addEventListener('scroll', onResize, true);
     return () => {
       document.removeEventListener('mousedown', onDocClick);
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onResize, true);
     };
   });
 
@@ -438,9 +486,10 @@
   });
 </script>
 
-<div class="relative" bind:this={menuEl}>
+<div class="relative">
   <button
     type="button"
+    bind:this={triggerEl}
     onclick={() => (open = !open)}
     aria-haspopup="menu"
     aria-expanded={open}
@@ -459,9 +508,15 @@
   </button>
 
   {#if open}
+    <!-- Fixed-position floating panel — coords come from
+         repositionMenu() so the panel always lands inside the
+         viewport regardless of how wide the toolbar row is or how
+         close to the right edge the trigger sits. -->
     <div
+      bind:this={menuEl}
       role="menu"
-      class="absolute right-0 top-full mt-1 w-72 bg-mantle border border-surface1 rounded-lg shadow-xl z-50 py-1 text-sm"
+      style="top: {menuTop}px; left: {menuLeft}px; width: {menuWidth}px; max-height: calc(100dvh - {menuTop}px - 0.75rem);"
+      class="fixed bg-mantle border border-surface1 rounded-lg shadow-xl z-50 py-1 text-sm overflow-y-auto overscroll-contain"
     >
       <button role="menuitem" onclick={fireWholeNote} class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text">
         <span class="flex-1 text-left">Ask about this note</span>
