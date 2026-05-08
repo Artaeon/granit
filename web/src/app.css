@@ -308,6 +308,31 @@ input[type='datetime-local'] {
   color-scheme: inherit;
 }
 
+/* Prevent iOS Safari from auto-zooming on focus of inputs whose text
+   is smaller than 16px. We apply a 16px floor only on coarse-pointer
+   devices so desktop layouts that intentionally use text-xs/text-sm
+   for compact forms (e.g. dense modal grids) keep their density.
+   Excludes [type='range'] (no zoom) and checkbox/radio (no text). */
+@media (pointer: coarse) {
+  input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='color']),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Ensure tap targets meet the Apple HIG 44x44 minimum on touch
+   devices. Marker class so authors can opt in on otherwise-tiny
+   icon buttons without leaking the rule into desktop dense
+   toolbars. Apply with class="tap-target" or via the
+   `min-h-[2.75rem]` Tailwind class manually. */
+@media (pointer: coarse) {
+  .tap-target {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+}
+
 @supports (padding: env(safe-area-inset-bottom)) {
   .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
   .pt-safe { padding-top: env(safe-area-inset-top); }
