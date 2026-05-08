@@ -580,19 +580,26 @@
                   <button
                     onclick={() => toggleWidget(w.id)}
                     aria-label="toggle"
-                    class="w-4 h-4 rounded border flex items-center justify-center flex-shrink-0
-                      {w.enabled ? 'bg-success border-success' : 'border-surface2'}"
+                    class="w-9 h-9 sm:w-6 sm:h-6 rounded flex items-center justify-center flex-shrink-0 hover:bg-surface0"
                   >
-                    {#if w.enabled}
-                      <svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
-                    {/if}
+                    <span
+                      class="w-4 h-4 rounded border flex items-center justify-center
+                        {w.enabled ? 'bg-success border-success' : 'border-surface2'}"
+                    >
+                      {#if w.enabled}
+                        <svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
+                      {/if}
+                    </span>
                   </button>
                   <div class="flex-1 min-w-0">
                     <div class="text-sm text-text">{meta.label}</div>
                     <div class="text-xs text-dim truncate">{meta.description}</div>
                   </div>
-                  <button onclick={() => moveUp(w.id)} disabled={i === 0} class="w-7 h-7 text-dim hover:text-text disabled:opacity-30">↑</button>
-                  <button onclick={() => moveDown(w.id)} disabled={i === config.widgets.length - 1} class="w-7 h-7 text-dim hover:text-text disabled:opacity-30">↓</button>
+                  <!-- Reorder buttons grow to a 44x44 hit-area on touch
+                       devices since drag-to-reorder isn't reachable from
+                       a phone — these chevrons are the actual touch UI. -->
+                  <button onclick={() => moveUp(w.id)} disabled={i === 0} aria-label="move up" class="w-11 h-11 sm:w-7 sm:h-7 text-dim hover:text-text disabled:opacity-30 rounded">↑</button>
+                  <button onclick={() => moveDown(w.id)} disabled={i === config.widgets.length - 1} aria-label="move down" class="w-11 h-11 sm:w-7 sm:h-7 text-dim hover:text-text disabled:opacity-30 rounded">↓</button>
                 </li>
               {/if}
             {/each}
