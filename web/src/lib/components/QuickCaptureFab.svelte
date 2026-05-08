@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import { toast } from '$lib/components/toast';
   import { invalidateTitleCache } from '$lib/editor/wikilinks';
+  import VoiceNoteModal from '$lib/components/VoiceNoteModal.svelte';
 
   // QuickCaptureFab — global floating-action-button rendered from
   // +layout.svelte once the user is authed. Single keyboard shortcut
@@ -22,6 +23,7 @@
   // note's editor directly.
 
   let open = $state(false);
+  let voiceOpen = $state(false);
   let text = $state('');
   let priority = $state(0);
   let dueDate = $state('');
@@ -55,6 +57,21 @@
         e.preventDefault();
         if (open) hide();
         else show();
+      } else if (mod && e.shiftKey && (e.key === 'V' || e.key === 'v')) {
+        // Mod-Shift-V — voice note. Same chord shape as the
+        // capture sibling so it's discoverable; V for voice. The
+        // browser's "paste without formatting" is also Mod-Shift-V
+        // but only inside a contenteditable — we preventDefault so
+        // it doesn't compete in plain page chrome. Inside text
+        // inputs the chord still produces a paste because input
+        // elements consume the keydown before our document listener
+        // sees it.
+        const target = e.target as HTMLElement | null;
+        const inField = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+        if (!inField) {
+          e.preventDefault();
+          voiceOpen = true;
+        }
       } else if (open && e.key === 'Escape') {
         hide();
       }
@@ -114,17 +131,37 @@
      paired keyboard, or we surface it differently in a follow-up.
      The button itself sits one nav-row above the bottom edge so the
      FAB doesn't collide with system home-bar gestures. -->
-<button
-  type="button"
-  onclick={show}
-  aria-label="quick capture (Ctrl+Shift+N)"
-  title="quick capture (Ctrl+Shift+N)"
-  class="hidden md:flex fixed bottom-5 right-5 z-30 w-12 h-12 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg hover:opacity-90 transition-all hover:scale-105"
->
-  <svg viewBox="0 0 24 24" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-    <path d="M12 5v14M5 12h14"/>
-  </svg>
-</button>
+<!-- Capture cluster: primary "+" plus a smaller voice "🎤" satellite.
+     Both desktop-only (mobile gets the bottom-nav). The voice button
+     sits a row above the primary so the cluster reads as related but
+     the primary is unambiguous. -->
+<div class="hidden md:flex flex-col items-end gap-2 fixed bottom-5 right-5 z-30">
+  <button
+    type="button"
+    onclick={() => (voiceOpen = true)}
+    aria-label="voice note (Ctrl+Shift+V)"
+    title="voice note (Ctrl+Shift+V)"
+    class="w-10 h-10 flex items-center justify-center rounded-full bg-mantle border border-surface1 text-subtext shadow hover:bg-surface0 hover:text-primary transition-all hover:scale-105"
+  >
+    <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="9" y="3" width="6" height="12" rx="3"/>
+      <path d="M5 11a7 7 0 0014 0M12 18v3" stroke-linecap="round"/>
+    </svg>
+  </button>
+  <button
+    type="button"
+    onclick={show}
+    aria-label="quick capture (Ctrl+Shift+N)"
+    title="quick capture (Ctrl+Shift+N)"
+    class="w-12 h-12 flex items-center justify-center rounded-full bg-primary text-on-primary shadow-lg hover:opacity-90 transition-all hover:scale-105"
+  >
+    <svg viewBox="0 0 24 24" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+      <path d="M12 5v14M5 12h14"/>
+    </svg>
+  </button>
+</div>
+
+<VoiceNoteModal bind:open={voiceOpen} />
 
 {#if open}
   <!-- Backdrop. Click anywhere outside the panel closes. -->
