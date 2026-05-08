@@ -677,9 +677,21 @@
              card looks half-empty inside. -->
         <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 items-start">
           {#each activeWidgets as { widget, meta } (widget.id)}
-            {@const Widget = meta.component}
+            <!-- Each widget chunk is loaded lazily via meta.load();
+                 the registry's loader is memoised so re-renders await
+                 the same resolved promise instead of refetching.
+                 The skeleton placeholder reserves a small height so
+                 the grid doesn't reflow once each chunk lands. -->
             <div class={meta.span === 2 ? 'lg:col-span-2 xl:col-span-3' : ''}>
-              <Widget vaultPath={vault?.root ?? ''} />
+              {#await meta.load()}
+                <div class="bg-surface0 border border-surface1 rounded-lg p-4 animate-pulse h-24"></div>
+              {:then Widget}
+                <Widget vaultPath={vault?.root ?? ''} />
+              {:catch err}
+                <div class="bg-error/10 border border-error/30 text-error rounded-lg p-3 text-xs">
+                  Widget {meta.label} failed to load: {err?.message ?? err}
+                </div>
+              {/await}
             </div>
           {/each}
         </div>
