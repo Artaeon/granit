@@ -16,7 +16,7 @@
   import QuickCaptureFab from '$lib/components/QuickCaptureFab.svelte';
   import AIOverlay from '$lib/components/AIOverlay.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
-  import { connect, disconnect, wsConnected } from '$lib/ws';
+  import { connect, disconnect, wsConnected, onWsEvent } from '$lib/ws';
   import { theme, nextTheme, themeIcon, themeLabel } from '$lib/stores/theme';
   import { modulesStore } from '$lib/stores/modules';
   import { sabbath, SABBATH_HIDE_MODULES } from '$lib/stores/sabbath';
@@ -57,6 +57,82 @@
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  });
+
+  // ── Sidebar live counts ────────────────────────────────────────────
+  // overdueTasks: open tasks with a dueDate strictly before today (YYYY-MM-DD).
+  // todayEvents: calendar feed entries (events.json + ICS subscriptions +
+  // scheduled tasks) whose date / start lands on today. Both refresh
+  // on mount, on auth gain, and on relevant WS events so the badges
+  // stay in sync after a TUI edit or a tab returning from background
+  // without manual reload. Errors swallow silently — a stale or
+  // missing badge is fine; an alert spam isn't.
+  let overdueTaskCount = $state<number>(0);
+  let todayEventCount = $state<number>(0);
+
+  function todayISO(): string {
+    const d = new Date();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${m}-${day}`;
+  }
+
+  async function refreshOverdueTasks() {
+    try {
+      const today = todayISO();
+      const res = await api.listTasks({ status: 'open', due_before: today });
+      overdueTaskCount = res.tasks.filter((t) => !t.done && !!t.dueDate && t.dueDate < today).length;
+    } catch {
+      // leave previous count in place
+    }
+  }
+
+  async function refreshTodayEvents() {
+    try {
+      const today = todayISO();
+      const feed = await api.calendar(today, today);
+      const isToday = (ev: { date?: string; start?: string }) => {
+        if (ev.date) return ev.date === today;
+        if (ev.start) return ev.start.slice(0, 10) === today;
+        return false;
+      };
+      todayEventCount = feed.events.filter(isToday).length;
+    } catch {
+      // leave previous count in place
+    }
+  }
+
+  // Trigger fetches once auth is known. Re-runs when $auth flips
+  // false→true so a fresh login populates badges immediately.
+  $effect(() => {
+    if (!$auth) {
+      overdueTaskCount = 0;
+      todayEventCount = 0;
+      return;
+    }
+    refreshOverdueTasks();
+    refreshTodayEvents();
+  });
+
+  // Listen to WS task/event mutations to keep badges live without
+  // polling. We debounce lightly via microtask so a burst (e.g. plan
+  // apply that flips many tasks) collapses into one refetch.
+  onMount(() => {
+    let pendingTasks = false;
+    let pendingEvents = false;
+    const off = onWsEvent((ev) => {
+      if (ev.type === 'task.changed' || ev.type === 'vault.rescanned') {
+        if (pendingTasks) return;
+        pendingTasks = true;
+        queueMicrotask(() => { pendingTasks = false; refreshOverdueTasks(); });
+      }
+      if (ev.type === 'event.changed' || ev.type === 'event.removed' || ev.type === 'task.changed' || ev.type === 'vault.rescanned') {
+        if (pendingEvents) return;
+        pendingEvents = true;
+        queueMicrotask(() => { pendingEvents = false; refreshTodayEvents(); });
+      }
+    });
+    return off;
   });
 
   // moduleId gates the entry against the modules store. Entries without
@@ -252,13 +328,20 @@
 
 {#snippet navItem(item: NavItem, isCompact: boolean)}
   {@const active = $page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href))}
+  {@const badge = item.href === '/tasks' && overdueTaskCount > 0
+    ? { count: overdueTaskCount, tone: 'error' as const, label: `${overdueTaskCount} overdue` }
+    : item.href === '/calendar' && todayEventCount > 0
+      ? { count: todayEventCount, tone: 'subtle' as const, label: `${todayEventCount} today` }
+      : null}
   <a
     href={item.href}
     onclick={() => (drawerOpen = false)}
-    title={isCompact ? item.label : undefined}
-    aria-label={item.label}
-    class="group relative flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm transition-colors
-      {active ? 'text-primary bg-surface1/60' : 'text-subtext hover:bg-surface0 hover:text-text'}"
+    title={isCompact ? (badge ? `${item.label} — ${badge.label}` : item.label) : undefined}
+    aria-label={badge ? `${item.label}, ${badge.label}` : item.label}
+    class="group relative flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm border border-transparent transition-colors
+      {active
+        ? 'text-primary bg-surface1/60 border-surface1'
+        : 'text-subtext hover:bg-surface0 hover:text-text hover:border-surface1/50 focus-visible:bg-surface0 focus-visible:text-text focus-visible:border-primary/40 focus-visible:outline-none'}"
   >
     <!-- Active rail: a 3px accent strip on the left edge replaces
          the heavier full-row fill, so scanning down the sidebar
@@ -268,9 +351,38 @@
     {#if active}
       <span class="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-primary" aria-hidden="true"></span>
     {/if}
-    <NavIcon name={item.icon} class="w-5 h-5 flex-shrink-0" />
+    <span class="relative flex-shrink-0">
+      <NavIcon name={item.icon} class="w-5 h-5 flex-shrink-0" />
+      {#if isCompact && badge}
+        <!-- Compact-mode badge sits as a corner overlay on the icon
+             so the rail can still surface alerts without labels. The
+             error tone shows the digit; the subtle tone collapses to
+             a dot since the count is informational, not urgent. -->
+        {#if badge.tone === 'error'}
+          <span
+            class="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-error text-on-primary text-[9px] font-bold leading-4 text-center ring-1 ring-mantle"
+            aria-hidden="true"
+          >{badge.count > 9 ? '9+' : badge.count}</span>
+        {:else}
+          <span class="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-primary/70 ring-1 ring-mantle" aria-hidden="true"></span>
+        {/if}
+      {/if}
+    </span>
     {#if !isCompact}
-      <span class="truncate">{item.label}</span>
+      <span class="truncate flex-1">{item.label}</span>
+      {#if badge}
+        {#if badge.tone === 'error'}
+          <span
+            class="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-error/15 text-error text-[10px] font-semibold leading-none ring-1 ring-error/30"
+            aria-hidden="true"
+          >{badge.count > 99 ? '99+' : badge.count}</span>
+        {:else}
+          <span
+            class="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-surface1/70 text-subtext text-[10px] font-medium leading-none"
+            aria-hidden="true"
+          >{badge.count > 99 ? '99+' : badge.count}</span>
+        {/if}
+      {/if}
     {/if}
   </a>
 {/snippet}
@@ -343,7 +455,20 @@
       {#each visibleSections as section}
         {@const isCollapsed = !!collapsedSections[section.id] && !isCompact}
         {#if isCompact}
-          <div class="my-2 border-t border-surface1/60" aria-hidden="true"></div>
+          <!-- Compact section divider: a short centered rule + a tiny
+               pip so the visual rhythm of grouping survives icon-only
+               mode without forcing the user to remember which icon
+               belongs to which section. Title surfaces the section
+               label on hover for orientation. -->
+          <div
+            class="my-2.5 flex items-center justify-center gap-1"
+            aria-hidden="true"
+            title={section.label}
+          >
+            <span class="h-px w-2 bg-surface1"></span>
+            <span class="w-1 h-1 rounded-full bg-surface1"></span>
+            <span class="h-px w-2 bg-surface1"></span>
+          </div>
           {#each section.items as item}
             {@render navItem(item, true)}
           {/each}
