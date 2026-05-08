@@ -79,7 +79,7 @@
   //    dispatched actions (Continue / Section / Selection) close
   //    the menu and let the host's existing flow handle their UX.
 
-  type Action = 'title' | 'tldr' | 'tighten' | 'study';
+  type Action = 'title' | 'tldr' | 'tighten' | 'study' | 'concepts';
   let busy = $state<Action | null>(null);
   let titleSuggestions = $state<string[]>([]);
   let titleAbort: AbortController | null = null;
@@ -91,6 +91,13 @@
   let studyCards = $state<Card[]>([]);
   let studyRaw = $state('');
   let studyAbort: AbortController | null = null;
+  // Concept extraction: short glossary of the key terms / concepts
+  // / entities the note touches, with one-line definitions. Helps
+  // turn a research note into a study aid; appendable as
+  // `## Concepts`.
+  type Concept = { term: string; def: string };
+  let concepts = $state<Concept[]>([]);
+  let conceptsAbort: AbortController | null = null;
 
   function noteBodyForAI(): string {
     // Cap to ~12k chars so the prompt stays bounded for long notes.
@@ -259,6 +266,66 @@
     toast.success('Self-test added at the end of the note.');
   }
 
+  async function extractConcepts() {
+    if (busy) return;
+    if (body.trim().length < 100) {
+      toast.info('Note is too short to extract concepts.');
+      return;
+    }
+    conceptsAbort?.abort();
+    conceptsAbort = new AbortController();
+    busy = 'concepts';
+    concepts = [];
+    let buf = '';
+    try {
+      await api.chatStream(
+        [
+          {
+            role: 'system',
+            content:
+              'You extract 5-10 key concepts / terms / entities from the user\'s note and write a one-line definition for each, in the user\'s voice (using the note\'s framing, not Wikipedia\'s). Return STRICTLY a JSON array, no fences, no prose: [{"term": "<2-4 words>", "def": "<single sentence, under 25 words>"}]. Pick concepts that are LOAD-BEARING in the note — not every noun, only the terms the rest of the argument depends on. Lowercase term names unless they\'re proper nouns.'
+          },
+          { role: 'user', content: noteBodyForAI() }
+        ],
+        undefined,
+        {
+          onChunk: (c) => { buf += c; },
+          onDone: () => {
+            let cleaned = buf.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+            }
+            try {
+              const arr = JSON.parse(cleaned) as Concept[];
+              if (Array.isArray(arr)) concepts = arr.filter((x) => x.term && x.def);
+            } catch {
+              toast.error('Model didn\'t return parseable JSON.');
+            }
+          },
+          onError: (err) => toast.error(err.message)
+        },
+        conceptsAbort.signal
+      );
+    } finally {
+      busy = null;
+      conceptsAbort = null;
+    }
+  }
+  function dismissConcepts() {
+    conceptsAbort?.abort();
+    concepts = [];
+  }
+  function insertConceptsAtBottom() {
+    if (concepts.length === 0) return;
+    const md =
+      '\n\n## Concepts\n\n' +
+      concepts.map((c) => `**${c.term}** — ${c.def}`).join('\n\n');
+    onReplaceBody(body.replace(/\s+$/, '') + md);
+    concepts = [];
+    open = false;
+    toast.success('Glossary added at the end of the note.');
+  }
+
   async function tightenNote() {
     if (busy) return;
     if (body.trim().length < 80) {
@@ -408,6 +475,15 @@
         <span class="flex-1 text-left">{busy === 'study' ? 'Generating…' : 'Study questions'}</span>
         <span class="text-[10px] text-dim">5-7 Q&A</span>
       </button>
+      <button
+        role="menuitem"
+        onclick={extractConcepts}
+        disabled={busy !== null}
+        class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text disabled:opacity-50"
+      >
+        <span class="flex-1 text-left">{busy === 'concepts' ? 'Extracting…' : 'Extract concepts'}</span>
+        <span class="text-[10px] text-dim">glossary</span>
+      </button>
 
       <div class="border-t border-surface1 my-1"></div>
 
@@ -426,6 +502,32 @@
               class="block w-full text-left text-sm py-1 hover:text-primary"
             >{t}</button>
           {/each}
+        </div>
+      {/if}
+
+      {#if concepts.length > 0}
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-primary/5 max-h-72 overflow-y-auto">
+          <div class="flex items-baseline gap-2 mb-2">
+            <span class="text-[10px] uppercase tracking-wider text-primary">concepts</span>
+            <span class="flex-1"></span>
+            <button type="button" onclick={extractConcepts} disabled={busy !== null} class="text-[11px] text-secondary hover:underline">regenerate</button>
+            <button type="button" onclick={dismissConcepts} class="text-[11px] text-dim hover:text-text">dismiss</button>
+          </div>
+          <ul class="space-y-1.5">
+            {#each concepts as c (c.term)}
+              <li class="text-xs">
+                <span class="font-semibold text-text">{c.term}</span>
+                <span class="text-subtext"> — {c.def}</span>
+              </li>
+            {/each}
+          </ul>
+          <button
+            type="button"
+            onclick={insertConceptsAtBottom}
+            class="mt-2 w-full text-xs px-2 py-1 rounded bg-primary text-on-primary font-medium"
+          >
+            Append as ## Concepts
+          </button>
         </div>
       {/if}
 
