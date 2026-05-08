@@ -1083,16 +1083,19 @@
                    scroll the per-request audit list. Ordered by
                    cost desc, fall-through to count when costs tie
                    (Ollama entries have $0 across the board). -->
-              <div class="mb-3 px-2 py-1.5 bg-mantle border border-surface1 rounded">
+              <!-- overflow-x-auto so a long feature name plus its
+                   four numeric columns can scroll horizontally on a
+                   narrow phone instead of overflowing the page. -->
+              <div class="mb-3 px-2 py-1.5 bg-mantle border border-surface1 rounded overflow-x-auto">
                 <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5">Last 7 days · by feature</div>
                 <table class="w-full text-[11px]">
                   <tbody>
                     {#each aiUsageByFeature as f}
                       <tr>
-                        <td class="text-text py-0.5 pr-2">{f.feature}</td>
-                        <td class="text-dim font-mono py-0.5 pr-2 tabular-nums text-right">{f.count}×</td>
-                        <td class="text-dim font-mono py-0.5 pr-2 tabular-nums text-right">{formatTokens(f.tokens)} tok</td>
-                        <td class="text-secondary font-mono py-0.5 tabular-nums text-right">{f.cost > 0 ? formatCost(f.cost) : '—'}</td>
+                        <td class="text-text py-0.5 pr-2 whitespace-nowrap">{f.feature}</td>
+                        <td class="text-dim font-mono py-0.5 pr-2 tabular-nums text-right whitespace-nowrap">{f.count}×</td>
+                        <td class="text-dim font-mono py-0.5 pr-2 tabular-nums text-right whitespace-nowrap">{formatTokens(f.tokens)} tok</td>
+                        <td class="text-secondary font-mono py-0.5 tabular-nums text-right whitespace-nowrap">{f.cost > 0 ? formatCost(f.cost) : '—'}</td>
                       </tr>
                     {/each}
                   </tbody>
