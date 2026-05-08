@@ -19,11 +19,37 @@ import (
 // defaults if .granit/scriptures.md is absent or empty). The web's
 // quiz mode pulls from this list directly so it can sample without
 // replacement and track per-verse accuracy locally.
+//
+// Optional ?topic=<tag> filters to verses carrying that topic tag —
+// case-insensitive, no-op when the catalogue has no topics (user-edited
+// scriptures.md doesn't carry topic metadata yet, so the filter just
+// returns an empty list there). The handler also returns the list of
+// available topics so the topical-browse UI can render its chip strip
+// from the same payload without a second round trip.
 func (s *Server) handleListScriptures(w http.ResponseWriter, r *http.Request) {
 	all := scripture.Load(s.cfg.Vault.Root)
+	topic := strings.TrimSpace(r.URL.Query().Get("topic"))
+	filtered := all
+	if topic != "" {
+		filtered = scripture.ByTopic(s.cfg.Vault.Root, topic)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"scriptures": all,
-		"total":      len(all),
+		"scriptures": filtered,
+		"total":      len(filtered),
+		"topics":     scripture.Topics(s.cfg.Vault.Root),
+		"topic":      topic, // echoed back so the client can confirm the active filter
+	})
+}
+
+// handleScriptureTopics returns the deduplicated topic list with counts.
+// Cheap enough that the list endpoint above also embeds it, but a
+// dedicated endpoint is convenient for surfaces (e.g. dashboard chips)
+// that don't want the verse payload.
+func (s *Server) handleScriptureTopics(w http.ResponseWriter, r *http.Request) {
+	tcs := scripture.Topics(s.cfg.Vault.Root)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"topics": tcs,
+		"total":  len(tcs),
 	})
 }
 

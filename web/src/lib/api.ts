@@ -523,6 +523,19 @@ export interface ChatMessage {
 export interface Scripture {
   text: string;
   source?: string;
+  // Optional theme tags ("love", "hope", "fear", "work", …). Populated
+  // for the bundled defaults; absent for user-edited scriptures.md
+  // entries (the parser doesn't read tags from the markdown source —
+  // a deliberate "topics live in the binary, content lives in the
+  // vault" split so the user's overrides stay simple to author).
+  topics?: string[];
+}
+
+// Topic count pair returned by /api/v1/scripture and
+// /api/v1/scripture/topics. Sorted by count desc, name asc.
+export interface ScriptureTopic {
+  topic: string;
+  count: number;
 }
 
 // Bible — bundled World English Bible (PD). Mirrors
@@ -1396,8 +1409,21 @@ export const api = {
     }
   },
 
-  // Scripture / devotional
-  listScriptures: () => req<{ scriptures: Scripture[]; total: number }>('/scripture'),
+  // Scripture / devotional. Optional `topic` filters to verses tagged
+  // with that theme (case-insensitive). The response always carries the
+  // full topic list so a single round trip can render both the chip
+  // strip and the filtered verses.
+  listScriptures: (topic?: string) => {
+    const qs = topic ? `?topic=${encodeURIComponent(topic)}` : '';
+    return req<{
+      scriptures: Scripture[];
+      total: number;
+      topics: ScriptureTopic[];
+      topic: string;
+    }>(`/scripture${qs}`);
+  },
+  scriptureTopics: () =>
+    req<{ topics: ScriptureTopic[]; total: number }>('/scripture/topics'),
   todayScripture: () => req<Scripture>('/scripture/today'),
   randomScripture: () => req<Scripture>('/scripture/random'),
   createDevotional: (body: { verse: string; source?: string; reflection?: string }) =>

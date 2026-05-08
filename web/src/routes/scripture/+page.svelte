@@ -4,6 +4,7 @@
   import {
     api,
     type Scripture,
+    type ScriptureTopic,
     type BibleBookSummary,
     type BiblePassage,
     type BibleVerse,
@@ -37,6 +38,8 @@
   let today = $state<Scripture | null>(null);
   let current = $state<Scripture | null>(null); // verse currently being viewed/drilled
   let all = $state<Scripture[]>([]);
+  let topics = $state<ScriptureTopic[]>([]); // theme-tag chips for /browse
+  let activeTopic = $state<string>(''); // active theme filter; '' = no filter
   let loading = $state(false);
   let q = $state('');
 
@@ -70,10 +73,31 @@
       today = t;
       current = t;
       all = list.scriptures;
+      topics = list.topics ?? [];
     } catch (e) {
       toast.error('failed to load scriptures: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
       loading = false;
+    }
+  }
+
+  // Switch the active topic filter. '' clears it. Topic state is held
+  // separately from the loaded list — we re-pull from the server so the
+  // server's case-insensitive matching is the source of truth (the
+  // client used to filter locally, but with topical metadata only on
+  // bundled defaults, server-side scoping is more honest about what's
+  // available in the user's vault).
+  async function selectTopic(topic: string) {
+    activeTopic = topic;
+    try {
+      const list = await api.listScriptures(topic || undefined);
+      all = list.scriptures;
+      // Topics only refresh when the catalogue itself changes, but the
+      // server returns the full list every call, so we keep ours in
+      // sync cheaply.
+      topics = list.topics ?? topics;
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
 
@@ -744,18 +768,64 @@
       <input
         bind:value={q}
         placeholder="filter…"
-        class="w-full px-3 py-2 mb-4 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
+        class="w-full px-3 py-2 mb-3 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
       />
+      {#if topics.length > 0}
+        <!-- Topical chip strip — click a theme to scope the list to
+             verses tagged with it. "All" clears the filter. Counts show
+             at a glance which themes have the deepest coverage. -->
+        <div class="flex flex-wrap gap-1.5 mb-4">
+          <button
+            type="button"
+            onclick={() => selectTopic('')}
+            class="text-xs px-2 py-1 rounded-full border transition-colors {activeTopic === '' ? 'bg-primary text-on-primary border-primary' : 'bg-mantle border-surface1 text-subtext hover:border-primary hover:text-text'}"
+          >All <span class="opacity-70">{all.length === 0 ? '' : ''}</span></button>
+          {#each topics as t (t.topic)}
+            <button
+              type="button"
+              onclick={() => selectTopic(t.topic)}
+              class="text-xs px-2 py-1 rounded-full border transition-colors {activeTopic === t.topic ? 'bg-primary text-on-primary border-primary' : 'bg-mantle border-surface1 text-subtext hover:border-primary hover:text-text'}"
+              title="{t.count} verses"
+            >{t.topic} <span class="opacity-70">{t.count}</span></button>
+          {/each}
+        </div>
+      {/if}
       <ul class="divide-y divide-surface1 bg-surface0/40 border border-surface1 rounded-lg">
         {#each filteredAll as v}
-          <li class="px-4 py-3">
-            <p class="text-sm text-text font-serif italic">"{v.text}"</p>
-            {#if v.source}
-              <p class="text-xs text-subtext mt-1">— {v.source}</p>
-            {/if}
+          <li class="px-4 py-3 group">
+            <p class="text-sm text-text font-serif italic leading-relaxed">"{v.text}"</p>
+            <div class="flex items-baseline gap-2 mt-1.5 flex-wrap">
+              {#if v.source}
+                <p class="text-xs text-subtext">— {v.source}</p>
+              {/if}
+              {#if v.topics && v.topics.length > 0}
+                <div class="flex flex-wrap gap-1">
+                  {#each v.topics as tag (tag)}
+                    <button
+                      type="button"
+                      onclick={() => selectTopic(tag)}
+                      class="text-[10px] px-1.5 py-0.5 rounded bg-mantle border border-surface1 text-dim hover:border-primary hover:text-text"
+                      title="Filter by {tag}"
+                    >{tag}</button>
+                  {/each}
+                </div>
+              {/if}
+              <span class="flex-1"></span>
+              <button
+                type="button"
+                onclick={() => useAsTodayVerse(v)}
+                class="text-[11px] text-dim hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Promote to verse view"
+              >read →</button>
+            </div>
           </li>
         {/each}
       </ul>
+      {#if filteredAll.length === 0}
+        <p class="text-sm text-dim italic mt-4 text-center">
+          {activeTopic ? `No verses tagged "${activeTopic}".` : 'No matches.'}
+        </p>
+      {/if}
       <p class="text-[11px] text-dim italic mt-3">
         Edit <code>.granit/scriptures.md</code> to add your own — same file the granit TUI reads.
       </p>

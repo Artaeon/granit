@@ -567,6 +567,7 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/scripture", s.handleListScriptures)
 		r.Get("/api/v1/scripture/today", s.handleDailyScripture)
 		r.Get("/api/v1/scripture/random", s.handleRandomScripture)
+		r.Get("/api/v1/scripture/topics", s.handleScriptureTopics)
 		r.Post("/api/v1/devotionals", s.handleCreateDevotional)
 
 		// Bible — full embedded WEB (World English Bible, public domain)
