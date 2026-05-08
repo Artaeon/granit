@@ -8,16 +8,25 @@
   import NotesTree from '$lib/notes/NotesTree.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
 
-  // Notes hub. Five view modes covering the full surface area: tree
-  // (the classic hierarchy), recent (sorted by mod time), pinned (the
-  // user's anchored set), all (flat list with sort options), search
-  // (full-text via the search index). The TUI's notes overlay does
-  // most of the same; the web matches.
-  type View = 'recent' | 'tree' | 'pinned' | 'all' | 'search';
+  // Notes hub. View modes covering the full surface area: tree (the
+  // classic hierarchy), recent (sorted by mod time), pinned (the user's
+  // anchored set), all (flat list with sort options), alpha (A–Z with
+  // letter dividers — useful when the user remembers a title but not
+  // its folder), tags (grouped by primary tag), folders (top-level
+  // folder cards as a navigation overview), search (full-text via the
+  // search index). The TUI's notes overlay does most of the same; the
+  // web matches.
+  type View = 'recent' | 'tree' | 'pinned' | 'all' | 'alpha' | 'tags' | 'folders' | 'search';
   const VIEW_KEY = 'granit.notes.view';
-  let view = $state<View>(
-    (typeof localStorage !== 'undefined' && (localStorage.getItem(VIEW_KEY) as View)) || 'recent'
-  );
+  // Validate the persisted value before trusting it — an older build
+  // could have stored a string that's no longer a valid view.
+  const VALID_VIEWS: ReadonlySet<View> = new Set(['recent', 'tree', 'pinned', 'all', 'alpha', 'tags', 'folders', 'search']);
+  function loadInitialView(): View {
+    if (typeof localStorage === 'undefined') return 'recent';
+    const stored = localStorage.getItem(VIEW_KEY);
+    return stored && VALID_VIEWS.has(stored as View) ? (stored as View) : 'recent';
+  }
+  let view = $state<View>(loadInitialView());
   $effect(() => {
     if (typeof localStorage !== 'undefined') {
       try { localStorage.setItem(VIEW_KEY, view); } catch {}
@@ -153,6 +162,36 @@
     return arr;
   });
 
+  // Alphabetical view — A–Z with letter dividers. Notes whose title
+  // starts with a non-letter (numbers, emoji, punctuation) bucket into
+  // a single "#" section so the alphabet stays clean. Useful when the
+  // user remembers a title but not its folder, and "all → sort by
+  // name" doesn't visually break the wall of titles into something
+  // scan-friendly.
+  interface AlphaSection { letter: string; notes: Note[] }
+  let alphaSections = $derived.by<AlphaSection[]>(() => {
+    const buckets = new Map<string, Note[]>();
+    for (const n of notes) {
+      const first = (n.title || n.path).trim().charAt(0).toUpperCase();
+      const letter = /[A-Z]/.test(first) ? first : '#';
+      const bucket = buckets.get(letter);
+      if (bucket) bucket.push(n);
+      else buckets.set(letter, [n]);
+    }
+    const out: AlphaSection[] = [];
+    for (const [letter, list] of buckets) {
+      list.sort((a, b) => a.title.localeCompare(b.title));
+      out.push({ letter, notes: list });
+    }
+    out.sort((a, b) => {
+      // '#' floats to the end; letters sort A→Z.
+      if (a.letter === '#') return 1;
+      if (b.letter === '#') return -1;
+      return a.letter.localeCompare(b.letter);
+    });
+    return out;
+  });
+
   // ---- actions ----
 
   function open(n: Note) {
@@ -285,6 +324,7 @@
         { id: 'pinned' as View, label: 'Pinned', count: pinnedList.length },
         { id: 'tree' as View, label: 'Tree', count: notes.length },
         { id: 'all' as View, label: 'All', count: notes.length },
+        { id: 'alpha' as View, label: 'A–Z', count: notes.length },
         ...(q.trim() ? [{ id: 'search' as View, label: 'Search', count: searchResults.length }] : [])
       ] as t}
         <button
@@ -325,6 +365,23 @@
       </div>
     {:else if view === 'search' && q.trim() && !searching && searchResults.length === 0}
       <div class="p-8 text-center text-sm text-dim">No notes match <code class="text-text">{q}</code></div>
+    {:else if view === 'alpha'}
+      {#if notes.length === 0}
+        <div class="p-8 text-center text-sm text-dim">No notes in your vault.</div>
+      {:else}
+        <div class="overflow-y-auto h-full">
+          {#each alphaSections as sec (sec.letter)}
+            <div class="sticky top-0 z-10 bg-mantle/95 backdrop-blur px-3 sm:px-4 py-1 text-[11px] uppercase tracking-wider text-dim border-b border-surface1/60">
+              {sec.letter} <span class="opacity-60 ml-1">{sec.notes.length}</span>
+            </div>
+            <ul class="divide-y divide-surface1/50">
+              {#each sec.notes as n (n.path)}
+                {@render row(n)}
+              {/each}
+            </ul>
+          {/each}
+        </div>
+      {/if}
     {:else if activeList.length === 0}
       <div class="p-8 text-center text-sm text-dim">
         {#if view === 'pinned'}No pinned notes yet. Click the ★ icon on any note to pin it.
@@ -334,70 +391,74 @@
     {:else}
       <ul class="overflow-y-auto h-full divide-y divide-surface1/50">
         {#each activeList as n (n.path)}
-          {@const isPinned = pinned.has(n.path)}
-          <li class="group hover:bg-surface0/60 transition-colors">
-            <div class="flex items-center gap-3 px-3 sm:px-4 py-2.5">
-              <button
-                type="button"
-                onclick={() => open(n)}
-                class="flex-1 min-w-0 text-left"
-              >
-                <div class="flex items-baseline gap-2 min-w-0">
-                  {#if isPinned}<span class="text-warning text-xs flex-shrink-0">★</span>{/if}
-                  <span class="text-sm text-text truncate">{n.title}</span>
-                  <span class="text-[11px] text-dim truncate">{n.path}</span>
-                </div>
-                <div class="flex items-center gap-2 mt-0.5 text-[11px] text-dim">
-                  <span>{fmtRelative(n.modTime)}</span>
-                  {#if n.size}<span>·</span><span>{fmtSize(n.size)}</span>{/if}
-                  {#if n.tags && n.tags.length > 0}
-                    <span>·</span>
-                    <span class="flex flex-wrap gap-1">
-                      {#each n.tags.slice(0, 3) as tag}
-                        <span class="px-1 rounded bg-secondary/10 text-secondary">#{tag}</span>
-                      {/each}
-                    </span>
-                  {/if}
-                </div>
-              </button>
-              <!-- Hover-revealed action buttons. Tap-friendly on mobile
-                   (always visible) since :hover doesn't fire on touch. -->
-              <div class="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                <button
-                  onclick={() => togglePin(n)}
-                  aria-label={isPinned ? 'unpin' : 'pin'}
-                  class="w-8 h-8 flex items-center justify-center text-dim hover:text-warning rounded"
-                  title={isPinned ? 'Unpin' : 'Pin'}
-                >★</button>
-                <button
-                  onclick={() => rename(n)}
-                  aria-label="rename"
-                  class="w-8 h-8 flex items-center justify-center text-dim hover:text-secondary rounded"
-                  title="Rename or move"
-                >
-                  <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
-                <button
-                  onclick={() => del(n)}
-                  aria-label="delete"
-                  class="w-8 h-8 flex items-center justify-center text-dim hover:text-error rounded"
-                  title="Delete"
-                >
-                  <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </li>
+          {@render row(n)}
         {/each}
       </ul>
     {/if}
   </div>
 </div>
+
+{#snippet row(n: Note)}
+  {@const isPinned = pinned.has(n.path)}
+  <li class="group hover:bg-surface0/60 transition-colors">
+    <div class="flex items-center gap-3 px-3 sm:px-4 py-2.5">
+      <button
+        type="button"
+        onclick={() => open(n)}
+        class="flex-1 min-w-0 text-left"
+      >
+        <div class="flex items-baseline gap-2 min-w-0">
+          {#if isPinned}<span class="text-warning text-xs flex-shrink-0">★</span>{/if}
+          <span class="text-sm text-text truncate">{n.title}</span>
+          <span class="text-[11px] text-dim truncate">{n.path}</span>
+        </div>
+        <div class="flex items-center gap-2 mt-0.5 text-[11px] text-dim">
+          <span>{fmtRelative(n.modTime)}</span>
+          {#if n.size}<span>·</span><span>{fmtSize(n.size)}</span>{/if}
+          {#if n.tags && n.tags.length > 0}
+            <span>·</span>
+            <span class="flex flex-wrap gap-1">
+              {#each n.tags.slice(0, 3) as tag}
+                <span class="px-1 rounded bg-secondary/10 text-secondary">#{tag}</span>
+              {/each}
+            </span>
+          {/if}
+        </div>
+      </button>
+      <!-- Hover-revealed action buttons. Tap-friendly on mobile
+           (always visible) since :hover doesn't fire on touch. -->
+      <div class="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+        <button
+          onclick={() => togglePin(n)}
+          aria-label={isPinned ? 'unpin' : 'pin'}
+          class="w-8 h-8 flex items-center justify-center text-dim hover:text-warning rounded"
+          title={isPinned ? 'Unpin' : 'Pin'}
+        >★</button>
+        <button
+          onclick={() => rename(n)}
+          aria-label="rename"
+          class="w-8 h-8 flex items-center justify-center text-dim hover:text-secondary rounded"
+          title="Rename or move"
+        >
+          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </button>
+        <button
+          onclick={() => del(n)}
+          aria-label="delete"
+          class="w-8 h-8 flex items-center justify-center text-dim hover:text-error rounded"
+          title="Delete"
+        >
+          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </li>
+{/snippet}
 
 {#if createOpen}
   <!-- Click-outside to close. Inner div stops propagation. -->
