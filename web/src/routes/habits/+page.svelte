@@ -572,11 +572,15 @@
            row labels the day-of-week + date (M/D). Last column is
            today and gets a primary outline. Click any cell to toggle. -->
       {@const days = sortedHabits.length > 0 ? weekDays(sortedHabits[0]) : []}
+      <!-- Mobile: the table doesn't fit in 7 columns at touch-target
+           size, so it's allowed to scroll horizontally. min-w on the
+           table forces 44px-ish day cells; the inner aspect-square
+           keeps cells visually balanced once the layout has room. -->
       <div class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-4 overflow-x-auto">
-        <table class="w-full border-separate border-spacing-1">
+        <table class="w-full border-separate border-spacing-1 min-w-[28rem]">
           <thead>
             <tr>
-              <th class="w-1/3 sm:w-1/4 text-left text-[11px] uppercase tracking-wider text-dim font-medium pb-2">Habit</th>
+              <th class="w-32 sm:w-1/4 text-left text-[11px] uppercase tracking-wider text-dim font-medium pb-2">Habit</th>
               {#each days as d (d.date)}
                 {@const isToday = d.date === data.today}
                 <th
@@ -605,7 +609,7 @@
                       type="button"
                       onclick={() => toggleOnDate(h, d.date, !d.done)}
                       disabled={cellBusy}
-                      class="w-full aspect-square rounded transition-colors hover:opacity-80 disabled:opacity-40
+                      class="w-full aspect-square min-h-9 rounded transition-colors hover:opacity-80 disabled:opacity-40
                         {d.done ? 'bg-success' : 'bg-surface1 hover:bg-surface2'}"
                       class:ring-1={isToday}
                       class:ring-primary={isToday}
