@@ -31,6 +31,169 @@
   let deadlines = $state<Deadline[]>([]);
   let linksLoaded = $state(false);
 
+  // ── AI Decompose ────────────────────────────────────────────────
+  // Takes the task title + notes and asks the model for 3-7 small,
+  // concrete sub-tasks. Renders proposals with per-row accept/skip;
+  // accepting calls api.createTask in the parent's notePath so the
+  // subtask shows up in the same daily/project note. Goes through
+  // chatStream so audit/sabbath/redaction/cost all apply.
+  type Subtask = {
+    text: string;
+    estimateMinutes?: number;
+    rationale?: string;
+  };
+  let aiDecompBusy = $state(false);
+  let aiDecompError = $state('');
+  let aiDecompRaw = $state('');
+  let aiDecompSubtasks = $state<Subtask[]>([]);
+  let aiDecompAbort: AbortController | null = null;
+  let aiDecompAcceptingIdx = $state<number>(-1);
+
+  function extractDecompJson(s: string): string | null {
+    if (!s) return null;
+    const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const candidate = fence ? fence[1] : s;
+    const start = candidate.indexOf('{');
+    if (start < 0) return null;
+    let depth = 0;
+    for (let i = start; i < candidate.length; i++) {
+      const c = candidate[i];
+      if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) return candidate.slice(start, i + 1);
+      }
+    }
+    return null;
+  }
+
+  async function runAIDecompose() {
+    if (!task || aiDecompBusy) return;
+    aiDecompBusy = true;
+    aiDecompError = '';
+    aiDecompRaw = '';
+    aiDecompSubtasks = [];
+    aiDecompAbort = new AbortController();
+    // Fetch existing siblings (tasks in same notePath) so the prompt
+    // can be told "don't propose duplicates of these". Best-effort —
+    // failure just means the dedup hint is missing, not that we crash.
+    let existingSiblings: string[] = [];
+    try {
+      const r = await api.listTasks({ status: 'open' });
+      existingSiblings = r.tasks
+        .filter((t) => t.notePath === task!.notePath && t.id !== task!.id)
+        .map((t) => t.text)
+        .slice(0, 30);
+    } catch {}
+    const system =
+      'You are a focused task decomposer. The user has one task; your job is to break it into 3-7 small, ' +
+      'concrete sub-tasks they can DO, not vague "research X" stubs. ' +
+      'Hard rules: ' +
+      '(1) Each subtask is a single concrete action, ideally finishable in under 60 minutes. ' +
+      '(2) Use ACTIVE verbs ("draft the intro paragraph", "email Sarah for the spec PDF") — never "look into", "research", "consider", "explore". ' +
+      '(3) Order them by execution sequence. The first subtask should be something the user can start in the next 15 minutes. ' +
+      '(4) Do NOT propose subtasks that duplicate the supplied existing-siblings list — those already exist. ' +
+      '(5) Estimate each in minutes (15, 30, 45, 60, 90, 120). ' +
+      '(6) Keep the rationale to ONE short clause under 12 words, only if it adds non-obvious context. Most subtasks need no rationale. ' +
+      '(7) Output STRICT JSON ONLY, no fences, no preamble. Schema: ' +
+      '{"subtasks":[{"text":"<concrete action>","estimateMinutes":30,"rationale":"<optional, short>"}]}. ' +
+      '(8) If the task is too small to decompose meaningfully, return {"subtasks":[]}.';
+    const user =
+      `Parent task: ${task.text}\n` +
+      (task.notes ? `\nParent notes:\n${task.notes}\n` : '') +
+      (existingSiblings.length > 0
+        ? `\nExisting siblings in the same note (do NOT duplicate):\n${existingSiblings.map((s) => '- ' + s).join('\n')}\n`
+        : '') +
+      '\nReturn the strict JSON now.';
+    try {
+      await api.chatStream(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        task.notePath,
+        {
+          onChunk: (c) => {
+            aiDecompRaw += c;
+            const block = extractDecompJson(aiDecompRaw);
+            if (block) {
+              try {
+                const parsed = JSON.parse(block) as { subtasks?: Subtask[] };
+                if (Array.isArray(parsed.subtasks)) {
+                  aiDecompSubtasks = parsed.subtasks
+                    .filter((s) => s && typeof s.text === 'string' && s.text.trim().length > 0);
+                }
+              } catch {}
+            }
+          },
+          onError: (err) => { aiDecompError = err.message; }
+        },
+        aiDecompAbort.signal
+      );
+    } finally {
+      aiDecompBusy = false;
+      aiDecompAbort = null;
+    }
+  }
+  function cancelAIDecompose() { aiDecompAbort?.abort(); }
+  function dismissAIDecompose() {
+    aiDecompRaw = '';
+    aiDecompError = '';
+    aiDecompSubtasks = [];
+  }
+
+  // Accept a subtask: create a task in the parent's notePath with the
+  // proposed text. Estimate goes via the est:Nm marker the parser
+  // already understands so the existing taskParse round-trips work.
+  async function acceptSubtask(idx: number) {
+    if (!task) return;
+    const s = aiDecompSubtasks[idx];
+    if (!s) return;
+    aiDecompAcceptingIdx = idx;
+    try {
+      // Parser convention: `est:30m` in the task line gets stripped
+      // by cleanTaskText for display but persists as estimatedMinutes
+      // sidecar metadata. Embedding it directly in `text` keeps us
+      // independent of API field names that may not exist.
+      let text = s.text.trim();
+      if (s.estimateMinutes && s.estimateMinutes > 0) {
+        text = `${text} est:${s.estimateMinutes}m`;
+      }
+      // Inherit parent's goal + deadline directly. createTask's body
+      // doesn't accept projectId — server derives project membership
+      // from the parent's notePath / sidecar metadata, which the
+      // subtask inherits for free by living in the same note. If the
+      // parent has an explicit projectId override we patch after.
+      const created = await api.createTask({
+        notePath: task.notePath,
+        text,
+        goalId: task.goalId,
+        deadlineId: task.deadlineId
+      });
+      if (task.projectId && created?.id) {
+        try {
+          await api.patchTask(created.id, { projectId: task.projectId });
+        } catch {}
+      }
+      aiDecompSubtasks = aiDecompSubtasks.filter((_, i) => i !== idx);
+      await onChanged?.();
+      toast.success('Subtask added');
+    } catch (e) {
+      toast.error('Add failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      aiDecompAcceptingIdx = -1;
+    }
+  }
+  function skipSubtask(idx: number) {
+    aiDecompSubtasks = aiDecompSubtasks.filter((_, i) => i !== idx);
+  }
+  async function acceptAllSubtasks() {
+    while (aiDecompSubtasks.length > 0) {
+      // Always accept index 0 — the array shrinks as each call resolves.
+      await acceptSubtask(0);
+    }
+  }
+
   async function loadLinks() {
     if (linksLoaded) return;
     linksLoaded = true;
@@ -48,10 +211,17 @@
   }
 
   // Resync local buffers whenever the modal opens for a different task.
+  // Also reset Decompose state — proposals from a previous task
+  // shouldn't leak into the next one's drawer.
   $effect(() => {
     if (open && task) {
       notesBuf = task.notes ?? '';
       recurrenceBuf = task.recurrence ?? '';
+      aiDecompAbort?.abort();
+      aiDecompRaw = '';
+      aiDecompError = '';
+      aiDecompSubtasks = [];
+      aiDecompBusy = false;
       void loadLinks();
     }
   });
@@ -152,6 +322,90 @@
               >{o.label}</button>
             {/each}
           </div>
+        </section>
+
+        <!-- AI Decompose. Streams 3-7 concrete sub-tasks; user
+             accepts each individually and the API call creates them
+             in the parent's notePath, inheriting project/goal/deadline.
+             Hidden behind a button (not always-on) so the drawer
+             stays calm when you just want to set a priority. -->
+        <section>
+          <div class="flex items-baseline gap-2 mb-1.5">
+            <h4 class="text-[11px] uppercase tracking-wider text-dim flex-1">Decompose</h4>
+            {#if aiDecompBusy}
+              <button
+                onclick={cancelAIDecompose}
+                class="text-[11px] text-warning hover:underline"
+              >cancel</button>
+            {:else if aiDecompSubtasks.length > 0 || aiDecompError || aiDecompRaw}
+              <button
+                onclick={() => void runAIDecompose()}
+                class="text-[11px] text-secondary hover:underline"
+              >↻ regenerate</button>
+              <button
+                onclick={dismissAIDecompose}
+                class="text-[11px] text-dim hover:text-error"
+              >dismiss</button>
+            {:else}
+              <button
+                onclick={() => void runAIDecompose()}
+                class="text-[11px] px-2 py-0.5 bg-secondary/15 text-secondary rounded hover:bg-secondary/25"
+                title="AI proposes 3-7 concrete sub-tasks"
+              >✨ break it down</button>
+            {/if}
+          </div>
+          {#if aiDecompError}
+            <p class="text-xs text-error">{aiDecompError}</p>
+          {:else if aiDecompSubtasks.length > 0}
+            <div class="bg-secondary/5 border border-secondary/30 rounded p-2 space-y-1.5">
+              <div class="flex items-center mb-0.5">
+                <span class="text-[10px] uppercase tracking-wider text-secondary font-semibold flex-1">{aiDecompSubtasks.length} proposed</span>
+                {#if aiDecompSubtasks.length > 1}
+                  <button
+                    onclick={() => void acceptAllSubtasks()}
+                    disabled={aiDecompAcceptingIdx >= 0}
+                    class="text-[10px] text-success hover:underline disabled:opacity-50"
+                    title="Add every proposed subtask"
+                  >accept all</button>
+                {/if}
+              </div>
+              <ul class="space-y-1.5">
+                {#each aiDecompSubtasks as s, idx (s.text + idx)}
+                  <li class="flex items-start gap-2 text-xs">
+                    <div class="flex-1 min-w-0">
+                      <div class="text-text">
+                        {s.text}
+                        {#if s.estimateMinutes}
+                          <span class="text-dim ml-1 font-mono tabular-nums">{s.estimateMinutes}m</span>
+                        {/if}
+                      </div>
+                      {#if s.rationale}
+                        <div class="text-dim italic mt-0.5">{s.rationale}</div>
+                      {/if}
+                    </div>
+                    <button
+                      onclick={() => void acceptSubtask(idx)}
+                      disabled={aiDecompAcceptingIdx >= 0}
+                      class="px-2 py-0.5 bg-success/15 text-success rounded hover:bg-success/25 disabled:opacity-50 flex-shrink-0"
+                    >{aiDecompAcceptingIdx === idx ? '…' : 'add'}</button>
+                    <button
+                      onclick={() => skipSubtask(idx)}
+                      disabled={aiDecompAcceptingIdx >= 0}
+                      class="px-2 py-0.5 text-dim hover:text-text flex-shrink-0"
+                    >skip</button>
+                  </li>
+                {/each}
+              </ul>
+              <p class="text-[10px] text-dim italic mt-1.5">Adds to <span class="font-mono">{task.notePath.split('/').pop()}</span> · inherits project / goal / deadline.</p>
+            </div>
+          {:else if aiDecompBusy}
+            <p class="text-xs text-dim italic">thinking…</p>
+          {:else if aiDecompRaw}
+            <!-- JSON parse failed AND we got prose. Surface the raw
+                 reply rather than silently swallowing it so the user
+                 can still salvage value. -->
+            <div class="bg-surface0 rounded p-2 text-xs text-subtext whitespace-pre-wrap">{aiDecompRaw}</div>
+          {/if}
         </section>
 
         <!-- Triage row -->
