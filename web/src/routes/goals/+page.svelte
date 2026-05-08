@@ -489,6 +489,232 @@
       toast.error('Add failed: ' + (err instanceof Error ? err.message : String(err)));
     }
   }
+
+  // ─────────────────────────────────────────────────────────────────
+  // AI "Weekly check-in" — page-level coaching
+  // ─────────────────────────────────────────────────────────────────
+  // Walks every active + paused goal and asks the model for a sharp
+  // one-line verdict (on-track / drifting / dead) plus one specific
+  // question the user could sit with this week. Streams back as a
+  // single JSON array so we can render it as a checklist of cards
+  // and let the user save individual entries to today's jot or the
+  // whole batch as a single "Weekly check-in" block.
+  //
+  // The system prompt borrows from the Coach (Socrates) + Founder
+  // personas — questions over answers, but operator-grade specifics,
+  // refusing generic praise. The user message embeds a compact view
+  // of each goal's milestones, target_date urgency, and linked-task
+  // velocity (open + 4-week done count) so the model has enough to
+  // tell drifting from healthy.
+  interface CheckinEntry {
+    id: string;            // matches Goal.id when the model gets it right
+    title: string;         // echoed goal title for safety in the render
+    verdict: 'on-track' | 'drifting' | 'dead' | string;
+    question: string;
+  }
+  let checkinOpen = $state(false);
+  let checkinBusy = $state(false);
+  let checkinError = $state('');
+  let checkinEntries = $state<CheckinEntry[]>([]);
+  let checkinAbort: AbortController | null = null;
+  // Set of goal ids the user has already saved or dismissed in this
+  // session — keeps the buttons honest if the user clicks "save" then
+  // changes their mind ("dismiss" hides the row).
+  let checkinHidden = $state<Set<string>>(new Set());
+
+  function checkinClose() {
+    checkinAbort?.abort();
+    checkinAbort = null;
+    checkinOpen = false;
+    checkinBusy = false;
+    checkinError = '';
+    checkinEntries = [];
+    checkinHidden = new Set();
+  }
+
+  // Live-goal slice the AI sees — single source of truth so the
+  // "AI saw" disclosure below the panel matches the prompt exactly.
+  let checkinScope = $derived.by(() =>
+    goals.filter((g) => {
+      const s = g.status ?? 'active';
+      return s === 'active' || s === 'paused';
+    })
+  );
+
+  // Per-goal velocity in the last 4 weeks — used in the prompt so
+  // the model can spot "0 done in 4w" drift without us telling it
+  // what to think. Same goalId-on-task indexing the page already
+  // uses for the rollup chips, but bucketed by completedAt.
+  function recentDoneFor(g: Goal): number {
+    const cutoff = Date.now() - 28 * 24 * 3600 * 1000;
+    let n = 0;
+    for (const t of doneTasks) {
+      if (t.goalId !== g.id || !t.completedAt) continue;
+      const d = new Date(t.completedAt).getTime();
+      if (!Number.isFinite(d)) continue;
+      if (d >= cutoff) n++;
+    }
+    return n;
+  }
+
+  async function runCheckin() {
+    if (checkinBusy) return;
+    if (checkinScope.length === 0) {
+      toast.error('No active or paused goals to check in on.');
+      return;
+    }
+    checkinAbort?.abort();
+    checkinAbort = new AbortController();
+    checkinOpen = true;
+    checkinBusy = true;
+    checkinError = '';
+    checkinEntries = [];
+    checkinHidden = new Set();
+
+    // Compact per-goal block. Cap milestone lists at ~6 each so a
+    // goal with a long history doesn't dominate the prompt budget.
+    const blocks: string[] = [];
+    for (const g of checkinScope) {
+      const ms = g.milestones ?? [];
+      const open = ms.filter((m) => !m.done).slice(0, 6).map((m) => m.text);
+      const done = ms.filter((m) => m.done).slice(-6).map((m) => m.text);
+      const days = daysUntilTarget(g.target_date);
+      const roll = rollupFor(g);
+      const recent = recentDoneFor(g);
+      const lines: string[] = [
+        `[id: ${g.id}] ${g.title}`,
+        `status: ${g.status ?? 'active'}`,
+      ];
+      if (g.target_date) {
+        const urgency =
+          days === null ? 'no-date'
+          : days < 0 ? `${Math.abs(days)}d past target`
+          : days <= 7 ? `${days}d left`
+          : days <= 30 ? `${days}d left (this month)`
+          : days <= 90 ? `${days}d left (this quarter)`
+          : `${days}d left`;
+        lines.push(`target: ${g.target_date} — ${urgency}`);
+      }
+      if (g.venture) lines.push(`venture: ${g.venture}`);
+      if (g.project) lines.push(`project: ${g.project}`);
+      lines.push(`milestones: ${done.length} done, ${open.length} open`);
+      if (open.length > 0) lines.push(`open milestones: ${open.map((m) => `"${m}"`).join('; ')}`);
+      if (done.length > 0) lines.push(`recent done: ${done.map((m) => `"${m}"`).join('; ')}`);
+      lines.push(`linked tasks: ${roll.open} open, ${roll.done} done lifetime, ${recent} done in last 4w`);
+      blocks.push(lines.join('\n'));
+    }
+
+    const userMessage =
+      'You are a Socratic coach with operator-grade specificity.\n' +
+      'Refuse generic praise. The user can already pat themselves on the back; your job is to add what they would not naturally see.\n\n' +
+      'For EACH goal below, return a one-sentence honest verdict and ONE specific question worth sitting with this week.\n\n' +
+      'Verdict rules:\n' +
+      '- "on-track" — momentum is real, recent done > 0 OR milestones are closing in cadence with the target_date\n' +
+      '- "drifting" — talked about, not moved on; few/no done milestones or tasks in last 4w; target_date pressure rising\n' +
+      '- "dead" — past target with no progress, OR open milestones haven\'t been touched and the user has clearly shifted\n' +
+      'Be willing to call drifting "drifting". The user wants honesty over kindness.\n\n' +
+      'Question rules:\n' +
+      '- Specific to THIS goal, not a generic "what is your why".\n' +
+      '- Pry at an assumption, a contradiction, or a missing definition the user is probably carrying.\n' +
+      '- Sometimes uncomfortable. Always kind.\n' +
+      '- One question. No multi-part. No "What if you tried…" — questions, not advice.\n\n' +
+      'Return STRICT JSON ONLY (no markdown fences, no preamble), shape:\n' +
+      '[{"id": "<echo the goal id>", "title": "<echo the goal title>", "verdict": "on-track|drifting|dead", "question": "..."}, ...]\n' +
+      'Order matches input order. Do NOT skip any goal.\n\n' +
+      'Goals:\n\n' + blocks.join('\n\n---\n\n');
+
+    let acc = '';
+    try {
+      await api.chatStream(
+        [{ role: 'user', content: userMessage }],
+        undefined,
+        {
+          onChunk: (c) => { acc += c; },
+          onDone: () => {
+            checkinBusy = false;
+            checkinAbort = null;
+            // Strip optional code fences and parse.
+            let cleaned = acc.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();
+            }
+            try {
+              const parsed = JSON.parse(cleaned);
+              if (!Array.isArray(parsed)) throw new Error('expected array');
+              checkinEntries = parsed
+                .filter((p: unknown) => p && typeof p === 'object')
+                .map((p) => p as CheckinEntry)
+                .filter((p) => typeof p.question === 'string' && typeof p.verdict === 'string');
+              if (checkinEntries.length === 0) {
+                checkinError = 'AI returned no entries.';
+              }
+            } catch (err) {
+              checkinError = 'Couldn\'t parse check-in: ' + (err instanceof Error ? err.message : String(err));
+            }
+          },
+          onError: (err) => {
+            checkinBusy = false;
+            checkinAbort = null;
+            checkinError = err.message;
+          }
+        },
+        checkinAbort.signal
+      );
+    } catch (e) {
+      checkinBusy = false;
+      checkinAbort = null;
+      checkinError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  // Compose the markdown block that will be appended to today's jot
+  // (or saved alongside, depending on which button the user clicked).
+  // Visible only entries (not dismissed) make it in — that's the
+  // user's curation step before persistence.
+  function checkinAsMarkdown(entries: CheckinEntry[]): string {
+    const today = new Date().toISOString().slice(0, 10);
+    const lines: string[] = [`\n\n## Weekly goal check-in — ${today}\n`];
+    for (const e of entries) {
+      const verdictTag = e.verdict === 'on-track' ? 'ON-TRACK'
+        : e.verdict === 'drifting' ? 'DRIFTING'
+        : e.verdict === 'dead' ? 'DEAD'
+        : e.verdict.toUpperCase();
+      lines.push(`### ${e.title} — _${verdictTag}_`);
+      lines.push(`> ${e.question}`);
+      lines.push('');
+    }
+    return lines.join('\n');
+  }
+
+  async function checkinSaveOne(e: CheckinEntry) {
+    try {
+      const note = await api.daily('today');
+      const block = checkinAsMarkdown([e]);
+      const next = (note.body ?? '') + block;
+      await api.putNote(note.path, { frontmatter: note.frontmatter, body: next }, undefined);
+      checkinHidden = new Set([...checkinHidden, e.id]);
+      toast.success('saved to today\'s jot');
+    } catch (err) {
+      toast.error('save failed: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+  async function checkinSaveAll() {
+    const visible = checkinEntries.filter((e) => !checkinHidden.has(e.id));
+    if (visible.length === 0) return;
+    try {
+      const note = await api.daily('today');
+      const block = checkinAsMarkdown(visible);
+      const next = (note.body ?? '') + block;
+      await api.putNote(note.path, { frontmatter: note.frontmatter, body: next }, undefined);
+      toast.success(`saved ${visible.length} entr${visible.length === 1 ? 'y' : 'ies'} to today's jot`);
+      checkinClose();
+    } catch (err) {
+      toast.error('save failed: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+  function checkinDismiss(e: CheckinEntry) {
+    checkinHidden = new Set([...checkinHidden, e.id]);
+  }
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -503,11 +729,136 @@
     >
       {#snippet actions()}
         <button
+          type="button"
+          onclick={() => { if (checkinOpen) checkinClose(); else void runCheckin(); }}
+          disabled={checkinBusy}
+          class="px-3 py-1.5 border border-surface1 text-subtext rounded text-sm hover:border-primary hover:text-primary disabled:opacity-50"
+          title="Honest one-line verdict + a sharp question for each active goal"
+        >{checkinOpen ? '✕ check-in' : '✨ Weekly check-in'}</button>
+        <button
           onclick={() => (createOpen = true)}
           class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
         >+ New goal</button>
       {/snippet}
     </PageHeader>
+
+    <!-- Weekly check-in panel — page-level coaching surface that
+         reads every active + paused goal and proposes a one-line
+         verdict + one sharp question per goal. Streams as JSON; once
+         parsed, the user can save individual rows or the full batch
+         to today's jot, or just dismiss. -->
+    {#if checkinOpen}
+      <section class="mb-5 bg-surface0 border border-surface1 rounded-lg overflow-hidden">
+        <header class="px-4 py-2.5 border-b border-surface1 flex items-center gap-2">
+          <span class="text-sm font-medium text-text">Weekly check-in</span>
+          <span class="text-[11px] text-dim">{checkinScope.length} active/paused goal{checkinScope.length === 1 ? '' : 's'}</span>
+          <span class="flex-1"></span>
+          {#if checkinBusy}
+            <button
+              type="button"
+              onclick={() => checkinAbort?.abort()}
+              class="px-2 py-1 text-xs bg-surface1 text-subtext rounded hover:bg-surface2"
+            >Stop</button>
+          {:else}
+            {#if checkinEntries.length > 0 && checkinEntries.some((e) => !checkinHidden.has(e.id))}
+              <button
+                type="button"
+                onclick={checkinSaveAll}
+                class="px-2.5 py-1 text-xs bg-primary text-on-primary rounded hover:opacity-90"
+                title="Append all visible entries to today's jot"
+              >Save all to jot</button>
+            {/if}
+            <button
+              type="button"
+              onclick={() => void runCheckin()}
+              class="px-2 py-1 text-xs bg-surface1 text-subtext rounded hover:bg-surface2"
+              title="re-roll the check-in"
+            >↻ retry</button>
+          {/if}
+          <button
+            type="button"
+            onclick={checkinClose}
+            class="text-xs text-dim hover:text-text px-1"
+          >Dismiss</button>
+        </header>
+
+        {#if checkinError}
+          <div class="px-4 py-2 text-xs text-error bg-error/5 border-b border-error/20">{checkinError}</div>
+        {/if}
+
+        <div class="p-3 space-y-2">
+          {#if checkinBusy && checkinEntries.length === 0}
+            <div class="text-xs text-dim italic px-2 py-3 flex items-center gap-2">
+              <span class="inline-block w-1.5 h-3 bg-primary/60 animate-pulse rounded-sm"></span>
+              reading {checkinScope.length} goals — verdict + question coming…
+            </div>
+          {:else if checkinEntries.length === 0 && !checkinError}
+            <div class="text-xs text-dim italic px-2 py-3">No entries yet.</div>
+          {:else}
+            {#each checkinEntries as e (e.id + e.question)}
+              {#if !checkinHidden.has(e.id)}
+                {@const verdictTone = e.verdict === 'on-track' ? 'success'
+                  : e.verdict === 'drifting' ? 'warning'
+                  : e.verdict === 'dead' ? 'error'
+                  : 'subtext'}
+                <article class="p-3 bg-mantle/40 border border-surface1 rounded">
+                  <div class="flex items-baseline gap-2 mb-1">
+                    <span class="text-sm font-medium text-text flex-1 min-w-0 break-words">{e.title}</span>
+                    <span
+                      class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium tabular-nums whitespace-nowrap"
+                      style="background: color-mix(in srgb, var(--color-{verdictTone}) 14%, transparent); color: var(--color-{verdictTone});"
+                    >{e.verdict}</span>
+                  </div>
+                  <p class="text-sm text-subtext italic leading-snug">"{e.question}"</p>
+                  <div class="flex items-center gap-2 mt-2 text-[11px]">
+                    <button
+                      type="button"
+                      onclick={() => void checkinSaveOne(e)}
+                      class="px-2 py-0.5 bg-primary/15 text-primary rounded hover:bg-primary/25"
+                      title="Append this entry to today's jot"
+                    >Save to jot</button>
+                    <button
+                      type="button"
+                      onclick={() => checkinDismiss(e)}
+                      class="text-dim hover:text-text"
+                    >Dismiss</button>
+                    {#if goals.some((g) => g.id === e.id)}
+                      <button
+                        type="button"
+                        onclick={() => { const g = goals.find((x) => x.id === e.id); if (g) openDetail(g); }}
+                        class="ml-auto text-secondary hover:underline"
+                      >Open goal →</button>
+                    {/if}
+                  </div>
+                </article>
+              {/if}
+            {/each}
+          {/if}
+        </div>
+
+        <!-- "What the AI saw" disclosure — keeps the design rule
+             that the user can always inspect the context. -->
+        {#if !checkinBusy && checkinEntries.length > 0}
+          <details class="px-4 py-2 border-t border-surface1 text-[11px] text-dim">
+            <summary class="cursor-pointer hover:text-text">What the AI saw</summary>
+            <ul class="mt-1.5 space-y-0.5 list-disc list-inside">
+              {#each checkinScope as g (g.id)}
+                {@const days = daysUntilTarget(g.target_date)}
+                {@const roll = rollupFor(g)}
+                {@const recent = recentDoneFor(g)}
+                <li>
+                  <span class="text-subtext">{g.title}</span>
+                  · {g.status ?? 'active'}
+                  {#if days !== null}· {days < 0 ? `${Math.abs(days)}d past` : `${days}d left`}{/if}
+                  · {(g.milestones ?? []).filter((m) => m.done).length}/{(g.milestones ?? []).length} ms
+                  · {roll.open}↗ tasks · {recent} done in 4w
+                </li>
+              {/each}
+            </ul>
+          </details>
+        {/if}
+      </section>
+    {/if}
 
     <!-- Hero "next target" card — surfaces the most-imminent active
          or paused goal with a parseable target_date so the user lands
