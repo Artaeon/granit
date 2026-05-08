@@ -5,6 +5,7 @@
   import { onWsEvent } from '$lib/ws';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import Heatmap from '$lib/components/Heatmap.svelte';
+  import { habitTargets, setHabitTarget } from '$lib/habits/targets';
 
   // /habits — three view modes for the same data:
   //   • Today: large quick-tick cards, the morning/evening rhythm view
@@ -273,6 +274,73 @@
   // so the user reads progress at a glance.
   let todayDone = $derived(data ? data.habits.filter((h) => h.doneToday).length : 0);
   let todayTotal = $derived(data ? data.habits.length : 0);
+  let undoneToday = $derived(data ? data.habits.filter((h) => !h.doneToday && h.taskIdToday) : []);
+
+  // ----- Bulk tick all -----
+  // Power-user shortcut for the morning rhythm: a single click ticks
+  // every habit not yet done today. Only enabled when at least one
+  // habit can be toggled (some require the daily note's `## Habits`
+  // section to exist first — those are skipped). Optimistic flip on
+  // each, then a single load() reconciles. Errors are toasted but
+  // we keep going for the rest so a single bad row doesn't block the
+  // bulk action.
+  let bulkBusy = $state(false);
+  async function tickAllToday() {
+    if (!data || bulkBusy) return;
+    const targets = data.habits.filter((h) => !h.doneToday && h.taskIdToday);
+    if (targets.length === 0) return;
+    bulkBusy = true;
+    const today = data.today;
+    // Optimistic: flip everything in one pass before the network round-trips
+    for (const h of targets) {
+      const habit = data.habits.find((x) => x.name === h.name);
+      const day = habit?.days.find((d) => d.date === today);
+      if (day) day.done = true;
+      if (habit) habit.doneToday = true;
+    }
+    data = { ...data };
+    const failed: string[] = [];
+    await Promise.all(
+      targets.map(async (h) => {
+        try {
+          await api.toggleHabit(h.name, today, true);
+        } catch {
+          failed.push(h.name);
+        }
+      })
+    );
+    bulkBusy = false;
+    await load();
+    if (failed.length > 0) {
+      const { toast } = await import('$lib/components/toast');
+      toast.error(`couldn't tick: ${failed.join(', ')}`);
+    }
+  }
+
+  // ----- Per-habit weekly target -----
+  // last 7 days done count; mapped against the user's target for a
+  // simple "3/5 this week" chip. Targets live in localStorage so
+  // changing one doesn't round-trip the server. Pure derivation.
+  function last7Done(h: HabitInfo): number {
+    return h.days.slice(-7).filter((d) => d.done).length;
+  }
+  function targetState(h: HabitInfo): { target: number; done: number; pct: number } | null {
+    const target = $habitTargets[h.name];
+    if (!target) return null;
+    const done = last7Done(h);
+    return { target, done, pct: Math.min(1, done / target) };
+  }
+  // Edit-target popover — single open at a time, name keys it.
+  let editingTarget = $state<string | null>(null);
+  function bumpTarget(name: string, delta: number) {
+    const cur = $habitTargets[name] ?? 7;
+    const next = Math.max(1, Math.min(7, cur + delta));
+    setHabitTarget(name, next);
+  }
+  function clearTarget(name: string) {
+    setHabitTarget(name, null);
+    editingTarget = null;
+  }
 
   // ----- Week view helpers -----
   // The server returns 90 days oldest→newest. We want the last 7 in
@@ -302,11 +370,24 @@
           {/if}
         </p>
       </div>
-      <button
-        type="button"
-        onclick={() => (addOpen = !addOpen)}
-        class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 self-start"
-      >{addOpen ? 'cancel' : '+ Add habit'}</button>
+      <div class="flex items-center gap-2 self-start">
+        {#if undoneToday.length > 0}
+          <button
+            type="button"
+            onclick={tickAllToday}
+            disabled={bulkBusy}
+            title="mark every undone habit as done today"
+            class="px-3 py-1.5 bg-success/15 text-success border border-success/30 rounded text-sm font-medium hover:bg-success/25 disabled:opacity-50"
+          >
+            {bulkBusy ? '…' : `Tick all (${undoneToday.length})`}
+          </button>
+        {/if}
+        <button
+          type="button"
+          onclick={() => (addOpen = !addOpen)}
+          class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
+        >{addOpen ? 'cancel' : '+ Add habit'}</button>
+      </div>
     </header>
 
     {#if addOpen}
@@ -449,25 +530,26 @@
         {#each sortedHabits as h (h.name)}
           {@const insight = bestDay(h)}
           {@const linkedVirtuesToday = virtuesByHabit.get(h.name.toLowerCase()) ?? []}
-          <button
-            type="button"
-            onclick={() => toggleToday(h)}
-            disabled={busy === h.name || !h.taskIdToday}
-            title={h.taskIdToday ? '' : 'add this habit to today\'s daily note first'}
-            class="text-left p-4 bg-surface0 border rounded-lg transition-colors flex items-start gap-3
+          {@const tgt = targetState(h)}
+          <div
+            class="relative text-left p-4 bg-surface0 border rounded-lg transition-colors flex items-start gap-3
               {h.doneToday
                 ? 'border-success/40 bg-success/5'
-                : 'border-surface1 hover:border-primary/40'}
-              disabled:opacity-50"
+                : 'border-surface1 hover:border-primary/40'}"
           >
-            <div
-              class="w-10 h-10 rounded flex-shrink-0 flex items-center justify-center transition-colors
-                {h.doneToday ? 'bg-success border-2 border-success' : 'border-2 border-surface2'}"
+            <button
+              type="button"
+              onclick={() => toggleToday(h)}
+              disabled={busy === h.name || !h.taskIdToday}
+              title={h.taskIdToday ? '' : 'add this habit to today\'s daily note first'}
+              class="w-10 h-10 rounded flex-shrink-0 flex items-center justify-center transition-colors disabled:opacity-50
+                {h.doneToday ? 'bg-success border-2 border-success' : 'border-2 border-surface2 hover:border-primary'}"
+              aria-label="toggle today"
             >
               {#if h.doneToday}
                 <svg viewBox="0 0 12 12" class="w-5 h-5 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
               {/if}
-            </div>
+            </button>
             <div class="flex-1 min-w-0">
               <h2 class="text-base font-medium text-text break-words">{h.name}</h2>
               <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-dim mt-1">
@@ -478,6 +560,25 @@
                   <span class="text-secondary" title="best day of week from last 90 days">
                     best: {insight.label} ({insight.pct}%)
                   </span>
+                {/if}
+                {#if tgt}
+                  {@const hit = tgt.done >= tgt.target}
+                  <button
+                    type="button"
+                    onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
+                    class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border transition-colors
+                      {hit
+                        ? 'bg-success/15 text-success border-success/30 hover:bg-success/25'
+                        : 'bg-warning/10 text-warning border-warning/25 hover:bg-warning/20'}"
+                    title="weekly target — click to edit"
+                  >🎯 {tgt.done}/{tgt.target}/wk</button>
+                {:else}
+                  <button
+                    type="button"
+                    onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
+                    class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1/60 text-dim border-surface2 hover:text-text"
+                    title="set a weekly target"
+                  >+ target</button>
                 {/if}
               </div>
               <!-- Virtue chips — reverse linkage. "this habit feeds:" -->
@@ -493,8 +594,18 @@
                   {/each}
                 </div>
               {/if}
+              {#if editingTarget === h.name}
+                <div class="mt-2 flex items-center gap-1.5 text-[11px]">
+                  <span class="text-dim">target / week:</span>
+                  <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => bumpTarget(h.name, -1)}>−</button>
+                  <span class="font-mono text-text w-4 text-center">{$habitTargets[h.name] ?? 5}</span>
+                  <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => bumpTarget(h.name, 1)}>+</button>
+                  <button class="ml-1 px-1.5 py-0.5 text-dim hover:text-text underline" onclick={() => clearTarget(h.name)}>clear</button>
+                  <button class="ml-auto px-1.5 py-0.5 text-dim hover:text-text" onclick={() => (editingTarget = null)}>done</button>
+                </div>
+              {/if}
             </div>
-          </button>
+          </div>
         {/each}
       </div>
     {:else if data && view === 'week'}
@@ -556,6 +667,7 @@
         {#each sortedHabits as h (h.name)}
           {@const insight = bestDay(h)}
           {@const linkedVirtuesList = virtuesByHabit.get(h.name.toLowerCase()) ?? []}
+          {@const tgt = targetState(h)}
           <article class="bg-surface0 border border-surface1 rounded-lg p-4">
             <div class="flex items-start gap-3 mb-3">
               <button
@@ -582,7 +694,35 @@
                       best: {insight.label} ({insight.pct}%)
                     </span>
                   {/if}
+                  {#if tgt}
+                    {@const hit = tgt.done >= tgt.target}
+                    <button
+                      type="button"
+                      onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
+                      class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border transition-colors
+                        {hit
+                          ? 'bg-success/15 text-success border-success/30 hover:bg-success/25'
+                          : 'bg-warning/10 text-warning border-warning/25 hover:bg-warning/20'}"
+                      title="weekly target — click to edit"
+                    >🎯 {tgt.done}/{tgt.target}/wk</button>
+                  {:else}
+                    <button
+                      type="button"
+                      onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
+                      class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1/60 text-dim border-surface2 hover:text-text"
+                    >+ target</button>
+                  {/if}
                 </div>
+                {#if editingTarget === h.name}
+                  <div class="mt-1.5 flex items-center gap-1.5 text-[11px]">
+                    <span class="text-dim">target / week:</span>
+                    <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => bumpTarget(h.name, -1)}>−</button>
+                    <span class="font-mono text-text w-4 text-center">{$habitTargets[h.name] ?? 5}</span>
+                    <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => bumpTarget(h.name, 1)}>+</button>
+                    <button class="ml-1 px-1.5 py-0.5 text-dim hover:text-text underline" onclick={() => clearTarget(h.name)}>clear</button>
+                    <button class="ml-auto px-1.5 py-0.5 text-dim hover:text-text" onclick={() => (editingTarget = null)}>done</button>
+                  </div>
+                {/if}
                 {#if linkedVirtuesList.length > 0}
                   <div class="flex flex-wrap gap-1 mt-1.5">
                     {#each linkedVirtuesList as lv (lv.id)}
