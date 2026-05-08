@@ -715,6 +715,171 @@
   function checkinDismiss(e: CheckinEntry) {
     checkinHidden = new Set([...checkinHidden, e.id]);
   }
+
+  // ─────────────────────────────────────────────────────────────────
+  // AI "Goal alignment audit" — strategy/execution drift detector
+  // ─────────────────────────────────────────────────────────────────
+  // Reads all active goals + open tasks + recently-completed tasks
+  // (last 14 days, no goalId) and asks the model: which clusters of
+  // tasks are NOT advancing any stated goal? Surfaces the gap that
+  // goal-setters typically can't see for themselves: the busywork
+  // that fills the day without moving the season.
+  //
+  // The audit is honest and non-judgmental — the user may be
+  // intentionally working off-goal (urgent maintenance, paid work,
+  // family emergency). The model's job is to surface the pattern,
+  // not to scold. The user can dismiss findings, mark a finding as
+  // "intentional" (no action), or jump to /tasks to re-link.
+  interface AuditFinding {
+    cluster: string;        // human label, e.g. "support / maintenance"
+    count: number;          // tasks in this cluster
+    sample: string[];       // up to 3 example task texts
+    observation: string;    // one sentence — what's happening
+    question: string;       // one question — was it intentional?
+  }
+  let auditOpen = $state(false);
+  let auditBusy = $state(false);
+  let auditError = $state('');
+  let auditFindings = $state<AuditFinding[]>([]);
+  let auditAbort: AbortController | null = null;
+  let auditDismissed = $state<Set<string>>(new Set());
+
+  // Tasks the audit looks at — in-flight + recently-done, both
+  // unlinked from any goal. Cap at 80 each so the prompt stays
+  // bounded; the model sees representative behaviour, not a full
+  // dump. Recently-done is limited to the last 14 days because
+  // older history isn't actionable for a "this season" check.
+  let auditScope = $derived.by(() => {
+    const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
+    const orphanOpen = openTasks
+      .filter((t) => !t.goalId && (t.text ?? '').trim().length > 0)
+      .slice(0, 80);
+    const orphanDoneRecent = doneTasks
+      .filter((t) => {
+        if (t.goalId) return false;
+        if (!t.completedAt) return false;
+        const d = new Date(t.completedAt).getTime();
+        return Number.isFinite(d) && d >= cutoff;
+      })
+      .slice(0, 80);
+    const linkedOpen = openTasks.filter((t) => t.goalId).length;
+    const linkedDone14 = doneTasks.filter((t) => {
+      if (!t.goalId || !t.completedAt) return false;
+      const d = new Date(t.completedAt).getTime();
+      return Number.isFinite(d) && d >= cutoff;
+    }).length;
+    return { orphanOpen, orphanDoneRecent, linkedOpen, linkedDone14 };
+  });
+
+  function auditClose() {
+    auditAbort?.abort();
+    auditAbort = null;
+    auditOpen = false;
+    auditBusy = false;
+    auditError = '';
+    auditFindings = [];
+    auditDismissed = new Set();
+  }
+
+  async function runAudit() {
+    if (auditBusy) return;
+    const activeGoals = goals.filter((g) => (g.status ?? 'active') === 'active');
+    if (activeGoals.length === 0) {
+      toast.error('No active goals to audit against.');
+      return;
+    }
+    const totalOrphan = auditScope.orphanOpen.length + auditScope.orphanDoneRecent.length;
+    if (totalOrphan === 0) {
+      toast.success('Every recent task is linked to a goal — nothing to audit.');
+      return;
+    }
+    auditAbort?.abort();
+    auditAbort = new AbortController();
+    auditOpen = true;
+    auditBusy = true;
+    auditError = '';
+    auditFindings = [];
+    auditDismissed = new Set();
+
+    const goalLines = activeGoals
+      .map((g) => `- ${g.title}${g.target_date ? ` (target ${g.target_date})` : ''}${g.venture ? ` [${g.venture}]` : ''}`)
+      .join('\n');
+    const orphanOpenLines = auditScope.orphanOpen.map((t) => `- ${t.text}`).join('\n');
+    const orphanDoneLines = auditScope.orphanDoneRecent.map((t) => `- ${t.text}`).join('\n');
+
+    const userMessage =
+      'You are an honest, non-judgmental auditor of where the user\'s actual work is going.\n' +
+      'Compare the user\'s ACTIVE GOALS to their TASKS that are NOT linked to any goal. ' +
+      'Find 2-5 clusters of unlinked tasks that share a theme. For each cluster, surface what is happening and ask whether it was intentional.\n\n' +
+      'Rules:\n' +
+      '- Be specific. "You worked on support" beats "you worked on miscellaneous things".\n' +
+      '- Cluster by theme (e.g. "support / maintenance", "finances / admin", "client work for X", "household").\n' +
+      '- Off-goal work is NOT inherently bad — paid work, urgent maintenance, family. Your job is to NAME the pattern, not to scold.\n' +
+      '- Include the rough count of tasks in each cluster and 2-3 representative task texts (verbatim).\n' +
+      '- The "question" should be honest and useful: "Was this week\'s 12 tasks on X the right call given goal Y is overdue?" — never generic.\n' +
+      '- Skip clusters with fewer than 2 tasks. Don\'t pad to hit a number; 2 sharp findings beat 5 mush ones.\n\n' +
+      'Return STRICT JSON ONLY (no markdown fences, no preamble), shape:\n' +
+      '[{"cluster": "...", "count": N, "sample": ["...", "..."], "observation": "...", "question": "..."}, ...]\n\n' +
+      'ACTIVE GOALS:\n' + (goalLines || '(none)') + '\n\n' +
+      `UNLINKED OPEN TASKS (${auditScope.orphanOpen.length}):\n` + (orphanOpenLines || '(none)') + '\n\n' +
+      `UNLINKED TASKS COMPLETED IN LAST 14 DAYS (${auditScope.orphanDoneRecent.length}):\n` + (orphanDoneLines || '(none)') + '\n\n' +
+      'For context the user already has linked work too: ' +
+      `${auditScope.linkedOpen} open tasks tied to goals, ${auditScope.linkedDone14} goal-linked tasks completed in 14d. ` +
+      'Don\'t mention this in your output unless it changes the verdict.';
+
+    let acc = '';
+    try {
+      await api.chatStream(
+        [{ role: 'user', content: userMessage }],
+        undefined,
+        {
+          onChunk: (c) => { acc += c; },
+          onDone: () => {
+            auditBusy = false;
+            auditAbort = null;
+            let cleaned = acc.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();
+            }
+            try {
+              const parsed = JSON.parse(cleaned);
+              if (!Array.isArray(parsed)) throw new Error('expected array');
+              auditFindings = parsed
+                .filter((p: unknown) => p && typeof p === 'object')
+                .map((p) => p as AuditFinding)
+                .filter((p) => typeof p.cluster === 'string' && typeof p.observation === 'string' && typeof p.question === 'string')
+                .map((p) => ({
+                  cluster: p.cluster,
+                  count: typeof p.count === 'number' ? p.count : (Array.isArray(p.sample) ? p.sample.length : 0),
+                  sample: Array.isArray(p.sample) ? p.sample.filter((s): s is string => typeof s === 'string').slice(0, 3) : [],
+                  observation: p.observation,
+                  question: p.question
+                }));
+              if (auditFindings.length === 0) {
+                auditError = 'AI returned no clusters — the work may already be aligned, or the parse failed.';
+              }
+            } catch (err) {
+              auditError = 'Couldn\'t parse audit: ' + (err instanceof Error ? err.message : String(err));
+            }
+          },
+          onError: (err) => {
+            auditBusy = false;
+            auditAbort = null;
+            auditError = err.message;
+          }
+        },
+        auditAbort.signal
+      );
+    } catch (e) {
+      auditBusy = false;
+      auditAbort = null;
+      auditError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  function auditDismiss(f: AuditFinding) {
+    auditDismissed = new Set([...auditDismissed, f.cluster]);
+  }
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -735,6 +900,13 @@
           class="px-3 py-1.5 border border-surface1 text-subtext rounded text-sm hover:border-primary hover:text-primary disabled:opacity-50"
           title="Honest one-line verdict + a sharp question for each active goal"
         >{checkinOpen ? '✕ check-in' : '✨ Weekly check-in'}</button>
+        <button
+          type="button"
+          onclick={() => { if (auditOpen) auditClose(); else void runAudit(); }}
+          disabled={auditBusy}
+          class="px-3 py-1.5 border border-surface1 text-subtext rounded text-sm hover:border-warning hover:text-warning disabled:opacity-50"
+          title="Surface tasks that don't advance any stated goal"
+        >{auditOpen ? '✕ audit' : '🔍 Alignment audit'}</button>
         <button
           onclick={() => (createOpen = true)}
           class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
@@ -857,6 +1029,99 @@
             </ul>
           </details>
         {/if}
+      </section>
+    {/if}
+
+    <!-- Goal alignment audit panel — clusters of unlinked tasks that
+         aren't advancing any active goal. Each finding renders as a
+         tinted card with cluster label, count, sample tasks, an
+         observation and an "intentional?" question. The user can
+         dismiss findings, jump to /tasks to re-link, or close the
+         whole panel. -->
+    {#if auditOpen}
+      <section class="mb-5 bg-surface0 border border-surface1 rounded-lg overflow-hidden">
+        <header class="px-4 py-2.5 border-b border-surface1 flex items-center gap-2 flex-wrap">
+          <span class="text-sm font-medium text-text">Alignment audit</span>
+          <span class="text-[11px] text-dim">
+            {auditScope.orphanOpen.length} unlinked open ·
+            {auditScope.orphanDoneRecent.length} unlinked done in 14d ·
+            {auditScope.linkedOpen + auditScope.linkedDone14} linked
+          </span>
+          <span class="flex-1"></span>
+          {#if auditBusy}
+            <button
+              type="button"
+              onclick={() => auditAbort?.abort()}
+              class="px-2 py-1 text-xs bg-surface1 text-subtext rounded hover:bg-surface2"
+            >Stop</button>
+          {:else}
+            <button
+              type="button"
+              onclick={() => void runAudit()}
+              class="px-2 py-1 text-xs bg-surface1 text-subtext rounded hover:bg-surface2"
+              title="re-roll the audit"
+            >↻ retry</button>
+          {/if}
+          <a
+            href="/tasks"
+            class="text-xs text-secondary hover:underline"
+            title="Open /tasks to re-link work to a goal"
+          >Open tasks →</a>
+          <button
+            type="button"
+            onclick={auditClose}
+            class="text-xs text-dim hover:text-text px-1"
+          >Dismiss</button>
+        </header>
+
+        {#if auditError}
+          <div class="px-4 py-2 text-xs text-error bg-error/5 border-b border-error/20">{auditError}</div>
+        {/if}
+
+        <div class="p-3 space-y-2">
+          {#if auditBusy && auditFindings.length === 0}
+            <div class="text-xs text-dim italic px-2 py-3 flex items-center gap-2">
+              <span class="inline-block w-1.5 h-3 bg-warning/60 animate-pulse rounded-sm"></span>
+              clustering {auditScope.orphanOpen.length + auditScope.orphanDoneRecent.length} unlinked tasks against {goals.filter((g) => (g.status ?? 'active') === 'active').length} active goals…
+            </div>
+          {:else if auditFindings.length === 0 && !auditError}
+            <div class="text-xs text-dim italic px-2 py-3">No findings yet.</div>
+          {:else}
+            {#each auditFindings as f (f.cluster + f.observation)}
+              {#if !auditDismissed.has(f.cluster)}
+                <article class="p-3 bg-mantle/40 border border-surface1 rounded border-l-4" style="border-left-color: var(--color-warning);">
+                  <div class="flex items-baseline gap-2 mb-1 flex-wrap">
+                    <span class="text-sm font-medium text-text flex-1 min-w-0 break-words">{f.cluster}</span>
+                    <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-warning/15 text-warning tabular-nums">
+                      {f.count} task{f.count === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                  <p class="text-sm text-subtext leading-snug">{f.observation}</p>
+                  {#if f.sample.length > 0}
+                    <ul class="mt-1.5 space-y-0.5 text-[11px] text-dim font-mono">
+                      {#each f.sample as s}
+                        <li class="truncate">— {s}</li>
+                      {/each}
+                    </ul>
+                  {/if}
+                  <p class="text-sm text-text italic mt-2">"{f.question}"</p>
+                  <div class="flex items-center gap-2 mt-2 text-[11px]">
+                    <button
+                      type="button"
+                      onclick={() => auditDismiss(f)}
+                      class="px-2 py-0.5 bg-surface1 text-subtext rounded hover:bg-surface2"
+                      title="It was intentional / I've heard you. Hide this finding."
+                    >Intentional</button>
+                    <a
+                      href="/tasks"
+                      class="ml-auto text-secondary hover:underline"
+                    >Re-link in /tasks →</a>
+                  </div>
+                </article>
+              {/if}
+            {/each}
+          {/if}
+        </div>
       </section>
     {/if}
 
