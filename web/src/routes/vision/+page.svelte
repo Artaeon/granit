@@ -5,6 +5,7 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
 
   // /vision is the user's "above goals" layer — life mission, core
   // values, current season focus. The page is intentionally calm:
@@ -102,6 +103,62 @@
         !vision.season_focus &&
         (!vision.values || vision.values.length === 0))
   );
+
+  // ── AI: harden the vision ────────────────────────────────────────
+  // The vision is the page the user re-reads every morning, but
+  // most first drafts are too vague to actually steer behaviour
+  // ("Live a meaningful life" — what does that even mean on a
+  // Tuesday at 3pm?). The Harden button fires /chat with the
+  // current state and asks for a critique + sharpened
+  // alternatives. Goes through the audit-gated chat path so it
+  // shows in the settings AI usage rollup like every other call.
+  let aiBusy = $state(false);
+  let aiResponse = $state('');
+  let aiError = $state('');
+  let aiAbort: AbortController | null = null;
+
+  async function hardenVision() {
+    if (!vision || aiBusy) return;
+    aiBusy = true;
+    aiError = '';
+    aiResponse = '';
+    aiAbort = new AbortController();
+    const ctx = [
+      vision.mission ? `Mission: ${vision.mission}` : 'Mission: (not set)',
+      vision.values && vision.values.length > 0
+        ? `Values: ${vision.values.join(', ')}`
+        : 'Values: (none set)',
+      vision.season_focus ? `Season focus: ${vision.season_focus}` : 'Season focus: (not set)',
+      vision.notes ? `Notes: ${vision.notes}` : ''
+    ].filter(Boolean).join('\n');
+    const userMessage =
+      "Critique and sharpen this user's life vision. " +
+      'They re-read this every morning before drilling into tasks, so the language has to be concrete enough to actually steer behaviour. ' +
+      'Format your reply with three sections:\n\n' +
+      '## Where it\'s vague\n' +
+      'Point out lines that could mean anything. Be specific — quote the phrase.\n\n' +
+      '## Sharpened versions\n' +
+      'Rewrite the weakest 1-2 lines into versions a stranger could act on without further interpretation. ' +
+      'Show the BEFORE in italic and the AFTER in bold so the user can compare.\n\n' +
+      '## Questions to sit with\n' +
+      "2-3 questions whose honest answers would make the next iteration of this vision better. Don't preach; ask.\n\n" +
+      'Vision context:\n\n' + ctx;
+    try {
+      await api.chatStream(
+        [{ role: 'user', content: userMessage }],
+        undefined,
+        {
+          onChunk: (c) => { aiResponse += c; },
+          onError: (err) => { aiError = err.message; }
+        },
+        aiAbort.signal
+      );
+    } finally {
+      aiBusy = false;
+      aiAbort = null;
+    }
+  }
+  function cancelAI() { aiAbort?.abort(); }
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -236,6 +293,46 @@
             <p class="text-sm text-subtext leading-relaxed whitespace-pre-line">{vision.notes}</p>
           </section>
         {/if}
+
+        <!-- AI: Harden the vision. The button fires /chat with a
+             structured prompt asking for a critique + sharpened
+             alternatives. Streaming so tokens arrive progressively
+             on slow local LLMs; cancel button while busy. The
+             response stays in the page until cleared so the user
+             can edit alongside it without re-running. -->
+        <section class="pt-4 border-t border-surface1">
+          <div class="flex items-baseline gap-2 mb-2">
+            <h2 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">AI · Harden this vision</h2>
+            {#if aiBusy}
+              <button onclick={cancelAI} class="text-[11px] text-warning hover:underline">cancel</button>
+            {:else if aiResponse}
+              <button onclick={() => { aiResponse = ''; aiError = ''; }} class="text-[11px] text-dim hover:text-error">clear</button>
+            {/if}
+            <button
+              onclick={() => void hardenVision()}
+              disabled={aiBusy || isEmpty}
+              class="text-[11px] px-2 py-1 rounded bg-gradient-to-r from-primary/15 to-secondary/15 border border-primary/30 text-primary hover:border-primary/60 disabled:opacity-50"
+              title="Ask the AI to critique your vision and suggest sharper alternatives"
+            >{aiBusy ? '✨ thinking…' : aiResponse ? '✨ regenerate' : '✨ Harden'}</button>
+          </div>
+          {#if aiError}
+            <div class="text-xs text-error border border-error/30 bg-error/5 rounded px-3 py-2">{aiError}</div>
+          {:else if aiResponse || aiBusy}
+            <div class="bg-surface0 border border-surface1 rounded-lg px-4 py-3 text-sm text-text">
+              <div class="prose prose-sm max-w-none">
+                <MarkdownRenderer body={aiResponse || '_…_'} />
+              </div>
+            </div>
+            <p class="text-[10px] text-dim italic mt-2">
+              Suggestions from your configured AI. Take what sharpens, ignore what doesn't.
+            </p>
+          {:else}
+            <p class="text-xs text-dim leading-relaxed">
+              Re-read it every morning, sharpen it every season. Tap Harden to get a critique
+              of vague phrasing + sharpened alternatives + questions to sit with.
+            </p>
+          {/if}
+        </section>
 
         <div class="pt-4 border-t border-surface1 flex items-center justify-between">
           <button onclick={startEdit} class="text-xs text-dim hover:text-text">edit</button>
