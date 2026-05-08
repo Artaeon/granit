@@ -6,7 +6,14 @@
   import { aiOverlayOpen, takeAIOverlaySeed } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
-  import { AGENT_MODES, findMode, loadModeId, persistModeId } from '$lib/ai/agents';
+  import {
+    AGENT_MODES,
+    GENERIC_MODES,
+    PERSONAS,
+    findMode,
+    loadModeId,
+    persistModeId
+  } from '$lib/ai/agents';
 
   // AIOverlay — global AI panel. Slides in from the right on
   // desktop, becomes a bottom sheet on mobile. Triggered with
@@ -371,12 +378,22 @@
   - **Analyst** — evidence-first, what would falsify the claim (RAG on)
   - **Architect** — trade-offs + recommendations for system design
 
+**Personas** (sharper voices in the same picker)
+
+  - **Lewis** — C.S. Lewis-style writing critic
+  - **Aurelius** — Stoic counsel: brief, stern, kind
+  - **Socrates** — questions over answers, sharpens half-formed thoughts
+  - **Chrysostom** — scripture commentator in the classical tradition
+  - **Founder** — operator coach, ship-this-week energy
+  - **Magister** — patient tutor for technical concepts, slow and concrete
+  - **Examen** — gentle bedtime companion, soft examen-style questions
+
   Toggle **RAG** to search the vault for relevant notes per question.
 
 **Shortcuts**
 
   - <kbd>Mod+J</kbd> — toggle this panel
-  - <kbd>Mod+1..6</kbd> — switch agent mode (General → Architect)
+  - <kbd>Mod+1..9</kbd> — switch agent mode/persona by position
   - **🎤 mic** in the input row — voice dictation (browser STT)
   - **save** in the header — write the thread to \`chat-history/\` as a note
 
@@ -819,10 +836,13 @@
     }
   }
 
-  // Mode quick-switch: Mod+1..6 picks the matching mode without
-  // opening the picker. Power-user shortcut; only fires while the
-  // overlay is open + the user isn't typing into the chat input
-  // (numbers there should land as numbers, not mode jumps).
+  // Mode quick-switch: Mod+1..9 picks the matching entry by
+  // position in AGENT_MODES (generic modes first, then personas).
+  // Power-user shortcut; only fires while the overlay is open +
+  // the user isn't typing into the chat input (numbers there
+  // should land as numbers, not mode jumps). Entries beyond
+  // position 9 are reachable via the picker only — keypad-style
+  // 1..9 is the practical ceiling for a single-key shortcut.
   $effect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -831,7 +851,7 @@
       const target = e.target as HTMLElement | null;
       if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) return;
       const idx = parseInt(e.key, 10);
-      if (Number.isNaN(idx) || idx < 1 || idx > AGENT_MODES.length) return;
+      if (Number.isNaN(idx) || idx < 1 || idx > Math.min(9, AGENT_MODES.length)) return;
       e.preventDefault();
       selectMode(AGENT_MODES[idx - 1].id);
     }
@@ -896,9 +916,14 @@
           ></div>
           <div
             role="listbox"
-            class="absolute left-0 top-full mt-1 w-72 bg-mantle border border-surface1 rounded-lg shadow-xl z-50 py-1"
+            class="absolute left-0 top-full mt-1 w-72 bg-mantle border border-surface1 rounded-lg shadow-xl z-50 py-1 max-h-[70vh] overflow-y-auto"
           >
-            {#each AGENT_MODES as m (m.id)}
+            <!-- Generic modes group. The "modes" header is implicit
+                 (the picker opens with them; no need to label what
+                 the user is already looking at). The "personas"
+                 header below makes the second group obvious. -->
+            <div class="px-3 pt-1 pb-1 text-[9px] uppercase tracking-widest text-dim">Modes</div>
+            {#each GENERIC_MODES as m (m.id)}
               <button
                 type="button"
                 role="option"
@@ -916,6 +941,33 @@
                 {/if}
               </button>
             {/each}
+            {#if PERSONAS.length > 0}
+              <!-- Personas group — sharper, named voices. Visually
+                   distinguished by a divider, a section header, an
+                   accent-coloured glyph background, and an italic
+                   tagline so the user reads "this is a character,
+                   not a generic posture" at a glance. -->
+              <div class="border-t border-surface1 mt-1"></div>
+              <div class="px-3 pt-2 pb-1 text-[9px] uppercase tracking-widest text-secondary">Personas</div>
+              {#each PERSONAS as m (m.id)}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={m.id === modeId}
+                  onclick={() => { selectMode(m.id); modePickerOpen = false; }}
+                  class="w-full flex items-start gap-2 px-3 py-2 hover:bg-surface0 text-left {m.id === modeId ? 'bg-primary/10' : ''}"
+                >
+                  <span class="text-base leading-tight flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-full bg-secondary/15 text-secondary">{m.glyph}</span>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-medium text-text">{m.label}</div>
+                    <div class="text-[11px] text-dim leading-snug italic">{m.tagline}</div>
+                  </div>
+                  {#if m.id === modeId}
+                    <span class="text-primary text-xs flex-shrink-0">✓</span>
+                  {/if}
+                </button>
+              {/each}
+            {/if}
           </div>
         {/if}
       </div>
