@@ -558,6 +558,121 @@
   let aiError = $state('');
   let aiAbort: AbortController | null = null;
 
+  // ── AI: Find Free Time ────────────────────────────────────────
+  // Complement to Plan my week. Plan-my-week distributes pending
+  // tasks across 7 days; this picks N candidate empty slots of a
+  // requested length so the user can stake out 'a 90-min focus
+  // block' or 'a 30-min walk' without scrolling the grid hunting
+  // for gaps. AI receives the events list + the user's
+  // constraints and returns 3 slots with one-line rationales.
+  // Click a slot to open the create-event modal pre-filled.
+  type SlotPick = { startISO: string; endISO: string; reason: string };
+  let findOpen = $state(false);
+  let findDuration = $state(60); // minutes
+  let findHorizonDays = $state(7);
+  let findTimeOfDay = $state<'any' | 'morning' | 'afternoon' | 'evening'>('any');
+  let findBusy = $state(false);
+  let findError = $state('');
+  let findRaw = $state('');
+  let findPicks = $state<SlotPick[]>([]);
+  let findAbort: AbortController | null = null;
+
+  async function findFreeTime() {
+    if (findBusy) return;
+    findAbort?.abort();
+    findAbort = new AbortController();
+    findBusy = true;
+    findError = '';
+    findPicks = [];
+    findRaw = '';
+    const today = new Date();
+    const horizonEnd = new Date(today);
+    horizonEnd.setDate(today.getDate() + findHorizonDays);
+    // Compact event list within the horizon — start/end in local
+    // ISO so the model and the user share the same time mental
+    // model. Skip events without start (all-day events block the
+    // whole day for our purposes; mark with start-of-day).
+    const items = events
+      .filter((e) => {
+        const k = e.date ?? (e.start ? e.start.slice(0, 10) : '');
+        if (!k) return false;
+        return k >= fmtDateISO(today) && k <= fmtDateISO(horizonEnd);
+      })
+      .map((e) => {
+        const start = e.start ?? (e.date ? `${e.date}T00:00:00` : '');
+        const end = e.end ?? (e.start ? e.start : `${e.date ?? ''}T23:59:59`);
+        return { title: e.title, start, end, allDay: !e.start };
+      })
+      .filter((x) => x.start);
+    const constraints: string[] = [
+      `Duration: ${findDuration} minutes.`,
+      `Horizon: today through ${fmtDateISO(horizonEnd)} (${findHorizonDays} days).`,
+      `Time of day: ${findTimeOfDay === 'any' ? 'any working hours' : findTimeOfDay}.`,
+      'Working hours: 08:00 to 20:00 local. Avoid 12:00–13:00 (lunch) unless the user said otherwise.',
+      'Pick 3 candidate slots. Spread them across different days when possible.'
+    ];
+    const sys =
+      'You find empty time slots in the user\'s calendar that match constraints. Return STRICTLY a JSON array, no fences, no prose: [{"startISO": "<RFC3339 local>", "endISO": "<RFC3339 local>", "reason": "<under 14 words why this slot>"}]. The startISO MUST not collide with any of the busy ranges supplied. Pick slots ON THE HOUR or HALF-HOUR for human-friendly times. Different days when there\'s room.';
+    const userMsg =
+      `Today: ${today.toISOString()}.\n\nConstraints:\n${constraints.join('\n')}\n\n` +
+      `Busy ranges (${items.length} events) — local time:\n` +
+      items.map((x) => `- ${x.title}: ${x.start} → ${x.end}${x.allDay ? ' (all-day)' : ''}`).join('\n');
+    let buf = '';
+    try {
+      await api.chatStream(
+        [
+          { role: 'system', content: sys },
+          { role: 'user', content: userMsg }
+        ],
+        undefined,
+        {
+          onChunk: (c) => { buf += c; findRaw = buf; },
+          onDone: () => {
+            let cleaned = buf.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+            }
+            try {
+              const arr = JSON.parse(cleaned) as SlotPick[];
+              if (Array.isArray(arr)) findPicks = arr.filter((x) => x.startISO && x.endISO);
+            } catch {
+              findError = 'Model didn\'t return parseable JSON.';
+            }
+          },
+          onError: (err) => { findError = err.message; }
+        },
+        findAbort.signal
+      );
+    } finally {
+      findBusy = false;
+      findAbort = null;
+    }
+  }
+  function dismissFind() {
+    findAbort?.abort();
+    findBusy = false;
+    findOpen = false;
+    findPicks = [];
+    findError = '';
+    findRaw = '';
+  }
+  function pickFindSlot(p: SlotPick) {
+    // Open the create-event modal with the slot pre-filled. We re-
+    // use the unified create surface so the user gets the full
+    // event/task choice + recurrence picker etc.
+    const start = new Date(p.startISO);
+    const end = new Date(p.endISO);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      toast.error('Slot has an invalid time.');
+      return;
+    }
+    unifiedStart = start;
+    unifiedEnd = end;
+    unifiedKind = 'event';
+    unifiedOpen = true;
+    findOpen = false;
+  }
+
   async function planMyWeek() {
     if (aiBusy) return;
     aiBusy = true;
@@ -820,6 +935,23 @@
         <span aria-hidden="true">✨</span>
         <span>{aiBusy ? 'thinking…' : 'Plan my week'}</span>
       </button>
+      <!-- Find Free Time — distinct from Plan my week. Plan
+           distributes pending tasks across the week; this picks
+           candidate empty slots of a chosen length so the user
+           can stake out 'a 90-min focus block' without scrolling
+           the grid hunting for gaps. -->
+      <button
+        onclick={() => (findOpen = !findOpen)}
+        aria-pressed={findOpen}
+        title="AI finds empty slots that match your duration + time-of-day"
+        class="hidden sm:inline-flex px-2.5 py-1.5 text-xs sm:text-sm rounded items-center gap-1 {findOpen ? 'bg-primary text-on-primary' : 'bg-surface0 border border-surface1 text-subtext hover:border-primary/40'}"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M12 7v5l3 2" stroke-linecap="round"/>
+        </svg>
+        <span>Find time</span>
+      </button>
       <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm">
         <button
           class="px-2 sm:px-3 py-1.5 {view === 'day' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
@@ -854,6 +986,89 @@
         class="hidden md:flex w-8 h-8 items-center justify-center text-dim hover:text-text hover:bg-surface0 rounded text-xs font-mono"
       >?</button>
     </header>
+
+    <!-- AI Find Free Time panel — sister surface to Plan-my-week.
+         Toggleable form (duration / horizon / time-of-day) at the
+         top, AI-returned slot candidates below. Click a slot to
+         pre-fill the create-event modal at that time. -->
+    {#if findOpen}
+      <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-mantle/40">
+        <div class="flex items-baseline gap-2 mb-2 flex-wrap">
+          <span class="text-xs uppercase tracking-wider text-secondary font-semibold">✨ Find free time</span>
+          <span class="flex-1"></span>
+          {#if findBusy}
+            <button onclick={() => findAbort?.abort()} class="text-[11px] text-warning hover:underline">cancel</button>
+          {/if}
+          <button onclick={dismissFind} class="text-[11px] text-dim hover:text-text">dismiss</button>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap text-xs">
+          <label class="text-dim flex items-center gap-1.5">
+            duration
+            <input
+              type="number"
+              bind:value={findDuration}
+              min="15"
+              max="480"
+              step="15"
+              class="w-16 px-1.5 py-1 bg-surface0 border border-surface1 rounded text-text text-right tabular-nums"
+            />
+            min
+          </label>
+          <label class="text-dim flex items-center gap-1.5">
+            within
+            <select bind:value={findHorizonDays} class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text">
+              <option value={3}>3 days</option>
+              <option value={7}>7 days</option>
+              <option value={14}>14 days</option>
+            </select>
+          </label>
+          <label class="text-dim flex items-center gap-1.5">
+            when
+            <select bind:value={findTimeOfDay} class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text">
+              <option value="any">any time</option>
+              <option value="morning">morning</option>
+              <option value="afternoon">afternoon</option>
+              <option value="evening">evening</option>
+            </select>
+          </label>
+          <button
+            onclick={() => void findFreeTime()}
+            disabled={findBusy}
+            class="px-3 py-1 bg-primary text-on-primary rounded text-xs font-medium disabled:opacity-50"
+          >
+            {findBusy ? 'searching…' : 'Find slots'}
+          </button>
+        </div>
+        {#if findError}
+          <p class="text-[11px] text-error mt-2">{findError}</p>
+        {/if}
+        {#if findPicks.length > 0}
+          <ul class="mt-2 space-y-1">
+            {#each findPicks as p (p.startISO)}
+              {@const startD = new Date(p.startISO)}
+              {@const endD = new Date(p.endISO)}
+              <li>
+                <button
+                  type="button"
+                  onclick={() => pickFindSlot(p)}
+                  class="w-full text-left px-2.5 py-1.5 rounded bg-surface0 border border-surface1 hover:border-primary text-xs flex items-baseline gap-2 group"
+                >
+                  <span class="font-mono tabular-nums text-text flex-shrink-0">
+                    {startD.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                    · {String(startD.getHours()).padStart(2, '0')}:{String(startD.getMinutes()).padStart(2, '0')}
+                    – {String(endD.getHours()).padStart(2, '0')}:{String(endD.getMinutes()).padStart(2, '0')}
+                  </span>
+                  <span class="flex-1 text-dim group-hover:text-subtext truncate">{p.reason}</span>
+                  <span class="text-[10px] text-secondary opacity-0 group-hover:opacity-100">create →</span>
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {:else if findBusy}
+          <p class="text-[11px] text-dim italic mt-2">checking the next {findHorizonDays} days…</p>
+        {/if}
+      </div>
+    {/if}
 
     <!-- AI "Plan my week" panel. Sits between the header and the
          quick-create bar so the suggestions stay visible above the
