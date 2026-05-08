@@ -507,6 +507,7 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/api/v1/ai/weekly-review", s.handleAIWeeklyReview)
 		r.Post("/api/v1/ai/inbox-triage", s.handleAIInboxTriage)
 		r.Post("/api/v1/ai/deadline-detect", s.handleAIDeadlineDetect)
+		r.Post("/api/v1/ai/suggest-links", s.handleAISuggestLinks)
 
 		// Recurring tasks — same .granit/recurring.json file the TUI's
 		// recurringtasks overlay edits. Server fires due rules at

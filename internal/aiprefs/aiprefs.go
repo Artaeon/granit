@@ -33,7 +33,10 @@ const (
 	FeatureSummarise      Feature = "summarise"
 	FeatureExtractTasks   Feature = "extract_tasks"
 	FeatureSuggestTags    Feature = "suggest_tags"
+	FeatureSuggestLinks   Feature = "suggest_links"
 	FeatureRewrite        Feature = "rewrite"
+	FeatureContinue       Feature = "continue_writing"
+	FeatureExplain        Feature = "explain"
 	FeatureChat           Feature = "chat"
 )
 
@@ -67,7 +70,10 @@ func Defaults() Preferences {
 			FeatureSummarise:      {Enabled: true, Provider: ""}, // already shipping; keep on
 			FeatureExtractTasks:   {Enabled: true, Provider: ""},
 			FeatureSuggestTags:    {Enabled: true, Provider: ""},
+			FeatureSuggestLinks:   {Enabled: true, Provider: ""},
 			FeatureRewrite:        {Enabled: true, Provider: ""},
+			FeatureContinue:       {Enabled: true, Provider: ""},
+			FeatureExplain:        {Enabled: true, Provider: ""},
 			FeatureChat:           {Enabled: true, Provider: ""},
 		},
 		RedactionEnabled: true,
