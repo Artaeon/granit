@@ -9,6 +9,7 @@
   import { onWsEvent } from '$lib/ws';
   import TaskCard from '$lib/tasks/TaskCard.svelte';
   import Kanban from '$lib/tasks/Kanban.svelte';
+  import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import TriageBoard from '$lib/tasks/TriageBoard.svelte';
   import BulkBar from '$lib/tasks/BulkBar.svelte';
   import TaskDetail from '$lib/tasks/TaskDetail.svelte';
@@ -166,6 +167,61 @@
       return [];
     }
   }
+
+  // ── AI Top-3 focus picker ────────────────────────────────────────
+  // A different agent than triage: triage processes UNTRIAGED
+  // tasks; this one looks across the WHOLE open task set and
+  // picks the 3 to do today, weighted by due date + priority +
+  // recency. Goes through chatStream so it joins the audit
+  // rollup. Renders proposals as a compact panel with rationale.
+  let aiFocusBusy = $state(false);
+  let aiFocusError = $state('');
+  let aiFocusResponse = $state('');
+  let aiFocusAbort: AbortController | null = null;
+
+  async function runAIFocus() {
+    if (aiFocusBusy) return;
+    aiFocusBusy = true;
+    aiFocusError = '';
+    aiFocusResponse = '';
+    aiFocusAbort = new AbortController();
+    // Compose a context blob with up to ~30 open tasks. Cap so a
+    // huge backlog doesn't blow the prompt size; the AI's job is
+    // to pick 3 from the slice we feed it, not to read the whole
+    // graph. Today's date threads in so "due tomorrow" lines up.
+    const open = tasks.filter((t) => !t.done).slice(0, 30);
+    const today = new Date().toISOString().slice(0, 10);
+    const lines = open.map((t) => {
+      const bits: string[] = [`- ${t.text}`];
+      if (t.priority) bits.push(`p${t.priority}`);
+      if (t.dueDate) bits.push(`due ${t.dueDate}`);
+      if (t.scheduledStart) bits.push(`scheduled ${t.scheduledStart.slice(0, 10)}`);
+      return bits.join(' · ');
+    }).join('\n');
+    const userMessage =
+      `Today is ${today}. From the user's open task list below, pick the 3 to do TODAY. ` +
+      'Rank them in execution order. Rationale: weight overdue + due-today highest, then high-priority, then "this unblocks future work" reasoning. ' +
+      'Format your reply as a strict markdown list, exactly 3 items:\n\n' +
+      '1. **<task title>** — one short sentence on why this is the right next move.\n' +
+      '2. **<task title>** — …\n' +
+      '3. **<task title>** — …\n\n' +
+      'Open tasks:\n\n' + lines;
+    try {
+      await api.chatStream(
+        [{ role: 'user', content: userMessage }],
+        undefined,
+        {
+          onChunk: (c) => { aiFocusResponse += c; },
+          onError: (err) => { aiFocusError = err.message; }
+        },
+        aiFocusAbort.signal
+      );
+    } finally {
+      aiFocusBusy = false;
+      aiFocusAbort = null;
+    }
+  }
+  function cancelAIFocus() { aiFocusAbort?.abort(); }
 
   async function runAITriage() {
     aiTriageBusy = true;
@@ -1222,6 +1278,35 @@
     </header>
 
     {#if view === 'list' || view === 'kanban'}
+      <!-- AI Top-3 focus picker. Different agent from triage/
+           deadline-detect: those operate on UNTRIAGED tasks;
+           this one looks across ALL open tasks and picks the 3
+           to do today, weighted by overdue + due-today + priority
+           + "this unblocks future work" reasoning. Always-visible
+           regardless of view so it's reachable from any task
+           context. Streams the response so tokens arrive
+           progressively on slow local LLMs. -->
+      {#if aiFocusBusy || aiFocusResponse || aiFocusError}
+        <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-gradient-to-r from-primary/5 via-secondary/5 to-primary/5">
+          <div class="flex items-baseline gap-2 mb-2">
+            <span class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">✨ Top 3 for today</span>
+            {#if aiFocusBusy}
+              <button onclick={cancelAIFocus} class="text-[11px] text-warning hover:underline">cancel</button>
+            {:else}
+              <button onclick={() => void runAIFocus()} class="text-[11px] text-secondary hover:underline">↻ regenerate</button>
+              <button onclick={() => { aiFocusResponse = ''; aiFocusError = ''; }} class="text-[11px] text-dim hover:text-error">dismiss</button>
+            {/if}
+          </div>
+          {#if aiFocusError}
+            <div class="text-xs text-error">{aiFocusError}</div>
+          {:else}
+            <div class="prose prose-sm max-w-none text-sm">
+              <MarkdownRenderer body={aiFocusResponse || '_thinking…_'} />
+            </div>
+          {/if}
+        </div>
+      {/if}
+
       <!-- Quick-add bar. Type a single-line task in granit's
            parser-friendly syntax; Enter creates it in today's daily
            note. Single most-impactful "more powerful tasks" change:
@@ -1241,6 +1326,15 @@
           disabled={!quickAdd.trim() || quickAddBusy}
           class="px-3 py-2 bg-primary text-on-primary rounded text-sm disabled:opacity-50 flex-shrink-0"
         >{quickAddBusy ? '…' : 'Add'}</button>
+        <button
+          onclick={() => void runAIFocus()}
+          disabled={aiFocusBusy || tasks.filter((t) => !t.done).length === 0}
+          title="AI picks 3 tasks to focus on today across your whole open list"
+          class="hidden sm:inline-flex px-3 py-2 text-sm bg-gradient-to-r from-primary/15 to-secondary/15 border border-primary/30 text-primary rounded hover:border-primary/60 disabled:opacity-50 flex-shrink-0 items-center gap-1"
+        >
+          <span>✨</span>
+          <span>{aiFocusBusy ? 'thinking…' : 'Top 3'}</span>
+        </button>
       </div>
       <!-- Saved filter presets. One-click application of a stored
            filter combo. The "+ save" chip captures the current
