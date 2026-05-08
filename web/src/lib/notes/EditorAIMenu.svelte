@@ -127,7 +127,7 @@
   //    dispatched actions (Continue / Section / Selection) close
   //    the menu and let the host's existing flow handle their UX.
 
-  type Action = 'title' | 'tldr' | 'tighten' | 'study' | 'concepts' | 'gaps';
+  type Action = 'title' | 'tldr' | 'tighten' | 'study' | 'concepts' | 'gaps' | 'translate-de' | 'translate-en' | 'cite';
   let busy = $state<Action | null>(null);
   let titleSuggestions = $state<string[]>([]);
   let titleAbort: AbortController | null = null;
@@ -461,6 +461,228 @@
     }
   }
 
+  // ─── Translate whole note (DE ↔ EN) ─────────────────────────────
+  // The user is multilingual (German + English). A button on the AI
+  // menu translates the WHOLE note in place — preserving all markdown
+  // structure, frontmatter cues, wikilinks, and code blocks. The
+  // translated version replaces the body as a single undoable
+  // transaction, so the original is one Cmd+Z away.
+  //
+  // Why not the AskAIDialog's existing EN/DE chips: those work on a
+  // selected range (a quote, a paragraph). Translating an entire note
+  // would mean Cmd+A → Mod-Shift-A → wait → Replace, four steps. This
+  // is one click. Different muscle, both shipped.
+  let translatePreview = $state<{ to: 'en' | 'de'; text: string } | null>(null);
+  let translateAbort: AbortController | null = null;
+  async function translateWholeNote(target: 'en' | 'de') {
+    if (busy) return;
+    if (body.trim().length < 30) {
+      toast.info('Note is too short to translate.');
+      return;
+    }
+    busy = target === 'de' ? 'translate-de' : 'translate-en';
+    translateAbort?.abort();
+    translateAbort = new AbortController();
+    translatePreview = { to: target, text: '' };
+    let buf = '';
+    const targetName = target === 'de' ? 'German' : 'English';
+    try {
+      await api.chatStream(
+        [
+          {
+            role: 'system',
+            content:
+              `You translate the user's markdown note to ${targetName}. PRESERVE ALL of: heading structure, bullet/numbered lists, blockquotes, code blocks (do NOT translate code), inline code spans, [[wikilinks]], [markdown](links), images, footnote markers, tables. Translate prose only. If the note is already in ${targetName}, translate the OTHER way (so DE→EN if it's already German, EN→DE if it's already English) — but bias toward ${targetName} when the source is mixed. Match the user's register (casual stays casual, academic stays academic). Return ONLY the translated note body. No preamble, no fences.`
+          },
+          { role: 'user', content: noteBodyForAI() }
+        ],
+        undefined,
+        {
+          onChunk: (c) => {
+            buf += c;
+            // Stream into the preview so the user can watch the
+            // translation arrive — apply happens on Accept.
+            translatePreview = { to: target, text: buf };
+          },
+          onDone: () => {},
+          onError: (err) => {
+            toast.error(err.message);
+            translatePreview = null;
+          }
+        },
+        translateAbort.signal
+      );
+    } finally {
+      busy = null;
+      translateAbort = null;
+    }
+  }
+  function applyTranslation() {
+    if (!translatePreview || !translatePreview.text.trim()) return;
+    onReplaceBody(translatePreview.text.trim());
+    translatePreview = null;
+    open = false;
+    toast.success('Translated (Cmd+Z to revert).');
+  }
+  function dismissTranslation() {
+    translateAbort?.abort();
+    translatePreview = null;
+  }
+
+  // ─── Cite-from-vault ──────────────────────────────────────────────
+  // For each top-level claim or paragraph in the note, find supporting
+  // notes in the user's vault via the existing AI link suggester
+  // (api.aiSuggestLinks already does the RAG-y candidate retrieval +
+  // model-side filtering). The user picks which suggestions to commit;
+  // accepting a suggestion appends a footnote definition at the end of
+  // the note and a `[^id]` reference next to the matching paragraph.
+  //
+  // Why a separate surface from the rail's LinkSuggestPanel: that one
+  // produces flat tag/link chips meant for inline insertion at cursor.
+  // This one is structured around CITATIONS — it pairs each suggestion
+  // with the specific claim it supports, so the user can audit before
+  // committing. The output format (footnote refs) is also distinct
+  // from the rail's bare `[[wikilink]]` insertion.
+  type Citation = {
+    /** The paragraph / claim being cited. */
+    claim: string;
+    /** Anchor line number in the source body (1-indexed). */
+    line: number;
+    /** Vault note path (without trailing .md). */
+    ref: string;
+    /** Display title for the cite. */
+    title: string;
+    /** Why the model thinks this note supports the claim. */
+    rationale: string;
+    /** Whether this suggestion has been accepted (committed). */
+    accepted?: boolean;
+  };
+  let citations = $state<Citation[]>([]);
+  let citeAbort: AbortController | null = null;
+  let citeError = $state<string | null>(null);
+  async function findCitations() {
+    if (busy) return;
+    if (body.trim().length < 100) {
+      toast.info('Note is too short to find citations for.');
+      return;
+    }
+    citeAbort?.abort();
+    citeAbort = new AbortController();
+    busy = 'cite';
+    citations = [];
+    citeError = null;
+    let buf = '';
+    try {
+      // Step 1: ask the AI to identify cite-worthy claims + which
+      // notes from the vault would support them. We pass the note's
+      // body PLUS a manifest of the user's existing vault notes (titles
+      // + paths, capped) so the model can name real candidates rather
+      // than hallucinating titles.
+      const manifest = await api.listNotes({ limit: 200 });
+      const notesList = manifest.notes
+        .filter((n) => n.path !== notePath)
+        .slice(0, 200)
+        .map((n) => `- ${n.title} (${n.path})`)
+        .join('\n');
+      await api.chatStream(
+        [
+          {
+            role: 'system',
+            content:
+              'You find citations from the user\'s vault for claims in their note. The user gives you (a) the note they\'re writing and (b) a list of notes available in their vault. Return STRICTLY a JSON array, no fences, no prose: [{"claim": "<paraphrase the claim, max 18 words>", "line": <1-indexed line of the body where the claim starts>, "ref": "<vault note path EXACTLY as listed, including .md>", "title": "<title>", "rationale": "<why this note supports it, max 18 words>"}]. Pick 3-6 STRONG matches (skip if nothing in the vault supports the claim). Cite only notes that genuinely support / contradict / illuminate the claim — do not cite a note just because the topic overlaps loosely. Refs MUST be one of the paths the user gave you; no inventing notes.'
+          },
+          {
+            role: 'user',
+            content:
+              `**My note:**\n\n${noteBodyForAI()}\n\n---\n\n**Available vault notes (path in parens — pick from these):**\n\n${notesList || '(none)'}`
+          }
+        ],
+        undefined,
+        {
+          onChunk: (c) => { buf += c; },
+          onDone: () => {
+            let cleaned = buf.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+            }
+            try {
+              const arr = JSON.parse(cleaned) as Citation[];
+              if (Array.isArray(arr)) {
+                // Validate refs against the manifest so we don't accept
+                // hallucinated paths. Drop any cite whose ref doesn't
+                // resolve.
+                const known = new Set(manifest.notes.map((n) => n.path));
+                citations = arr
+                  .filter((c) => c.claim && c.ref && known.has(c.ref))
+                  .map((c) => ({ ...c, accepted: false }));
+                if (citations.length === 0) {
+                  citeError = 'No vault notes match the claims in this note.';
+                }
+              }
+            } catch {
+              citeError = 'Model didn\'t return parseable JSON.';
+            }
+          },
+          onError: (err) => { citeError = err.message; }
+        },
+        citeAbort.signal
+      );
+    } finally {
+      busy = null;
+      citeAbort = null;
+    }
+  }
+  function dismissCitations() {
+    citeAbort?.abort();
+    citations = [];
+    citeError = null;
+  }
+  /** Append accepted cites to the body. We add a `[^N]` ref after the
+   *  cited paragraph and a definition block at the end of the body.
+   *  IDs are auto-numbered starting from the next free index after any
+   *  existing footnotes in the doc. */
+  function commitCitations() {
+    const accepted = citations.filter((c) => c.accepted);
+    if (accepted.length === 0) {
+      toast.info('No citations selected.');
+      return;
+    }
+    // Find the highest existing [^N] number so we don't collide.
+    let next = 1;
+    const existing = body.matchAll(/\[\^(\d+)\]/g);
+    for (const m of existing) {
+      const n = parseInt(m[1], 10);
+      if (Number.isFinite(n) && n >= next) next = n + 1;
+    }
+    const lines = body.split('\n');
+    // Walk in reverse so inserting refs doesn't shift earlier line
+    // indices. Pair cites with the line they target; we append the
+    // [^N] ref to the END of that line.
+    const cites = accepted
+      .map((c) => ({ ...c, id: 0 }))
+      .sort((a, b) => b.line - a.line);
+    for (const c of cites) {
+      c.id = next++;
+      const idx = Math.max(0, Math.min(lines.length - 1, c.line - 1));
+      lines[idx] = lines[idx].replace(/\s+$/, '') + `[^${c.id}]`;
+    }
+    // Build the definitions block. Order ascending by id so the doc
+    // reads top-to-bottom in citation order.
+    cites.sort((a, b) => a.id - b.id);
+    const defs = cites
+      .map((c) => {
+        const ref = c.ref.replace(/\.md$/, '');
+        return `[^${c.id}]: [[${ref}|${c.title}]] — ${c.rationale}`;
+      })
+      .join('\n');
+    let next_body = lines.join('\n').replace(/\s+$/, '');
+    next_body += '\n\n' + defs + '\n';
+    onReplaceBody(next_body);
+    citations = [];
+    open = false;
+    toast.success(`Added ${cites.length} citation${cites.length === 1 ? '' : 's'}.`);
+  }
+
   function fireChord(chord: string) {
     onChord(chord);
     open = false;
@@ -600,6 +822,42 @@
 
       <div class="border-t border-surface1 my-1"></div>
 
+      <!-- Translate whole note. Two language buttons live on a single
+           row to keep the menu tidy. The translation streams into a
+           preview drawer below — user reads, then accepts (replaces
+           body) or dismisses. -->
+      <div class="px-3 py-2 flex items-baseline gap-2">
+        <span class="flex-1 text-text">Translate</span>
+        <button
+          type="button"
+          onclick={() => translateWholeNote('de')}
+          disabled={busy !== null}
+          class="px-2 py-0.5 rounded text-[11px] font-mono bg-surface0 hover:bg-surface1 text-subtext hover:text-text disabled:opacity-50"
+        >{busy === 'translate-de' ? '…' : 'DE'}</button>
+        <button
+          type="button"
+          onclick={() => translateWholeNote('en')}
+          disabled={busy !== null}
+          class="px-2 py-0.5 rounded text-[11px] font-mono bg-surface0 hover:bg-surface1 text-subtext hover:text-text disabled:opacity-50"
+        >{busy === 'translate-en' ? '…' : 'EN'}</button>
+      </div>
+      <!-- Cite-from-vault: AI scans the note, picks claims that
+           need support, finds matching vault notes, and lets the
+           user commit footnote-style citations one at a time.
+           Different muscle from the rail's link suggester (that
+           one drops bare wikilinks at cursor). -->
+      <button
+        role="menuitem"
+        onclick={findCitations}
+        disabled={busy !== null}
+        class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text disabled:opacity-50"
+      >
+        <span class="flex-1 text-left">{busy === 'cite' ? 'Searching vault…' : 'Cite from vault'}</span>
+        <span class="text-[10px] text-dim">footnote refs</span>
+      </button>
+
+      <div class="border-t border-surface1 my-1"></div>
+
       <button role="menuitem" onclick={fireOverlay} class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text">
         <span class="flex-1 text-left">Open chat overlay</span>
         <kbd class="text-[10px] text-dim font-mono">{modKey}J</kbd>
@@ -692,6 +950,82 @@
           >
             Append as ## Self-test
           </button>
+        </div>
+      {/if}
+
+      {#if translatePreview}
+        <!-- Translation streaming preview. The user watches the
+             translated note arrive, then accepts (replaces body, one
+             undoable transaction) or dismisses (no edit). The
+             preview is read-only — re-running translation is one
+             tap on DE / EN at the top of this section. -->
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-primary/5 max-h-72 overflow-y-auto">
+          <div class="flex items-baseline gap-2 mb-2">
+            <span class="text-[10px] uppercase tracking-wider text-primary">
+              translation → {translatePreview.to === 'de' ? 'German' : 'English'}
+            </span>
+            <span class="flex-1"></span>
+            {#if busy === 'translate-de' || busy === 'translate-en'}
+              <button type="button" onclick={() => translateAbort?.abort()} class="text-[11px] text-warning hover:underline">cancel</button>
+            {/if}
+            <button type="button" onclick={dismissTranslation} class="text-[11px] text-dim hover:text-text">dismiss</button>
+          </div>
+          <pre class="text-[11px] text-subtext leading-snug whitespace-pre-wrap break-words font-sans">{translatePreview.text || (busy ? 'translating…' : '')}</pre>
+          {#if translatePreview.text && busy !== 'translate-de' && busy !== 'translate-en'}
+            <button
+              type="button"
+              onclick={applyTranslation}
+              class="mt-2 w-full text-xs px-2 py-1 rounded bg-primary text-on-primary font-medium"
+            >
+              Replace note body
+            </button>
+          {/if}
+        </div>
+      {/if}
+
+      {#if citations.length > 0 || citeError}
+        <!-- Cite-from-vault drawer. Each suggestion is a checkbox row:
+             user reviews the claim + which vault note supports it,
+             ticks the ones to commit, then "Add citations" splices a
+             [^N] ref next to each cited line and a definitions block
+             at the end of the body. All in one undoable transaction. -->
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-secondary/5 max-h-80 overflow-y-auto">
+          <div class="flex items-baseline gap-2 mb-2">
+            <span class="text-[10px] uppercase tracking-wider text-secondary">vault citations</span>
+            <span class="flex-1"></span>
+            <button type="button" onclick={findCitations} disabled={busy !== null} class="text-[11px] text-secondary hover:underline">regenerate</button>
+            <button type="button" onclick={dismissCitations} class="text-[11px] text-dim hover:text-text">dismiss</button>
+          </div>
+          {#if citeError}
+            <p class="text-[11px] text-warning italic">{citeError}</p>
+          {:else}
+            <ul class="space-y-1.5">
+              {#each citations as c, i (i)}
+                <li class="flex items-start gap-2 text-[11px] leading-snug">
+                  <input
+                    type="checkbox"
+                    bind:checked={c.accepted}
+                    class="mt-0.5 flex-shrink-0 accent-secondary"
+                    aria-label="commit citation"
+                  />
+                  <div class="flex-1 min-w-0">
+                    <div class="text-text">"{c.claim}"</div>
+                    <div class="text-secondary truncate">→ {c.title}</div>
+                    <div class="text-dim">{c.rationale}</div>
+                  </div>
+                </li>
+              {/each}
+            </ul>
+            {#if citations.some((c) => c.accepted)}
+              <button
+                type="button"
+                onclick={commitCitations}
+                class="mt-2 w-full text-xs px-2 py-1 rounded bg-secondary text-on-primary font-medium"
+              >
+                Add {citations.filter((c) => c.accepted).length} citation{citations.filter((c) => c.accepted).length === 1 ? '' : 's'}
+              </button>
+            {/if}
+          {/if}
         </div>
       {/if}
     </div>
