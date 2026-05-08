@@ -291,10 +291,14 @@
         placeholder="filter… (name, kind, venture, tag)"
         class="w-full px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
       />
-      <div class="flex gap-1 text-xs">
+      <!-- Five status pills. py-1.5 on mobile gives a ~32px tap row;
+           desktop tightens back to py-0.5 to keep the dense sidebar
+           feel. flex-wrap lets the row break on narrow phones rather
+           than crushing each label below readable width. -->
+      <div class="flex flex-wrap gap-1 text-xs">
         {#each ['active', 'paused', 'completed', 'archived', 'all'] as s}
           <button
-            class="flex-1 px-1 py-0.5 rounded {statusFilter === s ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
+            class="flex-1 min-w-[3.5rem] px-1 py-1.5 sm:py-0.5 rounded {statusFilter === s ? 'bg-surface1 text-text' : 'text-dim hover:text-text hover:bg-surface0'}"
             onclick={() => (statusFilter = s as typeof statusFilter)}
           >{s}</button>
         {/each}
