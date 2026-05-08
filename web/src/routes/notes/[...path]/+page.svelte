@@ -31,6 +31,7 @@
   import ReferenceNotePanel from '$lib/notes/ReferenceNotePanel.svelte';
   import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
   import AskThisNotePanel from '$lib/notes/AskThisNotePanel.svelte';
+  import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
 
@@ -641,6 +642,10 @@
     setReadingMode(!readingMode);
   }
   let helpOpen = $state(false);
+  // Audio mode — read-aloud player for the current note. Browser
+  // SpeechSynthesis only, no backend. Closed by default; opens via
+  // the toolbar button.
+  let audioOpen = $state(false);
 
   function handleAskAI(req: AskAIRequest) {
     askAIRequest = req;
@@ -1386,6 +1391,25 @@
             onReplaceBody={aiMenuReplaceBody}
           />
         {/if}
+        <!-- Audio mode — TTS read-aloud via the browser's Speech-
+             Synthesis API. No backend, no AI cost. Walk-and-listen
+             to your own notes. The button is a toggle: opens the
+             player strip above the editor; the player has its own
+             close button too. -->
+        <button
+          onclick={() => (audioOpen = !audioOpen)}
+          title={audioOpen ? 'Close read-aloud player' : 'Read this note aloud (browser TTS)'}
+          aria-label={audioOpen ? 'Close audio player' : 'Open audio player'}
+          aria-pressed={audioOpen}
+          class="hidden sm:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
+            {audioOpen ? 'bg-secondary/15 text-secondary' : 'text-subtext hover:text-secondary hover:bg-surface0'}"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
+            <path d="M11 5L6 9H2v6h4l5 4V5z" stroke-linejoin="round"/>
+            <path d="M15.5 8.5a5 5 0 010 7" stroke-linecap="round"/>
+            <path d="M19 5a9 9 0 010 14" stroke-linecap="round"/>
+          </svg>
+        </button>
         <!-- Reading mode (Mod-Shift-R) — combo toggle: preview +
              focus + serif typography. Restores the user's prior
              view + focus state on toggle off. The button reads as
@@ -1471,6 +1495,19 @@
              when the user wants the editor max-screen. -->
         <DailyContext onChanged={async () => { lastLoadedPath = ''; await load(np); }} />
         <DailyQuickAdd notePath={np} dailyDate={dailyDate} onAdded={async () => { lastLoadedPath = ''; await load(np); }} />
+      {/if}
+      <!-- Audio player strip — visible only when the user has
+           toggled the audio button. Sits above the deadline strip
+           so the controls are at the top of the reading surface,
+           the natural place to find a transport bar. The player
+           cleans up on unmount, so flipping the toggle off stops
+           any in-flight reading. -->
+      {#if audioOpen}
+        <NoteAudioPlayer
+          body={body}
+          title={note.title || note.path}
+          onClose={() => (audioOpen = false)}
+        />
       {/if}
       <!-- Deadline strip — surfaces project/goal-linked deadlines for
            this note. Renders nothing when frontmatter has neither
