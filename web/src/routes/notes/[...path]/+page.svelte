@@ -33,6 +33,7 @@
   import AskThisNotePanel from '$lib/notes/AskThisNotePanel.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
   import NotePresentation from '$lib/notes/NotePresentation.svelte';
+  import SectionQuestionsPanel from '$lib/notes/SectionQuestionsPanel.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
 
@@ -1136,6 +1137,20 @@
           Ask this note
         </h3>
         <AskThisNotePanel notePath={note.path} title={note.title ?? note.path} body={body} />
+      </section>
+      <!-- Active-reading study questions, scoped to ONE section.
+           Distinct from a whole-note question prompt: per-section
+           is tighter and produces sharper questions because the
+           AI isn't averaging over 4000 words. -->
+      <section>
+        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M9.1 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke-linecap="round"/>
+          </svg>
+          Section questions
+        </h3>
+        <SectionQuestionsPanel notePath={note.path} body={body} />
       </section>
       <!-- Research panel: derives highlights / footnotes / outbound
            URLs from the body so a research-style note becomes a
