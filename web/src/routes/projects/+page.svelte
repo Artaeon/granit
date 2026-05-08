@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { api, type Project } from '$lib/api';
+  import { api, type Project, type Task } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import ProjectDetail from '$lib/projects/ProjectDetail.svelte';
@@ -10,7 +10,94 @@
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
 
   let projects = $state<Project[]>([]);
+  let tasks = $state<Task[]>([]);
   let loading = $state(false);
+
+  // ── Per-project momentum derivations ─────────────────────────────
+  // Pull all tasks once on the list page so each card can render a
+  // tiny 4-week sparkline + "this week" counts. Without this, the
+  // ProjectDetail panel (right pane) was the only surface that
+  // showed momentum — users browsing the list saw only a flat
+  // milestone-progress bar. The data is already loaded for the
+  // detail panel; surfacing it on the cards costs zero extra wire
+  // calls and answers "which projects are alive" at a glance.
+  const SPARK_WEEKS = 4;
+  function isoWeekKey(d: Date): string {
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const day = (t.getUTCDay() + 6) % 7;
+    t.setUTCDate(t.getUTCDate() - day + 3);
+    const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+    const week = 1 + Math.round((t.getTime() - firstThu.getTime()) / (7 * 24 * 60 * 60 * 1000));
+    return `${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+  }
+  function startOfIsoWeek(d: Date): Date {
+    const t = new Date(d);
+    const day = (t.getDay() + 6) % 7;
+    t.setDate(t.getDate() - day);
+    t.setHours(0, 0, 0, 0);
+    return t;
+  }
+  function ymd(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  // Pre-compute the order of week keys for the sparkline so each
+  // card doesn't redo this work.
+  const sparkWeekOrder = $derived.by(() => {
+    const start = startOfIsoWeek(new Date());
+    const order: string[] = [];
+    for (let i = SPARK_WEEKS - 1; i >= 0; i--) {
+      const d = new Date(start);
+      d.setDate(d.getDate() - i * 7);
+      order.push(isoWeekKey(d));
+    }
+    return order;
+  });
+  // Map: projectName -> { spark: number[], scheduledThisWeek: number }
+  const momentumByProject = $derived.by(() => {
+    const out = new Map<string, { spark: number[]; scheduledThisWeek: number }>();
+    const today = ymd(new Date());
+    const monStart = ymd(startOfIsoWeek(new Date()));
+    for (const p of projects) {
+      out.set(p.name, { spark: new Array(SPARK_WEEKS).fill(0), scheduledThisWeek: 0 });
+    }
+    for (const t of tasks) {
+      // Project membership: explicit projectId OR notePath under a
+      // project's folder. Mirrors the matching ProjectDetail uses
+      // so the sparkline + the panel's burn-up agree exactly.
+      const matched: Project[] = [];
+      for (const p of projects) {
+        if (t.projectId === p.name) {
+          matched.push(p);
+          continue;
+        }
+        const folder = (p.folder ?? '').replace(/\/$/, '');
+        if (folder && t.notePath.startsWith(folder + '/')) matched.push(p);
+      }
+      if (matched.length === 0) continue;
+      // Completion → bump the matching week bucket.
+      if (t.done && t.completedAt) {
+        const k = isoWeekKey(new Date(t.completedAt));
+        const idx = sparkWeekOrder.indexOf(k);
+        if (idx >= 0) {
+          for (const p of matched) {
+            const m = out.get(p.name);
+            if (m) m.spark[idx]++;
+          }
+        }
+      }
+      // Scheduled in current week → bump the count.
+      if (!t.done && t.scheduledStart) {
+        const day = t.scheduledStart.slice(0, 10);
+        if (day >= monStart && day <= today) {
+          for (const p of matched) {
+            const m = out.get(p.name);
+            if (m) m.scheduledThisWeek++;
+          }
+        }
+      }
+    }
+    return out;
+  });
   let q = $state('');
   let statusFilter = $state<'all' | 'active' | 'paused' | 'completed' | 'archived'>('active');
   let createOpen = $state(false);
@@ -18,8 +105,16 @@
   async function load() {
     loading = true;
     try {
-      const r = await api.listProjects();
-      projects = r.projects;
+      // Two-call parallel load so the sparkline + this-week
+      // counts on each card don't wait for projects to finish
+      // before tasks even start. Both caches are kept in sync
+      // by the WS event subscriptions below.
+      const [pr, tr] = await Promise.all([
+        api.listProjects(),
+        api.listTasks({}).catch(() => ({ tasks: [] as Task[], total: 0 }))
+      ]);
+      projects = pr.projects;
+      tasks = tr.tasks ?? [];
     } catch (e) {
       toast.error('failed to load projects: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -265,6 +360,41 @@
                       <span class="text-dim">{p.tasksDone}/{p.tasksTotal}</span>
                     {/if}
                   </div>
+
+                  {#if momentumByProject.get(p.name)}
+                    {@const m = momentumByProject.get(p.name)!}
+                    {@const sparkMax = Math.max(...m.spark, 1)}
+                    {@const sparkTotal = m.spark.reduce((s, v) => s + v, 0)}
+                    {#if sparkTotal > 0 || m.scheduledThisWeek > 0}
+                      <!-- 4-week mini-sparkline + this-week count.
+                           The list now answers "is this project alive"
+                           at a glance — the user can spot stalled
+                           projects (flat zero bars) without clicking
+                           into each detail panel. Same ISO-week
+                           bucketing as the detail burn-up so the
+                           per-card view and the per-project view
+                           agree. -->
+                      <div class="flex items-center gap-2 mt-1.5 text-[10px]">
+                        <div class="flex items-end gap-0.5 h-3 flex-shrink-0" aria-hidden="true">
+                          {#each m.spark as count, i (i)}
+                            {@const isThisWeek = i === SPARK_WEEKS - 1}
+                            {@const pct = sparkMax === 0 ? 0 : Math.max(15, Math.round((count / sparkMax) * 100))}
+                            <div
+                              class="w-1 rounded-sm {isThisWeek ? 'bg-primary' : 'bg-secondary/40'}"
+                              style="height: {pct}%"
+                            ></div>
+                          {/each}
+                        </div>
+                        {#if sparkTotal > 0}
+                          <span class="text-dim font-mono">{sparkTotal} done · 4w</span>
+                        {/if}
+                        {#if m.scheduledThisWeek > 0}
+                          <span class="flex-1"></span>
+                          <span class="text-secondary font-mono" title="Tasks scheduled this week">📅 {m.scheduledThisWeek}</span>
+                        {/if}
+                      </div>
+                    {/if}
+                  {/if}
                 </button>
               </li>
             {/each}
