@@ -127,7 +127,7 @@
   //    dispatched actions (Continue / Section / Selection) close
   //    the menu and let the host's existing flow handle their UX.
 
-  type Action = 'title' | 'tldr' | 'tighten' | 'study' | 'concepts' | 'gaps' | 'translate-de' | 'translate-en' | 'cite';
+  type Action = 'title' | 'tldr' | 'tighten' | 'study' | 'concepts' | 'gaps' | 'translate-de' | 'translate-en' | 'cite' | 'outline';
   let busy = $state<Action | null>(null);
   let titleSuggestions = $state<string[]>([]);
   let titleAbort: AbortController | null = null;
@@ -683,6 +683,95 @@
     toast.success(`Added ${cites.length} citation${cites.length === 1 ? '' : 's'}.`);
   }
 
+  // ─── Outline-from-doc ─────────────────────────────────────────────
+  // For prose-heavy notes that lack heading structure, the AI proposes
+  // a TOC (## headings + optional ### sub-headings) the user can
+  // accept wholesale or pick from. Different from TL;DR (which lives
+  // at the top as a paragraph) — this is structure injection: the
+  // outline gets prepended as a `## Outline` block, OR the user can
+  // accept individual sections to insert later. Section accept-mode
+  // here is ALL-OR-NOTHING (the prepend) because partial-acceptance
+  // of headings without the prose under them creates orphan headings.
+  type OutlineSection = { heading: string; level: 2 | 3; gist: string };
+  let outlineSections = $state<OutlineSection[]>([]);
+  let outlineAbort: AbortController | null = null;
+  let outlineError = $state<string | null>(null);
+  async function generateOutline() {
+    if (busy) return;
+    if (body.trim().length < 200) {
+      toast.info('Note is too short for an outline.');
+      return;
+    }
+    outlineAbort?.abort();
+    outlineAbort = new AbortController();
+    busy = 'outline';
+    outlineSections = [];
+    outlineError = null;
+    let buf = '';
+    try {
+      await api.chatStream(
+        [
+          {
+            role: 'system',
+            content:
+              'You generate a markdown outline (table of contents) for the user\'s note. Return STRICTLY a JSON array, no fences, no prose: [{"heading": "<title for this section, max 6 words>", "level": 2 | 3, "gist": "<one short sentence describing what this section covers, max 18 words>"}]. Pick 4-8 sections covering the note\'s main ideas in their natural order. Use level 3 for sub-sections under a level 2 heading. The outline should READ as a logical structure — when the user reads heading + gist they should grok the note\'s shape. Lowercase headings unless they\'re proper nouns. Don\'t include "Introduction" / "Conclusion" filler unless the note actually has those.'
+          },
+          { role: 'user', content: noteBodyForAI() }
+        ],
+        undefined,
+        {
+          onChunk: (c) => { buf += c; },
+          onDone: () => {
+            let cleaned = buf.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+            }
+            try {
+              const arr = JSON.parse(cleaned) as OutlineSection[];
+              if (Array.isArray(arr)) {
+                outlineSections = arr.filter(
+                  (s) => s.heading && (s.level === 2 || s.level === 3)
+                );
+              }
+            } catch {
+              outlineError = 'Model didn\'t return parseable JSON.';
+            }
+          },
+          onError: (err) => { outlineError = err.message; }
+        },
+        outlineAbort.signal
+      );
+    } finally {
+      busy = null;
+      outlineAbort = null;
+    }
+  }
+  function dismissOutline() {
+    outlineAbort?.abort();
+    outlineSections = [];
+    outlineError = null;
+  }
+  function insertOutlineAtTop() {
+    if (outlineSections.length === 0) return;
+    const md =
+      '## Outline\n\n' +
+      outlineSections
+        .map((s) => {
+          const hashes = '#'.repeat(s.level);
+          // Render as markdown headings so the doc gets a real
+          // navigable structure; gist sits as italic prose under
+          // each heading so the user can flesh it out into the real
+          // section body. We DON'T blank the existing body — outline
+          // rides on top.
+          return `${hashes} ${s.heading}\n\n*${s.gist}*\n`;
+        })
+        .join('\n');
+    onInsertAtTop(md + '\n');
+    outlineSections = [];
+    open = false;
+    toast.success('Outline added at the top.');
+  }
+
   function fireChord(chord: string) {
     onChord(chord);
     open = false;
@@ -776,6 +865,15 @@
       >
         <span class="flex-1 text-left">{busy === 'tldr' ? 'Summarising…' : 'Pin TL;DR at top'}</span>
         <span class="text-[10px] text-dim">callout</span>
+      </button>
+      <button
+        role="menuitem"
+        onclick={generateOutline}
+        disabled={busy !== null}
+        class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text disabled:opacity-50"
+      >
+        <span class="flex-1 text-left">{busy === 'outline' ? 'Outlining…' : 'Generate outline'}</span>
+        <span class="text-[10px] text-dim">## headings</span>
       </button>
       <button
         role="menuitem"
@@ -978,6 +1076,46 @@
               class="mt-2 w-full text-xs px-2 py-1 rounded bg-primary text-on-primary font-medium"
             >
               Replace note body
+            </button>
+          {/if}
+        </div>
+      {/if}
+
+      {#if outlineSections.length > 0 || outlineError}
+        <!-- Outline-from-doc preview. The user reads the proposed
+             structure (heading + one-sentence gist) before committing.
+             Accept inserts the whole outline as a `## Outline` block
+             at the top of the body, with each heading + italic gist
+             as a real markdown section the user can then flesh out. -->
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-info/5 max-h-72 overflow-y-auto">
+          <div class="flex items-baseline gap-2 mb-2">
+            <span class="text-[10px] uppercase tracking-wider text-info">outline</span>
+            <span class="flex-1"></span>
+            <button type="button" onclick={generateOutline} disabled={busy !== null} class="text-[11px] text-secondary hover:underline">regenerate</button>
+            <button type="button" onclick={dismissOutline} class="text-[11px] text-dim hover:text-text">dismiss</button>
+          </div>
+          {#if outlineError}
+            <p class="text-[11px] text-warning italic">{outlineError}</p>
+          {:else}
+            <ul class="space-y-1">
+              {#each outlineSections as s, i (i)}
+                <li
+                  class="text-[11px] leading-snug"
+                  style="padding-left: {(s.level - 2) * 0.75}rem"
+                >
+                  <div class="text-text font-medium">
+                    {'#'.repeat(s.level)} {s.heading}
+                  </div>
+                  <div class="text-dim">{s.gist}</div>
+                </li>
+              {/each}
+            </ul>
+            <button
+              type="button"
+              onclick={insertOutlineAtTop}
+              class="mt-2 w-full text-xs px-2 py-1 rounded bg-primary text-on-primary font-medium"
+            >
+              Prepend ## Outline block
             </button>
           {/if}
         </div>

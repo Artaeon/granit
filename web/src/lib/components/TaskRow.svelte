@@ -77,16 +77,24 @@
 </script>
 
 <div class="flex items-baseline gap-2 py-1 group">
+  <!-- Wraps the visual 16x16 checkbox in a larger hit area on touch
+       devices so the user doesn't have to land a finger on a single
+       16px box. The visible state lives on the inner span; outer
+       button supplies the tap surface. -->
   <button
     onclick={toggle}
     disabled={busy}
-    class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors
-      {task.done ? 'bg-success border-success' : 'border-surface2 hover:border-primary'}"
+    class="-m-2 p-2 sm:m-0 sm:p-0 flex-shrink-0 self-center flex items-center justify-center transition-colors rounded"
     aria-label={task.done ? 'mark not done' : 'mark done'}
   >
-    {#if task.done}
-      <svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
-    {/if}
+    <span
+      class="w-4 h-4 rounded border flex items-center justify-center
+        {task.done ? 'bg-success border-success' : 'border-surface2 group-hover:border-primary'}"
+    >
+      {#if task.done}
+        <svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
+      {/if}
+    </span>
   </button>
 
   {#if task.priority > 0}
