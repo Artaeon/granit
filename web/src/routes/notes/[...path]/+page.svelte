@@ -989,7 +989,7 @@
           </svg>
           Reference
         </h3>
-        <ReferenceNotePanel currentPath={note.path} />
+        <ReferenceNotePanel currentPath={note.path} currentBody={body} currentTitle={note.title ?? ''} />
       </section>
       <section>
         <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">

@@ -19,8 +19,13 @@
   import { api, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
+  import { toast } from '$lib/components/toast';
 
-  let { currentPath = '' }: { currentPath?: string } = $props();
+  let {
+    currentPath = '',
+    currentBody = '',
+    currentTitle = ''
+  }: { currentPath?: string; currentBody?: string; currentTitle?: string } = $props();
 
   const STORAGE_PREFIX = 'granit.note.ref:';
   function refKey(path: string): string {
@@ -159,6 +164,71 @@
       void pickReference(match.path);
     }
   }
+
+  // ─── AI compare: current note vs reference ──────────────────────
+  // Streams a structured comparison: shared themes, where they
+  // disagree, and what each says that the other doesn't. Lives
+  // here (not the menu) because the comparison is meaningless
+  // without a pinned reference, and the panel is the home of that
+  // pin. Audit-gated chat pipeline.
+  let cmpBusy = $state(false);
+  let cmpAbort: AbortController | null = null;
+  let cmpResponse = $state('');
+  let cmpError = $state('');
+  let cmpOpen = $state(false);
+
+  function clip(text: string, max = 6000): string {
+    const t = text.trim();
+    return t.length > max ? t.slice(0, max) + '\n…(truncated)' : t;
+  }
+
+  async function compareNotes() {
+    if (cmpBusy) return;
+    if (!activePath || !activeBody.trim() || !currentBody.trim()) {
+      toast.info('Pick a reference first.');
+      return;
+    }
+    cmpAbort?.abort();
+    cmpAbort = new AbortController();
+    cmpBusy = true;
+    cmpError = '';
+    cmpResponse = '';
+    cmpOpen = true;
+    let buf = '';
+    try {
+      await api.chatStream(
+        [
+          {
+            role: 'system',
+            content:
+              'You compare two notes from the user\'s vault. Return markdown with three short sections, in this order:\n## Shared\n2-3 bullets — themes/claims both notes agree on or both treat as relevant.\n## They diverge\n2-3 bullets — where the two notes say different (or contradictory) things, naming each side. Format like "**A** says … but **B** says …".\n## Only in A · Only in B\nTwo short sub-lists, each 2-3 bullets, of points that appear in one note and not the other.\nBe concrete. Quote a phrase rather than paraphrase generically. Skip a section if there\'s nothing real to put in it. No preamble.'
+          },
+          {
+            role: 'user',
+            content:
+              `**A: ${currentTitle || currentPath}**\n\n${clip(currentBody)}\n\n---\n\n**B: ${activeTitle || activePath}**\n\n${clip(activeBody)}`
+          }
+        ],
+        undefined,
+        {
+          onChunk: (c) => { buf += c; cmpResponse = buf; },
+          onDone: () => {},
+          onError: (err) => { cmpError = err.message; }
+        },
+        cmpAbort.signal
+      );
+    } finally {
+      cmpBusy = false;
+      cmpAbort = null;
+    }
+  }
+  function dismissCompare() {
+    cmpAbort?.abort();
+    cmpBusy = false;
+    cmpResponse = '';
+    cmpError = '';
+    cmpOpen = false;
+  }
 </script>
 
 <div class="text-sm">
@@ -176,6 +246,18 @@
       >
         <span class="text-dim text-[10px]">{activeCollapsed ? '▸' : '▾'}</span>
         <span class="truncate">{activeTitle || activePath}</span>
+      </button>
+      <button
+        type="button"
+        onclick={compareNotes}
+        disabled={cmpBusy}
+        class="text-[10px] text-primary hover:underline disabled:opacity-50 px-1 inline-flex items-center gap-0.5"
+        title="AI compare current note vs this reference"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-2.5 h-2.5">
+          <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
+        </svg>
+        {cmpBusy ? '…' : 'compare'}
       </button>
       <a
         href="/notes/{encodeURIComponent(activePath)}"
@@ -195,6 +277,29 @@
         class="text-[10px] text-dim hover:text-error px-1"
       >×</button>
     </div>
+    {#if cmpOpen}
+      <div class="mb-2 p-2 bg-primary/5 border border-primary/20 rounded">
+        <div class="flex items-baseline gap-2 mb-1.5">
+          <span class="text-[10px] uppercase tracking-wider text-primary font-medium">comparison</span>
+          <span class="flex-1"></span>
+          {#if cmpBusy}
+            <button onclick={() => cmpAbort?.abort()} class="text-[10px] text-warning hover:underline">cancel</button>
+          {:else if cmpResponse}
+            <button onclick={compareNotes} class="text-[10px] text-secondary hover:underline">regenerate</button>
+          {/if}
+          <button onclick={dismissCompare} class="text-[10px] text-dim hover:text-text">dismiss</button>
+        </div>
+        {#if cmpError}
+          <p class="text-[11px] text-error">{cmpError}</p>
+        {:else if cmpBusy && !cmpResponse}
+          <p class="text-[11px] text-dim italic">comparing…</p>
+        {:else}
+          <div class="reference-prose text-[12px]">
+            <MarkdownRenderer body={cmpResponse} />
+          </div>
+        {/if}
+      </div>
+    {/if}
     {#if !activeCollapsed}
       {#if activeLoading}
         <div class="text-[11px] text-dim italic">loading…</div>
