@@ -64,6 +64,114 @@
   // long doc, we tint a 2px line at the top of the editor pane to
   // surface 'how far through am I'. Cheap, no polling.
   let readProgress = $state(0);
+
+  // Preview-pane scroll container. Bound below to the rendered
+  // preview viewport (when viewMode === 'preview' or 'split'). The
+  // Outline panel uses it as the IntersectionObserver root for
+  // active-heading tracking, and the per-heading checkpoint logic
+  // below treats every heading that scrolls past the top crosshair
+  // as "visited" (persisted per note path).
+  let previewContainer = $state<HTMLElement | null>(null);
+  // Active heading line in the preview, surfaced upward by Outline.
+  // We don't strictly need it on the page, but it lets us drive the
+  // visited-checkpoint logic from a single source of truth: every
+  // heading the reader passes through with a downward scroll gets
+  // ticked as visited.
+  // Visited-section tracking — persisted per note path. Each entry
+  // is the source line number of a heading the reader has scrolled
+  // past in the preview. Cap at 200 entries per note to keep the
+  // localStorage payload small; older entries fall off the front
+  // first which models "recently read" reasonably for revisits.
+  const VISITED_KEY = 'granit.note.visited';
+  function loadVisitedMap(): Record<string, number[]> {
+    if (typeof localStorage === 'undefined') return {};
+    try {
+      return (JSON.parse(localStorage.getItem(VISITED_KEY) ?? '{}') as Record<string, number[]>) || {};
+    } catch {
+      return {};
+    }
+  }
+  function saveVisitedMap(m: Record<string, number[]>) {
+    try { localStorage.setItem(VISITED_KEY, JSON.stringify(m)); } catch {}
+  }
+  let visitedHeadings = $state<Set<number>>(new Set());
+  // Reload the visited set when the note path changes — the set
+  // is per-note. Wrapped in $effect so a reactive $page.params.path
+  // change triggers a reload without manual plumbing in load().
+  $effect(() => {
+    const p = note?.path;
+    if (!p) { visitedHeadings = new Set(); return; }
+    const m = loadVisitedMap();
+    visitedHeadings = new Set(m[p] ?? []);
+  });
+  function markVisited(line: number) {
+    if (!note) return;
+    if (visitedHeadings.has(line)) return;
+    const next = new Set(visitedHeadings);
+    next.add(line);
+    visitedHeadings = next;
+    const m = loadVisitedMap();
+    const arr = (m[note.path] ?? []).filter((x) => x !== line);
+    arr.push(line);
+    if (arr.length > 200) arr.splice(0, arr.length - 200);
+    m[note.path] = arr;
+    // Cap at 100 notes to keep storage small; drop the earliest-
+    // added once we exceed the limit.
+    const keys = Object.keys(m);
+    if (keys.length > 100) {
+      for (const k of keys.slice(0, keys.length - 80)) delete m[k];
+    }
+    saveVisitedMap(m);
+  }
+  // Clear the visited set for the current note (Outline button below).
+  function resetVisited() {
+    if (!note) return;
+    visitedHeadings = new Set();
+    const m = loadVisitedMap();
+    delete m[note.path];
+    saveVisitedMap(m);
+  }
+  // Preview-pane reading progress (0..1). Different surface from the
+  // editor's `readProgress` because the user can scroll preview
+  // independently in split mode. Also fuels the heading-checkpoint
+  // marker — every time the preview scrolls, we tick any heading
+  // whose top crossed above the viewport's top quarter.
+  let previewProgress = $state(0);
+  let previewProgressRaf = 0;
+  function onPreviewScroll() {
+    if (!previewContainer) return;
+    if (previewProgressRaf) return;
+    previewProgressRaf = requestAnimationFrame(() => {
+      previewProgressRaf = 0;
+      const c = previewContainer!;
+      const denom = Math.max(1, c.scrollHeight - c.clientHeight);
+      previewProgress = Math.max(0, Math.min(1, c.scrollTop / denom));
+      // Tick every heading whose top is above the viewport's top
+      // quarter (matches Outline's active-heading bias).
+      const cTop = c.getBoundingClientRect().top;
+      const cutoff = cTop + c.clientHeight * 0.25;
+      const els = c.querySelectorAll<HTMLElement>('[data-heading-line]');
+      for (const el of els) {
+        const top = el.getBoundingClientRect().top;
+        if (top <= cutoff) {
+          const ln = parseInt(el.dataset.headingLine ?? '', 10);
+          if (Number.isFinite(ln)) markVisited(ln);
+        }
+      }
+    });
+  }
+  // Re-attach the scroll listener whenever the container ref or
+  // view mode changes. Using onPreviewScroll directly so the rAF
+  // throttle stays per-handler.
+  $effect(() => {
+    const c = previewContainer;
+    if (!c) return;
+    c.addEventListener('scroll', onPreviewScroll, { passive: true });
+    // Initial tick so a doc that loads with the user at top still
+    // marks the first heading visible.
+    onPreviewScroll();
+    return () => c.removeEventListener('scroll', onPreviewScroll);
+  });
   let editor:
     | {
         scrollToLine: (n: number) => void;
@@ -965,8 +1073,25 @@
 {#snippet infoContent()}
   <div class="p-3 space-y-4 overflow-y-auto h-full">
     <section>
-      <h3 class="text-xs uppercase tracking-wider text-dim mb-2">Outline</h3>
-      <Outline body={body} onJump={jumpToLine} />
+      <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5">
+        <span>Outline</span>
+        {#if visitedHeadings.size > 0}
+          <button
+            type="button"
+            onclick={resetVisited}
+            class="ml-auto text-[9px] tracking-normal normal-case text-dim hover:text-error"
+            title="clear visited-section ticks for this note"
+            aria-label="reset reading progress"
+          >reset ✓</button>
+        {/if}
+      </h3>
+      <Outline
+        body={body}
+        onJump={jumpToLine}
+        cursorLine={cursorLine}
+        scrollContainer={viewMode !== 'edit' ? previewContainer : null}
+        visited={visitedHeadings}
+      />
     </section>
     {#if note}
       <section>
@@ -1162,7 +1287,7 @@
           {pinned.has(note.path) ? '★' : '☆'}
         </button>
         <span class="text-xs text-dim hidden sm:inline">
-          {wordCount} words{#if wordCount >= 50} · {readingMinutes} min read{/if}
+          {wordCount} words{#if wordCount >= 50} · {readingMinutes} min read{#if viewMode === 'preview' && previewProgress > 0.05 && previewProgress < 0.95} · {Math.max(1, Math.ceil(readingMinutes * (1 - previewProgress)))} left{/if}{/if}
         </span>
         <!-- view-mode toggle -->
         <div class="hidden sm:flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs">
@@ -1341,10 +1466,11 @@
            doesn't render a visible artifact on short notes. The
            transition smooths the value as we throttle the source
            on rAF. -->
-      {#if readProgress > 0.005}
+      {@const activeProgress = viewMode === 'preview' ? previewProgress : readProgress}
+      {#if activeProgress > 0.005}
         <div
           class="h-[2px] bg-primary/70 transition-[width] duration-100 ease-out"
-          style="width: {(readProgress * 100).toFixed(1)}%"
+          style="width: {(activeProgress * 100).toFixed(1)}%"
           aria-hidden="true"
         ></div>
       {/if}
@@ -1352,7 +1478,7 @@
         {#if viewMode === 'edit'}
           <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} />
         {:else if viewMode === 'preview'}
-          <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4">
+          <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4" bind:this={previewContainer}>
             <div class="max-w-3xl mx-auto">
               <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
             </div>
@@ -1361,7 +1487,7 @@
           <!-- split (desktop only) -->
           <div class="h-full grid grid-cols-1 lg:grid-cols-2 gap-2">
             <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} />
-            <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block">
+            <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block" bind:this={previewContainer}>
               <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
             </div>
           </div>

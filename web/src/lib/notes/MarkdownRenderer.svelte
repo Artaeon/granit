@@ -314,7 +314,71 @@
     }
     // Obsidian callouts last so the regex sees the final tree.
     s = rewriteCallouts(s);
+    // Inject heading line metadata so the Outline panel + reading-
+    // progress tracker can map headings → source line and observe
+    // them with IntersectionObserver. We pair headings in
+    // appearance order with the headings parsed from the source body
+    // (cheap O(n)). Only adds attributes when no existing id/data-
+    // heading-line is present, so footnote headings (none) or
+    // user-authored ones survive untouched.
+    s = injectHeadingMeta(s, body);
     return s;
+  }
+
+  // Build a list of heading lines from the source body, fence-aware.
+  // Returns parallel arrays: line numbers (1-based), heading text.
+  // The text is normalised (collapsed whitespace, lowercased) so the
+  // slug below is stable across the same heading reappearing later.
+  function collectHeadingMetaFromBody(src: string): { line: number; slug: string }[] {
+    const out: { line: number; slug: string }[] = [];
+    if (!src) return out;
+    const stripped = stripFrontmatter(src);
+    const offset = src.length - stripped.length;
+    // Compute line offset from frontmatter byte stripping. Cheap: count
+    // newlines in the stripped portion of the source.
+    const removed = src.slice(0, offset);
+    const lineOffset = removed ? removed.split('\n').length - 1 : 0;
+    const lines = stripped.split('\n');
+    let inFence = false;
+    const slugCounts = new Map<string, number>();
+    for (let i = 0; i < lines.length; i++) {
+      const t = lines[i];
+      if (/^```/.test(t.trim()) || /^~~~/.test(t.trim())) {
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence) continue;
+      const m = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*$/.exec(t);
+      if (!m) continue;
+      const text = m[2].trim();
+      const baseSlug = text
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .slice(0, 80) || 'h';
+      const n = slugCounts.get(baseSlug) ?? 0;
+      slugCounts.set(baseSlug, n + 1);
+      const slug = n === 0 ? baseSlug : `${baseSlug}-${n}`;
+      out.push({ line: i + 1 + lineOffset, slug });
+    }
+    return out;
+  }
+
+  function injectHeadingMeta(rendered: string, src: string): string {
+    const meta = collectHeadingMetaFromBody(src);
+    if (meta.length === 0) return rendered;
+    let i = 0;
+    return rendered.replace(/<(h[1-6])(\b[^>]*)>/g, (m, tag: string, attrs: string) => {
+      // Skip headings inside callout/embed cards — their bodies pass
+      // through marked too and we don't want phantom doubles in the
+      // observer. Cheap heuristic: marked never inserts an existing
+      // id/data-heading-line on a heading, so if one's already there
+      // we trust it (e.g. embed-card sub-render).
+      if (/\sid=|\sdata-heading-line=/.test(attrs)) return m;
+      if (i >= meta.length) return m;
+      const { line, slug } = meta[i++];
+      return `<${tag} id="h-${slug}" data-heading-line="${line}" data-heading-slug="${slug}"${attrs}>`;
+    });
   }
 
   function esc(s: string): string {
