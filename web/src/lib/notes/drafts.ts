@@ -143,3 +143,83 @@ export function draftDivergesFromServer(draft: Draft, serverBody: string): boole
 function normalize(s: string): string {
   return s.replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n+$/g, '');
 }
+
+// ─── Reconnect flush ────────────────────────────────────────────────
+//
+// Before today, drafts for the currently-open note kept retrying via
+// the editor's auto-save loop, but drafts for OTHER notes (saved
+// while offline, then user navigated away) just sat in localStorage.
+// When the user came back online, those drafts didn't push until
+// they manually re-opened each affected note. flushDrafts() is the
+// reconnect hook: walk the index and PUT each draft, clearing on
+// success. Skips notes the user is currently editing — let the open
+// editor's own dirty-tracking handle those (it has the live body,
+// the draft on disk might be slightly older).
+//
+// On a network outage / 5xx server, we leave the draft in place so a
+// later flush can retry. 4xx (typically 409 conflict / 401 unauth)
+// drops the draft because the user needs to resolve it manually —
+// silent retries on a real conflict would loop forever.
+
+export interface DraftFlushReport {
+  attempted: number;
+  succeeded: number;
+  failed: number;
+}
+
+export type DraftPutFn = (
+  path: string,
+  body: { body: string; frontmatter?: Record<string, unknown> }
+) => Promise<{ modTime: string }>;
+
+let flushInFlight = false;
+
+/**
+ * Push every queued draft to the server. Pass an optional
+ * `currentlyOpenPath` so the active editor's draft isn't double-PUT
+ * (the editor has its own retry loop with the live body).
+ *
+ * Returns a brief report; callers can surface "synced N notes" toasts.
+ */
+export async function flushDrafts(
+  put: DraftPutFn,
+  currentlyOpenPath?: string
+): Promise<DraftFlushReport> {
+  // Deduplicate concurrent calls — wasOffline + a manual "retry now"
+  // click could both fire flush at the same instant.
+  if (flushInFlight) return { attempted: 0, succeeded: 0, failed: 0 };
+  flushInFlight = true;
+  let attempted = 0;
+  let succeeded = 0;
+  let failed = 0;
+  try {
+    const drafts = listDrafts();
+    for (const { path, draft } of drafts) {
+      if (path === currentlyOpenPath) continue; // editor handles its own
+      attempted++;
+      try {
+        await put(path, { body: draft.body });
+        clearDraft(path);
+        succeeded++;
+      } catch (err) {
+        // 4xx (status >= 400 < 500) — manual resolution required.
+        // 5xx / network — keep draft for the next flush attempt.
+        const status = (err as { status?: number })?.status;
+        if (typeof status === 'number' && status >= 400 && status < 500) {
+          clearDraft(path);
+        }
+        failed++;
+      }
+    }
+  } finally {
+    flushInFlight = false;
+  }
+  return { attempted, succeeded, failed };
+}
+
+/** Count of drafts currently queued. Read from the index, doesn't
+ *  validate each entry — cheaper than listDrafts() for the badge in
+ *  the offline pill that reads on every render. */
+export function queuedDraftCount(): number {
+  return readIndex().length;
+}
