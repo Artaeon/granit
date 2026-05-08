@@ -29,6 +29,7 @@
   const ACTIONS: Action[] = [
     { label: 'B', chord: 'mod+b', title: 'Bold' },
     { label: 'I', chord: 'mod+i', title: 'Italic' },
+    { label: '◐', chord: 'mod+shift+h', title: 'Highlight (==text==)' },
     { label: '<>', chord: 'mod+`', title: 'Inline code' },
     { label: '🔗', chord: 'mod+k', title: 'Link' },
     { label: 'H1', chord: 'mod+alt+1', title: 'Heading 1' },

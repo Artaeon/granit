@@ -668,6 +668,28 @@
   // words because "<1 min" on a tiny note is noise.
   let readingMinutes = $derived(Math.max(1, Math.round(wordCount / 225)));
 
+  // Word-count goal — frontmatter `target_words: 1500` turns the
+  // status-bar word count into a progress indicator. Common shape
+  // for journaling / essay drafts where the user committed to a
+  // target. We render a thin progress bar under the count + a
+  // percentage label so progress is visible at a glance without
+  // taking footer space when no target is set.
+  let wordGoal = $derived.by<number | null>(() => {
+    const fm = note?.frontmatter as Record<string, unknown> | undefined;
+    if (!fm) return null;
+    const v = fm.target_words ?? fm.word_goal;
+    if (typeof v === 'number' && v > 0) return Math.floor(v);
+    if (typeof v === 'string') {
+      const n = parseInt(v, 10);
+      if (!Number.isNaN(n) && n > 0) return n;
+    }
+    return null;
+  });
+  let wordGoalPct = $derived.by(() => {
+    if (!wordGoal) return 0;
+    return Math.min(100, Math.round((wordCount / wordGoal) * 100));
+  });
+
   // Cursor position state — populated by the Editor's onCursor
   // callback. line:col is 1-indexed (matches what every editor
   // status bar shows). selLen > 0 means the user has a selection;
@@ -1252,7 +1274,27 @@
            Right side carries autocomplete hint on mobile only —
            desktop has the help button in the header. -->
       <footer class="px-3 py-1.5 border-t border-surface1 text-[11px] text-dim flex items-center gap-3 flex-wrap">
-        <span class="font-mono tabular-nums">{wordCount} words</span>
+        {#if wordGoal}
+          <!-- Word-count goal progress: chip + tiny progress bar
+               surfaces a writing target set in frontmatter
+               (target_words: 1500). When the goal is hit, palette
+               flips to success so the user sees the win. -->
+          <span class="inline-flex items-baseline gap-1.5 font-mono tabular-nums">
+            <span class={wordCount >= wordGoal ? 'text-success font-semibold' : 'text-text'}>
+              {wordCount.toLocaleString()}/{wordGoal.toLocaleString()}
+            </span>
+            <span class="text-dim">words</span>
+            <span class="inline-block w-12 h-1 rounded bg-surface1 overflow-hidden align-middle relative">
+              <span
+                class="absolute inset-y-0 left-0 {wordCount >= wordGoal ? 'bg-success' : 'bg-primary'}"
+                style="width: {wordGoalPct}%"
+              ></span>
+            </span>
+            <span class="text-dim">{wordGoalPct}%</span>
+          </span>
+        {:else}
+          <span class="font-mono tabular-nums">{wordCount} words</span>
+        {/if}
         <span class="hidden sm:inline opacity-60">·</span>
         <span class="hidden sm:inline font-mono tabular-nums">{charCount.toLocaleString()} chars</span>
         <span class="hidden md:inline opacity-60">·</span>

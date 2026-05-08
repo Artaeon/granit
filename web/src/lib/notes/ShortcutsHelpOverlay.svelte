@@ -37,6 +37,7 @@
         { keys: `${modKey}+B`, label: 'Bold the selection' },
         { keys: `${modKey}+I`, label: 'Italic the selection' },
         { keys: `${modKey}+Shift+I`, label: 'Italic (underscore form)' },
+        { keys: `${modKey}+Shift+H`, label: 'Highlight (==text==) — yellow marker for research / re-reading' },
         { keys: `${modKey}+K`, label: 'Wrap selection as a markdown link' },
         { keys: `${modKey}+\``, label: 'Inline code (toggle)' }
       ]

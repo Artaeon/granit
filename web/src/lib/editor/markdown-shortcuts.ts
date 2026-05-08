@@ -86,7 +86,19 @@ export const markdownShortcuts: readonly KeyBinding[] = [
   // Single `_` for italic too — some users prefer underscores. Same
   // toggle behaviour, accepts the alt shortcut.
   { key: 'Mod-Shift-i', preventDefault: true, run: (v) => toggleWrap(v, '_') },
-  { key: 'Mod-k', preventDefault: true, run: makeLink }
+  { key: 'Mod-k', preventDefault: true, run: makeLink },
+  // Mod-Shift-H: highlight the selection with `==…==` markdown.
+  // Renders as a yellow marker in the preview (and most other md
+  // viewers). The natural research/learning chord — pull a quote
+  // from a source, hit the chord, the highlight stays as a visual
+  // pin while the user keeps reading. Toggles like bold so a second
+  // press unhighlights.
+  { key: 'Mod-Shift-h', preventDefault: true, run: (v) => toggleWrap(v, '==') },
+  // Backtick-as-codespan toggle. Already mostly available via the
+  // 'Inline code' button in the selection toolbar (chord 'mod+`'),
+  // but a single character chord makes it discoverable from the
+  // keymap row in the cheat sheet.
+  { key: 'Mod-`', preventDefault: true, run: (v) => toggleWrap(v, '`') }
 ];
 
 // Smart paste — multi-format detection for the editor:

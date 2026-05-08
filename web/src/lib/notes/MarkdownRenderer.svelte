@@ -39,6 +39,11 @@
   // inline reference, `[^id]: text` line-start definition.
   const FNR_OPEN = '\x0EFNR\x0F';
   const FNR_CLOSE = '\x0E/FNR\x0F';
+  // Highlight sentinel — pre-/postprocess pair turns ==text== into
+  // <mark>. Same control-char sandwich as the others so marked sees
+  // it as opaque text and never tokenizes it.
+  const HL_OPEN = '\x0EHL\x0F';
+  const HL_CLOSE = '\x0E/HL\x0F';
 
   // Diagrams + image transclusions stashed during preprocess and
   // restored as styled elements in postprocess. Module-scoped so the
@@ -127,6 +132,11 @@
     });
     s = s.replace(/(^|[\s(])#([\p{L}\p{N}_/-]+)/gu, (_, pre, tag) => `${pre}${TAG_OPEN}${tag}${TAG_CLOSE}`);
     s = s.replace(/F(\d+)/g, (_, i) => fences[Number(i)]);
+    // Highlights: ==text== → <mark>text</mark>. Sentinel-wrapped so
+    // marked doesn't see the bare ==…== (which it'd pass through as
+    // text but might mangle inside list items in some edge cases).
+    // Re-fence-shielded above already, so we won't match inside code.
+    s = s.replace(/==([^=\n][^=]*?)==/g, (_, inner) => `${HL_OPEN}${inner}${HL_CLOSE}`);
     return s;
   }
 
@@ -246,6 +256,10 @@
     // Wikilinks → anchors. The new sentinel uses  between target
     // and display, so the target may safely contain `|`, hyphens,
     // spaces — none of which collide with marked's tokenizer.
+    // Highlights → <mark>. The HL sentinel is fence-shielded by the
+    // preprocess step so we won't ever match inside code blocks.
+    const hlRe = new RegExp(`${esc(HL_OPEN)}([\\s\\S]*?)${esc(HL_CLOSE)}`, 'g');
+    s = s.replace(hlRe, (_, inner: string) => `<mark class="md-highlight">${escHtml(inner)}</mark>`);
     const wlRe = new RegExp(
       `${esc(WIKI_OPEN)}([^${esc(WIKI_SEP)}]+)${esc(WIKI_SEP)}([^${esc(WIKI_CLOSE)}]+)${esc(WIKI_CLOSE)}`,
       'g'

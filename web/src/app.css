@@ -428,6 +428,25 @@ aside:hover nav::-webkit-scrollbar-thumb { background: var(--color-surface1); ba
   color: var(--color-accent);
   font-size: 0.92em;
 }
+/* ==highlight== rendering. Yellow marker on light themes, dimmed
+   amber on dark so it reads as a highlight without blasting the
+   eyes against a near-black bg. The padding keeps the highlight
+   pill-shaped with breathing room around the text. */
+.prose-note .md-highlight,
+mark.md-highlight {
+  background-color: rgba(249, 226, 175, 0.85); /* catppuccin yellow */
+  color: #1e1e2e; /* base text color, fixed for contrast on yellow */
+  padding: 0 0.2em;
+  border-radius: 3px;
+  text-shadow: none;
+}
+:root.dark .prose-note .md-highlight,
+:root.dark mark.md-highlight,
+[data-theme='dark'] .prose-note .md-highlight,
+[data-theme='dark'] mark.md-highlight {
+  background-color: rgba(249, 226, 175, 0.22);
+  color: var(--color-text);
+}
 .prose-note img {
   max-width: 100%;
   height: auto;
