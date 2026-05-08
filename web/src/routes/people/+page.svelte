@@ -101,6 +101,122 @@
     return days > p.cadence_days;
   }
 
+  // ─── AI: who should I reach out to? ──────────────────────────────
+  // Picks 2-3 people from the user's list with a short rationale
+  // tailored to *this* person — recent notes, role, cadence — so the
+  // suggestion is actionable, not just "stale". Streamed via the
+  // audit-gated chat pipeline.
+  type AIPick = { name: string; rationale: string };
+  let aiBusy = $state(false);
+  let aiAbort: AbortController | null = null;
+  let aiPicks = $state<AIPick[]>([]);
+  let aiError = $state('');
+  let aiRaw = $state('');
+
+  function buildPeopleSeed(): string {
+    // Cap at 30 candidates so the prompt stays bounded. Prefer stale
+    // first (the user wants to be reminded WHO to reach out to);
+    // never-contacted next; everyone else after.
+    const sortKey = (p: Person): number => {
+      if (p.archived) return 9999;
+      const stale = isStale(p) ? 0 : 1;
+      const days = daysSince(p.last_contacted_at);
+      const since = days === null ? 365 : days;
+      return stale * 1000 - since;
+    };
+    const candidates = [...people]
+      .filter((p) => !p.archived)
+      .sort((a, b) => sortKey(a) - sortKey(b))
+      .slice(0, 30);
+    return JSON.stringify(
+      candidates.map((p) => ({
+        name: p.name,
+        relationship: p.relationship || undefined,
+        cadence_days: p.cadence_days || undefined,
+        last_contacted_at: p.last_contacted_at || undefined,
+        days_since: daysSince(p.last_contacted_at),
+        is_stale: isStale(p) || undefined,
+        tags: p.tags && p.tags.length > 0 ? p.tags : undefined,
+        notes: p.notes ? p.notes.slice(0, 240) : undefined
+      })),
+      null,
+      2
+    );
+  }
+
+  async function aiSuggest() {
+    if (aiBusy) return;
+    aiAbort?.abort();
+    aiAbort = new AbortController();
+    aiBusy = true;
+    aiError = '';
+    aiPicks = [];
+    aiRaw = '';
+    const seed = buildPeopleSeed();
+    const system = 'You help the user keep up with relationships. You will see a JSON list of people with names, relationship type, optional notes, days since last contact, and cadence preference. Pick 2-3 people the user should reach out to TODAY and say WHY in one short specific sentence each. Prefer people who are stale (past cadence) or never-contacted. Avoid generic reasons like "you haven\'t talked in a while" — anchor in the notes / relationship / context. Return STRICTLY a JSON array, no prose, no fences: [{"name": "<exact name>", "rationale": "<under 18 words>"}].';
+    const user = `People list:\n\n\`\`\`json\n${seed}\n\`\`\``;
+    let buf = '';
+    try {
+      await api.chatStream(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        undefined,
+        {
+          onChunk: (c) => { buf += c; aiRaw = buf; },
+          onDone: () => {
+            // Try parse on done. Strip fences defensively.
+            let cleaned = buf.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+            }
+            try {
+              const arr = JSON.parse(cleaned) as AIPick[];
+              if (Array.isArray(arr)) {
+                // Filter to picks that match a real person on the list.
+                const known = new Map(people.map((p) => [p.name.toLowerCase(), p]));
+                aiPicks = arr.filter((x) => known.has((x.name ?? '').toLowerCase()));
+              }
+            } catch {
+              aiError = 'Model didn\'t return parseable JSON.';
+            }
+          },
+          onError: (err) => { aiError = err.message; }
+        },
+        aiAbort.signal
+      );
+    } finally {
+      aiBusy = false;
+      aiAbort = null;
+    }
+  }
+  function dismissAI() {
+    aiAbort?.abort();
+    aiBusy = false;
+    aiPicks = [];
+    aiError = '';
+    aiRaw = '';
+  }
+  function findPerson(name: string): Person | undefined {
+    return people.find((p) => p.name.toLowerCase() === name.toLowerCase());
+  }
+  async function pingByName(name: string) {
+    const p = findPerson(name);
+    if (!p) return;
+    try {
+      await api.pingPerson(p.id);
+      aiPicks = aiPicks.filter((x) => x.name.toLowerCase() !== name.toLowerCase());
+      toast.success(`pinged ${p.name}`);
+    } catch (e) {
+      toast.error('ping failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+  function openByName(name: string) {
+    const p = findPerson(name);
+    if (p) openEdit(p);
+  }
+
   // Birthday rendering — handle "today" / "tomorrow" / "in N days".
   function nextBirthdayLabel(birthday: string | undefined): string {
     if (!birthday) return '';
@@ -213,9 +329,61 @@
           {staleCount} need a ping
         </span>
       {/if}
+      {#if people.length >= 3}
+        <button
+          type="button"
+          onclick={aiSuggest}
+          disabled={aiBusy}
+          class="text-[11px] px-2 py-0.5 rounded inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 disabled:opacity-50"
+          title="Ask AI: who should I reach out to today?"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+            <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
+          </svg>
+          {aiBusy ? 'thinking…' : 'Suggest 3'}
+        </button>
+      {/if}
       <span class="flex-1"></span>
       <button onclick={openCreate} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New person</button>
     </div>
+
+    {#if aiBusy || aiPicks.length > 0 || aiError}
+      <section class="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+        <div class="flex items-baseline gap-2 mb-2">
+          <h3 class="text-xs uppercase tracking-wider text-primary font-medium">Today's reach-outs</h3>
+          <span class="flex-1"></span>
+          {#if aiBusy}
+            <span class="text-[11px] text-dim italic">thinking…</span>
+          {:else if aiPicks.length > 0}
+            <button onclick={aiSuggest} class="text-[11px] text-secondary hover:underline">regenerate</button>
+          {/if}
+          <button onclick={dismissAI} class="text-[11px] text-dim hover:text-text">dismiss</button>
+        </div>
+        {#if aiError}
+          <p class="text-xs text-error mb-2">{aiError}</p>
+          {#if aiRaw}
+            <details class="text-[11px] text-dim">
+              <summary class="cursor-pointer hover:text-text">raw response</summary>
+              <pre class="mt-1 text-[11px] whitespace-pre-wrap font-mono">{aiRaw}</pre>
+            </details>
+          {/if}
+        {/if}
+        {#if aiPicks.length === 0 && !aiBusy && !aiError}
+          <p class="text-xs text-dim italic">No suggestions came back.</p>
+        {/if}
+        <ul class="space-y-1.5">
+          {#each aiPicks as pick (pick.name)}
+            <li class="flex items-baseline gap-2 p-2 bg-mantle/50 border border-surface1/60 rounded">
+              <button type="button" onclick={() => openByName(pick.name)} class="text-sm font-medium text-text hover:text-primary truncate" title="open person">
+                {pick.name}
+              </button>
+              <span class="flex-1 text-xs text-subtext truncate">{pick.rationale}</span>
+              <button onclick={() => pingByName(pick.name)} class="text-[11px] px-2 py-0.5 rounded bg-success/15 text-success hover:bg-success/25" title="stamp last contact = today">ping</button>
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
 
     <!-- Birthdays strip -->
     {#if upcomingBirthdays.length > 0}
