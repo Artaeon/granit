@@ -192,6 +192,43 @@
     return out;
   });
 
+  // Tag-grouped view — bucket each note under its primary tag (the
+  // first entry in `note.tags`). Notes without tags collect under a
+  // single "untagged" bucket that sorts last so the meaningful tags
+  // surface first. The user typically curates tags as topics; this
+  // view answers "show me everything tagged #idea" without typing a
+  // search. Buckets sort by note count desc, then alphabetically — a
+  // big tag jumps to the top, ties resolve predictably.
+  interface TagSection { tag: string; notes: Note[]; untagged: boolean }
+  let tagSections = $derived.by<TagSection[]>(() => {
+    const buckets = new Map<string, Note[]>();
+    let untagged: Note[] = [];
+    for (const n of notes) {
+      const primary = n.tags && n.tags.length > 0 ? n.tags[0] : null;
+      if (!primary) {
+        untagged.push(n);
+        continue;
+      }
+      const bucket = buckets.get(primary);
+      if (bucket) bucket.push(n);
+      else buckets.set(primary, [n]);
+    }
+    const out: TagSection[] = [];
+    for (const [tag, list] of buckets) {
+      list.sort((a, b) => (a.modTime > b.modTime ? -1 : 1));
+      out.push({ tag, notes: list, untagged: false });
+    }
+    out.sort((a, b) => {
+      const dc = b.notes.length - a.notes.length;
+      return dc !== 0 ? dc : a.tag.localeCompare(b.tag);
+    });
+    if (untagged.length > 0) {
+      untagged.sort((a, b) => (a.modTime > b.modTime ? -1 : 1));
+      out.push({ tag: 'untagged', notes: untagged, untagged: true });
+    }
+    return out;
+  });
+
   // ---- actions ----
 
   function open(n: Note) {
@@ -325,6 +362,7 @@
         { id: 'tree' as View, label: 'Tree', count: notes.length },
         { id: 'all' as View, label: 'All', count: notes.length },
         { id: 'alpha' as View, label: 'A–Z', count: notes.length },
+        { id: 'tags' as View, label: 'Tags', count: tagSections.length },
         ...(q.trim() ? [{ id: 'search' as View, label: 'Search', count: searchResults.length }] : [])
       ] as t}
         <button
@@ -373,6 +411,28 @@
           {#each alphaSections as sec (sec.letter)}
             <div class="sticky top-0 z-10 bg-mantle/95 backdrop-blur px-3 sm:px-4 py-1 text-[11px] uppercase tracking-wider text-dim border-b border-surface1/60">
               {sec.letter} <span class="opacity-60 ml-1">{sec.notes.length}</span>
+            </div>
+            <ul class="divide-y divide-surface1/50">
+              {#each sec.notes as n (n.path)}
+                {@render row(n)}
+              {/each}
+            </ul>
+          {/each}
+        </div>
+      {/if}
+    {:else if view === 'tags'}
+      {#if tagSections.length === 0}
+        <div class="p-8 text-center text-sm text-dim">No tagged notes yet. Add a <code class="text-text">tags:</code> field in frontmatter or use <code class="text-text">#tag</code> in the body.</div>
+      {:else}
+        <div class="overflow-y-auto h-full">
+          {#each tagSections as sec (sec.tag)}
+            <div class="sticky top-0 z-10 bg-mantle/95 backdrop-blur px-3 sm:px-4 py-1.5 border-b border-surface1/60 flex items-center gap-2">
+              {#if sec.untagged}
+                <span class="text-[11px] uppercase tracking-wider text-dim italic">untagged</span>
+              {:else}
+                <span class="text-xs px-1.5 py-0.5 rounded bg-secondary/15 text-secondary">#{sec.tag}</span>
+              {/if}
+              <span class="text-[11px] text-dim">{sec.notes.length}</span>
             </div>
             <ul class="divide-y divide-surface1/50">
               {#each sec.notes as n (n.path)}
