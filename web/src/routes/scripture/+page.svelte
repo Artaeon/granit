@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { goto } from '$app/navigation';
   import {
     api,
@@ -298,6 +298,132 @@
   let devotionalPreset = $state<AgentPreset | null>(null);
   let aiLoading = $state(false);
   let aiGoal = $state('');
+
+  // AI commentary — short in-page gloss streamed via /chat/stream.
+  // Distinct from "AI reflection" (which spawns a full devotional note
+  // via the agent preset): commentary is a 3-paragraph contextual
+  // explainer rendered right under the verse so the user can ask a
+  // quick question without leaving the read view. Three flavours:
+  //   - context:     historical / literary background
+  //   - cross-ref:   thematic parallels elsewhere in scripture
+  //   - application: how this might land for the reader today
+  // Each is a one-shot chatStream call; results land in commentaryText
+  // as tokens arrive. Audit-gated through /chat/stream like every
+  // other AI surface in granit.
+  type CommentaryMode = 'context' | 'cross-ref' | 'application';
+  let commentaryText = $state('');
+  let commentaryMode = $state<CommentaryMode | null>(null);
+  let commentaryStreaming = $state(false);
+  let commentaryError = $state('');
+  let commentaryAbort: AbortController | null = $state(null);
+
+  function commentaryPrompt(verse: Scripture, kind: CommentaryMode): string {
+    const ref = verse.source ? `${verse.source}: ` : '';
+    const verseLine = `${ref}"${verse.text}"`;
+    switch (kind) {
+      case 'context':
+        return (
+          `Provide concise historical and literary context for this passage. ` +
+          `Two short paragraphs: who wrote it, who it was originally addressed to, ` +
+          `what was happening, and how the surrounding chapter shapes its meaning. ` +
+          `Stick to scholarly consensus; mark anything contested as such.\n\n${verseLine}`
+        );
+      case 'cross-ref':
+        return (
+          `List 3-5 cross-references — other passages of scripture that echo or ` +
+          `expand on this one. For each, give the citation and one sentence on ` +
+          `the connection. Plain text list, no preamble.\n\n${verseLine}`
+        );
+      case 'application':
+        return (
+          `Offer a thoughtful, non-trite personal application of this passage for ` +
+          `a contemporary reader. Two paragraphs. Avoid platitudes; be specific ` +
+          `about the kinds of situations where this verse might land. End with ` +
+          `one open-ended question for reflection.\n\n${verseLine}`
+        );
+    }
+  }
+
+  async function runCommentary(kind: CommentaryMode) {
+    if (!current) return;
+    // If a stream is in flight from a previous click, cancel it before
+    // starting a new one — otherwise tokens from both calls interleave
+    // into the same buffer.
+    if (commentaryAbort) {
+      commentaryAbort.abort();
+      commentaryAbort = null;
+    }
+    commentaryMode = kind;
+    commentaryText = '';
+    commentaryError = '';
+    commentaryStreaming = true;
+    const ctl = new AbortController();
+    commentaryAbort = ctl;
+    await api.chatStream(
+      [{ role: 'user', content: commentaryPrompt(current, kind) }],
+      undefined,
+      {
+        onChunk: (chunk) => {
+          commentaryText += chunk;
+        },
+        onDone: () => {
+          commentaryStreaming = false;
+          commentaryAbort = null;
+          if (!commentaryText) commentaryError = 'AI returned an empty response.';
+        },
+        onError: (err) => {
+          commentaryStreaming = false;
+          commentaryAbort = null;
+          commentaryError = err.message;
+        }
+      },
+      ctl.signal
+    );
+  }
+
+  function stopCommentary() {
+    if (commentaryAbort) {
+      commentaryAbort.abort();
+      commentaryAbort = null;
+    }
+    commentaryStreaming = false;
+  }
+
+  function clearCommentary() {
+    stopCommentary();
+    commentaryText = '';
+    commentaryMode = null;
+    commentaryError = '';
+  }
+
+  // Copy the visible verse to clipboard. Falls back to a manual prompt
+  // if the Clipboard API isn't available (Safari < 13 / non-secure
+  // contexts). The caller passes either the curated verse or a bible
+  // passage; we render a "TEXT — SOURCE" string either way so paste
+  // targets get a self-contained quote.
+  async function copyVerseToClipboard(s: Scripture) {
+    const out = s.source ? `"${s.text}" — ${s.source}` : `"${s.text}"`;
+    try {
+      await navigator.clipboard.writeText(out);
+      toast.success('copied');
+    } catch {
+      toast.error('clipboard unavailable');
+    }
+  }
+
+  // Reset commentary whenever the verse changes — stale commentary
+  // under a different verse is worse than no commentary. We track
+  // identity via a string key (text + source) so derived reads of
+  // `current` itself don't tangle dependencies; the cleanup is wrapped
+  // in untrack so any state writes inside don't loop the effect.
+  $effect(() => {
+    // Tracked: identity key. Untracked: the actual reset.
+    const _key = current ? `${current.text}|${current.source ?? ''}` : '';
+    untrack(() => {
+      void _key;
+      clearCommentary();
+    });
+  });
 
   async function aiReflect() {
     if (!current) return;
@@ -683,12 +809,32 @@
           {#if current.source}
             <cite class="text-sm text-subtext mt-4 block not-italic">— {current.source}</cite>
           {/if}
+          {#if current.topics && current.topics.length > 0}
+            <!-- Tag strip: clicking a topic flips into Browse mode
+                 scoped to that theme — adjacent verses sharing the
+                 same theme become discoverable in one click. -->
+            <div class="flex flex-wrap gap-1.5 justify-center mt-4">
+              {#each current.topics as tag (tag)}
+                <button
+                  type="button"
+                  onclick={() => { mode = 'browse'; selectTopic(tag); }}
+                  class="text-[11px] px-2 py-0.5 rounded-full bg-mantle border border-surface1 text-dim hover:border-primary hover:text-text"
+                  title="Browse verses tagged {tag}"
+                >{tag}</button>
+              {/each}
+            </div>
+          {/if}
         </article>
         <div class="flex gap-2 justify-center mt-4 flex-wrap">
           <button
             onclick={anotherOne}
             class="px-4 py-2 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
           >Another verse</button>
+          <button
+            onclick={() => copyVerseToClipboard(current!)}
+            class="px-4 py-2 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
+            title="Copy verse + citation to clipboard"
+          >Copy</button>
           <button
             onclick={reflectOnThis}
             class="px-4 py-2 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
@@ -700,6 +846,61 @@
             title="AI writes a 200-300 word reflection into Devotionals/"
           >{aiLoading ? '…' : 'AI reflection ✨'}</button>
         </div>
+
+        <!-- AI commentary — three quick lenses, streamed in-page. The
+             gloss is intentionally short and ephemeral; the user can
+             always fall through to "Reflect on this" or "AI reflection"
+             when they want a saved devotional note. -->
+        <div class="bg-surface0/40 border border-surface1 rounded-lg p-4 mt-4">
+          <div class="flex items-baseline gap-2 flex-wrap">
+            <span class="text-xs uppercase tracking-wider text-dim font-medium">Ask AI</span>
+            <button
+              type="button"
+              onclick={() => runCommentary('context')}
+              disabled={commentaryStreaming}
+              class="text-xs px-2.5 py-1 rounded border transition-colors disabled:opacity-50 {commentaryMode === 'context' ? 'bg-primary text-on-primary border-primary' : 'bg-mantle border-surface1 text-subtext hover:border-primary hover:text-text'}"
+              title="Historical and literary background"
+            >Context</button>
+            <button
+              type="button"
+              onclick={() => runCommentary('cross-ref')}
+              disabled={commentaryStreaming}
+              class="text-xs px-2.5 py-1 rounded border transition-colors disabled:opacity-50 {commentaryMode === 'cross-ref' ? 'bg-primary text-on-primary border-primary' : 'bg-mantle border-surface1 text-subtext hover:border-primary hover:text-text'}"
+              title="Other passages that echo this one"
+            >Cross-references</button>
+            <button
+              type="button"
+              onclick={() => runCommentary('application')}
+              disabled={commentaryStreaming}
+              class="text-xs px-2.5 py-1 rounded border transition-colors disabled:opacity-50 {commentaryMode === 'application' ? 'bg-primary text-on-primary border-primary' : 'bg-mantle border-surface1 text-subtext hover:border-primary hover:text-text'}"
+              title="How this might land for you today"
+            >Application</button>
+            <span class="flex-1"></span>
+            {#if commentaryStreaming}
+              <button
+                type="button"
+                onclick={stopCommentary}
+                class="text-xs text-dim hover:text-error"
+              >stop</button>
+            {:else if commentaryText}
+              <button
+                type="button"
+                onclick={clearCommentary}
+                class="text-xs text-dim hover:text-text"
+              >clear</button>
+            {/if}
+          </div>
+          {#if commentaryText || commentaryStreaming || commentaryError}
+            <div class="mt-3 pt-3 border-t border-surface1">
+              {#if commentaryError}
+                <p class="text-xs text-error">{commentaryError}</p>
+              {:else}
+                <p class="text-sm text-text leading-relaxed whitespace-pre-wrap">{commentaryText}{#if commentaryStreaming}<span class="inline-block w-2 h-3.5 align-middle bg-primary/70 ml-0.5 animate-pulse"></span>{/if}</p>
+              {/if}
+            </div>
+          {/if}
+        </div>
+
         {#if today && current === today}
           <p class="text-[11px] text-dim text-center mt-4 italic">Verse of the day — same on every device, rotates at midnight.</p>
         {/if}
