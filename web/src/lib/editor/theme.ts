@@ -37,6 +37,18 @@ export const theme = EditorView.theme(
     // Search/match highlight
     '.cm-searchMatch': { backgroundColor: 'rgba(187,154,247,0.25)' },
     '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'rgba(187,154,247,0.5)' },
+    // AI ghost text — rendered by the continue-writing extension as a
+    // widget after the cursor. Dimmed so it reads as "not yet
+    // committed" without bleeding into the prose. user-select:none
+    // so triple-click word-select doesn't grab it into the user's
+    // own selection.
+    '.cm-ghost-text': {
+      color: 'var(--color-dim)',
+      opacity: '0.7',
+      fontStyle: 'italic',
+      pointerEvents: 'none',
+      userSelect: 'none'
+    },
     // Autocomplete popup
     '.cm-tooltip.cm-tooltip-autocomplete': {
       backgroundColor: 'var(--color-mantle)',

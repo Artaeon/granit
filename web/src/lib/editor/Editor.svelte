@@ -19,6 +19,7 @@
   import { askAIKeymap, type AskAIRequest } from './ask-ai';
   import { checkboxShortcuts } from './checkbox-shortcuts';
   import { headingShortcuts } from './heading-shortcuts';
+  import { continueWritingExtension } from './continue-writing';
 
   let {
     value = $bindable(''),
@@ -109,6 +110,13 @@
         // UX + /chat call live in the page (where the toast +
         // settings nav live too).
         askAIKeymap((req) => onAskAI?.(req)),
+        // Continue Writing (Mod-Alt-Space at empty selection).
+        // Streams an AI continuation as ghost text after the cursor;
+        // Tab accepts, Esc rejects. Lives BEFORE the main keymap so
+        // its Tab handler gets first look at the chord — when no
+        // ghost is active it returns false, falling through to the
+        // default Tab indent.
+        continueWritingExtension(),
         theme,
         // Markdown shortcuts come BEFORE defaultKeymap so Mod-b /
         // Mod-i / Mod-k aren't shadowed by CodeMirror's defaults. Same

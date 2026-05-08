@@ -65,6 +65,7 @@
         { keys: `/`, label: 'Slash picker — snippets + /h1 /code /divider /table /note /tip /warning /danger …' },
         { keys: `${modKey}+Shift+X`, label: 'Extract selection to a new note (auto-link)' },
         { keys: `${modKey}+Shift+A`, label: 'Ask AI about the selection (summarise / improve / translate)' },
+        { keys: `${modKey}+Alt+Space`, label: 'Continue writing — AI streams a continuation as ghost text. Tab to accept, Esc to reject.' },
         { keys: `${modKey}+click`, label: 'Open a wikilink in place' }
       ]
     },
