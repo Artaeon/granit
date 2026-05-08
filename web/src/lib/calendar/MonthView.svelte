@@ -83,8 +83,9 @@
               onclick={() => onClickEvent(ev)}
               class="block w-full text-left text-[11px] px-1.5 py-0.5 rounded truncate"
               style="background: {col.bg}; color: {col.fg}; border-left: 2px solid {col.border}; {ev.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}"
+              title={ev.rrule ? `${ev.title} · recurring (${ev.rrule})` : ev.title}
             >
-              {ev.start ? fmtTime(new Date(ev.start)) + ' ' : ''}{ev.title}
+              {#if ev.rrule}<span class="opacity-70 mr-0.5" aria-hidden="true">↻</span>{/if}{ev.start ? fmtTime(new Date(ev.start)) + ' ' : ''}{ev.title}
             </button>
           {/each}
           {#if events.length > 3}

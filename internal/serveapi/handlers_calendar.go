@@ -34,6 +34,11 @@ type calendarEvent struct {
 	// (critical→error / high→warning / normal→secondary). Empty for
 	// every other event type.
 	Importance string `json:"importance,omitempty"`
+	// RRule is the source recurrence rule when this event was
+	// expanded from one. Repeated for every occurrence so the chip
+	// can show a ↻ indicator and the edit modal can offer to edit
+	// the series. Empty for one-off events.
+	RRule string `json:"rrule,omitempty"`
 }
 
 // expandAllDayDates walks every day in an all-day event's [start, end)
@@ -161,6 +166,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 						EventID:  ev.ID,
 						Color:    ev.Color,
 						Location: ev.Location,
+						RRule:    ev.RRule,
 					})
 					continue
 				}
@@ -173,6 +179,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 					EventID:  ev.ID,
 					Color:    ev.Color,
 					Location: ev.Location,
+					RRule:    ev.RRule,
 				}
 				sStr := occ.Start.Format(time.RFC3339)
 				ce.Start = &sStr
@@ -266,6 +273,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 						Color:    "cyan",
 						Source:   ev.Source,
 						Date:     dayISO,
+						RRule:    ev.RRule,
 					})
 				}
 				continue
@@ -287,6 +295,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				EventID:  ev.UID,
 				Color:    "cyan",
 				Source:   ev.Source,
+				RRule:    ev.RRule,
 			}
 			startStr := ev.Start.Format(time.RFC3339)
 			ce.Start = &startStr

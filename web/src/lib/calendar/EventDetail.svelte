@@ -45,6 +45,57 @@
     `${String(editEndH).padStart(2, '0')}:${String(editEndM).padStart(2, '0')}`
   );
 
+  // ── Recurrence edit state ──────────────────────────────────────
+  // Mirrors the picker in CreateEvent. We seed from the source
+  // event's rrule on edit-start by parsing the FREQ + INTERVAL +
+  // BYDAY tokens; arbitrary RRULEs that don't match a preset land
+  // in 'custom' and round-trip verbatim.
+  type Repeat = 'none' | 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | 'yearly' | 'custom';
+  let editRepeat = $state<Repeat>('none');
+  let editUntilDate = $state('');
+  let editCustomRule = $state('');
+
+  function parseRepeatFromRRule(rrule: string): { repeat: Repeat; until: string; custom: string } {
+    if (!rrule) return { repeat: 'none', until: '', custom: '' };
+    const parts: Record<string, string> = {};
+    for (const seg of rrule.split(';')) {
+      const [k, v] = seg.split('=', 2);
+      if (k && v !== undefined) parts[k.trim().toUpperCase()] = v.trim();
+    }
+    let until = '';
+    if (parts.UNTIL) {
+      // RFC 5545 UNTIL is YYYYMMDDTHHMMSSZ — pull the date prefix.
+      const m = /^(\d{4})(\d{2})(\d{2})/.exec(parts.UNTIL);
+      if (m) until = `${m[1]}-${m[2]}-${m[3]}`;
+    }
+    const freq = parts.FREQ ?? '';
+    const interval = parts.INTERVAL ?? '';
+    const byday = parts.BYDAY ?? '';
+    if (freq === 'DAILY' && !interval && !byday) return { repeat: 'daily', until, custom: '' };
+    if (freq === 'WEEKLY' && byday === 'MO,TU,WE,TH,FR' && !interval) return { repeat: 'weekdays', until, custom: '' };
+    if (freq === 'WEEKLY' && !byday && (interval === '' || interval === '1')) return { repeat: 'weekly', until, custom: '' };
+    if (freq === 'WEEKLY' && !byday && interval === '2') return { repeat: 'biweekly', until, custom: '' };
+    if (freq === 'MONTHLY' && !interval && !byday) return { repeat: 'monthly', until, custom: '' };
+    if (freq === 'YEARLY' && !interval) return { repeat: 'yearly', until, custom: '' };
+    return { repeat: 'custom', until: '', custom: rrule };
+  }
+  function untilSuffix(date: string): string {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return '';
+    return `;UNTIL=${date.replace(/-/g, '')}T235959Z`;
+  }
+  let editRRule = $derived.by((): string => {
+    switch (editRepeat) {
+      case 'none': return '';
+      case 'daily': return 'FREQ=DAILY' + untilSuffix(editUntilDate);
+      case 'weekdays': return 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' + untilSuffix(editUntilDate);
+      case 'weekly': return 'FREQ=WEEKLY' + untilSuffix(editUntilDate);
+      case 'biweekly': return 'FREQ=WEEKLY;INTERVAL=2' + untilSuffix(editUntilDate);
+      case 'monthly': return 'FREQ=MONTHLY' + untilSuffix(editUntilDate);
+      case 'yearly': return 'FREQ=YEARLY' + untilSuffix(editUntilDate);
+      case 'custom': return editCustomRule.trim();
+    }
+  });
+
   // Calendar sources — needed to know if an ICS event came from a
   // writable .ics file. Loaded once on mount; refreshed on demand.
   let sources = $state<CalendarSource[]>([]);
@@ -99,6 +150,14 @@
       editEndH = 0;
       editEndM = 0;
     }
+    // Seed recurrence editor from the source rule. ICS events also
+    // carry rrule but their write path goes through ics-events
+    // endpoints which don't accept rrule today — show the rule
+    // read-only via the picker but disable Save-as-series for ICS.
+    const parsed = parseRepeatFromRRule(event.rrule ?? '');
+    editRepeat = parsed.repeat;
+    editUntilDate = parsed.until;
+    editCustomRule = parsed.custom;
     editing = true;
   }
 
@@ -130,7 +189,11 @@
           start_time: editStartTime,
           end_time: editEndTime,
           location: editLocation,
-          color: editColor
+          color: editColor,
+          // Send rrule unconditionally so editing a recurring event
+          // back to non-recurring (editRepeat='none' → '') correctly
+          // clears the rule rather than leaving the old one in place.
+          rrule: editRRule
         });
       } else {
         return;
@@ -368,6 +431,53 @@
             </div>
           </div>
           <input bind:value={editLocation} placeholder="location (optional)" class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text" />
+          <!-- Repeat picker — same shape as CreateEvent so the muscle
+               memory is identical. ICS events DO get this shown for
+               read-only feedback (the rrule of the source series),
+               but the patch path for ICS doesn't currently accept
+               rrule changes — surfacing the rule still helps the
+               user understand what's recurring. -->
+          {#if event?.type === 'event'}
+            <div class="flex items-baseline gap-2 flex-wrap">
+              <label class="text-[11px] text-dim uppercase tracking-wider" for="ev-edit-repeat">Repeat</label>
+              <select
+                id="ev-edit-repeat"
+                bind:value={editRepeat}
+                class="bg-surface0 border border-surface1 rounded px-2 py-1 text-sm text-text"
+              >
+                <option value="none">Does not repeat</option>
+                <option value="daily">Every day</option>
+                <option value="weekdays">Every weekday (Mon–Fri)</option>
+                <option value="weekly">Every week</option>
+                <option value="biweekly">Every 2 weeks</option>
+                <option value="monthly">Every month</option>
+                <option value="yearly">Every year</option>
+                <option value="custom">Custom RRULE…</option>
+              </select>
+              {#if editRepeat !== 'none' && editRepeat !== 'custom'}
+                <label class="text-[11px] text-dim flex items-center gap-1.5">
+                  until
+                  <input
+                    type="date"
+                    bind:value={editUntilDate}
+                    min={editDate}
+                    class="bg-surface0 border border-surface1 rounded px-2 py-1 text-sm text-text"
+                  />
+                </label>
+              {/if}
+            </div>
+            {#if editRepeat === 'custom'}
+              <input
+                bind:value={editCustomRule}
+                placeholder="FREQ=MONTHLY;BYDAY=1MO"
+                spellcheck="false"
+                class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-xs text-text font-mono"
+              />
+            {/if}
+            {#if editRRule}
+              <p class="text-[10px] text-dim font-mono"><span class="text-secondary">→</span> {editRRule}</p>
+            {/if}
+          {/if}
           <div class="flex items-center gap-2">
             <span class="text-[11px] text-dim uppercase tracking-wider">Color</span>
             {#each colorOptions as c}

@@ -174,6 +174,10 @@ export interface CalendarEvent {
   source?: string;
   /** Deadline importance — set only on type='deadline' (critical/high/normal). */
   importance?: 'critical' | 'high' | 'normal';
+  /** Source recurrence rule when this occurrence was expanded from a
+   *  recurring event. Repeated on every occurrence so the chip can
+   *  show a ↻ indicator and the edit modal can target the series. */
+  rrule?: string;
 }
 
 // Mirrors internal/deadlines.Deadline — top-level "this matters by date X"

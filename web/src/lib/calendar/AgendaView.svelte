@@ -80,7 +80,9 @@
                 {ev.start ? fmtTime(new Date(ev.start)) : 'all-day'}
               </span>
               <span class="w-1 h-3 rounded-full flex-shrink-0" style="background: {c.border}"></span>
-              <span class="flex-1 text-sm {ev.done ? 'line-through text-dim' : 'text-text'}">{ev.title}</span>
+              <span class="flex-1 text-sm {ev.done ? 'line-through text-dim' : 'text-text'}">
+                {#if ev.rrule}<span class="text-dim mr-1" title={`recurring · ${ev.rrule}`} aria-label="recurring">↻</span>{/if}{ev.title}
+              </span>
               {#if ev.location}
                 <span class="text-xs text-dim">@ {ev.location}</span>
               {/if}
