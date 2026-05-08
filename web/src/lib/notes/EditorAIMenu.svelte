@@ -1169,3 +1169,16 @@
     </div>
   {/if}
 </div>
+
+<style>
+  /* Phone-friendly tap targets — Apple HIG recommends 44x44 for
+     touch surfaces. The menu's button rows use `py-2` which renders
+     ~32px on text-sm; that's fine for a mouse but cramped for a
+     thumb. Bump min-height on coarse pointers (touch) so adjacent
+     items don't get fat-fingered. Keeps the desktop density. */
+  @media (pointer: coarse) {
+    [role='menu'] :global(button[role='menuitem']) {
+      min-height: 44px;
+    }
+  }
+</style>

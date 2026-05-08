@@ -269,8 +269,8 @@
           {:else}
             <input type="text" bind:value={draft} class="flex-1 px-2 py-1 bg-mantle border border-surface1 rounded text-text text-xs" />
           {/if}
-          <button onclick={commit} disabled={saving} class="px-2 py-1 bg-primary text-on-primary rounded text-xs disabled:opacity-50">save</button>
-          <button onclick={cancel} class="px-2 py-1 text-dim hover:text-text text-xs">×</button>
+          <button onclick={commit} disabled={saving} class="px-3 py-1.5 sm:px-2 sm:py-1 bg-primary text-on-primary rounded text-xs disabled:opacity-50 min-w-[44px] min-h-[36px] sm:min-w-0 sm:min-h-0">save</button>
+          <button onclick={cancel} class="px-3 py-1.5 sm:px-2 sm:py-1 text-dim hover:text-text text-xs min-w-[44px] min-h-[36px] sm:min-w-0 sm:min-h-0">×</button>
         </div>
         {#if k === 'status'}
           <!-- One-click status presets — saves the click + type +

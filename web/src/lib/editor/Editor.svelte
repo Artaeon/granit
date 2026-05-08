@@ -364,5 +364,29 @@
   @media (max-width: 767px) {
     .cm-host :global(.cm-scroller) { font-size: 16px; }
     .cm-host :global(.cm-gutters) { display: none; }
+    /* Mobile keyboards take half the screen — the autocomplete
+       popup placed below the cursor often lands UNDER the keyboard
+       and is unreachable. Constrain max-height so CM6 picks the
+       above-cursor placement when there's no room below, and clamp
+       max-width so the popup never spills past the viewport when
+       the cursor is near the right edge. */
+    .cm-host :global(.cm-tooltip.cm-tooltip-autocomplete) {
+      max-width: calc(100vw - 1rem);
+      max-height: 40dvh;
+    }
+    /* Search panel — the find/replace bar — gets pushed off-screen
+       in landscape on small phones because of its default fixed
+       width. Make it span the editor width with a tap-friendly
+       button row. */
+    .cm-host :global(.cm-panel.cm-search) {
+      flex-wrap: wrap;
+    }
+    .cm-host :global(.cm-panel.cm-search input) {
+      min-height: 36px;
+    }
+    .cm-host :global(.cm-panel.cm-search button) {
+      min-height: 36px;
+      min-width: 36px;
+    }
   }
 </style>

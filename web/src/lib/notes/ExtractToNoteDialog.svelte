@@ -295,15 +295,19 @@
 </script>
 
 {#if request}
+  <!-- Mobile slides up from the bottom (rounded-t-xl, items-end);
+       desktop centers near the top with a comfortable margin. dvh
+       (dynamic viewport) accounts for iOS Safari's bottom bar so a
+       long dialog doesn't get clipped when the bar shows. -->
   <div
-    class="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-mantle/70 backdrop-blur-sm"
+    class="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:pt-16 sm:px-4 bg-mantle/70 backdrop-blur-sm"
     onclick={dismiss}
     onkeydown={onKey}
     role="presentation"
   >
     <form
       onsubmit={submit}
-      class="w-full max-w-lg bg-base border border-surface1 rounded-lg shadow-xl"
+      class="w-full sm:max-w-lg bg-base border border-surface1 rounded-t-xl sm:rounded-lg shadow-xl max-h-[92dvh] sm:max-h-[88vh] overflow-y-auto"
       onclick={(e) => e.stopPropagation()}
       role="dialog"
       aria-label="Extract selection to new note"
@@ -466,17 +470,20 @@
           The new note links back to <code class="font-mono">{sourcePath}</code> via frontmatter.
         </p>
       </div>
-      <footer class="px-4 py-3 border-t border-surface1 flex items-center gap-2 justify-end">
+      <footer
+        class="px-4 py-3 border-t border-surface1 flex items-center gap-2 justify-end"
+        style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom));"
+      >
         <button
           type="button"
           onclick={dismiss}
           disabled={busy}
-          class="px-3 py-1.5 text-sm text-subtext hover:bg-surface0 rounded disabled:opacity-50"
+          class="px-3 py-2 sm:py-1.5 text-sm text-subtext hover:bg-surface0 rounded disabled:opacity-50 min-h-[44px] sm:min-h-0"
         >Cancel</button>
         <button
           type="submit"
           disabled={busy || !title.trim()}
-          class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90 disabled:opacity-50"
+          class="px-3 py-2 sm:py-1.5 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90 disabled:opacity-50 min-h-[44px] sm:min-h-0"
         >{busy ? 'Extracting…' : 'Extract'}</button>
       </footer>
     </form>

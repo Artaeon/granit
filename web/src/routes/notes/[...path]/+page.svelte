@@ -1377,7 +1377,10 @@
            cursor (line:col + selection length) · last saved.
            Right side carries autocomplete hint on mobile only —
            desktop has the help button in the header. -->
-      <footer class="px-3 py-1.5 border-t border-surface1 text-[11px] text-dim flex items-center gap-3 flex-wrap">
+      <footer
+        class="px-3 py-1.5 border-t border-surface1 text-[11px] text-dim flex items-center gap-3 flex-wrap"
+        style="padding-bottom: max(0.375rem, env(safe-area-inset-bottom));"
+      >
         {#if wordGoal}
           <!-- Word-count goal progress: chip + tiny progress bar
                surfaces a writing target set in frontmatter

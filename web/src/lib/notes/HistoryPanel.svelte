@@ -241,7 +241,7 @@
         <!-- View toggle: side-by-side bodies vs. LCS diff. The diff
              reads "this snapshot → live body" so the user sees what
              they've added/removed since the snapshot. -->
-        <div class="ml-2 hidden md:inline-flex items-center text-[11px] rounded border border-surface1 bg-surface0/60 overflow-hidden">
+        <div class="ml-2 inline-flex items-center text-[11px] rounded border border-surface1 bg-surface0/60 overflow-hidden">
           <button
             type="button"
             onclick={() => setView('split')}
@@ -266,15 +266,16 @@
       <button
         onclick={restoreSelected}
         disabled={!selectedTs || restoring}
-        class="px-3 py-1.5 rounded text-sm font-medium bg-primary text-on-primary disabled:opacity-50"
+        class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded text-sm font-medium bg-primary text-on-primary disabled:opacity-50"
         title="Replace the current note with this version"
       >
-        {restoring ? 'Restoring…' : 'Restore this version'}
+        {restoring ? 'Restoring…' : 'Restore'}
+        <span class="hidden sm:inline"> this version</span>
       </button>
       <button
         onclick={close}
         aria-label="Close history"
-        class="w-9 h-9 flex items-center justify-center text-subtext hover:text-text hover:bg-surface0 rounded"
+        class="w-11 h-11 sm:w-9 sm:h-9 flex items-center justify-center text-subtext hover:text-text hover:bg-surface0 rounded"
       >
         <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M6 6l12 12M6 18L18 6" stroke-linecap="round"/>
@@ -301,8 +302,11 @@
     {:else}
       <div class="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[18rem_1fr] lg:grid-cols-[18rem_1fr_1fr] gap-0">
         <!-- Version list — left column on desktop, top section on
-             mobile. Newest first. -->
-        <aside class="border-r border-surface1 overflow-y-auto bg-mantle/40">
+             mobile. Newest first. On mobile the list is constrained
+             to ~40dvh so the selected version body still gets
+             primary real estate; if the user has many versions they
+             scroll inside the constrained list rather than past it. -->
+        <aside class="border-b md:border-b-0 md:border-r border-surface1 overflow-y-auto bg-mantle/40 max-h-[40dvh] md:max-h-none">
           <ul class="divide-y divide-surface1">
             {#each versions as v (v.timestamp)}
               {@const sel = selectedTs === v.timestamp}

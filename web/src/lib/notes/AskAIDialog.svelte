@@ -473,12 +473,15 @@
         {/if}
       </div>
 
-      <footer class="px-4 py-3 border-t border-surface1 flex items-center gap-2 flex-wrap">
+      <footer
+        class="px-4 py-3 border-t border-surface1 flex items-center gap-2 flex-wrap"
+        style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom));"
+      >
         {#if pending}
           <button
             type="button"
             onclick={stop}
-            class="px-3 py-1.5 text-sm bg-surface0 text-error border border-error/30 rounded hover:bg-error/10"
+            class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-error border border-error/30 rounded hover:bg-error/10"
           >Stop</button>
           <span class="flex-1"></span>
           <span class="text-[11px] text-dim italic">Streaming · cancel anytime</span>
@@ -486,30 +489,30 @@
           <button
             type="button"
             onclick={dismiss}
-            class="px-3 py-1.5 text-sm text-subtext hover:bg-surface0 rounded"
+            class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm text-subtext hover:bg-surface0 rounded"
           >Cancel</button>
           {#if response}
             <button
               type="button"
               onclick={copyResponse}
-              class="px-3 py-1.5 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
+              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
             >Copy</button>
             <button
               type="button"
               onclick={insertBelow}
-              class="px-3 py-1.5 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
+              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
             >Insert below</button>
             <button
               type="button"
               onclick={replaceSelection}
-              class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90"
+              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90"
             >Replace selection</button>
           {:else}
             <span class="flex-1"></span>
             <button
               type="button"
               onclick={ask}
-              class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90"
+              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90"
             >Ask AI (⌘↵)</button>
           {/if}
         {/if}

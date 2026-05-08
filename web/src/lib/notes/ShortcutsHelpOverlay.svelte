@@ -112,12 +112,12 @@
 
 {#if open}
   <div
-    class="fixed inset-0 z-50 flex items-start justify-center pt-12 sm:pt-20 px-4 bg-mantle/70 backdrop-blur-sm"
+    class="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:pt-12 md:pt-20 sm:px-4 bg-mantle/70 backdrop-blur-sm"
     onclick={dismiss}
     role="presentation"
   >
     <section
-      class="w-full max-w-2xl bg-base border border-surface1 rounded-lg shadow-xl max-h-[80vh] flex flex-col"
+      class="w-full sm:max-w-2xl bg-base border border-surface1 rounded-t-xl sm:rounded-lg shadow-xl max-h-[92dvh] sm:max-h-[80vh] flex flex-col"
       onclick={(e) => e.stopPropagation()}
       role="dialog"
       aria-label="Keyboard shortcuts"
