@@ -30,6 +30,7 @@
   import ResearchPanel from '$lib/notes/ResearchPanel.svelte';
   import ReferenceNotePanel from '$lib/notes/ReferenceNotePanel.svelte';
   import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
+  import AskThisNotePanel from '$lib/notes/AskThisNotePanel.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
 
@@ -1102,6 +1103,20 @@
       <section>
         <h3 class="text-xs uppercase tracking-wider text-dim mb-2">Backlinks</h3>
         <BacklinksPanel path={note.path} onNavigate={navigateWikilink} />
+      </section>
+      <!-- Ask-this-note: multi-turn Q&A scoped to ONLY this note.
+           Distinct from the broader AI overlay (which has vault
+           RAG); this surface is the "explain section 3 / what's
+           the contradiction here" companion. Conversation resets
+           on note change so context never bleeds across notes. -->
+      <section>
+        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+          </svg>
+          Ask this note
+        </h3>
+        <AskThisNotePanel notePath={note.path} title={note.title ?? note.path} body={body} />
       </section>
       <!-- Research panel: derives highlights / footnotes / outbound
            URLs from the body so a research-style note becomes a
