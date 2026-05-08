@@ -14,6 +14,7 @@
   import NavIcon from '$lib/components/NavIcon.svelte';
   import Logo from '$lib/components/Logo.svelte';
   import QuickCaptureFab from '$lib/components/QuickCaptureFab.svelte';
+  import PomodoroPill from '$lib/components/PomodoroPill.svelte';
   import AIOverlay from '$lib/components/AIOverlay.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { connect, disconnect, wsConnected, onWsEvent } from '$lib/ws';
@@ -721,6 +722,12 @@
        is supposed to be free of. -->
   {#if !$sabbath}
     <QuickCaptureFab />
+    <!-- Pomodoro pill — focus-session timer that survives navigation
+         + tab close (state in localStorage). Hidden during Sabbath
+         (the day's not for focus sessions). The pill itself self-
+         hides when idle + no recent finish, so the bottom-right
+         stays clean for users who don't use it. -->
+    <PomodoroPill />
     <!-- Mobile AI FAB — Mod+J doesn't exist on a phone keyboard,
          and the sidebar "Ask AI" button is hidden behind a drawer
          on mobile. This sparkle button sits above the bottom nav
