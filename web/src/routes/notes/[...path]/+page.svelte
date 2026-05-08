@@ -28,6 +28,7 @@
   import LinkSuggestPanel from '$lib/notes/LinkSuggestPanel.svelte';
   import EditorAIMenu from '$lib/notes/EditorAIMenu.svelte';
   import ResearchPanel from '$lib/notes/ResearchPanel.svelte';
+  import ReferenceNotePanel from '$lib/notes/ReferenceNotePanel.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
 
@@ -933,6 +934,20 @@
            those — saves rail space on a fresh note. -->
       <section>
         <ResearchPanel body={body} onJump={jumpToLine} />
+      </section>
+      <!-- Reference note: pin any note to read alongside while
+           writing. The classic research move — paper open in one
+           pane, summary growing in the other. Persists per-current
+           note so reopening picks up where you left off. -->
+      <section>
+        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+            <path d="M4 4h12a4 4 0 014 4v12H8a4 4 0 01-4-4V4z"/>
+            <path d="M8 8h8M8 12h8M8 16h6"/>
+          </svg>
+          Reference
+        </h3>
+        <ReferenceNotePanel currentPath={note.path} />
       </section>
       <section>
         <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
