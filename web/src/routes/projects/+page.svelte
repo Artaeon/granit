@@ -102,6 +102,217 @@
   let statusFilter = $state<'all' | 'active' | 'paused' | 'completed' | 'archived'>('active');
   let createOpen = $state(false);
 
+  // ── Stalled-projects radar ───────────────────────────────────────
+  // Scans active projects locally for stall signals — no completion
+  // in N days, project mtime older than the threshold — then asks
+  // the AI for a one-line "what could unblock this" suggestion per
+  // stalled project. The local heuristic is the floor (we never
+  // surface anything as stalled that is provably alive); the AI's
+  // job is the qualitative "why" and the unblock idea, not the
+  // detection itself. This split keeps the AI grounded in real
+  // data and means a flaky AI response still produces a usable
+  // dashboard (just without the unblock copy).
+  //
+  // Uses a single chatStream call with all stalled projects bundled
+  // — N stalled projects = 1 AI call, not N. The model returns a
+  // JSON array we parse and zip back to the list. JSON failure
+  // falls back to showing the radar without unblock copy.
+  type StalledRow = {
+    name: string;
+    color?: string;
+    venture?: string;
+    daysSinceCompletion: number | null;
+    daysSinceUpdate: number | null;
+    openTasks: number;
+    overdueTasks: number;
+    unblock?: string;
+  };
+
+  const STALL_DAYS = 14;
+
+  let radarOpen = $state(false);
+  let radarBusy = $state(false);
+  let radarError = $state('');
+  let radarRows = $state<StalledRow[]>([]);
+  let radarAbort: AbortController | null = null;
+  let radarRanAt = $state<string>('');
+
+  // Local stall detection — independent of the AI so the dashboard
+  // can render even when the AI is offline / Sabbath-blocked.
+  const stalledLocally = $derived.by((): StalledRow[] => {
+    const today = new Date();
+    const out: StalledRow[] = [];
+    for (const p of projects) {
+      if ((p.status ?? 'active') !== 'active') continue;
+      // Bucket this project's tasks (mirroring detail-panel match
+      // logic: explicit projectId OR notePath under folder).
+      const folder = (p.folder ?? '').replace(/\/$/, '');
+      const matched = tasks.filter(
+        (t) => t.projectId === p.name || (folder && t.notePath.startsWith(folder + '/'))
+      );
+      let lastCompletion: Date | null = null;
+      let openCount = 0;
+      let overdueCount = 0;
+      for (const t of matched) {
+        if (t.done && t.completedAt) {
+          const d = new Date(t.completedAt);
+          if (!Number.isNaN(d.getTime()) && (!lastCompletion || d > lastCompletion)) lastCompletion = d;
+        }
+        if (!t.done) {
+          openCount++;
+          if (t.dueDate) {
+            const d = new Date(t.dueDate);
+            if (!Number.isNaN(d.getTime()) && d.getTime() < today.getTime()) overdueCount++;
+          }
+        }
+      }
+      const daysSinceCompletion = lastCompletion
+        ? Math.floor((today.getTime() - lastCompletion.getTime()) / 86400000)
+        : null;
+      const updatedAt = p.updated_at ? new Date(p.updated_at) : null;
+      const daysSinceUpdate = updatedAt && !Number.isNaN(updatedAt.getTime())
+        ? Math.floor((today.getTime() - updatedAt.getTime()) / 86400000)
+        : null;
+
+      // Stall criteria: an active project with EITHER no completions
+      // in STALL_DAYS days (incl. never), OR no edits in STALL_DAYS
+      // days. A project with overdue tasks but recent activity is
+      // not "stalled" — it's just busy and behind. We require BOTH
+      // signals to age out before flagging, otherwise a project
+      // that just got created shows up as stalled (no completions
+      // yet) which is noise.
+      const completionStalled =
+        daysSinceCompletion === null || daysSinceCompletion >= STALL_DAYS;
+      const updateStalled =
+        daysSinceUpdate === null || daysSinceUpdate >= STALL_DAYS;
+      // Special case: a project with zero tasks at all is dead in
+      // a different sense — surface it too.
+      const empty = matched.length === 0;
+      if ((completionStalled && updateStalled) || empty) {
+        out.push({
+          name: p.name,
+          color: p.color,
+          venture: p.venture,
+          daysSinceCompletion,
+          daysSinceUpdate,
+          openTasks: openCount,
+          overdueTasks: overdueCount
+        });
+      }
+    }
+    // Sort: most-stalled first (highest daysSinceCompletion, then
+    // daysSinceUpdate). null = never-completed = sort to top.
+    return out.sort((a, b) => {
+      const ad = a.daysSinceCompletion ?? 9999;
+      const bd = b.daysSinceCompletion ?? 9999;
+      if (ad !== bd) return bd - ad;
+      const au = a.daysSinceUpdate ?? 9999;
+      const bu = b.daysSinceUpdate ?? 9999;
+      return bu - au;
+    });
+  });
+
+  async function runRadar() {
+    if (radarBusy) return;
+    const stalled = stalledLocally;
+    radarBusy = true;
+    radarError = '';
+    radarRows = stalled.map((r) => ({ ...r })); // render rows immediately, AI fills in unblock
+    radarAbort = new AbortController();
+    radarRanAt = new Date().toISOString().slice(11, 16);
+
+    if (stalled.length === 0) {
+      radarBusy = false;
+      radarAbort = null;
+      return;
+    }
+
+    // One compact JSON payload — the model gets the project name +
+    // signals and returns a parallel array of unblock suggestions.
+    // No verbose "tell me about each project" loop; one prompt, one
+    // response, N suggestions.
+    const payload = stalled.map((r) => ({
+      name: r.name,
+      days_since_completion: r.daysSinceCompletion,
+      days_since_update: r.daysSinceUpdate,
+      open_tasks: r.openTasks,
+      overdue_tasks: r.overdueTasks
+    }));
+
+    const system =
+      'You diagnose stalled projects. For each project you receive, return ONE unblock suggestion in <= 14 words. ' +
+      'Output STRICT JSON only — no preamble, no fence, no commentary. Schema:\n' +
+      '{ "unblocks": [ { "name": string, "unblock": string }, ... ] }\n\n' +
+      'Rules:\n' +
+      '- The "name" MUST exactly match the input project name.\n' +
+      '- Each "unblock" is a verb-led concrete suggestion the user could try this week.\n' +
+      '- If a project has 0 tasks, suggest "write down what done looks like, or archive it".\n' +
+      '- If a project has many overdue tasks, suggest a 30-min triage / reschedule pass.\n' +
+      '- If days_since_completion is null and days_since_update is high, the project may be dead — suggest archiving.\n' +
+      '- No corporate sludge: no "synergy", "leverage", "circle back", "let\'s align".\n' +
+      '- Never invent details (no fake names, no fake deadlines). You only know what is in the input.';
+
+    const user =
+      `Today is ${new Date().toISOString().slice(0, 10)}. Stalled projects:\n\n` +
+      '```json\n' +
+      JSON.stringify(payload, null, 2) +
+      '\n```\n\n' +
+      'Return the JSON object with one unblock per project.';
+
+    let buf = '';
+    try {
+      await api.chatStream(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        undefined,
+        {
+          onChunk: (c) => {
+            buf += c;
+          },
+          onError: (err) => {
+            radarError = err.message;
+          }
+        },
+        radarAbort.signal
+      );
+      const trimmed = buf.trim();
+      if (trimmed) {
+        try {
+          const cleaned = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+          const parsed = JSON.parse(cleaned) as { unblocks?: { name: string; unblock: string }[] };
+          if (parsed && Array.isArray(parsed.unblocks)) {
+            const byName = new Map(parsed.unblocks.map((u) => [u.name, u.unblock]));
+            radarRows = radarRows.map((r) => ({ ...r, unblock: byName.get(r.name) }));
+          } else {
+            radarError = 'AI returned unexpected shape — radar shown without unblock copy.';
+          }
+        } catch {
+          radarError = 'AI did not return valid JSON — radar shown without unblock copy.';
+        }
+      }
+    } finally {
+      radarBusy = false;
+      radarAbort = null;
+    }
+  }
+  function cancelRadar() {
+    radarAbort?.abort();
+  }
+  async function archiveProject(name: string) {
+    if (!confirm(`Archive "${name}"? It stays in the vault, just out of the active list.`)) return;
+    try {
+      await api.patchProject(name, { status: 'archived' });
+      // Drop the row optimistically; load() reconciles below.
+      radarRows = radarRows.filter((r) => r.name !== name);
+      await load();
+      toast.success(`archived "${name}"`);
+    } catch (e) {
+      toast.error('archive failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
   async function load() {
     loading = true;
     try {
@@ -312,6 +523,98 @@
           <span>🏢 {ventureFilter}</span>
           <span class="ml-auto text-dim hover:text-text">×</span>
         </button>
+      {/if}
+
+      <!-- Stalled-projects radar — collapsible. Local heuristic
+           detects active projects with no completion / no edit in
+           STALL_DAYS days; the AI adds a one-line unblock per row.
+           One toggle button to open + scan; once open, results
+           stay visible and the user can rerun. The badge on the
+           closed button shows the local count so the user knows
+           "the radar would find 4 things" without opening it. -->
+      {#if !radarOpen}
+        <button
+          onclick={() => { radarOpen = true; if (radarRows.length === 0 && !radarBusy) void runRadar(); }}
+          class="w-full text-left px-2 py-1.5 text-xs rounded bg-surface0 border border-surface1 hover:border-primary text-subtext flex items-center gap-1.5"
+          title="Scan active projects for stalled work"
+        >
+          <span>📡 Stalled radar</span>
+          {#if stalledLocally.length > 0}
+            <span class="ml-auto px-1.5 py-0 rounded bg-warning/20 text-warning font-mono text-[10px]">{stalledLocally.length}</span>
+          {:else}
+            <span class="ml-auto text-dim font-mono text-[10px]">—</span>
+          {/if}
+        </button>
+      {:else}
+        <div class="border border-warning/30 bg-warning/5 rounded">
+          <div class="px-2 py-1.5 flex items-center gap-1.5 text-xs border-b border-warning/20">
+            <span class="text-warning font-medium flex-1">📡 Stalled radar</span>
+            {#if radarBusy}
+              <button onclick={cancelRadar} class="text-[10px] text-dim hover:text-error">cancel</button>
+            {:else}
+              <button
+                onclick={() => void runRadar()}
+                class="text-[10px] text-secondary hover:underline"
+                title="rerun the scan"
+              >rerun</button>
+            {/if}
+            <button
+              onclick={() => { radarOpen = false; }}
+              class="text-[10px] text-dim hover:text-text"
+              aria-label="close radar"
+            >×</button>
+          </div>
+          <p class="px-2 pt-1.5 text-[10px] text-dim font-mono">
+            scanned {projects.filter((p) => (p.status ?? 'active') === 'active').length} active
+            {#if radarRanAt} · ran {radarRanAt}{/if}
+          </p>
+          {#if radarError}
+            <p class="px-2 py-1 text-[10px] text-error">{radarError}</p>
+          {/if}
+          {#if radarRows.length === 0 && !radarBusy}
+            <p class="px-2 py-2 text-xs text-success">Nothing stalled. Active projects all show recent work.</p>
+          {:else}
+            <ul class="divide-y divide-warning/15">
+              {#each radarRows as r (r.name)}
+                <li class="px-2 py-1.5 text-xs">
+                  <div class="flex items-baseline gap-1.5 mb-0.5">
+                    <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background: {colorVar(r.color)}"></span>
+                    <button
+                      onclick={() => selectProject(r.name)}
+                      class="text-text hover:text-primary truncate flex-1 text-left font-medium"
+                      title="open {r.name}"
+                    >{r.name}</button>
+                    <span class="text-[9px] text-dim font-mono flex-shrink-0">
+                      {#if r.daysSinceCompletion === null}never done{:else}{r.daysSinceCompletion}d{/if}
+                    </span>
+                  </div>
+                  <p class="text-[10px] text-dim mb-1">
+                    {r.openTasks} open
+                    {#if r.overdueTasks > 0} · <span class="text-error">{r.overdueTasks} overdue</span>{/if}
+                    {#if r.daysSinceUpdate !== null} · edited {r.daysSinceUpdate}d ago{/if}
+                  </p>
+                  {#if r.unblock}
+                    <p class="text-[11px] text-text/90 italic mb-1.5">→ {r.unblock}</p>
+                  {:else if radarBusy}
+                    <p class="text-[10px] text-dim italic mb-1.5">…</p>
+                  {/if}
+                  <div class="flex gap-1">
+                    <a
+                      href={`/calendar?plan=1&project=${encodeURIComponent(r.name)}`}
+                      class="text-[10px] px-1.5 py-0.5 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary"
+                      title="open the calendar in plan mode for a 30-min unstick session"
+                    >schedule unstick →</a>
+                    <button
+                      onclick={() => void archiveProject(r.name)}
+                      class="text-[10px] px-1.5 py-0.5 rounded bg-surface0 border border-surface1 text-dim hover:border-error hover:text-error"
+                      title="archive this project"
+                    >archive</button>
+                  </div>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
       {/if}
     </div>
     <div class="flex-1 overflow-y-auto">
