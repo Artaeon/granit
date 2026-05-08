@@ -28,6 +28,38 @@
   let remindMinutes = $state(0); // 0 = no reminder
   let saving = $state(false);
 
+  // ── Recurrence picker ─────────────────────────────────────────
+  // Stored as RFC 5545 RRULE strings so the same expander handles
+  // ICS-imported and native events. Common presets cover ~95% of
+  // calendar use; "Custom" lets a power user paste a raw rule.
+  // 'until' is a separate date input that the picker concatenates
+  // to whichever frequency is active.
+  type Repeat = 'none' | 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | 'yearly' | 'custom';
+  let repeat = $state<Repeat>('none');
+  let untilDate = $state(''); // YYYY-MM-DD; empty = forever
+  let customRule = $state(''); // raw RRULE the user typed for 'custom'
+
+  // Compose the RRULE the backend will store. Empty = no recurrence.
+  // UNTIL is encoded per RFC 5545 as YYYYMMDDT235959Z (UTC end-of-day
+  // so the last day is inclusive in the user's local zone).
+  function untilSuffix(): string {
+    if (!untilDate || !/^\d{4}-\d{2}-\d{2}$/.test(untilDate)) return '';
+    const compact = untilDate.replace(/-/g, '');
+    return `;UNTIL=${compact}T235959Z`;
+  }
+  const rrule = $derived.by((): string => {
+    switch (repeat) {
+      case 'none': return '';
+      case 'daily': return 'FREQ=DAILY' + untilSuffix();
+      case 'weekdays': return 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' + untilSuffix();
+      case 'weekly': return 'FREQ=WEEKLY' + untilSuffix();
+      case 'biweekly': return 'FREQ=WEEKLY;INTERVAL=2' + untilSuffix();
+      case 'monthly': return 'FREQ=MONTHLY' + untilSuffix();
+      case 'yearly': return 'FREQ=YEARLY' + untilSuffix();
+      case 'custom': return customRule.trim();
+    }
+  });
+
   // ── Conflict detection ──────────────────────────────────────────
   // Compute the events on the chosen date that overlap the picked
   // [startTime, endTime] window. Pure derivation from existingEvents
@@ -88,6 +120,9 @@
     aiInput = '';
     aiBusy = false;
     aiError = '';
+    repeat = 'none';
+    untilDate = '';
+    customRule = '';
   }
 
   // ─── AI natural-language parse ───────────────────────────────────
@@ -121,7 +156,7 @@
           {
             role: 'system',
             content:
-              'You parse natural-language event descriptions into JSON. Today\'s date is "' + todayStr() + '" (the user\'s local day). Return STRICTLY a JSON object, no fences, no prose: {"title": "<short event title, no leading verb like "schedule">", "date": "YYYY-MM-DD", "start": "HH:MM" (24h, optional — empty string for all-day), "end": "HH:MM" (24h, optional — derive from start + 1h if user says a time but no end), "location": "<optional>"}. Resolve relative dates (today / tomorrow / Friday / next week) against today\'s date. Use 24h. If a time is given without end, default end = start + 1 hour. If no time at all, leave start and end empty (all-day).'
+              'You parse natural-language event descriptions into JSON. Today\'s date is "' + todayStr() + '" (the user\'s local day). Return STRICTLY a JSON object, no fences, no prose: {"title": "<short event title, no leading verb like "schedule">", "date": "YYYY-MM-DD", "start": "HH:MM" (24h, optional — empty string for all-day), "end": "HH:MM" (24h, optional — derive from start + 1h if user says a time but no end), "location": "<optional>", "repeat": "none" | "daily" | "weekdays" | "weekly" | "biweekly" | "monthly" | "yearly" (optional, default "none")}. Resolve relative dates (today / tomorrow / Friday / next week) against today\'s date. Use 24h. If a time is given without end, default end = start + 1 hour. If no time at all, leave start and end empty (all-day). Pick a repeat value when the user says things like "every Monday", "weekly", "every weekday", "monthly", "every year" — otherwise leave it "none".'
           },
           { role: 'user', content: text }
         ],
@@ -140,12 +175,17 @@
                 start?: string;
                 end?: string;
                 location?: string;
+                repeat?: string;
               };
               if (parsed.title) title = parsed.title;
               if (parsed.date && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date)) dateISO = parsed.date;
               if (parsed.start && /^\d{2}:\d{2}$/.test(parsed.start)) startTime = parsed.start;
               if (parsed.end && /^\d{2}:\d{2}$/.test(parsed.end)) endTime = parsed.end;
               if (parsed.location) location = parsed.location;
+              const validRepeats: Repeat[] = ['none', 'daily', 'weekdays', 'weekly', 'biweekly', 'monthly', 'yearly'];
+              if (parsed.repeat && (validRepeats as string[]).includes(parsed.repeat)) {
+                repeat = parsed.repeat as Repeat;
+              }
               aiInput = '';
             } catch {
               aiError = 'Could not parse — try again or fill the fields manually.';
@@ -173,7 +213,8 @@
         end_time: endTime,
         location: location.trim(),
         color,
-        remind_minutes_before: remindMinutes || undefined
+        remind_minutes_before: remindMinutes || undefined,
+        rrule: rrule || undefined
       });
       close();
       await onCreated();
@@ -357,6 +398,65 @@
             {/each}
           </select>
         </div>
+
+        <!-- Repeat picker. Common-case presets (daily / weekdays /
+             weekly / biweekly / monthly / yearly) cover ~95% of
+             calendar use; 'Custom' lets a power user paste a raw
+             RFC 5545 RRULE. The Until input only renders when a
+             frequency is active so the form stays compact. -->
+        <div>
+          <label class="block text-[11px] uppercase tracking-wider text-dim mb-1.5" for="ev-repeat">Repeat</label>
+          <select
+            id="ev-repeat"
+            bind:value={repeat}
+            class="w-full px-3 py-3 sm:py-2.5 bg-surface0 border border-surface1 rounded-lg text-base sm:text-sm text-text focus:outline-none focus:border-primary"
+          >
+            <option value="none">Does not repeat</option>
+            <option value="daily">Every day</option>
+            <option value="weekdays">Every weekday (Mon–Fri)</option>
+            <option value="weekly">Every week</option>
+            <option value="biweekly">Every 2 weeks</option>
+            <option value="monthly">Every month</option>
+            <option value="yearly">Every year</option>
+            <option value="custom">Custom RRULE…</option>
+          </select>
+        </div>
+        {#if repeat !== 'none'}
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {#if repeat !== 'custom'}
+              <div>
+                <label class="block text-[11px] uppercase tracking-wider text-dim mb-1.5" for="ev-until">Until (optional)</label>
+                <input
+                  id="ev-until"
+                  type="date"
+                  bind:value={untilDate}
+                  min={dateISO}
+                  placeholder="forever"
+                  class="w-full px-3 py-3 sm:py-2.5 bg-surface0 border border-surface1 rounded-lg text-base sm:text-sm text-text focus:outline-none focus:border-primary"
+                />
+              </div>
+            {:else}
+              <div class="sm:col-span-2">
+                <label class="block text-[11px] uppercase tracking-wider text-dim mb-1.5" for="ev-rrule">RRULE</label>
+                <input
+                  id="ev-rrule"
+                  bind:value={customRule}
+                  placeholder='e.g. FREQ=MONTHLY;BYDAY=1MO;UNTIL=20271231T235959Z'
+                  spellcheck="false"
+                  class="w-full px-3 py-3 sm:py-2.5 bg-surface0 border border-surface1 rounded-lg text-sm text-text font-mono focus:outline-none focus:border-primary"
+                />
+                <p class="text-[10px] text-dim mt-1 leading-snug">
+                  RFC 5545 — FREQ + INTERVAL + BYDAY + UNTIL. Power-user shape; presets above cover most cases.
+                </p>
+              </div>
+            {/if}
+            {#if rrule}
+              <div class="sm:col-span-2 px-2.5 py-1.5 bg-mantle/50 border border-surface1/60 rounded text-[11px] text-dim font-mono">
+                <span class="text-secondary">→</span> {rrule}
+              </div>
+            {/if}
+          </div>
+        {/if}
 
         <div>
           <span class="block text-[11px] uppercase tracking-wider text-dim mb-1.5">Color</span>

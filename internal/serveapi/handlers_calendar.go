@@ -104,39 +104,85 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Granit events.json (calendar events)
+	// Granit events.json (calendar events). Events with an RRule
+	// expand into multiple occurrences across the requested window
+	// using the same expander as the ICS pipeline — single source of
+	// truth for recurrence semantics so a native weekly event behaves
+	// identically to a weekly event imported from a .ics file.
+	rangeEndForNative := to.Add(24 * time.Hour)
 	if granitEvents, err := granitmeta.ReadEvents(s.cfg.Vault.Root); err == nil {
 		for _, ev := range granitEvents {
 			d, err := time.Parse("2006-01-02", ev.Date)
 			if err != nil {
 				continue
 			}
-			if d.Before(from) || d.After(to) {
-				continue
-			}
-			ce := calendarEvent{
-				Type:     "event",
+			// Build the icsEvent shape so we can run expandRRULE.
+			// AllDay = no start time set; Start/End get parsed in
+			// local time the same way the original branch did.
+			seed := icsEvent{
 				Title:    ev.Title,
-				Date:     ev.Date,
-				EventID:  ev.ID,
-				Color:    ev.Color,
 				Location: ev.Location,
+				UID:      ev.ID,
+				RRule:    ev.RRule,
 			}
-			if ev.StartTime != "" {
+			if ev.StartTime == "" {
+				seed.AllDay = true
+				seed.Start = d
+				seed.End = d.Add(24 * time.Hour) // exclusive end day
+			} else {
 				if startT, err := time.ParseInLocation("2006-01-02 15:04", ev.Date+" "+ev.StartTime, time.Local); err == nil {
-					sStr := startT.Format(time.RFC3339)
-					ce.Start = &sStr
-					ce.Date = ""
+					seed.Start = startT
 					if ev.EndTime != "" {
 						if endT, err := time.ParseInLocation("2006-01-02 15:04", ev.Date+" "+ev.EndTime, time.Local); err == nil {
-							eStr := endT.Format(time.RFC3339)
-							ce.End = &eStr
-							ce.DurationMinutes = int(endT.Sub(startT).Minutes())
+							seed.End = endT
 						}
 					}
+				} else {
+					continue
 				}
 			}
-			events = append(events, ce)
+			// Non-recurring fast path: single window check, no
+			// expand call. Keeps the common case cheap on large
+			// events.json files.
+			occurrences := []icsEvent{seed}
+			if ev.RRule != "" {
+				occurrences = expandRRULE(seed, from, rangeEndForNative)
+			}
+			for _, occ := range occurrences {
+				occDate := occ.Start.Format("2006-01-02")
+				if occ.AllDay {
+					if occ.Start.Before(from) || !occ.Start.Before(rangeEndForNative) {
+						continue
+					}
+					events = append(events, calendarEvent{
+						Type:     "event",
+						Title:    ev.Title,
+						Date:     occDate,
+						EventID:  ev.ID,
+						Color:    ev.Color,
+						Location: ev.Location,
+					})
+					continue
+				}
+				if occ.Start.Before(from) || !occ.Start.Before(rangeEndForNative) {
+					continue
+				}
+				ce := calendarEvent{
+					Type:     "event",
+					Title:    ev.Title,
+					EventID:  ev.ID,
+					Color:    ev.Color,
+					Location: ev.Location,
+				}
+				sStr := occ.Start.Format(time.RFC3339)
+				ce.Start = &sStr
+				if !occ.End.IsZero() {
+					eStr := occ.End.Format(time.RFC3339)
+					ce.End = &eStr
+					ce.DurationMinutes = int(occ.End.Sub(occ.Start).Minutes())
+				}
+				events = append(events, ce)
+			}
 		}
 	}
 

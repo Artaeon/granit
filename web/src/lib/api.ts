@@ -303,6 +303,12 @@ export interface CalendarEventEntry {
   /** RFC3339 timestamp of the most recent reminder fired (set by server). */
   last_reminder_fired?: string;
   created_at?: string;
+  /** RFC 5545 recurrence rule. Empty for one-off events.
+   *  Common shapes the picker emits: "FREQ=DAILY", "FREQ=WEEKLY",
+   *  "FREQ=WEEKLY;BYDAY=MO,WE,FR", "FREQ=MONTHLY", "FREQ=YEARLY".
+   *  Optional UNTIL=YYYYMMDDT235959Z suffix. The backend uses the
+   *  same expander as ICS so semantics match across sources. */
+  rrule?: string;
 }
 
 export interface Milestone {

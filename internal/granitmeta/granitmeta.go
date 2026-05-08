@@ -31,6 +31,13 @@ type Event struct {
 	// tick within the fire window doesn't double-notify.
 	LastReminderFired string `json:"last_reminder_fired,omitempty"`
 	CreatedAt         string `json:"created_at,omitempty"`
+	// RRule is the RFC 5545 recurrence rule for repeating events
+	// (e.g. "FREQ=WEEKLY;BYDAY=MO,WE,FR;UNTIL=20261231T235959Z").
+	// Empty for one-off events. Stored verbatim so a user who
+	// hand-edits events.json with a more advanced rule (BYSETPOS,
+	// BYMONTHDAY) round-trips cleanly even when our expander only
+	// honors the common subset.
+	RRule string `json:"rrule,omitempty"`
 }
 
 func ReadEvents(vaultRoot string) ([]Event, error) {
