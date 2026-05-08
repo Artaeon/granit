@@ -17,6 +17,25 @@
   import PomodoroPill from '$lib/components/PomodoroPill.svelte';
   import AIOverlay from '$lib/components/AIOverlay.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
+  import { findMode, currentModeId } from '$lib/ai/agents';
+
+  // Sidebar quick-action chips. Each one opens the AI overlay
+  // pre-filled with a prompt and (when send=true) fires it
+  // immediately. Keeps the most-used AI surfaces one click away
+  // instead of two (open overlay → type / pick action). The
+  // chips defer to the Sabbath check by going through openAIOverlay
+  // which won't bypass the server-side Sabbath gate even if it
+  // opens the panel.
+  type AIQuick = { id: string; label: string; glyph: string; modeId?: string; text: string; send: boolean; title: string };
+  const aiQuickActions: AIQuick[] = [
+    { id: 'briefing', label: 'Briefing', glyph: '☀', text: 'Give me a short morning briefing — top three things I should focus on today and one thing I might be forgetting.', send: true, title: 'Morning briefing — top 3 + one thing you might forget' },
+    { id: 'triage', label: 'Triage', glyph: '⚖', text: 'Help me triage my open tasks — which 3 should I do today, and what should I defer or delete?', send: true, title: 'Inbox / task triage — pick 3, defer the rest' },
+    { id: 'free', label: 'Find time', glyph: '⏱', modeId: 'analyst', text: 'Find me 60 minutes for deep work in the next 3 days. List 3 candidate slots.', send: false, title: 'Find a free slot for deep work' }
+  ];
+  function runQuickAction(q: AIQuick) {
+    openAIOverlay({ modeId: q.modeId, text: q.text, send: q.send });
+    drawerOpen = false;
+  }
   import { connect, disconnect, wsConnected, onWsEvent } from '$lib/ws';
   import { theme, nextTheme, themeIcon, themeLabel } from '$lib/stores/theme';
   import { modulesStore } from '$lib/stores/modules';
@@ -500,6 +519,43 @@
           {/if}
         {/if}
       </button>
+
+      <!-- AI sub-rail. Mode pill + quick-action chips. Hidden in
+           Sabbath mode (the parent button already says AI is paused;
+           dimming the chips would just be visual noise) and in
+           compact mode (icon rail has no horizontal space for the
+           chip row — the user can still hit Mod+J). The mode pill
+           is informational, click-to-open: tells the user which
+           agent posture is currently selected so they read at a
+           glance "I'm in Coach mode" without opening the overlay. -->
+      {#if !isCompact && !$sabbath}
+        {@const cur = findMode($currentModeId)}
+        <div class="px-3 -mt-1 mb-2 space-y-1.5">
+          <button
+            type="button"
+            onclick={() => { openAIOverlay(); drawerOpen = false; }}
+            title={`current AI mode — ${cur.tagline}. Click to switch.`}
+            class="w-full flex items-center gap-1.5 text-[10px] text-dim hover:text-text transition-colors"
+          >
+            <span aria-hidden="true">{cur.glyph}</span>
+            <span class="uppercase tracking-wider">Mode: {cur.label}</span>
+            <span class="ml-auto opacity-60">change</span>
+          </button>
+          <div class="flex flex-wrap gap-1">
+            {#each aiQuickActions as q (q.id)}
+              <button
+                type="button"
+                onclick={() => runQuickAction(q)}
+                title={q.title}
+                class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-primary/8 text-subtext border border-primary/15 hover:bg-primary/15 hover:text-text transition-colors"
+              >
+                <span aria-hidden="true">{q.glyph}</span>
+                <span>{q.label}</span>
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
 
       <!-- Today sits above all groups, no header, since it's home. -->
       {@render navItem(today, isCompact)}

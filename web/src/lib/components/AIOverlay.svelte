@@ -3,7 +3,7 @@
   import { page } from '$app/stores';
   import { api, type ChatMessage } from '$lib/api';
   import { sabbath } from '$lib/stores/sabbath';
-  import { aiOverlayOpen } from '$lib/stores/ai-overlay';
+  import { aiOverlayOpen, takeAIOverlaySeed } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { AGENT_MODES, findMode, loadModeId, persistModeId } from '$lib/ai/agents';
@@ -212,6 +212,25 @@
           attachNote = true;
         } else if (attachSnapshot && !snapshotData) {
           void loadSnapshot();
+        }
+        // Pending seed from a sidebar quick-action chip: switch
+        // mode if requested, drop the text into the composer,
+        // and (if .send) fire it on the next tick once the input
+        // ref + mode have settled. Take-and-clear semantics: the
+        // store helper consumes the seed so a later open() with
+        // no args won't re-trigger it.
+        const seed = takeAIOverlaySeed();
+        if (seed) {
+          if (seed.modeId) {
+            modeId = seed.modeId;
+            persistModeId(seed.modeId);
+            const m = findMode(seed.modeId);
+            rag = m.ragDefault;
+          }
+          input = seed.text;
+          if (seed.send) {
+            tick().then(() => { void send(); });
+          }
         }
       });
       void loadStatus();

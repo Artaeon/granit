@@ -104,7 +104,19 @@ export function loadModeId(): string {
   return 'general';
 }
 
+// Reactive view of the current mode id. The overlay owns its own
+// $state for the in-flight value, but other surfaces (sidebar pill,
+// command palette) want to render whatever mode the user last
+// committed to without prop-drilling. Writers (persistModeId)
+// update this so subscribers re-render.
+import { writable } from 'svelte/store';
+
+export const currentModeId = writable<string>(
+  typeof localStorage === 'undefined' ? 'general' : loadModeId()
+);
+
 export function persistModeId(id: string) {
   if (typeof localStorage === 'undefined') return;
   try { localStorage.setItem(KEY, id); } catch {}
+  currentModeId.set(id);
 }
