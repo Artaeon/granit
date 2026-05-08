@@ -623,12 +623,32 @@
 **Slash commands**
 
   - \`/help\` — show this list
-  - \`/clear\` — reset the conversation
+  - \`/clear\` — reset the conversation (saves to history first)
+  - \`/new\` — start a fresh thread (current is preserved)
+  - \`/save\` — save the current thread under \`chat-history/\`
   - \`/briefing\` — daily briefing (today's events + tasks)
   - \`/synopsis\` — weekly synopsis (Wins / Setbacks / Learned / Next)
   - \`/triage\` — inbox triage proposals
   - \`/deadlines\` — detect deadlines in untimed tasks
-  - \`/detach\` — drop the attached snapshot or note for the next message
+  - \`/mode <id>\` — switch agent mode (general/research/writer/coach/analyst/architect)
+  - \`/persona <id>\` — switch persona (lewis/aurelius/socrates/...)
+  - \`/rag\` — toggle RAG retrieval for the next turn
+  - \`/forget\` — drop snapshot/note attachment + queued @-mentions
+
+**Reference vault entities**
+
+  Type \`@\` in the composer to pop a picker for tasks, goals,
+  projects, deadlines, events, and notes. Pick → the entity's
+  fields (id, title, due date, status…) fold into a strict system
+  message so the assistant grounds its reply in real data.
+
+**Thread history**
+
+  Every thread auto-saves to local storage (last 30, oldest drop).
+  Click the clock icon in the header to browse + search your saved
+  chats and pinned replies. Click ☆ on any assistant message to
+  pin it across thread eviction. Click the fork glyph to branch
+  the thread from that message into a new conversation.
 
 **Where AI lives in granit**
 
