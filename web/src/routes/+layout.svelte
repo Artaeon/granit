@@ -1,6 +1,6 @@
 <script lang="ts">
   import '../app.css';
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api } from '$lib/api';
   import { page } from '$app/stores';
@@ -278,15 +278,23 @@
   // section) and the sidebar misleads them about where they are.
   // We mutate collapsedSections without persisting so closing it
   // again — and going elsewhere — restores the user's preference.
+  //
+  // The collapsedSections read MUST be in untrack — otherwise the
+  // user can never collapse a section containing the active route,
+  // because the toggleSection write retriggers this effect, which
+  // re-expands it immediately. Same Svelte 5 untrack re-seed pattern
+  // we hit in the email-signatures editor.
   $effect(() => {
     const path = $page.url.pathname;
     if (path === '/') return;
-    for (const s of sections) {
-      const inSection = s.items.some((it) => path === it.href || path.startsWith(it.href + '/'));
-      if (inSection && collapsedSections[s.id]) {
-        collapsedSections = { ...collapsedSections, [s.id]: false };
+    untrack(() => {
+      for (const s of sections) {
+        const inSection = s.items.some((it) => path === it.href || path.startsWith(it.href + '/'));
+        if (inSection && collapsedSections[s.id]) {
+          collapsedSections = { ...collapsedSections, [s.id]: false };
+        }
       }
-    }
+    });
   });
 
   let compact = $state<boolean>(

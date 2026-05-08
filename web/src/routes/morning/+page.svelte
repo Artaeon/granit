@@ -389,8 +389,8 @@
   });
 </script>
 
-<div class="h-full overflow-y-auto bg-base">
-  <div class="p-4 sm:p-6 lg:p-8 max-w-2xl mx-auto pb-32">
+<div class="h-full overflow-y-auto bg-base flex flex-col">
+  <div class="p-4 sm:p-6 lg:p-8 max-w-2xl w-full mx-auto flex-1">
     <!-- Header: greeting + scripture + date. The whole point of
          scripture being inline (not its own step) is that it's
          passive — read once, anchor the day, move on. -->
@@ -705,10 +705,12 @@
     </section>
   </div>
 
-  <!-- Sticky Lock-in footer. Mobile-friendly; hides itself when
-       there's literally nothing to save so the user can leave the
-       page without an empty save attempt. -->
-  <footer class="fixed bottom-0 left-0 right-0 lg:left-64 xl:left-72 z-20 border-t border-surface1 bg-mantle/95 backdrop-blur px-4 py-3">
+  <!-- Sticky Lock-in footer. Lives inside the scroll container so
+       sticky bottom-0 pins to the bottom of the main area without
+       caring about sidebar width / compact mode (the previous fixed-
+       position version had hardcoded left offsets that broke when
+       the sidebar collapsed to compact). -->
+  <footer class="sticky bottom-0 z-20 border-t border-surface1 bg-mantle/95 backdrop-blur px-4 py-3">
     <div class="max-w-2xl mx-auto flex items-center gap-3">
       <span class="text-[11px] text-dim flex-1">
         {#if filledCount === 0}
