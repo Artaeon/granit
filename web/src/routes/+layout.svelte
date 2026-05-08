@@ -243,12 +243,26 @@
   // wire format tiny (only collapsed sections are stored).
   const COLLAPSED_KEY = 'granit.sidebar.collapsed';
   const COMPACT_KEY = 'granit.sidebar.compact';
+  // Default-collapse everything except Daily. The original default
+  // was "all expanded", which surfaced 25+ items at once and made
+  // the sidebar feel like a phonebook. Daily stays expanded because
+  // it's the morning/tasks/calendar cluster every user lives in. The
+  // others get expanded as needed and the choice persists. Existing
+  // users keep whatever they had.
+  const DEFAULT_COLLAPSED: Record<string, boolean> = {
+    plan: true,
+    life: true,
+    knowledge: true,
+    ai: true
+  };
   function loadCollapsed(): Record<string, boolean> {
-    if (typeof localStorage === 'undefined') return {};
+    if (typeof localStorage === 'undefined') return { ...DEFAULT_COLLAPSED };
     try {
-      return JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '{}') as Record<string, boolean>;
+      const raw = localStorage.getItem(COLLAPSED_KEY);
+      if (raw === null) return { ...DEFAULT_COLLAPSED };
+      return JSON.parse(raw) as Record<string, boolean>;
     } catch {
-      return {};
+      return { ...DEFAULT_COLLAPSED };
     }
   }
   let collapsedSections = $state<Record<string, boolean>>(loadCollapsed());
@@ -259,6 +273,21 @@
     collapsedSections = next;
     try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next)); } catch {}
   }
+  // Auto-expand the section containing the active route. Without
+  // this the user can land on /goals (collapsed-by-default Plan
+  // section) and the sidebar misleads them about where they are.
+  // We mutate collapsedSections without persisting so closing it
+  // again — and going elsewhere — restores the user's preference.
+  $effect(() => {
+    const path = $page.url.pathname;
+    if (path === '/') return;
+    for (const s of sections) {
+      const inSection = s.items.some((it) => path === it.href || path.startsWith(it.href + '/'));
+      if (inSection && collapsedSections[s.id]) {
+        collapsedSections = { ...collapsedSections, [s.id]: false };
+      }
+    }
+  });
 
   let compact = $state<boolean>(
     typeof localStorage !== 'undefined' && localStorage.getItem(COMPACT_KEY) === '1'
