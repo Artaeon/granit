@@ -6,6 +6,7 @@
   import { aiOverlayOpen } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
+  import { AGENT_MODES, findMode, loadModeId, persistModeId } from '$lib/ai/agents';
 
   // AIOverlay — global AI panel. Slides in from the right on
   // desktop, becomes a bottom sheet on mobile. Triggered with
@@ -100,6 +101,43 @@
   // has a primary doc; non-note surfaces benefit from the broader
   // "what's going on right now" view that the snapshot provides.
   let attachSnapshot = $state(true);
+
+  // ── Agent modes + RAG ──────────────────────────────────────────
+  // Mode = posture (system prompt). RAG = grounding (retrieved
+  // notes prepended as context). They're independent: a Writer mode
+  // user might want vault retrieval for facts; a Research mode user
+  // might want bare LLM if working with a paper they pasted in.
+  // The mode picker is the headline UX; RAG is a secondary toggle
+  // that defaults from the mode's preference but the user overrides.
+  let modeId = $state<string>(loadModeId());
+  let mode = $derived(findMode(modeId));
+  // Persist mode change + reset RAG default when user picks a new
+  // mode, but DON'T reset on every render (that would clobber the
+  // user's explicit override). Only seed when the user actively
+  // changes mode.
+  function selectMode(id: string) {
+    if (id === modeId) return;
+    modeId = id;
+    persistModeId(id);
+    rag = findMode(id).ragDefault;
+  }
+  // Initial seed: read the loaded mode's RAG default. We use the
+  // module helper rather than `modeId` (which Svelte's analyzer
+  // flags as a non-reactive read) so the warning stays clean. The
+  // user's later mode-changes flow through selectMode() above.
+  let rag = $state(findMode(loadModeId()).ragDefault);
+  let modePickerOpen = $state(false);
+  // Cached list of vault notes (path + title) for the RAG retrieval.
+  // Loaded lazily on first send when rag=true; refresh on note
+  // events. Per-tab — small enough that holding all titles is fine
+  // even on 5k-note vaults.
+  let ragIndex = $state<{ path: string; title: string; modTime: string }[]>([]);
+  let ragIndexLoaded = $state(false);
+  // Last retrieval result for transparency: 'AI saw notes A, B, C'.
+  // Cleared on every send so the user sees fresh attribution per
+  // turn rather than stale.
+  type RagHit = { path: string; title: string; excerpt: string; score: number };
+  let lastRagHits = $state<RagHit[]>([]);
   let snapshotLoading = $state(false);
   // Use unknown so we don't lock the consumer into the snapshot
   // shape — the backend evolves it independently.
@@ -304,7 +342,18 @@
   // A leading slash that doesn't match falls through to normal
   // chat — so a user pasting code with a leading "/" doesn't get
   // accidentally intercepted unless the first word is a real cmd.
-  const SLASH_HELP = `**Slash commands**
+  const SLASH_HELP = `**Modes** (top-left in this panel)
+
+  - **General** — balanced help across writing, planning, questions
+  - **Research** — grounded answers, named sources, no invention (RAG on)
+  - **Writer** — drafting partner, matches your voice
+  - **Coach** — Socratic, questions over answers (RAG on)
+  - **Analyst** — evidence-first, what would falsify the claim (RAG on)
+  - **Architect** — trade-offs + recommendations for system design
+
+  Toggle **RAG** to search the vault for relevant notes per question.
+
+**Slash commands**
 
   - \`/help\` — show this list
   - \`/clear\` — reset the conversation
@@ -374,6 +423,113 @@
     }
   }
 
+  async function loadRagIndex() {
+    if (ragIndexLoaded) return;
+    try {
+      const r = await api.listNotes({ limit: 5000 });
+      ragIndex = r.notes.map((n) => ({
+        path: n.path,
+        title: n.title || n.path.replace(/\.md$/, ''),
+        modTime: n.modTime
+      }));
+    } finally {
+      ragIndexLoaded = true;
+    }
+  }
+
+  // Retrieve top-K notes for the user's query. Two-stage:
+  //   1. Title-token match: every note whose title contains any of
+  //      the query tokens scores 2 per token. Cheap, exact, no I/O.
+  //   2. For the top ~12 by title score, fetch their bodies and
+  //      add 1 per body-token match (simple substring count).
+  // Recency bumps the final score slightly so a note touched
+  // yesterday wins over one untouched in 2024 when titles tie. We
+  // cap at 3 hits + clip each excerpt to 800 chars so the prompt
+  // stays bounded on a 5k-note vault. Strict in-process retrieval —
+  // no embeddings, no extra service. Future: swap in a real
+  // embedding lookup at the same call site.
+  async function retrieveForRag(query: string, currentNote?: string): Promise<RagHit[]> {
+    if (!ragIndexLoaded) await loadRagIndex();
+    const tokens = Array.from(
+      new Set(
+        query
+          .toLowerCase()
+          .replace(/[^\w\s/-]/g, ' ')
+          .split(/\s+/)
+          .filter((t) => t.length >= 3 && !STOPWORDS.has(t))
+      )
+    );
+    if (tokens.length === 0) return [];
+    const now = Date.now();
+    const titleScored = ragIndex
+      .map((n) => {
+        if (n.path === currentNote) return null; // exclude the current note from RAG
+        let s = 0;
+        const title = n.title.toLowerCase();
+        for (const t of tokens) {
+          if (title.includes(t)) s += 2;
+        }
+        // Recency tiebreaker: +0..0.5 based on age vs 30-day window.
+        const age = now - new Date(n.modTime).getTime();
+        const recency = Math.max(0, Math.min(0.5, 0.5 - age / (30 * 86_400_000)));
+        return s > 0 ? { ...n, score: s + recency } : null;
+      })
+      .filter((x): x is { path: string; title: string; modTime: string; score: number } => !!x)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12);
+    if (titleScored.length === 0) return [];
+    // Body fetch top 12 in parallel; score each body match.
+    const bodies = await Promise.all(
+      titleScored.map((n) => api.getNote(n.path).catch(() => null))
+    );
+    const final: RagHit[] = [];
+    for (let i = 0; i < titleScored.length; i++) {
+      const meta = titleScored[i];
+      const body = bodies[i]?.body ?? '';
+      let bodyScore = 0;
+      const lc = body.toLowerCase();
+      for (const t of tokens) {
+        // Count occurrences (capped at 5 per token to avoid one
+        // word-spam note dominating).
+        let count = 0;
+        let idx = 0;
+        while ((idx = lc.indexOf(t, idx)) >= 0 && count < 5) {
+          count++;
+          idx += t.length;
+        }
+        bodyScore += count;
+      }
+      const totalScore = meta.score + bodyScore;
+      if (totalScore <= 0) continue;
+      // Excerpt: find the first body line that mentions any token,
+      // ±200 chars. Falls back to the start of the body.
+      let excerpt = body.slice(0, 800);
+      for (const t of tokens) {
+        const at = lc.indexOf(t);
+        if (at >= 0) {
+          const start = Math.max(0, at - 200);
+          excerpt = body.slice(start, start + 800);
+          if (start > 0) excerpt = '…' + excerpt;
+          break;
+        }
+      }
+      final.push({ path: meta.path, title: meta.title, excerpt: excerpt.trim(), score: totalScore });
+    }
+    final.sort((a, b) => b.score - a.score);
+    return final.slice(0, 3);
+  }
+
+  // Token-cleanup stopwords. Tiny English set — RAG queries are
+  // typically short, and dropping these lets the score reflect
+  // content words rather than 'the', 'a', etc.
+  const STOPWORDS = new Set([
+    'the', 'a', 'an', 'of', 'to', 'in', 'for', 'on', 'and', 'or', 'is', 'it', 'be',
+    'are', 'was', 'were', 'this', 'that', 'with', 'from', 'as', 'by', 'at', 'but',
+    'not', 'if', 'so', 'do', 'does', 'did', 'have', 'has', 'had', 'can', 'will',
+    'what', 'when', 'how', 'why', 'who', 'where', 'should', 'would', 'could',
+    'about', 'into', 'over', 'than', 'then', 'them', 'they', 'their'
+  ]);
+
   async function send(e?: Event) {
     e?.preventDefault();
     const text = input.trim();
@@ -386,13 +542,17 @@
     abort = new AbortController();
     const userMsg: ChatMessage = { role: 'user', content: text };
     // Build the prelude — a system message containing the
-    // attached snapshot when we have one and the route isn't a
-    // notes page (notes use chatStream's notePath instead).
-    // Only included on the FIRST turn; subsequent turns rely on
-    // the model retaining context via prior assistant replies,
-    // since re-injecting the snapshot every turn burns tokens.
+    // active agent mode's posture, optionally the vault snapshot
+    // (on non-note routes when attached), optionally retrieved
+    // RAG hits (when rag=true). Posture stays for the whole
+    // thread; snapshot/RAG inject on the first turn only since
+    // re-injecting on every turn burns tokens for facts the
+    // assistant has already seen.
     const prelude: ChatMessage[] = [];
     const isFirstTurn = messages.length === 0;
+    // Mode posture — every turn (cheap; one paragraph). Keeps the
+    // mode active even after history is long.
+    prelude.push({ role: 'system', content: mode.system });
     if (isFirstTurn && attachSnapshot && snapshotData && !currentNotePath) {
       prelude.push({
         role: 'system',
@@ -402,6 +562,30 @@
           'Refer to it when relevant; do not invent content beyond it.\n\n' +
           '```json\n' + JSON.stringify(snapshotData, null, 2) + '\n```'
       });
+    }
+    // RAG — runs on every turn the toggle is on, so a follow-up
+    // question about a different topic retrieves different notes.
+    // Skips if the user is on a note page already (the note itself
+    // is being attached via notePath).
+    lastRagHits = [];
+    if (rag && !currentNotePath) {
+      try {
+        const hits = await retrieveForRag(text);
+        if (hits.length > 0) {
+          lastRagHits = hits;
+          const formatted = hits
+            .map((h, i) => `### Note ${i + 1}: ${h.title}\nPath: \`${h.path}\`\n\n${h.excerpt}`)
+            .join('\n\n---\n\n');
+          prelude.push({
+            role: 'system',
+            content:
+              `RAG retrieved ${hits.length} note(s) from the user's vault that match this query. Quote from these when relevant; cite the note title in your reply. Do NOT invent content beyond what's here. If they don't actually answer the question, say so plainly.\n\n${formatted}`
+          });
+        }
+      } catch {
+        // Retrieval failure shouldn't block the chat — fall through
+        // and let the model answer without RAG context.
+      }
     }
     const history = [...prelude, ...messages, userMsg];
     messages = [...messages, userMsg, { role: 'assistant', content: '' }];
@@ -489,11 +673,61 @@
       <span class="block w-10 h-1 rounded-full bg-surface2"></span>
     </div>
     <header class="px-4 py-3 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
-      <span class="text-base">✨</span>
-      <h2 class="text-sm font-semibold text-text">AI assistant</h2>
+      <!-- Mode picker — replaces the static '✨ AI assistant'
+           heading. Click to open a popover of agent modes, each
+           with a one-line tagline. Mode is the headline UX choice
+           in the overlay; status pill + cancel + close pack to
+           the right. -->
+      <div class="relative flex-shrink-0">
+        <button
+          type="button"
+          onclick={() => (modePickerOpen = !modePickerOpen)}
+          aria-haspopup="listbox"
+          aria-expanded={modePickerOpen}
+          class="inline-flex items-center gap-1.5 px-2 py-1 rounded hover:bg-surface0 text-text"
+          title={`Mode: ${mode.label} — ${mode.tagline}`}
+        >
+          <span class="text-base leading-none">{mode.glyph}</span>
+          <span class="text-sm font-semibold">{mode.label}</span>
+          <svg viewBox="0 0 24 24" class="w-3 h-3 opacity-60" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        {#if modePickerOpen}
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <div
+            role="presentation"
+            class="fixed inset-0 z-40"
+            onclick={() => (modePickerOpen = false)}
+          ></div>
+          <div
+            role="listbox"
+            class="absolute left-0 top-full mt-1 w-72 bg-mantle border border-surface1 rounded-lg shadow-xl z-50 py-1"
+          >
+            {#each AGENT_MODES as m (m.id)}
+              <button
+                type="button"
+                role="option"
+                aria-selected={m.id === modeId}
+                onclick={() => { selectMode(m.id); modePickerOpen = false; }}
+                class="w-full flex items-start gap-2 px-3 py-2 hover:bg-surface0 text-left {m.id === modeId ? 'bg-primary/10' : ''}"
+              >
+                <span class="text-base leading-tight flex-shrink-0">{m.glyph}</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium text-text">{m.label}</div>
+                  <div class="text-[11px] text-dim leading-snug">{m.tagline}</div>
+                </div>
+                {#if m.id === modeId}
+                  <span class="text-primary text-xs flex-shrink-0">✓</span>
+                {/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
       {#if statusInfo}
         <span
-          class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface1 text-subtext truncate"
+          class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface1 text-subtext truncate hidden sm:inline-block"
           title="Default backend (per-feature overrides apply individually)"
         >{statusInfo.provider} · {statusInfo.model}</span>
       {/if}
@@ -586,14 +820,31 @@
       {/if}
     </div>
 
+    {#if lastRagHits.length > 0}
+      <!-- RAG attribution strip — shows which vault notes the
+           assistant saw on the last turn so the user can verify
+           grounding. Click any to open the actual note. Compact
+           by default; line-truncates on mobile. -->
+      <div class="border-t border-surface1 px-4 py-1.5 flex items-center gap-1.5 flex-wrap text-[11px] flex-shrink-0 bg-mantle/40">
+        <span class="text-dim">retrieved:</span>
+        {#each lastRagHits as h (h.path)}
+          <a
+            href="/notes/{encodeURIComponent(h.path)}"
+            class="text-secondary hover:underline truncate max-w-[12rem]"
+            title={h.path}
+          >{h.title}</a>
+        {/each}
+      </div>
+    {/if}
+
     {#if currentNotePath}
       <!-- Note-context chip. Lets the user toggle whether the
            current note is attached to the next chat message. The
            server-side notePath expander on /chat/stream injects
            the note's body into the system prompt; we only show
            the path here so the user knows what we're sending. -->
-      <div class="border-t border-surface1 px-4 py-2 flex items-center gap-2 flex-shrink-0 text-[11px]">
-        <label class="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
+      <div class="border-t border-surface1 px-4 py-2 flex items-center gap-2 flex-shrink-0 text-[11px] flex-wrap">
+        <label class="flex items-center gap-1.5 cursor-pointer flex-1 min-w-[10rem]">
           <input
             type="checkbox"
             bind:checked={attachNote}
@@ -601,6 +852,14 @@
           />
           <span class="text-dim flex-shrink-0">attach</span>
           <span class="text-subtext font-mono truncate" title={currentNotePath}>{currentNotePath}</span>
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer flex-shrink-0" title="Search the vault for relevant notes and include their excerpts as grounding context">
+          <input
+            type="checkbox"
+            bind:checked={rag}
+            class="w-3.5 h-3.5 accent-primary cursor-pointer flex-shrink-0"
+          />
+          <span class="text-dim">RAG</span>
         </label>
       </div>
     {:else}
@@ -610,23 +869,26 @@
            "what should I do next?" have actual data to lean on
            rather than guesses. Only injected on the first turn
            of a thread (subsequent turns lean on the model's own
-           reply context to avoid burning tokens). -->
-      <div class="border-t border-surface1 px-4 py-2 flex items-center gap-2 flex-shrink-0 text-[11px]">
-        <label class="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
+           reply context to avoid burning tokens). RAG is the
+           sibling toggle: search the full vault per turn and
+           prepend the top matching notes' excerpts so cross-vault
+           questions get grounded answers. -->
+      <div class="border-t border-surface1 px-4 py-2 flex items-center gap-3 flex-shrink-0 text-[11px] flex-wrap">
+        <label class="flex items-center gap-1.5 cursor-pointer flex-1 min-w-[10rem]">
           <input
             type="checkbox"
             bind:checked={attachSnapshot}
             disabled={snapshotLoading}
             class="w-3.5 h-3.5 accent-primary cursor-pointer flex-shrink-0 disabled:opacity-50"
           />
-          <span class="text-dim flex-shrink-0">attach</span>
+          <span class="text-dim flex-shrink-0">snapshot</span>
           <span class="text-subtext font-mono truncate">
             {#if snapshotLoading}
-              loading vault snapshot…
+              loading…
             {:else if snapshotData}
-              today's vault snapshot
+              today's vault
             {:else}
-              no snapshot (offline or feature off)
+              unavailable
             {/if}
           </span>
           {#if !snapshotLoading && !snapshotData}
@@ -636,6 +898,14 @@
               class="text-secondary hover:underline ml-1"
             >retry</button>
           {/if}
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer flex-shrink-0" title="Search the vault for relevant notes per question and include their excerpts as grounding context">
+          <input
+            type="checkbox"
+            bind:checked={rag}
+            class="w-3.5 h-3.5 accent-primary cursor-pointer flex-shrink-0"
+          />
+          <span class="text-dim">RAG</span>
         </label>
       </div>
     {/if}
