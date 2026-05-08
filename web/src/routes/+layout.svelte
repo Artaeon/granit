@@ -699,23 +699,45 @@
         {/if}
       </button>
 
-      <!-- Sabbath toggle. Hides work modules for the day (Mark 2:27).
-           Auto-clears at midnight via a read-time check in the store,
-           so a forgotten 'on' state recovers the next morning by
-           itself. The active state pulses a small dot in compact
-           mode + shifts the button to the success palette so the
-           user sees at a glance whether sabbath is on. -->
-      <button
-        onclick={() => sabbath.toggle()}
-        title={$sabbath ? 'Sabbath mode is on — tap to exit' : 'Enter sabbath mode (hides work modules for today)'}
-        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm transition-colors {$sabbath ? 'bg-success/15 text-success hover:bg-success/25' : 'text-dim hover:bg-surface0 hover:text-text'}"
-      >
-        <span class="w-5 text-center text-base flex-shrink-0">{$sabbath ? '🕊️' : '✦'}</span>
-        {#if !isCompact}
-          <span class="flex-1 text-left">{$sabbath ? 'Sabbath on' : 'Sabbath'}</span>
-          <span class="text-[10px] text-dim">{$sabbath ? 'tap to exit' : 'rest day'}</span>
-        {/if}
-      </button>
+      <!-- Sabbath row. Mark 2:27: "the sabbath was made for man." A
+           split layout: the icon+label opens the /sabbath landing
+           (verse, time-remaining, schedule); the "→" pill toggles
+           sabbath state in place. Two distinct intents, one row.
+           Compact mode collapses both into a single icon-button
+           that just toggles, since hover-tooltips do most of the
+           explaining and a side-by-side button row doesn't fit.
+           Auto-clears at midnight via a read-time check in the
+           store, so a forgotten 'on' state recovers the next
+           morning by itself. -->
+      {#if isCompact}
+        <button
+          onclick={() => sabbath.toggle()}
+          title={$sabbath ? 'Sabbath mode is on — tap to exit' : 'Enter sabbath mode (hides work modules for today)'}
+          class="w-full flex justify-center items-center px-2 py-2 rounded text-sm transition-colors {$sabbath ? 'bg-success/15 text-success hover:bg-success/25' : 'text-dim hover:bg-surface0 hover:text-text'}"
+        >
+          <span class="w-5 text-center text-base flex-shrink-0">{$sabbath ? '🕊️' : '✦'}</span>
+        </button>
+      {:else}
+        <div class="flex items-stretch gap-1 {$sabbath ? 'bg-success/15 text-success' : 'text-dim'} rounded">
+          <a
+            href="/sabbath"
+            onclick={() => (drawerOpen = false)}
+            class="flex-1 flex items-center gap-3 px-3 py-2 rounded-l hover:bg-surface0 hover:text-text transition-colors {$sabbath ? 'hover:bg-success/25 hover:text-success' : ''}"
+          >
+            <span class="w-5 text-center text-base flex-shrink-0">{$sabbath ? '🕊️' : '✦'}</span>
+            <span class="flex-1 text-left">{$sabbath ? 'Sabbath on' : 'Sabbath'}</span>
+            <span class="text-[10px] text-dim">open</span>
+          </a>
+          <button
+            onclick={() => sabbath.toggle()}
+            title={$sabbath ? 'tap to exit sabbath' : 'enter sabbath now'}
+            aria-label={$sabbath ? 'exit sabbath' : 'enter sabbath'}
+            class="px-2.5 py-2 rounded-r hover:bg-surface0 hover:text-text transition-colors {$sabbath ? 'hover:bg-success/25 hover:text-success' : ''}"
+          >
+            <span class="text-base">{$sabbath ? '✕' : '→'}</span>
+          </button>
+        </div>
+      {/if}
 
       <!-- Desktop-only compact toggle. Hidden on mobile because the
            drawer is already an icon-poor experience and a compact
