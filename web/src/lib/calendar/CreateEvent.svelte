@@ -85,6 +85,80 @@
     location = '';
     color = '';
     remindMinutes = 0;
+    aiInput = '';
+    aiBusy = false;
+    aiError = '';
+  }
+
+  // ─── AI natural-language parse ───────────────────────────────────
+  // 'dinner Friday 7pm with Alice at the Olive Garden' → fills the
+  // form. Strict JSON output through the audit-gated chat pipeline.
+  // The user always reviews + clicks Save — we don't auto-create.
+  let aiInput = $state('');
+  let aiBusy = $state(false);
+  let aiError = $state('');
+  let aiAbort: AbortController | null = null;
+
+  function todayStr(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  async function aiParse() {
+    const text = aiInput.trim();
+    if (!text || aiBusy) return;
+    aiAbort?.abort();
+    aiAbort = new AbortController();
+    aiBusy = true;
+    aiError = '';
+    let buf = '';
+    try {
+      // Lazy-load api so this widget tree-shakes without it for users
+      // who never touch the AI input.
+      const { api } = await import('$lib/api');
+      await api.chatStream(
+        [
+          {
+            role: 'system',
+            content:
+              'You parse natural-language event descriptions into JSON. Today\'s date is "' + todayStr() + '" (the user\'s local day). Return STRICTLY a JSON object, no fences, no prose: {"title": "<short event title, no leading verb like "schedule">", "date": "YYYY-MM-DD", "start": "HH:MM" (24h, optional — empty string for all-day), "end": "HH:MM" (24h, optional — derive from start + 1h if user says a time but no end), "location": "<optional>"}. Resolve relative dates (today / tomorrow / Friday / next week) against today\'s date. Use 24h. If a time is given without end, default end = start + 1 hour. If no time at all, leave start and end empty (all-day).'
+          },
+          { role: 'user', content: text }
+        ],
+        undefined,
+        {
+          onChunk: (c) => { buf += c; },
+          onDone: () => {
+            let cleaned = buf.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+            }
+            try {
+              const parsed = JSON.parse(cleaned) as {
+                title?: string;
+                date?: string;
+                start?: string;
+                end?: string;
+                location?: string;
+              };
+              if (parsed.title) title = parsed.title;
+              if (parsed.date && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date)) dateISO = parsed.date;
+              if (parsed.start && /^\d{2}:\d{2}$/.test(parsed.start)) startTime = parsed.start;
+              if (parsed.end && /^\d{2}:\d{2}$/.test(parsed.end)) endTime = parsed.end;
+              if (parsed.location) location = parsed.location;
+              aiInput = '';
+            } catch {
+              aiError = 'Could not parse — try again or fill the fields manually.';
+            }
+          },
+          onError: (err) => { aiError = err.message; }
+        },
+        aiAbort.signal
+      );
+    } finally {
+      aiBusy = false;
+      aiAbort = null;
+    }
   }
 
   async function submit(e: SubmitEvent) {
@@ -162,6 +236,43 @@
         <button onclick={close} class="text-dim hover:text-text text-2xl leading-none w-8 h-8 -mr-2 flex items-center justify-center" aria-label="close">×</button>
       </header>
       <form onsubmit={submit} class="p-4 sm:p-5 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] sm:pb-5 space-y-4">
+        <!-- AI parse — type 'dinner Friday 7pm with Alice at the
+             Olive Garden' and it fills the fields below. The user
+             always reviews + clicks Save; we never auto-create. The
+             input lives at the top because the parse populates the
+             whole form, so it's the natural starting point. -->
+        <div class="rounded-lg bg-gradient-to-r from-primary/10 via-secondary/10 to-primary/10 border border-primary/20 p-2.5">
+          <label class="block text-[10px] uppercase tracking-wider text-primary mb-1.5 inline-flex items-center gap-1" for="ev-ai">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+              <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
+            </svg>
+            Quick parse with AI
+          </label>
+          <div class="flex gap-2">
+            <input
+              id="ev-ai"
+              bind:value={aiInput}
+              onkeydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void aiParse(); } }}
+              placeholder='e.g. "dinner Friday 7pm with Alice at the Olive Garden"'
+              disabled={aiBusy}
+              class="flex-1 px-2.5 py-2 bg-mantle border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary disabled:opacity-60"
+            />
+            <button
+              type="button"
+              onclick={aiParse}
+              disabled={!aiInput.trim() || aiBusy}
+              class="px-3 py-2 bg-primary text-on-primary rounded text-sm disabled:opacity-50"
+            >{aiBusy ? '…' : 'Parse'}</button>
+          </div>
+          {#if aiError}
+            <p class="text-[11px] text-error mt-1.5">{aiError}</p>
+          {:else}
+            <p class="text-[10px] text-dim mt-1 leading-snug">
+              Date / time / location resolve from natural language. Review the fields below and click Create.
+            </p>
+          {/if}
+        </div>
+
         <!-- Title — bigger touch target than the rest since it's
              the only required field besides the date. -->
         <div>
