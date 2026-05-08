@@ -84,6 +84,85 @@
   let sentinel: HTMLDivElement | undefined = $state();
   let observer: IntersectionObserver | null = null;
 
+  // ─── AI: theme detection across loaded jots ──────────────────────
+  // Reads the last 20-30 loaded jot bodies and surfaces 3-5 recurring
+  // themes (topics, people, projects, struggles, joys). Each theme
+  // becomes a clickable chip that runs the existing search flow,
+  // turning vague pattern recognition into navigable surfaces.
+  type Theme = { label: string; query: string };
+  let aiBusy = $state(false);
+  let aiAbort: AbortController | null = null;
+  let aiThemes = $state<Theme[]>([]);
+  let aiError = $state('');
+  let aiRaw = $state('');
+
+  function buildJotsSeed(): string {
+    // Cap at 30 jots × ~1200 chars each. The model needs enough
+    // signal to spot recurrence without blowing the prompt out.
+    const slice = jots.slice(0, 30).map((j) => ({
+      date: j.date,
+      body: (j.body ?? '').slice(0, 1200)
+    }));
+    return JSON.stringify(slice, null, 2);
+  }
+
+  async function detectThemes() {
+    if (aiBusy || jots.length < 5) {
+      if (jots.length < 5) toast.info('Load a few more jots first.');
+      return;
+    }
+    aiAbort?.abort();
+    aiAbort = new AbortController();
+    aiBusy = true;
+    aiError = '';
+    aiThemes = [];
+    aiRaw = '';
+    let buf = '';
+    const seed = buildJotsSeed();
+    const system = 'You analyse recent daily-note entries and surface 3-5 recurring themes. A theme is a topic, person, project, struggle, or joy that shows up across multiple entries. Return STRICTLY a JSON array, no fences, no prose: [{"label": "<short title, 1-3 words, lowercase>", "query": "<single-word search term that finds the theme>"}]. Pick search terms that actually appear in the entries (a hashtag, a name, a recurring word) — not synonyms.';
+    const user = `Recent jots:\n\`\`\`json\n${seed}\n\`\`\`\n\nGive me 3-5 themes.`;
+    try {
+      await api.chatStream(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        undefined,
+        {
+          onChunk: (c) => { buf += c; aiRaw = buf; },
+          onDone: () => {
+            let cleaned = buf.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+            }
+            try {
+              const arr = JSON.parse(cleaned) as Theme[];
+              if (Array.isArray(arr)) aiThemes = arr.filter((x) => x.label && x.query);
+            } catch {
+              aiError = 'Model didn\'t return parseable JSON.';
+            }
+          },
+          onError: (err) => { aiError = err.message; }
+        },
+        aiAbort.signal
+      );
+    } finally {
+      aiBusy = false;
+      aiAbort = null;
+    }
+  }
+  function dismissThemes() {
+    aiAbort?.abort();
+    aiBusy = false;
+    aiThemes = [];
+    aiError = '';
+    aiRaw = '';
+  }
+  function applyTheme(t: Theme) {
+    searchText = t.query;
+    runSearch();
+  }
+
   // ── jot path / regex ──────────────────────────────────────────────
   // Mirrors the server's filter — a vault-relative path is a daily note
   // iff it's `<folder>/YYYY-MM-DD.md` or just `YYYY-MM-DD.md` (when no
@@ -399,12 +478,55 @@
             >×</button>
           {/if}
         </div>
+        {#if jots.length >= 5}
+          <button
+            type="button"
+            onclick={detectThemes}
+            disabled={aiBusy}
+            class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 disabled:opacity-50"
+            title="Ask AI to find recurring themes in your jots"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+              <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
+            </svg>
+            {aiBusy ? 'reading…' : 'Themes'}
+          </button>
+        {/if}
         <button
           type="button"
           onclick={openToday}
           class="text-xs px-2 py-1 rounded bg-surface0 text-subtext hover:bg-surface1"
         >Today</button>
       </div>
+
+      {#if aiBusy || aiThemes.length > 0 || aiError}
+        <div class="mt-2 p-2 bg-primary/5 border border-primary/20 rounded">
+          <div class="flex items-baseline gap-2 mb-1.5">
+            <h3 class="text-[10px] uppercase tracking-wider text-primary font-medium">Recurring themes</h3>
+            <span class="flex-1"></span>
+            {#if aiBusy}
+              <span class="text-[10px] text-dim italic">analysing…</span>
+            {:else if aiThemes.length > 0}
+              <button onclick={detectThemes} class="text-[10px] text-secondary hover:underline">regenerate</button>
+            {/if}
+            <button onclick={dismissThemes} class="text-[10px] text-dim hover:text-text">dismiss</button>
+          </div>
+          {#if aiError}
+            <p class="text-[11px] text-error">{aiError}</p>
+          {:else if aiThemes.length > 0}
+            <div class="flex flex-wrap gap-1.5">
+              {#each aiThemes as t (t.label)}
+                <button
+                  type="button"
+                  onclick={() => applyTheme(t)}
+                  class="text-[11px] px-2 py-0.5 rounded-full bg-mantle border border-surface1 hover:border-primary text-text"
+                  title={`search: ${t.query}`}
+                >{t.label}</button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
 
       <!-- Hashtag chip strip — click to filter the feed. The first
            click sets activeTag; clicking the same chip again clears.

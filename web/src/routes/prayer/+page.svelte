@@ -109,6 +109,81 @@
     nPassageRef = '';
   }
 
+  // ─── AI: scripture suggester ──────────────────────────────────────
+  // Given the user's drafted intention text + linkages, propose 2-3
+  // scripture passages that fit. Returns parseable picks with
+  // ref + a short reason; click to apply to the form's passage field.
+  type VersePick = { ref: string; reason: string };
+  let aiBusy = $state(false);
+  let aiAbort: AbortController | null = null;
+  let aiPicks = $state<VersePick[]>([]);
+  let aiError = $state('');
+  let aiRaw = $state('');
+
+  async function suggestVerse() {
+    if (aiBusy || !nText.trim()) {
+      if (!nText.trim()) toast.info('Write the intention first.');
+      return;
+    }
+    aiAbort?.abort();
+    aiAbort = new AbortController();
+    aiBusy = true;
+    aiError = '';
+    aiPicks = [];
+    aiRaw = '';
+    let buf = '';
+    const ctxBits: string[] = [];
+    if (nVenture) ctxBits.push(`venture: ${nVenture}`);
+    if (nProject) ctxBits.push(`project: ${nProject}`);
+    if (nGoal) ctxBits.push(`goal: ${nGoal}`);
+    if (nPerson) ctxBits.push(`person: ${nPerson}`);
+    if (nCategory) ctxBits.push(`category: ${nCategory}`);
+    const ctx = ctxBits.length > 0 ? `Context: ${ctxBits.join(', ')}.\n\n` : '';
+    const system = 'You suggest 2-3 scripture passages (Bible references) that fit the user\'s intention. Return STRICTLY a JSON array, no fences, no prose: [{"ref": "<passage like Phil 4:6-7 or Ps 23>", "reason": "<under 14 words, why this passage fits>"}]. Prefer short, well-known passages. Pick passages that genuinely speak to the intention\'s situation, not generic comfort verses.';
+    const user = `${ctx}Intention: "${nText.trim()}"\n\nGive me 2-3 verse picks.`;
+    try {
+      await api.chatStream(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        undefined,
+        {
+          onChunk: (c) => { buf += c; aiRaw = buf; },
+          onDone: () => {
+            let cleaned = buf.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+            }
+            try {
+              const arr = JSON.parse(cleaned) as VersePick[];
+              if (Array.isArray(arr)) aiPicks = arr.filter((x) => x.ref);
+            } catch {
+              aiError = 'Model didn\'t return parseable JSON.';
+            }
+          },
+          onError: (err) => { aiError = err.message; }
+        },
+        aiAbort.signal
+      );
+    } finally {
+      aiBusy = false;
+      aiAbort = null;
+    }
+  }
+  function applyVerse(p: VersePick) {
+    nPassageRef = p.ref;
+    aiPicks = [];
+    toast.success(`Set passage: ${p.ref}`);
+  }
+  function dismissVerses() {
+    aiAbort?.abort();
+    aiBusy = false;
+    aiPicks = [];
+    aiError = '';
+    aiRaw = '';
+  }
+
   async function submitCreate(e?: SubmitEvent) {
     e?.preventDefault();
     if (!nText.trim()) return;
@@ -366,13 +441,47 @@
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div>
-            <label for="np-passage" class="text-[11px] uppercase tracking-wider text-dim block mb-1">Scripture (optional)</label>
+            <div class="flex items-baseline gap-2 mb-1">
+              <label for="np-passage" class="text-[11px] uppercase tracking-wider text-dim">Scripture (optional)</label>
+              <span class="flex-1"></span>
+              <button
+                type="button"
+                onclick={suggestVerse}
+                disabled={aiBusy || !nText.trim()}
+                class="text-[11px] text-primary hover:underline disabled:opacity-40 inline-flex items-center gap-1"
+                title="Ask AI to suggest passages that fit this intention"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+                  <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
+                </svg>
+                {aiBusy ? 'thinking…' : 'suggest'}
+              </button>
+            </div>
             <input
               id="np-passage"
               bind:value={nPassageRef}
               placeholder='e.g. "Phil 4:6-7"'
               class="w-full px-2 py-1.5 bg-mantle border border-surface1 rounded text-sm text-text"
             />
+            {#if aiPicks.length > 0 || aiError}
+              <div class="mt-1.5 p-2 bg-primary/5 border border-primary/20 rounded text-xs space-y-1">
+                {#if aiError}
+                  <p class="text-error">{aiError}</p>
+                {/if}
+                {#each aiPicks as p (p.ref)}
+                  <button
+                    type="button"
+                    onclick={() => applyVerse(p)}
+                    class="block w-full text-left px-1.5 py-1 rounded hover:bg-primary/10"
+                    title="use this passage"
+                  >
+                    <span class="font-medium text-text">📖 {p.ref}</span>
+                    {#if p.reason}<span class="text-dim ml-2">{p.reason}</span>{/if}
+                  </button>
+                {/each}
+                <button onclick={dismissVerses} class="text-[10px] text-dim hover:text-text">dismiss</button>
+              </div>
+            {/if}
           </div>
           <div>
             <label for="np-cat" class="text-[11px] uppercase tracking-wider text-dim block mb-1">Category (optional)</label>
