@@ -680,6 +680,10 @@
   // typing. The search box has its own key handler to intercept Esc
   // before it reaches us.
   let searchInput = $state<HTMLInputElement | null>(null);
+  // Shortcuts-help popover. Discoverability for the keybinds — most
+  // users don't read tooltips, but a "?" chip in the toolbar is a
+  // well-established affordance (Linear, GitHub, Notion all use it).
+  let shortcutsOpen = $state(false);
   function onPageKey(e: KeyboardEvent) {
     if (drawerOpen) return;
     const t = e.target as HTMLElement | null;
@@ -688,6 +692,10 @@
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     switch (e.key) {
+      case '?':
+        e.preventDefault();
+        shortcutsOpen = !shortcutsOpen;
+        break;
       case 'n':
         e.preventDefault();
         openCreate();
@@ -722,7 +730,10 @@
         break;
       }
       case 'Escape':
-        if (importanceFilter || q) {
+        if (shortcutsOpen) {
+          e.preventDefault();
+          shortcutsOpen = false;
+        } else if (importanceFilter || q) {
           e.preventDefault();
           importanceFilter = null;
           q = '';
@@ -935,6 +946,51 @@
               class="absolute right-1.5 top-1/2 -translate-y-1/2 text-dim hover:text-text text-xs"
               aria-label="clear search"
             >×</button>
+          {/if}
+        </div>
+
+        <!-- Shortcuts help — "?" chip opens an inline popover listing
+             page-scoped keybinds. Closes on Escape or click-outside (we
+             attach a global click capture only while open). -->
+        <div class="relative">
+          <button
+            type="button"
+            onclick={() => (shortcutsOpen = !shortcutsOpen)}
+            aria-expanded={shortcutsOpen}
+            aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
+            class="w-7 h-7 flex items-center justify-center rounded border border-surface1 text-dim hover:text-text hover:border-surface2 text-xs"
+          >?</button>
+          {#if shortcutsOpen}
+            <button
+              type="button"
+              aria-label="close shortcuts"
+              onclick={() => (shortcutsOpen = false)}
+              class="fixed inset-0 z-30 cursor-default"
+            ></button>
+            <div
+              role="dialog"
+              aria-label="Keyboard shortcuts"
+              class="absolute right-0 mt-1 z-40 w-64 bg-surface0 border border-surface1 rounded-lg shadow-lg p-3 text-xs"
+            >
+              <div class="text-[10px] uppercase tracking-wider text-dim font-medium mb-2">Keyboard shortcuts</div>
+              <ul class="space-y-1.5">
+                {#each [
+                  { k: 'n', label: 'New deadline' },
+                  { k: '/', label: 'Focus search' },
+                  { k: '1 / 2 / 3', label: 'Filter Critical / High / Normal' },
+                  { k: 'v', label: 'Cycle view (list / timeline / calendar)' },
+                  { k: 'g', label: 'Cycle group-by (urgency / status / month)' },
+                  { k: 'Esc', label: 'Clear filters / close' },
+                  { k: '?', label: 'Toggle this help' }
+                ] as row}
+                  <li class="flex items-baseline gap-2">
+                    <kbd class="font-mono text-[10px] bg-surface1 px-1.5 py-0.5 rounded text-text whitespace-nowrap">{row.k}</kbd>
+                    <span class="text-subtext">{row.label}</span>
+                  </li>
+                {/each}
+              </ul>
+            </div>
           {/if}
         </div>
       </div>
