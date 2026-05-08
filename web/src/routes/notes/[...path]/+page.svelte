@@ -491,6 +491,38 @@
     if (typeof localStorage === 'undefined') return;
     try { localStorage.setItem(FOCUS_KEY, focusMode ? '1' : '0'); } catch {}
   });
+
+  // Reading mode — distraction-free preview with serif typography
+  // and narrower max-width. Combo: viewMode='preview' + focusMode=true
+  // + a CSS class on the preview pane. Toggle via Mod-Shift-R; flip
+  // back to whatever the user had before. We remember the prior
+  // view + focus state so toggling reading off restores them.
+  const READING_KEY = 'granit.note.reading';
+  let readingMode = $state(
+    typeof localStorage !== 'undefined' && localStorage.getItem(READING_KEY) === '1'
+  );
+  let priorView: ViewMode | null = null;
+  let priorFocus: boolean | null = null;
+  function setReadingMode(on: boolean) {
+    if (on === readingMode) return;
+    if (on) {
+      // Snapshot the user's current state so we can restore it.
+      priorView = viewMode;
+      priorFocus = focusMode;
+      viewMode = 'preview';
+      focusMode = true;
+    } else if (priorView !== null) {
+      viewMode = priorView;
+      focusMode = priorFocus ?? false;
+      priorView = null;
+      priorFocus = null;
+    }
+    readingMode = on;
+    try { localStorage.setItem(READING_KEY, on ? '1' : '0'); } catch {}
+  }
+  function toggleReadingMode() {
+    setReadingMode(!readingMode);
+  }
   let helpOpen = $state(false);
 
   function handleAskAI(req: AskAIRequest) {
@@ -755,6 +787,16 @@
         return;
       }
 
+      // Mod-Shift-R — toggle reading mode (preview + focus + serif
+      // typography). The reverse-toggle restores whatever view +
+      // focus state the user had before, so it composes with the
+      // user's normal setup rather than clobbering it.
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        toggleReadingMode();
+        return;
+      }
+
       // Mod-Shift-←/→ — jump to previous / next daily note. Only on
       // daily notes (otherwise the chord has no obvious target). Skip
       // when typing into a non-editor input.
@@ -974,7 +1016,7 @@
   </div>
 {/snippet}
 
-<div class="h-full flex" class:focus-mode={focusMode}>
+<div class="h-full flex" class:focus-mode={focusMode} class:reading-mode={readingMode}>
   <!-- Tree (desktop only). Hidden in focus mode so the editor takes
        the full viewport — toggle with Mod-Shift-Z or the focus
        button in the header. -->
@@ -1196,6 +1238,25 @@
             onReplaceBody={aiMenuReplaceBody}
           />
         {/if}
+        <!-- Reading mode (Mod-Shift-R) — combo toggle: preview +
+             focus + serif typography. Restores the user's prior
+             view + focus state on toggle off. The button reads as
+             a separate affordance from focus mode because it's a
+             different commitment (no editing, full reading
+             posture). -->
+        <button
+          onclick={toggleReadingMode}
+          title={readingMode ? 'Exit reading mode (Mod-Shift-R)' : 'Reading mode (Mod-Shift-R)'}
+          aria-label={readingMode ? 'Exit reading mode' : 'Enter reading mode'}
+          aria-pressed={readingMode}
+          class="hidden sm:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
+            {readingMode ? 'bg-primary/15 text-primary' : 'text-subtext hover:text-primary hover:bg-surface0'}"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
+            <path d="M2 5h7a3 3 0 013 3v11a2 2 0 00-2-2H2V5z"/>
+            <path d="M22 5h-7a3 3 0 00-3 3v11a2 2 0 012-2h8V5z"/>
+          </svg>
+        </button>
         <!-- Focus mode (Mod-Shift-Z) — hides the tree + info panel
              so the editor fills the viewport. Persists across page
              loads. The button shows the current state with a
@@ -1429,5 +1490,32 @@
      (save state, word count, daily-nav buttons). */
   .focus-mode .focus-hide {
     display: none !important;
+  }
+  /* Reading mode: serif typography + narrower max-width on the
+     preview pane so the user lands in a "I'm reading a book"
+     posture, not a "I'm editing in a text box" one. We compose with
+     focus-mode's hidden asides so reading mode reads as a single
+     centered column. The :global selectors are needed because
+     Svelte's scoped CSS would otherwise miss the MarkdownRenderer's
+     internal elements. */
+  .reading-mode :global(.prose-note),
+  .reading-mode :global([class*="MarkdownRenderer"]) {
+    font-family: 'Source Serif 4', 'Iowan Old Style', 'Georgia', serif;
+  }
+  .reading-mode :global(.prose-note) {
+    max-width: 64ch;
+    margin-left: auto;
+    margin-right: auto;
+    font-size: 1.05rem;
+    line-height: 1.7;
+  }
+  .reading-mode :global(.prose-note h1) { font-size: 1.7rem; line-height: 1.25; }
+  .reading-mode :global(.prose-note h2) { font-size: 1.35rem; line-height: 1.3; margin-top: 1.6em; }
+  .reading-mode :global(.prose-note h3) { font-size: 1.15rem; margin-top: 1.4em; }
+  .reading-mode :global(.prose-note p) { margin: 0.85em 0; }
+  .reading-mode :global(.prose-note blockquote) {
+    font-style: italic;
+    border-left-width: 3px;
+    padding-left: 1.1em;
   }
 </style>

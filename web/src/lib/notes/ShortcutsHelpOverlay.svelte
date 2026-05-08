@@ -84,6 +84,9 @@
     {
       title: 'View',
       rows: [
+        { keys: `${modKey}+/`, label: 'Cycle view: edit → split → preview' },
+        { keys: `${modKey}+Shift+Z`, label: 'Toggle focus mode (hide side rails)' },
+        { keys: `${modKey}+Shift+R`, label: 'Reading mode — preview + focus + serif typography' },
         { keys: `?`, label: 'Open this cheat sheet' },
         { keys: 'Esc', label: 'Close any modal or dropdown' }
       ]

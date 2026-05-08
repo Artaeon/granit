@@ -79,10 +79,17 @@
   //    dispatched actions (Continue / Section / Selection) close
   //    the menu and let the host's existing flow handle their UX.
 
-  type Action = 'title' | 'tldr' | 'tighten' | 'study' | 'concepts';
+  type Action = 'title' | 'tldr' | 'tighten' | 'study' | 'concepts' | 'gaps';
   let busy = $state<Action | null>(null);
   let titleSuggestions = $state<string[]>([]);
   let titleAbort: AbortController | null = null;
+  // Knowledge-gap state — AI reads the note and proposes 3-5 things
+  // that, if added, would make it more complete (missing examples,
+  // unstated assumptions, counter-arguments left out, definitions
+  // that should be there). NOT a 'rewrite for me' surface — the
+  // user reads the gaps and decides which to address themselves.
+  let gaps = $state<string[]>([]);
+  let gapsAbort: AbortController | null = null;
   // Study-mode state: AI generates Q&A self-test questions from the
   // note. Lives in a small bottom drawer of the menu so the user
   // can read the questions, copy them, or insert them at the end of
@@ -264,6 +271,48 @@
     studyCards = [];
     open = false;
     toast.success('Self-test added at the end of the note.');
+  }
+
+  async function findKnowledgeGaps() {
+    if (busy) return;
+    if (body.trim().length < 100) {
+      toast.info('Note is too short to find gaps.');
+      return;
+    }
+    gapsAbort?.abort();
+    gapsAbort = new AbortController();
+    busy = 'gaps';
+    gaps = [];
+    let buf = '';
+    try {
+      await api.chatStream(
+        [
+          {
+            role: 'system',
+            content:
+              'You read the user\'s note and surface 3-5 SPECIFIC things that would make it more complete or rigorous: missing examples, unstated assumptions, counter-arguments left out, definitions that should be there, evidence the claims need, scope that should be narrowed. Each on its own line. No preamble, no numbering, no bullets. Under 22 words each. Be specific to THIS note — anchor every gap in something the note actually says. Examples of bad gaps: "could use more detail" (too vague), "consider the audience" (generic). Examples of good gaps: "no example of X applied to Y; the abstraction stays untested", "claim that A causes B never says how — mechanism missing".'
+          },
+          { role: 'user', content: noteBodyForAI() }
+        ],
+        undefined,
+        {
+          onChunk: (c) => {
+            buf += c;
+            gaps = buf.split(/\n+/).map((l) => l.trim()).filter((l) => l.length > 0);
+          },
+          onDone: () => {},
+          onError: (err) => toast.error(err.message)
+        },
+        gapsAbort.signal
+      );
+    } finally {
+      busy = null;
+      gapsAbort = null;
+    }
+  }
+  function dismissGaps() {
+    gapsAbort?.abort();
+    gaps = [];
   }
 
   async function extractConcepts() {
@@ -484,6 +533,15 @@
         <span class="flex-1 text-left">{busy === 'concepts' ? 'Extracting…' : 'Extract concepts'}</span>
         <span class="text-[10px] text-dim">glossary</span>
       </button>
+      <button
+        role="menuitem"
+        onclick={findKnowledgeGaps}
+        disabled={busy !== null}
+        class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text disabled:opacity-50"
+      >
+        <span class="flex-1 text-left">{busy === 'gaps' ? 'Reading…' : 'Find gaps'}</span>
+        <span class="text-[10px] text-dim">what's missing</span>
+      </button>
 
       <div class="border-t border-surface1 my-1"></div>
 
@@ -502,6 +560,28 @@
               class="block w-full text-left text-sm py-1 hover:text-primary"
             >{t}</button>
           {/each}
+        </div>
+      {/if}
+
+      {#if gaps.length > 0}
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-warning/5 max-h-72 overflow-y-auto">
+          <div class="flex items-baseline gap-2 mb-2">
+            <span class="text-[10px] uppercase tracking-wider text-warning">what's missing</span>
+            <span class="flex-1"></span>
+            <button type="button" onclick={findKnowledgeGaps} disabled={busy !== null} class="text-[11px] text-secondary hover:underline">regenerate</button>
+            <button type="button" onclick={dismissGaps} class="text-[11px] text-dim hover:text-text">dismiss</button>
+          </div>
+          <ul class="space-y-1.5">
+            {#each gaps as g}
+              {@const cleaned = g.replace(/^[-•*\d.\s]+/, '').trim()}
+              {#if cleaned}
+                <li class="text-xs text-text leading-snug flex gap-2">
+                  <span class="text-warning flex-shrink-0">·</span>
+                  <span>{cleaned}</span>
+                </li>
+              {/if}
+            {/each}
+          </ul>
         </div>
       {/if}
 
