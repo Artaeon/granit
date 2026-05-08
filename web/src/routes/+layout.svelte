@@ -18,6 +18,7 @@
   import AIOverlay from '$lib/components/AIOverlay.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { findMode, currentModeId } from '$lib/ai/agents';
+  import { sidebarPins, togglePin } from '$lib/stores/sidebar-pins';
 
   // Sidebar quick-action chips. Each one opens the AI overlay
   // pre-filled with a prompt and (when send=true) fires it
@@ -237,6 +238,29 @@
   // settings so route resolution covers the full surface.
   const nav: NavItem[] = [today, ...sections.flatMap((s) => s.items), settingsItem];
 
+  // Pinned items — resolve hrefs from $sidebarPins against the flat nav
+  // so the user's pins survive across module-config changes (a pin to a
+  // route that's been disabled simply drops out instead of throwing).
+  // Filter pinned-but-hidden against the same modules+sabbath logic
+  // that gates the section bodies, so a Sabbath user doesn't see work
+  // items at the top of their rail.
+  let pinnedItems = $derived.by(() => {
+    void $modulesStore;
+    void $sabbath;
+    if ($sidebarPins.length === 0) return [] as NavItem[];
+    const byHref = new Map(nav.map((n) => [n.href, n]));
+    return $sidebarPins
+      .map((h) => byHref.get(h))
+      .filter((it): it is NavItem => {
+        if (!it) return false;
+        if (it.moduleId) {
+          if (!modulesStore.isEnabled(it.moduleId)) return false;
+          if ($sabbath && SABBATH_HIDE_MODULES.includes(it.moduleId)) return false;
+        }
+        return true;
+      });
+  });
+
   // Per-section visible items (after module filter + sabbath overlay).
   // Sections with no visible items collapse out of the rendered list
   // entirely so the user doesn't see an empty header. Sabbath mode
@@ -383,13 +407,15 @@
   <title>{tabTitle}</title>
 </svelte:head>
 
-{#snippet navItem(item: NavItem, isCompact: boolean)}
+{#snippet navItem(item: NavItem, isCompact: boolean, opts: { showPinAction?: boolean } = {})}
   {@const active = $page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href))}
   {@const badge = item.href === '/tasks' && overdueTaskCount > 0
     ? { count: overdueTaskCount, tone: 'error' as const, label: `${overdueTaskCount} overdue` }
     : item.href === '/calendar' && todayEventCount > 0
       ? { count: todayEventCount, tone: 'subtle' as const, label: `${todayEventCount} today` }
       : null}
+  {@const pinned = $sidebarPins.includes(item.href)}
+  {@const canPin = opts.showPinAction !== false && item.href !== '/' && item.href !== '/settings' && !isCompact}
   <a
     href={item.href}
     onclick={() => (drawerOpen = false)}
@@ -439,6 +465,24 @@
             aria-hidden="true"
           >{badge.count > 99 ? '99+' : badge.count}</span>
         {/if}
+      {/if}
+      {#if canPin}
+        <!-- Pin toggle. Always visible when pinned (so the user can
+             unpin without hovering); revealed on hover otherwise. The
+             button uses stopPropagation so clicking the star doesn't
+             also navigate. Reads as a star to match the universal pin
+             metaphor. -->
+        <button
+          type="button"
+          onclick={(e) => { e.preventDefault(); e.stopPropagation(); togglePin(item.href); }}
+          title={pinned ? 'unpin from sidebar top' : 'pin to sidebar top'}
+          aria-label={pinned ? `Unpin ${item.label}` : `Pin ${item.label}`}
+          class="ml-1 p-0.5 rounded transition-opacity {pinned ? 'text-warning opacity-100' : 'text-dim opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:text-warning'}"
+        >
+          <svg viewBox="0 0 16 16" class="w-3.5 h-3.5" fill={pinned ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">
+            <path d="M8 1.5l1.85 4.05L14 6.2l-3.1 2.85L11.7 13 8 10.85 4.3 13l.8-3.95L2 6.2l4.15-.65z"/>
+          </svg>
+        </button>
       {/if}
     {/if}
   </a>
@@ -557,8 +601,42 @@
         </div>
       {/if}
 
+      <!-- Pinned items — user-curated rail above Today. Hidden when
+           empty so first-time users don't see a phantom group. The
+           pin star inside each navItem is the only entry point;
+           there's no separate manage screen because the action
+           model is "see it in nav, hover to pin/unpin". In compact
+           mode the items render without their group header (parity
+           with the section dividers below). -->
+      {#if pinnedItems.length > 0}
+        {#if isCompact}
+          {#each pinnedItems as item (item.href)}
+            {@render navItem(item, true)}
+          {/each}
+          <div class="my-2.5 flex items-center justify-center gap-1" aria-hidden="true">
+            <span class="h-px w-2 bg-surface1"></span>
+            <span class="w-1 h-1 rounded-full bg-surface1"></span>
+            <span class="h-px w-2 bg-surface1"></span>
+          </div>
+        {:else}
+          <div class="pb-1.5 mb-1.5 border-b border-surface1/60">
+            <div class="px-3 pb-1 pt-0.5 text-[10px] uppercase tracking-wider text-dim flex items-center gap-1">
+              <svg viewBox="0 0 16 16" class="w-3 h-3" fill="currentColor" aria-hidden="true">
+                <path d="M8 1.5l1.85 4.05L14 6.2l-3.1 2.85L11.7 13 8 10.85 4.3 13l.8-3.95L2 6.2l4.15-.65z"/>
+              </svg>
+              <span>Pinned</span>
+            </div>
+            <div class="space-y-0.5">
+              {#each pinnedItems as item (item.href)}
+                {@render navItem(item, false)}
+              {/each}
+            </div>
+          </div>
+        {/if}
+      {/if}
+
       <!-- Today sits above all groups, no header, since it's home. -->
-      {@render navItem(today, isCompact)}
+      {@render navItem(today, isCompact, { showPinAction: false })}
 
       <!-- Sections. In compact mode the section header collapses to a
            thin separator line so the visual rhythm of grouping is
