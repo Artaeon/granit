@@ -1989,7 +1989,9 @@ export type DashboardWidgetType =
   | 'top-goals'
   | 'quick-links'
   | 'ai-briefing'
-  | 'task-velocity';
+  | 'task-velocity'
+  | 'weekly-review-nudge'
+  | 'ai-usage';
 
 export interface DashboardWidget {
   id: string;

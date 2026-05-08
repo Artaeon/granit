@@ -24,6 +24,8 @@ import TopGoalsWidget from './widgets/TopGoalsWidget.svelte';
 import QuickLinksWidget from './widgets/QuickLinksWidget.svelte';
 import AIBriefingWidget from './widgets/AIBriefingWidget.svelte';
 import TaskVelocityWidget from './widgets/TaskVelocityWidget.svelte';
+import WeeklyReviewNudgeWidget from './widgets/WeeklyReviewNudgeWidget.svelte';
+import AIUsageWidget from './widgets/AIUsageWidget.svelte';
 
 export interface WidgetMeta {
   type: DashboardWidgetType;
@@ -68,6 +70,16 @@ export const widgetRegistry: WidgetMeta[] = [
   // tile so the user can read "shape of today" alongside "shape
   // of the last two months" without scrolling.
   { type: 'task-velocity', label: 'Task velocity', description: 'Tasks completed per week (last 8 weeks) + trend arrow', span: 1, component: TaskVelocityWidget },
+  // Weekly-review nudge — companion to OneThingWidget. That one
+  // surfaces the commitment *from* the most recent review; this
+  // one only renders when the most recent review is > 7 days old
+  // (or missing), so the dashboard quietly nags toward the next
+  // ritual instead of going stale.
+  { type: 'weekly-review-nudge', label: 'Weekly review nudge', description: 'CTA when your last weekly review is stale (>7 days) or missing', span: 1, component: WeeklyReviewNudgeWidget },
+  // AI usage — streamlined version of the audit rollup in
+  // /settings. Surfaces today's call count, token total, and cost
+  // so cost-conscious LLM use stays ambient rather than buried.
+  { type: 'ai-usage', label: 'AI usage', description: 'Today\'s AI call count + tokens + cost — streamlined dashboard tile', span: 1, component: AIUsageWidget },
   { type: 'scripture', label: 'Today\'s verse', description: 'Daily scripture / quote rotation', span: 1, component: ScriptureWidget },
   { type: 'daily-note', label: 'Daily note', description: 'Link to today\'s daily note', span: 1, component: DailyNoteWidget },
   { type: 'quick-capture', label: 'Quick capture', description: 'Add a task fast', span: 1, component: QuickCaptureWidget },
