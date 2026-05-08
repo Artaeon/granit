@@ -59,10 +59,31 @@
       loading = false;
     }
   }
+
+  // Coalesced reload — the editor's autosave can fire `note.changed`
+  // every couple of seconds while a user types. A naive loadAll() per
+  // event refetches up to 5000 notes + listPinned and rebuilds every
+  // $derived view (recent / allSorted / pinnedList / activeList) on
+  // every tick, freezing the page on mid-sized vaults. One trailing-
+  // edge reload per window suffices: the user doesn't need sub-second
+  // freshness on a list panel.
+  let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+  let reloadPending = false;
+  function scheduleReload() {
+    reloadPending = true;
+    if (reloadTimer) return;
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null;
+      if (!reloadPending) return;
+      reloadPending = false;
+      void loadAll();
+    }, 600);
+  }
+
   onMount(() => {
     loadAll();
     const unsub = onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') loadAll();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed') scheduleReload();
     });
     // Mobile browsers (and any backgrounded tab) suspend the WS, so
     // notes created/edited on another device while we were away never
@@ -77,6 +98,7 @@
       unsub();
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
+      if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
     };
   });
 

@@ -33,12 +33,34 @@
     }
   }
 
+  // Coalesced reload — the editor's autosave fires `note.changed` on
+  // every save (potentially every couple of seconds while a user types).
+  // A naive load() per event refetches 5000 notes + rebuilds the entire
+  // tree synchronously, which froze the UI for users with mid-sized
+  // vaults. Coalesce into a single trailing-edge reload per window.
+  let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+  let reloadPending = false;
+  function scheduleReload() {
+    reloadPending = true;
+    if (reloadTimer) return;
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null;
+      if (!reloadPending) return;
+      reloadPending = false;
+      void load();
+    }, 600);
+  }
+
   onMount(() => {
     if (autoLoad) load();
     ensurePinnedLoaded();
-    return onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
+    const unsub = onWsEvent((ev) => {
+      if (ev.type === 'note.changed' || ev.type === 'note.removed') scheduleReload();
     });
+    return () => {
+      unsub();
+      if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
+    };
   });
 
   // Auto-expand ancestors of current path. We read `expanded` inside
@@ -78,10 +100,19 @@
     return rows;
   });
 
-  // While searching, auto-expand all matching folders. Same untrack pattern.
+  // While searching, auto-expand all matching folders. We depend ONLY
+  // on the trimmed query string, not on `filtered` — `filtered` is a
+  // $derived that rebuilds whenever `notes` changes, so depending on
+  // it would re-run this effect (and re-spread `expanded`) on every
+  // WS note.changed broadcast, cascading TreeNode re-renders for the
+  // entire vault on each keystroke autosave. The query is what the
+  // user actually toggles; auto-expand should fire only when they
+  // type, not when the vault list ticks.
   $effect(() => {
-    if (!q.trim() || !filtered) return;
+    const query = q.trim();
+    if (!query) return;
     untrack(() => {
+      if (!filtered) return;
       const next: Record<string, boolean> = { ...expanded };
       let changed = false;
       const visit = (n: TreeNode) => {
