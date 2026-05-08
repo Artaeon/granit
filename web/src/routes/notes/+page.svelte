@@ -36,6 +36,12 @@
   type SortKey = 'modified' | 'created' | 'name' | 'size';
   let sortKey = $state<SortKey>('modified');
 
+  // Folder filter — set by clicking a card in the folders view. The
+  // page swaps to a flat list of just that folder's notes. '' means
+  // unfiltered; '__root__' isolates vault-root files; any other value
+  // is a folder prefix.
+  let folderFilter = $state('');
+
   let notes = $state<Note[]>([]);
   let pinned = $state<Set<string>>(new Set());
   let loading = $state(false);
@@ -145,8 +151,17 @@
       .slice(0, 30);
   });
 
+  // Helper — apply the folder card filter to a note list. '__root__'
+  // matches notes with no slash in their path; any other value is a
+  // top-level folder prefix.
+  function passesFolderFilter(n: Note): boolean {
+    if (!folderFilter) return true;
+    if (folderFilter === '__root__') return n.path.indexOf('/') === -1;
+    return n.path.startsWith(folderFilter + '/');
+  }
+
   let allSorted = $derived.by(() => {
-    const arr = [...notes];
+    const arr = notes.filter(passesFolderFilter);
     arr.sort((a, b) => {
       switch (sortKey) {
         case 'modified': return a.modTime > b.modTime ? -1 : 1;
@@ -188,6 +203,46 @@
       if (a.letter === '#') return 1;
       if (b.letter === '#') return -1;
       return a.letter.localeCompare(b.letter);
+    });
+    return out;
+  });
+
+  // Folder-card grid — top-level folders rendered as tappable cards
+  // with note counts and the most-recent note title underneath. Acts
+  // as a high-level navigation overview when the user wants to step
+  // into a section without scrolling the full tree. Clicking a card
+  // jumps to the tree view with that folder pre-expanded (via a
+  // hash fragment we read on mount). Vault-root notes get their own
+  // card so they aren't invisible.
+  interface FolderCard { name: string; count: number; recentTitle: string; recentModTime: string; isRoot: boolean }
+  let folderCards = $derived.by<FolderCard[]>(() => {
+    const buckets = new Map<string, { notes: Note[]; isRoot: boolean }>();
+    for (const n of notes) {
+      const slash = n.path.indexOf('/');
+      const top = slash === -1 ? '' : n.path.slice(0, slash);
+      const key = top || '__root__';
+      const isRoot = top === '';
+      const bucket = buckets.get(key);
+      if (bucket) bucket.notes.push(n);
+      else buckets.set(key, { notes: [n], isRoot });
+    }
+    const out: FolderCard[] = [];
+    for (const [key, b] of buckets) {
+      b.notes.sort((a, b) => (a.modTime > b.modTime ? -1 : 1));
+      const top = b.notes[0];
+      out.push({
+        name: b.isRoot ? '/' : key,
+        count: b.notes.length,
+        recentTitle: top?.title ?? '',
+        recentModTime: top?.modTime ?? '',
+        isRoot: b.isRoot
+      });
+    }
+    out.sort((a, b) => {
+      // Root last, then by count desc, then alphabetical.
+      if (a.isRoot !== b.isRoot) return a.isRoot ? 1 : -1;
+      const dc = b.count - a.count;
+      return dc !== 0 ? dc : a.name.localeCompare(b.name);
     });
     return out;
   });
@@ -363,16 +418,35 @@
         { id: 'all' as View, label: 'All', count: notes.length },
         { id: 'alpha' as View, label: 'A–Z', count: notes.length },
         { id: 'tags' as View, label: 'Tags', count: tagSections.length },
+        { id: 'folders' as View, label: 'Folders', count: folderCards.length },
         ...(q.trim() ? [{ id: 'search' as View, label: 'Search', count: searchResults.length }] : [])
       ] as t}
         <button
-          onclick={() => (view = t.id)}
+          onclick={() => {
+            // Clicking the All tab directly clears any folder filter
+            // — folder filtering is only set via the Folders cards;
+            // hitting the tab on its own should mean "show everything".
+            if (t.id === 'all' && view !== 'all') folderFilter = '';
+            view = t.id;
+          }}
           class="px-3 py-1.5 rounded transition-colors flex-shrink-0
             {view === t.id ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1 border border-surface1'}"
         >
           {t.label} <span class="opacity-70 ml-0.5">{t.count}</span>
         </button>
       {/each}
+      {#if view === 'all' && folderFilter}
+        <button
+          type="button"
+          onclick={() => (folderFilter = '')}
+          class="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded bg-warning/10 text-warning hover:bg-warning/20 flex-shrink-0"
+          title="Clear folder filter"
+        >
+          <span>📁</span>
+          <span class="font-medium">{folderFilter === '__root__' ? '/' : folderFilter}</span>
+          <span aria-hidden="true">×</span>
+        </button>
+      {/if}
       {#if view === 'all'}
         <span class="ml-auto flex items-center gap-1 text-dim flex-shrink-0">
           <span>sort by</span>
@@ -440,6 +514,34 @@
               {/each}
             </ul>
           {/each}
+        </div>
+      {/if}
+    {:else if view === 'folders'}
+      {#if folderCards.length === 0}
+        <div class="p-8 text-center text-sm text-dim">No folders yet — create a note with a path like <code class="text-text">Notes/Ideas/foo.md</code> to get started.</div>
+      {:else}
+        <div class="overflow-y-auto h-full p-3 sm:p-4">
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+            {#each folderCards as card (card.name)}
+              <button
+                type="button"
+                onclick={() => { folderFilter = card.isRoot ? '__root__' : card.name; view = 'all'; }}
+                class="text-left p-3 bg-surface0 hover:bg-surface1 border border-surface1 rounded transition-colors min-h-[5rem]"
+              >
+                <div class="flex items-baseline gap-2 mb-1">
+                  <span class="text-warning text-base flex-shrink-0">{card.isRoot ? '🏠' : '📁'}</span>
+                  <span class="text-sm font-medium text-text truncate flex-1">{card.name}</span>
+                  <span class="text-[11px] text-dim flex-shrink-0">{card.count}</span>
+                </div>
+                {#if card.recentTitle}
+                  <div class="text-[11px] text-dim truncate" title={card.recentTitle}>
+                    {card.recentTitle}
+                  </div>
+                  <div class="text-[10px] text-dim/80 mt-0.5">{fmtRelative(card.recentModTime)}</div>
+                {/if}
+              </button>
+            {/each}
+          </div>
         </div>
       {/if}
     {:else if activeList.length === 0}
