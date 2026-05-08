@@ -42,6 +42,79 @@
   let loading = $state(false);
   let busy = $state<string | null>(null);
 
+  // ─── AI insight ──────────────────────────────────────────────────
+  // Reads each habit's last 30 days and produces 2-3 short
+  // observations: weekday patterns (consistent Wed misses), streak
+  // risks (no-doomscrolling decayed Mon → Sun), or wins (longest
+  // streak ever this week). Streamed via the audit-gated chat
+  // pipeline, no separate Tier 1 endpoint — it's a chat with a
+  // structured prompt, same as people / examen.
+  let aiBusy = $state(false);
+  let aiAbort: AbortController | null = null;
+  let aiInsights = $state<string[]>([]);
+  let aiError = $state('');
+
+  function buildHabitsSeed(): string {
+    if (!data) return '';
+    const today = data.today;
+    const habits = data.habits.slice(0, 12).map((h) => {
+      // Compact day grid — a string of 30 chars where 1 = done,
+      // 0 = missed, . = before-tracking. Cheaper than 30 objects
+      // and the model reads patterns from it just fine.
+      const grid = h.days.slice(-30).map((d) => (d.done ? '1' : '0')).join('');
+      return {
+        name: h.name,
+        currentStreak: h.currentStreak,
+        longestStreak: h.longestStreak,
+        last7Pct: h.last7Pct,
+        last30Pct: h.last30Pct,
+        last30: grid,
+        doneToday: h.doneToday
+      };
+    });
+    return JSON.stringify({ today, habits }, null, 2);
+  }
+
+  async function aiInsight() {
+    if (aiBusy || !data) return;
+    aiAbort?.abort();
+    aiAbort = new AbortController();
+    aiBusy = true;
+    aiError = '';
+    aiInsights = [];
+    const seed = buildHabitsSeed();
+    const system = 'You analyse the user\'s habit data and surface 2-3 short, specific observations. Examples of good observations: a weekday that consistently fails ("you miss Wednesdays consistently this month"), a streak risk ("no-doomscrolling decayed from 80% week 1 to 30% week 4"), a win ("morning-movement is at the longest streak it\'s ever been"). Examples of BAD observations: generic praise, vague advice, "keep going!". Each observation on its own line. No preamble, no numbering, no bullets. Under 22 words each. The grid string is 30 days oldest-to-newest; 1 = done, 0 = missed.';
+    const user = `Today is ${data.today}. Here are the habits:\n\n\`\`\`json\n${seed}\n\`\`\`\n\nGive me 2-3 sharp observations.`;
+    let buf = '';
+    try {
+      await api.chatStream(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        undefined,
+        {
+          onChunk: (c) => {
+            buf += c;
+            aiInsights = buf.split(/\n+/).map((l) => l.trim()).filter((l) => l.length > 0);
+          },
+          onDone: () => {},
+          onError: (err) => { aiError = err.message; }
+        },
+        aiAbort.signal
+      );
+    } finally {
+      aiBusy = false;
+      aiAbort = null;
+    }
+  }
+  function dismissInsight() {
+    aiAbort?.abort();
+    aiBusy = false;
+    aiInsights = [];
+    aiError = '';
+  }
+
   // Add-habit-from-web. The existing toggleHabit endpoint already
   // auto-creates the `- [ ] habit` line when the supplied name
   // doesn't match anything in today's `## Habits` section (and
@@ -259,6 +332,33 @@
       </form>
     {/if}
 
+    {#if data && data.habits.length >= 2 && (aiInsights.length > 0 || aiBusy || aiError)}
+      <section class="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+        <div class="flex items-baseline gap-2 mb-2">
+          <h3 class="text-xs uppercase tracking-wider text-primary font-medium">Pattern insight</h3>
+          <span class="flex-1"></span>
+          {#if aiBusy}
+            <span class="text-[11px] text-dim italic">analyzing…</span>
+          {:else}
+            <button onclick={aiInsight} class="text-[11px] text-secondary hover:underline">regenerate</button>
+          {/if}
+          <button onclick={dismissInsight} class="text-[11px] text-dim hover:text-text">dismiss</button>
+        </div>
+        {#if aiError}
+          <p class="text-xs text-error">{aiError}</p>
+        {:else}
+          <ul class="space-y-1">
+            {#each aiInsights as line}
+              {@const cleaned = line.replace(/^[-•*\d.\s]+/, '').trim()}
+              {#if cleaned}
+                <li class="text-sm text-text leading-relaxed">{cleaned}</li>
+              {/if}
+            {/each}
+          </ul>
+        {/if}
+      </section>
+    {/if}
+
     <!-- View + sort controls. Both rows wrap on narrow screens; the
          view toggle uses a segmented pill, the sort uses a select to
          keep horizontal space tight on phones. -->
@@ -279,6 +379,19 @@
           {/each}
         </div>
         <span class="flex-1"></span>
+        {#if data && data.habits.length >= 2 && aiInsights.length === 0 && !aiBusy && !aiError}
+          <button
+            type="button"
+            onclick={aiInsight}
+            class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15"
+            title="Ask AI for pattern observations"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+              <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
+            </svg>
+            Insight
+          </button>
+        {/if}
         <label class="text-xs text-dim flex items-center gap-1.5">
           sort
           <select
