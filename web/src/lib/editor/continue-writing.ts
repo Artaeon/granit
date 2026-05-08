@@ -215,6 +215,15 @@ export function rejectContinuation(view: EditorView): boolean {
   return true;
 }
 
+/** Read whether a ghost is currently rendered. Lets the host show a
+ *  status pill while the user has a pending continuation. Cheap to
+ *  poll from a $derived because StateField reads are O(1). */
+export function isContinuationActive(view: EditorView | undefined): boolean {
+  if (!view) return false;
+  const g = view.state.field(ghostField, false);
+  return !!g && g.active;
+}
+
 // ─── Public extension ──────────────────────────────────────────────
 
 export function continueWritingExtension(): Extension {

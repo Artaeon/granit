@@ -35,6 +35,13 @@
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
+  // Persist the in-flight transcript so a refresh / accidental close
+  // doesn't lose what the user just spoke. Cleared on successful
+  // save or explicit Discard. Stored as a single object rather than
+  // separate keys so cleanup is one localStorage.removeItem.
+  const TRANSCRIPT_KEY = 'granit.voiceNote.draft';
+  interface VoiceDraft { transcript: string; capturedAt: string; }
+
   // ─── Web Speech detection ─────────────────────────────────────────
   type RecognitionCtor = new () => SpeechRecognition;
   interface SpeechRecognition extends EventTarget {
@@ -247,6 +254,7 @@
         },
         body
       });
+      try { localStorage.removeItem(TRANSCRIPT_KEY); } catch {}
       toast.success('Voice note saved');
       open = false;
       void goto(`/notes/${encodeURIComponent(path)}`);
@@ -264,6 +272,40 @@
     if (!open) {
       if (phase === 'recording') stop();
     }
+  });
+
+  // Auto-persist the editable transcript so a refresh or
+  // accidentally-clicked outside doesn't kill the user's words. We
+  // only persist after stop — during recording the live transcript
+  // is volatile and we'd be writing every chunk.
+  $effect(() => {
+    if (phase !== 'stopped') return;
+    const t = editedTranscript.trim();
+    if (!t) {
+      try { localStorage.removeItem(TRANSCRIPT_KEY); } catch {}
+      return;
+    }
+    const draft: VoiceDraft = { transcript: editedTranscript, capturedAt: new Date().toISOString() };
+    try { localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify(draft)); } catch {}
+  });
+
+  // On open, restore an unsaved transcript if there is one. The user
+  // gets dropped straight into the stopped/edit state — no audio,
+  // since we don't persist the blob — and can save or discard.
+  $effect(() => {
+    if (!open) return;
+    if (phase !== 'idle') return;
+    try {
+      const raw = localStorage.getItem(TRANSCRIPT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as VoiceDraft;
+      if (!d.transcript || !d.transcript.trim()) return;
+      editedTranscript = d.transcript;
+      phase = 'stopped';
+      // Estimate a duration field if the persisted draft doesn't carry
+      // one — purely cosmetic so the save metadata stays sane.
+      elapsedMs = 0;
+    } catch {}
   });
 </script>
 
@@ -385,8 +427,9 @@
           </button>
           <span class="flex-1"></span>
           <button
-            onclick={close}
+            onclick={() => { try { localStorage.removeItem(TRANSCRIPT_KEY); } catch {} close(); }}
             class="px-3 py-1.5 rounded text-sm text-subtext hover:text-text hover:bg-surface0"
+            title="Discard the transcript and close"
           >
             Discard
           </button>

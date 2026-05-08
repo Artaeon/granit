@@ -49,6 +49,32 @@ export const theme = EditorView.theme(
       pointerEvents: 'none',
       userSelect: 'none'
     },
+    // When a ghost is active, surface a small pill at the top-right
+    // of the editor surface so the user sees that AI is continuing
+    // and remembers the Tab / Esc affordance. Pure CSS via :has() —
+    // no Svelte reactive plumbing into CodeMirror state needed. The
+    // pill auto-disappears when the ghost text widget is removed
+    // (accept / reject / type-through).
+    '&:has(.cm-ghost-text)': { position: 'relative' },
+    '&:has(.cm-ghost-text)::after': {
+      content: '"✨ AI continuing · Tab to accept · Esc to reject"',
+      position: 'absolute',
+      top: '6px',
+      right: '8px',
+      padding: '3px 8px',
+      fontSize: '10px',
+      fontFamily: 'var(--font-sans)',
+      fontWeight: '500',
+      color: 'var(--color-primary)',
+      backgroundColor: 'rgba(187,154,247,0.12)',
+      border: '1px solid rgba(187,154,247,0.3)',
+      borderRadius: '12px',
+      pointerEvents: 'none',
+      userSelect: 'none',
+      zIndex: '5',
+      backdropFilter: 'blur(4px)',
+      whiteSpace: 'nowrap'
+    },
     // Autocomplete popup
     '.cm-tooltip.cm-tooltip-autocomplete': {
       backgroundColor: 'var(--color-mantle)',

@@ -37,7 +37,13 @@
     { label: '•', chord: 'mod+shift+8', title: 'Bullet list' },
     { label: '"', chord: 'mod+shift+9', title: 'Blockquote' },
     { label: '↗', chord: 'mod+shift+x', title: 'Extract to new note' },
-    { label: '✨', chord: 'mod+shift+a', title: 'Ask AI about selection' }
+    { label: '✨', chord: 'mod+shift+a', title: 'Ask AI about selection' },
+    // Section AI — same Ask-AI dialog but operates on the heading-
+    // bounded section the cursor is in. Surfaced here too so the
+    // shortcut is discoverable without memorising the keymap; the
+    // chord doesn't require a selection but having it next to the
+    // selection-AI button reads as 'wider scope, same dialog'.
+    { label: '§✨', chord: 'mod+shift+/', title: 'Ask AI about the current section' }
   ];
 
   interface Props {
