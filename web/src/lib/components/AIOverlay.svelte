@@ -45,11 +45,45 @@
   let quickTitle = $state('');
   let quickResult = $state('');
 
-  // Chat history — local to the overlay, not persisted. The full
-  // /chat page handles persistence + save-as-note for serious
-  // threads; this is a quick-question surface.
-  let messages = $state<ChatMessage[]>([]);
+  // Chat history — persisted to sessionStorage so closing the
+  // overlay (Esc / outside-click / Mod+J) doesn't lose the
+  // thread. Survives navigation within the tab; cleared on tab
+  // close or explicit reset. The full /chat page is still the
+  // place for save-as-note and long-running multi-day threads;
+  // this layer keeps a quick question alive long enough to come
+  // back to it after a tangent.
+  const HISTORY_KEY = 'granit.ai.overlay.messages';
+  function loadHistory(): ChatMessage[] {
+    if (typeof sessionStorage === 'undefined') return [];
+    try {
+      const raw = sessionStorage.getItem(HISTORY_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(
+        (m): m is ChatMessage =>
+          m && typeof m === 'object' && typeof m.role === 'string' && typeof m.content === 'string'
+      );
+    } catch {
+      return [];
+    }
+  }
+  function persistHistory(list: ChatMessage[]) {
+    if (typeof sessionStorage === 'undefined') return;
+    try {
+      // Cap to ~30 messages to keep sessionStorage tidy. Older
+      // turns drop quietly; the user is unlikely to want a
+      // 100-turn quick-overlay thread (that's what /chat is for).
+      const trimmed = list.length > 30 ? list.slice(-30) : list;
+      sessionStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
+    } catch {}
+  }
+  let messages = $state<ChatMessage[]>(loadHistory());
   let input = $state('');
+  $effect(() => {
+    void messages.length;
+    persistHistory(messages);
+  });
 
   // Note-aware chat. When the overlay opens on a /notes/<path>
   // page, we offer to attach that note as context to the chat
