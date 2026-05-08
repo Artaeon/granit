@@ -1,0 +1,340 @@
+<!--
+  Editor AI menu — single discoverable button that drops a list of
+  every AI action available in the editor. Until now we had:
+    - one whole-note ✨ button in the toolbar
+    - selection chord (Mod-Shift-A) — invisible to clicks
+    - section chord (Mod-Shift-/) — invisible to clicks
+    - continue chord (Mod-Alt-Space) — invisible to clicks
+    - the link-suggester panel in the right rail (separate)
+  The keyboard chords were ungoogleable for click-first users; the
+  whole-note button got crowded as features grew. This menu replaces
+  the single ✨ button and surfaces every AI affordance as a click
+  target plus its chord.
+
+  Three new actions ship inline with this menu so the user has more
+  reasons to open it: Suggest title, Pin TL;DR, Tighten note. They
+  reuse the audit-gated chat pipeline (chatStream + system prompt),
+  no new backend.
+
+  The menu component is dumb beyond the new actions — for the chord-
+  dispatched ones it calls back via callbacks so the host page stays
+  the single source of truth on how those flows splice into the doc.
+-->
+<script lang="ts">
+  import { api } from '$lib/api';
+  import { toast } from '$lib/components/toast';
+
+  interface Props {
+    notePath: string;
+    body: string;
+    /** Open the AskAIDialog with the whole note pre-filled. */
+    onAskWholeNote: () => void;
+    /** Dispatch a keymap chord into the editor. */
+    onChord: (chord: string) => void;
+    /** Open the global AI overlay. */
+    onOpenOverlay: () => void;
+    /** Apply a generated title (writes to frontmatter via host page). */
+    onSetTitle: (title: string) => void;
+    /** Insert text at the very start of the body (above frontmatter
+     *  is the host's call — typically right after frontmatter so
+     *  the TL;DR sits at the top of the rendered note). */
+    onInsertAtTop: (text: string) => void;
+    /** Replace the entire body. Used by Tighten. Host page should
+     *  surface a diff confirm before persisting. */
+    onReplaceBody: (next: string) => void;
+  }
+  let {
+    notePath,
+    body,
+    onAskWholeNote,
+    onChord,
+    onOpenOverlay,
+    onSetTitle,
+    onInsertAtTop,
+    onReplaceBody
+  }: Props = $props();
+
+  let open = $state(false);
+  let menuEl: HTMLDivElement | undefined = $state();
+
+  // ── click-outside + esc to close ────────────────────────────────
+  $effect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (!menuEl) return;
+      if (e.target instanceof Node && !menuEl.contains(e.target)) open = false;
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') open = false;
+    }
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  });
+
+  // ── In-flight tracking for the new inline actions. The chord-
+  //    dispatched actions (Continue / Section / Selection) close
+  //    the menu and let the host's existing flow handle their UX.
+
+  type Action = 'title' | 'tldr' | 'tighten';
+  let busy = $state<Action | null>(null);
+  let titleSuggestions = $state<string[]>([]);
+  let titleAbort: AbortController | null = null;
+
+  function noteBodyForAI(): string {
+    // Cap to ~12k chars so the prompt stays bounded for long notes.
+    const cleaned = body.trim();
+    return cleaned.length > 12_000 ? cleaned.slice(0, 12_000) + '\n…(truncated)' : cleaned;
+  }
+
+  async function suggestTitle() {
+    if (busy) return;
+    if (body.trim().length < 30) {
+      toast.info('Note is too short for a title suggestion.');
+      return;
+    }
+    busy = 'title';
+    titleSuggestions = [];
+    titleAbort?.abort();
+    titleAbort = new AbortController();
+    let buf = '';
+    try {
+      await api.chatStream(
+        [
+          {
+            role: 'system',
+            content:
+              'You suggest 3-5 short, specific titles for the user\'s note. Return JUST the titles, one per line. No numbering, no bullets, no preamble. 4-7 words each. Capture the topic, not the genre. Lowercase normal case (not title case). No quotes.'
+          },
+          { role: 'user', content: noteBodyForAI() }
+        ],
+        undefined,
+        {
+          onChunk: (c) => {
+            buf += c;
+            titleSuggestions = buf
+              .split(/\n+/)
+              .map((l) => l.trim().replace(/^[-•*\d.\s"']+|["']\s*$/g, ''))
+              .filter((l) => l.length > 0 && l.length < 120);
+          },
+          onDone: () => {},
+          onError: (err) => {
+            toast.error(err.message);
+            titleSuggestions = [];
+          }
+        },
+        titleAbort.signal
+      );
+    } finally {
+      busy = null;
+      titleAbort = null;
+    }
+  }
+  function applyTitle(t: string) {
+    onSetTitle(t);
+    titleSuggestions = [];
+    open = false;
+    toast.success(`Title set: ${t}`);
+  }
+
+  async function pinTLDR() {
+    if (busy) return;
+    if (body.trim().length < 60) {
+      toast.info('Note is too short for a TL;DR.');
+      return;
+    }
+    busy = 'tldr';
+    let buf = '';
+    const abort = new AbortController();
+    try {
+      await api.chatStream(
+        [
+          {
+            role: 'system',
+            content:
+              'Summarise the user\'s note in 1-3 short sentences. Plain prose, no preamble, no markdown formatting, no bullets. Under 60 words total. Reflect what the note is about; do not add commentary or advice. Return ONLY the summary text.'
+          },
+          { role: 'user', content: noteBodyForAI() }
+        ],
+        undefined,
+        {
+          onChunk: (c) => { buf += c; },
+          onDone: () => {
+            const summary = buf.trim().replace(/^["'`]+|["'`]+$/g, '');
+            if (!summary) return;
+            // Pin as a markdown blockquote callout at the top of the
+            // body. The host's onInsertAtTop handles where exactly
+            // (after frontmatter, before any heading).
+            onInsertAtTop(`> **TL;DR** — ${summary}\n\n`);
+            toast.success('TL;DR pinned at the top.');
+            open = false;
+          },
+          onError: (err) => toast.error(err.message)
+        },
+        abort.signal
+      );
+    } finally {
+      busy = null;
+    }
+  }
+
+  async function tightenNote() {
+    if (busy) return;
+    if (body.trim().length < 80) {
+      toast.info('Note is too short to tighten.');
+      return;
+    }
+    busy = 'tighten';
+    let buf = '';
+    const abort = new AbortController();
+    try {
+      await api.chatStream(
+        [
+          {
+            role: 'system',
+            content:
+              'Tighten the user\'s note: clearer, fewer words, same voice, same meaning. Preserve all markdown structure (headings, lists, links, code blocks). Fix typos and grammar. Do NOT add new content, opinions, or sections. Return ONLY the rewritten note body — no preamble, no fences.'
+          },
+          { role: 'user', content: noteBodyForAI() }
+        ],
+        undefined,
+        {
+          onChunk: (c) => { buf += c; },
+          onDone: () => {
+            const out = buf.trim();
+            if (!out) return;
+            onReplaceBody(out);
+            toast.success('Tightened (Cmd+Z to revert).');
+            open = false;
+          },
+          onError: (err) => toast.error(err.message)
+        },
+        abort.signal
+      );
+    } finally {
+      busy = null;
+    }
+  }
+
+  function fireChord(chord: string) {
+    onChord(chord);
+    open = false;
+  }
+  function fireWholeNote() {
+    onAskWholeNote();
+    open = false;
+  }
+  function fireOverlay() {
+    onOpenOverlay();
+    open = false;
+  }
+
+  // Keyboard chord display helper — Mac uses ⌘ + ⌥, others Ctrl + Alt.
+  let modKey = $state('Ctrl');
+  let altKey = $state('Alt');
+  $effect(() => {
+    if (typeof navigator === 'undefined') return;
+    if (/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent)) {
+      modKey = '⌘';
+      altKey = '⌥';
+    }
+  });
+</script>
+
+<div class="relative" bind:this={menuEl}>
+  <button
+    type="button"
+    onclick={() => (open = !open)}
+    aria-haspopup="menu"
+    aria-expanded={open}
+    title="AI actions for this note"
+    aria-label="AI actions"
+    class="flex items-center gap-1 px-2 h-9 rounded text-subtext hover:text-primary hover:bg-surface0 flex-shrink-0
+      {open ? 'text-primary bg-surface0' : ''}"
+  >
+    <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8">
+      <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" stroke-linejoin="round"/>
+      <path d="M19 14l.7 2.1L22 17l-2.3.9L19 20l-.7-2.1L16 17l2.3-.9L19 14z" stroke-linejoin="round"/>
+    </svg>
+    <svg viewBox="0 0 24 24" class="w-3 h-3 opacity-60" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="6 9 12 15 18 9" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  {#if open}
+    <div
+      role="menu"
+      class="absolute right-0 top-full mt-1 w-72 bg-mantle border border-surface1 rounded-lg shadow-xl z-50 py-1 text-sm"
+    >
+      <button role="menuitem" onclick={fireWholeNote} class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text">
+        <span class="flex-1 text-left">Ask about this note</span>
+        <span class="text-[10px] text-dim">whole-note dialog</span>
+      </button>
+      <button role="menuitem" onclick={() => fireChord('mod+alt+ ')} class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text">
+        <span class="flex-1 text-left">Continue writing at cursor</span>
+        <kbd class="text-[10px] text-dim font-mono">{modKey}{altKey}␣</kbd>
+      </button>
+      <button role="menuitem" onclick={() => fireChord('mod+shift+/')} class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text">
+        <span class="flex-1 text-left">Ask about current section</span>
+        <kbd class="text-[10px] text-dim font-mono">{modKey}⇧/</kbd>
+      </button>
+      <button role="menuitem" onclick={() => fireChord('mod+shift+a')} class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text">
+        <span class="flex-1 text-left">Ask about selection</span>
+        <kbd class="text-[10px] text-dim font-mono">{modKey}⇧A</kbd>
+      </button>
+
+      <div class="border-t border-surface1 my-1"></div>
+
+      <button
+        role="menuitem"
+        onclick={suggestTitle}
+        disabled={busy !== null}
+        class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text disabled:opacity-50"
+      >
+        <span class="flex-1 text-left">{busy === 'title' ? 'Suggesting…' : 'Suggest title'}</span>
+        <span class="text-[10px] text-dim">3-5 picks</span>
+      </button>
+      <button
+        role="menuitem"
+        onclick={pinTLDR}
+        disabled={busy !== null}
+        class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text disabled:opacity-50"
+      >
+        <span class="flex-1 text-left">{busy === 'tldr' ? 'Summarising…' : 'Pin TL;DR at top'}</span>
+        <span class="text-[10px] text-dim">callout</span>
+      </button>
+      <button
+        role="menuitem"
+        onclick={tightenNote}
+        disabled={busy !== null}
+        class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text disabled:opacity-50"
+      >
+        <span class="flex-1 text-left">{busy === 'tighten' ? 'Tightening…' : 'Tighten whole note'}</span>
+        <span class="text-[10px] text-dim">undo: {modKey}Z</span>
+      </button>
+
+      <div class="border-t border-surface1 my-1"></div>
+
+      <button role="menuitem" onclick={fireOverlay} class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text">
+        <span class="flex-1 text-left">Open chat overlay</span>
+        <kbd class="text-[10px] text-dim font-mono">{modKey}J</kbd>
+      </button>
+
+      {#if titleSuggestions.length > 0}
+        <div class="border-t border-surface1 mt-1 py-1 px-3 bg-primary/5">
+          <div class="text-[10px] uppercase tracking-wider text-primary mb-1">title suggestions</div>
+          {#each titleSuggestions as t}
+            <button
+              type="button"
+              onclick={() => applyTitle(t)}
+              class="block w-full text-left text-sm py-1 hover:text-primary"
+            >{t}</button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
+</div>

@@ -26,6 +26,8 @@
   import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
   import SelectionToolbar from '$lib/editor/SelectionToolbar.svelte';
   import LinkSuggestPanel from '$lib/notes/LinkSuggestPanel.svelte';
+  import EditorAIMenu from '$lib/notes/EditorAIMenu.svelte';
+  import { openAIOverlay } from '$lib/stores/ai-overlay';
 
   type ViewMode = 'edit' | 'preview' | 'split';
   const VIEW_KEY = 'granit.note.viewMode';
@@ -798,6 +800,31 @@
     toast.success('link inserted');
   }
 
+  // ── AI menu hooks ──────────────────────────────────────────────
+  // The menu surfaces all AI actions under one ✨ button. Wholesale
+  // body / title / cursor mutations route through these so the
+  // editor's normal dirty-tracking + draft-write flow picks them up.
+  async function aiMenuSetTitle(title: string) {
+    if (!note) return;
+    const fm = { ...(note.frontmatter ?? {}) } as Record<string, unknown>;
+    fm.title = title;
+    await saveFrontmatter(fm);
+  }
+  function aiMenuInsertAtTop(text: string) {
+    if (editor?.insertAtCursor) {
+      // We want the text at the start of the body, NOT at cursor —
+      // simplest path is to splice into `body` directly. The editor's
+      // bind:value picks it up + the doc-replace path in Editor.svelte
+      // preserves selection / scroll near the cursor.
+    }
+    body = text + body;
+    dirty = true;
+  }
+  function aiMenuReplaceBody(next: string) {
+    body = next;
+    dirty = true;
+  }
+
   // ----- Daily-note navigation -----
   // A note is "daily" when its basename is YYYY-MM-DD.md OR its frontmatter
   // has type=daily. When daily, expose prev/next-day jumps in the header.
@@ -1101,23 +1128,24 @@
             <path d="M21 21l-4.5-4.5" stroke-linecap="round"/>
           </svg>
         </button>
-        <!-- Whole-note AI. Opens the AskAIDialog with the entire
-             body pre-filled, so the user can summarise / extract
-             tasks / suggest tags / outline against the whole note
-             without selecting first. The dialog still supports the
-             selection-based shortcut (Mod-Shift-A) — this is just
-             the no-selection entry point. -->
-        <button
-          onclick={askAIWholeNote}
-          title="Ask AI about this note"
-          aria-label="Ask AI about this note"
-          class="flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
-        >
-          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" stroke-linejoin="round"/>
-            <path d="M19 14l.7 2.1L22 17l-2.3.9L19 20l-.7-2.1L16 17l2.3-.9L19 14z" stroke-linejoin="round"/>
-          </svg>
-        </button>
+        <!-- AI menu. Replaces the single ✨ whole-note button with a
+             discoverable dropdown of every AI action: chord-driven
+             ones (continue, section, selection) plus three new
+             whole-note actions (suggest title, pin TL;DR, tighten).
+             Single source of truth for AI affordance discovery in
+             the editor. -->
+        {#if note}
+          <EditorAIMenu
+            notePath={note.path}
+            body={body}
+            onAskWholeNote={askAIWholeNote}
+            onChord={(chord) => editor?.dispatchChord(chord)}
+            onOpenOverlay={openAIOverlay}
+            onSetTitle={aiMenuSetTitle}
+            onInsertAtTop={aiMenuInsertAtTop}
+            onReplaceBody={aiMenuReplaceBody}
+          />
+        {/if}
         <!-- Focus mode (Mod-Shift-Z) — hides the tree + info panel
              so the editor fills the viewport. Persists across page
              loads. The button shows the current state with a
