@@ -209,8 +209,37 @@
     pending = false;
   }
 
+  // Heuristic for "this is a rewrite, not a generation." When the
+  // user picks Improve / Fix grammar / Shorten / Expand / Make
+  // formal / Make casual the most useful default view is the diff
+  // — the response is a transformation of the input. Generations
+  // (Summarise, Outline, Tasks, Tags, Continue, Translate, Bullet
+  // list) produce new content where a diff is misleading. The
+  // function is conservative: any rewrite verb in the instruction
+  // flips to diff; anything else stays preview.
+  function isRewriteInstruction(s: string): boolean {
+    const lower = s.toLowerCase();
+    return (
+      lower.includes('improve the writing') ||
+      lower.includes('fix grammar') ||
+      lower.includes('shorten the following') ||
+      lower.includes('expand the following') ||
+      lower.includes('rewrite the following in a more formal') ||
+      lower.includes('rewrite the following in a more casual')
+    );
+  }
+
   function pickQuick(text: string) {
     instruction = text;
+    // Auto-switch to diff for rewrite-style presets so the user
+    // sees what changed at a glance. The toggle stays available
+    // — user can flip back to preview anytime.
+    viewMode = isRewriteInstruction(text) ? 'diff' : 'preview';
+    void ask();
+  }
+
+  function regenerate() {
+    if (!request || pending || !instruction.trim()) return;
     void ask();
   }
 
@@ -395,6 +424,18 @@
                   <span class="ai-spinner ai-spinner--sm" aria-hidden="true"></span>
                   streaming
                 </span>
+              {:else if instruction.trim()}
+                <!-- Regenerate — re-fires the same instruction with
+                     a fresh stream. Saves the close/reopen dance
+                     when the first response wasn't what the user
+                     wanted. Hidden during streaming and when the
+                     instruction is blank (nothing to regenerate). -->
+                <button
+                  type="button"
+                  onclick={regenerate}
+                  class="text-[11px] text-secondary hover:underline"
+                  title="Re-run the same instruction"
+                >↻ regenerate</button>
               {/if}
             </div>
             {#if viewMode === 'diff' && !pending}
