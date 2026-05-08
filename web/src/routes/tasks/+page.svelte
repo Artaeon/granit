@@ -1835,8 +1835,12 @@
     onclick={() => (helpOpen = false)}
     role="presentation"
   >
+    <!-- max-h with dvh keeps the dialog from bleeding behind mobile
+         browser chrome / keyboards; overflow-y-auto lets the user
+         scroll the shortcut list when the keyboard takes half the
+         screen. -->
     <div
-      class="bg-surface0 border border-surface1 rounded-lg p-5 max-w-md w-full shadow-xl"
+      class="bg-surface0 border border-surface1 rounded-lg p-5 max-w-md w-full max-h-[90dvh] overflow-y-auto shadow-xl"
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => { if (e.key === 'Escape') helpOpen = false; }}
       role="dialog"

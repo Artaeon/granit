@@ -709,8 +709,10 @@
        sticky bottom-0 pins to the bottom of the main area without
        caring about sidebar width / compact mode (the previous fixed-
        position version had hardcoded left offsets that broke when
-       the sidebar collapsed to compact). -->
-  <footer class="sticky bottom-0 z-20 border-t border-surface1 bg-mantle/95 backdrop-blur px-4 py-3">
+       the sidebar collapsed to compact). The bottom padding adds the
+       iOS home-indicator inset so the Lock-in button stays reachable
+       above the gesture area on phones. -->
+  <footer class="sticky bottom-0 z-20 border-t border-surface1 bg-mantle/95 backdrop-blur px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
     <div class="max-w-2xl mx-auto flex items-center gap-3">
       <span class="text-[11px] text-dim flex-1">
         {#if filledCount === 0}

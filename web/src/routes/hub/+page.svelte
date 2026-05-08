@@ -589,7 +589,7 @@
   >
     <form
       onsubmit={(e) => { e.preventDefault(); save(); }}
-      class="w-full max-w-md bg-base border border-surface1 rounded-lg shadow-xl max-h-[90vh] flex flex-col"
+      class="w-full max-w-md bg-base border border-surface1 rounded-lg shadow-xl max-h-[90dvh] flex flex-col"
       onclick={(e) => e.stopPropagation()}
       role="dialog"
       aria-label={editing ? 'Edit hub item' : 'Add to hub'}

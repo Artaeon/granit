@@ -1226,7 +1226,7 @@
     onkeydown={(e) => { if (e.key === 'Escape') showShortcutHelp = false; }}
     tabindex="-1"
   >
-    <div class="bg-mantle border border-surface1 rounded-lg p-5 max-w-sm w-full text-left shadow-xl">
+    <div class="bg-mantle border border-surface1 rounded-lg p-5 max-w-sm w-full max-h-[90dvh] overflow-y-auto text-left shadow-xl">
       <h3 id="shortcuts-title" class="text-sm font-semibold text-text mb-3">Calendar shortcuts</h3>
       <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
         <dt class="font-mono text-primary">t</dt><dd class="text-subtext">jump to today</dd>
