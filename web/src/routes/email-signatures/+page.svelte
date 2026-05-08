@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import { api, type EmailSignature } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
@@ -25,19 +25,22 @@
   let dirty = $state(false);
 
   let selected = $derived(signatures.find((s) => s.id === selectedId) ?? null);
+  let nameInputEl: HTMLInputElement | undefined = $state();
 
-  // Re-seed buffer when selection changes. Marks not-dirty so
-  // the save button starts disabled until the user actually
-  // edits something.
+  // Re-seed buffer ONLY when selectedId changes. Reading `signatures`
+  // tracks it as a dep, which means a WS-driven reload (firing on
+  // every save / on another device's edit) would re-seed buf and
+  // clobber the user's in-progress typing — that's the "auto
+  // closes" feeling: the editor visibly resets to server state.
+  // untrack() reads signatures without subscribing, so the effect
+  // only re-fires on real user-driven selection changes.
   $effect(() => {
-    void selectedId;
-    if (selected) {
-      buf = { ...selected };
+    const id = selectedId;
+    untrack(() => {
+      const found = signatures.find((s) => s.id === id) ?? null;
+      buf = found ? { ...found } : null;
       dirty = false;
-    } else {
-      buf = null;
-      dirty = false;
-    }
+    });
   });
 
   function markDirty() { dirty = true; }
@@ -91,6 +94,14 @@
       });
       await load();
       selectedId = created.id;
+      // Defer focus + select-all so the user lands in "name the
+      // signature" mode immediately. Without this, the editor
+      // appeared briefly and the user saw a placeholder name —
+      // looked like the page hadn't done anything.
+      tick().then(() => {
+        nameInputEl?.focus();
+        nameInputEl?.select();
+      });
     } catch (e) {
       toast.error('create failed: ' + (e instanceof Error ? e.message : String(e)));
     }
@@ -210,8 +221,12 @@
   </PageHeader>
 
   <div class="flex-1 flex flex-col md:flex-row min-h-0">
-    <!-- List pane: search + category filter + clickable rows -->
-    <aside class="md:w-72 lg:w-80 md:border-r border-surface1 md:overflow-y-auto flex-shrink-0">
+    <!-- List pane: search + category filter + clickable rows.
+         On mobile we hide the list when a signature is selected
+         (focus on the editor); desktop keeps both panes side-by-
+         side. Same pattern /projects uses so the muscle memory
+         carries across the app. -->
+    <aside class="md:w-72 lg:w-80 md:border-r border-surface1 md:overflow-y-auto flex-shrink-0 {selectedId ? 'hidden md:block' : 'block'}">
       <div class="p-3 border-b border-surface1 space-y-2">
         <input
           bind:value={q}
@@ -262,16 +277,31 @@
       {/if}
     </aside>
 
-    <!-- Detail pane: form + sandboxed preview, stacked on mobile -->
-    <div class="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6">
+    <!-- Detail pane: form + sandboxed preview. On mobile, hidden
+         until a signature is picked (or created); desktop always
+         shows it with an empty state. -->
+    <div class="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6 {selectedId ? 'block' : 'hidden md:block'}">
       {#if !buf}
         <div class="h-full flex flex-col items-center justify-center text-center text-dim text-sm">
           <p class="max-w-sm">Pick a signature on the left to preview, edit, or copy. Or hit + New to start a fresh one.</p>
         </div>
       {:else}
         <div class="space-y-4">
+          <!-- Mobile back arrow — returns to the list on small
+               screens. Hidden on desktop where both panes are
+               always visible side-by-side. -->
+          <button
+            type="button"
+            onclick={() => (selectedId = null)}
+            class="md:hidden -ml-1 mb-2 inline-flex items-center gap-1 text-sm text-subtext hover:text-text"
+          >
+            <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+            Back to list
+          </button>
+
           <div class="flex items-baseline gap-2 flex-wrap">
             <input
+              bind:this={nameInputEl}
               bind:value={buf.name}
               oninput={markDirty}
               placeholder="Signature name"
