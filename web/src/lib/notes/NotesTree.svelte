@@ -5,7 +5,7 @@
   import { onWsEvent } from '$lib/ws';
   import { buildTree, filterTree, ancestorFolders, type TreeNode } from './treeUtils';
   import TreeNodeView from './TreeNode.svelte';
-  import { pinnedNotes, unpinPath } from './pinnedNotes';
+  import { pinnedNotes, unpinPath, ensurePinnedLoaded } from './pinnedNotes';
 
   let {
     currentPath,
@@ -35,6 +35,7 @@
 
   onMount(() => {
     if (autoLoad) load();
+    ensurePinnedLoaded();
     return onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
     });

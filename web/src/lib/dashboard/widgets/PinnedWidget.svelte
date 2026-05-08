@@ -1,25 +1,47 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api } from '$lib/api';
+  import { api, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import { pinnedNotes, ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
 
-  let pinned = $state<{ path: string; title: string }[]>([]);
+  // Use the shared pinnedNotes store so a star toggle in the notes
+  // tree updates this widget instantly. We still need note titles
+  // (the store only carries paths), so we fetch the notes list once
+  // and resolve in $derived. Title fallback is the basename when a
+  // note is dangling (was renamed/deleted but pin is stale).
+
+  let allNotes = $state<Note[]>([]);
   let loading = $state(false);
 
-  async function load() {
+  async function loadNotes() {
     loading = true;
     try {
-      const r = await api.listPinned();
-      pinned = r.pinned;
+      const r = await api.listNotes({ limit: 5000 });
+      allNotes = r.notes;
     } finally {
       loading = false;
     }
   }
+
+  let pinned = $derived.by<{ path: string; title: string }[]>(() => {
+    if ($pinnedNotes.size === 0) return [];
+    const byPath = new Map<string, Note>();
+    for (const n of allNotes) byPath.set(n.path, n);
+    const out: { path: string; title: string }[] = [];
+    for (const p of $pinnedNotes) {
+      const n = byPath.get(p);
+      out.push({ path: p, title: n?.title || p.replace(/\.md$/, '') });
+    }
+    out.sort((a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase()));
+    return out;
+  });
+
   onMount(() => {
-    load();
+    loadNotes();
+    ensurePinnedLoaded();
     return onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed') loadNotes();
     });
   });
 </script>

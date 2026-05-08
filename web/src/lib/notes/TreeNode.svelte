@@ -27,7 +27,7 @@
   function pinClick(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    togglePin(node.path);
+    void togglePin(node.path);
   }
 </script>
 

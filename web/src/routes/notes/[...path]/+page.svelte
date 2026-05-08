@@ -28,6 +28,7 @@
   import LinkSuggestPanel from '$lib/notes/LinkSuggestPanel.svelte';
   import EditorAIMenu from '$lib/notes/EditorAIMenu.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
+  import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
 
   type ViewMode = 'edit' | 'preview' | 'split';
   const VIEW_KEY = 'granit.note.viewMode';
@@ -38,6 +39,10 @@
       const v = localStorage.getItem(VIEW_KEY);
       if (v === 'edit' || v === 'preview' || v === 'split') viewMode = v;
     } catch {}
+    // Boot the pinned-notes store so the toolbar's pin star (and any
+    // other pin-aware surface mounted after this) reflects the
+    // server-authoritative list without each component re-fetching.
+    ensurePinnedLoaded();
   });
   function setViewMode(m: ViewMode) {
     viewMode = m;
