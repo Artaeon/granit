@@ -28,6 +28,7 @@
     onExtract,
     onAskAI,
     onCursor,
+    onScroll,
     placeholder = ''
   }: {
     value?: string;
@@ -57,6 +58,12 @@
      * frame is expensive on long documents.
      */
     onCursor?: (info: { line: number; col: number; selLen: number }) => void;
+    /**
+     * Scroll callback — fires (rAF-throttled) whenever the user
+     * scrolls the editor's scrollable area. Host uses this to drive
+     * a reading-progress bar without polling. Idle by default.
+     */
+    onScroll?: (info: { top: number; height: number; viewport: number }) => void;
     placeholder?: string;
   } = $props();
 
@@ -175,6 +182,33 @@
       ]
     });
     view = new EditorView({ state, parent: containerEl });
+    // rAF-throttled scroll fanout to the host. Native 'scroll'
+    // events can fire 60+×/s on a fast wheel; collapsing to one
+    // emit per animation frame keeps the host's progress bar
+    // smooth without thrashing layout.
+    if (onScroll) {
+      let pending = false;
+      const fire = () => {
+        if (!view) return;
+        const el = view.scrollDOM;
+        onScroll!({ top: el.scrollTop, height: el.scrollHeight, viewport: el.clientHeight });
+      };
+      view.scrollDOM.addEventListener(
+        'scroll',
+        () => {
+          if (pending) return;
+          pending = true;
+          requestAnimationFrame(() => {
+            pending = false;
+            fire();
+          });
+        },
+        { passive: true }
+      );
+      // Fire once on mount so the initial 0% paints without
+      // requiring the user to scroll.
+      requestAnimationFrame(fire);
+    }
   }
 
   onMount(setupView);
@@ -235,6 +269,15 @@
   export function getScrollTop(): number {
     if (!view) return 0;
     return view.scrollDOM.scrollTop;
+  }
+  /** Reading-progress helper. Returns the scroll metrics in one
+   *  call so the host can compute scrollTop / (scrollHeight -
+   *  viewport) for a 0..1 progress fraction. Cheap; safe to call
+   *  on every scroll event without measuring the layout twice. */
+  export function getScrollMetrics(): { top: number; height: number; viewport: number } {
+    if (!view) return { top: 0, height: 0, viewport: 0 };
+    const el = view.scrollDOM;
+    return { top: el.scrollTop, height: el.scrollHeight, viewport: el.clientHeight };
   }
   export function setScrollTop(top: number) {
     if (!view || top <= 0) return;

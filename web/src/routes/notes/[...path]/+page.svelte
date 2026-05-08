@@ -57,6 +57,13 @@
   let dirty = $state(false);
   let error = $state('');
   let lastLoadedPath = $state('');
+
+  // Reading progress 0..1 — driven by the editor's onScroll callback
+  // (rAF-throttled there). When the doc fits in viewport the
+  // denominator is 0 and we clamp to 0; once the user scrolls down a
+  // long doc, we tint a 2px line at the top of the editor pane to
+  // surface 'how far through am I'. Cheap, no polling.
+  let readProgress = $state(0);
   let editor:
     | {
         scrollToLine: (n: number) => void;
@@ -1328,9 +1335,22 @@
            this note. Renders nothing when frontmatter has neither
            field, or none of the deadlines match. -->
       <NoteDeadlinesStrip frontmatter={note.frontmatter ?? null} />
+      <!-- Reading-progress bar — thin tinted strip showing how far
+           through the note the user has scrolled. Hidden when
+           progress is essentially 0 (note fits in viewport) so it
+           doesn't render a visible artifact on short notes. The
+           transition smooths the value as we throttle the source
+           on rAF. -->
+      {#if readProgress > 0.005}
+        <div
+          class="h-[2px] bg-primary/70 transition-[width] duration-100 ease-out"
+          style="width: {(readProgress * 100).toFixed(1)}%"
+          aria-hidden="true"
+        ></div>
+      {/if}
       <div class="flex-1 min-h-0 p-2 sm:p-3">
         {#if viewMode === 'edit'}
-          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} />
+          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} />
         {:else if viewMode === 'preview'}
           <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4">
             <div class="max-w-3xl mx-auto">
@@ -1340,7 +1360,7 @@
         {:else}
           <!-- split (desktop only) -->
           <div class="h-full grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} />
+            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} />
             <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block">
               <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
             </div>
