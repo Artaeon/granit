@@ -168,50 +168,139 @@
     }
   }
 
-  // ── AI Top-3 focus picker ────────────────────────────────────────
-  // A different agent than triage: triage processes UNTRIAGED
-  // tasks; this one looks across the WHOLE open task set and
-  // picks the 3 to do today, weighted by due date + priority +
-  // recency. Goes through chatStream so it joins the audit
-  // rollup. Renders proposals as a compact panel with rationale.
+  // ── AI Plan-my-day ───────────────────────────────────────────────
+  // Different agent than triage: triage processes UNTRIAGED tasks;
+  // this one looks across the WHOLE open task set and produces a
+  // sequenced plan of 3-7 tasks for TODAY, gated by the user's
+  // declared focus hours. Returns strict JSON so each row gets an
+  // "accept" button that pins the task into a time slot
+  // (scheduledStart = now + cumulative minutes, dueDate = today).
+  // Falls back to the streamed text if JSON parse fails — old
+  // text-only display remains available so a malformed model reply
+  // never leaves the user with nothing visible.
+  //
+  // Goes through chatStream so it joins the audit rollup, sabbath
+  // gate, redaction, cost tracking. NEVER bypass.
+  type PlanItem = {
+    taskId: string;
+    order: number;
+    estimateMinutes: number;
+    rationale: string;
+  };
   let aiFocusBusy = $state(false);
   let aiFocusError = $state('');
   let aiFocusResponse = $state('');
+  let aiFocusPlan = $state<PlanItem[]>([]);
+  let aiFocusSkipped = $state('');
   let aiFocusAbort: AbortController | null = null;
+  // Persist the user's typical focus-hours so they don't retype "4"
+  // every morning. localStorage-backed; defaults to 4 (a realistic
+  // deep-work day for most knowledge workers).
+  const FOCUS_HOURS_KEY = 'granit.tasks.focusHours';
+  let aiFocusHours = $state<number>(
+    typeof localStorage !== 'undefined'
+      ? Number(localStorage.getItem(FOCUS_HOURS_KEY) || '4') || 4
+      : 4
+  );
+  $effect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try { localStorage.setItem(FOCUS_HOURS_KEY, String(aiFocusHours)); } catch {}
+  });
+
+  // Extract the first {...} JSON object from a streaming reply.
+  // Models occasionally wrap JSON in ```json fences or add a
+  // sentence of commentary; we strip both before parsing.
+  function extractJsonBlock(s: string): string | null {
+    if (!s) return null;
+    const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const candidate = fence ? fence[1] : s;
+    // Find first '{' and matching '}' by counting depth.
+    const start = candidate.indexOf('{');
+    if (start < 0) return null;
+    let depth = 0;
+    for (let i = start; i < candidate.length; i++) {
+      const c = candidate[i];
+      if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) return candidate.slice(start, i + 1);
+      }
+    }
+    return null;
+  }
 
   async function runAIFocus() {
     if (aiFocusBusy) return;
     aiFocusBusy = true;
     aiFocusError = '';
     aiFocusResponse = '';
+    aiFocusPlan = [];
+    aiFocusSkipped = '';
     aiFocusAbort = new AbortController();
     // Compose a context blob with up to ~30 open tasks. Cap so a
     // huge backlog doesn't blow the prompt size; the AI's job is
-    // to pick 3 from the slice we feed it, not to read the whole
+    // to pick from the slice we feed it, not to read the whole
     // graph. Today's date threads in so "due tomorrow" lines up.
     const open = tasks.filter((t) => !t.done).slice(0, 30);
     const today = new Date().toISOString().slice(0, 10);
+    const focusMinutes = Math.max(30, Math.round(aiFocusHours * 60));
     const lines = open.map((t) => {
-      const bits: string[] = [`- ${t.text}`];
+      const bits: string[] = [`id:${t.id} — ${t.text}`];
       if (t.priority) bits.push(`p${t.priority}`);
       if (t.dueDate) bits.push(`due ${t.dueDate}`);
       if (t.scheduledStart) bits.push(`scheduled ${t.scheduledStart.slice(0, 10)}`);
+      if (t.estimatedMinutes) bits.push(`est ${t.estimatedMinutes}m`);
       return bits.join(' · ');
     }).join('\n');
+    // SHARP system prompt. The point: refuse the "everything is
+    // important" trap. Force prioritisation. Name what to do FIRST.
+    const system =
+      'You are a calm, ruthless planning partner. Your job: build a realistic plan for ONE day, not a wishlist. ' +
+      'Hard rules: ' +
+      '(1) Pick 3-7 tasks max. Fewer is better when the user has limited focus. ' +
+      '(2) Sum of estimateMinutes MUST fit within the focus_minutes budget. If the budget is tight, drop tasks — do not shrink estimates to fake fit. ' +
+      '(3) Order by what unlocks the day: anything overdue or due-today goes first, then the highest-leverage deep-work item while attention is fresh, admin/quick-wins last. ' +
+      '(4) Each rationale must be ONE sentence under 18 words, naming WHY this task NOW (not generic praise). Examples of GOOD rationales: "Overdue two days — close the loop before the standup at 10."; "Deep-work block while you\'re fresh — the report is the bottleneck for Friday\'s review."; "30-min admin task — slot at the energy dip after lunch." ' +
+      '(5) If a task lacks an estimate, give your best 15/30/60 min guess based on the title. ' +
+      '(6) Output STRICT JSON ONLY, no markdown fences, no preamble. Schema: ' +
+      '{"plan":[{"taskId":"<exact id from list>","order":1,"estimateMinutes":30,"rationale":"…"}],"skipped_reasons":"<one sentence on what you cut and why, or empty>"}.';
     const userMessage =
-      `Today is ${today}. From the user's open task list below, pick the 3 to do TODAY. ` +
-      'Rank them in execution order. Rationale: weight overdue + due-today highest, then high-priority, then "this unblocks future work" reasoning. ' +
-      'Format your reply as a strict markdown list, exactly 3 items:\n\n' +
-      '1. **<task title>** — one short sentence on why this is the right next move.\n' +
-      '2. **<task title>** — …\n' +
-      '3. **<task title>** — …\n\n' +
+      `Today is ${today}. The user has roughly ${aiFocusHours} hour${aiFocusHours === 1 ? '' : 's'} (~${focusMinutes} minutes) of focus time today. ` +
+      'Build a plan from their open tasks below. Use the EXACT taskId values in the JSON; do not invent new ones.\n\n' +
       'Open tasks:\n\n' + lines;
     try {
       await api.chatStream(
-        [{ role: 'user', content: userMessage }],
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: userMessage }
+        ],
         undefined,
         {
-          onChunk: (c) => { aiFocusResponse += c; },
+          onChunk: (c) => {
+            aiFocusResponse += c;
+            // Try to parse the structured plan as it streams. Most
+            // models emit the closing brace late, so this only
+            // succeeds toward the end — but it lets a fast local
+            // model populate the panel before the stream officially
+            // finishes.
+            const block = extractJsonBlock(aiFocusResponse);
+            if (block) {
+              try {
+                const parsed = JSON.parse(block) as { plan?: PlanItem[]; skipped_reasons?: string };
+                if (Array.isArray(parsed.plan)) {
+                  // Validate each item has a taskId that exists in
+                  // the open list. Drop hallucinated IDs silently.
+                  const valid = parsed.plan
+                    .filter((p) => p && typeof p.taskId === 'string' && tasks.some((t) => t.id === p.taskId))
+                    .sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+                  aiFocusPlan = valid;
+                  aiFocusSkipped = typeof parsed.skipped_reasons === 'string' ? parsed.skipped_reasons : '';
+                }
+              } catch {
+                // Partial JSON — wait for more chunks.
+              }
+            }
+          },
           onError: (err) => { aiFocusError = err.message; }
         },
         aiFocusAbort.signal
@@ -222,6 +311,66 @@
     }
   }
   function cancelAIFocus() { aiFocusAbort?.abort(); }
+  function dismissAIFocus() {
+    aiFocusResponse = '';
+    aiFocusError = '';
+    aiFocusPlan = [];
+    aiFocusSkipped = '';
+  }
+
+  // Accept a single plan item: schedule the task into a time slot
+  // starting from now + the cumulative estimate of all previously
+  // accepted slots. We can't know which OTHER plan items the user
+  // already accepted from a previous session, so we anchor the
+  // first accept at "now rounded up to the next 15 min" and lay
+  // subsequent accepts back-to-back. dueDate set to today so the
+  // task surfaces in the Today view.
+  async function acceptPlanItem(p: PlanItem) {
+    const t = tasks.find((x) => x.id === p.taskId);
+    if (!t) return;
+    // Find the cumulative offset for this item: sum estimateMinutes
+    // of preceding plan items (by .order). We don't know which the
+    // user already pinned, so we treat the FULL plan as the schedule
+    // skeleton — accepting #2 alone still places it after #1's slot
+    // (so the day reads coherently if the user accepts more later).
+    const earlier = aiFocusPlan
+      .filter((x) => (x.order ?? 99) < (p.order ?? 99))
+      .reduce((sum, x) => sum + Math.max(15, x.estimateMinutes || 30), 0);
+    const start = new Date();
+    // Round up to the next 15-minute boundary so the schedule reads
+    // as 09:15 / 09:30 / 09:45 etc rather than awkward 09:07 stamps.
+    const m = start.getMinutes();
+    const remainder = m % 15;
+    if (remainder !== 0) start.setMinutes(m + (15 - remainder), 0, 0);
+    else start.setSeconds(0, 0);
+    start.setMinutes(start.getMinutes() + earlier);
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      await api.patchTask(p.taskId, {
+        scheduledStart: start.toISOString(),
+        dueDate: t.dueDate ?? today,
+        durationMinutes: Math.max(15, p.estimateMinutes || 30)
+      });
+      // Drop the accepted item so the panel reflects what's left.
+      aiFocusPlan = aiFocusPlan.filter((x) => x.taskId !== p.taskId);
+      await load();
+      toast.success(`Pinned: ${t.text.slice(0, 40)}${t.text.length > 40 ? '…' : ''}`);
+    } catch (e) {
+      toast.error('Pin failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+  function skipPlanItem(taskId: string) {
+    aiFocusPlan = aiFocusPlan.filter((x) => x.taskId !== taskId);
+  }
+  // Accept all remaining plan items in order. Pins them back-to-back
+  // starting from "now rounded to next 15 min". Useful when the user
+  // trusts the plan and just wants to commit.
+  async function acceptAllPlanItems() {
+    const items = [...aiFocusPlan].sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+    for (const p of items) {
+      await acceptPlanItem(p);
+    }
+  }
 
   async function runAITriage() {
     aiTriageBusy = true;
@@ -1379,28 +1528,76 @@
     </header>
 
     {#if view === 'list' || view === 'kanban' || view === 'today'}
-      <!-- AI Top-3 focus picker. Different agent from triage/
+      <!-- AI Plan-my-day. Different agent from triage/
            deadline-detect: those operate on UNTRIAGED tasks;
-           this one looks across ALL open tasks and picks the 3
-           to do today, weighted by overdue + due-today + priority
-           + "this unblocks future work" reasoning. Always-visible
+           this one looks across ALL open tasks and produces a
+           sequenced 3-7-task plan budgeted to the user's stated
+           focus hours. Returns strict JSON so each row gets its
+           own accept/skip controls — accepting pins the task into
+           a back-to-back time slot via scheduledStart. Falls back
+           to streamed prose if JSON parse fails. Always-visible
            regardless of view so it's reachable from any task
-           context. Streams the response so tokens arrive
-           progressively on slow local LLMs. -->
-      {#if aiFocusBusy || aiFocusResponse || aiFocusError}
+           context. -->
+      {#if aiFocusBusy || aiFocusResponse || aiFocusError || aiFocusPlan.length > 0}
         <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-gradient-to-r from-primary/5 via-secondary/5 to-primary/5">
-          <div class="flex items-baseline gap-2 mb-2">
-            <span class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">✨ Top 3 for today</span>
+          <div class="flex items-baseline gap-2 mb-2 flex-wrap">
+            <span class="text-xs uppercase tracking-wider text-secondary font-semibold">✨ Plan my day</span>
+            {#if aiFocusPlan.length > 0 && !aiFocusBusy}
+              {@const totalEst = aiFocusPlan.reduce((s, p) => s + Math.max(15, p.estimateMinutes || 30), 0)}
+              <span class="text-[11px] text-dim font-mono tabular-nums">{aiFocusPlan.length} task{aiFocusPlan.length === 1 ? '' : 's'} · {totalEst}m</span>
+            {/if}
+            <span class="flex-1"></span>
             {#if aiFocusBusy}
               <button onclick={cancelAIFocus} class="text-[11px] text-warning hover:underline">cancel</button>
             {:else}
+              {#if aiFocusPlan.length > 0}
+                <button onclick={() => void acceptAllPlanItems()} class="text-[11px] text-success hover:underline" title="Pin every remaining plan item back-to-back starting now">accept all</button>
+              {/if}
               <button onclick={() => void runAIFocus()} class="text-[11px] text-secondary hover:underline">↻ regenerate</button>
-              <button onclick={() => { aiFocusResponse = ''; aiFocusError = ''; }} class="text-[11px] text-dim hover:text-error">dismiss</button>
+              <button onclick={dismissAIFocus} class="text-[11px] text-dim hover:text-error">dismiss</button>
             {/if}
           </div>
           {#if aiFocusError}
             <div class="text-xs text-error">{aiFocusError}</div>
+          {:else if aiFocusPlan.length > 0}
+            <!-- Structured plan view. Each row has its own accept/skip,
+                 so the user can take 4 of 5 suggestions without burning
+                 the call. -->
+            <ol class="space-y-1.5">
+              {#each aiFocusPlan as p (p.taskId)}
+                {@const t = tasks.find((x) => x.id === p.taskId)}
+                {#if t}
+                  <li class="flex items-start gap-2 text-xs">
+                    <span class="font-mono text-secondary tabular-nums w-5 flex-shrink-0 mt-0.5">{p.order}.</span>
+                    <div class="flex-1 min-w-0">
+                      <div class="text-text">
+                        <span class="font-medium">{t.text}</span>
+                        <span class="text-dim ml-2 font-mono tabular-nums">{Math.max(15, p.estimateMinutes || 30)}m</span>
+                      </div>
+                      {#if p.rationale}
+                        <div class="text-dim mt-0.5 italic">{p.rationale}</div>
+                      {/if}
+                    </div>
+                    <button
+                      onclick={() => void acceptPlanItem(p)}
+                      class="px-2 py-0.5 bg-success/15 text-success rounded hover:bg-success/25 flex-shrink-0"
+                      title="Pin this task into a time slot today"
+                    >accept</button>
+                    <button
+                      onclick={() => skipPlanItem(p.taskId)}
+                      class="px-2 py-0.5 text-dim hover:text-text flex-shrink-0"
+                    >skip</button>
+                  </li>
+                {/if}
+              {/each}
+            </ol>
+            {#if aiFocusSkipped}
+              <p class="text-[11px] text-dim italic mt-2 pt-2 border-t border-surface1">Skipped: {aiFocusSkipped}</p>
+            {/if}
+            <p class="text-[10px] text-dim mt-2">Context: {tasks.filter((t) => !t.done).slice(0, 30).length} open tasks shown · {aiFocusHours}h focus budget</p>
           {:else}
+            <!-- Streaming/fallback view: show the raw model output while
+                 we wait for the JSON to close, OR if parsing fails. -->
             <div class="prose prose-sm max-w-none text-sm">
               <MarkdownRenderer body={aiFocusResponse || '_thinking…_'} />
             </div>
@@ -1427,14 +1624,31 @@
           disabled={!quickAdd.trim() || quickAddBusy}
           class="px-3 py-2 bg-primary text-on-primary rounded text-sm disabled:opacity-50 flex-shrink-0"
         >{quickAddBusy ? '…' : 'Add'}</button>
+        <!-- Focus-hours input + Plan-my-day trigger. The hours value
+             feeds the AI's budget so it doesn't propose 8h of work
+             when the user has 2h available. Persisted in
+             localStorage so the user only sets it once.
+             Step is 0.5; clamps 0.5-12h. -->
+        <label class="hidden sm:inline-flex items-center gap-1 text-xs text-dim flex-shrink-0" title="Focus hours available today — feeds the Plan-my-day budget">
+          <input
+            type="number"
+            min="0.5"
+            max="12"
+            step="0.5"
+            bind:value={aiFocusHours}
+            class="w-12 px-1 py-1 bg-surface0 border border-surface1 rounded text-text text-xs tabular-nums text-center focus:outline-none focus:border-primary"
+            aria-label="Focus hours available today"
+          />
+          <span>h</span>
+        </label>
         <button
           onclick={() => void runAIFocus()}
           disabled={aiFocusBusy || tasks.filter((t) => !t.done).length === 0}
-          title="AI picks 3 tasks to focus on today across your whole open list"
+          title="AI builds a sequenced day-plan budgeted to your focus hours"
           class="hidden sm:inline-flex px-3 py-2 text-sm bg-gradient-to-r from-primary/15 to-secondary/15 border border-primary/30 text-primary rounded hover:border-primary/60 disabled:opacity-50 flex-shrink-0 items-center gap-1"
         >
           <span>✨</span>
-          <span>{aiFocusBusy ? 'thinking…' : 'Top 3'}</span>
+          <span>{aiFocusBusy ? 'planning…' : 'Plan day'}</span>
         </button>
       </div>
       <!-- Saved filter presets. One-click application of a stored
