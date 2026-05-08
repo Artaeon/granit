@@ -461,6 +461,16 @@ func (s *Server) Handler() http.Handler {
 		r.Patch("/api/v1/emails/{id}", s.handlePatchEmail)
 		r.Delete("/api/v1/emails/{id}", s.handleDeleteEmail)
 
+		// Email signatures — HTML signature library at
+		// .granit/email-signatures.json. CRUD only; rendering
+		// happens client-side inside an iframe sandbox so user-
+		// authored HTML can't fire scripts on the preview page.
+		r.Get("/api/v1/email-signatures", s.handleListEmailSignatures)
+		r.Post("/api/v1/email-signatures", s.handleCreateEmailSignature)
+		r.Get("/api/v1/email-signatures/{id}", s.handleGetEmailSignature)
+		r.Patch("/api/v1/email-signatures/{id}", s.handlePatchEmailSignature)
+		r.Delete("/api/v1/email-signatures/{id}", s.handleDeleteEmailSignature)
+
 		r.Get("/api/v1/files/*", s.handleGetFile)
 		// Multipart upload — used by the editor's paste-image and
 		// drop-file handlers. Files land under attachments/YYYY/MM/.

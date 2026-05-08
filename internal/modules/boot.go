@@ -85,6 +85,7 @@ func baselineDeclarations() []Module {
 		&baselineModule{id: "ventures", name: "Ventures", desc: "Umbrella entity above projects and goals — companies, side hustles, ministries", cat: "Planning"},
 		&baselineModule{id: "weekly_review", name: "Weekly Review", desc: "Friday/Sunday five-question review — wins, setbacks, next week's one thing", cat: "Planning"},
 		&baselineModule{id: "emails", name: "Emails", desc: "Lightweight CRM-grade tracker for inbound + outbound emails. Log thread, set follow-up date, link to person/project. Granit doesn't fetch real email — this is a manual record so important threads don't fall through the cracks.", cat: "Life"},
+		&baselineModule{id: "email_signatures", name: "Email Signatures", desc: "HTML signature library — manage many signatures (work, personal, ventures), preview them rendered, copy on demand. Useful when you maintain different identities across mail clients.", cat: "Life"},
 	}
 }
 
