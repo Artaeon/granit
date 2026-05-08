@@ -27,6 +27,7 @@
   import SelectionToolbar from '$lib/editor/SelectionToolbar.svelte';
   import LinkSuggestPanel from '$lib/notes/LinkSuggestPanel.svelte';
   import EditorAIMenu from '$lib/notes/EditorAIMenu.svelte';
+  import ResearchPanel from '$lib/notes/ResearchPanel.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
 
@@ -925,6 +926,13 @@
       <section>
         <h3 class="text-xs uppercase tracking-wider text-dim mb-2">Backlinks</h3>
         <BacklinksPanel path={note.path} onNavigate={navigateWikilink} />
+      </section>
+      <!-- Research panel: derives highlights / footnotes / outbound
+           URLs from the body so a research-style note becomes a
+           navigable index. Renders nothing if the note has none of
+           those — saves rail space on a fresh note. -->
+      <section>
+        <ResearchPanel body={body} onJump={jumpToLine} />
       </section>
       <section>
         <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">

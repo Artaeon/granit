@@ -80,6 +80,34 @@ function makeLink(view: EditorView): boolean {
   return true;
 }
 
+// Toggle markdown blockquote on every line in the selection. Empty
+// selection acts on the current line. We expand the range to whole
+// lines first so a partial-line selection still produces a clean
+// `> ` prefix. If every non-blank line in the range is already
+// quoted, we strip — same toggle UX as bold/italic.
+function toggleBlockquote(view: EditorView): boolean {
+  if (view.state.readOnly) return false;
+  view.dispatch(
+    view.state.changeByRange((range) => {
+      const startLine = view.state.doc.lineAt(range.from);
+      const endLine = view.state.doc.lineAt(range.to);
+      const from = startLine.from;
+      const to = endLine.to;
+      const text = view.state.sliceDoc(from, to);
+      const lines = text.split('\n');
+      const allQuoted = lines.every((l) => l.trim() === '' || /^>\s?/.test(l));
+      const next = allQuoted
+        ? lines.map((l) => l.replace(/^>\s?/, '')).join('\n')
+        : lines.map((l) => (l.trim() === '' ? l : '> ' + l)).join('\n');
+      return {
+        changes: { from, to, insert: next },
+        range: EditorSelection.range(from, from + next.length)
+      };
+    })
+  );
+  return true;
+}
+
 export const markdownShortcuts: readonly KeyBinding[] = [
   { key: 'Mod-b', preventDefault: true, run: (v) => toggleWrap(v, '**') },
   { key: 'Mod-i', preventDefault: true, run: (v) => toggleWrap(v, '*') },
@@ -94,6 +122,14 @@ export const markdownShortcuts: readonly KeyBinding[] = [
   // pin while the user keeps reading. Toggles like bold so a second
   // press unhighlights.
   { key: 'Mod-Shift-h', preventDefault: true, run: (v) => toggleWrap(v, '==') },
+  // Mod-Shift-Q: wrap the selection as a markdown blockquote. Each
+  // line of the selection gets a leading `> `; toggling on a fully-
+  // quoted block strips it. Empty selection wraps the current line.
+  // Research workflow: paste a quote, select it, hit Mod-Shift-Q,
+  // the prose is set off as a citation. Different from highlight —
+  // highlights mark inline spans for re-reading; blockquotes mark
+  // whole passages as 'this came from somewhere else'.
+  { key: 'Mod-Shift-q', preventDefault: true, run: toggleBlockquote },
   // Backtick-as-codespan toggle. Already mostly available via the
   // 'Inline code' button in the selection toolbar (chord 'mod+`'),
   // but a single character chord makes it discoverable from the

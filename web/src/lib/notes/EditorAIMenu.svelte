@@ -79,10 +79,18 @@
   //    dispatched actions (Continue / Section / Selection) close
   //    the menu and let the host's existing flow handle their UX.
 
-  type Action = 'title' | 'tldr' | 'tighten';
+  type Action = 'title' | 'tldr' | 'tighten' | 'study';
   let busy = $state<Action | null>(null);
   let titleSuggestions = $state<string[]>([]);
   let titleAbort: AbortController | null = null;
+  // Study-mode state: AI generates Q&A self-test questions from the
+  // note. Lives in a small bottom drawer of the menu so the user
+  // can read the questions, copy them, or insert them at the end of
+  // the note as a `## Self-test` section.
+  type Card = { q: string; a: string };
+  let studyCards = $state<Card[]>([]);
+  let studyRaw = $state('');
+  let studyAbort: AbortController | null = null;
 
   function noteBodyForAI(): string {
     // Cap to ~12k chars so the prompt stays bounded for long notes.
@@ -179,6 +187,76 @@
     } finally {
       busy = null;
     }
+  }
+
+  async function generateStudyQuestions() {
+    if (busy) return;
+    if (body.trim().length < 100) {
+      toast.info('Note is too short for study questions.');
+      return;
+    }
+    studyAbort?.abort();
+    studyAbort = new AbortController();
+    busy = 'study';
+    studyCards = [];
+    studyRaw = '';
+    let buf = '';
+    try {
+      await api.chatStream(
+        [
+          {
+            role: 'system',
+            content:
+              'You generate 5-7 study questions from the user\'s note that test understanding (not memorisation of trivia). Each question probes a concept, an implication, an example, or an application. Return STRICTLY a JSON array, no fences, no prose: [{"q": "<the question>", "a": "<one-sentence answer based on the note, max 30 words>"}]. Avoid questions that are answerable from the title alone or from rote phrasing — favour ones the reader could only answer if they understood the material.'
+          },
+          { role: 'user', content: noteBodyForAI() }
+        ],
+        undefined,
+        {
+          onChunk: (c) => { buf += c; studyRaw = buf; },
+          onDone: () => {
+            let cleaned = buf.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+            }
+            try {
+              const arr = JSON.parse(cleaned) as Card[];
+              if (Array.isArray(arr)) studyCards = arr.filter((x) => x.q && x.a);
+            } catch {
+              toast.error('Model didn\'t return parseable JSON.');
+            }
+          },
+          onError: (err) => toast.error(err.message)
+        },
+        studyAbort.signal
+      );
+    } finally {
+      busy = null;
+      studyAbort = null;
+    }
+  }
+  function dismissStudy() {
+    studyAbort?.abort();
+    studyCards = [];
+    studyRaw = '';
+  }
+  function insertStudyAtBottom() {
+    if (studyCards.length === 0) return;
+    const md =
+      '\n\n## Self-test\n\n' +
+      studyCards
+        .map((c, i) => `**Q${i + 1}.** ${c.q}\n\n_A:_ ${c.a}\n`)
+        .join('\n');
+    onInsertAtTop(''); // reuse insertAtTop with empty? no — we need insertAtBottom
+    // Actually we don't have an onInsertAtBottom; the callbacks are
+    // fixed. Falling back to onReplaceBody with the appended block.
+    // The onReplaceBody contract is "replace the whole body"; we do
+    // exactly that — body + append. The host page treats this as
+    // one undoable transaction.
+    onReplaceBody(body.replace(/\s+$/, '') + md);
+    studyCards = [];
+    open = false;
+    toast.success('Self-test added at the end of the note.');
   }
 
   async function tightenNote() {
@@ -315,6 +393,21 @@
         <span class="flex-1 text-left">{busy === 'tighten' ? 'Tightening…' : 'Tighten whole note'}</span>
         <span class="text-[10px] text-dim">undo: {modKey}Z</span>
       </button>
+      <!-- Study mode: AI generates Q&A self-test from the note. The
+           result panel lives at the bottom of the menu so the user
+           can read the questions, regenerate, dismiss, or append
+           them as a `## Self-test` section. The point isn't to
+           rewrite the note — it's to surface comprehension probes
+           the user can quiz themselves on later. -->
+      <button
+        role="menuitem"
+        onclick={generateStudyQuestions}
+        disabled={busy !== null}
+        class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text disabled:opacity-50"
+      >
+        <span class="flex-1 text-left">{busy === 'study' ? 'Generating…' : 'Study questions'}</span>
+        <span class="text-[10px] text-dim">5-7 Q&A</span>
+      </button>
 
       <div class="border-t border-surface1 my-1"></div>
 
@@ -333,6 +426,35 @@
               class="block w-full text-left text-sm py-1 hover:text-primary"
             >{t}</button>
           {/each}
+        </div>
+      {/if}
+
+      {#if studyCards.length > 0}
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-primary/5 max-h-72 overflow-y-auto">
+          <div class="flex items-baseline gap-2 mb-2">
+            <span class="text-[10px] uppercase tracking-wider text-primary">study questions</span>
+            <span class="flex-1"></span>
+            <button type="button" onclick={generateStudyQuestions} disabled={busy !== null} class="text-[11px] text-secondary hover:underline">regenerate</button>
+            <button type="button" onclick={dismissStudy} class="text-[11px] text-dim hover:text-text">dismiss</button>
+          </div>
+          <ol class="space-y-2 list-decimal pl-4">
+            {#each studyCards as c, i (i)}
+              <li class="text-xs">
+                <div class="text-text">{c.q}</div>
+                <details class="mt-0.5">
+                  <summary class="cursor-pointer text-dim hover:text-text text-[11px]">show answer</summary>
+                  <div class="mt-1 text-subtext italic">{c.a}</div>
+                </details>
+              </li>
+            {/each}
+          </ol>
+          <button
+            type="button"
+            onclick={insertStudyAtBottom}
+            class="mt-2 w-full text-xs px-2 py-1 rounded bg-primary text-on-primary font-medium"
+          >
+            Append as ## Self-test
+          </button>
         </div>
       {/if}
     </div>

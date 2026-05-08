@@ -1,0 +1,205 @@
+<!--
+  ResearchPanel — right-rail aggregator that turns a research-style
+  note into a navigable index. Three sections, all derived from the
+  note body in O(n) so the panel stays fast on big docs:
+    - Highlights (==text==): every yellow-marker span with its line.
+    - Footnotes ([^id]): defs + refs with broken-link warnings.
+    - Outbound URLs: every linked source in the note, so the user
+      can scan their references without scrolling the body.
+
+  Each entry is clickable → jump to the line in the editor (host
+  page passes the onJump callback). The panel renders nothing when
+  the note has none of the above — saves rail space on a fresh note.
+-->
+<script lang="ts">
+  let {
+    body = '',
+    onJump
+  }: {
+    body: string;
+    onJump?: (lineNum: number) => void;
+  } = $props();
+
+  // Skip code fences for all derivations — code routinely contains
+  // `==`, URLs, and bracketed text we don't want to treat as
+  // highlights / refs / sources.
+  function stripFences(src: string): string {
+    return src.replace(/```[\s\S]*?```/g, (m) => '\n'.repeat(m.split('\n').length - 1));
+  }
+
+  type Highlight = { text: string; line: number };
+  type Footnote = { id: string; line: number; defined: boolean; refOnly: boolean };
+  type Source = { url: string; label: string; line: number };
+
+  let highlights = $derived.by<Highlight[]>(() => {
+    const stripped = stripFences(body);
+    const out: Highlight[] = [];
+    const lines = stripped.split('\n');
+    const re = /==([^=\n][^=]*?)==/g;
+    for (let i = 0; i < lines.length; i++) {
+      let m: RegExpExecArray | null;
+      re.lastIndex = 0;
+      while ((m = re.exec(lines[i])) !== null) {
+        const text = m[1].trim();
+        if (text) out.push({ text, line: i + 1 });
+      }
+    }
+    return out;
+  });
+
+  let footnotes = $derived.by<Footnote[]>(() => {
+    const stripped = stripFences(body);
+    const lines = stripped.split('\n');
+    const refs = new Map<string, number>(); // first-occurrence line
+    const defs = new Set<string>();
+    const defLines = new Map<string, number>();
+    for (let i = 0; i < lines.length; i++) {
+      const dm = /^\[\^([^\]\s]+)\]:\s/.exec(lines[i]);
+      if (dm) {
+        defs.add(dm[1]);
+        defLines.set(dm[1], i + 1);
+      }
+      const refRe = /\[\^([^\]\s]+)\]/g;
+      let rm: RegExpExecArray | null;
+      while ((rm = refRe.exec(lines[i])) !== null) {
+        // Skip definition lines — those start with `[^id]:` and the
+        // bare `[^id]` at the front matched by refRe is the def, not
+        // a ref.
+        if (lines[i].startsWith('[^' + rm[1] + ']:')) continue;
+        if (!refs.has(rm[1])) refs.set(rm[1], i + 1);
+      }
+    }
+    const all = new Set<string>([...refs.keys(), ...defs]);
+    const out: Footnote[] = [];
+    for (const id of all) {
+      const line = refs.get(id) ?? defLines.get(id) ?? 1;
+      out.push({
+        id,
+        line,
+        defined: defs.has(id),
+        refOnly: refs.has(id) && !defs.has(id)
+      });
+    }
+    return out.sort((a, b) => a.line - b.line);
+  });
+
+  let sources = $derived.by<Source[]>(() => {
+    const stripped = stripFences(body);
+    const lines = stripped.split('\n');
+    const out: Source[] = [];
+    const seen = new Set<string>();
+    // Markdown link form first (richest — gives us a label).
+    const linkRe = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
+    for (let i = 0; i < lines.length; i++) {
+      let m: RegExpExecArray | null;
+      linkRe.lastIndex = 0;
+      while ((m = linkRe.exec(lines[i])) !== null) {
+        if (seen.has(m[2])) continue;
+        seen.add(m[2]);
+        out.push({ url: m[2], label: m[1], line: i + 1 });
+      }
+    }
+    // Bare URLs (no label) — fall back to a hostname display.
+    const bareRe = /(?:^|[\s(])(https?:\/\/[^\s)<>]+)/g;
+    for (let i = 0; i < lines.length; i++) {
+      let m: RegExpExecArray | null;
+      bareRe.lastIndex = 0;
+      while ((m = bareRe.exec(lines[i])) !== null) {
+        const url = m[1].replace(/[.,;:]+$/, '');
+        if (seen.has(url)) continue;
+        seen.add(url);
+        let host = url;
+        try { host = new URL(url).hostname.replace(/^www\./, ''); } catch {}
+        out.push({ url, label: host, line: i + 1 });
+      }
+    }
+    return out;
+  });
+
+  let isEmpty = $derived(highlights.length === 0 && footnotes.length === 0 && sources.length === 0);
+</script>
+
+{#if !isEmpty}
+  <div class="space-y-3">
+    {#if highlights.length > 0}
+      <section>
+        <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5 flex items-baseline gap-1.5">
+          <span class="text-warning">●</span>
+          Highlights · {highlights.length}
+        </div>
+        <ul class="space-y-1">
+          {#each highlights as h, i (i)}
+            <li>
+              <button
+                type="button"
+                onclick={() => onJump?.(h.line)}
+                class="w-full text-left text-xs text-text hover:bg-surface0 rounded px-2 py-1 leading-snug"
+                title={`line ${h.line}`}
+              >
+                <span class="text-warning/80">▌</span>
+                <span class="ml-1">{h.text.length > 80 ? h.text.slice(0, 80) + '…' : h.text}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
+
+    {#if footnotes.length > 0}
+      <section>
+        <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5 flex items-baseline gap-1.5">
+          <span>¹</span>
+          Footnotes · {footnotes.length}
+          {#if footnotes.some((f) => f.refOnly)}
+            <span class="text-error">· {footnotes.filter((f) => f.refOnly).length} unresolved</span>
+          {/if}
+        </div>
+        <ul class="space-y-0.5">
+          {#each footnotes as f (f.id)}
+            <li>
+              <button
+                type="button"
+                onclick={() => onJump?.(f.line)}
+                class="w-full text-left text-xs hover:bg-surface0 rounded px-2 py-0.5 leading-snug flex items-baseline gap-2 {f.refOnly ? 'text-error' : 'text-text'}"
+                title={f.refOnly ? 'unresolved — no [^id]: definition' : `definition on line ${f.line}`}
+              >
+                <span class="font-mono text-dim">[^{f.id}]</span>
+                {#if f.refOnly}<span class="text-[10px]">⚠</span>{/if}
+              </button>
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
+
+    {#if sources.length > 0}
+      <section>
+        <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5 flex items-baseline gap-1.5">
+          <span>↗</span>
+          Sources · {sources.length}
+        </div>
+        <ul class="space-y-0.5">
+          {#each sources as s (s.url)}
+            <li class="flex items-center gap-1.5 group">
+              <button
+                type="button"
+                onclick={() => onJump?.(s.line)}
+                class="flex-1 text-left text-xs text-text hover:text-primary px-2 py-0.5 rounded hover:bg-surface0 truncate"
+                title={s.url}
+              >
+                {s.label}
+              </button>
+              <a
+                href={s.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="open source in new tab"
+                class="opacity-0 group-hover:opacity-100 text-dim hover:text-primary text-xs px-1"
+              >↗</a>
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
+  </div>
+{/if}
