@@ -178,6 +178,7 @@
 
   function close() {
     abort?.abort();
+    if (recording) stopVoice();
     aiOverlayOpen.set(false);
   }
   function toggle() {
@@ -352,6 +353,13 @@
   - **Architect** — trade-offs + recommendations for system design
 
   Toggle **RAG** to search the vault for relevant notes per question.
+
+**Shortcuts**
+
+  - <kbd>Mod+J</kbd> — toggle this panel
+  - <kbd>Mod+1..6</kbd> — switch agent mode (General → Architect)
+  - **🎤 mic** in the input row — voice dictation (browser STT)
+  - **save** in the header — write the thread to \`chat-history/\` as a note
 
 **Slash commands**
 
@@ -530,6 +538,150 @@
     'about', 'into', 'over', 'than', 'then', 'them', 'they', 'their'
   ]);
 
+  // ── Voice input ────────────────────────────────────────────────
+  // Click the mic, the browser's SpeechRecognition fills the input
+  // as you speak. Same Web Speech API used by the voice-note modal;
+  // graceful fallback when unsupported (Firefox).
+  type RecognitionCtor = new () => SpeechRecognition;
+  interface SpeechRecognition extends EventTarget {
+    continuous: boolean;
+    interimResults: boolean;
+    lang: string;
+    onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => unknown) | null;
+    onerror: ((this: SpeechRecognition, ev: Event) => unknown) | null;
+    onend: ((this: SpeechRecognition, ev: Event) => unknown) | null;
+    start: () => void;
+    stop: () => void;
+    abort: () => void;
+  }
+  interface SpeechRecognitionEvent extends Event {
+    resultIndex: number;
+    results: {
+      length: number;
+      [i: number]: { isFinal: boolean; [j: number]: { transcript: string } };
+    };
+  }
+  function getRecognitionCtor(): RecognitionCtor | null {
+    if (typeof window === 'undefined') return null;
+    const w = window as unknown as { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor };
+    return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+  }
+  let voiceSupported = $derived(typeof window !== 'undefined' && getRecognitionCtor() !== null);
+  let recording = $state(false);
+  let recognition: SpeechRecognition | null = null;
+  let voiceBaseline = ''; // input value when recording started — finals append to this
+
+  function startVoice() {
+    const Ctor = getRecognitionCtor();
+    if (!Ctor || recording) return;
+    voiceBaseline = input.endsWith(' ') || input.length === 0 ? input : input + ' ';
+    recognition = new Ctor();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || 'en-US';
+    recognition.onresult = (ev) => {
+      let interim = '';
+      let final = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const res = ev.results[i];
+        const text = res[0].transcript;
+        if (res.isFinal) final += text + ' ';
+        else interim += text;
+      }
+      if (final) voiceBaseline += final;
+      input = (voiceBaseline + interim).replace(/\s+/g, ' ').trim();
+    };
+    recognition.onerror = () => {};
+    recognition.onend = () => {
+      // Chrome auto-ends on silence — restart while we're still
+      // in recording mode so a long thought continues.
+      if (recording && recognition) {
+        try { recognition.start(); } catch {}
+      }
+    };
+    try {
+      recognition.start();
+      recording = true;
+    } catch {}
+  }
+  function stopVoice() {
+    recording = false;
+    try { recognition?.stop(); } catch {}
+    recognition = null;
+  }
+  function toggleVoice() {
+    if (recording) stopVoice();
+    else startVoice();
+  }
+
+  // ── Save thread as note ────────────────────────────────────────
+  // Persists the current overlay conversation as a markdown note
+  // under chat-history/YYYY-MM-DD-HHmm-<slug>.md. Useful when a
+  // chat lands on a real insight worth keeping; the dedicated
+  // /chat page is for long-running threads, this is the quick
+  // 'this was a good answer, save it' move from any page.
+  let saving = $state(false);
+  function slugify(s: string): string {
+    return s
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .slice(0, 60)
+      .replace(/^-+|-+$/g, '');
+  }
+  async function saveThreadAsNote() {
+    if (saving) return;
+    if (messages.length === 0 && !quickResult) {
+      toast.info('Nothing to save yet.');
+      return;
+    }
+    saving = true;
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mi = String(now.getMinutes()).padStart(2, '0');
+    const firstUser = messages.find((m) => m.role === 'user')?.content ?? quickTitle ?? 'chat';
+    const slug = slugify(firstUser) || 'chat';
+    const path = `chat-history/${yyyy}-${mm}-${dd}-${hh}${mi}-${slug}.md`;
+    // Body: human-readable transcript with mode + RAG metadata.
+    const lines: string[] = [
+      '# ' + (firstUser.length > 80 ? firstUser.slice(0, 80) + '…' : firstUser),
+      '',
+      `> mode: **${mode.label}** · ${rag ? 'RAG on' : 'RAG off'} · captured ${now.toLocaleString()}`,
+      ''
+    ];
+    if (quickResult) {
+      lines.push('## ' + (quickTitle || 'Quick result'), '', quickResult, '');
+    }
+    for (const m of messages) {
+      lines.push(m.role === 'user' ? '## You' : '## Assistant', '', m.content, '');
+    }
+    if (lastRagHits.length > 0) {
+      lines.push('## Sources retrieved', '');
+      for (const h of lastRagHits) lines.push(`- [[${h.path}|${h.title}]]`);
+    }
+    try {
+      await api.createNote({
+        path,
+        frontmatter: {
+          type: 'chat',
+          mode: mode.id,
+          rag,
+          captured_at: now.toISOString(),
+          tags: ['chat', mode.id]
+        },
+        body: lines.join('\n')
+      });
+      toast.success('Saved · ' + path);
+    } catch (e) {
+      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      saving = false;
+    }
+  }
+
   async function send(e?: Event) {
     e?.preventDefault();
     const text = input.trim();
@@ -644,6 +796,26 @@
       void send();
     }
   }
+
+  // Mode quick-switch: Mod+1..6 picks the matching mode without
+  // opening the picker. Power-user shortcut; only fires while the
+  // overlay is open + the user isn't typing into the chat input
+  // (numbers there should land as numbers, not mode jumps).
+  $effect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || e.shiftKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) return;
+      const idx = parseInt(e.key, 10);
+      if (Number.isNaN(idx) || idx < 1 || idx > AGENT_MODES.length) return;
+      e.preventDefault();
+      selectMode(AGENT_MODES[idx - 1].id);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 </script>
 
 {#if open}
@@ -777,6 +949,18 @@
       >Deadlines</button>
       <span class="flex-1"></span>
       {#if messages.length > 0 || quickResult}
+        <button
+          onclick={() => void saveThreadAsNote()}
+          disabled={saving}
+          class="px-2 py-1 text-[11px] text-secondary hover:underline disabled:opacity-50 inline-flex items-center gap-1"
+          title="Save this thread as a markdown note under chat-history/"
+        >
+          <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 4h11l3 3v13H5z"/>
+            <path d="M9 4v5h6V4M8 14h8M8 18h6" stroke-linecap="round"/>
+          </svg>
+          {saving ? 'saving…' : 'save'}
+        </button>
         <button
           onclick={clearChat}
           class="px-2 py-1 text-[11px] text-dim hover:text-error"
@@ -922,10 +1106,29 @@
         bind:value={input}
         onkeydown={onInputKey}
         rows="2"
-        placeholder={$sabbath ? 'Sabbath active — AI paused' : 'Ask anything, or type /help for slash commands'}
+        placeholder={$sabbath ? 'Sabbath active — AI paused' : recording ? 'Listening… speak freely' : 'Ask anything, or type /help for slash commands'}
         disabled={busy || $sabbath}
-        class="flex-1 bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-none disabled:opacity-60"
+        class="flex-1 bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-none disabled:opacity-60 {recording ? 'border-error' : ''}"
       ></textarea>
+      {#if voiceSupported}
+        <!-- Voice input: tap to start, tap again to stop. Live
+             transcript fills the input as the user speaks. Same
+             SpeechRecognition shape as the voice-note modal. -->
+        <button
+          type="button"
+          onclick={toggleVoice}
+          disabled={busy || $sabbath}
+          aria-pressed={recording}
+          class="px-3 py-2 text-sm rounded font-medium disabled:opacity-40 inline-flex items-center justify-center transition-colors {recording ? 'bg-error text-white animate-pulse' : 'bg-surface0 border border-surface1 text-subtext hover:border-primary'}"
+          title={recording ? 'Stop dictating' : 'Dictate (browser speech-to-text)'}
+          aria-label={recording ? 'Stop dictating' : 'Dictate'}
+        >
+          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="3" width="6" height="12" rx="3"/>
+            <path d="M5 11a7 7 0 0014 0M12 18v3" stroke-linecap="round"/>
+          </svg>
+        </button>
+      {/if}
       <button
         type="submit"
         disabled={busy || !input.trim() || $sabbath}
