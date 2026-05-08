@@ -284,6 +284,78 @@
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
+  // ─── AI reflection prompts on the check form ─────────────────────
+  // The honest-not-punishing weekly check is the spiritual heart of
+  // /virtues — but the textarea sits empty for many users. AI surfaces
+  // 1-2 short, virtue-specific questions seeded with the virtue's
+  // anchor + score history + the current draft note. Goal is to OPEN
+  // doors (questions, not answers) so the user can articulate what
+  // they noticed without staring at a blank box.
+  let aiBusy = $state<string | null>(null);
+  let aiAbort: AbortController | null = null;
+  let aiPrompts = $state<{ virtueId: string; lines: string[] } | null>(null);
+  let aiError = $state('');
+
+  async function reflectOnVirtue(v: Virtue) {
+    if (aiBusy) return;
+    aiAbort?.abort();
+    aiAbort = new AbortController();
+    aiBusy = v.id;
+    aiError = '';
+    aiPrompts = { virtueId: v.id, lines: [] };
+    const score = checkScore[v.id] ?? 3;
+    const draft = (checkNote[v.id] ?? '').trim();
+    const recent = (v.checks ?? []).slice(-4).map((c) => `- ${c.week_start} · ${c.score}/5${c.note ? `: ${c.note}` : ''}`).join('\n');
+    const ctxBits: string[] = [];
+    if (v.description) ctxBits.push(`Description: ${v.description}`);
+    if (v.anchor) ctxBits.push(`Anchor: ${v.anchor}`);
+    if (v.season) ctxBits.push(`Season: ${v.season}`);
+    if (recent) ctxBits.push(`Recent checks (oldest→newest):\n${recent}`);
+    if (draft) ctxBits.push(`This week\'s draft note: ${draft}`);
+    const ctx = ctxBits.length > 0 ? ctxBits.join('\n\n') : '(no prior context)';
+
+    const system = 'You help the user reflect honestly on a virtue they\'re cultivating. Generate 2-3 short, gentle, OPEN questions that help them articulate this week\'s experience — never advice, never praise, never assume how they feel. Each question on its own line. Under 18 words each. No preamble, no numbering, no bullets. Anchor the questions in their specific virtue / score / context if you can; generic if not.';
+    const user = `Virtue: ${v.name}\nThis week\'s self-check score: ${score}/5\n\n${ctx}\n\nGive me 2-3 reflection questions for this week.`;
+    let buf = '';
+    try {
+      await api.chatStream(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        undefined,
+        {
+          onChunk: (c) => {
+            buf += c;
+            const lines = buf.split(/\n+/).map((l) => l.trim()).filter((l) => l.length > 0);
+            if (aiPrompts && aiPrompts.virtueId === v.id) aiPrompts = { virtueId: v.id, lines };
+          },
+          onDone: () => {},
+          onError: (err) => { aiError = err.message; aiPrompts = null; }
+        },
+        aiAbort.signal
+      );
+    } finally {
+      aiBusy = null;
+      aiAbort = null;
+    }
+  }
+  function dismissPrompts() {
+    aiAbort?.abort();
+    aiBusy = null;
+    aiPrompts = null;
+    aiError = '';
+  }
+  function usePrompt(v: Virtue, line: string) {
+    const cleaned = line.replace(/^[-•*\d.\s]+/, '').trim();
+    const cur = (checkNote[v.id] ?? '').trim();
+    checkNote = {
+      ...checkNote,
+      [v.id]: cur ? cur + '\n\n' + cleaned + '\n' : cleaned + '\n'
+    };
+    aiPrompts = null;
+  }
+
   // ----- Stat strip -----
   // Glance summary tuned to the Sunday review rhythm:
   //   active        — all non-paused, non-archived virtues
@@ -613,6 +685,22 @@
                       {/each}
                       <span class="text-[11px] text-dim ml-1">honest, not punishing</span>
                     </div>
+                    <div class="flex items-baseline gap-2">
+                      <span class="text-xs text-dim">Note</span>
+                      <span class="flex-1"></span>
+                      <button
+                        type="button"
+                        onclick={() => reflectOnVirtue(v)}
+                        disabled={aiBusy !== null}
+                        class="text-[11px] text-primary hover:underline disabled:opacity-50 inline-flex items-center gap-1"
+                        title="Ask AI for a gentle reflection prompt"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+                          <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
+                        </svg>
+                        {aiBusy === v.id ? 'asking…' : 'help me reflect'}
+                      </button>
+                    </div>
                     <textarea
                       value={checkNote[v.id] ?? ''}
                       oninput={(e) => (checkNote = { ...checkNote, [v.id]: (e.target as HTMLTextAreaElement).value })}
@@ -620,6 +708,30 @@
                       placeholder="What did you notice this week? Where was the grace? Where the friction?"
                       class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-sm text-text placeholder-dim"
                     ></textarea>
+                    {#if aiPrompts && aiPrompts.virtueId === v.id}
+                      <div class="p-2 bg-primary/8 border-l-2 border-primary rounded space-y-1">
+                        {#if aiBusy === v.id && aiPrompts.lines.length === 0}
+                          <div class="text-xs text-dim italic">listening…</div>
+                        {/if}
+                        {#each aiPrompts.lines as line}
+                          {@const cleaned = line.replace(/^[-•*\d.\s]+/, '').trim()}
+                          {#if cleaned}
+                            <button
+                              type="button"
+                              onclick={() => usePrompt(v, line)}
+                              class="block w-full text-left text-sm text-text hover:text-primary px-1.5 py-0.5 rounded hover:bg-primary/10"
+                            >{cleaned}</button>
+                          {/if}
+                        {/each}
+                        <div class="flex items-center gap-2 pt-0.5">
+                          <button type="button" onclick={() => reflectOnVirtue(v)} class="text-[11px] text-secondary hover:underline" disabled={aiBusy !== null}>regenerate</button>
+                          <button type="button" onclick={dismissPrompts} class="text-[11px] text-dim hover:text-text">dismiss</button>
+                        </div>
+                      </div>
+                    {/if}
+                    {#if aiError}
+                      <div class="text-xs text-error bg-error/10 border border-error/20 rounded px-2 py-1.5">{aiError}</div>
+                    {/if}
                     <div class="flex items-center gap-2">
                       <button
                         type="button"
