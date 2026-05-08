@@ -379,6 +379,7 @@ func (s *Server) handlePatchEvent(w http.ResponseWriter, r *http.Request) {
 	apply("location", &ev.Location)
 	apply("color", &ev.Color)
 	apply("rrule", &ev.RRule)
+	apply("ex_dates", &ev.ExDates)
 	// Validate AFTER apply so a partial patch (e.g. just start_time)
 	// gets validated against the merged record. Catches "user shifted
 	// the start past the end" without forcing them to also patch end.
@@ -393,6 +394,66 @@ func (s *Server) handlePatchEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	s.hub.Broadcast(wshub.Event{Type: "event.changed", ID: ev.ID})
 	writeJSON(w, http.StatusOK, ev)
+}
+
+// handleSkipEventOccurrence appends a date to an event's ExDates
+// list so the recurrence expander filters that single occurrence
+// from the rendered calendar — the user's "cancel just this week's
+// meeting" action without disrupting the rest of the series. The
+// date must be YYYY-MM-DD (all-day) or YYYY-MM-DDTHH:MM:SS (timed)
+// to match the format the expander compares against. No-op when the
+// date is already in the list. Errors when the event isn't recurring
+// (no RRule) or doesn't exist.
+func (s *Server) handleSkipEventOccurrence(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var body struct {
+		Date string `json:"date"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	body.Date = strings.TrimSpace(body.Date)
+	if body.Date == "" {
+		writeError(w, http.StatusBadRequest, "date required")
+		return
+	}
+	events, err := granitmeta.ReadEvents(s.cfg.Vault.Root)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	idx := -1
+	for i, ev := range events {
+		if ev.ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		writeError(w, http.StatusNotFound, "event not found")
+		return
+	}
+	if events[idx].RRule == "" {
+		writeError(w, http.StatusBadRequest, "event is not recurring")
+		return
+	}
+	already := false
+	for _, x := range events[idx].ExDates {
+		if x == body.Date {
+			already = true
+			break
+		}
+	}
+	if !already {
+		events[idx].ExDates = append(events[idx].ExDates, body.Date)
+		if err := granitmeta.WriteEvents(s.cfg.Vault.Root, events); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.hub.Broadcast(wshub.Event{Type: "event.changed", ID: events[idx].ID})
+	}
+	writeJSON(w, http.StatusOK, events[idx])
 }
 
 func (s *Server) handleDeleteEvent(w http.ResponseWriter, r *http.Request) {

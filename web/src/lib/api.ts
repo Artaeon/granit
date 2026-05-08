@@ -1154,6 +1154,15 @@ export const api = {
     }),
   deleteEvent: (id: string) =>
     req<void>(`/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** Add an EXDATE to a recurring event so a single occurrence is
+   *  cancelled without disrupting the rest of the series. Date is
+   *  YYYY-MM-DD for all-day events, YYYY-MM-DDTHH:MM:SS for timed.
+   *  No-op when the date is already in the list. */
+  skipEventOccurrence: (id: string, date: string) =>
+    req<CalendarEventEntry>(`/events/${encodeURIComponent(id)}/skip`, {
+      method: 'POST',
+      body: JSON.stringify({ date })
+    }),
 
   // Goals (granit, full CRUD — schema mirrors internal/goals.Goal)
   listGoals: () => req<{ goals: Goal[]; total: number }>('/goals'),

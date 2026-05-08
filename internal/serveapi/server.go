@@ -290,6 +290,7 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/events", s.handleListEvents)
 		r.Post("/api/v1/events", s.handleCreateEvent)
 		r.Patch("/api/v1/events/{id}", s.handlePatchEvent)
+		r.Post("/api/v1/events/{id}/skip", s.handleSkipEventOccurrence)
 		r.Delete("/api/v1/events/{id}", s.handleDeleteEvent)
 
 		r.Get("/api/v1/goals", s.handleListGoals)

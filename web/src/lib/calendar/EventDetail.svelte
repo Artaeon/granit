@@ -229,6 +229,53 @@
     }
   }
 
+  // Skip just THIS occurrence of a recurring event — the user's
+  // "team meeting cancelled this week, but keep the series" move.
+  // Adds an EXDATE entry to the source event; the expander filters
+  // it out the next time the calendar renders. We compute the
+  // EXDATE key in the same shape the expander compares against:
+  // YYYY-MM-DD for all-day events, YYYY-MM-DDTHH:MM:SS (local) for
+  // timed. Only available for native recurring events; ICS skip
+  // would need to round-trip the source .ics file which isn't on
+  // the patch path today.
+  function exDateKey(): string {
+    if (!event) return '';
+    if (event.start) {
+      const d = new Date(event.start);
+      // Local-time YYYY-MM-DDTHH:MM:SS — what the expander
+      // compares against for timed events.
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const HH = String(d.getHours()).padStart(2, '0');
+      const MM = String(d.getMinutes()).padStart(2, '0');
+      const SS = String(d.getSeconds()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}T${HH}:${MM}:${SS}`;
+    }
+    return event.date ?? '';
+  }
+  async function skipOccurrence() {
+    if (!event?.eventId || !event.rrule) return;
+    if (event.type !== 'event') {
+      toast.info('Skipping ICS occurrences isn\'t supported yet — edit the source calendar.');
+      return;
+    }
+    const key = exDateKey();
+    if (!key) return;
+    if (!confirm(`Skip just this occurrence of "${event.title}"? The rest of the series stays.`)) return;
+    busy = true;
+    try {
+      await api.skipEventOccurrence(event.eventId, key);
+      onChanged?.();
+      open = false;
+      toast.success('Occurrence cancelled · series unchanged');
+    } catch (err) {
+      toast.error('skip failed: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      busy = false;
+    }
+  }
+
   const colorOptions = ['red', 'yellow', 'orange', 'green', 'blue', 'purple', 'cyan'];
 
   async function toggleDone() {
@@ -511,7 +558,22 @@
         {/if}
         {#if editable}
           <button onclick={startEdit} class="px-3 py-1.5 text-sm bg-surface0 text-subtext rounded hover:bg-surface1">edit</button>
-          <button onclick={deleteEvent} disabled={busy} class="px-3 py-1.5 text-sm text-error hover:bg-error/10 rounded">delete</button>
+          {#if event.type === 'event' && event.rrule}
+            <!-- Skip THIS occurrence only — adds an EXDATE so the
+                 expander filters this single instance from future
+                 renders. Series stays intact. The text reads as a
+                 distinct verb from 'delete' so the user's mental
+                 model of cancel-once vs end-series stays clear. -->
+            <button
+              onclick={skipOccurrence}
+              disabled={busy}
+              class="px-3 py-1.5 text-sm bg-warning/15 text-warning rounded hover:bg-warning/25"
+              title="Cancel just this occurrence — keep the rest of the series"
+            >skip this</button>
+          {/if}
+          <button onclick={deleteEvent} disabled={busy} class="px-3 py-1.5 text-sm text-error hover:bg-error/10 rounded">
+            {event.type === 'event' && event.rrule ? 'delete series' : 'delete'}
+          </button>
         {/if}
         {#if event.notePath}
           <button onclick={openNote} class="px-3 py-1.5 text-sm bg-surface0 text-subtext rounded hover:bg-surface1">

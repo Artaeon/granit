@@ -38,6 +38,14 @@ type Event struct {
 	// BYMONTHDAY) round-trips cleanly even when our expander only
 	// honors the common subset.
 	RRule string `json:"rrule,omitempty"`
+	// ExDates is the list of cancelled occurrences for a recurring
+	// event (RFC 5545 EXDATE). Each entry is either YYYY-MM-DD (for
+	// all-day events) or YYYY-MM-DDTHH:MM:SS in the user's local
+	// time. The expander filters these from the emitted instances
+	// so 'cancel just this week's meeting' doesn't disrupt the
+	// whole series. Stored as a slice rather than a map so JSON
+	// round-trips cleanly through events.json.
+	ExDates []string `json:"ex_dates,omitempty"`
 }
 
 func ReadEvents(vaultRoot string) ([]Event, error) {

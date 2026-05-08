@@ -130,6 +130,17 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				UID:      ev.ID,
 				RRule:    ev.RRule,
 			}
+			// Seed EXDATE filter from the native event's cancelled-
+			// occurrence list. The expander filters these out the
+			// same way it does for ICS-imported events, so 'skip
+			// this week' on a recurring meeting drops just that
+			// instance without disrupting the series.
+			if len(ev.ExDates) > 0 {
+				seed.ExDates = make(map[string]struct{}, len(ev.ExDates))
+				for _, x := range ev.ExDates {
+					seed.ExDates[x] = struct{}{}
+				}
+			}
 			if ev.StartTime == "" {
 				seed.AllDay = true
 				seed.Start = d
