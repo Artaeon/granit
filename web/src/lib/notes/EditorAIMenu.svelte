@@ -655,20 +655,21 @@
       if (Number.isFinite(n) && n >= next) next = n + 1;
     }
     const lines = body.split('\n');
-    // Walk in reverse so inserting refs doesn't shift earlier line
-    // indices. Pair cites with the line they target; we append the
-    // [^N] ref to the END of that line.
+    // Two-phase: first assign IDs in *line order* so the body reads
+    // [^1], [^2], [^3] top-to-bottom — then apply the marker writes
+    // in *reverse line order* so inserting at line N doesn't shift
+    // earlier indices. Doing both in one reverse pass (the original
+    // version) flipped the IDs and gave a doc that read [^3]...[^1].
     const cites = accepted
       .map((c) => ({ ...c, id: 0 }))
-      .sort((a, b) => b.line - a.line);
-    for (const c of cites) {
-      c.id = next++;
+      .sort((a, b) => a.line - b.line);
+    for (const c of cites) c.id = next++;
+    const writeOrder = [...cites].sort((a, b) => b.line - a.line);
+    for (const c of writeOrder) {
       const idx = Math.max(0, Math.min(lines.length - 1, c.line - 1));
       lines[idx] = lines[idx].replace(/\s+$/, '') + `[^${c.id}]`;
     }
-    // Build the definitions block. Order ascending by id so the doc
-    // reads top-to-bottom in citation order.
-    cites.sort((a, b) => a.id - b.id);
+    // Definitions are already in ascending-id order (= line order).
     const defs = cites
       .map((c) => {
         const ref = c.ref.replace(/\.md$/, '');
