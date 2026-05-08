@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type CalendarEvent, type CalendarFeed, type CalendarSource, type HabitInfo } from '$lib/api';
+  import { api, type CalendarEvent, type CalendarFeed, type CalendarSource, type HabitInfo, type Task } from '$lib/api';
+  import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { toast } from '$lib/components/toast';
   import {
     addDays,
@@ -541,6 +542,101 @@
   function clickDay(d: Date) { cursor = d; view = 'day'; }
   function pickDay(d: Date) { cursor = d; filterDrawerOpen = false; }
 
+  // ── AI: Plan my week ─────────────────────────────────────────────
+  // Looks across all open UNSCHEDULED tasks (no scheduledStart yet)
+  // and asks the AI to suggest a day for each, weighted against the
+  // visible 7-day load (event count per day). The user already has
+  // triage on /tasks for what to ignore and Top-3 for what to start;
+  // this one picks WHEN to do the rest. Streams via chatStream so
+  // tokens land progressively, and the response renders as a banner
+  // between the toolbar and the grid — same slot as quick-create —
+  // so the user can scroll the calendar while reading the plan.
+  // Cap: at most 30 unscheduled tasks fed in, to keep prompt size
+  // predictable on long backlogs.
+  let aiBusy = $state(false);
+  let aiResponse = $state('');
+  let aiError = $state('');
+  let aiAbort: AbortController | null = null;
+
+  async function planMyWeek() {
+    if (aiBusy) return;
+    aiBusy = true;
+    aiError = '';
+    aiResponse = '';
+    aiAbort = new AbortController();
+    // Tasks aren't kept in calendar state — fetch them on demand so
+    // the page stays lean for users who never click this button.
+    let openTasks: Task[] = [];
+    try {
+      const r = await api.listTasks({ status: 'open' });
+      openTasks = r.tasks ?? [];
+    } catch (e) {
+      aiError = 'Could not load tasks: ' + (e instanceof Error ? e.message : String(e));
+      aiBusy = false;
+      aiAbort = null;
+      return;
+    }
+    const unscheduled = openTasks
+      .filter((t) => !t.done && !t.scheduledStart)
+      .slice(0, 30);
+    if (unscheduled.length === 0) {
+      aiError = 'No unscheduled open tasks to plan. All your tasks already have a slot, or there are none.';
+      aiBusy = false;
+      aiAbort = null;
+      return;
+    }
+    const today = new Date();
+    const todayISO = today.toISOString().slice(0, 10);
+    // 7-day load summary: count of events landing on each of the
+    // next 7 days (including today). Uses the same date-key shape
+    // as monthEvents — `date` if set, else first 10 chars of start.
+    const dayKeys: string[] = Array.from({ length: 7 }, (_, i) =>
+      fmtDateISO(addDays(today, i))
+    );
+    const counts: Record<string, number> = Object.fromEntries(dayKeys.map((k) => [k, 0]));
+    for (const e of events) {
+      const key = e.date ?? (e.start ? e.start.slice(0, 10) : '');
+      if (key && key in counts) counts[key]++;
+    }
+    const loadLines = dayKeys.map((k) => {
+      const d = new Date(k + 'T00:00:00');
+      const wd = d.toLocaleDateString(undefined, { weekday: 'short' });
+      return `- ${wd} ${k}: ${counts[k]} events`;
+    }).join('\n');
+    const taskLines = unscheduled.map((t) => {
+      const bits: string[] = [`- ${t.text}`];
+      if (t.priority) bits.push(`p${t.priority}`);
+      if (t.dueDate) bits.push(`due ${t.dueDate}`);
+      if (t.durationMinutes) bits.push(`${t.durationMinutes}m`);
+      else if (t.estimatedMinutes) bits.push(`~${t.estimatedMinutes}m est`);
+      return bits.join(' · ');
+    }).join('\n');
+    const userMessage =
+      `Today is ${todayISO}. Help the user plan their week. ` +
+      'Below is a list of OPEN UNSCHEDULED tasks, plus a snapshot of how loaded each of the next 7 days already is (event count). ' +
+      'For each task, suggest a single day + rough time-of-day bucket (morning/afternoon/evening) within the next 7 days. ' +
+      'Spread tasks toward lighter days, respect due dates, and front-load anything overdue or due soon. ' +
+      'Format your reply as a strict markdown bulleted list, one bullet per task:\n\n' +
+      '- **<task title>** → <Weekday YYYY-MM-DD> <morning|afternoon|evening> — one short sentence rationale.\n\n' +
+      `Next 7 days load:\n${loadLines}\n\n` +
+      `Unscheduled tasks (${unscheduled.length}${unscheduled.length === 30 ? ', capped' : ''}):\n${taskLines}`;
+    try {
+      await api.chatStream(
+        [{ role: 'user', content: userMessage }],
+        undefined,
+        {
+          onChunk: (c) => { aiResponse += c; },
+          onError: (err) => { aiError = err.message; }
+        },
+        aiAbort.signal
+      );
+    } finally {
+      aiBusy = false;
+      aiAbort = null;
+    }
+  }
+  function cancelAI() { aiAbort?.abort(); }
+
   let headline = $derived.by(() => {
     if (view === 'day') return cursor.toLocaleDateString(undefined, { weekday: isMobile ? 'short' : 'long', month: 'short', day: 'numeric' });
     if (view === '3day') {
@@ -710,6 +806,20 @@
       {#if planMode}
         <span class="hidden sm:inline-block text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary/20 text-secondary border border-secondary/30">Plan mode</span>
       {/if}
+      <!-- AI: Plan my week. Visible on sm+ to keep mobile lean —
+           mobile already has the global Mod+J overlay via the
+           floating sparkle FAB. Renders its panel between the
+           header and the grid container, not in a popup, so the
+           user can scroll/click the calendar while reading. -->
+      <button
+        onclick={() => void planMyWeek()}
+        disabled={aiBusy}
+        title="Suggest a slot for each unscheduled open task across the next 7 days"
+        class="hidden sm:inline-flex px-2.5 py-1.5 text-xs sm:text-sm bg-gradient-to-r from-primary/15 to-secondary/15 border border-primary/30 text-primary rounded hover:border-primary/60 disabled:opacity-50 items-center gap-1"
+      >
+        <span aria-hidden="true">✨</span>
+        <span>{aiBusy ? 'thinking…' : 'Plan my week'}</span>
+      </button>
       <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm">
         <button
           class="px-2 sm:px-3 py-1.5 {view === 'day' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
@@ -744,6 +854,33 @@
         class="hidden md:flex w-8 h-8 items-center justify-center text-dim hover:text-text hover:bg-surface0 rounded text-xs font-mono"
       >?</button>
     </header>
+
+    <!-- AI "Plan my week" panel. Sits between the header and the
+         quick-create bar so the suggestions stay visible above the
+         calendar grid — the user can scroll into a day or click an
+         existing event without dismissing the plan. Same gradient
+         tint as the other AI surfaces (vision/goals/tasks) so the
+         visual category is consistent across pages. -->
+    {#if aiBusy || aiResponse || aiError}
+      <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-gradient-to-r from-primary/5 via-secondary/5 to-primary/5">
+        <div class="flex items-baseline gap-2 mb-2">
+          <span class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">✨ Plan my week</span>
+          {#if aiBusy}
+            <button onclick={cancelAI} class="text-[11px] text-warning hover:underline">cancel</button>
+          {:else}
+            <button onclick={() => void planMyWeek()} class="text-[11px] text-secondary hover:underline">↻ regenerate</button>
+            <button onclick={() => { aiResponse = ''; aiError = ''; }} class="text-[11px] text-dim hover:text-error">dismiss</button>
+          {/if}
+        </div>
+        {#if aiError}
+          <div class="text-xs text-error">{aiError}</div>
+        {:else}
+          <div class="prose prose-sm max-w-none text-sm">
+            <MarkdownRenderer body={aiResponse || '_thinking…_'} />
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     <!-- Quick-create bar. Sits between the toolbar and the grid so
          it's always visible without crowding the controls row. The
