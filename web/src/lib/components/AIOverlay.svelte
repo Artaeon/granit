@@ -314,6 +314,19 @@
   - \`/deadlines\` — detect deadlines in untimed tasks
   - \`/detach\` — drop the attached snapshot or note for the next message
 
+**Where AI lives in granit**
+
+  - **Note editor** — \`Mod-Shift-A\` ask about selection · \`Mod-Shift-/\` ask about section · \`Mod-Alt-Space\` continue writing · link suggester in the right rail
+  - **/morning** — "Suggest from tasks" picks today's #1 focus
+  - **/tasks** — "Top 3" focus picker · inbox triage · deadline detect
+  - **/calendar** — "Plan my week" agent
+  - **/goals** — "Suggest milestones" on goal detail
+  - **/projects** — AI summary on project detail
+  - **/vision** — "Harden vision" critic
+  - **/examen** — gentle reflection prompts per section
+  - **/people** — "Suggest 3" reach-outs based on cadence + notes
+  - **/habits** — pattern insights from last 30 days
+
   Press <kbd>Mod+J</kbd> to toggle this panel anywhere in granit.`;
 
   function handleSlashCommand(raw: string): boolean {

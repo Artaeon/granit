@@ -467,19 +467,36 @@
            border + sparkle icon distinguish it from regular nav so
            the user notices an "intelligence" surface without it
            dominating the rail. Mod+J also works from anywhere; this
-           button is for discovery + click-first users. -->
+           button is for discovery + click-first users.
+
+           When Sabbath mode is on, AI calls are server-side gated; we
+           dim the sparkle and surface a paused dot so the user
+           understands the click will be silenced before they make it. -->
       <button
         onclick={() => { openAIOverlay(); drawerOpen = false; }}
-        title={isCompact ? 'Ask AI (⌘J)' : undefined}
-        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm text-subtext hover:text-text mb-2 transition-colors group bg-gradient-to-r from-primary/10 via-secondary/10 to-primary/10 hover:from-primary/15 hover:via-secondary/15 hover:to-primary/15 border border-primary/20 hover:border-primary/40"
+        title={isCompact ? ($sabbath ? 'AI paused — Sabbath' : 'Ask AI (⌘J)') : undefined}
+        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm hover:text-text mb-2 transition-colors group {$sabbath ? 'text-dim bg-surface0/40 border border-surface1' : 'text-subtext bg-gradient-to-r from-primary/10 via-secondary/10 to-primary/10 hover:from-primary/15 hover:via-secondary/15 hover:to-primary/15 border border-primary/20 hover:border-primary/40'}"
       >
-        <svg viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0 text-primary" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>
-          <circle cx="12" cy="12" r="3.5" fill="currentColor" fill-opacity="0.15"/>
-        </svg>
+        <span class="relative flex-shrink-0">
+          <svg viewBox="0 0 24 24" class="w-5 h-5 {$sabbath ? 'text-dim' : 'text-primary'}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>
+            <circle cx="12" cy="12" r="3.5" fill="currentColor" fill-opacity="0.15"/>
+          </svg>
+          {#if $sabbath}
+            <!-- Tiny pause-dot at the corner so compact users see the
+                 status too. The text label below carries the same hint
+                 in expanded mode. -->
+            <span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-warning ring-1 ring-mantle" aria-hidden="true"></span>
+          {/if}
+        </span>
         {#if !isCompact}
-          <span class="flex-1 text-left bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent font-medium">Ask AI</span>
-          <kbd class="text-[10px] text-dim font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">⌘J</kbd>
+          {#if $sabbath}
+            <span class="flex-1 text-left text-dim font-medium">AI paused</span>
+            <span class="text-[10px] text-warning">Sabbath</span>
+          {:else}
+            <span class="flex-1 text-left bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent font-medium">Ask AI</span>
+            <kbd class="text-[10px] text-dim font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">⌘J</kbd>
+          {/if}
         {/if}
       </button>
 
