@@ -43,6 +43,34 @@
   let loading = $state(false);
   let q = $state('');
 
+  // Reading typography size — three steps so the verse-of-the-day
+  // surface accommodates both close-reading on a phone and a dim
+  // fallback on a wall-mounted display. Stored in localStorage so the
+  // preference sticks; per-device on purpose (a phone often wants a
+  // different size than a desktop).
+  type ReadSize = 'sm' | 'md' | 'lg';
+  const READ_SIZE_KEY = 'granit.scripture.readSize';
+  function loadReadSize(): ReadSize {
+    if (typeof localStorage === 'undefined') return 'md';
+    const v = localStorage.getItem(READ_SIZE_KEY);
+    return v === 'sm' || v === 'lg' ? v : 'md';
+  }
+  let readSize = $state<ReadSize>(loadReadSize());
+  function setReadSize(s: ReadSize) {
+    readSize = s;
+    try { localStorage.setItem(READ_SIZE_KEY, s); } catch {}
+  }
+  // Tailwind class triplet keyed by size — kept here so the three
+  // sizes are visible at a glance and stay coordinated with line
+  // height / cite-margin tweaks.
+  let readVerseClass = $derived(
+    readSize === 'sm'
+      ? 'text-lg sm:text-xl leading-relaxed'
+      : readSize === 'lg'
+        ? 'text-2xl sm:text-3xl leading-loose'
+        : 'text-xl sm:text-2xl leading-relaxed'
+  );
+
   // Memorization state — see drillVerse() for the algorithm.
   let drill = $state<{ verse: Scripture; words: string[]; hidden: Set<number>; guesses: Record<number, string> } | null>(null);
   let revealed = $state(false);
@@ -408,6 +436,34 @@
       toast.success('copied');
     } catch {
       toast.error('clipboard unavailable');
+    }
+  }
+
+  // Append the visible verse to today's jot (the user's daily note)
+  // as a markdown blockquote. Distinct from "Reflect on this", which
+  // creates a fresh Devotionals/ note — this is for "I want to keep a
+  // running log of verses I noticed today" alongside the rest of
+  // today's journaling. Idempotent on duplicate clicks (we re-fetch
+  // the note body each time, so concurrent edits aren't lost).
+  async function saveToTodaysJot(s: Scripture) {
+    try {
+      const note = await api.daily('today');
+      const block =
+        '\n\n## Scripture\n\n' +
+        `> ${s.text}\n` +
+        (s.source ? `> — ${s.source}\n` : '');
+      const next = (note.body ?? '') + block;
+      await api.putNote(
+        note.path,
+        { frontmatter: note.frontmatter, body: next },
+        // No etag — we just fetched the note ourselves; if a write
+        // sneaks in between fetch and save the user gets a 412 toast
+        // and can retry.
+        undefined
+      );
+      toast.success('added to today\'s jot');
+    } catch (e) {
+      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
 
@@ -802,8 +858,36 @@
       <div class="text-sm text-dim">loading…</div>
     {:else if mode === 'read'}
       {#if current}
+        <!-- Reading-size control — three-step. Hidden in a top-right
+             affordance so it doesn't compete with the verse for
+             attention. Sticks per-device via localStorage. -->
+        <div class="flex justify-end mb-2">
+          <div class="inline-flex bg-surface0 border border-surface1 rounded text-[11px] overflow-hidden">
+            <button
+              type="button"
+              onclick={() => setReadSize('sm')}
+              class="px-2 py-0.5 {readSize === 'sm' ? 'bg-primary text-on-primary' : 'text-dim hover:bg-surface1'}"
+              title="Smaller text"
+              aria-label="Smaller text"
+            >A</button>
+            <button
+              type="button"
+              onclick={() => setReadSize('md')}
+              class="px-2 py-0.5 {readSize === 'md' ? 'bg-primary text-on-primary' : 'text-dim hover:bg-surface1'}"
+              title="Medium text"
+              aria-label="Medium text"
+            >A</button>
+            <button
+              type="button"
+              onclick={() => setReadSize('lg')}
+              class="px-2 py-0.5 {readSize === 'lg' ? 'bg-primary text-on-primary' : 'text-dim hover:bg-surface1'}"
+              title="Larger text"
+              aria-label="Larger text"
+            >A</button>
+          </div>
+        </div>
         <article class="bg-surface0 border border-surface1 rounded-lg p-6 sm:p-8 text-center">
-          <blockquote class="text-xl sm:text-2xl text-text leading-relaxed font-serif italic">
+          <blockquote class="{readVerseClass} text-text font-serif italic">
             "{current.text}"
           </blockquote>
           {#if current.source}
@@ -835,6 +919,11 @@
             class="px-4 py-2 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
             title="Copy verse + citation to clipboard"
           >Copy</button>
+          <button
+            onclick={() => saveToTodaysJot(current!)}
+            class="px-4 py-2 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
+            title="Append the verse to today's jot as a blockquote"
+          >Save to today's jot</button>
           <button
             onclick={reflectOnThis}
             class="px-4 py-2 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"
