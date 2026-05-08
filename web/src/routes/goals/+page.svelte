@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { auth } from '$lib/stores/auth';
-  import { api, type Goal } from '$lib/api';
+  import { api, type Goal, type Project, type Task } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
@@ -31,6 +31,14 @@
   });
 
   let goals = $state<Goal[]>([]);
+  // Linked tasks + projects power the roll-up chips on each goal —
+  // "X open tasks · Y projects" so the user can see at a glance
+  // which goals have momentum behind them and which are floating
+  // dreams. Tasks fetched once with status filter (open + done) so
+  // the cards can show "X / Y done" for goal-tagged tasks.
+  let openTasks = $state<Task[]>([]);
+  let doneTasks = $state<Task[]>([]);
+  let projects = $state<Project[]>([]);
   let loading = $state(false);
   // Status values mirror the TUI / internal/goals.Status. The earlier UI
   // rendered a 'done' tab that never matched anything because the TUI
@@ -55,8 +63,20 @@
     if (!$auth) return;
     loading = true;
     try {
-      const list = await api.listGoals();
-      goals = list.goals;
+      // Fetch goals + linked context (tasks + projects) in parallel.
+      // The roll-up is purely advisory — failures of the secondary
+      // calls shouldn't block the goals list itself, so each is
+      // wrapped in its own try and logged-but-ignored on error.
+      const [list, openRes, doneRes, projRes] = await Promise.allSettled([
+        api.listGoals(),
+        api.listTasks({ status: 'open' }),
+        api.listTasks({ status: 'done' }),
+        api.listProjects()
+      ]);
+      if (list.status === 'fulfilled') goals = list.value.goals;
+      openTasks = openRes.status === 'fulfilled' ? openRes.value.tasks : [];
+      doneTasks = doneRes.status === 'fulfilled' ? doneRes.value.tasks : [];
+      projects = projRes.status === 'fulfilled' ? projRes.value.projects : [];
     } finally {
       loading = false;
       firstLoaded = true;
@@ -136,6 +156,40 @@
     if (total === 0) return { done: 0, total: 0, pct: g.status === 'completed' ? 100 : 0 };
     const done = ms.filter((m) => m.done).length;
     return { done, total, pct: Math.round((done / total) * 100) };
+  }
+
+  // Per-goal index of linked tasks (by goalId) + linked projects (by
+  // matching goal.project against project.name, since the schema is
+  // free-text not FK). Computed in a single pass over each list so
+  // the per-goal lookups in the render loop stay O(1). Used by the
+  // cards view to surface a "5 open · 2 done · 1 project" chip row
+  // — the user's signal for which goals actually have execution
+  // behind them and which are still abstractions.
+  let rollups = $derived.by(() => {
+    const byGoalOpen = new Map<string, number>();
+    const byGoalDone = new Map<string, number>();
+    for (const t of openTasks) {
+      if (!t.goalId) continue;
+      byGoalOpen.set(t.goalId, (byGoalOpen.get(t.goalId) ?? 0) + 1);
+    }
+    for (const t of doneTasks) {
+      if (!t.goalId) continue;
+      byGoalDone.set(t.goalId, (byGoalDone.get(t.goalId) ?? 0) + 1);
+    }
+    // Projects index by name (lowercased) so a goal.project field
+    // matches case-insensitively. We only need a presence check +
+    // the matched project's `progress` field for surface-level
+    // context, so the value is the project itself.
+    const projByName = new Map<string, Project>();
+    for (const p of projects) projByName.set(p.name.toLowerCase(), p);
+    return { byGoalOpen, byGoalDone, projByName };
+  });
+
+  function rollupFor(g: Goal): { open: number; done: number; project: Project | null } {
+    const open = rollups.byGoalOpen.get(g.id) ?? 0;
+    const done = rollups.byGoalDone.get(g.id) ?? 0;
+    const project = g.project ? rollups.projByName.get(g.project.toLowerCase()) ?? null : null;
+    return { open, done, project };
   }
 
   // Status-pill colors. Spec: active=primary, paused=subtext, completed=success, archived=dim.
@@ -566,6 +620,7 @@
           {@const sc = statusColor(g.status)}
           {@const tone = targetTone(g)}
           {@const chip = targetChip(g.target_date)}
+          {@const roll = rollupFor(g)}
           <article
             class="bg-surface0 border border-surface1 rounded-lg overflow-hidden hover:border-primary/40 transition-colors {tone ? 'border-l-4' : ''}"
             style={tone ? `border-left-color: var(--color-${tone});` : ''}
@@ -622,6 +677,36 @@
                   <div class="text-[10px] text-dim mt-1">{p.pct}% complete</div>
                 </div>
               {/if}
+
+              <!-- Roll-up chips: linked tasks (open + done) and the
+                   matched project. Renders nothing when a goal has
+                   no execution behind it so the cards for orphan
+                   goals don't get noisier. The chips look passive
+                   (they live inside the card-wide button) but stay
+                   visually distinct so they read as "context"
+                   rather than "card body". -->
+              {#if roll.open + roll.done > 0 || roll.project}
+                <div class="flex flex-wrap items-center gap-1.5 pt-1.5 mt-1 border-t border-surface1 text-[11px]">
+                  {#if roll.open > 0}
+                    <span class="px-1.5 py-0.5 bg-surface1 text-subtext rounded tabular-nums" title="open tasks linked to this goal">
+                      {roll.open} open task{roll.open === 1 ? '' : 's'}
+                    </span>
+                  {/if}
+                  {#if roll.done > 0}
+                    <span class="px-1.5 py-0.5 bg-success/10 text-success rounded tabular-nums" title="completed tasks linked to this goal">
+                      {roll.done} done
+                    </span>
+                  {/if}
+                  {#if roll.project}
+                    <span class="px-1.5 py-0.5 bg-secondary/15 text-secondary rounded truncate max-w-[14rem]" title="linked project">
+                      📁 {roll.project.name}
+                      {#if typeof roll.project.progress === 'number'}
+                        <span class="opacity-70 tabular-nums ml-0.5">{roll.project.progress}%</span>
+                      {/if}
+                    </span>
+                  {/if}
+                </div>
+              {/if}
             </button>
           </article>
         {/each}
@@ -638,6 +723,7 @@
           {@const sc = statusColor(g.status)}
           {@const tone = targetTone(g)}
           {@const chip = targetChip(g.target_date)}
+          {@const roll = rollupFor(g)}
           <button
             type="button"
             onclick={() => openDetail(g)}
@@ -663,6 +749,9 @@
                 {/if}
                 {#if p.total > 0}
                   <span class="tabular-nums">{p.done}/{p.total} ms</span>
+                {/if}
+                {#if roll.open > 0}
+                  <span class="tabular-nums" title="open tasks linked to this goal">{roll.open} task{roll.open === 1 ? '' : 's'}</span>
                 {/if}
                 {#if g.category}<span>· {g.category}</span>{/if}
               </div>
