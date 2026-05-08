@@ -243,6 +243,16 @@
     void ask();
   }
 
+  // Size + rough token estimate for the dialog header. ~4
+  // chars/token is the industry rule of thumb across English
+  // text and most LLM tokenisers; close enough for a "should
+  // I worry about cost?" gut check. bigInput flips a warning
+  // chip when the input is large enough to matter (>16k chars
+  // ≈ 4k tokens, a meaningful chunk of a context window).
+  const charCount = $derived(request?.text.length ?? 0);
+  const tokenEstimate = $derived(Math.round(charCount / 4));
+  const bigInput = $derived(charCount > 16000);
+
   function copyResponse() {
     if (!response) return;
     try {
@@ -319,7 +329,15 @@
       </div>
       <header class="px-4 py-3 border-b border-surface1 flex items-baseline gap-2">
         <h2 class="text-sm font-semibold text-text flex-1">Ask AI</h2>
-        <span class="text-[11px] text-dim">{request.text.length} char{request.text.length === 1 ? '' : 's'} selected</span>
+        <span class="text-[11px] text-dim font-mono">
+          {charCount.toLocaleString()} chars · ~{tokenEstimate.toLocaleString()} tok
+        </span>
+        {#if bigInput}
+          <span
+            class="text-[10px] px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/30"
+            title="Large input — costs more tokens. Consider selecting a portion instead of the whole note."
+          >big</span>
+        {/if}
         <button
           onclick={dismiss}
           aria-label="close"
