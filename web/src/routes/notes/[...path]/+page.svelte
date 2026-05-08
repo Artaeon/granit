@@ -25,6 +25,7 @@
   import HistoryPanel from '$lib/notes/HistoryPanel.svelte';
   import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
   import SelectionToolbar from '$lib/editor/SelectionToolbar.svelte';
+  import LinkSuggestPanel from '$lib/notes/LinkSuggestPanel.svelte';
 
   type ViewMode = 'edit' | 'preview' | 'split';
   const VIEW_KEY = 'granit.note.viewMode';
@@ -56,6 +57,7 @@
         dispatchChord: (chord: string) => void;
         getDOM: () => HTMLElement | undefined;
         openFind: () => void;
+        insertAtCursor: (text: string) => void;
       }
     | undefined = $state();
   // Re-derived after every render so the SelectionToolbar can scope
@@ -753,6 +755,49 @@
     }
   }
 
+  // ----- Link-suggester glue -----
+  // Tags chip → append to frontmatter.tags (de-duplicated).
+  // Link chip → insert markup at the editor cursor; if the editor isn't
+  // mounted (e.g. preview view), append to the end of the body so the
+  // user still gets a working insertion.
+  let existingTagList = $derived.by<string[]>(() => {
+    const fm = note?.frontmatter as Record<string, unknown> | undefined;
+    if (!fm) return [];
+    const t = fm.tags;
+    if (Array.isArray(t)) return t.map((x) => String(x));
+    if (typeof t === 'string') return t.split(/[,\s]+/).filter(Boolean);
+    return [];
+  });
+
+  async function addSuggestedTag(tag: string) {
+    if (!note) return;
+    const clean = tag.trim().replace(/^#/, '').toLowerCase();
+    if (!clean) return;
+    const fm = { ...(note.frontmatter ?? {}) } as Record<string, unknown>;
+    let arr: string[] = [];
+    if (Array.isArray(fm.tags)) arr = (fm.tags as unknown[]).map((x) => String(x));
+    else if (typeof fm.tags === 'string') arr = fm.tags.split(/[,\s]+/).filter(Boolean);
+    if (arr.includes(clean)) {
+      toast.success(`#${clean} already on this note`);
+      return;
+    }
+    arr.push(clean);
+    fm.tags = arr;
+    await saveFrontmatter(fm);
+    toast.success(`+ #${clean}`);
+  }
+
+  function insertSuggestedLink(markup: string) {
+    if (editor?.insertAtCursor) {
+      editor.insertAtCursor(' ' + markup + ' ');
+    } else {
+      // Fallback: append + mark dirty so save picks it up.
+      body = body + (body.endsWith('\n') ? '' : '\n') + markup + '\n';
+      dirty = true;
+    }
+    toast.success('link inserted');
+  }
+
   // ----- Daily-note navigation -----
   // A note is "daily" when its basename is YYYY-MM-DD.md OR its frontmatter
   // has type=daily. When daily, expose prev/next-day jumps in the header.
@@ -826,6 +871,21 @@
       <section>
         <h3 class="text-xs uppercase tracking-wider text-dim mb-2">Backlinks</h3>
         <BacklinksPanel path={note.path} onNavigate={navigateWikilink} />
+      </section>
+      <section>
+        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+            <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
+          </svg>
+          AI link suggester
+        </h3>
+        <LinkSuggestPanel
+          notePath={note.path}
+          body={body}
+          existingTags={existingTagList}
+          onAddTag={addSuggestedTag}
+          onInsertLink={insertSuggestedLink}
+        />
       </section>
     {/if}
     {#if note}

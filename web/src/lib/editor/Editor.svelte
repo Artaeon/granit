@@ -272,6 +272,22 @@
     view.contentDOM.dispatchEvent(ev);
   }
 
+  /** Insert a string at the current cursor position. If a selection
+   *  is active, replaces it. Used by the link-suggester to slot
+   *  [[wiki]] markup at the user's working point without yanking
+   *  focus out of the doc. Mirrors a CM edit with the dispatch path
+   *  the keymap uses, so undo / redo treat it like any other edit. */
+  export function insertAtCursor(text: string) {
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+      scrollIntoView: true
+    });
+    view.focus();
+  }
+
   /** The editor view's host element — exposed so an overlay (like
    *  SelectionToolbar) can scope its selection-detection to the
    *  editor instead of the whole document. */

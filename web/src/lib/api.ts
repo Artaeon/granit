@@ -1687,6 +1687,21 @@ export const api = {
       '/ai/deadline-detect',
       { method: 'POST', body: '{}', signal }
     ),
+  aiSuggestLinks: (
+    body: { note_path: string; content: string; existing_tags?: string[] },
+    signal?: AbortSignal
+  ) =>
+    req<{
+      tags: { name: string; rationale?: string }[];
+      links: {
+        type: 'note' | 'project' | 'goal' | 'venture';
+        ref: string;
+        title?: string;
+        rationale?: string;
+      }[];
+      raw?: string;
+      warning?: string;
+    }>('/ai/suggest-links', { method: 'POST', body: JSON.stringify(body), signal }),
 
   // Notification preferences — per-category toggles, quiet
   // hours, defaults. Stored at .granit/notifications.json.
