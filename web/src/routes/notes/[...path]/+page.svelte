@@ -29,6 +29,7 @@
   import EditorAIMenu from '$lib/notes/EditorAIMenu.svelte';
   import ResearchPanel from '$lib/notes/ResearchPanel.svelte';
   import ReferenceNotePanel from '$lib/notes/ReferenceNotePanel.svelte';
+  import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
 
@@ -1480,6 +1481,16 @@
         {:else if viewMode === 'preview'}
           <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4" bind:this={previewContainer}>
             <div class="max-w-3xl mx-auto">
+              {#if note}
+                <NoteSummaryCard
+                  notePath={note.path}
+                  title={note.title || note.path}
+                  body={body}
+                  frontmatter={(note.frontmatter ?? {}) as Record<string, unknown>}
+                  onSaveFrontmatter={saveFrontmatter}
+                  onPrepend={(text) => { body = text + body; dirty = true; }}
+                />
+              {/if}
               <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
             </div>
           </div>
