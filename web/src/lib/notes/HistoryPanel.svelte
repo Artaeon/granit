@@ -23,6 +23,7 @@
   import { onMount } from 'svelte';
   import { toast } from '$lib/components/toast';
   import { req } from '$lib/api';
+  import { lineDiff, diffStats, type DiffLine } from '$lib/util/lineDiff';
 
   // Inline relative-time formatter — there's no shared helper yet
   // and the panel only needs five buckets ("just now", N seconds /
@@ -74,6 +75,31 @@
   let selectedBody = $state('');
   let bodyLoading = $state(false);
   let restoring = $state(false);
+  // 'split' = side-by-side full bodies (the original layout); 'diff'
+  // = LCS line-diff against the live body so the user can see exactly
+  // what changed between the snapshot and now. Persisted across opens
+  // since the same user usually wants the same view.
+  type View = 'split' | 'diff';
+  const VIEW_KEY = 'granit.history.view';
+  let view = $state<View>('split');
+  onMount(() => {
+    try {
+      const v = localStorage.getItem(VIEW_KEY);
+      if (v === 'split' || v === 'diff') view = v;
+    } catch {}
+  });
+  function setView(v: View) {
+    view = v;
+    try { localStorage.setItem(VIEW_KEY, v); } catch {}
+  }
+  // Diff selectedBody → currentBody: "what changed since this snapshot
+  // up to now". Reads naturally with + meaning "added since" and −
+  // meaning "removed since". Memoised via $derived so the LCS only
+  // re-runs when one of the bodies changes.
+  let diffLines = $derived<DiffLine[]>(
+    selectedBody && currentBody ? lineDiff(selectedBody, currentBody) : []
+  );
+  let stats = $derived(diffStats(diffLines));
 
   // (Re)load the version list every time the panel opens or the
   // notePath changes. We don't re-fetch on every save — the panel's
@@ -211,6 +237,31 @@
       <span class="text-xs text-dim">
         {versions.length} {versions.length === 1 ? 'version' : 'versions'}
       </span>
+      {#if versions.length > 0}
+        <!-- View toggle: side-by-side bodies vs. LCS diff. The diff
+             reads "this snapshot → live body" so the user sees what
+             they've added/removed since the snapshot. -->
+        <div class="ml-2 hidden md:inline-flex items-center text-[11px] rounded border border-surface1 bg-surface0/60 overflow-hidden">
+          <button
+            type="button"
+            onclick={() => setView('split')}
+            class="px-2 py-1 {view === 'split' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            title="Side-by-side full bodies"
+          >Split</button>
+          <button
+            type="button"
+            onclick={() => setView('diff')}
+            class="px-2 py-1 {view === 'diff' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            title="LCS line diff: what changed since this snapshot"
+          >Diff</button>
+        </div>
+        {#if view === 'diff' && (stats.added > 0 || stats.removed > 0)}
+          <span class="text-[11px] tabular-nums">
+            <span class="text-success">+{stats.added}</span>
+            <span class="text-error ml-1">−{stats.removed}</span>
+          </span>
+        {/if}
+      {/if}
       <div class="flex-1"></div>
       <button
         onclick={restoreSelected}
@@ -248,7 +299,7 @@
         </div>
       </div>
     {:else}
-      <div class="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[18rem_1fr_1fr] gap-0">
+      <div class="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[18rem_1fr] lg:grid-cols-[18rem_1fr_1fr] gap-0">
         <!-- Version list — left column on desktop, top section on
              mobile. Newest first. -->
         <aside class="border-r border-surface1 overflow-y-auto bg-mantle/40">
@@ -274,34 +325,67 @@
           </ul>
         </aside>
 
-        <!-- Selected version body (read-only) -->
-        <section class="overflow-y-auto border-r border-surface1 bg-base">
-          <div class="px-4 py-3 border-b border-surface1 sticky top-0 bg-base/95 backdrop-blur-sm">
-            <div class="text-[11px] uppercase tracking-wider text-dim font-semibold">Selected version</div>
-            {#if selectedTs}
-              <div class="text-sm text-text">{fmtTimestampFull(selectedTs)}</div>
-            {/if}
-          </div>
-          <div class="px-4 py-3">
-            {#if bodyLoading}
-              <div class="text-sm text-dim">Loading…</div>
-            {:else}
-              <pre class="text-sm font-mono whitespace-pre-wrap break-words text-text">{selectedBody}</pre>
-            {/if}
-          </div>
-        </section>
+        {#if view === 'diff'}
+          <!-- Diff view spans the remaining columns. Each line is
+               coloured by type: + green (added since snapshot),
+               − red (removed since snapshot), eq dim. The gutter
+               carries +/-/space so it's still readable in
+               monochrome / when red-green colour-blind. -->
+          <section class="md:col-span-1 lg:col-span-2 overflow-y-auto bg-base">
+            <div class="px-4 py-3 border-b border-surface1 sticky top-0 bg-base/95 backdrop-blur-sm">
+              <div class="text-[11px] uppercase tracking-wider text-dim font-semibold">Diff</div>
+              <div class="text-sm text-text">
+                {#if selectedTs}
+                  <span class="text-dim">snapshot:</span> {fmtTimestampFull(selectedTs)} <span class="text-dim">→ live body</span>
+                {:else}
+                  <span class="text-dim">no version selected</span>
+                {/if}
+              </div>
+            </div>
+            <div class="px-2 py-2">
+              {#if bodyLoading}
+                <div class="text-sm text-dim px-2">Loading…</div>
+              {:else if diffLines.length === 0}
+                <div class="text-sm text-dim italic px-2">no differences</div>
+              {:else}
+                <pre class="text-[12px] font-mono leading-5 whitespace-pre-wrap break-words m-0"><!--
+               -->{#each diffLines as l, i (i)}<!--
+                 -->{#if l.type === 'add'}<span class="block bg-success/10 text-success"><span class="inline-block w-4 text-right pr-2 select-none opacity-60">+</span>{l.text || ' '}</span>{:else if l.type === 'del'}<span class="block bg-error/10 text-error line-through opacity-90"><span class="inline-block w-4 text-right pr-2 select-none opacity-60 no-underline">−</span>{l.text || ' '}</span>{:else}<span class="block text-dim"><span class="inline-block w-4 text-right pr-2 select-none opacity-50">·</span>{l.text || ' '}</span>{/if}<!--
+               -->{/each}<!--
+             --></pre>
+              {/if}
+            </div>
+          </section>
+        {:else}
+          <!-- Selected version body (read-only) -->
+          <section class="overflow-y-auto border-r border-surface1 bg-base">
+            <div class="px-4 py-3 border-b border-surface1 sticky top-0 bg-base/95 backdrop-blur-sm">
+              <div class="text-[11px] uppercase tracking-wider text-dim font-semibold">Selected version</div>
+              {#if selectedTs}
+                <div class="text-sm text-text">{fmtTimestampFull(selectedTs)}</div>
+              {/if}
+            </div>
+            <div class="px-4 py-3">
+              {#if bodyLoading}
+                <div class="text-sm text-dim">Loading…</div>
+              {:else}
+                <pre class="text-sm font-mono whitespace-pre-wrap break-words text-text">{selectedBody}</pre>
+              {/if}
+            </div>
+          </section>
 
-        <!-- Current live body for comparison. Hidden on narrow
-             viewports where the side-by-side wouldn't fit anyway. -->
-        <section class="hidden md:block overflow-y-auto bg-base">
-          <div class="px-4 py-3 border-b border-surface1 sticky top-0 bg-base/95 backdrop-blur-sm">
-            <div class="text-[11px] uppercase tracking-wider text-dim font-semibold">Current</div>
-            <div class="text-sm text-text">Live (unsaved changes excluded)</div>
-          </div>
-          <div class="px-4 py-3">
-            <pre class="text-sm font-mono whitespace-pre-wrap break-words text-text">{currentBody}</pre>
-          </div>
-        </section>
+          <!-- Current live body for comparison. Hidden on narrow
+               viewports where the side-by-side wouldn't fit anyway. -->
+          <section class="hidden lg:block overflow-y-auto bg-base">
+            <div class="px-4 py-3 border-b border-surface1 sticky top-0 bg-base/95 backdrop-blur-sm">
+              <div class="text-[11px] uppercase tracking-wider text-dim font-semibold">Current</div>
+              <div class="text-sm text-text">Live (unsaved changes excluded)</div>
+            </div>
+            <div class="px-4 py-3">
+              <pre class="text-sm font-mono whitespace-pre-wrap break-words text-text">{currentBody}</pre>
+            </div>
+          </section>
+        {/if}
       </div>
     {/if}
   </div>

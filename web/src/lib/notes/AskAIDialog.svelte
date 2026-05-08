@@ -4,6 +4,7 @@
   import { toast } from '$lib/components/toast';
   import type { AskAIRequest } from '$lib/editor/ask-ai';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
+  import { lineDiff } from '$lib/util/lineDiff';
 
   // AskAIDialog — modal that opens when the user fires Mod-Shift-A
   // (or clicks the AI button on the floating toolbar) on a text
@@ -128,47 +129,12 @@
     }
   });
 
-  // Line-based LCS diff. Cheap (O(m*n) on line counts that are
-  // realistically small), no library dependency. For human text
-  // rewrites this is the right granularity — character-level diff
-  // would be too noisy on prose, paragraph-level too coarse.
-  interface DiffLine { type: 'eq' | 'add' | 'del'; text: string; }
-  function lineDiff(oldText: string, newText: string): DiffLine[] {
-    const a = oldText.split('\n');
-    const b = newText.split('\n');
-    const m = a.length;
-    const n = b.length;
-    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-    for (let i = m - 1; i >= 0; i--) {
-      for (let j = n - 1; j >= 0; j--) {
-        if (a[i] === b[j]) dp[i][j] = dp[i + 1][j + 1] + 1;
-        else dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
-      }
-    }
-    const out: DiffLine[] = [];
-    let i = 0;
-    let j = 0;
-    while (i < m && j < n) {
-      if (a[i] === b[j]) {
-        out.push({ type: 'eq', text: a[i] });
-        i++;
-        j++;
-      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-        out.push({ type: 'del', text: a[i] });
-        i++;
-      } else {
-        out.push({ type: 'add', text: b[j] });
-        j++;
-      }
-    }
-    while (i < m) out.push({ type: 'del', text: a[i++] });
-    while (j < n) out.push({ type: 'add', text: b[j++] });
-    return out;
-  }
+  // Diff helpers live in $lib/util/lineDiff so the version-history
+  // panel can share them. Same LCS algorithm, same DiffLine shape.
   const diff = $derived(
     request && response ? lineDiff(request.text, response) : []
   );
-  const diffStats = $derived.by(() => {
+  const diffStatsView = $derived.by(() => {
     let added = 0;
     let removed = 0;
     for (const l of diff) {
@@ -446,8 +412,8 @@
                 </div>
                 {#if viewMode === 'diff'}
                   <span class="text-[10px] font-mono">
-                    <span class="text-success">+{diffStats.added}</span>
-                    <span class="text-error ml-1">−{diffStats.removed}</span>
+                    <span class="text-success">+{diffStatsView.added}</span>
+                    <span class="text-error ml-1">−{diffStatsView.removed}</span>
                   </span>
                 {/if}
               {/if}
