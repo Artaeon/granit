@@ -288,10 +288,84 @@
   // Streaming via /api/v1/chat/stream so the user sees tokens
   // arriving — important on slow local LLMs where a 30s wait
   // with no signal feels broken. Cancel button aborts mid-stream.
+  // ── Slash commands ──────────────────────────────────────────────
+  // Type-driven shortcuts that bypass the chat round-trip when
+  // possible. Power-user surface; the buttons above the chat
+  // pane stay for click-first users. Recognised commands:
+  //
+  //   /help              show this list
+  //   /clear             reset the conversation
+  //   /briefing          fire the daily briefing (same as button)
+  //   /synopsis          fire the weekly synopsis
+  //   /triage            run inbox triage
+  //   /deadlines         detect deadlines
+  //   /detach            drop the snapshot/note attach for next turn
+  //
+  // A leading slash that doesn't match falls through to normal
+  // chat — so a user pasting code with a leading "/" doesn't get
+  // accidentally intercepted unless the first word is a real cmd.
+  const SLASH_HELP = `**Slash commands**
+
+  - \`/help\` — show this list
+  - \`/clear\` — reset the conversation
+  - \`/briefing\` — daily briefing (today's events + tasks)
+  - \`/synopsis\` — weekly synopsis (Wins / Setbacks / Learned / Next)
+  - \`/triage\` — inbox triage proposals
+  - \`/deadlines\` — detect deadlines in untimed tasks
+  - \`/detach\` — drop the attached snapshot or note for the next message
+
+  Press <kbd>Mod+J</kbd> to toggle this panel anywhere in granit.`;
+
+  function handleSlashCommand(raw: string): boolean {
+    const cmd = raw.trim().toLowerCase().split(/\s+/)[0];
+    switch (cmd) {
+      case '/help':
+        // Render help inline as an assistant message — keeps the
+        // result in the persisted thread so a follow-up ("ok now
+        // briefing") still sees the user's prior context.
+        messages = [
+          ...messages,
+          { role: 'user', content: raw },
+          { role: 'assistant', content: SLASH_HELP }
+        ];
+        input = '';
+        return true;
+      case '/clear':
+        clearChat();
+        input = '';
+        return true;
+      case '/briefing':
+        input = '';
+        void runBriefing();
+        return true;
+      case '/synopsis':
+        input = '';
+        void runSynopsis();
+        return true;
+      case '/triage':
+        input = '';
+        void runTriage();
+        return true;
+      case '/deadlines':
+        input = '';
+        void runDeadlines();
+        return true;
+      case '/detach':
+        attachNote = false;
+        attachSnapshot = false;
+        input = '';
+        toast.success('Context detached for the next message.');
+        return true;
+      default:
+        return false;
+    }
+  }
+
   async function send(e?: Event) {
     e?.preventDefault();
     const text = input.trim();
     if (!text || busy) return;
+    if (text.startsWith('/') && handleSlashCommand(text)) return;
     quickTitle = '';
     quickResult = '';
     busy = true;
@@ -565,7 +639,7 @@
         bind:value={input}
         onkeydown={onInputKey}
         rows="2"
-        placeholder={$sabbath ? 'Sabbath active — AI paused' : 'Ask anything…'}
+        placeholder={$sabbath ? 'Sabbath active — AI paused' : 'Ask anything, or type /help for slash commands'}
         disabled={busy || $sabbath}
         class="flex-1 bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-none disabled:opacity-60"
       ></textarea>
