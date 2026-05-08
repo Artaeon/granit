@@ -16,7 +16,7 @@
   import TaskContextMenu from '$lib/tasks/TaskContextMenu.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
 
-  type View = 'list' | 'kanban' | 'triage' | 'inbox' | 'stale' | 'quickwins' | 'review';
+  type View = 'list' | 'kanban' | 'today' | 'triage' | 'inbox' | 'stale' | 'quickwins' | 'review';
   type Group = 'due' | 'priority' | 'note' | 'project' | 'tag' | 'goal' | 'deadline';
 
   let tasks = $state<Task[]>([]);
@@ -93,7 +93,7 @@
     if (sp.has('deadline')) deadlineFilter = get('deadline');
     if (sp.has('view')) {
       const v = get('view') as View;
-      if (['list', 'kanban', 'triage', 'inbox', 'stale', 'quickwins', 'review'].includes(v)) view = v;
+      if (['list', 'kanban', 'today', 'triage', 'inbox', 'stale', 'quickwins', 'review'].includes(v)) view = v;
     }
     if (sp.has('group')) {
       const g = get('group') as Group;
@@ -739,7 +739,20 @@
       }
     }
     // View-specific filtering
-    if (view === 'inbox') {
+    if (view === 'today') {
+      // Today view = open tasks that have a date signal pointing at
+      // today: due_date today, scheduled_start today, OR overdue
+      // (anything past-due needs to be addressed today by default).
+      // Snoozed tasks excluded — if you snoozed a task to tomorrow,
+      // it shouldn't crowd today's list.
+      const today = new Date().toISOString().slice(0, 10);
+      out = out.filter((t) => {
+        if (t.done || isSnoozed(t)) return false;
+        const due = t.dueDate ?? '';
+        const sched = t.scheduledStart ? t.scheduledStart.slice(0, 10) : '';
+        return due === today || sched === today || (!!due && due < today);
+      });
+    } else if (view === 'inbox') {
       out = out.filter((t) => !t.done && (t.triage || 'inbox') === 'inbox');
     } else if (view === 'stale') {
       out = out.filter(isStale);
@@ -915,6 +928,27 @@
       }
     }
     return { open, overdue, todayCount, doneToday, snoozed };
+  });
+
+  // Per-smart-filter counts so the view tabs can show badges.
+  // Derived from the unfiltered open task list (sourceFilter +
+  // search are applied independently per view; the badge reflects
+  // 'is this view worth visiting right now', not 'after filters').
+  // Cheap O(n) — recomputes on tasks change but the cache hits often
+  // because tasks rarely change while typing.
+  let viewCounts = $derived.by(() => {
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    let inbox = 0, stale = 0, quickwins = 0, review = 0;
+    for (const t of tasks) {
+      if (!t.done) {
+        if ((t.triage || 'inbox') === 'inbox') inbox++;
+        if (isStale(t)) stale++;
+        if (t.priority >= 1 && t.priority <= 2 && t.estimatedMinutes && t.estimatedMinutes <= 30) quickwins++;
+      } else if (t.completedAt && new Date(t.completedAt).getTime() > sevenDaysAgo) {
+        review++;
+      }
+    }
+    return { inbox, stale, quickwins, review };
   });
 
   type ListGroup = { key: string; label: string; tasks: Task[]; deepLink?: string };
@@ -1260,14 +1294,81 @@
         placeholder="search…"
         class="flex-1 min-w-0 px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
       />
-      <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm flex-wrap">
-        <button class="px-2 sm:px-3 py-1.5 {view === 'list' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'list')}>List</button>
-        <button class="px-2 sm:px-3 py-1.5 {view === 'kanban' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'kanban')}>Kanban</button>
-        <button class="px-2 sm:px-3 py-1.5 {view === 'inbox' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'inbox')} title="untriaged tasks">Inbox</button>
-        <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'triage' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'triage')}>Triage</button>
-        <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'quickwins' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'quickwins')} title="high priority + ≤30 min">Quick wins</button>
-        <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'stale' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'stale')} title="not touched in 7+ days">Stale</button>
-        <button class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'review' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}" onclick={() => (view = 'review')} title="completed in last 7 days">Review</button>
+      <!-- View tabs split into two clusters: primary (Today / List /
+           Kanban) renders as one segmented pill so the user always
+           sees the three main shapes; smart-filter views (Inbox,
+           Stale, Quick wins, Review) sit in a second pill with
+           live count badges so the user knows which ones are
+           worth visiting at a glance. Tabs with zero count read
+           as muted so they don't pull attention. -->
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm">
+          <button
+            class="px-2 sm:px-3 py-1.5 inline-flex items-center gap-1 {view === 'today' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (view = 'today')}
+            title="overdue + due today + scheduled today"
+          >
+            Today
+            {#if stats.overdue + stats.todayCount > 0 && view !== 'today'}
+              <span class="text-[10px] tabular-nums {stats.overdue > 0 ? 'text-error' : 'text-warning'}">{stats.overdue + stats.todayCount}</span>
+            {/if}
+          </button>
+          <button
+            class="px-2 sm:px-3 py-1.5 {view === 'list' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (view = 'list')}
+          >List</button>
+          <button
+            class="px-2 sm:px-3 py-1.5 {view === 'kanban' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (view = 'kanban')}
+          >Kanban</button>
+        </div>
+        <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm">
+          <button
+            class="px-2 sm:px-3 py-1.5 inline-flex items-center gap-1 {view === 'inbox' ? 'bg-primary text-on-primary' : viewCounts.inbox > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface1'}"
+            onclick={() => (view = 'inbox')}
+            title="untriaged tasks awaiting categorisation"
+          >
+            Inbox
+            {#if viewCounts.inbox > 0 && view !== 'inbox'}
+              <span class="text-[10px] tabular-nums text-secondary font-mono">{viewCounts.inbox}</span>
+            {/if}
+          </button>
+          <button
+            class="px-2 sm:px-3 py-1.5 hidden sm:inline-flex items-center gap-1 {view === 'quickwins' ? 'bg-primary text-on-primary' : viewCounts.quickwins > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface1'}"
+            onclick={() => (view = 'quickwins')}
+            title="high priority + ≤30 min — tackle a few before lunch"
+          >
+            Quick wins
+            {#if viewCounts.quickwins > 0 && view !== 'quickwins'}
+              <span class="text-[10px] tabular-nums text-success font-mono">{viewCounts.quickwins}</span>
+            {/if}
+          </button>
+          <button
+            class="px-2 sm:px-3 py-1.5 hidden sm:inline-flex items-center gap-1 {view === 'stale' ? 'bg-primary text-on-primary' : viewCounts.stale > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface1'}"
+            onclick={() => (view = 'stale')}
+            title="not touched in 7+ days — needs a decision"
+          >
+            Stale
+            {#if viewCounts.stale > 0 && view !== 'stale'}
+              <span class="text-[10px] tabular-nums text-warning font-mono">{viewCounts.stale}</span>
+            {/if}
+          </button>
+          <button
+            class="px-2 sm:px-3 py-1.5 hidden sm:inline-flex items-center gap-1 {view === 'review' ? 'bg-primary text-on-primary' : viewCounts.review > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface1'}"
+            onclick={() => (view = 'review')}
+            title="completed in the last 7 days — celebrate the wins"
+          >
+            Review
+            {#if viewCounts.review > 0 && view !== 'review'}
+              <span class="text-[10px] tabular-nums text-success font-mono">{viewCounts.review}</span>
+            {/if}
+          </button>
+          <button
+            class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'triage' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (view = 'triage')}
+            title="AI-driven inbox triage proposals"
+          >Triage</button>
+        </div>
       </div>
       <button
         onclick={() => (helpOpen = !helpOpen)}
@@ -1277,7 +1378,7 @@
       >?</button>
     </header>
 
-    {#if view === 'list' || view === 'kanban'}
+    {#if view === 'list' || view === 'kanban' || view === 'today'}
       <!-- AI Top-3 focus picker. Different agent from triage/
            deadline-detect: those operate on UNTRIAGED tasks;
            this one looks across ALL open tasks and picks the 3
@@ -1434,6 +1535,19 @@
     <div class="flex-1 overflow-auto p-3 sm:p-4">
       {#if loading && tasks.length === 0}
         <div class="text-sm text-dim">loading…</div>
+      {:else if filtered.length === 0 && view === 'today'}
+        <!-- Today view inbox-zero message. Different from a true empty
+             state — the user has tasks, just none for today. The
+             tone is calm-celebratory rather than the cobwebbed
+             "get to work" used by the Review view. -->
+        <div class="max-w-md mx-auto py-10 text-center">
+          <div class="text-4xl mb-3 opacity-50">🌤</div>
+          <h2 class="text-base font-medium text-text mb-1">Today is clear</h2>
+          <p class="text-sm text-dim">
+            Nothing overdue, nothing due today, nothing scheduled. Take the open space — or pick something from
+            <button class="text-primary hover:underline" onclick={() => (view = 'list')}>the full list</button>.
+          </p>
+        </div>
       {:else if filtered.length === 0 && view === 'review'}
         <div class="text-sm text-dim italic">No tasks completed in the last 7 days. Get to work!</div>
       {:else if filtered.length === 0 && view === 'inbox'}
