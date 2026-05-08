@@ -190,6 +190,154 @@
   function skipMilestone(p: MilestoneProposal) {
     aiMilestoneProposals = aiMilestoneProposals.filter((x) => x !== p);
   }
+
+  // ── AI-proposed THIS-WEEK tasks ─────────────────────────────────
+  // Bridges the strategy/execution gap by asking the model for 3-5
+  // concrete tasks the user could create THIS WEEK to advance the
+  // goal. Each proposal is editable before accept — the user can
+  // tweak the wording or due date inline. Accept calls api.createTask
+  // with goalId linked so the task surfaces in the goal's roll-up
+  // (the same path the existing manual flow uses on /tasks).
+  //
+  // Distinct from the milestone suggester above: milestones are the
+  // structural breakdown of the goal ("Ship v1 to 5 beta users"),
+  // tasks are the concrete next-7-days work ("Email 3 candidates
+  // for beta", "Draft onboarding email", …). A goal with rich
+  // milestones still needs this — the user knows the milestone
+  // ladder but freezes on what to do Monday morning.
+  interface TaskProposal {
+    text: string;
+    dueDate?: string;
+    edit: boolean;        // local UI state — proposal is in edit mode
+  }
+  let aiTaskBusy = $state(false);
+  let aiTaskProposals = $state<TaskProposal[]>([]);
+  let aiTaskError = $state('');
+  let aiTaskAbort: AbortController | null = null;
+
+  function todayPlusDays(n: number): string {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+
+  async function suggestTasks() {
+    if (!goal || aiTaskBusy) return;
+    aiTaskBusy = true;
+    aiTaskError = '';
+    aiTaskProposals = [];
+    aiTaskAbort = new AbortController();
+
+    const ms = goal.milestones ?? [];
+    const openMs = ms.filter((m) => !m.done).slice(0, 8).map((m) => m.text);
+    const doneMs = ms.filter((m) => m.done).slice(-4).map((m) => m.text);
+    const today = todayPlusDays(0);
+    const friday = (() => {
+      // Coming Friday — falls back to today+7 if it's already weekend.
+      const d = new Date();
+      const dow = d.getDay(); // 0 Sun … 5 Fri
+      const delta = dow <= 5 ? 5 - dow : 7 - dow + 5;
+      d.setDate(d.getDate() + (delta === 0 ? 5 : delta));
+      return d.toISOString().slice(0, 10);
+    })();
+
+    const ctx = [
+      `Goal: ${goal.title}`,
+      goal.description ? `Description: ${goal.description}` : '',
+      goal.target_date ? `Target date: ${goal.target_date}` : '',
+      goal.venture ? `Venture: ${goal.venture}` : '',
+      goal.project ? `Project: ${goal.project}` : '',
+      openMs.length > 0 ? `Open milestones:\n${openMs.map((m) => `- ${m}`).join('\n')}` : '',
+      doneMs.length > 0 ? `Recent done milestones:\n${doneMs.map((m) => `- ${m}`).join('\n')}` : '',
+      `Linked tasks: ${openTaskCount} open, ${doneTaskCount} done`
+    ].filter(Boolean).join('\n\n');
+
+    const userMessage =
+      'You are a founder-coach. The user has a goal and wants 3-5 concrete TASKS they could DO THIS WEEK to advance it.\n\n' +
+      'Rules for each task:\n' +
+      '- Action-oriented, starts with a verb (Email, Draft, Call, Outline, Ship, Interview, Sketch, …).\n' +
+      '- Doable in one sitting (≤ 2h). NOT a milestone, NOT a vague intention.\n' +
+      '- Specific enough that the user knows when it\'s done.\n' +
+      '- Distinct from open milestones above — these are the WORK that closes a milestone, not a restatement of one.\n' +
+      '- One line, ≤ 14 words. No quotes, no period, no bullet.\n' +
+      '- Set due_date to a specific weekday this week (today is ' + today + ', this Friday is ' + friday + '). Distribute due dates so they don\'t all land on the same day. Format YYYY-MM-DD.\n\n' +
+      'Return STRICT JSON ONLY (no markdown fences, no preamble), shape:\n' +
+      '[{"text": "...", "due_date": "YYYY-MM-DD"}, ...]\n\n' +
+      'Goal context:\n\n' + ctx;
+
+    let acc = '';
+    try {
+      await api.chatStream(
+        [{ role: 'user', content: userMessage }],
+        undefined,
+        {
+          onChunk: (c) => { acc += c; },
+          onError: (err) => { aiTaskError = err.message; }
+        },
+        aiTaskAbort.signal
+      );
+      let cleaned = acc.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();
+      }
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed)) throw new Error('expected array');
+      aiTaskProposals = parsed
+        .filter((p: unknown) => p && typeof p === 'object' && typeof (p as { text?: unknown }).text === 'string')
+        .map((p) => {
+          const obj = p as { text: string; due_date?: unknown };
+          return {
+            text: obj.text.trim(),
+            dueDate: typeof obj.due_date === 'string' && obj.due_date ? obj.due_date : undefined,
+            edit: false
+          } satisfies TaskProposal;
+        })
+        .slice(0, 5);
+      if (aiTaskProposals.length === 0 && !aiTaskError) {
+        aiTaskError = 'AI returned no task proposals.';
+      }
+    } catch (err) {
+      if (!aiTaskError) {
+        const msg = err instanceof Error ? err.message : String(err);
+        aiTaskError = `Couldn't parse tasks: ${msg}`;
+      }
+    } finally {
+      aiTaskBusy = false;
+      aiTaskAbort = null;
+    }
+  }
+
+  function cancelTaskAI() { aiTaskAbort?.abort(); }
+
+  async function acceptTaskProposal(p: TaskProposal) {
+    if (!goal || !p.text.trim()) return;
+    try {
+      // Created in today's daily note, same convention /tasks
+      // quick-add uses. The goalId link is what makes it show up
+      // in this goal's roll-up + burn-up next time we load.
+      const daily = await api.daily('today');
+      await api.createTask({
+        notePath: daily.path,
+        text: p.text.trim(),
+        dueDate: p.dueDate || undefined,
+        goalId: goal.id
+      });
+      aiTaskProposals = aiTaskProposals.filter((x) => x !== p);
+      await loadGoalTasks();
+      await onUpdated();
+      toast.success('task added');
+    } catch (e) {
+      toast.error('add task failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+  function skipTaskProposal(p: TaskProposal) {
+    aiTaskProposals = aiTaskProposals.filter((x) => x !== p);
+  }
+  async function acceptAllTaskProposals() {
+    const list = [...aiTaskProposals];
+    for (const p of list) await acceptTaskProposal(p);
+  }
+
   let reviewOpen = $state(false);
 
   const statusOptions: Goal['status'][] = ['active', 'paused', 'completed', 'archived'];
@@ -623,6 +771,104 @@
         {#if goal}
           <EntityDeadlines scope={{ kind: 'goal', id: goal.id, title: goal.title }} />
         {/if}
+
+        <!-- AI "this week's tasks" pipeline. Distinct from the
+             milestone suggester above — milestones are the structural
+             ladder, these are the concrete next-7-days work that
+             closes a milestone. Each proposal is editable in place
+             (text + due date) before accept; accepted ones are
+             created via api.createTask with goalId linked so they
+             show up in the open / done counts and the burn-up. -->
+        <section>
+          <div class="flex items-baseline gap-2 mb-2">
+            <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">This week's tasks</h3>
+            {#if aiTaskBusy}
+              <button
+                onclick={cancelTaskAI}
+                class="text-[11px] text-warning hover:underline"
+              >cancel</button>
+            {:else}
+              <button
+                onclick={() => void suggestTasks()}
+                class="text-[11px] px-2 py-0.5 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary"
+                title="Ask the AI for 3-5 concrete tasks to advance this goal this week"
+              >✨ suggest tasks</button>
+            {/if}
+          </div>
+
+          {#if aiTaskError}
+            <div class="mb-2 px-3 py-2 text-xs text-error border border-error/30 bg-error/5 rounded">
+              {aiTaskError}
+            </div>
+          {/if}
+
+          {#if aiTaskBusy && aiTaskProposals.length === 0}
+            <div class="text-xs text-dim italic px-3 py-2 flex items-center gap-2">
+              <span class="inline-block w-1.5 h-3 bg-primary/60 animate-pulse rounded-sm"></span>
+              proposing 3-5 tasks for this week…
+            </div>
+          {/if}
+
+          {#if aiTaskProposals.length > 0}
+            <div class="px-3 py-2 bg-primary/5 border border-primary/30 rounded">
+              <div class="flex items-baseline gap-2 mb-2">
+                <span class="text-[10px] uppercase tracking-wider text-primary font-semibold">AI proposals ({aiTaskProposals.length})</span>
+                <span class="flex-1"></span>
+                <button
+                  onclick={() => void acceptAllTaskProposals()}
+                  class="text-[11px] text-primary hover:underline"
+                  title="Create all proposals as tasks linked to this goal"
+                >+ accept all</button>
+              </div>
+              <ul class="space-y-1.5">
+                {#each aiTaskProposals as p (p.text)}
+                  <li class="flex items-start gap-2 text-xs">
+                    <div class="flex-1 min-w-0 space-y-1">
+                      {#if p.edit}
+                        <input
+                          bind:value={p.text}
+                          class="w-full px-2 py-1 bg-surface0 border border-primary rounded text-xs text-text outline-none"
+                        />
+                        <input
+                          type="date"
+                          value={p.dueDate ?? ''}
+                          onchange={(e) => (p.dueDate = (e.target as HTMLInputElement).value || undefined)}
+                          class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-xs text-text"
+                        />
+                      {:else}
+                        <div class="text-text break-words">{p.text}</div>
+                        {#if p.dueDate}
+                          <div class="text-dim text-[10px] font-mono">due {p.dueDate}</div>
+                        {/if}
+                      {/if}
+                    </div>
+                    {#if p.edit}
+                      <button
+                        onclick={() => (p.edit = false)}
+                        class="px-2 py-0.5 bg-surface1 text-subtext rounded hover:bg-surface2"
+                      >done</button>
+                    {:else}
+                      <button
+                        onclick={() => (p.edit = true)}
+                        class="px-2 py-0.5 text-dim hover:text-text"
+                        title="edit before accepting"
+                      >edit</button>
+                    {/if}
+                    <button
+                      onclick={() => void acceptTaskProposal(p)}
+                      class="px-2 py-0.5 bg-success/15 text-success rounded hover:bg-success/25"
+                      title="Create as a task linked to this goal"
+                    >accept</button>
+                    <button
+                      onclick={() => skipTaskProposal(p)}
+                      class="px-2 py-0.5 text-dim hover:text-text"
+                    >skip</button>
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+        </section>
 
         <!-- Reviews -->
         <section>
