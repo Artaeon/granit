@@ -717,12 +717,15 @@
     }
     // RAG — runs on every turn the toggle is on, so a follow-up
     // question about a different topic retrieves different notes.
-    // Skips if the user is on a note page already (the note itself
-    // is being attached via notePath).
+    // We pass currentNotePath so retrieveForRag skips it (no point
+    // re-injecting the note already on the prompt via notePath).
+    // Composing both: attachNote=true (current note in system) +
+    // rag=true (related notes in system) is supported and useful
+    // for 'explain this concept using my other notes too'.
     lastRagHits = [];
-    if (rag && !currentNotePath) {
+    if (rag) {
       try {
-        const hits = await retrieveForRag(text);
+        const hits = await retrieveForRag(text, currentNotePath);
         if (hits.length > 0) {
           lastRagHits = hits;
           const formatted = hits

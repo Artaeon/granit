@@ -232,25 +232,23 @@
   // Skip just THIS occurrence of a recurring event — the user's
   // "team meeting cancelled this week, but keep the series" move.
   // Adds an EXDATE entry to the source event; the expander filters
-  // it out the next time the calendar renders. We compute the
-  // EXDATE key in the same shape the expander compares against:
-  // YYYY-MM-DD for all-day events, YYYY-MM-DDTHH:MM:SS (local) for
-  // timed. Only available for native recurring events; ICS skip
-  // would need to round-trip the source .ics file which isn't on
-  // the patch path today.
+  // it out the next time the calendar renders. The expander
+  // (internal/serveapi/ics.go isExcluded) compares against:
+  //   - YYYY-MM-DD for all-day events
+  //   - YYYY-MM-DDTHH:MM:SS in UTC for timed events
+  // We must send the UTC format so the next render's exclusion
+  // check actually matches. Only native recurring events get this;
+  // ICS skip would need to round-trip the source .ics file which
+  // isn't on the patch path today.
   function exDateKey(): string {
     if (!event) return '';
     if (event.start) {
       const d = new Date(event.start);
-      // Local-time YYYY-MM-DDTHH:MM:SS — what the expander
-      // compares against for timed events.
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      const HH = String(d.getHours()).padStart(2, '0');
-      const MM = String(d.getMinutes()).padStart(2, '0');
-      const SS = String(d.getSeconds()).padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}T${HH}:${MM}:${SS}`;
+      // UTC-time YYYY-MM-DDTHH:MM:SS — what the expander compares
+      // against for timed events. toISOString gives a Z-suffixed
+      // form; slice off ms + Z to leave the bare datetime.
+      const iso = d.toISOString(); // YYYY-MM-DDTHH:MM:SS.sssZ
+      return iso.slice(0, 19); // YYYY-MM-DDTHH:MM:SS
     }
     return event.date ?? '';
   }
