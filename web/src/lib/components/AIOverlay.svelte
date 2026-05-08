@@ -878,8 +878,8 @@
     role="dialog"
     aria-label="AI assistant"
     class="fixed z-50 flex flex-col bg-base border-surface1 shadow-2xl
-           inset-x-0 bottom-0 max-h-[85vh] rounded-t-xl border-t
-           md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:top-0 md:h-full md:w-[420px] md:max-h-none md:rounded-none md:border-l md:border-t-0"
+           inset-x-0 bottom-0 max-h-[85dvh] rounded-t-xl border-t pb-safe
+           md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:top-0 md:h-full md:w-[420px] md:max-h-none md:rounded-none md:border-l md:border-t-0 md:pb-0"
   >
     <!-- Header. Mobile gets a drag-handle visual hint at the very
          top; both layouts get title + status pill + close. -->
@@ -916,7 +916,7 @@
           ></div>
           <div
             role="listbox"
-            class="absolute left-0 top-full mt-1 w-72 bg-mantle border border-surface1 rounded-lg shadow-xl z-50 py-1 max-h-[70vh] overflow-y-auto"
+            class="absolute left-0 top-full mt-1 w-[min(18rem,calc(100vw-1rem))] bg-mantle border border-surface1 rounded-lg shadow-xl z-50 py-1 max-h-[70dvh] overflow-y-auto"
           >
             <!-- Generic modes group. The "modes" header is implicit
                  (the picker opens with them; no need to label what

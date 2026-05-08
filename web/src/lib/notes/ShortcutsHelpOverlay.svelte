@@ -117,7 +117,7 @@
     role="presentation"
   >
     <section
-      class="w-full sm:max-w-2xl bg-base border border-surface1 rounded-t-xl sm:rounded-lg shadow-xl max-h-[92dvh] sm:max-h-[80vh] flex flex-col"
+      class="w-full sm:max-w-2xl bg-base border border-surface1 rounded-t-xl sm:rounded-lg shadow-xl max-h-[92dvh] sm:max-h-[80dvh] flex flex-col"
       onclick={(e) => e.stopPropagation()}
       role="dialog"
       aria-label="Keyboard shortcuts"
