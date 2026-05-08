@@ -247,6 +247,46 @@
     }
   }
 
+  // Branch from a specific assistant message: copy the conversation
+  // up to and including that message into a new thread, then load it
+  // as the active thread. The original is preserved in history so a
+  // user can come back to it. Useful when the user wants to ask a
+  // different follow-up without losing the path they already took.
+  function branchFromMessage(idx: number) {
+    if (idx < 0 || idx >= messages.length) return;
+    if (messages[idx].role !== 'assistant') return;
+    // Persist the current thread as-is BEFORE forking so the fork
+    // point lives in history (otherwise the source thread might
+    // never have been saved if the user is fast).
+    autoSaveThread();
+    // Slice INCLUDING the assistant message at idx, so the user sees
+    // the same context as before and the branch starts fresh from
+    // that point.
+    const upto = messages.slice(0, idx + 1);
+    const sourceTitle = activeThreadId
+      ? getThread(activeThreadId)?.title ?? deriveThreadTitle(messages)
+      : deriveThreadTitle(messages);
+    const newTitle = (sourceTitle.length > 60 ? sourceTitle.slice(0, 60) : sourceTitle) + ' (branch)';
+    const branched = upsertThread({
+      // No id ⇒ new thread.
+      title: newTitle,
+      modeId,
+      messages: upto
+    });
+    messages = upto.slice();
+    activeThreadId = branched.id;
+    persistActiveThreadId(branched.id);
+    perTurnRagHits = {};
+    expandedSources = {};
+    refreshPinnedIndex();
+    if (historyOpen) refreshHistoryLists();
+    toast.success('Branched into a new thread.');
+    tick().then(() => {
+      if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+      inputEl?.focus();
+    });
+  }
+
   function pinAssistantMessage(idx: number) {
     if (!messages[idx] || messages[idx].role !== 'assistant') return;
     // Make sure the thread is persisted before pinning so the pin can
@@ -1921,19 +1961,38 @@
               <div class="text-[10px] uppercase tracking-wider {m.role === 'user' ? 'text-secondary' : 'text-primary'} mb-0.5 flex items-center gap-2">
                 <span>{m.role === 'user' ? 'you' : 'assistant'}</span>
                 {#if m.role === 'assistant' && m.content && !busy}
-                  <!-- Pin star — toggles a per-message pin so the
-                       reply can be retrieved from the Pinned tab.
-                       Snapshots content at click time so a future
-                       re-roll / thread prune doesn't lose the text. -->
-                  <button
-                    type="button"
-                    onclick={() => pinAssistantMessage(i)}
-                    class="ml-auto text-base leading-none {pinnedIndex[i] ? 'text-warning' : 'text-dim hover:text-warning'} transition-colors"
-                    aria-pressed={!!pinnedIndex[i]}
-                    title={pinnedIndex[i] ? 'Unpin this reply' : 'Pin this reply (find it under History → Pinned)'}
-                  >
-                    {#if pinnedIndex[i]}★{:else}☆{/if}
-                  </button>
+                  <span class="ml-auto inline-flex items-center gap-2">
+                    <!-- Branch — fork the conversation up to and
+                         including this message into a new thread.
+                         Original stays in history. -->
+                    <button
+                      type="button"
+                      onclick={() => branchFromMessage(i)}
+                      class="text-dim hover:text-secondary leading-none"
+                      aria-label="Branch from here"
+                      title="Fork the thread from this message into a new conversation"
+                    >
+                      <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="6" cy="6" r="2"/>
+                        <circle cx="18" cy="6" r="2"/>
+                        <circle cx="6" cy="18" r="2"/>
+                        <path d="M6 8v8M6 12h6a4 4 0 004-4V8" stroke-linecap="round"/>
+                      </svg>
+                    </button>
+                    <!-- Pin star — toggles a per-message pin so the
+                         reply can be retrieved from the Pinned tab.
+                         Snapshots content at click time so a future
+                         re-roll / thread prune doesn't lose the text. -->
+                    <button
+                      type="button"
+                      onclick={() => pinAssistantMessage(i)}
+                      class="text-base leading-none {pinnedIndex[i] ? 'text-warning' : 'text-dim hover:text-warning'} transition-colors"
+                      aria-pressed={!!pinnedIndex[i]}
+                      title={pinnedIndex[i] ? 'Unpin this reply' : 'Pin this reply (find it under History → Pinned)'}
+                    >
+                      {#if pinnedIndex[i]}★{:else}☆{/if}
+                    </button>
+                  </span>
                 {/if}
               </div>
               {#if m.role === 'user'}
