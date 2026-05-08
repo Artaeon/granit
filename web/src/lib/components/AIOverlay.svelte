@@ -85,6 +85,39 @@
     persistHistory(messages);
   });
 
+  // ── Page-aware context ──────────────────────────────────────────
+  // Two attach modes, mutually exclusive depending on the route:
+  //
+  //   /notes/<path>  → attachNote  (server expands the note body
+  //                    into a system prompt via chatStream's
+  //                    notePath param — see handlers_chat.go).
+  //   anywhere else  → attachSnapshot  (fetches the Context Engine
+  //                    snapshot and prepends a system message
+  //                    with today's events + open tasks +
+  //                    recent notes + active goals + deadlines).
+  //
+  // Mutual exclusion keeps the prompt clean: a notes page already
+  // has a primary doc; non-note surfaces benefit from the broader
+  // "what's going on right now" view that the snapshot provides.
+  let attachSnapshot = $state(true);
+  let snapshotLoading = $state(false);
+  // Use unknown so we don't lock the consumer into the snapshot
+  // shape — the backend evolves it independently.
+  let snapshotData = $state<unknown>(null);
+
+  async function loadSnapshot() {
+    if (snapshotLoading) return;
+    snapshotLoading = true;
+    try {
+      const r = await api.getAISnapshot();
+      snapshotData = r.snapshot ?? null;
+    } catch {
+      snapshotData = null;
+    } finally {
+      snapshotLoading = false;
+    }
+  }
+
   // Note-aware chat. When the overlay opens on a /notes/<path>
   // page, we offer to attach that note as context to the chat
   // request (chatStream's notePath parameter — server expands it
@@ -131,7 +164,16 @@
   $effect(() => {
     if (open) {
       untrack(() => {
-        if (currentNotePath) attachNote = true;
+        // On note pages, prefer attachNote (the page has a
+        // primary doc the AI should anchor to). Elsewhere,
+        // pre-fetch the vault snapshot so the chat can route
+        // through general "what's going on" context. Both
+        // toggles can be flipped by the user once open.
+        if (currentNotePath) {
+          attachNote = true;
+        } else if (attachSnapshot && !snapshotData) {
+          void loadSnapshot();
+        }
       });
       void loadStatus();
       tick().then(() => inputEl?.focus());
@@ -256,8 +298,26 @@
     abort?.abort();
     abort = new AbortController();
     const userMsg: ChatMessage = { role: 'user', content: text };
-    const history = [...messages, userMsg];
-    messages = [...history, { role: 'assistant', content: '' }];
+    // Build the prelude — a system message containing the
+    // attached snapshot when we have one and the route isn't a
+    // notes page (notes use chatStream's notePath instead).
+    // Only included on the FIRST turn; subsequent turns rely on
+    // the model retaining context via prior assistant replies,
+    // since re-injecting the snapshot every turn burns tokens.
+    const prelude: ChatMessage[] = [];
+    const isFirstTurn = messages.length === 0;
+    if (isFirstTurn && attachSnapshot && snapshotData && !currentNotePath) {
+      prelude.push({
+        role: 'system',
+        content:
+          "Here's a snapshot of the user's vault — today's events, " +
+          'open tasks, recent notes, active goals, and deadlines. ' +
+          'Refer to it when relevant; do not invent content beyond it.\n\n' +
+          '```json\n' + JSON.stringify(snapshotData, null, 2) + '\n```'
+      });
+    }
+    const history = [...prelude, ...messages, userMsg];
+    messages = [...messages, userMsg, { role: 'assistant', content: '' }];
     input = '';
     let acc = '';
     const idx = messages.length - 1;
@@ -454,6 +514,41 @@
           />
           <span class="text-dim flex-shrink-0">attach</span>
           <span class="text-subtext font-mono truncate" title={currentNotePath}>{currentNotePath}</span>
+        </label>
+      </div>
+    {:else}
+      <!-- Snapshot-context chip. On non-note routes the AI gets
+           the Context Engine's snapshot — events, tasks, recent
+           notes, goals, deadlines — so freeform questions like
+           "what should I do next?" have actual data to lean on
+           rather than guesses. Only injected on the first turn
+           of a thread (subsequent turns lean on the model's own
+           reply context to avoid burning tokens). -->
+      <div class="border-t border-surface1 px-4 py-2 flex items-center gap-2 flex-shrink-0 text-[11px]">
+        <label class="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
+          <input
+            type="checkbox"
+            bind:checked={attachSnapshot}
+            disabled={snapshotLoading}
+            class="w-3.5 h-3.5 accent-primary cursor-pointer flex-shrink-0 disabled:opacity-50"
+          />
+          <span class="text-dim flex-shrink-0">attach</span>
+          <span class="text-subtext font-mono truncate">
+            {#if snapshotLoading}
+              loading vault snapshot…
+            {:else if snapshotData}
+              today's vault snapshot
+            {:else}
+              no snapshot (offline or feature off)
+            {/if}
+          </span>
+          {#if !snapshotLoading && !snapshotData}
+            <button
+              type="button"
+              onclick={(e) => { e.preventDefault(); void loadSnapshot(); }}
+              class="text-secondary hover:underline ml-1"
+            >retry</button>
+          {/if}
         </label>
       </div>
     {/if}
