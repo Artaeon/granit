@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api, todayISO, fmtDateISO, type Task, type AppConfig } from '$lib/api';
+  import { mediaQuery } from '$lib/util/mediaQuery';
   import { toast } from '$lib/components/toast';
   import TaskCard from './TaskCard.svelte';
 
@@ -284,20 +285,14 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Mobile collapse — same logic as before; just keyed by column.
+  // Mobile collapse — keyed by column. Uses the shared mediaQuery
+  // helper so cleanup is store-managed.
   // ---------------------------------------------------------------------------
-  let isDesktop = $state(false);
+  const isDesktop = mediaQuery('(min-width: 768px)');
   let collapsed = $state<Record<string, boolean>>({});
-  onMount(() => {
-    const mq = window.matchMedia('(min-width: 768px)');
-    isDesktop = mq.matches;
-    const handler = (e: MediaQueryListEvent) => (isDesktop = e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  });
 
   $effect(() => {
-    if (!isDesktop && Object.keys(collapsed).length === 0) {
+    if (!$isDesktop && Object.keys(collapsed).length === 0) {
       const next: Record<string, boolean> = {};
       for (const c of columns) {
         if (c.tasks.length === 0 || c.key === 'done' || c.key === 'dropped' || c.key === 'snoozed') {
@@ -309,7 +304,7 @@
   });
 
   function toggle(key: string) {
-    if (isDesktop) return;
+    if ($isDesktop) return;
     collapsed = { ...collapsed, [key]: !collapsed[key] };
   }
 
@@ -465,7 +460,7 @@
   <div class="flex flex-col md:flex-row gap-3 md:overflow-x-auto md:pb-3" style="min-height: 40vh">
     {#each columns as col (col.key + ':' + lane.key)}
       {@const colTasks = tasksFor(col, lane)}
-      {@const isCollapsed = !isDesktop && !!collapsed[col.key]}
+      {@const isCollapsed = !$isDesktop && !!collapsed[col.key]}
       {@const total = colTasks.length}
       {@const limit = col.wip ?? 0}
       {@const overWip = limit > 0 && total > limit}

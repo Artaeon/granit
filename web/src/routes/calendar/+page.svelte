@@ -5,6 +5,7 @@
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
+  import { mediaQuery } from '$lib/util/mediaQuery';
   import {
     addDays,
     endOfWeek,
@@ -103,7 +104,17 @@
   let unifiedKind = $state<'task' | 'event'>('task');
 
   let filterDrawerOpen = $state(false);
-  let isMobile = $state(false);
+  // Reactive mobile flag via the shared mediaQuery store. Auto-cleans
+  // up on component destroy. The first-mount "force day view on
+  // mobile" rule still applies, see the $effect below.
+  const isMobile = mediaQuery('(max-width: 767px)');
+  let _mobileViewForced = $state(false);
+  $effect(() => {
+    if ($isMobile && !_mobileViewForced) {
+      view = 'day';
+      _mobileViewForced = true;
+    }
+  });
 
   // Event-type filter: each toggle hides events of that type. Persisted so
   // the user's preference (e.g. "always hide ICS") sticks across sessions.
@@ -228,14 +239,7 @@
     }
   }
 
-  onMount(() => {
-    const mq = window.matchMedia('(max-width: 767px)');
-    isMobile = mq.matches;
-    if (mq.matches) view = 'day';
-    const handler = (e: MediaQueryListEvent) => (isMobile = e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  });
+  // Mobile detection moved to the mediaQuery store + $effect above.
 
   // Deep-link: ?plan=1 (optionally with &project=NAME) flips on plan
   // mode so other pages — e.g. the project detail's "schedule next
@@ -1108,7 +1112,7 @@
   }
 
   let headline = $derived.by(() => {
-    if (view === 'day') return cursor.toLocaleDateString(undefined, { weekday: isMobile ? 'short' : 'long', month: 'short', day: 'numeric' });
+    if (view === 'day') return cursor.toLocaleDateString(undefined, { weekday: $isMobile ? 'short' : 'long', month: 'short', day: 'numeric' });
     if (view === '3day') {
       const e = addDays(cursor, 2);
       return `${cursor.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
