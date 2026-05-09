@@ -69,6 +69,14 @@
   let editRepeat = $state<Repeat>('none');
   let editUntilDate = $state('');
   let editCustomRule = $state('');
+  // For recurring events, edit-scope is a per-modal toggle:
+  // 'series' rewrites the parent (date / time / rrule all shift),
+  // 'instance' writes a per-occurrence override so only the open
+  // occurrence changes. Defaults to 'instance' on open — safer
+  // because editing one Tuesday rarely should touch every Tuesday.
+  // Hidden for ICS events (no override path) and for non-recurring
+  // events.
+  let editScope = $state<'instance' | 'series'>('instance');
 
   function parseRepeatFromRRule(rrule: string): { repeat: Repeat; until: string; custom: string } {
     if (!rrule) return { repeat: 'none', until: '', custom: '' };
@@ -176,6 +184,10 @@
     // Seed the project link from the event so unchanged saves
     // round-trip. Empty when the event isn't linked.
     editProjectId = event.project_id ?? '';
+    // Default scope: this-occurrence-only. Users editing 'this
+    // Tuesday' through the modal get the same conservative default
+    // as the drag-move flow.
+    editScope = 'instance';
     editing = true;
   }
 
@@ -210,30 +222,56 @@
           location: editLocation
         });
       } else if (event.eventId) {
-        await api.patchEvent(event.eventId, {
-          title: editTitle,
-          date: editDate,
-          start_time: editStartTime,
-          end_time: editEndTime,
-          location: editLocation,
-          color: editColor,
-          // Send rrule unconditionally so editing a recurring event
-          // back to non-recurring (editRepeat='none' → '') correctly
-          // clears the rule rather than leaving the old one in place.
-          rrule: editRRule,
-          // Send project_id unconditionally too — clearing the link
-          // (editProjectId='') must overwrite a previously-linked
-          // project on disk, not be silently dropped by omitempty
-          // round-tripping through Partial<>.
-          project_id: editProjectId
-        });
+        // Recurring + 'this only' scope: write a per-occurrence
+        // override on the original anchor. Series base + rrule are
+        // not touched, so editing a single Tuesday doesn't shift
+        // every Tuesday. The override carries title/location/color
+        // too, so a user renaming "this Tuesday's standup" also
+        // gets the rename surfaced for that one cell only.
+        if (event.rrule && event.type === 'event' && editScope === 'instance') {
+          const key = exDateKey();
+          if (!key) {
+            toast.error('Cannot identify this occurrence — try editing the series.');
+            return;
+          }
+          await api.overrideEventOccurrence(event.eventId, key, {
+            date: editDate,
+            start_time: editStartTime,
+            end_time: editEndTime,
+            title: editTitle,
+            location: editLocation,
+            color: editColor
+          });
+        } else {
+          await api.patchEvent(event.eventId, {
+            title: editTitle,
+            date: editDate,
+            start_time: editStartTime,
+            end_time: editEndTime,
+            location: editLocation,
+            color: editColor,
+            // Send rrule unconditionally so editing a recurring event
+            // back to non-recurring (editRepeat='none' → '') correctly
+            // clears the rule rather than leaving the old one in place.
+            rrule: editRRule,
+            // Send project_id unconditionally too — clearing the link
+            // (editProjectId='') must overwrite a previously-linked
+            // project on disk, not be silently dropped by omitempty
+            // round-tripping through Partial<>.
+            project_id: editProjectId
+          });
+        }
       } else {
         return;
       }
       editing = false;
       onChanged?.();
       open = false;
-      toast.success('event updated');
+      toast.success(
+        event?.rrule && event.type === 'event' && editScope === 'instance'
+          ? 'this occurrence updated'
+          : 'event updated'
+      );
     } catch (err) {
       toast.error('save failed: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
@@ -527,13 +565,37 @@
             </div>
           </div>
           <input bind:value={editLocation} placeholder="location (optional)" class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text" />
+          <!-- Edit scope picker — only relevant for recurring NATIVE
+               events. 'this' writes a per-occurrence override (title /
+               time / date / location / color of just this one); 'series'
+               rewrites the parent so every occurrence shifts. ICS gets
+               no scope picker because the patch endpoint has no override
+               slot. Defaults to 'this' on open — same conservative
+               default as the drag-move flow. -->
+          {#if event?.type === 'event' && event?.rrule}
+            <fieldset class="border border-surface1 rounded p-2 space-y-1">
+              <legend class="text-[10px] uppercase tracking-wider text-dim px-1">Apply to</legend>
+              <label class="flex items-center gap-2 text-xs text-text cursor-pointer">
+                <input type="radio" bind:group={editScope} value="instance" name="ev-edit-scope" />
+                <span>Just this occurrence</span>
+                <span class="text-[10px] text-dim">— series base unchanged</span>
+              </label>
+              <label class="flex items-center gap-2 text-xs text-text cursor-pointer">
+                <input type="radio" bind:group={editScope} value="series" name="ev-edit-scope" />
+                <span>The entire series</span>
+                <span class="text-[10px] text-dim">— shifts every instance</span>
+              </label>
+            </fieldset>
+          {/if}
           <!-- Repeat picker — same shape as CreateEvent so the muscle
                memory is identical. ICS events DO get this shown for
                read-only feedback (the rrule of the source series),
                but the patch path for ICS doesn't currently accept
                rrule changes — surfacing the rule still helps the
-               user understand what's recurring. -->
-          {#if event?.type === 'event'}
+               user understand what's recurring. The picker is
+               disabled when the user is editing a single occurrence
+               (recurrence is a series-level concept). -->
+          {#if event?.type === 'event' && (!event?.rrule || editScope === 'series')}
             <div class="flex items-baseline gap-2 flex-wrap">
               <label class="text-[11px] text-dim uppercase tracking-wider" for="ev-edit-repeat">Repeat</label>
               <select
