@@ -25,6 +25,11 @@
     deriveThreadTitle
   } from '$lib/chat/history';
   import { retrieveForRag, type RagHit } from '$lib/chat/rag';
+  import {
+    createSpeechRecognition,
+    isSpeechRecognitionSupported,
+    type SpeechRecognitionLike
+  } from '$lib/util/speechRecognition';
   import SlashCommandPicker from '$lib/components/SlashCommandPicker.svelte';
   import MentionPicker, { type MentionRef } from '$lib/components/MentionPicker.svelte';
   import ChatHistoryRail from '$lib/components/ChatHistoryRail.svelte';
@@ -868,50 +873,30 @@
 
   // ── Voice input ────────────────────────────────────────────────
   // Click the mic, the browser's SpeechRecognition fills the input
-  // as you speak. Same Web Speech API used by the voice-note modal;
-  // graceful fallback when unsupported (Firefox).
-  type RecognitionCtor = new () => SpeechRecognition;
-  interface SpeechRecognition extends EventTarget {
-    continuous: boolean;
-    interimResults: boolean;
-    lang: string;
-    onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => unknown) | null;
-    onerror: ((this: SpeechRecognition, ev: Event) => unknown) | null;
-    onend: ((this: SpeechRecognition, ev: Event) => unknown) | null;
-    start: () => void;
-    stop: () => void;
-    abort: () => void;
-  }
-  interface SpeechRecognitionEvent extends Event {
-    resultIndex: number;
-    results: {
-      length: number;
-      [i: number]: { isFinal: boolean; [j: number]: { transcript: string } };
-    };
-  }
-  function getRecognitionCtor(): RecognitionCtor | null {
-    if (typeof window === 'undefined') return null;
-    const w = window as unknown as { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor };
-    return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-  }
-  let voiceSupported = $derived(typeof window !== 'undefined' && getRecognitionCtor() !== null);
+  // as you speak. Same shared wrapper used by the dashboard's
+  // QuickCaptureWidget — graceful fallback when unsupported
+  // (Firefox desktop). Auto-restart on Chrome's silence-end so a
+  // long thought continues to capture without the user re-clicking.
+  let voiceSupported = $derived(isSpeechRecognitionSupported());
   let recording = $state(false);
-  let recognition: SpeechRecognition | null = null;
+  let recognition: SpeechRecognitionLike | null = null;
   let voiceBaseline = ''; // input value when recording started — finals append to this
 
   function startVoice() {
-    const Ctor = getRecognitionCtor();
-    if (!Ctor || recording) return;
+    if (recording) return;
+    const r = createSpeechRecognition();
+    if (!r) return;
     voiceBaseline = input.endsWith(' ') || input.length === 0 ? input : input + ' ';
-    recognition = new Ctor();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = navigator.language || 'en-US';
-    recognition.onresult = (ev) => {
+    recognition = r;
+    r.continuous = true;
+    r.interimResults = true;
+    r.lang = navigator.language || 'en-US';
+    r.onresult = (ev) => {
       let interim = '';
       let final = '';
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const res = ev.results[i];
+        if (!res || !res[0]) continue;
         const text = res[0].transcript;
         if (res.isFinal) final += text + ' ';
         else interim += text;
@@ -919,8 +904,8 @@
       if (final) voiceBaseline += final;
       input = (voiceBaseline + interim).replace(/\s+/g, ' ').trim();
     };
-    recognition.onerror = () => {};
-    recognition.onend = () => {
+    r.onerror = () => {};
+    r.onend = () => {
       // Chrome auto-ends on silence — restart while we're still
       // in recording mode so a long thought continues.
       if (recording && recognition) {
@@ -928,7 +913,7 @@
       }
     };
     try {
-      recognition.start();
+      r.start();
       recording = true;
     } catch {}
   }
