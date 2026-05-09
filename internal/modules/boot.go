@@ -67,6 +67,7 @@ func baselineDeclarations() []Module {
 		&baselineModule{id: "examen", name: "Daily Examen", desc: "Evening companion to morning routine — Ignatian where-I-saw-God / where-I-missed reflection saved to the daily note", cat: "Spiritual"},
 		&baselineModule{id: "virtues", name: "Virtues", desc: "Character formation tracker — name the virtues you're cultivating, log a weekly self-check during the Sunday review", cat: "Spiritual"},
 		&baselineModule{id: "shopping", name: "Shopping list", desc: "Plan what to buy with categories, prices, links. Standards for recurring needs (groceries, basics). Spend totals roll up to Finance.", cat: "Life"},
+		&baselineModule{id: "books", name: "Books", desc: "EPUB reader. Drop .epub files into <vault>/Books/ and read them in-app — progress, highlights, and bookmarks stay in the vault. Source content from Project Gutenberg, Standard Ebooks, Open Library, or your own DRM-free purchases.", cat: "Knowledge"},
 		&baselineModule{id: "hub", name: "Hub", desc: "Personal launch pad — quick-access links, tools you use, optional non-critical credentials. The 'single login, find everything' page accessible from any device.", cat: "Life"},
 		&baselineModule{id: "jots", name: "Jots", desc: "Daily-note feed and quick entries", cat: "Daily"},
 		&baselineModule{id: "scripture", name: "Scripture", desc: "Verse of the day and devotional notes", cat: "Knowledge"},

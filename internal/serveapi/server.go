@@ -437,6 +437,25 @@ func (s *Server) Handler() http.Handler {
 		r.Patch("/api/v1/shopping/{id}", s.handlePatchShoppingItem)
 		r.Delete("/api/v1/shopping/{id}", s.handleDeleteShoppingItem)
 
+		// Books — EPUB reader. Library lives at <vault>/Books/;
+		// sidecar (progress + highlights + bookmarks) lives at
+		// .granit/books/<id>.json. The asset wildcard captures
+		// chapter-internal hrefs the parser rewrote, so an inline
+		// <img src="images/foo.png"> resolves through the same auth.
+		r.Get("/api/v1/books", s.handleListBooks)
+		r.Get("/api/v1/books/{id}", s.handleGetBook)
+		r.Get("/api/v1/books/{id}/chapter/{idx}", s.handleGetBookChapter)
+		r.Get("/api/v1/books/{id}/cover", s.handleGetBookCover)
+		r.Get("/api/v1/books/{id}/asset/*", s.handleGetBookAsset)
+		r.Get("/api/v1/books/{id}/asset", s.handleGetBookAsset)
+		r.Get("/api/v1/books/{id}/sidecar", s.handleGetBookSidecar)
+		r.Put("/api/v1/books/{id}/progress", s.handlePutBookProgress)
+		r.Post("/api/v1/books/{id}/highlights", s.handleCreateBookHighlight)
+		r.Patch("/api/v1/books/{id}/highlights/{hid}", s.handlePatchBookHighlight)
+		r.Delete("/api/v1/books/{id}/highlights/{hid}", s.handleDeleteBookHighlight)
+		r.Post("/api/v1/books/{id}/bookmarks", s.handleCreateBookBookmark)
+		r.Delete("/api/v1/books/{id}/bookmarks/{bid}", s.handleDeleteBookBookmark)
+
 		r.Get("/api/v1/sync", s.handleSyncStatus)
 		r.Post("/api/v1/sync", s.handleSyncTrigger)
 
