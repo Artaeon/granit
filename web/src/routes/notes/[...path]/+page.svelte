@@ -1133,15 +1133,38 @@
   // because the editor exposes a generic openFind() but not
   // "select this word at first occurrence" — a one-time linear
   // scan is cheaper than rebuilding that surface.
+  //
+  // Whole-word matching is done manually rather than with `\b`
+  // because `\b` is defined as a transition between word and
+  // non-word chars (`[A-Za-z0-9_]`), which mishandles tokens with
+  // apostrophes ("don't" boundaries between `'` and `t`). Manual
+  // adjacent-char check uses our own definition of "letter" so the
+  // tokens the concordance generates round-trip cleanly. Falls
+  // back to substring match if no whole-word hit — better to land
+  // somewhere than nowhere when the needle was a partial.
   function jumpToWord(word: string) {
     if (!body || !word) return;
     const needle = word.toLowerCase();
+    if (!needle) return;
+    const isWordChar = (c: string) => /[a-z0-9]/.test(c);
     const lines = body.split('\n');
+    // Pass 1: whole-word match.
     for (let i = 0; i < lines.length; i++) {
-      // \b around the needle so "story" doesn't match "history".
-      // Re-create per call so the regex picks up the latest word.
-      const re = new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`, 'i');
-      if (re.test(lines[i])) {
+      const line = lines[i].toLowerCase();
+      let pos = 0;
+      while ((pos = line.indexOf(needle, pos)) !== -1) {
+        const before = pos > 0 ? line[pos - 1] : '';
+        const after = pos + needle.length < line.length ? line[pos + needle.length] : '';
+        if (!isWordChar(before) && !isWordChar(after)) {
+          jumpToLine(i + 1);
+          return;
+        }
+        pos += needle.length;
+      }
+    }
+    // Pass 2: substring fallback.
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].toLowerCase().includes(needle)) {
         jumpToLine(i + 1);
         return;
       }
