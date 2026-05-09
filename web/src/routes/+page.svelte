@@ -11,8 +11,15 @@
   // customize-mode and can render. Order matters — these are the slots
   // we want the new widgets to occupy by default.
   const NEW_WIDGETS: { id: string; type: import('$lib/api').DashboardWidgetType; afterId: string; enabled: boolean }[] = [
-    // Vision lands at the very top — anchor for the morning re-read.
-    { id: 'w-vision', type: 'vision', afterId: 'w-greeting', enabled: true },
+    // Today stream sits at the very top after greeting — the
+    // headline "what's happening now + what's next" panel. Merges
+    // today's events, scheduled tasks, due tasks, and deadlines
+    // into one chronological feed plus a tomorrow + day-after
+    // preview. Single source of truth for "shape of today" so the
+    // user doesn't have to triangulate four separate today-* tiles.
+    { id: 'w-today-stream', type: 'today-stream', afterId: 'w-greeting', enabled: true },
+    // Vision lands above the tactics — anchor for the morning re-read.
+    { id: 'w-vision', type: 'vision', afterId: 'w-today-stream', enabled: true },
     // One-thing shows the commitment from the latest weekly review,
     // sitting between vision and today's focus so the week's
     // intention bridges the season's vision and the day's tactics.

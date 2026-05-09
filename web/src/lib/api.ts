@@ -2107,7 +2107,8 @@ export type DashboardWidgetType =
   | 'ai-briefing'
   | 'task-velocity'
   | 'weekly-review-nudge'
-  | 'ai-usage';
+  | 'ai-usage'
+  | 'today-stream';
 
 export interface DashboardWidget {
   id: string;

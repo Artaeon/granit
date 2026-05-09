@@ -40,10 +40,20 @@ function lazy(loader: () => Promise<{ default: Component<any> }>): () => Promise
 
 export const widgetRegistry: WidgetMeta[] = [
   { type: 'greeting', label: 'Greeting', description: 'Date + welcome', span: 2, load: lazy(() => import('./widgets/GreetingWidget.svelte')) },
-  // At-a-glance lives at the very top by default — single span-2 row
-  // of compact daily counts so the user reads "shape of today" before
-  // anything else. Listed second in the registry so it slots above
-  // Vision in fresh dashboards but the user can drag it anywhere.
+  // Today stream — the headline "what's happening now and what's
+  // next" widget. Merges today's events + scheduled tasks + due
+  // tasks + due deadlines into one chronological feed with past
+  // items dimmed, plus a 2-day forward preview. Replaces the need
+  // to mentally combine today-tasks + scheduled-today + calendar-
+  // week. Sits at the top of the registry so it slots above
+  // at-a-glance in fresh dashboards; existing users get it
+  // injected just above their at-a-glance via NEW_WIDGETS in
+  // routes/+page.svelte.
+  { type: 'today-stream', label: 'Today stream', description: 'One chronological feed: events, scheduled tasks, deadlines — plus tomorrow + day-after preview', span: 2, load: lazy(() => import('./widgets/TodayStreamWidget.svelte')) },
+  // At-a-glance — single span-2 row of compact daily counts so the
+  // user reads "shape of today" before anything else. Pairs with
+  // today-stream — they answer "what's the count?" vs "what's the
+  // order?".
   { type: 'at-a-glance', label: 'Today at a glance', description: 'Compact stats: tasks due, overdue, deadlines, prayer, habits', span: 2, load: lazy(() => import('./widgets/AtAGlanceWidget.svelte')) },
   // Vision sits at the top of the registry (and gets injected at the
   // top of new dashboards) because it's the layer the user re-reads
