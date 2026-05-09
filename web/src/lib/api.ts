@@ -917,6 +917,24 @@ export interface BookSidecar {
   bookmarks?: BookBookmark[];
 }
 
+// Discover — one row from the search proxy. The shape is shared
+// across sources so the UI renders a uniform card grid.
+export type BookDiscoverSource = 'gutenberg' | 'standardebooks';
+export interface BookDiscoverResult {
+  source: BookDiscoverSource;
+  externalId: string;
+  title: string;
+  authors?: string[];
+  language?: string;
+  subjects?: string[];
+  publishedYear?: number;
+  downloadUrl: string;
+  coverUrl?: string;
+  externalUrl?: string;
+  license?: string;
+  description?: string;
+}
+
 // People — lightweight CRM. The list response also carries derived
 // upcoming-birthday + stale-count fields so the page hydrates in
 // one round trip.
@@ -1855,6 +1873,26 @@ export const api = {
     const blob = await res.blob();
     return URL.createObjectURL(blob);
   },
+  // Discover — search legal e-book sources (Project Gutenberg +
+  // Standard Ebooks) and import a chosen result into the vault.
+  // The import endpoint streams the EPUB through the backend so:
+  //   1. CORS / auth on the external host is irrelevant
+  //   2. The server can sniff the response and reject non-EPUB
+  //      replies before they hit the user's vault
+  discoverBooks: (q: string, opts: { sources?: BookDiscoverSource[]; limit?: number } = {}) => {
+    const params = new URLSearchParams({ q });
+    if (opts.sources && opts.sources.length > 0) params.set('source', opts.sources.join(','));
+    if (opts.limit) params.set('limit', String(opts.limit));
+    return req<{ results: BookDiscoverResult[]; total: number; q: string }>(
+      `/books/discover/search?${params}`
+    );
+  },
+  importBook: (body: { source: BookDiscoverSource; downloadUrl: string; title?: string }) =>
+    req<BookSummary>('/books/discover/import', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    }),
+
   // Asset fetch — for chapter HTML's rewritten `src=".../asset/..."`
   // refs to resolve through auth. We fetch each asset to a blob and
   // patch the rendered DOM, since <img> can't carry the bearer.

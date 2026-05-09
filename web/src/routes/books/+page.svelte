@@ -142,6 +142,13 @@
           List
         </button>
       </div>
+      <a
+        href="/books/discover"
+        class="text-sm px-3 py-1.5 bg-primary text-on-primary rounded hover:bg-primary/90 flex items-center gap-1"
+        title="Search Project Gutenberg + Standard Ebooks"
+      >
+        + Discover
+      </a>
     {/snippet}
   </PageHeader>
 
