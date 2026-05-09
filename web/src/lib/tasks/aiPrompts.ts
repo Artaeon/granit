@@ -23,9 +23,67 @@ export type PlanItem = {
 
 export type StaleVerdict = {
   taskId: string;
-  decision: 'keep' | 'defer' | 'archive';
+  verdict: 'keep' | 'defer' | 'archive';
   rationale: string;
 };
+
+/**
+ * Stale-task accountability prompt. Reviews tasks the user hasn't
+ * touched in 7+ days and returns one verdict per row — keep / defer
+ * / archive — with a one-sentence rationale. Pushes the model to
+ * archive aggressively rather than be polite (a vague "keep" on
+ * abandoned ideas defeats the point of the review).
+ */
+export function buildStaleVerdictPrompt(
+  candidates: Task[],
+  todayISO: string
+): { system: string; user: string } {
+  const lines = candidates
+    .map((t) => {
+      const ageRef = t.updatedAt ?? t.createdAt ?? '';
+      const ageDays = ageRef
+        ? Math.floor((Date.now() - new Date(ageRef).getTime()) / 86_400_000)
+        : 0;
+      const bits: string[] = [`id:${t.id} — ${t.text}`];
+      bits.push(`untouched ${ageDays}d`);
+      if (t.priority) bits.push(`p${t.priority}`);
+      if (t.dueDate) bits.push(`due ${t.dueDate}`);
+      if (t.notes) bits.push(`notes:"${t.notes.slice(0, 80).replace(/\n/g, ' ')}"`);
+      return bits.join(' · ');
+    })
+    .join('\n');
+  const system =
+    'You are an honest accountability partner reviewing a user\'s neglected tasks. ' +
+    'For each task, return ONE verdict: "keep" (still real, schedule it), "defer" (real but not now — push out), or "archive" (dead weight — drop it). ' +
+    'Hard rules: ' +
+    '(1) Do not be polite. If a task has been ignored for 30+ days with no due date and no priority, it is almost certainly archive material — say so. ' +
+    '(2) "keep" is for tasks where the rationale is "this still matters and the user is avoiding it" — you must say WHY it should be done. ' +
+    '(3) "defer" is for real tasks that aren\'t time-critical right now (e.g. seasonal, blocked on someone else, premature). ' +
+    '(4) "archive" is the default for anything vague, abandoned, or originating in a brainstorm that never went anywhere. ' +
+    '(5) Each rationale is ONE sentence under 16 words. Examples of GOOD rationales: "Mentioned in 3 daily notes but never started — you\'re avoiding the hard conversation."; "Idea from a January brainstorm; nothing else attached. Dead weight."; "Real, but blocked until Q3 budget closes — defer to August." ' +
+    '(6) Output STRICT JSON ONLY, no fences, no preamble. Schema: ' +
+    '{"verdicts":[{"taskId":"<exact id>","verdict":"keep|defer|archive","rationale":"…"}]}.';
+  const user =
+    `Today is ${todayISO}. Review these stale tasks. Use the EXACT taskId values; do not invent IDs.\n\n` +
+    `Stale tasks (${candidates.length}):\n${lines}`;
+  return { system, user };
+}
+
+/**
+ * Validate a streamed verdicts array against the live task list +
+ * the allowed verdict enum. Drops malformed entries silently — the
+ * UI shouldn't render verdicts that no longer correspond to real
+ * tasks or carry an unknown decision.
+ */
+export function validateStaleVerdicts(items: StaleVerdict[], liveTasks: Task[]): StaleVerdict[] {
+  return items.filter(
+    (v) =>
+      v &&
+      typeof v.taskId === 'string' &&
+      (v.verdict === 'keep' || v.verdict === 'defer' || v.verdict === 'archive') &&
+      liveTasks.some((t) => t.id === v.taskId)
+  );
+}
 
 /**
  * Plan-my-day. Picks 3-7 tasks for today bounded by the user's
