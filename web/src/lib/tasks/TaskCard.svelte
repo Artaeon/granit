@@ -3,6 +3,7 @@
   import { api, type Task , todayISO } from '$lib/api';
   import { inlineMd } from '$lib/util/inlineMd';
   import { cleanTaskText } from '$lib/util/taskParse';
+  import { priorityBorderClass, priorityTone } from '$lib/util/priority';
   import { toast } from '$lib/components/toast';
   import SnoozePicker from './SnoozePicker.svelte';
   import { activeTimer, minutesByTaskId, fmtDuration } from '$lib/stores/timer';
@@ -56,18 +57,16 @@
   let snoozePickerOpen = $state(false);
   let snoozePickerAnchor: HTMLElement | undefined = $state();
 
-  function priorityClass(p: number): string {
-    if (p === 1) return 'border-error';
-    if (p === 2) return 'border-warning';
-    if (p === 3) return 'border-info';
-    return 'border-surface1';
-  }
+  const priorityClass = priorityBorderClass;
 
   function priorityBadge(p: number): { label: string; cls: string } | null {
-    if (p === 1) return { label: 'P1', cls: 'bg-error/20 text-error' };
-    if (p === 2) return { label: 'P2', cls: 'bg-warning/20 text-warning' };
-    if (p === 3) return { label: 'P3', cls: 'bg-info/20 text-info' };
-    return null;
+    const tone = priorityTone(p);
+    if (tone === 'dim') return null;
+    const cls =
+      tone === 'error' ? 'bg-error/20 text-error'
+      : tone === 'warning' ? 'bg-warning/20 text-warning'
+      : 'bg-info/20 text-info';
+    return { label: `P${p}`, cls };
   }
 
   // Snooze active = SnoozedUntil exists AND is in the future.

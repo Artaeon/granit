@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, todayISO, type Task } from '$lib/api';
   import { inlineMd } from '$lib/util/inlineMd';
+  import { priorityTextClass } from '$lib/util/priority';
   import { toast } from '$lib/components/toast';
 
   let { task = $bindable(), onChanged }: { task: Task; onChanged?: (t: Task) => void } = $props();
@@ -25,12 +26,7 @@
     }
   }
 
-  function priorityClass(p: number): string {
-    if (p === 1) return 'text-error';
-    if (p === 2) return 'text-warning';
-    if (p === 3) return 'text-info';
-    return 'text-dim';
-  }
+  const priorityClass = priorityTextClass;
 
   // Relative date label + tone for the due-date chip.
   //   today          → primary

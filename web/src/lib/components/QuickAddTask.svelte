@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from '$lib/api';
   import { parseTaskInput } from '$lib/util/taskParse';
+  import { priorityBadgeClass } from '$lib/util/priority';
   import { toast } from '$lib/components/toast';
 
   let {
@@ -19,12 +20,7 @@
 
   let parsed = $derived(parseTaskInput(raw));
 
-  function priorityClass(p: number): string {
-    if (p === 1) return 'bg-error/20 text-error border-error/30';
-    if (p === 2) return 'bg-warning/20 text-warning border-warning/30';
-    if (p === 3) return 'bg-info/20 text-info border-info/30';
-    return '';
-  }
+  const priorityClass = priorityBadgeClass;
 
   async function submit(e?: Event) {
     e?.preventDefault();
