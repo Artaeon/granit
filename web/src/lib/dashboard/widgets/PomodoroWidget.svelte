@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { toast } from '$lib/components/toast';
+  import { loadStored, saveStored } from '$lib/util/storage';
 
   // Pure-client pomodoro. State persists in localStorage so tab reloads
   // pick up where you left off; runs in the foreground only (no service-
@@ -27,20 +28,16 @@
   let tick: ReturnType<typeof setInterval> | undefined;
 
   function save() {
-    const s: Stored = { phase, endsAt, paused };
-    try { localStorage.setItem(STATE_KEY, JSON.stringify(s)); } catch {}
+    saveStored<Stored>(STATE_KEY, { phase, endsAt, paused });
   }
   function load() {
-    try {
-      const v = localStorage.getItem(STATE_KEY);
-      if (!v) return;
-      const s = JSON.parse(v) as Stored;
-      if (s.phase === 'idle' || s.phase === 'work' || s.phase === 'break') {
-        phase = s.phase;
-        endsAt = s.endsAt;
-        paused = s.paused;
-      }
-    } catch {}
+    const s = loadStored<Stored | null>(STATE_KEY, null);
+    if (!s) return;
+    if (s.phase === 'idle' || s.phase === 'work' || s.phase === 'break') {
+      phase = s.phase;
+      endsAt = s.endsAt;
+      paused = s.paused;
+    }
   }
 
   onMount(() => {

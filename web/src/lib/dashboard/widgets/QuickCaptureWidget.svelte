@@ -11,6 +11,7 @@
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { goto } from '$app/navigation';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // Quick capture is the dashboard's "type and forget" surface — three
   // modes (task / jot / note) sharing a single input row, smart
@@ -44,17 +45,11 @@
   // Persist last-used mode so the user's preferred default sticks.
   const MODE_KEY = 'granit.dashboard.qc.mode';
   onMount(() => {
-    if (typeof localStorage !== 'undefined') {
-      const v = localStorage.getItem(MODE_KEY);
-      if (v === 'task' || v === 'jot' || v === 'note') mode = v;
-    }
+    const v = loadStoredString(MODE_KEY, '');
+    if (v === 'task' || v === 'jot' || v === 'note') mode = v;
     void loadDaily();
   });
-  $effect(() => {
-    if (typeof localStorage !== 'undefined') {
-      try { localStorage.setItem(MODE_KEY, mode); } catch {}
-    }
-  });
+  $effect(() => saveStoredString(MODE_KEY, mode));
 
   async function loadDaily() {
     try {

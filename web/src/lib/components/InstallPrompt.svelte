@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // PWA install prompt. Two parallel flows because no single API works
   // everywhere:
@@ -30,11 +31,7 @@
   const DISMISS_KEY = 'granit.install.dismissed';
 
   onMount(() => {
-    try {
-      dismissed = localStorage.getItem(DISMISS_KEY) === '1';
-    } catch {
-      dismissed = false;
-    }
+    dismissed = loadStoredString(DISMISS_KEY, '') === '1';
 
     // Display-mode standalone (or iOS' navigator.standalone) means we're
     // already installed — never show the prompt to a user who's already
@@ -90,7 +87,7 @@
 
   function dismiss() {
     dismissed = true;
-    try { localStorage.setItem(DISMISS_KEY, '1'); } catch {}
+    saveStoredString(DISMISS_KEY, '1');
   }
 
   // What the bottom-corner pill should render — Chromium prompt button,

@@ -30,6 +30,7 @@
 -->
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   let {
     body,
@@ -151,13 +152,10 @@
   // case-insensitively to a real voice on each load — voice list
   // can change between sessions.
   $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      const r = parseFloat(localStorage.getItem(RATE_KEY) ?? '');
-      if (Number.isFinite(r) && r >= 0.5 && r <= 2.5) rate = r;
-      const v = localStorage.getItem(VOICE_KEY);
-      if (v) voiceURI = v;
-    } catch {}
+    const r = parseFloat(loadStoredString(RATE_KEY, ''));
+    if (Number.isFinite(r) && r >= 0.5 && r <= 2.5) rate = r;
+    const v = loadStoredString(VOICE_KEY, '');
+    if (v) voiceURI = v;
   });
 
   function loadVoices() {
@@ -303,7 +301,7 @@
 
   function setRate(v: number) {
     rate = Math.max(0.5, Math.min(2.5, v));
-    try { localStorage.setItem(RATE_KEY, String(rate)); } catch {}
+    saveStoredString(RATE_KEY, String(rate));
     // Apply on next utterance — Chromium needs us to cancel and
     // re-speak from current position to pick up a rate change
     // mid-utterance. Doing so for every slider tick would be
@@ -313,7 +311,7 @@
 
   function setVoice(uri: string) {
     voiceURI = uri;
-    try { localStorage.setItem(VOICE_KEY, uri); } catch {}
+    saveStoredString(VOICE_KEY, uri);
     voicePickerOpen = false;
     // Re-speak from current position with the new voice if active.
     if (playing) {

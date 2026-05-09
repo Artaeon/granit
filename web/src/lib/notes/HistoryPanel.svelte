@@ -26,6 +26,7 @@
   import { req } from '$lib/api';
   import { lineDiff, diffStats, type DiffLine } from '$lib/util/lineDiff';
   import { relativeTime } from '$lib/util/relativeTime';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // Inline relative-time formatter — there's no shared helper yet
   // and the panel only needs five buckets ("just now", N seconds /
@@ -74,14 +75,12 @@
   const VIEW_KEY = 'granit.history.view';
   let view = $state<View>('split');
   onMount(() => {
-    try {
-      const v = localStorage.getItem(VIEW_KEY);
-      if (v === 'split' || v === 'diff') view = v;
-    } catch {}
+    const v = loadStoredString(VIEW_KEY, '');
+    if (v === 'split' || v === 'diff') view = v;
   });
   function setView(v: View) {
     view = v;
-    try { localStorage.setItem(VIEW_KEY, v); } catch {}
+    saveStoredString(VIEW_KEY, v);
   }
   // Diff selectedBody → currentBody: "what changed since this snapshot
   // up to now". Reads naturally with + meaning "added since" and −

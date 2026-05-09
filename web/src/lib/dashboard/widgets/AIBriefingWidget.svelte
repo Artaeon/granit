@@ -3,6 +3,9 @@
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
+  import { loadStored, saveStored } from '$lib/util/storage';
+
+  type Cache = { date: string; markdown: string };
 
   // AIBriefingWidget — fires the daily-briefing AI call when the
   // user clicks "Generate". Shows the markdown response inline
@@ -25,14 +28,10 @@
   // Cache: load on mount if today's briefing was already generated.
   let today = todayISO();
   $effect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const cached = JSON.parse(raw) as { date?: string; markdown?: string };
-      if (cached.date === today && cached.markdown) {
-        markdown = cached.markdown;
-      }
-    } catch {}
+    const cached = loadStored<Partial<Cache> | null>(STORAGE_KEY, null);
+    if (cached && cached.date === today && cached.markdown) {
+      markdown = cached.markdown;
+    }
   });
 
   async function generate() {
@@ -43,9 +42,7 @@
     try {
       const r = await api.aiDailyBriefing(abort.signal);
       markdown = r.markdown;
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ date: today, markdown }));
-      } catch {}
+      saveStored<Cache>(STORAGE_KEY, { date: today, markdown });
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         // User cancelled — leave any prior cached markdown alone
@@ -81,7 +78,7 @@
 
   function regenerate() {
     markdown = '';
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    saveStored<Cache>(STORAGE_KEY, undefined);
     void generate();
   }
 </script>

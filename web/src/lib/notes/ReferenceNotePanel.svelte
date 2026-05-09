@@ -20,6 +20,7 @@
   import { onWsEvent } from '$lib/ws';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { toast } from '$lib/components/toast';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   let {
     currentPath = '',
@@ -78,16 +79,14 @@
   // the panel rather than carry over the old one.
   $effect(() => {
     if (!currentPath) return;
-    try {
-      const saved = localStorage.getItem(refKey(currentPath));
-      if (saved && saved !== currentPath) {
-        void pickReference(saved, /*persist*/ false);
-      } else {
-        activePath = null;
-        activeBody = '';
-        activeTitle = '';
-      }
-    } catch {}
+    const saved = loadStoredString(refKey(currentPath), '');
+    if (saved && saved !== currentPath) {
+      void pickReference(saved, /*persist*/ false);
+    } else {
+      activePath = null;
+      activeBody = '';
+      activeTitle = '';
+    }
   });
 
   // Filtered picker results — basename + title fuzzy contains.
@@ -112,9 +111,7 @@
     if (!path) return;
     activePath = path;
     activeError = '';
-    if (persist && currentPath) {
-      try { localStorage.setItem(refKey(currentPath), path); } catch {}
-    }
+    if (persist && currentPath) saveStoredString(refKey(currentPath), path);
     pickerOpen = false;
     q = '';
     // Cache hit?
@@ -149,9 +146,7 @@
     activeBody = '';
     activeTitle = '';
     activeError = '';
-    if (currentPath) {
-      try { localStorage.removeItem(refKey(currentPath)); } catch {}
-    }
+    if (currentPath) saveStoredString(refKey(currentPath), undefined);
   }
 
   function navigateWikilink(target: string) {

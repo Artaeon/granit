@@ -5,6 +5,7 @@
   import type { AskAIRequest } from '$lib/editor/ask-ai';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { lineDiff } from '$lib/util/lineDiff';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // AskAIDialog — modal that opens when the user fires Mod-Shift-A
   // (or clicks the AI button on the floating toolbar) on a text
@@ -103,16 +104,10 @@
   // a giant prompt doesn't blow the quota.
   const LAST_INSTRUCTION_KEY = 'granit.ai.lastInstruction';
   function loadLastInstruction(): string {
-    if (typeof localStorage === 'undefined') return '';
-    try { return localStorage.getItem(LAST_INSTRUCTION_KEY) ?? ''; } catch { return ''; }
+    return loadStoredString(LAST_INSTRUCTION_KEY, '');
   }
   function saveLastInstruction(s: string): void {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      if (s.length > 0 && s.length < 500) {
-        localStorage.setItem(LAST_INSTRUCTION_KEY, s);
-      }
-    } catch {}
+    if (s.length > 0 && s.length < 500) saveStoredString(LAST_INSTRUCTION_KEY, s);
   }
 
   $effect(() => {
