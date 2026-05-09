@@ -326,6 +326,26 @@
     }
     return event.date ?? '';
   }
+  // Reset a per-occurrence override back to series defaults. The
+  // server side accepts an empty override body at the same key as
+  // a clear; this surfaces it as a one-click action when an event
+  // carries the override_key marker.
+  async function resetOccurrence() {
+    if (!event?.eventId || !event.override_key) return;
+    if (!confirm(`Reset "${event.title}" on this date back to the series defaults?`)) return;
+    busy = true;
+    try {
+      await api.overrideEventOccurrence(event.eventId, event.override_key, {});
+      onChanged?.();
+      open = false;
+      toast.success('Occurrence reset to series defaults');
+    } catch (err) {
+      toast.error('reset failed: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      busy = false;
+    }
+  }
+
   async function skipOccurrence() {
     if (!event?.eventId || !event.rrule) return;
     if (event.type !== 'event') {
@@ -702,6 +722,20 @@
               class="px-3 py-1.5 text-sm bg-warning/15 text-warning rounded hover:bg-warning/25"
               title="Cancel just this occurrence — keep the rest of the series"
             >skip this</button>
+          {/if}
+          {#if event.type === 'event' && event.override_key}
+            <!-- This occurrence has a per-instance override (set via
+                 drag-move or the 'just this' edit scope). One-click
+                 to drop the override and surface the series default
+                 again. Hidden when override_key is empty (plain
+                 occurrence or non-recurring event) so the action
+                 row doesn't grow buttons that wouldn't do anything. -->
+            <button
+              onclick={resetOccurrence}
+              disabled={busy}
+              class="px-3 py-1.5 text-sm bg-info/15 text-info rounded hover:bg-info/25"
+              title="Drop the per-occurrence override and inherit the series defaults"
+            >reset this</button>
           {/if}
           <button onclick={deleteEvent} disabled={busy} class="px-3 py-1.5 text-sm text-error hover:bg-error/10 rounded">
             {event.type === 'event' && event.rrule ? 'delete series' : 'delete'}

@@ -184,6 +184,12 @@ export interface CalendarEvent {
    *  field, surfaced uniformly so the calendar's project-filter
    *  folds events + tasks together. Empty for unlinked rows. */
   project_id?: string;
+  /** Set on a recurring-event occurrence when a per-instance
+   *  override is applied. Carries the canonical key into the
+   *  series' Event.Overrides map so the detail UI can offer a
+   *  'reset this occurrence' action. Empty for plain occurrences
+   *  and non-recurring events. */
+  override_key?: string;
 }
 
 // Mirrors internal/deadlines.Deadline — top-level "this matters by date X"

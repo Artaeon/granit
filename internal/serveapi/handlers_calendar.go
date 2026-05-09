@@ -46,6 +46,13 @@ type calendarEvent struct {
 	// scoped to a project (via tasks.Project), so 'show only events
 	// for project X' filters tasks AND events together.
 	ProjectID string `json:"project_id,omitempty"`
+	// OverrideKey is set on a recurring-event occurrence when the
+	// user has authored a per-instance override (Event.Overrides
+	// map hit). Carries the canonical key into Event.Overrides so
+	// the frontend can offer a 'reset this occurrence' action that
+	// posts an empty override at the same key. Empty for plain
+	// occurrences (no override applied).
+	OverrideKey string `json:"override_key,omitempty"`
 }
 
 // overrideKey is the canonical key shape into Event.Overrides. Mirrors
@@ -234,7 +241,8 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				// the series anchor, not the displayed cell. This
 				// matches the EXDATE key shape exactly (see
 				// isExcluded in ics.go).
-				ovr, hasOvr := ev.Overrides[overrideKey(occ.Start, occ.AllDay)]
+				ovrKey := overrideKey(occ.Start, occ.AllDay)
+				ovr, hasOvr := ev.Overrides[ovrKey]
 				occDate := occ.Start.Format("2006-01-02")
 				if occ.AllDay {
 					if occ.Start.Before(from) || !occ.Start.Before(rangeEndForNative) {
@@ -257,7 +265,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 							occDate = ovr.Date
 						}
 					}
-					events = append(events, calendarEvent{
+					ce := calendarEvent{
 						Type:      "event",
 						Title:     title,
 						Date:      occDate,
@@ -266,7 +274,11 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 						Location:  location,
 						RRule:     ev.RRule,
 						ProjectID: ev.ProjectID,
-					})
+					}
+					if hasOvr {
+						ce.OverrideKey = ovrKey
+					}
+					events = append(events, ce)
 					continue
 				}
 				if occ.Start.Before(from) || !occ.Start.Before(rangeEndForNative) {
@@ -307,6 +319,9 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 					Location:  location,
 					RRule:     ev.RRule,
 					ProjectID: ev.ProjectID,
+				}
+				if hasOvr {
+					ce.OverrideKey = ovrKey
 				}
 				sStr := occStart.Format(time.RFC3339)
 				ce.Start = &sStr
