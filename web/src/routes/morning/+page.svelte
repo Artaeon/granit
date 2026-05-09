@@ -24,6 +24,7 @@
   import { scriptures, scriptureOfTheDay } from '$lib/morning/scriptures';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { classifyAiError } from '$lib/util/aiErrors';
   import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
 
@@ -157,7 +158,7 @@
         pickedHabits = new Set(pickedHabits);
       }
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
+      error = errorMessage(e);
     }
   }
   onMount(() => {
@@ -282,7 +283,7 @@
       pickedIntentions = new Set(pickedIntentions);
       newPrayerText = '';
     } catch (err) {
-      toast.error(`failed: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`failed: ${errorMessage(err)}`);
     } finally {
       addingPrayer = false;
     }
@@ -306,7 +307,7 @@
       const r = await api.chat([{ role: 'user', content: userMsg }]);
       suggestion = r.message.content.trim().replace(/^["'`]+|["'`]+$/g, '').trim();
     } catch (e) {
-      const raw = e instanceof Error ? e.message : String(e);
+      const raw = errorMessage(e);
       const hint = classifyAiError(raw);
       toast.error(hint.headline, { action: hint.cta, details: hint.raw });
     } finally {
@@ -369,7 +370,7 @@
       toast.success('today is locked in');
       goto('/');
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = errorMessage(e);
       error = msg;
       toast.error(`save failed: ${msg}`);
     } finally {

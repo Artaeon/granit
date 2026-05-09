@@ -4,6 +4,7 @@
   import { api, type PrayerIntention, type Project, type Venture, type Goal, type Scripture } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { page } from '$app/stores';
   import PageHeader from '$lib/components/PageHeader.svelte';
 
@@ -56,7 +57,7 @@
       goals = gRes.goals;
       verseToday = sRes;
     } catch (e) {
-      toast.error('failed to load prayer page: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('failed to load prayer page: ' + (errorMessage(e)));
     } finally {
       loading = false;
     }
@@ -209,7 +210,7 @@
       toast.success('intention added');
       await loadAll();
     } catch (err) {
-      toast.error('save failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('save failed: ' + (errorMessage(err)));
     } finally {
       saving = false;
     }
@@ -221,7 +222,7 @@
       await loadAll();
       if (status === 'answered') toast.success('marked as answered 🙏');
     } catch (e) {
-      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('save failed: ' + (errorMessage(e)));
     }
   }
 
@@ -231,7 +232,7 @@
       await api.deletePrayer(p.id);
       intentions = intentions.filter((x) => x.id !== p.id);
     } catch (e) {
-      toast.error('delete failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('delete failed: ' + (errorMessage(e)));
     }
   }
 

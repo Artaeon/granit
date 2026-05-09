@@ -8,6 +8,7 @@
     type SpeechRecognitionLike
   } from '$lib/util/speechRecognition';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { goto } from '$app/navigation';
 
   // Quick capture is the dashboard's "type and forget" surface — three
@@ -95,7 +96,7 @@
       recents = recents.filter((x) => x.id !== r.id);
       toast.success(`undone — ${r.label}`);
     } catch (e) {
-      toast.error('couldn\'t undo: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('couldn\'t undo: ' + (errorMessage(e)));
     }
   }
 
@@ -117,7 +118,7 @@
       await tick();
       inputEl?.focus();
     } catch (err) {
-      toast.error('failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('failed: ' + (errorMessage(err)));
     } finally {
       busy = false;
     }

@@ -12,6 +12,7 @@
   } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { daysUntil } from '$lib/deadlines/util';
   import Skeleton from '$lib/components/Skeleton.svelte';
 
@@ -115,7 +116,7 @@
       // ordering. We trim to the top 12 so the tab stays scannable.
       linkedNotes = allNotes.slice(0, 12);
     } catch (e) {
-      toast.error('failed to load venture: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('failed to load venture: ' + (errorMessage(e)));
     } finally {
       loading = false;
     }
@@ -354,7 +355,7 @@
       venture = updated;
       toast.success(`${venture.name} → ${next}`);
     } catch (err) {
-      toast.error('update failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('update failed: ' + (errorMessage(err)));
     }
   }
 

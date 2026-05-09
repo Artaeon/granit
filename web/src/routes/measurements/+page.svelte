@@ -4,6 +4,7 @@
   import { api, type MeasurementSeries, type MeasurementEntry , todayISO } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import PageHeader from '$lib/components/PageHeader.svelte';
 
   // /measurements is the numeric companion to /habits — habits are
@@ -30,7 +31,7 @@
       series = r.series;
       latest = r.latest;
     } catch (e) {
-      toast.error('failed to load: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('failed to load: ' + (errorMessage(e)));
     } finally {
       loading = false;
     }
@@ -41,7 +42,7 @@
       const r = await api.listMeasurementEntries({ series: id });
       detailEntries = r.entries;
     } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('failed: ' + (errorMessage(e)));
     }
   }
 
@@ -132,7 +133,7 @@
       await load();
       toast.success(editingId ? 'updated' : 'added');
     } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('failed: ' + (errorMessage(e)));
     }
   }
   async function deleteSeries(s: MeasurementSeries) {
@@ -145,7 +146,7 @@
       }
       await load();
     } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('failed: ' + (errorMessage(e)));
     }
   }
 
@@ -167,7 +168,7 @@
       await load();
       if (selectedId === seriesId) await loadDetail(seriesId);
     } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('failed: ' + (errorMessage(e)));
     }
   }
   async function deleteEntry(e: MeasurementEntry) {
@@ -177,7 +178,7 @@
       await load();
       if (selectedId) await loadDetail(selectedId);
     } catch (err) {
-      toast.error('failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('failed: ' + (errorMessage(err)));
     }
   }
 

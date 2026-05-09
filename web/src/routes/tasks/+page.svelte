@@ -6,6 +6,7 @@
   import { api, todayISO, fmtDateISO, type Task, type Project, type Goal, type Deadline } from '$lib/api';
   import { parseTaskInput, smartDate } from '$lib/util/taskParse';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { onWsEvent } from '$lib/ws';
   import TaskCard from '$lib/tasks/TaskCard.svelte';
   import Kanban from '$lib/tasks/Kanban.svelte';
@@ -356,7 +357,7 @@
       await load();
       toast.success(`Pinned: ${t.text.slice(0, 40)}${t.text.length > 40 ? '…' : ''}`);
     } catch (e) {
-      toast.error('Pin failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('Pin failed: ' + (errorMessage(e)));
     }
   }
   function skipPlanItem(taskId: string) {
@@ -384,7 +385,7 @@
         else toast.info('No suggestions returned.');
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       // AbortError surfaces as a DOMException with name "AbortError";
       // when fetch is aborted on Chromium-based engines the message
       // can also be "BodyStreamBuffer was aborted" — match both.
@@ -542,7 +543,7 @@
       aiStaleVerdicts = aiStaleVerdicts.filter((x) => x.taskId !== v.taskId);
       if (v.verdict !== 'keep') await load();
     } catch (e) {
-      toast.error('Apply failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('Apply failed: ' + (errorMessage(e)));
     } finally {
       aiStaleApplyingId = '';
     }
@@ -580,7 +581,7 @@
         else toast.info('No clear deadlines detected.');
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       if (err instanceof DOMException && err.name === 'AbortError') {
         toast.info('Detect cancelled.');
       } else {
@@ -610,7 +611,7 @@
       saveProposals(DEADLINE_KEY, aiDeadlineProposals);
       await load();
     } catch (err) {
-      toast.error('Apply failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('Apply failed: ' + (errorMessage(err)));
     } finally {
       aiDeadlineBusy = false;
     }
@@ -665,7 +666,7 @@
       saveProposals(TRIAGE_KEY, aiTriageProposals);
       await load();
     } catch (err) {
-      toast.error('Apply failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('Apply failed: ' + (errorMessage(err)));
     } finally {
       aiTriageBusy = false;
     }
@@ -723,7 +724,7 @@
       quickAdd = '';
       await load();
     } catch (e) {
-      toast.error('Failed to add task: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('Failed to add task: ' + (errorMessage(e)));
     } finally {
       quickAddBusy = false;
     }

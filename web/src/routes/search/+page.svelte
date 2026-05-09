@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { api, type SearchHit } from '$lib/api';
+  import { errorMessage } from '$lib/util/errorMessage';
 
   // Full-text search page. Renders snippet previews around the
   // matched term with the term highlighted, click-through to the
@@ -119,7 +120,7 @@
       // returned with at least one hit.
       if (results.length > 0) rememberQuery(query);
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      error = errorMessage(err);
       results = [];
     } finally {
       busy = false;

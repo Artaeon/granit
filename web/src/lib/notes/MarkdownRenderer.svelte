@@ -1,6 +1,7 @@
 <script lang="ts">
   import { marked } from 'marked';
   import { api } from '$lib/api';
+  import { errorMessage } from '$lib/util/errorMessage';
 
   let { body, onWikilink }: { body: string; onWikilink?: (target: string) => void } = $props();
 
@@ -406,7 +407,7 @@
       const out = marked.parse(pre, { async: false }) as string;
       return postprocess(out);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = errorMessage(e);
       return (
         `<div class="prose-note__error">` +
         `<p><strong>Preview render failed:</strong> ${escHtml(msg)}</p>` +
@@ -489,7 +490,7 @@
       } catch (err) {
         // Render failure → keep the source visible and surface a
         // small error caption. Better than a silent blank.
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errorMessage(err);
         const errBox = document.createElement('div');
         errBox.className = 'mermaid-error';
         errBox.innerHTML =

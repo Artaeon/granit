@@ -14,6 +14,7 @@
     type Venture
   } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { onWsEvent } from '$lib/ws';
   import Drawer from '$lib/components/Drawer.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
@@ -124,7 +125,7 @@
       projects = pl.projects;
       ventures = vl.ventures;
     } catch (e) {
-      toast.error('load failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('load failed: ' + (errorMessage(e)));
     } finally {
       loading = false;
     }
@@ -467,7 +468,7 @@
       drawerOpen = false;
       await load();
     } catch (e) {
-      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('save failed: ' + (errorMessage(e)));
     } finally {
       busy = false;
     }
@@ -483,7 +484,7 @@
       drawerOpen = false;
       await load();
     } catch (e) {
-      toast.error('delete failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('delete failed: ' + (errorMessage(e)));
     } finally {
       busy = false;
     }
@@ -500,7 +501,7 @@
       toast.success(`✓ ${d.title}`);
       await load();
     } catch (err) {
-      toast.error('mark met failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('mark met failed: ' + (errorMessage(err)));
     }
   }
   async function snooze(d: Deadline, days: number, e: MouseEvent) {
@@ -510,7 +511,7 @@
       toast.success(`snoozed +${days}d`);
       await load();
     } catch (err) {
-      toast.error('snooze failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('snooze failed: ' + (errorMessage(err)));
     }
   }
   async function reopen(d: Deadline, e: MouseEvent) {
@@ -520,7 +521,7 @@
       toast.success('reopened');
       await load();
     } catch (err) {
-      toast.error('reopen failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('reopen failed: ' + (errorMessage(err)));
     }
   }
 

@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import { api, type CalendarEvent, type CalendarSource, type Project , todayISO } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { onMount } from 'svelte';
   import { eventStartDate, eventEndDate, fmtTime, eventTypeColor } from './utils';
 
@@ -273,7 +274,7 @@
           : 'event updated'
       );
     } catch (err) {
-      toast.error('save failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('save failed: ' + (errorMessage(err)));
     } finally {
       busy = false;
     }
@@ -293,7 +294,7 @@
       open = false;
       toast.success('event deleted');
     } catch (err) {
-      toast.error('delete failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('delete failed: ' + (errorMessage(err)));
     } finally {
       busy = false;
     }
@@ -347,7 +348,7 @@
       open = false;
       toast.success('Occurrence reset to series defaults');
     } catch (err) {
-      toast.error('reset failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('reset failed: ' + (errorMessage(err)));
     } finally {
       busy = false;
     }
@@ -369,7 +370,7 @@
       open = false;
       toast.success('Occurrence cancelled · series unchanged');
     } catch (err) {
-      toast.error('skip failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('skip failed: ' + (errorMessage(err)));
     } finally {
       busy = false;
     }
@@ -465,7 +466,7 @@
       goto(`/notes/${encodeURIComponent(path)}`);
       open = false;
     } catch (err) {
-      toast.error('Failed to create meeting note: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('Failed to create meeting note: ' + (errorMessage(err)));
     } finally {
       creatingMeetingNote = false;
     }

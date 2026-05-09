@@ -6,6 +6,7 @@
   import { onWsEvent } from '$lib/ws';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import GoalCreate from '$lib/goals/GoalCreate.svelte';
   import GoalDetail from '$lib/goals/GoalDetail.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
@@ -473,7 +474,7 @@
     } catch (e) {
       aiBusy = false;
       aiAbort = null;
-      aiError = e instanceof Error ? e.message : String(e);
+      aiError = errorMessage(e);
     }
   }
 
@@ -486,7 +487,7 @@
       aiClose();
       await load();
     } catch (err) {
-      toast.error('Add failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('Add failed: ' + (errorMessage(err)));
     }
   }
 
@@ -649,7 +650,7 @@
                 checkinError = 'AI returned no entries.';
               }
             } catch (err) {
-              checkinError = 'Couldn\'t parse check-in: ' + (err instanceof Error ? err.message : String(err));
+              checkinError = 'Couldn\'t parse check-in: ' + (errorMessage(err));
             }
           },
           onError: (err) => {
@@ -663,7 +664,7 @@
     } catch (e) {
       checkinBusy = false;
       checkinAbort = null;
-      checkinError = e instanceof Error ? e.message : String(e);
+      checkinError = errorMessage(e);
     }
   }
 
@@ -695,7 +696,7 @@
       checkinHidden = new Set([...checkinHidden, e.id]);
       toast.success('saved to today\'s jot');
     } catch (err) {
-      toast.error('save failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('save failed: ' + (errorMessage(err)));
     }
   }
   async function checkinSaveAll() {
@@ -709,7 +710,7 @@
       toast.success(`saved ${visible.length} entr${visible.length === 1 ? 'y' : 'ies'} to today's jot`);
       checkinClose();
     } catch (err) {
-      toast.error('save failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('save failed: ' + (errorMessage(err)));
     }
   }
   function checkinDismiss(e: CheckinEntry) {
@@ -859,7 +860,7 @@
                 auditError = 'AI returned no clusters — the work may already be aligned, or the parse failed.';
               }
             } catch (err) {
-              auditError = 'Couldn\'t parse audit: ' + (err instanceof Error ? err.message : String(err));
+              auditError = 'Couldn\'t parse audit: ' + (errorMessage(err));
             }
           },
           onError: (err) => {
@@ -873,7 +874,7 @@
     } catch (e) {
       auditBusy = false;
       auditAbort = null;
-      auditError = e instanceof Error ? e.message : String(e);
+      auditError = errorMessage(e);
     }
   }
 

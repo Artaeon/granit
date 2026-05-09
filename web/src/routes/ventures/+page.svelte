@@ -4,6 +4,7 @@
   import { api, type Venture } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
 
@@ -81,7 +82,7 @@
       const r = await api.listVentures();
       ventures = r.ventures;
     } catch (e) {
-      toast.error('failed to load ventures: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('failed to load ventures: ' + (errorMessage(e)));
     } finally {
       loading = false;
     }
@@ -213,7 +214,7 @@
       toast.success(`venture "${v.name}" created`);
       await load();
     } catch (err) {
-      toast.error('create failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('create failed: ' + (errorMessage(err)));
     } finally {
       saving = false;
     }
@@ -229,7 +230,7 @@
       ventures = ventures.map((x) => (x.name === v.name ? { ...x, status } : x));
       toast.success(`${v.name} → ${status}`);
     } catch (err) {
-      toast.error('update failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('update failed: ' + (errorMessage(err)));
     }
   }
 </script>

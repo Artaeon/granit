@@ -2,6 +2,7 @@
   import { api, todayISO } from '$lib/api';
   import { onMount } from 'svelte';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { invalidateTitleCache } from '$lib/editor/wikilinks';
   import VoiceNoteModal from '$lib/components/VoiceNoteModal.svelte';
 
@@ -118,7 +119,7 @@
       invalidateTitleCache();
       hide();
     } catch (err) {
-      toast.error('capture failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('capture failed: ' + (errorMessage(err)));
     } finally {
       saving = false;
     }

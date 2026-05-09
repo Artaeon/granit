@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, buildRRULE, type CalendarSource, type ICSRecurrenceFreq } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { fmtDateISO } from './utils';
 
   // Unified create modal — task or event — invoked from drag-to-create on
@@ -278,7 +279,7 @@
       await onCreated();
       toast.success(kind === 'task' ? 'task scheduled' : 'event created');
     } catch (err) {
-      toast.error('save failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('save failed: ' + (errorMessage(err)));
     } finally {
       saving = false;
     }

@@ -22,6 +22,7 @@
    */
   import { onMount } from 'svelte';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { req } from '$lib/api';
   import { lineDiff, diffStats, type DiffLine } from '$lib/util/lineDiff';
   import { relativeTime } from '$lib/util/relativeTime';
@@ -119,8 +120,8 @@
       if (versions.length > 0) {
         await selectVersion(versions[0].timestamp);
       }
-    } catch (err: any) {
-      loadError = err?.message || 'failed to load history';
+    } catch (err) {
+      loadError = err instanceof Error ? err.message : 'failed to load history';
     } finally {
       loading = false;
     }
@@ -135,8 +136,8 @@
         `/history-version/${notePath}?ts=${encodeURIComponent(ts)}`
       );
       selectedBody = data.body ?? '';
-    } catch (err: any) {
-      toast.error(`Couldn't load version: ${err?.message || err}`);
+    } catch (err) {
+      toast.error(`Couldn't load version: ${errorMessage(err)}`);
     } finally {
       bodyLoading = false;
     }
@@ -157,8 +158,8 @@
       toast.success('Restored. Pre-restore content is in history.');
       onRestore?.(newBody);
       await loadVersions();
-    } catch (err: any) {
-      toast.error(`Restore failed: ${err?.message || err}`);
+    } catch (err) {
+      toast.error(`Restore failed: ${errorMessage(err)}`);
     } finally {
       restoring = false;
     }

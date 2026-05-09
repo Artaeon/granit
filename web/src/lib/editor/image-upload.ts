@@ -117,7 +117,7 @@ async function handleFiles(view: EditorView, files: File[]) {
       replacePlaceholder(view, placeholders[i],
         renderMarkdown(res.path, res.contentType, file.name));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       replacePlaceholder(view, placeholders[i], `[upload failed: ${msg}]`);
     }
   }));

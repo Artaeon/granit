@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, fmtDateISO, type Goal, type Milestone, type Task } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import Drawer from '$lib/components/Drawer.svelte';
   import { inlineMd } from '$lib/util/inlineMd';
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
@@ -168,7 +169,7 @@
         .slice(0, 5);
     } catch (err) {
       if (!aiMilestoneError) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errorMessage(err);
         aiMilestoneError = `Couldn't parse suggestions: ${msg}`;
       }
     } finally {
@@ -184,7 +185,7 @@
       aiMilestoneProposals = aiMilestoneProposals.filter((x) => x !== p);
       await onUpdated();
     } catch (e) {
-      toast.error('add failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('add failed: ' + (errorMessage(e)));
     }
   }
   function skipMilestone(p: MilestoneProposal) {
@@ -298,7 +299,7 @@
       }
     } catch (err) {
       if (!aiTaskError) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errorMessage(err);
         aiTaskError = `Couldn't parse tasks: ${msg}`;
       }
     } finally {
@@ -327,7 +328,7 @@
       await onUpdated();
       toast.success('task added');
     } catch (e) {
-      toast.error('add task failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('add task failed: ' + (errorMessage(e)));
     }
   }
   function skipTaskProposal(p: TaskProposal) {
@@ -352,7 +353,7 @@
       await onUpdated();
       return true;
     } catch (e) {
-      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('save failed: ' + (errorMessage(e)));
       return false;
     } finally {
       saving = false;
@@ -396,7 +397,7 @@
       newMilestoneDue = '';
       await onUpdated();
     } catch (e) {
-      toast.error('add milestone failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('add milestone failed: ' + (errorMessage(e)));
     } finally {
       saving = false;
     }
@@ -408,7 +409,7 @@
       await api.patchGoalMilestone(goal.id, idx, { done: !m.done });
       await onUpdated();
     } catch (e) {
-      toast.error('toggle failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('toggle failed: ' + (errorMessage(e)));
     }
   }
 
@@ -429,7 +430,7 @@
       });
       await onUpdated();
     } catch (e) {
-      toast.error('edit failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('edit failed: ' + (errorMessage(e)));
     }
   }
 
@@ -440,7 +441,7 @@
       await api.deleteGoalMilestone(goal.id, idx);
       await onUpdated();
     } catch (e) {
-      toast.error('delete milestone failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('delete milestone failed: ' + (errorMessage(e)));
     }
   }
 
@@ -454,7 +455,7 @@
       await onUpdated();
       toast.success('review logged');
     } catch (e) {
-      toast.error('log review failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('log review failed: ' + (errorMessage(e)));
     } finally {
       saving = false;
     }
@@ -468,7 +469,7 @@
       open = false;
       await onDeleted(goal.id);
     } catch (e) {
-      toast.error('delete failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('delete failed: ' + (errorMessage(e)));
     }
   }
 

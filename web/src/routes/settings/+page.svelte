@@ -9,6 +9,7 @@
   import RecurringEditor from '$lib/components/RecurringEditor.svelte';
   import { modulesStore } from '$lib/stores/modules';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { relativeTime } from '$lib/util/relativeTime';
 
   // Curated OpenAI model picker — refreshed against
@@ -62,7 +63,7 @@
     try {
       appCfg = await api.patchConfig(patch);
     } catch (e) {
-      pwError = e instanceof Error ? e.message : String(e);
+      pwError = errorMessage(e);
     } finally {
       configBusy = false;
     }
@@ -115,7 +116,7 @@
       await api.createCalendar({ name: name.trim() });
       await loadCalSources();
     } catch (e) {
-      pwError = e instanceof Error ? e.message : String(e);
+      pwError = errorMessage(e);
     } finally {
       calBusy = false;
     }
@@ -173,7 +174,7 @@
         } catch {}
       }, 1500);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = errorMessage(e);
       toast.error('sync failed: ' + msg);
     } finally {
       syncBusy = false;
@@ -186,7 +187,7 @@
       await api.revokeDevice(id);
       devices = devices.filter((d) => d.id !== id);
     } catch (e) {
-      pwError = e instanceof Error ? e.message : String(e);
+      pwError = errorMessage(e);
     } finally {
       revokeBusy = null;
     }
@@ -215,7 +216,7 @@
       // local auth so the user routes back to login.
       setTimeout(() => { auth.clear(); }, 1500);
     } catch (e) {
-      pwError = e instanceof Error ? e.message : String(e);
+      pwError = errorMessage(e);
     } finally {
       pwBusy = false;
     }
@@ -227,7 +228,7 @@
       await api.authRevokeAll();
       auth.clear();
     } catch (e) {
-      pwError = e instanceof Error ? e.message : String(e);
+      pwError = errorMessage(e);
     }
   }
   onMount(() => {
@@ -398,7 +399,7 @@
         await api.putAIPrefs(aiPrefs);
       } catch (err) {
         const t = await import('$lib/components/toast');
-        t.toast.error('Save failed: ' + (err instanceof Error ? err.message : String(err)));
+        t.toast.error('Save failed: ' + (errorMessage(err)));
       }
     }, 400);
   }
@@ -426,7 +427,7 @@
       t.toast.success('AI history cleared');
     } catch (err) {
       const t = await import('$lib/components/toast');
-      t.toast.error('Clear failed: ' + (err instanceof Error ? err.message : String(err)));
+      t.toast.error('Clear failed: ' + (errorMessage(err)));
     }
   }
   async function loadAISnapshot() {
@@ -434,7 +435,7 @@
       const r = await api.getAISnapshot();
       aiSnapshotJSON = JSON.stringify(r.snapshot, null, 2);
     } catch (err) {
-      aiSnapshotJSON = `// Failed to load snapshot: ${err instanceof Error ? err.message : String(err)}`;
+      aiSnapshotJSON = `// Failed to load snapshot: ${errorMessage(err)}`;
     }
   }
 
@@ -469,7 +470,7 @@
         await api.putNotificationPrefs(prefs);
       } catch (err) {
         const t = await import('$lib/components/toast');
-        t.toast.error('Save failed: ' + (err instanceof Error ? err.message : String(err)));
+        t.toast.error('Save failed: ' + (errorMessage(err)));
       }
     }, 400);
   }
@@ -504,7 +505,7 @@
       const m = await import('$lib/notifications');
       pushStatus = await m.subscribe();
     } catch (err) {
-      const m = err instanceof Error ? err.message : String(err);
+      const m = errorMessage(err);
       const t = await import('$lib/components/toast');
       t.toast.error('Subscribe failed: ' + m);
     } finally {
@@ -520,7 +521,7 @@
       const t = await import('$lib/components/toast');
       t.toast.success('Notifications paused');
     } catch (err) {
-      const m = err instanceof Error ? err.message : String(err);
+      const m = errorMessage(err);
       const t = await import('$lib/components/toast');
       t.toast.error('Pause failed: ' + m);
     } finally {
@@ -536,7 +537,7 @@
       const t = await import('$lib/components/toast');
       t.toast.success('Notifications resumed');
     } catch (err) {
-      const m = err instanceof Error ? err.message : String(err);
+      const m = errorMessage(err);
       const t = await import('$lib/components/toast');
       t.toast.error('Resume failed: ' + m);
     } finally {
@@ -550,7 +551,7 @@
       await m.unsubscribe();
       pushStatus = await m.getStatus();
     } catch (err) {
-      const m = err instanceof Error ? err.message : String(err);
+      const m = errorMessage(err);
       const t = await import('$lib/components/toast');
       t.toast.error('Unsubscribe failed: ' + m);
     } finally {
@@ -566,7 +567,7 @@
       if (r.sent > 0) t.toast.success(`Test sent to ${r.sent} device${r.sent === 1 ? '' : 's'}`);
       else t.toast.warning('No devices subscribed.');
     } catch (err) {
-      const e = err instanceof Error ? err.message : String(err);
+      const e = errorMessage(err);
       const t = await import('$lib/components/toast');
       t.toast.error('Test failed: ' + e);
     } finally {
@@ -623,7 +624,7 @@
       await modulesStore.set(patch);
       toast.success('Modules updated');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(errorMessage(e));
       // Roll back the optimistic store state so checkboxes match
       // server truth on the next render tick.
       void modulesStore.refresh();

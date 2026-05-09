@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api, type CalendarEvent, type Project } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
 
   let {
     open = $bindable(false),
@@ -248,7 +249,7 @@
       await onCreated();
       toast.success('event created');
     } catch (err) {
-      toast.error('create failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('create failed: ' + (errorMessage(err)));
     } finally {
       saving = false;
     }

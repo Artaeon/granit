@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type AgentPreset } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { classifyAiError } from '$lib/util/aiErrors';
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
   import PlanMyDayDrawer from '$lib/calendar/PlanMyDayDrawer.svelte';
@@ -70,7 +71,7 @@
       // also see provider errors here. Route through the classifier
       // so missing-key / refused-dial / model-not-found all produce
       // an actionable toast pointing at /settings.
-      const raw = e instanceof Error ? e.message : String(e);
+      const raw = errorMessage(e);
       console.error('[DailyQuickAdd] openPreset failed:', raw);
       const hint = classifyAiError(raw);
       toast.error(hint.headline, { action: hint.cta, details: hint.raw });
@@ -130,7 +131,7 @@
       await onAdded();
       toast.success(kind === 'task' ? 'task added' : 'event added');
     } catch (err) {
-      toast.error('failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('failed: ' + (errorMessage(err)));
     } finally {
       busy = false;
     }

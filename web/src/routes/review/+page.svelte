@@ -5,6 +5,7 @@
   import { api, type Vision, type Note, type AgentPreset } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
@@ -231,7 +232,7 @@
       lastSavedAt = new Date().toISOString();
       toast.success('review saved');
     } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('failed: ' + (errorMessage(e)));
     } finally {
       busy = false;
     }
@@ -287,7 +288,7 @@
       if (err instanceof DOMException && err.name === 'AbortError') {
         toast.info('Draft cancelled.');
       } else {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errorMessage(err);
         aiQuickError = /disabled in AI preferences/i.test(msg)
           ? 'Enable "Weekly review" in Settings → AI features first.'
           : msg;
@@ -343,7 +344,7 @@
       aiGoal = lines.join('\n');
       aiOpen = true;
     } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('failed: ' + (errorMessage(e)));
     } finally {
       aiBusy = false;
     }

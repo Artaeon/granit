@@ -4,6 +4,7 @@
   import { api, type CalendarEvent, type CalendarFeed, type CalendarSource, type HabitInfo, type Project, type Task } from '$lib/api';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import {
     addDays,
     endOfWeek,
@@ -221,7 +222,7 @@
       calSources = calSources.map((s) =>
         s.id === targetId ? { ...s, enabled: wasEnabled } : s
       );
-      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('save failed: ' + (errorMessage(e)));
     } finally {
       savingSources = false;
     }
@@ -393,7 +394,7 @@
       toast.success('event created');
       await load();
     } catch (err) {
-      toast.error('create failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('create failed: ' + (errorMessage(err)));
     } finally {
       quickBusy = false;
     }
@@ -522,7 +523,7 @@
       await load();
       toast.success(`Rescheduled to ${fmt(newStart)}`);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = errorMessage(e);
       toast.error('Reschedule failed: ' + msg);
     }
   }
@@ -535,7 +536,7 @@
       await load();
       toast.success('scheduled');
     } catch (e) {
-      toast.error('schedule failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('schedule failed: ' + (errorMessage(e)));
     }
   }
   // Move dispatch — receives the full event + new start Date and
@@ -686,7 +687,7 @@
       await load();
       toast.success(`Moved to ${fmt(newStart)}`);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = errorMessage(e);
       toast.error('Move failed: ' + msg);
     }
   }
@@ -780,7 +781,7 @@
       // of watching the bar snap back silently. Mirrors moveEvent's
       // error path — every drag gesture should give clear feedback
       // on outcome.
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = errorMessage(e);
       toast.error('Resize failed: ' + msg);
     }
   }
@@ -953,7 +954,7 @@
       const r = await api.listTasks({ status: 'open' });
       openTasks = r.tasks ?? [];
     } catch (e) {
-      aiError = 'Could not load tasks: ' + (e instanceof Error ? e.message : String(e));
+      aiError = 'Could not load tasks: ' + (errorMessage(e));
       aiBusy = false;
       aiAbort = null;
       return;

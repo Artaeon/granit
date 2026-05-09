@@ -7,6 +7,7 @@
   import { sabbath } from '$lib/stores/sabbath';
   import { aiOverlayOpen, takeAIOverlaySeed } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import {
     AGENT_MODES,
@@ -639,7 +640,7 @@
       if (err instanceof DOMException && err.name === 'AbortError') {
         quickResult = '_cancelled_';
       } else {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errorMessage(err);
         quickResult = /disabled in AI preferences/i.test(msg)
           ? `_${msg}_  \n\n[Open settings →](/settings)`
           : `_failed:_ ${msg}`;
@@ -989,7 +990,7 @@
       });
       toast.success('Saved · ' + path);
     } catch (e) {
-      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('save failed: ' + (errorMessage(e)));
     } finally {
       saving = false;
     }

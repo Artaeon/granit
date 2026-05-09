@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api , todayISO } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
 
   // AIBriefingWidget — fires the daily-briefing AI call when the
@@ -52,7 +53,7 @@
         // a scary error banner.
         error = '';
       } else {
-        error = err instanceof Error ? err.message : String(err);
+        error = errorMessage(err);
       }
     } finally {
       busy = false;
@@ -74,7 +75,7 @@
       savedToToday = true;
       toast.success('Saved to today\'s daily');
     } catch (err) {
-      toast.error('Save failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('Save failed: ' + (errorMessage(err)));
     }
   }
 

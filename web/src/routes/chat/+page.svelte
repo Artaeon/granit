@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { api, type ChatMessage , todayISO } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { classifyAiError } from '$lib/util/aiErrors';
   import PageHeader from '$lib/components/PageHeader.svelte';
 
@@ -63,7 +64,7 @@
       // the input so they can retry without re-typing. The classifier
       // turns raw "ollama: 404 …" noise into a one-line headline plus
       // an Open-Settings CTA; raw is still available behind "details".
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       console.error('[chat] send failed:', msg);
       const hint = classifyAiError(msg);
       toast.error(hint.headline, { action: hint.cta, details: hint.raw });
@@ -97,7 +98,7 @@
       await api.createNote({ path, body });
       toast.success(`saved to ${path}`);
     } catch (e) {
-      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('save failed: ' + (errorMessage(e)));
     }
   }
 

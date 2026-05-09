@@ -4,6 +4,7 @@
   import { api, type ShoppingItem, type ShoppingTotals } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
 
   // /shopping — three-view page over a single Item collection:
   //   Plan: status=planned items, grouped by category (the active
@@ -95,7 +96,7 @@
       items = r.items;
       totals = t;
     } catch (e) {
-      toast.error('failed to load shopping: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('failed to load shopping: ' + (errorMessage(e)));
     } finally {
       loading = false;
     }
@@ -196,7 +197,7 @@
       resetCreate();
       await load();
     } catch (err) {
-      toast.error('add failed: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error('add failed: ' + (errorMessage(err)));
     } finally {
       saving = false;
     }
@@ -211,7 +212,7 @@
       // Refresh totals — the rollup may have changed.
       totals = await api.shoppingTotals().catch(() => totals);
     } catch (e) {
-      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('save failed: ' + (errorMessage(e)));
     }
   }
 
@@ -220,7 +221,7 @@
       const updated = await api.patchShoppingItem(it.id, { standard: !it.standard });
       items = items.map((x) => (x.id === it.id ? updated : x));
     } catch (e) {
-      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('save failed: ' + (errorMessage(e)));
     }
   }
 
@@ -231,7 +232,7 @@
       items = items.filter((x) => x.id !== it.id);
       totals = await api.shoppingTotals().catch(() => totals);
     } catch (e) {
-      toast.error('delete failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('delete failed: ' + (errorMessage(e)));
     }
   }
 
@@ -275,7 +276,7 @@
       editingId = null;
       totals = await api.shoppingTotals().catch(() => totals);
     } catch (e) {
-      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('save failed: ' + (errorMessage(e)));
     }
   }
 
