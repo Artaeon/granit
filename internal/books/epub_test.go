@@ -3,9 +3,11 @@ package books
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -337,5 +339,77 @@ func TestSidecarRoundTrip(t *testing.T) {
 	sc, _ = LoadSidecar(dir, "test-book")
 	if sc.Progress.FurthestChapter != 3 {
 		t.Errorf("furthest regressed: %d", sc.Progress.FurthestChapter)
+	}
+}
+
+func TestSidecarConcurrentHighlightsAllPersist(t *testing.T) {
+	// Same race fix as the annotations package — AddHighlight does
+	// LoadSidecar → mutate → SaveSidecar. Without sidecarMu, two
+	// rapid highlights could both read the pre-write state and the
+	// second writer's commit clobbers the first.
+	//
+	// User-visible scenario: a fast reader selecting passage after
+	// passage in quick succession; the 2 s scroll-progress saver
+	// firing concurrently with a highlight add.
+	dir := t.TempDir()
+	const N = 30
+	var wg sync.WaitGroup
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			_, err := AddHighlight(dir, "race-book", Highlight{
+				ChapterIdx: 0,
+				Text:       fmt.Sprintf("passage-%d", idx),
+				Color:      "yellow",
+			})
+			if err != nil {
+				t.Errorf("highlight %d failed: %v", idx, err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	sc, err := LoadSidecar(dir, "race-book")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sc.Highlights) != N {
+		t.Errorf("expected %d highlights to persist; got %d (lost writes)", N, len(sc.Highlights))
+	}
+}
+
+func TestSidecarConcurrentProgressAndHighlights(t *testing.T) {
+	// Mixed-mode race: scroll-progress saver fires interleaved with
+	// highlight adds. Both touch the same sidecar file. The lock
+	// covers both code paths so a progress save mid-highlight-add
+	// can't lose the highlight (or vice-versa).
+	dir := t.TempDir()
+	var wg sync.WaitGroup
+	const N = 20
+	wg.Add(N * 2)
+	for i := 0; i < N; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			_, _ = AddHighlight(dir, "mix-book", Highlight{
+				ChapterIdx: idx % 5,
+				Text:       fmt.Sprintf("passage-%d", idx),
+				Color:      "blue",
+			})
+		}(i)
+		go func(idx int) {
+			defer wg.Done()
+			_ = SaveProgress(dir, "mix-book", Progress{
+				ChapterIdx:     idx % 5,
+				ScrollFraction: float64(idx) / float64(N),
+			})
+		}(i)
+	}
+	wg.Wait()
+	sc, err := LoadSidecar(dir, "mix-book")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sc.Highlights) != N {
+		t.Errorf("expected %d highlights to survive concurrent progress saves; got %d", N, len(sc.Highlights))
 	}
 }

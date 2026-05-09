@@ -7,11 +7,29 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/artaeon/granit/internal/atomicio"
 	"github.com/oklog/ulid/v2"
 )
+
+// sidecarMu — one mutex guards the per-book sidecar functions
+// (AddHighlight / PatchHighlight / DeleteHighlight / SaveProgress
+// / AddBookmark / DeleteBookmark) against the same read-modify-
+// write race fixed in internal/annotations. The progress-save
+// fires on a 2 s scroll throttle while the user is reading, and
+// a highlight-add can land mid-flight; without the lock the
+// second writer's pre-modify read misses the first writer's
+// commit and loses an entry. A single global mutex is
+// over-coarse (each book has its own file) but the contention
+// floor is "one user, one book at a time", so the coarse lock
+// has zero observable cost and saves a per-bookID map of mutexes.
+//
+// Read-only paths (LoadSidecar) skip the lock — atomicio.WriteState
+// is OS-atomic at the rename, so readers see only pre- or post-
+// write state, never a torn one.
+var sidecarMu sync.Mutex
 
 // Sidecar holds per-book state that lives outside the EPUB:
 // reading progress + the user's highlights + bookmarks. One JSON
@@ -136,6 +154,8 @@ func SaveSidecar(vaultRoot string, s *Sidecar) error {
 // an id + timestamps) and saves. Returns the inserted highlight so
 // the caller can echo the assigned id back to the client.
 func AddHighlight(vaultRoot, bookID string, h Highlight) (Highlight, error) {
+	sidecarMu.Lock()
+	defer sidecarMu.Unlock()
 	s, err := LoadSidecar(vaultRoot, bookID)
 	if err != nil {
 		return Highlight{}, err
@@ -164,6 +184,8 @@ func AddHighlight(vaultRoot, bookID string, h Highlight) (Highlight, error) {
 // PatchHighlight updates the note / color of an existing highlight
 // in place. Returns ErrNotFound if the highlight id doesn't match.
 func PatchHighlight(vaultRoot, bookID, hid string, note, color string) (Highlight, error) {
+	sidecarMu.Lock()
+	defer sidecarMu.Unlock()
 	s, err := LoadSidecar(vaultRoot, bookID)
 	if err != nil {
 		return Highlight{}, err
@@ -190,6 +212,8 @@ func PatchHighlight(vaultRoot, bookID, hid string, note, color string) (Highligh
 // if the id doesn't match — the client's intent ("this highlight
 // shouldn't be here") is satisfied either way.
 func DeleteHighlight(vaultRoot, bookID, hid string) error {
+	sidecarMu.Lock()
+	defer sidecarMu.Unlock()
 	s, err := LoadSidecar(vaultRoot, bookID)
 	if err != nil {
 		return err
@@ -206,6 +230,8 @@ func DeleteHighlight(vaultRoot, bookID, hid string) error {
 
 // AddBookmark inserts a bookmark and saves.
 func AddBookmark(vaultRoot, bookID string, b Bookmark) (Bookmark, error) {
+	sidecarMu.Lock()
+	defer sidecarMu.Unlock()
 	s, err := LoadSidecar(vaultRoot, bookID)
 	if err != nil {
 		return Bookmark{}, err
@@ -225,6 +251,8 @@ func AddBookmark(vaultRoot, bookID string, b Bookmark) (Bookmark, error) {
 
 // DeleteBookmark removes by id (idempotent).
 func DeleteBookmark(vaultRoot, bookID, bid string) error {
+	sidecarMu.Lock()
+	defer sidecarMu.Unlock()
 	s, err := LoadSidecar(vaultRoot, bookID)
 	if err != nil {
 		return err
@@ -243,6 +271,8 @@ func DeleteBookmark(vaultRoot, bookID, bid string) error {
 // + bookmarks untouched. Called on a 2 s throttle while reading.
 // Updates FurthestChapter monotonically.
 func SaveProgress(vaultRoot, bookID string, p Progress) error {
+	sidecarMu.Lock()
+	defer sidecarMu.Unlock()
 	s, err := LoadSidecar(vaultRoot, bookID)
 	if err != nil {
 		return err
