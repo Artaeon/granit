@@ -103,9 +103,14 @@
     const rows: StreamRow[] = [];
     const cutoff = nowHHMM();
 
-    // Events for today (timed + all-day)
+    // Events for today (timed + all-day). The calendar feed ALSO
+    // emits tasks (type: 'task_due' / 'task_scheduled') as event-
+    // shaped rows for the calendar grid — we skip them here because
+    // the tasks loop below adds them with the proper /tasks href, so
+    // a click opens the task detail instead of /calendar.
     for (const e of events) {
       if (eventDateKey(e) !== today) continue;
+      if (e.type !== 'event' && e.type !== 'ics_event') continue;
       const t = timeOf(e);
       rows.push({
         time: t,

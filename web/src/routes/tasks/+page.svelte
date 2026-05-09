@@ -748,6 +748,24 @@
     ctxY = y;
   }
 
+  // Deep-link `?focus=<task-id>` opens the detail drawer for that
+  // task on load. The dashboard's TodayStream widget links here so
+  // a click on a scheduled / due task lands directly on its detail
+  // instead of the user having to scroll-and-find. Only fires once
+  // per change in the URL+task-list pairing — without that guard a
+  // re-rendered tasks list would re-open the drawer every load.
+  let lastFocusedFromUrl = $state<string | null>(null);
+  $effect(() => {
+    const focusId = $page.url.searchParams.get('focus');
+    if (!focusId || tasks.length === 0) return;
+    if (focusId === lastFocusedFromUrl) return;
+    const t = tasks.find((x) => x.id === focusId);
+    if (t) {
+      openDetail(t);
+      lastFocusedFromUrl = focusId;
+    }
+  });
+
   $effect(() => {
     if (typeof localStorage === 'undefined') return;
     try {
