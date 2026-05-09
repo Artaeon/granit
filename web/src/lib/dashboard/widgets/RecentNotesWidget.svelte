@@ -3,6 +3,7 @@
   import { api, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { createCoalescedReload } from '$lib/util/coalesce';
+  import { relativeTime } from '$lib/util/relativeTime';
 
   // Recent notes with a one-line excerpt + tag chips, ordered by
   // mod-time. The original widget showed title + date only; that
@@ -38,20 +39,9 @@
   });
   onDestroy(reload.cancel);
 
-  // Relative date — feels warmer than "Apr 12" when the user is
-  // looking at "what did I touch yesterday".
-  function fmtRelative(iso: string): string {
-    const then = new Date(iso).getTime();
-    const now = Date.now();
-    const min = Math.round((now - then) / 60_000);
-    if (min < 1) return 'just now';
-    if (min < 60) return `${min}m ago`;
-    const h = Math.round(min / 60);
-    if (h < 24) return `${h}h ago`;
-    const d = Math.round(h / 24);
-    if (d < 7) return `${d}d ago`;
-    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  }
+  // Falls back to a calendar date after a week — past that, "9d ago"
+  // reads less well than "Apr 12".
+  const fmtRelative = (iso: string) => relativeTime(iso, { dateThresholdDays: 7 });
 
   // Excerpt — first non-empty line of the body that isn't a heading,
   // frontmatter, or callout marker. Listing notes don't carry the

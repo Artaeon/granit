@@ -3,6 +3,7 @@
   import { api, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { createCoalescedReload } from '$lib/util/coalesce';
+  import { relativeTime } from '$lib/util/relativeTime';
   import { pinnedNotes, ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
 
   // Pinned notes with folder breadcrumb + relative-time tag.
@@ -59,17 +60,10 @@
     return out;
   });
 
-  function relTime(iso: string | null): string {
-    if (!iso) return '';
-    const t = new Date(iso).getTime();
-    const min = Math.round((Date.now() - t) / 60_000);
-    if (min < 60) return `${min}m`;
-    const h = Math.round(min / 60);
-    if (h < 24) return `${h}h`;
-    const d = Math.round(h / 24);
-    if (d < 7) return `${d}d`;
-    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  }
+  // Compact "5m / 2h / 3d" labels with calendar fallback after a
+  // week. The widget header is dense; full "ago" suffix would crowd.
+  const relTime = (iso: string | null) =>
+    relativeTime(iso, { compact: true, dateThresholdDays: 7 });
 </script>
 
 <section class="bg-surface0 border border-surface1 rounded-lg p-4">
