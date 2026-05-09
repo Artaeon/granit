@@ -17,22 +17,17 @@
     persistModeId
   } from '$lib/ai/agents';
   import {
-    listThreads,
     getThread,
     upsertThread,
     deleteThread,
-    searchThreads,
-    listPinned,
     togglePin,
     isPinned,
-    deriveThreadTitle,
-    type ChatThread,
-    type PinnedMessage,
-    type ThreadSearchHit
+    deriveThreadTitle
   } from '$lib/chat/history';
   import { retrieveForRag, type RagHit } from '$lib/chat/rag';
   import SlashCommandPicker from '$lib/components/SlashCommandPicker.svelte';
   import MentionPicker, { type MentionRef } from '$lib/components/MentionPicker.svelte';
+  import ChatHistoryRail from '$lib/components/ChatHistoryRail.svelte';
 
   // AIOverlay — global AI panel. Slides in from the right on
   // desktop, becomes a bottom sheet on mobile. Triggered with
@@ -201,11 +196,7 @@
   }
   let activeThreadId = $state<string>(loadActiveThreadId());
   let historyOpen = $state(false);
-  let historyTab = $state<'threads' | 'pinned'>('threads');
-  let savedThreads = $state<ChatThread[]>([]);
-  let pinnedItems = $state<PinnedMessage[]>([]);
-  let historySearch = $state('');
-  let historyHits = $state<ThreadSearchHit[]>([]);
+  let historyRailRef: ChatHistoryRail | undefined = $state();
   // Pinned-state for the current thread's assistant messages, recomputed
   // on thread change + pin toggle. Keyed by message index. Avoids hitting
   // localStorage on every render of the chat list.
@@ -223,24 +214,6 @@
     }
     pinnedIndex = next;
   }
-
-  function refreshHistoryLists() {
-    savedThreads = listThreads();
-    pinnedItems = listPinned();
-  }
-
-  $effect(() => {
-    if (historyOpen) refreshHistoryLists();
-  });
-
-  $effect(() => {
-    void historySearch;
-    if (!historySearch.trim()) {
-      historyHits = [];
-      return;
-    }
-    historyHits = searchThreads(historySearch);
-  });
 
   function startNewThread() {
     // Snapshot current thread first so the user doesn't lose work.
@@ -261,7 +234,7 @@
     const t = getThread(id);
     if (!t) {
       toast.error('Thread no longer exists.');
-      refreshHistoryLists();
+      historyRailRef?.refresh();
       return;
     }
     messages = t.messages.slice();
@@ -291,7 +264,7 @@
       messages = [];
       pinnedIndex = {};
     }
-    refreshHistoryLists();
+    historyRailRef?.refresh();
   }
 
   // Auto-save the current thread to localStorage. Called after every
@@ -352,7 +325,7 @@
     perTurnRagHits = {};
     expandedSources = {};
     refreshPinnedIndex();
-    if (historyOpen) refreshHistoryLists();
+    if (historyOpen) historyRailRef?.refresh();
     toast.success('Branched into a new thread.');
     tick().then(() => {
       if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
@@ -375,7 +348,10 @@
       content: messages[idx].content
     });
     pinnedIndex = { ...pinnedIndex, [idx]: nowPinned };
-    if (historyOpen && historyTab === 'pinned') refreshHistoryLists();
+    // Rail tracks its own tab; if it's open, prod a refresh so a
+    // toggled pin shows up in the Pinned tab without waiting for the
+    // rail's own open-effect to re-fire.
+    if (historyOpen) historyRailRef?.refresh();
   }
 
   // ── Page-aware context ──────────────────────────────────────────
@@ -1424,7 +1400,7 @@
            the previous one in history. -->
       <button
         type="button"
-        onclick={() => { historyOpen = !historyOpen; if (historyOpen) refreshHistoryLists(); }}
+        onclick={() => { historyOpen = !historyOpen; }}
         aria-pressed={historyOpen}
         aria-label="Chat history"
         title="Chat history (saved threads + pinned messages)"
@@ -1504,144 +1480,14 @@
       {/if}
     </div>
 
-    {#if historyOpen}
-      <!-- History panel. Two tabs:
-             - threads: chronological list of saved chats. Click to
-               load (current thread is auto-saved before swapping).
-             - pinned: flat list of starred assistant replies across
-               all threads. Persists even if the parent thread was
-               pruned by LRU.
-           Layout split between mobile + desktop: on phones, history
-           is a full-screen slide-over that COVERS the chat (one tap
-           to a thread, no half-screen-of-chat-pushed-down nonsense);
-           on desktop, it stays inline as a top strip beneath the
-           toolbar so the chat below is still visible. The panel is
-           positioned `absolute inset-0` on mobile within the dialog
-           — z-30 sits above the chat body but below the header
-           (z-50 on the resize handle) so the user can still see what
-           thread they came from. -->
-      <div
-        class="ai-history-panel border-surface1 bg-mantle/95 backdrop-blur-sm flex flex-col
-               absolute inset-0 z-30 border-t
-               md:static md:bg-mantle/40 md:backdrop-blur-none md:border-b md:border-t-0 md:max-h-[40dvh]"
-      >
-        <div class="flex items-center gap-1 px-3 pt-3 pb-1 text-[11px] flex-shrink-0">
-          <button
-            type="button"
-            onclick={() => (historyTab = 'threads')}
-            class="tap-target px-2.5 py-1.5 rounded transition-colors {historyTab === 'threads' ? 'bg-surface1 text-text font-medium' : 'text-dim hover:text-text hover:bg-surface0'}"
-          >Threads <span class="opacity-60">({savedThreads.length})</span></button>
-          <button
-            type="button"
-            onclick={() => (historyTab = 'pinned')}
-            class="tap-target px-2.5 py-1.5 rounded transition-colors {historyTab === 'pinned' ? 'bg-surface1 text-text font-medium' : 'text-dim hover:text-text hover:bg-surface0'}"
-          >Pinned <span class="opacity-60">({pinnedItems.length})</span></button>
-          <span class="flex-1"></span>
-          <button
-            type="button"
-            onclick={() => (historyOpen = false)}
-            class="tap-target inline-flex items-center justify-center text-dim hover:text-text hover:bg-surface0 active:bg-surface1 rounded px-2 py-1 text-base leading-none transition-colors"
-            aria-label="Close history"
-          >×</button>
-        </div>
-        <div class="flex-1 min-h-0 overflow-y-auto">
-        {#if historyTab === 'threads'}
-          <div class="px-3 pt-2 pb-1">
-            <input
-              type="text"
-              bind:value={historySearch}
-              placeholder="Search threads…"
-              class="w-full bg-surface0 border border-surface1 rounded px-2 py-1 text-xs text-text placeholder-dim focus:outline-none focus:border-primary"
-            />
-          </div>
-          <ul class="px-2 pb-2">
-            {#if historySearch.trim()}
-              {#if historyHits.length === 0}
-                <li class="px-2 py-3 text-center text-[11px] text-dim italic">No matches.</li>
-              {:else}
-                {#each historyHits as hit (hit.thread.id)}
-                  <li>
-                    <button
-                      type="button"
-                      onclick={() => loadSavedThread(hit.thread.id)}
-                      class="w-full text-left px-2 py-1.5 rounded hover:bg-surface0 group {hit.thread.id === activeThreadId ? 'bg-surface0' : ''}"
-                    >
-                      <div class="flex items-baseline gap-2">
-                        <span class="text-xs text-text font-medium truncate flex-1">{hit.thread.title}</span>
-                        <span class="text-[9px] text-dim flex-shrink-0">{findMode(hit.thread.modeId).glyph}</span>
-                      </div>
-                      <div class="text-[10px] text-dim leading-snug truncate mt-0.5">{hit.excerpt}</div>
-                    </button>
-                  </li>
-                {/each}
-              {/if}
-            {:else if savedThreads.length === 0}
-              <li class="px-2 py-3 text-center text-[11px] text-dim italic">No saved threads yet. Send a message to start one.</li>
-            {:else}
-              {#each savedThreads as t (t.id)}
-                <li class="group flex items-stretch gap-1">
-                  <button
-                    type="button"
-                    onclick={() => loadSavedThread(t.id)}
-                    class="flex-1 min-w-0 text-left px-2 py-1.5 rounded hover:bg-surface0 {t.id === activeThreadId ? 'bg-surface0' : ''}"
-                  >
-                    <div class="flex items-baseline gap-2">
-                      <span class="text-xs text-text font-medium truncate flex-1">{t.title}</span>
-                      <span class="text-[9px] text-dim flex-shrink-0" title={findMode(t.modeId).label}>{findMode(t.modeId).glyph}</span>
-                    </div>
-                    <div class="text-[10px] text-dim mt-0.5 flex items-center gap-2">
-                      <span>{new Date(t.updatedAt).toLocaleDateString()} {new Date(t.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      <span>· {t.messages.filter((m) => m.role !== 'system').length} msgs</span>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onclick={() => { if (confirm('Delete this thread?')) deleteSavedThread(t.id); }}
-                    class="px-1 text-dim hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label="Delete thread"
-                    title="Delete thread"
-                  >
-                    <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </button>
-                </li>
-              {/each}
-            {/if}
-          </ul>
-        {:else}
-          <ul class="px-2 pt-2 pb-2">
-            {#if pinnedItems.length === 0}
-              <li class="px-2 py-3 text-center text-[11px] text-dim italic">No pinned replies yet. Click ☆ on any assistant message to keep it.</li>
-            {:else}
-              {#each pinnedItems as p (p.threadId + ':' + p.messageIndex + ':' + p.pinnedAt)}
-                <li class="group px-2 py-1.5 rounded hover:bg-surface0">
-                  <div class="flex items-baseline gap-2 mb-1">
-                    <span class="text-[10px] text-dim flex-1 truncate">{p.threadTitle}</span>
-                    <span class="text-[9px] text-dim flex-shrink-0" title={findMode(p.modeId).label}>{findMode(p.modeId).glyph}</span>
-                    <button
-                      type="button"
-                      onclick={() => {
-                        togglePin({ threadId: p.threadId, threadTitle: p.threadTitle, modeId: p.modeId, messageIndex: p.messageIndex, content: p.content });
-                        refreshHistoryLists();
-                        if (p.threadId === activeThreadId) refreshPinnedIndex();
-                      }}
-                      class="text-warning hover:text-error opacity-60 group-hover:opacity-100 transition-opacity"
-                      title="Unpin"
-                      aria-label="Unpin"
-                    >
-                      <svg viewBox="0 0 24 24" class="w-3 h-3" fill="currentColor"><polygon points="12 2 15 9 22 9 17 14 19 22 12 17 5 22 7 14 2 9 9 9"/></svg>
-                    </button>
-                  </div>
-                  <div class="text-[11px] text-subtext leading-snug line-clamp-3">{p.content}</div>
-                </li>
-              {/each}
-            {/if}
-          </ul>
-        {/if}
-        </div>
-      </div>
-    {/if}
+    <ChatHistoryRail
+      bind:this={historyRailRef}
+      bind:open={historyOpen}
+      {activeThreadId}
+      onLoadThread={loadSavedThread}
+      onDeleteThread={deleteSavedThread}
+      onUnpinForActive={refreshPinnedIndex}
+    />
 
     <!-- Body — quick-action result OR chat thread. Mutually
          exclusive: firing a quick action clears the chat, sending
