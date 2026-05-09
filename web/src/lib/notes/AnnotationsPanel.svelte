@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type NoteAnnotation } from '$lib/api';
   import { errorMessage } from '$lib/util/errorMessage';
+  import { classifyAiError } from '$lib/util/aiErrors';
   import { toast } from '$lib/components/toast';
   import { onWsEvent } from '$lib/ws';
   import { onMount } from 'svelte';
@@ -41,6 +42,23 @@
   let editingId = $state<string | null>(null);
   let editText = $state('');
   let editColor = $state<Color>(DEFAULT_COLOR);
+
+  // AI suggestion state — held separately from `items` so the user
+  // sees clearly which rows are model-proposed (and dismissable as
+  // a batch) vs already in the store. Each suggestion carries the
+  // same shape the create endpoint expects so accepting is a one-
+  // call POST.
+  type Suggestion = {
+    lineNum: number;
+    anchorText: string;
+    text: string;
+    color: string;
+  };
+  let aiBusy = $state(false);
+  let aiAbort: AbortController | null = null;
+  let aiError = $state('');
+  let aiSuggestions = $state<Suggestion[]>([]);
+  let acceptingIdx = $state<number | null>(null);
 
   async function load() {
     if (!notePath) return;
@@ -126,6 +144,77 @@
     }
   }
 
+  async function runSuggest() {
+    if (aiBusy) return;
+    aiBusy = true;
+    aiError = '';
+    aiSuggestions = [];
+    aiAbort = new AbortController();
+    try {
+      const r = await api.aiAnnotateNote(notePath, aiAbort.signal);
+      aiSuggestions = (r.annotations ?? []).map((a) => ({
+        lineNum: a.lineNum,
+        anchorText: a.anchorText,
+        text: a.text,
+        color: (a.color || DEFAULT_COLOR) as Color
+      }));
+      if (aiSuggestions.length === 0) {
+        if (r.warning) {
+          aiError = r.warning;
+        } else {
+          aiError = 'No suggestions returned — the note may be too short.';
+        }
+      }
+    } catch (err) {
+      // AbortError is the user clicking Cancel — silent.
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        aiError = '';
+      } else {
+        const msg = errorMessage(err);
+        const hint = classifyAiError(msg);
+        aiError = hint.headline;
+        if (/disabled in AI preferences/i.test(msg)) {
+          aiError = 'Enable "Annotate note" in Settings → AI features first.';
+        }
+      }
+    } finally {
+      aiBusy = false;
+      aiAbort = null;
+    }
+  }
+  function cancelSuggest() {
+    aiAbort?.abort();
+  }
+  function dismissSuggestions() {
+    aiSuggestions = [];
+    aiError = '';
+  }
+  async function acceptSuggestion(idx: number) {
+    if (acceptingIdx !== null) return;
+    const s = aiSuggestions[idx];
+    if (!s) return;
+    acceptingIdx = idx;
+    try {
+      const created = await api.createAnnotation({
+        notePath,
+        lineNum: s.lineNum,
+        anchorText: s.anchorText,
+        text: s.text,
+        color: s.color
+      });
+      items = [...items, created].sort((a, b) => a.lineNum - b.lineNum);
+      // Drop the accepted suggestion so the row vanishes.
+      aiSuggestions = aiSuggestions.filter((_, i) => i !== idx);
+    } catch (err) {
+      toast.error('Couldn\'t accept: ' + errorMessage(err));
+    } finally {
+      acceptingIdx = null;
+    }
+  }
+  function skipSuggestion(idx: number) {
+    aiSuggestions = aiSuggestions.filter((_, i) => i !== idx);
+  }
+
   async function remove(a: NoteAnnotation) {
     try {
       await api.deleteAnnotation(a.id);
@@ -160,7 +249,30 @@
 </script>
 
 <div class="space-y-2">
-  <div class="flex justify-end -mt-6 mb-1">
+  <div class="flex justify-end -mt-6 mb-1 gap-1">
+    <!-- AI suggest — calls the audit-gated annotate-note feature.
+         Cancellable while in flight. Disabled while suggestions are
+         already on screen (the user reviews + clears those first
+         before re-running, so a 4-row "skip" pile doesn't bury a
+         fresh batch). -->
+    {#if aiBusy}
+      <button
+        onclick={cancelSuggest}
+        class="text-[11px] px-2 py-0.5 rounded bg-surface1 hover:bg-surface2 text-warning normal-case tracking-normal"
+        title="Cancel the in-flight suggestion request"
+      >
+        cancel
+      </button>
+    {:else}
+      <button
+        onclick={runSuggest}
+        disabled={aiSuggestions.length > 0}
+        class="text-[11px] px-2 py-0.5 rounded bg-surface1 hover:bg-surface2 text-subtext normal-case tracking-normal disabled:opacity-50 disabled:cursor-not-allowed"
+        title="Ask AI to propose 3-5 margin notes for this note"
+      >
+        ✨ AI suggest
+      </button>
+    {/if}
     <button
       onclick={() => openComposer(activeLine ?? 1, '')}
       class="text-[11px] px-2 py-0.5 rounded bg-surface1 hover:bg-surface2 text-subtext normal-case tracking-normal"
@@ -169,6 +281,70 @@
       + Add
     </button>
   </div>
+
+  <!-- AI suggestion review surface — distinct from the in-store
+       items below so the user can accept or skip a batch without
+       confusing them with already-saved annotations. -->
+  {#if aiBusy && aiSuggestions.length === 0}
+    <div class="border border-primary/30 bg-primary/5 rounded-lg p-3 text-xs text-subtext flex items-center gap-2">
+      <svg viewBox="0 0 24 24" class="w-3 h-3 animate-spin text-primary" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="9" stroke-opacity="0.25"/>
+        <path d="M21 12a9 9 0 0 0-9-9" stroke-linecap="round"/>
+      </svg>
+      Reading the note + drafting suggestions…
+    </div>
+  {/if}
+  {#if aiError}
+    <div class="border border-warning/30 bg-warning/5 rounded-lg p-2 text-xs text-warning flex items-baseline gap-2">
+      <span class="flex-1">{aiError}</span>
+      <button onclick={dismissSuggestions} class="text-dim hover:text-text">×</button>
+    </div>
+  {/if}
+  {#if aiSuggestions.length > 0}
+    <div class="border border-primary/30 bg-primary/5 rounded-lg p-2">
+      <div class="flex items-baseline justify-between mb-2">
+        <span class="text-[10px] uppercase tracking-wider text-primary">
+          {aiSuggestions.length} AI suggestion{aiSuggestions.length === 1 ? '' : 's'}
+        </span>
+        <button
+          onclick={dismissSuggestions}
+          class="text-[11px] text-dim hover:text-text"
+          title="Dismiss all suggestions"
+        >
+          dismiss all
+        </button>
+      </div>
+      <ul class="space-y-1.5">
+        {#each aiSuggestions as s, idx (idx)}
+          <li class="border border-surface1 border-l-4 {colorClass(s.color)} rounded p-2 bg-surface0">
+            <div class="text-[10px] uppercase tracking-wider text-dim mb-1">
+              Line {s.lineNum}
+            </div>
+            {#if s.anchorText}
+              <p class="text-xs text-dim italic mb-1.5 line-clamp-2">"{s.anchorText}"</p>
+            {/if}
+            <p class="text-sm text-text mb-2 leading-snug">{s.text}</p>
+            <div class="flex justify-end gap-1">
+              <button
+                onclick={() => skipSuggestion(idx)}
+                disabled={acceptingIdx !== null}
+                class="text-xs px-2 py-1 text-dim hover:text-text"
+              >
+                skip
+              </button>
+              <button
+                onclick={() => acceptSuggestion(idx)}
+                disabled={acceptingIdx !== null}
+                class="text-xs px-2 py-1 bg-primary text-on-primary rounded disabled:opacity-50"
+              >
+                {acceptingIdx === idx ? 'Saving…' : '+ Accept'}
+              </button>
+            </div>
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
     {#if composing}
       <form onsubmit={saveNew} class="border border-primary/50 rounded-lg p-2 bg-surface0">
         <div class="text-[10px] uppercase tracking-wider text-dim mb-1">Line {composerLine}</div>

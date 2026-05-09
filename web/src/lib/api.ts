@@ -1887,6 +1887,20 @@ export const api = {
     const blob = await res.blob();
     return URL.createObjectURL(blob);
   },
+  // AI margin-annotation suggester. Proposes 3-5 annotations the
+  // user reviews + accepts via the regular create endpoint. Off by
+  // default — opt-in via Settings → AI features.
+  aiAnnotateNote: (notePath: string, signal?: AbortSignal) =>
+    req<{
+      annotations: { lineNum: number; anchorText: string; text: string; color: string }[];
+      raw?: string;
+      warning?: string;
+    }>('/ai/annotate-note', {
+      method: 'POST',
+      body: JSON.stringify({ notePath }),
+      signal
+    }),
+
   // Margin annotations on notes. The list endpoint accepts an
   // optional notePath query — empty returns the full store for a
   // future cross-vault "all annotations" surface; the editor
