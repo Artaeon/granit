@@ -482,6 +482,21 @@
     return () => clearInterval(t);
   });
 
+  // [freeze-hunt] diagnostic flag — flip on at runtime via the
+  // browser console with `localStorage.setItem('granit.freeze-hunt','1')`
+  // then reload. Logs save-path timing markers + WS reload coalesce
+  // hits so we can see what's happening on the next freeze report.
+  // No-op when off; flag is read inside save() so toggling takes
+  // effect for the next save attempt without a reload.
+  function freezeHuntOn(): boolean {
+    try {
+      return typeof localStorage !== 'undefined'
+        && localStorage.getItem('granit.freeze-hunt') === '1';
+    } catch {
+      return false;
+    }
+  }
+
   async function save(opts: { silent?: boolean } = {}): Promise<boolean> {
     if (!note || !dirty || saving) return !dirty;
     saving = true;
@@ -493,8 +508,12 @@
     // and the next typing wouldn't trigger a fresh save). Compare body
     // to sentBody after the await to decide whether more work remains.
     const sentBody = body;
+    const hunting = freezeHuntOn();
+    const t0 = hunting ? performance.now() : 0;
+    if (hunting) console.warn('[freeze-hunt] save:start', { path: note.path, bytes: sentBody.length, silent: !!opts.silent });
     try {
       const updated = await api.putNote(note.path, { frontmatter: note.frontmatter as Record<string, unknown>, body: sentBody });
+      if (hunting) console.warn('[freeze-hunt] save:put-returned', { ms: (performance.now() - t0).toFixed(1) });
       note = updated;
       prev = sentBody;
       dirty = body !== sentBody;
@@ -515,6 +534,16 @@
       }
       draftRestored = false;
       if (!opts.silent && !dirty) toast.success('saved');
+      if (hunting) {
+        // Defer one frame so the post-save reactivity wave has had a
+        // chance to fire — the timing here tells us how long the
+        // reactive cascade took, which is the suspected freeze
+        // surface. Logs the total wall-clock between save start and
+        // the next paint after all effects ran.
+        requestAnimationFrame(() => {
+          console.warn('[freeze-hunt] save:reactive-cascade-done', { totalMs: (performance.now() - t0).toFixed(1) });
+        });
+      }
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -993,6 +1022,7 @@
       if (!note || note.path !== p) return;
       if (body !== prev || saving) return;
       if (lastSavedAt && Date.now() - lastSavedAt < 3000) return;
+      if (freezeHuntOn()) console.warn('[freeze-hunt] ws-reload:fire', { path: p });
       void load(p, { force: true });
     }, 600);
   }
@@ -1003,7 +1033,11 @@
       // Cheap synchronous-only guards here; the timed evaluation
       // re-checks the rest at fire time.
       if (body !== prev || saving) return;
-      if (lastSavedAt && Date.now() - lastSavedAt < 3000) return;
+      if (lastSavedAt && Date.now() - lastSavedAt < 3000) {
+        if (freezeHuntOn()) console.warn('[freeze-hunt] ws-reload:suppress-own-bounce', { ageMs: Date.now() - (lastSavedAt ?? 0) });
+        return;
+      }
+      if (freezeHuntOn()) console.warn('[freeze-hunt] ws-reload:schedule', { path: note.path });
       scheduleWsReload(note.path);
     });
     return () => {
