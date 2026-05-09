@@ -573,19 +573,63 @@
           return;
         }
       }
-      // Recurring-series safety: dragging ONE occurrence currently
-      // moves the WHOLE series (the patch goes to the parent event).
-      // Per-instance overrides are tracked as the next iteration; in
-      // the meantime, ask the user before we silently shift every
-      // future Monday because they wanted to bump just this Monday.
-      // The 'skip this' button on the detail view is the workaround
-      // for "cancel just this one"; for "move just this one" we
-      // currently can't do better than warn-then-move-series.
-      if (ev.rrule) {
-        const ok = confirm(
-          `"${ev.title}" is a recurring event. Moving it here will shift the ENTIRE series — every occurrence moves by the same delta.\n\nContinue?`
-        );
-        if (!ok) return;
+      // Recurring-series UX: a recurring event has TWO valid drag
+      // semantics — "this occurrence only" (per-instance override) or
+      // "the whole series" (rewrite the base). Native browser dialogs
+      // only expose two-choice yes/no, so we flip the question to a
+      // confirm: OK = just this one (the friendly default that won't
+      // surprise the user with calendar-wide cascading changes),
+      // Cancel-bypass = whole series after a second confirm. ICS
+      // events take the series-only path because their patch endpoint
+      // doesn't support overrides today.
+      let recurringMode: 'series' | 'instance' | null = null;
+      if (ev.rrule && ev.eventId) {
+        if (ev.type === 'event') {
+          const justThisOne = confirm(
+            `"${ev.title}" is a recurring event.\n\nOK: Move just this occurrence\nCancel: Move the entire series (every occurrence shifts by the same delta)\n\nClose this dialog to abort.`
+          );
+          if (justThisOne) {
+            recurringMode = 'instance';
+          } else {
+            const confirmSeries = confirm(
+              `Move ALL occurrences of "${ev.title}"? This rewrites the series base — every past and future instance shifts.`
+            );
+            if (!confirmSeries) return;
+            recurringMode = 'series';
+          }
+        } else {
+          // ICS branch — only series supported via patchICSEvent.
+          const ok = confirm(
+            `"${ev.title}" is a recurring ICS event. Moving it shifts the entire series. Per-instance overrides aren't supported for ICS calendars yet.\n\nContinue?`
+          );
+          if (!ok) return;
+          recurringMode = 'series';
+        }
+      }
+      // Per-instance override path: write a single override entry
+      // keyed by the occurrence's UTC anchor; expander surfaces the
+      // override on render. SERIES base stays untouched.
+      if (recurringMode === 'instance' && ev.type === 'event' && ev.eventId && ev.start) {
+        const dateStr = `${newStart.getFullYear()}-${String(newStart.getMonth() + 1).padStart(2, '0')}-${String(newStart.getDate()).padStart(2, '0')}`;
+        const startTime = `${String(newStart.getHours()).padStart(2, '0')}:${String(newStart.getMinutes()).padStart(2, '0')}`;
+        const dur = ev.durationMinutes ?? 30;
+        const startMinOnly = newStart.getHours() * 60 + newStart.getMinutes();
+        const maxEndMinOnly = 24 * 60 - 1;
+        const endMin = Math.min(startMinOnly + dur, maxEndMinOnly);
+        const endTime = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
+        // Key into Event.Overrides: UTC anchor of the ORIGINAL
+        // occurrence (the one currently rendered, before the move).
+        // Mirror EventDetail's exDateKey contract — backend matches
+        // by string equality so the format must match exactly.
+        const key = new Date(ev.start).toISOString().slice(0, 19);
+        await api.overrideEventOccurrence(ev.eventId, key, {
+          date: dateStr,
+          start_time: startTime,
+          end_time: endTime
+        });
+        await load();
+        toast.success(`Moved this occurrence to ${fmt(newStart)}`);
+        return;
       }
       if (ev.type === 'event' && ev.eventId) {
         const dateStr = `${newStart.getFullYear()}-${String(newStart.getMonth() + 1).padStart(2, '0')}-${String(newStart.getDate()).padStart(2, '0')}`;
@@ -643,15 +687,49 @@
   // start/end as full timestamps not separate date+time fields.
   async function resizeEvent(ev: CalendarEvent, durationMinutes: number) {
     try {
-      // Mirrors moveEvent: a resize on one occurrence rewrites the
-      // SERIES end_time today (no per-instance overrides yet), so a
-      // resize of "this Tuesday" actually changes EVERY Tuesday's
-      // end. Surface that before commit.
-      if (ev.rrule && !ev.taskId) {
-        const ok = confirm(
-          `"${ev.title}" is a recurring event. Resizing here will change the duration of the ENTIRE series.\n\nContinue?`
-        );
-        if (!ok) return;
+      // Mirrors moveEvent's recurring chooser: this-one vs whole-series.
+      // ICS resize stays series-only (patch endpoint has no override).
+      let recurringMode: 'series' | 'instance' | null = null;
+      if (ev.rrule && !ev.taskId && ev.eventId) {
+        if (ev.type === 'event') {
+          const justThisOne = confirm(
+            `"${ev.title}" is a recurring event.\n\nOK: Resize just this occurrence\nCancel: Resize the entire series\n\nClose this dialog to abort.`
+          );
+          if (justThisOne) {
+            recurringMode = 'instance';
+          } else {
+            const confirmSeries = confirm(
+              `Resize ALL occurrences of "${ev.title}"?`
+            );
+            if (!confirmSeries) return;
+            recurringMode = 'series';
+          }
+        } else {
+          const ok = confirm(
+            `"${ev.title}" is a recurring ICS event. Resizing affects the entire series. Continue?`
+          );
+          if (!ok) return;
+          recurringMode = 'series';
+        }
+      }
+      if (recurringMode === 'instance' && ev.type === 'event' && ev.eventId && ev.start) {
+        const startD = new Date(ev.start);
+        const startMin = startD.getHours() * 60 + startD.getMinutes();
+        const maxEndMin = 24 * 60 - 1;
+        const endMin = Math.min(startMin + durationMinutes, maxEndMin);
+        const endTime = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
+        const key = new Date(ev.start).toISOString().slice(0, 19);
+        // Resize keeps the start_time on the original occurrence date
+        // unchanged — only end_time shifts. We still send start_time so
+        // the override carries a complete (start, end) pair and the
+        // expander doesn't have to merge with the series.
+        const startTime = `${String(startD.getHours()).padStart(2, '0')}:${String(startD.getMinutes()).padStart(2, '0')}`;
+        await api.overrideEventOccurrence(ev.eventId, key, {
+          start_time: startTime,
+          end_time: endTime
+        });
+        await load();
+        return;
       }
       if (ev.taskId) {
         await api.patchTask(ev.taskId, { durationMinutes });

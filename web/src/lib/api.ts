@@ -325,6 +325,28 @@ export interface CalendarEventEntry {
    *  calendar page folds these in alongside scheduled tasks. Empty
    *  for unlinked events. */
   project_id?: string;
+  /** Per-occurrence overrides for a recurring event. Keyed by the
+   *  occurrence's UTC anchor (YYYY-MM-DDTHH:MM:SS for timed,
+   *  YYYY-MM-DD for all-day) — the same shape as ex_dates. The
+   *  expander applies the override fields to the matching occurrence
+   *  on render so a single instance can move/rename without rewriting
+   *  the series base. */
+  overrides?: Record<string, EventOverride>;
+}
+
+export interface EventOverride {
+  /** YYYY-MM-DD — when set, the occurrence shifts to this calendar
+   *  day. Time-of-day is preserved unless start_time / end_time also
+   *  change it. */
+  date?: string;
+  /** HH:MM 24-hour. When start_time alone is set, duration is
+   *  preserved (drag-move). When both are set, both wall-clock times
+   *  are explicit (drag-resize). */
+  start_time?: string;
+  end_time?: string;
+  title?: string;
+  location?: string;
+  color?: string;
 }
 
 export interface Milestone {
@@ -1187,6 +1209,22 @@ export const api = {
     req<CalendarEventEntry>(`/events/${encodeURIComponent(id)}/skip`, {
       method: 'POST',
       body: JSON.stringify({ date })
+    }),
+  /** Set or clear a per-occurrence override on a recurring event.
+   *  `key` identifies the occurrence (UTC YYYY-MM-DDTHH:MM:SS for
+   *  timed, YYYY-MM-DD for all-day — same shape as the EXDATE entries
+   *  the skip endpoint writes). Pass an empty `override` object to
+   *  clear an existing entry. The series base is untouched — only
+   *  the matching occurrence renders with the overridden fields.
+   *  Backend refuses overrides on non-recurring events. */
+  overrideEventOccurrence: (
+    id: string,
+    key: string,
+    override: EventOverride
+  ) =>
+    req<CalendarEventEntry>(`/events/${encodeURIComponent(id)}/override`, {
+      method: 'POST',
+      body: JSON.stringify({ key, override })
     }),
 
   // Goals (granit, full CRUD — schema mirrors internal/goals.Goal)
