@@ -179,16 +179,19 @@
     editing = true;
   }
 
-  // Build an RFC3339 string from YYYY-MM-DD + HH:MM. The Date is
-  // constructed in LOCAL time (the user's wall clock), then
-  // toISOString() converts that instant to UTC for transmission —
-  // so a EU user typing 14:30 sends "12:30:00Z". The backend's
-  // parseClientTime parses RFC3339 (UTC), and the icswriter emits
-  // UTC Z, so the round-trip preserves the user's wall-clock
-  // intent. Used only for the ICS write path; events.json takes
-  // separate date + HH:MM fields and stores them verbatim (see the
-  // patchEvent branch below).
-  function localRFC3339FromParts(date: string, time: string): string {
+  // Build a UTC RFC3339 (Z-suffixed) string from YYYY-MM-DD + HH:MM
+  // interpreted as the user's LOCAL wall clock. The Date constructor
+  // (with separate y/mo/d/h/mi args) treats the inputs as local time,
+  // and `.toISOString()` then renders the resulting instant in UTC —
+  // so a EU user typing 14:30 sends "12:30:00Z" in summer. The
+  // backend's parseClientTime accepts RFC3339, and the icswriter
+  // emits UTC Z, so the round-trip preserves wall-clock intent.
+  // Used only for the ICS write path; events.json takes separate
+  // date + HH:MM fields and stores them verbatim (see the patchEvent
+  // branch below). Name is utc* (not local*) because the OUTPUT is
+  // a UTC instant — the misleading earlier name made it look like a
+  // floating-time helper.
+  function utcRFC3339FromLocalParts(date: string, time: string): string {
     const [y, mo, d] = date.split('-').map(Number);
     const [h, mi] = time.split(':').map(Number);
     return new Date(y, mo - 1, d, h, mi, 0, 0).toISOString();
@@ -202,8 +205,8 @@
       if (event.type === 'ics_event' && event.source && event.eventId) {
         await api.patchICSEvent(event.source, event.eventId, {
           summary: editTitle,
-          start: localRFC3339FromParts(editDate, editStartTime || '00:00'),
-          end: editEndTime ? localRFC3339FromParts(editDate, editEndTime) : undefined,
+          start: utcRFC3339FromLocalParts(editDate, editStartTime || '00:00'),
+          end: editEndTime ? utcRFC3339FromLocalParts(editDate, editEndTime) : undefined,
           location: editLocation
         });
       } else if (event.eventId) {
@@ -272,12 +275,16 @@
   function exDateKey(): string {
     if (!event) return '';
     if (event.start) {
-      const d = new Date(event.start);
-      // UTC-time YYYY-MM-DDTHH:MM:SS — what the expander compares
-      // against for timed events. toISOString gives a Z-suffixed
-      // form; slice off ms + Z to leave the bare datetime.
-      const iso = d.toISOString(); // YYYY-MM-DDTHH:MM:SS.sssZ
-      return iso.slice(0, 19); // YYYY-MM-DDTHH:MM:SS
+      // event.start is RFC3339 from the calendar feed (the backend's
+      // expandRRULE emits each occurrence's Start as time.RFC3339,
+      // typically with the server's offset). new Date(...).toISOString()
+      // converts that instant to UTC and renders Z-suffixed RFC3339.
+      // The expander's isExcluded compares against
+      //   t.UTC().Format("2006-01-02T15:04:05")
+      // — the bare 19-char prefix of toISOString, which is exactly
+      // what we slice off here.
+      const iso = new Date(event.start).toISOString(); // YYYY-MM-DDTHH:MM:SS.sssZ
+      return iso.slice(0, 19); // YYYY-MM-DDTHH:MM:SS in UTC
     }
     return event.date ?? '';
   }
