@@ -2,6 +2,7 @@ node_modules/
 .svelte-kit/
 .vite/
 build/
+coverage/
 .DS_Store
 
 # The static SPA build is emitted to ../internal/serveapi/dist/ via the
