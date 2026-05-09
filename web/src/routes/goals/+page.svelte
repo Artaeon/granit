@@ -239,6 +239,56 @@
     archived: goals.filter((g) => g.status === 'archived').length
   });
 
+  // ── Stalled-goal detection ─────────────────────────────────────
+  //
+  // A goal is "stalled" when:
+  //   - its status is active (we don't nag paused / completed /
+  //     archived rows — those are deliberate states)
+  //   - the goal record itself hasn't been touched in 30+ days
+  //     (no metadata edit, no milestone tick)
+  //   - AND no linked task has been completed in the last 14 days
+  //     (because the goal might be quiet on its own record while
+  //     real progress is happening in the task list)
+  //
+  // The banner exists to convert "I forgot about this" into a
+  // visible signal without auto-archiving — the user decides
+  // whether to update the goal, log a milestone, or move it to
+  // paused/archived.
+  function staleness(iso: string | undefined): number {
+    if (!iso) return Number.POSITIVE_INFINITY;
+    const t = Date.parse(iso);
+    if (Number.isNaN(t)) return Number.POSITIVE_INFINITY;
+    return Math.floor((Date.now() - t) / 86_400_000);
+  }
+  function recentCompletionForGoal(goalId: string): boolean {
+    const fortnight = Date.now() - 14 * 86_400_000;
+    for (const t of doneTasks) {
+      if (t.goalId !== goalId) continue;
+      const ts = Date.parse(t.updatedAt ?? t.createdAt ?? '');
+      if (!Number.isNaN(ts) && ts >= fortnight) return true;
+    }
+    return false;
+  }
+  let stalledGoals = $derived.by(() =>
+    goals.filter((g) => {
+      const status = g.status ?? 'active';
+      if (status !== 'active') return false;
+      const days = staleness(g.updated_at);
+      if (days < 30) return false;
+      return !recentCompletionForGoal(g.id);
+    })
+  );
+  // When the user clicks the banner action, we filter the list
+  // down to just the stalled rows. Re-derive over `filtered` rather
+  // than mutating filters so the existing search/category/tag
+  // pickers aren't disturbed.
+  let stalledFilterOn = $state(false);
+  let visibleGoals = $derived.by(() => {
+    if (!stalledFilterOn) return filtered;
+    const stalledIds = new Set(stalledGoals.map((g) => g.id));
+    return filtered.filter((g) => stalledIds.has(g.id));
+  });
+
   // Kanban grouping — same status order as the tabs so the column
   // order matches the user's mental model. Filtering still applies
   // (search / category / venture / tag); the status filter is only
@@ -1290,6 +1340,38 @@
       {/if}
     </div>
 
+    <!-- Stalled-goal banner — surfaces active goals with no
+         metadata edit in 30+ days AND no completed task in 14+
+         days. Click to filter the list down to just those rows;
+         click again to clear. The banner only renders when at
+         least one stalled goal exists, so a healthy goal set
+         never sees the nag. -->
+    {#if firstLoaded && stalledGoals.length > 0}
+      <button
+        type="button"
+        onclick={() => (stalledFilterOn = !stalledFilterOn)}
+        class="w-full text-left mb-4 px-3 py-2.5 rounded-lg border flex items-center gap-3 transition-colors {stalledFilterOn ? 'bg-warning/15 border-warning/50' : 'bg-warning/5 border-warning/20 hover:bg-warning/10'}"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 text-warning flex-shrink-0">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M12 7v5l3 2"/>
+        </svg>
+        <div class="flex-1 text-sm">
+          <span class="text-text font-medium">
+            {stalledGoals.length}
+            {stalledGoals.length === 1 ? 'goal looks' : 'goals look'}
+            stalled
+          </span>
+          <span class="text-dim ml-1">
+            — no edits in 30+ days, no recent completed tasks
+          </span>
+        </div>
+        <span class="text-xs text-subtext flex-shrink-0">
+          {stalledFilterOn ? 'showing only stalled · click to clear' : 'click to focus'}
+        </span>
+      </button>
+    {/if}
+
     {#if !firstLoaded && loading}
       <!-- Shimmer skeletons match the cards-view rhythm so the
            layout doesn't reflow on first load. Three placeholders is
@@ -1310,7 +1392,7 @@
           </div>
         {/each}
       </div>
-    {:else if filtered.length === 0}
+    {:else if visibleGoals.length === 0}
       <!-- Empty state branches: real "no goals at all" vs "filter
            hides everything". The first nudges the user to create
            their first goal; the second offers a clear-filters
@@ -1332,7 +1414,7 @@
         <EmptyState
           icon="🔍"
           title="No goals match this filter"
-          description="Try a different status tab, clear the search, or drop your category / tag filters."
+          description={stalledFilterOn ? "Stalled-only filter is on but every goal looks fresh — click the banner to clear it." : "Try a different status tab, clear the search, or drop your category / tag filters."}
         >
           {#snippet action()}
             <button
@@ -1342,6 +1424,7 @@
                 tagFilter = '';
                 ventureFilter = '';
                 q = '';
+                stalledFilterOn = false;
               }}
               class="px-3 py-1.5 bg-surface1 text-text rounded text-sm hover:bg-surface2"
             >Clear all filters</button>
@@ -1350,7 +1433,7 @@
       {/if}
     {:else if viewMode === 'cards'}
       <div class="space-y-4">
-        {#each filtered as g (g.id)}
+        {#each visibleGoals as g (g.id)}
           {@const p = progress(g)}
           {@const sc = statusColor(g.status)}
           {@const tone = targetTone(g)}
@@ -1373,9 +1456,16 @@
                     <p class="text-sm text-subtext mt-1 break-words">{@html inlineMd(g.description)}</p>
                   {/if}
                 </div>
-                <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded {sc.bg} {sc.text} flex-shrink-0">
-                  {g.status ?? 'active'}
-                </span>
+                <div class="flex flex-col items-end gap-1 flex-shrink-0">
+                  <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded {sc.bg} {sc.text}">
+                    {g.status ?? 'active'}
+                  </span>
+                  {#if stalledGoals.some((s) => s.id === g.id)}
+                    <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-warning/15 text-warning" title="No edits in 30+ days, no recent completed tasks">
+                      stalled
+                    </span>
+                  {/if}
+                </div>
               </div>
 
               <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-dim">
@@ -1515,7 +1605,7 @@
            drawer. Same urgency border-left as cards so the visual
            language stays consistent. -->
       <div class="bg-surface0 border border-surface1 rounded-lg overflow-hidden divide-y divide-surface1">
-        {#each filtered as g (g.id)}
+        {#each visibleGoals as g (g.id)}
           {@const p = progress(g)}
           {@const sc = statusColor(g.status)}
           {@const tone = targetTone(g)}
