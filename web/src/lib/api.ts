@@ -855,6 +855,68 @@ export interface ShoppingTotals {
   recurring_standards_count?: number;
 }
 
+// Books — the EPUB reader. Library lives at <vault>/Books/; per-
+// book sidecar (progress + highlights + bookmarks) at
+// .granit/books/<id>.json. Mirrors internal/books.
+export interface BookSummary {
+  id: string;
+  title: string;
+  authors?: string[];
+  hasCover: boolean;
+  path: string;
+  bytes: number;
+}
+export interface BookShelfRow extends BookSummary {
+  lastReadAt?: string;
+  furthestChapter: number;
+  progressPct: number;
+  totalChapters: number;
+}
+export interface BookChapterMeta {
+  index: number;
+  label: string;
+  linear: boolean;
+}
+export interface BookTOCEntry {
+  Title: string;
+  SpineIdx: number;
+  Children?: BookTOCEntry[];
+}
+export interface BookDetail extends BookSummary {
+  chapters: BookChapterMeta[];
+  toc?: BookTOCEntry[];
+}
+export interface BookProgress {
+  chapterIdx: number;
+  scrollFraction: number;
+  lastReadAt?: string;
+  furthestChapter: number;
+}
+export interface BookHighlight {
+  id: string;
+  chapterIdx: number;
+  text: string;
+  prefix?: string;
+  suffix?: string;
+  color: string;
+  note?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+export interface BookBookmark {
+  id: string;
+  chapterIdx: number;
+  scrollFraction?: number;
+  label: string;
+  createdAt: string;
+}
+export interface BookSidecar {
+  bookId: string;
+  progress: BookProgress;
+  highlights?: BookHighlight[];
+  bookmarks?: BookBookmark[];
+}
+
 // People — lightweight CRM. The list response also carries derived
 // upcoming-birthday + stale-count fields so the page hydrates in
 // one round trip.
@@ -1736,6 +1798,76 @@ export const api = {
     }),
   deleteShoppingItem: (id: string) =>
     req<void>(`/shopping/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  // Books — EPUB reader. Library at <vault>/Books/, sidecar at
+  // .granit/books/<id>.json. Cover + asset endpoints are binary;
+  // we expose helper URLs the components can use directly with
+  // <img src=...> after fetching to a blob (auth requires Bearer
+  // header which <img> can't send).
+  listBooks: () => req<{ books: BookShelfRow[]; total: number }>('/books'),
+  getBook: (id: string) => req<BookDetail>(`/books/${encodeURIComponent(id)}`),
+  getBookChapter: (id: string, idx: number) =>
+    req<{ index: number; html: string }>(
+      `/books/${encodeURIComponent(id)}/chapter/${idx}`
+    ),
+  getBookSidecar: (id: string) =>
+    req<BookSidecar>(`/books/${encodeURIComponent(id)}/sidecar`),
+  putBookProgress: (id: string, p: Partial<BookProgress>) =>
+    req<{ ok: true }>(`/books/${encodeURIComponent(id)}/progress`, {
+      method: 'PUT',
+      body: JSON.stringify(p)
+    }),
+  createBookHighlight: (id: string, h: Partial<BookHighlight>) =>
+    req<BookHighlight>(`/books/${encodeURIComponent(id)}/highlights`, {
+      method: 'POST',
+      body: JSON.stringify(h)
+    }),
+  patchBookHighlight: (id: string, hid: string, body: { note?: string; color?: string }) =>
+    req<BookHighlight>(
+      `/books/${encodeURIComponent(id)}/highlights/${encodeURIComponent(hid)}`,
+      { method: 'PATCH', body: JSON.stringify(body) }
+    ),
+  deleteBookHighlight: (id: string, hid: string) =>
+    req<void>(
+      `/books/${encodeURIComponent(id)}/highlights/${encodeURIComponent(hid)}`,
+      { method: 'DELETE' }
+    ),
+  createBookBookmark: (id: string, b: Partial<BookBookmark>) =>
+    req<BookBookmark>(`/books/${encodeURIComponent(id)}/bookmarks`, {
+      method: 'POST',
+      body: JSON.stringify(b)
+    }),
+  deleteBookBookmark: (id: string, bid: string) =>
+    req<void>(
+      `/books/${encodeURIComponent(id)}/bookmarks/${encodeURIComponent(bid)}`,
+      { method: 'DELETE' }
+    ),
+  // Cover image fetch — returns a Blob URL the caller is responsible
+  // for revoking when the component unmounts. Returns null on 404
+  // (book has no cover) so the UI can render a typographic fallback.
+  bookCoverBlobURL: async (id: string): Promise<string | null> => {
+    const tok = getToken();
+    const headers = new Headers();
+    if (tok) headers.set('Authorization', `Bearer ${tok}`);
+    const res = await fetch(`/api/v1/books/${encodeURIComponent(id)}/cover`, { headers });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new ApiError(res.status, res.statusText);
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
+  // Asset fetch — for chapter HTML's rewritten `src=".../asset/..."`
+  // refs to resolve through auth. We fetch each asset to a blob and
+  // patch the rendered DOM, since <img> can't carry the bearer.
+  bookAssetBlobURL: async (id: string, relPath: string): Promise<string | null> => {
+    const tok = getToken();
+    const headers = new Headers();
+    if (tok) headers.set('Authorization', `Bearer ${tok}`);
+    const url = `/api/v1/books/${encodeURIComponent(id)}/asset?path=${encodeURIComponent(relPath)}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
 
   // Virtues — character formation tracker. Checks live on a separate
   // POST endpoint to avoid two clients clobbering each other's

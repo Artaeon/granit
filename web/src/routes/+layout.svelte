@@ -211,6 +211,7 @@
       items: [
         { href: '/notes', label: 'Notes', icon: 'notes' },
         { href: '/search', label: 'Search', icon: 'search' },
+        { href: '/books', label: 'Books', icon: 'books', moduleId: 'books' },
         { href: '/templates', label: 'Templates', icon: 'templates' },
         { href: '/objects', label: 'Objects', icon: 'objects', moduleId: 'objects' },
         { href: '/tags', label: 'Tags', icon: 'tags' }

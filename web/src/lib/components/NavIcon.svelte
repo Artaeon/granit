@@ -130,6 +130,16 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h4"/>
   </svg>
+{:else if name === 'books'}
+  <!-- Open book — two facing pages with a centre crease. Reads as
+       "long-form reading" rather than the file/note metaphor; the
+       /books surface is for EPUBs the user reads cover-to-cover,
+       not the markdown atomic-notes that /notes serves. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <path d="M3 5a2 2 0 0 1 2-2h5v17H5a2 2 0 0 1-2-2z"/>
+    <path d="M21 5a2 2 0 0 0-2-2h-5v17h5a2 2 0 0 0 2-2z"/>
+    <path d="M6 7h3M6 10h3M15 7h3M15 10h3"/>
+  </svg>
 {:else if name === 'jots'}
   <!-- Stack of journal entries — three horizontal lines layered like a feed. -->
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
