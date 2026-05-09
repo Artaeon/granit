@@ -563,7 +563,22 @@
   function onKey(e: KeyboardEvent) {
     if (open && e.key === 'Escape') {
       e.preventDefault();
-      close();
+      // Layered Esc dismissal: close the most-recently-opened
+      // sub-surface first so a single Esc never accidentally throws
+      // away the user's whole panel state. Order: pickers (mention,
+      // slash, mode) → history slide-over → the overlay itself.
+      if (mentionPickerOpen) {
+        mentionPickerOpen = false;
+      } else if (slashPickerOpen) {
+        slashPickerOpen = false;
+      } else if (modePickerOpen) {
+        modePickerOpen = false;
+      } else if (historyOpen) {
+        historyOpen = false;
+        refocusComposer();
+      } else {
+        close();
+      }
       return;
     }
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
