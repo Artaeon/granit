@@ -6,6 +6,7 @@
   import Skeleton from '$lib/components/Skeleton.svelte';
   import Heatmap from '$lib/components/Heatmap.svelte';
   import { habitTargets, setHabitTarget } from '$lib/habits/targets';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // /habits — three view modes for the same data:
   //   • Today: large quick-tick cards, the morning/evening rhythm view
@@ -23,21 +24,11 @@
   const VIEW_KEY = 'granit.habits.view';
   const SORT_KEY = 'granit.habits.sort';
 
-  let view = $state<View>(
-    (typeof localStorage !== 'undefined' && (localStorage.getItem(VIEW_KEY) as View)) || 'list'
-  );
-  let sortBy = $state<Sort>(
-    (typeof localStorage !== 'undefined' && (localStorage.getItem(SORT_KEY) as Sort)) || 'streak'
-  );
+  let view = $state<View>(loadStoredString(VIEW_KEY, 'list') as View);
+  let sortBy = $state<Sort>(loadStoredString(SORT_KEY, 'streak') as Sort);
 
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(VIEW_KEY, view); } catch {}
-  });
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(SORT_KEY, sortBy); } catch {}
-  });
+  $effect(() => saveStoredString(VIEW_KEY, view));
+  $effect(() => saveStoredString(SORT_KEY, sortBy));
 
   let data = $state<HabitsResponse | null>(null);
   let loading = $state(false);

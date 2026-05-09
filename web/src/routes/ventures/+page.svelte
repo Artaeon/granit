@@ -7,6 +7,7 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // /ventures is the umbrella view above projects + goals. Project.venture
   // and Goal.venture stay free-text strings — a venture record adds
@@ -27,14 +28,8 @@
   let loading = $state(false);
   let q = $state('');
   let statusFilter = $state<'all' | 'active' | 'paused' | 'archived'>('active');
-  let view = $state<ViewMode>(
-    (typeof localStorage !== 'undefined' && (localStorage.getItem(VIEW_KEY) as ViewMode)) || 'cards'
-  );
-  $effect(() => {
-    if (typeof localStorage !== 'undefined') {
-      try { localStorage.setItem(VIEW_KEY, view); } catch {}
-    }
-  });
+  let view = $state<ViewMode>(loadStoredString(VIEW_KEY, 'cards') as ViewMode);
+  $effect(() => saveStoredString(VIEW_KEY, view));
 
   let createOpen = $state(false);
 

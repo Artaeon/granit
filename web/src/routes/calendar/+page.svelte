@@ -6,6 +6,7 @@
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { mediaQuery } from '$lib/util/mediaQuery';
+  import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import {
     addDays,
     endOfWeek,
@@ -42,8 +43,8 @@
   const VIEW_KEY = 'granit.calendar.view';
   function defaultView(): View {
     if (typeof window === 'undefined') return 'week';
-    const saved = localStorage.getItem(VIEW_KEY) as View | null;
-    if (saved) return saved;
+    const saved = loadStoredString(VIEW_KEY, '');
+    if (saved) return saved as View;
     return window.innerWidth < 640 ? 'day' : 'week';
   }
   let view = $state<View>(defaultView());
@@ -56,20 +57,10 @@
   // the layout stays sensible (a 7-column week grid + side rail is too
   // tight on most screens).
   const PLAN_KEY = 'granit.calendar.planmode';
-  let planMode = $state<boolean>(
-    typeof localStorage !== 'undefined' && localStorage.getItem(PLAN_KEY) === '1'
-  );
+  let planMode = $state<boolean>(loadStoredString(PLAN_KEY, '0') === '1');
 
-  $effect(() => {
-    if (typeof localStorage !== 'undefined') {
-      try { localStorage.setItem(VIEW_KEY, view); } catch {}
-    }
-  });
-
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(PLAN_KEY, planMode ? '1' : '0'); } catch {}
-  });
+  $effect(() => saveStoredString(VIEW_KEY, view));
+  $effect(() => saveStoredString(PLAN_KEY, planMode ? '1' : '0'));
 
   function togglePlanMode() {
     planMode = !planMode;
@@ -120,19 +111,11 @@
   // the user's preference (e.g. "always hide ICS") sticks across sessions.
   type EventFilterKey = 'daily' | 'task_due' | 'task_scheduled' | 'event' | 'ics_event' | 'deadline';
   const FILTER_KEY = 'granit.calendar.filters';
-  let hidden = $state<Set<EventFilterKey>>(new Set());
+  let hidden = $state<Set<EventFilterKey>>(
+    new Set(loadStored<EventFilterKey[]>(FILTER_KEY, []))
+  );
 
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(FILTER_KEY);
-      if (raw) hidden = new Set(JSON.parse(raw) as EventFilterKey[]);
-    } catch {}
-  }
-
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(FILTER_KEY, JSON.stringify(Array.from(hidden))); } catch {}
-  });
+  $effect(() => saveStored(FILTER_KEY, Array.from(hidden)));
 
   function toggleType(t: EventFilterKey) {
     const next = new Set(hidden);
@@ -146,16 +129,8 @@
   // on the wire shape). Persisted per-device so a user using the
   // calendar as a project board stays scoped on reload. Empty = "all".
   const PROJECT_FILTER_KEY = 'granit.calendar.project';
-  let projectFilter = $state<string>('');
-  if (typeof localStorage !== 'undefined') {
-    try {
-      projectFilter = localStorage.getItem(PROJECT_FILTER_KEY) ?? '';
-    } catch {}
-  }
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(PROJECT_FILTER_KEY, projectFilter); } catch {}
-  });
+  let projectFilter = $state<string>(loadStoredString(PROJECT_FILTER_KEY, ''));
+  $effect(() => saveStoredString(PROJECT_FILTER_KEY, projectFilter));
 
   // Project list — used by the filter dropdown + the "colour by
   // project" overlay. Loaded once on mount; refreshed on demand if a
@@ -176,13 +151,8 @@
   // the project's `color` field, so a project board view becomes
   // visually unified.
   const COLOR_BY_PROJECT_KEY = 'granit.calendar.colorByProject';
-  let colorByProject = $state<boolean>(
-    typeof localStorage !== 'undefined' && localStorage.getItem(COLOR_BY_PROJECT_KEY) === '1'
-  );
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(COLOR_BY_PROJECT_KEY, colorByProject ? '1' : '0'); } catch {}
-  });
+  let colorByProject = $state<boolean>(loadStoredString(COLOR_BY_PROJECT_KEY, '0') === '1');
+  $effect(() => saveStoredString(COLOR_BY_PROJECT_KEY, colorByProject ? '1' : '0'));
 
   // Per-source ICS toggles. Wired to granit's `disabled_calendars` list
   // (config.json) so flipping one here also silences it in the TUI on

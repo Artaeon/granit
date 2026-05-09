@@ -14,6 +14,7 @@
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { daysUntilTarget, targetChip, targetBorderColor } from '$lib/goals/util';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // View modes — `cards` is the rich card layout (the existing UI),
   // `list` is a compact one-line-per-goal table for users with many
@@ -23,13 +24,8 @@
   // the user lands on their preferred mode on every visit.
   type ViewMode = 'cards' | 'list' | 'kanban';
   const VIEW_KEY = 'granit.goals.view';
-  let viewMode = $state<ViewMode>(
-    (typeof localStorage !== 'undefined' && (localStorage.getItem(VIEW_KEY) as ViewMode)) || 'cards'
-  );
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(VIEW_KEY, viewMode); } catch {}
-  });
+  let viewMode = $state<ViewMode>(loadStoredString(VIEW_KEY, 'cards') as ViewMode);
+  $effect(() => saveStoredString(VIEW_KEY, viewMode));
 
   let goals = $state<Goal[]>([]);
   // Linked tasks + projects power the roll-up chips on each goal —

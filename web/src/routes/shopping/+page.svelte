@@ -5,6 +5,7 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // /shopping — three-view page over a single Item collection:
   //   Plan: status=planned items, grouped by category (the active
@@ -24,13 +25,8 @@
 
   type View = 'plan' | 'standards' | 'bought';
   const VIEW_KEY = 'granit.shopping.view';
-  let view = $state<View>(
-    (typeof localStorage !== 'undefined' && (localStorage.getItem(VIEW_KEY) as View)) || 'plan'
-  );
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(VIEW_KEY, view); } catch {}
-  });
+  let view = $state<View>(loadStoredString(VIEW_KEY, 'plan') as View);
+  $effect(() => saveStoredString(VIEW_KEY, view));
 
   let items = $state<ShoppingItem[]>([]);
   let totals = $state<ShoppingTotals | null>(null);

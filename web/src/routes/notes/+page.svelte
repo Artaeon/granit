@@ -9,6 +9,7 @@
   import { toast } from '$lib/components/toast';
   import NotesTree from '$lib/notes/NotesTree.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // Notes hub. View modes covering the full surface area: tree (the
   // classic hierarchy), recent (sorted by mod time), pinned (the user's
@@ -24,16 +25,11 @@
   // could have stored a string that's no longer a valid view.
   const VALID_VIEWS: ReadonlySet<View> = new Set(['recent', 'tree', 'pinned', 'all', 'alpha', 'tags', 'folders', 'search']);
   function loadInitialView(): View {
-    if (typeof localStorage === 'undefined') return 'recent';
-    const stored = localStorage.getItem(VIEW_KEY);
-    return stored && VALID_VIEWS.has(stored as View) ? (stored as View) : 'recent';
+    const stored = loadStoredString(VIEW_KEY, 'recent');
+    return VALID_VIEWS.has(stored as View) ? (stored as View) : 'recent';
   }
   let view = $state<View>(loadInitialView());
-  $effect(() => {
-    if (typeof localStorage !== 'undefined') {
-      try { localStorage.setItem(VIEW_KEY, view); } catch {}
-    }
-  });
+  $effect(() => saveStoredString(VIEW_KEY, view));
 
   type SortKey = 'modified' | 'created' | 'name' | 'size';
   let sortKey = $state<SortKey>('modified');

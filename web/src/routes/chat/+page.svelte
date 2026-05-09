@@ -5,6 +5,7 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import { classifyAiError } from '$lib/util/aiErrors';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import { loadStored, saveStored } from '$lib/util/storage';
 
   // Multi-turn chat with the configured LLM. History lives in localStorage
   // (one current conversation; the user "saves" via "save as note" to keep
@@ -23,19 +24,14 @@
   // Restore the in-progress conversation on first paint so a refresh
   // doesn't lose context. Save after every message exchange.
   onMount(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Stored;
-        if (Array.isArray(parsed.messages)) messages = parsed.messages;
-      }
-    } catch {}
+    const stored = loadStored<Stored | null>(STORAGE_KEY, null);
+    if (stored && Array.isArray(stored.messages)) messages = stored.messages;
     inputEl?.focus();
   });
 
   $effect(() => {
     void messages;
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ messages, updatedAt: Date.now() } satisfies Stored)); } catch {}
+    saveStored<Stored>(STORAGE_KEY, { messages, updatedAt: Date.now() });
   });
 
   // Auto-scroll to bottom on new messages.

@@ -23,6 +23,7 @@
   import Skeleton from '$lib/components/Skeleton.svelte';
   import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
   import { daysUntil, pickHeroDeadline } from '$lib/deadlines/util';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // Deadlines page — top-level "this matters by date X" markers backed
   // by .granit/deadlines.json. Distinct from Tasks (no checkbox / not
@@ -41,30 +42,24 @@
   const VIEW_KEY = 'granit.deadlines.view';
   const GROUP_KEY = 'granit.deadlines.groupby';
 
-  function loadView(): ViewMode {
-    if (typeof localStorage === 'undefined') return 'list';
-    const v = localStorage.getItem(VIEW_KEY);
-    if (v === 'list' || v === 'timeline' || v === 'calendar') return v;
-    return 'list';
-  }
-  function loadGroup(): GroupBy {
-    if (typeof localStorage === 'undefined') return 'urgency';
-    const v = localStorage.getItem(GROUP_KEY);
-    if (v === 'urgency' || v === 'status' || v === 'month') return v;
-    return 'urgency';
-  }
+  // Validate the persisted string against the union — tolerate a stale
+  // key from an older version that no longer maps to a real view.
+  const VIEW_VALUES = ['list', 'timeline', 'calendar'] as const;
+  const GROUP_VALUES = ['urgency', 'status', 'month'] as const;
+  const loadView = (): ViewMode => {
+    const v = loadStoredString(VIEW_KEY, 'list');
+    return (VIEW_VALUES as readonly string[]).includes(v) ? (v as ViewMode) : 'list';
+  };
+  const loadGroup = (): GroupBy => {
+    const v = loadStoredString(GROUP_KEY, 'urgency');
+    return (GROUP_VALUES as readonly string[]).includes(v) ? (v as GroupBy) : 'urgency';
+  };
 
   let viewMode = $state<ViewMode>(loadView());
   let groupBy = $state<GroupBy>(loadGroup());
 
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(VIEW_KEY, viewMode); } catch {}
-  });
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(GROUP_KEY, groupBy); } catch {}
-  });
+  $effect(() => saveStoredString(VIEW_KEY, viewMode));
+  $effect(() => saveStoredString(GROUP_KEY, groupBy));
 
   let deadlines = $state<Deadline[]>([]);
   let goals = $state<Goal[]>([]);
