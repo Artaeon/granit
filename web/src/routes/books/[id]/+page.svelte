@@ -130,9 +130,12 @@
   // Walk the rendered chapter for <img>/<link rel="stylesheet">
   // pointing at our asset endpoint, fetch each as a blob URL, and
   // swap the src/href so the browser-native auth bypass works.
+  // The server already rewrote relative refs to /api/v1/books/<id>
+  // /asset/<resolved-path> — we just need to peel off the path
+  // segment after `/asset/` and round-trip it through the
+  // authenticated fetch.
   async function patchChapterAssets() {
     if (!chapterEl) return;
-    const prefix = `/api/v1/books/${encodeURIComponent(bookId)}/asset/`;
     const imgs = chapterEl.querySelectorAll<HTMLImageElement>('img[src]');
     const links = chapterEl.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"][href]');
     const work: Promise<void>[] = [];
@@ -162,7 +165,6 @@
         })
       );
     }
-    void prefix; // referenced for grep clarity but not currently used
     await Promise.all(work);
   }
 

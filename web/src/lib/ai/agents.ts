@@ -194,13 +194,11 @@ export const PERSONAS: AgentMode[] = AGENT_MODES.filter((m) => m.kind === 'perso
 
 const KEY = 'granit.ai.overlay.mode';
 
+import { loadStoredString, saveStoredString } from '$lib/util/storage';
+
 export function loadModeId(): string {
-  if (typeof localStorage === 'undefined') return 'general';
-  try {
-    const v = localStorage.getItem(KEY);
-    if (v && AGENT_MODES.some((m) => m.id === v)) return v;
-  } catch {}
-  return 'general';
+  const v = loadStoredString(KEY, 'general');
+  return AGENT_MODES.some((m) => m.id === v) ? v : 'general';
 }
 
 // Reactive view of the current mode id. The overlay owns its own
@@ -210,12 +208,9 @@ export function loadModeId(): string {
 // update this so subscribers re-render.
 import { writable } from 'svelte/store';
 
-export const currentModeId = writable<string>(
-  typeof localStorage === 'undefined' ? 'general' : loadModeId()
-);
+export const currentModeId = writable<string>(loadModeId());
 
 export function persistModeId(id: string) {
-  if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(KEY, id); } catch {}
+  saveStoredString(KEY, id);
   currentModeId.set(id);
 }

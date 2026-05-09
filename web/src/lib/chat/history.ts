@@ -22,6 +22,7 @@
 //     each one.
 
 import type { ChatMessage } from '$lib/api';
+import { loadStored, saveStored } from '$lib/util/storage';
 
 const THREADS_KEY = 'granit.chat.threads';
 const PINNED_KEY = 'granit.chat.pinned';
@@ -63,36 +64,25 @@ export interface PinnedMessage {
 }
 
 function readThreads(): ChatThread[] {
-  if (typeof localStorage === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(THREADS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (t): t is ChatThread =>
-        t &&
-        typeof t === 'object' &&
-        typeof t.id === 'string' &&
-        typeof t.title === 'string' &&
-        Array.isArray(t.messages)
-    );
-  } catch {
-    return [];
-  }
+  const parsed = loadStored<unknown>(THREADS_KEY, []);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(
+    (t): t is ChatThread =>
+      t &&
+      typeof t === 'object' &&
+      typeof t.id === 'string' &&
+      typeof t.title === 'string' &&
+      Array.isArray(t.messages)
+  );
 }
 
 function writeThreads(list: ChatThread[]): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    // Sort newest-first and cap. LRU semantics — least recently
-    // updated gets evicted.
-    const sorted = [...list].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_THREADS);
-    localStorage.setItem(THREADS_KEY, JSON.stringify(sorted));
-  } catch {
-    // Quota / privacy mode — silently drop. The user still has the
-    // thread in sessionStorage for the current tab session.
-  }
+  // Sort newest-first and cap. LRU semantics — least recently
+  // updated gets evicted. Quota errors are absorbed silently by
+  // saveStored; the user still has the thread in sessionStorage
+  // for the current tab session.
+  const sorted = [...list].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_THREADS);
+  saveStored(THREADS_KEY, sorted);
 }
 
 /** Read all saved threads, newest-first. Lazy — only called when the
@@ -208,27 +198,17 @@ export function searchThreads(query: string): ThreadSearchHit[] {
 const MAX_PINNED = 50;
 
 function readPins(): PinnedMessage[] {
-  if (typeof localStorage === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(PINNED_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (p): p is PinnedMessage =>
-        p && typeof p.threadId === 'string' && typeof p.content === 'string'
-    );
-  } catch {
-    return [];
-  }
+  const parsed = loadStored<unknown>(PINNED_KEY, []);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(
+    (p): p is PinnedMessage =>
+      p && typeof p.threadId === 'string' && typeof p.content === 'string'
+  );
 }
 
 function writePins(list: PinnedMessage[]): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    const sorted = [...list].sort((a, b) => b.pinnedAt - a.pinnedAt).slice(0, MAX_PINNED);
-    localStorage.setItem(PINNED_KEY, JSON.stringify(sorted));
-  } catch {}
+  const sorted = [...list].sort((a, b) => b.pinnedAt - a.pinnedAt).slice(0, MAX_PINNED);
+  saveStored(PINNED_KEY, sorted);
 }
 
 export function listPinned(): PinnedMessage[] {

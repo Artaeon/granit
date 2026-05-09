@@ -16,6 +16,8 @@
 // Trim: caps at the 12 most-recent drafts so a long power loss + lots of
 // editing won't blow past the localStorage quota (~5MB on most browsers).
 
+import { loadStored, saveStored } from '$lib/util/storage';
+
 const PREFIX = 'granit.draft:';
 const INDEX_KEY = 'granit.drafts.index';
 const MAX_DRAFTS = 12;
@@ -30,24 +32,12 @@ export interface Draft {
 }
 
 function readIndex(): string[] {
-  if (typeof localStorage === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(INDEX_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr.filter((p) => typeof p === 'string') : [];
-  } catch {
-    return [];
-  }
+  const arr = loadStored<unknown>(INDEX_KEY, []);
+  return Array.isArray(arr) ? arr.filter((p): p is string => typeof p === 'string') : [];
 }
 
 function writeIndex(paths: string[]): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(INDEX_KEY, JSON.stringify(paths));
-  } catch {
-    /* quota exceeded — give up */
-  }
+  saveStored(INDEX_KEY, paths);
 }
 
 function key(path: string): string {
@@ -94,23 +84,13 @@ export function setDraft(path: string, body: string, baseModTime: string): void 
 }
 
 export function getDraft(path: string): Draft | null {
-  if (typeof localStorage === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(key(path));
-    if (!raw) return null;
-    const d = JSON.parse(raw) as Draft;
-    if (typeof d.body !== 'string' || typeof d.savedAt !== 'number') return null;
-    return d;
-  } catch {
-    return null;
-  }
+  const d = loadStored<Draft | null>(key(path), null);
+  if (!d || typeof d.body !== 'string' || typeof d.savedAt !== 'number') return null;
+  return d;
 }
 
 export function clearDraft(path: string): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.removeItem(key(path));
-  } catch {}
+  saveStored<Draft>(key(path), undefined);
   const idx = readIndex().filter((p) => p !== path);
   writeIndex(idx);
 }
@@ -127,11 +107,8 @@ export function listDrafts(): { path: string; draft: Draft }[] {
 // some browsers, but the index removal at the end ensures listDrafts()
 // returns empty even if a few keys linger.
 export function clearAllDrafts(): void {
-  if (typeof localStorage === 'undefined') return;
-  for (const path of readIndex()) {
-    try { localStorage.removeItem(key(path)); } catch {}
-  }
-  try { localStorage.removeItem(INDEX_KEY); } catch {}
+  for (const path of readIndex()) saveStored<Draft>(key(path), undefined);
+  saveStored<string[]>(INDEX_KEY, undefined);
 }
 
 /** Returns true if the local draft is meaningfully different from the
