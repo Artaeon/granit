@@ -33,7 +33,28 @@
   // each running its own full pass (multiplied by the desktop +
   // mobile-drawer double-mount of the rail). On a long note that was
   // the bulk of the per-keystroke main-thread cost.
-  let sections = $derived(body.trim() ? parseBody(body).sections : []);
+  //
+  // Debounced 250ms — the section dropdown only matters when the
+  // user pauses to interact. While they're typing inside a section
+  // we don't need to re-derive on every keystroke, especially since
+  // an in-progress edit can briefly produce nonsense intermediate
+  // headings ("# part" while typing "## partial"). The panel's
+  // pickedLine binding is preserved across debounce updates: if the
+  // user picked a section on line 42 and then types in section 12,
+  // line 42 is still selected.
+  let debouncedBody = $state('');
+  let primed = false;
+  $effect(() => {
+    const next = body;
+    if (!primed) {
+      primed = true;
+      debouncedBody = next;
+      return;
+    }
+    const id = setTimeout(() => { debouncedBody = next; }, 250);
+    return () => clearTimeout(id);
+  });
+  let sections = $derived(debouncedBody.trim() ? parseBody(debouncedBody).sections : []);
 
   let pickedLine = $state<number | null>(null);
   let questions = $state('');

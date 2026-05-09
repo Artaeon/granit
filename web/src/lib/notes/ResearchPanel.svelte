@@ -28,13 +28,39 @@
   // mount, doubled by the desktop-rail / mobile-drawer rendering both
   // copies of the rail at every viewport. That work added up to a
   // material chunk of the per-keystroke freeze on long notes.
+  //
+  // Even with the shared parser, the three regex scans below
+  // (highlights, footnotes, sources) iterate every line on every
+  // keystroke. The user can't read a refreshed Research panel
+  // faster than they can type, so we debounce 250ms — the panel
+  // tracks the last "settled" body snapshot, which only advances
+  // after the user pauses. While typing, the panel shows the prior
+  // state; on the next pause it catches up. Cuts another big chunk
+  // of per-keystroke work on long notes without user-visible lag
+  // (the panel's value is "what's in this finished doc", not "what
+  // I'm typing right now").
+  let debouncedBody = $state('');
+  let primed = false;
+  $effect(() => {
+    // Track body explicitly. The first run lands the current value
+    // immediately (no flicker on mount); subsequent runs schedule a
+    // 250ms catch-up so a typing burst doesn't fire 30 derives.
+    const next = body;
+    if (!primed) {
+      primed = true;
+      debouncedBody = next;
+      return;
+    }
+    const id = setTimeout(() => { debouncedBody = next; }, 250);
+    return () => clearTimeout(id);
+  });
 
   type Highlight = { text: string; line: number };
   type Footnote = { id: string; line: number; defined: boolean; refOnly: boolean };
   type Source = { url: string; label: string; line: number };
 
   let highlights = $derived.by<Highlight[]>(() => {
-    const parsed = parseBody(body);
+    const parsed = parseBody(debouncedBody);
     const out: Highlight[] = [];
     const re = /==([^=\n][^=]*?)==/g;
     for (let i = 0; i < parsed.lines.length; i++) {
@@ -50,7 +76,7 @@
   });
 
   let footnotes = $derived.by<Footnote[]>(() => {
-    const parsed = parseBody(body);
+    const parsed = parseBody(debouncedBody);
     const refs = new Map<string, number>(); // first-occurrence line
     const defs = new Set<string>();
     const defLines = new Map<string, number>();
@@ -87,7 +113,7 @@
   });
 
   let sources = $derived.by<Source[]>(() => {
-    const parsed = parseBody(body);
+    const parsed = parseBody(debouncedBody);
     const out: Source[] = [];
     const seen = new Set<string>();
     // Markdown link form first (richest — gives us a label).
