@@ -17,6 +17,13 @@
   import Drawer from '$lib/components/Drawer.svelte';
   import { toast } from '$lib/components/toast';
   import { getDraft, setDraft, clearDraft, draftDivergesFromServer } from '$lib/notes/drafts';
+  import {
+    loadVisitedMap,
+    recordVisitedLine,
+    clearVisitedFor,
+    rememberScroll,
+    recallScroll
+  } from '$lib/notes/noteHistory';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import type { ExtractRequest } from '$lib/editor/extract-note';
   import AskAIDialog from '$lib/notes/AskAIDialog.svelte';
@@ -132,59 +139,25 @@
   // visited-checkpoint logic from a single source of truth: every
   // heading the reader passes through with a downward scroll gets
   // ticked as visited.
-  // Visited-section tracking — persisted per note path. Each entry
-  // is the source line number of a heading the reader has scrolled
-  // past in the preview. Cap at 200 entries per note to keep the
-  // localStorage payload small; older entries fall off the front
-  // first which models "recently read" reasonably for revisits.
-  const VISITED_KEY = 'granit.note.visited';
-  function loadVisitedMap(): Record<string, number[]> {
-    if (typeof localStorage === 'undefined') return {};
-    try {
-      return (JSON.parse(localStorage.getItem(VISITED_KEY) ?? '{}') as Record<string, number[]>) || {};
-    } catch {
-      return {};
-    }
-  }
-  function saveVisitedMap(m: Record<string, number[]>) {
-    try { localStorage.setItem(VISITED_KEY, JSON.stringify(m)); } catch {}
-  }
+  // Visited-section tracking — persisted per note path under
+  // granit.note.visited. See $lib/notes/noteHistory for the cap
+  // logic + LRU trim. The local Set mirrors the on-disk slice for
+  // the current note so render reads are O(1).
   let visitedHeadings = $state<Set<number>>(new Set());
-  // Reload the visited set when the note path changes — the set
-  // is per-note. Wrapped in $effect so a reactive $page.params.path
-  // change triggers a reload without manual plumbing in load().
   $effect(() => {
     const p = note?.path;
     if (!p) { visitedHeadings = new Set(); return; }
-    const m = loadVisitedMap();
-    visitedHeadings = new Set(m[p] ?? []);
+    visitedHeadings = new Set(loadVisitedMap()[p] ?? []);
   });
   function markVisited(line: number) {
     if (!note) return;
     if (visitedHeadings.has(line)) return;
-    const next = new Set(visitedHeadings);
-    next.add(line);
-    visitedHeadings = next;
-    const m = loadVisitedMap();
-    const arr = (m[note.path] ?? []).filter((x) => x !== line);
-    arr.push(line);
-    if (arr.length > 200) arr.splice(0, arr.length - 200);
-    m[note.path] = arr;
-    // Cap at 100 notes to keep storage small; drop the earliest-
-    // added once we exceed the limit.
-    const keys = Object.keys(m);
-    if (keys.length > 100) {
-      for (const k of keys.slice(0, keys.length - 80)) delete m[k];
-    }
-    saveVisitedMap(m);
+    visitedHeadings = recordVisitedLine(note.path, line);
   }
-  // Clear the visited set for the current note (Outline button below).
   function resetVisited() {
     if (!note) return;
     visitedHeadings = new Set();
-    const m = loadVisitedMap();
-    delete m[note.path];
-    saveVisitedMap(m);
+    clearVisitedFor(note.path);
   }
   // Preview-pane reading progress (0..1). Different surface from the
   // editor's `readProgress` because the user can scroll preview
@@ -245,41 +218,11 @@
   // `undefined` until then and the toolbar simply doesn't render.
   let editorDOM = $derived(editor?.getDOM());
 
-  // Per-note scroll position cache. Pixel-accurate (not line-accurate)
-  // because line tracking misbehaves once the user changes font size or
-  // window width — pixels survive reflow because we restore on the
-  // same note (same width, same font) only.
-  // localStorage'd so a page reload, tab close, or device handoff
-  // also lands the user back at the right spot.
-  const SCROLL_KEY = 'granit.note.scroll';
-  function loadScrollMap(): Record<string, number> {
-    if (typeof localStorage === 'undefined') return {};
-    try {
-      return (JSON.parse(localStorage.getItem(SCROLL_KEY) ?? '{}') as Record<string, number>) || {};
-    } catch {
-      return {};
-    }
-  }
-  function saveScrollMap(m: Record<string, number>) {
-    try { localStorage.setItem(SCROLL_KEY, JSON.stringify(m)); } catch {}
-  }
-  function rememberScroll(path: string, top: number) {
-    if (top <= 0) return;
-    const m = loadScrollMap();
-    m[path] = top;
-    // Cap the map at the 200 most-recently-visited notes so we don't
-    // grow localStorage indefinitely. Cheap heuristic: when oversized,
-    // drop a random 50; the user's recently-viewed notes still land.
-    const keys = Object.keys(m);
-    if (keys.length > 200) {
-      const drop = keys.slice(0, keys.length - 150);
-      for (const k of drop) delete m[k];
-    }
-    saveScrollMap(m);
-  }
-  function recallScroll(path: string): number {
-    return loadScrollMap()[path] ?? 0;
-  }
+  // Per-note scroll position cache lives in $lib/notes/noteHistory —
+  // see the imports at the top. Pixel-accurate (not line-accurate)
+  // because line tracking misbehaves once the user changes font size
+  // or window width — pixels survive reflow because we restore on
+  // the same note (same width, same font) only.
 
   let treeDrawerOpen = $state(false);
   let infoDrawerOpen = $state(false);
