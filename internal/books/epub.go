@@ -386,9 +386,12 @@ type packageDoc struct {
 	} `xml:"spine"`
 }
 
-// ── HTML rewriting ───────────────────────────────────────────────
+// ── HTML rewriting + sanitising ──────────────────────────────────
 
-var refAttrRe = regexp.MustCompile(`(?i)(href|src)=["']([^"']+)["']`)
+// (?:^|\s) anchors before the attribute name so we don't match the
+// "href" inside `data-href` etc. The lookahead semantics are achieved
+// with a non-capturing alternation that consumes the leading char.
+var refAttrRe = regexp.MustCompile(`(?i)(^|\s)(href|src)=["']([^"']+)["']`)
 
 // rewriteRefs scopes every relative href/src in chapter HTML so
 // "images/foo.png" → "<prefix>/<rel>" — needed because the browser
@@ -397,10 +400,10 @@ var refAttrRe = regexp.MustCompile(`(?i)(href|src)=["']([^"']+)["']`)
 func rewriteRefs(body, chapterDir, prefix string) string {
 	return refAttrRe.ReplaceAllStringFunc(body, func(match string) string {
 		groups := refAttrRe.FindStringSubmatch(match)
-		if len(groups) < 3 {
+		if len(groups) < 4 {
 			return match
 		}
-		attr, val := groups[1], groups[2]
+		lead, attr, val := groups[1], groups[2], groups[3]
 		// Skip absolute / external / fragment-only refs.
 		if val == "" || strings.HasPrefix(val, "#") ||
 			strings.Contains(val, "://") ||
@@ -410,9 +413,10 @@ func rewriteRefs(body, chapterDir, prefix string) string {
 		}
 		// Resolve relative to the chapter's directory inside opfDir.
 		resolved := path.Clean(joinPath(chapterDir, val))
-		return fmt.Sprintf(`%s="%s/%s"`, attr, prefix, resolved)
+		return fmt.Sprintf(`%s%s="%s/%s"`, lead, attr, prefix, resolved)
 	})
 }
+
 
 // ── ID generation ────────────────────────────────────────────────
 

@@ -171,6 +171,20 @@ func TestParseNavTOC(t *testing.T) {
 	}
 }
 
+func TestRewriteRefsLeavesDataHrefAlone(t *testing.T) {
+	// Earlier versions of the regex rewrote the `href` inside
+	// `data-href="x"` because there was no boundary on the attribute
+	// name. The fix anchors with (^|\s) so only true href/src land.
+	in := `<a data-href="x.html" href="real.html">Click</a>`
+	got := rewriteRefs(in, "", "/api/v1/books/test/asset")
+	if !strings.Contains(got, `data-href="x.html"`) {
+		t.Errorf("data-href was clobbered: %s", got)
+	}
+	if !strings.Contains(got, `href="/api/v1/books/test/asset/real.html"`) {
+		t.Errorf("real href not rewritten: %s", got)
+	}
+}
+
 func TestSlugIDStableAcrossOpens(t *testing.T) {
 	a := SlugID("The Great Gatsby", "/foo/gatsby.epub")
 	b := SlugID("The Great Gatsby", "/foo/gatsby.epub")
