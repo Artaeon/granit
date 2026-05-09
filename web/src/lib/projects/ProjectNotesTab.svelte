@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { api, type Note, type Project , todayISO } from '$lib/api';
+  import { api, todayISO, type Note, type Project } from '$lib/api';
+  import { slugifyTitle } from '$lib/util/slug';
   import { toast } from '$lib/components/toast';
   import NoteLinkDialog from './NoteLinkDialog.svelte';
 
@@ -166,10 +167,7 @@
     creating = true;
     try {
       const ts = todayISO();
-      const slug = project.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
+      const slug = slugifyTitle(project.name);
       const folder = (project.folder ?? '').replace(/\/$/, '');
       const path = (folder ? `${folder}/` : '') + `${ts}-${slug || 'note'}.md`;
       const fm: Record<string, unknown> = { project: project.name };

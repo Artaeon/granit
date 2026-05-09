@@ -135,19 +135,7 @@ export function suggestTitle(text: string): string {
   return '';
 }
 
-/**
- * Slug-ifies a title into a vault-safe filename body (no extension).
- * Lowercase, alphanumerics + dashes only, collapses runs, trims
- * leading/trailing dashes. Mirrors the slugify behaviour of /notes
- * so a "+ New note" via either flow lands at the same path shape.
- */
-export function slugifyTitle(title: string): string {
-  return title
-    .toLowerCase()
-    .normalize('NFKD')
-    // Strip combining diacritical marks (U+0300..U+036F).
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
-}
+// Re-exported for backwards compat. The canonical implementation
+// lives in $lib/util/slug now so non-editor surfaces can use it
+// without pulling in the whole extract-note module.
+export { slugifyTitle } from '$lib/util/slug';

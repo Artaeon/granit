@@ -26,6 +26,7 @@
     deriveThreadTitle
   } from '$lib/chat/history';
   import { retrieveForRag, type RagHit } from '$lib/chat/rag';
+  import { slugifyTitle } from '$lib/util/slug';
   import {
     createSpeechRecognition,
     isSpeechRecognitionSupported,
@@ -935,14 +936,10 @@
   // /chat page is for long-running threads, this is the quick
   // 'this was a good answer, save it' move from any page.
   let saving = $state(false);
-  function slugify(s: string): string {
-    return s
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .slice(0, 60)
-      .replace(/^-+|-+$/g, '');
-  }
+  // Use the shared slugifier — the inline copy was slightly looser
+  // (kept underscores, capped at 60 instead of 80) but the diff is
+  // negligible for chat-thread filenames.
+  const slugify = slugifyTitle;
   async function saveThreadAsNote() {
     if (saving) return;
     if (messages.length === 0 && !quickResult) {

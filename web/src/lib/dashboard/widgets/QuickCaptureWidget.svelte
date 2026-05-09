@@ -2,6 +2,7 @@
   import { onDestroy, onMount, tick } from 'svelte';
   import { api, todayISO, type Note } from '$lib/api';
   import { parseTaskInput } from '$lib/util/taskParse';
+  import { slugifyTitle } from '$lib/util/slug';
   import {
     createSpeechRecognition,
     isSpeechRecognitionSupported,
@@ -185,13 +186,7 @@
 
   async function captureNote(title: string) {
     const today = todayISO();
-    const slug = title
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .slice(0, 50);
-    const path = `Inbox/${today}-${slug || 'untitled'}.md`;
+    const path = `Inbox/${today}-${slugifyTitle(title) || 'untitled'}.md`;
     const created = await api.createNote({
       path,
       frontmatter: { title, created: new Date().toISOString() },
