@@ -40,6 +40,30 @@
   type ViewMode = 'edit' | 'preview' | 'split';
   const VIEW_KEY = 'granit.note.viewMode';
   let viewMode = $state<ViewMode>('edit');
+
+  // Viewport tracking for the rail/tree mount strategy. Tailwind's
+  // lg breakpoint is 1024px (left tree threshold) and xl is 1280px
+  // (right info-rail threshold). Previously each rail was rendered
+  // TWICE — once in a desktop `<aside class="hidden md:flex">` and
+  // once in a `<Drawer>` wrapped by `md:hidden contents`. Both DOM
+  // trees were always mounted; CSS just hid one. That meant every
+  // panel's $derived/$effect ran twice, doubling the per-keystroke
+  // cost of body-derived recomputation in the rail panels — a
+  // meaningful chunk of the save-time freeze on long notes. We
+  // track each breakpoint here and render the rail / tree to ONLY
+  // one location at a time.
+  // Initial values from synchronous matchMedia. SvelteKit hydrates
+  // this component on the client only after the bundle loads, so
+  // window is always defined here — but the typeof guard keeps SSR
+  // (if it ever happens) from throwing. The onMount block below
+  // wires up live updates; this initializer just avoids a one-frame
+  // flash where the wrong layout renders before the listener fires.
+  let isLg = $state(
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+  );
+  let isXl = $state(
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches
+  );
   // Restore preference once at mount.
   onMount(() => {
     try {
@@ -50,6 +74,32 @@
     // other pin-aware surface mounted after this) reflects the
     // server-authoritative list without each component re-fetching.
     ensurePinnedLoaded();
+    // Two MQL listeners for the lg + xl breakpoints. matchMedia is
+    // ubiquitous in our targets; the older addListener fallback covers
+    // ancient Safari just in case.
+    if (typeof window === 'undefined') return;
+    const lgMql = window.matchMedia('(min-width: 1024px)');
+    const xlMql = window.matchMedia('(min-width: 1280px)');
+    isLg = lgMql.matches;
+    isXl = xlMql.matches;
+    const onLg = (e: MediaQueryListEvent) => { isLg = e.matches; };
+    const onXl = (e: MediaQueryListEvent) => { isXl = e.matches; };
+    function add(mql: MediaQueryList, fn: (e: MediaQueryListEvent) => void) {
+      if (typeof mql.addEventListener === 'function') mql.addEventListener('change', fn);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      else (mql as any).addListener?.(fn);
+    }
+    function remove(mql: MediaQueryList, fn: (e: MediaQueryListEvent) => void) {
+      if (typeof mql.removeEventListener === 'function') mql.removeEventListener('change', fn);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      else (mql as any).removeListener?.(fn);
+    }
+    add(lgMql, onLg);
+    add(xlMql, onXl);
+    return () => {
+      remove(lgMql, onLg);
+      remove(xlMql, onXl);
+    };
   });
   function setViewMode(m: ViewMode) {
     viewMode = m;
@@ -1380,26 +1430,22 @@
 {/snippet}
 
 <div class="h-full flex" class:focus-mode={focusMode} class:reading-mode={readingMode}>
-  <!-- Tree (desktop only). Hidden in focus mode so the editor takes
-       the full viewport — toggle with Mod-Shift-Z or the focus
-       button in the header. -->
-  <aside class="hidden lg:flex lg:flex-col lg:w-64 xl:w-72 border-r border-surface1 bg-mantle/40 flex-shrink-0 focus-hide">
-    {@render treeContent()}
-  </aside>
-
-  <!-- Tree drawer — covers everything below lg (where the permanent
-       left rail kicks in). The default Drawer is mobile-only
-       (\`md:hidden\`); we override to responsive so the tablet gap
-       (768–1024 px) doesn't leave the toolbar's tree button as a
-       no-op. \`lg:hidden contents\` ensures the drawer doesn't
-       double-render once the desktop sidebar mounts. -->
-  <div class="lg:hidden contents">
+  <!-- Tree — gated on the lg breakpoint. Same double-mount story as
+       the right info rail: BOTH the desktop aside and the drawer
+       used to render at every viewport with CSS hiding one, which
+       wasted a NotesTree mount + its WS subscription per page mount.
+       Render only the active one based on the live `isLg` flag. -->
+  {#if isLg}
+    <aside class="hidden lg:flex lg:flex-col lg:w-64 xl:w-72 border-r border-surface1 bg-mantle/40 flex-shrink-0 focus-hide">
+      {@render treeContent()}
+    </aside>
+  {:else}
     <Drawer bind:open={treeDrawerOpen} side="left" responsive width="w-72 sm:w-80">
       <div class="h-full flex flex-col">
         {@render treeContent()}
       </div>
     </Drawer>
-  </div>
+  {/if}
 
   <!-- Center: editor -->
   <div class="flex-1 flex flex-col min-w-0">
@@ -1918,24 +1964,24 @@
     {/if}
   </div>
 
-  <!-- Right info panel (desktop xl+) — also hidden in focus mode. -->
-  <aside class="hidden xl:flex xl:flex-col xl:w-72 border-l border-surface1 bg-mantle/40 flex-shrink-0 focus-hide">
-    {@render infoContent()}
-  </aside>
-
-  <!-- Info drawer — covers everything below xl (where the sticky
-       right rail kicks in). The default Drawer is mobile-only
-       (`md:hidden`) which used to leave the gap between md and xl
-       unreachable: the toolbar's `xl:hidden` button opened nothing
-       on a 1024px laptop. `responsive` keeps it functioning at
-       every width below the desktop rail's threshold; we hide it
-       ourselves at xl+ so it never double-renders alongside the
-       permanent sidebar. -->
-  <div class="xl:hidden contents">
+  <!-- Right info panel — gated on viewport. Previously BOTH the
+       desktop aside AND the drawer rendered the same `infoContent`
+       snippet, with CSS hiding one. Each panel inside that snippet
+       therefore mounted twice and ran its $derived/$effect work
+       twice on every keystroke. Now the snippet renders to exactly
+       one of them based on the live `isXl` flag (matchMedia listener
+       set on mount). Saves ~half the per-keystroke recompute when
+       editing on any non-xl viewport, and keeps the desktop layout
+       unchanged when isXl is true. Focus-mode still hides the rail. -->
+  {#if isXl}
+    <aside class="hidden xl:flex xl:flex-col xl:w-72 border-l border-surface1 bg-mantle/40 flex-shrink-0 focus-hide">
+      {@render infoContent()}
+    </aside>
+  {:else}
     <Drawer bind:open={infoDrawerOpen} side="right" responsive width="w-80 sm:w-96">
       {@render infoContent()}
     </Drawer>
-  </div>
+  {/if}
 </div>
 
 <!-- Extract-to-note dialog. Lives at the page root so it overlays
