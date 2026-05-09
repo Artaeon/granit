@@ -381,20 +381,21 @@
 </script>
 
 <div class="h-full flex flex-col">
-  <header class="px-3 sm:px-4 py-3 border-b border-surface1 flex-shrink-0">
+  <header class="px-3 sm:px-4 py-3 border-b border-surface1 flex-shrink-0 sticky top-0 z-20 bg-mantle/85 supports-[backdrop-filter]:bg-mantle/60 supports-[backdrop-filter]:backdrop-blur-md">
     <div class="flex items-center justify-between gap-3 mb-3">
-      <div>
-        <h1 class="text-xl sm:text-2xl font-semibold text-text">Notes</h1>
+      <div class="min-w-0">
+        <h1 class="text-xl sm:text-2xl font-semibold text-text truncate">Notes</h1>
         <p class="text-xs text-dim mt-0.5">{notes.length} notes · {pinnedList.length} pinned</p>
       </div>
       <button
         onclick={() => (createOpen = true)}
-        class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
+        class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 flex items-center gap-1.5 flex-shrink-0"
       >
         <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
           <path d="M12 5v14M5 12h14"/>
         </svg>
-        New note
+        <span class="hidden sm:inline">New note</span>
+        <span class="sm:hidden">New</span>
       </button>
     </div>
 
@@ -409,61 +410,85 @@
       class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm sm:text-base text-text placeholder-dim focus:outline-none focus:border-primary"
     />
 
-    <!-- View tabs. Persisted to localStorage. -->
-    <nav class="mt-3 flex gap-1 overflow-x-auto text-xs" aria-label="view">
-      {#each [
-        { id: 'recent' as View, label: 'Recent', count: recent.length },
-        { id: 'pinned' as View, label: 'Pinned', count: pinnedList.length },
-        { id: 'tree' as View, label: 'Tree', count: notes.length },
-        { id: 'all' as View, label: 'All', count: notes.length },
-        { id: 'alpha' as View, label: 'A–Z', count: notes.length },
-        { id: 'tags' as View, label: 'Tags', count: tagSections.length },
-        { id: 'folders' as View, label: 'Folders', count: folderCards.length },
-        ...(q.trim() ? [{ id: 'search' as View, label: 'Search', count: searchResults.length }] : [])
-      ] as t}
-        <button
-          onclick={() => {
-            // Clicking the All tab directly clears any folder filter
-            // — folder filtering is only set via the Folders cards;
-            // hitting the tab on its own should mean "show everything".
-            if (t.id === 'all' && view !== 'all') folderFilter = '';
-            view = t.id;
-          }}
-          class="px-3 py-1.5 rounded transition-colors flex-shrink-0
-            {view === t.id ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1 border border-surface1'}"
-        >
-          {t.label} <span class="opacity-70 ml-0.5">{t.count}</span>
-        </button>
-      {/each}
-      {#if view === 'all' && folderFilter}
-        <button
-          type="button"
-          onclick={() => (folderFilter = '')}
-          class="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded bg-warning/10 text-warning hover:bg-warning/20 flex-shrink-0"
-          title="Clear folder filter"
-        >
-          <span>📁</span>
-          <span class="font-medium">{folderFilter === '__root__' ? '/' : folderFilter}</span>
-          <span aria-hidden="true">×</span>
-        </button>
-      {/if}
-      {#if view === 'all'}
-        <span class="ml-auto flex items-center gap-1 text-dim flex-shrink-0">
-          <span>sort by</span>
-          {#each [
-            { id: 'modified' as SortKey, label: 'modified' },
-            { id: 'created' as SortKey, label: 'created' },
-            { id: 'name' as SortKey, label: 'name' },
-            { id: 'size' as SortKey, label: 'size' }
-          ] as s}
-            <button
-              onclick={() => (sortKey = s.id)}
-              class="px-2 py-1 rounded {sortKey === s.id ? 'text-primary font-medium' : 'hover:text-text'}"
-            >{s.label}</button>
-          {/each}
-        </span>
-      {/if}
-    </nav>
+    <!-- View tabs. Persisted to localStorage. The strip is wrapped
+         in a relative shell so we can paint a thin gradient on the
+         right edge — a visual cue that more tabs sit beyond the
+         visible area on phones. The shell is scroll-padded + uses
+         scroll-snap so a thumbing user lands cleanly on a tab
+         instead of mid-button. -->
+    <div class="mt-3 relative">
+      <nav
+        class="flex gap-1 overflow-x-auto text-xs notes-view-strip"
+        aria-label="view"
+      >
+        {#each [
+          { id: 'recent' as View, label: 'Recent', count: recent.length },
+          { id: 'pinned' as View, label: 'Pinned', count: pinnedList.length },
+          { id: 'tree' as View, label: 'Tree', count: notes.length },
+          { id: 'all' as View, label: 'All', count: notes.length },
+          { id: 'alpha' as View, label: 'A–Z', count: notes.length },
+          { id: 'tags' as View, label: 'Tags', count: tagSections.length },
+          { id: 'folders' as View, label: 'Folders', count: folderCards.length },
+          ...(q.trim() ? [{ id: 'search' as View, label: 'Search', count: searchResults.length }] : [])
+        ] as t}
+          <button
+            onclick={() => {
+              // Clicking the All tab directly clears any folder filter
+              // — folder filtering is only set via the Folders cards;
+              // hitting the tab on its own should mean "show everything".
+              if (t.id === 'all' && view !== 'all') folderFilter = '';
+              view = t.id;
+            }}
+            class="px-3 py-1.5 rounded transition-colors flex-shrink-0 snap-start
+              {view === t.id ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1 border border-surface1'}"
+          >
+            {t.label} <span class="opacity-70 ml-0.5">{t.count}</span>
+          </button>
+        {/each}
+        {#if view === 'all' && folderFilter}
+          <button
+            type="button"
+            onclick={() => (folderFilter = '')}
+            class="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded bg-warning/10 text-warning hover:bg-warning/20 flex-shrink-0"
+            title="Clear folder filter"
+          >
+            <span>📁</span>
+            <span class="font-medium">{folderFilter === '__root__' ? '/' : folderFilter}</span>
+            <span aria-hidden="true">×</span>
+          </button>
+        {/if}
+        {#if view === 'all'}
+          <!-- Sort options ride alongside the tabs in the same scroll
+               strip on mobile so they don't wrap to a second line and
+               push the list down; on sm+ they pin to the right side. -->
+          <span class="ml-auto flex items-center gap-1 text-dim flex-shrink-0">
+            <span class="hidden sm:inline">sort by</span>
+            <span class="sm:hidden text-[10px] uppercase tracking-wider">sort</span>
+            {#each [
+              { id: 'modified' as SortKey, label: 'modified' },
+              { id: 'created' as SortKey, label: 'created' },
+              { id: 'name' as SortKey, label: 'name' },
+              { id: 'size' as SortKey, label: 'size' }
+            ] as s}
+              <button
+                onclick={() => (sortKey = s.id)}
+                class="px-2 py-1 rounded flex-shrink-0 {sortKey === s.id ? 'text-primary font-medium' : 'hover:text-text'}"
+              >{s.label}</button>
+            {/each}
+          </span>
+        {/if}
+      </nav>
+      <!-- Right-edge fade — hints at off-screen tabs on the small
+           viewports where the strip overflows. Hidden on sm+ where
+           the strip typically fits. The fade uses color-mix on the
+           current theme's mantle so it works in light + dark
+           palettes without per-theme overrides. -->
+      <div
+        class="pointer-events-none absolute top-0 right-0 h-full w-6 sm:hidden"
+        style="background: linear-gradient(to left, var(--color-mantle), color-mix(in srgb, var(--color-mantle) 0%, transparent));"
+        aria-hidden="true"
+      ></div>
+    </div>
   </header>
 
   <div class="flex-1 min-h-0 overflow-hidden">
@@ -675,3 +700,21 @@
     </div>
   </div>
 {/if}
+
+<style>
+  /* Horizontally-scrolling view-tab strip on mobile. Snap so a
+     thumb-flick lands on a tab; hide the scrollbar so the right-
+     edge gradient (drawn by the sibling div) reads as the only
+     "more tabs" hint. Desktop with a wide viewport still gets the
+     scrollable strip but the gradient is hidden via sm:hidden so
+     it doesn't paint over a fully-visible toggle row. */
+  .notes-view-strip {
+    scroll-snap-type: x mandatory;
+    scroll-padding-left: 0.75rem;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .notes-view-strip::-webkit-scrollbar {
+    display: none;
+  }
+</style>
