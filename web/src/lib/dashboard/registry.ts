@@ -111,7 +111,13 @@ export const widgetRegistry: WidgetMeta[] = [
   { type: 'ventures', label: 'Ventures', description: 'Active ventures with project + goal counts', span: 1, load: lazy(() => import('./widgets/VenturesWidget.svelte')) },
   { type: 'prayer', label: 'Prayer', description: 'Active intentions — work-tied first', span: 1, load: lazy(() => import('./widgets/PrayerWidget.svelte')) },
   { type: 'inbox', label: 'Inbox', description: 'Tasks granit hasn\'t triaged', span: 1, load: lazy(() => import('./widgets/InboxWidget.svelte')) },
-  { type: 'calendar-week', label: 'Calendar week', description: 'Next 7 days at a glance', span: 1, load: lazy(() => import('./widgets/CalendarWeekWidget.svelte')) }
+  { type: 'calendar-week', label: 'Calendar week', description: 'Next 7 days at a glance', span: 1, load: lazy(() => import('./widgets/CalendarWeekWidget.svelte')) },
+  // Three widgets that lived in the bundle but had been dropped
+  // from the registry — re-registered so users can opt in via the
+  // customize panel. None auto-injected into existing dashboards.
+  { type: 'habits', label: 'Habits', description: 'Today\'s habit ticks + per-target progress + at-risk indicator', span: 1, load: lazy(() => import('./widgets/HabitsWidget.svelte')) },
+  { type: 'pomodoro', label: 'Pomodoro', description: 'In-page focus timer with audible chime; persists across reloads', span: 1, load: lazy(() => import('./widgets/PomodoroWidget.svelte')) },
+  { type: 'install', label: 'Install commands', description: 'Granit\'s install commands for fresh devices', span: 2, load: lazy(() => import('./widgets/InstallWidget.svelte')) }
 ];
 
 export function widgetMeta(type: string): WidgetMeta | undefined {
