@@ -77,16 +77,21 @@ func overrideKey(start time.Time, allDay bool) string {
 //     matches the drag-move UX where the user picks a new time and
 //     expects the event to keep its length.
 //
-// Times are interpreted in time.Local because that's how the events.json
-// schema stores them (HH:MM, no timezone — wall-clock from the user's
-// perspective). The expander emits UTC-flavored time.Time values, so
-// we round-trip start through Local to extract the override's wall
-// clock and rebuild a time.Time anchored to the override day.
+// Times are interpreted in time.UTC, but conceptually they are FLOATING
+// wall-clock numbers — the events.json schema stores HH:MM with no
+// zone, so we treat the digits as zone-free. UTC is just the carrier
+// frame: it has no DST and a stable offset, so the round-trip
+// digits→time.Time→digits is lossless across server reboots, server
+// timezone changes, and client timezones. The previous code used
+// time.Local, which silently re-anchored those wall-clock numbers to
+// the SERVER's zone — on a UTC server with a UTC+2 client, an event
+// the user typed as 08:00 ended up rendering at 10:00 because the
+// server emitted "08:00Z" and the browser added the +2hr offset.
 func applyTimedOverride(start, end time.Time, ovr granitmeta.EventOverride) (time.Time, time.Time) {
 	dur := end.Sub(start)
-	loc := time.Local
+	loc := time.UTC
 	// Anchor day: the override's Date wins; otherwise the original
-	// occurrence's local date. Time-of-day is derived next.
+	// occurrence's UTC date. Time-of-day is derived next.
 	yyyy, mm, dd := start.In(loc).Date()
 	if ovr.Date != "" {
 		if d, err := time.ParseInLocation("2006-01-02", ovr.Date, loc); err == nil {
@@ -132,13 +137,23 @@ func expandAllDayDates(start, end, from, rangeEnd time.Time) []string {
 
 func parseDateQuery(s string) (time.Time, error) {
 	if s == "" {
-		return time.Now(), nil
+		// Default to "today" in UTC so the empty-query window aligns
+		// with the UTC parse used for the events.json wall-clock
+		// numbers below — keeping the comparison frame consistent
+		// avoids edge-of-day drift on non-UTC servers.
+		now := time.Now().UTC()
+		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC), nil
 	}
 	t, err := time.Parse("2006-01-02", s)
 	if err != nil {
 		return time.Time{}, err
 	}
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.Local), nil
+	// Anchor the window in UTC. events.json stores HH:MM as floating
+	// wall-clock and we parse those numbers in UTC (see
+	// applyTimedOverride / handleCalendar) — the from/to bounds need
+	// the same frame so a server in a non-UTC zone doesn't shift the
+	// requested calendar day under the client's feet.
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), nil
 }
 
 func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
@@ -215,10 +230,19 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				seed.Start = d
 				seed.End = d.Add(24 * time.Hour) // exclusive end day
 			} else {
-				if startT, err := time.ParseInLocation("2006-01-02 15:04", ev.Date+" "+ev.StartTime, time.Local); err == nil {
+				// Parse-in-UTC: events.json stores HH:MM as zone-free
+				// wall-clock numbers. We carry them in UTC time.Time
+				// values (UTC has no DST, stable offset → lossless
+				// digit round-trip), then emit a floating ISO string
+				// so the browser anchors them to the CLIENT's zone.
+				// The previous time.Local parse silently re-zoned the
+				// digits to the server's TZ, which on a UTC server with
+				// a UTC+2 client materialised as a clean +2hr drift
+				// (08:00 typed → "08:00Z" emitted → 10:00 displayed).
+				if startT, err := time.ParseInLocation("2006-01-02 15:04", ev.Date+" "+ev.StartTime, time.UTC); err == nil {
 					seed.Start = startT
 					if ev.EndTime != "" {
-						if endT, err := time.ParseInLocation("2006-01-02 15:04", ev.Date+" "+ev.EndTime, time.Local); err == nil {
+						if endT, err := time.ParseInLocation("2006-01-02 15:04", ev.Date+" "+ev.EndTime, time.UTC); err == nil {
 							seed.End = endT
 						}
 					}

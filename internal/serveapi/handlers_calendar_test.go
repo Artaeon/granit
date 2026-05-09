@@ -112,8 +112,13 @@ func TestOverrideKey(t *testing.T) {
 //   - StartTime + EndTime sets both wall-clock independently (drag-resize)
 //   - Date alone shifts the day, time stays put
 //   - Empty override is a no-op
+//
+// Carrier zone is UTC because events.json stores HH:MM as floating
+// wall-clock and the calendar pipeline now treats UTC as the zone-free
+// frame end-to-end (see comment on applyTimedOverride). Switching from
+// time.Local in 2026-05 fixed a +offset drift on non-UTC servers.
 func TestApplyTimedOverride(t *testing.T) {
-	loc := time.Local
+	loc := time.UTC
 	start := time.Date(2026, 3, 4, 9, 0, 0, 0, loc)
 	end := time.Date(2026, 3, 4, 10, 0, 0, 0, loc) // 1h duration
 
