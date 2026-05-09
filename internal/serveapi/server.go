@@ -463,6 +463,15 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/api/v1/books/{id}/bookmarks", s.handleCreateBookBookmark)
 		r.Delete("/api/v1/books/{id}/bookmarks/{bid}", s.handleDeleteBookBookmark)
 
+		// Margin annotations on notes — sidecar marginalia stored
+		// at .granit/annotations.json. The editor / preview reads
+		// by notePath; the list endpoint also accepts no filter
+		// for a future "all annotations" surface.
+		r.Get("/api/v1/annotations", s.handleListAnnotations)
+		r.Post("/api/v1/annotations", s.handleCreateAnnotation)
+		r.Patch("/api/v1/annotations/{id}", s.handlePatchAnnotation)
+		r.Delete("/api/v1/annotations/{id}", s.handleDeleteAnnotation)
+
 		r.Get("/api/v1/sync", s.handleSyncStatus)
 		r.Post("/api/v1/sync", s.handleSyncTrigger)
 
