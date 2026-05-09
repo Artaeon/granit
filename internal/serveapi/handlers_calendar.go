@@ -48,6 +48,61 @@ type calendarEvent struct {
 	ProjectID string `json:"project_id,omitempty"`
 }
 
+// overrideKey is the canonical key shape into Event.Overrides. Mirrors
+// the EXDATE format from ics.go's isExcluded so the override and skip
+// paths agree on what "this Tuesday's 9am occurrence" identifies as:
+// YYYY-MM-DD for all-day, YYYY-MM-DDTHH:MM:SS in UTC for timed.
+func overrideKey(start time.Time, allDay bool) string {
+	if allDay {
+		return start.Format("2006-01-02")
+	}
+	return start.UTC().Format("2006-01-02T15:04:05")
+}
+
+// applyTimedOverride mutates the (start, end) pair of one occurrence
+// according to the override. The contract:
+//   - If ovr.Date is set, the occurrence moves to that calendar day.
+//     start_time / end_time stay at the same wall-clock-on-the-new-date
+//     unless overridden by ovr.StartTime / ovr.EndTime.
+//   - If ovr.StartTime / ovr.EndTime are set, the wall-clock time on
+//     the (possibly shifted) day is replaced. When only StartTime is
+//     set, the duration is preserved (end shifts by the same delta) —
+//     matches the drag-move UX where the user picks a new time and
+//     expects the event to keep its length.
+//
+// Times are interpreted in time.Local because that's how the events.json
+// schema stores them (HH:MM, no timezone — wall-clock from the user's
+// perspective). The expander emits UTC-flavored time.Time values, so
+// we round-trip start through Local to extract the override's wall
+// clock and rebuild a time.Time anchored to the override day.
+func applyTimedOverride(start, end time.Time, ovr granitmeta.EventOverride) (time.Time, time.Time) {
+	dur := end.Sub(start)
+	loc := time.Local
+	// Anchor day: the override's Date wins; otherwise the original
+	// occurrence's local date. Time-of-day is derived next.
+	yyyy, mm, dd := start.In(loc).Date()
+	if ovr.Date != "" {
+		if d, err := time.ParseInLocation("2006-01-02", ovr.Date, loc); err == nil {
+			yyyy, mm, dd = d.Year(), d.Month(), d.Day()
+		}
+	}
+	// Wall-clock start: ovr.StartTime wins, else original wall clock.
+	hh, mi := start.In(loc).Hour(), start.In(loc).Minute()
+	if ovr.StartTime != "" {
+		if t, err := time.ParseInLocation("15:04", ovr.StartTime, loc); err == nil {
+			hh, mi = t.Hour(), t.Minute()
+		}
+	}
+	newStart := time.Date(yyyy, mm, dd, hh, mi, 0, 0, loc)
+	newEnd := newStart.Add(dur)
+	if ovr.EndTime != "" {
+		if t, err := time.ParseInLocation("15:04", ovr.EndTime, loc); err == nil {
+			newEnd = time.Date(yyyy, mm, dd, t.Hour(), t.Minute(), 0, 0, loc)
+		}
+	}
+	return newStart, newEnd
+}
+
 // expandAllDayDates walks every day in an all-day event's [start, end)
 // span (ICS DTEND is exclusive) and returns ISO dates clamped to the
 // requested [from, rangeEnd) window. Used by the calendar handler so
@@ -172,18 +227,43 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				occurrences = expandRRULE(seed, from, rangeEndForNative)
 			}
 			for _, occ := range occurrences {
+				// Per-occurrence override lookup. Key by the
+				// ORIGINAL (untransformed) occurrence's UTC stamp
+				// so the override survives even after the user
+				// shifts the day/time — the override moves with
+				// the series anchor, not the displayed cell. This
+				// matches the EXDATE key shape exactly (see
+				// isExcluded in ics.go).
+				ovr, hasOvr := ev.Overrides[overrideKey(occ.Start, occ.AllDay)]
 				occDate := occ.Start.Format("2006-01-02")
 				if occ.AllDay {
 					if occ.Start.Before(from) || !occ.Start.Before(rangeEndForNative) {
 						continue
 					}
+					title := ev.Title
+					color := ev.Color
+					location := ev.Location
+					if hasOvr {
+						if ovr.Title != "" {
+							title = ovr.Title
+						}
+						if ovr.Color != "" {
+							color = ovr.Color
+						}
+						if ovr.Location != "" {
+							location = ovr.Location
+						}
+						if ovr.Date != "" {
+							occDate = ovr.Date
+						}
+					}
 					events = append(events, calendarEvent{
 						Type:      "event",
-						Title:     ev.Title,
+						Title:     title,
 						Date:      occDate,
 						EventID:   ev.ID,
-						Color:     ev.Color,
-						Location:  ev.Location,
+						Color:     color,
+						Location:  location,
 						RRule:     ev.RRule,
 						ProjectID: ev.ProjectID,
 					})
@@ -192,21 +272,48 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				if occ.Start.Before(from) || !occ.Start.Before(rangeEndForNative) {
 					continue
 				}
+				// Apply timed override: shift start/end to the
+				// override's wall-clock values, optionally on the
+				// override's date. Falls back to the expanded
+				// occurrence values when fields are empty.
+				occStart := occ.Start
+				occEnd := occ.End
+				title := ev.Title
+				color := ev.Color
+				location := ev.Location
+				if hasOvr {
+					if ovr.Title != "" {
+						title = ovr.Title
+					}
+					if ovr.Color != "" {
+						color = ovr.Color
+					}
+					if ovr.Location != "" {
+						location = ovr.Location
+					}
+					occStart, occEnd = applyTimedOverride(occStart, occEnd, ovr)
+					// Re-window check after override shift: a
+					// moved occurrence might now fall outside the
+					// requested window even if its anchor was in.
+					if occStart.Before(from) || !occStart.Before(rangeEndForNative) {
+						continue
+					}
+				}
 				ce := calendarEvent{
 					Type:      "event",
-					Title:     ev.Title,
+					Title:     title,
 					EventID:   ev.ID,
-					Color:     ev.Color,
-					Location:  ev.Location,
+					Color:     color,
+					Location:  location,
 					RRule:     ev.RRule,
 					ProjectID: ev.ProjectID,
 				}
-				sStr := occ.Start.Format(time.RFC3339)
+				sStr := occStart.Format(time.RFC3339)
 				ce.Start = &sStr
-				if !occ.End.IsZero() {
-					eStr := occ.End.Format(time.RFC3339)
+				if !occEnd.IsZero() {
+					eStr := occEnd.Format(time.RFC3339)
 					ce.End = &eStr
-					ce.DurationMinutes = int(occ.End.Sub(occ.Start).Minutes())
+					ce.DurationMinutes = int(occEnd.Sub(occStart).Minutes())
 				}
 				events = append(events, ce)
 			}

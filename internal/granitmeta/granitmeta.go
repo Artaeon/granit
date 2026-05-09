@@ -53,6 +53,39 @@ type Event struct {
 	// project-color overlay, and the "events for project X" pivot
 	// in the project detail surface. Empty for unlinked events.
 	ProjectID string `json:"project_id,omitempty"`
+	// Overrides is the per-occurrence patch table for a recurring
+	// event. Keyed by the occurrence's UTC timestamp in the same
+	// shape as ExDates: YYYY-MM-DD for all-day, YYYY-MM-DDTHH:MM:SS
+	// for timed. Used by the expander to surface a single tweaked
+	// occurrence (e.g. "this Tuesday is at 10:00 instead of 09:00")
+	// without rewriting the series base. ExDates remains the
+	// "cancel just this one" path — overrides handle "edit just
+	// this one" instead. Both can be authored by hand in events.json
+	// and round-trip through the API.
+	Overrides map[string]EventOverride `json:"overrides,omitempty"`
+}
+
+// EventOverride patches a single occurrence of a recurring event.
+// Every field is optional: a non-empty value replaces the inherited
+// series value for THIS occurrence only. Empty fields fall through
+// to the series value. The key into Event.Overrides is the original
+// occurrence's UTC timestamp (matching the EXDATE shape) — that way
+// we identify "the 9am occurrence on March 4" canonically even if
+// the user moves it to noon on March 5.
+type EventOverride struct {
+	// StartTime / EndTime: HH:MM 24-hour. Empty inherits the series time.
+	StartTime string `json:"start_time,omitempty"`
+	EndTime   string `json:"end_time,omitempty"`
+	// Date: YYYY-MM-DD. Set ONLY when the occurrence shifts to a
+	// different calendar day from its series anchor (the common drag-
+	// move case). Empty means the override sits on the original date.
+	Date string `json:"date,omitempty"`
+	// Title / Location / Color: optional per-occurrence textual
+	// overrides — covers the "team standup → all-hands today" case
+	// without disturbing the rest of the series.
+	Title    string `json:"title,omitempty"`
+	Location string `json:"location,omitempty"`
+	Color    string `json:"color,omitempty"`
 }
 
 func ReadEvents(vaultRoot string) ([]Event, error) {

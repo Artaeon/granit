@@ -105,8 +105,125 @@ func metaTestServer(t *testing.T) (*Server, http.Handler) {
 	r.Post("/api/v1/events", s.handleCreateEvent)
 	r.Patch("/api/v1/events/{id}", s.handlePatchEvent)
 	r.Post("/api/v1/events/{id}/skip", s.handleSkipEventOccurrence)
+	r.Post("/api/v1/events/{id}/override", s.handleOverrideEventOccurrence)
 	r.Delete("/api/v1/events/{id}", s.handleDeleteEvent)
 	return s, r
+}
+
+// TestEvents_PerInstanceOverride pins the per-occurrence override
+// path: a recurring event can have ONE Tuesday moved to Wednesday
+// without rewriting the SERIES base — the override sits in
+// Event.Overrides keyed by the original UTC anchor, and the
+// calendar handler consults it during expansion.
+func TestEvents_PerInstanceOverride(t *testing.T) {
+	_, h := metaTestServer(t)
+
+	// Helper: POST and parse the created event.
+	create := func(body string) granitmeta.Event {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("create: %d %s", w.Code, w.Body.String())
+		}
+		var ev granitmeta.Event
+		if err := json.Unmarshal(w.Body.Bytes(), &ev); err != nil {
+			t.Fatal(err)
+		}
+		return ev
+	}
+	override := func(id, body string, want int) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/events/"+id+"/override", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != want {
+			t.Fatalf("override: %d != %d; body=%s", w.Code, want, w.Body.String())
+		}
+		return w
+	}
+
+	// Create a daily-recurring event 09:00–10:00 starting 2026-03-02.
+	ev := create(`{"title":"standup","date":"2026-03-02","start_time":"09:00","end_time":"10:00","rrule":"FREQ=DAILY;COUNT=10"}`)
+
+	// Override 2026-03-04's instance to 11:00–12:00 same day.
+	w := override(ev.ID,
+		`{"key":"2026-03-04T08:00:00","override":{"start_time":"11:00","end_time":"12:00"}}`,
+		http.StatusOK)
+	var withOvr granitmeta.Event
+	if err := json.Unmarshal(w.Body.Bytes(), &withOvr); err != nil {
+		t.Fatal(err)
+	}
+	if len(withOvr.Overrides) != 1 {
+		t.Fatalf("expected 1 override, got %d", len(withOvr.Overrides))
+	}
+	o, ok := withOvr.Overrides["2026-03-04T08:00:00"]
+	if !ok {
+		t.Fatalf("override key missing; got %v", withOvr.Overrides)
+	}
+	if o.StartTime != "11:00" || o.EndTime != "12:00" {
+		t.Errorf("override fields: %+v", o)
+	}
+
+	// SERIES base is unchanged — round-trip the GET. (We use the
+	// router's list endpoint to peek at the on-disk record.)
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	lw := httptest.NewRecorder()
+	h.ServeHTTP(lw, listReq)
+	var list struct {
+		Events []granitmeta.Event `json:"events"`
+	}
+	if err := json.Unmarshal(lw.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(list.Events))
+	}
+	got := list.Events[0]
+	if got.StartTime != "09:00" || got.EndTime != "10:00" {
+		t.Errorf("series base mutated by override: start=%q end=%q want 09:00/10:00",
+			got.StartTime, got.EndTime)
+	}
+
+	// Reject malformed override fields — same shape as the regular
+	// patch validator. Bad time → 400.
+	override(ev.ID,
+		`{"key":"2026-03-05T08:00:00","override":{"start_time":"9 PM"}}`,
+		http.StatusBadRequest)
+	override(ev.ID,
+		`{"key":"2026-03-06T08:00:00","override":{"start_time":"15:00","end_time":"14:00"}}`,
+		http.StatusBadRequest)
+	override(ev.ID,
+		`{"key":"2026-03-07T08:00:00","override":{"date":"2026/03/07"}}`,
+		http.StatusBadRequest)
+
+	// Empty override for an existing key clears the entry. Round-
+	// trip again to confirm the map shrank.
+	override(ev.ID,
+		`{"key":"2026-03-04T08:00:00","override":{}}`,
+		http.StatusOK)
+	listReq2 := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	lw2 := httptest.NewRecorder()
+	h.ServeHTTP(lw2, listReq2)
+	var list2 struct {
+		Events []granitmeta.Event `json:"events"`
+	}
+	if err := json.Unmarshal(lw2.Body.Bytes(), &list2); err != nil {
+		t.Fatal(err)
+	}
+	if len(list2.Events[0].Overrides) != 0 {
+		t.Errorf("empty override should clear: got %v", list2.Events[0].Overrides)
+	}
+
+	// Non-recurring event refuses overrides — overrides only make
+	// sense for series. Create a one-off and verify 400.
+	oneOff := create(`{"title":"one-off","date":"2026-04-01","start_time":"09:00","end_time":"10:00"}`)
+	override(oneOff.ID,
+		`{"key":"2026-04-01T08:00:00","override":{"start_time":"11:00"}}`,
+		http.StatusBadRequest)
 }
 
 // TestEvents_DragEdges locks the boundary the user hit with "drag make

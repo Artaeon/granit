@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/artaeon/granit/internal/granitmeta"
 )
 
 // TestExpandAllDayDates pins the multi-day all-day expansion contract.
@@ -72,6 +74,93 @@ func TestExpandAllDayDates(t *testing.T) {
 			got := expandAllDayDates(c.start, c.end, c.from, c.until)
 			if !reflect.DeepEqual(got, c.want) {
 				t.Errorf("got %v\nwant %v", got, c.want)
+			}
+		})
+	}
+}
+
+// TestOverrideKey pins the canonical key shape for Event.Overrides
+// against the EXDATE format used by isExcluded — both are populated
+// from the same UTC-stamp shape so the override and skip paths can
+// safely point at the same recurrence anchor without translation.
+func TestOverrideKey(t *testing.T) {
+	timed := time.Date(2026, 3, 4, 9, 0, 0, 0, time.UTC)
+	if got := overrideKey(timed, false); got != "2026-03-04T09:00:00" {
+		t.Errorf("timed key: got %q want 2026-03-04T09:00:00", got)
+	}
+	allDay := time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC)
+	if got := overrideKey(allDay, true); got != "2026-03-04" {
+		t.Errorf("all-day key: got %q want 2026-03-04", got)
+	}
+	// Non-UTC input must still produce a UTC-flavoured key — the
+	// expander emits times in time.Local on systems where DTSTART
+	// carries a TZID, but the key contract stays UTC for parity
+	// with how parseICSFile stores EXDATE.
+	loc, _ := time.LoadLocation("Europe/Vienna")
+	if loc != nil {
+		eu := time.Date(2026, 3, 4, 11, 0, 0, 0, loc) // 10:00 UTC in winter, 09:00 in summer
+		got := overrideKey(eu, false)
+		want := eu.UTC().Format("2006-01-02T15:04:05")
+		if got != want {
+			t.Errorf("non-UTC input: got %q want %q", got, want)
+		}
+	}
+}
+
+// TestApplyTimedOverride pins the (start, end) transform contract:
+//   - StartTime alone preserves duration (drag-move UX)
+//   - StartTime + EndTime sets both wall-clock independently (drag-resize)
+//   - Date alone shifts the day, time stays put
+//   - Empty override is a no-op
+func TestApplyTimedOverride(t *testing.T) {
+	loc := time.Local
+	start := time.Date(2026, 3, 4, 9, 0, 0, 0, loc)
+	end := time.Date(2026, 3, 4, 10, 0, 0, 0, loc) // 1h duration
+
+	cases := []struct {
+		name              string
+		ovr               granitmeta.EventOverride
+		wantStart, wantEnd time.Time
+	}{
+		{
+			name:      "empty override is no-op",
+			ovr:       granitmeta.EventOverride{},
+			wantStart: start,
+			wantEnd:   end,
+		},
+		{
+			name:      "start only — duration preserved",
+			ovr:       granitmeta.EventOverride{StartTime: "11:00"},
+			wantStart: time.Date(2026, 3, 4, 11, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 3, 4, 12, 0, 0, 0, loc),
+		},
+		{
+			name:      "start + end — explicit duration",
+			ovr:       granitmeta.EventOverride{StartTime: "14:00", EndTime: "16:30"},
+			wantStart: time.Date(2026, 3, 4, 14, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 3, 4, 16, 30, 0, 0, loc),
+		},
+		{
+			name:      "date only — same time, different day",
+			ovr:       granitmeta.EventOverride{Date: "2026-03-05"},
+			wantStart: time.Date(2026, 3, 5, 9, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 3, 5, 10, 0, 0, 0, loc),
+		},
+		{
+			name:      "date + start — drag-move to new day & time",
+			ovr:       granitmeta.EventOverride{Date: "2026-03-05", StartTime: "13:30"},
+			wantStart: time.Date(2026, 3, 5, 13, 30, 0, 0, loc),
+			wantEnd:   time.Date(2026, 3, 5, 14, 30, 0, 0, loc),
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gotS, gotE := applyTimedOverride(start, end, c.ovr)
+			if !gotS.Equal(c.wantStart) {
+				t.Errorf("start: got %v, want %v", gotS, c.wantStart)
+			}
+			if !gotE.Equal(c.wantEnd) {
+				t.Errorf("end: got %v, want %v", gotE, c.wantEnd)
 			}
 		})
 	}

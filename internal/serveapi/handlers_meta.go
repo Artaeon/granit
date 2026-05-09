@@ -381,6 +381,7 @@ func (s *Server) handlePatchEvent(w http.ResponseWriter, r *http.Request) {
 	apply("rrule", &ev.RRule)
 	apply("ex_dates", &ev.ExDates)
 	apply("project_id", &ev.ProjectID)
+	apply("overrides", &ev.Overrides)
 	// Validate AFTER apply so a partial patch (e.g. just start_time)
 	// gets validated against the merged record. Catches "user shifted
 	// the start past the end" without forcing them to also patch end.
@@ -395,6 +396,98 @@ func (s *Server) handlePatchEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	s.hub.Broadcast(wshub.Event{Type: "event.changed", ID: ev.ID})
 	writeJSON(w, http.StatusOK, ev)
+}
+
+// handleOverrideEventOccurrence sets a per-occurrence override on a
+// recurring event so a single instance can move/rename without
+// disturbing the rest of the series. The user grabs Tuesday 9am and
+// drags it to Wednesday noon — without overrides we'd have to
+// rewrite the SERIES base (shifting every Tuesday). With overrides,
+// we annotate THIS Tuesday's anchor with a per-instance patch and
+// the expander surfaces the patched version on render.
+//
+// Body: { "key": "<exdate-shape key>", "override": {...} }. The key
+// identifies which occurrence (mirrors EXDATE form). An override with
+// every field empty effectively clears the override (we drop it from
+// the map). To cancel an occurrence outright, the existing /skip
+// endpoint adds an EXDATE — overrides and skips are siblings, not
+// nested.
+func (s *Server) handleOverrideEventOccurrence(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var body struct {
+		Key      string                  `json:"key"`
+		Override granitmeta.EventOverride `json:"override"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	body.Key = strings.TrimSpace(body.Key)
+	if body.Key == "" {
+		writeError(w, http.StatusBadRequest, "key required")
+		return
+	}
+	// Validate optional time fields — same shape rules as the regular
+	// patch path. Date is YYYY-MM-DD; StartTime / EndTime are HH:MM.
+	if body.Override.Date != "" && !eventDateRe.MatchString(body.Override.Date) {
+		writeError(w, http.StatusBadRequest, "override date must be YYYY-MM-DD")
+		return
+	}
+	if body.Override.StartTime != "" && !eventTimeRe.MatchString(body.Override.StartTime) {
+		writeError(w, http.StatusBadRequest, "override start_time must be HH:MM (24-hour)")
+		return
+	}
+	if body.Override.EndTime != "" && !eventTimeRe.MatchString(body.Override.EndTime) {
+		writeError(w, http.StatusBadRequest, "override end_time must be HH:MM (24-hour)")
+		return
+	}
+	if body.Override.StartTime != "" && body.Override.EndTime != "" &&
+		body.Override.EndTime <= body.Override.StartTime {
+		writeError(w, http.StatusBadRequest, "end_time must be after start_time")
+		return
+	}
+	events, err := granitmeta.ReadEvents(s.cfg.Vault.Root)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	idx := -1
+	for i, ev := range events {
+		if ev.ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		writeError(w, http.StatusNotFound, "event not found")
+		return
+	}
+	if events[idx].RRule == "" {
+		writeError(w, http.StatusBadRequest, "event is not recurring")
+		return
+	}
+	// Empty override clears the entry. An override that's purely
+	// title/location/etc with no shift is allowed (the user might
+	// only want to rename "this Tuesday's standup" without moving it).
+	if body.Override == (granitmeta.EventOverride{}) {
+		if events[idx].Overrides != nil {
+			delete(events[idx].Overrides, body.Key)
+			if len(events[idx].Overrides) == 0 {
+				events[idx].Overrides = nil
+			}
+		}
+	} else {
+		if events[idx].Overrides == nil {
+			events[idx].Overrides = map[string]granitmeta.EventOverride{}
+		}
+		events[idx].Overrides[body.Key] = body.Override
+	}
+	if err := granitmeta.WriteEvents(s.cfg.Vault.Root, events); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.hub.Broadcast(wshub.Event{Type: "event.changed", ID: events[idx].ID})
+	writeJSON(w, http.StatusOK, events[idx])
 }
 
 // handleSkipEventOccurrence appends a date to an event's ExDates
