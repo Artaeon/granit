@@ -94,7 +94,11 @@ export const widgetRegistry: WidgetMeta[] = [
   { type: 'ai-usage', label: 'AI usage', description: 'Today\'s AI call count + tokens + cost — streamlined dashboard tile', span: 1, load: lazy(() => import('./widgets/AIUsageWidget.svelte')) },
   { type: 'scripture', label: 'Today\'s verse', description: 'Daily scripture / quote rotation', span: 1, load: lazy(() => import('./widgets/ScriptureWidget.svelte')) },
   { type: 'daily-note', label: 'Daily note', description: 'Link to today\'s daily note', span: 1, load: lazy(() => import('./widgets/DailyNoteWidget.svelte')) },
-  { type: 'quick-capture', label: 'Quick capture', description: 'Add a task fast', span: 1, load: lazy(() => import('./widgets/QuickCaptureWidget.svelte')) },
+  // Quick capture spans the full row — the input row is wide and
+  // the recent-captures strip below it benefits from breathing room.
+  // A column-narrow capture box is the usability hit the user
+  // reported when this was span 1.
+  { type: 'quick-capture', label: 'Quick capture', description: 'Add a task / jot / note fast — voice + smart parsing + undo', span: 2, load: lazy(() => import('./widgets/QuickCaptureWidget.svelte')) },
   { type: 'today-tasks', label: 'Today\'s tasks', description: 'Overdue + due + open', span: 2, load: lazy(() => import('./widgets/TodayTasksWidget.svelte')) },
   { type: 'scheduled-today', label: 'Scheduled today', description: 'Time-blocked tasks', span: 1, load: lazy(() => import('./widgets/ScheduledTodayWidget.svelte')) },
   { type: 'goals-progress', label: 'Goals progress', description: 'Active goals + milestones', span: 1, load: lazy(() => import('./widgets/GoalsProgressWidget.svelte')) },
