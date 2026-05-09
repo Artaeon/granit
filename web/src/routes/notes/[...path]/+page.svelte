@@ -416,6 +416,15 @@
   let lastSavedAt = $state<number | null>(null);
   let nowTick = $state(Date.now());
   let saveFailed = $state(false);
+  // Consecutive save-failure counter. Resets to 0 on any success.
+  // Used by the in-page banner below to show a sticky, dismiss-only-
+  // by-fixing surface so the user always knows when their edits
+  // aren't reaching the server. Previously this was silent after the
+  // first toast (lastShownSilentError gated subsequent ones), which
+  // is exactly how the freeze went undiagnosed: the autosave kept
+  // failing, drafts kept queueing, but the UI looked fine.
+  let saveFailCount = $state(0);
+  let lastSaveError = $state('');
 
   // Tick once per second so "saved Ns ago" stays accurate.
   $effect(() => {
@@ -441,6 +450,8 @@
       dirty = body !== sentBody;
       lastSavedAt = Date.now();
       saveFailed = false;
+      saveFailCount = 0;
+      lastSaveError = '';
       if (!dirty) {
         clearDraft(updated.path);
       } else {
@@ -459,8 +470,10 @@
       const msg = e instanceof Error ? e.message : String(e);
       error = msg;
       saveFailed = true;
-      // Even silent auto-saves toast the failure once — we'd rather warn
-      // the user than have them assume their work is safe.
+      saveFailCount++;
+      lastSaveError = msg;
+      // First failure: toast it. Subsequent: the sticky banner below
+      // is the surface; the toast would just nag.
       if (!opts.silent || !lastShownSilentError) {
         toast.error(`save failed: ${msg}`);
         lastShownSilentError = true;
@@ -1773,6 +1786,35 @@
            this note. Renders nothing when frontmatter has neither
            field, or none of the deadlines match. -->
       <NoteDeadlinesStrip frontmatter={note.frontmatter ?? null} />
+      <!-- Repeated-save-failure banner. Goes sticky after the 2nd
+           consecutive failure — earlier failures are surfaced via
+           the per-failure toast. The threshold avoids alarming the
+           user on a one-off network blip while still making prolonged
+           outages obvious. The banner exposes the actual error and a
+           manual "retry now" button so the user has agency rather
+           than waiting on the silent autosave loop. Drafts on
+           localStorage protect their content meanwhile. -->
+      {#if saveFailCount >= 2 && note}
+        <div
+          role="status"
+          class="px-3 sm:px-4 py-2 border-b border-error/40 bg-error/10 text-error text-xs sm:text-sm flex items-center gap-3"
+        >
+          <span class="flex-shrink-0" aria-hidden="true">⚠</span>
+          <span class="flex-1 min-w-0">
+            <strong class="font-semibold">Autosave failing</strong> ({saveFailCount} attempt{saveFailCount === 1 ? '' : 's'})
+            {#if lastSaveError}<span class="text-error/80"> — {lastSaveError}</span>{/if}.
+            Your edits are saved locally and will sync when the server is reachable.
+          </span>
+          <button
+            type="button"
+            onclick={() => save({ silent: false })}
+            disabled={saving}
+            class="px-2.5 py-1 rounded bg-error/20 hover:bg-error/30 text-error font-medium flex-shrink-0 disabled:opacity-50"
+          >
+            {saving ? 'retrying…' : 'retry now'}
+          </button>
+        </div>
+      {/if}
       <!-- Reading-progress bar — thin tinted strip showing how far
            through the note the user has scrolled. Hidden when
            progress is essentially 0 (note fits in viewport) so it
