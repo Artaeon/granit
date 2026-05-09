@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
 export type Theme = 'dark' | 'light' | 'system';
 
@@ -21,17 +22,13 @@ const STORAGE_KEY = 'granit.theme';
 const PALETTE_KEY = 'granit.palette';
 
 function readStored(): Theme {
-  if (typeof localStorage === 'undefined') return 'system';
-  const v = localStorage.getItem(STORAGE_KEY);
-  if (v === 'dark' || v === 'light' || v === 'system') return v;
-  return 'system';
+  const v = loadStoredString(STORAGE_KEY, 'system');
+  return v === 'dark' || v === 'light' || v === 'system' ? v : 'system';
 }
 
 function readStoredPalette(): Palette {
-  if (typeof localStorage === 'undefined') return 'default';
-  const v = localStorage.getItem(PALETTE_KEY);
-  if (v && PALETTES.some((p) => p.id === v)) return v as Palette;
-  return 'default';
+  const v = loadStoredString(PALETTE_KEY, 'default');
+  return PALETTES.some((p) => p.id === v) ? (v as Palette) : 'default';
 }
 
 function effectiveTheme(t: Theme): 'dark' | 'light' {
@@ -68,7 +65,7 @@ function createThemeStore() {
   const { subscribe, set: rawSet } = writable<Theme>(initial);
 
   function set(t: Theme) {
-    if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, t);
+    saveStoredString(STORAGE_KEY, t);
     rawSet(t);
     apply(t, readStoredPalette());
   }
@@ -92,7 +89,7 @@ function createPaletteStore() {
   const { subscribe, set: rawSet } = writable<Palette>(initial);
 
   function set(p: Palette) {
-    if (typeof localStorage !== 'undefined') localStorage.setItem(PALETTE_KEY, p);
+    saveStoredString(PALETTE_KEY, p);
     rawSet(p);
     apply(readStored(), p);
   }

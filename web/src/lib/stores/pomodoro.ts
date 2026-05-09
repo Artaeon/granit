@@ -13,6 +13,7 @@
 // where it left off.
 
 import { writable, derived, type Readable } from 'svelte/store';
+import { loadStored, saveStored } from '$lib/util/storage';
 
 const KEY = 'granit.pomodoro';
 
@@ -43,31 +44,24 @@ const DEFAULT: PomoState = {
 };
 
 function load(): PomoState {
-  if (typeof localStorage === 'undefined') return { ...DEFAULT };
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return { ...DEFAULT };
-    const s = { ...DEFAULT, ...(JSON.parse(raw) as Partial<PomoState>) };
-    // If the stored session is past its endsAt, mark idle but
-    // remember the lastFinishedAt so the UI can surface 'finished
-    // N min ago' on the next open.
-    if (s.mode !== 'idle' && s.endsAt > 0 && Date.now() > s.endsAt) {
-      const wasMode = s.mode;
-      s.mode = 'idle';
-      // Only stamp lastFinishedAt if we caught a focus session
-      // ending — break-overruns aren't a 'win' to celebrate.
-      if (wasMode === 'focus') s.lastFinishedAt = s.endsAt;
-      s.endsAt = 0;
-    }
-    return s;
-  } catch {
-    return { ...DEFAULT };
+  const stored = loadStored<Partial<PomoState>>(KEY, {});
+  const s: PomoState = { ...DEFAULT, ...stored };
+  // If the stored session is past its endsAt, mark idle but
+  // remember the lastFinishedAt so the UI can surface 'finished
+  // N min ago' on the next open.
+  if (s.mode !== 'idle' && s.endsAt > 0 && Date.now() > s.endsAt) {
+    const wasMode = s.mode;
+    s.mode = 'idle';
+    // Only stamp lastFinishedAt if we caught a focus session
+    // ending — break-overruns aren't a 'win' to celebrate.
+    if (wasMode === 'focus') s.lastFinishedAt = s.endsAt;
+    s.endsAt = 0;
   }
+  return s;
 }
 
 function persist(s: PomoState) {
-  if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {}
+  saveStored(KEY, s);
 }
 
 export const pomodoro = writable<PomoState>(load());

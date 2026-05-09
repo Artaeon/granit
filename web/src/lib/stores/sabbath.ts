@@ -26,6 +26,7 @@
 // applies; a Sunday sabbath ends Monday at midnight.
 
 import { writable, get, type Readable } from 'svelte/store';
+import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
 
 const KEY = 'granit.sabbath.activeOn';
 const SCHEDULE_KEY = 'granit.sabbath.schedule';
@@ -85,25 +86,19 @@ export interface SabbathSchedule {
 const DEFAULT_SCHEDULE: SabbathSchedule = { enabled: false, dayOfWeek: 0 };
 
 function loadSchedule(): SabbathSchedule {
-  if (typeof localStorage === 'undefined') return DEFAULT_SCHEDULE;
-  try {
-    const raw = localStorage.getItem(SCHEDULE_KEY);
-    if (!raw) return DEFAULT_SCHEDULE;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') {
-      const dow = Number(parsed.dayOfWeek);
-      const en = Boolean(parsed.enabled);
-      if (Number.isInteger(dow) && dow >= -1 && dow <= 6) {
-        return { enabled: en, dayOfWeek: dow };
-      }
+  const parsed = loadStored<unknown>(SCHEDULE_KEY, null);
+  if (parsed && typeof parsed === 'object') {
+    const p = parsed as Partial<SabbathSchedule>;
+    const dow = Number(p.dayOfWeek);
+    if (Number.isInteger(dow) && dow >= -1 && dow <= 6) {
+      return { enabled: Boolean(p.enabled), dayOfWeek: dow };
     }
-  } catch {}
+  }
   return DEFAULT_SCHEDULE;
 }
 
 function persistSchedule(sched: SabbathSchedule) {
-  if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(SCHEDULE_KEY, JSON.stringify(sched)); } catch {}
+  saveStored(SCHEDULE_KEY, sched);
 }
 
 export const sabbathSchedule = writable<SabbathSchedule>(loadSchedule());
@@ -136,13 +131,7 @@ export function sabbathMinutesRemaining(): number {
 // "not active". The auto-expiry is a read-time check, not a
 // background timer — simpler, no leak risk.
 function loadActive(): boolean {
-  if (typeof localStorage === 'undefined') return false;
-  try {
-    const v = localStorage.getItem(KEY);
-    return v === todayISO();
-  } catch {
-    return false;
-  }
+  return loadStoredString(KEY, '') === todayISO();
 }
 
 // Initial value: persisted activeOn OR schedule says today is the
@@ -151,8 +140,7 @@ function loadActive(): boolean {
 function computeInitial(): boolean {
   if (loadActive()) return true;
   if (scheduleSaysToday()) {
-    const today = todayISO();
-    try { localStorage.setItem(KEY, today); } catch {}
+    saveStoredString(KEY, todayISO());
     // Server sync runs lazily — first fetch'll be after the auth
     // store hydrates. For initial computation we just persist
     // locally; the manual enable() path handles its own sync.
@@ -172,10 +160,7 @@ const { subscribe, set } = writable<boolean>(computeInitial());
 // instant.
 function syncToServer(activeOn: string) {
   if (typeof fetch === 'undefined') return;
-  let token: string | null = null;
-  try {
-    token = localStorage.getItem('everything.token');
-  } catch {}
+  const token = loadStoredString('everything.token', '');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   fetch('/api/v1/sabbath', {
@@ -194,12 +179,12 @@ export const sabbath: Readable<boolean> & {
   subscribe,
   enable() {
     const today = todayISO();
-    try { localStorage.setItem(KEY, today); } catch {}
+    saveStoredString(KEY, today);
     set(true);
     syncToServer(today);
   },
   disable() {
-    try { localStorage.removeItem(KEY); } catch {}
+    saveStoredString(KEY, undefined);
     set(false);
     syncToServer('');
   },
@@ -224,7 +209,7 @@ if (typeof window !== 'undefined') {
       let fresh = loadActive();
       if (!fresh && scheduleSaysToday()) {
         const today = todayISO();
-        try { localStorage.setItem(KEY, today); } catch {}
+        saveStoredString(KEY, today);
         syncToServer(today);
         fresh = true;
       }
