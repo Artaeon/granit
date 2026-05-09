@@ -617,7 +617,7 @@
           <div class="p-3">
             <h3 class="text-xs uppercase tracking-wider text-dim mb-2">Contents</h3>
             <ul class="space-y-0.5">
-              {#each flatToc as { entry, depth } (entry.Title + entry.SpineIdx)}
+              {#each flatToc as { entry, depth }, i (i)}
                 <li>
                   <button
                     onclick={() => entry.SpineIdx >= 0 && jumpToChapter(entry.SpineIdx)}
