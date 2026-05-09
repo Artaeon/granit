@@ -31,6 +31,11 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { api } from '$lib/api';
+  import {
+    createSpeechRecognition,
+    isSpeechRecognitionSupported,
+    type SpeechRecognitionLike
+  } from '$lib/util/speechRecognition';
   import { toast } from '$lib/components/toast';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -43,33 +48,10 @@
   interface VoiceDraft { transcript: string; capturedAt: string; }
 
   // ─── Web Speech detection ─────────────────────────────────────────
-  type RecognitionCtor = new () => SpeechRecognition;
-  interface SpeechRecognition extends EventTarget {
-    continuous: boolean;
-    interimResults: boolean;
-    lang: string;
-    onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => unknown) | null;
-    onerror: ((this: SpeechRecognition, ev: Event) => unknown) | null;
-    onend: ((this: SpeechRecognition, ev: Event) => unknown) | null;
-    start: () => void;
-    stop: () => void;
-    abort: () => void;
-  }
-  interface SpeechRecognitionEvent extends Event {
-    resultIndex: number;
-    results: {
-      length: number;
-      [i: number]: { isFinal: boolean; [j: number]: { transcript: string } };
-    };
-  }
-
-  function getRecognitionCtor(): RecognitionCtor | null {
-    if (typeof window === 'undefined') return null;
-    const w = window as unknown as { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor };
-    return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-  }
-
-  let recognitionSupported = $derived(typeof window !== 'undefined' && getRecognitionCtor() !== null);
+  // Shared wrapper from $lib/util/speechRecognition handles the
+  // vendor-prefix dance + SSR-safe detection — same module the
+  // dashboard QuickCapture and AIOverlay use.
+  let recognitionSupported = $derived(isSpeechRecognitionSupported());
 
   // ─── Recording state ──────────────────────────────────────────────
   type Phase = 'idle' | 'requesting' | 'recording' | 'stopped' | 'error';
@@ -85,7 +67,7 @@
   let saving = $state(false);
 
   let mediaRecorder: MediaRecorder | null = null;
-  let recognition: SpeechRecognition | null = null;
+  let recognition: SpeechRecognitionLike | null = null;
   let stream: MediaStream | null = null;
   let timerHandle: ReturnType<typeof setInterval> | null = null;
   let startedAt = 0;
@@ -135,17 +117,18 @@
     };
     mediaRecorder.start(1000);
 
-    const Ctor = getRecognitionCtor();
-    if (Ctor) {
-      recognition = new Ctor();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = navigator.language || 'en-US';
-      recognition.onresult = (ev) => {
+    const r = createSpeechRecognition();
+    if (r) {
+      recognition = r;
+      r.continuous = true;
+      r.interimResults = true;
+      r.lang = navigator.language || 'en-US';
+      r.onresult = (ev) => {
         let interim = '';
         let final = finalText;
         for (let i = ev.resultIndex; i < ev.results.length; i++) {
           const res = ev.results[i];
+          if (!res || !res[0]) continue;
           const text = res[0].transcript;
           if (res.isFinal) final += (final && !final.endsWith(' ') ? ' ' : '') + text.trim();
           else interim += text;
@@ -153,15 +136,15 @@
         finalText = final;
         interimText = interim;
       };
-      recognition.onerror = (ev) => {
+      r.onerror = (ev) => {
         // 'no-speech' / 'aborted' fire commonly during normal use; we
         // ignore them. Only surface unexpected ones.
-        const err = (ev as Event & { error?: string }).error ?? '';
+        const err = ev.error ?? '';
         if (err && err !== 'no-speech' && err !== 'aborted') {
           errorMsg = `transcription: ${err}`;
         }
       };
-      recognition.onend = () => {
+      r.onend = () => {
         // If we're still recording when recognition ends (Chrome
         // sometimes auto-cycles after long silences), restart it.
         if (phase === 'recording' && recognition) {
@@ -169,8 +152,8 @@
         }
       };
       try {
-        recognition.start();
-      } catch (e) {
+        r.start();
+      } catch {
         // Already-started errors are harmless.
       }
     }
