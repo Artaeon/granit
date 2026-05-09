@@ -5,6 +5,14 @@
   import { toast } from '$lib/components/toast';
   import { onWsEvent } from '$lib/ws';
   import { onMount } from 'svelte';
+  import {
+    ANNOTATION_COLORS,
+    DEFAULT_ANNOTATION_COLOR,
+    annotationBorderClass,
+    annotationSwatchHex,
+    asAnnotationColor,
+    type AnnotationColor
+  } from '$lib/notes/annotationColors';
 
   // AnnotationsPanel — right-side margin column rendering the
   // user's marginalia on the active note. One card per annotation,
@@ -28,9 +36,9 @@
   };
   let { notePath, activeLine, onJumpToLine }: Props = $props();
 
-  const COLORS = ['yellow', 'blue', 'green', 'pink'] as const;
-  type Color = (typeof COLORS)[number];
-  const DEFAULT_COLOR: Color = 'yellow';
+  const COLORS = ANNOTATION_COLORS;
+  type Color = AnnotationColor;
+  const DEFAULT_COLOR: Color = DEFAULT_ANNOTATION_COLOR;
 
   let items = $state<NoteAnnotation[]>([]);
   let loading = $state(false);
@@ -156,7 +164,7 @@
         lineNum: a.lineNum,
         anchorText: a.anchorText,
         text: a.text,
-        color: (a.color || DEFAULT_COLOR) as Color
+        color: asAnnotationColor(a.color)
       }));
       if (aiSuggestions.length === 0) {
         if (r.warning) {
@@ -228,14 +236,10 @@
     onJumpToLine?.(a.lineNum);
   }
 
-  function colorClass(c?: string): string {
-    switch (c) {
-      case 'blue':  return 'border-l-blue-400';
-      case 'green': return 'border-l-green-400';
-      case 'pink':  return 'border-l-pink-400';
-      default:      return 'border-l-yellow-400';
-    }
-  }
+  // Border-class delegated to the shared annotationColors helper —
+  // same palette used by the dashboard widget + the books reader's
+  // bookmarks list, so a future palette shift updates one file.
+  const colorClass = annotationBorderClass;
 
   // Highlight the card that matches the active editor line. We
   // don't auto-scroll on every cursor move (jarring) — only when
@@ -364,7 +368,7 @@
               <button
                 type="button"
                 class="w-5 h-5 rounded-full border-2 {composerColor === c ? 'border-text' : 'border-transparent'}"
-                style="background: {c === 'yellow' ? '#fde68a' : c === 'blue' ? '#bfdbfe' : c === 'green' ? '#bbf7d0' : '#fbcfe8'}"
+                style="background: {annotationSwatchHex(c)}"
                 onclick={() => (composerColor = c)}
                 title={c}
               ></button>
@@ -417,7 +421,7 @@
                 <button
                   type="button"
                   class="w-5 h-5 rounded-full border-2 {editColor === c ? 'border-text' : 'border-transparent'}"
-                  style="background: {c === 'yellow' ? '#fde68a' : c === 'blue' ? '#bfdbfe' : c === 'green' ? '#bbf7d0' : '#fbcfe8'}"
+                  style="background: {annotationSwatchHex(c)}"
                   onclick={() => (editColor = c)}
                 ></button>
               {/each}

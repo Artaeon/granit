@@ -4,6 +4,7 @@
   import { api, type NoteAnnotation } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { relativeTime } from '$lib/util/relativeTime';
+  import { annotationBarClass } from '$lib/notes/annotationColors';
 
   // Recent margin notes — the most recently touched annotations
   // across the vault. Surfaces the user's marginalia layer on the
@@ -54,15 +55,6 @@
     goto(`/notes/${encodeURIComponent(a.notePath)}`);
   }
 
-  function colorBar(c?: string): string {
-    switch (c) {
-      case 'blue': return 'bg-blue-400';
-      case 'green': return 'bg-green-400';
-      case 'pink': return 'bg-pink-400';
-      default: return 'bg-yellow-400';
-    }
-  }
-
   function fileName(p: string): string {
     const base = p.split('/').pop() ?? p;
     return base.replace(/\.md$/, '');
@@ -94,7 +86,7 @@
             onclick={() => open(a)}
             class="w-full text-left flex gap-2 p-2 rounded hover:bg-surface1/50 group"
           >
-            <span class="w-1 self-stretch rounded-full {colorBar(a.color)} flex-shrink-0"></span>
+            <span class="w-1 self-stretch rounded-full {annotationBarClass(a.color)} flex-shrink-0"></span>
             <div class="flex-1 min-w-0">
               <p class="text-sm text-text line-clamp-2 leading-snug">{a.text}</p>
               <div class="flex items-baseline gap-1.5 mt-0.5 text-[11px] text-dim">

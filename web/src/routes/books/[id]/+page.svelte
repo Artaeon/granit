@@ -16,6 +16,11 @@
   import { toast } from '$lib/components/toast';
   import { loadStored, saveStored, loadStoredString, saveStoredString } from '$lib/util/storage';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import {
+    ANNOTATION_COLORS,
+    annotationSwatchClass,
+    type AnnotationColor
+  } from '$lib/notes/annotationColors';
 
   // Reader page — chapter pager with progress save, asset
   // resolution, and highlights overlay.
@@ -296,7 +301,7 @@
     }
   }
 
-  async function highlight(color: string) {
+  async function highlight(color: AnnotationColor) {
     if (!toolbar) return;
     const text = toolbar.text;
     const sel = window.getSelection();
@@ -447,14 +452,10 @@
         : 'bg-surface0 text-text'
   );
 
-  function fmtSelectedColor(c: 'yellow' | 'blue' | 'green' | 'pink'): string {
-    return {
-      yellow: 'bg-yellow-300 text-black',
-      blue: 'bg-blue-300 text-black',
-      green: 'bg-green-300 text-black',
-      pink: 'bg-pink-300 text-black'
-    }[c];
-  }
+  // Toolbar swatch class — delegated to the shared annotationColors
+  // helper so the books-reader, notes-margin, and dashboard surfaces
+  // all stay in lockstep on a future palette change.
+  const fmtSelectedColor = annotationSwatchClass;
 
   onMount(() => {
     loadDetail();
@@ -739,9 +740,9 @@
             class="absolute z-10 flex gap-1 bg-surface0 border border-surface1 rounded-lg shadow-lg px-2 py-1.5"
             style="left: {toolbar.x}px; top: {toolbar.y}px; transform: translateX(-50%);"
           >
-            {#each ['yellow', 'blue', 'green', 'pink'] as c (c)}
+            {#each ANNOTATION_COLORS as c (c)}
               <button
-                class="w-6 h-6 rounded {fmtSelectedColor(c as 'yellow' | 'blue' | 'green' | 'pink')} hover:scale-110 transition-transform"
+                class="w-6 h-6 rounded {fmtSelectedColor(c)} hover:scale-110 transition-transform"
                 title="Highlight {c}"
                 onclick={() => highlight(c)}
               ></button>
