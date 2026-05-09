@@ -68,15 +68,23 @@ func IsStandardEbooksPaywalled(err error) bool {
 
 // DiscoverResult is one row in a search response. The shape is
 // shared across sources so the UI can render a uniform card grid.
+//
+// AuthorDeathYear is the latest death year across all authors —
+// surfaced so the UI can show "(d. 1817)" next to the title.
+// Gives users in life+70 jurisdictions (most of the EU/UK/AU) a
+// quick self-check for whether a US-public-domain title is also
+// free in their country: life+70 cleared if the author died
+// before <current year - 71>.
 type DiscoverResult struct {
-	Source        Source   `json:"source"`
-	ExternalID    string   `json:"externalId"`
-	Title         string   `json:"title"`
-	Authors       []string `json:"authors,omitempty"`
-	Language      string   `json:"language,omitempty"`
-	Subjects      []string `json:"subjects,omitempty"`
-	PublishedYear int      `json:"publishedYear,omitempty"`
-	DownloadURL   string   `json:"downloadUrl"`
+	Source          Source   `json:"source"`
+	ExternalID      string   `json:"externalId"`
+	Title           string   `json:"title"`
+	Authors         []string `json:"authors,omitempty"`
+	AuthorDeathYear int      `json:"authorDeathYear,omitempty"`
+	Language        string   `json:"language,omitempty"`
+	Subjects        []string `json:"subjects,omitempty"`
+	PublishedYear   int      `json:"publishedYear,omitempty"`
+	DownloadURL     string   `json:"downloadUrl"`
 	CoverURL      string   `json:"coverUrl,omitempty"`
 	ExternalURL   string   `json:"externalUrl,omitempty"`
 	License       string   `json:"license,omitempty"`
@@ -244,9 +252,13 @@ func searchGutenberg(ctx context.Context, q string, limit int) ([]DiscoverResult
 			continue // no EPUB → can't display through our reader
 		}
 		authors := make([]string, 0, len(b.Authors))
+		latestDeath := 0
 		for _, a := range b.Authors {
 			if name := strings.TrimSpace(a.Name); name != "" {
 				authors = append(authors, swapAuthorOrder(name))
+			}
+			if a.DeathYear > latestDeath {
+				latestDeath = a.DeathYear
 			}
 		}
 		lang := ""
@@ -258,16 +270,17 @@ func searchGutenberg(ctx context.Context, q string, limit int) ([]DiscoverResult
 			subjects = subjects[:4]
 		}
 		out = append(out, DiscoverResult{
-			Source:      SourceGutenberg,
-			ExternalID:  fmt.Sprintf("%d", b.ID),
-			Title:       b.Title,
-			Authors:     authors,
-			Language:    lang,
-			Subjects:    subjects,
-			DownloadURL: dl,
-			CoverURL:    pickGutenbergCover(b.Formats),
-			ExternalURL: fmt.Sprintf("https://www.gutenberg.org/ebooks/%d", b.ID),
-			License:     "Public domain (US, in most cases — check the title page)",
+			Source:          SourceGutenberg,
+			ExternalID:      fmt.Sprintf("%d", b.ID),
+			Title:           b.Title,
+			Authors:         authors,
+			AuthorDeathYear: latestDeath,
+			Language:        lang,
+			Subjects:        subjects,
+			DownloadURL:     dl,
+			CoverURL:        pickGutenbergCover(b.Formats),
+			ExternalURL:     fmt.Sprintf("https://www.gutenberg.org/ebooks/%d", b.ID),
+			License:         "Public domain in the US — verify life+70 in your jurisdiction if outside the US",
 		})
 		if len(out) >= limit {
 			break

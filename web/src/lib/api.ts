@@ -945,6 +945,10 @@ export interface BookDiscoverResult {
   externalId: string;
   title: string;
   authors?: string[];
+  // Latest death year across all authors. Lets the UI show
+  // "(d. 1817)" so users in life+70 jurisdictions can self-check
+  // whether a US-public-domain title is also free in their country.
+  authorDeathYear?: number;
   language?: string;
   subjects?: string[];
   publishedYear?: number;

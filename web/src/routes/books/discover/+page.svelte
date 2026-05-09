@@ -157,7 +157,7 @@
 <div class="px-4 sm:px-6 pt-4 max-w-7xl mx-auto w-full">
   <PageHeader
     title="Discover books"
-    subtitle="Search Project Gutenberg and Standard Ebooks — public-domain classics, free to read"
+    subtitle="Search Project Gutenberg — 70 000+ public-domain classics, 100% free to download and read"
   >
     {#snippet actions()}
       <a
@@ -213,8 +213,11 @@
         {/each}
       </div>
       <div class="mt-12 max-w-2xl text-sm text-dim space-y-2">
-        <p><strong class="text-text">Project Gutenberg</strong> — ~70 000 titles, mostly classics in the public domain. Format quality varies, but coverage is unmatched.</p>
+        <p><strong class="text-text">Project Gutenberg</strong> — ~70 000 titles, all in the public domain in the United States. Free to download, read, and keep. Founded in 1971 — the original digital library.</p>
         <p class="pt-3 text-xs">Imported books land in <code class="text-text bg-surface0 px-1 py-0.5 rounded">&lt;vault&gt;/Books/</code> and appear on your shelf immediately.</p>
+        <p class="pt-1 text-xs">
+          Outside the US? Most countries follow life+70 (EU, UK, AU). The author's death year is shown on each result so you can verify quickly — anything before {new Date().getFullYear() - 70} is generally safe in life+70 jurisdictions.
+        </p>
       </div>
     </div>
   {/if}
@@ -276,7 +279,12 @@
               </span>
               <h3 class="text-sm font-medium leading-snug line-clamp-2" title={r.title}>{r.title}</h3>
               {#if r.authors && r.authors.length > 0}
-                <p class="text-xs text-subtext line-clamp-1 mt-0.5">{r.authors.join(', ')}</p>
+                <p class="text-xs text-subtext line-clamp-1 mt-0.5">
+                  {r.authors.join(', ')}
+                  {#if r.authorDeathYear}
+                    <span class="text-dim">· d. {r.authorDeathYear}</span>
+                  {/if}
+                </p>
               {/if}
               {#if r.description}
                 <p class="text-xs text-dim line-clamp-3 mt-1.5 leading-snug">{r.description}</p>
@@ -307,8 +315,10 @@
     </div>
 
     <p class="text-[11px] text-dim mt-12 mb-8 max-w-2xl leading-relaxed">
-      Project Gutenberg titles are in the US public domain — read and share freely. Some titles may still be
-      under copyright outside the US; verify the title page if you plan to redistribute.
+      Every title here is in the US public domain via Project Gutenberg — free to download, read, and keep.
+      Outside the US, life+70 (EU/UK/AU) and life+50 (CA/JP) cover most works whose author died before the
+      cut-off; the death year shown on each result is the quickest jurisdiction self-check.
+      Personal reading is universally fine; check before redistributing.
     </p>
   {/if}
 </div>

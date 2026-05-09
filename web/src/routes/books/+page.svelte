@@ -165,7 +165,7 @@
   {:else if books.length === 0}
     <EmptyState
       title="No books yet"
-      description="Drop .epub files into <vault>/Books/ — Project Gutenberg, Standard Ebooks, Open Library, and your DRM-free purchases all work."
+      description="Use Discover to pull free public-domain classics, or drop your own .epub files into <vault>/Books/."
     />
   {:else}
     {#if resuming.length > 0 && !q}
@@ -276,8 +276,9 @@
 
     <p class="text-xs text-dim mt-8 mb-12 max-w-2xl">
       Tip: Granit reads .epub files from your <code class="text-text bg-surface0 px-1 py-0.5 rounded">Books/</code>
-      vault folder. Try Project Gutenberg (gutenberg.org), Standard Ebooks (standardebooks.org), or your DRM-free
-      purchases — drag the file into the folder and it'll appear here on the next reload.
+      vault folder. Use <a href="/books/discover" class="underline hover:text-text">Discover</a> to pull
+      free public-domain classics from Project Gutenberg, or drop your own DRM-free EPUBs in directly —
+      they appear here on the next reload.
     </p>
   {/if}
 </div>
