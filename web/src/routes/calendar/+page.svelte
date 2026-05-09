@@ -494,9 +494,23 @@
         // minutes, add to the new start to compute the new end. The
         // event used to span 14:30–16:00; dragging to 09:15 should
         // produce 09:15–10:45, not collapse to a zero-length event.
+        //
+        // Midnight clamp: events.json carries one `date` plus HH:MM
+        // start/end strings — the schema can't represent an event
+        // whose end falls on the next calendar day. Without this
+        // clamp, dragging a 60-min event to 23:30 would emit
+        // end_time="00:30", which the backend's validateEventTimes
+        // refuses ("end_time must be after start_time"); the move
+        // looked successful on the grid, then reverted on reload —
+        // exactly the "places it somewhere else" symptom the user
+        // reported. Clamp to 23:59 so the move always lands; the
+        // user can extend it manually if they want a true cross-
+        // midnight event (today not supported).
         const dur = ev.durationMinutes ?? 30;
-        const endD = new Date(newStart.getTime() + dur * 60_000);
-        const endTime = `${String(endD.getHours()).padStart(2, '0')}:${String(endD.getMinutes()).padStart(2, '0')}`;
+        const startMin = newStart.getHours() * 60 + newStart.getMinutes();
+        const maxEndMin = 24 * 60 - 1; // 23:59
+        const endMin = Math.min(startMin + dur, maxEndMin);
+        const endTime = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
         await api.patchEvent(ev.eventId, { date: dateStr, start_time: startTime, end_time: endTime });
       } else if (ev.type === 'ics_event' && ev.eventId && ev.source) {
         const dur = ev.durationMinutes ?? 60;
@@ -532,22 +546,35 @@
       if (ev.taskId) {
         await api.patchTask(ev.taskId, { durationMinutes });
       } else if (ev.type === 'event' && ev.eventId && ev.start) {
-        // events.json is keyed on date + HH:MM strings. Build the
-        // new end_time by adding `durationMinutes` to the start
-        // string, wrapped through a Date so DST transitions don't
-        // surprise us mid-event.
+        // events.json is keyed on date + HH:MM strings. The schema
+        // can't represent an event ending on the next calendar day,
+        // so a resize that would push end past 23:59 must clamp.
+        // Without the clamp, the backend's validateEventTimes refuses
+        // ("end_time must be after start_time", string compare on
+        // HH:MM) and the resize silently reverts — that's part of the
+        // "drag make it longer ... places it somewhere else" report.
         const startD = new Date(ev.start);
-        const endD = new Date(startD.getTime() + durationMinutes * 60_000);
-        const endTime = `${String(endD.getHours()).padStart(2, '0')}:${String(endD.getMinutes()).padStart(2, '0')}`;
+        const startMin = startD.getHours() * 60 + startD.getMinutes();
+        const maxEndMin = 24 * 60 - 1; // 23:59
+        const endMin = Math.min(startMin + durationMinutes, maxEndMin);
+        const endTime = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
         await api.patchEvent(ev.eventId, { end_time: endTime });
       } else if (ev.type === 'ics_event' && ev.eventId && ev.source && ev.start) {
+        // ICS uses RFC3339 — full timestamps, so cross-midnight is
+        // representable. No clamp needed; the writer will normalize
+        // to UTC on emit.
         const startD = new Date(ev.start);
         const endD = new Date(startD.getTime() + durationMinutes * 60_000);
         await api.patchICSEvent(ev.source, ev.eventId, { end: endD.toISOString() });
       }
       await load();
     } catch (e) {
-      console.error('resize failed', e);
+      // Surface a toast so the user sees the resize failed instead
+      // of watching the bar snap back silently. Mirrors moveEvent's
+      // error path — every drag gesture should give clear feedback
+      // on outcome.
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error('Resize failed: ' + msg);
     }
   }
   function clickDay(d: Date) { cursor = d; view = 'day'; }
