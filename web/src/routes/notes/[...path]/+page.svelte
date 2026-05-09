@@ -267,6 +267,11 @@
     error = '';
     draftRestored = false;
     if (!opts.force && lastLoadedPath === p) return;
+    // Reset the per-load draft watermark so the first keystroke on the
+    // newly-opened note triggers a draft write. Without this, opening a
+    // note whose body happens to equal the previous note's last drafted
+    // body would skip the very first draft persistence.
+    lastDraftedBody = null;
     // Same-note reloads (WS-triggered note.changed) must not clobber
     // in-flight typing. Snapshot the body before the await; if the user
     // types during the fetch, abort the body overwrite and let the
@@ -519,9 +524,19 @@
   // keystroke costs ~30ms/sec at fastest realistic typing speeds —
   // imperceptible. This is the bulletproof guarantee: every visible
   // keystroke is on disk before the next paint.
+  //
+  // Skip when the body hasn't actually changed since the last write.
+  // The effect re-runs whenever `note` is reassigned (every successful
+  // save creates a new note reference), and writing the same body to
+  // localStorage in that case is wasted work — for a multi-MB note
+  // the JSON.stringify + setItem can take 10ms+, which adds up when
+  // a save bounces every 2s.
+  let lastDraftedBody: string | null = null;
   $effect(() => {
     void body;
     if (!note || !dirty) return;
+    if (lastDraftedBody === body) return;
+    lastDraftedBody = body;
     setDraft(note.path, body, note.modTime);
   });
 
