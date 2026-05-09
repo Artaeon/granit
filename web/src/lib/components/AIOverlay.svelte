@@ -2246,9 +2246,38 @@
           {/each}
         </ul>
       {:else}
+        <!-- Empty state. Surface the few power-user shortcuts so a
+             new user knows the surface is denser than it looks. The
+             three shortcut chips below are tappable on mobile and
+             pre-fill the composer; the user reads what they do, taps
+             one, gets immediate momentum. -->
         <div class="text-xs text-dim leading-relaxed">
-          <p class="mb-2">Quick actions above run the configured AI features. Or type a question below.</p>
-          <p class="text-[11px]">Press <kbd class="px-1 py-0.5 bg-surface1 rounded font-mono text-[10px]">Mod+J</kbd> anywhere to open this. <kbd class="px-1 py-0.5 bg-surface1 rounded font-mono text-[10px]">Esc</kbd> to close.</p>
+          <p class="mb-3 text-text">Ask anything, or pick a starter.</p>
+          <div class="flex flex-wrap gap-1.5 mb-3">
+            <button
+              type="button"
+              onclick={() => { input = '/help'; void send(); }}
+              class="tap-target px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary text-[11px] transition-colors"
+            >See what's here</button>
+            <button
+              type="button"
+              onclick={() => { input = '@'; refocusComposer(); detectMentionTrigger(); }}
+              class="tap-target px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary text-[11px] transition-colors"
+            >Reference an item</button>
+            {#if voiceSupported}
+              <button
+                type="button"
+                onclick={toggleVoice}
+                class="tap-target px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary text-[11px] transition-colors"
+              >Dictate</button>
+            {/if}
+          </div>
+          <p class="text-[11px] leading-relaxed">
+            <kbd class="px-1 py-0.5 bg-surface1 rounded font-mono text-[10px]">Mod+J</kbd> toggle ·
+            <kbd class="px-1 py-0.5 bg-surface1 rounded font-mono text-[10px]">/</kbd> commands ·
+            <kbd class="px-1 py-0.5 bg-surface1 rounded font-mono text-[10px]">@</kbd> entities ·
+            <kbd class="px-1 py-0.5 bg-surface1 rounded font-mono text-[10px]">Mod+1..9</kbd> mode
+          </p>
         </div>
       {/if}
     </div>
