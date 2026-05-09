@@ -604,6 +604,31 @@
     return 'saved';
   });
 
+  // Brief flash after each successful autosave so the user can SEE
+  // that an autosave actually fired. Without this, saves are invisible
+  // — the status bar updates silently and the user has no positive
+  // confirmation that their work made it to disk. The flash window is
+  // 1.2s (long enough to register, short enough not to nag) and
+  // doesn't fire when the save was triggered by an explicit Mod-S
+  // (those already get a toast.success). The flash is a CSS-driven
+  // outline pulse; the existing saveStatus label still drives the
+  // text content of the button.
+  let saveFlash = $state(false);
+  let saveFlashTimer: ReturnType<typeof setTimeout> | null = null;
+  $effect(() => {
+    void lastSavedAt;
+    if (!lastSavedAt) return;
+    saveFlash = true;
+    if (saveFlashTimer) clearTimeout(saveFlashTimer);
+    saveFlashTimer = setTimeout(() => {
+      saveFlash = false;
+      saveFlashTimer = null;
+    }, 1200);
+    return () => {
+      if (saveFlashTimer) { clearTimeout(saveFlashTimer); saveFlashTimer = null; }
+    };
+  });
+
   // ----- Extract-to-note (Mod-Shift-X) -----
   // The Editor component fires onExtract with the selection + an
   // apply() callback; we show the dialog, the user names the new note,
@@ -1706,8 +1731,9 @@
           onclick={() => save()}
           disabled={(!dirty && !saveFailed) || saving}
           title={saveStatus}
-          class="px-3 sm:px-4 py-2 rounded text-sm font-medium disabled:opacity-60
-            {saveFailed ? 'bg-error text-mantle' : dirty || saving ? 'bg-primary text-on-primary' : 'bg-surface1 text-subtext'}"
+          class="px-3 sm:px-4 py-2 rounded text-sm font-medium disabled:opacity-60 transition-shadow
+            {saveFailed ? 'bg-error text-mantle' : dirty || saving ? 'bg-primary text-on-primary' : 'bg-surface1 text-subtext'}
+            {saveFlash ? 'save-flash' : ''}"
         >
           {saveStatus}
         </button>
@@ -2060,6 +2086,19 @@
 {/if}
 
 <style>
+  /* Save-button success flash — a 1.2s outline pulse fires whenever
+     lastSavedAt updates, so the user gets positive visual confirmation
+     that their autosave actually landed. Uses an outline ring (not a
+     colour swap) so the existing dirty/saved/error palette on the
+     button still reads through underneath. */
+  @keyframes save-flash {
+    0%   { box-shadow: 0 0 0 0 rgb(var(--color-success-rgb, 34 197 94) / 0.55); }
+    60%  { box-shadow: 0 0 0 6px rgb(var(--color-success-rgb, 34 197 94) / 0); }
+    100% { box-shadow: 0 0 0 0 rgb(var(--color-success-rgb, 34 197 94) / 0); }
+  }
+  .save-flash {
+    animation: save-flash 1.2s ease-out 1;
+  }
   /* Focus mode: hide the side asides (tree on the left, info on the
      right) so the editor pane fills the available width. The header
      and footer stay — they're tightly bound to the editing flow
