@@ -695,6 +695,16 @@
   let findDuration = $state(60); // minutes
   let findHorizonDays = $state(7);
   let findTimeOfDay = $state<'any' | 'morning' | 'afternoon' | 'evening'>('any');
+  // Project-aware Find Free Time: when set, the AI is told the slot is
+  // FOR this project, and busy ranges from OTHER active projects are
+  // tagged as hard conflicts. Empty value = "any project" (the
+  // original behaviour). Defaults to whatever the calendar's project
+  // filter is on, so a user already viewing the project board gets
+  // project-aware slots out of the box.
+  let findForProject = $state('');
+  $effect(() => {
+    if (projectFilter && !findForProject) findForProject = projectFilter;
+  });
   let findBusy = $state(false);
   let findError = $state('');
   let findRaw = $state('');
@@ -716,7 +726,13 @@
     // ISO so the model and the user share the same time mental
     // model. Skip events without start (all-day events block the
     // whole day for our purposes; mark with start-of-day).
-    const items = events
+    //
+    // Project tag goes in the busy summary so the model can tell which
+    // events tie to which project and avoid scheduling on top of an
+    // OTHER project's commitments. We use `allEvents` here (not the
+    // already-filtered `events`) so a project board view still
+    // considers cross-project conflicts when looking for free slots.
+    const items = allEvents
       .filter((e) => {
         const k = e.date ?? (e.start ? e.start.slice(0, 10) : '');
         if (!k) return false;
@@ -725,7 +741,7 @@
       .map((e) => {
         const start = e.start ?? (e.date ? `${e.date}T00:00:00` : '');
         const end = e.end ?? (e.start ? e.start : `${e.date ?? ''}T23:59:59`);
-        return { title: e.title, start, end, allDay: !e.start };
+        return { title: e.title, start, end, allDay: !e.start, project: e.project_id ?? '' };
       })
       .filter((x) => x.start);
     const constraints: string[] = [
@@ -735,12 +751,18 @@
       'Working hours: 08:00 to 20:00 local. Avoid 12:00–13:00 (lunch) unless the user said otherwise.',
       'Pick 3 candidate slots. Spread them across different days when possible.'
     ];
+    if (findForProject) {
+      constraints.push(
+        `Slot is FOR project "${findForProject}". Treat events tagged with a DIFFERENT project as hard conflicts — don't schedule on top of another project's commitments.`,
+        `Prefer slots adjacent to existing "${findForProject}" blocks (batch project work together when possible).`
+      );
+    }
     const sys =
       'You find empty time slots in the user\'s calendar that match constraints. Return STRICTLY a JSON array, no fences, no prose: [{"startISO": "<RFC3339 local>", "endISO": "<RFC3339 local>", "reason": "<under 14 words why this slot>"}]. The startISO MUST not collide with any of the busy ranges supplied. Pick slots ON THE HOUR or HALF-HOUR for human-friendly times. Different days when there\'s room.';
     const userMsg =
       `Today: ${today.toISOString()}.\n\nConstraints:\n${constraints.join('\n')}\n\n` +
       `Busy ranges (${items.length} events) — local time:\n` +
-      items.map((x) => `- ${x.title}: ${x.start} → ${x.end}${x.allDay ? ' (all-day)' : ''}`).join('\n');
+      items.map((x) => `- ${x.title}: ${x.start} → ${x.end}${x.allDay ? ' (all-day)' : ''}${x.project ? ` [project: ${x.project}]` : ''}`).join('\n');
     let buf = '';
     try {
       await api.chatStream(
@@ -875,6 +897,93 @@
     }
   }
   function cancelAI() { aiAbort?.abort(); }
+
+  // ── AI: Day insight ─────────────────────────────────────────────
+  // Honest, short read on the shape of a single day's schedule. Three
+  // deep-work blocks? Two meetings? Light afternoon? Or back-to-back
+  // 9-to-6 with no lunch — flag it. The user is using the calendar to
+  // plan a real life; a 2-line take from an outsider's view helps spot
+  // the bad pattern (no breaks, fragmented mornings) before it lands.
+  // Streams under the same chatStream pipeline as Plan-my-week so
+  // audit + cost + redaction all apply.
+  let insightBusy = $state(false);
+  let insightText = $state('');
+  let insightError = $state('');
+  let insightAbort: AbortController | null = null;
+  let insightForDay = $state<string>(''); // YYYY-MM-DD this insight is for
+
+  async function dayInsight(target: Date) {
+    if (insightBusy) return;
+    insightAbort?.abort();
+    insightAbort = new AbortController();
+    insightBusy = true;
+    insightError = '';
+    insightText = '';
+    insightForDay = fmtDateISO(target);
+    // Pull just the events on the target day (events array already
+    // honours the project filter + per-source colour overrides).
+    // Sort by start so the prompt's chronology matches the grid.
+    const dayEvents = events
+      .filter((e) => {
+        const k = e.date ?? (e.start ? e.start.slice(0, 10) : '');
+        return k === insightForDay;
+      })
+      .map((e) => ({
+        title: e.title,
+        start: e.start ?? '',
+        end: e.end ?? '',
+        allDay: !e.start,
+        type: e.type,
+        project: e.project_id ?? ''
+      }))
+      .sort((a, b) => (a.start || '0').localeCompare(b.start || '0'));
+    if (dayEvents.length === 0) {
+      insightText = '_No events on this day. Wide open — pick what matters most._';
+      insightBusy = false;
+      insightAbort = null;
+      return;
+    }
+    const lines = dayEvents.map((e) => {
+      if (e.allDay) return `- (all-day) ${e.title}${e.project ? ` [project: ${e.project}]` : ''}`;
+      const s = e.start ? new Date(e.start) : null;
+      const en = e.end ? new Date(e.end) : null;
+      const stStr = s ? `${String(s.getHours()).padStart(2, '0')}:${String(s.getMinutes()).padStart(2, '0')}` : '';
+      const enStr = en ? `${String(en.getHours()).padStart(2, '0')}:${String(en.getMinutes()).padStart(2, '0')}` : '';
+      return `- ${stStr}${enStr ? `–${enStr}` : ''} ${e.title} (${e.type})${e.project ? ` [project: ${e.project}]` : ''}`;
+    }).join('\n');
+    const sys =
+      'You give an honest, short take on the shape of one day\'s schedule. ' +
+      'Two to four lines max. Plain English, no fluff. ' +
+      'Call out the structural pattern (deep-work blocks, meetings, gaps), ' +
+      'and FLAG anything obviously bad: back-to-back without breaks, no lunch, ' +
+      'fragmented mornings, sole big block destroyed by one 30-min meeting in the middle. ' +
+      'If the day looks well-designed, say so briefly. Don\'t suggest alternatives ' +
+      'unless you spot a clear problem; the user is asking for a sanity check, not a planner.';
+    const user =
+      `Day: ${target.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}\n\n` +
+      `Schedule (${dayEvents.length} entries):\n${lines}`;
+    try {
+      await api.chatStream(
+        [{ role: 'system', content: sys }, { role: 'user', content: user }],
+        undefined,
+        {
+          onChunk: (c) => { insightText += c; },
+          onError: (err) => { insightError = err.message; }
+        },
+        insightAbort.signal
+      );
+    } finally {
+      insightBusy = false;
+      insightAbort = null;
+    }
+  }
+  function dismissInsight() {
+    insightAbort?.abort();
+    insightBusy = false;
+    insightText = '';
+    insightError = '';
+    insightForDay = '';
+  }
 
   let headline = $derived.by(() => {
     if (view === 'day') return cursor.toLocaleDateString(undefined, { weekday: isMobile ? 'short' : 'long', month: 'short', day: 'numeric' });
@@ -1061,6 +1170,25 @@
       <button onclick={prev} aria-label="prev" class="w-8 h-8 flex items-center justify-center text-sm bg-surface0 border border-surface1 rounded hover:border-primary">‹</button>
       <button onclick={next} aria-label="next" class="w-8 h-8 flex items-center justify-center text-sm bg-surface0 border border-surface1 rounded hover:border-primary">›</button>
       <h2 class="text-sm sm:text-base text-text font-medium truncate">{headline}</h2>
+      <!-- Day insight: an honest 2-4 line take on the shape of a
+           single day. Only meaningful in day/3day views; in week
+           and beyond the user is looking at a structure too coarse
+           for the take to land. AI calls are server-side
+           Sabbath-gated already, so no client-side check needed. -->
+      {#if view === 'day' || view === '3day'}
+        <button
+          type="button"
+          onclick={() => void dayInsight(cursor)}
+          disabled={insightBusy}
+          title="AI take on this day's schedule"
+          class="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border bg-primary/10 text-primary border-primary/20 hover:bg-primary/15 disabled:opacity-50"
+        >
+          <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" />
+          </svg>
+          {insightBusy ? '…' : 'insight'}
+        </button>
+      {/if}
       <!-- Jump to a specific date. Hidden on the smallest screens
            where the header is already crowded; the prev/next +
            "today" buttons cover the common case. The input is
@@ -1211,6 +1339,23 @@
               <option value="evening">evening</option>
             </select>
           </label>
+          {#if allProjects.length > 0}
+            <!-- Project-aware Find Free Time. When set, the AI
+                 treats events tied to OTHER projects as hard
+                 conflicts so a "find time for project X" doesn't
+                 land on top of a different project's commitments,
+                 and prefers slots adjacent to existing project-X
+                 work (batch into focused blocks). -->
+            <label class="text-dim flex items-center gap-1.5">
+              for project
+              <select bind:value={findForProject} class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text">
+                <option value="">any</option>
+                {#each allProjects as p (p.name)}
+                  <option value={p.name}>{p.name}</option>
+                {/each}
+              </select>
+            </label>
+          {/if}
           <button
             onclick={() => void findFreeTime()}
             disabled={findBusy}
@@ -1246,6 +1391,33 @@
           </ul>
         {:else if findBusy}
           <p class="text-[11px] text-dim italic mt-2">checking the next {findHorizonDays} days…</p>
+        {/if}
+      </div>
+    {/if}
+
+    <!-- AI day insight panel. A 2-4 line read on the shape of the
+         day. Renders below the FFT panel + above the grid so the
+         user keeps the calendar visible. Self-dismisses when the
+         user clicks Plan or navigates away (insightForDay
+         comparison handles the latter). -->
+    {#if (insightText || insightBusy || insightError) && (view === 'day' || view === '3day') && insightForDay === fmtDateISO(cursor)}
+      <div class="px-3 py-2.5 border-b border-surface1 flex-shrink-0 bg-primary/5">
+        <div class="flex items-baseline gap-2 mb-1">
+          <span class="text-[10px] uppercase tracking-wider text-primary font-semibold">✦ Day insight</span>
+          <span class="flex-1"></span>
+          {#if insightBusy}
+            <button onclick={() => insightAbort?.abort()} class="text-[10px] text-warning hover:underline">cancel</button>
+          {:else if insightText}
+            <button onclick={() => void dayInsight(cursor)} class="text-[10px] text-secondary hover:underline">regenerate</button>
+          {/if}
+          <button onclick={dismissInsight} class="text-[10px] text-dim hover:text-text">dismiss</button>
+        </div>
+        {#if insightError}
+          <p class="text-xs text-error">{insightError}</p>
+        {:else if insightText}
+          <p class="text-xs text-text leading-relaxed whitespace-pre-line">{insightText}</p>
+        {:else if insightBusy}
+          <p class="text-[11px] text-dim italic">reading the shape of the day…</p>
         {/if}
       </div>
     {/if}
