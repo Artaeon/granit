@@ -222,7 +222,9 @@
     radarError = '';
     radarRows = stalled.map((r) => ({ ...r })); // render rows immediately, AI fills in unblock
     radarAbort = new AbortController();
-    radarRanAt = new Date().toISOString().slice(11, 16);
+    // Local wall-clock HH:MM. toISOString() returns UTC which would
+    // show the wrong time for any user not in UTC.
+    radarRanAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
     if (stalled.length === 0) {
       radarBusy = false;

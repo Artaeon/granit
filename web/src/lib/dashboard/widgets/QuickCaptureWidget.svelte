@@ -1,7 +1,12 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte';
-  import { api, type Note , todayISO } from '$lib/api';
+  import { api, todayISO, type Note } from '$lib/api';
   import { parseTaskInput } from '$lib/util/taskParse';
+  import {
+    createSpeechRecognition,
+    isSpeechRecognitionSupported,
+    type SpeechRecognitionLike
+  } from '$lib/util/speechRecognition';
   import { toast } from '$lib/components/toast';
   import { goto } from '$app/navigation';
 
@@ -201,41 +206,42 @@
   }
 
   // ── Voice input ───────────────────────────────────────────────────
-  // Browser SpeechRecognition. Transcript appends to whatever's
+  // Browser SpeechRecognition via the typed wrapper from
+  // $lib/util/speechRecognition. Transcript appends to whatever's
   // already in the input so the user can dictate, edit, then submit.
-  // Same shape as AIOverlay's voice handling.
   let recording = $state(false);
   let voiceSupported = $state(false);
-  let recognition: any = null;
+  let recognition: SpeechRecognitionLike | null = null;
   let voiceBaseline = '';
 
   onMount(() => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    voiceSupported = !!SR;
+    voiceSupported = isSpeechRecognitionSupported();
   });
 
   function startVoice() {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) return;
+    const r = createSpeechRecognition();
+    if (!r) return;
     voiceBaseline = raw.endsWith(' ') || raw.length === 0 ? raw : raw + ' ';
-    recognition = new SR();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = navigator.language || 'en-US';
-    recognition.onresult = (e: any) => {
+    recognition = r;
+    r.continuous = true;
+    r.interimResults = true;
+    r.lang = navigator.language || 'en-US';
+    r.onresult = (e) => {
       let interim = '';
       let final = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) final += r[0].transcript;
-        else interim += r[0].transcript;
+        const result = e.results[i];
+        if (result[0]) {
+          if (result.isFinal) final += result[0].transcript;
+          else interim += result[0].transcript;
+        }
       }
       if (final) voiceBaseline += final;
       raw = (voiceBaseline + interim).replace(/\s+/g, ' ').trimStart();
     };
-    recognition.onerror = () => stopVoice();
-    recognition.onend = () => { recording = false; };
-    recognition.start();
+    r.onerror = () => stopVoice();
+    r.onend = () => { recording = false; };
+    r.start();
     recording = true;
   }
   function stopVoice() {
