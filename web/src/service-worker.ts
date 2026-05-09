@@ -68,13 +68,29 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/ws')) return; // WebSocket — never cache
 
   // API: only cache GETs, stale-while-revalidate.
+  // Note bodies (`/api/v1/notes/<path>`) are exempted from the SW
+  // cache entirely. Why: a PUT autosave succeeded, but the cached
+  // body still reflected the pre-edit content. On relaunch, the
+  // editor showed the stale body — the user's typed content was
+  // visibly "gone" until something forced a fresh GET. The note
+  // payload is small enough that always going to network is fine,
+  // and the freshness guarantee matters far more than offline-first
+  // for the surface the user is actively editing.
   if (url.pathname.startsWith('/api/v1/') && e.request.method === 'GET') {
+    if (isNoCacheGet(url)) return; // pass through to network
     e.respondWith(staleWhileRevalidate(e.request));
     return;
   }
-  // API non-GET (POST/PUT/PATCH/DELETE): pass through. If offline, fetch will
-  // throw and the page surfaces a save error / retry — handled in-app.
-  if (url.pathname.startsWith('/api/')) return;
+  // API non-GET (POST/PUT/PATCH/DELETE): pass through, but invalidate any
+  // cached GET responses for the same resource and its parent listing
+  // endpoints. Without this, a PUT updates the file on disk but the SW
+  // keeps serving the pre-PUT body to the next GET — a stale-cache data-
+  // loss footgun. Invalidation happens fire-and-forget; we never block
+  // the request on cache cleanup.
+  if (url.pathname.startsWith('/api/')) {
+    e.waitUntil(invalidateOnMutation(url));
+    return;
+  }
 
   // Static hashed bundle assets.
   if (SHELL.includes(url.pathname)) {
@@ -107,6 +123,50 @@ async function networkFirstHTML(req: Request): Promise<Response> {
     const cached = (await cache.match(req)) ?? (await cache.match('/'));
     if (cached) return cached;
     return new Response('offline', { status: 503, statusText: 'offline' });
+  }
+}
+
+// Endpoints that must never be served from the SW cache. Note bodies
+// are the obvious one — staleness directly causes "my edit is gone"
+// data-loss UX. Anything else added here should pass the same test:
+// "would a stale response cause user-visible data loss or confusion".
+function isNoCacheGet(url: URL): boolean {
+  // /api/v1/notes/<path...> — single-note GET. The list endpoint
+  // (/api/v1/notes with no extra segments / with a query string only)
+  // is fine to cache because the listing is mod-time-keyed and the
+  // mutation invalidation below also clears it.
+  if (/^\/api\/v1\/notes\/[^?]/.test(url.pathname)) return true;
+  return false;
+}
+
+// Best-effort cache invalidation when the client mutates an API resource.
+// Strategy: drop every cache entry whose URL pathname starts with the
+// mutated pathname's parent prefix. PUT /api/v1/notes/foo.md → drop the
+// entry for /api/v1/notes/foo.md AND any /api/v1/notes (listing) entries
+// — both could be stale. We don't try to be precise; the cache is
+// re-populated on the next read either way.
+async function invalidateOnMutation(url: URL): Promise<void> {
+  try {
+    const cache = await caches.open(API_CACHE);
+    const keys = await cache.keys();
+    // Compute the listing prefix — strip the trailing path segment so
+    // the listing endpoint and any sibling fetches under the same
+    // resource also drop. e.g. /api/v1/notes/foo.md → /api/v1/notes.
+    const segs = url.pathname.split('/').filter(Boolean);
+    const parent = '/' + segs.slice(0, -1).join('/');
+    await Promise.all(
+      keys.map((k) => {
+        try {
+          const kp = new URL(k.url).pathname;
+          if (kp === url.pathname || kp === parent || kp.startsWith(parent + '?')) {
+            return cache.delete(k);
+          }
+        } catch {}
+        return undefined;
+      })
+    );
+  } catch {
+    // Cache API unavailable / browser pressure — nothing useful to do.
   }
 }
 
