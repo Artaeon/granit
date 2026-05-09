@@ -408,7 +408,9 @@
     if (id === modeId) return;
     modeId = id;
     persistModeId(id);
-    rag = findMode(id).ragDefault;
+    const m = findMode(id);
+    rag = m.ragDefault;
+    announce(`Mode: ${m.label}. ${m.tagline}`);
   }
   // Initial seed: read the loaded mode's RAG default. We use the
   // module helper rather than `modeId` (which Svelte's analyzer
@@ -861,6 +863,25 @@
     return false;
   }
 
+  // aria-live announcements for screen readers + power-user feedback.
+  // Slash commands like /rag and /forget have no visual reply (they
+  // just toggle state); without a live-region update a screen reader
+  // user has no idea anything happened. Toast already announces for
+  // sighted users; this layer mirrors it polite-channel for AT.
+  let liveRegion = $state('');
+  function announce(msg: string) {
+    liveRegion = '';
+    // Tick lets the same string re-announce — empty-then-set is the
+    // standard hack for back-to-back identical announcements.
+    tick().then(() => { liveRegion = msg; });
+  }
+  // Convenience: focus the composer after a slash-command run, after
+  // a thread loads, after the panel opens. Centralises the "where
+  // does the user look next" decision so it's consistent.
+  function refocusComposer() {
+    tick().then(() => inputEl?.focus());
+  }
+
   function handleSlashCommand(raw: string): boolean {
     const trimmed = raw.trim();
     const parts = trimmed.split(/\s+/);
@@ -928,7 +949,9 @@
       case '/rag':
         rag = !rag;
         toast.success(`RAG ${rag ? 'on' : 'off'} for the next turn.`);
+        announce(`RAG ${rag ? 'enabled' : 'disabled'}`);
         input = '';
+        refocusComposer();
         return true;
       case '/forget':
       case '/detach':
@@ -937,6 +960,8 @@
         mentionedRefs = [];
         input = '';
         toast.success('Context detached for the next message.');
+        announce('Context detached for next message');
+        refocusComposer();
         return true;
       default:
         return false;
@@ -1782,6 +1807,13 @@
     >
       <span class="sr-only">Drag to resize panel</span>
     </button>
+    <!-- Polite aria-live region for power-user feedback (slash
+         commands, mode switches). Sighted users get a toast; AT
+         users get this same message read aloud without yanking
+         focus. Empty when idle so the SR doesn't spuriously
+         announce on every render. -->
+    <div role="status" aria-live="polite" aria-atomic="true" class="sr-only">{liveRegion}</div>
+
     <!-- Header. Mobile gets a drag-handle visual hint at the very
          top; both layouts get title + status pill + close. -->
     <div class="md:hidden flex justify-center pt-2 pb-1">
