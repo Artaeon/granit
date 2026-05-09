@@ -124,8 +124,8 @@
   </div>
 
   {#if projects.length === 0}
-    <div class="flex-1 flex items-center justify-center text-dim text-sm italic">
-      No projects to plot.
+    <div class="flex-1 flex items-center justify-center text-dim text-sm italic px-4 text-center">
+      No projects match the current filter. Clear the status / venture chips above to see more, or create a new project with the + new button.
     </div>
   {:else}
     <div class="flex-1 overflow-auto">

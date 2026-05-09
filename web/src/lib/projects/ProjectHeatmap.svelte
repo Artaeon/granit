@@ -128,8 +128,8 @@
     <span class="hidden sm:inline-flex items-center gap-1 text-dim">
       <span>less</span>
       <span class="flex gap-0.5">
-        {#each [0.18, 0.4, 0.6, 0.8, 1] as a (a)}
-          <span class="w-3 h-3 rounded-sm" style="background: var(--color-success); opacity: {a}"></span>
+        {#each [0.18, 0.4, 0.6, 0.8, 1] as alpha (alpha)}
+          <span class="w-3 h-3 rounded-sm" style="background: var(--color-success); opacity: {alpha}"></span>
         {/each}
       </span>
       <span>more</span>
@@ -214,5 +214,14 @@
   }
   .heatmap-cols {
     grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+  /* Coarse-pointer (touch) bumps the cell row so each week is at
+     least a comfortable tap. The min-w-[640px] on .heatmap-grid
+     already forces horizontal scrolling on phones, so cells have
+     real width to receive a tap. */
+  @media (pointer: coarse) {
+    .heatmap-cols > button {
+      min-height: 36px;
+    }
   }
 </style>

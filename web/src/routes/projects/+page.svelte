@@ -514,35 +514,57 @@
        buttons stay visible in timeline mode (where the sidebar is
        hidden). The list mode is the default — picked by users who
        want the sidebar+detail browsing flow. Timeline gives a
-       Gantt-ish whole-portfolio plan view. -->
-  <div class="px-3 sm:px-4 pt-2 flex-shrink-0 flex items-center gap-1.5 {selectedName && viewMode === 'list' ? 'hidden md:flex' : 'flex'}">
+       Gantt-ish whole-portfolio plan view, heatmap a workload grid.
+       In chart modes the sidebar's status pills aren't visible, so
+       a compact status select rides next to the toggle so the user
+       can still scope the chart without bouncing back to list view. -->
+  <div class="px-3 sm:px-4 pt-2 flex-shrink-0 flex items-center gap-1.5 flex-wrap {selectedName && viewMode === 'list' ? 'hidden md:flex' : 'flex'}">
     <div class="inline-flex rounded border border-surface1 bg-surface0 overflow-hidden text-xs" role="tablist" aria-label="view mode">
       <button
         role="tab"
         aria-selected={viewMode === 'list'}
         onclick={() => setViewMode('list')}
-        class="px-2.5 py-1 {viewMode === 'list' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
+        class="px-2.5 py-1.5 sm:py-1 min-h-[32px] {viewMode === 'list' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
         title="List + detail (default)"
       >☰ List</button>
       <button
         role="tab"
         aria-selected={viewMode === 'timeline'}
         onclick={() => setViewMode('timeline')}
-        class="px-2.5 py-1 border-l border-surface1 {viewMode === 'timeline' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
+        class="px-2.5 py-1.5 sm:py-1 min-h-[32px] border-l border-surface1 {viewMode === 'timeline' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
         title="Gantt-ish timeline across all projects"
       >▭ Timeline</button>
       <button
         role="tab"
         aria-selected={viewMode === 'heatmap'}
         onclick={() => setViewMode('heatmap')}
-        class="px-2.5 py-1 border-l border-surface1 {viewMode === 'heatmap' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
+        class="px-2.5 py-1.5 sm:py-1 min-h-[32px] border-l border-surface1 {viewMode === 'heatmap' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
         title="Per-project completion volume by week"
       >▦ Heatmap</button>
     </div>
     {#if viewMode === 'timeline' || viewMode === 'heatmap'}
+      <select
+        value={statusFilter}
+        onchange={(e) => (statusFilter = (e.target as HTMLSelectElement).value as typeof statusFilter)}
+        class="text-xs px-2 py-1 bg-surface0 border border-surface1 rounded text-subtext min-h-[32px]"
+        aria-label="filter by status"
+      >
+        <option value="active">active</option>
+        <option value="paused">paused</option>
+        <option value="completed">completed</option>
+        <option value="archived">archived</option>
+        <option value="all">all</option>
+      </select>
+      {#if ventureFilter}
+        <button
+          onclick={clearVentureFilter}
+          class="text-xs px-2 py-1 rounded bg-secondary/15 text-secondary hover:bg-secondary/25 min-h-[32px]"
+          title="clear venture filter"
+        >🏢 {ventureFilter} ×</button>
+      {/if}
       <button
         onclick={() => (createOpen = true)}
-        class="ml-auto px-2.5 py-1 text-xs bg-primary text-on-primary rounded hover:opacity-90"
+        class="ml-auto px-2.5 py-1.5 sm:py-1 min-h-[32px] text-xs bg-primary text-on-primary rounded hover:opacity-90"
       >+ new</button>
     {/if}
   </div>
