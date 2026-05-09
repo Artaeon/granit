@@ -341,11 +341,23 @@ func expandRRULE(ev icsEvent, from, to time.Time) []icsEvent {
 	// caller should stop iterating (past UNTIL, past `to`, or hit COUNT).
 	// EXDATE-cancelled occurrences and pre-window dates are silently
 	// skipped (still consume a COUNT slot once we're past DTSTART).
+	//
+	// Window check is `!t.Before(to)` (i.e. t >= to) — exclusive on the
+	// upper bound. This matches the all-day branch (expandAllDayDates
+	// uses `d.Before(end)`, also exclusive) AND the no-rule single-
+	// occurrence guard (`ev.Start.Before(to)`). Callers pass
+	// `to = endOfDay + 24h`, so this includes everything up to but not
+	// including next-day midnight — i.e. the full last requested day.
+	// The previous `t.After(to)` was inclusive on the boundary, which
+	// would have emitted an instance starting exactly at the rangeEnd
+	// timestamp. In practice that's a 00:00 next-day event leaking
+	// into the prior day's render — small but real, and the asymmetry
+	// with the all-day path made it harder to reason about.
 	emit := func(t time.Time) bool {
 		if !until.IsZero() && t.After(until) {
 			return false
 		}
-		if t.After(to) {
+		if !t.Before(to) {
 			return false
 		}
 		if t.Before(ev.Start) {
@@ -407,7 +419,11 @@ func expandRRULE(ev icsEvent, from, to time.Time) []icsEvent {
 		}
 		for week := 0; week < 10000; week++ {
 			base := weekStart.AddDate(0, 0, 7*interval*week)
-			if base.After(to) {
+			// Outer-loop bail: if the WHOLE WEEK starts at or past
+			// the upper bound, no inner BYDAY occurrence can land in
+			// the window. Exclusive (`!base.Before(to)`) so the bail
+			// matches emit()'s window check.
+			if !base.Before(to) {
 				break
 			}
 			stop := false

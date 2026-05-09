@@ -359,6 +359,85 @@ END:VCALENDAR
 	}
 }
 
+// TestExpandRRULE_BoundaryDay pins the timed-vs-all-day boundary
+// symmetry. Both branches use exclusive upper-bound semantics: an
+// instance whose Start equals `to` (the rangeEnd, typically next-day
+// midnight) must NOT be emitted, mirroring expandAllDayDates'
+// `d.Before(end)` clamp. Without symmetry the timed branch could leak
+// a next-day-midnight occurrence into the prior day's render and the
+// all-day branch wouldn't.
+func TestExpandRRULE_BoundaryDay(t *testing.T) {
+	// Daily 00:00 UTC starting 2026-05-01. Window: 2026-05-01 to
+	// 2026-05-03 (rangeEnd = 2026-05-04 00:00 UTC, exclusive).
+	base := icsEvent{
+		Title: "Midnight tick",
+		Start: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+		End:   time.Date(2026, 5, 1, 0, 30, 0, 0, time.UTC),
+		RRule: "FREQ=DAILY",
+	}
+	from := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	rangeEnd := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC)
+	got := expandRRULE(base, from, rangeEnd)
+	// Expected: 2026-05-01, 02, 03 — three instances. NOT 05-04 (==to).
+	if len(got) != 3 {
+		t.Fatalf("expected 3 instances (May 1/2/3), got %d:\n%v", len(got), starts(got))
+	}
+	for _, ev := range got {
+		if !ev.Start.Before(rangeEnd) {
+			t.Errorf("instance at %v leaked past rangeEnd %v", ev.Start, rangeEnd)
+		}
+	}
+
+	// All-day mirror: same window, daily all-day rule. Counterpart
+	// branch (expandAllDayDates) is what handlers_calendar.go uses
+	// to expand multi-day all-day events; its `d.Before(rangeEnd)`
+	// is the contract this test pins to the timed side.
+	dates := expandAllDayDates(
+		time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC),
+		from, rangeEnd,
+	)
+	if len(dates) != 3 || dates[len(dates)-1] != "2026-05-03" {
+		t.Errorf("all-day boundary: got %v, want 3 days ending 2026-05-03", dates)
+	}
+}
+
+// TestExpandRRULE_BoundaryWeeklyBYDAY: the WEEKLY+BYDAY branch has its
+// own outer-loop break — verify it also stops short of `to` rather
+// than leaking a boundary-day instance.
+func TestExpandRRULE_BoundaryWeeklyBYDAY(t *testing.T) {
+	// 2026-05-04 is a Monday. Weekly Mon/Wed/Fri rule.
+	base := icsEvent{
+		Title: "MWF",
+		Start: time.Date(2026, 5, 4, 8, 0, 0, 0, time.UTC),
+		End:   time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC),
+		RRule: "FREQ=WEEKLY;BYDAY=MO,WE,FR",
+	}
+	// rangeEnd EXACTLY on a Monday — that Monday must not appear.
+	from := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC)
+	rangeEnd := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC) // next Monday 00:00
+	got := expandRRULE(base, from, rangeEnd)
+	// Expected: Mon 5/4, Wed 5/6, Fri 5/8 — three. NOT 5/11.
+	if len(got) != 3 {
+		t.Fatalf("expected 3 (Mon/Wed/Fri of week 1), got %d:\n%v", len(got), starts(got))
+	}
+	for _, ev := range got {
+		if !ev.Start.Before(rangeEnd) {
+			t.Errorf("instance at %v leaked past rangeEnd %v", ev.Start, rangeEnd)
+		}
+	}
+}
+
+// starts is a tiny helper for failure-message readability — formats
+// the start times of the matched occurrences as a slice of strings.
+func starts(evs []icsEvent) []string {
+	out := make([]string, len(evs))
+	for i, ev := range evs {
+		out[i] = ev.Start.Format(time.RFC3339)
+	}
+	return out
+}
+
 // TestParseBYDAY locks the parser shape: numeric prefixes are stripped
 // (so "-1SU" still resolves to Sunday) and unknown tokens are dropped
 // silently rather than crashing the calendar feed.
