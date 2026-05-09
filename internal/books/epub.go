@@ -263,6 +263,7 @@ func (e *EPUB) Chapter(idx int, assetPrefix string) (string, error) {
 		return "", err
 	}
 	html := rewriteRefs(string(body), path.Dir(item.Href), assetPrefix)
+	html = extractChapterBody(html)
 	html = sanitiseChapter(html)
 	return html, nil
 }
@@ -442,11 +443,44 @@ var (
 	scriptSelfRe  = regexp.MustCompile(`(?is)<script[^>]*/>`)
 	onEventAttrRe = regexp.MustCompile(`(?i)\son[a-z]+\s*=\s*"[^"]*"|(?i)\son[a-z]+\s*=\s*'[^']*'`)
 	jsHrefRe      = regexp.MustCompile(`(?i)(href|src)\s*=\s*["']\s*javascript:[^"']*["']`)
+
+	// Body extraction + style stripping. EPUB chapter files are full
+	// XHTML documents (xml prolog + doctype + <html><head>...</head>
+	// <body>...</body></html>); we must hand the frontend just the
+	// inner body so {@html ...} doesn't paste a <head> with <title>
+	// + <meta> + <link> tags inside an <article>, where the head
+	// content leaks as visible text and document-level CSS rules
+	// fight our reader-prose typography.
+	bodyExtractRe = regexp.MustCompile(`(?is)<body[^>]*>(.*?)</body>`)
+
+	// Strip stylesheet links + inline <style> blocks. The author's
+	// CSS is an opinion (custom fonts, fixed widths, themed colors);
+	// the reader's typography rules. Same call Kindle, iBooks, and
+	// Apple Books make. Without this, reader-prose loses to whatever
+	// the EPUB ships and the page looks "completely buggy".
+	stylesheetLinkRe = regexp.MustCompile(`(?is)<link[^>]*rel\s*=\s*["']?stylesheet["']?[^>]*/?>`)
+	inlineStyleRe    = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
+	// Element-level style="..." attributes are kept — many EPUBs use
+	// inline styles for legitimate semantics (centered chapter
+	// headings, drop-caps) that don't fight us.
 )
+
+// extractChapterBody peels the inner body out of a full XHTML
+// document. Falls back to the original input when no <body> tag is
+// present — some chapters are pre-cleaned fragments and re-wrapping
+// them would lose content.
+func extractChapterBody(html string) string {
+	if m := bodyExtractRe.FindStringSubmatch(html); len(m) >= 2 {
+		return m[1]
+	}
+	return html
+}
 
 func sanitiseChapter(body string) string {
 	body = scriptBlockRe.ReplaceAllString(body, "")
 	body = scriptSelfRe.ReplaceAllString(body, "")
+	body = stylesheetLinkRe.ReplaceAllString(body, "")
+	body = inlineStyleRe.ReplaceAllString(body, "")
 	body = onEventAttrRe.ReplaceAllString(body, "")
 	body = jsHrefRe.ReplaceAllString(body, `$1=""`)
 	return body

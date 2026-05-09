@@ -155,6 +155,88 @@ func TestChapterRewritesAssetRefs(t *testing.T) {
 	}
 }
 
+func TestChapterStripsDocumentEnvelope(t *testing.T) {
+	// Chapter() must hand the frontend just the inner <body>
+	// content. The reader pastes the result inside an <article> via
+	// {@html ...}; if we leak the doctype / <html> / <head> /
+	// <title> / <meta> / <link> / <style> wrapping, the head tags
+	// render as visible text and the EPUB's CSS fights our
+	// reader-prose typography — surfaces as the user-visible
+	// "ereader looks completely buggy" bug.
+	dir := t.TempDir()
+	p := filepath.Join(dir, "envelope.epub")
+	makeEPUBWithChapter(t, p, `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<title>The Wrong Title</title>
+<meta charset="utf-8"/>
+<link rel="stylesheet" type="text/css" href="../css/style.css"/>
+<style>p { color: red; font-family: "ComicSans"; }</style>
+</head>
+<body class="chapter">
+<h1>Chapter One</h1>
+<p>Real content the reader should display.</p>
+</body>
+</html>`)
+
+	e, err := Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	html, err := e.Chapter(0, "/api/v1/books/test/asset")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Document envelope must be gone.
+	for _, fragment := range []string{
+		"<!DOCTYPE", "<?xml", "<html", "</html>", "<head", "</head>",
+		"<title>", "<meta", "<link", "ComicSans", "<style",
+	} {
+		if strings.Contains(html, fragment) {
+			t.Errorf("chapter HTML still contains %q (full output: %s)", fragment, html)
+		}
+	}
+	// Real content survives.
+	if !strings.Contains(html, "<h1>Chapter One</h1>") {
+		t.Errorf("chapter heading missing: %s", html)
+	}
+	if !strings.Contains(html, "Real content the reader should display.") {
+		t.Errorf("chapter paragraph missing: %s", html)
+	}
+}
+
+func TestChapterFragmentWithoutBodyTag(t *testing.T) {
+	// Some EPUBs ship pre-cleaned chapter fragments without an
+	// outer <body> — extractChapterBody must fall through to the
+	// original input rather than returning empty.
+	got := extractChapterBody(`<h1>Just a heading</h1><p>and a paragraph</p>`)
+	if !strings.Contains(got, "Just a heading") {
+		t.Errorf("fragment input lost: got %q", got)
+	}
+}
+
+func TestSanitiseStripsStylesheets(t *testing.T) {
+	// Independent regression guard for the style-stripping branch
+	// of sanitiseChapter — the reader's typography should never
+	// have to fight the EPUB's CSS.
+	cases := []string{
+		`<link rel="stylesheet" href="x.css"/>`,
+		`<link href="x.css" rel="stylesheet" type="text/css"/>`,
+		`<link rel='stylesheet' href='x.css'>`,
+		`<style>body { font: 12px wingdings; }</style>`,
+		`<STYLE type="text/css">.x { display: none }</STYLE>`,
+	}
+	for _, c := range cases {
+		got := sanitiseChapter(c)
+		if got != "" {
+			t.Errorf("sanitiseChapter(%q) = %q, want empty", c, got)
+		}
+	}
+}
+
 func TestChapterOutOfRange(t *testing.T) {
 	p := buildMinimalEPUB(t)
 	e, _ := Open(p)
