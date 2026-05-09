@@ -1311,7 +1311,7 @@
            too — without this the user has no UI to navigate away
            except a full page reload. Keep it minimal: just a back
            link and the error message. -->
-      <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0">
+      <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle/85 supports-[backdrop-filter]:bg-mantle/60 supports-[backdrop-filter]:backdrop-blur-md sticky top-0 z-20">
         <a
           href="/notes"
           aria-label="back to notes"
@@ -1341,7 +1341,7 @@
       <div class="px-4 py-2 text-sm text-error border-b border-error/30 bg-error/10 flex-shrink-0">{error}</div>
     {/if}
     {#if note}
-      <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0">
+      <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle/85 supports-[backdrop-filter]:bg-mantle/60 supports-[backdrop-filter]:backdrop-blur-md sticky top-0 z-20">
         <!-- Hidden on mobile: the layout's top-bar already shows a back
              arrow to /notes for any subpath, so a second one here pushes
              the view-mode toggle (and save button) off the right edge on
@@ -1374,7 +1374,17 @@
           >‹</button>
         {/if}
         <div class="min-w-0 flex-1">
-          <h1 class="text-base sm:text-lg font-semibold text-text truncate">
+          <!-- Single-line ellipsis with the full title surfaced via
+               the native tooltip + an explicit aria-label so the
+               hidden tail is still discoverable on hover (desktop)
+               and accessible to screen readers. The h1 itself only
+               shows up to one row's worth so the buttons on the
+               right never get pushed off the viewport. -->
+          <h1
+            class="text-base sm:text-lg font-semibold text-text truncate"
+            title={note.title}
+            aria-label={note.title}
+          >
             {note.title}
             {#if dailyLabel}
               <span class="ml-2 text-xs font-normal text-dim uppercase tracking-wider">{dailyLabel}</span>
@@ -1987,6 +1997,17 @@
      (save state, word count, daily-nav buttons). */
   .focus-mode .focus-hide {
     display: none !important;
+  }
+  /* Touch tap-target floor — on coarse-pointer devices (phones /
+     tablets without a precise mouse) every header button needs at
+     least 36px tall so the interactive surface meets the WCAG
+     pointer-target guidance. Desktop with a fine pointer keeps the
+     denser 28-32px sizes the toolbar was designed around. */
+  @media (pointer: coarse) {
+    :global(header button),
+    :global(header a) {
+      min-height: 2.25rem;
+    }
   }
   /* Reading mode: serif typography + narrower max-width on the
      preview pane so the user lands in a "I'm reading a book"
