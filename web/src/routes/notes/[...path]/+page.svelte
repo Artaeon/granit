@@ -1296,12 +1296,19 @@
     {@render treeContent()}
   </aside>
 
-  <!-- Tree drawer (mobile + tablet) -->
-  <Drawer bind:open={treeDrawerOpen} side="left">
-    <div class="h-full flex flex-col">
-      {@render treeContent()}
-    </div>
-  </Drawer>
+  <!-- Tree drawer — covers everything below lg (where the permanent
+       left rail kicks in). The default Drawer is mobile-only
+       (\`md:hidden\`); we override to responsive so the tablet gap
+       (768–1024 px) doesn't leave the toolbar's tree button as a
+       no-op. \`lg:hidden contents\` ensures the drawer doesn't
+       double-render once the desktop sidebar mounts. -->
+  <div class="lg:hidden contents">
+    <Drawer bind:open={treeDrawerOpen} side="left" responsive width="w-72 sm:w-80">
+      <div class="h-full flex flex-col">
+        {@render treeContent()}
+      </div>
+    </Drawer>
+  </div>
 
   <!-- Center: editor -->
   <div class="flex-1 flex flex-col min-w-0">
