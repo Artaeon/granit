@@ -1795,10 +1795,19 @@
     {@render infoContent()}
   </aside>
 
-  <!-- Info drawer (mobile + tablet + desktop without xl) -->
-  <Drawer bind:open={infoDrawerOpen} side="right">
-    {@render infoContent()}
-  </Drawer>
+  <!-- Info drawer — covers everything below xl (where the sticky
+       right rail kicks in). The default Drawer is mobile-only
+       (`md:hidden`) which used to leave the gap between md and xl
+       unreachable: the toolbar's `xl:hidden` button opened nothing
+       on a 1024px laptop. `responsive` keeps it functioning at
+       every width below the desktop rail's threshold; we hide it
+       ourselves at xl+ so it never double-renders alongside the
+       permanent sidebar. -->
+  <div class="xl:hidden contents">
+    <Drawer bind:open={infoDrawerOpen} side="right" responsive width="w-80 sm:w-96">
+      {@render infoContent()}
+    </Drawer>
+  </div>
 </div>
 
 <!-- Extract-to-note dialog. Lives at the page root so it overlays
