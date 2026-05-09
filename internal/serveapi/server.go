@@ -442,7 +442,14 @@ func (s *Server) Handler() http.Handler {
 		// .granit/books/<id>.json. The asset wildcard captures
 		// chapter-internal hrefs the parser rewrote, so an inline
 		// <img src="images/foo.png"> resolves through the same auth.
+		//
+		// Discover routes register FIRST so chi matches the literal
+		// "discover" segment before it ever tries the {id}-prefixed
+		// patterns below — a slug starting with "discover" wouldn't
+		// otherwise short-circuit to the search/import handlers.
 		r.Get("/api/v1/books", s.handleListBooks)
+		r.Get("/api/v1/books/discover/search", s.handleDiscoverBooks)
+		r.Post("/api/v1/books/discover/import", s.handleImportBook)
 		r.Get("/api/v1/books/{id}", s.handleGetBook)
 		r.Get("/api/v1/books/{id}/chapter/{idx}", s.handleGetBookChapter)
 		r.Get("/api/v1/books/{id}/cover", s.handleGetBookCover)
