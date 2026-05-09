@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type CalendarEvent, type CalendarFeed, type CalendarSource, type HabitInfo, type Task } from '$lib/api';
+  import { api, type CalendarEvent, type CalendarFeed, type CalendarSource, type HabitInfo, type Project, type Task } from '$lib/api';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { toast } from '$lib/components/toast';
   import {
@@ -129,6 +129,49 @@
     hidden = next;
   }
 
+  // Project filter — when set to a non-empty project name, the grid
+  // only shows events + tasks linked to that project (via project_id
+  // on the wire shape). Persisted per-device so a user using the
+  // calendar as a project board stays scoped on reload. Empty = "all".
+  const PROJECT_FILTER_KEY = 'granit.calendar.project';
+  let projectFilter = $state<string>('');
+  if (typeof localStorage !== 'undefined') {
+    try {
+      projectFilter = localStorage.getItem(PROJECT_FILTER_KEY) ?? '';
+    } catch {}
+  }
+  $effect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try { localStorage.setItem(PROJECT_FILTER_KEY, projectFilter); } catch {}
+  });
+
+  // Project list — used by the filter dropdown + the "colour by
+  // project" overlay. Loaded once on mount; refreshed on demand if a
+  // ws project.changed broadcast lands. Failure degrades to empty.
+  let allProjects = $state<Project[]>([]);
+  async function loadAllProjects() {
+    try {
+      const r = await api.listProjects();
+      allProjects = r.projects ?? [];
+    } catch {
+      allProjects = [];
+    }
+  }
+
+  // Colour-by-project toggle. Off by default (the per-event colour
+  // and the per-source ICS colour rotation already give visual
+  // separation); flipping it on tints every project-linked row with
+  // the project's `color` field, so a project board view becomes
+  // visually unified.
+  const COLOR_BY_PROJECT_KEY = 'granit.calendar.colorByProject';
+  let colorByProject = $state<boolean>(
+    typeof localStorage !== 'undefined' && localStorage.getItem(COLOR_BY_PROJECT_KEY) === '1'
+  );
+  $effect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try { localStorage.setItem(COLOR_BY_PROJECT_KEY, colorByProject ? '1' : '0'); } catch {}
+  });
+
   // Per-source ICS toggles. Wired to granit's `disabled_calendars` list
   // (config.json) so flipping one here also silences it in the TUI on
   // next launch — single source of truth.
@@ -196,6 +239,8 @@
   // Deep-link: ?plan=1 (optionally with &project=NAME) flips on plan
   // mode so other pages — e.g. the project detail's "schedule next
   // action" button — can hand off into the calendar in the right state.
+  // ?project=NAME (without &plan) just scopes the view to that
+  // project — the "open this project's calendar" hand-off.
   onMount(() => {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
@@ -203,6 +248,8 @@
       planMode = true;
       view = 'day';
     }
+    const proj = url.searchParams.get('project');
+    if (proj) projectFilter = proj;
   });
 
   async function load() {
@@ -235,6 +282,7 @@
   onMount(load);
   onMount(loadSources);
   onMount(loadHabits);
+  onMount(loadAllProjects);
   onMount(() =>
     onWsEvent((ev) => {
       if (
@@ -252,6 +300,14 @@
       // server signals .granit/deadlines.json changed (TUI edit, web
       // edit in another tab, or anything else that calls SaveAll).
       if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') load();
+      // Project metadata changed (rename, colour, status) — refresh
+      // the picker so the filter dropdown stays in sync. We don't
+      // touch the event feed here; project_id on events is captured
+      // at write time, so a project rename doesn't transitively
+      // re-key past events (matches the deliberate Task.Project shape).
+      if (ev.type === 'project.changed' || ev.type === 'project.removed') {
+        loadAllProjects();
+      }
     })
   );
 
@@ -272,10 +328,40 @@
   // trip. The override is per-device (localStorage); future cross-
   // device sync can layer over the same map without touching the
   // render path.
+  //
+  // Project filter and project-tint layer on top in two stages:
+  //   1. If projectFilter is set, drop every row whose project_id !=
+  //      the picked project — the calendar becomes a project board.
+  //   2. If colorByProject is on, override the row's `color` with the
+  //      project's saved colour (events.json events). The override
+  //      runs through the existing eventTypeColor mapping (red/yellow
+  //      /green/...), so it composes cleanly with the per-source
+  //      and per-event paths.
+  let projectColorMap = $derived.by(() => {
+    const m = new Map<string, string>();
+    for (const p of allProjects) {
+      if (p.name && p.color) m.set(p.name, p.color);
+    }
+    return m;
+  });
   let events = $derived(
     allEvents
       .filter((e) => !hidden.has(e.type as EventFilterKey))
+      .filter((e) => {
+        if (!projectFilter) return true;
+        return e.project_id === projectFilter;
+      })
       .map((e) => applySourceColor(e, $sourceColors))
+      .map((e) => {
+        if (!colorByProject || !e.project_id) return e;
+        const c = projectColorMap.get(e.project_id);
+        if (!c) return e;
+        // Only override the user-event color path — task / deadline
+        // rows have their own meaningful colour rules (priority,
+        // importance) we shouldn't trample.
+        if (e.type !== 'event' && e.type !== 'task_scheduled' && e.type !== 'task_due') return e;
+        return { ...e, color: c };
+      })
   );
 
   // ── Natural-language quick-create ────────────────────────────────
@@ -831,6 +917,46 @@
     <p class="text-[11px] text-dim italic px-1 -mt-2">…or click + drag on the grid</p>
     <MiniMonth cursor={cursor} selected={cursor} events={monthEvents} onPick={pickDay} />
 
+    <!-- Project filter — turn the calendar into a project-management
+         board for one project at a time. Empty value = "all projects".
+         Pairs with the per-event project picker; an event linked to
+         project X shows up only when the filter is empty or set to X.
+         "Colour by project" toggle below tints linked rows with the
+         project's saved colour for at-a-glance visual grouping. -->
+    {#if allProjects.length > 0}
+      <div class="space-y-1.5 text-xs">
+        <h3 class="text-dim uppercase tracking-wider mb-2">Project board</h3>
+        <select
+          bind:value={projectFilter}
+          aria-label="filter calendar by project"
+          class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+        >
+          <option value="">All projects</option>
+          {#each allProjects as p (p.name)}
+            <option value={p.name}>{p.name}</option>
+          {/each}
+        </select>
+        <label class="flex items-center gap-2 px-1 py-0.5 text-[11px] text-subtext cursor-pointer select-none">
+          <input
+            type="checkbox"
+            bind:checked={colorByProject}
+            class="w-3.5 h-3.5 accent-primary"
+          />
+          Colour by project
+        </label>
+        {#if projectFilter}
+          <p class="text-[10px] text-dim italic px-1 leading-snug">
+            Showing only events + tasks linked to <span class="text-secondary">{projectFilter}</span>.
+            <button
+              type="button"
+              onclick={() => (projectFilter = '')}
+              class="text-[10px] text-warning hover:underline ml-1"
+            >clear</button>
+          </p>
+        {/if}
+      </div>
+    {/if}
+
     <!-- Per-file ICS source toggles — same `disabled_calendars` config
          the TUI uses, so flipping a switch here silences the file in
          both frontends. The most common reason to toggle: vaults often
@@ -1285,7 +1411,13 @@
   defaultNotePath={`Jots/${fmtDateISO(createDate)}.md`}
   onCreated={load}
 />
-<CreateEvent bind:open={createEventOpen} date={createEventDate} existingEvents={events} onCreated={load} />
+<CreateEvent
+  bind:open={createEventOpen}
+  date={createEventDate}
+  existingEvents={events}
+  defaultProjectId={projectFilter}
+  onCreated={load}
+/>
 <UnifiedCreate
   bind:open={unifiedOpen}
   start={unifiedStart}
